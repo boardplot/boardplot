@@ -155,6 +155,39 @@ describe('composition warning taxonomy', () => {
 });
 
 describe('line and mekko fail closed visibly', () => {
+  // Missing Mekko columns must stay named as unavailable, and a negative total must not be described as zero.
+  it('names missing Mekko columns and reports the real negative total', () => {
+    const categories = ['North', 'Central', 'South'].map((label) => ({ id: label.toLowerCase(), label }));
+    for (const variant of ['bar', 'stacked', 'stacked100']) {
+      for (const widths of [undefined, [1, 2, 7], [1, 0, 7]]) {
+        const geometry = layoutComposition('mekko', {
+          categories,
+          series: [
+            { id: 'value', values: [12, null, 36] },
+            ...(widths ? [{ id: 'size', role: 'reference' as const, values: widths }] : []),
+          ],
+        }, { variant, ...(widths ? { widthSeriesId: 'size' } : {}) });
+        expect(noteTexts(geometry), `${variant}, widths ${widths}`).toContain('Not available: Central.');
+        expect(geometry.derived).not.toHaveProperty('columnTotals.central');
+        expect(geometry.a11y.desc).not.toContain('Central 0');
+        expect(geometry.labels.some((label) => label.id === 'category:central' && label.hidden === 'redundant')).toBe(false);
+        if (widths?.[1] === 2 || (variant === 'bar' && widths === undefined)) {
+          expect(geometry.labels.filter((label) => !label.hidden).map((label) => label.id)).toContain('category:central');
+        }
+      }
+    }
+    for (const shown of [false, true]) {
+      const geometry = layoutComposition('mekko', {
+        categories,
+        series: [{ id: 'income', values: [12, -42, 6] }, { id: 'cost', values: [24, 12, 6] }],
+      }, { variant: 'stacked', ...(shown ? { notes: { show: ['note', 'disclosure'] } } : {}) });
+      expect(noteTexts(geometry)).toContain('Not drawn (negative total): Central −30.');
+      const visible = geometry.scene.flatMap((node) => node.t === 'text' ? [node.lines.join(' ')] : []).join(' ');
+      expect(visible).toContain('Not drawn (negative total): Central −30');
+      expect(visible).not.toContain('total 0');
+    }
+  });
+
   // A bar mekko's heights are rates, so a folded Others column printed 12.5% and 18.9% as a false 31.4.
   it('folds bar mekko rates into their width-weighted mean', () => {
     const draw = (values: unknown[], widthSeriesId?: string) => {
@@ -184,6 +217,59 @@ describe('line and mekko fail closed visibly', () => {
     expect(stacked.derived).toMatchObject({ columnTotals: { others: 200 } });
   });
 
+  // A bar mekko given two data series kept the first and dropped the second from the picture, so the totals read as one cost block.
+  it('draws every data series of a one-bar mekko as stacked columns and warns', () => {
+    const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'mekko', data: {
+      categories: ['a', 'b'].map((id) => ({ id })),
+      series: [{ id: 'labor', values: [34, 40] }, { id: 'material', values: [30, 34] }],
+    }, options: { variant: 'bar', size: { width: 960, height: 540 } } } as never)));
+    expect(geometry.derived).toMatchObject({ columnTotals: { a: 64, b: 74 } });
+    expect(geometry.warnings.map((warning) => warning.code)).toContain('bar-mekko-extra-series');
+  });
+
+  // Stacking several series in a bar mekko switched its widths to category totals, so a column whose parts add to zero drew at width 0.
+  it('keeps a stacked bar mekko at equal column widths', () => {
+    const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'mekko', data: {
+      categories: ['a', 'b'].map((id) => ({ id })),
+      series: [{ id: 'up', values: [10, 20] }, { id: 'down', values: [-10, 5] }],
+    }, options: { variant: 'bar', size: { width: 960, height: 540 } } } as never)));
+    const widths = geometry.derived as unknown as { widths: Record<string, number> };
+    expect(widths.widths.a).toBeGreaterThan(0);
+    expect(widths.widths.a).toBeCloseTo(widths.widths.b!);
+  });
+
+  // The interaction records read a stacked bar mekko as a single series, so segments were 100% of their column and the Others segment of the second series had no value.
+  it('reads every series of a stacked bar mekko, also in the Others column', () => {
+    const request = resolveChartRequest({ type: 'mekko', data: {
+      categories: ['a', 'b', 'c'].map((id) => ({ id })),
+      series: [{ id: 'labor', values: [30, 20, 10] }, { id: 'material', values: [10, 20, 30] }],
+    }, options: { variant: 'bar', topN: { n: 1, rest: true }, size: { width: 960, height: 540 } } } as never);
+    const geometry = requireGeometry(layoutResolvedRequest(request));
+    const records = interactionRecords({ request, geometry, scope: request.scope, claims: [] });
+    const at = (categoryId: string, seriesId: string) => records.find((r) => r.target.owner?.categoryId === categoryId && r.target.owner?.seriesId === seriesId)!;
+    expect(at('a', 'labor').share?.percent.raw).toBeCloseTo(75);
+    expect(at('others', 'material').value.raw).toBe(50);
+    expect(at('others', 'material').share?.percent.raw).toBeCloseTo(62.5);
+  });
+
+  // A several-series bar mekko with a width series folded Others by summing per-unit values, so Others read 62 where the width-weighted mean is 32.29.
+  it('folds a several-series bar mekko with a width series as a width-weighted mean', () => {
+    const request = resolveChartRequest({ type: 'mekko', data: {
+      categories: ['a', 'b', 'c'].map((id) => ({ id })),
+      series: [
+        { id: 'units', role: 'reference', values: [240, 120, 90] },
+        { id: 'labor', values: [34, 40, 22] },
+        { id: 'material', values: [30, 34, 22] },
+      ],
+    }, options: { variant: 'bar', widthSeriesId: 'units', topN: { n: 1, rest: true }, size: { width: 960, height: 540 } } } as never);
+    const geometry = requireGeometry(layoutResolvedRequest(request));
+    const records = interactionRecords({ request, geometry, scope: request.scope, claims: [] });
+    const others = (seriesId: string) => records.find((r) => r.target.owner?.categoryId === 'others' && r.target.owner?.seriesId === seriesId)!;
+    expect(others('labor').value.raw).toBeCloseTo((40 * 120 + 22 * 90) / 210);
+    expect(others('material').value.raw).toBeCloseTo((34 * 120 + 22 * 90) / 210);
+    expect(geometry.derived).toMatchObject({ columnTotals: { others: expect.closeTo((40 * 120 + 22 * 90) / 210 + (34 * 120 + 22 * 90) / 210, 6) } });
+  });
+
   // Mekko Others must convert percent cells to amounts and keep the present width values when one width is missing.
   it('pools equivalent Mekko amounts, percents and fractions through their category bases', () => {
     const bases = [5000, 1000, 100];
@@ -199,7 +285,11 @@ describe('line and mekko fail closed visibly', () => {
       return { geometry, records };
     };
     const absolute = draw('amount');
-    expect(absolute.geometry.derived).toMatchObject({ columnTotals: { large: 5000, others: 1100 }, shares: { others: { s0: 25.45, s1: 74.55 } } });
+    expect(absolute.geometry.derived).toMatchObject({ columnTotals: { large: 5000, others: 1100 } });
+    // Shares keep their full value until the format applies: 280/1100 and 820/1100.
+    const othersShares = (absolute.geometry.derived as { shares: Record<string, Record<string, number>> }).shares.others!;
+    expect(othersShares.s0).toBeCloseTo(25.4545454545, 9);
+    expect(othersShares.s1).toBeCloseTo(74.5454545454, 9);
     for (const kind of ['percent', 'fraction'] as const) {
       const { geometry: g, records } = draw(kind);
       expect(g.derived).toEqual(absolute.geometry.derived);
@@ -225,13 +315,26 @@ describe('line and mekko fail closed visibly', () => {
       expect(geometry.derived).toMatchObject({
         widths: { others: expect.closeTo(geometry.plot.w / 6, 2) },
         columnTotals: { others: missingData ? 180 : 270 },
-        shares: { others: missingData ? { b: 100 } : { a: 33.33, b: 66.67 } },
+        shares: { others: missingData ? { b: 100 } : { a: expect.closeTo(100 / 3, 9), b: expect.closeTo(200 / 3, 9) } },
       });
       expect(segments.map((n) => n.owner.seriesId).sort()).toEqual(missingData ? ['b'] : ['a', 'b']);
       for (const segment of segments) expect(segment).toMatchObject({ t: 'rect', rect: { w: expect.closeTo(geometry.plot.w / 6, 2) } });
       expect(geometry.warnings.some((w) => w.code === 'zero-weight-column')).toBe(false);
       expect(geometry.warnings.some((w) => w.code === 'incomplete-composition')).toBe(missingData);
     }
+  });
+
+  // A column whose amounts cancel (0.1 + 0.2 - 0.3) must total exactly 0, not a 5.55e-17 residue that prints as a bound.
+  it('cleans a Mekko column total at the size of its terms', () => {
+    const geometry = layoutComposition('mekko', {
+      categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }],
+      series: [
+        { id: 's1', label: 'S1', values: [0.1, 5] },
+        { id: 's2', label: 'S2', values: [0.2, 5] },
+        { id: 's3', label: 'S3', values: [-0.3, 5] },
+      ],
+    }, { variant: 'stacked' });
+    expect((geometry.derived as { columnTotals: Record<string, number> }).columnTotals.a).toBe(0);
   });
 
   it('suppresses the invalid stacked100-area category and leaves one claimed n.m. trace', () => {
@@ -327,6 +430,32 @@ describe('line and mekko fail closed visibly', () => {
       expect(stateNodes(negative).map((node) => node.lines), type).toEqual([['n.m.']]);
       expectSharesInRange(negative, `${type} negative direct shares`);
     }
+  });
+  // A 100% column stack of percent cells has no absolute basis; its segments printed no share at all.
+  it('prints the share of each percent cell on a 100% column stack', () => {
+    const shares: ChartData = {
+      categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }],
+      series: [
+        { id: 's1', label: 'S1', values: [{ pct: 40 }, { pct: 30 }] },
+        { id: 's2', label: 'S2', values: [{ pct: 60 }, { pct: 70 }] },
+      ],
+    };
+    const texts = layoutComposition('column', shares).scene
+      .flatMap((node) => (node.t === 'text' ? [(node.lines ?? []).join(' ')] : []));
+    for (const share of ['40%', '30%', '60%', '70%']) expect(texts).toContain(share);
+  });
+
+  // Percent cells rounded alone printed 25 + 4 + 10 + 37 + 25 = 101% in one column.
+  it('prints percent-cell shares that add to 100% on a 100% column stack', () => {
+    const cells = [24.8, 3.8, 9.8, 36.8, 24.8];
+    const shares: ChartData = {
+      categories: [{ id: 'a', label: 'A' }],
+      series: cells.map((pct, i) => ({ id: `s${i}`, label: `S${i}`, values: [{ pct }] })),
+    };
+    const printed = layoutComposition('column', shares, { labelDensity: 'full' }).scene
+      .flatMap((node) => (node.t === 'text' && node.id.startsWith('label:segment:') ? percentageValues((node.lines ?? []).join(' ')) : []));
+    expect(printed).toHaveLength(5);
+    expect(printed.reduce((sum, share) => sum + share, 0)).toBe(100);
   });
 });
 
@@ -472,5 +601,27 @@ describe('pareto joined remainder record', () => {
     const column = interactionRecords({ request, geometry, scope: request.scope, claims: [] }).find((record) => record.target.owner?.categoryId === 'o' && record.target.owner.seriesId === 'pareto:value')!;
     expect(column.value).toMatchObject({ raw: 1.4, derived: 'number' });
     expect(column.members).toEqual([{ categoryId: 'c' }, { categoryId: 'd' }]);
+  });
+
+  // A rest bucket above the scale word printed 1,800.0 in the method note beside a 1.80k column.
+  it('prints the bucket in the column and the method note in one authored scale', () => {
+    const items = ['a', 'b', 'c', 'd', 'e'].map((id) => ({ id, value: 600 }));
+    const request = resolveChartRequest({ type: 'pareto', data: { items }, options: { format: '1.2k', topN: { n: 2 }, methodNote: true } } as never);
+    const geometry = requireGeometry(layoutResolvedRequest(request));
+    expect(geometry.labels.find((label) => label.id === 'grandTotal:rest')?.text).toBe('1.8k');
+    expect(geometry.frame.noteList?.map((note) => note.text).join(' ')).toContain('1.8k in total');
+  });
+});
+
+// The changelog promises totalScale: false brings back the column-capped axis; no golden draws it.
+describe('pareto total scale', () => {
+  it('scales the left axis to the total when concentrated, unless the author turns it off', () => {
+    const data = { items: [{ id: 'a', value: 80 }, { id: 'b', value: 5 }, { id: 'c', value: 5 }, { id: 'd', value: 5 }, { id: 'e', value: 5 }] };
+    const top = (options: Record<string, unknown>) => {
+      const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'pareto', data, options } as never)));
+      return Math.max(...geometry.axes.find((axis) => axis.axis === 'y')!.ticks.map((tick) => Number(tick.at)));
+    };
+    expect(top({})).toBe(100);
+    expect(top({ totalScale: false })).toBe(80);
   });
 });

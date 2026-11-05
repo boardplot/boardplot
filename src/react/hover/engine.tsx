@@ -81,14 +81,7 @@ export function hoverViewport(host: HTMLElement, size: Size, pointer?: { clientX
   if (!(scale > 0)) return undefined;
   const x = box.left + (box.width - size.width * scale) / 2;
   const y = box.top + (box.height - size.height * scale) / 2;
-  const body = host.ownerDocument.body;
-  const position = win.getComputedStyle(body).position;
-  let origin = topLayer() ? { x: 0, y: 0 } : { x: -win.scrollX, y: -win.scrollY };
-  if (!topLayer() && position && position !== 'static') {
-    const box = body.getBoundingClientRect();
-    origin = { x: box.left + body.clientLeft - body.scrollLeft, y: box.top + body.clientTop - body.scrollTop };
-  }
-  return { scale, origin: { x: x - origin.x, y: y - origin.y },
+  return { scale, origin: { x, y },
     boundary: { x: (8 - x) / scale, y: (8 - y) / scale,
       w: Math.max(0, win.innerWidth - 16) / scale, h: Math.max(0, win.innerHeight - 16) / scale },
     pointer: pointer ? { x: (pointer.clientX - x) / scale, y: (pointer.clientY - y) / scale } : undefined };
@@ -331,13 +324,15 @@ export function hoverView(
 }
 
 /** A card renders at 1 CSS pixel per layout unit, even on a scaled chart. */
-export function ChartCard({ layout, theme, origin }: { layout: LabelCardLayout; theme: Theme; origin: Point }): ReactElement | null {
+export function ChartCard({ layout, theme, origin, cardRef }: { layout: LabelCardLayout; theme: Theme; origin: Point;
+  cardRef?: (node: HTMLDivElement | null) => void }): ReactElement | null {
   if (!layout.scene.length) return null;
   const size: CSSProperties = { width: layout.rect.w, height: layout.rect.h, maxWidth: 'none',
     overflow: 'visible', boxSizing: 'content-box' };
-  const card = <div popover={topLayer() ? 'manual' : undefined} ref={showCard} data-bp-chart-card="" data-bp-card-overlay="" className="bp-interaction-card"
+  // The pointer may move onto the card (WCAG 1.4.13): the hover handlers keep the open record while it is on it.
+  const card = <div popover={topLayer() ? 'manual' : undefined} ref={node => { cardRef?.(node); showCard(node); }} data-bp-chart-card="" data-bp-card-overlay="" className="bp-interaction-card"
     role="tooltip" dir="ltr" aria-label={layout.accessibleText}
-    style={{ ...cardStyle(layout.rect, theme, origin, 'bp-chart-card-in'), ...size }}>
+    style={{ ...cardStyle(layout.rect, theme, origin, 'bp-chart-card-in', true), pointerEvents: 'auto', ...size }}>
     <SceneRenderer geometry={labelCardGeometry(layout)} theme={theme} responsive={false} style={size} />
   </div>;
   // Keep the portal fallback where showPopover is missing.
@@ -438,11 +433,15 @@ export function inCardCorridor(from: Point, card: Rect, point: Point): boolean {
 function topLayer(): boolean { return typeof HTMLElement !== 'undefined' && 'showPopover' in HTMLElement.prototype; }
 function showCard(node: HTMLDivElement | null): void { node?.showPopover?.(); }
 
-function cardStyle(rect: Rect, theme: Theme, offset: Point = { x: 0, y: 0 }, animation = 'bp-card-in'): CSSProperties {
+/**
+ * `fixed` seats the card at viewport coordinates, as the top layer does. Without it, a card outside the top layer
+ * is absolute in its containing block and `offset` is the chart's origin there.
+ */
+function cardStyle(rect: Rect, theme: Theme, offset: Point = { x: 0, y: 0 }, animation = 'bp-card-in', fixed = topLayer()): CSSProperties {
   const motion = interactionTokens(theme);
   const surface = cardSurface(theme);
-  return { position: topLayer() ? 'fixed' : 'absolute', margin: 0, inset: 'auto', border: 0, padding: 0,
-    ...(topLayer() ? { left: 0, top: 0, translate: `${rect.x + offset.x}px ${rect.y + offset.y}px` }
+  return { position: fixed ? 'fixed' : 'absolute', margin: 0, inset: 'auto', border: 0, padding: 0,
+    ...(fixed ? { left: 0, top: 0, translate: `${rect.x + offset.x}px ${rect.y + offset.y}px` }
       : { left: rect.x + offset.x, top: rect.y + offset.y }), width: rect.w,
     borderRadius: surface.radius, background: surface.fill,
     boxShadow: surface.flat ? 'none' : `0 4px 16px color-mix(in srgb, ${theme.color.ink} 14%, transparent)`,
@@ -507,11 +506,13 @@ export function TableCard({ record, width, theme, palette, locale, measure, dire
   }), [record, width, theme, locale, measure, placed, anchor, pointer, frame, occupied, forbidden, tableBounds, variant, table, columns, inlineVisibility, direction, smallValues]);
   if (!laid) return null;
   const portalled = !topLayer() && placed && container !== undefined && offset !== undefined;
+  // Outside the top layer, a card in the document body is fixed to the viewport. A card in a container the host named stays in that container.
+  const fixed = topLayer() || (portalled && container === container.ownerDocument.body);
   const slotStyle: CSSProperties | undefined = placed
     // 8, not 6: a host app can put a popover at 8-9 and
     // a sticky toolbar at 5, and a card under the toolbar would be
     // unreadable exactly where the reader is pointing.
-    ? { ...cardStyle(laid.rect, theme, topLayer() ? { x: 8, y: 8 } : portalled ? offset : undefined),
+    ? { ...cardStyle(laid.rect, theme, topLayer() ? { x: 8, y: 8 } : portalled ? offset : undefined, undefined, fixed),
       ...(laid.geometry.size.height > laid.rect.h ? { maxHeight: laid.rect.h, overflow: 'hidden' } as CSSProperties : {}) }
     : undefined;
   const slot = <div popover={placed && topLayer() ? 'manual' : undefined} ref={placed ? showCard : undefined} className="bp-interaction-card-slot" dir={direction} data-bp-interaction-card-slot="" data-bp-card={variant} style={slotStyle}>

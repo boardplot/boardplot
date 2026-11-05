@@ -10,6 +10,14 @@ export const fixtures: Fixture<DimSwitchData,DimSwitchOptions>[] = [
  {id:'by-measure',tags:['interaction'],hover:{owner:{rowId:dimswitchRowId('by-measure','total','orders'),colId:'range'}},title:'KPIs and their channel members',kind:'example',data:exampleData,options:{title:'Channel performance',variant:'by-measure',depth:2,order:'sheet',show:'always'}},
  {id:'by-member',title:'Channels and their KPIs',kind:'example',data:{...exampleData,measures:[...exampleData.measures.map(m => m.id === 'new' ? {...m,parentId:undefined,splitOf:'orders'} : m),{id:'rate',scale:'percent',label:'New customer share',value:{op:'div',a:{field:'nc'},b:{field:'orders'},factor:100},format:'1.2%',unit:'%',change:'pp',judge:{family:'rate',base:'orders'}}]},options:{title:'Channel performance',show:'withData',variant:'by-member',depth:1,splits:true}},
 ];
+/** The periods alone: a host that shows its Range elsewhere leaves out the Range and vs prior columns. */
+fixtures.push({id:'periods-only',title:'KPIs by period without the Range and vs prior columns',kind:'example',data:exampleData,options:{title:'Channel performance by week',variant:'by-measure',depth:2,columnVisibility:{range:false,pp:false}}});
+/** Range alone: a host that shows its periods elsewhere leaves every period and the comparison out. */
+fixtures.push({id:'range-only',title:'KPIs with the Range column alone',kind:'example',data:exampleData,options:{title:'Channel performance in the range',variant:'by-measure',depth:2,columnVisibility:{pp:false,w1:false,w2:false}}});
+/** Authored tracks and heads: the label head reads Metric, the partial period keeps its star. */
+fixtures.push({id:'column-overrides',title:'KPIs with authored head text, track widths and alignment',kind:'example',data:exampleData,options:{title:'Channel performance',variant:'by-measure',depth:2,notes:{show:['disclosure']},columnOverrides:{label:{label:'Metric',width:200},range:{label:'Selected',width:130,headAlign:'left'},pp:{label:'Change',width:80,align:'center'},w2:{label:'Latest',width:120}}}});
+/** The periods first: the Range block follows them, and only the label pins. */
+fixtures.push({id:'periods-first',title:'KPIs with the periods before the Range block',kind:'example',data:exampleData,options:{title:'Channel performance by week, then the range',variant:'by-measure',depth:2,columnOrder:['periods','block']}});
 /** The report sheet: one face for every rung, judged cells on grounds, unjudged volumes as bars. */
 const sheet: DimSwitchData={...exampleData,changeLabel:'WoW',measures:exampleData.measures.map(m=>m.id==='revenue' ? {...m,divider:true} : m.id==='cac' ? {...m,group:'Unit costs'} : m)};
 fixtures.push({id:'sheet',title:'KPIs on the report sheet',kind:'example',data:sheet,options:{title:'Channel performance',variant:'by-measure',depth:2,widths:{label:240,range:92,change:92,period:66},
@@ -41,6 +49,18 @@ const multipleBases=judgeExample();
 multipleBases.measures=multipleBases.measures.map(m=>({...m,judge:{family:'rate',base:['orders','sessions']}}));
 multipleBases.facts.find(f=>f.memberId==='alpha' && f.periodId==='budget')!.sums.sessions=40;
 fixtures.push({id:'multiple-sample-bases',title:'Judge only when both sample fields pass',kind:'example',data:multipleBases,options:{title:'Both sample fields must pass',widths:{change:110,period:110},variant:'by-member',depth:2,minimumSample:{orders:50,sessions:100}}});
+/** The numbers stay, the automatic size bars go. */
+fixtures.push({id:'no-bars',title:'KPIs without the automatic size bars',kind:'example',data:exampleData,options:{title:'Channel performance',variant:'by-measure',depth:2,bars:false}});
+/** The members alone: the Total block goes, and members print as they do beside it. */
+fixtures.push({id:'no-total-block',title:'Channels and their KPIs without the Total block',kind:'example',data:fixtures[1]!.data,options:{...fixtures[1]!.options,title:'Channel performance',rowVisibility:{total:false}}});
+/** KPI names stay as labels over their members, with blank cells where the Total would print. */
+fixtures.push({id:'total-row-blank',title:'KPIs over their members with blank Total cells',kind:'example',data:exampleData,options:{title:'Channel performance',variant:'by-measure',depth:2,rowVisibility:{total:false}}});
+/** The Total block after the last member. */
+fixtures.push({id:'total-bottom',title:'Channels and their KPIs with the Total block last',kind:'example',data:fixtures[1]!.data,options:{...fixtures[1]!.options,title:'Channel performance',totalPosition:'bottom'}});
+/** The section heads go, with their height and air. */
+fixtures.push({id:'no-group-heads',title:'KPIs without their section heads',kind:'example',data:sheet,options:{title:'Channel performance',variant:'by-measure',depth:2,rowVisibility:{'group:':false,'group:Unit costs':false}}});
+/** The group's measures sit directly under each member. */
+fixtures.push({id:'no-group-heads-by-member',title:'Channels with grouped KPIs and no group label rows',kind:'example',data:sheet,options:{title:'Channel performance',variant:'by-member',depth:2,rowVisibility:{'group:Unit costs':false}}});
 // The engine notes in German on a phone card: a base that rounds to zero prints n.m., and the card leaves out the first week.
 const nearZero:DimSwitchData={...fixtures[1]!.data,facts:fixtures[1]!.data.facts.map(f=>f.memberId==='organic' && f.periodId==='prior' ? {...f,sums:{...f.sums,orders:0.4,nc:0.2}} : f)};
 fixtures.push({id:'card-notes-de',title:'German engine notes on a phone card',kind:'torture',data:nearZero,options:{...fixtures[1]!.options,title:'Channel overview',depth:2,locale:{language:'de'},size:{width:320}}});

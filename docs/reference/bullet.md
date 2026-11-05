@@ -43,7 +43,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | rows[].value | cell | yes | Actual measure drawn as the row bar. |
 | rows[].target | cell |  | Reference measure drawn as the target tick and used for target deltas. It uses the row value's format or options.format; a different target.format warns because it is ignored. options.strings.target renames the comparison mark in labels (e.g. 'peer median'). |
 | rows[].bands | array |  | Ordered qualitative band thresholds, as numbers or labeled threshold objects. |
-| rows[].bands[].tone | string |  | Semantic band tone. Toned bands define a two-sided corridor and set the delta tone for values inside them. One of `'good'`, `'warn'`, `'bad'`, `'neutral'`. |
+| rows[].bands[].tone | string |  | Semantic band tone. Toned bands define a two-sided corridor and set the delta tone for values inside them. A toned band paints its tone's fill washed toward the page (theme marks.bulletBandFill). One of `'good'`, `'warn'`, `'bad'`, `'neutral'`. |
 | rows[].bands[].to | number | yes | Upper endpoint of this qualitative band in the row value units. |
 | rows[].bands[].label | string |  | Visible name of this qualitative band. |
 | rows[].direction | string |  | Whether a higher measure is favorable when interpreting the target difference. Neutral uses plain ink without a judgment, including when bands have tones. One of `'higherIsBetter'`, `'lowerIsBetter'`, `'neutral'`. |
@@ -52,15 +52,23 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
-| labels | false \| object | `false` (or another value of its type) |  | False hides value, target-value and delta labels. Row names remain. category: false hides row names. density: compact draws no labels. |
+| labels | false \| object | `false` (or another value of its type) |  | False hides value, target-value and delta labels. Row names, band names and band-edge numbers remain. category: false hides row names. position: false drops the line under each gap (below, above or on target) and direction: false the line under each name (higher or lower is better); annotation: false still drops all of them. strings.lowerBetter '' equals direction: false on lower-is-better rows. density: compact draws no labels. |
+| sort | object \| string \| true | `'sheet'`, `'asc'`, `'desc'`, `'reverse'`, `true` (or another value of its type) |  | Category ranking value: value divided by target when every row has a positive target, otherwise raw value. desc puts the highest ranking value first even on lower-is-better rows. Ties keep authored order and null values sort last. sheet keeps authored order and reverse reverses it. Dated rows keep authored order when a growth or difference annotation spans periods. |
+| columnOverrides | object |  |  | Settings per generated column. Ids: label, actual, share, delta, target, gap. |
+| columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
+| columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Alignment of the column: its cell text and, unless headAlign is set, its head. Bars keep starting at the panel origin. |
+| columnOverrides.*.headAlign | string | `'left'`, `'right'`, `'center'` |  | Head alignment; defaults to align. |
+| columnOverrides.*.label | string |  |  | Head text. |
+| columnVisibility | object |  |  | True shows a column and false leaves it out: the ids are data.columnToggles ids on table and column ids elsewhere. Ids: label, actual, share, delta, target, gap. |
+| columnOrder | array |  |  | Order of whole blocks; blocks left out follow in default order. Ids: actual, share, delta, target, gap, plot. |
 | axisTitles | object |  |  | Title of the value axis when it is drawn: under the tick row of the shared-scale axis valueAxis.show draws, ending at its right end. Drawn only when authored. |
 | axisTitles.primary | string |  |  | 'Measure, unit' title of the value axis, e.g. 'Margin, %'. |
 | sharedScale | boolean \| string | `'percentOfTarget'` (or another value of its type) |  | true: one absolute scale across all rows (same-unit rows, comparable magnitudes; supports valueAxis). false: each row normalized to its own zero-based extent — band maximum extended by value/target overshoot; a bandless row uses its value/target extent (the bullet-graph percent-of-scale — mixed-unit KPI rows stay legible; valueAxis is ignored with a warning). 'percentOfTarget': every row in percent of its own target (actual ÷ target) on one 0–120% scale, three shared bands named once in a key (below 80%, 80–100%, at or above target), mirrored at 100% on a lower-is-better row (the key then reads more than 20% off, up to 20% off, on target or better), one target line at 100%, value, share of target and delta beside each row; the rows' bands, valueAxis and annotations are not drawn. Default: false when every row declares bands and the rows differ in unit or band thresholds (warns bullet-row-scales), true otherwise. |
-| bandKey | string | `'auto'`, `'labels'`, `'ramp'`, `'row'` | `'auto'` | How the bands are named. 'labels': one key entry for each band label and shade. 'ramp': one worse-to-better key with one entry for each band (Worse ... Better); it needs the same 2 to 5 bands on every banded row, no band tone and no neutral row, and otherwise keeps labels with a warning. 'row': each band's name prints above its band on every row, as authored, in a lighter band ramp (0.06 lightness steps); on per-row scales the band edges are ticked and numbered under each row; the value sits just past the bar end; a key at the bottom names the bar (Actual), the target tick and, where it applies, the ramp. It needs a name on every band, rows side by side with the target column, and room for each name above its band; otherwise the key names the bands with a warning. 'auto': 'row' for at most 4 rows that name every band wherever it can show; else the ramp when rows run both directions, a label sits on more than one shade and the ramp can apply; otherwise labels. Default 'auto'. The percentOfTarget scale has its own key. |
+| bandKey | string | `'auto'`, `'labels'`, `'ramp'`, `'row'` | `'auto'` | How the bands are named. 'labels': one key entry for each band label and shade. 'ramp': one worse-to-better key with one entry for each band (Worse ... Better); it needs the same 2 to 5 bands on every banded row, no band tone and no neutral row, and otherwise keeps labels with a warning. 'row': each band's name prints above its band on every row, as authored; on per-row scales the band edges are ticked and numbered under each row; a key at the bottom names the bar (Actual), the target tick and, when strings.bandKey is set, the ramp in those words. It needs a name on every band, rows side by side with the target column, and room for each name above its band; otherwise the key names the bands with a warning. 'auto': 'row' for at most 4 rows that name every band wherever it can show; else the ramp when rows run both directions, a label sits on more than one shade and the ramp can apply; otherwise labels. Default 'auto'. The percentOfTarget scale has its own key. |
 | targetColumns | boolean |  | `true` | true: where the rows sit side by side and the plot keeps 45% of the width, a Target column and a Gap-to-target column print beside the rows, each under a head, with the gap's position (below, above or on target) under it and the row's direction (higher or lower is better) under its name. Where they do not fit, the target prints above its tick and the delta at the row end. false: always the second form. Default true. The percentOfTarget scale has its own columns. |
 | density | string | `'compact'`, `'regular'` | `'regular'` | 'compact' is the 120 x 28 text-free mark: bar, bands and target tick, no labels, axis or key. The percentOfTarget scale needs a key and a value column, so compact refuses it. 'regular' uses labelled stacked rows when side columns take too much plot width. Height depends on row count and text. Default 'regular'. |
 
-Plus the [shared options](options.md). This type does not accept `detailFields`, `categoryLabels`, `valueAxis.tickStep`, `valueAxis.log`, `valueAxis.reverse`, `valueAxis.break`, `categoryAxis`, `secondaryAxis`, `sort`, `topN`, `hatchStrength`, `colorblindSafe`, `rounding`.
+Plus the [shared options](options.md). This type does not accept `detailFields`, `valueAxis.log`, `valueAxis.reverse`, `valueAxis.break`, `hatchStrength`, `rounding`. This type ignores `animate`, `debug`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `topN` with an `option-ignored` warning.
 
 ## Annotations
 
@@ -107,6 +115,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | band-key-labels | torture | bandKey labels keeps every label and shade |
 | band-key-ramp | example | bandKey ramp forces the worse-to-better key |
 | two-sided-spend | example | Both low and high spend are off plan |
+| two-sided-spend-full-fill | torture | Toned bands in their full fills |
 | tone-spectrum | torture | Band tones carry the range judgment |
 | neutral-change | example | A neutral comparison with a target |
 | plan-wording | example | strings.target words the comparison as plan |
@@ -116,3 +125,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | target-columns-off | example | targetColumns false keeps the plot its full width |
 | band-names-on-rows | example | bandKey 'row' names each band on its row, on a shared scale with a value axis |
 | column-words-authored | example | strings set the target and gap column words |
+| column-overrides | example | columnOverrides sets the widths, alignment and head words of the generated columns |
+| columns-hidden | example | columnVisibility leaves the share column out of the percent-of-target rows |
+| plot-first | example | columnOrder puts the marks first and reverses the columns behind them |
+| no-direction-line | example | labels.direction and labels.position drop the second lines beside the target columns |

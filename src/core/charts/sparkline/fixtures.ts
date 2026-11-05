@@ -1,7 +1,7 @@
 /**
  * Sparkline fixtures: the shape at exhibit size with its end
  * labels, and the bare 176 by 36 mark a card or a table row hosts, with a
- * gap the line does not bridge.
+ * null bridged by a dotted segment.
  */
 
 import { registerFixtures } from '../../../fixtures/registry';
@@ -37,7 +37,7 @@ export const fixtures: Fixture<SparklineData, SparklineOptions>[] = [
   },
   {
     id: 'bare-card-spark',
-    title: 'The bare 176 by 36 mark: no ring, no labels, a gap the line does not bridge',
+    title: 'The bare 176 by 36 mark: no end ring, no labels, a null bridged by a dotted segment',
     kind: 'example',
     hostTitle: 'Weekly orders climb from 96 to 110 in eight weeks',
     data: {
@@ -56,6 +56,15 @@ fixtures.push({
   title: 'A 2.5 px line instead of the default 1.5 px',
   tags: ['coverage'],
   options: { ...ordersSpark.options, stroke: 2.5, title: 'Orders rise into late summer and ease in September' },
+});
+
+// Coverage: the last value and the high only, without the low, first and reference values.
+fixtures.push({
+  ...ordersSpark,
+  kind: 'torture', id: 'orders-last-and-high',
+  title: "valueLabel 'last-and-high': the last value and the high, as before the low and first values were named",
+  tags: ['coverage'],
+  options: { ...ordersSpark.options, valueLabel: 'last-and-high', title: 'Orders climb into August and ease to 13.1k in September' },
 });
 
 // a dashed reference inside the domain and the end ring in a tone.

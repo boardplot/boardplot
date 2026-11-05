@@ -13,7 +13,7 @@ import type { ThemeRef } from './theme';
 // capability table is declared ONCE, next to the schemas that enforce it; this
 // file reads its shape rather than restating it, because a declaration that
 // restates a runtime table is a twin that will disagree with it.
-import type { OPTION_CAPABILITY, VALUE_AXIS_CAPABILITY, VALUE_AXIS_ONLY } from '../schema/capability';
+import type { AnnotationsRetiredType, LegendRefusedType, OPTION_CAPABILITY, VALUE_AXIS_CAPABILITY, VALUE_AXIS_ONLY } from '../schema/capability';
 
 export type RenderTarget = 'report' | 'dashboard' | 'slide' | 'print';
 export type LengthUnit = 'px' | 'pt' | 'mm';
@@ -43,7 +43,23 @@ export type LabelKind =
   | 'growth'
   | 'activity'
   | 'item'
-  | 'scale'; // Gantt trio, reserved
+  | 'scale' // Gantt trio, reserved
+  | 'position'
+  | 'direction';
+
+export type ColumnAlign = 'left' | 'right' | 'center';
+
+/** The settings of one generated column. Each type reads the fields its schema lists. */
+export interface ColumnOverride {
+  /** Track width in px. */
+  width?: number;
+  /** Cell alignment. */
+  align?: ColumnAlign;
+  /** Head alignment; defaults to align. */
+  headAlign?: ColumnAlign;
+  /** Head text. */
+  label?: string;
+}
 
 export type LabelContent = ('absolute' | 'percent' | 'category' | 'series')[];
 
@@ -68,8 +84,8 @@ export interface LocaleSpec {
   language?: string;
   /** Decimal mark of every number the chart prints. Default '.'. The language does not change it. */
   decimal?: '.' | ',';
-  /** Grouping mark of every number the chart prints. Default ',', or '.' with decimal ','. A value equal to the decimal mark uses that fallback. */
-  thousands?: ',' | '.' | '’' | ' ';
+  /** Grouping mark of every number the chart prints. The apostrophe `'` is the same as `’`, and the narrow no-break space `\u202f` is the same as the space. Default ',', or '.' with decimal ','. A value equal to the decimal mark uses that fallback. */
+  thousands?: ',' | '.' | '’' | "'" | ' ' | '\u202f';
   minusGlyph?: '−' | '-';
   weekStartsOn?: 0 | 1;
 }
@@ -96,7 +112,6 @@ export interface StringsSpec {
   /** Not applicable value; default 'n/a' (German 'k. A.'). */
   notApplicable?: string;
   /** Series or category legend disclosure; '{count}' becomes '2 of 4'. Default '<count> series shown'. */
-  legendCount?: string;
   /** Partial hatch key label without a category name; default 'Partial'. A category-naming key uses toDate. */
   partial?: string;
   /** Meaning of a better sign-coloured value. */
@@ -259,7 +274,7 @@ export interface StringsSpec {
   cellNote?: string;
   /**
    * Last item of a note line that lists only its first items (`notes.maxListed`); '{count}' becomes the
-   * number left out. Default 'and {count} more'. A React chart with hover on adds ' (hover shows each value)' when this is not set.
+   * number left out. Default 'and {count} more'. A React chart with hover on adds ' (tap or hover shows each value)' when this is not set.
    */
   moreListed?: string;
   /** Story panel buttons and counter ('{step}' and '{count}', two digits). Defaults '‹ Back', 'Next ›', '{step} – {count}'. */
@@ -316,7 +331,7 @@ export interface StorySpec {
 }
 
 export interface LegendOptions {
-  position: 'right' | 'bottom' | 'top';
+  position: 'right' | 'left' | 'bottom' | 'top';
   order?: Id[];
 }
 
@@ -324,10 +339,10 @@ export interface ValueAxisOptions {
   show?: boolean; // default false — direct labels are the default
   min?: number;
   max?: number;
-  tickStep?: number; // snapped to nice; may NEVER clip data
+  tickStep?: number; // ticks at step multiples, 1–20 intervals; extends outward, dot keeps data ends when two ticks fit
   includeZero?: boolean;
   percent?: boolean;
-  /** Scatter only: log10 scale on 'x', 'y' (also `true`) or 'both'; every value on it must be above zero. */
+  /** Log10 scale on scatter ('x', 'y', 'both' or true) and line ('y' or true); every value on it must be above zero. */
   log?: boolean | 'x' | 'y' | 'both';
   reverse?: boolean;
   gridlines?: boolean; // default false
@@ -341,6 +356,9 @@ export interface ValueAxisOptions {
    * wiggle ships is not a breaking change. Absent or `false` keeps the axis whole.
    * Waterfall and pvm alone accept `'auto'`: choose a safe break when the smallest
    * total is at least twice the running span and the steps would be small.
+   * A pvm bridge resolves an absent break to `'auto'` when its smaller total is
+   * over 10 times its largest step or its running levels span under 20% of the
+   * larger total; `false` keeps its axis whole.
    * Totals stay visibly taller than smaller steps and no shorter than equal steps.
    * Unsafe automatic breaks move down when valid; unsafe authored breaks are ignored with a warning.
    */
@@ -430,15 +448,16 @@ export interface DetailField {
 export interface BaseOptions {
   /**
    * Accessible presentation. `title` emits the SVG hover title (default false);
-   * accessible naming is always retained. `table` asks the React chart
-   * components for the record-derived accessible data table: 'hidden' keeps it
-   * available to assistive technology only, 'toggle' adds a disclosure control,
-   * and 'below' renders it visibly under the chart. BoardplotChart includes it in
+   * accessible naming is always retained. `description` replaces the generated
+   * accessible description with the author's text; omitted, the chart writes it.
+   * `table` asks the React chart components for the record-derived accessible
+   * data table: 'hidden' keeps it available to assistive technology only,
+   * 'toggle' adds a disclosure control, and 'below' renders it visibly under the chart. BoardplotChart includes it in
    * the server output; a per-type component adds it after mount. Omitted, no
    * table is drawn.
-   * The SVG is unchanged by either key.
+   * The SVG is unchanged by `table`.
    */
-  a11y?: { title?: boolean; table?: 'hidden' | 'toggle' | 'below' };
+  a11y?: { title?: boolean; description?: string; table?: 'hidden' | 'toggle' | 'below' };
   /** Explicit presentation mode; otherwise full at or above the chart's minimum width, compact below it. */
   mode?: 'full' | 'compact';
   /**
@@ -561,7 +580,7 @@ export interface BaseOptions {
    */
   categoryLabels?: 'axis' | 'staircase';
 
-  legend?: 'none' | 'right' | 'bottom' | 'top' | 'auto' | LegendOptions; // auto accepts a visible subtitle measure or unit naming one primary series; explicit settings take precedence
+  legend?: 'none' | 'right' | 'left' | 'bottom' | 'top' | 'auto' | LegendOptions; // auto accepts a visible subtitle measure or unit naming one primary series; explicit settings take precedence
   valueAxis?: ValueAxisOptions;
   categoryAxis?: CategoryAxisOptions;
   /**
@@ -653,7 +672,9 @@ export type RefusedOptionKeys<T extends string> = {
     : T extends (typeof OPTION_CAPABILITY)[K]['implementedBy'][number]
       ? never
       : K;
-}[GatedOptionKey];
+}[GatedOptionKey]
+  | (T extends LegendRefusedType ? 'legend' : never)
+  | (T extends AnnotationsRetiredType ? 'annotations' : never);
 
 /**
  * `BaseOptions` as chart type `T` really accepts it.
@@ -746,7 +767,9 @@ export interface AnomalyThresholdSpec {
 
 export type AnomalySpec = AnomalyMadSpec | AnomalyThresholdSpec;
 
-export interface ColumnOptions extends BaseOptionsFor<'column'> {
+export interface ColumnOptions extends Omit<BaseOptionsFor<'column'>, 'categoryAxis'> {
+  /** dateTicks only: columns always sit in the middle of their bands. */
+  categoryAxis?: { crossesBetween?: never; dateTicks?: CategoryAxisOptions['dateTicks'] };
   /** Title of the drawn value axis. */
   axisTitles?: { primary?: string };
   variant?: 'grouped' | 'stacked' | 'stacked100'; // default 'grouped'
@@ -763,8 +786,8 @@ export interface ColumnOptions extends BaseOptionsFor<'column'> {
   referenceStyle?: 'tick' | 'line' | 'marker'; // default 'tick'
   /** Per-category cumulative-boundary ticks; ordered column axes connect them by default. */
   netLine?: boolean | { seriesId?: Id; connectors?: boolean };
-  /** Computed arithmetic-average rule; Id[] limits the contributing series. */
-  averageMarker?: boolean | { scope: 'all' | Id[] };
+  /** Computed arithmetic-average rule; Id[] limits the contributing series. Categories marked partial are left out unless includePartial is true. */
+  averageMarker?: boolean | { scope?: 'all' | Id[]; includePartial?: boolean };
   /**
    * `style` is 'line' (default) or 'dashed'; dashed matches the waterfall
    * bridge's dash.reference token. There is no 'dot' or 'line-dot' variant:
@@ -856,8 +879,12 @@ export interface BarOptions
   extends Omit<
     ColumnOptions,
     'ratioTier' | 'variant' | 'anomaly' | 'rowLabels' | 'events'
-    | 'seriesRamp' | 'othersShade' | 'seriesLabels' | 'shareLabels' | 'window' | 'viewDomain' | 'categoryLabels' | 'ribbons'
+    | 'seriesRamp' | 'othersShade' | 'seriesLabels' | 'shareLabels' | 'window' | 'viewDomain' | 'categoryLabels' | 'categoryAxis' | 'ribbons'
   > {
+  /** Settings per generated column, by column id. A width beats the width the type would pick. */
+  columnOverrides?: Record<string, ColumnOverride>;
+  /** Refused: a bar has no date ticks or band crossing; column, combo and line read categoryAxis. */
+  categoryAxis?: { crossesBetween?: never; dateTicks?: never };
   /** Refused: a horizontal bar prints each name beside its row already (staircase names are column, combo and pareto). */
   categoryLabels?: never;
   /**
@@ -885,20 +912,34 @@ export interface BarOptions
    */
   methodNote?: boolean;
 }
-export interface ButterflyOptions extends BaseOptionsFor<'butterfly'> {
+export interface ButterflyOptions extends Omit<BaseOptionsFor<'butterfly'>, 'sort'> {
+  /** A butterfly has no stacked segments. */
+  sort?: { categories?: SortOrder; segments?: never };
+  /** Settings per generated column, by column id. A width beats the width the type would pick. */
+  columnOverrides?: Record<string, ColumnOverride>;
   a: Id;
   b: Id;
   centerColumnWidth?: number;
   sortBy?: 'sheet' | 'a' | 'b' | 'sum' | 'diff';
+  /**
+   * A right-aligned column of each row's difference (b minus a), signed, under
+   * a bold delta head. Default true with sortBy 'diff', else false. A
+   * highlighted row prints bold; the column stays off below 576 px canvas width.
+   */
+  diffColumn?: boolean;
   sharedScale?: boolean; // default true
+  /** A negative value: 'direction' runs its bar from the pane's zero line toward the names, 'magnitude' draws |value| outward in a lighter tint. Default 'direction'. */
+  negatives?: 'direction' | 'magnitude';
 }
 export interface WaterfallOptions extends BaseOptionsFor<'waterfall'> {
   /** Authored value-axis title above a vertical bridge; horizontal bridges do not print it. */
   axisTitles?: { primary?: string };
-  variant?: 'vertical' | 'horizontal'; // default 'vertical'
+  variant?: 'vertical' | 'horizontal'; // default: vertical, or horizontal when the step names would rotate
   build?: 'up' | 'down'; // default 'up'
   /** Paint each plain step good or bad by its sign times the item's direction; false paints the neutral. */
   signColor?: boolean;
+  /** Horizontal bridge: the name band (label) and the value band (value), in px. */
+  columnOverrides?: Record<string, { width?: number }>;
 }
 export type LineInterpolation = 'linear' | 'step-after' | 'step-before' | 'monotone';
 export type GapFillTone = 'good' | 'bad' | 'neutral';
@@ -1075,7 +1116,9 @@ export interface LineOptions extends Omit<BaseOptionsFor<'line'>, 'annotations'>
    * the theme's ordered ramp in data order, the first the lightest (still 3:1
    * on the page) and the last the full ink, for series whose order is the
    * encoding, such as cohorts. Unset means `'none'`, except on a drawn fan,
-   * whose centre is the subject and takes the ink. `'first'` is for the plain
+   * whose centre is the subject and takes the ink, and on `stacked-area` and
+   * `stacked100-area` without a highlight, palette or series fill, whose bands
+   * take `'ordered'` (`'none'` keeps the theme hues). `'first'` is for the plain
    * `line` variant only; highlight, palette, series fill, colorRole and
    * series-level scenario keep their own colours; cell-level FC and PL keep
    * their dashes.
@@ -1127,7 +1170,9 @@ export interface LinePhase {
   rank?: number;
 }
 /** First line point defaults to its value; last defaults to series name and value. */
-export interface ComboOptions extends Omit<BaseOptionsFor<'combo'>, 'secondaryAxis'> {
+export interface ComboOptions extends Omit<BaseOptionsFor<'combo'>, 'secondaryAxis' | 'categoryAxis'> {
+  /** dateTicks only: columns always sit in the middle of their bands. */
+  categoryAxis?: { crossesBetween?: never; dateTicks?: CategoryAxisOptions['dateTicks'] };
   /** The event lane and key: placement, lane rows, event groups. */
   events?: EventOptions;
   /** Visible category endpoints; source means retain all observations. */
@@ -1164,7 +1209,9 @@ export interface ComboOptions extends Omit<BaseOptionsFor<'combo'>, 'secondaryAx
  * Pareto. `sort` is deliberately absent: descending IS the analysis, and an
  * option to un-sort it would be an option to stop being a Pareto.
  */
-export interface ParetoOptions extends Omit<BaseOptionsFor<'pareto'>, 'sort'> {
+export interface ParetoOptions extends Omit<BaseOptionsFor<'pareto'>, 'sort' | 'topN'> {
+  /** A Pareto always prints the count, and the rank cut is n. */
+  topN?: Omit<TopNOptions, 'showRestCount' | 'threshold'> & { showRestCount?: never; threshold?: never };
   /**
    * `never`, not absent. Omitting the key makes `sort` a plain unknown property,
    * which a non-strict zod object STRIPS: the option would parse away silently, leave
@@ -1188,7 +1235,9 @@ export interface ParetoOptions extends Omit<BaseOptionsFor<'pareto'>, 'sort'> {
   /**
    * Scale the left axis to the total, so 100 % on the right sits level with
    * the total on the left and the curve starts at the top of the first
-   * column; default false keeps two independent scales.
+   * column. Default: on when a vital few reaches the threshold and no
+   * valueAxis.min or max is set, off for a flat distribution; false keeps
+   * two independent scales.
    */
   totalScale?: boolean;
 }
@@ -1208,7 +1257,7 @@ export interface PieOptions extends BaseOptionsFor<'pie'> {
   labels?: BaseOptions['labels'];
   rotate?: 0 | 90 | 180 | 270;
   explode?: Record<Id, number>;
-  /** Nominal slices use series hues; ordered shares use a perceptual tint ladder. */
+  /** Default 'sequential': one perceptual tint ladder at every slice count. 'categorical': each slice takes its own series hue. */
   colors?: 'categorical' | 'sequential';
   /** Sequential ramp beside an Others slice. 'quietest': named slices stay further from the background than Others. 'apart': they only differ from it. Unset takes the chart default (DEFAULT_OTHERS_SHADE). */
   othersShade?: OthersShade;
@@ -1319,7 +1368,8 @@ export interface ScatterOptions extends BaseOptionsFor<'scatter'> {
    */
   methodNote?: boolean;
 }
-export interface VarianceOptions extends BaseOptionsFor<'variance'> {
+export interface VarianceOptions extends Omit<BaseOptionsFor<'variance'>, 'topN'> {
+  topN?: Omit<TopNOptions, 'showRestCount'> & { showRestCount?: never };
   /** Title of the value axis valueAxis.show draws, drawn only when authored. */
   axisTitles?: { primary?: string };
   variant: 'absolute' | 'relative' | 'integrated';
@@ -1333,6 +1383,12 @@ export interface VarianceOptions extends BaseOptionsFor<'variance'> {
 }
 /** Rows stop at their measured natural pitch, normally 44px; deltas use the label token. */
 export interface BulletOptions extends BaseOptionsFor<'bullet'> {
+  /** Settings per generated column, by column id. A width beats the width the type would pick. */
+  columnOverrides?: Record<string, ColumnOverride>;
+  /** False leaves a generated column out: actual, share, delta, target, gap. */
+  columnVisibility?: Record<string, boolean>;
+  /** Order of whole blocks; blocks left out follow in default order. */
+  columnOrder?: string[];
   /** Title of the shared-scale value axis valueAxis.show draws, drawn only when authored. */
   axisTitles?: { primary?: string };
   /**
@@ -1363,7 +1419,7 @@ export interface BulletOptions extends BaseOptionsFor<'bullet'> {
    * neutral; otherwise labels. A forced ramp that cannot apply keeps labels and warns.
    * 'row': each band's name prints above its band on every row, the band edges are
    * ticked under each row on per-row scales, the value sits just past the bar end and
-   * a key at the bottom names the bar, the target tick and the ramp. It needs a name
+   * a key at the bottom names the bar and the target tick, and the ramp when `strings.bandKey` sets its words. It needs a name
    * on every band, rows side by side with the target column, and room for each name;
    * elsewhere the key names the bands and a warning says so. 'auto' picks 'row' for at
    * most 4 rows that name every band, wherever 'row' can show.
@@ -1384,18 +1440,28 @@ export interface BulletOptions extends BaseOptionsFor<'bullet'> {
    */
   density?: 'compact' | 'regular';
 }
-export interface DotOptions extends BaseOptionsFor<'dot'> {
+export interface DotOptions extends Omit<BaseOptionsFor<'dot'>, 'topN'> {
+  /** Only the rank cut: a dot chart draws no rest bucket. */
+  topN?: { n: number; rest?: never; restLabel?: never; showRestCount?: never; threshold?: never };
+  /** Settings per generated column, by column id. A width beats the width the type would pick. */
+  columnOverrides?: Record<string, ColumnOverride>;
   /** Authored value-axis title, under the tick row when the axis is drawn. */
   axisTitles?: { primary?: string };
   variant?: 'dot' | 'dumbbell' | 'lollipop';
   /** The mean of every dot of the series in scope as a dashed Ø rule, as on bar and column. */
-  averageMarker?: ColumnOptions['averageMarker'];
+  averageMarker?: boolean | { scope?: 'all' | Id[]; includePartial?: never };
   /**
    * Dumbbell only: the connector becomes an arrow into the second series' dot.
    * Painted good or bad by the sign of the change when the second series
    * declares `direction`, neutral otherwise.
    */
   arrow?: boolean;
+  /**
+   * Dumbbell only: the gap (second series minus first) per row, signed, in a
+   * column right of the plot under a head such as "Gap, pp". A highlighted row
+   * prints bold. Default false; the column stays off below 576 px canvas width.
+   */
+  gapColumn?: boolean;
   /** Default false. true adds the method note naming the mid-point tick inside a range, and draws the tick. */
   methodNote?: boolean;
   /**
@@ -1406,6 +1472,8 @@ export interface DotOptions extends BaseOptionsFor<'dot'> {
   range?: { label?: string; values?: boolean };
 }
 export interface SlopeOptions extends BaseOptionsFor<'slope'> {
+  /** Settings per generated column, by column id. A width beats the width the type would pick. */
+  columnOverrides?: Record<string, ColumnOverride>;
   /**
    * Fold every series that stays under this share of the endpoint total at BOTH
    * ends into one 'Other' line whose values the engine sums. A SHARE, not a
@@ -1413,6 +1481,13 @@ export interface SlopeOptions extends BaseOptionsFor<'slope'> {
    * into 0.05. Highlighted series keep their own name whatever their share.
    */
   foldBelowShare?: number;
+  /**
+   * A column of each line's change, right of the second rail's labels, under a
+   * head such as "Change, pp". 'absolute' prints second minus first (points for
+   * percent values), 'relative' the percent change. The highlighted line prints
+   * bold. Default 'none'; the column stays off below 576 px canvas width.
+   */
+  change?: 'none' | 'absolute' | 'relative';
   /**
    * 'diverging' draws one panel per series: its values as the positive share
    * up from zero and its `negative` as the negative share down from zero, at
@@ -1425,7 +1500,7 @@ export interface SlopeOptions extends BaseOptionsFor<'slope'> {
     labels?: { positive?: string; negative?: string };
     /** Panel order. Default 'positive': the positive share in period 2, descending. */
     sort?: 'positive' | 'net' | 'data';
-    /** Net score (positive − negative) in period 2 and its change under each panel. Default true. */
+    /** Net score (positive − negative) in period 2 and its change under each panel, defined once in the key. Default true. */
     net?: boolean;
     /** A note naming the share that chose neither answer, when the two do not add to 100. Default true. */
     neutralNote?: boolean;
@@ -1434,6 +1509,8 @@ export interface SlopeOptions extends BaseOptionsFor<'slope'> {
   };
 }
 export interface HeatmapOptions extends BaseOptionsFor<'heatmap'> {
+  /** Width, alignment and head text per column: `label` or a `data.categories` id. */
+  columnOverrides?: Record<string, import('../schema/generatedColumns').ColumnOverride>;
   scale?: 'continuous' | 'discrete'; // default 'continuous'
   /** Automatic values share one fit decision per row; authored labels and valid pins retain precedence. */
   variant?: 'value' | 'harvey' | 'bubble';
@@ -1460,6 +1537,8 @@ export interface HeatmapOptions extends BaseOptionsFor<'heatmap'> {
 }
 /** Standalone width defaults to 360px and stops at 420px; comparison rows follow the value. */
 export interface KpiOptions extends BaseOptionsFor<'kpi'> {
+  /** Settings per generated column, by column id. A width beats the width the type would pick. */
+  columnOverrides?: Record<string, ColumnOverride>;
   /**
    * 'compact' uses a 280 px default card width instead of 360, for a
    * dashboard that puts nine of them in a row. An
@@ -1479,8 +1558,9 @@ export interface KpiOptions extends BaseOptionsFor<'kpi'> {
 /**
  * The standalone sparkline: 176 by 36 by default, no axes, no
  * smoothing, no fill. A bare one draws edge to edge, because it is a mark
- * inside someone else's card; one that carries a title takes the canvas
- * margin, and `canvas.margin` overrides either.
+ * inside someone else's card; one that carries a title, subtitle, source or
+ * note is 320 px wide by default and takes the canvas margin, and
+ * `canvas.margin` overrides either.
  */
 export interface SparklineOptions extends BaseOptionsFor<'sparkline'> {
   /** A ring on the last observed point, in the highlight. Default 'last'. */
@@ -1491,16 +1571,22 @@ export interface SparklineOptions extends BaseOptionsFor<'sparkline'> {
    * shared per-label-kind switch every other type reads.
    */
   endLabels?: 'ends' | 'none';
-  /** 'last' prints the last observed value beside the end of the line. Default 'none'. */
-  valueLabel?: 'last' | 'none';
+  /**
+   * 'last' prints the last observed value beside the end of the line. On a framed sparkline with
+   * room it also names the high, the low and the first value, and the reference value. 'last-and-high'
+   * prints only the last value and the high. Default 'none'.
+   */
+  valueLabel?: 'last' | 'last-and-high' | 'none';
   /** Stroke width of the line. Default 1.5. */
   stroke?: number;
-  /** A 1 px dashed line at this value, unlabelled; the scale always includes it. */
+  /** A 1 px dashed line at this value; the scale always includes it. On a framed sparkline its value prints in the last value's column when valueLabel is 'last'. */
   reference?: number;
   /** The end ring in this tone instead of the highlight. Refused with ring 'none'. */
   ringTone?: 'good' | 'warn' | 'bad';
 }
 export interface FunnelOptions extends BaseOptionsFor<'funnel'> {
+  /** Settings per generated column, by column id. A width beats the width the type would pick. */
+  columnOverrides?: Record<string, ColumnOverride>;
   /** Rows bound automatic callout leaders to three text widths; centered stage text uses three centered lines. */
   variant?: 'rows' | 'centered';
   totalCvr?: 'none' | 'column';
@@ -1512,7 +1598,9 @@ export interface FunnelOptions extends BaseOptionsFor<'funnel'> {
    */
   worstDropCallout?: boolean;
 }
-export interface GridOptions extends BaseOptionsFor<'grid'> {
+export interface GridOptions extends Omit<BaseOptionsFor<'grid'>, 'format'> {
+  /** Each panel sets its own format. */
+  format?: never;
   /** Top-down metric stack with shared categories and computed readouts. */
   stack?: import('../charts/grid/metricStack').MetricStackOptions;
   columns?: number;

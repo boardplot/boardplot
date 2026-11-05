@@ -147,6 +147,13 @@ export interface Theme {
      * categorical `series` order.
      */
     stack?: string[];
+    /**
+     * The fills of treemap groups by rank, the first drawn group the
+     * strongest (2 or more steps). More groups than steps share the ramp
+     * evenly between its ends. Absent takes `stack`; a theme without either
+     * steps the first series colour toward the page.
+     */
+    treemap?: string[];
     seriesOverflow?: 'repeatLast' | 'cycle'; // default 'repeatLast'
     /**
      * Named alternative categorical ramps (e.g. 'region', 'channel') so one
@@ -262,7 +269,7 @@ export interface Theme {
      * two card types (kpi, bullet) are exempt from the width classes and
      * keep their compact card margins.
      */
-    canvas?: { base: Margin; wide: Margin };
+    canvas?: { base?: Partial<Margin>; wide?: Partial<Margin> };
     /** Frame gap tokens; `*Wide` variants apply at W-L. */
     gap?: {
       titleSubtitle?: number;
@@ -283,6 +290,12 @@ export interface Theme {
      * top of the canvas and leaves the rest empty.
      */
     barRow?: { thickness: number; pitch: number };
+    /**
+     * On a canvas the host gave a height, the notes and the source line (and a key under the plot)
+     * stand right under the drawn content and the spare height stays below them. `false` keeps them
+     * at the canvas bottom, with the empty band above them. Absent means true.
+     */
+    footerFollows?: boolean;
   };
   /** Automatic keys for series without visible names; omitted or false keeps existing defaults. */
   legend?: {
@@ -291,7 +304,7 @@ export interface Theme {
      * Where a key the chart cannot drop goes when the spec hides or leaves
      * the legend: the value key of a tilemap or choropleth. Absent
      * keeps 'top', one row above the plot; a position the spec names wins.
-     * 'right' is refused: a key beside the plot takes the plot's width.
+     * A theme names only 'top' or 'bottom': a key beside the plot is the spec's choice.
      */
     required?: 'bottom' | 'top';
   };
@@ -428,6 +441,13 @@ export interface Theme {
      */
     kpiCaret?: boolean;
     /**
+     * false keeps a standalone kpi card in a slot of fixed height at its
+     * natural figure and delta sizes, at the top of the slot. Absent means
+     * true: the figure grows to a quarter of the slot height, the delta to
+     * 30% of the figure, and the block sits in the middle of the free height.
+     */
+    kpiSlotFill?: boolean;
+    /**
      * How a bridge paints its steps, for the waterfall in
      * both orientations and the pvm bridge. 'sign' draws the totals in
      * `color.total` (ink when unset), a rising step in `goodFill` and a falling one in `badFill`,
@@ -451,6 +471,22 @@ export interface Theme {
      * stage).
      */
     funnelFill?: 'status' | 'ramp';
+    /**
+     * How a status chart fills its good and neutral cells. Absent means
+     * 'quiet': both draw washed toward the page, the good tone more than the
+     * neutral, so off-track and at-risk cells carry the colour. 'full' fills
+     * them with color.goodFill and color.neutralMark as they are.
+     */
+    statusFill?: 'quiet' | 'full';
+    /**
+     * How a bullet paints its bands. Absent means 'light': every row's
+     * qualitative bands take the light ladder (0.06 lightness steps from the
+     * page), a toned band takes its tone's fill washed toward the page, and
+     * an attainment band washes the same way. 'full' paints toned bands and
+     * attainment washes in the tone's full fill, and the ladder steps 0.12
+     * apart on rows that do not print their band names.
+     */
+    bulletBandFill?: 'light' | 'full';
   };
   /** Label conventions; absent keeps the shipped placement. */
   labels?: {
@@ -515,6 +551,8 @@ export interface Theme {
   surface?: {
     chipTint?: number;
     rowTint?: number;
+    /** Gantt row and weekend wash toward the page, from 0 to 1. Default 0.25. */
+    ganttRowTint?: number;
     elapsedTint?: number;
     chipRadius?: number;
     /** Structural wash for level-0 parent rows (anchor wash) — quieter than rowTint. */
@@ -557,6 +595,10 @@ export interface Theme {
      * last point alone. Absent means true.
      */
     sparkWash?: boolean;
+    /** Where an area spark's scale and wash start; see themeFields. */
+    sparkAreaBase?: 'zero' | 'min';
+    /** How an integrated variance chart draws a cap past the actual; see themeFields. */
+    shortfallCap?: 'outline' | 'solid';
     /** CSS box-shadow of the React notes popover; see themeFields. */
     panelShadow?: string;
   };
@@ -721,4 +763,4 @@ export interface ThemeTablePad {
  * Preset names plus any theme registered at runtime via `registerTheme`
  * (the design-interface path: brand themes load as validated JSON).
  */
-export type ThemeRef = string | { preset: string; overrides?: DeepPartial<Theme> };
+export type ThemeRef = string | { preset: string; overrides?: DeepPartial<Theme> } | { preset?: never; overrides: DeepPartial<Theme> };

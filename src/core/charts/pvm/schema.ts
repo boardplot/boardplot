@@ -3,6 +3,7 @@
 import * as z from 'zod';
 import { addDuplicateIdIssues, baseOptionsSchema, idSchema, refusedBaseOptions } from '../../schema/shared';
 import type { PvmData, PvmOptions } from './types';
+import { columnOverridesOption } from '../../schema/generatedColumnOptions';
 
 const periodSchema = z.strictObject({
   qty: z
@@ -63,4 +64,15 @@ export const pvmOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions(
     .describe(
       'Default false. true adds the short convention ("volume and mix at prior prices") to the one footer line, which joins the coverage note ("Covers the 4 items in both periods") while items enter or leave the book; the coverage part prints regardless. Where Volume and Mix nearly cancel (their sum under a tenth of the larger) the convention and the counting unit print without it, since the split between them then carries the story. The long method notes are in derived, and join the notes list when notes is set.',
     ),
+  netChange: z
+    .boolean()
+    .optional()
+    .describe(
+      'Default true. Prints the net change from the opening to the closing total, absolute and in percent, in its sign colour above the closing column. false leaves the closing column with its value only.',
+    ),
+  labels: z
+    .strictObject({ point: z.literal(false).optional().describe('false stops printing the values of the steps and totals. The bars, hover and records keep them. The net change has its own switch, netChange, and takes the seat of the closing value.') })
+    .optional()
+    .describe('Which generated numbers print. labelDensity still thins them.'),
+  columnOverrides: columnOverridesOption('pvm', ['width']).describe('Horizontal bridge only: width in px of the name band (label) and the value band (value). A bridge that draws vertical warns option-ignored. It never changes the choice of the form.'),
 }) as unknown as z.ZodType<PvmOptions>;

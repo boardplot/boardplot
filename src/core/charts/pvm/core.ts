@@ -15,6 +15,6 @@ export const pvmCore: ChartCore<PvmData, PvmOptions, WaterfallMarks, PvmDerived>
   aliases: ['price-volume-mix'],
   layout: layoutPvm,
   namesMustPrint: true,
-  defaults: { interaction: 'in-price', volumeMix: 'split' },
+  defaults: { interaction: 'in-price', volumeMix: 'split', netChange: true },
   annotationKinds: ['cagr', 'diff', 'delta', 'note', 'callout', 'valueLine', 'abs']
 };

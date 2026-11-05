@@ -49,15 +49,15 @@ One form; its chart ID is `pareto`.
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
 | categoryLabels | string | `'axis'`, `'staircase'` |  | 'staircase' names each cause over the lower columns; it needs cumulative: false, as the curve climbs through that space. Default 'axis'. |
-| topN | object |  |  | Keep the n largest causes. rest: false hides only the remainder column (the folded tail, or the authored rest that holds it); its labelled curve point and the full-population total remain. |
+| topN | object \| integer |  |  | Keep the n largest causes. rest: false hides only the remainder column (the folded tail, or the authored rest that holds it); its labelled curve point and the full-population total remain. A positive integer n means { n }. |
 | threshold | number \| false | `false` (or another value of its type) | `80` | Cumulative-share reference, default 80. A convention to choose, not a property of the data: 80 is the classic Pareto rule, 90 or 95 asks which causes carry nearly all of the total. The dashed rule is drawn at the value, and the highlighted vital few and their key follow it. false draws the curve with no reference and no vital-few split: every column in one colour, no key. |
 | cumulative | boolean |  | `true` | Draw the derived cumulative curve. Default true; false also withholds the threshold rule. |
 | axisTitles | object |  |  | Title over the left value axis, which is drawn by default. Drawn when authored, or as 'Measure, unit' under a theme that derives value-axis titles. |
 | axisTitles.primary | string |  |  | Title over the left value axis. |
-| totalScale | boolean |  |  | Scale the left axis to the total: 100% on the right sits level with the total on the left, so the curve starts at the top of the first column and each column reads against the curve. Default false: the column axis is capped on the columns alone and the curve rides its own 0-100% scale. |
+| totalScale | boolean |  |  | Scale the left axis to the total: 100% on the right sits level with the total on the left, so the curve starts at the top of the first column and each column reads against the curve. Default: on when a vital few reaches the threshold and no valueAxis.min or max is set; off for a flat distribution, whose columns would shrink to a sliver. false caps the column axis on the columns alone and the curve rides its own 0-100% scale. |
 | methodNote | boolean |  | `false` | Footnotes stating the derivation and the vital-few set. Default false: the reader gets the exhibit, not a method statement. |
 
-Plus the [shared options](options.md). This type does not accept `detailFields`, `valueAxis.tickStep`, `valueAxis.log`, `valueAxis.reverse`, `valueAxis.break`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `sort`, `hatchStrength`, `colorblindSafe`, `rounding`.
+Plus the [shared options](options.md). This type does not accept `detailFields`, `valueAxis.tickStep`, `valueAxis.log`, `valueAxis.reverse`, `valueAxis.break`, `highlight`, `hatchStrength`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `secondaryAxis`, `sort` with an `option-ignored` warning.
 
 ## Annotations
 

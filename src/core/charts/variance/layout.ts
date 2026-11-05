@@ -2,6 +2,7 @@ import { chartString } from '../../strings/variance';
 import { breakUnsupported, chartTheme } from '../chartEnv';
 import { bandFloorSizing } from '../waterfall/bandFloor';
 import { structureCount } from '../../structureCounts';
+import { topNCut, topNOmitted, topNRestUnsupported } from '../topN';
 /**
  * Variance / deviation chart — the variance tier computed
  * from a ChartData that carries a reference-role series. The LIBRARY derives
@@ -31,14 +32,16 @@ import { structureCount } from '../../structureCounts';
 
 import { PARTIAL_KEY, partialAxisWords, partialFootnotes, partialIds, partialKeyForced, partialLegendKeys, partialPattern, saysToDate, toDateFits, toDateFont, toDateLabel, toDateRoom } from '../../partialPeriod';
 import { highlightPaintWarnings } from '../../paintWarnings';
+import { warnMissingValue } from '../../dataGaps';
 import type { PaintWarningRule } from '../../types/scene';
 import type { AnchorResolution } from '../../annotate';
 import { percentLevels, runAnnotatePass } from '../../annotatePass';
 import { hiddenValueLineReserve, VALUE_LINE_RESERVE } from '../../annotateParts';
 import { defaultNumberDecimals, formatAutomaticNumber, formatAutomaticPercent, PERCENTAGE_POINTS, seriesValueFormatter } from '../../format';
-import { exampleSpec, formatterFromExample, formatWithSpec, parseFormatExample, roundedNumber, signedFormatterFromExample, specUnitKind } from '../../formatSpec';
-import { boxGap, round2, type Rect } from '../../geometry';
-import { createOccupiedIndex } from '../../label/occupied';
+import { defaultFormatSpec, exampleSpec, formatterFromExample, formatWithSpec, parseFormatExample, roundedNumber, signedFormatterFromExample, specUnitKind } from '../../formatSpec';
+import { boxGap, cleanDiff, cleanFloat, cleanSum, type Rect } from '../../geometry';
+import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
+import { DEFAULT_TARGET, resolveTargetSize, TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { labelsToNodes } from '../../label/emit';
 import { categoryLineAlign, planCategoryRow, rotatedClaimRect, rotatedLeftOverhang, yearRowRequests } from '../../label/categoryRow';
 import {
@@ -53,6 +56,7 @@ import {
   type LabelRequest,
   type SlotCandidate,
   type SolveCtx,
+  type SolveResult,
 } from '../../label/solver';
 import { accessibleTitle,
   NormalizeError,
@@ -62,7 +66,7 @@ import { accessibleTitle,
   resolveHighlight,
   resolveSize,
 } from '../../normalize/shared';
-import { applyAxisBounds, bandScale, linearScale, niceDomain } from '../../scale';
+import { applyAxisBounds, applyTickStep, shownTickStep, bandScale, linearScale, niceDomain } from '../../scale';
 import { valueLineExtent } from '../../valueLineDomain';
 import { applyValueAxisTitleInk, layoutValueAxis, measureValueAxisWidth, planValueAxisTitle, valueAxisTitleBand, valueAxisTitleRequest } from '../../axis';
 import { PLOT_FLOOR_RECT } from '../../sizing';
@@ -82,6 +86,7 @@ import {
   resolveSemanticPaletteTheme,
   semanticPalettePaint,
   signedFillPaint,
+  emphasisLabelTheme,
   emphasisWeight,
   strokeToken,
 } from '../../theme';
@@ -97,7 +102,7 @@ import type {
   PlacedLabel,
   SceneNode,
 } from '../../types/scene';
-import { autoDecimals, currentSmallValues, roundsToZero, valueSetDecimals } from '../../formatPrecision';
+import { autoDecimals, currentSmallValues, roundHalfUp, roundsToZero, valueSetDecimals } from '../../formatPrecision';
 import { isSingleVarianceTier, isVarianceTier } from '../../grid/varianceTiers';
 import { relativePointCandidates } from './pointLabels';
 import { categoryLabelsAndMarks } from '../../footnoteMark';
@@ -162,6 +167,9 @@ const pinGeometry = (theme: Parameters<typeof strokeToken>[0], width: number): {
   ? { r: 5, stem: strokeToken(theme, 'data') * 1.25 }
   : { r: 4.5, stem: strokeToken(theme, 'data') };
 
+/** Internal option: px of one more value row over (above) or under (below) the columns, set by the second pass. */
+const LIFT_ROW = Symbol('liftRow');
+
 export function layoutVariance(
   data: ChartData,
   options: VarianceOptions = {} as VarianceOptions,
@@ -177,9 +185,6 @@ export function layoutVariance(
   const measure = options.measure ?? defaultMeasurer;
   // Business default: whole numbers get 0 decimals; small non-integers keep
   // one, so a 0.4 sliver never prints as "0". (waterfall's autoDecimals)
-  const fmt = options.format
-    ? formatterFromExample(options.format, options.locale?.language)
-    : (v: number) => formatAutomaticNumber(v, { locale: options.locale?.language, decimals: autoDecimals(v) });
   const highlights = new Set(resolveHighlight(options.highlight));
   // A warm red or orange accent on a signed variance reads as a loss.
   const paintWarningRules: PaintWarningRule[] = highlights.size > 0 ? [{ kind: 'highlight-reads-as-loss', chart: 'variance', before: warnings.length }] : [];
@@ -271,6 +276,53 @@ export function layoutVariance(
     }
   }
 
+  const categorySort = options.sort?.categories ?? 'sheet';
+  const cutTopN = options.topN && cats.length > options.topN.n;
+  if (cutTopN || categorySort !== 'sheet') {
+    const keys = cats.map((_, ci): number | null => {
+      const ac = ofSeries ? ofSeries.vals[ci]!.v
+        : dataSeries.some((s) => s.vals[ci]!.v === null) ? null : cleanSum(dataSeries.map((s) => s.vals[ci]!.v!));
+      const ref = refSeries.vals[ci]!.v;
+      if (ac === null || ref === null) return null;
+      const delta = cleanDiff(ac, ref);
+      return mode === 'relative' ? ref <= 0 ? null : cleanFloat(100 * delta / Math.abs(ref)) : delta;
+    });
+    let order = cats.map((_, i) => i);
+    if (cutTopN) {
+      const cut = topNCut(keys.map((key) => Math.abs(key ?? 0)), options.topN!.n);
+      const unsupported = topNRestUnsupported('variance', options.topN!);
+      if (unsupported) warnings.push(unsupported);
+      warnings.push(topNOmitted(cut.kept.length, cats.length, cut.dropped.map((i) => cats[i]!.label ?? cats[i]!.id)));
+      order = cut.kept;
+    }
+    const refCategory = (ref: AnchorRef): unknown => typeof ref === 'object' && 'categoryId' in ref ? ref.categoryId : ref;
+    const spansPeriods = (options.annotations ?? []).some((ann) =>
+      ann.kind === 'cagr' || ann.kind === 'diff' && refCategory(ann.from) !== refCategory(ann.to));
+    const keepDateOrder = categorySort !== 'sheet' && spansPeriods && cats.every((cat) => cat.date !== undefined);
+    if (keepDateOrder) warnings.push({
+      code: 'variance-sort-ignored', severity: 'warn',
+      message: `sort.categories '${categorySort}' was ignored because the categories are dated and a growth or difference annotation spans periods; authored order was kept`,
+      suggest: 'remove sort.categories, or remove the annotation that spans periods',
+      fix: [{ op: 'remove', path: '/options/sort/categories' }],
+    });
+    if (!keepDateOrder) {
+      if (categorySort === 'reverse') order.reverse();
+      else if (categorySort === 'asc' || categorySort === 'desc') order.sort((a, b) => {
+        const x = keys[a]!, y = keys[b]!;
+        if (x === null || y === null) return Number(x === null) - Number(y === null) || a - b;
+        return (categorySort === 'asc' ? x - y : y - x) || a - b;
+      });
+    }
+    const orderedCats = order.map((i) => cats[i]!);
+    cats.length = 0;
+    pushAll(cats, orderedCats);
+    for (const series of seriesNorm) {
+      const vals = order.map((i) => series.vals[i]!);
+      series.vals.length = 0;
+      pushAll(series.vals, vals);
+    }
+  }
+
   // ---- derive: AC, REF, ΔABS, Δ% (library-computed, never trusted) ----
   const refScenario = refSeries.scenario;
   // A scenario word in the key or a note is the code alone
@@ -295,12 +347,18 @@ export function layoutVariance(
       ac = ofSeries.vals[ci]!.v;
     } else {
       const present = dataSeries.filter((s) => s.vals[ci]!.v !== null);
-      ac = present.length !== dataSeries.length ? null : present.reduce((a, s) => a + s.vals[ci]!.v!, 0);
+      ac = present.length !== dataSeries.length ? null : cleanSum(present.map((s) => s.vals[ci]!.v!));
+    }
+    // A blank part leaves the category without a total, so nothing is drawn for it.
+    if (ac === null) {
+      const blank = (ofSeries ? [ofSeries] : dataSeries).filter((s) => s.vals[ci]!.v === null).map((s) => `'${s.id}'`);
+      warnMissingValue(warnings, `series ${blank.join(' and ')} at '${c.id}'`, { categoryId: c.id },
+        options.missingMark === 'dash' ? 'the category is drawn as an en dash' : 'the category is not drawn');
     }
     const ref = refSeries.vals[ci]!.v;
     acArr[ci] = ac;
     refArr[ci] = ref;
-    dAbsArr[ci] = ac === null || ref === null ? null : ac - ref;
+    dAbsArr[ci] = ac === null || ref === null ? null : cleanDiff(ac, ref);
     if (ac === null || ref === null) {
       dPctArr[ci] = null;
     } else if (ref <= 0) {
@@ -313,7 +371,7 @@ export function layoutVariance(
         owner: { categoryId: c.id },
       });
     } else {
-      dPctArr[ci] = (100 * (ac - ref)) / Math.abs(ref);
+      dPctArr[ci] = cleanFloat((100 * dAbsArr[ci]!) / Math.abs(ref));
     }
   });
   const derived: VarianceDerived = {
@@ -324,10 +382,10 @@ export function layoutVariance(
     tierName,
   };
   cats.forEach((c, ci) => {
-    derived.ac[c.id] = acArr[ci] === null ? null : round2(acArr[ci]!);
-    derived.ref[c.id] = refArr[ci] === null ? null : round2(refArr[ci]!);
-    derived.deltaAbs[c.id] = dAbsArr[ci] === null ? null : round2(dAbsArr[ci]!);
-    derived.deltaPct[c.id] = dPctArr[ci] === null ? null : round2(dPctArr[ci]!);
+    derived.ac[c.id] = acArr[ci] === null ? null : cleanFloat(acArr[ci]!);
+    derived.ref[c.id] = refArr[ci] === null ? null : cleanFloat(refArr[ci]!);
+    derived.deltaAbs[c.id] = dAbsArr[ci]!;
+    derived.deltaPct[c.id] = dPctArr[ci]!;
   });
 
   /** Plotted Δ per category: Δ% in relative mode, ΔABS otherwise. */
@@ -352,19 +410,28 @@ export function layoutVariance(
     return { ...spec, signed: true, suffix: spec.suffix || '%' };
   });
   // One decimal count for the series (shared helper), so "+3.0%" stands beside "+2.6%", not "+3%".
-  const pctDecimals = valueSetDecimals(dPctArr.flatMap((p) => (p === null || !Number.isFinite(p) ? [] : [Math.round(p * 10) / 10])));
+  // To a tenth, half away from zero as the formatter rounds: Math.round takes -1.25 to -1.2.
+  const tenths = (p: number): number => Math.sign(p) * Number(roundHalfUp(Math.abs(p), 1));
+  const pctDecimals = valueSetDecimals(dPctArr.flatMap((p) => (p === null || !Number.isFinite(p) ? [] : [tenths(p)])));
   const pctSigned = (p: number, ci = 0): string => {
     const spec = percentSpecs[ci];
     if (spec) return formatWithSpec(p, spec);
-    return formatAutomaticPercent(Math.round(p * 10) / 10, pctDecimals, true, options.locale?.language);
+    return formatAutomaticPercent(tenths(p), pctDecimals, true, options.locale?.language);
   };
   const absoluteFormat = (ci: number): string | undefined => {
     const example = formats[ci];
     return mode === 'relative' && example && specUnitKind(parseFormatExample(example)) === 'percent' ? undefined : example;
   };
+  // An authored format holds the bars and the deltas to one scale and one decimal count (exampleSpec).
+  const printed = [...acArr, ...dAbsArr];
+  const fmt = options.format
+    ? formatterFromExample(options.format, options.locale?.language, undefined, printed)
+    : (v: number) => formatAutomaticNumber(v, { locale: options.locale?.language, decimals: autoDecimals(v) });
   // The AC values and the signed deltas are two series: each takes one precision (seriesValueFormatter).
   const acFmt = seriesValueFormatter(acArr, options.locale?.language);
   const deltaFmt = seriesValueFormatter(dAbsArr, options.locale?.language);
+  const chartPlain = options.format ? formatterFromExample(options.format, options.locale?.language, options.unit, printed) : undefined;
+  const chartSigned = options.format ? signedFormatterFromExample(options.format, options.locale?.language, options.unit, printed) : undefined;
   const absolute = (v: number, ci: number, signed = false): string => {
     const example = absoluteFormat(ci);
     if (percentDifferences || integratedPercent) {
@@ -373,8 +440,9 @@ export function layoutVariance(
         ? formatWithSpec(v, { ...exampleSpec(example, options.locale?.language), prefix: '', suffix, signed })
         : withUnit((signed ? deltaFmt : acFmt)(v, signed), suffix);
     }
-    return example ? (signed ? signedFormatterFromExample(example, options.locale?.language, options.unit) : formatterFromExample(example, options.locale?.language, options.unit))(v)
-      : (signed ? deltaFmt : acFmt)(v, signed);
+    if (!example) return (signed ? deltaFmt : acFmt)(v, signed);
+    if (example === options.format) return (signed ? chartSigned : chartPlain)!(v);
+    return (signed ? signedFormatterFromExample : formatterFromExample)(example, options.locale?.language, options.unit)(v);
   };
 
   // ---- tones & paints (semantic; colorblindSafe swaps to alternates) ----
@@ -387,7 +455,7 @@ export function layoutVariance(
   const deltaDecimals = valueSetDecimals(dAbsArr.filter((d): d is number => d !== null && Number.isFinite(d)));
   const deltaPrintsZero = (d: number): boolean => currentSmallValues() === 'zero' && roundsToZero(d, defaultNumberDecimals(d, deltaDecimals));
   const shownZero = (d: number, ci: number): boolean =>
-    mode === 'relative' ? (percentSpecs[ci] ? roundedNumber(d, percentSpecs[ci]) === 0 : Math.round(d * 10) === 0)
+    mode === 'relative' ? (percentSpecs[ci] ? roundedNumber(d, percentSpecs[ci]) === 0 : tenths(d) === 0)
       : absoluteSpecs[ci] ? roundedNumber(d, absoluteSpecs[ci]) === 0 : deltaPrintsZero(d);
   const toneOf = (d: number, ci = 0): 'good' | 'bad' | 'neutral' =>
     d === 0 || shownZero(d, ci) ? 'neutral' : (d > 0) === (direction === 'higherIsBetter') ? 'good' : 'bad';
@@ -408,6 +476,17 @@ export function layoutVariance(
    * The cap keys stay solid; the partial-period key explains that hatch.
    */
   const capPattern: 'hatch45' | undefined = undefined;
+  /**
+   * A cap that ends past the actual's edge is the shortfall: the stretch of
+   * the reference the actual does not fill. It draws as an outline, so the
+   * solid shape ends at the actual. A theme with `surface.shortfallCap:
+   * 'solid'` fills it. A cap over the column (a beat) stays solid.
+   */
+  const capIsShortfall = (ci: number): boolean => {
+    const ac = acArr[ci], ref = refArr[ci];
+    return theme.surface?.shortfallCap !== 'solid' && ac !== null && ac !== undefined && ref !== null && ref !== undefined
+      && (ac > 0 ? ref > ac : ac < 0 ? ref < ac : ref !== 0);
+  };
   /**
    * The integrated actual column's paint, in column's order (paints.ts): the
    * cell fill, then the measured series' fill or colorRole, then the neutral.
@@ -463,6 +542,9 @@ export function layoutVariance(
     // the key names each cap the same way at every
     // width. The actual's value reads at the column foot, so no key clause
     // has to say where a cap stands past the actual's end.
+    // The categories whose cap is on one side of its reference in one tone.
+    const capsOf = (above: boolean, tone: 'good' | 'bad' | 'neutral'): number[] =>
+      cats.flatMap((_, ci) => dAbsArr[ci] !== null && dAbsArr[ci]! !== 0 && dAbsArr[ci]! > 0 === above && toneOf(dAbsArr[ci]!, ci) === tone ? [ci] : []);
     for (const above of [true, false]) {
       // A cap that prints as zero is neutral and, as in the other
       // modes, not keyed: one label per side, never a neutral twin.
@@ -474,12 +556,13 @@ export function layoutVariance(
           label: above ? chartString(options, 'aboveReference', { v1: refWord }) : chartString(options, 'belowReference', { v1: refWord }),
           paint: tonePaint(tone, undefined, true),
           ...(capPattern ? { pattern: capPattern } : {}),
+          ...(capsOf(above, tone).every(capIsShortfall) ? { hollow: true } : {}),
         });
       }
     }
     // A cap that prints as zero takes the muted tint, which no mark names.
     if (cats.some((_, ci) => { const d = dAbsArr[ci]!; return acArr[ci] !== null && refArr[ci] !== null && d !== null && d !== 0 && toneOf(d, ci) === 'neutral'; })) {
-      items.push({ id: 'cap:neutral', label: chartString(options, 'withinRounding', { v1: refWord }), paint: mutedMarkPaint() });
+      items.push({ id: 'cap:neutral', label: chartString(options, 'withinRounding', { v1: refWord }), paint: mutedMarkPaint(), ...(capsOf(true, 'neutral').concat(capsOf(false, 'neutral')).every(capIsShortfall) ? { hollow: true } : {}) });
     }
     items.push(...partialLegendKeys(partialCats.length > 0 && !partialNamed, options.strings));
     // A grid panel leaves its key to the grid legend, which collects it, and
@@ -520,8 +603,9 @@ export function layoutVariance(
   const nmShown = mode === 'relative' && nmCats.size > 0 && options.footnotes !== false;
   const nmNote = disclosureNote(chartString(options, 'varianceNmNote', { v1: refWord, v2: options.unit ? chartString(options, 'inUnitClause2', { v1: options.unit }) : '' }));
   const partialNotes = partialFootnotes(partialCats, options.strings, partialNamed);
-  const frameOptions = partialNotes.length || nmShown
-    ? withAuthoredFootnotes(options, [...partialNotes, ...authoredNotes(options), ...(nmShown ? [nmNote] : [])], options.footnotes)
+  const topNNotes = warnings.filter((warning) => warning.code === 'topn-omitted').map((warning) => disclosureNote(warning.message));
+  const frameOptions = partialNotes.length || nmShown || topNNotes.length
+    ? withAuthoredFootnotes(options, [...partialNotes, ...authoredNotes(options), ...topNNotes, ...(nmShown ? [nmNote] : [])], options.footnotes)
     : options;
   const frameResult = solveFrame(
     {
@@ -555,11 +639,13 @@ export function layoutVariance(
   const bracketPad = legendInput && (options.annotations ?? []).some((annotation) => annotation.kind === 'cagr') ? 30 : 0;
   // A running value's to-date words stand under it: the headroom holds the second line too.
   const wordsH = toDateIds.size > 0 ? measure(toDate, toDateFont(theme)).height : 0;
-  const topPad = 8 + valueAxisTitleBand(axisTitle, theme, measure) + labelH + wordsH + 4 + bracketPad;
+  // A larger variance that found no seat over its neighbours gets one more value row (second pass).
+  const liftRow = (options as { [LIFT_ROW]?: { above: number; below: number } })[LIFT_ROW];
+  const topPad = 8 + valueAxisTitleBand(axisTitle, theme, measure) + labelH + wordsH + 4 + bracketPad + (liftRow?.above ?? 0);
   // an integrated chart with nothing under zero prints no
   // label below its columns; its name row starts at the baseline.
   const nothingBelowZero = mode === 'integrated' && cats.every((_, ci) => (acArr[ci] ?? 0) >= 0 && (refArr[ci] ?? 0) >= 0);
-  const bottomPad = nothingBelowZero ? 0 : labelH + 4;
+  const bottomPad = (nothingBelowZero ? 0 : labelH + 4) + (liftRow?.below ?? 0);
 
   // ---- domain (zero always included; user min/max may never clip data) ----
   // Computed BEFORE the plot rect: the tick-band reserve must measure its
@@ -616,12 +702,19 @@ export function layoutVariance(
     })
     : lo === 0 && hi === 0 ? [0, 1] : [lo, hi];
   [dLo, dHi] = applyAxisBounds([dLo, dHi], [Math.min(lo, 0), Math.max(hi, 0)], va, warnings);
+  const stepped = applyTickStep([dLo, dHi], shownTickStep(va.tickStep, va.show === true, warnings), warnings);
+  [dLo, dHi] = stepped.domain;
 
   const axisFmt = mode === 'relative' ? (v: number) => formatAutomaticPercent(v, 0, false, options.locale?.language)
     : percentDifferences || integratedPercent ? (v: number) => options.format
       ? formatWithSpec(v, { ...exampleSpec(options.format, options.locale?.language), prefix: '', suffix: percentDifferences ? PERCENTAGE_POINTS : '%' })
       : formatAutomaticNumber(v, { locale: options.locale?.language, decimals: autoDecimals(v), suffix: percentDifferences ? PERCENTAGE_POINTS : '%' }) : fmt;
-  const axisReserve = va.show ? measureValueAxisWidth([dLo, dHi], axisFmt, theme, measure) : 0;
+  const stepSpec = stepped.ticks ? {
+    ...(options.format ? exampleSpec(options.format, options.locale?.language) : defaultFormatSpec(options.locale?.language)),
+    ...(mode === 'relative' || percentDifferences || integratedPercent
+      ? { prefix: '', suffix: percentDifferences ? PERCENTAGE_POINTS : '%' } : {}),
+  } : undefined;
+  const axisReserve = va.show ? measureValueAxisWidth([dLo, dHi], axisFmt, theme, measure, 5, stepSpec, stepped.ticks) : 0;
   let plotX0 = frameResult.plot.x + axisReserve;
   let plotW0 = va.show ? Math.max(10, frameResult.plot.w - axisReserve) : frameResult.plot.w;
   // integrated columns take 60 % of the band, so the cap
@@ -648,6 +741,7 @@ export function layoutVariance(
       centers: cats.map((_, ci) => b.center(ci)),
       step: b.step,
       fonts: [tickFont, { family: theme.type.family, ...theme.type.footnote }],
+      stepToFloor: true,
       measure,
       plotHeight: frameResult.plot.h,
       target: options.target, textScale: textScaleOf(options),
@@ -708,6 +802,8 @@ export function layoutVariance(
     const axisResult = layoutValueAxis(
       {
         scale: y,
+        ticks: stepped.ticks,
+        formatSpec: stepSpec,
         plot,
         orient: 'y',
         gridlines: va.gridlines ?? false,
@@ -754,6 +850,8 @@ export function layoutVariance(
   const anchorTopY: (number | null)[] = [];
   /** Visual bottom (pixel) per category for category-label placement. */
   const visBottomY: number[] = [];
+  /** Integrated mode: the pixel span (top, bottom) of each column's marks, for the value seat clear of its neighbours. */
+  const markSpanY: ({ top: number; bottom: number } | null)[] = [];
 
   /**
    * The glyph a missing prior leaves behind. Without it a category
@@ -790,13 +888,24 @@ export function layoutVariance(
     occupied.claim(rect, 'label', { categoryId });
   };
 
+  /**
+   * A running category hatches its marks. In a grid tier a forecast category
+   * does too, so the tier matches the column above it; it adds no partial-period
+   * key or note. A forecast category is one whose measured values are all FC.
+   */
+  const forecastIds = new Set<Id>(!isVarianceTier(options) ? [] : cats.filter((_, ci) => {
+    const measured = (ofSeries ? [ofSeries] : dataSeries).filter((s) => s.vals[ci]!.v !== null);
+    return measured.length > 0 && measured.every((s) => (s.vals[ci]!.scenario ?? s.scenario) === 'FC');
+  }).map((c) => c.id));
+  const unfinished = (c: Category): boolean => c.partial === true || forecastIds.has(c.id);
+
   cats.forEach((c, ci) => {
     const bx = band.position(ci);
     const bw = band.bandwidth;
     const cx = band.center(ci);
     const owner = { categoryId: c.id };
     const mv = measuredVal(ci);
-    const pattern = partialPattern(c, undefined);
+    const pattern = partialPattern({ partial: unfinished(c) }, undefined);
     const partialFill = (fill: Paint) => pattern
       ? { pattern, hatchGround: hatchGroundPaint(fill) }
       : {};
@@ -817,14 +926,19 @@ export function layoutVariance(
           // A percent unit names the relative change, not the source measure: the change then prints bare.
           const sourceUnit = options.unit === '%' || options.unit === 'pp' ? undefined : options.unit;
           const text = `n.m. (${absoluteFormat(ci) ? change : withUnit(change, sourceUnit, false, options.locale?.language)})`;
-          const size = measure(text, font);
-          const rect: Rect = { x: cx - size.width / 2, y: y0 - size.height - 6, w: size.width, h: size.height };
+          // Centred on its category, kept inside the plot. A text wider than the plot breaks after "n.m.".
+          const whole = measure(text, font);
+          const split = whole.width > plot.w ? text.indexOf(' ') : -1;
+          const lines = split > 0 ? [text.slice(0, split), text.slice(split + 1)] : [text];
+          const size = { width: Math.max(...lines.map((line) => measure(line, font).width)), height: whole.height * lines.length };
+          const nx = Math.max(plot.x + size.width / 2, Math.min(cx, plot.x + plot.w - size.width / 2));
+          const rect: Rect = { x: nx - size.width / 2, y: y0 - size.height - 6, w: size.width, h: size.height };
           nodes.push({
             t: 'text',
             id: `nm:${c.id}`,
-            x: cx,
+            x: nx,
             y: rect.y,
-            lines: [text],
+            lines,
             align: 'middle',
             font,
             ink: { token: 'inkMuted' },
@@ -862,8 +976,8 @@ export function layoutVariance(
         cx,
         cy: yv,
         r: pin.r,
-        fill: c.partial ? { token: 'background' } : paint,
-        ...(c.partial ? { stroke: paint } : {}),
+        fill: unfinished(c) ? { token: 'background' } : paint,
+        ...(unfinished(c) ? { stroke: paint } : {}),
         owner,
         part: 'head',
         display: { value: pctSigned(d, ci) },
@@ -1021,8 +1135,9 @@ export function layoutVariance(
         // neutral it extended the column, and a shortfall read as reaching the
         // reference; the muted tint keeps the actual's top edge.
         fill: capTone === 'neutral' ? mutedMarkPaint() : tonePaint(capTone, undefined, true),
-        pattern: capPattern,
-        ...partialFill(capTone === 'neutral' ? mutedMarkPaint() : tonePaint(capTone, undefined, true)),
+        ...(capIsShortfall(ci)
+          ? { pattern: 'hollow' as const }
+          : { pattern: capPattern, ...partialFill(capTone === 'neutral' ? mutedMarkPaint() : tonePaint(capTone, undefined, true)) }),
         owner,
         part: 'cap',
         display: { value: absolute(d, ci, true) },
@@ -1034,6 +1149,7 @@ export function layoutVariance(
     const visHiY = y(visHiVal);
     const visLoY = y(visLoVal);
     anchorTopY[ci] = ac >= 0 ? visHiY : visLoY;
+    markSpanY[ci] = { top: Math.min(visHiY, visLoY, y0), bottom: Math.max(visHiY, visLoY, y0) };
     visBottomY[ci] = Math.max(y0, visLoY);
 
     // AC total label AT the AC edge (the notation rule says the bold
@@ -1046,7 +1162,7 @@ export function layoutVariance(
       const acEdgeY = above ? acTop : acBot;
       // The label anchors to the actual edge, including when the cap covers
       // that edge.
-      const insideCap = capRect !== null && ref !== null && (above ? ref < ac : ref > ac);
+      const insideCap = capRect !== null && ref !== null && !capIsShortfall(ci) && (above ? ref < ac : ref > ac);
       const insidePaint = insideCap
         ? capTone === 'neutral' ? mutedMarkPaint() : tonePaint(capTone, undefined, true)
         : actualPaint(mv.fill);
@@ -1149,6 +1265,45 @@ export function layoutVariance(
     }
   });
 
+  // A value wider than its column runs over its neighbours: their columns
+  // and their values. Where those block both seats over the cap, a value may
+  // rise clear of them (below them for a value under the baseline): clear of
+  // the columns, clear of the neighbours' values, or one row higher, on a
+  // leader to its own cap. solveVarianceLabels offers these seats only to a
+  // value that ranks among the values the chart can hold.
+  const pointRequests = new Map(labelRequests.filter(request => request.kind === 'point').map(request => [request.id, request]));
+  const liftSeats = (request: LabelRequest): SlotCandidate[] => {
+    const ci = cats.findIndex(c => request.id === `point:${c.id}`);
+    const shifted = request.candidates[1];
+    if (mode !== 'integrated' || ci < 0 || !shifted) return [];
+    const above = shifted.slot === 'aboveCapShifted';
+    const { x, w, h } = shifted.rect;
+    const near = (from: number, to: number, gap: number) => from < x + w + gap && to > x - gap;
+    const marks: number[] = [];
+    const values: number[] = [];
+    markSpanY.forEach((span, ni) => {
+      if (!span) return;
+      if (near(band.position(ni), band.position(ni) + band.bandwidth, 2)) marks.push(above ? span.top : span.bottom);
+      const seat = ni === ci ? undefined : pointRequests.get(`point:${cats[ni]!.id}`)?.candidates[0]?.rect;
+      if (seat && near(seat.x, seat.x + seat.w, SERIES_VALUE_GAP)) values.push(above ? seat.y : seat.y + seat.h);
+    });
+    if (marks.length === 0) return [];
+    const step = h + 4;
+    const clearOf = (edges: number[]) => above ? Math.min(...edges) - step : Math.max(...edges) + 4;
+    const overValues = clearOf([...marks, ...values]);
+    const rows = [clearOf(marks), overValues, overValues + (above ? -step : step)];
+    const naturalY = request.candidates[0]!.rect.y;
+    return [...new Set(rows)]
+      .filter(y => above ? y < shifted.rect.y - 0.5 : y > shifted.rect.y + 0.5)
+      .sort((p, q) => above ? q - p : p - q)
+      .map((y, row) => ({
+        slot: above ? 'aboveNeighbours' : 'belowNeighbours',
+        rect: { ...shifted.rect, y },
+        penalty: 2 + row,
+        reach: Math.abs(y - naturalY) + 1,
+      }));
+  };
+
   if (integratedExtreme.length > 0) {
     warnings.push({
       code: 'integrated-delta-extreme',
@@ -1232,7 +1387,29 @@ export function layoutVariance(
     plot,
     labelPad: 2,
   });
-  const solved = solveLabels(labelRequests, occupied, solveCtx);
+  const solved: SolveResult & { stranded?: LabelRequest[] } = mode === 'integrated'
+    ? solveVarianceLabels(labelRequests, occupied, solveCtx, liftSeats)
+    : solveLabels(labelRequests, occupied, solveCtx);
+  // The plot holds one value row over the tallest column. When a larger
+  // variance still finds no seat while a smaller one keeps its value (the seat
+  // over its neighbours runs into the key or the subtitle), a fixed-height
+  // canvas lays out again with one more value row on that side. It is kept only when it seats more of these values and the
+  // canvas still meets the chart's size floor.
+  // An automatic height grows the canvas for a hidden value instead (sizing.ts), and keeps the names it grew for.
+  const fixedHeight = ((options as TargetSizeOptions)[TARGET_SIZE] ?? resolveTargetSize(options.target ?? DEFAULT_TARGET, options.size)).fixed.height;
+  const stranded = solved.stranded ?? [];
+  if (fixedHeight && stranded.length > 0 && !(LIFT_ROW in options)) {
+    const row = labelH + 4;
+    const above = stranded.some(request => request.candidates[1]?.slot === 'aboveCapShifted');
+    const below = stranded.some(request => request.candidates[1]?.slot !== 'aboveCapShifted');
+    const lifted = layoutVariance(data, { ...options, [LIFT_ROW]: { above: above ? row : 0, below: below ? row : 0 } } as VarianceOptions);
+    const ids = new Set(stranded.map(request => request.id));
+    const nowSeated = lifted.labels.filter(label => ids.has(label.id) && label.hidden === undefined).length;
+    // The row must not raise the chart's size floor past the canvas: a chart that draws keeps drawing.
+    const fits = (lifted.frame.plotMinHeight ?? 0) <= size.height
+      && (lifted.sizing === undefined || (lifted.sizing.minWidth <= size.width && lifted.sizing.minHeight <= size.height));
+    if (nowSeated > 0 && fits) return lifted;
+  }
   // A running period keeps a cue: a to-date value without a seat brings the hatch key back.
   // Words wider than twice the drawn band (a small bandFraction) would float over their mark: the key names the period.
   if (toDateIds.size > 0 && (!toDateFits(toDate, theme, measure, toDateRoom(band.bandwidth))
@@ -1277,7 +1454,9 @@ export function layoutVariance(
       cats.length >= 2 ? { from: cats[0]!.id, to: cats[cats.length - 1]!.id } : undefined,
     occupied,
     plot,
-    theme,
+    // Annotation labels draw bold (see labelsToNodes below), so the pass measures them bold.
+    theme: emphasisLabelTheme(theme),
+    plainLabelWeight: theme.type.label.weight,
     measure,
     format: options.format,
     locale: options.locale?.language,
@@ -1427,4 +1606,38 @@ export function layoutVariance(
       { slot: 'insideEnd', rect: { x: cx - w / 2, y: yBot - h - 2, w, h }, penalty: 2, insideFill },
     ];
   }
+}
+
+/**
+ * Solve the labels, then keep a larger variance from losing its value to a
+ * smaller one. The chart holds k values (the values the solve drew). A value
+ * among the k largest that found no seat is offered its seats clear of the
+ * neighbouring columns and values (`lift`), against everything already placed.
+ * Only those few values solve again; the drawn labels do not move.
+ */
+function solveVarianceLabels(requests: LabelRequest[], occupied: OccupiedIndex, ctx: SolveCtx, lift: (request: LabelRequest) => SlotCandidate[]): SolveResult & { stranded: LabelRequest[] } {
+  const solved = solveLabels(requests, occupied, ctx);
+  const points = solved.placed.filter(label => label.kind === 'point');
+  const shown = points.filter(label => label.hidden === undefined).length;
+  const crowded = new Set(points.filter(label => label.hidden === 'collision').map(label => label.id));
+  if (crowded.size === 0) return { ...solved, stranded: [] };
+  const ranked = requests.filter(request => request.kind === 'point' && !request.redundant)
+    .sort((a, b) => b.priority - a.priority || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const rescue = ranked.slice(0, shown).filter(request => crowded.has(request.id)).flatMap(request => {
+    const seats = lift(request);
+    return seats.length > 0 ? [{ ...request, candidates: [...request.candidates, ...seats] }] : [];
+  });
+  if (rescue.length === 0) return { ...solved, stranded: [] };
+  const repair = solveLabels(rescue, occupied, ctx);
+  const seated = new Map(repair.placed.filter(label => label.hidden === undefined).map(label => [label.id, label]));
+  const stranded = rescue.filter(request => !seated.has(request.id));
+  if (seated.size === 0) return { ...solved, stranded };
+  const decided = new Map(repair.decisions.map(decision => [decision.labelId, decision]));
+  return {
+    ...solved,
+    stranded,
+    placed: solved.placed.map(label => seated.get(label.id) ?? label),
+    decisions: solved.decisions.map(decision => seated.has(decision.labelId) ? decided.get(decision.labelId) ?? decision : decision),
+    warnings: solved.warnings.filter(warning => warning.code !== 'label-hidden' || ![...seated.keys()].some(id => warning.message.startsWith(`label '${id}' `))),
+  };
 }

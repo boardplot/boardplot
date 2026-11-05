@@ -1,3 +1,4 @@
+import { alignedX } from './columns';
 import { ganttItemLabel } from './domain';
 /**
  * Gantt phase 3: mark geometry in, label requests out. Column
@@ -104,10 +105,18 @@ function spanLabel(ctx: LabelCtx, row: RowPlace, place: ItemPlace): void {
   const rowMilestoneItems = ctx.domain.rows.find((row) => row.id === it.rowId)!.items.filter((item) => item.kind === 'milestone');
   const rowMilestones = rowMilestoneItems.map((item) => ({ x: ctx.body.x(item.startDay + 0.5), halfWidth: milestoneHalf }));
   if (ctx.flagRows.has(it.rowId)) {
-    const free = spanFreeRuns({ ...rect, x: ctx.body.bodyX, w: ctx.body.inner.x + ctx.body.inner.w - ctx.body.bodyX }, rowMilestones);
-    offCentre = offCentre.flatMap(candidate => free.filter(run => run.end - run.start >= tsize.width).map(run => ({
-      ...candidate, rect: { ...candidate.rect, x: Math.max(run.start, Math.min(run.end - tsize.width, candidate.rect.x)) },
-    })));
+    // A flag's leader runs on its own side of the row, so a name seats clear of the leaders on its side
+    // and of every diamond whose flag has no seat. A seat pushed off its bar by a leader is dropped.
+    const flagSeats = planRowFlags(ctx.domain, ctx.body, row).seats;
+    const timeline = { ...rect, x: ctx.body.bodyX, w: ctx.body.timelineRight - ctx.body.bodyX };
+    offCentre = offCentre.flatMap(candidate => {
+      const above = candidate.slot === 'aboveBar';
+      const free = spanFreeRuns(timeline, rowMilestoneItems.filter(item => (flagSeats.get(item.id)?.above ?? above) === above)
+        .map(item => ({ x: ctx.body.x(item.startDay + 0.5), halfWidth: milestoneHalf })));
+      return free.filter(run => run.end - run.start >= tsize.width).map(run => ({
+        ...candidate, rect: { ...candidate.rect, x: Math.max(run.start, Math.min(run.end - tsize.width, candidate.rect.x)) },
+      }));
+    }).filter(candidate => candidate.rect.x < rect.x + rect.w && candidate.rect.x + candidate.rect.w > rect.x);
   }
   // A clustered milestone is labelled in the shared lane on the right, its
   // leader running from the diamond along the row: no bar label sits on
@@ -162,13 +171,14 @@ function spanLabel(ctx: LabelCtx, row: RowPlace, place: ItemPlace): void {
     return !(arrowRetry || (ctx.crossRules && ctx.body.ruleClaims.length > 0)) || ![...otherMarks, ...(ctx.spanClearance ?? [])].some(other =>
       other.y < seat.y + seat.h && seat.y < other.y + other.h && other.x < to && other.x + other.w > from);
   };
-  const past = (ctx.spanClearance ? seatsPastBlockers(backed.rect, 'x', ctx.body.bodyX, ctx.body.inner.x + ctx.body.inner.w, pastObstacles, 3) : [])
+  const past = (ctx.spanClearance ? seatsPastBlockers(backed.rect, 'x', ctx.body.bodyX, ctx.body.timelineRight, pastObstacles, 3) : [])
     .filter(nextToArrow)
     .map((rect, index): SlotCandidate => ({ ...backed, slot: `backedPast:${index + 1}`, rect, penalty: 4.5 + index * 0.1 }));
   const duration = it.endDay - it.startDay;
+  // The repair pass seats a name that spills over its bar beside it, even where an event or today rule runs through that seat: the rule breaks around the text.
   const seats = clearOfLeader((fits
     ? [inside, ...insideShape, ...slideCandidates, insideStart, insideEnd, right, left, ...past, ...offCentre]
-    : [right, left, backed, ...past, ...offCentre]).filter(clearOfMarks));
+    : [ctx.crossRules ? { ...right, overRules: true } : right, left, backed, ...past, ...offCentre]).filter(clearOfMarks));
   ctx.requests.push({
     id: `item:${it.rowId}:${it.id}`,
     kind: 'item', typeRole: 'label',
@@ -297,7 +307,7 @@ function milestoneLabel(ctx: LabelCtx, row: RowPlace, place: ItemPlace): void {
     const { seats, flagHalf, lineH } = planRowFlags(ctx.domain, body, row);
     const seat = seats.get(it.id);
     const rect = seat && { x: seat.x, y: seat.above ? cy - flagHalf - 4 - tsize.height - seat.level * lineH : cy + flagHalf + 4 + seat.level * lineH, w: tsize.width, h: tsize.height };
-    if (seat && rect && rectContains({ ...rowBox, w: body.inner.x + body.inner.w - lo }, rect)) flags.push({
+    if (seat && rect && rectContains({ ...rowBox, w: body.timelineRight - lo }, rect)) flags.push({
       slot: seat.above ? 'flagAbove' : 'flagBelow', rect, penalty: -1,
       leaderFrom: { x: cx, y: cy + (seat.above ? -rr : rr) }, leaderVertical: true,
     });
@@ -354,7 +364,7 @@ const FLAG_GAP = 4;
 export function planRowFlags(domain: GanttDomain, body: GanttBody, row: RowPlace): {
   seats: Map<string, { above: boolean; level: number; x: number; cx: number }>; flagHalf: number; lineH: number; textH: number;
 } {
-  const right = body.inner.x + body.inner.w;
+  const right = body.timelineRight;
   const flags = row.items.filter((item) => domain.milestones.byId.has(item.it.id)).map((item) => {
     const size = domain.milestones.byId.get(item.it.id)!.size;
     return { id: item.it.id, cx: item.cx, w: size.width, h: size.height, x: Math.min(item.cx, right - size.width) };
@@ -433,10 +443,14 @@ function activityLabels(ctx: LabelCtx, place: RowPlace): void {
   // Table form: name and sublabel centre together on the row.
   const nameY = ctx.band.stacked ? nameCy - rl.h / 2 : cy - (rl.h + (rl.sub ? SUBLABEL_GAP + rl.sub.h : 0)) / 2;
   const priority = PRIORITY.endpoint + (env.highlights.has(r.id) ? PRIORITY.highlightBonus : 0);
+  // An authored alignment seats the name in its band. The stacked form has no band.
+  const nameAlign = ctx.band.stacked ? undefined : env.columns.name?.align;
+  const nameX = (w: number) => (nameAlign ? alignedX(body.inner.x + rl.indentPx, body.labelBandW - rl.indentPx, w, nameAlign) : body.inner.x + rl.indentPx);
+  const nameLineAlign = nameAlign === 'right' ? { align: 'end' as const } : nameAlign === 'center' ? { align: 'middle' as const } : {};
   if (rl.sub) {
     const rect = ctx.band.stacked
       ? { x: body.inner.x + rl.indentPx + rl.w + stackedGap(env).name, y: nameCy - rl.sub.h / 2, w: rl.sub.w, h: rl.sub.h }
-      : { x: body.inner.x + rl.indentPx, y: nameY + rl.h + SUBLABEL_GAP, w: rl.sub.w, h: rl.sub.h };
+      : { x: nameX(rl.sub.w), y: nameY + rl.h + SUBLABEL_GAP, w: rl.sub.w, h: rl.sub.h };
     ctx.requests.push({
       id: `sublabel:${r.id}`,
       kind: 'activity', typeRole: 'label',
@@ -455,8 +469,9 @@ function activityLabels(ctx: LabelCtx, place: RowPlace): void {
     text: r.label,
     ...fittedLabel({ lines: rl.lines, w: rl.w, h: rl.h, font: rl.font, ...(rl.title ? { title: rl.title } : {}) }, rl.baseFont),
     font: rl.baseFont,
+    ...nameLineAlign,
     priority,
-    candidates: [{ slot: 'left', rect: { x: body.inner.x + rl.indentPx, y: nameY, w: rl.w, h: rl.h }, penalty: 0 }],
+    candidates: [{ slot: 'left', rect: { x: nameX(rl.w), y: nameY, w: rl.w, h: rl.h }, penalty: 0 }],
   });
   if (ctx.band.stacked) {
     stackedCellLabels(ctx, place, nameCy);
@@ -466,6 +481,8 @@ function activityLabels(ctx: LabelCtx, place: RowPlace): void {
     const text = cell.text;
     if (!text) return;
     const tsize = env.measure(text, label);
+    const cellW = (cell.tone ? SWATCH_RESERVE : 0) + tsize.width;
+    const aligned = body.columns.aligned?.[k];
     // A status tone is a filled marker before the word, on the row's centre like the name.
     ctx.requests.push({
       id: `col:${r.id}:${k}`,
@@ -480,7 +497,7 @@ function activityLabels(ctx: LabelCtx, place: RowPlace): void {
       priority: PRIORITY.extreme,
       candidates: [{
         slot: 'left',
-        rect: { x: body.columns.colXs[k]!, y: cy - label.size / 2, w: (cell.tone ? SWATCH_RESERVE : 0) + tsize.width, h: label.size },
+        rect: { x: aligned?.align ? alignedX(body.columns.colXs[k]!, aligned.inner, cellW, aligned.align) : body.columns.colXs[k]!, y: cy - label.size / 2, w: cellW, h: label.size },
         penalty: 0,
       }],
     });

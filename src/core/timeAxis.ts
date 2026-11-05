@@ -299,13 +299,22 @@ function stepLength(step: TimeStep): number {
 }
 
 /**
+ * A sub-day step longer than a day ticks at each local midnight, so its ticks follow the days of the
+ * range and not the step. Over more days than the plot has pixels those ticks only make a solid bar.
+ */
+export function timeStepOutrunsPlot(lo: number, hi: number, step: TimeStep, pixels: number): boolean {
+  const subDay = UNIT_MS[step.unit];
+  return subDay !== undefined && subDay * step.n > DAY && (hi - lo) / DAY > pixels;
+}
+
+/**
  * The ticks of one step inside [lo, hi], on the zone's wall clock: 6-hour
  * ticks at 00, 06, 12 and 18 local time, days at local midnight, weeks on the
  * week start, months on the 1st, years on 1 January. A wall time the zone
  * repeats ticks at both instants; one it skips has no tick.
  */
-export function timeTicks(lo: number, hi: number, step: TimeStep, clock: ZoneClock, weekStartsOn: 0 | 1 = 1, limit = 400): number[] | undefined {
-  if (!(hi >= lo) || (hi - lo) / stepLength(step) > limit) return undefined;
+export function timeTicks(lo: number, hi: number, step: TimeStep, clock: ZoneClock, weekStartsOn: 0 | 1 = 1, limit = 400, pixels = Infinity): number[] | undefined {
+  if (!(hi >= lo) || (hi - lo) / stepLength(step) > limit || timeStepOutrunsPlot(lo, hi, step, pixels)) return undefined;
   const walls: number[] = [];
   const wallLo = lo + clock.offsetAt(lo) - DAY, wallHi = hi + clock.offsetAt(hi) + DAY;
   const subDay = UNIT_MS[step.unit];
@@ -321,7 +330,9 @@ export function timeTicks(lo: number, hi: number, step: TimeStep, clock: ZoneClo
     }
     // Only the wall times of [lo, hi]: between the earlier offset at the start and the later one at the end.
     const offLo = clock.offsetAt(lo), offHi = clock.offsetAt(hi);
-    const from = lo + Math.min(offLo, offHi) - size, to = hi + Math.max(offLo, offHi) + size;
+    // A day of margin holds any offset change, so a step longer than the range adds no days to walk.
+    const margin = Math.min(size, DAY);
+    const from = lo + Math.min(offLo, offHi) - margin, to = hi + Math.max(offLo, offHi) + margin;
     for (let day = Math.floor(from / DAY) * DAY; day <= to; day += DAY) {
       const end = Math.min(day + DAY, to + size);
       for (let at = day + Math.max(0, Math.floor((from - day) / size) * size); at < end; at += size) walls.push(at);
@@ -340,7 +351,8 @@ export function timeTicks(lo: number, hi: number, step: TimeStep, clock: ZoneClo
     for (;; index += months) {
       const date = new Date(0);
       date.setUTCFullYear(Math.floor(index / 12), index % 12, 1);
-      if (date.getTime() > wallHi) break;
+      // A step past the last date a Date holds gives NaN, which is past the range too.
+      if (!(date.getTime() <= wallHi)) break;
       walls.push(date.getTime());
     }
   }
@@ -441,7 +453,7 @@ export function changeMoment(change: { at: number; from: number }, language?: st
   return `${weekdayDayMonth(wall, language)}, ${clockText(wall, false)}`;
 }
 
-const PATTERN_TOKEN = /('[^']*')|yyyy|yy|MMMM|MMM|MM|M|dddd|ddd|dd|d|HH|H|hh|h|mm|ss|SSS|a/g;
+const PATTERN_TOKEN = /('[^']*')|yyyy|yy|MMMM|MMM|MM|M|dddd|ddd|dd|d|QQQ|QQ|Q|HH|H|hh|h|mm|ss|SSS|a/g;
 
 /** An authored tick pattern ('HH:mm', 'd MMM', 'h a'): each token reads the instant's wall clock in the zone. */
 export function formatTimePattern(ms: number, clock: ZoneClock, pattern: string, language?: string): string {
@@ -461,6 +473,9 @@ export function formatTimePattern(ms: number, clock: ZoneClock, pattern: string,
       case 'ddd': return names.daysShort[wall.getUTCDay()]!;
       case 'dd': return pad2(wall.getUTCDate());
       case 'd': return String(wall.getUTCDate());
+      case 'Q': return String(Math.floor(wall.getUTCMonth() / 3) + 1);
+      case 'QQ': return `Q${Math.floor(wall.getUTCMonth() / 3) + 1}`;
+      case 'QQQ': return `Quarter ${Math.floor(wall.getUTCMonth() / 3) + 1}`;
       case 'HH': return pad2(hour);
       case 'H': return String(hour);
       case 'hh': return pad2(hour % 12 || 12);

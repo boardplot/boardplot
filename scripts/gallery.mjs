@@ -57,10 +57,12 @@ if (existsSync(out) && readdirSync(out).length && !existsSync(join(out, 'gallery
  * its overrides under the chosen preset, unless they set colours.
  */
 const THEMES = [
-  { key: 'boardroom', label: 'Boardroom', scheme: 'light', dir: 'authored' },
+  { key: 'bridge', label: 'Bridge', scheme: 'light', dir: 'authored' },
+  { key: 'boardroom', label: 'Boardroom', scheme: 'light', dir: 'boardroom' },
   { key: 'notation', label: 'Notation', scheme: 'light', dir: 'notation' },
   { key: 'capital', label: 'Capital', scheme: 'light', dir: 'capital' },
   { key: 'studio', label: 'Studio', scheme: 'light', dir: 'studio' },
+  { key: 'bridge-dark', label: 'Bridge', scheme: 'dark', dir: 'bridge-dark' },
   { key: 'notation-dark', label: 'Notation', scheme: 'dark', dir: 'notation-dark' },
   { key: 'glass', label: 'Glass', scheme: 'dark', dir: 'glass' },
 ];
@@ -296,7 +298,7 @@ const coverage = Object.fromEntries(allTypes.map((type) => {
   };
   const own = description.options.map((entry) => row(entry.path, entry));
   const ownTop = new Set(description.options.map((entry) => entry.path.split(/[.[]/)[0]));
-  const refused = new Set(description.notAccepted ?? []);
+  const refused = new Set([...(description.notAccepted ?? []), ...(description.ignored ?? [])]);
   const shared = Object.entries(list.sharedOptions)
     .filter(([path]) => !ownTop.has(path) && !refused.has(path))
     .map(([path, text]) => row(path, { description: text }));

@@ -14,9 +14,10 @@ import { maxOf, minOf } from '../../arrays';
  * chart has at most ANATOMY_ALL_MAX_CATEGORIES categories. An authored
  * valueLabels always wins.
  */
-export function comboValueLabels(options: Pick<ComboOptions, 'valueLabels'>, anatomy = false, categoryCount = Infinity): ValueLabelMode {
+export function comboValueLabels(options: Pick<ComboOptions, 'valueLabels'>, anatomy = false, categoryCount = Infinity, floated = false): ValueLabelMode {
+  // A floated line has no right ticks, so its values state its scale: the ends, low and high.
   return options.valueLabels
-    ?? (anatomy ? (categoryCount <= ANATOMY_ALL_MAX_CATEGORIES ? 'all' : 'ends') : 'last');
+    ?? (anatomy || floated ? (categoryCount <= ANATOMY_ALL_MAX_CATEGORIES ? 'all' : floated ? 'extremes' : 'ends') : 'last');
 }
 
 /** The anatomy labels every line point by default up to this many categories. */

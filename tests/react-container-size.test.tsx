@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, type ReactElement } from 'react';
+import { act, type ComponentProps, type ReactElement } from 'react';
 import { createRoot, hydrateRoot, type Root } from 'react-dom/client';
 import { renderToPipeableStream, renderToStaticMarkup } from 'react-dom/server';
 import { Writable } from 'node:stream';
@@ -17,7 +17,11 @@ import { TableChart } from '../src/react/charts/table';
 import { DimSwitchChart } from '../src/react/charts/dimswitch';
 import { BarTableChart } from '../src/react/charts/bartable';
 import { LikertChart } from '../src/react/charts/likert';
+import { BulletChart } from '../src/react/charts/bullet';
 import { ChoroplethChart } from '../src/react/charts/choropleth';
+import { CreativeChart } from '../src/react/charts/creative';
+import { PvmChart } from '../src/react/charts/pvm';
+import { SankeyChart } from '../src/react/charts/sankey';
 import '../src/core/geo/packs/all';
 import { SparklineChart } from '../src/react/charts/sparkline';
 import { CohortChart } from '../src/react/charts/cohort';
@@ -138,9 +142,9 @@ it.each([148, undefined])('reports a renderable stacked100-area floor with heigh
 
 it('names the measured refusal for content fit despite its fixed fallback seed', async () => {
   const data = { categories: [{ id: 'a', label: 'A' }], series: [{ id: 's', values: [1] }] };
-  const expected = measure({ type: 'column', data, options: { size: { width: 279 } } }).refused!;
+  const expected = measure({ type: 'column', data, options: { size: { width: 119 } } }).refused!;
   let actual: RefusedLayout | undefined;
-  act(() => root.render(<ColumnChart data={data} size="container" fit="content" fallbackSize={{ width: 279, height: 180 }}
+  act(() => root.render(<ColumnChart data={data} size="container" fit="content" fallbackSize={{ width: 119, height: 180 }}
     onRefused={result => { actual = result; }} />));
   await settle();
   expect(actual?.sizing.minWidth).toBe(expected.sizing.minWidth);
@@ -285,20 +289,20 @@ it('keeps a framed sparkline at the content-fit container width', async () => {
 
 it('uses the report floor for an open-height fill container when target is omitted', async () => {
   const data = { categories: [{ id: 'a', label: 'A' }], series: [{ id: 's', values: [1] }] };
-  const expected = measure({ type: 'column', data, options: { size: { width: 279 } } }).refused!;
+  const expected = measure({ type: 'column', data, options: { size: { width: 119 } } }).refused!;
   for (const target of [undefined, 'report'] as const) {
     let actual: RefusedLayout | undefined;
     act(() => root.render(<ColumnChart data={data} target={target} size="container" fit="fill"
-      fallbackSize={{ width: 279, height: 180 }} onRefused={result => { actual = result; }} />));
-    resize(279, 0);
+      fallbackSize={{ width: 119, height: 180 }} onRefused={result => { actual = result; }} />));
+    resize(119, 0);
     flush();
     await settle();
     expect(host.querySelector('[data-bp-refused]')).not.toBeNull();
     expect(actual?.warnings).toEqual(expected.warnings);
     expect(actual?.sizing).toEqual(expected.sizing);
     const minimum = actual?.warnings[0]?.expected?.minimum as { width: number; height: number };
-    // The column falls back to compact at its 280 px floor and does not start at 16:9 there.
-    expect(minimum).toEqual({ width: 280, height: 270 });
+    // The column falls back to compact at its 120 px floor and does not start at 16:9 there.
+    expect(minimum).toEqual({ width: 120, height: 270 });
     act(() => root.render(<ColumnChart data={data} target={target} size={minimum} />));
     expect(host.querySelector('[data-bp-refused]')).toBeNull();
     expect(host.querySelector('svg')).not.toBeNull();
@@ -395,6 +399,115 @@ it('exports a DimSwitch whose document opens again', async () => {
   expect(document?.charts[0]!.type).toBe('dimswitch');
   const again = await exportSvg({ spec: document!.charts[0] });
   expect(again.ok ? '' : again.message).toBe('');
+});
+
+// A panel's width raised the grid's floor, so the host got a refusal for a grid that draws with the width unset.
+it('draws a grid whose panel width gives way and names the panel to the host', async () => {
+  const funnel = getFixtures('funnel').find(item => item.id === 'lead-funnel')!;
+  const { size: _size, ...funnelOptions } = funnel.options as { size?: unknown };
+  const panels = [
+    { id: 'main', type: 'funnel', data: funnel.data, options: { ...funnelOptions, columnOverrides: { value: { width: 300 } } } },
+    { id: 'side', type: 'bar', data: { categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], series: [{ id: 's', label: 'Sales', values: [3, 5] }] } },
+  ];
+  let refused = false;
+  let warned: { code: string; message: string }[] = [];
+  const props = { data: { panels }, size: { width: 800, height: 600 }, onRefused: () => { refused = true; }, onWarnings: (warnings: typeof warned) => { warned = warnings; } };
+  act(() => root.render(<GridChart {...props as never as ComponentProps<typeof GridChart>} />));
+  await settle();
+  expect(host.querySelector('svg')).not.toBeNull();
+  expect(refused).toBe(false);
+  expect(warned.some(warning => /^generated-column-width-/.test(warning.code) && warning.message.startsWith('[main] '))).toBe(true);
+});
+
+// A hidden bullet column printed nothing on the chart, and the data table still printed its values.
+it('leaves hidden bullet columns out of the data table', async () => {
+  const rows = [{ id: 'one', label: 'First', value: 42, target: 60 }, { id: 'two', label: 'Second', value: 75, target: 80 }];
+  const table = async (columnVisibility: Record<string, boolean>) => {
+    act(() => root.render(<BulletChart data={{ rows }} targetColumns a11y={{ table: 'hidden' }} columnVisibility={columnVisibility} size={{ width: 900, height: 300 }} />));
+    await settle();
+    return host.querySelector('[data-bp-a11y-table]')?.textContent ?? '';
+  };
+  const noActual = await table({ actual: false });
+  expect(noActual).toContain('60');
+  expect(noActual).not.toContain('42');
+  const none = await table({ actual: false, target: false, gap: false });
+  expect(none).not.toContain('42');
+  expect(none).not.toContain('75');
+  expect(none).not.toContain('60');
+});
+
+// The document must reopen as the chart on screen, with the columns as the host set them.
+it('keeps bullet and likert column settings in the exported document', async () => {
+  const bullet = getFixtures('bullet').find(item => item.id === 'plot-first')!;
+  const options = { columnVisibility: { share: false }, columnOverrides: { actual: { width: 80 } } };
+  const handle = await exporterOf(exporter => <BulletChart {...bullet.options as object} {...options} data={bullet.data as never} size={{ width: 720 }} exporter={exporter} />);
+  const drawn = host.querySelector('svg')!.textContent;
+  const result = await handle.svg();
+  const document = result.ok ? result.document as { charts: { options: Record<string, unknown> }[] } : undefined;
+  expect(document?.charts[0]!.options).toMatchObject({ ...options, columnOrder: (bullet.options as { columnOrder: unknown }).columnOrder });
+  expect(result.ok && result.artifact.text).toContain(drawn.slice(0, 12));
+  const likert = getFixtures('likert').find(item => item.id === 'columns-after-plot')!;
+  const second = await exporterOf(exporter => <LikertChart {...{ ...likert.options, data: likert.data, size: { width: 720 }, exporter } as never as ComponentProps<typeof LikertChart>} />);
+  const again = await second.svg();
+  const reopened = again.ok ? again.document as { charts: { options: Record<string, unknown> }[] } : undefined;
+  expect(reopened?.charts[0]!.options.columnOrder).toEqual((likert.options as { columnOrder: unknown }).columnOrder);
+});
+
+// The document must reopen as the table on screen, without the columns the host left out.
+it('keeps a DimSwitch column left out in its exported document', async () => {
+  const fixture = getFixtures('dimswitch').find(item => item.id === 'periods-only')!;
+  const handle = await exporterOf(exporter => <DimSwitchChart {...fixture.options as object} data={fixture.data as never} size={{ width: 720 }} exporter={exporter} />);
+  const result = await handle.svg();
+  const document = result.ok ? result.document as { charts: { options: { columnVisibility?: object } }[] } : undefined;
+  expect(document?.charts[0]!.options.columnVisibility).toEqual({ range: false, pp: false });
+});
+
+// The document must reopen as the table on screen, with its rows and bars as the host set them.
+it('keeps DimSwitch rowVisibility, bars and totalPosition in its exported document', async () => {
+  const fixture = getFixtures('dimswitch').find(item => item.id === 'by-member')!;
+  const handle = await exporterOf(exporter => <DimSwitchChart {...fixture.options as object} rowVisibility={{ total: false }} bars={false} totalPosition="bottom" data={fixture.data as never} size={{ width: 720 }} exporter={exporter} />);
+  const result = await handle.svg();
+  expect(result.ok ? '' : result.message).toBe('');
+  const spec = result.ok ? (result.document as { charts: { options: { rowVisibility?: object; bars?: boolean; totalPosition?: string } }[] }).charts[0]! : undefined;
+  expect([spec?.options.rowVisibility, spec?.options.bars, spec?.options.totalPosition]).toEqual([{ total: false }, false, 'bottom']);
+  const again = await exportSvg({ spec: spec as never });
+  expect(again.ok ? '' : again.message).toBe('');
+});
+
+// A default must hide columns as the prop does, and the document must reopen as the table on screen; the prop wins over the default.
+it('resolves defaultColumnVisibility before the DimSwitch compile and keeps it in the document', async () => {
+  const fixture = getFixtures('dimswitch').find(item => item.id === 'by-measure')!;
+  const columnsOf = async (props: object) => {
+    const handle = await exporterOf(exporter => <DimSwitchChart {...fixture.options as object} {...props} data={fixture.data as never} size={{ width: 720 }} exporter={exporter} />);
+    const result = await handle.svg();
+    return result.ok ? (result.document as { charts: { options: { columnVisibility?: object } }[] }).charts[0]!.options.columnVisibility : undefined;
+  };
+  expect(await columnsOf({ defaultColumnVisibility: { w1: false } })).toEqual({ w1: false });
+  expect(await columnsOf({ defaultColumnVisibility: { w1: false }, columnVisibility: { w2: false } })).toEqual({ w2: false });
+  const host = document.createElement('div');
+  const root = createRoot(host);
+  act(() => root.render(<DimSwitchChart {...fixture.options as object} defaultColumnVisibility={{ w1: false, pp: false }} data={fixture.data as never} size={{ width: 720 }} />));
+  expect(host.textContent).not.toContain('WEEK 1');
+  expect(host.textContent).toContain('WEEK 2');
+  act(() => root.unmount());
+});
+
+// A document must reopen as the chart on screen, so a table with no head stays without one.
+it('keeps columnHeads in an exported DimSwitch document', async () => {
+  const fixture = getFixtures('dimswitch').find(item => item.id === 'by-measure')!;
+  const handle = await exporterOf(exporter => <DimSwitchChart {...fixture.options as object} columnHeads={false} data={fixture.data as never} size={{ width: 720 }} exporter={exporter} />);
+  const result = await handle.svg();
+  const document = result.ok ? result.document as { charts: { options: { columnHeads?: boolean } }[] } : undefined;
+  expect(document?.charts[0]!.options.columnHeads).toBe(false);
+});
+
+// The document must reopen as the bar table on screen, with its authored column settings.
+it('keeps authored bar table columns in its exported document', async () => {
+  const fixture = getFixtures('bartable').find(item => item.id === 'column-widths')!;
+  const handle = await exporterOf(exporter => <BarTableChart {...fixture.options as object} data={fixture.data as never} size={{ width: 760 }} exporter={exporter} />);
+  const result = await handle.svg();
+  const document = result.ok ? result.document as { charts: { options: { columnOverrides?: object } }[] } : undefined;
+  expect(document?.charts[0]!.options.columnOverrides).toEqual((fixture.options as { columnOverrides: object }).columnOverrides);
 });
 
 // A theme switch repaints the table but keeps its layout request: the export must take the theme on screen.
@@ -579,8 +692,8 @@ it('uses the original table and dimswitch floors for open-height fill containers
   for (const { type, id, Chart, minimum } of [
     // The first full-width floor needs more height at the narrower frame.
     { type: 'table', id: 'steering-monthly', Chart: TableChart, minimum: { width: 529, height: 311 } },
-    // Tight row air draws a fixed 280 px card at 440 px.
-    { type: 'dimswitch', id: 'by-measure', Chart: DimSwitchChart, minimum: { width: 280, height: 440 } },
+    // A fixed 280 px card folds its depth to fit the height, so its floor is the folded table's: 224 px, not the 440 px of depth 2.
+    { type: 'dimswitch', id: 'by-measure', Chart: DimSwitchChart, minimum: { width: 280, height: 224 } },
   ]) for (const fillHeight of [false, true]) {
     const fixture = getFixtures(type).find(candidate => candidate.id === id)!;
     const expected = measureRequest({ type, data: fixture.data, options: { ...fixture.options, size: { width: 99 } } }).refused!;
@@ -874,13 +987,13 @@ it('restarts the settle after a drawable size and a refusal change', async () =>
     expect(refused).toHaveBeenCalledTimes(reports + 1);
   };
   act(() => root.render(chart()));
-  resize(120, 0);
+  resize(100, 0);
   flush();
   await expectWaiting(0);
   resize(720, 0);
   flush();
   expect(host.querySelector('svg[data-bp-chart]')).not.toBeNull();
-  resize(120, 0);
+  resize(100, 0);
   flush();
   await expectWaiting(1);
   act(() => root.render(chart('Changed title')));
@@ -892,7 +1005,7 @@ it('shows the busy box while a refused container size is still moving', async ()
   const data = { categories: [{ id: 'a', label: 'A' }], series: [{ id: 's', values: [1] }] };
   const refused = vi.fn();
   act(() => root.render(<ColumnChart data={data} size="container" onRefused={refused} />));
-  resize(120, 0);
+  resize(100, 0);
   flush();
   const busy = host.querySelector<HTMLElement>('[data-bp-loading]');
   expect(busy).not.toBeNull();
@@ -908,7 +1021,7 @@ it('shows the busy box while a refused container size is still moving', async ()
 // A server refusal must include the reader card and full diagnostics, without a container settle timer.
 it('renders the full fallback-size refusal on the server', async () => {
   const data = { categories: [{ id: 'a', label: 'A' }], series: [{ id: 's', values: [1] }] };
-  const fallbackSize = { width: 279, height: 180 };
+  const fallbackSize = { width: 119, height: 180 };
   const chart = <ColumnChart data={data} size="container" fallbackSize={fallbackSize}
     renderRefused={result => <span>{result.warnings[0]!.message}</span>} />;
   const html = await serverMarkup(chart);
@@ -917,12 +1030,12 @@ it('renders the full fallback-size refusal on the server', async () => {
   const card = server.querySelector('[data-bp-refused="size-below-floor"]');
   expect(card).not.toBeNull();
   expect(JSON.parse(card!.getAttribute('data-bp-diagnostics')!)).toMatchObject([{
-    code: 'size-below-floor', expected: { minimum: { width: 280, height: 180 } },
-    fix: [{ op: 'replace', path: '/options/size', value: { width: 280, height: 180 } }],
+    code: 'size-below-floor', expected: { minimum: { width: 120, height: 180 } },
+    fix: [{ op: 'replace', path: '/options/size', value: { width: 120, height: 180 } }],
   }]);
   expect(card!.querySelector('[data-bp-error-code="size-below-floor"]')).not.toBeNull();
   expect(card!.textContent).toContain('This chart needs more room.');
-  expect(card!.textContent).toContain('Column needs at least 280 × 180px; received 279 × 180px');
+  expect(card!.textContent).toContain('Column needs at least 120 × 180px; received 119 × 180px');
   expect(server.querySelector('[data-bp-loading]')).toBeNull();
   act(() => root.render(chart));
   expect(host.querySelector('[data-bp-refused]')).toBeNull();
@@ -936,7 +1049,7 @@ it('renders the full fallback-size refusal on the server', async () => {
 it('keeps a server refusal held throughout hydration', async () => {
   const data = { categories: [{ id: 'a', label: 'A' }], series: [{ id: 's', values: [1] }] };
   const refused = vi.fn();
-  const chart = <ColumnChart data={data} size="container" fallbackSize={{ width: 279, height: 180 }} onRefused={refused} />;
+  const chart = <ColumnChart data={data} size="container" fallbackSize={{ width: 119, height: 180 }} onRefused={refused} />;
   const html = await serverMarkup(chart);
   act(() => root.unmount());
   host.innerHTML = html;
@@ -1218,4 +1331,20 @@ it.each(['chart', 'table'] as const)('accepts a new prepared %s after the contai
   expect(host.querySelector(kind === 'chart' ? 'svg[data-bp-chart]' : '.bp-table-grid')).not.toBeNull();
   if (kind === 'chart') expect(host.querySelector('svg[data-bp-chart]')?.getAttribute('viewBox')?.split(' ')[2]).toBe(String(width));
   }
+});
+
+// The document must reopen as the chart on screen, with the columns, rows and numbers the host left out.
+it('keeps creative, lookup, sankey and pvm keys in their exported documents', async () => {
+  const optionsOf = async (element: (exporter: UseExport) => ReactElement) => {
+    const result = await (await exporterOf(element)).svg();
+    return (result.ok ? result.document as { charts: { options: object }[] } : undefined)?.charts[0]!.options;
+  };
+  const creative = getFixtures('creative').find(item => item.id === 'columns-rows')!;
+  expect(await optionsOf(exporter => <CreativeChart {...creative.options as object} data={creative.data as never} size={{ width: 720 }} exporter={exporter} />)).toMatchObject({ columnVisibility: { median: false }, rowOrder: ['roas', 'cpa'] });
+  const lookup = getFixtures('choropleth').find(item => item.id === 'lookup-columns')!;
+  expect(await optionsOf(exporter => <ChoroplethChart {...lookup.options as object} data={lookup.data as never} exporter={exporter} />)).toMatchObject({ columnVisibility: { swatch: false }, rowOverrides: { 'DE-BE': { label: 'Capital' } } });
+  const sankey = getFixtures('sankey').find(item => item.id === 'no-node-values')!;
+  expect(await optionsOf(exporter => <SankeyChart {...sankey.options as object} data={sankey.data as never} exporter={exporter} />)).toMatchObject({ nodeValue: false });
+  const pvm = getFixtures('pvm').find(item => item.id === 'no-point-labels')!;
+  expect(await optionsOf(exporter => <PvmChart {...pvm.options as object} data={pvm.data as never} exporter={exporter} />)).toMatchObject({ labels: { point: false } });
 });

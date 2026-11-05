@@ -38,15 +38,15 @@ One form; its chart ID is `tilemap`.
 
 | Path | Type | Required | Meaning |
 |---|---|---|---|
-| pack | string | yes | Built-in equal-area tile layout; region ids must belong to this pack. One of `'eu27'`, `'europe'`, `'world'`, `'us-states'`. |
+| pack | string | yes | Built-in equal-area tile layout. Unknown data region ids are left out with a warning and a note; all-unknown data is refused. One of `'eu27'`, `'europe'`, `'world'`, `'us-states'`. |
 | regions | array | yes | Observed regions keyed by pack id; omitted pack members are not in the data and draw plain background. Zero regions is empty-data. |
-| regions[].id | string | yes | Region identifier from the selected geographic pack. |
+| regions[].id | string | yes | Region identifier from the selected geographic pack. Exact spellings win, then ids and aliases match without regard to case. Unknown data ids are left out with a warning and a note; all-unknown data is refused. |
 | regions[].value | number \| null | yes | Region measure; null without a state means missing data. |
 | regions[].state | string |  | Named null state: suppressed, not meaningful (nm), or not applicable (na). Each has a distinct pattern and key. Requires value null. One of `'na'`, `'nm'`, `'suppressed'`. |
 | overlays | array |  | Named glyphs and labels placed at geographic anchors. |
 | overlays[].id | string | yes | Stable overlay identifier, unique within the exhibit. |
 | overlays[].at | object | yes | Region or longitude/latitude anchor for the overlay. |
-| overlays[].at.region (overlays[].at branch 1) | string | yes | Region id whose pack anchor positions the overlay. |
+| overlays[].at.region (overlays[].at branch 1) | string | yes | Region id whose pack anchor positions the overlay. Exact spellings win, then ids and aliases match without regard to case. |
 | overlays[].at.lon (overlays[].at branch 2) | number | yes | Longitude in degrees, west negative and east positive. |
 | overlays[].at.lat (overlays[].at branch 2) | number | yes | Latitude in degrees, south negative and north positive. |
 | overlays[].glyph | object | yes | Overlay mark and its semantic data. |
@@ -61,7 +61,7 @@ One form; its chart ID is `tilemap`.
 | overlays[].glyph.kind (overlays[].glyph branch 3) | string | yes | Draw a semantic status glyph. One of `'status'`. |
 | overlays[].glyph.status (overlays[].glyph branch 3) | string | yes | Status judgment shown by the glyph. One of `'good'`, `'bad'`, `'warn'`, `'neutral'`. |
 | overlays[].glyph.kind (overlays[].glyph branch 4) | string | yes | Draw a named built-in icon. One of `'icon'`. |
-| overlays[].glyph.name (overlays[].glyph branch 4) | string | yes | Name from the built-in icon catalogue: alert calendar check conversation document flag gear lightbulb people star target workflow. |
+| overlays[].glyph.name (overlays[].glyph branch 4) | string | yes | Name from the built-in icon catalogue: alert calendar check conversation document flag gear lightbulb lock people star target workflow. |
 | overlays[].glyph.tone (overlays[].glyph branch 4) | string |  | Semantic glyph tone resolved through the theme. One of `'good'`, `'bad'`, `'warn'`, `'neutral'`, `'info'`. |
 | overlays[].glyph.kind (overlays[].glyph branch 5) | string | yes | Draw a geometric location marker. One of `'marker'`. |
 | overlays[].glyph.shape (overlays[].glyph branch 5) | string |  | Marker outline; defaults to circle. One of `'circle'`, `'square'`, `'diamond'`. |
@@ -74,7 +74,6 @@ One form; its chart ID is `tilemap`.
 
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
-| legend | string \| object | `'top'`, `'bottom'`, `'none'`, `'auto'` (or another value of its type) | `'top'` | A key without a named position sits in one row above the plot, flush with it, under the subtitle; more items wrap to further rows and move the plot down. 'bottom' puts the row under the plot. 'right' is refused: a key beside the plot takes the plot's width. 'auto' adds keys when visible labels do not name every drawn series. A displayed subtitle measure or unit can name one primary series, matching the complete phrase without case sensitivity. Required explanatory keys remain, except the keys of a table, heatmap, cohort and variance, which 'none' drops for a host that draws its own. Automatic keys use footnote type in the top row. Explicit settings override theme.legend.auto, which defaults to false. Multi-series column, bar, combo, dot and scatter charts add a key when direct names are missing. A series key explains its scenario styling. Grids keep a required key under 'none' when direct names are incomplete. |
 | scale | object |  | `{"kind":"sequential"}` | Sequential magnitude or diverging midpoint color scale. |
 | scale.kind (scale branch 1) | string | `'sequential'` | `'sequential'` | Encode ordered magnitudes with one color ramp. |
 | scale.kind (scale branch 2) | string | `'diverging'` | `'sequential'` | Encode values on favorable and unfavorable sides of a midpoint, on one span both ways: the farther side sets full strength. |
@@ -82,7 +81,7 @@ One form; its chart ID is `tilemap`.
 | scale.polarity (scale branch 2) | string | `'higherIsBetter'`, `'lowerIsBetter'` |  | Which side of the midpoint is favorable; the diverging poles paint good/bad accordingly. Default higherIsBetter. |
 | classes | integer |  |  | Number of equal-interval color classes, from 3 through 7. Explicit steps define five classes instead. |
 | steps | array |  |  | Four ascending thresholds in source units, as on cohort, defining five colour classes. A value on a threshold enters the higher class. The first and last classes are open-ended. Omit to keep the continuous ramp or equal-interval classes. Use a format that prints each threshold exactly. |
-| overlayTones | object |  |  | The key words for each overlay tone, e.g. { warn: 'Behind plan' }. The overlay key shows a toned glyph among plain ones, each status and each pie share; direct labels name every overlay, so plain glyphs get no entry. A toned entry without a name prints the tone word and warns. |
+| overlayTones | object |  |  | The key words for each overlay tone, e.g. { warn: 'Behind plan' }. The overlay key shows a toned glyph among plain ones, each status and each pie share; beside keyed tones, plain Harvey balls take the overlayMeasure entry and other plain glyphs share one 'Other' entry. A toned entry without a name prints the tone word and warns. |
 | overlayTones.good | string |  |  | What the good tone marks on this map. |
 | overlayTones.bad | string |  |  | What the bad tone marks on this map. |
 | overlayTones.warn | string |  |  | What the warn tone marks on this map. |
@@ -91,7 +90,7 @@ One form; its chart ID is `tilemap`.
 | overlayMeasure | string |  |  | The measure the overlay glyphs show, e.g. 'Activation progress, %'. The overlay key prints it as a heading without a category swatch, apart from the colour key; Harvey-ball overlays without it warn geo-overlay-measure-unnamed. |
 | regionValues | boolean |  |  | Print each tile's value under its code, e.g. 'CA' over '52'. Unset prints the values when every value fits its tile and keeps the codes alone when one does not. true prints them where they fit: a tile too small for both keeps its code and the layout warns that its value shows on hover only. false prints codes only. |
 
-Plus the [shared options](options.md). This type does not accept `detailFields`, `categoryLabels`, `valueAxis`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `sort`, `topN`, `bandFraction`, `highlight`, `story`, `rounding`.
+Plus the [shared options](options.md). This type does not accept `detailFields`, `valueAxis`, `highlight`, `story`, `rounding`, `annotations`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `bandFraction`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
 ## Annotations
 
@@ -113,6 +112,8 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | eu27-demand-versus-plan | example | Demand above plan is favorable |
 | eu27-cost-versus-plan | example | Cost below plan is favorable |
 | eu27-demand-colorblind | example | Demand versus plan in the colorblind-safe good/bad pair |
+| tile-key-right | example | The value key in a column right of the tiles |
+| us-state-tile-grid-wide-slot | example | US states on a wide slot: the value key stands beside the tiles |
 | tile-key-bottom | example | The value key in one row below the tiles |
 | us-states-overlay-tones | example | Five state overlays in every tone, the tones and the ball measure named in the overlay key |
 | us-states-overlay-glyphs | torture | Status, pie, icon and marker overlays in every tone, shape and size |

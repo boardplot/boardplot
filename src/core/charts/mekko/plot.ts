@@ -6,8 +6,9 @@ import { chartString } from '../../strings/mekko';
  * because the plot rect comes out of it.
  */
 
-import { axisTitleAllowed, measureValueAxisWidth, planValueAxisTitle, valueAxisTitleBand } from '../../axis';
+import { axisTitleAllowed, measureValueAxisWidth, planValueAxisTitle, tickFormatter, valueAxisTitleBand } from '../../axis';
 import { formatAutomaticPercent } from '../../format';
+import { defaultFormatSpec, exampleSpec, parseFormatExample, specUnitKind } from '../../formatSpec';
 import { frameTextOptions, normalizeLegendOption, plotHeightAfter, solveFrame, fixedPlotChrome, plotChromeFloor, type FrameInput, type FrameResult, type LegendItemInput, authoredFootnoteCount } from '../../frame';
 import { PLOT_FLOOR_PX, plotFloorShare } from '../../sizing';
 import { categoryRowTop, hangingLabelReserve, planCategoryRow } from '../../label/categoryRow';
@@ -33,6 +34,8 @@ import {
   mutedMarkPaint,
   panelTypeClass,
   recedingSeriesId,
+  recedingRampIds,
+  neutralRampPaint,
   typeWidthClass,
 } from '../../theme';
 import type { Id } from '../../types/cell';
@@ -54,10 +57,14 @@ export function mekkoPaints(env: MekkoEnv, domain: MekkoDomain, warnings: LintWa
     s.fill ? { css: s.fill } : s.colorRole ? markRolePaint(s.colorRole, true) : highlights.has(s.id) ? { token: 'focus' } : undefined,
   ), palette, series.length > 1 ? { labels: series.map((s) => s.label), warnings } : undefined);
   const receding = recedingSeriesId(series, highlights);
-  const base = (s: NormSer, dataIdx: number): Paint => {
+  // Two or more plain series beside a highlight recede on the neutral ramp, strongest to quietest.
+  const rampIds = recedingRampIds(series, highlights);
+  const base = (s: NormSer, dataIdx: number, scenario = s.scenario): Paint => {
     if (s.fill) return { css: s.fill };
     if (s.colorRole) return markRolePaint(s.colorRole, true);
     if (s.id === receding) return mutedMarkPaint();
+    const step = rampIds.indexOf(s.id);
+    if (step >= 0) return neutralRampPaint(step, rampIds.length, scenario === 'FC');
     if (series.length === 1) return themeSeriesPaint(dataIdx, palette, s.scenario);
     return themeSeriesPaint(slots[dataIdx] ?? dataIdx, palette);
   };
@@ -68,7 +75,7 @@ export function mekkoPaints(env: MekkoEnv, domain: MekkoDomain, warnings: LintWa
     if (highlights.has(cat.id) || highlights.has(s.id)) return { token: 'focus' };
     if (mode === 'bar' && v < 0 && !s.fill && !s.colorRole) return signedFillPaint('bad');
     if (val.scenario) {
-      return series.length === 1 ? themeSeriesPaint(dataIdx, palette, val.scenario) : base(s, dataIdx);
+      return series.length === 1 ? themeSeriesPaint(dataIdx, palette, val.scenario) : base(s, dataIdx, val.scenario);
     }
     return base(s, dataIdx);
   };
@@ -94,10 +101,9 @@ export function mekkoPaints(env: MekkoEnv, domain: MekkoDomain, warnings: LintWa
  */
 function mekkoLegend(env: MekkoEnv, domain: MekkoDomain, paints: MekkoPaints): FrameInput['legend'] {
   const { options } = env;
-  // A column too thin to draw (a total of 0 included): when its disclosure does not print, the key names it.
-  // The names come from the drawn widths of a first pass (layoutMekkoPass), the rule the note uses.
-  const zero = disclosuresShown(options) ? [] : (options as { [MEKKO_NOT_DRAWN]?: string[] })[MEKKO_NOT_DRAWN] ?? [];
-  const omitted = zero.length > 0 ? [omittedKey('__omitted', chartString(options, 'mekkoZeroNote', { v1: zero.join(', ') }))] : [];
+  // A missing or undrawn column keeps its explanation in the key when its disclosure does not print.
+  const notDrawn = disclosuresShown(options) ? [] : (options as { [MEKKO_NOT_DRAWN]?: string[] })[MEKKO_NOT_DRAWN] ?? [];
+  const omitted = notDrawn.map((text, i) => omittedKey(i === 0 ? '__omitted' : `__omitted:${i}`, text));
   // The widest column names each series in place: no series key is needed.
   if (env.namesInPlace) return omitted.length > 0 && options.legend !== 'none' ? { options: normalizeLegendOption('top'), items: omitted } : undefined;
   // Two or more series are told apart by colour alone, so they
@@ -135,7 +141,7 @@ function mekkoLegend(env: MekkoEnv, domain: MekkoDomain, paints: MekkoPaints): F
   return { options: legendOpts, items };
 }
 
-/** Internal: the columns a first pass drew under 0.5 px wide (`notDrawnColumns`), for the key. */
+/** Internal: explanations for missing or undrawn columns from the first pass, for the key. */
 export const MEKKO_NOT_DRAWN = Symbol('mekkoNotDrawn');
 
 /** The frame, with the legend as a layout participant; it claims into an index of its own. */
@@ -187,7 +193,13 @@ export function mekkoPlotArea(env: MekkoEnv, domain: MekkoDomain, frame: FrameRe
   const showCats = kindSetting(env, 'category') !== false;
   // Shares of an unknown whole print no total, so a chart of only those keeps no totals row.
   const showTotals = kindSetting(env, 'total') !== false && domain.cats.some((c) => !domain.wholeUnknown.has(c.id));
-  const axisFmt = mode === 'percent' ? (v: number) => formatAutomaticPercent(v, 0, false, options.locale?.language) : env.fmt;
+  // A stack of percent cells keeps its percent sign on the axis, as on its labels.
+  const percentCells = mode === 'unit' && domain.series.every((s) => s.vals.every((cell) => cell.v === null || cell.isPct));
+  const axisSpec = percentCells && !(options.format && specUnitKind(parseFormatExample(options.format)) === 'percent') ? { ...defaultFormatSpec(options.locale?.language), suffix: '%' } : undefined;
+  const stepSpec = mode === 'percent' ? { ...defaultFormatSpec(options.locale?.language), suffix: '%' }
+    : axisSpec ?? (options.format ? exampleSpec(options.format, options.locale?.language) : defaultFormatSpec(options.locale?.language));
+  const axisFmt = domain.stepTicks ? tickFormatter(stepSpec, domain.stepTicks)
+    : mode === 'percent' ? (v: number) => formatAutomaticPercent(v, 0, false, options.locale?.language) : percentCells ? env.cellPctFmt : env.fmt;
   // A percent or unit mekko on a small canvas prints every value on its
   // segment (and a unit stack its total above it), so the value axis repeats
   // them and costs the plot its left gutter. A percent chart keeps the axis
@@ -206,7 +218,7 @@ export function mekkoPlotArea(env: MekkoEnv, domain: MekkoDomain, frame: FrameRe
   // Percent mode: the name and total rows stand between the title and the
   // 100% tick, so the title needs no room of its own for half the tick.
   const axisTitleBand = valueAxisTitleBand(axisTitle, theme, measure, catsOnTop ? measure('0', tickFont).height : 0);
-  const axisReserve = showAxis ? measureValueAxisWidth([dLo, dHi], axisFmt, theme, measure) : 0;
+  const axisReserve = showAxis ? measureValueAxisWidth([dLo, dHi], axisFmt, theme, measure, 5, axisSpec, domain.stepTicks) : 0;
   const plotX0 = frame.plot.x + axisReserve;
   const plotWFull = showAxis ? Math.max(10, frame.plot.w - axisReserve) : frame.plot.w;
   // x positions: cumulative widths, no gaps
@@ -247,6 +259,8 @@ export function mekkoPlotArea(env: MekkoEnv, domain: MekkoDomain, frame: FrameRe
   const rowPlan = (named: readonly boolean[], fonts: FontSpec[] = [tickFont, footnoteFont], widths?: readonly number[], step = catStep) => planCategoryRow({
     ...row,
     labels: row.labels.map((label, ci) => (named[ci] ? label : '')),
+    // A blanked name takes no mark seat: a mark alone would count as a name in the row's pitch.
+    suffixes: row.suffixes.map((suffix, ci) => (named[ci] ? suffix : '')),
     keep: [...named],
     centers: catCenters,
     step,
@@ -289,7 +303,49 @@ export function mekkoPlotArea(env: MekkoEnv, domain: MekkoDomain, frame: FrameRe
     const fits = cats.map((_, ci) => visible[ci]! &&
       fitText(row.labels[ci]!, tickFont, Math.max(1, headW(ci) - 6), 2, measure, { target: options.target, textScale: textScaleOf(options), typeRole: 'axis' }).title === undefined);
     catPlan = rowPlan(fits);
+    // The plan keeps the last column's blank name; a name that was blanked is unnamed.
+    catPlan = { ...catPlan, keep: catPlan.keep.map((kept, ci) => kept && fits[ci]!) };
     unnamed = cats.flatMap((_, ci) => (visible[ci] && !catPlan.keep[ci] ? [ci] : []));
+    if (catsOnTop && unnamed.length > 0) {
+      // Percent: a name that does not fit its column takes a second tier over the first, on one line, with a leader to its column.
+      const font = catPlan.font;
+      const texts = row.labels.map((label, ci) => `${label}${row.suffixes[ci]}`);
+      const tier = packNames(env, domain, { labels: texts, font, centers: catCenters, colLeft: xEdge.slice(0, -1), colRight: xEdge.slice(1), visible: cats.map((_, ci) => unnamed.includes(ci)), lo: plotX0, hi: plotX0 + plotW0 + gutter }, 1);
+      const seated = unnamed.filter((ci) => tier.row[ci]! >= 0);
+      if (seated.length > 0) {
+        const lineH = font.size * (font.lineHeight ?? 1.2);
+        namePack = { ...tier, row: cats.map((_, ci) => (seated.includes(ci) ? 1 : unnamed.includes(ci) ? -1 : 0)) };
+        catPlan = {
+          ...catPlan,
+          rowHeight: Math.max(catPlan.rowHeight, lineH),
+          keep: catPlan.keep.map((kept, ci) => kept || seated.includes(ci)),
+          infos: catPlan.infos.map((info, ci) => (seated.includes(ci) ? { lines: [texts[ci]!], w: tier.width[ci]!, h: lineH, truncated: false } : info)),
+        };
+        unnamed = unnamed.filter((ci) => !seated.includes(ci));
+      }
+      // Names one upper tier cannot hold stack on more tiers, each on a leader
+      // that passes clear of the names under it (dense-10-columns).
+      if (unnamed.length > 0) {
+        const upper = cats.flatMap((_, ci) => (seated.includes(ci) || unnamed.includes(ci) ? [ci] : []));
+        const lineH = font.size * (font.lineHeight ?? 1.2);
+        const base = cats.flatMap((_, ci) => {
+          if (!catPlan.keep[ci] || seated.includes(ci) || catPlan.infos[ci]!.w === 0) return [];
+          const left = ci === last ? Math.min(catPlan.x(ci), plotX0 + plotW0 + gutter - catPlan.infos[ci]!.w) : catPlan.x(ci);
+          return [{ left, right: left + catPlan.infos[ci]!.w }];
+        });
+        const stack = stackUpperNames(upper, tier.width, xEdge, base, plotX0, plotX0 + plotW0 + gutter);
+        if (stack) {
+          namePack = { ...tier, left: tier.left.map((left, ci) => stack.left[ci] ?? left), row: cats.map((_, ci) => stack.row[ci] ?? (unnamed.includes(ci) ? -1 : 0)) };
+          catPlan = {
+            ...catPlan,
+            rowHeight: Math.max(catPlan.rowHeight, lineH),
+            keep: catPlan.keep.map((kept, ci) => kept || upper.includes(ci)),
+            infos: catPlan.infos.map((info, ci) => (upper.includes(ci) ? { lines: [texts[ci]!], w: tier.width[ci]!, h: lineH, truncated: false } : info)),
+          };
+          unnamed = [];
+        }
+      }
+    }
   }
   if (showCats) pushAll(warnings, catPlan.warnings);
   // A width series prints each column's width as a line under its name:
@@ -318,7 +374,10 @@ export function mekkoPlotArea(env: MekkoEnv, domain: MekkoDomain, frame: FrameRe
   const widthTitlePlan = planValueAxisTitle(widthTitleText, theme, measure, frame.plot.w, 2);
   const widthTitleH = widthTitlePlan ? widthTitlePlan.height + 4 : 0;
   // A second tier of names takes one more row of name and width.
-  const tierH = namePack?.row.includes(1) ? catPlan.rowHeight + widthLineH + 2 : 0;
+  // Each further upper tier takes one more line of names.
+  const upperTiers = namePack ? Math.max(0, ...namePack.row) : 0;
+  const tierH = namePack?.row.includes(1) ? catPlan.rowHeight + widthLineH + (catsOnTop ? UPPER_TIER_GAP : 2)
+    + Math.max(0, upperTiers - 1) * (catPlan.font.size * (catPlan.font.lineHeight ?? 1.2) + UPPER_TIER_GAP) : 0;
   const categoryTickReserve = showCats ? catPlan.rowHeight + widthLineH + tierH + widthTitleH + (catsOnTop ? 4 : 8) : 0;
   // percent: name (≤2 lines) + bold total stacked above the 100% edge;
   // unit/bar: totals float above varying column tops (headroom already in domain)
@@ -385,6 +444,7 @@ export function mekkoPlotArea(env: MekkoEnv, domain: MekkoDomain, frame: FrameRe
     showTotals,
     showAxis,
     axisFmt,
+    ...(axisSpec ? { axisSpec } : {}),
     xEdge,
     dateNumericTicks,
     catPlan,
@@ -428,6 +488,7 @@ function packNames(
   env: MekkoEnv,
   domain: MekkoDomain,
   row: { labels: readonly string[]; font: FontSpec; centers: readonly number[]; colLeft: readonly number[]; colRight: readonly number[]; visible: readonly boolean[]; lo: number; hi: number },
+  tiers: 1 | 2 = 2,
 ): NamePack {
   const widthSer = domain.widthSer;
   const width = domain.cats.map((_, ci) => {
@@ -469,6 +530,7 @@ function packNames(
     const k = a.findIndex((v, i) => Math.abs(v - b[i]!) > 0.01);
     return k >= 0 && a[k]! < b[k]!;
   };
+  if (tiers === 1) return place(() => 0).pack;
   // Left to right, a name takes the first tier with room.
   const lastRight = [Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY];
   let best = place((k) => {
@@ -486,6 +548,138 @@ function packNames(
     }
   }
   return best.pack;
+}
+
+/** The most upper tiers a percent mekko stacks its names on. */
+export const MAX_UPPER_TIERS = 3;
+/** At most this many upper names are stacked by search. */
+const STACK_SEARCH_MAX = 6;
+/** Air a leader keeps from a name it passes, as upperLeader in labels.ts. */
+const LEADER_NAME_AIR = 3;
+
+/**
+ * Percent: the upper names on up to MAX_UPPER_TIERS tiers over the first one.
+ * Each name centres over its own column, keeps NAME_GAP to its tier
+ * neighbours, and has a vertical leader line inside its column and its name
+ * that passes clear of every name on a lower tier. The search takes the
+ * fewest tiers, then the fewest names on the higher tiers. Undefined where no
+ * stack names them all, or there are more than STACK_SEARCH_MAX names.
+ */
+function stackUpperNames(
+  upper: readonly number[],
+  width: readonly number[],
+  xEdge: readonly number[],
+  base: readonly { left: number; right: number }[],
+  lo: number,
+  hi: number,
+): UpperStack | undefined {
+  if (upper.length < 2 || upper.length > STACK_SEARCH_MAX) return undefined;
+  // The layout passes and the height search ask for the same stack again (eight times in dense-10-columns).
+  const key = JSON.stringify([upper, upper.map((ci) => width[ci]), xEdge, base, lo, hi]);
+  if (stackMemo.has(key)) return stackMemo.get(key);
+  if (stackMemo.size >= STACK_MEMO_MAX) stackMemo.clear();
+  const stack = searchUpperStack(upper, width, xEdge, base, lo, hi);
+  stackMemo.set(key, stack);
+  return stack;
+}
+
+/**
+ * The least distance, as a share of `half`, from `centre` to a whole-px x in
+ * [from, to] that keeps LEADER_NAME_AIR from every name; undefined where none
+ * does. The nearest such x lies at the centre or at an end of a clear run: the
+ * range's ends, or one px past a name's edge.
+ */
+function nearestClearLeader(from: number, to: number, centre: number, half: number, under: readonly { left: number; right: number }[]): number | undefined {
+  if (from > to) return undefined;
+  let best: number | undefined;
+  const at = Math.min(to, Math.max(from, Math.floor(centre)));
+  for (let j = -4; j < 2 * under.length; j++) {
+    const x = j === -4 ? from : j === -3 ? to : j === -2 ? at : j === -1 ? Math.min(to, at + 1)
+      : j % 2 === 0 ? Math.ceil(under[j >> 1]!.left - LEADER_NAME_AIR) - 1 : Math.floor(under[j >> 1]!.right + LEADER_NAME_AIR) + 1;
+    if (x < from || x > to) continue;
+    let clear = true;
+    for (const name of under) if (x >= name.left - LEADER_NAME_AIR && x <= name.right + LEADER_NAME_AIR) { clear = false; break; }
+    if (clear) best = Math.min(best ?? Infinity, Math.abs(x - centre) / half);
+  }
+  return best;
+}
+
+type UpperStack = { readonly row: Readonly<Record<number, number>>; readonly left: Readonly<Record<number, number>> };
+/** Stacks by their inputs: the search is a pure function of them. Cleared when full, so it stays small. */
+const stackMemo = new Map<string, UpperStack | undefined>();
+const STACK_MEMO_MAX = 64;
+
+function searchUpperStack(
+  upper: readonly number[],
+  width: readonly number[],
+  xEdge: readonly number[],
+  base: readonly { left: number; right: number }[],
+  lo: number,
+  hi: number,
+): UpperStack | undefined {
+  const n = upper.length;
+  const minL = upper.map((ci) => Math.max(lo, xEdge[ci]! - width[ci]! / 2));
+  const maxL = upper.map((ci) => Math.min(hi - width[ci]!, xEdge[ci + 1]! - width[ci]! / 2));
+  if (upper.some((_, k) => minL[k]! > maxL[k]! + 0.01)) return undefined;
+  // The leader's distance from its column's centre, as a share of the half width; undefined where no line is clear.
+  const leaderOff = (k: number, left: number, under: readonly { left: number; right: number }[]): number | undefined => {
+    const ci = upper[k]!;
+    const centre = (xEdge[ci]! + xEdge[ci + 1]!) / 2, half = Math.max(1, (xEdge[ci + 1]! - xEdge[ci]!) / 2);
+    const from = Math.ceil(Math.max(xEdge[ci]! + 1, left + 2));
+    const to = Math.floor(Math.min(xEdge[ci + 1]! - 1, left + width[ci]! - 2));
+    return nearestClearLeader(from, to, centre, half, under);
+  };
+  // Seats each tier left to right, lowest tier first, on its lowest, centred or highest seat after its neighbour.
+  const place = (tierOf: readonly number[], tiers: number): { left: number[]; off: number } | undefined => {
+    const left: number[] = new Array(n).fill(0);
+    const offs: number[] = new Array(n).fill(0);
+    const byTier = Array.from({ length: tiers }, (_, t) => upper.map((_, k) => k).filter((k) => tierOf[k] === t + 1));
+    const under: { left: number; right: number }[][] = [[...base]];
+    const seatTier = (t: number): boolean => {
+      if (t === tiers) return true;
+      const ks = byTier[t]!;
+      const go = (i: number, prevRight: number): boolean => {
+        if (i === ks.length) {
+          under[t + 1] = [...under[t]!, ...ks.map((k) => ({ left: left[k]!, right: left[k]! + width[upper[k]!]! }))];
+          return seatTier(t + 1);
+        }
+        const k = ks[i]!;
+        const low = Math.max(minL[k]!, prevRight + NAME_GAP);
+        if (low > maxL[k]! + 0.01) return false;
+        const centred = Math.min(Math.max((xEdge[upper[k]!]! + xEdge[upper[k]! + 1]!) / 2 - width[upper[k]!]! / 2, low), maxL[k]!);
+        const high = maxL[k]!;
+        for (let seat = 0; seat < 3; seat++) {
+          // The lowest, centred and highest seats, each once.
+          const at = seat === 0 ? low : seat === 1 ? centred : high;
+          if ((seat === 1 && at === low) || (seat === 2 && (at === low || at === centred))) continue;
+          const off = leaderOff(k, at, under[t]!);
+          if (off === undefined) continue;
+          left[k] = at;
+          offs[k] = off;
+          if (go(i + 1, at + width[upper[k]!]!)) return true;
+        }
+        return false;
+      };
+      return go(0, Number.NEGATIVE_INFINITY);
+    };
+    return seatTier(0) ? { left, off: offs.reduce((sum, off) => sum + off, 0) } : undefined;
+  };
+  for (let tiers = 2; tiers <= MAX_UPPER_TIERS; tiers++) {
+    // Every assignment of the names to the tiers: the leaders nearest their
+    // column centres win (a leader at a column's edge reads as the neighbour's),
+    // then the fewest names on the higher tiers.
+    let best: { tierOf: number[]; left: number[]; score: number[] } | undefined;
+    for (let code = 0; code < tiers ** n; code++) {
+      const tierOf = upper.map((_, k) => Math.floor(code / tiers ** k) % tiers + 1);
+      if (!tierOf.includes(tiers)) continue;
+      const seated = place(tierOf, tiers);
+      if (!seated) continue;
+      const score = [seated.off, tierOf.reduce((sum, t) => sum + t, 0)];
+      if (!best || score[0]! < best.score[0]! - 1e-9 || (Math.abs(score[0]! - best.score[0]!) <= 1e-9 && score[1]! < best.score[1]!)) best = { tierOf, left: seated.left, score };
+    }
+    if (best) return { row: Object.fromEntries(upper.map((ci, k) => [ci, best!.tierOf[k]!])), left: Object.fromEntries(upper.map((ci, k) => [ci, best!.left[k]!])) };
+  }
+  return undefined;
 }
 
 /** The widest drawn column that can hold shares, or -1: its segment labels name their series. */
@@ -519,6 +713,9 @@ function sharesGutter(env: MekkoEnv, domain: MekkoDomain, edges: readonly number
   })));
   return widest + 4 <= w || widest === 0 ? 0 : Math.ceil(widest + GUTTER_GAP + 4);
 }
+
+/** The air between a percent mekko's first tier of names and the second tier over it. */
+export const UPPER_TIER_GAP = 3;
 
 /** The air between the narrow last column and its shares in the gutter. */
 export const GUTTER_GAP = 5;

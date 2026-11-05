@@ -6,7 +6,23 @@ import '../src/core/charts';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { requireGeometry } from '../src/core/sizing';
 import type { LineMarks } from '../src/core/charts/line/layout';
-import type { Geometry } from '../src/core/types/scene';
+import { contrastRatio } from '../src/core/color';
+import { paintColor, resolveTheme } from '../src/core/theme';
+import type { Geometry, Paint } from '../src/core/types/scene';
+
+// A linear value axis misplaces values by orders of magnitude when a log axis is requested.
+it('draws decade ticks evenly on a log axis and refuses zero', () => {
+  const request = (values: number[]) => resolveChartRequest({
+    type: 'line',
+    data: { categories: ['a', 'b', 'c'], series: [{ id: 'users', values }] },
+    options: { valueAxis: { log: true, show: true }, size: { width: 720, height: 540 } },
+  } as never);
+  const geometry = requireGeometry(layoutResolvedRequest(request([4, 100, 4000])));
+  const ticks = geometry.axes.find((axis) => axis.axis === 'y')!.ticks;
+  const positions = [10, 100, 1000].map((value) => ticks.find((tick) => tick.at === value)!.pos);
+  expect(positions[0]! - positions[1]!).toBeCloseTo(positions[1]! - positions[2]!, 5);
+  expect(() => layoutResolvedRequest(request([4, 0, 4000]))).toThrowError(expect.objectContaining({ code: 'log-nonpositive' }));
+});
 
 // Opaque fills down to the baseline hid a crossing series' area and showed the
 // next one as a band that read as a stacked segment (124 over 96 read as 28).
@@ -249,4 +265,40 @@ it('keeps every stacked value wholly on its band or wholly off it, at both ends 
       expect(crosses, `${name}: ${label.id}`).toBe(false);
     }
   }
+});
+
+// A shown value axis replaced the tick of a nonzero baseline and of a value line past the data with its own ladder, so 41 and 37.5 never printed.
+it('keeps the baseline tick and the value-line tick on a shown line value axis', () => {
+  const tickValues = (valueAxis: object, annotations: unknown[]): number[] => {
+    const request = resolveChartRequest({
+      type: 'line',
+      data: { categories: ['A', 'B', 'C', 'D', 'E', 'F'], series: [{ id: 's', label: 'Sales', values: [52, 54, 57, 59, 60, 63] }] },
+      annotations,
+      options: { title: 'Sales', valueAxis: { show: true, ...valueAxis }, size: { width: 720, height: 404 } },
+    } as never);
+    const axis = (requireGeometry(layoutResolvedRequest(request)) as Geometry).axes.find((entry) => entry.axis === 'y');
+    return (axis?.ticks ?? []).map((tick) => tick.at as number);
+  };
+  expect(tickValues({ min: 41 }, [])).toContain(41);
+  expect(tickValues({}, [{ kind: 'valueLine', value: 37.5, label: 'Goal' }])).toContain(37.5);
+});
+
+// The Bridge palette paints the top stacked series in the ink colour, and a
+// value line drawn across that area in ink vanished ('Benchmark 100' pointed at nothing).
+it('keeps a value line legible where it crosses a stacked area of its own colour', () => {
+  const request = resolveChartRequest({
+    type: 'line',
+    data: {
+      categories: ['jan', 'feb', 'mar'],
+      series: [{ id: 'new', values: [42, 45, 48] }, { id: 'returning', values: [60, 62, 61] }],
+    },
+    options: { variant: 'stacked-area', size: { width: 720 } },
+    annotations: [{ kind: 'valueLine', value: 100, label: 'Benchmark' }],
+  } as never);
+  const geometry = requireGeometry(layoutResolvedRequest(request)) as Geometry;
+  const theme = resolveTheme(undefined);
+  const area = geometry.scene.find((node) => node.id === 'mark:area:returning') as { fill: Paint };
+  const pieces = geometry.scene.filter((node) => node.part === 'valueLine' && (node.t === 'line' || node.t === 'path')) as { stroke: Paint }[];
+  expect(pieces.length).toBeGreaterThan(0);
+  for (const piece of pieces) expect(contrastRatio(paintColor(theme, piece.stroke), paintColor(theme, area.fill))).toBeGreaterThan(3);
 });

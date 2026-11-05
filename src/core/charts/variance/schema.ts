@@ -10,6 +10,7 @@ import {
   primaryAxisTitleSchema,
   partialCategorySchema,
   refusedBaseOptions,
+  topNWithoutRestCount,
   valueKindSchema,
   scenarioField,
   formatExample,
@@ -34,7 +35,7 @@ const seriesSchema = z.strictObject({
   id: idSchema.describe("Series identity used by keyed options, annotations and legend entries."),
   label: z.string().optional().describe("Displayed series name; defaults to the series id."),
   values: z.array(z.union([cellSchema, z.strictObject({ categoryId: idSchema.describe("Category id identifying this value independently of array position."), value: cellSchema.describe("Cell assigned to the named category in this series.") })])).describe("Values in category order, or keyed entries pairing a categoryId with its value."),
-  scenario: scenarioField("Read only on the variance.vs series, where it names the tier (ΔPL). Every data value draws as the actual, so name a forecast or plan value in its category label or a footnote."),
+  scenario: scenarioField("Read only on the variance.vs series, where it names the tier (ΔPL). Every data value draws as the actual, so name a forecast or plan value in its category label or a footnote. In a grid tier, a category whose values are all FC draws hatched, like a partial one."),
   direction: z.enum(['higherIsBetter', 'lowerIsBetter']).optional().describe("Whether increases are favorable; defaults to higherIsBetter for directional comparisons."),
   role: z.enum(['data', 'reference']).optional().describe("Data series or comparison-only reference series; references are excluded from the main plotted data."),
   colorRole: colorRoleField("Theme color role of the integrated actual columns and their key when this series is the actual and sets no fill; no effect in the other modes or on a reference series."),
@@ -59,9 +60,11 @@ const varianceSpecSchema = z.object({
 });
 
 export const varianceOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions('variance')).safeExtend({
+  sort: baseOptionsSchema.shape.sort.describe("Category ranking value: the signed drawn difference, delta percent in relative mode and absolute difference otherwise. desc puts the largest positive difference first, asc the smallest; stable ties and missing values last. sheet keeps authored order and reverse reverses it. Dated categories keep authored order when a growth or difference annotation spans periods."),
+  topN: topNWithoutRestCount.optional().describe("Keep the n largest drawn differences by absolute size, delta percent in relative mode and absolute difference otherwise, before sorting. Missing differences count as zero. No Others row is drawn; omitted category names are disclosed. Authored rest: true, restLabel, showRestCount or threshold warns that it is ignored when categories are omitted."),
   axisTitles: primaryAxisTitleSchema('over the value axis, in the top row left of the plot, when valueAxis.show draws it'),
   variant: z.enum(['absolute', 'relative', 'integrated']).describe("Show raw differences, relative percentage differences, or an integrated comparison with the absolute values. The key builds its entries from the scenario code of the variance.vs series (AC, PY, PL or FC), or from its label when it has no scenario, here PY. absolute and relative: 'Better than PY' and 'Worse than PY', with (lower) and (higher) for a lowerIsBetter series. integrated: the compared series, then 'Above PY' and 'Below PY' for the caps, the same wording at every width, and 'Within rounding of PY' for a muted cap that prints as zero. On report, dashboard, slide and print, the actual value label sits inside the column at its foot; a column too short for it uses the actual edge, then a side position at the same height."),
   variance: varianceSpecSchema.describe("Required comparison identifying the measured quantity and the reference series."),
   missingMark: z.enum(['dash', 'none']).optional()
-    .describe("What a category with no prior value leaves behind. 'dash' prints an en dash in the muted ink, at the baseline or, over an integrated actual column, where the cap would sit, so a missing reference reads as missing and not as no difference; 'none' (the default) draws nothing. A reference that exists and is not positive keeps its own 'n.m.' glyph."),
+    .describe("What a category with no prior value leaves behind. 'dash' prints an en dash in the muted ink, at the baseline or, over an integrated actual column, where the cap would sit, so a missing reference reads as missing and not as no difference; 'none' (the default) draws nothing. A reference that exists and is not positive keeps its own 'n.m.' glyph. A category with a blank part in its actual total leaves the same mark and the info warning missing-value."),
 }) as unknown as z.ZodType<VarianceOptions>;

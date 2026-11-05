@@ -143,9 +143,13 @@ function collectGapRegions(input: {
         const d0 = a0 - b0;
         const d1 = a1 - b1;
         if (d0 * d1 < 0) {
-          const fraction = d0 / (d0 - d1);
-          const crossingValue = a0 + (a1 - a0) * fraction;
-          const crossing = { ci, x: start.x + (end.x - start.x) * fraction, yA: y(crossingValue), yB: y(crossingValue) };
+          // Log lines are straight in screen space, so their crossing is too.
+          const log = (y as { log?: boolean }).log === true;
+          const from = log ? start.yA - start.yB : d0;
+          const to = log ? end.yA - end.yB : d1;
+          const fraction = from / (from - to);
+          const crossingY = log ? start.yA + (end.yA - start.yA) * fraction : y(a0 + (a1 - a0) * fraction);
+          const crossing = { ci, x: start.x + (end.x - start.x) * fraction, yA: crossingY, yB: crossingY };
           appendPiece(d0 > 0 ? 'positive' : 'negative', start, crossing);
           active = null;
           appendPiece(d1 > 0 ? 'positive' : 'negative', crossing, end);

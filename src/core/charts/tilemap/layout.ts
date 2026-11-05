@@ -2,19 +2,19 @@ import { staticFrame } from '../../footer';
 import { chartTheme } from '../chartEnv';
 import { chartString } from '../../strings/tilemap';
 import { structureCount } from '../../structureCounts';
-import { authoredNotes, DEFAULT_NOTE_LIMIT, valueNoteLine, frameTextOptions, settledAutoHeight, legendRequired, noteCap, noteLine, solveFrame, type FrameResult, type LegendItemInput, type NoteCapOptions } from '../../frame';
+import { authoredNotes, DEFAULT_NOTE_LIMIT, valueNoteLine, frameTextOptions, settledAutoHeight, legendRequired, noteCap, noteLine, solveFrame, SIDE_KEY_PLOT_SHARE, type FrameResult, type LegendItemInput, type NoteCapOptions } from '../../frame';
 import { formatAutomaticNumber } from '../../format';
 import { formatterFromExample } from '../../formatSpec';
 import type { Rect } from '../../geometry';
 // By name, not through the '../../geo' barrel, for the reason choropleth/layout.ts gives.
 import { projectGeoLonLat } from '../../geo/project';
-import { geoRegionIdIndex, resolveGeoRegionId } from '../../geo/resolveRegionId';
-import { getTilePack, type TileRegionRecord } from '../../geo/tiles';
+import { geoRegionIdIndex, nearestRegionId, resolveGeoRegionId, type GeoRegionIdIndex } from '../../geo/resolveRegionId';
+import { getTilePack, WORLD_TILE_PACK, type TilePack, type TileRegionRecord } from '../../geo/tiles';
 import type { GeoPackId } from '../../geo/types';
 import { getGeoPack } from '../../geo/packs/registry';
-import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
+import { DEFAULT_TARGET, TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { resolveSizing, sizeRefusal, plotFloorHeight, SIZE_TOLERANCE } from '../../sizing';
-import { readerFloorPx } from '../../typeFloors';
+import { readerFloorPx, textScaleOf } from '../../typeFloors';
 import { rowDrivenHeight, tallestContentHeight } from '../../rowCanvas';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
@@ -40,12 +40,13 @@ import type {
   TilemapMarks,
   TilemapOptions,
 } from './types';
-import { buildGeoScale, decimalsOf, geoLabelFont, ingestGeoRegions, type ScaleModel, geoStatePattern, geoStateLabel, geoStateLegend, geoStateSummary, geoStateCounts, geoScaleHints } from '../geoScale';
+import { buildGeoScale, decimalsOf, geoLabelFont, quietLandPaint, ingestGeoRegions, type ScaleModel, geoStatePattern, geoStateLabel, geoStateLegend, geoStateSummary, geoStateCounts, geoScaleHints, KEY_BESIDE_GAIN } from '../geoScale';
 import { autoDecimals } from '../../formatPrecision';
 import { compareText } from '../../text';
 import { geoOverlayDiameter, geoOverlayLegend, renderGeoOverlays, reserveGeoOverlayGlyphs } from '../choropleth/overlays';
 import type { GeoOverlay } from '../choropleth/overlayTypes';
 import { geoOptionRefusals } from '../choropleth/geoRefusals';
+import { PLOT_W_FLOOR_DEMOTED } from '../../lint/space';
 import { copyNote, disclosureNote, engineNoteMeta, keepNoteMeta } from '../../notes';
 import { maxOf, minOf, pushAll } from '../../arrays';
 
@@ -100,7 +101,7 @@ export function layoutTilemap(
   const size = resolveSize(options.size);
   // A right key can change width when overlay entries drop. Keep its first
   // automatic frame separate from fixed repair probes at the same width.
-  const rightKey = options.legend === 'right' || (typeof options.legend === 'object' && options.legend.position === 'right');
+  const rightKey = [options.legend, typeof options.legend === 'object' ? options.legend.position : undefined].some(side => side === 'right' || side === 'left');
   if (rightKey && data.overlays?.length && constraints && !constraints.fixed.height && size.width === constraints.sizePx.width) constraints[AUTOMATIC_FRAME] ??= size;
   const automaticFrame = constraints?.[AUTOMATIC_FRAME];
   const fixedHeight = constraints?.fixed.height || (constraints !== undefined
@@ -113,6 +114,27 @@ export function layoutTilemap(
     if ('type' in result) return result;
     pass = result;
   }
+}
+
+/**
+ * The repair for a region id the pack does not know. On a pack of countries
+ * the world pack reads the id first, as its aliases hold the ISO 3166 codes:
+ * DEU names DE, and US on the europe pack names the world pack, where a
+ * spelling match would offer ES. Other ids get the nearest spelling.
+ */
+function unknownRegionSuggest(id: string, pack: TilePack, idIndex: GeoRegionIdIndex, options: TilemapOptions): string | undefined {
+  const world = geoRegionIdIndex(WORLD_TILE_PACK.regions);
+  if (pack.id !== WORLD_TILE_PACK.id && pack.regions.every((region) => world.canonical.has(region.id))) {
+    const resolution = resolveGeoRegionId(world, id);
+    if (resolution.kind === 'ambiguous') return undefined;
+    if (resolution.kind === 'resolved') {
+      return idIndex.canonical.has(resolution.id)
+        ? chartString(options, 'regionIdSuggestion', { v1: idIndex.canonical.get(resolution.id)! })
+        : chartString(options, 'regionInOtherPack', { v1: id, v2: WORLD_TILE_PACK.id });
+    }
+  }
+  const nearest = nearestRegionId(id, [...idIndex.canonical.keys()], idIndex.canonical);
+  return nearest === undefined ? undefined : chartString(options, 'regionIdSuggestion', { v1: nearest });
 }
 
 /** Height and note passes must not grow the call stack. */
@@ -128,9 +150,16 @@ function layoutTilemapPass(
   if (!data.regions.length) throw new NormalizeError(EMPTY_DATA, 'regions', 'tilemap requires at least one region', 'add regions[].id and value');
   const pack = getTilePack(data.pack);
   const idIndex = geoRegionIdIndex(pack.regions);
-  const { valuesById, statesById } = ingestGeoRegions(data.regions, idIndex, { where: `tile pack '${pack.id}'`, regionWord: 'tile-pack region' }, warnings, (id, index) => {
-    throw new NormalizeError('tilemap-unknown-region', `regions[${index}].id`, `region '${id}' is not present in tile pack '${pack.id}'`);
+  const { valuesById, statesById, leftOut } = ingestGeoRegions(data.regions, idIndex, { where: `tile pack '${pack.id}'`, regionWord: 'tile-pack region' }, warnings, (id, index) => {
+    const suggest = unknownRegionSuggest(id, pack, idIndex, options);
+    return {
+      code: 'tilemap-unknown-region', severity: 'warn',
+      message: chartString(options, 'unknownRegionLeftOut', { v1: id, v2: pack.id }),
+      ...(suggest ? { suggest } : {}),
+      owner: { categoryId: id }, field: ['data', 'regions', index, 'id'],
+    };
   });
+  if (leftOut.length) options = { ...options, notes: { ...options.notes, show: [...new Set([...(options.notes?.show ?? ['note']), 'disclosure' as const])] } };
 
   const theme = resolveSemanticPaletteTheme(
     chartTheme(options),
@@ -164,18 +193,22 @@ function layoutTilemapPass(
   // The tilemap names the hatched key entry "No data"; the choropleth keeps its own words.
   scale.legend.forEach((item, i) => { if (item.id === 'no-data') scale.legend[i] = { ...item, label: chartString(options, 'tilemapNoData') }; });
   pushAll(scale.legend, geoStateLegend(statesById.values(), options));
+  const landPaint = quietLandPaint(scale.legend);
   if (pack.regions.some((region) => !valuesById.has(region.id))) scale.legend.push({
-    id: 'not-in-data', label: chartString(options, 'notInData'), paint: { token: 'inkMuted' }, pattern: 'outline', hollow: true,
+    id: 'not-in-data', label: chartString(options, 'notInData'), paint: landPaint,
   });
   warnings.push(...geoScaleHints(numericValues, options, fmt));
-  const legendOptions = legendRequired(options.legend, warnings, 'tilemap', theme);
+  let legendOptions = legendRequired(options.legend, warnings, 'tilemap', theme);
+  // Nothing named the key's place: on a pinned canvas it may stand beside the tiles (see below).
+  const keyUnnamed = (options.legend === undefined || options.legend === 'auto') && theme.legend?.required === undefined;
   // The classed key of a sequential scale is one stepped bar with each break
   // printed once under it; the frame keeps the other key entries.
   const margin = { ...canvasMargin(theme, size.width), ...options.margin };
-  const key = !(options as { [SWATCH_KEY]?: true })[SWATCH_KEY] && legendOptions.position === 'top' && scale.edges !== undefined
+  const steppedKey = () => !(options as { [SWATCH_KEY]?: true })[SWATCH_KEY] && legendOptions.position === 'top' && scale.edges !== undefined
     && (options.scale?.kind ?? 'sequential') === 'sequential' && panelTypeClass(options) === undefined
     ? planSteppedKey(scale, margin.left, size.width - margin.left - margin.right, spaceTokens(theme, size.width).gapLegend, theme, options.target!, measure, fmt)
     : undefined;
+  let key = steppedKey();
   const userSource = options.source ? chartString(options, 'userSourceClause', { v1: options.source }) : '';
   // Fit the occupied lattice, excluding any empty edge rows or columns.
   const rowMin = minOf(pack.regions.map((region) => region.row));
@@ -199,7 +232,9 @@ function layoutTilemapPass(
   if (valueLines.length) pushAll(omissionLines, valueLines);
   // Fixed canvases and right keys keep their accepted tile area.
   // The note-list fallback records omissions without taking tile space.
-  const rightKey = options.legend === 'right' || (typeof options.legend === 'object' && options.legend.position === 'right');
+  // The layout, not the spec, put the key beside the tiles.
+  let keyChosen = false;
+  let rightKey = legendOptions.position === 'right' || legendOptions.position === 'left';
   // A stopped automatic height is not a pinned frame. Its note stays in the
   // frame, so the reported floor holds the note the static footer prints.
   const listOmissions = !staticFrame.pinned && ((fixedHeight && !stopped) || rightKey || panelTypeClass(options) !== undefined);
@@ -213,19 +248,25 @@ function layoutTilemapPass(
         margin,
         ...frameTextOptions(options),
         // Only drawn glyphs can have a key or a label in the tile note.
-        footnotes: [...overlayNote(drawableOverlays, listed, pack, idIndex, options), ...codeLookup(options, pack),
+        footnotes: [...noteLine(chartString(options, 'regionsLeftOutNote'), leftOut, options).map(disclosureNote), ...overlayNote(drawableOverlays, listed, pack, idIndex, options), ...codeLookup(options, pack),
           ...(listOmissions ? [] : omissionLines), ...authoredNotes(options)],
-        // Footer rule: the tile layout is Boardplot's own, drawn from pinned anchors, so it
-        // needs no credit line. The short credit ends the source line,
-        // "Source: … · Tile layout: Boardplot, after Natural Earth"; the full attribution
-        // stays in the reading and in derived.pack.attribution.
-        source: options.source ? `${options.source} · ${tileCreditShort(pack.meta.attribution, options)}` : tileCreditShort(pack.meta.attribution, options),
+        // The tile layout is Boardplot's own and carries no third-party data, so the
+        // source line names only the author's source. The full attribution stays in
+        // the reading and in derived.pack.attribution.
+        source: options.source,
         legend: { options: legendOptions, items: [...scale.legend.filter((item) => !key?.owns.has(item.id)), ...overlayLegend.items] },
+        // The layout decides below whether a named side key keeps its place.
+        sideKeyFixed: true,
         theme,
         measure,
       },
       occupied,
     );
+    // A key the layout chose beside the tiles needs no note on what a named side key costs.
+    if (keyChosen && frameResult.frame.warnings) {
+      const kept = frameResult.frame.warnings.filter((warning) => warning.code !== 'legend-beside-plot');
+      frameResult.frame.warnings = kept.length ? kept : undefined;
+    }
     if (listOmissions && omissionLines.length) {
       frameResult.frame.notes = [...(frameResult.frame.notes ?? []), ...omissionLines];
       frameResult.frame.noteList = [...(frameResult.frame.noteList ?? []),
@@ -251,6 +292,46 @@ function layoutTilemapPass(
     return { overlayLegend, occupied, frameResult, available, tileSize };
   };
   let frame = layoutFrame();
+  // A key the spec put beside the tiles stays there while the tiles keep their share of the width
+  // and, on a pinned canvas, the key's column fits the height; else it stands in the row above them.
+  if (rightKey) {
+    const side = frame;
+    const sideOptions = legendOptions;
+    const widthShare = side.frameResult.plot.w / size.width;
+    const tooTall = fixedHeight && (side.frameResult.frame.minHeight ?? 0) > size.height + SIZE_TOLERANCE;
+    if (widthShare < SIDE_KEY_PLOT_SHARE || tooTall) {
+      legendOptions = { ...sideOptions, position: 'top' };
+      key = steppedKey();
+      rightKey = false;
+      frame = layoutFrame();
+      warnings.push({
+        code: 'legend-side-fallback',
+        severity: 'warn',
+        message: tooTall && widthShare >= SIDE_KEY_PLOT_SHARE
+          ? `the key stays in the row above the tiles: its column is taller than the ${Math.round(size.height)} px canvas`
+          : `the key stays in the row above the tiles: a column beside them would leave the tiles ${Math.round(widthShare * 100)}% of the width, under ${Math.round(SIDE_KEY_PLOT_SHARE * 100)}%`,
+        suggest: 'Give the chart more width, or more height, to keep the key beside the tiles.',
+        field: ['options', 'legend'],
+      });
+    }
+  }
+  // A pinned canvas whose tiles are bound by its height wastes the key row: an unnamed key stands
+  // in a column beside the tiles when that makes them clearly larger.
+  if (keyUnnamed && fixedHeight && !stopped) {
+    legendOptions = { position: 'right' };
+    key = undefined;
+    rightKey = true;
+    keyChosen = true;
+    const beside = layoutFrame();
+    if (beside.tileSize > frame.tileSize * KEY_BESIDE_GAIN && beside.frameResult.plot.w / size.width >= PLOT_W_FLOOR_DEMOTED) {
+      frame = beside;
+    } else {
+      legendOptions = { position: 'top' };
+      key = steppedKey();
+      rightKey = false;
+      keyChosen = false;
+    }
+  }
   const constraints = (options as TargetSizeOptions)[TARGET_SIZE];
   const automaticHeight = !fixedHeight && panelTypeClass(options) === undefined
     && (constraints?.fixed.height === false || options.size === undefined);
@@ -352,16 +433,23 @@ function layoutTilemapPass(
   const labelPlans: TileLabelPlan[] = [];
   const labelEnabled = options.labels !== false && options.labels?.category !== false;
 
+  // Where the values do not fit at the label size but all fit at the type floor,
+  // every tile steps down to the floor together, so one map has one text size.
+  const floorPx = readerFloorPx(options.target ?? DEFAULT_TARGET, 'label', textScaleOf(options));
+  const floorTheme: Theme = { ...theme, type: { ...theme.type, label: { ...theme.type.label, size: floorPx } } };
+  const labelTheme = options.regionValues !== false && floorPx < theme.type.label.size
+    && !valuesFit(pack.regions, valuesById, tileSize, theme, measure, fmt)
+    && valuesFit(pack.regions, valuesById, tileSize, floorTheme, measure, fmt) ? floorTheme : theme;
   // Unset regionValues prints every value where every value fits its tile
   // under the bold code; otherwise the tiles keep their codes alone.
   const printValues = options.regionValues
-    ?? (labelEnabled && valuesFit(pack.regions, valuesById, tileSize, theme, measure, fmt));
+    ?? (labelEnabled && valuesFit(pack.regions, valuesById, tileSize, labelTheme, measure, fmt));
   // Values the tiles leave out are named in a note: run again with it, so the frame holds its lines.
   if (!printValues && !valuesNoted && options.regionValues === undefined && labelEnabled && valueEntries.length) {
     return { options, listed, run, omitted, heights: new Map(), fixedHeight, stopped, valuesNoted: true };
   }
   // Codes print bold where every code fits bold, so one map has one weight.
-  const boldCodes = codesFitBold(pack.regions, tileSize, theme, measure);
+  const boldCodes = codesFitBold(pack.regions, tileSize, labelTheme, measure);
   for (const region of pack.regions) {
     const value = valuesById.get(region.id) ?? null;
     const unlisted = !valuesById.has(region.id);
@@ -373,7 +461,7 @@ function layoutTilemapPass(
       w: tileSize,
       h: tileSize,
     };
-    const fill: Paint = state ? { token: 'inkMuted' } : unlisted ? { token: 'background' } : noData ? { token: 'neutral' } : scale.paint(value);
+    const fill: Paint = state ? { token: 'inkMuted' } : unlisted ? landPaint : noData ? { token: 'neutral' } : scale.paint(value);
     const labelBackground: Paint = (noData || state) ? { token: 'background' } : fill;
     const nodeId = `tile:${region.id}`;
     const owner = { categoryId: region.id };
@@ -382,9 +470,9 @@ function layoutTilemapPass(
       id: nodeId,
       rect,
       fill,
-      // A 2 px gap in the page colour parts filled tiles; an outline stays on
-      // hatched, state and unlisted tiles, whose fill does not carry an edge.
-      ...(!unlisted && !noData && !state ? {} : { stroke: { token: 'inkMuted' } as Paint, strokeWidth: strokeToken(theme, 'hair') }),
+      // A 2 px gap in the page colour parts filled and quiet-land tiles; an
+      // outline stays on hatched and state tiles, whose fill does not carry an edge.
+      ...(!noData && !state ? {} : { stroke: { token: 'inkMuted' } as Paint, strokeWidth: strokeToken(theme, 'hair') }),
       ...(state ? { pattern: geoStatePattern(state) } : noData ? { pattern: 'hatch45' as const } : {}),
       owner,
       part: 'tile',
@@ -403,7 +491,7 @@ function layoutTilemapPass(
     });
     if (labelEnabled) {
       labelPlans.push(
-        tileLabelPlan(region, rect, labelBackground, theme, measure, printValues && value !== null ? fmt(value) : undefined, boldCodes),
+        tileLabelPlan(region, rect, labelBackground, labelTheme, measure, printValues && value !== null ? fmt(value) : undefined, boldCodes),
       );
     }
   }
@@ -491,10 +579,15 @@ function layoutTilemapPass(
   const unlistedCount = marks.regions.filter((mark) => mark.state === 'not-in-data').length;
   // The width-filled lattice is a preference. A pinned, shorter lattice is
   // already readable when every country code and the frame fit unchanged.
-  const smallerLattice = fixedHeight && options.belowMinimum !== 'refuse'
-    && size.height + SIZE_TOLERANCE < naturalHeight()
+  const tooShort = fixedHeight && size.height + SIZE_TOLERANCE < naturalHeight();
+  const smallerLattice = tooShort && options.belowMinimum !== 'refuse'
     && (frameResult.frame.minHeight ?? 0) <= size.height + SIZE_TOLERANCE
     && solved.placed.every(label => !label.hidden);
+  // A key column the layout chose must not refuse a canvas that draws with the key row: a column
+  // taller than the canvas, or larger tiles that keep glyphs over the codes, leave no smaller lattice.
+  if (keyChosen && tooShort && !smallerLattice) {
+    return { options: { ...options, legend: 'top' }, listed, run, omitted, heights, fixedHeight, stopped, valuesNoted };
+  }
   if (smallerLattice) warnings.push({
     code: 'plot-under-floor', severity: 'warn',
     message: `the fixed height uses smaller square tiles; the chart needs ${naturalHeight()} px for the width-filled lattice`,
@@ -968,12 +1061,6 @@ function tileValueNote(entries: readonly { id: string; name: string; value: numb
   const low = entries.find((entry) => entry.value === minOf(values))!;
   const leads = [...new Set([high, low, ...entries.filter(named)])];
   return valueNoteLine(lead, [...new Set([...leads, ...entries])].map((entry) => entry.text), options, entries.length);
-}
-
-/** The short tile-layout credit: the anchor source by name, else the full attribution. */
-function tileCreditShort(attribution: string, options: TilemapOptions): string {
-  const from = /Natural Earth/.test(attribution) ? 'Natural Earth' : /US Census Bureau/.test(attribution) ? 'US Census Bureau' : undefined;
-  return from ? chartString(options, 'tileCreditShort', { v1: from }) : attribution;
 }
 
 /** Whether every tile's code fits its tile in bold, as tileLabelPlan measures it. */

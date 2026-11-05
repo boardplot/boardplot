@@ -1,6 +1,7 @@
 /** Butterfly data and options schemas, without the chart engine. */
 
 import * as z from 'zod';
+import { columnOverridesOption } from '../../schema/generatedColumnOptions';
 import {
   colorRoleField,
   addCategorySeriesIdIssues,
@@ -8,6 +9,7 @@ import {
   detailCellSchema,
   idSchema,
   refusedBaseOptions,
+  sortCategoriesOnly,
   valueKindSchema,
   scenarioField,
   formatExample,
@@ -46,9 +48,13 @@ export const butterflyDataSchema = z
   }) as unknown as z.ZodType<ChartData>;
 
 export const butterflyOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions('butterfly')).safeExtend({
+  sort: sortCategoriesOnly.optional().describe("Category ranking value: the sortBy measure (a, b, sum or diff), default sum. categories sets sheet, reverse, asc or desc with stable ties and missing values last. A rest row stays last. Dated rows keep authored order when a growth or difference annotation spans periods."),
+  columnOverrides: columnOverridesOption('butterfly', ['width', 'align', 'headAlign', 'label']),
   a: idSchema.describe("Series id displayed in the left pane."),
   b: idSchema.describe("Series id displayed in the right pane."),
   centerColumnWidth: z.number().positive().optional().describe("Width in pixels reserved between the panes for category labels; omission uses their measured width."),
-  sortBy: z.enum(['sheet', 'a', 'b', 'sum', 'diff']).optional().describe("Row order: sheet by default, or descending a, b, sum a+b, or difference b-a."),
+  sortBy: z.enum(['sheet', 'a', 'b', 'sum', 'diff']).optional().describe("Row ranking measure: a, b, sum a+b, or difference b-a. Default sheet keeps authored order. A measure sorts descending unless sort.categories supplies the direction or mode."),
+  diffColumn: z.boolean().optional().describe("A right-aligned column of each row's difference, second series minus first, signed, under a bold delta head. Default true with sortBy 'diff', else false. A highlighted row prints bold. The panes give the column its width at one scale; it stays off below 576 px canvas width."),
   sharedScale: z.boolean().optional().describe("Use the same value scale on both sides by default. False gives independent scales and warns that lengths are not comparable."),
+  negatives: z.enum(['direction', 'magnitude']).optional().describe("A negative value: direction (default) runs its bar from the pane's zero line toward the category names, and positive bars run outward; magnitude draws the bar length of the absolute value outward in a lighter tint."),
 }) as unknown as z.ZodType<ButterflyOptions>;

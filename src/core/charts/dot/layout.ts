@@ -2,6 +2,7 @@ import { chartString } from '../../strings/dot';
 import { breakUnsupported, chartPalette, chartTheme } from '../chartEnv';
 import { labelOn as chartLabelOn } from '../labelOn';
 import { structureCount } from '../../structureCounts';
+import { topNCut, topNOmitted, topNRestUnsupported } from '../topN';
 import { distinguishSeries } from '../../seriesIdentity';
 /**
  * Dot family — one layout engine, three
@@ -16,7 +17,7 @@ import { distinguishSeries } from '../../seriesIdentity';
  */
 
 import { rowLabelBand } from '../../label/rowLabels';
-import { fittedLabel, gutterBudget, stepDownFont } from '../../label/rowFit';
+import { fittedLabel, gutterBudget, pinnedRowFont, stepDownFont } from '../../label/rowFit';
 import { namedLineText } from '../../annotateParts';
 import type { AnchorResolution } from '../../annotate';
 import { percentCellsOnly, percentLevels, runAnnotatePass } from '../../annotatePass';
@@ -28,12 +29,16 @@ import { autoDecimals } from '../../formatPrecision';
 import { localeStrings } from '../../strings/dot';
 import { MARK_CONTRAST_FLOOR, palettePerceptualDistance } from '../../themeRules';
 import { hueSaturation } from '../../color';
-import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
+import { DEFAULT_TARGET, TARGET_SIZE, type TargetSizeOptions } from '../../target';
+import { asColumnHeads, columnHeadFont, fitHead, HEAD_PREFIX, headRequest } from '../bullet/columnHead';
+import { COLUMN_GAP, COLUMN_MIN_WIDTH, columnCellRequest, columnHeadText, columnWidth, differenceFormatter } from '../diffColumn';
 import { CONTENT_PLOT_HEIGHT, HARD_MINIMUM, type ContentPlotHeight } from '../../sizing';
 import { REFERENCE_LABEL_CLEARANCE } from '../../markVisibility';
 import { averageMarkerLine, averageMarkerScope } from '../band/stacks';
+import { overValueLines } from '../band/labels';
 import { rowLabelX, type Rect } from '../../geometry';
-import { clamp, round2, unionRect } from '../../geometry';
+import { alignedRight, authoredTrackWidth, columnOverrideWarnings, trackPlotFloor } from '../columnOverrides';
+import { clamp, cleanDiff, round2, unionRect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex } from '../../label/occupied';
 import { seatsPastBlockers } from '../../label/slots';
@@ -56,7 +61,7 @@ import { accessibleTitle,
   resolveSubtitle,
 } from '../../normalize/shared';
 import { resolveCellRange, type DataRange, type RangeMark } from '../../rangeRules';
-import { applyAxisBounds, bandScale, linearScale, niceDomain } from '../../scale';
+import { applyAxisBounds, applyTickStep, shownTickStep, bandScale, linearScale, niceDomain } from '../../scale';
 import { unitPrinted, frameTextOptions, normalizeLegendOption, solveFrame, fixedPlotChrome, type LegendItemInput, plotHeightAfter, authoredFootnoteCount, authoredNotes } from '../../frame';
 import { defaultMeasurer, type FontSpec } from '../../text';
 import {
@@ -201,6 +206,15 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
       field: ['options', 'arrow'],
     });
   }
+  if (options.gapColumn && variant !== 'dumbbell') {
+    warnings.push({
+      code: 'gap-column-dumbbell-only',
+      severity: 'warn',
+      message: `options.gapColumn prints the gap between the two dots of a dumbbell; variant '${variant}' has no pair, so it is ignored`,
+      suggest: "set variant: 'dumbbell' with two series, or drop options.gapColumn",
+      field: ['options', 'gapColumn'],
+    });
+  }
   const highlights = new Set(resolveHighlight(options.highlight));
   const labelOn = (kind: LabelKind): boolean => chartLabelOn(options, kind);
 
@@ -288,8 +302,6 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
     ...(c.date === undefined ? {} : { date: c.date }),
     ...(c.footnote === undefined ? {} : { footnote: c.footnote }),
   }));
-  // The bar rule (bar/layout.ts restRecedes): one series, a category highlight, the rest recede.
-  const restRecedes = dataSeries.length === 1 && cats.some((cat, ci) => highlights.has(cat.id) && dataSeries[0]!.cells[ci]!.v !== null);
   const receding = recedingSeriesId(dataSeries, highlights);
   const applyOrder = (order: number[]) => {
     cats = order.map((i) => cats[i]!);
@@ -301,6 +313,13 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
     variant === 'dumbbell'
       ? (dataSeries[1]!.cells[ci]!.v ?? 0) - (dataSeries[0]!.cells[ci]!.v ?? 0)
       : (dataSeries[0]!.cells[ci]!.v ?? 0);
+  if (options.topN && cats.length > options.topN.n) {
+    const cut = topNCut(cats.map((_, i) => Math.abs(sortKey(i))), options.topN.n);
+    const unsupported = topNRestUnsupported('dot', options.topN);
+    if (unsupported) warnings.push(unsupported);
+    warnings.push(topNOmitted(cut.kept.length, cats.length, cut.dropped.map((i) => cats[i]!.label)));
+    applyOrder(cut.kept);
+  }
   const catSort = options.sort?.categories ?? 'sheet';
   if (catSort !== 'sheet') {
     const idx = cats.map((_, i) => i);
@@ -310,6 +329,8 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
     else idx.reverse();
     applyOrder(idx);
   }
+  // One series with a drawn category highlight makes the other rows recede.
+  const restRecedes = dataSeries.length === 1 && cats.some((cat, ci) => highlights.has(cat.id) && dataSeries[0]!.cells[ci]!.v !== null);
 
   // ---- derive: dumbbell gaps ----
   let gaps: Record<Id, number> | undefined;
@@ -318,7 +339,7 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
     cats.forEach((c, ci) => {
       const a = dataSeries[0]!.cells[ci]!.v;
       const b = dataSeries[1]!.cells[ci]!.v;
-      if (a !== null && b !== null) gaps![c.id] = round2(b - a);
+      if (a !== null && b !== null) gaps![c.id] = cleanDiff(b, a);
     });
   }
 
@@ -487,6 +508,22 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
     [{ token: 'neutralMark' }, ...dataSeries.map((_, i) => themeSeriesPaint(i, paletteRamp ? options.palette : undefined))],
     theme).map(item => [item.id, item]));
 
+  // ---- gap column: second minus first per row, right of the plot, off on a card ----
+  const gapText = new Map<Id, string>();
+  if (options.gapColumn === true && gaps !== undefined && size.width >= COLUMN_MIN_WIDTH) {
+    const signedGap = differenceFormatter({ format: options.format, locale: options.locale?.language, decimals: valueSpec.spec.decimals, values: dataSeries.flatMap((s) => s.cells.map((cell) => cell.v)).filter((v): v is number => v !== null) });
+    cats.forEach((c, ci) => {
+      const a = dataSeries[0]!.cells[ci]!.v;
+      const b = dataSeries[1]!.cells[ci]!.v;
+      if (a !== null && b !== null) gapText.set(c.id, signedGap(b, a));
+    });
+  }
+  const gapOverride = options.columnOverrides?.gap;
+  const gapHead = gapText.size === 0 ? undefined : gapOverride?.label ?? columnHeadText(chartString(options, 'gapHead'), percent);
+  const gapHeadFont = columnHeadFont(theme, options.target ?? DEFAULT_TARGET, textScaleOf(options));
+  const gapFont = (id: Id): FontSpec => (highlights.has(id) ? strongFont : labelFont);
+  const gapNaturalW = gapHead === undefined ? 0 : columnWidth(measure, [...gapText].map(([id, text]) => ({ text, font: gapFont(id) })), { text: gapHead, font: gapHeadFont });
+
   // ---- frame (title/subtitle/legend/source measured FIRST) ----
   const occupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
   const margin = { ...canvasMargin(theme, size.width), ...options.margin };
@@ -500,6 +537,7 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
       // on rows without a mid-point prints whenever some rows have one.
       footnotes: [
         ...authoredNotes(options),
+        ...warnings.filter((warning) => warning.code === 'topn-omitted').map((warning) => disclosureNote(warning.message)),
         ...(midNote ? [disclosureNote(midNote)] : []),
         ...(options.methodNote === true && midsDrawn ? [disclosureNote(chartString(options, 'rangeMidNote'))] : []),
       ],
@@ -535,29 +573,51 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
   // their pairs, so the pairs take the full width; a row too short for a
   // header and a pair keeps the side column, as does an authored rowLabels.
   // An automatic height takes the header rows' own pitch (below), so it does not need a tall row first.
-  const rowHeaders = variant === 'dumbbell' && labelOn('category') && options.rowLabels === undefined
+  const labelOverride = options.columnOverrides?.label;
+  const rowHeaders = variant === 'dumbbell' && labelOn('category') && options.rowLabels === undefined && labelOverride === undefined
     && size.width <= HEADER_ROWS_MAX_WIDTH && (openHeight || stepEst >= 2 * lineH + 8);
   const headerH = rowHeaders ? lineH + 3 : 0;
+  const air = (options as { [HARD_MINIMUM]?: boolean })[HARD_MINIMUM] === true ? 1 : 4;
   const catMaxLines = rowHeaders ? 1 : openHeight ? Infinity : stepEst >= 2 * lineH + 4 ? 2 : 1;
-  const capW = rowHeaders ? plot0.w : Math.max(24, plot0.w * 0.28);
-  const { labels: catLines, width: catColumnW } = rowLabelBand(cats, tickFont, capW, catMaxLines, lineH, measure, {
-    wider: gutterBudget(24, plot0.w),
+  // An authored column keeps its width; the plot gives way first, down to its floor.
+  const gapW = gapHead === undefined ? 0 : gapOverride?.width === undefined ? gapNaturalW
+    : authoredTrackWidth('gap', gapOverride.width, gapNaturalW, plot0.w - (labelOn('category') ? 24 + CAT_BAND_GAP : 0) - COLUMN_GAP - trackPlotFloor(plot0.w), warnings);
+  const gapReserve = gapW > 0 ? gapW + COLUMN_GAP : 0;
+  const nameTrack = labelOverride?.width === undefined || !labelOn('category') ? undefined
+    : authoredTrackWidth('label', labelOverride.width, 24, plot0.w - CAT_BAND_GAP - gapReserve - trackPlotFloor(plot0.w), warnings);
+  columnOverrideWarnings('dot', options.columnOverrides, [...(labelOn('category') && !rowHeaders ? ['label'] : []), ...(gapHead === undefined ? [] : ['gap'])], ['gap'], warnings);
+  const capW = nameTrack ?? (rowHeaders ? plot0.w : Math.max(24, plot0.w * 0.28));
+  const nameWider = nameTrack ?? gutterBudget(24, plot0.w);
+  let { labels: catLines, width: catColumnW } = rowLabelBand(cats, tickFont, capW, catMaxLines, lineH, measure, {
+    wider: nameWider, ...(rowHeaders ? {} : { tightLines: Math.floor((stepEst - air) / lineH) }),
     target: options.target, textScale: textScaleOf(options), typeRole: 'axis',
     shrink: stepDownFont(theme, tickFont, 'axis', options.target, textScaleOf(options)),
     footnoteRefs: { count: authoredFootnoteCount(options), warnings },
   });
+  // A pinned height whose rows hold two lines of names only in a smaller font, set tighter, draws them
+  // there before it cuts a name; a column the role size already draws whole keeps that size.
+  const pinnedFont = !rowHeaders && !openHeight && catLines.some(label => label.title !== undefined)
+    ? pinnedRowFont(theme, tickFont, 'axis', options.target, textScaleOf(options)) : undefined;
+  if (pinnedFont && stepEst >= 2 * pinnedFont.size * pinnedFont.lineHeight! + air) {
+    const pinned = rowLabelBand(cats, pinnedFont, capW, 2, pinnedFont.size * pinnedFont.lineHeight!, measure, {
+      wider: nameWider, target: options.target, textScale: textScaleOf(options), typeRole: 'axis',
+      footnoteRefs: { count: authoredFootnoteCount(options), warnings: [] },
+    });
+    if (pinned.labels.filter(label => label.title !== undefined).length < catLines.filter(label => label.title !== undefined).length) {
+      ({ labels: catLines, width: catColumnW } = pinned);
+    }
+  }
   // each category keeps one measured value row before automatic sizing.
   // Refuse-less: at the hard minimum (the last fixed-slot step) a row keeps 1 px of air, not 4.
-  const air = (options as { [HARD_MINIMUM]?: boolean })[HARD_MINIMUM] === true ? 1 : 4;
   const rowHeight = rowHeaders ? measure('0', labelFont).height + headerH + air : Math.max(measure('0', labelFont).height, maxOf(catLines.map(label => label.h))) + air;
   frameResult.frame.plotMinHeight = Math.max(frameResult.frame.plotMinHeight ?? 0,
     size.height + (frameResult.deficit ?? 0) + cats.length * rowHeight - (plot0.h - annPad - axisH));
-  const catBandW = rowHeaders ? 0 : catColumnW;
+  const catBandW = rowHeaders ? 0 : nameTrack ?? catColumnW;
   const catGap = rowHeaders ? 0 : CAT_BAND_GAP;
   const valueBody: Rect = {
     x: plot0.x + catBandW + catGap,
     y: plot0.y + annPad,
-    w: Math.max(10, plot0.w - catBandW - catGap),
+    w: Math.max(10, plot0.w - catBandW - catGap - gapReserve),
     h: availH,
   };
 
@@ -609,6 +669,8 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
   ];
   if (extentValues.length > 0 && extentValues.every((value) => value >= 0)) dLo = Math.max(0, dLo);
   if (extentValues.length > 0 && extentValues.every((value) => value <= 0)) dHi = Math.min(0, dHi);
+  const stepped = applyTickStep([dLo, dHi], shownTickStep(options.valueAxis?.tickStep, axisShown, warnings), warnings, true);
+  [dLo, dHi] = stepped.domain;
   if (dLo > 0) {
     warnings.push({
       code: 'nonzero-baseline',
@@ -663,6 +725,7 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
     const axisResult = layoutValueAxis(
       {
         scale: x,
+        ticks: stepped.ticks,
         plot,
         orient: 'x',
         gridlines: gridOn,
@@ -718,6 +781,9 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
   // ---- marks + label requests ----
   cats.forEach((cat, ci) => {
     const cy = band.position(ci) + band.bandwidth / 2 + headerH / 2;
+    if (gapText.has(cat.id)) {
+      labelRequests.push(columnCellRequest({ id: `gap:${cat.id}`, owner: { categoryId: cat.id }, text: gapText.get(cat.id)!, font: gapFont(cat.id), measure, right: alignedRight(plot0.x + plot0.w, gapW, measure(gapText.get(cat.id)!, gapFont(cat.id)).width, gapOverride?.align ?? 'right'), cy }));
+    }
     const row: DotMarks['rows'][number] = { categoryId: cat.id, dots: [] };
     const rowSceneStart = nodes.length;
 
@@ -1065,7 +1131,7 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
             // A header clears the value labels beside its pair, solver padding included.
             rect: rowHeaders ? { x: plot0.x, y: cy - Math.max(r, measure('0', labelFont).height / 2) - 3 - cl.h, w: cl.w, h: cl.h } : {
               // Names sit right-aligned against the axis by default.
-              x: rowLabelX(plot0.x, catBandW, cl.w, options.rowLabels?.align ?? 'right'),
+              x: rowLabelX(plot0.x, catBandW, cl.w, labelOverride?.align ?? options.rowLabels?.align ?? 'right'),
               y: cy - cl.h / 2,
               w: cl.w,
               h: cl.h,
@@ -1150,6 +1216,12 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
   }
 
   for (const seat of pointSeats) seat();
+  if (gapHead) {
+    const head = fitHead(gapHead, gapHeadFont, gapW, measure, { target: options.target ?? DEFAULT_TARGET, textScale: textScaleOf(options) });
+    const first = band.position(0) + band.bandwidth / 2;
+    const headH = measure(head.lines[0]!, gapHeadFont).height;
+    labelRequests.push(headRequest('gap', 0, head, alignedRight(plot0.x + plot0.w, gapW, head.w, gapOverride?.headAlign ?? gapOverride?.align ?? 'right'), Math.min(valueBody.y - 2, first - labelFont.size * 0.6 - headH - 2), headH, false));
+  }
 
   // ---- solve labels ----
   const solveCtx: SolveCtx = labelCtx(theme, size, options, {
@@ -1178,7 +1250,7 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
     nodes.splice(axisAt, 0, ...grid);
   }
   for (const label of solved.placed) {
-    if (label.kind !== 'point') continue;
+    if (label.kind !== 'point' || label.id.startsWith('gap:')) continue;
     // The bounds recede behind the own value; a value over a gridline reads on a halo.
     if (label.id.startsWith('rangeValue:') || mutedLabelIds.has(label.id)) label.ink = { token: 'inkMuted' };
     if (gridOn && axisShown) label.halo = true;
@@ -1210,7 +1282,7 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
   // past the line, away from its dot; one that cannot reads on a halo. A
   // dumbbell value stays at its dot on the halo (above).
   for (const label of solved.placed) {
-    if (label.hidden || label.kind !== 'point') continue;
+    if (label.hidden || label.kind !== 'point' || label.id.startsWith('gap:')) continue;
     if (variant === 'dumbbell' && ownSideSeats.has(label.id)) {
       if (lineXs.some((lineX) => lineX > label.rect.x - LINE_CLEAR && lineX < label.rect.x + label.rect.w + LINE_CLEAR)) {
         label.halo = true;
@@ -1221,9 +1293,16 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
     const lx = lineXs.find((lineX) => lineX > label.rect.x - LINE_CLEAR && lineX < label.rect.x + label.rect.w + LINE_CLEAR);
     if (lx === undefined) continue;
     const dot = anchorByDot.get(`${label.owner.categoryId}:${label.owner.seriesId}`);
-    if (dot && dot.x < lx && label.rect.x > dot.x) label.rect = { ...label.rect, x: lx + LINE_CLEAR };
-    else if (dot && dot.x > lx && label.rect.x < dot.x) label.rect = { ...label.rect, x: lx - LINE_CLEAR - label.rect.w };
-    else {
+    let step: Rect | undefined;
+    if (dot && dot.x < lx && label.rect.x > dot.x) step = { ...label.rect, x: lx + LINE_CLEAR };
+    else if (dot && dot.x > lx && label.rect.x < dot.x) step = { ...label.rect, x: lx - LINE_CLEAR - label.rect.w };
+    // The step must land clear of every other dot and label, and inside the canvas; else the value stays and reads on a halo.
+    if (step && step.x >= 0 && step.x + step.w <= size.width && !occupied.hitsWhich(step, solveCtx.labelPad).some((claim) => claim.part !== 'referenceLine'
+      && !(claim.kind === 'mark' && isOwnMark(claim.owner, label.owner, 'point', claim.part))
+      && !(claim.kind === 'label' && claim.owner.seriesId === label.owner.seriesId && claim.owner.categoryId === label.owner.categoryId))) {
+      label.rect = step;
+      occupied.claim(step, 'label', label.owner);
+    } else {
       label.halo = true;
       lineGaps.push(label.rect);
     }
@@ -1282,11 +1361,14 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
     labelsToNodes(theme, allLabels, (l) =>
       l.kind === 'category'
         ? tickFont
+        : l.id.startsWith(HEAD_PREFIX) ? gapHeadFont
+        : l.id.startsWith('gap:') && gapText.has(l.owner.categoryId ?? '') ? gapFont(l.owner.categoryId!)
         : l.kind === 'annotation' || l.kind === 'valueLine' || boldLabelIds.has(l.id)
           ? strongFont
           : labelFont,
     ),
   );
+  asColumnHeads(nodes);
 
   const variantWord =
     variant === 'dumbbell' ? chartString(options, 'dumbbellName') : variant === 'lollipop' ? chartString(options, 'lollipopName') : chartString(options, 'clevelandName');
@@ -1545,9 +1627,10 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
       seatsPastBlockers(from, 'x', lo, hi, obstacles, 3).map((rect) => ({ slot, rect, penalty: 4 }));
     const rightPast = past('rightPast', right.rect.x, Math.min(valueBody.x + valueBody.w, right.rect.x + reach), right.rect);
     const leftPast = past('leftPast', Math.max(valueBody.x, left.rect.x + tsize.width - reach), left.rect.x + tsize.width, left.rect);
-    return primary === 'left'
+    // A value line across a seat does not move the value: the pass below steps it past the line or sets it on a halo.
+    return overValueLines(primary === 'left'
       ? [left, right, above, below, ...leftPast, ...rightPast, rowLane]
-      : [right, left, above, below, ...rightPast, ...leftPast, rowLane];
+      : [right, left, above, below, ...rightPast, ...leftPast, rowLane]);
   }
 
   function buildLegend(): { options: LegendOptions; items: LegendItemInput[] } | undefined {

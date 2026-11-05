@@ -1,7 +1,9 @@
 'use client';
+import type { OptionsInput } from '../core/types/optionInput';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import type { LintWarning } from '../core/types/scene';
-import { compileDimSwitch, dimSwitchTableWarnings, foreignRowId } from '../core/charts/dimswitch/compile';
+import { compileDimSwitch, dimSwitchTableWarnings, foreignRowId, hiddenTotalFoldWarnings, LABELS_ONLY, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning } from '../core/charts/dimswitch/compile';
+import { defaultNotePlacement } from '../core/notes';
 import type { DimSwitchData, DimSwitchOptions, DimSwitchVariant } from '../core/charts/dimswitch/types';
 import type { OptionKeyCheck } from '../core/schema/unknownKeys';
 import { TableChart, type TableChartProps } from './charts/table';
@@ -9,14 +11,17 @@ import { TableFloorRequestContext } from './TableChart';
 import { linkedBinding, rebindable } from './linkedBinding';
 import type { DeferredName } from '../core/deferred';
 import { optionRefusals } from '../core/schema/refusals';
+import { normalizeOptionShapes } from '../core/normalize/optionShapes';
 import { retireChartSettings } from '../core/retired';
 import { LayoutRefusal } from './SizePlaceholder';
+import { asSize, frameSize, RefusalBoundary } from './RefusalBoundary';
 import { freezeValue, useStableValue } from './useStableValue';
 import { useRowsGate } from './rowsGate';
+import type { ContainerSizeOptions } from './useContainerSize';
 
 export interface DimSwitchView { variant: DimSwitchVariant; depth: number; splits: boolean; collapsed: string[] }
 export type DimSwitchViewReason = 'variant' | 'depth' | 'splits' | 'collapsed';
-export type DimSwitchChartProps = Omit<TableChartProps, 'data' | 'collapsed' | 'defaultCollapsed' | 'onCollapsedChange' | 'onExpansionChange' | 'expansion' | 'variant'> & Omit<DimSwitchOptions, 'size'> & {
+export type DimSwitchChartProps = Omit<TableChartProps, 'data' | 'collapsed' | 'defaultCollapsed' | 'onCollapsedChange' | 'onExpansionChange' | 'expansion' | 'variant' | 'prepared'> & OptionsInput<Omit<DimSwitchOptions, 'size'>> & {
  data: DimSwitchData;
  variant?: DimSwitchVariant;
  defaultVariant?: DimSwitchVariant;
@@ -33,21 +38,35 @@ export type DimSwitchChartProps = Omit<TableChartProps, 'data' | 'collapsed' | '
 export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readonly DeferredName[]) {
  // The table it draws counts the same fetched modules as this component's own entry.
  const Table = linked === undefined ? TableChart : linkedBinding(TableChart, linked);
- function DimSwitchChart(props: DimSwitchChartProps): ReactElement {
+ type NormalizedProps = Omit<DimSwitchChartProps, 'size' | 'fallbackSize'> & ContainerSizeOptions;
+ function GatedDimSwitch(props: NormalizedProps): ReactElement {
   // Rows answer before the compile: a dimswitch has no data while the rows chunk loads or after it refuses them.
-  const {rows,columns,onRowsReading,...chart}=props;
+  // A frozen table snapshot cannot match a table compiled from the variant, depth and splits, so a `prepared` prop from untyped code is dropped and the chart draws from data.
+  const {rows,columns,onRowsReading,prepared:_prepared,...chart}=props as NormalizedProps & {prepared?:unknown};
   const gate=useRowsGate({type:'dimswitch',data:chart.data},{rows,columns,onRowsReading},chart);
   return gate.element ?? <DrawnDimSwitch {...chart} data={gate.data!}/>;
  }
- function DrawnDimSwitch(props: DimSwitchChartProps): ReactElement {
+ function DimSwitchChart(props: DimSwitchChartProps): ReactElement {
+  const {className,style,size,fallbackSize,...rest}=props;
+  const normalizedSize=useMemo(()=>asSize(size),[size]);
+  const normalizedFallback=useMemo(()=>asSize(fallbackSize) as ContainerSizeOptions['fallbackSize'],[fallbackSize]);
+  const chart=<RefusalBoundary watch={props} size={normalizedSize} fallbackSize={normalizedFallback} target={props.target} theme={props.theme}
+   fallback={finding=><LayoutRefusal refusals={[finding]} theme={props.theme} size={frameSize(normalizedSize==='container'?normalizedFallback:normalizedSize,props.target)} options={typeof props.title==='string'?{title:props.title}:{}}/>}>
+   <GatedDimSwitch {...rest} size={normalizedSize} fallbackSize={normalizedFallback}/>
+  </RefusalBoundary>;
+  return className!==undefined || style!==undefined ? <div className={className} style={style}>{chart}</div> : chart;
+ }
+ function DrawnDimSwitch(props: NormalizedProps): ReactElement {
   const {data,variant:controlledVariant,defaultVariant='by-measure',depth:controlledDepth,defaultDepth=1,splits:controlledSplits,defaultSplits=false,collapsed:controlledCollapsed,defaultCollapsed,onViewChange,inlineVisibility,defaultInlineVisibility,onInlineVisibilityChange,size,fit,fallbackSize,measureWidths,hover,onWarnings,onRefused,renderRefused,scope,fontMetrics,styleNonce,idPrefix,handleRef,onContentWidth,onScrollChange,fillHeight,rowLabelLead,portalContainer,onRowSelect,isRowSelectable,toolbar=false,interactions,defaultColumnVisibility,onColumnVisibilityChange,sortable,defaultSort,onSortChange,rootsHidden,onEmpty,onFormatsFit,exporter,...options}=props;
   const refusals=optionRefusals({...options,variant:controlledVariant,depth:controlledDepth,splits:controlledSplits},'dimswitch',checkKeys);
   const [initial] = useState(()=>({variant:defaultVariant,depth:defaultDepth,splits:defaultSplits}));
   const variant=controlledVariant ?? initial.variant, depth=controlledDepth ?? initial.depth, splits=controlledSplits ?? initial.splits;
   const stableData=useStableValue(data);
-  const authoredOptions=useStableValue(options);
+  // Resolved before the compile, so a default does what the prop does. The controlled prop wins.
+  const [initialColumns]=useState(defaultColumnVisibility);
+  const authoredOptions=useStableValue(options.columnVisibility===undefined && initialColumns!==undefined ? {...options,columnVisibility:initialColumns} : options);
   // A retired setting is compiled as its successor (or dropped) and reported with the compile warnings.
-  const retired=useMemo(()=>retireChartSettings('dimswitch',{options:authoredOptions}),[authoredOptions]);
+  const retired=useMemo(()=>{const shaped=normalizeOptionShapes('dimswitch',{options:authoredOptions});const retired=retireChartSettings('dimswitch',{options:shaped.chart.options as DimSwitchOptions});return {...retired,warnings:[...shaped.warnings,...retired.warnings]};},[authoredOptions]);
   const stableOptions=retired.chart.options;
   const floorRequest=useStableValue({type:'dimswitch',data:stableData,options:{...stableOptions,variant,depth,splits,inlineVisibility}});
   // The grid reads values, not the computed-cell records the static audit trail carries.
@@ -61,7 +80,9 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
   const depthDefaults=useMemo(()=>{
     const ids=new Set(Object.keys(compiled.levels).filter(id=>compiled.levels[id]!>depth));
     for(const id of stableOptions.expansion?.expanded ?? []) ids.delete(id);
-    for(const id of stableOptions.expansion?.collapsed ?? []) ids.add(id);
+    // A hidden Total's rows left the table, so a fold of one names nothing.
+    const drawn=stableOptions.rowVisibility?.[stableData.dimension.total.id]===false ? new Set(compiled.data.rows.map(row=>row.id)) : undefined;
+    for(const id of stableOptions.expansion?.collapsed ?? []) if(!drawn || drawn.has(id)) ids.add(id);
     return [...ids];
   },[compiled,depth,stableOptions.expansion]);
   const expansionKey=JSON.stringify(stableOptions.expansion ?? null);
@@ -93,15 +114,21 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
   const wantsWarnings=onWarnings!==undefined;
   useEffect(()=>{
     if(!wantsWarnings || tableWarnings===undefined) return;
-    const all=[...retired.warnings,...compiled.warnings,...dimSwitchTableWarnings(tableWarnings)];
+    // The info footer keeps an in-frame note behind its button, so the partial note has no place on the chart there.
+    const placement=stableOptions.notes?.placement ?? defaultNotePlacement(stableOptions.target);
+    const inPanel=compiled.partialNote!==undefined && placement==='info' && !compiled.warnings.some(warning=>warning.code===PARTIAL_NOTE_OFF_FRAME);
+    // The compile runs at depth 1 and depth only selects folds, so a hidden Total's blank table is judged on the folds on screen.
+    const totalId=stableData.dimension.total.id, totalGone=stableOptions.rowVisibility?.[totalId]===false && compiled.data.columns.length>1;
+    const compileWarnings=compiled.warnings.filter(warning=>warning.code!==LABELS_ONLY || warning.field?.[1]!=='rowVisibility');
+    const all=[...retired.warnings,...compileWarnings,...(totalGone ? hiddenTotalFoldWarnings(compiled.data.rows,collapsed,totalId) : []),...(inPanel ? [partialNoteWarning(compiled.partialNote!)] : []),...dimSwitchTableWarnings(tableWarnings,stableOptions.columnOverrides)];
     const key=JSON.stringify(all);
     if(reported.current===key) return;
     reported.current=key;
     warningsCallback.current?.(all);
-  },[wantsWarnings,retired.warnings,compiled.warnings,tableWarnings]);
+  },[wantsWarnings,retired.warnings,compiled,stableOptions,stableData,collapsed,tableWarnings]);
   if(refusals.length) return <LayoutRefusal refusals={refusals} theme={options.theme} options={{...options,size:size==='container'?fallbackSize:size}}/>;
   return <TableFloorRequestContext.Provider value={tableRequest}><Table {...compiled.options} exporter={exporter} data={compiled.data} collapsed={collapsed} onCollapsedChange={toggle}
-   defaultColumnVisibility={defaultColumnVisibility} onColumnVisibilityChange={onColumnVisibilityChange} sortable={sortable} defaultSort={defaultSort} onSortChange={onSortChange} rootsHidden={rootsHidden}
+   onColumnVisibilityChange={onColumnVisibilityChange} sortable={sortable} defaultSort={defaultSort} onSortChange={onSortChange} rootsHidden={rootsHidden}
    inlineVisibility={inlineVisibility} defaultInlineVisibility={defaultInlineVisibility} onInlineVisibilityChange={onInlineVisibilityChange}
    size={size} fit={fit} fallbackSize={fallbackSize} measureWidths={measureWidths} hover={hover} onWarnings={wantsWarnings ? readTable : undefined} onRefused={onRefused} renderRefused={renderRefused}
    scope={scope} fontMetrics={fontMetrics} styleNonce={styleNonce} idPrefix={idPrefix} handleRef={handleRef} onContentWidth={onContentWidth} onScrollChange={onScrollChange} fillHeight={fillHeight}

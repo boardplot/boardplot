@@ -1,4 +1,6 @@
 import { chartString } from '../strings/a11y-businessRecords';
+import { chartString as bulletString } from '../strings/bullet';
+import { labelOn } from '../charts/labelOn';
 import type { WaterfallMarks, WaterfallDerived } from '../charts/waterfall/layout';
 import type { KpiMarks, KpiDerived } from '../charts/kpi/layout';
 import type { BulletMarks, BulletDerived } from '../charts/bullet/layout';
@@ -6,7 +8,7 @@ import { SPARKLINE_RING_RADIUS, kpiSparkSeries, lastObservedIndex, sparklinePoin
 import type { FunnelMarks, FunnelDerived } from '../charts/funnel/layout';
 import type { PieMarks, PieDerived } from '../charts/pie/layout';
 import type { MekkoMarks, MekkoDerived } from '../charts/mekko/layout';
-import { poolMekkoCell } from '../charts/topN';
+import { mekkoStackingMode, poolMekkoCell } from '../charts/topN';
 import type { ParetoMarks, ParetoData, ParetoDerived } from '../charts/pareto/layout';
 import type { PvmData, PvmDerived } from '../charts/pvm/types';
 import type { PyramidMarks } from '../charts/pyramid/layout';
@@ -16,13 +18,14 @@ import type { TreemapDerived, TreemapMarks } from '../charts/treemap/types';
 import type { SankeyDerived, SankeyMarks } from '../charts/sankey/types';
 import type { LikertMarks, LikertData, LikertDerived, LikertOptions } from '../charts/likert/layout';
 import { normalizeCategory, normalizeCell, normalizeSeriesValues } from '../normalize/shared';
-import type { MekkoOptions } from '../types/options';
+import type { BulletOptions, MekkoOptions } from '../types/options';
 import type { ChartData, WaterfallData, KpiData, BulletData, SparklineData } from '../types/data';
 import type { Geometry } from '../types/scene';
 import { cellValue, isPctCell, type OwnerRef } from '../types/cell';
 import { cellRecordValue, derivedPercent, derivedValue, makeRecord, numericValue, textValue, type RecordContext } from './recordsShared';
 import type { InteractionRecord, InteractionValue } from './types';
 import { detailRecordFields } from './details';
+import { isPercentLevel } from './comparison';
 
 const unavailable = (reason: string): InteractionValue => ({ kind: 'number', raw: null, state: 'unavailable', reason });
 const field = (key: string, label: string, value: InteractionValue) => ({ key, label, value });
@@ -42,33 +45,52 @@ function waterfallMembership(data: WaterfallData, derived: WaterfallDerived): Ma
   const hiddenAfter = new Set(data.connectors?.filter(connector => connector.hidden).map(connector => connector.from));
   const inbound = new Map(data.connectors?.filter(connector => !connector.hidden).map(connector => [connector.to, connector]));
   let running: OwnerRef[] = [];
+  /** The steps since the last baseline: what a subtotal drawn `toBaseline` adds up. */
+  let block: OwnerRef[] = [];
   for (const item of data.items) {
     const connector = inbound.get(item.id);
     const origin = connector && levels.get(connector.from);
-    if (origin) running = origin.anchors.get(connector!.anchor ?? 'sum') ?? origin.end;
+    if (origin) {
+      running = origin.anchors.get(connector!.anchor ?? 'sum') ?? origin.end;
+      block = [];
+    }
     const anchors = new Map<string, OwnerRef[]>();
     const basis = derived.totalBasis[item.id];
     if (basis) {
-      running = basis.authored ? [{ categoryId: item.id }] : running;
-      totals.set(item.id, running);
+      if (derived.levels[item.id]?.balance !== undefined) {
+        totals.set(item.id, block);
+        block = [];
+      } else {
+        running = basis.authored ? [{ categoryId: item.id }] : running;
+        totals.set(item.id, running);
+        if (item.type === 'total') block = [];
+      }
       // The total's normalized placeholder has zero value; named anchors on
       // totals fall back to the total unless they explicitly name __total.
       anchors.set('__total', []);
     } else {
-      if (item.toBaseline) running = [];
+      if (item.toBaseline) {
+        running = [];
+        block = [];
+      }
       if (item.segments?.length) {
         for (const segment of item.segments) {
           running = [...running, { categoryId: item.id, segmentId: segment.id }];
+          block = [...block, { categoryId: item.id, segmentId: segment.id }];
           anchors.set(segment.id, running);
         }
       } else {
         running = [...running, { categoryId: item.id }];
+        block = [...block, { categoryId: item.id }];
         anchors.set('__value', running);
       }
     }
     anchors.set('sum', running);
     levels.set(item.id, { end: running, anchors });
-    if (hiddenAfter.has(item.id)) running = [];
+    if (hiddenAfter.has(item.id)) {
+      running = [];
+      block = [];
+    }
   }
   return new Map([...totals].map(([id, members]) => [id, members.filter((member, index) =>
     members.findIndex(other => other.categoryId === member.categoryId && other.segmentId === member.segmentId) === index)]));
@@ -211,23 +233,62 @@ function sparkline(ctx: RecordContext): InteractionRecord[] {
   });
 }
 
+type BulletColumn = 'actual' | 'target' | 'gap' | 'share' | 'delta';
+
 function bullet(ctx: RecordContext): InteractionRecord[] {
   const data = ctx.request.data as BulletData;
+  const options = ctx.request.options as BulletOptions;
   const geo = geometry<BulletMarks, BulletDerived>(ctx);
+  const cells = data.rows.map(row => {
+    const value = cellRecordValue(normalizeCell(row.value, 'value'), options.unit, options.format);
+    return { row, value, target: cellRecordValue(normalizeCell(row.target, 'target'), value.unit, value.format) };
+  });
+  // Only an id this form draws counts: a label switch stops the printing and leaves the record as it is.
+  const pointOn = labelOn(options, 'point');
+  const noteOn = labelOn(options, 'annotation');
+  const drawn: BulletColumn[] = options.sharedScale === 'percentOfTarget'
+    ? [...(pointOn ? ['actual', 'share'] as const : []), ...(noteOn ? ['delta'] as const : [])]
+    : [...(pointOn && cells.some(({ value }) => value.raw !== null) ? ['actual'] as const : []),
+      ...(noteOn && cells.some(({ target }) => target.raw !== null) ? ['target', 'gap'] as const : [])];
+  const removed = (id: BulletColumn) => drawn.includes(id) && options.columnVisibility?.[id] === false;
+  const shown = drawn.filter(id => !removed(id));
+  // A hidden column pushes no record and no hover field. The bar and the tick stay drawn, and derived keeps the calculations.
+  if (drawn.length > 0 && shown.length === 0) return [];
+  // The record leads with the first number the row prints.
+  const leads = removed('actual') ? (['target', 'gap', 'share', 'delta'] as const).find(id => shown.includes(id)) : undefined;
+  const head = (id: BulletColumn, key: 'targetColumn' | 'gapColumn' | 'shareColumn' | 'deltaColumn') =>
+    options.columnOverrides?.[id]?.label ?? bulletString(options, key, { v1: bulletString(options, 'target') });
   return geo.marks.rows.map(mark => {
-    const row = data.rows.find(row => row.id === mark.id)!;
-    const value = cellRecordValue(normalizeCell(row.value, 'value'), ctx.request.options.unit, ctx.request.options.format);
-    const target = cellRecordValue(normalizeCell(row.target, 'target'), value.unit, value.format);
-    // The card names the target in the strings.target word.
-    const word = ctx.request.options.strings?.target ?? 'target';
+    const { row, value, target } = cells.find(({ row }) => row.id === mark.id)!;
+    const word = options.strings?.target ?? 'target';
     const name = word[0]!.toUpperCase() + word.slice(1);
-    return makeRecord(ctx, { categoryId: row.id }, value, {
+    const deltaOf = (raw: number) => numericValue(raw, isPercentLevel(value) && isPercentLevel(target) ? 'pp' : value.unit, value.format);
+    const delta = typeof value.raw === 'number' && typeof target.raw === 'number' ? deltaOf(value.raw - target.raw) : unavailable('Value or target missing');
+    // The column prints the chart's own clean difference, without the float residue of a subtraction.
+    const gapShown = geo.derived.deltaVsTarget[row.id];
+    const drawnDelta = gapShown === undefined ? delta : deltaOf(gapShown);
+    const share = geo.derived.percentOfTarget?.[row.id];
+    const shareValue = share === undefined ? unavailable('Positive reference and value required') : derivedPercent(share);
+    const printed = ([
+      { id: 'gap', label: head('gap', 'gapColumn'), value: drawnDelta },
+      { id: 'share', label: head('share', 'shareColumn'), value: shareValue },
+      { id: 'delta', label: head('delta', 'deltaColumn'), value: drawnDelta },
+    ] as const).filter(column => shown.includes(column.id));
+    const led = printed.find(column => column.id === leads);
+    const lead = leads === 'target' ? { value: target, valueLabel: head('target', 'targetColumn') }
+      : led ? { value: led.value, valueLabel: led.label } : { value };
+    // A comparison holds the actual value, the target and what lies between them, so it needs all of their columns.
+    const compares = !(['actual', 'target', 'gap', 'share', 'delta'] as const).some(removed);
+    return makeRecord(ctx, { categoryId: row.id }, lead.value, {
       label: row.label ?? row.id, anchor: mark.rect,
-      fields: [field('target', name, target)],
-      comparisons: [{ label: name, current: value, reference: target,
-        delta: typeof value.raw === 'number' && typeof target.raw === 'number' ? numericValue(value.raw - target.raw, value.unit, value.format) : unavailable('Value or target missing'),
-        percent: typeof value.raw === 'number' && typeof target.raw === 'number' && target.raw > 0
-          ? derivedPercent((value.raw - target.raw) / target.raw * 100) : unavailable('Positive reference and value required') }],
+      ...('valueLabel' in lead ? { valueLabel: lead.valueLabel } : {}),
+      fields: [
+        ...(removed('target') || leads === 'target' ? [] : [field('target', name, target)]),
+        // With the comparison gone, a column that still prints its number keeps it here.
+        ...(compares ? [] : printed.flatMap(column => (column.id === leads || column.value.raw === null ? [] : [field(column.id, column.label, column.value)]))),
+      ],
+      comparisons: compares ? [{ label: name, current: value, reference: target, delta,
+        percent: typeof value.raw === 'number' && typeof target.raw === 'number' && target.raw > 0 ? derivedPercent((value.raw - target.raw) / target.raw * 100) : unavailable('Positive reference and value required') }] : [],
     });
   });
 }
@@ -253,8 +314,11 @@ function funnel(ctx: RecordContext): InteractionRecord[] {
   return geo.marks.rows.flatMap(row => row.segments.map(segment => {
     const value = source.cell(row.categoryId, segment.id);
     const conversion = geo.derived.conversions.find(conversion => conversion.toId === row.categoryId);
+    // A stage split into segments names the segment its value counts ("Advanced: 2,100 leads"); the title names the stage.
+    const segmentLabel = row.segments.length > 1 ? source.series.find(series => series.id === segment.id)?.label ?? segment.id : undefined;
     return makeRecord(ctx, { categoryId: row.categoryId, seriesId: segment.id }, value, {
       label: source.categories.find(category => category.id === row.categoryId)?.label ?? row.categoryId,
+      ...(segmentLabel === undefined ? {} : { valueLabel: segmentLabel }),
       anchor: segment.rect, scenario: source.series.find(series => series.id === segment.id)?.scenario,
       fields: [field('stageTotal', chartString(ctx.request.options, 'stageTotal'), derived(ctx, geo.derived.stageTotals[row.categoryId] ?? undefined)),
         field('conversion', chartString(ctx.request.options, 'stageConversion'), conversion ? derivedPercent(conversion.rate * 100) : unavailable(chartString(ctx.request.options, 'noPrecedingStage'))),
@@ -294,13 +358,11 @@ function mekko(ctx: RecordContext): InteractionRecord[] {
   const source = seriesSource(ctx);
   const geo = geometry<MekkoMarks, MekkoDerived>(ctx);
   const options = ctx.request.options as MekkoOptions;
-  const variant = options.variant ?? 'stacked100';
-  const mode = variant === 'stacked' && options.valueAxis?.percent ? 'percent' : ({ stacked100: 'percent', stacked: 'unit', bar: 'bar' } as const)[variant];
   const activeSeries = source.series.filter(series => series.role !== 'reference' && series.id !== options.widthSeriesId);
-  const plottedSeries = mode === 'bar' ? activeSeries.slice(0, 1) : activeSeries;
+  const mode = mekkoStackingMode(options, activeSeries.length);
   const shown = new Set(geo.marks.columns.map(column => column.categoryId));
   const pooledCategories = source.categories.filter(category => !shown.has(category.id));
-  const bases = pooledCategories.map(category => category.total100 ?? plottedSeries.reduce((sum, series) => {
+  const bases = pooledCategories.map(category => category.total100 ?? activeSeries.reduce((sum, series) => {
     const raw = source.cell(category.id, series.id).raw;
     return sum + (!source.isPercent(category.id, series.id) && typeof raw === 'number' ? raw : 0);
   }, 0));
@@ -310,10 +372,10 @@ function mekko(ctx: RecordContext): InteractionRecord[] {
     const raw = widthSeries ? source.cell(category.id, options.widthSeriesId!).raw : 1;
     return typeof raw === 'number' ? Math.max(0, raw) : 0;
   });
-  const pooledCells = new Map(plottedSeries.map(series => [series.id, poolMekkoCell(pooledCategories.map((category, i) => {
+  const pooledCells = new Map(activeSeries.map(series => [series.id, poolMekkoCell(pooledCategories.map((category, i) => {
     const raw = source.cell(category.id, series.id).raw;
     return { v: typeof raw === 'number' ? raw : null, isPct: source.isPercent(category.id, series.id), basis: bases[i]!, weight: pooledWeights[i]! };
-  }), mode, widthSeries)]));
+  }), options.variant === 'bar' ? 'bar' : mode, widthSeries)]));
   const pooled = new Map([...pooledCells].map(([id, cell]) => [id, cell.v]));
   const pooledBasis = mode === 'percent' && pooledCategories.some(category => category.total100 !== undefined)
     ? bases.reduce((sum, basis) => sum + basis, 0) : undefined;
@@ -331,7 +393,7 @@ function mekko(ctx: RecordContext): InteractionRecord[] {
       anchor: segment.rect, scenario: source.series.find(series => series.id === segment.seriesId)?.scenario,
       share: !category && [...pooled.values()].some(v => v === null)
         ? { numerator: value, denominator: unavailable('Incomplete composition'), percent: unavailable('Incomplete composition') }
-        : mekkoShare(value, category ? category.total100 : pooledBasis, plottedSeries.map(series => ({ value: category ? source.cell(column.categoryId, series.id) : numericValue(pooled.get(series.id)), isPct: Boolean(category && source.isPercent(column.categoryId, segment.seriesId)) })), mode, Boolean(category && source.isPercent(column.categoryId, segment.seriesId))),
+        : mekkoShare(value, category ? category.total100 : pooledBasis, activeSeries.map(series => ({ value: category ? source.cell(column.categoryId, series.id) : numericValue(pooled.get(series.id)), isPct: Boolean(category && source.isPercent(column.categoryId, segment.seriesId)) })), mode, Boolean(category && source.isPercent(column.categoryId, segment.seriesId))),
     });
   }));
 }
@@ -469,9 +531,11 @@ function pyramid(ctx: RecordContext): InteractionRecord[] {
   return [geo.marks.left, geo.marks.right].flatMap((marks, index) => marks.map(mark => {
     const groupId = geo.derived.groupIds[index]!;
     const value = number(ctx, geo.derived.values[mark.id]?.[groupId]);
+    // Each side is its own whole under 'shareOfGroup'; otherwise both sides share the grand total.
+    const whole = geo.derived.basis === 'shareOfGroup' ? geo.derived.totals[groupId]! : geo.derived.grandTotal;
     return makeRecord(ctx, { categoryId: mark.id, seriesId: groupId }, value, {
       label: data.bands.find(band => band.id === mark.id)?.label ?? mark.id, anchor: mark.rect,
-      share: share(value, geo.derived.grandTotal, typeof value.raw === 'number' && geo.derived.grandTotal > 0 ? value.raw / geo.derived.grandTotal * 100 : undefined),
+      share: share(value, whole, typeof value.raw === 'number' && whole > 0 ? value.raw / whole * 100 : undefined),
     });
   }));
 }
@@ -491,7 +555,7 @@ function likert(ctx: RecordContext): InteractionRecord[] {
   const data = ctx.request.data as LikertData;
   const options = ctx.request.options as LikertOptions;
   const geo = geometry<LikertMarks, LikertDerived>(ctx);
-  return geo.marks.rows.flatMap(row => row.bars.map(bar => {
+  const records = geo.marks.rows.flatMap(row => row.bars.map(bar => {
     const option = data.scale.find(option => [ `likert:${option.id}`, `likert:${option.id}:neg`, `likert:${option.id}:pos` ].includes(bar.seriesId))!;
     const item = data.items.find(item => item.id === row.id)!;
     const index = data.scale.indexOf(option);
@@ -501,10 +565,28 @@ function likert(ctx: RecordContext): InteractionRecord[] {
     const value = numericValue(raw, options.values === 'percent' ? '%' : ctx.request.options.unit);
     return makeRecord(ctx, { categoryId: row.id, seriesId: bar.seriesId }, value, {
       label: `${item.label ?? item.id} / ${option.label ?? option.id}`, anchor: bar.rect,
+      // A count of answers says what it counts; a percent value is the response share itself.
+      ...(options.values === 'percent' ? {} : { valueLabel: chartString(ctx.request.options, 'responses') }),
       fields: [field('share', chartString(ctx.request.options, 'responseShare'), shareValue(geo.derived.shares[row.id]?.[option.id], options.format, options.values === 'percent')),
         field('base', chartString(ctx.request.options, 'sampleSize'), row.id in geo.derived.base ? numericValue(geo.derived.base[row.id]) : unavailable(chartString(ctx.request.options, 'sampleSizeMissing')))],
     });
   }));
+  // A neutral split across the centre line is one answer drawn as two halves
+  // under one label: either half lights and outlines both, so the outline
+  // runs around the label and not through it.
+  const halves = new Map<string, InteractionRecord[]>();
+  for (const record of records) {
+    const { categoryId, seriesId } = record.target.owner;
+    const whole = seriesId?.match(/^(.*):(?:neg|pos)$/)?.[1];
+    if (whole === undefined || categoryId === undefined) continue;
+    const key = JSON.stringify([categoryId, whole]);
+    halves.set(key, [...halves.get(key) ?? [], record]);
+  }
+  for (const pair of halves.values()) {
+    const nodeIds = [...new Set(pair.flatMap(record => record.nodeIds))];
+    if (pair.length > 1) for (const record of pair) record.nodeIds = nodeIds;
+  }
+  return records;
 }
 
 export function businessRecords(ctx: RecordContext): InteractionRecord[] | undefined {

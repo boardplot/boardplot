@@ -27,9 +27,9 @@ export { yearSpan } from './periodYears';
 import { rectsOverlap, unionRect, type Point, type Rect } from './geometry';
 import { compileIcon, type IconName } from './icons';
 import type { OccupiedIndex } from './label/occupied';
-import { leaderTerminus, PRIORITY, solveLabels, type LabelRequest, type SlotCandidate, type SolveCtx } from './label/solver';
+import { leaderFor, leaderHeightOf, leaderTerminus, PRIORITY, solveLabels, type LabelRequest, type SlotCandidate, type SolveCtx } from './label/solver';
 import { leaderPath } from './svgPath';
-import { arrowSeats, finishCalloutHeads, leadersOffAnchorValues, type CalloutHeadPlan } from './annotateCallout';
+import { anchorValueBox, arrowSeats, finishCalloutHeads, leaderCrossesLabel, leadersOffAnchorValues, valueEdgeToward, type CalloutHeadPlan } from './annotateCallout';
 import { composedTextRole, computedTextRole } from './textRole';
 import { drawCagrArm, drawDiffArm, trimAnnotationGuides, type ArmDrawPass } from './annotateArms';
 import type { ComparisonLayout } from './annotateLinks';
@@ -93,6 +93,8 @@ export interface AnchorResolution {
   /** Pixel y of the anchored level (top of bar / segment edge / point). */
   y: number;
   value: number;
+  /** Value of the running level for diff and CAGR when the mark's value is a step amount. */
+  comparisonValue?: number;
   /** The absolute value in the point label's format, which can use another precision. */
   pointValueText?: string;
   /** Format of the single series this anchor reads. */
@@ -181,6 +183,13 @@ export interface AnnotatePassInput {
     | { error: string };
   /** First/last defaults for cagr. */
   defaultSpan?: { from: AnchorRef; to: AnchorRef };
+  /**
+   * A bridge's bracket span: the drawn x range of the steps `from` to `to` (inclusive), their
+   * signed sum and the y of the one row every bracket stands in. A refusal names its cause.
+   */
+  resolveSpan?: (from: Id, to: Id) =>
+    | { left: number; right: number; y: number; sum: number; steps: { id: Id; value: number }[] }
+    | { code: string; error: string };
   /** The exact years between two readings of a time axis (zoneYearSpan); a CAGR uses them instead of dates or labels. */
   elapsedYears?: (from: AnchorResolution, to: AnchorResolution) => number | undefined;
   occupied: OccupiedIndex;
@@ -205,6 +214,12 @@ export interface AnnotatePassInput {
    */
   cagrLabelOnArm?: boolean;
   theme: Theme;
+  /**
+   * The weight the text of an arrow callout and the body under a headline prints
+   * in, for a chart whose `theme` is the emphasis-weight theme (`emphasisLabelTheme`):
+   * those two print plain while every other callout prints bold. Absent, `theme.type.label.weight`.
+   */
+  plainLabelWeight?: number;
   measure: TextMeasurer;
   format?: string; // chart-level format-by-example
   /** Derived differences may have another unit, such as percentage points. */
@@ -217,6 +232,13 @@ export interface AnnotatePassInput {
    * format): values print with '%' and their differences in percentage points.
    */
   percentLevels?: boolean;
+  /**
+   * The chart's axis is 100% and its percent `format` sets the printed shares. An
+   * annotation that states a source value (abs, delta) does not take that
+   * format, so a value of 8 never prints as "8.0%" and a difference of 2 never
+   * as "+2.0pp". A value line states a share and keeps it.
+   */
+  sharesFormat?: boolean;
   /** The value-line scale is percent; other annotations may use source amounts. */
   valueLinePercentLevels?: boolean;
   /** The value-line axis keeps its percent or percentage-point unit under an authored format. */
@@ -282,6 +304,13 @@ export interface AnnotatePassInput {
   annotationBandReserved?: boolean;
   /** Optional chart-specific maximum for automatic callout/note leaders, in text widths. */
   calloutLeaderWidths?: number;
+  /**
+   * Bar rows: the row pitch, in px. A callout or note whose one-line seats
+   * are blocked first wraps beside its bar (up to three lines). No seat may
+   * lie more than one pitch from the anchor, so the text stays on its own
+   * row or the next one. With no such seat it goes to the notes list.
+   */
+  calloutRowPitch?: number;
   /**
    * A callout's leader is claimed, and a seat whose leader crosses a label
    * set before it is passed over. Scatter solves its callouts before the
@@ -371,7 +400,7 @@ function calloutAttachment(at: AnchorResolution, kind: string, glyph?: CalloutGl
 }
 
 function comparisonAnchor(anchor: AnchorResolution | null): AnchorResolution | null {
-  return anchor?.comparisonPoint ? { ...anchor, ...anchor.comparisonPoint } : anchor;
+  return anchor ? { ...anchor, ...anchor.comparisonPoint, value: anchor.comparisonValue ?? anchor.value } : null;
 }
 
 /**
@@ -453,6 +482,9 @@ export function runAnnotatePass(input: AnnotatePassInput): AnnotatePassResult {
   const differenceFormat = input.differenceFormat ?? (input.format ? differenceExample(input.format) : undefined);
   // '+' once and never on a value that prints as zero.
   const differenceSpec = differenceFormat ? { ...exampleSpec(differenceFormat, locale), signed: true } : undefined;
+  // A percent format on a 100% axis names the shares; the annotations that state source values print without it.
+  const sharesOnly = input.sharesFormat === true && percent && input.format !== undefined;
+  const valueFmt = plain(input.percentLevels === true ? '%' : '', false);
   const run: AnnotateRun = {
     fmt,
     statFmt: input.format ? (v: number) => formatStatWithSpec(v, exampleSpec(input.format!, locale)) : fmt,
@@ -474,7 +506,8 @@ export function runAnnotatePass(input: AnnotatePassInput): AnnotatePassResult {
     // prints a difference or a rate. The copy shares the run's glyph map; the
     // counters are written through `nid` and `addLegDeficit`, which hold `run`.
     const secondaryLine = ann.kind === 'valueLine' && ann.axis === 'secondary';
-    const referenceFormat = secondaryLine ? input.secondaryFormat : input.format;
+    const valuesNotShares = sharesOnly && ann.kind !== 'valueLine';
+    const referenceFormat = secondaryLine ? input.secondaryFormat : valuesNotShares ? undefined : input.format;
     const anchorFormat = 'at' in ann && ann.at !== undefined ? input.resolve(ann.at)?.format
       : ann.kind === 'diff' ? (input.resolve(ann.to)?.format ?? input.resolve(ann.from)?.format)
         : ann.kind === 'valueLine' ? secondaryLine ? input.secondaryFormat : seriesMeanFormat(input, ann) : undefined;
@@ -489,7 +522,10 @@ export function runAnnotatePass(input: AnnotatePassInput): AnnotatePassResult {
         ? (v: number) => formatWithSpec(v, { ...exampleSpec(referenceFormat, locale), prefix: '', suffix: referenceUnit })
         : plain(referenceUnit, false) }
       : ann.kind === 'valueLine' && !referenceFormat && (secondaryLine || referencePercent !== percent)
-      ? { ...run, fmt: plain(referencePercent ? '%' : '', false) } : run;
+      ? { ...run, fmt: plain(referencePercent ? '%' : '', false) }
+      : valuesNotShares
+      ? { ...run, fmt: valueFmt, statFmt: valueFmt, fmtSigned: plain(input.percentLevels === true ? PERCENTAGE_POINTS : '', true), printsZero: (v: number) => roundsToZero(v, autoDecimals(v)) }
+      : run;
     const fmtRun: AnnotateRun = own
       ? {
           ...baseRun,
@@ -548,6 +584,8 @@ function placeAnnotation(s: AnnotationScope, ann: Annotation): void {
       return placeCagr(s, ann);
     case 'diff':
       return placeDiff(s, ann);
+    case 'bracket':
+      return placeBracket(s, ann);
     case 'callout':
     case 'note':
       return placeNote(s, ann);
@@ -753,6 +791,50 @@ function spanLead(s: AnnotationScope, a: AnchorResolution, b: AnchorResolution, 
   return lead && (period || colon) ? `${lead}:` : lead;
 }
 
+/** Bracket ticks hang this far down from the bracket's run. */
+const BRACKET_TICK = 5;
+
+function placeBracket(s: AnnotationScope, ann: Extract<Annotation, { kind: 'bracket' }>): void {
+  const { input, id } = s;
+  if (!input.resolveSpan) return warn(s, 'unsupported', `bracket '${id}': this chart has no steps to add up`);
+  // The shared anchor check lets an object anchor through; a bracket takes step ids only.
+  if (typeof ann.from !== 'string' || typeof ann.to !== 'string' || !ann.from || !ann.to) return warn(s, 'bad-anchor', `bracket '${id}': from and to are step ids (non-empty strings)`);
+  const span = input.resolveSpan(ann.from, ann.to);
+  if ('error' in span) return warn(s, span.code, `bracket '${id}': ${span.error}`);
+  const sumText = s.run.fmtSigned(span.sum);
+  const composed = ann.label ? `${ann.label} ${sumText}` : sumText;
+  const label = authored(s, 'bracket', composed, ann.text, sumText);
+  const lineId = s.nid('bracket');
+  const { left, right, y } = span;
+  s.nodes.push({
+    t: 'path', id: lineId,
+    d: `M${left} ${y + BRACKET_TICK}L${left} ${y}L${right} ${y}L${right} ${y + BRACKET_TICK}`,
+    stroke: { token: 'ink' }, width: strokeToken(input.theme, 'rule'), owner: { annotationId: id }, part: 'bracket',
+  });
+  input.occupied.claim({ x: left - 1, y: y - 1, w: right - left + 2, h: BRACKET_TICK + 2 }, 'annotation', { annotationId: id }, 'bracket');
+  const font = { family: input.theme.type.family, ...input.theme.type.label };
+  const size = input.measure(label.text, font);
+  s.labelRequests.push({
+    id: `annotation:${id}`,
+    kind: 'annotation',
+    role: computedTextRole(label.text, label.computed),
+    owner: { annotationId: id },
+    text: label.text,
+    lines: [label.text],
+    typeRole: 'label', font,
+    priority: ann.priority ?? PRIORITY.valueLine,
+    candidates: [{ slot: 'aboveBracket', rect: { x: (left + right - size.width) / 2, y: y - 3 - size.height, w: size.width, h: size.height }, penalty: 0 }],
+  });
+  s.placed.push({
+    id, kind: 'bracket', computedText: label.computed, nodeIds: [lineId], labelId: `annotation:${id}`,
+    derivation: {
+      basis: 'derived', op: 'sum@1',
+      inputs: span.steps.map((step) => ({ ref: step.id, value: step.value })),
+      raw: span.sum,
+    },
+  });
+}
+
 function placeDiff(s: AnnotationScope, ann: Extract<Annotation, { kind: 'diff' }>): void {
   const { input, id } = s;
   const a = comparisonAnchor(input.resolve(ann.from));
@@ -857,12 +939,13 @@ function placeNote(s: AnnotationScope, ann: Extract<Annotation, { kind: 'callout
       severity: 'info',
       message: `${ann.kind} '${s.id}': the mark already prints ${value}, so \${value} and the words that led into it are left out of the text`,
       owner: { annotationId: s.id },
-      suggest: 'keep it, as the number stands at the mark, or drop ${value} from the text to set the wording yourself',
+      suggest: `keep it, as the number stands at the mark, or drop \${value} from the text to set the wording yourself`,
     });
   }
   if (repeats && !text && !glyph) return;
   // A headline is the first line, over the text: "${value}" over the words.
   const headline = ann.kind === 'callout' && ann.headline !== undefined ? ann.headline.replace(/\$\{value\}/g, value) : undefined;
+  if (!text.trim() && headline === undefined && !glyph) warn(s, 'annotation-empty', `${ann.kind} '${s.id}': its text is empty, so it prints no words; any arrow or leader stays`);
   const placedGlyph = glyph ? planCalloutGlyph(s, at, glyph, text) : undefined;
   // Prose. The `${value}` token is substituted from the engine, but the
   // sentence built around it is the author's, so the record carries the
@@ -881,11 +964,13 @@ function placeDelta(s: AnnotationScope, ann: Extract<Annotation, { kind: 'delta'
   const at = input.resolve(ann.at);
   if (!at) return warn(s, 'bad-anchor', `delta '${id}': unresolvable anchor`);
   const vsAnchor = typeof ann.vs === 'number' ? null : input.resolve(ann.vs);
-  const vsValue = typeof ann.vs === 'number' ? ann.vs : (vsAnchor?.value ?? null);
+  // Against a literal the delta reads the mark's own value. Against another anchor both ends read the running level, as diff does, so the two stay in one unit.
+  const vsValue = typeof ann.vs === 'number' ? ann.vs : (vsAnchor ? (vsAnchor.comparisonValue ?? vsAnchor.value) : null);
   if (vsValue === null) return warn(s, 'bad-anchor', `delta '${id}': unresolvable vs`);
   if (valueless(s, 'delta', [at, vsAnchor])) return;
   warnPartialComparison(s, 'delta', partialAnchors(s, at, vsAnchor));
-  const d = at.value - vsValue;
+  const atValue = vsAnchor ? (at.comparisonValue ?? at.value) : at.value;
+  const d = atValue - vsValue;
   const computed = s.run.fmtSigned(d);
   // A difference that prints as zero has no direction to judge.
   const tone = s.run.printsZero(d) ? undefined : d > 0 ? 'good' : 'bad';
@@ -897,7 +982,7 @@ function placeDelta(s: AnnotationScope, ann: Extract<Annotation, { kind: 'delta'
     basis: 'derived',
     op: 'annotation-delta@1',
     inputs: [
-      { ref: `at:${anchorRefLabel(ann.at)}`, value: at.value },
+      { ref: `at:${anchorRefLabel(ann.at)}`, value: atValue },
       { ref: typeof ann.vs === 'number' ? 'vs:literal' : `vs:${anchorRefLabel(ann.vs)}`, value: vsValue },
     ],
     raw: d,
@@ -1388,8 +1473,10 @@ function calloutLabel(
 ): void {
   const { input, id: annId } = s;
   const at = calloutAttachment(anchor, kind, glyph);
-  const font = { family: input.theme.type.family, ...input.theme.type.label };
   const head = kind === 'callout' ? (ann as { headline?: string; arrow?: boolean }) : {};
+  const base = { family: input.theme.type.family, ...input.theme.type.label };
+  // An arrow callout and the body under a headline print plain, whatever weight the other callouts print in.
+  const font = (head.arrow === true && !glyph) || head.headline !== undefined ? { ...base, weight: input.plainLabelWeight ?? base.weight } : base;
   const rowWidth = input.gridCallouts?.rows.get(annId)?.w ?? input.gridCallouts?.widths?.get(annId);
   const headSourceLines = head.headline?.split('\n').length ?? 0;
   let headlineLines = 0;
@@ -1400,7 +1487,7 @@ function calloutLabel(
     if (i < headSourceLines) headlineLines += wrapped.length;
     return wrapped;
   });
-  const w = Math.max(...lines.map((line, i) => input.measure(line, i < headlineLines ? { ...font, weight: emphasisWeight(input.theme) } : font).width));
+  const w = Math.max(0, ...lines.map((line, i) => input.measure(line, i < headlineLines ? { ...font, weight: emphasisWeight(input.theme) } : font).width));
   const lineH = input.measure('X', font).height;
   const h = lineH * lines.length;
   const gap = glyph ? glyph.radius + 7 : 8;
@@ -1508,6 +1595,27 @@ function calloutLabel(
     mk('belowFar', right + gap * 4, bottom + h + gap * 3, 6, true),
     mk('aboveFar', left - w - gap * 4, bottom + h + gap * 3, 7, true),
   ].sort((a, b) => a.penalty - b.penalty);
+  // Beside a row's bar the text wraps to the room left there, before any seat
+  // away from the row. The one-line seats stay first when they fit.
+  const reach = (kind === 'callout' || kind === 'note') && !glyph && head.arrow !== true && head.headline === undefined
+    ? input.calloutRowPitch : undefined;
+  if (reach !== undefined) {
+    // The row's own labels (a bar's value or total) stand beside the anchor, so the text starts past them.
+    const rowLabels = input.occupied.hitsWhich({ x: input.plot.x, y: sideY - 2, w: input.plot.w, h: 4 }).filter((claim) => claim.kind === 'label');
+    const from = Math.max(right + gap * 2, ...rowLabels.filter((claim) => claim.rect.x >= right - 1).map((claim) => claim.rect.x + claim.rect.w + gap));
+    const to = Math.min(left - gap * 2, ...rowLabels.filter((claim) => claim.rect.x + claim.rect.w <= left + 1).map((claim) => claim.rect.x - gap));
+    const wrapBeside = (slot: string, room: number, penalty: number) => {
+      if (room >= w || room < lineH * 4) return [];
+      const pieces = lines.map((line) => wrapText(line, font, room, 3, input.measure));
+      const wrapped = pieces.flatMap((piece) => piece.lines);
+      if (pieces.some((piece) => piece.truncated) || wrapped.length < 2 || wrapped.length > 3) return [];
+      const ww = Math.max(...wrapped.map((line) => input.measure(line, font).width));
+      const rect = { x: slot === 'rightWrap' ? from : to - ww, y: sideY - (lineH * wrapped.length) / 2, w: ww, h: lineH * wrapped.length };
+      return [{ slot, rect, penalty, lines: wrapped, leaderFrom: edgeToward(rect) }];
+    };
+    all = [...all, ...wrapBeside('rightWrap', input.plot.x + input.plot.w - from, 3.45), ...wrapBeside('leftWrap', to - input.plot.x, 3.46)]
+      .sort((a, b) => a.penalty - b.penalty);
+  }
   // A cell of a grid (a heatmap row): the note's seat is on the cell's own
   // row, beside the grid, first of all. Any other seat leaves the row, so it
   // leads back to the cell and never reads as the neighbour row's note.
@@ -1540,6 +1648,57 @@ function calloutLabel(
       leaderVertical: true,
     });
   }
+  // A text wider than the room around its point wraps to 2 to 4 lines at a measured width,
+  // after every one-line seat and the free spot, so a callout that drew before draws the same.
+  if ((kind === 'callout' || kind === 'note') && !glyph && head.arrow !== true && head.headline === undefined && !input.gridCallouts) {
+    const wrappedSeats: SlotCandidate[] = [];
+    // The value printed over the point (the number on its column): the wrapped seats ring it too, and their
+    // leaders start at its edge, so no line crosses the number. A row chart keeps its seats on the row instead.
+    const value = reach === undefined ? anchorValueBox(input.occupied, box, at.owner, lineH * 2) : undefined;
+    const [wLeft, wTop, wRight, wBottom] = value
+      ? [Math.min(left, value.x), Math.min(top, value.y), Math.max(right, value.x + value.w), Math.max(bottom, value.y + value.h)]
+      : [left, top, right, bottom];
+    const widest = Math.min(w, input.plot.w);
+    const seen = new Set<string>();
+    for (const share of [1, 0.7, 0.5, 0.38, 0.3, 0.25]) {
+      const pieces = lines.map((line) => wrapText(line, font, Math.max(lineH, widest * share), 5, input.measure));
+      const wrapped = pieces.flatMap((piece) => piece.lines);
+      const key = wrapped.join('\n');
+      if (pieces.some((piece) => piece.truncated) || wrapped.length < 2 || wrapped.length > 4 || seen.has(key)) continue;
+      seen.add(key);
+      const ww = Math.max(...wrapped.map((line) => input.measure(line, font).width));
+      const hh = lineH * wrapped.length;
+      const cx = Math.min(Math.max(at.x - ww / 2, input.plot.x), Math.max(input.plot.x, input.plot.x + input.plot.w - ww));
+      const extra = 100 + (wrapped.length - 2) * 10;
+      const seat = (slot: string, x: number, y: number, penalty: number, leader = false) => {
+        const rect = { x, y, w: ww, h: hh };
+        const from = value ? valueEdgeToward(value, rect) : edgeToward(rect);
+        const candidate = { slot, rect, penalty: extra + penalty, lines: wrapped, ...(leader ? { leaderFrom: from, leaderLineHeight: lineH } : {}) };
+        const drawn = leader ? leaderFor(candidate) : undefined;
+        // No line crosses text: a seat whose leader runs through a label on the page is no seat.
+        if (drawn && leaderCrossesLabel(drawn.d, input.occupied)) return;
+        // A diagonal seat without a drawn leader can read as a neighbour's callout: it comes after every seat with one,
+        // and still draws when nothing else fits.
+        if (leader && /^(above|below)/.test(slot) && !drawn) candidate.penalty += 1000;
+        wrappedSeats.push(candidate);
+      };
+      seat('aboveWrap', cx, wTop - hh - gap, prefer === 'above' ? -1 : 0);
+      seat('rightWrapAt', wRight + gap * 2, sideY - hh / 2, prefer === 'right' ? -1 : 1, true);
+      seat('leftWrapAt', wLeft - ww - gap * 2, sideY - hh / 2, prefer === 'left' ? -1 : 2, true);
+      seat('belowWrap', cx, wBottom + gap, prefer === 'below' ? -1 : 3);
+      // Diagonal seats clear of the value printed over the point.
+      seat('aboveLeftWrap', Math.max(input.plot.x, wLeft - ww - gap * 2), wTop - hh - gap, 3.1, true);
+      seat('aboveRightWrap', Math.min(wRight + gap * 2, input.plot.x + input.plot.w - ww), wTop - hh - gap, 3.2, true);
+      seat('belowLeftWrap', Math.max(input.plot.x, wLeft - ww - gap * 2), wBottom + gap, 3.3, true);
+      seat('belowRightWrap', Math.min(wRight + gap * 2, input.plot.x + input.plot.w - ww), wBottom + gap, 3.4, true);
+    }
+    all.push(...wrappedSeats.sort((a, b) => a.penalty - b.penalty));
+  }
+  // On a row chart a seat farther than one row from the anchor reads as the text of another row.
+  if (reach !== undefined) {
+    const limit = Math.max(reach, gap * 3);
+    all = all.filter(({ rect }) => Math.max(rect.y - at.y, at.y - rect.y - rect.h, 0) <= limit);
+  }
   // A note on a mark inside the plot (a scatter bubble) stays between the
   // plot's top and bottom, off the axis rows.
   if (at.markBox) {
@@ -1554,7 +1713,7 @@ function calloutLabel(
       const placement = glyph?.placements.get(candidate.slot);
       const ends = placement
         ? [placement.chipCenter, placement.anchor]
-        : candidate.leaderFrom ? [candidate.leaderFrom, leaderTerminus(candidate.rect, candidate.leaderFrom)] : undefined;
+        : candidate.leaderFrom ? [candidate.leaderFrom, leaderTerminus(candidate.rect, candidate.leaderFrom, leaderHeightOf(candidate))] : undefined;
       if (!ends) return true;
       const [a, b] = ends as [Point, Point];
       const run = { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(a.x - b.x), h: Math.abs(a.y - b.y) };

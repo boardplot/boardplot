@@ -1,21 +1,26 @@
 import * as z from 'zod';
 import { EMPTY_DATA, isEmptyDataIssue } from '../emptyData';
 import { isRecord } from '../lint/shared';
-import { canonicalChartType, getChartSchemas, unsupported } from '../registry';
+import { canonicalChartType, chartInputName, getChartSchemas, unsupported } from '../registry';
+import { caseInsensitiveValue, inputConversion, replaceInputValue } from '../inputConversion';
+import { parseWithInputConversions } from '../schema/inputConversions';
+import { schemaNodeAtPath, type JsonSchemaNode } from '../schema/nodes';
 import { annotationSchema, diagnosedSafeParse } from '../schema/shared';
 import { flattenIssues } from '../schema/flattenIssues';
 import { allowedValues, expectedTypes } from '../diagnostics/describe';
 import { refusalSuggest } from '../schema/capabilityReasons';
 import { LABEL_KINDS } from '../schema/capability';
-import { WORDING_KEYS, closestKey, movedKey, nearestOptionTerm, typoRenameFix, unknownKeySuggest, unknownOptionMessage, valueChangeSuggest } from '../schema/unknownKeyWords';
+import { WORDING_KEYS, closestKey, closestOptionKey, dataKeySynonym, movedKey, nearestOptionTerm, typoRenameFix, unknownKeySuggest, unknownOptionMessage, valueChangeSuggest } from '../schema/unknownKeyWords';
 import { ownedDocumentCopy } from './docExpand';
-import { chartSchemaDiagnostic, completeChartDiagnostic } from './diagnostics';
+import { chartSchemaDiagnostic, chartSchemaSource, completeChartDiagnostic } from './diagnostics';
+import { parseJsonPointer, toJsonPointer, type JsonPatchOperation } from '../diagnostics/jsonPatch';
 import type { DocChart, BoardplotDoc, DocumentEnvelope } from './document';
 import { diagramKindError } from '../schema/diagramKind';
 import type { DiagramData, DiagramOptions } from '../types/diagram';
 import { pushAll } from '../arrays';
 import { timeAnnotationAnchors } from '../timeAxis';
 import { retireChartSettings } from '../retired';
+import { normalizeOptionShapes } from '../normalize/optionShapes';
 
 type Definition = NonNullable<ReturnType<typeof getChartSchemas>>;
 
@@ -81,6 +86,16 @@ function parseChartInput(doc: BoardplotDoc, chart: DocChart, envelope: DocumentE
   // Library data is a JavaScript model, as in a registered normalizer. Keep
   // its schema output; document transports retain their JSON ownership guard.
   if (dataOwnership === 'document') chart = ownedDocumentCopy(chart);
+  // Unknown case spellings are refused names; exact names keep their alias defaults.
+  for (const [field, authored] of [
+    [['type'], chart.type],
+    ...gridPanelOptionTargets(chart.type, chart.data, '').map(target => [[...target.segments.slice(0, -1), 'type'], target.type]),
+  ] as [((string | number)[]), string][]) {
+    const name = chartInputName(authored) ?? (field.length > 1 ? caseInsensitiveValue(authored, ['text', 'legend']) : undefined);
+    if (name === undefined || name === authored) continue;
+    chart = replaceInputValue(chart, field, name);
+    envelope.warnings.push(inputConversion(field, authored, name));
+  }
   const def = getChartSchemas(chart.type);
   if (!def) {
     envelope.errors.push({
@@ -94,22 +109,32 @@ function parseChartInput(doc: BoardplotDoc, chart: DocChart, envelope: DocumentE
     return null;
   }
   // A retired setting draws as its successor or is dropped, and warns; only a key that never existed is refused below.
+  const shaped = normalizeOptionShapes(def.type, chart, canonicalChartType);
+  chart = shaped.chart;
+  pushAll(envelope.warnings, shaped.warnings);
   const retired = retireChartSettings(def.type, chart, canonicalChartType);
   chart = retired.chart;
   pushAll(envelope.warnings, retired.warnings);
   // Options are validated against the chart's schema; unknown keys are refused
-  const optResult = diagnosedSafeParse(
+  const optParse = parseWithInputConversions(
     def.optionsSchema as z.ZodType,
     // Apply alias values while its authored type is still available. The
     // owned copy keeps inherited optional keys out of the schema parse.
     ownedDocumentCopy({ ...def.aliasDefaults?.[chart.type], ...chart.options }),
+    ['options'],
   );
+  const optResult = optParse.result;
+  if (optParse.warnings.length) chart = { ...chart, options: optParse.input as Record<string, unknown> };
+  pushAll(envelope.warnings, optParse.warnings);
   // An explicit mode selects its data branch from the already-loaded schemas.
   const selectedMode = Object.entries(def.dataSchemaByOption ?? {})
     .find(([option]) => chart.options && Object.hasOwn(chart.options, option));
   const selectedSchema = selectedMode?.[1];
   const dataSchema = selectedSchema ?? def.dataSchema as z.ZodType;
-  const dataResult = diagnosedSafeParse(dataSchema, chart.data);
+  const dataParse = parseWithInputConversions(dataSchema, chart.data, ['data']);
+  const dataResult = dataParse.result;
+  if (dataParse.warnings.length) chart = { ...chart, data: dataParse.input };
+  pushAll(envelope.warnings, dataParse.warnings);
   // A mode option on data of another form (options.stack on a panel grid) is
   // one finding about the option, not the mode schema's errors about data it
   // was never meant to read; an invalid option still reports first. The
@@ -133,12 +158,14 @@ function parseChartInput(doc: BoardplotDoc, chart: DocChart, envelope: DocumentE
   }
   if (!dataResult.success && (!selectedSchema || optResult.success)) {
     for (const i of flattenIssues(dataResult.error.issues).flatMap(splitUnknownKeys)) {
-      const unknown = unknownKeyText(i, dataSchema, def.optionsSchema as z.ZodType, undefined, chart.data);
+      const source = i.code === 'unrecognized_keys' ? chartSchemaSource(doc, chart, 'data', i.path, chart.data) : undefined;
+      const unknown = unknownKeyText(i, dataSchema, def.optionsSchema as z.ZodType, undefined, chart.data, source);
       // The repair is the expected condition, as on every non-schema finding.
-      envelope.errors.push(chartSchemaDiagnostic(doc, chart, 'data', unknown ? { ...i, message: unknown.suggest } : i, chart.data, isEmptyDataIssue(i, chart.data) ? EMPTY_DATA : 'invalid-data',
+      const diagnostic = chartSchemaDiagnostic(doc, chart, 'data', unknown ? { ...i, message: unknown.suggest } : i, chart.data, isEmptyDataIssue(i, chart.data) ? EMPTY_DATA : 'invalid-data',
         unknown?.message ?? schemaIssueMessage(i, chart.data, i.path as (string | number)[], dataSchema) +
           inputHint(chart.data, i.path as (string | number)[], i.message === 'Invalid input'),
-        unknown?.suggest ?? dataIssueSuggest(def.type, chart.data, i.path as (string | number)[], i)));
+        unknown?.suggest ?? dataIssueSuggest(def.type, chart.data, i.path as (string | number)[], i));
+      envelope.errors.push(unknown?.fix ? { ...diagnostic, fix: unknown.fix } : diagnostic);
     }
     return null;
   }
@@ -152,7 +179,7 @@ function parseChartInput(doc: BoardplotDoc, chart: DocChart, envelope: DocumentE
       // A key a strict object refuses is the same finding as a key a plain one strips.
       envelope.errors.push(chartSchemaDiagnostic(doc, chart, 'options', unknown ? { ...i, message: unknown.suggest } : i, chart.options ?? {}, unknown ? 'unknown-option' : 'invalid-options',
         unknown?.message ?? schemaIssueMessage(i, chart.options ?? {}, i.path as (string | number)[], def.optionsSchema as z.ZodType),
-        unknown?.suggest ?? issueSuggestion(i, def.type, true, i.path as (string | number)[])));
+        unknown?.suggest ?? withEventAtHint(chart, i, issueSuggestion(i, def.type, true, i.path as (string | number)[]))));
     }
     return null;
   }
@@ -175,15 +202,17 @@ function parseChartInput(doc: BoardplotDoc, chart: DocChart, envelope: DocumentE
   // Annotations validated (kind enum rejects garbage)
   if (chart.annotations !== undefined) {
     const time = def.type === 'line' && (parsedOptions.xAxis as { type?: string } | undefined)?.type === 'time';
-    const annResult = diagnosedSafeParse(z.array(annotationSchema), time ? chart.annotations.map(timeAnnotationAnchors) : chart.annotations);
+    const annParse = parseWithInputConversions(z.array(annotationSchema), time ? chart.annotations.map(timeAnnotationAnchors) : chart.annotations, ['annotations']);
+    const annResult = annParse.result;
+    pushAll(envelope.warnings, annParse.warnings);
     if (!annResult.success) {
       for (const i of flattenIssues(annResult.error.issues)) {
         envelope.errors.push(chartSchemaDiagnostic(doc, chart, 'annotations', i, chart.annotations, 'invalid-annotation', i.message,
-          concreteSuggestion(i, def.type)));
+          withEventAtHint(chart, i, concreteSuggestion(i, def.type))));
       }
       return null;
     }
-    if (time) chart = { ...chart, annotations: ownedDocumentCopy(annResult.data) };
+    if (time || annParse.warnings.length) chart = { ...chart, annotations: ownedDocumentCopy(annResult.data) };
   }
 
   if (def.type !== 'line') {
@@ -278,26 +307,7 @@ function validateOptionKeys(
   return hasInvalidOption;
 }
 
-interface JsonSchemaNode {
-  type?: string | string[];
-  properties?: Record<string, JsonSchemaNode>;
-  required?: string[];
-  not?: object;
-  const?: unknown;
-  minimum?: number;
-  exclusiveMinimum?: number;
-  minItems?: number;
-  enum?: unknown[];
-  anyOf?: JsonSchemaNode[];
-  oneOf?: JsonSchemaNode[];
-  allOf?: JsonSchemaNode[];
-  items?: JsonSchemaNode;
-  description?: string;
-  $ref?: string;
-  $defs?: Record<string, JsonSchemaNode>;
-  propertyNames?: JsonSchemaNode;
-  additionalProperties?: JsonSchemaNode | boolean;
-}
+
 
 interface PanelOptionTarget {
   type: string;
@@ -455,6 +465,23 @@ function issueSuggestion(
     : `Take the shape from the '${type}' example and replace the values.`);
 }
 
+/**
+ * An event `date` that is no date, on a chart with category ids, is most
+ * likely a category id. `at` anchors an event to a category, so the fix names
+ * it and gives the first category as the example. A time axis has no
+ * category ids to anchor to.
+ */
+function withEventAtHint<T extends string | undefined>(chart: DocChart, issue: z.core.$ZodIssue, suggest: T): T | string {
+  if (issue.code !== 'custom' || issue.path.at(-1) !== 'date' || !issue.message.startsWith('event date must be')) return suggest;
+  const xAxis = chart.options?.xAxis;
+  if (isRecord(xAxis) && xAxis.type === 'time') return suggest;
+  const categories = isRecord(chart.data) ? chart.data.categories : undefined;
+  const first = Array.isArray(categories) ? categories[0] : undefined;
+  const id = typeof first === 'string' ? first : isRecord(first) ? first.id : undefined;
+  if (typeof id !== 'string' || id === '') return suggest;
+  return `${suggest ?? ''} To mark a category, use 'at' with its id in place of 'date', for example "at": ${JSON.stringify(id)}.`.trim();
+}
+
 /** The suggestion when the issue itself names the change, else undefined. */
 function concreteSuggestion(
   issue: z.core.$ZodIssue, type: string, optionPath?: readonly (string | number)[],
@@ -561,7 +588,7 @@ function sweepStrippedOptionKeys(
     // At the top the near miss also reads the words an option's values use (showValues -> labels).
     const near = parent.length === 0 ? nearestOptionKey(key, schema) : undefined;
     const siblings = known ?? expectedObjectKeys(schema, parent);
-    const nearest = near ? { key: near, near: true } : closestKey(key, siblings);
+    const nearest = near ? { key: near, near: true } : closestOptionKey(key, siblings);
     const dotted = keyPath.join('.');
     const moved = movedKey(dotted, (target) => expectedObjectKeys(schema, target.slice(0, -1)).includes(target.at(-1)!));
     // A rename is advice only when the near option takes the authored value too.
@@ -590,6 +617,24 @@ function valueFitsKey(schema: z.ZodType, parent: readonly (string | number)[], k
     } else probe = { [segment]: probe };
   }
   return !(schema.safeParse(probe).error?.issues ?? []).some((issue) => place.every((segment, index) => issue.path[index] === segment));
+}
+
+/** Check a data value in its authored object as well, so union branches see their other fields. */
+function dataValueFitsKey(schema: z.ZodType, data: unknown, path: (string | number)[], target: string): boolean {
+  const parent = path.slice(0, -1);
+  const value = valueAtPath(data, path);
+  if (!valueFitsKey(schema, parent, target, value)) return false;
+  const probe = ownedDocumentCopy(data);
+  const object = valueAtPath(probe, parent);
+  if (!isRecord(object)) return false;
+  delete object[String(path.at(-1))];
+  object[target] = value;
+  const place = [...parent, target];
+  const result = diagnosedSafeParse(schema, probe);
+  return result.success || !flattenIssues(result.error.issues).some((issue) =>
+    place.every((segment, index) => issue.path[index] === segment)
+    || (issue.code === 'invalid_union' && issue.path.length < place.length
+      && issue.path.every((segment, index) => place[index] === segment)));
 }
 
 /** Where the data of a chart type takes a key: on each series, at the data root, or both. */
@@ -635,7 +680,8 @@ function splitUnknownKeys(issue: z.core.$ZodIssue): z.core.$ZodIssue[] {
  */
 function unknownKeyText(
   issue: z.core.$ZodIssue, schema: z.ZodType, optionsSchema?: z.ZodType, optionsType?: string, authored?: unknown,
-): { message: string; suggest: string } | undefined {
+  source?: ReturnType<typeof chartSchemaSource>,
+): { message: string; suggest: string; fix?: JsonPatchOperation[] } | undefined {
   if (issue.code !== 'unrecognized_keys') return undefined;
   const path = issue.path as (string | number)[];
   const key = String(path.at(-1));
@@ -670,12 +716,86 @@ function unknownKeyText(
       suggest: `Move '${key}' into the value object: ${rich}.`,
     };
   }
-  const closest = closestKey(key, known);
+  const flatItems = optionsType === undefined && path.length === 1 && key === 'items'
+    && known.includes('categories') && known.includes('series')
+    ? flatItemsAdvice(schema, authored, source) : undefined;
+  if (flatItems) return {
+    message: `unknown key '${key}'; known keys: ${known.join(', ')}`,
+    ...flatItems,
+  };
+  let closest = closestKey(key, known, optionsType === undefined ? 'data' : 'option');
+  if (optionsType === undefined && closest?.near && !dataValueFitsKey(schema, authored, path, closest.key)) {
+    closest = { ...closest, near: false };
+  }
+  const message = `unknown key '${key}'${closest?.near ? ` — try: ${closest.key}` : ''}${known.length ? `; known keys: ${known.join(', ')}` : ''}`;
+  if (optionsType === undefined) {
+    const object = isRecord(source?.parent) ? source.parent : value;
+    if (closest?.near && isRecord(object) && Object.hasOwn(object, closest.key)) {
+      return { message, suggest: `'${key}' is not read; '${closest.key}' is already set. Remove '${key}' only if it repeats the value.` };
+    }
+    const content = valueAtPath(authored, path);
+    const suggest = closest?.near ? unknownKeySuggest(key, closest)
+      : content !== null && typeof content === 'object'
+        ? `'${key}' is not a data key of this chart, and its content is not drawn. Move the content to one of: ${known.length ? known.join(', ') : "the chart's documented data keys"}.`
+        : unknownKeySuggest(key, closest);
+    const fix = closest?.near ? dataRenameFix(key, closest, known, source) : undefined;
+    return { message, suggest, ...(fix ? { fix } : {}) };
+  }
   return {
-    message: `unknown key '${key}'${closest?.near ? ` — try: ${closest.key}` : ''}${known.length ? `; known keys: ${known.join(', ')}` : ''}`,
+    message,
     // A strict options schema refuses a capability key as unknown; the table still names the way out.
     suggest: (!closest?.near && optionsType && refusalSuggest(optionsType, path)) || unknownKeySuggest(key, closest),
   };
+}
+
+/** A rename must address the unchanged authored value and cannot overwrite another proposed rename. */
+function dataRenameFix(
+  key: string, closest: { key: string; near: boolean }, known: readonly string[], source?: ReturnType<typeof chartSchemaSource>,
+): JsonPatchOperation[] | undefined {
+  if (!source?.same || !isRecord(source.parent)) return undefined;
+  const segments = parseJsonPointer(source.path);
+  if (segments.some(segment => ['__proto__', 'prototype', 'constructor'].includes(segment))) return undefined;
+  const parent = source.parent;
+  if (Object.hasOwn(parent, closest.key) || Object.keys(parent).some(other => {
+    if (other === key || known.includes(other)) return false;
+    const candidate = closestKey(other, known, 'data');
+    return candidate?.near && candidate.key === closest.key;
+  })) return undefined;
+  if (dataKeySynonym(key, known) !== closest.key) return typoRenameFix(segments, closest, known, parent);
+  return [
+    { op: 'remove', path: source.path },
+    { op: 'add', path: toJsonPointer([...segments.slice(0, -1), closest.key]), value: parent[key] },
+  ];
+}
+
+/** Move a flat list only when its complete replacement passes the chart's data schema. */
+function flatItemsAdvice(
+  schema: z.ZodType, data: unknown, source?: ReturnType<typeof chartSchemaSource>,
+): { suggest: string; fix?: JsonPatchOperation[] } | undefined {
+  if (!isRecord(data) || !Array.isArray(data.items)) return undefined;
+  const plain = (item: unknown): item is Record<string, unknown> => isRecord(item)
+    && (Object.getPrototypeOf(item) === null || Object.getPrototypeOf(item) === Object.prototype);
+  if (!data.items.every(item => plain(item) && Object.keys(item).every(key => ['id', 'label', 'value'].includes(key))
+    && Object.hasOwn(item, 'id') && typeof item.id === 'string'
+    && Object.hasOwn(item, 'value') && (typeof item.value === 'number' || item.value === null))) return undefined;
+  const categories = data.items.map(item => ({ id: item.id, ...(Object.hasOwn(item, 'label') ? { label: item.label } : {}) }));
+  const series = [{ id: 'value', values: data.items.map(item => item.value) }];
+  const suggest = "This chart's data takes categories and series. Move each item's id and label to data.categories[] and its value to data.series[0].values.";
+  const parent = source?.parent;
+  if (!source?.same || !isRecord(parent) || !Array.isArray(parent.items) || !parent.items.every(plain)
+    || Object.hasOwn(parent, 'categories') || Object.hasOwn(parent, 'series')
+    || Object.hasOwn(data, 'categories') || Object.hasOwn(data, 'series')) return { suggest };
+  const segments = parseJsonPointer(source.path);
+  if (segments.some(segment => ['__proto__', 'prototype', 'constructor'].includes(segment))) return { suggest };
+  const replacement: Record<string, unknown> = { ...data, categories, series };
+  delete replacement.items;
+  if (!diagnosedSafeParse(schema, replacement).success) return { suggest };
+  const path = segments.slice(0, -1);
+  return { suggest, fix: [
+    { op: 'remove', path: source.path },
+    { op: 'add', path: toJsonPointer([...path, 'categories']), value: categories },
+    { op: 'add', path: toJsonPointer([...path, 'series']), value: series },
+  ] };
 }
 
 function nearestOptionKey(input: string, schema: z.ZodType): string | undefined {
@@ -698,37 +818,22 @@ function schemaTerms(schema: JsonSchemaNode): string[] {
   return terms;
 }
 
-/**
- * The schema nodes at `path`, with every `$ref` resolved (a lazy schema such
- * as a recursive calc or row sits behind one) and a record's value node
- * under each of its keys.
- */
-function schemaNodeAtPath(schema: z.ZodType, path: readonly (string | number)[]): JsonSchemaNode[] {
-  const root = z.toJSONSchema(schema, { io: 'input' }) as JsonSchemaNode;
-  const resolve = (node: JsonSchemaNode): JsonSchemaNode => {
-    const resolved = node.$ref?.startsWith('#/$defs/') ? root.$defs?.[node.$ref.slice('#/$defs/'.length)] : undefined;
-    if (!resolved) return node;
-    const branches = (list?: JsonSchemaNode[]) => list?.map(resolve);
-    return { ...resolved, anyOf: branches(resolved.anyOf), oneOf: branches(resolved.oneOf), allOf: branches(resolved.allOf) };
-  };
-  let nodes = [root];
-  for (const segment of path) {
-    const next: JsonSchemaNode[] = [];
-    for (const node of nodes) {
-      const branches = [node, ...(node.anyOf ?? []), ...(node.oneOf ?? []), ...(node.allOf ?? [])];
-      for (const branch of branches) {
-        if (typeof segment === 'number') {
-          if (branch.items) next.push(resolve(branch.items));
-        } else if (branch.properties?.[segment]) {
-          next.push(resolve(branch.properties[segment]));
-        } else if (typeof branch.additionalProperties === 'object' && (branch.propertyNames?.enum ?? [segment]).includes(segment)) {
-          next.push(resolve(branch.additionalProperties));
-        }
-      }
-    }
-    nodes = next;
+
+
+/** The option keys of each chart type, read once: building the JSON schema for them takes tens of milliseconds. */
+const optionKeysByType = new Map<string, ReadonlySet<string>>();
+
+/** Whether the options schema of a chart type (or alias) lists `key`; false for an unknown type. */
+export function optionsTake(type: string, key: string): boolean {
+  let keys = optionKeysByType.get(type);
+  if (!keys) {
+    const def = getChartSchemas(type);
+    // An unknown type is not cached: a schema chunk may register later.
+    if (!def) return false;
+    keys = new Set(expectedObjectKeys(def.optionsSchema as z.ZodType, []));
+    optionKeysByType.set(type, keys);
   }
-  return nodes;
+  return keys.has(key);
 }
 
 /** The keys the object at `path` accepts; a key it refuses by name (`not: {}`) is not one of them. */

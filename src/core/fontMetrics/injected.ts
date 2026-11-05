@@ -1,5 +1,5 @@
 /** Build a per-chart TextMeasurer from generated font tables. */
-import { capHeightOfFace, defaultMeasurer, estimateTextWidthForFace, quantize, type TextMeasurer } from '../text';
+import { cachedMeasurer, markCachedTextMeasurer, capHeightOfFace, defaultMeasurer, estimateTextWidthForFace, type TextMeasurer } from '../text';
 import {
   DEFAULT_FAMILY,
   buildCodePointIndex,
@@ -48,16 +48,25 @@ interface MetricTablesMeasurerOptions {
 function withBundledFallback(own: TextMeasurer, families: readonly string[]): TextMeasurer {
   const mine = new Set(families.map(tableFamilyKey));
   const bundled = new Set(tabledFamilies().map(tableFamilyKey));
+  // One answer per CSS stack: the tables and both family sets stay fixed for this measurer's life.
+  // Keyed by authored text, so capped, as `resolveFace` caps its map.
+  const owners = new Map<string, TextMeasurer>();
   const owner = (stack: string | undefined): TextMeasurer => {
-    for (const family of familiesOf(stack ?? DEFAULT_FAMILY)) {
-      if (mine.has(family)) return own;
-      if (bundled.has(family)) return defaultMeasurer;
+    const key = stack ?? DEFAULT_FAMILY;
+    const known = owners.get(key);
+    if (known !== undefined) return known;
+    let found = defaultMeasurer;
+    for (const family of familiesOf(key)) {
+      if (mine.has(family)) { found = own; break; }
+      if (bundled.has(family)) break;
     }
-    return defaultMeasurer;
+    if (owners.size >= 256) owners.delete(owners.keys().next().value!);
+    owners.set(key, found);
+    return found;
   };
   const measure: TextMeasurer = (text, font) => owner(font.family)(text, font);
   measure.capHeight = (font) => owner(font.family).capHeight?.(font);
-  return measure;
+  return markCachedTextMeasurer(measure);
 }
 
 function measurerOverTables(tables: FontMetricTables): TextMeasurer {
@@ -83,11 +92,7 @@ function measurerOverTables(tables: FontMetricTables): TextMeasurer {
     resolved.set(key, face);
     return face;
   };
-  const measure: TextMeasurer = (text, font) => ({
-    width: quantize(estimateTextWidthForFace(text, font, resolve(font.family, font.weight))),
-    height: quantize(font.size * (font.lineHeight ?? 1.2)),
-    ascent: quantize(font.size * 0.8),
-  });
+  const measure = cachedMeasurer((text, font) => estimateTextWidthForFace(text, font, resolve(font.family, font.weight)));
   measure.capHeight = (font) => capHeightOfFace(font, resolve(font.family, font.weight));
   return measure;
 }

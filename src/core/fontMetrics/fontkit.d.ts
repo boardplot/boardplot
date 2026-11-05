@@ -21,6 +21,7 @@ declare module 'fontkit' {
     xHeight: number | undefined;
     'OS/2'?: {
       usWeightClass?: number;
+      usWidthClass?: number;
       fsSelection?: { italic?: boolean; oblique?: boolean };
     };
     /** Axes of a variable font by tag, e.g. `wght`; empty for a static face. */

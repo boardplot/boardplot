@@ -353,6 +353,7 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
     const opts = {
       ...def.defaults,
       ...panelOpts,
+      ...(options.colorblindSafe !== undefined && panelOpts.colorblindSafe === undefined ? { colorblindSafe: options.colorblindSafe } : {}),
       ...(hasKpiFigure(def.type) && kpiValueSize !== undefined ? { [KPI_VALUE_SIZE]: kpiValueSize } : {}),
       ...(def.type === 'kpi' ? { [KPI_HOST_TEXT]: stringsIn([panelCaption, (panel as { title?: unknown }).title, options.title, options.subtitle, options.footnotes, options.source]) } : {}),
       // The value is the panel count, so a tier knows whether it is the only one (isSingleVarianceTier).

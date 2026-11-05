@@ -1,3 +1,4 @@
+import { alignedLeft, authoredTrackWidth, columnOverrideWarnings, trackPlotFloor } from '../columnOverrides';
 import { chartString } from '../../strings/funnel';
 import { chartPalette, chartTheme } from '../chartEnv';
 import { labelOn as chartLabelOn } from '../labelOn';
@@ -78,7 +79,10 @@ function stageLabelInfo(name: string, value: string, font: FontSpec, measure: Te
     h: font.size * (font.lineHeight ?? 1.2) * lines.length };
 }
 
-function centeredLabelNodes(theme: Theme, labels: PlacedLabel[], strong: FontSpec, header: FontSpec, labelFont: FontSpec, marks: SceneNode[]): SceneNode[] {
+/** Space between the name and the value of a one-line stage label. */
+const ONE_LINE_VALUE_GAP = 16;
+
+function centeredLabelNodes(theme: Theme, labels: PlacedLabel[], strong: FontSpec, header: FontSpec, labelFont: FontSpec, marks: SceneNode[], oneLine: boolean): SceneNode[] {
   const emitted = labelsToNodes(theme, labels, (label) =>
     label.id.startsWith('stage:') ? strong : label.id === 'total-cvr:header' || label.id === 'step-cvr:header' || label.id === CVR_SPAN_HEADER ? header : labelFont, marks);
   // a stage label prints its name bold over its value in
@@ -89,13 +93,27 @@ function centeredLabelNodes(theme: Theme, labels: PlacedLabel[], strong: FontSpe
     if (node.t !== 'text' || !node.id.endsWith(':body')) continue;
     const label = byNode.get(node.id.slice(0, -':body'.length));
     if (!label?.align) continue;
+    const head = emitted.find((item) => item.id === label.nodeId);
+    // A one-line stage label is a row of a table: the name flush left in the
+    // outside column, the value flush right on the same baseline.
+    if (oneLine && label.id.startsWith('stage:')) {
+      node.x = label.rect.x + label.rect.w;
+      node.align = 'end';
+      node.role = composedTextRole(node.lines.join(' '));
+      if (head?.t === 'text') {
+        head.x = label.rect.x;
+        head.align = 'start';
+        head.y = Math.round(head.y * 100) / 100;
+        node.y = head.y;
+      }
+      continue;
+    }
     node.x = label.align === 'middle' ? label.rect.x + label.rect.w / 2 : label.rect.x + label.rect.w;
     node.align = label.align;
     // The value line under the name reads as a value.
     node.role = composedTextRole(node.lines.join(' '));
     // Both lines sit on the 0.01 px raster the SVG prints, one line apart, so
     // rounding never lets the two line boxes overlap.
-    const head = emitted.find((item) => item.id === label.nodeId);
     if (head?.t === 'text') {
       const round = (v: number): number => Math.round(v * 100) / 100;
       head.y = round(head.y);
@@ -216,11 +234,13 @@ export function layoutCenteredFunnel(
       suggest: "Set variant: 'rows' to show the cell labels, or remove values[].label.",
     });
   }
+  // An authored format holds the whole chart to one scale and one decimal count (exampleSpec).
+  const authoredRaster = options.format ? [...numbers.values.flat(), ...Object.values(stageTotals)] : undefined;
   // One raster per stage: the values of one stage share one decimal count, and a stage of whole counts prints none.
   // A single series is one raster down its stages (one decimal count within a series).
-  const formats = stages.map((_, ci) => seriesRasterFormatter(options.format, plotted.length === 1 ? numbers.values[0]! : plotted.map((_, si) => numbers.values[si]![ci]), options.locale?.language, options.unit, options.target, undefined, true));
+  const formats = stages.map((_, ci) => seriesRasterFormatter(options.format, authoredRaster ?? (plotted.length === 1 ? numbers.values[0]! : plotted.map((_, si) => numbers.values[si]![ci])), options.locale?.language, options.unit, options.target, undefined, true));
   // Totals and series without format metadata print through the shared raster (one decimal count, engine scale).
-  const totalRaster = seriesRasterFormatter(options.format, Object.values(stageTotals), options.locale?.language, options.unit, options.target);
+  const totalRaster = seriesRasterFormatter(options.format, authoredRaster ?? Object.values(stageTotals), options.locale?.language, options.unit, options.target);
   // A whole count prints whole beside fractional values of its stage ("140", "1" beside "0.6"); an amount like 100.4 keeps its decimals.
   if (!options.format) for (const format of [...formats, totalRaster]) format.spec.wholeCounts = true;
   const { valueText, totalFmt } = funnelValueFormats(plotted, cells, formats, totalRaster);
@@ -305,12 +325,13 @@ export function layoutCenteredFunnel(
   // columns keep 10 px instead of 16, the funnel narrows to 64 px.
   const compactForm = options.mode === 'compact';
   const colPad = compactForm ? 10 : 16;
-  // the heads also take one word per line when the stage
+  // The heads split at spaces and after a hyphen. They also take one word per line when the stage
   // labels do not all fit inside their bands with one-line heads (see allInside).
   let splitHeads = compactForm;
-  const headLines = (text: string) => splitHeads ? text.split(' ') : [text];
+  let wholeHead: string | undefined;
+  const headLines = (text: string) => splitHeads ? text.split(/ |(?<=-)/) : [text];
   const headSize = (text: string) => {
-    const lines = headLines(text);
+    const lines = text === wholeHead ? [text] : headLines(text);
     return { width: Math.max(...lines.map((line) => measure(line, headerFont).width)), height: lines.length * measure(lines[0]!, headerFont).height };
   };
   // With both rate columns, one spanning
@@ -318,15 +339,23 @@ export function layoutCenteredFunnel(
   const spanForm = showTotalCvr && labelOn('annotation') && labelOn('point') && stages.length > 1;
   const spanText = chartString(options, 'cvrSpanHeader');
   const spanSize = measure(spanText, headerFont);
-  const cvrHeaderText = chartString(options, spanForm ? 'totalCvrShort' : 'totalCvr');
+  const cvrOverride = options.columnOverrides?.totalCvr;
+  const cvrHeaderText = cvrOverride?.label ?? chartString(options, spanForm ? 'totalCvrShort' : 'totalCvr');
+  // An authored head under the spanning head has one row, so it stays one line.
+  wholeHead = spanForm && cvrOverride?.label !== undefined ? cvrHeaderText : undefined;
   let cvrHeaderSize = headSize(cvrHeaderText);
   const cvrTexts = cumulativeCvrs.map((item) => cumulativeCvrText(item.rate));
   const cvrSizes = cvrTexts.map((text) => measure(text, cvrFont));
-  let cvrBlockWidth = showTotalCvr
-    ? Math.max(cvrHeaderSize.width, maxOf(cvrSizes.map((item) => item.width))) + colPad
-    : 0;
-  // The conversion from the previous stage is a named column, "Step CVR",
-  // in the style of "Total CVR", not an unnamed third line in each stage.
+  const cvrNatural = (): number => (showTotalCvr ? colPad + Math.max(cvrHeaderSize.width, maxOf(cvrSizes.map((item) => item.width))) : 0);
+  // `reserve` is what the other columns take. Only the last call knows it, so only that call warns.
+  const cvrBlock = (reserve = 0, sink: LintWarning[] = []): number => {
+    const natural = cvrNatural();
+    if (!showTotalCvr || cvrOverride?.width === undefined) return natural;
+    return colPad + authoredTrackWidth('totalCvr', cvrOverride.width, natural - colPad, inner.w - colPad - reserve - trackPlotFloor(inner.w), sink);
+  };
+  let cvrBlockWidth = cvrBlock();
+  // The conversion from the previous stage is a named column, "Step conversion",
+  // in the style of "Total conversion", not an unnamed third line in each stage.
   const showStepCvr = labelsOpt !== false && labelOn('point') && stages.length > 1;
   const stepHeaderText = chartString(options, spanForm ? 'stepCvrShort' : 'stepCvr');
   let stepHeaderSize = headSize(stepHeaderText);
@@ -347,7 +376,7 @@ export function layoutCenteredFunnel(
   const setTableForm = (split: boolean): void => {
     splitHeads = split;
     cvrHeaderSize = headSize(cvrHeaderText);
-    cvrBlockWidth = showTotalCvr ? Math.max(cvrHeaderSize.width, maxOf(cvrSizes.map((item) => item.width))) + colPad : 0;
+    cvrBlockWidth = cvrBlock();
     stepHeaderSize = headSize(stepHeaderText);
     stepBlockWidth = showStepCvr ? Math.max(stepHeaderSize.width, maxOf(stepSizes.map((item) => item.width))) + colPad : 0;
     headerReserve = showTotalCvr || showStepCvr ? headBlockH() + 8 : 0;
@@ -391,8 +420,24 @@ export function layoutCenteredFunnel(
     setTableForm(true);
     allInside = fitAllInside();
   }
-  const labelColumnW = labelOn('total') && !allInside
-    ? maxOf(stageLabelInfos.map((label) => label.w)) + LABEL_COLUMN_GAP : 0;
+  // Outside labels keep their two lines while each band holds them. In
+  // shorter bands the name and the value share one line in the outside
+  // column, so the rows need only one line height.
+  const lineH = strongFont.size * (strongFont.lineHeight ?? 1.2);
+  const twoLineH = Math.max(0, maxOf(stageLabelInfos.map((label) => label.h)));
+  const hasValueLine = stageLabelInfos.some((label) => label.lines.length > 1);
+  const oneLine = labelOn('total') && !allInside && hasValueLine && bandHeight < twoLineH + 6;
+  const nameColumnW = maxOf(stageLabelInfos.map((label) => measure(label.lines[0]!, strongFont).width));
+  const valueColumnW = maxOf(stageLabelInfos.map((label) => label.lines[1] ? measure(label.lines[1], labelFont).width : 0));
+  const stageNaturalW = oneLine ? nameColumnW + ONE_LINE_VALUE_GAP + valueColumnW : maxOf(stageLabelInfos.map((label) => label.w));
+  const labelOutside = labelOn('total') && !allInside;
+  columnOverrideWarnings('funnel', options.columnOverrides, [...(labelOutside ? ['label'] : []), ...(showTotalCvr ? ['totalCvr'] : [])], showTotalCvr && labelOn('annotation') ? ['totalCvr'] : [], warnings);
+  if (cvrOverride?.width !== undefined) cvrBlockWidth = cvrBlock(stepBlockWidth + cagrReserve + (labelOutside ? stageNaturalW + LABEL_COLUMN_GAP : 0), warnings);
+  const stageTrack = options.columnOverrides?.label?.width;
+  // An authored label column keeps its width; the funnel gives way first, down to the plot floor.
+  const stageColumnW = stageTrack === undefined || !labelOutside ? stageNaturalW
+    : authoredTrackWidth('label', stageTrack, stageNaturalW, inner.w - stepBlockWidth - cvrBlockWidth - cagrReserve - LABEL_COLUMN_GAP - Math.max(minFunnelW, trackPlotFloor(inner.w)), warnings);
+  const labelColumnW = labelOn('total') && !allInside ? stageColumnW + LABEL_COLUMN_GAP : 0;
   const funnelWidth = Math.max(10, inner.w - stepBlockWidth - cvrBlockWidth - cagrReserve - labelColumnW);
   const funnelLeft = inner.x + labelColumnW;
   // A wider funnel can take its labels inside, so the measured floor is
@@ -401,7 +446,8 @@ export function layoutCenteredFunnel(
   let narrowestFunnel = Infinity;
   // The new placement: the narrowest funnel that holds every label inside, or
   // the minimum funnel with the label column beside it.
-  const columnW = labelOn('total') ? maxOf(stageLabelInfos.map((label) => label.w)) + LABEL_COLUMN_GAP : 0;
+  // The natural columns: an authored width gives way, so it never raises the floor.
+  const columnW = labelOn('total') ? stageNaturalW + LABEL_COLUMN_GAP : 0;
   for (let w = minFunnelW; w <= Math.max(minFunnelW, 640); w += 4) {
     const outside = stageLabelInfos.every((label, ci) => fitsInside(ci, w, label)) ? 0 : columnW;
     narrowestFunnel = Math.min(narrowestFunnel, w + outside);
@@ -511,11 +557,17 @@ export function layoutCenteredFunnel(
               ? insideStagePaint(stagePaint(plotted[0]!, 0, categoryIndex), centeredPattern(plotted[0]!), theme)
               : { needsBacking: true }),
           }]
-        : [{
-            slot: 'outsideLeft',
-            rect: { x: funnelLeft - LABEL_COLUMN_GAP - info.w, y: rowCenterY - info.h / 2, w: info.w, h: info.h },
-            penalty: 0,
-          }];
+        : oneLine
+          ? [{
+              slot: 'outsideLeft',
+              rect: { x: funnelLeft - LABEL_COLUMN_GAP - stageColumnW, y: rowCenterY - lineH / 2, w: stageColumnW, h: lineH },
+              penalty: 0,
+            }]
+          : [{
+              slot: 'outsideLeft',
+              rect: { x: funnelLeft - LABEL_COLUMN_GAP - info.w, y: rowCenterY - info.h / 2, w: info.w, h: info.h },
+              penalty: 0,
+            }];
       labelRequests.push({
         id: `stage:${stage.id}`,
         kind: 'total',
@@ -524,7 +576,7 @@ export function layoutCenteredFunnel(
         text: info.text,
         lines: info.lines,
         font: strongFont,
-        align: inside ? 'middle' as const : 'end' as const,
+        align: inside ? 'middle' as const : oneLine ? 'start' as const : 'end' as const,
         priority:
           PRIORITY.total +
           (highlights.has(stage.id) ? PRIORITY.highlightBonus : 0),
@@ -616,21 +668,21 @@ export function layoutCenteredFunnel(
     });
   }
 
-  if (showTotalCvr && labelOn('annotation')) {
+  if (showTotalCvr && labelOn('annotation') && cvrHeaderText) {
     labelRequests.push({
       id: 'total-cvr:header',
       kind: 'annotation', role: 'caption',
       ...(spanForm ? { pad: 0 } : {}),
       owner: { annotationId: 'total-cvr-header' },
       text: cvrHeaderText,
-      lines: headLines(cvrHeaderText),
+      lines: cvrHeaderText === wholeHead ? [cvrHeaderText] : headLines(cvrHeaderText),
       font: headerFont,
       priority: PRIORITY.total,
       align: 'end' as const,
       candidates: [{
         slot: 'cvrHeader',
         rect: {
-          x: flushRight(cvrX, cvrBlockWidth, cvrHeaderSize.width),
+          x: alignedLeft(cvrX, Math.max(0, cvrBlockWidth - colPad), cvrHeaderSize.width, cvrOverride?.headAlign ?? 'right'),
           y: headY(cvrHeaderSize.height),
           w: cvrHeaderSize.width,
           h: cvrHeaderSize.height,
@@ -777,7 +829,7 @@ export function layoutCenteredFunnel(
 
   const allLabels: PlacedLabel[] = [...solved.placed, ...annotationResult.labels];
   pushAll(nodes, annotationResult.nodes);
-  pushAll(nodes, centeredLabelNodes(theme, allLabels, strongFont, headerFont, labelFont, nodes));
+  pushAll(nodes, centeredLabelNodes(theme, allLabels, strongFont, headerFont, labelFont, nodes, oneLine));
   // a hairline under the column heads closes the table head.
   const heads = allLabels.filter((label) => !label.hidden && (label.id === 'step-cvr:header' || label.id === 'total-cvr:header'));
   if (heads.length > 0) {
@@ -795,7 +847,7 @@ export function layoutCenteredFunnel(
   const first = stages[0]!;
   const last = stages[stages.length - 1]!;
 
-  const tallestStageLabelH = Math.max(0, maxOf(stageLabelInfos.map((label) => label.h)));
+  const tallestStageLabelH = twoLineH;
   const paintWarningRules: PaintWarningRule[] = [];
   pushAll(warnings, centeredAdjacentWarnings(marks, nodes, values, plotted, theme, { rules: paintWarningRules, before: warnings.filter(warning => !['pie-ramp-crowded', 'likert-ramp-invisible', 'band-lightness-insufficient', 'series-adjacent-similar', 'highlight-reads-as-loss'].includes(warning.code)).length }));
   return {
@@ -804,7 +856,8 @@ export function layoutCenteredFunnel(
     // Rows share one pitch, so the tallest stage label sizes them: a hidden value makes only its own label one line.
     sizing: rowSizing('funnel', size, {
       chromeH: size.height - rowsHeight,
-      minimumRowsH: stages.length * Math.max(28, labelOn('total') ? tallestStageLabelH + 6 : 0),
+      // The floor is one line per stage: shorter bands set name and value on one line.
+      minimumRowsH: stages.length * Math.max(28, labelOn('total') ? (hasValueLine ? lineH : tallestStageLabelH) + 6 : 0),
       // A wide card gets air around each stage (pitch 56 at 960, 52 at 720, 40 at 480, 36 at 400): 0.05 px of air
       // per px of canvas over 400, up to 19 px.
       naturalRowsH: stages.length * (Math.max(28, labelOn('total') ? tallestStageLabelH + 6 : 0)
@@ -812,7 +865,7 @@ export function layoutCenteredFunnel(
       // The frame, the funnel at its narrowest readable width, the stage
       // labels it sends outside, and the CVR columns.
       // The funnel width plus the labels it sends outside, at the narrowest sum.
-      minWidth: size.width - inner.w + cagrReserve + stepBlockWidth + cvrBlockWidth + narrowestFunnel,
+      minWidth: size.width - inner.w + cagrReserve + stepBlockWidth + cvrNatural() + narrowestFunnel,
     }),
     plot,
     scene: nodes,

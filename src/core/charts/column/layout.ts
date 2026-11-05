@@ -1,5 +1,5 @@
 import { pickedValues, withValueLabelDefaults } from '../band/valueSelection';
-import { sk, stackParts } from '../band/stacks';
+import { sk, stackParts, withoutShareAnnotations } from '../band/stacks';
 import { chartString } from '../../strings/column';
 import { REFERENCE_LABEL_CLEARANCE, textBreaksLine, withSegmentSeams } from '../../markVisibility';
 import { TEXT_ASCENT } from '../../svg/renderSvg';
@@ -24,6 +24,7 @@ import { stackBreakReversesOrder } from '../band/breakOrder';
  * which this function replays in claim order.
  */
 
+import { maxOf } from '../../arrays';
 import { BAND_PAD, hiddenValueLineReserve, VALUE_LINE_RESERVE } from '../../annotateParts';
 import { applyValueAxisTitleInk, valueAxisTitleRequest } from '../../axis';
 import { rectSeriesAdjacentWarnings } from '../../adjacentSeries';
@@ -33,8 +34,9 @@ import { NOT_AVAILABLE } from '../../format';
 import { noTotal } from '../../stackAdds';
 import { emitEventLane, percentLevels, runAnnotatePass, settleEventLane } from '../../annotatePass';
 import { categoryTargetFields, spliceAnnotationNodes } from '../../annotateFields';
-import { segmentHitsRect, type Rect } from '../../geometry';
-import { linePath } from '../../svgPath';
+import { segmentHitsRect, type Point, type Rect } from '../../geometry';
+import { leaderPath, linePath } from '../../svgPath';
+import { fmtPathNumber as fmt } from '../../curve';
 import { labelsToNodes } from '../../label/emit';
 import type { OccupiedIndex } from '../../label/occupied';
 import { labelCtx, leaderTerminus, solveLabels, type LabelRequest, type SolveCtx, type SolveResult } from '../../label/solver';
@@ -46,12 +48,14 @@ import { addRatioTierRequests, finalizeRatioTier, ratioTierA11y, ratioTierSpacin
 import type { FontSpec } from '../../text';
 import { colorblindPaint, joinHatchPeers, panelTypeClass, emphasisWeight, strokeToken } from '../../theme';
 import type { AnchorRef } from '../../types/annotations';
-import type { Id } from '../../types/cell';
+import { cellMeta, type Id } from '../../types/cell';
 import type { ChartData } from '../../types/data';
 import type { Geometry, LintWarning, PaintWarningRule, PlacedLabel, SceneNode } from '../../types/scene';
-import { bandValueLabelUniformity, haloOverRules, keepValuesWithoutAxis, raiseOverRules, warnSliverLabels } from '../band/labels';
+import { bandValueLabelUniformity, compactValueLabelFont, groupedValueLabelPolicy, haloOverRules, keepValuesWithoutAxis, raiseOverRules, warnSliverLabels } from '../band/labels';
+import { groupedOffsets } from '../band/groups';
+import { textScaleOf } from '../../typeFloors';
 import { anomalyReceipt } from './anomaly';
-import { edgeNameFont, KEY_EDGE_SERIES, resolveColumnDomain, toDateOnValues } from './domain';
+import { edgeNameFont, KEY_EDGE_SERIES, kindSetting, resolveColumnDomain, toDateOnValues } from './domain';
 import { cellValueText, planColumnLabels, planColumnValueLabels, type DigitSeats } from './labels';
 import { layoutColumnMarks } from './marks';
 import { PY_TICK_LEAD, TICK_LABEL_RESERVE, type ColumnArea, type ColumnDomain, type ColumnMarkGeometry, type ComputedTotal } from './model';
@@ -71,7 +75,11 @@ function clearStraightLeaders(labels: PlacedLabel[], theme: Theme): void {
   const visible = labels.filter((label) => !label.hidden);
   const pad = REFERENCE_LABEL_CLEARANCE + strokeToken(theme, 'rule') / 2 + 0.01;
   for (const label of visible) {
-    if (!label.leader || label.leader.curved) continue;
+    if (!label.leader) continue;
+    if (label.leader.curved) {
+      clearCurvedLeader(label, visible, pad);
+      continue;
+    }
     const match = /^M(-?[\d.]+) (-?[\d.]+)L(-?[\d.]+) (-?[\d.]+)$/.exec(label.leader.d);
     if (!match) continue;
     const [x, y, x2, y2] = match.slice(1).map(Number) as [number, number, number, number];
@@ -112,6 +120,45 @@ function clearStraightLeaders(labels: PlacedLabel[], theme: Theme): void {
     const point = (t: number) => ({ x: x + t * dx, y: y + t * dy });
     const d = runs.map(([from, to]) => linePath([point(from), point(to)])).join('');
     label.leader = d ? { d, curved: false } : undefined;
+  }
+}
+
+/** Points along a leader's S-curve, as straight pieces for the clearance test. */
+function curvePoints(from: Point, mx: number, to: Point): Point[] {
+  return Array.from({ length: 17 }, (_, i) => {
+    const t = i / 16, u = 1 - t;
+    const x = u * u * u * from.x + 3 * u * t * (u + t) * mx + t * t * t * to.x;
+    const y = (u * u * u + 3 * u * u * t) * from.y + (3 * u * t * t + t * t * t) * to.y;
+    return { x, y };
+  });
+}
+
+/**
+ * A curved leader that passes within the shared gap of another printed box
+ * (a stack total over the anchor) runs flat along its start until it is past
+ * that box, and curves up from there. With no such run, the leader stays.
+ */
+function clearCurvedLeader(label: PlacedLabel, visible: readonly PlacedLabel[], pad: number): void {
+  const match = /^M(-?[\d.]+) (-?[\d.]+)C(-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+)$/.exec(label.leader!.d);
+  if (!match) return;
+  const [x, y, , , , , x2, y2] = match.slice(1).map(Number) as number[];
+  const from = { x: x!, y: y! }, to = { x: x2!, y: y2! };
+  const sign = Math.sign(to.x - from.x);
+  const others = visible.filter((other) => other !== label);
+  const blockers = (points: Point[]) => others.filter((other) => points.slice(1).some((b, i) => segmentHitsRect(points[i]!, b, other.rect, pad)));
+  let start = from;
+  for (let round = 0; round < 4; round++) {
+    const points = [...(start === from ? [] : [from]), ...curvePoints(start, (start.x + to.x) / 2, to)];
+    const hit = blockers(points);
+    if (!hit.length) {
+      if (start !== from) label.leader = { d: `M${fmt(from.x)} ${fmt(from.y)}L${leaderPath(start, to).slice(1)}`, curved: true };
+      return;
+    }
+    // A box on the flat run itself cannot be passed by running further.
+    if (blockers([from, start]).length) return;
+    const past = sign > 0 ? Math.max(...hit.map((other) => other.rect.x + other.rect.w + pad)) : Math.min(...hit.map((other) => other.rect.x - pad));
+    if ((to.x - past) * sign <= 0) return;
+    start = { x: past, y: from.y };
   }
 }
 
@@ -315,6 +362,7 @@ function annotateColumn(
     locale: domain.options.locale?.language,
     strings: domain.options.strings,
     percentLevels: percentLevels(dataSeries),
+    sharesFormat: domain.variant === 'stacked100',
     valueLinePercentLevels: domain.variant === 'stacked100' || domain.options.unit === '%' || domain.pctLevels,
     solveCtx,
     yScale: y,
@@ -574,16 +622,74 @@ export function layoutColumn(
   options: AnomalyColumnOptions = {},
   keepEachValue = false,
 ): Geometry<ColumnMarks, ColumnDerived> {
-  const resolved = withValueLabelDefaults(ribbonDefaults(withLocaleStrings(options)), 'column', options.valueAxis?.percent ? 'stacked100' : options.variant);
-  const geometry = withBandValueNotes(data, resolved, next => layoutColumnWithNotes(data, next, keepEachValue));
+  const dropped: LintWarning[] = [];
+  const resolved = withoutShareAnnotations(
+    withValueLabelDefaults(ribbonDefaults(withLocaleStrings(options)), 'column', options.valueAxis?.percent ? 'stacked100' : options.variant, dropped),
+    options.variant === 'stacked100' || Boolean(options.valueAxis?.percent), dropped);
+  const geometry = layoutColumnKeyed(data, resolved, keepEachValue);
+  geometry.warnings.push(...dropped);
+  return geometry;
+}
+
+/** Whether the value axis was turned on for columns left with no number: decided once per chart. */
+interface AxisFallback { on: boolean }
+
+const AXIS_FALLBACK = Symbol('columnAxisFallback');
+interface AxisProbe {
+  checked: boolean;
+  prepared?: { domain: ColumnDomain; paints: ReturnType<typeof columnPaints>; warnings: LintWarning[] };
+}
+
+const withValueAxis = (options: AnomalyColumnOptions): AnomalyColumnOptions => ({ ...options, valueAxis: { ...options.valueAxis, show: true } });
+
+/**
+ * Whether automatic value labels leave a column with no number while the
+ * value axis is off by default: a grouped column with no value label, or a
+ * stack that lost every segment value and its total. A value the author
+ * turned off (labels.point false, a cell's label false) leaves no gap to
+ * fill. An authored valueAxis.show and a grid panel keep their axis.
+ */
+function unnumberedColumn(data: ChartData, options: AnomalyColumnOptions, geometry: Pick<Geometry<ColumnMarks, ColumnDerived>, 'labels' | 'marks'>): boolean {
+  if (options.valueAxis?.show !== undefined || panelTypeClass(options) !== undefined) return false;
+  const shown = (label: PlacedLabel) => label.hidden === undefined || label.printedIn !== undefined;
+  // A label the engine dropped; a 'redundant' one that owes nothing is the author's label: false.
+  const dropped = (label: PlacedLabel) => !shown(label) && (label.hidden !== 'redundant' || label.owed === true);
+  const values = new Map<string, PlacedLabel[]>();
+  for (const label of geometry.labels) {
+    if (!['point', 'segment', 'grandTotal', 'total'].includes(label.kind)) continue;
+    for (const key of [`${label.owner.seriesId}|${label.owner.categoryId}`, `|${label.owner.categoryId}`]) {
+      values.set(key, [...(values.get(key) ?? []), label]);
+    }
+  }
+  const pointsOn = kindSetting(options, 'point') !== false;
+  const cellOff = new Set(data.series.flatMap((s) => s.values.flatMap((cell, ci) =>
+    cellMeta(cell)?.label === false ? [`${s.id}|${data.categories[ci]?.id}`] : [])));
+  return geometry.marks.bars.some((bar) => {
+    if (bar.segments) {
+      const own = values.get(`|${bar.categoryId}`) ?? [];
+      return own.some(dropped) && !own.some(shown);
+    }
+    const key = `${bar.seriesId}|${bar.categoryId}`;
+    // Thinning offers no label to a grouped column at all, so a missing label counts as dropped.
+    return pointsOn && !cellOff.has(key) && !(values.get(key) ?? []).some(shown);
+  });
+}
+
+/** The column laid out with its value notes, and again with every series keyed when an edge name lost its seat. */
+function layoutColumnKeyed(data: ChartData, resolved: AnomalyColumnOptions, keepEachValue: boolean): Geometry<ColumnMarks, ColumnDerived> {
+  const axis: AxisFallback = { on: false };
+  const geometry = withBandValueNotes(data, resolved, next => layoutColumnWithNotes(data, next, keepEachValue, axis));
   // An edge name that lost its seat leaves its series to the key: lay out again with every series keyed.
   const keyed = new Set(geometry.legend?.items.map((item) => item.id));
   const lost = geometry.labels.some((label) => label.hidden && label.id.startsWith('seriesEdge:') && !keyed.has(label.owner.seriesId!));
   const keyAsked = resolved.legend !== undefined && resolved.legend !== 'none';
   if (!lost || !keyAsked || (resolved as { [KEY_EDGE_SERIES]?: true })[KEY_EDGE_SERIES]) return geometry;
   const again = { ...resolved, [KEY_EDGE_SERIES]: true } as AnomalyColumnOptions;
-  return withBandValueNotes(data, again, next => layoutColumnWithNotes(data, next, keepEachValue));
+  return withBandValueNotes(data, again, next => layoutColumnWithNotes(data, next, keepEachValue, axis));
 }
+
+/** The air over a callout's seat in the room a stacked100 plot makes over its columns, in px. */
+const CALLOUT_SEAT_AIR = 12;
 
 /** A ribbon chart names its series at the right edge of the last column, not in a legend. */
 function ribbonDefaults(options: AnomalyColumnOptions): AnomalyColumnOptions {
@@ -593,18 +699,48 @@ function ribbonDefaults(options: AnomalyColumnOptions): AnomalyColumnOptions {
   return { ...options, seriesLabels: { at: 'right-edge' } };
 }
 
+/**
+ * A column the value labels leave with no number reads off the value axis, as
+ * under valueLabels. Once a pass turns the axis on, the later note passes of
+ * the same chart start with it.
+ */
 function layoutColumnWithNotes(
   data: ChartData,
   options: AnomalyColumnOptions,
   keepEachValue: boolean,
+  axis: AxisFallback = { on: false },
 ): Geometry<ColumnMarks, ColumnDerived> {
+  const probe: AxisProbe = { checked: false };
+  if (!axis.on) {
+    // The first pass usually shows the gap already, so the settling passes are not spent on it.
+    try {
+      const geometry = layoutColumnSettled(data, options, keepEachValue, probe, (first) => unnumberedColumn(data, options, first));
+      if (geometry && !unnumberedColumn(data, options, geometry)) return geometry;
+    } catch (error) {
+      if (error !== AXIS_FALLBACK) throw error;
+    }
+    axis.on = true;
+  }
+  return layoutColumnSettled(data, withValueAxis(options), keepEachValue, probe)!;
+}
+
+/** The settled column; undefined when `stopAfterFirst` says so after the first pass. */
+function layoutColumnSettled(
+  data: ChartData,
+  options: AnomalyColumnOptions,
+  keepEachValue: boolean,
+  probe: AxisProbe,
+  stopAfterFirst?: (geometry: Geometry<ColumnMarks, ColumnDerived>) => boolean,
+): Geometry<ColumnMarks, ColumnDerived> | undefined {
   let named = new Map<string, string>();
   // options.categoryLabels 'staircase': the names take the height they need, or the chart falls back to the row.
   // Every re-layout settles them again, as each later pass (CAGR pad, value-line reserve, notes) moves the plot.
   let pass!: ReturnType<typeof layoutColumnPass>;
   let minimumChrome = Infinity;
+  let first = true;
   const run = (next: AnomalyColumnOptions): AnomalyColumnOptions => {
-    pass = layoutColumnPass(data, next, keepEachValue);
+    pass = layoutColumnPass(data, next, keepEachValue, first ? probe : undefined, first && stopAfterFirst !== undefined);
+    first = false;
     const settled = settleStaircase(next, (o) => (pass = layoutColumnPass(data, o, keepEachValue)).staircase, pass.staircase);
     minimumChrome = Math.min(minimumChrome, plotChromeFloor.get(pass.geometry.frame) ?? NaN);
     return settled;
@@ -618,6 +754,7 @@ function layoutColumnWithNotes(
     return next;
   };
   options = run(options);
+  if (!probe.checked && stopAfterFirst?.(pass.geometry)) return undefined;
   // A CAGR arm too low to give its arrow end the minimum shaft (MIN_LEG)
   // gets the room it lacked over the plot, and the chart is laid out again.
   for (let round = 0, pad = 0; round < 3 && pass.legDeficit > 0.5; round++) {
@@ -636,6 +773,15 @@ function layoutColumnWithNotes(
     const reserved = run({ ...options, [TICK_LABEL_RESERVE]: pass.tickReserve } as AnomalyColumnOptions);
     if (hiddenTicks(pass) < hiddenTicks(before)) options = reserved;
     else pass = before;
+  }
+  // A stacked100 plot ends at 100%, so a callout or note with no seat beside its column gets the room
+  // over the plot that a stacked chart keeps for its totals. Kept only when it seats a callout.
+  for (let round = 0; round < 2 && pass.unseated > 0; round++) {
+    const before = pass;
+    const pad = ((options as { [BAND_PAD]?: number })[BAND_PAD] ?? 0) + pass.seatNeed;
+    const padded = run({ ...options, [BAND_PAD]: pad } as AnomalyColumnOptions);
+    if (pass.unseated >= before.unseated) { pass = before; break; }
+    options = padded;
   }
   // A grid panel stops here; other charts settle band headroom after their notes.
   if (panelTypeClass(options) !== undefined) {
@@ -695,11 +841,41 @@ function layoutColumnPass(
   data: ChartData,
   options: AnomalyColumnOptions,
   keepEachValue: boolean,
-): { geometry: Geometry<ColumnMarks, ColumnDerived>; unprinted: Map<string, string>; categoryNotes: string[]; planNotes: string[]; rankKey: () => string[]; legDeficit: number; bandNeed: number; valueLineReserve: number; tickReserve: number; staircase?: StaircaseOutcome } {
-  const warnings: LintWarning[] = [];
-  const domain = resolveColumnDomain(data, options, warnings);
-  const paints = columnPaints(domain, warnings);
+  axisProbe?: AxisProbe,
+  probeAxis = false,
+): { geometry: Geometry<ColumnMarks, ColumnDerived>; unprinted: Map<string, string>; categoryNotes: string[]; planNotes: string[]; rankKey: () => string[]; legDeficit: number; bandNeed: number; valueLineReserve: number; tickReserve: number; unseated: number; seatNeed: number; staircase?: StaircaseOutcome } {
+  const prepared = axisProbe?.prepared;
+  if (axisProbe) axisProbe.prepared = undefined;
+  const warnings: LintWarning[] = prepared ? [...prepared.warnings] : [];
+  // Turning on a grouped axis changes no data, paints or domain. Only its
+  // options and frame change; keep preparation from the discarded pass.
+  const domain = prepared ? { ...prepared.domain, options: { ...prepared.domain.options, valueAxis: options.valueAxis }, va: options.valueAxis! }
+    : resolveColumnDomain(data, options, warnings);
+  const paints = prepared?.paints ?? columnPaints(domain, warnings);
+  const preparedWarnings = warnings.length;
+  const fallback = () => {
+    axisProbe!.prepared = { domain, paints, warnings: warnings.slice(0, preparedWarnings) };
+    throw AXIS_FALLBACK;
+  };
   const { size, theme } = domain;
+  // Grouped values cannot return after the solver. Stacks have late digit seats;
+  // ratio badges, running periods and staircase retries can change what counts.
+  const probe = probeAxis && options.valueAxis?.show === undefined && panelTypeClass(options) === undefined
+    && domain.variant === 'grouped' && kindSetting(options, 'point') !== false && !options.ratioTier
+    && options.categoryLabels !== 'staircase' && !domain.cats.some(c => c.partial)
+    && !domain.annList.some(a => a.kind === 'event');
+  const beforeCategoryRow = probe && domain.dataSeries.length > 1 ? (bandwidth: number) => {
+    const font = compactValueLabelFont({ family: theme.type.family, ...theme.type.label }, theme.type.footnote, options.target, textScaleOf(options));
+    if (!groupedValueLabelPolicy('vertical', groupedOffsets(bandwidth, domain.dataSeries.length)[0]!.size,
+      domain.dataSeries.length, [], theme.type.label.size, font.size).firstSeriesOnly) return;
+    const off = new Set(data.series.flatMap(s => s.values.flatMap((cell, ci) =>
+      cellMeta(cell)?.label === false ? [`${s.id}|${data.categories[ci]?.id}`] : [])));
+    // Rotation can only narrow this band. Thinned, unprotected values have no
+    // request to solve, so the completed pass would turn the axis on too.
+    if (domain.dataSeries.slice(1).some(s => !domain.highlights.has(s.id) && domain.cats.some((c, ci) =>
+      domain.plottedOf(s, ci) !== null && !off.has(`${s.id}|${c.id}`) && !domain.highlights.has(c.id)
+      && !domain.anomaly?.flagByCategory.has(c.id)))) fallback();
+  } : undefined;
   // The frame is the first claimer, so its index becomes the run's index.
   // The event lane sizes itself and the key with the frame and plot passes.
   let areaWarningsAt = 0;
@@ -710,7 +886,7 @@ function layoutColumnPass(
     solve: (key, w) => solveColumnFrame(domain, paints, w, key),
     area: (framed, w) => {
       areaWarningsAt = w.length;
-      return columnPlotArea(domain, framed.frame, w);
+      return columnPlotArea(domain, framed.frame, w, beforeCategoryRow);
     },
     axis: (area) => ({ x: (ci) => area.band.center(ci), step: area.band.step, plot: area.plot }),
     warnings,
@@ -773,6 +949,10 @@ function layoutColumnPass(
     || solved.placed.some((l) => (l.kind === 'grandTotal' || l.kind === 'point') && l.hidden !== undefined && toDate.has(l.owner.categoryId ?? '')))) {
     return layoutColumnPass(data, { ...options, [PARTIAL_KEY]: true } as AnomalyColumnOptions, keepEachValue);
   }
+  if (probe) {
+    axisProbe!.checked = true;
+    if (unnumberedColumn(data, options, { labels: solved.placed, marks: scene.marks })) fallback();
+  }
   const staircase = runStaircase(theme, options.categoryLabels, options, stair, solved.placed, occupied, scene.nodes, warnings);
   applyValueAxisTitleInk(solved.placed);
   const crossed = haloOverRules(solved.placed, occupied, new Set(['referenceLine', 'valueLine']));
@@ -834,5 +1014,11 @@ function layoutColumnPass(
   const lastBar = lastTick && lastCategory ? area.band.position(domain.cats.length - 1) + area.band.bandwidth : 0;
   const tickReserve = lastTick ? Math.max(0, Math.ceil(lastBar + PY_TICK_LEAD + domain.measure(lastTick.text, area.tickFont).width + 2 - size.width)) : 0;
   const rankKey = () => rankNotes(domain.cats.map((c) => c.label ?? c.id), domain.options);
-  return { geometry, unprinted, categoryNotes, planNotes, rankKey, legDeficit: annotated.legDeficit, bandNeed: annotated.bandNeed, valueLineReserve, tickReserve: tickReserve <= size.width / 3 ? tickReserve : 0, ...(staircase ? { staircase } : {}) };
+  // An authored callout or note that found no seat on a stacked100 chart, whose plot ends at 100% with nothing above it.
+  const unseatedLabels = domain.variant === 'stacked100'
+    ? annotated.placed.flatMap((entry) => (entry.kind === 'callout' || entry.kind === 'note') && entry.labelId !== undefined
+      ? geometry.labels.filter((label) => label.id === entry.labelId && label.hidden !== undefined) : [])
+    : [];
+  const seatNeed = Math.ceil(maxOf(unseatedLabels.map((label) => label.rect.h))) + CALLOUT_SEAT_AIR;
+  return { geometry, unprinted, categoryNotes, planNotes, rankKey, legDeficit: annotated.legDeficit, bandNeed: annotated.bandNeed, valueLineReserve, tickReserve: tickReserve <= size.width / 3 ? tickReserve : 0, unseated: unseatedLabels.length, seatNeed: unseatedLabels.length > 0 ? seatNeed : 0, ...(staircase ? { staircase } : {}) };
 }

@@ -84,7 +84,8 @@ function cellPosition(cell: HTMLElement, container: HTMLElement, portal?: HTMLEl
     origin.x -= block.scrollLeft * origin.sx;
     origin.y -= block.scrollTop * origin.sy;
   }
-  if ('showPopover' in cell) origin = { x: 0, y: 0, sx: 1, sy: 1 };
+  // A card in the top layer or in the document body is fixed to the viewport.
+  if ('showPopover' in cell || container === document.body) origin = { x: 0, y: 0, sx: 1, sy: 1 };
   const { sx, sy } = origin;
   const cells = new Map<HTMLElement, Rect>();
   const rowBounds = new Map<string, Rect[]>();

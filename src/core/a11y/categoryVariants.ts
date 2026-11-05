@@ -47,7 +47,8 @@ export function categoryVariantRecords(ctx: RecordContext): InteractionRecord[] 
   const mode = options.variant;
   // On a relative chart a percent unit names the difference, not the plain values (as the layout reads it).
   const valueUnit = mode === 'relative' && (options.unit === '%' || options.unit === 'pp') ? undefined : options.unit;
-  return categories.map((category, index) => {
+  return categories.flatMap((category, index) => {
+    if (!Object.hasOwn(derived.ac, category.id)) return [];
     const operands = sources.map(series => cellRecordValue(cells.get(series.id)![index]!, series.unit ?? valueUnit, series.format ?? options.format));
     const values = operands.map(value => value.raw).filter((value): value is number => typeof value === 'number');
     const units = new Set(operands.map(value => value.unit));
@@ -56,13 +57,13 @@ export function categoryVariantRecords(ctx: RecordContext): InteractionRecord[] 
     const reference = cellRecordValue(cells.get(referenceSeries.id)![index]!, referenceSeries.unit ?? valueUnit, referenceSeries.format ?? options.format);
     const comparison = compareValues(current, reference, referenceSeries.label ?? referenceSeries.id, referenceSeries.scenario);
     const mark = marks.bars.find(mark => mark.categoryId === category.id) ?? marks.pins.find(mark => mark.categoryId === category.id);
-    return makeRecord(ctx, { categoryId: category.id }, mode === 'integrated' ? current : mode === 'relative' ? comparison.percent : comparison.delta, {
+    return [makeRecord(ctx, { categoryId: category.id }, mode === 'integrated' ? current : mode === 'relative' ? comparison.percent : comparison.delta, {
       label: category.label ?? category.id, anchor: mark?.rect, comparisons: [comparison],
       // the fields carry the series' own labels; a sum of several reads 'Current'.
       fields: [{ key: 'current', label: sources.length === 1 ? sources[0]!.label ?? sources[0]!.id : chartString(ctx.request.options, 'current'), value: current },
         { key: 'reference', label: referenceSeries.label ?? referenceSeries.id, value: reference }],
       ...(options.variance.of === undefined || options.variance.of === 'total'
         ? { members: data.series.filter(series => series.role !== 'reference').map(series => ({ categoryId: category.id, seriesId: series.id })) } : {}),
-    });
+    })];
   });
 }

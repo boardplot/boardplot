@@ -119,10 +119,14 @@ function floorDecimals(figures: readonly number[], spec: NumberFormatSpec, magni
  * one format.
  */
 function shorterSpec(spec: NumberFormatSpec, figures?: readonly number[]): NumberFormatSpec | undefined {
+  // These examples carry meaning that a shorter decimal example cannot preserve.
+  if (spec.glyphs || spec.negative === 'trailing' || spec.ordinal || spec.exponent || spec.magnitudeInAffix) return undefined;
   // No step drops a figure below two significant digits: "0.1" for 80,000 under (M) reads as
   // 100,000. Where nothing shorter keeps them, the format stays and the clip warning says so.
   const maxAbs = figures === undefined ? Infinity : Math.max(0, maxOf(figures));
   figures ??= [];
+  // A figure count is exact: nothing shorter says the same, and the clip warning names the cell.
+  if (spec.significantDigits !== undefined) return undefined;
   if (spec.decimals > 0) {
     // A bare '1.234' reads as grouping, so four decimals go straight to two.
     const decimals = spec.decimals === 4 && spec.thousandsSep === '' ? 2 : spec.decimals - 1;
@@ -158,8 +162,12 @@ function exampleOf(spec: NumberFormatSpec): string {
   // Three decimals after a bare 1 ("1.234") read back as a thousands group, so a leading 0 marks them as decimals.
   const whole = spec.thousandsSep === '' ? (spec.decimals === 3 ? '0' : '1') : `1${spec.thousandsSep}234`;
   const fraction = spec.decimals > 0 ? `${spec.decimalSep}${'2345678'.slice(0, spec.decimals)}` : '';
-  const body = `${spec.signed ? '+' : ''}${spec.prefix}${whole}${fraction}${MAGNITUDE_LABEL[spec.magnitude]}${spec.suffix}`;
-  return spec.negative === 'parens' ? `(${body})` : body;
+  const ordinal = spec.ordinal ? (spec.thousandsSep ? 'th' : 'st') : '';
+  const numberStyle = spec.exponent ? `${spec.exponent.letter}${spec.exponent.sign}${'6'.padStart(spec.exponent.digits, '0')}`
+    : spec.ordinal === 'upper' ? ordinal.toUpperCase() : ordinal;
+  let body = `${spec.signed && !spec.glyphs ? '+' : ''}${spec.prefix}${whole}${fraction}${numberStyle}${spec.magnitudeInAffix ? '' : MAGNITUDE_LABEL[spec.magnitude]}${spec.suffix}`;
+  if (spec.glyphs) body = spec.glyphs.at === 'start' ? spec.glyphs.up + spec.glyphs.space + body : body + spec.glyphs.space + spec.glyphs.up;
+  return spec.negative === 'parens' ? `(${body})` : spec.negative === 'trailing' ? body + spec.trailingMinus : body;
 }
 
 function withRowFormats(rows: readonly TableRow[], formats: ReadonlyMap<Id, { format: string; unitAffix?: string }>): TableRow[] {
@@ -355,7 +363,7 @@ export function fitTableFormats(
       const cap = caps.get(unitOf(row, spec));
       // Three bare decimals read as a thousands group ('1.234'), so a cap of
       // three is left alone, as `shorterSpec` never writes one.
-      if (cap === undefined || spec.decimals <= cap || (cap === 3 && spec.thousandsSep === '')) continue;
+      if (cap === undefined || spec.significantDigits !== undefined || spec.decimals <= cap || (cap === 3 && spec.thousandsSep === '')) continue;
       // The shared precision stops where this row's smallest figure would lose its two digits.
       const decimals = floorDecimals(rowFigures.get(rowId) ?? [], spec, spec.magnitude, cap);
       if (decimals >= spec.decimals) continue;
@@ -415,6 +423,7 @@ export function fitTableFormats(
       const example = rowExample(authored, decimal);
       if (row === undefined || example === undefined || authored.calc !== undefined || authored.fitFormat === false) continue;
       const spec = parseFormatExample(example);
+      if (spec.significantDigits !== undefined) continue;
       const key = familyKey(row, spec);
       families.set(key, [...(families.get(key) ?? []), { id, spec }]);
     }

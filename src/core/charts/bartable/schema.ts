@@ -3,6 +3,7 @@
 import * as z from 'zod';
 import { formatExample } from '../../schema/shared';
 import { addDuplicateIdIssues, baseOptionsSchema, colorRoleField, idRecord, idSchema, refusedBaseOptions } from '../../schema/shared';
+import { columnHeadsOption, columnOrderOption, columnOverridesOption } from '../../schema/generatedColumnOptions';
 import type { BarTableData, BarTableOptions } from './types';
 
 // The states a table cell takes that make sense for a bar: n/a and n.m. print as the table prints them.
@@ -158,6 +159,13 @@ export const bartableDataSchema = z
 
 export const bartableOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions('bartable')).safeExtend({
   total: z.boolean().optional().describe("Closing Total row, labelled with strings.total; default true. Summed number columns print their sum; a panel prints the summed ranges when a row has one (a row without counts its sum at both ends), else the sum of the bars, as text without a bar."),
+  totalPosition: z.enum(['top', 'bottom']).optional().describe("Where the Total row stands, with its rule and ground; default 'bottom'. Works under cascade. With total false it warns option-ignored."),
+  labels: z.strictObject({
+    point: z.literal(false).optional().describe("false stops the values in the segments and at the bar ends, in panels and in a cascade. Number columns, shares, growth and the Total row keep their numbers; hover and records keep the values. A missing row keeps its mark."),
+  }).optional().describe('Which printed values stay.'),
+  columnOverrides: columnOverridesOption('bartable', ['width', 'align', 'headAlign', 'label']),
+  columnOrder: columnOrderOption('bartable'),
+  columnHeads: columnHeadsOption(),
   combinedShare: z.strictObject({
     rows: z.array(idSchema).min(2).describe('Row ids whose combined share prints; at least two, each once.'),
     label: z.string().trim().min(1).optional().describe("What the rows are called together in the note; default their labels joined with 'and'."),
@@ -176,11 +184,13 @@ export const bartableOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOpt
       });
     });
   }).optional().describe("A note with the combined share of these rows in each summed panel: their sum over the panel's, at the low and the high end where rows carry ranges ('Core segments: 120 of 300 $bn at the low end, 40%; 210 of 500 at the high end, 42%'). A row id that names no row is refused."),
+  segmentValues: z.boolean().optional().describe("Default true: variant 'panels' prints each part's value inside its segment, in the ink that reads on the fill, where the text and 3 px of padding on each side fit. A panel whose format has more than one decimal prints end labels only, and so does a row with a range. false prints end labels only everywhere. Rounded parts can miss the printed row sum by one step; the notes list says so. Refused with variant 'cascade'."),
   variant: z.enum(['panels', 'cascade']).optional().describe(
     "'panels' (default): one stacked-bar panel per measure. 'cascade': share cascade, each panel splits its total; a row starts where the row above ended, on a light track over the total. " +
     'The Total row is a dark bar. combinedShare draws a bracket over its rows, which must follow one another. Needs one segment, no ends, no nulls.',
   ),
   cascade: z.strictObject({
+      totalApart: z.boolean().optional().describe("Row groups only. true (default): the Total bar deepens away from the group colours and the rest grey where the theme total colour reads as one of them. false: the Total bar keeps the theme total colour (color.total) as it is."),
       share: z.boolean().optional().describe('Computed share column beside each panel; default true. rounding defaults to \'sum-consistent\' here, so each adds up to 100%.'),
       growth: z.strictObject({
         measure: z.enum(['cagr', 'share-change']).describe("'cagr': each row's CAGR, first panel to last, in %. 'share-change': last share minus first, in pp."),
@@ -189,4 +199,7 @@ export const bartableOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOpt
       }).optional().describe('Growth column after the last panel.'),
   }).optional().describe("Settings of variant 'cascade'; refused with variant 'panels'."),
   sharedScale: z.boolean().optional().describe("false: each panel its own scale. true: one scale, panel width follows its longest bar; weights refused. Default false, true under cascade."),
+  heightFill: z.enum(['rows', 'none']).optional()
+    .meta({ default: 'rows' })
+    .describe("Spare canvas height. 'rows' (default): a pinned canvas stretches the rows up to 1.25 times their pitch and thickens the bars. 'none': natural pitch."),
 }) as unknown as z.ZodType<BarTableOptions>;

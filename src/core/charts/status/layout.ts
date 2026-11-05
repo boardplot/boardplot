@@ -12,6 +12,9 @@ import { formatNonzeroWithSpec, formatterFromExample, seriesRasterFormatter } fr
  */
 
 import { sweepHide } from '../../collide';
+import { bareGridPlot } from '../heatmap/layout';
+import { matrixTracks, nameTrackRefusals, widthCapped, widthFloored } from '../heatmap/columnTracks';
+import { generatedIdWarnings, type ColumnOverride } from '../../schema/generatedColumns';
 import { frameTextOptions, legendRequired, normalizeLegendOption, solveFrame, type FrameInput, type LegendItemInput, authoredFootnoteCount } from '../../frame';
 import type { Rect } from '../../geometry';
 import { linePath } from '../../svgPath';
@@ -31,11 +34,11 @@ import type { Geometry, LintWarning, Paint, SceneNode } from '../../types/scene'
 import type { Theme } from '../../types/theme';
 import { rowDrivenHeight } from '../../rowCanvas';
 import { rowLabelBand } from '../../label/rowLabels';
-import { fittedLabel, gutterBudget, stepDownFont } from '../../label/rowFit';
+import { fittedLabel, gutterBudget, pinnedRowFont, stepDownFont } from '../../label/rowFit';
 import { heightOmitted, matrixWidths, rowSizing } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { textScaleOf } from '../../typeFloors';
-import { maxOf, pushAll } from '../../arrays';
+import { maxOf, minOf, pushAll } from '../../arrays';
 import { headInk as tableHeadInk, plainInk } from '../table/headFace';
 
 export interface StatusRow {
@@ -79,12 +82,14 @@ export interface StatusState {
 export interface StatusOptions extends Omit<BaseOptionsFor<'status'>, 'legend'> {
   states: StatusState[];
   columnLabels?: 'top' | 'bottom';
+  /** Width, alignment and head text per column: `label` or a `data.columns` id. */
+  columnOverrides?: Record<string, ColumnOverride>;
   /**
    * status omits BaseOptions' legend and re-declares it: its own legendSchema
    * is a strictObject with `position` only, so `legend: { position, order }` —
    * which the inherited declaration promised — is HARD-rejected at runtime.
    */
-  legend?: 'none' | 'right' | 'bottom' | 'top' | { position: 'right' | 'bottom' | 'top' };
+  legend?: 'none' | 'right' | 'left' | 'bottom' | 'top' | { position: 'right' | 'left' | 'bottom' | 'top' };
 }
 
 interface StatusCellMark {
@@ -162,7 +167,7 @@ export function lintStatus(data: StatusData, options: StatusOptions): LintWarnin
       code: 'status-states-unexplained',
       severity: 'warn',
       message: `${used.size} status states are drawn but the state legend is suppressed`,
-      suggest: "remove legend: 'none' or choose legend: 'top', 'bottom', or 'right'",
+      suggest: "remove legend: 'none' or choose legend: 'top', 'bottom', 'right' or 'left'",
     });
   }
   if (used.size === 1) {
@@ -180,7 +185,8 @@ export function lintStatus(data: StatusData, options: StatusOptions): LintWarnin
 export function layoutStatus(
   data: StatusData,
   options: StatusOptions = { states: [] },
-  rowLines?: 1,
+  /** 'tight': the pinned names take the smaller font; 'single': one line each. */
+  rowLines?: 'tight' | 'single',
 ): Geometry<StatusMarks, StatusDerived> {
   const { rows, columns, cells, states } = normalizeStatusInput(data, options);
   const stateById = new Map(states.map((state) => [state.id, state]));
@@ -195,12 +201,18 @@ export function layoutStatus(
   );
   const usedStates = states.filter((state) => usedStateIds.has(state.id));
   const warnings = lintStatus(data, options);
+  const overrides = options.columnOverrides ?? {};
+  const nameTrack = overrides.label;
+  pushAll(warnings, generatedIdWarnings('status', 'columnOverrides', options.columnOverrides, ['label', ...columns.map((column) => column.id)]));
+  pushAll(warnings, nameTrackRefusals(overrides, columns.map((column) => column.id)));
 
   const theme = resolveSemanticPaletteTheme(
     chartTheme(options),
     options.palette,
     warnings,
   );
+  const statePaint = statePaints(usedStates, options, theme);
+  const plainPaint = statePaint.plain;
   const size = resolveSize(options.size);
   const measure = options.measure ?? defaultMeasurer;
   const highlights = new Set(resolveHighlight(options.highlight));
@@ -213,7 +225,7 @@ export function layoutStatus(
   const patternOf = new Map<Id, 'hatch45' | undefined>();
   const seenLook = new Map<string, StatusState>();
   for (const state of usedStates) {
-    const css = paintColor(theme, paintForState(state, options, theme));
+    const css = paintColor(theme, plainPaint(state));
     const look = (pattern: 'hatch45' | undefined) => `${css}|${pattern ?? ''}`;
     const earlier = seenLook.get(look(state.pattern));
     const pattern = earlier && !state.pattern && !seenLook.has(look('hatch45')) ? 'hatch45' : state.pattern;
@@ -228,7 +240,9 @@ export function layoutStatus(
     if (!seenLook.has(look(pattern))) seenLook.set(look(pattern), state);
     patternOf.set(state.id, pattern);
   }
-  const legendOptions = resolveLegendOptions(options, usedStates.length);
+    // A hatched state paints its full tone: the hatch ground washes it.
+  const paintForState = (state: StatusState): Paint => patternOf.get(state.id) ? statePaint.full(state) : plainPaint(state);
+const legendOptions = resolveLegendOptions(options, usedStates.length);
   // A hatched cell lays its stripes on its own tone, washed toward the page,
   // so it reads as that tone and never as an empty cell. Its key
   // draws the same recipe: the cell, a hatch without an edge.
@@ -241,16 +255,16 @@ export function layoutStatus(
   // the cell with no status the floor they fade to.
   const grounding = options.hatchStrength === undefined ? undefined : { strength: options.hatchStrength, apart: EMPTY_CELL_PAINT };
   const hatchOf = (state: StatusState) => patternOf.get(state.id)
-    ? { pattern: patternOf.get(state.id), hatchEdge: false as const, hatchGround: hatchGroundPaint(paintForState(state, options, theme), undefined, grounding) }
+    ? { pattern: patternOf.get(state.id), hatchEdge: false as const, hatchGround: hatchGroundPaint(paintForState(state), undefined, grounding) }
     : {};
   // A plain state fill under 3:1 whose cells print no state word takes a 3:1 edge
   // (fillEdges); its key swatch carries the same rule, so key and cells match.
   const separationOf = (state: StatusState) => patternOf.get(state.id) ? {}
-    : { separation: { fill: paintForState(state, options, theme), backing: { token: 'background' } as Paint } };
+    : { separation: { fill: paintForState(state), backing: { token: 'background' } as Paint } };
   const legendItems: LegendItemInput[] = usedStates.map((state) => ({
     id: state.id,
     label: state.label,
-    paint: paintForState(state, options, theme),
+    paint: paintForState(state),
     ...hatchOf(state),
     ...separationOf(state),
     key: 'box',
@@ -286,12 +300,17 @@ export function layoutStatus(
     },
     occupied,
   );
-  const framePlot = frameResult.plot;
+  const framePlot = bareGridPlot(frameResult.plot, size.height, margin, options);
   const axisFont: FontSpec = { family: theme.type.family, ...theme.type.axis };
   const cellFont: FontSpec = { family: theme.type.family, ...theme.type.label };
   const axisLineH = axisFont.size * (axisFont.lineHeight ?? 1.2);
 
-  const rowBandCap = Math.max(24, framePlot.w * 0.3);
+  // Authored widths stop where each column keeps its cell and the longest word of its head, so no head breaks inside a word for them.
+  const columnKeep = new Map(columns.map((column) => [column.id, Math.max(MIN_CELL_W, 2 + maxOf(column.label.split(/\s+/).map((word) => measure(word, axisFont).width)))]));
+  const bandRoom = framePlot.w - LABEL_GAP - [...columnKeep.values()].reduce((sum, keep) => sum + keep, 0) - (columns.length - 1) * CELL_GAP;
+  const authoredBand = nameTrack?.width === undefined ? undefined : Math.max(24, Math.min(nameTrack.width - LABEL_GAP, bandRoom));
+  if (nameTrack?.width !== undefined && nameTrack.width - LABEL_GAP > Math.max(24, bandRoom)) warnings.push(widthCapped('status', 'label'));
+  const rowBandCap = authoredBand ?? Math.max(24, framePlot.w * 0.3);
   const estimatedCellH = Math.max(
     1,
     (framePlot.h - axisLineH - COLUMN_GAP - (rows.length - 1) * CELL_GAP) / rows.length,
@@ -301,13 +320,21 @@ export function layoutStatus(
   const openHeight = (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === false;
   // The two-line test reads the same pad as the natural pitch below (a keyed board keeps the solver's gap only),
   // so a pinned frame at the natural height wraps its row names as the taller frame did and round-trips.
-  const rowMaxLines = rowLines ?? (openHeight || estimatedCellH >= axisLineH * 2 + (keyNamesStates ? LABEL_PAD : 4) ? 2 : 1);
+  const fixedHeight = (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height ?? !heightOmitted(options.size);
+  // A pinned height whose rows hold two lines of names only in a smaller font, set tighter, draws them there
+  // before it cuts a name: a plan of 'tight' tries that font, and falls back to one line each ('single').
+  const tightFont = fixedHeight && rowLines !== 'single' ? pinnedRowFont(theme, axisFont, 'axis', options.target, textScaleOf(options)) : undefined;
+  const rowFont = rowLines === 'tight' && tightFont ? tightFont : axisFont;
+  const rowLineH = rowFont.size * (rowFont.lineHeight ?? 1.2);
+  const rowMaxLines = rowLines === 'single' ? 1 : rowLines === 'tight' ? 2
+    : openHeight || estimatedCellH >= axisLineH * 2 + (keyNamesStates ? LABEL_PAD : 4) ? 2 : 1;
+  const pinnedFallback = rowLines === undefined && tightFont ? 'tight' : 'single';
   const axisStep = stepDownFont(theme, axisFont, 'axis', options.target, textScaleOf(options));
   // The grid keeps its natural 28 px per column, and the band widens into the rest. When a row
   // name would still be cut, the grid gives the band room down to MIN_CELL_W per column, so a
   // narrow card wraps its row names whole and its stage heads stagger.
-  const fitRows = (cellFloor: number, refWarnings: LintWarning[]) => rowLabelBand(rows, axisFont, rowBandCap, rowMaxLines, axisLineH, measure, {
-    wider: gutterBudget(rowBandCap, framePlot.w, LABEL_GAP + columns.length * cellFloor + (columns.length - 1) * CELL_GAP),
+  const fitRows = (cellFloor: number, refWarnings: LintWarning[]) => rowLabelBand(rows, rowFont, rowBandCap, rowMaxLines, rowLineH, measure, {
+    ...(authoredBand === undefined ? { wider: gutterBudget(rowBandCap, framePlot.w, LABEL_GAP + columns.length * cellFloor + (columns.length - 1) * CELL_GAP) } : {}),
     target: options.target, textScale: textScaleOf(options), typeRole: 'axis', shrink: axisStep,
     footnoteRefs: { count: authoredFootnoteCount(options), warnings: refWarnings },
   });
@@ -322,24 +349,45 @@ export function layoutStatus(
   // hold one line. Under narrow columns (below 48 px), a
   // wider band that keeps every name on one line and every cell at least 32 px wide wins.
   const cellWFor = (bandW: number) => (framePlot.w - bandW - LABEL_GAP - (columns.length - 1) * CELL_GAP) / columns.length;
-  if (keyNamesStates && rowText.some(text => text.lines.length > 1) && cellWFor(rowBandW) < 48) {
+  if (authoredBand === undefined && keyNamesStates && rowText.some(text => text.lines.length > 1) && cellWFor(rowBandW) < 48) {
     const oneLine = rowLabelBand(rows, axisFont, framePlot.w, 1, axisLineH, measure,
       { target: options.target, textScale: textScaleOf(options), typeRole: 'axis', footnoteRefs: { count: authoredFootnoteCount(options), warnings: [] } });
     if (oneLine.labels.every(text => text.title === undefined && text.lines.length === 1 && text.font === axisFont) && cellWFor(oneLine.width) >= 32) {
       ({ labels: rowText, width: rowBandW } = oneLine);
     }
   }
+  if (rowLines === undefined && rowMaxLines === 1 && tightFont && rowText.some(text => text.title !== undefined)) {
+    return layoutStatus(data, options, 'tight');
+  }
+  // The names set the width the chart can never go under; the band itself stays as authored.
+  const rowBandFloor = rowBandW;
+  if (authoredBand !== undefined && nameTrack!.width! - LABEL_GAP < rowBandW) warnings.push(widthFloored('status', 'label'));
+  if (authoredBand !== undefined) rowBandW = Math.max(rowBandW, authoredBand);
   const gridX = framePlot.x + rowBandW + LABEL_GAP;
-  const gridW = Math.max(10, framePlot.w - rowBandW - LABEL_GAP);
-  const cellW = Math.max(1, (gridW - (columns.length - 1) * CELL_GAP) / columns.length);
+  const gridRoom = Math.max(10, framePlot.w - rowBandW - LABEL_GAP);
+  const tracks = matrixTracks(columns.map((column) => column.id), gridRoom, CELL_GAP, (id) => overrides[id]?.width, (id) => columnKeep.get(id)!);
+  if (tracks) for (const id of tracks.capped) warnings.push(widthCapped('status', id));
+  if (tracks) for (const id of tracks.floored) warnings.push(widthFloored('status', id));
+  const gridW = tracks?.gridW ?? gridRoom;
+  // With authored widths the narrowest column sets the row pitch and the choices all cells share.
+  const cellW = tracks ? minOf(tracks.widths) : Math.max(1, (gridW - (columns.length - 1) * CELL_GAP) / columns.length);
   const columnStep = cellW + CELL_GAP;
-  const columnCenter = (index: number) => gridX + index * columnStep + cellW / 2;
+  const columnWidth = (index: number) => tracks ? tracks.widths[index]! : cellW;
+  const columnLeft = (index: number) => tracks ? gridX + tracks.lefts[index]! : gridX + index * columnStep;
+  const columnCenter = (index: number) => columnLeft(index) + columnWidth(index) / 2;
+  const columnIndex = new Map(columns.map((column, index) => [column.id, index]));
+  const bindingWidth = (col: Id) => columnWidth(columnIndex.get(col)!);
+  const headAlignOf = (index: number) => { const override = overrides[columns[index]!.id]; return override?.headAlign ?? override?.align; };
+  const headLeft = (index: number, w: number) => {
+    const align = headAlignOf(index);
+    return align === 'left' ? columnLeft(index) : align === 'right' ? columnLeft(index) + columnWidth(index) - w : columnCenter(index) - w / 2;
+  };
 
   const columnTextCap = Math.max(calendarHeaders ? 40 : 12, cellW - 2);
   // Try the complete header in the air left by its neighbours before wrapping.
   const headerWidths = columns.map(column => measure(column.label, axisFont).width);
   const headerLeft = columns.map((_, index) => Math.max(framePlot.x,
-    Math.min(columnCenter(index) - headerWidths[index]! / 2, framePlot.x + framePlot.w - headerWidths[index]!)));
+    Math.min(headLeft(index, headerWidths[index]!), framePlot.x + framePlot.w - headerWidths[index]!)));
   const headerFits = columns.map((_, index) => headerWidths[index]! <= framePlot.w
     && (index === 0 || headerLeft[index]! >= headerLeft[index - 1]! + headerWidths[index - 1]! + 4)
     && (index === columns.length - 1 || headerLeft[index]! + headerWidths[index]! + 4 <= headerLeft[index + 1]!));
@@ -371,8 +419,11 @@ export function layoutStatus(
   }
   let columnLabelH =
     Math.max(headerTiers, maxOf(columnText.map((text) => text.lines.length))) * axisLineH + (headerTiers - 1) * 2 * LABEL_PAD;
-  const fixedHeight = (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height ?? !heightOmitted(options.size);
-  const minimumRowsH = rows.length * Math.max(28, maxOf(rowText.map(text => text.h + LABEL_PAD - CELL_GAP))) + (rows.length - 1) * CELL_GAP;
+  // A row needs its name's height and the label gap. A fixed 28 px floor refused a 12-row board on a full slide,
+  // where a row name needs about 24 px. Cell text that must be read sets its own floor below (namedCellHeights).
+  // A board that cuts a row name keeps the 28 px floor: the lower one is for names that stay whole.
+  const rowFloorH = Math.max(rowText.some(text => text.title !== undefined) ? 28 : 0, maxOf(rowText.map(text => text.h + LABEL_PAD - CELL_GAP)));
+  const minimumRowsH = rows.length * rowFloorH + (rows.length - 1) * CELL_GAP;
   if (fixedHeight && columnLabelH + COLUMN_GAP + minimumRowsH > framePlot.h) {
     // The two-line header form keeps accepted fixed frames drawable.
     columnText = rowLabelBand(columns, axisFont, Math.max(40, cellW - 2), 2, axisLineH, measure,
@@ -397,7 +448,7 @@ export function layoutStatus(
     if (!state) return [];
     const value = binding.value === undefined ? undefined : valueForStatus(binding.value, raster, options.format !== undefined);
     const sizes = [state.label, ...(value ? [value] : [])].map(line => measure(line, cellFont));
-    return Math.max(...sizes.map(size => size.width)) + 8 <= cellW
+    return Math.max(...sizes.map(size => size.width)) + 8 <= bindingWidth(binding.col)
       ? [sizes.reduce((height, size) => height + size.height, 0) + 4] : [];
   }) : [];
   // The natural height keeps state names and values that fit at this width.
@@ -407,7 +458,7 @@ export function layoutStatus(
   const pitchCellH = keyNamesStates ? (cellW >= 72 ? 36 : cellW >= 48 ? Math.min(33, cellW) : Math.min(29, cellW)) : Math.min(36, cellW);
   // More height must not switch to wrapped row names before the full header and rows fit.
   if (fixedHeight && rowMaxLines === 2 && minimumRowsH > gridH) {
-    return layoutStatus(data, options, 1);
+    return layoutStatus(data, options, pinnedFallback);
   }
   const naturalCellH = Math.max(minimumCellH, maxOf(namedCellHeights), maxOf(rowText.map(text => text.h + (keyNamesStates ? LABEL_PAD : 4))), pitchCellH);
   {
@@ -451,25 +502,35 @@ export function layoutStatus(
   const labelRequests: LabelRequest[] = [];
   // A panel whose host holds the key keeps its per-cell names: no key can be added here.
   const hostHoldsKey = options.legend === 'none' && panelTypeClass(options) !== undefined;
-  const namedCells = labelOn('point') && !keyNamesStates && (hostHoldsKey || cells.every(binding => {
+  // Under an explicit labelDensity 'full' the names step down the type scale to the floor before they are given up.
+  const namesFit = (font: FontSpec) => cells.every(binding => {
     const state = stateById.get(binding.state);
     if (!state) return true;
     const value = binding.value === undefined ? undefined : valueForStatus(binding.value, raster, options.format !== undefined);
     const lines = [state.label, ...(value ? [value] : [])];
-    return Math.max(...lines.map(line => measure(line, cellFont).width)) + 8 <= cellW
-      && lines.reduce((height, line) => height + measure(line, cellFont).height, 0) + 4 <= cellH;
-  }));
+    return Math.max(...lines.map(line => measure(line, font).width)) + 8 <= bindingWidth(binding.col)
+      && lines.reduce((height, line) => height + measure(line, font).height, 0) + 4 <= cellH;
+  });
+  const namesRequested = labelOn('point') && !keyNamesStates && (options.labelDensity ?? 'smart') === 'full';
+  const nameFonts: FontSpec[] = [cellFont];
+  if (namesRequested) {
+    for (let next = stepDownFont(theme, cellFont, 'label', options.target, textScaleOf(options)); next;
+      next = stepDownFont(theme, next, 'label', options.target, textScaleOf(options))) nameFonts.push(next);
+  }
+  const nameFont = hostHoldsKey ? cellFont : nameFonts.find(namesFit);
+  const namedCells = labelOn('point') && !keyNamesStates && (hostHoldsKey || nameFont !== undefined);
+  const textFont = nameFont ?? cellFont;
 
   rows.forEach((row, rowIndex) => {
-    columns.forEach((column, columnIndex) => {
+    columns.forEach((column, colIndex) => {
       const binding = cellByBinding.get(`${row.id}\u0000${column.id}`);
       const state = binding ? stateById.get(binding.state) : undefined;
       const missing = state === undefined;
       const owner: OwnerRef = { seriesId: row.id, categoryId: column.id };
       const rect: Rect = {
-        x: gridX + columnIndex * columnStep,
+        x: columnLeft(colIndex),
         y: gridY + rowIndex * rowStep,
-        w: cellW,
+        w: columnWidth(colIndex),
         h: cellH,
       };
       const nodeId = `cell:${row.id}:${column.id}`;
@@ -482,7 +543,7 @@ export function layoutStatus(
         // is the only separator and has one width everywhere: a
         // hatch draws no edge, and a cell with no status is a light cell of
         // the same grid, not an outlined box.
-        fill: state ? paintForState(state, options, theme) : EMPTY_CELL_PAINT,
+        fill: state ? paintForState(state) : EMPTY_CELL_PAINT,
         ...(state ? hatchOf(state) : {}),
         owner,
         part: 'cell',
@@ -491,7 +552,7 @@ export function layoutStatus(
       // The edge is a separate closed path inside the fill. Its stroke cannot cover the cell gutter.
       // Reserve both possible edge widths even when this theme needs none, so repaint keeps its path.
       if (state && !patternOf.get(state.id)) {
-        const fill = paintForState(state, options, theme);
+        const fill = paintForState(state);
         const inset = Math.min(rect.w / 2, rect.h / 2, Math.max(strokeToken(theme, 'rule'), theme.pattern.outlineStrokeWidth) / 2 + 0.01);
         const edge = separationStroke(paintColor(theme, fill), theme.color.background, theme);
         scene.push({ t: 'path', id: `cellOutline:${row.id}:${column.id}`,
@@ -509,7 +570,7 @@ export function layoutStatus(
       // labels: false takes the state texts off: colour, hatch and the key carry the state.
       if (state && labelOn('point')) {
         const fit = (lines: string[]) => {
-          const sizes = lines.map(line => measure(line, cellFont));
+          const sizes = lines.map(line => measure(line, textFont));
           const size = { width: Math.max(...sizes.map(size => size.width)), height: sizes.reduce((sum, size) => sum + size.height, 0) };
           return { lines, size, fits: size.width + 8 <= rect.w && size.height + 4 <= rect.h };
         };
@@ -517,6 +578,7 @@ export function layoutStatus(
         const { lines, size, fits } = named.fits || valueText === undefined ? named : fit([valueText]);
         const text = lines.join('\n');
         if (lines.length > 0 && (fits || valueText !== undefined)) {
+          const cellAlign = overrides[column.id]?.align;
           labelRequests.push({
             id: `state:${row.id}:${column.id}`,
             kind: 'point',
@@ -527,14 +589,16 @@ export function layoutStatus(
             ...(lines.includes(state.label) ? {} : { printsFor: [] }),
             text,
             lines,
-            font: cellFont,
+            ...(cellAlign === 'left' ? { align: 'start' as const } : cellAlign === 'right' ? { align: 'end' as const } : cellAlign === 'center' ? { align: 'middle' as const } : {}),
+            font: textFont,
+            ...(textFont !== cellFont ? { fontStep: textFont } : {}),
             priority: fits ? PRIORITY.interior : PRIORITY.valueLine,
             candidates: fits ? [{
               slot: 'inside',
-              rect: { x: rect.x + (rect.w - size.width) / 2, y: rect.y + (rect.h - size.height) / 2, w: size.width, h: size.height },
+              rect: { x: cellAlign === 'left' ? rect.x + 4 : cellAlign === 'right' ? rect.x + rect.w - size.width - 4 : rect.x + (rect.w - size.width) / 2, y: rect.y + (rect.h - size.height) / 2, w: size.width, h: size.height },
               penalty: 0,
-              insideFill: paintColor(theme, paintForState(state, options, theme)),
-              insidePaint: paintForState(state, options, theme),
+              insideFill: paintColor(theme, paintForState(state)),
+              insidePaint: paintForState(state),
             }] : [],
           });
         }
@@ -554,12 +618,21 @@ export function layoutStatus(
   if (months) {
     months.forEach((month, index) => {
       if (month !== 1 || index === 0) return;
-      const x = gridX + index * columnStep - CELL_GAP / 2;
+      const x = columnLeft(index) - CELL_GAP / 2;
       scene.push({
         t: 'line', id: `yearRule:${columns[index]!.id}`, x1: x, y1: gridY, x2: x, y2: gridY + gridH + (columnPosition === 'bottom' ? 4 : 0),
         stroke: { token: 'axis' }, width: strokeToken(theme, 'rule'), owner: { categoryId: columns[index]!.id }, part: 'yearRule',
       });
     });
+  }
+
+  // An authored labelDensity 'full' that no type step makes fit is a lost request. Names are all or none, so
+  // one seatless request per state is hidden: the warning and reading.omissions name each state, not each cell.
+  if (namesRequested && !namedCells) {
+    for (const state of usedStates) {
+      labelRequests.push({ id: `stateName:${state.id}`, kind: 'segment', typeRole: 'label', role: 'category', owner: { pointId: `stateName:${state.id}` },
+        text: state.label, lines: [state.label], font: cellFont, priority: PRIORITY.interior, candidates: [] });
+    }
   }
 
   if (labelOn('series')) {
@@ -572,6 +645,7 @@ export function layoutStatus(
         text: row.label,
         ...fittedLabel(text, axisFont),
         font: axisFont,
+        ...(nameTrack?.align === 'left' ? { align: 'start' as const } : nameTrack?.align === 'center' ? { align: 'middle' as const } : nameTrack?.align === 'right' ? { align: 'end' as const } : {}),
         priority:
           PRIORITY.endpoint +
           (highlights.has(row.id) ? PRIORITY.highlightBonus : 0),
@@ -579,7 +653,7 @@ export function layoutStatus(
           {
             slot: 'left',
             rect: {
-              x: framePlot.x + rowBandW - text.w,
+              x: nameTrack?.align === 'left' ? framePlot.x : nameTrack?.align === 'center' ? framePlot.x + (rowBandW - text.w) / 2 : framePlot.x + rowBandW - text.w,
               y: rowCenter(index) - text.h / 2,
               w: text.w,
               h: text.h,
@@ -597,6 +671,7 @@ export function layoutStatus(
       const kept = headerKeep[index]!;
       // Off-stride months stay unnamed; the stride and the year rules carry them.
       if (monthlyKeep && !kept) return;
+      const headAlign = headAlignOf(index);
       const y =
         columnPosition === 'top'
           ? framePlot.y + (staggerHeaders ? (index % headerTiers) * (axisLineH + 2 * LABEL_PAD) : columnLabelH - text.h)
@@ -607,6 +682,7 @@ export function layoutStatus(
         owner: { categoryId: column.id },
         text: column.label,
         ...fittedLabel(text, axisFont),
+        ...(headAlign === 'left' ? { align: 'start' as const } : headAlign === 'right' ? { align: 'end' as const } : headAlign === 'center' ? { align: 'middle' as const } : {}),
         font: axisFont,
         priority: kept
           ? PRIORITY.endpoint +
@@ -616,7 +692,7 @@ export function layoutStatus(
           {
             slot: columnPosition,
             rect: {
-              x: staggerHeaders || headerFits[index] ? headerLeft[index]! : columnCenter(index) - text.w / 2,
+              x: staggerHeaders || headerFits[index] ? headerLeft[index]! : headLeft(index, text.w),
               y,
               w: text.w,
               h: text.h,
@@ -635,7 +711,7 @@ export function layoutStatus(
   });
   const solved = solveLabels(labelRequests, occupied, solveCtx);
   if (fixedHeight && rowMaxLines === 2 && solved.placed.some(label => label.kind === 'series' && label.hidden === 'collision')) {
-    return layoutStatus(data, options, 1);
+    return layoutStatus(data, options, pinnedFallback);
   }
   // A panel's explicit none leaves its state key with the host.
   if (!legend && !(options.legend === 'none' && panelTypeClass(options) !== undefined) && usedStates.some(state => !solved.placed.some(label =>
@@ -668,9 +744,12 @@ export function layoutStatus(
   for (const label of solved.placed) {
     if (label.kind === 'category' && !highlights.has(label.owner.categoryId ?? '') && !label.emphasis && plainInk(label.ink)) label.ink = headInk;
   }
+  // A wrapped cell label ("On plan" over "97.5%") centres each line on its cell; anchored at the box start the lines sat right of centre.
   pushAll(scene, labelsToNodes(theme, solved.placed, label => label.kind === 'point' ? cellFont : axisFont, scene)
-    .map((node): SceneNode => node.t === 'text' && node.part === 'series' && node.lines.length > 1 && node.align === 'start'
-      ? { ...node, align: 'end', x: labelRects.get(node.id)!.x + labelRects.get(node.id)!.w } : node));
+    .map((node): SceneNode => node.t === 'text' && node.part === 'series' && node.lines.length > 1 && node.align === 'start' && nameTrack?.align === undefined
+      ? { ...node, align: 'end', x: labelRects.get(node.id)!.x + labelRects.get(node.id)!.w }
+      : node.t === 'text' && node.id.startsWith('label:state:') && node.lines.length > 1 && node.align === 'start' && labelRects.has(node.id) && overrides[node.owner.categoryId ?? '']?.align === undefined
+        ? { ...node, align: 'middle', x: labelRects.get(node.id)!.x + labelRects.get(node.id)!.w / 2 } : node));
 
   const stateCounts = new Map<Id, number>();
   let noneCount = 0;
@@ -690,10 +769,10 @@ export function layoutStatus(
     sizing: rowSizing('status', size, {
       chromeH: size.height - gridH,
       // A two-line row name sets the pitch: its height and the solver's gap, of which the cell gap gives one px.
-      minimumRowsH: rows.length * Math.max(28, maxOf(rowText.map((label) => label.h + LABEL_PAD - CELL_GAP)),
-        maxOf(!legend ? namedCellHeights : [])) + (rows.length - 1) * CELL_GAP,
-      naturalRowsH: rows.length * naturalCellH + (rows.length - 1) * CELL_GAP,
-      ...matrixWidths(size.width - gridW, columns.length, CELL_GAP, columnText.map((label) => label.w / headerTiers)),
+      minimumRowsH: rows.length * Math.max(rowFloorH, maxOf(!legend ? namedCellHeights : [])) + (rows.length - 1) * CELL_GAP,
+      // The natural height keeps the 28 px row the floor used to set, so an unpinned board is as tall as before.
+      naturalRowsH: rows.length * Math.max(naturalCellH, 28) + (rows.length - 1) * CELL_GAP,
+      ...authoredMatrixWidths(matrixWidths(size.width - gridRoom - (rowBandW - rowBandFloor), columns.length, CELL_GAP, columnText.map((label) => label.w / headerTiers)), tracks, size.width - gridRoom, columns.length, CELL_GAP, columnText.map((label) => label.w / headerTiers)),
     }),
     plot,
     scene,
@@ -749,6 +828,13 @@ function wrapHeader(text: string, width: number, font: FontSpec, measure: import
   return words.join('\n');
 }
 
+/** The natural width with the authored columns at their widths. */
+function authoredMatrixWidths(widths: { minWidth: number; naturalWidth: number }, tracks: ReturnType<typeof matrixTracks>, chromeW: number, columns: number, gap: number, headers: readonly number[]) {
+  if (!tracks) return widths;
+  const free = Math.max(28, maxOf(headers));
+  return { ...widths, naturalWidth: chromeW + tracks.widths.reduce((sum, width, i) => sum + (tracks.authored[i] ? width : free), 0) + (columns - 1) * gap };
+}
+
 function normalizeStatusInput(
   data: StatusData,
   options: StatusOptions,
@@ -797,7 +883,7 @@ function normalizeStatusInput(
         'status column requires an id',
       );
     }
-    return { id: column.id, label: column.label ?? column.id };
+    return { id: column.id, label: options.columnOverrides?.[column.id]?.label ?? column.label ?? column.id };
   });
   const rowIds = new Set(rows.map((row) => row.id));
   const columnIds = new Set(columns.map((column) => column.id));
@@ -842,7 +928,7 @@ function resolveLegendOptions(
   return normalized ? { position: normalized.position } : undefined;
 }
 
-function paintForState(state: StatusState, options: StatusOptions, theme: Theme): Paint {
+function tonePaint(state: StatusState, options: StatusOptions, theme: Theme): { paint: Paint; quiet?: 'good' | 'neutral' } {
   const role: ColorRole =
     typeof state.tone === 'string'
       ? state.tone === 'info'
@@ -850,13 +936,48 @@ function paintForState(state: StatusState, options: StatusOptions, theme: Theme)
         : state.tone
       : state.tone.role;
   if (options.colorblindSafe && (role === 'good' || role === 'bad')) {
-    return colorblindPaint(role, true);
+    return { paint: colorblindPaint(role, true) };
   }
-  if (role === 'neutral') return semanticPalettePaint(theme, options.palette, 'neutralMark');
+  if (role === 'neutral') return { paint: semanticPalettePaint(theme, options.palette, 'neutralMark'), quiet: 'neutral' };
   // A status cell is larger than a point: the highlight role takes the focus
   // and good / bad their fill roles.
-  if (role === 'highlight') return semanticPalettePaint(theme, options.palette, 'focus');
-  return markRolePaint(role, true);
+  if (role === 'highlight') return { paint: semanticPalettePaint(theme, options.palette, 'focus') };
+  return role === 'good' ? { paint: markRolePaint(role, true), quiet: 'good' } : { paint: markRolePaint(role, true) };
+}
+
+/**
+ * The fill of each state. On-track and not-started cells are the ones a
+ * reader passes over: the good and the neutral tone draw washed toward the
+ * page (status-tone), so off-track and at-risk cells carry the colour. The
+ * wash is decided in the theme the scene is painted in, apart from the cell
+ * with no status and from every other state's colour. A hatched state keeps
+ * the full tone (full): its hatch already washes the ground, and the stripes
+ * carry the tone.
+ */
+function statePaints(states: readonly StatusState[], options: StatusOptions, theme: Theme): { plain: (state: StatusState) => Paint; full: (state: StatusState) => Paint } {
+  const tones = new Map(states.map((state) => [state.id, tonePaint(state, options, theme)]));
+  const loud = [...tones.values()].filter((tone) => tone.quiet === undefined).map((tone) => tone.paint);
+  // A hatched state of the same tone (a forecast twin) keeps the full tone
+  // under its hatch; the plain cell stays at least as strong as that ground.
+  const grounding = options.hatchStrength === undefined ? undefined : { strength: options.hatchStrength, apart: EMPTY_CELL_PAINT };
+  const hatchedGrounds = (role: 'good' | 'neutral') => states
+    .filter((state) => state.pattern !== undefined && tones.get(state.id)?.quiet === role)
+    .map((state) => hatchGroundPaint(tones.get(state.id)!.paint, undefined, grounding));
+  const quiet = (role: 'good' | 'neutral', base: Paint, apartFrom: Paint[]): Paint => {
+    const under = hatchedGrounds(role);
+    return { token: 'token' in base ? base.token : role === 'good' ? 'goodFill' : 'neutralMark',
+      theme: { kind: 'status-tone', role, base, empty: EMPTY_CELL_PAINT, ...(apartFrom.length > 0 ? { apartFrom } : {}), ...(under.length > 0 ? { under } : {}) } };
+  };
+  const neutrals = new Map<Id, Paint>();
+  for (const [id, tone] of tones) if (tone.quiet === 'neutral') neutrals.set(id, quiet('neutral', tone.paint, loud));
+  const paints = new Map<Id, Paint>();
+  for (const [id, tone] of tones) {
+    paints.set(id, tone.quiet === 'neutral' ? neutrals.get(id)!
+      : tone.quiet === 'good' ? quiet('good', tone.paint, [...loud, ...neutrals.values()])
+        : tone.paint);
+  }
+  const full = (state: StatusState) => tones.get(state.id)?.paint ?? tonePaint(state, options, theme).paint;
+  return { plain: (state) => paints.get(state.id) ?? full(state), full };
 }
 
 function valueForStatus(value: import('../../types/cell').Cell, format: ReturnType<typeof seriesRasterFormatter>, authored: boolean): string {

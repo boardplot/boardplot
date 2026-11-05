@@ -18,6 +18,7 @@ import {
   eventOptionsSchema,
   idSchema,
   partialCategorySchema,
+  bandedCategoryAxis,
   refusedBaseOptions,
   refuseUnstackedShares,
   refuseBadgeEvents,
@@ -97,6 +98,7 @@ export const columnDataSchema = z
   }) as unknown as z.ZodType<ChartData>;
 
 export const columnOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions('column')).safeExtend({
+  categoryAxis: bandedCategoryAxis,
   labelDensity: baseOptionsSchema.shape.labelDensity.describe("Value-label density. Default 'smart': every value stays eligible. A chart with more than 12 categories, or with most labels wider than the band, ranks the first, last, highest and lowest value (ties: the first) first. The other values then use only their natural seat beside the mark; with none free they are drawn nowhere and left out of the note. Those four may take one step, and the note names any that finds no seat. A smaller chart keeps every value on the bounded one-step rule and names any that finds no seat. 'full' treats all values alike and names every one that finds no seat. 'minimal' also applies the shared priority gate. Seats stay inside the plot band and one step from the natural seat. All values remain in reading records. When valueLabels is set, it wins: labelDensity is not read for the value labels."),
   legend: baseOptionsSchema.shape.legend.describe("Key position. Multiple series get a key by default unless visible direct labels name them all. 'none' hides the key and warns if names are missing. Subtitle and footnote mentions do not replace the key."),
   axisTitles: z.strictObject({
@@ -105,7 +107,7 @@ export const columnOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptio
   valueLabels: z
     .enum(['none', 'last', 'ends', 'extremes', 'all'])
     .optional()
-    .describe("Which values print, with line's choices: 'none', 'last', 'ends' (first and last), 'extremes' (first, last, highest and lowest; a tie takes the first) or 'all', chosen per series over the categories in their drawn order. Unset (default): every value is eligible and labelDensity decides. When set, valueLabels wins over labelDensity: each chosen value takes the one-step rule of 'full', and one with no seat is named in the note. A value not chosen is unlabelled by choice: the note does not name it, and the value axis is drawn so it stays readable (all modes but 'all'; valueAxis.show false turns it off). Authored cell labels and flagged anomaly periods print in every mode. Grouped only: a stack has no single value per category, so stacked and stacked100 refuse every mode but 'all' with value-labels-variant. Example: 24 monthly columns with 'extremes' print the first, peak, low and last value."),
+    .describe("Which values print, with line's choices: 'none', 'last', 'ends' (first and last), 'extremes' (first, last, highest and lowest; a tie takes the first) or 'all', chosen per series over the categories in their drawn order. Unset (default): every value is eligible and labelDensity decides. When set, valueLabels wins over labelDensity: each chosen value takes the one-step rule of 'full', and one with no seat is named in the note. A value not chosen is unlabelled by choice: the note does not name it, and the value axis is drawn so it stays readable (all modes but 'all'; valueAxis.show false turns it off). Authored cell labels and flagged anomaly periods print in every mode. Grouped only: a stack has no single value per category, so stacked and stacked100 ignore every mode but 'all' with an option-ignored warning and keep their normal labels and value axis. Example: 24 monthly columns with 'extremes' print the first, peak, low and last value."),
   variant: z.enum(['grouped', 'stacked', 'stacked100']).optional().describe("Vertical arrangement: grouped by default, stacked in raw units, or stacked100 as category percentages. Plain stacked series use theme.overrides.color.stack, not color.series. Set options.palette or series fill for categorical colours."),
   grandTotalLabels: z.boolean().optional().describe("Show category stack-total labels in addition to segment labels; default on for the stacked variant and off for stacked100, where every bar would end on the same share. true keeps the absolute total on a 100% stack."),
   sharesOfOneWhole: z.boolean().optional().describe("true declares every stacked series a share of the same whole, such as channel shares of all orders: the stack then has a total, and percent series warn non-additive-stack only where a category adds to more than 100. Stacked and stacked100 only; refused on other variants."),

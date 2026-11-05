@@ -6,6 +6,7 @@ import { expect, it } from 'vitest';
 import '../src/core/charts';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { requireGeometry } from '../src/core/sizing';
+import { render } from '../src/cli/render';
 import type { Geometry } from '../src/core/types/scene';
 
 // A block whose pole grazed the end of the earlier block went to the key, though the earlier block could turn left of its pole.
@@ -24,5 +25,22 @@ it('turns a placed block to the other side of its pole to fit the next event in 
     } as never);
     const geometry = requireGeometry(layoutResolvedRequest(request)) as Geometry;
     expect(geometry.frame.eventKeyRect, type).toBeUndefined();
+  }
+});
+
+// An author could not write the accessible description, and a chart with events appended its own event sentence to it.
+it('options.a11y.description replaces the generated description, event sentence included', () => {
+  const categories = Array.from({ length: 12 }, (_, i) => ({ id: `2026-09-${String(i + 1).padStart(2, '0')}` }));
+  const data = { categories, series: [{ id: 'a', label: 'Sessions', values: categories.map((_, i) => 60 + i) }] };
+  const annotations = [{ kind: 'event', at: '2026-09-05', label: 'Campaign launch' }];
+  for (const type of ['line', 'column'] as const) {
+    const spec = (a11y?: object) => ({ type, data, annotations, options: { title: 'Daily sessions', ...(a11y ? { a11y } : {}) } });
+    const generated = requireGeometry(layoutResolvedRequest(resolveChartRequest(spec() as never))).a11y.desc;
+    expect(generated, type).toContain('Campaign launch');
+    const description = 'Sessions rose all month. The launch did not change the trend.';
+    const authored = spec({ description });
+    expect(requireGeometry(layoutResolvedRequest(resolveChartRequest(authored as never))).a11y.desc, type).toBe(description);
+    const svg = String((render({ spec: authored as never, return: ['svg'] }).body as { svg: string }).svg);
+    expect(svg, type).toContain(`>${description}</desc>`);
   }
 });

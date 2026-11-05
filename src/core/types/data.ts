@@ -1,6 +1,7 @@
 /** Core data model and chart-specific shapes. */
 
 import type { ValueBand } from '../bandSelect';
+import type { NamedColumnState } from '../schema/namedColumns';
 import type { Cell, ColorRole, ComparisonDirection, Direction, Id, RangeCell, Scenario } from './cell';
 
 export interface Category {
@@ -70,6 +71,8 @@ export interface Series {
 export interface HeatmapSeries extends Series {
   sizes?: (number | null)[];
   bases?: (number | null)[];
+  /** One per category: why a null cell has no value. null leaves the cell plain no data. */
+  states?: (NamedColumnState | null)[];
 }
 
 /** The heatmap's document: `ChartData` whose rows may carry bubble sizes and bases. */
@@ -269,7 +272,7 @@ export interface KpiData {
 export interface SparklineData {
   /** Convert numeric values from fractions to percent cells at input. */
   valueKind?: 'fraction';
-  /** The series, in order. A null leaves a gap; the line does not bridge it. */
+  /** The series, in order. A null is bridged by a dotted segment with a ring on the missing point. */
   values: Cell[];
   /** One name per value, used for the end labels and the hover records. */
   labels?: string[];

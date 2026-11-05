@@ -7,7 +7,7 @@ import { stringFields } from '../../strings';
 
 import { BAND_PAD } from '../../annotateParts';
 import { axisTitleAllowed, planValueAxisTitle, tickRowTitleEnd, valueAxisTitleText, valueAxisUnit } from '../../axis';
-import { authoredNotes, cappedItems, frameTextOptions, normalizeLegendOption, plotHeightAfter, solveFrame, type FrameInput, type FrameResult, type LegendItemInput, authoredFootnoteCount } from '../../frame';
+import { authoredNotes, cappedItems, frameTextOptions, normalizeLegendOption, plotHeightAfter, shareUnitOptions, solveFrame, type FrameInput, type FrameResult, type LegendItemInput, authoredFootnoteCount } from '../../frame';
 import type { Rect } from '../../geometry';
 import { dedupeLegendKeys, scenarioLegendKeys } from '../../label/legendFidelity';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
@@ -18,18 +18,21 @@ import { partialAxisWords, partialFootnotes, partialLegendKeys, partialPattern, 
 import { axisBreakInvalid } from '../../axisBreakInvalid';
 import { axisBreakHeightOrderWarning } from '../../axisBreakOrder';
 import { breakStyleRefusal, stackBreakReversesOrder } from '../band/breakOrder';
-import { bandScale, brokenLinearScale, invalidLinearBreakReason, linearScale, niceDomain, type LinearBreak } from '../../scale';
-import type { FontSpec } from '../../text';
-import { canvasMargin, panelTypeClass, emphasisWeight, strokeToken, dashToken } from '../../theme';
-import type { LegendOptions } from '../../types/options';
+import { applyTickStep, shownTickStep, bandScale, brokenLinearScale, invalidLinearBreakReason, linearScale, niceDomain, type LinearBreak } from '../../scale';
+import { resolveSize } from '../../normalize/shared';
+import { COLLECT_IDENTITIES } from '../../seriesIdentity';
+import { defaultMeasurer, type FontSpec } from '../../text';
+import { canvasMargin, panelTypeClass, emphasisWeight, resolveTheme, strokeToken, dashToken, themeForWidth } from '../../theme';
+import type { BarOptions, LegendOptions } from '../../types/options';
 import type { LintWarning } from '../../types/scene';
 import { groupedOffsets } from '../band/groups';
 import { netLineName } from '../band/stacks';
-import { referenceMarkerKey } from '../band/ticks';
+import { breakAxisScale, referenceMarkerKey, stepFitsAxisBreak } from '../band/ticks';
 import { compactValueLabelFont, compactValueTextSize, groupedValueLabelPolicy, INSIDE_MIN_H } from '../band/labels';
 import { partialNamedOnValues, textFor } from './domain';
 import { labelOn } from '../labelOn';
-import { bandSteps, EXACT_DOMAIN, NO_NAME_COLUMN, cagrInset, CAGR_INSET_ROOM, CAGR_ROOM, CAT_BAND_GAP, CAT_MAX_LINES, CUT_NOTES, fixedBarRow, LABEL_GAP, RIGHT_ROOM, type BarArea, type BarDomain } from './model';
+import { authoredTrackWidth, columnOverrideWarnings, trackPlotFloor } from '../columnOverrides';
+import { bandSteps, EXACT_DOMAIN, NO_NAME_COLUMN, cagrInset, CAGR_INSET_ROOM, CAGR_ROOM, CAT_BAND_GAP, CAT_MAX_LINES, CUT_NOTES, fixedBarRow, LABEL_GAP, LEFT_ROOM, NAME_TRACK, RIGHT_ROOM, TOTAL_TRACK, type BarArea, type BarDomain } from './model';
 import type { BarLegendPaints } from './paints';
 import { signPaint } from '../band/sign';
 import { referenceLabelText, SHARE_ROW_SWATCH } from './labels';
@@ -166,7 +169,7 @@ export function solveBarFrame(domain: BarDomain, paints: BarLegendPaints, warnin
     {
       size,
       margin: { ...canvasMargin(theme, size.width), ...options.margin },
-      ...frameTextOptions(options),
+      ...frameTextOptions(shareUnitOptions('bar', options)),
       footnotes: [...partialFootnotes(cats, options.strings, legend?.items.some(item => item.id === '__partial') || partialNamedOnValues(domain)),
         ...(domain.variant === 'stacked' && domain.incompleteRows.size ? [disclosureNote(stringFields(options.strings!.incompleteStacks!, {
           categories: cappedItems(cats.filter(c => domain.incompleteRows.has(c.id)).map(c => c.label ?? c.id), options).join(', '),
@@ -175,7 +178,7 @@ export function solveBarFrame(domain: BarDomain, paints: BarLegendPaints, warnin
           ? [disclosureNote(stringFields(options.strings!.knownPartsShares!, {
             categories: cappedItems(cats.filter(c => c.total100 === undefined && domain.incompleteRows.has(c.id)).map(c => c.label ?? c.id), options).join(', '),
           }))] : []),
-        ...authoredNotes(options), ...((options as { [CUT_NOTES]?: string[] })[CUT_NOTES] ?? [])],
+        ...authoredNotes(options), ...((options as { [CUT_NOTES]?: string[] })[CUT_NOTES] ?? []), ...domain.shareNotes],
       legend,
       theme,
       measure,
@@ -183,6 +186,31 @@ export function solveBarFrame(domain: BarDomain, paints: BarLegendPaints, warnin
     claims,
   );
   return { frame, claims };
+}
+
+/** The least a standard bar reserves above its value-axis row in the plot band: its top annotation strip (barPlotArea). */
+const MIN_ANNOTATION_STRIP = 8;
+/** The smallest plot the frame hands a chart (plotHeightAfter). */
+const MIN_PLOT_BAND = 10;
+
+/**
+ * A lower bound on the height a standard bar takes above and below its rows, from the frame alone: the
+ * title, subtitle, source and authored notes, with no key and none of the bar's own notes. Those can
+ * only add height, so the bar's real chrome is never below this. It costs one frame, not a bar layout.
+ */
+export function barChromeFloor(options: BarOptions): number {
+  const size = resolveSize(options.size);
+  const theme = themeForWidth(resolveTheme(options.theme), size.width);
+  const frame = solveFrame({
+    size,
+    margin: { ...canvasMargin(theme, size.width), ...options.margin },
+    ...frameTextOptions(shareUnitOptions('bar', options)),
+    [COLLECT_IDENTITIES]: undefined,
+    footnotes: authoredNotes(options),
+    theme,
+    measure: options.measure ?? defaultMeasurer,
+  }, createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height }));
+  return size.height - Math.max(MIN_PLOT_BAND, frame.plot.h - MIN_ANNOTATION_STRIP);
 }
 
 /** The widest outside-end label on each side, measured BEFORE the scale so the headroom fits them. */
@@ -205,7 +233,8 @@ function outsideLabelWidths(domain: BarDomain, labelFont: FontSpec, strongFont: 
       });
     });
   }
-  if (domain.grandTotalsOn) {
+  // A total the caller seats in a track of its own takes no room past the bars.
+  if (domain.grandTotalsOn && (options as { [TOTAL_TRACK]?: boolean })[TOTAL_TRACK] !== true) {
     cats.forEach((_, ci) => {
       maxPosW = Math.max(maxPosW, measure(totalFmt(totals[ci]!), strongFont).width);
     });
@@ -284,10 +313,24 @@ function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWa
   const availH = plotHeightAfter(frame, size.height, plot0.h - annPad - axisH);
   const lineH = tickFont.size * 1.2;
   // A fixed bar row sizes the names to its pitch, not to the canvas.
+  const gapAfter = cats.map((cat) => {
+    const gap = cat.gapAfter === true ? 0.5 : typeof cat.gapAfter === 'number' ? Math.max(0, cat.gapAfter) : 0;
+    // A category break needs a gap wide enough to carry its glyph.
+    return cat.breakAfter ? Math.max(gap, 0.5) : gap;
+  });
   const stepEst = theme.space.barRow?.pitch ?? availH / cats.length;
+  // The step the sizing keeps per row: the authored gaps take steps of their own, so an extra name line must fit what is left to a row.
+  const rowStep = theme.space.barRow?.pitch ?? availH / bandSteps(cats.length, gapAfter);
   // As many name lines as the row step holds, up to CAT_MAX_LINES, so a long name wraps before it is cut.
   const catMaxLines = Math.max(1, Math.min(CAT_MAX_LINES, Math.floor((stepEst - 4) / lineH)));
-  const capW = Math.max(24, plot0.w * 0.28);
+  const noNameColumn = (options as { [NO_NAME_COLUMN]?: boolean })[NO_NAME_COLUMN] === true;
+  const nameColumn = !noNameColumn && labelOn(options, 'category');
+  columnOverrideWarnings('bar', options.columnOverrides, nameColumn ? ['label'] : [], [], warnings);
+  const authoredName = options.columnOverrides?.label?.width;
+  // An authored width sets the column; the plot gives way first, down to its floor.
+  const nameTrack = (options as { [NAME_TRACK]?: number })[NAME_TRACK] ?? (authoredName === undefined || !nameColumn ? undefined
+    : authoredTrackWidth('label', authoredName, 24, plot0.w - CAT_BAND_GAP - trackPlotFloor(plot0.w), warnings));
+  const capW = nameTrack ?? Math.max(24, plot0.w * 0.28);
   const authored = authoredFootnoteCount(options);
   // A 100% bar that misses a part says so on its name where the note naming it does not print: its shares are of the known parts.
   const incompleteWord = options.strings!.incomplete!;
@@ -299,13 +342,16 @@ function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWa
     return toDate !== undefined && cat.partial === true && !saysToDate(cat.label ?? cat.id, toDate) ? { ...cat, label: `${cat.label ?? cat.id} ${toDate}`, suffix: toDate } : cat;
   });
   const band0 = (rows: typeof cats, refs: { count: number; warnings: LintWarning[] }) => rowLabelBand(named(rows), tickFont, capW, catMaxLines, lineH, measure, {
-    wider: gutterBudget(24, plot0.w),
+    wider: nameTrack ?? gutterBudget(24, plot0.w), tightLines: Math.floor((rowStep - 4) / lineH),
     target: options.target, textScale: textScaleOf(options), typeRole: 'axis',
     shrink: stepDownFont(theme, tickFont, 'axis', options.target, textScaleOf(options)),
     footnoteRefs: refs,
   });
-  const noNameColumn = (options as { [NO_NAME_COLUMN]?: boolean })[NO_NAME_COLUMN] === true;
-  let { labels: catLines, width: catBandW } = band0(cats, { count: authored, warnings });
+  // The caller draws the names elsewhere: nothing fits them here, unless a reference mark on a name would warn.
+  const unfitted = noNameColumn && cats.every((cat) => cat.footnote === undefined);
+  let { labels: catLines, width: catBandW } = unfitted
+    ? { labels: cats.map((): ReturnType<typeof band0>['labels'][number] => ({ lines: [], w: 0, h: 0, font: tickFont })), width: 0 }
+    : band0(cats, { count: authored, warnings });
   // The caller draws the names elsewhere: no column, no gap, no cut and no row height for them.
   if (noNameColumn) {
     catLines = catLines.map((label) => ({ ...label, h: 0 }));
@@ -325,11 +371,7 @@ function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWa
     ({ labels: catLines, width: catBandW } = band0(cats.map((cat, i) => (cut.includes(i) ? { ...cat, footnote: authored + cut.indexOf(i) + 1 } : cat)), { count: authored + cut.length, warnings: [] }));
     warnings.push(categoryCutLint(cut.map((i) => cats[i]!.label ?? cats[i]!.id), true, 'in the row-name column'));
   }
-  const gapAfter = cats.map((cat) => {
-    const gap = cat.gapAfter === true ? 0.5 : typeof cat.gapAfter === 'number' ? Math.max(0, cat.gapAfter) : 0;
-    // A category break needs a gap wide enough to carry its glyph.
-    return cat.breakAfter ? Math.max(gap, 0.5) : gap;
-  });
+  if (nameTrack !== undefined) catBandW = nameTrack;
   // A horizontal segment has no seat for its value outside it (band/labels.ts),
   // so a bar that carries segment labels is at least their line box thick,
   // over the 14 px inside floor: a fixed row grows to it, and the natural row step
@@ -345,11 +387,12 @@ function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWa
   const fixedRowsH = fixedRow ? fixedRow.step * bandSteps(cats.length, gapAfter) : undefined;
   const inset = cagrInset(domain) && domain.passAnns.some((a) => a.kind === 'cagr');
   const nameGap = noNameColumn ? 0 : CAT_BAND_GAP;
-  const plotW = plot0.w - catBandW - nameGap - ((options as { [RIGHT_ROOM]?: number })[RIGHT_ROOM] ?? (domain.passAnns.some((a) => a.kind === 'cagr') ? (inset ? CAGR_INSET_ROOM : CAGR_ROOM) : 0));
+  const leftRoom = (options as { [LEFT_ROOM]?: number })[LEFT_ROOM] ?? 0;
+  const plotW = plot0.w - catBandW - nameGap - leftRoom - ((options as { [RIGHT_ROOM]?: number })[RIGHT_ROOM] ?? (domain.passAnns.some((a) => a.kind === 'cagr') ? (inset ? CAGR_INSET_ROOM : CAGR_ROOM) : 0));
   const rawBandPad = (options as { [BAND_PAD]?: number })[BAND_PAD] ?? 0;
   const bandPad = rawBandPad > 0 ? Math.max(0, Math.min(rawBandPad, Math.floor(availH - 10))) : 0;
   const plot: Rect = {
-    x: plot0.x + catBandW + nameGap,
+    x: plot0.x + catBandW + nameGap + leftRoom,
     y: plot0.y + annPad + bandPad,
     w: Math.max(10, plotW),
     // Fixed rows never stretch; a shorter canvas (a grid panel) packs them.
@@ -379,11 +422,22 @@ function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWa
   // The fP/fN reserves are occupied by outside-end labels, so the waste bound
   // measures snap overshoot beyond that intent, not beyond the raw data
   // (the domain-economy invariant).
-  const [dLo, dHi] = fullBars ? [0, hi || 100] : exactDomain ? [loExt, hiExt || 1] : niceDomain(loExt, hiExt || 1, 5, {
+  const nice: [number, number] = fullBars ? [0, hi || 100] : exactDomain ? [loExt, hiExt || 1] : niceDomain(loExt, hiExt || 1, 5, {
     dataExtent: [loExt, hiExt || 1],
     maxWasteFraction: 0.15,
   });
+  const stepped = applyTickStep(nice, shownTickStep(options.valueAxis?.tickStep, options.valueAxis?.show === true, warnings), warnings);
+  let [dLo, dHi] = stepped.domain;
+  let stepTicks = stepped.ticks;
   let activeBreak = barAxisBreak(domain, dLo, dHi, warnings);
+  if (!stepFitsAxisBreak(stepTicks, activeBreak, options.valueAxis?.tickStep, warnings)) {
+    [dLo, dHi] = nice;
+    stepTicks = undefined;
+    const checks: LintWarning[] = [];
+    activeBreak = barAxisBreak(domain, dLo, dHi, checks);
+    warnings.push(...checks.map((warning) => warning.code === 'axis-break-invalid'
+      ? { ...warning, severity: 'warn' as const, message: `${warning.message}; the chart is drawn without the break` } : warning));
+  }
   if (activeBreak && variant !== 'grouped' && stackBreakReversesOrder(brokenLinearScale([dLo, dHi], [plot.x, plot.x + plot.w], activeBreak), domain.stacks)) {
     warnings.push(axisBreakHeightOrderWarning());
     activeBreak = undefined;
@@ -392,7 +446,7 @@ function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWa
     ? brokenLinearScale([dLo, dHi], [plot.x, plot.x + plot.w], activeBreak)
     : linearScale([dLo, dHi], [plot.x, plot.x + plot.w]);
   const titleEnd = axisTitle && options.valueAxis?.show && !titleRow
-    ? tickRowTitleEnd(axisTitle, { scale: x, plot, orient: 'x', gridlines: false, ...domain.axisFmt, theme, measure, canvasWidth: size.width }, plot0.x)
+    ? tickRowTitleEnd(axisTitle, { scale: stepTicks ? breakAxisScale(x, stepTicks) : x, ...(activeBreak ? {} : { ticks: stepTicks }), plot, orient: 'x', gridlines: false, ...domain.axisFmt, theme, measure, canvasWidth: size.width }, plot0.x)
     : undefined;
   if (axisTitle && options.valueAxis?.show && !titleRow && titleEnd === undefined) return undefined;
   const bandFraction = options.bandFraction ?? fixedRow?.fraction ?? 0.7;
@@ -445,7 +499,7 @@ function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWa
     // Grouped value labels print in the emphasis weight, so a value inside a
     // bar end reads at a glance.
     pointFont: { ...(compact ? compactLabelFont : labelFont), ...(variant === 'grouped' && dataSeries.length > 1 ? { weight: emphasisWeight(theme) } : {}) }, compact, thinBars,
-    availH, minWidth: size.width - plotW + 10, capW, catLines, cutNotes, catBandW, plot, axisTitle, activeBreak, x: scale, x0: scale(0), band, negativeLabelsAcross,
+    availH, minWidth: size.width - plotW + 10, capW, catLines, cutNotes, catBandW, plot, axisTitle, activeBreak, stepTicks, x: scale, x0: scale(0), band, negativeLabelsAcross,
     ...(axisTitle ? { axisTitleAt: { x: titleEnd ?? plot.x + plot.w, y: plot.y + plot.h + 6 + (titleRow ? tickRowH + 2 : 0) } } : {}),
     ...(fixedRowsH === undefined ? {} : { fixedRowsH }),
     segmentStep: Math.ceil(Math.max(segmentBar, groupedH) / bandFraction),

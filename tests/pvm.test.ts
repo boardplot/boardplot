@@ -5,6 +5,9 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { render } from '../src/cli/render';
+import { resolveChartRequest, layoutResolvedRequest } from '../src/core/request';
+import { requireGeometry } from '../src/core/sizing';
 import '../src/core/charts';
 import { claimsForChart } from '../src/core/claims';
 import {
@@ -200,6 +203,24 @@ describe('pvm decomposition', () => {
         );
       }
     }
+  });
+
+  // The page showed both totals but never their difference, so a reader had to subtract.
+  it('prints the net change over the closing column, and netChange false removes it', () => {
+    const geometry = laid(0);
+    const derived = geometry.derived as PvmDerived;
+    const net = geometry.labels.find((label) => label.id === 'net:current');
+    const percent = ((derived.delta / derived.priorRevenue) * 100).toFixed(1).replace('-', '\u2212');
+    expect(net?.text).toContain(`(${derived.delta > 0 ? '+' : ''}${percent}%)`);
+    expect(laid(0, { netChange: false }).labels.some((label) => label.id === 'net:current')).toBe(false);
+  });
+
+  // Equal revenue with changed quantities left float residue in the accumulated closing level, and the net change printed a loss of 1 on an unchanged revenue.
+  it('prints no net change when the revenue is unchanged', () => {
+    const items = [{ id: 'a', label: 'Widget', prior: { qty: 3, revenue: 100 }, current: { qty: 7, revenue: 100 } }];
+    const geometry = layoutPvm({ items } as PvmData, { ...getChartDefinition('pvm')!.defaults, size: { width: 888, height: 396 } } as PvmOptions);
+    expect((geometry.derived as PvmDerived).delta).toBe(0);
+    expect(geometry.labels.some((label) => label.id.startsWith('net:'))).toBe(false);
   });
 
   it('leaves the convention off by default without a warning ', () => {
@@ -651,14 +672,15 @@ describe('pvm valueAxis.break', () => {
     'keeps the whole-axis height at %i px', async (width, redesignHeight) => {
       const { measure } = await import('../src/index');
       const fixture = fixtures.find(entry => entry.id === 'fy-revenue-bridge')!;
-      const result = measure({ type: 'pvm', data: fixture.data, options: { ...fixture.options, notes: { show: ['note', 'disclosure'] }, size: { width } } } as never);
+      const result = measure({ type: 'pvm', data: fixture.data, options: { ...fixture.options, valueAxis: { break: false }, notes: { show: ['note', 'disclosure'] }, size: { width } } } as never);
       expect(result.refused).toBeUndefined();
       expect(Math.abs(result.geometry!.size.height / redesignHeight - 1)).toBeLessThanOrEqual(0.03);
       expect(result.geometry!.scene.some(node => node.part === 'barBreak')).toBe(false);
     },
   );
 
-  it('keeps the default whole and draws a valid explicit automatic break', async () => {
+  // A whole axis spent the plot on two totals and drew the steps as slivers.
+  it('breaks by default where the base swamps the steps, and false keeps it whole', async () => {
     const { measure } = await import('../src/index');
     const fixture = fixtures.find((entry) => entry.id === 'fy-revenue-bridge')!;
     const broken = (valueAxis?: object) => {
@@ -666,9 +688,41 @@ describe('pvm valueAxis.break', () => {
       expect(result.geometry, JSON.stringify(result).slice(0, 400)).toBeDefined();
       return JSON.stringify(result.geometry!.scene).includes('Value axis broken');
     };
-    // No automatic break unless explicitly requested.
-    expect(broken()).toBe(false);
+    expect(broken()).toBe(true);
     expect(broken({ break: false })).toBe(false);
     expect(broken({ break: 'auto' })).toBe(true);
+  });
+});
+
+describe('pvm labels.point and columnOverrides', () => {
+  const portfolio = { items: [
+    { id: 'core', prior: { qty: 100, revenue: 1000 }, current: { qty: 120, revenue: 1320 } },
+    { id: 'addon', prior: { qty: 40, revenue: 400 }, current: { qty: 30, revenue: 330 } },
+  ], quantityUnit: 'seats' };
+  const draw = (options: object) => {
+    const request = resolveChartRequest({ type: 'pvm', data: portfolio, options: { title: 'Bridge', size: { width: 720 }, ...options } });
+    return requireGeometry(layoutResolvedRequest(request));
+  };
+  // Values off must not move into a note, and the marks and claims must keep them.
+  it('stops printing the values, with hover and claims intact', () => {
+    const on = draw({});
+    const off = draw({ labels: { point: false } });
+    expect(off.labels.filter((label) => /^(sum|total|segment):/.test(label.id))).toEqual([]);
+    expect(off.warnings.map((warning) => warning.code)).not.toContain('values-in-note');
+    const displays = (geometry: typeof on) => geometry.scene.flatMap((node) => (node.display ? [node.display.value] : []));
+    expect(displays(off)).toEqual(displays(on));
+    const claimIds = (geometry: typeof on) => claimsForChart('pvm', geometry as never).map((claim) => claim.id);
+    expect(claimIds(off)).toEqual(claimIds(on));
+    expect(off.labels.some((label) => label.id.startsWith('net:'))).toBe(true);
+  });
+  it('refuses labels: false and every other kind', () => {
+    for (const labels of [false, { total: false }]) {
+      expect((render({ spec: { type: 'pvm', data: portfolio, options: { title: 'Bridge', labels } }, format: 'svg' } as never).body as any).ok).toBe(false);
+    }
+  });
+  // A vertical pvm has no bands: the key must say so and must not change the form.
+  it('warns when it draws vertical', () => {
+    const geometry = draw({ columnOverrides: { label: { width: 200 } } });
+    expect(geometry.warnings.map((warning) => warning.code)).toContain('option-ignored');
   });
 });

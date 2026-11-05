@@ -23,3 +23,16 @@ describe('card-floor contract, bar, bartable and funnel fixtures with at most si
     }
   }
 });
+
+// A German column head is one long word. Without a break point it raised the funnel's minimum width
+// (312 px against 282 px) and the funnel refused a width where English draws.
+describe('funnel in German draws wherever English draws', () => {
+  for (const item of getFixtures('funnel').filter((fixture: any) => rows(fixture) <= 6)) {
+    it(`funnel/${item.id}`, () => {
+      for (const width of [300, 290]) {
+        const drawn = (language: string) => !!(measure({ ...request('funnel', item), options: { ...item.options, locale: { language }, size: { width } } } as never) as any).geometry;
+        expect(drawn('de'), `${width} px`).toBe(drawn('en'));
+      }
+    });
+  }
+});

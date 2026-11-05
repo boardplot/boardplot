@@ -45,7 +45,7 @@ Every chart is one spec, `{ "type", "data", "options", "annotations", "theme" }`
 - [box](docs/reference/box.md): Box plots of raw observations; rows category,value[,categoryLabel,date]
 - [waffle](docs/reference/waffle.md): Share of a whole as a grid of cells
 - [pyramid](docs/reference/pyramid.md): Mirrored bands on one scale
-- [diagram](docs/reference/diagram.md): Node and edge diagrams
+- [diagram](docs/reference/diagram.md): Node and edge diagrams, including system architecture
 - [tilemap](docs/reference/tilemap.md): Equal-size region tiles
 - [creative](docs/reference/creative.md): Ad-creative review card (early alpha)
 

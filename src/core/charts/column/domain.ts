@@ -9,8 +9,9 @@ import { cellFields, normalizeCategorySeries } from '../categorySeries';
 import { chartPalette } from '../chartEnv';
 import { breakStyleRefusal } from '../band/breakOrder';
 import { cagr, formatAuthoredPercent, formatAutomaticPercent, formatShare, shareSetFormatter } from '../../format';
-import { formatStatWithSpec, formatterFromExample, formatWithSpec, parseFormatExample, roundedNumber, seriesRasterFormatter, withChartMarks } from '../../formatSpec';
+import { formatStatWithSpec, formatterFromExample, formatWithSpec, parseFormatExample, roundedNumber, seriesRasterFormatter, shareFormatExample, withChartMarks } from '../../formatSpec';
 import { yearSpan, yearSpanFromLabels } from '../../periodYears';
+import { cleanSum } from '../../geometry';
 import { PRIORITY } from '../../label/solver';
 import {
   NormalizeError,
@@ -20,7 +21,8 @@ import {
 } from '../../normalize/shared';
 import { resolveCellRange, type DataRange } from '../../rangeRules';
 import { axisBreakInvalid } from '../../axisBreakInvalid';
-import { applyAxisBounds, invalidLinearBreakReason, niceDomain, type LinearBreak } from '../../scale';
+import { applyAxisBounds, applyTickStep, invalidLinearBreakReason, niceDomain, type LinearBreak } from '../../scale';
+import { stepFitsAxisBreak } from '../band/ticks';
 import { defaultMeasurer } from '../../text';
 import { canvasMargin, headingWeight, labelsOffKeepsNames, panelTypeClass, resolveTheme, themeForWidth } from '../../theme';
 import { measureValueAxisWidth } from '../../axis';
@@ -33,10 +35,10 @@ import type { LintWarning, PlacedAnnotation } from '../../types/scene';
 import { valueLineExtent, type ValueLineExtent } from '../../valueLineDomain';
 import { applyCategoryViewport, liveWindowOptions, viewportMeanSpan } from '../../viewport';
 import { VALUE_LINE_RESERVE } from '../../annotateParts';
-import { accumulateStack, averageMarkerLine, averageOfUnaddedSums, averageOfWholeShares, grandTotalRequested, compositionBasis, mixedSignsWarning, overfullShareSum, overfullWarning, plottedMean, sortSegments, stackTotalFormatter, warnIncompleteStacks } from '../band/stacks';
+import { accumulateStack, averageMarkerLine, averageMarkerMean, averageMarkerSpan, averageMarkerScope as averageMarkerScopeOf, averageOfUnaddedSums, averageOfWholeShares, grandTotalRequested, compositionBasis, mixedSignsWarning, overfullShareSum, overfullWarning, plottedMean, sortSegments, stackTotalFormatter, warnIncompleteStacks, warnShareFormatIgnored, withoutShareMean } from '../band/stacks';
 import { NO_STACK_MEAN, stackAdds } from '../../stackAdds';
 import { isIncomplete, warnShareRoundingDrift } from '../../dataGaps';
-import { roundingUnavailable, sumConsistentShares, type RoundingAdjustment } from '../../shareRounding';
+import { roundingUnavailable, shareRoundingNotes, sumConsistentShares, type RoundingAdjustment } from '../../shareRounding';
 import { chosenValueIndices } from '../band/valueSelection';
 import { partialKeyForced, saysToDate, toDateFits } from '../../partialPeriod';
 import { chartString } from '../../strings';
@@ -46,21 +48,24 @@ import { PANEL_KEYED } from './model';
 import type { AnomalyColumnOptions } from './types';
 import { currentSmallValues } from '../../formatPrecision';
 import { disclosuresShown } from '../../notes';
+import { cappedItems, columnSegmentsPrintAbsolute } from '../../frame';
 import { maxOf } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
+import { dataSeriesUnitRefusal } from '../../schema/units';
 
 /** What the options resolve to once: theme, palette, size, measurer, formatters. */
 function resolveColumnEnv(options: AnomalyColumnOptions, warnings: LintWarning[]): ColumnEnv {
   const size = resolveSize(options.size);
   const theme = themeForWidth(resolveTheme(options.theme), panelTypeClass(options) ?? size.width);
   const paletteRamp = chartPalette(theme, options.palette, warnings);
+  const shareExample = shareFormatExample(options);
   return {
     options,
     theme,
     palette: paletteRamp ? options.palette : undefined,
     size,
     measure: options.measure ?? defaultMeasurer,
-    pctFmt: options.shareLabels?.format ? formatterFromExample(options.shareLabels.format, options.locale?.language) : (p: number) => formatShare(p, options.locale?.language),
+    pctFmt: shareExample ? formatterFromExample(shareExample, options.locale?.language) : (p: number) => formatShare(p, options.locale?.language),
     authoredPctFmt: (p: number) => formatAuthoredPercent(p, options.locale?.language),
     highlights: new Set(resolveHighlight(options.highlight)),
     density: options.labelDensity ?? 'smart',
@@ -213,8 +218,9 @@ function orderColumnCategories(
       othersId = 'others';
       while (cats.some((c) => c.id === othersId)) othersId = `_${othersId}`;
       const othersVals = seriesNorm.map((s) => restSum(dropIdx.map((i) => s.vals[i]!.v)));
+      const foldedNames = dropIdx.map((i) => cats[i]!.label ?? cats[i]!.id);
       applyOrder(keptIdx);
-      cats = [...cats, { id: othersId, label: restLabel(topN, options.strings, dropIdx.length) }];
+      cats = [...cats, { id: othersId, label: restLabel(topN, options.strings, foldedNames) }];
       seriesNorm.forEach((s, k) => {
         s.vals = [...s.vals, { v: othersVals[k]!, isPct: false }];
       });
@@ -295,6 +301,8 @@ function columnLines(
       code: 'connectors-ignored',
       severity: 'warn',
       message: 'connectors apply only to stacked and stacked100 column charts; ignored for grouped',
+      field: ['options', 'connectors'],
+      fix: [{ op: 'remove', path: '/options/connectors' }],
     });
   }
   const connectorDashed =
@@ -332,6 +340,8 @@ function columnLines(
       code: 'net-line-ignored',
       severity: 'warn',
       message: 'netLine applies only to stacked and stacked100 column charts; ignored for grouped',
+      field: ['options', 'netLine'],
+      fix: [{ op: 'remove', path: '/options/netLine' }],
     });
   }
   if (options.shareLabels !== undefined && !stackedLike) {
@@ -340,6 +350,8 @@ function columnLines(
       severity: 'warn',
       message: 'shareLabels applies only to stacked and stacked100 column charts, whose columns are wholes; ignored for grouped',
       suggest: "use variant 'stacked' to print each segment's share of its column",
+      field: ['options', 'shareLabels'],
+      fix: [{ op: 'remove', path: '/options/shareLabels' }],
     });
   }
   if (options.seriesLabels !== undefined && !stackedLike) {
@@ -348,6 +360,9 @@ function columnLines(
       severity: 'warn',
       message: 'seriesLabels applies only to stacked and stacked100 column charts; ignored for grouped',
       suggest: 'use a legend to name grouped series',
+      field: ['options', 'seriesLabels'],
+      // With legend 'none' this key brings the series key back (legendPolicy.ts), so removing it changes the drawing.
+      ...(options.legend === 'none' ? {} : { fix: [{ op: 'remove' as const, path: '/options/seriesLabels' }] }),
     });
   }
   if (netLineOn && netLineSeriesId && !netLineSeries) {
@@ -456,6 +471,8 @@ function columnRibbons(
       severity: 'warn',
       message: 'ribbons apply only to stacked and stacked100 column charts; ignored for grouped',
       suggest: "use variant 'stacked'",
+      field: ['options', 'ribbons'],
+      fix: [{ op: 'remove', path: '/options/ribbons' }],
     });
     return { ribbonsOn: false, ribbonRank: false };
   }
@@ -567,7 +584,7 @@ function columnBasis(
   // decimals first printed 0.014 → 0.02 as "+100%" and took 0.004 for zero.
   const stackTotals: Record<Id, number> = emptyIdRecord();
   cats.forEach((c, ci) => {
-    stackTotals[c.id] = dataSeries.reduce((a, s) => a + (absOf(s, ci) ?? 0), 0);
+    stackTotals[c.id] = cleanSum(dataSeries.map((s) => absOf(s, ci) ?? 0));
   });
   let percents: Record<Id, Record<Id, number>> | undefined;
   if (variant === 'stacked100') {
@@ -592,8 +609,14 @@ function columnBasis(
     .map((c) => c.id));
   const shareOf = (s: NormSer, ci: number): number | null => {
     const c = cats[ci]!;
-    if (basisByCat[ci]! <= 0 || (incompleteCats.has(c.id) && c.total100 === undefined)) return null;
-    if (variant === 'stacked100') return plottedOf(s, ci);
+    if (incompleteCats.has(c.id) && c.total100 === undefined) return null;
+    // A percent cell on a 100% stack is its own share: it needs no basis of
+    // absolute parts, which a stack of percent cells does not have.
+    if (variant === 'stacked100') {
+      if (nmCats100.has(c.id) || naCats100.has(c.id)) return null;
+      return basisByCat[ci]! > 0 || s.vals[ci]!.isPct ? plottedOf(s, ci) : null;
+    }
+    if (basisByCat[ci]! <= 0) return null;
     const val = s.vals[ci]!;
     return val.v === null || val.isPct ? null : (val.v / basisByCat[ci]!) * 100;
   };
@@ -811,21 +834,8 @@ function columnValueDomain(
   [dLo, dHi] = applyAxisBounds([dLo, dHi], [Math.min(lo, 0), Math.max(hi, 0)], va, warnings);
   // An authored tick step sets the tick rhythm, as on line: the domain snaps
   // out to the step, so no value is cut; more than 20 intervals are ignored.
-  const step = va.tickStep;
-  if (step !== undefined && step > 0) {
-    const from = Math.floor(dLo / step + 1e-9);
-    const to = Math.ceil(dHi / step - 1e-9);
-    if (to - from >= 1 && to - from <= 20) {
-      const stepTicks = Array.from({ length: to - from + 1 }, (_, i) => Number(((from + i) * step).toFixed(10)));
-      return { posTopP, negBotP, dLo: stepTicks[0]!, dHi: stepTicks.at(-1)!, stepTicks, rendered };
-    }
-    warnings.push({
-      code: 'tick-step-ignored', severity: 'warn',
-      message: `valueAxis.tickStep ${step} would draw ${to - from} intervals over the value domain; the nice ticks are drawn instead`,
-      suggest: 'pick a step that gives 1 to 20 intervals',
-    });
-  }
-  return { posTopP, negBotP, dLo, dHi, rendered };
+  const stepped = applyTickStep([dLo, dHi], va.tickStep, warnings);
+  return { posTopP, negBotP, dLo: stepped.domain[0], dHi: stepped.domain[1], ...(stepped.ticks ? { stepTicks: stepped.ticks } : {}), rendered };
 }
 
 /** The value-axis break, validated against every value the exhibit renders. */
@@ -934,6 +944,10 @@ export function resolveColumnDomain(data: ChartData, options: AnomalyColumnOptio
   if (plotted.length === 0) {
     throw new NormalizeError('empty-data', 'series', 'column requires at least one data-role series');
   }
+  if (variant === 'grouped' || variant === 'stacked') {
+    const refusal = dataSeriesUnitRefusal(seriesNorm, options.unit);
+    if (refusal) warnings.push(refusal);
+  }
   // The variant is resolved before sort/topN because the refusals must fire first.
   const signColor = options.signColor === true;
   refuseColumnEncodings(variant, signColor, options.anomaly, plotted);
@@ -965,14 +979,15 @@ export function resolveColumnDomain(data: ChartData, options: AnomalyColumnOptio
     || stackAdds(series.map((s) => ({ label: s.label, unit: s.unit, pctCells: s.vals.some((val) => val.isPct) })), options.unit, options.sharesOfOneWhole);
   const partsAdd = addsOver(dataSeries);
   const meanValue = partsAdd ? plottedMean('all', stackedLike, cats.length, dataSeries, (series, _, ci) => source.plottedOf(series, ci)) : undefined;
-  const averageMarkerScope =
-    typeof options.averageMarker === 'object' ? options.averageMarker.scope : 'all';
+  if (variant === 'stacked100') options = withoutShareMean(options, meanValue, warnings);
+  const averageMarkerScope = averageMarkerScopeOf(options.averageMarker) ?? 'all';
   const averageMarkerRequested = options.averageMarker !== undefined && options.averageMarker !== false &&
     !averageOfWholeShares(variant, averageMarkerScope, warnings) &&
     !averageOfUnaddedSums(addsOver(averageMarkerScope === 'all' ? dataSeries : dataSeries.filter((s) => averageMarkerScope.includes(s.id))), warnings);
-  const averageMark = averageMarkerRequested
-    ? plottedMean(averageMarkerScope, stackedLike, cats.length, dataSeries, (series, _, ci) => source.plottedOf(series, ci))
+  const averageRun = averageMarkerRequested
+    ? averageMarkerMean(options.averageMarker, averageMarkerScope, cats, stackedLike, dataSeries, (series, _, ci) => source.plottedOf(series, ci), normalized.cats.map((c) => c.id))
     : undefined;
+  const averageMark = averageRun?.mean;
   if (averageMarkerRequested && averageMark === undefined) {
     warnings.push({
       code: 'average-marker-empty',
@@ -1008,23 +1023,35 @@ export function resolveColumnDomain(data: ChartData, options: AnomalyColumnOptio
       suggest: 'Omit labels, or set labels.grandTotal to true and turn other label kinds off by name.',
     });
   }
-  const sharesOn = variant === 'stacked100' && contentOf(options, 'segment', ['percent'])?.includes('percent') === true;
+  const segmentContent = contentOf(options, 'segment', variant === 'stacked100' ? ['percent'] : ['absolute']);
+  const sharesOn = variant === 'stacked100' ? segmentContent?.includes('percent') === true
+    : variant === 'stacked' && segmentContent !== null && (options.shareLabels !== undefined || segmentContent.includes('percent'));
+  // Match planColumnValueLabels: shareLabels adds percent only in the named columns.
+  // Keep the existing stacked100 rounding path unchanged.
+  const shareOnly = variant === 'stacked' ? options.shareLabels?.only : undefined;
   warnIncompleteStacks(variant, cats, basis.incompleteCats, gtContent !== null, sharesOn, 'columns', warnings, disclosuresShown(options));
+  warnShareFormatIgnored(variant, options.format, shareFormatExample(options), gtContent?.includes('absolute') === true || columnSegmentsPrintAbsolute(options), warnings);
   // Every computed share the chart prints takes one precision.
-  const shareSet = shareSetFormatter(cats.flatMap((_, ci) => dataSeries.flatMap((s) =>
-    s.vals[ci]!.isPct ? [] : basis.shareOf(s, ci) ?? [])), options.locale?.language);
-  // Computed shares only: an authored percent or total100 is the author's number.
-  const wholes = sharesOn ? cats.flatMap((c, ci) =>
-    basis.nmCats100.has(c.id) || basis.naCats100.has(c.id) || basis.incompleteCats.has(c.id) ||
-    c.total100 !== undefined || dataSeries.some((s) => s.vals[ci]!.isPct)
-      ? []
-      : [{ c, parts: dataSeries.flatMap((s) => { const share = basis.plottedOf(s, ci); return share === null ? [] : [{ s, share }]; }) }]) : [];
+  const shareSet = shareSetFormatter(cats.flatMap((_, ci) => dataSeries.flatMap((s) => basis.shareOf(s, ci) ?? [])), options.locale?.language);
+  // An authored total100 is the author's whole. Percent cells take part, as on bar:
+  // shares that add to exactly 100 print so they still do, and others print as given.
+  const wholes = sharesOn ? cats.flatMap((c, ci) => {
+    if ((shareOnly && !shareOnly.includes(c.id)) || basis.nmCats100.has(c.id) || basis.naCats100.has(c.id) ||
+      basis.incompleteCats.has(c.id) || c.total100 !== undefined) return [];
+    const parts = dataSeries.flatMap((s) => {
+      const share = variant === 'stacked' ? basis.shareOf(s, ci) : basis.plottedOf(s, ci);
+      return share === null ? [] : [{ s, share }];
+    });
+    // A negative or authored percent part leaves no complete set of computed shares.
+    return variant === 'stacked' && parts.length !== dataSeries.length ? [] : [{ c, parts }];
+  }) : [];
   // rounding 'sum-consistent' (the default): each complete stack's shares print so they add up to 100%,
-  // at the chart's one share precision (or shareLabels.format's).
+  // at the chart's one share precision (or the share format's: shareLabels.format, else a percent options.format).
   const shareTexts = new Map<string, string>();
   const roundingAdjustments: RoundingAdjustment[] = [];
+  const shareExample = shareFormatExample(options);
+  const spec = shareExample ? parseFormatExample(shareExample) : undefined;
   if (options.rounding !== 'nearest') {
-    const spec = options.shareLabels?.format ? parseFormatExample(options.shareLabels.format) : undefined;
     for (const { c, parts } of wholes) {
       const rounded = sumConsistentShares(parts.map((part) => part.share), options.locale?.language, spec && withChartMarks(spec, options.locale?.language), shareSet.decimals);
       if (rounded?.warning) warnings.push(roundingUnavailable(c.label ?? c.id, rounded.warning));
@@ -1035,21 +1062,19 @@ export function resolveColumnDomain(data: ChartData, options: AnomalyColumnOptio
       });
     }
   } else if (sharesOn) {
-    warnShareRoundingDrift(warnings, wholes.map(({ c, parts }) => ({ name: c.label ?? c.id, shares: parts.map((part) => part.share), decimals: shareSet.decimals })));
+    warnShareRoundingDrift(warnings, wholes.map(({ c, parts }) => ({ name: c.label ?? c.id, shares: parts.map((part) => part.share), decimals: spec?.decimals ?? shareSet.decimals })));
   }
+  // sharesOfOneWhole: a stack whose authored parts miss 100 prints shares of its own total.
+  // Direct percent cells print as authored, so a stack holding one is not rescaled.
+  const rescaled = options.sharesOfOneWhole === true
+    ? wholes.filter(({ c }) => !dataSeries.some((s) => s.vals[cats.indexOf(c)]!.isPct) && Math.abs(basis.stackTotals[c.id]! - 100) > 0.05).map(({ c }) => c.label ?? c.id) : [];
+  const shareNotes = shareRoundingNotes(options, roundingAdjustments, cappedItems(rescaled, options));
   let activeBreak = columnAxisBreak(options, anomaly, rendered, meanValue, averageMark, corridor.corridorShown, extent.dLo, extent.dHi, warnings);
   // An authored step keeps its rhythm across a break only while each side keeps an inner tick, not its end tick alone.
   let { stepTicks, ...span } = extent;
   const checked = activeBreak;
-  const stepAcross = !stepTicks || !checked
-    || (stepTicks.filter((v) => v < checked.from).length >= 2 && stepTicks.filter((v) => v > checked.to).length >= 2);
+  const stepAcross = stepFitsAxisBreak(stepTicks, checked, va.tickStep, warnings);
   if (!stepAcross) {
-    warnings.push({
-      code: 'tick-step-ignored', severity: 'warn',
-      message: `valueAxis.tickStep ${va.tickStep} leaves one side of the axis break with only its end tick; the break's own ticks are drawn instead`,
-      suggest: 'pick a smaller tickStep, or drop the axis break',
-      field: ['options', 'valueAxis', 'tickStep'],
-    });
     // The rejected step sets no extent either: the nice extent is taken again and the break checked against it.
     // A break excludes the anomaly corridor, so the corridor does not move. Its warnings were given above.
     const { tickStep: _rejected, ...nice } = va;
@@ -1062,8 +1087,8 @@ export function resolveColumnDomain(data: ChartData, options: AnomalyColumnOptio
       ? { ...warning, severity: 'warn' as const, message: `${warning.message}; the chart is drawn without the break` } : warning));
   }
   return {
-    // The shares print at the chart's one precision ("9%" beside "50%"), unless shareLabels.format sets one.
-    ...env, ...(options.shareLabels?.format ? {} : { pctFmt: shareSet.format }), shareTexts, roundingAdjustments, options, cats, seriesNorm, dataSeries, refSeries, othersId, valueSpec, fmt, totalFmt: stackTotalFormatter(variant, valueSpec.spec, fmt), statFmt, variant,
+    // The shares print at the chart's one precision ("9%" beside "50%"), unless a share format sets one.
+    ...env, ...(shareFormatExample(options) ? {} : { pctFmt: shareSet.format }), shareTexts, roundingAdjustments, shareNotes, options, cats, seriesNorm, dataSeries, refSeries, othersId, valueSpec, fmt, totalFmt: stackTotalFormatter(variant, valueSpec.spec, fmt), statFmt, variant,
     refStyle: options.referenceStyle ?? 'tick', signColor, pyRef, pyGrowth,
     uniformScenario, pctLevels, ...lines, ...ribbons, computedTotal, va, ...basis, anomaly, ...span, ...(stepTicks && stepAcross ? { stepTicks } : {}), meanValue, averageMark, meanSpan, ...corridor,
     activeBreak,
@@ -1071,7 +1096,7 @@ export function resolveColumnDomain(data: ChartData, options: AnomalyColumnOptio
     partsAdd,
     ...(partsAdd ? {} : { meanMissing: NO_STACK_MEAN }),
     annList: columnAnnotationList(options, variant, averageMark, !options.format && (variant === 'stacked100' || options.unit === '%' || pctLevels)
-      ? (v: number) => formatStatWithSpec(v, { ...valueSpec.spec, suffix: '%' }) : statFmt, meanSpan()),
+      ? (v: number) => formatStatWithSpec(v, { ...valueSpec.spec, suffix: '%' }) : statFmt, averageMarkerSpan(averageRun, meanSpan)),
     seriesCagr: stackedLike ? seriesCagrs(options, cats, dataSeries, basis.absOf, warnings) : new Map(),
   };
 }
@@ -1281,7 +1306,7 @@ export function shareKey(categoryId: string, seriesId: string): string {
   return `${categoryId}\0${seriesId}`;
 }
 
-/** A segment's printed share: its sum-consistent text, else the chart's share format. */
+/** A segment's printed share: its sum-consistent text, else the author's percent or the chart's share format. */
 export function shareTextOf(domain: Pick<ColumnDomain, 'shareTexts' | 'pctFmt' | 'authoredPctFmt'>, categoryId: string, seriesId: string, pct: number, authored: boolean): string {
-  return authored ? domain.authoredPctFmt(pct) : domain.shareTexts.get(shareKey(categoryId, seriesId)) ?? domain.pctFmt(pct);
+  return domain.shareTexts.get(shareKey(categoryId, seriesId)) ?? (authored ? domain.authoredPctFmt(pct) : domain.pctFmt(pct));
 }

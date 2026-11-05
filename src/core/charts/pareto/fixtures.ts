@@ -148,7 +148,7 @@ export const fixtures: Fixture<ParetoData, ParetoOptions>[] = [
       subtitle: { measure: 'Revenue', period: 'FY25' },
       unit: '$k',
       axisTitles: { primary: 'Revenue, $k' },
-      topN: { n: 10, rest: true, restLabel: 'Other accounts', showRestCount: true },
+      topN: { n: 10, rest: true, restLabel: 'Other accounts' },
       source: 'Billing extract',
     },
   },

@@ -93,6 +93,8 @@ export interface ColumnDomain extends ColumnEnv {
   shareTexts: Map<string, string>;
   /** rounding 'sum-consistent': the shares printed off their nearest rounding. */
   roundingAdjustments: import('../../shareRounding').RoundingAdjustment[];
+  /** The hidden method note on moved or rescaled shares. */
+  shareNotes: string[];
   cats: Category[];
   seriesNorm: NormSer[];
   dataSeries: NormSer[];
@@ -217,6 +219,8 @@ export interface ColumnArea {
   topPad: number;
   band: BandScale;
   catPlan: CategoryRowPlan;
+  /** categoryAxis.dateTicks: true at the first category of each calendar interval. */
+  intervalTicks?: readonly boolean[];
   showCatRow: boolean;
   /** options.categoryLabels 'staircase' on this pass: the highest y the names may use. */
   stairTop?: number;

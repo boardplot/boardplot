@@ -4,6 +4,7 @@
  * canonical form back.
  */
 
+import { plainText } from '../inlineBold';
 import type { Size } from '../geometry';
 import type { Cell, Id, Scenario } from '../types/cell';
 import type { Category, Series } from '../types/data';
@@ -70,13 +71,13 @@ export function normalizeScenario(s: string | undefined, path: string, namedBase
   if (s === undefined) return undefined;
   const map: Record<string, Scenario> = {
     AC: 'AC', PY: 'PY', PL: 'PL', FC: 'FC',
-    ACT: 'AC', BUD: 'PL', FCST: 'FC',
+    ACT: 'AC', BUD: 'PL', FCST: 'FC', LY: 'PY',
   };
   const norm = map[s.toUpperCase()];
   if (!norm) {
     throw new NormalizeError(
       'invalid-scenario', path,
-      `unknown scenario '${s}'`, `one of AC, PY, PL, FC (aliases ACT, BUD, FCST)${namedBaseline ? `; a baseline with its own name, such as a month, goes in ${namedBaseline}` : ''}`,
+      `unknown scenario '${s}'`, `one of AC, PY, PL, FC (aliases ACT, BUD, FCST, LY)${namedBaseline ? `; a baseline with its own name, such as a month, goes in ${namedBaseline}` : ''}`,
     );
   }
   return norm;
@@ -177,7 +178,7 @@ export function resolveCanvasOptions<O extends Pick<BaseOptions, 'canvas' | 'mar
 
 /** Hiding the frame title does not remove the chart's accessible name. */
 export function accessibleTitle(title: string | false | undefined, fallback: string): string {
-  return typeof title === 'string' ? title : fallback;
+  return typeof title === 'string' ? plainText(title) : fallback;
 }
 
 /** Subtitle string shorthand. */
@@ -199,4 +200,14 @@ export function formatScenarios(scenarios: readonly string[]): string {
 export function resolveHighlight(h: BaseOptions['highlight']): Id[] {
   if (h === undefined) return [];
   return Array.isArray(h) ? h : [h];
+}
+
+/** A copy with a repeat's placeholder filled in, in every string. Object keys and array order stay. */
+export function substitute(value: unknown, placeholder: string, replacement: string): unknown {
+  if (typeof value === 'string') return value.split(placeholder).join(replacement);
+  if (Array.isArray(value)) return value.map((item) => substitute(item, placeholder, replacement));
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, substitute(item, placeholder, replacement)]));
+  }
+  return value;
 }

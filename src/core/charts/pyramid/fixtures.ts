@@ -174,12 +174,21 @@ const dated = fixtures[fixtures.length - 1]!;
 fixtures.push({
   ...dated,
   id: 'dated-share-difference',
-  title: 'An absolute difference between shares is measured in percentage points',
+  title: 'Each snapshot is its own 100%, and a difference between shares is measured in percentage points',
   options: {
     ...dated.options!, basis: 'shareOfTotal',
-    title: 'The age-20-to-39 share differs by 4.3 percentage points',
-    annotations: [{ id: 'gap', kind: 'diff', mode: 'absolute', from: { categoryId: 'adult', seriesId: 'before' }, to: { categoryId: 'adult', seriesId: 'after' }, text: 'FY21 to FY23, both snapshots combined: ${value}' }],
+    title: 'The age-20-to-39 share fell by 1.9 percentage points',
+    annotations: [{ id: 'gap', kind: 'diff', mode: 'absolute', from: { categoryId: 'adult', seriesId: 'before' }, to: { categoryId: 'adult', seriesId: 'after' }, text: 'FY21 to FY23: ${value}' }],
   },
+});
+
+fixtures.push({
+  id: 'column-overrides', title: 'columnOverrides sets the width and alignment of the band column', kind: 'example',
+  data: {
+    bands: [{ id: 'young', from: 0, to: 20, label: '0 to 19' }, { id: 'adult', from: 20, to: 40, label: '20 to 39' }, { id: 'older', from: 40, to: 60, label: '40 to 59' }],
+    groups: [{ id: 'women', label: 'Women', values: [31, 42, 38] }, { id: 'men', label: 'Men', values: [33, 44, 35] }],
+  },
+  options: { title: 'Ages 20 to 39 are the largest group on both sides', source: 'Illustrative data', size: { width: 640 }, columnOverrides: { label: { width: 120, align: 'left' } } },
 });
 
 registerFixtures('pyramid', fixtures);

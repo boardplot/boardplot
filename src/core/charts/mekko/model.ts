@@ -19,6 +19,7 @@ import type { Category } from '../../types/data';
 import type { LabelDensity, MekkoOptions, ValueAxisOptions } from '../../types/options';
 import type { AxisGeometry, Paint, SceneNode } from '../../types/scene';
 import type { Theme } from '../../types/theme';
+import type { NumberFormatSpec } from '../../formatSpec';
 import type { MekkoMarks } from './layout';
 
 export interface NormVal {
@@ -58,6 +59,8 @@ export interface MekkoEnv {
   widthFmt: (v: number) => string;
   pctFmt: (p: number) => string;
   authoredPctFmt: (p: number) => string;
+  /** A percent cell of a unit stack: the percent format when authored, else the plain number precision with a % sign. */
+  cellPctFmt: (p: number) => string;
   highlights: ReadonlySet<Id>;
   density: LabelDensity;
   va: ValueAxisOptions;
@@ -94,6 +97,7 @@ export interface MekkoDomain {
   shares: Record<Id, Record<Id, number>>;
   dLo: number;
   dHi: number;
+  stepTicks?: number[];
   /** Width-weighted mean of the plotted totals (valueLine 'mean'). */
   meanValue: number | undefined;
   validCount: number;
@@ -133,6 +137,8 @@ export interface MekkoArea {
   showTotals: boolean;
   showAxis: boolean;
   axisFmt: (v: number) => string;
+  /** Percent cells without an authored format: the ticks take the digits that keep them apart. */
+  axisSpec?: NumberFormatSpec;
   xEdge: number[];
   dateNumericTicks: boolean;
   catPlan: CategoryRowPlan;
@@ -152,7 +158,7 @@ export interface MekkoArea {
   widthTitle?: { text: string; y: number };
   /** Columns too narrow for their name in place; the note names them left to right. */
   unnamed: number[];
-  /** Unit and bar: where each name under the plot goes, when the row could not centre them all (plot.ts packNames). */
+  /** Where names go when the row could not centre them all (plot.ts packNames): unit and bar on a second tier under the plot; percent, a name too wide for its column on a second tier over the heads. */
   namePack?: { left: number[]; row: number[]; width: number[] };
   /** The column whose segment labels name their series (env.namesInPlace), or -1. */
   namedCol: number;

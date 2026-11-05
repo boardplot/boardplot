@@ -1,20 +1,59 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import * as labelSolver from '../src/core/label/solver';
+import { layoutColumn } from '../src/core/charts/column/layout';
 import '../src/core/geo/packs';
 import { getFixtures } from '../src/fixtures';
-import { layoutResolvedRequest, renderSvg, resolveChartRequest } from '../src/index';
+import { canDraw, layoutResolvedRequest, renderSvg, resolveChartRequest } from '../src/index';
+import { render } from '../src/cli/render';
 import { contrastRatio } from '../src/core/color';
 import { resolveTheme } from '../src/core/theme';
+import { measureText } from '../src/core/text';
 
 /** Lay out a catalog fixture through the request path the CLI and React use. */
-function layoutFixture(type: string, id: string) {
+function layoutFixture(type: string, id: string, options: Record<string, unknown> = {}) {
   const fixture = getFixtures(type).find((f) => f.id === id);
   if (!fixture) throw new Error(`no fixture ${type}/${id}`);
-  const request = { type, data: structuredClone(fixture.data), options: structuredClone(fixture.options ?? {}), ...(fixture.annotations ? { annotations: structuredClone(fixture.annotations) } : {}) };
+  const request = { type, data: structuredClone(fixture.data), options: { ...structuredClone(fixture.options ?? {}), ...options }, ...(fixture.annotations ? { annotations: structuredClone(fixture.annotations) } : {}) };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
 }
 
 describe('chart layout edge cases', () => {
+  // Intermediate categories must not prevent a slope from drawing its two endpoint values.
+  it('draws first versus last and names the omitted slope categories', () => {
+    const spec = { type: 'slope', data: {
+      categories: [{ id: 'start', label: '2023' }, { id: 'middle', label: '2024' }, { id: 'last', label: '2025' }],
+      series: [{ id: 'north', label: 'North', values: [10, 900, 25] }],
+    } };
+    const body = render({ spec, return: ['svg', 'reading'] }).body as any;
+    expect(body.ok).toBe(true);
+    expect(body.warnings).toContainEqual(expect.objectContaining({ code: 'slope-too-many-points', severity: 'warn' }));
+    expect(body.reading.notes).toContainEqual(expect.objectContaining({ kind: 'disclosure', inFrame: true, text: expect.stringContaining('2024') }));
+    const geometry = layoutResolvedRequest(resolveChartRequest(spec as never)) as any;
+    expect(geometry.derived.changes.north).toEqual({ abs: 15, pct: 150 });
+    expect(geometry.labels.filter((label: { hidden?: boolean }) => !label.hidden).map((label: { text: string }) => label.text)).not.toContain('900');
+  });
+  // On a long line, valueLabels 'all' gave the whole row up and printed no end value, where 'last' prints both.
+  it('a line with valueLabels all that cannot print every value keeps its end values (gap-bracket)', () => {
+    const geometry = layoutFixture('line', 'gap-bracket', { valueLabels: 'all' });
+    const shown = geometry.labels.filter((l: { id: string; hidden?: unknown }) => String(l.id).startsWith('point:') && !l.hidden).map((l: { text: string }) => l.text);
+    expect(shown).toEqual(expect.arrayContaining(['25.0', '18.6']));
+  });
+
+  // The highest value shared a row with the lowest in the thinning sweep, so a wide high label took the room of the low and the low went missing.
+  it('a line with valueLabels extremes prints its low (cycle-bands)', () => {
+    const geometry = layoutFixture('line', 'cycle-bands', { valueLabels: 'extremes' });
+    const shown = geometry.labels.filter((l: { id: string; hidden?: unknown }) => String(l.id).startsWith('point:') && !l.hidden).map((l: { text: string }) => l.text);
+    expect(shown).toContain('−42');
+  });
+
+  // A narrow peak flagged down left the flag seat under the point on the line's way back, so the value 1,502 printed on the line.
+  it('a flagged peak whose flag seat lies on its line keeps its value off the line (orders-strict-k at 320)', () => {
+    const geometry = layoutFixture('line', 'orders-strict-k', { size: { width: 320, height: 386 } });
+    const label = geometry.labels.find((l: { id: string }) => l.id === 'point:orders:w8');
+    expect(!label || label.hidden).toBeTruthy();
+  });
+
   // A dot scatter lost two names with free room: a seat across the 2x2 divider was dropped
   // before its copy slid to the point's side, and a name ranked first kept the seat a later name needed.
   it('scatter keeps every point name where room is free (log-both-stores-revenue)', () => {
@@ -78,6 +117,26 @@ describe('chart layout edge cases', () => {
     const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'choropleth', data: structuredClone(fixture.data), options: { ...structuredClone(fixture.options), size: { width: 400, height: 300 } } } as any) as any) as any;
     expect(geometry.refused).toBeFalsy();
     expect(geometry.warnings.some((w: { code: string; message: string }) => w.code === 'footnotes-off' && w.message.includes('methodNote'))).toBe(true);
+  });
+
+  // A slide-sized EU map with 27 values left labelled regions without a number anywhere on the page.
+  it('an EU map without a value table prints a number on every region label that fits', () => {
+    const ids = ['AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR', 'HU', 'IE', 'IT', 'LV', 'LT', 'LU', 'MT', 'NL', 'PL', 'PT', 'RO', 'SK', 'SI', 'ES', 'SE'];
+    const regions = ids.map((id, i) => ({ id, value: i + 1 }));
+    const request = {
+      type: 'choropleth',
+      data: { pack: 'eu27', regions },
+      options: { valueTable: false, format: '1', size: { width: 888, height: 396 } },
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const geometry = layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
+    expect(geometry.refused).toBeFalsy();
+    const labels = geometry.labels.filter((label: { id: string; hidden?: unknown; slot?: string }) => label.id.startsWith('category:') && !label.hidden && label.slot !== 'smallMember');
+    expect(labels.length).toBeGreaterThan(0);
+    for (const label of labels) {
+      const region = regions.find(({ id }) => id === label.owner.categoryId)!;
+      expect(label.text).toBe(`${region.id} ${region.value}`);
+    }
   });
 
   // A format coarser than the class width ('$0M' over 1.2M to 1.48M) rounded the class edges into one
@@ -276,6 +335,112 @@ describe('chart layout edge cases', () => {
     expect(Math.abs(dataPlot('area') / dataPlot('line') - 1)).toBeLessThanOrEqual(0.02);
   });
 
+  // A callout seat was measured in the regular face while variance, slope and waterfall drew it bold,
+  // so the text ran past its seat and covered the neighbouring label (a minus sign lost under it).
+  it('a callout seat holds the text as it is drawn', () => {
+    const categories = ['North', 'South', 'East', 'West'].map((label) => ({ id: label.toLowerCase(), label }));
+    const text = 'Largest step since the restatement';
+    const specs = [
+      { type: 'variance', data: { categories, series: [{ id: 'act', label: 'Actual', values: [120, 95, 140, 88] }, { id: 'ref', label: 'Reference', values: [100, 100, 100, 100] }] },
+        options: { variant: 'integrated', variance: { of: 'act', vs: 'ref' }, size: { width: 480 } }, annotations: [{ kind: 'callout', at: { categoryId: 'north', seriesId: 'act' }, text }] },
+      { type: 'slope', data: { categories: categories.slice(0, 2), series: [{ id: 'a', label: 'Alpha', values: [10, 14] }, { id: 'b', label: 'Beta', values: [12, 9] }] },
+        options: { size: { width: 720 } }, annotations: [{ kind: 'callout', at: { categoryId: 'south', seriesId: 'a' }, text }] },
+      { type: 'waterfall', data: { items: [{ id: 'a', label: 'Start', type: 'total', value: 100 }, { id: 'b', label: 'Gain', value: 30 }, { id: 'c', label: 'Loss', value: -20 }, { id: 'd', label: 'End', type: 'total', value: 110 }] },
+        options: { size: { width: 480 } }, annotations: [{ kind: 'callout', at: 'b', text }] },
+    ];
+    const tooNarrow = specs.filter((spec) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const geometry = layoutResolvedRequest(resolveChartRequest(spec as any) as any) as any;
+      const label = geometry.labels.find((l: { id: string }) => l.id.startsWith('annotation:'));
+      const node = geometry.scene.find((n: { id: string }) => n.id === `label:${label.id}`);
+      const drawn = Math.max(...node.lines.map((line: string) => measureText(line, node.font).width));
+      return label.rect.w + 0.5 < drawn;
+    }).map((spec) => spec.type);
+    expect(tooNarrow).toEqual([]);
+  });
+
+  // The bold seat measure also widened an arrow callout and the body under a headline, which print plain, so a callout that fits was moved to the notes.
+  it('an arrow callout and a headline body keep the plain face and their seat', () => {
+    const text = 'Restated after the audit of the Q3 numbers';
+    const categories = ['North', 'South', 'East', 'West'].map((label) => ({ id: label.toLowerCase(), label }));
+    const specs = [
+      { type: 'variance', data: { categories, series: [{ id: 'act', label: 'Actual', values: [120, 95, 140, 88] }, { id: 'ref', label: 'Reference', values: [100, 100, 100, 100] }] },
+        options: { variant: 'integrated', variance: { of: 'act', vs: 'ref' }, size: { width: 440 } }, annotations: [{ kind: 'callout', at: { categoryId: 'north', seriesId: 'act' }, text, arrow: true }] },
+      { type: 'waterfall', data: { items: [{ id: 'a', label: 'Start', type: 'total', value: 100 }, { id: 'b', label: 'Gain', value: 30 }, { id: 'c', label: 'Loss', value: -20 }, { id: 'd', label: 'End', type: 'total', value: 110 }] },
+        options: { title: 'Bridge', size: { width: 480 } }, annotations: [{ kind: 'callout', at: 'b', text, headline: 'Largest step ${value}' }] },
+    ];
+    const seen = specs.map((spec) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const geometry = layoutResolvedRequest(resolveChartRequest(spec as any) as any) as any;
+      const label = geometry.labels.find((l: { id: string }) => l.id.startsWith('annotation:'));
+      const node = geometry.scene.find((n: { id: string }) => n.id === `label:${label.id}:body`) ?? geometry.scene.find((n: { id: string }) => n.id === `label:${label.id}`);
+      return { type: spec.type, hidden: label.hidden, weight: node.font.weight };
+    });
+    expect(seen).toEqual([{ type: 'variance', hidden: undefined, weight: 400 }, { type: 'waterfall', hidden: undefined, weight: 400 }]);
+  });
+
+  // A callout seated in the strip under the axis, on top of the 45° names: a name claimed only a square at its anchor.
+  it('a callout does not seat on a rotated category name', () => {
+    const categories = ['Umsatzerlöse', 'Niedersachsen', 'Licence income', 'Abschreibungen'].map((label, i) => ({ id: `c${i}`, label }));
+    const values = [[4.7, 4.4, null, 5.4], [2.7, -2.7, -2.7, 2.5], [3.1, 3.2, null, 2.8], [3.6, 3.5, 3.4, -3.3], [4.5, -4.7, -4.3, -4.7], [-3.2, 3.6, 3.4, 3.3], [6.3, -5.7, 5.6, 5.5], [2.5, 2.7, 3, 3.1]];
+    const series = values.map((row, s) => ({ id: `s${s}`, label: `Series ${s}`, values: row }));
+    const request = { type: 'column', data: { categories, series }, options: { title: 'Revenue by unit', subtitle: { measure: 'Revenue by unit', period: 'FY26' }, unit: 'pp', source: 'Invented data', locale: { language: 'de', decimal: ',', thousands: '.' }, variant: 'stacked', labelDensity: 'full', size: { width: 320 } },
+      annotations: [{ kind: 'callout', at: { categoryId: 'c0', seriesId: 's0' }, text: 'Largest step since the restatement', preferSide: 'right' }] };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const geometry = layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
+    const callout = geometry.labels.find((l: { id: string }) => l.id === 'annotation:callout-1');
+    const onName = geometry.labels.filter((l: { kind: string; rotate?: number }) => l.kind === 'category' && l.rotate === -45).some((name: { id: string; rect: { x: number; y: number; w: number; h: number } }) => {
+      const node = geometry.scene.find((n: { id: string }) => n.id === `label:${name.id}`);
+      const length = Math.max(...node.lines.map((line: string) => measureText(line, node.font).width));
+      const end = { x: name.rect.x + name.rect.w, y: name.rect.y + (node.font.size * 1.2 * Math.SQRT1_2) / 2 };
+      return Array.from({ length: Math.ceil(length) }, (_, d) => ({ x: end.x - d * Math.SQRT1_2, y: end.y + d * Math.SQRT1_2 }))
+        .some((p) => p.x > callout.rect.x && p.x < callout.rect.x + callout.rect.w && p.y > callout.rect.y && p.y < callout.rect.y + callout.rect.h);
+    });
+    expect(callout.hidden === undefined && onName).toBe(false);
+  });
+
+  // A callout on the first row of a narrow stacked bar was seated three rows down, with a long leader; it now sits within a row of its bar or goes to the notes.
+  it('a bar callout seats within one row of its bar or goes to the notes', () => {
+    const names = ['Alpha', 'Bravo', 'Charlie', 'Delta', 'Echo', 'Foxtrot', 'Golf', 'Hotel', 'India'];
+    const categories = names.map((label) => ({ id: label, label }));
+    const request = { type: 'bar', data: { categories, series: [
+      { id: 'a', label: 'Filled', values: [310, 240, 190, 74, 38, 62, 45, 30, 12] },
+      { id: 'b', label: 'Open', values: [32, 14, 9, 6, 5, 6, 7, 4, 3] }] },
+      options: { variant: 'stacked', grandTotalLabels: true, size: { width: 480 } },
+      annotations: [{ kind: 'callout', at: 'Alpha', text: '8 of the 12 positions open for over 90 days' }] };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const geometry = layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
+    const byId = (id: string) => geometry.labels.find((l: { id: string }) => l.id === id);
+    const callout = byId('annotation:callout-1');
+    const [first, second] = [byId('category:Alpha'), byId('category:Bravo')];
+    const pitch = second.rect.y - first.rect.y;
+    const reach = callout.hidden === undefined ? Math.abs(callout.rect.y + callout.rect.h / 2 - (first.rect.y + first.rect.h / 2)) : 0;
+    expect(reach).toBeLessThanOrEqual(pitch);
+    // Beside a short bar with room to its right, the text wraps there and is drawn.
+    const short = structuredClone(request);
+    short.data.series[0]!.values = [20, 10, 20, 15, 38, 62, 45, 30, 100];
+    short.options.size.width = 400;
+    short.annotations[0]!.at = 'Bravo';
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const wrapped = (layoutResolvedRequest(resolveChartRequest(short as any) as any) as any).labels.find((l: { id: string }) => l.id === 'annotation:callout-1');
+    expect(wrapped.hidden).toBeUndefined();
+  });
+
+  // A tall canvas widened the rotated names until the row had no pitch left for a 45° line, so all but one name were dropped.
+  it('a tall variance chart keeps its rotated category names at 400 px wide', () => {
+    const names = ['Nordrhein-Westfalen (Rheinland)', 'Net revenue retention, enterprise', 'Sonstige betriebliche Aufwendungen', 'Zinsen und ähnliche Aufwendungen', 'Aufwendungen für bezogene Waren', 'Schleswig-Holstein und Hamburg', 'Pensionsrückstellungen, Inland', 'Research and development expenses', 'Sonstige betriebliche Erträge', 'Fremdleistungen Logistik Ausland', 'Instandhaltung und Reparaturen', 'Mecklenburg-Vorpommern'];
+    const categories = names.map((label, i) => ({ id: `c${i}`, label }));
+    const request = { type: 'variance', data: { categories, series: [
+      { id: 'act', label: 'Actual', values: [178, 173.7, 182.1, 193.8, 204.9, 223.9, 243.9, 224.9, 200, 195.7, 190, 172.6] },
+      { id: 'ref', label: 'Prior year', role: 'reference', values: [145.6, 190.1, 165.5, 215.2, 245.5, 201.3, 221, 242.1, 190, 168.3, 180, 164.5] }] },
+      options: { variant: 'integrated', variance: { of: 'act', vs: 'ref' }, size: { width: 400, height: 560 } },
+      annotations: [{ kind: 'callout', at: { categoryId: 'c0', seriesId: 'act' }, text: 'Largest step since the restatement', preferSide: 'right' }] };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const geometry = layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
+    const drawn = geometry.labels.filter((l: { kind: string; hidden?: string }) => l.kind === 'category' && l.hidden === undefined).length;
+    expect(drawn).toBe(names.length);
+  });
+
   // A dot scatter reserved its y column for five round ticks but drew half-steps (5.5), so on a 280 pt slide the tick text started left of the canvas.
   it('scatter y ticks stay inside the canvas on a narrow slide', () => {
     const points = [[4, 3], [2, 5], [3, 5], [5, 2], [3, 4], [1, 5], [4, 4], [5, 1], [1, 3], [2, 2], [2, 4], [4, 1]]
@@ -290,5 +455,334 @@ describe('chart layout edge cases', () => {
     const ticks = geometry.scene.filter((node: { id?: string }) => String(node.id).startsWith('axis:y:tick:'));
     expect(ticks.length).toBeGreaterThan(0);
     for (const tick of ticks) expect(tick.x).toBeGreaterThanOrEqual(0);
+  });
+
+  // One long first name set the rotated-name cap for the whole row, so a name that fits its own seat was cut with it.
+  it('a rotated name that fits its seat is not cut for a long name elsewhere', () => {
+    const names = ['Rhein0', 'Pensionsrückstellungen, Inland1', 'Nordrhein-Westfalen (Rheinland)2', 'Zinsen und ähnliche Aufwendungen3', 'Instandhaltung und Reparaturen4', 'Mecklenburg-Vorpommern5', 'Research and development expenses6', 'Fremdleistungen Logistik Ausland7', 'Zinsen und ähnliche Aufwendungen8', 'Aufwendungen für bezogene Waren9'];
+    const request = { type: 'variance', data: { categories: names.map((label, i) => ({ id: `c${i}`, label })), series: [{ id: 'act', label: 'Actual', values: names.map((_, i) => 50 + i) }, { id: 'ref', label: 'Reference', role: 'reference', values: names.map(() => 52) }] },
+      options: { variant: 'integrated', variance: { of: 'act', vs: 'ref' }, size: { width: 320, height: 480 } } };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const geometry = layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
+    const node = geometry.scene.find((n: { id: string }) => n.id === 'label:category:c5');
+    expect(node.lines).toEqual(['Mecklenburg-Vorpommern5']);
+  });
+
+  // A qualitative scatter wrapped its y title to four lines in a plot too short for it, so the title printed over the Higher and Lower end labels.
+  it('a qualitative scatter plot too short for its y title drops the title and warns', () => {
+    const points = [[4, 3], [2, 5], [3, 5], [5, 2]].map(([x, y], i) => ({ id: `p${i}`, label: `Case ${i}`, x, y }));
+    const request = {
+      type: 'scatter',
+      data: { points },
+      options: { size: { width: 300, height: 240, unit: 'pt' }, title: 'Cases that combine high value and low effort are the ones to start with now', subtitle: 'Matrix of use cases', qualitativeAxes: true, axisTitles: { x: 'Ease', y: 'Value impact of use case' }, footnotes: Array.from({ length: 4 }, (_, i) => `Note ${i + 1} is long enough to wrap onto several lines of the footer in a narrow chart.`), source: 'Illustrative data' },
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const geometry = layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
+    const ids = geometry.scene.map((node: { id?: string }) => String(node.id));
+    expect(geometry.plot.h).toBeLessThan(80);
+    expect(ids).toContain('axis:y:high');
+    expect(ids).not.toContain('axis:y:title');
+    expect(geometry.warnings.map((w: { code: string }) => w.code)).toContain('axis-title-dropped');
+  });
+
+  // The y arrows are drawn from the plot centre toward Higher and Lower also when no y axis title is set.
+  it('a tall qualitative scatter without a y title keeps both y arrows', () => {
+    const points = [[4, 3], [2, 5], [3, 5], [5, 2]].map(([x, y], i) => ({ id: `p${i}`, label: `Case ${i}`, x, y }));
+    const request = {
+      type: 'scatter',
+      data: { points },
+      options: { size: { width: 400, height: 300, unit: 'pt' }, title: 'T', qualitativeAxes: true, axisTitles: { x: 'Ease' } },
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const geometry = layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
+    const ids = geometry.scene.map((node: { id?: string }) => String(node.id));
+    expect(ids).not.toContain('axis:y:title');
+    expect(ids).toContain('axis:y:arrow-high');
+    expect(ids).toContain('axis:y:arrow-low');
+  });
+  // A card that drops most value labels showed bare columns with no number and no scale to read them off.
+  it('a column whose value labels drop draws the value axis unless valueAxis.show is false', () => {
+    const cats = Array.from({ length: 12 }, (_, i) => ({ id: `u${i}`, label: `Unit ${i + 1}` }));
+    const request = (valueAxis?: { show: boolean }) => ({
+      type: 'column',
+      data: { categories: cats, series: [
+        { id: 'a', label: 'North', values: cats.map((_, i) => (i % 4 === 1 ? 1000 : 750)) },
+        { id: 'b', label: 'South', values: cats.map((_, i) => (i % 3 === 0 ? 1250 : 1500)) },
+      ] },
+      options: { target: 'dashboard', title: 'Revenue by unit', unit: 'EUR', format: '1.2bn', size: { width: 480 }, ...(valueAxis ? { valueAxis } : {}) },
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ticks = (r: unknown) => (layoutResolvedRequest(resolveChartRequest(r as any) as any) as any).scene.filter((n: { id?: string }) => String(n.id).startsWith('axis:y:tick:')).length;
+    expect(ticks(request())).toBeGreaterThan(1);
+    expect(ticks(request({ show: false }))).toBe(0);
+  });
+
+  // A grouped chart with thinned values needs no discarded label solve before it draws its axis.
+  it('solves thinned grouped values only with the fallback axis', () => {
+    const data = {
+      categories: Array.from({ length: 12 }, (_, i) => ({ id: `c${i}`, label: `Category ${i + 1}` })),
+      series: ['a', 'b', 'c', 'd'].map((id, i) => ({ id, values: Array.from({ length: 12 }, (_, j) => 20 + i + j) })),
+    };
+    const solve = vi.spyOn(labelSolver, 'solveLabels');
+    try {
+      const options = { title: 'Values by category', size: { width: 480, height: 320 } };
+      layoutColumn(data, { ...options, valueAxis: { show: true } });
+      const withAxis = solve.mock.calls.length;
+      solve.mockClear();
+      const automatic = layoutColumn(data, options);
+      expect(automatic.scene.some(node => node.id?.startsWith('axis:y:tick:'))).toBe(true);
+      expect(solve.mock.calls.length).toBe(withAxis);
+    } finally {
+      solve.mockRestore();
+    }
+  });
+
+  // Eight diverging panels on a wide slide sent five net scores to a note: "Netto +20,9 (+7,9)" was wider than a panel.
+  it('a diverging slope prints every net score and defines the net once in the key', () => {
+    const names = ['Subscription revenue, annual plans', 'Professional services, fixed price', 'Training and certification', 'Other revenue abroad',
+      'Consulting and implementation', 'Maintenance and repair', 'Managed services and support', 'Enterprise software licences'];
+    const series = names.map((label, i) => ({ id: `g${i}`, label, values: [53.85 - i * 4.3, 58.54 - i * 4.9], negative: [6.697 + i * 2.1, 16.82 + i * 1.7] }));
+    const request = {
+      type: 'slope',
+      data: { categories: [{ id: 'fy24', label: 'FY24' }, { id: 'fy26', label: 'FY26' }], series },
+      options: { title: 'T', target: 'slide', size: { width: 888, height: 396, unit: 'pt' }, locale: { language: 'de' }, variant: 'diverging', diverging: { labels: { positive: 'Besser', negative: 'Schlechter' } } },
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const geometry = layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
+    const nets = geometry.labels.filter((l: { id: string }) => /^total:g\d:net$/.test(l.id));
+    expect(nets.filter((l: { hidden?: unknown }) => !l.hidden)).toHaveLength(8);
+    const key = geometry.labels.find((l: { id: string }) => l.id === 'legend:net:0');
+    expect(key && !key.hidden).toBe(true);
+  });
+
+  // A diverging slope hatched a small-base panel and said why only in a hidden note, so the hatch had no key.
+  it('a diverging slope keys its hatched low-base panel, and only when one is drawn', () => {
+    const lay = (n: number) => layoutResolvedRequest(resolveChartRequest({
+      type: 'slope',
+      data: { categories: [{ id: 'a', label: 'Wave 1' }, { id: 'b', label: 'Wave 2' }], series: [{ id: 'g', label: 'Group', values: [60, 55], negative: [15, 22], n: [n, n] }] },
+      options: { variant: 'diverging', diverging: { minBase: 30 } },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any) as any) as any;
+    const keyed = (g: { labels: { id: string; text?: string; hidden?: unknown }[] }) => g.labels.find((l) => l.id === 'series:n < 30');
+    expect(keyed(lay(18))?.hidden).toBeFalsy();
+    expect(keyed(lay(18))?.text).toBe('n < 30');
+    expect(keyed(lay(120))).toBeUndefined();
+  });
+
+  // The area key does not wrap, so with two long area names the low-base key ran past the card edge and its label was hidden.
+  it('a diverging slope with long area names keeps its low-base key inside the card', () => {
+    const request = {
+      type: 'slope',
+      data: { categories: [{ id: 'a', label: 'Wave 1' }, { id: 'b', label: 'Wave 2' }], series: [{ id: 'g', label: 'Group', values: [60, 55], negative: [15, 22], n: [18, 18] }] },
+      options: { variant: 'diverging', diverging: { minBase: 30, labels: { positive: 'Very favourable respondents', negative: 'Very unfavourable respondents' } } },
+      size: { width: 400, height: 500 },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const lay = layoutResolvedRequest(resolveChartRequest(request) as any) as any;
+    const key = lay.labels.find((l: { id: string }) => l.id === 'series:n < 30');
+    expect(key?.hidden).toBeFalsy();
+    const swatch = lay.scene.find((n: { id?: string }) => n.id === 'legend:lowBase');
+    expect(swatch.rect.x + swatch.rect.w).toBeLessThanOrEqual(400);
+    expect(key.rect.x + key.rect.w).toBeLessThanOrEqual(400);
+  });
+
+  // With the low-base key on its own row and the period key still beside the areas, the net definition sat on the low-base row and the solver hid the hatch key as a collision.
+  it('a diverging slope seats the net definition below an own-row low-base key', () => {
+    const request = {
+      type: 'slope',
+      data: { categories: [{ id: 'a', label: '1' }, { id: 'b', label: '2' }], series: [{ id: 'g', label: 'Group', values: [60, 55], negative: [15, 22], n: [18, 18] }] },
+      options: { variant: 'diverging', diverging: { minBase: 1000, labels: { positive: 'Favourable responses', negative: 'Unfavourable responses' } } },
+      size: { width: 400, height: 500 },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const lay = layoutResolvedRequest(resolveChartRequest(request) as any) as any;
+    const key = lay.labels.find((l: { id: string }) => l.id === 'series:n < 1,000');
+    const net = lay.labels.find((l: { id: string }) => l.id === 'legend:net:0');
+    expect(key.hidden).toBeFalsy();
+    expect(net.rect.y).toBeGreaterThanOrEqual(key.rect.y + key.rect.h);
+  });
+
+  // An unsized sparkline with a title kept its 176 px card on slide, so the title wrapped one word a line and was cut.
+  it('an unsized sparkline on slide is as wide as its title and keeps 320 px for a short one', () => {
+    const request = (title: string) => ({
+      type: 'sparkline',
+      data: { values: [11.2, 11.6, 11.1, 12, 12.4, 12.1, 12.9, 13.4, 13.1] },
+      options: { title, target: 'slide' },
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const lay = (title: string) => layoutResolvedRequest(resolveChartRequest(request(title) as any) as any) as any;
+    const long = lay('Orders climb into August and ease to 13.1k in September');
+    expect(long.size.width).toBeGreaterThan(176);
+    expect(long.frame.titleLines).toBe(1);
+    expect(long.warnings.some((w: { code: string }) => w.code === 'frame-title-truncated')).toBe(false);
+    expect(lay('Orders').size.width).toBe(320);
+  });
+
+  // At 176 px a framed sparkline wrapped its title and source word by word and its two end names touched; on a
+  // 480 px dashboard card the line stayed in the 36 px tile band and read flat.
+  it('a framed sparkline defaults to 320 px and a framed card from 320 px draws the scaled line band', () => {
+    const request = (options: object) => ({
+      type: 'sparkline',
+      data: { values: [15.9, 14.5, 13.9, 13.4, 13.9, 14.2, 15.4, 16.1, 15.7, 15.4, 14.8, 15], labels: ['Jan 24', 'Feb 24', 'Mar 24', 'Apr 24', 'May 24', 'Jun 24', 'Jul 24', 'Aug 24', 'Sep 24', 'Oct 24', 'Nov 24', 'Dec 24'] },
+      options: { endLabels: 'ends', valueLabel: 'last', ...options },
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const lay = (options: object) => layoutResolvedRequest(resolveChartRequest(request(options) as any) as any) as any;
+    expect(lay({ source: 'Invented data' }).size.width).toBe(320);
+    expect(lay({}).size.width).toBe(176);
+    const card = lay({ title: 'Trend', target: 'dashboard', size: { width: 480 } });
+    const old = lay({ title: 'Trend', target: 'dashboard', size: { width: 480, height: 158 } });
+    expect(card.size.height).toBeGreaterThan(old.size.height + 40);
+    expect(old.size.height).toBe(158);
+  });
+
+  // A framed sparkline has no axis, so it printed only its last value and its high: a line that fell below zero
+  // never said so. valueLabel 'last' also prints the low, the first value and the reference; 'last-and-high' keeps the old pair.
+  it('a framed sparkline names its low, first value and reference, and last-and-high keeps the old pair', () => {
+    const request = (valueLabel: string) => ({
+      type: 'sparkline',
+      data: { values: [-2.7, 2.6, -2.5, 2.55, 2.7, 2.9, 2.7, 2.6, -2.7, 3.0, -2.9, 2.88] },
+      options: { title: 'Trend', size: { width: 520 }, valueLabel, reference: 1 },
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ids = (valueLabel: string) => (layoutResolvedRequest(resolveChartRequest(request(valueLabel) as any) as any) as any).labels
+      .filter((l: { hidden?: unknown }) => !l.hidden).map((l: { id: string }) => l.id);
+    expect(ids('last')).toEqual(expect.arrayContaining(['spark:last', 'spark:high', 'spark:low', 'spark:first', 'spark:referenceValue']));
+    expect(ids('last-and-high')).toEqual(expect.arrayContaining(['spark:last', 'spark:high']));
+    expect(ids('last-and-high').some((id: string) => /low|first|referenceValue/.test(id))).toBe(false);
+  });
+
+  // A bar row name stopped at three lines and was cut with an ellipsis although its row held a fourth line.
+  it('a bar name that would be cut at three lines takes a fourth when the row holds it', () => {
+    const request = {
+      type: 'bar',
+      data: { categories: [
+        { id: 'a', label: 'Customers who cancelled within the first ninety days after a price change and who named the new billing cycle as the main reason' },
+        { id: 'b', label: 'Renewals' },
+        { id: 'c', label: 'New sign-ups' },
+      ], series: [{ id: 's', label: 'Share', values: [32, 51, 44] }] },
+      options: { title: 'Cancellation reasons', size: { width: 360, height: 300, unit: 'pt' } },
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const geometry = layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
+    const name = geometry.labels.find((l: { id: string }) => l.id === 'category:a');
+    expect(name.title).toBeUndefined();
+    expect(name.lines).toHaveLength(4);
+  });
+
+  // The fourth line counted a row as the canvas over the row count, but a gap after a row takes steps of its own,
+  // so the chart minimum passed the pinned height and the size was refused where the chart drew before.
+  it('a fourth name line does not push a chart with gapAfter rows over its pinned height', () => {
+    const long = 'Customers who cancelled within the first ninety days after a price change and who named the new billing cycle as the main reason';
+    const request = {
+      type: 'bar',
+      data: { categories: [
+        { id: 'a', label: long, gapAfter: true },
+        { id: 'b', label: 'Renewals', gapAfter: true },
+        { id: 'c', label: 'New sign-ups', gapAfter: true },
+        { id: 'd', label: 'Upgrades' },
+      ], series: [{ id: 's', label: 'Share', values: [32, 51, 44, 27] }] },
+      options: { title: 'Cancellation reasons', size: { width: 360, height: 260, unit: 'pt' } },
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(canDraw(request as any)).toMatchObject({ ok: true });
+  });
+
+  // A fixed 28 px row floor refused a 12-row board on a full slide, where a row name needs about 24 px.
+  it('a 12-row status board draws on a full slide', () => {
+    const ids = Array.from({ length: 12 }, (_, i) => String(i + 1));
+    const request = {
+      type: 'status',
+      data: {
+        rows: ids.map((id) => ({ id: `r${id}`, label: `Workstream ${id}` })),
+        columns: ids.map((id) => ({ id: `c${id}`, label: `Week ${id}` })),
+        cells: ids.flatMap((r) => ids.map((c) => ({ row: `r${r}`, col: `c${c}`, state: (Number(r) + Number(c)) % 3 ? 'g' : 'r' }))),
+      },
+      options: { title: 'Delivery status', states: [{ id: 'g', label: 'On track', tone: 'good' }, { id: 'r', label: 'Off track', tone: 'bad' }], target: 'slide', size: { width: 888, height: 396, unit: 'pt' } },
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(canDraw(request as any)).toMatchObject({ ok: true });
+  });
+
+  // The pyramid charged every row a full line box for names and values, so a 21-band pyramid
+  // was refused on a full slide. A pinned row now charges the ink of its text and steps its type once.
+  it('a 21-band pyramid draws every label on a full slide', () => {
+    const bands = Array.from({ length: 21 }, (_, i) => ({ id: `b${i}`, from: i * 5, to: i * 5 + 5, label: `${i * 5}-${i * 5 + 4}` }));
+    const request = {
+      type: 'pyramid',
+      data: {
+        bands,
+        groups: [
+          { id: 'a', label: 'Men', values: bands.map((_, i) => 1000 + i * 20) },
+          { id: 'b', label: 'Women', values: bands.map((_, i) => 1500 + i * 30) },
+        ],
+      },
+      options: { title: 'Structure by band', target: 'slide', size: { width: 888, height: 396, unit: 'pt' } },
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(canDraw(request as any)).toMatchObject({ ok: true });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const geometry = layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
+    expect(geometry.labels.filter((l: { hidden?: unknown }) => l.hidden !== undefined)).toEqual([]);
+  });
+  // labelDensity 'full' on a status board dropped every cell name without a word at phone width, so the
+  // reader got a board that ignored the request. The names now step down the type scale first, and
+  // names that still do not fit warn and appear in the omissions.
+  it('a status board with labelDensity full steps its names down, then names the ones it cannot draw', () => {
+    const board = (id: string, width: number) => {
+      const fixture = getFixtures('status').find((f) => f.id === id)!;
+      const spec = { type: 'status', data: structuredClone(fixture.data), options: { ...structuredClone(fixture.options ?? {}), labelDensity: 'full', target: 'dashboard', size: { width } } };
+      const body = render({ spec, return: ['reading'] }).body as { warnings: { code: string; severity: string }[]; reading: { omissions: { labelId: string }[] } };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const geometry = layoutResolvedRequest(resolveChartRequest(spec as any) as any) as any;
+      return { body, geometry };
+    };
+    const narrow = board('programme-rollout-rag', 358);
+    expect(narrow.body.reading.omissions.map((o) => o.labelId).sort()).toEqual(['stateName:amber', 'stateName:green', 'stateName:red']);
+    expect(narrow.body.warnings.some((w) => w.code === 'label-hidden' && w.severity === 'warn')).toBe(true);
+    // A width where the full-size names do not fit but the one smaller type step does.
+    const stepped = board('programme-rollout-rag', 500);
+    expect(stepped.body.reading.omissions).toEqual([]);
+    expect(stepped.geometry.labels.filter((l: { id: string; hidden?: unknown }) => l.id.startsWith('state:') && !l.hidden).length).toBeGreaterThan(0);
+    // A board of hundreds of cells reports one entry per state, not one per cell: a request per cell cost five times the layout time.
+    const wide = board('central-bank-decisions', 1000);
+    expect(wide.body.reading.omissions.map((o) => o.labelId).filter((id) => id.startsWith('stateName:')).sort()).toEqual(['stateName:cut', 'stateName:hike', 'stateName:hold']);
+  });
+
+  // A zero actual against a negative reference kept a solid cap that read as filled from zero to the reference, though the actual fills none of it.
+  it('an integrated variance zero actual draws an outline cap against a reference on either side', () => {
+    const request = { type: 'variance', data: { categories: [{ id: 'up', label: 'Up' }, { id: 'down', label: 'Down' }], series: [
+      { id: 'act', label: 'Actual', values: [0, 0] }, { id: 'ref', label: 'Plan', role: 'reference', values: [100, -100] }] },
+      options: { variant: 'integrated', variance: { of: 'act', vs: 'ref' } } };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const geometry = layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
+    const caps = geometry.scene.filter((node: { part?: string }) => node.part === 'cap').map((node: { id: string; pattern?: string }) => [node.id, node.pattern]);
+    expect(caps).toEqual([['mark:cap:up', 'hollow'], ['mark:cap:down', 'hollow']]);
+  });
+
+  // `labels: false` took the only scale with the value labels: histogram bin edges, bullet band names
+  // and edge numbers, and every number of a pyramid. A pinned pyramid height that holds the rows but not
+  // the axis under them still draws, without the axis and with a warning that names the height that keeps it.
+  it('labels false keeps histogram bin edges, bullet band names and a pyramid value axis', () => {
+    const draw = (type: string, id: string, size?: { width: number; height: number }) => {
+      const fixture = getFixtures(type).find((f) => f.id === id)!;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const geometry = layoutResolvedRequest(resolveChartRequest({ type, data: structuredClone(fixture.data), options: { ...structuredClone(fixture.options ?? {}), labels: false, ...(size ? { size } : {}) } } as any) as any) as any;
+      const texts: string[] = geometry.scene.flatMap((node: { t: string; lines?: string[] }) => (node.t === 'text' ? node.lines ?? [] : []));
+      return { geometry, texts, shown: geometry.labels.filter((l: { hidden?: unknown }) => !l.hidden).map((l: { text: string }) => l.text) };
+    };
+    expect(draw('histogram', 'cycle-time-days').shown).toEqual(expect.arrayContaining(['1', '7', '13']));
+    expect(draw('bullet', 'four-band-neutral-ladder').shown).toEqual(expect.arrayContaining(['Poor', 'Leading', '$0', '$50']));
+    const pyramid = draw('pyramid', 'workforce-tenure-gender');
+    expect(pyramid.geometry.axes.filter((axis: { axis: string }) => axis.axis === 'x')).toHaveLength(2);
+    expect(pyramid.texts).toContain('10%');
+    const tight = draw('pyramid', 'workforce-tenure-gender', { width: 900, height: 240 });
+    expect(tight.geometry.warnings.map((w: { code: string }) => w.code)).toContain('value-axis-dropped');
+    expect(tight.geometry.axes.filter((axis: { axis: string }) => axis.axis === 'x')).toHaveLength(0);
+    expect(tight.geometry.scene.length).toBeGreaterThan(0);
+    const keep = Number(/at least (\d+)px/.exec(tight.geometry.warnings.find((w: { code: string }) => w.code === 'value-axis-dropped').suggest)![1]);
+    expect(draw('pyramid', 'workforce-tenure-gender', { width: 900, height: keep }).geometry.axes.filter((axis: { axis: string }) => axis.axis === 'x')).toHaveLength(2);
   });
 });

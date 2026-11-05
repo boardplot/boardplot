@@ -48,6 +48,8 @@ export function RevenueMix() {
 | `onEmpty` | Called once when the chart has nothing to draw: a data collection (categories, series, rows, points) is empty. The chart shows `strings.emptyMessage`, default "No data to show.". A table with no data rows calls it too and draws its header plus one message row. |
 | `renderRefused` | Returns the React content shown in place of a refused chart. |
 | `fixedSize` | Renders at the intrinsic size instead of scaling to the parent width. SVG charts only. |
+| `className`, `style` | Per-type components only: applied to one wrapper around the chart or table. |
+| `background` | Per-type SVG components only: `theme` (default) or `transparent` to leave out the canvas rectangle. Halos and hollow marks keep the theme background colour. |
 | `deferLayout` | On by default. A new container size or new data lays the chart out in a background React render, and the chart keeps its last drawing until the new one is ready, so a resize or a page of charts does not block the page. `false` lays the chart out in the render that brought the change, for a host that must show the chart and its own numbers in the same frame. SVG charts only. |
 | `styleNonce` | CSP nonce for the style elements this component renders. |
 | `idPrefix` | Prepended to every id the chart writes; see [Ids across React roots](#ids-across-react-roots). |
@@ -76,16 +78,19 @@ The serializable settings `BoardplotChart` validates beside the spec.
 | fallbackSize.height | number |  |  | Canvas height in the stated unit; at least 24 layout px after conversion. Omitted, height stays automatic. |
 | fallbackSize.unit | string | `'px'`, `'pt'`, `'mm'` |  | Dimension unit. Default px. One pt is 96/72 layout px; one mm is 96/25.4 layout px. |
 | target | string | `'report'`, `'dashboard'`, `'slide'`, `'print'` |  | Reading context. Default report. |
-| theme | string \| object |  |  | Explicit host theme overriding the spec theme. |
+| theme | string \| object \| object |  |  | Explicit host theme overriding the spec theme. |
 | theme.preset | string |  |  | Registered base theme whose tokens are overridden. |
 | theme.overrides | object |  |  | Partial theme token tree merged with the named preset. |
+| theme.overrides | object |  |  | Partial token tree applied to the default preset. |
 | hover | boolean \| object |  |  | Pointer hover: a label card and a highlight of the hovered series. Nothing else is interactive. The server render is the static chart. |
-| hover.card | false \| string | `false`, `'label'`, `'sparkline'` |  | Label card with the hovered record's own facts, placed beside the mark by the label solver and always inside the chart's own frame. Default 'label'. On a table, 'sparkline' draws the row across its column group instead and no card where the group holds fewer than three numbers. |
+| hover.card | false \| string | `false`, `'label'`, `'sparkline'` |  | Label card with the hovered record's own facts, placed beside the mark by the label solver, inside the browser viewport. It may extend beyond the chart frame and never changes the page layout. Default 'label'. On a table, 'sparkline' draws the row across its column group instead and no card where the group holds fewer than three numbers. |
 | hover.highlight | boolean |  |  | Dim the other series and outline the hovered marks; on a table, wash the row of the hovered cell instead. Default true. |
 
 ## Per-type components
 
 Each chart type has its own entry with a smaller bundle. A per-type component takes `data`, `annotations` and the type's options as flat props, so `options.title` becomes `title` and `options.valueAxis` becomes `valueAxis`. It also takes the sizing props, `target`, `theme`, `hover`, `onSeriesClick`, `onRecordClick`, `renderHoverContent`, `zoom`, `prepared`, `onGeometry`, `onWarnings`, `onRefused`, `renderRefused`, `fixedSize`, `deferLayout`, `styleNonce` and `idPrefix` listed for `BoardplotChart`, and `rows`, `columns` and `onRowsReading` in place of `data` ([Rows from a query](#rows-from-a-query)). The option names and values are those of the type's reference page.
+
+A per-type component also takes `className` and `style` on one wrapper element. `size` and `fallbackSize` can be a number for the width in pixels, equivalent to `{ width: n }`. SVG charts take `background="theme"` (the default) or `background="transparent"` to leave out the canvas rectangle. Halos and hollow marks keep the theme background colour. An invalid size or theme draws the refusal card, including during server rendering.
 
 A prop the type does not take is refused as the CLI refuses it: an unknown key, top-level or inside an option object, draws the error card with `unknown-option` and the nearest key in place of the chart, and the layout does not run. The entry checks the keys against a tree generated from the type's options schema, so it links no zod and checks no option values; `BoardplotChart` validates the values. The sentence that names the nearest key is fetched the first time a chart is refused, so a refused chart shows the busy placeholder for that fetch. `GridChart` checks the grid's own options. A panel's options sit in the grid's data, and only `BoardplotChart` checks them.
 
@@ -170,7 +175,7 @@ export function MonthlyRevenue() {
 }
 ```
 
-`onRowsReading` is the one place the reading arrives: `{ rows, ignoredColumns, states }`, the row count, the source columns no role names, and the cells a `state` column marks `na`, `nm` or `suppressed`. The chart draws such a cell as an empty one, so only the reading tells them apart. It is called after the chart commits, once for each distinct reading, and again after a remount.
+`onRowsReading` is the one place the reading arrives: `{ rows, ignoredColumns, states }`, the row count, the source columns no role names, and the cells a `state` column marks `na`, `nm` or `suppressed`. A map and a heatmap draw such a cell hatched and name its state in the key; the other charts draw it as an empty one, so only the reading tells them apart. It is called after the chart commits, once for each distinct reading, and again after a remount.
 
 Rows that do not map draw the error card a refused option draws, with the CLI's code and the row: `invalid-value` at `rows.3.revenue`. `BoardplotChart` shows the same finding on `SpecErrorCard`, with the JSON Pointer `/rows/3/revenue`. A layout finding at a mapped value names the row it came from as well; a tilemap's unknown region is the exception, because the browser checks the regions when the chart draws, and that refusal names the data path. A zoomed view that draws coarser buckets keeps the bucket's own path, because a bucket comes from several rows. A type without a rows mapping, such as `table` or `dimswitch`, refuses with `rows-unsupported-type`, as `boardplot_render` does. `GridChart` takes no rows: its `rows` and `columns` are the options that lay out its panels.
 
@@ -212,7 +217,7 @@ A controlled `collapsed` without `onCollapsedChange` is a read-only tree: no row
 
 A host that reads the drawn grid, a column's width or whether a label is cut, or takes a screenshot of it, first awaits `document.fonts.ready` and then the re-render that measurement starts, one animation frame later. Read before that, the tracks still come from the width tables, and a label can look cut in a font that has not loaded yet.
 
-A table with `mountCollapsed: false` (the `dimswitch` default) paints a row that has no children only when it is near the viewport: the browser skips off-screen rows (`content-visibility: auto` on `[data-bp-defer-row]`). An element screenshot of a long table then shows blank rows below the fold. Before the capture, add this host CSS to paint every row: `.bp-table-grid [data-bp-defer-row]{content-visibility:visible!important}`. There is no prop for it.
+A table with `mountCollapsed: false` (the `dimswitch` default) paints a row that has no children only when it is near the viewport: the browser skips off-screen rows (`content-visibility: auto` on `[data-bp-defer-row]`). An element screenshot of a long table then shows blank rows below the fold. Set `paintOffscreenRows: true` to paint every mounted row at once, also over 500 rows. A long table then paints slower. Closed rows still follow `mountCollapsed`.
 
 The table stylesheet is a `<style data-bp-table-theme>` element, one per theme, shared by every table of that theme in the same document or shadow root. Server markup and the first client frame carry it inline, beside the table. After mount the component moves it to `document.head`, or to the shadow root the table renders in, and removes the inline copy; the last table of a theme to unmount removes it. A static capture of a mounted page, `outerHTML` of the table or of its container, therefore holds the grid without its styles and shows plain text. Collect the `style[data-bp-table-theme]` elements from `document.head` or the shadow root along with the markup. `styleNonce` sets the nonce on both copies. The vertical rule in a section heading row is `position: absolute` with `z-index: -1`, and its cell sets `isolation: isolate`. A stacking audit may flag the negative z-index; the pair is on purpose. `isolation` makes the cell its own stacking context, so the rule paints behind the heading text and above the cell's background, and never drops behind the table or the page.
 
@@ -298,13 +303,14 @@ export function Dashboard() {
 | textSize | number |  |  | Inherited primary label size in px, equal on every chart under the provider. A chart option wins. |
 | diagnostics | string | `'auto'`, `'full'`, `'reader'` |  | Default auto: full unless NODE_ENV is production, else reader. Reader cards keep diagnostics in console and data attributes. Full adds a collapsed Details disclosure. |
 | direction | string | `'ltr'`, `'rtl'` |  | Reading direction of HTML controls and cards; default ltr. Chart geometry, axes and data order are unchanged. |
-| theme | string \| object |  |  | Inherited chart theme. Direct chart props take precedence. |
+| theme | string \| object \| object |  |  | Inherited chart theme. Direct chart props take precedence. |
 | theme.preset | string |  |  | Registered base theme whose tokens are overridden. |
 | theme.overrides | object |  |  | Partial theme token tree merged with the named preset. |
-| locale | string \| object |  |  | Inherited locale. Locale support follows each chart formatter. |
+| theme.overrides | object |  |  | Partial token tree applied to the default preset. |
+| locale | string \| object \| string |  |  | Inherited locale. Locale support follows each chart formatter. |
 | locale.language | string |  |  | BCP 47 language tag. Changes words only, such as notes and month names. It never changes the decimal or grouping marks; they come only from locale.decimal and locale.thousands. E.g. "de"; "de_DE" is read as "de-DE"; "en-US" puts the month first (Sep 4). |
 | locale.decimal | string | `'.'`, `','` |  | Decimal mark of every number the chart prints. Default '.'. The language does not change it. |
-| locale.thousands | string | `','`, `'.'`, `'’'`, `' '` |  | Grouping mark of every number the chart prints. Default ',', or '.' with decimal ','. The language does not change it. A value equal to the decimal mark uses that fallback. |
+| locale.thousands | string | `','`, `'.'`, `'’'`, `'\\''`, `' '`, `' '` |  | Grouping mark of every number the chart prints. The apostrophe ' is the same as ’, and the narrow no-break space is the same as the space. Default ',', or '.' with decimal ','. The language does not change it. A value equal to the decimal mark uses that fallback. |
 | locale.minusGlyph | string | `'−'`, `'-'` |  | Minus glyph for locale-derived table formats; default Unicode minus. |
 | locale.weekStartsOn | number | `0`, `1` |  | First weekday for week-granularity date ticks; default Monday. Line date ticks read this field, other layouts ignore it and report it. |
 | motion | string | `'system'`, `'reduce'`, `'full'` |  | Motion preference. Default system; charts remain static unless motion is enabled. |
@@ -321,7 +327,6 @@ export function Dashboard() {
 | strings.total | string |  |  | Host wording for a computed total. |
 | strings.source | string |  |  | Host wording for source furniture. |
 | strings.notApplicable | string |  |  | Not applicable text; n/a, German k. A. |
-| strings.legendCount | string |  |  | Host wording for a legend count; use {count} for the number. |
 | strings.partial | string |  |  | Host wording after the labels of partial categories in their footnote, also the hatch key label. |
 | strings.better | string |  |  | Meaning of a better sign-coloured value. |
 | strings.worse | string |  |  | Meaning of a worse sign-coloured value. |
@@ -405,7 +410,7 @@ export function Dashboard() {
 
 A colour-only theme change repaints the existing geometry. A font, spacing, density or locale change runs layout again. `locale.decimal` and `locale.thousands` set the marks of every number the engine composes, and `locale.language` its words, such as notes and month names: `{ language: 'de-DE', decimal: ',', thousands: '.' }` prints `1.234,5`, while `locale="de-DE"` alone keeps `1,234.5`. A format example on the chart, series or cell stays as written, and authored text stays untranslated. `strings` replaces the wording of composed labels such as Others, Total and Source. `direction="rtl"` mirrors HTML controls and cards; chart geometry keeps its coordinates.
 
-Dark mode is a theme. When the host turns dark, pass the dark preset to the provider: `standard-dark` for `standard`, `notation-dark` for `notation`; `glass` is dark already, and `boardroom` (the default), `capital` and `studio` have no dark preset. A chart paints its canvas in the theme's `color.background`, which `resolveTheme(name).color.background` from `boardplot/theme` returns (`#0E1A26` in `standard-dark`). Give the card that colour, or give the chart the card's colour: `theme={{ preset: 'standard-dark', overrides: { color: { background: '#111827' } } }}`.
+Dark mode is a theme. When the host turns dark, pass the dark preset to the provider: `bridge-dark` for `bridge` (the default), `standard-dark` for `standard`, or `notation-dark` for `notation`. `glass` is dark already. `boardroom`, `capital` and `studio` have no dark preset. A chart paints its canvas in the theme's `color.background`, which `resolveTheme(name).color.background` from `boardplot/theme` returns (`#0B1B3A` in `bridge-dark`). Give the card that colour, or give the chart the card's colour: `theme={{ preset: 'bridge-dark', overrides: { color: { background: '#111827' } } }}`.
 
 ## Targets
 
@@ -491,7 +496,7 @@ Without the import the chart draws a refusal card with the code `geo-pack-not-re
 
 | Prop | Type | Values | Default | Meaning |
 |---|---|---|---|---|
-| card | false \| string | `false`, `'label'`, `'sparkline'` |  | Label card with the hovered record's own facts, placed beside the mark by the label solver and always inside the chart's own frame. Default 'label'. On a table, 'sparkline' draws the row across its column group instead and no card where the group holds fewer than three numbers. |
+| card | false \| string | `false`, `'label'`, `'sparkline'` |  | Label card with the hovered record's own facts, placed beside the mark by the label solver, inside the browser viewport. It may extend beyond the chart frame and never changes the page layout. Default 'label'. On a table, 'sparkline' draws the row across its column group instead and no card where the group holds fewer than three numbers. |
 | highlight | boolean |  |  | Dim the other series and outline the hovered marks; on a table, wash the row of the hovered cell instead. Default true. |
 
 The card lists the hovered record's own facts: the mark it names, its value as the chart prints it (the series or chart `format` decides the rounding, prefix and suffix; a unit that is a currency sign or a magnitude letter sits on the number as it would on a mark, "$213k"), the fields the record carries, each comparison, its share where the record has one, its rank where the chart ranks, and any annotation on it whose text the chart does not already print in full. A comparison prints its change through the same format as the value ("−$12"), and its percent at the precision the chart prints percentages with. A comparison that cannot be made, such as one against a series on the other axis, has no row. A category's date has no row when the heading names the category. An unlabelled date category of a line, column or combo chart is named as its period with its year ("Mar 2025", "4 Sep 2026"), where the axis prints "Mar" over a year row. A missing value inside a series has a card too: the pointer over the gap reads "No observation", and on a stacked area, which draws the missing part as zero, "No observation; drawn as 0 in the stack". On a card that lists several series, a date the heading does not name joins the heading once, after the category. The record keeps the source number and every comparison. Only the value row is a bare number and carries tabular figures; the composed lines read as captions.

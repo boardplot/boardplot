@@ -9,6 +9,8 @@ import { noteTexts } from './helpers/notes';
 import { render } from '../src/cli/render';
 import { fixtures } from '../src/cli/fixtures';
 import { cachedCategoryRowPlans } from '../src/core/label/categoryRow';
+import { leaderPieces } from '../src/core/label/solver';
+import { segmentHitsRect } from '../src/core/geometry';
 import type { ChartReading } from '../src/core/reading';
 import type { LintWarning } from '../src/core/types/scene';
 
@@ -111,6 +113,74 @@ describe('note rules', () => {
     // A callout without ${value} names nothing: the note keeps the point.
     const plain = requireGeometry(layoutResolvedRequest(twoLines([{ kind: 'callout', id: 'c1', at: { categoryId: 'd0', seriesId: 'b' }, text: 'Start' }])));
     if (plain.labels.find((label) => label.id === 'point:b:d0')?.hidden) expect(noteTexts(plain).join(' ')).toContain('Series B 1,020 (09/01)');
+  });
+
+  // A sentence-long callout at 720 px found no one-line seat and was left off the chart: it must wrap and draw.
+  it('wraps a sentence-long callout to a seat on the chart instead of dropping it', () => {
+    const text = 'New pricing launched in March lifted the average deal size by a fifth, and two large renewals closed early in the fourth quarter';
+    const geo = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'column',
+      data: { categories: ['2022', '2023', '2024'], series: [{ id: 'a', label: 'Revenue', values: [10, 12, 15] }] },
+      options: { title: 'Revenue grows', unit: '$m' }, annotations: [{ kind: 'callout', id: 'c1', at: { categoryId: '2023', seriesId: 'a' }, text }] } as never)));
+    const label = geo.labels.find((entry) => entry.id === 'annotation:c1')!;
+    expect(label.hidden).toBeUndefined();
+    expect(label.lines!.length).toBeGreaterThan(1);
+    expect(label.lines!.join(' ')).toBe(text);
+  });
+
+  // A wrapped callout seated over another column had no leader and read as that column's callout.
+  it('keeps a wrapped slide callout visibly tied to its own column', () => {
+    const text = 'New pricing launched in March lifted the average deal size by a fifth, and two large renewals closed early in the fourth quarter';
+    const geo = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'column',
+      data: { categories: ['2022', '2023', '2024'], series: [{ id: 'a', label: 'Revenue', values: [10, 12, 15] }] },
+      options: { title: 'Revenue grows', unit: '$m', target: 'slide' },
+      annotations: [{ kind: 'callout', id: 'c1', at: { categoryId: '2023', seriesId: 'a' }, text }] } as never)));
+    const label = geo.labels.find((entry) => entry.id === 'annotation:c1')!;
+    expect(label).toBeDefined();
+    expect(label.hidden).toBeUndefined();
+    expect(label.lines.length).toBeGreaterThan(1);
+    const columns = geo.scene.flatMap((node) => node.t === 'rect' && node.part === 'bar' && node.owner.seriesId === 'a' ? [node] : []);
+    const own = columns.find((column) => column.owner.categoryId === '2023')!.rect;
+    const { rect } = label;
+    const coversOwnX = rect.x <= own.x + own.w / 2 && rect.x + rect.w >= own.x + own.w / 2;
+    const besideOwn = (rect.x + rect.w <= own.x || rect.x >= own.x + own.w) && rect.y < own.y + own.h && rect.y + rect.h > own.y;
+    const clearOfOthers = columns.every((column) => column.owner.categoryId === '2023' || rect.x + rect.w <= column.rect.x || rect.x >= column.rect.x + column.rect.w);
+    expect(Boolean(label.leader) || ((coversOwnX || besideOwn) && clearOfOthers)).toBe(true);
+  });
+
+  // The leader of a wrapped callout ran through the value printed over its own column.
+  it('draws no wrapped callout leader through a value label', () => {
+    const text = 'New pricing launched in March lifted the average deal size by a fifth, and two large renewals closed early in the fourth quarter';
+    const geo = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'column',
+      data: { categories: ['2022', '2023', '2024'], series: [{ id: 'a', label: 'Revenue', values: [10, 12, 15] }] },
+      options: { title: 'Revenue grows', unit: '$m' },
+      annotations: [{ kind: 'callout', id: 'c1', at: { categoryId: '2023', seriesId: 'a' }, text }] } as never)));
+    const label = geo.labels.find((entry) => entry.id === 'annotation:c1')!;
+    expect(label.hidden).toBeUndefined();
+    const values = geo.labels.filter((entry) => entry.kind !== 'annotation' && !entry.hidden);
+    expect(values.map((value) => value.text)).toContain('12');
+    const crossed = label.leader ? values.filter((value) => leaderPieces(label.leader!.d, 32).some(([a, b]) => segmentHitsRect(a, b, value.rect))) : [];
+    expect(crossed.map((value) => value.text)).toEqual([]);
+  });
+
+  // A wide callout on a stacked100 column segment could disappear into a note that the image does not show.
+  it('seats a stacked100 segment callout above the plot when it cannot fit beside the column', () => {
+    const geo = requireGeometry(layoutResolvedRequest(resolveChartRequest({
+      name: 'c1',
+      type: 'column',
+      data: {
+        categories: [{ id: 'a', label: '2019' }, { id: 'b', label: '2020' }, { id: 'c', label: '2021' }],
+        series: [
+          { id: 'x', label: 'X', unit: '%', values: [60, 50, 40] },
+          { id: 'y', label: 'Y', unit: '%', values: [40, 50, 60] },
+        ],
+      },
+      options: { variant: 'stacked100', title: 'Authored callout on a stacked100 segment', format: '0.0%', target: 'slide', size: { width: 900, height: 497, unit: 'pt' } },
+      annotations: [{ kind: 'callout', at: { categoryId: 'c', seriesId: 'y' }, text: 'Y: +20.0 points vs. the 2019 level' }],
+    } as never)));
+    const callout = geo.labels.find((label) => label.id === 'annotation:callout-1');
+    expect(callout).toBeDefined();
+    expect(callout?.hidden).toBeUndefined();
+    expect(noteTexts(geo).some((text) => text.includes('Not labelled on the chart'))).toBe(false);
   });
 
   // A callout on a stacked column's total led from the edge of a segment's value: it pointed at the wrong number.
@@ -233,6 +303,35 @@ describe('note rules', () => {
     expect(noteTexts(geo, ['disclosure'])).toEqual(['Not drawn (negative value, so no total shown): Loss.']);
   });
 
+  // A narrow doughnut gave its width to the slice labels, so the hole was too small and the total moved to the notes.
+  // The ring grows for the total only when the layout would drop it; a layout that draws it keeps its labels.
+  describe('a doughnut\'s centre total', () => {
+    const categories = ['Cloud infrastructure & tools', 'People and contractors', 'Facilities and building lease', 'Marketing & brand campaigns', 'Travel and events', 'Professional services & legal', 'Training and development']
+      .map((label, i) => ({ id: `c${i + 1}`, label }));
+    const drawnAt = (target: string, width: number, height: number, hole: number, scale: number) => {
+      const values = [1.428, 0.882, 0.672, 0.504, 0.378, 0.21, 0.126].map((v) => v * scale);
+      const geo = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'pie', data: { categories, series: [{ id: 's', label: 'Spend', values }] },
+        options: { target, size: { width, height }, doughnut: hole, legend: 'bottom', unit: 'EUR m', format: '1.0' } } as never)));
+      const shown = (label: { hidden?: unknown; noted?: boolean }) => !label.hidden && !label.noted;
+      return {
+        total: shown(geo.labels.find((label) => label.kind === 'total')!),
+        slices: geo.labels.filter((label) => label.kind !== 'total' && shown(label)).length,
+      };
+    };
+
+    it('stays in the hole of a 280 px doughnut', () => {
+      expect(drawnAt('dashboard', 280, 420, 0.6, 1).total).toBe(true);
+    });
+
+    it('does not cost a 343 px doughnut a slice label when its hole already holds the total', () => {
+      expect(drawnAt('dashboard', 343, 300, 0.6, 1)).toEqual({ total: true, slices: 3 });
+    });
+
+    it('leaves the labels as they are when the hole cannot hold the total at either size', () => {
+      expect(drawnAt('report', 360, 300, 0.4, 1e6)).toEqual({ total: false, slices: 4 });
+    });
+  });
+
   it('an open height gives hidden values the room their unprinted note took', () => {
     const fixture = getFixtures('pie').find((entry) => entry.id === 'ten-tiny-slices')!;
     const geo = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'pie', data: fixture.data, options: fixture.options } as never)));
@@ -291,8 +390,8 @@ describe('note rules', () => {
 
   it.each([
     // Three sources of the warning: noted labels (combo), a heatmap value note, a pie value note
-    // (at 480 px every pie label now finds a seat, so its case runs at 320 px).
-    ['combo', 'dense-12-months', 480], ['heatmap', 'dense-20x12', 480], ['pie', 'ten-tiny-slices', 320],
+    // (at 480 px every pie label now finds a seat, so its case runs at 320 px; the heatmap prints its values at 480 px with fewer decimals, so its case runs at 400 px).
+    ['combo', 'dense-12-months', 480], ['heatmap', 'dense-20x12', 400], ['pie', 'ten-tiny-slices', 320],
   ] as const)('%s %s at %i px names its noted values in one values-in-note warning', (type, id, width) => {
     const fixture = getFixtures(type).find((entry) => entry.id === id)!;
     const geo = requireGeometry(getChart(type)!.layout(fixture.data, { ...fixture.options, annotations: fixture.annotations, target: 'report', size: { width } } as never));
@@ -406,16 +505,17 @@ describe('requested line values', () => {
     options: { valueLabels: 'all', size: { width } },
   });
   const drawn = (body: { svg: string }) => body.svg.match(/data-part="point"/g)?.length ?? 0;
-  // A requested row that loses every seat must name all its values and their destinations.
+  // A requested row that loses its seats must name every value it does not draw and its destination.
   it('draws every value of a steep line, and warns when a row truly has no room', () => {
     const fits = render({ spec: spec([12.4, 13.1, 12.8, 14.2, 15.0, 14.6], 640), return: ['svg'] }).body as { svg: string; warnings: { code: string }[] };
     expect(drawn(fits)).toBe(6);
     expect(fits.warnings.map((w) => w.code)).not.toContain('label-hidden');
     const crowded = render({ spec: spec(Array.from({ length: 24 }, (_, i) => (i * 7) % 11 + 100.5), 320), return: ['svg', 'reading'] }).body as { svg: string; warnings: LintWarning[]; reading: ChartReading };
-    expect(drawn(crowded)).toBe(0);
+    // The row gives up its interior values and keeps the end value that has a seat.
+    expect(drawn(crowded)).toBe(1);
     expect(crowded.warnings.filter((w) => w.code === 'label-hidden')).toHaveLength(1);
     expect(crowded.warnings.find((w) => w.code === 'label-hidden')).toMatchObject({ severity: 'warn' });
-    expect(crowded.reading.omissions.filter(o => o.labelId.startsWith('point:'))).toHaveLength(24);
+    expect(crowded.reading.omissions.filter(o => o.labelId.startsWith('point:'))).toHaveLength(23);
     expect(crowded.reading.omissions.every(o => o.destination !== undefined)).toBe(true);
   });
 

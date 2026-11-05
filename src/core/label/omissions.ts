@@ -1,10 +1,11 @@
+import { plainText } from '../inlineBold';
 import { chartNotes, engineNoteMeta } from '../notes';
 import { textRole } from '../textRole';
 import { dropWarnings } from '../paintWarnings';
 import type { OwnerRef } from '../types/cell';
 import type { Geometry, PlacedLabel, SceneNode } from '../types/scene';
 
-const words = (text: string) => text.replace(/\s+/g, ' ').trim();
+const words = (text: string) => plainText(text).replace(/\s+/g, ' ').trim();
 const ownerKey = (owner: OwnerRef) => JSON.stringify([owner.seriesId, owner.categoryId, owner.segmentId, owner.pointId, owner.valueLineId, owner.annotationId, owner.rowId, owner.colId]);
 
 /** Only a whole token counts: 1 is not 11, -1 or 1.5. */

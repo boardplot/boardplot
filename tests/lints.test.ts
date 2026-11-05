@@ -438,7 +438,7 @@ describe('mechanical lints', () => {
     }, return: ['svg'] }).body as { warnings: { code: string }[]; svg: string };
     const codes = (options: Record<string, unknown>) => rendered(options).warnings.map((warning) => warning.code);
     expect(codes({})).not.toContain('unit-not-shown');
-    expect(rendered({}).svg).toMatch(/<tspan font-weight="700">Revenue<\/tspan><tspan>.in \$m<\/tspan>/);
+    expect(rendered({}).svg).toMatch(/<tspan font-weight="600">Revenue<\/tspan><tspan>.in \$m<\/tspan>/);
     expect(codes({ subtitle: { measure: 'Revenue' } })).not.toContain('unit-not-shown');
     expect(codes({ unitShown: true })).not.toContain('unit-not-shown');
     // A relative variance prints its differences in % on purpose.
@@ -454,6 +454,89 @@ describe('mechanical lints', () => {
       const plain = render({ spec: { type: 'variance', data: fixture.data, options: bare }, return: ['svg'] }).body as { warnings: { code: string }[] };
       expect(plain.warnings.map((warning) => warning.code), fixture.id).not.toContain('unit-not-shown');
     }
+  });
+
+  // Bar and dot refused authored tick spacing, so a caller could not set readable linear ticks without cutting values.
+  it('renders authored bar and dot tick multiples without cutting the values', () => {
+    const data = { categories: ['North', 'South', 'West'], series: [{ id: 'orders', values: [11, 23, 31] }] };
+    const draw = (type: string, step: number, values = data.series[0]!.values) => {
+      const body = render({ spec: { type, data: { ...data, series: [{ id: 'orders', values }] },
+        options: { title: 'Orders by region', size: { width: 960 }, valueAxis: { show: true, tickStep: step } } }, return: ['svg'] }).body as { ok: boolean; svg: string };
+      expect(body.ok).toBe(true);
+      const ticks = [...body.svg.matchAll(/<text[^>]*data-id="axis:x:tick:[^"]*"[^>]*>([\s\S]*?)<\/text>/g)]
+        .map((match) => Number(match[1]!.replace(/<[^>]*>/g, '')));
+      expect(body.svg).toContain('>31<');
+      return ticks;
+    };
+    const bar = draw('bar', 5);
+    expect(bar).toEqual(Array.from({ length: 8 }, (_, i) => i * 5));
+    expect(bar.at(-1)).toBeGreaterThanOrEqual(31);
+    // Dot ticks stay inside the data extent when at least two step multiples fit.
+    expect(draw('dot', 5)).toEqual([15, 20, 25, 30]);
+    // A coarse step falls back to outward bounds so the dot axis still has two ticks.
+    expect(draw('dot', 50)).toEqual([0, 50]);
+  });
+
+  // A step with too many intervals or a logarithmic Y scale cannot draw its authored linear spacing.
+  it('warns when bar or scatter cannot use the authored tick step', () => {
+    const bar = render({ spec: { type: 'bar', data: { categories: ['North'], series: [{ id: 'orders', values: [1000] }] },
+      options: { title: 'Orders', valueAxis: { show: true, tickStep: 1 } } }, return: ['svg'] }).body as { ok: boolean; svg: string; warnings: { code: string; message: string }[] };
+    expect(bar.ok).toBe(true);
+    expect(bar.warnings).toContainEqual(expect.objectContaining({ code: 'tick-step-ignored', message: expect.stringContaining('intervals') }));
+    const scatter = render({ spec: { type: 'scatter', data: { points: [{ id: 'a', x: 1, y: 10 }, { id: 'b', x: 2, y: 100 }] },
+      options: { title: 'Readings', valueAxis: { show: true, log: true, tickStep: 5 } } }, return: ['svg'] }).body as typeof bar;
+    expect(scatter.ok).toBe(true);
+    expect(scatter.warnings).toContainEqual(expect.objectContaining({ code: 'tick-step-ignored', message: expect.stringContaining('linear axis only') }));
+  });
+
+  // A zoomed scatter whose window holds no step multiple crashed with an unserializable NaN tick instead of drawing nice ticks.
+  it('draws nice ticks when no tick step multiple falls inside a scatter view window', () => {
+    const body = render({ spec: { type: 'scatter', data: { points: [{ id: 'a', x: 1, y: 30 }, { id: 'b', x: 2, y: 40 }, { id: 'c', x: 3, y: 95 }] },
+      options: { title: 'Readings', viewDomain: { y: [28, 52] }, valueAxis: { show: true, tickStep: 60 } } }, return: ['svg'] }).body as { ok: boolean; svg: string; warnings: { code: string }[] };
+    expect(body.ok).toBe(true);
+    expect(body.warnings).toContainEqual(expect.objectContaining({ code: 'tick-step-ignored' }));
+  });
+
+  // A hidden value axis has no ticks, so the step used to vanish without a word.
+  it('warns when tickStep is set on a hidden value axis', () => {
+    const data = { categories: ['North', 'South'], series: [{ id: 'orders', values: [11, 23] }] };
+    const bulletRows = { rows: [{ id: 'north', label: 'North', value: 11, target: 14 }, { id: 'south', label: 'South', value: 23, target: 20 }] };
+    const varianceData = { categories: ['North', 'South'], series: [{ id: 'orders', label: 'Orders', values: [11, 23] }, { id: 'py', label: 'Prior year', role: 'reference', values: [9, 25] }] };
+    for (const type of ['bar', 'dot', 'bullet', 'variance']) {
+      const body = render({ spec: { type, data: type === 'bullet' ? bulletRows : type === 'variance' ? varianceData : data, options: { title: 'Orders', ...(type === 'variance' ? { variant: 'absolute', variance: { vs: 'py' } } : {}), valueAxis: { show: false, tickStep: 5 } } }, return: ['svg'] }).body as { ok: boolean; warnings?: { code: string }[] };
+      expect(body.ok, type).toBe(true);
+      expect(body.warnings, type).toContainEqual(expect.objectContaining({ code: 'tick-step-ignored' }));
+    }
+  });
+
+  // A share chart kept "in $m" over its percent labels, and a mekko kept "in %" over amounts or dropped a percent cell's sign.
+  it('names the percent in the unit line of a share chart and keeps a mekko percent cell as a percent', () => {
+    const categories = [{ id: 'east', label: 'East' }, { id: 'west', label: 'West' }];
+    const series = [{ id: 'core', label: 'Core', values: [60, 40] }, { id: 'growth', label: 'Growth', values: [20, 40] }];
+    const body = (type: string, options: Record<string, unknown>, data: unknown = { categories, series }) => render({ spec: {
+      type, data, options: { title: 'West sells more growth than East', unit: '$m', subtitle: { measure: 'Revenue' }, ...options },
+    }, return: ['svg'] }).body as { warnings: { code: string; fix?: unknown }[]; svg: string };
+    const text = (svg: string) => svg.replace(/<[^>]+>/g, '|');
+    const column = text(body('column', { variant: 'stacked100' }).svg);
+    expect(column).toContain('in %');
+    expect(column).not.toContain('in $m');
+    // An absolute figure on the chart keeps the unit.
+    expect(text(body('bar', { variant: 'stacked100', grandTotalLabels: true }).svg)).toContain('in $m');
+    expect(text(body('column', { variant: 'stacked100', labels: { segment: ['absolute'] } }).svg)).toContain('in $m');
+    // An authored clause stays as written, warns, and the fix drops only the clause.
+    const authored = body('column', { variant: 'stacked100', subtitle: { measure: 'Revenue in $m' } });
+    expect(text(authored.svg)).not.toContain('in %');
+    expect(authored.warnings.find((warning) => warning.code === 'share-unit-conflict')?.fix).toEqual([{ op: 'replace', path: '/options/subtitle/measure', value: 'Revenue' }]);
+    const line = { categories: [{ id: 'y1', label: '2022' }, { id: 'y2', label: '2023' }], series };
+    expect(text(body('line', { valueAxis: { percent: true } }, line).svg)).toContain('in %');
+    const items = { items: [{ id: 'a', label: 'A', value: 70 }, { id: 'b', label: 'B', value: 30 }] };
+    expect(text(body('treemap', { cellValue: 'share' }, items).svg)).toContain('in %');
+    const margin = { categories, series: [{ id: 'margin', label: 'Margin', values: [{ pct: 12.5 }, { pct: 3.2 }] }] };
+    expect(text(body('mekko', { variant: 'stacked', unit: '%' }, margin).svg)).toMatch(/12\.5%[\s\S]*3\.2%/);
+    const amounts = { categories, series: series.map((entry) => ({ ...entry, unit: 'USD bn' })) };
+    expect(body('mekko', { variant: 'stacked', unit: '% of market' }, amounts).warnings.map((warning) => warning.code)).toContain('percent-unit-over-amounts');
+    // A format without a % sign changes no label of a 100% stack.
+    expect(body('column', { variant: 'stacked100', format: '0.0' }).warnings.map((warning) => warning.code)).toContain('format-ignored');
   });
 
   // a tick step over an axis break left one side with only its end tick (0 under a 150-750 break at step 200).

@@ -217,7 +217,8 @@ export function labelsToNodes(
     nodes.push({
       t: 'text',
       id: nodeId,
-      x: rotated || flushRight.has(label) ? label.rect.x + label.rect.w : label.align === 'middle' ? label.rect.x + label.rect.w / 2 : label.align === 'end' ? label.rect.x + label.rect.w : label.rect.x + (label.swatch ? SWATCH_RESERVE : 0),
+      // A vertical name's further lines stack rightward from the first one's baseline (verticalNameRect).
+      x: label.rotate === -90 ? label.rect.x + lineH : rotated || flushRight.has(label) ? label.rect.x + label.rect.w : label.align === 'middle' ? label.rect.x + label.rect.w / 2 : label.align === 'end' ? label.rect.x + label.rect.w : label.rect.x + (label.swatch ? SWATCH_RESERVE : 0),
       y: rotated
         ? label.rect.y + (lineH * Math.SQRT1_2) / 2 - font.size * TEXT_ASCENT
         : label.lines.length === 1 && label.capHeight !== undefined

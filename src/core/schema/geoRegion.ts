@@ -4,7 +4,7 @@ import { NAMED_COLUMN_STATES } from './namedColumns';
 
 /** Map values use the same named null states as row input. */
 export const geoRegionSchema = z.strictObject({
-  id: idSchema.describe('Region identifier from the selected geographic pack.'),
+  id: idSchema.describe('Region identifier from the selected geographic pack. Exact spellings win, then ids and aliases match without regard to case. Unknown data ids are left out with a warning and a note; all-unknown data is refused.'),
   value: z.number().finite().nullable().describe('Region measure; null without a state means missing data.'),
   state: z.enum(NAMED_COLUMN_STATES).optional().describe('Named null state: suppressed, not meaningful (nm), or not applicable (na). Each has a distinct pattern and key. Requires value null.'),
 }).superRefine((region, ctx) => {

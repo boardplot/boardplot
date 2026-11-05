@@ -879,4 +879,68 @@ fixtures.push({
   options: { ...salaryBands.options, labelPlacements: { 'median:ic5': 'aboveMedian' } },
 });
 
+// Twelve rows on a slide-sized frame: a row is too low for a median over its box, so every
+// median prints in one column beside n, under the head Median, and no figure sits by a dot.
+fixtures.push({
+  id: 'twelve-teams-median-column',
+  title: 'Twelve dense rows print their medians in one column beside n',
+  kind: 'example',
+  tags: ['coverage'],
+  data: {
+    groups: [
+      { id: 'atlas', label: 'Atlas warehouse', observations: ramp(30, 10, 33) },
+      { id: 'birch', label: 'Birch Street depot', observations: ramp(30, 9, 32) },
+      { id: 'cedar', label: 'Cedar Point hub', observations: ramp(30, 12, 36) },
+      { id: 'delta', label: 'Delta Bay terminal', observations: [...ramp(29, 13, 32), 49] },
+      { id: 'elm', label: 'Elm Grove plant', observations: ramp(30, 21, 41) },
+      { id: 'fern', label: 'Fern Valley store', observations: ramp(30, 16, 42) },
+      { id: 'glen', label: 'Glenwood yard', observations: ramp(30, 17, 44) },
+      { id: 'harbor', label: 'Harbor Lane dock', observations: [6, 8, ...ramp(28, 27, 46)] },
+      { id: 'iris', label: 'Iris Hill site', observations: ramp(30, 27, 47) },
+      { id: 'juniper', label: 'Juniper works', observations: ramp(30, 26, 52) },
+      { id: 'kestrel', label: 'Kestrel Park mill', observations: ramp(30, 28, 55) },
+      { id: 'linden', label: 'Linden Road center', observations: ramp(30, 28, 54) },
+    ],
+  },
+  options: {
+    title: 'Kestrel Park and Linden Road turn orders round slowest',
+    subtitle: { measure: 'Order turnaround', period: 'FY26' },
+    unit: 'days',
+    source: 'Illustrative fulfilment data',
+    size: { width: 1184, height: 528 },
+  },
+});
+
+// One far outlier per row, with the empty range between the boxes and the outliers cut out of the axis.
+fixtures.push({
+  id: 'outliers-axis-break',
+  title: 'A value-axis break across the empty range keeps two far outliers visible',
+  kind: 'example',
+  tags: ['coverage'],
+  data: {
+    groups: [
+      { id: 'north', label: 'North depot', observations: [10, 12, 14, 15, 16, 18, 20, 22, 25, 400] },
+      { id: 'south', label: 'South depot', observations: [11, 13, 15, 16, 17, 19, 21, 23, 26, 390] },
+    ],
+  },
+  options: {
+    title: 'Both depots deliver in about 17 days, with one order each far beyond',
+    subtitle: { measure: 'Order turnaround', period: 'FY26' },
+    unit: 'days',
+    source: 'Illustrative fulfilment data',
+    valueAxis: { break: { from: 60, to: 380 } },
+  },
+});
+
+fixtures.push({
+  id: 'column-overrides', title: 'columnOverrides sets the name and n columns', kind: 'example',
+  data: {
+    groups: [
+      { id: 'north', label: 'North depot', observations: [10, 12, 14, 15, 16, 18, 20, 22, 25, 27] },
+      { id: 'south', label: 'South depot', observations: [11, 13, 15, 16, 17, 19, 21, 23, 26, 30] },
+    ],
+  },
+  options: { title: 'Both depots deliver in about 17 days', unit: 'days', source: 'Illustrative data', size: { width: 720 }, columnOverrides: { label: { width: 150 }, n: { width: 90 } } },
+});
+
 registerFixtures('box', fixtures);

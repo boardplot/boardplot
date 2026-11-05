@@ -19,6 +19,7 @@ import { layoutKpi } from '../src/core/charts/kpi/layout';
 import { layoutLine } from '../src/core/charts/line/layout';
 import { layoutPareto } from '../src/core/charts/pareto/layout';
 import { layoutSparkline } from '../src/core/charts/sparkline/layout';
+import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { requireGeometry } from '../src/core/sizing';
 import type { Geometry } from '../src/core/types/scene';
 
@@ -132,6 +133,25 @@ describe('the KPI card never prints a nonzero value as 0', () => {
     expect(text(card, 'point:compare:1')).toBe('+3.1% (+3.0)');
     expect(desc(card)).toContain('+1.4 vs PY');
   });
+
+  // A loss of 42.5 against a plan of +18.2 printed "−333.5% vs PL", a percent that measures no gap.
+  it('prints the absolute change when the value crosses zero from its reference', () => {
+    const card = kpi({ value: -42.5, format: '1.1', delta: { vs: 18.2, scenario: 'PL', mode: 'both' } });
+    expect(text(card, 'point:delta')).toBe('−60.7 vs PL');
+    expect(card.warnings.map((w) => w.code)).toContain('sign-change');
+    const compared = kpi({ value: -42.5, format: '1.1', compare: [{ label: 'vs PL', vs: 18.2 }] });
+    expect(text(compared, 'point:compare:0')).toBe('−60.7');
+  });
+
+  // A percent measure printed "+22.6%" for a rate that moved 0.7 points, and two percents on one line.
+  it('compares a percent measure in points unless a mode is set', () => {
+    const delta = kpi({ value: 3.8, format: '1.1%', delta: { vs: 3.1, scenario: 'PY' } });
+    expect(text(delta, 'point:delta')).toBe('+0.7pp vs PY');
+    const compared = kpi({ value: 97.6, format: '1.1%', compare: [{ label: 'Plan', vs: 100 }] });
+    expect(text(compared, 'point:compare:0')).toBe('−2.4pp');
+    const relative = kpi({ value: 3.8, format: '1.1%', delta: { vs: 3.1, scenario: 'PY', mode: 'relative' } });
+    expect(text(relative, 'point:delta')).toBe('+22.6% vs PY');
+  });
 });
 
 describe('heatmap means are exact, and a row without values has none', () => {
@@ -229,5 +249,52 @@ describe('values that print side by side share one precision', () => {
     expect(text(creative, 'creative:value:frequency')).toBe('1.0×');
     expect(text(creative, 'creative:median:frequency')).toBe('1.5×');
     expect(text(creative, 'creative:value:cpa')).toMatch(/^0\.04 /);
+  });
+});
+
+describe('a KPI card in a fixed slot keeps every text it draws at natural size', () => {
+  const slot = (data: object, height: number): Laid => requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'kpi', data, options: { size: { width: 420, height } } })));
+  const shown = (geometry: Laid, id: string) => geometry.labels.some((label) => label.id === id && !label.hidden);
+
+  // Growing the delta past the card width, or a long note past the free height, hid labels that the natural sizes draw.
+  it('grows the figure, delta and note only as far as the card holds them', () => {
+    const wide = slot({ label: 'Units', value: 1, format: '1,000.00', delta: { vs: 9876543.21, mode: 'both' } }, 528);
+    expect(shown(wide, 'point:delta')).toBe(true);
+    const long = slot({ label: 'Units', value: 8, note: 'Excludes the Larkspur Tools division sold in June. '.repeat(10).trim(), delta: { vs: 6, scenario: 'PY' } }, 1000);
+    expect(shown(long, 'note:kpi')).toBe(true);
+    expect(shown(long, 'point:delta')).toBe(true);
+  });
+});
+
+describe('a value matrix steps its text down before it hides a value', () => {
+  // A cell too narrow for "117.80" used to lose every number and keep only its colour.
+  const cells = Array.from({ length: 12 }, (_, i) => ({ id: `c${i}`, label: `C${i}` }));
+  const series = ['a', 'b', 'c'].map((id, r) => ({ id, label: id.toUpperCase(), values: cells.map((_, i) => 80 + r * 40 + i * 7.31 + 0.07) }));
+  const printed = (width: number, options: object = {}) => {
+    const geometry = layoutHeatmap({ categories: cells, series } as never, { variant: 'value', size: { width, height: 300 }, ...options } as never);
+    return { geometry, texts: geometry.labels.filter((label) => label.kind === 'point' && !label.hidden).map((label) => label.text) };
+  };
+
+  it('prints every value with fewer decimals while the hover card keeps them all', () => {
+    const wide = printed(640);
+    expect(wide.texts).toHaveLength(36);
+    expect(wide.texts[0]).toBe('80.07');
+    const narrow = printed(432);
+    expect(narrow.texts).toHaveLength(36);
+    expect(narrow.texts.every((value) => !value.includes('.'))).toBe(true);
+    expect(narrow.geometry.scene.find((node) => node.part === 'cell')?.display).toEqual({ value: '80.07' });
+  });
+
+  it('leaves an authored format as written', () => {
+    const { texts } = printed(432, { format: '1,234.00' });
+    expect(texts.length).toBeLessThan(36);
+    expect(texts.every((value) => /\.\d\d$/.test(value))).toBe(true);
+  });
+
+  // One wide number used to hide only its own cell, so the matrix printed the other 35 around a gap.
+  it('prints all of its values or none of them', () => {
+    const wideOne = series.map((s, r) => ({ ...s, values: s.values.map((_, i) => (r === 0 && i === 0 ? 123456 : 10 + i)) }));
+    const geometry = layoutHeatmap({ categories: cells, series: wideOne } as never, { variant: 'value', size: { width: 432, height: 300 }, format: '1,234' } as never);
+    expect(geometry.labels.filter((label) => label.kind === 'point' && !label.hidden)).toHaveLength(0);
   });
 });

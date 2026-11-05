@@ -406,6 +406,13 @@ fixtures.push({
   options: { ...margin.options,
     scale: { kind: 'diverging', midpoint: 15, polarity: 'higherIsBetter' } },
 });
+// A wide slot: the key and the list of unlabelled states stand in a column beside the map.
+fixtures.push({
+  ...margin,
+  id: 'us-margin-wide-slot',
+  title: 'State margins on a wide slot: the key and the unlabelled states stand beside the map',
+  options: { ...margin.options, size: { width: 1184, height: 528 }, regionValues: false, labelDensity: 'smart' },
+});
 const dach = fixtures.find((fixture) => fixture.id === 'dach-market-shares')!;
 fixtures.push({
   ...dach,
@@ -610,4 +617,26 @@ fixtures.push({
   ] },
   options: { title: 'Ready and information sites have matching keys', overlayTones: { good: 'Ready', info: 'Information' }, size: { width: 900, height: 650 } },
 });
+fixtures.push(
+  {
+    ...germanStates,
+    id: 'lookup-columns',
+    title: 'The value table without swatches, with rows left out, moved and renamed',
+    tags: ['coverage'],
+    options: { ...germanStates.options, size: { width: 960 },
+      columnVisibility: { swatch: false },
+      columnOverrides: { code: { width: 96 }, value: { align: 'right', headAlign: 'right', label: 'Revenue' } },
+      rowVisibility: { 'DE-HB': false, 'DE-SL': false },
+      rowOrder: ['DE-BE'],
+      rowOverrides: { 'DE-BE': { label: 'Capital' } },
+    },
+  },
+  {
+    ...germanStates,
+    id: 'lookup-no-emphasis',
+    title: 'The value table and the map set no top group in bold',
+    tags: ['coverage'],
+    options: { ...germanStates.options, valueTable: 'below', valueTableEmphasis: false },
+  },
+);
 registerFixtures('choropleth', fixtures);

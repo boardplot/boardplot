@@ -60,6 +60,12 @@ function bimodalWithFarOutlier(): number[] {
   return sample;
 }
 
+function claimAmounts(): number[] {
+  const next = lcg(31102026);
+  // Log-normal-like: most claims are small, a few run twenty times the median.
+  return Array.from({ length: 800 }, () => Math.round(Math.exp(4.4 + 8.4 * (bell(next) - 0.5))));
+}
+
 export const fixtures: Fixture<HistogramData, HistogramOptions>[] = [
   {
     id: 'order-value-distribution',
@@ -103,11 +109,11 @@ export const fixtures: Fixture<HistogramData, HistogramOptions>[] = [
       // No unit: the format prints the euro sign on every edge.
       source: 'Order book extract',
       // The two axes of a histogram carry different quantities. Applied to
-      // both, this format would make the count labels read "$42": `format`
+      // both, this format would make the count labels read "€42": `format`
       // describes the MEASURE, so it prints the edges and never the frequencies.
       // One locale on the exhibit, the subtitle's English, and a round
       // authored width the caption can print as it is.
-      format: '$1,234',
+      format: '€1,234',
       bins: { width: 250 },
       axisTitles: { y: 'Orders' },
       size: { width: 960, height: 540 },
@@ -134,6 +140,22 @@ export const fixtures: Fixture<HistogramData, HistogramOptions>[] = [
     },
   },
 ];
+
+fixtures.push({
+  id: 'claim-amount-open-tail',
+  title: '15 of 800 claims run from $1,250 to $3,303; one open bin keeps them from stretching the axis',
+  kind: 'example',
+  data: { observations: claimAmounts() },
+  options: {
+    title: '15 of 800 claims run from $1,250 to $3,303; one open bin keeps them from stretching the axis',
+    subtitle: { measure: 'Claim amount', period: 'FY25' },
+    unit: '$',
+    source: 'Claims register',
+    // The automatic width stays; every claim from 1,250 up goes into one open last bin.
+    bins: { openAbove: 1250 },
+    axisTitles: { y: 'Claims' },
+  },
+});
 
 // Coverage: the automatic width left unsnapped, and the binning rule stated.
 const orderValueFixture = fixtures.find((fixture) => fixture.id === 'order-value-distribution')!;

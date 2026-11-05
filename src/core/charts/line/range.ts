@@ -8,6 +8,8 @@ export interface RangeEdge { points: RangePoint[]; curve?: CurveSegment[] }
 
 /** Source readings stay separate from the visible readings used by labels and records. */
 export interface LineRange {
+  /** Clip the line in log space so a cut stays on its drawn segment. */
+  log?: boolean;
   lo: number;
   hi: number;
   /** The sides whose bound falls between two readings; a bound on a reading draws as main does. */
@@ -72,7 +74,11 @@ export function rangeRuns(range: LineRange, rows: (number | null)[][], mode: Lin
   let current: RangePoint[][] = rows.map(() => []);
   const flush = () => {
     if (current[0]!.length) {
-      const edges = current.map(points => cutEdge({ points, ...(mode === 'monotone' ? { curve: monotoneSegments(points) } : {}) }, mode, range.lo, range.hi));
+      const edges = current.map(source => {
+        const points = range.log ? source.map(p => ({ ...p, y: Math.log10(p.y) })) : source;
+        const edge = cutEdge({ points, ...(mode === 'monotone' ? { curve: monotoneSegments(points) } : {}) }, mode, range.lo, range.hi);
+        return range.log ? mapEdge(edge, x => x, y => 10 ** y) : edge;
+      });
       if (edges[0]!.points.length) runs.push(edges);
     }
     current = rows.map(() => []);

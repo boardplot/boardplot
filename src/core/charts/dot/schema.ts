@@ -1,13 +1,15 @@
 /** Dot data and options schemas, without the chart engine. */
 
 import * as z from 'zod';
+import { columnOverridesOption } from '../../schema/generatedColumnOptions';
 import { rangeCellSchema } from '../../range';
 import type { ChartData } from '../../types/data';
 import type { DotOptions } from '../../types/options';
 import {
   colorRoleField,
   addCategorySeriesIdIssues,
-  averageMarkerSchema,
+  averageMarkerWithoutPartial,
+  topNRankCutOnly,
   baseOptionsSchema,
   idSchema,
   refusedBaseOptions,
@@ -50,14 +52,20 @@ export const dotDataSchema = z
   }) as unknown as z.ZodType<ChartData>;
 
 export const dotOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions('dot')).safeExtend({
+  columnOverrides: columnOverridesOption('dot', ['width', 'align', 'headAlign', 'label']),
+  topN: topNRankCutOnly.optional().describe("Keep the n largest categories by absolute first-series value, or absolute gap for dumbbell, before sorting. Kept categories retain authored order unless sort.categories reorders them. No Others row is drawn; omitted category names are disclosed. Authored rest: true, restLabel, showRestCount or threshold warns that it is ignored when categories are omitted."),
   axisTitles: primaryAxisTitleSchema('under the value-axis tick row, ending at the right edge of the plot'),
   legend: baseOptionsSchema.shape.legend.describe("Key position. Multiple series get a key by default unless visible direct labels name them. 'none' hides the key; unnamed series warn."),
   variant: z.enum(['dot', 'dumbbell', 'lollipop']).optional().describe("Dot by default; dumbbell joins paired values and lollipop joins values to the baseline."),
-  averageMarker: averageMarkerSchema.describe("Computed dashed average rule with a solver-placed Ø label, as on bar and column: the mean of every dot of the series in scope ('all' by default, or the listed series)."),
+  averageMarker: averageMarkerWithoutPartial.describe("Computed dashed average rule with a solver-placed Ø label, as on bar and column: the mean of every dot of the series in scope ('all' by default, or the listed series)."),
   arrow: z
     .boolean()
     .optional()
-    .describe("Dumbbell only (warning arrow-dumbbell-only otherwise): an arrowhead at the second series' dot shows the direction of change. The connector is painted good or bad by the sign of the change when the second series declares direction, neutral otherwise; a pair whose dots nearly touch keeps a plain connector."),
+    .describe("Dumbbell only: an arrowhead at the second series' dot shows the direction of change. The connector is painted good or bad by the sign of the change when the second series declares direction, neutral otherwise; a pair whose dots nearly touch keeps a plain connector."),
+  gapColumn: z
+    .boolean()
+    .optional()
+    .describe("Dumbbell only: prints the gap, second series minus first, signed in a column right of the plot under a head such as 'Gap, pp' (pp for percent values). A highlighted row prints bold. Default false. The column stays off below 576 px canvas width."),
   methodNote: z
     .boolean()
     .optional()

@@ -40,13 +40,13 @@ One form; its chart ID is `choropleth`.
 |---|---|---|---|
 | pack | string | yes | Built-in boundary pack that supplies region shapes and identifiers. 'europe' holds the EU27, CH, NO, IS, GB, the Balkan states, UA, BY, MD and the small states, without RU and TR; it follows the EU view, shows Crimea as part of Ukraine and shows Cyprus whole. 'world' also shows Crimea as part of Ukraine and keeps Natural Earth's de facto view elsewhere; it also holds small places such as HK, MO, GI, AD, LI, MC, SM and VA as markers. One of `'de-states'`, `'eu27'`, `'dach'`, `'europe'`, `'world'`, `'us-states'`. |
 | regions | array | yes | Observed regions keyed by pack id; omitted pack members are not in the data and draw plain background. |
-| regions[].id | string | yes | Region identifier from the selected geographic pack. |
+| regions[].id | string | yes | Region identifier from the selected geographic pack. Exact spellings win, then ids and aliases match without regard to case. Unknown data ids are left out with a warning and a note; all-unknown data is refused. |
 | regions[].value | number \| null | yes | Region measure; null without a state means missing data. |
 | regions[].state | string |  | Named null state: suppressed, not meaningful (nm), or not applicable (na). Each has a distinct pattern and key. Requires value null. One of `'na'`, `'nm'`, `'suppressed'`. |
 | overlays | array |  | Named glyphs and labels placed at geographic anchors. |
 | overlays[].id | string | yes | Stable overlay identifier, unique within the exhibit. |
 | overlays[].at | object | yes | Region or longitude/latitude anchor for the overlay. |
-| overlays[].at.region (overlays[].at branch 1) | string | yes | Region id whose pack anchor positions the overlay. |
+| overlays[].at.region (overlays[].at branch 1) | string | yes | Region id whose pack anchor positions the overlay. Exact spellings win, then ids and aliases match without regard to case. |
 | overlays[].at.lon (overlays[].at branch 2) | number | yes | Longitude in degrees, west negative and east positive. |
 | overlays[].at.lat (overlays[].at branch 2) | number | yes | Latitude in degrees, south negative and north positive. |
 | overlays[].glyph | object | yes | Overlay mark and its semantic data. |
@@ -61,7 +61,7 @@ One form; its chart ID is `choropleth`.
 | overlays[].glyph.kind (overlays[].glyph branch 3) | string | yes | Draw a semantic status glyph. One of `'status'`. |
 | overlays[].glyph.status (overlays[].glyph branch 3) | string | yes | Status judgment shown by the glyph. One of `'good'`, `'bad'`, `'warn'`, `'neutral'`. |
 | overlays[].glyph.kind (overlays[].glyph branch 4) | string | yes | Draw a named built-in icon. One of `'icon'`. |
-| overlays[].glyph.name (overlays[].glyph branch 4) | string | yes | Name from the built-in icon catalogue: alert calendar check conversation document flag gear lightbulb people star target workflow. |
+| overlays[].glyph.name (overlays[].glyph branch 4) | string | yes | Name from the built-in icon catalogue: alert calendar check conversation document flag gear lightbulb lock people star target workflow. |
 | overlays[].glyph.tone (overlays[].glyph branch 4) | string |  | Semantic glyph tone resolved through the theme. One of `'good'`, `'bad'`, `'warn'`, `'neutral'`, `'info'`. |
 | overlays[].glyph.kind (overlays[].glyph branch 5) | string | yes | Draw a geometric location marker. One of `'marker'`. |
 | overlays[].glyph.shape (overlays[].glyph branch 5) | string |  | Marker outline; defaults to circle. One of `'circle'`, `'square'`, `'diamond'`. |
@@ -75,7 +75,7 @@ One form; its chart ID is `choropleth`.
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
 | labels | string \| false | `'auto'`, `'all'`, `'none'`, `false` | `'auto'` | Region-label selection policy; placement still respects available space. false is the same as 'none'. |
-| topN | object |  |  | On the world pack, the automatic labels name the n regions with the largest absolute values, plus the large countries (default 12). The other packs label every region, and labels 'all' or 'none' decide for themselves, so there topN changes nothing. |
+| topN | object \| integer |  |  | On the world pack, the automatic labels name the n regions with the largest absolute values, plus the large countries (default 12). The other packs label every region, and labels 'all' or 'none' decide for themselves, so there topN changes nothing. A positive integer n means { n }. |
 | topN.n | integer |  |  | How many regions with the largest absolute values the automatic labels name. |
 | scale | object |  | `{"kind":"sequential"}` | Sequential magnitude or diverging midpoint color scale. |
 | scale.kind (scale branch 1) | string | `'sequential'` | `'sequential'` | Encode ordered magnitudes with one color ramp. |
@@ -85,11 +85,11 @@ One form; its chart ID is `choropleth`.
 | scale.polarity (scale branch 2) | string | `'higherIsBetter'`, `'lowerIsBetter'` |  | Which side of the midpoint is favorable; the diverging poles paint good/bad accordingly. Default higherIsBetter. |
 | classes | integer |  |  | Number of equal-interval color classes, from 3 through 7. Explicit steps define five classes instead. |
 | steps | array |  |  | Four ascending thresholds in source units, as on cohort, defining five colour classes. A value on a threshold enters the higher class. The first and last classes are open-ended. Omit to keep the continuous ramp or equal-interval classes. Use a format that prints each threshold exactly. |
-| regionValues | boolean |  |  | Print each labelled region's value after its code, e.g. 'DE 2.2%', through the same placement and fit tiers as the code. Default true when the map labels at most 10 regions, else false. Needs region labels, so labels 'none' or false refuse it. |
+| regionValues | boolean |  |  | Print each labelled region's value after its code, e.g. 'DE 2.2%', through the same placement and fit tiers as the code. Default true when no value table is drawn and the map labels at most 10 regions, or, off the world map, when the canvas is at least 560 px wide and gives each label at least 8000 square pixels; else false. A region whose label no longer fits is listed with its value. Needs region labels, so labels 'none' or false refuse it. |
 | labelRegions | array |  |  | Explicit region ids to label, retained by the small-region filter. |
 | microStateMarkers | boolean |  |  | Draw a dot for a micro-state the data lists without a value (null); one with a value is always drawn. Default off on the world pack, the only pack whose micro-states have no outline; on the other packs it would change nothing and is refused. |
 | smallRegionArea | number |  |  | Area fraction below which automatic labels move to Small members. Default 0.001; 0 disables. Explicit label requests are retained. |
-| overlayTones | object |  |  | The key words for each overlay tone, e.g. { warn: 'Behind plan' }. The overlay key shows a toned glyph among plain ones, each status and each pie share; direct labels name every overlay, so plain glyphs get no entry. A toned entry without a name prints the tone word and warns. |
+| overlayTones | object |  |  | The key words for each overlay tone, e.g. { warn: 'Behind plan' }. The overlay key shows a toned glyph among plain ones, each status and each pie share; beside keyed tones, plain Harvey balls take the overlayMeasure entry and other plain glyphs share one 'Other' entry. A toned entry without a name prints the tone word and warns. |
 | overlayTones.good | string |  |  | What the good tone marks on this map. |
 | overlayTones.bad | string |  |  | What the bad tone marks on this map. |
 | overlayTones.warn | string |  |  | What the warn tone marks on this map. |
@@ -98,9 +98,20 @@ One form; its chart ID is `choropleth`.
 | overlayMeasure | string |  |  | The measure the overlay glyphs show, e.g. 'Activation progress, %'. The overlay key prints it as a heading without a category swatch, apart from the colour key; Harvey-ball overlays without it warn geo-overlay-measure-unnamed. |
 | keyTitle | string |  |  | Title of the colour key, naming what the colours measure. Default 'Measure, unit' from subtitle.measure and unit, else the unit alone; set it when the subtitle is drawn elsewhere. |
 | valueTable | string \| false | `'auto'`, `'side'`, `'below'`, `false` |  | The table of every region with its class swatch, code and value; the top values print bold and the map then prints codes only. 'auto' (default): beside the map when the map keeps most of the row, else under it; off above 20 regions, without numeric values, or when a pinned canvas is too short for it. 'side' or 'below' forces the place; false leaves it off. |
+| valueTableEmphasis | string \| false | `'top'`, `false` |  | 'top' (default) sets the top values bold in the value table and on the map, with a rule under them. The top group is ranked on all regions. false sets no row and no map label bold. |
+| columnVisibility | object |  |  | True shows a column and false leaves it out: the ids are data.columnToggles ids on table and column ids elsewhere. Ids: swatch, code, value. |
+| columnOverrides | object |  |  | Settings per generated column. Ids: swatch, code, value. Only value prints a head, so label and headAlign are refused on swatch and code. |
+| columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
+| columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Alignment of the column: its cell text and, unless headAlign is set, its head. Bars keep starting at the panel origin. |
+| columnOverrides.*.headAlign | string | `'left'`, `'right'`, `'center'` |  | Head alignment; defaults to align. |
+| columnOverrides.*.label | string |  |  | Head text. |
+| rowVisibility | object |  |  | False leaves a generated row out. Ids: each region id, through the aliases of the map pack. |
+| rowOrder | array |  |  | Order of the generated rows; rows left out follow in default order. Ids: each region id, through the aliases of the map pack. |
+| rowOverrides | object |  |  | Settings per generated row. Ids: each region id, through the aliases of the map pack. |
+| rowOverrides.*.label | string |  |  | Row name. |
 | methodNote | boolean |  |  | Default false. true adds the method footnote on which regions the automatic label policy names. The world pack's endorsement disclaimer stays on the source line and prints once. The inset scale note is required for interpretation and prints regardless. |
 
-Plus the [shared options](options.md). This type does not accept `detailFields`, `categoryLabels`, `valueAxis`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `sort`, `bandFraction`, `highlight`, `story`, `rounding`.
+Plus the [shared options](options.md). This type does not accept `detailFields`, `valueAxis`, `highlight`, `story`, `rounding`, `annotations`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `bandFraction`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
 ## Annotations
 
@@ -108,7 +119,8 @@ This type takes no annotations.
 
 ## Sizing
 
-Floor 280 × 270 px; fit `content`.
+Floor 160 × 270 px; fit `content`.
+Narrower than 280 px a map draws while its key and small members fit.
 
 Below the floor a render is refused with `size-below-floor` and the pixels it needs. `measure` returns the natural and comfortable size for a given spec; see [Sizing in the manual](../manual.md#sizing).
 
@@ -133,6 +145,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | eu-inflation-values | example | EU inflation with each region value printed after its code |
 | eu-inflation-colorblind | example | EU inflation around 2% in the colorblind-safe good/bad pair |
 | us-margin-versus-target | example | State margins above the target are favorable |
+| us-margin-wide-slot | example | State margins on a wide slot: the key and the unlabelled states stand beside the map |
 | dach-all-region-labels | example | All three DACH markets carry their region labels |
 | german-states-bremen-on-map | torture | Bremen keeps its label on the map through labelRegions, under an authored key title |
 | german-states-table-below | example | The value table stands under the map |
@@ -146,3 +159,5 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | overlay-measure-heading | torture | The overlay measure has a heading |
 | named-null-states | torture | Named map states differ from missing values |
 | info-glyphs-with-status | torture | Info marker and icon tones appear beside status in the key |
+| lookup-columns | example | The value table without swatches, with rows left out, moved and renamed |
+| lookup-no-emphasis | example | The value table and the map set no top group in bold |

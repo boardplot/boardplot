@@ -21,13 +21,14 @@ const loadDataTable = () => import('./dataTable');
  * the two is on, so a static chart's markup is unchanged. The table loads
  * independently of the hover engine.
  */
-export function HoverSurface({ geometry, request, prepared, hover, table, responsive, styleNonce, extraCss = '', onSeriesClick, onRecordClick, renderHoverContent }: {
+export function HoverSurface({ geometry, request, prepared, hover, table, responsive, background, styleNonce, extraCss = '', onSeriesClick, onRecordClick, renderHoverContent }: {
   geometry: RenderGeometry;
   request: ResolvedChartRequest;
   prepared?: PreparedChart;
   hover?: HoverOption;
   table?: A11yTablePlacement;
   responsive: boolean;
+  background?: 'theme' | 'transparent';
   /** CSP nonce for the style elements this surface renders. */
   styleNonce?: string;
   /** More rules for the same style element (the HTML footer's print rule), so a chart renders one. */
@@ -56,11 +57,11 @@ export function HoverSurface({ geometry, request, prepared, hover, table, respon
   return <div data-bp-hover="" data-bp-keyed={cursor?.active ? '' : undefined} style={style} {...handlers}>
     {/* Raw text, as the table's: React 18's server escaped the quotes of a text child. A `<` is CSS-escaped, so no theme value can end the element. */}
     {surface && <style nonce={styleNonce} dangerouslySetInnerHTML={css} />}
-    <SceneRenderer geometry={view} theme={request.theme} responsive={responsive} onSeriesClick={onSeriesClick} focusStops={focusStops} />
+    <SceneRenderer geometry={view} theme={request.theme} responsive={responsive} background={background} onSeriesClick={onSeriesClick} focusStops={focusStops} />
     {keys && <RecordKeys geometry={geometry} responsive={responsive} cursor={cursor} describedBy={custom ? contentId : undefined} />}
     {engine && custom && <engine.CustomCard input={view.cardInput!} theme={view.cardTheme!} origin={origin} label={active!.label}
       contentId={contentId} locale={request.locale?.language} cardRef={cardRef}>{content}</engine.CustomCard>}
-    {engine && !renderHoverContent && view.card && origin && <engine.ChartCard layout={view.card} theme={view.cardTheme!} origin={origin} />}
+    {engine && !renderHoverContent && view.card && origin && <engine.ChartCard layout={view.card} theme={view.cardTheme!} origin={origin} cardRef={cardRef} />}
     {dataTable && table && <dataTable.DataTable request={request} geometry={geometry} prepared={prepared} mode={table} />}
   </div>;
 }

@@ -8,11 +8,12 @@ import { calendarNames } from '../calendarLabels';
 import { rectCenter } from '../geometry';
 import { normalizeCategory, normalizeScenario, normalizeSeriesValues } from '../normalize/shared';
 import { cellMeta, cellValue, isPctCell, type Cell, type RangeCell, type Scenario } from '../types/cell';
-import type { Category, ChartData, Series, SlopeSeries } from '../types/data';
+import type { Category, ChartData, HeatmapSeries, Series, SlopeSeries } from '../types/data';
+import type { HeatmapOptions } from '../types/options';
 import { categoryMarks, type CellMark } from './categoryMarks';
 import { detailRecordFields } from './details';
 import { compareValues, unavailableValue } from './comparison';
-import { cellRecordValue, derivedPercent, derivedValue, makeRecord, numericValue, textValue, withoutResidue, type RecordContext } from './recordsShared';
+import { cellRecordValue, derivedPercent, derivedValue, makeRecord, numericValue, statedValue, textValue, withoutResidue, type RecordContext } from './recordsShared';
 import type { InteractionRecord, InteractionValue } from './types';
 import { chartWording } from '../strings';
 import { pushAll } from '../arrays';
@@ -123,12 +124,17 @@ function cellFacts(ctx: RecordContext, cell: RangeCell | undefined, category: Ca
 function categoryRecord(ctx: RecordContext, matrix: Matrix, mark: CellMark): InteractionRecord {
   const series = matrix.seriesIndex.get(mark.seriesId)!;
   const ci = matrix.categoryIndex.get(mark.categoryId) ?? -1;
-  const category = matrix.categories[ci];
+  const authored = matrix.categories[ci];
+  // A heatmap head renamed by columnOverrides reads the same in the hover and the records.
+  const heatmapName = ctx.request.type === 'heatmap' ? (ctx.request.options as HeatmapOptions).columnOverrides?.[mark.categoryId]?.label : undefined;
+  const category = authored && heatmapName !== undefined ? { ...authored, label: heatmapName } : authored;
   const found = valueFor(ctx, matrix, series, mark.categoryId);
   // A stacked area draws a missing part as zero (the chart's note says so); the card says it too.
   const variant = (ctx.request.options as { variant?: string }).variant;
-  const value = found.state === 'missing' && ctx.request.type === 'line' && (variant === 'stacked-area' || variant === 'stacked100-area')
-    ? { ...found, reason: 'No observation; drawn as 0 in the stack' } : found;
+  const cellState = ctx.request.type === 'heatmap' && found.state === 'missing' ? (series as HeatmapSeries).states?.[ci] : undefined;
+  const value = cellState ? statedValue(found, cellState, ctx.request.options)
+    : found.state === 'missing' && ctx.request.type === 'line' && (variant === 'stacked-area' || variant === 'stacked100-area')
+      ? { ...found, reason: 'No observation; drawn as 0 in the stack' } : found;
   const scenario = normalizeScenario(cellMeta(series.cells[ci]!)?.scenario ?? series.scenario, 'scenario');
   const othersLabel = (ctx.request.options as { topN?: { restLabel?: string }; strings?: { others?: string } }).topN?.restLabel
     ?? (ctx.request.options as { strings?: { others?: string } }).strings?.others

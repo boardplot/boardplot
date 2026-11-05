@@ -46,6 +46,8 @@ interface ValueAxisInput {
   ticks?: number[];
   /** A rank ladder (bump): its first and last ticks are ranks, so thinning keeps them instead of a coarser regular step. */
   keepEndTicks?: boolean;
+  /** A scale whose top tick is the point of the axis (a Pareto total = 100%): thinning keeps it, on a coarser regular step. */
+  keepTopTick?: boolean;
   /** Canvas width, for an x axis: an end label centred past it anchors inward. */
   canvasWidth?: number;
 }
@@ -83,7 +85,8 @@ export function tickFormatter(
   // Ticks share one precision; the value-label unit rule (wholeFrom) stays off the axis.
   // One scale down the axis: an engine-chosen M or B does not step down per tick
   // as value labels do ("0.5M", not "500k" under "1.0M"); zero prints bare.
-  const tickSpec: NumberFormatSpec = { ...spec, autoMagnitude: undefined, wholeFrom: undefined, decimals: Math.max(0, maxOf(scaled.map((tick) => neededDecimals(tick, cap, noise, spec.decimals)))) };
+  // Ticks are not data: a significant-figure example gives them its style, and their spacing sets the digits ("$10M", "$12.5M").
+  const tickSpec: NumberFormatSpec = { ...spec, ...(spec.significantDigits === undefined ? {} : { significantDigits: undefined }), autoMagnitude: undefined, wholeFrom: undefined, decimals: Math.max(0, maxOf(scaled.map((tick) => neededDecimals(tick, cap, noise, spec.decimals)))) };
   const finite = ticks.filter((tick) => Number.isFinite(tick));
   const distinct = () => new Set(finite.map((tick) => formatWithSpec(tick, tickSpec))).size === new Set(finite).size;
   while (tickSpec.decimals < MAX_FORMAT_DECIMALS && !distinct()) {
@@ -105,6 +108,7 @@ function thinAxisTicks(
   measure: TextMeasurer,
   labelX: (pos: number, width: number, index: number, count: number) => number,
   keepEnds = false,
+  keepTop = false,
 ): number[] {
   if (ticks.length <= 2) return [...ticks];
   const itemsFor = (values: readonly number[]) => values.map((tick, index) => {
@@ -132,6 +136,7 @@ function thinAxisTicks(
     // Coarsen the whole ladder; retaining off-step endpoints makes a linear axis look uneven.
     for (let stride = 1; stride <= regular.length; stride++) {
       const kept = regular.filter(tick => Math.abs((tick - origin) / (baseStep * stride) - Math.round((tick - origin) / (baseStep * stride))) < 1e-9);
+      if (keepTop && kept.at(-1) !== regular.at(-1)) continue;
       if (kept.length > 0 && sweepHide(itemsFor(kept), 2).every(Boolean)) return kept;
     }
   }
@@ -317,15 +322,17 @@ export function layoutValueAxis(input: ValueAxisInput, occupied: OccupiedIndex):
   // something already on it (the y-axis tick column beside a scatter's
   // corner) anchors inward, at its tick: an end label anchored by
   // default would sit 6 to 11 px off a tick at the plot edge.
+  // An axis that runs right to left (a mirrored butterfly pane) has its first tick at the right.
+  const mirrored = requestedTicks.length > 1 && scale(requestedTicks[0]!) > scale(requestedTicks[requestedTicks.length - 1]!);
   const labelX = (pos: number, width: number, index: number, count: number): number => {
     const centred = pos - width / 2;
     const end = count > 1 && (index === 0 || index === count - 1);
     if (!end) return centred;
     const box = { x: centred, y: plot.y + plot.h + 6, w: width, h: font.size * (font.lineHeight ?? 1.2) };
     const inside = centred >= 0 && centred + width <= (input.canvasWidth ?? Infinity);
-    return inside && occupied.hitsWhich(box, 0).length === 0 ? centred : tickLabelX(pos, width, index, count, true);
+    return inside && occupied.hitsWhich(box, 0).length === 0 ? centred : tickLabelX(pos, width, mirrored ? count - 1 - index : index, count, true);
   };
-  const ticks = thinAxisTicks(requestedTicks, scale, orient, formatTick, font, measure, labelX, input.keepEndTicks === true);
+  const ticks = thinAxisTicks(requestedTicks, scale, orient, formatTick, font, measure, labelX, input.keepEndTicks === true, input.keepTopTick === true);
 
   for (const t of ticks) {
     const pos = scale(t);

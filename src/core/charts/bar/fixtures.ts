@@ -607,6 +607,19 @@ export const fixtures: Fixture<RangeChartData, BarOptions>[] = [
       size: { width: 640, height: 430 },
     },
   },
+  {
+    id: 'tick-step',
+    title: 'Horizontal value axis with ticks every five units',
+    kind: 'example',
+    data: {
+      categories: [{ id: 'north', label: 'North' }, { id: 'south', label: 'South' }, { id: 'west', label: 'West' }],
+      series: [{ id: 'orders', label: 'Orders', values: [10, 23, 31] }],
+    },
+    options: {
+      title: 'Orders by region',
+      valueAxis: { show: true, tickStep: 5 },
+    },
+  },
 ];
 
 const naturalHeightExample = fixtures.find((fixture) => fixture.id === 'margin-by-brand')!;
@@ -1313,5 +1326,40 @@ for (const [mode, title] of [['bound', 'Turku prints its bound (smallValues boun
     options: { title: 'Berlin has the highest error rate', smallValues: mode, source: 'Illustrative data' },
   });
 }
+
+// A named key in a column left of the plot.
+fixtures.push({
+  id: 'key-left',
+  title: 'Stacked bars with the key in a column left of the plot',
+  kind: 'example',
+  tags: ['feature:options'],
+  data: {
+    categories: ['North', 'South', 'East', 'West'].map((label) => ({ id: label.toLowerCase(), label })),
+    series: [
+      { id: 'core', label: 'Core products', values: [42, 38, 46, 40] },
+      { id: 'growth', label: 'Growth products', values: [18, 24, 16, 28] },
+      { id: 'other', label: 'Other', values: [10, 8, 14, 9] },
+    ],
+  },
+  options: {
+    variant: 'stacked',
+    title: 'Core products carry every region',
+    subtitle: { measure: 'Revenue', period: 'FY26' },
+    unit: '$m',
+    legend: 'left',
+    source: 'Illustrative regional revenue model',
+    target: 'slide',
+    size: { width: 1184, height: 528 },
+  },
+});
+
+fixtures.push({
+  id: 'column-overrides', title: 'columnOverrides sets the width of the name column', kind: 'example',
+  data: {
+    categories: [{ id: 'north', label: 'North region' }, { id: 'south', label: 'South region' }, { id: 'east', label: 'East region' }],
+    series: [{ id: 'revenue', label: 'Revenue', values: [42, 55, 31] }],
+  },
+  options: { title: 'South leads', unit: '$m', source: 'Illustrative data', size: { width: 640 }, columnOverrides: { label: { width: 200 } } },
+});
 
 registerFixtures('bar', fixtures);

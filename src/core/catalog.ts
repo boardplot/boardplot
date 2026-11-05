@@ -32,7 +32,7 @@ const CATALOG: Record<string, { summary: string; useCases: readonly string[] }> 
   column: { summary: 'Vertical bars, grouped or stacked', useCases: ['Revenue by year or quarter', 'Segment mix over time', 'Monthly actuals against plan', 'Rank change of a few players between periods (ribbons)'] },
   combo: { summary: 'Columns with line or area overlays', useCases: ['Volume with a rate line', 'Revenue and margin on two axes', 'Orders with average order value'] },
   creative: { summary: 'Ad-creative review card (early alpha)', useCases: ['Ad-creative review (early alpha)', 'Creative metrics against account medians', 'Daily trend per creative'] },
-  diagram: { summary: 'Node and edge diagrams', useCases: ['Process or organisation flow', 'Driver tree or value chain', 'Organisation chart'] },
+  diagram: { summary: 'Node and edge diagrams, including system architecture', useCases: ['Process or organisation flow', 'Driver tree or value chain', 'Organisation chart', 'System architecture and data flow', 'Trust boundaries and protected zones'] },
   dot: { summary: 'Dots, dumbbells or lollipops', useCases: ['Gap between two values', 'Many items on one scale', 'Before and after per item'] },
   funnel: { summary: 'Stage funnel with conversion rates', useCases: ['Sales funnel conversion', 'Drop-off between steps', 'Recruiting pipeline'] },
   gantt: { summary: 'Timeline with spans and events', useCases: ['Project plan with milestones', 'Rollout by workstream', 'Campaign calendar'] },
@@ -126,6 +126,19 @@ const DESIGN_CARDS: Readonly<Record<string, DesignCard>> = {
       { id: 'design-waterfall-subtotals', check: 'describe', text: 'Add a subtotal where the business reads one, such as gross profit before overheads, so a long bridge reads in parts.' },
     ],
   },
+  diagram: {
+    message: 'How parts connect: a structure, a process, or a system and its data flows.',
+    use: 'The links between the parts are the message, such as an organisation, a driver tree, a process or a system architecture with `variant: architecture`.',
+    notWhen: 'The message is a number or a change (a chart); the items only rank (bar or table); dated work over time (gantt or the roadmap variant).',
+    rules: [
+      { id: 'design-diagram-variant', check: 'describe', text: 'Pick the variant that matches the links: architecture for systems, data flow and trust boundaries; linear-process for steps; hierarchy for reporting lines.' },
+      { id: 'design-diagram-title', check: 'describe', text: 'Write the finding in the title, such as "Only the protected runtime reads the keys", not the name of the system.' },
+      { id: 'design-diagram-one-focus', check: 'describe', text: 'Mark one node or path with options.highlight, so the reader sees the message first and the structure second.' },
+      { id: 'design-diagram-size', check: 'describe', text: 'Keep an exhibit to about 20 nodes; split a larger system into one overview and detail exhibits.' },
+      { id: 'design-diagram-return', check: 'describe', text: 'Set flow: return on a feedback edge, so it stays out of the node order and on the outer corridors.' },
+      { id: 'design-diagram-protected', check: 'describe', text: 'Set protected only where the claim is true: the lock states that the zone is protected, and the engine cannot check it.' },
+    ],
+  },
 };
 
 /** The types that have a design card. */
@@ -186,7 +199,7 @@ const DERIVED_FORMS: Readonly<Record<string, readonly string[]>> = {
 };
 
 /** The variant these types draw when `variant` is omitted; their schema registers no default. */
-const IMPLIED_VARIANT: Readonly<Record<string, string>> = { funnel: 'rows', slope: 'lines', bartable: 'panels' };
+const IMPLIED_VARIANT: Readonly<Record<string, string>> = { funnel: 'rows', slope: 'lines', bartable: 'panels', waterfall: 'vertical' };
 
 type Loose = Record<string, any> | undefined;
 

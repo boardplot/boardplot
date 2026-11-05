@@ -4,15 +4,19 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import '../src/core/charts';
+import '../src/core/geo/packs/dach';
 import { getChart } from '../src/core/registry';
 import { getFixtures, getRefusalExamples } from '../src/fixtures';
 import { canDraw, measure } from '../src/index';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
+import { interactionRecords } from '../src/core/a11y/records';
 import { BoardplotTheme } from '../src/react/BoardplotTheme';
 import { layoutDiagram } from '../src/core/charts/diagram/layout';
-import type { DiagramData } from '../src/core/types/diagram';
+import type { DiagramData, DiagramMarks } from '../src/core/types/diagram';
+import { boundsOf, rectLineDistance, rectsOverlap } from '../src/core/geometry';
 import type { SlopeChartData } from '../src/core/types/data';
 import type { Geometry } from '../src/core/types/scene';
+import { cutLabels } from '../src/core/label/omissions';
 import { render } from '../src/cli/render';
 import { measure as cliMeasure } from '../src/cli/measure';
 import { callTool } from '../src/mcp/server';
@@ -28,6 +32,15 @@ vi.mock('../src/core/charts/scatter/layout', async original => {
   } };
 });
 
+const barLayoutCalls = vi.hoisted(() => ({ count: 0 }));
+vi.mock('../src/core/charts/bar/layout', async original => {
+  const module = await original<typeof import('../src/core/charts/bar/layout')>();
+  return { ...module, layoutBar: (...args: Parameters<typeof module.layoutBar>) => {
+    barLayoutCalls.count++;
+    return module.layoutBar(...args);
+  } };
+});
+
 // Plot-height advice must not repeat the layout on every dashboard render or resize.
 it('renders a short scatter without extra layouts for plot-height advice', () => {
   const fixture = getFixtures('scatter').find(f => f.id === 'option-info-grid')!;
@@ -36,9 +49,10 @@ it('renders a short scatter without extra layouts for plot-height advice', () =>
   const result = layoutResolvedRequest(resolveChartRequest(request));
   expect(result.warnings.some(w => w.code === 'plot-under-floor')).toBe(true);
   expect(scatterCalls.count).toBe(1);
-  const warning = result.warnings.find(w => w.code === 'plot-under-floor')!;
-  expect(warning.fix).toBeDefined();
-  const repaired = render({ spec: applyRepair(request, warning.fix) }).body as any;
+  // The layout draws and estimates a height: a patch that was not drawn is left to measure.
+  expect(result.warnings.find(w => w.code === 'plot-under-floor')!.fix).toBeUndefined();
+  const verified = measure(request).warnings.find(w => w.code === 'plot-under-floor')!;
+  const repaired = render({ spec: applyRepair(request, verified.fix) }).body as any;
   expect(repaired.ok).toBe(true);
   expect(repaired.warnings.some((w: any) => w.code === 'plot-under-floor')).toBe(false);
 });
@@ -72,6 +86,15 @@ it('grows an automatic height inside the ladder until the furniture budget holds
   expect(measure({ type: 'mekko', data: fixture.data, options: { ...fixture.options, size: { width: 720 } } } as never).naturalHeight).toBe(body.size.height);
 });
 
+// Prevents the narrow last column of a percent mekko from losing every share: the plot gave up a gutter for them and drew nothing in it.
+it('prints the shares of a narrow last mekko column in the gutter at 375 px', () => {
+  const fixture = getFixtures('mekko').find(f => f.id === 'stacked100-market-map')!;
+  const { size: _size, ...options } = fixture.options as Record<string, unknown>;
+  const body = render({ spec: { type: 'mekko', data: fixture.data, options: { ...options, size: { width: 375 } } }, return: ['reading'] } as never).body as any;
+  expect(body.warnings.map((warning: any) => warning.code)).not.toContain('label-hidden');
+  expect(body.reading.omissions.filter((omission: any) => omission.labelId.endsWith(':latam'))).toEqual([]);
+});
+
 // Prevents measure from naming the height before the note growth: a card sized from it drew 465 px and sent labels to the note.
 it('measures the height the note growth draws', () => {
   const fixture = getFixtures('combo').find(f => f.id === 'ranked-campaigns-key-shown')!;
@@ -79,6 +102,88 @@ it('measures the height the note growth draws', () => {
   const body = render({ spec }).body as any;
   expect(body.size.height).toBeGreaterThan(465);
   expect(measure(spec as never).naturalHeight).toBe(body.size.height);
+});
+
+// Bubble matrices must keep their circles and rows unchanged when value labels or decimals change.
+it('keeps bubble matrix geometry stable across value label settings and formats', () => {
+  const data = {
+    categories: Array.from({ length: 12 }, (_, ci) => ({ id: `c${ci}`, label: `Step ${ci + 1}` })),
+    series: Array.from({ length: 6 }, (_, ri) => ({
+      id: `s${ri}`, label: `Group ${ri + 1}`,
+      values: Array.from({ length: 12 }, (_, ci) => ({ pct: 9 + (13 * ci + 17 * ri) % 62 })),
+      sizes: Array.from({ length: 12 }, (_, ci) => 1 + (ci + ri) % 3),
+    })),
+  };
+  const options = { variant: 'bubble', scale: 'discrete', breaks: [0, 30, 50, 100],
+    bubble: { levels: ['Low', 'Medium', 'High'] }, title: 'Results by group and step' };
+  const layout = (extra: Record<string, unknown>, size: { width: number; height?: number }) => {
+    const result = layoutResolvedRequest(resolveChartRequest({ type: 'heatmap', data, options: { ...options, ...extra, size } }));
+    if (result.refused) throw new Error(result.warnings[0]!.message);
+    return result;
+  };
+  const geometry = (result: Geometry) => ({
+    size: result.size,
+    cells: result.scene.flatMap(node => node.t === 'rect' && node.part === 'cell' ? [node.rect] : []),
+    circles: result.scene.flatMap(node => node.t === 'circle' && node.part === 'bubble' ? [{ id: node.id, cx: node.cx, cy: node.cy, r: node.r }] : []),
+  });
+  for (const size of [{ width: 960 }, { width: 960, height: 350 }]) {
+    const reference = geometry(layout({}, size));
+    expect(reference.circles).toHaveLength(72);
+    for (const extra of [{}, { labels: false }, { labels: { point: false } }, { format: '1.0' }]) {
+      const result = layout(extra, size);
+      expect(geometry(result)).toEqual(reference);
+      const values = result.scene.filter(node => node.t === 'text' && node.part === 'point');
+      expect(values).toHaveLength('labels' in extra ? 0 : 24);
+      if (values.length) expect(new Set(values.map(node => node.t === 'text' && node.font.size)).size).toBe(1);
+    }
+  }
+});
+
+// A levelled bubble matrix with no top-level cell prints its values in every circle, so its rows must stay tall enough for them.
+it('prints every value of a levelled bubble matrix that holds no top-level cell', () => {
+  const fixture = getFixtures('heatmap').find(f => f.id === 'survey-journey-bubbles')!;
+  const data = structuredClone(fixture.data) as { series: { sizes: (number | null)[] }[] };
+  for (const s of data.series) s.sizes = s.sizes.map(v => v === 3 ? 2 : v);
+  const result = layoutResolvedRequest(resolveChartRequest({ type: 'heatmap', data, options: { ...fixture.options, size: { width: 960 } } }));
+  if (result.refused) throw new Error(result.warnings[0]!.message);
+  expect(result.scene.filter(node => node.t === 'text' && node.part === 'point')).toHaveLength(72);
+});
+
+// Long column names on a Harvey or value matrix used to turn 45 degrees and get cut as soon as one name was wider than its column. They now stagger on two tiers first.
+it('staggers long matrix column names on two tiers before any name turns', () => {
+  const names = ['Other operating expenses and charges', 'Selling and distribution overheads', 'Interest and similar expenses paid', 'Northern Hills and Lake District',
+    'Income from equity-accounted firms', 'Harbour Coast and Port Region', 'Customer acquisition cost', 'Maintenance and repair services'];
+  const data = { categories: names.map((label, ci) => ({ id: `c${ci}`, label })),
+    series: ['Other revenue from abroad', 'Managed services and support', 'Training and certification', 'Upkeep and maintenance', 'Subscription revenue, annual plans'].map((label, ri) => ({ id: `s${ri}`, label, values: names.map((_, ci) => (ci + ri) % 5) })) };
+  const result = layoutResolvedRequest(resolveChartRequest({ type: 'heatmap', data,
+    options: { title: 'Matrix of results', variant: 'harvey', scale: 'discrete', target: 'slide', size: { width: 1184, height: 528 } } }));
+  if (result.refused) throw new Error(result.warnings[0]!.message);
+  const headers = result.scene.filter(node => node.t === 'text' && node.part === 'category');
+  expect(headers).toHaveLength(8);
+  expect(headers.every(node => node.t === 'text' && !node.rotate && !node.lines.some(line => line.endsWith('…')))).toBe(true);
+  expect(result.scene.some(node => node.id.startsWith('tierTick:'))).toBe(true);
+  // A two-line name in the upper tier at the plot's top stays drawn: tiers sit further apart than the label solver's padding.
+  const fixture = getFixtures('heatmap').find(f => f.id === 'capability-matrix')!;
+  const narrow = layoutResolvedRequest(resolveChartRequest({ type: 'heatmap', data: fixture.data, options: { ...fixture.options, size: { width: 400 } } } as never));
+  if (narrow.refused) throw new Error(narrow.warnings[0]!.message);
+  expect(narrow.scene.filter(node => node.t === 'text' && node.part === 'category')).toHaveLength(5);
+});
+
+// A name pushed aside by its neighbours left its tick at the name's end, so it read as a divider between the lower names.
+it('keeps every staggered column name centred over its tick', () => {
+  const names = ['Western Valley and Riverside', 'Depreciation on fixed assets', 'Central Plains (Riverside)', 'Northern Hills and Lake District',
+    'Expenses for purchased goods', 'Income from equity-accounted firms', 'General and administrative costs', 'Other comprehensive income items'];
+  const data = { categories: names.map((label, ci) => ({ id: `c${ci}`, label })),
+    series: ['Transaction fees, card payments', 'Upkeep and maintenance', 'Professional services, fixed price', 'Other services, domestic', 'Enterprise software licences', 'Subscription revenue, monthly plans', 'Subscription revenue, annual plans', 'Training and certification'].map((label, ri) => ({ id: `s${ri}`, label, direction: 'higherIsBetter', values: names.map((_, ci) => ({ pct: 10 + ((ci * 7 + ri * 13) % 70) })), sizes: names.map((_, ci) => 1 + ((ci + ri) % 3)), bases: names.map((_, ci) => ((ci * 3 + ri) % 5 === 0 ? 30 : 200)) })) };
+  const result = layoutResolvedRequest(resolveChartRequest({ type: 'heatmap', data,
+    options: { title: 'Matrix of results', unit: '%', variant: 'bubble', scale: 'discrete', breaks: [0, 30, 50, 80], minBase: 50, bubble: { levels: ['Low', 'Medium', 'High'], sizeLabel: 'Importance', colorLabel: 'Exceeded, % of respondents' }, target: 'slide', size: { width: 1184, height: 552 } } } as never));
+  if (result.refused) throw new Error(result.warnings[0]!.message);
+  const ticks = result.scene.filter(node => node.t === 'line' && node.id.startsWith('tierTick:'));
+  expect(ticks.length).toBeGreaterThan(0);
+  for (const tick of ticks) {
+    const label = result.labels.find(l => l.id.includes(tick.id.slice('tierTick:'.length)))!;
+    expect(Math.abs(label.rect.x + label.rect.w / 2 - (tick as { x1: number }).x1)).toBeLessThan(label.rect.w * 0.1);
+  }
 });
 
 // A host needs the refusal's minimum to size its card without a separate measurement.
@@ -109,7 +214,8 @@ it('verifies the complete frame at the height offered for a short plot', () => {
   for (const [type, id] of [['scatter', 'option-info-grid'], ['pareto', 'revenue-concentration']]) {
     const fixture = getFixtures(type!).find(f => f.id === id)!;
     const request = { type: type!, data: fixture.data, options: { ...fixture.options, size: { width: 400, height: 300 } } };
-    for (const result of [measure(request), getChart(type!)!.layout(request.data, request.options)]) {
+    expect(getChart(type!)!.layout(request.data, request.options).warnings.find(w => w.code === 'plot-under-floor')!.fix).toBeUndefined();
+    for (const result of [measure(request)]) {
       const warning = result.warnings.find(w => w.code === 'plot-under-floor')!;
       expect(warning).toBeDefined();
       expect(warning.fix).toBeDefined();
@@ -251,11 +357,11 @@ describe('below the minimum', () => {
     expect(short.refused).toBeUndefined();
     expect(short.size.height).toBe(200);
     const estimate = short.warnings.find((warning) => warning.code === 'plot-under-floor')!;
-    expect(estimate.fix).toBeDefined();
+    expect(estimate.fix).toBeUndefined();
     expect(estimate.message).toContain('estimated height');
     expect(estimate.suggest).toContain('measure');
     const request = { type: 'line', data: fixture.data, options: { ...fixture.options, size: { width: 480, height: 200 } } };
-    const repaired = render({ spec: applyRepair(request, estimate.fix) }).body as any;
+    const repaired = render({ spec: applyRepair(request, measure(request).warnings.find((warning) => warning.code === 'plot-under-floor')!.fix) }).body as any;
     expect(repaired.ok).toBe(true);
     expect(repaired.warnings.some((warning: any) => warning.code === 'plot-under-floor')).toBe(false);
     const tiny = at(480, 150);
@@ -299,6 +405,18 @@ it('draws readable tilemap codes in a fixed card before requiring full-width til
   expect(canDraw(request)).toEqual({ ok: true });
   expect(render({ spec: request }).body.ok).toBe(true);
   expect(canDraw({ ...request, options: { ...request.options, belowMinimum: 'refuse' } }).ok).toBe(false);
+});
+
+// A narrow tile map printed codes alone and showed no value anywhere in the drawing, although every value fits its tile at the type floor.
+it('steps every tile of a narrow tile map down to the type floor so each value prints under its code', () => {
+  const f = getFixtures('tilemap').find(f => f.id === 'eu27-demand-versus-plan')!;
+  const geometry = measure({ type: 'tilemap', data: f.data, options: { ...f.options, size: { width: 400 } } }).geometry!;
+  const tiles = geometry.labels.filter(label => label.kind === 'category');
+  const valued = tiles.filter(label => label.lines?.length === 2);
+  expect(valued).toHaveLength(26);
+  expect(tiles.filter(label => label.hidden)).toEqual([]);
+  // 2 lines at the 11 px report floor and 1.2 line height, where the 12 px label size needs 28.8 px of a 30 px tile.
+  expect(new Set(valued.map(label => label.rect.h))).toEqual(new Set([26.4]));
 });
 
 // An authored dot-axis title must reach the drawing instead of refusing the whole chart.
@@ -408,6 +526,53 @@ it('draws a grid with a waffle panel on a phone card', () => {
   expect(shown.labels.filter(label => label.hidden)).toEqual([]);
 });
 
+// A one-panel, one-series waffle on a pinned slide stacked label, value and grid and drew a 28 px cell on a 528 px canvas; the value and label now stand beside the grid so the cell grows, and an unpinned height keeps the stack.
+it('puts the value and label of a single waffle panel beside a grid that fills the pinned height', () => {
+  const data = { categories: [{ id: 'all', label: 'Forest' }], series: [{ id: 'plus', label: 'Plus', values: [46.4] }] };
+  const draw = (size: { width: number; height?: number }) => layoutResolvedRequest(resolveChartRequest({ type: 'waffle', data, options: { variant: 'cells', target: 'slide', subtitle: { measure: 'Share of land', period: 'FY26' }, size } } as never)) as unknown as Geometry<{ panels: { rect: { x: number; w: number } }[] }>;
+  const pinned = draw({ width: 1184, height: 528 });
+  const rect = pinned.marks.panels[0]!.rect;
+  const value = pinned.labels.find(label => label.id === 'total:all')!;
+  const name = pinned.labels.find(label => label.id === 'category:all')!;
+  expect(rect.w).toBeGreaterThan(350);
+  expect(value.hidden).toBeFalsy();
+  expect(name.hidden).toBeFalsy();
+  expect(value.rect.x).toBeGreaterThan(rect.x + rect.w);
+  expect(name.rect.x).toBe(value.rect.x);
+  expect(draw({ width: 1184 }).marks.panels[0]!.rect.w).toBeLessThan(rect.w);
+});
+
+// Prevents the side readout from taking away the old stacked form: heightFill 'none' must give back the exact stacked drawing on a pinned height.
+it("keeps the stacked single waffle panel on a pinned height with heightFill 'none'", () => {
+  const data = { categories: [{ id: 'all', label: 'Forest' }], series: [{ id: 'plus', label: 'Plus', values: [46.4] }] };
+  const draw = (options: object) => layoutResolvedRequest(resolveChartRequest({ type: 'waffle', data, options: { variant: 'cells', target: 'slide', subtitle: { measure: 'Share of land', period: 'FY26' }, size: { width: 1184, height: 528 }, ...options } } as never)) as unknown as Geometry<{ panels: { rect: { x: number; w: number } }[] }>;
+  const stacked = draw({ heightFill: 'none' });
+  expect(stacked.marks.panels[0]!.rect.w).toBeLessThan(draw({}).marks.panels[0]!.rect.w);
+  expect(stacked.labels.find(label => label.id === 'total:all')!.rect.x).toBeLessThan(stacked.marks.panels[0]!.rect.x + stacked.marks.panels[0]!.rect.w);
+});
+
+// Prevents waffle panels from cutting a long name in one cells row, and from leaving one square alone on a second row (7 + 1).
+it('wraps waffle panels into evenly filled rows when a name is wider than its panel', () => {
+  const rowsOf = (variant: string, labels: string[], width: number): number[] => {
+    const data = { categories: labels.map(label => ({ id: label, label })), series: [{ id: 's', label: 'S', values: labels.map((_, i) => 20 + i * 7) }] };
+    const shown = layoutResolvedRequest(resolveChartRequest({ type: 'waffle', data, options: { variant, size: { width } } } as never)) as unknown as Geometry & { marks: { panels: { rect: { y: number } }[] } };
+    expect(cutLabels(shown)).toEqual([]);
+    const ys = [...new Set(shown.marks.panels.map(panel => panel.rect.y))];
+    return ys.map(y => shown.marks.panels.filter(panel => panel.rect.y === y).length);
+  };
+  expect(rowsOf('cells', ['Infrastructure', 'Manufacturing', 'Subscriptions', 'Distribution', 'International'], 440)).toEqual([3, 2]);
+  expect(rowsOf('square', ['Retail stores', 'Gross margin', 'Intercontinental', 'Telecommunications', 'Licence income', 'Marketing spend', 'Online shop', 'Warehouse costs'], 760)).toEqual([4, 4]);
+});
+
+// Prevents a pinned waffle with two series from wrapping its panels into 3.6 px cells, or refusing a height where one row with cut names draws.
+it('keeps one readable row when two wrapped waffle rows do not fit the pinned height', () => {
+  const names = ['Telecommunications', 'Manufacturing', 'Subscriptions', 'Distribution', 'International'];
+  const data = { categories: names.map(label => ({ id: label, label })), series: [{ id: 'a', label: 'Alpha', values: names.map(() => 20) }, { id: 'b', label: 'Beta', values: names.map(() => 30) }] };
+  const shown = layoutResolvedRequest(resolveChartRequest({ type: 'waffle', data, options: { variant: 'cells', size: { width: 550, height: 300 } } } as never)) as unknown as Geometry & { refused?: boolean };
+  expect(shown.refused).toBeUndefined();
+  expect(shown.warnings.map(w => w.code)).not.toContain('waffle-cells-small');
+});
+
 // Prevents pinned pies from drawing a radius under 36 px or an explode that leaves the frame.
 it('draws a compact pie only when the radius and the explode fit, and names a size that draws', () => {
   const pie = getChart('pie')!;
@@ -423,6 +588,19 @@ it('draws a compact pie only when the radius and the explode fit, and names a si
   const repair = exploded.warnings[0]!.expected!.minimum as { width: number; height: number };
   expect(repair).toEqual({ width: 320, height: 283 });
   expect(draw('full-explode-envelope', repair).refused).toBeUndefined();
+});
+
+// Prevents a pie with labels off from leaving its colours unnamed and from growing taller than the labelled pie.
+it('keeps the height of a pie with labels off and names its slices in a key', () => {
+  const fixture = getFixtures('pie').find(f => f.id === 'doughnut-device-revenue')!;
+  const draw = (extra: object) => layoutResolvedRequest(resolveChartRequest({
+    type: 'pie', data: fixture.data, options: { ...fixture.options, ...extra } } as never)) as unknown as Geometry;
+  const labelled = draw({});
+  const off = draw({ labels: false });
+  expect(off.size.height).toBe(labelled.size.height);
+  expect(off.legend?.items.map(item => item.id)).toEqual(['mobile', 'pc', 'tablet']);
+  expect(off.labels.filter(label => !label.hidden)).toEqual([]);
+  expect(draw({ labels: false, legend: 'none' }).legend).toBeUndefined();
 });
 
 // Prevents a narrow diagram card from drawing one sibling group's frame inside another's (false nesting),
@@ -449,6 +627,103 @@ it('judges a narrow diagram card by its card and group text at its content heigh
   // Authored positions that collide only at the narrow width keep the 480 px floor too.
   const placed = { nodes: [{ ...node('a', 'Alpha'), position: { x: 0.42, y: 0.5 } }, { ...node('b', 'Beta'), position: { x: 0.58, y: 0.5 } }], edges: [edge('a', 'b')] };
   expect(getChart('diagram')!.layout(placed as never, { variant: 'hierarchy', target: 'report', size: { width: 320, height: 600 } } as never).refused).toBe(true);
+});
+
+// Prevents a badge from refusing a diagram and being named as the cause: a house header too short for its
+// label beside a pill draws with the pill inside it, and a tree taller than its canvas names its labels, not a badge.
+it('does not refuse a diagram for its badges', () => {
+  const cell = (id: string, kind: string, label: string, extra: object = {}) => ({ id, kind, shape: { kind: 'rectangle' }, label, role: 'primary', ...extra });
+  // Placeholder text of a given length: the badge fit depends on label length, not on its words.
+  const filler = (name: string, length: number) => `${name} ${'text '.repeat(length)}`.slice(0, length).replace(/ $/, 'x');
+  const initiatives = [82, 76, 64, 83, 64, 72, 82, 78, 75].map((length, i) => filler(`Initiative ${i + 1}`, length));
+  const house = {
+    groups: ['g1', 'g2', 'g3'].map((id, order) => ({ id, title: `Pillar ${order + 1}`, role: 'primary', order: order + 1 })),
+    nodes: [
+      cell('roof', 'vision', filler('Roof', 47), { shape: { kind: 'roof' } }),
+      ...['g1', 'g2', 'g3'].flatMap((g, i) => [
+        cell(`o${i}`, 'objective', filler(`Objective ${i + 1}`, [15, 17, 22][i]!), { groupId: g, badge: { text: String(i + 1), role: 'accent' } }),
+        ...[1, 2, 3].map((row) => cell(`${g}-${row}`, 'initiative', initiatives[i * 3 + row - 1]!, { groupId: g, order: row, role: 'secondary' })),
+      ]),
+      ...[1, 2, 3].map((order) => cell(`e${order}`, 'enabler', `Enabler ${order}`, { order, role: 'muted' })),
+      cell('base', 'foundation', filler('Base', 31)),
+    ],
+  };
+  const crowded = getChart('diagram')!.layout(house as never, { variant: 'strategy-house', target: 'slide', size: { width: 960, height: 540, unit: 'pt' } } as never);
+  expect(crowded.warnings.filter((warning) => warning.severity === 'error')).toEqual([]);
+  const nodes = [cell('q', 'issue', filler('Question', 27)),
+    ...[1, 2, 3, 4, 5, 6].map((n) => cell(`l${n}`, 'driver', filler(`Driver ${n}`, 46), { badge: { text: `H${n}`, role: 'accent' } }))];
+  const edges = [1, 2, 3, 4, 5, 6].map((n) => ({ id: `e${n}`, source: { nodeId: 'q' }, target: { nodeId: `l${n}` } }));
+  const tree = getChart('diagram')!.layout({ nodes, edges } as never, { variant: 'issue-tree', target: 'slide', size: { width: 1184, height: 200 } } as never);
+  expect(tree.warnings.filter((warning) => warning.severity === 'error').map((warning) => warning.message).join(' ')).not.toMatch(/badge/i);
+});
+
+// Prevents a strategy house from refusing at half slide because a hyphenated name is one unbreakable word in a pillar,
+// and a two-line label from sitting flush left in a centred cell.
+it('breaks hyphenated house names at the hyphen instead of refusing', () => {
+  const cell = (id: string, kind: string, label: string, extra: object = {}) => ({ id, kind, shape: { kind: 'rectangle' }, label, role: 'primary', ...extra });
+  const house = {
+    groups: ['g1', 'g2', 'g3'].map((id, order) => ({ id, title: `Pillar ${order + 1}`, role: 'primary', order: order + 1 })),
+    nodes: [
+      cell('roof', 'vision', 'Research and development expenses', { shape: { kind: 'roof' } }),
+      cell('o0', 'objective', 'North-Westmoor (Riverland)', { groupId: 'g1' }),
+      cell('o1', 'objective', 'Depreciation of fixed assets', { groupId: 'g2' }),
+      cell('o2', 'objective', 'Depreciation and amortisation', { groupId: 'g3' }),
+      cell('a', 'initiative', 'Northumberland-Westmoreland', { groupId: 'g2', order: 1, role: 'secondary' }),
+      cell('b', 'initiative', 'Reinvoiced transportation costs', { groupId: 'g3', order: 1, role: 'secondary' }),
+      cell('c', 'initiative', 'Selling and distribution overheads', { groupId: 'g1', order: 1, role: 'secondary' }),
+      cell('e1', 'enabler', 'Other operating income', { order: 1, role: 'muted' }),
+      cell('base', 'foundation', 'Income from equity-accounted firms'),
+    ],
+  };
+  const half = getChart('diagram')!.layout(house as never, { variant: 'strategy-house', target: 'slide', size: { width: 432, height: 396, unit: 'pt' } } as never);
+  if (half.refused) throw new Error('the house is refused at half a slide');
+  expect(half.warnings.filter((warning) => warning.severity === 'error')).toEqual([]);
+  // The three-line label of the first pillar is centred, not flush left.
+  const aligned = half.scene.flatMap((n) => (n.t === 'text' && n.lines.length > 1 ? [n.align] : []));
+  expect(aligned.length).toBeGreaterThan(0);
+  expect(aligned.every((align) => align === 'middle')).toBe(true);
+});
+
+// Prevents measure and render from naming different floors: a height that render refuses, a card width
+// that render refuses while measure says it draws, and a pinned choropleth that draws taller than measure says.
+it('names the size that render draws in measure', () => {
+  const names = ['Northern upland districts', 'Southern river valleys', 'Eastern coastal plains', 'Western forest foothills', 'Central market towns',
+    'Island ferry crossings', 'Research and development expenses', 'Income from equity-accounted firms', 'Pension provisions, domestic'];
+  const nodes = names.map((label, index) => ({ id: `n${index}`, kind: 'entity', shape: { kind: 'roundedRect' }, label, role: index === 0 ? 'accent' : 'primary', order: index }));
+  const edges = [[0, 1], [0, 2], [1, 3], [2, 4], [1, 5], [2, 6], [1, 7], [2, 8]].map(([from, to]) => ({ id: `e${from}-${to}`, source: { nodeId: `n${from}` }, target: { nodeId: `n${to}` } }));
+  const tree = { type: 'diagram', data: { nodes, edges }, options: { variant: 'hierarchy', title: 'Structure of the programme', source: 'Invented sample data' } };
+  const needed = (cliMeasure({ spec: tree, width: 720 }).body as { minHeightAtWidth: number }).minHeightAtWidth;
+  expect((render({ spec: { ...tree, options: { ...tree.options, size: { width: 720, height: needed } } } }).body as { ok: boolean }).ok).toBe(true);
+
+  const steps = ['Fix lead qualification', 'Shorten the demo wait', 'Simplify legal terms', 'Launch referral scheme'].map((label, index) => ({
+    id: `p${index}`, kind: 'step', shape: { kind: 'chevron' }, label, caption: `Sales ops, ${index + 4} weeks`, badge: { text: 'Sales ops', role: 'accent' }, order: index + 1, role: 'primary' }));
+  const card = { type: 'diagram', data: { nodes: steps }, options: { variant: 'linear-process', title: 'Four steps take 28 weeks and start with lead qualification', subtitle: 'Owner and duration for each step', source: 'Invented plan', target: 'dashboard' } };
+  const narrow = { ...card, options: { ...card.options, size: { width: 438 } } };
+  const floor = (cliMeasure({ spec: narrow }).body as { minWidth: number }).minWidth;
+  const refused = (render({ spec: narrow }).body as { errors: { code: string; fix: { value: { width: number } }[] }[] }).errors[0]!;
+  expect(refused.code).toBe('size-below-floor');
+  expect(refused.fix[0]!.value.width).toBe(floor);
+  expect((render({ spec: { ...card, options: { ...card.options, size: { width: floor } } } }).body as { ok: boolean }).ok).toBe(true);
+
+  // A width-only refusal at the chart's static floor advises the width alone, and that width draws.
+  const football = getFixtures('bar').find((f) => f.id === 'valuation-football-field')!;
+  const narrowBar = { type: 'bar', data: football.data, options: { ...football.options, size: { width: 150 } } };
+  const barRefused = (render({ spec: narrowBar }).body as { errors: { code: string; fix: { value: { width: number; height?: number } }[] }[] }).errors[0]!;
+  expect(barRefused.code).toBe('size-below-floor');
+  expect(barRefused.fix[0]!.value).toEqual({ width: 280 });
+  expect((render({ spec: { ...narrowBar, options: { ...narrowBar.options, size: barRefused.fix[0]!.value } } }).body as { ok: boolean }).ok).toBe(true);
+
+  const map = { type: 'choropleth', data: { pack: 'dach', regions: [{ id: 'DE', value: 620.3 }, { id: 'AT', value: 618.9 }, { id: 'CH', value: 148.3 }] },
+    options: { title: 'Value by region', unit: 'EUR m', source: 'Invented sample data', classes: 5, size: { width: 720, height: 270 } } };
+  const drawn = (render({ spec: map }).body as { size: { height: number } }).size.height;
+  expect((cliMeasure({ spec: map }).body as { size: { height: number } }).size.height).toBe(drawn);
+
+  // A pin far taller than the map still finds the empty band: the canvas stays the pin plus the footer.
+  const tall = { ...map, options: { ...map.options, size: { width: 720, height: 1200 } } };
+  const found = (cliMeasure({ spec: tall }).body as { size: { height: number } }).size.height;
+  expect(found).toBeLessThan(700);
+  const fitted = { ...map, options: { ...map.options, size: { width: 720, height: Math.round((found - (drawn - 270)) * 10) / 10 } } };
+  expect((render({ spec: fitted }).body as { size: { height: number } }).size.height).toBeCloseTo(found, 0);
 });
 
 // Prevents a pinned slope from refusing a 180–269 px slot where its end labels fit, from drawing a
@@ -622,6 +897,99 @@ describe('size advice', () => {
     expect(fix.value.height).toBeUndefined();
     expect(layout(fix.value).refused).toBeUndefined();
   });
+
+  // Prevents a size patch that loops or turns a drawn chart into a refusal: a size warning on a chart that
+  // draws carries no height patch, and every patch from render and measure leads to a drawn chart at a new size,
+  // also when the size came from a width or height argument that a spec patch would not change.
+  it('names a size patch only at a drawn size, and following the patches never repeats a size', () => {
+    const names = ['Field service', 'Net revenue', 'Order intake', 'Rhein-Main', 'Warehouse costs', 'Personnel costs', 'Turnover', 'Black Forest', 'Churn rate', 'Cost of sales', 'Saxony-Anhalt', 'Retail stores'];
+    const column = (size: object) => ({ type: 'column', data: { categories: names.map((label, i) => ({ id: `c${i}`, label })), series: [
+      { id: 'a', label: 'Partner channel', values: names.map((_, i) => (i % 5 === 0 ? 1e9 : 7.5e8)) },
+      { id: 'b', label: 'Mid market', values: names.map((_, i) => (i % 3 === 0 ? 1.25e9 : 1.5e9)) },
+    ] }, options: { title: 'Revenue by unit', unit: 'EUR', source: 'Invented data', variant: 'grouped', format: '1.2bn', size } });
+    const labels = ['Schleswig-Holstein and Hamburg', 'Depreciation of fixed assets', 'Rebilled freight costs', 'Mecklenburg-Western Pomerania', 'Research and development expenses', 'Income from equity-accounted firms', 'Thuringia and Saxony-Anhalt', 'Pension provisions, domestic'];
+    const diagram = (size?: object) => ({ type: 'diagram', data: { nodes: labels.map((label, i) => ({ id: `n${i}`, kind: 'entity', shape: { kind: 'roundedRect' }, label, role: i ? 'primary' : 'accent', order: i })),
+      edges: [[0, 1], [0, 2], [1, 3], [2, 4], [1, 5], [2, 6], [1, 7]].map(([s, t], i) => ({ id: `e${i}`, source: { nodeId: `n${s}` }, target: { nodeId: `n${t}` } })) },
+    options: { variant: 'hierarchy', title: 'Structure of the programme', source: 'Invented data', ...(size ? { size } : {}) } });
+    const fixture = (type: string, id: string, size: object) => {
+      const found = getFixtures(type as never).find(f => f.id === id)!;
+      return { type, data: found.data, options: { ...found.options, size } };
+    };
+    // A request is a spec plus the CLI width and height. A patch aims at the spec or at one of those arguments.
+    type Request = { spec: any; width?: number; height?: number };
+    const apply = (request: Request, fix: { path: string }[]): Request => {
+      const next = { ...request };
+      const toSpec = fix.filter(op => !/^\/(width|height)$/.test(op.path));
+      for (const op of fix.filter(op => /^\/(width|height)$/.test(op.path)) as { path: string; value: number }[]) (next as any)[op.path.slice(1)] = op.value;
+      return toSpec.length ? { ...next, spec: applyRepair(next.spec, toSpec as never) } : next;
+    };
+    const sizePatches = (body: any) => [...(body.errors ?? []), ...(body.warnings ?? [])]
+      .filter((item: any) => item.fix?.some((op: any) => op.path.endsWith('/options/size') || /^\/(width|height)$/.test(op.path)));
+    const requests: [string, Request][] = [
+      ['column 480x213', { spec: column({ width: 480, height: 213 }) }],
+      ['column 480x270', { spec: column({ width: 480, height: 270 }) }],
+      ['column 480x361', { spec: column({ width: 480, height: 361 }) }],
+      ['column 360x202.5pt', { spec: column({ width: 360, height: 202.5, unit: 'pt' }) }],
+      ['diagram 320x200', { spec: diagram({ width: 320, height: 200 }) }],
+      ['diagram 320x200 by argument', { spec: diagram({ width: 800, height: 600 }), width: 320, height: 200 }],
+      ['heatmap survey-journey-long-names 480x200', { spec: fixture('heatmap', 'survey-journey-long-names', { width: 480, height: 200 }) }],
+      ['heatmap survey-journey-long-names 480x200 by argument', { spec: fixture('heatmap', 'survey-journey-long-names', { width: 800, height: 600 }), width: 480, height: 200 }],
+      ['line recession-era-band 1200x200', { spec: fixture('line', 'recession-era-band', { width: 1200, height: 200 }) }],
+    ];
+    const sizeOf = (request: Request) => JSON.stringify([request.width, request.height, request.spec.options.size]);
+    for (const [name, start] of requests) {
+      const first = render(start).body as any;
+      if (first.ok) expect(sizePatches(first), `${name}: render of a drawn chart names a size patch`).toEqual([]);
+      // Every patch of render and of measure, applied once to the request, draws and names no size patch again.
+      const patches = [...sizePatches(first), ...sizePatches(cliMeasure(start).body)];
+      for (const item of patches) {
+        const patched = apply(start, item.fix);
+        expect(sizeOf(patched), `${name}: ${item.code} patch changes nothing`).not.toBe(sizeOf(start));
+        const after = render(patched).body as any;
+        expect(after.ok, `${name}: ${item.code} patch ${sizeOf(patched)} is refused`).toBe(true);
+        expect(sizePatches(after), `${name}: ${item.code} patch ${sizeOf(patched)} draws with a size patch`).toEqual([]);
+      }
+      // Measure's own patches, followed one after another, end without a repeated size.
+      let current = start;
+      const seen = new Set<string>();
+      for (let step = 0; step < 6; step++) {
+        expect(seen.has(sizeOf(current)), `${name}: measure came back to ${sizeOf(current)}`).toBe(false);
+        seen.add(sizeOf(current));
+        const [next] = sizePatches(cliMeasure(current).body);
+        if (!next) break;
+        current = apply(current, next.fix);
+      }
+      expect(seen.size, `${name}: measure advice still going after 6 patches`).toBeLessThan(6);
+    }
+  });
+
+  // Prevents the layout of a card (what React reports) from naming an estimated plot-floor height that refuses:
+  // a heatmap at 414 px drew with an estimate of 518 px, and 518 px needs 566 px.
+  it('reports the plot-floor estimate of a drawn layout with no patch', () => {
+    const found = getFixtures('heatmap').find(f => f.id === 'survey-journey-long-names')!;
+    const drawn = layoutResolvedRequest(resolveChartRequest({ type: 'heatmap', data: found.data, options: { ...found.options, size: { width: 480, height: 414 } } } as never));
+    expect(drawn.refused).toBeUndefined();
+    const floor = drawn.warnings.find(w => w.code === 'plot-under-floor')!;
+    expect(floor.message).toContain('estimated height');
+    expect(floor.fix).toBeUndefined();
+  });
+
+  // Prevents a plain render of a table from laying out a second, wider frame (1.6x to 2x slower than main) to name a
+  // patch: a drawn table with a fixed height reports table-overflow with no patch, and measure names the height that draws.
+  it('names the table-overflow height in measure, not in a plain render', () => {
+    const found = getFixtures('table').find(f => f.id === 'cohort-heat-relative')!;
+    const spec = { type: 'table', data: found.data, options: { ...found.options, size: { width: 1048, height: 379 } } };
+    const drawn = render({ spec }).body as any;
+    expect(drawn.ok).toBe(true);
+    const plain = drawn.warnings.find((warning: any) => warning.code === 'table-overflow');
+    expect(plain.fix).toBeUndefined();
+    expect(plain.suggest).toContain('measure');
+    const overflow = measure(spec).warnings.find(warning => warning.code === 'table-overflow')!;
+    expect(overflow.fix).toBeDefined();
+    const after = render({ spec: applyRepair(spec, overflow.fix) }).body as any;
+    expect(after.ok).toBe(true);
+    expect(after.warnings.map((warning: any) => warning.code)).not.toContain('table-overflow');
+  });
 });
 
 describe('textScale under 1', () => {
@@ -697,8 +1065,8 @@ it('reports a compact floor where the spec draws and names the compact size belo
 it('names a wider card for lost band names at a height authored in mm', () => {
   const fixture = getFixtures('waterfall').find(f => f.id === 'torture-long-labels')!;
   const at = (size: object) => layoutResolvedRequest(resolveChartRequest({ type: 'waterfall', data: fixture.data, options: { ...fixture.options, size } } as never));
-  const px = at({ width: 280, height: 600 });
-  const mm = at({ width: 280 * 25.4 / 96, height: 600 * 25.4 / 96, unit: 'mm' });
+  const px = at({ width: 240, height: 600 });
+  const mm = at({ width: 240 * 25.4 / 96, height: 600 * 25.4 / 96, unit: 'mm' });
   expect(px.warnings[0]?.code).toBe('size-below-floor');
   expect(mm.warnings[0]?.code).toBe('size-below-floor');
   expect(mm.warnings[0]?.expected?.minimum).toEqual(px.warnings[0]?.expected?.minimum);
@@ -748,6 +1116,41 @@ it('prints a circular-process arrow label in full', () => {
   expect(body.reading.labelsTruncated).toEqual([]);
 });
 
+// Prevents a six-step circular process from dropping arrow labels or drawing them against arrows, arrowheads, nodes or text when space is available.
+it('seats all six circular-process arrow labels clear of the whole diagram', () => {
+  const names = ['Customers share results', 'New leads arrive from referrals', 'Sales converts leads faster',
+    'Revenue funds more product work', 'Product adds visible features', 'Customers see more value'];
+  const edgeNames = ['Proof points', 'Referral invites', 'Shorter cycles', 'Investment', 'Releases', 'Advocacy'];
+  const nodes = names.map((label, i) => ({ id: `s${i + 1}`, kind: 'step', shape: { kind: 'circle' }, label,
+    badge: { text: String(i + 1), role: 'accent' }, role: 'primary', order: i + 1 }));
+  const edges = edgeNames.map((label, i) => ({ id: `e${i + 1}`, source: { nodeId: `s${i + 1}` },
+    target: { nodeId: `s${(i + 1) % 6 + 1}` }, arrowEnd: true, label }));
+  const spec = { type: 'diagram', data: { nodes, edges }, options: { variant: 'circular-process', target: 'dashboard' as const,
+    title: 'Circular process: the growth loop', subtitle: 'Growth loop', source: 'Illustrative growth model', size: { width: 920 } } };
+  const body = render({ spec }).body as any;
+  expect(body.ok).toBe(true);
+  expect(body.reading.omissions).toEqual([]);
+  const geometry = layoutResolvedRequest(resolveChartRequest(spec));
+  if (geometry.refused) throw new Error('refused');
+  const marks = geometry.marks as unknown as DiagramMarks;
+  const labels = geometry.labels.filter(label => label.id.startsWith('edge-label:') && !label.hidden);
+  expect(labels.map(label => label.text).sort()).toEqual([...edgeNames].sort());
+  const arrowBoxes = geometry.scene.filter(node => node.t === 'path' && node.part === 'diagramArrow').map(node => {
+    const values = (node.t === 'path' ? node.d : '').match(/-?\d+(?:\.\d+)?/g)!.map(Number);
+    return boundsOf([0, 2, 4].map(i => ({ x: values[i]!, y: values[i + 1]!, w: 0, h: 0 })));
+  });
+  for (const label of labels) {
+    for (const edge of marks.edges) {
+      if (edge.route.kind !== 'polyline') throw new Error('expected orthogonal arrow');
+      expect(rectLineDistance(label.rect, edge.route.points), `${label.text} touches ${edge.id}`).toBeGreaterThan(2);
+    }
+    for (const box of [...arrowBoxes, ...marks.nodes.map(node => node.rect),
+      ...geometry.labels.filter(other => other !== label && !other.hidden).map(other => other.rect)]) {
+      expect(rectsOverlap(label.rect, box, 2), `${label.text} crowds another part of the diagram`).toBe(false);
+    }
+  }
+});
+
 // A 13-row bar on the default slide canvas was refused, while the same canvas written out as a size drew in compact mode.
 it('draws compact on the default slide canvas as it does on the same size written out', () => {
   const categories = Array.from({ length: 13 }, (_, i) => `Region ${i + 1}`);
@@ -758,4 +1161,349 @@ it('draws compact on the default slide canvas as it does on the same size writte
   expect(slide.reading.mode).toBe('compact');
   expect(slide.size).toEqual(draw({ target: 'slide', size: { width: 888, height: 396, unit: 'pt' } }).size);
   expect(draw({ target: 'slide', belowMinimum: 'refuse' }).errors[0].code).toBe('size-below-floor');
+});
+
+// A column of 20 long names at 320 px kept three names and listed the other 17 as redundant, so no fallback saw the loss.
+it('draws a column whose names cannot fit or rotate as bars, or lists the names it drops', () => {
+  const names = ['Automotive OEM', 'Automotive suppliers', 'Chemicals', 'Consumer goods', 'Energy utilities', 'Financial services', 'Food and beverage', 'Healthcare providers', 'Industrial machinery', 'Insurance',
+    'Logistics', 'Media', 'Oil and gas', 'Pharmaceuticals', 'Retail', 'Software', 'Telecommunications', 'Transport', 'Utilities', 'Wholesale'];
+  const data = { categories: names.map((label, i) => ({ id: `c${i}`, label })), series: [{ id: 's', label: 'Margin', values: names.map((_, i) => 8 + ((i * 7) % 23)) }] };
+  const spec = (size: { width: number; height?: number }) => ({ type: 'column', data, options: { title: 'Margin by sector', unit: '%', size } });
+  const hiddenNames = (geometry: Geometry) => geometry.labels.filter(label => label.kind === 'category' && label.hidden).map(label => label.hidden);
+  const stepped = layoutResolvedRequest(resolveChartRequest(spec({ width: 320 }))) as Geometry;
+  expect(stepped.type).toBe('bar');
+  expect(stepped.warnings.map(w => w.code)).toContain('column-stepped-to-bar');
+  expect(hiddenNames(stepped)).toEqual([]);
+  // The records read the drawn bars: one per name.
+  expect((render({ spec: spec({ width: 320 }) }).body as any).reading.values.total).toBe(20);
+  // A pinned height that the rows do not fit keeps the column, and its dropped names are a loss, not redundant.
+  const kept = layoutResolvedRequest(resolveChartRequest(spec({ width: 320, height: 443 }))) as Geometry;
+  expect(kept.type).toBe('column');
+  expect(hiddenNames(kept).length).toBeGreaterThan(0);
+  expect(new Set(hiddenNames(kept))).toEqual(new Set(['density']));
+  // A pinned height that holds every row draws the bars: the early out for short canvases skips only heights no row layout can hold.
+  const tall = layoutResolvedRequest(resolveChartRequest(spec({ width: 320, height: 700 }))) as Geometry;
+  expect(tall.type).toBe('bar');
+  expect(hiddenNames(tall)).toEqual([]);
+});
+
+// The break glyph's claim reached below the axis and hid the name of the last column on a phone, so the plan column had no name.
+it('keeps the name of the column after an axis break on a phone', () => {
+  const fixture = getFixtures('column').find(f => f.id === 'stacked-series-cagr')!;
+  const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'column', data: fixture.data, options: { ...fixture.options, size: { width: 343, height: 476 } } })) as Geometry;
+  const name = geometry.labels.find(label => label.id === 'category:y2022')!;
+  expect(name.hidden).toBeUndefined();
+});
+
+// A width pinned below the floor refuses, and the size search laid out a bar for every probe at the floor width, which the refusal never drew.
+it('lays out no bar for the probes that price a refusal at a pinned width', () => {
+  const names = Array.from({ length: 20 }, (_, i) => `Sector number ${i + 1} of the survey`);
+  const data = { categories: names.map((label, i) => ({ id: `c${i}`, label })), series: [{ id: 's', label: 'Margin', values: names.map((_, i) => 8 + ((i * 7) % 23)) }] };
+  barLayoutCalls.count = 0;
+  const refused = layoutResolvedRequest(resolveChartRequest({ type: 'column', data, options: { title: 'Margin by sector', unit: '%', size: { width: 100 } } } as never)) as Geometry;
+  expect(refused.refused).toBe(true);
+  expect(barLayoutCalls.count).toBe(0);
+});
+
+// A pinned height between the row floor and the bar's real minimum laid out a bar before the column kept its place, which slowed those columns.
+it('does not lay out a bar for a pinned height the bar rows and frame cannot fit', () => {
+  const names = ['Automotive OEM', 'Automotive suppliers', 'Chemicals', 'Consumer goods', 'Energy utilities', 'Financial services', 'Food and beverage', 'Healthcare providers', 'Industrial machinery', 'Insurance',
+    'Logistics', 'Media', 'Oil and gas', 'Pharmaceuticals', 'Retail', 'Software', 'Telecommunications', 'Transport', 'Utilities', 'Wholesale'];
+  const data = { categories: names.map((label, i) => ({ id: `c${i}`, label })), series: [{ id: 's', label: 'Margin', values: names.map((_, i) => 8 + ((i * 7) % 23)) }] };
+  const draw = (height: number) => {
+    barLayoutCalls.count = 0;
+    const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'column', data, options: { title: 'Margin by sector', unit: '%', source: 'Invented', size: { width: 320, height } } })) as Geometry;
+    return { type: geometry.type, layouts: barLayoutCalls.count };
+  };
+  // 560 px is the rows alone at the row floor; the title and the source line need more.
+  expect(draw(600)).toEqual({ type: 'column', layouts: 0 });
+  const tall = draw(900);
+  expect(tall.type).toBe('bar');
+  expect(tall.layouts).toBeGreaterThan(0);
+});
+
+// A column that stepped to bars at 320 px took the bar's natural and comfortable sizes, so advice to widen drew a column at other sizes.
+it('measures a column that stepped to bars with the natural sizes of the chart drawn at its natural width', () => {
+  const names = Array.from({ length: 20 }, (_, i) => `Sector number ${i + 1} of the survey`);
+  const data = { categories: names.map((label, i) => ({ id: `c${i}`, label })), series: [{ id: 's', label: 'Margin', values: names.map((_, i) => 8 + ((i * 7) % 23)) }] };
+  const spec = (width: number) => ({ type: 'column', data, options: { title: 'Margin by sector', unit: '%', size: { width } } }) as never;
+  const narrow = measure(spec(320));
+  expect((narrow.geometry as Geometry).type).toBe('bar');
+  const wide = measure(spec(narrow.naturalWidth));
+  expect((wide.geometry as Geometry).type).toBe('column');
+  expect([narrow.naturalHeight, narrow.comfortableWidth, narrow.comfortableHeight, narrow.fit]).toEqual([wide.naturalHeight, wide.comfortableWidth, wide.comfortableHeight, wide.fit]);
+});
+
+// A 100% share column, and a stacked column with a PY reference, stepped to bars that drew absolute values and no growth labels, with no warning.
+it('keeps the column when it draws shares of 100% or growth against a PY reference', () => {
+  const names = Array.from({ length: 20 }, (_, i) => `Sector number ${i + 1} of the survey`);
+  const categories = names.map((label, i) => ({ id: `c${i}`, label }));
+  const values = (k: number) => names.map((_, i) => 8 + ((i * k) % 23));
+  const draw = (series: object[], options: object) => layoutResolvedRequest(resolveChartRequest({ type: 'column', data: { categories, series }, options: { title: 'Margin by sector', size: { width: 320 }, ...options } } as never)) as Geometry;
+  const two = [{ id: 'a', label: 'Online', values: values(7) }, { id: 'b', label: 'Stores', values: values(5) }];
+  expect(draw(two, {}).type).toBe('bar');
+  expect(draw(two, { valueAxis: { percent: true } }).type).toBe('column');
+  const withPy = [...two, { id: 'py', label: 'PY', role: 'reference', scenario: 'PY', values: values(3).map((v) => v * 2) }];
+  expect(draw(withPy, { variant: 'stacked' }).type).toBe('column');
+});
+
+// A column with a total category stepped to bars, which draw the total as one more plain row, with no gap, divider or bold type.
+it('keeps the column when a category is a total', () => {
+  const names = Array.from({ length: 20 }, (_, i) => `Sector number ${i + 1} of the survey`);
+  const draw = (role?: 'total') => {
+    const categories = names.map((label, i) => (i === 19 && role ? { id: `c${i}`, label, role } : { id: `c${i}`, label }));
+    const data = { categories, series: [{ id: 's', label: 'Margin', values: names.map((_, i) => 8 + ((i * 7) % 23)) }] };
+    return layoutResolvedRequest(resolveChartRequest({ type: 'column', data, options: { title: 'Margin by sector', unit: '%', size: { width: 320 } } } as never)) as Geometry;
+  };
+  expect(draw().type).toBe('bar');
+  expect(draw('total').type).toBe('column');
+});
+
+// The step lost one more column setting in each review round, so a column steps to bars only when every setting and data key of the request is one a bar draws as a column does.
+it('keeps the column for every setting a bar draws differently, drops or has not been checked', () => {
+  const names = Array.from({ length: 20 }, (_, i) => `Sector number ${i + 1} of the survey`);
+  const categories = names.map((label, i) => ({ id: `c${i}`, label }));
+  const values = (k: number) => names.map((_, i) => 8 + ((i * k) % 23));
+  const single = [{ id: 's', label: 'Margin', values: values(7) }];
+  const stack = [{ id: 'a', label: 'Online', values: values(7) }, { id: 'b', label: 'Stores', values: values(5) }];
+  const draw = (series: object[], options: object = {}, cats: object[] = categories) => {
+    barLayoutCalls.count = 0;
+    const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'column', data: { categories: cats, series }, options: { title: 'Margin by sector', unit: '%', size: { width: 320 }, ...options } } as never)) as Geometry;
+    return { type: geometry.type, layouts: barLayoutCalls.count };
+  };
+  const at = (categoryId: string, seriesId = 's') => ({ categoryId, seriesId });
+  const kept: [string, object[], object][] = [
+    ['labels.segment content', stack, { variant: 'stacked', labels: { segment: ['absolute', 'percent'] } }],
+    ['labels.point content', single, { labels: { point: ['absolute', 'category'] } }],
+    ['labels.annotation off', single, { labels: { annotation: false }, annotations: [{ kind: 'note', at: at('c3'), text: 'A note' }] }],
+    ['labels.growth', stack, { variant: 'stacked', labels: { growth: true } }],
+    ['strings.range', single, { strings: { range: 'Spread' } }],
+    ['two cagr annotations', single, { annotations: [{ kind: 'cagr', from: 'c0', to: 'c9' }, { kind: 'cagr', from: 'c9', to: 'c19' }] }],
+    ['value line with a value and a span', single, { annotations: [{ kind: 'valueLine', value: 20, from: 'c3', to: 'c12' }] }],
+    ['indicator100 on a raw stack', stack, { variant: 'stacked', annotations: [{ kind: 'indicator100' }] }],
+    ['valueAxis.max', stack, { variant: 'stacked', valueAxis: { max: 50 } }],
+    ['netLine.connectors', stack, { variant: 'stacked', netLine: { connectors: true } }],
+    ['stacked100', stack, { variant: 'stacked100' }],
+    ['scaleGroup', single, { scaleGroup: { y: 'g1' } }],
+    ['story', single, { story: { steps: [{ id: 's1', title: 'One', highlight: 'c3' }] } }],
+    ['embed', single, { embed: { width: 320 } }],
+    ['cell range', [{ id: 's', label: 'Margin', values: values(7).map((v, i) => (i === 3 ? { number: v, range: { low: v - 3, high: v + 4 } } : v)) }], {}],
+    ['cell details', [{ id: 's', label: 'Margin', values: values(7).map((v, i) => (i === 3 ? { number: v, details: { orders: 12 } } : v)) }], { detailFields: [{ key: 'orders' }] }],
+  ];
+  for (const [name, series, options] of kept) expect(draw(series, options), name).toEqual({ type: 'column', layouts: 0 });
+  // What a bar draws as a column does still steps, so the list does not block the plain case.
+  for (const [name, series, options] of [
+    ['plain', single, {}],
+    ['one cagr', single, { annotations: [{ kind: 'cagr' }] }],
+    ['value line without a span', single, { annotations: [{ kind: 'valueLine', value: 20 }] }],
+    ['value axis minimum', single, { valueAxis: { min: 5 } }],
+    ['stack with labels', stack, { variant: 'stacked', labels: { restSeries: false }, strings: { net: 'Net' }, netLine: true }],
+  ] as [string, object[], object][]) expect(draw(series, options).type, name).toBe('bar');
+});
+
+// The reading of a column that stepped to bars said column, so an agent reading it took the wrong chart type.
+it('reports the drawn type in the reading of a column that stepped to bars', () => {
+  const names = ['Automotive OEM', 'Automotive suppliers', 'Chemicals', 'Consumer goods', 'Energy utilities', 'Financial services', 'Food and beverage', 'Healthcare providers', 'Industrial machinery', 'Insurance',
+    'Logistics', 'Media', 'Oil and gas', 'Pharmaceuticals', 'Retail', 'Software', 'Telecommunications', 'Transport', 'Utilities', 'Wholesale'];
+  const data = { categories: names.map((label, i) => ({ id: `c${i}`, label })), series: [{ id: 's', label: 'Margin', values: names.map((_, i) => 8 + ((i * 7) % 23)) }] };
+  const body = render({ spec: { type: 'column', data, options: { title: 'Margin by sector', unit: '%', size: { width: 320 } } }, return: ['reading'] }).body as any;
+  expect(body.reading.type).toBe('bar');
+});
+
+// Taking owed off a thinned grand total let a pin override the thinning and hide a total the engine draws.
+it('keeps the thinned grand total when a pin names another one', () => {
+  const categories = Array.from({ length: 24 }, (_, i) => ({ id: `c${i}`, label: `Cat ${i + 1}` }));
+  const data = { categories, series: [
+    { id: 'a', label: 'A', values: categories.map((_, i) => 1200000 + i * 51234) },
+    { id: 'b', label: 'B', values: categories.map((_, i) => 900000 + i * 31234) },
+  ] };
+  const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'column', data, options: { title: 'T', variant: 'stacked', size: { width: 560, height: 360 }, labelPlacements: { 'grandTotal:c0': 'aboveNeighbours' } } })) as Geometry;
+  const shown = (id: string) => geometry.labels.some(label => label.id === `grandTotal:${id}` && label.hidden === undefined);
+  expect(shown('c1')).toBe(true);
+  expect(shown('c0')).toBe(false);
+});
+
+// A roadmap milestone is a small circle with its name outside, so its secondary text had no seat inside the circle and went to an off-page note.
+it('draws a roadmap milestone secondary text under its name', () => {
+  const lanes = [{ id: 'w1', label: 'Wave 1', orientation: 'vertical', role: 'category', paletteKey: 'w1', order: 1 }, { id: 'w2', label: 'Wave 2', orientation: 'vertical', role: 'category', paletteKey: 'w2', order: 2 }];
+  const names = ['Pilot live', 'First ten sites', 'Platform v2 live', 'All sites live'];
+  const nodes = names.map((label, i) => ({ id: `m${i}`, kind: 'milestone', shape: { kind: 'circle' }, label, secondaryLabel: `Q${i + 1} FY27`, laneId: i < 2 ? 'w1' : 'w2', role: 'category', paletteKey: i < 2 ? 'w1' : 'w2', order: i + 1 }));
+  const body = render({ spec: { type: 'diagram', data: { lanes, nodes }, options: { variant: 'roadmap', title: 'Four milestones in two waves', source: 'Invented' } } }).body as any;
+  expect(body.ok).toBe(true);
+  expect(body.reading.omissions).toEqual([]);
+  expect(body.warnings.filter((warning: { code: string }) => warning.code === 'diagram-secondary-label-unplaced')).toEqual([]);
+});
+
+// A milestone whose secondary text prints under its name must not open a hover card that only repeats that text.
+it('opens no hover card for a roadmap secondary text printed under the name', () => {
+  const lanes = [{ id: 'w1', label: 'Wave 1', orientation: 'vertical', role: 'category', paletteKey: 'w1', order: 1 }];
+  const nodes = ['Pilot live', 'First ten sites', 'Platform v2 live', 'All sites live'].map((label, i) => ({ id: `m${i}`, kind: 'milestone', shape: { kind: 'circle' }, label, secondaryLabel: `Q${i + 1} FY27`, laneId: 'w1', role: 'category', paletteKey: 'w1', order: i + 1 }));
+  const request = resolveChartRequest({ type: 'diagram', data: { lanes, nodes }, options: { variant: 'roadmap', title: 'Four milestones', source: 'Invented' } } as never);
+  const geometry = layoutResolvedRequest(request) as Geometry;
+  expect(geometry.labels.filter(label => label.id.startsWith('node-label:') && label.text.includes('\n') && !label.hidden).length).toBe(4);
+  const records = interactionRecords({ request, geometry, scope: request.scope, claims: [] });
+  expect(records.map(record => record.cardFields)).toEqual([[], [], [], []]);
+  expect(records[0]!.fields.map(field => field.key)).toContain('secondaryLabel');
+});
+
+// Twelve milestones in three waves on a small canvas: every name must draw, as it does without secondary text.
+it('keeps every roadmap milestone name when secondary text crowds the canvas', () => {
+  const lanes = [0, 1, 2].map(i => ({ id: `w${i}`, label: `Wave ${i}`, orientation: 'vertical', role: 'category', paletteKey: `w${i}`, order: i + 1 }));
+  const nodes = Array.from({ length: 12 }, (_, i) => ({ id: `m${i}`, kind: 'milestone', shape: { kind: 'circle' }, label: `Milestone ${i} reached`, secondaryLabel: `Q${i % 4} FY27 delivery`, laneId: `w${i % 3}`, role: 'category', paletteKey: `w${i % 3}`, order: i + 1 }));
+  const result = layoutDiagram({ lanes, nodes } as never, { variant: 'roadmap', size: { width: 700, height: 400 } } as never, false);
+  expect(result.labels.filter(label => label.id.startsWith('node-label:') && label.hidden)).toEqual([]);
+  expect(result.warnings.filter(warning => warning.code === 'diagram-node-label-unplaced')).toEqual([]);
+});
+
+// A cycle step whose node is tall enough keeps its secondary text inside, so the text must fit the node's own width, not the wider outside label.
+it('keeps a cycle step secondary text inside its node', () => {
+  const nodes = ['Share results', 'Refer leads', 'Qualify fast', 'Deliver value'].map((label, i) => ({ id: `s${i}`, kind: 'step', shape: { kind: 'circle' }, label, secondaryLabel: 'Customer reply within twenty-four hours', role: 'primary', order: i + 1 }));
+  const edges = nodes.map((node, i) => ({ id: `e${i}`, source: { nodeId: node.id }, target: { nodeId: `s${(i + 1) % 4}` }, arrowEnd: true }));
+  const result = layoutDiagram({ nodes, edges } as never, { variant: 'circular-process', size: { width: 700, height: 700 } } as never, false);
+  const inside = result.labels.filter(label => label.slot === 'inside-secondary' && !label.hidden);
+  expect(inside.length).toBeGreaterThan(0);
+  for (const label of inside) {
+    const node = result.marks.nodes.find(mark => mark.id === label.owner.pointId)!;
+    expect(label.rect.w).toBeLessThanOrEqual(node.contentRect.w);
+  }
+});
+
+// Prevents a bubble matrix with few wide columns from reserving a size key as tall as a column is wide: at a 380 pt
+// height the key left the rows no room and the chart refused, though the bubbles it draws are small.
+describe('bubble matrix key height', () => {
+  const stages = ['Seed', 'Series A', 'Series B', 'Growth'];
+  const sizes = [[4, 12, 30, 0], [3, 9, 22, 48], [0, 8, 26, 0], [2, 14, 0, 0], [0, 0, 35, 70], [5, 10, 18, 0], [2, 6, 20, 41], [6, 16, 0, 0]];
+  const spec = (size: { width: number; height?: number; unit?: string }) => ({
+    type: 'heatmap',
+    data: {
+      categories: stages.map((label, i) => ({ id: `c${i}`, label })),
+      series: sizes.map((row, i) => ({ id: `s${i}`, label: `Company ${i + 1}`, values: row.map(v => (v > 0 ? v : null)), sizes: row })),
+    },
+    options: { variant: 'bubble', scale: 'discrete', breaks: [0, 50, 70, 100], bubble: { sizeLabel: 'Invested, EUR m', colorLabel: 'Invested, EUR m' }, title: 'Invested capital by stage', source: 'Invented ledger', target: 'slide', size },
+  });
+
+  it('draws at 380 pt of height', () => {
+    expect(canDraw(spec({ width: 960, height: 380, unit: 'pt' }) as never)).toMatchObject({ ok: true });
+  });
+
+  it('keeps a content-fit height: the pinned render at the height it returns is the same SVG', () => {
+    const open = render({ spec: spec({ width: 960 }), return: ['svg'] }).body as { svg: string; size: { width: number; height: number } };
+    const pinned = render({ spec: spec({ width: open.size.width, height: open.size.height }), return: ['svg'] }).body as { svg: string };
+    // The ids hash the request and the sizing attribute names the request's size; the drawing is the rest.
+    const drawing = (svg: string) => svg.replace(/-[0-9a-f]{10}\b/g, '').replace(/ data-bp-sizing="[^"]*"/, '');
+    expect(drawing(pinned.svg)).toBe(drawing(open.svg));
+  });
+});
+
+// Prevents a slide or print canvas a few percent under the class-size floor from being refused where the same chart
+// draws with a slightly smaller type that stays at the reader floor.
+describe('type steps toward the reader floor before a size refusal', () => {
+  const half = (options: object) => ({
+    type: 'bar',
+    data: { categories: ['FY21', 'FY22', 'FY23', 'FY24'], series: [{ id: 'cloud', label: 'Cloud', values: [100, 130, 160, 200] }, { id: 'license', label: 'License', values: [124, 118, 109, 97] }] },
+    options: { variant: 'grouped', title: 'Cloud doubles in three years while license declines', subtitle: { measure: 'Revenue', period: 'FY21–FY24' }, unit: '$m', source: 'Invented accounts', target: 'slide', size: { width: 360, height: 405 }, ...options },
+    annotations: [
+      { kind: 'cagr', from: { categoryId: 'FY21', seriesId: 'cloud' }, to: { categoryId: 'FY24', seriesId: 'cloud' } },
+      { kind: 'diff', mode: 'absolute', from: { categoryId: 'FY24', seriesId: 'license' }, to: { categoryId: 'FY24', seriesId: 'cloud' } },
+    ],
+  });
+  const run = (spec: object) => layoutResolvedRequest(resolveChartRequest(spec as never));
+
+  it('draws a slide slot 5 px under the floor, names the step and keeps every text at its floor', () => {
+    const result = run(half({})) as Geometry;
+    expect(result.refused).toBeUndefined();
+    expect(result.warnings.find(w => w.code === 'type-stepped')).toMatchObject({ severity: 'info', suggest: expect.stringContaining('360 × 410px') });
+    const sizes = result.scene.flatMap(n => n.t === 'text' ? [n.font.size] : []);
+    expect(Math.min(...sizes)).toBeGreaterThanOrEqual(11);
+  });
+
+  // Prevents measure() from refusing a canvas that render() and canDraw() draw after the type step, which hides the chart in a host that measures first.
+  it('measures a stepped canvas as drawn and a refused one as refused, like render and canDraw', () => {
+    for (const size of [{ width: 360, height: 405 }, { width: 360, height: 380 }, { width: 200, height: 405 }]) {
+      const spec = half({ size });
+      const refused = run(spec).refused === true;
+      expect(measure(spec as never).refused !== undefined).toBe(refused);
+      expect(canDraw(spec as never).ok).toBe(!refused);
+    }
+    const measured = measure(half({}) as never);
+    expect(measured.warnings.map(w => w.code)).toContain('type-stepped');
+  });
+
+  it('keeps the refusal when the author sets the text size or the refusal', () => {
+    expect(run(half({ textScale: 1 })).refused).toBe(true);
+    expect(run(half({ textSize: 18 })).refused).toBe(true);
+    expect(run(half({ belowMinimum: 'refuse' })).refused).toBe(true);
+  });
+
+  it('refuses with the stepped need when the stepped text does not fit either', () => {
+    const result = run(half({ size: { width: 200, height: 405 } }));
+    expect(result.refused).toBe(true);
+    expect(result.warnings[0]!.code).toBe('size-below-floor');
+  });
+});
+
+// Prevents three diagrams from refusing or crowding on a wide, short full slide: the strategy house refused 28 px short,
+// the eight-step stack refused 35 px short, and the six-step cycle drew a disc so wide that four of its six arrowheads were lost.
+it('draws the house, the stack and the cycle on a full slide with the height they have', () => {
+  const slide = { target: 'slide', size: { width: 888, height: 396, unit: 'pt' } };
+  const draw = (spec: object) => render({ spec: { type: 'diagram', ...spec } }).body as any;
+  const house = getFixtures('diagram').find(f => f.id === 'strategy-house')!;
+  expect(draw({ data: house.data, options: { ...house.options, ...slide } }).ok).toBe(true);
+
+  const named = (labels: string[], shape: string, extra: object = {}) => labels.map((label, i) => ({ id: `n${i}`, kind: 'step', shape: { kind: shape }, label, order: i + 1, role: 'primary', ...extra }));
+  const long = ['Depreciation of fixed assets', 'Customer acquisition cost', 'Depreciation and amortisation', 'Pension provisions, domestic',
+    'North-West Region (Lowlands)', 'Mid-Atlantic Operations', 'Change in net working capital', 'Maintenance and repair works'];
+  expect(draw({ data: { nodes: named(long, 'chevron', { caption: 'Phase' }) }, options: { variant: 'linear-process', ...slide } }).ok).toBe(true);
+
+  const cycle = draw({ data: { nodes: named(['Field service', 'Licence income', 'Net revenue', 'Upper region', 'Eastern Europe', 'Marketing spend'], 'circle') }, options: { variant: 'circular-process', ...slide } });
+  expect(cycle.ok).toBe(true);
+  expect(cycle.warnings.filter((warning: any) => warning.code === 'diagram-arrowhead-unplaced')).toEqual([]);
+});
+
+// Prevents the roof cut from hiding a required vision: a three-line vision on a 720 x 316 house that main draws was refused
+// ("label unplaced") because the cut left the roof shorter than the vision's three lines.
+it('keeps a three-line vision when the strategy house is a little short', () => {
+  const node = (id: string, kind: string, label: string, extra: object = {}) => ({ id, kind, shape: { kind: kind === 'vision' ? 'roof' : 'rectangle' }, label, role: 'primary', ...extra });
+  const data = {
+    groups: [{ id: 'g', title: 'Grow', role: 'primary', order: 1 }],
+    nodes: [node('v', 'vision', 'Trusted growth\npartner for\nevery customer'), node('o', 'objective', 'Grow', { groupId: 'g' }),
+      node('a', 'initiative', 'New segments', { groupId: 'g', order: 1 }), node('b', 'initiative', 'Pricing', { groupId: 'g', order: 2 }),
+      node('e', 'enabler', 'People', { order: 1 }), node('f', 'foundation', 'Customer trust')],
+  };
+  const body = render({ spec: { type: 'diagram', data, options: { variant: 'strategy-house', size: { width: 720, height: 316 } } } }).body as any;
+  expect(body.errors).toEqual([]);
+});
+
+// Prevents a short org chart from floating in the middle of a tall plot: under a host-set height the level gaps grow
+// into the spare height, and a plot with no spare height keeps the natural gaps.
+it('spreads an org chart over the height the host sets', () => {
+  const spec = getFixtures('diagram').find(f => f.id === 'org-structure')! as any;
+  const span = (height: number, heightFill?: string) => {
+    const result = layoutDiagram(spec.data, { ...spec.options, size: { width: 888, height }, ...(heightFill ? { heightFill } : {}) } as never, false);
+    const rects = result.marks.nodes.map(mark => mark.contentRect);
+    return Math.max(...rects.map(r => r.y + r.h)) - Math.min(...rects.map(r => r.y));
+  };
+  const natural = span(150);
+  expect(span(396)).toBeGreaterThan(1.3 * natural);
+  expect(span(396)).toBeLessThan(2.6 * natural);
+  // heightFill 'none' is the old look: the natural gaps at any canvas height.
+  expect(span(396, 'none')).toBe(natural);
+});
+
+// A KPI tile, a pie and a four-bar column that fit a 200 to 240 px dashboard tile were refused by the fixed 280 px floor; a hundred bars still do not fit.
+it('draws a KPI, a pie and a column below 280 px when their content fits, and refuses a column whose bars do not', () => {
+  const at = (type: string, data: unknown, options: object, width: number, height: number) =>
+    layoutResolvedRequest(resolveChartRequest({ type, data, options: { target: 'dashboard', size: { width, height }, ...options } } as never)) as Geometry;
+  const quarters = { categories: ['2021', '2022', '2023', '2024'], series: [{ id: 'rev', label: 'Revenue', values: [10, 12, 15, 19] }] };
+  const slices = { categories: ['North', 'South', 'East', 'West'].map(label => ({ id: label, label })), series: [{ id: 's', label: 'Sales', values: [40, 30, 20, 10] }] };
+  for (const width of [160, 200, 240]) {
+    expect(at('kpi', { label: 'Revenue', value: 4200000, format: '$1.2M' }, {}, width, 110).refused, `kpi ${width}`).toBeFalsy();
+    expect(at('column', quarters, { title: 'Revenue grows' }, width, 200).refused, `column ${width}`).toBeFalsy();
+  }
+  expect(at('pie', slices, {}, 240, 240).refused).toBeFalsy();
+  // A pie whose circle and labels need 224 px names that width.
+  expect(at('pie', slices, {}, 200, 240)).toMatchObject({ refused: true, warnings: [{ code: 'size-below-floor', expected: { minimum: { width: 224 } } }] });
+  const hundred = { categories: Array.from({ length: 100 }, (_, i) => `Item ${i + 1}`), series: [{ id: 's', label: 'Count', values: Array.from({ length: 100 }, (_, i) => 1 + (i % 13)) }] };
+  expect(at('column', hundred, {}, 200, 240)).toMatchObject({ refused: true, warnings: [{ code: 'size-below-floor', expected: { minimum: { width: 280 } } }] });
+  expect(at('column', hundred, {}, 280, 240).refused).toBeFalsy();
 });

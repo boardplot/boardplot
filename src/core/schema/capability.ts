@@ -6,26 +6,44 @@
  * tables into `z.never` keys and answer with the reasons in
  * capabilityReasons.ts, which only the schema side links. The per-type React
  * entries do not link zod or the reasons: `optionRefusals` (refusals.ts)
- * reads these tables through `schemaRefusedKeys` and refuses the same keys
- * with the same code, path and patch and a short sentence of its own.
- * A test sweeps every key the published schemas refuse through
- * both doors.
+ * reads these tables through `schemaRefusedKeys`. Settings a type ignores
+ * are removed before validation with an `option-ignored` warning.
  */
 
 /**
  * Types whose layout draws nothing for any legend value: the
- * key is refused by name there.
+ * key is ignored with a warning there.
  */
-export const LEGEND_REFUSED: readonly string[] = ['box'];
+const LEGEND_REFUSED_TYPES = ['box', 'dimswitch', 'histogram', 'kpi', 'pvm', 'sankey', 'sparkline'] as const;
+export const LEGEND_REFUSED: readonly string[] = LEGEND_REFUSED_TYPES;
+export type LegendRefusedType = (typeof LEGEND_REFUSED_TYPES)[number];
+
+/**
+ * Types that draw no annotation of any kind. The key is retired there: an old
+ * spec still draws and warns option-deprecated (retired.ts), and the schemas
+ * publish it as never.
+ */
+const ANNOTATIONS_RETIRED_TYPES = [
+  'bartable', 'choropleth', 'cohort', 'dimswitch', 'grid', 'histogram', 'kpi', 'sankey', 'sparkline',
+  'status', 'table', 'tilemap', 'treemap', 'waffle',
+] as const;
+export const ANNOTATIONS_RETIRED: readonly string[] = ANNOTATIONS_RETIRED_TYPES;
+export type AnnotationsRetiredType = (typeof ANNOTATIONS_RETIRED_TYPES)[number];
 
 /**
  * Types on which some legend values draw exactly what the default draws:
- * those values are refused by name, and the values that draw a key
- * stay accepted.
+ * 'none' and 'auto' are ignored with a warning, and the values that draw a
+ * key stay accepted.
  */
 export const LEGEND_DRAWS: Readonly<Record<string, readonly string[]>> = {
-  slope: ['top', 'bottom'],
+  slope: ['top', 'bottom', 'right', 'left'],
 };
+
+/** Options ignored with a warning when a chart type does not read them. */
+export const IGNORED_OPTION_KEYS: ReadonlySet<string> = new Set([
+  'animate', 'debug', 'sort', 'topN', 'bandFraction', 'secondaryAxis',
+  'rowLabels', 'categoryAxis', 'categoryLabels',
+]);
 
 /**
  * Per-capability narrowing of the shared base.
@@ -62,32 +80,30 @@ export const OPTION_CAPABILITY = {
     implementedBy: ['bar', 'bullet', 'box', 'dot', 'likert'],
   },
   categoryAxis: {
-    implementedBy: ['line'],
+    implementedBy: ['column', 'combo', 'line'],
   },
   categoryLabels: {
     implementedBy: ['column', 'combo', 'pareto'],
   },
   secondaryAxis: {
-    implementedBy: ['box', 'combo'],
+    implementedBy: ['combo'],
   },
   // `labels` (both `false` and per-kind maps) changes nothing on waterfall:
   // it renders byte-identically — its layout
   // reads only labelDensity/labelPlacements. Across the registry:
   // 21 layouts read `options.labels` directly, and cohort/likert/pareto/
   // pyramid forward it to a reading host (heatmap/bar/combo/butterfly).
-  // waterfall and pvm (whose host IS waterfall) never consult it, grid reads
+  // pvm takes only `labels.point: false`, which its waterfall host reads;
+  // waterfall's own schema refuses the key, grid reads
   // it neither for itself nor for panels (panels author their own), and
   // table/diagram have their own display models.
   labels: {
     implementedBy: [
-      'bar', 'box', 'bullet', 'butterfly', 'choropleth', 'cohort', 'column',
+      'bar', 'bartable', 'box', 'bullet', 'butterfly', 'choropleth', 'cohort', 'column',
       'combo', 'dot', 'funnel', 'gantt', 'heatmap', 'histogram', 'kpi',
-      'likert', 'line', 'mekko', 'pareto', 'pie', 'pyramid', 'scatter',
+      'likert', 'line', 'mekko', 'pareto', 'pie', 'pvm', 'pyramid', 'scatter',
       'slope', 'status', 'tilemap', 'variance',
     ],
-  },
-  colorblindSafe: {
-    implementedBy: ['bar', 'choropleth', 'column', 'heatmap', 'status', 'table', 'dimswitch', 'tilemap', 'variance'],
   },
   // the types that draw a forecast, partial-period or no-data hatch
   // the key can strengthen or soften. Per the option census
@@ -104,18 +120,13 @@ export const OPTION_CAPABILITY = {
       'mekko', 'slope', 'status', 'tilemap', 'waterfall',
     ],
   },
-  // sort, topN and bandFraction pass on every
-  // type and draw byte-identical SVG on the ones below that are not named.
-  // likert, pareto (sort) and pyramid refuse in their own schemas. likert,
-  // pareto, pvm and pyramid forward bandFraction to the host layout that draws
-  // their bands. Histogram sort and topN, and box
-  // topN and bandFraction are read only to warn that they do nothing; they
-  // are refused here like every other ignored option.
+  // Category selection and ordering apply only where the chart can preserve their meaning.
+  // A type not named here ignores the option with an option-ignored warning.
   sort: {
-    implementedBy: ['bar', 'box', 'cohort', 'column', 'dot', 'heatmap', 'mekko', 'pie', 'table', 'dimswitch'],
+    implementedBy: ['bar', 'box', 'bullet', 'butterfly', 'cohort', 'column', 'dot', 'heatmap', 'likert', 'mekko', 'pie', 'table', 'dimswitch', 'variance'],
   },
   topN: {
-    implementedBy: ['bar', 'butterfly', 'choropleth', 'column', 'mekko', 'pareto', 'pie', 'table'],
+    implementedBy: ['bar', 'butterfly', 'choropleth', 'column', 'dot', 'mekko', 'pareto', 'pie', 'table', 'variance'],
   },
   // A printed whole adds up: these types print computed shares of one whole on their marks
   // (a 100% stack on bar and column).
@@ -129,13 +140,14 @@ export const OPTION_CAPABILITY = {
     ],
   },
   // Choropleth and tilemap read highlight nowhere
-  // and draw the same map with and without it. Creative and diagram
-  // refuse it through their strict schemas. This row is the one refusal path.
+  // and draw the same map with and without it. Creative refuses it through
+  // its strict schema, and so does every diagram variant but architecture.
+  // This row is the one refusal path.
   highlight: {
     implementedBy: [
-      'bar', 'bartable', 'box', 'bullet', 'butterfly', 'cohort', 'column', 'combo', 'dot',
-      'funnel', 'gantt', 'grid', 'heatmap', 'histogram', 'kpi', 'likert', 'line', 'mekko', 'pareto', 'pie', 'pvm',
-      'pyramid', 'scatter', 'slope', 'sparkline', 'status', 'table', 'dimswitch', 'variance', 'waterfall',
+      'bar', 'bartable', 'box', 'bullet', 'butterfly', 'cohort', 'column', 'combo', 'diagram', 'dot',
+      'funnel', 'gantt', 'grid', 'heatmap', 'histogram', 'kpi', 'likert', 'line', 'mekko', 'pie', 'pvm',
+      'pyramid', 'sankey', 'scatter', 'slope', 'sparkline', 'status', 'table', 'dimswitch', 'variance', 'waterfall',
     ],
   },
   // Story stepper: the types that fade marks by data id and keep
@@ -157,13 +169,12 @@ export const OPTION_CAPABILITY = {
 /**
  * The nested twin of OPTION_CAPABILITY for the shared `valueAxis` object,
  * whose sub-keys every type would inherit whether its layout reads them or not
- * (tickStep and reverse draw byte-identical SVG on
- * column, bar, combo, mekko, pareto and variance; waterfall and pvm read no
- * sub-key but break). Two shapes, both enforced by `narrowValueAxis`:
+ * (reverse draws byte-identical SVG on bar, column, combo, mekko, pareto
+ * and variance; waterfall and pvm read no sub-key but break).
+ * Two shapes, both enforced by `narrowValueAxis`:
  *
  * - `VALUE_AXIS_CAPABILITY`: a sub-key only some types read, fail-closed like
- *   the table above. box reads tickStep and reverse only to warn that it
- *   ignores them. break is refused wherever no glyph is drawn.
+ *   the table above. break is refused wherever no glyph is drawn.
  * - `VALUE_AXIS_ONLY`: a type whose layout reads just the listed sub-keys;
  *   every other sub-key is refused there, and with no sub-key listed the
  *   whole object is.
@@ -173,30 +184,33 @@ export const OPTION_CAPABILITY = {
  */
 export const VALUE_AXIS_CAPABILITY = {
   tickStep: {
-    implementedBy: ['box', 'column', 'line'],
+    implementedBy: ['bar', 'bullet', 'column', 'combo', 'dot', 'histogram', 'line', 'mekko', 'scatter', 'variance'],
   },
   reverse: {
-    implementedBy: ['box', 'line', 'scatter'],
+    implementedBy: ['line', 'scatter'],
   },
   // Every other type would accept break, draw no glyph and
   // only warn axis-break-unsupported. A bar variant that draws none
   // (football-field, tornado) still warns, because the type draws it elsewhere.
   break: {
-    implementedBy: ['bar', 'column', 'histogram', 'pvm', 'waterfall'],
+    implementedBy: ['bar', 'box', 'column', 'histogram', 'pvm', 'waterfall'],
   },
-  // Line, column, combo, mekko and variance would accept
-  // log, warn log-refused and draw linear. Scatter is the one log scale.
+  // Bars and columns cannot use a log scale without distorting their lengths.
   log: {
-    implementedBy: ['scatter'],
+    implementedBy: ['line', 'scatter'],
   },
 } as const;
 
 export const VALUE_AXIS_ONLY = {
+  // A plain linear read of the observations.
+  box: {
+    keys: ['show', 'min', 'max', 'gridlines', 'break'],
+  },
   waterfall: {
     keys: ['break'],
   },
   // The waterfall host draws authored breaks and explicit break: 'auto'.
-  // Absent or false keeps a pvm bridge whole, as it does a waterfall.
+  // False keeps a pvm bridge whole; absent resolves to 'auto' when the base swamps the steps.
   pvm: {
     keys: ['break'],
   },
@@ -329,9 +343,10 @@ export function schemaRefusedKeys(type: string): { options: string[]; valueAxis:
  */
 export const LABEL_KINDS: Readonly<Record<string, readonly string[]>> = {
   bar: ['category', 'segment', 'restSeries', 'point', 'grandTotal', 'percentIndicator', 'tick', 'axisTitle', 'valueLine'],
+  bartable: ['point'],
   box: ['category', 'point', 'axisTitle'],
-  bullet: ['category', 'point', 'axisTitle', 'annotation'],
-  butterfly: ['category', 'series', 'point'],
+  bullet: ['category', 'point', 'axisTitle', 'annotation', 'position', 'direction'],
+  butterfly: ['category', 'series', 'point', 'tick'],
   cohort: ['category', 'series', 'point'],
   column: ['category', 'segment', 'restSeries', 'point', 'grandTotal', 'percentIndicator', 'tick', 'axisTitle', 'valueLine', 'annotation', 'growth'],
   combo: ['category', 'segment', 'point', 'grandTotal', 'tick', 'axisTitle'],
@@ -346,6 +361,7 @@ export const LABEL_KINDS: Readonly<Record<string, readonly string[]>> = {
   mekko: ['category', 'segment', 'total', 'axisTitle'],
   pareto: ['category', 'point', 'grandTotal', 'axisTitle'],
   pie: ['category', 'total', 'insidePie', 'outsidePie'],
+  pvm: ['point'],
   pyramid: ['category', 'series', 'point'],
   scatter: ['point', 'value'],
   slope: ['category', 'series'],

@@ -17,8 +17,10 @@ import { requireGeometry } from '../src/core/sizing';
 import { renderSvg } from '../src/core/svg/renderSvg';
 import { LineChart } from '../src/react/charts/line';
 import { labelCardContent, sharedLabelCardContent, layoutLabelCardContent } from '../src/react/hover/labelCard';
-import { categorySiblings, hoverModel, hoverTargets } from '../src/react/hover/engine';
+import { categorySiblings, hoverModel, hoverTargets, hoverView } from '../src/react/hover/engine';
 import { highlightScene } from '../src/react/hover/highlight';
+import { getFixtures } from '../src/fixtures';
+import { boxGap } from '../src/core/geometry';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
@@ -291,4 +293,62 @@ it('lists cell details in the card through detailFields, then the undeclared key
     .filter(row => row.kind === 'field').map(row => row.text);
   expect(rows('q1')).toEqual(['Deals: 1,234', 'Win rate: 31.5%', 'owner: North team', 'date: No observation']);
   expect(rows('q2')).toEqual([]);
+});
+
+// A stacked column's card sat over the next column, so the reader lost the value the card was comparing against.
+it('seats a column card clear of the filled columns of the other categories', () => {
+  const { request, geometry } = build({ type: 'column', data: { categories: ['q1', 'q2', 'q3', 'q4'].map(id => ({ id, label: id.toUpperCase() })),
+    series: [{ id: 'a', label: 'A', values: [45, 48, 51, 55] }, { id: 'b', label: 'B', values: [30, 29, 27, 26] }, { id: 'c', label: 'C', values: [12, 14, 15, 17] }] },
+  options: { variant: 'stacked', size: { width: 760, height: 520 } } });
+  const model = hoverModel(request, geometry);
+  const hit = model.records.find(record => record.target.owner.categoryId === 'q3' && record.target.owner.seriesId === 'a')!;
+  // The viewport reaches 40 px past the chart on every side, as on a page with margins.
+  const viewport = { scale: 1, origin: { x: 0, y: 0 }, boundary: { x: -40, y: -40, w: 840, h: 600 } };
+  const view = hoverView(model, request, geometry, [hit.id], { card: true, highlight: false, keyboard: false }, { viewport });
+  const { rect } = view.card!;
+  const covered = view.cardInput!.occupied.filter(item => item.kind === 'mark' && item.filled !== false
+    && item.rect.x < rect.x + rect.w && rect.x < item.rect.x + item.rect.w && item.rect.y < rect.y + rect.h && rect.y < item.rect.y + item.rect.h);
+  expect(covered).toEqual([]);
+});
+
+// The card seat beside the mark won before cost was compared when it covered only text, so the card hid other series' end labels and values.
+it('seats a card clear of the chart text when the chart has a clear seat', () => {
+  const fixture = getFixtures('slope').find(candidate => candidate.id === 'market-share-shift')!;
+  const { request, geometry } = build({ type: 'slope', data: fixture.data, options: fixture.options, annotations: fixture.annotations });
+  const model = hoverModel(request, geometry);
+  const { owner } = fixture.hover!;
+  const hit = model.records.find(record => record.target.owner.seriesId === owner.seriesId && record.target.owner.categoryId === owner.categoryId)!;
+  const view = hoverView(model, request, geometry, [hit.id], { card: true, highlight: false, keyboard: false });
+  const { rect } = view.card!;
+  const covered = view.cardInput!.occupied.filter(item => item.kind !== 'mark' && Math.min(item.rect.w, item.rect.h) > 2
+    && item.rect.x < rect.x + rect.w && rect.x < item.rect.x + item.rect.w && item.rect.y < rect.y + rect.h && rect.y < item.rect.y + item.rect.h);
+  expect(covered).toEqual([]);
+  expect(rect.x).toBeGreaterThanOrEqual(8);
+  expect(rect.x + rect.w).toBeLessThanOrEqual(geometry.size.width - 8);
+});
+
+// A tall card on a rising stacked column chart found no seat clear of all text near the bar, so it sat in the chart's far corner, hundreds of px from the bar.
+it('seats a tall card next to its column', () => {
+  const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+  const { request, geometry } = build({ type: 'column', data: { categories: months.map(id => ({ id, label: id.toUpperCase() })),
+    series: months.map((_, layer) => ({ id: `layer${layer}`, label: `Layer ${layer + 1}`,
+      values: months.map((__, column) => column < layer ? null : 300 + 40 * layer + 25 * (column - layer)) })) },
+  options: { variant: 'stacked', size: { width: 560, height: 280 } } });
+  const model = hoverModel(request, geometry);
+  // The viewport reaches far past the chart, as on a long page.
+  const boundary = { x: -152, y: -436, w: 1424, h: 884 };
+  months.forEach(month => {
+    const base = model.records.find(record => record.target.owner.categoryId === month && record.anchor)!;
+    const anchor = base.anchor as { x: number; y: number; w: number; h: number };
+    const pointer = { x: anchor.x + anchor.w / 2, y: anchor.y + anchor.h / 2 };
+    const ids = hoverTargets(model, request, { point: pointer }, false).map(record => record.id);
+    const view = hoverView(model, request, geometry, ids, { card: true, highlight: false, keyboard: false },
+      { viewport: { scale: 1, origin: { x: 0, y: 0 }, boundary, pointer } });
+    const { rect } = view.card!;
+    expect(boxGap(rect, anchor)).toBeLessThanOrEqual(48);
+    expect(pointer.x >= rect.x && pointer.x <= rect.x + rect.w && pointer.y >= rect.y && pointer.y <= rect.y + rect.h).toBe(false);
+    const own = view.cardInput!.occupied.filter(item => item.kind !== 'mark' && item.owner.categoryId === month && item.owner.seriesId === undefined
+      && item.rect.x < rect.x + rect.w && rect.x < item.rect.x + item.rect.w && item.rect.y < rect.y + rect.h && rect.y < item.rect.y + item.rect.h);
+    expect(own).toEqual([]);
+  });
 });

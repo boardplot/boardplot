@@ -34,6 +34,7 @@ export function layoutLinearCompact(
   u: number,
   badgeText: (node: DiagramNode) => string,
   headerGap = 0,
+  fixedHeight = false,
 ): OrgChartLayout | undefined {
   const steps = [...data.nodes].sort(byOrder);
   const n = steps.length;
@@ -110,9 +111,11 @@ export function layoutLinearCompact(
 
   // Stack: bands that point down, the description right of each band.
   if (!mode) {
-    const bandH = q(Math.max(2.6 * size, lineH + 2 * u, disc + 2 * u));
     const point = q(2 * u);
     const stackGap = 1.5 * u;
+    // On a canvas height the host fixed, the band gives up its air (down to one line plus 1.2u) before the stack refuses.
+    const airy = Math.max(2.6 * size, lineH + 2 * u, disc + 2 * u);
+    const bandH = q(Math.max(lineH + 1.2 * u, disc + 1.2 * u, fixedHeight ? Math.min(airy, (plot.h - point - (n - 1) * stackGap) / n) : airy));
     const icon = q(Math.min(22, bandH - 2 * u));
     const lead = 2 * u + disc + discGap;
     const tail = icons ? 2 * u + icon + 2 * u : 2 * u;

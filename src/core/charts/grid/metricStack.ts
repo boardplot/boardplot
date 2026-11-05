@@ -34,6 +34,12 @@ export interface MetricStackData {
 }
 export interface MetricStackOptions {
   heights?: number[];
+  /** False leaves a seat of the gutter out: `unit`, `headline` or `span`. */
+  columnVisibility?: Record<string, boolean>;
+  /** Settings of the one gutter track: `gutter`. */
+  columnOverrides?: Record<string, { width?: number; align?: 'left' | 'right' | 'center' }>;
+  /** Order of the `gutter` and `plot` blocks. */
+  columnOrder?: string[];
 }
 export type StackState = 'mature' | 'maturing' | 'partial';
 type StackGrain = 'day' | 'week' | 'month' | 'quarter' | 'year' | 'category';

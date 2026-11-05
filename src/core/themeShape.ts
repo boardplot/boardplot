@@ -99,6 +99,7 @@ export const THEME_SHAPE: ShapeNode = object({
     series: { kind: 'array', item: color, min: 1 },
     casePair: opt({ kind: 'tuple', items: [color, color] }),
     stack: opt({ kind: 'array', item: color, min: 2 }),
+    treemap: opt({ kind: 'array', item: color, min: 2 }),
     seriesOverflow: optOneOf('repeatLast', 'cycle'),
     palettes: opt({ kind: 'record', value: { kind: 'array', item: color, min: 2 } }),
     // External themes may carry more status keys than the documented ones.
@@ -131,10 +132,11 @@ export const THEME_SHAPE: ShapeNode = object({
   space: object({
     tierGap: num(4, 64), facetGap: num(4, 64), labelPad: num(1, 16),
     canvas: opt(object(each(['base', 'wide'] as const, () =>
-      object(each(['top', 'right', 'bottom', 'left'] as const, () => named(num(0, 96), 'space.canvas.<class>.<side>')))))),
+      opt(object(each(['top', 'right', 'bottom', 'left'] as const, () => optNum(0, 96, 'space.canvas.<class>.<side>'))))))),
     gap: opt(object(each(['titleSubtitle', 'subtitlePlot', 'subtitlePlotWide', 'axisFootnote', 'axisFootnoteWide', 'footnoteSource', 'legend'] as const, () => optNum(0, 32)))),
     legendRowH: optNum(12, 28),
     barRow: opt(object({ thickness: num(2, 96), pitch: num(4, 120) })),
+    footerFollows: flag,
   }),
   legend: opt(object({ auto: flag, required: optOneOf('bottom', 'top') })),
   marks: opt(object({
@@ -142,8 +144,9 @@ export const THEME_SHAPE: ShapeNode = object({
     nodeStroke: optOneOf('axis', 'grid', 'leader', 'ink', 'inkMuted'), nodeStrokeWidth: optNum(0, 3),
     restOutline: flag, areaFromOrigin: flag, barLabels: optOneOf('auto', 'outside'), comboColumnTint: optNum(0, 1),
     comboLine: optOneOf('series', 'ink'), sparkEnd: optOneOf('dot', 'ring'), sparkEndLabel: flag,
-    sliceOutline: flag, othersOutline: flag, contrastEdge: flag, nodeFill: optOneOf('role', 'panel'), kpiCaret: flag,
-    bridge: optOneOf('neutral', 'sign'), funnelFill: optOneOf('status', 'ramp'),
+    sliceOutline: flag, othersOutline: flag, contrastEdge: flag, nodeFill: optOneOf('role', 'panel'), kpiCaret: flag, kpiSlotFill: flag,
+    bridge: optOneOf('neutral', 'sign'), funnelFill: optOneOf('status', 'ramp'), statusFill: optOneOf('quiet', 'full'),
+    bulletBandFill: optOneOf('light', 'full'),
   })),
   labels: opt(object({ endLabelPlacement: optOneOf('gutter', 'lineEnd'), ink: optOneOf('ink', 'muted') })),
   valueAxis: opt(object({ titles: flag, includeZero: flag, dualAxis: flag, gridDash: optOneOf('solid', 'dotted', 'dashed') })),
@@ -156,10 +159,11 @@ export const THEME_SHAPE: ShapeNode = object({
   surface: opt(object({
     // 0.05 to 0.97: a dark surface tints the other way (a dark theme may use 0.12).
     chipTint: optNum(0.05, 0.97), rowTint: optNum(0.85, 0.98), elapsedTint: optNum(0.85, 0.99),
+    ganttRowTint: optNum(0, 1),
     anchorTint: optNum(0.85, 0.99), bandTint: optNum(0, 1), gapTint: optNum(0.5, 0.95),
     ribbonAlpha: optNum(0.15, 0.6), ribbonSheetAlpha: optNum(0.05, 0.6),
     heatSteps: opt({ kind: 'array', item: num(0, 1), min: 1 }),
-    chipRadius: optNum(0, 6), sparkWash: flag,
+    chipRadius: optNum(0, 6), sparkWash: flag, sparkAreaBase: optOneOf('zero', 'min'), shortfallCap: optOneOf('outline', 'solid'),
     panelShadow: opt(grammar(SHADOW_MAX_LENGTH, SHADOW_PATTERN, SHADOW_GRAMMAR)),
   })),
   stroke: opt(object(each(['seam', 'hair', 'rule', 'mark', 'data', 'focus', 'casing'] as const, () => optNum(0.25, 12)))),

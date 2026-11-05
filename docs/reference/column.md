@@ -56,7 +56,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | series[].id | string | yes | Series identity used by keyed options, annotations and legend entries. |
 | series[].label | string |  | Displayed series name; defaults to the series id. |
 | series[].values | (cell \| { categoryId, value: cell })[] | yes | Values in category order, or keyed entries pairing a categoryId with its value. |
-| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST). Controls scenario labels and paint conventions. |
+| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST, LY for last year). Codes and aliases accept any case. Controls scenario labels and paint conventions. |
 | series[].direction | string |  | Whether increases are favorable; defaults to higherIsBetter for directional comparisons. One of `'higherIsBetter'`, `'lowerIsBetter'`. |
 | series[].role | string |  | Data series or comparison-only reference series; references are excluded from the main plotted data. One of `'data'`, `'reference'`. |
 | series[].colorRole | string |  | Theme color role used for this series when no explicit fill takes precedence. One of good, bad, warn, neutral, neutralLight, highlight, total, others; series-N for step N of the theme ramp, 1-based (series-2 is color.series[1]); or status-<key> for a theme status colour. A hex colour goes in fill. |
@@ -69,11 +69,12 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
 | labelDensity | string | `'full'`, `'smart'`, `'minimal'` |  | Value-label density. Default 'smart': every value stays eligible. A chart with more than 12 categories, or with most labels wider than the band, ranks the first, last, highest and lowest value (ties: the first) first. The other values then use only their natural seat beside the mark; with none free they are drawn nowhere and left out of the note. Those four may take one step, and the note names any that finds no seat. A smaller chart keeps every value on the bounded one-step rule and names any that finds no seat. 'full' treats all values alike and names every one that finds no seat. 'minimal' also applies the shared priority gate. Seats stay inside the plot band and one step from the natural seat. All values remain in reading records. When valueLabels is set, it wins: labelDensity is not read for the value labels. |
-| legend | string \| object | `'top'`, `'bottom'`, `'none'`, `'auto'` (or another value of its type) |  | Key position. Multiple series get a key by default unless visible direct labels name them all. 'none' hides the key and warns if names are missing. Subtitle and footnote mentions do not replace the key. |
+| legend | string \| object | `'top'`, `'bottom'`, `'right'`, `'left'`, `'none'`, `'auto'` (or another value of its type) |  | Key position. Multiple series get a key by default unless visible direct labels name them all. 'none' hides the key and warns if names are missing. Subtitle and footnote mentions do not replace the key. |
 | valueAxis.break | false \| object | `false` (or another value of its type) |  | No break by default or with false. Set { from, to, style? } for a straight value-axis break; the omitted span collapses to a fixed 12px gap when valid. Automatic placement is supported only by waterfall and pvm. |
+| categoryAxis | object |  |  | Category-axis settings: dateTicks. |
 | axisTitles | object |  |  | Title over the value axis when valueAxis.show draws it, in the top row left of the plot. A theme with valueAxis.titles derives 'Measure, unit' from subtitle.measure and a unit the drawn subtitle does not print, when none is authored. |
 | axisTitles.primary | string |  |  | 'Measure, unit' title over the value axis, e.g. 'Revenue, €m'. |
-| valueLabels | string | `'none'`, `'last'`, `'ends'`, `'extremes'`, `'all'` |  | Which values print, with line's choices: 'none', 'last', 'ends' (first and last), 'extremes' (first, last, highest and lowest; a tie takes the first) or 'all', chosen per series over the categories in their drawn order. Unset (default): every value is eligible and labelDensity decides. When set, valueLabels wins over labelDensity: each chosen value takes the one-step rule of 'full', and one with no seat is named in the note. A value not chosen is unlabelled by choice: the note does not name it, and the value axis is drawn so it stays readable (all modes but 'all'; valueAxis.show false turns it off). Authored cell labels and flagged anomaly periods print in every mode. Grouped only: a stack has no single value per category, so stacked and stacked100 refuse every mode but 'all' with value-labels-variant. Example: 24 monthly columns with 'extremes' print the first, peak, low and last value. |
+| valueLabels | string | `'none'`, `'last'`, `'ends'`, `'extremes'`, `'all'` |  | Which values print, with line's choices: 'none', 'last', 'ends' (first and last), 'extremes' (first, last, highest and lowest; a tie takes the first) or 'all', chosen per series over the categories in their drawn order. Unset (default): every value is eligible and labelDensity decides. When set, valueLabels wins over labelDensity: each chosen value takes the one-step rule of 'full', and one with no seat is named in the note. A value not chosen is unlabelled by choice: the note does not name it, and the value axis is drawn so it stays readable (all modes but 'all'; valueAxis.show false turns it off). Authored cell labels and flagged anomaly periods print in every mode. Grouped only: a stack has no single value per category, so stacked and stacked100 ignore every mode but 'all' with an option-ignored warning and keep their normal labels and value axis. Example: 24 monthly columns with 'extremes' print the first, peak, low and last value. |
 | variant | string | `'grouped'`, `'stacked'`, `'stacked100'` | `'grouped'` | Vertical arrangement: grouped by default, stacked in raw units, or stacked100 as category percentages. Plain stacked series use theme.overrides.color.stack, not color.series. Set options.palette or series fill for categorical colours. |
 | grandTotalLabels | boolean |  |  | Show category stack-total labels in addition to segment labels; default on for the stacked variant and off for stacked100, where every bar would end on the same share. true keeps the absolute total on a 100% stack. |
 | sharesOfOneWhole | boolean |  |  | true declares every stacked series a share of the same whole, such as channel shares of all orders: the stack then has a total, and percent series warn non-additive-stack only where a category adds to more than 100. Stacked and stacked100 only; refused on other variants. |
@@ -83,6 +84,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | netLine.connectors | boolean |  |  | Connect adjacent category ticks as a stepped line; defaults to true for columns. |
 | averageMarker | boolean \| object |  |  | Computed dashed average rule with a solver-placed Ø label. |
 | averageMarker.scope | string \| array | `'all'` (or another value of its type) |  | Series included in the computed average; defaults to 'all'. |
+| averageMarker.includePartial | boolean |  |  | true averages the categories marked partial too. By default they are left out, and the label names the periods the average covers. Column, bar and combo. |
 | connectors | boolean \| object |  |  | Connect matching series boundaries between adjacent stacked columns. |
 | connectors.style | string | `'line'`, `'dashed'` |  | Connector stroke: solid 'line' (default) or 'dashed', matching the waterfall bridge's dash. |
 | connectors.scope | string \| array | `'all'` (or another value of its type) |  | Series boundaries to connect; defaults to 'all'. |
@@ -132,7 +134,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | viewDomain | object |  |  | Zoom the visible categories. Means, the average marker and anomaly rules keep every source period. A mean's Ø label names the periods it covers where the plot draws fewer, 'Ø 40.4 (Jan 25–Dec 26)'. Refused with a category sort or topN, which break the period order. |
 | viewDomain.x | array |  |  | Inclusive category ids bounding the visible x axis. |
 
-Plus the [shared options](options.md). This type does not accept `valueAxis.log`, `valueAxis.reverse`, `categoryAxis`, `secondaryAxis`, `rowLabels`.
+Plus the [shared options](options.md). This type does not accept `valueAxis.log`, `valueAxis.reverse`. This type ignores `animate`, `debug`, `rowLabels`, `secondaryAxis` with an `option-ignored` warning.
 
 ## Annotations
 
@@ -159,6 +161,7 @@ The default `labelDensity: 'smart'` keeps every value eligible. In a chart with 
 
 Floor 480 × 270 px; fit `fill`.
 Below 480 px wide or 270 px high, down to the compact floor of 280 × 180 px, the chart draws in compact mode; `belowMinimum: 'refuse'` refuses there instead.
+Narrower than the compact floor, down to 120 px wide, a column draws while its bars stay at least 3 px wide.
 
 Below the floor a render is refused with `size-below-floor` and the pixels it needs. `measure` returns the natural and comfortable size for a given spec; see [Sizing in the manual](../manual.md#sizing).
 
@@ -202,7 +205,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | consensus-surprise-threshold | example | Authored surprise corridor: no statistics at all |
 | anomaly-small-sample | torture | Torture: five periods refuse to produce an outlier verdict |
 | anomaly-torture | torture | Torture: 60 periods, MAD = 0, an all-negative series and a 40× tail |
-| accessible-title-opt-in | example | Optional SVG hover title |
+| accessible-title-opt-in | example | Optional SVG hover title and authored accessible description |
 | minimum-frame | example | Column at the standalone size floor |
 | compact-frame | example | Compact column with source and note marker |
 | hatched-stack-labels | example | Forecast stack with protected inside values |
@@ -235,6 +238,8 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | column-compact-380 | example | Column in a 380px dashboard column |
 | column-card-320-frame-rules | example | Grouped column in a 320px card with an automatic height |
 | column-partial-week | example | Stacked weekly orders with the running week marked partial |
+| column-partial-week-average | example | Stacked weekly orders with an average rule that leaves the running week out |
+| column-partial-week-average-included | example | Stacked weekly orders with an average rule that includes the running week |
 | torture-long-labels | torture | Torture: long names at a generous size read whole, never cut |
 | revenue-axis-title | example | Grouped columns with a titled value axis |
 | weekly-events-lane | example | Event lane: stock-outs and launches over weekly revenue, the rest numbered in the key |
@@ -274,3 +279,5 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | option-value-labels-ends | example | The first and latest quarter print their values (valueLabels ends) |
 | option-value-labels-none | example | No value prints; the axis reads every column (valueLabels none) |
 | option-value-labels-all | example | Every quarter prints its value (valueLabels all) |
+| grouped-twelve-slide | torture | Two series over twelve units on a full slide print all 24 values |
+| key-right-slide | example | Clustered columns on a slide with the key in a column right of the plot |

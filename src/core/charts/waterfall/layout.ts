@@ -1,3 +1,4 @@
+import { generatedIdWarnings } from '../../schema/generatedColumns';
 import { chartString } from '../../strings/waterfall';
 import { chartPalette, chartTheme } from '../chartEnv';
 import { breakStyleRefusal } from '../band/breakOrder';
@@ -14,8 +15,8 @@ import { highlightPaintWarnings } from '../../paintWarnings';
 import type { PaintWarningRule } from '../../types/scene';
 import type { AnchorResolution } from '../../annotate';
 import { runAnnotatePass } from '../../annotatePass';
-import { formatterFromExample, seriesRasterFormatter, signedFormatterFromExample } from '../../formatSpec';
-import { boxGap, type Rect } from '../../geometry';
+import { formatWithSpec, levelFormatSpec, levelFormatterFromExample, seriesRasterFormatter, signedFormatterFromExample } from '../../formatSpec';
+import { boxGap, cleanFloat, rectsOverlap, type Rect } from '../../geometry';
 import { createOccupiedIndex } from '../../label/occupied';
 import { labelsToNodes } from '../../label/emit';
 import {
@@ -46,19 +47,21 @@ import { applyValueAxisTitleInk, axisTitleAllowed, planValueAxisTitle, valueAxis
 import { axisBreakInvalid } from '../../axisBreakInvalid';
 import { axisBreakHeightOrderWarning, breakReversesOrder, type BreakBar } from '../../axisBreakOrder';
 import { valueLineExtent } from '../../valueLineDomain';
-import { formatAutomaticNumber as plainNumber } from '../../format';
+import { changePercentText, formatAutomaticNumber as plainNumber } from '../../format';
 import { authoredDecimals } from '../../formatPrecision';
 import { authoredNotes, frameTextOptions, legendRequired, normalizeLegendOption, solveFrame, fixedPlotChrome, type LegendItemInput, plotHeightAfter } from '../../frame';
 import { defaultMeasurer, type FontSpec } from '../../text';
-import { categoryLineAlign, categoryRowTop, hangingLabelReserve, planCategoryRow, rotatedClaimRect, rotatedLeftOverhang } from '../../label/categoryRow';
+import { CROWDED_NAMES, categoryLineAlign, categoryRowTop, hangingLabelReserve, planCategoryRow, rotatedClaimRect, rotatedLeftOverhang } from '../../label/categoryRow';
 import {
   canvasMargin,
+  colorblindPaint,
   effectiveFill,
   markRolePaint,
   paintColor,
   panelTypeClass,
   seriesPaint as themeSeriesPaint,
   signedFillPaint,
+  emphasisLabelTheme,
   emphasisWeight,
   dashToken,
   strokeToken,
@@ -69,6 +72,7 @@ import { cellMeta, cellValue, isPctCell, type Direction, type Id } from '../../t
 import type { WaterfallData, WaterfallItem } from '../../types/data';
 import type { WaterfallOptions } from '../../types/options';
 import { HEIGHT_STRUCTURE } from '../../types/sizing';
+import { widthsThatFit } from '../../generatedWidths';
 import type { Theme } from '../../types/theme';
 import type {
   Geometry,
@@ -85,7 +89,7 @@ import { composedTextRole } from '../../textRole';
 import { scenarioLegendKeys } from '../../label/legendFidelity';
 import { textScaleOf } from '../../typeFloors';
 import { disclosureNote } from '../../notes';
-import { bandSizing, NATURAL_BAND_STEP } from '../../sizing';
+import { bandSizing, NATURAL_BAND_STEP, SIZE_TOLERANCE } from '../../sizing';
 import { floorValueLabel, printedValueLabel, valueLabelPlotFloor } from './bandFloor';
 import { maxOf, minOf, pushAll } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
@@ -110,7 +114,8 @@ export type TotalBasis =
   | { authored: false; inputs: { ref: Id; value: number }[] };
 
 export interface WaterfallDerived {
-  levels: Record<Id, { start: number; end: number; min?: number; max?: number }>;
+  /** `balance` is set on a subtotal drawn from the baseline (`toBaseline`): the running level that carries on past its block sum. */
+  levels: Record<Id, { start: number; end: number; min?: number; max?: number; balance?: number }>;
   totals: Record<Id, number>;
   /** One entry per key of `totals` — the operands the receipt has to carry. */
   totalBasis: Record<Id, TotalBasis>;
@@ -218,16 +223,89 @@ function mixedSliverSeats(rect: Rect, tsize: { width: number; height: number }, 
   }));
 }
 
+/**
+ * The seats beside a stacked segment whose value does not fit inside: level with the segment on
+ * either side first, then over and under it on a leader, right before left at each level.
+ */
+function besideSegmentSeats(rect: Rect, tsize: { width: number; height: number }): SlotCandidate[] {
+  const right = mixedSliverSeats(rect, tsize, 0, 2, ['right'], true);
+  const left = mixedSliverSeats(rect, tsize, 0, 2, ['left'], true);
+  return right.flatMap((seat, i) => [seat, { ...left[i]!, penalty: seat.penalty + 0.5 }]);
+}
+
 /** Air between a sliver and its value outside the column. */
 const SLIVER_SEAT_GAP = 4;
 /** An off-level value's distance from the column: past the leader gutter, so the hairline shows. */
 const SLIVER_LEADER_GAP = 10;
 
+/** The horizontal bars keep this much of the plot, as the band sum's floor. */
+const HORIZONTAL_BAR_FLOOR = 80;
+
+/** A host's `labels.point: false` (pvm): the bars stop printing their values, and the marks, hover and records keep them. */
+function pointValuesOff(options: WaterfallOptions): boolean {
+  return (options as { labels?: { point?: false } }).labels?.point === false;
+}
+
+/**
+ * Without an authored variant the bridge draws vertical and turns it horizontal when its
+ * names would rotate, shorten or drop, a horizontal bridge draws every name upright and
+ * whole, and it adds no finding and hides no label of its own. Cases, annotations, a value axis
+ * title and a host's net change stay vertical: a horizontal bridge draws none of them and stacks
+ * case bars in a row. An authored `vertical` never turns.
+ */
 export function layoutWaterfall(
   data: WaterfallData,
   options: WaterfallOptions = {},
 ): Geometry<WaterfallMarks, WaterfallDerived> {
-  if (options.variant === 'horizontal') return layoutHorizontalWaterfall(data, options);
+  const withBands = () => widthsThatFit(options, (next) => layoutHorizontalWaterfall(data, next), (options.size as { height?: number } | undefined)?.height !== undefined, {
+    hidden: (geometry) => geometry.labels.filter((label) => label.hidden !== undefined && label.hidden !== 'redundant').length,
+  })!;
+  if (options.variant === 'horizontal') return options.columnOverrides === undefined ? layoutHorizontalWaterfall(data, options) : withBands();
+  if (options.columnOverrides === undefined) return automaticWaterfall(data, options).geometry;
+  // The bands never choose the variant: the choice runs without them, and only a horizontal result reads them.
+  const { columnOverrides: _bands, ...plain } = options;
+  const chosen = automaticWaterfall(data, plain);
+  if (chosen.horizontal) return withBands();
+  return { ...chosen.geometry, warnings: [...chosen.geometry.warnings, {
+    code: 'option-ignored', severity: 'warn', field: ['options', 'columnOverrides'],
+    message: 'columnOverrides sets the bands of a horizontal bridge, and this one draws vertical, so it changed nothing',
+    suggest: 'Remove columnOverrides, or use a horizontal bridge where the type takes variant.',
+  }] };
+}
+
+function automaticWaterfall(
+  data: WaterfallData,
+  options: WaterfallOptions,
+): { geometry: Geometry<WaterfallMarks, WaterfallDerived>; horizontal: boolean } {
+  const vertical = layoutVerticalWaterfall(data, options);
+  const dropsOnHorizontal = (data.cases?.length ?? 0) > 0 || (options.annotations?.length ?? 0) > 0
+    || options.axisTitles?.primary !== undefined || (options as { closingChange?: unknown }).closingChange !== undefined;
+  const staysVertical = { geometry: vertical, horizontal: false };
+  if (options.variant === 'vertical' || dropsOnHorizontal) return staysVertical;
+  if (!vertical.warnings.some((warning) => CROWDED_NAMES.has(warning.code))) return staysVertical;
+  const horizontal = layoutHorizontalWaterfall(data, options);
+  // A finding is the same one when code, severity and owner match; a code alone lets a new omission
+  // hide behind an old finding of that code. The label-hidden finding is added after layout, so the
+  // hidden labels themselves are compared.
+  const finding = (warning: { code: string; severity: string; owner?: unknown }) => `${warning.code}|${warning.severity}|${JSON.stringify(warning.owner ?? null)}`;
+  const known = new Set(vertical.warnings.map(finding));
+  const hidden = new Set(vertical.labels.filter((label) => label.hidden !== undefined).map((label) => label.id));
+  const added = horizontal.warnings.some((warning) => warning.severity !== 'info' && !known.has(finding(warning)))
+    || horizontal.labels.some((label) => label.hidden !== undefined && !hidden.has(label.id));
+  if (added || horizontal.refused) return staysVertical;
+  // Fits: the width is never repaired, the height only when the caller pinned it. A bridge that the size
+  // refuses as a horizontal one would turn a drawn chart into a refusal.
+  const need = horizontal.sizing;
+  const pinned = (options.size as { height?: number } | undefined)?.height !== undefined;
+  const fits = need === undefined || (horizontal.size.width + SIZE_TOLERANCE >= need.minWidth
+    && (!pinned || horizontal.size.height + SIZE_TOLERANCE >= need.minHeight));
+  return fits ? { geometry: horizontal, horizontal: true } : staysVertical;
+}
+
+function layoutVerticalWaterfall(
+  data: WaterfallData,
+  options: WaterfallOptions,
+): Geometry<WaterfallMarks, WaterfallDerived> {
   // The annotate pass reports how much vertical headroom was missing to give
   // every CAGR drop leg its minimum length (without it the end leg turns into
   // a stub on closing-heavy bridges). One deterministic
@@ -327,17 +405,41 @@ function layoutHorizontalWaterfall(
   // plot's width at the axis font, then a second line, instead of carrying the
   // vertical row's 45° cut.
   const nameFont: FontSpec = { family: theme.type.family, ...theme.type.axis };
-  const nameBudget = plot.w * 0.4 - 20;
+  const bands = options.columnOverrides;
+  const wantedName = bands?.label?.width;
+  const wantedValue = bands?.value?.width;
+  // The longest word of a name is the name band's floor, so an authored width never cuts one.
+  const wordFloor = wantedName === undefined ? 0 : Math.max(48, 20 + Math.ceil(Math.max(0, ...data.items.flatMap((item) => (item.label ?? item.id).split(/\s+/).map((word) => measure(word, nameFont).width)))));
+  const valueLabelWidth = Math.max(
+    0,
+    maxOf(source.labels
+      .filter(
+        (label) =>
+          (label.kind === 'segment' || label.kind === 'total') &&
+          !label.hidden,
+      )
+      .map((label) => label.rect.w)),
+  );
+  const valuesOff = pointValuesOff(options);
+  const automaticRight = valuesOff ? 8 : Math.min(plot.w * 0.18, Math.max(32, valueLabelWidth + 20));
+  const valueFloor = valuesOff ? 8 : 32;
+  const barRoom = plot.w - HORIZONTAL_BAR_FLOOR;
+  const nameBand = wantedName === undefined ? undefined : Math.max(wordFloor, Math.min(wantedName, barRoom - automaticRight));
+  const nameBudget = nameBand === undefined ? plot.w * 0.4 - 20 : nameBand - 20;
   const categoryLabels = source.labels.filter((label) => label.kind === 'category');
   // under a render target a name wraps only where its row has the
   // height of two lines, may widen the column to the gutter share, and the
   // column takes its one type step as a whole.
   const barCenters = source.marks.bars.map((bar) => bar.rect.x + bar.rect.w / 2).sort((a, b) => a - b);
-  const rowPitch = barCenters.length > 1 ? ((barCenters[1]! - barCenters[0]!) * plot.h) / plot.w : plot.h;
+  // A name's row is the whole step, so under cases its pitch spans the step's bars.
+  const cases = data.cases ?? [];
+  const stepBars = Math.max(1, cases.length);
+  const stepPitch = barCenters.length > stepBars ? barCenters[stepBars]! - barCenters[0]! : undefined;
+  const rowPitch = stepPitch !== undefined ? (stepPitch * plot.h) / plot.w : plot.h;
   const nameLines = rowPitch >= 2 * lineBox(nameFont) + 2 ? 2 : 1;
   const nameColumn = fitColumn(categoryLabels.map((label) => ({
     text: label.title ?? label.text, font: nameFont, maxWidth: nameBudget, maxLines: nameLines,
-    wider: plot.w * GUTTER_MAX_SHARE - 20, shrink: stepDownFont(theme, nameFont, 'axis', options.target, textScaleOf(options)), target: options.target, textScale: textScaleOf(options), typeRole: 'axis' as const,
+    wider: nameBand === undefined ? plot.w * GUTTER_MAX_SHARE - 20 : nameBudget, shrink: stepDownFont(theme, nameFont, 'axis', options.target, textScaleOf(options)), target: options.target, textScale: textScaleOf(options), typeRole: 'axis' as const,
   })), measure);
   const names = new Map(categoryLabels.map((label, index) => [label.id, nameColumn[index]!] as const));
   // The vertical row thins its names where the columns crowd (catPlan.keep); a row form gives each
@@ -349,18 +451,11 @@ function layoutHorizontalWaterfall(
       .filter((label) => label.kind === 'category')
       .map((label) => names.get(label.id)!.w)),
   );
-  const valueLabelWidth = Math.max(
-    0,
-    maxOf(source.labels
-      .filter(
-        (label) =>
-          (label.kind === 'segment' || label.kind === 'total') &&
-          !label.hidden,
-      )
-      .map((label) => label.rect.w)),
-  );
-  const leftReserve = Math.min(plot.w * GUTTER_MAX_SHARE, Math.max(48, categoryLabelWidth + 20));
-  const rightReserve = Math.min(plot.w * 0.18, Math.max(32, valueLabelWidth + 20));
+  const automaticLeft = Math.min(plot.w * GUTTER_MAX_SHARE, Math.max(48, categoryLabelWidth + 20));
+  // The value band's unset width is its floor while a name band grows, and an authored value band takes only what the names leave.
+  const leftReserve = nameBand ?? automaticLeft;
+  const rightReserve = wantedValue === undefined ? automaticRight : Math.max(valueFloor, Math.min(wantedValue, Math.max(automaticRight, barRoom - leftReserve)));
+  const bandsCapped = (wantedName !== undefined && leftReserve < wantedName && wantedName > wordFloor) || (wantedValue !== undefined && rightReserve < wantedValue && wantedValue > valueFloor);
   const horizontalPlot: Rect = {
     x: plot.x + leftReserve,
     y: plot.y,
@@ -475,12 +570,23 @@ function layoutHorizontalWaterfall(
     const name = label.kind === 'category' ? names.get(label.id)! : undefined;
     const textSize = measure(label.text, fontForLabel(label));
     const transformed = { ...transformRectKeepSize(label.rect), w: name?.w ?? textSize.width, h: name?.h ?? textSize.height };
-    const bar = label.owner.categoryId
-      ? barById.get(label.owner.categoryId)
+    // A case's bar is '<item>:<case>'; a step's name centres on all the step's bars.
+    const { categoryId, seriesId } = label.owner;
+    const bar = categoryId
+      ? barById.get(seriesId === undefined ? categoryId : `${categoryId}:${seriesId}`)
       : undefined;
-    const rowCenter = bar
-      ? bar.rect.y + bar.rect.h / 2
-      : transformed.y + transformed.h / 2;
+    const firstCase = categoryId !== undefined && cases.length > 0 ? barById.get(`${categoryId}:${cases[0]!.id}`) : undefined;
+    const lastCase = categoryId !== undefined && cases.length > 0 ? barById.get(`${categoryId}:${cases.at(-1)!.id}`) : undefined;
+    // A value of one segment sits on that segment's rect, not on the whole bar's.
+    const segment = label.kind === 'segment' && label.owner.segmentId !== undefined
+      ? bar?.segments.find((candidate) => candidate.id === label.owner.segmentId)
+      : undefined;
+    const box = segment?.rect ?? bar?.rect;
+    const rowCenter = box
+      ? box.y + box.h / 2
+      : firstCase && lastCase
+        ? (firstCase.rect.y + lastCase.rect.y + lastCase.rect.h) / 2
+        : transformed.y + transformed.h / 2;
     const categoryRect: Rect = {
       x: horizontalPlot.x - transformed.w - 8,
       y: rowCenter - transformed.h / 2,
@@ -488,34 +594,44 @@ function layoutHorizontalWaterfall(
       h: transformed.h,
     };
     const outsideRight: Rect = {
-      x: (bar ? bar.rect.x + bar.rect.w : transformed.x + transformed.w) + 8,
+      x: (box ? box.x + box.w : transformed.x + transformed.w) + 8,
       y: rowCenter - transformed.h / 2,
       w: transformed.w,
       h: transformed.h,
     };
     const insideCenter: Rect = {
-      x: bar
-        ? bar.rect.x + bar.rect.w / 2 - transformed.w / 2
+      x: box
+        ? box.x + box.w / 2 - transformed.w / 2
         : transformed.x,
       y: rowCenter - transformed.h / 2,
       w: transformed.w,
       h: transformed.h,
     };
     const outsideLeft: Rect = {
-      x: (bar ? bar.rect.x : transformed.x) - transformed.w - 8,
+      x: (box ? box.x : transformed.x) - transformed.w - 8,
       y: rowCenter - transformed.h / 2,
       w: transformed.w,
       h: transformed.h,
     };
+    // A segment of a stack has no outside seat: beside the bar it would read as the step's value or as
+    // another segment's. Sub-rows of a mixed-sign step keep the seats that clear their siblings.
+    const siblings = segment ? bar!.segments.filter((other) => other !== segment) : [];
+    const stackedRow = siblings.every((other) => Math.abs(other.rect.y - segment!.rect.y) < 0.5);
+    const segmentNode = segment ? source.scene.find((node) => node.id === `mark:${label.owner.categoryId}:${segment.id}`) : undefined;
+    const segmentInside: Partial<SlotCandidate> = segmentNode?.t === 'rect' && segmentNode.fill && segmentNode.pattern !== 'hollow'
+      ? { insideFill: effectiveFill(paintColor(theme, segmentNode.fill), segmentNode.pattern, theme), insidePaint: segmentNode.fill, insidePattern: segmentNode.pattern }
+      : { needsBacking: true };
     const candidates: SlotCandidate[] =
       label.kind === 'category'
         ? [{ slot: 'left', rect: categoryRect, penalty: 0 }]
         : [
-            { slot: 'outsideRight', rect: outsideRight, penalty: 0 },
+            // Case rows stand 1-2 px apart, so a value beside a shorter bar sits within the context pad of the longer one.
+            { slot: 'outsideRight', rect: outsideRight, penalty: 0, ...(seriesId === undefined ? {} : { pad: 0 }) },
             // A value sits inside only with 4 px per side; wider, it would cross the bar's edge.
-            ...(!bar || transformed.w + 8 <= bar.rect.w ? [{ slot: 'insideCenter' as const, rect: insideCenter, penalty: 1, needsBacking: true }] : []),
+            ...(!box || transformed.w + 8 <= box.w ? [{ slot: 'insideCenter' as const, rect: insideCenter, penalty: 1, ...(segment ? segmentInside : { needsBacking: true }) }] : []),
             { slot: 'outsideLeft', rect: outsideLeft, penalty: 2 },
-          ];
+          ].filter((candidate) => !segment || candidate.slot === 'insideCenter'
+            || (!stackedRow && !siblings.some((other) => rectsOverlap(candidate.rect, other.rect))));
     const authoredPin = options.labelPlacements?.[label.id];
     return {
       id: label.id,
@@ -548,11 +664,18 @@ function layoutHorizontalWaterfall(
     for (const label of labels) {
       const id = label.id.startsWith('sum:') ? label.id.slice('sum:'.length) : undefined;
       const level = id === undefined ? undefined : source.derived.levels[id];
-      const tone = level ? stepTone(level.end - level.start, data.items.find((it) => it.id === id)?.direction) : 'neutral';
-      if (tone !== 'neutral' && label.slot !== 'insideCenter') label.ink = { token: tone };
+      const tone = level ? stepTone(level.end - level.start, data.items.find((it) => it.id === label.owner.categoryId)?.direction) : 'neutral';
+      if (tone !== 'neutral' && label.slot !== 'insideCenter') label.ink = options.colorblindSafe === true ? colorblindPaint(tone) : { token: tone };
     }
   }
   pushAll(scene, labelsToNodes(theme, labels, fontForLabel, scene));
+  const bandWarnings: LintWarning[] = [
+    ...generatedIdWarnings('waterfall', 'columnOverrides', bands, ['label', 'value']),
+    ...((wantedName !== undefined && wantedName < wordFloor) || (wantedValue !== undefined && wantedValue < valueFloor) ? [{ code: 'generated-column-width-floored', severity: 'warn' as const, field: ['options', 'columnOverrides'],
+      message: 'an authored band is narrower than its text needs, so it was raised', suggest: 'Use a larger width, or leave the width out.' }] : []),
+    ...(bandsCapped ? [{ code: 'generated-column-width-capped', severity: 'warn' as const, field: ['options', 'columnOverrides'],
+      message: `the authored bands leave the bars under ${HORIZONTAL_BAR_FLOOR} px of the ${Math.round(plot.w)} px plot, so they were reduced`, suggest: 'Use smaller widths, or give the chart more width.' }] : []),
+  ];
   const annotationWarning: LintWarning[] =
     authoredAnnotations.length === 0
       ? []
@@ -593,7 +716,11 @@ function layoutHorizontalWaterfall(
   const nameNeed = Math.max(0, maxOf(categoryLabels.map((label) => uncutWidth(label, 2))));
   const minPlotW = Math.max(Math.max(48, nameNeed + 20) + 80 + Math.max(32, valueLabelWidth + 20), (nameNeed + 20) / GUTTER_MAX_SHARE);
   // The row pitch is the band step turned on its side (rowPitch above), so the plot height scales with it.
-  const rowsNeed = ((twoLines ? 2 : 1) * lineBox(nameFont) + 2) * (barCenters.length > 1 ? plot.w / (barCenters[1]! - barCenters[0]!) : 1) + 1;
+  const rowsNeed = Math.max(
+    ((twoLines ? 2 : 1) * lineBox(nameFont) + 2) * (stepPitch !== undefined ? plot.w / stepPitch : 1),
+    // Each case bar is a row of its own for its value.
+    cases.length > 0 && barCenters.length > 1 ? (lineBox(nameFont) + 2) * (plot.w / (barCenters[1]! - barCenters[0]!)) : 0,
+  ) + 1;
   const measured = bandSizing('waterfall', source.size, plot.w, NATURAL_BAND_STEP, minPlotW);
   if (source.sizing?.[HEIGHT_STRUCTURE]) measured[HEIGHT_STRUCTURE] = true;
   return {
@@ -617,6 +744,7 @@ function layoutHorizontalWaterfall(
       ...source.warnings.filter((warning) => warning.code !== 'label-hidden'),
       ...solved.warnings,
       ...annotationWarning,
+      ...bandWarnings,
     ],
     debug: {
       occupied: occupied.snapshot(),
@@ -717,9 +845,6 @@ function layoutWaterfallWithPad(
   // whose one segment is the case; `items` keeps one per step for the band,
   // the names and the ids.
   const cases = data.cases ?? [];
-  if (cases.length > 0 && options.variant === 'horizontal') {
-    throw new NormalizeError('waterfall-cases-horizontal', 'options.variant', 'a bridge with cases draws vertically: its cases stand side by side in each step', "drop variant: 'horizontal', or draw one bridge per case");
-  }
   // A case bar's id is '<item>:<case>'. With no colon in a case id the case
   // is what follows the last colon, so no two bars share an id: item 'a' in
   // case 'b:c' and item 'a:b' in case 'c' would both be 'a:b:c'.
@@ -744,7 +869,10 @@ function layoutWaterfallWithPad(
   // An authored example controls precision. Otherwise the bridge shares
   // one precision across its values and segments.
   const authoredValues = allItems.flatMap((it) => [it.checkValue, ...it.segments.map((seg) => seg.value)]);
-  const { fmt, fmtSigned } = seriesRasterFormatter(options.format, authoredValues, options.locale?.language, options.unit, options.target);
+  const raster = seriesRasterFormatter(options.format, authoredValues, options.locale?.language, options.unit, options.target);
+  const { fmtSigned } = raster;
+  // A signed example marks the steps; a total is a level and prints without a plus or direction glyph.
+  const fmt = raster.spec.signed ? (value: number) => formatWithSpec(value, levelFormatSpec(raster.spec)) : raster.fmt;
   // A check value is an authored number the bridge does not draw: the bar
   // draws the sum. Off by more than the summed numbers' own rounding allows
   // (half a unit of the finest decimal place THEY are written to, once per
@@ -854,6 +982,21 @@ function layoutWaterfallWithPad(
   const bridges = cases.length > 0 ? caseItems.map(deriveBridge) : [deriveBridge(items)];
   const levels: WaterfallDerived['levels'] = bridges.reduce<WaterfallDerived['levels']>((all, bridge) => Object.assign(all, bridge.levels), emptyIdRecord());
   const totals: WaterfallDerived['totals'] = bridges.reduce<WaterfallDerived['totals']>((all, bridge) => Object.assign(all, bridge.totals), emptyIdRecord());
+  const valuesOff = pointValuesOff(options);
+  // A host (pvm) can ask for the closing total's change over the opening total, printed over the closing column.
+  const closingNet = (() => {
+    const open = items[0]!;
+    const close = items[items.length - 1]!;
+    if (!categoryRow || cases.length > 0 || options.labels === false || items.length < 2 || open.type === 'delta' || close.type === 'delta') return undefined;
+    // The host passes the change computed from its data: the accumulated closing level carries rounding residue.
+    const given = (options as { closingChange?: { delta: number; base: number } }).closingChange;
+    if (given === undefined) return undefined;
+    const { delta, base } = given;
+    if (!Number.isFinite(delta) || delta === 0) return undefined;
+    const change = fmtSigned(delta);
+    const percent = base > 0 ? `(${changePercentText((delta / base) * 100, 1, options.locale?.language)})` : '';
+    return { text: percent ? `${change} ${percent}` : change, lines: percent ? [change, percent] : [change], tone: stepTone(delta) };
+  })();
   const totalBasis: WaterfallDerived['totalBasis'] = bridges.reduce<WaterfallDerived['totalBasis']>((all, bridge, k) =>
     Object.assign(all, Object.fromEntries(Object.entries(bridge.totalBasis).map(([id, basis]) => [id, basis.authored && cases.length > 0
       ? { authored: true as const, ref: `${data.items[caseItems[k]!.findIndex((it) => it.id === id)]!.id}.values.${k}` }
@@ -873,7 +1016,7 @@ function layoutWaterfallWithPad(
       const it = items.find((x) => x.id === itemId);
       const lvl = levels[itemId];
       if (!it || !lvl) return null;
-      if (!anchor || anchor === 'sum') return it.type === 'delta' ? lvl.end : totals[itemId]!;
+      if (!anchor || anchor === 'sum') return it.type === 'delta' ? lvl.end : lvl.balance ?? totals[itemId]!;
       let cum = lvl.start;
       for (const seg of it.segments) {
         cum += seg.value;
@@ -885,7 +1028,7 @@ function layoutWaterfallWithPad(
         message: `connector anchor '${anchor}' is not a segment of '${itemId}' — using sum`,
         owner: { categoryId: itemId },
       });
-      return it.type === 'delta' ? lvl.end : totals[itemId]!;
+      return it.type === 'delta' ? lvl.end : lvl.balance ?? totals[itemId]!;
     };
 
     /** Where an item's authored value sits: `value`, or a case's slot in `values`. */
@@ -903,6 +1046,11 @@ function layoutWaterfallWithPad(
       if (hiddenAfter.has(open.id)) return null;
       for (const next of items.slice(items.indexOf(open) + 1)) {
         if (connectorInto.has(next.id)) return null;
+        // A subtotal drawn from the baseline leaves the running sum alone, and its check value is only its block sum.
+        if (next.type === 'subtotal' && next.toBaseline) {
+          if (hiddenAfter.has(next.id)) return null;
+          continue;
+        }
         if (next.type !== 'delta') {
           if (next.checkValue === null) return null;
           const value = compensatedSum([next.checkValue, ...deltas.map((delta) => -delta)]);
@@ -931,6 +1079,8 @@ function layoutWaterfallWithPad(
      * `sum(contributions.map(c => c.value)) === running`, asserted below.
      */
     let contributions: { ref: Id; value: number }[] = [];
+    /** The deltas since the last baseline: what a subtotal drawn `toBaseline` adds up. */
+    let block: { ref: Id; value: number; segments: number[] }[] = [];
     let compositionEligible = true;
     let hasSegmentedDelta = false;
     // Each series keeps its raw steps, so its total and the segment sum use the
@@ -956,6 +1106,7 @@ function layoutWaterfallWithPad(
         compositionEligible = false;
         hasSegmentedDelta = false;
         composition = new Map();
+        block = [];
       }
       if (it.type === 'total' || it.type === 'subtotal') {
         // A leading total opens the bridge at its authored value. Without one it
@@ -975,28 +1126,34 @@ function layoutWaterfallWithPad(
             owner: { categoryId: it.id },
           });
         }
-        const value = wasStarted ? running : (opening ?? 0);
+        // A subtotal with toBaseline prints the deltas since the last baseline; the running balance carries on.
+        const blockSum = it.type === 'subtotal' && it.toBaseline && wasStarted;
+        const value = blockSum ? compensatedSum(block.map((c) => c.value)) : wasStarted ? running : (opening ?? 0);
         if (!started) {
           running = value;
           // A backward opening is the next total's authored value less plain deltas.
           summed = [it.checkValue ?? backwardOpenings.get(it.id)?.inputs[0]!.value ?? 0];
         }
-        levels[it.id] = { start: 0, end: value };
+        levels[it.id] = blockSum ? { start: 0, end: value, balance: running } : { start: 0, end: value };
         totals[it.id] = value;
         // An opening total anchors the chart at a number the DOCUMENT supplied.
         // Nothing was summed, so nothing can be re-summed, and calling it derived
         // would be a claim the engine cannot support.
         const derivedOpening = wasStarted ? undefined : backwardOpenings.get(it.id);
-        totalBasis[it.id] = wasStarted
+        totalBasis[it.id] = blockSum
+          ? { authored: false, inputs: block.map(({ ref, value }) => ({ ref, value })) }
+          : wasStarted
           ? { authored: false, inputs: contributions.map((c) => ({ ...c })) }
           : derivedOpening
             ? { authored: false, inputs: derivedOpening.inputs }
             : { authored: true, ref: `${it.id}.value` };
         // Collapse the span: the next total's receipt reads "this total, plus the
         // deltas since" rather than replaying the whole chart.
-        contributions = [{ ref: it.id, value }];
-        operands = [value];
-        const totalCheck = started && it.checkValue !== null ? checkAgainstSum(it.checkValue, value, summed) : undefined;
+        if (!blockSum) {
+          contributions = [{ ref: it.id, value }];
+          operands = [value];
+        }
+        const totalCheck = started && it.checkValue !== null ? checkAgainstSum(it.checkValue, value, blockSum ? block.flatMap((c) => c.segments) : summed) : undefined;
         if (totalCheck?.withinRounding) discloseRoundedCheck(it, k, totalCheck.printed, 'checkTotalNote');
         const totalMismatch = totalCheck && !totalCheck.withinRounding ? totalCheck.printed : undefined;
         if (totalMismatch) {
@@ -1007,6 +1164,7 @@ function layoutWaterfallWithPad(
             owner: { categoryId: it.id },
           });
         }
+        if (it.type === 'total' || blockSum) block = [];
         if (!wasStarted && Math.abs(value) > 1e-9) compositionEligible = false;
         if (it.type === 'total' && wasStarted && compositionEligible && hasSegmentedDelta) {
           const seriesTotals = [...segmentCatalog.values()].map((identity) => ({
@@ -1050,8 +1208,12 @@ function layoutWaterfallWithPad(
         levels[it.id] = { start, end };
         running = end;
         summed = [...(it.toBaseline ? [] : summed), ...segmentValues];
-        if (it.toBaseline) contributions = [];
+        if (it.toBaseline) {
+          contributions = [];
+          block = [];
+        }
         contributions.push({ ref: it.id, value: sum });
+        block.push({ ref: it.id, value: sum, segments: segmentValues });
         if (it.authoredSegments && compositionEligible) {
           hasSegmentedDelta = true;
           for (const seg of it.segments) {
@@ -1069,6 +1231,7 @@ function layoutWaterfallWithPad(
         summed = [];
         started = false;
         contributions = [];
+        block = [];
         compositionEligible = true;
         hasSegmentedDelta = false;
         composition = new Map();
@@ -1144,7 +1307,7 @@ function layoutWaterfallWithPad(
           const tone = stepTone(value, it.direction);
           if (tone === 'neutral' || (value > 0) !== increase) continue;
           const meaning = tone === 'good' ? options.strings?.better ?? words.better : options.strings?.worse ?? words.worse;
-          keys.set(`${word}:${tone}`, { id: `__key${word}:${tone}`, label: `${chartString(options, increase ? 'increase' : 'decrease')} (${meaning})`, paint: tonePaint(tone) });
+          keys.set(`${word}:${tone}`, { id: `__key${word}:${tone}`, label: `${chartString(options, increase ? 'increase' : 'decrease')} (${meaning})`, paint: tonePaint(tone, options.colorblindSafe === true) });
         }
       }
       legendItems.push(...keys.values());
@@ -1269,7 +1432,11 @@ function layoutWaterfallWithPad(
   if (categoryRow) pushAll(warnings, catPlan.warnings);
   // spanning annotations (cagr) need arm headroom above the tallest bar
   // 12 px for the arms; the second pass adds what the arms still lack.
-  const annPad = (options.annotations ?? []).some((a) => a.kind === 'cagr') ? 12 + extraAnnPad : extraAnnPad;
+  // A bracket over steps stands above the highest value label: its own label, its ticks, and
+  // the room a value label needs over the tallest bar.
+  const bracketLabelH = measure('X', { family: theme.type.family, ...theme.type.label }).height;
+  const bracketRoom = (options.annotations ?? []).some((a) => a.kind === 'bracket') ? Math.ceil(2 * bracketLabelH + 8) : 0;
+  const annPad = ((options.annotations ?? []).some((a) => a.kind === 'cagr') ? 12 + extraAnnPad : extraAnnPad) + bracketRoom;
   const axisTitle = categoryRow && axisTitleAllowed(options.labels) ? planValueAxisTitle(options.axisTitles?.primary, theme, measure, plotWidth) : undefined;
   const axisTitleBand = valueAxisTitleBand(axisTitle, theme, measure, annPad);
   const plot: Rect = {
@@ -1448,12 +1615,27 @@ function layoutWaterfallWithPad(
   // A multi-case bridge splits each step's band among its cases, 2 px apart.
   const CASE_GAP = 2;
   const CASE_LABEL_SHIFT = (SERIES_VALUE_GAP - CASE_GAP) / 2;
+  /** Each step's case values in case order, for the seat check after the bars are drawn. */
+  const caseValues: LabelRequest[][] = items.map(() => []);
   const boldValueIds = new Set<string>();
   // Values with an authored label string: no value row thins them as density.
   const authoredValueIds = new Set<string>();
   const caseW = cases.length > 0 ? (band.bandwidth - CASE_GAP * (cases.length - 1)) / cases.length : 0;
   if (cases.length === 0) items.forEach((it, i) => drawStep(it, i, band.position(i), band.bandwidth));
   else items.forEach((_, i) => cases.forEach((__, k) => drawStep(caseItems[k]![i]!, i, band.position(i) + k * (caseW + CASE_GAP), caseW, k)));
+  // A case's value centres on its bar. Two centred values on one height nearer than the series
+  // value gap read as one number, and a value wider than its bar that hangs over its neighbour's
+  // seat blocks it, so the outer of them give that seat up for their inner-edge seats.
+  for (const row of caseValues) {
+    const crowded = row.map((request, k) => [row[k - 1], row[k + 1]].some((other) => {
+      if (!other) return false;
+      const [a, b] = [request.candidates[0]!.rect, other.candidates[0]!.rect];
+      return a.y - 2 < b.y + b.h && b.y - 2 < a.y + a.h && Math.max(a.x, b.x) - Math.min(a.x + a.w, b.x + b.w) < SERIES_VALUE_GAP;
+    }));
+    row.forEach((request, k) => {
+      if (crowded[k] && (k === 0 || k === row.length - 1)) request.candidates.shift();
+    });
+  }
 
   /** One bar of the bridge: a step, or one case's bar within it, with its labels and connector. */
   function drawStep(it: NormItem, i: number, bx: number, bw: number, caseIndex?: number): void {
@@ -1509,7 +1691,7 @@ function layoutWaterfallWithPad(
       const pattern = scenarioPattern(seg.scenario ?? it.scenario);
       const segOwner = caseId === undefined ? { categoryId: it.id, segmentId: segmentedMark ? seg.id : undefined } : stepOwner;
       // A segment cell's own format and label override are honoured.
-      const segFmt = seg.format ? { fmt: formatterFromExample(seg.format, options.locale?.language), fmtSigned: signedFormatterFromExample(seg.format, options.locale?.language) } : { fmt, fmtSigned };
+      const segFmt = seg.format ? { fmt: levelFormatterFromExample(seg.format, options.locale?.language), fmtSigned: signedFormatterFromExample(seg.format, options.locale?.language) } : { fmt, fmtSigned };
       const segBase = isTotal || stackedTotal ? segFmt.fmt(seg.value) : segFmt.fmtSigned(seg.value);
       const segText = typeof seg.valueLabel === 'string' ? seg.valueLabel.replace(/\$\{value\}/g, segBase) : segBase;
       const segDisplay = { value: segText };
@@ -1590,12 +1772,12 @@ function layoutWaterfallWithPad(
           : [];
         // A whole-axis stack can hold the digits while their line boxes overlap.
         // Use the measured cap height for this numeric seat. labelsToNodes centres
-        // the same ink bounds. Keep clear of the seam and retain every other seat
+        // the same ink bounds. Keep 1 px air above and below the digits, past the seam, and retain every other seat
         // when the digits themselves do not fit. Font size and scale stay intact.
         // Where every line box fits, the seat is the last inside one: a value whose
         // line box touches the baseline or a neighbour still prints its digits.
         const digits = categoryRow && !activeBreak && !mixed
-          ? digitSeat(rect, text, tsize, measure.capHeight?.(segmentFont), segmentFont.size, digitSeatEdge(theme, pattern)) : undefined;
+          ? digitSeat(rect, text, tsize, measure.capHeight?.(segmentFont), segmentFont.size, Math.max(2, digitSeatEdge(theme, pattern))) : undefined;
         const inkFits = digits !== undefined;
         const wholeAxisInkFits = inkFits && drawOrder.at(-1)!.extent < tsize.height + 2;
         const inkSeat: SlotCandidate[] = digits ? [{
@@ -1609,7 +1791,8 @@ function layoutWaterfallWithPad(
         // An unbroken bridge keeps its small segment values on the chart. A leader
         // ties an outside value to the segment even when a total stands beside it.
         const wholeAxisSliver = categoryRow && !activeBreak && !mixed && !fits;
-        labelRequests.push({
+        // Values off: no request at all, so no hidden label owes a place in the note.
+        if (!valuesOff) labelRequests.push({
           id: `segment:${it.id}:${seg.id}`,
           kind: 'segment',
           ...(drawSegments.length === 1 && typeof seg.valueLabel !== 'string' ? { printedIn: `${isTotal ? 'total' : 'sum'}:${it.id}` } : {}),
@@ -1622,12 +1805,14 @@ function layoutWaterfallWithPad(
           // chart's largest, so large values do not tie.
           priority: seg.priority ?? PRIORITY.interior + (99 * Math.abs(seg.value)) / segMaxAbs,
           redundant: sliver || seg.valueLabel === false,
-          ...(typeof seg.valueLabel !== 'string' ? { noLeader: true } : {}),
+          // A value too short for its segment on an unbroken bridge takes a seat beside it on a leader.
+          ...(typeof seg.valueLabel !== 'string' && !wholeAxisSliver ? { noLeader: true } : {}),
           // The value reads as its own sub-bar's; a seat nearer another mark takes a leader.
           ...(mixed || wholeAxisSliver ? { anchor: { x: rect.x, y: rect.y, w: rect.w, h: rect.h } } : {}),
           ...(wholeAxisSliver ? { leaderClear: 'includingPins' as const } : {}),
           candidates: typeof seg.valueLabel !== 'string'
-            ? [...inkSeat, ...glyphSeat, ...stacked].filter(candidate => candidate.insideFill !== undefined)
+            ? [...[...inkSeat, ...glyphSeat, ...stacked].filter(candidate => candidate.insideFill !== undefined),
+              ...(wholeAxisSliver ? besideSegmentSeats(rect, tsize) : [])]
             : mixed && !fits ? [...mixedSliverSeats(rect, tsize, k, n), ...stacked]
               : [...inkSeat, ...glyphSeat, ...stacked, ...(wholeAxisSliver ? mixedSliverSeats(rect, tsize, k, n, ['left', 'right'], true) : [])],
         });
@@ -1642,8 +1827,14 @@ function layoutWaterfallWithPad(
 
     // connector to next item (explicit connectors handled after the loop)
     // A case's line to its next bar would cross the other case's bar: case bars draw none.
-    if (caseIndex === undefined && i < items.length - 1 && !hiddenAfter.has(it.id) && !connectorInto.has(items[i + 1]!.id)) {
-      const next = items[i + 1]!;
+    // A subtotal drawn from the baseline stands apart from the balance: the line skips over it.
+    const apart = (item: NormItem) => levels[item.id]?.balance !== undefined;
+    // A hidden break on such a subtotal starts a new sum after it, so no line reaches past it.
+    let nextIndex = i + 1;
+    while (nextIndex < items.length && apart(items[nextIndex]!) && !hiddenAfter.has(items[nextIndex]!.id)) nextIndex++;
+    if (nextIndex >= items.length || apart(items[nextIndex]!)) nextIndex = -1;
+    if (caseIndex === undefined && !apart(it) && nextIndex > 0 && !hiddenAfter.has(it.id) && !connectorInto.has(items[nextIndex]!.id)) {
+      const next = items[nextIndex]!;
       const level = it.type === 'delta' ? lvl.end : totals[it.id]!;
       const cy = y(level);
       const nodeId = `connector:${it.id}:${next.id}`;
@@ -1654,7 +1845,7 @@ function layoutWaterfallWithPad(
         // coordinates, once per orientation — see its doc comment.
         x1: bx + bw,
         y1: cy,
-        x2: band.position(i + 1),
+        x2: band.position(nextIndex),
         y2: cy,
         stroke: connectorStroke,
         width: strokeToken(theme, 'rule'),
@@ -1668,7 +1859,7 @@ function layoutWaterfallWithPad(
       // level had the connector striking through its digits. The empty owner
       // blocks the connector's own category too; its labels belong on the
       // bar, not on the bridge line.
-      occupied.claim(connectorClaim(bx + bw, band.position(i + 1), cy), 'mark', {}, 'connector');
+      occupied.claim(connectorClaim(bx + bw, band.position(nextIndex), cy), 'mark', {}, 'connector');
       marks.connectors.push({ from: it.id, to: next.id, nodeId });
     }
 
@@ -1677,7 +1868,7 @@ function layoutWaterfallWithPad(
     // A mixed-sign step's own value is the net of its parts, and says so.
     // The item value cell's own format and label override are honoured.
     const valueMeta = { ...(drawSegments.length === 1 ? drawSegments[0] : {}), ...it.valueMeta };
-    const own = valueMeta?.format ? { fmt: formatterFromExample(valueMeta.format, options.locale?.language), fmtSigned: signedFormatterFromExample(valueMeta.format, options.locale?.language) } : { fmt, fmtSigned };
+    const own = valueMeta?.format ? { fmt: levelFormatterFromExample(valueMeta.format, options.locale?.language), fmtSigned: signedFormatterFromExample(valueMeta.format, options.locale?.language) } : { fmt, fmtSigned };
     const itemBase = isTotal ? own.fmt(itemValue) : mixed ? `net ${own.fmtSigned(itemValue)}` : own.fmtSigned(itemValue);
     const text = typeof valueMeta?.valueLabel === 'string' ? valueMeta.valueLabel.replace(/\$\{value\}/g, itemBase) : itemBase;
     if (!isTotal) stepTones.set(it.id, stepTone(itemValue, it.direction));
@@ -1699,7 +1890,10 @@ function layoutWaterfallWithPad(
     const insidePattern = scenarioPattern(stackedTotal
       ? drawSegments[drawSegments.length - 1]!.scenario ?? it.scenario
       : it.scenario ?? (it.segments.length === 1 ? it.segments[0]!.scenario : undefined));
-    labelRequests.push({
+    const centredX = bx + bw / 2 - tsize.width / 2;
+    const outerCase = caseIndex === 0 || (caseIndex !== undefined && caseIndex === cases.length - 1);
+    const outsideSlot = negative ? 'outsideBottom' as const : 'outsideTop' as const;
+    const valueRequest: LabelRequest = {
       id: isTotal ? `total:${it.id}` : `sum:${it.id}`,
       kind: isTotal ? 'total' : 'segment',
       // A one-part value names its segment back, so a pinned segment placed first takes the value; an authored text keeps its seat.
@@ -1717,19 +1911,18 @@ function layoutWaterfallWithPad(
       // An authored value passes the density gate, as on column and bar.
       ...(typeof valueMeta?.valueLabel === 'string' ? { keepWhenDense: true as const } : {}),
       candidates: [
-        {
-          slot: negative ? 'outsideBottom' : 'outsideTop',
-          rect: { x: caseIndex === undefined ? bx + bw / 2 - tsize.width / 2
-            // The outer cases' totals stand the series value gap apart over the 2 px case gap, or two equal totals read as one number.
-            : caseIndex === 0 ? bx + bw - tsize.width - (isTotal ? CASE_LABEL_SHIFT : 0) : caseIndex === cases.length - 1 ? bx + (isTotal ? CASE_LABEL_SHIFT : 0) : bx + bw / 2 - tsize.width / 2,
-          y: outsideY, w: tsize.width, h: tsize.height },
+        { slot: outsideSlot, rect: { x: centredX, y: outsideY, w: tsize.width, h: tsize.height }, penalty: 0 },
+        // Crowded, the outer cases' totals stand the series value gap apart over the 2 px case gap, or two equal totals read as one number.
+        ...(outerCase && isTotal ? [{
+          slot: outsideSlot,
+          rect: { x: caseIndex === 0 ? bx + bw - tsize.width - CASE_LABEL_SHIFT : bx + CASE_LABEL_SHIFT, y: outsideY, w: tsize.width, h: tsize.height },
           penalty: 0,
-        },
-        // Where the shifted seat is blocked, an outer case's total keeps the seat at its bar's inner edge.
-        ...(isTotal && caseIndex !== undefined && (caseIndex === 0 || caseIndex === cases.length - 1) ? [{
-          slot: negative ? 'outsideBottom' as const : 'outsideTop' as const,
+        }] : []),
+        // Where that seat is blocked too, an outer case's value keeps the seat at its bar's inner edge.
+        ...(outerCase ? [{
+          slot: outsideSlot,
           rect: { x: caseIndex === 0 ? bx + bw - tsize.width : bx, y: outsideY, w: tsize.width, h: tsize.height },
-          penalty: 1,
+          penalty: isTotal ? 1 : 0,
         }] : []),
         ...(tsize.height + 4 <= barRect.h && tsize.width + 4 <= bw ? [{
           slot: 'insideEnd' as const,
@@ -1752,7 +1945,41 @@ function layoutWaterfallWithPad(
           penalty: 3,
         }] : []),
       ],
-    });
+    };
+    if (!valuesOff) labelRequests.push(valueRequest);
+    if (caseIndex !== undefined) caseValues[i]!.push(valueRequest);
+    // The closing total's net change over the opening total: a second bold value above the total's own.
+    if (closingNet !== undefined && isTotal && caseIndex === undefined && i === items.length - 1) {
+      const netId = `net:${it.id}`;
+      const netText = closingNet.text;
+      const netSize = measure(netText, strongFont);
+      // With the values off the change takes the total's own seat, so no gap stays under it.
+      const netY = valuesOff ? (negative ? outsideY : yTop - netSize.height - 4) : negative ? outsideY + tsize.height + 2 : outsideY - netSize.height - 2;
+      boldValueIds.add(netId);
+      labelRequests.push({
+        id: netId,
+        kind: 'total',
+        owner: stepOwner,
+        // A derived difference with its percent: a composed text, not one of the source values.
+        role: composedTextRole(netText),
+        text: netText,
+        lines: [netText],
+        font: strongFont,
+        // A step's own value outranks the difference of the totals, which a note can carry.
+        priority: PRIORITY.interior,
+        candidates: [
+          { slot: outsideSlot, rect: { x: bx + bw / 2 - netSize.width / 2, y: netY, w: netSize.width, h: netSize.height }, penalty: 0 },
+          // Wider than the room beside the last bar: it hangs inward from the bar's outer edge.
+          { slot: outsideSlot, rect: { x: bx + bw - netSize.width, y: netY, w: netSize.width, h: netSize.height }, penalty: 1 },
+          // Still too wide: the change and its percent stand on two lines over the bar.
+          ...(closingNet.lines.length === 2 ? [(() => {
+            const w = Math.max(...closingNet.lines.map((line) => measure(line, strongFont).width));
+            const h = netSize.height * 2;
+            return { slot: outsideSlot, rect: { x: bx + bw / 2 - w / 2, y: valuesOff ? (negative ? outsideY : yTop - h - 4) : negative ? outsideY + tsize.height + 2 : outsideY - h - 2, w, h }, penalty: 2, lines: closingNet.lines };
+          })()] : []),
+        ],
+      });
+    }
 
     // ---- category label: once per step ----
     if (caseIndex !== undefined && caseIndex > 0) return;
@@ -1867,7 +2094,11 @@ function layoutWaterfallWithPad(
   if (signBridge) {
     for (const label of solved.placed) {
       const tone = label.id.startsWith('sum:') ? stepTones.get(label.id.slice('sum:'.length)) : undefined;
-      if (tone && tone !== 'neutral' && label.slot !== 'insideEnd') label.ink = { token: tone };
+      if (tone && tone !== 'neutral' && label.slot !== 'insideEnd') label.ink = options.colorblindSafe === true ? colorblindPaint(tone) : { token: tone };
+    }
+    if (closingNet !== undefined) {
+      const net = solved.placed.find((label) => label.id.startsWith('net:'));
+      if (net && closingNet.tone !== 'neutral') net.ink = options.colorblindSafe === true ? colorblindPaint(closingNet.tone) : { token: closingNet.tone };
     }
   }
 
@@ -1885,13 +2116,15 @@ function layoutWaterfallWithPad(
     const it = k < 0 ? step : caseItems[k]![i]!;
     const lvl = levels[it.id]!;
     const edge = norm.edge ?? 'total';
-    const value = edge === 'start' ? lvl.start : it.type === 'delta' ? lvl.end : totals[it.id]!;
+    const comparisonValue = edge === 'start' ? lvl.start : it.type === 'delta' ? lvl.end : totals[it.id]!;
+    const value = edge === 'total' && it.type === 'delta' ? lvl.end - lvl.start : comparisonValue;
     const anchorLevel =
       edge === 'start' ? lvl.start : edge === 'end' ? lvl.end : Math.max(lvl.start, lvl.end);
     return {
       x: k < 0 ? band.center(i) : band.position(i) + k * (caseW + CASE_GAP) + caseW / 2,
       y: y(anchorLevel),
       value,
+      comparisonValue,
       date: it.date,
       label: it.label,
       owner: k < 0 ? { categoryId: it.id } : { categoryId: step.id, seriesId: cases[k]!.id },
@@ -1918,7 +2151,9 @@ function layoutWaterfallWithPad(
           : undefined,
     occupied,
     plot: annPlot,
-    theme,
+    // Annotation labels draw bold (see labelsToNodes below), so the pass measures them bold.
+    theme: emphasisLabelTheme(theme),
+    plainLabelWeight: theme.type.label.weight,
     measure,
     format: options.format,
     locale: options.locale?.language,
@@ -1927,6 +2162,25 @@ function layoutWaterfallWithPad(
     solveCtx,
     yScale: y,
     annotationBandReserved: true,
+    resolveSpan: (fromId, toId) => {
+      if (cases.length > 0) return { code: 'bracket-cases', error: 'a bridge with cases has no one sum to print' };
+      const i = items.findIndex((x) => x.id === fromId);
+      const j = items.findIndex((x) => x.id === toId);
+      if (i < 0 || j < 0) return { code: 'bad-anchor', error: `unknown step '${i < 0 ? fromId : toId}'; valid step ids: ${items.map((x) => x.id).join(', ')}` };
+      if (i > j) return { code: 'bracket-span-order', error: `'${fromId}' comes after '${toId}'; give the earlier step as from` };
+      const steps = items.slice(i, j + 1);
+      const total = steps.find((x) => x.type !== 'delta');
+      if (total) return { code: 'bracket-span-total', error: `step '${total.id}' is a total, so the span has no one sum; bracket only delta steps` };
+      // The step values, not level differences: next to a large balance the rounded levels lose a small step.
+      const values = steps.map((x) => ({ id: x.id, value: compensatedSum(x.segments.map((seg) => seg.value)) }));
+      return {
+        left: band.position(i),
+        right: band.position(j) + band.bandwidth,
+        y: annPlot.y + bracketLabelH + 3,
+        sum: compensatedSum(values.map((step) => step.value)),
+        steps: values,
+      };
+    },
   });
   pushAll(warnings, annResult.warnings);
 
@@ -2104,13 +2358,13 @@ function layoutWaterfallWithPad(
     if (seg.fill) return { css: seg.fill };
     const identity = segmentCatalog.get(seg.id);
     if (identity) return identityPaint(identity);
-    if (signBridge && it.type === 'delta') return tonePaint(stepTone(seg.value, it.direction));
+    if (signBridge && it.type === 'delta') return tonePaint(stepTone(seg.value, it.direction), options.colorblindSafe === true);
     if (highlights.has(it.id)) return { token: 'focus' };
     // Totals keep color.total under 'sign' too: a dark theme caps its large
     // fills there, and ink is its light text colour. The token falls
     // back to ink when a theme leaves total unset.
     if (it.type !== 'delta') return { token: 'total' };
-    if (signSteps) return tonePaint(stepTone(seg.value, it.direction));
+    if (signSteps) return tonePaint(stepTone(seg.value, it.direction), options.colorblindSafe === true);
     return paletteRamp ? themeSeriesPaint(0, options.palette) : { token: 'neutralMark' };
   }
 
@@ -2155,8 +2409,8 @@ function stepTone(value: number, direction?: Direction): 'good' | 'bad' | 'neutr
   return value === 0 ? 'neutral' : (value > 0) === (direction !== 'lowerIsBetter') ? 'good' : 'bad';
 }
 
-function tonePaint(tone: 'good' | 'bad' | 'neutral'): Paint {
-  return tone === 'neutral' ? { token: 'neutralMark' } : signedFillPaint(tone);
+function tonePaint(tone: 'good' | 'bad' | 'neutral', colorblind: boolean): Paint {
+  return tone === 'neutral' ? { token: 'neutralMark' } : colorblind ? colorblindPaint(tone, true) : signedFillPaint(tone);
 }
 
 /** The thin strip a bridge connector's ink occupies, for label dodging.
@@ -2182,6 +2436,7 @@ function sumRoundoff(values: readonly number[]): number {
 /**
  * Neumaier's compensated sum: the sum of `values` without the rounding a plain
  * running sum collects (999999999999990 plus forty 0.025 steps is 999999999999991).
+ * A sum of terms that cancel is 0, not the float residue of its terms: 10.1 + 3.3 − 13.4 closes at 0.
  */
 function compensatedSum(values: readonly number[]): number {
   let sum = 0;
@@ -2191,5 +2446,5 @@ function compensatedSum(values: readonly number[]): number {
     carry += Math.abs(sum) >= Math.abs(value) ? (sum - next) + value : (value - next) + sum;
     sum = next;
   }
-  return sum + carry;
+  return cleanFloat(sum + carry, values.reduce((scale, value) => scale + Math.abs(value), 0));
 }

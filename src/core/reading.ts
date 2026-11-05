@@ -1,3 +1,4 @@
+import { plainText } from './inlineBold';
 import type { StackReadout } from './charts/grid/metricStack';
 import type { GridDerived } from './charts/grid/layout';
 /**
@@ -19,6 +20,7 @@ import { DEFAULT_REST_MIN, DEFAULT_TOP_N } from './charts/topN';
 import { chartNotes, type ChartNote } from './notes';
 import type { InteractionRecord } from './a11y/types';
 import type { RoundingAdjustment } from './shareRounding';
+import { drawnRequest } from './drawnRequest';
 import type { ResolvedChartRequest } from './request';
 import type { Geometry } from './types/scene';
 import type { StructureCount } from './structureCounts';
@@ -330,7 +332,10 @@ function unrequestedLabelOmissions(input: ChartReadingInput, records: readonly I
       ? (options.seriesLabels as { only?: string[] }).only : undefined;
     const excludedSeries = only !== undefined && owner.seriesId !== undefined && !only.includes(owner.seriesId);
     const excludedValues = excludedSeries && context.geometry.type === 'line';
-    const hasValueRequest = context.requestedValues.has(valueKey(owner));
+    // A histogram's open last bin prints its count even when the other counts are off.
+    const openBin = (context.geometry.derived as { binning?: { openAbove?: number; edges: number[] } } | undefined)?.binning;
+    const hasValueRequest = context.requestedValues.has(valueKey(owner)) || (context.geometry.type === 'histogram' && openBin?.openAbove !== undefined
+      && owner.categoryId === JSON.stringify(['bin', openBin.edges.at(-2), openBin.edges.at(-1)]));
     const valueKind = context.geometry.type !== 'line' && typeof options.variant === 'string' && options.variant.startsWith('stacked') ? 'segment' : 'point';
     // A selection explains an absent request only for a value still in the plot; viewport exclusions were skipped above.
     const selectiveValues = typeof options.valueLabels === 'string' && options.valueLabels !== 'all';
@@ -362,7 +367,8 @@ function unrequestedLabelOmissions(input: ChartReadingInput, records: readonly I
     }
   }
   // Without an Others mark there is no aggregate record, so use the final kept identities.
-  for (const [prefix, context] of contexts) if (context.topNCut && (context.options.topN as { rest?: boolean } | undefined)?.rest === false) {
+  for (const [prefix, context] of contexts) if (context.topNCut && (context.geometry.type === 'dot' || context.geometry.type === 'variance'
+    || (context.options.topN as { rest?: boolean } | undefined)?.rest === false)) {
     for (const category of context.categories) if (!context.keptCategories.has(category.id)) {
       add(`${prefix}category:${category.id}`, category.label ?? category.id, 'topN', { categoryId: category.id }, 'category');
     }
@@ -415,11 +421,12 @@ export function chartReading(input: ChartReadingInput): ChartReading {
   const source = input.geometry.frame.source;
   const fittedSource = input.geometry.scene.find(node => node.id === input.geometry.frame.sourceNodeId && node.t === 'text');
   const sourceDrawn = source && (fittedSource?.t === 'text' && fittedSource.opacity !== 0
-    && fittedSource.lines.join(' ').replace(/\s+/g, ' ').trim() === source.replace(/\s+/g, ' ').trim()
+    && fittedSource.lines.join(' ').replace(/\s+/g, ' ').trim() === plainText(source).replace(/\s+/g, ' ').trim()
     || readableLabelDestination(input.geometry)('frame:source', source, {}, 'source'));
   return {
     name: input.name,
-    type: input.type,
+    // A column that stepped to bars reads as the bar chart that was drawn.
+    type: drawnRequest({ type: input.type }, input.geometry).type,
     counts: (input.geometry.a11y.counts ?? []).map(count => ({ ...count })),
     title: typeof title === 'string' && title.trim() !== '' ? title : null,
     size: { width: input.geometry.size.width, height: input.geometry.size.height },

@@ -11,7 +11,8 @@ import { resolveSubtitle } from '../../normalize/shared';
  */
 
 import { measureValueAxisWidth } from '../../axis';
-import { longDayMonths, type dateTickRow } from '../../calendarLabels';
+import { bandedCrossesBetween } from '../../intervalTicks';
+import { authoredDateTicks, longDayMonths, type dateTickRow } from '../../calendarLabels';
 import type { Rect } from '../../geometry';
 import { authoredNotes, frameTextOptions, normalizeLegendOption, noteLine, plotHeightAfter, recordFreedChrome, solveFrame, textCarriesUnit, type FrameBand, type FrameInput, type FrameResult, type LegendItemInput, authoredFootnoteCount } from '../../frame';
 import { plotFloorRows } from '../../sizing';
@@ -433,7 +434,7 @@ function comboFrameMargins(env: ComboEnv, domain: ComboDomain) {
   const { theme, size, measure } = env;
   const { options, dLo, dHi, fmt, secondaryActive } = domain;
   const leftAxisReserve = domain.showPrimaryAxis
-    ? measureValueAxisWidth([dLo, dHi], fmt, theme, measure, 5, domain.valueSpec)
+    ? measureValueAxisWidth([dLo, dHi], fmt, theme, measure, 5, domain.valueSpec, domain.stepTicks)
     : 0;
   const margin = { ...canvasMargin(theme, size.width), ...options.margin };
   // Try a narrower unused canvas gutter before the category row rotates.
@@ -531,6 +532,8 @@ export function solveComboFrame(
         ...(growthNote === undefined ? [] : [growthNote]),
         // Two scales without tick columns: the note says each series reads on its own.
         ...(domain.secondaryActive && domain.ticksFromLabels === true ? [disclosureNote(chartString(options, 'comboOwnScale'))] : []),
+        // Moved shares matter only where the segments print them.
+        ...(contentOf(domain, 'segment', ['absolute'])?.includes('percent') ? domain.shareNotes : []),
       ],
       legend,
       ...(eventKey ? { eventKey } : {}),
@@ -601,7 +604,7 @@ export function composeLines(
   serFmt: (v: number) => string,
 ): string[] {
   const { abs, isPct, share } = value;
-  const explicit = value.format ? formatterFromExample(value.format, domain.options.locale?.language) : undefined;
+  const explicit = !value.format ? undefined : value.format === domain.options.format ? domain.fmt : formatterFromExample(value.format, domain.options.locale?.language);
   const parts: [LabelContent[number], string][] = [];
   for (const c of content) {
     if (c === 'absolute' && abs !== null) parts.push([c, explicit ? explicit(abs) : isPct ? domain.pctFmt(abs) : serFmt(abs)]);
@@ -704,7 +707,7 @@ export function comboPlotArea(
   // 'none' or `labels.point: false` neither); an authored cell label there
   // still prints, its `${value}` as the plain value.
   const pointContent = contentOf(domain, 'point', ['absolute']);
-  const valueLabels = comboValueLabels(options, domain.anatomy, domain.cats.length);
+  const valueLabels = comboValueLabels(options, domain.anatomy, domain.cats.length, domain.lineFloat !== undefined);
   const texts = prepareComboEndpointTexts(
     lines,
     (series, ci) => {
@@ -795,6 +798,9 @@ export function comboPlotArea(
   const categoryNames = cats.map(category => category.label ?? category.id);
   const periodRow = cats.some(category => (category as { calendar?: unknown }).calendar) || isDateNumericTickSequence(categoryNames)
     || calendarLike(categoryNames) || categoryNames.every(label => /^[MWT]\d+$/i.test(label));
+  // categoryAxis.dateTicks sets the interval; without it a long day row names its months.
+  const authored = authoredDateTicks(cats, options, warnings);
+  bandedCrossesBetween(options, warnings);
   // Combo publishes the rank to name mapping, so it takes ranks over a
   // row of cut names. `withCategoryRanks` keeps that decision, and the strings
   // that carry the mapping, out of the shared cascade every type imports.
@@ -812,6 +818,7 @@ export function comboPlotArea(
       centers: cats.map((_, ci) => b.center(ci)),
       step: b.step,
       fonts: [tickFont, { ...tickFont, size: tickFont.size - scaleTextPx(1, textScaleOf(options)) }, { family: theme.type.family, ...theme.type.footnote }],
+      stepToFloor: true,
       secondary: secondaryFont(theme), periods: periodRow,
       padding: 4,
       measure,
@@ -822,12 +829,15 @@ export function comboPlotArea(
       // Under notes.show 'ranks' alone a cut name takes no mark, since its note does not print.
       ...(disclosuresShown(options) ? { cutMarkFrom: authoredFootnoteCount(options) + 1 } : rankKeyShown(options) ? {} : { everyName: true }),
       ...ticked?.plan,
+      // An authored interval counts back from the latest period, as on a line.
+      ...(ticked !== undefined && ticked === authored ? { ordered: true, strideFromEnd: true } : {}),
     }), measure, cats.map((c) => c.label ?? c.id), (options as { [FORCE_CATEGORY_RANKS]?: true })[FORCE_CATEGORY_RANKS] === true, rankKeyShown(options));
   };
-  let catPlan = planRow(band);
+  // categoryAxis.dateTicks sets the interval; without it a long day row names its months.
+  let catPlan = planRow(band, authored);
   // A ranked row (pareto) is not a timeline, so it keeps its day names.
-  const ticked = (options as { [CATEGORY_ROW_FROM_END]?: boolean })[CATEGORY_ROW_FROM_END] === false ? undefined : longDayMonths(cats, catPlan.stride, options.locale?.language);
-  if (ticked) catPlan = planRow(band, ticked);
+  const ticked = authored ?? ((options as { [CATEGORY_ROW_FROM_END]?: boolean })[CATEGORY_ROW_FROM_END] === false ? undefined : longDayMonths(cats, catPlan.stride, options.locale?.language));
+  if (ticked && ticked !== authored) catPlan = planRow(band, ticked);
   const catOverhang = stair ? 0 : rotatedLeftOverhang(catPlan, cats.map((_, ci) => band.center(ci)), 4);
   if (catOverhang > 0) {
     plotX0 += catOverhang;
@@ -882,7 +892,7 @@ export function comboPlotArea(
   }
   plot.w = Math.max(10, plot.w - rightReserve);
   const { dLo, dHi, pticks, secondaryDomain } = domain;
-  const secondaryRange = secondaryDomain ? secondaryPrimaryRange(options, secondaryDomain, pticks) : undefined;
+  const secondaryRange = secondaryDomain ? domain.lineFloat?.range ?? secondaryPrimaryRange(options, secondaryDomain, pticks) : undefined;
   // A line end needs a free text row above its point and any column there.
   // Reserve only the missing room inside the scale. Frame height is unchanged.
   const endpointAir = columns.length === 0 || !(dHi > dLo) || sharesOnColumns ? 0 : Math.max(0,
@@ -905,6 +915,7 @@ export function comboPlotArea(
   return {
     frame, leftAxisReserve, rightAxisReserve, axisTitles, topPad, tickFont, labelFont, strongFont, gtH, valueLineRows,
     first: texts.first, last: texts.last, gutters, endpointWidth, band, catPlan,
+    ...(authored?.ticks ? { intervalTicks: authored.ticks } : {}),
     dateNumericTicks,
     // A date row stays at the plot's bottom band; prose reads under the
     // lowest column and the value or total hanging under it.

@@ -56,7 +56,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | series[].id | string | yes | Series identity used by keyed options, annotations and legend entries. |
 | series[].label | string |  | Displayed series name; defaults to the series id. |
 | series[].values | (cell \| { categoryId, value: cell })[] | yes | Values in category order, or keyed entries pairing a categoryId with its value. |
-| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST). |
+| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST, LY for last year). Codes and aliases accept any case. |
 | series[].colorRole | string |  | Theme color role used for this series when no explicit fill takes precedence. One of good, bad, warn, neutral, neutralLight, highlight, total, others; series-N for step N of the theme ramp, 1-based (series-2 is color.series[1]); or status-<key> for a theme status colour. A hex colour goes in fill. |
 | series[].fill | string |  | Explicit CSS fill color for this series; remains authored across theme changes. |
 | series[].unit | string |  | Unit associated with the series values. |
@@ -66,13 +66,21 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
+| sort | object \| string \| true | `'sheet'`, `'asc'`, `'desc'`, `'reverse'`, `true` (or another value of its type) |  | Category ranking value: the sortBy measure (a, b, sum or diff), default sum. categories sets sheet, reverse, asc or desc with stable ties and missing values last. A rest row stays last. Dated rows keep authored order when a growth or difference annotation spans periods. |
+| columnOverrides | object |  |  | Settings per generated column. Ids: label, diff. |
+| columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
+| columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Alignment of the column: its cell text and, unless headAlign is set, its head. Bars keep starting at the panel origin. |
+| columnOverrides.*.headAlign | string | `'left'`, `'right'`, `'center'` |  | Head alignment; defaults to align. |
+| columnOverrides.*.label | string |  |  | Head text. |
 | a | string |  |  | Series id displayed in the left pane. |
 | b | string |  |  | Series id displayed in the right pane. |
 | centerColumnWidth | number |  |  | Width in pixels reserved between the panes for category labels; omission uses their measured width. |
-| sortBy | string | `'sheet'`, `'a'`, `'b'`, `'sum'`, `'diff'` | `'sheet'` | Row order: sheet by default, or descending a, b, sum a+b, or difference b-a. |
+| sortBy | string | `'sheet'`, `'a'`, `'b'`, `'sum'`, `'diff'` | `'sheet'` | Row ranking measure: a, b, sum a+b, or difference b-a. Default sheet keeps authored order. A measure sorts descending unless sort.categories supplies the direction or mode. |
+| diffColumn | boolean |  |  | A right-aligned column of each row's difference, second series minus first, signed, under a bold delta head. Default true with sortBy 'diff', else false. A highlighted row prints bold. The panes give the column its width at one scale; it stays off below 576 px canvas width. |
 | sharedScale | boolean |  | `true` | Use the same value scale on both sides by default. False gives independent scales and warns that lengths are not comparable. |
+| negatives | string | `'direction'`, `'magnitude'` | `'direction'` | A negative value: direction (default) runs its bar from the pane's zero line toward the category names, and positive bars run outward; magnitude draws the bar length of the absolute value outward in a lighter tint. |
 
-Plus the [shared options](options.md). This type does not accept `categoryLabels`, `valueAxis`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `sort`, `colorblindSafe`, `rounding`.
+Plus the [shared options](options.md). This type does not accept `valueAxis`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
 ## Annotations
 
@@ -102,7 +110,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | single-row | torture | Torture: one category only |
 | tiny-side | torture | Torture: one side all slivers under shared scale |
 | long-labels | torture | Torture: very long category labels ellipsize in the center column |
-| negatives-own-scale | torture | Torture: negatives clamped to \|value\|, independent pane scales |
+| negatives-own-scale | torture | Torture: negatives run toward the names, independent pane scales with a value axis each |
 | customer-spend-sort-sheet | torture | Customer spend ordered by authored account order |
 | customer-spend-sort-b | torture | Customer spend ordered by Product B |
 | customer-spend-sort-diff | example | Customer spend ordered by the B-minus-A difference |
@@ -111,6 +119,11 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | license-vs-services-neutral-mark | torture | License vs Services on a dark theme whose neutral is a band tint |
 | fixed-label-column | torture | A 160 px label column between the panes instead of the measured width |
 | customer-spend-top-five | torture | The five largest customers, a key above the panes and explicit label kinds |
+| negatives-shared-scale | torture | Negative values run from each pane's zero line toward the names on one shared scale |
+| negatives-magnitude | torture | The lighter bar of \|value\| for negative values, from negatives: magnitude |
+| blank-values | torture | A value the data lacks prints the not-applicable mark at the pane start |
+| own-scales-mixed | torture | Panes of very different size on their own scales each draw a value axis |
+| column-overrides | example | columnOverrides sets the name column and the difference column, beating centerColumnWidth |
 
 ## Not for
 

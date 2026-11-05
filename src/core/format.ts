@@ -99,12 +99,14 @@ export const MAGNITUDE_SUFFIX: Record<'none' | 'k' | 'm' | 'bn' | 't', string> =
  * The scale letter under a chart locale. A German reader takes "B" for
  * "Billion" (10¹²) and "T" for "Tausend", a French reader "B" for "billion"
  * (10¹²): those charts print the local short form (CLDR: " Mrd.", " Bio.";
- * " Md", " Bn"). k and M read alike everywhere.
+ * " Md", " Bn"). A German chart prints " Mio." beside " Mrd.", so one axis
+ * never reads "500M" under "1,0 Mrd.". k reads alike everywhere.
  */
 export function magnitudeSuffix(magnitude: keyof typeof MAGNITUDE_SUFFIX, locale: string | undefined): string {
-  if (magnitude !== 'bn' && magnitude !== 't') return MAGNITUDE_SUFFIX[magnitude];
+  if (magnitude === 'none' || magnitude === 'k') return MAGNITUDE_SUFFIX[magnitude];
   const language = wordLanguage(locale)?.toLowerCase().split(/[-_]/)[0];
-  if (language === 'de') return magnitude === 'bn' ? ' Mrd.' : ' Bio.';
+  if (language === 'de') return magnitude === 'm' ? ' Mio.' : magnitude === 'bn' ? ' Mrd.' : ' Bio.';
+  if (magnitude === 'm') return MAGNITUDE_SUFFIX[magnitude];
   if (language === 'fr') return magnitude === 'bn' ? ' Md' : ' Bn';
   return MAGNITUDE_SUFFIX[magnitude];
 }
@@ -250,6 +252,11 @@ export function formatAutomaticNumber(value: number, opts: NumberFormatOptions =
   return formattedNumber(value, opts, opts.automatic ?? true);
 }
 
+/** The key text for a hatched low-base mark: "n < 30". Heatmap and slope diverging share it. */
+export function lowBaseKeyLabel(minBase: number, locale?: string): string {
+  return `n < ${formatAutomaticNumber(minBase, { locale })}`;
+}
+
 /** Exact source digits outside the fixed-decimal formatter's limit. */
 export function formatExactNumber(value: number, locale?: string): string {
   if (!Number.isFinite(value)) return formatNumber(value, { locale });
@@ -284,7 +291,16 @@ export function valueSetFormatter(values: Iterable<number>, locale?: string, sig
  * series' "0.5"; a nonzero value below the last digit prints its bound ("<0.01").
  */
 export function seriesValueFormatter(values: Iterable<number | null | undefined>, locale?: string, unit?: string, target?: RenderTarget): (value: number, signed?: boolean) => string {
-  const decimals = valueSetDecimals([...values].filter((value): value is number => typeof value === 'number' && Number.isFinite(value)));
+  return seriesFormatterAt(seriesValueDecimals(values), locale, unit, target);
+}
+
+/** The one precision `seriesValueFormatter` gives a set of values. */
+export function seriesValueDecimals(values: Iterable<number | null | undefined>): number {
+  return valueSetDecimals([...values].filter((value): value is number => typeof value === 'number' && Number.isFinite(value)));
+}
+
+/** `seriesValueFormatter` at a precision already chosen. */
+export function seriesFormatterAt(decimals: number, locale?: string, unit?: string, target?: RenderTarget): (value: number, signed?: boolean) => string {
   return (value, signed = false) => formatAutomaticNumber(value, { locale, signed, decimals: defaultNumberDecimals(value, decimals, unit, target) });
 }
 

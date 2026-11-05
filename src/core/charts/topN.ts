@@ -1,5 +1,6 @@
-/** The topN cut of bar, column, butterfly, pie and mekko: one ranking, one rest name, one rest sum. */
+/** Shared topN selection, rest aggregation and omission warnings. */
 
+import { cleanSum } from '../geometry';
 import { normalizeCategory, normalizeSeriesValues } from '../normalize/shared';
 import { isDateCell } from '../types/cell';
 import type { ChartData } from '../types/data';
@@ -28,15 +29,42 @@ export function topNCut(sizes: readonly number[], n: number, threshold?: number)
   return { kept: all.filter((i) => keep.has(i)), dropped: all.filter((i) => !keep.has(i)) };
 }
 
-/** The rest bucket's name: the authored restLabel, else strings.others, else 'Others'; with the count when asked. */
-export function restLabel(topN: TopN, strings: StringsSpec | undefined, count: number): string {
-  return (topN.restLabel ?? strings?.others ?? 'Others') + (topN.showRestCount ? ` (${count})` : '');
+/** A score or difference cannot form an additive rest bucket. */
+export function topNRestUnsupported(type: 'dot' | 'variance', topN: TopNOptions): LintWarning | undefined {
+  const ignored = (['restLabel', 'showRestCount', 'threshold'] as const).filter((key) => topN[key] !== undefined);
+  if (topN.rest !== true && ignored.length === 0) return undefined;
+  return {
+    code: 'topn-rest-unsupported', severity: 'warn',
+    message: (type === 'dot'
+      ? 'topN.rest is not drawn on a dot chart because a sum of scores is not a score; the other categories are left out'
+      : 'topN.rest is not drawn on a variance chart because a sum of differences or ratios is not the drawn comparison; the other categories are left out')
+      + (ignored.length ? `. topN.${ignored.join(', topN.')} ${ignored.length === 1 ? 'was' : 'were'} ignored` : ''),
+    suggest: 'remove topN.rest and any rest-only settings',
+  };
 }
 
-/** The sum of the folded values; null when every folded value is null (no data is not zero). */
+/** Name every category removed by a topN cut without a rest bucket. */
+export function topNOmitted(kept: number, total: number, labels: readonly string[]): LintWarning {
+  return {
+    code: 'topn-omitted', severity: 'info',
+    message: `topN kept ${kept} of ${total} categories; omitted: ${labels.join(', ')}`,
+  };
+}
+
+/**
+ * The rest bucket's name: the authored restLabel, else strings.others, else
+ * 'Others'; with the count when asked. A fold of one item has nothing to
+ * collect, so without an authored restLabel it keeps that item's own name and no count.
+ */
+export function restLabel(topN: TopN, strings: StringsSpec | undefined, folded: readonly string[]): string {
+  if (folded.length === 1 && topN.restLabel === undefined) return folded[0]!;
+  return (topN.restLabel ?? strings?.others ?? 'Others') + (topN.showRestCount ? ` (${folded.length})` : '');
+}
+
+/** The sum of the folded values, cleaned of cancelling residue; null when every folded value is null (no data is not zero). */
 export function restSum(values: readonly (number | null)[]): number | null {
   const nums = values.filter((x): x is number => x !== null);
-  return nums.length ? nums.reduce((a, b) => a + b, 0) : null;
+  return nums.length ? cleanSum(nums) : null;
 }
 
 /**
@@ -60,6 +88,17 @@ export function restDetailsWarning(data: Pick<ChartData, 'categories' | 'series'
     message: `topN Others sums values but not details; the details of ${[...labels].join(', ')} were dropped (${[...keys].join(', ')})`,
     suggest: 'raise topN.n to keep these categories, or aggregate them upstream and write the details on one category',
   };
+}
+
+/**
+ * The stacking mode of a mekko, shared by the drawing and its reading. A bar
+ * with several data series stacks them as units; a unit stack on a percent
+ * value axis is a percent stack.
+ */
+export function mekkoStackingMode(options: { variant?: 'stacked100' | 'stacked' | 'bar'; valueAxis?: { percent?: boolean } }, dataSeriesCount: number): 'percent' | 'unit' | 'bar' {
+  let mode: 'percent' | 'unit' | 'bar' = { stacked100: 'percent', stacked: 'unit', bar: 'bar' }[options.variant ?? 'stacked100'] as 'percent' | 'unit' | 'bar';
+  if (mode === 'bar' && dataSeriesCount > 1) mode = 'unit';
+  return options.valueAxis?.percent && mode === 'unit' ? 'percent' : mode;
 }
 
 /** A mekko cell as an amount: in percent mode a percent cell converts through its category basis. */

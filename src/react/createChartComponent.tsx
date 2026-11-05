@@ -5,13 +5,15 @@ import { localeStrings } from '../core/strings/createChartComponent';
  * flat props = data + annotations + options, zero per-chart React code.
  */
 
-import { memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactElement, type ReactNode } from 'react';
+import { memo, useCallback, useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactElement, type ReactNode } from 'react';
 import type { InteractionRecord } from '../core/a11y/types';
 import { BoardplotThemeContext } from './themeContext';
+import { drawnRequest } from '../core/drawnRequest';
 import type { ChartRequest, RequestOptions } from '../core/request';
 import type { Annotation } from '../core/types/annotations';
 import type { Id } from '../core/types/cell';
 import type { Geometry, LintWarning } from '../core/types/scene';
+import type { OptionsInput } from '../core/types/optionInput';
 import type { RenderTarget } from '../core/types/options';
 import type { ThemeRef } from '../core/types/theme';
 import { useDeferredModule } from './deferredCore';
@@ -42,7 +44,7 @@ import type { RenderGeometry } from './prepared';
 import { markScrollRegion, scrollStateOf, type TableScrollState } from './scrollState';
 import { useChartExport, type ExportLink } from './exportLink';
 import { useRowsInput, type RowsProps } from './rowsInput';
-import { frameSize, RefusalBoundary } from './RefusalBoundary';
+import { asSize, frameSize, RefusalBoundary, type PerTypeSizeOptions } from './RefusalBoundary';
 
 export type { HoverContentContext, HoverOption, RenderHoverContent } from './useHover';
 
@@ -71,7 +73,12 @@ function printBox(printed: SizedRefusal, need: SizedRefusal): { width: number; h
 type ChartOptionsLike = Omit<RequestOptions, 'annotations'>;
 
 /** The props every chart component takes besides its chart options and its data. */
-type ChartHostProps = ContainerSizeOptions & RefusalProps & EmptyProps & {
+type ChartHostProps = PerTypeSizeOptions & RefusalProps & EmptyProps & {
+  /** Applied to a wrapper around the chart. */
+  className?: string;
+  style?: CSSProperties;
+  /** Leave out the canvas rectangle when transparent. */
+  background?: 'theme' | 'transparent';
   /** Set by `withStory` from `boardplot/react/story`; without it a story chart draws its static step. */
   storyLink?: StoryLink;
   /** Explicit target wins over the provider. Defaults to report. */
@@ -155,7 +162,7 @@ export type ChartDataProps<D> =
 
 /** Grid's own `rows` and `columns` options lay out its panels; a grid takes no rows mapping. */
 export type ChartProps<D, O extends ChartOptionsLike> = O extends unknown
-  ? Omit<O, 'annotations' | 'size'> & ChartHostProps & ('rows' extends keyof O ? { data: D } : ChartDataProps<D>)
+  ? OptionsInput<Omit<O, 'annotations' | 'size'>> & ChartHostProps & ('rows' extends keyof O ? { data: D } : ChartDataProps<D>)
   : never;
 
 /** The props every chart component takes besides its chart options. */
@@ -178,10 +185,10 @@ const OWN_ROWS_OPTIONS = new Set(['grid']);
  * value (likert the theme checks, pareto the annotation engine). Only those
  * count in the server's first frame and the hydrating one (`asFirstFrame`).
  */
-export function createChartComponent<D, O extends ChartOptionsLike>(type: string, checkKeys?: OptionKeyCheck, linked?: readonly DeferredName[]) {
-  function Drawn(props: ChartProps<D, O>): ReactElement {
+export function createChartComponent<D, O extends ChartOptionsLike>(type: string, checkKeys?: OptionKeyCheck, linked?: readonly DeferredName[]): (props: ChartProps<D, O>) => ReactElement {
+  function Drawn(props: ChartProps<D, O> & ContainerSizeOptions): ReactElement {
     const { data: authored, annotations, fixedSize, onGeometry, onWarnings, onRefused, renderRefused, onEmpty, target, size, fit, fallbackSize, prepared, hover, onSeriesClick, onRecordClick, renderHoverContent, zoom, styleNonce, idPrefix,
-      storyLink, onNotes, renderNotes, onScrollChange, deferLayout = true, exporter, rows: rowsProp, columns: columnsProp, onRowsReading, ...rest } = props;
+      background, storyLink, onNotes, renderNotes, onScrollChange, deferLayout = true, exporter, rows: rowsProp, columns: columnsProp, onRowsReading, ...rest } = props;
     // A grid's rows and columns are its panel layout options.
     const ownRows = OWN_ROWS_OPTIONS.has(type);
     const options = ownRows ? { ...rest, ...rowsProp !== undefined && { rows: rowsProp }, ...columnsProp !== undefined && { columns: columnsProp } } as typeof rest : rest;
@@ -202,7 +209,7 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
       if (!sharedValueAxis) return stableOptions;
       return { ...stableOptions, valueAxis: { ...stableOptions.valueAxis as object, ...sharedValueAxis } };
     }, [stableOptions, sharedValueAxis]);
-    // A capped note ends "and 236 more". Only a chart with a hover card can say "hover shows each value":
+    // A capped note ends "and 236 more". Only a chart with a hover card can say "tap or hover shows each value":
     // SVG, PNG and PDF output have no hover, so the hint is chosen here and never by the layout.
     // A prepared chart keeps the layout it was prepared with: its request key covers the strings.
     const hoverCard = hoverFlags(hover);
@@ -394,8 +401,8 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
     const draw = (shown: RenderGeometry) => {
       const view = !footer ? shown : shown === footer ? footless! : withoutSvgFooter(shown, asDrawn);
       return surface
-        ? <DrawnSurface geometry={view} request={request} prepared={attached} hover={hover} table={table} responsive={!fixedSize && (!scrolls || fitted)} styleNonce={styleNonce} extraCss={footer ? FOOTER_PRINT_CSS : ''} onSeriesClick={onSeriesClick} onRecordClick={onRecordClick} renderHoverContent={renderHoverContent} />
-        : <DrawnScene geometry={view} theme={theme} responsive={!fixedSize && (!scrolls || fitted)} onSeriesClick={onSeriesClick} />;
+        ? <DrawnSurface geometry={view} request={drawnRequest(request, view)} prepared={attached} hover={hover} table={table} responsive={!fixedSize && (!scrolls || fitted)} background={background} styleNonce={styleNonce} extraCss={footer ? FOOTER_PRINT_CSS : ''} onSeriesClick={onSeriesClick} onRecordClick={onRecordClick} renderHoverContent={renderHoverContent} />
+        : <DrawnScene geometry={view} theme={theme} responsive={!fixedSize && (!scrolls || fitted)} background={background} onSeriesClick={onSeriesClick} />;
     };
     const drawn = geometry;
     const chart = (
@@ -414,9 +421,16 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
   const DrawnChart = Drawn as (props: object) => ReactElement;
   // A bad value draws the refusal card in the chart's own frame and never unmounts the host's root (RefusalBoundary).
   function Chart(props: ChartProps<D, O>): ReactElement {
-    const { size, fallbackSize, target, fixedSize, title, theme } = props as ChartHostProps & { title?: unknown; theme?: ThemeRef };
-    return <RefusalBoundary watch={props} fallback={(finding) => <LayoutRefusal fixedSize={fixedSize} refusals={[finding]} theme={theme}
-      size={frameSize(size === 'container' ? fallbackSize : size, target)} options={typeof title === 'string' ? { title } : {}} />}><DrawnChart {...props} /></RefusalBoundary>;
+    const { className, style, size, fallbackSize, ...rest } = props;
+    const { target, fixedSize, title, theme, background } = props as ChartHostProps & { title?: unknown; theme?: ThemeRef };
+    const normalizedSize = useMemo(() => asSize(size), [size]);
+    const normalizedFallback = useMemo(() => asSize(fallbackSize) as ContainerSizeOptions['fallbackSize'], [fallbackSize]);
+    const chart = <RefusalBoundary watch={props} size={normalizedSize} fallbackSize={normalizedFallback} target={target} theme={theme} background={background}
+      fallback={(finding) => <LayoutRefusal fixedSize={fixedSize} refusals={[finding]} theme={theme}
+        size={frameSize(normalizedSize === 'container' ? normalizedFallback : normalizedSize, target)} options={typeof title === 'string' ? { title } : {}} />}>
+      <DrawnChart {...rest} size={normalizedSize} fallbackSize={normalizedFallback} />
+    </RefusalBoundary>;
+    return className !== undefined || style !== undefined ? <div className={className} style={style}>{chart}</div> : chart;
   }
   Chart.displayName = `${type[0]!.toUpperCase()}${type.slice(1)}Chart`;
   // First-class, not name-shaped: the public API check resolves type → component

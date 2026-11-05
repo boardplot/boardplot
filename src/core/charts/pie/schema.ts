@@ -53,7 +53,7 @@ export const pieOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions(
   doughnut: z.number().min(0).max(1).optional().describe(
     'Hole radius as a fraction of outer radius. Inside labels cap the hole at 0.72; centre totals include the declared unit.',
   ),
-  topN: baseOptionsSchema.shape.topN.describe('Defaults to the seven largest slices plus Others, merged only when Others would hold three slices or more; an authored topN overrides the default.'),
+  topN: baseOptionsSchema.shape.topN.describe('Defaults to the seven largest slices plus Others, merged only when Others would hold three slices or more; an authored topN overrides the default. A positive integer n means { n }.'),
   labels: baseOptionsSchema.shape.labels.describe(
     'Up to four displayed slices (eight without a legend) default to named outside labels with leaders in two columns; without a legend every label names its slice at any count. Explicit inside/outside settings take priority.',
   ),
@@ -65,7 +65,7 @@ export const pieOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions(
     .enum(['categorical', 'sequential'])
     .optional()
     .describe(
-      "Slice colour strategy. Defaults to 'categorical' for up to four nominal slices without topN/palette; otherwise 'sequential'.",
+      "Slice colour strategy. Default 'sequential': one ramp of the first series colour in slice order, the first slice strongest, at every slice count. 'categorical' gives each slice its own theme hue. A highlight keeps its accent and steps the other slices into grey.",
     ),
   othersShade: z
     .enum(['quietest', 'apart'])

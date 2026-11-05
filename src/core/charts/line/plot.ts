@@ -10,11 +10,11 @@ import type { Theme } from '../../types/theme';
 
 import { BAND_PAD, GAP_BRACKET_RESERVE, VALUE_LINE_RESERVE } from '../../annotateParts';
 import { AXIS_TITLE_GAP, measureValueAxisWidth, planValueAxisTitle, valueAxisTitleBand, valueAxisTitleText, valueAxisUnit, type ValueAxisTitle } from '../../axis';
-import { dateTickRow, dayCategories } from '../../calendarLabels';
+import { authoredDateTicks, dayCategories } from '../../calendarLabels';
 import type { DateTickInterval } from '../../dateFormat';
 import { formatAutomaticPercent, notApplicableGlyph, numberRange } from '../../format';
 import { percentCellsOnly } from '../../annotatePass';
-import { frameTextOptions, normalizeLegendOption, plotHeightAfter, solveFrame, type FrameBand, type FrameInput, type FrameResult, type LegendItemInput, authoredFootnoteCount } from '../../frame';
+import { frameTextOptions, normalizeLegendOption, plotHeightAfter, shareUnitOptions, solveFrame, type FrameBand, type FrameInput, type FrameResult, type LegendItemInput, authoredFootnoteCount } from '../../frame';
 import { stepDownFont } from '../../label/rowFit';
 import { planCategoryRow, rotatedLeftOverhang } from '../../label/categoryRow';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
@@ -22,6 +22,7 @@ import { PRIORITY } from '../../label/solver';
 import { prepareRatioTier, ratioTierCanRender, ratioTierMetrics } from '../../ratioTier';
 import { round2 } from '../../geometry';
 import { linearScale, seatRoom } from '../../scale';
+import { logScale, logSpecFormat, logTickTiers } from '../logAxis';
 import type { FontSpec, TextMeasurer } from '../../text';
 import { strokeToken, dashToken, canvasMargin, emphasisWeight, secondaryFont } from '../../theme';
 import { X_PARTIAL_ROW, planXTicks, timeZoneNote, xTickRowPlan } from './xTicks';
@@ -43,6 +44,7 @@ import { actualHeader, forecastBoundaries, forecastDividerAt, type ForecastBound
 import { lineFrameFootnotes } from './footnotes';
 import { gapFillPaint } from './difference';
 import { anomalyLegendItems, anomalyRuleLines, anomalyRuleReserve, columnCorridorPaint } from '../column/anomaly';
+import { withUnit } from '../../unitJoin';
 import { defaultValueContent, endUnitSuffix, fanEdgeInKey, flaggedPoints, lineFocusFont, lineToDateIds, PLOT_END_AIR, pointLabelEndRoom, pointLabelSelection, prepareEndpointLabels, usesEndLabelKey, valueUnit } from './labels';
 import { forecastBoundaryX, latestRingReach } from './marks';
 import { rangeRuns } from './range';
@@ -246,7 +248,7 @@ function lineLegend(theme: Theme, domain: LineDomain, paints: LinePaints, _text:
     omittedKey(s.id, stringFields(s.zero ? options.strings!.rebaseZero! : options.strings!.rebaseMissing!, { series: s.series, period: s.period })));
   const narrow = width <= SIDE_KEY_MIN_WIDTH;
   // Overriding legend: 'none' (legend-none-overridden) the key goes into a row: a side key would starve the plot again.
-  const legendOption = boundedKey ? narrow || legendPosition === 'none' || domain.x?.range && (isArea || fan) ? 'top' as const : 'right' as const : reserves.endpoint.endpointLegendFallback
+  const legendOption = boundedKey ? narrow || legendPosition === 'none' || domain.x?.range && (isArea || fan) ? 'top' as const : legendPosition === 'left' ? 'left' as const : 'right' as const : reserves.endpoint.endpointLegendFallback
     ? legendPosition === 'top' || legendPosition === 'bottom' ? legendPosition : ('top' as const)
     : labelModes.series === 'key' && (legendPosition === undefined || legendPosition === 'none')
       ? ('top' as const)
@@ -430,17 +432,20 @@ export function solveLineFrame(
       ...frameTextOptions(frameOptions),
       // Actually ignored, not merely warned about: `bump-unit-ignored` would
       // be a lie if the frame still printed "in EUR m" over a rank ladder.
-      unit: isBump ? undefined : options.unit,
+      unit: isBump ? undefined : shareUnitOptions('line', options).unit,
       footnotes: [
         ...lineFrameFootnotes({ fan: domain.fan, cats, partialNamed: lineToDateIds(env, domain, text).size > 0, bumpDerived: domain.bumpDerived, nearZeroTail: reserves.endpoint.nearZeroTail, options: frameOptions,
           footer: { width: size.width - margin.left - margin.right, font: { family: theme.type.family, ...footerType(theme.type.footnote, options.target, textScaleOf(options)) }, measure },
           mixedSign: cats.filter((c) => domain.nmCats100.has(c.id) && !domain.overfullCats100.has(c.id)), incompleteStack: domain.incompleteStack,
           knownParts: cats.filter(c => domain.sharesWithheld.has(c.id)), rebaseSuppressed: domain.rebaseCompact ? [] : domain.rebaseSuppressed, bumpOmitted: domain.bumpOmitted }),
+        ...domain.shareNotes,
         // The anomaly rule, stated on the exhibit (column prints it over the plot).
         ...(domain.anomaly ? [disclosureNote(`${domain.anomaly.model.rule}${domain.anomaly.corridorNote}`)] : []),
         ...timeZoneNote(domain, options),
       ],
       legend,
+      // The end-name key the engine puts beside the plot keeps its place whatever the room.
+      ...(usesEndLabelKey(options) ? { sideKeyFixed: true } : {}),
       ...(eventKey ? { eventKey } : {}),
       theme,
       measure,
@@ -457,23 +462,34 @@ export function solveLineFrame(
  * its tick even with the axis off. Ticks raster over the TICK SET, not the
  * data.
  */
-function valueAxisTicks(env: LineEnv, domain: LineDomain, frame: FrameResult) {
+function valueAxisTicks(env: LineEnv, domain: LineDomain) {
   const { theme, measure, isBump } = env;
   const { options, variant, dLo, dHi, bumpDerived } = domain;
   const va = options.valueAxis ?? {};
+  const log = va.log === true || va.log === 'y';
   const baselineTolerance = Math.max(1, Math.abs(dHi - dLo)) * 1e-12;
-  const discloseNonzeroBaseline = !isBump && variant === 'line' && dLo > baselineTolerance;
+  const discloseNonzeroBaseline = !log && !isBump && variant === 'line' && dLo > baselineTolerance;
   // Where not every point prints its value, a value scale
   // reads the rest, unless the author turns it off.
   const axisShown = bumpDerived ? true : va.show ?? domain.labelModes.values !== 'all';
   // Percent cells print '%' on the ticks as on the point labels (fmtPercent).
   const percentAxis = !bumpDerived && variant !== 'stacked100-area' && !domain.rebased && percentCellsOnly(domain.dataSeries);
-  const axisFmt = bumpDerived
+  const logSpec = percentAxis ? domain.valueSpec.percentSpec : domain.valueSpec.spec;
+  const logTicks = log ? logSpecFormat(logSpec, [dLo, dHi]) : undefined;
+  const axisFmt = log ? logTicks! : bumpDerived
     ? (v: number): string => String(Math.round(v))
     : variant === 'stacked100-area'
       ? (v: number) => formatAutomaticPercent(v, 0, false, options.locale?.language)
       : percentAxis ? domain.valueSpec.fmtPercent : domain.fmt;
-  const axisTickSpec = bumpDerived || variant === 'stacked100-area' ? undefined : percentAxis ? domain.valueSpec.percentSpec : domain.valueSpec.spec;
+  const plainTickSpec = log || bumpDerived || variant === 'stacked100-area' ? undefined : percentAxis ? domain.valueSpec.percentSpec : domain.valueSpec.spec;
+  // The last value prints the unit when nothing else does ("57k"); the ticks
+  // then print a sign or magnitude unit too, so a bare 40 to 60 does not read
+  // as another magnitude. A word unit ("2,100 leads") stays on the value.
+  const tickUnit = axisShown && plainTickSpec && !percentAxis && !plainTickSpec.suffix.includes('%') ? endUnitSuffix(options, domain.rebased) : '';
+  const unitFace = tickUnit ? withUnit('\u0000', tickUnit, true, options.locale?.language).split('\u0000') : [];
+  const axisTickSpec = plainTickSpec && unitFace.length === 2 && !unitFace.join('').includes(' ')
+    ? { ...plainTickSpec, prefix: `${unitFace[0]}${plainTickSpec.prefix}`, suffix: `${plainTickSpec.suffix}${unitFace[1]}` }
+    : plainTickSpec;
   let bumpTicks: number[] | undefined;
   if (bumpDerived) {
     const max = domain.bumpLadderMax;
@@ -488,23 +504,31 @@ function valueAxisTicks(env: LineEnv, domain: LineDomain, frame: FrameResult) {
     .filter((value): value is number => value !== null && Number.isFinite(value));
   let disclosedTicks: number[] | undefined;
   const stepTicks = axisShown && !bumpDerived ? domain.stepTicks : undefined;
-  if (!bumpDerived && (discloseNonzeroBaseline || valueLineTicks.length > 0)) {
+  if (!log && !bumpDerived && (discloseNonzeroBaseline || valueLineTicks.length > 0)) {
     const ticks = axisShown ? [...(stepTicks ?? linearScale([dLo, dHi], [0, 1]).ticks(5))] : [];
     const addTick = (value: number): void => {
       const tolerance = Math.max(1, Math.abs(value)) * 1e-12;
       if (!ticks.some((tick) => Math.abs(tick - value) <= tolerance)) ticks.push(value);
     };
-    if (discloseNonzeroBaseline) addTick(baselineValue);
+    // A shown axis labels an engine-chosen baseline only where it sits on the
+    // tick grid: an off-grid 850 under 1,000 and 1,200 read as a misprinted
+    // tick, and it could push the grid tick next to it out. The break glyph
+    // still marks the cut. An authored bound prints as set, and with the axis
+    // off the lone baseline tick is the only scale.
+    const step = ticks.length >= 2 ? ticks[1]! - ticks[0]! : 0;
+    const authoredBound = (va.reverse ? va.max : va.min) !== undefined;
+    const onGrid = !axisShown || authoredBound || (step > 0 && Math.abs((baselineValue - ticks[0]!) / step - Math.round((baselineValue - ticks[0]!) / step)) < 1e-9);
+    if (discloseNonzeroBaseline && onGrid) addTick(baselineValue);
     for (const value of valueLineTicks) addTick(value);
     disclosedTicks = ticks.sort((left, right) => left - right);
   }
   const fullValueAxisReserve = axisShown
     ? bumpTicks
       ? measureValueAxisWidth([bumpTicks[0]!, bumpTicks[bumpTicks.length - 1]!], axisFmt, theme, measure)
-      : measureValueAxisWidth([dLo, dHi], axisFmt, theme, measure, 5, axisTickSpec, disclosedTicks ?? stepTicks)
+      : measureValueAxisWidth([dLo, dHi], axisFmt, theme, measure, 5, axisTickSpec, log ? stepTicks ?? logTickTiers(dLo, dHi)[0] : disclosedTicks ?? stepTicks)
     : 0;
   const disclosureReserve = !axisShown && disclosedTicks
-    ? Math.max(0, measureValueAxisWidth([dLo, dHi], axisFmt, theme, measure, 5, axisTickSpec, disclosedTicks) - frame.plot.x)
+    ? measureValueAxisWidth([dLo, dHi], axisFmt, theme, measure, 5, axisTickSpec, disclosedTicks)
     : 0;
   return {
     axisShown, axisFmt, axisTickSpec, bumpTicks, disclosedTicks, stepTicks, discloseNonzeroBaseline, baselineValue,
@@ -538,22 +562,7 @@ function categoryRow(env: LineEnv, domain: LineDomain, text: LineText, reserves:
   const categoryCentersFor = (x0: number, width: number) =>
     cats.map((_, ci) => liveCategoryX(ci, n, crossesBetween, spanOf(x0, width), grid));
   const dateTicks = options.categoryAxis?.dateTicks as DateTickInterval | undefined;
-  const ticked = dateTicks ? dateTickRow(cats, dateTicks, options.locale?.language, options.locale?.weekStartsOn) : undefined;
-  if (dateTicks && ticked!.ticks === null) {
-    warnings.push({
-      code: 'date-ticks-unsupported',
-      severity: 'info',
-      message: `categoryAxis.dateTicks '${dateTicks}' was ignored: not every category carries an ISO date, so no calendar interval can be resolved`,
-      suggest: "give each category an ISO 'date' or drop categoryAxis.dateTicks",
-    });
-  } else if (dateTicks && dateTicks !== 'weeks' && options.locale?.weekStartsOn !== undefined) {
-    warnings.push({
-      code: 'week-start-ignored',
-      severity: 'info',
-      message: `locale.weekStartsOn was ignored: a week boundary only decides something for dateTicks 'weeks', and the requested interval is '${dateTicks}'`,
-      suggest: "set categoryAxis.dateTicks to 'weeks' or drop locale.weekStartsOn",
-    });
-  }
+  const ticked = authoredDateTicks(cats, options, warnings);
   // Line keys no running period, so its name says so where the note does not print.
   const row = categoryLabelsAndMarks(cats, { count: authoredFootnoteCount(options), warnings }, partialAxisWords(options.strings, options, lineToDateIds(env, domain, text).size > 0));
   ticked?.name(row);
@@ -718,7 +727,10 @@ function forecastHeaderClear(domain: LineDomain, forecast: readonly ForecastBoun
 
 function gridTopRoom(domain: LineDomain, reserves: LineReserves, text: LineText, plotH: number): number {
   if (domain.gridDataHi === undefined) return 0;
-  const room = (value: number, seat: number): number => seatRoom(value, [domain.dLo, domain.dHi], seat, plotH);
+  const log = domain.options.valueAxis?.log === true || domain.options.valueAxis?.log === 'y';
+  const room = (value: number, seat: number): number => log
+    ? seatRoom(Math.log10(value), [Math.log10(domain.dLo), Math.log10(domain.dHi)], seat, plotH)
+    : seatRoom(value, [domain.dLo, domain.dHi], seat, plotH);
   let top = 0;
   for (const label of reserves.endpoint.endLabels) {
     const di = domain.dataSeries.indexOf(label.s);
@@ -790,7 +802,7 @@ export function linePlotArea(
   const { options, cats, seriesNorm, drawnSeries, phases, dLo, dHi } = domain;
   const { frame } = framed;
   const { annList } = reserves;
-  const axis = valueAxisTicks(env, domain, frame);
+  const axis = valueAxisTicks(env, domain);
   // A numerator under a fifth of its denominator lies flat on
   // the scale they share and cannot be read off it, so each chip prints both.
   const peak = (id: Id | undefined): number => Math.max(0, maxOf((seriesNorm.find((s) => s.id === id)?.vals ?? []).map((cell) => Math.abs(cell.v ?? 0))));
@@ -813,6 +825,15 @@ export function linePlotArea(
     ? planValueAxisTitle(valueAxisTitleText(theme, options.axisTitles?.primary, options,
       valueAxisUnit(options.unit, domain.dataSeries, domain.variant === 'stacked100-area')), theme, measure, frame.plot.w)
     : undefined;
+  const logTitle = axisTitle?.text;
+  if (axis.axisShown && options.valueAxis?.log && logTitle && !/\blog/i.test(logTitle)) {
+    warnings.push({
+      code: 'log-axis-unnamed', severity: 'info',
+      message: 'the vertical axis is on a log scale and its title does not say so',
+      suggest: `add it to the title, e.g. axisTitles.primary: '${logTitle}, log scale'`,
+      field: ['options', 'axisTitles', 'primary'],
+    });
+  }
   // The plot's x extent is known before its head band: the header rows only move it down.
   const plotX = frame.plot.x + (axis.axisShown || axis.disclosedTicks ? axis.valueAxisReserve : 0) + categoryOverhang;
   const plotW = Math.max(10, frame.plot.w - (axis.axisShown || axis.disclosedTicks ? axis.valueAxisReserve : 0) - categoryOverhang - categoryRightOverhang);
@@ -921,7 +942,7 @@ export function linePlotArea(
     axisTitleY,
     topPad,
     plot,
-    y: linearScale([dLo, dHi], yRange),
+    y: (options.valueAxis?.log ? logScale : linearScale)([dLo, dHi], yRange),
     // Proportional positions land on 0.01 px, as the path coordinates drawn from them do.
     xOf,
     ...(domain.x && xTicks ? { xTicks, xOfValue: (value: number) => span.x + (value - domain.x!.lo) / (domain.x!.hi - domain.x!.lo) * span.w } : {}),

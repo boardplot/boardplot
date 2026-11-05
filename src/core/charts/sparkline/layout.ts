@@ -1,3 +1,4 @@
+import { boldMeasurer, markBold } from '../../inlineBold';
 import { SPARK_LABEL_SHARE } from './share';
 import { chartString } from '../../strings/sparkline';
 import { structureCount } from '../../structureCounts';
@@ -22,6 +23,7 @@ import { linePath } from '../../svgPath';
 import { defaultMeasurer, type FontSpec, type TextMeasurer } from '../../text';
 import {
   canvasMargin,
+  emphasisWeight,
   microType,
   panelTypeClass,
   themeForWidth,
@@ -35,7 +37,7 @@ import { readerFloorPx, textScaleOf } from '../../typeFloors';
 import { cellMeta, cellValue, type Cell, type Id, type OwnerRef } from '../../types/cell';
 import type { SparklineData } from '../../types/data';
 import type { CanvasSizeInput, RenderTarget, SparklineOptions } from '../../types/options';
-import { DEFAULT_TARGET, TARGET_SIZE, type TargetSizeOptions } from '../../target';
+import { DEFAULT_TARGET, resolveTargetSize, TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import type { Geometry, LintWarning, Paint, SceneNode } from '../../types/scene';
 import type { Theme } from '../../types/theme';
 import { normalizeCell } from '../../normalize/shared';
@@ -73,6 +75,13 @@ export function cardFrameTheme(theme: Theme, options: { target?: RenderTarget },
 
 /** The side margin of a framed sparkline on a render target (28 px at every width). */
 const FRAMED_SIDE_MARGIN = 28;
+/**
+ * The width of a framed sparkline that authors none. At the 176 px of a bare tile its title, subtitle and source
+ * wrap word by word, the line is a tenth of the canvas and the two end names touch.
+ */
+const FRAMED_DEFAULT_WIDTH = 320;
+/** From this width a framed card draws the scaled line band on every target, the dashboard tile included. */
+const FRAMED_BAND_MIN_WIDTH = 320;
 
 type SparklineShape = 'line' | 'column' | 'area';
 export type TableSparklineShape = 'line' | 'column';
@@ -163,7 +172,10 @@ export function sparklineDomain(
     }
   }
   if (!Number.isFinite(min) || !Number.isFinite(max)) return { min: 0, max: 0 };
-  if (shape === 'column') {
+  // A column and an area spark encode a value as a height from zero: a
+  // floor at the series minimum would draw the first point with no height
+  // and read as growth from nothing. A line spark keeps its min-max range.
+  if (shape === 'column' || shape === 'area') {
     min = Math.min(min, 0);
     max = Math.max(max, 0);
   }
@@ -279,7 +291,7 @@ export function plotSparkline(input: {
   const gaps: SparklinePlot['gaps'] = [];
   const observed = values.flatMap((value, index) => (value === null ? [] : [index]));
   if (observed.length > 0) {
-    const foot = input.shape === 'column' ? yAt(Math.max(domain.min, Math.min(0, domain.max))) : plot.y + plot.h;
+    const foot = input.shape !== 'line' ? yAt(Math.max(domain.min, Math.min(0, domain.max))) : plot.y + plot.h;
     const bands = input.shape === 'column' && n > 0
       ? bandScale(n, [plot.x, plot.x + plot.w], { paddingInner: COLUMN_INNER, paddingOuter: COLUMN_OUTER }) : undefined;
     values.forEach((value, index) => {
@@ -355,7 +367,11 @@ export function emitSparklineMarks(input: {
   // that sets `surface.sparkWash: false` draws no wash at all: the
   // spark is its line and last point, as a line spark is.
   if (shape === 'area' && theme.surface?.sparkWash !== false) {
-    const base = plot.plot.y + plot.plot.h;
+    // The wash fills to the zero line, which the zero-floor domain keeps
+    // inside the plot: a series below zero fills up to it, as columns do.
+    // `surface.sparkAreaBase: 'min'` fills to the plot's foot.
+    const foot = plot.plot.y + plot.plot.h;
+    const base = theme.surface?.sparkAreaBase === 'min' ? foot : Math.min(foot, Math.max(plot.plot.y, plot.yAt(0)));
     const areaD = plot.runs
       .filter((points) => points.length > 1)
       .map((points) => `${linePath([...points, { x: points[points.length - 1]!.x, y: base }, { x: points[0]!.x, y: base }])}Z`)
@@ -503,11 +519,15 @@ export function emitKpiSpark(
       candidates: [{ slot: 'end', rect: { x: align === 'start' ? rect.x : rect.x + rect.w - width, y: periodY, w: width, h: periodH }, penalty: 0 }],
     });
   }
-  const domain = sparklineDomain([values], kind);
+  // A theme that draws no wash draws an area spark as a line, and a line
+  // keeps its min-max range. A theme with `surface.sparkAreaBase: 'min'`
+  // keeps that range under the wash too.
+  const areaFromMin = kind === 'area' && (theme.surface?.sparkWash === false || theme.surface?.sparkAreaBase === 'min');
+  const domain = sparklineDomain([values], areaFromMin ? 'line' : kind);
   const plot = plotSparkline({
     box: lineBox,
     values,
-    shape: kind,
+    shape: areaFromMin ? 'line' : kind,
     domain,
     style: sparkStyle(theme, KPI_SPARK_STYLE),
     lastText,
@@ -598,6 +618,23 @@ const VALUE_LABEL_GAP = 6;
 /** The band a framed line keeps under its high-point label. */
 const HIGH_POINT_MIN_BAND = 60;
 
+/**
+ * The points a framed line names besides its last: first observed, highest and
+ * lowest (the first of a tie), and the row the line is read at. `last` is the last observed index.
+ */
+function pointRoles(values: readonly (number | null)[]): { first?: number; high?: number; low?: number; last?: number; next?: number } {
+  const roles: { first?: number; high?: number; low?: number; last?: number; next?: number } = {};
+  values.forEach((value, index) => {
+    if (value === null) return;
+    roles.first ??= index;
+    if (roles.first !== index) roles.next ??= index;
+    if (roles.high === undefined || value > values[roles.high]!) roles.high = index;
+    if (roles.low === undefined || value < values[roles.low]!) roles.low = index;
+    roles.last = index;
+  });
+  return roles;
+}
+
 /** One drawn point: its identity, its position and the text it reads as. */
 interface SparklinePoint {
   id: Id;
@@ -635,17 +672,44 @@ export function sparklinePointId(index: number): Id {
   return `p${index + 1}`;
 }
 
+/**
+ * The card of a framed sparkline whose width is not authored: wide enough for its title on one line
+ * between the two side margins, never under 320 px and never over the target's canvas.
+ * A longer title wraps as on any chart. A sized sparkline keeps the size it was given.
+ */
+function framedCardSize(options: SparklineOptions, theme: Theme, measure: TextMeasurer): { width: number; height: number } {
+  const card = resolveSize(cardSize(options, SPARKLINE_SIZE));
+  const constraints = (options as SparklineOptions & TargetSizeOptions)[TARGET_SIZE];
+  if (options.size !== undefined && constraints?.fixed.width !== false) return card;
+  const canvas = resolveTargetSize(options.target ?? DEFAULT_TARGET).sizePx.width;
+  const base = Math.min(canvas, FRAMED_DEFAULT_WIDTH);
+  if (typeof options.title !== 'string' || options.title === '') return { ...card, width: base };
+  const title = markBold(options.title);
+  if (title !== options.title) measure = boldMeasurer(measure, emphasisWeight(theme));
+  const font: FontSpec = { family: theme.type.family, ...theme.type.title };
+  const lineWidth = Math.max(...title.split('\n').map((line) => measure(line.trim(), font).width));
+  return { ...card, width: Math.max(base, Math.min(canvas, Math.ceil(lineWidth) + 2 * FRAMED_SIDE_MARGIN)) };
+}
+
 export function layoutSparkline(
   data: SparklineData,
   options: SparklineOptions = {},
 ): Geometry<SparklineMarks, SparklineDerived> {
   const warnings: LintWarning[] = [];
-  const size = resolveSize(cardSize(options, SPARKLINE_SIZE));
   const measure = options.measure ?? defaultMeasurer;
   // A card-class mark, like kpi: no width class over a 176 px box, or the
   // type scale would step down on every host that draws one.
   const theme = resolveSemanticPaletteTheme(resolveTheme(options.theme), options.palette, warnings);
   pushAll(warnings, ringToneRefusal(options));
+  // A bare sparkline is a mark inside someone else's card and draws edge to
+  // edge; one that carries a title is an exhibit and takes the canvas
+  // margin. `canvas.margin` overrides either (the registry resolves it into
+  // `options.margin` before layout sees it).
+  const framed = (options.title !== undefined && options.title !== false)
+    || options.subtitle !== undefined
+    || options.source !== undefined
+    || authoredNotes(options).length > 0;
+  const size = framed ? framedCardSize(options, theme, measure) : resolveSize(cardSize(options, SPARKLINE_SIZE));
   const cells = (data.values ?? []).map((cell, index) => normalizeCell(cell, `values[${index}]`));
   if (cells.length === 0) throw new NormalizeError('empty-data', 'values', 'sparkline requires at least two values');
   if (cells.length < 2) {
@@ -661,14 +725,6 @@ export function layoutSparkline(
     });
   }
 
-  // A bare sparkline is a mark inside someone else's card and draws edge to
-  // edge; one that carries a title is an exhibit and takes the canvas
-  // margin. `canvas.margin` overrides either (the registry resolves it into
-  // `options.margin` before layout sees it).
-  const framed = (options.title !== undefined && options.title !== false)
-    || options.subtitle !== undefined
-    || options.source !== undefined
-    || authoredNotes(options).length > 0;
   // A framed sparkline is a narrow card: it keeps 28 px sides at every width,
   // where the canvas token gives 24 at 720 and 16 below 600 px.
   const token = canvasMargin(theme, size.width);
@@ -695,7 +751,11 @@ export function layoutSparkline(
   const labelBox = endLabels ? Math.ceil(labelFont.size * 1.3) + END_LABEL_GAP + endLabelAir : 0;
   // A framed exhibit that prints its last value also names its high point:
   // the line has no axis, and the high is the other number the climb is read by. It takes a label row above the line.
-  const highRow = framed && options.valueLabel === 'last' ? Math.ceil(labelFont.size * 1.3) + 4 : 0;
+  // 'last-and-high' keeps those two numbers only. 'last' also names the low and the first value, and the
+  // reference, so a line that dips below zero or starts far from its end states those numbers.
+  const printsLast = options.valueLabel === 'last' || options.valueLabel === 'last-and-high';
+  const namesMore = options.valueLabel === 'last';
+  const highRow = framed && printsLast ? Math.ceil(labelFont.size * 1.3) + 4 : 0;
   // Under the frame's plot minimum the line flattens to a hairline; the
   // frame then reports the height that fits, and the host grows or refuses.
   const room = frame.plot.h - labelBox;
@@ -705,12 +765,40 @@ export function layoutSparkline(
   const framedInset = framed ? ringPad : 0;
   const lineRoom = plotHeightAfter(frame, size.height, room);
   const high = highRow > 0 && lineRoom - highRow >= HIGH_POINT_MIN_BAND ? highRow : 0;
+  // the reference is part of the domain, so its line is always inside the box.
+  const reference = options.reference;
+  const domain = sparklineDomain(reference === undefined ? [values] : [values, [reference]], 'line');
+  // The exhibit raster every other chart prints with: the example's style,
+  // the plotted values' precision, grouped digits, so a computed value does not
+  // print its whole float and 1.5e9 does not print as "1500000000".
+  const formatValue = seriesRasterFormatter(options.format, reference === undefined ? values : [...values, reference], options.locale?.language, options.unit, options.target).fmt;
+  // The last value beside the ring, for an exhibit that names no figure elsewhere.
+  const roles = pointRoles(values);
+  const lastIndex = roles.last;
+  const valueFont: FontSpec = { family: theme.type.family, ...theme.type.axis };
+  // The low and the first value come with the high label: a high that is the last point names nothing else.
+  const namesHigh = roles.high !== undefined && lastIndex !== undefined && roles.high !== lastIndex && values[roles.high]! > values[lastIndex]!;
+  const firstShown = namesMore && namesHigh && roles.first !== roles.high && roles.first !== roles.low;
+  const lowShown = namesMore && namesHigh && roles.low !== lastIndex && roles.low !== roles.high;
+  // A first value on a rising line sits under its point, away from the line, in the row the low takes.
+  const firstBelow = firstShown && roles.next !== undefined && values[roles.next]! > values[roles.first!]!;
+  const bottomWanted = highRow > 0 && (lowShown || firstBelow) ? highRow : 0;
+  const bottom = bottomWanted > 0 && high > 0 && lineRoom - high - bottomWanted >= HIGH_POINT_MIN_BAND ? bottomWanted : 0;
+  const drawLow = lowShown && bottom > 0;
+  const drawFirst = firstShown && (!firstBelow || bottom > 0) && high > 0;
+  // The reference prints its value in the last value's column, so the column takes the wider of the two.
+  // A number is never printed cut, so a reference wider than the share a value may take prints nothing.
+  const referenceWidth = framed && namesMore && reference !== undefined ? measure(formatValue(reference), valueFont).width : 0;
+  const referenceText = referenceWidth > 0 && referenceWidth <= Math.max(12, frame.plot.w * SPARK_LABEL_SHARE) && lastIndex !== undefined
+    ? formatValue(reference!) : undefined;
+  const referenceExtra = referenceText !== undefined
+    ? Math.max(0, referenceWidth - measure(formatValue(values[lastIndex!]!), valueFont).width) : 0;
   const box: Rect = {
     x: frame.plot.x - framedInset,
     y: frame.plot.y + high,
     // The last value keeps its wider gap from the ring inside the box.
-    w: frame.plot.w + framedInset - (framed && options.valueLabel === 'last' ? VALUE_LABEL_GAP - 4 : 0),
-    h: lineRoom - high,
+    w: frame.plot.w + framedInset - (framed && printsLast ? VALUE_LABEL_GAP - 4 : 0) - referenceExtra,
+    h: lineRoom - high - bottom,
   };
   // target text must not press a framed line flat. It keeps the
   // 24 px a trend reads at, or the frame reports the height that holds it.
@@ -724,16 +812,6 @@ export function layoutSparkline(
   if (!framed && endLabels && room < bareEndLabelRoom) {
     frame.frame.plotMinHeight = Math.max(frame.frame.plotMinHeight ?? 0, size.height + (frame.deficit ?? 0) + bareEndLabelRoom - room);
   }
-  // the reference is part of the domain, so its line is always inside the box.
-  const reference = options.reference;
-  const domain = sparklineDomain(reference === undefined ? [values] : [values, [reference]], 'line');
-  // The exhibit raster every other chart prints with: the example's style,
-  // the plotted values' precision, grouped digits, so a computed value does not
-  // print its whole float and 1.5e9 does not print as "1500000000".
-  const formatValue = seriesRasterFormatter(options.format, reference === undefined ? values : [...values, reference], options.locale?.language, options.unit, options.target).fmt;
-  // The last value beside the ring, for an exhibit that names no figure elsewhere.
-  const lastIndex = lastObservedIndex(values);
-  const valueFont: FontSpec = { family: theme.type.family, ...theme.type.axis };
   const plotInput = {
     box,
     values,
@@ -745,7 +823,7 @@ export function layoutSparkline(
   };
   let plot = plotSparkline({
     ...plotInput,
-    ...(options.valueLabel === 'last' && lastIndex !== undefined
+    ...(printsLast && lastIndex !== undefined
       ? { lastText: formatValue(values[lastIndex]!), font: valueFont, measure } : {}),
   });
   // A number is never printed cut: "150000…" states no value. The label is
@@ -775,6 +853,23 @@ export function layoutSparkline(
       priority: PRIORITY.endpoint,
       candidates: [{ slot: 'sparkLast', rect: { x: Math.min(plot.last.x + ringPad + (framed ? VALUE_LABEL_GAP : 4), frame.plot.x + frame.plot.w - plot.label.w), y, w: plot.label.w, h: plot.label.h }, penalty: 0 }],
     });
+    if (referenceText !== undefined) {
+      // The reference's value in the last value's column, level with the dashed line. Where it meets
+      // the last value it steps away from it: down when the line is below the last point, else up.
+      const x = Math.min(plot.last.x + ringPad + (framed ? VALUE_LABEL_GAP : 4), frame.plot.x + frame.plot.w - referenceWidth);
+      const refY = plot.yAt(reference!);
+      const h = plot.label.h;
+      const level = Math.min(Math.max(refY - h / 2, box.y), box.y + box.h - h);
+      const stepped = refY >= plot.last.y ? y + h : y - h;
+      requests.push({
+        id: 'spark:referenceValue', kind: 'point', pad: 0, typeRole: 'label', owner: {}, text: referenceText, lines: [referenceText], font: valueFont,
+        priority: PRIORITY.endpoint - 2,
+        candidates: [
+          { slot: 'sparkReference', rect: { x, y: level, w: referenceWidth, h }, penalty: 0 },
+          { slot: 'sparkReferenceStep', rect: { x, y: stepped, w: referenceWidth, h }, penalty: 1 },
+        ],
+      });
+    }
   }
 
   const owner = (index: number) => ({ categoryId: sparklinePointId(index) });
@@ -833,25 +928,28 @@ export function layoutSparkline(
       display: { value: formatValue(plot.last.value) },
     });
   }
-  // The high point: an ink dot and its value, muted, above it.
-  const highIndex = high > 0 && plot.last ? values.reduce<number | undefined>((best, value, index) =>
-    value !== null && (best === undefined || value > values[best]!) ? index : best, undefined) : undefined;
-  if (highIndex !== undefined && plot.last && highIndex !== plot.last.index && values[highIndex]! > plot.last.value) {
-    const x = plot.xAt(highIndex);
-    const y = plot.yAt(values[highIndex]!);
-    nodes.push({ t: 'circle', id: 'spark:high', cx: x, cy: y, r: 2.5, fill: { token: 'markInk' }, owner: owner(highIndex), part: 'sparkHigh' });
-    const text = formatValue(values[highIndex]!);
+  // The high, low and first points: an ink dot and its value, muted, above the high and the first on a falling line,
+  // under the low and the first on a rising one, away from the line.
+  const pointLabel = (id: string, index: number, below: boolean) => {
+    const x = plot.xAt(index);
+    const y = plot.yAt(values[index]!);
+    nodes.push({ t: 'circle', id: `spark:${id}`, cx: x, cy: y, r: 2.5, fill: { token: 'markInk' }, owner: owner(index), part: `spark${id[0]!.toUpperCase()}${id.slice(1)}` });
+    const text = formatValue(values[index]!);
     const m = measure(text, labelFont);
     const cap = measure.capHeight?.(labelFont) ?? labelFont.size * 0.72;
-    const baseline = y - 10;
+    const baseline = below ? y + 10 + cap : y - 10;
+    const left = id === 'low' ? Math.min(Math.max(frame.plot.x, x - m.width / 2), frame.plot.x + frame.plot.w - m.width) : Math.max(frame.plot.x, x - m.width / 2);
     requests.push({
-      id: 'spark:high', kind: 'point', pad: 0, typeRole: 'label', owner: owner(highIndex), text, lines: [text], font: labelFont,
+      id: `spark:${id}`, kind: 'point', pad: 0, typeRole: 'label', owner: owner(index), text, lines: [text], font: labelFont,
       priority: PRIORITY.endpoint - 1,
-      candidates: [{ slot: 'above', rect: { x: Math.max(frame.plot.x, x - m.width / 2), y: baseline - m.height / 2 - cap / 2, w: m.width, h: m.height }, penalty: 0 }],
+      candidates: [{ slot: below ? 'below' : 'above', rect: { x: left, y: baseline - m.height / 2 - cap / 2, w: m.width, h: m.height }, penalty: 0 }],
     });
-  }
+  };
+  if (high > 0 && namesHigh) pointLabel('high', roles.high!, false);
+  if (drawLow) pointLabel('low', roles.low!, true);
+  if (drawFirst) pointLabel('first', roles.first!, firstBelow);
   if (endLabels) {
-    const y = box.y + box.h + END_LABEL_GAP + endLabelAir;
+    const y = box.y + box.h + bottom + END_LABEL_GAP + endLabelAir;
     const ends: { id: string; index: number; align: 'start' | 'end' }[] = [
       { id: 'spark:label:first', index: 0, align: 'start' },
       { id: 'spark:label:last', index: cells.length - 1, align: 'end' },
@@ -882,7 +980,7 @@ export function layoutSparkline(
     plot: box,
     labelPad: 0,
   }));
-  for (const label of solved.placed) if (label.id === 'spark:high') label.ink = { token: 'inkMuted' };
+  for (const label of solved.placed) if (['spark:high', 'spark:low', 'spark:first', 'spark:referenceValue'].includes(label.id)) label.ink = { token: 'inkMuted' };
   pushAll(nodes, labelsToNodes(theme, solved.placed, (label) => requests.find((request) => request.id === label.id)!.font));
 
   const points = values.flatMap((value, index) => value === null
@@ -909,11 +1007,12 @@ export function layoutSparkline(
   const constraints = (options as SparklineOptions & TargetSizeOptions)[TARGET_SIZE];
   const automaticHeight = constraints?.fixed.height === false
     || constraints === undefined && (options.size === undefined || typeof options.size === 'object' && options.size.height === undefined);
-  // A framed exhibit with an authored width scales the trend; unsized cards keep their short band.
-  // Dashboard tiles keep the short band.
+  // A framed exhibit scales the trend with its width: an authored width on any target but a dashboard tile,
+  // and any framed card from 320 px, whose width was authored or not. A narrower tile keeps the short band.
   const authoredWidth = constraints?.fixed.width ?? options.size !== undefined;
-  const naturalLineHeight = framed && authoredWidth && automaticHeight && options.target !== 'dashboard'
-    ? 2 * plotInput.style.padding + framedBand(size.width) + highRow
+  const naturalLineHeight = framed && automaticHeight
+    && (authoredWidth && options.target !== 'dashboard' || size.width >= FRAMED_BAND_MIN_WIDTH)
+    ? 2 * plotInput.style.padding + framedBand(size.width) + highRow + (framed && highRow > 0 && namesHigh && (lowShown || firstBelow) ? highRow : 0)
     : SPARKLINE_SIZE.height;
   return {
     type: 'sparkline',

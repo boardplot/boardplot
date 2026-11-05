@@ -20,6 +20,13 @@ export const WORDING_KEYS: ReadonlySet<string> = new Set(['strings']);
 
 /** Words an author reaches for where the schema has a different key. */
 const KEY_SYNONYMS = new Map([['type', 'kind'], ['formula', 'calc']]);
+const DATA_KEY_SYNONYMS = new Map([...KEY_SYNONYMS, ['values', 'observations'], ['color', 'fill'], ['colour', 'fill'], ['name', 'label']]);
+
+/** A data synonym is useful only where the target is a known key. */
+export function dataKeySynonym(key: string, known: readonly string[]): string | undefined {
+  const synonym = DATA_KEY_SYNONYMS.get(key);
+  return synonym !== undefined && known.includes(synonym) ? synonym : undefined;
+}
 
 function normalizeOptionTerm(term: string): string {
   let words = term
@@ -52,15 +59,31 @@ function termDistance(a: string, b: string): number {
   return Math.min(normalizedDistance(normalizeOptionTerm(a), normalizeOptionTerm(b)), normalizedDistance(a.toLowerCase(), b.toLowerCase()));
 }
 
+/**
+ * An axis-title key of other chart libraries (xTitle, yAxisTitle, xLabel,
+ * x_axis_label): its axis letter. Such a key is one edit from `title` or near
+ * `labels`, and a rename there turns an axis title into the chart title.
+ */
+function axisTitleLetter(key: string): 'x' | 'y' | undefined {
+  return /^([xy])_?(?:axis)?_?(?:title|label)$/i.exec(key)?.[1]?.toLowerCase() as 'x' | 'y' | undefined;
+}
+
 /** The key of `known` closest to `key`, and whether it is close enough to be a typo of it. */
-export function closestKey(key: string, known: readonly string[]): { key: string; near: boolean } | undefined {
-  const synonym = KEY_SYNONYMS.get(key);
+export function closestKey(key: string, known: readonly string[], mode: 'option' | 'data' = 'option'): { key: string; near: boolean } | undefined {
+  const synonym = mode === 'data' ? dataKeySynonym(key, known) : KEY_SYNONYMS.get(key);
   if (synonym !== undefined && known.includes(synonym)) return { key: synonym, near: true };
   const best = known
     .filter(candidate => candidate !== key)
-    .map((candidate) => ({ candidate, distance: termDistance(key, candidate) }))
+    .map((candidate) => ({ candidate, distance: mode === 'data'
+      ? normalizedDistance(key.toLowerCase(), candidate.toLowerCase()) : termDistance(key, candidate) }))
     .sort((a, b) => a.distance - b.distance || (a.candidate < b.candidate ? -1 : 1))[0];
   return best && { key: best.candidate, near: best.distance <= OPTION_MATCH_MAX_DISTANCE };
+}
+
+/** closestKey for an unknown option key. An axis-title key is no typo of an option: movedKey names its place where the type has one. */
+export function closestOptionKey(key: string, known: readonly string[]): { key: string; near: boolean } | undefined {
+  const nearest = closestKey(key, known);
+  return nearest && axisTitleLetter(key) ? { ...nearest, near: false } : nearest;
 }
 
 /**
@@ -71,6 +94,7 @@ export function closestKey(key: string, known: readonly string[]): { key: string
  * `tile` would name `a11y`, which holds `a11y.title`, and not `title`.
  */
 export function nearestOptionTerm(input: string, terms: Iterable<readonly [string, readonly string[]]>): string | undefined {
+  if (axisTitleLetter(input)) return undefined;
   const list = [...terms];
   const rank = (distanceOf: (key: string, words: readonly string[]) => number): string | undefined => {
     let best: { key: string; distance: number } | undefined;
@@ -120,6 +144,12 @@ const MOVED_KEYS: ReadonlyMap<string, string> = new Map([['labels.growth', 'dual
 
 /** Where a refused dotted option path lives instead, when `takes` accepts that place. */
 export function movedKey(dotted: string, takes: (path: readonly string[]) => boolean): string | undefined {
+  // xTitle is axisTitles.x where the type names its axes x and y, else the axisTitles its docs describe.
+  const axis = axisTitleLetter(dotted);
+  if (axis) {
+    if (takes(['axisTitles', axis])) return `axisTitles.${axis}`;
+    return takes(['axisTitles']) && !takes(['axisTitles', axis === 'x' ? 'y' : 'x']) ? 'axisTitles' : undefined;
+  }
   if (dotted === 'averageMarker' && !takes(['categoryAxis', 'crossesBetween'])) return undefined;
   const target = MOVED_KEYS.get(dotted);
   return target !== undefined && takes(target.split('.')) ? target : undefined;
@@ -179,7 +209,7 @@ export function wordUnknownKeys(found: readonly UnknownKey[], tree?: OptionKeyTr
     const key = String(path.at(-1));
     // At the top the near miss also reads the words below each option (gridlines -> valueAxis).
     const top = path.length === 1 ? nearestOptionTerm(key, termsOf(node)) : undefined;
-    const nearest = top ? { key: top, near: true } : closestKey(key, namedKeys(node));
+    const nearest = top ? { key: top, near: true } : closestOptionKey(key, namedKeys(node));
     const dotted = path.join('.');
     const moved = tree === undefined ? undefined : movedKey(dotted, (target) => treeTakes(tree, target));
     return { code: 'unknown-option', message: unknownOptionMessage(dotted, nearest, moved), path: `options.${dotted}`, suggest: unknownKeySuggest(key, nearest, moved) };

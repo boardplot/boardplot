@@ -3,6 +3,10 @@ import { chartStrings } from '../strings';
 const EN = {
   // reader-facing wording linked only by its consumers.
   "notInData": "Not in data",
+  "unknownRegionLeftOut": "Region '{v1}' is not in tile pack '{v2}' and was left out.",
+  "regionIdSuggestion": "Did you mean '{v1}'?",
+  "regionInOtherPack": "'{v1}' is in tile pack '{v2}'; set pack: '{v2}' to draw it.",
+  "regionsLeftOutNote": "Not on this map",
   "regionCountPrefix": "{v1}-region",
   "listedRegions": "{v1} listed regions",
   "noNumericValues": "No numeric values are available. ",
@@ -19,9 +23,8 @@ const EN = {
   "codesSentence": "Codes: {v1}.",
   "overlays": "Overlays",
   "userSourceClause": " User source: {v1}",
-  // The key entry of a hatched tile and the short credit (no text on the tile).
+  // The key entry of a hatched tile (no text on the tile).
   "tilemapNoData": "No data",
-  "tileCreditShort": "Tile layout: Boardplot, after {v1}",
   // The note and the reading for values the tiles do not print.
   "valuesNotPrinted": "Values not printed in tiles",
   "tileValuesSentence": "Values: {v1}. ",
@@ -29,6 +32,10 @@ const EN = {
 const DE: { [K in keyof typeof EN]: string } = {
   // reader-facing wording linked only by its consumers.
   "notInData": "Nicht in den Daten",
+  "unknownRegionLeftOut": "Region '{v1}' ist nicht im Kachelpaket '{v2}' enthalten und wurde weggelassen.",
+  "regionIdSuggestion": "War '{v1}' gemeint?",
+  "regionInOtherPack": "'{v1}' liegt im Kachelpaket '{v2}'; setze pack: '{v2}', um die Region zu zeichnen.",
+  "regionsLeftOutNote": "Nicht auf dieser Karte",
   "regionCountPrefix": "{v1} {v1|Region|Regionen}",
   "listedRegions": "{v1} {v1|aufgeführte Region|aufgeführte Regionen}",
   "noNumericValues": "Keine Zahlenwerte verfügbar. ",
@@ -45,9 +52,8 @@ const DE: { [K in keyof typeof EN]: string } = {
   "codesSentence": "Kürzel: {v1}.",
   "overlays": "Zusatzzeichen",
   "userSourceClause": " Nutzerquelle: {v1}",
-  // The key entry of a hatched tile and the short credit (no text on the tile).
+  // The key entry of a hatched tile (no text on the tile).
   "tilemapNoData": "Keine Daten",
-  "tileCreditShort": "Kachellayout: Boardplot, nach {v1}",
   "valuesNotPrinted": "Werte nicht in den Kacheln",
   "tileValuesSentence": "Werte: {v1}. ",
 };

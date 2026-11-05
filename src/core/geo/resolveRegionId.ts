@@ -13,6 +13,7 @@
  * `scripts/build-geo-packs.mjs` carries the matching bake-time gate, so no
  * new ambiguity can be baked without an explicit entry.
  */
+import { levenshtein } from '../spelling';
 
 /** The shape both geo-pack regions and tile-pack regions share. */
 export interface GeoIdentifiableRegion {
@@ -25,6 +26,8 @@ export interface GeoRegionIdIndex {
   readonly canonical: ReadonlyMap<string, string>;
   /** Alias -> the sorted canonical ids that claim it, for aliases with >1 claimant. */
   readonly ambiguous: ReadonlyMap<string, readonly string[]>;
+  /** Lower-case spellings mapped to every region they can name. Exact spellings win. */
+  readonly folded: () => ReadonlyMap<string, readonly string[]>;
   /** Every accepted spelling, ambiguous ones included — the vocabulary for suggestions. */
   readonly keys: readonly string[];
 }
@@ -66,7 +69,19 @@ export function buildGeoRegionIdIndex(
     canonical.set(alias, ids[0]!);
   }
   const keys = [...canonical.keys(), ...ambiguous.keys()];
-  return { canonical, ambiguous, keys };
+  let foldedClaims: Map<string, string[]> | undefined;
+  const folded = () => {
+    if (foldedClaims) return foldedClaims;
+    foldedClaims = new Map<string, string[]>();
+    for (const key of keys) {
+      const ids = canonical.has(key) ? [canonical.get(key)!] : ambiguous.get(key)!;
+      const claims = foldedClaims.get(key.toLowerCase()) ?? [];
+      for (const id of ids) if (!claims.includes(id)) claims.push(id);
+      foldedClaims.set(key.toLowerCase(), claims.sort());
+    }
+    return foldedClaims;
+  };
+  return { canonical, ambiguous, folded, keys };
 }
 
 /** Cached per regions array; pack region arrays are module constants. */
@@ -90,6 +105,9 @@ export function resolveGeoRegionId(
   if (resolved !== undefined) return { kind: 'resolved', id: resolved };
   const candidates = index.ambiguous.get(id);
   if (candidates) return { kind: 'ambiguous', candidates };
+  const folded = index.folded().get(id.toLowerCase());
+  if (folded?.length === 1) return { kind: 'resolved', id: folded[0]! };
+  if (folded?.length) return { kind: 'ambiguous', candidates: folded };
   return { kind: 'unknown' };
 }
 
@@ -104,4 +122,21 @@ export function claimedRegionIds(resolution: GeoRegionResolution): readonly stri
   if (resolution.kind === 'resolved') return [resolution.id];
   if (resolution.kind === 'ambiguous') return resolution.candidates;
   return [];
+}
+
+/** The canonical id of the region whose id or alias is spelled nearest `input`, when it is close enough to be a misspelling (DEU for DE). */
+export function nearestRegionId(
+  input: string,
+  candidates: string[],
+  canonical: ReadonlyMap<string, string>,
+): string | undefined {
+  let best: { id: string; distance: number } | undefined;
+  for (const candidate of candidates) {
+    const distance = levenshtein(input.toUpperCase(), candidate.toUpperCase());
+    if (!best || distance < best.distance || (distance === best.distance && candidate < best.id)) {
+      best = { id: candidate, distance };
+    }
+  }
+  if (!best || best.distance > Math.max(2, Math.floor(input.length / 2))) return undefined;
+  return canonical.get(best.id);
 }

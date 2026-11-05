@@ -43,6 +43,12 @@ export const RIGHT_ROOM = Symbol('rightRoom');
  * at the content edge. Authored JSON cannot set it.
  */
 export const NO_NAME_COLUMN = Symbol('noNameColumn');
+/** The width of the name column, when a caller has shared the row among its own tracks. Authored JSON cannot set it. */
+export const NAME_TRACK = Symbol('nameTrack');
+/** Room a caller keeps between the name column and the plot, for tracks of its own. */
+export const LEFT_ROOM = Symbol('leftRoom');
+/** The caller seats the totals in a track of its own (TOTAL_COLUMN), so the plot keeps no room for them past the bars. */
+export const TOTAL_TRACK = Symbol('totalTrack');
 /**
  * Internal option: the right edge of a column where the caller sets every
  * grand total (likert's net column). The solver seats the totals there, so
@@ -135,8 +141,12 @@ export interface BarDomain {
   options: BarOptions;
   /** rounding 'sum-consistent': the printed share per `categoryId\0seriesId`. */
   shareTexts: Map<string, string>;
+  /** A computed share as the chart prints it alone: at a percent options.format's decimals, else the share precision. */
+  pctFmt: (percent: number) => string;
   /** rounding 'sum-consistent': the shares printed off their nearest rounding. */
   roundingAdjustments: import('../../shareRounding').RoundingAdjustment[];
+  /** The hidden method note on moved or rescaled shares. */
+  shareNotes: string[];
   theme: Theme;
   /** The authored palette when the theme knows it, else undefined. */
   palette: string | undefined;
@@ -169,6 +179,8 @@ export interface BarDomain {
   statFmt: (v: number) => string;
   /** Categories whose whole stack carries one scenario. */
   uniformScenario: Map<Id, Scenario>;
+  /** The actual each PY, PL or FC series takes its colour from (scenarioPairs), by series id. */
+  scenarioPartner: Map<Id, NormSeries>;
   /** One series with a highlighted category, so the other bars step back. */
   restRecedes: boolean;
   totals: number[];
@@ -232,6 +244,7 @@ export interface BarArea {
   /** Where the title ends on the right and where its top sits. */
   axisTitleAt?: { x: number; y: number };
   activeBreak: LinearBreak | undefined;
+  stepTicks?: number[];
   x: LinearScale;
   x0: number;
   /** A theme's outside labels put negative values right of the zero line. */
@@ -302,3 +315,13 @@ export interface BarMarkGeometry {
   /** The net line's last edge and its row, where its label hangs. */
   netLineEnd: { x: number; ci: number } | undefined;
 }
+
+/**
+ * Internal option: the caller keeps the bar only if its rows fit the canvas it
+ * was given (column's step to bars). The layout then stops with BarTooTall as
+ * soon as the frame and the rows are sized and the rows cannot fit, before the
+ * marks and labels are built. Authored JSON cannot set it.
+ */
+export const STOP_IF_TOO_TALL = Symbol('stopIfTooTall');
+/** Thrown by a bar layout that set STOP_IF_TOO_TALL when its minimum height is above the canvas height. */
+export class BarTooTall extends Error {}

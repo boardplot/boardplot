@@ -1,8 +1,24 @@
 import { contrastRatio, tint } from './color';
 import { oklabLightness, swatchApart } from './themeRules';
 
-/** The light-page mark floor (markVisibilityFloor), held by every slice tint on either page kind. */
+/** The light-page mark floor (markVisibilityFloor), held by every slice tint on a light page. */
 const PAGE_FLOOR = 1.4;
+/** A dark page holds every fill to the 3:1 mark floor: below it a step sinks into the page. */
+const DARK_PAGE_FLOOR = 3;
+/** On a dark page the ramp starts at least this far from the page, so its steps have room above the floor. */
+const DARK_PAGE_TOP = 7;
+
+const isDarkPage = (background: string): boolean => contrastRatio(background, '#FFFFFF') > contrastRatio(background, '#000000');
+
+/** The strongest step: the base, lifted toward white on a dark page until it reaches DARK_PAGE_TOP (at most 60%). */
+function rampTop(base: string, background: string): string {
+  if (!isDarkPage(background)) return base;
+  for (let t = 0; t <= 0.6 + 1e-9; t += 0.01) {
+    const lifted = t === 0 ? base : tint(base, t, '#FFFFFF');
+    if (contrastRatio(lifted, background) >= DARK_PAGE_TOP) return lifted;
+  }
+  return tint(base, 0.6, '#FFFFFF');
+}
 
 /**
  * Keep the pie's ordered tint spacing when its theme colors change. The
@@ -16,15 +32,20 @@ const PAGE_FLOOR = 1.4;
  * the background than Others, so Others is the quietest slice in either scheme.
  */
 // shortcut: unbounded memo of a pure function; keys are theme colours and slice counts, a few per chart.
-const ramps = new Map<string, { tints: number[]; distinguishableCount: number }>();
+const ramps = new Map<string, { tints: number[]; distinguishableCount: number; base: string }>();
 export function pieRamp(base: string, background: string, count: number, apartFrom?: string, quietest = false, pageFloor = true): {
   tints: number[];
   distinguishableCount: number;
+  /** The colour the tints wash toward the page: the base, lifted on a dark page (rampTop). */
+  base: string;
 } {
   const key = `${base}|${background}|${count}|${apartFrom ?? ''}|${quietest}|${pageFloor}`;
   let ramp = ramps.get(key);
-  if (!ramp) ramps.set(key, ramp = computePieRamp(base, background, count, apartFrom, quietest, pageFloor));
-  return { tints: [...ramp.tints], distinguishableCount: ramp.distinguishableCount };
+  if (!ramp) {
+    const top = rampTop(base, background);
+    ramps.set(key, ramp = { ...computePieRamp(top, background, count, apartFrom, quietest, pageFloor), base: top });
+  }
+  return { tints: [...ramp.tints], distinguishableCount: ramp.distinguishableCount, base: ramp.base };
 }
 
 function computePieRamp(base: string, background: string, count: number, apartFrom?: string, quietest = false, pageFloor = true): {
@@ -35,7 +56,8 @@ function computePieRamp(base: string, background: string, count: number, apartFr
   // A page draws no slice outline by default (fillEdgesOff), so the palest step keeps the mark
   // floor against the page: past it a slice is the page. `pageFloor: false` (marks.contrastEdge,
   // which brings the outline back) keeps the full ramp.
-  while (pageFloor && maxTint > 0 && contrastRatio(tint(base, maxTint, background), background) < PAGE_FLOOR) maxTint = Math.max(0, maxTint - 0.01);
+  const floor = isDarkPage(background) ? DARK_PAGE_FLOOR : PAGE_FLOOR;
+  while (pageFloor && maxTint > 0 && contrastRatio(tint(base, maxTint, background), background) < floor) maxTint = Math.max(0, maxTint - 0.01);
   const othersContrast = apartFrom === undefined ? 0 : contrastRatio(apartFrom, background);
   // An Others colour stronger than the first step leaves no room above it: keep the 'apart' ramp, so the slices stay different.
   if (quietest && contrastRatio(base, background) <= othersContrast) quietest = false;

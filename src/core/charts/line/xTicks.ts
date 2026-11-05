@@ -7,11 +7,12 @@
  */
 
 import { seriesRasterFormatter } from '../../formatSpec';
+import { readDateFormat } from '../../dateFormatRead';
 import { niceStep } from '../../scale';
 import { disclosureNote } from '../../notes';
 import { chartString } from '../../strings/line';
 import {
-  authoredTimeStep, formatTimePattern, offsetChanges, offsetText, timeContextRow, timeLadder, timeReadingUnit, timeTicks, timeTickText, type TimeStep,
+  authoredTimeStep, formatTimePattern, offsetChanges, offsetText, timeContextRow, timeLadder, timeReadingUnit, timeStepOutrunsPlot, timeTicks, timeTickText, type TimeStep,
 } from '../../timeAxis';
 import type { CategoryRowPlan } from '../../label/categoryRow';
 import { PRIORITY, type LabelRequest } from '../../label/solver';
@@ -67,9 +68,9 @@ function impliedStep(values: readonly number[], model: LineXModel): TimeStep {
   return { unit: 'year', n: 1 };
 }
 
-function labelOf(model: LineXModel, value: number, step: TimeStep | undefined, numberFmt: ((v: number) => string) | undefined): string {
+function labelOf(model: LineXModel, value: number, step: TimeStep | undefined, numberFmt: ((v: number) => string) | undefined, timePattern: string | undefined): string {
   if (model.clock) {
-    return model.axis.format ? formatTimePattern(value, model.clock, model.axis.format, model.language) : timeTickText(value, step!, model.clock, model.language);
+    return timePattern !== undefined ? formatTimePattern(value, model.clock, timePattern, model.language) : timeTickText(value, step!, model.clock, model.language);
   }
   return numberFmt!(value);
 }
@@ -107,16 +108,26 @@ export function planXTicks(input: {
 }): XTickPlan {
   const { model, lo, hi, measure, font } = input;
   const axis = model.axis;
+  const timeFormat = model.clock && axis.format !== undefined ? readDateFormat(axis.format, 'time', model.language) : undefined;
+  for (const note of timeFormat?.notes ?? []) {
+    const code = note.kind === 'fiscal' ? 'date-format-fiscal-year' : `date-format-${note.kind}`;
+    if (input.warnings.some(warning => warning.code === code && warning.field?.join('.') === 'options.xAxis.format')) continue;
+    input.warnings.push({ code, severity: note.kind === 'fiscal' ? 'info' : 'warn',
+      field: ['options', 'xAxis', 'format'], message: note.message, suggest: note.suggest });
+  }
   const width = (text: string) => measure(text, font).width;
   const lineH = font.size * (font.lineHeight ?? 1.2);
   const maxTicks = axis.maxTicks ?? DEFAULT_MAX_TICKS;
   const numberFmt = (values: readonly number[]) => (model.clock ? undefined : seriesRasterFormatter(axis.format, values, model.language).fmt);
   const build = (values: number[], step: TimeStep | undefined, authoredLabels?: (string | undefined)[]): Row => {
     const fmt = numberFmt(values);
-    return { values, step, labels: values.map((v, i) => authoredLabels?.[i] ?? labelOf(model, v, step, fmt)) };
+    return { values, step, labels: values.map((v, i) => authoredLabels?.[i] ?? labelOf(model, v, step, fmt, timeFormat?.pattern)) };
   };
   let row: Row | undefined;
   let authored = false;
+  const pixels = input.right - input.left;
+  // The ticks of this step would follow the days of the range, more of them than the plot has pixels: a preference gives way.
+  const stepGivesWay = model.clock !== undefined && typeof axis.tickStep === 'object' && timeStepOutrunsPlot(lo, hi, authoredTimeStep(axis.tickStep), pixels);
   if (axis.ticks) {
     authored = true;
     const read = axis.ticks.map((tick, i) => {
@@ -125,12 +136,12 @@ export function planXTicks(input: {
     }).filter((tick) => tick.x >= lo && tick.x <= hi).sort((a, b) => a.x - b.x);
     const values = read.map((tick) => tick.x);
     row = build(values, model.clock && values.length ? impliedStep(values, model) : undefined, read.map((tick) => tick.label));
-  } else if (axis.tickStep !== undefined) {
+  } else if (axis.tickStep !== undefined && !stepGivesWay) {
     authored = true;
     if (typeof axis.tickStep === 'number') row = build(numberTicks(lo, hi, axis.tickStep), undefined);
     else {
       const step = authoredTimeStep(axis.tickStep);
-      row = build(timeTicks(lo, hi, step, model.clock!, input.weekStartsOn) ?? [], step);
+      row = build(timeTicks(lo, hi, step, model.clock!, input.weekStartsOn, undefined, pixels) ?? [], step);
     }
   } else if (model.clock) {
     for (const step of timeLadder(lo, hi, maxTicks, timeReadingUnit(model.xs, model.clock))) {
@@ -152,6 +163,20 @@ export function planXTicks(input: {
     }
   }
   row ??= { values: [], labels: [] };
+  if (stepGivesWay && !axis.ticks && row.values.length > 0) {
+    input.warnings.push({
+      code: 'x-tick-step-ignored', severity: 'warn', field: ['options', 'xAxis', 'tickStep'],
+      message: 'the authored tick step would tick every day of a range with more days than the plot has pixels, so the axis takes its automatic ticks',
+      suggest: 'give a tickStep in days, months or years that fits the range, or remove it for automatic ticks',
+    });
+  }
+  if (axis.tickStep !== undefined && row.values.length === 0) {
+    input.warnings.push({
+      code: 'x-ticks-empty', severity: 'warn', field: ['options', 'xAxis', 'tickStep'],
+      message: 'the authored tick step is too long or too dense for the x range, so the axis prints no ticks',
+      suggest: 'give a tickStep that fits the range, or remove it for automatic ticks',
+    });
+  }
   const xs = row.values.map(input.xOf);
   const widths = row.labels.map(width);
   const { keep, stride } = thinned(xs, widths, input.left, input.right);
@@ -171,11 +196,14 @@ export function planXTicks(input: {
   return { values: row.values, labels: row.labels, widths, keep, context, title, font, lineH, rowHeight, ...(input.partialRow ? { partialRow: true as const } : {}) };
 }
 
-/** Context labels start at their x; one that would run into the next yields, a partial first day before a full one. */
-export function placedContext(plan: XTickPlan, xOf: (x: number) => number, left: number, right: number): { text: string; x: number; w: number }[] {
+/**
+ * Context labels start at their x; one that would run into the next yields, a partial first day before a full one.
+ * `first` seats the label under the first tick where that tick's label sits: centred with it, or both at the plot's left edge.
+ */
+export function placedContext(plan: XTickPlan, xOf: (x: number) => number, left: number, right: number, first?: { at: number; x: (w: number) => number }): { text: string; x: number; w: number }[] {
   const placed: { text: string; x: number; w: number }[] = [];
   for (const item of plan.context) {
-    const x = Math.max(left, Math.min(xOf(item.at), right - item.w));
+    const x = Math.max(left, Math.min(first && item.at === first.at ? first.x(item.w) : xOf(item.at), right - item.w));
     const last = placed[placed.length - 1];
     if (last && last.x + last.w + TICK_GAP > x) {
       // The later label names a whole day or year; the earlier one only the stretch before it.
@@ -225,6 +253,8 @@ export function placeXTickLabels(input: {
   /** The top of the row. */
   bottom: number;
   plotRight: number;
+  /** The plot's left edge: a first tick label that pokes left of it may shift to start here when the value axis' bottom label holds its seat. */
+  plotLeft: number;
   labelRequests: LabelRequest[];
   /**
    * A running period's words under its readings, where no value carries them: in the tick row, else the day or
@@ -240,14 +270,29 @@ export function placeXTickLabels(input: {
     candidates: [{ slot: 'below', rect: { x, y, w, h: plan.lineH }, penalty: 0 }],
   });
   let y = input.bottom;
+  // The day or year under the first tick reads as one stack with that tick's label: both centred on the tick, or,
+  // where either centred label would poke left of the plot, both starting at its left edge.
+  const firstTick = plan.keep.indexOf(true);
+  const under = firstTick >= 0 ? plan.context.find((item) => item.at === plan.values[firstTick]) : undefined;
+  const firstX = under ? xOf(under.at) : 0;
+  const pokes = (w: number) => firstX - w / 2 < input.plotLeft - 0.5;
+  const startsAtPlot = under !== undefined && (pokes(plan.widths[firstTick]!) || pokes(under.w));
+  const first = under ? { at: under.at, x: (w: number) => startsAtPlot ? input.plotLeft : firstX - w / 2 } : undefined;
   if (plan.values.length) {
     plan.values.forEach((_, i) => {
-      if (plan.keep[i]) input.labelRequests.push(request(`xtick:${i}`, plan.labels[i]!, tickLabelX(plan, i, xOf, left, right), y, plan.widths[i]!));
+      if (!plan.keep[i]) return;
+      const x = tickLabelX(plan, i, xOf, left, right), w = plan.widths[i]!;
+      const req = request(`xtick:${i}`, plan.labels[i]!, x, y, w);
+      const atPlot = { slot: 'below' as const, rect: { x: input.plotLeft, y, w, h: plan.lineH }, penalty: 1 };
+      // The stacked pair starts at the plot's edge first; the centred seat stays a fallback so the tick never drops.
+      if (i === firstTick && startsAtPlot) req.candidates = [{ ...atPlot, penalty: 0 }, { ...req.candidates[0]!, penalty: 1 }];
+      else if (x < input.plotLeft - 0.5) req.candidates.push(atPlot);
+      input.labelRequests.push(req);
     });
     y += plan.lineH + ROW_GAP;
   }
   if (plan.context.length) {
-    placedContext(plan, xOf, left, right).forEach((item, k) => input.labelRequests.push(request(`xcontext:${k}`, item.text, item.x, y, item.w)));
+    placedContext(plan, xOf, left, right, first).forEach((item, k) => input.labelRequests.push(request(`xcontext:${k}`, item.text, item.x, y, item.w)));
     y += plan.lineH + ROW_GAP;
   }
   const partialTop = y;

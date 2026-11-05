@@ -1,3 +1,4 @@
+import type { OptionsInput } from '../core/types/optionInput';
 import { hasPolarityBadge, isFigureCell, polarityBadgeInk } from '../core/charts/table/chips';
 import { belowTableViewportFloor, tableWidths } from '../core/charts/table/widths';
 import {
@@ -28,9 +29,9 @@ import { usePrinting, watchPrint } from './printLayout';
 import { rebindable } from './linkedBinding';
 import { useExportLink, type DrawnChart, type ExportLink } from './exportLink';
 import { checkedIdPrefix, IdPrefixContext, useScopedId } from './idPrefix';
-import { frameSize, RefusalBoundary } from './RefusalBoundary';
+import { asSize, frameSize, RefusalBoundary, type PerTypeSizeOptions } from './RefusalBoundary';
 import { LayoutRefusal, LoadingPlaceholder, SizePlaceholder, type RefusalProps } from './SizePlaceholder';
-import { chartRefusals, isSizeDependentRefusal, optionRefusals, refusalFindings } from '../core/schema/refusals';
+import { chartRefusals, isSizeDependentRefusal, optionRefusals } from '../core/schema/refusals';
 import { useRefusalSettle } from './useRefusalSettle';
 import type { OptionKeyCheck } from '../core/schema/unknownKeys';
 import { publishTableChart } from './specHandover';
@@ -82,14 +83,14 @@ import {
 import { DEFAULT_EMPTY_MESSAGE } from '../core/emptyData';
 import { fitTableFormats, formatsFittedWarning, type FormatFitChange } from '../core/charts/table/fitFormats';
 import { emitSparkline, sparklineDomains, sparklineSourceValues } from '../core/charts/table/encodings/sparkline';
-import { arrowGlyph, arrowKey, type ArrowKeyEntry } from '../core/charts/table/encodings/arrow';
+import { arrowGlyph, arrowKey, printedNumber, type ArrowKeyEntry } from '../core/charts/table/encodings/arrow';
 import { badSide, heatKey, heatPaint, heatRanges, type HeatKeyEntry, type HeatRange } from '../core/charts/table/encodings/heat';
 import { heatEncodingRefusals } from '../core/charts/table/encodings/heatOptions';
 import { lastObservedIndex, type SparklineDomain } from '../core/charts/sparkline/layout';
 import { resolvePaint } from '../core/svg/paint';
 import { sceneAttributes } from './sceneAttributes';
 import type { LintWarning, Paint, RefusedLayout, SceneNode } from '../core/types/scene';
-import { defaultMeasurer, splitNameBreaks, type FontSpec, type TextMeasurer } from '../core/text';
+import { defaultMeasurer, splitNameBreaks, wrapText, type FontSpec, type TextMeasurer } from '../core/text';
 import type { Id } from '../core/types/cell';
 import type {
   ResolvedCell,
@@ -128,7 +129,7 @@ export type { TableScrollState } from './scrollState';
  * one question: in which order do the rows come out. The shapes say which is
  * meant — a column sort names a column, an authored order names `categories`.
  */
-type TableSortProp = TableSort | TableOptions['sort'] | null;
+type TableSortProp = TableSort | OptionsInput<TableOptions>['sort'] | null;
 
 /** From this many columns on, the grid builds only the columns near its scroll viewport, so a table of hundreds of day columns stays responsive. */
 const WINDOW_COLUMNS = 40;
@@ -181,8 +182,11 @@ export interface TableRowLabelLead {
   render: (row: ResolvedRow) => ReactNode;
 }
 
-export type TableChartProps = Omit<TableOptions, 'columnVisibility' | 'inlineVisibility' | 'size' | 'sort'> & ContainerSizeOptions & RefusalProps & RowsProps & {
+export type TableChartProps = OptionsInput<Omit<TableOptions, 'columnVisibility' | 'inlineVisibility' | 'size' | 'sort'>> & PerTypeSizeOptions & RefusalProps & RowsProps & {
   data: TableData;
+  /** Applied to a wrapper around the table. */
+  className?: string;
+  style?: CSSProperties;
   /** Explicit target wins over the provider. Defaults to report. */
   target?: RenderTarget;
   /** Canonical findings and observed display findings, once per warning state. */
@@ -485,7 +489,8 @@ function columnVisibilityDefaults(table: ResolvedTable, authored?: Record<Id, bo
  * before the check.
  */
 export function createTableChart(checkKeys?: OptionKeyCheck, linked?: readonly DeferredName[]) {
-  function GatedTable(props: TableChartProps): ReactElement {
+  type NormalizedTableProps = Omit<TableChartProps, 'size' | 'fallbackSize'> & ContainerSizeOptions;
+  function GatedTable(props: NormalizedTableProps): ReactElement {
     // Rows answer before the table resolves: a table has no data while the rows chunk loads or after it refuses them.
     const { rows, columns, onRowsReading, ...table } = props;
     const gate = useRowsGate({ type: 'table', data: table.data }, { rows, columns, onRowsReading }, table);
@@ -493,9 +498,16 @@ export function createTableChart(checkKeys?: OptionKeyCheck, linked?: readonly D
   }
   // A bad value draws the refusal card in the table's own frame and never unmounts the host's root (RefusalBoundary).
   function TableChart(props: TableChartProps): ReactElement {
-    const { size, fallbackSize, target, title, theme } = props as TableChartProps & { title?: unknown; theme?: ThemeRef };
-    return <RefusalBoundary watch={props} fallback={(finding) => <LayoutRefusal refusals={[finding]} theme={theme}
-      size={frameSize(size === 'container' ? fallbackSize : size as Parameters<typeof frameSize>[0], target)} options={typeof title === 'string' ? { title } : {}} />}><GatedTable {...props} /></RefusalBoundary>;
+    const { className, style, size, fallbackSize, ...rest } = props;
+    const { target, title, theme } = props as TableChartProps & { title?: unknown; theme?: ThemeRef };
+    const normalizedSize = useMemo(() => asSize(size), [size]);
+    const normalizedFallback = useMemo(() => asSize(fallbackSize) as ContainerSizeOptions['fallbackSize'], [fallbackSize]);
+    const table = <RefusalBoundary watch={props} size={normalizedSize} fallbackSize={normalizedFallback} target={target} theme={theme}
+      fallback={(finding) => <LayoutRefusal refusals={[finding]} theme={theme}
+        size={frameSize(normalizedSize === 'container' ? normalizedFallback : normalizedSize, target)} options={typeof title === 'string' ? { title } : {}} />}>
+      <GatedTable {...rest} size={normalizedSize} fallbackSize={normalizedFallback} />
+    </RefusalBoundary>;
+    return className !== undefined || style !== undefined ? <div className={className} style={style}>{table}</div> : table;
   }
   // The registry type this component renders, stated by the component itself —
   // the same stamp createChartComponent writes, so the public API check resolves
@@ -509,7 +521,7 @@ export function createTableChart(checkKeys?: OptionKeyCheck, linked?: readonly D
 /** The table without the unknown-key check, for code that links this module directly. */
 export const TableChart = createTableChart();
 
-function DrawnTable({ table: props, checkKeys, linked }: { table: TableChartProps; checkKeys: OptionKeyCheck | undefined; linked: readonly DeferredName[] | undefined }): ReactElement {
+function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChartProps, 'size' | 'fallbackSize'> & ContainerSizeOptions; checkKeys: OptionKeyCheck | undefined; linked: readonly DeferredName[] | undefined }): ReactElement {
   const compiledRequest = useContext(TableFloorRequestContext);
   const originalFloorRequest = compiledRequest?.request;
   const {
@@ -549,7 +561,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: TableChartProp
     handleRef,
     onContentWidth,
     fillHeight = false,
-    rowLabelLead,
+    rowLabelLead: authoredRowLabelLead,
     portalContainer,
     onRowSelect: authoredRowSelect,
     interactions = true,
@@ -568,13 +580,14 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: TableChartProp
   const onRowSelect = interactions ? authoredRowSelect : undefined;
   const sortable = interactions ? authoredSortable : false;
   const flags = hoverFlags(hover);
+  const rowLabelLead = useStableValue(authoredRowLabelLead);
   // A table normally takes its height from its rows and observes only width.
   // fillHeight uses the host's fixed height when the probe observes one.
   const container = useContainerSize({ size, target, fit, fallbackSize, needsHeight: fillHeight });
   const [scrollWidth, setScrollWidth] = useState<number>();
   const resolvedSize = size === 'container' ? container.size : size;
   const stableSize = useStableValue(typeof resolvedSize === 'object' ? resolvedSize : {});
-  const authoredTableOptions: TableOptions = {
+  const authoredTableOptions: OptionsInput<TableOptions> = {
     ...options,
     // An authored sibling order goes back into the options the core resolves;
     // a column sort is reader state and never reaches resolveTable.
@@ -624,7 +637,6 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: TableChartProp
   // spec that carries `expansion.rootsHidden` or the totals step hides its
   // roots in the grid as the SVG does.
   const rootsHidden = controlledRootsHidden ?? (resolved === undefined ? false : expansionRootsHidden(resolved.table, tableOptions?.expansion));
-  const colorblindSafe = tableOptions?.colorblindSafe === true;
   // By content: a container that reports its width re-derives the theme, and the same theme must not fit and measure
   // every cell again.
   // A table in a container, mounted fresh on the client, waits the frame its container takes to report a width, as a
@@ -638,19 +650,14 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: TableChartProp
   // every cell again.
   const theme = useStableValue(useMemo(() => request && !waitsForWidth ? tableRenderTheme(request) : undefined,
     [request?.theme, request?.target, request?.size.width, tableOptions, waitsForWidth]));
-  // Whether the table paints a good/bad pair at all is the SVG layout's own
-  // check (table-colorblind-safe-unused), so the grid refuses what the CLI
-  // refuses. It lays the table out only when colorblindSafe is on.
-  const colorblindWarnings = useMemo(() => colorblindSafe && layoutRequest && tableOptions
-    ? tableCore.layout(layoutRequest.data as TableData, tableOptions).warnings.filter((warning) => warning.code === 'table-colorblind-safe-unused')
-    : [], [layoutRequest, colorblindSafe]);
   const metricMeasure = request?.fontMetrics ?? defaultMeasurer;
   const width = useWidthMeasure(metricMeasure, measureWidths === 'browser');
   const statement = resolved?.table.rows.some(row => row.sign === -1 || row.operator !== undefined || row.kind === 'subtotal' || row.kind === 'result' || row.kind === 'driver') ?? false;
   const cohort = tableOptions?.density?.startsWith('cohort') ?? false;
+  const manyLabelLines = (tableOptions?.rowLabelLines ?? 2) > 2;
   // The selected palette paints the chips and the tone text, as the SVG layout passes it.
-  const stylesheet = useMemo(() => theme && tableStylesheet(theme, request?.target, statement, cohort, typeof stickyLabels === 'object', textScaleOf(request?.options), tableOptions?.palette), [theme, request?.target, request?.options.textScale, request?.options.textSize, statement, cohort, typeof stickyLabels === 'object', tableOptions?.palette]);
-  const themeScope = stylesheet === undefined ? '' : stylesheetHash(stylesheet);
+  const stylesheet = useMemo(() => theme && tableStylesheet(theme, request?.target, statement, cohort, typeof stickyLabels === 'object', textScaleOf(request?.options), tableOptions?.palette, manyLabelLines), [theme, request?.target, request?.options.textScale, request?.options.textSize, statement, cohort, typeof stickyLabels === 'object', tableOptions?.palette, manyLabelLines]);
+  const themeScope = useMemo(() => stylesheet === undefined ? '' : stylesheetHash(stylesheet), [stylesheet]);
 
   const floorRevision = useDeferredRevision();
   // By content: an inline `size={{ … }}` is a new object on every render and must not remake the refusal.
@@ -710,9 +717,9 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: TableChartProp
     Record<Id, boolean>
   >(initialInlineVisibility);
   const isInlineVisibilityControlled = controlledInlineVisibility !== undefined;
-  const inlineVisibility = isInlineVisibilityControlled
+  const inlineVisibility = useStableValue(isInlineVisibilityControlled
     ? controlledInlineVisibility
-    : uncontrolledInlineVisibility;
+    : uncontrolledInlineVisibility);
   const [uncontrolledSort, setUncontrolledSort] = useState<TableSort | null>(defaultSort ?? null);
 
   /**
@@ -842,8 +849,9 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: TableChartProp
     emptyListener.current?.();
   }, [isEmpty]);
   const sortableIds = useMemo(
-    () => (table ? sortableColumnIds(table, sortable) : new Set<Id>()),
-    [table, sortable],
+    // The sort controls live in the head, so no head means no sort control.
+    () => (table && tableOptions?.columnHeads !== false ? sortableColumnIds(table, sortable) : new Set<Id>()),
+    [table, sortable, tableOptions?.columnHeads],
   );
 
   const isCollapsedControlled = controlledCollapsed !== undefined;
@@ -967,14 +975,14 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: TableChartProp
   const windowed = allColumns.length > WINDOW_COLUMNS;
   // Plain rows keep all text and cell roles for find and screen readers; only offscreen cell decoration waits.
   // shortcut: complex rows keep full rendering until shared layout exposes their exact row heights.
-  const rowWindowed = useMemo(() => freshMount && typeof IntersectionObserver !== 'undefined' && !windowed && !sticky.sections && rowLabelLead === undefined
+  const rowWindowed = useMemo(() => freshMount && tableOptions?.paintOffscreenRows !== true && typeof IntersectionObserver !== 'undefined' && !windowed && !sticky.sections && rowLabelLead === undefined
     && rows.length > 500 && allColumns.every(column => (column.kind === 'rowLabel' || column.kind === 'value' || column.kind === 'computed') && !column.wrap
-      // A capped label track can wrap a label to two lines (rowLabelLines), and rows of one height are what the pages assume.
+      // A capped label track can wrap a label to more lines (rowLabelLines), and rows of one height are what the pages assume.
       && !(column.kind === 'rowLabel' && tableOptions?.rowLabelLines !== 1 && (column.width !== undefined || column.maxWidth !== undefined || column.maxTextWidth !== undefined))
       && (column.cellEncoding === undefined || column.cellEncoding.type === 'inCellBar'))
     && rows.every(row => !row.hasChildren && !row.inlineRows?.length && row.role === 'data' && row.unitAffix === undefined && row.operator === undefined
       && Object.values(row.cells).every(cell => cell.note === undefined && cell.href === undefined)),
-  [freshMount, windowed, sticky.sections, rowLabelLead, rows, allColumns, tableOptions?.rowLabelLines]);
+  [freshMount, tableOptions?.paintOffscreenRows, windowed, sticky.sections, rowLabelLead, rows, allColumns, tableOptions?.rowLabelLines]);
   // Only uniform single-line rows can share one measured height without moving the scroll limits.
   const containRowPages = useMemo(() => rowWindowed && figures && rows.every(row => row.step === 0 && row.kind === undefined
     && row.spacer === undefined && !row.divider && allColumns.some(column => column.kind === 'rowLabel' && row.cells[column.id]?.displayed !== '')),
@@ -1017,18 +1025,23 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: TableChartProp
     const sides = { ...canvasMargin(theme, frameWidth), ...margin };
     return frameWidth - sides.left - sides.right;
   }, [size, container.size?.width, theme, margin, marginLeft, marginRight]);
+  // The label track is sized from the columns the table shows before any toggle, so a toggle never re-wraps the labels.
+  const defaultColumns = useMemo(
+    () => table ? visibleColumns(table, Object.fromEntries([...table.columnToggles.map((toggle) => [toggle.id, toggle.defaultVisible] as const), ...Object.entries(defaultColumnVisibility ?? {})])) : [],
+    [table, defaultColumnVisibility],
+  );
   const measured = useMemo(() => table && theme ? tableWidths(table, theme, width.measure, {
     ...tableOptions, density, target: request?.target, inlineVisibility,
     [SOFT_LABEL_CAP]: softLabelCap, [LABEL_WRAP_FLOOR]: labelWrapFloor,
   }, {
-    columns, allColumns, rows, available, frameStart, scroll: true,
+    columns, allColumns, defaultColumns, rows, available, frameStart, scroll: true,
     withMarks: !readOnlyTree || tableOptions?.outlineMarks === true,
     sortable: sortableIds, leadWidth: rowLabelLead?.width,
     trailingTracking: true, groupStart: groupMarks.groupStart, groupEnd: groupMarks.groupEnd,
     slack: width.browser ? undefined : browserSlack,
     fit: size === 'container' ? fit : undefined,
   }) : undefined, [table, theme, width, tableOptions, density, request?.target, inlineVisibility, softLabelCap, labelWrapFloor,
-    columns, allColumns, rows, available, frameStart, readOnlyTree, sortableIds, rowLabelLead?.width, groupMarks, size, fit]);
+    columns, allColumns, defaultColumns, rows, available, frameStart, readOnlyTree, sortableIds, rowLabelLead?.width, groupMarks, size, fit]);
   const padX = measured?.cellPadX ?? 12;
   const indents = measured?.indents ?? { base: 0, step: 16 };
   const operatorSlot = measured?.operatorSlot ?? 0;
@@ -1036,10 +1049,11 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: TableChartProp
   const spacerWidths = measured?.spacerBefore ?? new Map<Id, number>();
   const labelsWrap = measured?.labelsWrap ?? false;
   const diagnostics = useMemo(() => layoutRequest && resolved ? {
-    warnings: [...resolved.warnings, ...(layoutRequest.inputWarnings ?? []), ...(fittedNote === undefined ? [] : [fittedNote]), ...colorblindWarnings, ...(measured?.warnings ?? []), ...(sized?.warnings ?? [])],
+    warnings: [...resolved.warnings, ...(layoutRequest.inputWarnings ?? []), ...(fittedNote === undefined ? [] : [fittedNote]), ...(measured?.warnings ?? []), ...(sized?.warnings ?? []),
+      ...(tableOptions?.columnHeads === false && sortable !== false && (sortable === true || sortable.length > 0) ? [SORT_WITHOUT_HEADS] : [])],
     presentation: initialPrepared?.presentation ?? tablePresentation(layoutRequest, resolved.table),
     refused: sized?.refused,
-  } : undefined, [layoutRequest, resolved, initialPrepared, sized, colorblindWarnings, fittedNote, measured?.warnings]);
+  } : undefined, [layoutRequest, resolved, initialPrepared, sized, fittedNote, measured?.warnings, tableOptions?.columnHeads, sortable]);
   const displayRef = useDisplayWarnings(settling ? undefined : diagnostics, onWarnings, null);
   const headFonts = measured?.fonts;
   const frameRoom = !rowToFrame || tableOptions?.frameFill === 'none' ? undefined
@@ -1119,9 +1133,10 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: TableChartProp
       x += width.get(column.id) ?? 0;
     }
     // A group a spacer stands off draws no divider on the SVG: the gap is the separation.
-    return { left, groupStart: [...groupMarks.groupStart].filter((id) => left.has(id) && !((width.get(`bp-spacer:${id}`) ?? 0) > 0)) };
+    return { left, end: x, groupStart: [...groupMarks.groupStart].filter((id) => left.has(id) && !((width.get(`bp-spacer:${id}`) ?? 0) > 0)) };
   }, [gridTracks, allColumns, hiddenColumns, groupMarks]);
   const gridStyle = useMemo(() => ({
+    ...(manyLabelLines ? { '--bp-label-lines': tableOptions?.rowLabelLines } : {}),
     // Under 'frame' the empty track is at least the right margin wide.
     // The scroll box reaches through the margin, so a grid whose
     // natural width left the margin out gave a card that sizes itself to
@@ -1140,7 +1155,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: TableChartProp
     '--bp-indent-base': `${indents.base}px`,
     '--bp-indent-step': `${indents.step}px`,
     ...(headFonts === undefined ? {} : headVars(headFonts)),
-  } as CSSProperties), [gridTracks, padX, headFonts, reachFrame, frameReach, frameStart, indents]);
+  } as CSSProperties), [manyLabelLines, tableOptions?.rowLabelLines, gridTracks, padX, headFonts, reachFrame, frameReach, frameStart, indents]);
   /**
    * Under 'frame' the rows run through an authored right margin as well:
    * the margin insets the columns, and the scroll box reaches past it to
@@ -1318,17 +1333,18 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: TableChartProp
   // It is measured, so a column toggle, a fold, a font swap or a resize that changes the head moves it too.
   const stickySections = sticky.sections;
   const stickyHeadMode = sticky.head;
+  const headsShown = tableOptions?.columnHeads !== false;
   const tableReady = table !== undefined;
   useEffect(() => {
     const element = grid.tableRef.current;
     const head = element?.querySelector<HTMLElement>('[data-bp-rowgroup="head"]');
     if (!stickySections || !element || !head) return undefined;
-    const apply = () => element.style.setProperty('--bp-head-h', `${stickyHeadMode === false ? 0 : head.offsetHeight}px`);
+    const apply = () => element.style.setProperty('--bp-head-h', `${stickyHeadMode === false || !headsShown ? 0 : head.offsetHeight}px`);
     apply();
     const watch = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(apply);
     watch?.observe(head);
     return () => watch?.disconnect();
-  }, [stickySections, stickyHeadMode, tableReady, gridWidth]);
+  }, [stickySections, stickyHeadMode, headsShown, tableReady, gridWidth]);
   // Page mode cannot pin a section row with CSS: the rows sit in the box that scrolls sideways, and an overflow
   // ancestor captures `position: sticky`. So one floating copy of the heading (`aria-hidden`, no ids, no pointer
   // events) is drawn under the head. The copy takes the last heading that scrolled under the head, and it leaves
@@ -1528,7 +1544,6 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: TableChartProp
   const refusedOptions = [
     ...refusedProps,
     ...heatEncodingRefusals((stableOptions as { encodings?: Record<string, unknown> }).encodings),
-    ...refusalFindings(colorblindWarnings),
     // The table is the vertical scroll owner under fillHeight, so it cannot also pin its head to the page.
     ...(pageHead && fillHeight ? [{
       code: 'invalid-options',
@@ -1556,7 +1571,9 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: TableChartProp
     // A DimSwitch's document is its own spec at the view on screen: the compiled table is internal.
     ...(originalFloorRequest === undefined ? {} : { source: { type: originalFloorRequest.type, data: originalFloorRequest.data,
       options: Object.fromEntries(Object.entries({ ...originalFloorRequest.options as Record<string, unknown>,
-        expansion: { expanded: openParents(table, collapsedSet), collapsed: [...collapsedSet] }, columnVisibility, inlineVisibility })
+        expansion: { expanded: openParents(table, collapsedSet), collapsed: [...collapsedSet] },
+        // A DimSwitch's own columns left the compiled table, so the table's toggle state does not name them.
+        columnVisibility: { ...(originalFloorRequest.options as { columnVisibility?: Record<Id, boolean> }).columnVisibility, ...columnVisibility }, inlineVisibility })
         .filter(([, value]) => value !== undefined)) } }),
   } : undefined, [exporter, drew, request, data, table, collapsedSet, rootsHidden, columnVisibility, inlineVisibility, contentWidth, originalFloorRequest]);
   useExportLink(exporter, exported);
@@ -1625,8 +1642,8 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: TableChartProp
     'data-bp-mark-style': theme?.table?.mark ?? (tableOptions.variant === 'steering' ? 'boxed' : 'bare'),
     'data-bp-end': undefined,
     'data-bp-density': density,
-    // A row label takes two lines before its cut (`rowLabelLines`), as on the SVG.
-    'data-bp-label-lines': tableOptions.rowLabelLines === 1 ? '1' : undefined,
+    // A row label takes its `rowLabelLines` before its cut, two by default, as on the SVG.
+    'data-bp-label-lines': tableOptions.rowLabelLines === 1 || manyLabelLines ? String(tableOptions.rowLabelLines) : undefined,
     // 'sorted' keeps the chevron on the sorted header alone; the other
     // sortable headers keep its reserve, so no track moves.
     'data-bp-sort-indicator': tableOptions.sortIndicator === 'sorted' ? 'sorted' : undefined,
@@ -1652,8 +1669,16 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: TableChartProp
       theme={theme}
       windowIds={windowIds}
       wideGroups={wideGroups}
+      hidden={!headsShown}
     />
   );
+  const deferLabelLines = manyLabelLines && measured !== undefined ? (row: ResolvedRow) => {
+    const column = allColumns.find(candidate => candidate.kind === 'rowLabel');
+    const cell = column === undefined ? undefined : row.cells[column.id];
+    if (column === undefined || cell === undefined) return 0;
+    const room = (measured.widths.get(column.id) ?? 0) - 2 * padX - measured.rowIndent(measured.indentStep(cell));
+    return wrapText(cell.displayed, measured.cellFont(cell), Math.max(1, room), tableOptions.rowLabelLines, width.measure, true).lines.length - 1;
+  } : undefined;
   const rowShared: SharedRowProps = {
     palette: tableOptions.palette,
     rowIndices,
@@ -1664,6 +1689,9 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: TableChartProp
     collapsedSet,
     closers,
     mountCollapsed: tableOptions.mountCollapsed !== false,
+    paintOffscreenRows: tableOptions.paintOffscreenRows === true,
+    oneLineLabel: tableOptions.rowLabelLines === 1,
+    deferLabelLines,
     anchorWash: tableOptions.anchorWash === true,
     barMaxima: barMaxima!,
     grounds,
@@ -1956,6 +1984,8 @@ interface TableHeadProps {
   windowIds: ReadonlySet<Id> | undefined;
   /** Groups wider than the scroll box beside the pinned columns. */
   wideGroups: ReadonlySet<Id>;
+  /** `columnHeads: false`. */
+  hidden: boolean;
 }
 
 /** A group header starts at its leftmost reachable member: `columnGroups[].columns` need not follow display order. */
@@ -1968,7 +1998,7 @@ function groupColIndex(ids: readonly Id[], indices: ReadonlyMap<Id, number>): nu
   return first;
 }
 
-function TableHead({
+const TableHead = memo(function TableHead({
   columnIndices,
   table,
   columns,
@@ -1983,6 +2013,7 @@ function TableHead({
   theme,
   windowIds,
   wideGroups,
+  hidden,
 }: TableHeadProps): ReactElement {
   // A sub-label is a second line under the label. Where one column
   // in the row has one, every other head cell reserves the same line, so the
@@ -2095,7 +2126,7 @@ function TableHead({
   }
 
   return (
-    <div ref={headRef} role="rowgroup" data-bp-rowgroup="head">
+    <div ref={headRef} role="rowgroup" data-bp-rowgroup="head" style={hidden ? HIDDEN_HEAD : undefined}>
       {table.columnGroups.some((group) => group.heading !== false)
         ? <div className="bp-groups" role="row" aria-rowindex={1}>{groupCells}</div>
         : null}
@@ -2130,7 +2161,7 @@ function TableHead({
               data-bp-pin={pinned.has(column.id) ? '' : undefined}
               data-bp-pin-last={pinned.get(column.id)?.last === true ? '' : undefined}
               style={headCellStyle(pinned.get(column.id), trackColumn?.get(column.id))}
-              className={alignmentClass(column)}
+              className={alignmentClass({ align: column.headAlign ?? column.align })}
             >
               {sortable ? (
                 <button
@@ -2155,7 +2186,7 @@ function TableHead({
       </div>
     </div>
   );
-}
+});
 
 /**
  * A column head as the SVG sets it: the label in capitals, or as
@@ -2185,6 +2216,11 @@ interface SharedRowProps {
   isTree: boolean;
   light?: boolean;
   mountCollapsed: boolean;
+  paintOffscreenRows: boolean;
+  /** `rowLabelLines: 1`. */
+  oneLineLabel: boolean;
+  /** Label lines past the first that a deferred row reserves; only under `rowLabelLines` above 2. */
+  deferLabelLines: ((row: ResolvedRow) => number) | undefined;
   /** Rows that draw a closing rule (view.finalClosers). */
   closers: ReadonlySet<Id>;
   columns: readonly ResolvedColumn[];
@@ -2226,7 +2262,7 @@ interface SharedRowProps {
   /** 1-based track of each column, on a grid with spacer tracks only. */
   trackColumn: ReadonlyMap<Id, number> | undefined;
   /** Each drawn column's left edge from the grid's start, and the columns that open a group. */
-  columnEdges: { left: ReadonlyMap<Id, number>; groupStart: readonly Id[] };
+  columnEdges: { left: ReadonlyMap<Id, number>; end: number; groupStart: readonly Id[] };
   /** Each column's start and width in the track list, for the runs outside the column window. */
   liteSlots?: ReadonlyMap<Id, { start: number; width: number }>;
   /** The drawn columns by index, and the runs outside the window, while the columns are windowed. */
@@ -2243,7 +2279,7 @@ interface SharedRowProps {
  * row is closed (hidden content keeps its element), so the reverse
  * animation runs the same path the forward one did.
  */
-function TableRowGroup({ node, hidden, ...shared }: SharedRowProps & {
+const TableRowGroup = memo(function TableRowGroup({ node, hidden, ...shared }: SharedRowProps & {
   node: TableRowNode;
   hidden: boolean;
 }): ReactElement {
@@ -2256,10 +2292,11 @@ function TableRowGroup({ node, hidden, ...shared }: SharedRowProps & {
     setClosing(collapsed && !shared.mountCollapsed);
   }
   const closed = useCallback(() => setClosing(false), []);
+  const deferred = !shared.mountCollapsed && !shared.paintOffscreenRows && node.children.length === 0;
   return (
     <div className="bp-rowwrap" data-bp-row-wrap={node.row.id}
-      data-bp-defer-row={!shared.mountCollapsed && node.children.length === 0 ? '' : undefined}
-      style={!shared.mountCollapsed && node.children.length === 0 ? { '--bp-defer-lines': visibleInlineRows(node.row, shared.inlineVisibility).length } as CSSProperties : undefined}>
+      data-bp-defer-row={deferred ? '' : undefined}
+      style={deferred ? { '--bp-defer-lines': visibleInlineRows(node.row, shared.inlineVisibility).length, ...(shared.deferLabelLines === undefined ? {} : { '--bp-defer-label-lines': shared.deferLabelLines(node.row) }) } as CSSProperties : undefined}>
       <TableGridRow row={node.row} collapsed={collapsed} hidden={hidden} {...shared} />
       {node.children.length > 0 && (shared.mountCollapsed || !collapsed || closing) ? (
         <TableChildren rowId={node.row.id} collapsed={collapsed} onClosed={closing ? closed : undefined}>
@@ -2270,7 +2307,7 @@ function TableRowGroup({ node, hidden, ...shared }: SharedRowProps & {
       ) : null}
     </div>
   );
-}
+});
 
 const TableRowPage = memo(function TableRowPage({ nodes, index, contain, ...shared }: SharedRowProps & { nodes: readonly TableRowNode[]; index: number; contain: boolean }) {
   return <div data-bp-row-page={index}
@@ -2346,6 +2383,7 @@ function TableChildren({ rowId, collapsed, onClosed, children }: {
  */
 function TableGridRow({
   palette,
+  oneLineLabel,
   row,
   rowIndices,
   columnIndices,
@@ -2432,7 +2470,7 @@ function TableGridRow({
   const step = Math.min(3, row.step);
   // An empty band before the row; the first drawn row takes none.
   const style = {
-    '--bp-level': row.step,
+    '--bp-level': row.indentStep ?? row.step,
     ...(row.spacer === undefined ? {} : { '--bp-row-spacer': `${row.spacer}px` }),
   } as CSSProperties;
   // A section heading is one cell across the whole grid, and its hairline
@@ -2452,7 +2490,8 @@ function TableGridRow({
   const sectionPin = row.role === 'section' && alignmentClass(rowLabel) === undefined ? pinned.get(rowLabel.id) : undefined;
   // `table.blockRule: 'rule'`: the heading is a cell of the pinned block, so
   // the rule that closes the block runs through it; the rest of the row is
-  // an empty cell that carries the heading's line.
+  // an empty cell that carries the heading's line. The text still has that
+  // empty width (`--bp-section-spill`): it reads against the table, as on the SVG.
   const pinnedSpan = row.role === 'section' && theme.table?.blockRule === 'rule' && trackColumn === undefined && pinned.size > 0
     ? columns.findIndex((column) => !pinned.has(column.id)) : -1;
   // The dividers a section heading's cells draw, at their offsets inside each
@@ -2505,7 +2544,9 @@ function TableGridRow({
           data-bp-pin={pinnedSpan > 0 ? '' : undefined}
           data-bp-pin-last={pinnedSpan > 0 ? '' : undefined}
           style={{ ...(sectionCell?.style as CSSProperties | undefined),
-            ...(sectionPin === undefined ? {} : { '--bp-pin-left': `${sectionPin.left}px` }), gridColumn: pinnedSpan > 0 ? `1 / ${pinnedSpan + 1}` : '1 / -1' } as CSSProperties}
+            ...(sectionPin === undefined ? {} : { '--bp-pin-left': `${sectionPin.left}px` }),
+            ...(pinnedSpan > 0 ? { '--bp-section-spill': `${columnEdges.end - restStart}px` } : {}),
+            gridColumn: pinnedSpan > 0 ? `1 / ${pinnedSpan + 1}` : '1 / -1' } as CSSProperties}
         >
           {sectionRules(true, 0)}
           {row.badge === undefined ? (
@@ -2514,6 +2555,7 @@ function TableGridRow({
               column={rowLabel}
               row={row}
               mark={mark}
+              oneLineLabel={oneLineLabel}
               after={<CollapsedHint row={row} collapsed={collapsed} count={childCount} levelNouns={levelNouns} />}
             />
           ) : (
@@ -2522,7 +2564,7 @@ function TableGridRow({
             // The line carries the mark too, so mark, heading and chip share one centre.
             <span className="bp-section-line">
               {mark}
-              <CellContent cell={row.cells[rowLabel.id]!} column={rowLabel} row={row} />
+              <CellContent cell={row.cells[rowLabel.id]!} column={rowLabel} row={row} oneLineLabel={oneLineLabel} />
               <span className="bp-section-badge" data-tone={row.badge.tone === 'neutral' ? undefined : row.badge.tone}>
                 <span className="bp-chip">{row.badge.text}</span>
               </span>
@@ -2586,6 +2628,7 @@ function TableGridRow({
                 column={column}
                 row={row}
                 mark={mark}
+                oneLineLabel={oneLineLabel}
                 before={labelLead === undefined ? undefined : leadBox(labelLead, row)}
                 barMaximum={barMaxima.get(column.id)}
                 spark={{
@@ -2910,7 +2953,14 @@ function headVars(fonts: TableFonts): Record<string, string> {
   };
 }
 
-function alignmentClass(column: ResolvedColumn): string | undefined {
+/** The sort controls live in the head. */
+const SORT_WITHOUT_HEADS: LintWarning = { code: 'column-heads-sortable', severity: 'warn', field: ['options', 'columnHeads'],
+  message: 'sortable has no effect under columnHeads: false, because the sort controls live in the head', suggest: 'Remove sortable, or remove columnHeads.' };
+
+/** The head under `columnHeads: false`: out of sight and out of the layout, still read by assistive technology. */
+const HIDDEN_HEAD: CSSProperties = { position: 'absolute', width: 1, height: 1, overflow: 'hidden', clipPath: 'inset(50%)', whiteSpace: 'nowrap', border: 0 };
+
+function alignmentClass(column: Pick<ResolvedColumn, 'align'>): string | undefined {
   if (column.align === 'right') return 'bp-num';
   return column.align === 'center' ? 'bp-center' : undefined;
 }
@@ -3031,6 +3081,8 @@ interface SparkContext {
 
 interface CellContentProps {
   cell: ResolvedCell;
+  /** `rowLabelLines: 1`. */
+  oneLineLabel?: boolean;
   column: ResolvedColumn;
   row?: ResolvedRow;
   barMaximum?: number;
@@ -3164,6 +3216,7 @@ function CellContent({
   after,
   before,
   mark,
+  oneLineLabel = false,
 }: CellContentProps): ReactElement {
   let main: ReactNode;
   if (column.kind === 'encoding' && row !== undefined && spark !== undefined) {
@@ -3207,10 +3260,11 @@ function CellContent({
     cell.state === 'value' && typeof cell.raw === 'number') {
     // The direction glyph the SVG sets before the change, in its tone:
     // the grid printed the coloured number alone.
-    main = <><span className="bp-arrow" aria-hidden="true">{arrowGlyph(cell.raw, barMaximum, column.cellEncoding.scale)}</span>{cell.displayed}</>;
+    main = <><span className="bp-arrow" aria-hidden="true">{arrowGlyph(printedNumber(cell), barMaximum, column.cellEncoding.scale)}</span>{cell.displayed}</>;
   } else if (column.kind === 'rowLabel') {
     // The breaks the SVG may take after _ - / . (NAME_BREAK), so a long name wraps at the same places.
-    main = splitNameBreaks(cell.displayed).flatMap((piece, index) => index === 0 ? [piece] : [<wbr key={index} />, piece]);
+    // A <wbr> breaks under `white-space: nowrap` too, so a one-line label has none.
+    main = oneLineLabel ? cell.displayed : splitNameBreaks(cell.displayed).flatMap((piece, index) => index === 0 ? [piece] : [<wbr key={index} />, piece]);
   } else {
     main = cell.displayed;
   }

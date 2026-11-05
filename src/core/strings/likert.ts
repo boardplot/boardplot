@@ -40,6 +40,8 @@ const EN = {
   "disagreeLower": "disagree",
   "agreeLower": "agree",
   "netPp": "Net, pp",
+  "baseHead": "n",
+  "baseShared": "n = {v1}",
   "sharesNotPrinted": "Shares not printed on the bars",
   // The one-line net note of an agreement scale.
   "likertNetShort": "Net = agree minus disagree, in pp; the neutral share counts on neither side.",
@@ -86,6 +88,8 @@ const DE: { [K in keyof typeof EN]: string } = {
   "disagreeLower": "Ablehnung",
   "agreeLower": "Zustimmung",
   "netPp": "Netto, pp",
+  "baseHead": "n",
+  "baseShared": "n = {v1}",
   "sharesNotPrinted": "Anteile ohne Beschriftung auf den Balken",
   // The one-line net note of an agreement scale.
   "likertNetShort": "Netto = Zustimmung minus Ablehnung, in pp. Der neutrale Anteil zählt zu keiner Seite.",

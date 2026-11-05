@@ -255,3 +255,57 @@ it('line stacked100-area names only signed categories in its mixed-signs note', 
   const mixed = (body.notes ?? []).filter((note) => /positive and negative/.test(note.text));
   expect(mixed.map((note) => note.text)).toEqual([expect.stringMatching(/^East\b/)]);
 });
+
+// A 100% axis drew a difference arrow and a total growth bracket over equal columns, and read a data-unit value line as a percent.
+it('stacked100 drops diff, total cagr and a value line at the axis end, and warns about one inside (column, bar)', () => {
+  const data = {
+    categories: [{ id: 'a', label: 'A', date: '2022-01-01' }, { id: 'b', label: 'B', date: '2023-01-01' }],
+    series: [{ id: 's0', label: 'Core', values: [20, 10] }, { id: 's1', label: 'Edge', values: [30, 40] }],
+  };
+  const annotations = [
+    { kind: 'diff', from: { categoryId: 'a', seriesId: 's1', edge: 'end' }, to: { categoryId: 'b', seriesId: 's1', edge: 'end' } },
+    { kind: 'cagr' },
+    { kind: 'valueLine', value: 100, label: 'Benchmark' },
+    { kind: 'valueLine', value: 80, label: 'Target' },
+    { kind: 'cagr', from: { categoryId: 'a', seriesId: 's0' }, to: { categoryId: 'b', seriesId: 's0' } },
+  ];
+  for (const type of ['column', 'bar']) {
+    const drawn = (variant: string) => getChart(type)!.layout(data, { variant, title: 'T', annotations } as never) as Geometry;
+    const share = drawn('stacked100');
+    expect(share.warnings.filter((w) => w.code.endsWith('-stacked100') && w.code !== 'reference-unsupported-stacked100').map((w) => [w.code, w.owner?.annotationId, Boolean(w.suggest)]), type).toEqual([
+      ['annotation-unsupported-stacked100', 'diff-1', true],
+      ['annotation-unsupported-stacked100', 'cagr-2', true],
+      ['valueline-unsupported-stacked100', 'valueLine-3', true],
+      ['valueline-percent-stacked100', 'valueLine-4', true],
+    ]);
+    expect(share.annotations.map((a) => a.kind).filter((kind) => kind !== 'indicator100').sort(), type).toEqual(['cagr', 'valueLine']);
+    // A retained annotation keeps its authored position's id, so a pin or note that names it still finds it.
+    expect(share.annotations.map((a) => a.id).filter((id) => !id.startsWith('indicator100')).sort(), type).toEqual(['cagr-5', 'valueLine-4']);
+    expect(drawn('stacked').annotations.map((a) => a.kind).sort(), type).toEqual(['cagr', 'cagr', 'diff', 'valueLine', 'valueLine']);
+  }
+});
+
+// The automatic mean valueLine of a 100% axis always read "Average 100%", because every column totals 100.
+it('stacked100 drops the automatic mean valueLine of 100 and warns, a numeric one and a mean below 100 stay (column, bar, mekko)', () => {
+  const data = {
+    categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }],
+    series: [{ id: 's0', label: 'Core', values: [20, 10] }, { id: 's1', label: 'Edge', values: [30, 40] }],
+  };
+  const annotations = [{ kind: 'valueLine' }, { kind: 'valueLine', value: 'mean' }, { kind: 'valueLine', value: 60 }];
+  for (const type of ['column', 'bar', 'mekko']) {
+    const share = getChart(type)!.layout(data, { variant: 'stacked100', title: 'T', annotations } as never) as Geometry;
+    expect(share.warnings.filter((w) => w.code === 'valueline-unsupported-stacked100').map((w) => w.owner?.annotationId), type).toEqual(['valueLine-1', 'valueLine-2']);
+    expect(share.annotations.filter((a) => a.kind === 'valueLine').map((a) => a.id), type).toEqual(['valueLine-3']);
+  }
+  // A mean that is a real number below 100 (total100 above the parts, or authored percent cells that add to less than 100) is kept: the drop only removes a mean that reads 100%.
+  const categories = [{ id: 'a', label: 'A', total100: 100 }, { id: 'b', label: 'B', total100: 100 }];
+  const series = [{ id: 's0', label: 'Core', values: [20, 10] }, { id: 's1', label: 'Edge', values: [30, 40] }];
+  const autoMean = [{ kind: 'valueLine' }];
+  const draw = (type: string, input: object, options: object) => getChart(type)!.layout(input as never, { variant: 'stacked100', title: 'T', annotations: autoMean, ...options } as never) as Geometry;
+  const kept = (geo: Geometry) => [geo.warnings.some((w) => w.code === 'valueline-unsupported-stacked100'), geo.annotations.filter((a) => a.kind === 'valueLine').length];
+  for (const type of ['column', 'bar']) expect(kept(draw(type, { categories, series }, {})), type).toEqual([false, 1]);
+  const width = { id: 'w', label: 'Width', role: 'reference', values: [60, 40] };
+  expect(kept(draw('mekko', { categories, series: [...series, width] }, { widthSeriesId: 'w' })), 'mekko total100').toEqual([false, 1]);
+  const percent = { categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }, { id: 'c', label: 'C' }], series: [{ id: 's0', label: 'Core', unit: '%', values: [{ pct: 40 }, { pct: 30 }, { pct: 50 }] }, { id: 's1', label: 'Edge', unit: '%', values: [{ pct: 30 }, { pct: 30 }, { pct: 20 }] }] };
+  expect(kept(draw('mekko', percent, {})), 'mekko percent cells').toEqual([false, 1]);
+});

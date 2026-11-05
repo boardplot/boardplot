@@ -121,6 +121,28 @@ function leaderBox(pieces: readonly [Point, Point][]): Rect {
   return { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y };
 }
 
+/** The box of the value printed at an anchored mark (the number over its column), within `reach` of the anchor's box. */
+export function anchorValueBox(occupied: OccupiedIndex, near: Rect, anchor: OwnerRef, reach: number): Rect | undefined {
+  const own = occupied.hitsWhich({ x: near.x - reach, y: near.y - reach, w: near.w + reach * 2, h: near.h + reach * 2 }, 0)
+    .filter((claim) => printsAnchor(claim, anchor));
+  return own.length === 0 ? undefined : own.slice(1).reduce((u, { rect }) => unionRect(u, rect), own[0]!.rect);
+}
+
+/** The point a leader starts at beside a printed value: its edge nearest the text, a few pixels off. */
+export function valueEdgeToward(value: Rect, text: Rect): Point {
+  const c = LEADER_LABEL_CLEARANCE;
+  return {
+    x: Math.min(Math.max(text.x + text.w / 2, value.x - c), value.x + value.w + c),
+    y: Math.min(Math.max(text.y + text.h / 2, value.y - c), value.y + value.h + c),
+  };
+}
+
+/** Whether a drawn leader crosses a label already on the page. */
+export function leaderCrossesLabel(d: string, occupied: OccupiedIndex): boolean {
+  return leaderPieces(d, 32).some(([a, b]) => occupied.hitsWhich(leaderBox([[a, b]]), 0)
+    .some((claim) => claim.kind === 'label' && segmentHitsRect(a, b, claim.rect)));
+}
+
 /**
  * A callout's, note's, abs's or delta's leader that would run through the value
  * printed at its own mark (the number over the bar it points at) starts at the edge of
@@ -138,11 +160,7 @@ export function leadersOffAnchorValues(labels: readonly PlacedLabel[], anchors: 
       .filter((claim) => printsAnchor(claim, anchor) && pieces.some(([a, b]) => segmentHitsRect(a, b, claim.rect)));
     if (own.length === 0) continue;
     const box = own.slice(1).reduce((u, { rect }) => unionRect(u, rect), own[0]!.rect);
-    const c = LEADER_LABEL_CLEARANCE;
-    const from = {
-      x: Math.min(Math.max(label.rect.x + label.rect.w / 2, box.x - c), box.x + box.w + c),
-      y: Math.min(Math.max(label.rect.y + label.rect.h / 2, box.y - c), box.y + box.h + c),
-    };
+    const from = valueEdgeToward(box, label.rect);
     const leader = seatLeader(label.rect, from);
     if (!leader) continue;
     const next = leaderPieces(leader.d, 32);

@@ -5,13 +5,13 @@
  */
 
 import { compositionBasis, mixedSignsWarning, overfullShareSum, overfullWarning } from '../band/stacks';
-import { mekkoAmount, poolMekkoCell, restDetailsWarning, restLabel, restSum, topNCut } from '../topN';
+import { mekkoAmount, mekkoStackingMode, poolMekkoCell, restDetailsWarning, restLabel, restSum, topNCut } from '../topN';
 import { cellFields, normalizeCategorySeries } from '../categorySeries';
 import { breakUnsupported, chartPalette, chartTheme } from '../chartEnv';
 import { defaultMeasurer } from '../../text';
-import { formatAuthoredPercent, formatAutomaticNumber, formatShare, shareSetFormatter } from '../../format';
-import { exampleSpec, formatNonzeroWithSpec, formatterFromExample, parseFormatExample, specUnitKind } from '../../formatSpec';
-import { round2 } from '../../geometry';
+import { formatAuthoredPercent, formatAutomaticNumber, formatAutomaticPercent, formatShare, shareSetFormatter } from '../../format';
+import { exampleSpec, normalizedSeriesNumbers, formatNonzeroWithSpec, formatterFromExample, parseFormatExample, specUnitKind } from '../../formatSpec';
+import { cleanFloat, cleanSum } from '../../geometry';
 import { isIncomplete } from '../../dataGaps';
 import { roundWholes } from '../../shareRounding';
 import {
@@ -20,7 +20,7 @@ import {
   resolveHighlight,
   resolveSize,
 } from '../../normalize/shared';
-import { applyAxisBounds, niceDomain } from '../../scale';
+import { applyAxisBounds, applyTickStep, niceDomain } from '../../scale';
 import { type Id } from '../../types/cell';
 import type { Category, ChartData } from '../../types/data';
 import type { MekkoOptions } from '../../types/options';
@@ -28,10 +28,11 @@ import type { LintWarning } from '../../types/scene';
 import { valueLineExtent } from '../../valueLineDomain';
 import type { MekkoDomain, MekkoEnv, NormSer } from './model';
 import { maxOf, minOf, pushAll } from '../../arrays';
+import { isPercentUnit } from '../../frame';
 import { emptyIdRecord } from '../../idRecords';
 
 /** Resolve the options once: theme, palette, size, measurer and the number formats. */
-export function resolveMekkoEnv(options: MekkoOptions, warnings: LintWarning[]): MekkoEnv {
+export function resolveMekkoEnv(options: MekkoOptions, warnings: LintWarning[], data?: ChartData): MekkoEnv {
   breakUnsupported('mekko', options, warnings);
   const theme = chartTheme(options);
   const paletteRamp = chartPalette(theme, options.palette, warnings);
@@ -42,17 +43,22 @@ export function resolveMekkoEnv(options: MekkoOptions, warnings: LintWarning[]):
   const plainFmt = (v: number) => formatAutomaticNumber(v, { locale: lang, decimals: autoDecimals(v) });
   const percentExample = options.format && specUnitKind(parseFormatExample(options.format)) === 'percent';
   const sharesOnly = percentExample && ((options.variant ?? 'stacked100') === 'stacked100' || options.valueAxis?.percent);
-  const totalSpec = options.format && !sharesOnly ? exampleSpec(options.format, lang) : undefined;
+  // An authored format holds every column's values and totals to one scale and one decimal count.
+  const printed = (data?.series ?? []).flatMap((series) => normalizedSeriesNumbers(series) ?? []);
+  const columns = printed.length > 0 ? data!.series.map((series) => normalizedSeriesNumbers(series) ?? []) : [];
+  const totals = (data?.categories ?? []).map((_, c) => columns.reduce((sum, values) => sum + (values[c] ?? 0), 0));
+  const totalSpec = options.format && !sharesOnly ? exampleSpec(options.format, lang, undefined, [...printed, ...totals]) : undefined;
   return {
     options,
     theme,
     palette: paletteRamp ? options.palette : undefined,
     size: resolveSize(options.size),
     measure: options.measure ?? defaultMeasurer,
-    fmt: options.format && !sharesOnly ? formatterFromExample(options.format, lang) : plainFmt,
+    fmt: options.format && !sharesOnly ? formatterFromExample(options.format, lang, undefined, [...printed, ...totals]) : plainFmt,
     totalFmt: totalSpec ? (v: number) => formatNonzeroWithSpec(v, totalSpec) : plainFmt,
     widthFmt: plainFmt,
     pctFmt: percentExample ? formatterFromExample(options.format!, lang) : (p: number) => formatShare(p, lang),
+    cellPctFmt: percentExample ? formatterFromExample(options.format!, lang) : (p: number) => formatAutomaticPercent(p, autoDecimals(p), false, lang),
     authoredPctFmt: percentExample ? formatterFromExample(options.format!, lang) : (p: number) => formatAuthoredPercent(p, lang),
     highlights: new Set(resolveHighlight(options.highlight)),
     density: options.labelDensity ?? 'smart',
@@ -75,13 +81,8 @@ function normalizeMekkoData(data: ChartData): { cats: Category[]; seriesNorm: No
   return { cats, seriesNorm: series };
 }
 
-/** The public variant names the internal stacking mode. */
-const VARIANT_MODE = { stacked100: 'percent', stacked: 'unit', bar: 'bar' } as const satisfies Record<string, MekkoDomain['mode']>;
-
 /** The mode, the width series and the plotted data series, each refusal said out loud. */
 function mekkoSeriesRoles(options: MekkoOptions, seriesNorm: NormSer[], warnings: LintWarning[]) {
-  let mode: MekkoDomain['mode'] = VARIANT_MODE[options.variant ?? 'stacked100'];
-  if (options.valueAxis?.percent && mode === 'unit') mode = 'percent';
   let widthSer: NormSer | null = null;
   if (options.widthSeriesId) {
     widthSer = seriesNorm.find((s) => s.id === options.widthSeriesId) ?? null;
@@ -101,29 +102,42 @@ function mekkoSeriesRoles(options: MekkoOptions, seriesNorm: NormSer[], warnings
       message: `mekko does not plot reference series (${refSeries.map((s) => s.id).join(', ')})`,
     });
   }
-  let series = seriesNorm.filter((s) => s.role !== 'reference' && s !== widthSer);
+  const series = seriesNorm.filter((s) => s.role !== 'reference' && s !== widthSer);
   if (series.length === 0) {
     throw new NormalizeError('empty-data', 'series', 'mekko requires at least one data-role series');
   }
-  if (mode === 'bar' && series.length > 1) {
+  // One value per category cannot hold several series: draw them as stacked columns rather than drop all but the first.
+  if (options.variant === 'bar' && series.length > 1) {
     warnings.push({
       code: 'bar-mekko-extra-series',
       severity: 'warn',
-      message: `bar-mekko plots a single data series — using '${series[0]!.id}', ignoring ${series
-        .slice(1)
-        .map((s) => s.id)
-        .join(', ')}`,
+      message: `bar-mekko draws one value per category — ${series.length} data series (${series.map((s) => s.id).join(', ')}) are drawn as stacked columns. Give one data series, or mark the others role 'reference', for a bar`,
     });
-    series = series.slice(0, 1);
   }
-  if (mode === 'bar' && !widthSer) {
+  const mode = mekkoStackingMode(options, series.length);
+  if (options.variant === 'bar' && !widthSer) {
     warnings.push({
       code: 'bar-mekko-no-width-series',
       severity: 'info',
       message: 'bar-mekko without widthSeriesId — columns get equal widths',
     });
   }
-  return { mode, widthSer, series };
+  // The engine does not know the amount unit, so it warns and leaves the authored text alone. Series that
+  // each declare a non-percent unit are the sign that a percent unit sits over amounts.
+  const unit = options.unit?.trim();
+  const amountUnits = [...new Set(series.map((s) => s.unit?.trim() || ''))];
+  if (mode !== 'percent' && unit && isPercentUnit(unit) && amountUnits.every((u) => u !== '' && !isPercentUnit(u))) {
+    warnings.push({
+      code: 'percent-unit-over-amounts',
+      severity: 'warn',
+      message: `options.unit '${unit}' names percent, but variant '${options.variant}' plots the amounts of the data series (${amountUnits.join(', ')})`,
+      suggest: `set options.unit to the amount unit${amountUnits.length === 1 ? ` ('${amountUnits[0]}')` : ''}, retitle an axisTitles.primary that says %, or use variant 'stacked100' for shares`,
+      field: ['options', 'unit'],
+      ...(amountUnits.length === 1 ? { fix: [{ op: 'replace' as const, path: '/options/unit', value: amountUnits[0] }] } : {}),
+    });
+  }
+  // The bar variant keeps equal widths without a width series, also once several series stack.
+  return { mode, widthSer, series, equalWidths: options.variant === 'bar' };
 }
 
 /**
@@ -135,6 +149,8 @@ interface ValueState {
   cats: Category[];
   series: NormSer[];
   widthSer: NormSer | null;
+  /** Columns are equally wide when no width series is set. */
+  equalWidths: boolean;
   nm: Set<Id>;
   na: Set<Id>;
 }
@@ -171,7 +187,7 @@ function valueFns(st: ValueState) {
       const v = st.widthSer.vals[ci]?.v;
       return v === null || v === undefined ? 0 : Math.max(0, v);
     }
-    if (st.mode === 'bar') return 1; // no width series: equal columns
+    if (st.equalWidths) return 1; // no width series: equal columns
     return Math.max(0, st.series.reduce((a, s) => a + (absAt(s, ci) ?? 0), 0));
   };
   return { invalidAt, basisAt, absAt, plottedAt, weightAt };
@@ -209,13 +225,14 @@ function reorderCategories(
   let othersId = 'others';
   while (st.cats.some((c) => c.id === othersId)) othersId = `_${othersId}`;
   const bases = dropIdx.map(basisAt);
+  const foldedNames = dropIdx.map((i) => st.cats[i]!.label ?? st.cats[i]!.id);
   const othersVals = seriesNorm.map((s) => s === st.widthSer
     ? { v: restSum(dropIdx.map((i) => s.vals[i]!.v)), isPct: false }
-    : poolMekkoCell(dropIdx.map((i, k) => ({ ...s.vals[i]!, basis: bases[k]!, weight: weightAt(i) })), st.mode, st.widthSer !== null));
+    : poolMekkoCell(dropIdx.map((i, k) => ({ ...s.vals[i]!, basis: bases[k]!, weight: weightAt(i) })), options.variant === 'bar' ? 'bar' : st.mode, st.widthSer !== null));
   const total100 = st.mode === 'percent' && dropIdx.some((i) => st.cats[i]!.total100 !== undefined)
     ? bases.reduce((sum, basis) => sum + basis, 0) : undefined;
   applyOrder(keptIdx);
-  st.cats = [...st.cats, { id: othersId, label: restLabel(topN, options.strings, dropIdx.length), ...(total100 === undefined ? {} : { total100 }) }];
+  st.cats = [...st.cats, { id: othersId, label: restLabel(topN, options.strings, foldedNames), ...(total100 === undefined ? {} : { total100 }) }];
   seriesNorm.forEach((s, k) => {
     s.vals = [...s.vals, othersVals[k]!];
   });
@@ -276,7 +293,7 @@ function mekkoStacks(st: ValueState, fns: ReturnType<typeof valueFns>, warnings:
     posTop[ci] = pos;
     negBot[ci] = neg;
     anyByCat[ci] = any;
-    columnTotals[c.id] = round2(st.series.reduce((a, s) => a + (absAt(s, ci) ?? 0), 0));
+    columnTotals[c.id] = cleanSum(st.series.map((s) => absAt(s, ci) ?? 0));
     weights[ci] = fns.weightAt(ci);
   });
   // A column of shares only (valueKind 'fraction', { pct } cells, no total100)
@@ -308,12 +325,12 @@ function mekkoStacks(st: ValueState, fns: ReturnType<typeof valueFns>, warnings:
     for (const s of st.series) {
       if (st.mode === 'percent') {
         const p = plottedAt(s, ci);
-        if (p !== null) row[s.id] = round2(p);
+        if (p !== null) row[s.id] = cleanFloat(p);
       } else if (st.mode === 'bar') {
         if (s.vals[ci]!.v !== null) row[s.id] = 100;
       } else {
         const a = absAt(s, ci);
-        if (a !== null) row[s.id] = totalAbs !== 0 ? round2((a / totalAbs) * 100) : 0;
+        if (a !== null) row[s.id] = totalAbs !== 0 ? cleanFloat((a / totalAbs) * 100) : 0;
       }
     }
     shares[c.id] = row;
@@ -368,7 +385,7 @@ export function resolveMekkoDomain(data: ChartData, env: MekkoEnv, warnings: Lin
   const stacks = mekkoStacks(st, fns, warnings);
   // A column with a missing part has no known whole: its total, and its
   // shares, would describe the known parts only. Bar mode has one part.
-  const incomplete = new Set(st.mode === 'bar' ? [] : st.cats
+  const incomplete = new Set(st.cats
     .filter((_, ci) => isIncomplete(st.series.map((s) => s.vals[ci]!.v)))
     .map((c) => c.id));
   // A percent column of authored shares with no amount beside them (no
@@ -422,6 +439,8 @@ export function resolveMekkoDomain(data: ChartData, env: MekkoEnv, warnings: Lin
     if (st.mode === 'bar' && va.show !== true) [dLo, dHi] = loAll === 0 && hiAll === 0 ? [0, 1] : [loAll, hiAll];
   }
   [dLo, dHi] = applyAxisBounds([dLo, dHi], [Math.min(loAll, 0), Math.max(hiAll, 0)], va, warnings);
+  const stepped = applyTickStep([dLo, dHi], va.tickStep, warnings);
+  [dLo, dHi] = stepped.domain;
 
   // valueLine 'mean' is the WIDTH-WEIGHTED mean of the plotted totals
   const plottedTotal = (ci: number) => stacks.posTop[ci]! + stacks.negBot[ci]!;
@@ -449,6 +468,7 @@ export function resolveMekkoDomain(data: ChartData, env: MekkoEnv, warnings: Lin
     ...stacks,
     dLo,
     dHi,
+    stepTicks: stepped.ticks,
     meanValue,
     validCount,
     plottedAt: fns.plottedAt,

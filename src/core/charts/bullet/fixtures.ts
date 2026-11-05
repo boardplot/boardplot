@@ -578,6 +578,10 @@ for (const bandKey of ['labels', 'ramp'] as const) {
 
 fixtures.push({ id: 'two-sided-spend', title: 'Both low and high spend are off plan', kind: 'example', data: { rows: [{ id: 'spend', label: 'Spend', value: 98, target: 100, bands: [{ to: 90, label: 'Below plan', tone: 'bad' }, { to: 110, label: 'On plan', tone: 'good' }, { to: 130, label: 'Above plan', tone: 'bad' }] }] }, options: { title: 'Spend is inside the plan corridor', size: { width: 700, height: 300 } } });
 
+// The spend corridor with its toned bands in their full fills
+// (marks.bulletBandFill 'full') instead of washed toward the page.
+fixtures.push({ id: 'two-sided-spend-full-fill', title: 'Toned bands in their full fills', kind: 'torture', tags: ['theme'], data: { rows: [{ id: 'spend', label: 'Spend', value: 98, target: 100, bands: [{ to: 90, label: 'Below plan', tone: 'bad' }, { to: 110, label: 'On plan', tone: 'good' }, { to: 130, label: 'Above plan', tone: 'bad' }] }] }, options: { title: 'Spend is inside the plan corridor', size: { width: 700, height: 300 }, theme: { preset: 'standard', overrides: { marks: { bulletBandFill: 'full' } } } } });
+
 fixtures.push({
   id: 'tone-spectrum', title: 'Band tones carry the range judgment', kind: 'torture',
   data: { rows: [
@@ -681,6 +685,41 @@ fixtures.push({
     title: 'South is the only region above plan', unit: '$k', source: 'Illustrative data', size: { width: 720 },
     strings: { target: 'plan', targetColumn: 'Plan', gapColumn: 'Distance', gapBelow: 'short of {v1}', gapAbove: 'beyond {v1}', gapOn: 'at {v1}' },
   },
+});
+
+// Column options on the rows beside target columns, and on the percent-of-target scale.
+const regionRows: BulletData = { rows: [
+  { id: 'north', label: 'North', value: 412, target: 450, bands: [{ to: 300, label: 'Weak' }, { to: 400, label: 'Fair' }, { to: 500, label: 'Strong' }] },
+  { id: 'south', label: 'South', value: 366, target: 340, bands: [{ to: 300, label: 'Weak' }, { to: 400, label: 'Fair' }, { to: 500, label: 'Strong' }] },
+  { id: 'returns', label: 'Returns', value: 38, target: 45, direction: 'lowerIsBetter', bands: [{ to: 300, label: 'Strong' }, { to: 400, label: 'Fair' }, { to: 500, label: 'Weak' }] },
+] };
+const targetRows: BulletData = { rows: [
+  { id: 'revenue', label: 'Revenue', value: { number: 412, format: '$412k' }, target: { number: 450, format: '$450k' } },
+  { id: 'orders', label: 'Orders', value: 1860, target: 1700 },
+  { id: 'returns', label: 'Return rate', value: { pct: 6.2 }, target: { pct: 5 }, direction: 'lowerIsBetter' },
+] };
+fixtures.push({
+  id: 'column-overrides', title: 'columnOverrides sets the widths, alignment and head words of the generated columns', kind: 'example',
+  data: regionRows,
+  options: {
+    title: 'South is the only region above plan', unit: '$k', source: 'Illustrative data', size: { width: 800 },
+    columnOverrides: { label: { width: 110, align: 'right' }, target: { width: 80, label: 'Plan', align: 'center' }, gap: { width: 110, label: 'To plan', align: 'left' } },
+  },
+});
+fixtures.push({
+  id: 'columns-hidden', title: 'columnVisibility leaves the share column out of the percent-of-target rows', kind: 'example',
+  data: targetRows,
+  options: { title: 'Orders are the only KPI on target', sharedScale: 'percentOfTarget', source: 'Illustrative data', size: { width: 720 }, columnVisibility: { share: false } },
+});
+fixtures.push({
+  id: 'plot-first', title: 'columnOrder puts the marks first and reverses the columns behind them', kind: 'example',
+  data: targetRows,
+  options: { title: 'Orders are the only KPI on target', sharedScale: 'percentOfTarget', source: 'Illustrative data', size: { width: 720 }, columnOrder: ['plot', 'delta', 'share', 'actual'] },
+});
+fixtures.push({
+  id: 'no-direction-line', title: 'labels.direction and labels.position drop the second lines beside the target columns', kind: 'example',
+  data: regionRows,
+  options: { title: 'South is the only region above plan', unit: '$k', source: 'Illustrative data', size: { width: 720 }, labels: { direction: false, position: false } },
 });
 
 registerFixtures('bullet', fixtures);

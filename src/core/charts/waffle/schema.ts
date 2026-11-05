@@ -62,6 +62,9 @@ export const waffleOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptio
     .describe("Where the fill starts. 'bottom' (default) starts at the bottom left, fills each row left to right and moves up. 'top' starts at the top left and moves down. A partly filled row fills from the left."),
   headline: z.enum(['value', 'none']).optional()
     .describe("Automatic: a single-segment panel prints its value as a big number; several segments print their values in the key or below each grid. Authored 'value' prints a labelled total for several segments, in the format of the series or options.format. 'none' leaves the headline out."),
+  heightFill: z.enum(['rows', 'none']).optional()
+    .meta({ default: 'rows' })
+    .describe("Spare canvas height of one panel with one series. 'rows' (default): a pinned canvas gives the grid the full plot height, with the value and the label beside the filled cells. 'none': the label, the value and the grid stack in a column."),
   cellNote: z.enum(['auto', 'none']).optional()
     .describe("'auto' (default) prints the note \"One cell = 5%\" under the chart when one cell is not 1% of the whole, so a coarse grid reads right. 'none' leaves it out. The wording comes from strings.cellNote, with '{value}' for the percent."),
   variant: z.enum(['cells', 'square']).optional()

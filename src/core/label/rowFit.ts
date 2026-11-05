@@ -75,7 +75,7 @@ interface ColumnEntry extends FitOptions {
  */
 export function fitColumn(entries: readonly ColumnEntry[], measure: TextMeasurer): FittedText[] {
   const fitAll = (stepped: boolean) => entries.map((entry) =>
-    fitText(entry.text, stepped ? shrinkFont(entry.font, entry) ?? entry.font : entry.font, entry.maxWidth, entry.maxLines, measure, { wider: entry.wider, target: entry.target, typeRole: entry.typeRole, breakAfter: entry.breakAfter }));
+    fitText(entry.text, stepped ? shrinkFont(entry.font, entry) ?? entry.font : entry.font, entry.maxWidth, entry.maxLines, measure, { wider: entry.wider, target: entry.target, typeRole: entry.typeRole, breakAfter: entry.breakAfter, tightLines: entry.tightLines }));
   const cuts = (labels: FittedText[]) => labels.filter((label) => label.title !== undefined).length;
   const plain = fitAll(false);
   if (cuts(plain) === 0) return plain;
@@ -96,15 +96,15 @@ export function fitColumn(entries: readonly ColumnEntry[], measure: TextMeasurer
 /** Fit a column of row labels in one font through the policy; the column is as wide as its widest label. */
 export function fitBand(
   /** `reserve` is width this row owes something drawn after its text. */
-  rows: readonly { label: string; reserve?: number; maxLines?: number; wider?: number }[],
+  rows: readonly { label: string; reserve?: number; maxLines?: number; wider?: number; tightLines?: number }[],
   font: FontSpec,
   maxWidth: number,
   maxLines: number,
   measure: TextMeasurer,
   options: FitOptions = {},
 ): FittedBand {
-  const labels = fitColumn(rows.map((row) => ({ text: row.label, font, maxWidth: maxWidth - (row.reserve ?? 0), maxLines: row.maxLines ?? maxLines, ...options, ...(row.wider === undefined ? {} : { wider: row.wider }) })), measure)
-    .map((fitted, index) => withoutLoneWord(rows[index]!.label, fitted, rows[index]!.maxLines ?? maxLines, measure));
+  const labels = fitColumn(rows.map((row) => ({ text: row.label, font, maxWidth: maxWidth - (row.reserve ?? 0), maxLines: row.maxLines ?? maxLines, ...options, ...(row.wider === undefined ? {} : { wider: row.wider }), ...(row.tightLines === undefined ? {} : { tightLines: row.tightLines }) })), measure)
+    .map((fitted, index) => withoutLoneWord(rows[index]!.label, fitted, Math.max(rows[index]!.maxLines ?? maxLines, fitted.lines.length), measure));
   return { labels, width: rows.length ? maxOf(labels.map((label, index) => label.w + (rows[index]!.reserve ?? 0))) : 0 };
 }
 
@@ -141,4 +141,19 @@ export function fittedLabel(fitted: FittedText, base: FontSpec): TypographyMetad
     ...(fitted.title !== undefined ? { title: fitted.title } : {}),
     ...(fitted.font !== base ? { fontStep: fitted.font } : {}),
   };
+}
+
+/** Leading of a row-name column that takes a smaller font to hold two lines in a pinned row pitch. */
+export const PINNED_ROW_LEADING = 1.1;
+
+/**
+ * The font a row-name column takes on a pinned height when its row pitch
+ * holds two lines of names only at a smaller size: the theme's next step
+ * down, else the target's own floor for the role, at a leading of 1.1. A
+ * layout tries it after the role size failed and before it cuts a name.
+ * Absent when the floor leaves no smaller size.
+ */
+export function pinnedRowFont(theme: Theme, font: FontSpec, role: TypeRoleName, target: RenderTarget = DEFAULT_TARGET, textScale = 1): FontSpec | undefined {
+  const size = stepDownFont(theme, font, role, target, textScale)?.size ?? targetFloorsPx(target, textScale)[role];
+  return size < font.size ? { ...font, size, lineHeight: PINNED_ROW_LEADING } : undefined;
 }

@@ -95,6 +95,20 @@ export function fitsInside(rect: Rect, text: TextSize, room = INSIDE_ROOM): bool
   return rect.w >= Math.max(floor, text.width + room) && rect.h >= Math.max(INSIDE_MIN_H, text.height + room);
 }
 
+/** Air each side of a value stepped down into a bar segment, as a column's digit seat keeps. */
+const STEPPED_AIR = 2;
+
+/**
+ * The inside seat of a bar segment's value at a step below the label size, or
+ * undefined where the segment cannot hold it. The 28 px floor of `fitsInside`
+ * is the label size's; a smaller step needs its glyphs and 2 px each side,
+ * and a segment as thick as its line box.
+ */
+export function steppedInsideSeat(rect: Rect, text: TextSize, fillCss: string, options: Pick<SegmentLabelOptions, 'insidePaint' | 'insidePattern'>): SlotCandidate | undefined {
+  if (rect.w < text.width + 2 * STEPPED_AIR || rect.h < Math.max(INSIDE_MIN_H, text.height)) return undefined;
+  return { ...insideCandidate('horizontal', rect, text, fillCss), slot: 'insideStepped', insidePaint: options.insidePaint, insidePattern: options.insidePattern };
+}
+
 /**
  * labelDensity 'smart' (the default) and 'minimal' drop a segment value
  * when the segment is shorter than the label plus the inside room, measured
@@ -196,6 +210,30 @@ export function keepValuesWithoutAxis(requests: LabelRequest[], density: LabelDe
   return requests.map((request) => (request.kind === 'point' || request.kind === 'segment') && request.priority < PRIORITY.endpoint
     ? { ...request, priority: PRIORITY.endpoint + request.priority / 1000 }
     : request);
+}
+
+/**
+ * A stacked part keeps its label when a value line crosses it. The seats the
+ * line leaves clear come first (the part's stretches past the line); the
+ * inside seat across the line comes after them, on a halo, before any seat
+ * outside the part.
+ */
+export function acrossValueLines(seats: SlotCandidate[]): SlotCandidate[] {
+  const inside = seats.findIndex((seat) => seat.insideFill === undefined);
+  const held = inside < 0 ? seats : seats.slice(0, inside);
+  if (held.length === 0) return seats;
+  const across = { ...held[0]!, slot: `${held[0]!.slot}Across`, penalty: held[held.length - 1]!.penalty + 0.05, overValueLines: true };
+  return [...held, across, ...seats.slice(held.length)];
+}
+
+/**
+ * Seats that keep their place when a value line (an average, a target, a
+ * benchmark) runs across them. The rule breaks around the glyphs when the
+ * scene is built, and a label across one sits on a halo, so the rule never
+ * costs a part, a total or a name its label.
+ */
+export function overValueLines(seats: SlotCandidate[]): SlotCandidate[] {
+  return seats.map((seat) => ({ ...seat, overValueLines: true }));
 }
 
 /**

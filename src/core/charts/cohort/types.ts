@@ -7,6 +7,7 @@
 import type { Id } from '../../types/cell';
 import type { BaseOptionsFor } from '../../types/options';
 import type { Rect } from '../../geometry';
+import type { ColumnOverride } from '../../schema/generatedColumns';
 
 /**
  * `active[0]` IS the cohort base. `size` is an optional authored base that is
@@ -77,17 +78,36 @@ export interface CohortOptionsBase extends BaseOptionsFor<'cohort'> {
   showPercentSign?: boolean;
   /** Pure Exhibit emphasis threshold in percentage points: rates above it print bold. Default 60; false disables emphasis and its note. */
   threshold?: number | false;
-  /** Pure Exhibit column tint, addressed by original period index; default 3. */
-  designatedPeriod?: number;
-  /** Summary-row policy. Weighted is the only retention-safe aggregate. */
+  /** Pure Exhibit column tint, addressed by original period index; default 3. false draws no tint and no head emphasis. */
+  designatedPeriod?: number | false;
+  /** Summary-row policy. Weighted is the only retention-safe aggregate. On the heatmap it beats `averages`. */
   total?: false | 'weighted';
+  /** Exhibit variants: where the summary row stands. Default 'bottom'. */
+  totalPosition?: 'top' | 'bottom';
+  /** Exhibit variants: `size: false` leaves the size column out. The bases stay in the calculation. */
+  columnVisibility?: Record<string, boolean>;
+  /** Exhibit variants: settings of the tracks `label`, `size` and `periods`. */
+  columnOverrides?: Record<string, ColumnOverride>;
+  /** Exhibit variants: order of the blocks `size` and `periods`. The row names stay first. */
+  columnOrder?: string[];
+  /** Exhibit variants: false draws no head row, with its height and rule. */
+  columnHeads?: false;
+  /** Variant 'stepped': false stops the numbers on filled cells. Hover, records and accessible values stay. */
+  figures?: false;
   /** Drop the newest cohort and longest period before every derivation. */
   excludeCurrentPeriod?: boolean;
   /** Optional exhibit eyebrow above the assertion title. */
   exhibitLabel?: string;
+  /**
+   * Exhibit variants. 'rows' (default): rows take the spare height of a pinned
+   * canvas, up to 1.8 times their natural height, and stepped period columns
+   * share the free width as pure columns do. 'none': rows keep their natural
+   * height and stepped columns keep their measured width.
+   */
+  heightFill?: 'rows' | 'none';
 }
 
-/** Consulting exhibit table. Stepped columns use measured content widths, normally 56–72px, with content sizing. Omitted preserves the legacy heatmap. */
+/** Consulting exhibit table. Stepped columns share the free width, as pure columns do, and keep their measured content width as the floor. Omitted preserves the legacy heatmap. */
 export type CohortOptions = CohortOptionsBase & CohortExhibitLabelsSlot;
 
 export interface CohortRowDerived {

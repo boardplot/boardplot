@@ -16,6 +16,8 @@ const EN = {
   "segmentsSentence": "Segments: {v1}. {v2}",
   "cascadeValueLabels": "Each bar prints its value inside or beside it.",
   "barEndTotalRange": "The label at the end of each bar is the row total or its range.",
+  "barPartValues": " A part wide enough prints its value inside the bar.",
+  "partsMissTotal": "Parts print rounded, so the parts of a row can miss its printed total by one step.",
   "rangeBarDesc": " A bar with a range fills its segments to the low end and runs a light outlined extension to the high end.",
   "tableTotalRow": " A {v1} row closes the table.",
   "bartableBlankHeading": "{v1} marks a sum left blank because a part is missing",
@@ -30,6 +32,7 @@ const EN = {
   // the note names the shaded rows; the compact cascade names its combined row.
   "combinedShadedLead": "Shaded rows, {v1}",
   "combinedRowLabel": "Top {v1} combined",
+  "residualKey": "Rest rows",
   "sliverKnown": " ({v1} in the parts drawn)",
   "sliverNote": "Too short to compare on the shared{v1} scale, which runs to {v2}",
 } as const;
@@ -49,6 +52,8 @@ const DE: { [K in keyof typeof EN]: string } = {
   "segmentsSentence": "Segmente: {v1}. {v2}",
   "cascadeValueLabels": "Jeder Balken zeigt seinen Wert innen oder daneben.",
   "barEndTotalRange": "Die Beschriftung am Balkenende zeigt die Zeilensumme oder ihre Spanne.",
+  "barPartValues": " Ein ausreichend breiter Teil zeigt seinen Wert im Balken.",
+  "partsMissTotal": "Die Teile sind gerundet, daher kann ihre Summe in einer Zeile um einen Schritt von der gezeigten Zeilensumme abweichen.",
   "rangeBarDesc": " Ein Balken mit Spanne füllt seine Segmente bis zur unteren Grenze. Eine helle Erweiterung mit Umriss reicht bis zur oberen Grenze.",
   "tableTotalRow": " Eine Zeile {v1} schließt die Tabelle ab.",
   "bartableBlankHeading": "{v1} zeigt eine leere Summe, weil ein Teil fehlt",
@@ -63,6 +68,7 @@ const DE: { [K in keyof typeof EN]: string } = {
   // the note names the shaded rows; the compact cascade names its combined row.
   "combinedShadedLead": "Schattierte Zeilen, {v1}",
   "combinedRowLabel": "Top {v1} zusammen",
+  "residualKey": "Übrige Zeilen",
   "sliverKnown": " ({v1} in den gezeichneten Teilen)",
   "sliverNote": "Zu kurz zum Vergleich auf der gemeinsamen Skala{v1} bis {v2}",
 };

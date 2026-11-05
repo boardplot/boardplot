@@ -6,7 +6,7 @@ import type { FrameGeometry, SceneNode } from '../core/types/scene';
 import type { RenderGeometry } from './prepared';
 
 /** The footer fields of the frame a render carries to React. */
-export type FooterFrame = Pick<FrameGeometry, 'noteList' | 'notePlacement' | 'footerRect' | 'footnoteNodeIds' | 'sourceNodeId' | 'creditNodeId' | 'notesButton'>;
+export type FooterFrame = Pick<FrameGeometry, 'noteList' | 'notePlacement' | 'footerRect' | 'footnoteNodeIds' | 'sourceNodeId' | 'creditNodeId' | 'notesButton' | 'notesButtonOff'>;
 
 /** Scene nodes replaced by the HTML footer. */
 export function footerNodeIds(frame?: FooterFrame): Set<string | undefined> {
@@ -15,11 +15,11 @@ export function footerNodeIds(frame?: FooterFrame): Set<string | undefined> {
 
 export function footerFrame(frame: FrameGeometry | undefined): FooterFrame | undefined {
   if (!frame?.noteList?.length) return undefined;
-  const { noteList, notePlacement, footerRect, footnoteNodeIds, sourceNodeId, creditNodeId, notesButton } = frame;
+  const { noteList, notePlacement, footerRect, footnoteNodeIds, sourceNodeId, creditNodeId, notesButton, notesButtonOff } = frame;
   return {
     noteList, ...(notePlacement ? { notePlacement } : {}), ...(footerRect ? { footerRect } : {}),
     ...(footnoteNodeIds ? { footnoteNodeIds } : {}), ...(sourceNodeId ? { sourceNodeId } : {}), ...(creditNodeId ? { creditNodeId } : {}),
-    ...(notesButton ? { notesButton } : {}),
+    ...(notesButton ? { notesButton } : {}), ...(notesButtonOff ? { notesButtonOff } : {}),
   };
 }
 

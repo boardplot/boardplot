@@ -11,6 +11,8 @@ import { compositeColor, contrastRatio } from '../src/core/color';
 import { marksOnBands } from '../src/core/markVisibility';
 import { markLostOnBandWarnings, refreshPaintWarnings } from '../src/core/paintWarnings';
 import type { Paint, SceneNode } from '../src/core/types/scene';
+import { prepareChart, serializePreparedChart } from '../src/react/prepare';
+import { preparedResult, type PreparedChart } from '../src/react/prepared';
 
 const dark = resolveTheme('standard-dark');
 
@@ -172,8 +174,12 @@ it('paints the bullet bar in the mark ink and outlines it only below 3:1 on the 
   const bar = (id: string) => node(`bar:${id}`) as Extract<SceneNode, { t: 'rect' }>;
   expect(resolvePaint(bar('four').fill, theme)).toBe(paintColor(theme, { token: 'markInk' }));
   expect(bar('four').stroke).toBeUndefined();
-  expect(bar('five').stroke).toBeDefined();
+  expect(bar('five').stroke).toBeUndefined();
   expect(bar('light').stroke).toBeUndefined();
+  // The full band fill steps the five bands 0.12 apart: the darkest misses 3:1 under the bar.
+  const full = layoutResolvedRequest(resolveChartRequest({ ...request, theme: { preset: 'boardroom', overrides: { marks: { bulletBandFill: 'full' } } } }));
+  if (full.refused) throw new Error('refused');
+  expect((full.scene.find(n => n.id === 'bar:five') as Extract<SceneNode, { t: 'rect' }>).stroke).toBeDefined();
   expect((node('target:four') as Extract<SceneNode, { t: 'line' }>).width).toBe(2);
   const weight = (id: string) => (node(id) as Extract<SceneNode, { t: 'text' }>).font.weight;
   expect(weight('label:category:four')).toBe(600);
@@ -336,4 +342,123 @@ it('draws series that share a colour role in distinct steps of that colour', () 
     if (stepped.refused) throw new Error('refused');
     expect(stepped.warnings.map(w => w.code), `${type} custom series`).not.toContain('series-indistinguishable');
   }
+});
+
+// Scenario series took their rank colour, so a prior year listed first painted darker than the actual and the look changed with series order.
+it.each(['column', 'bar'] as const)('paints scenario %s series from the actual, whatever the series order', (type) => {
+  const series = {
+    ac: { id: 'ac', label: 'Actual', scenario: 'AC' as const, values: [101, 108, null] },
+    py: { id: 'py', label: 'Prior year', scenario: 'PY' as const, values: [90, 101, null] },
+    pl: { id: 'pl', label: 'Plan', scenario: 'PL' as const, values: [104, 112, 120] },
+    fc: { id: 'fc', label: 'Forecast', scenario: 'FC' as const, values: [null, null, 117] },
+  };
+  for (const theme of ['boardroom', 'standard', 'standard-dark', 'notation', 'notation-dark', 'capital', 'studio', 'glass']) {
+    const resolved = resolveTheme(theme);
+    const paints = (order: (keyof typeof series)[]) => {
+      const geometry = layoutResolvedRequest(resolveChartRequest({
+        type,
+        theme,
+        data: { categories: ['y1', 'y2', 'y3'].map(id => ({ id, label: id })), series: order.map(key => series[key]) },
+        options: { variant: 'grouped' },
+      }));
+      if (geometry.refused) throw new Error('refused');
+      // The cell's base colour, before its pattern: PL outlines it and FC hatches it.
+      const paint = (id: string) => {
+        const node = geometry.scene.find((n): n is Extract<SceneNode, { t: 'rect' }> => n.t === 'rect' && n.owner?.seriesId === id && !!n.owner.categoryId && !!n.fill);
+        return node?.fill ? resolvePaint(node.fill, resolved) : undefined;
+      };
+      return { ac: paint('ac'), py: paint('py'), pl: paint('pl'), fc: paint('fc') };
+    };
+    const acFirst = paints(['ac', 'py', 'pl', 'fc']);
+    expect(paints(['py', 'ac', 'pl', 'fc']), theme).toEqual(acFirst);
+    // FC may lift off a dark page's floor, so only PL is held to the actual's exact colour.
+    expect(acFirst.pl, theme).toBe(acFirst.ac);
+    expect(acFirst.py, theme).not.toBe(acFirst.ac);
+  }
+});
+
+// Pairing a scenario with its actual must never give two unpatterned columns one colour: an authored PY fill and a stacked PY segment stay apart.
+it('keeps scenario columns apart from an authored fill and in a stack', () => {
+  const resolved = resolveTheme('standard');
+  const fills = (variant: 'grouped' | 'stacked', series: { id: string; label: string; scenario?: 'AC' | 'PY'; fill?: string; values: number[] }[]) => {
+    const geometry = layoutResolvedRequest(resolveChartRequest({
+      type: 'column', theme: 'standard',
+      data: { categories: ['y1', 'y2'].map(id => ({ id, label: id })), series },
+      options: { variant },
+    }));
+    if (geometry.refused) throw new Error('refused');
+    return series.map(s => {
+      const node = geometry.scene.find((n): n is Extract<SceneNode, { t: 'rect' }> => n.t === 'rect' && n.owner?.seriesId === s.id && !!n.owner.categoryId && !!n.fill);
+      return node?.fill ? resolvePaint(node.fill, resolved) : undefined;
+    });
+  };
+  const [ac, py] = fills('grouped', [{ id: 'ac', label: 'Actual', values: [3, 4] }, { id: 'py', label: 'Prior year', scenario: 'PY', fill: '#075A8E', values: [2, 3] }]);
+  expect(ac).not.toBe(py);
+  const stack = fills('stacked', [{ id: 'a', label: 'North', values: [3, 4] }, { id: 'b', label: 'South', values: [2, 2] }, { id: 'py', label: 'Prior year', scenario: 'PY', values: [1, 2] }]);
+  expect(new Set(stack).size).toBe(3);
+});
+
+// Sorting bar segments reordered the series before pairing, so a plan took the colour of another actual.
+it('pairs sorted bar scenarios with their own actual', () => {
+  const resolved = resolveTheme('standard');
+  const geometry = layoutResolvedRequest(resolveChartRequest({
+    type: 'bar', theme: 'standard',
+    data: {
+      categories: ['y1'].map(id => ({ id, label: id })),
+      series: [
+        { id: 'a', label: 'North', values: [100] },
+        { id: 'b', label: 'South', values: [20] },
+        { id: 'pa', label: 'North plan', scenario: 'PL', values: [10] },
+        { id: 'pb', label: 'South plan', scenario: 'PL', values: [80] },
+      ],
+    },
+    options: { variant: 'grouped', sort: { segments: 'asc' } },
+  }));
+  if (geometry.refused) throw new Error('refused');
+  const paint = (id: string) => {
+    const node = geometry.scene.find((n): n is Extract<SceneNode, { t: 'rect' }> => n.t === 'rect' && n.owner?.seriesId === id && !!n.owner.categoryId && !!n.fill);
+    return node?.fill ? resolvePaint(node.fill, resolved) : undefined;
+  };
+  expect(paint('pa')).toBe(paint('a'));
+  expect(paint('pb')).toBe(paint('b'));
+  expect(paint('a')).not.toBe(paint('b'));
+});
+
+// A value matrix printed its dark values in the theme ink on light fills and in near-black on mid fills, so 0.61 stood bold beside 0.55. Its dark values now share one ink, in each theme.
+it('prints the dark values of one heatmap matrix in one ink', () => {
+  const request = {
+    type: 'heatmap',
+    data: {
+      categories: Array.from({ length: 12 }, (_, i) => ({ id: `c${i}`, label: `C${i}` })),
+      series: Array.from({ length: 6 }, (_, s) => ({ id: `s${s}`, label: `S${s}`, values: Array.from({ length: 12 }, (_, i) => 0.25 + ((s * 7 + i * 5) % 13) * 0.05) })),
+    },
+    options: { variant: 'value', scale: 'continuous' },
+  };
+  for (const themeName of ['standard', 'standard-dark']) {
+    const scene = layoutResolvedRequest(resolveChartRequest({ ...request, theme: themeName }));
+    if (scene.refused) throw new Error('refused');
+    const theme = resolveTheme(themeName);
+    const inks = scene.labels.filter(label => label.id.startsWith('point:')).map(label => resolvePaint(label.ink, theme).toLowerCase());
+    const darkInks = inks.filter(css => contrastRatio(css, '#000000') < contrastRatio(css, '#ffffff'));
+    expect(inks.length, themeName).toBe(72);
+    expect(new Set(darkInks).size, themeName).toBe(1);
+  }
+});
+
+// The matrix list sat in the recipe of every label, so JSON copied it 576 times for a 24 x 24 heatmap (13 MB where 1 MB suffices). The prepared chart lists it once and the labels share it again.
+it('lists a heatmap matrix once in the prepared chart', async () => {
+  const spec = {
+    type: 'heatmap' as const,
+    data: {
+      categories: Array.from({ length: 24 }, (_, i) => ({ id: `c${i}`, label: `C${i}` })),
+      series: Array.from({ length: 24 }, (_, s) => ({ id: `s${s}`, label: `S${s}`, values: Array.from({ length: 24 }, (_, i) => 0.2 + (((s * 7 + i * 5) * 37) % 576) / 576 * 0.7) })),
+    },
+    options: { variant: 'value' as const, scale: 'continuous' as const },
+  };
+  const prepared = await prepareChart({ ...spec, size: { width: 1200, height: 800 } } as Parameters<typeof prepareChart>[0]) as PreparedChart;
+  expect(serializePreparedChart(prepared).length).toBeLessThan(2_000_000);
+  const result = preparedResult(prepared);
+  if (result.refused) throw new Error('refused');
+  const lists = new Set(result.scene.flatMap(node => node.t === 'text' && 'token' in node.ink && node.ink.theme?.kind === 'contrast-ink' && node.ink.theme.matrix ? [node.ink.theme.matrix] : []));
+  expect(lists.size).toBe(1);
 });

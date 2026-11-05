@@ -12,6 +12,6 @@ import type { CreativeData, CreativeOptions } from '../../core/charts/creative/t
 export type { ChartProps } from '../createChartComponent';
 
 // The option keys 'creative' takes, from its options schema: a prop outside them draws the unknown-option refusal.
-const checkOptionKeys = optionKeyCheck({"tree":{"target":0,"textScale":0,"textSize":0,"mode":0,"interactive":0,"embed":{"width":0},"palette":0,"locale":{"language":0,"decimal":0,"thousands":0,"minusGlyph":0,"weekStartsOn":0},"title":0,"subtitle":{"company":0,"measure":0,"period":0,"scenarios":0},"source":0,"theme":{"preset":0,"overrides":0},"size":{"width":0,"height":0,"unit":0},"notes":{"maxListed":0,"placement":0,"maxLines":0,"show":0,"pointer":0},"footnotes":0}});
+const checkOptionKeys = optionKeyCheck({"tree":{"target":0,"textScale":0,"textSize":0,"mode":0,"interactive":0,"embed":{"width":0},"palette":0,"locale":{"language":0,"decimal":0,"thousands":0,"minusGlyph":0,"weekStartsOn":0},"colorblindSafe":0,"title":0,"subtitle":{"company":0,"measure":0,"period":0,"scenarios":0},"source":0,"theme":{"preset":0,"overrides":0},"size":{"width":0,"height":0,"unit":0},"notes":{"maxListed":0,"placement":0,"maxLines":0,"show":0,"pointer":0},"footnotes":0,"columnVisibility":0,"columnOverrides":{"*":{"width":0,"align":0,"headAlign":0,"label":0}},"columnOrder":0,"columnHeads":0,"rowVisibility":0,"rowOrder":0,"rowOverrides":{"*":{"label":0}}}});
 
 export const CreativeChart = createChartComponent<CreativeData, CreativeOptions>(registeredType(creativeCore), checkOptionKeys);

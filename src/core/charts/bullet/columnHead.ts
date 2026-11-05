@@ -1,6 +1,6 @@
 /**
- * The column heads of a bullet card (target and gap beside KPI rows; actual, share and
- * difference on the percent-of-target rows). A head is a label like any other: it is
+ * The column heads of a bullet card (actual, target and gap beside KPI rows; actual, share and
+ * difference on the percent-of-target rows) and of the median column of dense box rows. A head is a label like any other: it is
  * fitted by the shared truncation policy and placed by the label solver, so a head
  * that cannot be placed hides by the solver's rules. The scene keeps its table-head
  * part, which holds it to the table-head type floor.
@@ -12,11 +12,18 @@ import type { Rect } from '../../geometry';
 import type { FontSpec, TextMeasurer } from '../../text';
 import type { RenderTarget } from '../../types/options';
 import type { SceneNode } from '../../types/scene';
+import type { Theme } from '../../types/theme';
+import { readerFloorPx, tableHeadFloorPx } from '../../typeFloors';
 
 /** A head may run this many font sizes wide before it is cut, unless its column is wider anyway. */
 const HEAD_EM = 12;
 
 export const HEAD_PREFIX = 'header:';
+
+/** The font of a column head: the footnote face, held to the table-head and label floors of the target. */
+export function columnHeadFont(theme: Theme, target: RenderTarget, textScale: number): FontSpec {
+  return { family: theme.type.family, ...theme.type.footnote, size: Math.max(theme.type.footnote.size, tableHeadFloorPx(target, textScale), readerFloorPx(target, 'label', textScale)) };
+}
 
 /** The head as drawn: whole while it fits its column or 12 em, else cut with an ellipsis and the full words as the title. */
 export function fitHead(

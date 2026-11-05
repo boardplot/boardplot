@@ -23,11 +23,11 @@ import { percentLevels, runAnnotatePass } from '../../annotatePass';
 import { categoryTargetFields, spliceAnnotationNodes } from '../../annotateFields';
 import { rectSeriesAdjacentWarnings } from '../../adjacentSeries';
 import { applyValueAxisTitleInk, layoutValueAxis, planValueAxisTitle, tickRowTitleEnd, valueAxisTitleRequest, valueAxisTitleText, valueAxisUnit } from '../../axis';
-import { formatShare, NOT_AVAILABLE } from '../../format';
+import { NOT_AVAILABLE } from '../../format';
 import { seriesRasterFormatter } from '../../formatSpec';
 import { rectContains, rectsOverlap, rowLabelX, unionRect, type Rect, type Size } from '../../geometry';
 import { bandValueLabelUniformity, keepValuesWithoutAxis } from '../band/labels';
-import { stackParts } from '../band/stacks';
+import { stackParts, withoutShareAnnotations } from '../band/stacks';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import {
@@ -47,9 +47,9 @@ import { accessibleTitle,
   resolveSize,
 } from '../../normalize/shared';
 import { rangeMidUndrawn, resolveCellRange, type RangeMark } from '../../rangeRules';
-import { applyAxisBounds, bandScale, linearScale, niceDomain, type BandScale } from '../../scale';
-import { authoredNotes, frameTextOptions, normalizeLegendOption, solveFrame, type LegendItemInput, plotHeightAfter, authoredFootnoteCount } from '../../frame';
-import { HARD_MINIMUM, rowSizing } from '../../sizing';
+import { applyAxisBounds, applyTickStep, shownTickStep, bandScale, linearScale, niceDomain, type BandScale } from '../../scale';
+import { authoredNotes, frameTextOptions, normalizeLegendOption, noteLine, solveFrame, type LegendItemInput, plotHeightAfter, authoredFootnoteCount } from '../../frame';
+import { HARD_MINIMUM, rowSizing, SIZE_TOLERANCE } from '../../sizing';
 import { rowDrivenHeight } from '../../rowCanvas';
 import { defaultMeasurer, wrapText, type FontSpec, type TextMeasurer } from '../../text';
 import {
@@ -84,7 +84,8 @@ import { displayFor, resolveBarDomain, textFor, toDateOnValues } from './domain'
 import { labelOn as barLabelOn } from '../labelOn';
 import { planBarLabels } from './labels';
 import { layoutBarMarks } from './marks';
-import { barHalves, cagrInset, CAGR_INSET_ROOM, CAGR_ROOM, CAGR_TRIES, CAT_BAND_GAP, CAT_MAX_LINES, CUT_NOTES, DEFER_ADJACENT, fixedBarRow, LABEL_GAP, NO_NAME_COLUMN, RIGHT_ROOM, type BarArea, type BarDomain, type BarMarkGeometry } from './model';
+import { authoredTrackWidth, columnOverrideWarnings, trackPlotFloor } from '../columnOverrides';
+import { barHalves, cagrInset, CAGR_INSET_ROOM, CAGR_ROOM, CAGR_TRIES, CAT_BAND_GAP, CAT_MAX_LINES, BarTooTall, CUT_NOTES, DEFER_ADJACENT, fixedBarRow, LABEL_GAP, NAME_TRACK, NO_NAME_COLUMN, RIGHT_ROOM, STOP_IF_TOO_TALL, type BarArea, type BarDomain, type BarMarkGeometry } from './model';
 import { barPaints } from './paints';
 import { barPlotArea, solveBarFrame } from './plot';
 import { composedTextRole } from '../../textRole';
@@ -94,6 +95,7 @@ import { disclosureNote, disclosuresShown } from '../../notes';
 import { omittedKey } from '../../seriesIdentity';
 import { maxOf, minOf, pushAll } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
+import { ITEM_BUDGET } from '../../itemBudget';
 
 export interface BarMarks {
   rows: { id: Id; rect: Rect; bars: { seriesId: Id; rect: Rect; nodeId: Id }[] }[];
@@ -160,8 +162,11 @@ function warnRangeBarIgnoredRanking(
   mode: 'football-field' | 'tornado',
   options: { topN?: unknown; sort?: { segments?: string } },
   warnings: LintWarning[],
+  categoryCount: number,
 ): void {
   if (options.topN) {
+    // The item budget counts a chart after its topN, so over the budget the patched spec would be refused.
+    const patch = categoryCount > ITEM_BUDGET ? {} : { field: ['options', 'topN'], fix: [{ op: 'remove' as const, path: '/options/topN' }] };
     warnings.push(
       mode === 'football-field'
         ? {
@@ -169,12 +174,14 @@ function warnRangeBarIgnoredRanking(
             severity: 'warn',
             message: 'football-field does not aggregate method ranges with topN; all methods remain visible',
             suggest: 'filter methods before layout instead of aggregating intervals',
+            ...patch,
           }
         : {
             code: 'tornado-topn-ignored',
             severity: 'warn',
             message: 'tornado does not aggregate drivers with topN; all drivers remain visible',
             suggest: 'drop the drivers you do not want before layout — an aggregated driver has no one-at-a-time swing',
+            ...patch,
           },
     );
   }
@@ -199,7 +206,8 @@ export function layoutBar(
   options: BarOptions = {},
   annotationPass?: BarAnnotationPass,
 ): Geometry<BarMarks, BarDerived> {
-  options = withValueLabelDefaults(withLocaleStrings(options), 'bar', options.variant);
+  const dropped: LintWarning[] = [];
+  options = withoutShareAnnotations(withValueLabelDefaults(withLocaleStrings(options), 'bar', options.variant, dropped), options.variant === 'stacked100', dropped);
   const layout = (next: BarOptions) => layoutBarSized(data, next, annotationPass);
   const geo = withBandValueNotes(data, options, layout);
   const natural = geo.sizing?.naturalHeight;
@@ -208,6 +216,7 @@ export function layoutBar(
     const probe = withBandValueNotes(data, { ...options, size: { width: geo.size.width, height: natural } }, layout);
     if (probe.sizing && probe.sizing.minHeight > natural) geo.sizing = { ...geo.sizing!, naturalHeight: probe.sizing.minHeight };
   }
+  geo.warnings.push(...dropped);
   return geo;
 }
 
@@ -388,6 +397,7 @@ function annotateBar(
     format: domain.options.format,
     locale: domain.options.locale?.language,
     strings: domain.options.strings,
+    sharesFormat: domain.variant === 'stacked100',
     valueLinePercentLevels: domain.variant === 'stacked100' || domain.options.unit === '%' || percentLevels(domain.dataSeries.map(series => ({ vals: series.cells }))),
     solveCtx,
     meanValue: domain.meanValue,
@@ -395,6 +405,7 @@ function annotateBar(
     xScale: area.x,
     ...categoryTargetFields(cats.map((c) => c.id), plot, (i) => band.position(i) + band.bandwidth / 2, 'y'),
     valueAxis: 'horizontal',
+    calloutRowPitch: band.step,
     partialCategories: partialIds(cats),
     ...(!annotationPass && cagrInset(domain) ? { barInset: { gapWord: chartString(domain.options, 'gapLead') } } : {}),
   };
@@ -413,6 +424,14 @@ function halvesOfOneBlock(halves: { neg: string; pos: string } | undefined) {
   if (halves === undefined) return undefined;
   return (a: OwnerRef, b: OwnerRef) => a.categoryId === b.categoryId
     && ((a.seriesId === halves.neg && b.seriesId === halves.pos) || (a.seriesId === halves.pos && b.seriesId === halves.neg));
+}
+
+/** The sizing of a standard bar; the natural heights only set its natural height, not its minimum. */
+function standardBarSizing(domain: BarDomain, area: BarArea, naturalLabels: { h: number }[]) {
+  const { options, size } = domain;
+  const hardMinimum = (options as { [HARD_MINIMUM]?: boolean })[HARD_MINIMUM] === true;
+  return barSizing(size, area, area.band.step, area.catLines, naturalLabels, area.fixedRowsH, area.segmentStep, !hardMinimum, textScaleOf(options), area.segmentMinStep,
+    domain.incompleteRows.size > 0 && options.mode === 'compact' && hardMinimum);
 }
 
 /** Phase 5: label nodes, the adjacency lint, the receipts, the sizing and the accessible text. */
@@ -486,16 +505,14 @@ function assembleBarGeometry(
       !domain.stacks[ci]!.hasValue
         ? `${c.label} ${NOT_AVAILABLE}`
         : variant === 'stacked100'
-          ? `${c.label} ${totalFmt(totals[ci]!)} (${dataSeries.map((s, si) => `${s.label} ${formatShare(shares[ci]![si]!, options.locale?.language)}`).join(', ')})`
+          ? `${c.label} ${totalFmt(totals[ci]!)} (${dataSeries.map((s, si) => `${s.label} ${domain.pctFmt(shares[ci]![si]!)}`).join(', ')})`
           : `${c.label} ${oneValueText(ci) ?? totalFmt(totals[ci]!)}`,
     )
     .join(', ');
   return {
     type: 'bar',
     size,
-    sizing: barSizing(size, area, band.step, area.catLines,
-      naturalCategoryHeights(cats, tickFont, area.capW, measure), area.fixedRowsH, area.segmentStep, !(options as { [HARD_MINIMUM]?: boolean })[HARD_MINIMUM], textScaleOf(options), area.segmentMinStep,
-      domain.incompleteRows.size > 0 && options.mode === 'compact' && (options as { [HARD_MINIMUM]?: boolean })[HARD_MINIMUM] === true),
+    sizing: standardBarSizing(domain, area, naturalCategoryHeights(cats, tickFont, area.capW, measure)),
     plot: area.plot,
     scene: withSegmentSeams(joinHatchPeers(nodes), theme, halvesOfOneBlock(barHalves(options))),
     labels: allLabels,
@@ -569,6 +586,9 @@ function layoutStandardBar(
   if (area.cutNotes.length > 0 && (options as { [CUT_NOTES]?: string[] })[CUT_NOTES] === undefined) {
     return layoutStandardBar(data, { ...options, [CUT_NOTES]: area.cutNotes } as BarOptions, annotationPass);
   }
+  // A caller that keeps the bar only when its rows fit (STOP_IF_TOO_TALL) learns it now, before the marks and labels cost anything.
+  if ((options as { [STOP_IF_TOO_TALL]?: boolean })[STOP_IF_TOO_TALL] === true
+    && standardBarSizing(domain, area, area.catLines).minHeight > domain.size.height + SIZE_TOLERANCE) throw new BarTooTall();
   const scene = layoutBarMarks(domain, paints, area);
   const local = layoutBarLocalAnnotations(domain, area, warnings);
   pushAll(scene.nodes, local.nodes);
@@ -851,7 +871,7 @@ function rowIntervalValues(data: ChartData, options: BarOptions): (number | null
         const range = typeof cell === 'object' && cell !== null && 'range' in cell
           ? (cell as { range?: { low?: number; high?: number; mid?: number } }).range
           : undefined;
-        return range ? [range.low, range.high, ...(options.methodNote === true ? [range.mid] : [])] : [cellValue(cell)];
+        return range ? [range.low, range.high, ...(options.methodNote === true ? [range.mid] : [])] : options.variant === 'football-field' ? [] : [cellValue(cell)];
       }),
     ),
     typeof spine === 'number' ? spine : spine?.value,
@@ -980,6 +1000,7 @@ function layoutRowIntervals(
       ? planFootballField(data, options as FootballFieldBarOptions, ctx)
       : planTornado(data, options as TornadoBarOptions, ctx);
   const cats = plan.cats;
+  if (mode === 'football-field' && cats.length < data.categories.length) options = { ...options, notes: { ...options.notes, show: [...new Set([...(options.notes?.show ?? ['note']), 'disclosure' as const])] } };
   const rows = plan.rows;
   const spine = plan.spine;
   // The plan's texts (and their measured widths) may come from a
@@ -1070,17 +1091,22 @@ function layoutRowIntervals(
     const axisH = axisShown ? tickRowH + 8 + (axisTitle && titleRow ? axisTitle.height + 2 : 0) : 0;
     const availH = plotHeightAfter(frameResult, size.height, plot0.h - currentPad - axisH);
     const lineH = tickFont.size * 1.2;
-    const catCap = Math.max(24, plot0.w * 0.28);
+    const nameColumn = !noNameColumn && labelOn('category');
+    columnOverrideWarnings('bar', options.columnOverrides, nameColumn ? ['label'] : [], [], rowWarnings);
+    const authoredName = options.columnOverrides?.label?.width;
+    const nameTrack = (options as { [NAME_TRACK]?: number })[NAME_TRACK] ?? (authoredName === undefined || !nameColumn ? undefined
+      : authoredTrackWidth('label', authoredName, 24, plot0.w - CAT_BAND_GAP - trackPlotFloor(plot0.w), rowWarnings));
+    const catCap = nameTrack ?? Math.max(24, plot0.w * 0.28);
     // A fixed bar row sizes the names to its pitch, not to the canvas.
     const stepEst = theme.space.barRow?.pitch ?? availH / cats.length;
     const fittedCats = rowLabelBand(
       cats.map((cat) => ({ id: cat.id, label: cat.label ?? cat.id, footnote: cat.footnote })), tickFont, catCap, stepEst >= Math.max(30, 2 * lineH + (targetSizing ? 4 : 0)) ? 2 : 1, lineH, measure,
-      { target: options.target, textScale: textScaleOf(options), typeRole: 'axis', wider: gutterBudget(24, plot0.w), shrink: stepDownFont(theme, tickFont, 'axis', options.target, textScaleOf(options)), footnoteRefs: { count: authoredFootnoteCount(options), warnings: rowWarnings } },
+      { target: options.target, textScale: textScaleOf(options), typeRole: 'axis', wider: nameTrack ?? gutterBudget(24, plot0.w), tightLines: Math.floor((stepEst - (targetSizing ? 4 : 0)) / lineH), shrink: stepDownFont(theme, tickFont, 'axis', options.target, textScaleOf(options)), footnoteRefs: { count: authoredFootnoteCount(options), warnings: rowWarnings } },
     );
     // A tornado driver's name prints bold over its range (tornadoHead): its seat and the band take the bold width.
     const catLines = fittedCats.labels.map((label, ci) => tornadoHead(cats[ci]!, label)
       ? { ...label, w: Math.max(label.w, measure(label.lines[0]!, { ...label.font, weight: emphasisWeight(theme) }).width) } : label);
-    const catBandW = Math.max(fittedCats.width, maxOf(catLines.map((label) => label.w)));
+    const catBandW = nameTrack ?? Math.max(fittedCats.width, maxOf(catLines.map((label) => label.w)));
     const fixedRow = fixedBarRow(theme, catLines.map((label) => label.h));
     const fixedRowsH = fixedRow ? fixedRow.step * cats.length : undefined;
     const nameW = noNameColumn ? 0 : catBandW + CAT_BAND_GAP;
@@ -1101,7 +1127,7 @@ function layoutRowIntervals(
     };
     const x = linearScale([dLo, dHi], [plot.x, plot.x + plot.w]);
     const titleEnd = axisTitle && !titleRow
-      ? tickRowTitleEnd(axisTitle, { scale: x, plot, orient: 'x', gridlines: false, format: fmt, formatSpec: valueSpec.spec, theme, measure, canvasWidth: size.width }, plot0.x)
+      ? tickRowTitleEnd(axisTitle, { scale: x, ticks: stepped.ticks, plot, orient: 'x', gridlines: false, format: fmt, formatSpec: valueSpec.spec, theme, measure, canvasWidth: size.width }, plot0.x)
       : undefined;
     const minWidth = size.width - plot0.w + nameW + leftReserve + rightReserve + 10;
     return { availH, minWidth, catCap, catLines, catBandW, fixedRow, fixedRowsH, valueBody, plot, x, titleEnd, titleRow };
@@ -1109,11 +1135,13 @@ function layoutRowIntervals(
   // With no tick row nothing reads the round ends, so the bars span the plot.
   // A football field reads its ranges against the current value, not against
   // zero or a round end, so its ticks stand inside the data extent too.
-  const [dLo, dHi] = !axisShown || mode === 'football-field' ? [rawLo, rawHi] : niceDomain(rawLo, rawHi, 5, {
+  const nice: [number, number] = !axisShown || mode === 'football-field' ? [rawLo, rawHi] : niceDomain(rawLo, rawHi, 5, {
     dataExtent: [rawLo, rawHi],
     maxWasteFraction: 0.15,
     preserveDataSideOfZero: true,
   });
+  const stepped = applyTickStep(nice, shownTickStep(options.valueAxis?.tickStep, axisShown, warnings), warnings);
+  const [dLo, dHi] = stepped.domain;
   const planRows = (noNameColumn: boolean, out: LintWarning[]) => {
     const sharedWarnings: LintWarning[] = [];
     const first = rowsFor(false, sharedWarnings, noNameColumn);
@@ -1147,6 +1175,7 @@ function layoutRowIntervals(
     const axis = layoutValueAxis(
       {
         scale: x,
+        ticks: stepped.ticks,
         plot,
         orient: 'x',
         gridlines: options.valueAxis?.gridlines ?? false,
@@ -1642,6 +1671,7 @@ function planFootballField(
   // series, so its per-series formatter IS this plan's formatter — the same
   // rule the standard bar path applies through `valueSpec.forSeries`.
   const fmt = ctx.forSeries(series);
+  const missingRange: number[] = [];
   let cells = normalizeSeriesValues(series, cats, 0).map((cell, ci) => {
     const range = resolveCellRange(
       cell,
@@ -1649,15 +1679,28 @@ function planFootballField(
       warnings,
       { seriesId: series.id, categoryId: cats[ci]?.id },
     );
-    if (!range) {
-      throw new NormalizeError(
-        'football-field-range-required',
-        `series[${series.id}].values[${ci}].range`,
-        `football-field method '${cats[ci]!.id}' requires a range`,
-      );
-    }
-    return { value: cellValue(cell), meta: cellMeta(cell), range };
+    if (!range) missingRange.push(ci);
+    return { value: cellValue(cell), meta: cellMeta(cell), range: range! };
   });
+  if (missingRange.length === cats.length) {
+    const first = missingRange[0]!;
+    throw new NormalizeError(
+      'football-field-range-required',
+      `series[${series.id}].values[${first}].range`,
+      chartString(options, 'footballRangeRequired'),
+      chartString(options, 'footballRangeSuggest'),
+    );
+  }
+  const missing = new Set(missingRange);
+  const leftOut = missingRange.map(index => cats[index]!.label ?? cats[index]!.id);
+  for (const index of missingRange) warnings.push({
+    code: 'football-field-method-without-range', severity: 'warn',
+    message: chartString(options, 'footballMethodWithoutRange', { v1: cats[index]!.label ?? cats[index]!.id }),
+    owner: { seriesId: series.id, categoryId: cats[index]!.id },
+    field: ['data', 'series', data.series.indexOf(series), 'values', index],
+  });
+  cats = cats.filter((_, index) => !missing.has(index));
+  cells = cells.filter((_, index) => !missing.has(index));
 
   const order = cats.map((_, index) => index);
   const sort = options.sort?.categories ?? 'sheet';
@@ -1675,7 +1718,7 @@ function planFootballField(
   cats = order.map((index) => cats[index]!);
   cells = order.map((index) => cells[index]!);
 
-  warnRangeBarIgnoredRanking('football-field', options, warnings);
+  warnRangeBarIgnoredRanking('football-field', options, warnings, data.categories.length);
   if (
     options.netLine !== undefined ||
     options.averageMarker !== undefined ||
@@ -1795,6 +1838,10 @@ function planFootballField(
       0,
     ) / cells.length;
   if (options.methodNote !== true && ranges.some((range) => range.mid !== undefined)) warnings.push(rangeMidUndrawn());
+  const methodNotes = [
+    ...noteLine(chartString(options, 'footballMethodsLeftOutNote'), leftOut, options).map(disclosureNote),
+    ...(options.methodNote === true && ranges.some((range) => range.mid !== undefined) ? [disclosureNote(options.strings!.rangeMidNote!)] : []),
+  ];
 
   return {
     cats,
@@ -1811,10 +1858,7 @@ function planFootballField(
       : {}),
     ranges,
     valueFmt: fmt,
-    // A tick inside a range: a method note, printed on request.
-    ...(options.methodNote === true && ranges.some((range) => range.mid !== undefined)
-      ? { methodNotes: [disclosureNote(options.strings!.rangeMidNote!)] }
-      : {}),
+    ...(methodNotes.length ? { methodNotes } : {}),
     derived: {
       totals,
       order: cats.map((cat) => cat.id),
@@ -1949,7 +1993,7 @@ function planTornado(
    * inventing judgment. So the palette sets the tornado's hue and the two tints
    * say "same driver, two cases".
    */
-  warnRangeBarIgnoredRanking('tornado', options, warnings);
+  warnRangeBarIgnoredRanking('tornado', options, warnings, data.categories.length);
   if (
     options.netLine !== undefined ||
     options.averageMarker !== undefined ||

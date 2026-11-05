@@ -40,16 +40,16 @@ Part of a whole in one or two levels (group, item): cell area is value. Squarifi
 
 | Path | Type | Required | Meaning |
 |---|---|---|---|
-| groups | array |  | Groups in source order. Each group is one hue and one contiguous region. Left out, the groups come from the items in first-seen order. |
+| groups | array |  | Groups in source order. Each group is one colour and one contiguous region; by default the groups share one colour family, the first drawn group strongest (the largest under the default order). Left out, the groups come from the items in first-seen order. |
 | groups[].id | string | yes | Group identity that items name in `group`. |
 | groups[].label | string |  | Group name in the legend; defaults to the id. |
-| groups[].colorRole | string |  | Theme color role of every cell in this group; the palette is used when absent. One of good, bad, warn, neutral, neutralLight, highlight, total, others; series-N for step N of the theme ramp, 1-based (series-2 is color.series[1]); or status-<key> for a theme status colour. A hex colour goes in fill. |
+| groups[].colorRole | string |  | Theme color role of every cell in this group. Absent, the group takes its rank step on color.treemap (else color.stack, else the first series colour stepped toward the page), or its palette hue when options.palette is set. One of good, bad, warn, neutral, neutralLight, highlight, total, others; series-N for step N of the theme ramp, 1-based (series-2 is color.series[1]); or status-<key> for a theme status colour. A hex colour goes in fill. |
 | groups[].fill | string |  | Authored fill of every cell in this group. |
 | items | array | yes | Items, one cell each. Items of one group sit next to each other. |
 | items[].id | string | yes | Item identity, one cell. |
 | items[].label | string |  | Name printed on the cell, or beside it with a leader when the cell is too small; defaults to the id. |
 | items[].group | string |  | Id of the group this item belongs to. Leave it out on every item for a one-level treemap. |
-| items[].value | number | yes | Value of the item, above 0. The cell area is proportional to it. Zero, negative and missing values are refused. |
+| items[].value | number \| null | yes | Value of the item. The cell area is proportional to a value above 0. Zero and null items are left out with a warning and a note. Negative values are refused. |
 
 ## Options
 
@@ -60,7 +60,7 @@ Part of a whole in one or two levels (group, item): cell area is value. Squarifi
 | cellValue | string | `'value'`, `'share'`, `'value-share'` | `'value'` | Name and bold value print together, inside the cell or on a circle leader. A pair that does not fit goes to the complete list. 'value' (default), 'share' of the grand total, or 'value-share' as "3,080 (17%)". A percent format applies to cell shares; group totals stay in value units. |
 | total | boolean \| string |  |  | Total callout at the lower right, no larger than the title. true prints the formatted grand total with the unit; a string prints itself, with '{value}' replaced by the formatted total. Off by default: the title usually states the total. |
 
-Plus the [shared options](options.md). This type does not accept `detailFields`, `labels`, `categoryLabels`, `valueAxis.tickStep`, `valueAxis.log`, `valueAxis.reverse`, `valueAxis.break`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `sort`, `topN`, `bandFraction`, `highlight`, `story`, `hatchStrength`, `colorblindSafe`, `rounding`.
+Plus the [shared options](options.md). This type does not accept `detailFields`, `labels`, `valueAxis.tickStep`, `valueAxis.log`, `valueAxis.reverse`, `valueAxis.break`, `highlight`, `story`, `hatchStrength`, `rounding`, `annotations`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `bandFraction` with an `option-ignored` warning.
 
 ## Annotations
 
@@ -78,9 +78,10 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 |---|---|---|
 | growth-rect | example | Squarified treemap: 19 items in 5 groups, exact areas, group key with totals, small names beside the region |
 | growth-circle | example | Circular Voronoi treemap of the same data: convex cells, leaders to both sides and a total callout |
+| growth-rect-group-hues | example | The same groups with one hue each: color.treemap set to the series colours |
 | one-level-shares | example | One level, no groups: one hue, value and share of the total on every cell |
 | source-order-shares-circle | example | Circle in source order with shares of the total and the key at the bottom |
 
 ## Not for
 
-Zero or negative values, or values that do not add up to one whole; use bar for a ranking and waterfall for signed changes.
+Negative values, or values that do not add up to one whole; use bar for a ranking and waterfall for signed changes. Zero and null items are left out with a warning and a note.

@@ -5,6 +5,7 @@ import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request'
 import { requireGeometry } from '../src/core/sizing';
 import { repaintGeometry } from '../src/core/repaintGeometry';
 import { resolveTable } from '../src/core/charts/table/resolve';
+import { sortRows } from '../src/core/charts/table/view';
 import { preparedTableRecords } from '../src/core/a11y/structuralRecords';
 import { displayedValueText, interactionValueText } from '../src/core/a11y/valueText';
 import { claimsForChart } from '../src/core/claims/browser';
@@ -12,7 +13,9 @@ import { bartableDataSchema } from '../src/core/charts/bartable/schema';
 import { tableDataSchema } from '../src/core/charts/table/schema';
 import { authoredTrackWidth, intrinsicColumnWidth, tableFonts, ENCODING_WIDTH } from '../src/core/charts/table/tracks';
 import { levelLadder } from '../src/core/charts/table/ladder';
-import { defaultMeasurer } from '../src/core/text';
+import { defaultMeasurer, twoLineWidth } from '../src/core/text';
+import { resolvePaint } from '../src/core/svg/paint';
+import { swatchApart } from '../src/core/themeRules';
 import { cellGrounds, paintColor, registerTheme, resolveTheme, themes } from '../src/core/theme';
 import { contrastRatio, hueSaturation, mixColors } from '../src/core/color';
 import { onTableGround, toneTextPaint } from '../src/core/charts/table/chips';
@@ -318,7 +321,22 @@ it('keeps the authored decimals of a small money row under a forced magnitude', 
     columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'q1', kind: 'value' }],
     rows: [{ id: 'sales', label: 'Sales', format: '$1.2M', cells: { q1: 4_120_000 } }, { id: 'aov', label: 'AOV', format: '$1.23', cells: { q1: 12.93 } }],
   }, { magnitude: 'thousand' });
-  expect(table.rows.map((row) => row.cells.q1!.displayed)).toEqual(['4,120', '12.93']);
+  expect(table.rows.map((row) => row.cells.q1!.displayed)).toEqual(['4,120', '$12.93']);
+});
+
+// A forced million took "$" and "x" out of rows it did not scale: only a scale letter leaves the cells.
+it('keeps the unit in the cells of a row that prints no scale letter under a forced magnitude', () => {
+  const { table } = resolveTable({
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'q1', kind: 'value' }],
+    rows: [
+      { id: 'sales', label: 'Sales', format: '$1.2m', cells: { q1: 4_120_000 } },
+      { id: 'plain', label: 'Plain', format: '$1,234', cells: { q1: 2_500_000 } },
+      { id: 'aov', label: 'AOV', format: '$1.2', cells: { q1: 215.9 } },
+      { id: 'roas', label: 'ROAS', format: '1.2x', cells: { q1: 5.1 } },
+    ],
+  }, { magnitude: 'million' });
+  expect(table.rows.map((row) => row.cells.q1!.displayed)).toEqual(['4.1', '2.5', '$215.9', '5.1x']);
+  expect(table.rows.map((row) => row.unitAffix)).toEqual(['$M', '$M', undefined, undefined]);
 });
 
 // A '1,234k' column printed 1,080,000 as "1.1M" under its "(k)" head: the example's grouped digits hold the magnitude.
@@ -702,6 +720,26 @@ it('warns about a number in a date cell, naming the row and the column', () => {
   expect(warnings.filter((w) => w.code === 'date-value-number').map((w) => w.owner)).toEqual([{ rowId: 'a', colId: 'due' }, { rowId: 'b', colId: 'due' }]);
 });
 
+// Date examples must control the printed cells, and ambiguous numeric dates must warn once per column.
+it('reads date examples and patterns and names the day-first reading once per column', () => {
+  const formats = ['30.09.2026', '09/30/2026', 'September 2026', '2026', 'dd.MM.yyyy', '03/04/2026', '2026/03/04', 'Wed 30 Sep'];
+  const data: TableData = {
+    columns: [{ id: 'l', kind: 'rowLabel' }, ...formats.map((format, index) => ({ id: `d${index}`, kind: 'date' as const, format }))],
+    rows: ['a', 'b'].map(id => ({ id, label: id, cells: Object.fromEntries(formats.map((_, index) => [`d${index}`, '2026-09-30'])) })),
+  };
+  const { table, warnings } = resolveTable(data);
+  const expected = ['30.09.2026', '09/30/2026', 'September 2026', '2026', '30.09.2026', '30/09/2026', '2026/09/30', 'Wed 30 Sep'];
+  expect(formats.map((_, index) => table.rows[0]!.cells[`d${index}`]!.displayed)).toEqual(expected);
+  expect(formats.map(format => interactionValueText({ raw: '2026-09-30', state: 'value', kind: 'date', format }))).toEqual(expected);
+  const ambiguous = warnings.filter(warning => warning.code === 'date-format-ambiguous');
+  expect(ambiguous).toEqual([expect.objectContaining({
+    severity: 'warn', field: ['data', 'columns', 6, 'format'], owner: { colId: 'd5' },
+    message: "Read '03/04/2026' as day/month/year, 3 April 2026.",
+    suggest: expect.stringContaining('MM/dd/yyyy'),
+  })]);
+  expect(layout('table', data).warnings.filter(warning => warning.code === 'date-format-ambiguous')).toEqual(ambiguous);
+});
+
 // Whitespace-only status labels must stay accepted and draw as before while both surfaces receive a repair warning.
 it('warns once per blank status label and offers its removal', () => {
   const data = tableDataSchema.parse({
@@ -1054,6 +1092,17 @@ it('gives a group heading over fixed columns free frame width, and warns where n
   expect(narrow.warnings.map((w) => w.code)).toContain('table-group-heading-overflow');
 });
 
+// A heading too wide for its full frame wraps inside its block, so a warning that it runs past the block would be false.
+it('wraps a group heading inside its block and does not warn that it runs past', () => {
+  const fixture = getFixtures('table').find((f) => f.id === 'cohort-heat-blocks')!;
+  const result = layout('table', fixture.data, fixture.options);
+  expect(result.warnings.map((w) => w.code)).not.toContain('table-group-heading-overflow');
+  const rule = result.scene.find((node): node is Extract<SceneNode, { t: 'line' }> => node.t === 'line' && node.id === 'group-rule:revenue')!;
+  const note = result.scene.find((node): node is TextNode => node.t === 'text' && node.id === 'group-note:revenue')!;
+  expect(note.lines).toEqual(['$ cumulative']);
+  expect(note.x + defaultMeasurer(note.lines[0]!, note.font).width / 2).toBeLessThanOrEqual(rule.x2);
+});
+
 // A pinned narrow label width cut "South" to "So…" in the SVG and the React grid; the track now grows to whole labels and gives the growth back to a narrow frame.
 it('grows an authored row-label width to whole labels and still draws where the authored width drew', async () => {
   const data: TableData = { columns: [{ id: 'label', kind: 'rowLabel', label: 'Key', width: 52 }, ...['A', 'B', 'C', 'D'].map(id => ({ id, kind: 'value' as const, label: id, width: 64 }))],
@@ -1108,6 +1157,25 @@ it('a pinned cell in a groundless total row keeps the page under it', () => {
   const pinned = css.findIndex((rule) => rule.includes('[data-role="total"]') && rule.includes('>[data-bp-pin]{background:linear-gradient(var(--bp-row-ground),var(--bp-row-ground)),var(--bp-background)}'));
   expect(clear).toBeGreaterThanOrEqual(0);
   expect(pinned).toBeGreaterThan(clear);
+});
+
+// A head or a row label took its unit from the column or the row and ignored a cell's own format: "$" stood over euro cells.
+it('leaves the unit in the cells when a cell format names another one', () => {
+  const columns: TableData['columns'] = [{ id: 'l', kind: 'rowLabel', label: 'Item' }, { id: 'v', kind: 'value', label: 'Revenue', format: '$1,234' }];
+  const byColumn = resolveTable({ columns, rows: [
+    { id: 'a', label: 'US', cells: { v: 1200 } },
+    { id: 'b', label: 'DE', cells: { v: { v: 900, format: '€1,234' } } },
+  ] }, { subtitle: 'By market' }).table;
+  expect(byColumn.columns.find((c) => c.id === 'v')!.unitLabel).toBeUndefined();
+  expect(byColumn.unit).toBeUndefined();
+  expect(byColumn.rows.map((r) => r.cells.v!.displayed)).toEqual(['$1,200', '€900']);
+
+  const byRow = resolveTable({ columns: [columns[0]!, { id: 'v', kind: 'value', label: 'Q1' }, { id: 'w', kind: 'value', label: 'Q2' }], rows: [
+    { id: 'a', label: 'Net sales', format: '$1,234', cells: { v: 12000, w: { v: 9000, format: '€1,234k' } } },
+  ] }, { magnitude: 'thousand' }).table;
+  expect(byRow.rows[0]!.unitAffix).toBeUndefined();
+  expect(byRow.rows[0]!.cells.v!.displayed).toMatch(/^\$/);
+  expect(byRow.rows[0]!.cells.w!.displayed).toMatch(/^€/);
 });
 
 // A narrow percent-change column under a money row format shortened the money and stayed clipped, though the percent fits at one digit less.
@@ -1193,6 +1261,26 @@ it('keeps three lifted decimals as decimals when fitFormats writes the cell form
   expect(cell!.lines.join('')).toBe('$0.003M');
 });
 
+// A margin on a credit-note row with negative revenue printed 11.8% for -2 over -17 with no word that it is arithmetic, while percentDelta prints n.m. off a negative base.
+it('warns once per computed column when a ratio divides by a negative cell, and keeps the number', () => {
+  const data: TableData = {
+    columns: [{ id: 'l', kind: 'rowLabel', label: 'Line' }, { id: 'rev', kind: 'value' }, { id: 'ebit', kind: 'value' },
+      { id: 'm', kind: 'computed', calc: { op: 'mul', a: { op: 'div', a: { ref: 'ebit' }, b: { ref: 'rev' } }, b: { lit: 100 } }, format: '1.0%' },
+      { id: 'h', kind: 'computed', calc: { op: 'div', a: { ref: 'ebit' }, b: { lit: -2 } }, format: '1.0' }],
+    rows: [
+      { id: 'a', label: 'Normal line', cells: { rev: 100, ebit: 20 } },
+      { id: 'b', label: 'Credit notes', cells: { rev: -17, ebit: -2 } },
+      { id: 'c', label: 'Returns', cells: { rev: -5, ebit: -1 } },
+    ],
+  };
+  const resolved = resolveTable(data);
+  const found = resolved.warnings.filter((w) => w.code === 'ratio-negative-base');
+  expect(found).toHaveLength(1);
+  expect(found[0]).toMatchObject({ severity: 'info', owner: { rowId: 'b', colId: 'm' } });
+  expect(found[0]!.message).toContain('1 more');
+  expect(resolved.computedCells.find((r) => r.rowId === 'b' && r.colId === 'm')).toMatchObject({ displayed: '11.8%', state: 'value' });
+});
+
 // A margin row (gp / rev * 100) in a delta column printed the ratio of the changes (30.0%) and not the change of the margins (10.0%).
 it('prints the change of a nonlinear row calc in a delta or sub column, and keeps a linear one', () => {
   const data: TableData = {
@@ -1210,4 +1298,332 @@ it('prints the change of a nonlinear row calc in a delta or sub column, and keep
   const table = resolveTable(data, {}).table;
   const cell = (row: string, col: string) => table.rows.find((r) => r.id === row)!.cells[col]!.displayed;
   expect([cell('margin', 'ac'), cell('margin', 'py'), cell('margin', 'd'), cell('margin', 's'), cell('sum', 'd')]).toEqual(['20.0%', '10.0%', '10.0%', '10.0%', '130']);
+});
+
+// A bold (`strong`) label column was measured in the regular weight, so its track was too narrow and the next cell painted over the last letters.
+it('measures a strong row-label column in the weight it draws', () => {
+  const data: TableData = {
+    columns: [
+      { id: 'label', kind: 'rowLabel', label: 'Business', emphasis: 'strong' },
+      ...['a', 'b'].map((id) => ({ id, kind: 'value' as const, label: `Column ${id}`, format: '0.0' })),
+    ],
+    rows: ['Point-of-Care Analyzers', 'Imaging Contrast Agents', 'Molecular Test Kits']
+      .map((label, i) => ({ id: `r${i}`, label, cells: { a: 3.1 + i, b: 4.2 + i } })),
+  };
+  const encodings = { a: { type: 'heat', scale: 'column' }, b: { type: 'heat', scale: 'column' } };
+  const geometry = layout('table', data, { encodings, target: 'slide', size: { width: 444, height: 396, unit: 'pt' } });
+  for (const id of ['r0', 'r1', 'r2']) {
+    const text = geometry.scene.find((node): node is TextNode => node.t === 'text' && node.id === `cell:${id}:label`)!;
+    const heat = geometry.scene.find((node): node is Extract<SceneNode, { t: 'rect' }> => node.t === 'rect' && node.id === `heat:${id}:a`)!;
+    const drawn = Math.max(...text.lines.map((line) => defaultMeasurer(line, text.font).width));
+    expect(text.x + drawn).toBeLessThanOrEqual(heat.rect.x);
+  }
+});
+
+// A fixed frame cut a head and a cell in text columns that were narrow while wrapping columns kept width they did not need.
+it('takes width from a wrapping text column before it cuts another text column', () => {
+  const data: TableData = {
+    columns: [
+      { id: 'label', kind: 'rowLabel', label: 'Offer' },
+      { id: 'mix', kind: 'text', label: 'Consideration' },
+      { id: 'terms', kind: 'text', label: 'Terms', wrap: true },
+      { id: 'notes', kind: 'text', label: 'Notes', wrap: true },
+      { id: 'when', kind: 'text', label: 'Timeline' },
+    ],
+    rows: ['A', 'B'].map((id) => ({
+      id, label: `Bidder ${id}`,
+      cells: {
+        mix: 'Cash and stock',
+        terms: 'Antitrust clearance in the EU and UK, no material adverse change, works council consulted',
+        notes: 'Bridge facility from two lead banks, syndication after signing the offer',
+        when: 'Signing in the second quarter, closing early next year',
+      },
+    })),
+  };
+  const geometry = layout('table', data, { size: { width: 760, height: 400 } });
+  expect(geometry.warnings.filter((warning) => warning.code === 'label-truncated')).toEqual([]);
+});
+
+// The post-pass gave a column group's heading room to another column, and the heading then ran past its block.
+it('keeps the room a column-group heading needs when a cut column takes width from a text column', () => {
+  const words = ['alpha', 'bravo', 'charlie', 'delta', 'echo', 'foxtrot'];
+  const text = (count: number, from: number) => Array.from({ length: count }, (_, i) => words[(i + from) % 6]).join(' ');
+  const data: TableData = {
+    columns: [
+      { id: 'label', kind: 'rowLabel', label: 'Offer' },
+      { id: 'a', kind: 'text', label: 'Aa', wrap: true },
+      { id: 'b', kind: 'text', label: 'Bb', wrap: true },
+      { id: 'c', kind: 'text', label: 'Cc', wrap: true },
+      { id: 'd', kind: 'text', label: 'Dd' },
+    ],
+    columnGroups: [{ id: 'g', label: 'A long group heading text here', columns: ['c', 'd'] }],
+    rows: ['x', 'y'].map((id) => ({
+      id, label: `Row ${id}`,
+      cells: { a: text(9, 0), b: text(8, 1), c: text(7, 2), d: 'Signing in the second quarter and closing early next year' },
+    })),
+  };
+  const geometry = layout('table', data, { size: { width: 540, height: 400 } });
+  expect(geometry.warnings.filter((warning) => warning.code === 'table-group-heading-overflow')).toEqual([]);
+});
+
+// Each rounded cut of the shrink could leave the tracks a pixel over the plot, and a table that fit in exact arithmetic then warned table-overflow.
+it('does not report an overflow for a pixel of rounding in the shrink', () => {
+  const rows: Array<[string, string[]]> = [
+    ['syndication signing Q1', ['foxtrot', 'EU consideration', 'delta syndication EU works', 'echo alpha closing works charlie bravo closing UK financing EU financing Q2']],
+    ['bravo unitranche', ['council unitranche Q1 echo clearance', 'alpha', 'syndication bravo antitrust foxtrot works EU EU UK', 'signing clearance alpha council consideration consideration council bravo consideration closing']],
+    ['clearance financing Q1', ['financing', 'closing Q1 financing unitranche closing consideration syndication council alpha', 'foxtrot syndication UK council foxtrot syndication UK consideration foxtrot unitranche consideration', 'council UK clearance closing charlie financing Q1 financing Q1 foxtrot']],
+    ['echo UK', ['charlie unitranche signing UK syndication charlie echo clearance unitranche', 'alpha Q2 works UK EU alpha Q2 alpha delta', 'unitranche works alpha EU financing echo Q2 alpha antitrust echo', 'charlie council works delta']],
+  ];
+  const ids = ['t1', 't2', 't0', 't3'];
+  const data: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel', label: 'Offer' }, ...ids.map((id, i) => ({ id, kind: 'text' as const, label: ['Terms', 'Timeline', 'Conditions', 'Conditions'][i]!, wrap: true }))],
+    rows: rows.map(([label, cells], i) => ({ id: `r${i}`, label, cells: Object.fromEntries(ids.map((id, c) => [id, cells[c]!])) })),
+  };
+  const geometry = layout('table', data, { theme: 'boardroom', variant: 'benchmark', size: { width: 1235, height: 700 } });
+  expect(geometry.warnings.filter((warning) => warning.code === 'table-overflow')).toEqual([]);
+});
+
+// The post-pass measured every non-wrap text column at its two-line width in each pass, also when the shrink cut none of them.
+it('measures no two-line width of a text column the shrink did not cut', () => {
+  const data: TableData = {
+    columns: [
+      { id: 'label', kind: 'rowLabel', label: 'Offer' },
+      { id: 'when', kind: 'text', label: 'When' },
+    ],
+    rows: [{ id: 'a', label: 'A bidder with a long name that needs most of the frame', cells: { when: 'Q1 Q2 Q3' } }],
+  };
+  const seen: string[] = [];
+  const measure: typeof defaultMeasurer = (text, font) => { seen.push(text); return defaultMeasurer(text, font); };
+  layout('table', data, { measure, size: { width: 380, height: 200 } });
+  expect(seen).not.toContain('Q2 Q3');
+});
+
+// A table asks for the two-line width of one cell again on each layout pass, and each ask measured every split of the text again.
+it('measures the two-line width of a text once per measurer', () => {
+  let calls = 0;
+  const measure: typeof defaultMeasurer = (text, font) => { calls++; return defaultMeasurer(text, font); };
+  const font = { size: 12, weight: 400 };
+  const first = twoLineWidth('Signing in the second quarter and closing early next year', font, measure);
+  const used = calls;
+  expect(twoLineWidth('Signing in the second quarter and closing early next year', font, measure)).toBe(first);
+  expect(calls).toBe(used);
+});
+
+// The React path skips schema validation, and a non-string options.unit threw "trim is not a function" instead of drawing.
+it('draws a table whose options.unit is not a string', () => {
+  const data: TableData = { columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'v', kind: 'value', format: '1.2bn' }], rows: [{ id: 'r', label: 'North', cells: { v: 2500000000 } }] };
+  for (const unit of [5, { a: 1 }, null]) {
+    expect(() => resolveTable(data, { subtitle: { measure: 'Revenue' }, unit } as never)).not.toThrow();
+  }
+});
+
+// A sign -1 row printed its figures negated but drew its arrow and sorted from the supplied figures, and a ratio of two cells printed -1.20 where the printed figures give 1.20.
+it('reads arrows, sort and ratios of a sign -1 row from the printed figures', () => {
+  const data: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'ac', kind: 'value' }, { id: 'py', kind: 'value' },
+      { id: 'd', kind: 'computed', polarity: 'higherIsBetter', calc: { op: 'delta', a: 'ac', b: 'py' } },
+      { id: 'r', kind: 'computed', format: '0.00', calc: { op: 'div', a: { ref: 'ac' }, b: { ref: 'py' } } }],
+    rows: [
+      { id: 'rev', label: 'Revenue', cells: { ac: 300, py: 300 } },
+      { id: 'cost', label: 'Cost', sign: -1, cells: { ac: 120, py: 100 } },
+      { id: 'fee', label: 'Fee', sign: -1, cells: { ac: 30, py: 20 } },
+    ],
+  };
+  const table = resolveTable(data, {}).table;
+  expect(table.rows.find((r) => r.id === 'cost')!.cells.r!.displayed).toBe('1.20');
+  // A literal over a cell flips with the row sign, so it prints the quotient of the printed -120.
+  const inverse = resolveTable({ ...data, columns: [...data.columns, { id: 'q', kind: 'computed', format: '0.00', calc: { op: 'div', a: { lit: 100 }, b: { ref: 'ac' } } }] }, {}).table;
+  expect(inverse.rows.find((r) => r.id === 'cost')!.cells.q!.displayed).toBe('\u22120.83');
+  // A sum of a ratio and a cell is neither odd nor invariant, so operand order must not change its sign.
+  const ratio = { op: 'div', a: { ref: 'ac' }, b: { ref: 'py' } } as const;
+  const mixed = resolveTable({ ...data, columns: [...data.columns,
+    { id: 'm1', kind: 'computed', format: '0.00', calc: { op: 'add', a: ratio, b: { ref: 'ac' } } },
+    { id: 'm2', kind: 'computed', format: '0.00', calc: { op: 'add', a: { ref: 'ac' }, b: ratio } }] }, {}).table;
+  expect(mixed.rows.find((r) => r.id === 'cost')!.cells.m1!.displayed).toBe(mixed.rows.find((r) => r.id === 'cost')!.cells.m2!.displayed);
+  // Printed -120 sorts before -30, though the supplied 120 is the larger figure.
+  expect(sortRows(table, { column: 'ac', direction: 'asc' }).map((r) => r.id)).toEqual(['cost', 'fee', 'rev']);
+  const arrows = layout('table', data, { encodings: { d: 'arrow' } }).scene
+    .filter((node): node is TextNode => node.t === 'text' && node.part === 'tableArrow');
+  // The cost change prints -20 and the fee change -10, so both fall.
+  expect(arrows.map((node) => node.lines.join(''))).toEqual(['→', '↓', '↓']);
+});
+
+// A pinned canvas with spare height used to leave a short table and a short cohort grid floating above the source line.
+it('gives the spare height of a pinned canvas to table rows and cohort rows', () => {
+  const data = tableDataSchema.parse({
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'v', kind: 'value' }],
+    rows: ['Alpha', 'Beta', 'Gamma'].map((label, i) => ({ id: label, label, cells: { v: 10 + i } })),
+  });
+  const rowH = (options: object) => (layout('table', data, { size: { width: 720, height: 420 }, ...options }).marks as { rows: { h: number }[] }).rows.map((row) => row.h);
+  const natural = rowH({ heightFill: 'none' });
+  const filled = rowH({});
+  expect(Math.min(...filled)).toBeGreaterThan(Math.max(...natural));
+  // 16 px of air above and below the line is the most a row takes.
+  expect(Math.max(...filled)).toBeLessThanOrEqual(2 * 16 + 24);
+  const cohort = { periodLabel: 'Month', cohorts: [{ id: 'a', label: 'Jan', active: [100, 60, 40] }, { id: 'b', label: 'Feb', active: [100, 55] }] };
+  const stepped = { variant: 'stepped', formatScope: 'classic', steps: [40, 60] };
+  const grid = layout('cohort', cohort, { ...stepped, size: { width: 720, height: 420 } });
+  expect(grid.plot.h).toBeGreaterThan(layout('cohort', cohort, { ...stepped, size: { width: 720 } }).plot.h);
+  // The period columns of a stepped grid share the free width, as a pure grid's do.
+  expect(grid.plot.w).toBeGreaterThan(600);
+  // heightFill 'none' brings back the old cohort look: natural rows and stepped columns at their measured width, as an open height draws them.
+  const cell = (options: object) => (layout('cohort', cohort, { ...stepped, ...options }).marks as { cells: { rect: { w: number; h: number } }[] }).cells[0]!.rect;
+  const old = cell({ size: { width: 720 }, heightFill: 'none' });
+  expect(cell({ size: { width: 720, height: 420 }, heightFill: 'none' })).toEqual(old);
+  expect(cell({ size: { width: 720, height: 420 } }).w).toBeGreaterThan(old.w);
+  // A bartable takes the same switch: 'none' keeps the 28 px pitch and the 14 px bar on a pinned canvas.
+  const bars = bartableDataSchema.parse({
+    categories: ['Alpha', 'Beta', 'Gamma', 'Delta'].map((label) => ({ id: label, label })),
+    series: [{ id: 's', label: 'S' }],
+    panels: [{ id: 'p', label: 'P', values: { s: [10, 20, 30, 40] } }],
+  });
+  const barH = (options: object) => (layout('bartable', bars, { size: { width: 720, height: 420 }, ...options }).marks as { segments: { rect: { h: number } }[] }).segments[0]!.rect.h;
+  expect(barH({ heightFill: 'none' })).toBe(14);
+  expect(barH({})).toBeGreaterThan(14);
+});
+
+// A diverging heat lane with a cap and no bins tints continuously, yet its key named default point bands ("1 to under 4") that no cell takes.
+it('prints no heat key for a diverging lane that is not stepped', () => {
+  const data: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'd', kind: 'value', label: 'vs plan', format: '+1,234' }],
+    rows: [{ id: 'de', label: 'Germany', cells: { d: 410 } }, { id: 'uk', label: 'United Kingdom', cells: { d: -390 } }],
+  };
+  const keyText = (encoding: object) => layout('table', data, { encodings: { d: { type: 'heat', scale: 'diverging', ...encoding } } }).scene
+    .filter((node): node is TextNode => node.t === 'text').map((node) => node.lines.join(' ')).filter((text) => /either way/.test(text));
+  expect(keyText({ cap: { abs: 500 } })).toEqual([]);
+  expect(keyText({ steps: 3 })).toHaveLength(1);
+  expect(keyText({ bins: [100, 300] })).toHaveLength(1);
+});
+
+// A cascade bar table draws one bar colour per row group: its key must name the grey rest rows, its Total bar must not repeat a group colour, and a compact table must name each period at its bars.
+it('keys the rest rows, keeps the Total off the group colours and names compact periods at the bars', () => {
+  const fixture = (id: string) => getFixtures('bartable').find((f) => f.id === id)!;
+  const groups = fixture('cascade-two-periods');
+  for (const name of ['standard', 'standard-dark']) {
+    const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'bartable', data: groups.data, options: groups.options, theme: name } as never)));
+    const theme = resolveTheme(name);
+    const rects = geometry.scene.filter((node): node is Extract<SceneNode, { t: 'rect' }> => node.t === 'rect');
+    const total = resolvePaint(rects.find((node) => node.part === 'totalBar')!.fill!, theme);
+    const segments = rects.filter((node) => node.part === 'segment').map((node) => resolvePaint(node.fill!, theme));
+    expect(segments.length).toBeGreaterThan(0);
+    for (const color of segments) expect(swatchApart(total, color), `${name} Total against ${color}`).toBe(true);
+    const keyText = geometry.scene.filter((node): node is TextNode => node.t === 'text').map((node) => node.lines.join(' '));
+    expect(keyText).toContain('Rest rows');
+    // totalApart false brings back the old look: the theme's own Total colour.
+    const plain = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'bartable', data: groups.data, options: { ...groups.options, cascade: { ...groups.options!.cascade, totalApart: false } }, theme: name } as never)));
+    const plainTotal = plain.scene.find((node): node is Extract<SceneNode, { t: 'rect' }> => node.t === 'rect' && node.part === 'totalBar')!;
+    expect(resolvePaint(plainTotal.fill!, theme)).toBe(paintColor(theme, { token: 'total' }));
+  }
+  const years = fixture('cascade-four-years');
+  const compact = layout('bartable', years.data, { ...years.options, mode: 'compact', size: { width: 1060 } });
+  expect(compact.scene.some((node) => node.part === 'panelKey')).toBe(false);
+  const name = compact.scene.find((node): node is TextNode => node.t === 'text' && node.id === 'label:head:y22')!;
+  const track = compact.scene.find((node): node is Extract<SceneNode, { t: 'rect' }> => node.id === 'track:y22:app')!;
+  // The name stands on the first row's 2022 bar line, past the end of its track.
+  expect(name.x).toBeGreaterThanOrEqual(track.rect.x + track.rect.w);
+  expect(Math.abs(name.y - (track.rect.y + track.rect.h / 2))).toBeLessThan(track.rect.h);
+});
+
+// A compact cascade's growth head hid number and Share heads, and a long number head was cut.
+it('keeps the number, Share and growth heads in a compact cascade', () => {
+  const spec = {
+    type: 'bartable',
+    data: {
+      categories: [
+        { id: 'b1', label: 'Cold Chain Pharma Logistics' }, { id: 'b2', label: 'Contract Warehousing Benelux' },
+        { id: 'b3', label: 'Fresh Food Linehaul DACH' }, { id: 'b4', label: 'Last-Mile Urban Delivery' },
+        { id: 'b5', label: 'Customs and Brokerage' }, { id: 'b6', label: 'Reefer Container Leasing' },
+        { id: 'b7', label: 'Digital Freight Marketplace' }, { id: 'b8', label: 'Specialty Chemicals Haulage' },
+      ],
+      series: [{ id: 's', label: 'EUR m' }],
+      columns: [
+        { id: 'pre', label: 'EBITDA before central costs', values: [190, 100, 60, 15, 48, 74, -30, 36], format: '1,234' },
+        { id: 'e', label: 'EBITDA', values: [180, 88, 49, 9, 44, 71, -37, 33], format: '1,234' },
+      ],
+      panels: [
+        { id: 'rev', label: 'Revenue', unit: 'EUR m', format: '1,234', values: { s: [960, 670, 575, 440, 235, 225, 135, 280] } },
+        { id: 'gp', label: 'Gross profit', unit: 'EUR m', format: '1,234', values: { s: [330, 210, 160, 120, 95, 120, 70, 100] } },
+        { id: 'co', label: 'Contribution', unit: 'EUR m', format: '1,234', values: { s: [250, 140, 95, 45, 62, 88, 10, 52] } },
+      ],
+    },
+    options: {
+      variant: 'cascade', cascade: { growth: { measure: 'share-change' } },
+      title: 'Where revenue turns into EBITDA', subtitle: { measure: 'Eight businesses, five stages' },
+      source: 'Group controlling (invented data)', size: { width: 928 }, target: 'dashboard',
+    },
+  };
+  const body = render({ spec, return: ['svg', 'reading'] }).body as {
+    ok: boolean; svg: string; reading: { omissions: { labelId: string }[] }; warnings: { code: string }[];
+  };
+  expect(body.ok).toBe(true);
+  expect(body.reading.omissions.filter((item) => item.labelId.startsWith('head:'))).toEqual([]);
+  expect(body.warnings.some((warning) => warning.code === 'label-hidden')).toBe(false);
+  const pre = body.svg.match(/<text data-id="label:head:pre"[\s\S]*?<\/text>/)?.[0] ?? '';
+  expect(pre.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()).toBe('EBITDA BEFORE CENTRAL COSTS');
+  for (const id of ['e', 'share:rev', 'growth']) expect(body.svg).toContain(`data-id="label:head:${id}"`);
+});
+
+// A compact cascade names each period beside its bars. A very long period name must be cut, so it does not squeeze the bars of every period to nothing.
+it('cuts a long period name of a compact cascade so the bars keep their width', () => {
+  const years = getFixtures('bartable').find((f) => f.id === 'cascade-four-years')!;
+  const names = ['Fiscal year 2022 actual', 'FY23', 'Fiscal year 2024 forecast figures', '2025'];
+  const data = { ...years.data, panels: years.data.panels.map((panel: { label: string }, i: number) => ({ ...panel, label: names[i] })) };
+  for (const width of [280, 320]) {
+    const compact = layout('bartable', data, { ...years.options, mode: 'compact', size: { width } });
+    const tracks = compact.scene.filter((node): node is Extract<SceneNode, { t: 'rect' }> => node.t === 'rect' && node.id.startsWith('track:'));
+    expect(tracks.length).toBeGreaterThan(0);
+    expect(Math.min(...tracks.map((node) => node.rect.w)), `track width at ${width}`).toBeGreaterThan(60);
+    for (const id of ['y22', 'y23', 'y24', 'y25']) expect(compact.scene.some((node) => node.t === 'text' && node.id === `label:head:${id}`), `${id} at ${width}`).toBe(true);
+  }
+});
+
+// A compact cascade on one shared scale reserves room for the longest period name, so sizing.minWidth must include that room: at the width it names, the shortest track still reaches the track floor.
+it('keeps the track floor at the minWidth of a compact cascade with long period names', () => {
+  const years = getFixtures('bartable').find((f) => f.id === 'cascade-four-years')!;
+  const names = ['Fiscal year 2022 actual', 'FY23', 'Fiscal year 2024 forecast figures', '2025'];
+  const growth = [1, 1.44, 2.08, 3];
+  const data = { ...years.data, panels: years.data.panels.map((panel: { label: string; values: { rev: number[] } }, i: number) => ({ ...panel, label: names[i], values: { rev: panel.values.rev.map((v) => Math.round(v * growth[i]!)) } })) };
+  const options = { ...years.options, mode: 'compact' };
+  const minWidth = Math.ceil(layoutResolvedRequest(resolveChartRequest({ type: 'bartable', data, options: { ...options, size: { width: 900 } } } as never)).sizing!.minWidth);
+  const compact = layout('bartable', data, { ...options, size: { width: minWidth } });
+  const tracks = compact.scene.filter((node): node is Extract<SceneNode, { t: 'rect' }> => node.t === 'rect' && node.id.startsWith('track:'));
+  expect(Math.min(...tracks.map((node) => node.rect.w))).toBeGreaterThanOrEqual(56);
+});
+
+// A bar table printed only each bar's sum, so a title about one segment could not be checked on the page.
+it('prints bar table part values inside the segments that hold them, and only there', () => {
+  const data = {
+    categories: [{ id: 'a', label: 'Alpha' }, { id: 'b', label: 'Beta' }],
+    series: [{ id: 'x', label: 'X' }, { id: 'y', label: 'Y' }, { id: 'z', label: 'Z' }],
+    panels: [
+      { id: 'abs', label: 'Value', unit: '$m', weight: 2, values: { x: [113.3, 20], y: [67.2, 1], z: [40.1, 70] } },
+      { id: 'pct', label: 'Share', unit: '%', aggregate: 'none', format: '1.00', values: { x: [10.12, 20.5], y: [30.25, 40.5], z: [10.5, 20.5] } },
+    ],
+  };
+  const parts = (options: object) => layout('bartable', data, options).labels.filter((l) => l.id.startsWith('part:')).map((l) => `${l.id.slice(5)}=${l.text}`);
+  const on = parts({ total: false });
+  // The 1-wide part of Beta has no room; the two-decimal panel prints end labels only.
+  expect(on).toContain('abs:a:x=113');
+  expect(on).not.toContain('abs:b:y=1');
+  expect(on.some((id) => id.startsWith('pct:'))).toBe(false);
+  expect(parts({ total: false, segmentValues: false })).toEqual([]);
+  // 113 + 67 + 40 prints 220 beside 221: the notes list says rounded parts can miss the total.
+  const notes = (layout('bartable', data, { total: false }).frame?.noteList ?? []).map((n) => n.text).join(' | ');
+  expect(notes).toContain('parts of a row can miss its printed total');
+});
+
+// A pinned canvas taller than the chart left a 360 px empty band above the source line; the source follows the content, and the theme patch brings the old place back.
+it('puts the source line under the content of a pinned canvas, and back at the bottom with space.footerFollows false', () => {
+  const fixture = getFixtures('bullet').find((f) => f.id === 'neutral-change')!;
+  const canvas = { target: 'slide', size: { width: 432, height: 396, unit: 'pt' } };
+  const sourceY = (theme?: object) => {
+    const geometry = layout('bullet', fixture.data, { ...fixture.options, ...canvas, ...(theme ? { theme } : {}) });
+    const source = geometry.scene.find((node) => node.id === geometry.frame.sourceNodeId) as TextNode;
+    return { y: source.y, height: geometry.size.height, footerTop: geometry.frame.footerRect!.y };
+  };
+  const old = sourceY({ overrides: { space: { footerFollows: false } } });
+  const now = sourceY();
+  expect(now.height).toBe(old.height);
+  expect(now.y).toBeLessThan(old.y - 100);
+  expect(now.footerTop).toBeLessThan(old.footerTop - 100);
 });

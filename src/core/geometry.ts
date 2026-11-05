@@ -64,10 +64,8 @@ function pointRectDistance(p: Point, rect: Rect): number {
 }
 
 /** Distance from a point to the segment a-b. */
-function pointSegmentDistance(x: number, y: number, a: Point, b: Point): number {
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const t = dx === 0 && dy === 0 ? 0 : Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / (dx * dx + dy * dy)));
+function pointSegmentDistance(x: number, y: number, a: Point, dx: number, dy: number, squared: number): number {
+  const t = dx === 0 && dy === 0 ? 0 : Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / squared));
   return Math.hypot(x - a.x - t * dx, y - a.y - t * dy);
 }
 
@@ -81,12 +79,29 @@ export function rectLineDistance(rect: Rect, line: readonly Point[]): number {
   for (let i = 1; i < line.length; i++) {
     const a = line[i - 1]!;
     const b = line[i]!;
-    if (segmentHitsRect(a, b, rect)) return 0;
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const squared = dx * dx + dy * dy;
+    const minX = Math.min(a.x, b.x), maxX = Math.max(a.x, b.x);
+    const minY = Math.min(a.y, b.y), maxY = Math.max(a.y, b.y);
+    const scale = Math.max(1, Math.abs(rect.x), Math.abs(rect.y), Math.abs(right), Math.abs(bottom),
+      Math.abs(a.x), Math.abs(a.y), Math.abs(b.x), Math.abs(b.y));
+    const safe = scale <= 2 ** 40 && (dx === 0 || Math.abs(dx) >= 2 ** -256) && (dy === 0 || Math.abs(dy) >= 2 ** -256);
+    const error = safe ? 64 * Number.EPSILON * scale : Infinity;
+    const apart = rect.w >= 0 && rect.h >= 0 && (maxX < rect.x - error || minX > right + error || maxY < rect.y - error || minY > bottom + error);
+    if (!apart && segmentHitsRect(a, b, rect)) return 0;
     if (i === 1) previousDistance = pointRectDistance(a, rect);
     const nextDistance = pointRectDistance(b, rect);
-    best = Math.min(best, previousDistance, nextDistance,
-      pointSegmentDistance(rect.x, rect.y, a, b), pointSegmentDistance(right, rect.y, a, b),
-      pointSegmentDistance(rect.x, bottom, a, b), pointSegmentDistance(right, bottom, a, b));
+    best = Math.min(best, previousDistance, nextDistance);
+    // A corner outside the segment's box by more than the current best cannot improve it.
+    // The allowance covers rounding in the projection; unusual coordinates keep every corner.
+    const limit = best + error;
+    const leftGap = Math.max(0, minX - rect.x, rect.x - maxX), rightGap = Math.max(0, minX - right, right - maxX);
+    const topGap = Math.max(0, minY - rect.y, rect.y - maxY), bottomGap = Math.max(0, minY - bottom, bottom - maxY);
+    best = Math.min(best,
+      leftGap > limit || topGap > limit ? Infinity : pointSegmentDistance(rect.x, rect.y, a, dx, dy, squared),
+      rightGap > limit || topGap > limit ? Infinity : pointSegmentDistance(right, rect.y, a, dx, dy, squared),
+      leftGap > limit || bottomGap > limit ? Infinity : pointSegmentDistance(rect.x, bottom, a, dx, dy, squared),
+      rightGap > limit || bottomGap > limit ? Infinity : pointSegmentDistance(right, bottom, a, dx, dy, squared));
     previousDistance = nextDistance;
   }
   return best;
@@ -169,10 +184,17 @@ export function prepareConvexPolygon(polygon: readonly Point[]): (rect: Rect, pa
     const q = polygon[(i + 1) % polygon.length]!;
     return [q.y - p.y, p.x - q.x];
   })];
-  const projected = axes.filter(([x, y]) => x || y).map(([x, y]) => {
-    const values = polygon.map(point => point.x * x + point.y * y);
-    return [x, y, minOf(values), maxOf(values)] as const;
-  });
+  const projected: [number, number, number, number][] = [];
+  for (const [x, y] of axes) {
+    if (!x && !y) continue;
+    let min = Infinity, max = -Infinity;
+    for (const point of polygon) {
+      const value = point.x * x + point.y * y;
+      min = Math.min(min, value);
+      max = Math.max(max, value);
+    }
+    projected.push([x, y, min, max]);
+  }
   return (rect, pad) => {
     const x0 = rect.x - pad, y0 = rect.y - pad;
     const x1 = rect.x + rect.w + pad, y1 = rect.y + rect.h + pad;
@@ -239,6 +261,40 @@ export function round2(v: number): number {
 }
 
 /**
+ * A value or difference kept for printing, a verdict or a reading: fifteen
+ * significant digits of `scale` clear float noise (0.1 + 0.2) and keep every
+ * digit a format may print. `scale` is the size of the operands: a difference
+ * of 5.5e-17 between 0.3 and 0.30000000000000004 is noise, so it becomes 0.
+ * Never `round2` such a number: the format then rounds an already rounded
+ * value, and a gap of 0.004 reads as 0.
+ */
+export function cleanFloat(v: number, scale: number = v): number {
+  const decimals = 14 - Math.floor(Math.log10(Math.abs(scale)));
+  if (decimals < 0 || decimals > 100) return v;
+  const cleaned = Number(v.toFixed(decimals)) + 0; // + 0 turns -0 into 0
+  // Noise is a few float steps of the operands. A larger change is a real digit of the value, as in 1e14 + 0.25.
+  return Math.abs(cleaned - v) > 4 * Number.EPSILON * Math.abs(scale) ? v : cleaned;
+}
+
+/**
+ * A sum of terms, cleaned at the sum of their absolute values. Cleaning a sum
+ * at its own size keeps cancellation noise: 0.1 + 0.2 − 0.3 is 5.55e-17, and at
+ * its own scale that residue looks like a real value. The largest term is too
+ * small a scale: float steps add up over the terms, so five terms leave noise
+ * that a scale of one term does not clear.
+ */
+export function cleanSum(terms: readonly number[]): number {
+  let scale = 0;
+  for (const t of terms) scale += Math.abs(t);
+  return cleanFloat(terms.reduce((a, b) => a + b, 0), scale);
+}
+
+/** `a − b`, cleaned at the size of its operands. */
+export function cleanDiff(a: number, b: number): number {
+  return cleanFloat(a - b, Math.max(Math.abs(a), Math.abs(b)));
+}
+
+/**
  * Axis-aligned padding a stroke of `width` adds around a segment running
  * (dx, dy) — how far its ink reaches beyond the segment's own bounding box.
  *
@@ -283,7 +339,7 @@ export function rowLabelX(
   laneX: number,
   laneW: number,
   labelW: number,
-  align: 'left' | 'right',
+  align: 'left' | 'right' | 'center',
 ): number {
-  return align === 'right' ? laneX + laneW - labelW : laneX;
+  return align === 'right' ? laneX + laneW - labelW : align === 'center' ? laneX + (laneW - labelW) / 2 : laneX;
 }

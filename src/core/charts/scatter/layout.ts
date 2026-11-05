@@ -27,13 +27,16 @@ import { structureCount } from '../../structureCounts';
 import type { AnchorResolution, AnnotatePassResult } from '../../annotate';
 import { runAnnotatePass } from '../../annotatePass';
 import { hiddenNoteWith, markNotedLabels, noteLine, type FrameResult, type LegendItemInput } from '../../frame';
+import { staticFrame, storyFrameFit } from '../../footer';
 import { formatAutomaticNumber } from '../../format';
+import { withSmallValues } from '../../formatPrecision';
 import { trendRateFormatter } from '../../formatSpec';
 import { spaceTokens, emphasisWeight, strokeToken, dashToken } from '../../theme';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { leaderPieces, solveLabels, type LabelRequest, type SolveCtx, type SolveResult } from '../../label/solver';
 import { accessibleTitle } from '../../normalize/shared';
+import { defaultMeasurer } from '../../text';
 import { defaultAnnotationId, type AnchorRef, type Annotation } from '../../types/annotations';
 import { rectsOverlap, type Rect } from '../../geometry';
 import type { Id } from '../../types/cell';
@@ -53,6 +56,7 @@ import {
   type ScatterDerived,
   type ScatterDomain,
   type ScatterEnv,
+  type ScatterPaints,
   type ScatterMarks,
   type ScatterPlotArea,
 } from './model';
@@ -61,7 +65,7 @@ import { type FrontierPlan } from './frontier';
 import { gridZones, zoneKeyItems } from './zones';
 import type { TrendFit } from './trend';
 import type { ScatterStrategyOptions, StrategyZonesDerived } from './types';
-import { disclosureNote, disclosuresShown } from '../../notes';
+import { disclosureNote, disclosuresShown, withEngineNotes } from '../../notes';
 import { omittedKey } from '../../seriesIdentity';
 import { maxOf, pushAll } from '../../arrays';
 
@@ -565,6 +569,32 @@ const SEAT_PROBE_BUDGET = 8;
 const DOT_SEAT_PROBES = 1;
 const seatProbe = { left: SEAT_PROBE_BUDGET, dotLeft: DOT_SEAT_PROBES, depth: 0 };
 
+/** The size key settles against the frame before any mark or label is placed. */
+function scatterFrame(
+  env: ScatterEnv, domain: ScatterDomain, paints: ScatterPaints, warnings: LintWarning[],
+  hiddenNote: ReturnType<typeof hiddenNoteWith>, sizeKeyInRow: boolean,
+) {
+  let area: ScatterPlotArea | undefined;
+  let solvedFrame: ReturnType<typeof solveScatterFrame> | undefined;
+  let ringRow = 0;
+  const keyInPlot = !sizeKeyInRow && sizeKeyInPlot(env, domain);
+  for (let pass = 0; pass < 6; pass++) {
+    const passWarnings: LintWarning[] = [];
+    const keyed = scatterKeyItems(env, domain, paints, area, passWarnings, !keyInPlot);
+    ringRow = Math.max(pass >= 2 ? ringRow : 0, maxOf(keyed.map((item) => (item.key === 'sizes' ? Math.ceil(2 * Math.max(0.5, ...(item.radii ?? []))) : 0))));
+    const items = keyed.map((item) => (item.key === 'sizes' ? { ...item, ringRow } : item));
+    solvedFrame = solveScatterFrame(env, domain, paints, items, area ? scatterLateNotes(env, domain, area) : [], hiddenNote);
+    const next = scatterPlotArea(env, domain, solvedFrame.frame, passWarnings);
+    const stable = area !== undefined && next.plot.w === area.plot.w && next.plot.h === area.plot.h;
+    area = next;
+    if (stable || pass === 5) {
+      pushAll(warnings, passWarnings);
+      break;
+    }
+  }
+  return { ...solvedFrame!, area: area!, keyInPlot };
+}
+
 export function layoutScatter(...args: Parameters<typeof layoutScatterRun>): ReturnType<typeof layoutScatterRun> {
   if (seatProbe.depth === 0) {
     seatProbe.left = SEAT_PROBE_BUDGET;
@@ -604,7 +634,7 @@ function layoutScatterRun(
   const warnings: LintWarning[] = [];
   // The names the plot could not place share ONE note with the registry's ("Not labelled on the chart").
   const hiddenNote = hiddenNoteWith(options, (hiddenNames ?? []).map((text, i) => ({ id: `scatter:${i}`, text })));
-  const env: ScatterEnv = { ...resolveScatterEnv(options, warnings), valueTier, valueInsideOnly };
+  const env: ScatterEnv = { ...resolveScatterEnv(options, warnings, data), valueTier, valueInsideOnly };
   const domain = resolveScatterDomain(data, env, warnings);
   if (env.options.legend === 'none' && domain.bubbleMode && domain.sizeMax && env.options.sizeLegend !== false) {
     const sizeKey = typeof env.options.sizeLegend === 'object' && env.options.sizeLegend.label ? env.options.sizeLegend.label : 'bubble size';
@@ -622,27 +652,28 @@ function layoutScatterRun(
   // the third pass on the key row never shrinks (ringRow), the plot then only
   // shrinks, the rings with it, and the loop settles with the rings at the
   // final plot's scale.
-  let area: ScatterPlotArea | undefined;
-  let solvedFrame: ReturnType<typeof solveScatterFrame> | undefined;
-  let ringRow = 0;
-  const keyInPlot = !sizeKeyInRow && sizeKeyInPlot(env, domain);
-  for (let pass = 0; pass < 6; pass++) {
-    const passWarnings: LintWarning[] = [];
-    const keyed = scatterKeyItems(env, domain, paints, area, passWarnings, !keyInPlot);
-    ringRow = Math.max(pass >= 2 ? ringRow : 0, maxOf(keyed.map((item) => (item.key === 'sizes' ? Math.ceil(2 * Math.max(0.5, ...(item.radii ?? []))) : 0))));
-    const items = keyed.map((item) => (item.key === 'sizes' ? { ...item, ringRow } : item));
-    solvedFrame = solveScatterFrame(env, domain, paints, items, area ? scatterLateNotes(env, domain, area) : [], hiddenNote);
-    const next = scatterPlotArea(env, domain, solvedFrame.frame, passWarnings);
-    const stable = area !== undefined && next.plot.w === area.plot.w && next.plot.h === area.plot.h;
-    area = next;
-    if (stable || pass === 5) {
-      pushAll(warnings, passWarnings);
-      break;
-    }
+  const { frame, claims, area, keyInPlot } = scatterFrame(env, domain, paints, warnings, hiddenNote, sizeKeyInRow);
+  // Soft labels only change hidden-label notes here. With those notes off
+  // the canvas, either size-key position has the frame's measured floor.
+  const legendPosition = typeof options.legend === 'object' ? options.legend.position : options.legend;
+  const engineNotes = options.notes?.show?.some(kind => kind !== 'note');
+  if (options.story && staticFrame.pinned && !staticFrame.live && legendPosition !== 'right'
+    && !engineNotes && !options.unit && !options.annotations?.length && !options.labelPlacements
+    && (!options.measure || options.measure === defaultMeasurer)) {
+    storyFrameFit.set(frame.frame, (bottom, width) => {
+      const counted = staticFrame.countable;
+      const probe = { ...env, options: { ...options, margin: { ...options.margin, bottom } } };
+      try {
+        return withSmallValues(options.smallValues, () => withEngineNotes(() => [false, true].every(inRow => {
+          const at = scatterFrame(probe, domain, paints, [], hiddenNote, inRow);
+          const floor = Math.max(at.frame.frame.minHeight ?? 0, at.frame.frame.plotMinHeight ?? 0);
+          return at.area.plot.w === width && Math.ceil(floor) < env.size.height;
+        }), true));
+      } finally { staticFrame.countable = counted; }
+    });
   }
-  const { frame, claims } = solvedFrame!;
   commitClaims(occupied, claims);
-  const geometry = layoutScatterMarks(env, domain, area!, paints);
+  const geometry = layoutScatterMarks(env, domain, area!, paints, warnings);
   if (geometry.densePoints) {
     warnings.push({
       code: 'scatter-dense-paths',

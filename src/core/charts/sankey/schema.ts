@@ -4,6 +4,7 @@ import * as z from 'zod';
 import { addDuplicateIdIssues, baseOptionsSchema, colorRoleField, idSchema, refusedBaseOptions } from '../../schema/shared';
 import type { SankeyData, SankeyOptions } from './types';
 import { SANKEY_OTHER_SHARE } from './normalize';
+import { columnOverridesOption } from '../../schema/generatedColumnOptions';
 
 const linkSchema = z.strictObject({
   source: idSchema.describe('Id of the node the flow leaves.'),
@@ -38,7 +39,7 @@ export const sankeyDataSchema = z
 
 export const sankeyOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions('sankey')).safeExtend({
   linkColor: z.enum(['source', 'target']).optional().describe(
-    "Which end's node colour a link takes: 'source' (default) shows where flows come from, 'target' where they go. Nodes that colour no link draw in the neutral mark colour.",
+    "Which end's node colour a ribbon takes. Unset: every node and ribbon draws neutral, and a node with fill, colorRole or a highlight colours the ribbons it touches. 'source' shows where flows come from and 'target' where they go, each with one palette step per node; with a highlight, only the highlighted nodes keep a colour. Nodes that colour no link draw in the neutral mark colour.",
   ),
   order: z.enum(['flow', 'data']).optional().describe(
     "'flow' orders the nodes of each column for the fewest weighted ribbon crossings. 'data' keeps the order of data.nodes, then first seen in links. Default 'flow', and 'data' when stage-qualified ids repeat across stages, so segments keep one order every month.",
@@ -52,7 +53,11 @@ export const sankeyOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptio
   ]).optional().describe(
     `Small nodes folded into one Other node per column, so a long tail stays readable; the note lists every folded node with its value. A column folds only when at least two nodes qualify. The Other node is as tall as its members together, so each column keeps its total. Default { share: ${SANKEY_OTHER_SHARE} } without stages; off with stage-qualified links, where an object folds an id in every stage or in none. false keeps every node.`,
   ),
-  nodeValue: z.enum(['value', 'share', 'value-share']).optional().describe(
-    "What a node prints in bold after its name: 'value' (default), 'share' of its column's total, or 'value-share' as \"420 (38%)\". A percent format applies to the shares.",
+  nodeValue: z.union([z.enum(['value', 'share', 'value-share']), z.literal(false)]).optional().describe(
+    "What a node prints in bold after its name: 'value' (default), 'share' of its column's total, or 'value-share' as \"420 (38%)\". A percent format applies to the shares. false prints the name only; the marks, hover and records keep the value, and linkValue still decides the ribbon values.",
+  ),
+  columnOverrides: columnOverridesOption('sankey', ['width']),
+  linkValue: z.enum(['none', 'large']).optional().describe(
+    "Flow values on the ribbons: 'large' (default) prints the value of every ribbon at least one line high at its arriving end, right aligned to the next bar; thinner ribbons print nothing, and a value that would cover a node label is left out. 'none' prints node values only.",
   ),
 }) as unknown as z.ZodType<SankeyOptions>;

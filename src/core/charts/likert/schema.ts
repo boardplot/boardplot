@@ -1,7 +1,8 @@
 /** Likert data and options schemas, without the chart engine. */
 
 import * as z from 'zod';
-import { addDuplicateIdIssues, baseOptionsSchema, idSchema, refusedBaseOptions } from '../../schema/shared';
+import { columnOrderOption, columnOverridesOption } from '../../schema/generatedColumnOptions';
+import { addDuplicateIdIssues, baseOptionsSchema, idSchema, legendWithoutOrder, optionShapeSchema, refusedBaseOptions } from '../../schema/shared';
 import type { LikertData, LikertOptions } from './layout';
 
 // `.strict()` everywhere on this data path, deliberately. Elsewhere in the
@@ -88,16 +89,13 @@ export const likertDataSchema = z
 export const likertOptionsSchema = baseOptionsSchema
   .safeExtend(refusedBaseOptions('likert'))
   .safeExtend({
-    // Refused with z.never rather than omitted: a zod object strips unknown
-    // keys, so an omitted key parses away silently and leaves the published
-    // schema.
-    sort: z
-      .never({
-        error:
-          "'sort' is not accepted on a likert: the response scale is an ORDERED axis (strongly disagree … strongly agree) and reordering it destroys the diverging baseline the chart is read from — order the questions in the data instead",
-      })
-      .optional()
-      .describe('Refused: the response scale is an ordered axis, not a rankable list.'),
+    legend: legendWithoutOrder.describe(baseOptionsSchema.shape.legend.description!),
+    sort: optionShapeSchema('sort', z.object({
+      categories: z.enum(['sheet', 'asc', 'desc', 'reverse']).optional()
+        .describe('Statement order: sheet keeps authored order, reverse reverses it, asc and desc rank by net score with stable ties. Overrides sortBy direction.'),
+      segments: z.never({ error: "'sort.segments' is not accepted on a likert: the response scale is an ordered axis; reordering it destroys the diverging baseline. sort.categories orders the statements" })
+        .optional().describe('Refused: the response scale is an ordered axis; sort.categories orders the statements.'),
+    }), z.union([z.enum(['sheet', 'asc', 'desc', 'reverse']), z.literal(true)])).optional().describe('Order statements by net score without changing the ordered response scale.'),
     topN: z
       .never({
         error:
@@ -105,6 +103,8 @@ export const likertOptionsSchema = baseOptionsSchema
       })
       .optional()
       .describe('Refused: a rest bucket would break the base the shares are computed against.'),
+    columnOverrides: columnOverridesOption('likert', ['width', 'align', 'headAlign', 'label']),
+    columnOrder: columnOrderOption('likert'),
     values: z
       .enum(['counts', 'percent'])
       .describe(
@@ -122,10 +122,16 @@ export const likertOptionsSchema = baseOptionsSchema
       .describe(
         "Net column (% agree − % disagree). Default 'net'; refused with neutral 'positive'/'negative', where the signed stack sum is not the net score.",
       ),
+    base: z
+      .enum(['column', 'none'])
+      .optional()
+      .describe(
+        "The base n of each statement as a right-aligned grey column right of the net, under the head 'n'. Default 'column' when the counts or an item's n give a base; percent input without n has none. One base shared by every statement prints once in the head ('n = 900'). The column stays off below 576 px canvas width.",
+      ),
     sortBy: z
       .enum(['sheet', 'net'])
       .optional()
-      .describe("Statement order. Default 'sheet'; 'net' sorts descending with ties broken by input order."),
+      .describe("Default 'sheet' keeps statement order; 'net' ranks by net score, descending unless sort.categories supplies the direction or mode. Ties keep authored order."),
     methodNote: z
       .boolean()
       .optional()

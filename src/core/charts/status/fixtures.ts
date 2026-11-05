@@ -229,11 +229,9 @@ for (const legend of ['none', 'right', 'bottom', 'top'] as const) {
   fixtures.push({
     id: `review-status-legend-${legend}`,
     title: legend === 'right'
-      ? 'Refusal example: a state legend beside the grid, refused for the width it takes'
+      ? 'Review status with a state legend in a column beside the grid'
       : `Review status with ${legend === 'none' ? 'one explained state and no legend' : `a ${legend} legend`}`,
     kind: legend === 'right' ? 'example' : 'torture',
-    // A key beside the plot is refused; this spec stays as the refusal example.
-    ...(legend === 'right' ? { refuses: { code: 'invalid-options', path: 'options.legend' } } : {}),
     data: {
       rows: [{ id: 'pricing', label: 'Pricing' }, { id: 'service', label: 'Service' }],
       columns: [{ id: 'draft', label: 'Draft' }, { id: 'review', label: 'Review' }],
@@ -430,5 +428,43 @@ fixtures.push({
 });
 
 fixtures.push({ id: 'status-with-values', title: 'State cells include their measured values', kind: 'torture', data: { rows: [{ id: 'team', label: 'Team' }], columns: [{ id: 'month', label: 'Month' }], cells: [{ row: 'team', col: 'month', state: 'ok', value: { number: 97.5, format: '1.0%' } }] }, options: { title: 'Attainment stays on plan', states: [{ id: 'ok', label: 'On plan', tone: 'good' }], size: { width: 600, height: 250 } } });
+
+// The capability board with its good and neutral cells in their full colours
+// (marks.statusFill 'full') instead of washed toward the page.
+const capability = fixtures.find((fixture) => fixture.id === 'capability-assessment')!;
+fixtures.push({
+  ...capability,
+  kind: 'torture', id: 'capability-assessment-full-fill',
+  title: 'Capability board with good and neutral cells in their full colours',
+  tags: ['theme'],
+  options: { ...capability.options!, theme: { preset: 'standard', overrides: { marks: { statusFill: 'full' } } } },
+});
+
+fixtures.push({
+  id: 'column-widths',
+  kind: 'example',
+  title: 'A wider last column, aligned heads and a renamed head',
+  tags: [],
+  data: {
+    rows: [{ id: 'web', label: 'Web shop' }, { id: 'app', label: 'Mobile app' }, { id: 'pos', label: 'Store tills' }],
+    columns: [{ id: 'design', label: 'Design' }, { id: 'build', label: 'Build' }, { id: 'test', label: 'Test' }, { id: 'ship', label: 'Ship' }],
+    cells: [
+      { row: 'web', col: 'design', state: 'done' }, { row: 'web', col: 'build', state: 'done' }, { row: 'web', col: 'test', state: 'late' }, { row: 'web', col: 'ship', state: 'open' },
+      { row: 'app', col: 'design', state: 'done' }, { row: 'app', col: 'build', state: 'late' }, { row: 'app', col: 'test', state: 'open' }, { row: 'app', col: 'ship', state: 'open' },
+      { row: 'pos', col: 'design', state: 'done' }, { row: 'pos', col: 'build', state: 'done' }, { row: 'pos', col: 'test', state: 'done' }, { row: 'pos', col: 'ship', state: 'late' },
+    ],
+  },
+  options: {
+    title: 'Release stages by product',
+    source: 'Invented project data',
+    size: { width: 720 },
+    states: [{ id: 'done', label: 'Done', tone: 'good' }, { id: 'late', label: 'Late', tone: 'bad' }, { id: 'open', label: 'Open', tone: 'neutral' }],
+    columnOverrides: {
+      label: { width: 170, align: 'left' },
+      design: { headAlign: 'left' },
+      ship: { width: 220, label: 'Ship to customers', headAlign: 'right' },
+    },
+  },
+});
 
 registerFixtures('status', fixtures);

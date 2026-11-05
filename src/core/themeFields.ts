@@ -45,7 +45,7 @@ const THEME_FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = Object.freeze
   'color.highlight':
     'The single accent, with one meaning: the focus the author asked for. It paints what options.highlight selects, an annotation or callout, a colorRole \'highlight\', and the larger marks listed under color.focus, unless color.focus is set. It also keeps a few point accents: the latest-point ring, a highlight reference tick, the last point or column of a spark, and map glyphs. Without an authored focus no chart paints it on a lead mark: series 1 leads. One accent per theme.',
   'color.focus':
-    "What options.highlight selects: the highlighted bar, column, dot, slice, box, step, point or line, and the swatch beside its label. It also takes every mark larger than a point that would fall back to color.highlight: a line, area, bar, column, slice, cell, gantt item or scatter and dot group whose colorRole is 'highlight' (one other plain series then recedes to the neutral mark, and plain lines and slopes step back to their grey ladder), a diagram node, lane or badge whose role is 'accent', the in-cell bar, the gantt elapsed wash, and status cells, zones and phases whose tone is highlight or info. It also washes a kpi area spark, whose last point keeps color.highlight. Without an authored focus the lead mark takes series 1: the combo lead line takes the rank after the columns, a pareto's vital few take series 1 and the rest recede, a butterfly's or pyramid's second side, a dumbbell's second dots, a single-series funnel and a tornado's high case without casePair take series 1, linear-process step badges take the neutral mark, and the pie, heatmap ladder, ramp and Harvey fills, and the cohort, choropleth, tilemap and table heat ramps are tints of series 1. Absent means color.highlight. Set it apart when the accent is kept for a single mark, such as the latest-point ring or a reference tick, and the selected marks should take another colour, often the ink. A line's emphasis: 'first' hero takes the ink either way.",
+    "What options.highlight selects: the highlighted bar, column, dot, slice, box, step, point or line, and the swatch beside its label. It also takes every mark larger than a point that would fall back to color.highlight: a line, area, bar, column, slice, cell, gantt item or scatter and dot group whose colorRole is 'highlight' (one other plain series then recedes to the neutral mark, two or more plain series of a stacked column or bar or a mekko recede on a neutral ramp from the muted mark to color.neutralLight, and plain lines and slopes step back to their grey ladder), a diagram node, lane or badge whose role is 'accent', the in-cell bar, the gantt elapsed wash, and status cells, zones and phases whose tone is highlight or info. It also washes a kpi area spark, whose last point keeps color.highlight. Without an authored focus the lead mark takes series 1: the combo lead line takes the rank after the columns, a pareto's vital few take series 1 and the rest recede, a butterfly's or pyramid's second side, a dumbbell's second dots, a single-series funnel and a tornado's high case without casePair take series 1, linear-process step badges take the neutral mark, and the pie, heatmap ladder, ramp and Harvey fills, and the cohort, choropleth, tilemap and table heat ramps are tints of series 1. Absent means color.highlight. Set it apart when the accent is kept for a single mark, such as the latest-point ring or a reference tick, and the selected marks should take another colour, often the ink. A line's emphasis: 'first' hero takes the ink either way.",
   'color.spark':
     "The line of a kpi card's spark, a table sparkline cell and a creative trend, and the line over an area spark. Absent means color.neutralMark, then color.neutral. color.neutral is a fill, and a pale one draws a faint line: point the spark at the ink then. A column spark's columns take color.neutralMark, the last point keeps color.highlight, and the standalone sparkline type draws its line in the ink.",
   'color.total': 'Color for total and subtotal marks. Defaults to the accent in the shipped presets.',
@@ -68,7 +68,8 @@ const THEME_FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = Object.freeze
   'color.seriesOverflow':
     "What a series index beyond the ramp does: 'repeatLast' reuses the last entry, 'cycle' restarts the ramp. Default 'repeatLast'.",
   'color.casePair': 'Tornado low/high fills. Absent resolves to neutralLight/series 1.',
-  'color.stack': 'Fills of the plain series of a stacked or 100% column or bar, strongest on the page first and the quietest last (2 or more). More series than steps share the ramp evenly between its ends; authored fills, colour roles, palettes and highlights win. Absent keeps the series order.',
+  'color.stack': 'Fills of the plain series of a stacked or 100% column or bar, strongest on the page first and the quietest last (2 or more). More series than steps share the ramp evenly between its ends; authored fills, colour roles, palettes and highlights win. Absent keeps the series order. Treemap groups take it when color.treemap is absent.',
+  'color.treemap': 'Fills of treemap groups by rank, the first drawn group the strongest (2 or more). More groups than steps share the ramp evenly between its ends; a group fill or colorRole and options.palette win. Absent takes color.stack; a theme without either steps the first series colour toward the page. Set it to the color.series list for one hue per group.',
   'color.palettes':
     'Named alternative categorical ramps so one report keeps disjoint color vocabularies per dimension. Charts opt in through options.palette.',
   'color.status':
@@ -147,9 +148,9 @@ const THEME_FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = Object.freeze
   'space.tierGap': 'Vertical gap in px between stacked tiers.',
   'space.facetGap': 'Gap in px between facets of a small-multiple layout.',
   'space.labelPad': 'Padding in px between a mark and its label.',
-  'space.canvas': 'Canvas margin tokens by width class: `base` covers the small and middle widths, `wide` covers 1080 px and up.',
-  'space.canvas.base': 'Canvas margins for the small and middle width classes, in px.',
-  'space.canvas.wide': 'Canvas margins at canvas widths of 1080 px and up, in px.',
+  'space.canvas': 'Canvas margin tokens by width class: `base` covers the small and middle widths, `wide` covers 1080 px and up. Each class and side is optional. Missing values keep the preset or built-in margin. A class takes a side object, not a bare number.',
+  'space.canvas.base': 'Canvas margins for the small and middle width classes, in px. Each side is optional and stays within 0 to 96.',
+  'space.canvas.wide': 'Canvas margins at canvas widths of 1080 px and up, in px. Each side is optional and stays within 0 to 96.',
   'space.canvas.<class>.<side>': 'One canvas margin side in px (top, right, bottom, left).',
   'space.gap': 'Named vertical gaps of the fixed frame order; the `*Wide` variants apply at canvas widths of 1080 px and up.',
   'space.gap.titleSubtitle': 'Gap in px between title and subtitle.',
@@ -164,6 +165,8 @@ const THEME_FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = Object.freeze
     "A fixed bar row: bar thickness and row pitch in px, such as 12 and 24. Absent, bar rows share whatever height the canvas gives them. Set, every bar and likert row is pitch px tall, or as tall as its label if that is taller, and a canvas taller than the chart never stretches the rows: the chart lays out at its natural height, draws at the top and leaves the rest of the canvas empty, as a content-fit chart sits at the top of its box. A host that wants the air elsewhere lays the chart out at its natural height (fit: 'content') and places it. An authored options.bandFraction still sets the bar's share of the row.",
   'space.barRow.thickness': 'Bar (or bar group) thickness in px. A thickness above the pitch draws the bar at the full row.',
   'space.barRow.pitch': 'Distance in px from one row to the next.',
+  'space.footerFollows':
+    "On a canvas with a set height that is taller than the drawn chart, the notes, the source line and a key under the plot stand right under the content, and the spare height stays below them. Absent or true does this. false puts them at the canvas bottom, with the empty band between the content and them. A chart that fills its canvas is not changed.",
 
   // ── legend, interaction, motion ────────────────────────────────────────────
   legend: 'Legend behavior switches.',
@@ -204,10 +207,16 @@ const THEME_FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = Object.freeze
     "'panel' draws every diagram node of the primary, secondary or muted role on the background with its ring (marks.nodeStroke), so the accent node is the one filled node. Signed, warn and category nodes keep their fills. Absent keeps 'role': primary in the first series colour, secondary and muted in color.neutralLight.",
   'marks.kpiCaret':
     'false draws a kpi card\'s delta and comparisons without the leading caret; the signed figure and its tone carry the direction ("+10.4% vs PY"). Absent means true.',
+  'marks.kpiSlotFill':
+    "false keeps a standalone kpi card in a slot of fixed height (a given height or a size preset) at its natural figure and delta sizes, at the top of the slot. Absent means true: the figure grows to a quarter of the slot height and the delta to 30% of the figure, never under their natural sizes, and the value, note and delta sit in the middle of the free height. Grid panels and cards with a spark, compare chips or an attainment keep their layout.",
   'marks.bridge':
     "How a waterfall (vertical or horizontal) and a pvm bridge paint their steps. 'sign' draws the totals in color.total (ink when a theme leaves it unset), a rising step in color.goodFill and a falling one in color.badFill, the connectors dotted at 1 px in color.inkMeta, and each step's signed value beside its bar in color.good or color.bad (inside a bar it keeps the contrast ink). A step split into authored segments keeps its segment colours and key; a highlight still selects a total, while a step's colour stays its sign. 'neutral' draws the steps in color.neutral, totals in color.total, dashed color.leader connectors. Absent, the steps take their sign's fill (the waterfall's signColor) on dashed leader connectors, unless the spec names a palette.",
   'marks.funnelFill':
     "How a funnel (rows or centered) fills its bars. 'ramp': a single series takes color.series by stage, stage 1 the first colour; an outcome split takes it by series; the lost share, a series whose colorRole is 'status-lost' or 'bad', is color.badFill at 45 % over the background. Status colours never reach the bars, so a status map that borrows a text colour cannot fill a stage. An authored series fill wins. Absent means 'status': a colorRole resolves through the theme and a single series takes color.focus.",
+  'marks.statusFill':
+    "How a status chart fills its good and neutral cells. Absent means 'quiet': a good cell draws color.goodFill washed toward the page (about 78 %) and a neutral cell color.neutralMark washed less (about 67 %), so off-track and at-risk cells carry the colour. Each wash steps back toward its full colour until the cell sits further from the page than a cell with no status and stays apart from it and from every other state colour, also for red-green colour vision. It is decided in the theme the chart is painted in; on a dark page the wash also steps back until the cell reads against the page as clearly as the light wash does on white. A hatched good or neutral state keeps its full colour under its hatch, and a plain state of the same tone stays a step stronger than that hatch ground. 'full' fills good and neutral cells with color.goodFill and color.neutralMark as they are.",
+  'marks.bulletBandFill':
+    "How a bullet paints its bands. Absent means 'light': the qualitative bands of every row take the light ladder, the good end 0.06 lightness from the page and each band 0.06 from the next, so the bar stays the darkest mark at any row count. A band with a tone (good, warn, bad, neutral) takes its tone's fill washed toward the page: good sits 0.13 lightness from the page, warn 0.11, bad 0.09 and neutral 0.15, so a wide off-plan zone stays pale and good and bad differ in lightness. An attainment band washes its good and bad fills the same way. It is decided in the theme the chart is painted in. 'full' paints toned bands and attainment bands in color.goodFill, color.warnFill, color.badFill and color.neutralMark as they are, and steps the ladder 0.12 apart on rows that do not print their band names.",
   labels: 'Label conventions. Absent keeps the shipped placement.',
   'labels.endLabelPlacement': "Default for the line option endLabelPlacement: 'gutter' puts every end label right of the plot, 'lineEnd' puts the label of a series that ends early beside its last point.",
   valueAxis: 'Value-axis conventions. Each switch is off when absent; an explicit chart option wins.',
@@ -228,6 +237,7 @@ const THEME_FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = Object.freeze
   surface: 'Surface anatomy for chips, row tints, and schedule washes.',
   'surface.chipTint': 'How far a chip background steps toward the surface (0.05 to 0.97).',
   'surface.rowTint': 'Opacity of the zebra row tint (0.85 to 0.98).',
+  'surface.ganttRowTint': 'How far Gantt row and weekend shading washes color.others toward color.background (0 to 1). Default 0.25. The Weekend key uses the same wash, capped at 0.8. Table zebra shading keeps surface.rowTint.',
   'surface.elapsedTint': 'Opacity of the elapsed-era wash in schedule charts (0.85 to 0.99).',
   'surface.anchorTint': 'Opacity of the structural wash on level-0 parent rows (0.85 to 0.99).',
   'surface.heatSteps': 'Band alphas of a stepped table heat lane, lightest first, over the background (0 to 1). Five bands need four entries: the band above the last one is the full ink with inverse text. Default 0.06 / 0.14 / 0.26 / 0.42.',
@@ -237,6 +247,8 @@ const THEME_FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = Object.freeze
   'surface.ribbonSheetAlpha': "Opacity of a fixed-order ribbon (options.ribbons.order 'sheet') over the page (0.05 to 0.6); default 0.18, lighter than a ranked ribbon, so a dark segment's band does not compete with the columns.",
   'surface.chipRadius': 'Chip corner radius in px (0 to 6).',
   'surface.sparkWash': "Whether a spark whose data asks for kind 'area' (a kpi card's spark) draws the wash under its line. false draws it as its line and last point alone, the look of a line spark. Absent means true. Column sparks keep their columns.",
+  'surface.sparkAreaBase': "Where an area spark (a kpi card's spark of kind 'area') starts its scale and its wash. 'zero' (the default) starts at zero, so the filled height is the value. 'min' starts at the series minimum and fills to the foot of the spark, which stretches the change. Line and column sparks ignore it.",
+  'surface.shortfallCap': "How an integrated variance chart draws a cap that ends past the actual's edge, the stretch of the reference the actual does not reach. 'outline' (the default) draws it as an outline in its good or bad colour, so the solid shape ends at the actual. 'solid' fills it, the look before. A cap over the actual column, a beat, stays solid either way.",
   'surface.panelShadow': 'CSS box-shadow of the notes popover a React chart opens, in the documented grammar (`0 1px 2px rgba(...)` style). Absent draws no shadow.',
 
   // ── table ──────────────────────────────────────────────────────────────────
@@ -251,8 +263,8 @@ const THEME_FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = Object.freeze
   'table.inks.operator': 'Statement operator ink. Default table.inks.secondary.',
   'table.inks.driver': 'Driver label, figure and change ink. A good, warn or bad figure of a driver that options.driverTones allows (grouped by default: a driver under a line) keeps its tone, and a neutral figure and the label keep this ink. Default table.inks.secondary.',
   'table.inks.toggle': 'Fold toggle ink: the +/- mark, and the box under mark boxed. Default table.inks.secondary.',
-  'table.inks.secondary': 'The one table ink that steps back behind a value: change lines, unit affixes, group notes, cell notes and hints, state glyphs, zero figures, muted columns and the fold toggle. On the SVG and in the grid. Boardroom #305B86, standard-dark #9EC3E2; absent, color.inkMuted.',
-  'table.ruleInk': 'The quiet table rule, on the SVG and in the grid: row rules, the column-group rule and the column dividers. Boardroom #C3D3E3, standard-dark #344B60; absent, 25% of color.ink mixed into the background.',
+  'table.inks.secondary': 'The one table ink that steps back behind a value: change lines, unit affixes, group notes, cell notes and hints, state glyphs, zero figures, muted columns and the fold toggle. On the SVG and in the grid. Bridge #5B6B86, Boardroom #5B6878, standard-dark #9EC3E2. Absent, color.inkMuted.',
+  'table.ruleInk': 'The quiet table rule, on the SVG and in the grid: row rules, the column-group rule and the column dividers. Bridge #D9DEE8, Boardroom #C3D3E3, standard-dark #344B60. Absent, 25% of color.ink mixed into the background.',
   'table.weights.emphasis': 'Weight of totals, subtotals, results and parent rows, on labels and figures (100 to 1000). Default 600 in every shipped preset; absent in a custom theme, the type.emphasis weight.',
   'table.weights.subtotal': 'Subtotal label weight. Default table.weights.emphasis.',
   'table.weights.result': 'Result label weight. Default table.weights.emphasis.',
@@ -288,7 +300,7 @@ const THEME_FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = Object.freeze
   'table.<face>.weight': 'Font weight (100 to 1000).',
   'table.<face>.lineHeight': 'Line height as a ratio of the size. Both surfaces reserve a whole-pixel line box, ceil(size x ratio): 10.5 x 1.33 gives 14.',
   'table.<face>.tracking': 'Letter-spacing in em of the size (0 to 0.3).',
-  'table.head.case': "'upper' sets the column heads in capitals, on the SVG and in the grid; 'asis' prints each label as authored (\"Apr 25\", \"L10W avg\"), and the tracks measure that text. Absent means 'upper'. Column-group headings and section rows keep their capitals.",
+  'table.head.case': "'upper' (the default) capitalizes column heads on the SVG and in the grid, but keeps text after the last comma, text in parentheses or square brackets, and tokens with an inner capital such as mW or kWh as authored. 'asis' keeps each field head as authored, while column-group headings always use the default rule and section rows use capitals.",
   'table.section.ink': "Text colour of a section heading: 'ink', 'inkMuted' or 'inkMeta'. Absent means 'ink'; every preset sets 'ink'.",
   'table.fixedType':
     "True makes a density change row height and cell padding only: compact heads, body and total keep their size, and the label of a cohort grid's closing row keeps the total face while the matrix cells keep their own step. Absent or false steps compact type 0.5 px down as before.",
@@ -315,7 +327,7 @@ const THEME_FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = Object.freeze
   'table.grounds.warn': 'Ground of a watch judgment. Transparent means no fill.',
   'table.grounds.bad': 'Ground of a bad judgment. Transparent means no fill.',
   'table.bar': 'Grounds of a size bar, the bar a cell with bar draws from its left edge.',
-  'table.bar.fill': 'Ground of a size bar. Boardroom #D6E3F0, standard-dark #22384D; absent, the ink washed far toward the background. Transparent means no fill.',
+  'table.bar.fill': 'Ground of a size bar. Bridge #DCE4FA, Boardroom #D6E3F0, standard-dark #22384D. Absent, the ink washed far toward the background. Transparent means no fill.',
   'table.bar.muted': 'Ground of a size bar in a muted column, such as a partial period. Absent, a paler wash. Transparent means no fill.',
   'table.headRule': "The line under the column heads, and under a section heading whose table.section.rule is 'hair': 'rule' (default) in the rule ink, 'ink' in the text ink.",
   'table.blockRule':

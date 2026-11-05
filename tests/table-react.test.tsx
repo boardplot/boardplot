@@ -54,7 +54,7 @@ import {
 } from '../src/core/charts/table/view';
 import type { Fixture } from '../src/core/registry';
 import type { TableData, TableOptions } from '../src/core/types/table';
-import { TableChart } from '../src/react';
+import { DimSwitchChart, TableChart } from '../src/react';
 
 const actGlobal = globalThis as typeof globalThis & {
   IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -131,13 +131,49 @@ it('keeps bold automatic value tracks safe when browser measurement is unavailab
   }
 });
 
+// A <wbr> breaks under white-space: nowrap, so a one-line label would still draw on several lines in the browser.
+it('emits no break opportunity in a label under rowLabelLines 1', () => {
+  const fixture = getFixtures('table').find(item => item.id === 'row-label-three-lines')!;
+  const breaks = (rowLabelLines: number) => {
+    act(() => root.render(<TableChart data={fixture.data as TableData} size={{ width: 480 }} rowLabelLines={rowLabelLines} />));
+    return container.querySelectorAll('[role="rowheader"] wbr').length;
+  };
+  expect(breaks(1)).toBe(0);
+  expect(breaks(2)).toBeGreaterThan(0);
+  const member = getFixtures('dimswitch').find(item => item.id === 'by-member')!;
+  act(() => root.render(<DimSwitchChart {...member.options as object} data={member.data as never} size={{ width: 480 }} rowLabelLines={1} />));
+  expect(container.querySelectorAll('[role="rowheader"] wbr').length).toBe(0);
+});
+
+// A capture of a long table must not show blank rows where the browser skipped the paint.
+it('paints offscreen rows at once with paintOffscreenRows', () => {
+  const rows = Array.from({ length: 501 }, (_, index) => ({ id: `r${index}`, label: `Row ${index}`, cells: { v: index } }));
+  const data: TableData = { columns: [{ id: 'label', kind: 'rowLabel', label: 'Name' }, { id: 'v', kind: 'value', label: 'Value' }], rows };
+  vi.stubGlobal('IntersectionObserver', class { observe() {} unobserve() {} disconnect() {} });
+  const drawn = (paintOffscreenRows: boolean) => {
+    act(() => root.render(<TableChart data={data} size={{ width: 400 }} mountCollapsed={false} paintOffscreenRows={paintOffscreenRows} />));
+    return [container.querySelectorAll('[data-bp-defer-row]').length, container.querySelectorAll('[data-bp-row-page]').length];
+  };
+  expect(drawn(false)[0]).toBeGreaterThan(0);
+  expect(drawn(true)).toEqual([0, 0]);
+  vi.unstubAllGlobals();
+  // DimSwitch mounts its rows deferred by default, and takes the switch from the table schema.
+  const fixture = getFixtures('dimswitch').find(item => item.id === 'by-member')!;
+  const deferredRows = (paintOffscreenRows: boolean) => {
+    act(() => root.render(<DimSwitchChart {...fixture.options as object} data={fixture.data as never} size={{ width: 720 }} paintOffscreenRows={paintOffscreenRows} />));
+    return container.querySelectorAll('[data-bp-defer-row]').length;
+  };
+  expect(deferredRows(false)).toBeGreaterThan(0);
+  expect(deferredRows(true)).toBe(0);
+});
+
 // A scrolling table must show the whole name within its allowed lines, including a leading glyph.
-it('keeps the one-line or two-line label floor before a React table scrolls', () => {
+it('keeps the label floor of each line count before a React table scrolls', () => {
   const data: TableData = {
     columns: [{ id: 'label', kind: 'rowLabel', label: 'Region' }, { id: 'v', kind: 'value', label: 'Value', width: 200 }],
     rows: [{ id: 'a', label: 'North America enterprise customer acquisition', cells: { v: 1234 } }],
   };
-  for (const [rowLabelLines, floor] of [[2, 168], [1, 289]] as const) {
+  for (const [rowLabelLines, floor] of [[3, 120], [2, 168], [1, 289]] as const) {
     for (const lead of [0, 24.5]) {
       act(() => root.render(<TableChart data={data} size={{ width: 300 }} margin={{ left: 0, right: 0 }}
         theme={{ preset: 'standard', overrides: { type: { family: 'Geist Variable' } } }}
@@ -229,6 +265,26 @@ describe('TableChart uncontrolled state', () => {
     expect(pins.map(node => node.dataset.colId)).toEqual(['label', 'range', 'prior']);
     expect(pins.map(node => node.style.getPropertyValue('--bp-pin-left'))).toEqual(['0px', '160px', '280px']);
     expect(pins.at(-1)!.hasAttribute('data-bp-pin-last')).toBe(true);
+  });
+
+  // A section label under pinned columns printed "ADVERTI…" beside a row of empty cells: it keeps the empty width after the pinned block.
+  it('lets a pinned section heading read across the empty cells of its row', () => {
+    const data: TableData = {
+      columns: [
+        { id: 'label', kind: 'rowLabel', label: 'Item', width: 90 },
+        { id: 'a', kind: 'value', label: 'A', width: 120 },
+        { id: 'b', kind: 'value', label: 'B', width: 100 },
+      ],
+      rows: [
+        { id: 'block', label: 'Block heading', role: 'section' },
+        { id: 'one', label: 'One', cells: { a: 10, b: 9 } },
+      ],
+    };
+    act(() => root.render(<TableChart data={data} size={{ width: 400 }} frameFill="none" stickyLabels={1} />));
+    const heading = container.querySelector<HTMLElement>('[data-role="section"] [role="rowheader"]')!;
+    expect(heading.hasAttribute('data-bp-pin')).toBe(true);
+    expect(heading.style.getPropertyValue('--bp-section-spill')).toBe('220px');
+    expect(getComputedStyle(heading).overflow).toBe('visible');
   });
 
   // Revealing a hidden table must restore its full row height without waiting for a prop change.
@@ -1502,6 +1558,15 @@ describe('TableChart in the host document', () => {
     expect(summaryIds[1]).toMatch(/^bp-table-summary-right-/);
   });
 
+  // An authored a11y.description reached the SVG table but not the React table, whose grid read only options.caption.
+  it('describes the grid with options.a11y.description when the author writes one', () => {
+    const selected = managementFixture();
+    const description = 'Revenue grew in every region. The south region grew fastest.';
+    const html = renderToString(<TableChart data={selected.data} {...selected.options} size={{ width: 720, height: 420 }} a11y={{ description }} />);
+    expect(/<p id="[^"]+" class="bp-summary">([^<]*)<\/p>/.exec(html)![1]).toBe(description);
+    expect(renderToString(<TableChart data={selected.data} {...selected.options} size={{ width: 720, height: 420 }} />)).not.toContain(description);
+  });
+
   it('mounts its stylesheet in the head of the iframe document it renders in', () => {
     const frame = document.createElement('iframe');
     document.body.append(frame);
@@ -1811,19 +1876,114 @@ it('prints the resolved table unit in both frames', () => {
   expect(resolveTable(data, { ...options, unit: '$k' }).warnings.some(warning => warning.code === 'table-unit-overridden')).toBe(false);
 });
 
-// A capitalised head printed "Power,mW" as "POWER,MW": milliwatts read as megawatts.
-it('keeps the unit after a head comma as written, on column and group heads, on both surfaces', async () => {
+// A bare shared scale ('1.2bn') replaced options.unit in the frame, so "Revenue in B" printed with the currency nowhere.
+it('keeps the currency of options.unit in front of a shared bare scale', () => {
+  const data: TableData = { columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'v', kind: 'value', format: '1.2bn' }], rows: [{ id: 'r', label: 'North', cells: { v: 2500000000 } }] };
+  const unitOf = (unit: string) => {
+    const { table, warnings } = resolveTable(data, { subtitle: { measure: 'Revenue' }, unit });
+    return { unit: table.unit, overridden: warnings.some(warning => warning.code === 'table-unit-overridden') };
+  };
+  expect(unitOf('EUR')).toEqual({ unit: 'EUR B', overridden: false });
+  expect(unitOf('EUR bn')).toEqual({ unit: 'EUR bn', overridden: false });
+  expect(unitOf('$m')).toEqual({ unit: 'B', overridden: true });
+  // A scale word that is not the last word still counts: it never gets a second scale appended.
+  expect(unitOf('Mio. EUR')).toEqual({ unit: 'B', overridden: true });
+  expect(unitOf('k EUR')).toEqual({ unit: 'B', overridden: true });
+  expect(unitOf('EUR bn (adj.)')).toEqual({ unit: 'EUR bn (adj.)', overridden: false });
+  expect(unitOf('Mrd. EUR')).toEqual({ unit: 'Mrd. EUR', overridden: false });
+  // A scale glued to the currency ('USDbn') or in another language ('Md') is not a bare currency, so it never gets a second scale.
+  for (const unit of ['USDbn', 'EURm', 'kEUR', 'EUR Md']) expect(unitOf(unit)).toEqual({ unit: 'B', overridden: true });
+  const de = resolveTable({ ...data, columns: [data.columns[0]!, { id: 'v', kind: 'value', format: '1,2 Mrd' }] }, { subtitle: { measure: 'Umsatz' }, unit: 'Mio. EUR', locale: { decimal: ',', thousands: '.' } });
+  expect(de.warnings.some(warning => warning.code === 'table-unit-overridden')).toBe(true);
+  expect(de.table.unit).not.toContain('Mio.');
+});
+
+// Row formats ('$1.2k') hoist their own currency; unformatted columns carry no affix, so they must not make the unit look bare.
+it('does not compose options.unit with a unit hoisted from row formats', () => {
+  const data: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'v', kind: 'value' }],
+    rows: [{ id: 'a', label: 'North', format: '$1.2k', cells: { v: 2500 } }, { id: 'b', label: 'South', format: '$1.2k', cells: { v: 1800 } }],
+  };
+  for (const unit of ['EUR', '$']) {
+    const { table, warnings } = resolveTable(data, { magnitude: 'thousand', unit, subtitle: { measure: 'Revenue' } });
+    expect(table.unit).toBe('$k');
+    expect(warnings.some(warning => warning.code === 'table-unit-overridden')).toBe(true);
+  }
+});
+
+// A prepared snapshot dropped the raw values of arrow and sparkline cells, so the reader lost the arrows, their key and the trend lines.
+it('draws arrows, their key and sparklines from a prepared snapshot', async () => {
+  const { prepareChart } = await import('../src/react/prepare');
+  for (const id of ['fatigue-cell-encodings', 'sparkline-line-column']) {
+    const { data, options } = getFixtures('table').find((f) => f.id === id)!;
+    const props = { data: data as TableData, ...(options as TableOptions), size: { width: 900 } };
+    const prepared = await prepareChart({ type: 'table', data, options, size: { width: 900 } });
+    expect(renderToString(<TableChart {...props} prepared={prepared} />)).toBe(renderToString(<TableChart {...props} />));
+  }
+});
+
+// A capitalised head printed "Power,mW" as "POWER,MW" and "Memory (Mb)" as "MEMORY (MB)": milliwatts read as megawatts, megabits as megabytes.
+it('keeps a head unit as written, after a comma, in brackets or inside a word, on column and group heads, on both surfaces', async () => {
   const { render } = await import('../src/cli/render');
   const data = {
-    columns: [{ id: 'l', kind: 'rowLabel' as const, label: 'Site' }, { id: 'p', kind: 'value' as const, label: 'Power,mW' }],
+    columns: [
+      { id: 'l', kind: 'rowLabel' as const, label: 'Site' },
+      { id: 'p', kind: 'value' as const, label: 'Power,mW' },
+      { id: 's', kind: 'value' as const, label: 'Standby power (mW)' },
+      { id: 'm', kind: 'value' as const, label: 'Memory [Mb]' },
+      { id: 'e', kind: 'value' as const, label: 'eBay sales ($k)' },
+    ],
     columnGroups: [{ id: 'g', label: 'Load, kW', columns: ['p'] }],
-    rows: [{ id: 'a', label: 'North', cells: { p: 12 } }],
+    rows: [{ id: 'a', label: 'North', cells: { p: 12, s: 12, m: 12, e: 12 } }],
   };
-  const { svg } = render({ spec: { type: 'table', data }, return: ['svg'] }).body as { svg: string };
-  for (const markup of [svg, renderToString(<TableChart data={data} />)]) {
+  const size = { width: 1400 };
+  const { svg } = render({ spec: { type: 'table', data, options: { size } }, return: ['svg'] }).body as { svg: string };
+  for (const markup of [svg, renderToString(<TableChart data={data} size={size} />)]) {
     expect(markup).toContain('POWER,mW');
     expect(markup).toContain('LOAD, kW');
+    expect(markup).toContain('STANDBY POWER (mW)');
+    expect(markup).toContain('MEMORY [Mb]');
+    expect(markup).toContain('eBay SALES ($k)');
   }
   // The grid's capitals are in its text. A CSS capital rule on the group row would turn "kW" into "KW".
   expect(tableStylesheet(resolveTheme('boardroom'), 'report')).not.toMatch(/\.bp-groups>\*\{[^}]*text-transform/);
+});
+
+// Switching every column group on shrank the label track below the one the default columns use, so rows with a folded-row hint wrapped and the table grew.
+it('keeps the label track of the default columns when every column group is switched on', () => {
+  const labelTrack = (): number => Number.parseFloat(gridElement().style.getPropertyValue('--bp-cols'));
+  renderTable({ size: { width: 2060 } });
+  const initial = labelTrack();
+  const groups = Object.fromEntries(managementFixture().data.columnToggles!.map((toggle) => [toggle.id, true]));
+  renderTable({ size: { width: 2060 }, columnVisibility: groups });
+  expect(columnIds().length).toBeGreaterThan(21);
+  expect(labelTrack()).toBe(initial);
+});
+
+describe('columnHeads: false', () => {
+  const data: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel', label: 'Item' }, { id: 'value', kind: 'value', label: 'Value', headAlign: 'left' }],
+    columnGroups: [{ id: 'all', label: 'All', columns: ['value'] }],
+    rows: [{ id: 'a', label: 'A', cells: { value: 30 } }, { id: 'b', label: 'B', cells: { value: 5 } }],
+  };
+  // Assistive technology must still read the column names, and a hidden head must not take height, keep a focusable sort control or a sticky offset.
+  it('keeps a hidden head for assistive technology and warns on sortable', () => {
+    const onWarnings = vi.fn();
+    act(() => root.render(<TableChart data={data} columnHeads={false} sortable stickyLabels={{ sections: true }} onWarnings={onWarnings} />));
+    const grid = gridElement();
+    const head = grid.querySelector<HTMLElement>('[data-bp-rowgroup="head"]')!;
+    expect(head.style.position).toBe('absolute');
+    expect(Array.from(head.querySelectorAll('[role="columnheader"]')).map(cell => cell.textContent)).toContain('VALUE');
+    expect(grid.getAttribute('aria-rowcount')).toBe('4');
+    expect(head.querySelector('button')).toBeNull();
+    expect(grid.style.getPropertyValue('--bp-head-h')).toBe('0px');
+    expect(onWarnings.mock.lastCall?.[0].map((warning: { code: string }) => warning.code)).toContain('column-heads-sortable');
+  });
+  // The head and its cells take separate alignments, and the SVG draws the same.
+  it('aligns a head apart from its cells', () => {
+    act(() => root.render(<TableChart data={data} />));
+    const grid = gridElement();
+    expect(grid.querySelector('[role="columnheader"][data-col-id="value"]')?.className).not.toContain('bp-num');
+    expect(grid.querySelector('[role="gridcell"][data-bp-column="value"]')?.className).toContain('bp-num');
+  });
 });

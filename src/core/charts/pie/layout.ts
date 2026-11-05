@@ -23,14 +23,17 @@ import { runAnnotatePass } from '../../annotatePass';
 import { pieComparisonLayout, pieComparisonRoom } from './comparisons';
 import { warnSpreadOverflow } from '../../collide';
 import { resolvePaintWarnings } from '../../paintWarnings';
-import { formatAutomaticNumber, seriesValueFormatter, shareSetFormatter } from '../../format';
+import { seriesValueFormatter, shareSetFormatter } from '../../format';
 import { warnIncompleteComposition, warnShareRoundingDrift } from '../../dataGaps';
 import { roundWholes, type RoundingAdjustment } from '../../shareRounding';
-import { seriesRasterFormatter, formatterFromExample } from '../../formatSpec';
-import { round2, type Point, type Rect, type Size } from '../../geometry';
+import { seriesRasterFormatter, formatterFromExample, parseFormatExample, shareFormatExample } from '../../formatSpec';
+import { cleanFloat, round2, type Point, type Rect, type Size } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
+import { fitText } from '../../label/fitText';
 import { markOutlineOff, namesOnly, separationStroke, sliceOutlineOff } from '../../markVisibility';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
+import { stepDownFont } from '../../label/rowFit';
+import { textScaleOf } from '../../typeFloors';
 import {
   labelCtx,
   PRIORITY,
@@ -62,7 +65,7 @@ import {
   strokeToken,
 } from '../../theme';
 import type { AnchorRef, Annotation } from '../../types/annotations';
-import { cellMeta, cellValue, type Id } from '../../types/cell';
+import { cellMeta, cellValue, isPctCell, type Id } from '../../types/cell';
 import type { Category, ChartData } from '../../types/data';
 import { DEFAULT_OTHERS_SHADE } from '../../othersShade';
 import type { LabelContent, LabelKind, LegendOptions, PieOptions } from '../../types/options';
@@ -75,10 +78,10 @@ import type {
   PlacedLabel,
   SceneNode,
 } from '../../types/scene';
-import { contentSizing } from '../../sizing';
-import { autoDecimals } from '../../formatPrecision';
+import { AUTO_LEGEND } from '../../legendPolicy';
+import { CARD_MIN_WIDTH, contentSizing } from '../../sizing';
 import { pieLabelContent, pieCenterLines } from './labels';
-import { labelAngle, placeRing, RING_GAP, type RingItem } from './ring';
+import { labelAngle, placeColumns, placeRing, RING_GAP, type RingItem } from './ring';
 import { composedTextRole } from '../../textRole';
 import { maxOf, pushAll } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
@@ -146,6 +149,9 @@ const CENTER_TEXT_MIN = 0.35;
 const COLUMN_GAP_RATIO = 0.036;
 const COLUMN_GAP_MIN = 8;
 const COLUMN_GAP_MAX = 36;
+/** A name line in a label column takes this share of the plot width, and up to the widest share when two lines do not hold the name. */
+const COLUMN_NAME_SHARE = 0.3;
+const COLUMN_NAME_WIDEST = 0.4;
 /** Smallest natural canvas height of a pie whose labels all sit in columns: the pie floor in sizing.ts. */
 const MIN_COLUMN_HEIGHT = 320;
 /** Separator between the value and the share on one outside label line. */
@@ -227,7 +233,9 @@ const UNLABELLED = Symbol('pieUnlabelled');
 const FIXED_PASS = Symbol('pieFixedPass');
 /** The ring drops the smallest label without a good seat, never a lower one to free a seat. */
 const BAD_FIRST = Symbol('pieBadFirst');
-type PiePassOptions = PieOptions & { [UNLABELLED]?: Map<Id, string>; [FIXED_PASS]?: true; [BAD_FIRST]?: true };
+/** The pass gives a doughnut's centre total priority over the outside-label reserve. */
+const CENTRE_FIRST = Symbol('pieCentreFirst');
+type PiePassOptions = PieOptions & { [UNLABELLED]?: Map<Id, string>; [FIXED_PASS]?: true; [BAD_FIRST]?: true; [CENTRE_FIRST]?: true };
 
 /**
  * A slice whose label found no seat is named in the note
@@ -240,18 +248,30 @@ export function layoutPie(
   data: ChartData,
   options: PieOptions = {},
 ): Geometry<PieMarks, PieDerived> {
+  const layout = layoutPieOrdered(data, options);
+  if (!layout.centreLost) return layout.geometry;
+  // The settled layout drops the total that a larger ring could hold. The whole layout is set again with
+  // the total first, and stands only when it draws the total; else the first layout stands unchanged.
+  const centred = layoutPieOrdered(data, { ...options, [CENTRE_FIRST]: true } as PiePassOptions);
+  return centred.centreLost ? layout.geometry : centred.geometry;
+}
+
+function layoutPieOrdered(
+  data: ChartData,
+  options: PiePassOptions,
+): { geometry: Geometry<PieMarks, PieDerived>; centreLost: boolean } {
   const priority = drivePie(data, options);
-  if (!priority.swapped) return priority.geometry;
+  if (!priority.swapped) return priority;
   // Freeing a seat for a higher label changes the note, and so the height the driver settles
   // on. The order that keeps more labels wins; on a tie, the priority order.
   const plain = drivePie(data, { ...options, [BAD_FIRST]: true } as PiePassOptions);
-  return plain.lost < priority.lost ? plain.geometry : priority.geometry;
+  return plain.lost < priority.lost ? plain : priority;
 }
 
 function drivePie(
   data: ChartData,
   options: PiePassOptions,
-): { geometry: Geometry<PieMarks, PieDerived>; lost: number; swapped: boolean } {
+): { geometry: Geometry<PieMarks, PieDerived>; lost: number; swapped: boolean; centreLost: boolean } {
   let named = new Map<Id, string>();
   let swapped = false;
   const run = (passOptions: PiePassOptions) => {
@@ -266,7 +286,7 @@ function drivePie(
     pass = run(options);
   }
   // A grid panel has no footer of its own to spare: its grid speaks for it.
-  if (panelTypeClass(options) !== undefined) return { geometry: pass.geometry, lost: pass.unlabelled.size, swapped };
+  if (panelTypeClass(options) !== undefined) return { geometry: pass.geometry, lost: pass.unlabelled.size, swapped, centreLost: pass.centreLost };
   // A note that wraps to one more line shrinks the ring and can unseat one more
   // label, so the note is set again until it names every slice the last pass
   // left unlabelled, so nothing is lost silently. Each round names at least one more
@@ -282,15 +302,15 @@ function drivePie(
     const room = hiddenValueNoteHeight(pass.geometry);
     const { width, height } = pass.geometry.size;
     const taller = room > 0 ? run({ ...options, size: { width, height: Math.ceil(height + room) } } as PiePassOptions) : undefined;
-    if (taller && taller.unlabelled.size === 0) return { geometry: taller.geometry, lost: 0, swapped };
+    if (taller && taller.unlabelled.size === 0) return { geometry: taller.geometry, lost: 0, swapped, centreLost: taller.centreLost };
   }
-  return { geometry: pass.geometry, lost: new Set([...named.keys(), ...pass.unlabelled.keys()]).size, swapped };
+  return { geometry: pass.geometry, lost: new Set([...named.keys(), ...pass.unlabelled.keys()]).size, swapped, centreLost: pass.centreLost };
 }
 
 function layoutPiePass(
   data: ChartData,
   options: PiePassOptions,
-): { geometry: Geometry<PieMarks, PieDerived>; unlabelled: Map<Id, string>; swapped: boolean } {
+): { geometry: Geometry<PieMarks, PieDerived>; unlabelled: Map<Id, string>; swapped: boolean; centreLost: boolean } {
   const named = options[UNLABELLED] ?? new Map<Id, string>();
   let swapped = false;
   const warnings: LintWarning[] = [];
@@ -298,9 +318,6 @@ function layoutPiePass(
   const paletteRamp = chartPalette(theme, options.palette, warnings);
   const size = resolveSize(options.size);
   const measure = options.measure ?? defaultMeasurer;
-  const chartFmt = options.format
-    ? formatterFromExample(options.format, options.locale?.language)
-    : (v: number) => formatAutomaticNumber(v, { locale: options.locale?.language, decimals: autoDecimals(v) });
   const highlights = new Set(resolveHighlight(options.highlight));
   const density = options.labelDensity ?? 'smart';
 
@@ -331,9 +348,30 @@ function layoutPiePass(
   const sid = ser.id;
   let cats: Category[] = data.categories.map((c, i) => normalizeCategory(c as never, i));
   const cells = normalizeSeriesValues(ser, cats, 0);
-  const formats = seriesRasterFormatter(options.format, cells.map(cellValue), options.locale?.language, options.unit, options.target);
+  // A percent options.format sets the precision of the computed shares. It prints the slice values too
+  // only when they are percents (a % unit, percent cells, or values adding to 100); counts or money would read as percent.
+  const shareExample = shareFormatExample(options);
+  const valuesArePercent = [options.unit, ser.unit].some((unit) => unit?.includes('%'))
+    || cells.every((cell) => cell === null || isPctCell(cell))
+    || Math.abs(cells.map(cellValue).reduce<number>((sum, v) => sum + Math.max(0, v ?? 0), 0) - 100) <= 0.05;
+  const valueExample = shareExample && !valuesArePercent ? undefined : options.format;
+  if (shareExample && !valuesArePercent) {
+    warnings.push({
+      code: 'percent-format-on-values',
+      severity: 'warn',
+      message: `options.format '${options.format}' is a percent format, so it sets how the computed shares print; the slice values are not percents and print in the automatic format`,
+      suggest: 'format the slice values with series[].format or a cell format, and keep the percent options.format for the shares',
+      field: ['options', 'format'],
+    });
+  }
+  const formats = seriesRasterFormatter(valueExample, cells.map(cellValue), options.locale?.language, options.unit, options.target);
   // The slices are one series: one precision for them all (seriesValueFormatter), not one per value.
-  const fmt = ser.format || ser.unit ? formats.forSeries(ser) : options.format ? chartFmt : seriesValueFormatter(cells.map(cellValue), options.locale?.language);
+  const fmt = ser.format || ser.unit ? formats.forSeries(ser) : valueExample
+    ? formatterFromExample(valueExample, options.locale?.language)
+    : seriesValueFormatter(cells.map(cellValue), options.locale?.language);
+  const sharesFormatter = (percents: Iterable<number>): { decimals: number; format: (percent: number) => string } =>
+    shareExample ? { decimals: parseFormatExample(shareExample).decimals, format: formatterFromExample(shareExample, options.locale?.language) }
+      : shareSetFormatter(percents, options.locale?.language);
   const sliceText = (slice: { v: number; format?: string }): string => slice.format ? formatterFromExample(slice.format, options.locale?.language)(slice.v) : fmt(slice.v);
   interface Slice {
     cat: Category;
@@ -404,7 +442,7 @@ function layoutPiePass(
     } else {
       let othersId: Id = 'others';
       while (slices.some((s) => s.cat.id === othersId)) othersId = `_${othersId}`;
-      slices = [...kept, { cat: { id: othersId, label: restLabel(topN, options.strings, dropped.length) }, v: restSum(dropped.map((s) => s.v)), isOthers: true }];
+      slices = [...kept, { cat: { id: othersId, label: restLabel(topN, options.strings, dropped.map((s) => s.cat.label ?? s.cat.id)) }, v: restSum(dropped.map((s) => s.v)), isOthers: true }];
       const lostDetails = restDetailsWarning({ categories: data.categories, series: [ser] }, new Set(kept.map((s) => s.cat.id)));
       if (lostDetails) warnings.push(lostDetails);
     }
@@ -426,7 +464,7 @@ function layoutPiePass(
     throw new NormalizeError('empty-data', 'series', 'pie requires a positive total');
   }
   const shares: Record<Id, number> = emptyIdRecord();
-  for (const s of slices) shares[s.cat.id] = round2(((s.v ?? 0) / total) * 100);
+  for (const s of slices) shares[s.cat.id] = cleanFloat(((s.v ?? 0) / total) * 100);
 
   // ---- paints (categorical hues or perceptually stepped sequential tint) ----
   const paintCss = (p: Paint): string => paintColor(theme, p);
@@ -440,11 +478,8 @@ function layoutPiePass(
   // other slice back into a grey ramp.
   const greyRest = slices.some((s) => highlights.has(s.cat.id));
   const greyCount = slices.filter((s) => !highlights.has(s.cat.id) && (s.v ?? 0) > 0).length;
-  const colorMode =
-    options.colors ??
-    (slices.length <= 4 && options.palette === undefined && options.topN === undefined
-      ? 'categorical'
-      : 'sequential');
+  // One ramp at every slice count: hues would claim a difference the slices do not have.
+  const colorMode = options.colors ?? 'sequential';
   // The ramp base is series 1, or the palette's first rank.
   const rampBase: Paint = themeSeriesPaint(0, paletteRamp ? options.palette : undefined);
   const paintWarningRules: PaintWarningRule[] = colorMode === 'sequential' && !greyRest
@@ -510,6 +545,11 @@ function layoutPiePass(
   const { insideContent, outsideContent, kindSetting } = pieLabelContent(options, displayedCount, sliceKey);
   const labelFont: FontSpec = { family: theme.type.family, ...theme.type.label };
   const lineH = measure('0', labelFont).height;
+  const strongFont: FontSpec = { family: theme.type.family, ...theme.type.label, weight: emphasisWeight(theme) };
+  /** The radius of the circle round a total block: the number in `font`, the unit line in `unitFont`. */
+  const centerBlockRadius = (lines: string[], font: FontSpec = strongFont, unitFont: FontSpec = labelFont): number =>
+    Math.hypot(Math.max(measure(lines[0]!, font).width, ...lines.slice(1).map((l) => measure(l, unitFont).width)) / 2,
+      (measure('0', font).height + (lines.length - 1) * measure('0', unitFont).height) / 2) + 1;
   const widestSliceWord = Math.max(0,
     maxOf(slices.flatMap((slice) => (slice.cat.label ?? slice.cat.id).split(/\s+/)).map((word) => measure(word, labelFont).width)));
   // Every label outside in two columns, two lines
@@ -517,8 +557,14 @@ function layoutPiePass(
   // widest such line and the leader gap, measured before the frame.
   const columns = insideContent === null && outsideContent !== null;
   const shownSlices = slices.filter((slice) => (slice.v ?? 0) > 0);
-  const preShares = shareSetFormatter(shownSlices.map((slice) => ((slice.v ?? 0) / total) * 100), options.locale?.language);
-  const preLines = (slice: Slice): string[] => outsideLines(outsideContent ?? [], slice.cat.label ?? slice.cat.id, sliceText({ v: slice.v ?? 0, format: slice.format }), preShares.format(((slice.v ?? 0) / total) * 100), ser.label ?? sid);
+  const preShares = sharesFormatter(shownSlices.map((slice) => ((slice.v ?? 0) / total) * 100));
+  // A name wraps to a label column before the reserve is measured, so a long name does not take the room
+  // the circle needs: up to two lines in the narrowest column that holds them, between COLUMN_NAME_SHARE
+  // and COLUMN_NAME_WIDEST of the plot width. A name that still does not fit is cut.
+  const plotEstimate = Math.max(0, size.width - margin.left - margin.right);
+  const columnName = (name: string) => fitText(name, labelFont, COLUMN_NAME_SHARE * plotEstimate, 2, measure, { wider: COLUMN_NAME_WIDEST * plotEstimate });
+  const wrappedName = (name: string): string => columns ? columnName(name).lines.join('\n') : name;
+  const preLines = (slice: Slice): string[] => outsideLines(outsideContent ?? [], wrappedName(slice.cat.label ?? slice.cat.id), sliceText({ v: slice.v ?? 0, format: slice.format }), preShares.format(((slice.v ?? 0) / total) * 100), ser.label ?? sid);
   // Each label column's height and widest line, from the slices' angles
   // (they do not depend on the radius); index 0 is the right side.
   const column = (() => {
@@ -571,9 +617,11 @@ function layoutPiePass(
   const columnGap = (width: number): number => Math.max(COLUMN_GAP_MIN, Math.min(COLUMN_GAP_MAX, width * COLUMN_GAP_RATIO));
   /** The room a label column takes beside the circle: its gap and its widest line. */
   const sideReserve = (side: 0 | 1, width: number): number => column.counts[side]! > 0 ? columnGap(width) + column.widths[side]! + 2 : 0;
-  const outsideReserve = (width: number): number => {
+  const outsideReserve = (width: number, canvasWidth = size.width): number => {
     if (columns) return (sideReserve(0, width) + sideReserve(1, width)) / 2;
-    return Math.max(OUTSIDE_MARGIN, Math.min(width * 0.3, 4 * lineH + 10 + widestSliceWord));
+    // On a canvas under the card width the 90 px floor would leave a circle of 20 px at 200: the reserve is its share of the plot.
+    const reserve = Math.min(width * 0.3, 4 * lineH + 10 + widestSliceWord);
+    return canvasWidth < CARD_MIN_WIDTH ? reserve : Math.max(OUTSIDE_MARGIN, reserve);
   };
   const heightFixed = (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === true;
   const diameterCap = !heightFixed && panelTypeClass(options) === undefined ? diameterCapFor(size.width, (options.doughnut ?? 0) >= CENTER_TEXT_MIN) : Number.POSITIVE_INFINITY;
@@ -582,13 +630,18 @@ function layoutPiePass(
   const arcRoom = compared ? pieComparisonRoom(measure('0', { family: theme.type.family, ...theme.type.label, weight: emphasisWeight(theme) }).height) : 0;
   const automatic = !options[FIXED_PASS] && (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === false
     && panelTypeClass(options) === undefined;
+  // labels: false frees the room the labels take. The pie keeps the height of the same pie with labels
+  // and no automatic key, and its key fits inside that height.
+  const labelled = automatic && options.labels === false
+    ? layoutPie(data, { ...options, labels: undefined, ...(AUTO_LEGEND in options ? { legend: undefined } : {}) }) : undefined;
   // A diameter taller than every possible outside-label stack gives the same final natural height.
   const maxLines = outsideContent?.reduce((sum, part) => sum + (part === 'category' ? 2 : 1), 0) ?? 0;
   const maxStack = displayedCount * Math.max(1, maxLines) * lineH + 3 * Math.max(0, displayedCount - 1) + 4;
   const frameResult = solveFrame(
     {
       size,
-      ...(automatic && legendInput?.options.position !== 'right' ? { autoHeight: (plot: Rect) => {
+      ...(automatic && legendInput?.options.position !== 'right' && legendInput?.options.position !== 'left' ? { autoHeight: (plot: Rect) => {
+        if (labelled) return labelled.size.height;
         if (columns) {
           const diameter = diameterFor(plot.w);
           const pads = circlePads(diameter / 2);
@@ -639,20 +692,39 @@ function layoutPiePass(
   // reserved for it; any other plot keeps 24 px above and below the circle.
   const naturalPads = columns && automatic ? circlePads(diameterFor(plot.w) / 2) : undefined;
   const verticalPad = naturalPads ? (naturalPads.top + naturalPads.bottom) / 2 : 24;
+  // Only a slice that draws (a positive value) moves out, so only its offset shrinks the circle.
+  const maxAuthoredExplode = slices.reduce(
+    (max, slice) => (slice.v ?? 0) > 0 ? Math.max(max, Math.max(0, explode[slice.cat.id] ?? 0)) : max,
+    0,
+  );
+  // A doughnut's total in the hole can outrank the outside-label reserve. A layout that drops the total
+  // is laid out again with CENTRE_FIRST: the ring then grows into the reserve, to the radius whose hole
+  // holds the total at the label size, else one type step down, and the ring labels may not shrink it
+  // below that radius. Plot width, plot height and the size cap bound the growth. A ring that cannot
+  // reach either size is not laid out again, and a layout that draws the total is never changed. Label
+  // columns keep their width, so only the ring-label layout grows.
+  const centreFirst = options[CENTRE_FIRST] === true;
+  const centerLines = hole >= CENTER_TEXT_MIN && kindSetting('total') !== false && !negatives.length
+    ? pieCenterLines(fmt(total), options.unit ?? ser.unit, valueExample) : undefined;
+  const circleLimit = Math.min(plot.w / 2, plot.h / 2 - verticalPad, diameterCap / 2);
+  const reserveFit = Math.min((plot.w - 2 * outsideMargin) / 2, plot.h / 2 - verticalPad, diameterCap / 2);
+  const centerStep = centerLines && !columns ? stepDownFont(theme, labelFont, 'label', options.target, textScaleOf(options)) : undefined;
+  // The ring radius whose hole holds the total at the label size, else one step down (0.01 px of slack
+  // so a hole as large as the block still counts as holding it); 0 when the limits allow neither.
+  const centerReach = centerLines && !columns
+    ? [centerBlockRadius(centerLines), ...(centerStep ? [centerBlockRadius(centerLines, { ...strongFont, size: centerStep.size }, centerStep)] : [])]
+      .map((need) => (need + 0.01) / hole).find((need) => need * (1 + maxAuthoredExplode) + arcRoom <= circleLimit) ?? 0
+    : 0;
+  const centerR = centreFirst ? centerReach : 0;
   const baseFit = Math.max(
     20,
-    Math.min((plot.w - 2 * outsideMargin) / 2, plot.h / 2 - verticalPad, diameterCap / 2) - arcRoom,
+    Math.max(reserveFit, centerR > 0 ? centerR * (1 + maxAuthoredExplode) + arcRoom : 0) - arcRoom,
   );
   // The circle and its two label columns stand centred as one block.
   if (columns) {
     const left = sideReserve(1, plot.w);
     cx = plot.x + (plot.w - left - 2 * baseFit - sideReserve(0, plot.w)) / 2 + left + baseFit;
   }
-  // Only a slice that draws (a positive value) moves out, so only its offset shrinks the circle.
-  const maxAuthoredExplode = slices.reduce(
-    (max, slice) => (slice.v ?? 0) > 0 ? Math.max(max, Math.max(0, explode[slice.cat.id] ?? 0)) : max,
-    0,
-  );
   let r = baseFit / (1 + maxAuthoredExplode);
   let pieMinWidth = 0;
   // Refuse-less: a pinned pie draws under its 320 px floor while the circle keeps a readable
@@ -661,15 +733,19 @@ function layoutPiePass(
   if (!automatic) {
     frameResult.frame.plotMinHeight = Math.max(frameResult.frame.plotMinHeight ?? 0, Math.ceil(size.height
       + (frameResult.deficit ?? 0) + 2 * (PIE_MIN_RADIUS * (1 + maxAuthoredExplode) + arcRoom + verticalPad) - plot.h));
-    // Under the 320 px height floor (the compact band) wide outside labels can limit the radius
-    // by width; more height does not help there, so the chart names the width that holds it.
-    const radiusAt = (width: number) => (width - 2 * outsideReserve(width)) / 2 - arcRoom;
-    const need = PIE_MIN_RADIUS * (1 + maxAuthoredExplode);
-    if (size.height < PIE_STATIC_MIN_HEIGHT && radiusAt(plot.w) < need) {
-      let width = Math.ceil(plot.w);
-      while (radiusAt(width) < need && width < 4 * size.width) width += 4;
-      pieMinWidth = Math.ceil(size.width - plot.w + width);
-    }
+  }
+  // Under the 320 px height floor (the compact band) wide outside labels can limit the radius
+  // by width; more height does not help there, so the chart names the width that holds it.
+  // Under the 280 px card width the same measure holds a tall pie too, whatever its height,
+  // since no static width floor gates it there.
+  const radiusAt = (width: number) => (width - 2 * outsideReserve(width, size.width - plot.w + width)) / 2 - arcRoom;
+  const need = PIE_MIN_RADIUS * (1 + maxAuthoredExplode);
+  if (((!automatic && size.height < PIE_STATIC_MIN_HEIGHT) || size.width < CARD_MIN_WIDTH) && radiusAt(plot.w) < need) {
+    let width = Math.ceil(plot.w);
+    while (radiusAt(width) < need && width < 4 * size.width) width += 4;
+    pieMinWidth = Math.ceil(size.width - plot.w + width);
+    // A tall pie at 280 px and wider drew before, so its need never passes the card width.
+    if (size.height >= PIE_STATIC_MIN_HEIGHT) pieMinWidth = Math.min(pieMinWidth, CARD_MIN_WIDTH);
   }
   let ri = r * hole;
   // The circle stands where its label columns' overhang fits above and below it,
@@ -722,7 +798,6 @@ function layoutPiePass(
   };
   let geoms = buildGeoms();
   // ---- label content ----
-  const strongFont: FontSpec = { family: theme.type.family, ...theme.type.label, weight: emphasisWeight(theme) };
   // The room an outside label has beside the rim at its slice's angle, with
   // the leader gap a four-line label takes. A long name on a label that only
   // goes outside wraps to it before it is measured, at most two lines; a cut
@@ -740,11 +815,11 @@ function layoutPiePass(
 
   // rounding 'sum-consistent': the drawn slices' shares print so they add up to 100%.
   const rounded = options.rounding === 'sum-consistent'
-    ? roundWholes([{ id: sid, name: ser.label ?? sid, parts: geoms.map((g) => ({ id: g.cat.id, name: g.cat.label ?? g.cat.id, share: g.share * 100 })) }], options.locale?.language)
+    ? roundWholes([{ id: sid, name: ser.label ?? sid, parts: geoms.map((g) => ({ id: g.cat.id, name: g.cat.label ?? g.cat.id, share: g.share * 100 })) }], options.locale?.language, shareExample ? parseFormatExample(shareExample) : undefined)
     : undefined;
   if (rounded) pushAll(warnings, rounded.warnings);
   // The slices' shares print at one precision, "8%" beside "92%".
-  const shareSet = shareSetFormatter(geoms.map((g) => g.share * 100), options.locale?.language);
+  const shareSet = sharesFormatter(geoms.map((g) => g.share * 100));
   const shareText = (g: SliceGeom): string => rounded?.texts.get(`${sid}\0${g.cat.id}`) ?? shareSet.format(g.share * 100);
 
   /** Compound parts: '35.6M' + '(37%)' when both value and percent print. */
@@ -813,7 +888,7 @@ function layoutPiePass(
     const blockOf = (inside: boolean) => {
       const content = inside ? insideContent! : outsideContent;
       if (!content) return undefined;
-      const { parts, title } = composeParts(g, content, inside ? undefined : roomBeside(g));
+      const { parts, title } = composeParts(g, content, inside ? undefined : columns ? Math.min(roomBeside(g), columnName(g.cat.label ?? g.cat.id).w + 1) : roomBeside(g));
       const lines = typeof g.labelOverride === 'string' ? [applyOverride(g, parts.join(' '))] : parts;
       const w = Math.max(...lines.map((l) => measure(l, labelFont).width), 1);
       return { lines, title, w, h: lineH * Math.max(lines.length, 1) };
@@ -910,7 +985,18 @@ function layoutPiePass(
       }
       return { ring, seats };
     };
-    let placed = seatAll(Math.max(PIE_MIN_RADIUS, 0.7 * r));
+    // The ring may shrink the pie for its labels, but not below the radius whose hole holds the total.
+    let placed = seatAll(Math.max(PIE_MIN_RADIUS, 0.7 * r, centerR));
+    // Labels that all sit in columns by their reserve take two true columns beside the circle when the
+    // ring leaves a label without a seat. The ring keeps every pie it seats whole.
+    if (columns && (dropped.size > 0 || [...placed.seats.values()].some((s) => s.bad))) {
+      const outsideOnly = sliceLabels.filter((sl) => !sl.insideEligible);
+      const stacked = placeColumns(outsideOnly.map(itemOf), r, cx, baseFit, columnGap(plot.w), plot, lineH);
+      if (stacked.bad.size === 0) {
+        dropped.clear();
+        placed = { ring: stacked, seats: new Map(outsideOnly.map((sl, k) => [sl, { seat: stacked.seats[k]!, form: 0, bad: false }] as const)) };
+      }
+    }
     if (placed.ring.r < r) {
       r = placed.ring.r;
       ri = r * hole;
@@ -1040,27 +1126,33 @@ function layoutPiePass(
   // ---- doughnut center: total in the hole (hole >= 0.35) ----
   let centerFont: FontSpec | undefined;
   /** The largest bold face, label size to CENTER_VALUE_MAX, whose total block fits in the hole. */
+  let centerUnitFont = labelFont;
   const centerValueFont = (lines: string[]): FontSpec => {
-    const unitW = Math.max(0, ...lines.slice(1).map((line) => measure(line, labelFont).width));
-    const fits = (font: FontSpec) => Math.hypot(Math.max(measure(lines[0]!, font).width, unitW) / 2, (measure('0', font).height + (lines.length - 1) * lineH) / 2) <= ri - 1;
+    const fits = (font: FontSpec) => centerBlockRadius(lines, font) <= ri;
     // The total scales with the ring: 24 px on a 170 px ring, 15 px on a 95 px ring.
     const cap = Math.min(CENTER_VALUE_MAX, Math.max(labelFont.size, Math.round(2 * CENTER_VALUE_RATIO * r) / 2));
     for (let px = cap; px > labelFont.size; px -= 0.5) {
       const font = { ...strongFont, size: px };
       if (fits(font)) return font;
     }
+    // A hole too small for the label size takes the next type step down, number and unit, when that holds it.
+    const step = !centreFirst || fits(strongFont) ? undefined : stepDownFont(theme, labelFont, 'label', options.target, textScaleOf(options));
+    if (step && centerBlockRadius(lines, { ...strongFont, size: step.size }, step) <= ri) {
+      centerUnitFont = step;
+      return { ...strongFont, size: step.size };
+    }
     return strongFont;
   };
-  if (hole >= CENTER_TEXT_MIN && kindSetting('total') !== false && !negatives.length) {
-    const lines = pieCenterLines(fmt(total), options.unit ?? ser.unit, options.format);
+  if (centerLines) {
+    const lines = centerLines;
     const text = lines.join(' ');
     // Under a new target the total prints as large as the hole
     // holds (up to CENTER_VALUE_MAX px), its unit below in the regular muted
     // label face.
     centerFont = centerValueFont(lines);
     const tsize = {
-      width: Math.max(measure(lines[0]!, centerFont).width, ...lines.slice(1).map((line) => measure(line, labelFont).width)),
-      height: measure('0', centerFont).height + (lines.length - 1) * lineH,
+      width: Math.max(measure(lines[0]!, centerFont).width, ...lines.slice(1).map((line) => measure(line, centerUnitFont).width)),
+      height: measure('0', centerFont).height + (lines.length - 1) * measure('0', centerUnitFont).height,
     };
     // A box wholly inside the hole needs no pad against the ring's claims.
     const inHole = Math.hypot(tsize.width / 2, tsize.height / 2) <= ri - 1;
@@ -1099,6 +1191,7 @@ function layoutPiePass(
   });
   const solved = solveLabels(labelRequests, occupied, solveCtx);
   pushAll(warnings, solved.warnings);
+  const centreHidden = centerReach > 0 && solved.placed.some((label) => label.kind === 'total' && label.hidden);
 
   // An inside label that lands outside prints its outside form, name included.
   const outsideForms = new Map<string, NonNullable<SliceLabel['outside']>>(sliceLabels.flatMap((sl) => (sl.outside ? [[`insidePie:${sid}:${sl.g.cat.id}`, sl.outside] as const] : [])));
@@ -1157,7 +1250,7 @@ function layoutPiePass(
     // Annotation labels draw bold (see labelsToNodes below), so the pass measures them bold.
     theme: emphasisLabelTheme(theme),
     measure,
-    format: options.format,
+    format: valueExample,
     locale: options.locale?.language,
     strings: options.strings,
     solveCtx,
@@ -1190,7 +1283,7 @@ function layoutPiePass(
       totalNode.lines = [value!];
       if (rest.length > 0) {
         nodes.splice(nodes.indexOf(totalNode) + 1, 0, {
-          ...totalNode, id: `${totalNode.id}:unit`, y: totalNode.y + valueH, lines: rest, font: labelFont, ink: { token: 'inkMuted' },
+          ...totalNode, id: `${totalNode.id}:unit`, y: totalNode.y + valueH, lines: rest, font: centerUnitFont, ink: { token: 'inkMuted' },
         });
       }
     }
@@ -1210,7 +1303,7 @@ function layoutPiePass(
   const geometry: Geometry<PieMarks, PieDerived> = {
     type: 'pie',
     size,
-    sizing: naturalPieSizing(size, plot, columns
+    sizing: naturalPieSizing(size, plot, labelled?.sizing ? labelled.sizing.naturalHeight - size.height + plot.h : columns
       ? Math.max(diameterFor(plot.w) + 2 * arcRoom + 48, columnStack + 8)
       : Math.max(diameterFor(plot.w) + 48, outsideStackH), contentSizing('pie', size, plot, [
       { x: cx - baseFit, y: cy - baseFit, w: 2 * baseFit, h: 2 * baseFit },
@@ -1224,7 +1317,7 @@ function layoutPiePass(
     legend: frameResult.legend,
     frame: frameResult.frame,
     marks,
-    derived: { total: round2(total), shares, stackParts: { [sid]: Object.fromEntries(geoms.map((g) => [g.cat.id, g.v])) }, ...(rounded ? { roundingAdjustments: rounded.adjustments } : {}) },
+    derived: { total: cleanFloat(total), shares, stackParts: { [sid]: Object.fromEntries(geoms.map((g) => [g.cat.id, g.v])) }, ...(rounded ? { roundingAdjustments: rounded.adjustments } : {}) },
     a11y: {
       title:
         accessibleTitle(options.title, chartString(options, 'pieTitle', { v1: shapeName, v2: ser.label ?? sid, v3: geoms.length })),
@@ -1238,8 +1331,12 @@ function layoutPiePass(
       decisions: [...solved.decisions, ...annResult.decisions],
     },
   };
-  if (automatic && geometry.sizing?.naturalHeight === size.height) settledAutoHeight.add(geometry.frame);
-  return { geometry, unlabelled, swapped };
+  const naturalHeight = geometry.sizing?.naturalHeight;
+  if (automatic && naturalHeight === size.height) settledAutoHeight.add(geometry.frame);
+  // A canvas shorter than the content, or an open height not at its content height, is laid out again by
+  // the sizing, which can bring the total back; only a canvas that holds the content has lost it.
+  const settled = naturalHeight === undefined || (automatic ? naturalHeight === size.height : naturalHeight <= size.height);
+  return { geometry, unlabelled, swapped, centreLost: centreHidden && settled };
 }
 
 /**

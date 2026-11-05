@@ -58,7 +58,7 @@ export const fixtures: Fixture<ScatterData, ScatterStrategyOptions>[] = [
       },
       unit: 'index 0–10',
       axisTitles: { x: 'Price index', y: 'Perceived quality' },
-      source: 'Consumer survey wave 12, n = 2,400',
+      source: 'Illustrative brand tracker, 10 invented brands',
       legend: 'bottom',
       // One point is selected, through color.focus; the groups keep the
       // series ramp instead of one of them taking the accent.

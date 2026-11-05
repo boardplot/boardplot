@@ -41,7 +41,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | Path | Type | Required | Meaning |
 |---|---|---|---|
 | valueKind | string |  | Default valueKind for all series. One of `'fraction'`. |
-| categories | array | yes | Endpoint categories; exactly two are intended. Extra categories are warned about and only first and last are shown. |
+| categories | array | yes | Endpoint categories. With more than two, the line variant draws first versus last, warns slope-too-many-points and names the omitted categories in a note. The diverging variant requires exactly two. |
 | categories[].id | string | yes | Category identity used to match keyed values and annotation anchors. |
 | categories[].label | string |  | Displayed category name; defaults to the category id and supports line breaks. A date id or `date` without a label prints a short date such as '4 Sep'. |
 | categories[].date | string |  | ISO 8601 date associated with the category. |
@@ -51,7 +51,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | series[].id | string | yes | Series identity used by keyed options, annotations and legend entries. |
 | series[].label | string |  | Displayed series name; defaults to the series id. |
 | series[].values | (cell \| { categoryId, value: cell })[] | yes | Values in category order, or keyed entries pairing a categoryId with its value. |
-| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST). |
+| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST, LY for last year). Codes and aliases accept any case. |
 | series[].role | string |  | Declares a plotted data series or a comparison reference series. One of `'data'`, `'reference'`. |
 | series[].colorRole | string |  | Theme color role used for this series when no explicit fill takes precedence. One of good, bad, warn, neutral, neutralLight, highlight, total, others; series-N for step N of the theme ramp, 1-based (series-2 is color.series[1]); or status-<key> for a theme status colour. A hex colour goes in fill. |
 | series[].fill | string |  | Explicit CSS fill color for this series; remains authored across theme changes. |
@@ -65,19 +65,25 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
-| legend | string \| object | `'top'`, `'bottom'`, `'none'`, `'auto'` (or another value of its type) |  | On 'slope' only 'top' and 'bottom' or a position object draw a key: a slope chart names every line at both ends, so 'none' and 'auto' draw what the chart draws without them; drop legend, or name 'top' or 'bottom' for a key. |
+| legend | string \| object | `'top'`, `'bottom'`, `'right'`, `'left'`, `'none'`, `'auto'` (or another value of its type) |  | On 'slope' only 'top' and 'bottom' and 'right' and 'left' or a position object draw a key. 'none' and 'auto' are ignored with an option-ignored warning at info level: a slope chart names every line at both ends, so 'none' and 'auto' draw what the chart draws without them; drop legend, or name 'top', 'bottom', 'right' or 'left' for a key. 'right' stays refused. |
 | foldBelowShare | number |  |  | Share of the endpoint total below which series fold into one 'Other' line, measured at both ends: 0.05 is five percent. A value at or above 1 is refused. Highlighted series keep their own name. |
+| change | string | `'none'`, `'absolute'`, `'relative'` |  | A column of each line's change between the two periods, right of the second rail's labels under a head such as 'Change, pp': 'absolute' prints second minus first (pp for percent values), 'relative' prints the percent change. The highlighted line prints bold. Default 'none'. The column stays off below 576 px canvas width. |
 | variant | string | `'lines'`, `'diverging'` |  | 'diverging': one panel per series, values as the positive share up from zero and negative as the negative share down, on one scale; two categories, at most 12 series. Default 'lines'. |
 | diverging | object |  |  | Variant 'diverging' options. |
 | diverging.labels | object |  |  | Area names, such as Better and Worse. |
 | diverging.labels.positive | string |  |  | Default 'Positive'. |
 | diverging.labels.negative | string |  |  | Default 'Negative'. |
 | diverging.sort | string | `'positive'`, `'net'`, `'data'` |  | Panel order: 'positive' (default; second-period positive share, descending), 'net' or 'data'. |
-| diverging.net | boolean |  |  | Net score (positive minus negative) and its change under each panel. Default true. |
+| diverging.net | boolean |  |  | Net score (positive minus negative) and its change under each panel, defined once in the key. Default true. |
 | diverging.neutralNote | boolean |  |  | Note the share that chose neither answer. Default true. |
 | diverging.minBase | number |  |  | Base n below which a panel is hatched and noted. Default 30. |
+| columnOverrides | object |  |  | Settings per generated column. Ids: change. |
+| columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
+| columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Alignment of the column: its cell text and, unless headAlign is set, its head. Bars keep starting at the panel origin. |
+| columnOverrides.*.headAlign | string | `'left'`, `'right'`, `'center'` |  | Head alignment; defaults to align. |
+| columnOverrides.*.label | string |  |  | Head text. |
 
-Plus the [shared options](options.md). This type does not accept `categoryLabels`, `valueAxis.show`, `valueAxis.tickStep`, `valueAxis.includeZero`, `valueAxis.percent`, `valueAxis.log`, `valueAxis.reverse`, `valueAxis.gridlines`, `valueAxis.break`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `sort`, `topN`, `bandFraction`, `colorblindSafe`, `rounding`, `seriesLabels`, `valueLabels`.
+Plus the [shared options](options.md). This type does not accept `valueAxis.tickStep`, `valueAxis.includeZero`, `valueAxis.percent`, `valueAxis.log`, `valueAxis.reverse`, `valueAxis.break`, `rounding`, `seriesLabels`, `valueLabels`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `bandFraction`, `valueAxis.show`, `valueAxis.gridlines`, `legend: 'none'`, `legend: 'auto'` with an `option-ignored` warning.
 
 ## Annotations
 
@@ -120,6 +126,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | diverging-sort-net | example | Diverging panels sorted by net score |
 | diverging-sort-data | example | Diverging panels in data order, no net |
 | cost-per-unit-plants-variant-lines | torture | Plant slopes with variant 'lines' |
+| column-overrides | example | columnOverrides sets the width, alignment and head word of the change column |
 
 ## Not for
 

@@ -8,7 +8,7 @@
   "badFill": "#E0524E",
   "neutral": "#5E6C7B",
   "neutralLight": "#CFD9E2",
-  "highlight": "#1D4ED8",
+  "highlight": "#10529E",
   "total": "#12395E",
   "others": "#E3EDF5",
   "othersMark": "#CEDAE3",
@@ -50,10 +50,10 @@
    "open": "#C4D4E8",
    "lost": "#E0524E",
    "pending": "#92A7C2",
-   "won": "#1D4ED8",
+   "won": "#10529E",
    "gantt-workstream": "#12395E",
    "gantt-detail": "#AFBCC8",
-   "gantt-special": "#1D4ED8",
+   "gantt-special": "#10529E",
    "gantt-cadence": "#12395E"
   },
   "colorblind": {

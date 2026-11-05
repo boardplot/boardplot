@@ -46,7 +46,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | consensus-surprise-threshold | column.grouped | example | Authored surprise corridor: no statistics at all |
 | anomaly-small-sample | column.grouped | torture | Torture: five periods refuse to produce an outlier verdict |
 | anomaly-torture | column.grouped | torture | Torture: 60 periods, MAD = 0, an all-negative series and a 40× tail |
-| accessible-title-opt-in | column.grouped | example | Optional SVG hover title |
+| accessible-title-opt-in | column.grouped | example | Optional SVG hover title and authored accessible description |
 | minimum-frame | column.grouped | example | Column at the standalone size floor |
 | compact-frame | column.grouped | example | Compact column with source and note marker |
 | hatched-stack-labels | column.stacked | example | Forecast stack with protected inside values |
@@ -79,6 +79,8 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | column-compact-380 | column.grouped | example | Column in a 380px dashboard column |
 | column-card-320-frame-rules | column.grouped | example | Grouped column in a 320px card with an automatic height |
 | column-partial-week | column.stacked | example | Stacked weekly orders with the running week marked partial |
+| column-partial-week-average | column.stacked | example | Stacked weekly orders with an average rule that leaves the running week out |
+| column-partial-week-average-included | column.stacked | example | Stacked weekly orders with an average rule that includes the running week |
 | torture-long-labels | column.grouped | torture | Torture: long names at a generous size read whole, never cut |
 | revenue-axis-title | column.grouped | example | Grouped columns with a titled value axis |
 | weekly-events-lane | column.grouped | example | Event lane: stock-outs and launches over weekly revenue, the rest numbered in the key |
@@ -118,6 +120,8 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | option-value-labels-ends | column.grouped | example | The first and latest quarter print their values (valueLabels ends) |
 | option-value-labels-none | column.grouped | example | No value prints; the axis reads every column (valueLabels none) |
 | option-value-labels-all | column.grouped | example | Every quarter prints its value (valueLabels all) |
+| grouped-twelve-slide | column.grouped | torture | Two series over twelve units on a full slide print all 24 values |
+| key-right-slide | column.grouped | example | Clustered columns on a slide with the key in a column right of the plot |
 
 ## bar
 
@@ -146,6 +150,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | tornado-degenerate | bar.tornado | torture | Torture: 14 drivers, a base the model does not reproduce, a dead driver and a gap |
 | tornado-two-drivers | bar.tornado | example | Sensitivity tornado: the two-driver case, direct labels only |
 | tornado-theme-cases | bar.tornado | example | Sensitivity cases using an authored theme pair |
+| tick-step | bar.grouped | example | Horizontal value axis with ticks every five units |
 | usd-k-precision | bar.grouped | example | Unit-aware precision: $k values from 100 up print whole, smaller values keep one decimal |
 | option-reference-line | bar.grouped | example | Actual orders against plan with line references |
 | option-reference-marker | bar.grouped | example | Actual orders against plan with marker references |
@@ -180,6 +185,8 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | option-small-values-zero | bar.grouped | torture | Turku prints the series format (smallValues zero) |
 | option-small-values-scientific | bar.grouped | torture | Turku prints a power of ten (smallValues scientific) |
 | option-small-values-p-value | bar.grouped | torture | Every rate prints as an APA p-value (smallValues p-value) |
+| key-left | bar.stacked | example | Stacked bars with the key in a column left of the plot |
+| column-overrides | bar.grouped | example | columnOverrides sets the width of the name column |
 
 ## line
 
@@ -293,6 +300,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | x-number-trail | line.line | example | Elevation by distance on a plain-number x (continuous number axis) |
 | x-time-partial-week | line.line | example | Weekly orders with the running week marked by data.partial (continuous time axis) |
 | x-time-range-edges | line.line | example | A daily line continues to both range edges between readings |
+| log-axis-users | line.line | example | Users grow across orders of magnitude |
 
 ## dimswitch
 
@@ -300,6 +308,10 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 |---|---|---|---|
 | by-measure | dimswitch.by-measure | example | KPIs and their channel members |
 | by-member | dimswitch.by-member | example | Channels and their KPIs |
+| periods-only | dimswitch.by-measure | example | KPIs by period without the Range and vs prior columns |
+| range-only | dimswitch.by-measure | example | KPIs with the Range column alone |
+| column-overrides | dimswitch.by-measure | example | KPIs with authored head text, track widths and alignment |
+| periods-first | dimswitch.by-measure | example | KPIs with the periods before the Range block |
 | sheet | dimswitch.by-measure | example | KPIs on the report sheet |
 | statement | dimswitch.by-measure | example | A contribution-margin statement per order |
 | statement-channels | dimswitch.by-member | example | The statement with the channels folded under the Total |
@@ -311,6 +323,12 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | bands-and-plan | dimswitch.by-member | example | Value bands with separate prior and plan changes |
 | thresholds-by-kind | dimswitch.by-measure | example | Separate thresholds for each change kind |
 | multiple-sample-bases | dimswitch.by-member | example | Judge only when both sample fields pass |
+| no-bars | dimswitch.by-measure | example | KPIs without the automatic size bars |
+| no-total-block | dimswitch.by-member | example | Channels and their KPIs without the Total block |
+| total-row-blank | dimswitch.by-measure | example | KPIs over their members with blank Total cells |
+| total-bottom | dimswitch.by-member | example | Channels and their KPIs with the Total block last |
+| no-group-heads | dimswitch.by-measure | example | KPIs without their section heads |
+| no-group-heads-by-member | dimswitch.by-member | example | Channels with grouped KPIs and no group label rows |
 | card-notes-de | dimswitch.by-member | torture | German engine notes on a phone card |
 
 ## table
@@ -386,6 +404,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | percent-points-declared | table.hierarchy | example | Low conversion rates declared in points |
 | hierarchy-kinds | table.steering | example | Member, measure and split presentation |
 | row-label-text-cap | table.steering | example | A row-label text cap with an indent and a unit affix |
+| row-label-three-lines | table.hierarchy | example | Campaign names on three lines in a capped label track |
 | long-campaign-names | table.hierarchy | example | Campaign names that wrap after _ and - in a capped label track |
 | contribution-margin-statement | table.hierarchy | example | Contribution margin with signed costs and driver rows |
 | pl-statement | table.hierarchy | example | An authored P&L, signed |
@@ -403,7 +422,10 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | group-ground-none | table.hierarchy | example | No group ground at all |
 | frame-fill-values | table.hierarchy | example | Under rowExtent frame the value tracks grow until every layer ends at the frame edge |
 | frame-fill-none | table.hierarchy | example | The old frame: columns keep their widths and an empty stretch carries the rows to the edge |
+| height-fill-none | table.hierarchy | example | A pinned height keeps the rows at their natural height and leaves the rest empty |
 | table-look-keys | table.hierarchy | example | A theme sets the quiet row rule, its width and the secondary ink; each open block opens on the rule ink |
+| no-column-heads | table.hierarchy | example | No head row and no group heading: the first row starts at the top of the table |
+| head-align | table.hierarchy | example | The figures stay right under a head set left |
 
 ## waterfall
 
@@ -412,6 +434,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | ebit-bridge | waterfall.vertical | example | EBIT bridge FY21→FY24 |
 | interview-status-buildup | waterfall.vertical | example | Interview pipeline build-up by status |
 | revenue-build-up | waterfall.vertical | example | Revenue → EBIT build-up with diff arrow |
+| step-brackets | waterfall.vertical | example | Brackets over bridge steps print their sums |
 | build-down | waterfall.vertical | example | Build-down: revenue to net income |
 | whole-axis-opt-out | waterfall.vertical | example | Whole value axis kept with an explicit false |
 | automatic-axis-break | waterfall.vertical | example | Explicit automatic break makes small steps on a large base easier to compare |
@@ -430,8 +453,10 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | cost-bridge-lower-is-better | waterfall.vertical | example | Cost bridge: a rise paints bad and a saving good under lowerIsBetter |
 | neutral-steps | waterfall.vertical | example | signColor false keeps every step in the neutral |
 | two-case-budget-bridge | waterfall.vertical | example | Two cases side by side in each step: a conservative and an aggressive budget |
+| two-case-budget-bars | waterfall.horizontal | example | The two-case bridge as bars: each value stands past the end of its own bar |
 | single-segment-authored-format | waterfall.vertical | example | One segment prints one value at the authored precision |
 | repeated-segment-key | waterfall.vertical | torture | Equal segment names and colours share one key |
+| column-overrides | waterfall.horizontal | example | A horizontal bridge with authored name and value bands |
 
 ## kpi
 
@@ -456,13 +481,16 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | editorial-figure | kpi | example | Editorial card: a light serif figure from type.figure over text comparisons and a text attainment |
 | spark-ink-pale-neutral | kpi | example | A line spark in the ink on a theme whose neutral is a pale sand |
 | spark-area-as-line | kpi | example | An area spark drawn as a shape-only line ending in a ring, no wash and no end label |
+| spark-area-from-min | kpi | example | An area spark whose scale and wash start at the series minimum |
 | house-eyebrow | kpi | example | Tracked eyebrow from type.eyebrow, comparisons without carets |
 | weekly-orders-card-spark | kpi | example | The bare weekly sparkline inside a card that names the measure, the period and the number |
 | spark-ends-below-card | kpi | example | Cash card: today on the card, month-end balances in the spark, the last one labelled |
 | attainment-bad-column-spark | kpi | torture | Attainment chip in the bad tone over a monthly column spark |
 | compact-spark-floor | kpi | torture | Compact card keeps its sparkline readable |
 | neutral-change | kpi | example | A change without a favorable direction |
+| slot-natural-sizes | kpi | example | A card in a fixed slot that keeps its natural sizes at the top |
 | value-bands | kpi | example | The band that holds the value colours the main value; the comparison keeps its own tone |
+| column-overrides | kpi | example | columnOverrides sets the width and alignment of the comparison columns |
 
 ## combo
 
@@ -482,6 +510,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | theme-dual-axis-anatomy | combo.dual-axis | example | A theme draws every acknowledged dual axis with its anatomy |
 | revenue-units-dual-axis-anatomy | combo.dual-axis | example | Dual-axis anatomy: shared gridlines, the line above the columns, both growth rates stated |
 | daily-columns-rate-reference | combo.dual-axis | torture | Daily columns, rate endpoints and a named reference on a flat dashboard |
+| dual-axis-line-floated | combo.dual-axis | example | A margin line floats over the revenue columns on its own scale |
 | option-step-after | combo.overlay | example | Output and available capacity |
 | option-step-before | combo.overlay | example | Output and available capacity |
 | combo-end-label-collision | combo.dual-axis | torture | Line end value and last column total placed as a pair |
@@ -520,6 +549,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | dpy-absolute-regions | variance.absolute | example | ΔPY absolute variance columns with forced signs |
 | dpl-relative-pins | variance.relative | example | ΔPL% relative variance pins, ≤1 decimal, forced signs |
 | integrated-fc-caps | variance.integrated | example | Integrated variance: AC columns with ΔFC caps |
+| integrated-solid-shortfall | variance.integrated | example | Integrated variance with a solid shortfall cap (surface.shortfallCap) |
 | ref-nonpositive-suppression | variance.relative | torture | Torture: REF zero and negative suppress Δ% with warnings |
 | all-positive-deltas | variance.absolute | torture | Total SaaS and services revenue growth by region versus prior year |
 | all-negative-deltas | variance.absolute | torture | Torture: all-negative ΔPL, labels mirrored below, category labels in one row under the bars |
@@ -556,6 +586,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | band-key-labels | bullet | torture | bandKey labels keeps every label and shade |
 | band-key-ramp | bullet | example | bandKey ramp forces the worse-to-better key |
 | two-sided-spend | bullet | example | Both low and high spend are off plan |
+| two-sided-spend-full-fill | bullet | torture | Toned bands in their full fills |
 | tone-spectrum | bullet | torture | Band tones carry the range judgment |
 | neutral-change | bullet | example | A neutral comparison with a target |
 | plan-wording | bullet | example | strings.target words the comparison as plan |
@@ -565,6 +596,10 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | target-columns-off | bullet | example | targetColumns false keeps the plot its full width |
 | band-names-on-rows | bullet | example | bandKey 'row' names each band on its row, on a shared scale with a value axis |
 | column-words-authored | bullet | example | strings set the target and gap column words |
+| column-overrides | bullet | example | columnOverrides sets the widths, alignment and head words of the generated columns |
+| columns-hidden | bullet | example | columnVisibility leaves the share column out of the percent-of-target rows |
+| plot-first | bullet | example | columnOrder puts the marks first and reverses the columns behind them |
+| no-direction-line | bullet | example | labels.direction and labels.position drop the second lines beside the target columns |
 
 ## bartable
 
@@ -576,7 +611,13 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | one-series-missing-and-states | bartable.panels | torture | One segment with a missing value, a not-applicable cell and a not-meaningful cell, in a bar panel and a number column: each prints its own glyph |
 | impact-two-panels-named-share | bartable.panels | example | Two panels, one split: the impact in $bn and as a share of EBITDA, with the combined-share note naming the two rows the two largest sectors |
 | cascade-two-periods | bartable.cascade | example | Share cascade over two periods: rows coloured by a row group, two residual rows pinned last, share columns, a bracket and a CAGR column |
+| cascade-two-periods-theme-total | bartable.cascade | example | Share cascade over two periods with the Total bar in the theme total colour, even where it equals a group colour |
 | cascade-four-years | bartable.cascade | example | Share cascade over four years: product-category revenue share with the share change in pp |
+| columns-reordered | bartable.panels | example | Panels before the number columns |
+| total-top | bartable.panels | example | The Total row above the rows, with its rule and ground |
+| no-values | bartable.panels | example | No values at the bars: number columns and the Total keep theirs |
+| column-widths | bartable.panels | example | Authored widths, alignment and heads per column |
+| no-column-heads | bartable.panels | example | No head row: the first row starts at the top of the table |
 
 ## pvm
 
@@ -590,6 +631,9 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | revenue-bridge-method-note | pvm | example | The revenue bridge with the method notes printed |
 | revenue-bridge-notes-listed | pvm | example | The revenue bridge on a slide with its method notes in the notes list |
 | named-periods-and-ranges | pvm | torture | PVM names each period and entry or exit range |
+| revenue-bridge-no-net-change | pvm | example | The revenue bridge without the net change over the closing column |
+| no-point-labels | pvm | example | The revenue bridge prints no step or total values, and keeps the net change |
+| column-overrides | pvm | example | A bridge whose long names turn it horizontal takes an authored name band |
 
 ## pie
 
@@ -621,6 +665,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | programme-rollout-rag | status | example | Consulting programme rollout RAG board with sparse future gates |
 | capability-assessment | status | example | Capability assessment with a patterned unverified state |
 | review-status-legend-none | status | torture | Review status with one explained state and no legend |
+| review-status-legend-right | status | example | Review status with a state legend in a column beside the grid |
 | review-status-legend-bottom | status | torture | Review status with a bottom legend |
 | review-status-legend-top | status | torture | Review status with a top legend |
 | torture-long-labels | status | torture | Torture: long names at a generous size read whole, never cut |
@@ -628,6 +673,8 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | rag-forecast-hatched | status | torture | RAG board with each tone plain and hatched beside cells without a status |
 | review-status-legend-object | status | torture | Review status with the legend placed above through a position object |
 | status-with-values | status | torture | State cells include their measured values |
+| capability-assessment-full-fill | status | torture | Capability board with good and neutral cells in their full colours |
+| column-widths | status | example | A wider last column, aligned heads and a renamed head |
 
 ## heatmap
 
@@ -648,10 +695,12 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | period-comparisons | heatmap.value | example | Annual growth and differences between named matrix cells |
 | torture-long-labels | heatmap.harvey | torture | Torture: long names at a generous size read whole, never cut |
 | series-formats | heatmap.value | torture | Rows have distinct formats |
+| cell-states | heatmap.value | example | A cell with a state is named in the key as suppressed, not meaningful or not applicable |
 | measure-already-names-unit | heatmap.value | torture | The measure names the unit once |
 | survey-journey-bubbles | heatmap.bubble | example | Survey bubble matrix: 6 segments × 12 touchpoints, importance as size, binned satisfaction as colour, two low-base cells |
 | survey-journey-long-names | heatmap.bubble | example | Survey bubble matrix with long touchpoint names: the matrix turns instead of rotating or thinning the names |
 | survey-journey-track | heatmap.bubble | example | Survey bubble matrix with a row track: the touchpoints are ordered journey steps |
+| column-widths | heatmap.value | example | A wider first column, aligned values and a renamed head |
 
 ## gantt
 
@@ -676,6 +725,8 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | dense-milestone-leaders | gantt | torture | Leaders of eighteen nearby milestones cross no label |
 | milestone-lane-tall-rows | gantt | example | Bars keep their height in rows a milestone lane makes tall |
 | adjacent-milestone-bands | gantt | torture | Neighbouring rows keep their milestone labels |
+| column-overrides | gantt | example | Widths, alignment and heads set per column: a wide name column, the owner flush right and a renamed status head |
+| meta-after-plot | gantt | example | Owner and status columns on the far side of the bars |
 
 ## scatter
 
@@ -744,6 +795,8 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | torture-long-labels | funnel.rows | torture | Torture: long names at a generous size read whole, never cut |
 | ramp-outcomes | funnel.rows | example | Outcome funnel filled from the series ramp, the lost share in badFill at 45 % |
 | signup-options | funnel.rows | example | The sign-up funnel with an authored format, a named palette, narrower bands and explicit label kinds |
+| centered-eight-stages-slide | funnel.centered | example | Eight-stage centered funnel on a full slide, stage name and value on one line |
+| column-overrides | funnel.centered | example | columnOverrides sets the width and head word of the cumulative conversion column |
 
 ## pareto
 
@@ -785,8 +838,9 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | ID | Chart | Kind | Use case |
 |---|---|---|---|
 | orders-nine-months | sparkline | example | Nine months of orders, the last point ringed and valued, both ends named |
-| bare-card-spark | sparkline | example | The bare 176 by 36 mark: no ring, no labels, a gap the line does not bridge |
+| bare-card-spark | sparkline | example | The bare 176 by 36 mark: no end ring, no labels, a null bridged by a dotted segment |
 | orders-heavy-stroke | sparkline | torture | A 2.5 px line instead of the default 1.5 px |
+| orders-last-and-high | sparkline | torture | valueLabel 'last-and-high': the last value and the high, as before the low and first values were named |
 | reference-above-data | sparkline | example | A target above every point: the scale reaches up to the reference, the ring in warn |
 | reference-inside-data | sparkline | example | A reference the line crosses twice, the ring in good |
 | reference-constant-values | sparkline | example | A flat series under its reference: the line sits at the foot, the ring in bad |
@@ -798,6 +852,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 |---|---|---|---|
 | growth-rect | treemap.rect | example | Squarified treemap: 19 items in 5 groups, exact areas, group key with totals, small names beside the region |
 | growth-circle | treemap.circle | example | Circular Voronoi treemap of the same data: convex cells, leaders to both sides and a total callout |
+| growth-rect-group-hues | treemap.rect | example | The same groups with one hue each: color.treemap set to the series colours |
 | one-level-shares | treemap.rect | example | One level, no groups: one hue, value and share of the total on every cell |
 | source-order-shares-circle | treemap.circle | example | Circle in source order with shares of the total and the key at the bottom |
 
@@ -805,12 +860,15 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 
 | ID | Chart | Kind | Use case |
 |---|---|---|---|
-| channel-journeys | sankey | example | Channel to landing page to outcome: stage headers, two small channels folded into Others and listed in the note |
+| channel-journeys | sankey | example | Channel to landing page to outcome: stage headers, two small channels folded into Others and listed in the note, Purchase highlighted |
+| channel-journeys-node-values | sankey | example | Channel journeys with linkValue none: node values only, no value on the ribbons |
 | budget-departments | sankey | example | Budget to departments to cost types, links coloured by target |
 | segment-migration | sankey | example | Customers moving between segments month to month: stage-qualified nodes, one segment order in every month |
 | sales-stages | sankey | torture | Six stages with drop-outs that skip columns as long links |
 | long-names-phone | sankey | torture | Long node names on a 280 px phone card: names wrap and break with a hyphen |
 | unbalanced-nodes | sankey | torture | Nodes whose inflow and outflow differ, duplicate rows that add up and a zero row |
+| no-node-values | sankey | example | Nodes print their names only |
+| column-overrides | sankey | example | Authored widths for the label gutters of the first and last stage |
 
 ## grid
 
@@ -851,6 +909,8 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | nine-regions-reflow | grid.facets | example | Nine facets in at most three columns draw in two on a 320 px card |
 | metric-stack-volume | grid.metric-stack | example | Metric stack: volume, completed outcomes and weighted conversion by cohort |
 | metric-stack-steps | grid.metric-stack | example | Metric stack: volume-weighted funnel steps and remaining-per-100 chain |
+| stack-readout-parts | grid.metric-stack | example | Metric stack: readout gutter without the unit and the span |
+| stack-gutter-right | grid.metric-stack | example | Metric stack: readout gutter right of the plots, with a set width and alignment |
 
 ## slope
 
@@ -872,6 +932,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | diverging-sort-net | slope.diverging | example | Diverging panels sorted by net score |
 | diverging-sort-data | slope.diverging | example | Diverging panels in data order, no net |
 | cost-per-unit-plants-variant-lines | slope.lines | torture | Plant slopes with variant 'lines' |
+| column-overrides | slope.lines | example | columnOverrides sets the width, alignment and head word of the change column |
 
 ## dot
 
@@ -892,6 +953,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | nps-rows-left | dot.dot | example | The NPS ranking with its row labels aligned left |
 | highlighted-dumbbell-key | dot.dumbbell | torture | Actual and plan remain distinct |
 | fraction-reference-line | dot.dot | torture | A fraction target shares the percentage scale |
+| column-overrides | dot.dumbbell | example | columnOverrides sets the widths, alignment and head word of the name and gap columns |
 
 ## cohort
 
@@ -911,6 +973,16 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | fractional-step-key | cohort.stepped | torture | Cohort classes keep fractional open upper bounds |
 | cumulative-conversion-pure | cohort.pure | example | Count-derived cumulative conversion with its own wording |
 | cumulative-conversion-stepped | cohort.stepped | example | Count-derived cumulative conversion with its own wording |
+| no-size-column | cohort.pure | example | Pure exhibit without the size column, whose bases stay in the weighted total |
+| column-tracks | cohort.pure | example | Pure exhibit with authored track widths, alignment and heads |
+| size-after-periods | cohort.stepped | example | Stepped exhibit with the size column after the periods |
+| no-column-heads | cohort.pure | example | Pure exhibit without its head row, with the periods named in the subtitle |
+| no-column-heads-stepped | cohort.stepped | example | Stepped exhibit without heads or the range lines under them |
+| total-top | cohort.stepped | example | Stepped exhibit with the weighted average above the cohorts |
+| no-designated-period | cohort.pure | example | Pure exhibit with no tinted column |
+| stepped-no-figures | cohort.stepped | example | Stepped exhibit whose fills carry the rates without printed numbers |
+| heatmap-weighted-total | cohort.heatmap | example | Heatmap with the weighted average row set by total |
+| heatmap-visible-periods | cohort.heatmap | example | Heatmap showing the later periods only, with no trace of the hidden ones |
 
 ## choropleth
 
@@ -933,6 +1005,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | eu-inflation-values | choropleth | example | EU inflation with each region value printed after its code |
 | eu-inflation-colorblind | choropleth | example | EU inflation around 2% in the colorblind-safe good/bad pair |
 | us-margin-versus-target | choropleth | example | State margins above the target are favorable |
+| us-margin-wide-slot | choropleth | example | State margins on a wide slot: the key and the unlabelled states stand beside the map |
 | dach-all-region-labels | choropleth | example | All three DACH markets carry their region labels |
 | german-states-bremen-on-map | choropleth | torture | Bremen keeps its label on the map through labelRegions, under an authored key title |
 | german-states-table-below | choropleth | example | The value table stands under the map |
@@ -946,6 +1019,8 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | overlay-measure-heading | choropleth | torture | The overlay measure has a heading |
 | named-null-states | choropleth | torture | Named map states differ from missing values |
 | info-glyphs-with-status | choropleth | torture | Info marker and icon tones appear beside status in the key |
+| lookup-columns | choropleth | example | The value table without swatches, with rows left out, moved and renamed |
+| lookup-no-emphasis | choropleth | example | The value table and the map set no top group in bold |
 
 ## butterfly
 
@@ -956,7 +1031,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | single-row | butterfly | torture | Torture: one category only |
 | tiny-side | butterfly | torture | Torture: one side all slivers under shared scale |
 | long-labels | butterfly | torture | Torture: very long category labels ellipsize in the center column |
-| negatives-own-scale | butterfly | torture | Torture: negatives clamped to \|value\|, independent pane scales |
+| negatives-own-scale | butterfly | torture | Torture: negatives run toward the names, independent pane scales with a value axis each |
 | customer-spend-sort-sheet | butterfly | torture | Customer spend ordered by authored account order |
 | customer-spend-sort-b | butterfly | torture | Customer spend ordered by Product B |
 | customer-spend-sort-diff | butterfly | example | Customer spend ordered by the B-minus-A difference |
@@ -965,6 +1040,11 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | license-vs-services-neutral-mark | butterfly | torture | License vs Services on a dark theme whose neutral is a band tint |
 | fixed-label-column | butterfly | torture | A 160 px label column between the panes instead of the measured width |
 | customer-spend-top-five | butterfly | torture | The five largest customers, a key above the panes and explicit label kinds |
+| negatives-shared-scale | butterfly | torture | Negative values run from each pane's zero line toward the names on one shared scale |
+| negatives-magnitude | butterfly | torture | The lighter bar of \|value\| for negative values, from negatives: magnitude |
+| blank-values | butterfly | torture | A value the data lacks prints the not-applicable mark at the pane start |
+| own-scales-mixed | butterfly | torture | Panes of very different size on their own scales each draw a value axis |
+| column-overrides | butterfly | example | columnOverrides sets the name column and the difference column, beating centerColumnWidth |
 
 ## likert
 
@@ -982,6 +1062,9 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | engagement-options | likert | example | The engagement survey with left row labels, thicker bars, one highlighted statement and explicit label kinds |
 | engagement-notes-pinned | likert | torture | The engagement survey with its net and base pinned as one-line method notes under the author note |
 | engagement-dashboard-notes | likert | torture | The engagement survey on a dashboard with its notes in the info panel |
+| twelve-statements-slide | likert | torture | Twelve statements on a full slide print their shares inside the bars |
+| column-overrides | likert | example | columnOverrides sets the widths, alignment and head words of the name, net and base columns |
+| columns-after-plot | likert | example | columnOrder moves the net and base columns to the other side of the marks |
 
 ## histogram
 
@@ -991,6 +1074,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | cycle-time-days | histogram | example | Cycle time peaks in the six-to-eight-day band and tails off by day thirteen |
 | order-value-eur-formatted | histogram | torture | Formatted in euro: the bin edges carry the currency, the bar heights are counts |
 | bimodal-with-far-outlier | histogram | torture | One $14,000 order stretches the axis over 40 bins; 999 of 1,000 orders sit in the first three |
+| claim-amount-open-tail | histogram | example | 15 of 800 claims run from $1,250 to $3,303; one open bin keeps them from stretching the axis |
 | unsnapped-bins-method-note | histogram | torture | The automatic bin width as computed, not snapped to a round number, with the binning rule stated |
 | localized-binning | histogram | torture | Authored binning wording under a German locale |
 
@@ -1007,6 +1091,9 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | torture-long-labels | box | torture | Torture: long names at a generous size read whole, never cut |
 | outliers-withheld-method-note | box | example | Outliers withheld from the ink and the axis, with the quartile and whisker rule stated |
 | salary-bands-pinned-median | box | example | The IC5 median label pinned above its box through labelPlacements |
+| twelve-teams-median-column | box | example | Twelve dense rows print their medians in one column beside n |
+| outliers-axis-break | box | example | A value-axis break across the empty range keeps two far outliers visible |
+| column-overrides | box | example | columnOverrides sets the name and n columns |
 
 ## waffle
 
@@ -1030,7 +1117,8 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | workforce-tenure-gender | pyramid | example | Women outnumber men below four years of tenure and are outnumbered above ten |
 | torture-pyramid-degenerate | pyramid | torture | 22 bands, one empty in both groups, a 10:1 group imbalance and an open top band |
 | dated-population-comparison | pyramid | example | Growth within the same age band across two observation dates |
-| dated-share-difference | pyramid | example | An absolute difference between shares is measured in percentage points |
+| dated-share-difference | pyramid | example | Each snapshot is its own 100%, and a difference between shares is measured in percentage points |
+| column-overrides | pyramid | example | columnOverrides sets the width and alignment of the band column |
 
 ## diagram
 
@@ -1062,6 +1150,15 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | four-child-start-arrow | diagram.hierarchy | torture | A start arrow clears a neighbouring group frame |
 | stacked-leaf-captions | diagram.issue-tree | torture | Every stacked leaf keeps its caption |
 | long-border-badges | diagram.issue-tree | torture | Long badge phrases keep clear of node labels |
+| protected-request | diagram.architecture | example | A request stays protected on its way to private processing and back |
+| marketing-pipeline | diagram.architecture | example | Rejected records return to the source for repair |
+| journey-attribution | diagram.architecture | example | Multi-touch attribution from customer journey to budget |
+| nested-service | diagram.architecture | example | A service nested three levels deep, with one protected runtime |
+| agent-approval | diagram.architecture | example | An agent reaches its tools through an approval gate |
+| pipeline-health | diagram.architecture | example | A data pipeline with its service levels beside it |
+| long-names | diagram.architecture | torture | Long names keep every word at every width |
+| twenty-node-platform | diagram.architecture | torture | Twenty nodes and thirty edges across four zones |
+| inset-no-heading | diagram.architecture | example | An inset without its title, with authored column widths and alignment |
 
 ## tilemap
 
@@ -1073,6 +1170,8 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | eu27-demand-versus-plan | tilemap | example | Demand above plan is favorable |
 | eu27-cost-versus-plan | tilemap | example | Cost below plan is favorable |
 | eu27-demand-colorblind | tilemap | example | Demand versus plan in the colorblind-safe good/bad pair |
+| tile-key-right | tilemap | example | The value key in a column right of the tiles |
+| us-state-tile-grid-wide-slot | tilemap | example | US states on a wide slot: the value key stands beside the tiles |
 | tile-key-bottom | tilemap | example | The value key in one row below the tiles |
 | us-states-overlay-tones | tilemap | example | Five state overlays in every tone, the tones and the ball measure named in the overlay key |
 | us-states-overlay-glyphs | tilemap | torture | Status, pie, icon and marker overlays in every tone, shape and size |
@@ -1088,3 +1187,4 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | creative-image-fatigue | creative | example | Creative image with an explicit CTR screening rule |
 | creative-host-card | creative | example | Creative card in a host frame: no method lines, trends ending in a ring |
 | creative-video-poster | creative | torture | Square video creative drawn from its poster |
+| columns-rows | creative | example | A creative table with the median column and two metrics left out |

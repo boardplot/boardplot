@@ -12,9 +12,11 @@ import { getFixtures } from '../src/fixtures';
 import { renderSvg } from '../src/core/svg/renderSvg';
 import { resolveTheme } from '../src/core/theme';
 import { SceneRenderer } from '../src/react/SceneRenderer';
+import { BarChart } from '../src/react/charts/bar';
 import { interactionRecords } from '../src/core/a11y/records';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { render } from '../src/cli/render';
+import { specFromRows } from '../src/rows';
 import { claimsForChart } from '../src/core/claims';
 import { chartReading } from '../src/core/reading';
 import type { Geometry, LintWarning } from '../src/core/types/scene';
@@ -79,6 +81,23 @@ describe('data gaps', () => {
       expect(reading.values.numbers).toBe(2);
       expect(reading.values.withoutNumber).toEqual([expect.objectContaining({ label: 'missing' })]);
     }
+  });
+
+  // A blank part drops its category from a variance chart, and the warnings must say so instead of leaving an empty slot that reads as no difference.
+  it('warns once per variance category that a blank part leaves undrawn', () => {
+    const data = { categories: [{ id: 'x' }, { id: 'y' }, { id: 'z' }], series: [
+      { id: 'a', values: [5, null, 7] }, { id: 'b', values: [1, 1, null] },
+      { id: 'plan', role: 'reference', values: [4, 4, 4] },
+    ] };
+    const missing = (g: Geometry) => g.warnings.filter((w) => w.code === 'missing-value');
+    const plain = missing(lay('variance', data, { variance: { vs: 'plan' } }));
+    expect(plain.map((w) => w.message)).toEqual([
+      "series 'a' at 'y': missing value — the category is not drawn",
+      "series 'b' at 'z': missing value — the category is not drawn",
+    ]);
+    expect(plain.map((w) => [w.severity, w.owner])).toEqual([['info', { categoryId: 'y' }], ['info', { categoryId: 'z' }]]);
+    const dash = missing(lay('variance', data, { variance: { vs: 'plan' }, missingMark: 'dash' }));
+    expect(dash[0]!.message).toBe("series 'a' at 'y': missing value — the category is drawn as an en dash");
   });
 
   // A reference must keep isolated values visible and leave missing periods open unless the author requests a disclosed bridge.
@@ -260,6 +279,122 @@ describe('data gaps', () => {
     const g = lay('pie', { categories: [{ id: 'a' }, { id: 'b' }, { id: 'c' }], series: [{ id: 's', values: [1, 1, 1] }] }, { rounding: 'sum-consistent' });
     expect([texts(g).filter((t) => /(?:\(|· )(33|34)%/.test(t)).map((t) => /(?:\(|· )(\d+)%/.exec(t)![1]).sort(), (g.derived as { roundingAdjustments: unknown[] }).roundingAdjustments])
       .toEqual([['33', '33', '34'], [expect.objectContaining({ part: 'a', nearest: '33%', printed: '34%' })]]);
+  });
+
+  // Stacked column shares must total 100 without changing segment values or adjusting categories without share labels.
+  it('rounds complete stacked column shares at the chart precision and reports only printed adjustments', () => {
+    const data = {
+      categories: [{ id: 'selected', label: 'Selected' }, { id: 'other', label: 'Other' }],
+      series: [290, 740, 610, 260, 287.5, 312.5].map((value, i) => ({
+        id: `s${i}`, label: ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta'][i], values: [value, value],
+      })),
+    };
+    const options = { variant: 'stacked', shareLabels: {} };
+    const segments = (g: Geometry, categoryId: string) => g.labels
+      .filter((label) => label.kind === 'segment' && label.owner.categoryId === categoryId && !label.hidden)
+      .map((label) => label.text);
+    const values = ['290', '740', '610', '260', '288', '313'];
+    const rounded = ['290 12%', '740 30%', '610 24%', '260 10%', '288 12%', '313 12%'];
+    const all = lay('column', data, options);
+    expect(segments(all, 'selected')).toEqual(rounded);
+    expect(segments(all, 'other')).toEqual(rounded);
+    const selectedOptions = { ...options, labels: { segment: ['absolute', 'percent'] }, shareLabels: { only: ['selected'] } };
+    const selected = lay('column', data, selectedOptions);
+    expect(segments(selected, 'selected')).toEqual(rounded);
+    expect(segments(selected, 'other')).toEqual(values);
+    const request = resolveChartRequest({ type: 'column', data, options: selectedOptions } as never);
+    const reading = chartReading({ name: 'Parts of one stack', type: 'column', request, geometry: selected, claims: claimsForChart('column', selected) });
+    expect(reading.rounding).toEqual([{ whole: 'Selected', part: 'Zeta', share: 12.5, nearest: '13%', printed: '12%' }]);
+    expect(noteTexts(selected, ['method']).join(' ')).toContain('moved by one step');
+    const nearest = lay('column', data, { ...selectedOptions, rounding: 'nearest' });
+    expect(segments(nearest, 'selected')).toEqual([...rounded.slice(0, -1), '313 13%']);
+    expect(noteTexts(nearest, ['method'])).toEqual([]);
+    expect(nearest.warnings.find((warning) => warning.code === 'share-rounding-drift')?.message).toContain("101% for 'Selected'");
+    const formatted = lay('column', data, { ...options, shareLabels: { format: '1.0%' } });
+    expect(segments(formatted, 'selected')).toEqual(['290 11.6%', '740 29.6%', '610 24.4%', '260 10.4%', '288 11.5%', '313 12.5%']);
+    const hidden = lay('column', data, { ...options, labels: { segment: false } });
+    expect(noteTexts(hidden, ['method'])).toEqual([]);
+    expect(hidden.derived).not.toHaveProperty('roundingAdjustments');
+  });
+
+  // The drift lint summed whole percents while the labels printed the authored decimals, so it named a sum no reader sees.
+  it('checks share drift at the decimals of a percent options.format', () => {
+    const thirds = { categories: [{ id: 'y' }], series: [{ id: 'a', values: [3334] }, { id: 'b', values: [3333] }, { id: 'c', values: [3333] }] };
+    for (const type of ['bar', 'column']) {
+      const options = { variant: 'stacked100', rounding: 'nearest', format: '1.00%' };
+      expect(texts(lay(type, thirds, options)).join(' ')).toContain('33.34%');
+      expect(codes(lay(type, thirds, options))).not.toContain('share-rounding-drift');
+      expect(codes(lay(type, thirds, { variant: 'stacked100', rounding: 'nearest', format: '1%' }))).toContain('share-rounding-drift');
+    }
+  });
+
+  // A percent options.format printed the pie's counts as percent and left the computed shares at whole percents, on bar and column too.
+  it('prints computed shares at the decimals of a percent options.format', () => {
+    const counts = { categories: [{ id: 'a' }, { id: 'b' }, { id: 'c' }], series: [{ id: 's', values: [238.7, 150, 231.3], unit: 'EUR m' }] };
+    const pie = lay('pie', counts, { format: '1.0%' });
+    expect(texts(pie).join(' ')).toContain('38.5%');
+    expect(texts(pie).join(' ')).not.toMatch(/238\.7%/);
+    expect(codes(pie)).toContain('percent-format-on-values');
+    const stack = { categories: [{ id: 'y' }], series: [{ id: 'a', values: [60.4] }, { id: 'b', values: [39.6] }] };
+    for (const type of ['bar', 'column']) expect(texts(lay(type, stack, { variant: 'stacked100', format: '0.0%' }))).toEqual(expect.arrayContaining(['60.4%', '39.6%']));
+  });
+
+  // A 100% stack moves printed shares by default and rescales parts that miss 100, and only reading.rounding told the reader.
+  it('lists a hidden method note when a 100% stack moves or rescales shares', () => {
+    const thirds = lay('column', { categories: [{ id: 'q' }], series: ['a', 'b', 'c'].map((id) => ({ id, values: [10] })) }, { variant: 'stacked100' });
+    expect(noteTexts(thirds, ['method']).join(' ')).toContain('moved by one step');
+    const shares = [59.6, 19.8, 10.7, 5.8, 4.3].map((value, i) => ({ id: `s${i}`, values: [value] }));
+    const rescaled = lay('column', { categories: [{ id: 'q', label: 'Sep' }], series: shares }, { variant: 'stacked100', sharesOfOneWhole: true });
+    expect(noteTexts(rescaled, ['method']).join(' ')).toContain('Sep: the authored parts do not add up to 100');
+    expect(noteTexts(lay('column', { categories: [{ id: 'q' }], series: ['a', 'b'].map((id) => ({ id, values: [50] })) }, { variant: 'stacked100' }), ['method'])).toEqual([]);
+  });
+
+  // A bar of direct percents prints them as authored, and the note said each share was divided by the stack total.
+  it('adds no rescaling note for a bar of direct percents', () => {
+    const direct = lay('bar', { categories: [{ id: 'q', label: 'Sep' }], series: [{ id: 'a', values: [{ pct: 55 }] }, { id: 'b', values: [{ pct: 30 }] }] }, { variant: 'stacked100', sharesOfOneWhole: true });
+    expect(noteTexts(direct, ['method'])).toEqual([]);
+  });
+
+  // A column of direct percents prints them as authored, and the note said each share was divided by the stack total.
+  it('adds no rescaling note for a column of direct percents', () => {
+    const direct = lay('column', { categories: [{ id: 'q', label: 'Sep' }], series: [{ id: 'a', values: [{ pct: 55 }] }, { id: 'b', values: [{ pct: 30 }] }] }, { variant: 'stacked100', sharesOfOneWhole: true });
+    expect(noteTexts(direct, ['method'])).toEqual([]);
+  });
+
+  // The area note named moved shares that sit at unlabelled categories or under labels: false, and the reader saw no moved share.
+  it('adds the area rounding note only when a moved share prints', () => {
+    const data = { categories: ['a', 'b', 'c'].map((id) => ({ id })), series: [[50, 1, 50], [25, 1, 25], [25, 1, 25]].map((values, i) => ({ id: `s${i}`, values })) };
+    expect(noteTexts(lay('line', data, { variant: 'stacked100-area' }), ['method'])).toEqual([]);
+    expect(noteTexts(lay('line', data, { variant: 'stacked100-area', valueLabels: 'all', labels: false }), ['method'])).toEqual([]);
+    expect(noteTexts(lay('line', data, { variant: 'stacked100-area', valueLabels: 'all' }), ['method']).join(' ')).toContain('moved by one step');
+  });
+
+  // The area note read the first and last of all categories, so it missed a moved share at the window's end and named one at an undrawn start.
+  it('follows the drawn window for the area rounding note', () => {
+    const area = (rows: number[][], window: object) => lay('line', { categories: ['A', 'B', 'C', 'D'].map((id) => ({ id })), series: rows.map((values, i) => ({ id: `s${i}`, values })) },
+      { variant: 'stacked100-area', window });
+    const movedAtC = [[50, 50, 10, 50], [25, 25, 10, 25], [25, 25, 10, 25]];
+    expect(noteTexts(area(movedAtC, { last: 2 }), ['method']).join(' ')).toContain('moved by one step');
+    const movedAtA = [[10, 50, 50, 50], [10, 25, 25, 25], [10, 25, 25, 25]];
+    expect(noteTexts(area(movedAtA, { last: 2 }), ['method'])).toEqual([]);
+  });
+
+  // The hidden note added the React button row, so a pinned card that drew before was refused and the dashboard image grew by a blank row.
+  it('keeps the size of a dashboard card when the share note is the only hidden note', () => {
+    const thirds = { categories: ['q1', 'q2', 'q3'].map((id) => ({ id })), series: ['a', 'b', 'c'].map((id) => ({ id, values: [10, 10, 10] })) };
+    const card = renderToStaticMarkup(createElement(BarChart as never, { data: thirds, variant: 'stacked100', title: 'Mix', source: 'Source: invented', target: 'dashboard', size: { width: 280, height: 196 } }));
+    expect(card).toContain('<svg');
+    const slivers = getFixtures('bar').find((f) => f.id === 'stacked100-slivers')!;
+    const image = render({ spec: { type: 'bar', data: slivers.data, options: { ...slivers.options, target: 'dashboard' } }, width: 360, return: ['svg'] }).body as { svg: string };
+    expect(image.svg).toContain('viewBox="0 0 360 269"');
+  });
+
+  // Printing method notes through notes.show also printed the hidden share note, and a bar or column that drew before was refused for the extra line.
+  it('keeps the draw of a 100% stack when notes.show lists method notes', () => {
+    const thirds = { categories: ['q1', 'q2', 'q3'].map((id) => ({ id })), series: ['a', 'b', 'c'].map((id) => ({ id, values: [10, 10, 10] })) };
+    const drawn = (type: string, show?: string[]) => render({ spec: { type, data: thirds, options: { variant: 'stacked100', title: 'Mix', source: 'Source: invented', ...(show ? { notes: { show } } : {}) } }, width: 480, height: 220, return: ['svg'] }).body as { ok: boolean };
+    for (const type of ['bar', 'column']) expect([type, drawn(type, ['method']).ok]).toEqual([type, drawn(type).ok]);
+    expect(drawn('bar', ['method']).ok).toBe(true);
   });
 
   it('omits a CAGR to a partial period and flags a diff that uses one', () => {
@@ -515,5 +650,46 @@ describe('a lone valid 100% category', () => {
     // Footer rule: the note is in the notes list, not drawn.
     const note = noteTexts(geometry).some((text) => text.startsWith('A: n.m.'));
     expect([columns.length, note]).toEqual([2, true]);
+  });
+});
+
+// A heatmap cell the rows mark suppressed was drawn, keyed and counted as plain no data, so a reader could not tell withheld from absent.
+describe('heatmap cell states', () => {
+  it('names a suppressed cell in the key and the reading, and keeps a plain empty cell no data', () => {
+    const rows = [
+      { m: 'm1', d: 'a', v: 1.5, s: '' }, { m: 'm2', d: 'a', v: null, s: '' },
+      { m: 'm1', d: 'b', v: null, s: 'suppressed' }, { m: 'm2', d: 'b', v: null, s: 'nm' },
+    ];
+    const { spec } = specFromRows({ type: 'heatmap', options: { title: 't' } }, { rows, columns: { category: 'm', series: 'd', value: 'v', state: 's' } });
+    const body = render({ spec, return: ['reading'] }).body as { reading: { values: { byState: Record<string, number> } } };
+    const keys = lay('heatmap', (spec as { data: unknown }).data, { title: 't' }).legend?.items.map((item) => item.id).filter((id) => /^scale:\D/.test(id));
+    expect([body.reading.values.byState, keys]).toEqual([{ value: 1, missing: 1, suppressed: 1, nm: 1 }, ['scale:none', 'scale:nm', 'scale:suppressed']]);
+  });
+
+  // A template's old per-cell states stayed on refilled rows, so a cell given a number was refused and a plain empty cell stayed suppressed.
+  it('lets the refilled rows decide every cell state, not the template', () => {
+    const template = { type: 'heatmap', options: { title: 't' }, data: { categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], series: [{ id: 'm1', label: 'M1', values: [1, null], states: [null, 'suppressed'] }] } };
+    const rows = [{ c: 'a', s: 'm1', v: null }, { c: 'b', s: 'm1', v: 2 }];
+    const { spec } = specFromRows(template as never, { rows, columns: { category: 'c', series: 's', value: 'v' } });
+    const series = (spec as { data: { series: { states?: unknown }[] } }).data.series[0]!;
+    expect(series.states).toBeUndefined();
+  });
+});
+
+// The n.m. text of a variance category ran past the canvas edge when its category sat at the plot edge.
+describe('variance n.m. text', () => {
+  it('stays inside the plot on a narrow canvas', () => {
+    const categories = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'].map((id) => ({ id, label: id.toUpperCase() }));
+    const actual = [14, 11.2, 9.8, 7.6, 6, 4.5, 2.9, 8.8, 0.4];
+    const plan = [13, 10.4, 9, 7, 6.2, 4.6, 3, 10, 0];
+    const geometry = lay('variance', { categories, series: [
+      { id: 'ac', label: 'Actual', scenario: 'AC', values: actual },
+      { id: 'pl', label: 'Plan', scenario: 'PL', role: 'reference', values: plan },
+    ] }, { variant: 'relative', variance: { of: 'ac', vs: 'pl' }, unit: 'EUR m', size: { width: 343, height: 258, unit: 'px' } });
+    const node = geometry.scene.find((n) => n.t === 'text' && n.id === 'nm:i');
+    if (node?.t !== 'text') throw new Error('no n.m. text');
+    const width = Math.max(...node.lines.map((line) => measureText(line, node.font).width));
+    const { plot } = geometry;
+    expect([node.x - width / 2 >= plot.x - 0.01, node.x + width / 2 <= plot.x + plot.w + 0.01]).toEqual([true, true]);
   });
 });

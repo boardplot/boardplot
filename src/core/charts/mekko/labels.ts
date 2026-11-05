@@ -17,7 +17,7 @@ import { warnIncompleteComposition, warnShareRoundingDrift } from '../../dataGap
 import { shareSetDecimals } from '../../formatPrecision';
 import type { LintWarning } from '../../types/scene';
 import { colCx, colW, type MekkoArea, type MekkoDomain, type MekkoEnv, type MekkoMarkGeometry, type MekkoPaints } from './model';
-import { GUTTER_GAP, kindSetting } from './plot';
+import { GUTTER_GAP, UPPER_TIER_GAP, kindSetting } from './plot';
 import { composedTextRole } from '../../textRole';
 import { planValueAxisTitle, valueAxisTitleRequest } from '../../axis';
 import { unitPrinted } from '../../frame';
@@ -45,7 +45,7 @@ function contentOf(env: MekkoEnv, kind: LabelKind, dflt: LabelContent): LabelCon
 function composeText(
   env: MekkoEnv,
   content: LabelContent,
-  values: { abs: number | null; pct: number | null; authoredPct?: boolean; pctText?: string },
+  values: { abs: number | null; pct: number | null; authoredPct?: boolean; absIsPct?: boolean; pctText?: string },
   catLabel: string,
   serLabel: string,
   example?: string,
@@ -53,7 +53,7 @@ function composeText(
 ): string {
   const parts: string[] = [];
   for (const c of content) {
-    if (c === 'absolute' && values.abs !== null) parts.push(example ? formatterFromExample(example, env.options.locale?.language)(values.abs) : absFmt(values.abs));
+    if (c === 'absolute' && values.abs !== null) parts.push(example ? formatterFromExample(example, env.options.locale?.language)(values.abs) : values.absIsPct ? env.cellPctFmt(values.abs) : absFmt(values.abs));
     else if (c === 'percent' && values.pct !== null) parts.push((env.options.rounding === 'sum-consistent' ? values.pctText : undefined) ??
       (example ? formatterFromExample(example, env.options.locale?.language)(values.pct) : values.authoredPct ? env.authoredPctFmt(values.pct) : values.pctText ?? env.pctFmt(values.pct)));
     else if (c === 'category' && catLabel) parts.push(catLabel);
@@ -118,7 +118,7 @@ function segmentLabels(ctx: LabelCtx, geometry: MekkoMarkGeometry): void {
     const shareWithheld = domain.incomplete.has(c.id) && (mode !== 'percent' || c.total100 === undefined);
     const pct = shareWithheld ? null : mode === 'percent' ? v : (domain.shares[c.id]![s.id] ?? null);
     let text = composeText(env, content, {
-      abs: domain.absAt(s, ci), pct, authoredPct: mode === 'percent' && val.isPct, pctText: domain.shareTexts.get(`${c.id}\0${s.id}`),
+      abs: domain.absAt(s, ci), pct, authoredPct: mode === 'percent' && val.isPct, absIsPct: mode !== 'percent' && val.isPct, pctText: domain.shareTexts.get(`${c.id}\0${s.id}`),
     }, c.label ?? c.id, s.label, val.format ?? s.format);
     if (typeof val.labelOverride === 'string') {
       text = val.labelOverride.replace(/\$\{value\}/g, text);
@@ -159,11 +159,11 @@ function segmentLabels(ctx: LabelCtx, geometry: MekkoMarkGeometry): void {
       : [];
     const hl = env.highlights.has(c.id) || env.highlights.has(s.id);
     const priority = val.priority ?? PRIORITY.interior + Math.min(99, Math.abs(v)) + (hl ? PRIORITY.highlightBonus : 0);
-    const candidates = [...(typeof val.labelOverride === 'string' ? gutterSeat : []), ...clearOfRules(topSeat(stackSegmentCandidates(rect, tsize, fits, paints.inside(s, val, c, si, v), { baselineY: area.y0 })), rect, rules)
+    const candidates = [...gutterSeat, ...clearOfRules(topSeat(stackSegmentCandidates(rect, tsize, fits, paints.inside(s, val, c, si, v), { baselineY: area.y0 })), rect, rules)
       // A value escaping the first column into the axis gutter reads as a tick.
       .filter((candidate) => (typeof val.labelOverride === 'string' || candidate.insideFill !== undefined) && (!area.showAxis || candidate.rect.x >= area.plot.x))
       .map(candidate => ({ ...candidate, insidePaint: paints.cell(s, val, c, si, v), insidePattern: paints.pattern(s, val) }))];
-    const noInsideSeat = typeof val.labelOverride !== 'string' && !candidates.some(candidate => candidate.insideFill !== undefined);
+    const noInsideSeat = typeof val.labelOverride !== 'string' && gutterSeat.length === 0 && !candidates.some(candidate => candidate.insideFill !== undefined);
     ctx.requests.push({
       id: `segment:${s.id}:${c.id}`,
       kind: 'segment',
@@ -222,7 +222,7 @@ export function columnTotalText(env: MekkoEnv, domain: MekkoDomain, ci: number, 
   const series = domain.series[0]!;
   const example = domain.mode === 'bar' ? series.vals[ci]!.format ?? series.format : undefined;
   return example ? formatterFromExample(example, env.options.locale?.language)(value)
-    : domain.mode === 'bar' && series.vals[ci]!.isPct ? env.authoredPctFmt(value) : env.totalFmt(value);
+    : (domain.mode === 'bar' || (domain.mode === 'unit' && domain.series.length === 1)) && series.vals[ci]!.isPct ? (domain.mode === 'bar' ? env.authoredPctFmt : env.cellPctFmt)(value) : env.totalFmt(value);
 }
 
 /** The solver's 2 px of air to a rule, plus a hair so the seat is free, not touching. */
@@ -256,7 +256,7 @@ function totalLabel(ctx: LabelCtx, ci: number, visibleCol: boolean, edges: { top
     if (mode === 'bar') {
       if (barV !== null) text = columnTotalText(env, domain, ci, barV);
     } else {
-      text = composeText(env, totalContent, { abs: domain.columnTotals[c.id]!, pct: null }, c.label ?? c.id, '', undefined, env.totalFmt);
+      text = composeText(env, totalContent, { abs: domain.columnTotals[c.id]!, pct: null, absIsPct: mode === 'unit' && domain.series.length === 1 && val0.isPct }, c.label ?? c.id, '', undefined, env.totalFmt);
     }
   }
   // The shared join: a currency sign where the locale writes it ("$10,000", "10.000 $").
@@ -323,24 +323,20 @@ function categoryLabel(ctx: LabelCtx, ci: number, visibleCol: boolean, edges: { 
   const { area } = ctx;
   const { catPlan, dateNumericTicks } = area;
   const c = ctx.domain.cats[ci]!;
-  const named = catPlan.infos[ci]!;
-  // The column's width rides one line under its name, both centred.
-  const width = area.widthTexts?.[ci];
-  const info = width
-    ? {
-      ...named,
-      lines: [...named.lines, width],
-      w: Math.max(named.w, ctx.env.measure(width, catPlan.font).width),
-      h: named.h + area.widthLineH,
-    }
-    : named;
-  const tx = area.catsOnTop && ci === area.xEdge.length - 2 ? headLeft(area, ci, info.w) : width ? catPlan.anchor(ci, info.w) : catPlan.x(ci);
+  if (!visibleCol && ctx.domain.incomplete.has(c.id)) return;
+  const { info, left: tx, width } = nameBlock(ctx, ci);
   const at = (slot: string, y: number, penalty: number): SlotCandidate => ({ slot, rect: { x: tx, y, w: info.w, h: info.h }, penalty });
   const aboveY = edges.top - (area.showTotals ? area.totalH + 4 : 2) - info.h - 2;
   const pack = area.namePack;
   const packed = (slot: string, y: number, penalty: number): SlotCandidate => ({ slot, rect: { x: pack!.left[ci]!, y, w: info.w, h: info.h }, penalty });
+  // Percent: a name that did not fit its column stands on a second tier over the first names and their totals.
+  const upperY = edges.top - (area.showTotals ? area.totalH + 4 : 2) - 2 - (catPlan.rowHeight + area.widthLineH) - UPPER_TIER_GAP - info.h;
+  // A stacked name stands one line and the tier gap higher for each tier under it.
+  const tierUp = Math.max(0, (pack?.row[ci] ?? 0) - 1) * (info.h + UPPER_TIER_GAP);
   const candidates: SlotCandidate[] = area.catsOnTop
-    ? [at('aboveColumn', aboveY, 0), ...(dateNumericTicks ? [] : [at('aboveColumnShifted', aboveY - catPlan.rowHeight, 1)])]
+    ? (pack?.row[ci] ?? 0) >= 1
+      ? [{ ...packed('aboveTier', upperY - tierUp, 0), ...upperLeader(ctx, ci, info.w, edges) }]
+      : [at('aboveColumn', aboveY, 0), ...(dateNumericTicks ? [] : [at('aboveColumnShifted', aboveY - catPlan.rowHeight, 1)])]
     : pack
       ? (pack.row[ci] === 1 ? [{ ...packed('belowShifted', area.catRowY + info.h + 2, 0), ...tierLeader(ctx, ci, info.w, edges) }] : [packed('below', area.catRowY, 0), packed('belowShifted', area.catRowY + info.h + 2, 1)])
       : [
@@ -353,13 +349,60 @@ function categoryLabel(ctx: LabelCtx, ci: number, visibleCol: boolean, edges: { 
     owner: { categoryId: c.id },
     text: c.label ?? c.id,
     lines: info.lines,
-    ...(width || pack ? { align: 'middle' as const } : categoryLineAlign(catPlan, ci)),
+    ...(width || (pack && !area.catsOnTop) || (pack?.row[ci] ?? 0) >= 1 ? { align: 'middle' as const } : categoryLineAlign(catPlan, ci)),
     ...(info.title !== undefined ? { title: info.title } : {}),
     font: catPlan.font,
     priority: PRIORITY.endpoint,
     redundant: !catPlan.keep[ci] || !visibleCol,
     candidates,
   });
+}
+
+/** A name with its width line under it, and the left edge of the block on the first tier. */
+function nameBlock(ctx: LabelCtx, ci: number): { info: MekkoArea['catPlan']['infos'][number]; left: number; width: string | undefined } {
+  const { area } = ctx;
+  const { catPlan } = area;
+  const named = catPlan.infos[ci]!;
+  // The column's width rides one line under its name, both centred.
+  const width = area.widthTexts?.[ci];
+  const info = width
+    ? {
+      ...named,
+      lines: [...named.lines, width],
+      w: Math.max(named.w, ctx.env.measure(width, catPlan.font).width),
+      h: named.h + area.widthLineH,
+    }
+    : named;
+  const left = area.catsOnTop && ci === area.xEdge.length - 2 ? headLeft(area, ci, info.w) : width ? catPlan.anchor(ci, info.w) : catPlan.x(ci);
+  return { info, left, width };
+}
+
+/**
+ * A name on the second tier over a percent mekko hangs from a thin vertical
+ * leader down to the top of its column's total, on a line that no
+ * first-tier name covers; with no such line the name draws without one.
+ */
+function upperLeader(ctx: LabelCtx, ci: number, w: number, edges: { top: number; bot: number }): Pick<SlotCandidate, 'leaderFrom' | 'leaderVertical'> {
+  const { area, domain } = ctx;
+  const pack = area.namePack!;
+  const left = pack.left[ci]!;
+  const lo = Math.max(area.xEdge[ci]! + 1, left + 2);
+  const hi = Math.min(area.xEdge[ci + 1]! - 1, left + w - 2);
+  if (lo > hi) return {};
+  // The names under this one: the first tier, and the upper tiers below its own.
+  const first = domain.cats.flatMap((_, cj) => {
+    if (cj === ci || !area.catPlan.keep[cj] || area.catPlan.infos[cj]!.w === 0) return [];
+    if (pack.row[cj]! >= 1 && pack.row[cj]! < pack.row[ci]!) return [{ left: pack.left[cj]!, right: pack.left[cj]! + pack.width[cj]! }];
+    if (pack.row[cj] !== 0) return [];
+    const block = nameBlock(ctx, cj);
+    return [{ left: block.left, right: block.left + block.info.w }];
+  });
+  const clear = (x: number) => first.every((name) => x < name.left - 3 || x > name.right + 3);
+  const centre = Math.max(lo, Math.min(hi, (area.xEdge[ci]! + area.xEdge[ci + 1]!) / 2));
+  const xs = [centre, ...Array.from({ length: Math.floor(hi - lo) + 1 }, (_, k) => lo + k).sort((a, b) => Math.abs(a - centre) - Math.abs(b - centre))];
+  const x = xs.find(clear);
+  if (x === undefined) return {};
+  return { leaderFrom: { x, y: edges.top - (area.showTotals ? area.totalH + 3 : 1) }, leaderVertical: true };
 }
 
 /**
@@ -425,7 +468,7 @@ export function planMekkoLabels(
     (domain.mode !== 'percent' && env.options.unit && !unitPrinted({ subtitle: resolveSubtitle(env.options.subtitle), unit: env.options.unit, unitShown: env.options.unitShown }) ? env.options.unit : undefined);
   let unitNamed = false;
   domain.cats.forEach((c, ci) => {
-    const visibleCol = colW(area, ci) >= 0.5 && domain.anyByCat[ci]!;
+    const visibleCol = colW(area, ci) >= 0.5 && (domain.anyByCat[ci]! || domain.incomplete.has(c.id));
     const edges = { top: y(Math.max(domain.posTop[ci]!, 0)), bot: Math.max(y0, y(Math.min(0, domain.negBot[ci]!))) };
     const printsTotal = visibleCol && !domain.invalidAt(ci) && !domain.incomplete.has(c.id) && !domain.wholeUnknown.has(c.id);
     if (area.showTotals) totalLabel(ctx, ci, visibleCol, edges, printsTotal && !unitNamed ? totalsUnit : undefined);

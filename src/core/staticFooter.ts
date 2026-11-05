@@ -1,10 +1,11 @@
 /** Static footer layout, linked by static entry points before layout. */
+import { boldMeasurer, hasBold, markBold, splitBoldLines } from './inlineBold';
 import { footnoteMark } from './footnoteMark';
 import { INTERACTIVE_LAYOUT, footerPlans, footerType, staticFrame, wrapFootnote } from './footer';
 import { publishDeferred } from './deferred';
-import { chartNotes, copyNote, engineNoteMeta, keepNoteMeta, printsNote, shownNoteKinds, sourceLine, unprintedNotes, type ChartNote } from './notes';
+import { allQuiet, isQuiet, chartNotes, copyNote, engineNoteMeta, keepNoteMeta, printsNote, shownNoteKinds, sourceLine, unprintedNotes, type ChartNote } from './notes';
 import { fittedNote } from './frame';
-import { panelTypeClass, spaceTokens } from './theme';
+import { emphasisWeight, panelTypeClass, spaceTokens } from './theme';
 import { chartString, localeStrings } from './strings/frame';
 import { CARD_CLASS_WIDTH, heightOmitted } from './sizing';
 import { TEXT_ASCENT } from './svg/renderSvg';
@@ -31,7 +32,7 @@ export function hiddenValueNoteHeight(geo: Geometry<object, object>): number {
   const lines = (geo.frame.noteList ?? []).filter(note => !note.inFrame && note.kind === 'disclosure').reduce((sum, note) => {
     const meta = engineNoteMeta(note);
     if (!meta?.values && !meta?.list) return sum;
-    const wrapped = wrapFootnote(note.short ?? note.text, plan.font, plan.width, plan.measure).length;
+    const wrapped = wrapFootnote(markBold(note.short ?? note.text), plan.font, plan.width, plan.measure).length;
     return sum + (meta.list ? Math.min(2, wrapped) : wrapped);
   }, 0);
   return lines === 0 ? 0 : lines * lineH + plan.tokens.gapFootnoteSource;
@@ -89,7 +90,7 @@ function staticFooterLayout<D, O extends object, M extends object, DV extends ob
     if (current.live || geometry.refused) return geometry;
     const notesOff = (options as { footnotes?: unknown } | undefined)?.footnotes === false;
     const show = shownNoteKinds(options as Parameters<typeof shownNoteKinds>[0]);
-    if (!footerPlans.has(geometry.frame) && geometry.frame.noteList?.some(note => !note.inFrame && printsNote(note, show)
+    if (!footerPlans.has(geometry.frame) && geometry.frame.noteList?.some(note => !note.inFrame && printsNote(note, show) && !isQuiet(note)
       && (!notesOff || note.kind === 'source' || note.kind === 'credit'))) {
       const warning = { code: 'static-footer-plan-missing', severity: 'error' as const,
         message: 'Static output cannot print all enabled notes because its footer plan is missing.' };
@@ -125,6 +126,9 @@ function footerPlan(frame: FrameGeometry) {
   const input = footerPlans.get(frame);
   if (!input) return;
   const tokens = spaceTokens(input.theme, input.size.width);
+  const boldWeight = emphasisWeight(input.theme);
+  const measure = (input.source && hasBold(input.source)) || frame.noteList?.some(note => hasBold(note.text) || !!note.short && hasBold(note.short)) || input.numberedFootnotes?.some(hasBold)
+    ? boldMeasurer(input.measure, boldWeight) : input.measure;
   return { input, tokens: input.cardGaps ? { ...tokens, gapAxisFootnote: 8, gapFootnoteSource: 0 } : tokens,
     source: input.source ? sourceLine(input.source, input.strings?.source ?? localeStrings().source) : undefined,
     notes: frame.noteList ?? [],
@@ -132,7 +136,7 @@ function footerPlan(frame: FrameGeometry) {
       .map((note, i) => ({ note, id: frame.footnoteNodeIds?.[i] })),
     font: { family: input.theme.type.family, ...footerType(input.theme.type.footnote, input.target, input.textScale) },
     // A table's footer keeps its cell air in (footerInset), as the frame draws it.
-    measure: input.measure, x: input.margin.left + (input.footerInset ?? 0),
+    measure, boldWeight, x: input.margin.left + (input.footerInset ?? 0),
     width: input.size.width - input.margin.left - input.margin.right - 2 * (input.footerInset ?? 0), bottom: input.margin.bottom };
 }
 type StaticFooterPlan = NonNullable<ReturnType<typeof footerPlan>>;
@@ -142,7 +146,7 @@ function allNotes(plan: StaticFooterPlan): ChartNote[] {
   const fit = (note: ChartNote): ChartNote => {
     const meta = engineNoteMeta(note);
     if (!meta?.list) return note;
-    const fitted = fittedNote(meta.list, text => wrapFootnote(text, plan.font, plan.width, plan.measure).length <= 2);
+    const fitted = fittedNote(meta.list, text => wrapFootnote(markBold(text), plan.font, plan.width, plan.measure).length <= 2);
     return keepNoteMeta(meta.short ? { ...note, short: fitted } : { ...note, text: fitted }, { ...meta, ...(meta.short ? { short: fitted } : {}) });
   };
   if (!plan.input.numberedFootnotes?.some(text => !plan.notes.some(note => note.text === text))) return plan.notes.map(fit);
@@ -155,7 +159,7 @@ function allNotes(plan: StaticFooterPlan): ChartNote[] {
   });
   return [...authored, ...plan.notes.filter((_, i) => !used.has(i)).map(fit)].map((note, i) => copyNote(note, { n: i + 1 }));
 }
-const enabledNotes = (plan: StaticFooterPlan) => allNotes(plan).filter(note => printsNote(note, plan.input.notes?.show)
+const enabledNotes = (plan: StaticFooterPlan) => allNotes(plan).filter(note => printsNote(note, plan.input.notes?.show) && !isQuiet(note)
   && (!plan.input.footnotesOff || note.inFrame || note.kind === 'source' || note.kind === 'credit'));
 function needsFooter(geometry: Geometry<object, object>, plan: StaticFooterPlan): boolean {
   const source = geometry.scene.find(node => node.id === geometry.frame.sourceNodeId);
@@ -169,16 +173,16 @@ function needsFooter(geometry: Geometry<object, object>, plan: StaticFooterPlan)
  * button's width free after its source line or its last line, else an empty row under it, so the image and
  * the live chart break their lines the same and stand equally tall. The width, gap included.
  */
-function notesButtonWidth(geometry: Geometry<object, object>, plan: StaticFooterPlan): number | undefined {
+function notesButtonWidth(geometry: Geometry<object, object>, plan: StaticFooterPlan): { width: number; quiet: boolean } | undefined {
   // A table (footerInset) draws in React as an HTML table with its own footer (TableChart), never this one.
   if (geometry.frame.notePlacement !== 'info' || plan.input.footnotesOff || plan.input.notes?.pointer === false || plan.input.footerInset !== undefined) return undefined;
   const printed = new Set(enabledNotes(plan).map(note => note.n));
   // As ChartFooter lists them (chartNotes): the notes list, then the compact notes.
-  const count = unprintedNotes([...allNotes(plan).map(note => copyNote(note, { inFrame: printed.has(note.n) })),
-    ...(geometry.a11y?.compactNotes ?? []).map((text): ChartNote => ({ n: 0, kind: 'note', text, inFrame: false }))]).length;
-  if (!count) return undefined;
-  // ChartFooter sets the button 0.75em after the line.
-  return plan.font.size * 0.75 + plan.measure(`${chartString(plan.input, 'notesAndSources')} (${count})`, plan.font).width;
+  const hidden = unprintedNotes([...allNotes(plan).map(note => copyNote(note, { inFrame: printed.has(note.n) })),
+    ...(geometry.a11y?.compactNotes ?? []).map((text): ChartNote => ({ n: 0, kind: 'note', text, inFrame: false }))]);
+  if (!hidden.length) return undefined;
+  // ChartFooter sets the button 0.75em after the line. Quiet: only quiet method notes sit behind it, so it never takes a row of its own.
+  return { width: plan.font.size * 0.75 + plan.measure(`${chartString(plan.input, 'notesAndSources')} (${hidden.length})`, plan.font).width, quiet: allQuiet(hidden) };
 }
 const buttonFits = (lines: readonly string[], button: number, plan: StaticFooterPlan) =>
   lines.length > 0 && plan.measure(lines[lines.length - 1]!, plan.font).width + button <= plan.width;
@@ -237,15 +241,22 @@ function withStaticFooter<G extends Geometry<object, object>>(geometry: G, minim
     }) } };
   };
   const collected = collectPanels(geometry);
-  const button = notesButtonWidth(geometry, plan);
+  const buttonAsk = notesButtonWidth(geometry, plan);
+  const button = buttonAsk?.width;
+  const quiet = buttonAsk?.quiet === true;
   if (!groups.length && !needsFooter(geometry, plan) && minimumHeight <= geometry.size.height) {
     if (button === undefined) return geometry;
     // The frame's own footer stays: the button goes after its source line, else after its last line, else in a row under it.
     const drawn = geometry.scene.filter((node): node is Extract<SceneNode, { t: 'text' }> => node.t === 'text' && footerIds(geometry.frame).includes(node.id))
       .sort((a, b) => a.y - b.y);
     const last = drawn.at(-1);
-    const host = [drawn.find(node => node.id === geometry.frame.sourceNodeId), last].find(node => node && buttonFits(node.lines, button, plan));
+    const host = [drawn.find(node => node.id === geometry.frame.sourceNodeId), last].find(node => {
+      if (!node) return false;
+      const lines = node.lineRuns?.map(runs => runs.map(run => run.weight === plan.boldWeight ? `\uE000${run.text}\uE001` : run.text).join('')) ?? node.lines;
+      return buttonFits(lines, button, plan);
+    });
     if (host) return { ...geometry, frame: { ...geometry.frame, notesButton: { nodeId: host.id } } };
+    if (quiet) return geometry;
     if (last) return withNotesRow(geometry, last.y + last.font.size * (last.font.lineHeight ?? 1.3) * last.lines.length, button, plan);
   }
   const notes = enabledNotes(plan);
@@ -261,7 +272,11 @@ function withStaticFooter<G extends Geometry<object, object>>(geometry: G, minim
       text: note.kind === 'source' ? group.plan.source! : note.kind === 'credit' ? `${chartString(group.plan.input, 'mapCredit')}: ${note.text}`
         : `${note.ref ? `${footnoteMark(note.ref)} ` : ''}${note.kind === 'disclosure' ? note.short ?? note.text : note.text}`,
     })),
-  ]).map(part => ({ ...part, lines: wrapFootnote(part.text, plan.font, plan.width, plan.measure) }));
+  ]).map(part => {
+    const text = part.kind === 'credit' ? part.text : markBold(part.text);
+    const measure = text === part.text ? plan.measure : boldMeasurer(plan.input.measure, plan.boldWeight);
+    return { ...part, lines: wrapFootnote(text, plan.font, plan.width, measure) };
+  });
   const lineH = plan.font.size * (plan.font.lineHeight ?? 1.3);
   const nodes: SceneNode[] = [];
   const moved = new Map<string, string>();
@@ -273,7 +288,7 @@ function withStaticFooter<G extends Geometry<object, object>>(geometry: G, minim
   const lastAt = parts.reduce((at, part, i) => part.panel ? at : i, -1);
   const hostAt = button === undefined ? -1 : [sourceAt, lastAt].find(at => at >= 0 && buttonFits(parts[at]!.lines, button, plan)) ?? -1;
   const inline = hostAt >= 0;
-  const row = button !== undefined && !inline;
+  const row = button !== undefined && !inline && !quiet;
   let hostId: string | undefined;
   let y = row ? -lineH : 0;
   for (let i = parts.length - 1; i >= 0; i--) {
@@ -282,7 +297,7 @@ function withStaticFooter<G extends Geometry<object, object>>(geometry: G, minim
     const id = `static-footer:${part.kind}:${nodes.length}`;
     if (i === hostAt && inline) hostId = id;
     if (part.oldId) moved.set(`${part.panel ? `${part.panel}/` : ''}${part.oldId}`, id);
-    nodes.push({ t: 'text', id, x: plan.x, y, lines: part.lines, align: 'start', font: plan.font,
+    nodes.push({ t: 'text', id, x: plan.x, y, ...splitBoldLines(part.lines, plan.boldWeight, plan.font.weight), align: 'start', font: plan.font,
       ink: { token: part.kind === 'footnote' ? plan.input.footnoteInk ?? 'inkMuted' : 'inkMuted' }, owner: {}, part: part.kind, typeRole: 'footnote',
       ...(part.panel ? { origin: { owner: {}, panels: part.panel.split('/') } } : {}) });
     if (part.kind === 'source' && !part.panel) frame.sourceNodeId = id;
@@ -295,7 +310,8 @@ function withStaticFooter<G extends Geometry<object, object>>(geometry: G, minim
   // extension belongs to footerRect, so the plot-share denominator stays intact.
   const occupied = geometry.debug.occupied.filter(item => !oldRects.some(rect => item.kind === 'frame' && item.rect.x === rect.x
     && item.rect.y >= rect.y - 1e-6 && item.rect.y + item.rect.h <= rect.y + rect.h + 1e-6));
-  const last = geometry.story?.staticPanel;
+  // The panel with its button row in React, without it in static output: the notes start below what is drawn.
+  const last = geometry.story?.panel;
   let bottom = occupied.reduce((edge, { rect }) => Math.max(edge, rect.y + rect.h),
     Math.max(geometry.plot.y + geometry.plot.h, last ? last.y + last.h : 0));
   // Axis claims can predate text rotation. Measure those line boxes about the

@@ -95,6 +95,7 @@ export function layoutPvm(
     interaction: _interaction,
     volumeMix: _volumeMix,
     methodNote: _methodNote,
+    netChange,
     ...pass
   } = options;
 
@@ -177,6 +178,10 @@ export function layoutPvm(
   const hostOptions: WaterfallOptions = withAuthoredFootnotes({
     ...(keepShownNotes(options, pass) as WaterfallOptions),
     ...(options.palette === undefined ? { bridgeDefault: 'sign' } : {}),
+    ...(netChange !== false ? { closingChange: { delta: derived.delta, base: derived.priorRevenue } } : {}),
+    ...(options.valueAxis?.break === undefined && baseSwampsSteps(derived)
+      ? { valueAxis: { ...options.valueAxis, break: 'auto' as const } }
+      : {}),
   }, footnotes, (options as InternalFootnoteOptions).authoredFootnotes ?? options.footnotes);
 
   const geometry = layoutWaterfall(bridge, hostOptions);
@@ -185,10 +190,35 @@ export function layoutPvm(
 
   return {
     ...geometry,
+    // The net change label prints the claim `pvm:delta`.
+    labels: geometry.labels.map((label) => (label.id.startsWith('net:') ? { ...label, claimId: 'pvm:delta' } : label)),
     type: 'pvm',
     derived,
     warnings: [...warnings, ...geometry.warnings],
   };
+}
+
+/**
+ * True when a whole axis would spend the plot on the two totals: the smaller
+ * total is over 10 times the largest step, or the running levels span under
+ * a fifth of the larger total. An absent `valueAxis.break` then resolves to
+ * 'auto', which the host still draws only where a break is safe.
+ */
+function baseSwampsSteps(derived: PvmDerived): boolean {
+  const totalLo = Math.min(derived.priorRevenue, derived.currentRevenue);
+  const totalHi = Math.max(derived.priorRevenue, derived.currentRevenue);
+  let level = derived.priorRevenue;
+  let runLo = level;
+  let runHi = level;
+  let maxStep = 0;
+  for (const effect of derived.effects) {
+    level += effect.value;
+    runLo = Math.min(runLo, level);
+    runHi = Math.max(runHi, level);
+    maxStep = Math.max(maxStep, Math.abs(effect.value));
+  }
+  if (!(totalLo > 0) || !(maxStep > 0)) return false;
+  return totalLo > 10 * maxStep || runHi - runLo < 0.2 * totalHi;
 }
 
 /**

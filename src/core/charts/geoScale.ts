@@ -12,13 +12,13 @@ import { structureCount } from '../structureCounts';
  */
 
 import type { LegendItemInput } from '../frame';
-import { NAMED_COLUMN_STATES, type NamedColumnState } from '../schema/namedColumns';
+import { NAMED_COLUMN_STATES, NAMED_STATE_PATTERN, type NamedColumnState } from '../schema/namedColumns';
 import { colorblindPaint, semanticPalettePaint } from '../theme';
 import type { Direction } from '../types/cell';
 import type { LintWarning, Paint } from '../types/scene';
 import type { Theme } from '../types/theme';
 import { intervalText } from '../format';
-import { exampleSpec, formatWithSpec, MAGNITUDE_DIVISOR, parseFormatExample } from '../formatSpec';
+import { exampleSpec, formatWithSpec, MAGNITUDE_DIVISOR, parseFormatExample, roundedNumber } from '../formatSpec';
 import { autoDecimals, MAX_FORMAT_DECIMALS } from '../formatPrecision';
 import { NormalizeError } from '../normalize/shared';
 import { claimedRegionIds, resolveGeoRegionId, type GeoRegionIdIndex } from '../geo/resolveRegionId';
@@ -56,9 +56,17 @@ export interface ScaleModel {
   explicitSteps?: boolean;
   /** Prints a class edge on the key: round breaks drop the decimals they do not need. */
   edgeFmt: (value: number) => string;
+  /** True when edgeFmt prints `value` without rounding it, in the format's own magnitude unit. */
+  edgeExact: (value: number) => boolean;
   /** The key prints the equal-interval edges with more decimals than the format; its ends need them too. */
   liftedDecimals?: boolean;
 }
+
+/**
+ * An unnamed colour key stands in a column beside the map or tiles, instead of a
+ * row above them, when the map comes out at least this much larger that way.
+ */
+export const KEY_BESIDE_GAIN = 1.1;
 
 /**
  * The notes a geo scale owes the author: an undeclared diverging polarity,
@@ -131,6 +139,9 @@ function printedEdge(value: number, format: string | undefined, decimals?: numbe
     return Math.round(value * 10 ** decimals) / 10 ** decimals;
   }
   const spec = parseFormatExample(format);
+  if (spec.exponent) return roundedNumber(value, { ...spec, decimals: decimals ?? spec.decimals });
+  // Explicit thresholds use the figure count rather than its fallback decimal count.
+  if (spec.significantDigits !== undefined && decimals === undefined) return roundedNumber(value, spec);
   const unit = MAGNITUDE_DIVISOR[spec.magnitude];
   const places = decimals ?? spec.decimals;
   // Integer times unit, then one division: dividing first leaves 8300000.000000001 for $8.3M.
@@ -190,6 +201,50 @@ function niceClassBreaks(values: readonly number[], classes: number, anchor: num
   return best?.breaks;
 }
 
+/**
+ * Interior breaks of an odd class count on a diverging scale, mirrored
+ * around the midpoint, so the centre class straddles it and takes the
+ * midpoint grey: '-10 to under -5', '-5 to under 5', '5 to under 10'. Each
+ * side steps outward on a round step (as niceClassBreaks); the centre class
+ * reaches half a step or one step each way. Per step, the candidate with no
+ * value on a break wins first (a value on +5 opens the class above, one on -5
+ * the centre class, so mirrored values would split), then the one with the
+ * smallest largest class. The coarsest step that keeps every class at or
+ * under MAX_CLASS_SHARE wins; when none does, the best candidate seen.
+ * Undefined when no round step at or above `unit` fits inside the span.
+ */
+function symmetricClassBreaks(values: readonly number[], classes: number, midpoint: number, unit: number): number[] | undefined {
+  const span = Math.max(midpoint - minOf(values), maxOf(values) - midpoint);
+  if (!(span > 0) || values.length === 0) return undefined;
+  const perSide = (classes - 1) / 2;
+  const onGrid = (x: number) => x >= unit * (1 - 1e-9) && Math.abs(x / unit - Math.round(x / unit)) < 1e-6;
+  const round = (x: number) => Number(x.toPrecision(12));
+  let best: { breaks: number[]; ties: number; share: number } | undefined;
+  for (let power = Math.ceil(Math.log10(span)); power >= Math.floor(Math.log10(span / (classes * 4))) - 1; power--) {
+    for (const mantissa of [5, 2.5, 2, 1]) {
+      const step = round(mantissa * 10 ** power);
+      if (!onGrid(step) || step < span / (classes * 4)) continue;
+      let candidate: typeof best;
+      for (const half of perSide === 1 ? [step] : [step / 2, step]) {
+        const offsets = Array.from({ length: perSide }, (_, j) => round(half + j * step));
+        if (!onGrid(half) || offsets[perSide - 1]! >= span) continue;
+        const breaks = [...offsets.map((offset) => round(midpoint - offset)).reverse(), ...offsets.map((offset) => round(midpoint + offset))];
+        // Rounding near a large midpoint can merge breaks; every class must keep a width.
+        if (!breaks.every((edge, i) => edge > (i === 0 ? midpoint - span : breaks[i - 1]!)) || !(breaks[breaks.length - 1]! < midpoint + span)) continue;
+        const counts = new Array<number>(classes).fill(0);
+        for (const value of values) counts[breaks.filter((edge) => value >= edge).length]! += 1;
+        const ties = values.filter((value) => breaks.includes(value)).length;
+        const share = maxOf(counts) / values.length;
+        if (!candidate || ties < candidate.ties || (ties === candidate.ties && share < candidate.share - 1e-9)) candidate = { breaks, ties, share };
+      }
+      if (!candidate) continue;
+      if (candidate.share <= MAX_CLASS_SHARE) return candidate.breaks;
+      if (!best || candidate.share < best.share - 1e-9) best = candidate;
+    }
+  }
+  return best?.breaks;
+}
+
 export function buildGeoScale(
   values: number[],
   options: GeoScaleOptions & { format?: string },
@@ -207,7 +262,7 @@ export function buildGeoScale(
   }
   const roundingStep = (value: number) => {
     if (options.format === undefined) return 10 ** -autoDecimals(value);
-    const spec = exampleSpec(options.format, options.locale?.language);
+    const spec = exampleSpec(options.format, options.locale?.language, undefined, values);
     return MAGNITUDE_DIVISOR[spec.magnitude] / 10 ** spec.decimals;
   };
   if (options.steps?.some((step) => Math.abs(printedEdge(step, options.format) - step) > roundingStep(step) * 1e-9)) {
@@ -280,12 +335,20 @@ export function buildGeoScale(
     // Class center via the sampling expression min + (index + 0.5) / classCount
     // of the span — (lo+hi)/2 is the same number in exact arithmetic but one ULP
     // off in floats, and unsigned classed ramps must stay byte-identical.
+    // Mirrored edges span the midpoint's reach both ways; a short side keeps its full strength.
+    if (symmetric) return continuousPaint((lo + hi) / 2);
     return continuousPaint((options.steps || nice) && kind === 'diverging' ? Math.max(min!, Math.min(max!, (lo + hi) / 2)) : min! + ((index + 0.5) / classCount!) * (max! - min!));
   };
+  // An odd class count on a diverging scale mirrors its breaks around the
+  // midpoint when values sit on both sides, so one class holds the midpoint.
+  const symmetric = !options.steps && kind === 'diverging' && classCount !== undefined && classCount % 2 === 1 &&
+    values.length > 0 && minOf(values) < declaredMidpoint! && maxOf(values) > declaredMidpoint!
+    ? symmetricClassBreaks(values, classCount, declaredMidpoint!, roundingStep(max! - min!))
+    : undefined;
   // Default class breaks sit on a round step and keep each class under
   // about 40 % of the regions where a round step can; equal intervals of the
   // range stay the fallback when no round step suits the format's precision.
-  const nice = !options.steps && classCount && min !== null && max !== null && max !== min
+  const nice = !options.steps && !symmetric && classCount && min !== null && max !== null && max !== min
     ? niceClassBreaks(values, classCount, declaredMidpoint ?? 0, roundingStep(max - min))
     : undefined;
   // Equal intervals fall back to edges rounded to the format's decimals. A format
@@ -305,37 +368,61 @@ export function buildGeoScale(
       }
     }
   };
+  const reach = declaredMidpoint === null || min === null || max === null ? 0 : Math.max(declaredMidpoint - min, max - declaredMidpoint);
   const edges = options.steps
     ? [Math.min(min ?? options.steps[0], options.steps[0]), ...options.steps, Math.max(max ?? options.steps[3], options.steps[3])]
+    : symmetric
+    ? [declaredMidpoint! - reach, ...symmetric, declaredMidpoint! + reach]
     : nice
     ? [min!, ...nice, max!]
     : equalEdges();
+  // Engine breaks that land on the midpoint (an even class count) leave no
+  // class for it: a value exactly there takes the midpoint grey and its own
+  // key entry. Explicit steps paint as declared.
+  const midpointBreak = !options.steps && kind === 'diverging' && edges !== undefined && min !== null && max !== null &&
+    edges.slice(1, -1).some((edge) => Math.abs(edge - declaredMidpoint!) <= (max - min) * 1e-9);
   const paint = (value: number | null): Paint => {
+    if (midpointBreak && value === declaredMidpoint) return MIDPOINT_PAINT;
     if (value === null || !edges) return continuousPaint(value);
     // The class whose printed lower edge the value reaches; the top class holds the maximum.
     const index = Math.max(0, edges.slice(1, -1).filter((edge) => value >= edge).length);
     return classPaint(index);
   };
-  const spec = options.format === undefined ? undefined : exampleSpec(options.format, options.locale?.language);
+  const spec = options.format === undefined ? undefined : exampleSpec(options.format, options.locale?.language, undefined, values);
   const keyFmt = keyDecimals === undefined ? fmt : (value: number) => formatWithSpec(value, { ...spec!, decimals: keyDecimals! });
-  const legend = geoScaleLegend({ min, max, kind, declaredMidpoint, edges, hasNoDataRegion, polarity }, options, keyFmt, classPaint, continuousPaint);
+  const legend = geoScaleLegend({
+    min, max, kind, declaredMidpoint, edges, hasNoDataRegion, polarity,
+    openEnds: Boolean(options.steps || symmetric),
+    midpointEntry: midpointBreak && values.includes(declaredMidpoint!),
+  }, options, keyFmt, classPaint, continuousPaint);
   // A round break prints round: '20' under a '1.1' format, not '20.0'.
-  const edgeFmt = nice && options.format !== undefined
+  const roundBreaks = symmetric ?? nice;
+  const { edgeFmt, edgeExact } = roundBreaks && options.format !== undefined
     ? (() => {
-        const spec = exampleSpec(options.format, options.locale?.language);
-        const decimals = Math.min(spec.decimals, Math.max(0, maxOf(nice.map((edge) => decimalsOf(edge / MAGNITUDE_DIVISOR[spec.magnitude])))));
-        return (value: number) => formatWithSpec(value, { ...spec, decimals });
+        const spec = exampleSpec(options.format, options.locale?.language, undefined, values);
+        const unit = MAGNITUDE_DIVISOR[spec.magnitude];
+        const decimals = Math.min(spec.decimals, Math.max(0, maxOf(roundBreaks.map((edge) => decimalsOf(edge / unit)))));
+        return {
+          edgeFmt: (value: number) => formatWithSpec(value, { ...spec, decimals }),
+          edgeExact: (value: number) => decimalsOf(value / unit) <= decimals,
+        };
       })()
-    : keyFmt;
-  return { min, max, midpoint: declaredMidpoint, polarity, paint, legend, edgeFmt, ...(keyDecimals !== undefined ? { liftedDecimals: true } : {}), ...(edges ? { edges } : {}), ...(options.steps ? { explicitSteps: true } : {}) };
+    : { edgeFmt: keyFmt, edgeExact: () => true };
+  return { min, max, midpoint: declaredMidpoint, polarity, paint, legend, edgeFmt, edgeExact, ...(keyDecimals !== undefined ? { liftedDecimals: true } : {}), ...(edges ? { edges } : {}), ...(options.steps ? { explicitSteps: true } : {}) };
 }
 
 function geoScaleLegend(
-  domain: { min: number | null; max: number | null; kind: 'sequential' | 'diverging'; declaredMidpoint: number | null; edges?: number[]; hasNoDataRegion: boolean; polarity: Direction | null },
+  domain: {
+    min: number | null; max: number | null; kind: 'sequential' | 'diverging'; declaredMidpoint: number | null; edges?: number[]; hasNoDataRegion: boolean; polarity: Direction | null;
+    /** The end classes print open: 'Under -10', '10 and above'. */
+    openEnds: boolean;
+    /** A value sits exactly on a midpoint break: it gets its own grey entry, and the class above starts 'Over'. */
+    midpointEntry: boolean;
+  },
   options: GeoScaleOptions, fmt: (value: number) => string,
   classPaint: (index: number) => Paint, continuousPaint: (value: number | null) => Paint,
 ): LegendItemInput[] {
-  const { min, max, kind, declaredMidpoint, edges, hasNoDataRegion, polarity } = domain;
+  const { min, max, kind, declaredMidpoint, edges, hasNoDataRegion, polarity, openEnds, midpointEntry } = domain;
   const midpointLabel = options.scale?.kind === 'diverging' ? options.scale.midpointLabel : undefined;
   const legend: LegendItemInput[] = [];
   if (min !== null && max !== null) {
@@ -344,12 +431,24 @@ function geoScaleLegend(
       for (let index = 0; index <= last; index++) {
         const lo = edges[index]!;
         const hi = edges[index + 1]!;
+        const afterMidpoint = midpointEntry && index > 0 && Math.abs(lo - declaredMidpoint!) <= (max - min) * 1e-9;
+        if (afterMidpoint) {
+          legend.push({
+            id: 'midpoint',
+            label: `${fmt(declaredMidpoint!)}${midpointLabel ? ` ${midpointLabel}` : ''}`,
+            paint: MIDPOINT_PAINT,
+          });
+        }
         legend.push({
           id: `class-${index + 1}`,
           // A class holds its lower edge and stops short of its upper one,
           // except the last, which includes the maximum: '-12 to under -7',
           // ..., '7 to 12 inclusive', so a value on an edge has one class.
-          label: `${options.steps && index === 0 ? chartString(options, 'underValue', { v1: fmt(hi) }) : options.steps && index === last ? chartString(options, 'valueAndAbove', { v1: fmt(lo) }) : intervalText(fmt(lo), fmt(hi), options.steps ? false : index === last, options)}${midpointLabel && declaredMidpoint !== null && declaredMidpoint >= lo && (declaredMidpoint < hi || index === last) ? ` (${fmt(declaredMidpoint)} ${midpointLabel})` : ''}${poleWord(polarity, index, last, options)}`,
+          // A class above a midpoint entry starts past it: 'Over 0 to under 5'.
+          label: `${openEnds && index === 0 ? chartString(options, 'underValue', { v1: fmt(hi) })
+            : openEnds && index === last ? chartString(options, 'valueAndAbove', { v1: fmt(lo) })
+            : afterMidpoint ? chartString(options, index === last ? 'overToInclusive' : 'overToUnder', { v1: fmt(lo), v2: fmt(hi) })
+            : intervalText(fmt(lo), fmt(hi), options.steps ? false : index === last, options)}${!afterMidpoint && midpointLabel && declaredMidpoint !== null && declaredMidpoint >= lo && (declaredMidpoint < hi || index === last) ? ` (${fmt(declaredMidpoint)} ${midpointLabel})` : ''}${poleWord(polarity, index, last, options)}`,
           paint: classPaint(index),
         });
       }
@@ -380,6 +479,16 @@ function geoScaleLegend(
   return legend;
 }
 
+/**
+ * The land of the regions or tiles the data never names, shared by choropleth
+ * and tilemap and by their key swatch: a quiet-land recipe kept apart from
+ * every scale paint of the key, decided again in each theme the scene is painted in.
+ */
+export function quietLandPaint(legend: readonly LegendItemInput[]): Paint {
+  const apartFrom = legend.flatMap((item) => /^(class-|range-|midpoint$)/.test(item.id) && item.paint ? [item.paint] : []);
+  return { token: 'neutralLight', theme: { kind: 'quiet-land', apartFrom } };
+}
+
 /** A region name, tile code or value prints in the label type. */
 export function geoLabelFont(theme: Theme): FontSpec {
   return { family: theme.type.family, ...theme.type.label };
@@ -396,11 +505,13 @@ export function ingestGeoRegions(
   idIndex: GeoRegionIdIndex,
   pack: { where: string; regionWord: string },
   warnings: LintWarning[],
-  unknown: (id: string, index: number) => never,
-): { valuesById: Map<string, number | null>; statesById: Map<string, NamedColumnState> } {
+  unknown: (id: string, index: number) => LintWarning,
+): { valuesById: Map<string, number | null>; statesById: Map<string, NamedColumnState>; leftOut: string[] } {
   const valuesById = new Map<string, number | null>();
   const statesById = new Map<string, NamedColumnState>();
   const claimedBy = new Map<string, string>();
+  const leftOut: string[] = [];
+  let firstUnknown: { warning: LintWarning; index: number; id: string } | undefined;
   regions.forEach((datum, index) => {
     const resolution = resolveGeoRegionId(idIndex, datum.id);
     const claims = claimedRegionIds(resolution);
@@ -429,20 +540,27 @@ export function ingestGeoRegions(
       });
       return;
     }
-    if (resolution.kind === 'unknown') return unknown(datum.id, index);
+    if (resolution.kind === 'unknown') {
+      const warning = unknown(datum.id, index);
+      firstUnknown ??= { warning, index, id: datum.id };
+      warnings.push(warning);
+      leftOut.push(datum.id);
+      return;
+    }
     const state = normalizeGeoRegionState(datum.value, datum.state, index);
     if (state) statesById.set(resolution.id, state);
     valuesById.set(resolution.id, datum.value);
   });
-  return { valuesById, statesById };
+  // Nothing would draw: the refusal says so, as the warning's "left out" would read as a partial map.
+  if (leftOut.length === regions.length && firstUnknown) {
+    const { warning, index, id } = firstUnknown;
+    const message = regions.length === 1 ? `region '${id}' is not in ${pack.where}`
+      : `none of the ${regions.length} listed regions is in ${pack.where}, starting with '${id}'`;
+    throw new NormalizeError(warning.code, `regions[${index}].id`, message, warning.suggest, undefined, ['data', 'regions', index, 'id']);
+  }
+  return { valuesById, statesById, leftOut };
 }
 
-/** Named map states share one pattern, key and description model. */
-const GEO_STATES = {
-  suppressed: { label: 'Suppressed', reading: 'suppressed', pattern: 'crosshatch' },
-  nm: { label: 'Not meaningful', reading: 'not meaningful', pattern: 'horizontal' },
-  na: { label: 'Not applicable', reading: 'not applicable', pattern: 'vertical' },
-} as const;
 function normalizeGeoRegionState(value: number | null, state: unknown, index: number): NamedColumnState | undefined {
   if (state === undefined) return undefined;
   if (!(NAMED_COLUMN_STATES as readonly unknown[]).includes(state)) {
@@ -451,7 +569,7 @@ function normalizeGeoRegionState(value: number | null, state: unknown, index: nu
   if (value !== null) throw new NormalizeError('state-with-value', `regions[${index}].state`, 'a region state requires value null');
   return state as NamedColumnState;
 }
-export const geoStatePattern = (state: NamedColumnState) => GEO_STATES[state].pattern;
+export const geoStatePattern = (state: NamedColumnState) => NAMED_STATE_PATTERN[state];
 export const geoStateLabel = (state: NamedColumnState, options?: Pick<import('../types/options').BaseOptions, 'locale' | 'strings'>) => chartString(options, { suppressed: 'suppressed', nm: 'notMeaningful', na: 'notApplicableName' }[state] as 'suppressed' | 'notMeaningful' | 'notApplicableName');
 export function geoStateLegend(states: Iterable<NamedColumnState>, options?: Pick<import('../types/options').BaseOptions, 'locale' | 'strings'>): LegendItemInput[] {
   const present = new Set(states);

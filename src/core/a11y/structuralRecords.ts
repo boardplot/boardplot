@@ -1,8 +1,10 @@
 import { chartString } from '../strings/a11y-structuralRecords';
+import { chartString as ganttString } from '../strings/gantt';
 import type { DimSwitchDerived } from '../charts/dimswitch/types';
 import type { GridDerived } from '../charts/grid/layout';
 import type { MetricStackData } from '../charts/grid/metricStack';
 import { wholeCurrencyValue } from '../format';
+import { LABEL_ONLY_ROW, type LabelOnlyRowSource } from '../formatSpec';
 import { calcPreservesScale, columnOwnsFormat } from '../tableCalc';
 import type { BarTableData, BarTableDerived, BarTableMarks, BarTableOptions } from '../charts/bartable/types';
 import type { GanttMarks } from '../charts/gantt/layout';
@@ -83,10 +85,10 @@ function suppressedTableCells(data: TableData): Set<string> {
 }
 
 /** Each authored row's own format, calc and cells, by id, nested rows included. */
-function authoredRowSpecs(data: TableData): Map<string, { format?: string; calc?: unknown; cells?: TableRow['cells'] }> {
-  const specs = new Map<string, { format?: string; calc?: unknown; cells?: TableRow['cells'] }>();
+function authoredRowSpecs(data: TableData): Map<string, { format?: string; calc?: unknown; cells?: TableRow['cells']; labelOnly?: true }> {
+  const specs = new Map<string, { format?: string; calc?: unknown; cells?: TableRow['cells']; labelOnly?: true }>();
   const visit = (row: TableRow): void => {
-    specs.set(row.id, { ...(row.format === undefined ? {} : { format: row.format }), ...(row.calc === undefined ? {} : { calc: row.calc }), cells: row.cells });
+    specs.set(row.id, { ...(row.format === undefined ? {} : { format: row.format }), ...(row.calc === undefined ? {} : { calc: row.calc }), ...((row as LabelOnlyRowSource)[LABEL_ONLY_ROW] ? { labelOnly: true as const } : {}), cells: row.cells });
     row.children?.forEach(visit);
   };
   data.rows.forEach(visit);
@@ -97,7 +99,7 @@ function tableRecordCells(table: TableDerived['table'], data: TableData, options
   const withheld = suppressedTableCells(data);
   const rowSpecs = authoredRowSpecs(data);
   const authoredFormat = new Set(data.columns.filter(columnOwnsFormat).map((column) => column.id));
-  return table.rows.flatMap(row => table.columns.flatMap(column => {
+  return table.rows.flatMap(row => rowSpecs.get(row.id)?.labelOnly ? [] : table.columns.flatMap(column => {
     const resolved = row.cells[column.id];
     // The resolved cell already prints the theme's glyph; a record
     // keeps it, so records, hover and CSV say what the table shows.
@@ -165,9 +167,10 @@ function statusRecords(ctx: RecordContext): InteractionRecord[] {
     const state = options.states.find(item => item.id === mark.state);
     const row = data.rows.find(item => item.id === mark.row);
     const col = data.columns.find(item => item.id === mark.col);
+    const colName = options.columnOverrides?.[mark.col]?.label ?? col?.label ?? mark.col;
     return makeRecord(ctx, { seriesId: mark.row, categoryId: mark.col },
       textValue(mark.sourceState ?? (mark.missing ? null : mark.state)), {
-        label: `${row?.label ?? mark.row} / ${col?.label ?? mark.col}`,
+        label: `${row?.label ?? mark.row} / ${colName}`,
         fields: state ? [{ key: 'stateLabel', label: chartString(ctx.request.options, 'state'), value: textValue(state.label) }] : [],
         nodeIds: [mark.nodeId], anchor: mark.rect,
       });
@@ -189,12 +192,13 @@ function bartableRecords(ctx: RecordContext): InteractionRecord[] {
   const data = ctx.request.data as BarTableData;
   const marks = ctx.geometry.marks as unknown as BarTableMarks;
   const options = ctx.request.options as BarTableOptions;
+  const overrides = options.columnOverrides;
   const tracks: { id: string; name: string; unit?: string; format?: string; computed?: true }[] = [
-    ...(data.columns ?? []).map(column => ({ id: column.id, name: column.label ?? column.id, format: column.format })),
+    ...(data.columns ?? []).map(column => ({ id: column.id, name: overrides?.[column.id]?.label ?? column.label ?? column.id, format: column.format })),
     ...data.panels.flatMap(panel => [
-      { id: panel.id, name: panel.label ?? panel.id, unit: panel.unit, format: panel.format ?? options.format },
+      { id: panel.id, name: overrides?.[panel.id]?.label ?? panel.label ?? panel.id, unit: panel.unit, format: panel.format ?? options.format },
       // Under cascade: the computed share column of each panel.
-      ...(options.variant === 'cascade' ? [{ id: `share:${panel.id}`, name: `${panel.label ?? panel.id} share`, unit: '%', computed: true as const }] : []),
+      ...(options.variant === 'cascade' ? [{ id: `share:${panel.id}`, name: `${overrides?.[panel.id]?.label ?? panel.label ?? panel.id} share`, unit: '%', computed: true as const }] : []),
     ]),
     ...(options.variant === 'cascade' && options.cascade?.growth
       ? [{ id: 'growth', name: options.cascade.growth.label ?? (options.cascade.growth.measure === 'cagr' ? 'CAGR' : 'Share change'), unit: options.cascade.growth.measure === 'cagr' ? '%' : 'pp', computed: true as const }]
@@ -244,8 +248,11 @@ function ganttItemRecord(ctx: RecordContext, rowId: string, rowLabel: string, it
   const start: InteractionValue = mark ? textValue(mark.start, 'date') : item.anchor
     ? { kind: 'date', raw: null, state: 'unavailable', reason: chartString(ctx.request.options, 'anchoredDateUnavailable') }
     : textValue(item.start, 'date');
-  return makeRecord(ctx, { categoryId: rowId, segmentId: item.id }, textValue(item.label ?? item.kind), {
-    label: `${rowLabel} / ${item.label ?? item.id}`,
+  // An unnamed item reads as the row and what the mark is, in the key's words ("Overall span"), never its id or kind code.
+  const what = item.label ?? item.colorLabel ?? ganttString(ctx.request.options,
+    item.kind === 'bracket' ? 'overallSpan' : item.kind === 'milestone' ? 'milestone' : 'task');
+  return makeRecord(ctx, { categoryId: rowId, segmentId: item.id }, textValue(what), {
+    label: item.label ? `${rowLabel} / ${item.label}` : rowLabel,
     fields: [{ key: 'start', label: chartString(ctx.request.options, 'start'), value: start },
       ...(mark || item.end ? [{ key: 'end', label: chartString(ctx.request.options, 'end'), value: textValue(mark?.end ?? item.end, 'date') }] : [])],
     ...(mark ? { nodeIds: [mark.nodeId], anchor: mark.rect } : {}),
@@ -287,7 +294,7 @@ function diagramRecords(ctx: RecordContext): InteractionRecord[] {
     return makeRecord(ctx, { pointId: mark.id }, textValue(node.label), {
       label: node.label, nodeIds: mark.sceneNodeIds, anchor: mark.rect,
       fields: fields.map(({ key, label, value }) => ({ key, label, value })),
-      cardFields: fields.filter(field => unprinted(field.labelId)).map(field => field.key),
+      cardFields: fields.filter(field => !(field.key === 'secondaryLabel' && mark.secondaryPrinted) && unprinted(field.labelId)).map(field => field.key),
     });
   });
   const edges = marks.edges.map(mark => {

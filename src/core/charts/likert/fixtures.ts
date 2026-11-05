@@ -66,19 +66,17 @@ export const fixtures: Fixture<LikertData, LikertOptions>[] = [
       sortBy: 'net',
       // A share too narrow for its segment is listed under the chart, so every value prints.
       labelDensity: 'full',
-      notes: { show: ['note', 'disclosure'] },
+      // 'method' prints the split-neutral note: the centre line is not the agree/disagree boundary here.
+      notes: { show: ['note', 'method', 'disclosure'] },
       title: 'Engagement survey — agreement by statement',
       subtitle: {
         measure: 'Share of responses',
         period: 'FY25 pulse',
-        // The convention is on the exhibit, not only in the a11y text: the
-        // centre line is NOT the agree/disagree boundary under a split neutral.
-        scenarios: ['Neutral split across the centre line'],
       },
       legend: 'bottom',
       source: 'Employee pulse survey, n = 900 per statement',
-      // The subtitle states the split and the source the base, so neither prints twice.
-      requiredNotes: { neutral: false, base: false },
+      // The source states the base, so it does not print twice.
+      requiredNotes: { base: false },
     },
   },
   {
@@ -143,7 +141,6 @@ export const fixtures: Fixture<LikertData, LikertOptions>[] = [
       subtitle: {
         measure: 'Share of responses',
         period: 'Q3',
-        scenarios: ['Neutral excluded — bars do not sum to the base'],
       },
       legend: 'bottom',
       source: 'Post-interaction survey',
@@ -354,6 +351,67 @@ fixtures.push({
     size: { width: 960 },
     notes: { placement: 'info' },
   },
+});
+
+// Twelve statements on a full slide make thin rows: the bars take more of
+// their row, so the shares print inside them and not only at the bar ends.
+fixtures.push({
+  id: 'twelve-statements-slide',
+  title: 'Twelve statements on a full slide print their shares inside the bars',
+  kind: 'torture',
+  tags: ['coverage'],
+  data: {
+    scale: FIVE_POINT,
+    items: [
+      ['onboarding', 'Onboarding prepared me for my role', [131, 55, 27, 162, 1]],
+      ['goals', 'My goals are clear to me', [101, 4, 165, 128, 40]],
+      ['meetings', 'Our meetings are a good use of time', [116, 184, 65, 64, 9]],
+      ['pay', 'My pay is fair for the work I do', [173, 139, 25, 95, 32]],
+      ['team', 'My team works well together', [54, 61, 134, 5, 170]],
+      ['trust', 'I trust the leadership team', [81, 50, 64, 193, 164]],
+      ['training', 'I get the training I need', [189, 72, 18, 141, 103]],
+      ['recognition', 'Good work is recognised here', [63, 80, 6, 179, 119]],
+      ['flexibility', 'I can plan my working hours', [49, 41, 77, 160, 71]],
+      ['systems', 'Our internal systems are easy to use', [167, 124, 29, 53, 29]],
+      ['change', 'Changes are explained well', [189, 95, 44, 175, 72]],
+      ['stay', 'I plan to be here in two years', [93, 184, 141, 192, 101]],
+    ].map(([id, label, values]) => ({ id: id as string, label: label as string, values: values as number[] })),
+  },
+  options: {
+    title: 'Meetings and internal systems draw the most disagreement',
+    subtitle: { measure: 'Share of responses', period: 'FY26' },
+    unit: 'responses',
+    values: 'counts',
+    sortBy: 'net',
+    source: 'Pulse survey, invented data',
+    target: 'slide',
+    size: { width: 1184, height: 528 },
+  },
+});
+
+const pulse: LikertData = {
+  scale: [
+    { id: 'sd', label: 'Strongly disagree' }, { id: 'd', label: 'Disagree' }, { id: 'n', label: 'Neutral', role: 'neutral' },
+    { id: 'a', label: 'Agree' }, { id: 'sa', label: 'Strongly agree' },
+  ],
+  items: [
+    { id: 'tools', label: 'I have the tools I need', values: [12, 24, 40, 88, 36] },
+    { id: 'goals', label: 'My goals are clear', values: [8, 18, 34, 92, 48] },
+    { id: 'growth', label: 'I can grow here', values: [20, 32, 44, 70, 24] },
+  ],
+};
+fixtures.push({
+  id: 'column-overrides', title: 'columnOverrides sets the widths, alignment and head words of the name, net and base columns', kind: 'example',
+  data: pulse,
+  options: {
+    title: 'Clear goals earn the strongest agreement', values: 'counts', source: 'Pulse survey, invented data', size: { width: 800 },
+    columnOverrides: { label: { width: 240, align: 'right' }, net: { width: 80, label: 'Net score' }, base: { width: 70, label: 'Answers', align: 'center' } },
+  },
+});
+fixtures.push({
+  id: 'columns-after-plot', title: 'columnOrder moves the net and base columns to the other side of the marks', kind: 'example',
+  data: pulse,
+  options: { title: 'Clear goals earn the strongest agreement', values: 'counts', source: 'Pulse survey, invented data', size: { width: 800 }, columnOrder: ['base', 'net', 'plot'] },
 });
 
 registerFixtures('likert', fixtures);

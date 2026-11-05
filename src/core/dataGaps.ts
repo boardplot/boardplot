@@ -65,7 +65,7 @@ export function warnShareRoundingDrift(warnings: LintWarning[], wholes: readonly
     code: 'share-rounding-drift',
     severity: 'info',
     message: `the printed shares sum to ${drifts.join(', ')}, not 100% — rounding, not an error in the data; no share is adjusted to close the gap`,
-    suggest: 'the shares are computed, and options.format does not change how they print; if exact shares matter, print the underlying values, or author the shares as data',
+    suggest: 'the shares are computed; on pie, bar, column and mekko a percent options.format such as 1.0% sets their decimals, and elsewhere options.format does not change how they print; if exact shares matter, print the underlying values, or author the shares as data',
   });
 }
 

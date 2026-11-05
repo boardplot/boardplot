@@ -56,7 +56,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | series[].id | string | yes | Series identity used by keyed options, annotations and legend entries. |
 | series[].label | string |  | Displayed series name; defaults to the series id. |
 | series[].values | (cell \| { categoryId, value: cell })[] | yes | Values in category order, or keyed entries pairing a categoryId with its value. |
-| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST). |
+| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST, LY for last year). Codes and aliases accept any case. |
 | series[].direction | string |  | Declared preference for higher or lower values in directional comparisons. One of `'higherIsBetter'`, `'lowerIsBetter'`. |
 | series[].role | string |  | Declares a plotted data series or a comparison reference series. One of `'data'`, `'reference'`. |
 | series[].colorRole | string |  | Theme color role used for this series when no explicit fill takes precedence. One of good, bad, warn, neutral, neutralLight, highlight, total, others; series-N for step N of the theme ramp, 1-based (series-2 is color.series[1]); or status-<key> for a theme status colour. A hex colour goes in fill. |
@@ -70,11 +70,11 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 |---|---|---|---|---|
 | axisTitles | object |  |  | Title of the value axis when it is drawn: over the value axis, in the top row left of the plot. Drawn only when authored. |
 | axisTitles.primary | string |  |  | 'Measure, unit' title of the value axis, e.g. 'Margin, %'. |
-| variant | string | `'stacked100'`, `'stacked'`, `'bar'` | `'stacked100'` | stacked100 by default gives 100% stacks with widths proportional to category totals. stacked uses absolute stack heights; bar uses one value-height rectangle per category. |
+| variant | string | `'stacked100'`, `'stacked'`, `'bar'` | `'stacked100'` | stacked100 by default gives 100% stacks with widths proportional to category totals. stacked uses absolute stack heights; bar uses one value-height rectangle per category; with several data series it draws them as stacked columns and warns. |
 | widthSeriesId | string |  |  | Series supplying category widths; omitted uses category totals, or equal widths in bar mode. |
 | ridge | string |  |  | Data-series id whose top boundary is emphasized across the variable-width columns. |
 
-Plus the [shared options](options.md). This type does not accept `mode`, `categoryLabels`, `valueAxis.tickStep`, `valueAxis.log`, `valueAxis.reverse`, `valueAxis.break`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `bandFraction`, `colorblindSafe`.
+Plus the [shared options](options.md). This type does not accept `mode`, `valueAxis.log`, `valueAxis.reverse`, `valueAxis.break`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `bandFraction` with an `option-ignored` warning.
 
 ## Annotations
 

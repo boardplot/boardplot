@@ -50,7 +50,7 @@ export function tablePresentation(request: ResolvedChartRequest, table: Resolved
     tableFrame(table, request.options as TableOptions));
 }
 
-interface RenderTableHtmlOptions extends Pick<BaseOptions, 'title' | 'subtitle' | 'unit' | 'source' | 'footnotes' | 'notes' | 'target' | 'mode' | 'size' | 'margin' | 'canvas' | 'strings' | 'locale'> {
+interface RenderTableHtmlOptions extends Pick<BaseOptions, 'title' | 'subtitle' | 'unit' | 'source' | 'footnotes' | 'notes' | 'target' | 'mode' | 'size' | 'margin' | 'canvas' | 'strings' | 'locale' | 'a11y'> {
   caption?: string;
   interactive?: boolean;
   stickyLabels?: StickyLabels;
@@ -71,6 +71,8 @@ interface TableStyleFeatures {
   statement?: boolean;
   /** A cohort density: a row grows to hold its inline lines and bars instead of cutting them at the fixed pitch. */
   cohort?: boolean;
+  /** `rowLabelLines` above 2: the clamp and a deferred row's reserved height read their counts from the grid and the row, and every other grid keeps its stylesheet. */
+  manyLabelLines?: boolean;
   /** The object form of `stickyLabels` is in use: its page head, head switch and section rules come with it, and a 0.27 table draws none of them. */
   sticky?: boolean;
 }
@@ -89,6 +91,9 @@ interface TableStyleFeatures {
 const COHORT_GROWTH = '\n.bp-table-grid[data-bp-density^="cohort"] [role="row"]>*{height:auto;min-height:var(--bp-row-h)}\n.bp-table-grid[data-bp-density^="cohort"] [role="row"].bp-total>*{height:auto;min-height:calc(var(--bp-row-h) + 8px)}'
   + '\n.bp-table-grid[data-bp-density^="cohort"] [role="row"]:not(.bp-total)>[role="rowheader"] .bp-value{line-height:round(up,1.2em,1px);margin-block:calc((var(--bp-row-h) - round(up,1.2em,1px) - var(--bp-rule-top,var(--bp-stroke-hair)))/2)}'
   + '\n.bp-table-grid[data-bp-density^="cohort"] :is([data-bp-rowgroup="body"],[data-bp-row-page="0"])>.bp-rowwrap:first-child>[role="row"]>*,.bp-table-grid[data-bp-density^="cohort"] [role="row"][data-bp-spacer]:not(.bp-total)>*,.bp-table-grid[data-bp-density^="cohort"] .bp-rowwrap:has(>.bp-total)+.bp-rowwrap>[role="row"]>*{--bp-rule-top:0px}';
+
+const MANY_LABEL_LINES = '\n.bp-table-grid[data-bp-label-lines]:not([data-bp-label-lines="1"]) [role="rowheader"] .bp-value{-webkit-line-clamp:var(--bp-label-lines)}'
+  + '\n.bp-table-grid[data-bp-label-lines] [data-bp-defer-row]{contain-intrinsic-size:auto calc(var(--bp-label-size)*var(--bp-line-ratio) + 2*var(--bp-pad-anchor) + 1px + var(--bp-defer-lines,0)*(var(--bp-inline-box) + var(--bp-inline-gap)) + var(--bp-defer-label-lines,0)*round(up,calc(var(--bp-label-size)*var(--bp-line-ratio)),1px))}';
 
 /** HTML framing shares notes and mode selection with the React table. */
 export function tableFrame(
@@ -136,7 +141,8 @@ export function tableFrame(
     listed,
     pointer: listed.length === 0 ? undefined : placement === 'info' ? `${words.notesAndSources} (${listed.length})` : notesPointer(listed.length, words),
     markerNotes: markerNotes.join(' '),
-    summary: options.caption ?? [title, subtitle,
+    // The author's accessible description replaces the generated summary, as it does in the SVG.
+    summary: options.a11y?.description ?? options.caption ?? [title, subtitle,
       `Table with ${table.rows.length} rows and ${table.columns.length} columns.`]
       .filter((part): part is string => Boolean(part)).join(' · '),
   };
@@ -226,8 +232,8 @@ export const insetTint = (color: string) => ({
 const insetTintCss = (color: string): string => Object.entries(insetTint(color))
   .map(([key, value]) => `${key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}:${value}`).join(';');
 
-export function tableStylesheet(theme: Theme, target: RenderTarget = DEFAULT_TARGET, statement = false, cohort = false, sticky = false, textScale = 1, palette?: string): string {
-  return renderTableStyle(theme, { inCellBar: true, rowHighlight: true, anchorWash: true, statement, cohort, sticky }, target, textScale, palette);
+export function tableStylesheet(theme: Theme, target: RenderTarget = DEFAULT_TARGET, statement = false, cohort = false, sticky = false, textScale = 1, palette?: string, manyLabelLines = false): string {
+  return renderTableStyle(theme, { inCellBar: true, rowHighlight: true, anchorWash: true, statement, cohort, sticky, manyLabelLines }, target, textScale, palette);
 }
 
 /**
@@ -377,7 +383,7 @@ function renderTableStyle(
   // badges keep proportional figures.
   const figures = numericVariant('value', theme) ?? 'tabular-nums';
   const featureStyles = renderFeatureStyles(theme, features);
-  const tableRules = renderTableConventions(theme, target, features.statement, textScale) + (features.cohort ? COHORT_GROWTH : '');
+  const tableRules = renderTableConventions(theme, target, features.statement, textScale) + (features.cohort ? COHORT_GROWTH : '') + (features.manyLabelLines ? MANY_LABEL_LINES : '');
   // A row draws every value at the ladder's role weight, as the SVG
   // does (`rowFont`), not only the row header.
   // A glyph keeps the body weight and a strong column uses emphasis, as there.
@@ -470,7 +476,7 @@ ${theme.table?.ofWhich === 'ink' ? '' : '.bp-table-grid [role="row"][data-relati
 .bp-table-grid [role="gridcell"]:focus-visible,.bp-table-grid [role="rowheader"]:focus-visible{outline:2px solid var(--bp-highlight);outline-offset:-2px}
 figure.bp-table>.bp-col-toolbar .bp-col-toggle:focus-visible,.bp-table .bp-col-toggle:focus-visible,.bp-table-grid .bp-tree-toggle:focus-visible,figure.bp-table>.bp-expand:focus-visible{outline:2px solid var(--bp-highlight);outline-offset:2px}
 figure.bp-table>.bp-col-toolbar{display:inline-flex;flex-wrap:wrap;gap:2px;padding:2px;align-items:center;margin:.15em 0 .6em;background:var(--bp-emphasis);isolation:isolate}figure.bp-table>.bp-col-toolbar .bp-col-toggle{margin-inline-start:0}.bp-table .bp-col-toggle{position:relative;margin-inline-start:.65em;padding:3px 10px;color:var(--bp-ink-muted);background:transparent;border:0;font:inherit;font-weight:${theme.type.axis.weight};font-size:var(--bp-axis-size);cursor:pointer;transition:background var(--bp-motion-fade) var(--bp-motion-easing),color var(--bp-motion-fade) var(--bp-motion-easing),box-shadow var(--bp-motion-fade) var(--bp-motion-easing)}.bp-table .bp-col-toggle[aria-pressed="true"]{color:var(--bp-background);background:var(--bp-ink);box-shadow:0 0 0 .5px var(--bp-grid),0 1px 2px var(--bp-tile-shadow)}@media (pointer:coarse){.bp-table .bp-col-toggle::before{content:"";position:absolute;z-index:-1;top:50%;left:50%;width:max(100%,44px);height:max(100%,44px);transform:translate(-50%,-50%)}}
-.bp-table-grid[data-bp-sticky] [data-bp-rowgroup="head"]{position:sticky;top:0;z-index:3;background:var(--bp-background)}.bp-table-grid[data-bp-sticky] [data-bp-rowgroup="head"] [role="row"]>*{background:var(--bp-background)}.bp-table-grid[data-bp-sticky] [role="row"]>[data-bp-pin]{position:sticky;left:var(--bp-pin-left,0px);z-index:2;background:var(--bp-background)}.bp-table-grid[data-bp-sticky] [role="row"][data-bp-ground]>[data-bp-pin]{background:linear-gradient(var(--bp-row-ground),var(--bp-row-ground)),var(--bp-background)}.bp-table-grid[data-bp-sticky] [data-bp-rowgroup="head"] [role="row"]>[data-bp-pin]{z-index:4}.bp-table-grid[data-bp-sticky] [role="row"]>[data-bp-pin-last]{box-shadow:1px 0 0 var(--bp-rule-row)}.bp-table-grid[data-bp-sticky] [role="row"]>[data-bp-section-pin]{overflow:clip}.bp-table-grid[data-bp-sticky] [data-bp-section-pin]>*{position:sticky;left:calc(var(--bp-pin-left,0px) + var(--bp-cell-pad-x));align-self:flex-start}
+.bp-table-grid[data-bp-sticky] [data-bp-rowgroup="head"]{position:sticky;top:0;z-index:3;background:var(--bp-background)}.bp-table-grid[data-bp-sticky] [data-bp-rowgroup="head"] [role="row"]>*{background:var(--bp-background)}.bp-table-grid[data-bp-sticky] [role="row"]>[data-bp-pin]{position:sticky;left:var(--bp-pin-left,0px);z-index:2;background:var(--bp-background)}.bp-table-grid[data-bp-sticky] [role="row"][data-bp-ground]>[data-bp-pin]{background:linear-gradient(var(--bp-row-ground),var(--bp-row-ground)),var(--bp-background)}.bp-table-grid[data-bp-sticky] [data-bp-rowgroup="head"] [role="row"]>[data-bp-pin]{z-index:4}.bp-table-grid[data-bp-sticky] [role="row"]>[data-bp-pin-last]{box-shadow:1px 0 0 var(--bp-rule-row)}.bp-table-grid[data-bp-sticky] [role="row"]>[data-bp-section-pin]{overflow:clip}.bp-table-grid[data-bp-sticky] [data-bp-section-pin]>*{position:sticky;left:calc(var(--bp-pin-left,0px) + var(--bp-cell-pad-x));align-self:flex-start}.bp-table-grid[data-bp-sticky] [role="row"][data-role="section"]>[data-bp-pin]{overflow:visible}.bp-table-grid[data-bp-sticky] [role="row"][data-role="section"]>[data-bp-pin]>:not(.bp-section-rule){align-self:flex-start;width:calc(100% + var(--bp-section-spill,0px));max-width:none}
 .bp-table-grid[data-bp-sticky] [role="row"]>[data-bp-pin][data-bp-band]{background:var(--bp-emphasis)}
 .bp-table-grid[data-bp-sticky] [role="row"][data-bp-ground="emphasis"]>[data-bp-pin][data-bp-band]{background:var(--bp-column-band-strong)}
 .bp-table-grid [role="row"][data-bp-member-open][data-bp-ground]>*{background:var(--bp-band)}

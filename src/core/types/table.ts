@@ -113,6 +113,8 @@ interface TableColumnBase {
    */
   width?: number;
   align?: 'left' | 'right' | 'center';
+  /** Head alignment; defaults to `align`. */
+  headAlign?: 'left' | 'right' | 'center';
   /**
    * Print this column's cell notes as a SECOND LINE under the figure, at the
    * ladder's inline step in the muted ink. A note stays inline after the
@@ -436,6 +438,13 @@ export interface TableOptions extends BaseOptionsFor<'table'> {
   judgements?: 'all' | 'exceptions';
   /** Mount closed descendants. false removes them from the DOM. */
   mountCollapsed?: boolean;
+  /**
+   * React only. Paint every mounted row at once: no `content-visibility`
+   * deferral and no row paging over 500 rows, so a capture of a long table has
+   * no blank rows. A long table paints slower. Closed rows still follow
+   * `mountCollapsed`. Default false.
+   */
+  paintOffscreenRows?: boolean;
   variant?: TableVariant; // default 'hierarchy'
   encodings?: Record<Id, TableCellEncoding>; // per column, opt-in
   totalPosition?: 'top' | 'bottom'; // variant supplies default
@@ -484,6 +493,12 @@ export interface TableOptions extends BaseOptionsFor<'table'> {
     rootsHidden?: boolean;
   };
   columnVisibility?: Record<Id, boolean>;
+  /**
+   * false: no visible head row and no group heads, with their height, rule and
+   * sticky reservation gone. The React grid keeps a visually hidden head for
+   * assistive technology, and warns when `sortable` is set.
+   */
+  columnHeads?: false;
   /** Inline-line visibility keyed by `inlineGroup`; an absent group is visible. */
   inlineVisibility?: Record<Id, boolean>;
   /**
@@ -534,13 +549,21 @@ export interface TableOptions extends BaseOptionsFor<'table'> {
    */
   frameFill?: 'values' | 'none';
   /**
+   * Spare height of a pinned canvas (a slide, a print page, an authored
+   * height). 'rows' (default) spreads it over the leaf rows as air, up to
+   * 16 px above and below each line. 'none' keeps the rows at their natural
+   * height. An open height takes the rows' own height either way.
+   */
+  heightFill?: 'rows' | 'none';
+  /**
    * Lines a row label may take before it is cut with an ellipsis (default 2).
    * A label breaks at a space or after `_`, `-`, `/` or `.`, so a long
    * campaign name such as `Brand_Paid-Social_FB_Q4` wraps instead of ending
-   * in "…". 1 keeps every label on one line. The hover card always prints
-   * the full name.
+   * in "…". 1 keeps every label on one line. A higher count lets a row grow
+   * to its lines. Any positive whole number. A cut label keeps its full name in
+   * its title.
    */
-  rowLabelLines?: 1 | 2;
+  rowLabelLines?: number;
   /**
    * Let the last drawn track take the remaining frame width when it has no
    * authored width. Both renderers use the same final pixel width. Default false.
@@ -652,6 +675,8 @@ export interface ResolvedCell {
   strong?: true;
   /** The authored size mark, 0 to 1 (`TableCellObject.bar`). */
   bar?: number;
+  /** The cell prints the negative of `raw`, because its row carries sign -1. An arrow and a sort read the printed figure. */
+  negated?: true;
   /**
    * The direction that judges this figure, where one does: the row's over
    * the column's in a judged column, the row's on a change. A heat ground and
@@ -697,6 +722,8 @@ export interface ResolvedColumn {
   /** Authored `noteLine`: this column's cell notes print as a second line. */
   noteLine?: boolean;
   align: 'left' | 'right' | 'center';
+  /** Authored head alignment; absent, the head follows `align`. */
+  headAlign?: 'left' | 'right' | 'center';
   /** Money unit hoisted out of cells when table units are MIXED. */
   unitLabel?: string;
   /** The hoisted unit names a magnitude the cells print without ("$k"), so a raw value drops it. */
@@ -732,6 +759,8 @@ export interface ResolvedRow {
    * stays the authored depth.
    */
   step: number;
+  /** The rung of the label indent where it is not `step`: a memo row listed after a sibling indents with its parent. */
+  indentStep?: number;
   role: RowRole;
   relation: RowRelation;
   order: number; // final display order (totalPosition resolved)

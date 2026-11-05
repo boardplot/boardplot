@@ -78,6 +78,8 @@ function warnBumpAxis(input: {
     code: 'bump-axis-option-ignored',
     severity: 'warn',
     message: `valueAxis ${ignoredAxisOptions.map((name) => `'${name}'`).join(', ')} ignored — the rank domain is derived from the data (1 .. maxRank), not authored`,
+    field: ['options', 'valueAxis'],
+    fix: ignoredAxisOptions.map((name) => ({ op: 'remove' as const, path: `/options/valueAxis/${name}` })),
   });
   if (valueAxis.show === false) warnings.push({ code: 'bump-axis-required', severity: 'warn', message: 'valueAxis.show:false ignored — a rank chart without rank ticks cannot be read; the axis is drawn' });
   // Printed values are the measure, not the rank: the unit rides on each of

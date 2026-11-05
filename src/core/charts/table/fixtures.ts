@@ -840,7 +840,7 @@ export const fixtures: Fixture<TableData, TableOptions>[] = [
         {
           id: 'branded',
           label: 'Branded search share',
-          cells: { y24: 61, y25: 52, y26: { v: 44, note: '(−51% vs peak)', tone: 'bad' } },
+          cells: { y24: 61, y25: 52, y26: { v: 44, note: '(−28% vs peak)', tone: 'bad' } },
         },
       ],
     },
@@ -1906,7 +1906,7 @@ fixtures.push({
     magnitude: 'thousand',
     size: { width: 520, height: 312 },
     title: 'In Q1 and Q2, search spends about 30 times what retail media does',
-    source: 'Illustrative media plan in thousands of euros',
+    source: 'Illustrative media plan in thousands of US dollars',
   },
 });
 
@@ -3060,6 +3060,20 @@ fixtures.push({
       {parentId:'member',id:'orders',label:'Orders',kind:'measure',scale:'count',relation:'displayOnly',cells:{value:120}},
   ]}, options:{title:'Branded search spends $4,400 a month',variant:'steering',mountCollapsed:false},
 });
+// A label track capped under the names, with room for three lines: the row grows to them and no name is cut. Invented names.
+fixtures.push({
+  id: 'row-label-three-lines', title: 'Campaign names on three lines in a capped label track', kind: 'example',
+  data: { columns: [
+    {id:'name',kind:'rowLabel',label:'Campaign',maxWidth:170},
+    {id:'spend',kind:'value',label:'Spend',format:'$1.1k',aggregate:'sum'},
+    {id:'purchases',kind:'value',label:'Purchases',format:'1',aggregate:'sum'},
+  ], rows: [
+    {id:'a',label:'Garden-Tools_Spring-Sale_Northern_Region_Broad-Reach_Wave_Q4',cells:{spend:28000,purchases:18}},
+    {id:'b',label:'Garden-Tools_Spring-Sale_Northern_Return-Visitors_14d',cells:{spend:38000,purchases:31}},
+    {id:'c',label:'Brand search',cells:{spend:12500,purchases:52}},
+    {id:'d',label:'Kitchen-Goods_Autumn-Sale_Southern_Hobby-Cooks_v3.2',cells:{spend:24500,purchases:46}},
+  ]}, options:{title:'Four campaigns spend $103k',source:'Invented campaign names',rowLabelLines:3},
+});
 // Campaign names with no spaces break after _ - / . and take two lines in a capped label track
 // (rowLabelLines, default 2); a name longer than two lines keeps its distinguishing tail. Invented names.
 fixtures.push({
@@ -3281,7 +3295,14 @@ fixtures.push(
   { id: 'group-ground-none', title: 'No group ground at all', kind: 'example', tags: [], data: groupsData(), options: { title: 'Revenue is folded and costs are open', groupGround: 'none', expansion: { collapsed: ['revenue'] } } },
   { id: 'frame-fill-values', title: 'Under rowExtent frame the value tracks grow until every layer ends at the frame edge', kind: 'example', tags: [], data: groupsData(), options: { title: 'Rows and columns end together', rowExtent: 'frame', frameFill: 'values', size: { width: 720 } } },
   { id: 'frame-fill-none', title: 'The old frame: columns keep their widths and an empty stretch carries the rows to the edge', kind: 'example', tags: [], data: groupsData(true), options: { title: 'The rows run on past the columns', rowExtent: 'frame', frameFill: 'none', fitFormats: true, size: { width: 720 } } },
+  { id: 'height-fill-none', title: 'A pinned height keeps the rows at their natural height and leaves the rest empty', kind: 'example', tags: [], data: groupsData(), options: { title: 'Rows keep their natural height', heightFill: 'none', size: { width: 720, height: 405 } } },
   { id: 'table-look-keys', title: 'A theme sets the quiet row rule, its width and the secondary ink; each open block opens on the rule ink', kind: 'example', tags: [], data: groupsData(), options: { title: 'Costs rose less than revenue', theme: { preset: 'boardroom', overrides: { table: { ruleInk: '#B9C7D6', ruleWidths: { row: 1 }, inks: { secondary: '#3A5F86' }, blockRule: 'rule' } } } } },
+);
+
+/** A report whose frame names the columns: the head and its group heading leave with their height and rule. */
+fixtures.push(
+  { id: 'no-column-heads', title: 'No head row and no group heading: the first row starts at the top of the table', kind: 'example', tags: [], data: { ...groupsData(), columnGroups: [{ id: 'years', label: 'Fiscal years', columns: ['fy25', 'fy26'] }] }, options: { title: 'Revenue and costs, FY2025 and FY2026, in $k', columnHeads: false, size: { width: 720 } } },
+  { id: 'head-align', title: 'The figures stay right under a head set left', kind: 'example', tags: [], data: { ...groupsData(), columns: groupsData().columns.map((column) => column.id === 'fy25' ? { ...column, headAlign: 'left' as const } : column) }, options: { title: 'One head reads from the left of its column', size: { width: 720 } } },
 );
 
 registerFixtures('table', fixtures);

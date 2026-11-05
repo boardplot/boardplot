@@ -14,11 +14,13 @@ import type { LintWarning } from '../core/types/scene';
 import type { RenderTarget } from '../core/types/options';
 import { addDocumentLints, asSent, drawsWithOptions, layoutChart, loadSpec, shareScaleGroups, type DrawnChart } from './spec';
 import { InputError, ok, rejected, type VerbResult } from './result';
-import { attributeSizeOverride, keepSizeUnit, length, pixels, targetArgument, withSize } from './size';
+import { attributeSizeOverride, enumArgument, keepSizeUnit, length, pixels, targetArgument, withSize } from './size';
 import { rasterize } from './raster';
 import { applyRows, rewriteRowsDiagnostics, type RowsInput } from './rows';
 import { activeFontTables, fontTablesSummary, withFontTables } from './activeFontTables';
 import { pushAll } from '../core/arrays';
+import { canonicalChartType } from '../core/registry';
+import { ignoreChartSettings } from '../core/retired';
 
 interface RenderInput extends RowsInput {
   spec: unknown;
@@ -38,17 +40,21 @@ interface RenderInput extends RowsInput {
 const RETURNS = ['svg', 'reading'] as const;
 
 function renderOptions(input: RenderInput) {
+  const warnings: LintWarning[] = [];
   if (input.overwrite !== undefined && typeof input.overwrite !== 'boolean') {
     throw new InputError('invalid-argument', 'overwrite must be a boolean', { path: '/overwrite' });
   }
-  const format = (input.format ?? 'svg') as 'svg' | 'png';
+  const format = enumArgument('format', input.format ?? 'svg', ['svg', 'png'], warnings) as 'svg' | 'png';
   if (format !== 'svg' && format !== 'png') {
     throw new InputError('invalid-argument', 'format must be svg or png', {
-      path: '/format', expected: { values: ['svg', 'png'] }, suggest: 'Pass format svg, or png for an image.',
+      path: '/format', expected: { values: ['svg', 'png'] },
+      suggest: typeof input.format === 'string' && input.format.toLowerCase() === 'pdf'
+        ? 'PDF is not drawn; pass svg or png and place the image in the document tool, or print from the browser.'
+        : 'Pass format svg, or png for an image.',
       fix: [{ op: 'replace', path: '/format', value: 'svg' }],
     });
   }
-  const returned = input.return ?? ['reading'];
+  const returned = input.return?.map((value, index) => enumArgument(index, value, RETURNS, warnings, ['return']) as string) ?? ['reading'];
   const unknown = returned.filter((entry) => !(RETURNS as readonly string[]).includes(entry));
   if (unknown.length) {
     throw new InputError('invalid-argument', `return takes svg and reading, not ${unknown.join(', ')}`, {
@@ -63,7 +69,7 @@ function renderOptions(input: RenderInput) {
   }
   // 'transparent' leaves the canvas rectangle out. Halos and hollow
   // marks keep the theme background colour, so the host surface should match it.
-  const background = input.background ?? 'theme';
+  const background = enumArgument('background', input.background ?? 'theme', ['theme', 'transparent'], warnings);
   if (background !== 'theme' && background !== 'transparent') {
     throw new InputError('invalid-argument', 'background must be theme or transparent', {
       path: '/background', expected: { values: ['theme', 'transparent'] }, suggest: 'Pass background theme, or transparent to leave the canvas out.',
@@ -71,7 +77,7 @@ function renderOptions(input: RenderInput) {
     });
   }
   return {
-    format, returned, scale, background, target: targetArgument(input.target),
+    format, returned, scale, background, target: targetArgument(input.target, warnings), warnings,
     width: length('width', input.width), height: length('height', input.height),
   };
 }
@@ -118,6 +124,9 @@ interface Drawing { name: string; chart: DrawnChart; svg: string; fontFamily: st
 
 function outDirectory(outDir: string | undefined): string | undefined {
   if (outDir === undefined) return undefined;
+  if (outDir === '-') {
+    throw new InputError('invalid-argument', 'outDir cannot be -', { path: '/outDir', suggest: 'Pass an absolute folder, or return svg in the answer.' });
+  }
   if (typeof outDir !== 'string' || outDir === '') {
     throw new InputError('invalid-argument', 'outDir must be a directory path', { path: '/outDir', suggest: 'Pass an absolute directory path.' });
   }
@@ -131,8 +140,17 @@ function outDirectory(outDir: string | undefined): string | undefined {
  */
 function outFileExtension(outDir: string | undefined, out: string | undefined): string | undefined {
   if (outDir === undefined || out === undefined || /[\\/]$/.test(outDir) || isFolder(out)) return undefined;
-  const extension = extname(out).toLowerCase();
-  return extension === '.png' || extension === '.svg' ? extension : undefined;
+  const extension = extname(out);
+  const lower = extension.toLowerCase();
+  if (lower === '.png' || lower === '.svg') return lower;
+  if (/^\.[a-z]+$/i.test(extension)) {
+    throw new InputError('invalid-argument', `--out ends in ${extension}; Boardplot writes svg and png`, {
+      path: '/outDir', suggest: lower === '.pdf'
+        ? 'PDF is not drawn; use .svg or .png for --out and place the image in the document tool, or print from the browser. End --out with / to make a folder of that name.'
+        : 'End --out with / to make a folder of that name, or use .svg or .png.',
+    });
+  }
+  return undefined;
 }
 
 /** A path under a folder without search permission cannot be read here; the write step names that cause. */
@@ -153,13 +171,20 @@ function renderWithTables(input: RenderInput): VerbResult {
   const fileExtension = outFileExtension(input.outDir, out);
   // Without --format, an out file's extension picks it: --out chart.png draws a PNG.
   const options = renderOptions({ ...input, format: input.format ?? fileExtension?.slice(1) });
+  if (input.format !== undefined && options.format === 'svg' && input.return === undefined && out === undefined) {
+    options.returned.push('svg');
+    options.warnings.push(completeDiagnostic({
+      code: 'svg-returned', severity: 'info', message: 'format svg returns the drawing; return was not set',
+      fix: [{ op: 'add', path: '/return', value: options.returned }],
+    }, input, ['format']));
+  }
   if (fileExtension && fileExtension !== `.${options.format}`) {
     throw new InputError('invalid-argument', `--out ${basename(out!)} ends in ${fileExtension}, but the format is ${options.format}`, {
       path: '/outDir', suggest: `Pass --format ${fileExtension.slice(1)}, or end --out in .${options.format}.`,
     });
   }
   const rows = applyRows(input.spec, input);
-  const loaded = loadSpec(rows.spec);
+  const loaded = loadSpec(rows.spec, { width: options.width, height: options.height, target: options.target });
   if ('errors' in loaded) return rejected(rewriteRowsDiagnostics(asSent(loaded.errors, loaded.bare), rows.pathMap));
   if (fileExtension && loaded.doc.charts.length > 1) {
     throw new InputError('invalid-argument', `--out names a folder when the spec draws several charts; this spec draws ${loaded.doc.charts.length}, so --out ${basename(out!)} would become a folder`, {
@@ -168,6 +193,7 @@ function renderWithTables(input: RenderInput): VerbResult {
   }
   shareScaleGroups(loaded);
   const { doc, envelope, bare } = loaded;
+  envelope.warnings.push(...options.warnings);
   envelope.warnings.push(...(rows.warnings ?? []));
   const laid: { name: string; chart: DrawnChart; drawsWith: (changed: Record<string, unknown>) => boolean }[] = [];
   const scopeUses = new Map<string, number>();
@@ -180,7 +206,8 @@ function renderWithTables(input: RenderInput): VerbResult {
     // copies distinct ids while scene data-id part names remain stable. A second
     // identical chart in the same call takes `-2`, a third `-3`: the copies
     // would otherwise share every id on the page they are inlined into.
-    const { name: _name, ...drawing } = sized;
+    // Ignored settings do not change the chart's SVG ids.
+    const { name: _name, ...drawing } = ignoreChartSettings(canonicalChartType(sized.type) ?? sized.type, sized, canonicalChartType).chart;
     // A target argument draws differently, so it joins the hash; without one the hash keeps its old input.
     const hashed = sha256(canonicalJson({ drawing, locale: doc.locale ?? null, theme: resolveTheme(doc.theme), ...(options.target ? { target: options.target } : {}) })).slice(0, 10);
     const uses = (scopeUses.get(hashed) ?? 0) + 1;

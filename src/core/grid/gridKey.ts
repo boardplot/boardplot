@@ -40,13 +40,15 @@ export function hatchStrengthFor(panel: Record<string, unknown>, grid: { hatchSt
   return strength === undefined ? {} : { hatchStrength: strength };
 }
 
-type LegendPanel = { type: string; data: unknown; options?: object; annotations?: unknown[] };
+type LegendPanel = { type: string; title?: string; data: unknown; options?: object; annotations?: unknown[] };
 type LegendGridOptions = Omit<GridOptions, 'columns'>;
 
 /** Each chart panel's own legend items, once per name and look, for the grid key and legend panels. */
-export function collectGridLegendItems(panels: LegendPanel[], options: LegendGridOptions, measure: TextMeasurer): LegendItemInput[] {
+export function collectGridLegendItems(panels: LegendPanel[], options: LegendGridOptions, measure: TextMeasurer): { items: LegendItemInput[]; redundant: boolean } {
   const items: LegendItemInput[] = [];
   const seen = new Map<string, number>();
+  let titlesCoverItems = true;
+  const appearances = new Set<string>();
   const theme = resolveTheme(options.theme);
   const typeClass = panelTypeClass(options) ?? typeWidthClass(resolveSize(options.size).width);
   for (const panel of panels) {
@@ -63,7 +65,14 @@ export function collectGridLegendItems(panels: LegendPanel[], options: LegendGri
       ...(options.strings ? { strings: { ...authoredStrings(options), ...(panelOptions.strings as object) } } : {}),
       size: options.size, measure, typeClass,
     });
+    const title = options.sharedAxis === 'category' && panels.length > 1 && panelOptions.title === false
+      ? undefined : panel.title ?? panelOptions.title;
+    if (identities.length > 0) {
+      titlesCoverItems &&= identities.length === 1 && typeof title === 'string' &&
+        normalizedName(title) === normalizedName(identities[0]!.label) && identities[0]!.value === undefined;
+    }
     for (const item of identities) {
+      appearances.add(identityAppearance(item, theme));
       // A tier key names the better/worse rule once across bars and pins.
       // A series keeps one entry when its panels differ only in markers (a dense
       // panel drops them): the dot shows only when every panel draws the same ones.
@@ -81,14 +90,22 @@ export function collectGridLegendItems(panels: LegendPanel[], options: LegendGri
       }
     }
   }
-  return items;
+  return { items, redundant: titlesCoverItems && appearances.size === 1 };
 }
 
-/** The grid key row from the collected items: kept to GRID_KEY_ONLY, in legend.order; a warning when no panel keys anything. */
-export function gridLegendInput(items: LegendItemInput[], legendOptions: LegendOptions, options: object, warnings: LintWarning[]): FrameInput['legend'] {
-  let keyed = gridKeyItems(items, options);
+/** The ordered grid key row, unless identical swatches only repeat panel titles. */
+export function gridLegendInput(collected: ReturnType<typeof collectGridLegendItems>, legendOptions: LegendOptions, options: object, warnings: LintWarning[]): FrameInput['legend'] {
+  let keyed = gridKeyItems(collected.items, options);
   if (keyed.length === 0) {
     warnings.push({ code: 'grid-legend-empty', severity: 'warn', message: 'grid legend requested but no chart panel contributes legend items — legend omitted' });
+    return undefined;
+  }
+  if (collected.redundant) {
+    warnings.push({ code: 'grid-legend-redundant', severity: 'warn', field: ['options', 'legend'],
+      message: 'Grid legend omitted because identical swatches repeat every panel title',
+      suggest: 'Remove options.legend to use the panel titles.',
+      fix: [{ op: 'remove', path: '/options/legend' }],
+    });
     return undefined;
   }
   if (legendOptions.order) {

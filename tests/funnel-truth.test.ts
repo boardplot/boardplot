@@ -55,6 +55,7 @@ function verticalOverlap(a: PlacedLabel['rect'], b: PlacedLabel['rect']): boolea
 }
 
 function expectOwnedLabelsInTheirLanes(geometry: FunnelGeometry): void {
+  const columnCaptions = geometry.labels.some((label) => label.slot?.startsWith('conversionColumn'));
   const lanes = new Map(geometry.marks.rows.map((row) => [row.categoryId, row.lane]));
   const laneClaims = geometry.debug.occupied.filter((claim) => claim.part === 'funnel-row-lane');
   expect(laneClaims).toHaveLength(geometry.marks.rows.length);
@@ -65,15 +66,24 @@ function expectOwnedLabelsInTheirLanes(geometry: FunnelGeometry): void {
     // row. Containment below is still judged against the whole lane.
     const claim = laneClaims.find((item) => item.owner.categoryId === row.categoryId)!;
     expect(rectContains(row.lane, claim.rect)).toBe(true);
-    expect([claim.rect.x, claim.rect.w]).toEqual([row.lane.x, row.lane.w]);
+    expect(claim.rect.x).toBe(row.lane.x);
+    // A right-hand step-rate column is no row's lane: the claim ends left of it.
+    if (!columnCaptions) expect(claim.rect.w).toBe(row.lane.w);
     expect(claim.rect.h).toBeGreaterThanOrEqual(row.lane.h - 6);
   }
 
+  const rowIds = geometry.marks.rows.map((row) => row.categoryId);
   for (const label of geometry.labels.filter((item) => !item.hidden && item.owner.categoryId)) {
-    const ownLane = lanes.get(label.owner.categoryId!)!;
+    const ci = rowIds.indexOf(label.owner.categoryId!);
+    // A step rate in the right-hand column stands level with the gap, so it
+    // belongs to both rows of its step.
+    const step = label.slot?.startsWith('conversionColumn') && ci + 1 < rowIds.length ? rowIds[ci + 1] : undefined;
+    const own = lanes.get(label.owner.categoryId!)!;
+    const next = step ? lanes.get(step)! : undefined;
+    const ownLane = next ? { ...own, h: next.y + next.h - own.y } : own;
     expect(rectContains(ownLane, label.rect), `${label.id} must stay inside ${label.owner.categoryId}`).toBe(true);
     for (const row of geometry.marks.rows) {
-      if (row.categoryId === label.owner.categoryId) continue;
+      if (row.categoryId === label.owner.categoryId || row.categoryId === step) continue;
       expect(
         verticalOverlap(label.rect, row.lane),
         `${label.id} owned by ${label.owner.categoryId} entered ${row.categoryId}`,
@@ -154,6 +164,19 @@ describe('funnel truth contract', () => {
     const drawn = layout(data, { variant: 'centered', size: { width: 900, height: minHeight } });
     expect(drawn.refused).toBeFalsy();
     expect(drawn.warnings.map(warning => warning.code)).not.toContain('funnel-label-hidden');
+  });
+
+  // Eight centered stages on a full slide refused because each band had to hold two label lines.
+  it('sets name and value on one line when centered bands are too short for two', () => {
+    const { geometry } = fixture('centered-eight-stages-slide');
+    expect(geometry.refused).toBeFalsy();
+    const stages = geometry.labels.filter((label) => label.id.startsWith('stage:'));
+    expect(stages).toHaveLength(8);
+    for (const label of stages) {
+      expect(label.hidden).toBeFalsy();
+      expect(label.lines).toHaveLength(2);
+      expect(label.rect.h).toBeLessThan(label.font!.size * 2);
+    }
   });
 
   it('derives sliver conversions from adjacent stage totals; the column shows the rate, the description names both stages', () => {
@@ -239,6 +262,25 @@ describe('funnel truth contract', () => {
 
   });
 
+  // A long funnel on a short frame moves its step rates into the right-hand
+  // column; the row-lane filter dropped every one of them into a note the page does not show.
+  it('keeps the step rates of a twelve-stage funnel in the right-hand column', () => {
+    const names = ['Visitors', 'Signups', 'Activated', 'Engaged', 'Trial', 'Qualified', 'Demo', 'Proposal', 'Negotiation', 'Contract', 'Won', 'Renewed'];
+    const data: ChartData = {
+      categories: names.map((label, i) => ({ id: `s${i}`, label })),
+      series: [
+        { id: 'large', label: 'Large accounts', values: names.map((_n, i) => Math.round(7400 * 0.6 ** i)) },
+        { id: 'small', label: 'Small accounts', values: names.map((_n, i) => Math.round(7900 * 0.58 ** i)) },
+      ],
+    };
+    const geometry = layout(data, { target: 'slide', size: { width: 1184, height: 528 } });
+    const rates = geometry.labels.filter((label) => label.id.startsWith('conv:'));
+    expect(rates).toHaveLength(11);
+    expect(rates.filter((label) => label.hidden).map((label) => label.id)).toEqual([]);
+    expect(rates.every((label) => label.slot === 'conversionColumn')).toBe(true);
+    expectOwnedLabelsInTheirLanes(geometry);
+  });
+
   it('keeps authored row callouts near the anchor without changing stage values', () => {
     const { data, options, geometry } = fixture('funnel-near-callout');
     const note = geometry.labels.find((label) => label.id === 'annotation:trial-note')!;
@@ -267,6 +309,26 @@ describe('funnel truth contract', () => {
     expect(geometry.derived).toEqual(baseline.derived);
     expect(geometry.labels.filter((label) => label.kind === 'total' && !label.hidden)).toHaveLength(data.categories.length);
     expect(geometry).toEqual(layout(data, options));
+  });
+
+  // Without its own column the CAGR label of a rows funnel landed on the middle row's value line, beside its total.
+  it('seats the CAGR label of a rows funnel right of every stage total', () => {
+    const { data, options } = fixture('annual-cohort-retention');
+    const geometry = layout(data, { ...options, variant: 'rows' });
+    const cagr = geometry.labels.find((label) => label.id === 'annotation:annual-loss')!;
+    expect(cagr.hidden).toBeUndefined();
+    for (const total of geometry.labels.filter((label) => label.kind === 'total')) {
+      expect(cagr.rect.x).toBeGreaterThanOrEqual(total.rect.x + total.rect.w);
+    }
+    expect(cagr.rect.x + cagr.rect.w).toBeLessThanOrEqual(geometry.size.width);
+  });
+
+  // A frame too narrow for the CAGR column must draw as before, not refuse: the column never raises the minimum width.
+  it('draws a rows funnel with a CAGR annotation at the narrowest supported width', () => {
+    const { data, options } = fixture('annual-cohort-retention');
+    const spec = { ...options, variant: 'rows' as const };
+    const geometry = layout(data, { ...spec, size: { width: 280, height: 562 } });
+    expect((geometry as unknown as { refused?: boolean }).refused).toBeFalsy();
   });
 
   it('keeps fixture visibility claims honest and the automatic note source-owned', () => {

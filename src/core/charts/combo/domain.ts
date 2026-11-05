@@ -9,12 +9,13 @@ import { cellFields, normalizeCategorySeries } from '../categorySeries';
 import { breakUnsupported, chartPalette, chartTheme } from '../chartEnv';
 import { defaultMeasurer } from '../../text';
 import { tickFormatter } from '../../axis';
+import { cleanSum } from '../../geometry';
 import { formatAutomaticPercent, formatShare } from '../../format';
-import { roundingUnavailable, sumConsistentShares, type RoundingAdjustment } from '../../shareRounding';
+import { roundingUnavailable, shareRoundingNotes, sumConsistentShares, type RoundingAdjustment } from '../../shareRounding';
 import { comboValueLabels, FIRST_END_BELOW_TOTALS } from './endpoints';
 import { unitConflict, unitConflictRefusal } from '../../schema/units';
 import { formatStatWithSpec, formatterFromExample, memoFormatterFromExample, percentRasterFormatter, seriesRasterFormatter } from '../../formatSpec';
-import { averageMarkerLine, averageMarkerScope, averageOfUnaddedSums, warnIncompleteStacks } from '../band/stacks';
+import { averageMarkerLine, averageMarkerMean, averageMarkerSpan, averageMarkerScope, averageOfUnaddedSums, warnIncompleteStacks } from '../band/stacks';
 import { anomalyCorridor, anomalyModel, refuseAnomalySpec } from '../column/anomaly';
 import type { LineAnomaly } from '../line/model';
 import {
@@ -23,7 +24,7 @@ import {
   resolveHighlight,
   resolveSize,
 } from '../../normalize/shared';
-import { applyAxisBounds, linearScale, niceDomain } from '../../scale';
+import { applyAxisBounds, applyTickStep, linearScale, niceDomain } from '../../scale';
 import type { Annotation } from '../../types/annotations';
 import { type Id } from '../../types/cell';
 import { stackAdds } from '../../stackAdds';
@@ -246,7 +247,7 @@ function comboStacks(cats: Category[], columnSeries: NormSer[]) {
     negBot[ci] = n;
     anyByCat[ci] = columnSeries.some((s) => s.vals[ci]!.v !== null);
     // Exact: the total label and the description round once, at print time.
-    if (columnSeries.length > 0) stackTotals[c.id] = p + n;
+    if (columnSeries.length > 0) stackTotals[c.id] = cleanSum([p, n]);
     lo = Math.min(lo, n);
     hi = Math.max(hi, p);
   });
@@ -283,7 +284,7 @@ type Gate = ReturnType<typeof comboAxisGate>;
  * all-candidates-collide: a label traded for geometry. That the defaults plus
  * labels satisfy the 0.80 floor is measured, not assumed.
  */
-function primaryDomain(options: ComboOptions, gate: Gate, extent: { lo: number; hi: number; dataHi: number }, fmt: (v: number) => string, warnings: LintWarning[]) {
+function primaryDomain(options: ComboOptions, gate: Gate, extent: { lo: number; hi: number; dataHi: number }, fmt: (v: number) => string, warnings: LintWarning[]): Pick<ComboDomain, 'dLo' | 'dHi' | 'pticks' | 'stepTicks'> {
   const { lo, hi, dataHi } = extent;
   const { ruler } = gate;
   const va = options.valueAxis ?? {};
@@ -310,17 +311,19 @@ function primaryDomain(options: ComboOptions, gate: Gate, extent: { lo: number; 
     }
   }
   // Ticks depend only on the domain, so sync before any pixel work.
-  let pticks = linearScale([dLo, dHi], [0, 1]).ticks(5);
+  const stepped = applyTickStep([dLo, dHi], va.tickStep, warnings);
+  [dLo, dHi] = stepped.domain;
+  let pticks = stepped.ticks ?? linearScale([dLo, dHi], [0, 1]).ticks(5);
   if (pticks.length < 2) pticks = [dLo, dHi];
   // With a ruler the percent ladder drives the rows, not the count values:
   // the reader's ladder is 0/20/…/100%, and the left-hand count ticks land
   // wherever that puts them (generally not round — truthful, and the reason
   // the primary axis stays off by default).
-  if (ruler) {
+  if (!stepped.ticks && ruler) {
     pticks = Array.from({ length: ruler.intervals + 1 }, (_, i) =>
       roundTick(dLo + ((dHi - dLo) * i) / ruler.intervals),
     );
-  } else if (gate.secondaryActive && (va.min !== undefined || va.max !== undefined) && !(options as { [SECONDARY_FULL_DOMAIN]?: unknown })[SECONDARY_FULL_DOMAIN]
+  } else if (!stepped.ticks && gate.secondaryActive && (va.min !== undefined || va.max !== undefined) && !(options as { [SECONDARY_FULL_DOMAIN]?: unknown })[SECONDARY_FULL_DOMAIN]
     && (pticks[0] !== dLo || pticks[pticks.length - 1] !== dHi)) {
     // A second scale reads off the same rows, so they run the whole scale: an authored
     // bound between two ticks moves the rows, it is not left above them. A Pareto total
@@ -328,7 +331,7 @@ function primaryDomain(options: ComboOptions, gate: Gate, extent: { lo: number; 
     const step = pinnedStep(dLo, dHi, pticks.length - 1);
     pticks = Array.from({ length: Math.round((dHi - dLo) / step) + 1 }, (_, i) => Number((dLo + step * i).toPrecision(12)));
   }
-  return { dLo, dHi, pticks };
+  return { dLo, dHi, pticks, stepTicks: stepped.ticks };
 }
 
 /** The step of a pinned range: a ladder step that divides it, in the count nearest `rows`, more rows on a tie; else an even division. */
@@ -459,9 +462,11 @@ function ladderSteps(lo: number, hi: number, mantissas: readonly number[]): numb
  * it crosses a column edge, it keeps LINE_CLEARANCE of the plot over the
  * column top. Among the pairs that do, the one whose columns fill most of
  * the plot wins, then the one whose line does, then fewer intervals. The
- * search keeps columns at least a third of the plot. The line keeps at least five
- * eighths. Undefined when a value is negative or no pair keeps the line
- * above; the synced default scales stay then.
+ * search keeps columns at least a third of the plot. Only when no such pair
+ * keeps the line above, it lets the columns shrink to a quarter and reports
+ * `squeezed`. The line keeps at least five eighths. Undefined when a value
+ * is negative or no pair keeps the line above; the synced default scales
+ * stay then.
  */
 function dualAxisScales(input: {
   columnTops: readonly number[];
@@ -471,42 +476,142 @@ function dualAxisScales(input: {
   secondaryHi: number;
   bandFraction: number;
   clearance?: number;
-}): { pticks: number[]; secondaryStep: number } | undefined {
+}): { pticks: number[]; secondaryStep: number; squeezed: boolean } | undefined {
   const { columnTops, primaryHi, lines, secondaryHi } = input;
   if (input.columnBottoms.some((v) => v < 0) || lines.some((row) => row.some((v) => v !== null && v < 0))) return undefined;
   if (!(primaryHi > 0) || !(secondaryHi > 0)) return undefined;
   const half = input.bandFraction / 2;
-  let best: { n: number; p: number; s: number; fill: number; lineFill: number } | undefined;
-  for (const n of [3, 4, 5, 6]) {
-    for (const p of ladderSteps(primaryHi / n, (primaryHi * 3) / n, PRIMARY_MANTISSAS)) {
-      for (const s of ladderSteps((secondaryHi * 1.01) / n, (secondaryHi * 1.6) / n, SECONDARY_MANTISSAS)) {
-        const colAt = (ci: number): number => (columnTops[ci] ?? 0) / (n * p);
-        const lineAt = (v: number): number => v / (n * s);
-        const clears = lines.every((row) => row.every((v, ci) => {
-          if (v === null) return true;
-          if (lineAt(v) - colAt(ci) < (input.clearance ?? LINE_CLEARANCE)) return false;
-          // Where the segment to a neighbour crosses this column's edge.
-          for (const next of [ci - 1, ci + 1]) {
-            const w = row[next];
-            if (w === undefined || w === null) continue;
-            const atEdge = lineAt(v) + (lineAt(w) - lineAt(v)) * half;
-            if (atEdge - colAt(ci) < (input.clearance ?? LINE_CLEARANCE)) return false;
+  type Pair = { n: number; p: number; s: number; fill: number; lineFill: number };
+  // `span` bounds the primary step: columns fill at least 1/span of the plot.
+  const search = (span: number): Pair | undefined => {
+    let best: Pair | undefined;
+    for (const n of [3, 4, 5, 6]) {
+      for (const p of ladderSteps(primaryHi / n, (primaryHi * span) / n, PRIMARY_MANTISSAS)) {
+        for (const s of ladderSteps((secondaryHi * 1.01) / n, (secondaryHi * 1.6) / n, SECONDARY_MANTISSAS)) {
+          const colAt = (ci: number): number => (columnTops[ci] ?? 0) / (n * p);
+          const lineAt = (v: number): number => v / (n * s);
+          const clears = lines.every((row) => row.every((v, ci) => {
+            if (v === null) return true;
+            if (lineAt(v) - colAt(ci) < (input.clearance ?? LINE_CLEARANCE)) return false;
+            // Where the segment to a neighbour crosses this column's edge.
+            for (const next of [ci - 1, ci + 1]) {
+              const w = row[next];
+              if (w === undefined || w === null) continue;
+              const atEdge = lineAt(v) + (lineAt(w) - lineAt(v)) * half;
+              if (atEdge - colAt(ci) < (input.clearance ?? LINE_CLEARANCE)) return false;
+            }
+            return true;
+          }));
+          if (!clears) continue;
+          const fill = maxOf(columnTops) / (n * p);
+          const lineFill = secondaryHi / (n * s);
+          if (!best || fill > best.fill + 1e-9 || (Math.abs(fill - best.fill) <= 1e-9 && (lineFill > best.lineFill + 1e-9
+            || (Math.abs(lineFill - best.lineFill) <= 1e-9 && n < best.n)))) {
+            best = { n, p, s, fill, lineFill };
           }
-          return true;
-        }));
-        if (!clears) continue;
-        const fill = maxOf(columnTops) / (n * p);
-        const lineFill = secondaryHi / (n * s);
-        if (!best || fill > best.fill + 1e-9 || (Math.abs(fill - best.fill) <= 1e-9 && (lineFill > best.lineFill + 1e-9
-          || (Math.abs(lineFill - best.lineFill) <= 1e-9 && n < best.n)))) {
-          best = { n, p, s, fill, lineFill };
         }
       }
     }
-  }
+    return best;
+  };
+  const roomy = search(3);
+  const best = roomy ?? search(4);
   if (!best) return undefined;
   const { n, p, s } = best;
-  return { pticks: Array.from({ length: n + 1 }, (_, i) => roundTick(i * p)), secondaryStep: s };
+  return { pticks: Array.from({ length: n + 1 }, (_, i) => roundTick(i * p)), secondaryStep: s, squeezed: roomy === undefined };
+}
+
+/** The share of the plot height the columns keep under a floated line. */
+const FLOAT_COLUMN_SHARE = 0.55;
+/** The share of the plot height, from the bottom, where a floated line's low sits; its high sits at the top. */
+const FLOAT_LINE_LOW = 0.6;
+
+/**
+ * The fallback of the line band when no zero-based pair keeps the line above
+ * the columns: a line whose low is far under its high cannot clear them on a
+ * scale from zero. The primary ticks stop at the first tick that covers the
+ * columns, and that tick sits at FLOAT_COLUMN_SHARE of the plot. The line
+ * takes the band from FLOAT_LINE_LOW (higher when the measured label
+ * clearance over the tallest column needs it) to the top on its own scale
+ * from its low to its high, which does not start at zero, so the line values print in
+ * place of the right ticks. Undefined when a secondary area fills to zero or
+ * no line value is drawn.
+ */
+function floatedLineScales(
+  columnTop: number,
+  lines: readonly NormSer[],
+  valueLine: ValueLineExtent | null,
+  clearance: number,
+): { primary: { dLo: number; dHi: number; pticks: number[] }; secondaryDomain: [number, number]; range: [number, number] } | undefined {
+  const secondary = lines.filter((s) => s.axis === 'secondary');
+  if (secondary.some((s) => s.kind === 'area')) return undefined;
+  const values = secondary.flatMap((s) => s.vals.flatMap((val) => (val.v === null ? [] : [val.v])));
+  if (valueLine) values.push(valueLine.lo, valueLine.hi);
+  if (values.length === 0) return undefined;
+  const lo = Math.min(...values);
+  const hi = Math.max(...values);
+  if (!(columnTop > 0)) return undefined;
+  // The column band is a little over half the plot, so it takes two to four
+  // intervals: the step whose top tick covers the columns with least to spare, then the finer one.
+  let best: { step: number; top: number; n: number } | undefined;
+  for (const step of ladderSteps(columnTop / 4, columnTop, PRIMARY_MANTISSAS)) {
+    const n = Math.ceil(columnTop / step - 1e-9);
+    if (n < 2 || n > 4) continue;
+    const top = roundTick(n * step);
+    if (!best || top < best.top - 1e-9 || (Math.abs(top - best.top) <= 1e-9 && step < best.step)) best = { step, top, n };
+  }
+  if (!best) return undefined;
+  const { step, n } = best;
+  const pticks = Array.from({ length: n + 1 }, (_, i) => roundTick(i * step));
+  const topTick = pticks[pticks.length - 1]!;
+  const dHi = topTick / FLOAT_COLUMN_SHARE;
+  // The low keeps the measured label clearance over the tallest column, so a
+  // value under the low clears the column values; the line keeps at least a quarter.
+  const low = Math.min(0.75, Math.max(FLOAT_LINE_LOW, columnTop / dHi + clearance));
+  // A line without spread sits in the middle of its band.
+  const pad = hi > lo ? 0 : Math.abs(hi) * 0.1 || 1;
+  return { primary: { dLo: 0, dHi, pticks }, secondaryDomain: [lo - pad, hi + pad], range: [dHi * low, dHi] };
+}
+
+/**
+ * A line on the primary scale whose values span under this share of the
+ * scale draws flat on it: its moves are not visible.
+ */
+const FLAT_LINE_SHARE = 0.02;
+
+/**
+ * Warn about each primary line that lies flat on the scale it shares with
+ * larger series. A line without any move (a target or plan rule) is meant
+ * flat and stays quiet. The fix puts the line on an acknowledged secondary
+ * axis. The engine never moves it there itself: a second scale needs the
+ * author's acknowledge.
+ */
+function warnFlatLines(data: ChartData, options: ComboOptions, dataSeries: readonly NormSer[], primary: { dLo: number; dHi: number },
+  secondaryActive: boolean, warnings: LintWarning[]): void {
+  const span = primary.dHi - primary.dLo;
+  if (!(span > 0) || dataSeries.length < 2) return;
+  for (const s of dataSeries) {
+    if (s.kind === 'column' || (s.axis === 'secondary' && secondaryActive)) continue;
+    const values = s.vals.flatMap((val) => (val.v === null ? [] : [val.v]));
+    if (values.length < 2) continue;
+    const range = Math.max(...values) - Math.min(...values);
+    if (!(range > 0) || range / span >= FLAT_LINE_SHARE) continue;
+    const index = data.series.findIndex((series) => series.id === s.id);
+    if (index < 0) continue;
+    const share = Math.round((range / span) * 1000) / 10;
+    warnings.push({
+      code: 'line-flat-on-scale', severity: 'warn',
+      message: `line '${s.id}' spans ${share}% of the value scale it shares with larger series, so it draws flat and its moves are not visible`,
+      suggest: `put '${s.id}' on its own scale: axis: 'secondary' and options.secondaryAxis.acknowledge: true`,
+      field: ['data', 'series', index],
+      fix: [
+        { op: 'add', path: `/data/series/${index}/axis`, value: 'secondary' },
+        options.secondaryAxis === undefined || 'ruler' in options.secondaryAxis
+          ? { op: 'add', path: '/options/secondaryAxis', value: { acknowledge: true } }
+          : { op: 'add', path: '/options/secondaryAxis/acknowledge', value: true },
+      ],
+    });
+  }
 }
 
 /**
@@ -560,10 +665,10 @@ export function dualAxisAnatomy(options: ComboOptions, secondaryActive: boolean,
  * dashed Ø rule on the primary axis. A line in the scope is left out and
  * named: its values sit on their own scale more often than not.
  */
-function averageMarkerMean(
+function comboAverageRun(
   options: ComboOptions, cats: Category[], columns: NormSer[], lines: NormSer[], warnings: LintWarning[],
   adds: (columns: NormSer[]) => boolean,
-): number | undefined {
+): ReturnType<typeof averageMarkerMean> | undefined {
   const scope = averageMarkerScope(options.averageMarker);
   if (scope === undefined) return undefined;
   const lineIds = scope === 'all' ? [] : scope.filter((id) => lines.some((s) => s.id === id));
@@ -577,15 +682,12 @@ function averageMarkerMean(
   }
   const selected = columns.filter((s) => scope === 'all' || scope.includes(s.id));
   if (averageOfUnaddedSums(adds(selected), warnings)) return undefined;
-  const stacks = cats.flatMap((_, ci) => {
-    const values = selected.flatMap((s) => (s.vals[ci]?.v == null ? [] : [s.vals[ci]!.v!]));
-    return values.length > 0 ? [values.reduce((sum, v) => sum + v, 0)] : [];
-  });
-  if (stacks.length === 0) {
+  const run = averageMarkerMean(options.averageMarker, 'all', cats, true, selected, (s, _, ci) => s.vals[ci]?.v ?? null);
+  if (run.mean === undefined) {
     warnings.push({ code: 'average-marker-empty', severity: 'warn', message: 'averageMarker scope has no plotted values; marker omitted' });
     return undefined;
   }
-  return stacks.reduce((sum, v) => sum + v, 0) / stacks.length;
+  return run;
 }
 
 /**
@@ -627,6 +729,8 @@ export const TOTALS_AXIS = Symbol('boardplot.comboTotalsAxis');
 export const SECONDARY_FULL_DOMAIN = Symbol('boardplot.secondaryFullDomain');
 /** Measured column-label clearance, as a share of the drawn scale height. */
 export const LINE_BAND_CLEARANCE = Symbol('boardplot.lineBandClearance');
+/** Measured clearance a floated line keeps over the tallest column, as a share of the drawn scale height. */
+export const FLOAT_BAND_CLEARANCE = Symbol('boardplot.floatBandClearance');
 
 /** The authored secondary range maps to these primary values, even when a reference widens either scale. */
 export function secondaryPrimaryRange(options: ComboOptions, secondary: readonly [number, number], fallback: readonly number[]): [number, number] {
@@ -683,8 +787,10 @@ export function resolveComboDomain(data: ChartData, options: ComboOptions, warni
   const rasterFor = (axis: 'primary' | 'secondary') => {
     const group = seriesNorm.filter((s) => (s.axis ?? 'primary') === axis);
     const units = new Set(group.map((s) => s.unit));
+    // An authored format holds both axes' labels to one scale and one decimal count (exampleSpec).
+    const printed = axis === 'primary' && options.format ? seriesNorm.filter((s) => !s.format) : group;
     const shared = units.size === 1 ? [...units][0] : undefined;
-    return seriesRasterFormatter(axis === 'primary' ? options.format : undefined, group.flatMap((s) => s.vals.filter((val) => !val.isPct).map((val) => val.v)),
+    return seriesRasterFormatter(axis === 'primary' ? options.format : undefined, printed.flatMap((s) => s.vals.filter((val) => !val.isPct).map((val) => val.v)),
       options.locale?.language, axis === 'primary' ? (options.unit ?? shared) : shared, options.target,
       axis === 'primary' ? (options as { defaultFormat?: string }).defaultFormat : undefined, columns.length > 1);
   };
@@ -703,7 +809,7 @@ export function resolveComboDomain(data: ChartData, options: ComboOptions, warni
   // the column stack has a total, and a mean, only when its parts add.
   const addsOver = (series: NormSer[]) => stackAdds(series.map((s) => ({ label: s.label, unit: s.unit, pctCells: s.vals.some((val) => val.isPct) })), options.unit, undefined);
   const columnsAdd = addsOver(columns);
-  const averageMean = averageMarkerMean(options, cats, columns, lines, warnings, addsOver);
+  const averageRun = comboAverageRun(options, cats, columns, lines, warnings, addsOver);
   // The anomaly rule reads every source period of the one line, before a window or zoom.
   const anomalyRun = options.anomaly
     ? comboAnomalyModel(options.anomaly, cats, lines, secondarySpec, valueSpec, pctFmt, options.locale?.language, warnings, options.strings)
@@ -714,9 +820,9 @@ export function resolveComboDomain(data: ChartData, options: ComboOptions, warni
   // A mean keeps every source period, and its label names them where the plot draws fewer.
   const meanSpan = viewportMeanSpan(population);
   const shown = population ? population.annotations : options.annotations;
-  const marker = averageMean === undefined
+  const marker = averageRun === undefined
     ? undefined
-    : { ...averageMarkerLine(shown ?? [], averageMean, (v) => formatStatWithSpec(v, valueSpec.spec), meanSpan(), options.strings?.average), side: 'right' as const };
+    : { ...averageMarkerLine(shown ?? [], averageRun.mean!, (v) => formatStatWithSpec(v, valueSpec.spec), averageMarkerSpan(averageRun, meanSpan), options.strings?.average), side: 'right' as const };
   const averageMarkerId = marker?.id;
   const annotations = marker ? [...(shown ?? []), marker] : shown;
   const effective = population
@@ -789,7 +895,7 @@ export function resolveComboDomain(data: ChartData, options: ComboOptions, warni
   // a scale from starting at zero; either way the plain dual axis stays and
   // an info lint says why.
   const anatomyRequested = dualAxisAnatomy(options, secondaryActive, theme);
-  const pinnedBy = [options.valueAxis?.min !== undefined ? 'valueAxis.min' : '', options.valueAxis?.max !== undefined ? 'valueAxis.max' : ''].filter(Boolean);
+  const pinnedBy = [options.valueAxis?.min !== undefined ? 'valueAxis.min' : '', options.valueAxis?.max !== undefined ? 'valueAxis.max' : '', primary.stepTicks ? 'valueAxis.tickStep' : ''].filter(Boolean);
   const negative = lo < 0 || sLoRaw < 0;
   const anatomy = anatomyRequested && pinnedBy.length === 0 && !negative;
   if (anatomyRequested && !anatomy) {
@@ -814,15 +920,35 @@ export function resolveComboDomain(data: ChartData, options: ComboOptions, warni
     : undefined;
   const shared = lineBandScaleInput ? dualAxisScales(lineBandScaleInput) : undefined;
   if (shared) primary = { dLo: 0, dHi: shared.pticks[shared.pticks.length - 1]!, pticks: shared.pticks };
+  // Only columns may share the lower band: a primary line or value line above them needs the whole scale.
+  const floatOver = (clearance: number) => hi <= maxOf(posTop) ? floatedLineScales(maxOf(posTop), lines, secondaryLine, clearance) : undefined;
+  const floated = lineBandScaleInput && !shared
+    ? floatOver((options as { [FLOAT_BAND_CLEARANCE]?: number })[FLOAT_BAND_CLEARANCE] ?? lineBandScaleInput.clearance ?? LINE_CLEARANCE) : undefined;
+  if (floated) primary = floated.primary;
+  warnFlatLines(data, options, dataSeries, primary, secondaryActive, warnings);
   // A negative value on either scale: the zeros share a gridline.
   const aligned = secondaryActive && !shared && !gate.secOpt?.domain && pinnedBy.length === 0 && negative
     ? zeroAlignedAxes(primary, { lo: sLoRaw, hi: sHiRaw })
     : undefined;
   if (aligned) primary = aligned.primary;
-  const right = rightAxis(effective, gate, { lo: sLoRaw, hi: sHiRaw }, primary, secondarySpec,
-    shared ? { step: shared.secondaryStep, start: 0 } : aligned?.secondary);
+  const right = floated ? { secFmtSrc: rightAxis(effective, gate, { lo: sLoRaw, hi: sHiRaw }, primary, secondarySpec).secFmtSrc,
+    secondaryDomain: floated.secondaryDomain, rightTicks: [] }
+    : rightAxis(effective, gate, { lo: sLoRaw, hi: sHiRaw }, primary, secondarySpec,
+      shared ? { step: shared.secondaryStep, start: 0 } : aligned?.secondary);
   const fmtSecondary = secondarySpec.fmt;
   const beforeCorridor = warnings.slice();
+  const squeezeWarning = (): LintWarning => ({
+    code: 'dual-axis-columns-squeezed', severity: 'info',
+    message: 'the line runs over the columns on every pair of scales that keeps them a third of the plot high, so the columns shrink below a third of the plot to leave the line a clear band',
+    suggest: 'split the chart in two, or pin secondaryAxis.domain to choose the secondary scale yourself',
+  });
+  if (shared?.squeezed) warnings.push(squeezeWarning());
+  const floatWarning = (): LintWarning => ({
+    code: 'dual-axis-line-floated', severity: 'info',
+    message: 'the line runs over the columns on every pair of scales that starts at zero, so it takes the upper part of the plot on its own scale from its low to its high, and its values print in place of the right ticks',
+    suggest: 'set dualAxis.anatomy: false for the shared scales, or pin secondaryAxis.domain to choose the secondary scale yourself',
+  });
+  if (floated) warnings.push(floatWarning());
   const anomalyFor = (left: typeof primary, rightDomain: [number, number] | undefined, out: LintWarning[]): LineAnomaly | undefined => {
     const extent: [number, number] | undefined = anomalyRun?.onSecondary ? rightDomain : [left.dLo, left.dHi];
     return anomalyRun && extent && {
@@ -849,10 +975,11 @@ export function resolveComboDomain(data: ChartData, options: ComboOptions, warni
     lines,
     refs,
     secondaryActive,
-    secondaryTicksHidden: secondaryActive && ((options.secondaryAxis as { show?: boolean } | undefined)?.show === false || ticksFromLabels),
+    secondaryTicksHidden: secondaryActive && ((options.secondaryAxis as { show?: boolean } | undefined)?.show === false || ticksFromLabels || floated !== undefined),
     ticksFromLabels,
     anatomy,
-    lineBand: shared !== undefined,
+    lineBand: shared !== undefined || floated !== undefined,
+    ...(floated ? { lineFloat: { range: floated.range } } : {}),
     // Column totals already state the scale. An explicit axis still wins, and the axis comes
     // back when a total found no seat (TOTALS_AXIS): then the totals no longer state it.
     showPrimaryAxis: options.valueAxis?.show ?? (ticksFromLabels ? false : secondaryActive || options.labels === false
@@ -877,6 +1004,7 @@ export function resolveComboDomain(data: ChartData, options: ComboOptions, warni
     stackTotals,
     shareTexts,
     roundingAdjustments,
+    shareNotes: shareRoundingNotes(options, roundingAdjustments),
     incompleteCats,
     columnsAdd,
     posTop,
@@ -886,21 +1014,27 @@ export function resolveComboDomain(data: ChartData, options: ComboOptions, warni
     secondaryDomain: right.secondaryDomain,
     rightTicks: ticksFromLabels ? [] : right.rightTicks,
   };
-  if (lineBandScaleInput) resolved.withLineBandClearance = (clearance) => {
+  if (lineBandScaleInput) resolved.withLineBandClearance = (clearance, floatClearance = clearance) => {
     const next = dualAxisScales({ ...lineBandScaleInput, clearance });
+    // Without a pair that keeps the line above, the line floats over the columns.
+    const nextFloat = next ? undefined : floatOver(floatClearance);
     if (shared?.secondaryStep === next?.secondaryStep && shared?.pticks.length === next?.pticks.length
-      && !shared?.pticks.some((tick, i) => tick !== next!.pticks[i])) return undefined;
-    const left = next ? { dLo: 0, dHi: next.pticks[next.pticks.length - 1]!, pticks: next.pticks } : defaultPrimary;
-    const right = rightAxis(effective, gate, { lo: sLoRaw, hi: sHiRaw }, left, secondarySpec,
-      next ? { step: next.secondaryStep, start: 0 } : undefined);
+      && !shared?.pticks.some((tick, i) => tick !== next!.pticks[i])
+      && floated?.range[0] === nextFloat?.range[0]) return undefined;
+    const left = next ? { dLo: 0, dHi: next.pticks[next.pticks.length - 1]!, pticks: next.pticks } : nextFloat?.primary ?? defaultPrimary;
+    const right = nextFloat ? { secondaryDomain: nextFloat.secondaryDomain, rightTicks: [] }
+      : rightAxis(effective, gate, { lo: sLoRaw, hi: sHiRaw }, left, secondarySpec, next ? { step: next.secondaryStep, start: 0 } : undefined);
     const nextWarnings = [...beforeCorridor];
-    // Without a pair that keeps the line above, the line crosses the columns
-    // and the labels no longer stand in for the ticks.
+    if (next?.squeezed) nextWarnings.push(squeezeWarning());
+    if (nextFloat) nextWarnings.push(floatWarning());
+    // Without a pair that keeps the line above, the labels no longer stand in for the ticks.
     const axes = next || !resolved.ticksFromLabels ? {} : {
       ticksFromLabels: false, showPrimaryAxis: true,
-      secondaryTicksHidden: (options.secondaryAxis as { show?: boolean } | undefined)?.show === false,
+      secondaryTicksHidden: (options.secondaryAxis as { show?: boolean } | undefined)?.show === false || nextFloat !== undefined,
     };
-    return { domain: { ...resolved, ...left, ...axes, lineBand: next !== undefined,
+    const { lineFloat: _drop, ...base } = resolved;
+    return { domain: { ...base, ...left, ...axes, lineBand: next !== undefined || nextFloat !== undefined,
+      ...(nextFloat ? { lineFloat: { range: nextFloat.range }, secondaryTicksHidden: true } : {}),
       secondaryDomain: right.secondaryDomain, rightTicks: next && resolved.ticksFromLabels ? [] : right.rightTicks,
       anomaly: anomalyFor(left, right.secondaryDomain, nextWarnings),
     }, warnings: nextWarnings };

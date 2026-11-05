@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { NormalizeError } from '../../src/core/normalize/shared';
 import { MINUS } from '../../src/core/format';
-import { exampleSpec, formatNonzeroWithSpec, formatterFromExample, formatWithSpec, parseFormatExample, seriesRasterFormatter } from '../../src/core/formatSpec';
+import { exampleSpec, formatNonzeroWithSpec, formatterFromExample, formatWithSpec, parseFormatExample, seriesRasterFormatter, unitOfSpec } from '../../src/core/formatSpec';
 
 describe('parseFormatExample', () => {
   it('"+1,234" → forced sign, comma grouping', () => {
@@ -53,12 +53,12 @@ describe('parseFormatExample', () => {
 
   it('rejects examples with no numeric body', () => {
     expect(() => parseFormatExample('garbage')).toThrow(/invalid-format-example/);
-    expect(() => formatterFromExample('USD', undefined)).toThrow(/invalid-format-example/);
+    expect(() => formatterFromExample('abc', undefined)).toThrow(/invalid-format-example/);
     expect(() => parseFormatExample('   ')).toThrow(/invalid-format-example/);
   });
 
   it('refuses a bad example with a NormalizeError that carries a code and a fix', () => {
-    for (const bad of ['garbage', '#,##0']) {
+    for (const bad of ['garbage', '0.0,"M"']) {
       try {
         parseFormatExample(bad);
         throw new Error('expected a throw');
@@ -164,7 +164,7 @@ describe('formatterFromExample round-trips', () => {
 
 // Prevents a spelled-out magnitude word from leaving the value unscaled: "512.0 million" for 512.
 it('reads spelled-out magnitude words as their abbreviation', () => {
-  for (const [example, locale, abbreviation] of [['1.0 million', 'en', '1.0 mn'], ['1.0 thousand', 'en', '1.0 k'], ['1.0 billion', 'en', '1.0 bn'],
+  for (const [example, locale, abbreviation] of [['1.0 million', 'en', '1.0 mn'], ['1.0 thousand', 'en', '1.0k'], ['1.0 billion', 'en', '1.0 bn'],
     ['1,0 Millionen', 'de', '1,0 Mio.'], ['1,0 Tausend', 'de', '1,0 Tsd.'], ['1,0 Milliarden', 'de', '1,0 Mrd.']] as const) {
     expect(parseFormatExample(example).magnitude).toBe(parseFormatExample(abbreviation).magnitude);
     for (const value of [512, 2_500_000, 3e9]) expect(formatterFromExample(example, locale)(value)).not.toMatch(/^[\d.,\s]{5,}/);
@@ -238,6 +238,10 @@ it('prints no bare B or T on a German or French chart without an authored word',
   expect(seriesRasterFormatter(undefined, [2.5e9], 'de', undefined, 'report').fmt(2.5e9)).toBe('2,5 Mrd.');
   expect(seriesRasterFormatter(undefined, [2.5e9], 'fr', undefined, 'report').fmt(2.5e9)).toBe('2,5 Md');
   expect(seriesRasterFormatter(undefined, [2.5e9], 'en', undefined, 'report').fmt(2.5e9)).toBe('2.5B');
+  // One German axis reads "500 Mio." under "1,0 Mrd.", not "500M".
+  expect(seriesRasterFormatter(undefined, [2.5e9, 5e8], 'de', undefined, 'report').fmt(5e8)).toBe('500 Mio.');
+  // A table header unit keeps the short form's space: "$ Mio.", not "$Mio.".
+  expect(unitOfSpec({ ...parseFormatExample('$1.0M'), magnitudeWord: undefined, locale: 'de' })).toBe('$ Mio.');
   expect(formatWithSpec(2.5e9, { ...parseFormatExample('1,0 Mio.'), locale: 'de' })).toBe('2,5 Mrd.');
 });
 

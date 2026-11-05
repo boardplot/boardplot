@@ -48,6 +48,8 @@ interface RenderGeoOverlaysInput {
   /** Key words an omitted glyph keeps in its note line, since its key entry goes with it. */
   toneNames?: Partial<Record<GeoOverlayTone, string>>;
   overlayMeasure?: string;
+  /** The map's name for an overlay's region, which an omitted glyph's note line prints. */
+  regionName?: (overlay: GeoOverlay) => string | undefined;
 }
 
 const SIZE: Record<GeoOverlaySize, number> = { sm: 12, md: 16, lg: 22 };
@@ -145,9 +147,10 @@ const DEFAULT_TONE_NAMES: Record<GeoOverlayTone, string> = {
 /**
  * The overlay key explains only what the direct labels cannot: every
  * overlay prints its own label beside its glyph, and a Harvey ball, marker or
- * icon in the plain colour needs no entry. What the key adds is a toned glyph
- * among plain ones (named by `overlayTones`), each status a status glyph
- * shows, and each share a pie splits into.
+ * icon in the plain colour needs no entry while it is the only colour. What the
+ * key adds is a toned glyph among plain ones (named by `overlayTones`), the
+ * plain colour beside those tones, each status a status glyph shows, and each
+ * share a pie splits into.
  */
 export function geoOverlayLegend(
   overlays: readonly GeoOverlay[],
@@ -187,15 +190,15 @@ export function geoOverlayLegend(
   };
   const plain = overlays.flatMap(({ glyph }) => {
     if (glyph.kind !== 'harvey' && glyph.kind !== 'icon' && glyph.kind !== 'marker') return [];
-    return [{ tone: glyph.tone, hollow: glyph.kind !== 'marker',
+    return [{ tone: glyph.tone, hollow: glyph.kind !== 'marker', harvey: glyph.kind === 'harvey',
       key: glyph.kind === 'marker' && glyph.shape === 'square' ? 'box' as const
         : glyph.kind === 'marker' && glyph.shape === 'diamond' ? 'diamond' as const : 'marker' as const }];
   });
-  // One colour on every glyph carries no information; with two or more, the
-  // plain glyph (no tone) is the unmarked case and every tone is keyed, info
-  // included, since info paints apart from plain.
+  // One colour on every glyph carries no information; with two or more, every
+  // tone is keyed, info included, since info paints apart from plain.
   const tones = [...plain.map(glyph => glyph.tone), ...overlays.flatMap(({ glyph }) => glyph.kind === 'status' ? [glyph.status] : [])];
-  if (new Set(tones).size > 1) {
+  const keyed = new Set(tones).size > 1;
+  if (keyed) {
     for (const glyph of plain) if (glyph.tone !== undefined) toneItem(glyph.tone, glyph.key, glyph.hollow);
   }
   for (const overlay of overlays) {
@@ -206,6 +209,22 @@ export function geoOverlayLegend(
         seen.add(`share:${share.label}`);
         items.push({ id: `overlay-share:${share.label}`, label: share.label, paint: sharePaints.get(share.label)! });
       });
+    }
+  }
+  // Beside keyed tones the plain glyph's accent is a colour too, and every
+  // colour in the key needs an entry. Plain Harvey balls show the named
+  // measure, so the measure entry takes their ring and the key adds no item;
+  // other plain glyphs share one 'Other' entry, solid when a plain marker is
+  // drawn, else a ring like the plain icon glyphs.
+  const untoned = plain.filter(glyph => glyph.tone === undefined);
+  if (keyed && untoned.length) {
+    const ring = { paint: { token: 'background' } as Paint, stroke: tonePaint(undefined) };
+    const heading = items.findIndex(item => item.id === 'overlay-measure');
+    if (heading >= 0 && untoned.every(glyph => glyph.harvey)) {
+      items[heading] = { ...items[heading]!, key: 'marker', ...ring };
+    } else {
+      items.push({ id: 'overlay-tone:plain', label: chartString(options, 'overlayPlain'), key: 'marker',
+        ...(untoned.every(glyph => glyph.hollow) ? ring : { paint: tonePaint(undefined) }) });
     }
   }
   if (unnamed.size) {
@@ -267,7 +286,7 @@ export function renderGeoOverlays(input: RenderGeoOverlaysInput): GeoOverlayRend
         id: `overlay:${overlay.id}`, kind: 'point', typeRole: 'label', owner,
         text: overlay.label, lines: [overlay.label], font, priority: PRIORITY.extreme + index,
         candidates: [], redundant: true, suppressedAs: 'density', owed: true,
-        noteText: omittedNote(overlay, description, input.toneNames, input.overlayMeasure),
+        noteText: omittedNote(overlay, input.regionName?.(overlay), input.toneNames, input.overlayMeasure),
       }], overlayOccupied, input.solveCtx);
       labels.push(...hidden.placed);
       decisions.push(...hidden.decisions);
@@ -446,11 +465,23 @@ function describeOverlay(overlay: GeoOverlay, options?: Pick<import('../../types
   return chartString(options, 'overlayMarkerDesc', { v1: overlay.label, v2: chartString(options, ({ circle: 'circleShape', square: 'squareShape', diamond: 'diamondShape' } as const)[overlay.glyph.shape ?? 'circle']), v3: where });
 }
 
-/** An omitted glyph leaves the key too, so its note line carries the tone name and the measure. */
-function omittedNote(overlay: GeoOverlay, description: string, toneNames: Partial<Record<GeoOverlayTone, string>> = {}, measure?: string): string {
+/**
+ * An omitted glyph leaves the key too, so its note line carries the tone name and the measure.
+ * The line is reader text: the overlay's label, its region's name and the glyph's value,
+ * never the accessible description, whose glyph words ("Harvey fill at region") a reader
+ * does not use.
+ */
+function omittedNote(overlay: GeoOverlay, regionName: string | undefined, toneNames: Partial<Record<GeoOverlayTone, string>> = {}, measure?: string): string {
   const tone = overlay.glyph.kind === 'status' ? overlay.glyph.status : 'tone' in overlay.glyph ? overlay.glyph.tone : undefined;
   const toneName = tone === undefined ? undefined : toneNames[tone] ?? DEFAULT_TONE_NAMES[tone];
-  return [description, toneName, measure].filter(Boolean).join(', ');
+  const named = regionName && !overlay.label.includes(regionName) ? `${overlay.label} (${regionName})` : overlay.label;
+  const value = overlay.glyph.kind === 'harvey'
+    ? `${Math.round(overlay.glyph.value * 100)}%`
+    : overlay.glyph.kind === 'pie'
+      ? overlay.glyph.shares.map((share) => `${share.label} ${share.value}`).join(', ')
+      : undefined;
+  const lead = value && !overlay.label.includes(value) ? `${named}: ${value}` : named;
+  return [lead, toneName, measure].filter(Boolean).join(', ');
 }
 
 /** A glyph without a tone takes the accent; info is its own ink, so a key can name it. */
@@ -521,6 +552,10 @@ function glyphScene(
   const cy = rect.y + rect.h / 2;
   const r = rect.w / 2;
   const display = { state: description };
+  // A solid glyph can take the colour of the region under it (the darkest
+  // class of a ramp in the ink colour): a page-colour ring keeps its outline
+  // in every theme, as the status disc and the pie's slice edges already do.
+  const ring = { stroke: { token: 'background' } as Paint, strokeWidth: strokeToken(_theme, 'mark') };
   if (glyph.kind === 'status') {
     return [{
       t: 'circle',
@@ -529,7 +564,7 @@ function glyphScene(
       cy,
       r,
       fill: tonePaint(glyph.status),
-      stroke: { token: 'background' }, strokeWidth: strokeToken(_theme, 'mark'),
+      ...ring,
       owner,
       part: 'overlayGlyph',
       display,
@@ -538,16 +573,18 @@ function glyphScene(
   if (glyph.kind === 'marker') {
     const paint = tonePaint(glyph.tone);
     if ((glyph.shape ?? 'circle') === 'circle') {
-      return [{ t: 'circle', id, cx, cy, r, fill: paint, owner, part: 'overlayGlyph', display }];
+      return [{ t: 'circle', id, cx, cy, r, fill: paint, ...ring, owner, part: 'overlayGlyph', display }];
     }
     if (glyph.shape === 'square') {
-      return [{ t: 'rect', id, rect, fill: paint, owner, part: 'overlayGlyph', display }];
+      return [{ t: 'rect', id, rect, fill: paint, ...ring, owner, part: 'overlayGlyph', display }];
     }
     return [{
       t: 'path',
       id,
       d: `M${fmt(cx)} ${fmt(rect.y)}L${fmt(rect.x + rect.w)} ${fmt(cy)}L${fmt(cx)} ${fmt(rect.y + rect.h)}L${fmt(rect.x)} ${fmt(cy)}Z`,
       fill: paint,
+      stroke: ring.stroke,
+      width: ring.strokeWidth,
       owner,
       part: 'overlayGlyph',
       display,
@@ -617,7 +654,7 @@ function glyphScene(
       display,
     }];
     if (glyph.value >= 1) {
-      nodes.push({ t: 'circle', id, cx, cy, r, fill: paint, owner, part: 'overlayGlyph', display });
+      nodes.push({ t: 'circle', id, cx, cy, r, fill: paint, ...ring, owner, part: 'overlayGlyph', display });
     } else if (glyph.value > 0) {
       nodes.push({
         t: 'path',
@@ -647,6 +684,8 @@ function glyphScene(
         cy,
         r,
         fill: paint,
+        stroke: ring.stroke,
+        strokeWidth: strokeToken(_theme, 'rule'),
         owner,
         part: 'overlayGlyph',
         display,

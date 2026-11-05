@@ -5,7 +5,7 @@ import type { Paint, SceneNode } from '../../types/scene';
 import { markRolePaint } from '../../theme';
 import type { NormalizedDiagram } from './model';
 import { byOrder, type OrgChartLayout } from './orgChart';
-import { chevronPath, laneOwner, q, qRect, type DiagramPalette } from './primitives';
+import { chevronPath, gapSpread, laneOwner, q, qRect, type DiagramPalette } from './primitives';
 import { diagramSceneId } from './ids';
 import { maxOf } from '../../arrays';
 
@@ -16,10 +16,12 @@ import { maxOf } from '../../arrays';
  * in a judgement role (the critical ones) is filled, in its role's fill, with its icon inline and
  * its label bold. Columns where the cards fit in two lines; below that, and
  * only when the author left `flow` unset, rows: the chevrons stack down the
- * left and the cards sit to their right, two per row.
+ * left and the cards sit to their right, two per row. `flow: 'serpentine'`
+ * wraps the columns into two rows; it has no rows form and falls back to the
+ * full journey layout when its columns do not fit.
  */
 export function journeyEligible(data: NormalizedDiagram, options: DiagramOptions): boolean {
-  if (options.variant !== 'customer-journey' || options.flow === 'serpentine') return false;
+  if (options.variant !== 'customer-journey') return false;
   if (data.edges.length > 0 || data.groups.length > 0 || data.lanes.length === 0 || data.lanes.length > 8) return false;
   return data.nodes.every((node) => node.kind === 'painPoint' && node.laneId && !node.position && !node.ports?.length
     && !node.size && !node.minSize && !node.caption && !node.badge && !node.secondaryLabel && !node.label.includes('\n')
@@ -38,6 +40,7 @@ export function layoutJourneyCompact(
   u: number,
   palette: DiagramPalette,
   headWeight: number,
+  fixedHeight = false,
 ): OrgChartLayout | undefined {
   const lanes = data.lanes;
   const members = new Map(lanes.map((lane) => [lane.id, data.nodes.filter((node) => node.laneId === lane.id).sort(byOrder)]));
@@ -71,38 +74,60 @@ export function layoutJourneyCompact(
   };
   let mode: OrgChartLayout['mode'] | undefined;
 
-  // Columns: one chevron per phase, the cards below it.
+  // Columns: one chevron per phase, the cards below it. A serpentine wraps the
+  // phases into two rows, and the return row runs right to left under the
+  // first, its chevrons pointing left, with the phases numbered.
+  const serpentine = options.variant === 'customer-journey' && options.flow === 'serpentine' && lanes.length > 1;
+  const rowCount = serpentine ? 2 : 1;
+  const perRow = Math.ceil(lanes.length / rowCount);
+  const phaseLabel = (lane: (typeof lanes)[number], index: number) =>
+    (serpentine && lane.label ? `${index + 1} ${lane.label}` : lane.label);
   const gap = 1.6 * u;
-  const pitch = (plot.w + gap) / lanes.length;
+  const pitch = (plot.w + gap) / perRow;
   const boxW = pitch - gap;
   const tip = Math.min(1.6 * u, boxW / 6);
-  const columnsFit = lanes.every((lane) => headerText(lane.label) <= boxW - 2 * tip - u)
+  const columnsFit = lanes.every((lane, index) => headerText(phaseLabel(lane, index)) <= boxW - 2 * tip - u)
     && data.nodes.every((node) => fits(node, boxW, 2));
   if (columnsFit) {
     mode = 'columns';
     const headerH = 6 * u;
-    const rows = Math.max(0, maxOf(lanes.map((lane) => members.get(lane.id)!.length)));
-    const rowHeights = Array.from({ length: rows }, (_, row) => Math.max(0, maxOf(lanes.map((lane) => {
-      const node = members.get(lane.id)![row];
-      return node ? cardH(linesIn(node, boxW).lines.length) : 0;
-    }))));
-    const height = headerH + (rows > 0 ? 2 * u : 0) + rowHeights.reduce((sum, value) => sum + value, 0) + Math.max(0, rows - 1) * 1.2 * u;
-    const top = plot.y + Math.max(0, (plot.h - height) / 2);
-    lanes.forEach((lane, index) => {
-      const x = plot.x + index * pitch;
-      const box = qRect({ x, y: top, w: boxW, h: headerH });
-      let y = top + headerH + 2 * u;
-      members.get(lane.id)!.forEach((node, row) => {
-        put(node.id, { x, y, w: boxW, h: rowHeights[row]! });
-        y += rowHeights[row]! + 1.2 * u;
+    const bands = Array.from({ length: rowCount }, (_, row) => {
+      const rowLanes = lanes.slice(row * perRow, (row + 1) * perRow);
+      const rows = Math.max(0, maxOf(rowLanes.map((lane) => members.get(lane.id)!.length)));
+      const rowHeights = Array.from({ length: rows }, (_, cardRow) => Math.max(0, maxOf(rowLanes.map((lane) => {
+        const node = members.get(lane.id)![cardRow];
+        return node ? cardH(linesIn(node, boxW).lines.length) : 0;
+      }))));
+      const gapSum = (rows > 0 ? 2 * u : 0) + Math.max(0, rows - 1) * 1.2 * u;
+      return { rows, rowHeights, gapSum, bodies: headerH + rowHeights.reduce((sum, value) => sum + value, 0) };
+    });
+    const breakGap = 3 * u * (rowCount - 1);
+    const gapSum = bands.reduce((sum, band) => sum + band.gapSum, 0) + breakGap;
+    const bodies = bands.reduce((sum, band) => sum + band.bodies, 0);
+    const spread = gapSpread(fixedHeight, plot.h, bodies + gapSum, gapSum);
+    const headGap = 2 * u * spread;
+    const rowGap = 1.2 * u * spread;
+    const height = bodies + gapSum * spread;
+    let top = plot.y + Math.max(0, (plot.h - height) / 2);
+    bands.forEach((band, row) => {
+      lanes.slice(row * perRow, (row + 1) * perRow).forEach((lane, local) => {
+        const index = row * perRow + local;
+        const x = plot.x + (row % 2 === 1 ? perRow - local - 1 : local) * pitch;
+        const box = qRect({ x, y: top, w: boxW, h: headerH });
+        let y = top + headerH + headGap;
+        members.get(lane.id)!.forEach((node, cardRow) => {
+          put(node.id, { x, y, w: boxW, h: band.rowHeights[cardRow]! });
+          y += band.rowHeights[cardRow]! + rowGap;
+        });
+        const bottom = Math.max(box.y + box.h, maxOf(members.get(lane.id)!.map((node) => rects.get(node.id)!.y + rects.get(node.id)!.h)));
+        result.lanes.push({ id: lane.id, bounds: qRect({ x, y: top, w: boxW, h: bottom - top }), headerBox: box, memberNodeIds: members.get(lane.id)!.map((node) => node.id) });
+        // The first chevron has no notch: the journey starts there.
+        const d = index === 0
+          ? `M${q(box.x)} ${q(box.y)}L${q(box.x + box.w - tip)} ${q(box.y)}L${q(box.x + box.w)} ${q(box.y + box.h / 2)}L${q(box.x + box.w - tip)} ${q(box.y + box.h)}L${q(box.x)} ${q(box.y + box.h)}Z`
+          : chevronPath(box, tip, row % 2 === 1);
+        header(lane.id, d, box, palette.lane(lane.role, lane.paletteKey));
       });
-      const bottom = Math.max(box.y + box.h, maxOf(members.get(lane.id)!.map((node) => rects.get(node.id)!.y + rects.get(node.id)!.h)));
-      result.lanes.push({ id: lane.id, bounds: qRect({ x, y: top, w: boxW, h: bottom - top }), headerBox: box, memberNodeIds: members.get(lane.id)!.map((node) => node.id) });
-      // The first chevron has no notch: the journey starts there.
-      const d = index === 0
-        ? `M${q(box.x)} ${q(box.y)}L${q(box.x + box.w - tip)} ${q(box.y)}L${q(box.x + box.w)} ${q(box.y + box.h / 2)}L${q(box.x + box.w - tip)} ${q(box.y + box.h)}L${q(box.x)} ${q(box.y + box.h)}Z`
-        : chevronPath(box, tip);
-      header(lane.id, d, box, palette.lane(lane.role, lane.paletteKey));
+      top += band.bodies + (band.rows > 0 ? headGap : 0) + Math.max(0, band.rows - 1) * rowGap + breakGap * spread;
     });
   }
 
@@ -137,11 +162,14 @@ export function layoutJourneyCompact(
         placed.push({ lane: lane.id, box: { x: plot.x, y, w: chevronW, h: bodyH }, cards: out });
         y += bodyH + u;
       });
-      const height = y - u + tipH;
+      const natural = y - u + tipH;
+      const extra = (gapSpread(fixedHeight, plot.h, natural, (placed.length - 1) * u) - 1) * u;
+      const height = natural + (placed.length - 1) * extra;
       const top = plot.y + Math.max(0, (plot.h - height) / 2);
       placed.forEach(({ lane: laneId, box: raw, cards }, index) => {
-        const box = qRect({ ...raw, y: raw.y + top });
-        for (const [id, rect] of cards) put(id, { ...rect, y: rect.y + top });
+        const shift = top + index * extra;
+        const box = qRect({ ...raw, y: raw.y + shift });
+        for (const [id, rect] of cards) put(id, { ...rect, y: rect.y + shift });
         const lane = lanes.find((candidate) => candidate.id === laneId)!;
         const mid = box.x + box.w / 2;
         // A notch on top except for the first phase, a point at the bottom.

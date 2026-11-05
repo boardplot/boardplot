@@ -1,7 +1,8 @@
 /** Status data and options schemas, without the chart engine. */
 
 import * as z from 'zod';
-import { addDuplicateIdIssues, baseOptionsSchema, cellSchema as valueCellSchema, idSchema, keyPositionSchema, refusedBaseOptions, sideKeyError } from '../../schema/shared';
+import { addDuplicateIdIssues, baseOptionsSchema, cellSchema as valueCellSchema, idSchema, keyPositionSchema, refusedBaseOptions } from '../../schema/shared';
+import { columnOverridesOption } from '../../schema/generatedColumnOptions';
 import type { StatusData, StatusOptions } from './layout';
 
 const rowSchema = z.strictObject({
@@ -84,15 +85,14 @@ const stateSchema = z.strictObject({
   pattern: z.literal('hatch45').optional().describe("Optional 45-degree hatching to distinguish this state beyond color."),
 });
 
-// 'right' is refused as on every type: a key beside the plot takes its width.
 const legendSchema = z.union([
-  z.enum(['top', 'bottom', 'none']),
-  z.strictObject({ position: keyPositionSchema.describe("Place the categorical state legend at the top or bottom.") }),
-], { error: sideKeyError });
+  z.enum(['top', 'bottom', 'right', 'left', 'none']),
+  z.strictObject({ position: keyPositionSchema.describe("Place the categorical state legend at the top or bottom, or in a column beside the matrix.") }),
+]);
 
 export const statusOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions('status'))
   .safeExtend({
-    labels: baseOptionsSchema.shape.labels.describe("False hides cell state and value labels. Row and stage names remain. series: false hides row names; category: false hides stage names. When the state key is drawn and colour or hatch tells the states apart, the key names them and the cells print no state names, unless labelDensity is 'full'. Otherwise state names print in every bound cell only when all of them fit; else the key names states."),
+    labels: baseOptionsSchema.shape.labels.describe("False hides cell state and value labels. Row and stage names remain. series: false hides row names; category: false hides stage names. When the state key is drawn and colour or hatch tells the states apart, the key names them and the cells print no state names, unless labelDensity is 'full'; then the names print at the largest type step where all of them fit, and if no step fits they stay off with a label-hidden warning and one reading.omissions entry per state. Otherwise state names print in every bound cell only when all of them fit; else the key names states."),
     states: z
       .array(stateSchema)
       .min(1, { message: 'status requires at least one declared state' })
@@ -100,6 +100,7 @@ export const statusOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptio
         message: 'status supports at most 6 states; bucket related verdicts into 6 or fewer states',
       }).describe("One to six declared categorical states defining cell meaning, legend labels and paint."),
     columnLabels: z.enum(['top', 'bottom']).optional().describe("Column-caption position; defaults to top."),
+    columnOverrides: columnOverridesOption('status', ['width', 'align', 'headAlign', 'label']),
     legend: legendSchema.optional().describe("State-legend placement, or none to suppress the legend while cells name every used state. A required key remains when cell state names are not drawn, including a one-state matrix. A grid panel's explicit none leaves the state key with the host."),
   })
   .superRefine((options, ctx) => {

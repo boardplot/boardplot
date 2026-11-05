@@ -72,6 +72,7 @@ import type {
   PlacedLabel,
   SceneNode,
 } from '../../types/scene';
+import { authoredTrackWidth, columnOverrideWarnings, trackPlotFloor } from '../columnOverrides';
 import { layoutCenteredFunnel, rampFunnelPaint, shadeStage } from './centered';
 import { funnelComparisonLayout } from './comparisons';
 import { clampedNote, deriveFunnel, funnelValueFormats, missingGlyph } from './derive';
@@ -193,11 +194,13 @@ export function layoutFunnel(
   const { values, known, stageTotals, shownTotals, conversions, worstDrop, undefinedSteps, clamped } = deriveFunnel(plotted, stages, fmt, warnings);
   const glyph = missingGlyph(theme);
   const cells = plotted.map((series, si) => normalizeSeriesValues(series, stages, si));
+  // An authored format holds the whole chart to one scale and one decimal count (exampleSpec).
+  const authoredRaster = options.format ? [...values.flat(), ...Object.values(stageTotals)] : undefined;
   // One raster per stage: the values of one stage share one decimal count, and a stage of whole counts prints none.
   // A single series is one raster down its stages (one decimal count within a series).
-  const formats = stages.map((_, ci) => seriesRasterFormatter(options.format, plotted.length === 1 ? values[0]! : plotted.map((_, si) => values[si]![ci]), options.locale?.language, options.unit, options.target, undefined, true));
+  const formats = stages.map((_, ci) => seriesRasterFormatter(options.format, authoredRaster ?? (plotted.length === 1 ? values[0]! : plotted.map((_, si) => values[si]![ci])), options.locale?.language, options.unit, options.target, undefined, true));
   // Totals and series without format metadata print through the shared raster (one decimal count, engine scale).
-  const totalRaster = seriesRasterFormatter(options.format, Object.values(stageTotals), options.locale?.language, options.unit, options.target);
+  const totalRaster = seriesRasterFormatter(options.format, authoredRaster ?? Object.values(stageTotals), options.locale?.language, options.unit, options.target);
   // A whole count prints whole beside fractional values of its stage ("140", "1" beside "0.6"); an amount like 100.4 keeps its decimals.
   if (!options.format) for (const format of [...formats, totalRaster]) format.spec.wholeCounts = true;
   const { valueText, totalFmt } = funnelValueFormats(plotted, cells, formats, totalRaster);
@@ -256,7 +259,13 @@ export function layoutFunnel(
   // The compact form (a card narrower than the full chart measures)
   // narrows the label column, so stage names wrap sooner.
   const compactForm = options.mode === 'compact';
-  const catCap = compactForm ? Math.max(40, inner.w * 0.18) : Math.max(50, inner.w * 0.24);
+  // An authored name or value column keeps its width; the bars give way first, down to the plot floor.
+  const overrides = options.columnOverrides;
+  const barsKeep = Math.max(MIN_LONGEST_BAR, trackPlotFloor(inner.w));
+  columnOverrideWarnings('funnel', overrides, [...(labelOn('category') ? ['label'] : []), ...(labelOn('total') ? ['value'] : [])], [], warnings);
+  const nameTrack = overrides?.label?.width === undefined || !labelOn('category') ? undefined
+    : authoredTrackWidth('label', overrides.label.width, 40, inner.w - barsKeep - 28, warnings);
+  const catCap = nameTrack ?? (compactForm ? Math.max(40, inner.w * 0.18) : Math.max(50, inner.w * 0.24));
   // The stage name is fitted to its band MINUS the footnote mark, and the
   // mark goes on after: an ellipsis takes the tail of the name and never
   // the reference the reader follows.
@@ -276,11 +285,14 @@ export function layoutFunnel(
   const fitCatName = (c: (typeof stages)[number], maxWidth: number, maxLines: number): FittedText =>
     withCatMark(fitText(catNameOf(c), catFont(c), Math.max(1, maxWidth - (catMarkOf(c) ? measure(catMarkOf(c), catFont(c)).width : 0)), maxLines, measure, { target: options.target, typeRole: 'axis' }), c);
   const catInfo = stages.map((c) => fitCatName(c, catCap, CAT_LABEL_LINES));
-  const bandW = labelOn('category') ? maxOf(catInfo.map((c) => c.w)) + 14 : 0;
+  const bandW = labelOn('category') ? (nameTrack ?? maxOf(catInfo.map((c) => c.w))) + 14 : 0;
   const totalTexts = stages.map((c, ci) => { const total = shownTotals[c.id] ?? null; return total === null ? glyph : plotted.length === 1 ? cellText(0, ci, total) ?? '' : totalFmt(total); });
   const totalSizes = totalTexts.map((t) => measure(t, strongFont));
+  const totalNaturalW = maxOf(totalSizes.map((t) => t.width));
+  // The floor counts the columns as they fit unset: an authored width gives way, so it never raises the floor.
+  const naturalBandW = nameTrack === undefined ? bandW : maxOf(stages.map((c) => fitCatName(c, compactForm ? Math.max(40, inner.w * 0.18) : Math.max(50, inner.w * 0.24), CAT_LABEL_LINES).w)) + 14;
   const totalReserve = labelOn('total')
-    ? maxOf(totalSizes.map((t) => t.width)) + 14
+    ? (overrides?.value?.width === undefined ? totalNaturalW : authoredTrackWidth('value', overrides.value.width, totalNaturalW, inner.w - bandW - barsKeep - 14, warnings)) + 14
     : 8;
 
   // "Biggest drop" callout, opt-in through worstDropCallout: the
@@ -302,7 +314,15 @@ export function layoutFunnel(
       options,
     );
   }
-  const noteReserve = callout?.reserve ?? 0;
+  // A CAGR bracket stands in its own column right of the stage totals, as on the
+  // centered funnel, so its label sits beside the arm and not on a row's value line.
+  // Only when the longest bar keeps its shortest readable length: a narrower
+  // frame draws as before, with the label hidden, and the minimum width stays.
+  const cagrColumn = (options.annotations ?? []).some((a) => a.kind === 'cagr')
+    ? measure('−100.0% p.a.', strongFont).width + (compactForm ? 24 : 48) : 0;
+  const cagrReserve = inner.w - bandW - totalReserve - (callout?.reserve ?? 0) - cagrColumn >= MIN_LONGEST_BAR
+    ? cagrColumn : 0;
+  const noteReserve = (callout?.reserve ?? 0) + cagrReserve;
 
   // The step conversion stands in the gap between its two rows, just
   // right of the baseline, so "44% advance" sits between the bars it links
@@ -875,14 +895,22 @@ export function layoutFunnel(
   // Pins bypass collision checks in the shared solver. Remove every
   // row-owned candidate that leaves its declared lane before the solver sees
   // it, so even a forced slot cannot trespass into another row.
+  // A step caption in the right-hand column stands level with the gap between
+  // its two rows, so its lane is both rows: the step from one stage to the next.
+  const convColumn = !inGap && convReserve > 0;
+  const laneOf = (request: LabelRequest, ci: number): Rect => {
+    const lane = rowLanes[ci]!;
+    const next = rowLanes[ci + 1];
+    if (!convColumn || !request.id.startsWith('conv:') || next === undefined) return lane;
+    return { x: lane.x, y: lane.y, w: lane.w, h: next.y + next.h - lane.y };
+  };
   for (const request of labelRequests) {
     const categoryId = request.owner.categoryId;
     if (categoryId === undefined) continue;
     const ci = stages.findIndex((stage) => stage.id === categoryId);
     if (ci < 0) continue;
-    request.candidates = request.candidates.filter((candidate) =>
-      rectContains(rowLanes[ci]!, candidate.rect),
-    );
+    const lane = laneOf(request, ci);
+    request.candidates = request.candidates.filter((candidate) => rectContains(lane, candidate.rect));
   }
 
   // Full-width row lanes are synthetic marks: the solver treats a lane as
@@ -891,10 +919,12 @@ export function layoutFunnel(
   // tile without a gap, so a claim on the full rect would put a two-pixel moat
   // at every row boundary and refuse any label that fills its own row.
   // Containment is still judged against the whole lane below.
+  // The step captions' column is no row's lane: the row lanes end left of it.
+  const laneRight = convColumn ? convRight - convColW - LANE_PAD : innerRight;
   stages.forEach((stage, ci) => {
     const lane = rowLanes[ci]!;
     occupied.claim(
-      { x: lane.x, y: lane.y + LANE_PAD, w: lane.w, h: Math.max(1, lane.h - 2 * LANE_PAD) },
+      { x: lane.x, y: lane.y + LANE_PAD, w: Math.max(1, Math.min(lane.w, laneRight - lane.x)), h: Math.max(1, lane.h - 2 * LANE_PAD) },
       'mark',
       { categoryId: stage.id },
       'funnel-row-lane',
@@ -1063,7 +1093,7 @@ export function layoutFunnel(
       naturalRowsH,
       // The frame around the rows, the stage-name column, the longest bar
       // at its shortest readable length, and the stage totals after it.
-      minWidth: size.width - inner.w + bandW + MIN_LONGEST_BAR + totalReserve,
+      minWidth: size.width - inner.w + naturalBandW + MIN_LONGEST_BAR + (labelOn('total') ? totalNaturalW + 14 : 8),
     }),
     plot,
     scene: withSegmentSeams(nodes, theme),

@@ -9,13 +9,14 @@ import { ANNOTATION_KIND_PURPOSES, type AnnotationKind } from './types/annotatio
 import { fieldLine, firstClause, optionFields, PRESET_THEME_NAMES, sharedOptionFields, shortSummaryFor, useCasesFor, chartIds, chartIdOf, compactDesignCard, designCardFor } from './catalog';
 import { themeFieldReference } from './themeFields';
 import { themes } from './theme';
+import { IGNORED_OPTION_KEYS, LEGEND_DRAWS, schemaRefusedKeys, valueAxisRefusal } from './schema/capability';
 
 /** A bare chart's `name` as describe shows it: it sits beside data and options, in neither. Kept here, off the browser bundle. */
 const BARE_NAME_FIELD = {
   path: 'name',
   type: 'string',
   default: BARE_CHART_NAME,
-  description: `Output file name and chart identity of a bare chart: ${NAME_RULE}. A taken file name gets -2; an existing file is never replaced.`,
+  description: `Bare chart file name: ${NAME_RULE}. Valid names stay unchanged. Other strings become safe names and warn name-slugified with a fix. Empty results are refused. Document names stay unchanged. Taken names get -2 and keep existing files.`,
 };
 
 interface AnnotationAnchor {
@@ -78,6 +79,7 @@ const ANNOTATION_OPTIONAL: Partial<Record<AnnotationKind, Record<string, Optiona
     },
     attainment: { meaning: 'boolean | { seriesId, direction }. Shades each category between its actual and the line.', types: ['bar', 'bullet', 'column', 'line'] },
   },
+  bracket: { label: 'string. Name printed before the sum, "Commercial +81". Without it the bracket prints the sum alone.' },
   indicator100: { side: 'left | right, default left. Side of the plot the 100% mark sits on.' },
   event: {
     date: { meaning: "ISO date yyyy-mm-dd, in place of at: the event sits at the last category whose date is on or before it, and the block header and the key print it as d MMM. Every category needs an ISO date; a date outside the categories warns event-out-of-range.", types: LANE_TYPES },
@@ -117,6 +119,10 @@ function describeAnnotation(kind: AnnotationKind, type: string) {
       break;
     case 'delta':
       anchors = [{ field: 'at', type: 'AnchorRef', required: true }, { field: 'vs', type: 'AnchorRef | number', required: true }];
+      break;
+    case 'bracket':
+      anchors = ['from', 'to'].map(field => ({ field, type: 'categoryId', required: true }));
+      notes = ['from and to are step ids, inclusive. The engine adds the steps up and prints the signed sum; every step in the span must be a delta, so a span that holds a total is refused with bracket-span-total. A step the bridge cannot add (an open start) refuses it with bracket-span-no-value. Brackets stand in one row above the steps. Vertical bridges only.'];
       break;
     case 'abs':
     case 'note':
@@ -320,13 +326,13 @@ const COMPACT_FIXTURES = 5;
  * The option rows describe shows for one type: its own fields, plus every
  * shared field whose contract differs here (pie's topN default, mekko's mode,
  * choropleth's labels). Shared fields the type refuses (`never`) or lacks are
- * named in `notAccepted` instead, as are the keys other types take that this
- * one refuses by name. The annotation subtree is left to the
+ * named in `ignored` when removed with a warning, otherwise in `notAccepted`.
+ * The annotation subtree is left to the
  * `annotations` section, which lists the kinds this type draws.
  */
-function typeOptions(type: string): { own: SchemaFieldReference[]; notAccepted: string[] } {
-  const base = new Map<string, SchemaFieldReference>();
-  for (const field of sharedOptionFields()) if (!base.has(field.path)) base.set(field.path, field);
+function typeOptions(type: string): { own: SchemaFieldReference[]; notAccepted: string[]; ignored: string[] } {
+  const base = new Map<string, SchemaFieldReference[]>();
+  for (const field of sharedOptionFields()) base.set(field.path, [...base.get(field.path) ?? [], field]);
   const all = optionFields(type);
   const firstByPath = new Map<string, SchemaFieldReference>();
   for (const field of all) if (!firstByPath.has(field.path)) firstByPath.set(field.path, field);
@@ -335,11 +341,11 @@ function typeOptions(type: string): { own: SchemaFieldReference[]; notAccepted: 
     const shared = base.get(field.path);
     if (!shared) return true;
     if (field.path === 'annotations' || field.path.startsWith('annotations[')) return false;
-    return field.type !== 'never' && contract(field) !== contract(shared);
+    return field.type !== 'never' && !shared.some(candidate => contract(field) === contract(candidate));
   });
   // valueAxis sub-keys are narrowed per type too (VALUE_AXIS_CAPABILITY), so
   // they are named here unless the whole object is refused.
-  const advertised = [...base.values()].filter((field) =>
+  const advertised = [...base.values()].map(fields => fields[0]!).filter((field) =>
     (!/[.[]/.test(field.path) || /^valueAxis\.\w+$/.test(field.path)) && field.type !== 'never' && !isReserved(field));
   const refused = (path: string) => { const here = firstByPath.get(path); return !here || here.type === 'never'; };
   const notAccepted = advertised
@@ -347,7 +353,12 @@ function typeOptions(type: string): { own: SchemaFieldReference[]; notAccepted: 
     .map((field) => field.path);
   // Keys another type takes that this one refuses by name (slope's seriesLabels).
   const refusedOwn = [...firstByPath.values()].filter((field) => field.type === 'never' && !base.has(field.path) && !/[.[]/.test(field.path));
-  return { own, notAccepted: [...notAccepted, ...refusedOwn.map((field) => field.path)] };
+  const ignored = [
+    ...schemaRefusedKeys(type).options.filter(key => IGNORED_OPTION_KEYS.has(key) || key === 'legend'),
+    ...['show', 'gridlines'].filter(key => valueAxisRefusal(type, key) !== undefined).map(key => `valueAxis.${key}`),
+    ...(Object.hasOwn(LEGEND_DRAWS, type) ? ["legend: 'none'", "legend: 'auto'"] : []),
+  ];
+  return { own, notAccepted: [...notAccepted, ...refusedOwn.map((field) => field.path)].filter(path => !ignored.includes(path)), ignored };
 }
 
 function fields(schema: z.ZodType, defaults?: unknown): SchemaFieldReference[] {
@@ -359,7 +370,7 @@ export function describeType(type: string, detail: 'compact' | 'full' = 'compact
   const definition = getChartDefinition(type);
   if (!definition) throw new Error(`unknown chart type '${type}'`);
   const full = detail === 'full';
-  const { own, notAccepted } = typeOptions(definition.type);
+  const { own, notAccepted, ignored } = typeOptions(definition.type);
   const dataFields = fields(definition.dataSchema);
   const fixtures = getFixtures(definition.type);
   const shown = full ? fixtures : fixtures.filter((fixture) => fixture.kind === 'example').slice(0, COMPACT_FIXTURES);
@@ -381,6 +392,7 @@ export function describeType(type: string, detail: 'compact' | 'full' = 'compact
     options: full ? fieldRows(own, true) : fieldLines(own, true),
     sharedOptions: 'plus boardplot_list sharedOptions, which a path here replaces. … ends a cut row: describe its path for the rest',
     ...(notAccepted.length ? { notAccepted } : {}),
+    ...(full && ignored.length ? { ignored } : {}),
     sizing: {
       minWidth: sizing.minWidth,
       minHeight: sizing.minHeight,
@@ -498,16 +510,16 @@ const THEME_ERRORS: Record<string, string> = {
 
 /** A minimal brand theme: a preset plus the tokens a brand changes. */
 const BRAND_THEME_EXAMPLE = {
-  preset: 'standard',
+  preset: 'bridge',
   overrides: { color: { highlight: '#0B5CAD', series: ['#0B5CAD', '#5B8DB8', '#A9C1D9'] } },
 };
 
-/** The theme token contract (`describe theme`). Defaults are the `standard` preset's values. */
+/** The theme token contract (`describe theme`). Defaults are the `bridge` preset's values. */
 export function describeTheme(detail: 'compact' | 'full' = 'compact') {
-  const tokenFields = themeFieldReference(themes.standard);
+  const tokenFields = themeFieldReference(themes.bridge);
   return {
     type: 'theme',
-    summary: 'The theme token contract. A spec takes theme as a preset name, as { preset, overrides } or as a full token object with its own name; defaults below are the standard preset.',
+    summary: 'The theme token contract. A spec takes theme as a preset name, as { preset, overrides } or as a full token object with its own name. Defaults below are the bridge preset.',
     presets: [...PRESET_THEME_NAMES],
     example: BRAND_THEME_EXAMPLE,
     tokens: detail === 'full' ? fieldRows(tokenFields, true) : fieldLines(tokenFields, true),

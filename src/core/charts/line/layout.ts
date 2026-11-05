@@ -319,7 +319,7 @@ function annotateLine(
   labelRequests?: LabelRequest[],
   printedLabels?: readonly PlacedLabel[],
 ): AnnotatePassResult {
-  const { options, cats, dataSeries, drawnSeries, refSeries, pv, rowOf, isStacked, cumTop, rebased, absOf } = domain;
+  const { options, cats, dataSeries, drawnSeries, refSeries, pv, rowOf, isStacked, cumTop, rebased, absOf, compositionInvalidAt } = domain;
   const { plot, y, xOf, categoryOrder: catIndex } = area;
   const anchorSeries = [...drawnSeries, ...refSeries.filter((s) => scene.nodes.some((node) => node.part === 'referenceLine' && node.owner.seriesId === s.id))];
   const anchorError = (ref: AnchorRef): string => {
@@ -336,6 +336,26 @@ function annotateLine(
     const ci = catIndex.get(norm.categoryId);
     if (ci === undefined) return null;
     const c = cats[ci]!;
+    // An explicit total reads every band. String anchors keep reading the first series.
+    // A suppressed 100% category has no total. Directly authored shares have no amount to add, so their total is the plotted percent.
+    if (isStacked && typeof ref !== 'string' && norm.edge === 'total' && !norm.seriesId && drawnSeries.length > 1) {
+      if (compositionInvalidAt(ci)) return null;
+      const top = drawnSeries[drawnSeries.length - 1]!;
+      const amounts = drawnSeries.map(s => rebased ? pv[rowOf.get(s)!]![ci]! : absOf(s, ci));
+      const sharesOnly = drawnSeries.some((s, i) => amounts[i] === null && s.vals[ci]!.v !== null);
+      const values = sharesOnly ? drawnSeries.map(s => pv[rowOf.get(s)!]![ci]!) : amounts;
+      if (values.every(value => value === null)) return null;
+      const value = values.reduce<number>((total, value) => total + (value ?? 0), 0);
+      return {
+        x: xOf(ci),
+        y: y(cumTop[dataSeries.indexOf(top)]![ci]!),
+        value,
+        ...(sharesOnly ? { pointValueText: domain.valueSpec.forSeries(top, top.vals[ci]?.format)(value), format: top.format } : { format: rebased ? undefined : top.format }),
+        date: c.date, label: c.label ?? c.id,
+        owner: { categoryId: c.id },
+        lineAnchored: true,
+      };
+    }
     // default series for category-level anchors (cagr span, valueLine): first data series
     const s = norm.seriesId ? anchorSeries.find((x) => x.id === norm.seriesId) : drawnSeries[0];
     if (!s) return null;
@@ -434,6 +454,7 @@ function annotateLine(
     locale: options.locale?.language,
     strings: options.strings,
     percentLevels: !rebased && percentLevels(dataSeries),
+    sharesFormat: domain.variant === 'stacked100-area',
     valueLinePercentLevels: !rebased && (domain.variant === 'stacked100-area' || domain.options.unit === '%' || percentLevels(dataSeries)),
     solveCtx,
     yScale: y,
@@ -525,6 +546,7 @@ function lineA11yDesc(env: LineEnv, domain: LineDomain, area: LineArea, marks: L
     (mode) => mode !== 'linear',
   );
   return chartString(domain.options, 'lineDescStart', { v1: variantName, v2: drawnSeries.length, v3: cats.length }) +
+    (options.valueAxis?.log ? chartString(domain.options, 'lineLogScaleClause') : '') +
     fanDesc +
     (refSeries.length ? chartString(domain.options, 'referenceSeriesClause', { v1: refSeries.length }) : '') +
     (effectiveInterpolationDesc.length === 0
@@ -733,6 +755,15 @@ function assembleLineGeometry(input: LineAssembly): Geometry<LineMarks, LineDeri
   }
   emitForecastDividers(env.theme, area.forecast, xOf, area.forecastPlot, nodes, forecastDividerAt(domain));
   if (domain.isArea) backForecastAreaLabels(allLabels, drawnSeries, cats, plot, input.areaFill, nodes);
+  // A name seated on its line stands on a page-colour plate: a halo
+  // follows the glyphs, so the line still showed in the letter gaps and
+  // touched the name's ends.
+  for (const label of allLabels) {
+    if (label.kind === 'series' && label.halo && !label.hidden && label.slot.startsWith('inline:')) {
+      label.plate = true;
+      label.halo = false;
+    }
+  }
   const bandLabelIds = new Set(
     annResult.placed.filter((ann) => ann.kind === 'band').map((ann) => ann.labelId),
   );
@@ -1093,6 +1124,8 @@ function layoutLinePass(
     ...(domain.labelModes.values === 'all' && !domain.isStacked ? { valueRows: domain.drawnSeries.map(series => ({
       ids: domain.cats.flatMap((category, ci) => typeof series.vals[ci]?.labelOverride === 'string' ? [] : [`point:${series.id}:${category.id}`]),
       alternate: true,
+      // A rank chart folds a value that finds no seat into the name instead (below).
+      keepEnds: !env.isBump,
     })) } : {}),
     // A value reads as its own point's (label/ownership.ts); stacked values sit in their bands.
     ...(domain.isStacked ? {} : {
@@ -1122,7 +1155,7 @@ function layoutLinePass(
   }
   // An inline name with no seat, chosen by the engine or by the author: the key row names the lines after all.
   // The key pass draws no inline names, so none is left hidden. A visible legend already names every line: it stays as set.
-  const legendShown = ['top', 'right', 'bottom'].includes((typeof options.legend === 'object' ? options.legend.position : options.legend) ?? 'none');
+  const legendShown = ['top', 'right', 'left', 'bottom'].includes((typeof options.legend === 'object' ? options.legend.position : options.legend) ?? 'none');
   if (((options as { [INLINE_FALLBACK]?: boolean })[INLINE_FALLBACK] === true || (options.seriesLabels === 'inline' && !legendShown)) &&
     solved.placed.some(label => label.kind === 'series' && label.hidden !== undefined)) {
     const { seriesLabels: _names, ...keyed } = withoutInlineFallback(options);

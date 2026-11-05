@@ -70,8 +70,20 @@ describe('hover card and highlight on a column fixture', () => {
     expect(card()).toContain('low: | $89m');
     expect(drawn('interaction-outline')).toBe(true);
     pointer(host.querySelector('[data-bp-hover]')!, 'pointerout');
+    // The card stays for a moment, so a pointer can cross a gap onto it.
+    await act(() => new Promise(resolve => setTimeout(resolve, 200)));
     expect(drawn('interaction-card')).toBe(false);
     expect(drawn('interaction-outline')).toBe(false);
+  });
+
+  // The card could not be hovered: moving the pointer onto it picked the mark under it and replaced the card (WCAG 1.4.13).
+  it('keeps the card open while the pointer is on it', async () => {
+    await render(<ColumnChart {...props} hover />);
+    pointer(await nodeOf('column', column.data, column.options as object, column.hover!.owner), 'pointermove');
+    const before = card();
+    pointer(document.querySelector('[data-bp-chart-card] [data-part="interaction-label"]')!, 'pointermove');
+    expect(card()).toBe(before);
+    expect(document.querySelector<HTMLElement>('[data-bp-chart-card]')!.style.pointerEvents).toBe('auto');
   });
 
   // A tap leaves no pointer to move away: without this, a card opened by a tap stayed open after a tap elsewhere on the page.
@@ -129,13 +141,16 @@ describe('hover card and highlight on a column fixture', () => {
     expect(parseFloat(portal.style.height)).toBe(height);
     expect(Number(portal.querySelector('svg')!.getAttribute('width'))).toBe(width);
     expect(Number(portal.querySelector('svg')!.getAttribute('height'))).toBe(height);
-    expect(parseFloat(portal.style.left)).toBeGreaterThanOrEqual(8);
-    expect(parseFloat(portal.style.top)).toBeGreaterThanOrEqual(8);
-    expect(parseFloat(portal.style.left) + width).toBeLessThanOrEqual(window.innerWidth - 8);
-    expect(parseFloat(portal.style.top) + height).toBeLessThanOrEqual(window.innerHeight - 8);
+    // Without the top layer the card is fixed to the viewport, so it adds nothing to the page's scroll area.
+    const [left, top] = portal.style.translate.split(' ').map(parseFloat) as [number, number];
+    expect(portal.style.position).toBe('fixed');
+    expect(left).toBeGreaterThanOrEqual(8);
+    expect(top).toBeGreaterThanOrEqual(8);
+    expect(left + width).toBeLessThanOrEqual(window.innerWidth - 8);
+    expect(top + height).toBeLessThanOrEqual(window.innerHeight - 8);
     expect(portal.getAttribute('role')).toBe('tooltip');
     expect(portal.getAttribute('aria-label')).toContain('$96m');
-    expect(portal.style.pointerEvents).toBe('none');
+    expect(portal.style.pointerEvents).toBe('auto');
     expect(portal.style.zIndex).toBe('8');
     expect(portal.style.animation).toContain('bp-chart-card-in');
     const style = host.querySelector('style')!.textContent!;

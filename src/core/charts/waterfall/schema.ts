@@ -12,6 +12,7 @@ import {
 } from '../../schema/shared';
 import type { WaterfallData } from '../../types/data';
 import type { WaterfallOptions } from '../../types/options';
+import { columnOverridesOption } from '../../schema/generatedColumnOptions';
 
 const segmentSchema = z.object({
   id: idSchema.refine((id) => id !== '__total' && id !== '__value', "'__total' and '__value' name the engine's own bar segments; give this segment another id").describe("Segment identity within its waterfall item; also names connector anchors."),
@@ -30,7 +31,7 @@ const itemSchema = z.object({
   date: z.string().optional().describe("ISO 8601 date associated with this bridge item."),
   scenario: scenarioField('Scenario for this bridge item and its default segment styling.'),
   direction: z.enum(['higherIsBetter', 'lowerIsBetter']).optional().describe("Under 'lowerIsBetter' a rise paints bad and a fall good (options.signColor)."),
-  toBaseline: z.boolean().optional().describe("Start this item at zero and reset the accumulated contribution list."),
+  toBaseline: z.boolean().optional().describe("Start this delta at zero and reset the accumulated contribution list. A subtotal draws the sum of the deltas since the last total or baseline subtotal, from zero; the running level carries on."),
   values: z.array(cellSchema).optional().describe("With data.cases: one value per case, in case order, in place of value — the signed delta of each case, or a total's opening or check value."),
 }).passthrough();
 
@@ -119,7 +120,7 @@ export const waterfallDataSchema = z
       .min(2)
       .max(3)
       .optional()
-      .describe("Two or three cases of the same bridge side by side in each step (scenarios): each item gives values, one per case, and each case runs its own levels in its own colour, named in the key. Case bars draw no connectors, since a line to a case's next bar would cross the other case's bar; items take no value or segments, and data.connectors and variant 'horizontal' are refused."),
+      .describe("Two or three cases of the same bridge side by side in each step (scenarios): each item gives values, one per case, and each case runs its own levels in its own colour, named in the key. Case bars draw no connectors, since a line to a case's next bar would cross the other case's bar; items take no value or segments, and data.connectors is refused. Under variant 'horizontal' each step's case bars stack in its row."),
   })
   .passthrough()
   .superRefine((data, ctx) => {
@@ -188,13 +189,17 @@ export const waterfallDataSchema = z
 const waterfallOptionsShape = baseOptionsSchema.safeExtend(refusedBaseOptions('waterfall')).safeExtend({
   legend: baseOptionsSchema.shape.legend.describe("Key position. Segment, case and scenario encodings keep their key because numeric bar labels do not name them. With these encodings, 'none' retains the key and reports waterfall-legend-required. A plain bridge keys its sign colours only when a lowerIsBetter step inverts them."),
   axisTitles: primaryAxisTitleSchema('above the vertical plot').describe('Authored primary value-axis title above the vertical plot, using column title styling. Waterfall draws no value ticks. Horizontal mode accepts this key but does not print it.'),
-  variant: z.enum(['vertical', 'horizontal']).optional().describe("Vertical columns by default, or a horizontal bridge."),
+  variant: z.enum(['vertical', 'horizontal']).optional().describe("Left out: vertical columns, turned into a horizontal bridge when the step names would rotate, shorten or drop, the horizontal bridge draws without a new finding, and the spec has no cases and no annotations. 'vertical' always keeps columns. A horizontal bridge draws no annotations: an old spec draws without them and warns option-ignored, so use vertical for annotations."),
   build: z.enum(['up', 'down']).optional().describe("Build label in the accessible description; defaults to up. Item types and signed values determine accumulation in both modes."),
-  signColor: z.boolean().optional().describe("Paint each plain step good or bad by sign × item direction, as column's signColor; zero is neutral. Default true unless the theme sets marks.bridge or a palette is named; false paints steps neutral."),
+  signColor: z.boolean().optional().describe("Paint each plain step good or bad by sign × item direction, as column's signColor; zero is neutral. Default true unless the theme sets marks.bridge or a palette is named; false paints steps neutral. colorblindSafe paints signed steps, labels and key swatches with the theme's colour-blind pair."),
+  columnOverrides: columnOverridesOption('waterfall', ['width']).describe("Horizontal bridge only: width in px of the name band (label) and the value band (value). With variant 'vertical' it is refused. Left out, the variant is chosen without it, and a bridge that draws vertical warns option-ignored."),
 });
 
-export const waterfallOptionsSchema =
-  waterfallOptionsShape as unknown as z.ZodType<WaterfallOptions>;
+export const waterfallOptionsSchema = waterfallOptionsShape.superRefine((options, ctx) => {
+  if (options.columnOverrides !== undefined && options.variant === 'vertical') {
+    ctx.addIssue({ code: 'custom', path: ['columnOverrides'], message: "columnOverrides sets the bands of a horizontal bridge, and variant 'vertical' has none; drop one of the two" });
+  }
+}) as unknown as z.ZodType<WaterfallOptions>;
 
 /** Option vocabulary, so a misplaced option key can name its correct home. */
 const WATERFALL_OPTION_KEYS = new Set(Object.keys(waterfallOptionsShape.shape));

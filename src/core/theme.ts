@@ -2,13 +2,13 @@ import { isHatchPattern } from './svgPath';
 import { adaptivePaintColor } from './colorRecipes';
 /**
  * Theme presets + resolution. Chart code references semantic
- * tokens only; the theme resolves them. 'boardroom' is the shipped default —
- * one of the four design families (boardroom/capital/studio/
- * glass) that ship as presets with fixed schemes and page chrome. 'standard'
+ * tokens only; the theme resolves them. 'bridge' (light) and 'bridge-dark'
+ * are the shipped default. 'boardroom', 'capital', 'studio' and 'glass' are
+ * the other design families, with fixed schemes and page chrome. 'standard'
  * and 'notation' (+ dark pairs) are the other presets.
  */
 
-import { apcaContrast, compositeColor, contrastRatio, mixColors, onFillInks, parseColor, pickOnFillInk, tint } from './color';
+import { apcaContrast, compositeColor, contrastRatio, matrixNeedsDarkInk, mixColors, onFillInks, parseColor, pickMatrixInk, pickOnFillInk, tint } from './color';
 import type { Margin } from './geometry';
 import { markVisibilityFloor } from './markVisibility';
 import { READER_LABEL_MIN_PX, tableHeadFloorPx } from './typeFloors';
@@ -20,6 +20,8 @@ import { pieRamp, quietestTintCap } from './pieRamp';
 import { FILL_SEPARATION_FLOOR, MARK_CONTRAST_FLOOR, TEXT_CONTRAST_FLOOR, oklabLightness, PALETTE_CVD_FLOOR, PALETTE_NORMAL_FLOOR, PALETTE_TRITAN_FLOOR, palettePerceptualDistance, swatchApart } from './themeRules';
 import { registerDeferredLoader, requireDeferred } from './deferred';
 import boardroomFamilyJson from './themeFamilies/boardroom.json';
+import bridgeFamilyJson from './themeFamilies/bridge.json';
+import bridgeDarkFamilyJson from './themeFamilies/bridge-dark.json';
 import capitalFamilyJson from './themeFamilies/capital.json';
 import studioFamilyJson from './themeFamilies/studio.json';
 import glassFamilyJson from './themeFamilies/glass.json';
@@ -29,6 +31,8 @@ import type { DashRole, StrokeRole, Theme, ThemeRef, ThemeTable, TypeRoleName } 
 import { adoptedTheme } from './themeStore';
 import { RETIRED_PALETTES, RETIRED_PRESETS, RETIRED_THEME_KEYS, retiredThemeKeyWarning, withoutRetiredThemeKeys } from './retired';
 import { themeColors } from './themeColors';
+import { DEFAULT_THEME } from './themeDefault';
+import { themeShape } from './normalize/optionShapes';
 
 /**
  * The structural theme checks below run only over a theme a caller PATCHED,
@@ -52,12 +56,15 @@ const ATLANTIC_SERIES = ['#075A8E', '#55BEF7', '#2AB1A9', '#838CDA', '#208668', 
 // violet identities. OKLCH lightness is lifted or respaced only where the dark
 // surface needs it; every rank clears 3:1 on the surface and the 12/6/4
 // normal/protan-deutan/tritan pairwise floors with non-zero margin.
-const ATLANTIC_DARK_SERIES = ['#087397', '#55BEFB', '#25AAA2', '#828BD9', '#1E9240', '#A054C4'];
+// Rank 1 is the brightest blue (8.5:1 on the navy page), so the lead series reads strongest.
+const ATLANTIC_DARK_SERIES = ['#55BEFB', '#087397', '#25AAA2', '#828BD9', '#1E9240', '#A054C4'];
 
 // Five neutral ranks are the maximum honest notation dark ramp that can
 // keep adjacent OKLab distance above 12 while every rank stays >=3:1 on the
 // near-black surface. Scenario notation remains the primary discriminator.
-const NOTATION_DARK_SERIES = ['#606060', '#858585', '#ACACAC', '#D5D5D5', '#FFFFFF'];
+// Rank 1 reads strongest on the page (20:1); the ranks then alternate between
+// far greys, so neighbours sit 25 OKLab or more apart.
+const NOTATION_DARK_SERIES = ['#FFFFFF', '#858585', '#D5D5D5', '#606060', '#ACACAC'];
 const DARK_WARN = '#F2C14E';
 // The light presets' warn is a dark amber chosen to read as text (4.5:1 on the
 // page); as a cell or a bar it reads as olive. Their large warn fills take this
@@ -439,7 +446,7 @@ export const notationTheme: Theme = {
     badFill: '#E2564A',
     neutral: '#818181',
     // The marks that paint in the neutral (a scatter's neutral group, a
-    // butterfly's first side) sit 12 OKLab from the first series #6D6D6D;
+    // butterfly's first side) sit 12 OKLab from the series grey #6D6D6D;
     // the neutral itself stays the band and ladder ground.
     neutralMark: '#939393',
     neutralLight: '#D9D9D9',
@@ -459,10 +466,13 @@ export const notationTheme: Theme = {
     grid: '#E6E6E6',
     leader: '#A0A0A0',
     background: '#FFFFFF',
-    // Five greys is the most that keep 3:1 as marks and 12 OKLab apart (0.54,
-    // 0.29, 0.66, 0.41, 0.15 lightness); the six pale greys before sat 5 apart.
-    series: ['#6D6D6D', '#2A2A2A', '#939393', '#4A4A4A', '#0C0C0C'],
+    // Five greys is the most that keep 3:1 as marks and 12 OKLab apart (0.15,
+    // 0.54, 0.29, 0.66, 0.41 lightness); the six pale greys before sat 5 apart.
+    // Rank 1 reads strongest on the page, and neighbours sit 25 OKLab or more apart.
+    series: ['#0C0C0C', '#6D6D6D', '#2A2A2A', '#939393', '#4A4A4A'],
     seriesOverflow: 'repeatLast',
+    // Strongest on the page first, so the top of a tall stack never prints as one black block.
+    stack: ['#2A2A2A', '#818181', '#DADADA'],
     status: {
       advanced: '#818181',
       open: '#D5D5D5',
@@ -524,6 +534,8 @@ export const notationDarkTheme: Theme = {
     leader: '#777777',
     background: '#080808',
     series: [...NOTATION_DARK_SERIES],
+    // Strongest first, as on standard-dark; the quietest step sits 2.3:1 on the page.
+    stack: ['#D5D5D5', '#858585', '#4A4A4A'],
     warn: DARK_WARN,
     warnFill: DARK_WARN,
     status: {
@@ -552,11 +564,24 @@ export const notationDarkTheme: Theme = {
 export const roadshowFamilyThemes: Readonly<
   Record<'boardroom' | 'capital' | 'studio' | 'glass', Theme>
 > = Object.freeze({
-  boardroom: { ...(boardroomFamilyJson as Theme), table: tableFamily({ secondary: '#305B86', ruleInk: '#C3D3E3', barFill: '#D6E3F0' }) },
+  boardroom: { ...(boardroomFamilyJson as Theme), table: tableFamily({ secondary: '#5B6878', ruleInk: '#C3D3E3', barFill: '#D6E3F0' }) },
   capital: { ...(capitalFamilyJson as Theme), table: tableFamily() },
   studio: { ...(studioFamilyJson as Theme), table: tableFamily() },
   glass: { ...(glassFamilyJson as Theme), table: tableFamily() },
 });
+
+/**
+ * Bridge, the default design system: navy ink, one cobalt accent, a slate
+ * neutral. Every data mark reaches 3:1 on its page, and the status and gantt
+ * colours stay apart in greyscale. Text sizes come from the render target,
+ * and the font is the engine's measured default stack.
+ */
+export const bridgeTheme: Theme = bridgeFamilyJson as Theme;
+/** Bridge on its navy page. A dark host passes this preset; it does not flip by itself. */
+export const bridgeDarkTheme: Theme = bridgeDarkFamilyJson as Theme;
+
+/** The preset a chart draws with when it names none. */
+export const DEFAULT_PRESET = DEFAULT_THEME;
 
 /** The glass design family. */
 export const glassTheme: Theme = roadshowFamilyThemes.glass;
@@ -570,6 +595,8 @@ export const glassTheme: Theme = roadshowFamilyThemes.glass;
  * for EVERY consumer of this export (CLI included), not just resolveTheme.
  */
 export const themes: Record<string, Theme> = Object.assign(Object.create(null) as Record<string, Theme>, {
+  bridge: bridgeTheme,
+  'bridge-dark': bridgeDarkTheme,
   boardroom: roadshowFamilyThemes.boardroom,
   capital: roadshowFamilyThemes.capital,
   studio: roadshowFamilyThemes.studio,
@@ -775,7 +802,7 @@ function currentPreset(name: string): string {
 }
 
 function targetTheme(ref: ThemeRef | undefined, target: RenderTarget): Theme {
-  const preset = currentPreset(typeof ref === 'string' ? ref : ref?.preset ?? 'boardroom');
+  const preset = currentPreset(typeof ref === 'string' ? ref : ref?.preset ?? DEFAULT_PRESET);
   // A registered/uploaded complete theme owns its sizes. Internal resolved themes
   // also travel as full overrides and must not receive the target table twice.
   if (!PRESET_NAMES.has(preset) || (typeof ref === 'object' && ref.overrides && ownThemes.has(ref.overrides))) {
@@ -834,10 +861,11 @@ export function removedNameWarnings(options: { theme?: unknown; palette?: unknow
 }
 
 export function resolveTheme(ref?: ThemeRef): Theme {
-  // The shipped default is the boardroom design family. A document that wants
-  // the standard family pins `theme: 'standard'` explicitly.
-  if (!ref) return own(roadshowFamilyThemes.boardroom);
-  const presetName = typeof ref === 'string' ? currentPreset(ref) : typeof ref.preset === 'string' ? currentPreset(ref.preset) : ref.preset;
+  // The shipped default is Bridge. A document that wants the old look pins
+  // `theme: 'boardroom'` (light) or `theme: 'standard-dark'` (dark) explicitly.
+  if (!ref) return own(bridgeTheme);
+  ref = themeShape(ref);
+  const presetName = currentPreset(typeof ref === 'string' ? ref : ref.preset ?? DEFAULT_PRESET);
   // A registered theme, else one a spec brought along (core/themeStore). Own
   // keys only: a name is data, never a path to Object.prototype; a non-string
   // name matches neither.
@@ -1412,6 +1440,11 @@ export function separatedWashPaint(token: PaintToken, amount: number | 'surface-
   return { token, theme: { kind: 'visible-tint', base: { token }, amount, floor: FILL_SEPARATION_FLOOR } };
 }
 
+/** Gantt row and weekend shading resolves its tint in the active theme. */
+export function ganttRowPaint(key?: true): Paint {
+  return { token: 'others', theme: { kind: 'gantt-row-tint', ...(key ? { key } : {}) } };
+}
+
 /**
  * The fill of a plan mark under a theme's 'solidMuted' plan look:
  * color.inkMuted at 35 % over the background, with no outline.
@@ -1461,11 +1494,12 @@ export function warnColor(theme: Theme): string {
 /** Surface anatomy with defaults (chip/badge wash, row/elapsed tints, chip radius). */
 export function resolveSurface(
   theme: Theme,
-): { chipTint: number; rowTint: number; elapsedTint: number; anchorTint: number; bandTint: number; gapTint: number; ribbonAlpha: number; ribbonSheetAlpha: number; chipRadius: number } {
+): { chipTint: number; rowTint: number; ganttRowTint: number; elapsedTint: number; anchorTint: number; bandTint: number; gapTint: number; ribbonAlpha: number; ribbonSheetAlpha: number; chipRadius: number } {
   const surface = theme.surface as SurfaceWithAnchorTint | undefined;
   return {
     chipTint: surface?.chipTint ?? 0.9,
     rowTint: surface?.rowTint ?? 0.94,
+    ganttRowTint: surface?.ganttRowTint ?? 0.25,
     elapsedTint: surface?.elapsedTint ?? 0.95,
     anchorTint: surface?.anchorTint ?? 0.97,
     bandTint: surface?.bandTint ?? 0.06,
@@ -1525,9 +1559,14 @@ function defaultCanvasMargin(width: number): Margin {
 export function spaceTokens(theme: Theme, width: number): SpaceTokens {
   const wide = width >= WIDE_CANVAS_MIN_WIDTH;
   const canvas = theme.space.canvas;
+  const margin = wide ? canvas?.wide : canvas?.base;
+  const fallback = defaultCanvasMargin(width);
   const gap = theme.space.gap;
   return {
-    margin: { ...defaultCanvasMargin(width), ...(wide ? canvas?.wide : canvas?.base) },
+    margin: {
+      top: margin?.top ?? fallback.top, right: margin?.right ?? fallback.right,
+      bottom: margin?.bottom ?? fallback.bottom, left: margin?.left ?? fallback.left,
+    },
     gapTitleSubtitle: gap?.titleSubtitle ?? 4,
     // 8 below W-L: the first plot element sits about 16-18 px under the last
     // header baseline; 12 would leave charts about 5 px lower.
@@ -1670,11 +1709,14 @@ function scenarioSeriesColor(
   scenario: Scenario | undefined,
   deEmphasizePy = true,
   surfaceFade = false,
+  apart = false,
 ): string {
   const base = seriesColor(theme, index, ramp);
   const background = theme.color.background;
   const floor = markVisibilityFloor(background);
-  const target = scenario === 'FC' ? floor + 0.12 : floor;
+  // A forecast hatch beside its actual's solid column on a dark page reads by its stripes alone
+  // (a dark page's grounded hatch keeps no cell floor), so they keep the strong grounded target.
+  const target = scenario === 'FC' ? (apart && floor === 3 ? GROUNDED_STRONG_TARGET : floor + 0.12) : floor;
   const visibilityContrast = (candidate: string): number => {
     if (scenario !== 'FC') return contrastRatio(candidate, background);
     // A hatched forecast cell must stand apart from the page. The reader sees
@@ -1704,16 +1746,26 @@ function scenarioSeriesColor(
   }
 
   if (scenario === 'PY' && deEmphasizePy) {
-    const light = mixColors(base, background, 0.45);
-    if (visibilityContrast(light) >= floor) return light;
-    // Preserve the PY de-emphasis as far as the active surface permits. Dark
-    // presets have a 3:1 mark floor, so the full base may be the lightest
-    // legal member of the selected palette family.
-    for (let lightWeight = 0.99; lightWeight >= 0; lightWeight -= 0.01) {
-      const candidate = mixColors(light, base, lightWeight);
-      if (visibilityContrast(candidate) >= floor) return candidate;
+    const washed = ((): string => {
+      const light = mixColors(base, background, 0.45);
+      if (visibilityContrast(light) >= floor) return light;
+      // Preserve the PY de-emphasis as far as the active surface permits. Dark
+      // presets have a 3:1 mark floor, so the full base may be the lightest
+      // legal member of the selected palette family.
+      for (let lightWeight = 0.99; lightWeight >= 0; lightWeight -= 0.01) {
+        const candidate = mixColors(light, base, lightWeight);
+        if (visibilityContrast(candidate) >= floor) return candidate;
+      }
+      return base;
+    })();
+    if (!apart || swatchesApart(washed, base)) return washed;
+    // A prior year beside its actual must not print as the actual. When the page floor
+    // leaves no wash apart from it (an actual near the floor), it steps toward the ink.
+    for (let amount = 0.01; amount < 1; amount = Number((amount + 0.01).toFixed(2))) {
+      const step = tint(base, amount, theme.color.ink);
+      if (swatchesApart(step, base)) return step;
     }
-    return base;
+    return theme.color.ink;
   }
 
   if (visibilityContrast(base) >= target) return base;
@@ -1748,8 +1800,8 @@ function brighterPole(theme: Theme, base?: string): string {
 
 const SERIES_TEXT_COLORS = new WeakMap<Theme, WeakMap<ThemePaintSource, string>>();
 /**
- * Ground-text contrast walks run once per theme and recipe object: the cells of one heat band share one ground and
- * one ink recipe. Scene paints are caller data and may be edited in place, so a hit must still print as its recipe.
+ * Ground-text and quiet-land walks run once per theme and recipe object: the cells of one heat band share one ground and
+ * one ink recipe, and the regions of one map share one land. Scene paints are caller data and may be edited in place, so a hit must still print as its recipe.
  */
 const WALKED_COLORS = new WeakMap<Theme, WeakMap<ThemePaintSource, { recipe: string; color: string }>>();
 
@@ -1764,7 +1816,7 @@ export function sameRecipe(a: unknown, b: unknown): boolean {
 
 /** Resolve a provenance-carrying theme paint for the baked serializer. */
 function themePaintSourceColor(theme: Theme, source: ThemePaintSource): string {
-  if (source.kind !== 'ground-text') return sourceColor(theme, source);
+  if (source.kind !== 'ground-text' && source.kind !== 'quiet-land') return sourceColor(theme, source);
   let cache = WALKED_COLORS.get(theme);
   if (!cache) WALKED_COLORS.set(theme, cache = new WeakMap());
   const recipe = JSON.stringify(source);
@@ -1775,7 +1827,22 @@ function themePaintSourceColor(theme: Theme, source: ThemePaintSource): string {
   return color;
 }
 
+/** The matrix decision of the contrast-ink recipe, made once per matrix list and theme: every value of the matrix asks for it. */
+const matrixDecision = new WeakMap<Paint[], { theme: Theme; size: number; rescued: boolean }>();
+function matrixRescued(theme: Theme, matrix: Paint[]): boolean {
+  const known = matrixDecision.get(matrix);
+  if (known && known.theme === theme && known.size === matrix.length) return known.rescued;
+  const grounds = matrix.map((paint) => compositeColor(paintColor(theme, paint), theme.color.background));
+  const rescued = matrixNeedsDarkInk(grounds, theme.color.ink, theme.color.inkInverse, onFillInks(theme.color));
+  matrixDecision.set(matrix, { theme, size: matrix.length, rescued });
+  return rescued;
+}
+
 function sourceColor(theme: Theme, source: ThemePaintSource): string {
+  if (source.kind === 'gantt-row-tint') {
+    const amount = Math.min(resolveSurface(theme).ganttRowTint, source.key ? 0.8 : 1);
+    return tint(paintTokenColor(theme, 'others'), amount, theme.color.background);
+  }
   if (source.kind === 'series-text') {
     let cache = SERIES_TEXT_COLORS.get(theme);
     const known = cache?.get(source);
@@ -1797,10 +1864,12 @@ function sourceColor(theme: Theme, source: ThemePaintSource): string {
   }
   if (source.kind === 'colorblind') return colorblindColor(theme, source.role);
   if (source.kind === 'pie-ramp' || source.kind === 'visible-tint') {
-    const base = paintColor(theme, source.base);
-    const amount = source.kind === 'pie-ramp'
-      ? pieRamp(base, theme.color.background, source.count, source.withOthers ? paintTokenColor(theme, 'othersMark') : undefined, source.othersShade !== 'apart', theme.marks?.contrastEdge !== true).tints[source.index] ?? 0.82
-      : visibleTintAmount(theme, source);
+    const ramp = source.kind === 'pie-ramp'
+      ? pieRamp(paintColor(theme, source.base), theme.color.background, source.count, source.withOthers ? paintTokenColor(theme, 'othersMark') : undefined, source.othersShade !== 'apart', theme.marks?.contrastEdge !== true)
+      : undefined;
+    // A pie ramp washes from its own top colour, lifted on a dark page.
+    const base = ramp ? ramp.base : paintColor(theme, source.base);
+    const amount = source.kind === 'pie-ramp' ? ramp!.tints[source.index] ?? 0.82 : visibleTintAmount(theme, source);
     const washed = amount ? tint(base, amount, theme.color.background) : base;
     if (source.kind === 'visible-tint' && source.darkApartFrom && darkPage(theme)) return washApart(theme, base, amount, source.darkApartFrom);
     if (source.kind === 'visible-tint' && source.darkMatchLight && darkPage(theme)) return washLikeLight(theme, base, amount);
@@ -1853,7 +1922,9 @@ function sourceColor(theme: Theme, source: ThemePaintSource): string {
     return hatchFadeColor(paintColor(theme, source.stripe), paintColor(theme, source.ground), source.strength, source.cue);
   }
   if (source.kind === 'stack-ramp') return stackRampColor(theme, source);
+  if (source.kind === 'group-ramp') return groupRampColor(theme, source);
   if (source.kind === 'stack-apart') return stackApartColor(theme, source);
+  if (source.kind === 'neutral-ramp') return neutralRampColor(theme, source);
   if (source.kind === 'ordered-ramp') {
     let weakest = visibleTintAmount(theme, { kind: 'visible-tint', base: { token: 'markInk' }, amount: 0.9, floor: MARK_CONTRAST_FLOOR });
     // A Rest series beside the ramp is the quietest part: the weakest rung stops above its colour.
@@ -1869,6 +1940,7 @@ function sourceColor(theme: Theme, source: ThemePaintSource): string {
     const amount = source.count > 1 ? weakest * (1 - source.index / (source.count - 1)) : 0;
     return tint(paintTokenColor(theme, 'markInk'), amount, theme.color.background);
   }
+  if (source.kind === 'quiet-land') return quietLandColor(theme, source.apartFrom.map((paint) => paintColor(theme, paint)));
   if (source.kind === 'mix') {
     const from = paintColor(theme, source.from);
     if (!('theme' in source.to) || source.to.theme?.kind !== 'brighter-pole') {
@@ -1892,6 +1964,9 @@ function sourceColor(theme: Theme, source: ThemePaintSource): string {
   if (source.kind === 'contrast-ink') {
     const fill = compositeColor(paintColor(theme, source.fill), theme.color.background);
     const ground = source.pattern ? effectiveFill(fill, source.pattern, theme) : fill;
+    if (source.matrix?.length && !source.also?.length) {
+      return pickMatrixInk(ground, matrixRescued(theme, source.matrix), theme.color.ink, theme.color.inkInverse, onFillInks(theme.color));
+    }
     const ink = pickOnFillInk(ground, theme.color.ink, theme.color.inkInverse, onFillInks(theme.color));
     if (!source.also?.length) return ink;
     // Text across several grounds: of the inks that may print on a fill, the one whose
@@ -1911,6 +1986,7 @@ function sourceColor(theme: Theme, source: ThemePaintSource): string {
         source.scenario,
         source.deEmphasizePy ?? true,
         source.surfaceFade ?? false,
+        source.apart ?? false,
       );
 }
 
@@ -1972,6 +2048,34 @@ export function visibleTintAmount(
     if (contrastRatio(tint(base, Math.max(0, a), background), background) >= floor) return Math.max(0, a);
   }
   return 0;
+}
+
+/** How far, in OKLab x100, the land of a map region without data sits from the page. */
+export const QUIET_LAND_STEP = 6;
+/** The land keeps this distance from every scale paint, so it never reads as the lowest class. */
+const QUIET_LAND_APART = 6;
+/** The land never washes closer to the page than this, so its shape stays on the page. */
+const QUIET_LAND_FLOOR = 2.5;
+
+/**
+ * The quiet land of regions the data does not name (choropleth and tilemap):
+ * the light neutral washed toward the page until it sits QUIET_LAND_STEP from
+ * the page, then further toward the page while it reads closer than
+ * QUIET_LAND_APART to a scale paint, never closer to the page than QUIET_LAND_FLOOR.
+ * Only scale paints at least QUIET_LAND_STEP from the page count: a paler one
+ * (the white middle of a diverging ramp) is not helped by a paler land.
+ */
+export function quietLandColor(theme: Theme, apartFrom: readonly string[]): string {
+  const page = theme.color.background;
+  const base = paintTokenColor(theme, 'neutralLight');
+  const fromPage = (color: string) => palettePerceptualDistance(color, page);
+  const land = (w: number) => mixColors(base, page, w);
+  let weight = 0;
+  while (weight < 1 && fromPage(land(weight)) < QUIET_LAND_STEP) weight = Number((weight + 0.01).toFixed(2));
+  const deeper = apartFrom.filter((paint) => fromPage(paint) >= QUIET_LAND_STEP);
+  while (weight > 0.01 && fromPage(land(weight - 0.01)) >= QUIET_LAND_FLOOR
+    && deeper.some((paint) => palettePerceptualDistance(land(weight), paint) < QUIET_LAND_APART)) weight = Number((weight - 0.01).toFixed(2));
+  return land(weight);
 }
 
 /** The widest wash a funnel stage takes toward its brighter pole (shadeStage). */
@@ -2060,12 +2164,14 @@ export function seriesPaint(
   scenario?: Scenario,
   deEmphasizePy = true,
   surfaceFade = false,
+  apart = false,
 ): Paint {
   const source: Extract<ThemePaintSource, { kind: 'series' }> = { kind: 'series', index };
   if (palette !== undefined) source.palette = palette;
   if (scenario !== undefined) source.scenario = scenario;
   if (!deEmphasizePy) source.deEmphasizePy = false;
   if (surfaceFade) source.surfaceFade = true;
+  if (apart) source.apart = true;
   return {
     token: `series-${index + 1}`,
     theme: source,
@@ -2087,6 +2193,68 @@ export function recedingSeriesId(
   if (!series.some((s) => !s.fill && (s.colorRole === 'highlight' || (!s.colorRole && highlights.has(s.id))))) return undefined;
   const plain = series.filter((s) => !s.fill && !s.colorRole && !highlights.has(s.id));
   return plain.length === 1 ? plain[0]!.id : undefined;
+}
+
+/**
+ * The plain series that recede beside a highlight in a stack, in authored
+ * order. When the author makes one series the focus and two or more series
+ * have no own fill or colorRole, those take steps of the neutral ramp
+ * (neutralRampPaint), so the accent is the only colour on the chart.
+ */
+export function recedingRampIds(
+  series: readonly { id: string; fill?: string; colorRole?: string }[],
+  highlights: ReadonlySet<string>,
+): string[] {
+  if (!series.some((s) => !s.fill && (s.colorRole === 'highlight' || (!s.colorRole && highlights.has(s.id))))) return [];
+  const plain = series.filter((s) => !s.fill && !s.colorRole && !highlights.has(s.id));
+  return plain.length >= 2 ? plain.map((s) => s.id) : [];
+}
+
+/**
+ * Step `index` of `count` on the neutral ramp, in authored order: the first
+ * step is the muted mark a single receding series takes (mutedMarkPaint), the
+ * last the light neutral, with even steps between. Where the muted mark sits
+ * too near the light neutral for the steps to read apart (a dark page holds
+ * both near its floor), the ramp starts at the full neutral mark. A hatched
+ * (forecast) step runs from the neutral mark to the muted mark. It resolves
+ * in the active theme, so a repaint to dark decides again.
+ */
+export function neutralRampPaint(index: number, count: number, hatched = false): Paint {
+  return { token: 'neutralMark', theme: { kind: 'neutral-ramp', index, count, ...(hatched ? { hatched: true as const } : {}) } };
+}
+
+/** Neighbouring steps of the neutral ramp keep at least this OKLab distance (twice the ordered step floor). */
+const NEUTRAL_RAMP_STEP = 6;
+
+const NEUTRAL_RAMP = new WeakMap<Theme, Map<string, string>>();
+function neutralRampColor(theme: Theme, source: { index: number; count: number; hatched?: true }): string {
+  const cache = NEUTRAL_RAMP.get(theme) ?? new Map<string, string>();
+  NEUTRAL_RAMP.set(theme, cache);
+  const key = `${source.index}/${source.count}${source.hatched ? 'h' : ''}`;
+  let color = cache.get(key);
+  if (color === undefined) cache.set(key, color = neutralRampStep(theme, source));
+  return color;
+}
+
+function neutralRampStep(theme: Theme, source: { index: number; count: number; hatched?: true }): string {
+  const quiet = theme.color.neutralLight;
+  const muted = paintColor(theme, mutedMarkPaint());
+  if (source.count < 2) return muted;
+  // A hatch draws its step in stripes that must reach 3:1 on the page. The light steps would all
+  // deepen to the same 3:1 grey, so a hatched step runs from the neutral mark to the muted mark.
+  // Where the neutral mark sits on the muted mark (a grey theme), the strong end deepens toward the ink until the steps read apart.
+  if (source.hatched) {
+    const mark = paintTokenColor(theme, 'neutralMark');
+    const ink = paintTokenColor(theme, 'markInk');
+    let strong = mark;
+    for (let weight = 0.05; weight <= 0.6 && palettePerceptualDistance(strong, muted, 'normal') / (source.count - 1) < NEUTRAL_RAMP_STEP; weight += 0.05) {
+      strong = mixColors(ink, mark, weight);
+    }
+    return mixColors(muted, strong, source.index / (source.count - 1));
+  }
+  const roomy = palettePerceptualDistance(muted, quiet, 'normal') / (source.count - 1) >= NEUTRAL_RAMP_STEP;
+  const strong = roomy ? muted : paintTokenColor(theme, 'neutralMark');
+  return mixColors(quiet, strong, source.index / (source.count - 1));
 }
 
 /**
@@ -2131,8 +2299,28 @@ function stackApartColor(theme: Theme, source: { own: (Paint | null)[]; index: n
 function stackRampColor(theme: Theme, source: { index: number; count: number; slot: number }): string {
   const ramp = theme.color.stack;
   if (!ramp || ramp.length < 2) return seriesColor(theme, source.slot);
-  if (source.count <= ramp.length) return ramp[source.index]!;
-  const at = (source.index / (source.count - 1)) * (ramp.length - 1);
+  return rampStep(ramp, source.index, source.count);
+}
+
+/**
+ * A treemap group by rank on one colour family: `color.treemap`, else
+ * `color.stack`, else the first series colour stepped toward the page.
+ */
+export function groupRampPaint(index: number, count: number): Paint {
+  return { token: 'series-1', theme: { kind: 'group-ramp', index, count } };
+}
+
+function groupRampColor(theme: Theme, source: { index: number; count: number }): string {
+  const steps = [theme.color.treemap, theme.color.stack].find((own) => own !== undefined && own.length >= 2);
+  if (steps) return rampStep(steps, source.index, source.count);
+  const ramp = pieRamp(seriesColor(theme, 0), theme.color.background, source.count, undefined, false, theme.marks?.contrastEdge !== true);
+  const amount = ramp.tints[source.index] ?? 0.82;
+  return amount ? tint(ramp.base, amount, theme.color.background) : ramp.base;
+}
+
+function rampStep(ramp: readonly string[], index: number, count: number): string {
+  if (count <= ramp.length) return ramp[index]!;
+  const at = (index / (count - 1)) * (ramp.length - 1);
   const low = Math.min(ramp.length - 2, Math.floor(at));
   const share = at - low;
   return share < 1e-9 ? ramp[low]! : mixColors(ramp[low + 1]!, ramp[low]!, share);
@@ -2168,15 +2356,36 @@ function colorblindColor(theme: Theme, role: 'good' | 'bad' | 'goodFill' | 'badF
  */
 export function colorblindRoles<T>(value: T): { value: T; swapped: number } {
   let swapped = 0;
+  // Copy on write: a branch with no good / bad paint under it keeps its identity, so a scene that already swapped its paints is walked and not copied.
   const walk = (entry: unknown): unknown => {
-    if (Array.isArray(entry)) return entry.map(walk);
     if (entry === null || typeof entry !== 'object') return entry;
-    const out: Record<string, unknown> = {};
-    for (const [key, item] of Object.entries(entry)) out[key] = walk(item);
-    const token = out.token;
-    if (out.theme !== undefined || (token !== 'good' && token !== 'bad' && token !== 'goodFill' && token !== 'badFill')) return out;
+    if (Array.isArray(entry)) {
+      let copy: unknown[] | undefined;
+      for (let index = 0; index < entry.length; index++) {
+        const item: unknown = entry[index];
+        if (item === null || typeof item !== 'object') continue;
+        const next = walk(item);
+        if (next === item) continue;
+        copy ??= entry.slice();
+        copy[index] = next;
+      }
+      return copy ?? entry;
+    }
+    const record = entry as Record<string, unknown>;
+    let copy: Record<string, unknown> | undefined;
+    for (const key in record) {
+      const item = record[key];
+      if (item === null || typeof item !== 'object') continue;
+      const next = walk(item);
+      if (next === item) continue;
+      copy ??= { ...record };
+      copy[key] = next;
+    }
+    const result = copy ?? record;
+    const token = result.token;
+    if (result.theme !== undefined || (token !== 'good' && token !== 'bad' && token !== 'goodFill' && token !== 'badFill')) return result;
     swapped++;
-    return { ...out, ...colorblindPaint(token.startsWith('good') ? 'good' : 'bad', token.endsWith('Fill')) };
+    return { ...result, ...colorblindPaint(token.startsWith('good') ? 'good' : 'bad', token.endsWith('Fill')) };
   };
   return { value: walk(value) as T, swapped };
 }

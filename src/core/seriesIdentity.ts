@@ -140,6 +140,8 @@ export function needsSeriesKey(type: string, data: unknown, options?: object, ge
   // Row and side names stay with labels off, so these charts still name their series.
   if (['butterfly', 'pyramid', 'heatmap', 'status'].includes(type)) return false;
   if (!['column', 'bar', 'combo', 'dot', 'cleveland', 'dumbbell'].includes(type) && (options as { labels?: unknown } | undefined)?.labels !== false) return false;
+  // A pie's key names its slices, which labels: false leaves unnamed.
+  if (type === 'pie') return true;
   const series = (data as { series?: { role?: string; values?: unknown[] }[] } | undefined)?.series;
   return Array.isArray(series) && series.filter(s => s.role !== 'reference' && s.values?.some(entry => {
     const cell = entry !== null && typeof entry === 'object' && 'categoryId' in entry && 'value' in entry ? entry.value : entry;

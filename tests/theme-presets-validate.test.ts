@@ -4,7 +4,7 @@ import '../src/core/charts';
 import { contrastRatio, mixColors } from '../src/core/color';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { resolvePaint } from '../src/core/svg/paint';
-import { MARK_CONTRAST_FLOOR } from '../src/core/themeRules';
+import { MARK_CONTRAST_FLOOR, PALETTE_NORMAL_FLOOR, palettePerceptualDistance } from '../src/core/themeRules';
 import type { Paint } from '../src/core/types/scene';
 import { getFixtures } from '../src/fixtures';
 import { effectiveFill, paintColor, resolveTheme, seriesPaint, themes } from '../src/core/theme';
@@ -121,6 +121,21 @@ describe('every shipped theme preset passes its own validator', () => {
     expect(findings).toEqual([]);
     // A host's theme build runs the same check through boardplot/validate.
     expect(exportedValidateTheme).toBe(validateTheme);
+  });
+
+  // The validator holds series against series, not against the bad tone, so studio drew its third series in a red a reader takes for "bad".
+  it('keeps the first three series colours of every preset clear of bad', () => {
+    const near: string[] = [];
+    for (const name of GALLERY_PRESETS) {
+      const { color } = resolveTheme(name);
+      color.series.slice(0, 3).forEach((series, rank) => {
+        for (const bad of [color.bad, color.badFill ?? color.bad]) {
+          const distance = palettePerceptualDistance(series, bad);
+          if (distance < PALETTE_NORMAL_FLOOR) near.push(`${name} series[${rank}] ${series} is ${distance.toFixed(1)} from bad ${bad}`);
+        }
+      });
+    }
+    expect(near).toEqual([]);
   });
 
   it('holds the ordered ramps class by class, not only at their base ', () => {

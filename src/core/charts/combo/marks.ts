@@ -11,6 +11,7 @@ import { strokeToken, dashToken, secondaryFont } from '../../theme';
 
 import { sweepHide } from '../../collide';
 import { layoutValueAxis } from '../../axis';
+import { bandedIntervalTicks } from '../../intervalTicks';
 import { curvePathFromSegments, drawnStroke, monotoneSegments, splitCurveSegmentsAtX, type CurveSegment } from '../../curve';
 import { formatterFromExample } from '../../formatSpec';
 import { round2, type Rect } from '../../geometry';
@@ -23,7 +24,7 @@ import type { Id } from '../../types/cell';
 import type { AxisGeometry, Paint } from '../../types/scene';
 import { markerPath, pathFor as linePathFor } from '../line/marks';
 import { REFERENCE_MARKER_R, referenceCasing, referenceMarkerPaint, referenceTickGeometry } from '../band/ticks';
-import { primaryLineMean } from './domain';
+import { primaryLineMean, SECONDARY_FULL_DOMAIN } from './domain';
 import type { ComboMarks } from './layout';
 import { MARKER_R, type ComboArea, type ComboDomain, type ComboEnv, type ComboMarkGeometry, type ComboPaints, type LinePlan, type NormSer } from './model';
 
@@ -48,7 +49,11 @@ function comboAxes(ctx: MarkCtx): void {
   let primaryDrawn: Set<number> | undefined;
   if (domain.showPrimaryAxis) {
     const axisResult = layoutValueAxis(
-      { scale: y, plot, orient: 'y', gridlines: domain.options.valueAxis?.gridlines ?? domain.anatomy, format: domain.fmt, formatSpec: domain.valueSpec, theme: env.theme, measure: env.measure, ticks: domain.pticks },
+      { scale: y, plot, orient: 'y', gridlines: domain.options.valueAxis?.gridlines ?? domain.anatomy, format: domain.fmt, formatSpec: domain.valueSpec, theme: env.theme, measure: env.measure, ticks: domain.pticks,
+        // A Pareto scaled to its total reads its top row as the total and 100%: thinning keeps that row.
+        // Under a floated line the top tick marks the top of the column band: thinning keeps it.
+        ...(((domain.options as { [SECONDARY_FULL_DOMAIN]?: unknown })[SECONDARY_FULL_DOMAIN] && Math.abs(domain.pticks.at(-1)! - domain.dHi) < 1e-9)
+          || domain.lineFloat ? { keepTopTick: true } : {}) },
       claims,
     );
     pushAll(nodes, axisResult.nodes);
@@ -120,6 +125,8 @@ function comboAxes(ctx: MarkCtx): void {
   // fraction (see insideCenterY).
   nodes.push({ t: 'line', id: 'axis:baseline', x1: plot.x, y1: y0, x2: plot.x + plot.w, y2: y0, stroke: { token: 'axis' }, width: strokeToken(env.theme, 'rule'), owner: {}, part: 'baseline' });
   claims.claim({ x: plot.x, y: y0 - 0.5, w: plot.w, h: 1 }, 'axis', {});
+  // categoryAxis.dateTicks: a short tick over the name row at every calendar interval.
+  if (area.intervalTicks && area.showCatTickRow) bandedIntervalTicks(env.theme, domain.cats, area.intervalTicks, (ci) => area.band.center(ci), area.catRowY, nodes, claims);
 }
 
 /** One stacked group per category, then the reference series as plan ticks, dashed lines or markers (never bars). */

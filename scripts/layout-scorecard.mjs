@@ -17,6 +17,7 @@ import { NOT_AVAILABLE } from '../src/core/format.ts';
 import { cubicPoint } from '../src/core/curve.ts';
 import { formatScenarios, resolveSubtitle } from '../src/core/normalize/shared.ts';
 import { liveWindowOptions } from '../src/core/viewport.ts';
+import { printsOnlyShares } from '../src/core/frame.ts';
 import { themeForWidth, strokeToken, paintColor, solidMutedPlan } from '../src/core/theme.ts';
 import { isHatchPattern } from '../src/core/svgPath.ts';
 import { chartReading } from '../src/core/reading.ts';
@@ -40,7 +41,8 @@ const RULES = { S1: 3, S2: 3, S3: 3, S4: 3, R1: 2, R2: 2, R3: 2, R4: 2, R5: 2, R
 // A content type whose marks scale with the width takes the height of its
 // content, so a narrower card of it may be shorter (docs/manual.md, "Frame text, key and automatic height").
 // The engine's own list (sizing.ts WIDTH_SCALED_TYPES); tilemap tiles are the plot width over the columns.
-const S2_EXEMPT = WIDTH_SCALED_TYPES;
+// Tables use the content height at their requested width, without a wider-card height floor.
+const S2_EXEMPT = new Set([...WIDTH_SCALED_TYPES, 'table', 'dimswitch']);
 // English table state glyphs that a locale replaces ('n/a' is 'k. A.' in German).
 const GLYPH_WORDS = [NOT_AVAILABLE];
 const normal = (text) => String(text ?? '').replace(/\s+/gu, ' ').trim();
@@ -304,8 +306,10 @@ export function auditGeometry(item, request, geometry, skipped = []) {
     // The frame adds a unit after the measure. A wrapped separator becomes a line break.
     const sub = resolveSubtitle(options.subtitle);
     const units = [options.unit, geometry.derived.table?.unit,
-      options.variant === 'relative' ? '%' : undefined,
-      geometry.derived.basis === 'shareOfTotal' ? '% of the grand total' : undefined].filter(Boolean);
+      options.variant === 'relative' || printsOnlyShares(request.type, options, geometry.derived) ? '%' : undefined,
+      geometry.derived.basis === 'shareOfTotal' ? '% of the grand total' : undefined,
+      geometry.derived.basis === 'shareOfGroup' ? '% of each snapshot' : undefined,
+      geometry.derived.basis === 'shareOfGroup' ? '% of each group' : undefined].filter(Boolean);
     for (const unit of units) if (sub && !normal(sub.measure).includes(unit)) {
       actual = actual.replace(`${subtitleNormal(sub.measure)} in ${unit}`, subtitleNormal(sub.measure));
       if (['x', '×', 'ratio'].includes(unit.toLowerCase())) actual = actual.replace(`${subtitleNormal(sub.measure)} ratio (×)`, subtitleNormal(sub.measure)).replace(`${subtitleNormal(sub.measure)} (×)`, subtitleNormal(sub.measure));
@@ -624,9 +628,13 @@ export function auditScene(item, request, geometry, reading) {
   const requested = new Set([...labels.keys(), ...geometry.debug.decisions.map(decision => decision.labelId), ...ticks.flatMap(tick => tick.labelId ? [tick.labelId] : [])]);
   // Histogram replaces the delegated column names with its bin-edge axis.
   // Exclude only those obsolete requests, and keep every final axis request.
-  const binEdges = geometry.derived?.binning?.edges;
-  const histogramAxis = request.type === 'histogram' && binEdges && geometry.axes?.some(axis => axis.axis === 'x'
-    && axis.ticks.length === binEdges.length && axis.ticks.every((tick, i) => tick.at === binEdges[i]));
+  // Whole-number data names one value per bin, at the bin centre, instead of the edges.
+  const binning = geometry.derived?.binning;
+  // An open last bin is named on its own: its upper edge, the largest observation, has no tick.
+  const binEdges = binning?.openAbove !== undefined ? binning.edges.slice(0, -1) : binning?.edges;
+  const axisValues = binning?.perValue ? binEdges?.slice(1).map(edge => edge - 0.5) : binEdges;
+  const histogramAxis = request.type === 'histogram' && axisValues && geometry.axes?.some(axis => axis.axis === 'x'
+    && axis.ticks.length === axisValues.length && axis.ticks.every((tick, i) => tick.at === axisValues[i]));
   if (histogramAxis) for (const bin of geometry.marks.bins) requested.delete(`category:${bin.id}`);
   const drawnIds = new Set(texts.map(text => text.node.id));
   for (const id of requested) {

@@ -1,17 +1,17 @@
 import { chartString } from '../../strings/choropleth';
+import { disclosureNote } from '../../notes';
 import { chartTheme } from '../chartEnv';
 import { structureCount } from '../../structureCounts';
-import { levenshtein } from '../../spelling';
-import { authoredNotes, frameTextOptions, legendRequired, solveFrame, unitPrinted } from '../../frame';
+import { authoredNotes, frameTextOptions, legendRequired, noteLine, solveFrame, SIDE_KEY_PLOT_SHARE, unitPrinted } from '../../frame';
 import { formatAutomaticNumber } from '../../format';
 import { formatterFromExample } from '../../formatSpec';
-import { boxGap, rectHitsConvexPolygon, rectsOverlap, round2, type Rect } from '../../geometry';
+import { boxGap, rectContains, rectHitsConvexPolygon, rectsOverlap, round2, type Rect, type Size } from '../../geometry';
 // The geo modules by name, not the '../../geo' barrel: the barrel re-exports
 // './packs', whose import registers every pack, and a choropleth must not
 // register the pack it draws.
 import { decodeGeoPack, fitGeoPack } from '../../geo/decode';
 import { fitGeoLonLat } from '../../geo/project';
-import { geoRegionIdIndex, resolveGeoRegionId, type GeoRegionIdIndex } from '../../geo/resolveRegionId';
+import { geoRegionIdIndex, nearestRegionId, resolveGeoRegionId, type GeoRegionIdIndex } from '../../geo/resolveRegionId';
 import type { FittedGeoBoundary, FittedGeoRegion, GeoPack, GeoPoint } from '../../geo/types';
 import { getGeoPack } from '../../geo/packs/registry';
 import { labelsToNodes } from '../../label/emit';
@@ -42,17 +42,20 @@ import type {
   ChoroplethMarks,
   ChoroplethOptions,
 } from './types';
-import { buildGeoScale, geoLabelFont, ingestGeoRegions, geoStatePattern, geoStateLabel, geoStateLegend, geoStateSummary, geoStateCounts, geoPolarityCaption, geoScaleHints } from '../geoScale';
+import { buildGeoScale, geoLabelFont, quietLandPaint, ingestGeoRegions, geoStatePattern, geoStateLabel, geoStateLegend, geoStateSummary, geoStateCounts, geoPolarityCaption, geoScaleHints, KEY_BESIDE_GAIN } from '../geoScale';
 import { autoDecimals } from '../../formatPrecision';
 import { compareText } from '../../text';
 import { geoOverlayDiameter, geoOverlayInFrame, geoOverlayLegend, renderGeoOverlays, reserveGeoOverlayGlyphs } from './overlays';
+import { generatedIdWarnings } from '../../schema/generatedColumns';
 import { layoutMapKeys, mapKeysSize, MAP_GAP, smallRegionIds, shortestRegionName, valueTable, VALUE_TABLE_MAX_ROWS } from './smallMembers';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
-import { chartSizing, resolveSizing } from '../../sizing';
+import { chartSizing, heightOmitted, resolveSizing } from '../../sizing';
+import { fitsRoom, widthsThatFit } from '../../generatedWidths';
 import { rowDrivenHeight } from '../../rowCanvas';
 import { textScaleOf } from '../../typeFloors';
 import type { GeoOverlay } from './overlayTypes';
 import { geoOptionRefusals } from './geoRefusals';
+import { PLOT_W_FLOOR_DEMOTED } from '../../lint/space';
 import { outsideLabelGuard } from './outsideLabels';
 import { pushAll } from '../../arrays';
 
@@ -74,7 +77,12 @@ interface RegionLabelVariant {
   font: FontSpec;
   leader: boolean;
   /** A callout off the map: its seats are built against what is placed when its turn comes. */
-  callout?: (occupied: OccupiedIndex, plot: Rect) => LabelRequest['candidates'];
+  callout?: (occupied: OccupiedIndex, plot: Rect, labels: OccupiedIndex, canvas?: Rect) => RegionCallout;
+}
+
+interface RegionCallout {
+  candidates: LabelRequest['candidates'];
+  hatchBlocked: boolean;
 }
 
 interface RegionLabelPlan {
@@ -101,7 +109,30 @@ type RegionLabelSolveResult = ReturnType<typeof solveLabels> & {
   fontByLabel: Map<string, FontSpec>;
 };
 
+type CalloutLabel = Pick<RegionLabelSolveResult['placed'][number], 'id' | 'kind' | 'hidden' | 'rect' | 'backing' | 'leader'>;
+interface CalloutPass {
+  claims: OccupiedClaim[];
+  plot: Rect;
+  labels: CalloutLabel[];
+  calls: (RegionCallout & { id: string; text: string; font: FontSpec })[];
+}
+// A guard belongs to one fitted map. Probes and drawing can repeat the same callout search.
+const calloutPasses = new WeakMap<ReturnType<typeof outsideLabelGuard>, CalloutPass>();
+
+function sameCalloutRect(a: Rect | undefined, b: Rect | undefined): boolean {
+  return a === b || (a !== undefined && b !== undefined && Object.is(a.x, b.x) && Object.is(a.y, b.y)
+    && Object.is(a.w, b.w) && Object.is(a.h, b.h));
+}
+
+function sameCalloutClaim(a: OccupiedClaim, b: OccupiedClaim): boolean {
+  return a.kind === b.kind && a.part === b.part && sameCalloutRect(a.rect, b.rect)
+    && (a.polygon === b.polygon || (a.polygon !== undefined && b.polygon !== undefined && a.polygon.length === b.polygon.length
+      && a.polygon.every((point, i) => Object.is(point.x, b.polygon![i]!.x) && Object.is(point.y, b.polygon![i]!.y))));
+}
+
 const MAP_PAD = 8;
+/** A plot this much wider than tall is a wide slot: the one where an unnamed key may stand beside the map. */
+const WIDE_SLOT = 1.6;
 // The mandatory inset-scale footnote consumes one dashboard frame line.
 const US_MAP_PAD_Y = 6;
 const LEADER_GUTTER = 92;
@@ -120,6 +151,10 @@ const CALLOUT_STEP = 4;
 const LABEL_MAX_COVER = 0.3;
 /** Up to this many regions labelled on the map, each label prints its value by default. */
 const REGION_VALUES_DEFAULT_MAX = 10;
+/** Canvas area per label (px squared) from which a map prints values by default. */
+const REGION_VALUES_MIN_AREA_PER_LABEL = 8000;
+/** A canvas narrower than this keeps codes: value labels would spill over their regions and crowd the card. */
+const REGION_VALUES_MIN_WIDTH = 560;
 /** A leader longer than this share of the map width sends its region to the table. */
 const LISTED_LEADER_FRACTION = 0.2;
 const LISTED_PASSES = 4;
@@ -149,9 +184,50 @@ const MIN_MAP_AREA_H = 120;
 // six continent-scale anchors without admitting the broader mid-size tier.
 const WORLD_LARGE_REGION_CLEARANCE = 14.5;
 
-export function layoutChoropleth(
+// Choose the label form from canvas room before solving so it stays stable across frame passes.
+function defaultRegionValues(pack: GeoPack, size: Size, autoLabelled: number, tableDrawn: boolean): boolean {
+  return !tableDrawn && autoLabelled > 0 && (
+    autoLabelled <= REGION_VALUES_DEFAULT_MAX ||
+    (pack.id !== 'world' && size.width >= REGION_VALUES_MIN_WIDTH && size.width * size.height / autoLabelled >= REGION_VALUES_MIN_AREA_PER_LABEL)
+  );
+}
+
+/** One renamed pack per rowOverrides object: the listed passes share its decoded regions. */
+const renamedPacks = new WeakMap<object, GeoPack>();
+
+/** Lookup rows, map labels and records read one name: a pack whose authored regions carry the new short name. */
+function packWithRowNames(pack: GeoPack, overrides: ChoroplethOptions['rowOverrides'], index: GeoRegionIdIndex): GeoPack {
+  if (!overrides) return pack;
+  const known = renamedPacks.get(overrides);
+  if (known?.id === pack.id) return known;
+  const names = new Map(Object.entries(overrides).flatMap(([id, override]) => {
+    const resolved = resolveGeoRegionId(index, id);
+    return resolved.kind === 'resolved' && override.label ? [[resolved.id, override.label] as const] : [];
+  }));
+  const renamed: GeoPack = { ...pack, regions: pack.regions.map((region) => {
+    const name = names.get(region.id);
+    return name === undefined ? region : { ...region, anchor: { ...region.anchor, name, shortName: name, authored: true } };
+  }) };
+  renamedPacks.set(overrides, renamed);
+  return renamed;
+}
+
+export function layoutChoropleth(data: ChoroplethData, options: ChoroplethOptions = {}): Geometry<ChoroplethMarks, ChoroplethDerived> {
+  if (options.columnOverrides === undefined) return layoutMapPass(data, options);
+  const pinned = (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height ?? !heightOmitted(options.size);
+  const drawn = widthsThatFit(options, (next) => layoutMapPass(data, next), pinned)!;
+  const { label, ...valueTrack } = options.columnOverrides.value ?? {};
+  if (label === undefined || fitsRoom(drawn, pinned)) return drawn;
+  // A value head never costs the draw: where its row is the only reason the lookup misses, the row goes.
+  const plain = widthsThatFit({ ...options, columnOverrides: { ...options.columnOverrides, value: valueTrack } }, (next) => layoutMapPass(data, next), pinned)!;
+  if (!fitsRoom(plain, pinned)) return drawn;
+  return { ...plain, warnings: [...plain.warnings, { code: 'option-ignored', severity: 'warn', field: ['options', 'columnOverrides', 'value', 'label'],
+    message: 'the value head needs more height than this chart has, so it does not print', suggest: 'Give the chart more height, or remove the label.' }] };
+}
+
+function layoutMapPass(
   data: ChoroplethData,
-  options: ChoroplethOptions = {},
+  options: ChoroplethOptions,
   /** Regions an earlier pass could not label on the map, or only on a long leader; they join the lookup table. */
   listed?: ReadonlySet<string>,
   pass = 0,
@@ -162,18 +238,20 @@ export function layoutChoropleth(
   // What the schema refuses, refused here for the React entry.
   const warnings: LintWarning[] = geoOptionRefusals(options, 'choropleth');
 
-  const pack = getGeoPack(data.pack);
-  const idIndex = geoRegionIdIndex(pack.regions);
+  const sourcePack = getGeoPack(data.pack);
+  const idIndex = geoRegionIdIndex(sourcePack.regions);
+  const pack = packWithRowNames(sourcePack, options.rowOverrides, idIndex);
   const canonicalIds = idIndex.canonical;
-  const { valuesById, statesById } = ingestGeoRegions(data.regions, idIndex, { where: `pack '${pack.id}'`, regionWord: 'pack region' }, warnings, (id, index) => {
+  const { valuesById, statesById, leftOut } = ingestGeoRegions(data.regions, idIndex, { where: `pack '${pack.id}'`, regionWord: 'pack region' }, warnings, (id, index) => {
     const suggestion = nearestRegionId(id, [...canonicalIds.keys()], canonicalIds);
-    throw new NormalizeError(
-      'choropleth-unknown-region',
-      `regions[${index}].id`,
-      `region '${id}' is not present in pack '${pack.id}'`,
-      suggestion ? `did you mean '${suggestion}'?` : undefined,
-    );
+    return {
+      code: 'choropleth-unknown-region', severity: 'warn',
+      message: chartString(options, 'unknownRegionLeftOut', { v1: id, v2: pack.id }),
+      ...(suggestion ? { suggest: chartString(options, 'regionIdSuggestion', { v1: suggestion }) } : {}),
+      owner: { categoryId: id }, field: ['data', 'regions', index, 'id'],
+    };
   });
+  if (leftOut.length) options = { ...options, notes: { ...options.notes, show: [...new Set([...(options.notes?.show ?? ['note']), 'disclosure' as const])] } };
   const explicitLabelIds = resolveLabelRegionIds(
     options.labelRegions ?? [],
     idIndex,
@@ -242,10 +320,10 @@ export function layoutChoropleth(
     if (compactCard) margin.top = margin.bottom = Math.min(5, margin.top, margin.bottom);
   }
   const measure = options.measure ?? defaultMeasurer;
-  const fmt = options.format
-    ? formatterFromExample(options.format, options.locale?.language)
-    : (value: number) => formatAutomaticNumber(value, { locale: options.locale?.language, decimals: autoDecimals(value) });
   const numericValues = [...valuesById.values()].filter((value): value is number => value !== null);
+  const fmt = options.format
+    ? formatterFromExample(options.format, options.locale?.language, undefined, numericValues)
+    : (value: number) => formatAutomaticNumber(value, { locale: options.locale?.language, decimals: autoDecimals(value) });
   if (numericValues.length === 0) {
     warnings.push({
       code: 'choropleth-no-values',
@@ -276,8 +354,9 @@ export function layoutChoropleth(
   // The key and the summary name only states a reader can see: as a polygon, a marker or a label.
   const visibleStates = pack.regions.filter(region => region.polygons.length > 0 || visibleMarkerIds.has(region.id)).flatMap(region => statesById.has(region.id) ? [statesById.get(region.id)!] : []);
   pushAll(scale.legend, geoStateLegend(visibleStates, options));
+  const landPaint = quietLandPaint(scale.legend);
   if (pack.regions.some((region) => !valuesById.has(region.id))) scale.legend.push({
-    id: 'not-in-data', label: chartString(options, 'notInData'), paint: { token: 'inkMuted' }, pattern: 'outline', hollow: true,
+    id: 'not-in-data', label: chartString(options, 'notInData'), paint: landPaint,
   });
   warnings.push(...geoScaleHints(numericValues, options, fmt));
   const overlays = (data.overlays ?? []).filter(overlay => !omittedOverlays.has(overlay.id));
@@ -291,7 +370,7 @@ export function layoutChoropleth(
   // line); the inset scale note changes how areas compare and stays.
   const methodNote = options.methodNote === true;
   const policyFootnote =
-    methodNote && labelPolicy.mode === 'auto' &&
+    methodNote && labelPolicy.mode === 'auto' && pack.id === 'world' &&
       labelPolicy.eligibleIds.size < pack.regions.length
       ? chartString(options, 'mapLabelPolicy', { v1: labelPolicy.topN })
       : undefined;
@@ -305,6 +384,7 @@ export function layoutChoropleth(
       source: options.source,
       ...(pack.meta.credit ? { credit: pack.meta.credit } : { source: `${pack.meta.attribution}${userSource}` }),
       footnotes: [
+        ...noteLine(chartString(options, 'regionsLeftOutNote'), leftOut, options).map(disclosureNote),
         // The pack credit may already hold the disclaimer; the method note
         // does not print it a second time.
         ...(methodNote && pack.meta.chartNote && !(pack.meta.credit?.text ?? pack.meta.attribution).includes(pack.meta.chartNote) ? [pack.meta.chartNote] : []),
@@ -313,7 +393,8 @@ export function layoutChoropleth(
         ...authoredNotes(options),
       ],
       // The colour key is drawn by layoutMapKeys beside the small members; the frame keeps the overlay key.
-      legend: { options: legendOptions, items: overlayLegend.items },
+      // The map draws its own key beside itself; the overlay entries keep the row above the plot.
+      legend: { options: legendOptions.position === 'right' || legendOptions.position === 'left' ? { ...legendOptions, position: 'top' } : legendOptions, items: overlayLegend.items },
       theme,
       measure,
     },
@@ -336,13 +417,27 @@ export function layoutChoropleth(
   const ranks = valueRanks(valuesById);
   // The top quarter by value, at most five, in the emphasis weight.
   const topIds = new Set([...ranks].filter(([, rank]) => tableIds.length >= 4 && rank < Math.min(5, Math.ceil(tableIds.length / 4))).map(([id]) => id));
-  const table = tableMode !== false && tableIds.length > 0 &&
-    (tableMode !== 'auto' || (tableIds.length <= VALUE_TABLE_MAX_ROWS && numericValues.length > 0))
+  // Hidden rows leave the table only: the map, the ranks and the top group still read every region.
+  const canonicalRow = (id: string) => { const resolved = resolveGeoRegionId(idIndex, id); return resolved.kind === 'resolved' ? resolved.id : undefined; };
+  const hiddenRows = new Set(Object.entries(options.rowVisibility ?? {}).flatMap(([id, shown]) => (shown === false ? [canonicalRow(id) ?? id] : [])));
+  const drawnIds = hiddenRows.size > 0 ? tableIds.filter((id) => !hiddenRows.has(id)) : tableIds;
+  const boldIds = options.valueTableEmphasis === false ? new Set<string>() : hiddenRows.size > 0 ? new Set([...topIds].filter((id) => !hiddenRows.has(id))) : topIds;
+  const mapEmphasis = options.valueTableEmphasis === false ? boldIds : topIds;
+  const lookupColumns = options.columnVisibility || options.columnOverrides
+    ? { swatch: options.columnVisibility?.swatch, value: options.columnVisibility?.value, ...(options.columnOverrides ? { overrides: options.columnOverrides } : {}) }
+    : undefined;
+  // A table forced beside the map leaves the map its share: authored widths give way, and the columns stay as wide as their text.
+  const sideTableColumns = Math.ceil(drawnIds.length / SIDE_ROWS);
+  const forcedSideColumnW = tableMode === 'side' ? (frameResult.plot.w * (1 - SIDE_MIN_SHARE) - (sideTableColumns - 1) * TABLE_GAP) / sideTableColumns : undefined;
+  const table = tableMode !== false && drawnIds.length > 0 &&
+    (tableMode !== 'auto' || (drawnIds.length <= VALUE_TABLE_MAX_ROWS && numericValues.length > 0))
     ? valueTable({ options,
-        ids: tableIds, pack, values: valuesById, states: statesById, scale, fmt, theme, measure,
+        ids: drawnIds, pack, values: valuesById, states: statesById, scale, fmt, theme, measure,
+        ...(options.rowOrder ? { rowOrder: options.rowOrder.flatMap((id) => canonicalRow(id) ?? []) } : {}),
+        ...(lookupColumns ? { columns: lookupColumns, maxColumnW: forcedSideColumnW ?? frameResult.plot.w } : {}),
         unit: compactCard && unitPrinted({ subtitle: resolveSubtitle(options.subtitle), unit: options.unit, unitShown: options.unitShown }) ? undefined : options.unit,
         compact: compactCard,
-        bold: topIds,
+        bold: boldIds,
       })
     : undefined;
   const baseSmallIds = table ? new Set<string>() : smallRegionIds(pack, labelPolicy.eligibleIds, explicitLabelIds, options);
@@ -371,11 +466,10 @@ export function layoutChoropleth(
   let sideColumns = table ? Math.min(sideMaxColumns, Math.ceil(table.rowCount / SIDE_ROWS)) : 0;
   let sideWanted = table !== undefined && !named && tableMode !== 'below' && sideColumns >= 1 &&
     (tableMode === 'side' || sideMapW >= SIDE_MIN_MAP_W);
-  const keyInput = { options,
+  const keyBase = { options,
     target: options.target,
     textScale: textScaleOf(options),
     compact: compactCard,
-    position: named ? legendOptions.position : 'auto',
     title: keyTitle,
     scale,
     classes: options.classes,
@@ -389,6 +483,42 @@ export function layoutChoropleth(
     // One list title at every width, for small regions and dropped labels alike.
     smallTitle: chartString(options, 'hiddenMapLabels'),
   } as const;
+  // An unnamed key stands in a column beside the map, instead of a row above it, when the map
+  // comes out clearly larger that way: a wide slot of a set height, which the key row would eat. The
+  // choice counts the small regions only, so a later pass that lists more labels keeps it.
+  let position: 'right' | 'left' | 'bottom' | 'top' | 'auto' = named ? legendOptions.position : 'auto';
+  const widthFloor = PLOT_W_FLOOR_DEMOTED * size.width;
+  if (!named && !table && pinnedHeight && plot0.w >= WIDE_SLOT * plot0.h) try {
+    const decide = { ...keyBase, smallIds: new Set([...baseSmallIds].filter((id) => valuesById.has(id))) };
+    const mapWidthFor = (w: number, h: number) => Math.min(w - 2 * MAP_PAD, (Math.min(h, sideCapH) - 2 * yPad) / packAspect);
+    const rowH = mapKeysSize({ ...decide, position, plot: plot0 }).h;
+    const columnW = mapKeysSize({ ...decide, position: 'right', plot: plot0 }).w;
+    // A column that leaves the map under the width floor of a side key stays a row.
+    if (plot0.w - columnW - MAP_GAP >= widthFloor
+      && mapWidthFor(plot0.w - columnW - MAP_GAP, plot0.h) > KEY_BESIDE_GAIN * mapWidthFor(plot0.w, plot0.h - rowH - MAP_GAP)) position = 'right';
+  } catch (error) {
+    // A key that does not fit the column keeps its row.
+    if (!(error instanceof NormalizeError) || error.code !== 'geo-key-overflow') throw error;
+  }
+  // A key the spec put beside the map stays there while the map keeps its share of the width; else it stands in the row above.
+  if (named && (position === 'right' || position === 'left')) {
+    let columnW = Infinity;
+    try {
+      columnW = mapKeysSize({ ...keyBase, smallIds: new Set([...baseSmallIds].filter((id) => valuesById.has(id))), position, plot: plot0 }).w;
+    } catch (error) {
+      if (!(error instanceof NormalizeError) || error.code !== 'geo-key-overflow') throw error;
+    }
+    const share = (plot0.w - columnW - MAP_GAP) / size.width;
+    if (!(share >= SIDE_KEY_PLOT_SHARE)) {
+      warnings.push({
+        code: 'legend-side-fallback', severity: 'warn', field: ['options', 'legend'],
+        message: `the key stays in the row above the map: a column beside it would leave the map ${Math.round(Math.max(0, share) * 100)}% of the width, under ${Math.round(SIDE_KEY_PLOT_SHARE * 100)}%`,
+        suggest: 'Give the chart more width to keep the key beside the map.',
+      });
+      position = 'top';
+    }
+  }
+  const keyInput = { ...keyBase, position } as const;
   let sideKeyH = 0;
   // A key whose labels do not fit the block keeps the row over the map.
   if (sideWanted) try {
@@ -470,12 +600,12 @@ export function layoutChoropleth(
   // and the listed passes take over. When they do not fit, or a region would
   // lose its value, the table goes under the map: values before map size.
   if (table && !tablePlace && tableMode === 'auto') {
-    const fallback = layoutChoropleth(data, { ...options, valueTable: false }, listed, pass, new Map(), omittedOverlays);
+    const fallback = layoutMapPass(data, { ...options, valueTable: false }, listed, pass, new Map(), omittedOverlays);
     const valueLost = (geometry: typeof fallback) => geometry.labels.some(label => label.kind === 'category' && label.hidden && label.hidden !== 'redundant'
       && valuesById.get(label.owner.categoryId!) != null
       && !geometry.labels.some(cell => cell.id === `small-member-value:${label.owner.categoryId}` && !cell.hidden));
     if (!fallback.refused && (fallback.sizing?.minHeight ?? 0) <= size.height && (fallback.sizing?.minWidth ?? 0) <= size.width && !valueLost(fallback)) return fallback;
-    return layoutChoropleth(data, { ...options, valueTable: 'below' }, listed, pass, new Map(), omittedOverlays);
+    return layoutMapPass(data, { ...options, valueTable: 'below' }, listed, pass, new Map(), omittedOverlays);
   }
   if (table && !tablePlace) mapArea = { ...area, h: Math.min(area.h, naturalMapH(area.w)) };
   const tableDrawn = table && tablePlace ? table.draw(tablePlace.x, tablePlace.y, tablePlace.perColumn, occupied, solveCtx, tablePlace.width, tablePlace.full) : undefined;
@@ -494,15 +624,33 @@ export function layoutChoropleth(
     // The complete table names the regions; the map needs only its thumbnail reserve.
     minMapHeight = Math.min(minMapHeight, 2 * (compactPadding ?? MAP_PAD) + 2 * theme.type.label.size);
   }
-  // A map that names only a few regions prints their values too, so the
-  // reader need not match a tint against the key. The count is taken before
-  // any label drops for room, so the label form is one at every width; with
-  // the value table the values stand there and the map prints codes.
+  // Count before labels drop for room so the default stays stable across frame passes.
   const autoLabelled = [...labelPolicy.eligibleIds].filter((id) => !baseSmallIds.has(id)).length;
   const regionValues = options.regionValues ??
-    (!tableDrawn && autoLabelled > 0 && autoLabelled <= REGION_VALUES_DEFAULT_MAX);
+    defaultRegionValues(pack, size, autoLabelled, Boolean(tableDrawn));
   // The table's top group is bold on the map too, so the two read as one key.
-  const withTable: TableLabels = tableDrawn ? { emphasis: topIds } : undefined;
+  const withTable: TableLabels = tableDrawn ? { emphasis: mapEmphasis } : undefined;
+  // Each key warns on the pass that draws, with the rows and columns that pass has.
+  const rowsDrawn = (authored: Readonly<Record<string, unknown>> | readonly string[] | undefined) => (authored === undefined ? [] : tableDrawn
+    ? (Array.isArray(authored) ? authored as readonly string[] : Object.keys(authored)).filter((id) => { const canonical = canonicalRow(id); return canonical !== undefined && tableIds.includes(canonical); })
+    : []);
+  const columnsDrawn = !tableDrawn ? [] : [...(options.columnVisibility?.swatch !== false ? ['swatch'] : []), 'code', ...(options.columnVisibility?.value !== false ? ['value'] : [])];
+  warnings.push(
+    ...generatedIdWarnings('choropleth', 'columnVisibility', options.columnVisibility, tableDrawn ? ['swatch', 'code', 'value'] : []),
+    ...generatedIdWarnings('choropleth', 'columnOverrides', options.columnOverrides, columnsDrawn),
+    ...generatedIdWarnings('choropleth', 'rowVisibility', options.rowVisibility, rowsDrawn(options.rowVisibility)),
+    ...generatedIdWarnings('choropleth', 'rowOrder', options.rowOrder, rowsDrawn(options.rowOrder)),
+    // A new name reaches the map label and the record, with or without a table.
+    ...generatedIdWarnings('choropleth', 'rowOverrides', options.rowOverrides, Object.keys(options.rowOverrides ?? {}).filter((id) => canonicalRow(id) !== undefined)),
+  );
+  if (table?.widthFloored) warnings.push({ code: 'generated-column-width-floored', severity: 'warn', field: ['options', 'columnOverrides'],
+    message: 'an authored lookup column width is narrower than its text, so it was raised', suggest: 'Use a larger width, or leave the width out.' });
+  if (table?.widthCapped) warnings.push({ code: 'generated-column-width-capped', severity: 'warn', field: ['options', 'columnOverrides'],
+    message: `the authored lookup column widths do not fit the ${Math.round(frameResult.plot.w)} px plot, so they were reduced`, suggest: 'Use smaller widths, or give the chart more width.' });
+  // The lookup is where a reader decodes a map code and reads its value.
+  if (tableDrawn && (options.columnVisibility?.value === false || drawnIds.length < tableIds.length)) warnings.push({ code: 'choropleth-lookup-partial', severity: 'warn', field: ['options', options.columnVisibility?.value === false ? 'columnVisibility' : 'rowVisibility'],
+    message: options.columnVisibility?.value === false ? 'the lookup prints no values, so the map colours are the only print of them' : 'a hidden lookup row leaves its map code without a name or a printed value',
+    suggest: 'Keep the column or the rows, or name the regions in the text around the map.' });
   const valueTexts = new Map<string, string>(regionValues
     ? [...valuesById].flatMap(([id, value]) => (value === null ? [] : [[id, fmt(value)] as [string, string]]))
     : []);
@@ -510,7 +658,7 @@ export function layoutChoropleth(
   // leaves the right edge free, the lanes may run the full plot height, so a
   // long lane stack does not spill into the footer.
   const plot = frameResult.plot;
-  const laneSpan = !tableDrawn && small.position !== 'right' && small.blocks.x + small.blocks.w <= plot.x + plot.w - LEADER_GUTTER
+  const laneSpan = !tableDrawn && small.position !== 'right' && small.position !== 'left' && small.blocks.x + small.blocks.w <= plot.x + plot.w - LEADER_GUTTER
     ? { y: plot.y, h: mapArea.y + mapArea.h - plot.y } : { y: mapArea.y, h: mapArea.h };
   // The key row may stand over the map's empty corner. The map rises into
   // the row as far as no region or dot of it lies under the key.
@@ -537,7 +685,7 @@ export function layoutChoropleth(
     prepareMapLayout(pack, mapArea, laneSpan, occupied, valuesById, mapLabels, visibleMarkerIds, theme, measure, mapCtx, valueTexts, mapLabels.eligibleIds.size ? undefined : compactPadding, withTable);
   // A map its host did not size takes its natural height.
   const grow = rowDrivenHeight({ options, width: size.width, height: size.height, chromeH: 0, rowsH: naturalHeight });
-  if (grow !== undefined) return layoutChoropleth(data, { ...options, size: { width: size.width, height: grow } }, listed, pass, passes, omittedOverlays);
+  if (grow !== undefined) return layoutMapPass(data, { ...options, size: { width: size.width, height: grow } }, listed, pass, passes, omittedOverlays);
 
   // Crowded glyphs keep their geographic anchors; the later glyph moves to the note. So does a glyph whose
   // anchor the map crop leaves outside the map frame.
@@ -554,7 +702,7 @@ export function layoutChoropleth(
     if (!geoOverlayInFrame(anchor, mapFrame) || (heightReady && glyphDiscs.some(prior => Math.hypot(anchor.x - prior.x, anchor.y - prior.y) < radius + prior.radius))) nextOmitted.add(overlay.id);
     else glyphDiscs.push({ ...anchor, radius });
   });
-  if (nextOmitted.size > omittedOverlays.size) return layoutChoropleth(data, options, listed, pass, new Map(), nextOmitted);
+  if (nextOmitted.size > omittedOverlays.size) return layoutMapPass(data, options, listed, pass, new Map(), nextOmitted);
 
   const nodes: SceneNode[] = [...frameResult.nodes];
   // Region outline, the grammar's hair stroke. It is centred on the path, so a
@@ -567,6 +715,9 @@ export function layoutChoropleth(
   // Visible no-data regions too small to contain hatch ink (desc discloses).
   const chipOnlyNoData: string[] = [];
   let undrawnUnlisted = 0;
+  // Regions the data never names draw first, as quiet land under the data regions' outlines.
+  const landStart = nodes.length;
+  const landNodes: SceneNode[] = [];
   for (const region of fitted.regions) {
     const value = valuesById.get(region.id) ?? null;
     const unlisted = !valuesById.has(region.id);
@@ -581,23 +732,27 @@ export function layoutChoropleth(
       undrawnUnlisted += 1;
       continue;
     }
-    const d = regionVisible
-      ? region.polygons.length > 0
-        ? polygonsPath(region.polygons)
-        : markerPath(
-            region.marker?.x ?? region.anchor.x,
-            region.marker?.y ?? region.anchor.y,
-            region.marker?.radius ?? 2.5,
-            regionStroke,
-          )
-      : '';
-    const fill: Paint = state ? { token: 'inkMuted' } : noData ? { token: 'background' } : scale.paint(value);
-    nodes.push({
+    // Listed and sizing passes can discard this scene. Format its coordinates only when read.
+    let d: string | undefined;
+    const fill: Paint = state ? { token: 'inkMuted' } : noData ? { token: 'background' } : unlisted ? landPaint : scale.paint(value);
+    (unlisted ? landNodes : nodes).push({
       t: 'path',
       id: pathNodeId,
-      d,
+      get d() {
+        return d ??= regionVisible
+          ? region.polygons.length > 0
+            ? polygonsPath(region.polygons)
+            : markerPath(
+                region.marker?.x ?? region.anchor.x,
+                region.marker?.y ?? region.anchor.y,
+                region.marker?.radius ?? 2.5,
+                regionStroke,
+              )
+          : '';
+      },
+      set d(value: string) { d = value; },
       fill,
-      stroke: { token: 'inkMuted' },
+      stroke: unlisted ? { token: 'background' } : { token: 'inkMuted' },
       width: regionStroke,
       owner,
       part: 'region',
@@ -654,9 +809,11 @@ export function layoutChoropleth(
         state ? geoStatePattern(state) : undefined,
         withTable?.emphasis.has(region.id) ?? false,
         withTable !== undefined,
+        hatchNodeId !== undefined,
       ));
     }
   }
+  nodes.splice(landStart, 0, ...landNodes);
   for (const boundary of fitted.boundaries) {
     const pathNodeId = `boundary:${boundary.id}`;
     const stroke: Paint = { token: 'leader' };
@@ -721,6 +878,11 @@ export function layoutChoropleth(
     frame: mapFrame,
     toneNames: options.overlayTones,
     overlayMeasure: options.overlayMeasure,
+    regionName: (overlay) => {
+      if (!('region' in overlay.at)) return undefined;
+      const resolution = resolveGeoRegionId(idIndex, overlay.at.region);
+      return resolution.kind === 'resolved' ? fitted.regions.find((region) => region.id === resolution.id)?.anchor.name : undefined;
+    },
     resolveAnchor: (overlay, index) =>
       resolveChoroplethOverlayAnchor(overlay, index, fitted, idIndex, pack),
     occupied,
@@ -745,7 +907,7 @@ export function layoutChoropleth(
     // published; the width only grows for a small-members block.
     sizing: resolveSizing(chartSizing('choropleth'), size, {
       ...(smallIds.size ? { minWidth: size.width - frameResult.plot.w +
-        (small.position === 'right' ? small.blocks.w + 200 : Math.max(200, small.blocks.w)) } : {}),
+        (small.position === 'right' || small.position === 'left' ? small.blocks.w + 200 : Math.max(200, small.blocks.w)) } : {}),
       minHeight: Math.max(size.height - frameResult.plot.h + small.minPlotH,
         size.height - area.h + (table && tablePlace ? sideForm ? Math.max(minMapHeight, sideBlockH)
           : tablePlace.y === area.y ? Math.max(minMapHeight, table.size(tablePlace.perColumn).h)
@@ -831,15 +993,17 @@ export function layoutChoropleth(
     if (!move.length) continue;
     const ids = new Set([...(listed ?? []), ...move]);
     const key = `${pass + 1}:${[...ids].sort().join(',')}`;
-    let next = passes.get(key) ?? layoutChoropleth(data, options, ids, pass + 1, passes, omittedOverlays);
+    let next = passes.get(key) ?? layoutMapPass(data, options, ids, pass + 1, passes, omittedOverlays);
     // An automatic frame can take the list's measured height when it keeps more names.
     const height = Math.ceil(Math.max(next.sizing?.minHeight ?? 0, next.sizing?.naturalHeight ?? 0));
     if ((options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === false && height > next.size.height && height <= 1400) {
-      const taller = layoutChoropleth(data, { ...options, size: { width: size.width, height } }, ids, pass + 1, new Map(), omittedOverlays);
+      const taller = layoutMapPass(data, { ...options, size: { width: size.width, height } }, ids, pass + 1, new Map(), omittedOverlays);
       if (hidden(taller) < hidden(geometry)) next = taller;
     }
     passes.set(key, next);
     const fits = !next.labels.some((label) => label.hidden && label.slot === 'smallMember') &&
+      // A longer list must not widen a side key past the width floor.
+      ((position !== 'right' && position !== 'left') || next.plot.w >= widthFloor) &&
       (next.sizing?.minHeight ?? 0) <= next.size.height && hidden(next) <= hidden(geometry);
     if (fits) return next;
   }
@@ -857,7 +1021,9 @@ function prepareMapLayout(pack: GeoPack, plot: Rect, laneSpan: { y: number; h: n
     let prepared = fits.get(key);
     if (!prepared) {
       const fitted = fitGeoPack(pack, frame);
-      const outsideFits = outsideLabelGuard(fitted.regions.filter(region => region.polygons.length > 0 || visibleMarkerIds.has(region.id)));
+      let guard: ReturnType<typeof outsideLabelGuard> | undefined;
+      const outsideFits: ReturnType<typeof outsideLabelGuard> = (id, rect, from, to) =>
+        (guard ??= outsideLabelGuard(fitted.regions.filter(region => region.polygons.length > 0 || visibleMarkerIds.has(region.id))))(id, rect, from, to);
       prepared = { fitted, outsideFits };
       fits.set(key, prepared);
     }
@@ -954,6 +1120,15 @@ function solveRegionLabels(
   /** A probe that reads only these regions' labels: the escalation stops after the last of them. */
   reads?: (regionId: string) => boolean,
 ): RegionLabelSolveResult {
+  const allOccupied = occupied;
+  let labelOccupied: OccupiedIndex | undefined;
+  occupied = {
+    ...allOccupied,
+    claim(rect, kind, owner, part, polygon) {
+      allOccupied.claim(rect, kind, owner, part, polygon);
+      if (kind === 'label' || part === 'regionLeader') labelOccupied?.claim(rect, kind, owner, part, polygon);
+    },
+  };
   const pinOf = (plan: RegionLabelPlan) => ctx.pins[`category:${plan.region.id}`];
   const ordered = [...plans].sort((a, b) => {
     const aPinned = pinOf(a) ? 1 : 0;
@@ -1038,23 +1213,73 @@ function solveRegionLabels(
   // a probe's answer does not depend on the labels after its last region.
   let escalated = unresolved.length;
   if (reads) while (escalated > 0 && !reads(unresolved[escalated - 1]!.plan.region.id)) escalated--;
+  // Compare the occupied geometry once, after inline placement. Reuse stops at the first
+  // different earlier label or request. The solver still places and claims every label.
+  const previous = calloutPasses.get(outsideFits);
+  const calloutPass: CalloutPass | undefined = escalated > 0 && ctx.measure === defaultMeasurer
+    ? { claims: occupied.snapshot(), plot: { ...ctx.plot }, labels: [], calls: [] } : undefined;
+  let samePass = calloutPass !== undefined && previous !== undefined && sameCalloutRect(previous.plot, ctx.plot)
+    && previous.claims.length === calloutPass.claims.length
+    && previous.claims.every((claim, i) => sameCalloutClaim(claim, calloutPass.claims[i]!));
+  let removedHatches = false;
+  if (!samePass && previous && calloutPass && sameCalloutRect(previous.plot, ctx.plot)
+    && !calloutPass.claims.some(claim => claim.kind === 'mark' && claim.part === 'noDataHatch')) {
+    let matched = 0;
+    let compatible = true;
+    for (const claim of previous.claims) {
+      if (claim.kind === 'mark' && claim.part === 'noDataHatch') continue;
+      const next = calloutPass.claims[matched];
+      if (!next || !sameCalloutClaim(claim, next)) { compatible = false; break; }
+      matched++;
+    }
+    // Removing hatches cannot change a search whose blocked seats all hit other claims.
+    removedHatches = samePass = compatible && matched === calloutPass.claims.length;
+  }
+  const inlineCount = result.placed.length;
+  const calloutLabels = () => {
+    if (!labelOccupied) {
+      labelOccupied = createOccupiedIndex(ctx.canvas ?? ctx.plot);
+      const claims = calloutPass && result.placed.length === inlineCount ? calloutPass.claims : occupied.snapshot();
+      for (const claim of claims) if (claim.kind === 'label' || claim.part === 'regionLeader') {
+        labelOccupied.claim(claim.rect, claim.kind, claim.owner, claim.part, claim.polygon);
+      }
+    }
+    return labelOccupied;
+  };
   const solvedLeaders: { placed: ReturnType<typeof solveLabels>['placed'][number]; region: FittedGeoRegion }[] = [];
   for (const item of unresolved.slice(0, escalated)) {
     const callout = item.plan.variants.find((variant) => variant.callout);
     if (callout) {
-      const candidates = callout.callout!(occupied, ctx.plot);
-      const next = solveLabels([{ ...callout.request, candidates }], occupied, solveCtx);
-      const placed = next.placed[0];
-      if (placed && !placed.hidden) {
-        item.tried.push(...(next.decisions[0]?.tried ?? []));
-        appendRegionSolve(result, next, callout.font, item.plan, item.tried);
-        const from: GeoPoint = [item.plan.region.anchor.x, item.plan.region.anchor.y];
-        const to = calloutTerminus(from, placed.rect);
-        placed.leader = { d: polylinePath([from, to]), curved: false };
-        claimLeaderRoute([from, to], occupied, item.plan.region.id);
-        continue;
+      if (calloutPass) for (let i = calloutPass.labels.length; i < result.placed.length - inlineCount; i++) {
+        const label = result.placed[inlineCount + i]!;
+        const old = previous?.labels[i];
+        samePass = samePass && old !== undefined && old.id === label.id && old.kind === label.kind && old.hidden === label.hidden
+          && sameCalloutRect(old.rect, label.rect) && sameCalloutRect(old.backing, label.backing) && old.leader?.d === label.leader?.d;
+        calloutPass.labels.push({ id: label.id, kind: label.kind, hidden: label.hidden, rect: { ...label.rect },
+          backing: label.backing ? { ...label.backing } : undefined, leader: label.leader ? { ...label.leader } : undefined });
       }
-      item.tried.push(...(next.decisions[0]?.tried ?? []));
+      const cached = calloutPass && previous?.calls[calloutPass.calls.length];
+      samePass = samePass && cached !== undefined && cached.id === item.plan.region.id && cached.text === callout.request.text
+        && Object.keys(callout.font).length === Object.keys(cached.font).length
+        && (Object.keys(callout.font) as (keyof FontSpec)[]).every(key => Object.is(callout.font[key], cached.font[key]));
+      const search = samePass && (!removedHatches || !cached!.hatchBlocked)
+        ? cached! : callout.callout!(occupied, ctx.plot, calloutLabels(), ctx.canvas);
+      const { candidates } = search;
+      calloutPass?.calls.push({ id: item.plan.region.id, text: callout.request.text, font: { ...callout.font }, candidates, hatchBlocked: search.hatchBlocked });
+      // An empty callout claims nothing and adds no tried slots; its hidden result is discarded.
+      if (candidates.length > 0) {
+        const next = solveLabels([{ ...callout.request, candidates }], occupied, solveCtx);
+        const placed = next.placed[0];
+        item.tried.push(...(next.decisions[0]?.tried ?? []));
+        if (placed && !placed.hidden) {
+          appendRegionSolve(result, next, callout.font, item.plan, item.tried);
+          const from: GeoPoint = [item.plan.region.anchor.x, item.plan.region.anchor.y];
+          const to = calloutTerminus(from, placed.rect);
+          placed.leader = { d: polylinePath([from, to]), curved: false };
+          claimLeaderRoute([from, to], occupied, item.plan.region.id);
+          continue;
+        }
+      }
     }
     const leaderVariant = item.plan.variants.find((variant) => variant.leader);
     if (!leaderVariant) {
@@ -1070,6 +1295,7 @@ function solveRegionLabels(
       solvedLeaders.push({ placed, region: item.plan.region });
     }
   }
+  if (calloutPass) calloutPasses.set(outsideFits, calloutPass);
   routeAndClaimLeaders(solvedLeaders, result.placed, ctx.plot, occupied, outsideFits);
   return result;
 }
@@ -1361,7 +1587,10 @@ function resolveRegionLabelPolicy(
     };
   }
   if (mode === 'all' || pack.id !== 'world') {
-    const eligibleIds = new Set(pack.regions.map((region) => region.id));
+    // Automatic codes name the regions the data lists; a region the data never
+    // names stays quiet land unless `labels: 'all'` or `labelRegions` asks for it.
+    const eligibleIds = new Set(pack.regions.flatMap((region) =>
+      mode === 'all' || valuesById.has(region.id) || explicitIds.has(region.id) ? [region.id] : []));
     return {
       mode,
       eligibleIds,
@@ -1442,9 +1671,11 @@ function resolveRegionLabelLayout(
       .map((region) => region.id),
   );
   if (leaderIds.size > 0) {
-    const initialFit = fitGeoPack(pack, choroplethMapFrame(plot, 0, pack.id));
-    gutter = measuredLeaderGutter(initialFit.regions, leaderIds, plot, theme, measure, valueTexts);
+    gutter = measuredLeaderGutter(decodeGeoPack(pack).regions, leaderIds, plot, theme, measure, valueTexts);
   }
+  // A probe can only add an eligible leader. With none left, every iteration returns this gutter.
+  if (!pack.regions.some(region => labelIds.has(region.id) && leaderEligibleIds.has(region.id) && !leaderIds.has(region.id)
+    && (pack.id !== 'world' || region.microState))) return { gutter, leaderIds };
   const ranks = valueRanks(valuesById);
   for (let iteration = 0; iteration <= pack.regions.length; iteration++) {
     const mapFrame = choroplethMapFrame(plot, gutter, pack.id);
@@ -1455,11 +1686,15 @@ function resolveRegionLabelLayout(
     for (const claim of frameClaims) {
       probeOccupied.claim(claim.rect, claim.kind, claim.owner, claim.part);
     }
+    // Listed regions on a hatch or state pattern, whose labels take a halo as in the drawn map.
+    const hatchedIds = new Set<string>();
     for (const region of fitted.regions) {
       const regionVisible = region.polygons.length > 0 || visibleMarkerIds.has(region.id);
       if (regionVisible) claimRegionMark(region, probeOccupied);
       if (regionVisible && (valuesById.get(region.id) ?? null) === null) {
-        claimHatchSegments(hatchSegments(region, strokeToken(theme, 'hair')), probeOccupied, region.id);
+        const segments = hatchSegments(region, strokeToken(theme, 'hair'));
+        claimHatchSegments(segments, probeOccupied, region.id);
+        if (segments.length > 0 && valuesById.has(region.id)) hatchedIds.add(region.id);
       }
     }
     for (const boundary of fitted.boundaries) claimBoundaryMark(boundary, probeOccupied);
@@ -1480,6 +1715,7 @@ function resolveRegionLabelLayout(
           undefined,
           withTable?.emphasis.has(region.id) ?? false,
           withTable !== undefined,
+          hatchedIds.has(region.id),
         )
       );
     // Only a region not yet on a leader can add one.
@@ -1617,9 +1853,21 @@ function certainlyUnderKey(pack: GeoPack, rect: Rect, padding: number | undefine
   const margin = 16 * Number.EPSILON * magnitude;
   const inner = { x: keyArea.x + margin, y: keyArea.y + margin, w: keyArea.w - 2 * margin, h: keyArea.h - 2 * margin };
   if (!(inner.w >= 0 && inner.h >= 0)) return false;
-  const inside = (px: number, py: number) => fits.every((fit) => pointInRect(px * fit.scale + fit.x, py * fit.scale + fit.y, inner));
+  const inside = (px: number, py: number) => {
+    for (const fit of fits) if (!pointInRect(px * fit.scale + fit.x, py * fit.scale + fit.y, inner)) return false;
+    return true;
+  };
   for (const region of decodeGeoPack(pack).regions) {
     if (region.marker !== undefined && inside(region.marker.x, region.marker.y)) return true;
+    const [x0, y0, x1, y1] = boundsOfPolygons(region.polygons);
+    // A vertex must be under the key in every fit. Reject a whole region when its extrema
+    // miss the key in any fit; the positive scale preserves the coordinate order exactly.
+    let apart = false;
+    for (const fit of fits) {
+      if (x1 * fit.scale + fit.x < inner.x || x0 * fit.scale + fit.x > inner.x + inner.w
+        || y1 * fit.scale + fit.y < inner.y || y0 * fit.scale + fit.y > inner.y + inner.h) { apart = true; break; }
+    }
+    if (apart) continue;
     for (const polygon of region.polygons) for (const ring of polygon) for (const [px, py] of ring) if (inside(px, py)) return true;
   }
   return false;
@@ -1637,7 +1885,7 @@ function choroplethMapFrame(plot: Rect, gutter: number, packId: GeoPack['id'], p
 }
 
 function measuredLeaderGutter(
-  regions: FittedGeoRegion[],
+  regions: Pick<FittedGeoRegion, 'id' | 'anchor'>[],
   leaderIds: Set<string>,
   plot: Rect,
   theme: Theme,
@@ -1754,6 +2002,8 @@ function labelPlanForRegion(
    * else may take a callout whose leader crosses a neighbour.
    */
   crossingCallouts = false,
+  /** The region draws the no-data hatch, whose strokes cross a label as a state pattern does. */
+  noDataHatch = false,
 ): RegionLabelPlan {
   /*
    * ONE vocabulary per map, decided before placement.
@@ -1780,12 +2030,18 @@ function labelPlanForRegion(
   const compactText = regionLabelText(region, compactFont, measure, valueTexts);
   // Labels claim room in value order, so the highest values keep theirs.
   const priority = PRIORITY.interior + Math.max(0, 300 - rank);
+  const inlineCandidates = inlineRegionCandidates(region, compactText, compactFont, effectiveFill(paintColor(theme, insidePaint), pattern, theme), measure, insidePaint, pattern, noDataHatch);
   const compact = regionLabelRequest(
     region,
     compactText,
     compactFont,
     priority,
-    inlineRegionCandidates(region, compactText, compactFont, effectiveFill(paintColor(theme, insidePaint), pattern, theme), measure, insidePaint, pattern),
+    valueTexts.has(region.id)
+      // A value label is wide enough to reach a coastline from inside its region. A seat whose
+      // box meets the region's outline puts a line through the figures, so the label takes a
+      // callout or the list, which carries the value.
+      ? candidatesOffOutline(inlineCandidates, region)
+      : inlineCandidates,
   );
   const markerNeedsLeader = region.marker !== undefined && region.polygons.length === 0;
   // Marker records stay visible as marks; their labels must not cover the marker.
@@ -1812,11 +2068,8 @@ function labelPlanForRegion(
           request: regionLabelRequest(region, compactText, compactFont, priority, []),
           font: compactFont,
           leader: false,
-          callout: (occupied: OccupiedIndex, plot: Rect) => {
-            const strict = calloutCandidates(region, compactText, compactFont, measure, occupied, plot, outsideFits);
-            return strict.length || !crossingCallouts ? strict
-              : calloutCandidates(region, compactText, compactFont, measure, occupied, plot, () => true);
-          },
+          callout: (occupied: OccupiedIndex, plot: Rect, labels: OccupiedIndex, canvas?: Rect) =>
+            calloutCandidates(region, compactText, compactFont, measure, occupied, plot, outsideFits, crossingCallouts, labels, canvas),
         },
       ];
   if (leaderLane) {
@@ -1843,7 +2096,7 @@ function labelPlanForRegion(
 
 /** The region's code, followed by its value when `regionValues` prints them. */
 function regionLabelText(
-  region: FittedGeoRegion,
+  region: Pick<FittedGeoRegion, 'id' | 'anchor'>,
   font: FontSpec,
   measure: typeof defaultMeasurer,
   valueTexts: ReadonlyMap<string, string>,
@@ -1927,6 +2180,7 @@ function inlineRegionCandidates(
   measure: typeof defaultMeasurer,
   insidePaint: Paint,
   insidePattern?: import('../../types/scene').HatchPattern,
+  noDataHatch = false,
 ): LabelRequest['candidates'] {
   // A label sits on its own fill without a box, and only where it covers at
   // most LABEL_MAX_COVER of the region; else it takes a callout. The slot
@@ -1941,8 +2195,14 @@ function inlineRegionCandidates(
   const decorate = (
     candidate: Omit<LabelRequest['candidates'][number], 'insideFill' | 'needsBacking'>,
   ): LabelRequest['candidates'][number] =>
-    // Pattern strokes need the same page-colour halo as a hatched tile.
-    ({ ...candidate, insideFill, insidePaint, ...(insidePattern ? { insidePattern, needsBacking: true } : {}) });
+    // Pattern and no-data hatch strokes need the same page-colour halo as a hatched tile.
+    ({
+      ...candidate,
+      insideFill,
+      insidePaint,
+      ...(insidePattern ? { insidePattern } : {}),
+      ...(insidePattern || noDataHatch ? { needsBacking: true } : {}),
+    });
   const gap = 3;
   const center = {
     x: region.anchor.x - w / 2,
@@ -2047,6 +2307,8 @@ function regionLabelRequest(
 const regionPaths = new WeakMap<GeoPoint[][][], string>();
 const regionStrips = new WeakMap<GeoPoint[][][], Rect[]>();
 const regionHatches = new WeakMap<GeoPoint[][][], HatchSegment[]>();
+const regionAreas = new WeakMap<GeoPoint[][][], number>();
+const regionBounds = new WeakMap<GeoPoint[][][], [number, number, number, number]>();
 
 function polygonsPath(polygons: GeoPoint[][][]): string {
   let d = regionPaths.get(polygons);
@@ -2214,7 +2476,8 @@ function claimPolygonFill(
 ): void {
   let strips = regionStrips.get(polygons);
   if (!strips) regionStrips.set(polygons, strips = polygonFillStrips(polygons));
-  for (const strip of strips) occupied.claim(strip, 'mark', { categoryId: regionId }, 'region');
+  const owner = { categoryId: regionId };
+  for (const strip of strips) occupied.claim(strip, 'mark', owner, 'region');
 }
 
 /** The CLAIM_STEP strips that cover the polygons, in claim order. */
@@ -2235,13 +2498,11 @@ function polygonFillStrips(polygons: GeoPoint[][][]): Rect[] {
         const low = Math.min(a[1], b[1]);
         const high = Math.max(a[1], b[1]);
         if (!(low < high)) continue;
-        let lo = 0;
-        let hi = rows.length;
-        while (lo < hi) {
-          const mid = (lo + hi) >> 1;
-          if (rows[mid]! < low) lo = mid + 1;
-          else hi = mid;
-        }
+        // Rows are 4 px apart. Correct the direct estimate against the actual rows so rounding
+        // keeps the same first crossing as the binary search.
+        let lo = Math.max(0, Math.min(rows.length, Math.ceil((low - firstY) / CLAIM_STEP))) || 0;
+        while (lo > 0 && rows[lo - 1]! >= low) lo--;
+        while (lo < rows.length && rows[lo]! < low) lo++;
         for (let row = lo; row < rows.length && rows[row]! < high; row++) crossing[row]!.push(a, b);
       }
     }
@@ -2395,7 +2656,109 @@ function claimLeader(
   }
 }
 
+// Which seats of a label cross the outline is a function of the polygons, the anchor and the
+// label's size. A layout asks again for the same label in every pass, so the answer is kept.
+const outlineMasks = new WeakMap<GeoPoint[][][], Map<string, boolean[]>>();
+
+/**
+ * The candidates whose box meets no edge of the region's outline. A box that lies inside the
+ * anchor's clearance disc cannot meet the outline, so it needs no edge test. One pass over the
+ * edges collects those that reach the boxes still in question; each box is tested against them.
+ */
+function candidatesOffOutline(
+  candidates: LabelRequest['candidates'],
+  region: Pick<FittedGeoRegion, 'anchor' | 'polygons'>,
+): LabelRequest['candidates'] {
+  if (candidates.length === 0) return candidates;
+  const first = candidates[0]!.rect;
+  const key = `${first.w}|${first.h}|${region.anchor.x}|${region.anchor.y}`;
+  let masks = outlineMasks.get(region.polygons);
+  if (masks === undefined) outlineMasks.set(region.polygons, masks = new Map());
+  let meets = masks.get(key);
+  if (meets === undefined || meets.length !== candidates.length) {
+    meets = candidatesMeetingOutline(candidates, region);
+    masks.set(key, meets);
+  }
+  const mask = meets;
+  return mask.some(Boolean) ? candidates.filter((_, index) => !mask[index]) : candidates;
+}
+
+function candidatesMeetingOutline(
+  candidates: LabelRequest['candidates'],
+  region: Pick<FittedGeoRegion, 'anchor' | 'polygons'>,
+): boolean[] {
+  const { x: ax, y: ay, clearance } = region.anchor;
+  const reach = clearance * clearance;
+  const none = candidates.map(() => false);
+  const open = candidates.filter(({ rect }) => {
+    const dx = Math.max(Math.abs(rect.x - ax), Math.abs(rect.x + rect.w - ax));
+    const dy = Math.max(Math.abs(rect.y - ay), Math.abs(rect.y + rect.h - ay));
+    return dx * dx + dy * dy >= reach;
+  });
+  if (open.length === 0) return none;
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  for (const { rect } of open) {
+    x0 = Math.min(x0, rect.x);
+    y0 = Math.min(y0, rect.y);
+    x1 = Math.max(x1, rect.x + rect.w);
+    y1 = Math.max(y1, rect.y + rect.h);
+  }
+  const [minX, minY, maxX, maxY] = boundsOfPolygons(region.polygons);
+  if (x1 < minX || x0 > maxX || y1 < minY || y0 > maxY) return none;
+  const edges: number[] = [];
+  for (const polygon of region.polygons) {
+    for (const ring of polygon) {
+      let previous = ring[ring.length - 1];
+      for (const point of ring) {
+        if (
+          previous !== undefined
+          && Math.max(previous[0], point[0]) >= x0 && Math.min(previous[0], point[0]) <= x1
+          && Math.max(previous[1], point[1]) >= y0 && Math.min(previous[1], point[1]) <= y1
+        ) edges.push(previous[0], previous[1], point[0], point[1]);
+        previous = point;
+      }
+    }
+  }
+  if (edges.length === 0) return none;
+  return candidates.map(({ rect }) => {
+    for (let i = 0; i < edges.length; i += 4) {
+      if (segmentMeetsRect(edges[i]!, edges[i + 1]!, edges[i + 2]!, edges[i + 3]!, rect.x, rect.y, rect.x + rect.w, rect.y + rect.h)) return true;
+    }
+    return false;
+  });
+}
+
+/** Liang-Barsky clip of the segment (ax, ay)-(bx, by) against the box. */
+function segmentMeetsRect(ax: number, ay: number, bx: number, by: number, x0: number, y0: number, x1: number, y1: number): boolean {
+  const dx = bx - ax;
+  const dy = by - ay;
+  let t0 = 0;
+  let t1 = 1;
+  for (let side = 0; side < 4; side++) {
+    const p = side === 0 ? -dx : side === 1 ? dx : side === 2 ? -dy : dy;
+    const q = side === 0 ? ax - x0 : side === 1 ? x1 - ax : side === 2 ? ay - y0 : y1 - ay;
+    if (p === 0) {
+      if (q < 0) return false;
+      continue;
+    }
+    const t = q / p;
+    if (p < 0) {
+      if (t > t1) return false;
+      if (t > t0) t0 = t;
+    } else {
+      if (t < t0) return false;
+      if (t < t1) t1 = t;
+    }
+  }
+  return true;
+}
+
 function boundsOfPolygons(polygons: GeoPoint[][][]): [number, number, number, number] {
+  const known = regionBounds.get(polygons);
+  if (known !== undefined) return known;
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
@@ -2410,24 +2773,11 @@ function boundsOfPolygons(polygons: GeoPoint[][][]): [number, number, number, nu
       }
     }
   }
-  return [minX, minY, maxX, maxY];
+  const bounds: [number, number, number, number] = [minX, minY, maxX, maxY];
+  regionBounds.set(polygons, bounds);
+  return bounds;
 }
 
-function nearestRegionId(
-  input: string,
-  candidates: string[],
-  canonical: ReadonlyMap<string, string>,
-): string | undefined {
-  let best: { id: string; distance: number } | undefined;
-  for (const candidate of candidates) {
-    const distance = levenshtein(input.toUpperCase(), candidate.toUpperCase());
-    if (!best || distance < best.distance || (distance === best.distance && candidate < best.id)) {
-      best = { id: candidate, distance };
-    }
-  }
-  if (!best || best.distance > Math.max(2, Math.floor(input.length / 2))) return undefined;
-  return canonical.get(best.id);
-}
 
 function pointInRect(x: number, y: number, rect: Rect): boolean {
   return x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h;
@@ -2452,7 +2802,9 @@ function valueRanks(valuesById: ReadonlyMap<string, number | null>): Map<string,
 }
 
 function polygonsArea(polygons: GeoPoint[][][]): number {
-  return polygons.reduce((total, polygon) => total + polygon.reduce((sum, ring, index) => {
+  const known = regionAreas.get(polygons);
+  if (known !== undefined) return known;
+  const area = polygons.reduce((total, polygon) => total + polygon.reduce((sum, ring, index) => {
     let twice = 0;
     for (let i = 0; i < ring.length; i++) {
       const a = ring[i]!;
@@ -2461,12 +2813,14 @@ function polygonsArea(polygons: GeoPoint[][][]): number {
     }
     return sum + (index === 0 ? 1 : -1) * Math.abs(twice) / 2;
   }, 0), 0);
+  regionAreas.set(polygons, area);
+  return area;
 }
 
 /** Where a callout's leader stops: the label box's nearest point, 2 px short of it. */
 function calloutTerminus(from: GeoPoint, rect: Rect): GeoPoint {
-  const box = { x: rect.x - 2, y: rect.y - 2, w: rect.w + 4, h: rect.h + 4 };
-  return [Math.max(box.x, Math.min(from[0], box.x + box.w)), Math.max(box.y, Math.min(from[1], box.y + box.h))];
+  const x = rect.x - 2, y = rect.y - 2;
+  return [Math.max(x, Math.min(from[0], x + (rect.w + 4))), Math.max(y, Math.min(from[1], y + (rect.h + 4)))];
 }
 
 /**
@@ -2485,37 +2839,62 @@ function calloutCandidates(
   occupied: OccupiedIndex,
   plot: Rect,
   outsideFits: ReturnType<typeof outsideLabelGuard>,
-): LabelRequest['candidates'] {
+  crossingCallouts: boolean,
+  labelOccupied: OccupiedIndex,
+  canvas: Rect | undefined,
+): RegionCallout {
   const w = measure(text, font).width;
   const h = font.size * (font.lineHeight ?? 1.2);
   const from: GeoPoint = [region.anchor.x, region.anchor.y];
   const candidates: LabelRequest['candidates'] = [];
+  const crossingCandidates: LabelRequest['candidates'] = [];
+  const rect = { x: 0, y: 0, w, h };
+  const right = plot.x + plot.w, bottom = plot.y + plot.h;
+  // A seat clear at pad 2 is clear at the solver's pad 0. When the plot fits the canvas,
+  // the first sorted callout always places, and the chart replaces its published slot list.
+  const bestOnly = (!canvas || rectContains(canvas, plot)) && w >= 0 && h >= 0
+    && Math.max(Math.abs(from[0]), Math.abs(from[1]), w, h, Math.abs(plot.x), Math.abs(plot.y), Math.abs(right), Math.abs(bottom)) <= 2 ** 40;
+  let best: LabelRequest['candidates'][number] | undefined;
   // The claim that blocked the last seat tried. The next seat out often meets
   // it again, and a box it meets is taken whatever else is near (a measure
   // runs this search some 15,000 times).
   let blocker: OccupiedClaim | undefined;
-  const taken = (claim: OccupiedClaim) => { blocker = claim; return false; };
+  let hatchBlocked = false;
+  const taken = (claim: OccupiedClaim) => {
+    blocker = claim;
+    if (claim.kind === 'mark' && claim.part === 'noDataHatch') hatchBlocked = true;
+    return true;
+  };
+  const skip = (claim: OccupiedClaim) => !taken(claim);
+  // Skip leaders before the index checks their geometry. Crowding concerns labels only.
+  const skipUncrowdedLabel = (claim: OccupiedClaim) => !(claim.kind === 'label' &&
+    Math.abs(rect.y + h / 2 - claim.rect.y - claim.rect.h / 2) < Math.min(h, claim.rect.h) / 2 && boxGap(rect, claim.rect) < 8);
   for (let k = 0; k < CALLOUT_DIRECTIONS; k++) {
     const angle = (2 * Math.PI * k) / CALLOUT_DIRECTIONS;
     const dx = Math.cos(angle);
     const dy = Math.sin(angle);
     const reach = Math.abs(dx) * (w / 2) + Math.abs(dy) * (h / 2);
     for (let d = Math.max(2, region.anchor.clearance); d <= 2 * CALLOUT_MAX_LEADER; d += Math.max(CALLOUT_STEP, d / 8)) {
-      const rect = { x: from[0] + dx * (d + reach) - w / 2, y: from[1] + dy * (d + reach) - h / 2, w, h };
-      if (rect.x < plot.x || rect.y < plot.y || rect.x + rect.w > plot.x + plot.w || rect.y + rect.h > plot.y + plot.h) break;
+      // Projection onto this direction puts the expanded label at least d - 2*sqrt(2)
+      // away. Using d - 4 and flooring leaves room for floating-point error.
+      const lower = d - 4;
+      if (bestOnly && best && Math.floor(lower + (lower > CALLOUT_MAX_LEADER ? 1000 : 0)) > best.penalty) break;
+      rect.x = from[0] + dx * (d + reach) - w / 2;
+      rect.y = from[1] + dy * (d + reach) - h / 2;
+      if (rect.x < plot.x || rect.y < plot.y || rect.x + rect.w > right || rect.y + rect.h > bottom) break;
       if (blocker && !blocker.polygon && rectsOverlap(blocker.rect, rect, 2)) continue;
-      if (occupied.hits(rect, 2, taken)) continue;
-      if (!text.includes(' ') && occupied.hitsWhich(rect, 8).some(claim => claim.kind === 'label' && boxGap(rect, claim.rect) < 8 &&
-        Math.abs(rect.y + h / 2 - claim.rect.y - claim.rect.h / 2) < Math.min(h, claim.rect.h) / 2)) continue;
+      if (occupied.some ? occupied.some(rect, 2, taken) : occupied.hits(rect, 2, skip)) continue;
+      if (labelOccupied.hits(rect, 8, skipUncrowdedLabel)) continue;
       const to = calloutTerminus(from, rect);
-      if (!outsideFits(region.id, rect, from, to)) break;
+      const fits = outsideFits(region.id, rect, from, to);
+      if (!fits && (!crossingCallouts || candidates.length > 0)) break;
       const length = Math.hypot(to[0] - from[0], to[1] - from[1]);
       let crossesLabel = false;
       const samples = Math.max(1, Math.ceil(length / 3));
       // The leader is sampled every 3 px. Its padded box contains every sample.
       // Only a label or leader ends the query; visiting the claims in cell order
       // avoids collecting and sorting them. The outline guard checked regions.
-      occupied.hits(
+      labelOccupied.hits(
         { x: Math.min(from[0], to[0]) - 0.5, y: Math.min(from[1], to[1]) - 0.5, w: Math.abs(to[0] - from[0]) + 1, h: Math.abs(to[1] - from[1]) + 1 },
         1,
         (claim) => {
@@ -2535,16 +2914,19 @@ function calloutCandidates(
         },
       );
       if (!crossesLabel) {
-        candidates.push({
+        const candidate = {
           slot: `callout${k}`,
-          rect,
+          rect: { ...rect },
           penalty: Math.round(length + (length > CALLOUT_MAX_LEADER ? 1000 : 0)),
-        });
+        };
+        (fits ? candidates : crossingCandidates).push(candidate);
+        if (fits && (!best || candidate.penalty < best.penalty || (candidate.penalty === best.penalty && compareText(candidate.slot, best.slot) < 0))) best = candidate;
       }
       break;
     }
   }
-  return candidates.sort((a, b) => a.penalty - b.penalty || compareText(a.slot, b.slot));
+  const sorted = (candidates.length ? candidates : crossingCandidates).sort((a, b) => a.penalty - b.penalty || compareText(a.slot, b.slot));
+  return { candidates: bestOnly && sorted.length ? [sorted[0]!] : sorted, hatchBlocked };
 }
 
 /** The sample indices 0..samples whose 1 px box can meet [lo, hi] on one axis, widened by one sample each side. */

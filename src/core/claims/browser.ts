@@ -420,6 +420,8 @@ function claimLabelIds(type: string, geo: Geometry<object, object>): Map<string,
   return ids;
 }
 
+const QUOTIENT_OPS: ReadonlySet<string> = new Set(['cohort-retention@1', 'cohort-average@1', 'funnel-conversion@1', 'pareto-cumshare@1', 'pareto-vital-few-share@1', 'percentOf@1', 'ratio@1', 'share@1']);
+
 /**
  * A derived value without float residue: 12 significant digits at the
  * scale of its largest operand, so a PVM residual of 5.7e-14 beside effects in
@@ -430,7 +432,8 @@ function withoutResidue(claim: ClaimRecordV1): ClaimRecordV1 {
   const raw = claim.output.raw;
   if (claim.kind === 'observed' || claim.kind === 'authored' || raw === null || !Number.isFinite(raw) || raw === 0) return claim;
   let scale = Math.abs(raw);
-  for (const input of claim.inputs) {
+  // A quotient leaves its operands' scale: 1 of 100,000,000 is a true 1e-8, not residue.
+  for (const input of QUOTIENT_OPS.has(claim.op) ? [] : claim.inputs) {
     if (input.value !== null && Number.isFinite(input.value)) scale = Math.max(scale, Math.abs(input.value));
   }
   const digits = 12 - (Math.floor(Math.log10(scale)) - Math.floor(Math.log10(Math.abs(raw))));
@@ -529,7 +532,10 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
         output: {
           raw: count,
           state: 'value',
-          displayed: `[${derived.binning.edges[index]}, ${derived.binning.edges[index + 1]})`,
+          // The open last bin runs from openAbove up, to the largest observation.
+          displayed: derived.binning.openAbove !== undefined && index === derived.counts.length - 1
+            ? `[${derived.binning.edges[index]}, ${derived.binning.edges[index + 1]}]`
+            : `[${derived.binning.edges[index]}, ${derived.binning.edges[index + 1]})`,
         },
         ...(marks.bins?.[index]?.nodeId ? { nodeId: marks.bins[index]!.nodeId } : {}),
       }));
@@ -562,8 +568,13 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
         if (node.part === 'cell' && value !== undefined) displayed.set(node.id, value);
       }
       const claims: ClaimRecordV1[] = [];
+      // A period the heatmap does not show has no cell, so it has no receipt. An exhibit keeps the
+      // receipt of a period it leaves out, with nothing displayed.
+      const exhibit = (geo.marks as { sizeCells?: unknown }).sizeCells !== undefined;
+      const shown = (t: number) => exhibit || derived.visiblePeriods === undefined || derived.visiblePeriods.includes(t);
       for (const row of derived.cohorts) {
         for (let t = 0; t < row.observedPeriods; t++) {
+          if (!shown(t)) continue;
           const nodeId = `cell:${row.id}:t${t}`;
           const ratio = row.retention[t] ?? null;
           const previous = derived.basis === 'previous' && t > 0;
@@ -588,6 +599,7 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
         }
       }
       (derived.averages ?? []).forEach((average, t) => {
+        if (!shown(t)) return;
         const nodeId = `cell:${COHORT_AVERAGE_ROW_ID}:t${t}`;
         claims.push({
           id: `cohort:average:t${t}`,
@@ -922,13 +934,14 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
         groupIds: [string, string];
         values: Record<string, Record<string, number>>;
         grandTotal: number;
-        basis: 'count' | 'shareOfTotal';
+        totals: Record<string, number>;
+        basis: 'count' | 'shareOfTotal' | 'shareOfGroup';
         shares?: Record<string, Record<string, number>>;
         ratio: Record<string, number | null>;
       };
       const [ga, gb] = derived.groupIds;
       const shareClaims =
-        derived.basis === 'shareOfTotal' && derived.shares
+        derived.basis !== 'count' && derived.shares
           ? derived.order.flatMap((bandId) =>
               derived.groupIds.map((groupId) => ({
                 id: `pyramid:share:${bandId}:${groupId}`,
@@ -936,7 +949,9 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
                 op: 'share@1',
                 inputs: [
                   { ref: `${bandId}:${groupId}`, value: derived.values[bandId]?.[groupId] ?? null },
-                  { ref: 'grandTotal', value: derived.grandTotal },
+                  derived.basis === 'shareOfGroup'
+                    ? { ref: `total:${groupId}`, value: derived.totals[groupId] ?? null }
+                    : { ref: 'grandTotal', value: derived.grandTotal },
                 ],
                 output: {
                   raw: derived.shares![bandId]?.[groupId] ?? null,
@@ -998,12 +1013,6 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
       // operands of every delta were already in `derived` (`ac` and `ref`, the
       // two bars the reader compares by eye) and neither reached the receipt:
       // 84 claims across 8 fixtures, every one of them `inputs: []`.
-      //
-      // The rounding is part of the op, not a tolerance: `variance-delta@1` is
-      // defined as round2(ac − ref), because that is what the engine files and
-      // what the exhibit prints. Recording the unrounded operands and an op
-      // that ignores the rounding would need a fudge factor at verify time,
-      // and a fudge factor is where a real defect hides.
       const derived = geo.derived as {
         ac: Record<string, number | null>;
         ref: Record<string, number | null>;
@@ -1019,14 +1028,14 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
           id: `var:abs:${id}`,
           ...(geo.scene.some(node => node.id === `nm:${id}`) ? { nodeId: `nm:${id}` } : {}),
           kind: 'derived' as const,
-          op: 'variance-delta@1',
+          op: 'difference@1',
           inputs: operands(id),
           output: { raw, state: raw === null ? 'missing' : 'value', displayed: '' },
         })),
         ...Object.entries(derived.deltaPct).map(([id, raw]) => ({
           id: `var:pct:${id}`,
           kind: 'derived' as const,
-          op: 'variance-delta-pct@1',
+          op: 'percentDelta@1',
           inputs: operands(id),
           output: { raw, state: raw === null ? 'missing' : 'value', displayed: '' },
         })),
@@ -1045,7 +1054,7 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
         ],
         output: {
           // A refused relative change is recorded as the absolute change the
-          // card shows (mode 'absolute', state 'ref-nonpositive').
+          // card shows (mode 'absolute', state 'ref-nonpositive' or 'sign-change').
           raw: comparison.mode === 'absolute' ? comparison.deltaAbs : comparison.deltaPct,
           state: comparison.state,
           displayed: comparison.displayed,

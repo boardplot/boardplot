@@ -104,6 +104,25 @@ describe('box layout', () => {
     expect(lay({ groups: [first] }).scene.some((n) => n.id.includes('park'))).toBe(true);
   });
 
+  // An authored valueAxis.break was ignored on a box, so a far outlier either parked or squeezed every box.
+  it('draws an authored value-axis break across an empty range and drops one that cuts a whisker', () => {
+    const groups = [
+      { id: 'a', observations: [10, 12, 14, 15, 16, 18, 20, 22, 25, 400] },
+      { id: 'b', observations: [11, 13, 15, 16, 17, 19, 21, 23, 26, 390] },
+    ];
+    const broken = lay({ groups }, { valueAxis: { break: { from: 60, to: 380 } } });
+    expect(codes(broken)).not.toContain('axis-break-unsupported');
+    expect(broken.scene.some((n) => n.id === 'axis:x:tick:parked')).toBe(false);
+    expect(broken.axes.find((a) => a.axis === 'x')?.break).toBeDefined();
+    // Both outliers keep their own place on the upper side of the break.
+    const dots = broken.scene.flatMap((n) => (n.t === 'circle' && n.part === 'boxBeyond' ? [n.cx] : []));
+    expect(new Set(dots).size).toBe(2);
+
+    const cut = lay({ groups }, { valueAxis: { break: { from: 20, to: 380 } } });
+    expect(codes(cut)).toContain('axis-break-invalid');
+    expect(cut.axes.find((a) => a.axis === 'x')?.break).toBeUndefined();
+  });
+
   it('places the box geometry exactly on the scale', () => {
     const geometry = lay({ groups: [{ id: 'a', observations: ONE_TO_TEN }] });
     const rect = geometry.scene.find((node) => node.id === 'box:rect:a');
@@ -562,6 +581,19 @@ describe('box readability', () => {
     const stats = geometry.labels.filter((label) => label.id.startsWith('stat:a:') && !label.hidden).map((label) => label.id.split(':')[2]).sort();
     expect(stats).toEqual(['q1', 'q3', 'whiskerHigh', 'whiskerLow']);
     expect(lay({ groups: [{ id: 'a', observations: ONE_TO_TEN }] }).labels.some((label) => label.id.startsWith('stat:'))).toBe(false);
+  });
+
+  // Prevents eleven-digit box labels and ticks ("2,778,700,000") where a bar prints 2.78B.
+  it('scales billions once for the chart, unless a format asks for the digits', () => {
+    const groups = [
+      { id: 'a', observations: [59.7e6, 451.6e6, 935.16e6, 1.529e9, 2.7787e9] },
+      { id: 'b', observations: [1.64e9, 2.7e9, 3.26e9, 3.86e9, 4.86e9] },
+    ];
+    const texts = (geometry: ReturnType<typeof lay>) => geometry.scene.flatMap((node) => (node.t === 'text' ? node.lines : []));
+    const scaled = texts(lay({ groups }, { boxValues: 'all', target: 'slide' }));
+    expect(scaled).toEqual(expect.arrayContaining(['2.78B', '4.86B', '2B']));
+    expect(scaled.some((text) => /\d,\d{3},\d{3}/.test(text))).toBe(false);
+    expect(texts(lay({ groups }, { boxValues: 'all', target: 'slide', format: '1,000' }))).toContain('2,778,700,000');
   });
 
   it('a group too small for a box prints each observation', () => {

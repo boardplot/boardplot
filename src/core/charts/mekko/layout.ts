@@ -1,5 +1,5 @@
 import { PLOT_FLOOR_RECT } from '../../sizing';
-import { sk, stackParts } from '../band/stacks';
+import { sk, stackParts, withoutShareMean } from '../band/stacks';
 import { chartString } from '../../strings/mekko';
 import { noTotal } from '../../stackAdds';
 import { withSegmentSeams } from '../../markVisibility';
@@ -159,6 +159,7 @@ function annotateMekko(
     format: env.options.format,
     locale: env.options.locale?.language,
     strings: env.options.strings,
+    sharesFormat: domain.mode === 'percent',
     valueLinePercentLevels: env.options.unit === '%' || domain.mode === 'percent',
     solveCtx,
     yScale: y,
@@ -290,9 +291,25 @@ function commitClaims(occupied: OccupiedIndex, phase: OccupiedIndex): void {
  * and a second lays the chart out with them; the widths do not move, since a
  * note only takes height.
  */
-/** The columns drawn under 0.5 px wide: one rule for the note and the key. */
-function notDrawnColumns(domain: MekkoDomain, area: MekkoArea): string[] {
-  return domain.cats.flatMap((c, ci) => (area.xEdge[ci + 1]! - area.xEdge[ci]! < 0.5 && !domain.invalidAt(ci) ? [c.label ?? c.id] : []));
+/** Columns with no value or under 0.5 px wide share one explanation in the note and the key. */
+function notDrawnColumns(env: MekkoEnv, domain: MekkoDomain, area: MekkoArea): string[] {
+  const missing: string[] = [];
+  const negative: string[] = [];
+  const narrow: string[] = [];
+  domain.cats.forEach((c, ci) => {
+    const tooThin = area.xEdge[ci + 1]! - area.xEdge[ci]! < 0.5;
+    const name = c.label ?? c.id;
+    if (domain.incomplete.has(c.id) && (tooThin || !domain.anyByCat[ci])) missing.push(name);
+    else if (tooThin && !domain.invalidAt(ci)) {
+      if (domain.columnTotals[c.id]! < 0) negative.push(`${name} ${columnTotalText(env, domain, ci)}`);
+      else narrow.push(name);
+    }
+  });
+  return [
+    ...(narrow.length > 0 ? [chartString(env.options, 'mekkoZeroNote', { v1: narrow.join(', ') })] : []),
+    ...(negative.length > 0 ? [chartString(env.options, 'mekkoNegativeNote', { v1: negative.join(', ') })] : []),
+    ...(missing.length > 0 ? [chartString(env.options, 'mekkoMissingNote', { v1: missing.join(', ') })] : []),
+  ];
 }
 
 function mekkoNotes(env: MekkoEnv, domain: MekkoDomain, area: MekkoArea): string[] {
@@ -303,8 +320,7 @@ function mekkoNotes(env: MekkoEnv, domain: MekkoDomain, area: MekkoArea): string
     const unnamed = area.unnamed.map(name);
     notes.push(disclosureNote(chartString(env.options, 'mekkoUnnamedNote', { v1: unnamed.join(', ') })));
   }
-  const dropped = notDrawnColumns(domain, area);
-  if (dropped.length > 0) notes.push(disclosureNote(chartString(env.options, 'mekkoZeroNote', { v1: dropped.join(', ') })));
+  for (const text of notDrawnColumns(env, domain, area)) notes.push(disclosureNote(text));
   const others = domain.othersId === null ? undefined : domain.cats.find((c) => c.id === domain.othersId);
   if (others && domain.othersMembers.length > 0) notes.push(disclosureNote(`${others.label ?? others.id}: ${domain.othersMembers.join(', ')}.`));
   return notes;
@@ -339,8 +355,9 @@ function layoutMekkoPass(
   named = false,
 ): { geometry: Geometry<MekkoMarks, MekkoDerived>; namedAll: boolean } {
   const warnings: LintWarning[] = [];
-  const env = resolveMekkoEnv(options, warnings);
+  const env = resolveMekkoEnv(options, warnings, data);
   const domain = resolveMekkoDomain(data, env, warnings);
+  if (domain.mode === 'percent') env.options = withoutShareMean(env.options, domain.meanValue, warnings);
   if (named) {
     if (domain.mode !== 'percent' || domain.series.length < 2 || kindSetting(env, 'segment') !== true) return { geometry: undefined!, namedAll: false };
     env.namesInPlace = true;
@@ -350,7 +367,7 @@ function layoutMekkoPass(
   const { frame, claims } = solveMekkoFrame(env, domain, paints);
   const area = mekkoPlotArea(env, domain, frame, warnings);
   // The key names the columns this pass could not draw; a key row takes height, not width, so the set holds.
-  const notDrawn = notDrawnColumns(domain, area);
+  const notDrawn = notDrawnColumns(env, domain, area);
   if (notDrawn.length > 0 && !disclosuresShown(options) && !(options as { [MEKKO_NOT_DRAWN]?: string[] })[MEKKO_NOT_DRAWN]) {
     return layoutMekkoPass(data, { ...options, [MEKKO_NOT_DRAWN]: notDrawn } as MekkoOptions, addNotes, named);
   }
@@ -379,7 +396,9 @@ function layoutMekkoPass(
     lightInk: env.theme.color.inkInverse,
     labelPad: 2,
   };
-  solveCtx.valueRows = [{ ids: domain.cats.map(category => `total:${category.id}`), alternate: true }];
+  // The totals of a percent mekko sit on one line above equal-height columns, so one that fails thins the whole row.
+  // Bar and unit column tops form a staircase: each total keeps its own seat and only one without a seat drops.
+  if (domain.mode === 'percent') solveCtx.valueRows = [{ ids: domain.cats.map(category => `total:${category.id}`), alternate: true }];
   const solved = solveLabels(requests, occupied, solveCtx);
   applyValueAxisTitleInk(solved.placed);
   pushAll(warnings, solved.warnings);

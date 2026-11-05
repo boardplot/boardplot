@@ -86,18 +86,18 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | items[].segments[].label | string |  | Displayed segment name; defaults to its id. |
 | items[].segments[].value | cell | yes | Signed contribution of this segment to its item. |
 | items[].segments[].colorRole | string |  | Theme color role for this segment. One of good, bad, warn, neutral, neutralLight, highlight, total, others; series-N for step N of the theme ramp, 1-based (series-2 is color.series[1]); or status-<key> for a theme status colour. A hex colour goes in fill. |
-| items[].segments[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST). Scenario controlling this segment paint convention. |
+| items[].segments[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST, LY for last year). Codes and aliases accept any case. Scenario controlling this segment paint convention. |
 | items[].date | string |  | ISO 8601 date associated with this bridge item. |
-| items[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST). Scenario for this bridge item and its default segment styling. |
+| items[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST, LY for last year). Codes and aliases accept any case. Scenario for this bridge item and its default segment styling. |
 | items[].direction | string |  | Under 'lowerIsBetter' a rise paints bad and a fall good (options.signColor). One of `'higherIsBetter'`, `'lowerIsBetter'`. |
-| items[].toBaseline | boolean |  | Start this item at zero and reset the accumulated contribution list. |
+| items[].toBaseline | boolean |  | Start this delta at zero and reset the accumulated contribution list. A subtotal draws the sum of the deltas since the last total or baseline subtotal, from zero; the running level carries on. |
 | items[].values | cell[] |  | With data.cases: one value per case, in case order, in place of value — the signed delta of each case, or a total's opening or check value. |
 | connectors | array |  | Authored connections between item levels; omission uses the default sequence. |
 | connectors[].from | string | yes | Source waterfall item id. |
 | connectors[].to | string | yes | Destination waterfall item id. |
 | connectors[].anchor | string |  | Connect at the item sum or a named segment boundary. One of `'sum'` (or another value of its type). |
 | connectors[].hidden | boolean |  | Hide this connector and start a new summation at the destination. |
-| cases | array |  | Two or three cases of the same bridge side by side in each step (scenarios): each item gives values, one per case, and each case runs its own levels in its own colour, named in the key. Case bars draw no connectors, since a line to a case's next bar would cross the other case's bar; items take no value or segments, and data.connectors and variant 'horizontal' are refused. |
+| cases | array |  | Two or three cases of the same bridge side by side in each step (scenarios): each item gives values, one per case, and each case runs its own levels in its own colour, named in the key. Case bars draw no connectors, since a line to a case's next bar would cross the other case's bar; items take no value or segments, and data.connectors is refused. Under variant 'horizontal' each step's case bars stack in its row. |
 | cases[].id | string | yes | Case identity without ':', which joins it to an item id ('<item>:<case>'); an annotation anchor names it as seriesId. |
 | cases[].label | string |  | Displayed case name in the key; defaults to the id. |
 
@@ -105,14 +105,16 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
-| legend | string \| object | `'top'`, `'bottom'`, `'none'`, `'auto'` (or another value of its type) |  | Key position. Segment, case and scenario encodings keep their key because numeric bar labels do not name them. With these encodings, 'none' retains the key and reports waterfall-legend-required. A plain bridge keys its sign colours only when a lowerIsBetter step inverts them. |
+| legend | string \| object | `'top'`, `'bottom'`, `'right'`, `'left'`, `'none'`, `'auto'` (or another value of its type) |  | Key position. Segment, case and scenario encodings keep their key because numeric bar labels do not name them. With these encodings, 'none' retains the key and reports waterfall-legend-required. A plain bridge keys its sign colours only when a lowerIsBetter step inverts them. |
 | axisTitles | object |  |  | Authored primary value-axis title above the vertical plot, using column title styling. Waterfall draws no value ticks. Horizontal mode accepts this key but does not print it. |
 | axisTitles.primary | string |  |  | 'Measure, unit' title of the value axis, e.g. 'Margin, %'. |
-| variant | string | `'vertical'`, `'horizontal'` | `'vertical'` | Vertical columns by default, or a horizontal bridge. |
+| variant | string | `'vertical'`, `'horizontal'` |  | Left out: vertical columns, turned into a horizontal bridge when the step names would rotate, shorten or drop, the horizontal bridge draws without a new finding, and the spec has no cases and no annotations. 'vertical' always keeps columns. A horizontal bridge draws no annotations: an old spec draws without them and warns option-ignored, so use vertical for annotations. |
 | build | string | `'up'`, `'down'` | `'up'` | Build label in the accessible description; defaults to up. Item types and signed values determine accumulation in both modes. |
-| signColor | boolean |  |  | Paint each plain step good or bad by sign × item direction, as column's signColor; zero is neutral. Default true unless the theme sets marks.bridge or a palette is named; false paints steps neutral. |
+| signColor | boolean |  |  | Paint each plain step good or bad by sign × item direction, as column's signColor; zero is neutral. Default true unless the theme sets marks.bridge or a palette is named; false paints steps neutral. colorblindSafe paints signed steps, labels and key swatches with the theme's colour-blind pair. |
+| columnOverrides | object |  |  | Horizontal bridge only: width in px of the name band (label) and the value band (value). With variant 'vertical' it is refused. Left out, the variant is chosen without it, and a bridge that draws vertical warns option-ignored. |
+| columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
 
-Plus the [shared options](options.md). This type does not accept `detailFields`, `labels`, `categoryLabels`, `valueAxis.show`, `valueAxis.min`, `valueAxis.max`, `valueAxis.tickStep`, `valueAxis.includeZero`, `valueAxis.percent`, `valueAxis.log`, `valueAxis.reverse`, `valueAxis.gridlines`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `sort`, `topN`, `colorblindSafe`, `rounding`.
+Plus the [shared options](options.md). This type does not accept `detailFields`, `labels`, `valueAxis.min`, `valueAxis.max`, `valueAxis.tickStep`, `valueAxis.includeZero`, `valueAxis.percent`, `valueAxis.log`, `valueAxis.reverse`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
 ## Annotations
 
@@ -127,6 +129,7 @@ An annotation anchor is a category or item id string, or an object with category
 | callout | Places authored free text at an anchored data element, routing a leader when displaced and honoring the preferred side. | at, text | at: AnchorRef | preferSide: left \| right \| above \| below. Side the solver tries first; the label keeps a leader when it moves. headline: string. A bold first line over the text, which then prints in plain type; ${value} in it prints the anchored value from the data. Example: "headline": "${value}", "text": "Peak in handheld-loom demand" prints 153 in bold over the words. arrow: boolean, default false. A thin arrow from the text to the anchored point; the first line sits level with the point, right or left of it, where there is room. Not with icon or status. Example: "arrow": true. |  |
 | valueLine | Draws a reference line at an authored value or an engine-computed mean, with optional tolerance shading and attainment fill between the line and resolved actuals. |  | from: categoryId (optional); to: categoryId (optional) | value: number \| 'mean', default mean. A number draws the line there; mean has the engine compute it. valueKind: 'fraction'. Multiply a numeric value and its tolerance by 100 before layout: 0.35 draws at 35%. Independent of data.valueKind. Omit it for values already in percent points; not valid with mean. label: string \| false. Name plus value; ${value} sets its position. A number already in the name is kept once. false hides it. side: left \| right, default right. Side of the plot the label sits on. tolerance: number \| { low, high }. A number shades that distance on both sides of the line; low and high shade an authored corridor. | No anchor is required. Value defaults to mean. Scoped means are line-only: seriesId and paired from/to compute a primary-axis mean and limit its stroke to those bands; other types refuse scope fields for a mean. Numeric values cannot use scope fields except as a category clip with tolerance or attainment. A secondary-axis line needs an acknowledged secondary scale and an explicit numeric value. Optional tolerance shades a value-axis band; optional attainment fills between the line and resolved actuals. |
 | abs | Reads the anchored data value and places its formatted absolute value in a collision-managed label. | at | at: AnchorRef |  |  |
+| bracket | Draws a bracket over an inclusive span of steps and prints the sum of their values, after an optional label. | from, to | from: categoryId; to: categoryId | label: string. Name printed before the sum, "Commercial +81". Without it the bracket prints the sum alone. | from and to are step ids, inclusive. The engine adds the steps up and prints the signed sum; every step in the span must be a delta, so a span that holds a total is refused with bracket-span-total. A step the bridge cannot add (an open start) refuses it with bracket-span-no-value. Brackets stand in one row above the steps. Vertical bridges only. |
 
 ## Sizing
 
@@ -142,6 +145,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | ebit-bridge | example | EBIT bridge FY21→FY24 |
 | interview-status-buildup | example | Interview pipeline build-up by status |
 | revenue-build-up | example | Revenue → EBIT build-up with diff arrow |
+| step-brackets | example | Brackets over bridge steps print their sums |
 | build-down | example | Build-down: revenue to net income |
 | whole-axis-opt-out | example | Whole value axis kept with an explicit false |
 | automatic-axis-break | example | Explicit automatic break makes small steps on a large base easier to compare |
@@ -160,5 +164,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | cost-bridge-lower-is-better | example | Cost bridge: a rise paints bad and a saving good under lowerIsBetter |
 | neutral-steps | example | signColor false keeps every step in the neutral |
 | two-case-budget-bridge | example | Two cases side by side in each step: a conservative and an aggressive budget |
+| two-case-budget-bars | example | The two-case bridge as bars: each value stands past the end of its own bar |
 | single-segment-authored-format | example | One segment prints one value at the authored precision |
 | repeated-segment-key | torture | Equal segment names and colours share one key |
+| column-overrides | example | A horizontal bridge with authored name and value bands |

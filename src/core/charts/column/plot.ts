@@ -9,7 +9,8 @@ import { DEFAULT_TARGET, scaleTextPx } from '../../target';
 
 import { BAND_PAD, VALUE_LINE_RESERVE } from '../../annotateParts';
 import { axisTitleAllowed, measureValueAxisWidth, planValueAxisTitle, valueAxisTitleBand, valueAxisTitleText, valueAxisUnit } from '../../axis';
-import { longDayMonths, type dateTickRow } from '../../calendarLabels';
+import { bandedCrossesBetween } from '../../intervalTicks';
+import { authoredDateTicks, longDayMonths, type dateTickRow } from '../../calendarLabels';
 import { formatAutomaticPercent, notApplicableGlyph } from '../../format';
 import { percentCellsOnly } from '../../annotatePass';
 import {
@@ -24,7 +25,7 @@ import {
   type FrameInput,
   type FrameResult,
   type LegendItemInput,
-  authoredFootnoteCount, authoredNotes, noteLine, type NoteCapOptions } from '../../frame';
+  authoredFootnoteCount, authoredNotes, noteLine, shareUnitOptions, type NoteCapOptions } from '../../frame';
 import type { Rect } from '../../geometry';
 import { categoryRowTop, hangingLabelReserve, planCategoryRow, rotatedLeftOverhang } from '../../label/categoryRow';
 import { fitText } from '../../label/fitText';
@@ -38,7 +39,7 @@ import { canvasMargin, panelTypeClass, emphasisWeight, strokeToken, dashToken, s
 import type { Id } from '../../types/cell';
 import type { LegendOptions } from '../../types/options';
 import type { LintWarning } from '../../types/scene';
-import { edgeNameFont, edgeNamesReplaceKey, KEY_EDGE_SERIES, kindSetting, partialNamedOnValues, pyTickKeyed, rightEdgeSeriesLabels, RIGHT_EDGE_GAP, shareTextOf } from './domain';
+import { contentOf, edgeNameFont, edgeNamesReplaceKey, KEY_EDGE_SERIES, kindSetting, partialNamedOnValues, pyTickKeyed, rightEdgeSeriesLabels, RIGHT_EDGE_GAP, shareTextOf } from './domain';
 import { ANOMALY_FLAG_GAP, ANOMALY_FLAG_H, TICK_LABEL_RESERVE, PY_TICK_LEAD, type ColumnArea, type ColumnDomain, type NormSer } from './model';
 import { seriesPattern, signWord, type ColumnLegendPaints } from './paints';
 import { signPaint } from '../band/sign';
@@ -51,6 +52,8 @@ import { disclosuresShown, knownPartsLead, rankKeyShown } from '../../notes';
 import { categoryLabelsAndMarks } from '../../footnoteMark';
 import { staircaseDirection, staircaseOn, staircaseRoom, staircaseState } from '../../label/staircase';
 import { textScaleOf } from '../../typeFloors';
+import { compactValueLabelFont } from '../band/labels';
+import { groupedOffsets } from '../band/groups';
 import { PLOT_FLOOR_PX, plotFloorRows, plotFloorShare } from '../../sizing';
 import { partialWords, stackTotalText } from './labels';
 import { maxOf, minOf, pushAll } from '../../arrays';
@@ -162,6 +165,8 @@ const PANEL_GROUP_BAR = 76;
 
 /** The share of its category pitch a column had before the narrower default. */
 const COLUMN_FRACTION_MAX = 0.7;
+/** The most of its category pitch a column group takes so that every series prints its values. */
+const GROUPED_FRACTION_MAX = 0.92;
 
 /**
  * The default share of its category pitch for one column per category: half on
@@ -300,7 +305,7 @@ export function solveColumnFrame(
     {
       size,
       margin,
-      ...frameTextOptions(options),
+      ...frameTextOptions(shareUnitOptions('column', options)),
       footnotes: [
         ...partialFootnotes(domain.cats, options.strings, legend?.items.some(item => item.id === '__partial') || partialNamedOnValues(domain)), ...authoredNotes(options),
         // Above 8 values the note counts them against all drawn values.
@@ -308,6 +313,7 @@ export function solveColumnFrame(
           domain.dataSeries.reduce((sum, series) => sum + series.vals.filter((cell) => cell.v !== null).length, 0)),
         ...((options as { [CATEGORY_NOTES]?: string[] })[CATEGORY_NOTES] ?? []),
         ...partialTotalsNote(domain, options),
+        ...domain.shareNotes,
       ],
       legend,
       ...(eventKey ? { eventKey } : {}),
@@ -337,9 +343,8 @@ const RIBBON_COLUMN = 0.04;
  * holds it. shortcut: plain value only; a share label (shareLabels) is wider
  * and falls back to the solver's outside seats.
  */
-function widestSegmentValue(domain: ColumnDomain): number {
-  const { dataSeries, cats, variant, theme, measure } = domain;
-  const font: FontSpec = { family: theme.type.family, ...theme.type.label };
+function widestSegmentValue(domain: ColumnDomain, font: FontSpec = { family: domain.theme.type.family, ...domain.theme.type.label }): number {
+  const { dataSeries, cats, variant, measure } = domain;
   let widest = 0;
   for (const s of dataSeries) {
     cats.forEach((_, ci) => {
@@ -367,7 +372,8 @@ function columnBand(
   tickFont: FontSpec,
   warnings: LintWarning[],
   stair: boolean,
-): Pick<ColumnArea, 'band' | 'catPlan'> {
+  beforeCategoryRow?: (bandwidth: number) => void,
+): Pick<ColumnArea, 'band' | 'catPlan' | 'intervalTicks'> {
   const { options, theme, measure, cats, va } = domain;
   let plotX0 = frame.plot.x + (va.show ? valueAxisReserve : 0);
   let plotW0 = va.show
@@ -440,6 +446,25 @@ function columnBand(
     if (direction === 'left') plotX0 += room;
     plotW0 -= room;
   }
+  // Grouped values print one font step down when one is wider than its column.
+  // At that step, a value that still reaches over the next column is hidden,
+  // and with it the whole series. Such a group widens until the stepped values
+  // fit, when GROUPED_FRACTION_MAX of the category is enough for them; a group
+  // that would still lose them keeps its width and the gap between the groups.
+  const groupedValuesPrint = grouped && options.bandFraction === undefined && !narrow && !panelGroup && !domain.pyRef
+    && contentOf(options, 'point', ['absolute']) !== null;
+  const groupedValueW = groupedValuesPrint ? widestSegmentValue(domain, compactValueLabelFont(
+    { family: theme.type.family, ...theme.type.label }, { family: theme.type.family, ...theme.type.footnote }, options.target, textScaleOf(options))) : 0;
+  const groupedValuesNeed = (n: number) => n * (groupedValueW - 2) + 4 * (n - 1);
+  const groupedValuesReach = groupedValuesPrint && (() => {
+    const width = bandFor(plotX0, plotW0).bandwidth;
+    if (groupedValueW <= groupedOffsets(width, domain.dataSeries.length)[0]!.size + 2 * Math.min(4, width * 0.08)) return false;
+    const before = bandFraction;
+    bandFraction = GROUPED_FRACTION_MAX;
+    const widest = bandFor(plotX0, plotW0).bandwidth;
+    bandFraction = before;
+    return widest >= groupedValuesNeed(domain.dataSeries.length) - 0.01;
+  })();
   // The column width: wide enough for its values, then capped (100% stack, grid panel group).
   const fitColumnWidth = () => {
     // A narrower default column never narrows below its widest value plus 5 px a
@@ -458,6 +483,16 @@ function columnBand(
         const width = bandFor(plotX0, plotW0).bandwidth;
         if (width >= need - 0.01 || bandFraction >= COLUMN_FRACTION_MAX) break;
         bandFraction = Math.min(COLUMN_FRACTION_MAX, bandFraction * need / width);
+      }
+    }
+    // A group whose stepped values reach over the next column takes more of its
+    // category, up to GROUPED_FRACTION_MAX, until each value fits over its own column.
+    if (groupedValuesReach) {
+      for (let pass = 0; pass < 3; pass++) {
+        const width = bandFor(plotX0, plotW0).bandwidth;
+        const need = groupedValuesNeed(domain.dataSeries.length);
+        if (width >= need - 0.01 || bandFraction >= GROUPED_FRACTION_MAX) break;
+        bandFraction = Math.min(GROUPED_FRACTION_MAX, bandFraction * need / width);
       }
     }
     // A 100% column is at most STACKED100_COLUMN_MAX px wide, so the room the edge names give
@@ -506,6 +541,10 @@ function columnBand(
     fitColumnWidth();
   }
   let band = bandFor(plotX0, plotW0);
+  beforeCategoryRow?.(band.bandwidth);
+  // categoryAxis.dateTicks sets the interval; without it a long day row names its months.
+  const authored = authoredDateTicks(cats, options, warnings);
+  bandedCrossesBetween(options, warnings);
   // One cascade decides the whole row (wrap, font step, uniform
   // stride for dates, 45° for prose); no label is hidden by a local sweep.
   // A cut name takes a note mark and prints whole in the notes; once
@@ -513,12 +552,13 @@ function columnBand(
   const planRow = (b: typeof band, ticked?: ReturnType<typeof dateTickRow>) => {
     const row = categoryLabelsAndMarks(cats, { count: authoredFootnoteCount(options), warnings }, partialAxisWords(options.strings, options, frame.legend?.items.some((item) => item.id === '__partial') || partialNamedOnValues(domain)));
     ticked?.name(row);
-    return withCategoryRanks(planCategoryRow({
+    const plan = withCategoryRanks(planCategoryRow({
       target: options.target, textScale: textScaleOf(options),
       ...row,
       centers: cats.map((_, ci) => b.center(ci)),
       step: b.step,
       fonts: [tickFont, { ...tickFont, size: tickFont.size - scaleTextPx(1, textScaleOf(options)) }, { family: theme.type.family, ...theme.type.footnote }],
+      stepToFloor: true,
       secondary: secondaryFont(theme), periods: cats.length > 0 && cats.every(c => c.date !== undefined),
       padding: 4,
       measure,
@@ -529,11 +569,26 @@ function columnBand(
       // Under notes.show 'ranks' alone a cut name takes no mark, since its note does not print.
       ...(disclosuresShown(options) ? { cutMarkFrom: authoredFootnoteCount(options) + 1 } : rankKeyShown(options) ? {} : { everyName: true }),
       ...ticked?.plan,
+      // An authored interval counts back from the latest period, as on a line.
+      ...(ticked !== undefined && ticked === authored ? { ordered: true, strideFromEnd: true } : {}),
     }), measure, cats.map((c) => c.label ?? c.id), (options as { [FORCE_CATEGORY_RANKS]?: true })[FORCE_CATEGORY_RANKS] === true, rankKeyShown(options));
+    // Rotated total and highlighted names need their drawn width for the row height and left overhang.
+    if (plan.rotation !== 0) {
+      const widest = () => Math.max(1, maxOf(plan.infos.filter((_, ci) => plan.keep[ci]).map(info => info.w)));
+      const before = widest();
+      const boldFont = { ...plan.font, weight: emphasisWeight(theme) };
+      // The row plan cache shares infos with this plan, so the drawn widths go on copies.
+      plan.infos = plan.infos.map((info, ci) => cats[ci]!.role === 'total' || domain.highlights.has(cats[ci]!.id)
+        ? { ...info, w: Math.max(info.w, ...info.lines.map(line => measure(line, boldFont).width)) }
+        : info);
+      plan.rowHeight += (widest() - before) * (plan.rotation === 90 ? 1 : Math.SQRT1_2);
+    }
+    return plan;
   };
-  let catPlan = planRow(band);
-  const ticked = longDayMonths(cats, catPlan.stride, options.locale?.language);
-  if (ticked) catPlan = planRow(band, ticked);
+  // categoryAxis.dateTicks sets the interval; without it a long day row names its months.
+  let catPlan = planRow(band, authored);
+  const ticked = authored ?? longDayMonths(cats, catPlan.stride, options.locale?.language);
+  if (ticked && ticked !== authored) catPlan = planRow(band, ticked);
   // A rotated first name hangs left of its column; the band yields that much.
   const catOverhang = stair ? 0 : rotatedLeftOverhang(catPlan, cats.map((_, ci) => band.center(ci)), 4);
   if (catOverhang > 0) {
@@ -542,7 +597,7 @@ function columnBand(
     band = bandFor(plotX0, plotW0);
     catPlan = planRow(band, ticked);
   }
-  return { band, catPlan };
+  return { band, catPlan, ...(authored?.ticks ? { intervalTicks: authored.ticks } : {}) };
 }
 
 /**
@@ -561,6 +616,7 @@ export function columnPlotArea(
   domain: ColumnDomain,
   frame: FrameResult,
   warnings: LintWarning[],
+  beforeCategoryRow?: (bandwidth: number) => void,
 ): ColumnArea {
   const { options, theme, size, measure, variant, va, fmt, valueSpec, cats, dLo, dHi } = domain;
   // Percent cells print '%' on the ticks as on the value labels (fmtPercent).
@@ -609,7 +665,7 @@ export function columnPlotArea(
     : undefined;
   // Staircase names replace the category row (options.categoryLabels).
   const stair = staircaseOn(options.categoryLabels, options) && kindSetting(options, 'category') !== false && cats.length > 1;
-  const { band, catPlan } = columnBand(domain, frame, valueAxisReserve, tickFont, warnings, stair);
+  const { band, catPlan, intervalTicks } = columnBand(domain, frame, valueAxisReserve, tickFont, warnings, stair, beforeCategoryRow);
   const showCatRow = kindSetting(options, 'category') !== false && cats.length > 0 && !stair;
   if (showCatRow) pushAll(warnings, catPlan.warnings);
   if (showCatRow && catPlan.step === 'ranks') warnings.push(categoryRanksLint(cats.map((c) => c.label ?? c.id), band.step));
@@ -721,7 +777,7 @@ export function columnPlotArea(
     : linearScale([dLo, dHi], [plot.y + plot.h, plot.y]);
   return {
     frame, axisFmt, axisSpec, tier, tickFont, labelFont, strongFont, gtH, ruleOn, ruleText, ruleWrap, ruleH, axisTitle, axisTitleBand, topPad, band,
-    catPlan, showCatRow, tickReserve, catBandH: catBandH + hangingReserve,
+    catPlan, ...(intervalTicks ? { intervalTicks } : {}), showCatRow, tickReserve, catBandH: catBandH + hangingReserve,
     // The names may rise to the frame top, under the rule and the axis title.
     ...(stair ? { stairTop: frame.plot.y + ruleH + (axisTitle ? axisTitle.height + 8 : 0) } : {}),
     // A date row stays at the plot's bottom band; prose reads under the

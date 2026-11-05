@@ -204,13 +204,8 @@ function checkReactBundles(packageRoot, manifest) {
 }
 
 /**
- * Chart modules the shared code every chart component links reaches on its
- * own, so they ride in `react/spec`'s initial load without a chart engine
- * being linked there. `src/core/a11y` builds the record set behind the hover
- * card and the accessible data table, and it calls into three chart modules
- * by name; the other two come with them. Shrinking this list is a11y work,
- * not spec-entry work. Anything else under `src/core/charts/<type>/` in the
- * initial load means a chart engine is linked statically again.
+ * Chart modules the shared validation chunk may reach without a chart engine
+ * being linked there. The initial load of `react/spec` may link none.
  */
 const SPEC_INITIAL_CHART_MODULES = new Set([
   'src/core/charts/creative/fatigue.ts',
@@ -356,7 +351,9 @@ function checkSpecChunks(types) {
   const linkedEarly = [...initialModules].filter((module) =>
     /(^|\/)node_modules\/zod\//.test(module) ||
     module.startsWith('src/core/geo/') ||
-    (/^src\/core\/charts\/[^/]+\//.test(module) && !SPEC_INITIAL_CHART_MODULES.has(module)));
+    // The accessible data table loads only for a spec that asks for it.
+    module === 'src/react/hover/dataTable.tsx' ||
+    /^src\/core\/charts\/[^/]+\//.test(module));
   if (linkedEarly.length > 0) {
     failures.push(`react/spec loads ${linkedEarly.length} module(s) it must not link before it draws: ${linkedEarly.sort().join(', ')}`);
   } else {

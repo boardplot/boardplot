@@ -28,7 +28,7 @@ import { maxOf } from '../arrays';
  * refuses the size.
  */
 export function rowLabelBand(
-  rows: readonly { label: string; footnote?: number; id?: Id; suffix?: string }[],
+  authored: readonly { label: string; footnote?: number; id?: Id; suffix?: string }[],
   font: FontSpec,
   maxWidth: number,
   maxLines: number,
@@ -36,6 +36,12 @@ export function rowLabelBand(
   measure: TextMeasurer,
   options: FitOptions & { footnoteRefs?: FootnoteRefs } = {},
 ) {
+  // A suffix wider than the band cannot stay whole, and its no-break spaces would stop it breaking at all: it gets ordinary spaces.
+  const rows = authored.map((row) => {
+    if (row.suffix === undefined || !row.label.endsWith(row.suffix) || measure(row.suffix, font).width <= Math.max(maxWidth, options.wider ?? 0)) return row;
+    const suffix = row.suffix.replace(/[\u00a0\u202f]/g, ' ');
+    return { ...row, label: row.label.slice(0, row.label.length - row.suffix.length) + suffix, suffix };
+  });
   const marks = rows.map((row) => footnoteSuffix(row.footnote, row.id ?? row.label, options.footnoteRefs));
   const reserves = marks.map((mark) => (mark ? measure(mark, font).width : 0));
   const nameOf = (row: (typeof rows)[number]) => row.label.slice(0, row.label.length - row.suffix!.length).trimEnd();
@@ -44,8 +50,10 @@ export function rowLabelBand(
   const fit = (modes: readonly number[]) => fitBand(
     rows.map((row, index) => {
       if (modes[index] === 0) return { label: row.label, reserve: reserves[index] };
-      if (modes[index] === 2) return { label: nameOf(row), reserve: reserves[index] };
-      if (maxLines > 1) return { label: nameOf(row), reserve: reserves[index], maxLines: maxLines - 1 };
+      // The suffix takes a line of the rows' pitch, so the name has one line less to grow into.
+      const tight = options.tightLines === undefined ? {} : { tightLines: options.tightLines - 1 };
+      if (modes[index] === 2) return { label: nameOf(row), reserve: reserves[index], ...tight };
+      if (maxLines > 1) return { label: nameOf(row), reserve: reserves[index], maxLines: maxLines - 1, ...tight };
       const reserve = reserves[index]! + measure(` ${row.suffix}`, font).width;
       return { label: nameOf(row), reserve, ...(options.wider === undefined ? {} : { wider: options.wider - reserve }) };
     }),

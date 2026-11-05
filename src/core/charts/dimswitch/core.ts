@@ -1,10 +1,11 @@
+import { PLAN_ONLY } from '../../layoutPlan';
 import type { ChartCore } from '../../registry';
 import type { Geometry } from '../../types/scene';
-import { CARD_MIN_WIDTH, chartSizing, isWidthProbe } from '../../sizing';
+import { CARD_MIN_WIDTH, chartSizing, heightOmitted, isWidthProbe, VERIFY_ADVICE, WIDTH_PROBE } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
-import { cardHeightFloor, classFloor, layoutTable, memoLayout, REGULAR_SPACING, type TableMarks } from '../table/layout';
+import { classFloor, layoutKey, layoutTable, memoLayout, REGULAR_SPACING, type TableMarks } from '../table/layout';
 import { resolveTable } from '../table/resolve';
-import { compileDimSwitch, dimSwitchTableWarnings, type DimSwitchForm } from './compile';
+import { compileDimSwitch, dimSwitchTableWarnings, dimswitchRowId, FOLDED, hostPeriods, PARTIAL_NOTE_OFF, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning, type DimSwitchForm } from './compile';
 import type { DimSwitchData, DimSwitchOptions, DimSwitchDerived } from './types';
 import { minOf } from '../../arrays';
 
@@ -18,27 +19,56 @@ export function resolveDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
 
 type PreparedForm = { compiled: ReturnType<typeof compileDimSwitch>; resolved: ReturnType<typeof resolveTable> };
 
+/** The options a probe sets for itself. The compiled form does not depend on them, so a probe at another size reuses it. */
+const PER_PROBE = [TARGET_SIZE, WIDTH_PROBE, REGULAR_SPACING, PLAN_ONLY] as const;
+const keptForms = new WeakMap<object, Map<string, PreparedForm>>();
+
+/**
+ * The compiled and resolved table of one form. One measure call lays the card out at many sizes, and each layout
+ * compiles every form again, so the prepared forms are kept per data object and per options without the size and
+ * the probe settings. A theme named by string always compiles again, as `memoLayout` does.
+ * Limit: 64 forms per data object, then the map starts again.
+ */
+function prepareForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwitchForm): PreparedForm {
+  const probe=PER_PROBE.flatMap(symbol=>symbol in options ? [[symbol,(options as Record<symbol,unknown>)[symbol]] as const] : []);
+  const withProbe=(prepared:PreparedForm):PreparedForm=>({resolved:prepared.resolved,compiled:{...prepared.compiled,options:{...prepared.compiled.options,...Object.fromEntries(probe)}}});
+  const without=<T extends object>(value:T):T=>{const copy={...value} as Record<PropertyKey,unknown>; for (const symbol of PER_PROBE) delete copy[symbol]; return copy as T;};
+  const compute=():PreparedForm=>{const compiled=compileDimSwitch(data,options,form);return {compiled:{...compiled,options:without(compiled.options)},resolved:resolveTable(compiled.data,compiled.options)};};
+  if (typeof options.theme === 'string') return withProbe(compute());
+  const {size:_size,...rest}=without(options);
+  const key=`${layoutKey(data,rest)}:${form.card === true}:${form.hide ?? 0}`;
+  let byKey=keptForms.get(data);
+  if (!byKey || byKey.size >= 64) keptForms.set(data,byKey=new Map());
+  let prepared=byKey.get(key);
+  if (!prepared) byKey.set(key,prepared=compute());
+  return withProbe(prepared);
+}
+
 function layoutForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwitchForm, forms: Map<string, PreparedForm>): Geometry<TableMarks, DimSwitchDerived> {
   const key=`${form.card === true}:${form.hide ?? 0}`;
   let prepared=forms.get(key);
   if (!prepared) {
-    const compiled=compileDimSwitch(data,options,form);
-    prepared={compiled,resolved:resolveTable(compiled.data,compiled.options)};
+    prepared=prepareForm(data,options,form);
     forms.set(key,prepared);
   }
   // Only size and the internal floor flag change between this request's probes.
   const compiled={...prepared.compiled,options:{...prepared.compiled.options,size:options.size}};
   const resolved=prepared.resolved;
   // The compile is shared across spacing passes and carries the first pass's options: the spacing is this request's.
-  const geometry=layoutTable(compiled.data,{...options,...compiled.options,[REGULAR_SPACING]:(options as {[REGULAR_SPACING]?: boolean})[REGULAR_SPACING]} as typeof compiled.options,resolved);
+  // Period selection reads compact-floor slack, so it retains that floor even during ordinary rendering.
+  const geometry=layoutTable(compiled.data,{...options,...compiled.options,[PLAN_ONLY]:true,[REGULAR_SPACING]:(options as {[REGULAR_SPACING]?: boolean})[REGULAR_SPACING]} as typeof compiled.options,resolved,true);
   // The frame can reach its automatic height without a second compile.
   if ((options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === false
     && typeof compiled.options.size === 'object' && compiled.options.size.height !== undefined
     && compiled.options.size.height !== geometry.size.height) compiled.options={...compiled.options,size:geometry.size};
   const originalRows=new Map(resolved.table.rows.map(row=>[row.id,row]));
   const drawnRows=new Map(geometry.derived.table.rows.map(row=>[row.id,row]));
+  // Only measure() sets VERIFY_ADVICE; the geometry it returns must equal the one React draws.
+  const {[VERIFY_ADVICE]:_verify,...kept}=compiled.options as typeof compiled.options & {[VERIFY_ADVICE]?:boolean};
   const records=compiled.computedCells.map(record=>({...record,displayed:record.kind==='calc' ? originalRows.get(record.rowId)?.cells[record.colId]?.displayed ?? '' : record.displayed}));
-  return {...geometry,type:'dimswitch',warnings:[...dimSwitchTableWarnings(geometry.warnings),...compiled.warnings,...(options.format ? [{code:'format-unused',severity:'warn' as const,field:['options','format'],message:'DimSwitch measures supply their own formats. Set measures[].format.'}] : [])],derived:{...geometry.derived,compiled:{data:compiled.data,options:compiled.options},omissions:compiled.omissions,computedCells:[...resolved.computedCells,...records].map(record=>({...record,displayed:record.kind==='calc' ? drawnRows.get(record.rowId)?.cells[record.colId]?.displayed ?? record.displayed : record.displayed}))}};
+  // The note of a partial window with no head may lose its place in a fixed frame's line budget. An open height prints every note.
+  const partialNote=compiled.partialNote, offFrame=partialNote!==undefined && (options as TargetSizeOptions)[TARGET_SIZE]?.fixed?.height===true && !heightOmitted(options.size) && !compiled.warnings.some(warning=>warning.code===PARTIAL_NOTE_OFF_FRAME) && geometry.frame?.noteList?.some(note=>note.text===partialNote && !note.inFrame)===true;
+  return {...geometry,type:'dimswitch',warnings:[...dimSwitchTableWarnings(geometry.warnings,options.columnOverrides),...compiled.warnings,...(offFrame ? [partialNoteWarning(partialNote)] : []),...(options.format ? [{code:'format-unused',severity:'warn' as const,field:['options','format'],message:'DimSwitch measures supply their own formats. Set measures[].format.'}] : [])],derived:{...geometry.derived,compiled:{data:compiled.data,options:kept},omissions:compiled.omissions,computedCells:[...resolved.computedCells,...records].map(record=>({...record,displayed:record.kind==='calc' ? drawnRows.get(record.rowId)?.cells[record.colId]?.displayed ?? record.displayed : record.displayed}))}};
 }
 
 /**
@@ -52,7 +82,7 @@ function layoutForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwi
 function layoutDimSwitch(data: DimSwitchData, options: DimSwitchOptions, forms: Map<string, PreparedForm>): Geometry<TableMarks, DimSwitchDerived> {
   const openWidth=(options as TargetSizeOptions)[TARGET_SIZE]?.fixed?.width === false;
   const fits=(geometry: Geometry<TableMarks, DimSwitchDerived>) => openWidth || geometry.size.width >= (geometry.sizing?.minWidth ?? 0);
-  const periods=data.periods.filter(p=>!p.kind).length;
+  const periods=hostPeriods(data,options).length;
   const regular={...options,[REGULAR_SPACING]:true} as DimSwitchOptions;
   const card=(hide:number)=>layoutForm(data,regular,{card:true,hide},forms);
   const steps=options.belowMinimum !== 'refuse';
@@ -169,12 +199,64 @@ function latestThatFit(card: (hide: number) => Form, periods: number): { shown: 
   return undefined;
 }
 
-/** The registered layout: the forms above, then the height floor at card widths (320 >= 400 >= 480). */
+const missesFixedHeight=(options: DimSwitchOptions, geometry: Form) => (options as TargetSizeOptions)[TARGET_SIZE]?.fixed?.height === true && !heightOmitted(options.size)
+  && geometry.sizing !== undefined && geometry.size.height < geometry.sizing.minHeight;
+
+/**
+ * On a fixed height, a table that misses it draws one fold shallower, down to depth 1 and then, by member, with the
+ * Total folded too, instead of refusing. The first fold that fits draws and its warning names the depth. Where none
+ * fits, the most folded table answers, so the refusal names the least height the table can draw at. An open height
+ * grows to its rows and never folds.
+ */
+function foldToFit(data: DimSwitchData, options: DimSwitchOptions, formsOf: (fold: string) => Map<string, PreparedForm>): Geometry<TableMarks, DimSwitchDerived> {
+  const first=layoutDimSwitch(data,options,formsOf(''));
+  const missesHeight=(geometry: Form) => missesFixedHeight(options,geometry);
+  // A table that misses the width refuses on width, and its floor names the authored depth.
+  if (options.belowMinimum === 'refuse' || first.refused || !fixedFits(first) || !missesHeight(first)) return first;
+  const depth=options.depth ?? 1, byMember=options.variant === 'by-member';
+  const total=dimswitchRowId('by-member',data.dimension.total.id);
+  const folds: { depth: number; total: boolean }[]=[];
+  for (let d=depth-1; d>=1; d--) folds.push({depth:d,total:false});
+  // A hidden Total has no block to fold.
+  if (byMember && options.rowVisibility?.[data.dimension.total.id]!==false && !options.expansion?.collapsed?.includes(total)) folds.push({depth:Math.min(depth,1),total:true});
+  let last=first;
+  for (const fold of folds) {
+    const collapsed=fold.total ? [...(options.expansion?.collapsed ?? []),total] : options.expansion?.collapsed;
+    const step={...options,[FOLDED]:true,depth:fold.depth,...(collapsed ? {expansion:{...options.expansion,collapsed}} : {})};
+    const drawn=layoutDimSwitch(data,step,formsOf(`${fold.depth}:${fold.total}`));
+    if (!drawn.refused && !missesHeight(drawn)) {
+      const size=`${Math.round(first.size.width)} × ${Math.round(first.size.height)} px`;
+      drawn.warnings.push({code:'dimswitch-depth-folded',severity:'warn',field:['options','depth'],
+        message:`Depth ${depth} needs more height than the ${size} given, so the table draws depth ${fold.depth}${fold.total ? ' with the Total folded' : ''}.`,
+        suggest:`Give the table at least ${Math.ceil(first.sizing!.minHeight)} px of height for depth ${depth}, or set options.depth to ${fold.depth}${fold.total ? ' and add the Total row to options.expansion.collapsed' : ''}.`,
+        // The Total stays open at depth 1: the fix that reproduces the drawn table folds it as well.
+        fix:[{op:'add',path:'/options/depth',value:fold.depth},...(fold.total ? [{op:'replace' as const,path:'/options/expansion/collapsed',value:collapsed}] : [])]});
+      return drawn;
+    }
+    last=drawn;
+  }
+  return last;
+}
+
+/** The folds of a drawn table. A sizing probe has no drawn rows to count, and this list holds there too. */
+const foldedRows=(geometry: Form) => geometry.derived.compiled.options.expansion?.collapsed?.length ?? 0;
+
+/** The registered layout: select a form and use its content height at the requested width. */
 function layoutDimSwitchCard(data: DimSwitchData, options: DimSwitchOptions = {}): Geometry<TableMarks, DimSwitchDerived> {
   return memoLayout(data, options, () => {
-    const forms=new Map<string,PreparedForm>();
-    const layout=(input:DimSwitchData,step:DimSwitchOptions)=>layoutDimSwitch(input,step,forms);
-    return cardHeightFloor(layoutDimSwitchCard,data,options,classFloor(layout,data,options,layout(data,options)));
+    const folded=new Map<string,Map<string,PreparedForm>>();
+    const formsOf=(fold:string)=>{let forms=folded.get(fold); if (!forms) folded.set(fold,forms=new Map()); return forms;};
+    const layout=(input:DimSwitchData,step:DimSwitchOptions)=>{
+      const drawn=foldToFit(input,step,formsOf);
+      if (step.columnHeads!==false) return drawn;
+      // With no head, a partial window's note may print in the frame, but it never costs the table its draw or a row: first it leaves the frame and warns.
+      const misses=drawn.refused || missesFixedHeight(step,drawn);
+      if (!misses && !drawn.warnings.some(warning=>warning.code==='dimswitch-depth-folded')) return drawn;
+      const noteOff=foldToFit(input,{...step,[PARTIAL_NOTE_OFF]:true} as DimSwitchOptions,fold=>formsOf(`off:${fold}`));
+      if (misses) return noteOff;
+      return !noteOff.refused && !missesFixedHeight(step,noteOff) && foldedRows(noteOff)<foldedRows(drawn) ? noteOff : drawn;
+    };
+    return classFloor(layout,data,options,layout(data,options));
   });
 }
 

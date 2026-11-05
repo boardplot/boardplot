@@ -1,3 +1,4 @@
+import { plainText } from './inlineBold';
 import { localeStrings, stringFields } from './strings';
 import type { StringsSpec } from './types/options';
 /**
@@ -85,8 +86,10 @@ export function defaultNoteLines(target: RenderTarget = DEFAULT_TARGET, width: n
  * "Source: Source: …".
  */
 export function sourceLine(source: string, word: string): string {
-  const opensWithWord = source.slice(0, word.length).toLowerCase() === word.toLowerCase() &&
-    /^\p{L}*\s*:/u.test(source.slice(word.length));
+  if (word === '') return source;
+  const plain = plainText(source);
+  const opensWithWord = plain.slice(0, word.length).toLowerCase() === word.toLowerCase() &&
+    /^\p{L}*\s*:/u.test(plain.slice(word.length));
   return opensWithWord ? source : `${word}: ${source}`;
 }
 
@@ -184,7 +187,7 @@ export function notesPointer(count: number, strings?: StringsSpec): string {
 
 /** A capped list note: the frame names as many of its items as fit two footer lines. */
 export interface NoteList { lead: string; items: readonly string[]; total?: number; options: object }
-interface EngineNoteMeta { kind: 'note' | 'method' | 'disclosure'; short?: string; values?: readonly string[]; list?: NoteList; ranks?: true }
+interface EngineNoteMeta { kind: 'note' | 'method' | 'disclosure'; short?: string; values?: readonly string[]; list?: NoteList; ranks?: true; quiet?: true }
 
 const NOTE_META = Symbol('noteMetadata');
 type Noted = { [NOTE_META]?: EngineNoteMeta };
@@ -192,10 +195,11 @@ type Noted = { [NOTE_META]?: EngineNoteMeta };
 // its own metadata, including consumers that run after the layout has ended.
 let current: { notes: Map<string, EngineNoteMeta> } | undefined;
 
-export function withEngineNotes<T>(run: () => T): T {
-  if (current) return run();
-  current = { notes: new Map() };
-  try { return run(); } finally { current = undefined; }
+export function withEngineNotes<T>(run: () => T, isolated = false): T {
+  if (current && !isolated) return run();
+  const previous = current;
+  current = { notes: new Map(isolated && previous ? [...previous.notes].map(([text, meta]) => [text, { ...meta }]) : []) };
+  try { return run(); } finally { current = previous; }
 }
 
 /** Each note owns metadata outside its public, enumerable fields. */
@@ -240,6 +244,29 @@ export function valueNote(text: string, values: readonly string[]): string {
 /** A method note with its one-line form. */
 export function methodNote(text: string, short: string): string {
   return engineNote(text, 'method', short);
+}
+
+/**
+ * A method note the engine adds on its own, which never costs a chart its draw or its size:
+ * it never prints under the chart, also where `notes.show` lists 'method'. It stays in the
+ * notes list and the reading, and when it is the only hidden note and the notes button needs
+ * a row of its own, the layout leaves the button off.
+ */
+export function quietMethodNote(text: string): string {
+  engineNote(text, 'method');
+  const meta = engineNoteMeta(text);
+  if (meta) meta.quiet = true;
+  return text;
+}
+
+/** True for a quiet method note, which never prints under the chart, whatever `notes.show` lists. */
+export function isQuiet(note: object): boolean {
+  return engineNoteMeta(note)?.quiet === true;
+}
+
+/** True when every note in the list is a quiet method note (and the list has one). */
+export function allQuiet(notes: readonly object[]): boolean {
+  return notes.length > 0 && notes.every(isQuiet);
 }
 
 export function engineNoteMeta(note: string | object): EngineNoteMeta | undefined {

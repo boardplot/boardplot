@@ -6,10 +6,12 @@ import { documentSchemaHint, documentSchemaHintWarning } from '../schema/documen
 import { flattenIssues } from '../schema/flattenIssues';
 import type { LintWarning } from '../types/scene';
 import type { ThemeRef } from '../types/theme';
+import { optionsTake } from './chartValidation';
 import { DocExpansionError, expandDoc, missingChartName, ownedDocumentCopy } from './docExpand';
 import { completeDiagnostic, rememberDiagnosticSource, sourceSchemaDiagnostic, type DocumentFinding } from './diagnostics';
 import { toJsonPointer } from '../diagnostics/jsonPatch';
 import { atPath, messageText } from '../diagnostics/describe';
+import { themeShape } from '../normalize/optionShapes';
 
 export interface DocumentEnvelope {
   ok: boolean;
@@ -59,7 +61,7 @@ const documentSchema = z.preprocess(
     .object({
       $schema: z.string().optional().describe('Optional schema-location hint; document version selects the supported format.'),
       version: z.literal(1).describe('Document format version; the supported value is 1.'),
-      theme: z.unknown().optional().describe('Document theme inherited by charts without an explicit theme; checked during theme resolution.'),
+      theme: z.unknown().optional().describe('Document theme inherited by charts without an explicit theme. Accepts a preset name, a full theme object, { preset, overrides }, or { overrides } for the default preset.'),
       locale: z.unknown().optional().describe('Root language tag inherited by charts. Non-string values are accepted structurally but warn and have no effect; explicit chart format examples take precedence.'),
       charts: z
         .array(
@@ -102,6 +104,15 @@ const SHAPE_SUGGEST = 'Send { type, data } for one chart, or { version: 1, chart
 export const BARE_CHART_NAME = 'chart';
 export const NAME_RULE = "letters, digits, '.', '_' and '-', at most 100, not starting with '.'";
 
+/** Preserve existing stems exactly. Turn other usable string names into a stem. */
+function fileStem(name: unknown): string | undefined {
+  if (typeof name !== 'string') return undefined;
+  if (FILE_STEM.test(name)) return name;
+  const slug = name.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase()
+    .replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^[-.]+|[-.]+$/g, '').slice(0, 100).replace(/[-.]+$/g, '');
+  return slug || undefined;
+}
+
 export { isBareChart };
 
 /** Wrap a bare chart into the one-chart envelope every verb reads. */
@@ -143,14 +154,65 @@ export function bareFinding<T extends DocumentFinding>(finding: T): T {
   };
 }
 
-function unknownField(input: Record<string, unknown>, segments: (string | number)[], where: string): DocumentFinding {
-  const key = String(segments[segments.length - 1]);
+function unknownField(
+  input: Record<string, unknown>, segments: (string | number)[], where: string,
+  edit: Pick<DocumentFinding, 'suggest' | 'fix'> = { suggest: `Remove '${segments[segments.length - 1]}'.`, fix: [{ op: 'remove', path: toJsonPointer(segments) }] },
+): DocumentFinding {
   return completeDiagnostic({
     code: 'unknown-field',
-    message: `${where} field '${key}' is not part of the spec.`,
-    suggest: `Remove '${key}'.`,
-    fix: [{ op: 'remove', path: toJsonPointer(segments) }],
+    message: `${where} field '${segments[segments.length - 1]}' is not part of the spec.`,
+    ...edit,
   }, input, segments, 'docs/manual.md#the-spec');
+}
+
+/** Chart furniture an author often puts at the top level; options takes each of these as a string. */
+const MOVABLE_KEYS = ['title', 'subtitle', 'unit', 'source', 'locale'] as const;
+
+/**
+ * Reads a spec the way the caller will: `accepts` says whether a spec with no
+ * stray key is accepted, which only a caller that lays charts out can know.
+ * Without it, no root key moves into options and each is removed.
+ */
+export interface ParseHooks {
+  accepts?: (candidate: Record<string, unknown>) => boolean;
+}
+
+/**
+ * The stray keys whose fix moves the value into options. A key moves only when
+ * the chart type's options list it and the spec with that value moved (and
+ * every other stray key removed) is accepted. The options schema listing a
+ * key does not prove the value is accepted: a combo whose series carry units
+ * refuses a chart unit of another name, and a pyramid of shares refuses a unit
+ * at all. Such a key is removed, as for any key options do not take.
+ */
+function movableKeys(input: Record<string, unknown>, strays: readonly string[], accepts: (candidate: Record<string, unknown>) => boolean): ReadonlySet<string> {
+  const { options, type } = input;
+  const candidates = typeof type === 'string' ? strays.filter(key => (MOVABLE_KEYS as readonly string[]).includes(key) && typeof input[key] === 'string'
+    && optionsTake(type, key) && (options === undefined || (isRecord(options) && !Object.hasOwn(options, key)))) : [];
+  if (candidates.length === 0) return new Set();
+  const moved = (keys: readonly string[]): boolean => {
+    const rest = Object.fromEntries(Object.entries(input).filter(([key]) => !strays.includes(key) && key !== 'version' && key !== 'name'));
+    return accepts({ ...rest, options: { ...(isRecord(options) ? options : {}), ...Object.fromEntries(keys.map(key => [key, input[key]])) } });
+  };
+  if (moved(candidates)) return new Set(candidates);
+  const single = candidates.filter(key => moved([key]));
+  return new Set(single.length > 1 && !moved(single) ? [] : single);
+}
+
+/**
+ * A top-level `title`, `subtitle`, `unit` or `source` string holds what the
+ * author meant for the chart, so its fix moves it into options instead of
+ * dropping it unseen, when the moved chart is accepted (`movableKeys`). Any
+ * other stray key is no option name, so options would refuse it: its fix
+ * removes it, and the fixed chart draws.
+ */
+function strayKey(input: Record<string, unknown>, key: string, where: string, moved: ReadonlySet<string>): DocumentFinding {
+  if (!moved.has(key)) return unknownField(input, [key], where);
+  const { options } = input;
+  // Without options, every fix adds the same whole object: two adds of /options would otherwise overwrite each other.
+  const append = options === undefined ? { op: 'add' as const, path: '/options', value: Object.fromEntries([...moved].map(name => [name, input[name]])) }
+    : { op: 'add' as const, path: toJsonPointer(['options', key]), value: input[key] };
+  return unknownField(input, [key], where, { suggest: `Move '${key}' into options.`, fix: [append, { op: 'remove', path: toJsonPointer([key]) }] });
 }
 
 /**
@@ -158,7 +220,7 @@ function unknownField(input: Record<string, unknown>, segments: (string | number
  * author would get no signal that `chart.title` or a typo'd `anotations` did
  * nothing. A non-string root locale stays a warning, because it has no effect.
  */
-function unknownDocFields(raw: unknown): { errors: DocumentFinding[]; warnings: LintWarning[] } {
+function unknownDocFields(raw: unknown, accepts: (candidate: Record<string, unknown>) => boolean): { errors: DocumentFinding[]; warnings: LintWarning[] } {
   const errors: DocumentFinding[] = [];
   const warnings: LintWarning[] = [];
   if (!isRecord(raw)) return { errors, warnings };
@@ -171,8 +233,22 @@ function unknownDocFields(raw: unknown): { errors: DocumentFinding[]; warnings: 
       code: 'schema-hint-unusable', severity: 'warn', message: hintMessage,
     }, raw, ['$schema']));
   }
+  // `version` beside chart keys and no `charts`: the keys are one chart and the version is the stray one.
+  const oneChart = !Object.hasOwn(raw, 'charts') && ['type', 'data', 'options', 'annotations'].some(key => Object.hasOwn(raw, key));
+  const strays = Object.keys(raw).filter(key => !DOC_ROOT_FIELDS.has(key) && !(oneChart && BARE_FIELDS.has(key)));
+  const moved = oneChart ? movableKeys(raw, strays, accepts) : new Set<string>();
   for (const key of Object.keys(raw)) {
-    if (!DOC_ROOT_FIELDS.has(key)) errors.push(unknownField(raw, [key], 'Root'));
+    if (oneChart && key === 'version') {
+      errors.push(completeDiagnostic({
+        code: 'unknown-field',
+        message: "Root field 'version' belongs to a document with 'charts'; one chart takes none.",
+        suggest: "Remove 'version', or put the chart into 'charts'.",
+        fix: [{ op: 'remove', path: '/version' }],
+      }, raw, ['version'], 'docs/manual.md#the-spec'));
+    } else if (strays.includes(key)) {
+      // An envelope has no root options to move a key into, so its fix removes the key.
+      errors.push(oneChart ? strayKey(raw, key, 'Root', moved) : unknownField(raw, [key], 'Root'));
+    }
   }
   if (Object.hasOwn(raw, 'locale') && typeof raw.locale !== 'string') {
     warnings.push(completeDiagnostic({
@@ -192,9 +268,11 @@ function unknownDocFields(raw: unknown): { errors: DocumentFinding[]; warnings: 
   return { errors, warnings };
 }
 
-function bareFieldErrors(spec: Record<string, unknown>): DocumentFinding[] {
-  const errors = Object.keys(spec).filter((key) => !BARE_FIELDS.has(key)).map((key) => unknownField(spec, [key], 'Top-level'));
-  if (Object.hasOwn(spec, 'name') && !(typeof spec.name === 'string' && FILE_STEM.test(spec.name))) {
+function bareFieldErrors(spec: Record<string, unknown>, accepts: (candidate: Record<string, unknown>) => boolean): DocumentFinding[] {
+  const strays = Object.keys(spec).filter((key) => !BARE_FIELDS.has(key));
+  const moved = movableKeys(spec, strays, accepts);
+  const errors = strays.map((key) => strayKey(spec, key, 'Top-level', moved));
+  if (Object.hasOwn(spec, 'name') && fileStem(spec.name) === undefined) {
     errors.push(completeDiagnostic({
       code: 'invalid-name',
       message: `name names the output file: ${NAME_RULE}`,
@@ -209,13 +287,26 @@ function bareFieldErrors(spec: Record<string, unknown>): DocumentFinding[] {
  * envelope first; findings then point into that envelope, and `bareFinding`
  * points them back into the bare spec.
  */
-export function parseDocumentInput(input: unknown): DocumentParseResult {
+export function parseDocumentInput(input: unknown, hooks: ParseHooks = {}): DocumentParseResult {
+  const accepts = hooks.accepts ?? (() => false);
+  const nameWarnings: LintWarning[] = [];
   if (isBareChart(input)) {
-    const unknown = bareFieldErrors(input);
+    const unknown = bareFieldErrors(input, accepts);
     if (unknown.length) throw new DocumentSchemaError(unknown.map((finding) => ({ ...finding, path: `/charts/0${finding.path}`,
       fix: finding.fix?.map((operation) => ({ ...operation, path: `/charts/0${operation.path}` })) })));
-    input = bareEnvelope(input);
+    const name = fileStem(input.name);
+    if (name !== undefined && name !== input.name) {
+      nameWarnings.push(completeDiagnostic({
+        code: 'name-slugified', severity: 'warn',
+        message: `Name ${JSON.stringify(input.name)} is used as ${JSON.stringify(name)}.`,
+        suggest: `Set name to ${JSON.stringify(name)}.`,
+        fix: [{ op: 'replace', path: '/charts/0/name', value: name }],
+      }, bareEnvelope(input), ['charts', 0, 'name'], 'docs/manual.md#the-spec'));
+      input = { ...input, name };
+    }
+    input = bareEnvelope(input as Record<string, unknown>);
   }
+  if (isRecord(input) && Object.hasOwn(input, 'theme')) input = { ...input, theme: themeShape(input.theme) };
   let expanded: ReturnType<typeof expandDoc>;
   try {
     expanded = expandDoc(input);
@@ -225,7 +316,7 @@ export function parseDocumentInput(input: unknown): DocumentParseResult {
       code: 'cli-error', message: atPath({ displayPath: issue.path.join('.') }, issue.message), displayPath: issue.path.join('.'), suggest: SHAPE_SUGGEST,
     }, input, issue.path)));
   }
-  const fields = unknownDocFields(input);
+  const fields = unknownDocFields(input, accepts);
   if (fields.errors.length) throw new DocumentSchemaError(fields.errors);
   // Re-own the root assembled by expansion and every schema output: inherited
   // properties must never turn into authored options at this process boundary.
@@ -242,7 +333,7 @@ export function parseDocumentInput(input: unknown): DocumentParseResult {
   rememberDiagnosticSource(doc, source);
   return { doc, envelope: {
     ok: true, errors: [],
-    warnings: [...fields.warnings, ...expanded.warnings.map(warning => completeDiagnostic(warning, input))],
+    warnings: [...nameWarnings, ...fields.warnings, ...expanded.warnings.map(warning => completeDiagnostic(warning, input))],
   } };
 }
 

@@ -21,6 +21,6 @@ export const tilemapCore: ChartCore<
   title: 'Tile-grid map',
   summary: 'Equal-size region tiles with explicit scale, no-data trace, and solver-placed abbreviation tiers',
   layout: layoutTilemap,
-  defaults: { scale: { kind: 'sequential' }, legend: 'top' },
+  defaults: { scale: { kind: 'sequential' } },
   annotationKinds: []
 };

@@ -193,4 +193,26 @@ fixtures.push({
   ] },
   options: { title: 'Entry and exit bars reconcile a $5.6m revenue change', unit: '$k', strings: { newItems: 'Entries', lostItems: 'Exits' }, size: { width: 1000 } },
 });
+fixtures.push({
+  ...revenueBridge,
+  id: 'revenue-bridge-no-net-change',
+  title: 'The revenue bridge without the net change over the closing column',
+  options: { ...revenueBridge.options, netChange: false },
+});
+
+fixtures.push({
+  ...revenueBridge,
+  id: 'no-point-labels',
+  title: 'The revenue bridge prints no step or total values, and keeps the net change',
+  tags: ['coverage'],
+  options: { ...revenueBridge.options, labels: { point: false } },
+}, {
+  ...revenueBridge,
+  id: 'column-overrides',
+  title: 'A bridge whose long names turn it horizontal takes an authored name band',
+  tags: ['coverage'],
+  data: { ...revenueBridge.data, priorLabel: 'Audited consolidated revenue of the prior fiscal year', currentLabel: 'Audited consolidated revenue of the current fiscal year' },
+  options: { ...revenueBridge.options, netChange: false, size: { width: 720 }, columnOverrides: { label: { width: 220 } } },
+});
+
 registerFixtures('pvm', fixtures);

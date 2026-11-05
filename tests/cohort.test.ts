@@ -113,9 +113,38 @@ it('draws every cohort size whole when the row names are cut', () => {
   for (const width of [320, 400, 472]) {
     const shown = layout(fixture.data as CohortData, { ...fixture.options as CohortOptions, target: 'report', size: { width, height: 1000 } });
     const drawn = shown.labels.flatMap(label => label.hidden ? [] : [label.lines.join(' ')]);
-    const sizes = drawn.flatMap(text => text.match(/\(n = [\d,]+\)/g) ?? []);
-    expect(sizes, `${width} px`).toEqual(shown.derived.cohorts.map(row => `(n = ${row.base.toLocaleString('en-US')})`));
+    const sizes = drawn.flatMap(text => text.match(/\(n\u00a0=\u00a0[\d,]+\)/g) ?? []);
+    expect(sizes, `${width} px`).toEqual(shown.derived.cohorts.map(row => `(n\u00a0=\u00a0${row.base.toLocaleString('en-US')})`));
   }
+});
+
+// A narrow cohort row must keep its size on one line instead of splitting after "(n".
+it('wraps narrow cohort labels before the whole size suffix', () => {
+  const fixture = getFixtures('cohort').find(f => f.id === 'saas-logo-retention')!;
+  const data = fixture.data as CohortData;
+  const request = resolveChartRequest({ type: 'cohort', data, options: { ...fixture.options as CohortOptions, size: { width: 358, height: 580 } } });
+  const shown = layoutResolvedRequest(request) as unknown as Geometry<CohortMarks, CohortDerived>;
+  expect(shown.refused).toBeFalsy();
+  for (const [index, row] of shown.derived.cohorts.entries()) {
+    const label = shown.labels.find(label => label.id === `series:${row.id}`)!;
+    expect(label.hidden).toBeFalsy();
+    expect(label.lines.map(line => line.replaceAll('\u00a0', ' '))).toEqual([
+      data.cohorts[index]!.label,
+      `(n = ${formatNumber(row.base, { decimals: 0 })})`,
+    ]);
+  }
+});
+
+// A size wider than the label band must still break at its spaces instead of refusing the width.
+it('draws a cohort size wider than the label band instead of refusing the width', () => {
+  const fixture = getFixtures('cohort').find(f => f.id === 'saas-logo-retention')!;
+  const data = fixture.data as CohortData;
+  const wide = { ...data, cohorts: data.cohorts.map(cohort => ({ ...cohort, active: cohort.active.map(value => value === null ? null : value * 100000) })) } as CohortData;
+  const request = resolveChartRequest({ type: 'cohort', data: wide, options: { ...fixture.options as CohortOptions, size: { width: 358, height: 580 } } });
+  const shown = layoutResolvedRequest(request) as unknown as Geometry<CohortMarks, CohortDerived>;
+  expect(shown.refused).toBeFalsy();
+  const label = shown.labels.find(label => label.id === `series:${shown.derived.cohorts[0]!.id}`)!;
+  expect(label.lines).toEqual(['Jan 2025 (n =', '120,000,000)']);
 });
 
 // A cohort exhibit on a 280 px phone card refused (it needed 528 px); its compact form draws there and names each period it leaves out.
@@ -612,7 +641,7 @@ describe('cohort — the host engine never speaks for itself', () => {
         expected.push('visiblePeriods');
         if (fixture.options.total !== false) expected.push('total');
         if (fixture.options.excludeCurrentPeriod) expected.push('excludedCurrentPeriod');
-      }
+      } else if (fixture.options?.visiblePeriods !== undefined) expected.push('visiblePeriods');
       expect(Object.keys(geometry.derived).sort(), fixture.id).toEqual(expected.sort());
       for (const forbidden of ['colMeans', 'rowMeans', 'max', 'min']) {
         expect(geometry.derived, `${fixture.id}: ${forbidden}`).not.toHaveProperty(forbidden);
@@ -656,7 +685,7 @@ describe('cohort — exhibit contract', () => {
     for (const row of geometry.derived.cohorts) {
       const label = geometry.labels.find((l) => l.id === `series:${row.id}`)!;
       expect(label.hidden).toBeFalsy();
-      expect(label.lines.join(' ')).toContain(`(n = ${formatNumber(row.base, { decimals: 0 })})`);
+      expect(label.lines.join(' ')).toContain(`(n\u00a0=\u00a0${formatNumber(row.base, { decimals: 0 })})`);
     }
   });
 
@@ -756,6 +785,24 @@ describe('cohort — governing unit', () => {
     { variant: 'stepped', formatScope: 'classic', legend: 'none' },
   ] as const;
 
+  // A basis switch leaves an authored "% of cohort base" caption true for the other number: the chart must warn and keep the text.
+  it('warns when the unit or key caption names another retention basis', () => {
+    const code = 'cohort-basis-caption-mismatch';
+    for (const variant of ['heatmap', 'stepped'] as const) {
+      const options: CohortOptions = { variant, basis: 'previous', unit: '% of cohort base', formatScope: 'classic', subtitle: { measure: 'Members retained' }, size: { width: 960 } };
+      const geometry = layout(clean(), options);
+      expect(geometry.warnings.filter(w => w.code === code)).toMatchObject([{
+        severity: 'warn', field: ['options', 'unit'],
+        suggest: expect.stringContaining("options.basis to 'cohort'"),
+      }]);
+      expect(readerText(geometry)).toContain('% of cohort base');
+      expect(codes(layout(clean(), { ...options, basis: 'cohort' }))).not.toContain(code);
+      expect(codes(layout(clean(), { ...options, unit: '% of previous period' }))).not.toContain(code);
+    }
+    const caption = layout(clean(), { basis: 'cohort', unit: '%', strings: { cohortMeasure: 'Retention (% of previous period)' } });
+    expect(caption.warnings.filter(w => w.code === code)).toMatchObject([{ field: ['options', 'strings', 'cohortMeasure'] }]);
+  });
+
   // Bare rates read as counts; a unit line must not cost a header row or refuse fixed heights that fit.
   it('states the unit once in an existing header line at the same size', () => {
     for (const variant of variants) for (const size of [{ width: 720 }, { width: 720, height: 316 }]) {
@@ -821,6 +868,15 @@ describe('cohort — governing unit', () => {
 });
 
 describe('cohort — claims', () => {
+  // The residue cleanup read a true 1-in-100,000,000 ratio as noise beside its base and reported 0.
+  it('keeps a tiny real ratio in the claim', async () => {
+    const { claimsForChart } = await import('../src/core/claims');
+    const geometry = layout({ cohorts: [{ id: 'a', active: [100_000_000, 1] }, { id: 'b', active: [100_000_000, 3] }] }, { averages: 'weighted' });
+    const claims = claimsForChart('cohort', geometry as never);
+    expect(claims.find((c) => c.id === 'cohort:a:t1')!.output.raw).toBe(1e-8);
+    expect(claims.find((c) => c.id === 'cohort:average:t1')!.output.raw).toBe(2e-8);
+  });
+
   // The reading called every printed exhibit cell "Not displayed", because the receipt looked for heatmap cell nodes.
   it('quotes the text an exhibit prints, and only a cell it prints', async () => {
     const { claimsForChart } = await import('../src/core/claims');
@@ -914,4 +970,17 @@ it('titles cohort records with the printed row and period names', async () => {
     const ids = new Set(records.flatMap(record => [record.target.owner.seriesId, record.target.owner.categoryId].map(String)));
     for (const record of records) for (const part of record.label.split(' / ')) expect(ids.has(part)).toBe(false);
   }
+});
+
+// A rate such as "72%" missed a half-slide cell and every rate vanished; the unit line already names the percent.
+it('a narrow cohort heatmap prints its rates without the % sign instead of hiding them', () => {
+  const cohorts = Array.from({ length: 6 }, (_, i) => ({ id: `k${i}`, label: `K${i}`, active: Array.from({ length: 12 - i }, (_, t) => Math.round(1000 * 0.95 ** (t * 1.7))) }));
+  const printed = (width: number, unit?: string) => layout({ periodLabel: 'Month', cohorts } as CohortData, { unit, size: { width, height: 300 } } as CohortOptions)
+    .labels.filter((label) => label.kind === 'point' && !label.hidden).map((label) => label.text).filter((text) => text !== '–');
+  expect(printed(640, '% of cohort base').every((text) => text.endsWith('%'))).toBe(true);
+  const narrow = printed(432, '% of cohort base');
+  expect(narrow).toHaveLength(57);
+  expect(narrow.some((text) => text.includes('%'))).toBe(false);
+  // Without a unit line naming the percent, the sign stays.
+  expect(printed(432).every((text) => text.endsWith('%'))).toBe(true);
 });

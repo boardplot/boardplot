@@ -134,7 +134,7 @@ it('breaks a key word wider than its area between characters and keeps every cha
   expect(body.ok).toBe(true);
   expect(body.svg).not.toContain('…');
   const label = body.svg.match(/data-id="label:volume:key:kept:label"[^>]*>(.*?)<\/text>/)![1]!;
-  const lines = [...label.matchAll(/<tspan[^>]*>([^<]*)<\/tspan>/g)].map(m => m[1]);
+  const lines = [...label.matchAll(/<tspan[^>]*>([^<]*)<\/tspan>/g)].map(m => m[1]).filter(line => line !== ' ');
   expect(lines[0]).toBe('Kept 12\u00A0k');
   const broken = lines.slice(1);
   expect(broken.length).toBeGreaterThan(1);
@@ -154,4 +154,107 @@ it('keeps the stripes of a hatched stack a grey step apart in notation and notat
     const apart = Math.max(...stripes.flatMap(a => stripes.map(b => palettePerceptualDistance(a, b, 'normal'))));
     expect(apart, `${theme}: ${stripes.join(' ')}`).toBeGreaterThanOrEqual(24);
   }
+});
+
+// A fixed 16:9 slide used to refuse a three-panel stack ("needs 1263 x 867") because default plot heights only grew.
+it('draws a three-panel stack on a fixed 1184 x 528 canvas and refuses below its stated floor', () => {
+  const months = Array.from({ length: 12 }, (_, i) => ({ id: `m${i}`, label: `M${i + 1}` }));
+  const slide = {
+    categories: months,
+    measures: [
+      { id: 'intake', label: 'Intake', values: months.map((_, i) => 2400 + ((i * 137) % 600)) },
+      { id: 'kept', label: 'Retained', values: months.map((_, i) => 300 + ((i * 211) % 420)) },
+      { id: 'lost', label: 'Lost', values: months.map((_, i) => 60 + ((i * 53) % 130)) },
+    ],
+    panels: [
+      { id: 'volume', type: 'column', title: 'New enquiries', unit: 'thousand per month', measure: { sum: ['intake'] }, divisor: 1000, decimals: 1, readout: 'change' },
+      { id: 'done', type: 'column', title: 'Completed', unit: 'outcomes', measure: { sum: ['kept', 'lost'] }, readout: 'change' },
+      { id: 'rate', type: 'line', title: 'Conversion', unit: '% of enquiries', measure: { numerator: ['kept', 'lost'], denominator: 'intake' }, readout: 'change', emphasis: true },
+    ],
+    windows: { base: { from: 'm0', to: 'm2', label: 'Q1' }, compare: { from: 'm9', to: 'm11', label: 'Q4' } },
+  };
+  const at = (height: number) => render({ spec: { type: 'grid', data: slide, options: { stack: {}, title: 'Slide stack', size: { width: 1184, height } } } }).body as { ok: boolean; errors?: { code: string; expected?: { minimum: { height: number } } }[] };
+  expect(at(528).ok).toBe(true);
+  const refused = at(380).errors![0]!;
+  expect(refused.code).toBe('size-below-floor');
+  const floor = refused.expected!.minimum.height;
+  expect(floor).toBeLessThan(528);
+  expect(at(floor).ok).toBe(true);
+});
+
+const stackSpec = (stack: object, width = 960) => ({ type: 'grid', data, options: { stack, title: 'Starts rise', size: { width } } });
+
+// A hidden readout part must not stay behind in the claims and records that hosts and agents read.
+it('leaves no claim, method line or reading for hidden readout parts', () => {
+  const { svg, reading } = render({ spec: stackSpec({ columnVisibility: { headline: false, span: false } }), return: ['svg', 'reading'] }).body as { svg: string; reading: { metricStack: { readouts: { claims: unknown[]; headlineText: string; spanText: string }[] } } };
+  expect(svg).not.toContain('Change: average');
+  expect(reading.metricStack.readouts.every(readout => readout.claims.length === 0 && readout.headlineText === '' && readout.spanText === '')).toBe(true);
+  const spanOnly = render({ spec: stackSpec({ columnVisibility: { headline: false } }), return: ['reading'] }).body as { reading: { metricStack: { readouts: { claims: { id: string }[] }[] } } };
+  const ids = spanOnly.reading.metricStack.readouts[0]!.claims.map(claim => claim.id);
+  expect(ids).toContain('stack:volume:after');
+  expect(ids).not.toContain('stack:volume:headline');
+});
+
+// A warning that points at options.columnVisibility sends the author to a key the grid refuses.
+it('warns on wrong gutter ids under options.stack, keeps the name, and refuses the keys on a panel grid', () => {
+  const warnings = (render({ spec: stackSpec({ columnVisibility: { name: false, value: false }, columnOverrides: { plot: { width: 300 } }, columnOrder: ['gutters'] }) }).body as { warnings: { code: string; path?: string; field?: string[] }[] }).warnings;
+  const named = warnings.filter(warning => warning.code.startsWith('generated-'));
+  expect(named.map(warning => warning.code).sort()).toEqual(['generated-id-unknown', 'generated-id-unknown', 'generated-id-unknown', 'generated-name-column-kept']);
+  expect(named.every(warning => warning.path?.startsWith('/options/stack/'))).toBe(true);
+  const panelGrid = render({ spec: { type: 'grid', data: { panels: [{ id: 'a', type: 'column', data: { categories: [{ id: 'x', label: 'X' }], series: [{ id: 's', label: 'S', values: [1] }] } }] }, options: { stack: { columnOrder: ['plot'] } } } }).body as { ok: boolean };
+  expect(panelGrid.ok).toBe(false);
+});
+
+// A gutter wider than the canvas would otherwise move the readouts above the panels or refuse the chart.
+it('caps a wide gutter and floors a narrow one with a warning, and ignores it above the panels', () => {
+  const codes = (stack: object, width?: number) => { const b = render({ spec: stackSpec(stack, width) }).body as { ok: boolean; warnings: { code: string }[] }; expect(b.ok).toBe(true); return b.warnings.map(warning => warning.code); };
+  expect(codes({ columnOverrides: { gutter: { width: 5000 } } })).toContain('generated-column-width-capped');
+  expect(codes({ columnOverrides: { gutter: { width: 10 } } })).toContain('generated-column-width-floored');
+  expect(codes({ columnOverrides: { gutter: { width: 200 } }, columnOrder: ['plot', 'gutter'] }, 320).filter(code => code === 'option-ignored')).toHaveLength(2);
+});
+
+// The React entry reads options.stack on its own path; a dropped key would show a different chart on screen than in an export.
+it('draws the gutter settings in React as in the CLI', async () => {
+  const stack = { columnVisibility: { unit: false }, columnOrder: ['plot', 'gutter'] };
+  const host = document.createElement('div');
+  document.body.append(host);
+  const root = createRoot(host);
+  await act(async () => { root.render(createElement(GridChart as never, { data, stack, title: 'Starts rise', size: { width: 960 } })); });
+  await act(async () => { await new Promise(done => setTimeout(done, 50)); });
+  const onScreen = host.querySelector('svg')!.textContent!;
+  expect(onScreen).not.toContain('cases per month');
+  expect(onScreen).toContain('Started');
+  await act(async () => { root.unmount(); });
+  host.remove();
+});
+
+// A gutter wide enough to take the room of the value labels refused the chart, though the spec without the width draws.
+it('never refuses for an authored gutter width, at the cap or past it', () => {
+  const fixture = metricStackFixtures.find(f => f.id === 'metric-stack-steps')!;
+  for (const [spec, widths] of [[{ data, options: {} }, [720, 960]], [{ data: fixture.data, options: fixture.options }, [960, 1180]]] as const) {
+    for (const canvas of widths) for (const gutter of [canvas * 0.6, canvas * 0.75, canvas * 0.95, 5000]) {
+      const options = spec.options as { stack?: object };
+      const drawn = render({ spec: { type: 'grid', data: spec.data, options: { title: 'Steps', ...options, stack: { ...options.stack, columnOverrides: { gutter: { width: gutter } } }, size: { width: canvas } } } }).body as { ok: boolean; warnings: { code: string }[] };
+      expect(drawn.ok, `${canvas} ${gutter}`).toBe(true);
+    }
+  }
+});
+
+// The method line named the remaining-per-100 chain after the span that prints it was hidden.
+it('names only the figures that print in the method line', () => {
+  const fixture = metricStackFixtures.find(f => f.id === 'metric-stack-steps')!;
+  const line = (columnVisibility: object) => (render({ spec: { type: 'grid', data: fixture.data, options: { ...fixture.options, stack: { columnVisibility } } }, return: ['svg'] }).body as { svg: string }).svg;
+  expect(line({ span: false })).toContain('Left: volume-weighted mature rates<');
+  expect(line({ headline: false })).toContain('Left: remaining per 100<');
+});
+
+// The span prints the averages with the headline hidden, so the line named a change that no figure shows.
+it('drops only the word Change from the method line when the headline is hidden', () => {
+  const fixture = metricStackFixtures.find(f => f.data.windows && f.data.panels.some(panel => panel.readout === 'change'))!;
+  const line = (columnVisibility: object, language: string) => (render({ spec: { type: 'grid', data: fixture.data, options: { ...fixture.options, locale: { language }, stack: { ...fixture.options?.stack, columnVisibility } } }, return: ['svg'] }).body as { svg: string }).svg;
+  expect(line({ headline: false }, 'en')).toContain('>Average per ');
+  expect(line({ headline: false }, 'en')).not.toContain('Change: average');
+  expect(line({ headline: false }, 'de')).toContain('>Mittelwert je ');
+  expect(line({ headline: false }, 'de')).not.toContain('Änderung:');
+  expect(line({}, 'en')).toContain('Change: average');
 });

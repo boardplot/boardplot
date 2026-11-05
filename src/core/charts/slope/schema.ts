@@ -1,6 +1,8 @@
 /** Slope data and options schemas, without the chart engine. */
 
 import * as z from 'zod';
+import { columnOverridesOption } from '../../schema/generatedColumnOptions';
+import { DIVERGING_COLUMN_OVERRIDES_REFUSAL } from './slopeSizing';
 import { TYPE_REFUSED_REASONS } from '../../schema/capabilityReasons';
 import {
   colorRoleField,
@@ -44,9 +46,7 @@ const seriesSchema = z.strictObject({
 export const slopeDataSchema = z
   .strictObject({
     valueKind: dataValueKindSchema,
-    // exactly 2 is the contract; >2 passes schema so layout can emit the
-    // 'slope-too-many-points' lint error and still render first/last
-    categories: z.array(categorySchema).min(2).describe("Endpoint categories; exactly two are intended. Extra categories are warned about and only first and last are shown."),
+    categories: z.array(categorySchema).min(2).describe("Endpoint categories. With more than two, the line variant draws first versus last, warns slope-too-many-points and names the omitted categories in a note. The diverging variant requires exactly two."),
     series: z.array(seriesSchema).min(1).describe("Series whose first and last category values are joined by a slope."),
   })
   .superRefine((data, ctx) => {
@@ -77,6 +77,7 @@ export const slopeOptionsSchema = baseOptionsSchema
       .describe(
         "Share of the endpoint total below which series fold into one 'Other' line, measured at both ends: 0.05 is five percent. A value at or above 1 is refused. Highlighted series keep their own name.",
       ),
+    change: z.enum(['none', 'absolute', 'relative']).optional().describe("A column of each line's change between the two periods, right of the second rail's labels under a head such as 'Change, pp': 'absolute' prints second minus first (pp for percent values), 'relative' prints the percent change. The highlighted line prints bold. Default 'none'. The column stays off below 576 px canvas width."),
     variant: z.enum(['lines', 'diverging']).optional().describe("'diverging': one panel per series, values as the positive share up from zero and negative as the negative share down, on one scale; two categories, at most 12 series. Default 'lines'."),
     diverging: z.strictObject({
       labels: z.strictObject({
@@ -84,8 +85,13 @@ export const slopeOptionsSchema = baseOptionsSchema
         negative: z.string().optional().describe("Default 'Negative'."),
       }).optional().describe("Area names, such as Better and Worse."),
       sort: z.enum(['positive', 'net', 'data']).optional().describe("Panel order: 'positive' (default; second-period positive share, descending), 'net' or 'data'."),
-      net: z.boolean().optional().describe("Net score (positive minus negative) and its change under each panel. Default true."),
+      net: z.boolean().optional().describe("Net score (positive minus negative) and its change under each panel, defined once in the key. Default true."),
       neutralNote: z.boolean().optional().describe("Note the share that chose neither answer. Default true."),
       minBase: z.number().nonnegative().optional().describe("Base n below which a panel is hatched and noted. Default 30."),
     }).optional().describe("Variant 'diverging' options."),
+    columnOverrides: columnOverridesOption('slope', ['width', 'align', 'headAlign', 'label']),
+  }).superRefine((options, ctx) => {
+    if (options.variant === 'diverging' && options.columnOverrides !== undefined) {
+      ctx.addIssue({ code: 'custom', path: ['columnOverrides'], message: DIVERGING_COLUMN_OVERRIDES_REFUSAL, params: { refused: true } });
+    }
   }) as unknown as z.ZodType<SlopeOptions>;

@@ -17,7 +17,7 @@ import type { DataRange } from '../../rangeRules';
 import type { FontSpec } from '../../text';
 import type { LabelContent } from '../../types/options';
 import type { LintWarning } from '../../types/scene';
-import { compactValueLabelFont, fitsInside, groupedValueLabelPolicy, linesSize, digitSeat, digitSeatEdge, segmentLabelCandidates, segmentTooShort, STACK_ROOM, valueRowCrowded, valueShareLines, warnShareParts, warnSliverLabels } from '../band/labels';
+import { compactValueLabelFont, fitsInside, groupedValueLabelPolicy, linesSize, digitSeat, acrossValueLines, digitSeatEdge, segmentLabelCandidates, segmentTooShort, STACK_ROOM, valueRowCrowded, valueShareLines, warnShareParts, warnSliverLabels } from '../band/labels';
 import { stepDownFont } from '../../label/rowFit';
 import { lineBox } from '../../label/fitText';
 import { groupedOffsets } from '../band/groups';
@@ -408,13 +408,13 @@ export function planColumnValueLabels(
         // The sliver gate passes the highlighted value, which the solver drops last.
         redundant: val.labelOverride === false || (sliver && !hl),
         ...(restHidden ? restValueHiding(note) : {}),
-        candidates: seatsOrBox(segmentLabelCandidates(
+        candidates: seatsOrBox(acrossValueLines(segmentLabelCandidates(
           'vertical',
           rect,
           tsize,
           paints.inside(s, val, c, si),
           { baseline: area.y0, leaderObstacles: scene.refTickYs.get(c.id), insidePaint: paints.cell(s, val, c, si), insidePattern: paints.pattern(s, val, c), insideOnly: !leader },
-        ), rect, tsize, val.labelOverride === false || (sliver && !hl)),
+        )), rect, tsize, val.labelOverride === false || (sliver && !hl)),
       };
       // A sliver the note would name keeps its value when the digits fit the segment.
       // 'minimal' drops it by the author's choice. A pin to the seat asks for it directly.
@@ -546,6 +546,7 @@ function categoryRequests(domain: ColumnDomain, area: ColumnArea, requests: Labe
   const categoryLabelGap = anomaly ? 4 : 6;
   const catX = catPlan.x;
   const keep = catPlan.keep;
+  const namesLost = !dateTicks && catPlan.warnings.some((w) => w.code === 'category-stride' && w.severity === 'warn');
   const rotated = catPlan.rotation !== 0;
   // One row under the lowest column and the value hanging under it.
   // A negative column's name stays in that row, as every other name does,
@@ -571,7 +572,8 @@ function categoryRequests(domain: ColumnDomain, area: ColumnArea, requests: Labe
       typeRole: catPlan.typeRole, font: c.role === 'total' ? boldFont : catPlan.font,
       priority: PRIORITY.endpoint,
       // A stride-hidden date label is the row's decision (one info lint), not a loss.
-      redundant: !keep[ci],
+      // A name a nominal row leaves out did not fit: the reader lost it.
+      ...(keep[ci] ? {} : namesLost && (c.label ?? c.id).trim() !== '' ? { redundant: true, suppressedAs: 'density' as const } : { redundant: true }),
       ...(rotated ? { rotate: catPlan.rotation === 90 ? -90 : -45 } : {}),
       candidates: catPlan.rotation === 90
         ? [{ slot: 'below', rect: verticalNameRect(band.center(ci), area.catRowY, info.w, catPlan.font), penalty: 0 }]
@@ -897,7 +899,7 @@ function rightEdgeSeriesRequests(domain: ColumnDomain, area: ColumnArea, request
       typeRole: 'label', font: labelFont,
       priority: PRIORITY.endpoint,
       candidates: [
-        { slot: left ? 'leftOfStack' : 'rightOfStack', rect: { x, y: middle - size.height / 2, w: size.width, h: size.height }, penalty: 0 },
+        { slot: left ? 'leftOfStack' : 'rightOfStack', rect: { x, y: middle - size.height / 2, w: size.width, h: size.height }, penalty: 0, overValueLines: true },
       ],
     });
   }

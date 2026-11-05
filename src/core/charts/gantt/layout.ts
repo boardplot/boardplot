@@ -50,17 +50,20 @@ import type { GanttData, GanttItem } from '../../types/data';
 import type { BaseOptionsFor, LabelKind, LabelContent } from '../../types/options';
 import type { Geometry, LintWarning, PlacedLabel, SceneNode } from '../../types/scene';
 import { dateFromDay, dayNum } from './calendar';
-import { GANTT_ROW_PITCH, resolveGanttDomain, resolveGanttEnv } from './domain';
+import { resolveGanttDomain, resolveGanttEnv } from './domain';
 import { badgeFill, badgeLevels, layoutGanttAnnotations, ruleNodes, type GanttAnnotationLayer } from './events';
 import { flagRowPitch, ganttSpanBlockers, planGanttLabels, planRowFlags } from './labels';
 import { fmtDay, ganttPaints, layoutGanttMarks, type GanttMarkGeometry } from './marks';
-import { BADGE_LEVELS, NO_LANE, ROW_TEXT_PITCH, RULE_LABEL_GAP, type GanttBand, type GanttBody, type GanttDomain, type GanttEnv } from './model';
+import { COLUMN_PLAN, columnPlan, ganttColumnWarnings, resolveGanttColumns, type GanttColumnOverride, type GanttColumnPlan } from './columns';
+import { BADGE_LEVELS, LABEL_PAD, MIN_ROW_H, NO_LANE, rowTextFloor, RULE_LABEL_GAP, type GanttBand, type GanttBody, type GanttDomain, type GanttEnv } from './model';
 import { formatDate } from '../../dateFormat';
-import { ganttBody, ganttFrame, STACKED_LANE_FLOOR } from './plot';
+import { ganttBody, ganttFrame, MINIMUM_TIMELINE, STACKED_LANE_FLOOR } from './plot';
 import { maxOf, minOf, pushAll } from '../../arrays';
 
 /** Per-chart options, declared through optionsSchema. */
-export interface GanttOptions extends Omit<BaseOptionsFor<'gantt'>, 'labels'> {
+export interface GanttOptions extends Omit<BaseOptionsFor<'gantt'>, 'labels' | 'format'> {
+  /** Gantt formats calendar dates through its date options. */
+  format?: never;
   /** Item category selects its name; absolute (or legacy value) selects its date. */
   labels?: false | (Partial<Record<Exclude<LabelKind, 'item'>, boolean | LabelContent>> & {
     item?: boolean | (LabelContent[number] | 'value')[];
@@ -75,6 +78,10 @@ export interface GanttOptions extends Omit<BaseOptionsFor<'gantt'>, 'labels'> {
   rowTint?: boolean;
   /** Headers for the existing cols positions, up to three. Extra headers without a column are ignored. */
   colHeaders?: string[];
+  /** Per-column settings: `name`, `meta0`, `meta1`, `meta2`. The stacked form reads only `label`. */
+  columnOverrides?: Record<string, GanttColumnOverride>;
+  /** Order of the `meta` and `plot` blocks; the name column stays first. The stacked form ignores it. */
+  columnOrder?: string[];
   /** Calendar head and span. */
   calendar?: {
     /** 'isoWeek' (default): week cells read "W11". 'startDay': the day of the month each week cell starts on. Week granularity only. */
@@ -151,7 +158,12 @@ function labelNodes(env: GanttEnv, domain: GanttDomain, labels: PlacedLabel[]) {
     : node.id.startsWith('label:sublabel:') || (node.part === 'item' && rules.has(node.owner.segmentId ?? '')) ? { ...node, ink: { token: 'inkMuted' as const } } : node);
 }
 
+const spills = (label: PlacedLabel, bar: Rect): boolean => label.slot === 'insideBacked' && !rectContains(bar, label.rect);
+
 /** Phase 5: the scene in paint order, the sizing record, the axis ticks and the accessible description. */
+/** The draws in the stacked form: layoutAuthoredColumns reads which form the spec without its settings takes. */
+const stackedForms = new WeakSet<Geometry<GanttMarks, GanttDerived>>();
+
 function assembleGanttGeometry(input: {
   env: GanttEnv;
   domain: GanttDomain;
@@ -184,7 +196,8 @@ function assembleGanttGeometry(input: {
     // A span name that an event or today rule hid retries inside its mark, across the rule.
     if (label.hidden) return label.hidden === 'collision' && ((span.item.it.kind === 'chevron'
       && !span.row.items.some(item => item.it.kind === 'milestone')) || body.ruleClaims.length > 0);
-    return ganttSpanBlockers(span.row, { id: span.item.it.id, rect: label.rect })
+    // A name backed over a bar it is wider than spills past it: it retries for a seat beside the bar.
+    return spills(label, span.item.rect) || ganttSpanBlockers(span.row, { id: span.item.it.id, rect: label.rect })
       .some(rect => rectsOverlap(label.rect, rect, 2)) || (!rectContains(span.item.rect, label.rect)
         && solved.placed.some(other => other !== label && !other.hidden && other.kind === 'item'
           && other.owner.categoryId === label.owner.categoryId
@@ -208,11 +221,11 @@ function assembleGanttGeometry(input: {
       focus: options.focus, density: 'full', pins: {}, measure: env.measure, plot: body.plot,
       canvas: { x: 0, y: 0, w: size.width, h: size.height }, darkInk: env.theme.color.ink, lightInk: env.theme.color.inkInverse, labelPad: LABEL_PAD,
     });
-    // A hidden arrow name that still finds no seat stays hidden; it does not undo the other repairs.
-    const retried = new Set(solved.placed.filter(label => unsafe.has(label.id) && label.hidden).map(label => label.id));
+    // A hidden arrow name that still finds no seat stays hidden, and a backed name keeps its seat; neither undoes the other repairs.
+    const retried = new Set(solved.placed.filter(label => unsafe.has(label.id) && (label.hidden || spills(label, spans.get(label.owner.segmentId ?? '')!.item.rect))).map(label => label.id));
     if (repair.placed.length === unsafe.size && repair.placed.every(label => !label.hidden || retried.has(label.id))) {
       const moved = new Map(repair.placed.filter(label => !label.hidden).map(label => [label.id, label]));
-      solved = { ...solved, placed: solved.placed.map(label => moved.has(label.id) ? { ...label, ...moved.get(label.id)!, hidden: undefined } : label),
+      solved = { ...solved, placed: solved.placed.map(label => moved.has(label.id) ? { ...label, halo: undefined, ...moved.get(label.id)!, hidden: undefined } : label),
         decisions: [...solved.decisions.filter(decision => !moved.has(decision.labelId)),
           ...repair.decisions.filter(decision => moved.has(decision.labelId))] };
       input.occupied = occupied;
@@ -229,16 +242,16 @@ function assembleGanttGeometry(input: {
   const n = rows.length;
   const { colWs } = body.columns;
   const laneLabelW = milestones.laneLabelW;
-  return {
+  const assembled: Geometry<GanttMarks, GanttDerived> = {
     type: 'gantt',
     size,
     sizing: rowSizing('gantt', size, {
       chromeH: size.height - band.bodyH,
       minimumRowsH: band.stacked
         ? n * Math.max(STACKED_LANE_FLOOR, input.keyRowHeight) + rows.filter((row) => !row.shared || band.sharedLine).length * band.nameLineH
-        : n * Math.max(28, input.keyRowHeight, maxOf(body.rowLabels.map((label) => label.h + (label.sub ? 2 + label.sub.h : 0) + LABEL_PAD))),
+        : body.rowLabels.reduce((sum, label) => sum + Math.max(MIN_ROW_H, input.keyRowHeight, rowTextFloor(label)), 0),
       naturalRowsH: Math.max(band.naturalRowsH, (input.cardHeight ?? 0) - (size.height - band.bodyH)),
-      minWidth: band.stacked ? size.width - body.inner.w + Math.max(80, band.stackedLineW) : size.width - body.inner.w + body.minimumLabelBandW + 12 + colWs.reduce((sum, width) => sum + width, 0) + (colWs.length ? 4 : 0) + 80 + (laneLabelW && options.mode !== 'compact' ? body.laneGap + laneLabelW : 0),
+      minWidth: band.stacked ? size.width - body.inner.w + Math.max(80, band.stackedLineW) : size.width - body.inner.w + body.minimumLabelBandW + 12 + colWs.reduce((sum, width) => sum + width, 0) + (colWs.length ? body.metaGap : 0) + 80 + (laneLabelW && options.mode !== 'compact' ? body.laneGap + laneLabelW : 0),
     }),
     plot: body.plot,
     scene: [...frame.nodes, ...gridAroundLabels([...input.geometry.nodes, ...input.annotated.nodes], solved.placed, spans), ...labelNodes(env, domain, solved.placed)],
@@ -272,6 +285,8 @@ function assembleGanttGeometry(input: {
     warnings: input.warnings,
     debug: { occupied: input.occupied.snapshot(), decisions: solved.decisions },
   };
+  if (band.stacked) stackedForms.add(assembled);
+  return assembled;
 }
 
 /**
@@ -310,8 +325,6 @@ function commitClaims(occupied: OccupiedIndex, phase: OccupiedIndex): void {
 
 // The registry tries full before compact. Keep that full context so a wider
 // reference does not inherit compact spacing or minimal label density.
-/** The label solver keeps this gap between labels; rows touch, so a row name needs its height plus this gap. */
-const LABEL_PAD = 2;
 const fullCardOptions = new WeakMap<GanttData, GanttOptions>();
 
 /** Rows that retry with stacked milestone flags; in open height, the lane height each needs, and whether unused flag height is already trimmed. */
@@ -368,17 +381,6 @@ function layoutGanttPass(data: GanttData, options: GanttOptions = {}, keyed: Rea
   });
   if (grow !== undefined) return layoutGanttPass(data, { ...options, size: { width: size.width, height: grow } }, keyed, autoHeight, flags);
   const body = ganttBody(env, domain, frame, band, warnings);
-  // Table form: a row whose name and sublabel need more than its pitch is laid out again with that pitch.
-  if (!band.stacked) {
-    const known = (options as { [ROW_TEXT_PITCH]?: ReadonlyMap<string, number> })[ROW_TEXT_PITCH] ?? new Map<string, number>();
-    const grown = new Map(known);
-    body.rowLabels.forEach((label, i) => {
-      const need = label.sub ? label.h + 2 + label.sub.h + 2 * LABEL_PAD : 0;
-      const id = domain.rows[i]!.id;
-      if (need > Math.max(GANTT_ROW_PITCH, known.get(id) ?? 0) + 0.5) grown.set(id, need);
-    });
-    if (grown.size > known.size) return layoutGanttPass(data, { ...options, [ROW_TEXT_PITCH]: grown } as GanttOptions, keyed, autoHeight, flags);
-  }
   // Badges that crowd on the drawn timeline stack up: lay the chart out again with the strip they need.
   const badgeLevelCount = 1 + Math.max(0, ...badgeLevels(env, domain, body.x).values());
   if (badgeLevelCount > ((options as { [BADGE_LEVELS]?: number })[BADGE_LEVELS] ?? 1)) {
@@ -441,7 +443,8 @@ function layoutGanttPass(data: GanttData, options: GanttOptions = {}, keyed: Rea
   // sat in the lane.
   if (body.laneEnabled && !(options as { [NO_LANE]?: true })[NO_LANE]) {
     const hidden = solved.placed.filter((label) => label.hidden).length;
-    const laneUsed = solved.placed.some((label) => label.kind === 'item' && !label.hidden && label.rect.x + label.rect.w > body.bodyX + body.bodyW + 0.5);
+    // A bar name that runs past the plot is no use of the lane: the wider timeline holds it.
+    const laneUsed = solved.placed.some((label) => label.kind === 'item' && !label.hidden && domain.milestones.laneIds.has(label.owner.segmentId ?? '') && label.rect.x + label.rect.w > body.bodyX + body.bodyW + 0.5);
     // Without the lane the timeline is wider: the flags are planned again.
     const wide = layoutGanttPass(data, { ...options, [NO_LANE]: true } as GanttOptions, keyed, autoHeight, { rows: flags.rows });
     const wideHidden = wide.refused ? Infinity : wide.labels.filter((label) => label.hidden).length;
@@ -450,6 +453,7 @@ function layoutGanttPass(data: GanttData, options: GanttOptions = {}, keyed: Rea
     if (wideHidden < hidden || (wideHidden === hidden && (!laneUsed || flagsFit))) return wide;
   }
   pushAll(warnings, solved.warnings);
+  pushAll(warnings, ganttColumnWarnings(env, domain.rows, band.stacked, body.authoredWidths));
   // Content sizing needs the same card-height rule as fill sizing. Compare
   // with the registered wider form, including its key and composed notes.
   const openHeight = autoHeight || (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === false;
@@ -477,8 +481,70 @@ function layoutGanttPass(data: GanttData, options: GanttOptions = {}, keyed: Rea
   return assembleGanttGeometry({ env, domain, frame, band, body, geometry, annotated, solved, occupied, warnings, keyRowHeight, cardHeight, flagRows: flags.rows });
 }
 
-/** Keep clear layouts unchanged; retry only rows whose final layout loses a milestone's identity. */
+/** The labels a column setting must not hide: metadata cells, bar and milestone labels, row names. A stacked cell carries its separator. */
+const printedKey = (label: PlacedLabel): string => `${label.owner.categoryId}|${label.owner.segmentId}|${label.text.replace(/ ·$/, '')}`;
+const isPrinted = (label: PlacedLabel): boolean => !label.hidden && /^(item|col|activity|sublabel):/.test(label.id);
+/** A numbered key's number stands for a milestone label. Printing that label in full loses nothing. */
+const isKeyNumber = (label: PlacedLabel): boolean => label.id.startsWith('item:') && /^\d+$/.test(label.text);
+
+/**
+ * A spec with a column width, alignment or order. Those settings never cost
+ * the reader: the draw must print every label the spec without them prints,
+ * and must fit wherever that spec fits. A setting that fails gives way.
+ */
+function layoutAuthoredColumns(data: GanttData, options: GanttOptions): Geometry<GanttMarks, GanttDerived> {
+  const draw = (plan: GanttColumnPlan): Geometry<GanttMarks, GanttDerived> => layoutGanttLabelled(data, { ...options, [COLUMN_PLAN]: plan } as GanttOptions);
+  const plain = draw({ plain: true });
+  const authored = draw({});
+  const fixedHeight = !heightOmitted(options.size) && (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height !== false;
+  const fitsHeight = (geo: Geometry<GanttMarks, GanttDerived>): boolean => !fixedHeight || geo.size.height >= geo.sizing!.minHeight;
+  const fits = (geo: Geometry<GanttMarks, GanttDerived>): boolean => !geo.refused && geo.size.width >= geo.sizing!.minWidth && fitsHeight(geo);
+  if (!fits(plain)) return authored;
+  const printed = plain.labels.filter((label) => isPrinted(label) && !isKeyNumber(label)).map(printedKey);
+  const keeps = (geo: Geometry<GanttMarks, GanttDerived>): boolean => {
+    const drawn = new Set(geo.labels.filter(isPrinted).map(printedKey));
+    return !geo.refused && printed.every((key) => drawn.has(key));
+  };
+  const stands = (geo: Geometry<GanttMarks, GanttDerived>): boolean => fits(geo) && keeps(geo);
+  if (stands(authored)) return authored;
+  /** The least value in (low, high] whose draw passes; `high` passed already. */
+  const narrowest = (low: number, high: number, plan: (value: number) => GanttColumnPlan, passes: (geo: Geometry<GanttMarks, GanttDerived>) => boolean, last: Geometry<GanttMarks, GanttDerived>): Geometry<GanttMarks, GanttDerived> => {
+    let best = last;
+    while (high - low > 1) {
+      const middle = Math.floor((low + high) / 2);
+      const geo = draw(plan(middle));
+      if (passes(geo)) { high = middle; best = geo; } else low = middle;
+    }
+    return best;
+  };
+  const isStacked = stackedForms.has(plain);
+  // Wrapped names miss a fixed height: the narrowest width that unwraps enough rows, then the stacked form, then the default band.
+  if (options.columnOverrides?.name?.width !== undefined && !fitsHeight(authored)) {
+    const lastStep = data.rows.length - 1;
+    const widest = draw({ nameStep: lastStep });
+    if (fitsHeight(widest)) {
+      const step = narrowest(-1, lastStep, (nameStep) => ({ nameStep }), fitsHeight, widest);
+      if (stands(step)) return step;
+    }
+    if (isStacked) return plain;
+    const stacked = draw({ stacked: true });
+    return stands(stacked) ? stacked : plain;
+  }
+  // The stacked form draws all of it: the table form stands only if it hides nothing.
+  if (isStacked) return plain;
+  // A table that hides a label: the widths give way until the timeline holds every label.
+  const widest = draw({ minimumTimeline: authored.size.width });
+  if (!keeps(widest)) return plain;
+  const capped = narrowest(MINIMUM_TIMELINE, authored.size.width, (minimumTimeline) => ({ minimumTimeline }), keeps, widest);
+  return stands(capped) ? capped : plain;
+}
+
 export function layoutGantt(data: GanttData, options: GanttOptions = {}): Geometry<GanttMarks, GanttDerived> {
+  return columnPlan(options) === undefined && resolveGanttColumns(options).layoutAuthored ? layoutAuthoredColumns(data, options) : layoutGanttLabelled(data, options);
+}
+
+/** Keep clear layouts unchanged; retry only rows whose final layout loses a milestone's identity. */
+function layoutGanttLabelled(data: GanttData, options: GanttOptions = {}): Geometry<GanttMarks, GanttDerived> {
   const first = layoutGanttPass(data, options);
   if (options.labels === false || options.labels?.item === false) return first;
   // This open-height probe reads only width acceptance, not the repaired labels or height.

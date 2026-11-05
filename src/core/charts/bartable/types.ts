@@ -8,6 +8,7 @@ import type { Rect } from '../../geometry';
 import type { Id } from '../../types/cell';
 import type { BaseOptionsFor } from '../../types/options';
 import type { RoundingAdjustment } from '../../shareRounding';
+import type { ColumnOverride } from '../../schema/generatedColumns';
 
 interface BarTableRow {
   id: Id;
@@ -102,17 +103,35 @@ export interface BarTableGrowth {
 interface BarTableCascade {
   /** A computed share column (row over panel total) beside each panel; default true. */
   share?: boolean;
+  /** Row groups only; default true. false: the Total bar keeps the theme total colour, even where it equals a group colour. */
+  totalApart?: boolean;
   growth?: BarTableGrowth;
 }
 
-export interface BarTableOptions extends BaseOptionsFor<'bartable'> {
+export interface BarTableOptions extends Omit<BaseOptionsFor<'bartable'>, 'labels'> {
   /** Closing Total row; default true. */
   total?: boolean;
+  /** Where the Total row stands; default 'bottom'. */
+  totalPosition?: 'top' | 'bottom';
+  /** `point: false` stops the values in the segments and at the bar ends. Number columns, shares, growth and the Total stay. */
+  labels?: { point?: false };
+  /** Width, alignment and head text per column: `label`, a `data.columns` id or a `data.panels` id. */
+  columnOverrides?: Record<string, ColumnOverride>;
+  /** Order of the blocks `numbers` and `panels`. */
+  columnOrder?: string[];
+  /** false: no visible head row, with its height and rule. */
+  columnHeads?: false;
   /**
    * Rows whose combined share of each summed panel prints in a note: the
    * rows' sum over the panel's, at each range end where rows carry ranges.
    */
   combinedShare?: { rows: Id[]; label?: string };
+  /**
+   * Print each part's value inside its segment, where the text and 3 px of padding on each side fit.
+   * Default true. A panel whose format has more than one decimal, and a row with a range, print end labels only.
+   * Refused under variant 'cascade'.
+   */
+  segmentValues?: boolean;
   /**
    * 'panels' (default): one stacked-bar panel per measure. 'cascade': each panel
    * splits its total, a row's bar starts where the row above ended, on a light
@@ -123,6 +142,8 @@ export interface BarTableOptions extends BaseOptionsFor<'bartable'> {
   cascade?: BarTableCascade;
   /** false: each panel scales to its own longest bar; true: one scale for all, panel width follows the panel's longest bar (its total under cascade). Default false, true under cascade. */
   sharedScale?: boolean;
+  /** 'rows' (default): a pinned canvas gives its spare height to the rows, up to 1.25 times the natural pitch, and the bar thickens with them. 'none': rows keep the natural pitch. A theme `space.barRow` fixes the row either way. */
+  heightFill?: 'rows' | 'none';
 }
 
 export interface BarTablePanelDerived {

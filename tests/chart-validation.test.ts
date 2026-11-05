@@ -7,12 +7,128 @@
 
 import { describe, expect, it } from 'vitest';
 import { render } from '../src/cli/render';
-import { canDraw, getChartDefinition, resolveChartRequest } from '../src/index';
+import { layoutDiagram } from '../src/core/charts/diagram/layout';
+import { diagramSceneId } from '../src/core/charts/diagram/ids';
+import { rectLineDistance, type Rect } from '../src/core/geometry';
+import type { DiagramData, DiagramMarks, DiagramOptions, DiagramPolylineRoute } from '../src/core/types/diagram';
+import { canDraw, getChartDefinition, layoutResolvedRequest, measure, renderSvg, resolveChartRequest } from '../src/index';
 import { getFixtures } from '../src/fixtures';
 import { checkedColor } from '../src/core/svg/paint';
 import { compositeColor, contrastRatio } from '../src/core/color';
-import { registerTheme, resolveTheme } from '../src/core/theme';
+import { emphasisWeight, paintColor, registerTheme, resolveTheme, secondaryFont, themeForWidth } from '../src/core/theme';
+import { repaintScene } from '../src/core/repaintGeometry';
+import type { SceneNode } from '../src/core/types/scene';
 import { tableStylesheet } from '../src/react/tablePresentation';
+import { parseJsonPointer, patchApplies, type JsonPatchOperation } from '../src/core/diagnostics/jsonPatch';
+import { parseChartSpec } from '../src/react/parseChartSpec';
+
+describe('converted inputs', () => {
+  const canonical = { type: 'column', data: { categories: [{ id: '2024', label: '2024' }, { id: 'b' }, { id: 'c' }], series: [{ id: '7', values: [120, -3.5, 1000] }] },
+    options: { legend: 'top', variant: 'stacked', sort: { categories: 'desc' }, valueAxis: { show: true, tickStep: 20 } } };
+  const input = () => ({ ...canonical, type: 'CoLuMn', data: { ...canonical.data, categories: [{ id: 2024, label: '2024' }, { id: 'b' }, { id: 'c' }], series: [{ id: 7, values: ['120', '-3.5', '1e3'] }] },
+    options: { legend: 'Top', variant: 'Stacked', sort: { categories: 'DESC' }, valueAxis: { show: 'TRUE', tickStep: '20' } } });
+  const conversions = (body: Record<string, unknown>) => (body.warnings as { code: string; path: string; severity: string; fix: JsonPatchOperation[] }[]).filter(warning => warning.code === 'input-converted');
+  const apply = (spec: unknown, fixes: JsonPatchOperation[]): unknown => {
+    const copy = structuredClone(spec);
+    for (const fix of fixes) {
+      expect(patchApplies(copy, [fix])).toBe(true);
+      const path = parseJsonPointer(fix.path);
+      const parent = path.slice(0, -1).reduce<any>((node, key) => node[key], copy);
+      if (fix.op === 'remove') delete parent[path.at(-1)!];
+      else if ('value' in fix) parent[path.at(-1)!] = fix.value;
+    }
+    return copy;
+  };
+
+  // Numeric values, ids and enum spellings must draw without making callers rewrite clear input.
+  it('converts failed scalar fields with applicable fixes across render, library and React spec validation', async () => {
+    const spec = input();
+    const sent = structuredClone(spec);
+    const result = render({ spec, return: ['svg', 'reading'] }).body;
+    expect(result.ok, JSON.stringify(result.errors)).toBe(true);
+    const warnings = conversions(result);
+    expect(warnings).toHaveLength(11);
+    expect(warnings.every(warning => warning.severity === 'info')).toBe(true);
+    const fixed = apply(spec, warnings.flatMap(warning => warning.fix));
+    expect(fixed).toEqual(canonical);
+    expect(conversions(render({ spec: fixed }).body)).toEqual([]);
+    expect(spec).toEqual(sent);
+    const request = resolveChartRequest(spec as never);
+    expect(request.data).toEqual(canonical.data);
+    expect(request.options.valueAxis).toMatchObject({ show: true, tickStep: 20 });
+    const parsed = await parseChartSpec(spec);
+    expect(parsed.request.type).toBe('column');
+    expect(parsed.request.data).toEqual(canonical.data);
+    expect(parsed.warnings.filter(warning => warning.code === 'input-converted')).toHaveLength(11);
+  });
+
+  // The library path warned that "ValueLine" is drawn as "valueLine" but kept the original text, so the line vanished.
+  it('draws a library annotation whose kind spelling was converted', () => {
+    const request = { type: 'column', data: { categories: ['a', 'b'], series: [{ id: 's', values: [10, 30] }] },
+      annotations: [{ kind: 'ValueLine', value: 20, label: 'Target' }] };
+    const resolved = resolveChartRequest(request as never);
+    expect(resolved.inputWarnings?.some(warning => warning.code === 'input-converted')).toBe(true);
+    expect(resolved.annotations[0]).toMatchObject({ kind: 'valueLine', value: 20 });
+    const laid = layoutResolvedRequest(resolved);
+    expect(laid.refused).toBeFalsy();
+    expect(renderSvg(laid as never, resolved.theme)).toContain('Target');
+  });
+
+  // Separators, units, excess digits and underflow must never produce a guessed or rounded value.
+  it('keeps ambiguous and inexact number strings refused', () => {
+    for (const value of ['1,200', '1.234', '1.234,5', '12%', '$5', '5 m', ' ', '0x10', 'Infinity', 'NaN', '.5', '01', '+5', '1234567890123456', '0.1234567890123456', '1e-999', '1e999']) {
+      const spec = { ...canonical, data: { categories: ['a'], series: [{ id: 's', values: [value] }] } };
+      const result = render({ spec }).body;
+      expect(result.ok, value).toBe(false);
+      expect((result.errors as { code: string }[])[0]?.code).toBe('invalid-data');
+      expect(conversions(result), value).toEqual([]);
+    }
+    const accepted = { ...canonical, data: { categories: ['a'], series: [{ id: 's', values: [' 1.23456789012345e2 '] }] } };
+    expect((resolveChartRequest(accepted as never).data as any).series[0].values).toEqual([Number('1.23456789012345e2')]);
+  });
+
+  // Nested panel conversions must repair the panel the author wrote, including aliases.
+  it('converts a grid panel type and values at their nested source paths', () => {
+    const spec = { type: 'grid', data: { panels: [{ id: 'p', type: 'ProFile', data: { categories: ['a', 'b'], series: [{ id: 's', values: ['120', 90] }] }, options: { legend: 'Top' } }] } };
+    const result = render({ spec }).body;
+    expect(result.ok, JSON.stringify(result.errors)).toBe(true);
+    const warnings = conversions(result);
+    expect(warnings.map(warning => warning.path).sort()).toEqual(['/data/panels/0/type', '/data/panels/0/data/series/0/values/0', '/data/panels/0/options/legend'].sort());
+    expect(render({ spec: apply(spec, warnings.flatMap(warning => warning.fix)) }).body.ok).toBe(true);
+  });
+
+  // Last-year comparisons must use the same numbers and notation as PY while preserving existing aliases.
+  it('draws LY as PY and leaves already accepted scenario spellings unchanged', () => {
+    const spec = (scenario: string) => ({ type: 'kpi', data: { label: 'Revenue', value: 120, delta: { vs: 100, scenario } } });
+    const py = resolveChartRequest(spec('PY') as never);
+    for (const alias of ['LY', 'ly']) {
+      const resolved = resolveChartRequest(spec(alias) as never);
+      expect(resolved.data).toEqual(py.data);
+      expect(resolved.inputWarnings).toEqual([expect.objectContaining({ code: 'input-converted', fix: [{ op: 'replace', path: '/charts/0/data/delta/scenario', value: 'PY' }] })]);
+      expect(render({ spec: spec(alias) }).body.ok).toBe(true);
+    }
+    expect(resolveChartRequest(spec('py') as never).inputWarnings).toEqual(py.inputWarnings);
+    expect(render({ spec: spec('other') }).body.errors).toEqual([expect.objectContaining({ code: 'invalid-scenario' })]);
+  });
+
+  // Enum record keys and tagged option objects must use the same case and scenario conversions as scalar options.
+  it('converts enum record keys and discriminator values without overwriting an authored key', () => {
+    const data = { categories: ['a', 'b'], series: [{ id: 's', scenario: 'PY', values: [120, 90] }] };
+    const spec = { type: 'line', data, options: { scenarioStyle: { ly: { width: 1 } } } };
+    const result = render({ spec }).body;
+    expect(result.ok, JSON.stringify(result.errors)).toBe(true);
+    const warnings = conversions(result);
+    expect(warnings).toEqual([expect.objectContaining({ path: '/options/scenarioStyle/ly', fix: [
+      { op: 'remove', path: '/options/scenarioStyle/ly' }, { op: 'add', path: '/options/scenarioStyle/PY', value: { width: 1 } },
+    ] })]);
+    expect((resolveChartRequest(apply(spec, warnings.flatMap(warning => warning.fix)) as never).options as any).scenarioStyle).toEqual({ PY: { width: 1 } });
+    expect(render({ spec: { ...spec, options: { scenarioStyle: { LY: { width: 1 }, PY: { width: 2 } } } } }).body.ok).toBe(false);
+    const table = { type: 'table', data: { columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'status', kind: 'Status' }], rows: [{ id: 'r', label: 'Item', cells: { status: 'on-track' } }] } };
+    const tagged = render({ spec: table }).body;
+    expect(tagged.ok, JSON.stringify(tagged.errors)).toBe(true);
+    expect(conversions(tagged)).toEqual([expect.objectContaining({ path: '/data/columns/1/kind' })]);
+  });
+});
 
 describe('design system colours', () => {
   const spec = (fill: string, theme: unknown = 'standard') => ({
@@ -102,6 +218,89 @@ describe('design system colours', () => {
 describe('actionable input refusals', () => {
   const bar = { type: 'bar', data: { categories: ['a', 'b'], series: [{ id: 's', values: [1, 2] }] }, options: { title: 'Example' } };
   const errors = (spec: unknown) => (render({ spec }).body.errors ?? []) as { code: string; path: string; message: string; suggest?: string }[];
+  const architectureNode = (id: string, fields: Partial<DiagramData['nodes'][number]> = {}): DiagramData['nodes'][number] => ({ id, kind: 'step', shape: { kind: 'rectangle' }, label: id, ...fields });
+  const architectureLane = { id: 'l', label: 'Layer', orientation: 'horizontal' as const };
+  const architectureLanes = { variant: 'architecture', flow: 'lanes' } as const;
+
+  // Architecture metadata and edge labels must stay quieter than node names without losing contrast on solid fills.
+  it('sets Brevinth metadata and edge labels in muted secondary type and centres the node text block', () => {
+    const data: DiagramData = {
+      nodes: [
+        architectureNode('gateway', { label: 'Brevinth gateway', secondaryLabel: 'Event intake' }),
+        architectureNode('store', { label: 'Event store', secondaryLabel: 'Retained events' }),
+      ],
+      edges: [{ id: 'send', source: { nodeId: 'gateway' }, target: { nodeId: 'store' }, label: 'Sends events' }],
+    };
+    const options: DiagramOptions = { variant: 'architecture', highlight: 'gateway', size: { width: 720, height: 300 } };
+    const themeRef = { preset: 'standard', overrides: { type: { secondary: { family: 'Geist', size: 11, weight: 600 } } } };
+    const input = { type: 'diagram', data, options, theme: themeRef };
+    const theme = themeForWidth(resolveChartRequest(input).theme, 720);
+    const geometry = measure(input).geometry!;
+    const text = (id: string, scene = geometry.scene) => scene.find(node => node.t === 'text' && node.id === `label:${id}`) as Extract<SceneNode, { t: 'text' }>;
+    const name = text('node-label:store');
+    const metadata = text('secondary-label:store');
+    const edge = text('edge-label:send');
+    expect(name.font).toEqual({ family: theme.type.family, ...theme.type.label, weight: emphasisWeight(theme) });
+    expect(metadata.font).toEqual({ ...secondaryFont(theme), weight: 400 });
+    expect(edge.font).toEqual(metadata.font);
+    expect(metadata.ink).toMatchObject({ token: 'inkMuted' });
+    expect(edge.ink).toEqual({ token: 'inkMuted' });
+    expect(edge.lines.join(' ')).toBe('Sends events');
+    const primary = geometry.labels.find(label => label.id === 'node-label:store')!;
+    const second = geometry.labels.find(label => label.id === 'secondary-label:store')!;
+    const node = (geometry.marks.nodes as DiagramMarks['nodes']).find(node => node.id === 'store')!;
+    expect(second.hidden).toBeUndefined();
+    expect(second.rect.h).toBeCloseTo(metadata.font.size * (metadata.font.lineHeight ?? 1.2), 0);
+    expect(second.rect.y - primary.rect.y - primary.rect.h).toBeCloseTo(0.5 * Math.max(4, theme.space.labelPad), 2);
+    expect((primary.rect.y + second.rect.y + second.rect.h) / 2).toBeCloseTo(node.rect.y + node.rect.h / 2, 2);
+    const rendered = render({ spec: input, return: ['svg'] });
+    expect(rendered.body.ok, JSON.stringify(rendered.body.errors)).toBe(true);
+    const drawnLabel = (rendered.body.svg as string).match(/<text\b[^>]*id="[^"]*label:secondary-label:store"[^>]*>/)?.[0];
+    expect(drawnLabel).toContain(`font-size="${metadata.font.size}"`);
+    expect(drawnLabel).toContain('font-weight="400"');
+    expect(drawnLabel).toContain(`fill="${paintColor(theme, metadata.ink)}"`);
+    for (const preset of ['standard', 'standard-dark']) {
+      const active = themeForWidth(resolveChartRequest({ ...input, theme: { ...themeRef, preset } }).theme, 720);
+      const repainted = repaintScene(geometry.scene, active);
+      const fresh = measure({ ...input, theme: { ...themeRef, preset } }).geometry!;
+      expect(paintColor(active, text('secondary-label:store', repainted).ink)).toBe(active.color.inkMuted);
+      expect(paintColor(active, text('edge-label:send', repainted).ink)).toBe(active.color.inkMuted);
+      const inverse = paintColor(active, text('node-label:gateway', fresh.scene).ink);
+      expect(paintColor(active, text('secondary-label:gateway', fresh.scene).ink)).toBe(inverse);
+      expect(paintColor(active, text('secondary-label:gateway', repainted).ink)).toBe(inverse);
+    }
+  });
+
+  // A channel label beside an edge label must leave enough space that the labels do not read as one phrase.
+  it('keeps architecture channel and edge labels apart beside their edges', () => {
+    const fixture = getFixtures('diagram').find((item) => item.id === 'protected-request')!;
+    const options = { ...fixture.options, size: { width: 480 } };
+    const geometry = measure({ type: 'diagram', data: fixture.data, options }).geometry!;
+    const channel = geometry.labels.find((label) => label.id === 'channel-label:transit')!;
+    const response = geometry.labels.find((label) => label.id === 'edge-label:answer')!;
+    const theme = themeForWidth(resolveChartRequest({ type: 'diagram', data: fixture.data, options }).theme, 480);
+    expect(channel.hidden).toBeUndefined();
+    expect(response.hidden).toBeUndefined();
+    expect(response.rect.x - channel.rect.x - channel.rect.w).toBeGreaterThanOrEqual(2 * Math.max(4, theme.space.labelPad));
+    const edge = (geometry.marks.edges as DiagramMarks['edges']).find((edge) => edge.id === 'answer')!;
+    expect(rectLineDistance(response.rect, (edge.route as DiagramPolylineRoute).points)).toBeLessThanOrEqual(2 * Math.max(4, theme.space.labelPad));
+  });
+
+  // A policy strip box rounded down to the half pixel ended short of its own text, so the second line was dropped at 320 px.
+  it('keeps the second line of a policy strip item at 320 px', () => {
+    const data: DiagramData = {
+      nodes: [
+        architectureNode('audit', { label: 'Audit', secondaryLabel: 'Every request', groupId: 'pol' }),
+        architectureNode('gateway', { label: 'Gateway', secondaryLabel: 'Brevinth edge' }),
+        architectureNode('orders', { label: 'Orders', secondaryLabel: 'Brevinth core' }),
+      ],
+      edges: [{ id: 'send', source: { nodeId: 'gateway' }, target: { nodeId: 'orders' } }],
+      groups: [{ id: 'pol', title: 'Policy', kind: 'policy' }],
+    };
+    const result = render({ spec: { type: 'diagram', data, options: { variant: 'architecture', title: 'Every request passes the audit before it reaches an order', size: { width: 320 } } } });
+    expect(result.body.ok).toBe(true);
+    expect((result.body.warnings as { code: string }[]).map(w => w.code)).not.toContain('diagram-secondary-label-unplaced');
+  });
 
   // An unknown theme colour key must name the supported roles so the caller can repair it.
   it('lists the accepted theme colour keys', () => {
@@ -120,6 +319,224 @@ describe('actionable input refusals', () => {
     ] }, options: { unit: 'EUR', secondaryAxis: { acknowledge: true }, axisTitles: { secondary: 'Other units' } } });
     expect(secondary).toMatchObject({ code: 'unit-conflict', path: '/data/series/2/unit', suggest: expect.stringContaining('secondary series one unit') });
     expect(secondary?.suggest).not.toContain('options.unit');
+  });
+
+  // Unlike units on one value axis make grouped and stacked bars or columns unreadable.
+  it('refuses conflicting units on bar and column value axes', () => {
+    const series = [
+      { id: 'reference', role: 'reference', unit: 'USD', values: [9] },
+      { id: 'first', unit: 'EUR k', values: [100] },
+      { id: 'implicit', values: [20] },
+      { id: 'same', unit: 'EURk', values: [10] },
+      { id: 'conflict', unit: 'x', values: [2] },
+      { id: 'later', unit: '%', values: [3] },
+    ];
+    const data = { categories: ['a'], series };
+    for (const type of ['bar', 'column']) {
+      for (const variant of ['grouped', 'stacked']) {
+        const options = { variant, sort: { segments: 'reverse' } };
+        const result = render({ spec: { type, data, options } }).body;
+        expect(result.ok).toBe(false);
+        expect(result.errors).toEqual(expect.arrayContaining([expect.objectContaining({
+          code: 'unit-conflict', path: '/data/series/4/unit',
+          message: expect.stringContaining("series 'conflict'"),
+          suggest: expect.stringMatching(/give the series one unit.*own charts/),
+        })]));
+        const layout = getChartDefinition(type)!.layout(data, options);
+        expect(layout.warnings).toEqual(expect.arrayContaining([expect.objectContaining({
+          code: 'unit-conflict', severity: 'error', field: ['data', 'series', 4, 'unit'],
+        })]));
+        const accepted = render({ spec: { type, data: { ...data, series: series.slice(0, 4) }, options: { ...options, unit: 'EURk' } } }).body;
+        expect(accepted.ok).toBe(true);
+        const chartUnit = render({ spec: { type, data, options: { ...options, unit: 'x' } } }).body;
+        expect(chartUnit.ok).toBe(false);
+        expect(chartUnit.errors).toEqual(expect.arrayContaining([expect.objectContaining({
+          code: 'unit-conflict', path: '/data/series/1/unit', suggest: expect.stringContaining('options.unit'),
+        })]));
+      }
+      expect(render({ spec: { type, data, options: { variant: 'stacked100' } } }).body.ok).toBe(true);
+    }
+    expect(render({ spec: { type: 'column', data, options: { valueAxis: { percent: true } } } }).body.ok).toBe(true);
+    expect(render({ spec: { type: 'bar', data: { categories: ['a'], series: [
+      { id: 'range', unit: 'EUR', values: [{ number: 2, range: { low: 1, high: 3 } }] },
+    ] }, options: { variant: 'football-field', unit: '%' } } }).body.ok).toBe(true);
+    expect(render({ spec: { type: 'bar', data: { categories: ['a'], series: [
+      { id: 'low', unit: 'EUR', values: [1] }, { id: 'high', unit: '%', values: [3] },
+    ] }, options: { variant: 'tornado', baseValue: 2, tornado: { low: 'low', high: 'high' } } } }).body.ok).toBe(true);
+  });
+
+  // Two nodes in one architecture cell have no drawing, so the refusal must name both and the fix.
+  it('refuses two architecture nodes in one lane and track', () => {
+    const node = (id: string) => ({ id, kind: 'step', shape: { kind: 'rectangle' }, label: id, laneId: 'l', track: 't' });
+    expect(() => getChartDefinition('diagram')!.layout({ nodes: [node('a'), node('b')], lanes: [{ id: 'l', label: 'Layer', orientation: 'horizontal' }] }, { variant: 'architecture', flow: 'lanes' }))
+      .toThrow(expect.objectContaining({ code: 'diagram-track-conflict', message: expect.stringContaining("'a' and 'b'") }));
+  });
+
+  // An ungrouped node without a lane was never placed, so an edge on it crashed the layout.
+  it('refuses a lane node without a lane when there is no policy strip', () => {
+    const data = { nodes: [architectureNode('a'), architectureNode('b', { laneId: 'l' })], lanes: [architectureLane],
+      edges: [{ id: 'e', source: { nodeId: 'a' }, target: { nodeId: 'b' } }] };
+    expect(() => getChartDefinition('diagram')!.layout(data, architectureLanes))
+      .toThrow(expect.objectContaining({ code: 'invalid-membership', path: 'nodes[a].laneId', suggest: expect.stringContaining('laneId') }));
+    const withPolicy = { nodes: [architectureNode('a', { groupId: 'p' }), architectureNode('b', { laneId: 'l' })], lanes: [architectureLane],
+      groups: [{ id: 'p', title: 'Policy', kind: 'policy' }] };
+    expect(() => getChartDefinition('diagram')!.layout(withPolicy, architectureLanes)).not.toThrow();
+  });
+
+  // A callout on an empty lane zone crashed because the zone has no frame.
+  it('refuses a callout on an empty zone in lanes flow', () => {
+    const data = { nodes: [architectureNode('a', { laneId: 'l' })], lanes: [architectureLane],
+      groups: [{ id: 'z', title: 'Zone' }], callouts: [{ id: 'c', target: { groupId: 'z' } }] };
+    expect(() => getChartDefinition('diagram')!.layout(data, architectureLanes))
+      .toThrow(expect.objectContaining({ code: 'invalid-membership', path: 'callouts[c].target', suggest: expect.stringContaining('add a node') }));
+    expect(() => getChartDefinition('diagram')!.layout({ ...data, groups: [{ id: 'z', title: 'Policy', kind: 'policy' }] }, architectureLanes)).not.toThrow();
+    expect(() => getChartDefinition('diagram')!.layout({ ...data, nodes: [architectureNode('a')], lanes: [] }, { variant: 'architecture' })).not.toThrow();
+  });
+
+  // Every other variant has no panel to draw, so an inset there would vanish without a word.
+  it('refuses an inset outside the architecture variant', () => {
+    const data = { nodes: [architectureNode('a')], inset: { title: 'Levels', rows: [{ label: 'Loads', value: '3' }] } };
+    expect(() => getChartDefinition('diagram')!.layout(data, { variant: 'hierarchy' }))
+      .toThrow(expect.objectContaining({ code: 'invalid-membership', path: 'inset' }));
+  });
+
+  // The panel moves under the exhibit at narrow widths, and its text must not land on the nodes.
+  it('keeps the inset clear of the exhibit at both placements', () => {
+    const data = { nodes: [architectureNode('a')], inset: { title: 'Levels', kpis: [{ value: '99%', label: 'On time' }], rows: [{ label: 'Loads', value: '3' }] } };
+    for (const width of [960, 480]) {
+      const { marks, labels } = layoutDiagram(data, { variant: 'architecture', size: { width } } as DiagramOptions);
+      const node = marks.nodes[0]!.rect;
+      const inset = labels.filter((label) => label.id.startsWith('inset-label:'));
+      expect(inset.filter((label) => !label.hidden)).toHaveLength(5);
+      expect(inset.every((label) => label.rect.x >= node.x + node.w || label.rect.y >= node.y + node.h)).toBe(true);
+    }
+  });
+
+  // A row value wider than the panel left its label no room and ran into the exhibit.
+  it('keeps a row label beside a value wider than the inset', () => {
+    const data = { nodes: [architectureNode('a')], inset: { title: 'Levels', rows: [{ label: 'Loads', value: '１'.repeat(24) }] } };
+    const { labels } = layoutDiagram(data, { variant: 'architecture', size: { width: 960 } } as DiagramOptions);
+    const title = labels.find((label) => label.id === 'inset-label:title')!;
+    const name = labels.find((label) => label.id === 'inset-label:row:0:label')!;
+    const value = labels.find((label) => label.id === 'inset-label:row:0:value')!;
+    expect(title.rect.x).toBeGreaterThan(480);
+    expect(name.hidden).toBeUndefined();
+    expect(value.hidden).toBeUndefined();
+    expect(value.rect.x).toBeGreaterThanOrEqual(name.rect.x + name.rect.w);
+  });
+
+  // A policy node assigned to a lane was placed outside its policy strip without a warning.
+  it('refuses a policy node assigned to a lane', () => {
+    const data = { nodes: [architectureNode('p', { groupId: 'policy', laneId: 'l' }), architectureNode('a', { laneId: 'l' })], lanes: [architectureLane],
+      groups: [{ id: 'policy', title: 'Policy', kind: 'policy' }] };
+    expect(() => getChartDefinition('diagram')!.layout(data, architectureLanes))
+      .toThrow(expect.objectContaining({ code: 'invalid-membership', path: 'nodes[p].laneId', suggest: expect.stringContaining('remove laneId') }));
+  });
+
+  // A protected lane zone's background covered its inner frame and hid the double border.
+  it('draws a protected lane zone frame over its background', () => {
+    const data = { nodes: [architectureNode('a', { laneId: 'l', groupId: 'z' })], lanes: [architectureLane], groups: [{ id: 'z', title: 'Zone', protected: true }] };
+    const { scene } = layoutDiagram(data, architectureLanes);
+    const background = scene.findIndex((item) => item.id === diagramSceneId('group', 'z'));
+    const inner = scene.findIndex((item) => item.id === diagramSceneId('protected', 'z'));
+    expect(background).toBeGreaterThanOrEqual(0);
+    expect(inner).toBeGreaterThan(background);
+  });
+
+  // Two callouts on one target overlap and hide one number even on a larger canvas.
+  it('refuses repeated callout targets by node, edge and zone', () => {
+    const data = { nodes: [architectureNode('same'), architectureNode('b', { groupId: 'same' })],
+      groups: [{ id: 'same', title: 'Zone' }], edges: [{ id: 'same', source: { nodeId: 'same' }, target: { nodeId: 'b' } }] };
+    const targets = [{ nodeId: 'same' }, { edgeId: 'same' }, { groupId: 'same' }];
+    for (const target of targets) {
+      const callouts = [{ id: 'one', target }, { id: 'two', target }];
+      expect(() => getChartDefinition('diagram')!.layout({ ...data, callouts }, { variant: 'architecture' }))
+        .toThrow(expect.objectContaining({ code: 'invalid-membership', path: 'callouts[two].target', suggest: expect.stringContaining('merge the callout text') }));
+    }
+    const callouts = targets.map((target, index) => ({ id: String(index), target }));
+    expect(() => getChartDefinition('diagram')!.layout({ ...data, callouts }, { variant: 'architecture' })).not.toThrow();
+  });
+
+  // Two channels with one id emit one scene id twice, which crashes the React renderer.
+  it('refuses two diagram channels with one id', () => {
+    const node = (id: string) => ({ id, kind: 'step', shape: { kind: 'rectangle' }, label: id });
+    const [error] = errors({ type: 'diagram', data: { nodes: [node('a'), node('b')], edges: [{ id: 'e', source: { nodeId: 'a' }, target: { nodeId: 'b' } }],
+      channels: [{ id: 'c', edgeIds: ['e'], label: 'One' }, { id: 'c', edgeIds: ['e'], label: 'Two' }] }, options: { variant: 'architecture' } });
+    expect(error).toMatchObject({ path: '/data/channels/1/id' });
+  });
+
+  // A lane label wider than the plot left no room for nodes, and layout threw a TypeError.
+  it('keeps room for nodes beside a long unbroken architecture lane label', () => {
+    const layout = layoutDiagram({ nodes: [{ id: 'a', kind: 'step', shape: { kind: 'rectangle' }, label: 'A', laneId: 'l' }], lanes: [{ id: 'l', label: 'W'.repeat(100), orientation: 'horizontal' }] } as DiagramData,
+      { variant: 'architecture', flow: 'lanes', size: { width: 600, height: 540 } } as DiagramOptions);
+    expect(layout.marks.nodes[0]!.rect.w).toBeGreaterThan(300);
+  });
+
+  // A narrow architecture lane hid its zone name and placed a return label closer to another edge.
+  it('keeps a zone name and its return label readable', () => {
+    const fixture = getFixtures('diagram').find((item) => item.id === 'journey-attribution')!;
+    const layout = measure({ type: 'diagram', data: fixture.data, options: { ...fixture.options, size: { width: 480 } }, theme: 'notation' }).geometry!;
+    const group = layout.labels.find((label) => label.id === 'group-label:personal');
+    expect(group?.text).toBe('Personal data');
+    expect(group?.hidden).toBeUndefined();
+    const label = layout.labels.find((item) => item.id === 'edge-label:loop')!;
+    expect(label.hidden).toBeUndefined();
+    const edges = layout.marks.edges as DiagramMarks['edges'];
+    const own = edges.find((edge) => edge.id === 'loop')!;
+    const other = edges.filter((edge) => edge.id !== 'loop');
+    const distance = (edge: typeof own) => rectLineDistance(label.rect, (edge.route as DiagramPolylineRoute).points);
+    expect(distance(own)).toBeLessThan(Math.min(...other.map(distance)));
+  });
+
+  // Many unlike edges between two nodes pushed their ends past the node sides, and the lines floated.
+  it('keeps every architecture edge end on its node', () => {
+    const node = (id: string) => ({ id, kind: 'step', shape: { kind: 'rectangle' }, label: id });
+    const roles = ['primary', 'secondary', 'muted', 'accent'];
+    const edges = roles.flatMap((role) => ['solid', 'dashed', 'dotted', 'solid'].map((dash, index) => ({ id: `${role}${index}`, source: { nodeId: 'a' }, target: { nodeId: 'b' }, role, dash, weight: index === 3 ? 'strong' : 'normal' })));
+    const { marks } = layoutDiagram({ nodes: [node('a'), node('b')], edges } as DiagramData, { variant: 'architecture', size: { width: 960, height: 1000 } } as DiagramOptions);
+    const [a, b] = marks.nodes.map((item) => item.rect) as [Rect, Rect];
+    const on = (point: { x: number; y: number }, rect: Rect) => point.x >= rect.x && point.x <= rect.x + rect.w && point.y >= rect.y && point.y <= rect.y + rect.h;
+    for (const edge of marks.edges) {
+      const { points } = edge.route as DiagramPolylineRoute;
+      expect(on(points[0]!, a)).toBe(true);
+      expect(on(points.at(-1)!, b)).toBe(true);
+    }
+  });
+
+  // Two zones that hold each other have no outer frame, and the parent walk would never end.
+  it('refuses a cycle in nested architecture zones', () => {
+    const data = { nodes: [{ id: 'a', kind: 'step', shape: { kind: 'rectangle' }, label: 'A', groupId: 'x' }],
+      groups: [{ id: 'x', title: 'X', parentId: 'y' }, { id: 'y', title: 'Y', parentId: 'x' }] };
+    expect(() => getChartDefinition('diagram')!.layout(data, { variant: 'architecture' }))
+      .toThrow(expect.objectContaining({ code: 'diagram-group-cycle' }));
+  });
+
+  // A mistyped highlight would mute the whole exhibit and emphasize nothing.
+  it('refuses a highlight id that names no node or edge', () => {
+    const data = { nodes: [{ id: 'a', kind: 'step', shape: { kind: 'rectangle' }, label: 'A' }] };
+    expect(() => getChartDefinition('diagram')!.layout(data, { variant: 'architecture', highlight: 'nope' }))
+      .toThrow(expect.objectContaining({ code: 'invalid-membership', message: expect.stringContaining("'nope'") }));
+  });
+
+  // A self-loop or a zone end that floats off its target claims a link the diagram does not have.
+  it('ends a self-loop on its node and a zone edge on the frame', () => {
+    const node = (id: string, groupId?: string) => ({ id, kind: 'step', shape: { kind: 'rectangle' }, label: id, groupId });
+    const edges = [{ id: 'loop', source: { nodeId: 'a' }, target: { nodeId: 'a' } }, { id: 'zone', source: { nodeId: 'a' }, target: { groupId: 'z' } }];
+    const { marks } = layoutDiagram({ nodes: [node('a'), node('b', 'z')], groups: [{ id: 'z', title: 'Zone' }], edges } as DiagramData, { variant: 'architecture', size: { width: 960, height: 500 } } as DiagramOptions);
+    const a = marks.nodes.find((item) => item.id === 'a')!.rect;
+    const frame = marks.groups[0]!.bounds;
+    const on = (point: { x: number; y: number }, rect: Rect) => point.x >= rect.x && point.x <= rect.x + rect.w && point.y >= rect.y && point.y <= rect.y + rect.h;
+    const points = (id: string) => (marks.edges.find((edge) => edge.id === id)!.route as DiagramPolylineRoute).points;
+    expect(on(points('loop')[0]!, a) && on(points('loop').at(-1)!, a)).toBe(true);
+    expect(points('zone').at(-1)!.x).toBe(frame.x);
+  });
+
+  // The key must show what the nodes wear, and architecture draws structural nodes on the background.
+  it('keys architecture nodes with the paints they wear', () => {
+    const node = (id: string, role: string) => ({ id, kind: 'step', shape: { kind: 'rectangle' }, label: id, role });
+    const layout = layoutDiagram({ nodes: [node('a', 'primary'), node('b', 'secondary')], key: [{ role: 'primary', label: 'One' }, { role: 'secondary', label: 'Two' }] } as DiagramData, { variant: 'architecture' } as DiagramOptions);
+    const swatches = layout.scene.filter((item) => item.part === 'swatch');
+    expect(swatches.map((item) => (item as { pattern?: string }).pattern)).toEqual(['hollow', 'hollow']);
   });
 
   // A diagram kind refused by its variant must name the kinds that variant can place.
@@ -155,11 +572,11 @@ describe('actionable input refusals', () => {
     expect(wrongNumber[0]?.path).toBe('/data/series/0/values/0/number');
   });
 
-  // A dimswitch format without digits must refuse at its authored field before compile runs.
+  // An unrecognized dimswitch format must refuse at its authored field before compile runs.
   it('validates the dimswitch measure format before layout', () => {
     const [error] = errors({ type: 'dimswitch', data: {
       dimension: { label: 'Group', total: { id: 'total', label: 'Total' }, members: [], headline: ['n'] },
-      measures: [{ id: 'n', label: 'Count', value: { field: 'n' }, format: 'USD' }],
+      measures: [{ id: 'n', label: 'Count', value: { field: 'n' }, format: 'abc' }],
       periods: [{ id: 'range', label: 'Range', kind: 'range' }, { id: 'prior', label: 'Prior', kind: 'prior' }, { id: 'p', label: 'Period' }],
       facts: ['range', 'prior', 'p'].map(periodId => ({ memberId: 'total', periodId, sums: { n: 2 } })),
     } });
@@ -298,16 +715,61 @@ describe('a theme given as preset and overrides', () => {
   });
 });
 
-describe('legend values that draw nothing on a slope chart ', () => {
-  it('refuses none and auto with the remove patch and keeps the values that draw a key', () => {
-    const errors = (legend: unknown) => (render({ spec: { type: 'slope', data: {
+describe('ignored options', () => {
+  // A shared options block must survive a type switch.
+  it('draws with unused settings removed and keeps number and scale refusals', () => {
+    const data = { categories: ['First', 'Second', 'Third'], series: [{ id: 'north', label: 'North', values: [10, 16, 12] }] };
+    const draw = (type: string, options: object, chartData: unknown = data) => render({ spec: { type, data: chartData, options }, return: ['svg'] }).body;
+    const ignored = (body: ReturnType<typeof draw>) => (body.warnings as { code: string; severity: string; path: string; fix?: unknown }[])
+      .filter(warning => warning.code === 'option-ignored');
+    const lineOptions = { sort: { categories: 'desc' }, topN: { n: 1 }, bandFraction: 0.4, secondaryAxis: { acknowledge: true }, animate: true };
+    const untouched = structuredClone(lineOptions);
+    const line = draw('line', lineOptions);
+    expect(line.ok, JSON.stringify(line.errors)).toBe(true);
+    expect(ignored(line)).toHaveLength(5);
+    for (const key of Object.keys(lineOptions)) {
+      expect(ignored(line)).toContainEqual(expect.objectContaining({ severity: 'warn', path: `/options/${key}`, fix: [{ op: 'remove', path: `/options/${key}` }] }));
+    }
+    expect(line.svg).toBe(draw('line', {}).svg);
+    expect(lineOptions).toEqual(untouched);
+
+    const pie = draw('pie', { valueAxis: { show: false } });
+    expect(pie.ok, JSON.stringify(pie.errors)).toBe(true);
+    expect(ignored(pie)).toMatchObject([{ severity: 'info', path: '/options/valueAxis/show', fix: [{ op: 'remove', path: '/options/valueAxis/show' }] }]);
+    const scale = draw('pie', { valueAxis: { min: 0 } });
+    expect(scale.ok).toBe(false);
+    expect(scale.errors).toContainEqual(expect.objectContaining({ code: 'invalid-options', path: '/options/valueAxis' }));
+    const gridData = { panels: [{ id: 'share', type: 'pie', data, options: { valueAxis: { show: false } } }] };
+    const grid = draw('grid', {}, gridData);
+    expect(grid.ok, JSON.stringify(grid.errors)).toBe(true);
+    expect(ignored(grid)).toMatchObject([{ severity: 'info', path: '/data/panels/0/options/valueAxis/show' }]);
+    expect(grid.svg).toBe(draw('grid', {}, { panels: [{ ...gridData.panels[0], options: {} }] }).svg);
+
+    const boxData = { groups: [{ id: 'north', label: 'North', observations: [2, 4, 6, 8, 10, 12] }] };
+    for (const [type, chartData] of [['slope', { ...data, categories: ['2024', '2025'], series: [{ id: 'north', label: 'North', values: [10, 12] }] }], ['box', boxData]] as const) {
+      const result = draw(type, { legend: 'none' }, chartData);
+      expect(result.ok, JSON.stringify(result.errors)).toBe(true);
+      expect(ignored(result)).toMatchObject([{ severity: 'info', path: '/options/legend' }]);
+    }
+
+    for (const type of ['bar', 'column']) {
+      const stack = draw(type, { variant: 'stacked', valueLabels: 'last' });
+      expect(stack.ok, JSON.stringify(stack.errors)).toBe(true);
+      expect(ignored(stack)).toMatchObject([{ severity: 'warn', path: '/options/valueLabels', fix: [{ op: 'remove', path: '/options/valueLabels' }] }]);
+      expect(stack.svg).toBe(draw(type, { variant: 'stacked' }).svg);
+    }
+  });
+
+  it('ignores none and auto on slope with the remove patch and keeps the values that draw a key', () => {
+    const body = (legend: unknown) => render({ spec: { type: 'slope', data: {
       categories: ['2024', '2025'], series: [{ id: 'a', label: 'North', values: [10, 12] }, { id: 'b', label: 'South', values: [8, 7] }],
-    }, options: { title: 'Share', legend } } }).body.errors ?? []) as { path: string; fix?: unknown }[];
-    expect([errors('none')[0], errors('auto')[0], errors('top'), errors('bottom')]).toMatchObject([
-      { path: '/options/legend', fix: [{ op: 'remove', path: '/options/legend' }] },
-      { path: '/options/legend', fix: [{ op: 'remove', path: '/options/legend' }] },
-      [], [],
-    ]);
+    }, options: { title: 'Share', legend } } }).body;
+    for (const legend of ['none', 'auto']) {
+      const result = body(legend);
+      expect(result.ok, JSON.stringify(result.errors)).toBe(true);
+      expect(result.warnings).toContainEqual(expect.objectContaining({ code: 'option-ignored', severity: 'info', path: '/options/legend', fix: [{ op: 'remove', path: '/options/legend' }] }));
+    }
+    for (const legend of ['top', 'bottom', 'right', 'left', { position: 'top' }]) expect(body(legend).ok).toBe(true);
   });
 });
 

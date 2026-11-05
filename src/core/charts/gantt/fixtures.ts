@@ -281,6 +281,8 @@ export const fixtures: Fixture<GanttData, GanttOptions>[] = [
       source: 'Illustrative launch plan; each phase is anchored to the one before it',
       today: '2026-05-06',
       weekends: true,
+      rowTint: true,
+      theme: { preset: 'boardroom', overrides: { surface: { ganttRowTint: 0.25 } } },
     },
   },
   {
@@ -860,5 +862,51 @@ fixtures.push({
   },
   "options": {"title": "Data programme runs to November", "source": "Invented data", "size": {"width": 900}}
 });
+
+/** An invented plan with an owner and a status column, for the column settings. */
+const columnPlan: GanttData = {
+  rows: [
+    { id: 'scope', label: 'Scope', cols: ['Ana', { text: 'Done', tone: 'good' }], items: [{ id: 'scope-bar', kind: 'bar', start: '2026-01-12', end: '2026-02-27', label: 'Scope' }] },
+    { id: 'build', label: 'Build', cols: ['Ben', { text: 'On track', tone: 'neutral' }], items: [{ id: 'build-bar', kind: 'bar', start: '2026-02-16', end: '2026-05-15', label: 'Build' }] },
+    { id: 'pilot', label: 'Pilot', cols: ['Cleo', { text: 'At risk', tone: 'warn' }], items: [{ id: 'pilot-bar', kind: 'bar', start: '2026-05-04', end: '2026-06-26', label: 'Pilot wave' }] },
+    { id: 'launch', label: 'Launch', cols: ['Dev', { text: 'Not started', tone: 'neutral' }], items: [{ id: 'launch-bar', kind: 'bar', start: '2026-06-15', end: '2026-07-31', label: 'Launch' }, { id: 'launch-day', kind: 'milestone', start: '2026-07-31', label: 'Go-live' }] },
+  ],
+};
+
+fixtures.push(
+  {
+    id: 'column-overrides',
+    title: 'Widths, alignment and heads set per column: a wide name column, the owner flush right and a renamed status head',
+    kind: 'example',
+    data: columnPlan,
+    options: {
+      title: 'Launch lands at the end of July',
+      subtitle: { measure: 'Launch plan', period: 'H1 2026' },
+      source: 'Invented data',
+      size: { width: 960 },
+      colHeaders: ['Owner', 'Status'],
+      columnOverrides: {
+        name: { width: 180, label: 'Workstream' },
+        meta0: { width: 90, align: 'right', headAlign: 'right' },
+        meta1: { width: 120, label: 'Health' },
+      },
+    },
+  },
+  {
+    id: 'meta-after-plot',
+    title: 'Owner and status columns on the far side of the bars',
+    kind: 'example',
+    data: columnPlan,
+    options: {
+      title: 'Launch lands at the end of July',
+      subtitle: { measure: 'Launch plan', period: 'H1 2026' },
+      source: 'Invented data',
+      size: { width: 960 },
+      rowTint: true,
+      colHeaders: ['Owner', 'Status'],
+      columnOrder: ['plot', 'meta'],
+    },
+  },
+);
 
 registerFixtures('gantt', fixtures);

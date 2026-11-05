@@ -78,7 +78,9 @@ import {
   normalizeGridData,
   parseGridLegendPanelData,
   parseGridTextPanelData,
+  type ExplicitGridData,
   type GridInput,
+  type GridThemeFacts,
   type GridLayoutOptions,
   type GridPanelSpec,
   type GridTrackScope,
@@ -133,6 +135,30 @@ function assertTrackLimits(options: GridLayoutOptions, panels: readonly GridPane
   });
 }
 
+/**
+ * Normalizes grid data with the facts of the themes the panels render in: a
+ * panel's own `options.theme` replaces the grid's. A theme that does not
+ * resolve reports neutral facts here and fails where the panel is laid out.
+ */
+export function normalizeGridWithTheme(data: unknown, options: GridLayoutOptions): ExplicitGridData {
+  const facts = new Map<unknown, GridThemeFacts>();
+  const themeFacts = (panelTheme: unknown): GridThemeFacts => {
+    const ref = panelTheme ?? options.theme;
+    let found = facts.get(ref);
+    if (!found) {
+      try {
+        const theme = resolveTheme(ref as ThemeRef);
+        found = { seriesCount: theme.color.series.length, stylesSeries: theme.marks?.comboLine === 'ink' || theme.marks?.comboColumnTint !== undefined };
+      } catch {
+        found = { seriesCount: Infinity, stylesSeries: false };
+      }
+      facts.set(ref, found);
+    }
+    return found;
+  };
+  return normalizeGridData(data, { palette: options.palette, themeFacts });
+}
+
 export function layoutGrid(
   data: GridInput,
   options: GridLayoutOptions = {},
@@ -157,7 +183,7 @@ export function layoutGrid(
     return withWarnings(layoutMetricStack(data, options), formatWarnings);
   }
   if (options.stack) stackError('data', 'Metric stack mode needs shared categories and measures');
-  const normalized = normalizeGridData(data);
+  const normalized = normalizeGridWithTheme(data, options);
   requireChartCores(normalized.panels.map((panel) => panel.type), (type) => getChart(type) !== undefined);
   assertTrackLimits(options, normalized.panels);
   normalized.panels = normalized.panels.map((panel) => panel.options
@@ -569,6 +595,8 @@ const FACET_COLUMN_SHARE = 0.85;
  */
 const FACET_HEAD_TOP = 5;
 const FACET_HEAD_PULL = 11;
+/** The least space between a facet heading and the tick label under it. */
+const FACET_HEAD_TEXT_GAP = 2;
 
 /**
  * How tall a facet's data stands: the tallest bar or column from the plot's
@@ -648,6 +676,7 @@ export function gridFormOf(data: GridInput, options: GridLayoutOptions = {}): 'm
 function layoutLegacyGrid(
   normalized: ReturnType<typeof normalizeGridData>,
   options: GridLayoutOptions,
+  headPull = FACET_HEAD_PULL,
 ): LayoutResult<GridMarks, GridDerived> {
   const theme = themeForWidth(resolveTheme(options.theme), gridTypeClass(options));
   const measure = options.measure ?? defaultMeasurer;
@@ -690,7 +719,7 @@ function layoutLegacyGrid(
     const axis = isRecord(panelOptions.valueAxis) ? panelOptions.valueAxis : {};
     const firstRow = index < columns;
     const headTop = facetHeads ? FACET_HEAD_TOP : 20;
-    const pull = facetHeads && captionHeight > 0 ? FACET_HEAD_PULL : 0;
+    const pull = facetHeads && captionHeight > 0 ? headPull : 0;
     return {
       ...(compactTiers ? panelWithoutTitle : panel),
       options: {
@@ -744,7 +773,7 @@ function layoutLegacyGrid(
     resolveHighlight(options.highlight).filter((id) => preparedPanels.some((panel) => panel.id === id)),
   );
 
-  const facetPull = facetHeads && preparedPanels[0] && measureCaptionBand(preparedPanels[0], theme, measure, slotWidth) > 0 ? FACET_HEAD_PULL : 0;
+  const facetPull = facetHeads && preparedPanels[0] && measureCaptionBand(preparedPanels[0], theme, measure, slotWidth) > 0 ? headPull : 0;
   if (rowCaption && preparedPanels.length > 0) {
     // The row caption sits above the first panel's heading band, across the grid.
     const first = preparedPanels[0]!;
@@ -754,13 +783,28 @@ function layoutLegacyGrid(
     pushAll(captionNodes, band.nodes);
     pushAll(captionClaims, band.claims);
   }
+  // The pull lifts the plot under its heading; a top tick label it lifts into
+  // the heading takes that much pull back, with a text gap. A tick moves with
+  // the plot top, so one more layout seats it.
+  let headClash = 0;
   for (const entry of captionSlots) {
-    const band = panelCaptionBand(entry.panel, theme, measure, entry.slot, highlighted, false, facetHeads && measureCaptionBand(entry.panel, theme, measure, slotWidth) > 0 ? FACET_HEAD_PULL : 0);
+    const band = panelCaptionBand(entry.panel, theme, measure, entry.slot, highlighted, false, facetHeads && measureCaptionBand(entry.panel, theme, measure, slotWidth) > 0 ? headPull : 0);
     entry.titleNodeId = band.nodes.find(n => n.part === 'panelTitle')?.id;
     entry.captionNodeId = band.nodes.find(n => n.part === 'panelCaption')?.id;
     pushAll(captionNodes, band.nodes);
     pushAll(captionClaims, band.claims);
+    if (facetHeads && headPull === FACET_HEAD_PULL) {
+      for (const head of band.claims) {
+        const bottom = head.rect.y + head.rect.h + FACET_HEAD_TEXT_GAP;
+        for (const claim of geometry.debug.occupied) {
+          // A tick label is a text box under the heading's top; a 1 px axis line is not.
+          if (claim.kind !== 'axis' || claim.rect.h <= 2 || claim.rect.y <= head.rect.y || claim.rect.x >= head.rect.x + head.rect.w || claim.rect.x + claim.rect.w <= head.rect.x) continue;
+          if (claim.rect.y < bottom && claim.rect.y + claim.rect.h > head.rect.y) headClash = Math.max(headClash, bottom - claim.rect.y);
+        }
+      }
+    }
   }
+  if (headClash > 0.01) return layoutLegacyGrid(normalized, options, Math.max(0, headPull - headClash));
 
   const markById = new Map(geometry.marks.panels.map((panel) => [panel.id, panel]));
   for (const entry of captionSlots) {
@@ -1023,11 +1067,12 @@ function layoutAuthoredGrid(
     });
   }
 
-  const legendItems = collectGridLegendItems(rawPanels, options, measure);
+  const collectedLegend = collectGridLegendItems(rawPanels, options, measure);
+  const legendItems = collectedLegend.items;
   let legendInput: FrameInput['legend'];
   if (options.legend && options.legend !== 'none' && options.legend !== 'auto') {
     const legendOptions: LegendOptions = normalizeLegendOption(options.legend);
-    legendInput = gridLegendInput(legendItems, legendOptions, options, warnings);
+    legendInput = gridLegendInput(collectedLegend, legendOptions, options, warnings);
   }
 
   const occupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
@@ -1418,7 +1463,7 @@ function layoutAuthoredGrid(
     if (rule.orientation === 'vertical') {
       const y1 = from?.slot.y ?? area.y;
       const y2 = (to?.slot.y ?? area.y) + (to?.slot.h ?? area.h);
-      const runs = guideRuns(occupiedAll, 'vertical', coordinate.value, y1, y2);
+      const runs = guideRuns(occupiedAll, scene, 'vertical', coordinate.value, y1, y2);
       scene.push(runs.length === 1 && runs[0]![0] === Math.min(y1, y2) && runs[0]![1] === Math.max(y1, y2)
         ? { t: 'line', id: nodeId, x1: coordinate.value, y1, x2: coordinate.value, y2, stroke: { token: 'grid' }, width: strokeToken(theme, 'hair'), owner: {}, part: 'alignmentRule' }
         : { t: 'path', id: nodeId, d: runs.map(([a, b]) => `M${fmtN(coordinate.value)} ${fmtN(a)}V${fmtN(b)}`).join(''), stroke: { token: 'grid' }, width: strokeToken(theme, 'hair'), owner: {}, part: 'alignmentRule' });
@@ -1431,7 +1476,7 @@ function layoutAuthoredGrid(
     } else {
       const x1 = from?.slot.x ?? area.x;
       const x2 = (to?.slot.x ?? area.x) + (to?.slot.w ?? area.w);
-      const runs = guideRuns(occupiedAll, 'horizontal', coordinate.value, x1, x2);
+      const runs = guideRuns(occupiedAll, scene, 'horizontal', coordinate.value, x1, x2);
       scene.push(runs.length === 1 && runs[0]![0] === Math.min(x1, x2) && runs[0]![1] === Math.max(x1, x2)
         ? { t: 'line', id: nodeId, x1, y1: coordinate.value, x2, y2: coordinate.value, stroke: { token: 'grid' }, width: strokeToken(theme, 'hair'), owner: {}, part: 'alignmentRule' }
         : { t: 'path', id: nodeId, d: runs.map(([a, b]) => `M${fmtN(a)} ${fmtN(coordinate.value)}H${fmtN(b)}`).join(''), stroke: { token: 'grid' }, width: strokeToken(theme, 'hair'), owner: {}, part: 'alignmentRule' });
@@ -1519,7 +1564,7 @@ function layoutAuthoredChild(
           panels.filter((candidate) => allow.has(candidate.id)),
           parentOptions,
           measure,
-        )
+        ).items
       : allLegendItems;
     return {
       panel,
@@ -1560,6 +1605,9 @@ function layoutAuthoredChild(
       ...(panel.annotations ? { annotations: panel.annotations } : {}),
       ...(parentOptions.palette !== undefined && panelOptions.palette === undefined
         ? { palette: parentOptions.palette }
+        : {}),
+      ...(parentOptions.colorblindSafe !== undefined && panelOptions.colorblindSafe === undefined
+        ? { colorblindSafe: parentOptions.colorblindSafe }
         : {}),
       // A status panel resolves its hatch strength in its own layout.
       ...hatchStrengthFor(panelOptions, parentOptions),
@@ -2182,12 +2230,25 @@ function baselineY(geometry: Geometry): number | null {
  */
 function guideRuns(
   occupied: Geometry['debug']['occupied'],
+  scene: readonly SceneNode[],
   orientation: 'horizontal' | 'vertical',
   at: number,
   start: number,
   end: number,
 ): [number, number][] {
   const vertical = orientation === 'vertical';
+  // A panel line on the guide's own coordinate (a baseline) already draws
+  // that run: the guide stops at its ends, so one line shows, not two.
+  const collinear = scene.flatMap((node): (readonly [number, number])[] => {
+    if (node.t !== 'line' || node.part === 'alignmentRule') return [];
+    const tx = node.tx ?? 0, ty = node.ty ?? 0;
+    if (vertical) {
+      return node.x1 === node.x2 && Math.abs(node.x1 + tx - at) <= 1
+        ? [[Math.min(node.y1, node.y2) + ty, Math.max(node.y1, node.y2) + ty] as const] : [];
+    }
+    return node.y1 === node.y2 && Math.abs(node.y1 + ty - at) <= 1
+      ? [[Math.min(node.x1, node.x2) + tx, Math.max(node.x1, node.x2) + tx] as const] : [];
+  });
   const blocks = occupied
     .filter((claim) => claim.part !== 'alignmentRule' && claim.rect.w > 2 && claim.rect.h > 2)
     .filter((claim) => vertical
@@ -2196,6 +2257,7 @@ function guideRuns(
     .map((claim) => vertical
       ? [claim.rect.y - 3, claim.rect.y + claim.rect.h + 3] as const
       : [claim.rect.x - 3, claim.rect.x + claim.rect.w + 3] as const)
+    .concat(collinear)
     .sort((a, b) => a[0] - b[0]);
   const runs: [number, number][] = [];
   let from = Math.min(start, end);

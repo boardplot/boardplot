@@ -124,8 +124,20 @@ One form; its chart ID is `creative`.
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
 | footnotes | false | `false` |  | false leaves the source line and the method lines (the account-median basis and the fatigue rule) off the card, for a host that shows them in its own frame; the texts stay in frame.source and frame.notes, and the fatigue status line stays on the card. No list of notes is taken. |
+| columnVisibility | object |  |  | True shows a column and false leaves it out: the ids are data.columnToggles ids on table and column ids elsewhere. Ids: label, value, median, delta. |
+| columnOverrides | object |  |  | Settings per generated column. Ids: label, value, median, delta. |
+| columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
+| columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Alignment of the column: its cell text and, unless headAlign is set, its head. Bars keep starting at the panel origin. |
+| columnOverrides.*.headAlign | string | `'left'`, `'right'`, `'center'` |  | Head alignment; defaults to align. |
+| columnOverrides.*.label | string |  |  | Head text. |
+| columnOrder | array |  |  | Order of whole blocks; blocks left out follow in default order. Ids: label, value, median, delta. |
+| columnHeads | false | `false` |  | false: no visible head row and no group heads, with their height and rule. Assistive technology still reads the head in React, and sortable warns there. |
+| rowVisibility | object |  |  | False leaves a generated row out. Ids: ctr, cpa, roas, hookRate, holdRate, frequency. |
+| rowOrder | array |  |  | Order of the generated rows; rows left out follow in default order. Ids: ctr, cpa, roas, hookRate, holdRate, frequency. |
+| rowOverrides | object |  |  | Settings per generated row. Ids: ctr, cpa, roas, hookRate, holdRate, frequency. |
+| rowOverrides.*.label | string |  |  | Row name. |
 
-Plus the [shared options](options.md). This type does not accept `a11y`, `belowMinimum`, `margin`, `canvas`, `unit`, `unitShown`, `strings`, `format`, `detailFields`, `smallValues`, `labelDensity`, `labels`, `categoryLabels`, `labelPlacements`, `legend`, `valueAxis`, `categoryAxis`, `secondaryAxis`, `scaleGroup`, `rowLabels`, `sort`, `topN`, `bandFraction`, `highlight`, `story`, `focus`, `hatchStrength`, `colorblindSafe`, `rounding`, `annotations`.
+Plus the [shared options](options.md). This type does not accept `a11y`, `belowMinimum`, `margin`, `canvas`, `unit`, `unitShown`, `strings`, `format`, `detailFields`, `smallValues`, `labelDensity`, `labels`, `labelPlacements`, `legend`, `valueAxis`, `scaleGroup`, `highlight`, `story`, `focus`, `hatchStrength`, `rounding`, `annotations`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `bandFraction`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
 ## Annotations
 
@@ -145,3 +157,4 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | creative-image-fatigue | example | Creative image with an explicit CTR screening rule |
 | creative-host-card | example | Creative card in a host frame: no method lines, trends ending in a ring |
 | creative-video-poster | torture | Square video creative drawn from its poster |
+| columns-rows | example | A creative table with the median column and two metrics left out |

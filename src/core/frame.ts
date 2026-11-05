@@ -10,6 +10,7 @@ import { chartString } from './strings/frame';
  */
 
 import { currencySign } from './format';
+import { boldMeasurer, boldRuns, hasBold, markBold, plainText, splitBoldLines } from './inlineBold';
 import { furnitureBudget } from './aspect';
 import { COLLECT_IDENTITIES, identityCollector, type IdentityCollectionOptions, identityAppearance, identityCollisionWarnings, type SeriesIdentity as LegendItemInput } from './seriesIdentity';
 import { dedupeLegendKeys } from './label/legendFidelity';
@@ -26,7 +27,7 @@ import { PRIORITY } from './label/solver';
 import { footnoteMark } from './footnoteMark';
 import { localeStrings } from './strings/frame';
 import { withLocaleStrings } from './strings';
-import { chartNotes, copyNote, defaultNoteLines, defaultNotePlacement, engineNote, engineNoteMeta, footerParts, keepNoteMeta, notesPointer, shownNoteKinds, sourceLine, valueNote, type ChartCredit, type ChartNote, type NoteKind, type NoteList } from './notes';
+import { allQuiet, isQuiet, chartNotes, copyNote, defaultNoteLines, defaultNotePlacement, engineNote, engineNoteMeta, footerParts, keepNoteMeta, notesPointer, shownNoteKinds, sourceLine, valueNote, type ChartCredit, type ChartNote, type NoteKind, type NoteList } from './notes';
 import { harveyWedgePath } from './svgPath';
 import { parseFormatExample, unitOfSpec } from './formatSpec';
 import { hasAuthoredTypeSize, type FontSpec } from './text';
@@ -107,6 +108,12 @@ export function normalizeLegendOption(option: LegendOptionInput, defaultOptions?
 }
 
 export type { SeriesIdentity as LegendItemInput } from './seriesIdentity';
+
+/**
+ * The share of the chart width a plot block keeps beside a key column that a spec names. The block
+ * holds the axis labels, so this is the lint's 62% floor for the drawn plot plus their gutter.
+ */
+export const SIDE_KEY_PLOT_SHARE = 0.68;
 
 /** Internal fixed-frame retries: shorten attribution before leaving it off. */
 export const COMPACT_SOURCE_LINES = Symbol('compactSourceLines');
@@ -224,6 +231,8 @@ export interface FrameInput extends IdentityCollectionOptions, CompactSourceOpti
    */
   eventKey?: FrameBand;
   legend?: { options: LegendOptions; items: LegendItemInput[] };
+  /** The layout chose the key beside the plot itself, and checks the room itself: no fallback to the row above the plot. */
+  sideKeyFixed?: boolean;
   /** Automatic legend keys use the footnote token ('compact': the smaller of it and the secondary step); explicit keys keep axis type. */
   legendFont?: 'footnote' | 'compact';
   theme: Theme;
@@ -420,7 +429,7 @@ const NOTE_HIT_PX = 24;
  */
 function htmlFooterHeight(input: FrameInput, parts: ReturnType<typeof footerParts>, sourceText: string | undefined,
   font: FontSpec, width: number, lineH: number, measure: TextMeasurer): number {
-  const height = (text: string) => wrapFootnote(text, font, width, measure).length * lineH;
+  const height = (text: string) => wrapFootnote(markBold(text), font, width, measure).length * lineH;
   let total = 0;
   for (const note of parts.shown) {
     total += height(`${note.ref ? `${footnoteMark(note.ref)} ` : ''}${note.kind === 'method' || note.kind === 'disclosure' ? note.short ?? note.text : note.text}`);
@@ -429,7 +438,7 @@ function htmlFooterHeight(input: FrameInput, parts: ReturnType<typeof footerPart
   const label = parts.panel.length === 0 ? undefined
     : parts.info ? `${wordingString(input, 'notesAndSources')} (${parts.panel.length})` : notesPointer(parts.panel.length, input.strings);
   const items = [
-    ...(parts.source && sourceText ? [{ w: measure(sourceText, font).width, text: sourceText }] : []),
+    ...(parts.source && sourceText ? [{ w: measure(markBold(sourceText), font).width, text: sourceText }] : []),
     ...(credit && parts.info ? [{ w: measure(credit, font).width, text: credit }] : []),
     ...(label ? [{ w: Math.max(NOTE_HIT_PX, measure(label, font).width), h: Math.max(NOTE_HIT_PX, lineH) }] : []),
   ];
@@ -447,7 +456,7 @@ function htmlFooterHeight(input: FrameInput, parts: ReturnType<typeof footerPart
     line = h;
   }
   if (items.length > 0) total += line + (parts.shown.length > 0 ? 4 : 0);
-  if (credit && !parts.info) total += height(credit);
+  if (credit && !parts.info) total += wrapFootnote(credit, font, width, measure).length * lineH;
   return total;
 }
 const frameChrome = new WeakMap<FrameGeometry, number>();
@@ -763,6 +772,7 @@ function shiftLegendKeyY(node: SceneNode, dy: number): void {
 }
 
 function measureNamesUnit(unit: string, measure: string): boolean {
+  measure = plainText(measure);
   const escaped = unit.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
   return escaped.length > 0 && new RegExp(`(?<![\\p{L}\\p{N}_])${escaped}(?![\\p{L}\\p{N}_])`, 'iu').test(measure);
 }
@@ -1001,7 +1011,7 @@ export function withCutLabelNotes<O extends Pick<BaseOptions, 'notes' | 'footnot
   const existing = chartNotes(first).map(note => note.text.replace(/\s+/g, ' ').trim());
   // A count or a repeated number in another note does not identify a cut value.
   const unlisted = cuts.filter(cut => isNumberAlone(cut.text)
-    || !existing.some(note => containsText(note, cut.text.replace(/\s+/g, ' ').trim())));
+    || !existing.some(note => containsText(plainText(note), cut.text.replace(/\s+/g, ' ').trim())));
   if (!unlisted.length) return warn(first);
   const items = [...new Set(unlisted.map(cut => {
     const node = first.scene.find(node => node.t === 'text' && (node.id === cut.labelId || node.id === `label:${cut.labelId}`));
@@ -1596,12 +1606,14 @@ export function markNotedLabels(
 /** The drawing prints no `options.unit` although the author declared one (the test `unit-not-shown` and the unit line share). */
 export function unitMissing(
   options: Record<string, unknown> | undefined,
-  geo: { type?: string; scene: readonly SceneNode[]; warnings: readonly LintWarning[] },
+  geo: { type?: string; scene: readonly SceneNode[]; warnings: readonly LintWarning[]; derived?: unknown },
 ): boolean {
   const unit = typeof options?.unit === 'string' ? options.unit.trim() : '';
   if (!unit || options?.unitShown === true || geo.warnings.some((w) => w.severity === 'error')) return false;
   // A relative variance prints its differences in % on purpose; the unit is the base's, not the drawing's.
   if (geo.type === 'variance' && (options as { variant?: string } | undefined)?.variant === 'relative') return false;
+  // Shares print with their own % sign, and options.unit names values no label shows.
+  if (printsOnlyShares(geo.type, options, geo.derived)) return false;
   const subtitle = resolveSubtitle(options?.subtitle as BaseOptions['subtitle']);
   if (subtitle && subtitleUnitClause(unit, subtitle.measure) === '') return false;
   if (!squeezeUnit(unit)) return false;
@@ -1613,40 +1625,86 @@ export function unitMissing(
 
 /** A unit that says percent: "%", "% of revenue", "percent", "per cent", "pct", "percentage". */
 const PERCENT_UNIT = /^(?:%|percent|per\s*cent|pct|percentage)(?!\p{L})/iu;
+export const isPercentUnit = (unit: string): boolean => PERCENT_UNIT.test(unit.trim());
 
 /**
- * `share-unit-conflict`: a computed-share variant (stacked100,
- * stacked100-area) plots % and its axis says %, but a subtitle that prints a unit
- * clause such as "in TWh" names the raw values. When the engine composed the
- * clause from options.unit, the fix removes options.unit and with it the
- * clause. An authored clause ("Generation in TWh", "Generation (TWh)") stays
- * the author's: the warning asks for a subtitle edit and offers no fix. A
- * measure that names the unit as its base ("Share of generation from 100
- * TWh of output") is no unit clause and does not warn.
+ * Whether a column prints an absolute figure on its segments: `labels.segment`
+ * names 'absolute', or `shareLabels` adds the value to segments that are not
+ * switched off. A 100% column prints the share alone by default.
+ */
+export function columnSegmentsPrintAbsolute(options: object | undefined): boolean {
+  const o = (options ?? {}) as { labels?: false | { segment?: boolean | readonly string[] }; shareLabels?: unknown };
+  if (o.labels === false) return false;
+  const segment = o.labels?.segment;
+  return Array.isArray(segment) ? segment.includes('absolute') : segment !== false && o.shareLabels !== undefined;
+}
+
+/**
+ * Whether the chart's values all print as shares: a computed-share variant
+ * (stacked100, stacked100-area) or a treemap with `cellValue: 'share'`. An
+ * absolute figure printed beside them (an authored grand total, absolute
+ * column segment values, a treemap total, or the group totals in a treemap key) keeps `options.unit`
+ * meaningful, so such a chart does not count. The treemap key shows when the
+ * layout's `derived.groups` lists more than one group. A mekko is left out:
+ * its `options.unit` already names the shares.
+ */
+export function printsOnlyShares(type: string | undefined, options: object | undefined, derived?: unknown): boolean {
+  const o = (options ?? {}) as { variant?: string; valueAxis?: { percent?: boolean }; grandTotalLabels?: boolean; cellValue?: string; total?: unknown; legend?: unknown };
+  const groupKey = ((derived as { groups?: readonly unknown[] } | undefined)?.groups?.length ?? 0) > 1 && o.legend !== 'none';
+  switch (type) {
+    case 'column': return (o.variant === 'stacked100' || o.valueAxis?.percent === true) && o.grandTotalLabels !== true && !columnSegmentsPrintAbsolute(options);
+    case 'bar': return o.variant === 'stacked100' && o.grandTotalLabels !== true;
+    case 'line': return o.variant === 'stacked100-area' || o.valueAxis?.percent === true;
+    case 'treemap': return o.cellValue === 'share' && !o.total && !groupKey;
+    default: return false;
+  }
+}
+
+/**
+ * The options the frame reads for its unit line. A chart that prints only
+ * shares names the percent there: `options.unit` states the raw values, which
+ * no label shows. Authored text is never rewritten.
+ */
+export function shareUnitOptions<O extends { unit?: string }>(type: string, options: O, derived?: unknown): O {
+  const unit = options.unit?.trim();
+  if (!unit || PERCENT_UNIT.test(unit) || !printsOnlyShares(type, options, derived)) return options;
+  // A subtitle that already names the unit stays as written: the engine adds no second clause beside it.
+  const measure = resolveSubtitle((options as BaseOptions).subtitle)?.measure;
+  if (measure && measureNamesUnit(unit, measure)) return options;
+  return { ...options, unit: '%' };
+}
+
+/**
+ * `share-unit-conflict`: a chart that prints only shares says % in its unit
+ * line, but an authored subtitle clause such as "Generation in TWh" or
+ * "Generation (TWh)" names the raw values. The clause stays the author's: the
+ * warning asks for a subtitle edit. A measure that names the unit as its base
+ * ("Share of generation from 100 TWh of output") is no unit clause and does
+ * not warn.
  */
 export function shareUnitLints(
   options: Record<string, unknown> | undefined,
-  geo: { scene: readonly SceneNode[]; warnings: readonly LintWarning[] },
+  geo: { type?: string; scene: readonly SceneNode[]; warnings: readonly LintWarning[]; derived?: unknown },
 ): LintWarning[] {
   const unit = typeof options?.unit === 'string' ? options.unit.trim() : '';
-  if (!unit || PERCENT_UNIT.test(unit) || !['stacked100', 'stacked100-area'].includes(options?.variant as string)) return [];
+  if (!unit || PERCENT_UNIT.test(unit) || !printsOnlyShares(geo.type, options, geo.derived)) return [];
   if (geo.warnings.some((w) => w.severity === 'error')) return [];
   const measure = resolveSubtitle(options?.subtitle as BaseOptions['subtitle'])?.measure ?? '';
   const subtitleText = geo.scene.flatMap((node) => (node.t === 'text' && node.id.startsWith('frame:subtitle') ? node.lines : [])).join(' ');
   if (!measure || !textCarriesUnit(subtitleText, unit)) return [];
-  const composed = subtitleUnitClause(unit, measure) !== '';
   const escaped = unit.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
-  const authored = !composed && new RegExp(`(?:\\bin|,|\\()\\s*${escaped}\\s*\\)?\\s*$`, 'iu').test(measure);
-  if (!composed && !authored) return [];
+  const clause = new RegExp(`(?:\\bin|,|\\()\\s*${escaped}\\s*\\)?\\s*$`, 'iu');
+  if (!clause.test(measure)) return [];
+  // The fix drops only the unit clause; the engine's unit line then names the percent.
+  const kept = measure.replace(clause, '').trim();
+  const path = typeof options?.subtitle === 'string' ? '/options/subtitle' : '/options/subtitle/measure';
   return [{
     code: 'share-unit-conflict',
     severity: 'warn',
-    message: `variant '${options!.variant}' plots shares in %, but the subtitle names the unit '${unit}' of the raw values`,
-    suggest: composed
-      ? `remove options.unit, or name the base in the measure (subtitle: { measure: 'Share of generation' })`
-      : `remove the unit clause from the subtitle measure '${measure}', or name the base instead ('Share of generation')`,
-    field: composed ? ['options', 'unit'] : ['options', 'subtitle'],
-    ...(composed ? { fix: [{ op: 'remove' as const, path: '/options/unit' }] } : {}),
+    message: `the chart prints shares in %, but the subtitle names the unit '${unit}' of the raw values`,
+    suggest: `remove the unit clause from the subtitle measure '${measure}', or name the base instead ('Share of generation')`,
+    field: ['options', 'subtitle'],
+    ...(kept ? { fix: [{ op: 'replace' as const, path, value: kept }] } : {}),
   }];
 }
 
@@ -1711,8 +1769,8 @@ function measureUnitTail(measure: string, unit: string | undefined): string {
   const at = measure.lastIndexOf(', ');
   if (at <= 0) return '';
   const tail = measure.slice(at + 2);
-  const reads = /^(%|in\s|per\s|[$€£¥]|(?:EUR|USD|CHF|GBP|JPY|US\$)(?![\p{L}])|index\b|score\b|share of\b|# )/iu.test(tail)
-    || (unit !== undefined && unit.trim() !== '' && tail.trim().toLowerCase() === unit.trim().toLowerCase());
+  const reads = /^(%|in\s|per\s|[$€£¥]|(?:EUR|USD|CHF|GBP|JPY|US\$)(?![\p{L}])|index\b|score\b|share of\b|# )/iu.test(plainText(tail))
+    || (unit !== undefined && unit.trim() !== '' && plainText(tail).trim().toLowerCase() === unit.trim().toLowerCase());
   // The comma stays with the bold part, so a wrapped line never starts with it.
   return reads ? measure.slice(at + 1) : '';
 }
@@ -1720,7 +1778,11 @@ function measureUnitTail(measure: string, unit: string | undefined): string {
 function measureSubtitle(
   input: FrameInput, x: number, y: number, id: Id, nextId: () => Id, contentW: number,
 ): { nodes: TextNode[]; rect: Rect } {
-  const sub = input.subtitle!;
+  const authored = input.subtitle!;
+  const sub = hasBold(authored.measure) || hasBold(authored.company ?? '') || hasBold(authored.period ?? '')
+    ? { ...authored, measure: markBold(authored.measure),
+      ...(authored.company ? { company: markBold(authored.company) } : {}),
+      ...(authored.period ? { period: markBold(authored.period) } : {}) } : authored;
   const font = { family: input.theme.type.family, ...input.theme.type.subtitle };
   const boldFont: FontSpec = { ...font, weight: emphasisWeight(input.theme) };
   // Three runs max: everything before the measure, the bold measure, and
@@ -1751,10 +1813,10 @@ function measureSubtitle(
   // same way they are inside any multi-word label. Boundary spaces stay
   // non-breaking (xml:space default trims text-content edges), and U+00A0
   // measures in the SPACE class (see estimateTextWidth).
-  const runs = segments.map((seg) => ({
+  const runs = subtitleRuns(segments.map((seg) => ({
     text: seg.text.replace(/^ /, '\u00A0').replace(/ $/, '\u00A0'),
     ...(seg.bold ? { weight: boldFont.weight } : {}),
-  }));
+  })), boldFont.weight, font.weight);
   const width = runsWidth(runs, font, boldFont, input.measure);
   // A composed line wider than the frame wraps to a second line, and
   // a second line that still overflows ends with an ellipsis and carries the
@@ -1762,7 +1824,7 @@ function measureSubtitle(
   // The subtitle wraps until every word shows.
   const maxLines = Infinity;
   const scenarios = sub.scenarios && sub.scenarios.length > 0 ? formatScenarios(sub.scenarios) : undefined;
-  if (width > contentW) return wrapSubtitle(segments, { x, y, id, nextId, contentW, lineH, font, boldFont, measure: input.measure, maxLines, scenarios, period: sub.period });
+  if (width > contentW) return wrapSubtitle(segments, { x, y, id, nextId, contentW, lineH, font, boldFont, measure: input.measure, maxLines, scenarios, period: sub.period && plainText(sub.period) });
   const node: TextNode = {
     t: 'text',
     id,
@@ -1782,6 +1844,13 @@ function measureSubtitle(
 
 type SubtitleRun = { text: string; weight?: number };
 
+function subtitleRuns(runs: SubtitleRun[], boldWeight: number, baseWeight: number): SubtitleRun[] {
+  if (!runs.some(run => run.text.includes('\uE000') || run.text.includes('\uE001'))) return runs;
+  return runs.flatMap(run => {
+    return run.weight === boldWeight ? [{ ...run, text: plainText(run.text) }] : boldRuns(run.text, boldWeight, baseWeight);
+  });
+}
+
 function runsWidth(runs: readonly SubtitleRun[], font: FontSpec, boldFont: FontSpec, measure: TextMeasurer): number {
   return (
     runs.reduce((w, run) => w + measure(run.text, run.weight ? boldFont : font).width, 0) +
@@ -1794,13 +1863,13 @@ function runsWidth(runs: readonly SubtitleRun[], font: FontSpec, boldFont: FontS
 }
 
 /** Words with their weight, rejoined into styled runs; the space before a new run stays U+00A0. */
-function runsOf(words: readonly { text: string; bold: boolean }[], boldWeight: number): SubtitleRun[] {
+function runsOf(words: readonly { text: string; bold: boolean }[], boldWeight: number, baseWeight: number): SubtitleRun[] {
   const runs: SubtitleRun[] = [];
   words.forEach((word, i) => {
     if (i > 0 && words[i - 1]!.bold === word.bold) runs[runs.length - 1]!.text += ` ${word.text}`;
     else runs.push({ text: i > 0 ? `\u00A0${word.text}` : word.text, ...(word.bold ? { weight: boldWeight } : {}) });
   });
-  return runs;
+  return subtitleRuns(runs, boldWeight, baseWeight);
 }
 
 /**
@@ -1820,7 +1889,7 @@ function balancedLines(text: string, font: FontSpec, maxWidth: number, lines: re
     || lines.join(' ').split(/[^\S\u00a0\u202f]+/).filter(Boolean).join(' ') !== text.split(/[^\S\u00a0\u202f]+/).filter(Boolean).join(' ');
   if (own || filled.length < 2 || filled.length > 3) return filled;
   const units = filled.join(' ').split(' ').reduce<string[]>((out, word) => {
-    if (out.length > 0 && /^p\.a\.[,;:]?$/i.test(word)) out[out.length - 1] += ` ${word}`; else out.push(word);
+    if (out.length > 0 && /^p\.a\.[,;:]?$/i.test(plainText(word))) out[out.length - 1] += ` ${word}`; else out.push(word);
     return out;
   }, []);
   if (units.length > 40) return filled;
@@ -1851,13 +1920,13 @@ function filledLines(text: string, font: FontSpec, maxWidth: number, lines: read
   if (lines.flatMap(split).join(' ') !== words.join(' ')) return [...lines];
   // 'p.a.' is one unit with its rate.
   const units = (line: string) => split(line).reduce<string[]>((out, word) => {
-    if (out.length > 0 && /^p\.a\.[,;:]?$/i.test(word)) out[out.length - 1] += ` ${word}`; else out.push(word);
+    if (out.length > 0 && /^p\.a\.[,;:]?$/i.test(plainText(word))) out[out.length - 1] += ` ${word}`; else out.push(word);
     return out;
   }, []);
   const out = lines.map(units);
   // A 'p.a.' greedy-wrapped away from its rate rejoins it on the line below.
   for (let i = 1; i < out.length; i++) {
-    if (/^p\.a\.[,;:]?$/i.test(out[i]![0] ?? '') && out[i - 1]!.length > 1) {
+    if (/^p\.a\.[,;:]?$/i.test(plainText(out[i]![0] ?? '')) && out[i - 1]!.length > 1) {
       const rate = out[i - 1]!.pop()!;
       out[i]![0] = `${rate} ${out[i]![0]}`;
     }
@@ -1896,7 +1965,7 @@ function keepLastLineCompany<W extends { text: string; bold: boolean }>(
   // lone word too.
   const periodWord = period !== undefined && period.trim().split(/\s+/).length <= 3 ? period.trim().split(/\s+/).join(' ') : undefined;
   const lone = (line: W[]) => {
-    const text = line.filter((word) => word.text !== '·').map((word) => word.text).join(' ');
+    const text = line.filter((word) => word.text !== '·').map((word) => plainText(word.text)).join(' ');
     return line.filter((word) => word.text !== '·').length < 2 || text === pairWord || text === periodWord;
   };
   if (!lone(broken[broken.length - 1]!)) return;
@@ -1913,7 +1982,7 @@ function keepLastLineCompany<W extends { text: string; bold: boolean }>(
     return line.slice(from, to);
   };
   const boundary = (cut: number) => pair[cut]!.text === '·' || pair[cut - 1]!.text === '·' || pair[cut]!.bold !== pair[cut - 1]!.bold;
-  const binds = (cut: number) => /^(in|of|by|vs\.?|per|to|and|or|the|a|an|for|from|at|on|[$€£¥]|US\$|Q[1-4]|H[12])$/i.test(pair[cut - 1]!.text);
+  const binds = (cut: number) => /^(in|of|by|vs\.?|per|to|and|or|the|a|an|for|from|at|on|[$€£¥]|US\$|Q[1-4]|H[12])$/i.test(plainText(pair[cut - 1]!.text));
   const tiers = [boundary, (cut: number) => !binds(cut), () => true];
   for (const allowed of tiers) {
     for (let cut = broken[broken.length - 2]!.length - 1; cut >= 1; cut--) {
@@ -1936,7 +2005,7 @@ function wrapSubtitle(
 ): { nodes: TextNode[]; rect: Rect } {
   type Word = { text: string; bold: boolean };
   const words: Word[] = segments.flatMap((seg) => seg.text.split(' ').filter(Boolean).map((text) => ({ text, bold: seg.bold })));
-  const widthOf = (list: Word[]) => runsWidth(runsOf(list, ctx.boldFont.weight), ctx.font, ctx.boldFont, ctx.measure);
+  const widthOf = (list: Word[]) => runsWidth(runsOf(list, ctx.boldFont.weight, ctx.font.weight), ctx.font, ctx.boldFont, ctx.measure);
   // Each line takes the words that fit; it breaks at the last composed '·' when
   // the line keeps half the width, so a period stays on one line; the break
   // then replaces the separator. The last allowed line takes the rest.
@@ -1962,12 +2031,12 @@ function wrapSubtitle(
     }
     return withEllipsis(line);
   };
-  const title = words.map((word) => word.text).join(' ');
+  const title = words.map((word) => plainText(word.text)).join(' ');
   // A first word wider than the frame (a URL, an identifier) is cut too, never left to run off the edge.
   const lines = broken
     .map((line) => (widthOf(line) > ctx.contentW ? { line: cutLine(line), cut: true } : { line, cut: false }));
   const nodes = lines.map(({ line, cut }, index): TextNode => {
-    const runs = runsOf(line, ctx.boldFont.weight);
+    const runs = runsOf(line, ctx.boldFont.weight, ctx.font.weight);
     return {
       t: 'text', id: index === 0 ? ctx.id : ctx.nextId(), x: ctx.x, y: ctx.y + index * ctx.lineH,
       lines: [runs.map((run) => run.text).join('')], runs,
@@ -2099,14 +2168,16 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
       target: input.target, textScale: input.textScale, typeRole: 'title' as const,
       shrink: { ...baseFont, size: Math.max(targetFloorsPx(input.target ?? DEFAULT_TARGET, input.textScale).title, compactSize) },
     };
-    let wrapped = fitText(input.title, baseFont, headerW, TITLE_LINES, measure, fitOptions);
+    const title = markBold(input.title);
+    const titleMeasure = title === input.title ? measure : boldMeasurer(measure, emphasisWeight(theme));
+    let wrapped = fitText(title, baseFont, headerW, TITLE_LINES, titleMeasure, fitOptions);
     if (wrapped.title !== undefined) {
-      wrapped = fitText(input.title, wrapped.font, headerW, Number.MAX_SAFE_INTEGER, measure, { ...fitOptions, shrink: undefined });
+      wrapped = fitText(title, wrapped.font, headerW, Number.MAX_SAFE_INTEGER, titleMeasure, { ...fitOptions, shrink: undefined });
     }
     const font = wrapped.font;
     // A wrapped title fills each line; no single word sits alone on the last line.
     const lines = wrapped.title === undefined && wrapped.lines.length >= 2
-      ? balancedLines(input.title, font, headerW, wrapped.lines, measure) : wrapped.lines;
+      ? balancedLines(title, font, headerW, wrapped.lines, titleMeasure) : wrapped.lines;
     if (wrapped.title !== undefined) {
       warnings.push({
         code: 'frame-title-truncated',
@@ -2122,9 +2193,9 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
       id,
       x: contentX,
       y: topY,
-      lines,
+      ...splitBoldLines(lines, emphasisWeight(theme), font.weight),
       // A cut title keeps its full text for the reader.
-      ...(wrapped.title !== undefined ? { title: wrapped.title } : {}),
+      ...(wrapped.title !== undefined ? { title: plainText(wrapped.title) } : {}),
       align: 'start',
       font,
       ink: { token: 'ink' },
@@ -2163,6 +2234,8 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
   // "+N notes". The small role, inkMuted, regular weight. A host that scales
   // text reads the size from this role only.
   const footFont = withFamily(footerType(theme.type.footnote, input.target, input.textScale));
+  const footMeasure = (input.source && hasBold(input.source)) || input.footnotes?.some(hasBold)
+    ? boldMeasurer(measure, emphasisWeight(theme)) : measure;
   let liveFooterH = 0;
   const footLineH = footFont.size * (footFont.lineHeight ?? 1.3);
   const footInset = Math.max(0, Math.min(input.footerInset ?? 0, (contentW - 1) / 2));
@@ -2204,14 +2277,14 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
       if (fullStatic && meta?.list) staticFrame.countable = true;
       // a capped list note names what fits two footer lines at this width.
       if (meta?.list) {
-        const fitted = fittedNote(meta.list, (text) => wrapFootnote(text, footFont, footW, measure).length <= 2);
+        const fitted = fittedNote(meta.list, (text) => wrapFootnote(markBold(text), footFont, footW, footMeasure).length <= 2);
         f = meta.short ? engineNote(f, 'disclosure', fitted, meta.values, meta.list) : engineNote(fitted, 'disclosure', undefined, meta.values, meta.list);
       }
       const kind: NoteKind = numberedDisclosure ? 'disclosure' : numberedHere ? 'note' : meta?.kind ?? 'method';
       // A disclosure draws its short form only where it is narrower than the full note;
       // an author-set notes.maxListed keeps its form.
       const fittedShort = engineNoteMeta(f)?.short ?? meta?.short;
-      const short = fittedShort && (kind !== 'disclosure' || input.notes?.maxListed !== undefined || measure(fittedShort, footFont).width < measure(f, footFont).width) ? fittedShort : undefined;
+      const short = fittedShort && (kind !== 'disclosure' || input.notes?.maxListed !== undefined || footMeasure(markBold(fittedShort), footFont).width < footMeasure(markBold(f), footFont).width) ? fittedShort : undefined;
       const storedMeta = meta ? { ...meta, ...engineNoteMeta(f), ...(meta.ranks ? { ranks: true as const } : {}) } : undefined;
       entries.push(keepNoteMeta({ kind, text: f, ...(short ? { short } : {}), drawn: `${marker}${kind === 'disclosure' || (kind === 'method' && !fullStatic) ? short ?? f : f}`, ...(marker ? { ref: next } : {}), ...(meta?.ranks ? { ranks: true as const } : {}) }, storedMeta));
     }
@@ -2246,7 +2319,7 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
   // host; a disclosure the author asks for stays.
   const pointed = new Set(input.pointedNotes ?? []);
   const kept = entries.filter((entry) => entry.kind === 'disclosure' ? shown.has('disclosure') || (entry.ranks === true && shown.has('ranks')) : !input.footnotesOff && pointed.has(entry.text));
-  const candidates = input.footnotesOff || placement === 'list' ? [] : entries.filter((entry) => !kept.includes(entry) && shown.has(entry.kind));
+  const candidates = input.footnotesOff || placement === 'list' ? [] : entries.filter((entry) => !kept.includes(entry) && shown.has(entry.kind) && !isQuiet(entry));
   // The pointer counts the notes of the kinds the author prints; the engine's
   // hidden notes stay in the notes list without a pointer under the chart.
   // React's 'info' footer is the exception: its "Notes and sources (N)" button lists the engine's
@@ -2254,9 +2327,11 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
   // the frame reserves the button's row. A 280 px card with one hidden value drew the button
   // below the card.
   const infoPanel = staticFrame.live && placement === 'info';
+  // Quiet method notes alone raise no pointer: the button for them is left off where its row would grow the footer.
+  const infoCount = (hidden: readonly object[]) => allQuiet(hidden) && !(credit && !creditInFrame) ? 0 : hidden.length;
   const listed = (k: number) => infoPanel
-    ? entries.filter((entry) => !kept.includes(entry) && !candidates.slice(0, k).includes(entry)).length + (credit && !creditInFrame ? 1 : 0)
-    : entries.filter((entry) => shown.has(entry.kind) && !kept.includes(entry)).length - k + (credit && !creditInFrame ? 1 : 0);
+    ? infoCount(entries.filter((entry) => !kept.includes(entry) && !candidates.slice(0, k).includes(entry))) + (credit && !creditInFrame ? 1 : 0)
+    : entries.filter((entry) => shown.has(entry.kind) && !kept.includes(entry) && !isQuiet(entry)).length - k + (credit && !creditInFrame ? 1 : 0);
   const sourcePara = (k: number): string | undefined => {
     const hidden = listed(k);
     const pointer = pointerOn && hidden > 0 ? notesPointer(hidden, input.strings) : undefined;
@@ -2264,9 +2339,9 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
     if (source === undefined) return pointer;
     return pointer === undefined ? source : `${source}${/[.!?]$/.test(source) ? '' : '.'} ${pointer}`;
   };
-  const sourceFit = (text: string) => !fullStatic && input[COMPACT_SOURCE_LINES] === 1 ? fitText(text, footFont, footW, 1, measure) : undefined;
-  const sourceLines = (text: string): string[] => sourceFit(text)?.lines ?? wrapFootnote(text, footFont, footW, measure);
-  const noteLines = candidates.map((entry) => wrapFootnote(entry.drawn, footFont, footW, measure));
+  const sourceFit = (text: string) => !fullStatic && input[COMPACT_SOURCE_LINES] === 1 ? fitText(markBold(text), footFont, footW, 1, footMeasure) : undefined;
+  const sourceLines = (text: string): string[] => sourceFit(text)?.lines ?? wrapFootnote(markBold(text), footFont, footW, footMeasure);
+  const noteLines = candidates.map((entry) => wrapFootnote(markBold(entry.drawn), footFont, footW, footMeasure));
   // The most notes, in order, that fit the budget with the source line (and
   // its pointer); the source line itself is never cut.
   let k = candidates.length;
@@ -2298,7 +2373,7 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
   const footParts: { text: string; kind: 'source' | 'footnote' | 'credit'; lines?: string[] }[] = [
     ...entries.filter((entry) => visible.has(entry)).map((entry) => {
       const at = candidates.indexOf(entry);
-      return { text: entry.drawn, kind: 'footnote' as const, lines: at >= 0 ? noteLines[at] : wrapFootnote(entry.drawn, footFont, footW, measure) };
+      return { text: entry.drawn, kind: 'footnote' as const, lines: at >= 0 ? noteLines[at] : wrapFootnote(markBold(entry.drawn), footFont, footW, footMeasure) };
     }),
     ...(sourceBlock ? [{ text: sourceBlock, kind: 'source' as const }] : []),
     ...(credit && creditInFrame ? [{ text: `${chartString(input, 'mapCredit')}: ${credit.text}`, kind: 'credit' as const }] : []),
@@ -2309,8 +2384,18 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
   // source leaves it no room, and it also counts the notes compact mode left off the canvas.
   const omitted = Array.from({ length: input[COMPACT_OMITTED_NOTES] ?? 0 }, (): ChartNote => ({ n: 0, kind: 'note', text: '', inFrame: false }));
   // The 'info' button row reaches into the bottom margin, as hitRoom rules.
-  liveFooterH = staticFrame.live && !fullStatic ? Math.max(0, htmlFooterHeight(input, footerParts([...noteList, ...omitted], placement, input[LIVE_NOTE_SHOW] ?? input.notes?.show, pointerOn),
-    sourceText, footFont, contentW, footLineH, measure) - (placement === 'info' ? margin.bottom : 0)) : 0;
+  const liveParts = (pointer: boolean) => footerParts([...noteList, ...omitted], placement, input[LIVE_NOTE_SHOW] ?? input.notes?.show, pointer);
+  const liveHeight = (parts: ReturnType<typeof footerParts>) => Math.max(0, htmlFooterHeight(input, parts, sourceText, footFont, contentW, footLineH, footMeasure) - (placement === 'info' ? margin.bottom : 0));
+  const withPointer = staticFrame.live && !fullStatic ? liveParts(pointerOn) : undefined;
+  liveFooterH = withPointer ? liveHeight(withPointer) : 0;
+  // A quiet method note alone never makes the footer taller: without its button row the footer keeps its height.
+  if (withPointer && liveFooterH > 0 && allQuiet(withPointer.panel)) {
+    const without = liveHeight(liveParts(false));
+    if (without < liveFooterH) {
+      liveFooterH = without;
+      frame.notesButtonOff = true;
+    }
+  }
   if (footParts.length > 0 || liveFooterH > 0) {
     frame.footnoteNodeIds = [];
     // stack upward from the bottom
@@ -2319,7 +2404,7 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
       // A footnote is the sentence that makes an exhibit auditable. It wraps to
       // the content width and keeps every word on the canvas.
       const fitted = p.kind === 'source' ? sourceFit(p.text) : undefined;
-      const lines = p.lines ?? (p.kind === 'source' ? sourceLines(p.text) : wrapFootnote(p.text, footFont, footW, measure));
+      const lines = p.lines ?? (p.kind === 'source' ? sourceLines(p.text) : wrapFootnote(p.kind === 'credit' ? p.text : markBold(p.text), footFont, footW, footMeasure));
       bottomY -= footLineH * lines.length;
       footLines += lines.length;
       const id = nid(p.kind);
@@ -2328,8 +2413,8 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
         id,
         x: footX,
         y: bottomY,
-        lines,
-        ...(fitted?.title ? { title: fitted.title } : {}),
+        ...splitBoldLines(lines, emphasisWeight(theme), footFont.weight),
+        ...(fitted?.title ? { title: plainText(fitted.title) } : {}),
         align: 'start',
         font: footFont,
         ink: { token: p.kind === 'footnote' ? input.footnoteInk ?? 'inkMuted' : 'inkMuted' },
@@ -2387,12 +2472,13 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
   let legendBand = 0;
   let rightLegendBottom = 0;
   let plotRight = size.width - margin.right;
+  let plotLeft = margin.left;
   const bandKeys = input.eventKey?.legendYieldsToSeries && (input.legend?.items.length ?? 0) > 0 ? [] : input.eventKey?.legend ?? [];
   const legendInput = bandKeys.length > 0
     ? { options: input.legend?.options ?? { position: 'top' as const }, items: [...(input.legend?.items ?? []), ...bandKeys] }
     : input.legend;
   if (legendInput && legendInput.items.length > 0) {
-    const { options } = legendInput;
+    let { options } = legendInput;
     const { items } = dedupeLegendKeys(legendInput.items, item => identityAppearance(item, theme));
     pushAll(warnings, identityCollisionWarnings(items, theme));
     // The key is reference text, never larger than the
@@ -2406,17 +2492,21 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
     const font = withFamily(!hasAuthoredTypeSize(keyRole) && keyRole.size > keyCap ? { ...keyRole, size: keyCap } : keyRole);
     const lineH = Math.max(SWATCH, font.size * (font.lineHeight ?? 1.2));
     const typeRole = footKey ? 'footnote' : 'secondary';
-    const labelBudget = options.position === 'right' ? contentW * 0.45 : contentW;
+    const sideWanted = options.position === 'right' || options.position === 'left';
+    const labelBudget = sideWanted ? contentW * 0.45 : contentW;
     // A size key's ring is drawn at the plot's scale, and its row grows to the
     // ring's diameter, in whole pixels so the scatter's ring-and-row loop settles.
     const ringH = (it: LegendItemInput) => (it.key === 'sizes' ? Math.max(it.ringRow ?? 0, Math.ceil(2 * Math.max(0.5, ...(it.radii ?? [])))) : 0);
     // Key text wraps beside the widest key as it is drawn, a size key's ring included.
     const maxKeyW = maxOf(items.map(it => keyWidth(it, Math.max(lineH, ringH(it)))));
-    const wrappedKeys = new Map(items.map(it => [it, wrapFootnote(it.label, font, Math.max(1, labelBudget - maxKeyW - SWATCH_GAP), measure)]));
-    // A blank name wraps to no lines; its key still keeps one line of height and zero text width.
-    const keyTextH = (it: LegendItemInput) => Math.max(1, wrappedKeys.get(it)!.length) * lineH;
     // A group's value (its total) sits after the label, bold, in every position.
     const valueFont: FontSpec = { ...font, weight: emphasisWeight(theme) };
+    // The label wraps in the room its own value leaves, so label and value fit the budget together.
+    const wrapKeys = (budget: number) => new Map(items.map(it => [it, wrapFootnote(it.label, font,
+      Math.max(1, budget - maxKeyW - SWATCH_GAP - (it.value ? SWATCH_GAP + measure(it.value, valueFont).width : 0)), measure)]));
+    let wrappedKeys = wrapKeys(labelBudget);
+    // A blank name wraps to no lines; its key still keeps one line of height and zero text width.
+    const keyTextH = (it: LegendItemInput) => Math.max(1, wrappedKeys.get(it)!.length) * lineH;
     const textWOf = (it: LegendItemInput) => Math.max(0, ...wrappedKeys.get(it)!.map(line => measure(line, font).width));
     const itemTextW = (it: LegendItemInput) => textWOf(it) + (it.value ? SWATCH_GAP + measure(it.value, valueFont).width : 0);
     const valueNode = (it: LegendItemInput, lbId: Id, x: number, y: number): SceneNode => ({
@@ -2436,11 +2526,34 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
     const onLabelLine = (keys: SceneNode[], textTop: number): SceneNode[] =>
       keys.map((node) => (node.t === 'text' && node.part === 'swatch' ? { ...node, y: textTop } : node));
 
-    if (options.position === 'right') {
-      const keyW = maxOf(items.map((it) => keyWidth(it, Math.max(lineH, ringH(it)))));
-      const maxLabelW = maxOf(items.map(itemTextW));
-      const legendW = keyW + SWATCH_GAP + maxLabelW;
-      const legendX = size.width - margin.right - legendW;
+    // A key beside the plot: `legendW` wide, in a column as high as its rows.
+    const sideKeyW = maxOf(items.map((it) => keyWidth(it, Math.max(lineH, ringH(it)))));
+    const sideLegendW = sideKeyW + SWATCH_GAP + maxOf(items.map(itemTextW));
+    if (sideWanted && !input.sideKeyFixed) {
+      // The column stays beside the plot only where the plot keeps its share of the width and the
+      // rows fit the height; else the key stands in the row above the plot, as it does by default.
+      const columnH = items.reduce((h, it) => h + Math.max(keyTextH(it), ringH(it)) + 4, -4);
+      const plotW = size.width - margin.right - margin.left - sideLegendW - 16 - Math.max(0, input.plotInset?.left ?? 0);
+      const widthShort = plotW < SIDE_KEY_PLOT_SHARE * size.width;
+      if (widthShort || columnH > bottomY - topY) {
+        warnings.push({
+          code: 'legend-side-fallback',
+          severity: 'warn',
+          message: widthShort
+            ? `the key stays in the row above the plot: a column beside it would leave the plot ${Math.round(Math.max(0, plotW))} px, under ${Math.round(SIDE_KEY_PLOT_SHARE * 100)}% of the ${Math.round(size.width)} px width`
+            : `the key stays in the row above the plot: its ${Math.round(columnH)} px column is taller than the ${Math.round(Math.max(0, bottomY - topY))} px beside the plot`,
+          suggest: widthShort ? 'Give the chart more width, or shorten the series names, to keep the key beside the plot.' : 'Give the chart more height, or show fewer series, to keep the key beside the plot.',
+          field: ['options', 'legend'],
+        });
+        options = { ...options, position: 'top' };
+        wrappedKeys = wrapKeys(contentW);
+      }
+    }
+
+    if (options.position === 'right' || options.position === 'left') {
+      const keyW = sideKeyW;
+      const legendW = sideLegendW;
+      const legendX = options.position === 'left' ? contentX : size.width - margin.right - legendW;
       let y = topY;
       const legendItems: LegendGeometry['items'] = [];
       for (const it of items) {
@@ -2469,12 +2582,13 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
       rightLegendBottom = y - 4;
       occupied.claim(rect, 'legend', {});
       legendGeom = { rect, items: legendItems };
-      plotRight = legendX - 16;
-      // Only a spec that names 'right' gets here; every default is 'top'.
+      if (options.position === 'left') plotLeft = legendX + legendW + 16;
+      else plotRight = legendX - 16;
+      // Only a spec that names 'right' or 'left' gets here; every default is 'top'.
       warnings.push({
         code: 'legend-beside-plot',
         severity: 'info',
-        message: `the key stands beside the plot and takes ${Math.round(size.width - margin.right - plotRight)} px of its width; 'top' keeps the plot full width`,
+        message: `the key stands beside the plot and takes ${Math.round(legendW + 16)} px of its width; 'top' keeps the plot full width`,
       });
     } else {
       // top/bottom: single wrapped band — rows step at the legend.rowH
@@ -2617,9 +2731,9 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
 
   const plotInsetLeft = Math.max(0, input.plotInset?.left ?? 0);
   const plot: Rect = {
-    x: contentX + plotInsetLeft,
+    x: plotLeft + plotInsetLeft,
     y: topY,
-    w: Math.max(10, plotRight - contentX - plotInsetLeft),
+    w: Math.max(10, plotRight - plotLeft - plotInsetLeft),
     h: Math.max(MIN_PLOT_H, bottomY - topY),
   };
   // Repeat only bottom-position arithmetic: adding a delta can change React's float bytes.

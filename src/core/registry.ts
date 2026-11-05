@@ -1,3 +1,4 @@
+import { PLAN_ONLY } from './layoutPlan';
 /**
  * Chart registry. Charts are values; the registry is the single
  * source for the CLI, JSON Schemas, docs, React component generation, and
@@ -5,6 +6,7 @@
  */
 
 import { prepareFractionAnnotations } from './normalize/fraction';
+import { caseInsensitiveValue } from './inputConversion';
 import type { z } from 'zod';
 import { withChartDefaultStrings, withLocaleStrings } from './strings';
 import { withNumberMarks } from './numberMarks';
@@ -14,7 +16,7 @@ import type { BaseOptions, RenderTarget } from './types/options';
 import { withSmallValues } from './formatPrecision';
 import type { Geometry, LayoutResult, LintWarning, RefusedLayout } from './types/scene';
 import type { ChartSizing } from './types/sizing';
-import { chartSizing, declaredSizing, fitsSize, compactFallbackApplies, FORCE_COMPACT, LAYOUT_CALL, FULL_LAYOUT_PROBE, type LayoutCall, plotRepairHeight, WIDTH_PROBE, FIXED_SIZE_PROBE, ACCEPTANCE_PROBE, CARD_HEIGHT_MEMO, type CardHeightMemo, type FitLayout, isWidthProbe, compactReplacesRefusal, sizeRefusal, withoutForcedCompact, hiddenForSpace, narrowShareApplies, PLOT_SHARE, PLOT_FLOOR_SHARE, withLayoutMemo, SIZE_TOLERANCE } from './sizing';
+import { CARD_MIN_WIDTH, chartSizing, declaredSizing, fitsSize, compactFallbackApplies, FORCE_COMPACT, LAYOUT_CALL, FULL_LAYOUT_PROBE, type LayoutCall, plotRepairHeight, WIDTH_PROBE, FIXED_SIZE_PROBE, ACCEPTANCE_PROBE, CARD_HEIGHT_MEMO, type CardHeightMemo, type FitLayout, isWidthProbe, compactReplacesRefusal, sizeRefusal, withoutForcedCompact, hiddenForSpace, narrowShareApplies, PLOT_SHARE, PLOT_FLOOR_SHARE, withLayoutMemo, SIZE_TOLERANCE, lostCategoryNames } from './sizing';
 import { NormalizeError, resolveCanvasOptions, resolveSize } from './normalize/shared';
 import { checkItemBudget } from './itemBudget';
 import { DENSITY_VALUES, UNVERIFIED_DENSITY_REFUSALS, authoredNotes, dataOrder, densityNoteInList, hiddenNoteLine, withDensityNotes, withCutLabelNotes, finishCutLabelNotes, footnoteSwitch, markNotedLabels, owedHiddenLabels, withHiddenLabelNote, withNoteInA11y } from './frame';
@@ -24,7 +26,7 @@ import { markLostOnBandWarnings } from './paintWarnings';
 import { casingUnderFills, labelsOnFills, fillEdges, marksOnBands, referenceLineClearance, withoutOrphanAnnotationMarks } from './markVisibility';
 import { groundEdges } from './label/emit';
 import { withoutRepeatedAxisBreaks } from './axis';
-import { panelTypeClass, REMOVED_NAMES, removedNameWarnings, resolveTargetTheme, stampHatchLook } from './theme';
+import { colorblindRoles, DEFAULT_PRESET, panelTypeClass, REMOVED_NAMES, removedNameWarnings, resolveTargetTheme, stampHatchLook } from './theme';
 import { textScaleOf, textSizeOf } from './typeFloors';
 import { DEFAULT_TARGET, resolveTargetSize, TARGET_SIZE, withDefaultTarget } from './target';
 import type { Category } from './types/data';
@@ -41,7 +43,10 @@ import { pushAll } from './arrays';
 /** Chart types may refine shared mode names and label content. */
 export type ChartOptions = Omit<BaseOptions, 'mode' | 'labels'> & { mode?: unknown; labels?: false | Partial<Record<import('./types/options').LabelKind, boolean | string[]>> };
 
-/** Render uses its measured frame; exact repair verification belongs to measure. */
+/**
+ * A layout that draws reports an estimated height and no patch: the estimate was never drawn, and a patch that
+ * was not drawn can end in a refusal. Exact repair verification belongs to measure.
+ */
 function estimatedPlotAdvice<M extends object, DV extends object>(result: LayoutResult<M, DV>, options: ChartOptions | undefined): void {
   const warning = result.warnings.find(w => w.code === 'plot-under-floor');
   if (!warning || isRefused(result) || result.refused) return;
@@ -51,7 +56,6 @@ function estimatedPlotAdvice<M extends object, DV extends object>(result: Layout
   result.warnings = result.warnings.map(w => w === warning ? { ...rest,
     message: `${rest.message.replace(/; (?:the chart needs|the estimated height is) .*$/, '')}; the estimated height is ${height} px; use measure for the exact verified size`,
     suggest: 'Use measure for the exact verified size, or leave options.size.height out.',
-    fix: [{ op: 'replace', path: '/options/size', value: { width: result.size.width, height } }],
   } : w);
 }
 
@@ -101,6 +105,8 @@ export interface ChartCore<
   /** Alias-specific values for existing options, applied before authored options. */
   aliasDefaults?: Record<string, Partial<O>>;
   layout: LayoutFn<D, O, M, DV>;
+  /** Wraps the finished layout, for a check that must see the chart the registry accepts. */
+  finishLayout?: (layout: LayoutFn<D, O, M, DV>) => LayoutFn<D, O, M, DV>;
   defaults: Partial<O>;
   annotationKinds: AnnotationKind[];
   lint?(data: D, options: O): LintWarning[];
@@ -121,6 +127,12 @@ export interface ChartCore<
    * hides names the grown chart prints.
    */
   namesMustPrint?: boolean;
+  /**
+   * A pinned canvas keeps a drawing at the type's hard minimum only while it hides no category name;
+   * otherwise the type-size step and then the size refusal apply. Unlike namesMustPrint, it leaves
+   * the full-mode check and the grid probes alone.
+   */
+  hardMinimumKeepsNames?: boolean;
   /**
    * The layout under legend 'none' when the chart
    * keeps a key no drawn label replaces. It gets the 'none' layout and the
@@ -201,6 +213,9 @@ export function chartRegistryRevision(): number {
   return registryRevision;
 }
 
+/** Types whose layout paints every good/bad pair from theme.color.colorblind under colorblindSafe. */
+const COLORBLIND_IN_LAYOUT: ReadonlySet<string> = new Set(['bar', 'dimswitch', 'heatmap', 'kpi', 'status', 'table', 'variance']);
+
 /**
  * The engine-free index beside the chart registry. `BoardplotChart` fills it
  * from the schema chunk of the type a spec names, before — often long before
@@ -268,7 +283,7 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
     const ref = authored?.theme;
     // One pair of number marks per chart (numberMarks.ts).
     const localized = withNumberMarks(withLocaleStrings(footnoteSwitch(resolveCanvasOptions({ ...authored, target,
-      theme: { preset: typeof ref === 'string' ? ref : ref?.preset ?? 'boardroom', overrides: theme },
+      theme: { preset: typeof ref === 'string' ? ref : ref?.preset ?? DEFAULT_PRESET, overrides: theme },
     } as unknown as O))));
     const prepared = def.defaultStrings ? withChartDefaultStrings(localized, def.defaultStrings(localized)) : localized;
     if (def.type === 'grid') data = inheritGridTarget(data, target, textScale, textSize);
@@ -288,7 +303,7 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
       : resolveTargetSize(sizeTarget, options?.size);
     const frame = options;
     const current: Record<PropertyKey, unknown> = { ...prepared };
-    for (const key of ['size', 'mode', 'belowMinimum', FORCE_COMPACT, WIDTH_PROBE, FIXED_SIZE_PROBE] as const) {
+    for (const key of ['size', 'mode', 'belowMinimum', FORCE_COMPACT, WIDTH_PROBE, FIXED_SIZE_PROBE, PLAN_ONLY] as const) {
       if (frame && Object.hasOwn(frame, key)) current[key] = (frame as O & Record<PropertyKey, unknown>)[key];
       else delete current[key];
     }
@@ -430,17 +445,20 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
     const sClassMinimum = <S extends NonNullable<typeof geo.sizing>>(minimum: S, size: { width: number; height: number }): S => {
       if (nested || isWidthProbe(def.type, options) || minimum.aspect !== 'content'
         || size.width < 720 || minimum.minWidth >= 720) return minimum;
-      const at = Math.ceil(minimum.minWidth);
+      // A type whose floor is under the card width (a KPI, a pie, a map) probes at the card width: a layout at a floor
+      // of 160 px that refuses costs several times a layout at 280 px. A probe that draws there still reports the width
+      // its own content needs (a map lists its small regions beside it).
+      const at = Math.max(Math.ceil(minimum.minWidth), CARD_MIN_WIDTH);
       let probe: ReturnType<typeof named>['geo'];
       // A chart whose text cannot wrap at the probe width throws (creative-text-overflow in German).
       // The probe only refines the reported minimum, so the chart that drew keeps it.
       // Only a width refusal counts here. The hidden-label note rounds add note lines, which take
       // height and never width, so the probe skips them; the notes the spec asks for stay in it.
-      try { probe = legendLayout(withoutForcedCompact({ ...layoutOptions, [FIXED_SIZE_PROBE]: true,
+      try { probe = legendLayout(withoutForcedCompact({ ...layoutOptions, [FIXED_SIZE_PROBE]: true, ...((def.type === 'table' || def.type === 'dimswitch') ? { [PLAN_ONLY]: true } : {}),
         ...(def.type === 'gantt' && !resolved.fixed.height ? { [ACCEPTANCE_PROBE]: true } : {}),
         size: resolved.fixed.height ? { width: at, height: Math.max(size.height, minimum.minHeight) } : { width: at } } as O)); }
       catch (error) { if (error instanceof NormalizeError) return minimum; throw error; }
-      return probe.refused && probe.warnings[0]?.code === 'size-below-floor' && probe.sizing && probe.sizing.minWidth > minimum.minWidth
+      return (probe.refused ? probe.warnings[0]?.code === 'size-below-floor' : at > minimum.minWidth) && probe.sizing && probe.sizing.minWidth > minimum.minWidth
         ? { ...minimum, minWidth: Math.min(720, probe.sizing.minWidth) } : minimum;
     };
     const geo = named(layoutOptions).geo;
@@ -472,7 +490,7 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
           const full = named(withoutForcedCompact(runOptions), probeHeight).geo;
           return isRefused(full) && compact.warnings[0]?.code === 'size-below-floor' ? compact : full;
         };
-        const probeAt = (width: number, height: number) => hostView({ ...layoutOptions, size: { width, height } } as O);
+        const probeAt = (width: number, height: number) => hostView({ ...layoutOptions, size: { width, height }, ...((def.type === 'table' || def.type === 'dimswitch') ? { [PLAN_ONLY]: true } : {}) } as O);
         // A hidden-label note stays on a compact canvas, so each taller probe can add a note line; six passes reach it.
         for (let pass = 0; pass < 6; pass++) {
           const width = Math.max(geo.size.width, floor.minWidth);
@@ -485,7 +503,7 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
             let low = geo.size.height;
             let high = floor.minHeight;
             const accepts = (height: number) => !isRefused(hostView({
-              ...layoutOptions, size: { width, height }, [FIXED_SIZE_PROBE]: def.type !== 'gantt', [ACCEPTANCE_PROBE]: true,
+              ...layoutOptions, size: { width, height }, [FIXED_SIZE_PROBE]: def.type !== 'gantt', [ACCEPTANCE_PROBE]: true, ...((def.type === 'table' || def.type === 'dimswitch') ? { [PLAN_ONLY]: true } : {}),
             } as O, def.type === 'gantt'));
             if (!resolved.fixed.height && accepts(low + 1)) high = low + 1;
             while (high - low > 1) {
@@ -529,23 +547,25 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
       }
     }
     if (geo.sizing) geo.sizing = sClassMinimum(geo.sizing, geo.size);
-    // A pale fill keeps its colour; without equivalent text or bounding neighbours it takes a 3:1 edge.
-    fillEdges(geo, theme);
-    // A key swatch, or a segment on a highlighted row's tint, that would vanish into the fill it lies on keeps a hairline.
-    geo.scene = groundEdges(geo.scene, () => theme, false);
-    // For every chart type: no halo on a label that sits on a fill.
-    labelsOnFills(geo);
-    // Reference lines break around labels and keep contrast over fills.
-    referenceLineClearance(geo);
-    withoutOrphanAnnotationMarks(geo);
-    withoutRepeatedAxisBreaks(geo);
-    geo.scene = casingUnderFills(geo.scene);
-    // Every hatch draws at options.hatchStrength, its key swatch like its marks.
-    geo.scene = stampHatchLook(geo.scene, (options as { hatchStrength?: number } | undefined)?.hatchStrength);
-    const bandPairs = marksOnBands(geo.scene);
-    if (bandPairs.length > 0) {
-      geo.paintWarningRules = [...(geo.paintWarningRules ?? []), { kind: 'mark-lost-on-band', pairs: bandPairs, before: geo.warnings.length }];
-      pushAll(geo.warnings, markLostOnBandWarnings(theme, bandPairs));
+    if (!(options as { [PLAN_ONLY]?: boolean })[PLAN_ONLY]) {
+      // A pale fill keeps its colour; without equivalent text or bounding neighbours it takes a 3:1 edge.
+      fillEdges(geo, theme);
+      // A key swatch, or a segment on a highlighted row's tint, that would vanish into the fill it lies on keeps a hairline.
+      geo.scene = groundEdges(geo.scene, () => theme, false);
+      // For every chart type: no halo on a label that sits on a fill.
+      labelsOnFills(geo);
+      // Reference lines break around labels and keep contrast over fills.
+      referenceLineClearance(geo);
+      withoutOrphanAnnotationMarks(geo);
+      withoutRepeatedAxisBreaks(geo);
+      geo.scene = casingUnderFills(geo.scene);
+      // Every hatch draws at options.hatchStrength, its key swatch like its marks.
+      geo.scene = stampHatchLook(geo.scene, (options as { hatchStrength?: number } | undefined)?.hatchStrength);
+      const bandPairs = marksOnBands(geo.scene);
+      if (bandPairs.length > 0) {
+        geo.paintWarningRules = [...(geo.paintWarningRules ?? []), { kind: 'mark-lost-on-band', pairs: bandPairs, before: geo.warnings.length }];
+        pushAll(geo.warnings, markLostOnBandWarnings(theme, bandPairs));
+      }
     }
     if (options?.a11y?.title !== undefined) geo.a11y.includeTitle = options.a11y.title;
     const frameWarnings = geo.frame.warnings ?? [];
@@ -573,8 +593,8 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
         message: `${truncated.length} placed label(s) omit text; the reading lists their full text in labelsTruncated`,
         suggest: 'give the labels more room or shorten their text' });
     }
-    pushAll(geo.warnings, unmatchedIdWarnings(geo, data, options?.highlight, pins, nested));
-    geo.presentation = presentationInfo(geo, target, panelTypeClass(options), textScale);
+    pushAll(geo.warnings, unmatchedIdWarnings(geo, data, def.type === 'sankey' ? undefined : options?.highlight, pins, nested));
+    if (!(options as { [PLAN_ONLY]?: boolean })[PLAN_ONLY]) geo.presentation = presentationInfo(geo, target, panelTypeClass(options), textScale);
     pushAll(geo.warnings, removedNames);
     return geo;
     });
@@ -588,7 +608,6 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
     };
     return layout;
   };
-  const lostCategoryNames = (geo: LayoutResult<M, DV>) => geo.refused ? [] : geo.labels.filter(label => label.kind === 'category' && !!label.hidden && label.hidden !== 'redundant' && label.hidden !== 'density');
   // A name longer than a narrow card needs width, not a refusal without a fix: three wider cards
   // (x1.15 each) at the same height. The first that prints every name is the size the refusal names.
   const widerForNames = (full: LayoutResult<M, DV>, options: O | undefined, layoutOnce: (options?: O) => LayoutResult<M, DV>) => {
@@ -617,13 +636,12 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
     const full = layoutOnce(options);
     // A band chart's full mode prints every category name (namesMustPrint). When the
     // finished chart hides one, compact replaces it only if compact prints them all; else it refuses.
-    const lostNames = (geo: typeof full) => geo.refused ? [] : geo.labels.filter((label) => label.kind === 'category' && !!label.hidden && label.hidden !== 'redundant' && label.hidden !== 'density');
-    if (def.namesMustPrint === true && !full.refused && full.mode !== 'compact' && lostNames(full).length > 0) {
+    if (def.namesMustPrint === true && !full.refused && full.mode !== 'compact' && lostCategoryNames(full).length > 0) {
       const compact = compactFallbackApplies(def, options, data) ? layoutOnce({ ...options, [FORCE_COMPACT]: true } as unknown as typeof options) : full;
-      if (compact !== full && !isRefused(compact) && lostNames(compact).length === 0) return compact;
+      if (compact !== full && !isRefused(compact) && lostCategoryNames(compact).length === 0) return compact;
       const wider = widerForNames(full, options, layoutOnce);
       if (wider) return wider;
-      return hiddenLabelCollision(def.title, full as Geometry<object, object>, new Map(lostNames(full).map((label) => [label.id, label.text]))) as unknown as typeof full;
+      return hiddenLabelCollision(def.title, full as Geometry<object, object>, new Map(lostCategoryNames(full).map((label) => [label.id, label.text]))) as unknown as typeof full;
     }
     if (!full.refused || full.warnings[0]?.code !== 'size-below-floor') return full;
     // A pinned card counts hidden values before compacting the plot. This
@@ -684,7 +702,7 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
     const probes = new Map<string, LayoutResult<M, DV>>();
     const run = ((runOptions?: O) => withLayoutMemo(() => {
       const size = runOptions?.size;
-      const key = `${typeof size === 'object' ? `${size?.width}x${size?.height}:${size?.unit}` : String(size)}:${String(runOptions?.mode)}:${runOptions?.belowMinimum}:${(runOptions as { [FULL_LAYOUT_PROBE]?: boolean } | undefined)?.[FULL_LAYOUT_PROBE]}:${(runOptions as { [FORCE_COMPACT]?: boolean } | undefined)?.[FORCE_COMPACT]}:${(runOptions as { [WIDTH_PROBE]?: string } | undefined)?.[WIDTH_PROBE]}:${(runOptions as { [FIXED_SIZE_PROBE]?: boolean } | undefined)?.[FIXED_SIZE_PROBE]}`;
+      const key = `${typeof size === 'object' ? `${size?.width}x${size?.height}:${size?.unit}` : String(size)}:${String(runOptions?.mode)}:${runOptions?.belowMinimum}:${(runOptions as { [FULL_LAYOUT_PROBE]?: boolean } | undefined)?.[FULL_LAYOUT_PROBE]}:${(runOptions as { [FORCE_COMPACT]?: boolean } | undefined)?.[FORCE_COMPACT]}:${(runOptions as { [WIDTH_PROBE]?: string } | undefined)?.[WIDTH_PROBE]}:${(runOptions as { [FIXED_SIZE_PROBE]?: boolean } | undefined)?.[FIXED_SIZE_PROBE]}:${(runOptions as { [PLAN_ONLY]?: boolean } | undefined)?.[PLAN_ONLY]}`;
       const cached = memo.active ? probes.get(key) : undefined;
       if (cached !== undefined) return cached;
       const fullProbe = (runOptions as { [FULL_LAYOUT_PROBE]?: boolean } | undefined)?.[FULL_LAYOUT_PROBE] === true;
@@ -710,7 +728,8 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
     })) as LayoutCall<O, M, DV>;
     run.probe = at => run({ ...at, [FULL_LAYOUT_PROBE]: true } as unknown as O);
     run.finish = () => { probes.clear(); layoutOnce.finish(); if (!borrowed) { memo.active = false; memo.heights.clear(); memo.references = undefined; } };
-    const variable = new Set<PropertyKey>(['size', 'mode', 'belowMinimum', LAYOUT_CALL, FULL_LAYOUT_PROBE, FORCE_COMPACT, WIDTH_PROBE, ACCEPTANCE_PROBE]);
+    const variable = new Set<PropertyKey>(['size', 'mode', 'belowMinimum', LAYOUT_CALL, FULL_LAYOUT_PROBE, FORCE_COMPACT, WIDTH_PROBE, ACCEPTANCE_PROBE, PLAN_ONLY]);
+    if (def.type === 'table' || def.type === 'dimswitch') variable.add(FIXED_SIZE_PROBE);
     run.accepts = (d, at) => d === data && [...new Set([...Reflect.ownKeys(options ?? {}), ...Reflect.ownKeys(at ?? {})])]
       .every(key => variable.has(key) || (options as Record<PropertyKey, unknown> | undefined)?.[key] === (at as Record<PropertyKey, unknown> | undefined)?.[key]);
     return run;
@@ -735,14 +754,29 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
         && !(options as { [ACCEPTANCE_PROBE]?: boolean })[ACCEPTANCE_PROBE]) {
         estimatedPlotAdvice(geo, options);
       }
+      // colorblindSafe swaps every good/bad paint the chart drew, whichever type drew it; a paint a layout already
+      // swapped carries its colorblind recipe and stays as it is. These types paint every good/bad pair from the
+      // colorblind recipe themselves, so they skip the walk.
+      if (!geo.refused && (options as { colorblindSafe?: boolean }).colorblindSafe === true && !COLORBLIND_IN_LAYOUT.has(def.type)) {
+        geo.scene = colorblindRoles(geo.scene).value;
+        geo.labels = colorblindRoles(geo.labels).value;
+        if (geo.legend) geo.legend = colorblindRoles(geo.legend).value;
+        geo.annotations = colorblindRoles(geo.annotations).value;
+      }
       if (geo.warnings.some(warning => warning.fix)) {
         geo.warnings = geo.warnings.map(warning => warning.fix
           ? { ...warning, fix: addWhereAbsent({ data, options: authored }, warning.fix) } : warning);
       }
+      // The author's description replaces every sentence the chart and the frame wrote into it.
+      const description = options?.a11y?.description;
+      if (description !== undefined && !geo.refused) {
+        geo.a11y.desc = description;
+        if (geo.story) geo.story.desc = description;
+      }
       return geo;
     });
   };
-  registry.set(def.type, { ...def, sizing, layout: layoutWithFooter, [LAYOUT_CALL]: createLayout } as RegisteredChart<any, any, any, any>);
+  registry.set(def.type, { ...def, sizing, layout: def.finishLayout?.(layoutWithFooter) ?? layoutWithFooter, [LAYOUT_CALL]: createLayout } as RegisteredChart<any, any, any, any>);
   for (const alias of aliases) {
     aliasIndex.set(alias, def.type);
   }
@@ -916,7 +950,14 @@ function noPlottedValuesWarning(data: unknown): LintWarning | null {
   };
 }
 
+/** Resolve an unknown spelling only when one registered type or alias matches its case. */
+export function chartInputName(name: string): string | undefined {
+  if (registry.has(name) || aliasIndex.has(name) || schemaIndex.has(name) || schemaAliasIndex.has(name)) return name;
+  return caseInsensitiveValue(name, [...registry.keys(), ...aliasIndex.keys(), ...schemaIndex.keys(), ...schemaAliasIndex.keys()]);
+}
+
 export function getChart(typeOrAlias: string): RegisteredChart<any, any, any, any> | undefined {
+  typeOrAlias = chartInputName(typeOrAlias) ?? typeOrAlias;
   const chart = registry.get(typeOrAlias) ?? registry.get(aliasIndex.get(typeOrAlias) ?? '');
   const defaults = chart?.aliasDefaults?.[typeOrAlias];
   if (!chart || !defaults) return chart;
@@ -955,6 +996,7 @@ export function registerChartSchemas(schemas: ChartSchemas<any, any>, aliases: r
  * registered core-only with no schema chunk beside it.
  */
 export function getChartSchemas(typeOrAlias: string): ChartSchemas<any, any> | undefined {
+  typeOrAlias = chartInputName(typeOrAlias) ?? typeOrAlias;
   const chart = getChart(typeOrAlias);
   if (chart && isDefinition(chart)) return chart;
   return schemaIndex.get(typeOrAlias) ?? schemaIndex.get(schemaAliasIndex.get(typeOrAlias) ?? '');

@@ -1,5 +1,6 @@
 import * as z from 'zod';
 import { addCanvasBoundsIssues, baseOptionsSchema, idSchema, refusedBaseOptions } from '../../schema/shared';
+import { columnHeadsOption, columnOrderOption, columnOverridesOption, columnVisibilityOption, rowOrderOption, rowOverridesOption, rowVisibilityOption } from '../../schema/generatedColumnOptions';
 import type { CreativeData, CreativeOptions } from './types';
 
 const text = z.string().trim().min(1).describe('Nonempty authored text.');
@@ -93,9 +94,16 @@ export const creativeOptionsSchema: z.ZodType<CreativeOptions> = z.strictObject(
   ...refusedBaseOptions('creative'),
   target: baseOptionsSchema.shape.target, textScale: baseOptionsSchema.shape.textScale, textSize: baseOptionsSchema.shape.textSize,
   mode: baseOptionsSchema.shape.mode, interactive: baseOptionsSchema.shape.interactive, embed: baseOptionsSchema.shape.embed,
-  palette: baseOptionsSchema.shape.palette, locale: baseOptionsSchema.shape.locale,
+  palette: baseOptionsSchema.shape.palette, locale: baseOptionsSchema.shape.locale, colorblindSafe: baseOptionsSchema.shape.colorblindSafe,
   title: baseOptionsSchema.shape.title, subtitle: baseOptionsSchema.shape.subtitle,
   source: baseOptionsSchema.shape.source, theme: baseOptionsSchema.shape.theme, size: baseOptionsSchema.shape.size,
   notes: baseOptionsSchema.shape.notes,
   footnotes: z.literal(false).optional().describe('false leaves the source line and the method lines (the account-median basis and the fatigue rule) off the card, for a host that shows them in its own frame; the texts stay in frame.source and frame.notes, and the fatigue status line stays on the card. No list of notes is taken.'),
+  columnVisibility: columnVisibilityOption('creative'),
+  columnOverrides: columnOverridesOption('creative', ['width', 'align', 'headAlign', 'label']),
+  columnOrder: columnOrderOption('creative'),
+  columnHeads: columnHeadsOption(),
+  rowVisibility: rowVisibilityOption('creative'),
+  rowOrder: rowOrderOption('creative'),
+  rowOverrides: rowOverridesOption('creative'),
 }).superRefine(addCanvasBoundsIssues).describe('Creative exhibit metadata. Default canvas is 960 by 700 pixels.');

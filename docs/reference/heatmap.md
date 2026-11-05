@@ -55,20 +55,21 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | series[].id | string | yes | Series identity used by keyed options, annotations and legend entries. |
 | series[].label | string |  | Displayed series name; defaults to the series id. |
 | series[].values | (cell \| { categoryId, value: cell })[] | yes | Values in category order, or keyed entries pairing a categoryId with its value. |
-| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST). Controls scenario labels and paint conventions. |
+| series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST, LY for last year). Codes and aliases accept any case. Controls scenario labels and paint conventions. |
 | series[].direction | string |  | Declares this row's judgment for the continuous scale and PINS the whole matrix on the good/bad valence ramp (like table heat's signed flag) — declaring 'higherIsBetter' is therefore not a paint no-op on an all-positive matrix. 'lowerIsBetter' inverts the row's poles. Breaks bins go bad to good; under a breaks key every row needs the same direction (else refused). Ignored by the plain discrete ladder and harvey glyphs (warned). One of `'higherIsBetter'`, `'lowerIsBetter'`. |
 | series[].colorRole | string |  | Accepted series color role; heatmap colors are resolved by the matrix scale and cell fills. One of good, bad, warn, neutral, neutralLight, highlight, total, others; series-N for step N of the theme ramp, 1-based (series-2 is color.series[1]); or status-<key> for a theme status colour. A hex colour goes in fill. |
 | series[].unit | string |  | Unit shown with this series values and used to check shared-scale compatibility. |
 | series[].format | string |  | Format-by-example for this series values, for example 1,234 or 1.2%. |
 | series[].sizes | array |  | Bubble sizes. One per category, in order: a level 1 to n with bubble.levels, else area ∝ size. |
 | series[].bases | array |  | Cell bases (n). One per category, in order; below minBase draws hatched. |
+| series[].states | string \| null[] |  | Why a cell has no value. One per category, in order: suppressed, nm (not meaningful), na (not applicable) or null. A stated cell needs value null; it draws hatched and the key names its state. One of `'na'`, `'nm'`, `'suppressed'` (or another value of its type). |
 
 ## Options
 
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
 | scale | string | `'continuous'`, `'discrete'` | `'continuous'` | Continuous color interpolation by default, or a discrete color ladder. |
-| variant | string | `'value'`, `'harvey'`, `'bubble'` | `'value'` | Value labels fit as a whole row; authored labels and valid pins retain precedence. Harvey glyphs suppress values and take ratings 0 to 4 only; any other value is refused. 'bubble': one circle per cell, colour = value, area = series sizes; values print where they fit. |
+| variant | string | `'value'`, `'harvey'`, `'bubble'` | `'value'` | Value labels fit as a whole row, and an automatic number text loses a % sign the unit names, then takes fewer decimals, before a value is hidden; authored labels and valid pins retain precedence. Harvey glyphs suppress values and take ratings 0 to 4 only; any other value is refused. 'bubble': one circle per cell, colour = value, area = series sizes; values print where they fit. |
 | cap | object |  |  | Where the continuous scale saturates, as table heat's cap: a value at or past it paints full strength, measured from zero. Without it the good/bad scale is symmetric, full at the largest \|value\|, and the magnitude ramp spans the data. The discrete ladder and harvey glyphs ignore it (cap-ignored). |
 | cap.pct | number |  |  | Cap in points when every cell is a percent. Example: 20 saturates at ±20%. |
 | cap.abs | number |  |  | Cap in source units for other values. |
@@ -78,10 +79,15 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | bubble.sizeLabel | string |  |  | Size key title. |
 | bubble.colorLabel | string |  |  | Colour key title. |
 | bubble.track | boolean |  |  | Row track. A line with an arrow through each row; implies ordered columns. Default false. |
+| columnOverrides | object |  |  | Settings per generated column. Ids: label, each data.categories id. |
+| columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
+| columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Alignment of the column: its cell text and, unless headAlign is set, its head. Bars keep starting at the panel origin. |
+| columnOverrides.*.headAlign | string | `'left'`, `'right'`, `'center'` |  | Head alignment; defaults to align. |
+| columnOverrides.*.label | string |  |  | Head text. |
 | minBase | number |  |  | Low-base threshold. Cells whose series bases entry is below it draw hatched, with a note. |
 | missing | string | `'hatch'`, `'blank'` |  | How a cell with no value is drawn. 'hatch' (the default) stripes the cell and names it in the key. 'blank' draws no fill and no stripe; the same key entry or note still says that a blank cell is no data. A blank cell keeps its grid line and dash, so it does not read as the palest value. A low base (bases and minBase) stays hatched. |
 
-Plus the [shared options](options.md). This type does not accept `categoryLabels`, `valueAxis`, `categoryAxis`, `secondaryAxis`, `rowLabels`, `topN`, `bandFraction`, `rounding`.
+Plus the [shared options](options.md). This type does not accept `valueAxis`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `topN`, `bandFraction`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
 ## Annotations
 
@@ -121,7 +127,9 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | period-comparisons | example | Annual growth and differences between named matrix cells |
 | torture-long-labels | torture | Torture: long names at a generous size read whole, never cut |
 | series-formats | torture | Rows have distinct formats |
+| cell-states | example | A cell with a state is named in the key as suppressed, not meaningful or not applicable |
 | measure-already-names-unit | torture | The measure names the unit once |
 | survey-journey-bubbles | example | Survey bubble matrix: 6 segments × 12 touchpoints, importance as size, binned satisfaction as colour, two low-base cells |
 | survey-journey-long-names | example | Survey bubble matrix with long touchpoint names: the matrix turns instead of rotating or thinning the names |
 | survey-journey-track | example | Survey bubble matrix with a row track: the touchpoints are ordered journey steps |
+| column-widths | example | A wider first column, aligned values and a renamed head |

@@ -60,7 +60,7 @@ export const mekkoOptionsSchema = z.object({
   axisTitles: primaryAxisTitleSchema('over the value axis, in the top row left of the plot'),
   // Percent totals use the original measure's unit; options.unit names shares.
   mode: z.never({ error: notImplemented('mode', 'mekko', 'a mekko draws one framing at every width; remove mode and set size for a smaller canvas') }).optional().describe("Refused on 'mekko': a mekko draws one framing at every width."),
-  variant: z.enum(['stacked100', 'stacked', 'bar']).optional().describe("stacked100 by default gives 100% stacks with widths proportional to category totals. stacked uses absolute stack heights; bar uses one value-height rectangle per category."),
+  variant: z.enum(['stacked100', 'stacked', 'bar']).optional().describe("stacked100 by default gives 100% stacks with widths proportional to category totals. stacked uses absolute stack heights; bar uses one value-height rectangle per category; with several data series it draws them as stacked columns and warns."),
   widthSeriesId: idSchema.optional().describe("Series supplying category widths; omitted uses category totals, or equal widths in bar mode."),
   ridge: idSchema.optional().describe("Data-series id whose top boundary is emphasized across the variable-width columns."),
 }).superRefine(addCanvasBoundsIssues) as unknown as z.ZodType<MekkoOptions>;

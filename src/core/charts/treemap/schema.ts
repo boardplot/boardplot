@@ -8,7 +8,7 @@ import { TREEMAP_AREA_ERROR_LIMIT, TREEMAP_CIRCLE_MAX_ITEMS } from './geometry';
 const groupSchema = z.strictObject({
   id: idSchema.describe('Group identity that items name in `group`.'),
   label: z.string().optional().describe('Group name in the legend; defaults to the id.'),
-  colorRole: colorRoleField('Theme color role of every cell in this group; the palette is used when absent.'),
+  colorRole: colorRoleField('Theme color role of every cell in this group. Absent, the group takes its rank step on color.treemap (else color.stack, else the first series colour stepped toward the page), or its palette hue when options.palette is set.'),
   fill: z.string().optional().describe('Authored fill of every cell in this group.'),
 });
 
@@ -16,12 +16,12 @@ const itemSchema = z.strictObject({
   id: idSchema.describe('Item identity, one cell.'),
   label: z.string().optional().describe('Name printed on the cell, or beside it with a leader when the cell is too small; defaults to the id.'),
   group: idSchema.optional().describe('Id of the group this item belongs to. Leave it out on every item for a one-level treemap.'),
-  value: z.number().describe('Value of the item, above 0. The cell area is proportional to it. Zero, negative and missing values are refused.'),
+  value: z.number().nullable().describe('Value of the item. The cell area is proportional to a value above 0. Zero and null items are left out with a warning and a note. Negative values are refused.'),
 });
 
 export const treemapDataSchema = z
   .strictObject({
-    groups: z.array(groupSchema).optional().describe('Groups in source order. Each group is one hue and one contiguous region. Left out, the groups come from the items in first-seen order.'),
+    groups: z.array(groupSchema).optional().describe('Groups in source order. Each group is one colour and one contiguous region; by default the groups share one colour family, the first drawn group strongest (the largest under the default order). Left out, the groups come from the items in first-seen order.'),
     items: z.array(itemSchema).min(1).describe('Items, one cell each. Items of one group sit next to each other.'),
   })
   .superRefine((data, ctx) => {

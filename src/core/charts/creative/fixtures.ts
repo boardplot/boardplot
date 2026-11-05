@@ -81,4 +81,19 @@ const creativeVideoFixture: Fixture<CreativeData, CreativeOptions> = {
     media: { kind: 'video', aspect: '1:1', poster: syntheticCreativeImage, alt: 'Poster frame of a synthetic product video' },
   },
 };
-registerFixtures('creative', [creativePlaceholderFixture, creativeImageFixture, creativeHostFixture, creativeVideoFixture]);
+/** Two number columns, four metric rows in the author's order, one renamed metric and renamed heads. */
+const creativeColumnsRowsFixture: Fixture<CreativeData, CreativeOptions> = {
+  ...creativePlaceholderFixture,
+  id: 'columns-rows',
+  title: 'A creative table with the median column and two metrics left out',
+  options: {
+    ...creativePlaceholderFixture.options,
+    columnVisibility: { median: false },
+    columnOrder: ['delta', 'value'],
+    columnOverrides: { value: { label: 'This ad', width: 72, align: 'right' }, delta: { label: 'Against median', headAlign: 'right' }, label: { width: 120 } },
+    rowVisibility: { holdRate: false, frequency: false },
+    rowOrder: ['roas', 'cpa'],
+    rowOverrides: { roas: { label: 'Return on spend' } },
+  },
+};
+registerFixtures('creative', [creativePlaceholderFixture, creativeImageFixture, creativeHostFixture, creativeVideoFixture, creativeColumnsRowsFixture]);

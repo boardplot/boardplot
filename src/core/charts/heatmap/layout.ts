@@ -1,5 +1,6 @@
 import { chartString } from '../../strings/heatmap';
 import { chartTheme } from '../chartEnv';
+import { NAMED_COLUMN_STATES, NAMED_STATE_PATTERN, type NamedColumnState } from '../../schema/namedColumns';
 import { labelOn as chartLabelOn } from '../labelOn';
 import { structureCount } from '../../structureCounts';
 /**
@@ -16,9 +17,9 @@ import { structureCount } from '../../structureCounts';
 import type { AnchorResolution } from '../../annotate';
 import { runAnnotatePass } from '../../annotatePass';
 import { marginBracketLayout } from '../../annotateLinks';
-import { defaultNumberDecimals, formatAutomaticNumber, NOT_AVAILABLE, numberRange } from '../../format';
+import { defaultNumberDecimals, formatAutomaticNumber, lowBaseKeyLabel, NOT_AVAILABLE, numberRange } from '../../format';
 import { AUTOMATIC_FORMAT, type AutomaticFormatSource, defaultFormatSpec, exampleSpec, formatNonzeroWithSpec, formatterFromExample, rasterDecimals, seriesRasterFormatter, parseFormatExample, specUnitKind } from '../../formatSpec';
-import { round2, type Rect } from '../../geometry';
+import { cleanFloat, round2, type Margin, type Rect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex } from '../../label/occupied';
 import { categoryLineAlign, planCategoryRow, rotatedClaimRect } from '../../label/categoryRow';
@@ -52,6 +53,7 @@ import type { HeatmapData } from '../../types/data';
 import type { HeatmapOptions, LabelKind, LegendOptions } from '../../types/options';
 import type {
   Geometry,
+  HatchPattern,
   LintWarning,
   Paint,
   PlacedAnnotation,
@@ -61,7 +63,7 @@ import type {
 import { rowDrivenHeight } from '../../rowCanvas';
 import { rowLabelBand } from '../../label/rowLabels';
 import { fittedLabel, gutterBudget, GUTTER_MAX_SHARE, stepDownFont } from '../../label/rowFit';
-import { capPitch, HARD_MINIMUM, matrixWidths, rowSizing } from '../../sizing';
+import { capPitch, HARD_MINIMUM, heightOmitted, matrixWidths, rowSizing } from '../../sizing';
 import { arrowHeadPath, arrowShaftEnd, harveyWedgePath } from '../../svgPath';
 import { nonzeroDecimals } from '../../formatPrecision';
 import { categoryLabelsAndMarks } from '../../footnoteMark';
@@ -71,6 +73,8 @@ import { disclosureNote } from '../../notes';
 import { maxOf, minOf, pushAll } from '../../arrays';
 import { headInk as tableHeadInk, plainInk } from '../table/headFace';
 import { emptyIdRecord } from '../../idRecords';
+import { matrixTracks, nameTrackRefusals, overrideIgnored, widthCapped, widthFloored } from './columnTracks';
+import { generatedIdWarnings } from '../../schema/generatedColumns';
 
 export interface HeatmapMarks {
   cells: { seriesId: Id; categoryId: Id; rect: Rect; nodeId: Id; value: number | null }[];
@@ -94,13 +98,24 @@ function withSuffixFloor(widths: { minWidth: number; naturalWidth: number }, wid
   return short > 0 ? { ...widths, minWidth: Math.max(widths.minWidth, width + Math.ceil(short / GUTTER_MAX_SHARE)) } : widths;
 }
 
+/** One step of the value text ladder: decimals taken off the automatic precision, and the % sign left off. */
+interface ValueCut { decimals: number; sign: boolean }
+const NO_CUT: ValueCut = { decimals: 0, sign: false };
+
+/** The fewest decimals at which the values of a range still fall on at least ten distinct steps. */
+function readableDecimals(range: number): number {
+  let d = 0;
+  while (d < 6 && range * 10 ** d < 10) d++;
+  return d;
+}
+
 interface NormRow {
   id: Id;
   label: string;
   direction?: Direction;
   format?: string;
   unit?: string;
-  cells: { v: number | null; pct: boolean; meta: CellMeta | null; size: number | null; base: number | null }[];
+  cells: { v: number | null; pct: boolean; meta: CellMeta | null; size: number | null; base: number | null; state: NamedColumnState | null }[];
 }
 
 interface NormCol {
@@ -132,6 +147,10 @@ const VALUE_KEY_GAP = 8;
 /** The narrowest column pitch at which a wide bubble matrix stays upright with two-tier names. */
 const UPRIGHT_TIER_PITCH = 44;
 const ROW_BAND_GAP = 8; // row-label band → grid
+/** The width a column keeps when authored widths pass the room: the natural column of the matrix. */
+const COLUMN_KEEP = 28;
+/** Air a value aligned to a cell's side keeps from that side. */
+const VALUE_INSET = 6;
 const HEADER_GAP = 4; // column-header band → grid
 /** How far past the grid edge a callout's seat on its row begins (twice the callout gap). */
 const CALLOUT_SEAT = 16;
@@ -159,8 +178,9 @@ const BUBBLE_AIR_TIGHT = 1;
 /** How far a value's figures may reach past the edge of its circle. */
 const VALUE_OVERHANG = 1.5;
 /** Air between the two tiers of a staggered header, and between two names of one tier. */
-const TIER_GAP = 2;
+const TIER_GAP = 3;
 const TIER_NAME_GAP = 8;
+const TIER_LEAN_MAX = 0.25;
 /** Air between a tier tick and a lower-tier name beside it (a line never touches text). */
 const TICK_CLEAR = 4;
 /** A bubble matrix laid out turned: categories as rows, series as columns (internal pass flag). */
@@ -232,12 +252,17 @@ export function layoutHeatmap(
     throw new NormalizeError('empty-data', 'series', 'heatmap requires at least one series (row)');
   }
   const rawCats = data.categories.map((c, i) => normalizeCategory(c as never, i));
-  let cols: NormCol[] = rawCats.map((c) => ({ id: c.id, label: c.label ?? c.id, date: c.date, ...(c.footnote === undefined ? {} : { footnote: c.footnote }) }));
+  const overrides = options.columnOverrides ?? {};
+  const nameTrack = overrides.label;
+  pushAll(warnings, generatedIdWarnings('heatmap', 'columnOverrides', options.columnOverrides, ['label', ...rawCats.map((c) => c.id)]));
+  pushAll(warnings, nameTrackRefusals(overrides, rawCats.map((c) => c.id)));
+  // The name of a category follows it into a turned matrix.
+  let cols: NormCol[] = rawCats.map((c) => ({ id: c.id, label: overrides[c.id]?.label ?? c.label ?? c.id, date: c.date, ...(c.footnote === undefined ? {} : { footnote: c.footnote }) }));
   let rows: NormRow[] = data.series.map((s, i) => {
     if (!s?.id) throw new NormalizeError('missing-id', `series[${i}]`, 'series requires an id');
-    const { sizes, bases } = s;
-    if ((sizes?.length ?? 0) > rawCats.length || (bases?.length ?? 0) > rawCats.length) {
-      throw new NormalizeError('length-mismatch', `series[${s.id}]`, `series '${s.id}' has more sizes or bases than the ${rawCats.length} categories`, 'give one size and one base per category, in category order');
+    const { sizes, bases, states } = s;
+    if ((sizes?.length ?? 0) > rawCats.length || (bases?.length ?? 0) > rawCats.length || (states?.length ?? 0) > rawCats.length) {
+      throw new NormalizeError('length-mismatch', `series[${s.id}]`, `series '${s.id}' has more sizes, bases or states than the ${rawCats.length} categories`, 'give one size, base and state per category, in category order');
     }
     const cells = normalizeSeriesValues(s, rawCats, i).map((c, ci) => ({
       v: cellValue(c),
@@ -245,7 +270,11 @@ export function layoutHeatmap(
       meta: cellMeta(c),
       size: sizes?.[ci] ?? null,
       base: bases?.[ci] ?? null,
+      state: states?.[ci] ?? null,
     }));
+    cells.forEach((cell, ci) => {
+      if (cell.state && cell.v !== null) throw new NormalizeError('state-with-value', `series[${s.id}].states[${ci}]`, `a cell state requires value null; series '${s.id}' holds ${cell.v} for '${rawCats[ci]!.id}'`, 'give the cell value null or drop its state', undefined, ['data', 'series', i, 'states', ci]);
+    });
     return { id: s.id, label: s.label ?? s.id, direction: s.direction, format: s.format, unit: s.unit, cells };
   });
   // A Harvey ball is a rating 0 to 4. Any other value is
@@ -326,9 +355,14 @@ export function layoutHeatmap(
   // "12.4"; no nonzero value rounds to 0.
   const rasterSpec = defaultFormatSpec(options.locale?.language);
   const decimals = rasterDecimals(allValues, rasterSpec);
+  // The value text shrinks in steps when a cell has no room for it (see fitValueCut):
+  // the step is read by shownFor, never by the hover text.
+  let cut = NO_CUT;
+  const dataValueSet = new Set(allValues);
+  const automaticFmt = (v: number, off = 0) => formatAutomaticNumber(v, { locale: options.locale?.language, decimals: defaultNumberDecimals(v, nonzeroDecimals(v, decimals - off), options.unit, options.target) });
   const fmt = options.format
-    ? formatterFromExample(options.format, options.locale?.language)
-    : (v: number) => formatAutomaticNumber(v, { locale: options.locale?.language, decimals: defaultNumberDecimals(v, nonzeroDecimals(v, decimals), options.unit, options.target) });
+    ? formatterFromExample(options.format, options.locale?.language, undefined, allValues)
+    : (v: number) => automaticFmt(v);
   const formats = seriesRasterFormatter(options.format, allValues, options.locale?.language, options.unit, options.target);
   const vMax = allValues.length > 0 ? maxOf(allValues) : 0;
   const vMin = allValues.length > 0 ? minOf(allValues) : 0;
@@ -338,6 +372,8 @@ export function layoutHeatmap(
   // full at the larger magnitude, or at the authored cap (table heat's cap,
   // in points on a matrix of percent cells).
   const pctMatrix = allValues.length > 0 && rows.every((r) => r.cells.every((c) => c.v === null || c.pct));
+  // A % sign may be left off a cell only where the unit line names the percent.
+  const percentNamedByUnit = options.unit?.includes('%') === true;
   const cap = scale === 'continuous' ? pctMatrix ? options.cap?.pct : options.cap?.abs : undefined;
   const valenceSpan = cap ?? Math.max(posMax, -negMin);
   const rowMeans: Record<Id, number | null> = emptyIdRecord();
@@ -409,7 +445,7 @@ export function layoutHeatmap(
   const declaredDirections = rows.some((r) => r.direction !== undefined);
   const valence = vMin < 0 || (scale === 'continuous' && declaredDirections);
   if (options.cap && (scale === 'discrete' || glyph === 'harvey')) {
-    warnings.push({ code: 'cap-ignored', severity: 'warn', message: `cap does not apply to ${glyph === 'harvey' ? 'harvey glyphs' : 'the discrete rating ladder'}; it sets where the continuous scale saturates`, suggest: 'drop cap', field: ['options', 'cap'] });
+    warnings.push({ code: 'cap-ignored', severity: 'warn', message: `cap does not apply to ${glyph === 'harvey' ? 'harvey glyphs' : 'the discrete rating ladder'}; it sets where the continuous scale saturates`, suggest: 'drop cap', field: ['options', 'cap'], fix: [{ op: 'remove', path: '/options/cap' }] });
   }
   if (declaredDirections && ((scale === 'discrete' && !bins) || glyph === 'harvey')) {
     warnings.push({
@@ -477,7 +513,7 @@ export function layoutHeatmap(
   const keyHigh = cap === undefined ? vMax : Math.max(valence ? -cap : 0, Math.min(cap, vMax));
   const keyText = (v: number) => {
     const saturated = cap !== undefined && ((v === keyHigh && vMax > cap) || (v === keyLow && vMin < -cap));
-    const value = saturated && Number.isInteger(v) && !pctMatrix && !options.format && !keySeries?.format ? formatAutomaticNumber(v, { locale: options.locale?.language, decimals: 0 }) : displayFor(v, pctMatrix, null, keySeries);
+    const value = saturated && Number.isInteger(v) && !pctMatrix && !options.format && !keySeries?.format ? formatAutomaticNumber(v, { locale: options.locale?.language, decimals: 0 }) : shownFor(v, pctMatrix, null, keySeries);
     return `${cap !== undefined && v === keyHigh && vMax > cap ? '>=' : cap !== undefined && v === keyLow && vMin < -cap ? '<=' : ''}${value}`;
   };
 
@@ -493,23 +529,21 @@ export function layoutHeatmap(
   const lineH = tickFont.size * 1.2;
   // The bubble matrix prints its values bold in its largest circles only, so
   // the same cells carry values at every width.
-  const valueLabelFont: FontSpec = bubbleStyle ? { ...labelFont, weight: emphasisWeight(theme) } : labelFont;
-  const topOnly = bubbleStyle && cellLabelsOn && levels !== undefined && levels.length >= 2
+  let valueLabelFont: FontSpec = bubbleStyle ? { ...labelFont, weight: emphasisWeight(theme) } : labelFont;
+  // A fact of the data: some cell holds the top size level, whatever the labels or format say.
+  const topLevelHeld = levels !== undefined && levels.length >= 2
     && rows.some((r) => r.cells.some((c) => c.v !== null && c.size === levels.length));
-  /** The radius a value needs to stand inside its circle: its half width and a pixel, and the figures' height. */
-  const valueRadius = (text: string): number => {
-    const t = measure(text, valueLabelFont);
-    return Math.hypot(t.width / 2 + 1, 0.35 * t.height);
-  };
-  const topValueR = topOnly ? Math.max(0, maxOf(rows.flatMap((r) => r.cells.flatMap((c) => {
-    if (c.v === null || c.size !== levels!.length) return [];
-    const text = textFor(c.v, c.pct, c.meta, r);
-    return text ? [valueRadius(text)] : [];
-  })))) : 0;
+  const topOnly = bubbleStyle && cellLabelsOn && topLevelHeld;
   const continuousKey = scale === 'continuous' && glyph === 'value' && !options.heatKey
     && vMax > vMin && !compactKey && panelTypeClass(options) === undefined && options.legend !== 'none'
     && !rows.some(r => r.direction === 'lowerIsBetter');
   const keyRight = normalizeLegendOption(options.legend)?.position === 'right';
+  // The gradient key stands above the matrix or at its right edge; a key named at the left stays above it.
+  if (continuousKey && normalizeLegendOption(options.legend)?.position === 'left') warnings.push({
+    code: 'legend-side-fallback', severity: 'warn', field: ['options', 'legend'],
+    message: "the gradient key stays above the matrix: it has no place at the left of it",
+    suggest: "Set legend to 'right' to put the gradient key beside the matrix.",
+  });
   // The styled value matrix sets its gradient key 8 px over the month row.
   // The unit sits centred on the bar and its line box is taller than the bar:
   // the key row starts at the top of that box, not at the top of the bar.
@@ -537,23 +571,31 @@ export function layoutHeatmap(
   const missingCells = glyph !== 'harvey' && options.heatKey === undefined && rows.some((r) => r.cells.some((c) => c.v === null));
   const missingLook = options.missing ?? 'hatch';
   const hatchMissing = missingCells && missingLook !== 'blank';
+  // A null cell with a state is named by it; one without stays plain no data.
+  const stateNames = { na: chartString(options, 'stateNa'), nm: chartString(options, 'stateNm'), suppressed: chartString(options, 'stateSuppressed') };
+  const statesPresent = NAMED_COLUMN_STATES.filter((state) => rows.some((r) => r.cells.some((c) => c.state === state)));
+  const plainNoData = rows.some((r) => r.cells.some((c) => c.v === null && !c.state));
+  const noDataKey = (id: string, label: string, pattern: HatchPattern = 'hatch45') => missingLook === 'blank'
+    ? { id, label, paint: { token: 'background' } as Paint, stroke: { token: 'grid' } as Paint }
+    : { id, label, paint: NO_DATA_PAINT, pattern, hatchGround: { token: 'background' } as Paint, stroke: { token: 'grid' } as Paint };
+  const noDataNames = [...(plainNoData ? [chartString(options, 'noData')] : []), ...statesPresent.map((state) => stateNames[state])].join(', ');
   // `legend: 'none'` drops the key, as on the table: a host that
   // draws its own key for the same scale would otherwise show two.
   const anyLowBase = rows.some((r) => r.cells.some((c) => c.v !== null && lowBase(c)));
-  const lowBaseKey = `n < ${formatAutomaticNumber(options.minBase ?? 0, { locale: options.locale?.language })}`;
+  const lowBaseKey = lowBaseKeyLabel(options.minBase ?? 0, options.locale?.language);
   const scaleItems = glyph !== 'harvey' && !bubble && allValues.length > 0 && panelTypeClass(options) === undefined
     ? options.heatKey?.items ?? [...(continuousKey ? [] : colourScaleKey()), ...(missingCells
-      ? [missingLook === 'blank'
-        ? { id: 'scale:none', label: chartString(options, 'noData'), paint: { token: 'background' } as Paint, stroke: { token: 'grid' } as Paint }
-        : { id: 'scale:none', label: chartString(options, 'noData'), paint: NO_DATA_PAINT, pattern: 'hatch45' as const, hatchGround: { token: 'background' } as Paint, stroke: { token: 'grid' } as Paint }]
+      ? [...(plainNoData ? [noDataKey('scale:none', chartString(options, 'noData'))] : []), ...statesPresent.map((state) => noDataKey(`scale:${state}`, stateNames[state], NAMED_STATE_PATTERN[state]))]
       : []), ...(anyLowBase ? [{ id: 'scale:lowBase', label: lowBaseKey, paint: { token: 'neutralMark' } as Paint, pattern: 'hatch45' as const, hatchGround: { token: 'background' } as Paint }] : [])]
     : undefined;
   // The bubble keys (size and colour) stand in their own strip above the matrix.
   const bubbleKeys = bubble && allValues.length > 0 && panelTypeClass(options) === undefined && options.legend !== 'none';
   const derivedNotes = [
-    ...(topOnly ? [disclosureNote(chartString(options, 'heatmapTopValuesNote'))] : []),
+    ...(topOnly && valueNote === undefined ? [disclosureNote(chartString(options, 'heatmapTopValuesNote'))] : []),
     ...(valueNote ? [disclosureNote(valueNote)] : []),
-    ...(bubble && missingCells ? [disclosureNote(missingLook === 'blank' ? 'Blank cells: no data.' : chartString(options, 'hatchedNoData'))] : []),
+    ...(bubble && missingCells ? [disclosureNote(statesPresent.length
+      ? (missingLook === 'blank' ? `Blank cells: ${noDataNames}.` : chartString(options, 'hatchedCells', { v1: noDataNames }))
+      : missingLook === 'blank' ? 'Blank cells: no data.' : chartString(options, 'hatchedNoData'))] : []),
     ...(anyLowBase
       ? [disclosureNote(chartString(options, 'heatmapBaseNote', { v1: bubble ? chartString(options, 'circles') : chartString(options, 'cellsLower'), v2: formatAutomaticNumber(options.minBase!, { locale: options.locale?.language }) }))] : []),
   ];
@@ -592,10 +634,17 @@ export function layoutHeatmap(
   );
   const keyRightW = continuousKey && keyRight ? KEY_BAR_H + 6 + KEY_GAP
     + Math.max(...[vMin, vMax, ...(cap === undefined ? [] : [-cap, cap])].map(v => measure(`>=${displayFor(v, pctMatrix, null, keySeries)}`, tickFont).width)) : 0;
-  const plot0 = { ...frameResult.plot, w: Math.max(10, frameResult.plot.w - keyRightW) };
+  // Bubbles and Harvey balls stand in their cells with air of their own; only filled cells reach the plot edge.
+  const framePlot = bubble || glyph === 'harvey' ? frameResult.plot : bareGridPlot(frameResult.plot, size.height, margin, options);
+  const plot0 = { ...framePlot, w: Math.max(10, framePlot.w - keyRightW) };
 
   // ---- row-label band (measured like bar's category band, capped at 28%) ----
-  const capW = Math.max(24, plot0.w * 0.28);
+  // An authored name band stops where each column keeps the natural 28 px.
+  const bandRoom = plot0.w - ROW_BAND_GAP - (bracketGutter ?? 0) - cols.length * COLUMN_KEEP - (cols.length - 1) * CELL_GAP;
+  const authoredBand = nameTrack?.width === undefined || harveyList ? undefined : Math.max(24, Math.min(nameTrack.width - ROW_BAND_GAP, bandRoom));
+  if (nameTrack?.width !== undefined && harveyList) warnings.push(overrideIgnored('label', 'width', 'a list form sizes the names by their text'));
+  else if (nameTrack?.width !== undefined && nameTrack.width - ROW_BAND_GAP > Math.max(24, bandRoom)) warnings.push(widthCapped('heatmap', 'label'));
+  const capW = authoredBand ?? Math.max(24, plot0.w * 0.28);
   // one-line header estimate to decide row-label wrapping (breaks the circular dependency)
   const cellHEst = (plot0.h - lineH - HEADER_GAP) / rows.length;
   // Under a render target a card (below 480 px) wraps names to two lines.
@@ -605,7 +654,7 @@ export function layoutHeatmap(
   const card = size.width < 480 && !valueStyle;
   const suffixed = options.rowSuffix && !turned ? rows.map((r) => ({ ...r, suffix: options.rowSuffix![r.id] })) : rows;
   const fitRows = (maxLines: number, wider: number) => rowLabelBand(suffixed, tickFont, capW, maxLines, lineH, measure, {
-    wider, target: options.target, textScale: textScaleOf(options), typeRole: 'axis',
+    ...(authoredBand === undefined ? { wider } : {}), target: options.target, textScale: textScaleOf(options), typeRole: 'axis',
     shrink: stepDownFont(theme, tickFont, 'axis', options.target, textScaleOf(options)),
   });
   // The grid keeps its natural 28 px per column; the band widens into the rest.
@@ -622,7 +671,10 @@ export function layoutHeatmap(
     const bold = { ...label.font, weight: emphasisWeight(theme) };
     return { ...label, w: Math.max(label.w, ...label.lines.map((line) => measure(line, bold).width)) };
   });
-  const rowBandW = Math.max(fittedRows.width, maxOf(rowLines.map((label) => label.w)));
+  // The chart's minimum reads the band the names need, not the authored one.
+  const rowBandFloor = Math.max(fittedRows.width, maxOf(rowLines.map((label) => label.w)));
+  const rowBandW = authoredBand === undefined ? rowBandFloor : Math.max(rowBandFloor, authoredBand);
+  if (authoredBand !== undefined && nameTrack!.width! - ROW_BAND_GAP < rowBandFloor) warnings.push(widthFloored('heatmap', 'label'));
   const rowSuffixShort = fittedRows.short;
 
   // A cell note gets a side seat only within 15% of the remaining grid width.
@@ -634,14 +686,14 @@ export function layoutHeatmap(
     const value = row?.cells[ci]?.v ?? colMeans[cols[ci]?.id ?? ''] ?? 0;
     let body = 'text' in a ? a.text ?? '${value}' : '${value}';
     // A cell value that fits is already printed; the callout omits its duplicate too.
-    if (cellLabelsOn && row && (plot0.w - rowBandW - ROW_BAND_GAP) / cols.length > measure(displayFor(value, pctMatrix, null, row), labelFont).width + 6) {
+    if (cellLabelsOn && row && (plot0.w - rowBandW - ROW_BAND_GAP) / cols.length > measure(shownFor(value, pctMatrix, null, row), labelFont).width + 6) {
       body = body.replace(/:\s*\n\$\{value\}$/, '');
     }
     const glyphRoom = ('icon' in a && a.icon) || ('status' in a && a.status) ? 29 : 0;
     const source = `${'headline' in a && a.headline !== undefined ? `${a.headline}\n` : ''}${body}`.replace(/\$\{value\}/g, displayFor(value, pctMatrix, null, row));
     const wrapped = wrapText(source, { ...labelFont, weight: emphasisWeight(theme) }, Math.max(1, width - glyphRoom), maxLines ?? Math.max(1, source.length), measure);
     const lines = wrapped.lines;
-    const w = Math.max(...lines.map(line => measure(line, { ...labelFont, weight: emphasisWeight(theme) }).width));
+    const w = Math.max(0, ...lines.map(line => measure(line, { ...labelFont, weight: emphasisWeight(theme) }).width));
     return { w, h: Math.max(glyphRoom ? 22 : 0, measure('0', labelFont).height * lines.length), sideW: w + (glyphRoom ? 38 : CALLOUT_SEAT), truncated: wrapped.truncated };
   };
   const noteSizes = new Map(notes.map(a => [a.id!, noteSize(a)]));
@@ -688,10 +740,24 @@ export function layoutHeatmap(
   // ---- grid metrics ----
   // The Harvey list stands its balls at the plot edge, the names after them.
   const gridX = harveyList ? plot0.x : plot0.x + rowBandW + ROW_BAND_GAP + leftRoom;
-  const gridW = harveyList ? HARVEY_LIST_CELL : Math.max(10, plot0.w - rowBandW - ROW_BAND_GAP - gutterRight - leftRoom);
-  const cellW = Math.max(1, (gridW - (cols.length - 1) * CELL_GAP) / cols.length);
+  const gridRoom = harveyList ? HARVEY_LIST_CELL : Math.max(10, plot0.w - rowBandW - ROW_BAND_GAP - gutterRight - leftRoom);
+  // A turned matrix has no column for a category: its authored settings warn and draw nothing.
+  const tracks = turned ? undefined : matrixTracks(cols.map((c) => c.id), gridRoom, CELL_GAP, (id) => overrides[id]?.width, () => COLUMN_KEEP);
+  if (tracks) for (const id of tracks.capped) warnings.push(widthCapped('heatmap', id));
+  if (tracks) for (const id of tracks.floored) warnings.push(widthFloored('heatmap', id));
+  if (turned) {
+    for (const c of rawCats) for (const key of ['width', 'align', 'headAlign'] as const) {
+      if (overrides[c.id]?.[key] !== undefined) warnings.push(overrideIgnored(c.id, key, 'this matrix draws its categories as rows'));
+    }
+  }
+  const gridW = tracks?.gridW ?? gridRoom;
+  // With authored widths the narrowest column sets what every cell shares: the glyph radius, the row pitch and the header pitch.
+  const cellW = tracks ? minOf(tracks.widths) : Math.max(1, (gridW - (cols.length - 1) * CELL_GAP) / cols.length);
   const colStep = cellW + CELL_GAP;
-  const colCenter = (ci: number) => gridX + ci * colStep + cellW / 2;
+  const colWidth = (ci: number) => tracks ? tracks.widths[ci]! : cellW;
+  const colLeft = (ci: number) => tracks ? gridX + tracks.lefts[ci]! : gridX + ci * colStep;
+  const colCenter = (ci: number) => colLeft(ci) + colWidth(ci) / 2;
+  const headAlignOf = (ci: number) => { const override = turned ? undefined : overrides[cols[ci]!.id]; return override?.headAlign ?? override?.align; };
   // Notes under the value matrix that stand apart, each centred on its column,
   // share one row, so "−3.1 Aug low" stands beside "−2.8".
   const belowRows: Annotation[][] = [];
@@ -728,14 +794,13 @@ export function layoutHeatmap(
     }
     annotationBottomH = belowRows.reduce((sum, group) => sum + maxOf(group.map(a => noteSizes.get(a.id!)!.h)) + 8, 0) + caretRoom;
   }
-  // A styled bubble row with values in its largest circles stands as tall as
-  // its names and those values need; upright it may grow to 1.5 times that,
-  // up to the column pitch; turned it keeps the short pitch. Without levels
-  // every value may print, so a row stays as tall as the column is wide.
-  // On a card a cell under 40 px keeps the tight air round its circle, as the radius below does.
-  const valueCell = topOnly ? 2 * (topValueR - VALUE_OVERHANG + BUBBLE_AIR_TIGHT) : 0;
-  const bubbleLo = Math.max(28, labelFont.size * 1.2 + 8, maxOf(rowLines.map((label) => label.h + 4)), valueCell < 40 && size.width < 720 ? valueCell : 2 * (topValueR - VALUE_OVERHANG + BUBBLE_AIR));
-  const bubbleNaturalH = !topOnly ? Math.max(cellW, bubbleLo) : turned ? bubbleLo : Math.max(bubbleLo, Math.min(cellW, 1.5 * bubbleLo));
+  // A levelled bubble matrix with a top-level cell keeps a compact pitch from its row names;
+  // the pitch ignores value labels and number format. Without a top-level cell every value may
+  // print, so a row stays as tall as the column is wide.
+  const bubbleLo = Math.max(28, labelFont.size * 1.2 + 8, maxOf(rowLines.map((label) => label.h + 4)));
+  const bubbleNaturalH = topLevelHeld
+    ? turned ? bubbleLo : Math.max(bubbleLo, Math.min(cellW, 1.5 * bubbleLo))
+    : Math.max(cellW, bubbleLo);
 
   // ---- column headers: the shared category cascade ----
   // The heatmap's categories are its COLUMNS, so the reference mark belongs
@@ -787,7 +852,7 @@ export function layoutHeatmap(
     const lineHt = font.size * (font.lineHeight ?? 1.2);
     // A name may take two columns; near the plot's edge it wraps to stay
     // centred, and a word wider than that ends at the edge.
-    const info = (label: string, width: number) => {
+    const info = (label: string, width: number, maxLines = 2) => {
       // A two-tier name wider than its own column wraps on two lines, so it does not reach
       // across the column rules beside it.
       const one = measure(label, font).width;
@@ -798,7 +863,7 @@ export function layoutHeatmap(
         if (!narrow.truncated && narrow.lines.length === 2) return { lines: narrow.lines, w: nw, h: 2 * lineHt, truncated: false };
         return { lines: [label], w: one, h: lineHt, truncated: false };
       }
-      const wrapped = wrapText(label, font, Math.max(1, width), 2, measure);
+      const wrapped = wrapText(label, font, Math.max(1, width), maxLines, measure);
       const w = Math.max(1, ...wrapped.lines.map((line) => measure(line, font).width));
       return { lines: wrapped.lines, w, h: wrapped.lines.length * lineHt, truncated: wrapped.truncated || w > width + 1e-6 };
     };
@@ -826,11 +891,18 @@ export function layoutHeatmap(
       const apartOf = (list: ReturnType<typeof info>[], xs: number[]) => list.every((item, ci) => !item.truncated
         && xs[ci]! >= room(ci)[0] - 1e-6 && xs[ci]! + item.w <= room(ci)[1] + 1e-6
         && (ci < 2 || xs[ci]! >= xs[ci - 2]! + list[ci - 2]!.w + TIER_NAME_GAP));
+      // A name that cannot stand centred over its column leans toward its neighbours, and its tick then
+      // meets the name away from its middle. Names that lean more than a quarter column wrap narrower, on
+      // three lines where two do not fit, so the tick stays under the name. A one-line header skips this.
+      const leans = (list: ReturnType<typeof info>[], xs: number[]) => !oneLine && list.some((item, ci) => Math.abs(xs[ci]! + item.w / 2 - colCenter(ci)) > TIER_LEAN_MAX * colStep);
+      const nearOf = (maxLines: number) => cols.map((c, ci) => { const near = info(c.label, Math.min(limitOf(ci), Math.max(centred(ci), Math.min(twoCols, widestWord(c.label)))), maxLines); return near.truncated ? info(c.label, limitOf(ci)) : near; });
       let infos = cols.map((c, ci) => info(c.label, limitOf(ci)));
       let xs = xsOf(infos);
-      if (!apartOf(infos, xs)) {
-        infos = cols.map((c, ci) => { const near = info(c.label, Math.min(limitOf(ci), Math.max(centred(ci), Math.min(twoCols, widestWord(c.label))))); return near.truncated ? info(c.label, limitOf(ci)) : near; });
-        xs = xsOf(infos);
+      const plain = apartOf(infos, xs);
+      if (!plain || leans(infos, xs)) {
+        const tries = (oneLine ? [2] : [2, 3]).map((maxLines) => { const list = nearOf(maxLines); return [list, xsOf(list)] as const; });
+        const best = tries.find(([list, listXs]) => apartOf(list, listXs) && !leans(list, listXs)) ?? (plain ? undefined : tries[0]);
+        if (best) [infos, xs] = [best[0], best[1]];
       }
       if (apartOf(infos, xs) && infos.every((info) => !info.truncated && (!oneLine || info.lines.length === 1))) {
         const upper = (ci: number) => ci % 2 === up;
@@ -852,13 +924,28 @@ export function layoutHeatmap(
   if (turnable && !flatHeader(headerPlan) && !keepUpright) {
     return layoutHeatmap(data, { ...options, [TURNED]: true }, bracketGutter, valueNote, forceRows, compactKey);
   }
-  if (turned && !flatHeader(headerPlan) && cols.length >= 2) tiered();
+  // Names that would rotate stagger on two tiers first, and rotation stays the last resort. A
+  // name row that stands flat on three lines keeps those lines, and a month row keeps its own thinning.
+  if ((turned || (!monthColumns && headerPlan.step !== 'stride' && headerPlan.rotation !== 0)) && !flatHeader(headerPlan) && cols.length >= 2) tiered();
   // The Harvey list names its one column as a heading at the plot edge, on one line.
   if (harveyList) {
     const lineHt = tickFont.size * (tickFont.lineHeight ?? 1.2);
     const infos = cols.map((c) => ({ lines: [c.label], w: measure(c.label, tickFont).width, h: lineHt, truncated: false }));
     headerPlan = { ...headerPlan, font: tickFont, infos, keep: cols.map(() => true), stride: 1, rotation: 0, warnings: [], step: 'fit',
       maxLines: 1, rowHeight: lineHt, x: () => plot0.x };
+  }
+  // The plan wraps every name to the narrowest column; a name that fits its own wider column stands on one line.
+  if (tracks && headerPlan.rotation === 0 && tierTicks.length === 0) {
+    const plan = headerPlan;
+    const lineHt = plan.font.size * (plan.font.lineHeight ?? 1.2);
+    const infos = plan.infos.map((info, ci) => {
+      const label = cols[ci]!.label, one = measure(label, plan.font).width;
+      return info.lines.length > 1 && info.title === undefined && cols[ci]!.footnote === undefined && one <= colWidth(ci) - 2 ? { ...info, lines: [label], w: one, h: lineHt } : info;
+    });
+    if (infos.some((info, ci) => info !== plan.infos[ci])) {
+      const maxLines = maxOf(infos.map((info) => info.lines.length));
+      headerPlan = { ...plan, infos, maxLines, rowHeight: maxLines * lineHt, x: (ci: number) => Math.min(plot0.x + plot0.w - infos[ci]!.w, colCenter(ci) - infos[ci]!.w / 2) };
+    }
   }
   const headerRotated = headerPlan.rotation !== 0;
   const colLines = headerPlan.infos;
@@ -875,11 +962,23 @@ export function layoutHeatmap(
   const keyFont: FontSpec = { family: theme.type.family, ...theme.type.axis };
   const keyLineH = keyFont.size * 1.2;
   const keyTitled = options.bubble?.sizeLabel !== undefined || options.bubble?.colorLabel !== undefined;
-  const styledKey = bubbleKeys && bubbleStyle ? planStyledBubbleKey() : undefined;
+  const headerGap = harveyWide ? HARVEY_HEADER_GAP : 0;
+  let styledKey = bubbleKeys && bubbleStyle ? planStyledBubbleKey() : undefined;
+  // On a pinned height the largest key circle is the largest drawn bubble, which stands in a cell
+  // no taller than the rows share after the key. The key and the cell height depend on each other,
+  // so they are solved by repeating: each pass of two keeps a cell height at or above the final one,
+  // so the key circle is never smaller than the matrix bubble. A height from content keeps the strip
+  // of one column pitch, so a content-fit height round-trips.
+  if (styledKey && !heightOmitted(options.size)) {
+    const rowsRoom = plot0.h - headerGap - headerH - continuousKeyH - annotationTopH - annotationBottomH;
+    const cellAfter = (bound: number) => capPitch((Math.max(10, rowsRoom - planStyledBubbleKey(bound).height - KEY_GAP) - (rows.length - 1) * CELL_GAP) / rows.length, 1, 1.5 * cellW);
+    let bound = cellAfter(0);
+    for (let pass = 0; pass < 3; pass++) bound = cellAfter(cellAfter(bound));
+    styledKey = planStyledBubbleKey(bound);
+  }
   const keyH = styledKey ? styledKey.height + KEY_GAP : bubbleKeys
     ? (keyTitled ? keyLineH + 4 : 0) + Math.max(hasSizes ? cellW / 2 : 0, KEY_BAR_H) + 3 + keyLineH + KEY_GAP
     : 0;
-  const headerGap = harveyWide ? HARVEY_HEADER_GAP : 0;
   const headTop = plot0.y + headerGap + keyH + annotationTopH + (keyBottom ? 0 : continuousKeyH);
   const gridY = headTop + headerH;
   const gridH = plotHeightAfter(frameResult, size.height, plot0.h - headerGap - headerH - keyH - continuousKeyH - annotationTopH - annotationBottomH);
@@ -902,11 +1001,32 @@ export function layoutHeatmap(
   // A styled value matrix row is 22 px on a card under 480 px and
   // 26 px under 720 px (28 wider), never less than a value line or its name needs.
   const rowFloor = valueStyle && size.width < 720 ? (size.width < 480 ? VALUE_ROW_CARD : VALUE_ROW_NARROW) : valueStyle && size.width >= 960 ? VALUE_ROW_WIDE : 28;
+  // The value text steps down before any value is hidden. The matrix prints one text for
+  // every cell and the key: first without the % sign the unit line names, then with one
+  // decimal fewer, down to the precision that still tells the range's values apart. The first
+  // step at which every value fits at the label floor wins. A column that holds one value in
+  // every cell (a cohort's first period) may stay blank. When no step fits, the full text stays
+  // and the matrix prints none of its numbers: a matrix never prints some cells and not others.
+  // Only an engine-chosen text steps down.
+  const floorFont = { ...labelFont, size: readerFloorPx(options.target ?? DEFAULT_TARGET, 'label', textScaleOf(options)) };
+  const constantCol = cols.map((_, ci) => {
+    const held = rows.flatMap((r) => r.cells[ci]!.v ?? []);
+    return held.length >= 2 && held.every((v) => v === held[0]);
+  });
+  const allFit = () => rows.every((r) => measureRowLabels(r.cells, (v, pct, meta) => textFor(v, pct, meta, r), floorFont, measure, colWidth, Infinity, 4)
+    .every((value, ci) => value === null || value.fits || constantCol[ci]));
+  if (cellLabelsOn && !bubble) {
+    const hasPct = percentNamedByUnit && rows.some((r) => r.cells.some((c) => c.pct && c.v !== null));
+    const stepsOfDecimals = !options.format && rows.some((r) => !r.format && !r.unit && r.cells.some((c) => c.v !== null && !c.meta?.format))
+      ? Math.max(0, decimals - Math.min(decimals, readableDecimals(vMax - vMin))) : 0;
+    const steps: ValueCut[] = [...(hasPct ? [{ decimals: 0, sign: true }] : [])];
+    for (let off = 1; off <= stepsOfDecimals; off++) steps.push({ decimals: off, sign: hasPct });
+    cut = NO_CUT;
+    if (steps.length > 0 && !allFit()) cut = steps.find((step) => { cut = step; return allFit(); }) ?? NO_CUT;
+  }
   // A value matrix whose columns hold no value even at the label floor reads from colour
   // alone, so its rows need no value line.
-  const valueLineH = valueStyle && cellLabelsOn && !rows.some((r) => measureRowLabels(r.cells, (v, pct, meta) => textFor(v, pct, meta, r),
-    { ...labelFont, size: readerFloorPx(options.target ?? DEFAULT_TARGET, 'label', textScaleOf(options)) }, measure, cellW, Infinity, 4).some((value) => value?.fits))
-    ? 0 : labelFont.size * 1.2 + 8;
+  const valueLineH = valueStyle && cellLabelsOn && !allFit() ? 0 : labelFont.size * 1.2 + 8;
   const harveyRow = harveyList ? HARVEY_LIST_ROW : size.width >= 720 ? HARVEY_ROW : HARVEY_ROW_CARD;
   const naturalCellH = bubbleStyle ? bubbleNaturalH : harveyStyle ? Math.max(harveyRow, maxOf(rowLines.map(label => label.h + 4))) : Math.max(bubble ? cellW : 0,
     Math.max(rowFloor, valueLineH, maxOf(rowLines.map(label => label.h + 4))));
@@ -956,13 +1076,13 @@ export function layoutHeatmap(
     if (!highlights.has(c.id)) return;
     const nodeId = `colTint:${c.id}`;
     if (barHighlight) {
-      outlines.push({ id: nodeId, rect: { x: gridX + ci * colStep, y: gridY, w: cellW, h: gridH }, owner: colOwner(c), part: 'colTint' });
+      outlines.push({ id: nodeId, rect: { x: colLeft(ci), y: gridY, w: colWidth(ci), h: gridH }, owner: colOwner(c), part: 'colTint' });
       return;
     }
     nodes.push({
       t: 'rect',
       id: nodeId,
-      rect: { x: gridX + ci * colStep - 2, y: headTop, w: cellW + 4, h: headerH + gridH },
+      rect: { x: colLeft(ci) - 2, y: headTop, w: colWidth(ci) + 4, h: headerH + gridH },
       fill: highlightWash,
       owner: { categoryId: c.id },
       part: 'colTint',
@@ -1021,24 +1141,41 @@ export function layoutHeatmap(
   const hiddenCells: { r: NormRow; c: NormCol; v: number }[] = [];
   // One value font for the matrix. It steps down a pixel at a time, to
   // the target's label floor, until every row fits.
-  const rowValues = (font: FontSpec) => rows.map((r) => cellLabelsOn && !bubble ? measureRowLabels(r.cells, (v, pct, meta) => textFor(v, pct, meta, r), font, measure, cellW, cellH, 4) : []);
+  const rowValues = (font: FontSpec) => rows.map((r) => cellLabelsOn && !bubble ? measureRowLabels(r.cells, (v, pct, meta) => textFor(v, pct, meta, r), font, measure, colWidth, cellH, 4) : []);
   const valueFloor = readerFloorPx(options.target ?? DEFAULT_TARGET, 'label', textScaleOf(options));
+  const bubbleValuesFit = () => !bubbleStyle || !cellLabelsOn || rows.every((r) => r.cells.every((cell) => {
+    if (cell.v === null || (topOnly && cell.size !== levels!.length)) return true;
+    const radius = radiusOf(cell.size);
+    const text = textFor(cell.v, cell.pct, cell.meta, r);
+    if (radius === 0 || !text) return true;
+    const value = measureBubbleValue(text, radius);
+    return value.inside || value.beside;
+  }));
+  // Requested bubble values share one font and fit decision across the matrix.
+  while (valueLabelFont.size > valueFloor && !bubbleValuesFit()) {
+    valueLabelFont = { ...valueLabelFont, size: Math.max(valueFloor, valueLabelFont.size - 1) };
+  }
+  const showBubbleValues = bubbleValuesFit();
   let valueFont = labelFont;
   let fitted = rowValues(valueFont);
   while (valueFont.size > valueFloor && !fitted.every((values) => values.every((value) => value === null || value.fits))) {
     valueFont = { ...valueFont, size: Math.max(valueFloor, valueFont.size - 1) };
     fitted = rowValues(valueFont);
   }
+  // The fills under the printed values: their dark values share one ink (the contrast-ink recipe's `matrix`).
+  const matrixPaints: Paint[] = [];
+  // All or none: one cell without room takes the numbers off every cell (a blank constant column apart).
+  const printValues = fitted.every((values) => values.every((value, ci) => value === null || value.fits || constantCol[ci]));
   rows.forEach((r, ri) => {
     const values = fitted[ri]!;
     for (const value of values) if (value) valueCellW = Math.max(valueCellW, value.size.width + 4);
     cols.forEach((c, ci) => {
       const cell = r.cells[ci]!;
-      const rect: Rect = { x: gridX + ci * colStep, y: gridY + ri * rowStep, w: cellW, h: cellH };
+      const rect: Rect = { x: colLeft(ci), y: gridY + ri * rowStep, w: colWidth(ci), h: cellH };
       const nodeId = `cell:${cellKey(r, c)}`;
       const owner: OwnerRef = { seriesId: seriesOf(r, c), categoryId: categoryOf(r, c) };
       const needsStroke = (glyph === 'harvey' && !(harveyStyle && cell.v !== null)) || cell.v === null;
-      const valuePaint: Paint = fillPaint(cell.v, cell.meta, cellW > 12 && cellH > 12, r.direction);
+      const valuePaint: Paint = fillPaint(cell.v, cell.meta, rect.w > 12 && cellH > 12, r.direction);
       let paint: Paint = bubble && !cell.meta?.fill ? { token: 'background' } : valuePaint;
       // css is taken from the data paint BEFORE the highlight-band override
       // below — auto-ink contrasts against the value color, not the wash.
@@ -1066,13 +1203,13 @@ export function layoutHeatmap(
         id: nodeId,
         rect,
         fill: noData ? NO_DATA_PAINT : blankCell ? { token: 'background' } : paint,
-        ...(noData || low ? { pattern: 'hatch45' as const, hatchGround: { token: 'background' } as Paint } : {}),
+        ...(noData || low ? { pattern: noData && cell.state ? NAMED_STATE_PATTERN[cell.state] : 'hatch45' as const, hatchGround: { token: 'background' } as Paint } : {}),
         ...(needsStroke ? { stroke: { token: 'grid' } as Paint, strokeWidth: strokeToken(theme, 'hair') } : {}),
         owner,
         part: 'cell',
         display:
           cell.v === null
-            ? { state: 'No data' }
+            ? { state: cell.state ? stateNames[cell.state] : 'No data' }
             : { value: displayFor(cell.v, cell.pct, cell.meta, r) },
       });
       occupied.claim(rect, 'mark', owner);
@@ -1130,12 +1267,14 @@ export function layoutHeatmap(
         return;
       }
       const value = values[ci];
-      if (value?.fits) {
+      if (value?.fits && printValues) {
         const { text, size: tsize } = value;
         const basePriority =
           cell.v !== null && (cell.v === extremeMax || cell.v === extremeMin)
             ? PRIORITY.extreme
             : PRIORITY.interior + Math.min(99, Math.abs(cell.v ?? 0));
+        if (!low) matrixPaints.push(insidePaint);
+        const valueAlign = turned ? undefined : overrides[c.id]?.align;
         labelRequests.push({
           id: `point:${r.id}:${c.id}`,
           kind: 'point',
@@ -1150,7 +1289,7 @@ export function layoutHeatmap(
             {
               slot: 'insideCenter',
               rect: {
-                x: rect.x + rect.w / 2 - tsize.width / 2,
+                x: valueAlign === 'left' ? rect.x + Math.min(VALUE_INSET, (rect.w - tsize.width) / 2) : valueAlign === 'right' ? rect.x + rect.w - tsize.width - Math.min(VALUE_INSET, (rect.w - tsize.width) / 2) : rect.x + rect.w / 2 - tsize.width / 2,
                 y: rect.y + rect.h / 2 - tsize.height / 2,
                 w: tsize.width,
                 h: tsize.height,
@@ -1158,6 +1297,7 @@ export function layoutHeatmap(
               penalty: 0,
               insideFill: low ? paintColor(theme, { token: 'background' }) : css,
               insidePaint: low ? { token: 'background' } : insidePaint,
+              ...(low ? {} : { insideMatrix: matrixPaints }),
             },
           ],
         });
@@ -1167,6 +1307,13 @@ export function layoutHeatmap(
       }
     });
   });
+
+  // One entry per distinct fill keeps the shared list short.
+  const distinctFills = new Set<string>();
+  matrixPaints.splice(0, matrixPaints.length, ...matrixPaints.filter((paint) => {
+    const key = JSON.stringify(paint);
+    return !distinctFills.has(key) && (distinctFills.add(key), true);
+  }));
 
   if (missingSizes > 0) warnings.push({ code: 'bubble-size-missing', severity: 'warn', message: `${missingSizes} cell${missingSizes === 1 ? ' has' : 's have'} a value but no size, so no circle is drawn`, suggest: 'give every cell with a value a size' });
   // A row track runs behind its circles, through their centres, to an arrow past the last column.
@@ -1210,6 +1357,7 @@ export function layoutHeatmap(
   function rowFont(id: Id | undefined): FontSpec {
     return valueStyle && id !== undefined && highlights.has(id) ? { ...tickFont, weight: emphasisWeight(theme) } : tickFont;
   }
+  const nameAlign = harveyList ? undefined : nameTrack?.align;
   if (labelOn('series')) {
     rows.forEach((r, ri) => {
       const rl = rowLines[ri]!;
@@ -1220,18 +1368,30 @@ export function layoutHeatmap(
         text: r.label,
         ...fittedLabel(rl, tickFont),
         font: rowFont(r.id),
+        ...(nameAlign === 'left' ? { align: 'start' as const } : nameAlign === 'center' ? { align: 'middle' as const } : nameAlign === 'right' ? { align: 'end' as const } : {}),
         priority: PRIORITY.endpoint + (highlights.has(r.id) ? PRIORITY.highlightBonus : 0),
         candidates: [
           {
             slot: 'left',
             // The bubble matrix sets its row names at the plot edge.
-            rect: { x: harveyList ? gridX + gridW + KEY_TEXT_GAP + 5 : bubbleStyle || harveyStyle ? plot0.x : plot0.x + rowBandW - rl.w, y: rowCenter(ri) - rl.h / 2, w: rl.w, h: rl.h },
+            rect: { x: harveyList ? gridX + gridW + KEY_TEXT_GAP + 5 : nameAlign === 'left' ? plot0.x : nameAlign === 'center' ? plot0.x + (rowBandW - rl.w) / 2 : nameAlign === 'right' || !(bubbleStyle || harveyStyle) ? plot0.x + rowBandW - rl.w : plot0.x, y: rowCenter(ri) - rl.h / 2, w: rl.w, h: rl.h },
             penalty: 0,
           },
         ],
       });
     });
   }
+
+  // A head reads its alignment unless it is rotated, tiered, left out or a list's. Only printed cell values read it in a cell.
+  if (!turned) {
+    const headReads = showHeaderRow && !harveyList && !headerRotated && tierTicks.length === 0;
+    for (const c of cols) {
+      const override = overrides[c.id];
+      if (override?.headAlign !== undefined && !headReads) warnings.push(overrideIgnored(c.id, 'headAlign', 'these heads keep their own place at this size'));
+      if (override?.align !== undefined && !(glyph === 'value' && cellLabelsOn) && (!headReads || override.headAlign !== undefined)) warnings.push(overrideIgnored(c.id, 'align', 'no cell text or head reads this align'));
+    }
+  }
+  if (harveyList && nameTrack?.align !== undefined) warnings.push(overrideIgnored('label', 'align', 'a list form places the names after its glyphs'));
 
   // ---- column headers ----
   if (showHeaderRow) {
@@ -1244,7 +1404,7 @@ export function layoutHeatmap(
         owner: colOwner(c),
         text: c.label,
         lines: cl.lines,
-        ...categoryLineAlign(headerPlan, ci),
+        ...(headerRotated || tierTicks.length > 0 ? categoryLineAlign(headerPlan, ci) : headAlignOf(ci) === 'left' ? { align: 'start' as const } : headAlignOf(ci) === 'right' ? { align: 'end' as const } : categoryLineAlign(headerPlan, ci)),
         ...(cl.title !== undefined ? { title: cl.title } : {}),
         font: headerFont,
         priority: PRIORITY.endpoint + (highlights.has(c.id) ? PRIORITY.highlightBonus : 0),
@@ -1254,7 +1414,8 @@ export function layoutHeatmap(
           {
             slot: 'top',
             rect: {
-              x: harveyList ? plot0.x : headerPlan.x(ci),
+              x: harveyList ? plot0.x : tierTicks.length > 0 || headAlignOf(ci) === undefined ? headerPlan.x(ci)
+                : headAlignOf(ci) === 'left' ? colLeft(ci) : headAlignOf(ci) === 'right' ? colLeft(ci) + colWidth(ci) - cl.w : colCenter(ci) - cl.w / 2,
               y: headTop + headerH - HEADER_GAP - cl.h - tierLift[ci]!,
               w: cl.w,
               h: cl.h,
@@ -1448,7 +1609,7 @@ export function layoutHeatmap(
   }
   pushAll(nodes, labelsToNodes(theme, allLabels, (l) =>
       headerIds.has(l.id) ? headerFont : rowBandIds.has(l.id) ? rowFont(l.owner.seriesId) : l.kind === 'point' && bubbleStyle ? valueLabelFont : (l.owner.annotationId && annotations.some(a => a.id === l.owner.annotationId && (a.kind === 'cagr' || a.kind === 'diff'))) ? { ...labelFont, weight: emphasisWeight(theme) } : labelFont, nodes,
-    ).map((node): SceneNode => node.t === 'text' && !bubbleStyle && !harveyStyle && node.part === 'series' && node.lines.length > 1 && node.align === 'start'
+    ).map((node): SceneNode => node.t === 'text' && !bubbleStyle && !harveyStyle && nameAlign === undefined && node.part === 'series' && node.lines.length > 1 && node.align === 'start'
       ? { ...node, align: 'end', x: labelRects.get(node.id)!.x + labelRects.get(node.id)!.w }
       // A note row under the value matrix aligns its lines on the caret.
       : node.t === 'text' && rowNoteAlign.has(node.id) ? { ...node, ...rowNoteAlign.get(node.id)! }
@@ -1486,7 +1647,14 @@ export function layoutHeatmap(
         harveyList ? (() => {
           const w = size.width - plot0.w + gridW + KEY_TEXT_GAP + 5 + Math.max(0, maxOf(rowLines.map((label) => label.w)), maxOf(colLines.map((label) => label.w - gridW - KEY_TEXT_GAP - 5)));
           return { minWidth: w, naturalWidth: w };
-        })() : matrixWidths(size.width - gridW, cols.length, CELL_GAP, colLines.map((label) => (tierTicks.length ? label.w / 2 : label.w)), valueCellW),
+        })() : (() => {
+          const heads = colLines.map((label) => (tierTicks.length ? label.w / 2 : label.w));
+          const chromeW = size.width - gridRoom;
+          const widths = matrixWidths(chromeW - (rowBandW - rowBandFloor), cols.length, CELL_GAP, heads, valueCellW);
+          if (!tracks) return widths;
+          const free = Math.max(28, valueCellW, maxOf(heads));
+          return { ...widths, naturalWidth: chromeW + tracks.widths.reduce((sum, width, ci) => sum + (tracks.authored[ci] ? width : free), 0) + (cols.length - 1) * CELL_GAP };
+        })(),
         size.width,
         rowSuffixShort,
       ),
@@ -1509,8 +1677,8 @@ export function layoutHeatmap(
     ...(frameResult.legend ? { legend: frameResult.legend } : {}),
     marks,
     derived: {
-      max: round2(vMax),
-      min: round2(vMin),
+      max: cleanFloat(vMax),
+      min: cleanFloat(vMin),
       rowMeans,
       colMeans,
       ...(showHeaderRow
@@ -1539,6 +1707,16 @@ export function layoutHeatmap(
   };
 
   // ---- helpers ----
+
+  function measureBubbleValue(text: string, radius: number) {
+    const size = measure(text, valueLabelFont);
+    // Styled circles fit the figures' height instead of the full line box.
+    const inside = bubbleStyle
+      ? Math.hypot(size.width / 2 + 1, 0.35 * size.height) <= radius + VALUE_OVERHANG
+      : Math.hypot(size.width / 2 + 1, size.height / 2 + 1) <= radius;
+    const beside = !inside && radius + 2 + size.width <= cellW / 2 && size.height <= cellH;
+    return { size, inside, beside };
+  }
 
   /**
    * The story value of a value matrix with one highlighted row: that row's
@@ -1570,7 +1748,7 @@ export function layoutHeatmap(
   /** One hidden value as the note and the reading name it: "Iberia Aug −3.1". */
   function hiddenItem(h: { r: NormRow; c: NormCol; v: number }): string {
     const cell = h.r.cells[cols.indexOf(h.c)]!;
-    return `${h.r.label} ${h.c.label} ${textFor(h.v, cell.pct, cell.meta, h.r) ?? displayFor(h.v, cell.pct, cell.meta, h.r)}`;
+    return `${h.r.label} ${h.c.label} ${textFor(h.v, cell.pct, cell.meta, h.r, false) ?? displayFor(h.v, cell.pct, cell.meta, h.r)}`;
   }
 
   /**
@@ -1669,7 +1847,7 @@ export function layoutHeatmap(
     const pale = (paint: Paint) => (('tint' in paint && (paint.tint ?? 0) >= 0.8) || ('token' in paint && paint.token === 'background')
       ? { stroke: { token: 'neutralMark' } as Paint } : {});
     const item = (id: string, label: string, paint: Paint): LegendItemInput => ({ id: `scale:${id}`, label, paint, ...pale(paint) });
-    const keyFormat = (value: number) => displayFor(value, pctMatrix, null, keySeries);
+    const keyFormat = (value: number) => shownFor(value, pctMatrix, null, keySeries);
     if (bins) {
       return bins.slice(1).map((hi, i) => item(String(i), numberRange(keyFormat(bins[i]!), keyFormat(hi)), binPaint(i, true, rows[0]?.direction)));
     }
@@ -1730,13 +1908,9 @@ export function layoutHeatmap(
     if (topOnly && cell.size !== levels!.length) return;
     const text = textFor(cell.v, cell.pct, cell.meta, r);
     if (!text) return;
-    const tsize = measure(text, valueLabelFont);
-    // Inside when the text box, with a pixel of air, lies within the circle;
-    // the styled matrix measures the figures' height, not the line box.
-    const inside = bubbleStyle ? valueRadius(text) <= radius + VALUE_OVERHANG : Math.hypot(tsize.width / 2 + 1, tsize.height / 2 + 1) <= radius;
+    const { size: tsize, inside, beside } = measureBubbleValue(text, radius);
     const besideX = cx + radius + 2;
-    const beside = !inside && besideX + tsize.width <= rect.x + rect.w && tsize.height <= rect.h;
-    if (!inside && !beside) {
+    if (!showBubbleValues || (!inside && !beside)) {
       omittedValues++;
       hiddenCells.push({ r, c, v: cell.v });
       return;
@@ -1778,12 +1952,12 @@ export function layoutHeatmap(
    * stack otherwise. The strip's height comes from the column pitch and the
    * natural row pitch, never from the canvas height.
    */
-  function planStyledBubbleKey(): { height: number; draw: () => SceneNode[] } {
+  function planStyledBubbleKey(cellBound = Infinity): { height: number; draw: () => SceneNode[] } {
     const sizeLabel = options.bubble?.sizeLabel;
     const colorLabel = options.bubble?.colorLabel;
     const ink: Paint = { token: 'inkMuted' };
     const textW = (t: string) => measure(t, keyFont).width;
-    const keyFormat = (value: number) => displayFor(value, pctMatrix, null, keySeries);
+    const keyFormat = (value: number) => shownFor(value, pctMatrix, null, keySeries);
     const direction = rows[0]?.direction;
     // '30–50%': a percent range names its unit once.
     const range = (lo: number, hi: number) => {
@@ -1799,7 +1973,8 @@ export function layoutHeatmap(
       }))
       : continuousStops().map((v, i) => ({ id: `scale:bin:${i}`, label: keyText(v), paint: fillPaint(v, null, true, direction) }));
     if (anyLowBase) colours.push({ id: 'scale:lowBase', label: lowBaseKey, paint: semanticPalettePaint(theme, options.palette, 'neutralMark', 0.55), hatch: true });
-    const rEst = Math.max(1.5, Math.min(cellW, bubbleNaturalH) / 2 - (Math.min(cellW, bubbleNaturalH) < 40 ? BUBBLE_AIR_TIGHT : BUBBLE_AIR));
+    const side = Math.min(cellW, bubbleNaturalH, cellBound);
+    const rEst = Math.max(1.5, side / 2 - (side < 40 ? BUBBLE_AIR_TIGHT : BUBBLE_AIR));
     const largest = Math.max(0, maxOf(rows.flatMap((r) => r.cells.map((c) => c.size ?? 0))));
     const sizeEntries = !hasSizes ? [] : levels
       ? levels.map((label, i) => ({ label, level: i + 1, r: Math.max(1.5, (rEst * (i + 2)) / (levels.length + 1)) }))
@@ -1886,7 +2061,7 @@ export function layoutHeatmap(
     const edges = bins ?? [0, 1, 2, 3, 4, 5].map((k) => vMin + ((vMax - vMin) * k) / 5);
     const span = edges.at(-1)! - edges[0]! || 1;
     const shown = bins ?? [vMin, vMax];
-    const edgeText = shown.map((v) => displayFor(v, pctMatrix, null, keySeries));
+    const edgeText = shown.map((v) => shownFor(v, pctMatrix, null, keySeries));
     const barW = Math.max(120, Math.min(200, cellW * 3));
     const colorW = Math.max(barW + measure(edgeText[0]!, keyFont).width / 2 + measure(edgeText.at(-1)!, keyFont).width / 2, colorLabel ? measure(colorLabel, titleFont).width : 0);
     const lowR = 6;
@@ -1937,29 +2112,48 @@ export function layoutHeatmap(
     return out;
   }
 
-  function textFor(v: number, pct: boolean, meta: CellMeta | null, series?: NormRow): string | null {
+  /** The text a cell prints: the full text, cut by the step that fits the matrix (`cut`). */
+  function textFor(v: number, pct: boolean, meta: CellMeta | null, series?: NormRow, shown = true): string | null {
     if (meta?.label === false) return null;
-    const base = displayFor(v, pct, meta, series);
+    const base = displayFor(v, pct, meta, series, shown ? cut : NO_CUT);
     return typeof meta?.label === 'string' ? meta.label.replace(/\$\{value\}/g, base) : base;
   }
 
-  function displayFor(v: number, pct: boolean, meta: CellMeta | null, series?: NormRow): string {
-    if (meta?.format) return (meta as CellMeta & AutomaticFormatSource)[AUTOMATIC_FORMAT]
-      ? formatNonzeroWithSpec(v, { ...exampleSpec(meta.format, options.locale?.language), automatic: true })
-      : formatterFromExample(meta.format, options.locale?.language)(v);
-    const format = series?.format || series?.unit ? formats.forSeries(series) : fmt;
-    const text = format(v);
+  /**
+   * A value as the key prints it: the same cut as the cells. A key stop that is no cell value
+   * keeps the decimals it needs ("+2.5" stays, it never reads "+3"); a stop that is a cell value
+   * prints what its cell prints.
+   */
+  function shownFor(v: number, pct: boolean, meta: CellMeta | null, series?: NormRow): string {
+    if (cut.decimals === 0 || dataValueSet.has(v)) return displayFor(v, pct, meta, series, cut);
+    for (let off = cut.decimals; off > 0; off--) {
+      if (Math.abs(Number(v.toFixed(Math.max(0, decimals - off))) - v) < 1e-9 * Math.max(1, Math.abs(v))) return displayFor(v, pct, meta, series, { ...cut, decimals: off });
+    }
+    return displayFor(v, pct, meta, series, { decimals: 0, sign: cut.sign });
+  }
+
+  /** The full text of a value (hover card, reading): never cut. */
+  function displayFor(v: number, pct: boolean, meta: CellMeta | null, series?: NormRow, step: ValueCut = NO_CUT): string {
+    // Only an engine-chosen text is cut: an authored format and a series format print as written.
+    if (meta?.format) {
+      if (!(meta as CellMeta & AutomaticFormatSource)[AUTOMATIC_FORMAT]) return formatterFromExample(meta.format, options.locale?.language)(v);
+      const spec = { ...exampleSpec(meta.format, options.locale?.language), automatic: true };
+      return formatNonzeroWithSpec(v, step.sign && percentNamedByUnit && specUnitKind(spec) === 'percent' ? { ...spec, suffix: spec.suffix.replace('%', '') } : spec);
+    }
+    const own = series?.format || series?.unit;
+    const text = own ? formats.forSeries(series)(v) : options.format ? fmt(v) : automaticFmt(v, step.decimals);
     const example = series?.format ?? options.format;
-    return pct && (!example || specUnitKind(parseFormatExample(example)) === 'number') ? `${text}%` : text;
+    return pct && (!example || specUnitKind(parseFormatExample(example)) === 'number') && !(step.sign && percentNamedByUnit) ? `${text}%` : text;
   }
 }
 
 /** Measure every eligible cell before deciding whether a row can show its values. */
 function measureRowLabels(
   cells: NormRow['cells'], textFor: (v: number, pct: boolean, meta: CellMeta | null) => string | null,
-  font: FontSpec, measure: TextMeasurer, width: number, height: number, air = 2,
+  font: FontSpec, measure: TextMeasurer, widthOf: (ci: number) => number, height: number, air = 2,
 ) {
-  return cells.map((cell) => {
+  return cells.map((cell, ci) => {
+    const width = widthOf(ci);
     const text = cell.meta?.label === false ? null : cell.v === null ? '–' : textFor(cell.v, cell.pct, cell.meta);
     if (!text) return null;
     const size = measure(text, font);
@@ -1971,4 +2165,16 @@ function measureRowLabels(
     // 6 px a reader needs between values: 2 px of air each side plus the gap.
     return { text, size, fits: size.width + air <= width && size.height + 2 <= height };
   });
+}
+
+/**
+ * A grid of filled cells with nothing under it keeps the side margin below it too. The 10 px
+ * bottom margin is the air under a footer line, and without one the last row of cells ran to
+ * the canvas edge. An authored bottom margin stands, and a grid panel takes its grid's spacing.
+ */
+export function bareGridPlot(plot: Rect, height: number, margin: Margin, options: { margin?: Partial<Margin> }): Rect {
+  if (options.margin?.bottom !== undefined || panelTypeClass(options) !== undefined
+    || Math.abs(plot.y + plot.h - (height - margin.bottom)) > 0.5) return plot;
+  const extra = Math.max(0, margin.left - margin.bottom);
+  return extra === 0 ? plot : { ...plot, h: Math.max(10, plot.h - extra) };
 }

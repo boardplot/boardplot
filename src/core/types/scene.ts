@@ -90,10 +90,14 @@ export type ThemePaintSource =
       deEmphasizePy?: boolean;
       /** Internal low/high companion fade toward the visible surface pole. */
       surfaceFade?: boolean;
+      /** A scenario beside its actual: a PY wash the page floor keeps on the actual's colour steps toward the ink instead, and an FC hatch on a dark page keeps strong stripes. */
+      apart?: boolean;
     }
   | { kind: 'line-forecast'; base: Paint; crossesBand: boolean }
   | { kind: 'line-band'; base: Paint; seriesId: string }
   | { kind: 'line-context'; rank: number; rungCount: number; seriesId: string }
+  /** Gantt row and weekend wash, using the active theme's surface.ganttRowTint. */
+  | { kind: 'gantt-row-tint'; key?: true }
   /**
    * A context stroke that crosses other context strokes: the ladder share
    * `share`, raised in the active theme until the stroke is a palette step
@@ -105,9 +109,28 @@ export type ThemePaintSource =
   | { kind: 'line-apart'; share: number; top: number; apartFrom: Paint[]; darker?: { share: number; pairs: Array<[number, number]> } }
   | { kind: 'fan-step'; base: Paint; bandCount: number; showBounds: boolean; index: number; seriesId: string; deEmphasized: boolean }
   /** `light`: the ramp of rows that print every band's name (bulletBandPaints). */
-  | { kind: 'bullet-band'; poor: Paint; good: Paint; count: number; index: number; light?: true }
+  | { kind: 'bullet-band'; poor: Paint; good: Paint; count: number; index: number; light?: true; /** The band tones by index: a toned band takes its tone's wash (bulletBandPaints). */ tones?: ('good' | 'warn' | 'bad' | 'neutral' | null)[] }
+  /**
+   * The land of a map region or tile the data does not name: the theme's light
+   * neutral washed toward the page until it sits a small step from the page
+   * (quietLandColor), and further toward the page where it would read close to
+   * one of the `apartFrom` scale paints, decided again in every theme the scene
+   * is painted in.
+   */
+  | { kind: 'quiet-land'; apartFrom: Paint[] }
+  /** The Total bar beside a key that names colours: the Total colour, deepened away from the page until it stands a swatch step from every `apartFrom` paint (totalApartColor). */
+  | { kind: 'total-apart'; apartFrom: Paint[] }
   /** A plain waterfall segment colour, tinted in the active theme where it reads too close to the total (segmentApartPaints). */
   | { kind: 'segment-apart'; plain: Paint[]; others: Paint[]; index: number }
+  /**
+   * A status cell in the good or the neutral tone: `base` washed toward the
+   * page (good further than neutral), so on-track and not-started cells
+   * recede behind the problems. The wash steps back toward `base` until the
+   * cell sits further from the page than the cell with no status (`empty`)
+   * and a ramp class step from it and from every `apartFrom` paint, decided
+   * again in every theme the scene is painted in (statusTonePaint).
+   */
+  | { kind: 'status-tone'; role: 'good' | 'neutral'; base: Paint; empty: Paint; apartFrom?: Paint[]; /** Hatch grounds of the same tone (a forecast twin): the wash stops a step further from the page than they sit, so an actual reads stronger than its forecast. */ under?: Paint[] }
   /** The third or later story line of a highlighted bump chart: index `index` of `count` story colours (bumpStoryPaints). */
   | { kind: 'bump-story'; index: number; count: number }
   | { kind: 'colorblind'; role: 'good' | 'bad' | 'goodFill' | 'badFill' }
@@ -175,6 +198,17 @@ export type ThemePaintSource =
    * stack ramp; a theme without `color.stack` paints series rank `slot`.
    */
   | { kind: 'stack-ramp'; index: number; count: number; slot: number }
+  /**
+   * Rank `index` of `count` treemap groups: `color.treemap`, else
+   * `color.stack`, else the first series colour stepped toward the page
+   * (the pie ramp), decided in the theme the scene is painted in.
+   */
+  | { kind: 'group-ramp'; index: number; count: number }
+  /**
+   * Step `index` of `count` plain series that recede beside a highlight: the
+   * neutral mark (strongest) to the light neutral (quietest), in authored order.
+   */
+  | { kind: 'neutral-ramp'; index: number; count: number; /** A hatched step: neutral mark to muted mark, so each stripe keeps its step. */ hatched?: true }
   /** A plain series of a stack beside authored colours: its ramp step, chosen in the active theme apart from them (rampSlots, stacked). */
   | { kind: 'stack-apart'; own: (Paint | null)[]; index: number; palette?: string }
   | { kind: 'ordered-ramp'; index: number; count: number; /** A Rest series is drawn: the weakest rung stays further from the page than the Others colour. */ withOthers?: true }
@@ -238,6 +272,12 @@ export type ThemePaintSource =
       pattern?: HatchPattern | 'outline';
       /** Further grounds the text also lies on (a shading's mix over an area fill): the ink that reads best on the worst of them. */
       also?: Paint[];
+      /**
+       * Every fill of the matrix this value belongs to. The ink is chosen per matrix: when any of
+       * these fills needs the dark on-fill ink, every dark value of the matrix takes it, so the
+       * values print in one dark ink and white, not in the theme ink and a near-black beside it.
+       */
+      matrix?: Paint[];
     };
 
 export type Paint =
@@ -366,7 +406,8 @@ export type SceneNode = (
       /**
        * 'hatch45' is the forecast notation and 'outline' the plan notation, whose
        * look a theme sets (`scenario.PL`). 'hollow' draws like the notation
-       * outline under every theme: a key for a hollow point, which is not a plan bar.
+       * outline under every theme: a key for a hollow point, or a mark that
+       * is a gap and not a plan bar.
        */
       pattern?: HatchPattern | 'outline' | 'hollow';
       /**
@@ -472,6 +513,8 @@ export type SceneNode = (
        * claim; they position nothing visible.
        */
       runs?: { text: string; weight?: number }[];
+      /** Per-line styled runs, joined equal to each plain lines[i]. Cannot be combined with runs. */
+      lineRuns?: { text: string; weight?: number }[][];
       /**
        * Accessible full text for lines an ellipsis cut. Renderers emit it as
        * the text element's `<title>`; absent when nothing was cut. An event's
@@ -727,6 +770,11 @@ export interface FrameGeometry {
    * the last line of `nodeId`, or in an empty row at `y`. The image leaves that space empty.
    */
   notesButton?: { nodeId?: Id; y?: number };
+  /**
+   * True when the layout left React's notes button off: every note behind it is a quiet method
+   * note and its row would have made the footer taller than without that note (core/notes `quietMethodNote`).
+   */
+  notesButtonOff?: true;
   /** The node of a map credit drawn in the frame. */
   creditNodeId?: Id;
   footnoteNodeIds?: Id[];

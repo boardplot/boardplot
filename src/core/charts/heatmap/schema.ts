@@ -14,6 +14,8 @@ import {
   dataValueKindSchema,
   categorySchemaOf,
 } from '../../schema/shared';
+import { NAMED_COLUMN_STATES } from '../../schema/namedColumns';
+import { columnOverridesOption } from '../../schema/generatedColumnOptions';
 import type { HeatmapData } from '../../types/data';
 import type { HeatmapOptions } from '../../types/options';
 
@@ -40,6 +42,7 @@ const seriesSchema = z.strictObject({
   format: formatExample.optional().describe("Format-by-example for this series values, for example 1,234 or 1.2%."),
   sizes: z.array(z.number().nonnegative().nullable()).optional().describe("Bubble sizes. One per category, in order: a level 1 to n with bubble.levels, else area ∝ size."),
   bases: z.array(z.number().nonnegative().nullable()).optional().describe("Cell bases (n). One per category, in order; below minBase draws hatched."),
+  states: z.array(z.enum(NAMED_COLUMN_STATES).nullable()).optional().describe("Why a cell has no value. One per category, in order: suppressed, nm (not meaningful), na (not applicable) or null. A stated cell needs value null; it draws hatched and the key names its state."),
 });
 
 export const heatmapDataSchema = z
@@ -54,7 +57,7 @@ export const heatmapDataSchema = z
 
 export const heatmapOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions('heatmap')).safeExtend({
   scale: z.enum(['continuous', 'discrete']).optional().describe("Continuous color interpolation by default, or a discrete color ladder."),
-  variant: z.enum(['value', 'harvey', 'bubble']).optional().describe("Value labels fit as a whole row; authored labels and valid pins retain precedence. Harvey glyphs suppress values and take ratings 0 to 4 only; any other value is refused. 'bubble': one circle per cell, colour = value, area = series sizes; values print where they fit."),
+  variant: z.enum(['value', 'harvey', 'bubble']).optional().describe("Value labels fit as a whole row, and an automatic number text loses a % sign the unit names, then takes fewer decimals, before a value is hidden; authored labels and valid pins retain precedence. Harvey glyphs suppress values and take ratings 0 to 4 only; any other value is refused. 'bubble': one circle per cell, colour = value, area = series sizes; values print where they fit."),
   cap: z.strictObject({
     pct: z.number().positive().optional().describe('Cap in points when every cell is a percent. Example: 20 saturates at ±20%.'),
     abs: z.number().positive().optional().describe('Cap in source units for other values.'),
@@ -67,6 +70,7 @@ export const heatmapOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOpti
     colorLabel: z.string().optional().describe('Colour key title.'),
     track: z.boolean().optional().describe('Row track. A line with an arrow through each row; implies ordered columns. Default false.'),
   }).optional().describe("Bubble glyph. Its keys stand above the matrix; legend 'none' drops them."),
+  columnOverrides: columnOverridesOption('heatmap', ['width', 'align', 'headAlign', 'label']),
   minBase: z.number().positive().optional().describe('Low-base threshold. Cells whose series bases entry is below it draw hatched, with a note.'),
   missing: z.enum(['hatch', 'blank']).optional().describe("How a cell with no value is drawn. 'hatch' (the default) stripes the cell and names it in the key. 'blank' draws no fill and no stripe; the same key entry or note still says that a blank cell is no data. A blank cell keeps its grid line and dash, so it does not read as the palest value. A low base (bases and minBase) stays hatched."),
 }) as unknown as z.ZodType<HeatmapOptions>;

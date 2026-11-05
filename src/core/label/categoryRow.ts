@@ -31,7 +31,7 @@ import { DATE_NAME_LANGUAGES, dateNames } from '../dateNames';
 import type { RenderTarget } from '../types/options';
 import { calendarMonths, type CalendarInfo } from '../calendarLabels';
 import { defaultMeasurer, measureText, type FontSpec, type TextMeasurer, type TextSize } from '../text';
-import { cutWithTitle, fitText } from './fitText';
+import { cutWithTitle, fitText, type FittedText } from './fitText';
 import { footnoteMark } from '../footnoteMark';
 import type { LintWarning } from '../types/scene';
 import { PRIORITY, type LabelRequest } from './solver';
@@ -39,6 +39,9 @@ import { isDateNumericTickSequence, MONTH_START, PROSE_TICK_MAX_LINES, tickLabel
 import { disclosureNote } from '../notes';
 import { spread1DResult } from '../collide';
 import { maxOf, minOf } from '../arrays';
+
+/** Findings of a name row that cannot print its names whole: the cue to turn a bridge horizontal. */
+export const CROWDED_NAMES: ReadonlySet<string> = new Set(['category-labels-rotated', 'category-labels-truncated', 'category-stride']);
 
 /** Internal adapter override: ranked categories are not a line-family timeline. */
 export const CATEGORY_ROW_FROM_END = Symbol('categoryRowFromEnd');
@@ -176,6 +179,12 @@ interface CategoryRowInput {
   /** Try the upright spread before the 45° step (default true on the new targets). */
   spreadBeforeRotate?: boolean;
   /**
+   * Add the target's reader floor for the axis role as the last font step of a row of names,
+   * where the ladder stops above it. The names then wrap upright at the floor size
+   * (and break after a hyphen) before the row rotates.
+   */
+  stepToFloor?: boolean;
+  /**
    * The rotate step turns names -90° (vertical, reading up) instead of 45°
    * (pareto at 480–320 px). A vertical name needs a pitch of
    * one line only, and stands inside its own column. Absent, rows turn 45°.
@@ -293,6 +302,25 @@ const ROTATED_HEIGHT_SHARE = 0.3;
  */
 const VERTICAL_HEIGHT_SHARE = 0.5;
 const VERTICAL_MIN_WIDTH = 130;
+/** The most lines a requested vertical name stacks across its column. */
+const VERTICAL_MAX_LINES = 3;
+
+/**
+ * A vertical name on `lines` lines, at the narrowest length up to `room` that
+ * holds it (undefined when it does not fit). The search runs only between two
+ * bounds: the lines' share of the name, and the longest line it wraps to at the
+ * full room, since a narrower length breaks no line earlier.
+ */
+function stackedName(label: string, font: FontSpec, room: number, lines: number, measure: TextMeasurer): FittedText | undefined {
+  // Wrapping drops only the spaces it breaks at: a name longer than its lines' room cannot fit them.
+  const least = Math.floor((measure(label, font).width - (lines - 1) * measure(' ', font).width) / lines) - 2;
+  if (least > room) return undefined;
+  const widest = fitText(label, font, room, lines, measure);
+  if (widest.title !== undefined) return undefined;
+  const most = Math.min(room, Math.ceil(widest.w));
+  const start = Math.min(most, Math.max(least, Math.min(room, VERTICAL_MIN_WIDTH)));
+  return start >= most ? widest : fitText(label, font, start, lines, measure, { wider: most });
+}
 const ROTATED_MIN_WIDTH = 110;
 /** The most names a date row keeps once it has to thin its interval ticks. */
 const DATE_ROW_LABELS = 8;
@@ -730,6 +758,9 @@ function shortMonthNames(labels: readonly string[]): string[] | undefined {
   return undefined;
 }
 
+/** Lines an upright name may take at the floor size. */
+const PROSE_FLOOR_LINES = 3;
+
 function planRow(input: CategoryRowInput, bundled: boolean): CategoryRowPlan {
   const { labels, centers, step, measure } = input;
   const n = labels.length;
@@ -738,7 +769,25 @@ function planRow(input: CategoryRowInput, bundled: boolean): CategoryRowPlan {
   // A period row keeps the muted secondary role but prints at the label step.
   const secondary = periodRow && input.secondary !== undefined && input.secondary.size < input.fonts[0]!.size ? { ...input.secondary, size: input.fonts[0]!.size } : undefined;
   const ladder = secondary ? [secondary, ...input.fonts.filter(font => font.size < secondary.size)] : input.fonts;
-  const fonts = ladder.filter((font, index) => index === 0 || font.size >= targetFloorsPx(input.target ?? DEFAULT_TARGET, input.textScale)[secondary ? 'secondary' : 'axis']);
+  const axisFloor = targetFloorsPx(input.target ?? DEFAULT_TARGET, input.textScale)[secondary ? 'secondary' : 'axis'];
+  const fonts = ladder.filter((font, index) => index === 0 || font.size >= axisFloor);
+  // A row of names (not periods or an ordered sequence) may step down to the reader floor before it rotates.
+  const smallest = fonts.at(-1)!;
+  const nameRow = input.stepToFloor === true && !periodRow && !(input.ordered || input.strideFromEnd || numberedSequence(labels));
+  const floorFont: FontSpec = { ...fonts[0]!, size: axisFloor };
+  // The floor step is worth its planning cost only where every name can wrap on three lines at that size
+  // and no word (or hyphen part) is wider than its slot; else the row rotates as it did.
+  const floorHolds = () => labels.every((label, i) => {
+    const suffix = input.suffixes?.[i] ?? '';
+    const slot = (input.widths?.[i] ?? step) - (suffix ? measure(suffix, floorFont).width : 0);
+    if (/[\n\u200d\u{E0020}-\u{E007F}]/u.test(label)) return true;
+    const parts = label.split(/[^\S\u00a0\u202f]+/).filter(Boolean).flatMap(word => word.split(/(?<=-)(?=[^-])/));
+    return measure(label, floorFont).width <= PROSE_FLOOR_LINES * slot && parts.every(part => measure(part, floorFont).width <= slot);
+  });
+  const stepsToFloor = nameRow && smallest.size > axisFloor + 0.01 && floorHolds();
+  if (stepsToFloor) fonts.push(floorFont);
+  // The floor step serves upright names only: a rotated row keeps the ladder it had.
+  const rotateFonts = stepsToFloor ? fonts.slice(0, -1) : fonts;
   // 4 px between neighbouring names; the row thins only where names collide.
   const gap = input.gap ?? 4;
   const padding = input.padding ?? 6;
@@ -783,7 +832,9 @@ function planRow(input: CategoryRowInput, bundled: boolean): CategoryRowPlan {
       if (single !== undefined && measure(single, font).width <= width) {
         return withSuffix({ lines: [single], w: Math.max(measure(single, font).width, 1), h: font.size * (font.lineHeight ?? 1.2), truncated: false }, i, font);
       }
-      const wrap = fitText(label, font, width, maxLines, measure);
+      // A break after a hyphen is tried only where the name could fit in its lines at all.
+      const hyphenRetry = nameRow && /[-_/.]/.test(label) && measure(label, font).width <= maxLines * width;
+      const wrap = fitText(label, font, width, maxLines, measure, hyphenRetry ? { hyphenRetry: true } : {});
       const lines = wrap.lines.length ? wrap.lines : [''];
       return withSuffix({
         lines,
@@ -798,7 +849,8 @@ function planRow(input: CategoryRowInput, bundled: boolean): CategoryRowPlan {
   };
 
   // Breaks can remove whitespace; a ZWJ or Unicode tag can join a word to the preceding space.
-  const words = labels.map(label => /[\n\u200d\u{E0020}-\u{E007F}]/u.test(label) ? [] : label.split(/[^\S\u00a0\u202f]+/).filter(Boolean));
+  const words = labels.map(label => /[\n\u200d\u{E0020}-\u{E007F}]/u.test(label) ? [] : label.split(/[^\S\u00a0\u202f]+/).filter(Boolean)
+    .flatMap(word => nameRow ? word.split(/(?<=-)(?=[^-])/) : [word]));
   // A word wider than the slot must be cut at every line count; defer that work to the cut fallback.
   const wholeRows = (font: FontSpec, maxLines: number, pad = padding, kept?: readonly boolean[]) =>
     growingWidths(font) && words.some((parts, i) => (!kept || kept[i]) && parts.some(word => measure(word, font).width > Math.max(widthAt(i) - pad - (suffixAt(i) ? measure(suffixAt(i), font).width : 0), 1)))
@@ -1116,18 +1168,42 @@ function planRow(input: CategoryRowInput, bundled: boolean): CategoryRowPlan {
   }
   // A nominal row that keeps every name turns -90° only where 45° has no room.
   const everyName = input.everyName === true && !orderedProse;
-  const room45 = allowRotate && fonts.some((font) => step * SIN45 >= font.size * (font.lineHeight ?? 1.2) + 2);
+  const room45 = allowRotate && rotateFonts.some((font) => step * SIN45 >= font.size * (font.lineHeight ?? 1.2) + 2);
   if (allowRotate && (input.rotate90 || everyName && !room45)) {
     // Vertical names stand side by side: the pitch holds one line and 2 px.
-    const upright = fonts.filter((font) => step >= font.size * (font.lineHeight ?? 1.2) + 2);
+    const upright = rotateFonts.filter((font) => step >= font.size * (font.lineHeight ?? 1.2) + 2);
     const cap = Math.max(VERTICAL_MIN_WIDTH, Math.floor((input.plotHeight ?? 0) * VERTICAL_HEIGHT_SHARE));
-    const font = upright.find((f) => measureAll(f, 1).every((info) => info.w <= cap)) ?? upright[0];
+    // A requested vertical row (pareto) stacks a long name's lines side by
+    // side across its column, as many as the pitch holds up to three, before
+    // it cuts the name: the column's width is room the cut would leave empty.
+    const stackFor = (f: FontSpec) => input.rotate90 ? Math.max(1, Math.min(VERTICAL_MAX_LINES, Math.floor((step - 2) / (f.size * (f.lineHeight ?? 1.2))))) : 1;
+    // Worked out once per font: the font search and the chosen font read the same lines.
+    const verticalMemo = new Map<FontSpec, CategoryLabelInfo[]>();
+    const verticalAll = (f: FontSpec): CategoryLabelInfo[] => verticalMemo.get(f) ?? verticalMemo.set(f, verticalLines(f)).get(f)!;
+    const verticalLines = (f: FontSpec): CategoryLabelInfo[] => measureAll(f, 1).map((info, i) => {
+      if (info.w <= cap || stackFor(f) < 2) return info;
+      const reserve = suffixAt(i) ? measure(suffixAt(i), f).width : 0;
+      const room = Math.max(cap - reserve, 1);
+      for (let lines = 2; lines <= stackFor(f); lines++) {
+        // The narrowest length that holds the name in these lines keeps the row, and the plot's loss, short.
+        const fitted = stackedName(labels[i]!, f, room, lines, measure);
+        if (fitted) return withSuffix({ lines: fitted.lines, w: fitted.w, h: fitted.h, truncated: false }, i, f);
+      }
+      return info;
+    });
+    const font = upright.find((f) => verticalAll(f).every((info) => info.w <= cap)) ?? upright[0];
     if (font) {
       const cutNames: string[] = [];
-      const infos = measureAll(font, 1).map((info, i) => {
+      const stack = stackFor(font);
+      const infos = verticalAll(font).map((info, i) => {
         if (info.w <= cap) return info;
-        const cut = cutWithTitle(info.lines[0]!, font, cap, measure);
         cutNames.push(labels[i]!);
+        if (stack > 1) {
+          // The cut keeps every line the column holds; the last one ends in the ellipsis.
+          const fitted = fitText(labels[i]!, font, cap, stack, measure);
+          return { ...info, lines: fitted.lines, w: Math.min(cap, fitted.w), h: fitted.h, truncated: true, ...(fitted.title !== undefined ? { title: fitted.title } : {}) };
+        }
+        const cut = cutWithTitle(info.lines[0]!, font, cap, measure);
         return { ...info, lines: [cut.text], w: cap, truncated: true, ...(cut.title !== undefined ? { title: cut.title } : {}) };
       });
       return plan(font, infos, all, 'rotate', {
@@ -1148,26 +1224,34 @@ function planRow(input: CategoryRowInput, bundled: boolean): CategoryRowPlan {
     // Rotated labels lie on parallel 45° lines; the clear distance between
     // neighbours is the pitch × sin 45°, which must hold one line of text.
     // A smaller step that holds every name whole beats a cut at the base size.
-    const rotatable = fonts.filter((font) => step * SIN45 >= font.size * (font.lineHeight ?? 1.2) + 2);
+    const rotatable = rotateFonts.filter((font) => step * SIN45 >= font.size * (font.lineHeight ?? 1.2) + 2);
     const whole = rotatable.find((font) => measureAll(font, 1).every((info) => info.w <= maxRotatedWidth));
     const font = whole ?? rotatable[0];
     if (font) {
+      // The first names reach left of the row by their slant (rotatedLeftOverhang). A name is no wider than
+      // the length that leaves every column the pitch of a 45° line at its own seat, or the row stops rotating
+      // once the caller takes the overhang. The limit is per name: a short name at the left never shortens a long one elsewhere.
+      const lineH = font.size * (font.lineHeight ?? 1.2);
+      const spare = n * step - (n * (lineH + 2)) / SIN45 - n;
+      const reach = (i: number) => (spare + centers[i]! - 4) / SIN45 - lineH;
+      const capAt = (i: number, w: number) => input.maxRotatedWidth !== undefined || w <= reach(i) ? maxRotatedWidth : Math.max(ROTATED_MIN_WIDTH, Math.min(maxRotatedWidth, Math.floor(reach(i))));
       // A rotated name longer than the cap is cut, or the plot would shrink
       // to a strip under a fan of sixty-character labels. A cut name
       // carries a note mark, and the note gives it back whole.
       const cutNotes: string[] = [];
       const cutNames: string[] = [];
       const infos = measureAll(font, 1).map((info, i) => {
-        if (info.w <= maxRotatedWidth) return info;
+        const cap = capAt(i, info.w);
+        if (info.w <= cap) return info;
         // A name that already carries the author's reference keeps that one mark.
         const mark = input.cutMarkFrom === undefined || suffixAt(i) ? '' : ` ${footnoteMark(input.cutMarkFrom + cutNotes.length)}`;
         const suffix = suffixAt(i) + mark;
         const reserve = suffix ? measure(suffix, font).width : 0;
         const bare = suffixAt(i) && info.lines[0]!.endsWith(suffixAt(i)) ? info.lines[0]!.slice(0, -suffixAt(i).length) : info.lines[0]!;
-        const cut = cutWithTitle(bare, font, Math.max(maxRotatedWidth - reserve, 1), measure);
+        const cut = cutWithTitle(bare, font, Math.max(cap - reserve, 1), measure);
         cutNames.push(labels[i]!);
         if (mark) cutNotes.push(disclosureNote(`${mark.trim()} ${labels[i]!}.`));
-        return { ...info, lines: [`${cut.text}${suffix}`], w: maxRotatedWidth, truncated: true, ...(cut.title !== undefined ? { title: cut.title } : {}) };
+        return { ...info, lines: [`${cut.text}${suffix}`], w: cap, truncated: true, ...(cut.title !== undefined ? { title: cut.title } : {}) };
       });
       return plan(font, infos, all, 'rotate', {
         rotation: 45,
@@ -1297,14 +1381,15 @@ export function rotatedLeftOverhang(plan: CategoryRowPlan, centers: readonly num
  * column (the baseline sits half a cap height right of the centre). The box
  * is the name's own column strip, so neighbours never claim each other.
  */
-export function verticalNameRect(centerX: number, rowTop: number, width: number, font: FontSpec): { x: number; y: number; w: number; h: number } {
+export function verticalNameRect(centerX: number, rowTop: number, width: number, font: FontSpec, lines = 1): { x: number; y: number; w: number; h: number } {
   const lineH = font.size * (font.lineHeight ?? 1.2);
-  const pivotX = centerX + (font.size * VERTICAL_CAP_SHARE) / 2;
+  // Stacked lines run rightward from the first one's baseline, so the block shifts left by half the added lines.
+  const pivotX = centerX + (font.size * VERTICAL_CAP_SHARE) / 2 - ((lines - 1) * lineH) / 2;
   // The box starts 4 px under the axis, clear of the axis claim and the
   // solver's 2 px pad; the name's top then keeps about 9.5 px from the baseline,
   // far more than the 1 px line-touch distance.
   const pivotY = rowTop + 4 + (lineH * SIN45) / 2;
-  return { x: pivotX - lineH, y: pivotY - (lineH * SIN45) / 2, w: lineH, h: (lineH * SIN45) / 2 + width };
+  return { x: pivotX - lineH, y: pivotY - (lineH * SIN45) / 2, w: lineH * lines, h: (lineH * SIN45) / 2 + width };
 }
 
 /** Cap height as a share of the font size (Helvetica/Arial): a vertical name centres its capitals on the column. */

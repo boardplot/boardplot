@@ -1,5 +1,10 @@
 export const STATUS_VALUES = ['on-track', 'at-risk', 'off-track', 'done', 'pending'] as const;
 
+/** Traffic-light words use the same tones as the status keys. */
+export const STATUS_WORDS: Readonly<Record<string, typeof STATUS_VALUES[number]>> = {
+  green: 'on-track', amber: 'at-risk', yellow: 'at-risk', red: 'off-track',
+};
+
 /** Why a badge is refused on any row but a section heading; the schema and the resolver say it alike. */
 export const BADGE_SECTION_ONLY = "badge is the status chip of a section heading; set role: 'section' on this row, or drop badge";
 

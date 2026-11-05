@@ -1,7 +1,7 @@
 /** Pareto data and options schemas, without the chart engine. */
 
 import * as z from 'zod';
-import { addDuplicateIdIssues, baseOptionsSchema, idSchema, refusedBaseOptions } from '../../schema/shared';
+import { addDuplicateIdIssues, baseOptionsSchema, idSchema, refusedBaseOptions, topNOnPareto } from '../../schema/shared';
 import type { ParetoOptions } from '../../types/options';
 import type { ParetoData } from './layout';
 import { categoryLabelsSchema } from '../../schema/categoryLabels';
@@ -42,7 +42,7 @@ export const paretoDataSchema = z
 export const paretoOptionsSchema = baseOptionsSchema
   .safeExtend(refusedBaseOptions('pareto'))
   .safeExtend({
-    topN: baseOptionsSchema.shape.topN.describe('Keep the n largest causes. rest: false hides only the remainder column (the folded tail, or the authored rest that holds it); its labelled curve point and the full-population total remain.'),
+    topN: topNOnPareto.optional().describe('Keep the n largest causes. rest: false hides only the remainder column (the folded tail, or the authored rest that holds it); its labelled curve point and the full-population total remain. A positive integer n means { n }.'),
     // `.omit({ sort: true })` would refuse nothing: a zod object STRIPS
     // unknown keys, so `sort` would parse away silently and leave the
     // published JSON Schema. Refusing it out loud is the same call the
@@ -75,7 +75,7 @@ export const paretoOptionsSchema = baseOptionsSchema
     totalScale: z
       .boolean()
       .optional()
-      .describe('Scale the left axis to the total: 100% on the right sits level with the total on the left, so the curve starts at the top of the first column and each column reads against the curve. Default false: the column axis is capped on the columns alone and the curve rides its own 0-100% scale.'),
+      .describe('Scale the left axis to the total: 100% on the right sits level with the total on the left, so the curve starts at the top of the first column and each column reads against the curve. Default: on when a vital few reaches the threshold and no valueAxis.min or max is set; off for a flat distribution, whose columns would shrink to a sliver. false caps the column axis on the columns alone and the curve rides its own 0-100% scale.'),
     methodNote: z
       .boolean()
       .optional()

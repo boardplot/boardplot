@@ -1,3 +1,4 @@
+import { plainText } from './inlineBold';
 import { isHatchPattern } from './svgPath';
 /**
  * MARK VISIBILITY — one policy, applied at the scene, not at the theme.
@@ -188,9 +189,9 @@ function ruleEdge(fill: Paint, grounds: readonly string[], theme: Theme): { stro
   if (!parseColor(fillCss)) return undefined;
   const clears = (css: string) => grounds.every((ground) => contrastRatio(css, ground) >= MARK_CONTRAST_FLOOR);
   if (clears(fillCss)) return undefined;
-  // A pale step of the stack ramp takes the thin neutral outline Boardplot gives
+  // A pale step of the stack or neutral ramp takes the thin neutral outline Boardplot gives
   // pale fills (the bartable range: neutral at hair width), where that outline reaches 3:1.
-  if ('theme' in fill && fill.theme?.kind === 'stack-ramp' && clears(paintTokenColor(theme, 'neutral'))) {
+  if ('theme' in fill && (fill.theme?.kind === 'stack-ramp' || fill.theme?.kind === 'neutral-ramp') && clears(paintTokenColor(theme, 'neutral'))) {
     return { stroke: { token: 'neutral' }, strokeWidth: strokeToken(theme, 'hair') };
   }
   const luminance = (css: string) => relativeLuminance(parseColor(css)!);
@@ -459,7 +460,7 @@ export function fillEdges(geometry: Pick<Geometry, 'scene' | 'labels'> & { frame
   const footnoteIds = new Set(geometry.frame?.footnoteNodeIds ?? []);
   const squeeze = (text: string) => text.replace(/\s+/g, '');
   const footnotes = squeeze(geometry.scene.flatMap((node) => (node.t === 'text' && footnoteIds.has(node.id) ? [node.lines.join(' ')] : [])).join(' '));
-  const inFootnote = (text: string | undefined) => text !== undefined && text !== '' && footnotes.includes(squeeze(text));
+  const inFootnote = (text: string | undefined) => text !== undefined && text !== '' && footnotes.includes(squeeze(plainText(text)));
   const noteNames = (label: PlacedLabel) => label.noted === true && label.noteCounted !== true
     && ([...footnoteIds].some((id) => label.noteLocation?.includes(`(${id})`) === true) || inFootnote(label.noteText));
   const shows = (label: PlacedLabel) => !label.hidden || (label.printedIn !== undefined && drawn.has(label.printedIn)) || noteNames(label);
@@ -934,9 +935,77 @@ export function referenceCasings(
   return scene.filter((node) => node.part !== 'referenceCasing' || !own(node) || !lines.has(node.id.replace(/:casing:\d+$/, '')));
 }
 
-/** A fill a line drawn after it can cross: a plain (unhatched, unoutlined) mark rectangle. */
-function crossableFill(node: SceneNode): node is Extract<SceneNode, { t: 'rect' }> {
-  return node.t === 'rect' && String(node.id).startsWith('mark:') && node.fill !== undefined && node.pattern === undefined;
+/**
+ * A fill a line drawn after it can cross: a plain (unhatched) mark rectangle,
+ * or a plain surface polygon of straight edges (POLYGON_FILL_PARTS). A path
+ * with curves or arcs is not one.
+ */
+function crossableFill(node: SceneNode): node is Extract<SceneNode, { t: 'rect' | 'path' }> {
+  if ((node.t !== 'rect' && node.t !== 'path') || node.fill === undefined || node.pattern !== undefined) return false;
+  if (node.t === 'rect') return String(node.id).startsWith('mark:');
+  return POLYGON_FILL_PARTS.has(node.part) && POLYGON_PATH.test(node.d);
+}
+
+/**
+ * Polygon fills a reference or axis line runs across: line, combo and slope
+ * areas, fan bands and the fill between two lines. A small glyph (a
+ * milestone diamond, a caret, a treemap cell) is not one: a leader that ends
+ * inside it would cut a light notch into it.
+ */
+const POLYGON_FILL_PARTS = new Set(['area', 'fanBand', 'gapFill']);
+
+/** Absolute M, L, H, V and Z commands only: a path of straight edges. */
+const POLYGON_PATH = /^(?:\s*(?:[ML]\s*-?[\d.]+[ ,]\s*-?[\d.]+|[HV]\s*-?[\d.]+|Z))+\s*$/;
+
+/** The closed rings of a straight-edged path (POLYGON_PATH): each subpath, closed or not, as its corner points. */
+function polygonRings(d: string): [number, number][][] {
+  const rings: [number, number][][] = [];
+  let ring: [number, number][] = [];
+  let x = 0;
+  let y = 0;
+  for (const m of d.matchAll(/([MLHVZ])\s*(?:(-?[\d.]+)(?:[ ,]\s*(-?[\d.]+))?)?/g)) {
+    const cmd = m[1];
+    if (cmd === 'Z') continue;
+    const a = Number(m[2]);
+    [x, y] = cmd === 'H' ? [a, y] : cmd === 'V' ? [x, a] : [a, Number(m[3])];
+    if (cmd === 'M' && ring.length > 0) { rings.push(ring); ring = []; }
+    ring.push([x, y]);
+  }
+  if (ring.length > 0) rings.push(ring);
+  return rings.filter((r) => r.length >= 3);
+}
+
+/**
+ * Where a line, shifted `shift` px to one side, runs inside a polygon: the
+ * spans along it (from `along`), by counting the edges it crosses (even-odd).
+ */
+function polygonSpans(rings: [number, number][][], along: (x: number, y: number) => number, side: (x: number, y: number) => number, shift: number): [number, number][] {
+  const at: number[] = [];
+  for (const ring of rings) {
+    ring.forEach(([x1, y1], i) => {
+      const [x2, y2] = ring[(i + 1) % ring.length]!;
+      const v1 = side(x1, y1) - shift;
+      const v2 = side(x2, y2) - shift;
+      if ((v1 > 0) === (v2 > 0)) return;
+      const u1 = along(x1, y1);
+      at.push(u1 + (along(x2, y2) - u1) * (v1 / (v1 - v2)));
+    });
+  }
+  at.sort((p, q) => p - q);
+  const spans: [number, number][] = [];
+  for (let i = 0; i + 1 < at.length; i += 2) spans.push([at[i]!, at[i + 1]!]);
+  return spans;
+}
+
+/** The spans that both span lists cover. */
+function spanOverlap(a: readonly [number, number][], b: readonly [number, number][]): [number, number][] {
+  const out: [number, number][] = [];
+  for (const [a0, a1] of a) for (const [b0, b1] of b) {
+    const lo = Math.max(a0, b0);
+    const hi = Math.min(a1, b1);
+    if (hi > lo) out.push([lo, hi]);
+  }
+  return out.sort((p, q) => p[0] - q[0]);
 }
 
 /**
@@ -953,10 +1022,11 @@ function crossableFill(node: SceneNode): node is Extract<SceneNode, { t: 'rect' 
  */
 /**
  * Lines over fills that keep their paint: gridlines are furniture, a bar
- * break cuts its bar in the page colour on purpose, and a reference series'
- * ticks and dashes carry their own page-colour casing (band/ticks.ts).
+ * break and an era shade's edge cut through the fill in the page colour on
+ * purpose, and a reference series' ticks and dashes carry their own
+ * page-colour casing (band/ticks.ts).
  */
-const KEEP_INK_OVER_FILLS = new Set(['grid', 'gridline', 'barBreak', 'referenceTick', 'referenceLine']);
+const KEEP_INK_OVER_FILLS = new Set(['grid', 'gridline', 'barBreak', 'bandEdge', 'referenceTick', 'referenceLine']);
 
 function linesOverFills(scene: SceneNode[], own: (node: SceneNode) => boolean): SceneNode[] {
   if (!scene.some(crossableFill)) return scene;
@@ -978,8 +1048,21 @@ function linesOverFills(scene: SceneNode[], own: (node: SceneNode) => boolean): 
     const runs = segments.map(([x1, y1, x2, y2]) => [Math.min(along(x1, y1), along(x2, y2)), Math.max(along(x1, y1), along(x2, y2))] as [number, number]);
     const covers: { lo: number; hi: number; index: number }[] = [];
     const lineWidth = node.t === 'line' ? node.width : node.width ?? 1;
+    const far = runs.reduce((m, [, b]) => Math.max(m, b), 0);
+    // The signed distance of a point from the line, across it.
+    const side = (x: number, y: number) => (x - ox) * dy - (y - oy) * dx;
     scene.slice(0, index).forEach((fill, fillIndex) => {
       if (!crossableFill(fill) || fill.tx !== node.tx || fill.ty !== node.ty) return;
+      if (fill.t === 'path') {
+        const rings = polygonRings(fill.d);
+        if (rings.length === 0) return;
+        const spans = (shift: number) => spanOverlap(polygonSpans(rings, along, side, shift), polygonSpans(rings, along, side, -shift));
+        // As for a rectangle below: a polygon no thicker across the line than
+        // three line widths keeps the line's ink, and a line along its edge is not over it.
+        if (spans(1.5 * lineWidth).length === 0) return;
+        for (const [lo, hi] of spanOverlap(spans(0.01), [[0, far]])) if (hi - lo >= 0.5) covers.push({ lo, hi, index: fillIndex });
+        return;
+      }
       // A fill no thicker across the line than three line widths (a bar of a
       // value too small to see, on the baseline) shows no fill on both sides
       // of a light line: the line keeps its ink over it, so it never turns
@@ -988,7 +1071,6 @@ function linesOverFills(scene: SceneNode[], own: (node: SceneNode) => boolean): 
       const box: GlyphBox = { x0: fill.rect.x, y0: fill.rect.y, x1: fill.rect.x + fill.rect.w, y1: fill.rect.y + fill.rect.h, ax: 0, ay: 0, cos: 1, sin: 0 };
       // A line along a fill's edge is not over it.
       const inner: GlyphBox = { ...box, x0: box.x0 + 0.01, y0: box.y0 + 0.01, x1: box.x1 - 0.01, y1: box.y1 - 0.01 };
-      const far = runs.reduce((m, [, b]) => Math.max(m, b), 0);
       const hit = segmentInBox([ox, oy], [ox + dx * far, oy + dy * far], inner, 0);
       if (hit && (hit[1] - hit[0]) * far >= 0.5) covers.push({ lo: hit[0] * far, hi: hit[1] * far, index: fillIndex });
     });
@@ -1041,7 +1123,7 @@ function linesOverFills(scene: SceneNode[], own: (node: SceneNode) => boolean): 
     if (page.length > 0) out.push({ ...base, t: 'path', d: pathOf(page) } as SceneNode);
     for (const [fill, stretches] of groups) {
       if (fill === undefined || stretches.length === 0) continue;
-      const fillPaint = (scene[fill] as Extract<SceneNode, { t: 'rect' }>).fill;
+      const fillPaint = (scene[fill] as Extract<SceneNode, { t: 'rect' | 'path' }>).fill!;
       const stroke: Paint = { token: 'token' in node.stroke ? node.stroke.token : 'ink', theme: { kind: 'line-on-fill', base: node.stroke, fill: fillPaint } };
       const id = page.length === 0 && n === 0 ? node.id : `${node.id}:over:${n}`;
       n++;

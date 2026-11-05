@@ -1,4 +1,6 @@
 import { chartString } from '../../strings/butterfly';
+import { chartString as commonString } from '../../strings';
+import { layoutValueAxis } from '../../axis';
 import { restDetailsWarning, restLabel, restSum, topNCut } from '../topN';
 import { structureCount } from '../../structureCounts';
 /**
@@ -12,7 +14,10 @@ import { structureCount } from '../../structureCounts';
 import { fitText, lineBox } from '../../label/fitText';
 import { fitColumn, fittedLabel, GUTTER_MAX_SHARE, stepDownFont } from '../../label/rowFit';
 import type { AnchorResolution } from '../../annotate';
-import { runAnnotatePass } from '../../annotatePass';
+import { percentLevels, runAnnotatePass } from '../../annotatePass';
+import { asColumnHeads, fitHead, HEAD_PREFIX, headRequest } from '../bullet/columnHead';
+import { alignedLeft, alignedRight, authoredTrackWidth, columnOverrideWarnings, trackPlotFloor } from '../columnOverrides';
+import { COLUMN_GAP, COLUMN_MIN_WIDTH, columnCellRequest, columnHeadText, columnWidth, differenceFormatter } from '../diffColumn';
 import { marginBracketLayout } from '../../annotateLinks';
 import { memoFormatterFromExample, seriesRasterFormatter } from '../../formatSpec';
 import { clamp, deltaGap, type Rect } from '../../geometry';
@@ -55,9 +60,10 @@ import {
   strokeToken,
   seriesPaint as themeSeriesPaint,
   labelsOffKeepsNames,
+  secondaryFont,
 } from '../../theme';
 import type { AnchorRef } from '../../types/annotations';
-import { cellMeta, cellValue, type CellMeta, type Id, type Scenario } from '../../types/cell';
+import { cellMeta, cellValue, isPctCell, type CellMeta, type Id, type Scenario } from '../../types/cell';
 import { warnMissingValue } from '../../dataGaps';
 import type { ChartData, Series } from '../../types/data';
 import type { ButterflyOptions, LegendOptions, RenderTarget } from '../../types/options';
@@ -70,7 +76,7 @@ import type {
 } from '../../types/scene';
 import { footnoteSuffix } from '../../footnoteMark';
 import { textScaleOf } from '../../typeFloors';
-import { DEFAULT_TARGET, targetFloorsPx } from '../../target';
+import { DEFAULT_TARGET, TARGET_SIZE, targetFloorsPx, type TargetSizeOptions } from '../../target';
 import { seriesTextPaint } from '../../theme';
 import { defaultAnnotationId } from '../../types/annotations';
 import { disclosureNote } from '../../notes';
@@ -138,6 +144,8 @@ export function layoutButterfly(
      * row pitch, row type and pane-coloured heads stay the butterfly's own.
      */
     paneFit?: boolean;
+    /** Set where the rows do not fit under the value axes of panes on their own scales: they go, the rows stay. */
+    noAxis?: boolean;
   },
 ): Geometry<ButterflyMarks, ButterflyDerived> {
   const opts = options ?? ({} as ButterflyOptions);
@@ -152,7 +160,15 @@ export function layoutButterfly(
   const measure = opts.measure ?? defaultMeasurer;
   const highlights = new Set(resolveHighlight(opts.highlight));
   const sortBy = opts.sortBy ?? 'sheet';
+  const categorySort = opts.sort?.categories;
+  const measureSort = categorySort === 'asc' || categorySort === 'desc';
+  const combinedSort = categorySort === undefined
+    ? sortBy === 'diff' || sortBy === 'sum'
+    : measureSort && (sortBy === 'sheet' || sortBy === 'diff' || sortBy === 'sum');
   const sharedScale = opts.sharedScale ?? true;
+  // The butterfly's own rows draw a negative value toward the names from the pane's zero line;
+  // `negatives: 'magnitude'` and the pyramid keep the bar length of |value|, a lighter bar and a sign.
+  const directed = comparison?.rowDriven !== false && opts.negatives !== 'magnitude';
 
   // ---- normalize ----
   if (!data || !Array.isArray(data.categories) || !Array.isArray(data.series)) {
@@ -190,9 +206,10 @@ export function layoutButterfly(
   const conflict = unitConflict([sA, sB], opts.unit);
   const unitFix = [
     ...(sharedScale ? [{ op: 'replace' as const, path: '/options/sharedScale', value: false }] : []),
-    ...(sortBy === 'diff' || sortBy === 'sum' ? [{ op: 'replace' as const, path: '/options/sortBy', value: 'sheet' }] : []),
+    ...(combinedSort ? [{ op: 'replace' as const, path: '/options/sortBy', value: 'sheet' }] : []),
+    ...(combinedSort && categorySort !== undefined ? [{ op: 'remove' as const, path: '/options/sort/categories' }] : []),
   ];
-  const unitSuggest = `set ${sharedScale ? 'sharedScale: false' : ''}${sharedScale && (sortBy === 'diff' || sortBy === 'sum') ? ' and ' : ''}${sortBy === 'diff' || sortBy === 'sum' ? "sortBy: 'sheet'" : ''} so each pane keeps its own unit`;
+  const unitSuggest = `set ${sharedScale ? 'sharedScale: false' : ''}${sharedScale && combinedSort ? ' and ' : ''}${combinedSort ? "sortBy: 'sheet'" : ''}${combinedSort && categorySort !== undefined ? ' and remove sort.categories' : ''} so each pane keeps its own unit`;
   if (conflict && sharedScale) {
     const refused = conflict.index === 0 ? sA : sB;
     warnings.push({
@@ -202,15 +219,15 @@ export function layoutButterfly(
     });
   }
   // A sum adds unlike units as a difference subtracts them.
-  if (conflict && (sortBy === 'diff' || sortBy === 'sum')) {
+  if (conflict && combinedSort) {
     warnings.push({
       code: 'unit-conflict',
       severity: 'error',
       message: sortBy === 'diff'
         ? `sortBy 'diff' subtracts ${aLabel} from ${bLabel}, but they are declared in ${conflict.against} and ${conflict.unit}; a difference across two units means nothing`
-        : `sortBy 'sum' adds ${aLabel} and ${bLabel}, but they are declared in ${conflict.against} and ${conflict.unit}; a sum across two units means nothing`,
+        : `${categorySort !== undefined ? 'sort.categories ranks by sum and' : "sortBy 'sum'"} adds ${aLabel} and ${bLabel}, but they are declared in ${conflict.against} and ${conflict.unit}; a sum across two units means nothing`,
       suggest: unitSuggest,
-      field: ['options', 'sortBy'],
+      field: categorySort !== undefined ? ['options', 'sort', 'categories'] : ['options', 'sortBy'],
       fix: unitFix,
     });
   }
@@ -220,10 +237,12 @@ export function layoutButterfly(
   // One precision per pane ("6.0" beside "7.9"), through the shared
   // raster: engine scale from 1e6, the nonzero lift, the unit rule,
   // and a pane's own format or unit.
-  const paneFmt = (series: typeof sA, cells: typeof aCells) =>
-    seriesRasterFormatter(opts.format, cells.map(cellValue), opts.locale?.language, opts.unit, opts.target).forSeries(series);
-  const fmtA = paneFmt(sA, aCells);
-  const fmtB = paneFmt(sB, bCells);
+  const paneRaster = (cells: typeof aCells) =>
+    seriesRasterFormatter(opts.format, cells.map(cellValue), opts.locale?.language, opts.unit, opts.target);
+  const rasterA = paneRaster(aCells);
+  const rasterB = paneRaster(bCells);
+  const fmtA = rasterA.forSeries(sA);
+  const fmtB = rasterB.forSeries(sB);
 
   let rows: Row[] = categories.map((c, i) => ({
     id: c.id,
@@ -255,6 +274,17 @@ export function layoutButterfly(
     }
   };
   const originalIndex = new Map(rows.map((row, index) => [row.id, index]));
+  if (categorySort !== undefined && (categorySort === 'sheet' || categorySort === 'reverse') && sortBy !== 'sheet') warnings.push({
+    code: 'butterfly-sort-conflict', severity: 'warn',
+    message: `sortBy '${sortBy}' was not applied because sort.categories '${categorySort}' sets the row order`,
+    suggest: 'remove sortBy',
+    fix: [{ op: 'remove', path: '/options/sortBy' }],
+  });
+  if (opts.sort?.segments && opts.sort.segments !== 'sheet') warnings.push({
+    code: 'sort-segments-ignored', severity: 'info',
+    message: `butterfly has no stacked segments; sort.segments '${opts.sort.segments}' was ignored`,
+    suggest: 'remove sort.segments',
+  });
 
   if (opts.topN && rows.length > opts.topN.n) {
     const cut = topNCut(rows.map(key), opts.topN.n);
@@ -263,7 +293,7 @@ export function layoutButterfly(
     if (opts.topN.rest !== false && dropped.length > 0) {
       rows.push({
         id: '__rest',
-        label: restLabel(opts.topN, opts.strings, dropped.length),
+        label: restLabel(opts.topN, opts.strings, dropped.map((r) => r.label)),
         a: restSum(dropped.map((r) => r.a)),
         b: restSum(dropped.map((r) => r.b)),
         aMeta: null,
@@ -276,7 +306,35 @@ export function layoutButterfly(
     }
   }
 
-  if (sortBy !== 'sheet') {
+  // A growth rate or a difference across two periods reads from the first to the last period.
+  // A sort by value scrambles dated rows and the bracket then runs backwards, so the sheet order stays.
+  const refCategory = (ref: AnchorRef): unknown => (typeof ref === 'object' && 'categoryId' in ref ? ref.categoryId : ref);
+  const spansPeriods = (opts.annotations ?? []).some((ann) =>
+    ann.kind === 'cagr' || (ann.kind === 'diff' && refCategory(ann.from) !== refCategory(ann.to)));
+  const keepDateOrder = (categorySort === undefined ? sortBy !== 'sheet' : categorySort !== 'sheet') && spansPeriods && categories.every((c) => c.date !== undefined);
+  if (keepDateOrder) {
+    warnings.push({
+      code: 'butterfly-sort-ignored',
+      severity: 'warn',
+      message: `${categorySort === undefined ? `sortBy '${sortBy}'` : `sort.categories '${categorySort}'`} was ignored — the rows are dated and a growth or difference annotation spans periods, so a sort by value would run it backwards`,
+      suggest: `remove ${categorySort === undefined ? 'options.sortBy' : 'sort.categories'}, or remove the annotation that spans periods`,
+      fix: categorySort === undefined ? [{ op: 'replace', path: '/options/sortBy', value: 'sheet' }]
+        : [{ op: 'replace', path: '/options/sort/categories', value: 'sheet' }, ...(sortBy !== 'sheet' ? [{ op: 'remove' as const, path: '/options/sortBy' }] : [])],
+    });
+  }
+
+  if (categorySort !== undefined && categorySort !== 'sheet' && !keepDateOrder) {
+    const rank = (row: Row): number | null => sortBy === 'a' ? row.a : sortBy === 'b' ? row.b
+      : row.a === null || row.b === null ? null : key(row);
+    rows.sort((x, y) => {
+      if (x.rest !== y.rest) return x.rest ? 1 : -1;
+      const tie = originalIndex.get(x.id)! - originalIndex.get(y.id)!;
+      if (categorySort === 'reverse') return -tie;
+      const a = rank(x), b = rank(y);
+      if (a === null || b === null) return Number(a === null) - Number(b === null) || tie;
+      return (categorySort === 'asc' ? a - b : b - a) || tie;
+    });
+  } else if (categorySort === undefined && sortBy !== 'sheet' && !keepDateOrder) {
     // desc by chosen key; rest row pinned last; stable ties by sheet order
     rows = [...rows].sort((x, y) => {
       if (x.rest !== y.rest) return x.rest ? 1 : -1;
@@ -294,7 +352,7 @@ export function layoutButterfly(
   // negatives are not meaningful on mirrored panes: clamp display to abs,
   // keep the sign in the label
   const hasNegative = rows.some((r) => (r.a ?? 0) < 0 || (r.b ?? 0) < 0);
-  if (hasNegative) {
+  if (hasNegative && !directed) {
     warnings.push({
       code: 'butterfly-negative',
       severity: 'warn',
@@ -330,6 +388,7 @@ export function layoutButterfly(
   // the theme's label size and never under the target floor, bars scaled to
   // the pane, and the delta after a wide gap.
   const redesign = comparison?.rowDriven !== false;
+  const signed = directed && hasNegative;
   const paneFit = redesign || comparison?.paneFit === true;
   // A paneFit card (the pyramid below 480 px) puts values inside the bar end.
   const insideCard = !redesign && paneFit && resolveSize(opts.size).width < 480;
@@ -363,12 +422,53 @@ export function layoutButterfly(
   const scenA = normalizeScenario(sA.scenario, `series[${sA.id}].scenario`);
   const scenB = normalizeScenario(sB.scenario, `series[${sB.id}].scenario`);
 
+  const labelsOff = (kind: string): boolean => {
+    // labels: false hides values while row and pane names stay outside a grid.
+    if (opts.labels === false) return !((kind === 'category' || kind === 'series') && labelsOffKeepsNames(opts));
+    const v = opts.labels?.[kind as never];
+    return v === false;
+  };
+
+  // ---- difference column: b minus a per row, right of the second pane ----
+  // On by default when the rows are sorted by that difference: the order then shows its reason.
+  // Off for a pyramid, on a card, and across two units, where a difference means nothing.
+  const diffText = new Map<Id, string>();
+  if ((opts.diffColumn ?? sortBy === 'diff') && redesign && !conflict && size.width >= COLUMN_MIN_WIDTH) {
+    const raster = seriesRasterFormatter(opts.format, [...aCells, ...bCells].map(cellValue), opts.locale?.language, opts.unit, opts.target);
+    const signed = differenceFormatter({ format: opts.format, locale: opts.locale?.language, decimals: raster.spec.decimals, values: [...aCells, ...bCells].flatMap((cell) => cellValue(cell) ?? []) });
+    for (const r of rows) if (r.a !== null && r.b !== null) diffText.set(r.id, signed(r.b, r.a));
+  }
+  const diffOverride = opts.columnOverrides?.diff;
+  const labelOverride = opts.columnOverrides?.label;
+  const diffHead = diffText.size === 0 ? undefined
+    : diffOverride?.label ?? columnHeadText('Δ', opts.unit?.startsWith('%') === true || percentLevels([sA, sB].map((s, k) => ({ vals: (k === 0 ? aCells : bCells).map((cell) => ({ v: cellValue(cell), isPct: isPctCell(cell) })), format: s.format, unit: s.unit })), opts.format, opts.unit));
+  const diffFont = (id: Id): FontSpec => (highlights.has(id) ? strongFont : labelFont);
+  const diffNaturalW = diffHead === undefined ? 0 : columnWidth(measure, [...diffText].map(([id, text]) => ({ text, font: diffFont(id) })), { text: diffHead, font: strongFont });
+  // An authored delta of b over a on a row the column covers would print the same number twice: the column keeps it.
+  const isPairDelta = (ann: NonNullable<typeof opts.annotations>[number]): boolean => {
+    if (ann.kind !== 'delta' || ann.text !== undefined || typeof ann.vs === 'number') return false;
+    const at = typeof ann.at === 'string' ? { categoryId: ann.at } : ann.at as { categoryId?: Id; seriesId?: Id };
+    const vs = typeof ann.vs === 'string' ? { categoryId: ann.vs } : ann.vs as { categoryId?: Id; seriesId?: Id };
+    return at.categoryId !== undefined && at.categoryId === vs.categoryId && diffText.has(at.categoryId) && (at.seriesId ?? sB.id) === sB.id && vs.seriesId === sA.id;
+  };
+  const annotations = (opts.annotations ?? []).filter((ann) => diffText.size === 0 || !isPairDelta(ann));
+  if (annotations.length < (opts.annotations ?? []).length) {
+    warnings.push({
+      code: 'delta-column-covers-annotation',
+      severity: 'info',
+      message: 'a delta annotation of the second series over the first on one row repeats the difference column, so only the column prints it',
+      suggest: 'drop the annotation, or set options.diffColumn to false to keep it',
+      field: ['annotations'],
+    });
+  }
+
   // ---- frame ----
   const occupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
   const margin = { ...canvasMargin(theme, size.width), ...opts.margin };
-  const valuesOff = opts.labels === false || opts.labels?.point === false;
+  const valuesOff = labelsOff('point');
   const legendOpts: LegendOptions | undefined = normalizeLegendOption(
-    comparison?.rowDriven !== false && valuesOff && opts.legend === undefined ? 'top' : opts.legend,
+    comparison?.rowDriven !== false && valuesOff && labelsOff('series') && opts.legend === undefined
+      ? 'top' : opts.legend,
   );
   const legendItems: LegendItemInput[] = [
     { id: sA.id, label: aLabel, paint: paintA, pattern: patternOf(scenA) },
@@ -379,14 +479,21 @@ export function layoutButterfly(
       size,
       margin,
       ...frameTextOptions(opts),
-      footnotes: [...authoredNotes(opts), ...scaleNotes(!sharedScale, hasNegative, opts).map(disclosureNote)],
+      footnotes: [...authoredNotes(opts), ...scaleNotes(!sharedScale, hasNegative && !directed, opts).map(disclosureNote)],
       legend: legendOpts ? { options: legendOpts, items: legendItems } : undefined,
       theme,
       measure,
     },
     occupied,
   );
-  const plot = frameResult.plot;
+  // The panes give the column its width; the column stands at the frame's right edge.
+  // A pyramid hosts this layout and has no difference column, so its warnings list its own ids.
+  columnOverrideWarnings(comparison?.paneFit ? 'pyramid' : 'butterfly', opts.columnOverrides, ['label', ...(diffHead === undefined ? [] : ['diff'])], ['diff'], warnings);
+  const diffW = diffHead === undefined ? 0 : diffOverride?.width === undefined ? diffNaturalW
+    : authoredTrackWidth('diff', diffOverride.width, diffNaturalW, frameResult.plot.w - COLUMN_GAP - trackPlotFloor(frameResult.plot.w), warnings);
+  const diffReserve = diffW > 0 ? diffW + COLUMN_GAP : 0;
+  const plot = diffReserve > 0 ? { ...frameResult.plot, w: frameResult.plot.w - diffReserve } : frameResult.plot;
+  const diffRight = frameResult.plot.x + frameResult.plot.w;
   fixedPlotChrome(frameResult);
 
   // ---- center column + panes ----
@@ -398,7 +505,13 @@ export function layoutButterfly(
   // header band for series labels above each pane
   const headerH = labelFont.size * (labelFont.lineHeight ?? 1.2) + (paneFit ? 7 : 10);
   const rowsTop = plot.y + headerH;
-  const rowsBottom = plot.y + plot.h;
+  // Panes on their own scales each draw a thin value axis under the rows. So does a pyramid whose values are off
+  // (`labels: false`): the axis is then its only scale, and `labels: false` takes values, not scales.
+  const axisWanted = redesign ? !sharedScale && !labelsOff('tick') : valuesOff;
+  const ownAxis = axisWanted && comparison?.noAxis !== true;
+  const axisFont = secondaryFont(theme);
+  const axisH = ownAxis ? axisFont.size * (axisFont.lineHeight ?? 1.2) + AXIS_GAP + 4 : 0;
+  const rowsBottom = plot.y + plot.h - axisH;
   // Unpinned, the butterfly takes the height of its rows at their natural
   // pitch, room for a two-line name, so one row does not stand in a 16:9
   // frame. Names that keep one line (the gutter's 35%
@@ -411,6 +524,8 @@ export function layoutButterfly(
   const rowDriven = comparison?.rowDriven !== false;
   const grow = rowDriven ? rowDrivenHeight({ options: opts, width: size.width, height: size.height, chromeH, rowsH: rows.length * rowPitch }) : undefined;
   if (grow !== undefined) return layoutButterfly(data, { ...opts, size: { width: size.width, height: grow } }, comparison);
+  // A pinned canvas that holds the rows only without the axes keeps its rows (a pyramid's rows are checked below, at their own height).
+  if (ownAxis && rowDriven && rowsBottom - rowsTop < rows.length * catLineH - 1e-6) return layoutButterfly(data, options, { ...comparison, noAxis: true });
   // The advertised minimum drops ULP noise (ceilSizing), so the refusal does too:
   // 134.39999999999998 px of rows hold 8 lines of 16.8 px.
   if (rowsBottom <= rowsTop || (rowDriven && rowsBottom - rowsTop < rows.length * catLineH - 1e-6)) {
@@ -431,17 +546,48 @@ export function layoutButterfly(
   });
   // under a render target, rows tighter than a name's line give the
   // whole name column its one type step, bounded by the target floor.
-  const smallestName = stepDownFont(theme, tickFont, 'axis', opts.target, textScaleOf(opts));
+  // A pyramid on a pinned height keeps its canvas, so a tight row may take its target's readability floor as the one step
+  // when the type scale has no smaller role above it. An unpinned one grows to its floor and keeps the full line box.
+  const pinnedRows = !rowDriven && (opts as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === true;
+  const oneStep = (font: FontSpec, role: 'axis' | 'label'): FontSpec | undefined => {
+    const step = stepDownFont(theme, font, role, opts.target, textScaleOf(opts));
+    const floor = targetFloorsPx(opts.target ?? DEFAULT_TARGET, textScaleOf(opts))[role];
+    return step ?? (pinnedRows && floor < font.size ? { ...font, size: floor } : undefined);
+  };
+  const smallestName = oneStep(tickFont, 'axis');
   const nameStep = band.step < catLineH + LABEL_PAD ? smallestName : undefined;
+  // On a pinned height, a row tighter than a line of its value type gives the values the same one step, and every
+  // label of such a row takes the height of its ink instead of a full line box. The row keeps 4 px around the ink.
+  const smallestValue = oneStep(labelFont, 'label');
+  const tightValues = pinnedRows && band.step < lineBox(labelFont) + LABEL_PAD;
+  const valueFont: FontSpec = tightValues ? smallestValue ?? labelFont : labelFont;
+  const inkBox = (font: FontSpec) => measure.capHeight?.(font) ?? font.size * 0.72;
+  const tightRows = pinnedRows && band.step < catLineH + LABEL_PAD;
   // a pyramid keeps its canvas, so under a render target its rows
   // report the height a value and a name need. The size gate then grows an
   // unsized pyramid to it and refuses a fixed frame with that size, instead
   // of hiding half the rows into a note that shrinks the plot further.
   if (!rowDriven) {
-    const rowNeed = Math.max(measure('0', labelFont).height, lineBox(smallestName ?? tickFont)) + LABEL_PAD;
+    // Only the text that is drawn is charged, and a tight row charges the ink of its text, not a line box.
+    const stepped = (font: FontSpec, step: FontSpec | undefined) => inkBox(step ?? font) + 4;
+    const rowNeed = pinnedRows
+      ? Math.max(valuesOff ? 0 : stepped(labelFont, smallestValue), labelsOff('category') ? 0 : stepped(tickFont, smallestName), 4)
+      : Math.max(measure('0', labelFont).height, lineBox(smallestName ?? tickFont)) + LABEL_PAD;
     // Reported where it holds too, so the size a refusal names reports the same minimum.
     const short = rows.length * rowNeed - (rowsBottom - rowsTop);
+    // A pinned height that holds the rows but not the axis under them keeps its rows.
+    if (ownAxis && pinnedRows && short > 1e-6) return layoutButterfly(data, options, { ...comparison, noAxis: true });
     frameResult.frame.plotMinHeight = Math.max(frameResult.frame.plotMinHeight ?? 0, size.height + (frameResult.deficit ?? 0) + short);
+    // Without its axis the chart has no number left where the values are off: say so, with the height that keeps the axis.
+    if (axisWanted && !ownAxis) {
+      const axisShort = rows.length * rowNeed + axisFont.size * (axisFont.lineHeight ?? 1.2) + AXIS_GAP + 4 - (rowsBottom - rowsTop);
+      warnings.push({
+        code: 'value-axis-dropped',
+        severity: 'warn',
+        message: 'the value axis does not fit under the rows at this height, so the chart draws without a scale',
+        suggest: `use a height of at least ${Math.ceil(size.height + (frameResult.deficit ?? 0) + axisShort)}px to keep the value axis`,
+      });
+    }
   }
   const nameFont: FontSpec = nameStep ?? tickFont;
   const nameBold: FontSpec = { ...nameFont, weight: emphasisWeight(theme) };
@@ -461,7 +607,7 @@ export function layoutButterfly(
   const room = comparison?.bracketRoom ?? { left: 0, right: 0 };
   // Comparison exhibits already use a readable 20 px run. A comparison
   // disclosed in the footer does not need a bracket gutter on the canvas.
-  const comparisonRun = opts.annotations?.some(ann => ann.kind === 'cagr' || ann.kind === 'diff') ? 20 : 40;
+  const comparisonRun = annotations.some(ann => ann.kind === 'cagr' || ann.kind === 'diff') ? 20 : 40;
   const minimumPane = (side: 'a' | 'b', bracketRoom: number) => comparisonRun + (valuesOff ? 0 : Math.max(0, maxOf(rows.map((r) => {
     const text = textOf(side === 'a' ? r.a : r.b, side === 'a' ? r.aMeta : r.bMeta, side);
     return text ? measure(text, labelFont).width + 10 : 0;
@@ -473,10 +619,13 @@ export function layoutButterfly(
   // A row-driven card (below 480 px) takes the same lane, so the panes keep
   // the room their value and delta labels need.
   const laneCard = insideCard || (redesign && size.width < 480);
-  const narrowLane = laneCard && opts.centerColumnWidth === undefined && Math.ceil(maxCatLabelW) + 2 * LANE_PAD <= plot.w * 0.35;
+  // An override beats centerColumnWidth. The panes give way first, down to their minimum.
+  const authoredCenter = labelOverride?.width === undefined ? opts.centerColumnWidth
+    : authoredTrackWidth('label', labelOverride.width, 40, Math.max(40, plot.w - Math.max(80, panesMinimum)), warnings);
+  const narrowLane = laneCard && authoredCenter === undefined && Math.ceil(maxCatLabelW) + 2 * LANE_PAD <= plot.w * 0.35;
   const namePad = narrowLane ? 2 * LANE_PAD : 16;
   const centerW = narrowLane ? Math.ceil(maxCatLabelW) + 2 * LANE_PAD : centerColumnWidth(rows.map((r) => ({ label: `${r.label}${r.mark}`, font: catFontOf(r) })), {
-    authored: opts.centerColumnWidth, natural: maxCatLabelW + 20, plotW: plot.w, maxLines: catMaxLines, measure, target: rowDriven ? opts.target : undefined,
+    authored: authoredCenter, natural: maxCatLabelW + 20, plotW: plot.w, maxLines: catMaxLines, measure, target: rowDriven ? opts.target : undefined,
     card: size.width < 480, widest: plot.w - panesMinimum,
   });
   // One column of names: a step down applies to all of them or to none.
@@ -493,8 +642,12 @@ export function layoutButterfly(
     return { ...fitted, lines, w: fitted.w + measure(row.mark, fitted.font).width };
   });
   const paneW = (plot.w - centerW) / 2;
-  const centerX0 = plot.x + paneW;
-  const centerX1 = centerX0 + centerW;
+  // On one scale the panes differ in width where only one holds a bracket: the
+  // pane without it gives its spare room to the pane with it (see `splitPanes`).
+  let paneWA = paneW;
+  let paneWB = paneW;
+  let centerX0 = plot.x + paneW;
+  let centerX1 = centerX0 + centerW;
 
   // ---- scales (bar length in px per pane) ----
   const absA = rows.map((r) => Math.abs(r.a ?? 0));
@@ -536,13 +689,40 @@ export function layoutButterfly(
     let kInside = Infinity;
     if (insideCard) {
       for (let pass = 0; pass < 4; pass++) {
+        splitPanes(kInside);
         const next = Math.min(pxPerUnit('a'), pxPerUnit('b'));
         if (next === kInside) break;
         kInside = next;
       }
     }
+    splitPanes(kInside);
+    // Where the two panes carry unequal room, move the name column until both
+    // panes end at the same scale: pane A's width is the one that makes
+    // `rawPxPerUnit` of A equal B's (A grows with it, B shrinks).
+    function splitPanes(kIn: number): void {
+      paneWA = paneWB = paneW;
+      if (!sharedScale || room.left === room.right) return;
+      let lo = 40 + room.left;
+      let hi = 2 * paneW - 40 - room.right;
+      if (lo >= hi) return;
+      for (let i = 0; i < 24; i++) {
+        const mid = (lo + hi) / 2;
+        paneWA = mid;
+        paneWB = 2 * paneW - mid;
+        if (rawPxPerUnit('a', kIn) < rawPxPerUnit('b', kIn)) lo = mid; else hi = mid;
+      }
+      paneWA = (lo + hi) / 2;
+      paneWB = 2 * paneW - paneWA;
+    }
     function pxPerUnit(side: 'a' | 'b'): number {
+      const k = rawPxPerUnit(side, kInside);
+      const max = side === 'a' ? maxA : maxB;
+      return Number.isFinite(k) ? Math.max(k, max > 0 ? 20 / max : 0) : Infinity;
+    }
+    function rawPxPerUnit(side: 'a' | 'b', kIn: number): number {
       const bound = side === 'a' ? room.left : room.right;
+      const w = side === 'a' ? paneWA : paneWB;
+      if (signed) return signedPxPerUnit(side, w - bound, w);
       let k = Infinity;
       for (const r of rows) {
         const v = Math.abs((side === 'a' ? r.a : r.b) ?? 0);
@@ -551,16 +731,17 @@ export function layoutButterfly(
         // A value label takes at most half the pane, a delta after it up to 70%.
         // On a paneFit card a value that goes inside the bar end takes no tail.
         const textW = text ? measure(text, labelFont).width : 0;
-        const inside = insideCard && text !== '' && fitsInsideBar(v * kInside, textW);
-        const valueTail = inside ? 0 : Math.min(paneW * 0.5, text ? VALUE_GAP + textW : 0);
-        const tail = Math.min(paneW * 0.7, valueTail + deltaTail(r, side));
-        k = Math.min(k, (paneW - bound - Math.max(valueTail, tail)) / v);
+        const inside = insideCard && text !== '' && fitsInsideBar(v * kIn, textW);
+        const valueTail = inside ? 0 : Math.min(w * 0.5, text ? VALUE_GAP + textW : 0);
+        const tail = Math.min(w * 0.7, valueTail + deltaTail(r, side));
+        k = Math.min(k, (w - bound - Math.max(valueTail, tail)) / v);
       }
-      const max = side === 'a' ? maxA : maxB;
-      return Number.isFinite(k) ? Math.max(k, max > 0 ? 20 / max : 0) : Infinity;
+      return k;
     }
     const kA = pxPerUnit('a');
     const kB = pxPerUnit('b');
+    centerX0 = plot.x + paneWA;
+    centerX1 = centerX0 + centerW;
     const shared = Math.min(kA, kB);
     const k = Number.isFinite(shared) ? shared : 0;
     return sharedScale ? { a: (v) => v * k, b: (v) => v * k }
@@ -570,12 +751,12 @@ export function layoutButterfly(
   // is as tall as its type; a thinner bar left the digits half on the page
   // in the page-colour ink.
   function fitsInsideBar(len: number, textW: number): boolean {
-    return len >= textW + 8 && band.bandwidth >= labelFont.size;
+    return len >= textW + 8 && band.bandwidth >= valueFont.size;
   }
   // The room a delta label on this row and side takes after its value label.
   function deltaTail(r: Row, side: 'a' | 'b'): number {
     let tail = 0;
-    for (const ann of opts.annotations ?? []) {
+    for (const ann of annotations) {
       if (ann.kind !== 'delta') continue;
       const at = typeof ann.at === 'string' ? { categoryId: ann.at } : ann.at as { categoryId?: Id; seriesId?: Id };
       if (at.categoryId !== r.id || (at.seriesId ?? sB.id) !== (side === 'a' ? sA.id : sB.id)) continue;
@@ -595,6 +776,58 @@ export function layoutButterfly(
     return tail;
   }
 
+  // The room after a bar end for its value label, and a delta after it.
+  function rowTail(r: Row, side: 'a' | 'b', w: number): number {
+    const text = valuesOff ? '' : textOf(side === 'a' ? r.a : r.b, side === 'a' ? r.aMeta : r.bMeta, side);
+    const valueTail = Math.min(w * 0.5, text ? VALUE_GAP + measure(text, labelFont).width : 0);
+    return Math.max(valueTail, Math.min(w * 0.7, valueTail + deltaTail(r, side)));
+  }
+  // Pixels per unit where the pane holds its negative bars between the zero line and the names
+  // and its positive bars (each with its label) outward from the zero line.
+  function signedPxPerUnit(side: 'a' | 'b', avail: number, w: number): number {
+    const items = rows.flatMap((r) => {
+      const v = side === 'a' ? r.a : r.b;
+      return v === null ? [] : [{ v, tail: rowTail(r, side, w) }];
+    });
+    const smallest = Math.min(...items.filter((item) => item.v !== 0).map((item) => Math.abs(item.v)));
+    if (!Number.isFinite(smallest)) return Infinity;
+    const need = (k: number): number => {
+      let neg = 0;
+      let pos = 0;
+      for (const { v, tail } of items) {
+        if (v < 0) neg = Math.max(neg, -v * k + tail); else pos = Math.max(pos, v * k + tail);
+      }
+      return neg + pos;
+    };
+    let lo = 0;
+    let hi = Math.max(0, avail) / smallest;
+    for (let i = 0; i < 48; i++) {
+      const mid = (lo + hi) / 2;
+      if (need(mid) <= avail) lo = mid; else hi = mid;
+    }
+    return lo;
+  }
+
+  // Where each pane's zero line stands: at the names' edge, or further out by the room its
+  // negative bars and their labels take. Positive bars run outward from it.
+  const zeroX = {
+    a: centerX0 - (signed ? negativeRoom('a') : 0),
+    b: centerX1 + (signed ? negativeRoom('b') : 0),
+  };
+  function negativeRoom(side: 'a' | 'b'): number {
+    const w = side === 'a' ? paneWA : paneWB;
+    return maxOf(rows.map((r) => {
+      const v = side === 'a' ? r.a : r.b;
+      return v !== null && v < 0 ? lenOf[side](-v) + rowTail(r, side, w) : 0;
+    }));
+  }
+  const zeroOf = (side: 'a' | 'b'): number => zeroX[side];
+  /** The way a value's bar runs from its zero line: -1 left, +1 right. Positive bars run outward. */
+  const dirOf = (side: 'a' | 'b', v: number | null): -1 | 1 =>
+    (side === 'a' ? -1 : 1) * (signed && v !== null && v < 0 ? -1 : 1) as -1 | 1;
+
+  const naText = opts.strings?.notApplicable ?? commonString(opts, 'notApplicable');
+
   // ---- marks ----
   const nodes: SceneNode[] = [...frameResult.nodes];
   const marks: ButterflyMarks = {
@@ -603,28 +836,22 @@ export function layoutButterfly(
     center: { x: centerX0, y: rowsTop, w: centerW, h: rowsBottom - rowsTop },
   };
   const labelRequests: LabelRequest[] = [];
-  const labelsOff = (kind: string): boolean => {
-    // labels: false takes the values off; the row and side names stay.
-    if (opts.labels === false) return !((kind === 'category' || kind === 'series') && labelsOffKeepsNames(opts));
-    const v = opts.labels?.[kind as never];
-    return v === false;
-  };
 
   // category-axis baselines: bars anchor on the center column's edges
   const baselineLeftId = 'axis:baseline:left';
   const baselineRightId = 'axis:baseline:right';
   nodes.push({
     t: 'line', id: baselineLeftId,
-    x1: centerX0, y1: rowsTop, x2: centerX0, y2: rowsBottom,
+    x1: zeroX.a, y1: rowsTop, x2: zeroX.a, y2: rowsBottom,
     stroke: { token: 'axis' }, width: strokeToken(theme, 'rule'), owner: {}, part: 'baseline',
   });
   nodes.push({
     t: 'line', id: baselineRightId,
-    x1: centerX1, y1: rowsTop, x2: centerX1, y2: rowsBottom,
+    x1: zeroX.b, y1: rowsTop, x2: zeroX.b, y2: rowsBottom,
     stroke: { token: 'axis' }, width: strokeToken(theme, 'rule'), owner: {}, part: 'baseline',
   });
-  occupied.claim({ x: centerX0 - 0.6, y: rowsTop, w: 1.2, h: rowsBottom - rowsTop }, 'axis', {});
-  occupied.claim({ x: centerX1 - 0.6, y: rowsTop, w: 1.2, h: rowsBottom - rowsTop }, 'axis', {});
+  occupied.claim({ x: zeroX.a - 0.6, y: rowsTop, w: 1.2, h: rowsBottom - rowsTop }, 'axis', {});
+  occupied.claim({ x: zeroX.b - 0.6, y: rowsTop, w: 1.2, h: rowsBottom - rowsTop }, 'axis', {});
 
   // extreme rows (largest |value| per series) get the 'extreme' priority band
   const extremeA = maxA > 0 ? rows[absA.indexOf(maxA)]?.id : undefined;
@@ -638,6 +865,9 @@ export function layoutButterfly(
     const cy = rowY + rowH / 2;
     const endpoint = i === 0 || i === rows.length - 1;
     const rowHl = highlights.has(r.id);
+    if (diffText.has(r.id)) {
+      labelRequests.push(columnCellRequest({ id: `diff:${r.id}`, owner: { categoryId: r.id }, text: diffText.get(r.id)!, font: diffFont(r.id), measure, right: alignedRight(diffRight, diffW, measure(diffText.get(r.id)!, diffFont(r.id)).width, diffOverride?.align ?? 'right'), cy }));
+    }
 
     for (const side of ['a', 'b'] as const) {
       const series = side === 'a' ? sA : sB;
@@ -645,16 +875,14 @@ export function layoutButterfly(
       const meta = side === 'a' ? r.aMeta : r.bMeta;
       const fmt = side === 'a' ? fmtA : fmtB;
       const len = v === null ? 0 : Math.max(lenOf[side](Math.abs(v)), 0.5);
-      const tipX = side === 'a' ? centerX0 - len : centerX1 + len;
-      const rect: Rect =
-        side === 'a'
-          ? { x: tipX, y: rowY, w: len, h: rowH }
-          : { x: centerX1, y: rowY, w: len, h: rowH };
+      const dir = dirOf(side, v);
+      const tipX = zeroOf(side) + dir * len;
+      const rect: Rect = { x: Math.min(zeroOf(side), tipX), y: rowY, w: len, h: rowH };
       const nodeId = `mark:${series.id}:${r.id}`;
       const basePaint = side === 'a' ? paintA : paintB;
-      // A negative value draws lighter, its hue washed toward
+      // Under `negatives: 'magnitude'` a negative value draws lighter, its hue washed toward
       // the page down to the mark floor; its sign stays in the label.
-      const paint = v !== null && v < 0 ? negativePaint(barPaint(r.rest, meta, basePaint)) : barPaint(r.rest, meta, basePaint);
+      const paint = v !== null && v < 0 && !signed ? negativePaint(barPaint(r.rest, meta, basePaint)) : barPaint(r.rest, meta, basePaint);
       const scen =
         normalizeScenario(meta?.scenario as string | undefined, `series[${series.id}].values[${r.id}].scenario`) ??
         (side === 'a' ? scenA : scenB);
@@ -681,15 +909,39 @@ export function layoutButterfly(
       occupied.claim(rect, 'mark', { seriesId: series.id, categoryId: r.id });
       (side === 'a' ? marks.left : marks.right).push({ id: r.id, rect, nodeId });
 
+      // A value the data lacks prints the not-applicable mark at the pane's zero line, in the muted ink.
+      if (v === null) {
+        if (naText !== '' && !valuesOff && redesign) {
+          const naSize = measure(naText, valueFont);
+          labelRequests.push({
+            id: `na:${series.id}:${r.id}`,
+            kind: 'point',
+            owner: { seriesId: series.id, categoryId: r.id },
+            text: naText,
+            lines: [naText],
+            font: valueFont,
+            priority: PRIORITY.endpoint,
+            candidates: [{
+              slot: 'outsideEnd',
+              rect: {
+                x: side === 'a' ? zeroOf(side) - NA_GAP - naSize.width : zeroOf(side) + NA_GAP,
+                y: cy - naSize.height / 2, w: naSize.width, h: naSize.height,
+              },
+              penalty: 0,
+            }],
+          });
+        }
+        continue;
+      }
       // ---- value label at the bar end (outside-end; inside-end fallback) ----
-      if (v === null) continue;
       const text = textOf(v, meta, side);
-      const tsize = measure(text, labelFont);
+      const tsize = measure(text, valueFont);
+      if (tightRows) tsize.height = inkBox(valueFont);
       const outsideGap = paneFit ? VALUE_GAP : 6;
       const outside: SlotCandidate = {
         slot: 'outsideEnd',
         rect: {
-          x: side === 'a' ? tipX - outsideGap - tsize.width : tipX + outsideGap,
+          x: dir < 0 ? tipX - outsideGap - tsize.width : tipX + outsideGap,
           y: cy - tsize.height / 2,
           w: tsize.width,
           h: tsize.height,
@@ -705,7 +957,7 @@ export function layoutButterfly(
         candidates[insideCard ? 'unshift' : 'push']({
           slot: 'insideEnd',
           rect: {
-            x: side === 'a' ? tipX + 4 : tipX - 4 - tsize.width,
+            x: dir < 0 ? tipX + 4 : tipX - 4 - tsize.width,
             y: cy - tsize.height / 2,
             w: tsize.width,
             h: tsize.height,
@@ -730,7 +982,7 @@ export function layoutButterfly(
         owner: { seriesId: series.id, categoryId: r.id },
         text,
         lines: [text],
-        font: labelFont,
+        font: valueFont,
         priority,
         redundant: meta?.label === false || labelsOff('point'),
         // A hidden value's note names its side and row: a pyramid's data has no
@@ -744,7 +996,7 @@ export function layoutButterfly(
     const catFont = catFontOf(r);
     const fitted = centerNames[i]!;
     const catW = fitted.w;
-    const catH = fitted.lines.length * (fitted.font === catFont ? nameLineH : lineBox(fitted.font));
+    const catH = tightRows && fitted.lines.length === 1 ? inkBox(fitted.font) : fitted.lines.length * (fitted.font === catFont ? nameLineH : lineBox(fitted.font));
     labelRequests.push({
       id: `category:${r.id}`,
       kind: 'category',
@@ -757,7 +1009,7 @@ export function layoutButterfly(
       candidates: [
         {
           slot: 'center',
-          rect: { x: centerX0 + centerW / 2 - catW / 2, y: cy - catH / 2, w: catW, h: catH },
+          rect: { x: labelOverride?.align === undefined ? centerX0 + centerW / 2 - catW / 2 : alignedLeft(centerX0 + namePad / 2, centerW - namePad, catW, labelOverride.align), y: cy - catH / 2, w: catW, h: catH },
           penalty: 0,
         },
       ],
@@ -769,7 +1021,7 @@ export function layoutButterfly(
     const series = side === 'a' ? sA : sB;
     const text = side === 'a' ? aLabel : bLabel;
     const tsize = measure(text, strongFont);
-    const paneCenter = side === 'a' ? plot.x + paneW / 2 : centerX1 + paneW / 2;
+    const paneCenter = side === 'a' ? plot.x + paneWA / 2 : centerX1 + paneWB / 2;
     const centered = clamp(
       paneCenter - tsize.width / 2,
       side === 'a' ? plot.x : centerX1,
@@ -810,6 +1062,57 @@ export function layoutButterfly(
     });
   }
 
+  if (diffHead) {
+    const head = fitHead(diffHead, strongFont, diffW, measure, { target: opts.target ?? DEFAULT_TARGET, textScale: textScaleOf(opts) });
+    labelRequests.push(headRequest('diff', 0, head, alignedRight(diffRight, diffW, head.w, diffOverride?.headAlign ?? diffOverride?.align ?? 'right'), plot.y, measure(head.lines[0]!, strongFont).height, false));
+  }
+
+  // ---- value axes of panes on their own scales ----
+  const valueAxes: Geometry<ButterflyMarks, ButterflyDerived>['axes'] = [];
+  if (ownAxis) {
+    for (const side of ['a', 'b'] as const) {
+      // Panes on one scale draw the same span, so the two axes read alike.
+      const shown = rows.flatMap((r) => (sharedScale ? [r.a, r.b] : [side === 'a' ? r.a : r.b])).filter((v): v is number => v !== null);
+      if (shown.length === 0) continue;
+      // The axis spans the data: from the longest negative bar to the longest positive one.
+      const lo = signed ? Math.min(0, ...shown) : 0;
+      const hi = signed ? Math.max(0, ...shown) : Math.max(0, ...shown.map(Math.abs));
+      if (hi === lo) continue;
+      const outward = side === 'a' ? -1 : 1;
+      const at = (value: number): number => zeroOf(side) + outward * lenOf[side](value);
+      const axisY = rowsBottom;
+      const axis = layoutValueAxis({
+        scale: linearScale([lo, hi], [at(lo), at(hi)]),
+        plot: { ...plot, h: rowsBottom - plot.y },
+        orient: 'x',
+        gridlines: false,
+        format: side === 'a' ? fmtA : fmtB,
+        // The ticks read at the precision of their spacing: 0.5 steps over whole values print 0.5, not 1.
+        formatSpec: (side === 'a' ? rasterA : rasterB).specForSeries(side === 'a' ? sA : sB),
+        tickCount: 4,
+        theme,
+        measure,
+        canvasWidth: size.width,
+      }, occupied);
+      // Both axes number their nodes alike: tell the panes apart by id.
+      const id = (name: string): string => `${name}:${side}`;
+      const nodeIds = new Map(axis.nodes.map((node) => [node.id, id(node.id)] as const));
+      for (const node of axis.nodes) nodes.push({ ...node, id: nodeIds.get(node.id)! });
+      nodes.push({
+        t: 'line', id: id('axis:x:line'), x1: at(lo), y1: axisY, x2: at(hi), y2: axisY,
+        stroke: { token: 'axis' }, width: strokeToken(theme, 'hair'), owner: { seriesId: (side === 'a' ? sA : sB).id }, part: 'baseline',
+      });
+      for (const tick of axis.axis.ticks) {
+        nodes.push({
+          t: 'line', id: id(`axis:x:mark:${tick.at}`), x1: tick.pos, y1: axisY, x2: tick.pos, y2: axisY + 3,
+          stroke: { token: 'axis' }, width: strokeToken(theme, 'hair'), owner: { seriesId: (side === 'a' ? sA : sB).id }, part: 'tick',
+        });
+        if (tick.labelId) tick.labelId = nodeIds.get(tick.labelId);
+      }
+      valueAxes.push(axis.axis);
+    }
+  }
+
   // ---- solve labels ----
   const solveCtx: SolveCtx = labelCtx(theme, size, opts, {
     measure,
@@ -818,6 +1121,7 @@ export function layoutButterfly(
   });
   const solved = solveLabels(labelRequests, occupied, solveCtx);
   pushAll(warnings, solved.warnings);
+  for (const label of solved.placed) if (label.id.startsWith('na:')) label.ink = { token: 'inkMuted' };
   // A header names its pane in the pane's colour, lifted to the text contrast floor.
   if (redesign) {
     for (const label of solved.placed) {
@@ -829,10 +1133,10 @@ export function layoutButterfly(
   // ---- annotations ----
   // Point callouts clear outside value labels; two-anchor comparisons use actual tips.
   const placedById = new Map(solved.placed.map((l) => [l.id, l] as const));
-  const anchorX = (side: 'a' | 'b', sid: Id, catId: Id, tipX: number): number => {
+  const anchorX = (dir: -1 | 1, sid: Id, catId: Id, tipX: number): number => {
     const vl = placedById.get(`point:${sid}:${catId}`);
     if (!vl || vl.hidden || vl.slot !== 'outsideEnd') return tipX;
-    return side === 'a'
+    return dir < 0
       ? Math.min(tipX, vl.rect.x - 4)
       : Math.max(tipX, vl.rect.x + vl.rect.w + 4);
   };
@@ -849,7 +1153,7 @@ export function layoutButterfly(
     if (v === null) return null;
     const len = Math.max(lenOf[side](Math.abs(v)), 0.5);
     return {
-      x: anchorX(side, sid, r.id, side === 'a' ? centerX0 - len : centerX1 + len),
+      x: anchorX(dirOf(side, v), sid, r.id, zeroOf(side) + dirOf(side, v) * len),
       y: band.position(i) + band.bandwidth / 2,
       value: v,
       format: side === 'a' ? sA.format : sB.format,
@@ -867,13 +1171,13 @@ export function layoutButterfly(
   for (const m of marks.left) outerEdge.left = Math.min(outerEdge.left, m.rect.x);
   for (const m of marks.right) outerEdge.right = Math.max(outerEdge.right, m.rect.x + m.rect.w);
   for (const l of solved.placed) {
-    if (l.hidden || l.kind !== 'point') continue;
+    if (l.hidden || l.kind !== 'point' || l.id.startsWith('diff:')) continue;
     if (l.owner.seriesId === sA.id) outerEdge.left = Math.min(outerEdge.left, l.rect.x);
     else outerEdge.right = Math.max(outerEdge.right, l.rect.x + l.rect.w);
   }
   const brackets = marginBracketLayout(theme, { left: outerEdge.left - BRACKET_CLEAR, right: outerEdge.right + BRACKET_CLEAR });
   const annResult = runAnnotatePass({
-    annotations: opts.annotations ?? [],
+    annotations,
     resolve,
     comparisonLayout: brackets,
     defaultSpan:
@@ -894,7 +1198,7 @@ export function layoutButterfly(
   // value at every width, with no dash: a dash before a negative delta reads
   // as a minus sign ('60 – −21').
   function seatDeltas(): void {
-    (opts.annotations ?? []).forEach((ann, index) => {
+    annotations.forEach((ann, index) => {
       if (ann.kind !== 'delta') return;
       const at = typeof ann.at === 'string' ? { categoryId: ann.at } : ann.at as { categoryId?: Id; seriesId?: Id };
       const i = rows.findIndex((r) => r.id === at.categoryId);
@@ -905,8 +1209,9 @@ export function layoutButterfly(
       const rowY = band.position(i);
       const cy = label.rect.y + label.rect.h / 2;
       if (cy < rowY || cy > rowY + band.bandwidth) return;
-      const right = sid === sB.id;
-      const bar = (right ? marks.right : marks.left)[i]!.rect;
+      const side = sid === sA.id ? 'a' : 'b';
+      const right = dirOf(side, side === 'a' ? rows[i]!.a : rows[i]!.b) > 0;
+      const bar = (side === 'b' ? marks.right : marks.left)[i]!.rect;
       const value = placedById.get(`point:${sid}:${rows[i]!.id}`);
       const outside = value && !value.hidden && value.slot === 'outsideEnd';
       const end = right ? (outside ? value.rect.x + value.rect.w : bar.x + bar.w) : (outside ? value.rect.x : bar.x);
@@ -933,27 +1238,34 @@ export function layoutButterfly(
     const bracketRoom = { left: over.left ? reach.left + BRACKET_CLEAR : 0, right: over.right ? reach.right + BRACKET_CLEAR : 0 };
     return layoutButterfly(data, options, { ...comparison, bracketRoom });
   }
+  // A comparison that went to the note list keeps no room: the bars take it back.
+  const leftBracket = annResult.labels.some(label => !label.hidden && label.rect.x + label.rect.w <= centerX0);
+  const rightBracket = annResult.labels.some(label => !label.hidden && label.rect.x >= centerX1);
+  if ((room.left > 0 && !leftBracket) || (room.right > 0 && !rightBracket)) {
+    const bracketRoom = { left: leftBracket ? room.left : 0, right: rightBracket ? room.right : 0 };
+    return layoutButterfly(data, options, { ...comparison, bracketRoom });
+  }
 
   // ---- emit ----
   const allLabels: PlacedLabel[] = [...solved.placed, ...annResult.labels];
-  const leftBracket = annResult.labels.some(label => !label.hidden && label.rect.x + label.rect.w <= centerX0);
-  const rightBracket = annResult.labels.some(label => !label.hidden && label.rect.x >= centerX1);
   const leftMinimum = minimumPane('a', leftBracket ? room.left : 0);
   const rightMinimum = minimumPane('b', rightBracket ? room.right : 0);
   const minWidth = size.width - plot.w + centerW + (comparisonRun === 20
     ? leftMinimum + rightMinimum : 2 * Math.max(leftMinimum, rightMinimum));
   pushAll(nodes, annResult.nodes);
   pushAll(nodes, labelsToNodes(theme, allLabels, (l) =>
-      l.kind === 'series'
+      l.kind === 'series' || l.id.startsWith(HEAD_PREFIX)
         ? strongFont
+        : l.id.startsWith('diff:') && diffText.has(l.owner.categoryId ?? '') ? diffFont(l.owner.categoryId!)
         : l.kind === 'category'
           ? l.owner.categoryId && highlights.has(l.owner.categoryId)
             ? nameBold
             : nameFont
           : l.kind === 'annotation' || l.kind === 'valueLine'
             ? { ...labelFont, weight: emphasisWeight(theme) }
-            : labelFont, nodes,
+            : l.kind === 'point' ? valueFont : labelFont, nodes,
     ));
+  asColumnHeads(nodes);
 
   // Each line of a centre name is centred in the column, not only the block.
   for (const label of allLabels) {
@@ -986,6 +1298,7 @@ export function layoutButterfly(
           labelId: `category:${r.id}`,
         })),
       },
+      ...valueAxes,
     ],
     annotations: annResult.placed,
     legend: frameResult.legend,
@@ -1036,6 +1349,12 @@ function centerColumnWidth(
 
 /** The gap between a bar's end and its outside value label. */
 const VALUE_GAP = 4;
+
+/** The gap between a pane's zero line and its not-applicable mark. */
+const NA_GAP = 8;
+
+/** The gap between the rows and the value axis of a pane on its own scale. */
+const AXIS_GAP = 6;
 
 /** A paneFit card's lane padding on each side of its widest name. */
 const LANE_PAD = 4;

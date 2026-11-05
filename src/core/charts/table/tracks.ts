@@ -9,7 +9,7 @@
  */
 
 import { tableEmphasis } from '../../theme';
-import { twoLineWidth, type FontSpec, type TextMeasurer } from '../../text';
+import { lineBlockWidth, twoLineWidth, type FontSpec, type TextMeasurer } from '../../text';
 import type { Theme } from '../../types/theme';
 import type { Id } from '../../types/cell';
 import type { LintWarning } from '../../types/scene';
@@ -187,6 +187,15 @@ export function kindFont(font: FontSpec, kind: ResolvedRow['kind'], label: boole
 }
 
 /**
+ * A `strong` column carries the header's weight down its cells, except on a subtotal, a result or a
+ * de-emphasized cell. The tracks measure this face, so a bold label gets the room it draws in.
+ */
+export function strongColumnFont(font: FontSpec, column: Pick<ResolvedColumn, 'emphasis'> | undefined, cell: ResolvedCell, kind: ResolvedRow['kind'], theme: Theme): FontSpec {
+  return column?.emphasis === 'strong' && !cell.deEmphasized && kind !== 'subtotal' && kind !== 'result'
+    ? { ...font, weight: theme.table?.weights?.block ?? tableEmphasis(theme) } : font;
+}
+
+/**
  * The legacy inline-note and unit face. Change lines use `changeLineFont`.
  */
 export function inlineFont(theme: Theme, ladder: LevelLadder, _step: number, _signed: boolean): FontSpec {
@@ -225,6 +234,8 @@ export function browserSlack(font: FontSpec, width: number): number {
 }
 
 export interface WidthContext {
+  /** Cell content by level, independent of column padding, header faces and indentation. */
+  bodyWidths?: Map<string, Map<number, number>>;
   theme?: Theme;
   measure: TextMeasurer;
   fonts: TableFonts;
@@ -248,8 +259,8 @@ export interface WidthContext {
   headerTrailingTracking?: boolean;
   /** Extra a browser needs over the measured width; `browserSlack` on React. */
   slack?: (font: FontSpec, width: number) => number;
-  /** A row label counts at its two-line width, broken as a name breaks (`twoLineWidth`): the floor a label track narrows to. */
-  twoLineLabels?: boolean;
+  /** Above 1, a row label or a text cell counts at its width on this many lines (`lineBlockWidth`, a label broken as a name breaks): the width that prints it uncut. */
+  labelLines?: number;
   /**
    * Whether the surface draws a cell's string, or a line inside that cell,
    * with tabular figures. Absent means the face's own digits.
@@ -374,24 +385,20 @@ function encodingTrackWidth(column: ResolvedColumn, rows: readonly ResolvedRow[]
  * affix DOES share the label's line, so the track pays for both, and so does
  * a collapsed hint where the surface prints one (`ctx.hint`).
  */
-export function intrinsicColumnWidth(
-  column: ResolvedColumn,
-  rows: readonly ResolvedRow[],
-  ctx: WidthContext,
-  figuresOnly = false,
-): number {
-  if (column.kind === 'encoding') return encodingTrackWidth(column, rows, ctx);
+function intrinsicBodyWidths(column: ResolvedColumn, rows: readonly ResolvedRow[], ctx: WidthContext, figuresOnly: boolean): Map<number, number> {
+  const key = JSON.stringify([column.id, column.width === undefined, column.maxTextWidth, ctx.labelLines, figuresOnly, ctx.hint !== undefined, ctx.inlineIndent]);
+  const known = ctx.bodyWidths?.get(key);
+  if (known) return known;
   const isRowLabel = column.kind === 'rowLabel';
-  const headerW = figuresOnly ? 0 : headerContentWidth(column, ctx);
-  let cellMax = 0;
+  const levels = new Map<number, number>();
   for (const row of rows) {
     if (row.inline === true) continue;
     if (isRowLabel && row.role === 'section') continue;
     const cell = row.cells[column.id];
     if (!cell) continue;
     const font = ctx.cellFont(cell);
-    let width = isRowLabel && ctx.twoLineLabels === true
-      ? twoLineWidth(cell.displayed, font, ctx.measure, true)
+    let width = (isRowLabel || column.kind === 'text') && ctx.labelLines !== undefined && ctx.labelLines > 1
+      ? lineBlockWidth(cell.displayed, ctx.labelLines, font, ctx.measure, isRowLabel)
       : ctx.measure(cell.displayed, figureFont(font, ctx.figures?.(column, cell.displayed))).width;
     width += ctx.slack?.(font, width) ?? 0;
     // Only what the text adds is capped here: the indent, the affix and the hint come on top, and a wider column from other content gives labels the room.
@@ -412,7 +419,6 @@ export function intrinsicColumnWidth(
       ).width;
       width = underFigure ? Math.max(width, note) : width + note;
     }
-    if (isRowLabel) width += ctx.rowIndent(row.step);
     if (cell.kind === 'status' && cell.state === 'value' && column.statusMark === 'square') {
       const text = ctx.measure(cell.displayed, ctx.fonts.body).width;
       const square = statusSquare(ctx.fonts.body.size);
@@ -422,7 +428,8 @@ export function intrinsicColumnWidth(
       const chip = ctx.measure(cell.displayed, ctx.fonts.chip).width;
       width = chip + (ctx.slack?.(ctx.fonts.chip, chip) ?? 0) + 2 * CHIP_PAD_X;
     }
-    cellMax = Math.max(cellMax, width);
+    const step = isRowLabel ? row.step : 0;
+    let cellMax = Math.max(levels.get(step) ?? 0, width);
     for (const line of row.inlineRows ?? []) {
       const lineFont = ctx.changeFont?.(row.step) ?? ctx.inlineFont(row.step, line.polarity !== undefined);
       const text = isRowLabel ? line.label : (line.cells[column.id]?.displayed ?? '');
@@ -431,10 +438,26 @@ export function intrinsicColumnWidth(
       cellMax = Math.max(
         cellMax,
         // An inline line's label sits in from its parent's (inlineLabelIndent).
-        ctx.measure(text, figureFont(lineFont, tabular)).width + (isRowLabel ? ctx.rowIndent(row.step) + (ctx.inlineIndent ?? 8) : 0),
+        ctx.measure(text, figureFont(lineFont, tabular)).width + (isRowLabel ? ctx.inlineIndent ?? 8 : 0),
       );
     }
+    levels.set(step, cellMax);
   }
+  ctx.bodyWidths?.set(key, levels);
+  return levels;
+}
+
+export function intrinsicColumnWidth(
+  column: ResolvedColumn,
+  rows: readonly ResolvedRow[],
+  ctx: WidthContext,
+  figuresOnly = false,
+): number {
+  if (column.kind === 'encoding') return encodingTrackWidth(column, rows, ctx);
+  const isRowLabel = column.kind === 'rowLabel';
+  const headerW = figuresOnly ? 0 : headerContentWidth(column, ctx);
+  let cellMax = 0;
+  for (const [level, width] of intrinsicBodyWidths(column, rows, ctx, figuresOnly)) cellMax = Math.max(cellMax, width + (isRowLabel ? ctx.rowIndent(level) : 0));
   const natural = Math.ceil(Math.max(headerW, cellMax + (figuresOnly ? 0 : ctx.reserve?.(column) ?? 0)) + 2 * ctx.padX);
   return column.kind === 'rowLabel' && column.width === undefined && column.maxWidth !== undefined ? Math.min(natural, column.maxWidth) : natural;
 }
@@ -448,7 +471,7 @@ export const LABEL_WIDTH_GROWTH_CAP = 180;
  * widest printed value needs, with the cell air. A note beside the value and an
  * encoding reserve do not count: they may still clip. A row label is not cut
  * either, up to LABEL_WIDTH_GROWTH_CAP (or a smaller maxWidth): the track grows
- * to the labels' own width, on two lines where `ctx.twoLineLabels` allows them.
+ * to the labels' own width, on the lines `ctx.labelLines` allows them.
  * Any other column keeps the width as authored.
  */
 export function authoredTrackWidth(column: ResolvedColumn, rows: readonly ResolvedRow[], ctx: WidthContext): number | undefined {

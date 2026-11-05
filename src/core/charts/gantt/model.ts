@@ -6,6 +6,7 @@
  * own, and `layoutGantt` commits it, in claim order, before the solver runs.
  */
 
+import type { AuthoredWidths, ColumnAlign, GanttColumnSettings } from './columns';
 import type { Rect, Size } from '../../geometry';
 import type { LabelRequest } from '../../label/solver';
 import type { FontSpec, TextMeasurer, TextSize } from '../../text';
@@ -82,6 +83,7 @@ interface GanttFonts {
 /** What the options resolve to once, before any phase runs. */
 export interface GanttEnv {
   options: GanttOptions;
+  columns: GanttColumnSettings;
   theme: Theme;
   surface: { rowTint: number; elapsedTint: number };
   size: Size;
@@ -131,6 +133,12 @@ export interface GanttDomain {
   milestones: MilestonePlan;
 }
 
+/** The row names as drawn on one plot width, and the narrowest name band that holds every complete name. */
+export interface RowNames {
+  rowLabels: RowLabel[];
+  minimumLabelBandW: number;
+}
+
 /** Phase 1 output, vertical: marker strip, two header tiers and the rows. */
 export interface GanttBand {
   headerRowH: number;
@@ -144,6 +152,8 @@ export interface GanttBand {
   rowH: number;
   /** Each row's lane height: rowH, or more for a row with stacked milestone flags. */
   rowHs: number[];
+  /** The table form's row names, measured with the rows' text floors; the body reuses them. */
+  names?: RowNames;
   rowsBottom: number;
   /** Row tops, one per row and one for the bottom edge. */
   rowY: number[];
@@ -182,6 +192,12 @@ export interface MetadataColumns {
   colWs: number[];
   colXs: number[];
   headerRequests: LabelRequest[];
+  /** The authored alignment and the text width of each drawn column; absent without overrides. */
+  aligned?: { align?: ColumnAlign; inner: number }[];
+  /** The original index of each drawn column. */
+  shown?: number[];
+  /** The narrowest width that holds each drawn column in full. */
+  floors?: number[];
 }
 
 /** Phase 1 output, horizontal: the left band, the timeline scale and the milestone lane. */
@@ -195,6 +211,14 @@ export interface GanttBody {
   /** Complete row names, wrapped at word boundaries to at most two lines. */
   minimumLabelBandW: number;
   columns: MetadataColumns;
+  /** Air between the metadata columns and the timeline. */
+  metaGap: number;
+  /** Where row tints and rules end. */
+  rowsRight: number;
+  /** Where a label beside a mark must end: the plot edge, or the gap before metadata after the plot. */
+  timelineRight: number;
+  /** The widths the overrides resolved to. */
+  authoredWidths: AuthoredWidths;
   bodyX: number;
   bodyW: number;
   laneGap: number;
@@ -246,7 +270,13 @@ export function laneTop(band: GanttBand, rows: readonly NormRow[], index: number
 
 /** Internal option: lay the chart out without the milestone lane (layout.ts gives an unused lane back to the timeline). */
 export const NO_LANE = Symbol('ganttNoLane');
-/** Internal option: per row id, the pitch its drawn name and sublabel need in the table form, once a pass has measured them. */
-export const ROW_TEXT_PITCH = Symbol('ganttRowTextPitch');
+/** The label solver keeps this gap between labels; rows touch, so a row name needs its height plus this gap. */
+export const LABEL_PAD = 2;
+/** The least height of a table row; a row whose text needs less keeps it. */
+export const MIN_ROW_H = 28;
+/** Extra height above the exact floor. The label solver hides a name whose gap to the next name is under its gap, and the sum of row heights can land a hair under it. */
+export const ROW_FLOOR_SLACK = 0.01;
+/** The least row height at which a wrapped name and its sublabel keep their seats: the text, one gap to the next row's name, and the slack. */
+export const rowTextFloor = (label: RowLabel) => label.h + (label.sub ? 2 + label.sub.h : 0) + LABEL_PAD + ROW_FLOOR_SLACK;
 /** Internal option: how many levels the event badges stack in, once a pass on the drawn timeline has planned them. */
 export const BADGE_LEVELS = Symbol('ganttBadgeLevels');

@@ -15,6 +15,7 @@ import {
   formatterFromExample,
   neededDecimals,
   roundedNumber,
+  seriesRasterFormatter,
   type NumberFormatSpec,
 } from '../../formatSpec';
 import { autoDecimals } from '../../formatPrecision';
@@ -25,7 +26,7 @@ import {
   resolveHighlight,
   resolveSize,
 } from '../../normalize/shared';
-import { applyAxisBounds, niceDomain } from '../../scale';
+import { applyAxisBounds, applyTickStep, niceDomain } from '../../scale';
 import type { Annotation } from '../../types/annotations';
 import type { Id } from '../../types/cell';
 import { cellMeta, cellValue, isDateCell, isPctCell } from '../../types/cell';
@@ -129,8 +130,25 @@ function discloseNumber(raw: number, spec: NumberFormatSpec, authoredFormat: boo
   return { value, text: formatWithSpec(value, applied), exact };
 }
 
+/**
+ * The engine scale of one axis without a format, as bar takes it
+ * (seriesRasterFormatter): from a million on a render target, else none.
+ */
+function engineAxisScale(options: ScatterStrategyOptions, format: string | undefined, data: ScatterData | undefined, axis: 'x' | 'y'): ReturnType<typeof seriesRasterFormatter> | undefined {
+  if (format || options.target === undefined || !Array.isArray(data?.points)) return undefined;
+  const values: number[] = [];
+  for (const point of data.points) {
+    const raw: unknown = point?.[axis];
+    const value = typeof raw === 'number' ? raw : raw !== null && typeof raw === 'object' && 'number' in raw ? Number((raw as { number: unknown }).number) : NaN;
+    if (Number.isFinite(value)) values.push(value);
+  }
+  if (!values.some((value) => Math.abs(value) >= 1e6)) return undefined;
+  const engine = seriesRasterFormatter(undefined, values, options.locale?.language, options.unit, options.target);
+  return engine.spec.autoMagnitude ? engine : undefined;
+}
+
 /** Resolve the options once: theme, palette, size, measurer and the number formats. */
-export function resolveScatterEnv(options: ScatterStrategyOptions, warnings: LintWarning[]): ScatterEnv {
+export function resolveScatterEnv(options: ScatterStrategyOptions, warnings: LintWarning[], data?: ScatterData): ScatterEnv {
   if (options.zones && options.quadrants) {
     throw new NormalizeError(
       'zones-quadrants-conflict',
@@ -146,9 +164,13 @@ export function resolveScatterEnv(options: ScatterStrategyOptions, warnings: Lin
   const fmt = scatterFormatter(options);
   // Each coordinate prints in its own axis format (axisFormat), else the chart's.
   const axisFormat = { x: options.axisFormat?.x ?? options.format, y: options.axisFormat?.y ?? options.format };
+  // An axis without a format takes the engine scale bar takes from a
+  // million, chosen once per axis from its largest value: ticks and
+  // coordinates print 2.0B and 500M, not 2,000,000,000.
+  const engine = { x: engineAxisScale(options, axisFormat.x, data, 'x'), y: engineAxisScale(options, axisFormat.y, data, 'y') };
   const axisFmt = {
-    x: options.axisFormat?.x ? scatterFormatter(options, axisFormat.x) : fmt,
-    y: options.axisFormat?.y ? scatterFormatter(options, axisFormat.y) : fmt,
+    x: options.axisFormat?.x ? scatterFormatter(options, axisFormat.x) : engine.x?.fmt ?? fmt,
+    y: options.axisFormat?.y ? scatterFormatter(options, axisFormat.y) : engine.y?.fmt ?? fmt,
   };
   // A chart formatter is a DISPLAY convention; a cut point is a BOUNDARY. Run
   // a boundary through the display formatter and the exhibit states a
@@ -163,8 +185,15 @@ export function resolveScatterEnv(options: ScatterStrategyOptions, warnings: Lin
   // tick through autoDecimals on its own and printed "1.0", "1", "1.1" at
   // 0.95, 1 and 1.05.
   // An authored example prints as the marks print it: the chart locale's separators, the authored word.
-  const axisSpecOf = (format: string | undefined): NumberFormatSpec => (format ? exampleSpec(format, options.locale?.language) : countSpec);
-  const axisSpec = { x: axisSpecOf(axisFormat.x), y: axisSpecOf(axisFormat.y) };
+  const axisSpecOf = (format: string | undefined, scaled: NumberFormatSpec | undefined): NumberFormatSpec => (format ? exampleSpec(format, options.locale?.language) : scaled ?? countSpec);
+  const axisSpec = { x: axisSpecOf(axisFormat.x, engine.x?.spec), y: axisSpecOf(axisFormat.y, engine.y?.spec) };
+  // A cut point on a scaled axis prints at its own scale with every digit it needs ("452.345678M").
+  const cutSpec = (raw: number, axis: 'x' | 'y'): NumberFormatSpec => {
+    if (!engine[axis]) return axisSpec[axis];
+    let magnitude: NumberFormatSpec['magnitude'] = 'none';
+    for (const step of ['k', 'm', 'bn', 't'] as const) if (Math.abs(raw) >= MAGNITUDE_DIVISOR[step]) magnitude = step;
+    return { ...countSpec, magnitude, rollMagnitude: false };
+  };
   return {
     options,
     theme,
@@ -174,7 +203,7 @@ export function resolveScatterEnv(options: ScatterStrategyOptions, warnings: Lin
     fmt,
     axisFmt,
     axisSpec,
-    discloseCut: (raw: number, axis: 'x' | 'y') => discloseNumber(raw, axisSpec[axis], axisFormat[axis] !== undefined),
+    discloseCut: (raw: number, axis: 'x' | 'y') => discloseNumber(raw, cutSpec(raw, axis), axisFormat[axis] !== undefined),
     discloseCount: (raw: number) => discloseNumber(raw, countSpec, false),
     highlights: new Set(resolveHighlight(options.highlight)),
     va: options.valueAxis ?? {},
@@ -345,7 +374,7 @@ function scatterAxisDomain(
   input: AxisDomainInput,
   env: ScatterEnv,
   warnings: LintWarning[],
-): { dx: [number, number]; dy: [number, number]; annotations: Annotation[]; ticks?: { x: number[]; y: number[] }; evenGrid?: { x: boolean; y: boolean } } {
+): { dx: [number, number]; dy: [number, number]; annotations: Annotation[]; ticks?: { x: number[]; y: number[] }; stepTicks?: number[]; evenGrid?: { x: boolean; y: boolean } } {
   const { options, va } = env;
   const fmt = env.axisFmt.y;
   const { clamp, valueLines } = input;
@@ -443,6 +472,19 @@ function scatterAxisDomain(
       ticks = { x: ax.ticks, y: ay.ticks };
     }
   }
+  let stepTicks: number[] | undefined;
+  if (env.log.y && va.tickStep !== undefined) {
+    warnings.push({
+      code: 'tick-step-ignored', severity: 'warn',
+      message: `valueAxis.tickStep ${va.tickStep} applies to a linear axis only; the log ticks are drawn instead`,
+      suggest: 'drop valueAxis.tickStep, or use a linear value axis',
+      field: ['options', 'valueAxis', 'tickStep'],
+    });
+  } else {
+    const stepped = applyTickStep([dyLo, dyHi], va.tickStep, warnings);
+    [dyLo, dyHi] = stepped.domain;
+    stepTicks = stepped.ticks;
+  }
   [dxLo, dxHi] = numericViewportRange(options.viewDomain?.x, [dxLo, dxHi]);
   [dyLo, dyHi] = numericViewportRange(options.viewDomain?.y, [dyLo, dyHi]);
   // The axis ends ON the clamp, so a clipped point lands exactly on the edge
@@ -451,10 +493,23 @@ function scatterAxisDomain(
   if (clamp?.edges.x.max !== undefined) dxHi = clamp.edges.x.max;
   if (clamp?.edges.y.min !== undefined) dyLo = clamp.edges.y.min;
   if (clamp?.edges.y.max !== undefined) dyHi = clamp.edges.y.max;
+  if (stepTicks) {
+    stepTicks = stepTicks.filter((v) => v >= dyLo && v <= dyHi);
+    if (stepTicks.length < 2) {
+      // The window or clamp holds no step multiples; the nice ticks are drawn.
+      warnings.push({
+        code: 'tick-step-ignored', severity: 'warn',
+        message: `valueAxis.tickStep ${va.tickStep} puts fewer than two ticks inside the visible Y range; the nice ticks are drawn instead`,
+        suggest: 'pick a smaller step, or widen options.viewDomain.y',
+        field: ['options', 'valueAxis', 'tickStep'],
+      });
+      stepTicks = undefined;
+    } else if (ticks) ticks = { ...ticks, y: stepTicks };
+  }
   const viewY = options.viewDomain?.y ? ([dyLo, dyHi] as [number, number]) : undefined;
   refuseValueLinesOutsideAxis(valueLines, [dyLo, dyHi], viewY ? {} : { min: va.min, max: va.max }, fmt);
   const annotations = valueLinesInView(options.annotations, valueLines, viewY, warnings, fmt);
-  return { dx: [dxLo, dxHi], dy: [dyLo, dyHi], annotations, ...(ticks ? { ticks } : {}), ...(evenGrid ? { evenGrid } : {}) };
+  return { dx: [dxLo, dxHi], dy: [dyLo, dyHi], annotations, ...(ticks ? { ticks } : {}), ...(stepTicks ? { stepTicks } : {}), ...(evenGrid ? { evenGrid } : {}) };
 }
 
 /**
@@ -680,6 +735,7 @@ export function resolveScatterDomain(data: ScatterData, env: ScatterEnv, warning
     dx: axes.dx,
     dy: axes.dy,
     ...(ticks ? { ticks } : {}),
+    ...(axes.stepTicks ? { stepTicks: ticks?.y ?? axes.stepTicks } : {}),
     ...(axes.evenGrid ? { evenGrid: axes.evenGrid } : {}),
     annotations: axes.annotations,
     baselineNotes,

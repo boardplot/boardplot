@@ -15,7 +15,6 @@ import { geoRegionIdIndex, resolveGeoRegionId, claimedRegionIds } from './geo/re
 import { getGeoPack } from './geo/packs/registry';
 import type { GeoPackId } from './geo/types';
 import type { TilePack, TilePackId } from './geo/tiles/types';
-import { closestKey } from './schema/unknownKeyWords';
 import { cellValue, isNumberCell, isPctCell, type Cell } from './types/cell';
 import { CHART_TYPE_OF, ROWS_SHAPES, type RowsShape } from './rowsTypes';
 
@@ -696,11 +695,6 @@ export function adaptRows(spec: unknown, columns: unknown, source: RowsSource): 
         const ids = claimedRegionIds(resolution);
         if (ids.some(id => claimed.has(id))) throw new InputError('duplicate-id', `${displayPath}: region '${category.id}' repeats a pack member`, { path: sourcePath, displayPath, suggest: 'Keep one source row per pack member, using its canonical id.' });
         ids.forEach(id => claimed.add(id));
-        if (resolution.kind === 'unknown') {
-          const nearest = closestKey(category.id, [...index.canonical.keys()]);
-          const hint = nearest?.near ? `; did you mean '${index.canonical.get(nearest.key)}'?` : '';
-          throw new InputError(`${spec.type}-unknown-region`, `${displayPath}: region '${category.id}' is not in pack '${data.pack}'${hint}`, { path: sourcePath, displayPath, suggest: 'Use a canonical region id or an unambiguous pack alias.' });
-        }
       });
     }
   }
@@ -727,7 +721,12 @@ export function adaptRows(spec: unknown, columns: unknown, source: RowsSource): 
           return { ...template, id: category.id, ...authored, ...(named('date') && category.date !== undefined ? { date: category.date } : {}) };
         }),
         ...(bartable ? bartablePanel(data, adapted.data.series, series, contract.value, (generated) => pathMap.get(generated)) : {
-          series: adapted.data.series.map((entry) => ({ ...series.get(entry.id), ...entry })),
+          series: adapted.data.series.map((entry) => {
+            if (type !== 'heatmap') return { ...series.get(entry.id), ...entry };
+            // The rows decide every heatmap cell state, so the template's own list is dropped before the rows' states are added.
+            const { states: _templateStates, ...template } = series.get(entry.id) ?? {};
+            return { ...template, ...entry, ...cellStates(entry.id, adapted.data.categories, adapted.states) };
+          }),
         }),
         }),
       },
@@ -737,6 +736,12 @@ export function adaptRows(spec: unknown, columns: unknown, source: RowsSource): 
     ignoredColumns: adapted.ignoredColumns,
     states: adapted.states,
   };
+}
+
+/** A heatmap row's states in category order, or nothing when none of its cells has one. */
+function cellStates(seriesId: string, categories: readonly { id: string }[], states: readonly NamedColumnStateEntry[]) {
+  const own = states.filter((entry) => entry.seriesId === seriesId);
+  return own.length ? { states: categories.map((category) => own.find((entry) => entry.categoryId === category.id)?.state ?? null) } : {};
 }
 
 /**
@@ -808,7 +813,10 @@ export function rewriteRowsDiagnostics<T extends { path?: string; displayPath?: 
       ? `rows[${finding.owner.rowId}].cells[${finding.owner.colId}]` : undefined;
     const source = sourceFor(finding.path) ?? (finding.displayPath === undefined ? undefined : pathMap?.get(finding.displayPath))
       ?? (owner === undefined ? undefined : pathMap?.get(owner));
-    const fix = finding.fix?.map(operation => ({ ...operation, path: sourceFor(operation.path)?.path ?? operation.path }));
-    return { ...finding, ...(source || {}), ...(fix ? { fix } : {}) };
+    // A fix aimed at data the rows generated has no source row to patch (a removed category, say). It is left out whole, and its suggest stays.
+    const generated = pathMap && finding.fix?.some(operation => operation.path.startsWith('/data/') && !sourceFor(operation.path));
+    const fix = generated ? undefined : finding.fix?.map(operation => ({ ...operation, path: sourceFor(operation.path)?.path ?? operation.path }));
+    const { fix: _fix, ...rest } = finding;
+    return { ...(generated ? rest : finding), ...(source || {}), ...(fix ? { fix } : {}) } as T;
   });
 }

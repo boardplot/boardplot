@@ -22,7 +22,9 @@ import { lineBox } from '../../label/fitText';
 import { arrowHeadPath } from '../../svgPath';
 import type { FontSpec, TextMeasurer } from '../../text';
 import type { Id } from '../../types/cell';
-import type { Paint, SceneNode } from '../../types/scene';
+import type { ColumnOverride } from '../../types/options';
+import type { LintWarning, Paint, SceneNode } from '../../types/scene';
+import { alignedLeft, authoredTrackWidth } from '../columnOverrides';
 import { maxOf } from '../../arrays';
 
 interface SteeringComparison {
@@ -68,6 +70,8 @@ interface SteeringInput {
   measure: TextMeasurer;
   /** The chip tint of the surface: the bar track uses it. */
   trackTint: number;
+  /** Authored settings of the two comparison columns. */
+  overrides?: { label?: ColumnOverride; value?: ColumnOverride };
 }
 
 export interface SteeringPlan {
@@ -85,6 +89,8 @@ export interface SteeringPlan {
   noteRect?: Rect;
   /** Bottom of the content, from the plot top. */
   contentHeight: number;
+  /** What the authored column widths warn, for the caller to keep when it draws this form. */
+  trackWarnings: LintWarning[];
 }
 
 /** Air between a rule and the column on either side. */
@@ -130,9 +136,15 @@ export function planSteering(input: SteeringInput): SteeringPlan | undefined {
     const rest = c.body.slice(c.lead.length);
     return measure(c.lead, boldFont).width + (rest ? measure(rest, rowFont).width : 0);
   };
-  const bodyW = Math.max(0, maxOf(input.comparisons.map(bodyWidth)));
-  const labelW = Math.max(0, maxOf(input.comparisons.map((c) => measure(c.label, rowFont).width)));
+  const naturalBodyW = Math.max(0, maxOf(input.comparisons.map(bodyWidth)));
+  const naturalLabelW = Math.max(0, maxOf(input.comparisons.map((c) => measure(c.label, rowFont).width)));
   const colGap = Math.round(rowSize * 0.9);
+  // An authored column keeps its width; the card's plot is the room, and the other column keeps its own.
+  const { value: valueTrack, label: labelTrack } = input.overrides ?? {};
+  const trackWarnings: LintWarning[] = [];
+  const trackRoom = plot.w - textInset - colGap;
+  const bodyW = valueTrack?.width === undefined ? naturalBodyW : authoredTrackWidth('value', valueTrack.width, naturalBodyW, trackRoom - naturalLabelW, trackWarnings);
+  const labelW = labelTrack?.width === undefined ? naturalLabelW : authoredTrackWidth('label', labelTrack.width, naturalLabelW, trackRoom - bodyW, trackWarnings);
   const compareW = input.comparisons.length === 0 ? 0 : textInset + bodyW + colGap + labelW;
   const compareH = input.comparisons.length === 0 ? 0 : (input.comparisons.length - 1) * pitch;
   if (compareW > plot.w) return undefined;
@@ -239,15 +251,18 @@ export function planSteering(input: SteeringInput): SteeringPlan | undefined {
     const x = left + textInset;
     const body = atBaseline(x, baseline, comparison.body, rowFont);
     body.w = bodyWidth(comparison);
+    body.x = alignedLeft(x, bodyW, body.w, valueTrack?.align ?? 'left');
     text(`point:compare:${index}`, body, comparison.body, rowFont, { owner: { categoryId: 'kpi', seriesId: comparison.id, segmentId: comparison.id }, claimId: `kpi:delta:${index}` } as Partial<LabelRequest>);
     leads.set(`point:compare:${index}`, comparison.lead);
     const labelId = `point:compareLabel:${index}`;
     // The comparison word ('YoY', 'vs Plan') is a caption beside its number, not a value.
-    text(labelId, atBaseline(x + bodyW + colGap, baseline, comparison.label, rowFont), comparison.label, rowFont, { owner: { categoryId: 'kpi', seriesId: comparison.id, segmentId: comparison.id }, role: 'caption' });
+    text(labelId, atBaseline(alignedLeft(x + bodyW + colGap, labelW, measure(comparison.label, rowFont).width, labelTrack?.align ?? 'left'), baseline, comparison.label, rowFont), comparison.label, rowFont, { owner: { categoryId: 'kpi', seriesId: comparison.id, segmentId: comparison.id }, role: 'caption' });
     muted.add(labelId);
     if (comparison.caretDir) {
       const capCy = baseline - rowCap / 2;
-      const tip = { x: left + caretW / 2, y: comparison.caretDir === 'up' ? capCy - caretH / 2 : capCy + caretH / 2 };
+      // The caret goes with its number, wherever the column seats it.
+      const caretLeft = body.x === x ? left : body.x - textInset;
+      const tip = { x: caretLeft + caretW / 2, y: comparison.caretDir === 'up' ? capCy - caretH / 2 : capCy + caretH / 2 };
       marks.push({
         t: 'path', id: `mark:compare:${index}:caret`,
         d: arrowHeadPath(tip, comparison.caretDir === 'up' ? -Math.PI / 2 : Math.PI / 2, caretSize),
@@ -307,6 +322,7 @@ export function planSteering(input: SteeringInput): SteeringPlan | undefined {
 
   if (form !== 'stacked') bottom += COLUMNS_BOTTOM_AIR;
   return {
+    trackWarnings,
     form, requests, marks, fonts, leads, muted, valueFont, valueRect, noteRect,
     contentHeight: bottom - input.top,
   };

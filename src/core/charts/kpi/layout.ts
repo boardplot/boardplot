@@ -15,7 +15,7 @@ import { fitText, lineBox } from '../../label/fitText';
 import { fittedLabel, stepDownFont } from '../../label/rowFit';
 import type { Rect } from '../../geometry';
 import { formatAutomaticPercent, MINUS, valueSetFormatter } from '../../format';
-import { differenceExample, formatNonzeroWithSpec, localized, parseFormatExample, sameScale } from '../../formatSpec';
+import { differenceExample, formatNonzeroWithSpec, localized, parseFormatExample, sameScale, specUnitKind } from '../../formatSpec';
 import { frameTextOptions, solveFrame, textCarriesUnit, unitPrinted } from '../../frame';
 import { withUnit } from '../../unitJoin';
 import { labelsToNodes } from '../../label/emit';
@@ -32,6 +32,7 @@ import { chartSizing, resolveSizing } from '../../sizing';
 import { rowDrivenHeight } from '../../rowCanvas';
 import { defaultMeasurer, type FontSpec, type TextMeasurer } from '../../text';
 import {
+  colorblindRoles,
   resolveSemanticPaletteTheme,
   resolveSurface,
   panelTypeClass,
@@ -48,6 +49,7 @@ import type { Geometry, LintWarning, PlacedLabel, SceneNode } from '../../types/
 import { KPI_HOST_TEXT, KPI_VALUE_SIZE, readerFloorPx, textScaleOf } from '../../typeFloors';
 import { DEFAULT_TARGET, kpiHeroSizesPx, scaleTextPx, TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { composedTextRole } from '../../textRole';
+import { columnOverrideWarnings } from '../columnOverrides';
 import { planSteering, type SteeringPlan } from './steering';
 import { maxOf, pushAll } from '../../arrays';
 
@@ -69,9 +71,35 @@ interface KpiComparisonDerived {
   deltaAbs: number;
   deltaPct: number | null;
   tone: 'good' | 'bad' | 'neutral';
-  state: 'value' | 'ref-nonpositive';
+  state: 'value' | 'ref-nonpositive' | 'sign-change';
   displayed: string;
   nodeId?: Id;
+}
+
+type ChangeMode = 'absolute' | 'relative' | 'both';
+
+/**
+ * The mode one change prints in. A relative change needs a positive
+ * reference and a value on the same side of zero: off zero or a negative
+ * reference, or across a sign change, it is no measure of the gap (-42.5
+ * against +18.2 read "-333.5%"), so the absolute change stands in with a
+ * warning, whatever the mode. Unset, a percent measure compares in points
+ * only: two percents on one line ("-2.4% (-2.4pp)") leave the reader to
+ * pick one, and a relative change of a rate ("+22.6%" for 3.1% to 3.8%)
+ * hides the points that move.
+ */
+function changeMode(
+  value: number,
+  vs: number,
+  authored: ChangeMode | undefined,
+  fallback: ChangeMode,
+  percentMeasure: boolean,
+): { mode: ChangeMode; refused?: 'ref-nonpositive' | 'sign-change' } {
+  const wanted = authored ?? (percentMeasure ? 'absolute' : fallback);
+  if (wanted === 'absolute') return { mode: wanted };
+  if (vs <= 0) return { mode: 'absolute', refused: 'ref-nonpositive' };
+  if (value < 0) return { mode: 'absolute', refused: 'sign-change' };
+  return { mode: wanted };
 }
 
 interface KpiAttainmentDerived {
@@ -140,6 +168,9 @@ const TEXT_ANATOMY: RowAnatomy = { padX: 0, gap: 2 * CHIP_PAD_X + CHIP_GAP };
  * deep descent (1.3 em ascent plus descent) draws its glyphs into the pill.
  */
 const VALUE_ROW_GAP = 4;
+/** In a slot of fixed height: the figure size as a share of the canvas height, and the delta size as a share of the figure. */
+const SLOT_FIGURE_SHARE = 0.25;
+const SLOT_DELTA_SHARE = 0.3;
 
 interface ComparisonVisual {
   id: Id;
@@ -171,7 +202,7 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
   const measure = options.measure ?? defaultMeasurer;
 
   // ---- normalize ----
-  if (!data || typeof data.label !== 'string' || data.label.length === 0) {
+  if (!data || typeof data.label !== 'string') {
     throw new NormalizeError('missing-label', 'label', 'kpi requires a label');
   }
   if (typeof data.value !== 'number' || !Number.isFinite(data.value)) {
@@ -206,6 +237,7 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
   const fmt = spec
     ? (v: number) => formatNonzeroWithSpec(v, spec)
     : valueSetFormatter(printed, options.locale?.language, false, options.unit, options.target);
+  const percentMeasure = spec !== undefined && specUnitKind(spec) === 'percent';
   // The absolute change of a percent measure is in percentage points.
   const diffSpec = example ? localized(parseFormatExample(differenceExample(example)), options.locale?.language) : undefined;
   const fmtDiff = diffSpec
@@ -235,21 +267,20 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
       throw new NormalizeError('invalid-number', 'delta.vs', 'delta.vs must be a finite number');
     }
     const direction = data.delta.direction ?? 'higherIsBetter';
-    // One rule for delta and compare: a relative change needs a
-    // positive reference; off zero or a negative one the absolute change stands in.
-    const refused = vs <= 0 && (data.delta.mode ?? 'relative') !== 'absolute';
-    const mode = refused ? 'absolute' : (data.delta.mode ?? 'relative');
+    const { mode, refused } = changeMode(value, vs, data.delta.mode, 'relative', percentMeasure);
     const deltaAbs = value - vs;
     derived.deltaAbs = deltaAbs;
     if (refused) {
       warnings.push({
-        code: 'ref-nonpositive',
+        code: refused,
         severity: 'warn',
-        message: `delta.vs is ${vs === 0 ? '0' : 'negative'} — relative delta suppressed, absolute shown`,
+        message: refused === 'sign-change'
+          ? 'value and delta.vs have opposite signs — relative delta suppressed, absolute shown'
+          : `delta.vs is ${vs === 0 ? '0' : 'negative'} — relative delta suppressed, absolute shown`,
         suggest: "mode: 'absolute'",
       });
     }
-    if (vs > 0) derived.deltaPct = (deltaAbs / vs) * 100;
+    if (vs > 0 && value >= 0) derived.deltaPct = (deltaAbs / vs) * 100;
     derived.tone =
       deltaAbs === 0 || direction === 'neutral'
         ? 'neutral'
@@ -291,7 +322,7 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
       deltaAbs,
       deltaPct: derived.deltaPct ?? null,
       tone: derived.tone,
-      state: refused ? 'ref-nonpositive' : 'value',
+      state: refused ?? 'value',
       displayed: deltaText,
     }];
     if (direction === 'lowerIsBetter') deltaText += chartString(options, 'lowerBetterHint');
@@ -306,12 +337,9 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
         throw new NormalizeError('missing-label', `compare[${index}].label`, 'comparison label must be nonblank');
       }
       const label = comparison.label.trim();
-      // The delta rule: off a nonpositive reference the absolute change stands
-      // in for the relative one; absolute mode needs no positive reference.
-      const refused = comparison.vs <= 0 && (comparison.mode ?? 'both') !== 'absolute';
-      const mode = refused ? 'absolute' : (comparison.mode ?? 'both');
+      const { mode, refused } = changeMode(value, comparison.vs, comparison.mode, 'both', percentMeasure);
       const deltaAbs = value - comparison.vs;
-      const deltaPct = comparison.vs > 0 ? (deltaAbs / comparison.vs) * 100 : null;
+      const deltaPct = comparison.vs > 0 && value >= 0 ? (deltaAbs / comparison.vs) * 100 : null;
       const direction = comparison.direction ?? 'higherIsBetter';
       const tone = deltaAbs === 0 || direction === 'neutral'
         ? 'neutral'
@@ -321,9 +349,11 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
 
       if (refused) {
         warnings.push({
-          code: 'ref-nonpositive',
+          code: refused,
           severity: 'warn',
-          message: `compare[${index}].vs is nonpositive — relative delta suppressed, absolute shown`,
+          message: refused === 'sign-change'
+            ? `value and compare[${index}].vs have opposite signs — relative delta suppressed, absolute shown`
+            : `compare[${index}].vs is nonpositive — relative delta suppressed, absolute shown`,
           owner: { seriesId: `compare-${index}` },
         });
       }
@@ -346,7 +376,7 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
         deltaAbs,
         deltaPct,
         tone,
-        state: refused ? 'ref-nonpositive' : 'value',
+        state: refused ?? 'value',
         displayed,
       };
       comparisonVisuals.push({
@@ -407,7 +437,7 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
   // spend 21% of its width on air.
   const margin = { top: 12, right: 12, bottom: 12, left: 12, ...options.margin };
   const subtitle = options.title
-    ? (resolveSubtitle(options.subtitle) ?? { measure: data.label })
+    ? (resolveSubtitle(options.subtitle) ?? (data.label ? { measure: data.label } : undefined))
     : resolveSubtitle(options.subtitle);
   const frameTheme = options.title && subtitle?.measure === data.label
     ? { ...theme, type: { ...theme.type, subtitle: { ...theme.type.subtitle, size: Math.max(scaleTextPx(13, textScaleOf(options)), theme.type.subtitle.size) } } }
@@ -488,7 +518,7 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
 
   // card label (top-left, muted) — replaced by the subtitle when title is set
   let valueY = plot.y;
-  if (!options.title && kindOn('category')) {
+  if (!options.title && data.label && kindOn('category')) {
     // Wrap to two lines, one type step down, then cut with a <title>.
     const eyebrow = data.label;
     const fitted = fitText(eyebrow, labelFont, plot.w, 2, measure, { shrink: stepDownFont(theme, labelFont, 'label', target, textScale), target, textScale, typeRole: 'label' });
@@ -510,10 +540,16 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
 
   const showComparisonChips = comparisonVisuals.length > 0 && kindOn('point');
   const showAttainmentChip = derived.attainment !== undefined && kindOn('point');
-  const caretSize = deltaFont.size * 0.35;
-  const caretW = 2 * caretSize * Math.sin(0.15 * Math.PI); // triangle base width
-  const caretH = caretSize * Math.cos(0.15 * Math.PI); // tip-to-base height
-  const caretPad = caretDir !== undefined ? caretW + CARET_GAP : 0;
+  // The caret scales with the delta font; a fixed slot that grows the delta
+  // sizes it again (fillSlot below).
+  const naturalDeltaSize = deltaFont.size;
+  const caretOf = (font: FontSpec) => {
+    const size = font.size * 0.35;
+    const w = 2 * size * Math.sin(0.15 * Math.PI); // triangle base width
+    const gap = CARET_GAP * Math.max(1, font.size / naturalDeltaSize);
+    return { size, w, h: size * Math.cos(0.15 * Math.PI) /* tip-to-base height */, pad: caretDir !== undefined ? w + gap : 0 };
+  };
+  let { size: caretSize, w: caretW, h: caretH, pad: caretPad } = caretOf(deltaFont);
   const showDelta = deltaText !== undefined && kindOn('point');
   const compareCaretSize = compareFont.size * 0.35;
   const compareCaretW = 2 * compareCaretSize * Math.sin(0.15 * Math.PI);
@@ -550,7 +586,8 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
   const valueText = withUnit(fmt(value), unitBeside);
   // The hero follows the M title of its target, never under the target's hero minimum.
   const hero = kpiHeroSizesPx(target, theme.type.title.size, textScale);
-  const baseSize = (options as KpiOptions & { [KPI_VALUE_SIZE]?: number })?.[KPI_VALUE_SIZE] ?? hero.preferred;
+  const sharedFigure = (options as KpiOptions & { [KPI_VALUE_SIZE]?: number })?.[KPI_VALUE_SIZE];
+  let baseSize = sharedFigure ?? hero.preferred;
   const minimumValue = measure(valueText, { family: figure.family, size: hero.minimum, weight: figure.weight, lineHeight: 1.2 });
   const minimumValueH = minimumValue.height;
   // The delta steps down to the label floor and no further.
@@ -559,11 +596,11 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
   // floor stays one line: the second line only asks for room (natural height),
   // and a band too short for it keeps one line, which the solver hides with a
   // warning. A delta that needs three lines keeps one, too.
-  const deltaWidth = Math.max(4, plot.w - caretPad);
   const deltaSuffix = deltaBody === undefined ? '' : deltaText!.slice(deltaBody.length).trim();
-  const deltaWrapped = !showDelta || measure(deltaText!, deltaFont).width <= deltaWidth ? []
-    : measure(deltaBody!, deltaFont).width <= deltaWidth && measure(deltaSuffix, deltaFont).width <= deltaWidth ? [deltaBody!, deltaSuffix]
-      : wrapWhole(deltaText!, deltaFont, deltaWidth, measure);
+  const wrapDelta = (font: FontSpec, width: number) => !showDelta || measure(deltaText!, font).width <= width ? []
+    : measure(deltaBody!, font).width <= width && measure(deltaSuffix, font).width <= width ? [deltaBody!, deltaSuffix]
+      : wrapWhole(deltaText!, font, width, measure);
+  const deltaWrapped = wrapDelta(deltaFont, Math.max(4, plot.w - caretPad));
   const deltaOneLine = deltaText === undefined ? [] : [deltaText];
   let deltaLines = deltaWrapped.length === 2 ? deltaWrapped : deltaOneLine;
   const deltaBlock = (font: FontSpec, lines = deltaLines) => ({
@@ -575,15 +612,18 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
   // The authored caption under the value: the basis or the scope
   // the number is true of. It is the host's sentence, wrapped and never cut,
   // and the card reserves its box before anything else is fitted.
-  const noteFont: FontSpec = { family: theme.type.family, ...theme.type.footnote };
-  const noteLines = data.note === undefined ? [] : wrapWhole(data.note.trim(), noteFont, plot.w, measure);
-  const noteBlockH = noteLines.length === 0
-    ? 0
-    : NOTE_GAP + measure(noteLines[0]!, noteFont).height + (noteLines.length - 1) * lineBox(noteFont);
+  let noteFont: FontSpec = { family: theme.type.family, ...theme.type.footnote };
+  const noteBlock = (font: FontSpec) => {
+    const lines = data.note === undefined ? [] : wrapWhole(data.note.trim(), font, plot.w, measure);
+    return { lines, h: lines.length === 0 ? 0 : NOTE_GAP + measure(lines[0]!, font).height + (lines.length - 1) * lineBox(font) };
+  };
+  let { lines: noteLines, h: noteBlockH } = noteBlock(noteFont);
   // The steering form (steering.ts): a standalone regular card with named
   // comparisons or an attainment, no delta, no spark, and no authored
   // comparisons style. A grid panel (it carries the host text) keeps chips.
   const hostPanel = (options as { [KPI_HOST_TEXT]?: string[] })[KPI_HOST_TEXT] !== undefined;
+  const fixedSlot = theme.marks?.kpiSlotFill !== false && (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === true && !hostPanel && sharedFigure === undefined
+    && !sparkDrawable && comparisonVisuals.length === 0 && data.attainment === undefined;
   let steer: SteeringPlan | undefined = options.comparisons === undefined && !hostPanel && !compact && !sparkDrawable
     && data.delta === undefined && kindOn('point') && (comparisonVisuals.length > 0 || derived.attainment !== undefined)
     ? planSteering({
@@ -605,6 +645,7 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
         label: derived.attainment.label, tone: derived.attainment.tone,
       } } : {}),
       measure, trackTint: surface.chipTint,
+      ...(options.columnOverrides ? { overrides: { label: options.columnOverrides.label, value: options.columnOverrides.value } } : {}),
     })
     : undefined;
   const steerChrome = cardChromeHeight(size.height, plot.y, margin.bottom, frameResult.nodes);
@@ -617,6 +658,9 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
     // render) keeps the form and asks for its height through the sizing.
     if (size.height < steerHeight - 0.5 && (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height !== false) steer = undefined;
   }
+  // The two comparison columns exist only in the steering form with comparisons.
+  columnOverrideWarnings('kpi', options.columnOverrides, steer && comparisonVisuals.length > 0 ? ['label', 'value'] : [], [], warnings);
+  if (steer) pushAll(warnings, steer.trackWarnings);
   let minHeight: number;
   let naturalHeight: number;
   let valueFont: FontSpec;
@@ -662,6 +706,55 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
   // A card its host did not size takes the height of its content.
   const grow = rowDrivenHeight({ options, width: size.width, height: size.height, chromeH: 0, rowsH: naturalHeight });
   if (grow !== undefined) return layoutKpi(data, { ...options, size: { width: size.width, height: grow } });
+  // A standalone card in a slot of fixed height (a given height or a size
+  // preset) fills the slot: the figure grows to a quarter of the canvas
+  // height and the delta to 30% of the figure, never under their
+  // natural sizes, and the block of value, note and delta sits in the middle
+  // of the free height. The natural size above keeps the natural fonts. A
+  // grid panel keeps the shared figure size of its row, and the forms with a
+  // spark, compare chips or an attainment keep their card layout.
+  const fillSlot = fixedSlot && kindOn('total');
+  if (fillSlot) {
+    const naturalDelta = deltaFont;
+    const naturalDeltaLines = deltaLines;
+    const naturalNote = noteFont;
+    const slotDelta = (figureSize: number) => Math.round(figureSize * SLOT_DELTA_SHARE * 2) / 2;
+    const deltaLinesAt = (font: FontSpec) => {
+      const width = Math.max(4, plot.w - caretOf(font).pad);
+      const wrapped = wrapDelta(font, width);
+      return wrapped.length === 2 ? wrapped : measure(deltaText!, font).width <= width ? deltaOneLine : undefined;
+    };
+    // The largest figure that fits the width, and the largest delta that
+    // still fits the width on one or two lines.
+    const top = fitValueText(valueText, Math.max(baseSize, Math.round(size.height * SLOT_FIGURE_SHARE)), baseSize, figure, plot.w, Infinity, measure).valueFont.size;
+    let deltaCap = slotDelta(top);
+    while (showDelta && deltaCap > naturalDelta.size && deltaLinesAt({ ...naturalDelta, size: deltaCap }) === undefined) deltaCap -= 0.5;
+    // The note keeps half the size of the slot delta, so it still reads
+    // under the large figure. The figure steps down until the whole block
+    // fits the free height; a block that fits only at the natural sizes
+    // keeps them.
+    const plan = (figureSize: number) => {
+      const deltaSize = Math.min(deltaCap, slotDelta(figureSize));
+      const delta = showDelta && deltaSize > naturalDelta.size ? { ...naturalDelta, size: deltaSize } : naturalDelta;
+      const lines = delta === naturalDelta ? naturalDeltaLines : deltaLinesAt(delta)!;
+      const noteSize = Math.round(figureSize * SLOT_DELTA_SHARE) / 2;
+      const note = noteLines.length > 0 && noteSize > naturalNote.size ? { ...naturalNote, size: noteSize } : naturalNote;
+      const noted = note === naturalNote ? { lines: noteLines, h: noteBlockH } : noteBlock(note);
+      const valueH = measure(valueText, { family: figure.family, size: figureSize, weight: figure.weight, lineHeight: 1.2 }).height;
+      const blockH = valueH + noted.h + comparisonH + (showDelta ? deltaBlock(delta, lines).h : 0);
+      return { figureSize, delta, lines, note, noted, fits: blockH <= contentBottom - valueY };
+    };
+    let slot = plan(top);
+    while (!slot.fits && slot.figureSize > baseSize) slot = plan(Math.max(baseSize, slot.figureSize - 2));
+    if (slot.fits && slot.figureSize > baseSize) {
+      baseSize = slot.figureSize;
+      deltaFont = slot.delta;
+      ({ size: caretSize, w: caretW, h: caretH, pad: caretPad } = caretOf(deltaFont));
+      deltaLines = slot.lines;
+      noteFont = slot.note;
+      ({ lines: noteLines, h: noteBlockH } = slot.noted);
+    }
+  }
   const deltaBandH = contentBottom - valueY - minimumValueH - noteBlockH - comparisonH;
   const stepDelta = (font: FontSpec) => {
     while (showDelta && font.size > deltaFloor && deltaBlock(font).h > deltaBandH) font = { ...font, size: font.size - 0.5 };
@@ -676,7 +769,9 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
   const fitted = fitValueText(valueText, baseSize, hero.minimum, figure, plot.w, valueBottom - valueY, measure);
   valueFont = fitted.valueFont;
   const vsize = fitted.vsize;
-  const valueRect: Rect = { x: plot.x, y: valueY, w: vsize.width, h: vsize.height };
+  const blockH = vsize.height + noteBlockH + (showDelta ? valueGap + deltaRowH : 0);
+  const slotOffset = fillSlot ? Math.max(0, (contentBottom - valueY - blockH) / 2) : 0;
+  const valueRect: Rect = { x: plot.x, y: valueY + slotOffset, w: vsize.width, h: vsize.height };
   const noteRect: Rect | undefined = noteLines.length === 0 ? undefined : {
     x: plot.x,
     y: valueRect.y + valueRect.h + NOTE_GAP,
@@ -1028,8 +1123,8 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
       naturalHeight,
     }),
     plot,
-    scene: nodes,
-    labels: allLabels,
+    scene: options.colorblindSafe === true ? colorblindRoles(nodes).value : nodes,
+    labels: options.colorblindSafe === true ? colorblindRoles(allLabels).value : allLabels,
     axes: [],
     annotations: [],
     legend: frameResult.legend,
@@ -1037,9 +1132,9 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
     marks,
     derived,
     a11y: {
-      title: accessibleTitle(options.title, chartString(options, 'kpiTitle', { v1: data.label })),
+      title: accessibleTitle(options.title, data.label ? chartString(options, 'kpiTitle', { v1: data.label }) : 'KPI'),
       counts: [...(sparkDrawable ? [structureCount('periods', sparkVals.length, undefined, options)] : [])],
-      desc: `${data.label} ${valueText}${derived.band?.label ? `, ${derived.band.label}` : ''}${a11yDelta}${attainmentPhrase}${sparkPhrase}${noteLines.length === 0 ? '' : `. ${data.note!.trim()}`}.`,
+      desc: `${data.label ? `${data.label} ` : ''}${valueText}${derived.band?.label ? `, ${derived.band.label}` : ''}${a11yDelta}${attainmentPhrase}${sparkPhrase}${noteLines.length === 0 ? '' : `. ${data.note!.trim()}`}.`,
     },
     warnings,
     debug: { occupied: occupied.snapshot(), decisions: solved.decisions },

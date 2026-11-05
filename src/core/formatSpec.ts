@@ -35,14 +35,20 @@ import {
   zeroLifts,
   type SmallValues,
 } from './formatPrecision';
-import { maxOf } from './arrays';
+import { maxOf, minOf } from './arrays';
+import { withUnit } from './unitJoin';
 
 /** A composing chart's generated example is still an automatic format. */
 export const AUTOMATIC_FORMAT = Symbol('automatic-format');
 export type AutomaticFormatSource = { [AUTOMATIC_FORMAT]?: true };
 /** A composing chart's rows of one measure: they print in one magnitude, picked from their largest cell. */
 export const MAGNITUDE_GROUP = Symbol('magnitude-group');
-export type MagnitudeGroupSource = { [MAGNITUDE_GROUP]?: string };
+/** Figures of a group that print nowhere, by column: they still set the group's magnitude and precision. */
+export const MAGNITUDE_FIGURES = Symbol('magnitude-figures');
+export type MagnitudeGroupSource = { [MAGNITUDE_GROUP]?: string; [MAGNITUDE_FIGURES]?: readonly (readonly [string, number])[] };
+/** A composing chart's row that prints a label and no value by design: its blank cells are no gap in the data, so it has no record. */
+export const LABEL_ONLY_ROW = Symbol('label-only-row');
+export type LabelOnlyRowSource = { [LABEL_ONLY_ROW]?: true };
 
 export interface NumberFormatSpec {
   decimals: number;
@@ -63,8 +69,15 @@ export interface NumberFormatSpec {
   prefix: string;
   suffix: string;
   /** How negatives render. */
-  negative: 'minus' | 'parens';
-  /** Force '+' on positive values. */
+  negative: 'minus' | 'parens' | 'trailing';
+  trailingMinus?: '-' | '−';
+  /** Direction signs are separate from the unit and disappear on a printed zero. */
+  glyphs?: { up: string; down: string; at: 'start' | 'end'; space: string };
+  ordinal?: 'lower' | 'upper';
+  exponent?: { letter: 'E' | 'e'; sign: '+' | ''; digits: number };
+  /** The affix or a shared unit label already names the divisor. */
+  magnitudeInAffix?: true;
+  /** Carry a sign on positive values: '+' or a direction glyph. */
   signed: boolean;
   /** Unit rule: values that round to at least this print without decimals. */
   wholeFrom?: number;
@@ -108,8 +121,9 @@ export interface NumberFormatSpec {
 
 /**
  * The magnitude words an example may carry after its number: the letters k,
- * m, b and T (upper case only: "12 t" is tonnes), the abbreviations mn, mm,
- * bn and tn, the German Tsd., Mio., Mrd. and Bio. (dot optional), and the
+ * m, b and T and the abbreviation mm (glued, or spaced beside a currency: "12 m/s" is
+ * metres per second and "50 B" bytes; T upper case only: "12 t" is tonnes),
+ * the abbreviations mn, bn and tn, the German Tsd., Mio., Mrd. and Bio. (dot optional), and the
  * spelled-out words thousand, million, billion and trillion, German Tausend,
  * Million(en), Milliarde(n) and Billionen, and French milliard(s). "billion"
  * (German "Billion" and French "billion": 10¹²) reads as 10⁹, the smaller
@@ -130,11 +144,15 @@ const MAGNITUDE_SUFFIXES: Array<{ re: RegExp; key: Scale; glued?: true }> = [
   { re: new RegExp(String.raw`^(?:thousands?|tausend)${WORD_END}`, 'iu'), key: 'k' },
   { re: new RegExp(String.raw`^(?:millions?|millionen)${WORD_END}`, 'iu'), key: 'm' },
   { re: new RegExp(String.raw`^(?:tn|bio\.?)${WORD_END}`, 'iu'), key: 't' },
-  // Glued only: SI spaces a unit, so "1.5 T" stays tesla and "$1.2T" is trillions.
+  { re: new RegExp(String.raw`^(?:bn|mrd\.?)${WORD_END}`, 'iu'), key: 'bn' },
+  { re: new RegExp(String.raw`^(?:tsd\.?)${WORD_END}`, 'iu'), key: 'k' },
+  { re: new RegExp(String.raw`^(?:mn|mio\.?)${WORD_END}`, 'iu'), key: 'm' },
+  // Without a currency these letters must be glued: "1.5 T" stays tesla, "12 m/s" metres per second and "50 B" bytes,
+  // while "$1.2T", "1.2m" and "50B" scale.
   { re: new RegExp(String.raw`^T${WORD_END}`, 'u'), key: 't', glued: true },
-  { re: new RegExp(String.raw`^(?:bn|b|mrd\.?)${WORD_END}`, 'iu'), key: 'bn' },
-  { re: new RegExp(String.raw`^(?:k|tsd\.?)${WORD_END}`, 'iu'), key: 'k' },
-  { re: new RegExp(String.raw`^(?:mm|mn|m|mio\.?)${WORD_END}`, 'iu'), key: 'm' },
+  { re: new RegExp(String.raw`^b${WORD_END}`, 'iu'), key: 'bn', glued: true },
+  { re: new RegExp(String.raw`^k${WORD_END}`, 'iu'), key: 'k', glued: true },
+  { re: new RegExp(String.raw`^(?:mm|m)${WORD_END}`, 'iu'), key: 'm', glued: true },
 ];
 
 /** The one-letter spelling of every magnitude word `sameUnit` and `MAGNITUDE_UNIT` accept. */
@@ -144,8 +162,61 @@ const MAGNITUDE_WORD_LETTER: Record<string, string> = {
   milliard: 'b', milliards: 'b', tn: 't', bio: 't', trillion: 't', trillions: 't', billionen: 't',
 };
 
+/** The most significant figures an `@` example names: a double holds 15 of them. */
+const MAX_FIGURES = 15;
+
+/**
+ * A significant-figure example writes one `@` for each figure and no digit ("$@@@M",
+ * "@@@%"). Any digit in the text makes it an ordinary example, and an `@` in it stays text.
+ * Undefined for an ordinary example; otherwise the example with "1,234" for the run (grouped, as a count is) and the count.
+ */
+function figureExample(s: string): { standIn: string; figures: number } | undefined {
+  if (!s.includes('@') || /[0-9]/.test(s)) return undefined;
+  const runs = s.match(/@+/g)!;
+  if (runs.length > 1) {
+    const fixed = s.slice(0, s.indexOf('@')) + '@'.repeat(runs.join('').length) + s.slice(s.lastIndexOf('@') + 1);
+    throw new NormalizeError('invalid-format', 'format', `invalid-format-example: '${s}' splits its significant figures into more than one run of @; the engine places the decimal mark and the group marks`, `write one run of @, e.g. '${fixed}'`);
+  }
+  if (runs[0]!.length > MAX_FIGURES) {
+    throw new NormalizeError('invalid-format', 'format', `invalid-format-example: '${s}' asks for ${runs[0]!.length} significant figures; the most is ${MAX_FIGURES}`, `write at most ${MAX_FIGURES} @`);
+  }
+  return { standIn: s.replace('@'.repeat(runs[0]!.length), '1,234'), figures: runs[0]!.length };
+}
+
+/** A spec for each example text; callers change what they get, so every read is a copy. */
+const parsedExamples = new Map<string, NumberFormatSpec>();
+const MAX_PARSED_EXAMPLES = 2048;
+
+function copySpec(spec: NumberFormatSpec): NumberFormatSpec {
+  const copy = { ...spec };
+  if (spec.magnitudeWord) copy.magnitudeWord = { ...spec.magnitudeWord };
+  if (spec.glyphs) copy.glyphs = { ...spec.glyphs };
+  if (spec.exponent) copy.exponent = { ...spec.exponent };
+  return copy;
+}
+
 export function parseFormatExample(example: string, keepWord = false): NumberFormatSpec {
-  const s = String(example).trim();
+  const key = `${keepWord ? 'w' : 'n'}${String(example)}`;
+  const known = parsedExamples.get(key);
+  if (known) return copySpec(known);
+  const spec = parseExample(example, keepWord);
+  if (parsedExamples.size >= MAX_PARSED_EXAMPLES) parsedExamples.clear();
+  parsedExamples.set(key, copySpec(spec));
+  return spec;
+}
+
+function parseExample(example: string, keepWord: boolean): NumberFormatSpec {
+  const s = formatExampleText(String(example)).trim();
+  const figures = figureExample(s);
+  if (figures) {
+    // The "1,234" is a stand-in: grouped, no decimals. The grouped digits before a magnitude lock the scale; a figure count rolls up at 1000.
+    const spec = parseFormatExample(figures.standIn, keepWord);
+    // A magnitude inside a currency affix ("USDm @@@") fixes the scale: the affix cannot name another one.
+    if (!spec.magnitudeInAffix) delete spec.rollMagnitude;
+    spec.significantDigits = figures.figures;
+    spec.decimals = Math.min(MAX_FORMAT_DECIMALS, figures.figures - 1);
+    return spec;
+  }
 
   const spec: NumberFormatSpec = {
     decimals: 0,
@@ -190,7 +261,8 @@ export function parseFormatExample(example: string, keepWord = false): NumberFor
   }
 
   // Sign markers in the leading part.
-  let lead = before;
+  let lead;
+  [lead, after] = exampleSigns(spec, before, after, s);
   if (/[+]/.test(lead)) {
     spec.signed = true;
     lead = lead.replace(/\+/g, '');
@@ -202,7 +274,7 @@ export function parseFormatExample(example: string, keepWord = false): NumberFor
   let tail = after.trimEnd();
   const tailTrimmed = tail.trimStart();
   for (const m of MAGNITUDE_SUFFIXES) {
-    const word = m.glued && tail !== tailTrimmed ? null : m.re.exec(tailTrimmed);
+    const word = magnitudeAfterNumber(m, lead, tail, tailTrimmed);
     if (word) {
       spec.magnitude = m.key;
       // "€1.2bn" prints "bn", "1,2 Mio. €" prints " Mio."; the letter is the engine's spelling.
@@ -212,16 +284,11 @@ export function parseFormatExample(example: string, keepWord = false): NumberFor
     }
   }
   spec.suffix = tail; // keep remaining unit text (e.g. '%', 'pp', ' €')
-  // 'pp' is a unit suffix, never a magnitude. 1.2pp is 1.2 percentage points.
-  // A spreadsheet code such as "#,##0" took its last 0 as the number and
-  // printed "#,##" before every value. A lone literal # ("#1",
-  // "Rank #1") is a unit, not a placeholder.
-  if (SPREADSHEET_CODE.test(String(example))) {
-    throw new NormalizeError('invalid-format', 'format', `invalid-format-example: '${example}' is a spreadsheet number code, not a format-by-example; write an example number as it should print`, "write an example number as it should print, e.g. '1,234' instead of '#,##0'");
-  }
+  affixMagnitude(spec);
 
   // Analyze the numeric body for separators.
   analyzeBody(body, spec);
+  exampleNumberStyle(spec, body);
   checkedDecimals(spec.decimals);
   // An example that groups the digits before its magnitude ('1,234k', '$1,234.5M') shows four
   // digits in that magnitude: every value prints in it ("1,080k"), none rolls to the next letter.
@@ -235,6 +302,223 @@ export function parseFormatExample(example: string, keepWord = false): NumberFor
  * a dot, or a ; section. A lone # before a digit is a literal ("#0", "#1").
  */
 const SPREADSHEET_CODE = /[#?][#?,.]|[,.][#?]|;/;
+const SPREADSHEET_BRACKET = /^\[(?:Black|Blue|Cyan|Green|Magenta|Red|White|Yellow|Color(?:[1-9]|[1-4][0-9]|5[0-6])|[<>=][^\]]*|\$[^\]]*)\]$/i;
+const SPREADSHEET_SCALE_COMMAS = /[0#?](,+)(?=\s*(?:$|["\\_[;]))/;
+
+/** Remove Excel colour, condition and locale brackets in one pass; other bracket text stays. */
+function withoutSpreadsheetBrackets(text: string): string {
+  let out = '';
+  let at = 0;
+  for (let open = text.indexOf('['); open >= 0; open = text.indexOf('[', at)) {
+    const close = text.indexOf(']', open + 1);
+    if (close < 0) break;
+    out += text.slice(at, open);
+    const bracket = text.slice(open, close + 1);
+    if (!SPREADSHEET_BRACKET.test(bracket)) out += bracket;
+    at = close + 1;
+  }
+  return out + text.slice(at);
+}
+
+function isSpreadsheetCode(text: string): boolean {
+  const withoutInstructions = withoutSpreadsheetBrackets(text);
+  return SPREADSHEET_CODE.test(text) || (!/[1-9]/.test(withoutInstructions)
+    && (withoutInstructions !== text || /"|\\|_[()]|\* |[Ee][+-]0+/.test(text) || SPREADSHEET_SCALE_COMMAS.test(text)));
+}
+
+type CodeToken = { text: string; literal: boolean; at: number };
+
+/** Quoted and escaped characters stay literal; display instructions do not print. */
+function spreadsheetSections(code: string): CodeToken[][] | undefined {
+  const sections: CodeToken[][] = [[]];
+  for (let i = 0; i < code.length; i++) {
+    const char = code[i]!;
+    const section = sections[sections.length - 1]!;
+    if (char === ';') { sections.push([]); continue; }
+    if (char === '"') {
+      const end = code.indexOf('"', i + 1);
+      if (end < 0) return undefined;
+      section.push({ text: code.slice(i + 1, end), literal: true, at: i });
+      i = end;
+    } else if (char === '\\') {
+      if (++i === code.length) return undefined;
+      section.push({ text: code[i]!, literal: true, at: i });
+    } else if (char === '[') {
+      const end = code.indexOf(']', i + 1);
+      if (end < 0) return undefined;
+      const currency = /^\$(.*?)(?:-[0-9a-f]+)?$/i.exec(code.slice(i + 1, end));
+      if (currency) section.push({ text: currency[1]!, literal: true, at: i });
+      else if (!SPREADSHEET_BRACKET.test(code.slice(i, end + 1))) section.push({ text: code.slice(i, end + 1), literal: true, at: i });
+      i = end;
+    } else if (char === '_' || char === '*') {
+      if (++i === code.length) return undefined;
+    } else section.push({ text: char, literal: false, at: i });
+  }
+  return sections;
+}
+
+/** Translate spreadsheet placeholders to an example without changing the numeric divisor. */
+export function spreadsheetExample(code: string): { example: string; notes: string[] } | undefined {
+  if (!isSpreadsheetCode(code)) return undefined;
+  const sections = spreadsheetSections(code);
+  if (!sections || sections.length > 4) return undefined;
+  let tokens = sections[0]!;
+  const digit = (token: CodeToken) => !token.literal && /^[0-9#?]$/.test(token.text);
+  const first = tokens.findIndex(digit);
+  if (first < 0) return undefined;
+  let exponent = '';
+  const e = tokens.findIndex((token, index) => index > first && !token.literal && /^[Ee]$/.test(token.text)
+    && /^[+-]$/.test(tokens[index + 1]?.text ?? '') && tokens[index + 2]?.text === '0');
+  if (e >= 0) {
+    let end = e + 2;
+    while (tokens[end]?.text === '0' && !tokens[end]!.literal) end++;
+    exponent = tokens.slice(e, end).map(token => token.text).join('').replace(/0+$/, zeros => '0'.repeat(Math.max(zeros.length - 1, 0)) + '6');
+    tokens = [...tokens.slice(0, e), ...tokens.slice(end)];
+  }
+  let last = tokens.length - 1;
+  while (last >= first && !digit(tokens[last]!)) last--;
+  const body = tokens.slice(first, last + 1);
+  if (body.some(token => token.literal) || !/^[0-9#?,]+(?:\.[0-9#?]+)?$/.test(body.map(token => token.text).join(''))) return undefined;
+  const numeric = body.map(token => token.text).join('');
+  const [integer, fraction = ''] = numeric.split('.');
+  const grouped = /[0-9#?],[0-9#?]{2,}/.test(integer!);
+  const decimals = fraction.length;
+  let end = last + 1;
+  if (SPREADSHEET_SCALE_COMMAS.exec(code.slice(tokens[last]!.at))?.index === 0) {
+    while (tokens[end]?.text === ',' && !tokens[end]!.literal) end++;
+  }
+  const commas = end - last - 1;
+  if (commas > 4 || (exponent && commas > 0)) return undefined;
+  const magnitude: NumberFormatSpec['magnitude'] = (['none', 'k', 'm', 'bn', 't'] as const)[commas]!;
+  const suffix = tokens.slice(end);
+  const literalScale = (token: CodeToken) => token.literal && MAGNITUDE_SUFFIXES.some(entry => {
+    const word = entry.re.exec(token.text.trim());
+    return word?.[0] === token.text.trim();
+  });
+  const scaleLiterals = tokens.filter(literalScale);
+  if (scaleLiterals.some(token => commas === 0 || unitMagnitude(token.text.trim()) !== magnitude)) return undefined;
+  // A magnitude before the number cannot be expressed as a suffix without moving authored text.
+  if (tokens.slice(0, first).some(literalScale)) return undefined;
+  const notes: string[] = [];
+  if (sections.length > 2) notes.push('zero and text sections are dropped');
+  if (tokens.some(token => token.text.includes('%'))) notes.push('percent values are percent points: 12.5 prints 12.5%');
+  const added = commas > 0 && scaleLiterals.length === 0 ? MAGNITUDE_LABEL[magnitude] : '';
+  if (added) notes.push(`the scale letter '${added}' is added for ${commas} trailing comma${commas === 1 ? '' : 's'}`);
+  const whole = grouped ? (commas === 1 && decimals === 0 ? '1,235' : '1,234') : decimals === 3 ? '0' : '1';
+  const digits = grouped ? `5${'0'.repeat(Math.max(0, decimals - 1))}` : decimals === 3 ? '555' : '23456789012345678901'.slice(0, decimals);
+  let example = tokens.slice(0, first).map(token => token.text).join('') + whole + (decimals ? `.${digits}` : '')
+    + exponent + added + suffix.map(token => token.text).join('');
+  const negative = sections[1]?.map(token => token.text).join('').trim();
+  if (negative?.startsWith('(') && negative.endsWith(')') && sections[1]!.some(digit)) example = `(${example})`;
+  if (isSpreadsheetCode(example)) return undefined;
+  // The translated example must carry the divisor in its printed scale, never only in literal text.
+  try {
+    const parsed = parseFormatExample(example, true);
+    if (parsed.decimals !== decimals || (parsed.thousandsSep !== '') !== (grouped && !exponent) || parsed.magnitude !== magnitude) return undefined;
+  } catch { return undefined; }
+  return { example, notes };
+}
+
+function isCurrency(text: string): boolean {
+  const trimmed = text.trim();
+  return /^\p{Sc}$/u.test(trimmed) || CURRENCY_CODES.has(trimmed.toUpperCase());
+}
+
+function currencyAffixMagnitude(text: string): NumberFormatSpec['magnitude'] | undefined {
+  // Every magnitude word has an ASCII letter; a symbol or a space alone names no scale.
+  if (!/[A-Za-z]/.test(text)) return undefined;
+  const trimmed = text.trim();
+  if (!/^[\p{Sc}\p{L}. ]+$/u.test(trimmed)) return undefined;
+  const magnitude = unitMagnitude(trimmed);
+  if (!magnitude) return undefined;
+  return /\p{Sc}/u.test(trimmed) || CURRENCY_CODES.has(trimmed.slice(0, 3).toUpperCase()) || CURRENCY_CODES.has(trimmed.slice(-3).toUpperCase()) ? magnitude : undefined;
+}
+
+/** A unit alone chooses its placement and scale; chart data supplies its precision. */
+function unitOnlyExample(text: string): string | undefined {
+  if (/[0-9]/.test(text)) return undefined;
+  const unit = text.trim();
+  if (/^(?:%|pp|x|×)$/.test(unit)) return `1.2${unit}`;
+  if (/^\p{Sc}$/u.test(unit)) return `${unit}1,234`;
+  if (CURRENCY_CODES.has(unit.toUpperCase())) return `1.2 ${unit}`;
+  if (!currencyAffixMagnitude(unit)) return undefined;
+  const symbol = /^\p{Sc}/u.exec(unit)?.[0];
+  return symbol ? `${symbol}1.2${unit.slice(symbol.length)}` : /\p{Sc}$/u.test(unit) ? `1.2${unit}` : `1.2 ${unit}`;
+}
+
+/** The ordinary example every reader uses, including callers before request resolution. */
+export function formatExampleText(example: string): string {
+  if (isSpreadsheetCode(example)) {
+    const translated = spreadsheetExample(example);
+    if (translated) return translated.example;
+    throw new NormalizeError('invalid-format', 'format', `invalid-format-example: '${example}' is a spreadsheet number code, not a format-by-example; write an example number as it should print`, "write an example number as it should print, e.g. '1,234' instead of '#,##0'");
+  }
+  return unitOnlyExample(example) ?? example;
+}
+
+const DIRECTION_GLYPHS = [['▲', '▼'], ['△', '▽'], ['↑', '↓'], ['⬆', '⬇'], ['▴', '▾']].map(([up, down]) => (
+  { up: up!, down: down!, start: new RegExp(`^[${up}${down}](\\s?)`), end: new RegExp(`(\\s?)[${up}${down}]$`) }));
+const ANY_GLYPH = /^[▲▼△▽↑↓⬆⬇▴▾]|[▲▼△▽↑↓⬆⬇▴▾]$/;
+
+function exampleSigns(spec: NumberFormatSpec, before: string, after: string, example: string): [string, string] {
+  if (before.includes('±')) before = before.replace(/±/g, '+');
+  const last = example.charCodeAt(example.length - 1);
+  // Only an example that ends in a minus can carry a trailing one.
+  const trailing = last === 0x2d || last === 0x2212 ? /([^\s])([-−])$/.exec(before + '0' + after) : null;
+  if (trailing && !/[-−]/.test((before + after).slice(0, -1))) {
+    after = after.slice(0, -1);
+    if (spec.negative !== 'parens') {
+      spec.negative = 'trailing';
+      spec.trailingMinus = trailing[2] as '-' | '−';
+    }
+  }
+  if (!ANY_GLYPH.test(example)) return [before, after];
+  for (const { up, down, start: startPattern, end: endPattern } of DIRECTION_GLYPHS) {
+    const start = startPattern.exec(example);
+    const end = endPattern.exec(example);
+    if (!start && !end) continue;
+    spec.glyphs = { up, down, at: start ? 'start' : 'end', space: (start ?? end)![1]! };
+    spec.signed = true;
+    if (start) before = before.replace(start[0], '');
+    else after = after.slice(0, -end![0].length);
+    break;
+  }
+  return [before, after];
+}
+
+function magnitudeAfterNumber(entry: typeof MAGNITUDE_SUFFIXES[number], lead: string, tail: string, trimmed: string): RegExpExecArray | null {
+  const word = entry.re.exec(trimmed);
+  if (!word || !entry.glued || tail === trimmed) return word;
+  return !trimmed.slice(word[0].length).startsWith('/') && (isCurrency(lead) || isCurrency(trimmed.slice(word[0].length))) ? word : null;
+}
+
+function affixMagnitude(spec: NumberFormatSpec): void {
+  if (spec.magnitude !== 'none' || (spec.prefix === '' && spec.suffix === '')) return;
+  const magnitude = currencyAffixMagnitude(spec.prefix) ?? currencyAffixMagnitude(spec.suffix);
+  if (magnitude) {
+    spec.magnitude = magnitude;
+    spec.magnitudeInAffix = true;
+    spec.rollMagnitude = false;
+  }
+}
+
+function exampleNumberStyle(spec: NumberFormatSpec, body: string): void {
+  const exponent = /^([Ee])([+-]?)([0-9]+)/.exec(spec.suffix);
+  if (exponent) {
+    spec.exponent = { letter: exponent[1] as 'E' | 'e', sign: exponent[2] === '+' ? '+' : '', digits: exponent[3]!.length };
+    spec.suffix = spec.suffix.slice(exponent[0].length);
+    spec.thousandsSep = '';
+    const point = Math.max(body.lastIndexOf('.'), body.lastIndexOf(','));
+    spec.decimals = point < 0 ? 0 : body.length - point - 1;
+    spec.decimalSep = point >= 0 && body[point] === ',' ? ',' : '.';
+    spec.rollMagnitude = false;
+  }
+  const ordinal = /^(st|nd|rd|th)(?![\p{L}\p{N}])/iu.exec(spec.suffix);
+  if (ordinal && spec.decimals === 0 && spec.magnitude === 'none') {
+    spec.ordinal = ordinal[0] === ordinal[0].toUpperCase() ? 'upper' : 'lower';
+    spec.suffix = spec.suffix.slice(ordinal[0].length);
+  }
+}
 
 /**
  * Why `example` is not a format-by-example, with the example to write
@@ -248,6 +532,11 @@ export function formatExampleProblem(example: string): { message: string; replac
     parseFormatExample(example);
     return undefined;
   } catch (error) {
+    // Figures split over runs, or past the most: one run of at most MAX_FIGURES @.
+    if (example.includes('@') && !/[0-9]/.test(example)) {
+      const figures = Math.min(MAX_FIGURES, example.replace(/[^@]/g, '').length);
+      return { message: (error as Error).message, replacement: example.slice(0, example.indexOf('@')) + '@'.repeat(figures) + example.slice(example.lastIndexOf('@') + 1) };
+    }
     const code = example.replace(/"/g, '').replace(/;.*$/, '');
     let replacement = '1,234';
     try {
@@ -267,9 +556,11 @@ const GROUP_OR_DECIMALS = /^[1-9][0-9]{0,2}\.[0-9]{3}$/;
 
 /** `example` with no integer part left to group, which reads as decimals ("$1.234M" as "$0.234M"); undefined where it reads one way only. */
 function decimalExample(example: string): string | undefined {
+  example = formatExampleText(example);
   const body = numericBody(example);
   const text = body?.text.trimEnd();
   if (text === undefined || !GROUP_OR_DECIMALS.test(text)) return undefined;
+  if (/^[Ee][+-]?[0-9]+/.test(example.slice(body!.index + text.length))) return undefined;
   return example.slice(0, body!.index) + text.replace(/^[0-9]+/, '0') + example.slice(body!.index + text.length);
 }
 
@@ -296,7 +587,7 @@ function isPlainTree(node: unknown): node is Record<string, unknown> {
 }
 
 /** `node` with each format example passed through `change`, the same object where nothing changed. */
-function mapExamples<T>(node: T, change: (example: string) => string, seen = new Map<unknown, unknown>(), keys: 'format' | 'all' | 'none' = 'format'): T {
+function mapExamples<T>(node: T, change: (example: string, owner: Record<string, unknown>, path: (string | number)[]) => string, seen = new Map<unknown, unknown>(), keys: 'format' | 'all' | 'none' = 'format', path: (string | number)[] = []): T {
   if (!isPlainTree(node)) return node;
   if (seen.has(node)) return seen.get(node) as T;
   seen.set(node, node);
@@ -305,8 +596,9 @@ function mapExamples<T>(node: T, change: (example: string) => string, seen = new
     const child = node[key];
     const example = keys === 'all' || (keys === 'format' && key === 'format');
     // `cells` is keyed by column id, so a text column named format holds no example; a cell object's own format does.
-    const next = typeof child === 'string' ? (example ? change(child) : child)
-      : mapExamples(child, change, seen, key === 'axisFormat' ? 'all' : key === 'cells' ? 'none' : 'format');
+    const childPath = [...path, Array.isArray(node) ? Number(key) : key];
+    const next = typeof child === 'string' ? (example ? change(child, node, childPath) : child)
+      : mapExamples(child, change, seen, key === 'axisFormat' ? 'all' : key === 'cells' ? 'none' : 'format', childPath);
     if (next === child) continue;
     changed ??= Array.isArray(node) ? [...node] as unknown as Record<string, unknown> : Object.assign(Object.create(Object.getPrototypeOf(node) as object | null) as object, node) as Record<string, unknown>;
     changed[key] = next;
@@ -329,10 +621,60 @@ function treeNumbers(node: unknown, into: number[] = [], seen = new Set<unknown>
 /**
  * The chart's data and options with each format example read by that data
  * (`exampleReading`), and a warning where a group rounds a small number.
- * ponytail: one reading per chart from all of its numbers, a number that is no
- * value counts too; per-field numbers if a real chart needs them.
+ * Each chart gets one reading, taken from all of its numbers. A number that is
+ * not a data value counts too. Fields are not read one by one.
  */
 export function readFormatExamples<D, O>(data: D, options: O): { data: D; options: O; warnings: LintWarning[] } {
+  const warnings: LintWarning[] = [];
+  const warned = new Set<string>();
+  let allNumbers: number[] | undefined;
+  const numbersOf = (owner: Record<string, unknown>): number[] | undefined => {
+    const own = normalizedSeriesNumbers(owner);
+    if (own) return own;
+    const table = data as { columns?: { id?: string }[]; rows?: { cells?: Record<string, unknown>; children?: unknown[] }[] };
+    if (Array.isArray(table?.columns) && table.columns.some(column => column === owner) && typeof owner.id === 'string') {
+      const cells: unknown[] = [];
+      const collect = (rows: typeof table.rows): void => {
+        for (const row of rows ?? []) {
+          cells.push(row.cells?.[owner.id as string]);
+          if (Array.isArray(row.children)) collect(row.children as typeof table.rows);
+        }
+      };
+      collect(table.rows);
+      return normalizedSeriesNumbers({ values: cells });
+    }
+    return allNumbers ??= treeNumbers(data);
+  };
+  const rewrite = (example: string, owner: Record<string, unknown>, field: (string | number)[]): string => {
+    const translated = spreadsheetExample(example);
+    if (translated) {
+      if (!warned.has(example)) {
+        warned.add(example);
+        warnings.push({ code: 'format-spreadsheet-code', severity: 'warn',
+          message: `format '${example}' is a spreadsheet number code, so the chart prints it as the example '${translated.example}'${translated.notes.length ? `; ${translated.notes.join('; ')}` : ''}`,
+          suggest: `write the example '${translated.example}' instead`, field });
+      }
+      return translated.example;
+    }
+    const standIn = unitOnlyExample(example);
+    if (!standIn) return example;
+    const numbers = numbersOf(owner);
+    if (!numbers?.length) return standIn;
+    const spec = parseFormatExample(standIn);
+    // The smallest nonzero value below 1 keeps two significant digits, so no value of the field prints as 0.
+    let smallest = Infinity;
+    for (const value of numbers) {
+      const scaled = Math.abs(value / MAGNITUDE_DIVISOR[spec.magnitude]);
+      if (scaled > 0 && scaled < smallest) smallest = scaled;
+    }
+    const figures = smallest < 1 ? Math.min(MAX_FORMAT_DECIMALS, 1 - Math.floor(Math.log10(smallest))) : 0;
+    const decimals = Math.max(rasterDecimals(numbers, spec), figures);
+    const body = numericBody(standIn)!;
+    const whole = spec.thousandsSep ? '1,234' : decimals === 3 ? '0' : '1';
+    return standIn.slice(0, body.index) + whole + (decimals ? `.${'5'.repeat(decimals)}` : '') + standIn.slice(body.index + body.text.trimEnd().length);
+  };
+  data = mapExamples(data, rewrite, undefined, 'format', ['data']);
+  options = mapExamples(options, rewrite, undefined, 'format', ['options']);
   const examples = new Set<string>();
   const collect = (example: string) => {
     if (decimalExample(example) !== undefined) examples.add(example);
@@ -340,19 +682,19 @@ export function readFormatExamples<D, O>(data: D, options: O): { data: D; option
   };
   mapExamples(data, collect);
   mapExamples(options, collect);
-  if (examples.size === 0) return { data, options, warnings: [] };
+  if (examples.size === 0) return { data, options, warnings };
   const numbers = treeNumbers(data);
   const readings = new Map([...examples].map((example) => [example, exampleReading(example, numbers)]));
   const change = (example: string) => readings.get(example)?.decimals ?? example;
   return {
     data: mapExamples(data, change),
     options: mapExamples(options, change),
-    warnings: [...readings].flatMap(([example, { lost }]) => lost === undefined ? [] : [{
+    warnings: [...warnings, ...[...readings].flatMap(([example, { lost }]) => lost === undefined ? [] : [{
       code: 'format-reads-as-group',
       severity: 'warn' as const,
       message: `format '${example}' reads as a thousands group on this chart, so ${lost} prints ${formatWithSpec(lost, parseFormatExample(example))}`,
       suggest: `write ${JSON.stringify(decimalExample(example))} for three decimals, or remove the format to let the engine pick the precision`,
-    }]),
+    }])],
   };
 }
 
@@ -381,6 +723,7 @@ function numericBody(s: string): { index: number; text: string } | null {
   const runs = new RegExp(NUMBER_RUN.source, 'gu');
   runs.lastIndex = unitEnd;
   for (let run = runs.exec(s); run; run = runs.exec(s)) {
+    if (/[Ee][+-]?$/.test(s.slice(0, run.index))) continue;
     if (/[\p{L}\p{N}.,]$/u.test(s.slice(0, run.index))) continue;
     const open = s.lastIndexOf('(', run.index);
     const note = open > s.lastIndexOf(')', run.index) && /\p{L}/u.test(s.slice(open, s.indexOf(')', run.index) >>> 0));
@@ -483,7 +826,11 @@ export function sameScale(a: Iterable<number | null | undefined>, b: Iterable<nu
  */
 export function unitOfSpec(spec: NumberFormatSpec): string | null {
   if (spec.suffix.includes('%') || specUnitKind(spec) === 'pp') return null;
-  const unit = `${spec.prefix.trim()}${magnitudeText(spec, spec.magnitude).trim()}${spec.suffix.trim()}`;
+  const magnitude = magnitudeText(spec, spec.magnitude);
+  // A local short form keeps its space beside a sign: "$ Mio.", not "$Mio.".
+  const unit = !spec.magnitudeWord && /^\s/.test(magnitude)
+    ? [spec.prefix.trim(), magnitude.trim(), spec.suffix.trim()].filter(Boolean).join(' ')
+    : `${spec.prefix.trim()}${magnitude.trim()}${spec.suffix.trim()}`;
   return unit.length > 0 ? unit : null;
 }
 
@@ -567,8 +914,10 @@ export function effectiveScale(
     const scaled = Math.abs(value) / MAGNITUDE_DIVISOR[magnitude];
     decimals = !currencyWhole && scaled < 10 && magnitude !== spec.magnitude ? Math.max(baseDecimals, 1) : baseDecimals;
     const next: NumberFormatSpec['magnitude'] | null = MAGNITUDE_NEXT[magnitude];
-    if (Number(scaled.toFixed(decimals)) < 1000 || next === null) {
-      return !spec.nonzero || spec.automatic || value === 0 || !roundsToZero(scaled, decimals) ? { magnitude, decimals } : rolledDown(value, magnitude, baseDecimals);
+    // Figures count from the first digit: 999.6 at three figures prints 1000 and rolls, 0.0004 prints 0.000400 and stays.
+    const shown = spec.significantDigits === undefined ? Number(scaled.toFixed(decimals)) : Number(roundSignificant(scaled, spec.significantDigits).text);
+    if (shown < 1000 || next === null) {
+      return !spec.nonzero || spec.automatic || spec.significantDigits !== undefined || value === 0 || !roundsToZero(scaled, decimals) ? { magnitude, decimals } : rolledDown(value, magnitude, baseDecimals);
     }
     magnitude = next;
   }
@@ -673,7 +1022,7 @@ export function magnitudeLabel(spec: NumberFormatSpec, magnitude: NumberFormatSp
  * scales.
  */
 function magnitudeText(spec: NumberFormatSpec, magnitude: NumberFormatSpec['magnitude'], printed = '', printedValue = 0): string {
-  if (magnitude === 'none') return '';
+  if (magnitude === 'none' || spec.magnitudeInAffix) return '';
   const authored = spec.magnitudeWord;
   if (!authored) return magnitudeLabel(spec, magnitude);
   const authoredFamily = wordFamily(authored.text, spec.locale);
@@ -683,7 +1032,7 @@ function magnitudeText(spec: NumberFormatSpec, magnitude: NumberFormatSpec['magn
   if (family === LETTERS) {
     // k and M read alike in German and French; B and T take the local short form ("2,5 Mrd.", "2,5 Md"), as the engine letters do.
     if ((language === 'de' || language === 'fr') && (magnitude === 'bn' || magnitude === 't')) return magnitudeSuffix(magnitude, spec.locale);
-    return authored.magnitude === magnitude ? authored.text : MAGNITUDE_LABEL[magnitude];
+    return authored.magnitude === magnitude ? authored.text : space + MAGNITUDE_LABEL[magnitude];
   }
   // A translated family and the German and French words (which agree with the number) replace even the authored word.
   if (authored.magnitude === magnitude && family === authoredFamily && family !== FAMILIES.wort && family !== FAMILIES.mot) return authored.text;
@@ -800,6 +1149,35 @@ export function formatWithSpec(value: number, spec: NumberFormatSpec): string {
   return text;
 }
 
+function signedText(core: string, negative: boolean, zero: boolean, spec: NumberFormatSpec): string {
+  if (spec.glyphs) {
+    if (zero) return core;
+    const glyph = negative ? spec.glyphs.down : spec.glyphs.up;
+    return spec.glyphs.at === 'start' ? glyph + spec.glyphs.space + core : core + spec.glyphs.space + glyph;
+  }
+  if (negative) return spec.negative === 'parens' ? `(${core})` : spec.negative === 'trailing' ? core + spec.trailingMinus : MINUS + core;
+  return spec.signed && !zero ? `+${core}` : core;
+}
+
+function ordinalText(integer: number, style: NonNullable<NumberFormatSpec['ordinal']>): string {
+  const lastTwo = integer % 100;
+  const suffix = lastTwo >= 11 && lastTwo <= 13 ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[integer % 10] ?? 'th';
+  return style === 'upper' ? suffix.toUpperCase() : suffix;
+}
+
+/** Round the mantissa before choosing the final exponent, including a carry from 9.99. */
+function exampleScientific(value: number, spec: NumberFormatSpec): { mantissa: string; exponent: number; value: number } {
+  const [coefficient, power] = Math.abs(value).toExponential().split('e');
+  let exponent = Number(power);
+  let mantissa = roundHalfUp(Number(coefficient), spec.decimals);
+  if (Number(mantissa) >= 10) {
+    exponent++;
+    mantissa = roundHalfUp(Number(mantissa) / 10, spec.decimals);
+  }
+  const rounded = Number(`${mantissa}e${exponent}`);
+  return { mantissa, exponent, value: value < 0 ? -rounded : rounded };
+}
+
 function formatWithSpecUncached(value: number, spec: NumberFormatSpec): string {
   if (value == null) return '';
   // Same state glyph as formatNumber — one spelling of a non-finite across both
@@ -807,6 +1185,12 @@ function formatWithSpecUncached(value: number, spec: NumberFormatSpec): string {
   // non-value cannot make ("$Infinity.M" and "(Infinity)" were both possible).
   const glyph = nonFiniteGlyph(value);
   if (glyph !== null) return glyph === 'n/a' ? chartString({ locale: { language: spec.locale } }, 'notApplicable') : glyph;
+  if (spec.exponent) {
+    const { mantissa, exponent } = exampleScientific(value, spec);
+    const digits = spec.locale ? fractionFormat(spec.locale, spec.decimals, false).format(Number(mantissa)) : mantissa.replace('.', spec.decimalSep);
+    const power = `${exponent < 0 ? '-' : spec.exponent.sign}${String(Math.abs(exponent)).padStart(spec.exponent.digits, '0')}`;
+    return signedText(`${spec.prefix}${digits}${spec.exponent.letter}${power}${spec.suffix}`, value < 0, value === 0, spec);
+  }
   const { magnitude, decimals } = effectiveScale(value, spec);
   const scaled = value / MAGNITUDE_DIVISOR[magnitude];
   const abs = Math.abs(scaled);
@@ -843,12 +1227,10 @@ function formatWithSpecUncached(value: number, spec: NumberFormatSpec): string {
   if (underflow) num = underflow;
   if (pValue) num = withoutLeadingZero(num);
   num += magnitudeText(spec, magnitude, num, Number(rounded.text));
+  if (spec.ordinal) num += ordinalText(Number(rounded.text), spec.ordinal);
 
   const core = `${spec.prefix}${num}${spec.suffix}`;
-  if (negative) {
-    return spec.negative === 'parens' ? `(${core})` : `${MINUS}${core}`;
-  }
-  return spec.signed && !isZero ? `+${core}` : core;
+  return signedText(core, negative, isZero, spec);
 }
 
 /**
@@ -859,6 +1241,7 @@ function formatWithSpecUncached(value: number, spec: NumberFormatSpec): string {
  * disagree on one cell fabricate a phantom gap.
  */
 export function roundedNumber(value: number, spec: NumberFormatSpec): number {
+  if (spec.exponent && Number.isFinite(value)) return exampleScientific(value, spec).value;
   const { magnitude, decimals } = effectiveScale(value, spec);
   const divisor = MAGNITUDE_DIVISOR[magnitude];
   const scaled = value / divisor;
@@ -894,25 +1277,37 @@ export function localized(spec: NumberFormatSpec, locale: string | undefined): N
  * An authored example as every value formatter prints it: the
  * authored magnitude word, the chart locale's separators, and the scale a
  * unit states held at the example's own decimals ("$0.4k" and "$1000.0k"
- * under "$k" for a "$1.2k" example, never "$1.0M").
+ * under "$k" for a "$1.2k" example, never "$1.0M"). `values` are the chart's
+ * printed numbers, which share one scale and one decimal count (shareAuthoredScale).
  */
-export function exampleSpec(example: string, locale?: string, unit?: string): NumberFormatSpec {
+export function exampleSpec(example: string, locale?: string, unit?: string, values?: Iterable<number | null | undefined>): NumberFormatSpec {
   const spec = localized(parseFormatExample(example, true), locale);
   spec.nonzero = true;
   if (spec.magnitude !== 'none' && unitMagnitude(unit) === spec.magnitude) spec.rollMagnitude = false;
+  if (values) shareAuthoredScale(spec, [...values]);
   // An example under 1000 ("12%", "1.2") cannot show grouping, so a value from
   // 1000 up groups in the example's style ("40,000,000,000%"), as table cells
   // do. "1234" and "2024" state no grouping, nor does a literal-# rank ("#1").
-  if (spec.prefix.endsWith('#')) return spec;
-  const body = numericBody(String(example))?.text ?? '';
+  if (spec.prefix.endsWith('#') || spec.exponent) return spec;
+  const body = numericBody(formatExampleText(String(example)))?.text ?? '';
   const integer = spec.decimals > 0 ? body.slice(0, body.lastIndexOf(spec.decimalSep)) : body;
   if (spec.thousandsSep === '' && integer.replace(/\D/g, '').length < 4) spec.thousandsSep = spec.decimalSep === ',' ? '.' : ',';
   return spec;
 }
 
+/**
+ * The example that sets how a chart prints its computed shares: `shareLabels.format`,
+ * else `options.format` when it is a percent example ("1.0%"). A format without a
+ * percent sign belongs to the values and gives none.
+ */
+export function shareFormatExample(options: { format?: string; shareLabels?: { format?: string } }): string | undefined {
+  if (options.shareLabels?.format) return formatExampleText(options.shareLabels.format);
+  return options.format && parseFormatExample(options.format).suffix.includes('%') ? formatExampleText(options.format) : undefined;
+}
+
 /** Parse an example and return a ready-to-use formatter. The chart locale is required (pass undefined for none), so no caller forgets it. */
-export function formatterFromExample(example: string, locale: string | undefined, unit?: string): (value: number) => string {
-  const spec = exampleSpec(example, locale, unit);
+export function formatterFromExample(example: string, locale: string | undefined, unit?: string, values?: Iterable<number | null | undefined>): (value: number) => string {
+  const spec = exampleSpec(example, locale, unit, values);
   return (value: number) => formatWithSpec(value, spec);
 }
 
@@ -934,9 +1329,27 @@ export function formatNonzeroWithSpec(value: number, spec: NumberFormatSpec): st
  * no sign on a value that prints as zero. Prefixing '+' to the formatted
  * text would print "++18.20" for a "+1.0" example and "+0" for 0.02.
  */
-export function signedFormatterFromExample(example: string, locale: string | undefined, unit?: string): (value: number) => string {
-  const spec = { ...exampleSpec(example, locale, unit), signed: true };
+export function signedFormatterFromExample(example: string, locale: string | undefined, unit?: string, values?: Iterable<number | null | undefined>): (value: number) => string {
+  const spec = { ...exampleSpec(example, locale, unit, values), signed: true };
   return (value: number) => formatWithSpec(value, spec);
+}
+
+/**
+ * The level face of a spec keeps negative signs and removes forced positive signs and direction glyphs.
+ */
+export function levelFormatSpec(spec: NumberFormatSpec): NumberFormatSpec {
+  const level = { ...spec, signed: false };
+  delete level.glyphs;
+  return level;
+}
+
+/**
+ * The level face of an example: the same, without a forced '+' or direction glyph. A bridge writes "+$1.2M"
+ * for its steps; its totals are levels and print "$1.2M".
+ */
+export function levelFormatterFromExample(example: string, locale: string | undefined, unit?: string, values?: Iterable<number | null | undefined>): (value: number) => string {
+  const level = levelFormatSpec(exampleSpec(example, locale, unit, values));
+  return (value: number) => formatWithSpec(value, level);
 }
 
 /**
@@ -944,6 +1357,7 @@ export function signedFormatterFromExample(example: string, locale: string | und
  * the difference of two percent levels is in percentage points.
  */
 export function differenceExample(example: string): string {
+  example = formatExampleText(example);
   return specUnitKind(parseFormatExample(example)) === 'percent' ? example.replace(/%/g, 'pp') : example;
 }
 
@@ -1059,6 +1473,7 @@ export function rasterDecimals(
  * bound to full precision ("23.4", not "23.35").
  */
 export function formatStatWithSpec(value: number, spec: NumberFormatSpec): string {
+  if (spec.exponent) return formatWithSpec(value, spec);
   // The unit rule is for plotted values; a mean of 100.5 stays 100.5.
   const own = { ...spec, wholeFrom: undefined };
   // Decimals count at the scale the label prints in: 1.25M under "1M" needs one, not the none of 1,250,000.
@@ -1073,7 +1488,9 @@ export function trendRateFormatter(example: string | undefined, locale?: string,
   // Points take the spacing the chart's % takes: "+0.40pp" beside "12.5%", "+0,40 pp" beside "12,5 %".
   const face = { ...spec, automatic: false, signed, negative: signed ? spec.negative : 'minus' as const,
     suffix: spec.suffix.includes('%') ? spec.suffix.replace(/%/g, 'pp') : unit?.includes('%') ? 'pp' : spec.suffix };
+  const missingUnit = spec.prefix || face.suffix || spec.magnitude !== 'none' ? undefined : unit;
   const precision = (scaled: number): number => scaled === 0 || scaled >= 100 ? 0 : scaled >= 1 ? 1 : 1 - Math.floor(Math.log10(scaled));
+  if (spec.magnitudeInAffix || spec.exponent) return rate => withUnit(formatWithSpec(rate, face), missingUnit, false, locale);
   return rate => {
     const abs = Math.abs(rate);
     let magnitude: NumberFormatSpec['magnitude'] = spec.magnitude === 'none' ? 'none' : abs >= 1e9 ? 'bn' : abs >= 1e6 ? 'm' : abs >= 1e3 ? 'k' : 'none';
@@ -1096,10 +1513,35 @@ export function trendRateFormatter(example: string | undefined, locale?: string,
     const rateSpec = { ...face, magnitude, decimals: Math.min(MAX_FORMAT_DECIMALS, decimals), rollMagnitude: false as const };
     if (scientific) {
       const { digits } = scientificParts(Math.abs(rate));
-      return formatWithSpec(Math.sign(rate) * digits, { ...rateSpec, decimals: 1, suffix: `${scientificText(Math.abs(rate), () => '')}${face.suffix}` });
+      return withUnit(formatWithSpec(Math.sign(rate) * digits, { ...rateSpec, decimals: 1, suffix: `${scientificText(Math.abs(rate), () => '')}${face.suffix}` }), missingUnit, false, locale);
     }
-    return formatWithSpec(rate, rateSpec);
+    return withUnit(formatWithSpec(rate, rateSpec), missingUnit, false, locale);
   };
+}
+
+/** Past this many decimals an authored scale no longer reads, so a value that small keeps its own scale. */
+const SCALE_MAX_DECIMALS = 3;
+
+/**
+ * Hold a chart's values to one scale and one decimal count under an authored
+ * scale word. Decided per label, 1000, 50 and -20 under "1.2k" printed "1.0k",
+ * "+0.1k" and "-20.0": 50 read as 100 and -20 left the thousands. Every value
+ * shows its first digit instead, so all print "1.00k", "+0.05k" and "-0.02k".
+ * A scale above every value steps down first. A scale the unit fixes holds at
+ * any decimals. Elsewhere a value past SCALE_MAX_DECIMALS rolls down alone
+ * (effectiveScale), as 20 prints beside billions.
+ */
+function shareAuthoredScale(spec: NumberFormatSpec, values: readonly (number | null | undefined)[]): void {
+  const shown = values.flatMap((value) => value != null && Number.isFinite(value) && value !== 0 ? [Math.abs(value)] : []);
+  if (spec.magnitude === 'none' || shown.length === 0) return;
+  const locked = spec.rollMagnitude === false;
+  const largest = maxOf(shown);
+  let magnitude: NumberFormatSpec['magnitude'] = spec.magnitude;
+  while (!locked && magnitude !== 'none' && largest < MAGNITUDE_DIVISOR[magnitude]) magnitude = MAGNITUDE_PREVIOUS[magnitude];
+  const divisor = MAGNITUDE_DIVISOR[magnitude];
+  const decimals = Math.max(spec.decimals, -Math.floor(Math.log10(minOf(shown) / divisor)));
+  spec.magnitude = magnitude;
+  if (locked || decimals <= SCALE_MAX_DECIMALS) spec.decimals = Math.min(MAX_FORMAT_DECIMALS, decimals);
 }
 
 /** Style-only default for charts with no authored example: en-US grouping,
@@ -1185,24 +1627,37 @@ export function unscaledFormatLint(
     }];
   }
   if (!authored) return [];
-  const format = exampleReading(authored, numbers.flat()).decimals ?? authored;
+  let format: string;
   let spec: NumberFormatSpec;
-  try { spec = parseFormatExample(format); } catch { return []; }
+  try {
+    format = formatExampleText(authored);
+    format = exampleReading(format, numbers.flat()).decimals ?? format;
+    spec = parseFormatExample(format);
+  } catch { return []; }
+  if (spec.ordinal || spec.exponent) return [];
   // A series whose different values all print as one string hides them. The
   // format stays the author's; the fix adds one decimal. Bump ranks read
   // equal strings as ties on purpose. A % format is left out: a fraction
   // series prints scaled by 100, not as given.
   // A nonzero value that prints as the zero does ("0.0" for 0.004) loses its
   // sign and size; the fix carries the decimals that show it.
-  const body = numericBody(format);
-  const checked = options?.variant !== 'bump' && !spec.suffix.includes('%');
+  const found = numericBody(format);
+  const body = found && { index: found.index, text: found.text.trimEnd() }; // as parseFormatExample: a space after the number belongs to the unit
+  // A figure count names its own precision: it shows every nonzero value and hides what its count says.
+  const figures = spec.significantDigits;
+  const checked = options?.variant !== 'bump' && !spec.suffix.includes('%') && figures === undefined;
   const zero = formatWithSpec(0, spec);
   const zeroed = checked ? numbers.flat().filter((v) => v !== 0 && formatWithSpec(v, spec) === zero) : [];
+  // An authored scale holds the chart to one precision (shareAuthoredScale): the warning says what that draws.
+  const locale = (options?.locale as { language?: string } | undefined)?.language;
+  const shared = spec.magnitude !== 'none' && figures === undefined ? seriesRasterFormatter(format, numbers.flat(), locale, unit) : undefined;
+  const raised = checked && shared !== undefined && shared.spec.decimals > spec.decimals;
+  const smallest = numbers.flat().reduce((small, v) => v !== 0 && (small === 0 || Math.abs(v) < Math.abs(small)) ? v : small, 0);
   // Distinct at 12 significant digits, so float noise never asks for 20 decimals.
   const distinct = (row: readonly number[]) => new Set(row.map((v) => Number(v.toPrecision(12)))).size;
   const hidden = (row: readonly number[]) => distinct(row) > 1 && new Set(row.map((v) => formatWithSpec(v, spec))).size === 1;
   const hides = checked && numbers.some(hidden);
-  if ((hides || zeroed.length > 0) && body) {
+  if ((hides || raised || zeroed.length > 0) && body) {
     // The finer body keeps the style; an integer part of 0 keeps three decimals from reading as a group ("0.004", not "1.004").
     const finerAt = (decimals: number) => format.slice(0, body.index) + formatWithSpec(((spec.thousandsSep ? 1234 : decimals === 3 ? 0 : 1) + 0.123456789),
       { ...spec, decimals, signed: false, prefix: '', suffix: '', magnitude: 'none', magnitudeWord: undefined, locale: undefined }) + format.slice(body.index + body.text.length);
@@ -1213,13 +1668,17 @@ export function unscaledFormatLint(
       return zeroed.every((v) => print(v) !== print(0))
         && numbers.every((row) => !hidden(row) || new Set(row.map(print)).size >= distinct(row));
     };
-    let decimals = spec.decimals + 1;
+    let decimals = Math.max(spec.decimals + 1, raised ? shared.spec.decimals : 0);
     while (decimals < MAX_FORMAT_DECIMALS && !shows(finerAt(decimals))) decimals++;
     const finer = finerAt(decimals);
     return [{
       code: 'format-hides-values',
       severity: 'warn',
-      message: zeroed.length > 0
+      message: raised
+        ? `format '${format}' cannot show ${smallest} near its size, so the chart prints every value with ${shared.spec.decimals} decimals: ${smallest} as ${shared.fmt(smallest)}`
+        : shared && zeroed.length > 0
+        ? `format '${format}' cannot show ${zeroed[0]} on its scale, so the chart prints it as ${shared.fmt(zeroed[0]!)}`
+        : zeroed.length > 0
         ? `format '${format}' prints the nonzero value ${zeroed[0]} as ${zero}`
         : `format '${format}' prints the different values of a series as one string`,
       suggest: `set a finer format such as '${finer}', or remove options.format to let the engine pick the precision`,
@@ -1230,7 +1689,7 @@ export function unscaledFormatLint(
   if (spec.magnitude !== 'none' || spec.suffix.includes('%') || unitMagnitude(unit)) return [];
   const largest = Math.max(0, maxOf(numbers.flat().map(Math.abs)));
   if (largest < 1e6) return [];
-  const compact = `${spec.prefix}1${spec.decimalSep}2${largest >= 1e9 ? 'bn' : 'm'}${spec.suffix}`;
+  const compact = `${spec.prefix}${figures === undefined ? `1${spec.decimalSep}2` : '@'.repeat(figures)}${largest >= 1e9 ? 'bn' : 'm'}${spec.suffix}`;
   return [{
     code: 'format-unscaled',
     severity: 'warn',
@@ -1260,17 +1719,19 @@ function drawnNumberTexts(geo: { labels?: readonly PlacedLabel[]; scene: readonl
  * raster too (an authored 36.2 % must not flatten to 36 %); computed shares
  * follow `formatShare`.
  */
-const MAGNITUDE_UNIT = /^\W*(?:([a-z]{3})(\W*))?(k|mm?|mn|bn?|tn|tsd|mio|mrd|bio|thousands?|tausend|millions?|millionen|billions?|billionen|trillions?|milliard(?:en?|s)?)\W*$/i;
+const MAGNITUDE_UNIT = /^\W*(?:([a-z]{3})(\W*))?(k|mm?|mn|bn?|tn|tsd|mio|mrd|bio|thousands?|tausend|millions?|millionen|billions?|billionen|trillions?|milliard(?:en?|s)?)\W*(?:([a-z]{3})\W*)?$/i;
 const CURRENCY_CODES = new Set(Intl.supportedValuesOf('currency'));
 
 /**
  * The scale a unit names: "€M", "EUR m" and "CHFm" are millions, "k€"
- * thousands, "USD bn" billions; none for "%" or "EUR". Three letters joined
- * to the word must be a currency code: "USDm" names millions, "item" does not.
+ * thousands, "USD bn" billions, "Mio. CHF" millions; none for "%" or "EUR".
+ * Three letters joined to the word must be a currency code: "USDm" names
+ * millions, "item" does not. A currency may follow the word too.
  */
-function unitMagnitude(unit: string | undefined): NumberFormatSpec['magnitude'] | undefined {
+export function unitMagnitude(unit: string | undefined): NumberFormatSpec['magnitude'] | undefined {
   const match = MAGNITUDE_UNIT.exec(unit ?? '');
   if (!match || (match[1] && !match[2] && !CURRENCY_CODES.has(match[1].toUpperCase()))) return undefined;
+  if (match[4] && (match[1] || !CURRENCY_CODES.has(match[4].toUpperCase()))) return undefined;
   const letter = MAGNITUDE_WORD_LETTER[match[3]!.toLowerCase()] ?? match[3]!.toLowerCase();
   return letter === 'k' ? 'k' : letter === 'b' ? 'bn' : letter === 't' ? 't' : 'm';
 }
@@ -1308,13 +1769,15 @@ export function seriesRasterFormatter(
   percentSpec: NumberFormatSpec;
   /** `values` gives the series' numbers where it is not a normalized series (`vals` or `cells`). */
   forSeries: (series: { format?: string; unit?: string; values?: readonly unknown[] }, cellFormat?: string) => (value: number) => string;
+  /** The spec behind `forSeries` for a series without a cell format. */
+  specForSeries: (series: { format?: string; unit?: string; values?: readonly unknown[] }) => NumberFormatSpec;
   /** True when the value prints as zero at its formatter's precision before the nonzero lift. */
   roundsToZeroAt: (value: number, series?: { format?: string; unit?: string }, cellFormat?: string) => boolean;
 } {
   // Iterators must survive both magnitude selection and precision selection.
   const raster = [...values];
   const unitScale = unitMagnitude(unit);
-  const spec = example ? exampleSpec(example, locale, unit) : defaultExample ? localized(parseFormatExample(defaultExample, true), locale) : defaultFormatSpec(locale);
+  const spec = example ? exampleSpec(example, locale, unit, raster) : defaultExample ? localized(parseFormatExample(defaultExample, true), locale) : defaultFormatSpec(locale);
   if (!example) spec.automatic = true;
   const unscaledSpec = { ...spec };
   let autoMagnitude = false;
@@ -1382,19 +1845,31 @@ export function seriesRasterFormatter(
     }
     return made;
   };
-  const seriesFormatters = new WeakMap<object, (value: number) => string>();
-  const forSeries = (series: { format?: string; unit?: string }, cellFormat?: string): ((value: number) => string) => {
-    // The unit the value is in states the scale an example holds (exampleSpec).
-    if (cellFormat || series.format) return byExample((cellFormat ?? series.format)!, series.unit ?? unit);
-    let formatter = seriesFormatters.get(series);
-    if (formatter) return formatter;
+  const plainSpec = (series: { unit?: string }): NumberFormatSpec => {
     const wholeFrom = !defaultExample && unitMagnitude(series.unit) ? 100 : undefined;
     const currencyWhole = currencyWholeNumbers(series.unit, target);
     // A series unit that names a scale gets no engine scale on top.
     const unscaled = autoMagnitude && unitMagnitude(series.unit) !== undefined;
     const base = example || series.unit === undefined || (wholeFrom === spec.wholeFrom && currencyWhole === Boolean(spec.currencyWhole) && !unscaled) ? spec
       : { ...(unscaled ? { ...spec, magnitude: 'none' as const, autoMagnitude: undefined, rollMagnitude: undefined } : spec), wholeFrom, currencyWhole };
-    const own = ownPrecision(series, base);
+    return ownPrecision(series, base);
+  };
+  /** The spec forSeries prints a series with, for a value axis whose ticks must read at the precision of their spacing. */
+  const specForSeries = (series: { format?: string; unit?: string; values?: readonly unknown[] }): NumberFormatSpec =>
+    series.format ? exampleSpec(series.format, locale, series.unit ?? unit, normalizedSeriesNumbers(series)) : plainSpec(series);
+  const seriesFormatters = new WeakMap<object, (value: number) => string>();
+  const forSeries = (series: { format?: string; unit?: string }, cellFormat?: string): ((value: number) => string) => {
+    // The unit the value is in states the scale an example holds (exampleSpec).
+    if (cellFormat) return byExample(cellFormat, series.unit ?? unit);
+    let formatter = seriesFormatters.get(series);
+    if (formatter) return formatter;
+    if (series.format) {
+      // A series format holds its own values to one scale and one decimal count (exampleSpec).
+      formatter = formatterFromExample(series.format, locale, series.unit ?? unit, normalizedSeriesNumbers(series));
+      seriesFormatters.set(series, formatter);
+      return formatter;
+    }
+    const own = plainSpec(series);
     formatter = own === spec ? fmt : (value: number) => face(value, own);
     seriesFormatters.set(series, formatter);
     return formatter;
@@ -1412,7 +1887,7 @@ export function seriesRasterFormatter(
     }
     return roundsToZero(value / MAGNITUDE_DIVISOR[spec.magnitude], ownPrecision(series, spec).decimals);
   };
-  return { spec, fmt, fmtSigned, fmtPercent, percentSpec: example ? spec : percentSpec, forSeries, roundsToZeroAt };
+  return { spec, fmt, fmtSigned, fmtPercent, percentSpec: example ? spec : percentSpec, forSeries, specForSeries, roundsToZeroAt };
 }
 
 /**
@@ -1421,7 +1896,7 @@ export function seriesRasterFormatter(
  * `{ value }`, and its `range` ends count too. Undefined where none is read:
  * the shared precision stands, never a precision of 0.
  */
-function normalizedSeriesNumbers(series: object): number[] | undefined {
+export function normalizedSeriesNumbers(series: object): number[] | undefined {
   const { values, vals, cells } = series as { values?: unknown; vals?: unknown; cells?: unknown };
   const list = Array.isArray(values) ? values : Array.isArray(vals) ? vals : Array.isArray(cells) ? cells : undefined;
   if (!list) return undefined;

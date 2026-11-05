@@ -13,10 +13,58 @@
  * surface is the in-file twin.
  */
 import { describe, expect, it } from 'vitest';
+import { render } from '../src/cli/render';
+import { requireGeometry } from '../src/core/sizing';
+import { z } from 'zod';
 import '../src/core/charts';
 import { getChartDefinition } from '../src/core/registry';
+import { unscaledFormatLint } from '../src/core/formatSpec';
+import { layoutResolvedRequest, resolveChartRequest } from '../src/index';
 import { getFixtures } from '../src/fixtures';
+import { resolvePaint } from '../src/core/svg/paint';
+import { resolveTheme } from '../src/core/theme';
 import type { Geometry } from '../src/core/types/scene';
+
+// colorblindSafe was refused on KPI, waterfall and pvm although all three paint a good/bad pair, and on every chart that paints none.
+it('accepts colorblindSafe on every chart and swaps the good/bad paints of KPI, waterfall and pvm', () => {
+  const layout = (spec: object, options: object) => {
+    const result = layoutResolvedRequest(resolveChartRequest({ ...spec, options } as never));
+    if (result.refused) throw new Error('colorblindSafe chart refused');
+    return result;
+  };
+  const colorblind = (role: string) => expect.objectContaining({ theme: expect.objectContaining({ kind: 'colorblind', role }) });
+  const theme = resolveTheme('standard');
+  const options = { colorblindSafe: true };
+
+  const kpi = layout({ type: 'kpi', data: { label: 'Revenue', value: 120, delta: { vs: 100, scenario: 'PY' } } }, options);
+  const caret = kpi.scene.find(node => node.id === 'mark:delta:caret');
+  if (caret?.t !== 'path' || !caret.fill) throw new Error('delta caret missing');
+  expect(caret.fill).toEqual(colorblind('good'));
+  expect(resolvePaint(caret.fill, theme)).toBe(theme.color.colorblind.good);
+  const delta = kpi.scene.find(node => node.id === 'label:point:delta');
+  expect(delta?.t === 'text' && delta.ink).toEqual(caret.fill);
+
+  const bridge = { type: 'waterfall', data: { items: [
+    { id: 'open', type: 'total', value: 100 }, { id: 'gain', value: 12 }, { id: 'loss', value: -8 }, { id: 'close', type: 'total' },
+  ] } };
+  for (const variant of ['vertical', 'horizontal']) {
+    const drawn = layout(bridge, { ...options, variant, theme: { preset: 'standard', overrides: { marks: { bridge: 'sign' } } } });
+    for (const [id, tone] of [['gain', 'good'], ['loss', 'bad']] as const) {
+      const bar = drawn.scene.find(node => node.t === 'rect' && node.part === 'segment' && node.owner?.categoryId === id);
+      if (bar?.t !== 'rect') throw new Error(`${id} step missing`);
+      expect(bar.fill).toEqual(colorblind(`${tone}Fill`));
+      const label = drawn.scene.find(node => node.id === `label:sum:${id}`);
+      expect(label?.t === 'text' && label.ink).toEqual(colorblind(tone));
+    }
+  }
+  const pvm = getFixtures('pvm')[0]!;
+  const bridgePvm = layout({ type: 'pvm', data: pvm.data }, { ...pvm.options, ...options });
+  expect(bridgePvm.scene.some(node => node.t === 'rect' && node.fill && 'theme' in node.fill && node.fill.theme?.kind === 'colorblind')).toBe(true);
+
+  // A chart with no good/bad pair draws the same geometry with the flag.
+  const line = { type: 'line', data: { categories: [{ id: 'a' }, { id: 'b' }], series: [{ id: 's', values: [3, 1] }] } };
+  expect(layout(line, options).scene).toEqual(layout(line, {}).scene);
+});
 
 const def = getChartDefinition('waterfall')!;
 
@@ -203,6 +251,70 @@ describe('an opening total without a value', () => {
   });
 });
 
+describe('a subtotal with toBaseline', () => {
+  // The subtotal printed the running balance and ignored toBaseline, so a block subtotal (a free cash flow over several steps) showed the cash balance.
+  it('prints the steps since the last baseline, skips its connector and leaves the balance to the next step', () => {
+    const geometry = def.layout(def.normalize({ items: [
+      { id: 'open', type: 'total', value: 100 }, { id: 'a', value: 40 }, { id: 'b', value: -10 }, { id: 'c', value: -35 },
+      { id: 'fcf', type: 'subtotal', toBaseline: true }, { id: 'd', value: -20 }, { id: 'end', type: 'total', value: 75 },
+    ] }) as never, {} as never) as unknown as Geometry<{ connectors: { from: string; to: string }[] }, {
+      totals: Record<string, number>; levels: Record<string, { start: number; end: number }>;
+      totalBasis: Record<string, { inputs: { ref: string }[] }>;
+    }>;
+    const { totals, levels, totalBasis } = geometry.derived;
+    expect([totals.fcf, levels.fcf!.start, levels.d!.start, totals.end]).toEqual([-5, 0, 95, 75]);
+    expect(totalBasis.fcf!.inputs.map((input) => input.ref)).toEqual(['a', 'b', 'c']);
+    expect(geometry.marks.connectors.filter((c) => c.from === 'c' || c.to === 'fcf' || c.from === 'fcf')).toEqual([{ from: 'c', to: 'd', nodeId: 'connector:c:d' }]);
+  });
+});
+
+describe('a subtotal with toBaseline beside checks, hidden breaks and segments', () => {
+  type G = Geometry<{ connectors: { from: string; to: string }[] }, { totals: Record<string, number>; levels: Record<string, { start: number; end: number }> }>;
+  const run = (data: object) => def.layout(def.normalize(data) as never, {} as never) as unknown as G;
+  const codes = (g: G) => g.warnings.filter((w) => ['check-value-rounded', 'derived-mismatch'].includes(w.code)).map((w) => w.code);
+
+  // A baseline subtotal's check value is its block sum, so the backward opening read it as a running balance and drew 0 and 10 for 100 and 110.
+  it('solves an omitted opening past it, not from its block sum', () => {
+    const g = run({ items: [{ id: 'o', type: 'total' }, { id: 'a', value: 10 }, { id: 's', type: 'subtotal', toBaseline: true, value: 10 }, { id: 'e', type: 'total', value: 110 }] });
+    expect([g.derived.totals.o, g.derived.totals.s, g.derived.totals.e]).toEqual([100, 10, 110]);
+  });
+
+  // The default connector skipped a baseline subtotal that carries a hidden break, and drew a line into a step that starts a new sum at zero.
+  it('draws no connector across its hidden break', () => {
+    const g = run({
+      items: [{ id: 'o', type: 'total', value: 100 }, { id: 'a', value: 10 }, { id: 's', type: 'subtotal', toBaseline: true }, { id: 'b', value: 5 }],
+      connectors: [{ from: 's', to: 'b', hidden: true }],
+    });
+    expect([g.derived.levels.b!.start, g.marks.connectors.filter((c) => c.to === 'b')]).toEqual([0, []]);
+  });
+
+  // The block's steps were checked as their summed values, so segments of 0.25 and 0.75 gave a tolerance of 0.5 and a check of 1.4 passed as rounding.
+  it('checks its value against the authored segments of the block', () => {
+    const g = run({ items: [{ id: 'o', type: 'total', value: 0 }, { id: 'a', segments: [{ id: 'x', value: 0.25 }, { id: 'y', value: 0.75 }] }, { id: 's', type: 'subtotal', toBaseline: true, value: 1.4 }] });
+    expect(codes(g)).toEqual(['derived-mismatch']);
+  });
+});
+
+describe('an authored scale word', () => {
+  const fixture = getFixtures('waterfall').find((candidate) => candidate.id === 'automatic-axis-break')!;
+  const valueTexts = (format: string) => {
+    const options = { ...fixture.options, format };
+    const geometry = def.layout(def.normalize(structuredClone(fixture.data)) as never, options as never) as unknown as Geometry<object, object>;
+    return geometry.labels.filter((label) => /^(sum|total):/.test(label.id)).map((label) => label.text).sort();
+  };
+
+  // Decided per label, +50 printed +0.1k and -20 left the thousands, so the labels did not add up to the total.
+  it.each(['1.2k', '1,234k', '1.23k'])('holds every value of %s to one scale and one decimal count', (format) => {
+    expect(valueTexts(format)).toEqual(['+0.05k', '1.00k', '1.03k', '−0.02k'].sort());
+  });
+
+  // The warning named a 0.0k the chart never drew.
+  it('says what the chart prints in place of the authored decimals', () => {
+    const [warning] = unscaledFormatLint({ ...fixture.options, format: '1.2k' }, fixture.data);
+    expect([warning?.code, warning?.message]).toEqual(['format-hides-values', "format '1.2k' cannot show -20 near its size, so the chart prints every value with 2 decimals: -20 as −0.02k"]);
+  });
+});
+
 describe('two cases in one bridge', () => {
   it('runs each case its own levels side by side in every step, keys the cases and draws no connectors', () => {
     const waterfall = getChartDefinition('waterfall')!;
@@ -215,6 +327,63 @@ describe('two cases in one bridge', () => {
       geometry.marks.connectors.length,
       geometry.legend?.items.map((item) => item.id),
     ]).toEqual([127, 150, 12, 0, ['conservative', 'aggressive']]);
+  });
+
+  const caseLayout = (data: unknown, options: Record<string, unknown>) => {
+    const waterfall = getChartDefinition('waterfall')!;
+    return waterfall.layout(waterfall.normalize(structuredClone(data) as never), options as never) as Geometry<{ bars: { id: string; rect: { x: number; y: number; w: number; h: number } }[] }, object>;
+  };
+  const valueOf = (geometry: ReturnType<typeof caseLayout>, barId: string) =>
+    geometry.labels.find((label) => label.id === `sum:${barId}` || label.id === `total:${barId}`)!;
+
+  // A value at its bar's inner edge read as the neighbouring case's number: +8 stood at the right edge of its bar.
+  it('centres each value on its own column', () => {
+    const fixture = getFixtures('waterfall').find((candidate) => candidate.id === 'two-case-budget-bridge')!;
+    const geometry = caseLayout(fixture.data, { ...fixture.options });
+    const offCentre = geometry.marks.bars.filter((bar) => {
+      const { rect } = valueOf(geometry, bar.id);
+      return Math.abs(rect.x + rect.w / 2 - (bar.rect.x + bar.rect.w / 2)) > 0.5;
+    });
+    expect(offCentre.map((bar) => bar.id)).toEqual([]);
+  });
+
+  // Two equal totals closer than the series value gap read as one number, and neither may drop for it.
+  it('keeps crowded equal totals apart at their bars\' inner edges', () => {
+    const geometry = caseLayout({
+      cases: [{ id: 'a' }, { id: 'b' }],
+      items: [{ id: 'open', type: 'total', values: [12000, 12000] }, { id: 'step', values: [800, 1800] }, { id: 'mid', values: [500, 1400] }, { id: 'end', type: 'total' }],
+    }, { size: { width: 400, height: 225 } });
+    const [a, b] = [valueOf(geometry, 'open:a'), valueOf(geometry, 'open:b')];
+    expect([a.hidden, b.hidden, b.rect.x - (a.rect.x + a.rect.w) >= 6]).toEqual([undefined, undefined, true]);
+  });
+
+  // A centred +18, wider than its bar, hung over +8's seat, and the case's whole value row thinned to every other value.
+  it('keeps every value of a narrow bridge whose centred values would touch', () => {
+    const fixture = getFixtures('waterfall').find((candidate) => candidate.id === 'two-case-budget-bridge')!;
+    const request = resolveChartRequest({ type: 'waterfall', data: fixture.data, options: { ...fixture.options, size: { width: 320, height: 477 } } } as never);
+    const geometry = caseLayout(request.data, request.options as Record<string, unknown>);
+    expect(geometry.marks.bars.filter((bar) => valueOf(geometry, bar.id).hidden !== undefined).map((bar) => bar.id)).toEqual([]);
+  });
+
+  // The horizontal form looked a label's bar up by step id, so case values floated, overprinted other bars or fell to the notes.
+  it('seats each value of the bars form just past the end of its own bar, in its row', () => {
+    const fixture = getFixtures('waterfall').find((candidate) => candidate.id === 'two-case-budget-bars')!;
+    const geometry = caseLayout(fixture.data, { ...fixture.options });
+    const misplaced = geometry.marks.bars.filter((bar) => {
+      const label = valueOf(geometry, bar.id);
+      return label.hidden !== undefined || Math.abs(label.rect.x - (bar.rect.x + bar.rect.w + 8)) > 0.5
+        || Math.abs(label.rect.y + label.rect.h / 2 - (bar.rect.y + bar.rect.h / 2)) > 0.5;
+    });
+    expect(misplaced.map((bar) => bar.id)).toEqual([]);
+  });
+
+  // The value ink of the bars form looked the direction up by step id too, so a fall under lowerIsBetter read as bad.
+  it('reads a case step\'s direction in the bars form', () => {
+    const geometry = caseLayout({
+      cases: [{ id: 'a' }, { id: 'b' }],
+      items: [{ id: 'open', type: 'total', values: [10, 10] }, { id: 'cost', direction: 'lowerIsBetter', values: [-2, -3] }, { id: 'end', type: 'total' }],
+    }, { variant: 'horizontal', theme: { preset: 'standard', overrides: { marks: { bridge: 'sign' } } } });
+    expect(valueOf(geometry, 'cost:a').ink).toEqual({ token: 'good' });
   });
 
   it('refuses a case bridge whose step gives the wrong number of values', () => {
@@ -251,6 +420,21 @@ describe('mixed-sign segments draw in sequence', () => {
     const geometry = def.layout(def.normalize(fixture.data) as never, (fixture.options ?? {}) as never) as unknown as Geometry<{ bars: { id: string; segments: { rect: { x: number; w: number } }[] }[] }, object>;
     const [up, down] = geometry.marks.bars.find((bar) => bar.id === 'net')!.segments;
     expect([up!.rect.x + up!.rect.w <= down!.rect.x, geometry.labels.find((label) => label.id === 'sum:net')?.text]).toEqual([true, 'net −8']);
+  });
+});
+
+// The bars form seated a segment's value on the whole bar, so a total of three segments printed one value in the wrong segment and sent the rest to the notes.
+describe('segment values of the bars form', () => {
+  it('print each value inside its own segment, and none goes to the notes', () => {
+    const fixture = getFixtures('waterfall').find((entry) => entry.id === 'interview-status-buildup')!;
+    const geometry = def.layout(def.normalize(fixture.data) as never, { ...fixture.options, variant: 'horizontal' } as never) as unknown as Geometry<{ bars: { id: string; segments: { id: string; rect: { x: number; w: number } }[] }[] }, object>;
+    const misplaced = geometry.marks.bars.flatMap((bar) => bar.segments.map((segment) => ({ bar, segment })))
+      .filter(({ bar, segment }) => {
+        const label = geometry.labels.find((entry) => entry.id === `segment:${bar.id}:${segment.id}`);
+        return label !== undefined && (label.hidden !== undefined || label.rect.x < segment.rect.x || label.rect.x + label.rect.w > segment.rect.x + segment.rect.w);
+      })
+      .map(({ bar, segment }) => `${bar.id}:${segment.id}`);
+    expect(misplaced).toEqual([]);
   });
 });
 
@@ -396,5 +580,88 @@ describe('step notes on a broken value axis', () => {
     const notes = geometry.labels.filter((label) => label.id.startsWith('annotation:'));
     expect(notes).toHaveLength(2);
     expect(notes.filter((note) => note.hidden)).toEqual([]);
+  });
+});
+
+// A caller reads the variant option text before rendering, and the text must say a horizontal bridge draws no annotations.
+describe('waterfall variant option text', () => {
+  it('names the horizontal annotation limit and its warning code', () => {
+    const json = z.toJSONSchema(def.optionsSchema as never, { io: 'input' }) as unknown as {
+      properties: { variant: { description: string } };
+    };
+    const text = json.properties.variant.description;
+    expect(text).toContain('option-ignored');
+    expect(text).toContain('no annotations');
+  });
+});
+
+// An 'auto' break that finds no break cut the whole-axis plot allowance, so the chart drew 100 px shorter than with break false.
+describe('waterfall automatic break with none found', () => {
+  it('keeps the height of a whole-axis bridge', () => {
+    const fixture = getFixtures('waterfall').find((candidate) => candidate.id === 'build-down')!;
+    const heightWith = (valueAxis: object) => layoutResolvedRequest(resolveChartRequest({
+      type: 'waterfall', data: fixture.data, options: { ...fixture.options, size: { width: 720 }, valueAxis },
+    } as never)).size.height;
+    expect(heightWith({ break: 'auto' })).toBe(heightWith({ break: false }));
+  });
+});
+
+// colorblindSafe was accepted on bullet and on a grid but left their good/bad paints red and green.
+it('swaps the good/bad paints of a bullet delta and of the panels of a grid under colorblindSafe', () => {
+  const plain = (paint: unknown): number => Array.isArray(paint) ? paint.reduce((sum: number, item) => sum + plain(item), 0)
+    : paint === null || typeof paint !== 'object' ? 0
+    : Object.values(paint).reduce((sum: number, item) => sum + plain(item), 0)
+      + (['good', 'bad', 'goodFill', 'badFill'].includes((paint as { token?: string }).token ?? '') && !('theme' in paint) ? 1 : 0);
+  const unswapped = (geometry: Geometry) => plain([geometry.scene, geometry.labels]);
+  const drawn = (spec: object) => {
+    const result = layoutResolvedRequest(resolveChartRequest({ ...spec, options: { colorblindSafe: true } } as never));
+    if (result.refused) throw new Error('chart refused');
+    return result as Geometry;
+  };
+  const bullet = drawn({ type: 'bullet', data: { rows: [
+    { id: 'rev', label: 'Revenue', value: { number: 80 }, target: { number: 100 } },
+    { id: 'cost', label: 'Cost', value: { number: 120 }, target: { number: 100 }, direction: 'lowerIsBetter' },
+  ] } });
+  expect(unswapped(bullet)).toBe(0);
+  const column = getFixtures('column').find(fixture => JSON.stringify(drawnPlain(fixture)).includes('"token":"good'));
+  if (!column) throw new Error('no column fixture paints a good/bad pair');
+  const grid = drawn({ type: 'grid', data: { panels: [{ id: 'p', type: 'column', data: column.data, options: column.options }] } });
+  expect(unswapped(grid)).toBe(0);
+  const panels = (grid.marks as { panels: { chart?: { geometry: Geometry } }[] }).panels;
+  expect(panels.reduce((sum, panel) => sum + (panel.chart ? unswapped(panel.chart.geometry) : 0), 0)).toBe(0);
+
+  function drawnPlain(fixture: { data: unknown; options?: object }) {
+    const result = layoutResolvedRequest(resolveChartRequest({ type: 'column', data: fixture.data, options: { ...fixture.options } } as never));
+    return result.refused ? [] : [result.scene, result.labels];
+  }
+});
+
+describe('waterfall columnOverrides', () => {
+  const data = { items: [
+    { id: 'open', label: 'Opening balance of the fiscal year', type: 'total', value: 100 },
+    { id: 'gain', label: 'Renewals and upgrades of contracts', value: 20 },
+    { id: 'close', label: 'Closing balance of the fiscal year', type: 'total' },
+  ] };
+  type Bars = { marks: { bars: { rect: { x: number; y: number; w: number; h: number } }[] }; warnings: { code: string }[]; scene: unknown[] };
+  const draw = (options: object) => requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'waterfall', data, options: { title: 'Bridge', ...options } }))) as unknown as Bars;
+  it('refuses the key on an authored vertical bridge', () => {
+    const body = render({ spec: { type: 'waterfall', data, options: { title: 'Bridge', variant: 'vertical', columnOverrides: { label: { width: 100 } } } }, format: 'svg' } as never).body as any;
+    expect(body.ok).toBe(false);
+  });
+  // An omitted variant must pick the same form with and without the key, and a vertical result must say the key did nothing.
+  it('never changes the automatic form', () => {
+    for (const width of [320, 480, 960]) {
+      const plain = draw({ size: { width } });
+      const keyed = draw({ size: { width }, columnOverrides: { label: { width: 90 } } });
+      const rows = (geometry: Bars) => geometry.marks.bars.every((bar) => bar.rect.x >= geometry.marks.bars[0]!.rect.x);
+      expect(rows(keyed)).toEqual(rows(plain));
+      if (keyed.warnings.some((warning) => warning.code === 'option-ignored')) expect(keyed.marks.bars.map((bar) => bar.rect)).toEqual(plain.marks.bars.map((bar) => bar.rect));
+    }
+  });
+  it('sets the name band of a horizontal bridge', () => {
+    const narrow = draw({ variant: 'horizontal', size: { width: 720 }, columnOverrides: { label: { width: 260 } } });
+    const plain = draw({ variant: 'horizontal', size: { width: 720 } });
+    expect(narrow.marks.bars[0]!.rect.x).not.toBe(plain.marks.bars[0]!.rect.x);
+    expect(draw({ variant: 'horizontal', size: { width: 720 }, columnOverrides: { nope: { width: 90 } } }).warnings.map((warning) => warning.code)).toContain('generated-id-unknown');
   });
 });

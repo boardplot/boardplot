@@ -1,3 +1,4 @@
+import { PLAN_ONLY, materializeLayout, withPlanInputs } from './layoutPlan';
 import { boundsOf, type Rect, type Size } from './geometry';
 import { NormalizeError, resolveSize, resolveSubtitle } from './normalize/shared';
 import { panelTypeClass, WIDE_CANVAS_MIN_WIDTH } from './theme';
@@ -17,6 +18,7 @@ import { copyFrame, liveFooterExtra, partNeedOf, staticFrame } from './footer';
 import { rankKeyShown, withEngineNotes } from './notes';
 import { withCategoryRowPlans } from './label/categoryRow';
 import { maxOf } from './arrays';
+import { sourceFollowsContent } from './sourceFollows';
 
 const ROW_TYPES = new Set(['bar', 'bartable', 'bullet', 'butterfly', 'gantt', 'likert', 'cohort', 'table', 'funnel', 'status', 'heatmap']);
 /** Row charts whose width floor is their measured content. Table keeps its own 100 px. */
@@ -29,6 +31,14 @@ const BAND_FAMILY = ['waterfall', 'pareto', 'variance', 'pyramid', 'box', 'mekko
  * draws full where its content fits and compact below that.
  */
 export const CARD_MIN_WIDTH = 280;
+/**
+ * The narrowest canvas a KPI, pie or column draws on (a map: MAP_MIN_WIDTH). Between this and CARD_MIN_WIDTH the
+ * chart's measured content decides: a KPI's figure, a pie's circle and labels, a map's key and small
+ * members, a column's bars (`columnBarFloor`). Under it no readable chart fits any content.
+ */
+export const NARROW_MIN_WIDTH = 120;
+/** A map is unreadable under this width: its regions and key run together. */
+const MAP_MIN_WIDTH = 160;
 /** Canvases narrower than this are cards: a fill chart there is never shorter than at this width. */
 export const CARD_CLASS_WIDTH = 480;
 /** The card widths a host steps through; each card is no shorter than the next wider one. */
@@ -60,7 +70,9 @@ const CONTENT_TYPES = new Set([...ROW_TYPES, 'kpi', 'pie', 'diagram', 'sparkline
  * count, so only its width floor moves. The width is 280 px: a 360 px phone with a
  * 16 px page gutter and a 24 px card padding leaves 280 px, and compact keeps its
  * text sizes there (scaling a 320 px drawing down
- * would put 11 px text at 9.6 px).
+ * would put 11 px text at 9.6 px). A column and a pie draw below it, down to NARROW_MIN_WIDTH, while
+ * their measured content fits (`columnBarFloor`, the pie's circle radius). The compact floor stays
+ * the size that `measure` verifies for a host.
  *
  * Every row and band chart has a compact form. Its static width floor is
  * CARD_MIN_WIDTH, so compact is not a width band below a static minimum: full draws where the
@@ -169,6 +181,11 @@ function namesDrawnSeries(data: unknown, result: unknown): boolean {
   return drawn.length < 2 || drawn.every((entry) => named.has(entry.id));
 }
 
+/** The category names a finished chart hides for lack of room (a name hidden as redundant or by density is not lost). */
+export function lostCategoryNames<M extends object, DV extends object>(result: LayoutResult<M, DV>): PlacedLabel[] {
+  return result.refused ? [] : result.labels.filter((label) => label.kind === 'category' && !!label.hidden && label.hidden !== 'redundant' && label.hidden !== 'density');
+}
+
 /** Whether this layout runs at the type's hard minimum (the last fixed-slot step before a refusal). */
 export function atHardMinimum(options: unknown): boolean {
   return (options as { [HARD_MINIMUM]?: boolean } | undefined)?.[HARD_MINIMUM] === true;
@@ -205,22 +222,19 @@ export const DIAGRAM_MIN_HEIGHT = 160;
 /**
  * Default sizing for built-in types and compatible third-party definitions.
  *
- * `options` is read for the one option that moves a floor: a KPI card at
- * `density: 'compact'` keeps the 280 px card floor (CARD_MIN_WIDTH), the
- * tile a dashboard puts nine of in a row. It keeps every part of the card, so
- * this is a smaller card and not a poorer one. A KPI card's height floor is
- * measured from its content like a row chart's: an unsized card takes
+ * `options` is read for the one option that moves a floor: a compact bullet is a 120 px mark.
+ * A KPI card's width floor is NARROW_MIN_WIDTH and its measured figure gates above it. Its
+ * height floor is measured from its content like a row chart's: an unsized card takes
  * the height of its content, so a static 144 would pad a value-only card.
  */
 export function chartSizing(type: string, options?: { density?: unknown }): ChartSizing {
-  const compactKpi = type === 'kpi' && options?.density === 'compact';
   // A compact bullet is a 120 px mark in a KPI column.
   const compactBullet = type === 'bullet' && options?.density === 'compact';
   const cardFloor = CARD_FLOOR_TYPES.has(type);
   return {
     aspect: type === 'scatter' ? '4:3' : type === 'pie' ? '1:1' : CONTENT_TYPES.has(type) ? 'content' : '16:9',
-    minWidth: type === 'table' ? 100 : type === 'sparkline' ? 88 : compactKpi ? 280 : compactBullet ? 120
-      : type === 'kpi' || type === 'pie' || type === 'choropleth' || cardFloor ? CARD_MIN_WIDTH : CARD_CLASS_WIDTH,
+    minWidth: type === 'table' ? 100 : type === 'sparkline' ? 88 : compactBullet ? 120
+      : type === 'kpi' || type === 'pie' ? NARROW_MIN_WIDTH : type === 'choropleth' ? MAP_MIN_WIDTH : cardFloor ? CARD_MIN_WIDTH : CARD_CLASS_WIDTH,
     minHeight: type === 'scatter' ? 360 : type === 'pie' ? 320 : type === 'table' ? 80 : type === 'sparkline' ? 24 : ROW_TYPES.has(type) || type === 'kpi' ? 28
       : type === 'diagram' && DIAGRAM_BELOW_SHARED_MIN ? DIAGRAM_MIN_HEIGHT : 270,
     fit: CONTENT_TYPES.has(type) ? 'content' : 'fill',
@@ -722,9 +736,8 @@ export function requireGeometry<M extends object, D extends object>(result: Layo
 /**
  * The floor a request is measured against: the definition's own, unless an
  * option moves it. `chartSizing` answers for a type and for the options it
- * was called with, and the two differ in two cases: a KPI card at
- * `density: 'compact'` stands 280 wide, a bullet 120. A definition that
- * brought a floor of its own keeps it everywhere else.
+ * was called with, and the two differ for a bullet at `density: 'compact'`, which
+ * stands 120 wide. A definition that brought a floor of its own keeps it everywhere else.
  */
 export function declaredSizing<D, O extends ChartOptions, M extends object, DV extends object>(
   definition: ChartCore<D, O, M, DV>,
@@ -787,6 +800,7 @@ export function prepareFitLayout<D, O extends ChartOptions, M extends object, DV
   definition: ChartCore<D, O, M, DV>, data: D, origins = new WeakMap<object, object>(),
 ): FitLayout<O, M, DV> {
   const probes = new Map<string, LayoutResult<M, DV>>();
+  const memoKeys: PreparedMemoKeys | undefined = definition.type === 'table' || definition.type === 'dimswitch' ? {} : undefined;
   const heightFloors = definition.type === 'mekko' ? mekkoHeightFloors.get(origins) ?? new Map<string, ResolvedSizing>() : undefined;
   if (heightFloors) mekkoHeightFloors.set(origins, heightFloors);
   const at: SizeLayout<O, M, DV> = (runOptions, compact) => {
@@ -806,7 +820,7 @@ export function prepareFitLayout<D, O extends ChartOptions, M extends object, DV
         && requested!.height + SIZE_TOLERANCE < floor.minHeight) {
         return sizeRefusal(definition.type, definition.title, requested!, { ...floor });
       }
-      result = fitSizeMemo(definition, data, runOptions, compact);
+      result = fitSizeMemo(definition, data, runOptions, compact, memoKeys);
       if (fixedMekko && result.sizing && (result.refused ? plotChromeFloor.has(result) : plotChromeFloor.has(result.frame))) {
         heightFloors!.set(floorKey, result.sizing);
       }
@@ -835,14 +849,20 @@ export function prepareFitLayout<D, O extends ChartOptions, M extends object, DV
       // Registry and legend passes change labels, warnings and scene nodes.
       // Give them their own result, while the fixed evaluator keeps its frame.
       const fitted = fitOrRepair(definition, data, options, at);
-      const copy = copyLayout(fitted);
+      const selected = !fitted.refused && !(options as { [PLAN_ONLY]?: boolean } | undefined)?.[PLAN_ONLY]
+        ? materializeLayout(fitted) : fitted;
+      const copy = copyLayout(selected);
       origins.set(copy, origins.get(fitted) ?? fitted);
+      if (!copy.refused && !(options as { [PLAN_ONLY]?: boolean } | undefined)?.[PLAN_ONLY]) sourceFollowsContent(copy, options);
       return withPlotFloorWarning(copy, options, definition.title);
     } finally {
       if (!borrowed) { memo.active = false; memo.heights.clear(); memo.references = undefined; }
     }
   })) as FitLayout<O, M, DV>;
-  run.finish = () => { probes.clear(); heightFloors?.clear(); };
+  run.finish = () => {
+    probes.clear(); heightFloors?.clear();
+    if (memoKeys) { memoKeys.scope = undefined; memoKeys.parts = undefined; }
+  };
   return run;
 }
 
@@ -886,6 +906,10 @@ function fitOrRepair<D, O extends ChartOptions, M extends object, DV extends obj
   const fixedFallback = options && (compact || definition.type === 'treemap' || definition.type === 'sankey') && options.belowMinimum !== 'refuse'
     && options.mode !== 'full'
     && panelTypeClass(options) === undefined && constraints.fixed.width && constraints.fixed.height;
+  // The hard minimum is accepted only while every drawn series stays named and, for a chart
+  // whose rows are named by their category (hardMinimumKeepsNames), while no category name is lost.
+  const namesKept = (fitted: Geometry<M, DV>) => namesDrawnSeries(data, fitted)
+    && (definition.hardMinimumKeepsNames !== true || lostCategoryNames(fitted).length === 0);
   const warnHardMinimum = (fitted: Geometry<M, DV>): Geometry<M, DV> => {
     const target = options?.target ?? DEFAULT_TARGET;
     const height = Math.max(requiredSize(received, first.sizing!).height, plotFloorHeight(fitted, target));
@@ -902,7 +926,7 @@ function fitOrRepair<D, O extends ChartOptions, M extends object, DV extends obj
   // and subtitle steps. The comfortable plot and row air give way first.
   if (fixedFallback) {
     const fitted = fitAt(definition, data, { ...options, [HARD_MINIMUM]: true });
-    if (!fitted.refused && namesDrawnSeries(data, fitted)) return warnHardMinimum(fitted);
+    if (!fitted.refused && namesKept(fitted)) return warnHardMinimum(fitted);
   }
   // The source line stays under `footnotes: false` (footer rule), so the retry does too.
   const sourceStep = Boolean(!staticFrame.pinned && compact && options?.source
@@ -931,8 +955,7 @@ function fitOrRepair<D, O extends ChartOptions, M extends object, DV extends obj
       if (!hard && line === undefined) continue;
       const fitted = fitAt(definition, data, hard ? { ...moved, [HARD_MINIMUM]: true } : moved);
       if (fitted.refused) continue;
-      // The hard minimum is accepted only while every drawn series stays named.
-      if (hard && !namesDrawnSeries(data, fitted)) continue;
+      if (hard && !namesKept(fitted)) continue;
       if (line !== undefined) fitted.warnings.push({
         code: 'subtitle-moved-to-notes', severity: 'warn',
         message: `the fixed height has no room for the subtitle, so it moved into the notes list: ${line}`,
@@ -1448,13 +1471,22 @@ function fitOnce<D, O extends ChartOptions, M extends object, DV extends object>
       const plotShare = autoPlotShare(definition, options, width);
       // The share every layout keeps; a chosen larger share (PLOT_SHARE) is a goal, not a floor.
       const floorShare = autoPlotShare(definition, { ...options, [PLOT_SHARE]: undefined }, width);
-      const plotPx = declared.aspect === '16:9' ? autoPlotPx(target, width) + typePlotPx(definition.type, options, width) : PLOT_FLOOR_PX[target];
       // Header and footer room a spacing rule freed counts as frame here, so the
       // plot takes it and the canvas does not get shorter because of it (frame.ts recordFreedChrome).
       const freed = (r: LayoutResult<M, DV>) => r.refused ? 0 : freedChromeOf(r.frame);
       // Height floor: a narrower canvas is never shorter than a wider one. A card (narrower than
       // CARD_CLASS_WIDTH) starts at the height the chart takes at the next wider card step, full or compact.
       if (width < CARD_CLASS_WIDTH) height = Math.max(height, cardClassHeight(definition, data, options, width, true) ?? 0);
+      // A bridge asked for an 'auto' break that finds none is a whole-axis bridge, so it keeps that plot allowance.
+      // The probe is the search's own first layout (same start height), so the layout memo serves the search; it runs
+      // only where a whole-bridge allowance exists.
+      const wholeAxis = { ...options, valueAxis: { ...(options as { valueAxis?: object }).valueAxis, break: false } };
+      const drawnProbe = declared.aspect === '16:9' && (options as { valueAxis?: { break?: unknown } } | undefined)?.valueAxis?.break === 'auto'
+        && wholeBridgePlotPx(definition.type, wholeAxis, width) !== 0 ? at(width, height) : undefined;
+      const allowanceOptions = drawnProbe && !drawnProbe.refused && !drawnProbe.axes.some((axis) => axis.break)
+        && !drawnProbe.scene.some((node) => node.t === 'line' && (node.part === 'barBreak' || node.part === 'axisBreak'))
+        ? wholeAxis : options;
+      const plotPx = declared.aspect === '16:9' ? autoPlotPx(target, width) + typePlotPx(definition.type, allowanceOptions, width) : PLOT_FLOOR_PX[target];
       // The search runs as a function of the plot floor, so a stacked column can try its
       // wide floor first and keep the plain one when that hides fewer values.
       const search = (plotPx: number, startHeight: number): LayoutResult<M, DV> => {
@@ -1594,7 +1626,7 @@ let memoNextId = 0;
 export function withLayoutMemo<T>(run: () => T): T {
   if (layoutMemo) return run();
   layoutMemo = new Map();
-  try { return withEngineNotes(() => withCategoryRowPlans(run)); } finally { layoutMemo = undefined; memoSymbolIds = new Map(); }
+  try { return withPlanInputs(() => withEngineNotes(() => withCategoryRowPlans(run))); } finally { layoutMemo = undefined; memoSymbolIds = new Map(); }
 }
 
 function memoId(value: object | symbol): number {
@@ -1608,12 +1640,15 @@ function memoId(value: object | symbol): number {
   return id;
 }
 
+type MemoKeyPart = { value: unknown; text: string; cost: number };
+type PreparedMemoKeys = { scope?: object; parts?: Map<PropertyKey, MemoKeyPart> };
+
 /**
  * Every input by value: own string and symbol keys, nested ones in their order (a layout can
  * read them in that order), the top-level options sorted by name. Frozen objects (themes), functions, class instances, Maps and Sets, and the
  * call-state objects count by identity; neither can change during one synchronous call.
  */
-function memoKey(value: unknown, depth = 0): string {
+function memoKey(value: unknown, depth = 0, parts?: Map<PropertyKey, MemoKeyPart>): string {
   // Every value and every name counts against the budget: a long numeric array must not bypass it.
   if (--memoKeyBudget < 0) throw MEMO_KEY_TOO_LONG;
   switch (typeof value) {
@@ -1662,7 +1697,24 @@ function memoKey(value: unknown, depth = 0): string {
     const own = Reflect.ownKeys(object).filter(key => (object as Record<PropertyKey, unknown>)[key] !== undefined);
     const ordered = own.map(key => [memoName(key), key] as const)
       .sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
-    for (const [name, key] of ordered) out += `${name}:${memoKey((object as Record<PropertyKey, unknown>)[key], 1)},`;
+    if (!parts) {
+      for (const [name, key] of ordered) out += `${name}:${memoKey((object as Record<PropertyKey, unknown>)[key], 1)},`;
+      return `${out}}`;
+    }
+    for (const [name, key] of ordered) {
+      const value = (object as Record<PropertyKey, unknown>)[key];
+      const held = parts.get(key);
+      let text: string;
+      if (held && Object.is(held.value, value)) {
+        if ((memoKeyBudget -= held.cost) < 0) throw MEMO_KEY_TOO_LONG;
+        text = held.text;
+      } else {
+        const before = memoKeyBudget;
+        text = memoKey(value, 1);
+        parts.set(key, { value, text, cost: before - memoKeyBudget });
+      }
+      out += `${name}:${text},`;
+    }
     return `${out}}`;
   }
   for (const key of Reflect.ownKeys(object)) {
@@ -1698,7 +1750,7 @@ function memoCopy<M extends object, DV extends object>(result: LayoutResult<M, D
 
 /** fitSize through the request memo: the same chart, data object, options and mode give the same layout. */
 function fitSizeMemo<D, O extends ChartOptions, M extends object, DV extends object>(
-  definition: ChartCore<D, O, M, DV>, data: D, options: O | undefined, compactFallback: boolean,
+  definition: ChartCore<D, O, M, DV>, data: D, options: O | undefined, compactFallback: boolean, keys?: PreparedMemoKeys,
 ): LayoutResult<M, DV> {
   const memo = layoutMemo;
   // A grid panel is small and a grid lays out many: its key costs about as much as its layout.
@@ -1718,11 +1770,14 @@ function fitSizeMemo<D, O extends ChartOptions, M extends object, DV extends obj
     const { [PLOT_SHARE]: _share, ...rest } = keyed as O & { [PLOT_SHARE]?: number };
     keyed = rest;
   }
+  // A prepared table variant already owns stable content: only frame fields vary.
+  // Keep its exact value encodings for this request, then reread caller inputs next time.
+  if (keys && keys.scope !== memo) { keys.scope = memo; keys.parts = new Map(); }
   memoKeyBudget = MEMO_KEY_LIMIT;
   memoKeyData = data;
   let optionsKey: string;
   try {
-    optionsKey = memoKey(keyed);
+    optionsKey = memoKey(keyed, 0, keys?.parts);
   } catch (error) {
     if (error !== MEMO_KEY_TOO_LONG) throw error;
     return fitSize(definition, data, options, compactFallback);
@@ -1756,6 +1811,35 @@ function fitSizeMemo<D, O extends ChartOptions, M extends object, DV extends obj
   return result;
 }
 
+/** The thinnest column a canvas under CARD_MIN_WIDTH draws (px). */
+const MIN_COLUMN_BAR = 3;
+
+/**
+ * Whether a canvas is too narrow for even one MIN_COLUMN_BAR px bar per category. Such a column is refused at the
+ * gate with no layout, as it was before the gate went below the compact floor. A topN or a zoom draws fewer
+ * categories than the data holds, so those requests are always laid out.
+ */
+function columnCannotFit(data: unknown, options: { topN?: unknown; viewDomain?: unknown } | undefined, width: number): boolean {
+  const categories = (data as { categories?: unknown } | undefined)?.categories;
+  return options?.topN === undefined && options?.viewDomain === undefined
+    && Array.isArray(categories) && categories.length * MIN_COLUMN_BAR > width;
+}
+
+/**
+ * The canvas width under CARD_MIN_WIDTH at which the thinnest drawn column of this layout is still
+ * MIN_COLUMN_BAR px: the columns scale with the plot, the frame around the plot does not. Never
+ * above CARD_MIN_WIDTH, so a canvas at that width and wider is judged as before (a hundred
+ * categories draw at 280 px), and 0 when the layout draws no bar.
+ */
+function columnBarFloor(geometry: Pick<Geometry<object, object>, 'type' | 'size' | 'plot' | 'marks'>): number {
+  // A column that stepped to bars has horizontal bars: their `rect.w` is a length, not a thickness.
+  if (geometry.type !== 'column' || geometry.size.width >= CARD_MIN_WIDTH) return 0;
+  const bars = (geometry.marks as { bars?: { rect: Rect }[] } | undefined)?.bars ?? [];
+  const thinnest = Math.min(...bars.map((bar) => bar.rect.w).filter((w) => w > 0));
+  if (!Number.isFinite(thinnest) || thinnest >= MIN_COLUMN_BAR) return 0;
+  return Math.min(CARD_MIN_WIDTH, Math.ceil(geometry.size.width - geometry.plot.w + (geometry.plot.w * MIN_COLUMN_BAR) / thinnest));
+}
+
 /** Lay out one fixed size. Height searches never enter the search again. */
 function fitSize<D, O extends ChartOptions, M extends object, DV extends object>(
   definition: ChartCore<D, O, M, DV>, data: D, options: O | undefined, compactFallback: boolean,
@@ -1775,7 +1859,10 @@ function fitSize<D, O extends ChartOptions, M extends object, DV extends object>
   // The tight band lowers what the chart ACCEPTS, never what it reports. A
   // caller asking `measure` still hears the type's own 480 x 270 alongside the
   // compact floor, and a measured requirement (a bar's five rows) still gates.
-  const gatePolicy = tight ? { ...declared, minWidth: floor.width, minHeight: floor.height } : declared;
+  // A column draws narrower than its compact floor while its bars fit (`columnBarFloor`). The compact floor stays
+  // the size `measure` verifies and reports, so a host that reads it keeps a size that draws.
+  const gateWidth = definition.type === 'column' && !columnCannotFit(data, options, requested.width) ? Math.min(floor.width, NARROW_MIN_WIDTH) : floor.width;
+  const gatePolicy = tight ? { ...declared, minWidth: gateWidth, minHeight: floor.height } : declared;
   if (!nested && !fitsSize(requested, definition.type === 'grid' ? { ...gatePolicy, minHeight: 0 } : gatePolicy)) {
     return sizeRefusal(definition.type, definition.title, requested, resolveSizing(gatePolicy, requested));
   }
@@ -1798,7 +1885,7 @@ function fitSize<D, O extends ChartOptions, M extends object, DV extends object>
     // Gantt's own content-height rule requests the next wider card. It removes
     // the call marker before retaining its full-mode options.
     const memo = (runOptions as (O & { [CARD_HEIGHT_MEMO]?: CardHeightMemo }) | undefined)?.[CARD_HEIGHT_MEMO];
-    return definition.layout(data, definition.type === 'gantt' ? { ...clean, ...(memo ? { [CARD_HEIGHT_MEMO]: memo } : {}),
+    return definition.layout(data, definition.type === 'table' || definition.type === 'dimswitch' ? { ...clean, [PLAN_ONLY]: true } as unknown as O : definition.type === 'gantt' ? { ...clean, ...(memo ? { [CARD_HEIGHT_MEMO]: memo } : {}),
       ...((runOptions as { [ACCEPTANCE_PROBE]?: boolean } | undefined)?.[ACCEPTANCE_PROBE] ? { [ACCEPTANCE_PROBE]: true } : {}),
     } as unknown as O : clean);
   };
@@ -1827,8 +1914,10 @@ function fitSize<D, O extends ChartOptions, M extends object, DV extends object>
   const floorWithFooter = Math.max(geometry.sizing?.minHeight ?? 0, geometry.frame.minHeight ?? 0, geometry.frame.plotMinHeight ?? 0,
     (heightShort || tight) && HOLDS_COMPACT_PLOT.has(definition.type)
       ? Math.ceil(geometry.size.height + (atHardMinimum(options) && !HARD_KEEPS_COMPACT_PLOT.has(definition.type) ? HARD_COMPACT_PLOT : MIN_COMPACT_PLOT) - plotForFloor(geometry).h) : 0);
+  const barFloor = definition.type === 'column' ? columnBarFloor(geometry) : 0;
   const measured = {
     ...geometry.sizing,
+    ...(barFloor > (geometry.sizing?.minWidth ?? 0) ? { minWidth: barFloor } : {}),
     ...(definition.type === 'kpi' ? { naturalWidth: Math.min(geometry.sizing?.naturalWidth ?? 360, 360) } : {}),
     // The height that holds a plot of MIN_COMPACT_PLOT px is the measured floor (HOLDS_COMPACT_PLOT).
     minHeight: floorWithFooter - footerExtra,

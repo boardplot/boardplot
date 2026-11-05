@@ -52,6 +52,7 @@ export const fixtures: Fixture<SlopeChartData, SlopeOptions>[] = [
       // The height is left to the content.
       size: { width: 900 },
       highlight: 'nexumcloud',
+      change: 'absolute',
     },
   },
   {
@@ -191,30 +192,6 @@ export const fixtures: Fixture<SlopeChartData, SlopeOptions>[] = [
       title: 'Perfectly flat, perfectly overlapping — labels must still separate',
       subtitle: { measure: 'Utilization', period: 'FY26 half-years' },
       unit: '%',
-    },
-  },
-  {
-    id: 'too-many-categories',
-    title: 'Refusal example: a slope chart given four periods instead of two',
-    kind: 'torture',
-    refuses: { code: 'slope-too-many-points' },
-    data: {
-      categories: [
-        { id: 'q1', label: 'Q1' },
-        { id: 'q2', label: 'Q2' },
-        { id: 'q3', label: 'Q3' },
-        { id: 'q4', label: 'Q4' },
-      ],
-      series: [
-        { id: 'north', label: 'North', values: [12, 14, 15, 18] },
-        { id: 'south', label: 'South', values: [16, 15, 13, 11] },
-        { id: 'west', label: 'West', values: [9, 10, 12, 12] },
-      ],
-    },
-    options: {
-      title: 'Quarterly data pushed into a slope — lint routes to line',
-      subtitle: { measure: 'Order intake', period: 'FY26 by quarter' },
-      unit: '$m',
     },
   },
   {
@@ -439,6 +416,18 @@ fixtures.push({
   title: "Plant slopes with variant 'lines'",
   tags: ['coverage'],
   options: { ...plantCost.options, variant: 'lines' },
+});
+
+fixtures.push({
+  id: 'column-overrides', title: 'columnOverrides sets the width, alignment and head word of the change column', kind: 'example',
+  data: {
+    categories: [{ id: 'fy25', label: 'FY25' }, { id: 'fy26', label: 'FY26' }],
+    series: [{ id: 'north', label: 'North', values: [42, 48] }, { id: 'south', label: 'South', values: [55, 51] }, { id: 'east', label: 'East', values: [31, 39] }],
+  },
+  options: {
+    title: 'East gained the most', change: 'absolute', source: 'Illustrative data', size: { width: 720 },
+    columnOverrides: { change: { width: 110, label: 'Move', align: 'center', headAlign: 'right' } },
+  },
 });
 
 registerFixtures('slope', fixtures);

@@ -8,6 +8,7 @@ import * as z from 'zod';
 import { valueBandsSchema } from '../../bands';
 import { boundedNumber, formatExample, MAGNITUDE_WORDS_DOC } from '../../schema/shared';
 import { addDuplicateIdIssues, idRecord, refusedBaseOptions } from '../../schema/shared';
+import { columnHeadsOption, columnVisibilityOption } from '../../schema/generatedColumnOptions';
 import type { TableData, TableOptions } from '../../types/table';
 import { heatOptionsWithoutEffect } from './encodings/heatOptions';
 import { baseOptionsSchema } from '../../schema/shared';
@@ -46,7 +47,7 @@ const calcSchema: z.ZodType = z.lazy(() =>
       .describe('Reference to a numeric cell.'),
     z.strictObject({ lit: z.number().describe('Constant in source units.') }).describe('Numeric literal, e.g. {lit: 100} for a percent bridge.'),
     z.strictObject({
-      op: z.enum(['add', 'sub', 'mul', 'div']).describe('Arithmetic on a and b.'),
+      op: z.enum(['add', 'sub', 'mul', 'div']).describe("Arithmetic on a and b. x/0 prints n.m., 0/0 prints n/a. A division by a negative cell is plain arithmetic and warns 'ratio-negative-base' (info); percentDelta prints n.m. there."),
       a: calcSchema,
       b: calcSchema,
     }).describe('Binary arithmetic calculation.'),
@@ -84,8 +85,10 @@ const columnBase = {
     .describe("Width in px. React keeps it and scrolls. SVG narrows authored tracks only when the fixed frame needs it, with table-overflow and a wider-size fix. Value and computed tracks widen for figures, and a row-label track for its labels up to 180 px (table-column-widened). Other content may cut (table-column-clipped); remove width for automatic content sizing."),
   align: z.enum(['left', 'right', 'center']).optional()
     .describe('Cell alignment. Numeric left alignment is accepted but linted.'),
+  headAlign: z.enum(['left', 'right', 'center']).optional()
+    .describe('Head alignment; defaults to align.'),
   emphasis: z.enum(['strong', 'muted']).optional()
-    .describe("Header and cell emphasis. 'strong' sets the header and its cells to the emphasis weight (700 by default), 'muted' paints them in the muted ink. Paint only — column widths and row heights do not move."),
+    .describe("Header and cell emphasis. 'strong' sets the header and its cells to the emphasis weight (700 by default), 'muted' paints them in the muted ink. A strong column is measured in the bold weight; muted is paint only."),
   band: z.boolean().optional()
     .describe('Column band ground. Neighbouring banded columns read as one block and the first of the run takes the left hairline, so a block inside a column group needs no group of its own. Paint only.'),
   fitFormat: z.literal(false).optional().describe('false: options.fitFormats leaves this column\'s format as authored.'),
@@ -108,7 +111,7 @@ const columnSchema = z
       kind: z.literal('value').describe('Kind.'),
       format: formatExample.optional().describe(COLUMN_FORMAT_DOC),
       scenario: z.enum(['AC', 'PY', 'PL', 'FC']).optional()
-        .describe('Header scenario.'),
+        .describe('Header scenario: AC, PY, PL or FC. LY means PY (last year); codes accept any case.'),
       polarity: z.enum(['higherIsBetter', 'lowerIsBetter']).optional().describe('Which sign is favorable. Judgment tones and directional encodings read it.'),
       materiality: materialitySchema.optional().describe('Mute tones below this threshold; keep values visible.'),
       aggregate: z.enum(['sum', 'none', 'source']).optional()
@@ -133,7 +136,7 @@ const columnSchema = z
     }),
     z.strictObject({
       ...columnBase,
-      kind: z.literal('status').describe(`Status cell: ${STATUS_VALUES.join(' | ')} or { v: key } (other text refuses: status-value-invalid; numbers draw the missing dash and warn: status-value-number; a later release refuses numbers). Each key has a fixed tone. For free status text, use a text column with a cell tone.`),
+      kind: z.literal('status').describe(`Status cell: ${STATUS_VALUES.join(' | ')} or { v: key }. Green means on-track, amber or yellow means at-risk, and red means off-track; keys and traffic-light words accept any case and conversions warn input-converted. Other text refuses: status-value-invalid. Numbers draw the missing dash and warn: status-value-number; a later release refuses numbers. Each key has a fixed tone. For free status text, use a text column with a cell tone.`),
       labels: z.partialRecord(z.enum(STATUS_VALUES), z.string().min(1)).optional()
         .describe("Display text per status key, e.g. { pending: 'Learning' }. The key keeps its tone; an unlisted key prints as itself."),
       mark: z.enum(['chip', 'square']).optional()
@@ -143,7 +146,7 @@ const columnSchema = z
       ...columnBase,
       kind: z.literal('date').describe('Date cell: an ISO date (YYYY-MM-DD) or { v: date } (other text refuses: date-invalid; numbers draw the missing dash and warn: date-value-number).'),
       format: z.string().optional()
-        .describe("Date format example. Examples: '30 Sep 2026', 'Sep-26', '2026-09-30'."),
+        .describe("Date pattern or example: '30 Sep 2026', 'Sep-26', '2026-09-30', '30.09.2026', '09/30/2026', 'September 2026' or '2026'. Tokens: d, dd, ddd, dddd, M, MM, MMM, MMMM, MMMMM, Q (1), QQ (Q1), QQQ (Quarter 1), w, ww, yy, yyyy and 'quoted literals'. Excel mmm/mmmm name months and 'dd/mm/yyyy' uses lowercase months. YYYY/YY mean year and D/DD mean day. Numeric dates use a day above 12 to choose the order. Otherwise they read day first and warn date-format-ambiguous. A year in front keeps year/month/day. A short year beside a month name with a space or comma also warns when it could be a day. 'FY26' reads the calendar year and gives date-format-fiscal-year (info). Unreadable text warns date-format-unknown and uses 'd MMM yyyy'."),
     }),
     z.strictObject({
       ...columnBase,
@@ -264,7 +267,7 @@ const baseTableDataSchema = z
       )
       .optional()
       .describe('Column toggle groups. Every member must exist, belong to one toggle, and stay inside one columnGroup.'),
-    columns: z.array(columnSchema).min(1).describe('Display order; exactly one rowLabel column.'),
+    columns: z.array(columnSchema).min(1).describe('Display order; exactly one rowLabel column. Width, alignment, label and order of a column are authored here, so table takes no columnOverrides or columnOrder.'),
     rows: z.array(rowSchema).min(1).describe('Row hierarchy; totalPosition determines resolved display order. Rows: optional label,id; each value, text, status or date column reads the source field named like its id.'),
     levelNouns: z
       .array(
@@ -336,8 +339,23 @@ const baseTableDataSchema = z
     'Consulting-grade table. Percent values in POINTS (6.2 = 6.2%). null cell = missing → "—"; explicit states: na/nm/suppressed. ' + FORMAT_DOC,
   ) as unknown as z.ZodType<TableData>;
 
+// figures: false takes the figures off the heat cells and shrinks every row
+// to the heat pitch, so a table without a heat lane printed its numbers
+// into 14 px rows. A column is heat where resolveCellEncoding makes it so:
+// the bare 'heat' or the object form, which is always a heat lane.
+export function figuresNeedHeat(options: { figures?: boolean; encodings?: Record<string, unknown> }, ctx: z.RefinementCtx): void {
+  if (options.figures !== false) return;
+  if (Object.values(options.encodings ?? {}).some((entry) => entry === 'heat' || typeof entry === 'object')) return;
+  ctx.addIssue({
+    code: 'custom',
+    path: ['figures'],
+    message: "figures: false needs a heat column: give a column a heat lane in encodings, or drop 'figures'",
+  });
+}
+
 export const tableOptionsObject = baseOptionsSchema.safeExtend(refusedBaseOptions('table')).safeExtend({
   mountCollapsed: z.boolean().optional().describe('Default true. false removes closed descendants from the React DOM and defers offscreen leaf paint.'),
+  paintOffscreenRows: z.boolean().optional().describe('React only. true paints every mounted row at once, so a capture of a long table has no blank rows, and a long table paints slower. Default false. Closed rows follow mountCollapsed.'),
   signs: z.enum(['signed', 'operators', 'plain']).optional().describe('How sign -1 rows print. signed (default) negates them; operators draws + − × =; plain draws neither.'),
   driverTones: z.enum(['grouped', 'always', 'never']).optional().describe("Driver tones. 'grouped' (default): drivers with a parentId whose parent is not a section heading do, as statement lines do. 'always': every driver. 'never': driver ink only, as before 0.28. Neutral figures and labels keep the driver ink."),
   judgements: z.enum(['all', 'exceptions']).optional().describe('Which tones show. exceptions: strong good and bad only.'),
@@ -400,8 +418,8 @@ export const tableOptionsObject = baseOptionsSchema.safeExtend(refusedBaseOption
         .describe('Hide level-0 data rows and subtrees. The totals and the section headings stay: this is the totals-only step of a depth control, which collapsing a parent cannot reach, because a collapsed parent still draws its own row.'),
     })
     .optional().describe('Expansion order: depth, collapsed, expanded.'),
-  columnVisibility: idRecord(idSchema.describe('Column-toggle group id.'), z.boolean().describe('True shows the group; false hides it.')).optional()
-    .describe('Visibility by column-toggle id.'),
+  columnVisibility: columnVisibilityOption('table'),
+  columnHeads: columnHeadsOption(),
   inlineVisibility: idRecord(idSchema.describe('Inline-line group id.'), z.boolean().describe('True shows the lines of that group; false hides them.')).optional()
     .describe("Visibility by inlineGroup. An absent group is visible, so a Changes control hides every MoM line of a table with one entry."),
   magnitude: z.enum(['auto', 'thousand', 'million']).optional()
@@ -433,18 +451,21 @@ export const tableOptionsObject = baseOptionsSchema.safeExtend(refusedBaseOption
   frameFill: z.enum(['values', 'none']).optional()
     .meta({ default: 'values' })
     .describe("Under rowExtent 'frame'. 'values' (default): automatic value tracks grow in whole pixels, up to maxGrowth (default 2.5). An unauthored label track takes the rest. 'none': columns keep their widths; an empty track carries the row ground and rules to the edge."),
-  rowLabelLines: z.union([z.literal(1), z.literal(2)]).optional()
+  heightFill: z.enum(['rows', 'none']).optional()
+    .meta({ default: 'rows' })
+    .describe("Spare canvas height. 'rows' (default) spreads it over leaf rows as air, up to 16 px a side. 'none' leaves it empty."),
+  rowLabelLines: z.number().int().positive().optional()
     .meta({ default: 2 })
-    .describe("Lines a row label may take before it is cut with an ellipsis (default 2). A label breaks at a space or after _ - / or a dot, so a long campaign name wraps instead of ending in '…'. 1 keeps every label on one line. The hover card always prints the full name."),
+    .describe("Lines a row label may take before a cut (default 2). A label breaks at a space or after _ - / or a dot, so a long campaign name wraps instead of ending in '…'. 1 keeps every label on one line; a higher count lets a row grow to its lines. A cut label keeps its full name in its title."),
   lastTrackFlex: z.boolean().optional()
-    .describe('Extend the last track to the frame edge only when it has no authored width and rowExtent is tracks. Default false.'),
+    .describe('Last unauthored track takes the spare frame width when rowExtent is tracks. Default false.'),
   rowExtent: z.enum(['tracks', 'frame']).optional()
     .meta({ default: 'frame' })
     .describe("Where rows end. 'frame' (default) fills the width inside the frame margins. An explicit 'frame' also carries row grounds and rules through authored side margins. frameFill controls track growth. 'tracks' stops rows at the last column. Column bands stop at their columns. Tables use horizontal rules and explicit column separators; there is no single vertical end rule."),
   sortIndicator: z.enum(['all', 'sorted']).optional()
-    .describe("Which sortable headers draw a chevron. 'all' (the default) draws one on every sortable header; 'sorted' draws it on the sorted one alone and keeps the others' reserve, so no track moves."),
+    .describe("Sortable headers with a chevron. 'all' (the default) draws one on every sortable header; 'sorted' draws it on the sorted one alone and keeps the others' reserve, so no track moves."),
   levelOffset: z.number().int().min(-4).max(4).optional()
-    .describe('Shift non-total rows down the level ladder. Default 0. A board whose top rows are groups rather than KPI lines reads one rung too heavy: 1 steps them down in size, weight, air, ground, indent and label ink, -1 steps them up. The rungs stay floored at the top and at the deepest step.'),
+    .describe('Shift body rows down the ladder. Default 0. A board whose top rows are groups rather than KPI lines reads one rung too heavy: 1 steps them down in size, weight, air, ground, indent and label ink, -1 steps them up. The rungs stay floored at the top and at the deepest step.'),
   cellPadX: z.number().min(0).max(24).optional()
     .describe('Horizontal cell padding in px. Default 12; only when it cannot fit, use 5 for 20–24 columns or 3 for 25 or more.'),
   groupRule: z.enum(['label', 'span']).optional()
@@ -464,19 +485,7 @@ export const tableOptionsObject = baseOptionsSchema.safeExtend(refusedBaseOption
     .meta({ default: false })
     .describe('Fold marks beside parent rows. Drawn in static SVG/PNG and read-only grids. Default false: no marks or gutter. true draws the marks and reserves their gutter. Interactive grids keep their fold buttons either way.'),
 })
-  // figures: false takes the figures off the heat cells and shrinks every row
-  // to the heat pitch, so a table without a heat lane printed its numbers
-  // into 14 px rows. A column is heat where resolveCellEncoding makes it so:
-  // the bare 'heat' or the object form, which is always a heat lane.
-  .superRefine((options, ctx) => {
-    if (options.figures !== false) return;
-    if (Object.values(options.encodings ?? {}).some((entry) => entry === 'heat' || typeof entry === 'object')) return;
-    ctx.addIssue({
-      code: 'custom',
-      path: ['figures'],
-      message: "figures: false needs a heat column: give a column a heat lane in encodings, or drop 'figures'",
-    });
-  }).describe('Table framing, presentation, encodings, hierarchy visibility, sibling sort and top-N. sort.categories reorders data rows within each parent; sort.segments is refused. topN nests the remaining siblings under Others and reuses resolve and claims.') ;
+  .superRefine(figuresNeedHeat).describe('Table framing, presentation, encodings, hierarchy visibility, sibling sort and top-N. sort.categories reorders data rows within each parent; sort.segments is refused. topN nests the remaining siblings under Others and reuses resolve and claims.') ;
 export const tableOptionsSchema = tableOptionsObject as unknown as z.ZodType<TableOptions>;
 
 export const tableDataSchema = baseTableDataSchema.superRefine((data, ctx) => {

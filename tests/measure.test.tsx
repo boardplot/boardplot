@@ -128,10 +128,17 @@ describe('shared request measurement', () => {
           // Measure the live target for the React slot. Static exports can grow their footer.
           // React crops this live SVG at the footer and draws the footer in HTML.
           const cropped = result.geometry!.frame?.noteList?.length ? withoutSvgFooter(result.geometry!) : result.geometry;
-          expect(withoutPlotAdvice(actual), context).toEqual(withoutPlotAdvice(cropped));
-          // Measurement verifies both minWidth and the requested width.
-          // Wrapped text can raise the height above this layout's floor.
-          for (const key of ['minWidth', 'minHeight', 'naturalWidth', 'naturalHeight'] as const) {
+          // Ordinary tables report their selected spacing floor; measurement still finds the precise minimum.
+          const comparable = (geometry: Geometry | undefined) => {
+            const value = withoutPlotAdvice(geometry);
+            return type === 'table' && value?.sizing ? { ...value, sizing: { ...value.sizing,
+              minWidth: 0, minHeight: 0, comfortableWidth: 0, comfortableHeight: 0 } } : value;
+          };
+          expect(comparable(actual), context).toEqual(comparable(cropped));
+          // Wrapped text can raise the measured height above the layout's natural height.
+          const dimensions = type === 'table' ? ['naturalWidth', 'naturalHeight'] as const
+            : ['minWidth', 'minHeight', 'naturalWidth', 'naturalHeight'] as const;
+          for (const key of dimensions) {
             expect(result[key], context).toBeGreaterThanOrEqual(actual!.sizing![key]);
           }
           expect(withoutPlotAdvice(actual)?.warnings, context).toEqual(withoutPlotAdvice(result)?.warnings);

@@ -20,6 +20,11 @@
   "grid": "#EAE5DA",
   "leader": "#A59C90",
   "background": "#FDFBF4",
+  "stack": [
+   "#2E346F",
+   "#818BC3",
+   "#C1C6DF"
+  ],
   "series": [
    "#2E346F",
    "#C48404",

@@ -222,6 +222,18 @@ describe('value integrity on the chart', () => {
     expect(texts('mekko', { ...data, series: [{ id: 'v', values: [1200.4, 14] }] }, { format: '1,234' })).toContain('1,200');
   });
 
+  // A few narrow bar-mekko columns made the value row go all, alternate, then none, so a slide with twelve columns printed no value at all.
+  it('a bar mekko keeps the value of every column that has a seat', () => {
+    const widths = [58.5, 20.57, 9.951, 6.47, 8.079, 47.97, 27.21, 10.79, 72.21, 10.48, 86.2, 21.05];
+    const margins = [12.7, 14.9, 9.72, 14.6, -2.2, 0.377, 14.3, 1.11, 0.879, 13.1, 9.46, 2.73];
+    const data = {
+      categories: widths.map((_, i) => ({ id: `c${i}`, label: `Segment ${i + 1}` })),
+      series: [{ id: 'w', role: 'reference', values: widths }, { id: 'm', values: margins.map((pct) => ({ pct })) }],
+    };
+    const printed = new Set(texts('mekko', data, { variant: 'bar', widthSeriesId: 'w', unit: '%', size: { width: 888, height: 396 } }));
+    expect(['13%', '15%', '14%', '9%', '3%'].filter((v) => printed.has(v)).length).toBeGreaterThanOrEqual(4);
+  });
+
   // A centered funnel and a bar Rest built from percent cells still printed bare numbers ("70", "30") after the main paths kept their '%'.
   it('a centered funnel and a bar Rest of percent cells keep their percent sign', () => {
     const data = { categories: [{ id: 'B' }, { id: 'A' }], series: [{ id: 'v', values: [{ pct: 30 }, { pct: 70 }] }] };
@@ -274,6 +286,41 @@ it('keeps variance actual labels within their own column or reports their omissi
   expect(geometry.warnings.map((warning: any) => warning.code)).toContain('values-in-note');
 });
 
+// The largest variance sat in a valley between taller columns: both seats over its cap were blocked, and it lost
+// its value while smaller variances kept theirs.
+it('labels the largest integrated variance when smaller ones keep their labels', () => {
+  const actual = [25.08, 25.84, 28.19, 30.78, 30.7, 34.36, 35.23, 33.29, 32.01, 29.62, 29.31, 30.37, 33.64, 32.08, 34.02, 33.79, 35.62, 34.52, 36.14, 36.62, 38.86, 39.96, 44.46, 43.21];
+  const plan = [22.54, 27.99, 27.22, 29.82, 36.46, 31.24, 35.08, 29.59, 26.9, 29.47, 29.28, 34.64, 39.88, 31.23, 33.88, 38.69, 40.31, 28.98, 30.62, 39.26, 46.27, 32.04, 40.42, 48.86];
+  const geometry = getChart('variance')!.layout({
+    categories: actual.map((_, i) => ({ id: `m${i}`, label: `M${i + 1}` })),
+    series: [{ id: 'ac', label: 'Actual', values: actual }, { id: 'pl', role: 'reference' as const, scenario: 'PL' as const, values: plan }],
+  }, { variant: 'integrated', variance: { of: 'ac', vs: 'pl' }, target: 'dashboard', size: { width: 480 } }) as any;
+  const points = geometry.labels.filter((label: any) => label.kind === 'point');
+  expect(points.some((label: any) => !label.hidden)).toBe(true);
+  // M22: actual 39.96 against plan 32.04, the largest variance of the chart.
+  expect(points.find((label: any) => label.owner.categoryId === 'm21').hidden).toBeUndefined();
+});
+
+// At a narrow height the lifted seats of the two larger variances ran into the key, so +22.6 and -17.2 lost
+// their values while +8.1 kept its own.
+it('gives a larger integrated variance a value row over the key instead of dropping it', () => {
+  const names = ['North region (coastal)', 'Recurring revenue, enterprise', 'Other operating expenses', 'Interest and similar expenses',
+    'Purchased goods and services', 'Western region and harbour', 'Pension provisions, home', 'Research and development expenses',
+    'Other operating income', 'Logistics services abroad', 'Maintenance and repairs', 'Eastern region'];
+  const geometry = getChart('variance')!.layout({
+    categories: names.map((label, i) => ({ id: `c${i}`, label })),
+    series: [
+      { id: 'ac', label: 'Maintenance', values: [178, 173.7, 182.1, 193.8, 204.9, 223.9, 243.9, 224.9, null, 195.7, null, 172.6] },
+      { id: 'py', label: 'Prior year', role: 'reference' as const, scenario: 'PY' as const, values: [145.6, 190.1, 165.5, 215.2, 245.5, 201.3, 221, 242.1, null, 168.3, null, 164.5] },
+    ],
+  }, { title: 'Actual against reference', subtitle: { measure: 'Actual against reference', period: 'FY26' }, unit: 'EUR m',
+    variant: 'integrated', variance: { of: 'ac', vs: 'py' }, target: 'slide', size: { width: 576, height: 528 } } as any) as any;
+  const drawn = (id: string) => geometry.labels.find((label: any) => label.kind === 'point' && label.owner.categoryId === id).hidden === undefined;
+  expect(drawn('c11')).toBe(true); // +8.1
+  expect(drawn('c5')).toBe(true); // +22.6
+  expect(drawn('c7')).toBe(true); // -17.2
+});
+
 // A last value with a key of names could take a shifted seat two rows away from its point.
 it('keeps last line values next to their own point', () => {
   const geometry = getChart('line')!.layout({
@@ -318,4 +365,67 @@ it('numbers linear-process steps in drawn order, with and without order', () => 
     const badges = geometry.labels.filter((label: any) => label.id.startsWith('badge-label:')).sort((a: any, b: any) => a.rect.x - b.rect.x);
     expect(badges.map((label: any) => label.text)).toEqual(nodes.map((_, index) => String(index + 1)));
   }
+});
+
+// Layout stored round2 of a value or difference and the format rounded that again: a gap of 0.003 read as "on target", 2.3456 printed +2.4, -1.25 printed -1.2.
+it('a derived value reaches the format unrounded', () => {
+  const layout = (type: string, data: unknown, options: Record<string, unknown>) => getChart(type)!.layout(data as never, options as never) as any;
+  const bullet = layout('bullet', { rows: [{ id: 'a', label: 'A', value: 0.012, target: 0.015 }, { id: 'b', label: 'B', value: 12.3456, target: 10 }] }, { format: '0.123' });
+  expect(bullet.derived.deltaVsTarget).toEqual({ a: -0.003, b: 2.3456 });
+  expect(texts('bullet', { rows: [{ id: 'b', label: 'B', value: 12.3456, target: 10 }] }, { format: '1.1' })).toContain('+2.3');
+  const mekko = layout('mekko', { categories: [{ id: 'A' }, { id: 'B' }], series: [{ id: 'x', values: [0.003, 0.004] }, { id: 'y', values: [0.004, 0.008] }] }, { variant: 'stacked', format: '0.000' });
+  expect(mekko.derived.columnTotals).toEqual({ A: 0.007, B: 0.012 });
+  const variance = layout('variance', { categories: ['A', 'B'], series: [{ id: 'ac', values: [0.006, 79] }, { id: 'py', role: 'reference', values: [0.002, 80] }] }, { variant: 'absolute', variance: { vs: 'py' } });
+  expect(variance.derived.deltaAbs).toEqual({ A: 0.004, B: -1 });
+  const relative = texts('variance', { categories: ['A', 'B'], series: [{ id: 'ac', values: [79, 120] }, { id: 'py', role: 'reference', values: [80, 100] }] }, { variant: 'relative', variance: { vs: 'py' } });
+  expect(relative).toContain('−1.3%');
+  const slope = layout('slope', { categories: ['a', 'b'], series: [{ id: 's', values: [23.4, 19.2] }, { id: 't', values: [0.001, 0.005] }] }, {});
+  expect(slope.derived.changes.s.pct).toBeCloseTo(-17.9487, 3);
+  expect(slope.derived.changes.t.abs).toBe(0.004);
+  // Equal values are on target whatever float noise their difference holds, and a 14-digit total keeps its last digits.
+  const equal = layout('bullet', { rows: [{ id: 'a', label: 'A', value: 0.30000000000000004, target: 0.3 }, { id: 'b', label: 'B', value: 0.3, target: 0.30000000000000004 }] }, { format: '0.00' });
+  expect(equal.derived.deltaVsTarget).toEqual({ a: 0, b: 0 });
+  const big = layout('mekko', { categories: [{ id: 'A' }], series: [{ id: 'x', values: [12345678901234] }, { id: 'y', values: [1] }] }, { variant: 'stacked', format: '1,234' });
+  expect(big.derived.columnTotals).toEqual({ A: 12345678901235 });
+  // A printed share and an index are not rounded to two places before the format rounds them.
+  const share = layout('mekko', { categories: [{ id: 'A' }], series: [{ id: 'x', values: [12.449] }, { id: 'y', values: [87.551] }] }, { variant: 'stacked', format: '0.0%' });
+  expect(share.derived.shares.A.x).toBe(12.449);
+  expect(texts('line', { categories: ['a', 'b', 'c'], series: [{ id: 's', values: [50, 51, 52.2245] }] }, { rebase100: true, format: '0.0' })).toContain('104.4');
+  // 100.35 − 100 is 0.3499999999999943 in float: the gap is 0.35 and prints 0.4, not 0.3.
+  const noisy = layout('variance', { categories: ['A'], series: [{ id: 'ac', values: [100.35] }, { id: 'py', role: 'reference', values: [100] }] }, { variant: 'absolute', variance: { vs: 'py' }, format: '1.1' });
+  expect(noisy.derived.deltaAbs.A).toBe(0.35);
+});
+
+// Amounts that cancel (0.1 + 0.2 - 0.3) kept a 5.55e-17 residue: a total printed a bound ("<0.1", ">−0.1", "<1") and a ratio or share over it printed a 17-digit number.
+it('a sum of cancelling amounts is exactly 0 on a table, a bridge, a stack and a switch', () => {
+  const noise = /&[lg]t;|\d{9,}/;
+  const leaf = (id: string, p: number) => ({ id, label: id, cells: { a: 1, p } });
+  const tableData = {
+    columns: [
+      { id: 'label', kind: 'rowLabel', label: 'Row' }, { id: 'a', kind: 'value', label: 'Act', format: '1,234.5' }, { id: 'p', kind: 'value', label: 'Plan', format: '1,234.5' },
+      { id: 'r', kind: 'computed', label: 'a/p', calc: { op: 'div', a: { ref: 'a' }, b: { ref: 'p' } }, format: '0.00' },
+      { id: 's', kind: 'computed', label: 'share', calc: { op: 'share', of: 'p' }, format: '0.0%' },
+    ],
+    rows: [{ id: 'tot', label: 'Total', role: 'total', totalPolicy: 'derive', cells: {}, children: [leaf('x', 0.1), leaf('y', 0.2), leaf('z', -0.3)] }],
+  };
+  const table = texts('table', tableData, {});
+  expect(table.filter((text) => noise.test(text))).toEqual([]);
+  expect(table).toContain('n.m.');
+  const bridge = texts('waterfall', { items: [{ id: 'open', label: 'Open', type: 'total', value: 10.1 }, { id: 'up', label: 'Up', value: 3.3 }, { id: 'down', label: 'Down', value: -13.4 }, { id: 'close', label: 'Close', type: 'total' }] }, {});
+  expect(bridge.filter((text) => noise.test(text))).toEqual([]);
+  const stack = { categories: [{ id: 'x', label: 'X' }, { id: 'y', label: 'Y' }], series: [{ id: 'a', label: 'A', values: [0.1, 1] }, { id: 'b', label: 'B', values: [0.2, 1] }, { id: 'c', label: 'C', values: [-0.3, 1] }] };
+  for (const type of ['bar', 'column']) expect(texts(type, stack, { variant: 'stacked', grandTotalLabels: true }).filter((text) => noise.test(text))).toEqual([]);
+  const facts = ['m1', 'm2', 'm3'].flatMap((memberId, i) => ['range', 'prior', 'w1'].map((periodId) => ({ memberId, periodId, sums: { o: [0.1, 0.2, -0.3][i]!, s: 100 } })));
+  const dimswitch = texts('dimswitch', {
+    dimension: { label: 'Ch', total: { id: 'total', label: 'Total' }, members: ['m1', 'm2', 'm3'].map((id) => ({ id, label: id })), headline: ['orders'], sums: true },
+    measures: [{ id: 'orders', scale: 'count', label: 'Net orders', value: { field: 'o' } }, { id: 'cac', scale: 'perUnit', label: 'Spend per net order', value: { op: 'div', a: { field: 's' }, b: { field: 'o' } }, format: '1.2' }],
+    periods: [{ id: 'range', label: 'Range', kind: 'range' }, { id: 'prior', label: 'Prior', kind: 'prior' }, { id: 'w1', label: 'W1' }], facts,
+  }, {});
+  expect(dimswitch.filter((text) => noise.test(text))).toEqual([]);
+  expect(dimswitch).toContain('n.m.');
+  const combo = { ...stack, series: [...stack.series.map((s) => ({ ...s, kind: 'column' })), { id: 'l', label: 'Line', kind: 'line', values: [1, 2] }] };
+  expect(texts('combo', combo, { unit: 'EUR m' }).filter((text) => noise.test(text))).toEqual([]);
+  // topN folds C, D and E into Others; their sum cancels.
+  const topN = { categories: ['A', 'B', 'C', 'D', 'E'].map((id) => ({ id, label: id })), series: [{ id: 's', label: 'S', values: [50, 40, 0.1, 0.2, -0.3] }] };
+  for (const type of ['bar', 'column']) expect(texts(type, topN, { unit: 'EUR m', topN: { n: 2, rest: true } }).filter((text) => noise.test(text))).toEqual([]);
 });

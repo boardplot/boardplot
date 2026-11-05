@@ -6,7 +6,7 @@
  */
 
 import type { Id } from '../../types/cell';
-import type { BaseOptionsFor } from '../../types/options';
+import type { BaseOptionsFor, ColumnOverride } from '../../types/options';
 
 interface BoxGroupInput {
   id: Id;
@@ -34,6 +34,8 @@ export type BoxState = 'box' | 'points' | 'median-only' | 'empty';
 // directly, so the type refuses it as the schema does.
 export type BoxOptions = Omit<BaseOptionsFor<'box'>, 'legend'> & {
   legend?: never;
+  /** Settings per generated column, by column id. A width beats the width the type would pick. */
+  columnOverrides?: Record<string, ColumnOverride>;
   /** Title of the drawn value axis, drawn only when authored. */
   axisTitles?: { primary?: string };
   whiskers?: WhiskerRule;
@@ -111,4 +113,6 @@ export interface BoxRowMark {
 
 export interface BoxMarks {
   rows: BoxRowMark[];
+  /** The decimals the automatic statistic and point labels print at; the hover card's ranges use them too. */
+  labelDecimals: number;
 }

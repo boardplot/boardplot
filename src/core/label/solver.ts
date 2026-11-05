@@ -142,9 +142,18 @@ export interface SlotCandidate {
    * and gives no halo.
    */
   overRules?: boolean;
+  /**
+   * A value line (the annotation rule of an average, a target or a benchmark)
+   * does not block this seat, and a label across one gets a halo. A series'
+   * reference ticks still block it. For the seat a value keeps however the
+   * rule runs: the rule breaks around the glyphs when the scene is built.
+   */
+  overValueLines?: boolean;
   /** The seat lies on the key line, right of its entries: the legend's whole-row claim does not block it (the chart checked the entries). */
   overLegend?: boolean;
   leaderFrom?: { x: number; y: number };
+  /** One text line for a wrapped seat's leader gutter and minimum drawn run. */
+  leaderLineHeight?: number;
   /**
    * When `leaderFrom` lies under the label's own span, draw the leader
    * from above or below (a callout over its slice). Without it such a seat
@@ -164,6 +173,8 @@ export interface SlotCandidate {
   insideFill?: string;
   /** Original fill recipe, retained for paint-only theme changes. */
   insidePaint?: Paint;
+  /** The fills of the whole value matrix this seat belongs to (see the contrast-ink recipe). */
+  insideMatrix?: Paint[];
   insidePattern?: import('../types/scene').HatchPattern | 'outline';
   /** Identity key box drawn with the label in this slot only (the request's swatch holds for every slot). */
   swatch?: Paint;
@@ -197,6 +208,8 @@ export interface LabelRequest {
   noLeader?: true;
   /** Candidates were checked against the exact own stroke; its coarse boxes need no extra air. */
   ownStrokeClear?: true;
+  /** The drawn stroke of the value's own line: a seat added later (a flag seat) may not cross it. */
+  ownStroke?: readonly { hits(rect: Rect, pad: number): boolean }[];
   /** This numeric label names a mark rather than a separate readout rail. false: a name or other text, never bound to the plot. */
   markAnchored?: boolean;
   /** Authored value text stays eligible when the planner ranks engine values. */
@@ -335,8 +348,11 @@ export interface SolveCtx {
    * of leaving a scatter of survivors the reader cannot interpret.
    */
   seriesUniform?: { kinds: LabelKind[]; maxHiddenShare?: number };
-  /** Ordered computed rows: keep all, every second from the end when allowed, or none. */
-  valueRows?: { ids: readonly Id[]; alternate?: boolean }[];
+  /**
+   * Ordered computed rows: keep all, every second from the end when allowed, or none.
+   * `keepEnds` makes a row that is omitted keep its first and last value.
+   */
+  valueRows?: { ids: readonly Id[]; alternate?: boolean; keepEnds?: boolean }[];
   /**
    * The drawn line points of the plot. With it, a value
    * label on a line point takes a seat only where it reads as that point's
@@ -386,6 +402,16 @@ export interface SolveResult {
 const DENSITY_MIN_PRIORITY = PRIORITY.endpoint; // 'minimal' keeps >= endpoint band
 const REQUIRED_VALUE_PRIORITY = PRIORITY.valueLine;
 
+/**
+ * Whether the value at `index` of a row that gave up its full set goes to the note. An
+ * alternate row keeps every second value from the end. An omitted row keeps its first
+ * and last value when it asks for that (`keepEnds`).
+ */
+function dropsFromRow(row: { mode: 'all' | 'alternate' | 'none'; eligible: Id[]; keepEnds?: boolean }, index: number): boolean {
+  const last = row.eligible.length - 1;
+  return row.mode === 'none' ? !(row.keepEnds && (index === 0 || index === last)) : (last - index) % 2 !== 0;
+}
+
 export function solveLabels(requests: LabelRequest[], occupied: OccupiedIndex, ctx: SolveCtx): SolveResult {
   if (!ctx.valueRows?.length) return solveLabelPass(requests, occupied, ctx);
   const initial = occupied.snapshot();
@@ -412,7 +438,8 @@ export function solveLabels(requests: LabelRequest[], occupied: OccupiedIndex, c
         row.mode = row.mode === 'all' && row.alternate ? 'alternate' : 'none';
         row.reason = `computed row ${row.mode === 'alternate' ? 'uses alternate values from the end' : 'omitted'}; skipped ${skipped}: no candidate for '${unseated}'`;
         row.eligible.forEach((id, index) => {
-          if (row.mode === 'none' || (row.eligible.length - 1 - index) % 2 !== 0) dropped.add(id);
+          if (dropsFromRow(row, index)) dropped.add(id);
+          else dropped.delete(id);
         });
       }
     }
@@ -438,7 +465,9 @@ export function solveLabels(requests: LabelRequest[], occupied: OccupiedIndex, c
       row.mode = row.mode === 'all' && row.alternate ? 'alternate' : 'none';
       row.reason = `computed row ${row.mode === 'alternate' ? 'uses alternate values from the end' : 'omitted'}; unplaced: ${failed.join(', ')}`;
       row.eligible.forEach((id, index) => {
-        if (!pinned.has(id) && (row.mode === 'none' || (row.eligible.length - 1 - index) % 2 !== 0)) dropped.add(id);
+        if (pinned.has(id)) return;
+        if (dropsFromRow(row, index)) dropped.add(id);
+        else dropped.delete(id);
       });
       retry = true;
     }
@@ -583,6 +612,7 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
         const hard = anyHit(occupied, rect, padding, (o) => {
           if (o.kind === 'annotation' && selfAnn && o.owner.annotationId === selfAnn) return false;
           if (overRules && (o.part === 'referenceLine' || o.part === CROSSABLE_RULE_PART)) return false;
+          if (req.candidates[index]!.overValueLines && isValueLine(o)) return false;
           if (overLegend && o.kind === 'legend') return false;
           // A slot over columns lies wholly on one column or clear of them:
           // a label across a fill edge is half on the page and half on the
@@ -821,6 +851,7 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
       const label = finalize(base, req, cand, false, darkInk, lightInk);
       if (leader) label.leader = leader;
       if (cand.overRules && anyHit(occupied, cand.rect, req.pad ?? pad, (o) => o.part === 'referenceLine')) label.halo = true;
+      if (cand.overValueLines && anyHit(occupied, cand.rect, req.pad ?? pad, isValueLine)) label.halo = true;
       placed.push(label);
       occupied.claim(cand.rect, 'label', req.owner, TOTAL_KINDS.has(req.kind) ? TOTAL_PART : undefined);
       claimLeader(label);
@@ -943,6 +974,21 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
     const byRank = (a: Id, b: Id): number => (rank.get(a) ?? 0) - (rank.get(b) ?? 0);
     placed.sort((a, b) => byRank(a.id, b.id));
     decisions.sort((a, b) => byRank(a.labelId, b.labelId));
+  }
+  // A 45° name claims only a square at its anchor (see rotatedClaimRect), so later labels, such as a callout, could seat on the name.
+  // Once every label has its seat, claim the slanted box the text covers.
+  for (const label of placed) {
+    const req = label.hidden || label.rotate !== -45 ? undefined : requests.find(r => r.id === label.id);
+    if (!req) continue;
+    const lineH = req.font.size * (req.font.lineHeight ?? 1.2);
+    const length = Math.max(...req.lines.map(line => ctx.measure(line, req.font).width));
+    const end = { x: label.rect.x + label.rect.w, y: label.rect.y + (lineH * Math.SQRT1_2) / 2 };
+    const reach = { x: -length * Math.SQRT1_2, y: length * Math.SQRT1_2 };
+    const half = (lineH * Math.SQRT1_2) / 2;
+    const polygon = [{ x: end.x - half, y: end.y - half }, { x: end.x + half, y: end.y + half }, { x: end.x + reach.x + half, y: end.y + reach.y + half }, { x: end.x + reach.x - half, y: end.y + reach.y - half }];
+    const xs = polygon.map(p => p.x);
+    const ys = polygon.map(p => p.y);
+    occupied.claim({ x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) }, 'label', label.owner, 'rotatedName', polygon);
   }
   return { placed, decisions, warnings, ...(ownershipLimited.size > 0 ? { ownershipLimited } : {}) };
 }
@@ -1068,6 +1114,9 @@ function withLiftLeaders(req: LabelRequest, ownedPoint: boolean, runClear: (from
   });
   return changed ? { ...req, candidates, ...(req.leaderClear ? {} : { leaderClear: true }) } : req;
 }
+
+/** A claim of a value line: the annotation rule of an average, a target or a benchmark. */
+const isValueLine = (claim: OccupiedClaim): boolean => claim.kind === 'annotation' && claim.part === 'referenceLine';
 
 /** Penalty a seat with an added leader takes over the seats that read as their point's without one. */
 const LED_PENALTY = 100;
@@ -1235,8 +1284,9 @@ const LEADER_MIN_DRAWN_RATIO = 0.6;
 export function leaderTerminus(
   rect: { x: number; y: number; w: number; h: number },
   from: { x: number; y: number },
+  lineHeight = rect.h,
 ): { x: number; y: number } {
-  const gutter = LEADER_GUTTER_RATIO * rect.h;
+  const gutter = LEADER_GUTTER_RATIO * lineHeight;
   const approachesFromLeft = from.x <= rect.x;
   const edgeX = approachesFromLeft ? rect.x : rect.x + rect.w;
   return {
@@ -1253,19 +1303,33 @@ function leaderExceedsLimit(req: LabelRequest, cand: SlotCandidate): boolean {
   const { rect, leaderFrom: from } = cand;
   // A vertical leader (the anchor under the label's span) runs to the near edge.
   if (from.x > rect.x && from.x < rect.x + rect.w) return Math.max(rect.y - from.y, from.y - rect.y - rect.h) > req.maxLeaderLength;
-  const end = leaderTerminus(cand.rect, cand.leaderFrom);
+  const end = leaderTerminus(cand.rect, cand.leaderFrom, leaderHeightOf(cand));
   const dx = Math.abs(end.x - cand.leaderFrom.x);
   const dy = Math.abs(end.y - cand.leaderFrom.y);
   const length = dx <= 8 || dy <= 8 ? Math.hypot(dx, dy) : dx + dy;
   return length > req.maxLeaderLength;
 }
 
-function leaderFor(cand: SlotCandidate): { d: string; curved: boolean } | undefined {
+/**
+ * The leader of a candidate. A wrapped seat that would draw no leader at its full height gets a second try at one
+ * text line: a run is a stub next to one line, not next to four.
+ */
+export function leaderFor(cand: SlotCandidate): { d: string; curved: boolean } | undefined {
+  const full = leaderAt(cand, cand.rect.h);
+  return full ?? (cand.leaderLineHeight === undefined ? undefined : leaderAt(cand, cand.leaderLineHeight));
+}
+
+/** The height the candidate's leader is measured at: its full height, or one line when only that draws a leader. */
+export function leaderHeightOf(cand: SlotCandidate): number {
+  return cand.leaderLineHeight !== undefined && !leaderAt(cand, cand.rect.h) ? cand.leaderLineHeight : cand.rect.h;
+}
+
+function leaderAt(cand: SlotCandidate, lineHeight: number): { d: string; curved: boolean } | undefined {
   const from = cand.leaderFrom;
   if (!from) return undefined;
-  const minimum = LEADER_MIN_DRAWN_RATIO * cand.rect.h;
+  const minimum = LEADER_MIN_DRAWN_RATIO * lineHeight;
   const approachesFromLeft = from.x <= cand.rect.x;
-  const toEdge = leaderTerminus(cand.rect, from);
+  const toEdge = leaderTerminus(cand.rect, from, lineHeight);
 
   const dx = toEdge.x - from.x;
   const dy = toEdge.y - from.y;
@@ -1338,6 +1402,7 @@ function finalize(
         kind: 'contrast-ink',
         fill: paint,
         ...(pattern ? { pattern } : {}),
+        ...(cand.insideMatrix ? { matrix: cand.insideMatrix } : {}),
       },
     };
   }

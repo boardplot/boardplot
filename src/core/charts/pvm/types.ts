@@ -52,7 +52,7 @@ export type PvmEffectId =
   | 'new'
   | 'lost';
 
-export interface PvmOptions extends BaseOptionsFor<'pvm'> {
+export interface PvmOptions extends Omit<BaseOptionsFor<'pvm'>, 'labels'> {
   /**
    * Where the price x volume interaction term is booked. 'in-price' evaluates
    * price at CURRENT volumes and absorbs the interaction; 'separate' splits it
@@ -66,6 +66,10 @@ export interface PvmOptions extends BaseOptionsFor<'pvm'> {
    * decomposition is then invariant to the counting unit.
    */
   volumeMix?: 'split' | 'combined';
+  /** Only `point: false`: the steps and totals stop printing; the bars, hover and records keep them. */
+  labels?: { point?: false };
+  /** Horizontal bridge: the name band (label) and the value band (value), in px. */
+  columnOverrides?: Record<string, { width?: number }>;
   /**
    * Default false. true adds the short convention to the one footer line. The
    * coverage part of that line prints regardless while items enter or leave
@@ -73,6 +77,12 @@ export interface PvmOptions extends BaseOptionsFor<'pvm'> {
    * `notes` is set.
    */
   methodNote?: boolean;
+  /**
+   * Default true. Prints the net change from the opening to the closing total,
+   * absolute and in percent, in its sign colour above the closing column.
+   * false leaves the closing column with its value only.
+   */
+  netChange?: boolean;
 }
 
 export interface PvmEffect {

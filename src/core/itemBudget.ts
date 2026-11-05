@@ -73,7 +73,7 @@ const BUDGETED_LISTS: Readonly<Record<string, readonly string[]>> = {
 };
 
 /** Types whose layout keeps only `topN.n` items, so a long list with topN draws. */
-const TOP_N_TYPES = new Set(['bar', 'butterfly', 'column', 'mekko', 'pareto', 'likert', 'pyramid']);
+const TOP_N_TYPES = new Set(['bar', 'butterfly', 'column', 'dot', 'mekko', 'pareto', 'likert', 'pyramid', 'variance']);
 
 /** Banded types that draw only the categories inside `viewDomain.x` and `window.last`. */
 const VIEWPORT_TYPES = new Set(['column', 'combo']);
@@ -107,13 +107,17 @@ function barTotalsAtLeast(data: unknown, threshold: number): number {
 /** How many entries of `list` the chart draws after the reductions its layout applies. */
 function drawnCount(type: string, key: string, list: unknown[], data: unknown, options: BudgetOptions | undefined): number {
   let count = list.length;
+  if (type === 'treemap') return list.filter((item) => {
+    const value = (item as { value?: unknown })?.value;
+    return value !== 0 && value !== null;
+  }).length;
   // A column ignores topN when an anomaly rule needs every period.
   const topN = options?.topN;
   if (TOP_N_TYPES.has(type) && topN?.n !== undefined && topN.n > 0 && !(type === 'column' && options?.anomaly)) {
     let kept = Math.min(count, type === 'bar' ? Math.max(1, topN.n) : topN.n);
     // A bar's threshold drops every kept category whose total is under it (topNCut in charts/topN.ts).
     if (type === 'bar' && topN.threshold !== undefined) kept = Math.min(kept, Math.max(1, barTotalsAtLeast(data, topN.threshold)));
-    count = Math.min(count, kept + (topN.rest === false || kept === count ? 0 : 1));
+    count = Math.min(count, kept + (type === 'dot' || type === 'variance' || topN.rest === false || kept === count ? 0 : 1));
   }
   if (VIEWPORT_TYPES.has(type) && key === 'categories') {
     const ends = options?.viewDomain?.x;

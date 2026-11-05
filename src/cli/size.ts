@@ -8,6 +8,18 @@ import type { DocChart } from '../core/doc/document';
 import type { DocumentFinding } from '../core/doc/diagnostics';
 import { readJsonPointer, type JsonPatchOperation } from '../core/diagnostics/jsonPatch';
 import { InputError } from './result';
+import { caseInsensitiveValue, inputConversion } from '../core/inputConversion';
+import { completeDiagnostic } from '../core/doc/diagnostics';
+import type { LintWarning } from '../core/types/scene';
+
+/** A differently cased argument writes the spelling used by the verb. */
+export function enumArgument(name: string | number, value: unknown, allowed: readonly string[], warnings: LintWarning[], parent: string[] = []): unknown {
+  const converted = caseInsensitiveValue(value, allowed);
+  if (converted === undefined) return value;
+  const field = [...parent, name];
+  warnings.push(completeDiagnostic({ ...inputConversion(field, value, converted), received: { type: typeof value, value } }, undefined, field));
+  return converted;
+}
 
 /** A pixel argument: a positive finite number. */
 export function pixels(name: string, value: unknown): number | undefined {
@@ -24,8 +36,9 @@ export function pixels(name: string, value: unknown): number | undefined {
 export const TARGETS = renderTargetSchema.options;
 
 /** The target argument. It beats the spec's options.target; absent, the spec decides (default report). */
-export function targetArgument(value: unknown): RenderTarget | undefined {
+export function targetArgument(value: unknown, warnings: LintWarning[] = []): RenderTarget | undefined {
   if (value === undefined) return undefined;
+  value = enumArgument('target', value, TARGETS, warnings);
   if (!(TARGETS as readonly unknown[]).includes(value)) {
     throw new InputError('invalid-argument', `target must be one of ${TARGETS.join(', ')}`, {
       path: '/target', expected: { values: [...TARGETS] }, received: { type: typeof value, value }, suggest: 'Pass target report (the default), dashboard, slide or print.',
@@ -36,7 +49,7 @@ export function targetArgument(value: unknown): RenderTarget | undefined {
 }
 
 /** A width or height argument in its own unit. */
-interface Length { value: number; unit: LengthUnit }
+export interface Length { value: number; unit: LengthUnit }
 
 /** A number is px; a string may end in px, pt or mm (660pt, 180mm), and a bare one is px. */
 export function length(name: 'width' | 'height', value: unknown): Length | undefined {
@@ -108,7 +121,7 @@ function presetHeight(preset: Size, width: number): number {
 }
 
 type SizeFinding = DocumentFinding & { fix?: JsonPatchOperation[] };
-const SIZE_FIXES = ['size-below-floor', 'height-off-ladder', 'plot-under-min', 'aspect-cap'];
+const SIZE_FIXES = ['size-below-floor', 'height-off-ladder', 'plot-under-min', 'aspect-cap', 'diagram-size-too-small', 'diagram-node-label-unplaced'];
 
 /**
  * A size refusal caused by a `width` or `height` argument names that argument,
@@ -120,19 +133,23 @@ export function attributeSizeOverride<T extends SizeFinding>(findings: T[], widt
   if (!width && !height) return findings;
   const args = { width, height };
   return findings.map((finding) => {
-    if (!SIZE_FIXES.includes(finding.code) || !finding.path?.endsWith('/options/size')) return finding;
+    if (!SIZE_FIXES.includes(finding.code)) return finding;
     const operation = finding.fix?.find(operation => operation.op === 'replace' || operation.op === 'add');
     if (!operation || !('value' in operation)) return finding;
+    // A diagram refusal names no field, so its fix says where the size is.
+    const sizePath = finding.path?.endsWith('/options/size') ? finding.path
+      : !finding.path && operation.path.endsWith('/options/size') ? operation.path : undefined;
+    if (!sizePath) return finding;
     const needed = (operation.path.endsWith('/options')
       ? (operation.value as { size: Size }).size : operation.value) as Size;
     const short = (['width', 'height'] as const)
       .filter((side) => args[side] && needed?.[side] !== undefined && Math.abs(needed[side] - px(args[side]!)) > 1e-6);
     if (!short.length) return finding;
     const side = short[0]!;
-    const original = readJsonPointer(spec, finding.path);
+    const original = readJsonPointer(spec, sizePath);
     const authored = original.found ? original.value : undefined;
     // The default frame of an unsized chart is its target's: the argument, else the chart's own.
-    const own = readJsonPointer(spec, finding.path.replace(/size$/, 'target'));
+    const own = readJsonPointer(spec, sizePath.replace(/size$/, 'target'));
     const actual = resolveSize(authored as CanvasSizeInput | undefined, target ?? (own.found ? own.value as RenderTarget : DEFAULT_TARGET));
     // Repair an unpassed side only if its authored/default value is short.
     // An omitted height is automatic and grows after repairing the width.

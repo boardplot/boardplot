@@ -86,6 +86,7 @@ export const fixtures: Fixture<RangeChartData, DotOptions>[] = [
       unit: '% of units',
       source: 'Illustrative sell-through panel, FY2019 and FY2024',
       sort: { categories: 'desc' },
+      gapColumn: true,
     },
     annotations: [
       // median of the 2024 values (12.1, 18.3, 19.8, 21.7, 22.4, 27.9)
@@ -492,6 +493,18 @@ fixtures.push({
   },
   options: { title: 'Group B exceeds the 35% target', format: '0%', valueAxis: { show: true }, size: { width: 640, height: 360 } },
   annotations: [{ kind: 'valueLine', value: 0.35, valueKind: 'fraction', label: 'Target' }],
+});
+
+fixtures.push({
+  id: 'column-overrides', title: 'columnOverrides sets the widths, alignment and head word of the name and gap columns', kind: 'example',
+  data: {
+    categories: [{ id: 'north', label: 'North region' }, { id: 'south', label: 'South region' }, { id: 'east', label: 'East region' }],
+    series: [{ id: 'fy25', label: 'FY25', values: [42, 55, 31] }, { id: 'fy26', label: 'FY26', values: [48, 51, 39] }],
+  },
+  options: {
+    title: 'East gained the most', variant: 'dumbbell', gapColumn: true, source: 'Illustrative data', size: { width: 720 },
+    columnOverrides: { label: { width: 150, align: 'left' }, gap: { width: 90, label: 'Change', align: 'center' } },
+  },
 });
 
 registerFixtures('dot', fixtures);

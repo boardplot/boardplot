@@ -62,8 +62,8 @@ const segments = ['gold', 'silver', 'bronze', 'lapsed'] as const;
 /** Customers per segment pair, month to month: rows of a transition table with the next month joined on. */
 const moves: Record<string, number[][]> = {
   'jan>feb': [[820, 90, 20, 10], [70, 1240, 150, 60], [15, 110, 1580, 240], [5, 30, 120, 2100]],
-  'feb>mar': [[790, 100, 15, 5], [95, 1210, 140, 25], [20, 140, 1490, 270], [10, 60, 155, 2075]],
-  'mar>apr': [[830, 80, 15, 5], [90, 1250, 140, 30], [25, 130, 1520, 125], [5, 45, 210, 2125]],
+  'feb>mar': [[790, 100, 15, 5], [95, 1210, 140, 25], [20, 140, 1440, 270], [10, 60, 155, 2185]],
+  'mar>apr': [[815, 80, 15, 5], [90, 1250, 140, 30], [25, 130, 1470, 125], [5, 45, 210, 2225]],
 };
 const migration: SankeyData = {
   links: Object.entries(moves).flatMap(([pair, matrix]) => {
@@ -93,12 +93,19 @@ const frame = (title: string): SankeyOptions => ({ title, source: 'Illustrative 
 export const fixtures: Fixture<SankeyData, SankeyOptions>[] = [
   {
     id: 'channel-journeys',
-    title: 'Channel to landing page to outcome: stage headers, two small channels folded into Others and listed in the note',
+    title: 'Channel to landing page to outcome: stage headers, two small channels folded into Others and listed in the note, Purchase highlighted',
     kind: 'example',
     tags: ['interaction'],
     hover: { owner: { categoryId: 'search' } },
     data: journeys,
-    options: { ...frame('Search brings the most visits that end in a purchase'), unit: 'k visits', notes: { show: ['note', 'disclosure'] }, size: { width: 960, height: 560 } },
+    options: { ...frame('Search brings the most visits that end in a purchase'), unit: 'k visits', highlight: 'purchase', notes: { show: ['note', 'disclosure'] }, size: { width: 960, height: 560 } },
+  },
+  {
+    id: 'channel-journeys-node-values',
+    title: 'Channel journeys with linkValue none: node values only, no value on the ribbons',
+    kind: 'example',
+    data: journeys,
+    options: { ...frame('Search brings the most visits that end in a purchase'), unit: 'k visits', linkValue: 'none', size: { width: 960, height: 560 } },
   },
   {
     id: 'budget-departments',
@@ -112,7 +119,7 @@ export const fixtures: Fixture<SankeyData, SankeyOptions>[] = [
     title: 'Customers moving between segments month to month: stage-qualified nodes, one segment order in every month',
     kind: 'example',
     data: migration,
-    options: { ...frame('Most customers stay in their segment from month to month'), unit: 'customers' },
+    options: { ...frame('Most customers stay in their segment from month to month'), unit: 'customers', linkColor: 'source' },
   },
   {
     id: 'sales-stages',
@@ -168,5 +175,23 @@ export const fixtures: Fixture<SankeyData, SankeyOptions>[] = [
     },
   },
 ];
+
+const channelFlows = fixtures[0]!;
+fixtures.push(
+  {
+    ...channelFlows,
+    id: 'no-node-values',
+    title: 'Nodes print their names only',
+    tags: ['coverage'],
+    options: { ...channelFlows.options, nodeValue: false, linkValue: 'none' },
+  },
+  {
+    ...channelFlows,
+    id: 'column-overrides',
+    title: 'Authored widths for the label gutters of the first and last stage',
+    tags: ['coverage'],
+    options: { ...channelFlows.options, columnOverrides: { first: { width: 150 }, last: { width: 120 } } },
+  },
+);
 
 registerFixtures('sankey', fixtures);

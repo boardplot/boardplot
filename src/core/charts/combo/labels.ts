@@ -170,6 +170,7 @@ function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, p
   // names the segment back, so a pinned segment placed first takes the value whatever its format.
   const linked = new Map(requests.flatMap((req) => req.printedIn ? [[req.printedIn, req.id] as const] : []));
   const valueAlone = gtContent.join() === 'absolute';
+  const shares = (domain.options as { [FIRST_END_BELOW_TOTALS]?: boolean })[FIRST_END_BELOW_TOTALS] === true;
   const backLink = (id: string, words: unknown) => !words && valueAlone && linked.has(id) ? { printedIn: linked.get(id) } : {};
   // A reference rule does not move a total: it crosses the rule on a halo, as on column.
   const crossesRules = domain.averageMarkerId !== undefined || (domain.options.annotations ?? []).some(annotation => annotation.kind === 'valueLine');
@@ -220,7 +221,14 @@ function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, p
   const outerFont = rowFont ?? strongFont;
   // A stack still crowded at the step: every second total prints, counted back from
   // the latest column; the notes list names the others.
-  const thinned = !insideFont && domain.columns.length > 1 && valueRowCrowded(texts.map(outerSeat(outerFont)));
+  const crowded = !insideFont && valueRowCrowded(texts.map(outerSeat(outerFont)));
+  const thinned = crowded && domain.columns.length > 1;
+  // Under a floated line the columns keep a short band and the value row is
+  // their only scale reading: where neighbour totals crowd, the tallest and the
+  // lowest stack keep their value before the others.
+  const drawnTotals = domain.cats.flatMap((c, ci) => (texts[ci] === null || texts[ci] === undefined ? [] : [{ ci, v: domain.stackTotals[c.id] ?? 0 }]));
+  const extremeTotals = new Set(!crowded || !domain.lineFloat || drawnTotals.length < 3 ? [] : [
+    drawnTotals.reduce((a, b) => (b.v > a.v ? b : a)).ci, drawnTotals.reduce((a, b) => (b.v < a.v ? b : a)).ci]);
   // The line claims its segments as boxes, which over-claim the corners of a steep
   // segment. A shifted seat the drawn line clears by its half stroke and the label
   // air needs no further pad (on pareto at 320 a box corner would hide the first total, 8 px off
@@ -262,6 +270,20 @@ function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, p
     })();
     const inside = (dy: number, slot: string) => insideDepth >= tsize.height + dy
       ? { ...at(slot, above ? edgeY + dy : edgeY - tsize.height - dy, 2), ...paints.top(ci, above) } : undefined;
+    // Type steps: a line that rises from this column's top runs right of its centre;
+    // the total then stands left of the line's start, level with its usual seat (pareto at 320: '120').
+    // Only the first column (left of any other the total would stand over its neighbour), and only
+    // one too narrow to hold its total inside. Where a Pareto curve starts on that column's top
+    // (scaled to its total), the seat clears the marker and comes before the seat two rows up,
+    // which would leave the total floating over the curve's first point.
+    const curveStartsOnTop = ci === 0 && shares && lineYs(ci).some((ly) => Math.abs(ly - edgeY) < 0.5);
+    const leftX = cx - LEFT_SEAT_AIR - (curveStartsOnTop ? MARKER_R : 0) - tsize.width;
+    const leftSeat = ci === 0 && tsize.width + 4 > band.bandwidth && strokes.length > 0 && above && leftX >= LEFT_SEAT_MIN_X
+      ? [{ slot: 'aboveStackLeft', rect: { x: leftX, y: edgeY - tsize.height - 4, w: tsize.width, h: tsize.height }, penalty: 2 }] : [];
+    // Over that first point, the total lifts only as far as the rising curve and its marker need,
+    // short of the seat two rows up.
+    const lift = curveStartsOnTop && above ? clearLift({ ...at('aboveStack', edgeY - tsize.height - 4, 0).rect }, strokes, 2 * tsize.height + 4) : undefined;
+    const liftedSeat = lift !== undefined && lift >= MARKER_R ? [at('aboveStackLifted', edgeY - tsize.height - 4 - lift - 2, 1)] : [];
     const named = { noteText: `${domain.columns.length === 1 ? noteName(domain.columns[0]!) : chartString(domain.options, 'total')} ${text}${words ? ` ${words.lines[1]}` : ''} (${noteName(c)})` };
     if (insideFont && above && edgeY + 4 + tsize.height <= y(0)) {
       requests.push({
@@ -277,7 +299,7 @@ function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, p
         typeRole: 'label', font: insideFont,
         fontStep: insideFont,
         priority: PRIORITY.grandTotal + (env.highlights.has(c.id) ? PRIORITY.highlightBonus : 0),
-        candidates: [{ ...at('insideTop', edgeY + 4, 0), ...paints.top(ci, true) }],
+        candidates: [{ ...at('insideTop', edgeY + 4, 0), ...paints.top(ci, true), overValueLines: true }],
       });
       return;
     }
@@ -295,18 +317,14 @@ function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, p
       typeRole: 'label', font: outerFont,
       ...(rowFont ? { fontStep: rowFont } : {}),
       ...(thinned && ci % 2 !== (domain.cats.length - 1) % 2 && !env.highlights.has(c.id) ? { redundant: true, suppressedAs: 'density' as const, owed: true as const } : {}),
-      priority: PRIORITY.grandTotal + (env.highlights.has(c.id) ? PRIORITY.highlightBonus : 0),
+      priority: PRIORITY.grandTotal + (env.highlights.has(c.id) ? PRIORITY.highlightBonus : 0) + (extremeTotals.has(ci) ? EXTREME_TOTAL_BONUS : 0),
       candidates: nearestOwnMarkFirst([
         // An average marker across this seat does not move the total: it
         // crosses the rule on a halo, as on column.
         { ...at(above ? 'aboveStack' : 'belowStack', above ? edgeY - tsize.height - 4 : edgeY + 4, 0), ...(crossesRules ? { overRules: true } : {}) },
+        ...(curveStartsOnTop ? [...leftSeat, ...liftedSeat] : []),
         { ...shiftedClear(at(above ? 'aboveStackShifted' : 'belowStackShifted', above ? edgeY - 2 * tsize.height - 8 : edgeY + tsize.height + 8, 1), ci), ...(crossesRules ? { overRules: true } : {}) },
-        // Type steps: a line that rises from this column's top runs right of its centre;
-        // the total then stands left of the line's start, level with its usual seat (pareto at 320: '120').
-        // Only the first column (left of any other the total would stand over its neighbour), and only
-        // one too narrow to hold its total inside.
-        ...(ci === 0 && tsize.width + 4 > band.bandwidth && strokes.length > 0 && above && cx - LEFT_SEAT_AIR - tsize.width >= LEFT_SEAT_MIN_X
-          ? [{ slot: 'aboveStackLeft', rect: { x: cx - LEFT_SEAT_AIR - tsize.width, y: edgeY - tsize.height - 4, w: tsize.width, h: tsize.height }, penalty: 2 }] : []),
+        ...(curveStartsOnTop ? [] : leftSeat),
       ], edgeY, lineYs(ci), inside(8, 'insideEnd'),
       domain.columns.length > 1,
       // Last of all, one step further in: a line marker just inside the column top blocks the inside end by a fraction of a pixel.
@@ -314,6 +332,9 @@ function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, p
     });
   });
 }
+
+/** The lead the tallest and the lowest column total take over a crowding neighbour; under the next priority band. */
+const EXTREME_TOTAL_BONUS = 50;
 
 /** Air between a left-standing total and the line's start point, and the leftmost x it may take. */
 const LEFT_SEAT_AIR = 6;
@@ -367,7 +388,9 @@ function referenceLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, re
 function nearestOwnMarkFirst(outer: SlotCandidate[], edgeY: number, lineYs: number[], inside: SlotCandidate | undefined, tieIsOwn: boolean, insideLast?: SlotCandidate): SlotCandidate[] {
   const own = (c: SlotCandidate) => {
     const cy = c.rect.y + c.rect.h / 2;
-    return lineYs.every((ly) => (tieIsOwn && Math.abs(ly - edgeY) < 0.5) || Math.abs(cy - ly) > Math.abs(cy - edgeY));
+    // A line point on the column top (within half a pixel) is a tie: the column's own mark where
+    // tieIsOwn, else a rival, never decided by float noise (a total-scaled Pareto starts its curve there).
+    return lineYs.every((ly) => Math.abs(ly - edgeY) < 0.5 ? tieIsOwn : Math.abs(cy - ly) > Math.abs(cy - edgeY));
   };
   return [...outer.filter(own), ...(inside ? [inside] : []), ...outer.filter((c) => !own(c)).map(c => ({ ...c, lastResort: true as const })),
     ...(insideLast ? [insideLast] : [])].map((c, penalty) => ({ ...c, penalty }));
@@ -399,7 +422,7 @@ function categoryLabels(domain: ComboDomain, area: ComboArea, requests: LabelReq
       redundant: !catPlan.keep[ci],
       ...(rotated ? { rotate: catPlan.rotation === 90 ? -90 : -45 } : {}),
       candidates: catPlan.rotation === 90
-        ? [{ slot: 'below', rect: verticalNameRect(band.center(ci), area.catRowY, info.w, catPlan.font), penalty: 0 }]
+        ? [{ slot: 'below', rect: verticalNameRect(band.center(ci), area.catRowY, info.w, catPlan.font, info.lines.length), penalty: 0 }]
         : rotated
         ? [{ slot: 'below', rect: rotatedClaimRect(band.center(ci), area.catRowY + Math.max(8, info.h * Math.SQRT1_2 / 2 + ROTATED_NAME_AIR), info.h), penalty: 0 }]
         : [
@@ -424,7 +447,7 @@ function categoryLabels(domain: ComboDomain, area: ComboArea, requests: LabelReq
 function linePointLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, geometry: ComboMarkGeometry, requests: LabelRequest[], strokes: readonly PolylineQueries[], fills: readonly Rect[]): void {
   const { labelFont, frame } = area;
   const labelH = env.measure('0', labelFont).height;
-  const mode = comboValueLabels(domain.options, domain.anatomy, domain.cats.length);
+  const mode = comboValueLabels(domain.options, domain.anatomy, domain.cats.length, domain.lineFloat !== undefined);
   const content = mode === 'all' || mode === 'extremes' ? contentOf(domain, 'point', ['absolute']) : null;
   // A point options.anomaly flagged prints its value in every mode, as a flagged column does.
   const flaggedContent = contentOf(domain, 'point', ['absolute']);
@@ -566,11 +589,19 @@ export function planComboLabels(
   const { frame, labelFont, band } = area;
   const rightAxisActive = domain.rightTicks.length > 0;
   // Each authored title sits over its own tick column.
-  const requests = anchorComboAxisTitles(area.axisTitles, {
+  const anchored = anchorComboAxisTitles(area.axisTitles, {
     left: Number.isFinite(geometry.leftTickX) ? geometry.leftTickX : undefined,
     right: rightAxisActive ? area.rightTickX + area.rightAxisReserve - 10 : undefined,
     rightStart: rightAxisActive ? area.rightTickX : undefined,
   }, frame.plot);
+  // Under a floated line the left ticks stop at the column band, so the left
+  // title without a swatch sits over the band's top tick, not over the line.
+  const bandTop = domain.lineFloat && domain.showPrimaryAxis ? area.y(domain.pticks[domain.pticks.length - 1]!) - env.measure('0', area.tickFont).height / 2 : undefined;
+  const requests = anchored.map((request) => {
+    const first = request.candidates[0];
+    if (bandTop === undefined || request.id !== 'axis:primary:title' || area.axisTitles.swatches.has(request.id) || !first) return request;
+    return { ...request, candidates: [{ ...first, slot: 'overBand', rect: { ...first.rect, y: bandTop - 4 - first.rect.h } }, ...request.candidates] };
+  });
   segmentLabels(env, domain, area, geometry, paints, requests, warnings);
   // the drawn lines and column fills every line value keeps off or inside.
   const strokes = comboStrokes(geometry).map(preparePolyline);

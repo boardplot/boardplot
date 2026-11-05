@@ -195,8 +195,8 @@ describe('variance growth values print in the pin tone', () => {
       ],
     }, { variant: 'relative', variance: { vs: 'py' }, size: { width: 480 }, locale: 'en' }) as Geometry;
     const text = (id: string) => cost.scene.find((n) => n.id === id) as unknown as { ink: unknown; font: { weight: number } };
-    expect(text('label:point:q1')).toMatchObject({ ink: { theme: { kind: 'series-text', base: { token: 'bad' } } }, font: { weight: 700 } });
-    expect(text('label:point:q2')).toMatchObject({ ink: { theme: { kind: 'series-text', base: { token: 'good' } } }, font: { weight: 700 } });
+    expect(text('label:point:q1')).toMatchObject({ ink: { theme: { kind: 'series-text', base: { token: 'bad' } } }, font: { weight: 600 } });
+    expect(text('label:point:q2')).toMatchObject({ ink: { theme: { kind: 'series-text', base: { token: 'good' } } }, font: { weight: 600 } });
   });
 
   // standard's good and bad read 3.38 and 3.71 on its page: as text they must reach the 4.5:1 floor.
@@ -213,6 +213,38 @@ describe('variance growth values print in the pin tone', () => {
       const ink = (geometry.scene.find((n) => n.id === id) as unknown as { ink: Paint }).ink;
       expect(contrastRatio(paintColor(standard, ink), standard.color.background)).toBeGreaterThanOrEqual(4.5);
     }
+  });
+});
+
+// The column above a forecast quarter hatches, while its growth tier drew the same solid mark as an actual quarter.
+describe('a grid variance tier hatches its forecast categories', () => {
+  const forecast = { ...data, series: series.map((s) => s.role === 'reference' ? s : {
+    ...s, values: s.values.map((v, i) => i < 2 ? v : { number: v, scenario: 'FC' as const }),
+  }) };
+  const tier = (variant: 'relative' | 'absolute', body = forecast) => getChart('grid')!.layout({
+    panels: [
+      { id: 'rev', type: 'column', data: body, options: { variant: 'stacked' } },
+      { id: 'dpy', type: 'variance', data: body, options: { variant, variance: { vs: 'py' } } },
+    ],
+  }, { size: { width: 480 }, sharedAxis: 'category', locale: 'en' }) as Geometry;
+  const mark = (g: Geometry, id: string) => g.scene.find((n) => n.id === id) as unknown as { fill: Paint; pattern?: string };
+
+  it('draws forecast pin heads hollow and actual ones solid', () => {
+    const g = tier('relative');
+    expect(mark(g, 'dpy/mark:head:q2').fill).not.toEqual({ token: 'background' });
+    expect(mark(g, 'dpy/mark:head:q3').fill).toEqual({ token: 'background' });
+    expect(mark(g, 'dpy/mark:head:q4').fill).toEqual({ token: 'background' });
+  });
+
+  it('hatches forecast bars of the absolute tier', () => {
+    const g = tier('absolute');
+    expect(mark(g, 'dpy/mark:delta:q2').pattern).toBeUndefined();
+    expect(mark(g, 'dpy/mark:delta:q4').pattern).toBe('hatch45');
+  });
+
+  it('keeps every mark solid when no category is forecast', () => {
+    const g = tier('relative', data);
+    expect(mark(g, 'dpy/mark:head:q4').fill).not.toEqual({ token: 'background' });
   });
 });
 

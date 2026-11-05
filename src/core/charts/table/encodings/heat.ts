@@ -293,6 +293,10 @@ function laneHeatKey(columns: readonly ResolvedColumn[], ranges: ReadonlyMap<Id,
     if (encoding?.type === 'heat' && encoding.scale === 'status') return statusKey(columns, ranges, encoding, strings);
     if (encoding?.type !== 'heat' || (encoding.scale !== 'absolute' && encoding.scale !== 'diverging')) continue;
     const diverging = encoding.scale === 'diverging';
+    // A lane given neither bins nor steps tints continuously, scaled by its cap
+    // (heatPaint), so no band exists for a key to name. The default edges apply
+    // only to a lane that is stepped.
+    if (diverging && encoding.bins === undefined && (encoding.steps ?? 0) < 2) continue;
     const edges = encoding.bins ?? (diverging ? DIVERGING_BINS : []);
     if (edges.length === 0) continue;
     const steps = encoding.steps ?? edges.length + 1;

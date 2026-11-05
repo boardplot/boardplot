@@ -9,6 +9,7 @@
  * grid shares. A render returns at most ADVICE_PER_RENDER of them.
  */
 import { designRuleText } from '../catalog';
+import { CROWDED_NAMES } from '../label/categoryRow';
 import type { JsonPatchOperation } from '../diagnostics/jsonPatch';
 import type { LintWarning } from '../types/scene';
 import { categoriesOf, cellNumber, chartOptions, isRecord, labelOf, records, seriesOf, type LintRecord, type ScopedLintChart } from './shared';
@@ -212,8 +213,6 @@ function lineAdvice(chart: ScopedLintChart): DesignWarning[] {
 }
 
 /** Category-row findings that say the step names did not fit upright. */
-const CROWDED_NAMES = new Set(['category-labels-rotated', 'category-labels-truncated', 'category-stride']);
-
 function waterfallAdvice(chart: ScopedLintChart): DesignWarning[] {
   const options = chartOptions(chart);
   const items = records(isRecord(chart.data) ? chart.data.items : undefined);
@@ -227,7 +226,7 @@ function waterfallAdvice(chart: ScopedLintChart): DesignWarning[] {
       [{ op: 'add', path: '/data/items/-', value: { id, label: 'Total', type: 'total' } }]));
   }
   // A horizontal bridge has its own floor and drops some annotations: the probe advises it only where it draws without a new finding.
-  if ((options.variant ?? 'vertical') === 'vertical' && chart.geometry!.warnings.some((warning) => CROWDED_NAMES.has(warning.code))
+  if (options.variant !== 'horizontal' && chart.geometry!.warnings.some((warning) => CROWDED_NAMES.has(warning.code))
     && chart.drawsWith?.({ variant: 'horizontal' }) !== false) {
     found.push(advice(chart, 'design-waterfall-horizontal', '/options/variant', 'set options.variant to horizontal; the names then read in a column left of the bars',
       [{ op: 'replace', path: '/options/variant', value: 'horizontal' }]));

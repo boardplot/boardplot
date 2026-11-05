@@ -1,6 +1,9 @@
 import { chartStrings } from '../strings';
 
 const EN = {
+  "unknownRegionLeftOut": "Region '{v1}' is not in pack '{v2}' and was left out.",
+  "regionsLeftOutNote": "Not on this map",
+  "regionIdSuggestion": "Did you mean '{v1}'?",
   // reader-facing wording linked only by its consumers.
   "notInData": "Not in data",
   "mapLabelPolicy": "Labels: top {v1} by value; full region list in data",
@@ -38,6 +41,8 @@ const EN = {
   "overlayWarn": "Warning",
   "overlayNeutral": "Neutral",
   "overlayInfo": "Info",
+  // The key word for an overlay glyph without a tone, beside keyed tones.
+  "overlayPlain": "Other",
   "toneGood": "good",
   "toneBad": "bad",
   "toneWarn": "warn",
@@ -47,6 +52,9 @@ const EN = {
   "diamondShape": "diamond",
 } as const;
 const DE: { [K in keyof typeof EN]: string } = {
+  "unknownRegionLeftOut": "Region '{v1}' ist nicht im Kartenpaket '{v2}' enthalten und wurde weggelassen.",
+  "regionsLeftOutNote": "Nicht auf dieser Karte",
+  "regionIdSuggestion": "War '{v1}' gemeint?",
   // reader-facing wording linked only by its consumers.
   "notInData": "Nicht in den Daten",
   "mapLabelPolicy": "Beschriftungen: oberste {v1} nach Wert; vollständige Liste in den Daten",
@@ -84,6 +92,7 @@ const DE: { [K in keyof typeof EN]: string } = {
   "overlayWarn": "Warnung",
   "overlayNeutral": "Neutral",
   "overlayInfo": "Info",
+  "overlayPlain": "Sonstige",
   "toneGood": "gut",
   "toneBad": "schlecht",
   "toneWarn": "Warnung",

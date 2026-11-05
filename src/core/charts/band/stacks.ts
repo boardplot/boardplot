@@ -1,5 +1,7 @@
 import type { StringsSpec } from '../../types/options';
 import { localeStrings } from '../../strings';
+import { cleanSum } from '../../geometry';
+import { periodSpanName } from '../../viewport';
 /**
  * Data-unit stack accumulation shared by column and bar charts.
  *
@@ -11,7 +13,7 @@ import { localeStrings } from '../../strings';
 import { warnIncompleteComposition } from '../../dataGaps';
 import { formatWithSpec, specUnitKind, type NumberFormatSpec } from '../../formatSpec';
 import { SHARES_OF_ONE_WHOLE_FIX } from '../../stackAdds';
-import type { Annotation } from '../../types/annotations';
+import { defaultAnnotationId, type Annotation } from '../../types/annotations';
 import type { Id } from '../../types/cell';
 import type { LintWarning } from '../../types/scene';
 
@@ -64,7 +66,6 @@ export function stackParts(
 export function accumulateStack(values: readonly (number | null)[], ranked = false): StackExtents {
   let positive = 0;
   let negative = 0;
-  let total = 0;
   let hasValue = false;
   const segments: (StackSegmentExtent | null)[] = values.map(() => null);
   const order = values.map((_, index) => index);
@@ -73,14 +74,13 @@ export function accumulateStack(values: readonly (number | null)[], ranked = fal
     const value = values[index] ?? null;
     if (value === null) continue;
     hasValue = true;
-    total += value;
     const start = value >= 0 ? positive : negative;
     const end = start + value;
     if (value >= 0) positive = end;
     else negative = end;
     segments[index] = { index, value, start, end };
   }
-  return { segments, positive, negative, total, hasValue };
+  return { segments, positive, negative, total: cleanSum(values.map((value) => value ?? 0)), hasValue };
 }
 
 /**
@@ -136,9 +136,26 @@ export function grandTotalRequested(authored: boolean | undefined, variant: Stac
       severity: 'warn',
       message: 'grandTotalLabels needs a stacked variant: grouped bars stand side by side, and their sum is no total the chart shows — ignored',
       suggest: "use variant 'stacked' to show the total, or drop grandTotalLabels",
+      field: ['options', 'grandTotalLabels'],
+      fix: [{ op: 'remove', path: '/options/grandTotalLabels' }],
     });
   }
   return false;
+}
+
+/**
+ * A 100 % stack prints shares. A format without a % sign belongs to the values,
+ * so it changes nothing unless an absolute figure prints too.
+ */
+export function warnShareFormatIgnored(variant: StackVariant, format: string | undefined, shareExample: string | undefined, valuesPrint: boolean, warnings: LintWarning[]): void {
+  if (variant !== 'stacked100' || !format || shareExample || valuesPrint) return;
+  warnings.push({
+    code: 'format-ignored',
+    severity: 'warn',
+    message: `format '${format}' has no % sign, and a 100% stack prints shares only — the format changes no label`,
+    suggest: "give the shares a percent format such as '0.0%', or drop the format",
+    field: ['options', 'format'],
+  });
 }
 
 /**
@@ -196,9 +213,63 @@ function averageMarkerText(value: number, statFmt: (v: number) => string, span?:
 }
 
 /** The series an average marker takes in, or undefined when it is off. */
-export function averageMarkerScope(option: boolean | { scope: 'all' | Id[] } | undefined): 'all' | Id[] | undefined {
+export function averageMarkerScope(option: boolean | { scope?: 'all' | Id[] } | undefined): 'all' | Id[] | undefined {
   if (option === undefined || option === false) return undefined;
-  return typeof option === 'object' ? option.scope : 'all';
+  return typeof option === 'object' ? option.scope ?? 'all' : 'all';
+}
+
+/** The most runs of kept periods an average marker names. */
+const MAX_SPAN_RUNS = 3;
+
+/**
+ * The average marker's mean. Categories marked partial (a period still
+ * running) are left out unless `includePartial` is true, because a running
+ * total sits below a finished one. When every plotted category is partial,
+ * none is left out. `span` names the periods a mean that left some out
+ * covers, in the order the sheet gave them (`sourceIds`, default the order of
+ * `cats`), so a category sort does not change it. Each unbroken run of kept
+ * periods is "first–last", and runs are joined by a comma: a partial period
+ * between two finished ones is never inside a run. `cover` is the one run's
+ * first and last category, set only when the mean covers a single run.
+ * More than MAX_SPAN_RUNS runs name nothing: a list that long is not a span,
+ * and the hatched partial categories already show what the mean leaves out.
+ */
+export function averageMarkerMean<S extends { id: Id }>(
+  option: boolean | { includePartial?: boolean } | undefined,
+  scope: 'all' | Id[],
+  cats: readonly { id: Id; label?: string; partial?: boolean }[],
+  stackedLike: boolean,
+  dataSeries: readonly S[],
+  plotted: (s: S, si: number, ci: number) => number | null,
+  sourceIds: readonly Id[] = cats.map((c) => c.id),
+): { mean: number | undefined; cover?: { from: Id; to: Id }; span?: string } {
+  const inScope = (series: S) => scope === 'all' || scope.includes(series.id);
+  const leftOut = new Set(typeof option === 'object' && option.includePartial === true ? [] : cats.flatMap((c, ci) => (
+    c.partial === true && dataSeries.some((series, si) => inScope(series) && plotted(series, si, ci) !== null) ? [ci] : []
+  )));
+  const mean = (skip: ReadonlySet<number>) => plottedMean(scope, stackedLike, cats.length, dataSeries, (series, si, ci) => (skip.has(ci) ? null : plotted(series, si, ci)));
+  const kept = mean(leftOut);
+  if (leftOut.size === 0) return { mean: kept };
+  if (kept === undefined) return { mean: mean(new Set()) };
+  const rank = (ci: number) => { const at = sourceIds.indexOf(cats[ci]!.id); return at < 0 ? sourceIds.length + ci : at; };
+  const inSheetOrder = cats.map((_, ci) => ci).sort((a, b) => rank(a) - rank(b));
+  const runs = inSheetOrder.reduce<number[][]>((all, ci) => {
+    if (leftOut.has(ci)) all.push([]);
+    else if (all.length === 0) all.push([ci]);
+    else all[all.length - 1]!.push(ci);
+    return all;
+  }, []).filter((run) => run.length > 0);
+  const named = runs.map((run) => periodSpanName(cats, run[0]!, run[run.length - 1]!));
+  const only = runs.length === 1 ? { cover: { from: cats[runs[0]![0]!]!.id, to: cats[runs[0]![runs[0]!.length - 1]!]!.id } } : {};
+  return { mean: kept, ...only, ...(runs.length <= MAX_SPAN_RUNS ? { span: named.join(', ') } : {}) };
+}
+
+/** The span an average marker names: the window's span where it covers a drawn gap, else the periods left out. */
+export function averageMarkerSpan(
+  run: { cover?: { from: Id; to: Id }; span?: string } | undefined,
+  meanSpan: (scope?: { from?: string; to?: string }) => string | undefined,
+): string | undefined {
+  return run?.span !== undefined && run.cover === undefined ? run.span : meanSpan(run?.cover) ?? run?.span;
 }
 
 /** Whether a stack draws exactly one part (no null, no zero): its segment value and its total are one number. */
@@ -344,4 +415,79 @@ export function mixedSignsWarning(
     message: `100% composition is undefined for categories with negative components; suppressed and marked n.m.: ${ids.join(', ')}${advice.tail}`,
     suggest: advice.suggest,
   };
+}
+
+const seriesScoped = (annotation: { from?: unknown; to?: unknown }): boolean =>
+  [annotation.from, annotation.to].some((ref) => typeof ref === 'object' && ref !== null && 'seriesId' in ref);
+
+/**
+ * A valueLine with no number is the automatic mean of the plotted totals. On a
+ * 100% axis that mean reads "Average 100%" whenever every plotted column totals
+ * 100, which says nothing, so the line is dropped with a warning. When a
+ * column's total100 is larger than its parts, or authored percent cells add to
+ * less than 100, the mean is a real number below 100 and the line stays. A
+ * numeric valueLine and every other annotation pass, and a retained annotation
+ * keeps its original id.
+ */
+export function withoutShareMean<O extends { annotations?: Annotation[] }>(options: O, mean: number | undefined, warnings: LintWarning[]): O {
+  const all = options.annotations;
+  if (mean === undefined || Math.abs(mean - 100) > 1e-6 || !all?.some((a) => a.kind === 'valueLine' && typeof a.value !== 'number')) return options;
+  const kept = all.map((a, i) => ({ ...a, id: defaultAnnotationId(a, i) })).filter((a) => {
+    if (a.kind !== 'valueLine' || typeof a.value === 'number') return true;
+    warnings.push({
+      code: 'valueline-unsupported-stacked100',
+      severity: 'warn',
+      owner: { annotationId: a.id },
+      message: `valueLine '${a.id}' dropped: the mean of the plotted columns on a 100% axis is 100%, which states nothing`,
+      suggest: 'Give a share between 0 and 100 as the valueLine value, or draw the mean of the totals on the absolute chart (variant: stacked).',
+    });
+    return false;
+  });
+  return { ...options, annotations: kept };
+}
+
+/**
+ * Drops the annotations that state a number a 100% axis does not show. Every
+ * column stands at 100%, so a difference arrow or a total growth bracket would
+ * read absolute totals over equal columns, and a numeric value line in data
+ * units would read as a percent. A growth bracket of one series keeps its own
+ * rate. A value line strictly inside the axis stays with a
+ * warning, because it can be a valid share target. Other annotations pass.
+ * A retained annotation keeps its original id, so pins and notes still find it.
+ */
+export function withoutShareAnnotations<O extends { annotations?: Annotation[] }>(options: O, share: boolean, warnings: LintWarning[]): O {
+  if (!share || !options.annotations?.length) return options;
+  const kept = options.annotations.map((annotation, index) => ({ ...annotation, id: defaultAnnotationId(annotation, index) })).filter((annotation) => {
+    const owner = { annotationId: annotation.id };
+    if (annotation.kind === 'diff' || (annotation.kind === 'cagr' && !seriesScoped(annotation))) {
+      warnings.push({
+        code: 'annotation-unsupported-stacked100',
+        severity: 'warn',
+        owner,
+        message: `${annotation.kind} '${owner.annotationId}' dropped: a 100% axis shows shares, and this annotation states a change in the values`,
+        suggest: `Draw the ${annotation.kind === 'diff' ? 'difference' : 'growth'} on the absolute chart (variant: stacked), or state it in the title.`,
+      });
+      return false;
+    }
+    if (annotation.kind !== 'valueLine' || typeof annotation.value !== 'number') return true;
+    if (annotation.value <= 0 || annotation.value >= 100) {
+      warnings.push({
+        code: 'valueline-unsupported-stacked100',
+        severity: 'warn',
+        owner,
+        message: `valueLine '${owner.annotationId}' dropped: ${annotation.value} sits at or beyond the end of a 100% axis, so it reads as a data value, not a share`,
+        suggest: 'Draw a line in data units on the absolute chart (variant: stacked), or give a share between 0 and 100.',
+      });
+      return false;
+    }
+    warnings.push({
+      code: 'valueline-percent-stacked100',
+      severity: 'warn',
+      owner,
+      message: `valueLine '${owner.annotationId}' at ${annotation.value} is read as ${annotation.value}% of the stack, not as a data value`,
+      suggest: 'Keep it when the target is a share. For a value in data units, draw it on the absolute chart (variant: stacked).',
+    });
+    return true;
+  });
+  return kept.length === options.annotations.length ? options : { ...options, annotations: kept };
 }

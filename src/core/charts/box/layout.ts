@@ -1,5 +1,6 @@
 import { chartString as boxString } from '../../strings/box';
 import { chartTheme } from '../chartEnv';
+import { alignedRight, authoredTrackWidth, columnOverrideWarnings, trackPlotFloor } from '../columnOverrides';
 import { labelOn as chartLabelOn } from '../labelOn';
 import { splitNumberMarks } from '../../numberMarks';
 
@@ -35,14 +36,16 @@ import { structureCount } from '../../structureCounts';
 import { rowLabelBand } from '../../label/rowLabels';
 import { fittedLabel, gutterBudget, stepDownFont } from '../../label/rowFit';
 import { applyValueAxisTitleInk, layoutValueAxis, straightBreakGlyph, planValueAxisTitle, valueAxisTitleRequest } from '../../axis';
-import { formatAutomaticNumber, numberRange, seriesValueFormatter } from '../../format';
-import { formatterFromExample } from '../../formatSpec';
+import { formatAutomaticNumber, numberRange, seriesFormatterAt, seriesValueDecimals, seriesValueFormatter } from '../../format';
+import { formatterFromExample, seriesRasterFormatter } from '../../formatSpec';
 import { rowLabelX, type Rect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex } from '../../label/occupied';
 import { labelCtx, PRIORITY, solveLabels, type LabelRequest, type SlotCandidate, type SolveCtx } from '../../label/solver';
 import { accessibleTitle, NormalizeError, resolveHighlight, resolveSize } from '../../normalize/shared';
-import { applyAxisBounds, bandScale, linearScale, niceDomain } from '../../scale';
+import { applyAxisBounds, bandScale, brokenLinearScale, crossesLinearBreak, invalidLinearBreakReason, linearScale, niceDomain, type LinearBreak } from '../../scale';
+import { axisBreakInvalid } from '../../axisBreakInvalid';
+import { breakStyleRefusal } from '../band/breakOrder';
 import { authoredNotes, frameTextOptions, solveFrame, plotHeightAfter, authoredFootnoteCount, fixedPlotChrome } from '../../frame';
 import { defaultMeasurer, type FontSpec } from '../../text';
 import { strokeToken, canvasMargin, focusColor, paintColor, resolveSemanticPaletteTheme, semanticPalettePaint } from '../../theme';
@@ -68,6 +71,8 @@ import { autoDecimals } from '../../formatPrecision';
 import { annotateBox } from './annotations';
 import { composedTextRole } from '../../textRole';
 import { textScaleOf } from '../../typeFloors';
+import { DEFAULT_TARGET } from '../../target';
+import { asColumnHeads, columnHeadFont, fitHead, HEAD_PREFIX, headRequest } from '../bullet/columnHead';
 import { disclosureNote } from '../../notes';
 import { maxOf, minOf, pushAll } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
@@ -109,6 +114,33 @@ const BREAK_W = 8;
 const MIN_VALUE_RUN = 80;
 
 /**
+ * The authored value-axis break, or undefined when it cannot be drawn (the chart then draws unbroken).
+ * The omitted span must hold no drawn value, and no box or whisker may run across it,
+ * because a cut through a box or whisker misstates the spread the chart shows.
+ */
+function boxAxisBreak(
+  requested: unknown,
+  domain: [number, number],
+  drawnValues: readonly number[],
+  rows: readonly BoxGroupDerived[],
+  axisShown: boolean,
+  warnings: LintWarning[],
+): LinearBreak | undefined {
+  if (!requested || typeof requested !== 'object') return undefined;
+  const asked = requested as LinearBreak;
+  const spans = rows.flatMap((row) =>
+    row.state === 'box' || row.state === 'median-only' ? [[row.whiskerLow!, row.q1!], [row.q1!, row.q3!], [row.q3!, row.whiskerHigh!]] : []);
+  const reason = breakStyleRefusal(asked)
+    ?? (axisShown ? undefined : 'a hidden value axis draws no break mark')
+    ?? invalidLinearBreakReason(domain, asked, drawnValues)
+    ?? (spans.some(([a, b]) => crossesLinearBreak(a!, b!, asked)) ? 'a box or whisker runs across the omitted span' : undefined);
+  if (reason === undefined) return { from: asked.from, to: asked.to };
+  const refused = axisBreakInvalid('box', reason);
+  warnings.push({ ...refused, severity: 'warn', message: `${refused.message}; the chart is drawn without the break` });
+  return undefined;
+}
+
+/**
  * `bracketRoom` is the width the second pass keeps between the plot and the n column for comparison brackets.
  * `wrapLead` puts a bracket's named span on its own line over the figure.
  */
@@ -121,10 +153,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
   );
   const size = resolveSize(options.size);
   const measure = options.measure ?? defaultMeasurer;
-  const axisFmt = options.format
-    ? formatterFromExample(options.format, options.locale?.language)
-    : (value: number) =>
-        formatAutomaticNumber(value, { locale: options.locale?.language, decimals: autoDecimals(value) });
+  const authoredFmt = options.format ? formatterFromExample(options.format, options.locale?.language) : undefined;
   const labelsOff = options.labels === false;
   const labelOn = (kind: LabelKind): boolean => chartLabelOn(options, kind);
   const highlights = new Set(resolveHighlight(options.highlight));
@@ -173,11 +202,29 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
     });
   }
   const rows = order.map((index) => summaries[index]!);
-  // The statistic and point labels are one series: one precision for them all (seriesValueFormatter), not one per value.
-  const fmt = options.format ? axisFmt : seriesValueFormatter([
+  const printed = [
     ...data.groups.flatMap((group) => group.observations ?? []),
     ...rows.flatMap((row) => [row.min, row.q1, row.median, row.q3, row.max, row.whiskerLow, row.whiskerHigh]),
-  ], options.locale?.language);
+  ];
+  // From a million the chart takes the engine scale bar takes, chosen once
+  // from its largest value: labels and ticks print 2.78B, not 2,778,700,000.
+  // Its precision comes from the values that print (statistics, drawn
+  // outliers and small-n points), so 160 raw observations do not lift every
+  // label to "2.7787B". An authored format keeps its digits.
+  const labelled = rows.flatMap((row, index) => [
+    row.min, row.q1, row.median, row.q3, row.max, row.whiskerLow, row.whiskerHigh,
+    ...(showOutliers ? row.beyondWhiskers : []),
+    ...(row.state === 'points' && showObservations === 'small-n' ? data.groups[order[index]!]!.observations ?? [] : []),
+  ]);
+  const engine = authoredFmt || options.target === undefined || !labelled.some((value) => value != null && Math.abs(value) >= 1e6)
+    ? undefined : seriesRasterFormatter(undefined, labelled, options.locale?.language, options.unit, options.target);
+  const scaled = engine?.spec.autoMagnitude ? engine : undefined;
+  const axisFmt = authoredFmt ?? scaled?.fmt ?? ((value: number) =>
+    formatAutomaticNumber(value, { locale: options.locale?.language, decimals: autoDecimals(value) }));
+  // The statistic and point labels are one series: one precision for them all (seriesValueFormatter), not one per value.
+  // The hover card prints its quartile and whisker ranges at the same precision (marks.labelDecimals).
+  const labelDecimals = seriesValueDecimals(printed);
+  const fmt = authoredFmt ?? scaled?.fmt ?? seriesFormatterAt(labelDecimals, options.locale?.language);
 
   // ---- the median COLUMN gets ONE decimal convention ------------------------
   // The default formatter decides decimals per value, which printed 107 / 97.6
@@ -186,7 +233,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
   // decide once, from the whole column, and give every median the same number
   // of decimals. An authored `format` already
   // fixes the decimals, so it is left alone.
-  const fmtMedian = options.format
+  const fmtMedian = authoredFmt || scaled
     ? fmt
     : seriesValueFormatter(rows.map((row) => row.median), options.locale?.language, options.unit, options.target);
 
@@ -245,11 +292,11 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
       suggest: 'remove legend — the method note explains the box, whiskers, and dots',
     });
   }
-  if (options.valueAxis?.break) {
+  if (options.valueAxis?.break && typeof options.valueAxis.break !== 'object') {
     warnings.push({
       code: 'axis-break-unsupported',
       severity: 'warn',
-      message: 'box does not support valueAxis.break; a broken axis would misstate the spread it exists to show',
+      message: "box draws only a valueAxis.break with from and to; 'auto' was ignored",
     });
   }
   const ignored = (
@@ -348,11 +395,11 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
   // the exhibit compares. Its value is parked at the plot edge behind a break
   // mark and printed under it, so the box and whisker scale keeps its width.
   // Only a beyond-whisker value is parked (never a box, whisker or small-n
-  // dot), only one distinct value, and only where no authored axis maximum,
-  // hidden axis or comparison bracket asks for the plain linear read.
+  // dot), only one distinct value, and only where no authored axis maximum or
+  // break, hidden axis or comparison bracket asks for the plain linear read.
   let parked: number | undefined;
   const beyondValues = drawnBeyond.flatMap((points) => points.map((point) => point.value));
-  if (options.valueAxis?.show !== false && options.valueAxis?.max === undefined && !options.annotations?.length && beyondValues.length > 0) {
+  if (options.valueAxis?.show !== false && options.valueAxis?.max === undefined && typeof options.valueAxis?.break !== 'object' && !options.annotations?.length && beyondValues.length > 0) {
     const top = maxOf(beyondValues);
     const neededOnScale = rows.some((row, index) =>
       ((row.state === 'box' || row.state === 'median-only') &&
@@ -469,7 +516,12 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
   let nBandTotal = labelsOff ? 0 : maxOf(nTexts.map((text) => measure(text, tickFont).width)) + N_BAND_GAP;
 
   // the n column gave way to the name column; the name column may take 30%.
-  const catCap = Math.max(24, plot0.w * 0.3);
+  const overrides = options.columnOverrides;
+  const plotKeeps = Math.max(MIN_VALUE_RUN, trackPlotFloor(plot0.w));
+  // An authored name column keeps its width; the plot gives way first, down to its floor.
+  const nameTrack = overrides?.label?.width === undefined || !labelOn('category') ? undefined
+    : authoredTrackWidth('label', overrides.label.width, 24, plot0.w - CAT_BAND_GAP - nBandTotal - bracketRoom - plotKeeps, warnings);
+  const catCap = nameTrack ?? Math.max(24, plot0.w * 0.3);
   // N UNDER THE NAME. The n of a row is a second, muted line
   // under its name, so it sits next to the row it counts and the far-right
   // column's width goes to the plot. A qualifier ("n = 3 · too few for a box")
@@ -480,7 +532,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
   const underLines = nTexts.map((text, index) => (measure(text, nFont).width <= catCap ? [text] : nSplit[index]!));
   const underW = Math.max(0, maxOf(underLines.flat().map((line) => measure(line, nFont).width)));
   const catBand = rowLabelBand(rows, tickFont, catCap, availH / rows.length >= 30 ? 2 : 1, lineH, measure, {
-    wider: gutterBudget(24, plot0.w),
+    wider: nameTrack ?? gutterBudget(24, plot0.w),
     shrink: stepDownFont(theme, tickFont, 'axis', options.target, textScaleOf(options)),
     target: options.target, textScale: textScaleOf(options),
     typeRole: 'axis',
@@ -489,7 +541,8 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
   const catLines = catBand.labels;
   // A frame too short for a name and its n on two lines keeps n in the right-hand column.
   const underFits = catLines.every((label, index) => label.h + underLines[index]!.length * nLineH + 2 <= availH / rows.length);
-  const nUnder = !labelsOff && labelOn('category') && underW <= catCap && underFits;
+  // An authored n column is a column: n stays out of the name column.
+  const nUnder = !labelsOff && labelOn('category') && underW <= catCap && underFits && overrides?.n?.width === undefined;
   if (nUnder) {
     nLines = underLines;
     nBandTotal = 0;
@@ -507,11 +560,11 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
     const rawH = plot0.h - topPad - axisH;
     frameResult.frame.plotMinHeight = Math.max(frameResult.frame.plotMinHeight ?? 0, size.height + (frameResult.deficit ?? 0) - rawH + rowsNeed);
   }
-  const catBandW = labelOn('category') ? Math.max(catBand.width, nUnder ? underW : 0) : 0;
+  const catBandW = labelOn('category') ? nameTrack ?? Math.max(catBand.width, nUnder ? underW : 0) : 0;
   const catBandTotal = labelOn('category') ? catBandW + CAT_BAND_GAP : 0;
   // The rows grow to hold the second line of a wrapped n.
   const nWraps = !nUnder && !labelsOff && nSplit.some((lines) => lines.length > 1);
-  const nFloorTotal = nWraps ? maxOf(nSplit.map(nWidth)) + N_BAND_GAP : nBandTotal;
+  let nFloorTotal = nWraps ? maxOf(nSplit.map(nWidth)) + N_BAND_GAP : nBandTotal;
   if (nWraps && plot0.w - catBandTotal - nBandTotal - bracketRoom < MIN_VALUE_RUN) {
     nLines = nSplit;
     nBandTotal = nFloorTotal;
@@ -522,6 +575,31 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
   // It reads in the tick row, as a tick: the axis format.
   const parkLabel = parked === undefined ? '' : axisFmt(parked);
   const parkRoom = parked === undefined ? 0 : PARK_GAP + Math.max(POINT_R, measure(parkLabel, tickFont).width / 2);
+
+  if (overrides?.n?.width !== undefined && !nUnder && !labelsOff) {
+    nBandTotal = authoredTrackWidth('n', overrides.n.width, nBandTotal - N_BAND_GAP, plot0.w - catBandTotal - bracketRoom - parkRoom - N_BAND_GAP - plotKeeps, warnings) + N_BAND_GAP;
+    nFloorTotal = nBandTotal;
+  }
+  // DENSE ROWS. A row too low to hold its median over the box (label height + 19 px) would push
+  // the median to a whisker end or beside a dot, where it reads as that mark's value. Such rows print
+  // every median right-aligned in one column beside n, under the head Median.
+  const denseRows = availH / rows.length < valueLabelH + MEDIAN_OFFSET + MEDIAN_CLEAR + 8;
+  const medianRows = rows.filter((row) => row.median !== null && row.state !== 'points');
+  // The column shows only where the value run keeps MIN_VALUE_RUN beside it; a narrower frame keeps
+  // the seats by the box, so no size that drew before refuses.
+  const medianWanted = denseRows && labelOn('point') && options.boxValues !== 'all' && medianRows.length > 0;
+  const headFont = columnHeadFont(theme, options.target ?? DEFAULT_TARGET, textScaleOf(options));
+  const medianBodyW = medianWanted ? maxOf(medianRows.map((row) => measure(fmtMedian(row.median!), labelFont).width)) : 0;
+  const medianHeadFit = medianWanted ? fitHead(overrides?.median?.label ?? 'Median', headFont, medianBodyW, measure, { target: options.target ?? DEFAULT_TARGET, textScale: textScaleOf(options) }) : undefined;
+  const medianNaturalW = medianHeadFit ? Math.max(medianHeadFit.w, medianBodyW) : 0;
+  const medianColW = !medianHeadFit ? 0 : N_BAND_GAP + (overrides?.median?.width === undefined ? medianNaturalW
+    : authoredTrackWidth('median', overrides.median.width, medianNaturalW, plot0.w - catBandTotal - nBandTotal - N_BAND_GAP - bracketRoom - parkRoom - plotKeeps, warnings));
+  const medianCol = medianWanted && plot0.w - catBandTotal - nBandTotal - medianColW - bracketRoom - parkRoom >= MIN_VALUE_RUN;
+  const medianHead = medianCol ? medianHeadFit : undefined;
+  const medianColRight = plot0.x + plot0.w - nBandTotal;
+  const medianColTotal = medianCol ? medianColW : 0;
+  columnOverrideWarnings('box', overrides, [...(labelOn('category') ? ['label'] : []), ...(!nUnder && !labelsOff ? ['n'] : []), ...(medianCol ? ['median'] : [])], medianCol ? ['median'] : [], warnings);
+  nBandTotal += medianColTotal;
 
   // A box chart is a row form. Its narrowest canvas holds the name column, the n column,
   // the bracket room and a value run of 80 px, beside the chrome around the plot.
@@ -545,7 +623,9 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
   // the domain edge is still painted inside the plot rect.
   // A parked value keeps its strip inside the plot rect, right of the value scale.
   const scaleEnd = plot.x + plot.w - parkRoom;
-  const x = linearScale([dLo, dHi], [plot.x + POINT_R, scaleEnd - (parked === undefined ? POINT_R : 0)]);
+  const range: [number, number] = [plot.x + POINT_R, scaleEnd - (parked === undefined ? POINT_R : 0)];
+  const activeBreak = boxAxisBreak(options.valueAxis?.break, [dLo, dHi], drawnValues, rows, options.valueAxis?.show !== false, warnings);
+  const x = activeBreak ? brokenLinearScale([dLo, dHi], range, activeBreak) : linearScale([dLo, dHi], range);
   const parkX = scaleEnd + PARK_GAP;
   /** Painted x of a dot: the parked value sits in its strip, every other value on the scale. */
   const xp = (value: number): number => (parked !== undefined && value === parked ? parkX : x(value));
@@ -577,6 +657,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
         ...(scaleEnd - plot.x < 320 ? { tickCount: 3 } : {}),
         gridlines: options.valueAxis?.gridlines ?? false,
         format: axisFmt,
+        ...(scaled ? { formatSpec: scaled.spec } : {}),
         theme,
         measure,
         canvasWidth: size.width,
@@ -612,7 +693,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
   }
 
   // ---- marks: every one claims BEFORE the solver runs ----------------------
-  const marks: BoxMarks = { rows: [] };
+  const marks: BoxMarks = { rows: [], labelDecimals };
   const labelRequests: LabelRequest[] = [];
   const firstMedianRow = rows.findIndex((row) => row.median !== null && row.state !== 'points');
   // 20 px boxes on cards, 22 px at 720, 24 px from 900.
@@ -1079,6 +1160,8 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
         text,
         lines,
         ...(lines.length > 1 ? { align: 'end' as const } : {}),
+        // Dense rows touch line box to line box, as the median column beside them does.
+        ...(denseRows ? { pad: 0 } : {}),
         font: tickFont,
         priority: PRIORITY.valueLine,
         candidates: [
@@ -1101,7 +1184,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
     if (labelOn('point') && row.median !== null && row.state !== 'points') {
       // The first figure names the statistic, as a first tick names its unit:
       // a bare number above a box reads as anything from a mean to a total.
-      const text = `${index === firstMedianRow ? 'Median ' : ''}${fmtMedian(row.median)}`;
+      const text = `${index === firstMedianRow && !medianCol ? 'Median ' : ''}${fmtMedian(row.median)}`;
       const textSize = measure(text, labelFont);
       const medianX = x(row.median);
       // EVERY candidate clears this row's OWN dots.
@@ -1124,7 +1207,12 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
         lines: [text],
         font: labelFont,
         priority: PRIORITY.endpoint,
-        candidates: [
+        ...(medianCol ? { pad: 0 } : {}),
+        candidates: medianCol ? [{
+          slot: 'medianColumn',
+          rect: { x: medianColRight - textSize.width, y: rowCenter - textSize.height / 2, w: textSize.width, h: textSize.height },
+          penalty: 0,
+        }] : [
           {
             slot: 'aboveMedian',
             rect: {
@@ -1170,6 +1258,10 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
     }
   });
 
+  if (medianHead && medianHead.lines[0]) {
+    const headH = measure('0', headFont).height;
+    labelRequests.push(headRequest('median', 0, medianHead, alignedRight(medianColRight, medianColW - N_BAND_GAP, medianHead.w, overrides?.median?.headAlign ?? 'right'), plot.y - headH - 2, headH, false));
+  }
   const solveCtx: SolveCtx = labelCtx(theme, size, options, {
     measure,
     plot,
@@ -1185,9 +1277,11 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
   const solved = solveLabels(labelRequests, occupied, solveCtx);
   applyValueAxisTitleInk(solved.placed);
   // The n under a row name is muted furniture, as the tick figures are.
-  if (nUnder) for (const label of solved.placed) if (label.id.startsWith('boxN:')) label.ink = { token: 'inkMuted' };
+  for (const label of solved.placed) if (nUnder && label.id.startsWith('boxN:') || label.id.startsWith(HEAD_PREFIX)) label.ink = { token: 'inkMuted' };
   pushAll(warnings, solved.warnings);
-  pushAll(nodes, labelsToNodes(theme, solved.placed, (label) => (label.kind === 'point' ? labelFont : nUnder && label.id.startsWith('boxN:') ? nFont : tickFont)));
+  const labelNodes = labelsToNodes(theme, solved.placed, (label) => (label.kind === 'point' ? labelFont : label.id.startsWith(HEAD_PREFIX) ? headFont : nUnder && label.id.startsWith('boxN:') ? nFont : tickFont));
+  asColumnHeads(labelNodes);
+  pushAll(nodes, labelNodes);
 
   // A dodge that ran out of band is the one case where two dots still touch.
   // Severity follows the label solver's own convention (`label-hidden` is warn

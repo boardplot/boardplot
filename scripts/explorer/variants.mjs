@@ -56,7 +56,7 @@ export const variants = {
   cohort: { axis: ['variant'], variants: [v('heatmap', 'saas-logo-retention'), v('pure', 'retention-pure-exhibit'), v('stepped', 'retention-stepped-column')] },
   pvm: one('fy-revenue-bridge', auto),
   histogram: one('order-value-distribution'),
-  diagram: { axis: ['variant'], variants: [v('hierarchy', 'org-structure'), v('issue-tree', 'profit-issue-tree'), v('linear-process', 'transformation-process'), v('customer-journey', 'onboarding-journey'), v('circular-process', 'operating-cycle', auto), v('strategy-house', 'strategy-house', auto), v('roadmap', 'growth-roadmap', tall(384))] },
+  diagram: { axis: ['variant'], variants: [v('hierarchy', 'org-structure'), v('issue-tree', 'profit-issue-tree'), v('linear-process', 'transformation-process'), v('customer-journey', 'onboarding-journey'), v('circular-process', 'operating-cycle', auto), v('strategy-house', 'strategy-house', auto), v('roadmap', 'growth-roadmap', tall(384)), v('architecture', 'protected-request', auto)] },
   dimswitch: { axis: ['variant'], variants: [v('by-measure', 'by-measure'), v('by-member', 'by-member')] },
   likert: one('employee-engagement-5pt'),
   pareto: one('defect-causes'),

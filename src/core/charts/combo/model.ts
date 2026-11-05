@@ -77,6 +77,8 @@ export interface ComboDomain {
   shareTexts: Map<string, string>;
   /** rounding 'sum-consistent': the shares printed off their nearest rounding. */
   roundingAdjustments: import('../../shareRounding').RoundingAdjustment[];
+  /** The hidden method note on moved shares. */
+  shareNotes: string[];
   /** The options with the view window applied to the annotations. */
   options: ComboOptions;
   cats: Category[];
@@ -93,8 +95,18 @@ export interface ComboDomain {
   anatomy: boolean;
   /** The chosen scales keep the secondary lines above the columns. */
   lineBand: boolean;
-  /** Recompute only scales and the anomaly corridor when measured clearance changes the pair. */
-  withLineBandClearance?: (clearance: number) => { domain: ComboDomain; warnings: LintWarning[] } | undefined;
+  /**
+   * No zero-based pair keeps the line above the columns: the columns keep the
+   * lower part of the plot and the secondary lines float in the band above
+   * them on their own scale. `range` holds the primary values the secondary
+   * domain maps to.
+   */
+  lineFloat?: { range: [number, number] };
+  /**
+   * Recompute only scales and the anomaly corridor when measured clearance changes the pair.
+   * `floatClearance` is the clearance a floated line keeps over the tallest column: its low value prints under its point.
+   */
+  withLineBandClearance?: (clearance: number, floatClearance?: number) => { domain: ComboDomain; warnings: LintWarning[] } | undefined;
   showPrimaryAxis: boolean;
   interpolationFor: (s: NormSer) => LineInterpolation;
   fmt: (v: number) => string;
@@ -125,6 +137,7 @@ export interface ComboDomain {
   dLo: number;
   dHi: number;
   pticks: number[];
+  stepTicks?: number[];
   secondaryDomain?: [number, number];
   rightTicks: { at: number; text: string }[];
 }
@@ -169,6 +182,8 @@ export interface ComboArea {
   endpointWidth: number;
   band: BandScale;
   catPlan: CategoryRowPlan;
+  /** categoryAxis.dateTicks: true at the first category of each calendar interval. */
+  intervalTicks?: readonly boolean[];
   dateNumericTicks: boolean;
   showCatTickRow: boolean;
   /** options.categoryLabels 'staircase' on this pass: the highest y the names may use. */

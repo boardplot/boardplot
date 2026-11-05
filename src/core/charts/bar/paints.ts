@@ -4,8 +4,9 @@
  */
 
 import { partialPattern } from '../../partialPeriod';
-import { colorRolePaints, effectiveFill, paintColor, recedingSeriesId, seriesPaint as themeSeriesPaint, stackApartPaint, stackRampPaint } from '../../theme';
+import { colorRolePaints, effectiveFill, neutralRampPaint, paintColor, recedingSeriesId, seriesPaint as themeSeriesPaint, stackApartPaint, stackRampPaint } from '../../theme';
 import { signColorOverrides, signPaint } from '../band/sign';
+import { scenarioSlotPaint, seriesScenarioRole } from '../../scenarioPairs';
 import type { CellMeta, Id } from '../../types/cell';
 import type { LintWarning, Paint } from '../../types/scene';
 import { OTHERS_ID, type BarDomain, type BarPaints, type NormCat, type NormSeries } from './model';
@@ -42,7 +43,8 @@ export function barPaints(domain: BarDomain, warnings: LintWarning[]): BarLegend
   const ownPaints = dataSeries.map((s): Paint | undefined =>
     s.fill ? { css: s.fill } : s.colorRole ? roles.get(s.id)! : highlights.has(s.id) ? { token: 'focus' } : undefined);
   const stackOwn = domain.variant !== 'grouped' && ownPaints.some(Boolean) ? ownPaints : undefined;
-  const seriesIdentityPaint = (s: NormSeries, scenario = s.scenario): Paint => {
+  const roleOf = (s: NormSeries) => seriesScenarioRole(s.scenario, s.cells.filter((c) => c.v !== null).map((c) => c.meta?.scenario));
+  const seriesIdentityPaint = (s: NormSeries, scenario = roleOf(s)): Paint => {
     if (s.fill) return { css: s.fill };
     if (s.colorRole) return roles.get(s.id)!;
     if (highlights.has(s.id)) return { token: 'focus' };
@@ -50,17 +52,18 @@ export function barPaints(domain: BarDomain, warnings: LintWarning[]): BarLegend
     // enough to carry white value labels inside its bar ends; lines and slopes
     // keep the lighter muted tint.
     if (s.id === receding) return { token: 'neutralMark' };
-    // Several plain parts of a stack beside a highlight recede in two greys,
-    // dark and light in turn, so neighbours stay apart.
+    // Several plain parts of a stack beside a highlight recede on the neutral
+    // ramp, strongest to quietest in authored order.
     const grey = stackGreys.indexOf(s.id);
-    if (grey >= 0) return grey % 2 === 0 ? { token: 'neutralMark' } : { token: 'rest' };
+    if (grey >= 0) return neutralRampPaint(grey, stackGreys.length, scenario === 'FC');
     if (beyondNet.has(s.id)) return { token: 'rest' };
+    const partner = domain.scenarioPartner.get(s.id);
+    if (partner) return seriesIdentityPaint(partner, scenario);
     if (dataSeries.length === 1) return themeSeriesPaint(s.slot, palette, scenario, true);
     if (stackPlain.length > 1 && stackPlain.includes(s)) return stackRampPaint(stackPlain.indexOf(s), stackPlain.length, s.slot);
     if (stackOwn) return stackApartPaint(stackOwn, dataSeries.indexOf(s), s.slot, palette);
-    // A forecast bar of several series keeps its key colour: its hatch lies on
-    // its own ground (hatchGroundPaint), as column's does.
-    return themeSeriesPaint(s.slot, palette);
+    if (domain.variant !== 'grouped') return themeSeriesPaint(s.slot, palette);
+    return scenarioSlotPaint(s.slot, palette, scenario);
   };
   /** Fill + pattern for a bar/segment (scenario semantics fixed by spec). */
   const barPaint = (s: NormSeries, catId: Id, meta: CellMeta | null, v: number | null = null): BarFill => {

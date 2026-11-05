@@ -178,10 +178,9 @@ describe('OPTION_CAPABILITY census', () => {
 describe('OPTION_CAPABILITY census, behaviour: an accepted key changes the drawing', () => {
   const PROBES: Partial<Record<keyof typeof OPTION_CAPABILITY, readonly unknown[]>> = {
     rowLabels: [{ align: 'right' }, { align: 'left' }],
-    categoryAxis: [{ crossesBetween: false }],
+    categoryAxis: [{ crossesBetween: false }, { dateTicks: 'quarters' }],
     categoryLabels: ['staircase'],
-    labels: [false],
-    colorblindSafe: [true],
+    labels: [false, { point: false }],
     hatchStrength: [0, 100],
     sort: [{ categories: 'reverse' }, { segments: 'reverse' }],
     topN: [{ n: 2 }],
@@ -199,6 +198,7 @@ describe('OPTION_CAPABILITY census, behaviour: an accepted key changes the drawi
   const AT_THE_FLOOR: Record<string, string> = {
     'column/scenario-corridor-fc': 'the forecast corridor stripes sit at the 3:1 floor',
     'heatmap/missing-cells': 'the no-data stripes sit at the 3:1 floor in the shipped presets',
+    'heatmap/cell-states': 'the no-data and state stripes sit at the 3:1 floor in the shipped presets',
   };
 
   type AnyDefinition = NonNullable<ReturnType<typeof getChartDefinition>>;
@@ -314,6 +314,7 @@ describe('published option behaviour census', () => {
 
   // These values exercise common options without depending on an implicit default.
   const VALUES: Options = {
+    rowLabelLines: 1, latestPoint: 'ring', binSnap: false, density: 'compact', maxPointLabels: 1, elapsed: false, valueTable: 'below',
     target: 'dashboard', textScale: 1.25, textSize: 18, a11y: { title: true },
     mode: 'compact', belowMinimum: 'refuse', size: { width: 960 }, embed: { width: 180 },
     margin: { left: 100 }, canvas: { margin: { left: 100 } },
@@ -336,8 +337,11 @@ describe('published option behaviour census', () => {
     axisFormat: { x: '1.000', y: '1.000' }, gapFill: { between: ['output', 'market'] },
     scenarioStyle: { FC: { width: 5 } }, visiblePeriods: [0, 1],
     expansion: { depth: 0 }, columnVisibility: { actual: false },
-    totalPosition: 'bottom', figures: false, magnitude: 'million',
+    totalPosition: 'bottom', figures: false, magnitude: 'million', bars: false,
     driverTones: 'never', judgements: 'exceptions', show: 'withData',
+    columnOverrides: { label: { width: 150 } }, columnOrder: ['plot'], columnHeads: false,
+    rowVisibility: { census: false }, rowOrder: ['census'], rowOverrides: { census: { label: 'Census row' } },
+    valueTableEmphasis: false,
   };
 
   /** Options | companion settings | reason. Applied to both renders. */
@@ -347,9 +351,18 @@ describe('published option behaviour census', () => {
     'choropleth.colorblindSafe': { options: { scale: { kind: 'diverging', midpoint: 0, polarity: 'higherIsBetter' } }, reason: 'Needs two scale poles.' },
     'tilemap.colorblindSafe': { options: { scale: { kind: 'diverging', midpoint: 0, polarity: 'higherIsBetter' } }, reason: 'Needs two scale poles.' },
     'cohort.labels': { options: { variant: 'heatmap' }, reason: 'Exhibit variants have a fixed label set.' },
+    'cohort.sort': { options: { variant: 'heatmap' }, reason: 'Only the heatmap warns that it keeps cohort order.' },
+    'dimswitch.strings': { options: { source: 'Census' }, reason: 'The probe renames the word before a source.' },
+    'table.lastTrackFlex': { options: { rowExtent: 'tracks', size: { width: 1400 } }, reason: 'Only tracks with spare width have a last track to grow.' },
     'cohort.steps': { options: { variant: 'stepped', formatScope: 'classic' }, reason: 'Only absolute stepped classes read steps.' },
+    'cohort.figures': { options: { variant: 'stepped' }, reason: 'Only stepped fills can stop their numbers.' },
     'table.figures': { options: { encodings: { actual: 'heat' } }, reason: 'Figures can be hidden only on a heat lane.' },
     'dimswitch.figures': { options: { encodings: { range: 'heat' } }, reason: 'Figures can be hidden only on a heat lane.' },
+    'dimswitch.heightFill': { options: { size: { width: 900, height: 900 } }, reason: 'Only a pinned height has spare height to fill.' },
+    'table.heightFill': { options: { size: { width: 900, height: 900 } }, reason: 'Only a pinned height has spare height to fill.' },
+    'bartable.heightFill': { options: { size: { width: 900, height: 900 } }, reason: 'Only a pinned height has spare height to fill.' },
+    'waffle.heightFill': { options: { target: 'slide', size: { width: 1184, height: 528 } }, reason: 'Only a pinned height has spare height to fill.' },
+    'diagram.heightFill': { options: { size: { width: 900, height: 900 } }, reason: 'Only a set height has spare height to fill.' },
   };
   // notes also gets one footnote (except creative, which refuses footnotes).
   // unitShown also gets an explicit unit. Both renders get the same companion.
@@ -398,107 +411,82 @@ describe('published option behaviour census', () => {
    * Types | option | reason for the one-fixture coverage gap.
    */
   const KNOWN_GAPS: readonly (readonly [string, string, string])[] = [
-    ["bar bartable box bullet butterfly choropleth cohort column combo dot funnel gantt grid heatmap histogram kpi likert line mekko pareto pie pvm pyramid scatter slope sparkline status dimswitch table tilemap sankey treemap variance waffle waterfall", "belowMinimum", "The representative fixture fits; the refusal policy does not run."],
-    ["bar bartable box butterfly choropleth cohort column combo dot funnel gantt grid histogram likert line mekko pareto pie pvm pyramid scatter slope sparkline status table tilemap treemap variance waffle waterfall", "unitShown", "The host unit declaration changes no visible unit line on this fixture."],
-    ["bar bartable box bullet butterfly choropleth cohort column combo dot funnel gantt grid heatmap histogram kpi likert line mekko pareto pie pvm pyramid scatter slope sparkline status dimswitch table tilemap sankey treemap variance waffle waterfall", "smallValues", "The representative values do not exercise a small-value precision boundary."],
-    ["bar bartable box bullet butterfly choropleth cohort column combo dot funnel gantt grid heatmap histogram kpi likert line mekko pareto pie pvm pyramid scatter slope sparkline status tilemap sankey treemap variance waffle waterfall", "labelPlacements", "This pin changes no SVG; any slot warning does not name labelPlacements."],
-    ["bar bartable box bullet butterfly choropleth cohort column combo dot funnel gantt grid heatmap histogram kpi likert line mekko pareto pie pvm pyramid scatter slope sparkline status dimswitch table tilemap sankey treemap variance waffle waterfall", "scaleGroup", "A single group member keeps its own value domain."],
-    ["bar bartable cohort combo gantt grid heatmap histogram kpi likert pareto pie slope sparkline status dimswitch table tilemap treemap waffle", "focus", "The selected owner has no changed static SVG focus mark on this fixture."],
-    ["bar butterfly choropleth cohort combo funnel grid heatmap line mekko slope status", "hatchStrength", "This fixture has no responsive hatch; the wider hatch census above remains in force."],
-    ["bar column heatmap", "colorblindSafe", "This fixture has no responsive good/bad fill pair."],
+    ["bar bartable box bullet butterfly choropleth cohort column combo dot funnel gantt grid heatmap histogram kpi likert line mekko pareto pie pvm pyramid scatter slope sparkline status dimswitch table tilemap sankey treemap variance waffle waterfall", "belowMinimum", "Runs only when the chart does not fit: box cycle-time-by-team at target slide, butterfly long-labels 320 wide. Types with no such spec: reader at registry.ts:700, needs a size under the floor, not proved."],
+    ["bar bartable box butterfly choropleth cohort column combo dot funnel gantt grid histogram likert line mekko pareto pie pvm pyramid scatter slope sparkline status table tilemap treemap variance waffle waterfall", "unitShown", "Prints only where the chart does not already state the unit: butterfly tiny-side. Types with no such spec: reader at frame.ts:806, needs a unit the frame can hoist, not proved."],
+    ["bar bartable box bullet butterfly choropleth cohort column combo dot funnel gantt grid heatmap histogram kpi likert line mekko pareto pie pvm pyramid scatter slope sparkline status dimswitch table tilemap sankey treemap variance waffle waterfall", "smallValues", "Acts on a value under the printed precision: slope diverging-team-engagement with data x 0.00001. Types with no such spec: reader at format.ts:31, needs such a value, not proved."],
+    ["bar bartable box bullet butterfly choropleth cohort column combo dot funnel gantt grid heatmap histogram kpi likert line mekko pareto pie pvm pyramid scatter slope sparkline status tilemap sankey treemap variance waffle waterfall", "labelPlacements", "Pins a label to a slot its kind can take: box salary-bands-pinned-median with { 'median:ic5': 'aboveMedian' }. Where the slot cannot apply it warns, and the warning names the slot."],
+    ["bar bartable box bullet butterfly choropleth cohort column combo dot funnel gantt grid heatmap histogram kpi likert line mekko pareto pie pvm pyramid scatter slope sparkline status dimswitch table tilemap sankey treemap variance waffle waterfall", "scaleGroup", "Shares a domain with a second chart of the group: column forecast-ci-column in a two-chart document, second chart values x 3."],
+    ["bar bartable cohort combo gantt grid heatmap histogram kpi likert pareto pie sparkline status dimswitch table tilemap treemap waffle", "focus", "Lifts a label in the solve order, so it shows only where labels compete: bar valuation-football-field with its dcf equity-value owner. Others: reader at label/solver.ts:384, needs competing labels, not proved."],
+    ["bar butterfly choropleth cohort combo funnel grid heatmap line mekko slope status", "hatchStrength", "Needs a hatched mark, which this fixture lacks: butterfly customer-spend with every series scenario FC. The hatch census above covers the rest."],
+    ["bar column heatmap bartable box butterfly cohort combo dot funnel gantt histogram mekko pareto pie pyramid scatter slope sparkline sankey treemap waffle", "colorblindSafe", "Swaps the good and bad paints, so it needs a chart that paints them: sankey sales-stages. Others: reader at grid/layoutGrid.ts:353, needs a good and bad paint, not proved."],
     ["bar bartable box bullet butterfly choropleth cohort column combo creative diagram dot funnel gantt grid heatmap histogram kpi likert line mekko pareto pie pvm pyramid scatter slope sparkline status dimswitch table tilemap sankey treemap variance waffle waterfall", "interactive", "React host setting; the static SVG has no interaction state."],
-    ["bar butterfly column combo dot funnel heatmap line mekko pie slope", "detailFields", "Hover-record labels for cell details; the static SVG draws the same picture."],
-    ["bar bullet histogram variance", "axisTitles", "The primary title probe changes no visible axis title on this fixture."],
-    ["bar", "sharesOfOneWhole", "Fixture margin-by-brand has no SVG or option-warning change with true."],
-    ["column", "sharesOfOneWhole", "Fixture forecast-ci-column has no SVG or option-warning change with true."],
-    ["bar", "tornado", "Fixture margin-by-brand has no SVG or option-warning change with {\"low\":\"census census\",\"high\":\"census\"}."],
-    ["bar choropleth line", "methodNote", "This fixture adds no visible method note with methodNote true."],
-    ["bar column combo", "referenceStyle", "This fixture has no reference mark that responds to this style."],
-    ["bar combo", "referenceTick", "This fixture has no reference tick that responds to this width."],
-    ["bartable box grid heatmap kpi line slope sparkline status dimswitch table variance waffle", "labelDensity", "This fixture keeps the same label set at minimal density."],
-    ["bartable cohort column combo dot gantt histogram kpi pvm sparkline status dimswitch table sankey treemap variance waffle waterfall", "legend", "The requested key position changes no SVG on this fixture."],
-    ["bartable mekko slope", "highlight", "The selected id changes no mark in this representative fixture."],
-    ["bartable box bullet choropleth cohort gantt grid histogram kpi likert pvm pyramid scatter sparkline status dimswitch table tilemap sankey treemap waffle", "annotations", "This note or edited annotation changes no SVG and gives no new warning naming annotations."],
-    ["box", "showObservations", "The representative fixture has no observation marks to remove."],
-    ["butterfly", "sortBy", "Fixture customer-spend has no SVG or option-warning change with \"sheet\"."],
-    ["choropleth", "topN", "Fixture german-states-revenue has no SVG or option-warning change with {\"n\":2}."],
-    ["choropleth", "labelRegions", "Fixture german-states-revenue has no SVG or option-warning change with []."],
-    ["choropleth", "smallRegionArea", "Fixture german-states-revenue has no SVG or option-warning change with 1."],
-    ["choropleth", "overlayTones", "Fixture german-states-revenue has no SVG or option-warning change with {\"good\":\"census\"}."],
-    ["tilemap", "overlayTones", "Fixture eu27-equal-tiles has no SVG or option-warning change with {\"good\":\"census\"}."],
-    ["choropleth", "overlayMeasure", "Fixture german-states-revenue has no SVG or option-warning change with \"census\"."],
-    ["tilemap", "overlayMeasure", "Fixture eu27-equal-tiles has no SVG or option-warning change with \"census\"."],
-    ["choropleth", "valueTable", "Fixture german-states-revenue has no SVG or option-warning change with \"side\"."],
-    ["cohort", "sort", "Fixture retention-pure-exhibit has no SVG or option-warning change with {\"categories\":\"reverse\"}."],
-    ["cohort", "averages", "Fixture retention-pure-exhibit has no SVG or option-warning change with \"weighted\"."],
-    ["column line pie", "othersShade", "This fixture has no Others mark that responds to this shade."],
-    ["column combo line", "events", "This fixture has no event lane that responds to key placement."],
-    ["combo", "latestPoint", "Fixture revenue-units-secondary has no SVG or option-warning change with \"none\"."],
-    ["creative", "notes", "Fixture creative-placeholder has no SVG or option-warning change with {\"show\":[]}."],
-    ["dot", "rowLabels", "The representative row labels keep the same alignment."],
-    ["gantt", "elapsed", "Fixture status-gantt has no SVG or option-warning change with true."],
-    ["gantt", "colHeaders", "Fixture status-gantt has no SVG or option-warning change with [\"census\"]."],
-    ["grid treemap waffle", "valueAxis", "This fixture keeps the same drawing with the requested minimum."],
-    ["grid", "sharedScale", "Fixture stacked-plus-dpy has no SVG or option-warning change with true."],
-    ["grid", "reflow", "Fixture stacked-plus-dpy is no facet grid on a phone card; tests/grid-tiers-redesign.test.ts covers reflow on one."],
-    ["heatmap status", "labels", "This variant keeps the same drawing with labels false."],
-    ["heatmap", "scale", "Fixture harvey-quarter-steps has no SVG or option-warning change with \"continuous\"."],
-    ["heatmap", "bubble", "Fixture harvey-quarter-steps has no SVG or option-warning change with {\"levels\":[\"census\"]}."],
-    ["heatmap", "missing", "Fixture harvey-quarter-steps has no SVG or option-warning change with \"blank\"."],
-    ["histogram", "binSnap", "Fixture order-value-distribution has no SVG or option-warning change with true."],
-    ["bullet kpi status table", "format", "Authored series, column or row formats keep the drawn numbers unchanged."],
-    ["kpi", "comparisons", "Fixture arr-card has no SVG or option-warning change with \"text\"."],
-    ["likert", "requiredNotes", "Fixture employee-engagement-5pt has no SVG or option-warning change with {\"neutral\":true,\"base\":false}."],
-    ["likert", "methodNote", "Fixture employee-engagement-5pt authors notes.show, which decides alone, so methodNote adds no note."],
-    ["bar column combo line pie", "rounding", "These values print the same with sum-consistent rounding."],
-    ["line", "endLabelPlacement", "Fixture actuals-forecast-operating-rate has no SVG or option-warning change with \"lineEnd\"."],
-    ["line", "bump", "Fixture actuals-forecast-operating-rate has no SVG or option-warning change with {\"direction\":\"lowerIsBetter\"}."],
-    ["line", "highlightMode", "Fixture actuals-forecast-operating-rate has no SVG or option-warning change with \"fade\"."],
-    ["line", "scenarioStyle", "Fixture actuals-forecast-operating-rate has no SVG or option-warning change with {\"FC\":{\"width\":5}}."],
-    ["line", "targets", "Fixture actuals-forecast-operating-rate has no SVG or option-warning change with [{\"at\":\"census census\",\"value\":7,\"seriesId\":\"census\"}]."],
-    ["pie", "colors", "Fixture streaming-genre-share has no SVG or option-warning change with \"sequential\"."],
-    ["scatter", "sizeBy", "Fixture price-quality-brands has no SVG or option-warning change with \"diameter\"."],
-    ["scatter", "maxPointLabels", "Fixture price-quality-brands has no SVG or option-warning change with 307."],
-    ["dimswitch", "strings", "Fixture by-measure has no SVG or option-warning change with {\"source\":\"Census source\"}."],
+    ["bar butterfly column combo dot funnel heatmap line mekko pie slope", "detailFields", "Hover-record labels for cell details; the static SVG draws the same picture. Reader at a11y/details.ts:16."],
+    ["bar bullet histogram variance", "axisTitles", "Prints only under a drawn value axis: bullet sparse-targets-overshoot, variance all-negative-deltas on the variant that draws one."],
+    ["bar column", "sharesOfOneWhole", "Reader at bar/domain.ts:589 and column/domain.ts:968, needs a stack whose authored parts miss 100, not proved."],
+    ["bar", "tornado", "Only variant tornado reads it: dcf-npv-sensitivity with its real series ids."],
+    ["bar choropleth line", "methodNote", "Adds a note only where the data needs one: choropleth world-inflation, bar stacked100-slivers with null values."],
+    ["bar column combo", "referenceStyle", "Needs a reference mark: combo option-reference-line with 'marker'."],
+    ["bar combo", "referenceTick", "Needs a reference tick: combo option-reference-tick-highlight."],
+    ["bartable box grid heatmap kpi line slope sparkline status dimswitch table variance waffle", "labelDensity", "Thins labels only where they compete: box cycle-time-by-team with 'minimal'. Others: reader at frame.ts:1222, needs competing labels, not proved."],
+    ["bartable column combo dot status table tilemap treemap variance waffle waterfall", "legend", "Draws a key only with parts to name: variance dpy-absolute-regions with 'bottom'."],
+    ["bartable", "segmentValues", "The representative fixture gives every row a range, and a row with a range prints end labels only; the single-panel fixture shows the parts."],
+    ["bartable mekko slope", "highlight", "Names a mark of the fixture: slope market-share-shift with '2020'. On bartable it warns only when a named row is missing."],
+    ["box bullet gantt likert pvm pyramid scatter", "annotations", "The census note has no anchor on this fixture: box dated-median-growth with a diff annotation draws one."],
+    ["box", "showObservations", "Needs observation marks: box mixed-support-groups with 'none'."],
+    ["butterfly", "negatives", "Needs a negative value: butterfly negatives-own-scale with 'magnitude'."],
+    ["choropleth", "topN", "Labels world maps only: choropleth world-inflation with { n: 2 }."],
+    ["choropleth", "labelRegions", "Labels world maps only: choropleth world-inflation with ['AE', 'AF']."],
+    ["choropleth", "smallRegionArea", "Needs small regions: choropleth eu-inflation with 0."],
+    ["choropleth tilemap", "overlayTones", "Needs an overlay with tones: choropleth world-footprint."],
+    ["choropleth tilemap", "overlayMeasure", "Needs an overlay: choropleth world-footprint with 'US'."],
+    ["column line pie", "othersShade", "Reader at column/paints.ts:86, needs an Others mark in a topN cut, not proved."],
+    ["column combo line", "events", "Needs an event lane: column weekly-events-lane with placement 'key'."],
+    ["creative", "notes", "Reader at notes.ts:147, needs a footnote, which creative refuses, not proved."],
+    ["dot", "rowLabels", "Moves a label only when it wraps: dot share-shift-dumbbell 320 wide with align 'right'."],
+    ["gantt", "colHeaders", "Needs metadata columns: gantt transformation-program."],
+    ["grid treemap waffle", "valueAxis", "Reader at a11y/categoryRecords.ts:68 and grid/layout.ts:694, needs a panel that reads a domain, not proved."],
+    ["grid", "sharedScale", "Needs panels on different scales: grid weekly-actual-vs-plan with false."],
+    ["grid", "reflow", "Needs a facet grid on a phone card; tests/grid-tiers-redesign.test.ts covers reflow on one."],
+    ["heatmap status", "labels", "Acts on a label this variant draws: status review-status-legend-none with false."],
+    ["heatmap", "scale", "Needs a value variant: heatmap regional-monthly-performance with 'discrete'."],
+    ["heatmap", "bubble", "Needs the bubble variant: heatmap survey-journey-track with a track."],
+    ["heatmap", "missing", "Needs a missing cell: heatmap missing-cells with 'blank'."],
+    ["bullet kpi status table", "format", "Authored series, column or row formats win: kpi value-only prints it. Status: reader at status/layout.ts:193, needs values with decimals, not proved."],
+    ["kpi", "comparisons", "Needs two comparisons: kpi dual-compare with 'chip'."],
+    ["bar column combo line pie", "rounding", "Needs shares that miss the printed whole: combo stacked-shares-sum with 'nearest', pie streaming-genre-share with null values."],
+    ["line", "endLabelPlacement", "Needs the bump variant: line brand-share-bump with 'gutter'."],
+    ["line", "bump", "Needs the bump variant: line brand-share-bump."],
+    ["line", "highlightMode", "Needs an area variant: line stacked-area-services-growth with 'fade'."],
+    ["line", "scenarioStyle", "Needs scenario series: line brief-current-vs-prior."],
+    ["line", "targets", "Needs a seat for the target at a narrow width: line stacked100-area-mixed-sign-fail-closed 320 wide."],
+    ["pie", "colors", "Needs many slices: pie ten-tiny-slices with 'categorical'."],
+    ["scatter", "sizeBy", "Needs bubbles: scatter portfolio-bubbles with 'diameter'."],
+    ["cohort", "averages", "Draws only on the heatmap with cohorts of different lengths: saas-logo-retention with 'weighted'."],
+    ["cohort", "legend", "The pure exhibit of this fixture draws no key: the heatmap of the same type does."],
+    ["dimswitch", "lastTrackFlex", "Reader at table/tracks.ts:646, needs tracks that leave spare width, not proved."],
     ["dimswitch table", "mountCollapsed", "Initial React mount state does not change the static SVG."],
-    ["dimswitch", "signs", "Fixture by-measure has no SVG or option-warning change with \"operators\"."],
-    ["table", "signs", "Fixture steering-monthly has no SVG or option-warning change with \"operators\"."],
-    ["dimswitch", "driverTones", "Fixture by-measure has no SVG or option-warning change with \"never\"."],
-    ["table", "driverTones", "Fixture steering-monthly has no SVG or option-warning change with \"never\"."],
-    ["dimswitch", "totalPosition", "Fixture by-measure has no SVG or option-warning change with \"bottom\"."],
-    ["table", "totalPosition", "Fixture steering-monthly has no SVG or option-warning change with \"bottom\"."],
-    ["dimswitch", "density", "Fixture by-measure has no SVG or option-warning change with \"regular\"."],
-    ["dimswitch", "nulls", "Fixture by-measure has no SVG or option-warning change with \"dash\"."],
-    ["table", "nulls", "Fixture steering-monthly has no SVG or option-warning change with \"dash\"."],
-    ["dimswitch table", "inlineVisibility", "The fixture has no inline row named by this visibility probe."],
-    ["dimswitch", "foldOn", "Fixture by-measure has no SVG or option-warning change with \"toggle\"."],
-    ["table", "foldOn", "Fixture steering-monthly has no SVG or option-warning change with \"toggle\"."],
-    ["dimswitch", "groupGround", "Fixture by-measure has no SVG or option-warning change with \"always\"."],
-    ["table", "groupGround", "Fixture steering-monthly has no SVG or option-warning change with \"always\"."],
+    ["dimswitch table", "paintOffscreenRows", "Offscreen React paint does not change the static SVG."],
+    ["dimswitch table", "signs", "Needs sign -1 rows: dimswitch statement, table contribution-margin-statement."],
+    ["dimswitch table", "driverTones", "Needs driver rows: dimswitch statement, table driver-tones-grouped."],
+    ["table", "totalPosition", "Needs top-level rows and a total: table mixed-top-level-rows with 'top'."],
+    ["dimswitch table", "nulls", "Needs a missing value: by-measure with every third value null."],
+    ["dimswitch table", "inlineVisibility", "Needs an inline group: table steering-table-v2. Dimswitch: reader at dimswitch/compile.ts:764, needs a change line in the group, not proved."],
+    ["dimswitch table", "foldOn", "React click behaviour: reader at TableChart.tsx:2247. The static SVG has no click."],
+    ["dimswitch table", "groupGround", "Needs an open group: dimswitch by-member, table hierarchy-kinds with 'expanded'."],
     ["dimswitch table", "stickyLabels", "Sticky host positioning does not change the static SVG."],
-    ["dimswitch", "lastTrackFlex", "Fixture by-measure has no SVG or option-warning change with true."],
-    ["table", "lastTrackFlex", "Fixture steering-monthly has no SVG or option-warning change with true."],
-    ["dimswitch table", "sortIndicator", "No indicator changes for the selected sort state."],
-    ["dimswitch", "groupRule", "Fixture by-measure has no SVG or option-warning change with \"span\"."],
-    ["dimswitch", "groupAlign", "Fixture by-measure has no SVG or option-warning change with \"left\"."],
-    ["dimswitch", "fitFormats", "Fixture by-measure has no SVG or option-warning change with true."],
-    ["table", "fitFormats", "Fixture steering-monthly has no SVG or option-warning change with true."],
-    ["dimswitch", "maxGrowth", "Fixture by-measure has no SVG or option-warning change with 8.25."],
-    ["table", "maxGrowth", "Fixture steering-monthly has no SVG or option-warning change with 8.25."],
-    ["dimswitch", "order", "Fixture by-measure has no SVG or option-warning change with {\"by\":\"revenue\",\"desc\":true}."],
-    ["treemap", "order", "Fixture growth-rect has no SVG or option-warning change with \"sheet\"."],
-    ["dimswitch", "show", "Fixture by-measure has no SVG or option-warning change with \"withData\"."],
-    ["dimswitch", "minimumSample", "The fixture has no judge base named census."],
-    ["table", "magnitude", "Fixture steering-monthly has no SVG or option-warning change with \"million\"."],
-    ["table", "frameFill", "Fixture steering-monthly has no SVG or option-warning change with \"none\"."],
-    ["table", "rowLabelLines", "Fixture steering-monthly has no SVG or option-warning change with 1."],
-    ["table", "rowExtent", "Fixture steering-monthly has no SVG or option-warning change with \"tracks\"."],
-    ["tilemap", "regionValues", "Fixture eu27-equal-tiles has no SVG or option-warning change with true."],
-    ["variance", "variance", "Fixture dpy-absolute-regions has no SVG or option-warning change with {\"of\":\"total\",\"vs\":\"py\"}."],
-    ["variance", "missingMark", "Fixture dpy-absolute-regions has no SVG or option-warning change with \"none\"."],
-    ["waffle", "cellNote", "Fixture single-share has no SVG or option-warning change with \"none\"."],
-    ["waffle", "subtotal", "Fixture single-share has no SVG or option-warning change with {\"series\":[\"share\"],\"label\":\"Census subtotal\"}."],
-    ["waterfall", "signColor", "Fixture ebit-bridge has no SVG or option-warning change with true."],
+    ["dimswitch table", "sortIndicator", "Changes the React sort head only; the static SVG has no chevron."],
+    ["dimswitch table", "fitFormats", "Needs a width the figures miss: dimswitch sheet 1400 wide, table steering-monthly with value columns 34 wide."],
+    ["dimswitch table", "maxGrowth", "Needs spare frame width: dimswitch by-measure with 1 at 320, table benchmark-competitors with 1."],
+    ["dimswitch treemap", "order", "Needs siblings to sort: dimswitch by-member with { by: 'revenue' }. Treemap reads 'sheet' on its own data order."],
+    ["dimswitch", "show", "Reader at dimswitch/compile.ts:397, needs a member whose fields are all empty in Range, not proved."],
+    ["dimswitch", "minimumSample", "Needs a judge base field: dimswitch multiple-sample-bases with { orders: 57, sessions: 100 }."],
+    ["table", "frameFill", "Needs spare frame width: table status-review-relaxed with 'none' 1400 wide."],
+    ["table", "rowLabelLines", "Needs a label that wraps: table benchmark-competitors with 1."],
+    ["table", "rowExtent", "Needs spare frame width: table status-review-relaxed with 'tracks' 1400 wide."],
+    ["variance", "variance", "Needs real series ids: variance all-positive-deltas with { of: 'saas', vs: 'services' }."],
+    ["variance", "missingMark", "Needs a missing prior: variance dpy-absolute-regions with every third value null."],
+    ["waffle", "cellNote", "Reader at waffle/layout.ts:375, needs a cell with a note, not proved."],
+    ["waffle", "subtotal", "Needs several series: waffle stacked-segments."],
   ];
   const gaps = new Map<string, string>(KNOWN_GAPS.flatMap(([types, key, reason]) =>
     types.split(' ').map(type => [`${type}.${key}`, reason] as const)));
@@ -539,6 +527,8 @@ describe('published option behaviour census', () => {
       const series = data.series?.map(s => s.id) ?? [];
       for (const [key, field] of Object.entries(schema.properties ?? {})) {
         if ('not' in field) continue;
+        // Only the architecture variant reads highlight, and the agent-approval golden shows it.
+        if (type === 'diagram' && key === 'highlight') continue;
         const current = authored[key] ?? (definition.defaults as Options)[key] ?? field.default;
         let value = key in VALUES && JSON.stringify(VALUES[key]) !== JSON.stringify(current)
           ? VALUES[key] : sample(field, current);
@@ -554,12 +544,28 @@ describe('published option behaviour census', () => {
         if (key === 'a' || key === 'b') value = series.find(id => id !== current) ?? value;
         if (key === 'labelRegions') value = []; // An explicit empty set removes the authored region labels.
         if (key === 'today') value = '2026-05-20';
+        // The fixture highlights Purchase, a final node. An unset linkColor already colours the ribbons into it, as 'target' does; 'source' leaves them neutral.
+        if (type === 'sankey' && key === 'linkColor') value = 'source';
+        // ['plot'] is the default order on these two, so the probe moves a block.
+        if (type === 'bullet' && key === 'columnOrder') value = ['gap', 'target', 'plot'];
+        if (type === 'likert' && key === 'columnOrder') value = ['net', 'plot'];
+        if (type === 'butterfly' && key === 'sortBy') value = 'b';
+        if (type === 'waterfall' && key === 'signColor') value = false;
+        if (type === 'tilemap' && key === 'regionValues') value = false;
+        if (type === 'table' && key === 'magnitude') value = 'thousand';
         if (type === 'dimswitch' && key === 'depth') value = 1;
         if (type === 'dimswitch' && key === 'order') value = { by: 'revenue', desc: true };
         if (type === 'dimswitch' && key === 'expansion') value = { depth: 1 };
         if (type === 'scatter' && key === 'zones') value = { grid: { x: [5], y: [4] } };
+        // A swamped pvm base breaks the axis by default, so the probe asks for a whole axis.
+        if (type === 'pvm' && key === 'valueAxis') value = { break: false };
         if (type === 'line' && key === 'fan') value = { of: 'output', bands: [{ low: 'output', high: 'market', label: 'Census bounds' }] };
         if (type === 'bartable' && key === 'combinedShare') value = { rows: [ids[1], ids[2]] };
+        // 'bottom' is the default, so only 'top' moves the Total row.
+        if ((type === 'bartable' || type === 'cohort') && key === 'totalPosition') value = 'top';
+        if (type === 'cohort' && key === 'columnVisibility') value = { size: false };
+        if (type === 'cohort' && key === 'columnOverrides') value = { size: { label: 'Census size' } };
+        if (type === 'cohort' && key === 'columnOrder') value = ['periods', 'size'];
         if (type === 'grid' && key === 'alignmentRules') value = [{ id: 'census', orientation: 'horizontal', at: { panelId: 'rev', anchor: 'plotTop' } }];
         if (type === 'waffle' && key === 'panelGroups') value = [{ id: 'census', panels: ids, label: 'Census group' }];
         if (type === 'waffle' && key === 'subtotal') value = { series, label: 'Census subtotal' };

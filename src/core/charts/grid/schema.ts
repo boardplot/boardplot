@@ -10,6 +10,7 @@ import {
   baseOptionsSchema,
   idRecord,
   refusedBaseOptions,
+  retiredKey,
 } from '../../schema/shared';
 import {
   normalizeGridData,
@@ -519,6 +520,7 @@ const trackScopeSchema = z.enum(['row', 'column', 'all']).describe('Apply alignm
 export const gridOptionsSchema = baseOptionsSchema
   .safeExtend(refusedBaseOptions('grid'))
   .safeExtend({
+    format: retiredKey("'format' has no effect on a grid; set it on each panel", 'each panel sets its own format.'),
     stack: metricStackOptionsSchema.optional(),
     columns: z
       .union([z.number().int().positive().max(GRID_MAX_TRACKS), z.array(z.number().positive()).min(1).max(GRID_MAX_TRACKS)])

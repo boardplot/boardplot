@@ -1,20 +1,31 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { withNumberMarks } from '../src/core/numberMarks';
 import '../src/core/charts';
-import { compileDimSwitch, dimswitchRowId } from '../src/core/charts/dimswitch/compile';
+import { compileDimSwitch, dimswitchRowId, FOLDED } from '../src/core/charts/dimswitch/compile';
 import { resolveDimSwitch, dimswitchCore } from '../src/core/charts/dimswitch/core';
 import { exampleData } from '../src/core/charts/dimswitch/example';
+import { statementData } from '../src/core/charts/dimswitch/statementExample';
+import { ENGINE_NOTES } from '../src/core/charts/table/tracks';
 import { dimswitchDataSchema } from '../src/core/charts/dimswitch/schema';
 import { visibleRows } from '../src/core/charts/table/view';
 import { renderSvg } from '../src/core/svg/renderSvg';
 import { resolveTheme } from '../src/core/theme';
 import { requireGeometry } from '../src/core/sizing';
-import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
+import { layoutResolvedRequest, measure, resolveChartRequest } from '../src/core/request';
+// @ts-expect-error The scorecard script has no declaration file.
+import { applyRepair } from '../scripts/layout-scorecard.mjs';
 import type { DimSwitchData, DimSwitchDerived, DimSwitchSums, DimSwitchVariant } from '../src/core/charts/dimswitch/types';
 import { claimsForChart } from '../src/core/claims/browser';
 import { tableCellNodeId } from '../src/core/charts/table/cellKey';
 import { DERIVATION_KINDS, recomputeClaim } from './helpers/recompute';
 import { getFixtures } from '../src/fixtures';
+import { interactionRecords } from '../src/core/a11y/records';
+import { accessibleDataTable } from '../src/core/a11y/accessibility';
+// Wraps the real compile to count calls; the output is unchanged.
+vi.mock('../src/core/charts/dimswitch/compile', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/core/charts/dimswitch/compile')>();
+  return { ...actual, compileDimSwitch: vi.fn(actual.compileDimSwitch) };
+});
 const rows=(variant:DimSwitchVariant,depth:number,splits=false)=>visibleRows(resolveDimSwitch(exampleData,{variant,depth,splits}).table);
 const row=(member:string,measure:string,data=exampleData)=>resolveDimSwitch(data).table.rows.find(r=>r.id===dimswitchRowId('by-measure',member,measure))!;
 // A cycle spanning subtotal placement and driver ownership must give input advice, not overflow the stack.
@@ -48,6 +59,21 @@ it('prints every member row of a money measure in the magnitude of its largest c
  const tiny=(sums:DimSwitchSums|undefined)=>sums && (sums.spend==null ? sums : {...sums,spend:sums.spend*0.0001});
  const small:DimSwitchData={...exampleData,facts:exampleData.facts.map(fact=>({...fact,sums:tiny(fact.sums)!,...(fact.ref ? {ref:tiny(fact.ref)} : {})}))};
  expect(['total','paid','search-a','search-b'].map(member=>row(member,'spend',small).cells.range!.displayed)).toEqual(['0.180','0.160','0.140','0.120']);
+});
+// Period cells of 1.46M printed one string (1.5M ... 1.4M) because the Range total of 18.2M set the precision of every column of the measure.
+it('gives each column of a money measure the precision its own figures need', () => {
+ const sums=(amount:number)=>({amount});
+ const data:DimSwitchData={dimension:{label:'Region',total:{id:'total',label:'Total'},members:[{id:'a',label:'A'},{id:'b',label:'B'}],headline:['amount'],sums:true},
+  measures:[{id:'amount',scale:'money',label:'Amount',value:{field:'amount'}}],periods:[{id:'range',label:'Range',kind:'range'},{id:'prior',label:'Prior',kind:'prior'},{id:'p1',label:'P1'},{id:'p2',label:'P2'}],
+  facts:[['total',18200000,1460000,1440000],['a',17100000,1370000,1350000],['b',1100000,90000,90000]].flatMap(([memberId,...v])=>(['range','p1','p2'] as const).map((periodId,i)=>({memberId:memberId as string,periodId,sums:sums(v[i] as number),...(i===0 ? {ref:sums(v[0] as number*0.9)} : {})})))};
+ expect(['range','p1','p2'].map(col=>row('total','amount',data).cells[col]!.displayed)).toEqual(['18.2M','1.46M','1.44M']);
+ expect(['range','p1','p2'].map(col=>row('b','amount',data).cells[col]!.displayed)).toEqual(['1.1M','0.09M','0.09M']);
+});
+// Scale 'money' climbs k, M, B itself, so a unit that names a magnitude prints 1,320 Mio. CHF as 1.32k.
+it('warns when a money measure has a unit that names a magnitude', () => {
+ const data:DimSwitchData={...exampleData,measures:exampleData.measures.map(m=>m.scale==='money' ? {...m,unit:'Mio. CHF'} : m)};
+ expect(compileDimSwitch(data).warnings.filter(w=>w.code==='dimswitch-scale-unit').length).toBeGreaterThan(0);
+ expect(compileDimSwitch(exampleData).warnings.some(w=>w.code==='dimswitch-scale-unit')).toBe(false);
 });
 // One table prints one decimal separator: language alone must not switch the comparisons to commas while the values keep points.
 it('keeps the value separator in comparisons when only the language is German', () => {
@@ -328,4 +354,266 @@ it('leaves out the change line of periods with no ref and warns on an encodings 
   expect(changeRow(some)!.cells.w1!.displayed).toBe('');
   expect(changeRow(some)!.cells.w2!.displayed).toContain('+11%');
   expect(some.compileWarnings.map(w => w.code)).not.toContain('dimswitch-encoding-column');
+});
+
+// A size search lays the card out at many sizes, and each layout compiled and resolved every form again.
+it('compiles each form once across layouts at other sizes', () => {
+  const data = structuredClone(exampleData);
+  const layout = (width: number) => dimswitchCore.layout(data, { size: { width } });
+  const first = layout(900);
+  vi.mocked(compileDimSwitch).mockClear();
+  const second = layout(700);
+  expect(second.size.width).toBe(700);
+  expect(first.size.width).toBe(900);
+  expect(compileDimSwitch).not.toHaveBeenCalled();
+});
+
+// A multiple of a negative base (revenue over a negative order count) printed a plain ratio with no word that it is arithmetic, not n.m.
+it('warns once per measure when a ratio divides by a negative sum', () => {
+  const flip=(sums:DimSwitchSums|undefined)=>sums && {...sums,orders:-Math.abs(sums.orders!)};
+  const data:DimSwitchData={...exampleData,
+    facts:exampleData.facts.map(fact=>({...fact,sums:flip(fact.sums)!,...(fact.ref ? {ref:flip(fact.ref)} : {})})),
+    measures:[...exampleData.measures,{id:'neg',label:'Revenue per order',value:{op:'div',a:{field:'rev'},b:{field:'orders'}}}]};
+  const found=resolveDimSwitch(data).compileWarnings.filter(w=>w.code==='ratio-negative-base');
+  expect(found.map(w=>w.severity)).toEqual(['info']);
+  expect(found[0]!.message).toContain("Measure 'neg'");
+});
+
+// A fixed slide height that misses the authored depth refused the whole table, though one fold shallower draws it.
+it('draws the deepest depth that fits a fixed height and warns with the folded depth', () => {
+  const draw = (variant: DimSwitchVariant, depth: number, height: number) => requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'dimswitch', data: exampleData, options: { variant, depth, size: { width: 1400, height } } } as never)));
+  const folded = (geometry: { warnings: { code: string; message: string }[] }) => geometry.warnings.find(w => w.code === 'dimswitch-depth-folded');
+  expect(folded(draw('by-measure', 3, 1200))).toBeUndefined();
+  const byMeasure = draw('by-measure', 3, 400);
+  expect(folded(byMeasure)?.message).toMatch(/draws depth [12]\.$/);
+  // By member the Total folds after depth 1, and its row prints the headline figure, not dashes.
+  const byMember = draw('by-member', 1, 300);
+  expect(folded(byMember)?.message).toContain('with the Total folded');
+  const total = (byMember.derived as unknown as DimSwitchDerived).table.rows.find(r => r.id === dimswitchRowId('by-member', 'total'))!;
+  expect(total.cells.range).toMatchObject({ displayed: expect.stringMatching(/\d/) });
+});
+
+// The fold warning's fix set only the depth, which leaves the by-member Total open: the patched spec folded again and warned again.
+it('gives a fold fix that draws the same table without the fold warning', () => {
+  for (const depth of [1, 2]) {
+    const request = { type: 'dimswitch', data: exampleData, options: { variant: 'by-member', depth, size: { width: 1400, height: 300 } } } as never;
+    const warning = measure(request).warnings.find(w => w.code === 'dimswitch-depth-folded')!;
+    expect(warning.message, `depth ${depth}`).toContain('with the Total folded');
+    const fixed = measure(applyRepair(request, warning.fix));
+    expect(fixed.geometry, `depth ${depth}`).toBeDefined();
+    expect(fixed.warnings.map(w => w.code), `depth ${depth}`).not.toContain('dimswitch-depth-folded');
+  }
+});
+
+// A fold hides the rows below its depth, yet their small changes kept one decimal on every change figure of the column ("+130.0%" beside "+4.4%").
+it('settles the decimals of a folded table on the rows it draws', () => {
+  // The total's prior halves in orders, revenue and spend, so every change the fold draws is far above 5 %; the members stay small.
+  const halved = (sums: DimSwitchSums | undefined) => sums && { ...sums, orders: sums.orders! / 2, rev: sums.rev! / 2, spend: sums.spend! / 2 };
+  const data = { ...exampleData, facts: exampleData.facts.map(fact => fact.memberId === 'total' && fact.periodId === 'prior' ? { ...fact, sums: halved(fact.sums)! } : fact) };
+  const formatOf = (folded: boolean) => (compileDimSwitch(data, { variant: 'by-measure', depth: 1, ...(folded ? { [FOLDED]: true } : {}) } as never).data.rows
+    .find(r => r.id === dimswitchRowId('by-measure', 'total', 'orders'))!.cells!.pp as { format: string }).format;
+  expect(formatOf(false)).toBe('+1.2%');
+  expect(formatOf(true)).not.toContain('.');
+});
+
+describe('dimswitch columnVisibility', () => {
+  // A left-out column must leave no track, no unknown-toggle warning and no note or claim about the column.
+  it('leaves out Range and vs prior with nothing left behind', () => {
+    const data: DimSwitchData = { ...exampleData, periods: exampleData.periods.map(p => p.kind === 'range' ? { ...p, partial: true, label: 'Range label' } : p) };
+    const compiled = compileDimSwitch(data, { columnVisibility: { range: false, pp: false } });
+    expect(compiled.data.columns.map(column => column.id)).toEqual(['label', ...data.periods.filter(p => !p.kind).map(p => p.id)]);
+    expect(compiled.options.stickyLabels).toBe(1);
+    expect(compiled.computedCells.some(record => record.colId === 'range' || record.colId === 'pp')).toBe(false);
+    const geometry = requireGeometry(dimswitchCore.layout(data, { columnVisibility: { range: false, pp: false }, size: { width: 900 } }));
+    expect(geometry.warnings.map(warning => warning.code)).not.toContain('column-visibility-ref-unknown');
+  });
+  it('still warns on an encodings key for a left-out column', () => {
+    const compiled = compileDimSwitch(exampleData, { columnVisibility: { range: false }, encodings: { range: { type: 'heat' } } as never });
+    expect(compiled.warnings.map(warning => warning.code)).toContain('dimswitch-encoding-column');
+  });
+});
+
+describe('dimswitch columnHeads', () => {
+  // The star points from a head at its note: with no head it would mark nothing, and no head may pay for height.
+  it('draws no head and drops the partial star with it', () => {
+    const data: DimSwitchData = { ...exampleData, periods: exampleData.periods.map(p => p.kind === 'range' ? { ...p, partial: true } : p) };
+    const compiled = compileDimSwitch(data, { columnHeads: false });
+    expect(compiled.data.columns.map(column => column.label).join(' ')).not.toContain('*');
+    const svg = (options: object) => renderSvg(requireGeometry(dimswitchCore.layout(data, { size: { width: 900 }, ...options })) as never, resolveTheme());
+    expect(svg({ columnHeads: false })).not.toContain('tableHeader');
+    expect(svg({})).toContain('tableHeader');
+  });
+});
+
+describe('dimswitch generated columns', () => {
+  const partialData: DimSwitchData = { ...exampleData, periods: exampleData.periods.map(p => p.kind === 'range' || p.id === 'w2' ? { ...p, partial: true } : p) };
+  const layout = (data: DimSwitchData, options: object) => requireGeometry(dimswitchCore.layout(data, { size: { width: 900 }, ...options }));
+  // With no head, nothing else in the drawing says a window is partial, so a reader would take the cut week for a whole one.
+  it('prints the partial disclosure in the frame when the head is gone, and warns where the frame has no place', () => {
+    const inFrame = layout(partialData, { columnHeads: false });
+    expect(inFrame.frame?.noteList?.find(note => note.text === 'Range, Week 2 to date')?.inFrame).toBe(true);
+    expect(inFrame.warnings.map(warning => warning.code)).not.toContain('dimswitch-partial-note-off-frame');
+    const noPlace = layout(partialData, { columnHeads: false, notes: { show: [] } });
+    expect(noPlace.refused).toBeFalsy();
+    expect(noPlace.warnings.map(warning => warning.code)).toContain('dimswitch-partial-note-off-frame');
+    expect(noPlace.frame?.noteList?.find(note => note.text === 'Range, Week 2 to date')?.inFrame).toBe(false);
+  });
+  // A period the host hid must not read as one the card left out, and hiding all value columns must still draw the labels.
+  it('counts a hidden period as gone, never as left out by the card, and draws labels only without refusing', () => {
+    const noted = layout(exampleData, { size: { width: 320 }, columnVisibility: { w1: false } });
+    expect(noted.frame?.noteList?.some(note => note.text.includes('Week 1'))).toBe(false);
+    const labels = layout(exampleData, { columnVisibility: { range: false, pp: false, w1: false, w2: false } });
+    expect(labels.refused).toBeFalsy();
+    expect(labels.warnings.map(warning => warning.code)).toContain('dimswitch-labels-only');
+  });
+  // Pinned period tracks would not sit next to the label, so a periods-first table pins the label alone.
+  it('pins only the label when the periods lead', () => {
+    expect(compileDimSwitch(exampleData, { columnOrder: ['periods', 'block'] }).options.stickyLabels).toBe(1);
+    expect(compileDimSwitch(exampleData, { columnOrder: ['block'] }).options.stickyLabels).toBe(3);
+  });
+  // The note must not cost a table its draw: without this, a head-less table refused at a height where the same table with a head drew.
+  it('moves the partial note out of a fixed frame before the floor refuses', () => {
+    const request = (height: number, extra: object = {}) => measure({ type: 'dimswitch', data: exampleData, options: { title: 'Channel performance', variant: 'by-measure', depth: 2, columnHeads: false, target: 'dashboard', size: { width: 400, height }, ...extra } as never });
+    const tight = request(280);
+    expect(tight.geometry?.warnings.map(warning => warning.code)).toContain('dimswitch-partial-note-off-frame');
+    expect(tight.geometry?.frame?.noteList?.find(note => note.text === 'Week 2 to date')?.inFrame).toBe(false);
+    // A fit that only folds would cost the 6 channel rows that the same table with no note draws.
+    const fold = request(530);
+    expect((fold.geometry?.scene as { t: string; id?: string }[]).filter(node => node.t === 'text' && /^cell:.*:label$/.test(node.id ?? '')).length).toBe(10);
+    expect(fold.geometry?.warnings.map(warning => warning.code)).toContain('dimswitch-partial-note-off-frame');
+    const roomy = request(600);
+    expect(roomy.geometry?.warnings.map(warning => warning.code)).not.toContain('dimswitch-partial-note-off-frame');
+    expect(roomy.geometry?.frame?.noteList?.find(note => note.text === 'Week 2 to date')?.inFrame).toBe(true);
+  });
+  // One cell with two alignments reads as two columns: the change line must sit under its value.
+  it('seats the change line by the alignment of its column', () => {
+    const geometry = layout(exampleData, { columnOverrides: { w1: { align: 'center' }, w2: { align: 'left' } } });
+    const text = (geometry.scene as unknown as { t: string; id?: string; part?: string; x?: number; align?: string }[]).filter(node => node.t === 'text');
+    const row = dimswitchRowId('by-measure', 'total', 'orders');
+    for (const [column, align] of [['w1', 'middle'], ['w2', 'start']] as const) {
+      const value = text.find(node => node.id === tableCellNodeId('cell', row, column));
+      const line = text.find(node => node.part === 'tableCellLine' && node.id === tableCellNodeId('cellline', row, column, `${row}:change`));
+      expect([value?.align, line?.align]).toEqual([align, align]);
+      expect(line?.x).toBe(value?.x);
+    }
+  });
+  // An authored width the card form drops would otherwise vanish in silence.
+  it('warns when the card form ignores an authored width', () => {
+    const geometry = layout(exampleData, { columnOverrides: { range: { width: 5000 } } });
+    expect(geometry.warnings.find(warning => warning.code === 'option-ignored')?.field).toEqual(['options', 'columnOverrides', 'range', 'width']);
+    expect(layout(exampleData, { columnOverrides: { range: { width: 120 } } }).warnings.map(warning => warning.code)).not.toContain('option-ignored');
+  });
+  // An empty head leaves only the star, so the note must still name the column.
+  it('names a partial column from its default label under an empty head', () => {
+    const geometry = layout(partialData, { notes: { show: ['disclosure'] }, columnOverrides: { w2: { label: '' } } });
+    expect(geometry.frame?.noteList?.map(note => note.text)).toContain('* Range, Week 2 to date');
+  });
+  // A wrong id must warn with the real ids: a list key's path once failed the whole render as an internal error.
+  it('warns on a wrong id in every key and draws', () => {
+    const geometry = layout(exampleData, { columnVisibility: { nope: false }, columnOverrides: { nope: { width: 10 } }, columnOrder: ['nope'] });
+    expect(geometry.warnings.filter(warning => warning.code === 'generated-id-unknown').map(warning => warning.field)).toEqual([['options', 'columnVisibility', 'nope'], ['options', 'columnOverrides', 'nope'], ['options', 'columnOrder', 0]]);
+  });
+});
+
+describe('dimswitch rowVisibility', () => {
+  const money: DimSwitchData = {
+    ...exampleData,
+    measures: [
+      { id: 'rev', label: 'Revenue', scale: 'money', value: { field: 'rev' } },
+      { id: 'n', label: 'Buyers', scale: 'count', value: { field: 'n' } },
+      { id: 'ratio', label: 'Revenue per buyer', scale: 'perUnit', value: { op: 'div', a: { field: 'rev' }, b: { field: 'n' } } },
+      { id: 'share', label: 'Share of revenue', scale: 'percent', format: '1.2%', change: 'pp', value: { op: 'div', a: { field: 'rev' }, b: { total: { field: 'rev' } }, factor: 100 } },
+    ],
+    dimension: { label: 'Channel', total: { id: 'total', label: 'Total' }, members: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], headline: ['rev'] },
+    facts: ['total', 'a', 'b'].flatMap((memberId, i) => ['range', 'prior', 'w1', 'w2'].map(periodId => ({ memberId, periodId, sums: { rev: [1200000, 210000, 990000][i]!, n: [2500000, 1900000, 600000][i]! }, ref: { rev: [1100000, 200000, 900000][i]!, n: [2400000, 1800000, 600000][i]! } }))),
+  };
+  const layout = (data: DimSwitchData, options: object) => requireGeometry(dimswitchCore.layout(data, { size: { width: 900 }, ...options }));
+  const printed = (data: DimSwitchData, options: object): Record<string, string> => Object.fromEntries((layout(data, options).scene as unknown as { t: string; id?: string; lines?: string[] }[]).filter(node => node.t === 'text' && /^cell(line)?:/.test(node.id ?? '')).map(node => [node.id!, node.lines?.join(' ') ?? '']));
+  // A Total that leaves must not change the figures of the members: 0.2M beside a 1.2M Total would turn into 210.0k.
+  it.each(['by-measure', 'by-member'] as const)('keeps every printed member figure with the Total hidden in %s', variant => {
+    const shown = printed(money, { variant, depth: 2 }), hidden = printed(money, { variant, depth: 2, rowVisibility: { total: false } });
+    expect(Object.keys(hidden).length).toBeGreaterThan(0);
+    expect(Object.keys(hidden).length).toBeLessThan(Object.keys(shown).length);
+    for (const [id, text] of Object.entries(hidden)) if (text !== '') expect([id, text]).toEqual([id, shown[id]]);
+    expect(Object.values(hidden).filter(text => /^\d\.\d+M$/.test(text))).not.toHaveLength(0);
+  });
+  // The KPI name has to stay over its members, and a number on it would be the Total the author took out.
+  it('keeps the by-measure Total line as a label over its members, with no change line', () => {
+    const compiled = compileDimSwitch(exampleData, { depth: 2, splits: true, rowVisibility: { total: false } });
+    const row = compiled.data.rows.find(r => r.id === dimswitchRowId('by-measure', 'total', 'orders'))!;
+    expect([row.label, row.missing, Object.keys(row.cells ?? {})]).toEqual(['Orders', 'blank', []]);
+    expect(compiled.data.rows.some(r => r.id === `${row.id}:change`)).toBe(false);
+    expect(compiled.data.rows.some(r => r.id === dimswitchRowId('by-measure', 'total', 'new'))).toBe(false);
+    expect(compiled.data.rows.some(r => r.parentId === row.id && !r.inline)).toBe(true);
+    expect(compiled.levels[row.id]).toBe(compileDimSwitch(exampleData, { depth: 2, splits: true }).levels[row.id]);
+  });
+  // A hidden row must leave no claim behind, while the sums that shown ratios cite stay checkable.
+  it('removes the calc records of a hidden Total and keeps its partition records', () => {
+    const data: DimSwitchData = { ...exampleData, dimension: { ...exampleData.dimension, sums: true } };
+    const compiled = compileDimSwitch(data, { variant: 'by-member', depth: 2, rowVisibility: { total: false } });
+    const totalRows = compiled.computedCells.filter(record => record.rowId.includes('"total"'));
+    expect(totalRows.filter(record => record.kind === 'calc')).toEqual([]);
+    expect(compiled.computedCells.some(record => record.rowId === 'total' && record.op === 'dimswitch:partition-sum')).toBe(true);
+  });
+  // A hidden value is not a missing one: hover and screen readers must not say "missing" on a row that prints nothing by design.
+  it('keeps no record and no "missing" on the blank Total lines', () => {
+    const request = resolveChartRequest({ type: 'dimswitch', data: exampleData, options: { variant: 'by-measure', depth: 2, rowVisibility: { total: false } }, size: { width: 900 } });
+    const records = interactionRecords({ request, geometry: requireGeometry(layoutResolvedRequest(request)), scope: request.scope, claims: [] });
+    const lines = new Set(exampleData.measures.map(measure => dimswitchRowId('by-measure', 'total', measure.id)));
+    expect(records.length).toBeGreaterThan(0);
+    expect(records.filter(record => lines.has(record.target.owner.rowId ?? ''))).toEqual([]);
+    const table = accessibleDataTable(records);
+    expect(table.columns.filter(column => lines.has(column.key))).toEqual([]);
+    expect(table.columns.filter((column, index) => !column.key.endsWith(':change') && table.rows.some(row => row.cells[index]?.state === 'missing'))).toEqual([]);
+  });
+  // A note about a change no reader can see would point at nothing.
+  it('prints no near-zero note for a hidden Total', () => {
+    const data: DimSwitchData = { ...exampleData, facts: exampleData.facts.map(f => f.memberId === 'total' && f.periodId === 'prior' ? { ...f, sums: { ...f.sums, orders: 0 } } : f) };
+    const notes = (options: object) => compileDimSwitch(data, { variant: 'by-member', ...options }).options[ENGINE_NOTES as never] as unknown as string[] | undefined;
+    expect(notes({ rowVisibility: { total: false } })?.length).toBe(notes({})!.length - 1);
+  });
+  // A wrong id must say which ids exist, and a table with no number left must say why, and neither may refuse.
+  it('warns on an id the form does not draw and on a table with no value left', () => {
+    const codes = (options: object) => { const geometry = layout(exampleData, options); expect(geometry.refused).toBeFalsy(); return geometry.warnings.map(warning => warning.code); };
+    expect(codes({ rowVisibility: { 'group:': false } })).toContain('generated-id-unknown');
+    expect(codes({ variant: 'by-member', rowVisibility: { 'group:': false, total: false } })).toContain('generated-id-unknown');
+    expect(codes({ rowVisibility: { total: false } })).toContain('dimswitch-labels-only');
+    expect(codes({ depth: 2, rowVisibility: { total: false } })).not.toContain('dimswitch-labels-only');
+    expect(codes({ rowVisibility: { total: true, nope: true } })).not.toContain('generated-id-unknown');
+  });
+  // A key that changes nothing must say so, or the author believes the chart obeyed it.
+  it('warns on a key with no part to act on, and stays quiet where it acts', () => {
+    const ignored = (data: DimSwitchData, options: object) => layout(data, options).warnings.filter(warning => warning.code === 'option-ignored').map(warning => warning.field);
+    const statement = getFixtures('dimswitch').find(entry => entry.id === 'statement')!;
+    expect(ignored(statement.data as DimSwitchData, { ...statement.options, bars: false })).toEqual([['options', 'bars']]);
+    expect(ignored(exampleData, { variant: 'by-member', depth: 2, totalPosition: 'bottom', rowVisibility: { total: false } })).toEqual([['options', 'totalPosition']]);
+    expect(ignored(money, { depth: 2, bars: false })).toEqual([]);
+    const bars = (options: object) => JSON.stringify(layout(money, { depth: 2, ...options }).scene);
+    expect(bars({ bars: false })).not.toBe(bars({}));
+  });
+  // A Total whose id looks like a group id has to stay addressable.
+  it('reads a key equal to the Total id as the Total', () => {
+    const data: DimSwitchData = { ...exampleData, measures: exampleData.measures.map(m => m.id === 'cac' ? { ...m, group: 'X' } : m), dimension: { ...exampleData.dimension, total: { id: 'group:X', label: 'Total' } }, facts: exampleData.facts.map(f => f.memberId === 'total' ? { ...f, memberId: 'group:X' } : f) };
+    const compiled = compileDimSwitch(data, { depth: 2, rowVisibility: { 'group:X': false } });
+    expect(compiled.data.rows.some(row => row.role === 'section' && row.label === 'X')).toBe(true);
+    expect(compiled.data.rows.find(row => row.id === dimswitchRowId('by-measure', 'group:X', 'orders'))?.missing).toBe('blank');
+  });
+  // In by-measure the Total row owns its members, so a moved block cannot exist there; the author has to hear that.
+  it('moves the by-member Total block and warns in by-measure', () => {
+    const ids = (options: object) => compileDimSwitch(exampleData, { variant: 'by-member', ...options }).data.rows.filter(row => row.parentId === undefined).map(row => row.label);
+    expect(ids({ totalPosition: 'bottom' })).toEqual([...ids({}).slice(1), 'Total']);
+    expect(compileDimSwitch(exampleData, { totalPosition: 'bottom' }).warnings.find(warning => warning.code === 'option-ignored')?.field).toEqual(['options', 'totalPosition']);
+  });
+  // A group hidden on one side only would leave a stray head when its roots are split: every head of the group goes, and the closing rule still reads the boundary.
+  it('hides every head of a group whose roots are split and keeps the section boundaries', () => {
+    const data: DimSwitchData = { ...statementData, measures: statementData.measures };
+    const groups = [...new Set(data.measures.map(m => m.group).filter(g => g !== undefined))];
+    const hidden = Object.fromEntries(groups.map(g => [`group:${g}`, false]));
+    const options = { depth: 2, thresholds: { effect: [0.3, 1] as [number, number] } };
+    const finals = (o: object) => compileDimSwitch(data, { ...options, ...o }).data.rows.filter(row => row.final).map(row => row.id);
+    expect(compileDimSwitch(data, { ...options, rowVisibility: hidden }).data.rows.filter(row => row.role === 'section' && row.label !== (data.dimension.total.heading ?? data.dimension.total.label))).toEqual([]);
+    expect(finals({ rowVisibility: hidden })).toEqual(finals({}));
+    const split: DimSwitchData = { ...exampleData, measures: exampleData.measures.map((m, i) => ({ ...m, group: i % 2 ? 'A' : 'B' })) };
+    expect(compileDimSwitch(split, { rowVisibility: { 'group:A': false } }).data.rows.filter(row => row.role === 'section').map(row => row.label)).toEqual(['B', 'B']);
+  });
 });

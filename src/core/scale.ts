@@ -27,6 +27,46 @@ export function applyAxisBounds(
   }) as [number, number];
 }
 
+/** The authored step when the value axis is drawn; a hidden axis has no ticks, so the step is dropped with a warning. */
+export function shownTickStep(step: number | undefined, shown: boolean, warnings: LintWarning[]): number | undefined {
+  if (step === undefined || shown) return step;
+  warnings.push({
+    code: 'tick-step-ignored', severity: 'warn',
+    message: `valueAxis.tickStep ${step} has no effect because the value axis is hidden`,
+    suggest: 'set valueAxis.show to true, or drop valueAxis.tickStep',
+    field: ['options', 'valueAxis', 'tickStep'],
+  });
+  return undefined;
+}
+
+/** Authored linear ticks, with outward bounds unless at least two multiples fit inside. */
+export function applyTickStep(
+  domain: [number, number], step: number | undefined, warnings: LintWarning[], inside = false,
+): { domain: [number, number]; ticks?: number[] } {
+  if (step === undefined || !(step > 0)) return { domain };
+  let from = Math.floor(domain[0] / step + 1e-9);
+  let to = Math.ceil(domain[1] / step - 1e-9);
+  if (inside) {
+    const first = Math.ceil(domain[0] / step - 1e-9);
+    const last = Math.floor(domain[1] / step + 1e-9);
+    if (last - first >= 1) { from = first; to = last; }
+    else inside = false;
+  }
+  const count = to - from;
+  if (count >= 1 && count <= 20) {
+    const ticks = Array.from({ length: count + 1 }, (_, i) => Number(((from + i) * step).toFixed(10)));
+    if (ticks.every(Number.isFinite) && ticks.at(-1)! > ticks[0]!) {
+      return { domain: inside ? domain : [ticks[0]!, ticks.at(-1)!], ticks };
+    }
+  }
+  warnings.push({
+    code: 'tick-step-ignored', severity: 'warn',
+    message: `valueAxis.tickStep ${step} would draw ${count} intervals over the value domain; the nice ticks are drawn instead`,
+    suggest: 'pick a step that gives 1 to 20 intervals',
+  });
+  return { domain };
+}
+
 export interface LinearScale {
   (value: number): number;
   domain: [number, number];

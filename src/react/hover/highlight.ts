@@ -57,6 +57,29 @@ function outline(node: SceneNode, theme: Theme): SceneNode | undefined {
 /** An icon or badge on a diagram node belongs to the node's outline, not one of its own; a column ribbon stays lit, not outlined. */
 const DECORATIONS = new Set(['diagramIcon', 'diagramBadge', 'ribbon', 'ribbonEdge']);
 
+/**
+ * Rectangles of one record that sit side by side in one row (a split
+ * neutral's two halves) as one rectangle, so one outline runs around them
+ * and not along the seam, through the label they share.
+ */
+function joinedRect(nodes: readonly SceneNode[]): { node: SceneNode; ids: string[] } | undefined {
+  const rects = nodes.filter((node): node is Extract<SceneNode, { t: 'rect' }> => node.t === 'rect');
+  if (rects.length < 2) return undefined;
+  const first = rects[0]!;
+  const row = (node: typeof first) => node.part === first.part && (node.tx ?? 0) === (first.tx ?? 0) && (node.ty ?? 0) === (first.ty ?? 0)
+    && Math.abs(node.rect.y - first.rect.y) < 0.01 && Math.abs(node.rect.h - first.rect.h) < 0.01;
+  if (!rects.every(row)) return undefined;
+  const sorted = [...rects].sort((a, b) => a.rect.x - b.rect.x);
+  let end = sorted[0]!.rect.x + sorted[0]!.rect.w;
+  for (const node of sorted.slice(1)) {
+    // Halves touch or overlap by the seam: a gap means two separate marks.
+    if (node.rect.x > end + 0.5) return undefined;
+    end = Math.max(end, node.rect.x + node.rect.w);
+  }
+  const x = sorted[0]!.rect.x;
+  return { node: { ...first, id: first.id, rect: { ...first.rect, x, w: end - x } }, ids: rects.map(node => node.id) };
+}
+
 /** Outline every node of the active records; a shared series path gets a vertex ring instead. */
 function outlines(scene: readonly SceneNode[], records: readonly InteractionRecord[], active: readonly InteractionRecord[], theme: Theme): SceneNode[] {
   const result: SceneNode[] = [];
@@ -66,6 +89,11 @@ function outlines(scene: readonly SceneNode[], records: readonly InteractionReco
     // A missing value has no point to ring: a ring would read as a value of zero.
     const point = record.anchor && !('w' in record.anchor) && record.value.state !== 'missing' ? record.anchor : undefined;
     let outlined = false;
+    const joined = joinedRect(scene.filter(node => markNode(record, node) && !done.has(node.id) && !DECORATIONS.has(node.part ?? '')));
+    if (joined) {
+      const border = outline(joined.node, theme);
+      if (border) { result.push(border); for (const id of joined.ids) done.add(id); outlined = true; }
+    }
     for (const node of scene) if (markNode(record, node) && !done.has(node.id) && !DECORATIONS.has(node.part ?? '')) {
       const sharedPath = node.t === 'path' && records.some(other => !activeIds.has(other.id) && other.nodeIds.includes(node.id));
       if (point && sharedPath) continue;
@@ -107,15 +135,23 @@ export function highlightScene(
   // A value inside a dimmed mark picks its ink against the paler fill the
   // reader sees: white on a dark slice stayed white once the slice faded to
   // a pale blue. The text keeps full opacity.
+  // A label owned more broadly than its mark (a column total on a single
+  // series, owned by the category), or naming the mark's base paint without
+  // the mark's own recipe (a gantt bar), reads against the dimmed mark it sits on.
   const paler = new Map<string, Paint>();
+  const marks = new Map<string, { owner: SceneNode['owner']; source: Paint; fill: Paint }[]>();
   for (const node of scene) {
     if (!dimmed.has(node.id) || activeNodes.has(node.id) || !('fill' in node) || !node.fill) continue;
-    paler.set(`${panelOf(node)}|${ownerKey(node.owner)}|${JSON.stringify(node.fill)}`, dimmedPaint(node.fill, dim, theme));
+    const fill = dimmedPaint(node.fill, dim, theme);
+    paler.set(`${panelOf(node)}|${ownerKey(node.owner)}|${JSON.stringify(node.fill)}`, fill);
+    marks.set(panelOf(node), [...marks.get(panelOf(node)) ?? [], { owner: node.owner, source: node.fill, fill }]);
   }
   const result = scene.map(node => {
     if (dimmed.has(node.id) && !activeNodes.has(node.id)) return { ...node, opacity: dim * (node.opacity ?? 1) };
     if (node.t !== 'text' || !('token' in node.ink) || node.ink.theme?.kind !== 'contrast-ink') return node;
-    const fill = paler.get(`${panelOf(node)}|${ownerKey(node.owner)}|${JSON.stringify(node.ink.theme.fill)}`);
+    const ground = node.ink.theme.fill;
+    const fill = paler.get(`${panelOf(node)}|${ownerKey(node.owner)}|${JSON.stringify(ground)}`)
+      ?? marks.get(panelOf(node))?.find(mark => samePaint(mark.source, ground) && ownerContains(mark.owner, node.owner))?.fill;
     return fill ? { ...node, ink: { ...node.ink, theme: { ...node.ink.theme, fill } } } : node;
   });
   // A diagram node's outline paints right above its own shape, so the icon,
@@ -142,6 +178,12 @@ function panelOf(node: SceneNode): string {
 
 function ownerKey(owner: SceneNode['owner']): string {
   return JSON.stringify([owner.seriesId, owner.categoryId, owner.segmentId, owner.pointId]);
+}
+
+/** Two paints of one colour: the same CSS colour, or the same theme token at the same tint. */
+function samePaint(a: Paint, b: Paint): boolean {
+  if ('css' in a || 'css' in b) return 'css' in a && 'css' in b && a.css === b.css;
+  return a.token === b.token && (a.tint ?? 0) === (b.tint ?? 0);
 }
 
 /** A fill drawn at `opacity` over the page, as one paint. */

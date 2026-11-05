@@ -11,6 +11,7 @@ import { sk } from '../band/stacks';
 import { categoryBreakGlyph, layoutValueAxis } from '../../axis';
 import { type Rect } from '../../geometry';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
+import { bandedIntervalTicks } from '../../intervalTicks';
 import { strokeToken, dashToken, contrastInkPaint, effectiveFill, hatchGroundPaint, resolveSurface } from '../../theme';
 import { ribbonPath } from '../../svgPath';
 import type { Id } from '../../types/cell';
@@ -571,6 +572,8 @@ export function layoutColumnMarks(
   // The line is 1px of ink centred on y0; claiming more than the ink pushes
   // bottom-segment labels out by a fraction (see insideCenterY).
   claims.claim({ x: plot.x, y: y0 - 0.5, w: plot.w, h: 1 }, 'axis', {});
+  // categoryAxis.dateTicks: a short tick over the name row at every calendar interval.
+  if (area.intervalTicks && area.showCatRow) bandedIntervalTicks(theme, domain.cats, area.intervalTicks, (ci) => area.band.center(ci), area.catRowY, nodes, claims);
   const ribbons = domain.ribbonsOn ? columnRibbons(domain, paints, area, nodes) : [];
   if (domain.connectorsOn && domain.variant !== 'grouped') stackConnectors({ ...domain, axis: 'y', scale: area.y, band: area.band }, nodes, claims);
   const marks: ColumnMarks = { bars: [], referenceTicks: [], ...(ribbons.length > 0 ? { ribbons } : {}) };
@@ -596,7 +599,9 @@ export function layoutColumnMarks(
     const { band } = area;
     const glyph = categoryBreakGlyph(theme, { x: (band.position(ci) + band.bandwidth + band.position(ci + 1)) / 2, y: y0 }, 'x', `axis:x:categoryBreak:${c.id}`);
     nodes.push(...glyph.nodes);
-    claims.claim(glyph.rect, 'axis', {}, 'categoryBreak');
+    // The strokes end a hair above the first row of names, so only the part over the baseline is claimed.
+    // The whole box would hide a name beside the glyph on a narrow chart.
+    claims.claim({ ...glyph.rect, h: y0 - glyph.rect.y }, 'axis', {}, 'categoryBreak');
   });
   if (anomaly) {
     const anomalyMarks = anomalyFurniture(domain, paints, area, bars.flagMarkers, nodes, claims);
@@ -617,6 +622,8 @@ export function layoutColumnMarks(
     claims.claim({ x: plot.x, y: y(v) - 1, w: plot.w, h: 2 }, 'annotation', {
       annotationId: annId,
     }, 'referenceLine');
+    // A part the rule crosses seats its value in the stretch the rule leaves, as it does for a tick.
+    for (const c of domain.cats) refTickYs.set(c.id, [...(refTickYs.get(c.id) ?? []), y(v)]);
   });
   return { nodes, claims, axes, marks, ...bars, refTickYs, netLineEnd };
 }

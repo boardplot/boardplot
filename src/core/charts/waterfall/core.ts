@@ -19,6 +19,6 @@ export const waterfallCore: ChartCore<
   aliases: ['bridge'],
   layout: layoutWaterfall,
   namesMustPrint: true,
-  defaults: { build: 'up', variant: 'vertical' },
-  annotationKinds: ['cagr', 'diff', 'delta', 'note', 'callout', 'valueLine', 'abs']
+  defaults: { build: 'up' },
+  annotationKinds: ['cagr', 'diff', 'delta', 'note', 'callout', 'valueLine', 'abs', 'bracket']
 };

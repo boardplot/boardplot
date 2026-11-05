@@ -10,10 +10,10 @@ import { chartString } from '../../strings/slope';
 
 import { chartTheme } from '../chartEnv';
 import { fitText } from '../../label/fitText';
-import { formatAuthoredPercent, formatAutomaticNumber, numberRange, seriesValueFormatter } from '../../format';
-import { formatterFromExample } from '../../formatSpec';
+import { formatAuthoredPercent, formatAutomaticNumber, lowBaseKeyLabel, numberRange, seriesValueFormatter } from '../../format';
+import { differenceExample, formatterFromExample, signedFormatterFromExample } from '../../formatSpec';
 import { autoDecimals } from '../../formatPrecision';
-import { round2, type Rect } from '../../geometry';
+import { cleanDiff, cleanFloat, type Rect } from '../../geometry';
 import { createOccupiedIndex } from '../../label/occupied';
 import { labelsToNodes } from '../../label/emit';
 import { labelCtx, PRIORITY, solveLabels, type LabelRequest, type SolveCtx } from '../../label/solver';
@@ -97,10 +97,12 @@ export function layoutDivergingSlope(
   const measure = options.measure ?? defaultMeasurer;
   const opt = options.diverging ?? {};
   const language = options.locale?.language;
+  // An authored chart format holds every panel to one scale and one decimal count (exampleSpec).
+  let chartFormat: ((v: number) => string) | undefined;
   const fmtVal = (v: number, isPct: boolean, example = options.format): string =>
-    example ? formatterFromExample(example, options.locale?.language)(v)
+    example && example === options.format ? (chartFormat ??= formatterFromExample(example, language, undefined, panels.flatMap((p) => [...p.g.positive, ...p.g.negative])))(v)
+    : example ? formatterFromExample(example, options.locale?.language)(v)
       : isPct ? formatAuthoredPercent(v, language) : formatAutomaticNumber(v, { locale: language, decimals: autoDecimals(v) });
-  const signed = (v: number): string => formatAutomaticNumber(v, { locale: language, signed: true, decimals: autoDecimals(v) });
 
   // ---- normalize ----
   if (!data || !Array.isArray(data.categories) || data.categories.length < 2) {
@@ -156,7 +158,7 @@ export function layoutDivergingSlope(
     }
     const positive: [number, number] = [pv[0]!, pv[1]!];
     const negative: [number, number] = [nv[0]!, nv[1]!];
-    const net: [number, number] = [round2(positive[0] - negative[0]), round2(positive[1] - negative[1])];
+    const net: [number, number] = [cleanDiff(positive[0], negative[0]), cleanDiff(positive[1], negative[1])];
     const n = s.n === undefined ? undefined : (typeof s.n === 'number' ? [s.n, s.n] : [s.n[0]!, s.n[s.n.length - 1]!]) as [number, number];
     groups.push({
       s,
@@ -167,8 +169,8 @@ export function layoutDivergingSlope(
         positive,
         negative,
         net,
-        netChange: round2(net[1] - net[0]),
-        neither: [round2(100 - positive[0] - negative[0]), round2(100 - positive[1] - negative[1])],
+        netChange: cleanDiff(net[1], net[0]),
+        neither: [cleanFloat(100 - positive[0] - negative[0], 100), cleanFloat(100 - positive[1] - negative[1], 100)],
         ...(n ? { n } : {}),
         lowBase: n !== undefined && Math.min(...n) < minBase,
       },
@@ -203,15 +205,16 @@ export function layoutDivergingSlope(
     order.sort((a, b) => key(b.x) - key(a.x) || a.i - b.i);
   }
   const panels = order.map((o) => o.x);
+  // Net and net change are differences of two shares, so a percent format prints them in percentage points.
+  const signed = options.format
+    ? signedFormatterFromExample(differenceExample(options.format), language, undefined, panels.flatMap((p) => [...p.g.positive, ...p.g.negative]))
+    : (v: number): string => formatAutomaticNumber(v, { locale: language, signed: true, decimals: autoDecimals(v) });
 
   // ---- notes ----
   const posName = opt.labels?.positive ?? chartString(options, 'positiveName');
   const negName = opt.labels?.negative ?? chartString(options, 'negativeName');
   const showNet = opt.net ?? true;
   const notes: string[] = [...authoredNotes(options)];
-  // The net definition reads first and stays in the frame: it keys the row
-  // under every panel.
-  if (showNet) notes.push(disclosureNote(chartString(options, 'slopeNetNote', { v1: posName, v2: negName, v3: p2, v4: p1 })));
   // The note shows when any group and period leaves a rest; its range covers every group and period, zeros included.
   const neitherAll = panels.flatMap((p) => p.g.neither).map((v) => Math.max(0, v));
   if ((opt.neutralNote ?? true) && neitherAll.some((v) => v > 0.5)) {
@@ -256,11 +259,12 @@ export function layoutDivergingSlope(
 
   const labelRequests: LabelRequest[] = [];
   const fontById = new Map<string, FontSpec>();
-  const fixed = (id: string, kind: LabelRequest['kind'], owner: LabelRequest['owner'], lines: string[], font: FontSpec, rects: Rect[], priority: number, middle = true, role?: LabelRequest['role']): void => {
+  const fixed = (id: string, kind: LabelRequest['kind'], owner: LabelRequest['owner'], lines: string[], font: FontSpec, rects: Rect[], priority: number, middle = true, role?: LabelRequest['role'], runs?: LabelRequest['runs']): void => {
     fontById.set(id, font);
     labelRequests.push({
       id, kind, owner, text: lines.join(' '), lines, font, priority,
       ...(role ? { role } : {}),
+      ...(runs ? { runs } : {}),
       ...(middle ? { align: 'middle' as const } : {}),
       candidates: rects.map((rect, k) => ({ slot: `seat${k}`, rect, penalty: k })),
     });
@@ -268,6 +272,9 @@ export function layoutDivergingSlope(
 
   // ---- key row, left-aligned: the two area swatches,
   // then "P1 ○—● P2"; the period key takes a second row when one is too narrow.
+  // With the net row on, the net definition follows on the period key's row,
+  // or on a row of its own when it does not fit there. It keys the bare
+  // numbers under every panel, so it stays on the page.
   const plot0 = frameResult.plot;
   const keyRowH = textH + 10;
   const w1 = measure(p1, labelFont).width;
@@ -275,7 +282,14 @@ export function layoutDivergingSlope(
   const sw = 10;
   const posW = measure(posName, labelFont).width;
   const negW = measure(negName, labelFont).width;
-  const swatchesW = sw + 4 + posW + 12 + sw + 4 + negW;
+  // A hatched low-base panel is keyed beside the two areas, as the heatmap keys a low-base cell.
+  // The area key does not wrap, so a low-base key that does not fit beside the areas takes a row of its own.
+  const lowKey = low.length > 0 ? lowBaseKeyLabel(minBase, language) : undefined;
+  const lowTextW = lowKey === undefined ? 0 : measure(lowKey, labelFont).width;
+  const areasOnlyW = sw + 4 + posW + 12 + sw + 4 + negW;
+  const lowOwnRow = lowKey !== undefined && areasOnlyW + 12 + sw + 4 + lowTextW > plot0.w + 1e-6;
+  const lowW = lowKey === undefined || lowOwnRow ? 0 : 12 + sw + 4 + lowTextW;
+  const swatchesW = areasOnlyW + lowW;
   const periodW = (run: number): number => w1 + 6 + DOT_R * 2 + run + DOT_R * 2 + 6 + w2;
   // A narrow card keeps the three items on one row: the period key comes as
   // close as the swatches stand to each other, and its run shortens to KEY_RUN_MIN, before
@@ -286,18 +300,45 @@ export function layoutDivergingSlope(
   const areasW = swatchesW + (tight ? KEY_GAP_MIN : KEY_GAP);
   const keyW = periodW(keyRun);
   const keyWraps = areasW + keyW > plot0.w + 1e-6;
-  const keyH = keyRowH * (keyWraps ? 2 : 1);
+  const netName = chartString(options, 'slopeNetName');
+  const netRest = chartString(options, 'slopeNetKey', { v1: posName, v2: negName, v3: p2, v4: p1 });
+  const netNameW = measure(netName, headFont).width;
+  const netKeyW = netNameW + measure(netRest, labelFont).width;
+  const periodEnd = (keyWraps ? 0 : areasW) + keyW;
+  const netInline = showNet && periodEnd + KEY_GAP + netKeyW <= plot0.w + 1e-6;
+  // A definition wider than the plot wraps in full, however long the period
+  // names are; the name keeps its weight on the first line.
+  const netWrapW = plot0.w - (netNameW - measure(netName, labelFont).width);
+  const netLines = !showNet || netInline || netKeyW <= plot0.w + 1e-6
+    ? [`${netName}${netRest}`]
+    : fitText(`${netName}${netRest}`, labelFont, netWrapW, 2 * Math.ceil(netKeyW / Math.max(netWrapW, 1)) + 1, measure).lines;
+  // The net row's wrapped lines sit at the text pitch, not the key-row pitch,
+  // with room for the label padding between them.
+  const netPitch = Math.max(lineH, textH + 3);
+  const lowRowAt = 1;
+  const periodRow = keyWraps ? (lowOwnRow ? 2 : 1) : 0;
+  // The net definition sits on the row after the last key row, whether the low-base key or the period key took it.
+  const lastKeyRow = (lowOwnRow ? 1 : 0) + (keyWraps ? 1 : 0);
+  const keyH = keyRowH * (1 + lastKeyRow + (showNet && !netInline ? 1 : 0)) + (netInline ? 0 : (netLines.length - 1) * netPitch);
   const keyCy = plot0.y + textH / 2;
   {
     let x = plot0.x;
-    for (const [name, fill, w] of [[posName, posFill, posW], [negName, negFill, negW]] as const) {
-      nodes.push({ t: 'rect', id: `legend:area:${name}`, rect: { x, y: keyCy - sw / 2, w: sw, h: sw }, fill, owner: {}, part: 'legendKey' });
-      fixed(`series:${name}`, 'series', {}, [name], labelFont, [{ x: x + sw + 4, y: keyCy - textH / 2, w, h: textH }], PRIORITY.reference, false);
+    const items: { id: string; name: string; fill: Paint; w: number; hatched?: true }[] = [
+      { id: `legend:area:${posName}`, name: posName, fill: posFill, w: posW },
+      { id: `legend:area:${negName}`, name: negName, fill: negFill, w: negW },
+    ];
+    if (lowKey !== undefined) items.push({ id: 'legend:lowBase', name: lowKey, fill: { token: 'neutralMark' }, w: lowTextW, hatched: true });
+    for (const { id, name, fill, w, hatched } of items) {
+      const own = hatched && lowOwnRow;
+      if (own) x = plot0.x;
+      const cy = own ? keyCy + lowRowAt * keyRowH : keyCy;
+      nodes.push({ t: 'rect', id, rect: { x, y: cy - sw / 2, w: sw, h: sw }, fill, ...(hatched ? { pattern: 'hatch45' as const, hatchGround: { token: 'background' } as Paint, stroke: { token: 'grid' } as Paint } : {}), owner: {}, part: 'legendKey' });
+      fixed(`series:${name}`, 'series', {}, [name], labelFont, [{ x: x + sw + 4, y: cy - textH / 2, w, h: textH }], PRIORITY.reference, false);
       x += sw + 4 + w + 12;
     }
   }
   const keyX = keyWraps ? plot0.x : plot0.x + areasW;
-  const periodCy = keyWraps ? keyCy + keyRowH : keyCy;
+  const periodCy = keyCy + periodRow * keyRowH;
   const k0 = keyX + w1 + 6 + DOT_R;
   const k1 = k0 + DOT_R + keyRun + DOT_R;
   fixed('legend:period:0', 'category', { categoryId: c0.id }, [p1], labelFont, [{ x: keyX, y: periodCy - textH / 2, w: w1, h: textH }], PRIORITY.reference, false);
@@ -308,6 +349,16 @@ export function layoutDivergingSlope(
     { t: 'circle', id: 'legend:period:filled', cx: k1, cy: periodCy, r: DOT_R, fill: keyInk, owner: { categoryId: c1.id }, part: 'legendKey' },
   );
   occupied.claim({ x: k0 - DOT_R, y: periodCy - DOT_R, w: k1 - k0 + 2 * DOT_R, h: 2 * DOT_R }, 'mark', {});
+  if (showNet) {
+    const netX = netInline ? plot0.x + periodEnd + KEY_GAP : plot0.x;
+    netLines.forEach((text, li) => {
+      const cy = netInline ? periodCy : keyCy + (lastKeyRow + 1) * keyRowH + li * netPitch;
+      const first = li === 0 && text.startsWith(netName);
+      const w = first ? netNameW + measure(text.slice(netName.length), labelFont).width : measure(text, labelFont).width;
+      const runs = first ? [{ text: netName, weight: headFont.weight }, { text: text.slice(netName.length) }] : undefined;
+      fixed(`legend:net:${li}`, 'series', {}, [text], labelFont, [{ x: netX, y: cy - textH / 2, w, h: textH }], PRIORITY.reference, false, undefined, runs);
+    });
+  }
 
   // ---- panel grid ----
   const gridY = plot0.y + keyH;
@@ -434,7 +485,8 @@ export function layoutDivergingSlope(
     // footer: net score and base
     let fy = rowY + rowH - footerH + 4;
     if (showNet) {
-      const text = chartString(options, 'slopeNetLabel', { v1: signed(p.g.net[1]), v2: signed(p.g.netChange) });
+      // The key row defines the net score once, so each panel prints the numbers only.
+      const text = `${signed(p.g.net[1])} (${signed(p.g.netChange)})`;
       const w = measure(text, netFont).width;
       fixed(`total:${id}:net`, 'total', { seriesId: id }, [text], netFont, [{ x: px + pw / 2 - w / 2, y: fy, w, h: textH }], PRIORITY.total, true, 'note');
       fy += footerPitch;
@@ -463,8 +515,8 @@ export function layoutDivergingSlope(
   // ---- derived and a11y ----
   const changes: SlopeDerived['changes'] = emptyIdRecord();
   for (const p of panels) {
-    const abs = p.g.positive[1] - p.g.positive[0];
-    changes[p.s.id] = { abs: round2(abs), pct: p.g.positive[0] !== 0 ? round2((abs / p.g.positive[0]) * 100) : null };
+    const abs = cleanDiff(p.g.positive[1], p.g.positive[0]);
+    changes[p.s.id] = { abs, pct: p.g.positive[0] !== 0 ? cleanFloat((abs / p.g.positive[0]) * 100) : null };
   }
   const rising = panels.filter((p) => p.g.netChange > 0).length;
   const best = [...panels].sort((a, b) => b.g.net[1] - a.g.net[1])[0]!;

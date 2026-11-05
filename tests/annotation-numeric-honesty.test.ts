@@ -94,6 +94,83 @@ const codes = (geometry: Warned): string[] => (geometry.warnings ?? []).map((w) 
 const annOf = (geometry: { annotations: Ann[] }, kind: string): Ann | undefined =>
   geometry.annotations.find((a) => a.kind === kind);
 
+// Step annotations must read the step amount and explicit stack totals must read every band without changing level comparisons.
+it('reads step amounts and explicit stack totals while keeping level comparisons', () => {
+  const waterfall = {
+    items: [
+      { id: 'opening', label: 'Opening', type: 'total', value: 100 },
+      { id: 'gain', label: 'Increase', date: '2022-01-01', segments: [
+        { id: 'a', label: 'A', value: 10 }, { id: 'b', label: 'B', value: 20 },
+      ] },
+      { id: 'drop', label: 'Decrease', date: '2023-01-01', value: -10 },
+      { id: 'subtotal', label: 'Subtotal', type: 'subtotal' },
+      { id: 'ending', label: 'Ending', type: 'total' },
+    ],
+  };
+  const checks: [object, string][] = [
+    [{ kind: 'callout', at: 'gain', headline: '${value}', text: 'Increase' }, '30\nIncrease'],
+    [{ kind: 'note', at: 'drop', text: 'Change ${value}' }, 'Change −10'],
+    [{ kind: 'abs', at: 'drop' }, '−10'],
+    [{ kind: 'abs', at: { categoryId: 'gain', edge: 'total' } }, '30'],
+    [{ kind: 'abs', at: { categoryId: 'gain', edge: 'start' } }, '100'],
+    [{ kind: 'abs', at: { categoryId: 'gain', edge: 'end' } }, '130'],
+    [{ kind: 'abs', at: 'subtotal' }, '120'],
+    [{ kind: 'abs', at: 'ending' }, '120'],
+    [{ kind: 'delta', at: 'gain', vs: 0 }, '+30'],
+    // A delta against another anchor compares running levels, so it must not subtract a total from a step amount (it read 10 minus 100 here).
+    [{ kind: 'delta', at: 'drop', vs: 'opening' }, '+20'],
+    [{ kind: 'delta', at: 'gain', vs: 'opening' }, '+30'],
+    [{ kind: 'diff', from: 'gain', to: 'drop', mode: 'absolute' }, '−10'],
+    [{ kind: 'cagr', from: 'gain', to: 'drop' }, '−7.7% p.a.'],
+  ];
+  for (const [annotation, expected] of checks) {
+    const geometry = layoutWaterfall(waterfall as never, { annotations: [annotation] } as never);
+    expect.soft(geometry.annotations[0]?.computedText, JSON.stringify(annotation)).toBe(expected);
+  }
+  const data = {
+    categories: [{ id: 'a', label: 'A', date: '2022-01-01' }, { id: 'b', label: 'B', date: '2023-01-01' }],
+    series: [{ id: 'x', label: 'X', values: [10, 20] }, { id: 'y', label: 'Y', values: [30, 40] }],
+  };
+  for (const variant of ['stacked-area', 'stacked100-area'] as const) {
+    const options = { variant, valueLabels: 'none', seriesLabels: 'none' } as const;
+    for (const [at, expected] of [
+      [{ categoryId: 'b', edge: 'total' }, '60'],
+      ['b', '20'],
+      [{ categoryId: 'b' }, '20'],
+      [{ categoryId: 'b', seriesId: 'x', edge: 'total' }, '20'],
+    ] as const) {
+      const geometry = layoutLine(data, { ...options, annotations: [{ kind: 'abs', at }] });
+      expect.soft(geometry.annotations[0]?.computedText, `${variant} ${JSON.stringify(at)}`).toBe(expected);
+    }
+    const growth = layoutLine(data, { ...options, annotations: [{ kind: 'cagr' }] });
+    expect.soft(annOf(growth, 'cagr')?.computedText, variant).toBe('X +100.0% p.a.');
+  }
+});
+
+// A category drawn as n.m. has no total, and a category of authored shares has a total in percent.
+it('keeps explicit stack totals honest on a 100% area with signed or authored shares', () => {
+  const categories = [{ id: 'a', label: 'A', date: '2022-01-01' }, { id: 'b', label: 'B', date: '2023-01-01' }];
+  const options = { variant: 'stacked100-area', valueLabels: 'none', seriesLabels: 'none' } as const;
+  const at = { categoryId: 'a', edge: 'total' } as const;
+  const signed = layoutLine({ categories, series: [{ id: 'x', label: 'X', values: [40, 20] }, { id: 'y', label: 'Y', values: [-10, 30] }] },
+    { ...options, annotations: [{ kind: 'abs', at }] });
+  expect(signed.annotations).toHaveLength(0);
+  expect(codes(signed)).toContain('bad-anchor');
+  const shares = layoutLine({ categories, series: [{ id: 'x', label: 'X', values: [{ pct: 40 }, { pct: 20 }] }, { id: 'y', label: 'Y', values: [{ pct: 60 }, { pct: 80 }] }] },
+    { ...options, annotations: [{ kind: 'abs', at }, { kind: 'note', at, text: 'Sum ${value}' }] });
+  expect(shares.annotations.map((a) => a.computedText)).toEqual(['100%', 'Sum 100%']);
+});
+
+// An explicit stack total must print in the series number format, as the string anchor and the segment anchor do.
+it('prints an explicit stack total and its delta in the series format', () => {
+  const categories = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+  const series = [{ id: 'x', values: [10.5, 20.25, 30.5], format: '$0.0' }, { id: 'y', values: [30, 40.5, 50], format: '$0.0' }];
+  const total = (id: string) => ({ categoryId: id, edge: 'total' }) as const;
+  const geometry = layoutLine({ categories, series }, { variant: 'stacked-area', valueLabels: 'none', seriesLabels: 'none',
+    annotations: [{ kind: 'abs', at: total('c') }, { kind: 'delta', at: total('c'), vs: total('a') }] });
+  expect(geometry.annotations.map((a) => a.computedText)).toEqual(['$80.5', '+$40.0']);
+});
+
 // A computed reference must use the observations on its axis, not differences on a level axis.
 it('measures variance value-line statistics on the drawn axis', () => {
   for (const percent of [false, true]) for (const variant of ['absolute', 'integrated'] as const) {
@@ -311,6 +388,31 @@ it('keeps the percent unit through column Others and the column average marker',
   expect(annOf(others, 'valueLine')?.computedText).toBe('Plan 2.5%');
   const marker = layoutColumn(data, { averageMarker: true }).annotations.find(annotation => annotation.id.startsWith('averageMarker'));
   expect(marker?.computedText).toMatch(/^Average 2\.33?%$/);
+});
+
+// The average marker mixed a running week into the mean of finished ones. It leaves partial categories out, names the periods it covers in sheet order, and includePartial brings the old mean back.
+it('leaves partial categories out of the average marker and names the periods it covers', () => {
+  const data = {
+    categories: [{ id: 'a', label: 'W1' }, { id: 'b', label: 'W2' }, { id: 'c', label: 'W3', partial: true }],
+    series: [{ id: 's', label: 'Series', values: [10, 20, 3] }],
+  };
+  const middle = {
+    categories: ['P1', 'P2', 'P3', 'P4', 'P5'].map((id) => ({ id, ...(id === 'P3' ? { partial: true } : {}) })),
+    series: [{ id: 's', values: [10, 20, 60, 40, 50] }],
+  };
+  // Four runs of kept periods are too many to name; the mean says nothing about its span.
+  const scattered = {
+    categories: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'].map((id, i) => ({ id, ...(i % 2 === 1 ? { partial: true } : {}) })),
+    series: [{ id: 's', values: [5, 99, 5, 99, 5, 99, 5, 99, 5] }],
+  };
+  const marker = (layout: typeof layoutColumn, input: object, options: object) => layout(input as never, { averageMarker: true, ...options })
+    .annotations.find(annotation => annotation.id.startsWith('averageMarker'))?.computedText;
+  for (const layout of [layoutColumn, layoutBar as never]) {
+    expect(marker(layout, data, {})).toBe('Average 15 (W1–W2)');
+    expect(marker(layout, data, { averageMarker: { includePartial: true } })).toBe('Average 11');
+    expect(marker(layout, middle, { sort: { categories: 'desc' } })).toBe('Average 30 (P1–P2, P4–P5)');
+    expect(marker(layout, scattered, {})).toBe('Average 5');
+  }
 });
 
 // An average of 1.25M must not print as "1M" because its raw number is whole: its decimals count at the printed scale.
@@ -556,20 +658,28 @@ describe('a stacked100 SEGMENT annotation reports the value, not the share', () 
   ];
   // All FOUR composition surfaces, each in its own 100% mode. Whatever the
   // geometry is drawn in, the ANNOTATION must speak absolutes.
-  const surfaces: [string, (annotations: unknown) => unknown][] = [
-    ['column.stacked100', (a) => layoutColumn(data as never, { variant: 'stacked100', annotations: a } as never)],
-    ['bar.stacked100', (a) => layoutBar(data as never, { variant: 'stacked100', annotations: a } as never)],
-    ['mekko.stacked100', (a) => layoutMekko(data as never, { variant: 'stacked100', annotations: a } as never)],
+  const surfaces: [string, (annotations: unknown, format?: string) => unknown][] = [
+    ['column.stacked100', (a, format) => layoutColumn(data as never, { variant: 'stacked100', annotations: a, format } as never)],
+    ['bar.stacked100', (a, format) => layoutBar(data as never, { variant: 'stacked100', annotations: a, format } as never)],
+    ['mekko.stacked100', (a, format) => layoutMekko(data as never, { variant: 'stacked100', annotations: a, format } as never)],
     [
       'line.stacked100-area',
-      (a) =>
+      (a, format) =>
         layoutLine(data as never, {
           variant: 'area',
           valueAxis: { percent: true },
           annotations: a,
+          format,
         } as never),
     ],
   ];
+
+  // A percent format sets the shares of a 100% axis. abs and delta state source values, and printed "10.0%" and "+10.0pp" under it.
+  it.each(surfaces)('%s keeps the percent format of the shares off abs and delta', (_name, layout) => {
+    const delta = [{ kind: 'delta', at: { categoryId: 'q2', seriesId: 'a' }, vs: { categoryId: 'q1', seriesId: 'a' } }];
+    expect(annOf(layout(segmentAbs, '1.0%') as never, 'abs')?.computedText).toBe('10');
+    expect(annOf(layout(delta, '1.0%') as never, 'delta')?.computedText).toBe('+10');
+  });
 
   it.each(surfaces)('%s reports 10, not the plotted 67', (_name, layout) => {
     expect(annOf(layout(segmentAbs) as never, 'abs')?.computedText).toBe('10');
@@ -585,7 +695,8 @@ describe('a stacked100 SEGMENT annotation reports the value, not the share', () 
         to: { categoryId: 'q2', seriesId: 'a' },
       },
     ]);
-    expect(annOf(geometry as never, 'diff')?.computedText).toBe('+100%');
+    // Column and bar drop the arrow on a 100% axis: it would state a change the equal columns do not show.
+    expect(annOf(geometry as never, 'diff')?.computedText).toBe(_name.startsWith('column') || _name.startsWith('bar') ? undefined : '+100%');
   });
 
   // bar, column, mekko, and line all declare cagr; each annualises the VALUE.

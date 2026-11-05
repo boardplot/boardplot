@@ -11,7 +11,7 @@ import { sanitizeObjectPrototype } from '../core/doc/docExpand';
 import { BOARDPLOT_VERSION } from '../version';
 import { FlagError, parseFlags, type Flags } from './flags';
 import { HELP_VERBS, POSITIONALS, USAGE, VERBS } from './grammar';
-import { printError, printOut } from './output';
+import { printError, printOut, writeRaw } from './output';
 import { InputError, ok, rejectedInput, runVerb, type VerbResult } from './result';
 import { readSpecFile } from './spec';
 import { list } from './list';
@@ -66,16 +66,33 @@ function rowFlags(flags: Flags): { rowsFile?: string; columns?: Record<string, s
  */
 function quietRender(flags: Flags, result: VerbResult): VerbResult {
   if (flags.quiet !== true || result.exit !== 0) return result;
-  const returned = (text(flags, 'return') ?? '').split(',').map((entry) => entry.trim());
+  const warnings = result.body.warnings as { code: string; severity?: string }[] | undefined;
+  const svgReturned = warnings?.filter(warning => warning.code === 'svg-returned');
+  // With --out - stderr is one JSON object, so warn-level warnings stay in that object.
+  const kept = warnings?.filter(warning => warning.code === 'svg-returned' || (text(flags, 'out') === '-' && warning.severity === 'warn'));
+  const returned = (text(flags, 'return') ?? (svgReturned?.length ? 'svg' : '')).split(',').map((entry) => entry.trim().toLowerCase());
   const pick = (from: Record<string, unknown>) => Object.fromEntries(returned.filter((key) => key in from).map((key) => [key, from[key]]));
   // A document answers per chart, under charts with each chart's name.
   const charts = Array.isArray(result.body.charts) && returned.some((key) => key !== '')
     ? { charts: (result.body.charts as Record<string, unknown>[]).map((chart) => ({ name: chart.name, ...pick(chart) })) } : {};
-  return { ...result, body: { ok: true, ...(result.body.outputs ? { outputs: result.body.outputs } : {}), ...pick(result.body), ...charts } };
+  return { ...result, body: { ok: true, ...(result.body.outputs ? { outputs: result.body.outputs } : {}), ...pick(result.body), ...charts,
+    ...(kept?.length ? { warnings: kept } : {}) } };
 }
 
-/** Print before quiet mode removes warnings; stdout keeps its existing JSON shape. */
-function writtenPaths(result: VerbResult): VerbResult {
+/** Warnings the stderr line already says or quiet mode keeps in its JSON. */
+const QUIET_KEPT_WARNINGS: ReadonlySet<string> = new Set(['out-name-taken', 'svg-returned']);
+
+/**
+ * Print before quiet mode removes warnings; stdout keeps its existing JSON shape.
+ * Under --quiet each warn-level warning prints one line first, so a shell loop
+ * still sees what needs a fix; the last line stays the written paths.
+ */
+function writtenPaths(result: VerbResult, quiet: boolean): VerbResult {
+  if (quiet && result.exit === 0) {
+    for (const warning of (result.body.warnings as { code: string; severity?: string; message: string }[] | undefined) ?? []) {
+      if (warning.severity === 'warn' && !QUIET_KEPT_WARNINGS.has(warning.code)) printError(`warning ${warning.code}: ${warning.message}`);
+    }
+  }
   const outputs = result.body.outputs;
   if (result.exit === 0 && Array.isArray(outputs) && outputs.length) {
     const warnings = result.body.warnings as { code: string; suggest?: string }[] | undefined;
@@ -83,6 +100,21 @@ function writtenPaths(result: VerbResult): VerbResult {
     printError(`Wrote ${outputs.join(', ')}${collision ? '; use --overwrite to replace the existing file.' : ''}`);
   }
   return result;
+}
+
+function stdoutRender(result: VerbResult): VerbResult {
+  if (result.exit !== 0) return result;
+  const charts = result.body.charts;
+  if (Array.isArray(charts) && charts.length !== 1) {
+    throw new InputError('invalid-argument', `--out - writes one chart; the spec draws ${charts.length}`, {
+      path: '/outDir', suggest: 'Pass --out with a folder.',
+    });
+  }
+  const { svg, ...chart } = (Array.isArray(charts) ? charts[0] : result.body) as Record<string, unknown>;
+  const drawing = result.images?.[0] ?? svg;
+  if (typeof drawing !== 'string' && !Buffer.isBuffer(drawing)) throw new Error('render produced no drawing');
+  const body = Array.isArray(charts) ? { ...result.body, charts: [chart] } : chart;
+  return { ...result, body, drawing };
 }
 
 /** What a call's usage event may read: the spec and the type it named (docs/TELEMETRY.md). */
@@ -104,15 +136,18 @@ function dispatch(verb: string, flags: Flags, seen: UsageSeen): VerbResult {
     case 'fixtures':
       seen.type = text(flags, 'type');
       return fixtures({ type: text(flags, 'type'), id: text(flags, 'id'), kind: text(flags, 'kind') }, Infinity);
-    case 'render':
+    case 'render': {
+      const stdout = text(flags, 'out') === '-';
       // The CLI answers with one JSON object; a PNG has to go to a file.
-      if (text(flags, 'format') === 'png' && text(flags, 'out') === undefined) {
+      if (text(flags, 'format')?.toLowerCase() === 'png' && text(flags, 'out') === undefined) {
         throw new InputError('png-needs-out', 'render --format png writes files; pass --out <dir>', {
           suggest: 'Add --out with a directory, or render svg.',
         });
       }
       seen.spec = readSpecFile(first);
-      return quietRender(flags, writtenPaths(render({
+      const requested = text(flags, 'return');
+      const returned = (requested ?? 'reading').split(',').map((entry) => entry.trim());
+      const result = render({
         spec: seen.spec,
         format: text(flags, 'format'),
         target: text(flags, 'target'),
@@ -120,12 +155,14 @@ function dispatch(verb: string, flags: Flags, seen: UsageSeen): VerbResult {
         height: text(flags, 'height'),
         scale: text(flags, 'scale'),
         background: text(flags, 'background'),
-        outDir: text(flags, 'out'),
+        outDir: stdout ? undefined : text(flags, 'out'),
         overwrite: flags.overwrite === true,
         fontTables: text(flags, 'font-tables'),
-        ...(text(flags, 'return') === undefined ? {} : { return: text(flags, 'return')!.split(',').map((entry) => entry.trim()) }),
+        ...(stdout ? { return: [...returned, 'svg'] } : requested === undefined ? {} : { return: returned }),
         ...rowFlags(flags),
-      })));
+      });
+      return quietRender(flags, stdout ? stdoutRender(result) : writtenPaths(result, flags.quiet === true));
+    }
     case 'measure':
       seen.spec = readSpecFile(first);
       return measure({ spec: seen.spec, target: text(flags, 'target'), width: text(flags, 'width'), fontTables: text(flags, 'font-tables'), ...rowFlags(flags) });
@@ -162,6 +199,9 @@ export function main(argv: string[]): number {
   }
   const [rawVerb, ...rest] = argv;
   const verb = rawVerb === undefined || (HELP_VERBS as readonly string[]).includes(rawVerb) ? 'help' : rawVerb;
+  const end = rest.indexOf('--');
+  const flagArgs = end < 0 ? rest : rest.slice(0, end);
+  const stdout = verb === 'render' && flagArgs.some((arg, index) => arg === '--out=-' || ((arg === '--out' || arg === '-o') && flagArgs[index + 1] === '-'));
   const seen: UsageSeen = {};
   let format: string | undefined;
   const result = runVerb(() => {
@@ -177,13 +217,18 @@ export function main(argv: string[]): number {
     format = text(flags, 'format');
     return dispatch(verb, flags, seen);
   });
-  printOut(JSON.stringify(result.body));
+  if (stdout) {
+    if (result.drawing !== undefined) writeRaw(result.drawing);
+    printError(JSON.stringify(result.body));
+  } else {
+    printOut(JSON.stringify(result.body));
+  }
   // Usage counts only when the user turned them on and the build has a collector; telemetryState() decides.
   if (verb !== 'telemetry' && verb !== 'feedback' && verb !== 'help') {
     try {
       const state = telemetryState();
       recordCliUsage({ command: verb, ...seen, format, body: result.body, host: hostFromEnv() }, state);
-      cliNotice(state);
+      if (!stdout) cliNotice(state);
     } catch {
       // Usage counts never change a command's answer or exit code.
     }

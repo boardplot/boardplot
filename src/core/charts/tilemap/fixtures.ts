@@ -76,7 +76,8 @@ for (const polarity of ['higherIsBetter', 'lowerIsBetter'] as const) {
     kind: 'example',
     data: {
       pack: 'eu27',
-      regions: valuesFor('eu27', (index) => index === 8 ? null : (index % 9) * 3 - 12),
+      // Demand and cost get different integer gaps to plan, so the two maps do not repeat one pattern.
+      regions: valuesFor('eu27', (index) => index === 8 ? null : higher ? ((index * 7) % 13 - 6) * 2 : ((index * 4 + 5) % 11 - 5) * 2),
     },
     options: {
       title: higher ? 'Demand varies around plan' : 'Cost control varies around plan',
@@ -102,20 +103,28 @@ fixtures.push({
 /**
  * The value key right of the tiles, from their top, because the spec names
  * 'right'; the layout says what that costs the plot (lint legend-beside-plot).
- * Every unnamed key sits in one row above the plot.
+ * Where the column would leave the tiles under about two thirds of the width, the key
+ * stays in the row above them with a warning. Every unnamed key sits in one row above the plot.
  */
 const coverage = fixtures.find((fixture) => fixture.id === 'us-state-tile-grid')!;
 fixtures.push({
   ...coverage,
   id: 'tile-key-right',
-  title: 'Refusal example: the value key right of the tiles, refused for the width it takes',
+  title: 'The value key in a column right of the tiles',
   kind: 'example',
-  refuses: { code: 'invalid-options', path: 'options.legend' },
   options: {
     ...coverage.options,
     legend: 'right',
     footnotes: false,
   },
+});
+
+// A wide slot: the tiles are bound by the canvas height, so the key stands beside them.
+fixtures.push({
+  ...coverage,
+  id: 'us-state-tile-grid-wide-slot',
+  title: 'US states on a wide slot: the value key stands beside the tiles',
+  options: { ...coverage.options, size: { width: 1184, height: 528 } },
 });
 
 // The key below the tiles. 'none' draws

@@ -60,11 +60,11 @@ interface MapKeysInput {
   compact?: boolean;
   plot: Rect;
   /**
-   * 'right' stacks the blocks in a column right of the map; 'bottom' and 'top'
+   * 'right' and 'left' stack the blocks in a column beside the map; 'bottom' and 'top'
    * set them side by side in a strip. 'auto' is the strip above the map, where
    * every exhibit keeps its key, and the map takes the full width.
    */
-  position: 'right' | 'bottom' | 'top' | 'auto';
+  position: 'right' | 'left' | 'bottom' | 'top' | 'auto';
   title: string | undefined;
   scale: ScaleModel;
   /** The class count when the map paints classes. */
@@ -150,7 +150,8 @@ function mapKeysOnce(input: MapKeysInput) {
   // ---- key block: what its labels ask for ----
   const { min, max, midpoint } = scale;
   const noData = scale.legend.find((item) => item.id === 'no-data');
-  const noValueKeys = scale.legend.filter((item) => item.id === 'no-data' || item.id === 'not-in-data' || item.id.startsWith('state:'));
+  // A value on an even-count midpoint break is grey; its entry stands beside the other swatches.
+  const noValueKeys = scale.legend.filter((item) => item.id === 'midpoint' || item.id === 'no-data' || item.id === 'not-in-data' || item.id.startsWith('state:'));
   const hasRamp = min !== null && max !== null;
   const classes = hasRamp && (max !== min || scale.explicitSteps) ? (scale.edges ? scale.edges.length - 1 : input.classes) : undefined;
   const named = (value: number) => `${fmt(value)}${input.midpointLabel && value === midpoint ? ` ${input.midpointLabel}` : ''}`;
@@ -171,7 +172,11 @@ function mapKeysOnce(input: MapKeysInput) {
     : tickEdges.map(value => classes ? edgeText(value) : named(value));
   const midIn = hasRamp && midpoint !== null && midpoint > min! && midpoint < max!
     && !(classes && input.midpointLabel === undefined && tickEdges.includes(midpoint));
-  const midText = midIn ? named(midpoint!) : '';
+  // A classed key prints the midpoint as its ticks do ('15%' beside '14%') when that is exact.
+  const midText = !midIn ? ''
+    : classes && scale.edgeExact(midpoint!)
+      ? `${edgeText(midpoint!)}${input.midpointLabel ? ` ${input.midpointLabel}` : ''}`
+      : named(midpoint!);
   const rowW = (label: string) => SWATCH + SWATCH_GAP + width(label);
   const labelsWant = (f: FontSpec) => {
     const widths = edgeTexts.map((text) => width(text, f));
@@ -291,9 +296,10 @@ function mapKeysOnce(input: MapKeysInput) {
   // beside the key unless that squeezes the key under its minimum; then the
   // small members go under the key.
   const position = input.position === 'auto' ? 'top' : input.position;
+  const column = position === 'right' || position === 'left';
   const besideCap = plot.w - (members.length ? BLOCK_GAP + oneColumnW : 0);
   const { keyW, at, plan, edgeFont, edgeRowPitch, midLines, midLeft, midAbove, titleWrap, titleLines, midLabelY, rampY, noDataY, keyH, caption, captionY } =
-    position === 'right'
+    column
       ? fitKey(Math.max(1, Math.min(input.keyWidth ?? natural, plot.w / 2)))
       : fitKey(Math.max(1, Math.min(input.keyWidth ?? natural, besideCap >= Math.min(natural, RAMP_MIN_W) ? besideCap : plot.w)));
 
@@ -302,9 +308,9 @@ function mapKeysOnce(input: MapKeysInput) {
   // makes the strip shorter: under it they can use the full plot width.
   const besideBlock = smallBlock(plot.w - keyW - BLOCK_GAP, Math.floor((keyH - headerH) / rowH));
   const underBlock = smallBlock(plot.w, 1);
-  const beside = position !== 'right' && members.length > 0 && keyW + BLOCK_GAP + oneColumnW <= plot.w &&
+  const beside = !column && members.length > 0 && keyW + BLOCK_GAP + oneColumnW <= plot.w &&
     Math.max(keyH, besideBlock.smallH) <= keyH + BLOCK_GAP + underBlock.smallH;
-  const { rows, smallW, smallH } = position === 'right' ? smallBlock(Infinity, columnRows(keyH)) : beside ? besideBlock : underBlock;
+  const { rows, smallW, smallH } = column ? smallBlock(Infinity, columnRows(keyH)) : beside ? besideBlock : underBlock;
   const stacked = !beside && members.length > 0;
   const blocksW = beside ? keyW + (members.length ? BLOCK_GAP + smallW : 0) : Math.max(keyW, smallW);
   const blocksH = beside ? Math.max(keyH, smallH) : keyH + (stacked ? BLOCK_GAP + smallH : 0);
@@ -317,10 +323,10 @@ function mapKeysOnce(input: MapKeysInput) {
   // right column already fills the plot height with as many rows as fit, so it
   // reports its height only when even one row per column does not fit.
   const mapGap = input.compact ? 4 : MAP_GAP;
-  const minPlotH = position === 'right' ? (blocksH > plot.h ? blocksH : 0) : blocksH + mapGap + MIN_MAP_H;
+  const minPlotH = column ? (blocksH > plot.h ? blocksH : 0) : blocksH + mapGap + MIN_MAP_H;
   if (input.dryRun) return { dry: { w: blocksW, h: blocksH } } as const;
-  const mapPlot: Rect = position === 'right'
-    ? { ...plot, w: Math.max(10, plot.w - blocksW - MAP_GAP) }
+  const mapPlot: Rect = column
+    ? { ...plot, x: position === 'left' ? plot.x + blocksW + MAP_GAP : plot.x, w: Math.max(10, plot.w - blocksW - MAP_GAP) }
     : { ...plot, y: position === 'top' ? plot.y + blocksH + mapGap : plot.y, h: Math.max(10, plot.h - blocksH - mapGap) };
 
   // ---- key block: marks, then its texts as fixed-cell label requests ----
@@ -330,6 +336,7 @@ function mapKeysOnce(input: MapKeysInput) {
   const items: LegendGeometry['items'] = [];
   if (titleLines.length) addText('legend-title', titleLines, keyX, keyY, heading, 'caption', titleWrap!.truncated ? input.title : undefined);
   if (hasRamp) {
+    const classItems = scale.legend.filter((item) => item.id.startsWith('class-'));
     const steps = classes ?? (max === min ? 1 : Math.max(1, Math.round(keyW / 4)));
     for (let i = 0; i < steps; i++) {
       // The slice takes the paint the map gives its centre value: a class's own paint on a classed map.
@@ -344,7 +351,7 @@ function mapKeysOnce(input: MapKeysInput) {
         t: 'rect', id: `legend-ramp:${i}`,
         // Each slice overlaps the next by half a pixel so no seam shows between them.
         rect: { x: keyX + (i * keyW) / steps, y: keyY + rampY, w: keyW / steps + (i < steps - 1 ? 0.5 : 0), h: RAMP_H },
-        fill: classes ? scale.legend[i]!.paint : scale.paint(value), owner: {}, part: 'swatch',
+        fill: classes ? classItems[i]!.paint : scale.paint(value), owner: {}, part: 'swatch',
       });
     }
     occupied.claim({ x: keyX, y: keyY + rampY, w: keyW, h: RAMP_H }, 'legend', {}, 'swatch');
@@ -370,7 +377,7 @@ function mapKeysOnce(input: MapKeysInput) {
   for (const [index, item] of noValueKeys.entries()) {
     const ry = keyY + noDataY + index * rowH;
     const rect = { x: keyX, y: ry + (rowH - SWATCH) / 2, w: SWATCH, h: SWATCH };
-    nodes.push({ t: 'rect', id: `legend-swatch:${item.id}`, rect, fill: item.paint, ...(item.hollow ? { pattern: 'hollow' as const } : item.pattern ? { pattern: item.pattern } : {}), ...(item.id === 'not-in-data' ? { stroke: { token: 'inkMuted' as const }, strokeWidth: strokeToken(theme, 'hair') } : {}), owner: {}, part: 'swatch' });
+    nodes.push({ t: 'rect', id: `legend-swatch:${item.id}`, rect, fill: item.paint, ...(item.hollow ? { pattern: 'hollow' as const } : item.pattern ? { pattern: item.pattern } : {}), owner: {}, part: 'swatch' });
     occupied.claim(rect, 'legend', {}, 'swatch');
     addText(`legend-label:${item.id}`, [item.label], keyX + SWATCH + SWATCH_GAP, ry + (rowH - lineOf(font)) / 2, font, 'caption');
     items.push({ id: item.id, swatchNodeId: `legend-swatch:${item.id}`, labelId: `label:legend-label:${item.id}` });
@@ -427,18 +434,16 @@ function mapKeysOnce(input: MapKeysInput) {
 }
 
 export function shortestRegionName(
-  region: { id: string; anchor: { shortName: string } },
+  region: { id: string; anchor: { shortName: string; authored?: boolean } },
   font: FontSpec,
   measure: TextMeasurer,
 ): string {
-  const forms = [region.anchor.shortName, region.id];
-  return forms.reduce((best, candidate) => {
-    const width = measure(candidate, font).width;
-    const bestWidth = measure(best, font).width;
-    return width < bestWidth || (width === bestWidth && compareText(candidate, best) < 0)
-      ? candidate
-      : best;
-  });
+  const shortName = region.anchor.shortName;
+  if (shortName === region.id || region.anchor.authored) return shortName;
+  const shortWidth = measure(shortName, font).width;
+  const idWidth = measure(region.id, font).width;
+  return idWidth < shortWidth || (idWidth === shortWidth && compareText(region.id, shortName) < 0)
+    ? region.id : shortName;
 }
 
 /** At most this many rows make the automatic value table (more is a list, not a glance). */
@@ -465,7 +470,26 @@ interface ValueTableInput {
   /** The rows set in the emphasis weight: the top values. */
   bold: ReadonlySet<string>;
   compact?: boolean;
+  /** Authored order: these rows lead, the rest follow ranked. */
+  rowOrder?: readonly string[];
+  /** Column settings; no key keeps the measured tracks. */
+  columns?: LookupColumns;
+  /** The widest a column may be: the plot. */
+  maxColumnW?: number;
 }
+
+type LookupAlign = 'left' | 'right' | 'center';
+/** What the authored keys ask of the lookup's three tracks. */
+export interface LookupColumns {
+  swatch?: boolean;
+  value?: boolean;
+  overrides?: Record<string, { width?: number; align?: LookupAlign; headAlign?: LookupAlign; label?: string }>;
+}
+/** Where text of `width` starts in a track, by its alignment. */
+const alignedIn = (left: number, track: number, width: number, align: LookupAlign | undefined, fallback: LookupAlign): number => {
+  const chosen = align ?? fallback;
+  return chosen === 'left' ? left : chosen === 'right' ? left + track - width : left + (track - width) / 2;
+};
 
 /**
  * The value table beside or under a map: one row per region with its class
@@ -496,13 +520,39 @@ export function valueTable(input: ValueTableInput) {
   }).sort((a, b) => (a.value === null || a.state ? 1 : 0) - (b.value === null || b.state ? 1 : 0)
     || (a.value !== null && b.value !== null && !a.state && !b.state ? b.value - a.value : 0)
     || compareText(a.code, b.code));
+  if (input.rowOrder?.length) {
+    const seat = new Map(input.rowOrder.map((id, index) => [id, index]));
+    // Stable: the rows the author names lead, and the rest keep their rank.
+    rows.sort((a, b) => (seat.get(a.id) ?? Infinity) - (seat.get(b.id) ?? Infinity) || 0);
+  }
   // The top group leads the ranked rows; it is a group only while rows follow it.
   const groupN = rows.slice(0, input.bold.size).every((row) => input.bold.has(row.id)) && input.bold.size < rows.length ? input.bold.size : 0;
-  const codeW = Math.max(0, maxOf(rows.map((row) => measure(row.code, fontOf(row.id)).width)));
-  const valueW = Math.max(input.unit ? measure(input.unit, bold).width : 0, maxOf(rows.map((row) => measure(row.text, fontOf(row.id)).width)));
-  const columnW = SWATCH + SWATCH_GAP + codeW + (input.compact ? 6 : 12) + valueW;
+  const overrides = input.columns?.overrides;
+  const swatchDrawn = input.columns?.swatch !== false;
+  const valueDrawn = input.columns?.value !== false;
+  // Hiding the value drops the unit caption: it names the values' unit.
+  const headText = valueDrawn ? overrides?.value?.label ?? input.unit : undefined;
+  const codeNeed = Math.max(0, maxOf(rows.map((row) => measure(row.code, fontOf(row.id)).width)));
+  const valueNeed = valueDrawn ? Math.max(headText ? measure(headText, bold).width : 0, maxOf(rows.map((row) => measure(row.text, fontOf(row.id)).width))) : 0;
+  // A track is never narrower than its text and its swatch.
+  let swatchW = swatchDrawn ? Math.max(SWATCH + SWATCH_GAP, overrides?.swatch?.width ?? 0) : 0;
+  let codeW = Math.max(codeNeed, overrides?.code?.width ?? 0);
+  let valueW = Math.max(valueNeed, overrides?.value?.width ?? 0);
+  const codeGap = valueDrawn ? (input.compact ? 6 : 12) : 0;
+  const below = (track: { width?: number } | undefined, need: number) => track?.width !== undefined && track.width < need;
+  const widthFloored = (swatchDrawn && below(overrides?.swatch, SWATCH + SWATCH_GAP)) || below(overrides?.code, codeNeed) || (valueDrawn && below(overrides?.value, valueNeed));
+  const excess = swatchW + codeW + codeGap + valueW - (input.maxColumnW ?? Infinity);
+  const widthCapped = excess > 0 && (swatchW > SWATCH + SWATCH_GAP || codeW > codeNeed || valueW > valueNeed);
+  if (widthCapped) {
+    let left = excess;
+    const giveUp = (width: number, floor: number) => { const taken = Math.min(left, Math.max(0, width - floor)); left -= taken; return width - taken; };
+    valueW = giveUp(valueW, valueNeed);
+    codeW = giveUp(codeW, codeNeed);
+    if (swatchDrawn) swatchW = giveUp(swatchW, SWATCH + SWATCH_GAP);
+  }
+  const columnW = swatchW + codeW + codeGap + valueW;
   const caption: FontSpec = { family: theme.type.family, ...theme.type.footnote };
-  const headerH = input.unit ? caption.size * (caption.lineHeight ?? 1.2) + 4 : 0;
+  const headerH = headText ? caption.size * (caption.lineHeight ?? 1.2) + 4 : 0;
   const columnsOf = (perColumn: number) => Math.ceil(rows.length / Math.max(1, perColumn));
   /** The rows in each column: the first columns take the remainder. */
   const countsOf = (columns: number) => Array.from({ length: columns }, (_, i) => Math.floor(rows.length / columns) + (i < rows.length % columns ? 1 : 0));
@@ -543,12 +593,14 @@ export function valueTable(input: ValueTableInput) {
       });
     };
     // One caption over the table names the unit of its values.
-    if (input.unit) {
-      const measured = measure(input.unit, caption);
+    if (headText) {
+      const measured = measure(headText, caption);
+      const headAlign = overrides?.value?.headAlign ?? overrides?.value?.align;
+      const headX = headAlign === undefined ? x : alignedIn(x + colW - valueW, valueW, measured.width, headAlign, 'right');
       requests.push({
-        id: 'value-table-unit:0', kind: 'annotation', typeRole: 'footnote', owner: {}, text: input.unit, lines: [input.unit], font: caption,
+        id: 'value-table-unit:0', kind: 'annotation', typeRole: 'footnote', owner: {}, text: headText, lines: [headText], font: caption,
         priority: PRIORITY.endpoint, role: 'caption',
-        candidates: [{ slot: 'valueTable', rect: { x, y, w: measured.width, h: measured.height }, penalty: 0 }],
+        candidates: [{ slot: 'valueTable', rect: { x: headX, y, w: measured.width, h: measured.height }, penalty: 0 }],
       });
     }
     const counts = countsOf(columns);
@@ -563,17 +615,22 @@ export function valueTable(input: ValueTableInput) {
       while (rowIndex >= counts[column]!) rowIndex -= counts[column++]!;
       const left = x + column * (colW + columnGap);
       const top = y + headerH + rowIndex * rowH + (gap && rowIndex >= groupN ? gap : 0);
-      const rect = { x: left, y: top + (rowH - SWATCH) / 2, w: SWATCH, h: SWATCH };
-      nodes.push({
-        t: 'rect', id: `value-table-swatch:${row.id}`, rect,
-        fill: row.state ? { token: 'inkMuted' } : !row.listed ? { token: 'background' } : row.value === null ? input.scale.legend.find((item) => item.id === 'no-data')?.paint ?? { token: 'neutral' } : input.scale.paint(row.value),
-        ...(row.state ? { pattern: geoStatePattern(row.state) } : row.listed && row.value === null ? { pattern: 'hatch45' as const } : {}),
-        stroke: { token: 'leader' }, strokeWidth: strokeToken(theme, 'hair'), owner: { categoryId: row.id }, part: 'smallMemberSwatch',
-      });
-      occupied.claim(rect, 'legend', { categoryId: row.id }, 'smallMemberSwatch');
+      if (swatchDrawn) {
+        const rect = { x: alignedIn(left, swatchW - SWATCH_GAP, SWATCH, overrides?.swatch?.align, 'left'), y: top + (rowH - SWATCH) / 2, w: SWATCH, h: SWATCH };
+        nodes.push({
+          t: 'rect', id: `value-table-swatch:${row.id}`, rect,
+          fill: row.state ? { token: 'inkMuted' } : !row.listed ? { token: 'background' } : row.value === null ? input.scale.legend.find((item) => item.id === 'no-data')?.paint ?? { token: 'neutral' } : input.scale.paint(row.value),
+          ...(row.state ? { pattern: geoStatePattern(row.state) } : row.listed && row.value === null ? { pattern: 'hatch45' as const } : {}),
+          stroke: { token: 'leader' }, strokeWidth: strokeToken(theme, 'hair'), owner: { categoryId: row.id }, part: 'smallMemberSwatch',
+        });
+        occupied.claim(rect, 'legend', { categoryId: row.id }, 'smallMemberSwatch');
+      }
       const f = fontOf(row.id);
-      text(`value-table-code:${row.id}`, row.code, f, left + SWATCH + SWATCH_GAP, top, 'category', row.id);
-      text(`value-table-value:${row.id}`, row.text, f, left + colW - measure(row.text, f).width, top, 'point', row.id);
+      text(`value-table-code:${row.id}`, row.code, f, alignedIn(left + swatchW, codeW, measure(row.code, f).width, overrides?.code?.align, 'left'), top, 'category', row.id);
+      if (valueDrawn) {
+        const valueTextW = measure(row.text, f).width;
+        text(`value-table-value:${row.id}`, row.text, f, overrides?.value?.align === undefined ? left + colW - valueTextW : alignedIn(left + colW - valueW, valueW, valueTextW, overrides.value.align, 'right'), top, 'point', row.id);
+      }
     });
     const solved = solveLabels(requests, occupied, solveCtx);
     const fontById = new Map(requests.map((request) => [request.id, request.font]));
@@ -582,5 +639,5 @@ export function valueTable(input: ValueTableInput) {
     occupied.claim({ x: block.x, y: block.y, w: block.w, h: block.h }, 'reserved', {}, 'smallMembers');
     return { nodes, placed: solved.placed, decisions: solved.decisions, warnings: solved.warnings, rect: { x: block.x, y: block.y, w: block.w, h: block.h } };
   };
-  return { rowCount: rows.length, rowH, headerH, columnW, size, rowsIn, rowsAcross, columnsIn, draw };
+  return { rowCount: rows.length, rowH, headerH, columnW, widthCapped, widthFloored, size, rowsIn, rowsAcross, columnsIn, draw };
 }

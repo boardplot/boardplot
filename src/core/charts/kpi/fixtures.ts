@@ -352,6 +352,30 @@ fixtures.push({
 });
 
 /**
+ * An area spark from the series minimum: `surface.sparkAreaBase: 'min'`
+ * keeps the min-max range under the wash, the look before area sparks
+ * started at zero.
+ */
+fixtures.push({
+  id: 'spark-area-from-min',
+  title: 'An area spark whose scale and wash start at the series minimum',
+  kind: 'example',
+  tags: ['feature:theme'],
+  data: {
+    label: 'ARR',
+    value: 182_400_000,
+    format: '$1.2M',
+    delta: { vs: 165_200_000, scenario: 'PY' },
+    spark: { kind: 'area', values: [121_400_000, 130_200_000, 138_900_000, 150_700_000, 165_200_000, 182_400_000] },
+  },
+  options: {
+    theme: { preset: 'standard', overrides: { surface: { sparkAreaBase: 'min' } } },
+    title: 'ARR is 10% up on the year',
+    source: 'Illustrative data',
+  },
+});
+
+/**
  * The house eyebrow: 11 / 14 at 500, tracked 0.14 em, as authored
  * and the tertiary ink; the comparisons as toned text with no leading caret.
  */
@@ -463,6 +487,25 @@ fixtures.push({
 
 fixtures.push({ id: 'neutral-change', title: 'A change without a favorable direction', kind: 'example', data: { label: 'Requests', value: 120, delta: { vs: 100, direction: 'neutral' } }, options: { title: 'Request volume increased', size: { width: 420, height: 280 } } });
 
+/**
+ * A card in a slot of fixed height with `marks.kpiSlotFill: false`: the
+ * figure and delta keep their natural sizes at the top of the slot, the look
+ * before a fixed slot grew and centred them.
+ */
+fixtures.push({
+  id: 'slot-natural-sizes',
+  title: 'A card in a fixed slot that keeps its natural sizes at the top',
+  kind: 'example',
+  tags: ['feature:theme'],
+  data: { label: 'Gross margin', value: 38.4, format: '1.1%', note: 'Excludes the Larkspur Tools division, sold in June', delta: { vs: 36.2, scenario: 'PY' } },
+  options: {
+    theme: { preset: 'standard', overrides: { marks: { kpiSlotFill: false } } },
+    title: 'Gross margin rose 2.2 points',
+    size: { width: 640, height: 360 },
+    source: 'Illustrative data',
+  },
+});
+
 fixtures.push({
   id: 'value-bands',
   title: 'The band that holds the value colours the main value; the comparison keeps its own tone',
@@ -474,6 +517,15 @@ fixtures.push({
     delta: { vs: 3.1, scenario: 'PY', direction: 'lowerIsBetter' },
     bands: [{ to: 2.5, tone: 'good', label: 'On plan' }, { to: 4, tone: 'warn', label: 'Watch' }, { to: 7, tone: 'neutral', label: 'Unrated' }, { to: 10, tone: 'bad', label: 'Off plan' }],
   },
+});
+
+fixtures.push({
+  id: 'column-overrides', title: 'columnOverrides sets the width and alignment of the comparison columns', kind: 'example',
+  data: {
+    label: 'Net revenue', value: 412000, format: '$412k',
+    compare: [{ vs: 380000, label: 'PY' }, { vs: 450000, label: 'Plan' }],
+  },
+  options: { size: { width: 420 }, columnOverrides: { value: { width: 130, align: 'right' }, label: { width: 80, align: 'right' } } },
 });
 
 registerFixtures('kpi', fixtures);

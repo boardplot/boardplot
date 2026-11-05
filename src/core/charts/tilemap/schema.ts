@@ -1,13 +1,13 @@
 import { geoRegionSchema } from '../../schema/geoRegion';
 import * as z from 'zod';
 import { addGeoIdIssues, baseOptionsSchema, refusedBaseOptions } from '../../schema/shared';
-import { addGeoColorblindIssue, addGeoLegendNoneIssue, addGeoStepsIssue, geoStepsSchema, geoHighlightRefused, geoOverlaySchema, geoScaleSchema, overlayMeasureSchema, overlayTonesSchema } from '../choropleth/schema';
+import { addGeoLegendNoneIssue, addGeoStepsIssue, geoStepsSchema, geoHighlightRefused, geoOverlaySchema, geoScaleSchema, overlayMeasureSchema, overlayTonesSchema } from '../choropleth/schema';
 import { REGION_VALUES_WITHOUT_CODES_REFUSED } from '../choropleth/geoRefusals';
 import type { TilemapData, TilemapOptions } from './types';
 
 const baseTilemapDataSchema = z
   .object({
-    pack: z.enum(['eu27', 'europe', 'world', 'us-states']).describe('Built-in equal-area tile layout; region ids must belong to this pack.'),
+    pack: z.enum(['eu27', 'europe', 'world', 'us-states']).describe('Built-in equal-area tile layout. Unknown data region ids are left out with a warning and a note; all-unknown data is refused.'),
     regions: z
       .array(geoRegionSchema)
       .min(1).describe('Observed regions keyed by pack id; omitted pack members are not in the data and draw plain background. Zero regions is empty-data.'),
@@ -23,7 +23,7 @@ export const tilemapOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOpti
   overlayTones: overlayTonesSchema,
   overlayMeasure: overlayMeasureSchema,
   regionValues: z.boolean().optional().describe("Print each tile's value under its code, e.g. 'CA' over '52'. Unset prints the values when every value fits its tile and keeps the codes alone when one does not. true prints them where they fit: a tile too small for both keeps its code and the layout warns that its value shows on hover only. false prints codes only."),
-}).superRefine(addGeoColorblindIssue).superRefine(addGeoLegendNoneIssue).superRefine(addGeoStepsIssue).superRefine((options, ctx) => {
+}).superRefine(addGeoLegendNoneIssue).superRefine(addGeoStepsIssue).superRefine((options, ctx) => {
   const labels = options.labels as false | { category?: boolean } | undefined;
   if (options.regionValues === true && (labels === false || labels?.category === false)) {
     ctx.addIssue({
@@ -33,6 +33,6 @@ export const tilemapOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOpti
       message: REGION_VALUES_WITHOUT_CODES_REFUSED,
     });
   }
-}).describe("Tile-map framing and region color scale. The colour key sits in the row above the tiles, or under them with legend 'bottom'; legend 'right' is refused (a side column takes the grid's width), and so is 'none' (the key names what the colours measure).") as unknown as z.ZodType<TilemapOptions>;
+}).describe("Tile-map framing and region color scale. The colour key sits in the row above the tiles, or under them with legend 'bottom'. On a canvas with a set height where the tiles are bound by that height, an unnamed key stands in a column right of the tiles when that makes them clearly larger; legend 'top' keeps the row. legend 'right' or 'left' puts the key in a column beside the tiles where they keep at least 68% of the width and the column fits the height; otherwise the key stays in the row and the legend-side-fallback warning says so. legend 'none' is refused (the key names what the colours measure).") as unknown as z.ZodType<TilemapOptions>;
 
 export const tilemapDataSchema = baseTilemapDataSchema.superRefine(addGeoIdIssues);

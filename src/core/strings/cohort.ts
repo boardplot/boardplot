@@ -39,6 +39,7 @@ const EN = {
   "valueSupport": "{value} on {count} cohort{count||s}",
   "descStart": "Cohort {measure} triangle, {cohorts} cohorts by {periods} periods since start. {formula} ",
   "descReach": "Period 0 is 100% by construction. The oldest cohort reaches {first}; the newest reaches {last}. ",
+  "descReachShown": "The oldest cohort reaches {first}; the newest reaches {last}. ",
   "descBlank": "{count} cell{count||s} are blank because those cohorts have not reached that period. ",
   "descAverage": "Weighted averages run from {first} to {last}. ",
   "descBases": "Bases: {first} for the oldest cohort, {last} for the newest.",
@@ -61,6 +62,7 @@ const EN = {
   "high": "High",
   "exhibitTitle": "Cohort {measure} table: {count} cohorts",
   "exhibitDesc": "{measure} table with a separate cohort-size column and periods {periods}. {formula} Empty cells are unobserved{anchor}.{missing}{total}",
+  "exhibitDescNoSize": "{measure} table with periods {periods}. {formula} Empty cells are unobserved{anchor}.{missing}{total}",
   "exhibitDescAnchor": "; period 0 is 100% by definition",
   "exhibitDescMissing": " A dash marks a missing count, or a rate or total that needs it.",
   "exhibitDescTotal": " The total row is weighted by {basis}."
@@ -104,6 +106,7 @@ const DE: { [K in keyof typeof EN]: string } = {
   "valueSupport": "{value} aus {count} {count|Kohorte|Kohorten}",
   "descStart": "Kohorten-Dreieck für {measure}, {cohorts} Kohorten nach {periods} Perioden seit Beginn. {formula} ",
   "descReach": "Periode 0 ist definitionsgemäß 100%. Die älteste Kohorte erreicht {first}; die jüngste erreicht {last}. ",
+  "descReachShown": "Die älteste Kohorte erreicht {first}; die jüngste erreicht {last}. ",
   "descBlank": "{count} {count|Zelle ist|Zellen sind} leer, da diese Kohorten die Periode noch nicht erreicht haben. ",
   "descAverage": "Gewichtete Mittelwerte reichen von {first} bis {last}. ",
   "descBases": "Basis: {first} für die älteste Kohorte, {last} für die jüngste.",
@@ -126,6 +129,7 @@ const DE: { [K in keyof typeof EN]: string } = {
   "high": "Hoch",
   "exhibitTitle": "Kohortentabelle für {measure}: {count} Kohorten",
   "exhibitDesc": "Tabelle für {measure} mit eigener Spalte für die Kohortengröße und den Perioden {periods}. {formula} Leere Zellen sind unbeobachtet{anchor}.{missing}{total}",
+  "exhibitDescNoSize": "Tabelle für {measure} mit den Perioden {periods}. {formula} Leere Zellen sind unbeobachtet{anchor}.{missing}{total}",
   "exhibitDescAnchor": "; Periode 0 ist per Definition 100%",
   "exhibitDescMissing": " Ein Strich zeigt eine fehlende Anzahl oder eine Quote oder Summe, die diese Anzahl benötigt.",
   "exhibitDescTotal": " Die Summenzeile ist nach {basis} gewichtet."

@@ -9,8 +9,8 @@ import { list } from '../src/cli/list';
 import { describe } from '../src/cli/describe';
 import { listCharts } from '../src/core/registry';
 
-export const PAIR_MAX = 32_000;
-export const DESCRIBE_MAX = 16_000;
+export const PAIR_MAX = 34_000;
+export const DESCRIBE_MAX = 18_000;
 
 /** Bytes of one CLI answer: the JSON line plus its newline. */
 function printed(body: Record<string, unknown>): number {

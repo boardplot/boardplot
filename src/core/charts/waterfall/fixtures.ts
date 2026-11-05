@@ -161,6 +161,32 @@ export const fixtures: Fixture<WaterfallData, WaterfallOptions>[] = [
     ],
   },
   {
+    id: 'step-brackets',
+    title: 'Brackets over bridge steps print their sums',
+    kind: 'example',
+    data: {
+      items: [
+        { id: 'ebit24', label: 'EBIT 2024', type: 'total', value: 412 },
+        { id: 'volume', label: 'Volume', value: 64 },
+        { id: 'price', label: 'Price', value: 38 },
+        { id: 'mix', label: 'Mix', value: -21 },
+        { id: 'materials', label: 'Materials', value: -47 },
+        { id: 'labour', label: 'Labour', value: -33 },
+        { id: 'fx', label: 'FX', value: 12 },
+        { id: 'ebit25', label: 'EBIT 2025', type: 'total' },
+      ],
+    },
+    options: {
+      title: 'Commercial gains outweigh the cost increases',
+      unit: 'USD m',
+      source: 'Illustrative bridge; each bracket adds up its steps',
+    },
+    annotations: [
+      { kind: 'bracket', from: 'volume', to: 'mix', label: 'Commercial' },
+      { kind: 'bracket', from: 'materials', to: 'labour', label: 'Costs' },
+    ],
+  },
+  {
     id: 'build-down',
     title: 'Build-down: revenue to net income',
     kind: 'example',
@@ -526,6 +552,19 @@ fixtures.push({
     source: 'Illustrative planning cases',
   },
 });
+fixtures.push({
+  id: 'two-case-budget-bars',
+  title: 'The two-case bridge as bars: each value stands past the end of its own bar',
+  kind: 'example',
+  data: fixtures.find((fixture) => fixture.id === 'two-case-budget-bridge')!.data,
+  options: {
+    title: 'The aggressive plan ends 23 m above the conservative one',
+    subtitle: { measure: 'Marketing budget', period: 'FY25 to FY26' },
+    unit: '$m',
+    source: 'Illustrative planning cases',
+    variant: 'horizontal',
+  },
+});
 
 fixtures.push({
   "id": "single-segment-authored-format",
@@ -610,6 +649,21 @@ fixtures.push({
     "title": "Equal segment names and colours share one key",
     "source": "Invented example"
   }
+});
+
+fixtures.push({
+  id: 'column-overrides',
+  title: 'A horizontal bridge with authored name and value bands',
+  kind: 'example',
+  tags: ['coverage'],
+  data: { items: [
+    { id: 'open', label: 'Opening balance', type: 'total', value: 420 },
+    { id: 'sales', label: 'Subscription renewals', value: 96 },
+    { id: 'new', label: 'New customers', value: 54 },
+    { id: 'churn', label: 'Cancelled contracts', value: -38 },
+    { id: 'close', label: 'Closing balance', type: 'total' },
+  ] },
+  options: { title: 'Renewals carry the balance up by $112k', unit: '$k', variant: 'horizontal', size: { width: 720 }, columnOverrides: { label: { width: 200 }, value: { width: 90 } } },
 });
 
 registerFixtures('waterfall', fixtures);

@@ -140,6 +140,76 @@ describe('histogram binning arithmetic', () => {
     expect(countPerBin(sample, binning.edges)).toEqual([4, 5, 1, 0, 1]);
     expect(countPerBin(sample, binning.edges).reduce((a, b) => a + b, 0)).toBe(sample.length);
   });
+  // Prevents a false spike: edges on the integers closed the last bin over 3 and 4 and drew 51 beside 24.
+  it('gives whole numbers one bin per value, centred on it and named under the bar', () => {
+    const observations = [0, 1, 2, 3, 4].flatMap((value, index) => Array.from({ length: [20, 25, 24, 25, 26][index]! }, () => value));
+    for (const bins of ['auto', { width: 1 }] as const) {
+      const geometry = layoutHistogram({ observations }, { bins });
+      expect(geometry.derived.counts).toEqual([20, 25, 24, 25, 26]);
+      expect(geometry.derived.binning.edges).toEqual([-0.5, 0.5, 1.5, 2.5, 3.5, 4.5]);
+      expect(geometry.derived.binLabels).toEqual(['0', '1', '2', '3', '4']);
+      const bars = geometry.marks.bins.map((bin) => bin.rect.x + bin.rect.w / 2);
+      const names = geometry.labels.filter((label) => label.kind === 'category' && !label.hidden);
+      expect(names.map((label) => label.text)).toEqual(['0', '1', '2', '3', '4']);
+      names.forEach((label, index) => expect(label.rect.x + label.rect.w / 2).toBeCloseTo(bars[index]!, 0));
+    }
+    // Large whole numbers keep their exact names: the display-rounded anchor is a half off.
+    const large = layoutHistogram({ observations: observations.map((value) => value + 100000000001) }, { bins: { width: 1 } });
+    expect(large.derived.binLabels.map((label) => label.replace(/\D/g, ''))).toEqual(['100000000001', '100000000002', '100000000003', '100000000004', '100000000005']);
+  });
+
+  // Prevents fractional bins on whole numbers: bins: 20 over 1 to 13 drew width 0.6 with empty comb slots between the days.
+  it('moves the fractional width of a bin count onto a whole number and warns with the width', () => {
+    const days = [1, 2, 2, 3, 3, 3, 5, 8, 13];
+    const perDay = layoutHistogram({ observations: days }, { bins: 20 });
+    expect(perDay.derived.binning.edges).toEqual(Array.from({ length: 14 }, (_, i) => i + 0.5));
+    expect(perDay.derived.binning.perValue).toBe(true);
+    expect(perDay.warnings.find((w) => w.code === 'histogram-bin-width-whole')?.message).toContain('bins of 0.6');
+    // 200 to 2352 over 5 bins gives 430.4; the whole width 431 keeps five bins and no value falls between two edges.
+    const wide = layoutHistogram({ observations: [200, 300, 900, 1500, 2352] }, { bins: 5 });
+    expect(wide.derived.binning.width).toBe(431);
+    expect(wide.derived.counts).toEqual([2, 1, 0, 1, 1]);
+    // A count that already gives a whole width, and fractional data, keep the exact count.
+    expect(layoutHistogram({ observations: [0, 5, 7, 10] }, { bins: 5 }).derived.binning.edges).toEqual([0, 2, 4, 6, 8, 10]);
+    expect(layoutHistogram({ observations: [0, 0.5, 0.75, 1] }, { bins: 5 }).derived.binning.width).toBe(0.2);
+  });
+
+  // Prevents a refusal main does not make: above 2^52 the half-integer edges of width 1 collapse, so the next whole width draws.
+  it('skips width 1 when its centred whole-number edges are not representable', () => {
+    const big = [4503599627370496, 4503599627370497, 4503599627370504, 4503599627370505];
+    expect(layoutHistogram({ observations: big }, { bins: 8 }).derived.binning.width).toBe(2);
+  });
+});
+
+describe('histogram open last bin', () => {
+  // Prevents a miscounted tail: a value on openAbove belongs to the open bin, the bin before it stays [lo, openAbove).
+  it('gathers every value from openAbove up into one open bin on the same grid', () => {
+    const observations = [3, 12, 18, 22, 39, 40, 41, 90, 400];
+    const geometry = layoutHistogram({ observations }, { bins: { width: 10, openAbove: 40 } });
+    expect(geometry.derived.binning.edges).toEqual([0, 10, 20, 30, 40, 400]);
+    expect(geometry.derived.counts).toEqual([1, 2, 1, 1, 4]);
+    expect(geometry.derived.binLabels.at(-1)).toBe('≥ 40');
+    const open = geometry.labels.find((label) => label.id === 'open');
+    expect(open?.text).toBe('≥ 40 (max 400)');
+    // Whole numbers at width 1 keep one centred bin per value below the open bin.
+    const whole = layoutHistogram({ observations: [1, 2, 2, 3, 3, 3, 4, 9, 12] }, { bins: { width: 1, openAbove: 4 } });
+    expect(whole.derived.binning.edges).toEqual([0.5, 1.5, 2.5, 3.5, 12]);
+    expect(whole.derived.counts).toEqual([1, 2, 3, 3]);
+  });
+
+  // Prevents a silent squeeze: a long tail under 'auto' proposes an open bin that keeps the width and folds only the tail.
+  it('proposes openAbove under auto for a long tail, and never for ties that would fold the sample', () => {
+    const tail = [...ramp(980, 1), 2000, 2500, 3000, 3500, 4000, 4500, 5000, 5500, 6000, 6500, 7000, 7500, 8000, 8500, 9000, 9500, 9800, 9900, 9950, 9999];
+    const warning = layoutHistogram({ observations: tail }, {}).warnings.find((item) => item.code === 'histogram-long-tail');
+    const suggested = Number(/openAbove: (\d+)/.exec(warning?.suggest ?? '')?.[1]);
+    expect(suggested).toBeGreaterThan(900);
+    const auto = layoutHistogram({ observations: tail }, {});
+    const fixed = layoutHistogram({ observations: tail }, { bins: { openAbove: suggested } });
+    expect(fixed.derived.binning.width).toBe(auto.derived.binning.width);
+    expect(fixed.derived.counts.at(-1)).toBe(tail.filter((value) => value >= suggested).length);
+    const ties = [0, ...Array.from({ length: 981 }, () => 100), ...Array.from({ length: 18 }, () => 1000)];
+    expect(codes(layoutHistogram({ observations: ties }, {}))).not.toContain('histogram-long-tail');
+  });
 });
 
 describe('histogram refuses what it cannot draw honestly', () => {
@@ -158,18 +228,30 @@ describe('histogram refuses what it cannot draw honestly', () => {
     expect(error.suggest).toContain('kpi');
   });
 
-  it('throws histogram-bin-explosion instead of drawing hairlines', () => {
+  // A default that refuses its own bin width leaves an author who set nothing
+  // with an error about options.bins: past the cap, 'auto' must draw with the
+  // Sturges width and name the open bin that gives the bulk its finer bins back.
+  it('caps the auto width at the Sturges width instead of refusing a long tail', () => {
     // A tight mass plus one observation four orders of magnitude out: the
     // Freedman-Diaconis width stays tied to the interquartile range while the
     // range is set by the outlier.
     const observations = [...ramp(400, 0.025), 100_000];
+    const geometry = layoutHistogram({ observations }, { bins: 'auto' });
+    const { binning } = geometry.derived;
+    expect(binning.autoCap?.bins).toBeGreaterThan(MAX_BINS);
+    expect(binning.edges.length - 1).toBeLessThanOrEqual(MAX_BINS);
+    expect(binning.width).toBeGreaterThanOrEqual(binning.hSturges);
+    const warning = geometry.warnings.find((entry) => entry.code === 'histogram-auto-sturges');
+    expect(warning?.suggest).toContain('openAbove: 10 ');
+    // The proposed open bin draws: the bulk in fine bins, the outlier on its own.
+    const open = layoutHistogram({ observations }, { bins: { openAbove: 10 } });
+    expect(open.derived.counts.at(-1)).toBe(1);
+    // An authored width keeps its refusal: the author chose the hairlines.
     const error = expectThrows(
-      () => layoutHistogram({ observations }, { bins: 'auto' }),
+      () => layoutHistogram({ observations }, { bins: { width: 1 } }),
       'histogram-bin-explosion',
     );
-    expect(error.message).toMatch(/needs \d+ bins/);
     expect(error.message).toContain(String(MAX_BINS));
-    expect(error.suggest).toContain('bins');
   });
 
   it('refuses an anchor above the data rather than dropping observations', () => {
@@ -216,21 +298,18 @@ describe('histogram disclosures', () => {
       expect(suppressed.geometry!.labels.filter(label => label.kind === 'point' && !label.hidden)).toHaveLength(0);
       expect(suppressed.geometry!.labels.some(label => label.kind === 'point' && label.noted)).toBe(false);
     }
-    const crowded = measure({ type: 'histogram',
-      data: { observations: Array.from({ length: 17 }, (_, i) => Array(1234 + i).fill(i + 0.5)).flat() },
-      options: { ...options, size: { width: 320, height: 400 } },
-    });
+    // Counts too wide for their bins must not float on leaders or fill a note: the tallest keeps its count and the axis carries the scale.
+    const crowdedData = { observations: Array.from({ length: 17 }, (_, i) => Array(1234 + i).fill(i + 0.5)).flat() };
+    const crowded = measure({ type: 'histogram', data: crowdedData, options: { ...options, size: { width: 320, height: 400 } } });
     expect(crowded.geometry).toBeDefined();
-    const crowdedCounts = crowded.geometry!.labels.filter(label => label.kind === 'point');
-    expect(crowdedCounts).toHaveLength(17);
-    const hidden = crowdedCounts.filter(label => label.hidden);
-    expect(hidden.length).toBeGreaterThan(0);
-    const notes = crowded.geometry!.scene.flatMap(node => node.t === 'text' && node.part === 'footnote' ? node.lines : []).join(' ');
-    for (const label of hidden) {
-      const index = Number(label.owner.categoryId!.replace('bin', ''));
-      expect(label.noted).toBe(true);
-      expect(notes).toContain(`${(1234 + index).toLocaleString('en-US')} (${index}–${index + 1})`);
-    }
+    const crowdedCounts = crowded.geometry!.labels.filter(label => label.kind === 'point' && !label.hidden);
+    expect(crowdedCounts.map(label => [label.owner.categoryId, label.leader])).toEqual([['bin16', undefined]]);
+    expect(crowded.geometry!.labels.some(label => label.kind === 'point' && label.noted)).toBe(false);
+    expect((crowded.geometry!.derived as { frequencyAxisShown: boolean }).frequencyAxisShown).toBe(true);
+    expect(crowded.geometry!.warnings.map(warning => warning.code)).toContain('histogram-counts-peak-only');
+    // An authored 'full' density keeps every count, as before.
+    const full = measure({ type: 'histogram', data: crowdedData, options: { ...options, size: { width: 320, height: 400 }, labelDensity: 'full' } });
+    expect(full.geometry!.labels.filter(label => label.kind === 'point' && (label.noted || !label.hidden))).toHaveLength(17);
   });
 
   it('keeps every fitting count in a compact dashboard card', () => {
@@ -241,21 +320,6 @@ describe('histogram disclosures', () => {
         canvas: { margin: { top: 0, right: 0, bottom: 0, left: 0 } }, size: { width, height },
       }));
       expect(geometry.labels.filter(label => label.kind === 'point' && !label.hidden)).toHaveLength(10);
-    }
-    const observations = Array.from({ length: 10 }, (_, i) => Array.from({ length: 1000 + i * 10 }, () => i + 0.5)).flat();
-    const crowded = requireGeometry(getChart('histogram')!.layout({ observations }, {
-      target: 'dashboard', title: false, bins: { width: 1, anchor: 0 },
-      canvas: { margin: 0 }, size: { width: 320, height: 400 }, ...SHOW_NOTES,
-    }));
-    const counts = crowded.labels.filter(label => label.kind === 'point');
-    expect(counts).toHaveLength(10);
-    expect(counts.filter(label => !label.hidden).length).toBeGreaterThan(5);
-    const notes = crowded.scene.flatMap(node => node.t === 'text' && node.part === 'footnote' ? node.lines : []).join(' ');
-    for (const count of counts.filter(label => label.hidden)) {
-      expect(count.hidden).toBe('collision');
-      expect(count.noted).toBe(true);
-      expect(count.noteText).toContain('–');
-      expect(notes).toContain(count.noteText);
     }
     const equalData = { observations: Array.from({ length: 10 }, (_, i) => Array(1000).fill(i + 0.5)).flat() };
     const equal = requireGeometry(getChart('histogram')!.layout(equalData, {
@@ -307,7 +371,8 @@ describe('histogram disclosures', () => {
     for (const id of ['order-value-distribution', 'cycle-time-days']) {
       const noTitle = fixtures.find((candidate) => candidate.id === id)!;
       const withoutAxis = layoutHistogram(noTitle.data, { ...noTitle.options, axisTitles: undefined, footnotes: false, ...SHOW_NOTES, size: { width: 720, height: 405 } });
-      expect(withoutAxis.scene.map(node2text).join(' ')).toMatch(/(Bins of [\d,.]+|per [\d,.]+ bin), lower edge included · n = \d+/);
+      // Whole days get one bin per value, so that line names the values instead of a width.
+      expect(withoutAxis.scene.map(node2text).join(' ')).toMatch(/(Bins of [\d,.]+|per [\d,.]+ bin), lower edge included · n = \d+|One bin per value · n = \d+/);
     }
   });
 
@@ -348,7 +413,7 @@ describe('histogram disclosures', () => {
     expect(codes(large)).not.toContain('histogram-small-sample');
   });
 
-  it('refuses sort and topN by name instead of warning that it ignores them ', () => {
+  it('keeps unused options disabled in the published schemas', () => {
     const refusal = (type: string, options: object) =>
       getChartDefinition(type)!.optionsSchema.safeParse(options).error?.issues[0]?.message ?? 'accepted';
     expect(refusal('histogram', { sort: { categories: 'desc' } })).toMatch(/^'sort' is not implemented by 'histogram' — /);
@@ -368,7 +433,7 @@ describe('histogram disclosures', () => {
   });
 
   it('draws an authored bin count exactly, from the smallest to the largest observation ', () => {
-    const observations = ramp(100, 1, 3);
+    const observations = ramp(100, 1, 3.5);
     const geometry = layoutHistogram({ observations }, { ...SLIDE, bins: 7, methodNote: true });
     expect(geometry.warnings.some((entry) => entry.code === 'histogram-bin-count-adjusted')).toBe(false);
     expect(geometry.derived.counts).toHaveLength(7);
@@ -446,6 +511,11 @@ describe('histogram geometry and determinism', () => {
       const bars = geometry.marks.bins;
       expect(bars.length).toBe(geometry.derived.counts.length);
       for (let index = 0; index + 1 < bars.length; index++) {
+        // The open last bin stands a small gap apart.
+        if (geometry.derived.binning.openAbove !== undefined && index + 2 === bars.length) {
+          expect(bars[index + 1]!.rect.x - bars[index]!.rect.x - bars[index]!.rect.w).toBeGreaterThan(1);
+          continue;
+        }
         expect(
           bars[index]!.rect.x + bars[index]!.rect.w,
           `${fixture.id}: bin ${index} must touch bin ${index + 1}`,
@@ -502,6 +572,8 @@ describe('histogram geometry and determinism', () => {
 describe('histogram: the two axes carry different quantities', () => {
   /** A EUR sample whose counts are large enough to be mistaken for money. */
   const money = ramp(200, 40, 1000);
+  // Not whole numbers, so an authored count keeps its exact fractional width.
+  const halfUnits = ramp(200, 40, 1000.5);
 
   it('never renders a count in the measure format', () => {
     const geometry = layoutHistogram({ observations: money }, { ...SLIDE, format: '€1.234', bins: 8 });
@@ -544,7 +616,7 @@ describe('histogram: the two axes carry different quantities', () => {
 
   it('states a bin width the bin edges can actually be rebuilt from', () => {
     // width 497.5: at the edge column's precision the note must not say "498".
-    const geometry = layoutHistogram({ observations: money }, { ...SLIDE, bins: 16, methodNote: true });
+    const geometry = layoutHistogram({ observations: halfUnits }, { ...SLIDE, bins: 16, methodNote: true });
     const { width, anchor, edges } = geometry.derived.binning;
     expect(width).toBe(497.5);
     const note = notes(geometry);
@@ -562,7 +634,7 @@ describe('histogram: the two axes carry different quantities', () => {
   });
 
   it('says so when the width cannot be printed exactly, instead of certifying it', () => {
-    const geometry = layoutHistogram({ observations: money }, { ...SLIDE, bins: 3, methodNote: true });
+    const geometry = layoutHistogram({ observations: halfUnits }, { ...SLIDE, bins: 3, methodNote: true });
     const note = notes(geometry);
     expect(geometry.derived.binning.width).toBe(2653.33333333);
     // One decimal past the edges, not six digits of float.
@@ -623,6 +695,19 @@ function svg(geometry: Geometry<HistogramMarks, HistogramDerived>): string {
 
 
 describe('histogram boundaries and frequency', () => {
+  // At width 1400 with 20 bins the maximum edge label was missing and two labels collided, because the spacing check assumed every label is centred.
+  it('keeps the outer bin edges visible without crowding their neighbours', () => {
+    const geometry = layoutHistogram({ observations: ramp(81, 2500, 100000) }, { bins: 20, size: { width: 1400, height: 675 } });
+    const labels = geometry.labels.filter((label) => label.kind === 'category' && !label.hidden)
+      .sort((a, b) => a.rect.x - b.rect.x);
+    expect(labels[0]!.id).toBe('edge:0');
+    expect(labels.at(-1)!.id).toBe(`edge:${geometry.derived.counts.length}`);
+    expect(geometry.labels.filter((label) => label.kind === 'category' && label.hidden)).toHaveLength(0);
+    for (let i = 1; i < labels.length; i++) {
+      const previous = labels[i - 1]!.rect;
+      expect(labels[i]!.rect.x - previous.x - previous.w).toBeGreaterThanOrEqual(16);
+    }
+  });
   it('places labelled boundaries at one stride, with a tick at every boundary', () => {
     const f = fixtures.find((f) => f.id === 'order-value-distribution')!;
     for (const bins of [1, 10]) {

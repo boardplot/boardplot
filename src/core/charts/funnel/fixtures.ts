@@ -434,4 +434,44 @@ fixtures.push({
   },
 });
 
+// Eight stages on a full slide: the bands are too short for a name over its
+// value, so each stage prints both on one line in the outside column.
+fixtures.push({
+  id: 'centered-eight-stages-slide',
+  title: 'Eight-stage centered funnel on a full slide, stage name and value on one line',
+  kind: 'example',
+  data: {
+    categories: [
+      { id: 'visits', label: 'Visits' },
+      { id: 'signups', label: 'Sign-ups' },
+      { id: 'activated', label: 'Activated' },
+      { id: 'trials', label: 'Trials' },
+      { id: 'demos', label: 'Demos' },
+      { id: 'offers', label: 'Offers' },
+      { id: 'contracts', label: 'Contracts' },
+      { id: 'renewals', label: 'Renewals' },
+    ],
+    series: [{ id: 'accounts', label: 'Accounts', values: [3374, 2687, 1727, 1136, 654, 488, 294, 130] }],
+  },
+  options: {
+    variant: 'centered', totalCvr: 'column', stageShade: 'darken',
+    target: 'slide', size: { width: 888, height: 396, unit: 'pt' },
+    title: 'Pipeline conversion', unit: 'accounts',
+    subtitle: { measure: 'Accounts by stage', period: 'FY26' },
+    source: 'Northwind Analytics, illustrative data',
+  },
+});
+
+fixtures.push({
+  id: 'column-overrides', title: 'columnOverrides sets the width and head word of the cumulative conversion column', kind: 'example',
+  data: {
+    categories: [{ id: 'visits', label: 'Visits' }, { id: 'carts', label: 'Carts' }, { id: 'orders', label: 'Orders' }],
+    series: [{ id: 'sessions', label: 'Sessions', values: [12000, 4200, 1800] }],
+  },
+  options: {
+    variant: 'centered', totalCvr: 'column', title: 'One visit in seven ends in an order', unit: 'Sessions', source: 'Illustrative data', size: { width: 720, height: 360 },
+    columnOverrides: { totalCvr: { width: 130, label: 'Of all visits', headAlign: 'right' } },
+  },
+});
+
 registerFixtures('funnel', fixtures);
