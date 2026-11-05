@@ -160,6 +160,13 @@ export function planXTicks(input: {
     }
   }
   row ??= { values: [], labels: [] };
+  if (axis.tickStep !== undefined && row.values.length === 0) {
+    input.warnings.push({
+      code: 'x-ticks-empty', severity: 'warn', field: ['options', 'xAxis', 'tickStep'],
+      message: 'the authored tick step leaves no tick inside the x range, so the axis prints no ticks',
+      suggest: 'give a tickStep that fits the range, or remove it for automatic ticks',
+    });
+  }
   const xs = row.values.map(input.xOf);
   const widths = row.labels.map(width);
   const { keep, stride } = thinned(xs, widths, input.left, input.right);

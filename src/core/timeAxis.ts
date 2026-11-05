@@ -321,7 +321,9 @@ export function timeTicks(lo: number, hi: number, step: TimeStep, clock: ZoneClo
     }
     // Only the wall times of [lo, hi]: between the earlier offset at the start and the later one at the end.
     const offLo = clock.offsetAt(lo), offHi = clock.offsetAt(hi);
-    const from = lo + Math.min(offLo, offHi) - size, to = hi + Math.max(offLo, offHi) + size;
+    // A day of margin holds any offset change, so a step longer than the range adds no days to walk.
+    const margin = Math.min(size, DAY);
+    const from = lo + Math.min(offLo, offHi) - margin, to = hi + Math.max(offLo, offHi) + margin;
     for (let day = Math.floor(from / DAY) * DAY; day <= to; day += DAY) {
       const end = Math.min(day + DAY, to + size);
       for (let at = day + Math.max(0, Math.floor((from - day) / size) * size); at < end; at += size) walls.push(at);
@@ -340,7 +342,8 @@ export function timeTicks(lo: number, hi: number, step: TimeStep, clock: ZoneClo
     for (;; index += months) {
       const date = new Date(0);
       date.setUTCFullYear(Math.floor(index / 12), index % 12, 1);
-      if (date.getTime() > wallHi) break;
+      // A step past the last date a Date holds gives NaN, which is past the range too.
+      if (!(date.getTime() <= wallHi)) break;
       walls.push(date.getTime());
     }
   }

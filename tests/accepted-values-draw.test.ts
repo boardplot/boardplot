@@ -24,7 +24,7 @@ describe('a value in the spec does not set the length of a layout loop', () => {
 
   // A column width of a billion pixels gave way one pixel at a time, and the draw never ended.
   it('draws a table with very wide columns inside its frame', () => {
-    const ids = Array.from({ length: 16 }, (_, index) => `m${index + 1}`);
+    const ids = Array.from({ length: 24 }, (_, index) => `m${index + 1}`);
     const { svg } = drawn({
       type: 'table',
       data: {
@@ -36,6 +36,27 @@ describe('a value in the spec does not set the length of a layout loop', () => {
       },
     });
     expect(svg).toContain('North');
+  });
+
+  // A month step past the last date a Date holds never reached the end of the range, so the tick list grew until the array length ran out.
+  it('draws a time axis with a month step longer than any date', () => {
+    const { svg, codes } = drawn({
+      type: 'line',
+      data: { x: ['2026-01-01', '2026-01-02', '2026-01-03'], series: [{ id: 'visits', label: 'Visits', values: [1, 2, 3] }] },
+      options: { xAxis: { type: 'time', tickStep: { unit: 'month', step: Number.MAX_SAFE_INTEGER } } },
+    });
+    expect(svg).toContain('Visits');
+    expect(codes).toContain('x-ticks-empty');
+  });
+
+  // An hour step longer than the range walked every day of that step, so a draw took 14 seconds and 3.8 GB.
+  it('draws a time axis with an hour step longer than the range', () => {
+    const { svg } = drawn({
+      type: 'line',
+      data: { x: ['2026-01-01', '2026-01-02', '2026-01-03'], series: [{ id: 'visits', label: 'Visits', values: [1, 2, 3] }] },
+      options: { xAxis: { type: 'time', tickStep: { unit: 'hour', step: 1_000_000_000_000 } } },
+    });
+    expect(svg).toContain('Visits');
   });
 
   // An empty note had no lines, so its width was minus infinity, and the search for a free seat filled the heap until the process died.
