@@ -41,7 +41,8 @@ const RULES = { S1: 3, S2: 3, S3: 3, S4: 3, R1: 2, R2: 2, R3: 2, R4: 2, R5: 2, R
 // A content type whose marks scale with the width takes the height of its
 // content, so a narrower card of it may be shorter (docs/manual.md, "Frame text, key and automatic height").
 // The engine's own list (sizing.ts WIDTH_SCALED_TYPES); tilemap tiles are the plot width over the columns.
-const S2_EXEMPT = WIDTH_SCALED_TYPES;
+// Tables use the content height at their requested width, without a wider-card height floor.
+const S2_EXEMPT = new Set([...WIDTH_SCALED_TYPES, 'table', 'dimswitch']);
 // English table state glyphs that a locale replaces ('n/a' is 'k. A.' in German).
 const GLYPH_WORDS = [NOT_AVAILABLE];
 const normal = (text) => String(text ?? '').replace(/\s+/gu, ' ').trim();
