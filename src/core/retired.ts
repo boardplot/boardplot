@@ -264,10 +264,11 @@ function ignoreVariantSettings(type: string, chart: unknown, options: Record<str
   const drop = (field: string[], variant: string) => ignore(field, 'warn', `${type} variant '${variant}'`);
   const set = (key: string) => options[key] !== undefined;
   const dropAll = (keys: readonly string[], variant: string) => { for (const key of keys) if (set(key)) drop(['options', key], variant); };
-  // Root annotations enter the options only later in the request, so both places are read.
+  // Root annotations enter the options only later in the request, so both places are read. An empty list draws what no list draws and warns nothing.
+  const authored = (list: unknown) => Array.isArray(list) ? list.length > 0 : list !== undefined;
   const dropAnnotations = (variant: string) => {
-    if (set('annotations')) drop(['options', 'annotations'], variant);
-    if (readAt(chart, ['annotations']) !== undefined) drop(['annotations'], variant);
+    if (authored(options.annotations)) drop(['options', 'annotations'], variant);
+    if (authored(readAt(chart, ['annotations']))) drop(['annotations'], variant);
   };
   const dropSegments = (variant: string) => { if (isRecord(options.sort) && options.sort.segments !== undefined) drop(['options', 'sort', 'segments'], variant); };
   if (type === 'cohort') {

@@ -92,6 +92,8 @@ describe('a warning-only option leaves an old spec drawing', () => {
     const note = [{ kind: 'note', at: 'x', text: 'Old note' }];
     dropsTheKey(tornado, { ...tornado, annotations: note }, 'option-ignored', '/annotations');
     dropsTheKey(tornado, withOptions(tornado, { annotations: note }), 'option-ignored', '/options/annotations');
+    // A host that always passes a list must not get a warning for an empty one.
+    expect(draw({ ...tornado, annotations: [] }).warnings.some((warning) => warning.code === 'option-ignored')).toBe(false);
     const panel = { id: 'one', ...tornado };
     const explicit = (extra: object) => ({ type: 'grid', options: { size: { width: 720, height: 580 } }, data: { panels: [{ ...panel, ...extra }] } });
     dropsTheKey(explicit({}), explicit({ annotations: note }), 'option-ignored', '/data/panels/0/annotations');
