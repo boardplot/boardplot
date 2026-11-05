@@ -576,6 +576,8 @@ describe('published option behaviour census', () => {
         if (type === 'pvm' && key === 'valueAxis') value = { break: false };
         if (type === 'line' && key === 'fan') value = { of: 'output', bands: [{ low: 'output', high: 'market', label: 'Census bounds' }] };
         if (type === 'bartable' && key === 'combinedShare') value = { rows: [ids[1], ids[2]] };
+        // 'bottom' is the default, so only 'top' moves the Total row.
+        if (type === 'bartable' && key === 'totalPosition') value = 'top';
         if (type === 'grid' && key === 'alignmentRules') value = [{ id: 'census', orientation: 'horizontal', at: { panelId: 'rev', anchor: 'plotTop' } }];
         if (type === 'waffle' && key === 'panelGroups') value = [{ id: 'census', panels: ids, label: 'Census group' }];
         if (type === 'waffle' && key === 'subtotal') value = { series, label: 'Census subtotal' };

@@ -85,7 +85,7 @@ export const OPTION_CAPABILITY = {
   // table/diagram have their own display models.
   labels: {
     implementedBy: [
-      'bar', 'box', 'bullet', 'butterfly', 'choropleth', 'cohort', 'column',
+      'bar', 'bartable', 'box', 'bullet', 'butterfly', 'choropleth', 'cohort', 'column',
       'combo', 'dot', 'funnel', 'gantt', 'heatmap', 'histogram', 'kpi',
       'likert', 'line', 'mekko', 'pareto', 'pie', 'pvm', 'pyramid', 'scatter',
       'slope', 'status', 'tilemap', 'variance',
@@ -326,6 +326,7 @@ export function schemaRefusedKeys(type: string): { options: string[]; valueAxis:
  */
 export const LABEL_KINDS: Readonly<Record<string, readonly string[]>> = {
   bar: ['category', 'segment', 'restSeries', 'point', 'grandTotal', 'percentIndicator', 'tick', 'axisTitle', 'valueLine'],
+  bartable: ['point'],
   box: ['category', 'point', 'axisTitle'],
   bullet: ['category', 'point', 'axisTitle', 'annotation'],
   butterfly: ['category', 'series', 'point', 'tick'],

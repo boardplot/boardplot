@@ -71,6 +71,8 @@ import { shareRoundingNotes } from '../../shareRounding';
 import { footerType } from '../../footer';
 import { textScaleOf } from '../../typeFloors';
 import { maxOf, minOf, pushAll } from '../../arrays';
+import { nameTrackRefusals, overrideIgnored, widthCapped, widthFloored } from '../heatmap/columnTracks';
+import { generatedIdWarnings } from '../../schema/generatedColumns';
 
 const LABEL_GAP = 12;
 const CELL_AIR = 12;
@@ -304,6 +306,47 @@ function combinedShareNotes(
   });
 }
 
+type ColumnAlign = 'left' | 'right' | 'center';
+
+/** The left edge of a text set in a track, kept inside the track while it fits. */
+function alignedIn(left: number, right: number, w: number, align: ColumnAlign): number {
+  if (align === 'right') return right - w;
+  return Math.min(align === 'left' ? left : left + (right - left - w) / 2, right - w);
+}
+
+/** The warnings of the column keys that do not need a drawn table. */
+function columnKeyWarnings(data: BarTablePlainData, options: BarTableOptions, compact: boolean, sharedScale: boolean): LintWarning[] {
+  const warnings: LintWarning[] = [];
+  const panelIds = data.panels.map((panel) => panel.id);
+  const columnIds = (data.columns ?? []).map((column) => column.id);
+  const overrides = options.columnOverrides ?? {};
+  pushAll(warnings, generatedIdWarnings('bartable', 'columnOverrides', options.columnOverrides, ['label', ...columnIds, ...panelIds]));
+  pushAll(warnings, generatedIdWarnings('bartable', 'columnOrder', options.columnOrder, [...(columnIds.length > 0 ? ['numbers'] : []), 'panels']));
+  pushAll(warnings, nameTrackRefusals(overrides, [...columnIds, ...panelIds]));
+  for (const id of panelIds) {
+    if (overrides[id]?.width !== undefined && sharedScale) warnings.push(overrideIgnored(id, 'width', 'under sharedScale or a cascade the one scale sets the panel width'));
+    else if (overrides[id]?.width !== undefined && compact) warnings.push(overrideIgnored(id, 'width', 'the compact form draws each panel across the whole width'));
+    if (compact && panelIds.length > 1) for (const key of ['headAlign', 'align'] as const) if (overrides[id]?.[key] !== undefined) warnings.push(overrideIgnored(id, key, 'the compact form names several panels in a key'));
+  }
+  if (compact) {
+    for (const key of ['width', 'align'] as const) if (overrides.label?.[key] !== undefined) warnings.push(overrideIgnored('label', key, 'the compact form sets each row name above its bar'));
+    if (options.columnOrder !== undefined) warnings.push({ code: 'option-ignored', severity: 'warn', field: ['options', 'columnOrder'], message: 'columnOrder has no effect: the compact form keeps the number columns at the right edge', suggest: 'Remove columnOrder, or draw the chart wider.', fix: [{ op: 'remove', path: '/options/columnOrder' }] });
+  }
+  if (options.total === false && options.totalPosition !== undefined) {
+    warnings.push({ code: 'option-ignored', severity: 'warn', field: ['options', 'totalPosition'], message: 'totalPosition has no effect: total is false, so no Total row is drawn', suggest: 'Remove totalPosition, or set total to true.', fix: [{ op: 'remove', path: '/options/totalPosition' }] });
+  }
+  if (options.columnHeads === false) {
+    const units = [...new Set(data.panels.flatMap((panel) => panel.unit ?? []))];
+    if (units.length > 0) warnings.push({ code: 'column-heads-unit-hidden', severity: 'warn', field: ['options', 'columnHeads'],
+      message: `columnHeads: false removes the only print of the unit ${units.join(', ')}`,
+      suggest: 'Name the unit in the subtitle or a footnote.' });
+    if (panelIds.length + columnIds.length > 1) warnings.push({ code: 'column-heads-names-hidden', severity: 'warn', field: ['options', 'columnHeads'],
+      message: 'columnHeads: false removes the only names of the number columns and panels',
+      suggest: 'Name them in the subtitle or a footnote, or keep the heads.' });
+  }
+  return warnings;
+}
+
 /** How a cascade growth figure that rounds to 0 prints: full digits, its bound ("<0.1") or the rounded text. */
 const CASCADE_LIFT = Symbol('bartableCascadeLift');
 type CascadeLift = 'full' | 'none' | 'compact';
@@ -337,6 +380,9 @@ function layoutBarTableOnce(
   if (cascadeOptions) checkCascade(split.data, cascadeOptions.growth);
   const warnings: LintWarning[] = [];
   const data = withAggregates(split.data, options, warnings);
+  const overrides = options.columnOverrides ?? {};
+  const headsDrawn = options.columnHeads !== false;
+  const valuesPrinted = options.labels?.point !== false;
   // With the share columns hidden, the bracket and the share change still print from the rounded shares.
   if (options.rounding === 'sum-consistent' && cascadeOptions?.share === false && !options.combinedShare && cascadeOptions.growth?.measure !== 'share-change') {
     throw new NormalizeError('bartable-rounding', 'options.rounding', "rounding 'sum-consistent' sets how the share columns print, and this table prints none", "set cascade.share on, or drop options.rounding");
@@ -423,7 +469,8 @@ function layoutBarTableOnce(
       : total === null ? glyph : typeof total === 'number' ? fmt(total) : range(fmt(total.low), fmt(total.high));
     const label = panel.label ?? panel.id;
     // One panel named as the subtitle's measure heads with its unit alone.
-    const repeatsSubtitle = data.panels.length === 1 && panel.unit !== undefined &&
+    const headOverride = overrides[panel.id]?.label;
+    const repeatsSubtitle = headOverride === undefined && data.panels.length === 1 && panel.unit !== undefined &&
       label.trim().toLowerCase() === (resolveSubtitle(options.subtitle)?.measure ?? '').trim().toLowerCase();
     return {
       panel,
@@ -436,10 +483,10 @@ function layoutBarTableOnce(
       spec,
       endTexts,
       totalText,
-      head: repeatsSubtitle ? panel.unit! : panel.unit ? `${label}, ${panel.unit}` : label,
+      head: headOverride ?? (repeatsSubtitle ? panel.unit! : panel.unit ? `${label}, ${panel.unit}` : label),
       // A period panel (cascade, or a year alone) heads with a category value and keeps its case and face;
       // a unit alone keeps its case.
-      fieldHead: !repeatsSubtitle && cascadeOptions === undefined && !isNumberAlone(label),
+      fieldHead: !repeatsSubtitle && cascadeOptions === undefined && !isNumberAlone(headOverride ?? label),
       unitHead: repeatsSubtitle,
       max: Math.max(0, maxOf(stacks.map((stack, r) => ranges[r]?.high ?? stack.positive))),
     };
@@ -511,7 +558,7 @@ function layoutBarTableOnce(
   // A panel prints its parts inside the bars when its format has at most one decimal: more digits
   // do not fit a part, so such a panel keeps its end labels alone. A row with a range prints no parts,
   // and one segment is the whole bar, which the end label prints already.
-  const partsPrinted = panels.map((entry) => !cascade && series.length > 1 && options.segmentValues !== false && entry.spec.decimals <= PART_DECIMALS);
+  const partsPrinted = panels.map((entry) => !cascade && series.length > 1 && options.segmentValues !== false && valuesPrinted && entry.spec.decimals <= PART_DECIMALS);
   // Rounded parts may miss the rounded row sum by one step.
   const partsMissTotal = panels.some((entry, p) => partsPrinted[p] && entry.rowSums.some((sum, r) => {
     if (sum === null || entry.ranges[r]) return false;
@@ -605,6 +652,7 @@ function layoutBarTableOnce(
   // A long row name wraps to a third line before it is cut; the label column stops at 30 % of the table width.
   // Compact mode stacks the panels and puts each row name above its bar.
   const compact = options.mode === 'compact';
+  pushAll(warnings, columnKeyWarnings(data, options, compact, sharedScale || cascadeOptions !== undefined));
   // Several panels in compact mode interleave: one row name, then one bar line per panel.
   const interleaved = compact && panels.length > 1;
   // A row name is never cut: past `lines` it takes more lines (the rows grow), and a word wider
@@ -620,36 +668,25 @@ function layoutBarTableOnce(
     if (cut(band)) band = fit(Math.max(maxW, maxOf(rows.flatMap((row) => pieces(row.label).map((word) => width(word, cellFont))))), most);
     return band;
   };
-  let { labels: rowText, width: rowBandW } = compact ? { labels: [] as FittedText[], width: 0 } : fitRows(plot.w * 0.3, 3);
-  const labelTrack = compact ? 0 : Math.max(rowBandW, showTotal ? width(totalLabel, totalFont) : 0) + LABEL_GAP;
-  let x = plot.x + labelTrack;
-  const numberTracks = numberColumns.map((entry, i) => {
-    const name = entry.column.label ?? entry.column.id;
-    const head = fieldText(name);
-    // The first column's head may stand over the label column, whose head band is empty: the
-    // column then keeps the width of its values, and widens only while the head would be cut.
-    const overhang = i === 0 && !compact ? labelTrack : 0;
-    let inner = Math.max(
-      maxOf(entry.texts.map((text) => width(text, cellFont))),
-      showTotal && entry.totalText !== undefined ? width(entry.totalText, totalFont) : 0,
-      ...(overhang > 0 ? [] : head.split(/\s+/).map((word) => width(word, fieldFont))),
-    );
-    const headFitAt = (w: number) => fitText(head, fieldFont, w, 3, measure, { target: options.target, typeRole: 'axis' });
-    while ((overhang > 0 || (interleaved && cascade?.growth)) && headFitAt(inner + overhang).title !== undefined && inner < width(head, fieldFont)) inner += 4;
-    const track = { ...entry, name, head, headFit: headFitAt(inner + overhang), right: x + CELL_AIR + inner };
-    x += CELL_AIR + inner;
-    return track;
-  });
-  const fixedW = x - plot.x;
+  // Under compact and interleaved forms each panel takes the whole width beside the side columns: no block order applies.
+  const panelsFirst = !compact && (() => {
+    const order = options.columnOrder ?? [];
+    const at = (id: string) => { const i = order.indexOf(id); return i < 0 ? (id === 'numbers' ? order.length : order.length + 1) : i; };
+    return at('panels') < at('numbers');
+  })();
   const weights = panels.map((entry) => entry.panel.weight ?? 1);
   const weightSum = weights.reduce((sum, weight) => sum + weight, 0);
-  const endReserves = panels.map((entry) => maxOf(entry.endTexts.map((text) => width(text, cellFont))) + END_GAP);
+  // With values off only a missing row's mark prints at the bar end, and the reserve leaves with the values.
+  const endReserves = panels.map((entry) => {
+    const texts = valuesPrinted ? entry.endTexts : entry.endTexts.filter((_, r) => entry.rowSums[r] === null);
+    return texts.length === 0 ? 0 : maxOf(texts.map((text) => width(text, cellFont))) + END_GAP;
+  });
   // The Total prints from the bar origin, under the bars, so it needs the
   // panel's width past the gap; a longer end reserve would only shorten the bars.
   const totalWidths = panels.map((entry) => (showTotal && entry.totalText !== undefined ? width(entry.totalText, totalFont) : 0));
   // Cascade: a share column after each track, then the bracket and its share; the growth column closes the table.
   const shareHead = fieldText(options.strings?.share ?? chartString(options, 'shareHeading'));
-  const shareWs = panels.map((_, p) => (showShare ? Math.max(width(shareHead, fieldFont), maxOf(cascade!.panels[p]!.shareTexts.map((text) => width(text, cellFont)))) : 0));
+  const shareWs = panels.map((_, p) => (showShare ? Math.max(headsDrawn ? width(shareHead, fieldFont) : 0, maxOf(cascade!.panels[p]!.shareTexts.map((text) => width(text, cellFont)))) : 0));
   const bracketWs = panels.map((_, p) => {
     const combined = cascade?.panels[p]!.combined;
     return combined ? BRACKET_GAP + BRACKET_ARM + BRACKET_TEXT_GAP + width(combined.text, totalFont) : 0;
@@ -658,42 +695,121 @@ function layoutBarTableOnce(
   const growthHead = growth ? fieldText(growth.head) : '';
   // The growth head may stand over the last bracket, whose head band is empty, and in the
   // interleaved form over the share column: the column then keeps the width of its values.
-  const growthOverhang = !compact ? bracketWs[panels.length - 1]! : 0;
+  // A number block after the panels stands between them and the growth column, so the head keeps to its own column there.
+  const growthOverhang = !compact && !(panelsFirst && numberColumns.length > 0) ? bracketWs[panels.length - 1]! : 0;
   let growthInner = growth
-    ? Math.max(maxOf(growth.texts.map((text, r) => width(text, r === rows.length ? totalFont : cellFont))), ...(interleaved || growthOverhang > 0 ? [] : growthHead.split(/\s+/).map((word) => width(word, fieldFont))))
+    ? Math.max(maxOf(growth.texts.map((text, r) => width(text, r === rows.length ? totalFont : cellFont))), ...(interleaved || growthOverhang > 0 || !headsDrawn ? [] : growthHead.split(/\s+/).map((word) => width(word, fieldFont))))
     : 0;
   // The head takes up to three lines; the column widens until none is cut.
   const growthFit = (w: number) => fitText(growthHead, fieldFont, w, 3, measure, { target: options.target, typeRole: 'axis' });
-  while (growth && !interleaved && growthFit(growthInner + growthOverhang).title !== undefined && growthInner < width(growthHead, fieldFont)) growthInner += 4;
+  while (growth && headsDrawn && !interleaved && growthFit(growthInner + growthOverhang).title !== undefined && growthInner < width(growthHead, fieldFont)) growthInner += 4;
   const growthW = growth ? PANEL_GAP + growthInner : 0;
-  // Compact: the side columns sit at the right edge; the names wrap to two lines beside them.
-  const sideW = compact ? fixedW + growthW : 0;
-  if (compact) {
-    numberTracks.forEach((track) => { track.right += plot.w - sideW; });
-    ({ labels: rowText } = fitRows(Math.max(MIN_COMPACT_LABEL, plot.w - sideW - LABEL_GAP), 2));
-  }
   // What a panel takes beside its bars: the gap, then the end labels, or the share column and the bracket.
   const extras = panels.map((_, p) => PANEL_GAP + (cascade ? (showShare ? SHARE_GAP + shareWs[p]! : 0) + bracketWs[p]! : endReserves[p]!));
   // The length a bar is scaled by: the panel total under cascade, else the longest bar.
   const spans = panels.map((entry) => (cascade ? cascade.panels[panels.indexOf(entry)]!.total : entry.max));
-  const compactW = plot.w - (cascade ? sideW : 0);
-  const restW = Math.max(0, plot.w - fixedW - growthW);
   const extrasSum = extras.reduce((sum, w) => sum + w, 0);
   const spanSum = spans.reduce((sum, v) => sum + v, 0);
+  // Each panel keeps MIN_RUN beside its end labels; weights share the spare width.
+  // A cascade track keeps MIN_TRACK, its head's longest word and its Total
+  // inside; on one shared scale the panel with the smallest total sets it.
+  const minTracks = panels.map((entry, p) => (cascade
+    ? Math.max(MIN_TRACK, ...(headsDrawn ? entry.head.split(/\s+/) : []).map((word) => width(word, headFont)), totalWidths[p]! + 2 * END_GAP)
+    : Math.max(MIN_RUN, totalWidths[p]! - endReserves[p]!)));
+  const panelsW = sharedScale
+    ? extrasSum + maxOf(minTracks.map((min, p) => (spans[p]! > 0 ? min / spans[p]! : 0))) * spanSum
+    : cascade
+      ? Math.max(extrasSum + minTracks.reduce((sum, w) => sum + w, 0), maxOf(panels.map((_, p) => ((extras[p]! + minTracks[p]!) * weightSum) / weights[p]!)))
+      // Several panels: each longest bar keeps PREFERRED_RUN, or the table goes compact.
+      : panels.reduce((sum, _entry, p) => sum + PANEL_GAP + Math.max((panels.length > 1 ? PREFERRED_RUN : MIN_RUN) + endReserves[p]!, totalWidths[p]!), 0);
+  // An authored width of the name track or a number track stops where every other part keeps its floor.
+  const words = (label: string) => label.split(/\s+/).flatMap(splitNameBreaks);
+  const labelWidth = compact ? undefined : overrides.label?.width;
+  const valueFloor = (entry: (typeof numberColumns)[number]) => CELL_AIR + Math.max(
+    maxOf(entry.texts.map((text) => width(text, cellFont))),
+    showTotal && entry.totalText !== undefined ? width(entry.totalText, totalFont) : 0,
+  );
+  const labelRoom = plot.w - growthW - panelsW - numberColumns.reduce((sum, entry) => sum + valueFloor(entry), 0);
+  let { labels: rowText, width: rowBandW } = compact ? { labels: [] as FittedText[], width: 0 }
+    : fitRows(labelWidth === undefined ? plot.w * 0.3 : Math.max(1, Math.min(labelWidth, labelRoom) - LABEL_GAP), 3);
+  const labelFloor = Math.max(rowBandW, showTotal ? width(totalLabel, totalFont) : 0) + LABEL_GAP;
+  if (labelWidth !== undefined && labelWidth > Math.max(labelRoom, labelFloor)) warnings.push(widthCapped('bartable', 'label'));
+  if (labelWidth !== undefined && labelWidth < labelFloor) warnings.push(widthFloored('bartable', 'label'));
+  const labelTrack = compact ? 0 : labelWidth === undefined ? labelFloor : Math.max(labelFloor, Math.min(labelWidth, labelRoom));
+  // The width the chart can never go under reads the longest word, not the authored track.
+  const labelTrackFloor = labelWidth === undefined ? labelTrack
+    : Math.max(maxOf(rows.flatMap((row) => words(row.label).map((word) => width(word, cellFont)))), showTotal ? width(totalLabel, totalFont) : 0) + LABEL_GAP;
+  let x = plot.x + labelTrack;
+  const numberNaturals = numberColumns.map((entry, i) => {
+    const name = overrides[entry.column.id]?.label ?? entry.column.label ?? entry.column.id;
+    const head = fieldText(name);
+    // The first column's head may stand over the label column, whose head band is empty: the
+    // column then keeps the width of its values, and widens only while the head would be cut.
+    const overhang = i === 0 && !compact && !panelsFirst && headsDrawn ? labelTrack : 0;
+    let inner = Math.max(
+      maxOf(entry.texts.map((text) => width(text, cellFont))),
+      showTotal && entry.totalText !== undefined ? width(entry.totalText, totalFont) : 0,
+      ...(overhang > 0 || !headsDrawn ? [] : head.split(/\s+/).map((word) => width(word, fieldFont))),
+    );
+    const headFitAt = (w: number) => fitText(head, fieldFont, w, 3, measure, { target: options.target, typeRole: 'axis' });
+    while (headsDrawn && (overhang > 0 || (interleaved && cascade?.growth)) && headFitAt(inner + overhang).title !== undefined && inner < width(head, fieldFont)) inner += 4;
+    return { entry, name, head, overhang, inner, headFitAt };
+  });
+  const numberSurplus = numberNaturals.map((natural) => {
+    const asked = overrides[natural.entry.column.id]?.width;
+    if (asked !== undefined && asked < CELL_AIR + natural.inner) warnings.push(widthFloored('bartable', natural.entry.column.id));
+    return asked === undefined ? 0 : Math.max(0, asked - CELL_AIR - natural.inner);
+  });
+  const numberSurplusSum = numberSurplus.reduce((sum, value) => sum + value, 0);
+  const numberRoom = Math.max(0, plot.w - growthW - (compact ? LABEL_GAP + MIN_COMPACT_LABEL : labelTrack + panelsW)
+    - numberNaturals.reduce((sum, natural) => sum + CELL_AIR + natural.inner, 0));
+  const numberScale = numberSurplusSum > numberRoom ? numberRoom / numberSurplusSum : 1;
+  const numberTracks = numberNaturals.map(({ entry, name, head, overhang, inner: natural, headFitAt }, i) => {
+    if (numberScale < 1 && numberSurplus[i]! > 0) warnings.push(widthCapped('bartable', entry.column.id));
+    const inner = numberSurplus[i]! > 0 ? natural + numberSurplus[i]! * numberScale : natural;
+    const track = { ...entry, name, head, inner, headFit: headFitAt(inner + overhang), right: x + CELL_AIR + inner };
+    x += CELL_AIR + inner;
+    return track;
+  });
+  const fixedW = x - plot.x;
+  const minFixedW = labelWidth === undefined && numberSurplusSum === 0 ? fixedW
+    : labelTrackFloor + numberNaturals.reduce((sum, natural) => sum + CELL_AIR + natural.inner, 0);
+  // Compact: the side columns sit at the right edge; the names wrap to two lines beside them.
+  const sideW = compact ? fixedW + growthW : 0;
+  const minSideW = compact ? minFixedW + growthW : 0;
+  if (compact) {
+    numberTracks.forEach((track) => { track.right += plot.w - sideW; });
+    ({ labels: rowText } = fitRows(Math.max(MIN_COMPACT_LABEL, plot.w - sideW - LABEL_GAP), 2));
+  }
+  const compactW = plot.w - (cascade ? sideW : 0);
+  const restW = Math.max(0, plot.w - fixedW - growthW);
   const sharedK = spanSum > 0 ? Math.max(0, restW - extrasSum) / spanSum : 0;
   const compactK = minOf(spans.map((span, p) => (span > 0 ? Math.max(0, compactW - extras[p]! + PANEL_GAP) / span : Infinity)));
   // Own scales: the weights share the bar runs (not the panel widths), so a 2:1 weight draws 2:1 bars.
   // A panel whose share falls under its floor (PREFERRED_RUN, or room for its Total) keeps the floor,
   // and the others share the rest by weight.
   const runFloors = panels.map((_, p) => Math.max(PREFERRED_RUN, totalWidths[p]! - endReserves[p]!));
+  // An authored panel width beats its weight. Widths that pass the room shrink toward the floors together.
+  const panelWidth = (p: number) => (compact || sharedScale || cascade ? undefined : overrides[panels[p]!.panel.id]?.width);
+  const runRoom = Math.max(0, restW - panels.reduce((sum, _entry, p) => sum + PANEL_GAP + endReserves[p]!, 0));
+  const runSurplus = panels.map((entry, p) => {
+    const asked = panelWidth(p);
+    if (asked !== undefined && asked < PANEL_GAP + endReserves[p]! + runFloors[p]!) warnings.push(widthFloored('bartable', entry.panel.id));
+    return asked === undefined ? 0 : Math.max(0, asked - PANEL_GAP - endReserves[p]! - runFloors[p]!);
+  });
+  const runSurplusSum = runSurplus.reduce((sum, value) => sum + value, 0);
+  const runSpare = Math.max(0, runRoom - runFloors.reduce((sum, floor) => sum + floor, 0));
+  const runScale = runSurplusSum > runSpare ? runSpare / runSurplusSum : 1;
+  panels.forEach((entry, p) => { if (runScale < 1 && runSurplus[p]! > 0) warnings.push(widthCapped('bartable', entry.panel.id)); });
+  const heldRun = (p: number) => runFloors[p]! + runSurplus[p]! * runScale;
   const ownRuns = (() => {
-    const total = Math.max(0, restW - panels.reduce((sum, _entry, p) => sum + PANEL_GAP + endReserves[p]!, 0));
-    const held = new Set<number>();
+    const total = runRoom;
+    const held = new Set(panels.flatMap((_, p) => (panelWidth(p) === undefined ? [] : [p])));
     let runs = panels.map(() => 0);
     for (let pass = 0; pass <= panels.length; pass++) {
-      const free = total - [...held].reduce((sum, p) => sum + runFloors[p]!, 0);
+      const free = total - [...held].reduce((sum, p) => sum + heldRun(p), 0);
       const freeWeight = weights.reduce((sum, weight, p) => (held.has(p) ? sum : sum + weight), 0);
-      runs = panels.map((_entry, p) => (held.has(p) ? runFloors[p]! : freeWeight > 0 ? Math.max(0, free) * weights[p]! / freeWeight : 0));
+      runs = panels.map((_entry, p) => (held.has(p) ? heldRun(p) : freeWeight > 0 ? Math.max(0, free) * weights[p]! / freeWeight : 0));
       const low = panels.map((_entry, p) => p).filter((p) => !held.has(p) && runs[p]! < runFloors[p]! - 1e-9);
       if (low.length === 0 || held.size + low.length >= panels.length) break;
       low.forEach((p) => held.add(p));
@@ -708,8 +824,8 @@ function layoutBarTableOnce(
   const shareColW = showShare ? SHARE_GAP + Math.max(0, maxOf(shareWs)) : 0;
   // Interleaved cascade: each period is named at the end of its track in the first row, so the run leaves room for the longest name.
   // A name wider than a third of the plot is cut, so one long name cannot squeeze the tracks of every panel.
-  const periodNameFull = interleaved && cascade ? maxOf(panels.map((entry) => width(entry.head, headFont))) : 0;
-  const periodNameW = interleaved && cascade ? Math.min(periodNameFull, plot.w / 3) + END_GAP : 0;
+  const periodNameFull = interleaved && cascade && headsDrawn ? maxOf(panels.map((entry) => width(entry.head, headFont))) : 0;
+  const periodNameW = interleaved && cascade && headsDrawn ? Math.min(periodNameFull, plot.w / 3) + END_GAP : 0;
   const interleavedRun = (p: number) => Math.max(0, cascade ? plot.w - growthW - shareColW - periodNameW : plot.w - endReserves[p]!);
   const interleavedK = minOf(spans.map((span, p) => (span > 0 ? interleavedRun(p) / span : Infinity)));
   const commonShareRight = plot.x + plot.w - growthW;
@@ -717,13 +833,15 @@ function layoutBarTableOnce(
   const keyTextW = Math.max(1, plot.w - KEY_W - KEY_GAP - CELL_AIR - (cascade
     ? plot.x + plot.w - commonShareRight + (showShare ? width(shareHead, fieldFont) : 0)
     : sideW));
+  // The number block keeps its widths; it moves past the panels when they come first.
+  const panelsStart = x = panelsFirst ? plot.x + labelTrack : x;
   const panelTracks = panels.map((entry, p) => {
     const face = entry.fieldHead || entry.unitHead ? fieldFont : headFont;
     const head = entry.fieldHead ? fieldText(entry.head) : entry.head;
     if (interleaved) {
       const scale = sharedScale ? (Number.isFinite(interleavedK) ? interleavedK : 0) : spans[p]! > 0 ? interleavedRun(p) / spans[p]! : 0;
       const headFit = cascade ? fitText(head, face, Math.max(1, periodNameW - END_GAP), 1, measure, { target: options.target, typeRole: 'axis' }) : fitText(head, face, keyTextW, 2, measure, { target: options.target, typeRole: 'axis' });
-      return { ...entry, head, face, origin: plot.x, scale, trackW: spans[p]! * scale, shareRight: commonShareRight, headFit };
+      return { ...entry, head, face, origin: plot.x, scale, trackW: spans[p]! * scale, shareRight: commonShareRight, headFit, headW: keyTextW };
     }
     const w = compact ? compactW + PANEL_GAP : sharedScale ? extras[p]! + spans[p]! * sharedK : cascade ? (restW * weights[p]!) / weightSum : PANEL_GAP + endReserves[p]! + ownRuns[p]!;
     const origin = compact ? plot.x : x + PANEL_GAP;
@@ -746,8 +864,9 @@ function layoutBarTableOnce(
         headFit.h = headFit.lines.length * lineBox(face);
       }
     }
-    return { ...entry, head, face, origin, scale, trackW, shareRight: origin + trackW + SHARE_GAP + shareWs[p]!, headFit };
+    return { ...entry, head, face, origin, scale, trackW, shareRight: origin + trackW + SHARE_GAP + shareWs[p]!, headFit, headW };
   });
+  if (panelsFirst) numberTracks.forEach((track) => { track.right += x - panelsStart; });
   const growthTrack = growth
     ? { right: plot.x + plot.w, headFit: interleaved ? growthFit(Math.max(growthInner, plot.w * 0.4)) : growthFit(growthInner + growthOverhang) }
     : undefined;
@@ -830,7 +949,8 @@ function layoutBarTableOnce(
   const heads: FittedText[] = [...numberTracks, ...(interleaved ? [] : panelTracks), ...(growthTrack ? [growthTrack] : [])].map((track) => track.headFit);
   // Interleaved: the panel key stacks one line (or two) per panel.
   const keyH = interleaved && !cascade ? panelTracks.reduce((sum, track) => sum + track.headFit.h + 2, 0) - 2 : 0;
-  const headH = Math.max(lineBox(headFont), keyH, maxOf(heads.map((head) => head.h)), shareHeadH, (growthTrack?.headFit.h ?? 0) + growthLift);
+  const headH = !headsDrawn ? 0 : Math.max(lineBox(headFont), keyH, maxOf(heads.map((head) => head.h)), shareHeadH, (growthTrack?.headFit.h ?? 0) + growthLift);
+  const headGap = headsDrawn ? HEAD_GAP : 0;
   // Rows take their natural pitch; a canvas the author sized shorter
   // tightens them down to the bar and the label plus a little air.
   const house = fixedBarRow(theme, rowText.map((text) => text.h + 4));
@@ -838,11 +958,17 @@ function layoutBarTableOnce(
   let barH = house ? house.step * house.fraction : BAR_H;
   const floorRowH = Math.max(barH + 4, maxOf(rowText.map((text) => text.h + 2)));
   const rowCount = rows.length + (showTotal ? 1 : 0);
-  const blockH = headH + HEAD_GAP + (showTotal ? TOTAL_GAP : 0);
+  const blockH = headH + headGap + (showTotal ? TOTAL_GAP : 0);
   // Two heading lines set the floor; the third line uses spare height.
-  const minimumBlockH = Math.max(lineBox(headFont), maxOf(numberTracks.map((track) => track.headFit.h)),
-    maxOf(panelTracks.map((track) => Math.min(track.headFit.h, 2 * lineBox(headFont)))), shareHeadH, (growthTrack?.headFit.h ?? 0) + growthLift)
-    + HEAD_GAP + (showTotal ? TOTAL_GAP : 0);
+  const minimumBlockH = (headsDrawn ? Math.max(lineBox(headFont), maxOf(numberTracks.map((track) => track.headFit.h)),
+    maxOf(panelTracks.map((track) => Math.min(track.headFit.h, 2 * lineBox(headFont)))), shareHeadH, (growthTrack?.headFit.h ?? 0) + growthLift) : 0)
+    + headGap + (showTotal ? TOTAL_GAP : 0);
+  // A name track so narrow that its wrapped names no longer fit a pinned height gives way: a width never refuses.
+  if (labelWidth !== undefined && fixedHeightCanvas(options) && minimumBlockH + rowCount * floorRowH > plot.h) {
+    const { width: _width, ...nameSettings } = overrides.label!;
+    const wider = layoutBarTable(authored, { ...options, columnOverrides: { ...overrides, label: nameSettings } });
+    return { ...wider, warnings: [...wider.warnings, overrideIgnored('label', 'width', 'the wrapped row names would not fit the pinned height')] };
+  }
   // Compact: a row is its name line(s) and a bar line; the Total likewise.
   // Each line keeps 2 px of air over the solver's label padding.
   // Interleaved: each bar line keeps just the value text's height; a later
@@ -863,7 +989,7 @@ function layoutBarTableOnce(
   for (let r = 0; r < rows.length; r++) unitTops.push(unitTops[r]! + nameH(r) + (interleaved ? panels.length * barLineH + ROW_GAP : barLineH));
   // Interleaved cascade: the bracket becomes a combined row after its last row, its share per panel on its own line.
   const comboAfter = interleaved && cascade && bracketRows && bracketLabel !== undefined && cascade.panels.some((c) => c.combined) ? bracketRows.at(-1)! : -1;
-  const periodTexts = panels.map((entry) => entry.panel.label ?? entry.panel.id);
+  const periodTexts = panels.map((entry) => overrides[entry.panel.id]?.label ?? entry.panel.label ?? entry.panel.id);
   const periodW = Math.max(0, maxOf(periodTexts.map((text) => width(text, cellFont))));
   const comboShareW = Math.max(0, maxOf((cascade?.panels ?? []).map((c) => (c.combined ? width(c.combined.text, totalFont) : 0))));
   const comboFit = comboAfter >= 0
@@ -880,7 +1006,7 @@ function layoutBarTableOnce(
   // Interleaved Total: its name line, then under cascade a dark bar per summed panel; else the totals print on the name line.
   const totalBars = panels.map((_entry, p) => p).filter((p) => cascade && panels[p]!.totalText !== undefined);
   const compactTotalH = interleaved ? totalLineH + totalBars.length * barLineH : totalLineH + barLineH;
-  const compactBlockH = (p: number) => headH + HEAD_GAP + rowsSpan + (showTotal ? TOTAL_GAP : 0) + (totalIn(p) ? compactTotalH : 0);
+  const compactBlockH = (p: number) => headH + headGap + rowsSpan + (showTotal ? TOTAL_GAP : 0) + (totalIn(p) ? compactTotalH : 0);
   const compactRowsH = interleaved ? compactBlockH(0) : panels.reduce((sum, _entry, p) => sum + compactBlockH(p), 0) + (panels.length - 1) * BLOCK_GAP;
   // A pinned canvas with height to spare gives it to the rows, up to a quarter over the natural pitch,
   // and the bar thickens with them (14 px in a 28 px row, 20 px in a 35 px row). A theme row is fixed.
@@ -892,7 +1018,7 @@ function layoutBarTableOnce(
   const cellBarH = cascade ? (interleaved ? barH : Math.max(barH, rowH - (compact ? 6 : 8))) : barH;
   const totalBarH = cascade ? (interleaved ? barH : Math.max(barH, rowH - 6)) : barH;
   const tableTop = plot.y;
-  const rowsTop = tableTop + headH + HEAD_GAP;
+  const rowsTop = tableTop + headH + headGap;
   const rowsBottom = rowsTop + rows.length * rowH;
   const totalTop = rowsBottom + TOTAL_GAP;
   const tableH = compact ? compactRowsH : blockH + rowCount * rowH;
@@ -915,12 +1041,14 @@ function layoutBarTableOnce(
     scene.push({ t: 'line', id, x1, y1, x2, y2, stroke, width: lineWidth, owner: {}, part });
   const label = (
     id: Id, kind: LabelRequest['kind'], owner: OwnerRef, text: string, font: FontSpec,
-    rect: Rect, fitted?: FittedText,
+    rect: Rect, fitted?: FittedText, align?: ColumnAlign,
   ) => {
     fonts.set(id, font);
+    if (align === 'right') rightAligned.add(id);
     requests.push({
       id, kind, owner, text, font, typeRole: kind === 'axisTitle' ? 'axis' : 'label',
       ...(fitted ? fittedLabel(fitted, font) : { lines: [text] }),
+      ...(align === 'left' ? { align: 'start' as const } : align === 'center' ? { align: 'middle' as const } : {}),
       priority: PRIORITY.endpoint,
       candidates: [{ slot: `${id}:fixed`, rect, penalty: 0 }],
     });
@@ -936,26 +1064,28 @@ function layoutBarTableOnce(
    * compact form every panel shares one row band.
    */
   const blockTop = (p: number) => tableTop + (compact ? panels.slice(0, p).reduce((sum, _entry, q) => sum + compactBlockH(q) + BLOCK_GAP, 0) : 0);
-  const rowsTopOf = (p: number) => blockTop(p) + headH + HEAD_GAP;
-  const rowsBottomOf = (p: number) => (compact ? rowsTopOf(p) + rowsSpan : rowsBottom);
+  const rowsTopOf = (p: number) => blockTop(p) + headH + headGap;
+  // Total first: the rows start below the Total, and everything else keeps its place in the block.
+  const totalLead = (p: number) => (options.totalPosition === 'top' && totalIn(p) ? (compact ? compactTotalH : rowH) + TOTAL_GAP : 0);
+  const rowsBottomOf = (p: number) => (compact ? rowsTopOf(p) + totalLead(p) + rowsSpan : rowsBottom + totalLead(p));
   const place = (p: number, r: number) => {
     if (interleaved) {
       if (r < rows.length) {
-        const top = rowsTopOf(0) + rowTopIn(r);
+        const top = rowsTopOf(0) + totalLead(0) + rowTopIn(r);
         return { labelTop: top, labelH: tight ? nameBoxH(r) : lineBox(cellFont), barTop: top + nameH(r) + p * barLineH };
       }
-      const top = rowsBottomOf(0) + TOTAL_GAP;
+      const top = totalLead(0) > 0 ? rowsTopOf(0) : rowsBottomOf(0) + TOTAL_GAP;
       return { labelTop: top, labelH: totalLineH, barTop: top + totalLineH + Math.max(0, totalBars.indexOf(p)) * barLineH };
     }
     if (!compact) {
-      const top = r < rows.length ? rowsTop + r * rowH : totalTop;
+      const top = r < rows.length ? rowsTop + totalLead(0) + r * rowH : totalLead(0) > 0 ? rowsTop : totalTop;
       return { labelTop: top, labelH: rowH, barTop: top };
     }
     if (r < rows.length) {
-      const top = rowsTopOf(p) + unitTops[r]!;
+      const top = rowsTopOf(p) + totalLead(p) + unitTops[r]!;
       return { labelTop: top, labelH: lineBox(cellFont), barTop: top + nameH(r) };
     }
-    const top = rowsBottomOf(p) + TOTAL_GAP;
+    const top = totalLead(p) > 0 ? rowsTopOf(p) : rowsBottomOf(p) + TOTAL_GAP;
     return { labelTop: top, labelH: totalLineH, barTop: top + totalLineH };
   };
   /** A row name: one per row, and in the compact form one per block (the first keeps the plain id). */
@@ -964,13 +1094,14 @@ function layoutBarTableOnce(
 
   // Heads: bottom-aligned on the head band; numbers right, panels at the bar origin.
   const headBottom = tableTop + headH;
-  numberTracks.forEach((track) => {
+  if (headsDrawn) numberTracks.forEach((track) => {
     const id = `head:${track.column.id}`;
-    rightAligned.add(id);
+    const override = overrides[track.column.id];
+    const align = override?.headAlign ?? override?.align ?? 'right';
     label(id, 'axisTitle', { colId: track.column.id }, track.head, fieldFont,
-      { x: track.right - track.headFit.w, y: headBottom - track.headFit.h, w: track.headFit.w, h: track.headFit.h }, track.headFit);
+      { x: alignedIn(track.right - track.inner, track.right, track.headFit.w, align), y: headBottom - track.headFit.h, w: track.headFit.w, h: track.headFit.h }, track.headFit, align);
   });
-  panelTracks.forEach((track, p) => {
+  if (headsDrawn) panelTracks.forEach((track, p) => {
     if (interleaved) {
       // Under cascade the bars are one colour, so each period is named at its bar: right of its track in the first row.
       // Else the key: a bar glyph and the panel head, one entry per panel, in the order the bars stand.
@@ -993,8 +1124,9 @@ function layoutBarTableOnce(
       return;
     }
     const headBottom = blockTop(p) + headH;
+    const headAlign = overrides[track.panel.id]?.headAlign ?? overrides[track.panel.id]?.align;
     label(`head:${track.panel.id}`, 'axisTitle', { colId: track.panel.id }, track.head, track.face,
-      { x: track.origin, y: headBottom - track.headFit.h, w: track.headFit.w, h: track.headFit.h }, track.headFit);
+      { x: headAlign === undefined ? track.origin : alignedIn(track.origin, track.origin + track.headW, track.headFit.w, headAlign), y: headBottom - track.headFit.h, w: track.headFit.w, h: track.headFit.h }, track.headFit, headAlign);
     // A period head ("2024") reads as an axis label, not as a caption.
     if (isNumberAlone(track.head)) requests[requests.length - 1]!.role = 'axis';
     if (!showShare) return;
@@ -1003,7 +1135,7 @@ function layoutBarTableOnce(
     rightAligned.add(id);
     label(id, 'axisTitle', { colId: `share:${track.panel.id}` }, shareHead, fieldFont, { x: track.shareRight - box.width, y: headBottom - box.height, w: box.width, h: box.height });
   });
-  if (growthTrack) {
+  if (growthTrack && headsDrawn) {
     rightAligned.add('head:growth');
     label('head:growth', 'axisTitle', { colId: 'growth' }, growthHead, fieldFont,
       { x: growthTrack.right - growthTrack.headFit.w, y: headBottom - growthLift - growthTrack.headFit.h, w: growthTrack.headFit.w, h: growthTrack.headFit.h }, growthTrack.headFit);
@@ -1042,7 +1174,7 @@ function layoutBarTableOnce(
     requests.push({ id, kind: 'segment', owner, text, font, typeRole: 'label', lines: [text], priority: PRIORITY.endpoint, candidates });
   };
   const head = headRule(theme);
-  blocks.forEach((p) => line(nameId(p, 'bartable-head-rule'), plot.x, rowsTopOf(p) - HEAD_GAP / 2, tableRight, rowsTopOf(p) - HEAD_GAP / 2, head.width, head.stroke, 'tableHeaderRule'));
+  if (headsDrawn) blocks.forEach((p) => line(nameId(p, 'bartable-head-rule'), plot.x, rowsTopOf(p) - HEAD_GAP / 2, tableRight, rowsTopOf(p) - HEAD_GAP / 2, head.width, head.stroke, 'tableHeaderRule'));
 
   // The rows the combined-share note names stand on a light band (the bracket marks them under cascade).
   const shaded = new Set(!cascade && options.combinedShare ? options.combinedShare.rows : []);
@@ -1054,6 +1186,8 @@ function layoutBarTableOnce(
     const bottom = compact ? (r + 1 < rows.length ? place(0, r + 1).labelTop : rowsBottomOf(0) + 2 * air) - air : at.labelTop + rowH;
     under.push({ t: 'rect', id: `combined-band:${row.id}`, rect: { x: plot.x, y: top, w: tableRight - plot.x, h: bottom - top }, fill: { token: 'others', tint: 0.5 }, owner: {}, part: 'combinedBand' });
   });
+  const nameAlign = compact ? undefined : overrides.label?.align;
+  const nameX = (w: number) => (nameAlign === undefined ? plot.x : alignedIn(plot.x, plot.x + labelTrack - LABEL_GAP, w, nameAlign));
   rows.forEach((row, r) => {
     const text = rowText[r]!;
     blocks.forEach((p) => {
@@ -1062,15 +1196,16 @@ function layoutBarTableOnce(
       const ruleY = at.labelTop - (interleaved ? ROW_GAP / 2 : 0);
       if (r > 0 && !cascade && compact) line(nameId(p, `bartable-row-rule:${row.id}`), plot.x, ruleY, tableRight, ruleY, theme.table?.ruleWidths?.row ?? strokeToken(theme, 'hair'), tableRuleInk(), 'tableRowRule');
       label(nameId(p, `row:${row.id}`), 'category', { categoryId: row.id }, row.label, cellFont,
-        { x: plot.x, y: compact ? at.labelTop : at.labelTop + (rowH - text.h) / 2, w: text.w, h: compact ? nameBoxH(r) : text.h }, text);
+        { x: nameX(text.w), y: compact ? at.labelTop : at.labelTop + (rowH - text.h) / 2, w: text.w, h: compact ? nameBoxH(r) : text.h }, text, nameAlign);
     });
     // Side columns use the first block's name line in compact mode.
     const side = place(0, r);
     numberTracks.forEach((track) => {
       const id = `cell:${track.column.id}:${row.id}`;
-      const rect = rowText1(track.texts[r]!, valueFont, side.labelTop, { right: track.right }, side.labelH);
-      rightAligned.add(id);
-      label(id, 'point', { categoryId: row.id, colId: track.column.id }, track.texts[r]!, cellFont, rect);
+      const align = overrides[track.column.id]?.align ?? 'right';
+      const box = rowText1(track.texts[r]!, valueFont, side.labelTop, { right: track.right }, side.labelH);
+      const rect = { ...box, x: alignedIn(track.right - track.inner, track.right, box.w, align) };
+      label(id, 'point', { categoryId: row.id, colId: track.column.id }, track.texts[r]!, cellFont, rect, undefined, align);
       marks.cells.push({ rowId: row.id, colId: track.column.id, kind: 'column', value: track.column.values[r] ?? null, text: track.texts[r]!, rect });
     });
     panelTracks.forEach((track, p) => {
@@ -1091,7 +1226,7 @@ function layoutBarTableOnce(
           scene.push({ t: 'rect', id: `segment:${track.panel.id}:${row.id}:${seriesId}`, rect, fill, owner, part: 'segment', display: { value: text } });
           occupied.claim(rect, 'mark', owner, 'segment');
         }
-        barValue(`end:${track.panel.id}:${row.id}`, owner, text, cellFont, rect, fill, top, track.origin, track.origin + track.trackW);
+        if (valuesPrinted) barValue(`end:${track.panel.id}:${row.id}`, owner, text, cellFont, rect, fill, top, track.origin, track.origin + track.trackW);
         marks.cells.push({ rowId: row.id, colId: track.panel.id, kind: 'end', value, text, rect });
         if (!showShare) return;
         const id = `cell:share:${track.panel.id}:${row.id}`;
@@ -1154,7 +1289,7 @@ function layoutBarTableOnce(
         occupied.claim(rect, 'mark', owner, 'rangeExtension');
       }
       const rect = rowText1(endText, valueFont, top, { left: track.origin + (range?.high ?? stack.positive) * track.scale + END_GAP });
-      label(`end:${track.panel.id}:${row.id}`, 'total', owner, endText, cellFont, rect);
+      if (valuesPrinted || track.rowSums[r] === null) label(`end:${track.panel.id}:${row.id}`, 'total', owner, endText, cellFont, rect);
       const sum = track.rowSums[r] ?? null;
       marks.cells.push({ rowId: row.id, colId: track.panel.id, kind: 'end', value: range?.low ?? sum, ...(range ? { range } : {}), text: endText, rect });
     });
@@ -1174,7 +1309,7 @@ function layoutBarTableOnce(
     if (!c.combined || !bracketRows) return;
     if (interleaved) {
       // The combined row: between two dashed rules, its name in bold, then per panel the period and the share in bold.
-      const top = rowsTopOf(0) + unitTops[comboAfter + 1]!;
+      const top = rowsTopOf(0) + totalLead(0) + unitTops[comboAfter + 1]!;
       const ruleStroke: Paint = { token: 'inkMuted' };
       if (p === 0) {
         [top + 1, top + combinedH - ROW_GAP - 1].forEach((y, i) => scene.push({ t: 'line', id: `combined-rule:${i === 0 ? 'top' : 'bottom'}`, x1: plot.x, y1: y, x2: commonShareRight, y2: y, stroke: ruleStroke, width: strokeToken(theme, 'hair'), dash: dashToken(theme, 'dotted'), owner: {}, part: 'combinedRule' }));
@@ -1218,21 +1353,27 @@ function layoutBarTableOnce(
         // A tall row (wrapped names) keeps its height; the ground and rules hug the Total's own line, centred in it.
         const bandH = compact ? compactTotalH : Math.min(rowH, Math.max(ROW_PITCH, totalLineH + 4, cascade ? totalBarH + 6 : 0));
         const bottom = at.labelTop + (compact ? compactTotalH : (rowH + bandH) / 2);
-        const top = !compact && bandH < rowH ? bottom - bandH : rowsBottomOf(p) + TOTAL_GAP / 2;
+        const first = totalLead(p) > 0;
+        const top = !compact && bandH < rowH ? bottom - bandH : first ? at.labelTop - headGap / 2 : rowsBottomOf(p) + TOTAL_GAP / 2;
         under.push({ t: 'rect', id: nameId(p, 'bartable-total-ground'), rect: { x: plot.x, y: top, w: tableRight - plot.x, h: bottom - top }, fill: ground, owner: {}, part: 'tableTotalGround' });
-        line(nameId(p, 'bartable-total-rule'), plot.x, top, tableRight, top, rule.width, rule.stroke, 'tableTotalRule');
+        // Directly under the heads, the head rule is already the line above the Total.
+        if (!(first && headsDrawn && top === at.labelTop - headGap / 2)) line(nameId(p, 'bartable-total-rule'), plot.x, top, tableRight, top, rule.width, rule.stroke, 'tableTotalRule');
         line(nameId(p, 'bartable-total-rule-below'), plot.x, bottom, tableRight, bottom, rule.width, rule.stroke, 'tableTotalRule');
       }
-      if (totalIn(p)) label(nameId(p, 'total:label'), 'category', {}, totalLabel, totalFont, rowText1(totalLabel, totalFont, at.labelTop, { left: plot.x }, at.labelH));
+      if (totalIn(p)) {
+        const box = rowText1(totalLabel, totalFont, at.labelTop, { left: plot.x }, at.labelH);
+        label(nameId(p, 'total:label'), 'category', {}, totalLabel, totalFont, { ...box, x: nameX(box.w) }, undefined, nameAlign);
+      }
     });
     const side = place(0, rows.length);
     let totalX = plot.x + width(totalLabel, totalFont) + CELL_AIR;
     numberTracks.forEach((track) => {
       if (track.totalText === undefined) return;
       const id = `total:${track.column.id}`;
-      const rect = rowText1(track.totalText, totalFont, side.labelTop, { right: track.right }, side.labelH);
-      rightAligned.add(id);
-      label(id, 'grandTotal', { colId: track.column.id }, track.totalText, totalFont, rect);
+      const align = overrides[track.column.id]?.align ?? 'right';
+      const box = rowText1(track.totalText, totalFont, side.labelTop, { right: track.right }, side.labelH);
+      const rect = { ...box, x: alignedIn(track.right - track.inner, track.right, box.w, align) };
+      label(id, 'grandTotal', { colId: track.column.id }, track.totalText, totalFont, rect, undefined, align);
       marks.cells.push({ colId: track.column.id, kind: 'total', value: track.total, text: track.totalText, rect });
     });
     panelTracks.forEach((track, p) => {
@@ -1293,24 +1434,12 @@ function layoutBarTableOnce(
   pushAll(warnings, solved.warnings);
 
   const segmentNames = series.map((s) => s.label ?? s.id).join(', ');
-  // Each panel keeps MIN_RUN beside its end labels; weights share the spare width.
-  // A cascade track keeps MIN_TRACK, its head's longest word and its Total
-  // inside; on one shared scale the panel with the smallest total sets it.
-  const minTracks = panels.map((entry, p) => (cascade
-    ? Math.max(MIN_TRACK, ...entry.head.split(/\s+/).map((word) => width(word, headFont)), totalWidths[p]! + 2 * END_GAP)
-    : Math.max(MIN_RUN, totalWidths[p]! - endReserves[p]!)));
   // On one shared scale a panel is as wide as its total: the smallest total sets the width, and the refusal names it.
   const tightest = sharedScale ? minTracks.reduce((best, min, p) => (spans[p]! > 0 && min / spans[p]! > minTracks[best]! / spans[best]! ? p : best), 0) : -1;
   const widest = spans.indexOf(maxOf(spans));
   const wideHint = (): string | undefined => tightest >= 0 && tightest !== widest && spans[tightest]! > 0
     ? `The '${panels[tightest]!.panel.label ?? panels[tightest]!.panel.id}' panel's total is ${formatAutomaticPercent((spans[tightest]! / spans[widest]!) * 100, spans[tightest]! / spans[widest]! < 0.1 ? 1 : 0, false, locale)} of the '${panels[widest]!.panel.label ?? panels[widest]!.panel.id}' panel's, and the panels share one scale, so its track needs ${Math.round(minTracks[tightest]!)}px. Set options.sharedScale to false to give each panel its own width.`
     : undefined;
-  const panelsW = sharedScale
-    ? extrasSum + maxOf(minTracks.map((min, p) => (spans[p]! > 0 ? min / spans[p]! : 0))) * spanSum
-    : cascade
-      ? Math.max(extrasSum + minTracks.reduce((sum, w) => sum + w, 0), maxOf(panels.map((_, p) => ((extras[p]! + minTracks[p]!) * weightSum) / weights[p]!)))
-      // Several panels: each longest bar keeps PREFERRED_RUN, or the table goes compact.
-      : panels.reduce((sum, _entry, p) => sum + PANEL_GAP + Math.max((panels.length > 1 ? PREFERRED_RUN : MIN_RUN) + endReserves[p]!, totalWidths[p]!), 0);
   // Compact: each block is one panel across the width (beside the side
   // columns under cascade), and the first name line holds a short name beside the side columns.
   const kMin = Math.max(0, maxOf(minTracks.map((min, p) => (spans[p]! > 0 ? min / spans[p]! : 0))));
@@ -1323,11 +1452,19 @@ function layoutBarTableOnce(
     ? Math.min(cascadeRest + periodNameFull, 1.5 * cascadeRest)
     : maxOf(panels.map((_, p) => MIN_RUN + endReserves[p]!));
   const minWidth = size.width - plot.w + (interleaved
-    ? Math.max(interleavedPanelsW, sideW + LABEL_GAP + MIN_COMPACT_LABEL)
+    ? Math.max(interleavedPanelsW, minSideW + LABEL_GAP + MIN_COMPACT_LABEL)
     : compact
-    ? Math.max(compactPanelsW + (cascade ? sideW : 0), sideW + LABEL_GAP + MIN_COMPACT_LABEL)
-    : fixedW + growthW + panelsW);
+    ? Math.max(compactPanelsW + (cascade ? minSideW : 0), minSideW + LABEL_GAP + MIN_COMPACT_LABEL)
+    : minFixedW + growthW + panelsW);
 
+  // Panels first take the first number head's room over the name track. Where that alone passes the width, the
+  // default order draws with a warning: a block order never moves a table to its compact form or a refusal.
+  if (panelsFirst && numberColumns.length > 0 && minWidth > size.width) {
+    const { columnOrder: _order, ...defaultOrder } = options;
+    const drawn = layoutBarTable(authored, defaultOrder);
+    return { ...drawn, warnings: [...drawn.warnings, { code: 'option-ignored', severity: 'warn', field: ['options', 'columnOrder'],
+      message: 'columnOrder has no effect at this width: the number heads need their room over the name track', suggest: 'Draw the chart wider, or remove columnOrder.', fix: [{ op: 'remove', path: '/options/columnOrder' }] }] };
+  }
   // Only a refusal carries the hint; a table that fits keeps its sizing unchanged.
   const sizeHint = minWidth > size.width ? wideHint() : undefined;
   return {
@@ -1360,7 +1497,7 @@ function layoutBarTableOnce(
       desc: chartString(options, 'bartableDescStart', { v1: rows.length, v2: columns.length ? chartString(options, 'tableColumnsClause', { v1: numberTracks.map((track) => track.name).join(', ') }) : '' }) +
         `${panels.length === 1 ? chartString(options, 'barPanelOne') : chartString(options, 'barPanels', { v1: panels.length })}, ${panels.map((entry) => entry.head).join('; ')}, ${sharedScale ? chartString(options, 'sharedScale') : chartString(options, 'ownScale')}. ` +
         `${cascade ? chartString(options, 'cascadeDesc', { v1: showShare ? chartString(options, 'shareColumnClause') : '', v2: bracketRows ? chartString(options, 'combinedShareBracket', { v1: bracketLabel }) : '', v3: growth ? chartString(options, 'lastColumnClause', { v1: growth.head }) : '' }) : ''}` +
-        chartString(options, 'segmentsSentence', { v1: segmentNames, v2: cascade ? chartString(options, 'cascadeValueLabels') : chartString(options, 'barEndTotalRange') + (solved.placed.some((placed) => placed.id.startsWith('part:')) ? chartString(options, 'barPartValues') : '') }) +
+        chartString(options, 'segmentsSentence', { v1: segmentNames, v2: !valuesPrinted ? '' : cascade ? chartString(options, 'cascadeValueLabels') : chartString(options, 'barEndTotalRange') + (solved.placed.some((placed) => placed.id.startsWith('part:')) ? chartString(options, 'barPartValues') : '') }) +
         `${ranged ? chartString(options, 'rangeBarDesc') : ''}` +
         `${showTotal ? chartString(options, 'tableTotalRow', { v1: totalLabel }) : ''}`,
     },

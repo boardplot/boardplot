@@ -244,4 +244,54 @@ fixtures.push({
   },
 });
 
+// A plain table for the column settings: two number columns, two panels, a Total row.
+const storeData: BarTableData = {
+  categories: [
+    { id: 'north', label: 'Northern region' },
+    { id: 'east', label: 'Eastern region' },
+    { id: 'south', label: 'Southern region' },
+    { id: 'west', label: 'Western region' },
+  ],
+  series: [{ id: 'online', label: 'Online' }, { id: 'stores', label: 'Stores' }],
+  columns: [
+    { id: 'count', label: 'Stores open', values: [42, 31, 27, 18], format: '1,234' },
+    { id: 'staff', label: 'Staff', values: [640, 480, 390, 210], format: '1,234' },
+  ],
+  panels: [
+    { id: 'sales', label: 'Sales', unit: '$m', values: { online: [34, 26, 18, 9], stores: [58, 41, 37, 22] } },
+    { id: 'margin', label: 'Gross margin', unit: '$m', values: { online: [12, 9, 7, 3], stores: [19, 15, 11, 8] } },
+  ],
+};
+const storeOptions: BarTableOptions = { title: 'Sales and gross margin by region, 2025', source: 'Invented retail data', size: { width: 760 } };
+fixtures.push(
+  {
+    id: 'columns-reordered', title: 'Panels before the number columns', kind: 'example', tags: [], data: storeData,
+    options: { ...storeOptions, columnOrder: ['panels', 'numbers'] },
+  },
+  {
+    id: 'total-top', title: 'The Total row above the rows, with its rule and ground', kind: 'example', tags: [], data: storeData,
+    options: { ...storeOptions, totalPosition: 'top' },
+  },
+  {
+    id: 'no-values', title: 'No values at the bars: number columns and the Total keep theirs', kind: 'example', tags: [], data: storeData,
+    options: { ...storeOptions, labels: { point: false } },
+  },
+  {
+    id: 'column-widths', title: 'Authored widths, alignment and heads per column', kind: 'example', tags: [], data: storeData,
+    options: {
+      ...storeOptions,
+      columnOverrides: {
+        label: { width: 150, align: 'right' },
+        count: { width: 70, align: 'center', label: 'Open' },
+        staff: { width: 70, align: 'left', headAlign: 'right' },
+        sales: { width: 240, align: 'right' },
+      },
+    },
+  },
+  {
+    id: 'no-column-heads', title: 'No head row: the first row starts at the top of the table', kind: 'example', tags: [], data: storeData,
+    options: { ...storeOptions, subtitle: 'Stores open, staff, then sales and gross margin in $m', columnHeads: false },
+  },
+);
+
 registerFixtures('bartable', fixtures);

@@ -299,7 +299,7 @@ A KPI table: measures by one hierarchical dimension by period, switchable betwee
 | outlineMarks | boolean |  | `false` | Fold marks beside parent rows. Drawn in static SVG/PNG and read-only grids. Default false: no marks or gutter. true draws the marks and reserves their gutter. Interactive grids keep their fold buttons either way. |
 | columnOverrides | object |  |  | Settings per generated column. Ids: label, range, pp, pl, each displayed period id. width beats widths. The automatic card form sizes tracks by content and ignores width, except a smaller label width. |
 | columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
-| columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Cell alignment. |
+| columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Alignment of the column: its cell text and, unless headAlign is set, its head. Bars keep starting at the panel origin. |
 | columnOverrides.*.headAlign | string | `'left'`, `'right'`, `'center'` |  | Head alignment; defaults to align. |
 | columnOverrides.*.label | string |  |  | Head text. |
 | columnOrder | array |  |  | Order of whole blocks; blocks left out follow in default order. Ids: block, periods. block is Range and its comparisons. The label stays first, and only the label and leading block columns pin. |

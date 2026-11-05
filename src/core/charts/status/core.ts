@@ -2,6 +2,7 @@ import { chartSizing } from '../../sizing';
 /** Zod-free status chart registration. */
 
 import type { ChartCore } from '../../registry';
+import { yieldingWidths } from '../heatmap/columnTracks';
 import {
   layoutStatus,
   lintStatus,
@@ -23,6 +24,9 @@ export const statusCore: ChartCore<
   summary:
     'Entity × period matrix with discrete semantic states, visible sparse cells, and truthful state keys',
   layout: layoutStatus,
+  finishLayout: (layout) => yieldingWidths('status', layout, (data) => data.columns.map((column) => column.id), {
+    head: (id) => `category:${id}`, cell: (label, id) => label.startsWith('state:') && label.endsWith(`:${id}`),
+  }),
   defaults: { columnLabels: 'top' },
   annotationKinds: [],
   lint: lintStatus

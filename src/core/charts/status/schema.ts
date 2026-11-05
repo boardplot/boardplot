@@ -2,6 +2,7 @@
 
 import * as z from 'zod';
 import { addDuplicateIdIssues, baseOptionsSchema, cellSchema as valueCellSchema, idSchema, keyPositionSchema, refusedBaseOptions } from '../../schema/shared';
+import { columnOverridesOption } from '../../schema/generatedColumnOptions';
 import type { StatusData, StatusOptions } from './layout';
 
 const rowSchema = z.strictObject({
@@ -99,6 +100,7 @@ export const statusOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptio
         message: 'status supports at most 6 states; bucket related verdicts into 6 or fewer states',
       }).describe("One to six declared categorical states defining cell meaning, legend labels and paint."),
     columnLabels: z.enum(['top', 'bottom']).optional().describe("Column-caption position; defaults to top."),
+    columnOverrides: columnOverridesOption('status', ['width', 'align', 'headAlign', 'label']),
     legend: legendSchema.optional().describe("State-legend placement, or none to suppress the legend while cells name every used state. A required key remains when cell state names are not drawn, including a one-state matrix. A grid panel's explicit none leaves the state key with the host."),
   })
   .superRefine((options, ctx) => {
