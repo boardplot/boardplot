@@ -572,6 +572,8 @@ function sharedTableView(data: TableData, options: TableOptions, table: Resolved
   const key = layoutKey(data, { expansion: options.expansion, topN: options.topN });
   let known = tableViews.get(table);
   if (!known || known.key !== key) tableViews.set(table, known = { key, view: prepareTableView(data, options, table) });
+  // Note kinds live for one layout, and a shared view outlives it: mark its notes again for this layout.
+  known.view.notes.forEach(disclosureNote);
   return known.view;
 }
 
