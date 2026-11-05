@@ -1,7 +1,7 @@
 import type { MetricStackData } from './metricStack';
 import { isRecord } from '../../lint/shared';
 import { ownedDocumentCopy } from '../../doc/ownedDocumentCopy';
-import { NormalizeError } from '../../normalize/shared';
+import { NormalizeError, substitute } from '../../normalize/shared';
 import type { GridOptions } from '../../types/options';
 
 export type GridTrackScope = 'row' | 'column' | 'all';
@@ -358,15 +358,6 @@ function facetLabel(raw: unknown, by: GridRepeatFacet | undefined, value: string
   const list = by === 'series' ? raw.series : raw.categories;
   const entry = Array.isArray(list) ? list.find((item) => isRecord(item) && item.id === value) : undefined;
   return isRecord(entry) && typeof entry.label === 'string' ? entry.label : value;
-}
-
-export function substitute(value: unknown, placeholder: string, replacement: string): unknown {
-  if (typeof value === 'string') return value.split(placeholder).join(replacement);
-  if (Array.isArray(value)) return value.map((item) => substitute(item, placeholder, replacement));
-  if (isRecord(value)) {
-    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, substitute(item, placeholder, replacement)]));
-  }
-  return value;
 }
 
 /**
