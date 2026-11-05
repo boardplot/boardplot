@@ -17,7 +17,7 @@ import { cutWithTitle, distinctCut, fitText } from '../../label/fitText';
 import { disclosureNote } from '../../notes';
 import { authoredNotes, frameTextOptions, legendOff, legendRequired, solveFrame } from '../../frame';
 import type { Rect, Size } from '../../geometry';
-import { createOccupiedIndex } from '../../label/occupied';
+import { createOccupiedIndex, type OccupiedClaim } from '../../label/occupied';
 import { parseFormatExample } from '../../formatSpec';
 import { accessibleTitle, resolveSize } from '../../normalize/shared';
 import { defaultMeasurer, ellipsize, WIDTH_SAFETY, type FontSpec, type TextMeasurer } from '../../text';
@@ -547,6 +547,73 @@ function compactTable(
   return compact;
 }
 
+function prepareTableView(data: TableData, options: TableOptions, table: ResolvedTable) {
+  // The totals-only step of a depth control: every level-0 data row
+  // goes with its subtree and the totals and section headings stay.
+  const dataRows = visibleRows(table, undefined, expansionRootsHidden(table, options.expansion));
+  // A table with no data row draws one row under its head that says so; the React grid draws the same row.
+  const rows = hasNoDataRows(table) ? [...dataRows, emptyMessageRow(table, DEFAULT_EMPTY_MESSAGE)] : dataRows;
+  const expandedIds = new Set<Id>(rows.map((row) => row.parentId).filter((id): id is Id => id !== undefined));
+  // Column widths follow the full data set: every authored row before topN
+  // folds it (collapsed rows included), plus the rows topN generates. Another
+  // sort, topN or expansion then keeps every column in place, unless a
+  // generated rest label is wider than every authored one.
+  const fullRows = options.topN ? resolvedForSize(data, { ...options, topN: undefined }).table.rows : table.rows;
+  const fullIds = new Set(fullRows.map((row) => row.id));
+  const widthRows = [...fullRows, ...table.rows.filter((row) => !fullIds.has(row.id)), ...rows.filter((row) => !fullIds.has(row.id) && !table.rows.includes(row))];
+  const cols = visibleColumns(table);
+  const spans = groupSpans(table, cols);
+  /**
+   * Runs of neighbouring banded columns. A band on the columns
+   * themselves is how a block inside a group gets its ground: the FY-to-date
+   * pair at the end of a twelve-month group is a band, and a group of its
+   * own there would split the toggle that covers the fiscal year.
+   */
+  const bandedColumnRuns: { columnIds: Id[] }[] = [];
+  for (const col of cols) {
+    if (col.band !== true) continue;
+    const previous = bandedColumnRuns[bandedColumnRuns.length - 1];
+    const neighbour = previous !== undefined
+      && cols[cols.indexOf(col) - 1]?.id === previous.columnIds[previous.columnIds.length - 1];
+    if (neighbour) previous!.columnIds.push(col.id);
+    else bandedColumnRuns.push({ columnIds: [col.id] });
+  }
+
+  return { dataRows, rows, expandedIds, fullRows, widthRows, cols, spans, bandedColumnRuns,
+    heatLanes: heatRanges(cols, rows), arrowShapes: arrowKey(cols, rows), notes: tableFootnotes(table, rows, cols),
+    textColumns: cols.filter(col => col.kind === 'rowLabel' || col.kind === 'text'),
+    statusColumns: cols.filter(col => col.kind === 'status'),
+  };
+}
+
+const tableViews = new WeakMap<ResolvedTable, { key: string; view: ReturnType<typeof prepareTableView> }>();
+
+/** The visible semantic structure is shared across every numeric frame and spacing probe. */
+function sharedTableView(data: TableData, options: TableOptions, table: ResolvedTable) {
+  const key = layoutKey(data, { expansion: options.expansion, topN: options.topN });
+  let known = tableViews.get(table);
+  if (!known || known.key !== key) tableViews.set(table, known = { key, view: prepareTableView(data, options, table) });
+  return known.view;
+}
+
+type TableFrame = { frame: ReturnType<typeof solveFrame>; claims: OccupiedClaim[] };
+const tableFrames = new WeakMap<ResolvedTable, Map<string, TableFrame>>();
+
+/** Frame text is independent of the table's spacing and header rungs. */
+function sharedTableFrame(table: ResolvedTable, input: Parameters<typeof solveFrame>[0]): TableFrame {
+  const key = layoutKey(table, input);
+  let frames = tableFrames.get(table);
+  if (!frames) tableFrames.set(table, frames = new Map());
+  let value = frames.get(key);
+  if (!value) {
+    const occupied = createOccupiedIndex({ x: 0, y: 0, w: input.size.width, h: input.size.height });
+    value = { frame: solveFrame(input, occupied), claims: occupied.snapshot() };
+    if (frames.size >= 64) frames.delete(frames.keys().next().value!);
+    frames.set(key, value);
+  }
+  return value;
+}
+
 function layoutTableOnce(
   authoredData: TableData, options: LayoutOptions, initialResolved: ReturnType<typeof resolveTable>, sizingOnly: boolean, formatFits: FormatFits,
   /** Given a pass's sizing, whether its caller reads the scene. A pass without one always draws. */
@@ -615,36 +682,7 @@ function layoutTableOnce(
   }
 
   const table = resolved.table;
-  // The totals-only step of a depth control: every level-0 data row
-  // goes with its subtree and the totals and section headings stay.
-  const dataRows = visibleRows(table, undefined, expansionRootsHidden(table, options.expansion));
-  // A table with no data row draws one row under its head that says so; the React grid draws the same row.
-  const rows = hasNoDataRows(table) ? [...dataRows, emptyMessageRow(table, DEFAULT_EMPTY_MESSAGE)] : dataRows;
-  const expandedIds = new Set<Id>(rows.map((row) => row.parentId).filter((id): id is Id => id !== undefined));
-  // Column widths follow the full data set: every authored row before topN
-  // folds it (collapsed rows included), plus the rows topN generates. Another
-  // sort, topN or expansion then keeps every column in place, unless a
-  // generated rest label is wider than every authored one.
-  const fullRows = options.topN ? resolveTable(data, { ...options, topN: undefined }).table.rows : table.rows;
-  const fullIds = new Set(fullRows.map((row) => row.id));
-  const widthRows = [...fullRows, ...table.rows.filter((row) => !fullIds.has(row.id)), ...rows.filter((row) => !fullIds.has(row.id) && !table.rows.includes(row))];
-  const cols = visibleColumns(table);
-  const spans = groupSpans(table, cols);
-  /**
-   * Runs of neighbouring banded columns. A band on the columns
-   * themselves is how a block inside a group gets its ground: the FY-to-date
-   * pair at the end of a twelve-month group is a band, and a group of its
-   * own there would split the toggle that covers the fiscal year.
-   */
-  const bandedColumnRuns: { columnIds: Id[] }[] = [];
-  for (const col of cols) {
-    if (col.band !== true) continue;
-    const previous = bandedColumnRuns[bandedColumnRuns.length - 1];
-    const neighbour = previous !== undefined
-      && cols[cols.indexOf(col) - 1]?.id === previous.columnIds[previous.columnIds.length - 1];
-    if (neighbour) previous!.columnIds.push(col.id);
-    else bandedColumnRuns.push({ columnIds: [col.id] });
-  }
+  const { dataRows, rows, expandedIds, fullRows, widthRows, cols, spans, bandedColumnRuns, heatLanes, arrowShapes, notes: tableNotes, textColumns, statusColumns } = sharedTableView(data, options, table);
 
   /**
    * The empty track a column group stands off by: 16 px between
@@ -690,16 +728,13 @@ function layoutTableOnce(
   // Horizontal cell air: the column-count default, or the px an author
   // names for a board with tighter tracks.
   let cellPadX = options.cellPadX ?? trackCellPadX(cols.length);
-  let occupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
   // A lane cut at fixed edges names them in one row above the grid.
   // `legend: 'none'` drops the row: a host that draws its own key
   // for the same scale would otherwise show two.
   const keyless = options.legend === 'none';
   // One lane per heat column, derived where both surfaces can ask for it.
-  const heatLanes = heatRanges(cols, rows);
   const heatEntries = heatKey(cols, heatLanes, theme, options.strings, options.locale?.language);
   // The arrow shapes a table draws, keyed in the same row.
-  const arrowShapes = arrowKey(cols, rows);
   if (keyless) legendOff(warnings, 'table', [...heatEntries, ...arrowShapes].map((entry) => entry.label));
   const keyEntries = keyless ? [] : heatEntries;
   const arrowEntries = keyless ? [] : arrowShapes;
@@ -714,7 +749,7 @@ function layoutTableOnce(
       // rows/cols, not table.rows/table.columns: this surface is static, so a
       // marker inside a collapsed row or a hidden column is unreachable here
       // and its footnote would point at nothing
-      footnotes: [...tableFootnotes(table, rows, cols), ...authored, ...(options[ENGINE_NOTES] ?? [])],
+      footnotes: [...tableNotes, ...authored, ...(options[ENGINE_NOTES] ?? [])],
       // Nothing in a table points at a note: no head or cell carries a
       // mark, so a "1)" before the note is a number the reader cannot follow
       // (the same rule as for the engine's own notes). The author's
@@ -738,7 +773,8 @@ function layoutTableOnce(
       theme,
       measure,
   };
-  let frame = solveFrame(frameInput, occupied);
+  let framePlan = sharedTableFrame(table, frameInput);
+  let frame = framePlan.frame;
   let plot = frame.plot;
   // Text drawn on an authored ground, by paint: whether it reads there is decided in the theme it is painted in.
   const groundTexts = new Map<string, Paint>();
@@ -765,8 +801,8 @@ function layoutTableOnce(
   cellPadX = widthPlan.cellPadX;
   if (frameInput.footerInset !== cellPadX) {
     frameInput.footerInset = cellPadX;
-    occupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
-    frame = solveFrame(frameInput, occupied);
+    framePlan = sharedTableFrame(table, frameInput);
+    frame = framePlan.frame;
     plot = frame.plot;
   }
   const nodes: SceneNode[] = [...frame.nodes];
@@ -1082,7 +1118,7 @@ function layoutTableOnce(
         if (wrap.lines.length > 1) rowExtra.set(row.id, Math.ceil((wrap.lines.length - 1) * font.size * 1.2));
       }
     }
-    for (const col of cols) {
+    for (const col of textColumns) {
       const rowLabel = col.kind === 'rowLabel' && row.role !== 'section';
       if (col.kind !== 'text' && !rowLabel) continue;
       const cell = row.cells[col.id];
@@ -1137,7 +1173,6 @@ function layoutTableOnce(
   }
   const plannedCellText = new Map<string, ReturnType<typeof cellText>>();
   let cuts = 0;
-  const statusColumns = cols.filter(col => col.kind === 'status');
   for (const row of rows) for (const col of statusColumns) {
     const cell = row.cells[col.id];
     const isSection = row.role === 'section';
@@ -1152,7 +1187,6 @@ function layoutTableOnce(
       continue;
     }
   }
-  const textColumns = cols.filter(col => col.kind === 'rowLabel' || col.kind === 'text');
   let cellsFitted = false;
   const plannedCuts = () => {
     if (cellsFitted) return cuts;
@@ -1218,12 +1252,12 @@ function layoutTableOnce(
     const height = tableSizing(size, plot, y, totalW, 0).naturalHeight;
     if (height !== size.height) {
       const nextSize = { width: size.width, height };
-      const nextOccupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: height });
-      const nextFrame = solveFrame({ ...frameInput, size: nextSize }, nextOccupied);
+      const nextFramePlan = sharedTableFrame(table, { ...frameInput, size: nextSize });
+      const nextFrame = nextFramePlan.frame;
       if (nextFrame.plot.x === plot.x && nextFrame.plot.y === plot.y && nextFrame.plot.w === plot.w
         && tableSizing(nextSize, nextFrame.plot, y, totalW, 0).naturalHeight === height) {
         size = nextSize;
-        occupied = nextOccupied;
+        framePlan = nextFramePlan;
         frame = nextFrame;
         plot = frame.plot;
         nodes.length = 0;
@@ -2394,14 +2428,16 @@ function layoutTableOnce(
   }
 
   // ---- coarse claims (structure-proportional) ----
-  if (headsDrawn) occupied.claim({ x: rowX, y: gridY, w: rowW, h: headerH }, 'mark', {}, 'tableHeader');
+  // No table cell consults collision claims. Append the exact debug records without building an unused spatial index.
+  const occupied: OccupiedClaim[] = [...framePlan.claims];
+  if (headsDrawn) occupied.push({ rect: { x: rowX, y: gridY, w: rowW, h: headerH }, kind: 'mark', owner: {}, part: 'tableHeader' });
   for (const row of rows) {
     const { y: ry, h: rh } = rowY.get(row.id)!;
-    occupied.claim({ x: rowX, y: ry, w: rowW, h: rh }, 'mark', { rowId: row.id }, 'tableRow');
+    occupied.push({ rect: { x: rowX, y: ry, w: rowW, h: rh }, kind: 'mark', owner: { rowId: row.id }, part: 'tableRow' });
   }
   for (const col of cols) {
     const { x: cx, w } = colX.get(col.id)!;
-    occupied.claim({ x: cx, y: gridY, w, h: tableH }, 'mark', { colId: col.id }, 'tableColumn');
+    occupied.push({ rect: { x: cx, y: gridY, w, h: tableH }, kind: 'mark', owner: { colId: col.id }, part: 'tableColumn' });
   }
 
   const marks: TableMarks = {
@@ -2442,7 +2478,7 @@ function layoutTableOnce(
     },
     warnings,
     ...(paintWarningRules.length > 0 ? { paintWarningRules } : {}),
-    debug: { occupied: occupied.snapshot(), decisions: [] },
+    debug: { occupied, decisions: [] },
   };
   }, plannedCuts);
 }

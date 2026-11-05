@@ -55,3 +55,16 @@ it.each([878, 200])('keeps sizing and refusal advice without drawing at %i px', 
   planned.warnings.length = 0;
   expect(JSON.stringify(planResolvedRequest(request))).toBe(expected);
 });
+
+// Input versions must notice data edits and theme override replacements between synchronous requests.
+it('invalidates plans after in-place data changes and theme override replacements', () => {
+  const data: TableData = { columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'v', kind: 'value' }], rows: [{ id: 'a', label: 'A', cells: { v: 1 } }] };
+  const theme = { overrides: { type: { label: { size: 13 } } } };
+  const options = { size: { width: 878 }, theme };
+  layoutTableCard(data, options);
+  data.rows[0]!.label = 'A longer label';
+  data.rows[0]!.cells!.v = 123456;
+  expect(JSON.stringify(layoutTableCard(data, options))).toBe(JSON.stringify(layoutTableCard(structuredClone(data), { ...options, theme: structuredClone(theme) })));
+  theme.overrides = { type: { label: { size: 15 } } };
+  expect(JSON.stringify(layoutTableCard(data, options))).toBe(JSON.stringify(layoutTableCard(structuredClone(data), { ...options, theme: structuredClone(theme) })));
+});
