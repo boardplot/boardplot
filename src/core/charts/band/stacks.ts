@@ -136,6 +136,8 @@ export function grandTotalRequested(authored: boolean | undefined, variant: Stac
       severity: 'warn',
       message: 'grandTotalLabels needs a stacked variant: grouped bars stand side by side, and their sum is no total the chart shows — ignored',
       suggest: "use variant 'stacked' to show the total, or drop grandTotalLabels",
+      field: ['options', 'grandTotalLabels'],
+      fix: [{ op: 'remove', path: '/options/grandTotalLabels' }],
     });
   }
   return false;

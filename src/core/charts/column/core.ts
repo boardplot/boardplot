@@ -8,7 +8,7 @@ import { prepareRangeData } from '../../rangeRules';
 import type { ChartCore } from '../../registry';
 import type { ChartData } from '../../types/data';
 import type { ColumnOptions } from '../../types/options';
-import { stepToBar } from './stepToBar';
+import { stepToBar, withoutPatchesThatStep } from './stepToBar';
 import { layoutColumn, type ColumnDerived, type ColumnMarks } from './layout';
 
 export const columnCore: ChartCore<
@@ -25,7 +25,7 @@ export const columnCore: ChartCore<
   layout: (data, options) => {
     const prepared = prepareFractionData(data);
     const column = layoutColumn(prepared, options);
-    return withEventsDescribed(stepToBar(prepared, options ?? {}, column) ?? column, options);
+    return withEventsDescribed(stepToBar(prepared, options ?? {}, column) ?? withoutPatchesThatStep(prepared, options ?? {}, column), options);
   },
   categoryLabels: (categories, language) => calendarCategories(categories, language, true),
   defaults: { variant: 'grouped', referenceStyle: 'tick' },

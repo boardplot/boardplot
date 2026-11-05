@@ -66,7 +66,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
-| sort | object \| string \| true | `'sheet'`, `'asc'`, `'desc'`, `'reverse'`, `true` (or another value of its type) |  | Category ranking value: the sortBy measure (a, b, sum or diff), default sum. categories sets sheet, reverse, asc or desc with stable ties and missing values last. A rest row stays last. Dated rows keep authored order when a growth or difference annotation spans periods. sort.segments is ignored with an info warning unless sheet. |
+| sort | object \| string \| true | `'sheet'`, `'asc'`, `'desc'`, `'reverse'`, `true` (or another value of its type) |  | Category ranking value: the sortBy measure (a, b, sum or diff), default sum. categories sets sheet, reverse, asc or desc with stable ties and missing values last. A rest row stays last. Dated rows keep authored order when a growth or difference annotation spans periods. |
 | columnOverrides | object |  |  | Settings per generated column. Ids: label, diff. |
 | columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
 | columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Alignment of the column: its cell text and, unless headAlign is set, its head. Bars keep starting at the panel origin. |

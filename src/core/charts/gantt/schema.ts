@@ -7,6 +7,7 @@ import {
   baseOptionsSchema,
   idSchema,
   refusedBaseOptions,
+  retiredKey,
 } from '../../schema/shared';
 import { columnOrderOption, columnOverridesOption } from '../../schema/generatedColumnOptions';
 import type { GanttData } from '../../types/data';
@@ -97,6 +98,7 @@ export const ganttDataSchema = z
   }) as unknown as z.ZodType<GanttData>;
 
 export const ganttOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions('gantt')).safeExtend({
+  format: retiredKey("'format' has no value labels to format on a gantt; drop it", 'gantt formats calendar dates through its date options.'),
   labels: baseOptionsSchema.shape.labels.describe("False hides timeline item labels. Row names, metadata cells and column headers remain. Use labels.activity: false to hide those, or labels.item: false to hide only item labels. For milestones, labels.item: ['category'] prints the item name without its date; ['absolute'] or the legacy ['value'] prints only the date. Span items print the inclusive date range. Parts follow the supplied order. An empty requested part is named in a note."),
   today: z.string().optional().describe("Authored ISO 8601 date for the dashed today marker; the system clock is not read. The marker, like an event rule, passes the period names of the calendar head with a gap. A bar, arrow or shade name with no seat clear of the marker and the event rules sits inside its mark across them, and the rules break over that mark."),
   elapsed: z.boolean().optional().describe("Tint the visible time before today; defaults to true when the today marker is displayed."),

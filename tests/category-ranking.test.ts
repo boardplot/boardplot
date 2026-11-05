@@ -103,7 +103,7 @@ it('uses the butterfly measure with the requested direction and warns on conflic
   expect(ids(layoutButterfly(data, { ...options, sort: { categories: 'desc' } })))
     .toEqual(ids(layoutButterfly(data, { ...options, sortBy: 'sum' })));
   expect(ids(layoutButterfly(data, { ...options, sort: { categories: 'asc' } }))).toEqual(['amber', 'cedar', 'birch', 'elm']);
-  const conflict = layoutButterfly(data, { ...options, sortBy: 'diff', sort: { categories: 'reverse', segments: 'desc' }, topN: { n: 2 } });
+  const conflict = layoutButterfly(data, { ...options, sortBy: 'diff', sort: { categories: 'reverse', segments: 'desc' as never }, topN: { n: 2 } });
   expect(ids(conflict)).toEqual(['elm', 'amber', '__rest']);
   expect(conflict.warnings).toContainEqual(expect.objectContaining({ code: 'butterfly-sort-conflict', severity: 'warn', fix: [{ op: 'remove', path: '/options/sortBy' }] }));
   expect(conflict.warnings).toContainEqual(expect.objectContaining({ code: 'sort-segments-ignored', severity: 'info' }));
@@ -131,7 +131,7 @@ it('keeps dated butterfly, bullet and variance categories in authored order unde
 it('keeps the largest dot scores and dumbbell gaps by size before sorting', () => {
   const data = { categories, series: [{ id: 'score', values: [3, -9, 8, 1] }] };
   const draw = (topN: { n: number; rest?: boolean; restLabel?: string; showRestCount?: boolean; threshold?: number }, sort?: { categories: 'desc' }) =>
-    layoutDot(data, { size, topN, sort, highlight: ['amber'] });
+    layoutDot(data, { size, topN: topN as { n: number }, sort, highlight: ['amber'] });
   const kept = draw({ n: 2 });
   expect(kept.marks.rows.map((row) => row.categoryId)).toEqual(['birch', 'cedar']);
   expect(draw({ n: 2 }, { categories: 'desc' }).marks.rows.map((row) => row.categoryId)).toEqual(['cedar', 'birch']);

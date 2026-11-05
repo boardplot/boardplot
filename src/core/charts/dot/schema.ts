@@ -9,6 +9,7 @@ import {
   colorRoleField,
   addCategorySeriesIdIssues,
   averageMarkerWithoutPartial,
+  topNRankCutOnly,
   baseOptionsSchema,
   idSchema,
   refusedBaseOptions,
@@ -52,7 +53,7 @@ export const dotDataSchema = z
 
 export const dotOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions('dot')).safeExtend({
   columnOverrides: columnOverridesOption('dot', ['width', 'align', 'headAlign', 'label']),
-  topN: baseOptionsSchema.shape.topN.describe("Keep the n largest categories by absolute first-series value, or absolute gap for dumbbell, before sorting. Kept categories retain authored order unless sort.categories reorders them. No Others row is drawn; omitted category names are disclosed. Authored rest: true, restLabel, showRestCount or threshold warns that it is ignored when categories are omitted."),
+  topN: topNRankCutOnly.optional().describe("Keep the n largest categories by absolute first-series value, or absolute gap for dumbbell, before sorting. Kept categories retain authored order unless sort.categories reorders them. No Others row is drawn; omitted category names are disclosed. Authored rest: true, restLabel, showRestCount or threshold warns that it is ignored when categories are omitted."),
   axisTitles: primaryAxisTitleSchema('under the value-axis tick row, ending at the right edge of the plot'),
   legend: baseOptionsSchema.shape.legend.describe("Key position. Multiple series get a key by default unless visible direct labels name them. 'none' hides the key; unnamed series warn."),
   variant: z.enum(['dot', 'dumbbell', 'lollipop']).optional().describe("Dot by default; dumbbell joins paired values and lollipop joins values to the baseline."),
@@ -60,7 +61,7 @@ export const dotOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions(
   arrow: z
     .boolean()
     .optional()
-    .describe("Dumbbell only (warning arrow-dumbbell-only otherwise): an arrowhead at the second series' dot shows the direction of change. The connector is painted good or bad by the sign of the change when the second series declares direction, neutral otherwise; a pair whose dots nearly touch keeps a plain connector."),
+    .describe("Dumbbell only: an arrowhead at the second series' dot shows the direction of change. The connector is painted good or bad by the sign of the change when the second series declares direction, neutral otherwise; a pair whose dots nearly touch keeps a plain connector."),
   gapColumn: z
     .boolean()
     .optional()

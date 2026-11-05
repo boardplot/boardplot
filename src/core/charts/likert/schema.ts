@@ -2,7 +2,7 @@
 
 import * as z from 'zod';
 import { columnOrderOption, columnOverridesOption } from '../../schema/generatedColumnOptions';
-import { addDuplicateIdIssues, baseOptionsSchema, idSchema, optionShapeSchema, refusedBaseOptions } from '../../schema/shared';
+import { addDuplicateIdIssues, baseOptionsSchema, idSchema, legendWithoutOrder, optionShapeSchema, refusedBaseOptions } from '../../schema/shared';
 import type { LikertData, LikertOptions } from './layout';
 
 // `.strict()` everywhere on this data path, deliberately. Elsewhere in the
@@ -89,6 +89,7 @@ export const likertDataSchema = z
 export const likertOptionsSchema = baseOptionsSchema
   .safeExtend(refusedBaseOptions('likert'))
   .safeExtend({
+    legend: legendWithoutOrder.describe(baseOptionsSchema.shape.legend.description!),
     sort: optionShapeSchema('sort', z.object({
       categories: z.enum(['sheet', 'asc', 'desc', 'reverse']).optional()
         .describe('Statement order: sheet keeps authored order, reverse reverses it, asc and desc rank by net score with stable ties. Overrides sortBy direction.'),

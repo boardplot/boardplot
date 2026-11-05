@@ -445,7 +445,7 @@ export function layoutHeatmap(
   const declaredDirections = rows.some((r) => r.direction !== undefined);
   const valence = vMin < 0 || (scale === 'continuous' && declaredDirections);
   if (options.cap && (scale === 'discrete' || glyph === 'harvey')) {
-    warnings.push({ code: 'cap-ignored', severity: 'warn', message: `cap does not apply to ${glyph === 'harvey' ? 'harvey glyphs' : 'the discrete rating ladder'}; it sets where the continuous scale saturates`, suggest: 'drop cap', field: ['options', 'cap'] });
+    warnings.push({ code: 'cap-ignored', severity: 'warn', message: `cap does not apply to ${glyph === 'harvey' ? 'harvey glyphs' : 'the discrete rating ladder'}; it sets where the continuous scale saturates`, suggest: 'drop cap', field: ['options', 'cap'], fix: [{ op: 'remove', path: '/options/cap' }] });
   }
   if (declaredDirections && ((scale === 'discrete' && !bins) || glyph === 'harvey')) {
     warnings.push({

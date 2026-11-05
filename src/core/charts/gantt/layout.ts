@@ -61,7 +61,9 @@ import { ganttBody, ganttFrame, MINIMUM_TIMELINE, STACKED_LANE_FLOOR } from './p
 import { maxOf, minOf, pushAll } from '../../arrays';
 
 /** Per-chart options, declared through optionsSchema. */
-export interface GanttOptions extends Omit<BaseOptionsFor<'gantt'>, 'labels'> {
+export interface GanttOptions extends Omit<BaseOptionsFor<'gantt'>, 'labels' | 'format'> {
+  /** Gantt formats calendar dates through its date options. */
+  format?: never;
   /** Item category selects its name; absolute (or legacy value) selects its date. */
   labels?: false | (Partial<Record<Exclude<LabelKind, 'item'>, boolean | LabelContent>> & {
     item?: boolean | (LabelContent[number] | 'value')[];

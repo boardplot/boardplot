@@ -1,5 +1,5 @@
 import { valueBandsSchema } from '../../bands';
-import { baseOptionsSchema, formatExample, idRecord, refusedBaseOptions } from '../../schema/shared';
+import { baseOptionsSchema, formatExample, idRecord, refusedBaseOptions, retiredKey } from '../../schema/shared';
 import * as z from 'zod';
 import { columnOrderOption, columnOverridesOption, columnVisibilityOption, rowVisibilityOption } from '../../schema/generatedColumnOptions';
 import { figuresNeedHeat, tableOptionsObject } from '../table/schema';
@@ -71,6 +71,7 @@ const rowVisibility = rowVisibilityOption('dimswitch');
 const table=tableOptionsObject.shape;
 const retiredGroupHead=(key:string)=>z.never({error:`'${key}' sets the head of a column group, and a dimswitch draws none; drop it`}).optional().describe(`Retired: it acts on column-group heads, and a dimswitch draws none. An old spec still draws and warns option-deprecated.`);
 export const dimswitchOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions('dimswitch')).safeExtend({
+ format:retiredKey("'format' has no effect on a dimswitch; set measures[].format",'each measure sets its own format.'),
  mountCollapsed:table.mountCollapsed,paintOffscreenRows:table.paintOffscreenRows,signs:table.signs,driverTones:table.driverTones,judgements:table.judgements,figures:table.figures,columnHeads:table.columnHeads,inlineVisibility:table.inlineVisibility,magnitude:table.magnitude,nulls:table.nulls,foldOn:table.foldOn,groupGround:table.groupGround,anchorWash:table.anchorWash,stickyLabels:table.stickyLabels,frameFill:table.frameFill,heightFill:table.heightFill,rowLabelLines:table.rowLabelLines,lastTrackFlex:table.lastTrackFlex,rowExtent:table.rowExtent,sortIndicator:table.sortIndicator,levelOffset:table.levelOffset,cellPadX:table.cellPadX,fitFormats:table.fitFormats,maxGrowth:table.maxGrowth,labelIndent:table.labelIndent,outlineMarks:table.outlineMarks,
  groupRule:retiredGroupHead('groupRule'),groupAlign:retiredGroupHead('groupAlign'),
  encodings:tableOptionsObject.shape.encodings.describe('Per-column opt-in visual encodings. A key is a column id: range, pp (the vs prior column), pl (the vs plan column, with a plan) or the id of a displayed period. Any other key draws nothing and warns dimswitch-encoding-column.'),

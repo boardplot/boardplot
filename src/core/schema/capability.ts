@@ -86,7 +86,7 @@ export const OPTION_CAPABILITY = {
     implementedBy: ['column', 'combo', 'pareto'],
   },
   secondaryAxis: {
-    implementedBy: ['box', 'combo'],
+    implementedBy: ['combo'],
   },
   // `labels` (both `false` and per-kind maps) changes nothing on waterfall:
   // it renders byte-identically — its layout
@@ -146,7 +146,7 @@ export const OPTION_CAPABILITY = {
   highlight: {
     implementedBy: [
       'bar', 'bartable', 'box', 'bullet', 'butterfly', 'cohort', 'column', 'combo', 'diagram', 'dot',
-      'funnel', 'gantt', 'grid', 'heatmap', 'histogram', 'kpi', 'likert', 'line', 'mekko', 'pareto', 'pie', 'pvm',
+      'funnel', 'gantt', 'grid', 'heatmap', 'histogram', 'kpi', 'likert', 'line', 'mekko', 'pie', 'pvm',
       'pyramid', 'sankey', 'scatter', 'slope', 'sparkline', 'status', 'table', 'dimswitch', 'variance', 'waterfall',
     ],
   },
@@ -174,8 +174,7 @@ export const OPTION_CAPABILITY = {
  * Two shapes, both enforced by `narrowValueAxis`:
  *
  * - `VALUE_AXIS_CAPABILITY`: a sub-key only some types read, fail-closed like
- *   the table above. box reads tickStep and reverse only to warn that it
- *   ignores them. break is refused wherever no glyph is drawn.
+ *   the table above. break is refused wherever no glyph is drawn.
  * - `VALUE_AXIS_ONLY`: a type whose layout reads just the listed sub-keys;
  *   every other sub-key is refused there, and with no sub-key listed the
  *   whole object is.
@@ -185,10 +184,10 @@ export const OPTION_CAPABILITY = {
  */
 export const VALUE_AXIS_CAPABILITY = {
   tickStep: {
-    implementedBy: ['bar', 'box', 'bullet', 'column', 'combo', 'dot', 'histogram', 'line', 'mekko', 'scatter', 'variance'],
+    implementedBy: ['bar', 'bullet', 'column', 'combo', 'dot', 'histogram', 'line', 'mekko', 'scatter', 'variance'],
   },
   reverse: {
-    implementedBy: ['box', 'line', 'scatter'],
+    implementedBy: ['line', 'scatter'],
   },
   // Every other type would accept break, draw no glyph and
   // only warn axis-break-unsupported. A bar variant that draws none
@@ -203,6 +202,10 @@ export const VALUE_AXIS_CAPABILITY = {
 } as const;
 
 export const VALUE_AXIS_ONLY = {
+  // A plain linear read of the observations.
+  box: {
+    keys: ['show', 'min', 'max', 'gridlines', 'break'],
+  },
   waterfall: {
     keys: ['break'],
   },

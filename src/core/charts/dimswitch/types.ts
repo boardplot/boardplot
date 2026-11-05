@@ -62,7 +62,9 @@ export interface DimSwitchData {
   facts: { memberId: string; periodId: string; sums: DimSwitchSums; ref?: DimSwitchSums }[];
 }
 export type DimSwitchVariant = 'by-measure' | 'by-member';
-export interface DimSwitchOptions extends Omit<TableOptions, 'expansion' | 'topN' | 'variant' | 'groupRule' | 'groupAlign' | 'legend'> {
+export interface DimSwitchOptions extends Omit<TableOptions, 'expansion' | 'topN' | 'variant' | 'groupRule' | 'groupAlign' | 'legend' | 'format'> {
+  /** Each measure sets its own format. */
+  format?: never;
   topN?: never;
   /** Retired: a dimswitch draws no column-group head and no key. An old spec still draws and warns. */
   groupRule?: never;
