@@ -161,3 +161,11 @@ it('reuses table resolution across inline visibility and layout flags', () => {
     resolve.mockRestore();
   }
 });
+
+// A note's metadata sits on a hidden symbol: copied as a visible key, two equal results compare as different.
+it('keeps hidden symbol keys hidden on a copied result', () => {
+  const hidden = Symbol('hidden');
+  const copy = tablePlans.copyPlannedValue({ note: Object.defineProperty({ text: 'a' }, hidden, { value: { kind: 'b' }, configurable: true }) });
+  expect(Object.getOwnPropertyDescriptor(copy.note, hidden)?.enumerable).toBe(false);
+  expect((copy.note as unknown as Record<symbol, unknown>)[hidden]).toEqual({ kind: 'b' });
+});
