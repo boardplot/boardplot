@@ -356,7 +356,8 @@ A file in `--out` takes the chart's name, `chart` when the spec has none; a take
 
 A document draws several charts in one call: `{ "version": 1, "charts": [...] }`, with a unique `name` per chart that also names its file under `--out`. A root `theme` or `locale` applies to every chart that sets none. The CLI starts and loads the engine once for all charts, where one `boardplot render` per chart pays that start for every chart. `boardplot_render`, `boardplot_measure` and `boardplot measure` take a document too.
 
-```json
+```sh
+boardplot render - --out charts <<'EOF'
 {
   "version": 1,
   "charts": [
@@ -374,9 +375,10 @@ A document draws several charts in one call: `{ "version": 1, "charts": [...] }`
     }
   ]
 }
+EOF
 ```
 
-The answer lists each chart under `charts` with its name, and `outputs` lists the files. The document is checked as a whole: one refused chart refuses the call and no file is written. Each error names its chart (`chart 'margin': …`) and points into it (`/charts/1/options/…`), so fix or drop that chart and render again. `--out -` takes a document of one chart only.
+This writes `charts/revenue.svg` and `charts/margin.svg`. The answer lists each chart under `charts` with its name, and `outputs` lists the files. The document is checked as a whole: one refused chart refuses the call and no file is written. Each error names its chart (`chart 'margin': …`) and points into it (`/charts/1/options/…`), so fix or drop that chart and render again. `--out -` takes a document of one chart only.
 
 ### Problem reports and usage counts
 
