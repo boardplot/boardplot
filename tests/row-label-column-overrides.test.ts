@@ -148,6 +148,42 @@ describe('authored column widths', () => {
       walk(drawn as never);
     });
 
+    describe('in the slices of a nested repeat', { timeout: 60_000 }, () => {
+      const sliceSpec = (slices: Record<string, unknown>, height: number, repeat: object = { dimension: 'region', values: ['north', 'south'] }, id = '$region') =>
+        sized([{ id: 'outer', type: 'grid', data: { repeat, template: { id, type: 'grid', data: { bySlice: slices } } } }], 1200, height);
+      const pairOf = (first?: object, second?: object) => ({ panels: [ladderPanel('first', first), ladderPanel('second', second)] });
+      const atSlice = (key: string, at: number) => ['data', 'panels', 0, 'data', 'template', 'data', 'bySlice', key, 'panels', at, 'options', 'columnOverrides', 'label', 'width'];
+
+      // Only panels and template were read, so a width in a slice found no group and the grid kept its refusal.
+      it('gives way and warns at the authored path', () => {
+        expect(canDraw(sliceSpec({ north: pairOf(), south: pairOf() }, 1100)).ok).toBe(true);
+        const before = sliceSpec({ north: pairOf(narrow, narrow), south: pairOf() }, 1100);
+        const copy = JSON.stringify(before);
+        expectDraws(before, atSlice('north', 1), '[outer] [north] [second] ');
+        expect(JSON.stringify(before)).toBe(copy);
+      });
+
+      // The inner ids repeat across the slices. A panel keeps its own warning when only its namesake moved.
+      it('takes back only the warning of the slice that moved', () => {
+        const drawn = expectDraws(sliceSpec({ north: pairOf(narrow), south: pairOf({ label: { width: 5000 } }) }, 1007), atSlice('north', 0), '[outer] [north] [first] ');
+        const south = widthWarnings(drawn).filter((warning) => warning.message.startsWith('[outer] [south] [first] '));
+        expect(south.map((warning) => warning.code)).toEqual(['generated-column-width-capped']);
+      });
+
+      // A slice draws with its placeholder filled in, so an id or a type read from the authored text names no panel.
+      it('reads ids and types after the placeholder is filled in', () => {
+        const filled = { panels: [ladderPanel('$region-a', narrow), ladderPanel('$region-b', narrow)] };
+        expectDraws(sliceSpec({ north: filled, south: pairOf() }, 1100), atSlice('north', 1), '[outer] [north] [north-b] ');
+        const typed = { panels: [{ ...ladderPanel('a', narrow), type: '$kind' }, { ...ladderPanel('b', narrow), type: '$kind' }] };
+        expectDraws(sliceSpec({ bullet: typed }, 600, { dimension: 'kind', values: ['bullet'] }, 'chart'), atSlice('bullet', 1), '[outer] [chart] [b] ');
+      });
+
+      // A key outside repeat.values passes validation and never draws, so it must not stop the give-way.
+      it('skips a slice that does not draw', () => {
+        expectDraws(sliceSpec({ north: pairOf(narrow, narrow), south: pairOf(), west: 12, unused: { panels: [null] } }, 1100), atSlice('north', 1), '[outer] [north] [second] ');
+      });
+    });
+
     it('does not change the caller object and keeps a refusal that holds with every width unset', () => {
       const spec = sized([inner('outer', 'grid', [ladderPanel('first', narrow), ladderPanel('second', narrow)])], 1200, 600);
       const before = JSON.stringify(spec);

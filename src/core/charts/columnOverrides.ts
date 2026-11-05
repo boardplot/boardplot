@@ -93,8 +93,19 @@ function nearbyWidths(authored: number, canvasW: number): number[] {
   return tries;
 }
 
-/** One step down to a panel: a panel of a list, by id and index, or the template of a repeat, which stands for every panel it builds. */
-export type WidthStep = { id: string; index: number } | 'template';
+/**
+ * One step down to a panel: a panel of a list, by id and index, a slice of a grid template, by the id of the panel it
+ * builds and its key, or the template of a repeat with no slices of its own, which stands for every panel it builds.
+ */
+export type WidthStep = { id: string; index: number } | { id: string; slice: string } | 'template';
+
+/** The authored path of a step list. A slice is a grid level itself, so the step after it has no `data` of its own. */
+const widthStepField = (path: readonly WidthStep[]): (string | number)[] => path.flatMap((step, at) => {
+  const previous = path[at - 1];
+  const entry = previous !== undefined && previous !== 'template' && 'slice' in previous ? [] : ['data'];
+  if (step === 'template') return [...entry, 'template'];
+  return 'slice' in step ? [...entry, 'template', 'data', 'bySlice', step.slice] : [...entry, 'panels', step.index];
+});
 
 /** The authored overrides of one chart: the chart itself, or a panel of a grid at any depth, which `path` leads to. */
 export interface WidthGroup {
@@ -133,7 +144,7 @@ export function widthsThatDraw(groups: readonly WidthGroup[], canvasW: number, d
       const where = seat === undefined ? 'the column keeps its unset width' : `the column takes ${seat} px`;
       warnings.push({
         code: wide ? 'generated-column-width-capped' : 'generated-column-width-floored', severity: 'warn',
-        field: [...path.flatMap((step) => (step === 'template' ? ['data', 'template'] : ['data', 'panels', step.index])), 'options', 'columnOverrides', id, 'width'],
+        field: [...widthStepField(path), 'options', 'columnOverrides', id, 'width'],
         message: `${path.flatMap((step) => (step === 'template' ? [] : [`[${step.id}] `])).join('')}columnOverrides.${id}.width ${width} does not draw on this canvas, so ${where}`,
         suggest: seat === undefined ? `Remove columnOverrides.${id}.width, or give the chart more room.` : `Set columnOverrides.${id}.width to ${seat}, or give the chart more room.`,
       });

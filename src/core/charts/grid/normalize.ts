@@ -360,7 +360,7 @@ function facetLabel(raw: unknown, by: GridRepeatFacet | undefined, value: string
   return isRecord(entry) && typeof entry.label === 'string' ? entry.label : value;
 }
 
-function substitute(value: unknown, placeholder: string, replacement: string): unknown {
+export function substitute(value: unknown, placeholder: string, replacement: string): unknown {
   if (typeof value === 'string') return value.split(placeholder).join(replacement);
   if (Array.isArray(value)) return value.map((item) => substitute(item, placeholder, replacement));
   if (isRecord(value)) {

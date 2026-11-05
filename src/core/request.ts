@@ -10,6 +10,8 @@ import { NormalizeError, canonicalLanguage } from './normalize/shared';
 import { withNumberMarks } from './numberMarks';
 import { chartRefusals, isRefused } from './schema/refusals';
 import { movedGridWarnings, movedWidthWarnings, TRACK_WIDTH_TYPES, widthsThatDraw, type WidthGroup, type WidthStep } from './charts/columnOverrides';
+import { substitute } from './charts/grid/normalize';
+import { isRecord } from './lint/shared';
 import type { ColumnOverride } from './types/options';
 import { DEFAULT_PRESET, REMOVED_NAMES, removedNameWarnings, resolveTargetTheme, resolveTheme } from './theme';
 import { DEFAULT_TARGET, floorTextScale, resolveTargetSize } from './target';
@@ -299,27 +301,40 @@ export function layoutResolvedRequest(request: ResolvedChartRequest): LayoutResu
 }
 
 interface WidthEntry { id?: string; type?: string; options?: { columnOverrides?: Record<string, ColumnOverride> }; data?: WidthLevel }
-interface WidthLevel { panels?: WidthEntry[]; template?: WidthEntry }
+interface WidthLevel { panels?: WidthEntry[]; template?: WidthEntry; repeat?: { dimension: string; values: string[] }; bySlice?: Record<string, WidthLevel> }
 
 const hasAuthoredWidth = (overrides: Record<string, ColumnOverride> | undefined): overrides is Record<string, ColumnOverride> =>
   overrides !== undefined && Object.values(overrides).some((override) => override.width !== undefined);
 const ownWidthGroups = (type: string, options: WidthEntry['options']): WidthGroup[] => (TRACK_WIDTH_TYPES.has(canonicalChartType(type) ?? type) && hasAuthoredWidth(options?.columnOverrides) ? [{ overrides: options.columnOverrides }] : []);
 
-/** The authored widths of a grid's panels, through nested grids at any depth and through repeat templates. */
+/** The authored widths of a grid's panels, through nested grids at any depth, repeat templates and the slices that draw. */
 function panelWidthGroups(level: WidthLevel | undefined, path: readonly WidthStep[] = []): WidthGroup[] {
-  const entries: [WidthEntry, WidthStep][] = Array.isArray(level?.panels)
-    ? level.panels.map((panel, index) => [panel, { id: panel.id!, index }])
-    : level?.template ? [[level.template, 'template']] : [];
-  return entries.flatMap(([entry, step]) => {
+  const widthsOf = (entry: WidthEntry, step: WidthStep): WidthGroup[] => {
     const type = canonicalChartType(entry.type ?? '') ?? entry.type ?? '';
     const below = [...path, step];
-    if (type === 'grid') return panelWidthGroups(entry.data, below);
-    return ownWidthGroups(type, entry.options).map((group) => ({ ...group, path: below }));
+    return type === 'grid' ? panelWidthGroups(entry.data, below) : ownWidthGroups(type, entry.options).map((group) => ({ ...group, path: below }));
+  };
+  if (Array.isArray(level?.panels)) return level.panels.flatMap((panel, index) => (isRecord(panel) ? widthsOf(panel, { id: (panel as WidthEntry).id!, index }) : []));
+  const template = level?.template;
+  if (!template) return [];
+  const slices = template.data?.bySlice;
+  if (!slices || !level?.repeat || (canonicalChartType(template.type ?? '') ?? template.type) !== 'grid') return widthsOf(template, 'template');
+  // Only the values draw, each with its placeholder filled in, so ids and types are read from a filled copy. Keys and indexes fit the authored data.
+  const placeholder = `$${level.repeat.dimension}`;
+  return level.repeat.values.flatMap((value) => {
+    if (!Object.hasOwn(slices, value)) return [];
+    const step = { id: substitute(template.id ?? value, placeholder, value) as string, slice: value };
+    return panelWidthGroups(substitute(slices[value], placeholder, value) as WidthLevel, [...path, step]);
   });
 }
 
 /** A copy of the grid data with one panel's overrides replaced. The caller's data stays as it is. */
 function withPanelOverrides(level: WidthLevel, [step, ...rest]: readonly WidthStep[], columnOverrides: Record<string, ColumnOverride>): WidthLevel {
+  if (step !== 'template' && 'slice' in step!) {
+    const template = level.template!;
+    const slices = template.data!.bySlice!;
+    return { ...level, template: { ...template, data: { ...template.data, bySlice: { ...slices, [step.slice]: withPanelOverrides(slices[step.slice]!, rest, columnOverrides) } } } };
+  }
   const entry = step === 'template' ? level.template! : level.panels![step!.index]!;
   const next = rest.length > 0 ? { ...entry, data: withPanelOverrides(entry.data!, rest, columnOverrides) } : { ...entry, options: { ...entry.options, columnOverrides } };
   if (step === 'template') return { ...level, template: next };
