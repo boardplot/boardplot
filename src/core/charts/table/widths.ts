@@ -64,9 +64,22 @@ interface TableWidthView {
 
 type WidthOptions = TableOptions & { [LABEL_WRAP_FLOOR]?: boolean; [SOFT_LABEL_CAP]?: boolean };
 
+interface PreparedTableTracks {
+  widths: Map<Id, number>;
+  minimumWidths: Map<Id, number>;
+  wouldWrap: ResolvedColumn[];
+  wrapFloors: Map<Id, number>;
+  chipFloor: number;
+  labelFloor: number;
+  wrappedOneLines: Map<Id, number>;
+}
+
+/** One resolved table, theme, measurer and non-frame option/view set; the caller owns invalidation. */
+export type TableWidthPreparation = Map<string, PreparedTableTracks>;
+
 /** One content width rule. Dense padding is a fallback only when normal padding cannot fit. */
-export function tableWidths(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions = {}, view: TableWidthView = {}): ReturnType<typeof tableWidthsWithHeads> {
-  if (options.columnHeads !== false) return tableWidthsWithHeads(table, theme, measure, options, view);
+export function tableWidths(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions = {}, view: TableWidthView = {}, preparation: TableWidthPreparation = new Map()): ReturnType<typeof tableWidthsWithHeads> {
+  if (options.columnHeads !== false) return tableWidthsWithHeads(table, theme, measure, options, view, preparation);
   // No head draws, so no head pays for a track: only the cells size the columns.
   const { columnHeads: _heads, ...withHeads } = options;
   const bare = (columns: readonly ResolvedColumn[]) => columns.map((col): ResolvedColumn => {
@@ -78,10 +91,10 @@ export function tableWidths(table: ResolvedTable, theme: Theme, measure: TextMea
     ...(view.columns === undefined ? {} : { columns: bare(view.columns) }),
     ...(view.allColumns === undefined ? {} : { allColumns: bare(view.allColumns) }),
     ...(view.defaultColumns === undefined ? {} : { defaultColumns: bare(view.defaultColumns) }),
-  });
+  }, preparation);
 }
 
-function tableWidthsWithHeads(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions = {}, view: TableWidthView = {}) {
+function tableWidthsWithHeads(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions = {}, view: TableWidthView = {}, preparation: TableWidthPreparation = new Map()) {
   const { defaultColumns, ...own } = view;
   const shown = own.columns ?? visibleColumns(table);
   if (own.scroll && defaultColumns !== undefined
@@ -91,11 +104,11 @@ function tableWidthsWithHeads(table: ResolvedTable, theme: Theme, measure: TextM
     // The width the labels and their folded-row hints need, not the room a wide frame handed the label: only that keeps rows from wrapping.
     if (track !== undefined && base.labelNeed !== undefined) own.labelKeep = Math.min(track, Math.max(base.labelNeed, base.labelBeforeFill ?? 0));
   }
-  const regular = tableWidthsOnce(table, theme, measure, options, own);
+  const regular = tableWidthsOnce(table, theme, measure, options, own, preparation);
   const count = (view.columns ?? visibleColumns(table)).length;
   const densePad = count >= 25 ? 3 : count >= DENSE_COLUMNS ? 5 : regular.cellPadX;
   if (options.cellPadX !== undefined || densePad >= regular.cellPadX || Math.max(regular.minimumW, regular.totalW) <= (view.available ?? Infinity)) return regular;
-  const dense = tableWidthsOnce(table, theme, measure, { ...options, cellPadX: densePad }, own);
+  const dense = tableWidthsOnce(table, theme, measure, { ...options, cellPadX: densePad }, own, preparation);
   const regularOverflow = regular.warnings.find(warning => warning.code === 'table-overflow');
   // The wider-size repair must also fit after normal padding returns.
   if (regularOverflow) dense.warnings = dense.warnings.map(warning => warning.code === 'table-overflow' ? regularOverflow : warning);
@@ -103,7 +116,7 @@ function tableWidthsWithHeads(table: ResolvedTable, theme: Theme, measure: TextM
 }
 
 /** Content, authored widths, fitting and the width floor are resolved together. */
-function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions = {}, view: TableWidthView = {}) {
+function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions, view: TableWidthView, preparation: TableWidthPreparation) {
   const cols = view.columns ?? visibleColumns(table);
   const rows = view.rows ?? visibleRows(table);
   const fullRows = view.fullRows ?? table.rows;
@@ -192,6 +205,14 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
       hint: (row: ResolvedRow) => collapsedHintWidth(row, table.levelNouns, childCount.get(row.id) ?? 0, measure, faces.hint),
       ...(view.headLines === undefined ? {} : { headLines: view.headLines }),
     };
+    // Dense heads change only their tracking; automatic dense padding has its own measurements.
+    const key = `${cellPadX}:${faces.header.letterSpacing}:${view.labelKeep ?? ''}`;
+    const measured = preparation.get(key);
+    const fittedCopy = (tracks: PreparedTableTracks) => ({ ...tracks, context,
+      widths: new Map(tracks.widths), minimumWidths: new Map(tracks.minimumWidths),
+      wrapFloors: new Map(tracks.wrapFloors), wrappedOneLines: new Map(tracks.wrappedOneLines),
+      wouldWrap: [...tracks.wouldWrap] });
+    if (measured !== undefined) return fittedCopy(measured);
     for (const col of cols) {
       const heatOnlyWidth = Math.max(HEAT_ONLY_CELL_W, Math.ceil((view.scroll ? headerContentWidth(col, context)
         : measure(columnHeaderText(col), faces.header).width) + 2 * cellPadX));
@@ -277,7 +298,9 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
       wrapFloors.set(col.id, floor);
       return true;
     });
-    return { widths, minimumWidths, context, wouldWrap, wrapFloors, chipFloor, labelFloor, wrappedOneLines };
+    const tracks = { widths, minimumWidths, wouldWrap, wrapFloors, chipFloor, labelFloor, wrappedOneLines };
+    preparation.set(key, tracks);
+    return fittedCopy(tracks);
   }
   /**
    * The narrowest label track at which no row label, inline label or head word is cut and no unit runs past the

@@ -1,3 +1,4 @@
+import { layoutKey, ownTableRequest } from './tableOwnership';
 import { fractionLineWarnings, prepareFractionAnnotations, percentScaleWarnings } from './normalize/fraction';
 import { readFormatExamples } from './formatSpec';
 import { colorVariableWarnings } from './colorVariables';
@@ -288,15 +289,20 @@ function prepared(def: { prepare?: (data: any, options?: any) => any }, data: un
 
 /** The same registered layout used by components, measurement and artifacts. */
 export function layoutResolvedRequest(request: ResolvedChartRequest): LayoutResult {
-  const first = layoutOnce(request);
-  const fitted = widthsGiveWay(request, first, layoutOnce);
-  if (fitted) return withClipWarnings(fitted[1], request.fontMetrics);
-  const [asked, result] = steppedType(request, first) ?? [request, first];
-  const plainRequest = withoutAskedNotes(asked, result);
-  const plain = plainRequest && layoutOnce(plainRequest);
-  const drawn = plain && !plain.refused ? askedNotesOff(plain, result) : result;
-  const fittedLate = widthsGiveWay(asked, drawn, layoutOnce);
-  return withClipWarnings(fittedLate ? fittedLate[1] : drawn, request.fontMetrics);
+  const layout = (): LayoutResult => {
+    const first = layoutOnce(request);
+    const fitted = widthsGiveWay(request, first, layoutOnce);
+    if (fitted) return withClipWarnings(fitted[1], request.fontMetrics);
+    const [asked, result] = steppedType(request, first) ?? [request, first];
+    const plainRequest = withoutAskedNotes(asked, result);
+    const plain = plainRequest && layoutOnce(plainRequest);
+    const drawn = plain && !plain.refused ? askedNotesOff(plain, result) : result;
+    const fittedLate = widthsGiveWay(asked, drawn, layoutOnce);
+    return withClipWarnings(fittedLate ? fittedLate[1] : drawn, request.fontMetrics);
+  };
+  if (request.type !== 'table' || request.data === null || typeof request.data !== 'object') return layout();
+  const { data, theme, target, size, fixed, inputWarnings } = request;
+  return ownTableRequest(data, layoutKey({ data, theme, target, size, fixed, inputWarnings }, request.options), layout);
 }
 
 interface WidthEntry { id?: string; type?: string; options?: { columnOverrides?: Record<string, ColumnOverride> }; data?: WidthLevel }
