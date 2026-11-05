@@ -59,7 +59,7 @@ import type { ResolvedTable } from '../../types/table';
 import { DEFAULT_EMPTY_MESSAGE } from '../../emptyData';
 import { cellDrawsTabular, cellHoldsNumber, emptyMessageRow, expansionRootsHidden, finalClosers, hasNoDataRows, groupSpans, heatColumn, printsFigures, rowGrounds, tableFootnotes, visibleColumns, visibleInlineRows, visibleRows } from './view';
 import { fixedHeightCanvas, rowDrivenHeight, spareShare } from '../../rowCanvas';
-import { CARD_CLASS_WIDTH, heightOmitted, rowSizing, VERIFY_ADVICE, WIDTH_PROBE } from '../../sizing';
+import { CARD_CLASS_WIDTH, heightOmitted, rowSizing, VERIFY_ADVICE, WIDTH_PROBE, FIXED_SIZE_PROBE } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { textScaleOf } from '../../typeFloors';
 import { maxOf, minOf, pushAll } from '../../arrays';
@@ -176,9 +176,9 @@ function resolvedForSize(data: TableData, options: TableOptions): ReturnType<typ
   if (typeof options.theme === 'string') return resolveTable(data, options);
   const { size: _size, measure: _measure, margin: _margin, cellPadX: _pad, labelIndent: _indent, rowLabelLines: _lines,
     heightFill: _heightFill, frameFill: _frameFill, rowExtent: _extent, lastTrackFlex: _flex, maxGrowth: _growth,
-    groupRule: _groupRule, groupAlign: _groupAlign, [TARGET_SIZE]: _target, [WIDTH_PROBE]: _probe, [PLAN_ONLY]: _plan, ...rest } = options as LayoutOptions & TargetSizeOptions & { [WIDTH_PROBE]?: unknown };
+    groupRule: _groupRule, groupAlign: _groupAlign, inlineVisibility: _inlineVisibility, [TARGET_SIZE]: _target, [WIDTH_PROBE]: _probe, [PLAN_ONLY]: _plan, ...rest } = options as LayoutOptions & TargetSizeOptions & { [WIDTH_PROBE]?: unknown };
   const semantic = { ...rest } as Record<PropertyKey, unknown>;
-  for (const symbol of [SIZING_ONLY, REGULAR_SPACING, VERIFY_ADVICE, WIDTH_REPAIR_PROBE, COMPACT_RETRY, HEAD_LINES, HEAD_AIR_MIN, HEAD_LOOSE, SUB_LINES, TIGHT_SPACING]) delete semantic[symbol];
+  for (const symbol of [SIZING_ONLY, REGULAR_SPACING, VERIFY_ADVICE, WIDTH_REPAIR_PROBE, COMPACT_RETRY, HEAD_LINES, HEAD_AIR_MIN, HEAD_LOOSE, SUB_LINES, TIGHT_SPACING, FIXED_SIZE_PROBE, ENGINE_NOTES, SOFT_LABEL_CAP, LABEL_WRAP_FLOOR]) delete semantic[symbol];
   // Resolution reads glyph policy, not colours, fonts, spacing or frame geometry.
   const theme = resolveTheme(options.theme);
   semantic.theme = JSON.stringify({ glyphs: theme.table?.glyphs, noPrevious: theme.table?.noPrevious, dataGap: theme.table?.dataGap });

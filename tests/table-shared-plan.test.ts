@@ -3,7 +3,10 @@ import '../src/core/charts';
 import { getFixtures } from '../src/fixtures';
 import { layoutResolvedRequest, planResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { renderSvg } from '../src/core/svg/renderSvg';
-import { layoutTableCard } from '../src/core/charts/table/layout';
+import { layoutTable, layoutTableCard } from '../src/core/charts/table/layout';
+import * as tableResolution from '../src/core/charts/table/resolve';
+import { ENGINE_NOTES, SOFT_LABEL_CAP, LABEL_WRAP_FLOOR } from '../src/core/charts/table/tracks';
+import { FIXED_SIZE_PROBE } from '../src/core/sizing';
 import { PLAN_ONLY, materializeLayout } from '../src/core/layoutPlan';
 import * as tablePlans from '../src/core/layoutPlan';
 import * as tableWidths from '../src/core/charts/table/widths';
@@ -104,4 +107,27 @@ it('returns a safe width-only table repair without requiring exact minimum advic
   const repaired = layoutResolvedRequest(resolveChartRequest({ ...spec, options: { ...spec.options, size } } as Parameters<typeof resolveChartRequest>[0]));
   expect(repaired.refused).not.toBe(true);
   expect(repaired.warnings.filter(w => w.severity === 'error')).toEqual([]);
+});
+
+// View and fitting flags must reuse the data model while keeping their own drawn result.
+it('reuses table resolution across inline visibility and layout flags', () => {
+  const data: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'v', kind: 'value' }],
+    rows: [{ id: 'a', label: 'A', cells: { v: 100 } },
+      { id: 'change', parentId: 'a', label: 'Change', inline: true, inlineGroup: 'change', cells: { v: 2 } }],
+  };
+  const options: TableOptions = { theme: { preset: 'bridge' }, size: { width: 878 } };
+  layoutTable(data, options);
+  const resolve = vi.spyOn(tableResolution, 'resolveTable');
+  try {
+    for (const extra of [{ inlineVisibility: { change: false } }, { [FIXED_SIZE_PROBE]: true },
+      { [ENGINE_NOTES]: ['The reporting period is incomplete.'] }, { [SOFT_LABEL_CAP]: true }, { [LABEL_WRAP_FLOOR]: true }]) {
+      resolve.mockClear();
+      const actual = layoutTable(data, { ...options, ...extra });
+      expect(resolve).not.toHaveBeenCalled();
+      expect(JSON.stringify(actual)).toBe(JSON.stringify(layoutTable(structuredClone(data), { ...options, ...extra })));
+    }
+  } finally {
+    resolve.mockRestore();
+  }
 });
