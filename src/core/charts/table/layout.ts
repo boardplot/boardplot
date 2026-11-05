@@ -1,5 +1,5 @@
 import { tableWidths } from './widths';
-import { PLAN_ONLY, copyPlannedValue, deferLayout, isPlanned, materializeLayout, plannedCutCount, layoutKey, tableTextMeasure, withPlanInputs } from '../../layoutPlan';
+import { PLAN_ONLY, copyPlannedValue, deferLayout, isPlanned, materializeLayout, plannedCutCount, layoutKey, optionKey, tableTextMeasure, withPlanInputs } from '../../layoutPlan';
 import { liftOrFallback, missesSize, tightSpacingWarning } from '../tableFit';
 import { chartTheme } from '../chartEnv';
 import { structureCount } from '../../structureCounts';
@@ -203,7 +203,7 @@ function sharedWidthPlan(table: ResolvedTable, theme: Theme, measure: TextMeasur
   if (typeof options.theme === 'string') return tableWidths(table, theme, measure, options, view);
   const { size, [TARGET_SIZE]: target, [WIDTH_PROBE]: _probe, [COMPACT_RETRY]: _retry, [PLAN_ONLY]: _plan, ...rest } = options as LayoutOptions & TargetSizeOptions & { [WIDTH_PROBE]?: unknown };
   const heightOpen = target?.fixed.height === false || (typeof size === 'object' && size.height === undefined);
-  const key = `${layoutKey(table, rest)}:${JSON.stringify({ rows: view.rows!.map((row) => row.id), widthRows: view.widthRows!.map((row) => row.id), columns: view.columns!.map((col) => col.id),
+  const key = `${optionKey(rest)}:${JSON.stringify({ rows: view.rows!.map((row) => row.id), widthRows: view.widthRows!.map((row) => row.id), columns: view.columns!.map((col) => col.id),
     available: view.available, spacerTotal: view.spacerTotal, headLines: view.headLines, subLines: view.subLines, headGlue: view.headGlue,
     height: heightOpen || size === undefined ? undefined : resolveSize(size).height,
     // The theme's fonts follow the frame's type class, and two classes can share one plot width.
@@ -601,7 +601,7 @@ const tableFrames = new WeakMap<ResolvedTable, Map<string, TableFrame>>();
 
 /** Frame text is independent of the table's spacing and header rungs. */
 function sharedTableFrame(table: ResolvedTable, input: Parameters<typeof solveFrame>[0]): TableFrame {
-  const key = layoutKey(table, input);
+  const key = optionKey(input);
   let frames = tableFrames.get(table);
   if (!frames) tableFrames.set(table, frames = new Map());
   let value = frames.get(key);

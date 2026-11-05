@@ -41,11 +41,26 @@ function inputVersion(value: object): number {
   return known.version;
 }
 
-/** Data and theme snapshots are shared only during one synchronous request, including nested mutable fields. */
+/** Reuse nested option snapshots during one request without escaping their JSON again. */
+export function optionKey(options: object): string {
+  const valueKey = (value: unknown): string | undefined => value !== null && typeof value === 'object'
+    ? inputJson(value) : JSON.stringify(value, keyFunction);
+  const fields: string[] = [];
+  for (const key of Object.keys(options)) {
+    if (key === 'theme') continue;
+    const value = valueKey((options as Record<string, unknown>)[key]);
+    if (value !== undefined) fields.push(JSON.stringify(key) + ':' + value);
+  }
+  const theme = (options as { theme?: unknown }).theme;
+  const symbols = Object.getOwnPropertySymbols(options).map(symbol =>
+    '[' + (JSON.stringify(symbol.description) ?? 'null') + ',' + (valueKey((options as Record<symbol, unknown>)[symbol]) ?? 'null') + ']');
+  return '[{' + fields.join(',') + '},' + (valueKey(theme && typeof theme === 'object' ? inputVersion(theme) : theme) ?? 'null')
+    + ',[' + symbols.join(',') + '],' + JSON.stringify(currentSmallValues()) + ']';
+}
+
+/** Public data is checked by content once per request. Private model caches already own their data identity. */
 export function layoutKey(data: object, options: object): string {
-  const { theme, ...rest } = options as { theme?: unknown };
-  const symbols = Object.getOwnPropertySymbols(options).map(symbol => [symbol.description, (options as Record<symbol, unknown>)[symbol]]);
-  return JSON.stringify([inputVersion(data), rest, theme && typeof theme === 'object' ? inputVersion(theme) : theme, symbols, currentSmallValues()], keyFunction);
+  return inputVersion(data) + ':' + optionKey(options);
 }
 
 const measurers = new WeakMap<TextMeasurer, TextMeasurer>();
