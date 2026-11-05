@@ -1,6 +1,7 @@
 /** Likert data and options schemas, without the chart engine. */
 
 import * as z from 'zod';
+import { columnOrderOption, columnOverridesOption } from '../../schema/generatedColumnOptions';
 import { addDuplicateIdIssues, baseOptionsSchema, idSchema, optionShapeSchema, refusedBaseOptions } from '../../schema/shared';
 import type { LikertData, LikertOptions } from './layout';
 
@@ -101,6 +102,8 @@ export const likertOptionsSchema = baseOptionsSchema
       })
       .optional()
       .describe('Refused: a rest bucket would break the base the shares are computed against.'),
+    columnOverrides: columnOverridesOption('likert', ['width', 'align', 'headAlign', 'label']),
+    columnOrder: columnOrderOption('likert'),
     values: z
       .enum(['counts', 'percent'])
       .describe(

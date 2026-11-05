@@ -1,6 +1,7 @@
 /** Kpi data and options schemas, without the chart engine. */
 
 import * as z from 'zod';
+import { columnOverridesOption } from '../../schema/generatedColumnOptions';
 import { formatExample } from '../../schema/shared';
 import { baseOptionsSchema, comparisonDirectionSchema, cellSchema, refusedBaseOptions, scenarioField } from '../../schema/shared';
 import type { KpiData } from '../../types/data';
@@ -63,6 +64,7 @@ export const kpiDataSchema = z.strictObject({
 }) as unknown as z.ZodType<KpiData>;
 
 export const kpiOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions('kpi')).safeExtend({
+  columnOverrides: columnOverridesOption('kpi', ['width', 'align']),
   labels: baseOptionsSchema.shape.labels.describe("False hides comparisons and spark endpoint values. The main number, metric name and authored note remain. total: false explicitly hides the main number."),
   density: z.enum(['compact', 'regular']).optional()
     .describe("Card density. 'compact' uses the smaller figure and spark share, and a 280 px default card width instead of 360. An unsized card takes its content height. 'regular' is the default."),

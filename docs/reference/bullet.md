@@ -52,8 +52,15 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
-| labels | false \| object | `false` (or another value of its type) |  | False hides value, target-value and delta labels. Row names, band names and band-edge numbers remain. category: false hides row names. density: compact draws no labels. |
+| labels | false \| object | `false` (or another value of its type) |  | False hides value, target-value and delta labels. Row names, band names and band-edge numbers remain. category: false hides row names. position: false drops the line under each gap (below, above or on target) and direction: false the line under each name (higher or lower is better); annotation: false still drops all of them. strings.lowerBetter '' equals direction: false on lower-is-better rows. density: compact draws no labels. |
 | sort | object \| string \| true | `'sheet'`, `'asc'`, `'desc'`, `'reverse'`, `true` (or another value of its type) |  | Category ranking value: value divided by target when every row has a positive target, otherwise raw value. desc puts the highest ranking value first even on lower-is-better rows. Ties keep authored order and null values sort last. sheet keeps authored order and reverse reverses it. Dated rows keep authored order when a growth or difference annotation spans periods. |
+| columnOverrides | object |  |  | Settings per generated column. Ids: label, actual, share, delta, target, gap. |
+| columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
+| columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Alignment of the column: its cell text and, unless headAlign is set, its head. Bars keep starting at the panel origin. |
+| columnOverrides.*.headAlign | string | `'left'`, `'right'`, `'center'` |  | Head alignment; defaults to align. |
+| columnOverrides.*.label | string |  |  | Head text. |
+| columnVisibility | object |  |  | True shows a column and false leaves it out: the ids are data.columnToggles ids on table and column ids elsewhere. Ids: label, actual, share, delta, target, gap. |
+| columnOrder | array |  |  | Order of whole blocks; blocks left out follow in default order. Ids: actual, share, delta, target, gap, plot. |
 | axisTitles | object |  |  | Title of the value axis when it is drawn: under the tick row of the shared-scale axis valueAxis.show draws, ending at its right end. Drawn only when authored. |
 | axisTitles.primary | string |  |  | 'Measure, unit' title of the value axis, e.g. 'Margin, %'. |
 | sharedScale | boolean \| string | `'percentOfTarget'` (or another value of its type) |  | true: one absolute scale across all rows (same-unit rows, comparable magnitudes; supports valueAxis). false: each row normalized to its own zero-based extent — band maximum extended by value/target overshoot; a bandless row uses its value/target extent (the bullet-graph percent-of-scale — mixed-unit KPI rows stay legible; valueAxis is ignored with a warning). 'percentOfTarget': every row in percent of its own target (actual ÷ target) on one 0–120% scale, three shared bands named once in a key (below 80%, 80–100%, at or above target), mirrored at 100% on a lower-is-better row (the key then reads more than 20% off, up to 20% off, on target or better), one target line at 100%, value, share of target and delta beside each row; the rows' bands, valueAxis and annotations are not drawn. Default: false when every row declares bands and the rows differ in unit or band thresholds (warns bullet-row-scales), true otherwise. |
@@ -118,3 +125,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | target-columns-off | example | targetColumns false keeps the plot its full width |
 | band-names-on-rows | example | bandKey 'row' names each band on its row, on a shared scale with a value axis |
 | column-words-authored | example | strings set the target and gap column words |
+| column-overrides | example | columnOverrides sets the widths, alignment and head words of the generated columns |
+| columns-hidden | example | columnVisibility leaves the share column out of the percent-of-target rows |
+| plot-first | example | columnOrder puts the marks first and reverses the columns behind them |
+| no-direction-line | example | labels.direction and labels.position drop the second lines beside the target columns |

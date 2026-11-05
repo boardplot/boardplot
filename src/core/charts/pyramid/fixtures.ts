@@ -182,4 +182,13 @@ fixtures.push({
   },
 });
 
+fixtures.push({
+  id: 'column-overrides', title: 'columnOverrides sets the width and alignment of the band column', kind: 'example',
+  data: {
+    bands: [{ id: 'young', from: 0, to: 20, label: '0 to 19' }, { id: 'adult', from: 20, to: 40, label: '20 to 39' }, { id: 'older', from: 40, to: 60, label: '40 to 59' }],
+    groups: [{ id: 'women', label: 'Women', values: [31, 42, 38] }, { id: 'men', label: 'Men', values: [33, 44, 35] }],
+  },
+  options: { title: 'Ages 20 to 39 are the largest group on both sides', source: 'Illustrative data', size: { width: 640 }, columnOverrides: { label: { width: 120, align: 'left' } } },
+});
+
 registerFixtures('pyramid', fixtures);

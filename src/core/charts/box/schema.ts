@@ -1,6 +1,7 @@
 /** Box data and options schemas, without the chart engine. */
 
 import * as z from 'zod';
+import { columnOverridesOption } from '../../schema/generatedColumnOptions';
 import { addDuplicateIdIssues, baseOptionsSchema, idSchema, primaryAxisTitleSchema, refusedBaseOptions } from '../../schema/shared';
 import type { BoxData, BoxOptions } from './types';
 
@@ -36,6 +37,7 @@ export const boxDataSchema = z
   }) as unknown as z.ZodType<BoxData>;
 
 export const boxOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions('box')).safeExtend({
+  columnOverrides: columnOverridesOption('box', ['width', 'headAlign', 'label']),
   axisTitles: primaryAxisTitleSchema('under the tick row, ending at the right end of the axis'),
   whiskers: z
     .enum(['tukey', 'minmax', 'p10p90'])

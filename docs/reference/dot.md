@@ -62,6 +62,11 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 |---|---|---|---|---|
 | legend | string \| object | `'top'`, `'bottom'`, `'right'`, `'left'`, `'none'`, `'auto'` (or another value of its type) |  | Key position. Multiple series get a key by default unless visible direct labels name them. 'none' hides the key; unnamed series warn. |
 | topN | object \| integer |  |  | Keep the n largest categories by absolute first-series value, or absolute gap for dumbbell, before sorting. Kept categories retain authored order unless sort.categories reorders them. No Others row is drawn; omitted category names are disclosed. Authored rest: true, restLabel, showRestCount or threshold warns that it is ignored when categories are omitted. |
+| columnOverrides | object |  |  | Settings per generated column. Ids: label, gap. |
+| columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
+| columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Alignment of the column: its cell text and, unless headAlign is set, its head. Bars keep starting at the panel origin. |
+| columnOverrides.*.headAlign | string | `'left'`, `'right'`, `'center'` |  | Head alignment; defaults to align. |
+| columnOverrides.*.label | string |  |  | Head text. |
 | axisTitles | object |  |  | Title of the value axis when it is drawn: under the value-axis tick row, ending at the right edge of the plot. Drawn only when authored. |
 | axisTitles.primary | string |  |  | 'Measure, unit' title of the value axis, e.g. 'Margin, %'. |
 | variant | string | `'dot'`, `'dumbbell'`, `'lollipop'` | `'dot'` | Dot by default; dumbbell joins paired values and lollipop joins values to the baseline. |
@@ -118,3 +123,4 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | nps-rows-left | example | The NPS ranking with its row labels aligned left |
 | highlighted-dumbbell-key | torture | Actual and plan remain distinct |
 | fraction-reference-line | torture | A fraction target shares the percentage scale |
+| column-overrides | example | columnOverrides sets the widths, alignment and head word of the name and gap columns |

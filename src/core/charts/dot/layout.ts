@@ -37,6 +37,7 @@ import { REFERENCE_LABEL_CLEARANCE } from '../../markVisibility';
 import { averageMarkerLine, averageMarkerScope } from '../band/stacks';
 import { overValueLines } from '../band/labels';
 import { rowLabelX, type Rect } from '../../geometry';
+import { alignedRight, authoredTrackWidth, columnOverrideWarnings, trackPlotFloor } from '../columnOverrides';
 import { clamp, cleanDiff, round2, unionRect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex } from '../../label/occupied';
@@ -517,11 +518,11 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
       if (a !== null && b !== null) gapText.set(c.id, signedGap(b, a));
     });
   }
-  const gapHead = gapText.size === 0 ? undefined : columnHeadText(chartString(options, 'gapHead'), percent);
+  const gapOverride = options.columnOverrides?.gap;
+  const gapHead = gapText.size === 0 ? undefined : gapOverride?.label ?? columnHeadText(chartString(options, 'gapHead'), percent);
   const gapHeadFont = columnHeadFont(theme, options.target ?? DEFAULT_TARGET, textScaleOf(options));
   const gapFont = (id: Id): FontSpec => (highlights.has(id) ? strongFont : labelFont);
-  const gapW = gapHead === undefined ? 0 : columnWidth(measure, [...gapText].map(([id, text]) => ({ text, font: gapFont(id) })), { text: gapHead, font: gapHeadFont });
-  const gapReserve = gapW > 0 ? gapW + COLUMN_GAP : 0;
+  const gapNaturalW = gapHead === undefined ? 0 : columnWidth(measure, [...gapText].map(([id, text]) => ({ text, font: gapFont(id) })), { text: gapHead, font: gapHeadFont });
 
   // ---- frame (title/subtitle/legend/source measured FIRST) ----
   const occupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
@@ -572,14 +573,23 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
   // their pairs, so the pairs take the full width; a row too short for a
   // header and a pair keeps the side column, as does an authored rowLabels.
   // An automatic height takes the header rows' own pitch (below), so it does not need a tall row first.
-  const rowHeaders = variant === 'dumbbell' && labelOn('category') && options.rowLabels === undefined
+  const labelOverride = options.columnOverrides?.label;
+  const rowHeaders = variant === 'dumbbell' && labelOn('category') && options.rowLabels === undefined && labelOverride === undefined
     && size.width <= HEADER_ROWS_MAX_WIDTH && (openHeight || stepEst >= 2 * lineH + 8);
   const headerH = rowHeaders ? lineH + 3 : 0;
   const air = (options as { [HARD_MINIMUM]?: boolean })[HARD_MINIMUM] === true ? 1 : 4;
   const catMaxLines = rowHeaders ? 1 : openHeight ? Infinity : stepEst >= 2 * lineH + 4 ? 2 : 1;
-  const capW = rowHeaders ? plot0.w : Math.max(24, plot0.w * 0.28);
+  // An authored column keeps its width; the plot gives way first, down to its floor.
+  const gapW = gapHead === undefined ? 0 : gapOverride?.width === undefined ? gapNaturalW
+    : authoredTrackWidth('gap', gapOverride.width, gapNaturalW, plot0.w - (labelOn('category') ? 24 + CAT_BAND_GAP : 0) - COLUMN_GAP - trackPlotFloor(plot0.w), warnings);
+  const gapReserve = gapW > 0 ? gapW + COLUMN_GAP : 0;
+  const nameTrack = labelOverride?.width === undefined || !labelOn('category') ? undefined
+    : authoredTrackWidth('label', labelOverride.width, 24, plot0.w - CAT_BAND_GAP - gapReserve - trackPlotFloor(plot0.w), warnings);
+  columnOverrideWarnings('dot', options.columnOverrides, [...(labelOn('category') && !rowHeaders ? ['label'] : []), ...(gapHead === undefined ? [] : ['gap'])], ['gap'], warnings);
+  const capW = nameTrack ?? (rowHeaders ? plot0.w : Math.max(24, plot0.w * 0.28));
+  const nameWider = nameTrack ?? gutterBudget(24, plot0.w);
   let { labels: catLines, width: catColumnW } = rowLabelBand(cats, tickFont, capW, catMaxLines, lineH, measure, {
-    wider: gutterBudget(24, plot0.w), ...(rowHeaders ? {} : { tightLines: Math.floor((stepEst - air) / lineH) }),
+    wider: nameWider, ...(rowHeaders ? {} : { tightLines: Math.floor((stepEst - air) / lineH) }),
     target: options.target, textScale: textScaleOf(options), typeRole: 'axis',
     shrink: stepDownFont(theme, tickFont, 'axis', options.target, textScaleOf(options)),
     footnoteRefs: { count: authoredFootnoteCount(options), warnings },
@@ -590,7 +600,7 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
     ? pinnedRowFont(theme, tickFont, 'axis', options.target, textScaleOf(options)) : undefined;
   if (pinnedFont && stepEst >= 2 * pinnedFont.size * pinnedFont.lineHeight! + air) {
     const pinned = rowLabelBand(cats, pinnedFont, capW, 2, pinnedFont.size * pinnedFont.lineHeight!, measure, {
-      wider: gutterBudget(24, plot0.w), target: options.target, textScale: textScaleOf(options), typeRole: 'axis',
+      wider: nameWider, target: options.target, textScale: textScaleOf(options), typeRole: 'axis',
       footnoteRefs: { count: authoredFootnoteCount(options), warnings: [] },
     });
     if (pinned.labels.filter(label => label.title !== undefined).length < catLines.filter(label => label.title !== undefined).length) {
@@ -602,7 +612,7 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
   const rowHeight = rowHeaders ? measure('0', labelFont).height + headerH + air : Math.max(measure('0', labelFont).height, maxOf(catLines.map(label => label.h))) + air;
   frameResult.frame.plotMinHeight = Math.max(frameResult.frame.plotMinHeight ?? 0,
     size.height + (frameResult.deficit ?? 0) + cats.length * rowHeight - (plot0.h - annPad - axisH));
-  const catBandW = rowHeaders ? 0 : catColumnW;
+  const catBandW = rowHeaders ? 0 : nameTrack ?? catColumnW;
   const catGap = rowHeaders ? 0 : CAT_BAND_GAP;
   const valueBody: Rect = {
     x: plot0.x + catBandW + catGap,
@@ -772,7 +782,7 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
   cats.forEach((cat, ci) => {
     const cy = band.position(ci) + band.bandwidth / 2 + headerH / 2;
     if (gapText.has(cat.id)) {
-      labelRequests.push(columnCellRequest({ id: `gap:${cat.id}`, owner: { categoryId: cat.id }, text: gapText.get(cat.id)!, font: gapFont(cat.id), measure, right: plot0.x + plot0.w, cy }));
+      labelRequests.push(columnCellRequest({ id: `gap:${cat.id}`, owner: { categoryId: cat.id }, text: gapText.get(cat.id)!, font: gapFont(cat.id), measure, right: alignedRight(plot0.x + plot0.w, gapW, measure(gapText.get(cat.id)!, gapFont(cat.id)).width, gapOverride?.align ?? 'right'), cy }));
     }
     const row: DotMarks['rows'][number] = { categoryId: cat.id, dots: [] };
     const rowSceneStart = nodes.length;
@@ -1121,7 +1131,7 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
             // A header clears the value labels beside its pair, solver padding included.
             rect: rowHeaders ? { x: plot0.x, y: cy - Math.max(r, measure('0', labelFont).height / 2) - 3 - cl.h, w: cl.w, h: cl.h } : {
               // Names sit right-aligned against the axis by default.
-              x: rowLabelX(plot0.x, catBandW, cl.w, options.rowLabels?.align ?? 'right'),
+              x: rowLabelX(plot0.x, catBandW, cl.w, labelOverride?.align ?? options.rowLabels?.align ?? 'right'),
               y: cy - cl.h / 2,
               w: cl.w,
               h: cl.h,
@@ -1206,11 +1216,11 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
   }
 
   for (const seat of pointSeats) seat();
-  if (gapHead !== undefined) {
+  if (gapHead) {
     const head = fitHead(gapHead, gapHeadFont, gapW, measure, { target: options.target ?? DEFAULT_TARGET, textScale: textScaleOf(options) });
     const first = band.position(0) + band.bandwidth / 2;
     const headH = measure(head.lines[0]!, gapHeadFont).height;
-    labelRequests.push(headRequest('gap', 0, head, plot0.x + plot0.w, Math.min(valueBody.y - 2, first - labelFont.size * 0.6 - headH - 2), headH, false));
+    labelRequests.push(headRequest('gap', 0, head, alignedRight(plot0.x + plot0.w, gapW, head.w, gapOverride?.headAlign ?? gapOverride?.align ?? 'right'), Math.min(valueBody.y - 2, first - labelFont.size * 0.6 - headH - 2), headH, false));
   }
 
   // ---- solve labels ----

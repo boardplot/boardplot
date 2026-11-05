@@ -84,7 +84,8 @@ import { displayFor, resolveBarDomain, textFor, toDateOnValues } from './domain'
 import { labelOn as barLabelOn } from '../labelOn';
 import { planBarLabels } from './labels';
 import { layoutBarMarks } from './marks';
-import { barHalves, cagrInset, CAGR_INSET_ROOM, CAGR_ROOM, CAGR_TRIES, CAT_BAND_GAP, CAT_MAX_LINES, BarTooTall, CUT_NOTES, DEFER_ADJACENT, fixedBarRow, LABEL_GAP, NO_NAME_COLUMN, RIGHT_ROOM, STOP_IF_TOO_TALL, type BarArea, type BarDomain, type BarMarkGeometry } from './model';
+import { authoredTrackWidth, columnOverrideWarnings, trackPlotFloor } from '../columnOverrides';
+import { barHalves, cagrInset, CAGR_INSET_ROOM, CAGR_ROOM, CAGR_TRIES, CAT_BAND_GAP, CAT_MAX_LINES, BarTooTall, CUT_NOTES, DEFER_ADJACENT, fixedBarRow, LABEL_GAP, NAME_TRACK, NO_NAME_COLUMN, RIGHT_ROOM, STOP_IF_TOO_TALL, type BarArea, type BarDomain, type BarMarkGeometry } from './model';
 import { barPaints } from './paints';
 import { barPlotArea, solveBarFrame } from './plot';
 import { composedTextRole } from '../../textRole';
@@ -1084,17 +1085,22 @@ function layoutRowIntervals(
     const axisH = axisShown ? tickRowH + 8 + (axisTitle && titleRow ? axisTitle.height + 2 : 0) : 0;
     const availH = plotHeightAfter(frameResult, size.height, plot0.h - currentPad - axisH);
     const lineH = tickFont.size * 1.2;
-    const catCap = Math.max(24, plot0.w * 0.28);
+    const nameColumn = !noNameColumn && labelOn('category');
+    columnOverrideWarnings('bar', options.columnOverrides, nameColumn ? ['label'] : [], [], rowWarnings);
+    const authoredName = options.columnOverrides?.label?.width;
+    const nameTrack = (options as { [NAME_TRACK]?: number })[NAME_TRACK] ?? (authoredName === undefined || !nameColumn ? undefined
+      : authoredTrackWidth('label', authoredName, 24, plot0.w - CAT_BAND_GAP - trackPlotFloor(plot0.w), rowWarnings));
+    const catCap = nameTrack ?? Math.max(24, plot0.w * 0.28);
     // A fixed bar row sizes the names to its pitch, not to the canvas.
     const stepEst = theme.space.barRow?.pitch ?? availH / cats.length;
     const fittedCats = rowLabelBand(
       cats.map((cat) => ({ id: cat.id, label: cat.label ?? cat.id, footnote: cat.footnote })), tickFont, catCap, stepEst >= Math.max(30, 2 * lineH + (targetSizing ? 4 : 0)) ? 2 : 1, lineH, measure,
-      { target: options.target, textScale: textScaleOf(options), typeRole: 'axis', wider: gutterBudget(24, plot0.w), tightLines: Math.floor((stepEst - (targetSizing ? 4 : 0)) / lineH), shrink: stepDownFont(theme, tickFont, 'axis', options.target, textScaleOf(options)), footnoteRefs: { count: authoredFootnoteCount(options), warnings: rowWarnings } },
+      { target: options.target, textScale: textScaleOf(options), typeRole: 'axis', wider: nameTrack ?? gutterBudget(24, plot0.w), tightLines: Math.floor((stepEst - (targetSizing ? 4 : 0)) / lineH), shrink: stepDownFont(theme, tickFont, 'axis', options.target, textScaleOf(options)), footnoteRefs: { count: authoredFootnoteCount(options), warnings: rowWarnings } },
     );
     // A tornado driver's name prints bold over its range (tornadoHead): its seat and the band take the bold width.
     const catLines = fittedCats.labels.map((label, ci) => tornadoHead(cats[ci]!, label)
       ? { ...label, w: Math.max(label.w, measure(label.lines[0]!, { ...label.font, weight: emphasisWeight(theme) }).width) } : label);
-    const catBandW = Math.max(fittedCats.width, maxOf(catLines.map((label) => label.w)));
+    const catBandW = nameTrack ?? Math.max(fittedCats.width, maxOf(catLines.map((label) => label.w)));
     const fixedRow = fixedBarRow(theme, catLines.map((label) => label.h));
     const fixedRowsH = fixedRow ? fixedRow.step * cats.length : undefined;
     const nameW = noNameColumn ? 0 : catBandW + CAT_BAND_GAP;

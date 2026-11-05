@@ -1,6 +1,8 @@
 /** Slope data and options schemas, without the chart engine. */
 
 import * as z from 'zod';
+import { columnOverridesOption } from '../../schema/generatedColumnOptions';
+import { DIVERGING_COLUMN_OVERRIDES_REFUSAL } from './slopeSizing';
 import { TYPE_REFUSED_REASONS } from '../../schema/capabilityReasons';
 import {
   colorRoleField,
@@ -87,4 +89,9 @@ export const slopeOptionsSchema = baseOptionsSchema
       neutralNote: z.boolean().optional().describe("Note the share that chose neither answer. Default true."),
       minBase: z.number().nonnegative().optional().describe("Base n below which a panel is hatched and noted. Default 30."),
     }).optional().describe("Variant 'diverging' options."),
+    columnOverrides: columnOverridesOption('slope', ['width', 'align', 'headAlign', 'label']),
+  }).superRefine((options, ctx) => {
+    if (options.variant === 'diverging' && options.columnOverrides !== undefined) {
+      ctx.addIssue({ code: 'custom', path: ['columnOverrides'], message: DIVERGING_COLUMN_OVERRIDES_REFUSAL, params: { refused: true } });
+    }
   }) as unknown as z.ZodType<SlopeOptions>;

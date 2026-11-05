@@ -1,6 +1,7 @@
 /** Bar data and options schemas, without the chart engine. */
 
 import * as z from 'zod';
+import { columnOverridesOption } from '../../schema/generatedColumnOptions';
 import { CONNECTOR_STYLE_DESCRIPTION } from '../seriesConnector';
 import { rangeCellSchema } from '../../range';
 import { refusalSuggest } from '../../schema/capabilityReasons';
@@ -70,6 +71,7 @@ export const barDataSchema = z
 const BAR_RIBBONS_REFUSED = refusalSuggest('bar', ['ribbons'])!;
 
 export const barOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions('bar')).safeExtend({
+  columnOverrides: columnOverridesOption('bar', ['width']),
   labelDensity: baseOptionsSchema.shape.labelDensity.describe("Value-label density. Default 'smart': every value stays eligible. A chart with more than 12 categories, or with most labels wider than the band, ranks the first, last, highest and lowest value (ties: the first) first. The other values then use only their natural seat beside the mark; with none free they are drawn nowhere and left out of the note. Those four may take one step, and the note names any that finds no seat. A smaller chart keeps every value on the bounded one-step rule and names any that finds no seat. 'full' treats all values alike and names every one that finds no seat. 'minimal' also applies the shared priority gate. Seats stay inside the plot band and one step from the natural seat. All values remain in reading records. When valueLabels is set, it wins: labelDensity is not read for the value labels."),
   legend: baseOptionsSchema.shape.legend.describe("Key position. Multiple series get a key by default unless visible direct labels name them all. 'none' hides the key and warns if names are missing. Subtitle and footnote mentions do not replace the key."),
   axisTitles: z.strictObject({

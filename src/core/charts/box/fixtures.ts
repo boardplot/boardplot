@@ -932,4 +932,15 @@ fixtures.push({
   },
 });
 
+fixtures.push({
+  id: 'column-overrides', title: 'columnOverrides sets the name and n columns', kind: 'example',
+  data: {
+    groups: [
+      { id: 'north', label: 'North depot', observations: [10, 12, 14, 15, 16, 18, 20, 22, 25, 27] },
+      { id: 'south', label: 'South depot', observations: [11, 13, 15, 16, 17, 19, 21, 23, 26, 30] },
+    ],
+  },
+  options: { title: 'Both depots deliver in about 17 days', unit: 'days', source: 'Illustrative data', size: { width: 720 }, columnOverrides: { label: { width: 150 }, n: { width: 90 } } },
+});
+
 registerFixtures('box', fixtures);

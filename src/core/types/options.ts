@@ -43,7 +43,23 @@ export type LabelKind =
   | 'growth'
   | 'activity'
   | 'item'
-  | 'scale'; // Gantt trio, reserved
+  | 'scale' // Gantt trio, reserved
+  | 'position'
+  | 'direction';
+
+export type ColumnAlign = 'left' | 'right' | 'center';
+
+/** The settings of one generated column. Each type reads the fields its schema lists. */
+export interface ColumnOverride {
+  /** Track width in px. */
+  width?: number;
+  /** Cell alignment. */
+  align?: ColumnAlign;
+  /** Head alignment; defaults to align. */
+  headAlign?: ColumnAlign;
+  /** Head text. */
+  label?: string;
+}
 
 export type LabelContent = ('absolute' | 'percent' | 'category' | 'series')[];
 
@@ -862,6 +878,8 @@ export interface BarOptions
     'ratioTier' | 'variant' | 'anomaly' | 'rowLabels' | 'events'
     | 'seriesRamp' | 'othersShade' | 'seriesLabels' | 'shareLabels' | 'window' | 'viewDomain' | 'categoryLabels' | 'categoryAxis' | 'ribbons'
   > {
+  /** Settings per generated column, by column id. A width beats the width the type would pick. */
+  columnOverrides?: Record<string, ColumnOverride>;
   /** Refused: a bar has no date ticks or band crossing; column, combo and line read categoryAxis. */
   categoryAxis?: { crossesBetween?: never; dateTicks?: never };
   /** Refused: a horizontal bar prints each name beside its row already (staircase names are column, combo and pareto). */
@@ -892,6 +910,8 @@ export interface BarOptions
   methodNote?: boolean;
 }
 export interface ButterflyOptions extends BaseOptionsFor<'butterfly'> {
+  /** Settings per generated column, by column id. A width beats the width the type would pick. */
+  columnOverrides?: Record<string, ColumnOverride>;
   a: Id;
   b: Id;
   centerColumnWidth?: number;
@@ -1353,6 +1373,12 @@ export interface VarianceOptions extends BaseOptionsFor<'variance'> {
 }
 /** Rows stop at their measured natural pitch, normally 44px; deltas use the label token. */
 export interface BulletOptions extends BaseOptionsFor<'bullet'> {
+  /** Settings per generated column, by column id. A width beats the width the type would pick. */
+  columnOverrides?: Record<string, ColumnOverride>;
+  /** False leaves a generated column out: actual, share, delta, target, gap. */
+  columnVisibility?: Record<string, boolean>;
+  /** Order of whole blocks; blocks left out follow in default order. */
+  columnOrder?: string[];
   /** Title of the shared-scale value axis valueAxis.show draws, drawn only when authored. */
   axisTitles?: { primary?: string };
   /**
@@ -1405,6 +1431,8 @@ export interface BulletOptions extends BaseOptionsFor<'bullet'> {
   density?: 'compact' | 'regular';
 }
 export interface DotOptions extends BaseOptionsFor<'dot'> {
+  /** Settings per generated column, by column id. A width beats the width the type would pick. */
+  columnOverrides?: Record<string, ColumnOverride>;
   /** Authored value-axis title, under the tick row when the axis is drawn. */
   axisTitles?: { primary?: string };
   variant?: 'dot' | 'dumbbell' | 'lollipop';
@@ -1432,6 +1460,8 @@ export interface DotOptions extends BaseOptionsFor<'dot'> {
   range?: { label?: string; values?: boolean };
 }
 export interface SlopeOptions extends BaseOptionsFor<'slope'> {
+  /** Settings per generated column, by column id. A width beats the width the type would pick. */
+  columnOverrides?: Record<string, ColumnOverride>;
   /**
    * Fold every series that stays under this share of the endpoint total at BOTH
    * ends into one 'Other' line whose values the engine sums. A SHARE, not a
@@ -1495,6 +1525,8 @@ export interface HeatmapOptions extends BaseOptionsFor<'heatmap'> {
 }
 /** Standalone width defaults to 360px and stops at 420px; comparison rows follow the value. */
 export interface KpiOptions extends BaseOptionsFor<'kpi'> {
+  /** Settings per generated column, by column id. A width beats the width the type would pick. */
+  columnOverrides?: Record<string, ColumnOverride>;
   /**
    * 'compact' uses a 280 px default card width instead of 360, for a
    * dashboard that puts nine of them in a row. An
@@ -1541,6 +1573,8 @@ export interface SparklineOptions extends BaseOptionsFor<'sparkline'> {
   ringTone?: 'good' | 'warn' | 'bad';
 }
 export interface FunnelOptions extends BaseOptionsFor<'funnel'> {
+  /** Settings per generated column, by column id. A width beats the width the type would pick. */
+  columnOverrides?: Record<string, ColumnOverride>;
   /** Rows bound automatic callout leaders to three text widths; centered stage text uses three centered lines. */
   variant?: 'rows' | 'centered';
   totalCvr?: 'none' | 'column';

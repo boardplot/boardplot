@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, type ReactElement } from 'react';
+import { act, type ComponentProps, type ReactElement } from 'react';
 import { createRoot, hydrateRoot, type Root } from 'react-dom/client';
 import { renderToPipeableStream, renderToStaticMarkup } from 'react-dom/server';
 import { Writable } from 'node:stream';
@@ -17,6 +17,7 @@ import { TableChart } from '../src/react/charts/table';
 import { DimSwitchChart } from '../src/react/charts/dimswitch';
 import { BarTableChart } from '../src/react/charts/bartable';
 import { LikertChart } from '../src/react/charts/likert';
+import { BulletChart } from '../src/react/charts/bullet';
 import { ChoroplethChart } from '../src/react/charts/choropleth';
 import { CreativeChart } from '../src/react/charts/creative';
 import { PvmChart } from '../src/react/charts/pvm';
@@ -398,6 +399,58 @@ it('exports a DimSwitch whose document opens again', async () => {
   expect(document?.charts[0]!.type).toBe('dimswitch');
   const again = await exportSvg({ spec: document!.charts[0] });
   expect(again.ok ? '' : again.message).toBe('');
+});
+
+// A panel's width raised the grid's floor, so the host got a refusal for a grid that draws with the width unset.
+it('draws a grid whose panel width gives way and names the panel to the host', async () => {
+  const funnel = getFixtures('funnel').find(item => item.id === 'lead-funnel')!;
+  const { size: _size, ...funnelOptions } = funnel.options as { size?: unknown };
+  const panels = [
+    { id: 'main', type: 'funnel', data: funnel.data, options: { ...funnelOptions, columnOverrides: { value: { width: 300 } } } },
+    { id: 'side', type: 'bar', data: { categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], series: [{ id: 's', label: 'Sales', values: [3, 5] }] } },
+  ];
+  let refused = false;
+  let warned: { code: string; message: string }[] = [];
+  const props = { data: { panels }, size: { width: 800, height: 600 }, onRefused: () => { refused = true; }, onWarnings: (warnings: typeof warned) => { warned = warnings; } };
+  act(() => root.render(<GridChart {...props as never as ComponentProps<typeof GridChart>} />));
+  await settle();
+  expect(host.querySelector('svg')).not.toBeNull();
+  expect(refused).toBe(false);
+  expect(warned.some(warning => /^generated-column-width-/.test(warning.code) && warning.message.startsWith('[main] '))).toBe(true);
+});
+
+// A hidden bullet column printed nothing on the chart, and the data table still printed its values.
+it('leaves hidden bullet columns out of the data table', async () => {
+  const rows = [{ id: 'one', label: 'First', value: 42, target: 60 }, { id: 'two', label: 'Second', value: 75, target: 80 }];
+  const table = async (columnVisibility: Record<string, boolean>) => {
+    act(() => root.render(<BulletChart data={{ rows }} targetColumns a11y={{ table: 'hidden' }} columnVisibility={columnVisibility} size={{ width: 900, height: 300 }} />));
+    await settle();
+    return host.querySelector('[data-bp-a11y-table]')?.textContent ?? '';
+  };
+  const noActual = await table({ actual: false });
+  expect(noActual).toContain('60');
+  expect(noActual).not.toContain('42');
+  const none = await table({ actual: false, target: false, gap: false });
+  expect(none).not.toContain('42');
+  expect(none).not.toContain('75');
+  expect(none).not.toContain('60');
+});
+
+// The document must reopen as the chart on screen, with the columns as the host set them.
+it('keeps bullet and likert column settings in the exported document', async () => {
+  const bullet = getFixtures('bullet').find(item => item.id === 'plot-first')!;
+  const options = { columnVisibility: { share: false }, columnOverrides: { actual: { width: 80 } } };
+  const handle = await exporterOf(exporter => <BulletChart {...bullet.options as object} {...options} data={bullet.data as never} size={{ width: 720 }} exporter={exporter} />);
+  const drawn = host.querySelector('svg')!.textContent;
+  const result = await handle.svg();
+  const document = result.ok ? result.document as { charts: { options: Record<string, unknown> }[] } : undefined;
+  expect(document?.charts[0]!.options).toMatchObject({ ...options, columnOrder: (bullet.options as { columnOrder: unknown }).columnOrder });
+  expect(result.ok && result.artifact.text).toContain(drawn.slice(0, 12));
+  const likert = getFixtures('likert').find(item => item.id === 'columns-after-plot')!;
+  const second = await exporterOf(exporter => <LikertChart {...{ ...likert.options, data: likert.data, size: { width: 720 }, exporter } as never as ComponentProps<typeof LikertChart>} />);
+  const again = await second.svg();
+  const reopened = again.ok ? again.document as { charts: { options: Record<string, unknown> }[] } : undefined;
+  expect(reopened?.charts[0]!.options.columnOrder).toEqual((likert.options as { columnOrder: unknown }).columnOrder);
 });
 
 // The document must reopen as the table on screen, without the columns the host left out.

@@ -6,7 +6,7 @@
  * whether or not its runtime takes it. Precedent: box, cohort, choropleth.
  */
 
-import type { BaseOptionsFor } from '../../types/options';
+import type { BaseOptionsFor, ColumnOverride } from '../../types/options';
 import type { ColorRole, Id } from '../../types/cell';
 
 /**
@@ -58,6 +58,8 @@ export interface PyramidData {
  * a code rather than silently dropped.
  */
 export interface PyramidOptions extends Omit<BaseOptionsFor<'pyramid'>, 'sort' | 'topN'> {
+  /** Settings per generated column, by column id. A width beats the width the type would pick. */
+  columnOverrides?: Record<string, ColumnOverride>;
   /** `never`, not absent: an omitted key is STRIPPED by the schema, not refused. */
   sort?: never;
   topN?: never;

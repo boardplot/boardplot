@@ -418,4 +418,16 @@ fixtures.push({
   options: { ...plantCost.options, variant: 'lines' },
 });
 
+fixtures.push({
+  id: 'column-overrides', title: 'columnOverrides sets the width, alignment and head word of the change column', kind: 'example',
+  data: {
+    categories: [{ id: 'fy25', label: 'FY25' }, { id: 'fy26', label: 'FY26' }],
+    series: [{ id: 'north', label: 'North', values: [42, 48] }, { id: 'south', label: 'South', values: [55, 51] }, { id: 'east', label: 'East', values: [31, 39] }],
+  },
+  options: {
+    title: 'East gained the most', change: 'absolute', source: 'Illustrative data', size: { width: 720 },
+    columnOverrides: { change: { width: 110, label: 'Move', align: 'center', headAlign: 'right' } },
+  },
+});
+
 registerFixtures('slope', fixtures);
