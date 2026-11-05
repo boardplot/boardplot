@@ -268,7 +268,7 @@ fixtures.push({
 for (const variant of ['pure', 'stepped'] as const) fixtures.push({
   id: `cumulative-conversion-${variant}`, title: 'Count-derived cumulative conversion with its own wording', kind: 'example',
   data: { periodLabel: 'Week', cohorts: [{ id: 'a', label: 'Batch A', active: [1000, 5, 12] }, { id: 'b', label: 'Batch B', active: [800, 4] }] },
-  options: { title: 'Cumulative conversion rises by the second week', variant, formatScope: 'classic', ...(variant === 'stepped' ? { steps: [0.5, 1, 2, 3] } : {}),
+  options: { title: 'Cumulative conversion rises by the second week', variant, ...(variant === 'stepped' ? { formatScope: 'classic', steps: [0.5, 1, 2, 3] } : {}),
     basis: 'cohort', unit: '%', visiblePeriods: [1, 2], methodNote: true, threshold: 0, size: { width: 1100 },
     strings: { cohortMeasure: 'Cumulative conversion', cohortFormula: 'Cumulative conversion = converted so far / cohort base.' } },
 });

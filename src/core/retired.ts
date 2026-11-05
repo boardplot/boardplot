@@ -73,6 +73,18 @@ const RETIRED_SETTINGS: readonly RetiredSetting[] = [
   ...removed(['variance'], ['options.topN.showRestCount'], 'A variance chart draws no rest bucket, so it has no count to print.'),
   ...removed(['dot'], ['options.averageMarker.includePartial'], 'A dot chart averages every dot in scope.'),
   { at: 'options.strings.legendCount', use: 'No chart printed this wording.' },
+  // Options whose only effect on these types was a warning that they do nothing.
+  ...removed(['box'], ['options.valueAxis.includeZero', 'options.valueAxis.percent', 'options.valueAxis.reverse', 'options.valueAxis.tickStep'], 'A box axis is a plain linear read of the observations.'),
+  ...removed(['butterfly'], ['options.sort.segments'], 'A butterfly has no stacked segments. sort.categories orders the rows.'),
+  ...removed(['column', 'combo'], ['options.categoryAxis.crossesBetween'], 'Columns always sit in the middle of their bands.'),
+  ...removed(['dimswitch'], ['options.format'], 'Set measures[].format.'),
+  ...removed(['gantt'], ['options.format'], 'Gantt formats calendar dates through its date options.'),
+  ...removed(['grid'], ['options.format'], 'Set the format on each panel.'),
+  ...removed(['dot'], ['options.topN.threshold', 'options.topN.rest', 'options.topN.restLabel', 'options.topN.showRestCount'], 'A dot chart draws no rest bucket, because a sum of scores is not a score.'),
+  ...removed(['likert'], ['options.legend.order'], 'The legend reads in scale order. Reorder data.scale.'),
+  ...removed(['pareto'], ['options.highlight'], 'The highlight encodes the derived vital few.'),
+  ...removed(['pareto'], ['options.topN.showRestCount'], 'A Pareto always prints the count, because the concentration verdict rests on it.'),
+  ...removed(['pareto'], ['options.topN.threshold'], 'The rank cut is topN.n.'),
   { at: 'data.pack', types: ['choropleth'], values: { 'de-laender': 'de-states' } },
   { at: 'options.density', types: ['dimswitch'], values: { cohort: null, 'cohort-small': null },
     use: "A cohort density is a one-line row and a dimswitch cell holds two lines; set 'compact' for tight rows." },
@@ -153,8 +165,9 @@ export function valueLabelsIgnoredWarning(type: 'bar' | 'column', variant: strin
  * per variant. A spec without any of them reads no table below.
  */
 const VARIANT_SCOPED_KEYS: ReadonlySet<string> = new Set([
-  'averages', 'cohortSizeLabel', 'designatedPeriod', 'excludeCurrentPeriod', 'exhibitLabel', 'formatScope', 'heightFill', 'showPercentSign',
-  'targetColumns', 'tornado',
+  'annotations', 'arrow', 'averageMarker', 'averages', 'baseValue', 'cap', 'cohortSizeLabel', 'connectors', 'currentValue', 'designatedPeriod', 'diverging',
+  'excludeCurrentPeriod', 'exhibitLabel', 'formatScope', 'gapColumn', 'grandTotalLabels', 'heightFill', 'netLine', 'rebase100', 'rounding', 'showPercentSign',
+  'stageShade', 'targetColumns', 'tornado', 'totalCvr', 'worstDropCallout',
 ]);
 
 /** Cohort exhibit settings: the heatmap variant does not run the exhibit layout. */
@@ -191,7 +204,7 @@ export function ignoreChartSettings<C extends { options?: unknown; data?: unknow
   };
   // Most requests carry none of these settings: leave before any table is read.
   const authored = Object.keys(chart.options);
-  if (!authored.some((key) => IGNORED_OPTION_KEYS.has(key) || VARIANT_SCOPED_KEYS.has(key) || key === 'valueAxis' || key === 'legend' || key === 'valueLabels')) return { chart: next as C, warnings };
+  if (!Object.hasOwn(chart, 'annotations') && !authored.some((key) => IGNORED_OPTION_KEYS.has(key) || VARIANT_SCOPED_KEYS.has(key) || key === 'valueAxis' || key === 'legend' || key === 'valueLabels')) return { chart: next as C, warnings };
   if (authored.some((key) => IGNORED_OPTION_KEYS.has(key))) {
     for (const key of schemaRefusedKeys(type).options) {
       if (IGNORED_OPTION_KEYS.has(key) && chart.options[key] !== undefined) ignore(['options', key]);
@@ -222,7 +235,7 @@ export function ignoreChartSettings<C extends { options?: unknown; data?: unknow
       warnings.push(valueLabelsIgnoredWarning(type, variant));
     }
   }
-  ignoreVariantSettings(type, readAt(chart, ['type']), readAt(next, ['options']) as Record<string, unknown>, ignore);
+  ignoreVariantSettings(type, chart, readAt(next, ['options']) as Record<string, unknown>, ignore);
   return { chart: next as C, warnings };
 }
 
@@ -235,28 +248,76 @@ export function ignoreChartSettings<C extends { options?: unknown; data?: unknow
 const VARIANT_NAMES: Readonly<Record<string, readonly string[]>> = {
   cohort: ['heatmap', 'pure', 'stepped'],
   bar: ['grouped', 'stacked', 'stacked100', 'football-field', 'tornado'],
+  bartable: ['panels', 'cascade'],
   dot: ['dot', 'dumbbell', 'lollipop'],
+  funnel: ['rows', 'centered'],
+  heatmap: ['value', 'harvey', 'bubble'],
+  line: ['line', 'area', 'stacked-area', 'stacked100-area', 'bump'],
+  slope: ['lines', 'diverging'],
+  waterfall: ['vertical', 'horizontal'],
 };
 
-function ignoreVariantSettings(type: string, name: unknown, options: Record<string, unknown>, ignore: (field: string[], severity: 'warn' | 'info', on: string) => void): void {
+function ignoreVariantSettings(type: string, chart: unknown, options: Record<string, unknown>, ignore: (field: string[], severity: 'warn' | 'info', on: string) => void): void {
   // The schema path accepts a variant in any case and runs this again after conversion, so it warns there. React reads the raw text and draws another layout.
   if (typeof options.variant === 'string' && VARIANT_NAMES[type] && !VARIANT_NAMES[type].includes(options.variant)) return;
+  const name = readAt(chart, ['type']);
   const drop = (field: string[], variant: string) => ignore(field, 'warn', `${type} variant '${variant}'`);
   const set = (key: string) => options[key] !== undefined;
-  const restCount = () => { if (isRecord(options.topN) && options.topN.showRestCount !== undefined) drop(['options', 'topN', 'showRestCount'], String(options.variant ?? name)); };
+  const dropAll = (keys: readonly string[], variant: string) => { for (const key of keys) if (set(key)) drop(['options', key], variant); };
+  // Root annotations enter the options only later in the request, so both places are read. An empty list draws what no list draws and warns nothing.
+  const authored = (list: unknown) => Array.isArray(list) ? list.length > 0 : list !== undefined;
+  const dropAnnotations = (variant: string) => {
+    if (authored(options.annotations)) drop(['options', 'annotations'], variant);
+    if (authored(readAt(chart, ['annotations']))) drop(['annotations'], variant);
+  };
+  const dropSegments = (variant: string) => { if (isRecord(options.sort) && options.sort.segments !== undefined) drop(['options', 'sort', 'segments'], variant); };
   if (type === 'cohort') {
     const variant = typeof options.variant === 'string' ? options.variant : 'heatmap';
-    if (variant === 'heatmap') for (const key of COHORT_EXHIBIT_ONLY) if (set(key)) drop(['options', key], variant);
+    if (variant === 'heatmap') {
+      dropAll(COHORT_EXHIBIT_ONLY, variant);
+      // Sort.segments 'reverse' puts the newest cohort first, and the other reorderings would scramble the staircase.
+      if (isRecord(options.sort)) {
+        if (options.sort.categories !== undefined) drop(['options', 'sort', 'categories'], variant);
+        if (options.sort.segments === 'asc' || options.sort.segments === 'desc') drop(['options', 'sort', 'segments'], variant);
+      }
+    }
     // false stays with its own refusal, which names the one variant that takes it.
     if (variant !== 'pure' && typeof options.designatedPeriod === 'number') drop(['options', 'designatedPeriod'], variant);
     if (variant !== 'heatmap' && set('averages')) drop(['options', 'averages'], variant);
-    if (variant === 'pure' && set('legend')) drop(['options', 'legend'], variant);
+    if (variant === 'pure') dropAll(['legend', 'formatScope'], variant);
   } else if (type === 'bar') {
     const variant = typeof options.variant === 'string' ? options.variant : 'grouped';
-    if (variant !== 'tornado' && set('tornado')) drop(['options', 'tornado'], variant);
-    if (variant === 'tornado' || variant === 'football-field') restCount();
+    if (variant !== 'tornado') dropAll(['tornado', 'baseValue'], variant);
+    if (variant === 'tornado' || variant === 'football-field') {
+      if (isRecord(options.topN) && options.topN.showRestCount !== undefined) drop(['options', 'topN', 'showRestCount'], variant);
+      dropAnnotations(variant);
+      dropSegments(variant);
+    }
+    if (variant === 'tornado') dropAll(['currentValue', 'connectors', 'netLine', 'grandTotalLabels', 'averageMarker'], variant);
+    else if (variant === 'football-field') dropAll(['legend'], variant);
+    else dropAll(['currentValue', ...(variant === 'grouped' ? ['connectors', 'netLine', 'grandTotalLabels'] : [])], variant);
   } else if (type === 'dot') {
-    if (options.variant === 'dumbbell' || options.variant === 'lollipop' || (options.variant === undefined && (name === 'dumbbell' || name === 'lollipop'))) restCount();
+    const variant = typeof options.variant === 'string' ? options.variant : name === 'dumbbell' || name === 'lollipop' ? name : 'dot';
+    if (variant !== 'dumbbell') dropAll(['arrow', 'gapColumn'], variant);
+  } else if (type === 'funnel') {
+    if (options.variant === 'centered') dropAll(['worstDropCallout', 'bandFraction'], 'centered');
+    else dropAll(['totalCvr', 'stageShade'], 'rows');
+  } else if (type === 'slope') {
+    if (options.variant === 'diverging') {
+      dropAll(['legend'], 'diverging');
+      dropAnnotations('diverging');
+    } else dropAll(['diverging'], 'lines');
+  } else if (type === 'waterfall') {
+    // An omitted variant with annotations stays vertical, so only the named one has no part for them.
+    if (options.variant === 'horizontal') dropAnnotations('horizontal');
+  } else if (type === 'heatmap') {
+    if (options.variant === 'harvey') dropAll(['cap'], 'harvey');
+  } else if (type === 'bartable') {
+    // 'sum-consistent' keeps its own refusal; under a cascade the share settings decide.
+    if (options.variant !== 'cascade' && options.rounding === 'nearest') drop(['options', 'rounding'], typeof options.variant === 'string' ? options.variant : 'panels');
+  } else if (type === 'line') {
+    const percent = isRecord(options.valueAxis) && options.valueAxis.percent;
+    if (options.variant === 'stacked100-area' || (percent && options.variant !== 'bump')) dropAll(['rebase100'], 'stacked100-area');
   } else if (type === 'bullet' && options.sharedScale === 'percentOfTarget' && set('targetColumns')) {
     ignore(['options', 'targetColumns'], 'warn', "bullet with sharedScale 'percentOfTarget'");
   }

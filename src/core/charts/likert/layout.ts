@@ -130,7 +130,9 @@ interface LikertTracks {
   rightRoom: number;
 }
 
-export interface LikertOptions extends Omit<BaseOptionsFor<'likert'>, 'sort' | 'topN'> {
+export interface LikertOptions extends Omit<BaseOptionsFor<'likert'>, 'sort' | 'topN' | 'legend'> {
+  /** The legend reads in scale order, so it takes no order. */
+  legend?: Exclude<BaseOptionsFor<'likert'>['legend'], LegendOptions> | (Omit<LegendOptions, 'order'> & { order?: never });
   /** Settings per generated column, by column id. A width beats the width the type would pick. */
   columnOverrides?: Record<string, ColumnOverride>;
   /** Order of whole blocks (plot, net, base); blocks left out follow in default order. */

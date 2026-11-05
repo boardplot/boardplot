@@ -14,6 +14,7 @@ import {
   eventOptionsSchema,
   idSchema,
   partialCategorySchema,
+  bandedCategoryAxis,
   refusedBaseOptions,
   categoryDateSchema,
   valueKindSchema,
@@ -129,6 +130,7 @@ export const comboOptionsSchema = z
   .object({
     ...baseOptionsSchema.shape,
     ...refusedBaseOptions('combo'),
+    categoryAxis: bandedCategoryAxis,
     legend: baseOptionsSchema.shape.legend.describe("Key position. Multiple series get a key unless direct labels name them. 'none' hides the key; render warns when names are missing. A series key also explains its scenario styling."),
     viewDomain: z.object({ x: z.tuple([idSchema, idSchema]).describe('Inclusive category ids bounding the visible x axis.') }).optional().describe("Visible category window, retaining all source observations for means. A mean's Ø label names the periods it covers where the plot draws fewer."),
     window: bandWindowOptionsSchema.optional(),

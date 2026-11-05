@@ -336,7 +336,7 @@ A KPI table: measures by one hierarchical dimension by period, switchable betwee
 | widths.period | number |  |  | Track of each period in px; default 94. |
 | minimumSample | object |  |  | Minimum judge base per sum field in BOTH windows (below it: neutral). Default none. |
 
-Plus the [shared options](options.md). This type does not accept `detailFields`, `labels`, `valueAxis`, `story`, `hatchStrength`, `rounding`, `annotations`, `groupRule`, `groupAlign`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `topN`, `bandFraction`, `legend`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
+Plus the [shared options](options.md). This type does not accept `format`, `detailFields`, `labels`, `valueAxis`, `story`, `hatchStrength`, `rounding`, `annotations`, `groupRule`, `groupAlign`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `topN`, `bandFraction`, `legend`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
 ## Annotations
 
@@ -1363,7 +1363,7 @@ Each item names the mistake, the symptom and the fix.
 - **Depth 4.** Symptom: the error `dimswitch depth must be between 1 and 3 (member levels + 1); got 4`. Fix: the maximum depth is the number of member levels plus one; offer depth controls up to that number.
 - **No range or prior block.** Symptom: `invalid-data` with `Exactly one range period is required.` or `Exactly one prior period is required.` Fix: add one period with `kind: "range"` and one with `kind: "prior"`, with facts for the Total and every member.
 - **A format for a money row.** Symptom: `format: "$1.2"` with `scale: "money"` prints no `$` in the cells and no decimals below 1,000. Fix: put the currency in `unit`. `money` sets its own precision. `perUnit` keeps authored precision for fractional values; `count`, `percent` and measures without a scale keep the format.
-- **A format in `options`.** Symptom: the warning `format-unused`. Fix: set `measures[].format`.
+- **A format in `options`.** Symptom: the warning `option-deprecated`. Fix: set `measures[].format`.
 - **A percent without factor.** Symptom: a share prints 0.4% instead of 38.8%, and the warning `percent-scale-suspect` names the row. Fix: add `factor: 100` to the `div`.
 - **Unknown ids in facts.** Symptom: `invalid-data` with `Unknown member '<id>'; use the total id or a dimension.members id.` or `Unknown period '<id>'; use a periods id.` at `/data/facts/<index>`. Fix: use only the Total id, member ids from `dimension.members` and ids from `periods`.
 - **A narrow render.** Symptom: a KPI label is cut while its unit stays ("… USD"), or a wrapped label overlaps the change tag. Boardplot gives no warning for this yet. Cause: Range, vs prior and every period column keep their widths, and the label column takes the rest of the frame, up to `widths.label` (320 px). A render without `size` is about 780 px wide. Fix: give the table the width the page shows it at, at least the label width plus Range, vs prior and the period columns (about 1,050 px for 4 to 8 weeks), or shorten `unit`.

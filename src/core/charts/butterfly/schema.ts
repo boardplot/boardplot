@@ -9,6 +9,7 @@ import {
   detailCellSchema,
   idSchema,
   refusedBaseOptions,
+  sortCategoriesOnly,
   valueKindSchema,
   scenarioField,
   formatExample,
@@ -47,7 +48,7 @@ export const butterflyDataSchema = z
   }) as unknown as z.ZodType<ChartData>;
 
 export const butterflyOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions('butterfly')).safeExtend({
-  sort: baseOptionsSchema.shape.sort.describe("Category ranking value: the sortBy measure (a, b, sum or diff), default sum. categories sets sheet, reverse, asc or desc with stable ties and missing values last. A rest row stays last. Dated rows keep authored order when a growth or difference annotation spans periods. sort.segments is ignored with an info warning unless sheet."),
+  sort: sortCategoriesOnly.optional().describe("Category ranking value: the sortBy measure (a, b, sum or diff), default sum. categories sets sheet, reverse, asc or desc with stable ties and missing values last. A rest row stays last. Dated rows keep authored order when a growth or difference annotation spans periods."),
   columnOverrides: columnOverridesOption('butterfly', ['width', 'align', 'headAlign', 'label']),
   a: idSchema.describe("Series id displayed in the left pane."),
   b: idSchema.describe("Series id displayed in the right pane."),

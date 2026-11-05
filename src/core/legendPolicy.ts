@@ -263,7 +263,15 @@ export function prepareLegendLayout<D, O extends ChartOptions, M extends object,
     if (definition.type === 'column' && options?.legend === 'none' && column?.seriesLabels !== undefined
       && !column.valueAxis?.percent && (column.variant ?? 'grouped') === 'grouped') {
       const keyed = draw(Object.assign({} as O, options, { legend: undefined }));
-      if (!keyed.refused) return keyed;
+      if (!keyed.refused) {
+        // The key on this drawing exists because seriesLabels is set, so its remove patch would take the key away.
+        keyed.warnings = keyed.warnings.map((warning) => {
+          if (warning.code !== 'series-labels-ignored') return warning;
+          const { fix: _fix, ...kept } = warning;
+          return kept;
+        });
+        return keyed;
+      }
     }
     return draw(options);
   }) as FitLayout<O, M, DV>;

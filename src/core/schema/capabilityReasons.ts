@@ -18,7 +18,7 @@ export const OPTION_REASONS: Readonly<Record<keyof typeof OPTION_CAPABILITY, str
   categoryLabels:
     "staircase category names sit in the free space over columns sorted by height, and only the vertical column family reads categoryLabels (column, combo, pareto). A horizontal bar prints each name beside its row already; a waterfall or variance keeps its bridge order and its delta labels in that space; histogram bins and mekko widths have no free triangle over sorted columns",
   secondaryAxis:
-    "only 'combo' and 'box' have a second value scale to acknowledge; a single-scale chart has no second axis, so declaring one acknowledges nothing",
+    "only 'combo' has a second value scale to acknowledge; a single-scale chart has no second axis, so declaring one acknowledges nothing",
   labels:
     "this type never consults the per-kind label toggle map. On waterfall use labelDensity ('minimal' keeps totals and endpoints, dropping delta and segment values); pvm takes labels.point: false; on grid author labels on each panel's own options; table and diagram have their own display models",
   hatchStrength:
@@ -51,6 +51,8 @@ const VALUE_AXIS_REASONS: Readonly<Record<keyof typeof VALUE_AXIS_CAPABILITY, st
 };
 
 export const VALUE_AXIS_ONLY_REASONS: Readonly<Record<keyof typeof VALUE_AXIS_ONLY, string>> = {
+  box:
+    'a box axis is a plain linear read of the observations; only show, min, max, gridlines and break apply',
   sankey:
     'a sankey has no value axis; node heights and ribbon widths share one scale, and the node labels carry the numbers',
   waterfall:
@@ -199,6 +201,7 @@ const ALTERNATIVES: Readonly<Record<string, Readonly<Record<string, string>>>> =
   highlight: {
     '*': 'this type has no mark that takes emphasis',
     choropleth: "a region's colour is its value; name the region in the title or an annotation, or rank the regions in type 'bar' with options.highlight",
+    pareto: 'the highlight encodes the derived vital few',
     tilemap: "a region's colour is its value; name the region in the title or an annotation, or rank the regions in type 'bar' with options.highlight",
   },
   detailFields: { '*': 'drop detailFields; this type has no cell details' },

@@ -14,7 +14,7 @@ import { panelTypeClass, resolveTheme } from '../../theme';
 import { textScaleOf } from '../../typeFloors';
 import type { ChartData } from '../../types/data';
 import type { BarOptions } from '../../types/options';
-import type { Geometry } from '../../types/scene';
+import type { Geometry, LintWarning } from '../../types/scene';
 import { layoutBar } from '../bar/layout';
 import { barChromeFloor } from '../bar/plot';
 import { BarTooTall, STOP_IF_TOO_TALL } from '../bar/model';
@@ -64,6 +64,27 @@ function barDrawsAlike(data: ChartData, options: AnomalyColumnOptions): boolean 
   if (!hasOnly(data, SAME_DATA)) return false;
   if (!data.categories.every((category) => hasOnly(category, SAME_CATEGORY))) return false;
   return data.series.every((series) => hasOnly(series, SAME_SERIES) && series.role === undefined && series.values.every((cell) => cell === null || typeof cell === 'number' || hasOnly(cell, SAME_CELL)));
+}
+
+/** Grouped columns ignore these, but each one can keep the column from stepping to bars. */
+const GROUPED_IGNORED = ['connectors', 'netLine', 'grandTotalLabels', 'shareLabels', 'ribbons', 'seriesLabels'] as const;
+
+/**
+ * A column that lost names and stayed a column because of a key grouped columns ignore: the warning's remove
+ * patch would turn it into bars. Such a warning keeps its text and offers no patch.
+ */
+export function withoutPatchesThatStep(data: ChartData, options: AnomalyColumnOptions, column: Geometry<ColumnMarks, ColumnDerived>): Geometry<ColumnMarks, ColumnDerived> {
+  const ignored = (warning: LintWarning) => warning.fix !== undefined && typeof warning.field?.[1] === 'string' && (GROUPED_IGNORED as readonly string[]).includes(warning.field[1]);
+  if (!column.warnings.some(ignored) || !column.labels.some((label) => label.kind === 'category' && label.hidden === 'density')) return column;
+  const clean: Record<string, unknown> = { ...options };
+  for (const key of GROUPED_IGNORED) delete clean[key];
+  if (!barDrawsAlike(data, clean as AnomalyColumnOptions)) return column;
+  column.warnings = column.warnings.map((warning) => {
+    if (!ignored(warning)) return warning;
+    const { fix: _fix, ...kept } = warning;
+    return kept;
+  });
+  return column;
 }
 
 export function stepToBar(

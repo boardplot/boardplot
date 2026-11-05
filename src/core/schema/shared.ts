@@ -1161,7 +1161,7 @@ const topNFields = {
   rest: z.boolean().optional().describe('Aggregate remaining categories into a rest bucket by default; false omits them where supported. On a bar mekko the rest bucket is the width-weighted mean of its rates. Pareto retains the bucket to preserve its population.'),
   restLabel: z.string().optional().describe('Authored rest-bucket name; ordinary charts default to Others and Pareto to Rest.'),
   showRestCount: z.boolean().optional().describe('Append the number of aggregated categories; ordinary charts default to false, while Pareto always discloses the count.'),
-  threshold: z.number().optional().describe('Bar-chart minimum absolute category total after the rank cut; not a universal Top-N threshold. Pareto warns that it ignores this field.'),
+  threshold: z.number().optional().describe('Bar-chart minimum absolute category total after the rank cut; not a universal Top-N threshold.'),
 };
 const topNCount = z.number().int().positive();
 
@@ -1501,6 +1501,46 @@ export const anomalyOptionSchema = z
       label: z.string().optional().describe('Names the rule on the exhibit; the bounds stay printed.'),
     }),
   ]);
+
+/** A key removed from one chart type: refused by the published schema, dropped with a warning from an old spec. */
+export const retiredKey = (error: string, why: string) => z.never({ error }).optional().describe(`Retired: ${why} An old spec still draws and warns option-deprecated.`);
+
+/** topN where only the rank cut applies: dot. */
+export const topNRankCutOnly = optionShapeSchema('topN', z.object({
+  n: topNFields.n,
+  rest: retiredKey("'topN.rest' draws nothing on a dot chart; drop it", 'a sum of scores is not a score, so a dot chart has no rest bucket.'),
+  restLabel: retiredKey("'topN.restLabel' names a rest bucket a dot chart does not draw; drop it", 'a dot chart has no rest bucket to name.'),
+  showRestCount: retiredKey("'topN.showRestCount' has no rest bucket to count here; drop it", 'a dot chart has no rest bucket to count.'),
+  threshold: retiredKey("'topN.threshold' does not apply here; the rank cut is topN.n", 'the rank cut is topN.n.'),
+}), topNCount);
+
+/** topN on a Pareto: the count always prints, and the rank cut is n. */
+export const topNOnPareto = optionShapeSchema('topN', z.object({
+  ...topNFields,
+  showRestCount: retiredKey("'topN.showRestCount' is not a choice on a pareto, which always prints the count; drop it", 'a Pareto always prints the count, because the concentration verdict rests on it.'),
+  threshold: retiredKey("'topN.threshold' does not apply on a pareto; the rank cut is topN.n", 'the rank cut is topN.n.'),
+}), topNCount);
+
+/** categoryAxis on a banded row, where every category sits in the middle of its band: column and combo. */
+export const bandedCategoryAxis = z.object({
+  crossesBetween: retiredKey("'categoryAxis.crossesBetween' has no effect on columns; drop it, or use type 'line'", 'columns always sit in the middle of their bands.'),
+  dateTicks: baseOptionsSchema.shape.categoryAxis.unwrap().shape.dateTicks,
+}).optional().describe('Category-axis settings: dateTicks.');
+
+/** sort where a chart has no segments to order: butterfly. */
+export const sortCategoriesOnly = optionShapeSchema('sort', z.object({
+  categories: z.enum(['sheet', 'asc', 'desc', 'reverse']).optional().describe('Category order: sheet preserves authored order, reverse reverses it, asc and desc use the chart category ranking value.'),
+  segments: retiredKey("'sort.segments' has no stacked segments to order here; drop it", 'this chart has no stacked segments.'),
+}), z.union([z.enum(['sheet', 'asc', 'desc', 'reverse']), z.literal(true)]));
+
+/** legend where the key follows the scale: likert. */
+export const legendWithoutOrder = z.union([
+  baseOptionsSchema.shape.legend.unwrap().options[0],
+  z.object({
+    position: keyPositionSchema,
+    order: retiredKey("'legend.order' is derived on a likert, which reads in scale order; reorder data.scale", 'the legend reads in scale order; reorder data.scale.'),
+  }).describe('Explicit legend placement.'),
+]).optional();
 
 /** The average marker of bar, column, dot and combo: on, off, or scoped to some series. */
 const averageMarkerScope = z

@@ -590,7 +590,7 @@ describe('waterfall variant option text', () => {
       properties: { variant: { description: string } };
     };
     const text = json.properties.variant.description;
-    expect(text).toContain('horizontal-annotations-unsupported');
+    expect(text).toContain('option-ignored');
     expect(text).toContain('no annotations');
   });
 });

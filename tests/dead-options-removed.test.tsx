@@ -72,11 +72,14 @@ describe('a removed option keeps an old spec drawing', () => {
     expect((render({ spec: { ...clean, options: { ...clean.options, designatedPeriod: false } }, return: ['svg'] }) as { exit: number }).exit).not.toBe(0);
   });
 
-  it('removed from a variant set by an alias: topN.showRestCount on a dumbbell', () => {
+  it('removed from a variant set by an alias: arrow stays on a dumbbell and leaves a lollipop', () => {
     const clean = fixture('dot', 'share-shift-dumbbell');
     const { variant: _variant, ...options } = clean.options;
-    const spec = (topN: object) => ({ type: 'dumbbell', data: clean.data, options: { ...options, topN } });
-    dropsTheKey(spec({ n: 2 }), spec({ n: 2, showRestCount: true }), 'option-ignored', '/options/topN/showRestCount');
+    const spec = (type: string, extra: object) => ({ type, data: clean.data, options: { ...options, ...extra } });
+    expect(draw(spec('dumbbell', { arrow: true })).warnings.flatMap((warning) => warning.fix ?? []).map((operation) => operation.path)).not.toContain('/options/arrow');
+    const single = fixture('dot', getFixtures('dot').find((candidate) => (candidate.data as { series: unknown[] }).series.length === 1)!.id);
+    const lollipop = { ...single, type: 'lollipop' };
+    dropsTheKey(lollipop, { ...lollipop, options: { ...lollipop.options, arrow: true } }, 'option-ignored', '/options/arrow');
   });
 
   it('warned by the layout: by-measure totalPosition and an encoding on no column', () => {

@@ -305,6 +305,8 @@ function barNetLine(
       code: 'net-line-ignored',
       severity: 'warn',
       message: 'netLine applies only to stacked and stacked100 bar charts; ignored for grouped',
+      field: ['options', 'netLine'],
+      fix: [{ op: 'remove', path: '/options/netLine' }],
     });
   }
   if (netLineOn && netLineSeriesId && !netLineSeries) {

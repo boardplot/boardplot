@@ -301,6 +301,8 @@ function columnLines(
       code: 'connectors-ignored',
       severity: 'warn',
       message: 'connectors apply only to stacked and stacked100 column charts; ignored for grouped',
+      field: ['options', 'connectors'],
+      fix: [{ op: 'remove', path: '/options/connectors' }],
     });
   }
   const connectorDashed =
@@ -338,6 +340,8 @@ function columnLines(
       code: 'net-line-ignored',
       severity: 'warn',
       message: 'netLine applies only to stacked and stacked100 column charts; ignored for grouped',
+      field: ['options', 'netLine'],
+      fix: [{ op: 'remove', path: '/options/netLine' }],
     });
   }
   if (options.shareLabels !== undefined && !stackedLike) {
@@ -346,6 +350,8 @@ function columnLines(
       severity: 'warn',
       message: 'shareLabels applies only to stacked and stacked100 column charts, whose columns are wholes; ignored for grouped',
       suggest: "use variant 'stacked' to print each segment's share of its column",
+      field: ['options', 'shareLabels'],
+      fix: [{ op: 'remove', path: '/options/shareLabels' }],
     });
   }
   if (options.seriesLabels !== undefined && !stackedLike) {
@@ -354,6 +360,9 @@ function columnLines(
       severity: 'warn',
       message: 'seriesLabels applies only to stacked and stacked100 column charts; ignored for grouped',
       suggest: 'use a legend to name grouped series',
+      field: ['options', 'seriesLabels'],
+      // With legend 'none' this key brings the series key back (legendPolicy.ts), so removing it changes the drawing.
+      ...(options.legend === 'none' ? {} : { fix: [{ op: 'remove' as const, path: '/options/seriesLabels' }] }),
     });
   }
   if (netLineOn && netLineSeriesId && !netLineSeries) {
@@ -462,6 +471,8 @@ function columnRibbons(
       severity: 'warn',
       message: 'ribbons apply only to stacked and stacked100 column charts; ignored for grouped',
       suggest: "use variant 'stacked'",
+      field: ['options', 'ribbons'],
+      fix: [{ op: 'remove', path: '/options/ribbons' }],
     });
     return { ribbonsOn: false, ribbonRank: false };
   }

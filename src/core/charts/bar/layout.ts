@@ -95,6 +95,7 @@ import { disclosureNote, disclosuresShown } from '../../notes';
 import { omittedKey } from '../../seriesIdentity';
 import { maxOf, minOf, pushAll } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
+import { ITEM_BUDGET } from '../../itemBudget';
 
 export interface BarMarks {
   rows: { id: Id; rect: Rect; bars: { seriesId: Id; rect: Rect; nodeId: Id }[] }[];
@@ -161,8 +162,11 @@ function warnRangeBarIgnoredRanking(
   mode: 'football-field' | 'tornado',
   options: { topN?: unknown; sort?: { segments?: string } },
   warnings: LintWarning[],
+  categoryCount: number,
 ): void {
   if (options.topN) {
+    // The item budget counts a chart after its topN, so over the budget the patched spec would be refused.
+    const patch = categoryCount > ITEM_BUDGET ? {} : { field: ['options', 'topN'], fix: [{ op: 'remove' as const, path: '/options/topN' }] };
     warnings.push(
       mode === 'football-field'
         ? {
@@ -170,12 +174,14 @@ function warnRangeBarIgnoredRanking(
             severity: 'warn',
             message: 'football-field does not aggregate method ranges with topN; all methods remain visible',
             suggest: 'filter methods before layout instead of aggregating intervals',
+            ...patch,
           }
         : {
             code: 'tornado-topn-ignored',
             severity: 'warn',
             message: 'tornado does not aggregate drivers with topN; all drivers remain visible',
             suggest: 'drop the drivers you do not want before layout — an aggregated driver has no one-at-a-time swing',
+            ...patch,
           },
     );
   }
@@ -1712,7 +1718,7 @@ function planFootballField(
   cats = order.map((index) => cats[index]!);
   cells = order.map((index) => cells[index]!);
 
-  warnRangeBarIgnoredRanking('football-field', options, warnings);
+  warnRangeBarIgnoredRanking('football-field', options, warnings, data.categories.length);
   if (
     options.netLine !== undefined ||
     options.averageMarker !== undefined ||
@@ -1987,7 +1993,7 @@ function planTornado(
    * inventing judgment. So the palette sets the tornado's hue and the two tints
    * say "same driver, two cases".
    */
-  warnRangeBarIgnoredRanking('tornado', options, warnings);
+  warnRangeBarIgnoredRanking('tornado', options, warnings, data.categories.length);
   if (
     options.netLine !== undefined ||
     options.averageMarker !== undefined ||

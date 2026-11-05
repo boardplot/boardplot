@@ -767,7 +767,9 @@ export interface AnomalyThresholdSpec {
 
 export type AnomalySpec = AnomalyMadSpec | AnomalyThresholdSpec;
 
-export interface ColumnOptions extends BaseOptionsFor<'column'> {
+export interface ColumnOptions extends Omit<BaseOptionsFor<'column'>, 'categoryAxis'> {
+  /** dateTicks only: columns always sit in the middle of their bands. */
+  categoryAxis?: { crossesBetween?: never; dateTicks?: CategoryAxisOptions['dateTicks'] };
   /** Title of the drawn value axis. */
   axisTitles?: { primary?: string };
   variant?: 'grouped' | 'stacked' | 'stacked100'; // default 'grouped'
@@ -910,7 +912,9 @@ export interface BarOptions
    */
   methodNote?: boolean;
 }
-export interface ButterflyOptions extends BaseOptionsFor<'butterfly'> {
+export interface ButterflyOptions extends Omit<BaseOptionsFor<'butterfly'>, 'sort'> {
+  /** A butterfly has no stacked segments. */
+  sort?: { categories?: SortOrder; segments?: never };
   /** Settings per generated column, by column id. A width beats the width the type would pick. */
   columnOverrides?: Record<string, ColumnOverride>;
   a: Id;
@@ -1166,7 +1170,9 @@ export interface LinePhase {
   rank?: number;
 }
 /** First line point defaults to its value; last defaults to series name and value. */
-export interface ComboOptions extends Omit<BaseOptionsFor<'combo'>, 'secondaryAxis'> {
+export interface ComboOptions extends Omit<BaseOptionsFor<'combo'>, 'secondaryAxis' | 'categoryAxis'> {
+  /** dateTicks only: columns always sit in the middle of their bands. */
+  categoryAxis?: { crossesBetween?: never; dateTicks?: CategoryAxisOptions['dateTicks'] };
   /** The event lane and key: placement, lane rows, event groups. */
   events?: EventOptions;
   /** Visible category endpoints; source means retain all observations. */
@@ -1203,7 +1209,9 @@ export interface ComboOptions extends Omit<BaseOptionsFor<'combo'>, 'secondaryAx
  * Pareto. `sort` is deliberately absent: descending IS the analysis, and an
  * option to un-sort it would be an option to stop being a Pareto.
  */
-export interface ParetoOptions extends Omit<BaseOptionsFor<'pareto'>, 'sort'> {
+export interface ParetoOptions extends Omit<BaseOptionsFor<'pareto'>, 'sort' | 'topN'> {
+  /** A Pareto always prints the count, and the rank cut is n. */
+  topN?: Omit<TopNOptions, 'showRestCount' | 'threshold'> & { showRestCount?: never; threshold?: never };
   /**
    * `never`, not absent. Omitting the key makes `sort` a plain unknown property,
    * which a non-strict zod object STRIPS: the option would parse away silently, leave
@@ -1432,7 +1440,9 @@ export interface BulletOptions extends BaseOptionsFor<'bullet'> {
    */
   density?: 'compact' | 'regular';
 }
-export interface DotOptions extends BaseOptionsFor<'dot'> {
+export interface DotOptions extends Omit<BaseOptionsFor<'dot'>, 'topN'> {
+  /** Only the rank cut: a dot chart draws no rest bucket. */
+  topN?: { n: number; rest?: never; restLabel?: never; showRestCount?: never; threshold?: never };
   /** Settings per generated column, by column id. A width beats the width the type would pick. */
   columnOverrides?: Record<string, ColumnOverride>;
   /** Authored value-axis title, under the tick row when the axis is drawn. */
@@ -1588,7 +1598,9 @@ export interface FunnelOptions extends BaseOptionsFor<'funnel'> {
    */
   worstDropCallout?: boolean;
 }
-export interface GridOptions extends BaseOptionsFor<'grid'> {
+export interface GridOptions extends Omit<BaseOptionsFor<'grid'>, 'format'> {
+  /** Each panel sets its own format. */
+  format?: never;
   /** Top-down metric stack with shared categories and computed readouts. */
   stack?: import('../charts/grid/metricStack').MetricStackOptions;
   columns?: number;
