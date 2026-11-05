@@ -61,6 +61,8 @@ const TIER_SLACK_PASSES = 32;
 const TIER_SLACK_BACKOFFS = 8;
 /** The plot a squashed tier keeps (balanceVarianceTierPlots steps in at 10 px), with rounding room. */
 const TIER_PLOT_FLOOR = 10.5;
+/** The warnings of a panel that keeps a value off its plot. */
+const DROPPED_VALUE_WARNINGS = new Set(['label-hidden', 'values-in-note', 'value-labels-dropped-series']);
 
 /**
  * The name every panel shares as options.scaleGroup.y, or null. Panels on one
@@ -587,6 +589,8 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
   const requirements = () => gridSizing(size, area, sizingChildren(),
     packedTiers ? [...bottomUpOrder].reverse().map(index => children[index]!.geo.sizing!.minHeight) : rowWeights,
     Array(columns).fill(1), rowGaps, Array(columns - 1).fill(gap), true);
+  let tierRepaired = false;
+  let plainFits = () => true;
   const packTiers = (repair: boolean) => {
     const weights = tierWeights(data.panels);
     const wSum = weights.reduce((sum, weight) => sum + weight, 0);
@@ -606,6 +610,7 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
     const minimums = tierMinimums();
     const usable = area.h - theme.space.tierGap * (n - 1);
     if (repair && !varianceWeights && slots.some((slot, i) => slot.h + 0.5 < minimums[i]! && children[i]!.geo.plot.h < (children[i]!.geo.frame.plotMinHeight ?? 0)) && minimums.reduce((a, b) => a + b, 0) <= usable) {
+      tierRepaired = true;
       settle(heightsHoldingMinimums(usable, weights, minimums));
     }
     // Content that needs more than the canvas gives (a tier at its plot floor keeps its frame) takes
@@ -615,6 +620,7 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
       const giveSum = give.reduce((a, b) => a + b, 0);
       if (giveSum === 0) return false;
       const before = { slots: slots.map((slot) => ({ ...slot })), children, tierContents, total: contentTotal(), sharedX, sharedW };
+      tierRepaired = true;
       const floors = tierMinimums();
       settle(slots.map((slot, i) => Math.max(Math.min(slot.h, floors[i]!), slot.h - deficit * give[i]! / giveSum)));
       if (contentTotal() < before.total - 0.5) return true;
@@ -623,6 +629,7 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
       return false;
     };
     const slackNow = () => area.h - packReserve - theme.space.tierGap * (n - 1) - contentTotal();
+    plainFits = () => slackNow() >= -gapCapacity - 1;
     for (let pass = 0; pass < TIER_SLACK_PASSES; pass++) {
       const slack = slackNow();
       if (slack < 0 && slack >= -gapCapacity) {
@@ -683,15 +690,28 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
   // A short probe already needs a larger canvas. Packing slack there cannot
   // make it renderable and can repeatedly cross label-wrapping thresholds.
   if (packedTiers && requirements().minHeight <= size.height) {
-    const unpacked = { slots: slots.map((slot) => ({ ...slot })), children, tierContents, sharedX, sharedW, warnings: warnings.length };
+    const state = () => ({ slots: slots.map((slot) => ({ ...slot })), children, tierContents, sharedX, sharedW, gap: effectiveTierGap, warnings: warnings.slice() });
+    const restore = (saved: ReturnType<typeof state>) => {
+      saved.slots.forEach((slot, i) => { slots[i] = slot; });
+      ({ children, tierContents, sharedX, sharedW } = saved);
+      effectiveTierGap = saved.gap;
+      warnings.length = 0;
+      warnings.push(...saved.warnings);
+    };
+    const start = state();
+    tierRepaired = false;
     packTiers(true);
-    // A repair that raises a panel's minimum above the canvas gives way, so the chart still draws.
-    if (requirements().minHeight > size.height) {
-      unpacked.slots.forEach((slot, i) => { slots[i] = slot; });
-      ({ children, tierContents, sharedX, sharedW } = unpacked);
-      warnings.length = unpacked.warnings;
-      effectiveTierGap = theme.space.tierGap;
+    if (tierRepaired) {
+      // A repair gives way when it raises a panel's minimum above the canvas, or when the plain
+      // packing fits the canvas and keeps more values: it exists for tiers that do not fit.
+      const repaired = state();
+      const raised = requirements().minHeight > size.height;
+      const droppedValues = () => children.reduce((sum, child) => sum + child.geo.warnings.filter((warning) => DROPPED_VALUE_WARNINGS.has(warning.code)).length, 0);
+      const repairedDrops = droppedValues();
+      restore(start);
       packTiers(false);
+      const fits = plainFits();
+      if (!raised && !(fits && droppedValues() < repairedDrops)) restore(repaired);
     }
   }
   const sizing = requirements();
