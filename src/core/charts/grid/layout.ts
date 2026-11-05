@@ -9,6 +9,7 @@ import { structureCount } from '../../structureCounts';
 import { boundsOf, type Rect } from '../../geometry';
 import { fmtPathNumber as fmtN } from '../../curve';
 import { inferLinearYDomain } from '../../axis';
+import { floorTextScale } from '../../target';
 import { frameTextOptions, normalizeLegendOption, slotDemandHeight, solveFrame, type FrameInput, type LegendItemInput } from '../../frame';
 import { collectGridLegendItems, gridLegendInput, gridPanelsKeepEndNames, hatchStrengthFor } from '../../grid/gridKey';
 import { balanceVarianceTierPlots, VARIANCE_TIER, varianceTierWeights } from '../../grid/varianceTiers';
@@ -1302,6 +1303,9 @@ function layoutAuthoredGrid(
   let sizingRows = rowWeights;
   let askedRows: number[] | undefined;
   let packedTiers = false;
+  // Slide and print step their type down on a short canvas and keep their value labels; only then do the tier minimums count.
+  const typeStepsFirst = options.target !== undefined && floorTextScale(options.target) !== undefined
+    && options.textScale === undefined && options.textSize === undefined && options.belowMinimum !== 'refuse';
   if (naturalTierWeights) {
     // Final margins can change header wrapping and label rows. Balance the
     // plots after alignment, preserving the margins that alignment measured.
@@ -1506,7 +1510,7 @@ function layoutAuthoredGrid(
   return {
     type: 'grid',
     size,
-    sizing: withReadoutPlotHeight(gridSizing(size, area, children.map(child => ({ geometry: child.geometry, ...child.placement })), rowWeights, columnWeights, rowGaps, columnGaps, automaticRows, sizingRows, askedRows),
+    sizing: withReadoutPlotHeight(gridSizing(size, area, children.map(child => ({ geometry: child.geometry, ...child.placement })), rowWeights, columnWeights, rowGaps, columnGaps, automaticRows, sizingRows, askedRows, typeStepsFirst),
       size, automaticRows ? children : []),
     plot: area,
     scene,

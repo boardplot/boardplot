@@ -82,6 +82,7 @@ export function gridRowHeights(height: number, children: GridChild[], rows: numb
  * `minimumRows` weights the rows for the minimum height only; the natural height keeps the slot `rows`.
  * `askedRows` weights them for the height the panels ask for (a tier asks for its plot floor, above its
  * minimum): the natural height is at least that.
+ * `slotsFirst` reports the slot minimum, so a canvas short of it steps the type down before the tier minimums count.
  */
 export function gridSizing(size: Size, area: Rect,
   children: GridChild[],
@@ -89,6 +90,7 @@ export function gridSizing(size: Size, area: Rect,
   automaticRows = false,
   minimumRows = rows,
   askedRows?: number[],
+  slotsFirst = false,
 ) {
   const fixed = contentRows(children, rows, rowGaps, automaticRows);
   const required = (axis: 'row' | 'column', weights: number[], gaps: number[], mode: 'minimum' | 'natural' | 'asked' = 'minimum') => {
@@ -122,7 +124,7 @@ export function gridSizing(size: Size, area: Rect,
     : required('row', rows, rowGaps, 'natural');
   return resolveSizing(content ? { ...policy, fit: 'content', aspect: 'content', minHeight: 0 } : policy, size, {
     minWidth: size.width - area.w + required('column', columns, columnGaps),
-    minHeight: chrome + Math.min(minimumHeight, slotMinimum),
+    minHeight: chrome + (slotsFirst ? slotMinimum : Math.min(minimumHeight, slotMinimum)),
     ...(content ? { naturalHeight: chrome + naturalRows }
       // The minimum may come from tier minimums, below what the panels ask for: the natural height keeps that demand.
       : minimumHeight < slotMinimum ? { naturalHeight: Math.max(resolveSizing(policy, size).naturalHeight, chrome + slotMinimum, askedRows && size.height >= chrome + minimumHeight ? chrome + required('row', askedRows, rowGaps, 'asked') : 0) } : {}),

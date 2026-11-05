@@ -587,8 +587,6 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
   const requirements = () => gridSizing(size, area, sizingChildren(),
     packedTiers ? [...bottomUpOrder].reverse().map(index => children[index]!.geo.sizing!.minHeight) : rowWeights,
     Array(columns).fill(1), rowGaps, Array(columns - 1).fill(gap), true);
-  // A short probe already needs a larger canvas. Packing slack there cannot
-  // make it renderable and can repeatedly cross label-wrapping thresholds.
   const packTiers = (repair: boolean) => {
     const weights = tierWeights(data.panels);
     const wSum = weights.reduce((sum, weight) => sum + weight, 0);
@@ -682,6 +680,8 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
         suggest: 'increase the grid height' });
     }
   };
+  // A short probe already needs a larger canvas. Packing slack there cannot
+  // make it renderable and can repeatedly cross label-wrapping thresholds.
   if (packedTiers && requirements().minHeight <= size.height) {
     const unpacked = { slots: slots.map((slot) => ({ ...slot })), children, tierContents, sharedX, sharedW, warnings: warnings.length };
     packTiers(true);
