@@ -7,7 +7,7 @@
  */
 
 import { addWhereAbsent, toJsonPointer } from './diagnostics/jsonPatch';
-import { IGNORED_OPTION_KEYS, LEGEND_REFUSED, schemaRefusedKeys, valueAxisOnly, valueAxisRefusal } from './schema/capability';
+import { ANNOTATIONS_RETIRED, IGNORED_OPTION_KEYS, LEGEND_REFUSED, schemaRefusedKeys, valueAxisOnly, valueAxisRefusal } from './schema/capability';
 import type { LintWarning } from './types/scene';
 
 type Scalar = string | number | boolean;
@@ -67,6 +67,12 @@ const RETIRED_SETTINGS: readonly RetiredSetting[] = [
   ...removed(['butterfly', 'heatmap'], ['data.series.[].role']),
   ...removed(['pie', 'heatmap'], ['data.series.[].fill']),
   ...removed(['diagram'], ['data.nodes.[].ports.[].priority']),
+  // Options with no reader on these types.
+  ...removed(['dimswitch'], ['options.groupRule', 'options.groupAlign'], 'These keys set the head of a column group, and a dimswitch draws none.'),
+  ...removed(ANNOTATIONS_RETIRED, ['options.annotations', 'annotations'], 'This chart type draws no annotation of any kind.'),
+  ...removed(['variance'], ['options.topN.showRestCount'], 'A variance chart draws no rest bucket, so it has no count to print.'),
+  ...removed(['dot'], ['options.averageMarker.includePartial'], 'A dot chart averages every dot in scope.'),
+  { at: 'options.strings.legendCount', use: 'No chart printed this wording.' },
   { at: 'data.pack', types: ['choropleth'], values: { 'de-laender': 'de-states' } },
   { at: 'options.density', types: ['dimswitch'], values: { cohort: null, 'cohort-small': null },
     use: "A cohort density is a one-line row and a dimswitch cell holds two lines; set 'compact' for tight rows." },
@@ -142,6 +148,18 @@ export function valueLabelsIgnoredWarning(type: 'bar' | 'column', variant: strin
   };
 }
 
+/**
+ * Settings that only some variants of a type draw, so `retired.ts` reads them
+ * per variant. A spec without any of them reads no table below.
+ */
+const VARIANT_SCOPED_KEYS: ReadonlySet<string> = new Set([
+  'averages', 'cohortSizeLabel', 'designatedPeriod', 'excludeCurrentPeriod', 'exhibitLabel', 'formatScope', 'heightFill', 'showPercentSign',
+  'targetColumns', 'tornado',
+]);
+
+/** Cohort exhibit settings: the heatmap variant does not run the exhibit layout. */
+const COHORT_EXHIBIT_ONLY = ['cohortSizeLabel', 'exhibitLabel', 'heightFill', 'showPercentSign', 'formatScope', 'excludeCurrentPeriod'] as const;
+
 /** A chart copy without settings its type ignores, with one remove warning per setting. */
 export function ignoreChartSettings<C extends { options?: unknown; data?: unknown }>(
   type: string, chart: C, canonical: (name: string) => string | undefined = (name) => name,
@@ -164,16 +182,16 @@ export function ignoreChartSettings<C extends { options?: unknown; data?: unknow
       fix: warning.fix!.map(operation => ({ ...operation, path: toJsonPointer(at) + operation.path })) });
   }
   if (!isRecord(chart.options)) return { chart: next as C, warnings };
-  const ignore = (field: string[], severity: 'warn' | 'info' = 'warn') => {
+  const ignore = (field: string[], severity: 'warn' | 'info' = 'warn', on: string = type) => {
     next = setAt(next, field, undefined);
     const dotted = field.join('.');
     warnings.push({ code: 'option-ignored', severity, field,
-      message: `${dotted} has no effect on ${type} and is ignored.`,
+      message: `${dotted} has no effect on ${on} and is ignored.`,
       suggest: `Remove ${dotted}.`, fix: [{ op: 'remove', path: toJsonPointer(field) }] });
   };
   // Most requests carry none of these settings: leave before any table is read.
   const authored = Object.keys(chart.options);
-  if (!authored.some((key) => IGNORED_OPTION_KEYS.has(key) || key === 'valueAxis' || key === 'legend' || key === 'valueLabels')) return { chart: next as C, warnings };
+  if (!authored.some((key) => IGNORED_OPTION_KEYS.has(key) || VARIANT_SCOPED_KEYS.has(key) || key === 'valueAxis' || key === 'legend' || key === 'valueLabels')) return { chart: next as C, warnings };
   if (authored.some((key) => IGNORED_OPTION_KEYS.has(key))) {
     for (const key of schemaRefusedKeys(type).options) {
       if (IGNORED_OPTION_KEYS.has(key) && chart.options[key] !== undefined) ignore(['options', key]);
@@ -204,7 +222,44 @@ export function ignoreChartSettings<C extends { options?: unknown; data?: unknow
       warnings.push(valueLabelsIgnoredWarning(type, variant));
     }
   }
+  ignoreVariantSettings(type, readAt(chart, ['type']), readAt(next, ['options']) as Record<string, unknown>, ignore);
   return { chart: next as C, warnings };
+}
+
+/**
+ * Drops what the chosen variant has no part for. The request fills a default
+ * variant only after this runs, and an alias such as dumbbell sets its variant
+ * later too, so both are read here: an omitted cohort variant is heatmap, an
+ * omitted bar variant is grouped.
+ */
+const VARIANT_NAMES: Readonly<Record<string, readonly string[]>> = {
+  cohort: ['heatmap', 'pure', 'stepped'],
+  bar: ['grouped', 'stacked', 'stacked100', 'football-field', 'tornado'],
+  dot: ['dot', 'dumbbell', 'lollipop'],
+};
+
+function ignoreVariantSettings(type: string, name: unknown, options: Record<string, unknown>, ignore: (field: string[], severity: 'warn' | 'info', on: string) => void): void {
+  // The schema path accepts a variant in any case and runs this again after conversion, so it warns there. React reads the raw text and draws another layout.
+  if (typeof options.variant === 'string' && VARIANT_NAMES[type] && !VARIANT_NAMES[type].includes(options.variant)) return;
+  const drop = (field: string[], variant: string) => ignore(field, 'warn', `${type} variant '${variant}'`);
+  const set = (key: string) => options[key] !== undefined;
+  const restCount = () => { if (isRecord(options.topN) && options.topN.showRestCount !== undefined) drop(['options', 'topN', 'showRestCount'], String(options.variant ?? name)); };
+  if (type === 'cohort') {
+    const variant = typeof options.variant === 'string' ? options.variant : 'heatmap';
+    if (variant === 'heatmap') for (const key of COHORT_EXHIBIT_ONLY) if (set(key)) drop(['options', key], variant);
+    // false stays with its own refusal, which names the one variant that takes it.
+    if (variant !== 'pure' && typeof options.designatedPeriod === 'number') drop(['options', 'designatedPeriod'], variant);
+    if (variant !== 'heatmap' && set('averages')) drop(['options', 'averages'], variant);
+    if (variant === 'pure' && set('legend')) drop(['options', 'legend'], variant);
+  } else if (type === 'bar') {
+    const variant = typeof options.variant === 'string' ? options.variant : 'grouped';
+    if (variant !== 'tornado' && set('tornado')) drop(['options', 'tornado'], variant);
+    if (variant === 'tornado' || variant === 'football-field') restCount();
+  } else if (type === 'dot') {
+    if (options.variant === 'dumbbell' || options.variant === 'lollipop' || (options.variant === undefined && (name === 'dumbbell' || name === 'lollipop'))) restCount();
+  } else if (type === 'bullet' && options.sharedScale === 'percentOfTarget' && set('targetColumns')) {
+    ignore(['options', 'targetColumns'], 'warn', "bullet with sharedScale 'percentOfTarget'");
+  }
 }
 
 /**

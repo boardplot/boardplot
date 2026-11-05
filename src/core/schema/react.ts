@@ -47,7 +47,6 @@ export const boardplotThemeOptionsSchema = z.object({
     total: z.string().optional().describe('Host wording for a computed total.'),
     source: z.string().optional().describe('Host wording for source furniture.'),
     ...sharedStrings.pick({ notApplicable: true }).shape,
-    legendCount: z.string().optional().describe('Host wording for a legend count; use {count} for the number.'),
     partial: z.string().optional().describe('Host wording after the labels of partial categories in their footnote, also the hatch key label.'),
     ...sharedStrings.pick({
       better: true, worse: true, positiveTotal: true, rangeMidNote: true, sensitivityNote: true,

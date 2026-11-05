@@ -62,8 +62,12 @@ export interface DimSwitchData {
   facts: { memberId: string; periodId: string; sums: DimSwitchSums; ref?: DimSwitchSums }[];
 }
 export type DimSwitchVariant = 'by-measure' | 'by-member';
-export interface DimSwitchOptions extends Omit<TableOptions, 'expansion' | 'topN' | 'variant'> {
+export interface DimSwitchOptions extends Omit<TableOptions, 'expansion' | 'topN' | 'variant' | 'groupRule' | 'groupAlign' | 'legend'> {
   topN?: never;
+  /** Retired: a dimswitch draws no column-group head and no key. An old spec still draws and warns. */
+  groupRule?: never;
+  groupAlign?: never;
+  legend?: never;
   /** False leaves a column out: range, pp (vs prior), pl (vs plan) or a displayed period id. The label column stays. The data still needs its range and prior periods, and order and show still read Range. */
   columnVisibility?: Record<string, boolean>;
   /** Per-column settings on label, range, pp, pl and each period id. `width` beats `widths`, and the automatic card form ignores it. */

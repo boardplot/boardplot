@@ -70,7 +70,6 @@ Every chart type accepts these options unless its own page names them as not acc
 | strings.total | string |  |  | Label of a computed total row; default Total. |
 | strings.source | string |  |  | Word introducing the authored source credit; default Source. An empty string prints the source without a prefix or colon. |
 | strings.notApplicable | string |  |  | Not applicable text; n/a, German k. A. |
-| strings.legendCount | string |  |  | Legend disclosure wording; '{count}' becomes "2 of 4". Default depends on the legend subject. |
 | strings.partial | string |  |  | Word after the labels of partial categories in the column, bar, line and combo footnote, also the hatch key label; default Partial; a named key uses toDate. |
 | strings.better | string |  |  | Meaning of a better sign-coloured value. |
 | strings.worse | string |  |  | Meaning of a worse sign-coloured value. |

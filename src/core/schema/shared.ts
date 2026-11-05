@@ -21,7 +21,7 @@ import {
 } from '../normalize/shared';
 import { parseFormatExample, specUnitKind } from '../formatSpec';
 import { isIconName, listIcons } from '../icons';
-import { IGNORED_OPTION_KEYS, LEGEND_DRAWS, LEGEND_REFUSED, OPTION_CAPABILITY, legendDrawsNothing, valueAxisOnly, valueAxisRefusal } from './capability';
+import { ANNOTATIONS_RETIRED, IGNORED_OPTION_KEYS, LEGEND_DRAWS, LEGEND_REFUSED, OPTION_CAPABILITY, legendDrawsNothing, valueAxisOnly, valueAxisRefusal } from './capability';
 import {
   LEGEND_DRAWS_REASONS, LEGEND_REFUSED_REASONS, OPTION_REASONS, TRANSPOSE_REFUSED, VALUE_AXIS_ONLY_REASONS, notImplemented, valueAxisReason,
 } from './capabilityReasons';
@@ -1156,6 +1156,22 @@ function keyOptionSchema<const V extends readonly [string, ...string[]]>(values:
 }
 
 /** BaseOptions minus `measure` (excluded from JSON Schema per spec). */
+const topNFields = {
+  n: z.number().int().positive().describe('Maximum number of individually retained categories after chart-specific ranking.'),
+  rest: z.boolean().optional().describe('Aggregate remaining categories into a rest bucket by default; false omits them where supported. On a bar mekko the rest bucket is the width-weighted mean of its rates. Pareto retains the bucket to preserve its population.'),
+  restLabel: z.string().optional().describe('Authored rest-bucket name; ordinary charts default to Others and Pareto to Rest.'),
+  showRestCount: z.boolean().optional().describe('Append the number of aggregated categories; ordinary charts default to false, while Pareto always discloses the count.'),
+  threshold: z.number().optional().describe('Bar-chart minimum absolute category total after the rank cut; not a universal Top-N threshold. Pareto warns that it ignores this field.'),
+};
+const topNCount = z.number().int().positive();
+
+/** topN where no rest bucket can print: variance. */
+export const topNWithoutRestCount = optionShapeSchema('topN', z
+  .object({
+    ...topNFields,
+    showRestCount: z.never({ error: "'topN.showRestCount' has no rest bucket to count here; drop it" }).optional().describe('Retired: this chart draws no rest bucket. An old spec still draws and warns option-deprecated.'),
+  }), topNCount);
+
 export const baseOptionsSchema = z.object({
   target: renderTargetSchema.optional(),
   textScale: textScaleSchema.optional(),
@@ -1232,7 +1248,6 @@ export const baseOptionsSchema = z.object({
       total: z.string().min(1).optional().describe('Label of a computed total row; default Total.'),
       source: z.string().optional().describe('Word introducing the authored source credit; default Source. An empty string prints the source without a prefix or colon.'),
       notApplicable: z.string().optional().describe('Not applicable text; n/a, German k. A.'),
-      legendCount: z.string().optional().describe("Legend disclosure wording; '{count}' becomes \"2 of 4\". Default depends on the legend subject."),
       partial: z.string().min(1).optional().describe('Word after the labels of partial categories in the column, bar, line and combo footnote, also the hatch key label; default Partial; a named key uses toDate.'),
       better: z.string().optional().describe("Meaning of a better sign-coloured value."),
       worse: z.string().optional().describe("Meaning of a worse sign-coloured value."),
@@ -1401,13 +1416,7 @@ export const baseOptionsSchema = z.object({
     }), z.union([z.enum(['sheet', 'asc', 'desc', 'reverse']), z.literal(true)]))
     .optional().describe("A string sets categories to sheet, asc, desc or reverse. true means categories: 'desc'. Sorting requests for charts that support them; omitted settings preserve the chart default ordering."),
   topN: optionShapeSchema('topN', z
-    .object({
-      n: z.number().int().positive().describe('Maximum number of individually retained categories after chart-specific ranking.'),
-      rest: z.boolean().optional().describe('Aggregate remaining categories into a rest bucket by default; false omits them where supported. On a bar mekko the rest bucket is the width-weighted mean of its rates. Pareto retains the bucket to preserve its population.'),
-      restLabel: z.string().optional().describe('Authored rest-bucket name; ordinary charts default to Others and Pareto to Rest.'),
-      showRestCount: z.boolean().optional().describe('Append the number of aggregated categories; ordinary charts default to false, while Pareto always discloses the count.'),
-      threshold: z.number().optional().describe('Bar-chart minimum absolute category total after the rank cut; not a universal Top-N threshold. Pareto warns that it ignores this field.'),
-    }), z.number().int().positive())
+    .object(topNFields), topNCount)
     .optional().describe('A positive integer n means { n }. Chart-specific Top-N selection and rest aggregation; omission retains all categories. On a choropleth world map, topN.n picks the n regions it labels, largest absolute value first; other maps label every region.'),
   // No registered layout implements this. Accepting it on the shared base
   // would let every type answer `ok:true` to `transpose: true` and draw the
@@ -1494,14 +1503,27 @@ export const anomalyOptionSchema = z
   ]);
 
 /** The average marker of bar, column, dot and combo: on, off, or scoped to some series. */
+const averageMarkerScope = z
+  .union([z.literal('all'), z.array(idSchema).min(1)])
+  .optional()
+  .describe("Series included in the computed average; defaults to 'all'.");
+
+/** averageMarker where the mean takes every dot: dot. */
+export const averageMarkerWithoutPartial = z
+  .union([
+    z.boolean(),
+    z.object({
+      scope: averageMarkerScope,
+      includePartial: z.never({ error: "'averageMarker.includePartial' has no partial category to bring back here; drop it" }).optional().describe('Retired: a dot chart averages every dot in scope. An old spec still draws and warns option-deprecated.'),
+    }),
+  ])
+  .optional();
+
 export const averageMarkerSchema = z
   .union([
     z.boolean(),
     z.object({
-      scope: z
-        .union([z.literal('all'), z.array(idSchema).min(1)])
-        .optional()
-        .describe("Series included in the computed average; defaults to 'all'."),
+      scope: averageMarkerScope,
       includePartial: z
         .boolean()
         .optional()
@@ -1599,6 +1621,12 @@ export function refusedBaseOptions<T extends string>(type: T): RefusedBaseOption
       .never({ error: notImplemented('legend', type, LEGEND_REFUSED_REASONS[type]!) })
       .optional()
       .describe(`Ignored on '${type}' with an option-ignored warning: ${LEGEND_REFUSED_REASONS[type]}`);
+  }
+  if (ANNOTATIONS_RETIRED.includes(type)) {
+    (out as Record<string, z.ZodType>).annotations = z
+      .never({ error: `'${type}' draws no annotation of any kind; drop annotations` })
+      .optional()
+      .describe(`Retired on '${type}', which draws no annotation of any kind. An old spec still draws and warns option-deprecated.`);
   }
   const only = valueAxisOnly(type);
   const valueAxis = narrowValueAxis(type, valueAxisSchema);

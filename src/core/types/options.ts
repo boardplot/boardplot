@@ -13,7 +13,7 @@ import type { ThemeRef } from './theme';
 // capability table is declared ONCE, next to the schemas that enforce it; this
 // file reads its shape rather than restating it, because a declaration that
 // restates a runtime table is a twin that will disagree with it.
-import type { OPTION_CAPABILITY, VALUE_AXIS_CAPABILITY, VALUE_AXIS_ONLY } from '../schema/capability';
+import type { AnnotationsRetiredType, LegendRefusedType, OPTION_CAPABILITY, VALUE_AXIS_CAPABILITY, VALUE_AXIS_ONLY } from '../schema/capability';
 
 export type RenderTarget = 'report' | 'dashboard' | 'slide' | 'print';
 export type LengthUnit = 'px' | 'pt' | 'mm';
@@ -112,7 +112,6 @@ export interface StringsSpec {
   /** Not applicable value; default 'n/a' (German 'k. A.'). */
   notApplicable?: string;
   /** Series or category legend disclosure; '{count}' becomes '2 of 4'. Default '<count> series shown'. */
-  legendCount?: string;
   /** Partial hatch key label without a category name; default 'Partial'. A category-naming key uses toDate. */
   partial?: string;
   /** Meaning of a better sign-coloured value. */
@@ -673,7 +672,9 @@ export type RefusedOptionKeys<T extends string> = {
     : T extends (typeof OPTION_CAPABILITY)[K]['implementedBy'][number]
       ? never
       : K;
-}[GatedOptionKey];
+}[GatedOptionKey]
+  | (T extends LegendRefusedType ? 'legend' : never)
+  | (T extends AnnotationsRetiredType ? 'annotations' : never);
 
 /**
  * `BaseOptions` as chart type `T` really accepts it.
@@ -1359,7 +1360,8 @@ export interface ScatterOptions extends BaseOptionsFor<'scatter'> {
    */
   methodNote?: boolean;
 }
-export interface VarianceOptions extends BaseOptionsFor<'variance'> {
+export interface VarianceOptions extends Omit<BaseOptionsFor<'variance'>, 'topN'> {
+  topN?: Omit<TopNOptions, 'showRestCount'> & { showRestCount?: never };
   /** Title of the value axis valueAxis.show draws, drawn only when authored. */
   axisTitles?: { primary?: string };
   variant: 'absolute' | 'relative' | 'integrated';
@@ -1437,7 +1439,7 @@ export interface DotOptions extends BaseOptionsFor<'dot'> {
   axisTitles?: { primary?: string };
   variant?: 'dot' | 'dumbbell' | 'lollipop';
   /** The mean of every dot of the series in scope as a dashed Ø rule, as on bar and column. */
-  averageMarker?: ColumnOptions['averageMarker'];
+  averageMarker?: boolean | { scope?: 'all' | Id[]; includePartial?: never };
   /**
    * Dumbbell only: the connector becomes an arrow into the second series' dot.
    * Painted good or bad by the sign of the change when the second series

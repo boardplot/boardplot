@@ -253,7 +253,7 @@ fixtures.push({
   data: { periodLabel: 'Month', cohorts: Array.from({ length: 6 }, (_, i) => ({
     id: `r${i}`, label: `Batch ${i + 1}`, active: Array.from({ length: 8 - i }, (_, j) => 432100 - j * 1703),
   })) },
-  options: { title: 'Average support narrows in later periods', variant: 'stepped', averages: 'weighted', size: { width: 1351 } },
+  options: { title: 'Average support narrows in later periods', variant: 'stepped', size: { width: 1351 } },
 });
 
 fixtures.push({

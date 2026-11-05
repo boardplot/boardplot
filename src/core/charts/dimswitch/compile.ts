@@ -1,3 +1,4 @@
+import { toJsonPointer } from '../../diagnostics/jsonPatch';
 import { EMPTY_DATA } from '../../emptyData';
 import { NormalizeError } from '../../normalize/shared';
 import { bandFor } from '../../bandSelect';
@@ -237,14 +238,23 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     ...generatedIdWarnings('dimswitch', 'columnOrder', options.columnOrder, ['block', 'periods']));
   if (!blockColumns.length && !authoredPeriods.length) warnings.push({ code: 'dimswitch-labels-only', severity: 'warn', field: ['options', 'columnVisibility'],
     message: 'columnVisibility leaves out every value column, so the table draws its labels only.', suggest: 'Keep range or one period in the table.' });
-  // The table resolver ignores an encodings key that names no column; here the columns are the drawn range, pp, pl (with a plan) and the displayed period ids.
+  // The table resolver ignores an encodings key that names no column, unless the entry lists other columns in `columns`. Here the columns are the drawn range, pp, pl (with a plan) and the displayed period ids.
   const columnIds = [...blockColumns, ...authoredPeriods.map(p => p.id)];
-  for (const id of Object.keys(options.encodings ?? {})) if (!columnIds.includes(id)) {
+  // A hidden range, pp, pl or period takes its encoding back when a host shows the column again, 'label' is a real column, and `columns` spreads an entry whatever its key. Only an id of no column with no such `columns` may go.
+  const spreads = (entry: unknown) => typeof entry === 'object' && ((entry as { columns?: { length: number } } | null)?.columns?.length ?? 0) > 0;
+  const removable = (id: string, entry: unknown) => !columnIds.includes(id) && ![...generatedIds, ...allPeriodIds].includes(id) && !spreads(entry);
+  // Heat as figuresNeedHeat in table/schema.ts reads it: that file pulls in zod, and this runs in the zod-free React path.
+  const isHeat = (entry: unknown) => entry === 'heat' || typeof entry === 'object';
+  const encodings = Object.entries(options.encodings ?? {});
+  // figures: false refuses with no heat entry left, so a removal must leave one that stays.
+  const heatMustStay = options.figures === false && !encodings.some(([id, entry]) => isHeat(entry) && !removable(id, entry));
+  for (const [id, entry] of encodings) if (!columnIds.includes(id)) {
     const asKind = data.periods.find(p => p.kind && p.id === id);
     const guess = asKind ? { key: asKind.kind === 'prior' ? 'pp' : asKind.kind === 'plan' ? 'pl' : 'range', near: true } : closestKey(id, columnIds);
     warnings.push({ code: 'dimswitch-encoding-column', severity: 'warn', field: ['options', 'encodings', id],
       message: `options.encodings key '${id}' names no column of this dimswitch, so it draws nothing.`,
-      suggest: `${guess?.near ? `Use '${guess.key}'. ` : ''}The column ids are ${columnIds.map(c => `'${c}'`).join(', ')}.` });
+      suggest: `${guess?.near ? `Use '${guess.key}'. ` : ''}The column ids are ${columnIds.map(c => `'${c}'`).join(', ')}.`,
+      ...(removable(id, entry) && !(heatMustStay && isHeat(entry)) ? { fix: [{ op: 'remove' as const, path: toJsonPointer(['options', 'encodings', id]) }] } : {}) });
   }
   const warned = new Set<string>();
   const warn = (code: string, id: string, message: string, severity: 'info' | 'warn' = 'warn') => { if (!warned.has(code + id)) { warned.add(code + id); warnings.push({ code, severity, field: ['data', 'measures', data.measures.findIndex(m => m.id === id)], message }); } };
@@ -746,7 +756,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   if (variant==='by-member' && options.totalPosition==='bottom' && !totalHidden) rows.push(...rows.splice(0,totalBlockEnd));
   warnings.push(...generatedIdWarnings('dimswitch','rowVisibility',options.rowVisibility,[totalId,...headIds]));
   if (variant==='by-measure' && options.totalPosition!==undefined) warnings.push({code:'option-ignored',severity:'warn',field:['options','totalPosition'],
-    message:'options.totalPosition does not apply in by-measure, because each Total row owns its members.',suggest:'Remove options.totalPosition, or use variant by-member.'});
+    message:'options.totalPosition does not apply in by-measure, because each Total row owns its members.',suggest:'Remove options.totalPosition, or use variant by-member.',fix:[{op:'remove',path:'/options/totalPosition'}]});
   if (variant==='by-member' && totalHidden && options.totalPosition==='bottom') warnings.push({code:'option-ignored',severity:'warn',field:['options','totalPosition'],
     message:'options.totalPosition has nothing to move, because rowVisibility hides the Total block.',suggest:'Remove options.totalPosition, or show the Total.'});
   const parents=new Set(rows.filter(r=>!r.inline && r.parentId).map(r=>r.parentId!));

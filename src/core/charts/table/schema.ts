@@ -339,6 +339,20 @@ const baseTableDataSchema = z
     'Consulting-grade table. Percent values in POINTS (6.2 = 6.2%). null cell = missing → "—"; explicit states: na/nm/suppressed. ' + FORMAT_DOC,
   ) as unknown as z.ZodType<TableData>;
 
+// figures: false takes the figures off the heat cells and shrinks every row
+// to the heat pitch, so a table without a heat lane printed its numbers
+// into 14 px rows. A column is heat where resolveCellEncoding makes it so:
+// the bare 'heat' or the object form, which is always a heat lane.
+export function figuresNeedHeat(options: { figures?: boolean; encodings?: Record<string, unknown> }, ctx: z.RefinementCtx): void {
+  if (options.figures !== false) return;
+  if (Object.values(options.encodings ?? {}).some((entry) => entry === 'heat' || typeof entry === 'object')) return;
+  ctx.addIssue({
+    code: 'custom',
+    path: ['figures'],
+    message: "figures: false needs a heat column: give a column a heat lane in encodings, or drop 'figures'",
+  });
+}
+
 export const tableOptionsObject = baseOptionsSchema.safeExtend(refusedBaseOptions('table')).safeExtend({
   mountCollapsed: z.boolean().optional().describe('Default true. false removes closed descendants from the React DOM and defers offscreen leaf paint.'),
   paintOffscreenRows: z.boolean().optional().describe('React only. true paints every mounted row at once, so a capture of a long table has no blank rows, and a long table paints slower. Default false. Closed rows follow mountCollapsed.'),
@@ -471,19 +485,7 @@ export const tableOptionsObject = baseOptionsSchema.safeExtend(refusedBaseOption
     .meta({ default: false })
     .describe('Fold marks beside parent rows. Drawn in static SVG/PNG and read-only grids. Default false: no marks or gutter. true draws the marks and reserves their gutter. Interactive grids keep their fold buttons either way.'),
 })
-  // figures: false takes the figures off the heat cells and shrinks every row
-  // to the heat pitch, so a table without a heat lane printed its numbers
-  // into 14 px rows. A column is heat where resolveCellEncoding makes it so:
-  // the bare 'heat' or the object form, which is always a heat lane.
-  .superRefine((options, ctx) => {
-    if (options.figures !== false) return;
-    if (Object.values(options.encodings ?? {}).some((entry) => entry === 'heat' || typeof entry === 'object')) return;
-    ctx.addIssue({
-      code: 'custom',
-      path: ['figures'],
-      message: "figures: false needs a heat column: give a column a heat lane in encodings, or drop 'figures'",
-    });
-  }).describe('Table framing, presentation, encodings, hierarchy visibility, sibling sort and top-N. sort.categories reorders data rows within each parent; sort.segments is refused. topN nests the remaining siblings under Others and reuses resolve and claims.') ;
+  .superRefine(figuresNeedHeat).describe('Table framing, presentation, encodings, hierarchy visibility, sibling sort and top-N. sort.categories reorders data rows within each parent; sort.segments is refused. topN nests the remaining siblings under Others and reuses resolve and claims.') ;
 export const tableOptionsSchema = tableOptionsObject as unknown as z.ZodType<TableOptions>;
 
 export const tableDataSchema = baseTableDataSchema.superRefine((data, ctx) => {

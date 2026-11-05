@@ -8,7 +8,7 @@ import type { DotOptions } from '../../types/options';
 import {
   colorRoleField,
   addCategorySeriesIdIssues,
-  averageMarkerSchema,
+  averageMarkerWithoutPartial,
   baseOptionsSchema,
   idSchema,
   refusedBaseOptions,
@@ -56,7 +56,7 @@ export const dotOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions(
   axisTitles: primaryAxisTitleSchema('under the value-axis tick row, ending at the right edge of the plot'),
   legend: baseOptionsSchema.shape.legend.describe("Key position. Multiple series get a key by default unless visible direct labels name them. 'none' hides the key; unnamed series warn."),
   variant: z.enum(['dot', 'dumbbell', 'lollipop']).optional().describe("Dot by default; dumbbell joins paired values and lollipop joins values to the baseline."),
-  averageMarker: averageMarkerSchema.describe("Computed dashed average rule with a solver-placed Ø label, as on bar and column: the mean of every dot of the series in scope ('all' by default, or the listed series)."),
+  averageMarker: averageMarkerWithoutPartial.describe("Computed dashed average rule with a solver-placed Ø label, as on bar and column: the mean of every dot of the series in scope ('all' by default, or the listed series)."),
   arrow: z
     .boolean()
     .optional()

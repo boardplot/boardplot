@@ -64,7 +64,7 @@ export interface RequestContext {
 // Exhaustive over the public type, without pulling schema validation into React bundles.
 const LAYOUT_STRING_KEYS = Object.keys({
   newItems: true, lostItems: true, cohortMeasure: true, cohortFormula: true,
-  others: true, total: true, source: true, notApplicable: true, legendCount: true, partial: true,
+  others: true, total: true, source: true, notApplicable: true, partial: true,
   better: true,
   worse: true,
   positiveTotal: true,

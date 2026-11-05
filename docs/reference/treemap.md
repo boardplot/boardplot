@@ -60,7 +60,7 @@ Part of a whole in one or two levels (group, item): cell area is value. Squarifi
 | cellValue | string | `'value'`, `'share'`, `'value-share'` | `'value'` | Name and bold value print together, inside the cell or on a circle leader. A pair that does not fit goes to the complete list. 'value' (default), 'share' of the grand total, or 'value-share' as "3,080 (17%)". A percent format applies to cell shares; group totals stay in value units. |
 | total | boolean \| string |  |  | Total callout at the lower right, no larger than the title. true prints the formatted grand total with the unit; a string prints itself, with '{value}' replaced by the formatted total. Off by default: the title usually states the total. |
 
-Plus the [shared options](options.md). This type does not accept `detailFields`, `labels`, `valueAxis.tickStep`, `valueAxis.log`, `valueAxis.reverse`, `valueAxis.break`, `highlight`, `story`, `hatchStrength`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `bandFraction` with an `option-ignored` warning.
+Plus the [shared options](options.md). This type does not accept `detailFields`, `labels`, `valueAxis.tickStep`, `valueAxis.log`, `valueAxis.reverse`, `valueAxis.break`, `highlight`, `story`, `hatchStrength`, `rounding`, `annotations`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `bandFraction` with an `option-ignored` warning.
 
 ## Annotations
 
