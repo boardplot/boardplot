@@ -933,6 +933,8 @@ export interface WaterfallOptions extends BaseOptionsFor<'waterfall'> {
   build?: 'up' | 'down'; // default 'up'
   /** Paint each plain step good or bad by its sign times the item's direction; false paints the neutral. */
   signColor?: boolean;
+  /** Horizontal bridge: the name band (label) and the value band (value), in px. */
+  columnOverrides?: Record<string, { width?: number }>;
 }
 export type LineInterpolation = 'linear' | 'step-after' | 'step-before' | 'monotone';
 export type GapFillTone = 'good' | 'bad' | 'neutral';

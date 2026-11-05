@@ -2,7 +2,7 @@
 import type { OptionsInput } from '../core/types/optionInput';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import type { LintWarning } from '../core/types/scene';
-import { compileDimSwitch, dimSwitchTableWarnings, foreignRowId, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning } from '../core/charts/dimswitch/compile';
+import { compileDimSwitch, dimSwitchTableWarnings, foreignRowId, hiddenTotalFoldWarnings, LABELS_ONLY, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning } from '../core/charts/dimswitch/compile';
 import { defaultNotePlacement } from '../core/notes';
 import type { DimSwitchData, DimSwitchOptions, DimSwitchVariant } from '../core/charts/dimswitch/types';
 import type { OptionKeyCheck } from '../core/schema/unknownKeys';
@@ -80,7 +80,9 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
   const depthDefaults=useMemo(()=>{
     const ids=new Set(Object.keys(compiled.levels).filter(id=>compiled.levels[id]!>depth));
     for(const id of stableOptions.expansion?.expanded ?? []) ids.delete(id);
-    for(const id of stableOptions.expansion?.collapsed ?? []) ids.add(id);
+    // A hidden Total's rows left the table, so a fold of one names nothing.
+    const drawn=stableOptions.rowVisibility?.[stableData.dimension.total.id]===false ? new Set(compiled.data.rows.map(row=>row.id)) : undefined;
+    for(const id of stableOptions.expansion?.collapsed ?? []) if(!drawn || drawn.has(id)) ids.add(id);
     return [...ids];
   },[compiled,depth,stableOptions.expansion]);
   const expansionKey=JSON.stringify(stableOptions.expansion ?? null);
@@ -115,12 +117,15 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
     // The info footer keeps an in-frame note behind its button, so the partial note has no place on the chart there.
     const placement=stableOptions.notes?.placement ?? defaultNotePlacement(stableOptions.target);
     const inPanel=compiled.partialNote!==undefined && placement==='info' && !compiled.warnings.some(warning=>warning.code===PARTIAL_NOTE_OFF_FRAME);
-    const all=[...retired.warnings,...compiled.warnings,...(inPanel ? [partialNoteWarning(compiled.partialNote!)] : []),...dimSwitchTableWarnings(tableWarnings,stableOptions.columnOverrides)];
+    // The compile runs at depth 1 and depth only selects folds, so a hidden Total's blank table is judged on the folds on screen.
+    const totalId=stableData.dimension.total.id, totalGone=stableOptions.rowVisibility?.[totalId]===false && compiled.data.columns.length>1;
+    const compileWarnings=compiled.warnings.filter(warning=>warning.code!==LABELS_ONLY || warning.field?.[1]!=='rowVisibility');
+    const all=[...retired.warnings,...compileWarnings,...(totalGone ? hiddenTotalFoldWarnings(compiled.data.rows,collapsed,totalId) : []),...(inPanel ? [partialNoteWarning(compiled.partialNote!)] : []),...dimSwitchTableWarnings(tableWarnings,stableOptions.columnOverrides)];
     const key=JSON.stringify(all);
     if(reported.current===key) return;
     reported.current=key;
     warningsCallback.current?.(all);
-  },[wantsWarnings,retired.warnings,compiled,stableOptions,tableWarnings]);
+  },[wantsWarnings,retired.warnings,compiled,stableOptions,stableData,collapsed,tableWarnings]);
   if(refusals.length) return <LayoutRefusal refusals={refusals} theme={options.theme} options={{...options,size:size==='container'?fallbackSize:size}}/>;
   return <TableFloorRequestContext.Provider value={tableRequest}><Table {...compiled.options} exporter={exporter} data={compiled.data} collapsed={collapsed} onCollapsedChange={toggle}
    onColumnVisibilityChange={onColumnVisibilityChange} sortable={sortable} defaultSort={defaultSort} onSortChange={onSortChange} rootsHidden={rootsHidden}

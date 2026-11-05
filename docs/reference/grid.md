@@ -101,7 +101,7 @@ Facets, variance tiers and metric stacks with shared categories and computed rea
 | panels ( branch 3) | array | yes | Two to five panels in top-down reading order. |
 | panels[].id ( branch 3) | string | yes | Unique panel id; state scopes use this id. |
 | panels[].type ( branch 3) | string | yes | Columns, stacked columns for a multi-measure sum, or a line with points. One of `'column'`, `'line'`. |
-| panels[].title ( branch 3) | string | yes | Measure name in the shared left readout gutter. |
+| panels[].title ( branch 3) | string | yes | Measure name in the shared readout gutter. |
 | panels[].unit ( branch 3) | string | yes | Measure unit in the readout gutter. |
 | panels[].measure ( branch 3) | object | yes | Engine-computed panel measure. |
 | panels[].measure.sum ( branch 3; panels[].measure branch 1) | array | yes | Measures added for each category. Columns stack the inputs in order. |
@@ -143,6 +143,11 @@ Facets, variance tiers and metric stacks with shared categories and computed rea
 |---|---|---|---|---|
 | stack | object |  |  | Select metric-stack mode of sharedAxis category. Top-down panels, independent zero scales, one axis, one gutter and shared states. |
 | stack.heights | array |  |  | Plot heights in layout pixels, one per panel in top-down order. Use rows for proportional heights instead. |
+| stack.columnVisibility | object |  |  | False leaves a seat of the one gutter track out, with its height: unit, headline or span. The panel name stays. Hiding headline and span also drops the method line. The values stay in the marks. |
+| stack.columnOverrides | object |  |  | Settings per generated column. Ids: gutter. |
+| stack.columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
+| stack.columnOverrides.*.align | string | `'left'`, `'right'`, `'center'` |  | Cell alignment. |
+| stack.columnOrder | array |  |  | Order of whole blocks; blocks left out follow in default order. Ids: gutter, plot. |
 | columns | integer \| array |  |  | Legacy facet column count, or authored positive column-track weights. At most 50 rows and columns. |
 | rows | array |  |  | Positive row weights override content fitting. Omitted: content-fit rows use their natural height; other rows share the rest. Without columns, the row count sets placement. With category sharing, rows[i] follows panels[i] in bottom-up order; metric stacks use top-down order. |
 | gutters | object |  |  | Uniform or per-gap row/column gutters in pixels. |
@@ -300,3 +305,5 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | nine-regions-reflow | example | Nine facets in at most three columns draw in two on a 320 px card |
 | metric-stack-volume | example | Metric stack: volume, completed outcomes and weighted conversion by cohort |
 | metric-stack-steps | example | Metric stack: volume-weighted funnel steps and remaining-per-100 chain |
+| stack-readout-parts | example | Metric stack: readout gutter without the unit and the span |
+| stack-gutter-right | example | Metric stack: readout gutter right of the plots, with a set width and alignment |

@@ -6,6 +6,7 @@
  * own, and `layoutGantt` commits it, in claim order, before the solver runs.
  */
 
+import type { AuthoredWidths, ColumnAlign, GanttColumnSettings } from './columns';
 import type { Rect, Size } from '../../geometry';
 import type { LabelRequest } from '../../label/solver';
 import type { FontSpec, TextMeasurer, TextSize } from '../../text';
@@ -82,6 +83,7 @@ interface GanttFonts {
 /** What the options resolve to once, before any phase runs. */
 export interface GanttEnv {
   options: GanttOptions;
+  columns: GanttColumnSettings;
   theme: Theme;
   surface: { rowTint: number; elapsedTint: number };
   size: Size;
@@ -190,6 +192,12 @@ export interface MetadataColumns {
   colWs: number[];
   colXs: number[];
   headerRequests: LabelRequest[];
+  /** The authored alignment and the text width of each drawn column; absent without overrides. */
+  aligned?: { align?: ColumnAlign; inner: number }[];
+  /** The original index of each drawn column. */
+  shown?: number[];
+  /** The narrowest width that holds each drawn column in full. */
+  floors?: number[];
 }
 
 /** Phase 1 output, horizontal: the left band, the timeline scale and the milestone lane. */
@@ -203,6 +211,14 @@ export interface GanttBody {
   /** Complete row names, wrapped at word boundaries to at most two lines. */
   minimumLabelBandW: number;
   columns: MetadataColumns;
+  /** Air between the metadata columns and the timeline. */
+  metaGap: number;
+  /** Where row tints and rules end. */
+  rowsRight: number;
+  /** Where a label beside a mark must end: the plot edge, or the gap before metadata after the plot. */
+  timelineRight: number;
+  /** The widths the overrides resolved to. */
+  authoredWidths: AuthoredWidths;
   bodyX: number;
   bodyW: number;
   laneGap: number;

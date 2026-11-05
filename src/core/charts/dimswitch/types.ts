@@ -70,6 +70,10 @@ export interface DimSwitchOptions extends Omit<TableOptions, 'expansion' | 'topN
   columnOverrides?: Record<string, { width?: number; align?: 'left' | 'right' | 'center'; headAlign?: 'left' | 'right' | 'center'; label?: string }>;
   /** Order of the whole blocks after the label column: 'block' (Range and its comparisons) and 'periods'. */
   columnOrder?: string[];
+  /** False turns the automatic size bars off. Scale, precision, data and judgement stay. */
+  bars?: boolean;
+  /** False leaves a block out: dimension.total.id, group:<measures[].group as authored>, or group: for the ungrouped section. */
+  rowVisibility?: Record<string, boolean>;
   /** 'cohort' and 'cohort-small' are refused on dimswitch; use 'compact'. */
   density?: Exclude<TableOptions['density'], 'cohort' | 'cohort-small'>;
   variant?: DimSwitchVariant;

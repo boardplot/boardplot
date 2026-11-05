@@ -22,8 +22,18 @@ function refusedKey(key: string, message: string): LintWarning {
   return { code: 'invalid-options', severity: 'error', message, field: ['options', key], fix: [{ op: 'remove', path: `/options/${key}` }] };
 }
 
+/** The lookup prints one head, the value caption: `label` and `headAlign` have no reader on the other two columns. */
+const HEADLESS_COLUMNS = ['swatch', 'code'] as const;
+const HEAD_FIELDS = ['label', 'headAlign'] as const;
+
+/** Each `label` or `headAlign` set on `swatch` or `code`, with its path under columnOverrides. */
+export function headlessColumnFields(overrides: Readonly<Record<string, object>> | undefined): { path: [string, string]; message: string }[] {
+  return HEADLESS_COLUMNS.flatMap((id) => HEAD_FIELDS.flatMap((field) => (overrides?.[id] !== undefined && field in overrides[id]!
+    ? [{ path: [id, field] as [string, string], message: `columnOverrides.${id}.${field} has no head to set: only the value column prints one` }] : [])));
+}
+
 export function geoOptionRefusals(
-  options: { regionValues?: unknown; labels?: unknown; legend?: unknown; highlight?: unknown },
+  options: { regionValues?: unknown; labels?: unknown; legend?: unknown; highlight?: unknown; columnOverrides?: Readonly<Record<string, object>> },
   type: 'choropleth' | 'tilemap',
 ): LintWarning[] {
   const found: LintWarning[] = [];
@@ -37,5 +47,6 @@ export function geoOptionRefusals(
   if (type === 'choropleth' && options.regionValues === true && (labels === false || labels === 'none')) {
     found.push(refusedKey('regionValues', regionValuesWithoutLabelsRefused(labels)));
   }
+  for (const { message } of headlessColumnFields(options.columnOverrides)) found.push(refusedKey('columnOverrides', message));
   return found;
 }

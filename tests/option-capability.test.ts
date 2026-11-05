@@ -180,7 +180,7 @@ describe('OPTION_CAPABILITY census, behaviour: an accepted key changes the drawi
     rowLabels: [{ align: 'right' }, { align: 'left' }],
     categoryAxis: [{ crossesBetween: false }, { dateTicks: 'quarters' }],
     categoryLabels: ['staircase'],
-    labels: [false],
+    labels: [false, { point: false }],
     hatchStrength: [0, 100],
     sort: [{ categories: 'reverse' }, { segments: 'reverse' }],
     topN: [{ n: 2 }],
@@ -337,10 +337,11 @@ describe('published option behaviour census', () => {
     axisFormat: { x: '1.000', y: '1.000' }, gapFill: { between: ['output', 'market'] },
     scenarioStyle: { FC: { width: 5 } }, visiblePeriods: [0, 1],
     expansion: { depth: 0 }, columnVisibility: { actual: false },
-    totalPosition: 'bottom', figures: false, magnitude: 'million',
+    totalPosition: 'bottom', figures: false, magnitude: 'million', bars: false,
     driverTones: 'never', judgements: 'exceptions', show: 'withData',
     columnOverrides: { label: { width: 150 } }, columnOrder: ['plot'], columnHeads: false,
     rowVisibility: { census: false }, rowOrder: ['census'], rowOverrides: { census: { label: 'Census row' } },
+    valueTableEmphasis: false,
   };
 
   /** Options | companion settings | reason. Applied to both renders. */
@@ -475,7 +476,6 @@ describe('published option behaviour census', () => {
     ["table", "signs", "Fixture steering-monthly has no SVG or option-warning change with \"operators\"."],
     ["dimswitch", "driverTones", "Fixture by-measure has no SVG or option-warning change with \"never\"."],
     ["table", "driverTones", "Fixture steering-monthly has no SVG or option-warning change with \"never\"."],
-    ["dimswitch", "totalPosition", "Fixture by-measure has no SVG or option-warning change with \"bottom\"."],
     ["table", "totalPosition", "Fixture steering-monthly has no SVG or option-warning change with \"bottom\"."],
     ["dimswitch", "density", "Fixture by-measure has no SVG or option-warning change with \"regular\"."],
     ["dimswitch", "nulls", "Fixture by-measure has no SVG or option-warning change with \"dash\"."],

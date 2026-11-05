@@ -61,4 +61,18 @@ export interface CreativeData {
 export type CreativeOptions = Pick<BaseOptions, 'target' | 'textScale' | 'textSize' | 'title' | 'subtitle' | 'source' | 'theme' | 'size' | 'mode' | 'interactive' | 'embed' | 'palette' | 'locale' | 'notes' | 'colorblindSafe'> & {
   /** false leaves the source line and the method lines off the card; frame.source and frame.notes keep them. */
   footnotes?: false;
+  /** False leaves a number column out: value, median, delta. The label stays. */
+  columnVisibility?: Record<string, boolean>;
+  /** Per column: label, value, median, delta. */
+  columnOverrides?: Record<string, { width?: number; align?: 'left' | 'right' | 'center'; headAlign?: 'left' | 'right' | 'center'; label?: string }>;
+  /** Order of the number columns; the label stays first. */
+  columnOrder?: string[];
+  /** false: no head row and no rule under it. */
+  columnHeads?: false;
+  /** False leaves a metric row out; the medians and the fatigue rule still read it. Ids: the keys of data.metrics. */
+  rowVisibility?: Record<string, boolean>;
+  /** Order of the metric rows; rows left out follow in default order. */
+  rowOrder?: string[];
+  /** Rename a metric row. */
+  rowOverrides?: Record<string, { label?: string }>;
 };

@@ -59,6 +59,18 @@ export type ChoroplethOptions = Omit<BaseOptionsFor<'choropleth'>, 'labels'> & {
    * leaves it off.
    */
   valueTable?: 'auto' | 'side' | 'below' | false;
+  /** 'top' (default) sets the top values bold in the table and on the map; false sets none. */
+  valueTableEmphasis?: 'top' | false;
+  /** False leaves a value-table column out: swatch, value. The code stays. */
+  columnVisibility?: Record<string, boolean>;
+  /** Value-table columns: swatch, code, value. `label` and `headAlign` set the head over the values. */
+  columnOverrides?: Record<string, { width?: number; align?: 'left' | 'right' | 'center'; headAlign?: 'left' | 'right' | 'center'; label?: string }>;
+  /** False leaves a region's row out of the table. The map keeps the region. Pack ids and aliases both match. */
+  rowVisibility?: Record<string, boolean>;
+  /** Regions that lead the table, in this order; the rest follow ranked. */
+  rowOrder?: string[];
+  /** Rename a region in the table and on the map. */
+  rowOverrides?: Record<string, { label?: string }>;
   /** Default false. true adds the label-policy note; the pack's disclaimer stays on the source line and the inset scale note prints regardless. */
   methodNote?: boolean;
   /** Title of the colour key; default 'Measure, unit' from subtitle.measure and unit, else the unit. */
