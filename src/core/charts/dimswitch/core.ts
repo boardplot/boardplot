@@ -55,7 +55,8 @@ function layoutForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwi
   const compiled={...prepared.compiled,options:{...prepared.compiled.options,size:options.size}};
   const resolved=prepared.resolved;
   // The compile is shared across spacing passes and carries the first pass's options: the spacing is this request's.
-  const geometry=layoutTable(compiled.data,{...options,...compiled.options,[PLAN_ONLY]:true,[REGULAR_SPACING]:(options as {[REGULAR_SPACING]?: boolean})[REGULAR_SPACING]} as typeof compiled.options,resolved);
+  // Period selection reads compact-floor slack, so it retains that floor even during ordinary rendering.
+  const geometry=layoutTable(compiled.data,{...options,...compiled.options,[PLAN_ONLY]:true,[REGULAR_SPACING]:(options as {[REGULAR_SPACING]?: boolean})[REGULAR_SPACING]} as typeof compiled.options,resolved,true);
   // The frame can reach its automatic height without a second compile.
   if ((options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === false
     && typeof compiled.options.size === 'object' && compiled.options.size.height !== undefined

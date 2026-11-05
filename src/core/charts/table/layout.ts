@@ -150,15 +150,15 @@ function cutCount(geometry: Geometry<TableMarks, TableDerived>): number {
  * gutter is a rung, taken where the table would otherwise refuse or cut a
  * text.
  */
-export function layoutTable(authoredData: TableData, options: TableOptions = {}, resolved = resolvedForSize(authoredData, options)): Geometry<TableMarks, TableDerived> {
+export function layoutTable(authoredData: TableData, options: TableOptions = {}, resolved = resolvedForSize(authoredData, options), preserveCompactFloor = false): Geometry<TableMarks, TableDerived> {
   // A nonzero figure lifted off "0.0" ("0.0005") is wider than the plain rounded text. Where that costs a refusal,
   // a cut or a compact step the rounded text does not take, it prints its bound ("<0.1"), also where the bound costs
   // one too: the automatic number rule never prints a nonzero figure as a bare "0.0". Only where the bound would
   // refuse a size the rounded text draws at does the rounded text draw.
   const geometry = liftOrFallback((mode) => {
-    if (mode === 'full') return layoutTableLadder(authoredData, options, resolved);
+    if (mode === 'full') return layoutTableLadder(authoredData, options, resolved, preserveCompactFloor);
     const step = { ...options, [ZERO_LIFT]: mode } as TableOptions & ZeroLiftOptions;
-    return layoutTableLadder(authoredData, step, resolvedForSize(authoredData, step));
+    return layoutTableLadder(authoredData, step, resolvedForSize(authoredData, step), preserveCompactFloor);
   }, (lifted, plain) => costsWidth(lifted, plain, options), resolved.lifted,
   (bound, plain) => missesFrame(bound, options) && !missesFrame(plain, options));
   return (options as LayoutOptions)[PLAN_ONLY] || (options as LayoutOptions)[SIZING_ONLY] ? geometry : materializeLayout(geometry);
@@ -261,7 +261,7 @@ function hasHeadAir(options: TableOptions): boolean {
 }
 
 // The fit ladder changes spacing, not cell values or cohort density.
-function layoutTableLadder(authoredData: TableData, options: TableOptions, resolved: ReturnType<typeof resolveTable>): Geometry<TableMarks, TableDerived> {
+function layoutTableLadder(authoredData: TableData, options: TableOptions, resolved: ReturnType<typeof resolveTable>, preserveCompactFloor: boolean): Geometry<TableMarks, TableDerived> {
   const base = options;
   const sizingOnly = (options as LayoutOptions)[SIZING_ONLY] === true;
   const formatFits: FormatFits = new Map();
@@ -293,6 +293,9 @@ function layoutTableLadder(authoredData: TableData, options: TableOptions, resol
   const fixedHeight = !heightOmitted(options.size) && open?.height !== false;
   /** The floor is the last rung's: the compact table draws where this rung's tracks or rows no longer fit. */
   const withFloor = (drawn: Geometry<TableMarks, TableDerived>) => {
+    // Ordinary rendering needs the selected spacing to fit, not the minimum of spacing it did not select.
+    // Measurement and composed selectors retain the exact compact floor.
+    if (!sizingOnly && !preserveCompactFloor && !(options as { [VERIFY_ADVICE]?: boolean })[VERIFY_ADVICE]) return withWidthRepair(drawn);
     const compact = drawn.sizing === undefined ? undefined : compactTable(authoredData, options, full, margin, Math.min(pad, 3), 2, resolved, true, formatFits);
     if (compact?.sizing && !compact.refused) {
       drawn.sizing = { ...drawn.sizing!, minWidth: Math.min(drawn.sizing!.minWidth, compact.sizing.minWidth),
@@ -378,8 +381,11 @@ function widthRepairHeight(data: TableData, options: TableOptions, geometry: Geo
 export function layoutTableCard(data: TableData, options: TableOptions = {}): Geometry<TableMarks, TableDerived> {
   return memoLayout(data, options, () => {
     const planned = { ...options, [PLAN_ONLY]: true };
-    return widthRepairHeight(data, planned, cardHeightFloor(layoutTableCard, data, planned,
-      classFloor(layoutTable, data, planned, layoutTable(data, planned))));
+    const geometry = layoutTable(data, planned);
+    // Class recalibration changes only the reported floor. A fitting ordinary table keeps its selected class.
+    const precise = (options as LayoutOptions)[SIZING_ONLY] || (options as { [VERIFY_ADVICE]?: boolean })[VERIFY_ADVICE] || missesFrame(geometry, options);
+    const sized = precise ? classFloor(layoutTable, data, planned, geometry) : geometry;
+    return widthRepairHeight(data, planned, cardHeightFloor(layoutTableCard, data, planned, sized));
   });
 }
 
