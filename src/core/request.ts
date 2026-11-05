@@ -458,12 +458,12 @@ function drawnAdvice(request: ResolvedChartRequest, result: LayoutResult, layout
   const def = getChart(request.type);
   const staticMinWidth = def === undefined ? 0 : declaredSizing(def, request.options).minWidth;
   const floorOptions = request.type === 'table' || request.type === 'dimswitch' ? {} : { belowMinimum: 'refuse' as const };
-  const fullAt = (width: number): Geometry | undefined => {
-    const probe = layoutAt.probe({ ...request.options, ...floorOptions, size: { width }, [WIDTH_PROBE]: request.type });
-    return !isRefused(probe) && (probe as Geometry).mode !== 'compact' ? probe as Geometry : undefined;
-  };
   // Ordinary table rendering needs a safe repair width. measure() retains its exact minimum search.
   const safeWidth = request.type === 'table' || request.type === 'dimswitch';
+  const fullAt = (width: number): Geometry | undefined => {
+    const probe = layoutAt.probe({ ...request.options, ...floorOptions, size: { width }, [WIDTH_PROBE]: request.type, ...(safeWidth ? { [PLAN_ONLY]: true } : {}) });
+    return !isRefused(probe) && (probe as Geometry).mode !== 'compact' ? probe as Geometry : undefined;
+  };
   let drawn = safeWidth ? fullAt(need.width) : need.width <= staticMinWidth ? undefined : fullAt(need.width - 1);
   if (safeWidth && !drawn) return result;
   let [low, high] = [Math.max(Math.ceil(result.size.width), staticMinWidth) - 1, safeWidth ? need.width : drawn ? need.width - 1 : need.width];
@@ -566,7 +566,7 @@ function preparedLayout(request: ResolvedChartRequest, verifyAdvice = false): La
     }
     return disclose(def.layout(request.data, current));
   }) as LayoutCall<any, any, any>;
-  at.probe = options => at({ ...options, [FULL_LAYOUT_PROBE]: true, ...((request.type === 'table' || request.type === 'dimswitch') ? { [PLAN_ONLY]: true } : {}) } as RequestOptions);
+  at.probe = options => at({ ...options, [FULL_LAYOUT_PROBE]: true } as RequestOptions);
   at.finish = () => run?.finish();
   at.accepts = (data, options) => run?.accepts(data, options) ?? false;
   return at;

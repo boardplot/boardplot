@@ -1224,13 +1224,13 @@ function layoutTableOnce(
       ...(callerH === undefined ? {} : { ceiling: callerH }) });
     if (grow !== undefined) return layoutTableOnce(authoredData, { ...options, size: { width: size.width, height: grow } }, initialResolved, sizingOnly, formatFits, wantsScene, widthOnlyOnMiss);
   }
-  // An open-height candidate already measured its rows. Move only the frame
+  // The first open-height pass already measured the rows. Move only the frame
   // when its top and width stay fixed; otherwise the normal height retry handles it.
   const targetSize = (options as TargetSizeOptions)[TARGET_SIZE];
-  if (!sizingOnly && targetSize?.fixed.height === false) {
+  if (!sizingOnly && targetSize?.fixed.height === false
+    && size.width === targetSize.sizePx.width && size.height === targetSize.sizePx.height) {
     const height = tableSizing(size, plot, y, totalW, 0).naturalHeight;
-    // A later, taller frame may carry a caller's height floor. Only the initial provisional frame may shrink.
-    if (height > size.height || (height < size.height && size.height === targetSize.sizePx.height)) {
+    if (height !== size.height) {
       const nextSize = { width: size.width, height };
       const nextFramePlan = sharedTableFrame(table, { ...frameInput, size: nextSize });
       const nextFrame = nextFramePlan.frame;
