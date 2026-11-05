@@ -1,5 +1,5 @@
-import { tableWidths } from './widths';
-import { copyFrame, footerPlans } from '../../footer';
+import { tableWidths, type TableWidthPreparation } from './widths';
+import { deepCopy, layoutKey, tableRequestOwns } from '../../tableOwnership';
 import { liftOrFallback, missesSize, tightSpacingWarning } from '../tableFit';
 import { chartTheme } from '../chartEnv';
 import { structureCount } from '../../structureCounts';
@@ -36,7 +36,7 @@ import {
 } from '../../theme';
 import type { Theme } from '../../types/theme';
 import type { Id } from '../../types/cell';
-import type { FrameGeometry, Geometry, SceneNode, LintWarning, Paint, PaintWarningRule } from '../../types/scene';
+import type { Geometry, SceneNode, LintWarning, Paint, PaintWarningRule } from '../../types/scene';
 import type { ColumnKind, ResolvedCell, ResolvedColumn, ResolvedRow, RowRole, TableData, TableDerived, TableOptions } from '../../types/table';
 import { arrowKey, emitArrow, emitHeat, emitInCellBar, emitSparkline, heatKey, heatRanges, sparklineDomains, sparklineSourceValues, tableSparklineDomain } from './encodings';
 import { tableCellKey, tableCellNodeId } from './cellKey';
@@ -61,9 +61,7 @@ import { fixedHeightCanvas, rowDrivenHeight, spareShare } from '../../rowCanvas'
 import { CARD_CLASS_WIDTH, heightOmitted, rowSizing, VERIFY_ADVICE, WIDTH_PROBE } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { textScaleOf } from '../../typeFloors';
-import { currentSmallValues } from '../../formatPrecision';
 import { maxOf, minOf, pushAll } from '../../arrays';
-import { emptyIdRecord } from '../../idRecords';
 
 export interface TableMarks {
   table: Rect;
@@ -226,6 +224,8 @@ function layoutTableFitted(authoredData: TableData, options: TableOptions, resol
 
 const resolvedTables = new WeakMap<object, Map<string, ReturnType<typeof resolveTable>>>();
 
+export { layoutKey };
+
 /**
  * The resolved table of one spec, shared by every frame a request tries: nothing
  * in it reads the frame, and a layout only reads it. The key holds the data, so
@@ -244,6 +244,7 @@ function resolvedForSize(data: TableData, options: TableOptions): ReturnType<typ
 }
 
 const widthPlans = new WeakMap<object, Map<string, ReturnType<typeof tableWidths>>>();
+const widthPreparations = new WeakMap<object, Map<string, TableWidthPreparation>>();
 
 /**
  * The tracks of one resolved table, shared by the passes that try other heights
@@ -255,15 +256,23 @@ function sharedWidthPlan(table: ResolvedTable, theme: Theme, measure: TextMeasur
   if (typeof options.theme === 'string') return tableWidths(table, theme, measure, options, view);
   const { size, [TARGET_SIZE]: target, [WIDTH_PROBE]: _probe, [COMPACT_RETRY]: _retry, ...rest } = options as LayoutOptions & TargetSizeOptions & { [WIDTH_PROBE]?: unknown };
   const heightOpen = target?.fixed.height === false || (typeof size === 'object' && size.height === undefined);
-  const key = layoutKey({ rows: view.rows!.map((row) => row.id), widthRows: view.widthRows!.map((row) => row.id), columns: view.columns!.map((col) => col.id),
-    available: view.available, spacerTotal: view.spacerTotal, headLines: view.headLines, subLines: view.subLines, headGlue: view.headGlue,
-    height: heightOpen || size === undefined ? undefined : resolveSize(size).height,
-    // The theme's fonts follow the frame's type class, and two classes can share one plot width.
+  // The theme's fonts follow the frame's type class, and two classes can share one plot width.
+  // Width and height only fit the prepared tracks, so they stay out of the preparation key.
+  const preparationKey = layoutKey({ rows: view.rows!.map((row) => row.id), widthRows: view.widthRows!.map((row) => row.id),
+    fullRows: view.fullRows?.map((row) => row.id), columns: view.columns!.map((col) => col.id),
+    spacerTotal: view.spacerTotal, headLines: view.headLines, subLines: view.subLines, headGlue: view.headGlue,
     typeClass: panelTypeClass(options) ?? typeWidthClass(resolveSize(size).width) }, rest);
+  const key = `${preparationKey}:${view.available}:${heightOpen || size === undefined ? '' : resolveSize(size).height}`;
   let byKey = widthPlans.get(table);
   if (!byKey || byKey.size >= 32) widthPlans.set(table, byKey = new Map());
   let plan = byKey.get(key);
-  if (plan === undefined) byKey.set(key, plan = tableWidths(table, theme, measure, options, view));
+  if (plan === undefined) {
+    let preparations = widthPreparations.get(table);
+    if (!preparations || preparations.size >= 32) widthPreparations.set(table, preparations = new Map());
+    let preparation = preparations.get(preparationKey);
+    if (preparation === undefined) preparations.set(preparationKey, preparation = new Map());
+    byKey.set(key, plan = tableWidths(table, theme, measure, options, view, preparation));
+  }
   return plan;
 }
 
@@ -428,13 +437,13 @@ function widthRepairHeight(data: TableData, options: TableOptions, geometry: Geo
 
 /** The registered table layout: the ladder above, then the height floor at card widths. */
 export function layoutTableCard(data: TableData, options: TableOptions = {}): Geometry<TableMarks, TableDerived> {
-  return memoLayout(data, options, () => widthRepairHeight(data, options,
-    cardHeightFloor(layoutTableCard, data, options, classFloor(layoutTable, data, options, layoutTable(data, options)))));
+  const layout = () => widthRepairHeight(data, options,
+    cardHeightFloor(layoutTableCard, data, options, classFloor(layoutTable, data, options, layoutTable(data, options))));
+  // The request keeps its returned result. The layouts of its fit passes stay inside it and need no copy.
+  return tableRequestOwns(data) ? layout() : memoLayout(data, options, layout);
 }
 
 const layouts = new WeakMap<object, Map<string, unknown>>();
-const functionIds = new WeakMap<object, number>();
-let nextFunctionId = 0;
 
 /**
  * One request lays a table out many times (the fit passes, the repair loop,
@@ -454,53 +463,6 @@ export function memoLayout<G>(data: object, options: object, layout: () => G): G
   if (!byKey || byKey.size >= 32) layouts.set(data, byKey = new Map());
   if (!byKey.has(key)) byKey.set(key, layout());
   return deepCopy(byKey.get(key)) as G;
-}
-
-/**
- * The cache key of a layout: the data, the options and their symbol keys.
- * A function (the text measurer) enters by identity. The data is part of the
- * key, so data changed in place never reads an older result.
- */
-export function layoutKey(data: object, options: object): string {
-  const symbols = Object.getOwnPropertySymbols(options).map((symbol) => [symbol.description, (options as Record<symbol, unknown>)[symbol]]);
-  // The smallValues mode in force too: a nested table inherits its enclosing chart's mode.
-  return JSON.stringify([data, options, symbols, currentSmallValues()], (_key, value: unknown) => {
-    if (typeof value !== 'function') return value;
-    if (!functionIds.has(value)) functionIds.set(value, nextFunctionId++);
-    return `function ${functionIds.get(value)}`;
-  });
-}
-
-/** Copy shared fonts and cells once per result. A copy of every array, Map, Set and plain object; a function and any other value is shared (the compiled options hold the measurer). */
-function deepCopy<T>(value: T, copies = new Map<object, unknown>()): T {
-  if (value === null || typeof value !== 'object') return value;
-  const known = copies.get(value);
-  if (known !== undefined) return known as T;
-  if (Array.isArray(value)) {
-    const copy: unknown[] = [];
-    copies.set(value, copy);
-    for (const entry of value) copy.push(deepCopy(entry, copies));
-    return copy as T;
-  }
-  if (value instanceof Map) {
-    const copy = new Map();
-    copies.set(value, copy);
-    for (const [key, entry] of value) copy.set(key, deepCopy(entry, copies));
-    return copy as T;
-  }
-  if (value instanceof Set) {
-    const copy = new Set();
-    copies.set(value, copy);
-    for (const entry of value) copy.add(deepCopy(entry, copies));
-    return copy as T;
-  }
-  if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) return value;
-  // A null-prototype record (cells keyed by column id) stays one, so a column named __proto__ keeps its cell.
-  const copy: Record<PropertyKey, unknown> = footerPlans.has(value as FrameGeometry)
-    ? copyFrame(value as FrameGeometry) as Record<PropertyKey, unknown> : Object.getPrototypeOf(value) === null ? emptyIdRecord() : {};
-  copies.set(value, copy);
-  for (const key of Reflect.ownKeys(value)) copy[key] = deepCopy((value as Record<PropertyKey, unknown>)[key], copies);
-  return copy as T;
 }
 
 /**
@@ -1245,11 +1207,16 @@ function layoutTableOnce(
         ? { hint: `Or set wrap: true on text column ${widthPlan.wouldWrap.map((col) => `'${col.id}'`).join(', ')}: its cells then take as many lines as they need instead of one line's width.` }
         : {}),
     };
+  // A width the table cannot take is rejected on its sizing, so a width search draws no scene for it.
+  // A status label cut in the scene adds a note and a second pass, so that pass alone knows its final size.
+  const rejectedWidthProbe = panelTypeClass(options) === undefined
+    && (tableRequestOwns(authoredData) || (options as { [WIDTH_PROBE]?: string })[WIDTH_PROBE] === 'table')
+    && !cols.some((col) => col.kind === 'status') && !warnings.some((warning) => warning.code === 'invalid-options')
+    && missesSize({ size, sizing }, options).width;
   // A floor probe only reads sizing; its tracks and wrapped rows are already measured.
-  if (sizingOnly || wantsScene !== undefined) {
+  if (sizingOnly || rejectedWidthProbe || wantsScene !== undefined) {
     const probe = sizingProbe(sizing, { table: { x: gridX, y: gridY, w: tableW, h: naturalTableH }, columns: cols.map(col => ({ id: col.id, ...colX.get(col.id)! })), rows: [], headerBand: { x: gridX, y: gridY, w: tableW, h: headerH } });
-    // A status label cut in the scene adds a note and a second pass, so that pass alone knows its final size.
-    if (sizingOnly || (!cols.some((col) => col.kind === 'status') && !wantsScene!(probe))) return probe;
+    if (sizingOnly || rejectedWidthProbe || (!cols.some((col) => col.kind === 'status') && !wantsScene!(probe))) return probe;
   }
 
   // A pinned canvas with height to spare gives it to the leaf rows as air, up to the theme's 16 px a side.
