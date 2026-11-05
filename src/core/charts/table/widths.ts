@@ -432,18 +432,17 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
       const compactable = cols
         .filter((col) => canShrink(col) && col.kind !== 'rowLabel' && col.kind !== 'text')
         .map((col) => col.id);
+      // A pixel from each column per round. Equal rounds go together, so the passes follow the
+      // column count and not an authored width.
       while (remaining > 0) {
-        let changed = false;
-        for (const id of compactable) {
+        const open = compactable.filter((id) => widths.get(id)! > minimumWidths.get(id)!);
+        if (open.length === 0) break;
+        const rounds = Math.max(1, Math.min(Math.floor(remaining / open.length), ...open.map((id) => Math.ceil(widths.get(id)! - minimumWidths.get(id)!))));
+        for (const id of open) {
           if (remaining <= 0) break;
-          const current = widths.get(id)!;
-          const minimum = minimumWidths.get(id)!;
-          if (current <= minimum) continue;
-          widths.set(id, current - 1);
-          remaining--;
-          changed = true;
+          widths.set(id, widths.get(id)! - rounds);
+          remaining -= rounds;
         }
-        if (!changed) break;
       }
     }
     // A text column the shrink cut while another keeps width above what prints it uncut takes that

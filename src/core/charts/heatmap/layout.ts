@@ -693,7 +693,7 @@ export function layoutHeatmap(
     const source = `${'headline' in a && a.headline !== undefined ? `${a.headline}\n` : ''}${body}`.replace(/\$\{value\}/g, displayFor(value, pctMatrix, null, row));
     const wrapped = wrapText(source, { ...labelFont, weight: emphasisWeight(theme) }, Math.max(1, width - glyphRoom), maxLines ?? Math.max(1, source.length), measure);
     const lines = wrapped.lines;
-    const w = Math.max(...lines.map(line => measure(line, { ...labelFont, weight: emphasisWeight(theme) }).width));
+    const w = Math.max(0, ...lines.map(line => measure(line, { ...labelFont, weight: emphasisWeight(theme) }).width));
     return { w, h: Math.max(glyphRoom ? 22 : 0, measure('0', labelFont).height * lines.length), sideW: w + (glyphRoom ? 38 : CALLOUT_SEAT), truncated: wrapped.truncated };
   };
   const noteSizes = new Map(notes.map(a => [a.id!, noteSize(a)]));

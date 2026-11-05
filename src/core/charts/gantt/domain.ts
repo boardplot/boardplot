@@ -460,8 +460,8 @@ export function resolveGanttDomain(data: GanttData, env: GanttEnv, warnings: Lin
   return {
     rows,
     ...calendar,
-    majorStarts: boundariesOf(calendar.tier.major, calendar.d0Day, calendar.d1Day),
-    minorStarts: boundariesOf(calendar.tier.minor, calendar.d0Day, calendar.d1Day),
+    majorStarts: boundariesOf(calendar.tier.major, calendar.d0Day, calendar.d1Day, env.size.width),
+    minorStarts: boundariesOf(calendar.tier.minor, calendar.d0Day, calendar.d1Day, env.size.width),
     events,
     // Above three events the labels move to numbered footnotes. Badge events print their own label and never count.
     eventBadgeMode: events.filter((event) => !event.badge).length > 3,
