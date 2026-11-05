@@ -1,10 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import '../src/core/charts';
 import { getFixtures } from '../src/fixtures';
 import { layoutResolvedRequest, planResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { renderSvg } from '../src/core/svg/renderSvg';
 import { layoutTableCard } from '../src/core/charts/table/layout';
 import { PLAN_ONLY, materializeLayout } from '../src/core/layoutPlan';
+import * as tablePlans from '../src/core/layoutPlan';
+import * as tableWidths from '../src/core/charts/table/widths';
 import type { TableData, TableOptions } from '../src/core/types/table';
 import type { Geometry } from '../src/core/types/scene';
 
@@ -67,4 +69,21 @@ it('invalidates plans after in-place data changes and theme override replacement
   expect(JSON.stringify(layoutTableCard(data, options))).toBe(JSON.stringify(layoutTableCard(structuredClone(data), { ...options, theme: structuredClone(theme) })));
   theme.overrides = { type: { label: { size: 15 } } };
   expect(JSON.stringify(layoutTableCard(data, options))).toBe(JSON.stringify(layoutTableCard(structuredClone(data), { ...options, theme: structuredClone(theme) })));
+});
+
+// Request preparation creates equal theme wrappers. A repeat must retain the selected numeric plan and its scene.
+it('reuses the selected plan across repeated resolved requests', () => {
+  const request = resolveChartRequest({ type: 'table', data: structuredClone(fixture.data),
+    options: { ...fixture.options, theme: { preset: 'bridge' }, size: { width: 878 } } } as Parameters<typeof resolveChartRequest>[0]);
+  const expected = JSON.stringify(layoutResolvedRequest(request));
+  const plans = vi.spyOn(tablePlans, 'deferLayout');
+  const widths = vi.spyOn(tableWidths, 'tableWidths');
+  try {
+    expect(JSON.stringify(layoutResolvedRequest(request))).toBe(expected);
+    expect(plans.mock.calls.length).toBe(0);
+    expect(widths.mock.calls.length).toBe(0);
+  } finally {
+    plans.mockRestore();
+    widths.mockRestore();
+  }
 });

@@ -16,13 +16,13 @@ const keyFunction = (_key: string, value: unknown): unknown => {
 };
 type TextPlan = { font: FontSpec; texts: Map<string, TextSize> };
 type FontPlans = { families: Map<FontSpec['family'], Map<number, TextPlan[]>>; last?: TextPlan };
-type Inputs = { json: WeakMap<object, string>; texts: WeakMap<TextMeasurer, FontPlans> };
+type Inputs = { json: WeakMap<object, string>; themes: WeakMap<object, number>; texts: WeakMap<TextMeasurer, FontPlans> };
 let inputs: Inputs | undefined;
 
 /** Synchronous probes share snapshots; the next public call reads mutable inputs again. */
 export function withPlanInputs<T>(run: () => T): T {
   if (inputs) return run();
-  inputs = { json: new WeakMap(), texts: new WeakMap() };
+  inputs = { json: new WeakMap(), themes: new WeakMap(), texts: new WeakMap() };
   try { return run(); } finally { inputs = undefined; }
 }
 
@@ -41,6 +41,23 @@ function inputVersion(value: object): number {
   return known.version;
 }
 
+const themeVersions = new Map<string, number>();
+let nextThemeVersion = 0;
+
+/** Fresh wrappers with equal theme content share a key; a new request still checks mutable fields. */
+function themeVersion(theme: object): number {
+  let version = inputs?.themes.get(theme);
+  if (version !== undefined) return version;
+  const json = inputJson(theme);
+  version = themeVersions.get(json);
+  if (version === undefined) {
+    if (themeVersions.size >= 256) themeVersions.delete(themeVersions.keys().next().value!);
+    themeVersions.set(json, version = nextThemeVersion++);
+  }
+  inputs?.themes.set(theme, version);
+  return version;
+}
+
 /** Reuse nested option snapshots during one request without escaping their JSON again. */
 export function optionKey(options: object): string {
   const valueKey = (value: unknown): string | undefined => value !== null && typeof value === 'object'
@@ -54,7 +71,7 @@ export function optionKey(options: object): string {
   const theme = (options as { theme?: unknown }).theme;
   const symbols = Object.getOwnPropertySymbols(options).map(symbol =>
     '[' + (JSON.stringify(symbol.description) ?? 'null') + ',' + (valueKey((options as Record<symbol, unknown>)[symbol]) ?? 'null') + ']');
-  return '[{' + fields.join(',') + '},' + (valueKey(theme && typeof theme === 'object' ? inputVersion(theme) : theme) ?? 'null')
+  return '[{' + fields.join(',') + '},' + (valueKey(theme && typeof theme === 'object' ? themeVersion(theme) : theme) ?? 'null')
     + ',[' + symbols.join(',') + '],' + JSON.stringify(currentSmallValues()) + ']';
 }
 
