@@ -197,7 +197,9 @@ function sharedWidthPlan(table: ResolvedTable, theme: Theme, measure: TextMeasur
   const heightOpen = target?.fixed.height === false || (typeof size === 'object' && size.height === undefined);
   const key = layoutKey({ rows: view.rows!.map((row) => row.id), widthRows: view.widthRows!.map((row) => row.id), columns: view.columns!.map((col) => col.id),
     available: view.available, spacerTotal: view.spacerTotal, headLines: view.headLines, subLines: view.subLines, headGlue: view.headGlue,
-    height: heightOpen || size === undefined ? undefined : resolveSize(size).height }, rest);
+    height: heightOpen || size === undefined ? undefined : resolveSize(size).height,
+    // The theme's fonts follow the frame's type class, and two classes can share one plot width.
+    typeClass: panelTypeClass(options) ?? typeWidthClass(resolveSize(size).width) }, rest);
   let byKey = widthPlans.get(table);
   if (!byKey || byKey.size >= 32) widthPlans.set(table, byKey = new Map());
   let plan = byKey.get(key);
