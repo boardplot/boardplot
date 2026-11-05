@@ -5,7 +5,7 @@
     "direction": "rtl",
     "motion": "reduce",
     "density": "compact",
-    "strings": { "others": "Weitere", "total": "Gesamt", "source": "Quelle", "legendCount": "{count} Reihen" }
+    "strings": { "others": "Weitere", "total": "Gesamt", "source": "Quelle" }
   },
   "chart": {
     "type": "column",

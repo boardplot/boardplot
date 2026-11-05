@@ -79,7 +79,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | columnOverrides.*.headAlign | string | `'left'`, `'right'`, `'center'` |  | Head alignment; defaults to align. |
 | columnOverrides.*.label | string |  |  | Head text. |
 
-Plus the [shared options](options.md). This type does not accept `detailFields`, `valueAxis`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `bandFraction`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
+Plus the [shared options](options.md). This type does not accept `detailFields`, `valueAxis`, `rounding`, `annotations`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `bandFraction`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
 ## Annotations
 

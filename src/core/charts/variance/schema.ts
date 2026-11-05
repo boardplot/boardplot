@@ -10,6 +10,7 @@ import {
   primaryAxisTitleSchema,
   partialCategorySchema,
   refusedBaseOptions,
+  topNWithoutRestCount,
   valueKindSchema,
   scenarioField,
   formatExample,
@@ -60,7 +61,7 @@ const varianceSpecSchema = z.object({
 
 export const varianceOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions('variance')).safeExtend({
   sort: baseOptionsSchema.shape.sort.describe("Category ranking value: the signed drawn difference, delta percent in relative mode and absolute difference otherwise. desc puts the largest positive difference first, asc the smallest; stable ties and missing values last. sheet keeps authored order and reverse reverses it. Dated categories keep authored order when a growth or difference annotation spans periods."),
-  topN: baseOptionsSchema.shape.topN.describe("Keep the n largest drawn differences by absolute size, delta percent in relative mode and absolute difference otherwise, before sorting. Missing differences count as zero. No Others row is drawn; omitted category names are disclosed. Authored rest: true, restLabel, showRestCount or threshold warns that it is ignored when categories are omitted."),
+  topN: topNWithoutRestCount.optional().describe("Keep the n largest drawn differences by absolute size, delta percent in relative mode and absolute difference otherwise, before sorting. Missing differences count as zero. No Others row is drawn; omitted category names are disclosed. Authored rest: true, restLabel, showRestCount or threshold warns that it is ignored when categories are omitted."),
   axisTitles: primaryAxisTitleSchema('over the value axis, in the top row left of the plot, when valueAxis.show draws it'),
   variant: z.enum(['absolute', 'relative', 'integrated']).describe("Show raw differences, relative percentage differences, or an integrated comparison with the absolute values. The key builds its entries from the scenario code of the variance.vs series (AC, PY, PL or FC), or from its label when it has no scenario, here PY. absolute and relative: 'Better than PY' and 'Worse than PY', with (lower) and (higher) for a lowerIsBetter series. integrated: the compared series, then 'Above PY' and 'Below PY' for the caps, the same wording at every width, and 'Within rounding of PY' for a muted cap that prints as zero. On report, dashboard, slide and print, the actual value label sits inside the column at its foot; a column too short for it uses the actual edge, then a side position at the same height."),
   variance: varianceSpecSchema.describe("Required comparison identifying the measured quantity and the reference series."),

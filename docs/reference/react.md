@@ -327,7 +327,6 @@ export function Dashboard() {
 | strings.total | string |  |  | Host wording for a computed total. |
 | strings.source | string |  |  | Host wording for source furniture. |
 | strings.notApplicable | string |  |  | Not applicable text; n/a, German k. A. |
-| strings.legendCount | string |  |  | Host wording for a legend count; use {count} for the number. |
 | strings.partial | string |  |  | Host wording after the labels of partial categories in their footnote, also the hatch key label. |
 | strings.better | string |  |  | Meaning of a better sign-coloured value. |
 | strings.worse | string |  |  | Meaning of a worse sign-coloured value. |

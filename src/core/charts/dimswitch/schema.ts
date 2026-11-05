@@ -1,8 +1,8 @@
 import { valueBandsSchema } from '../../bands';
-import { formatExample, idRecord, refusedBaseOptions } from '../../schema/shared';
+import { baseOptionsSchema, formatExample, idRecord, refusedBaseOptions } from '../../schema/shared';
 import * as z from 'zod';
 import { columnOrderOption, columnOverridesOption, columnVisibilityOption, rowVisibilityOption } from '../../schema/generatedColumnOptions';
-import { tableOptionsObject } from '../table/schema';
+import { figuresNeedHeat, tableOptionsObject } from '../table/schema';
 import type { DimSwitchData, DimSwitchExpression, DimSwitchOptions, DimSwitchJudgeBase } from './types';
 const id = z.string().min(1).describe('Stable id or display label.');
 const expression: z.ZodType<DimSwitchExpression> = z.lazy(()=>z.union([
@@ -67,8 +67,12 @@ const columnVisibility = columnVisibilityOption('dimswitch');
 const columnOverrides = columnOverridesOption('dimswitch', ['width', 'align', 'headAlign', 'label']);
 const columnOrder = columnOrderOption('dimswitch');
 const rowVisibility = rowVisibilityOption('dimswitch');
-export const dimswitchOptionsSchema = tableOptionsObject.safeExtend({
- topN:refusedBaseOptions('dimswitch').topN,
+// The table keys dimswitch reads, named one by one: a key added to the table later reaches dimswitch only when dimswitch reads it.
+const table=tableOptionsObject.shape;
+const retiredGroupHead=(key:string)=>z.never({error:`'${key}' sets the head of a column group, and a dimswitch draws none; drop it`}).optional().describe(`Retired: it acts on column-group heads, and a dimswitch draws none. An old spec still draws and warns option-deprecated.`);
+export const dimswitchOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions('dimswitch')).safeExtend({
+ mountCollapsed:table.mountCollapsed,paintOffscreenRows:table.paintOffscreenRows,signs:table.signs,driverTones:table.driverTones,judgements:table.judgements,figures:table.figures,columnHeads:table.columnHeads,inlineVisibility:table.inlineVisibility,magnitude:table.magnitude,nulls:table.nulls,foldOn:table.foldOn,groupGround:table.groupGround,anchorWash:table.anchorWash,stickyLabels:table.stickyLabels,frameFill:table.frameFill,heightFill:table.heightFill,rowLabelLines:table.rowLabelLines,lastTrackFlex:table.lastTrackFlex,rowExtent:table.rowExtent,sortIndicator:table.sortIndicator,levelOffset:table.levelOffset,cellPadX:table.cellPadX,fitFormats:table.fitFormats,maxGrowth:table.maxGrowth,labelIndent:table.labelIndent,outlineMarks:table.outlineMarks,
+ groupRule:retiredGroupHead('groupRule'),groupAlign:retiredGroupHead('groupAlign'),
  encodings:tableOptionsObject.shape.encodings.describe('Per-column opt-in visual encodings. A key is a column id: range, pp (the vs prior column), pl (the vs plan column, with a plan) or the id of a displayed period. Any other key draws nothing and warns dimswitch-encoding-column.'),
  columnVisibility:columnVisibility.describe(`${columnVisibility.description} The label column stays, so hiding every value column draws labels only and warns. The data still needs its range and prior periods, and order and show still read Range.`),
  columnOverrides:columnOverrides.describe(`${columnOverrides.description} width beats widths. The automatic card form sizes tracks by content and ignores width, except a smaller label width.`),
@@ -77,8 +81,7 @@ export const dimswitchOptionsSchema = tableOptionsObject.safeExtend({
  rowVisibility:rowVisibility.describe(`${rowVisibility.description} A key equal to dimension.total.id means the Total. by-member: the whole Total block goes. by-measure: each Total line keeps its label and folds with blank cells, because it carries the KPI name and owns its members, and Total splits go. Facts stay for ratios and judgement. A hidden Total keeps the magnitude and decimals that members print with it, but where widths make a track narrow, format fitting follows the table as drawn, so a member can print 17.5% where the chart with the Total prints 18%. A group id removes its heads. These ids differ from expansion ids: expansion names one row of one variant, and rowVisibility names a block.`),
  totalPosition:z.enum(['top','bottom']).optional().describe('by-member: where the Total block sits, top (default) or bottom. In by-measure each Total row owns its members, so the key warns option-ignored. It also warns where rowVisibility hides the by-member Total block.'),
  density:z.enum(['compact','regular','relaxed']).optional().describe("Cell spacing: 'compact', 'regular' or 'relaxed'. The cohort densities do not apply: every cell holds a value and a change line, and cohort rows are fixed one-liners."),
- // The table's own variant is fixed to steering here, so this key names the dimswitch form (the cast only quiets safeExtend's same-type rule).
- variant:z.enum(['by-measure','by-member']).optional().describe('by-measure: KPI rows over members. by-member: members over KPIs, with the Total block at totalPosition. A fixed height may fold it.') as unknown as (typeof tableOptionsObject.shape)['variant'],
+  variant:z.enum(['by-measure','by-member']).optional().describe('by-measure: KPI rows over members. by-member: members over KPIs, with the Total block at totalPosition. A fixed height may fold it.'),
  depth:z.number().int().min(1).optional().describe('Open rungs: 1 roots folded, 2 one member level open, 3 two levels; the same in both variants. Maximum member levels plus one. Splits add no rung.'),
  splits:z.boolean().optional().describe('Show split measures under their root measure.'),
  expansion:z.strictObject({expanded:z.array(id).optional().describe('Row ids to open.'),collapsed:z.array(id).optional().describe('Row ids to fold.')}).optional().describe('Row-id exceptions over depth (id: JSON.stringify([variant, memberId, measureId])).'),
@@ -87,4 +90,4 @@ export const dimswitchOptionsSchema = tableOptionsObject.safeExtend({
  thresholds:z.strictObject({...thresholdFamilies,period:z.strictObject(thresholdFamilies).optional().describe('Family overrides for displayed-period changes. Unset families use the family setting or default.'),prior:z.strictObject(thresholdFamilies).optional().describe('Family overrides for pp, the Range vs-prior column.'),plan:z.strictObject(thresholdFamilies).optional().describe('Family overrides for pl, the Range vs-plan column.')}).optional().describe('Change thresholds, separate from value bands. Resolve each family: kind override, family setting, default (volume [2,10], cost [5,15], rate [3,10]). period controls displayed changes, prior controls pp, plan controls pl. Cost is lower-is-better; pp changes use relative levels. Effect needs an explicit pair for each used kind. Pairs satisfy 0 <= first <= second.'),
  widths:z.strictObject({label:z.number().positive().optional().describe('Width of the whole label track in px, indent and affix included. It stays fixed when the frame has room. Absent, the label text adds up to 320 px, indent and affix on top; wider content lets labels use the room.'),range:z.number().positive().optional().describe('Range track in px; default 110.'),change:z.number().positive().optional().describe('Change track in px; default 92.'),period:z.number().positive().optional().describe('Track of each period in px; default 94.')}).optional().describe('Fixed track widths of the value columns.'),
  minimumSample:idRecord(id,z.number().nonnegative()).optional().describe('Minimum judge base per sum field in BOTH windows (below it: neutral). Default none.'),
-}) as z.ZodType<DimSwitchOptions>;
+}).superRefine(figuresNeedHeat) as unknown as z.ZodType<DimSwitchOptions>;

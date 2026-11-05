@@ -52,9 +52,9 @@ describe('built-in wording block', () => {
     expect(inherited.options.strings).toEqual({ others: 'Andere', total: 'Summe' });
     const overridden = resolveChartRequest(
       { type: 'pie', data: fixture.data, options: { strings: { others: 'Sonstige' } } },
-      { strings: { others: 'Andere', legendCount: '{count} Reihen' } },
+      { strings: { others: 'Andere', partial: 'laufend' } },
     );
-    expect(overridden.options.strings).toEqual({ others: 'Sonstige', legendCount: '{count} Reihen' });
+    expect(overridden.options.strings).toEqual({ others: 'Sonstige', partial: 'laufend' });
   });
 
   it('names the Others bucket from strings and still lets topN.restLabel win', () => {

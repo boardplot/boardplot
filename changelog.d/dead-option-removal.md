@@ -1,0 +1,13 @@
+### Removed
+
+- Dimswitch `groupRule` and `groupAlign`: a dimswitch draws no column-group head. An old spec still draws and warns `option-deprecated` with a remove patch. Dimswitch now lists the table options it reads, so a table option added later no longer reaches it unread.
+- Dimswitch `totalPosition` in by-measure and `encodings` entries that name no column: the warnings that fire today (`option-ignored`, `dimswitch-encoding-column`) now carry a remove patch. By-member keeps `totalPosition`.
+- Cohort heatmap, also with no variant set: `cohortSizeLabel`, `exhibitLabel`, `heightFill`, `showPercentSign`, `formatScope`, `excludeCurrentPeriod` and a number in `designatedPeriod`. Only the exhibit variants read them. An old spec still draws and warns `option-ignored` with a remove patch.
+- Cohort `pure` and `stepped`: `averages`. Cohort `stepped`: a number in `designatedPeriod`. Cohort `pure`: `legend`. An old spec still draws and warns `option-ignored` with a remove patch. `designatedPeriod: false` stays refused outside `pure`.
+- Bullet `targetColumns` with `sharedScale: 'percentOfTarget'`, which has its own columns. An old spec still draws and warns `option-ignored` with a remove patch.
+- Bar `tornado` on every variant except `tornado`. An old spec still draws and warns `option-ignored` with a remove patch.
+- `legend` on dimswitch, histogram, kpi, pvm, sankey and sparkline, which draw no key. An old spec still draws and warns `option-ignored` with a remove patch.
+- `annotations` on bartable, choropleth, cohort, dimswitch, grid, histogram, kpi, sankey, sparkline, status, table, tilemap, treemap and waffle, in `options` and at the chart root, also on a grid panel or repeat template. These types draw no annotation. An old spec still draws and warns `option-deprecated` with a remove patch, where it warned `unsupported-annotation` before.
+- `topN.showRestCount` on bar `football-field` and `tornado`, dot `dumbbell` and `lollipop` (`option-ignored`), and on variance (`option-deprecated`), which draw no rest bucket. An old spec still draws, and the warning carries a remove patch.
+- `averageMarker.includePartial` on dot, which averages every dot in scope. An old spec still draws and warns `option-deprecated` with a remove patch.
+- `strings.legendCount`, in chart options and on the React provider: no chart printed it. In chart options an old spec still draws and warns `option-deprecated` with a remove patch. The provider drops it without a warning.

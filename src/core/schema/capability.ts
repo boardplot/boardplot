@@ -14,7 +14,21 @@
  * Types whose layout draws nothing for any legend value: the
  * key is ignored with a warning there.
  */
-export const LEGEND_REFUSED: readonly string[] = ['box'];
+const LEGEND_REFUSED_TYPES = ['box', 'dimswitch', 'histogram', 'kpi', 'pvm', 'sankey', 'sparkline'] as const;
+export const LEGEND_REFUSED: readonly string[] = LEGEND_REFUSED_TYPES;
+export type LegendRefusedType = (typeof LEGEND_REFUSED_TYPES)[number];
+
+/**
+ * Types that draw no annotation of any kind. The key is retired there: an old
+ * spec still draws and warns option-deprecated (retired.ts), and the schemas
+ * publish it as never.
+ */
+const ANNOTATIONS_RETIRED_TYPES = [
+  'bartable', 'choropleth', 'cohort', 'dimswitch', 'grid', 'histogram', 'kpi', 'sankey', 'sparkline',
+  'status', 'table', 'tilemap', 'treemap', 'waffle',
+] as const;
+export const ANNOTATIONS_RETIRED: readonly string[] = ANNOTATIONS_RETIRED_TYPES;
+export type AnnotationsRetiredType = (typeof ANNOTATIONS_RETIRED_TYPES)[number];
 
 /**
  * Types on which some legend values draw exactly what the default draws:

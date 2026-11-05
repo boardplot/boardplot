@@ -1,3 +1,4 @@
+import { toJsonPointer } from '../../diagnostics/jsonPatch';
 import { EMPTY_DATA } from '../../emptyData';
 import { NormalizeError } from '../../normalize/shared';
 import { bandFor } from '../../bandSelect';
@@ -244,7 +245,8 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     const guess = asKind ? { key: asKind.kind === 'prior' ? 'pp' : asKind.kind === 'plan' ? 'pl' : 'range', near: true } : closestKey(id, columnIds);
     warnings.push({ code: 'dimswitch-encoding-column', severity: 'warn', field: ['options', 'encodings', id],
       message: `options.encodings key '${id}' names no column of this dimswitch, so it draws nothing.`,
-      suggest: `${guess?.near ? `Use '${guess.key}'. ` : ''}The column ids are ${columnIds.map(c => `'${c}'`).join(', ')}.` });
+      suggest: `${guess?.near ? `Use '${guess.key}'. ` : ''}The column ids are ${columnIds.map(c => `'${c}'`).join(', ')}.`,
+      fix: [{ op: 'remove', path: toJsonPointer(['options', 'encodings', id]) }] });
   }
   const warned = new Set<string>();
   const warn = (code: string, id: string, message: string, severity: 'info' | 'warn' = 'warn') => { if (!warned.has(code + id)) { warned.add(code + id); warnings.push({ code, severity, field: ['data', 'measures', data.measures.findIndex(m => m.id === id)], message }); } };
@@ -746,7 +748,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   if (variant==='by-member' && options.totalPosition==='bottom' && !totalHidden) rows.push(...rows.splice(0,totalBlockEnd));
   warnings.push(...generatedIdWarnings('dimswitch','rowVisibility',options.rowVisibility,[totalId,...headIds]));
   if (variant==='by-measure' && options.totalPosition!==undefined) warnings.push({code:'option-ignored',severity:'warn',field:['options','totalPosition'],
-    message:'options.totalPosition does not apply in by-measure, because each Total row owns its members.',suggest:'Remove options.totalPosition, or use variant by-member.'});
+    message:'options.totalPosition does not apply in by-measure, because each Total row owns its members.',suggest:'Remove options.totalPosition, or use variant by-member.',fix:[{op:'remove',path:'/options/totalPosition'}]});
   if (variant==='by-member' && totalHidden && options.totalPosition==='bottom') warnings.push({code:'option-ignored',severity:'warn',field:['options','totalPosition'],
     message:'options.totalPosition has nothing to move, because rowVisibility hides the Total block.',suggest:'Remove options.totalPosition, or show the Total.'});
   const parents=new Set(rows.filter(r=>!r.inline && r.parentId).map(r=>r.parentId!));

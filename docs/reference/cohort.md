@@ -55,7 +55,7 @@ Cohorts by periods-since-start: counts in, every retention rate derived, weighte
 |---|---|---|---|---|
 | format | string |  |  | Rate format in percentage units, such as '1.0%' or '1.00' for two decimals without a sign on exhibit tables. Default: a decimal below 10%, whole percent otherwise on the heatmap. Exhibit tables share the needed decimal precision. The M0 anchor is neutral and the colour scale stays fixed at 0–100%. |
 | basis | string | `'cohort'`, `'previous'` | `'cohort'` | 'cohort' = active / cohort base (comparable down a column); 'previous' = active / the previous period's active. |
-| averages | false \| string | `false`, `'weighted'` | `false` | Weighted column average = total active / total base of the observed cohorts. |
+| averages | false \| string | `false`, `'weighted'` | `false` | Heatmap only. Weighted column average = total active / total base of the observed cohorts. |
 | methodNote | boolean |  |  | Default false. true adds the measure formula and explains the visible anchor column and blank cells. strings.cohortMeasure and strings.cohortFormula name another count-based measure, such as cumulative conversion. Required interpretation notes still print: the formula under basis 'previous', not-meaningful cells, weighted averages and rates too narrow to print. |
 | variant | string | `'heatmap'`, `'pure'`, `'stepped'` | `'heatmap'` | Form. 'heatmap' (the default) draws the heatmap surface, which honours 'labels'. 'pure' and 'stepped' draw the exhibit. Stepped columns share the width the label and size columns leave, as pure columns do, and preserve weighted-average and missing-cell notes. The exhibit variants draw a fixed label set, so authoring 'labels' together with variant is refused (the legacy surface honours it). |
 | formatScope | string | `'classic'`, `'column'` |  | Stepped fills use absolute bins ('classic') or normalize within each period ('column'). |
@@ -80,7 +80,7 @@ Cohorts by periods-since-start: counts in, every retention rate derived, weighte
 | exhibitLabel | string |  |  | Short exhibit heading above the assertion title. |
 | heightFill | string | `'rows'`, `'none'` | `'rows'` | Exhibit variants. 'rows' (default): rows take the spare height of a pinned canvas, up to 1.8 times, and stepped columns share the free width. 'none': natural row height, stepped columns at measured width. |
 
-Plus the [shared options](options.md). This type does not accept `detailFields`, `valueAxis`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `topN`, `bandFraction`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
+Plus the [shared options](options.md). This type does not accept `detailFields`, `valueAxis`, `rounding`, `annotations`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `topN`, `bandFraction`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
 ## Annotations
 

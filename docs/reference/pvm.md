@@ -78,7 +78,7 @@ One form; its chart ID is `pvm`.
 | columnOverrides | object |  |  | Horizontal bridge only: width in px of the name band (label) and the value band (value). A bridge that draws vertical warns option-ignored. It never changes the choice of the form. |
 | columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
 
-Plus the [shared options](options.md). This type does not accept `detailFields`, `valueAxis.min`, `valueAxis.max`, `valueAxis.tickStep`, `valueAxis.includeZero`, `valueAxis.percent`, `valueAxis.log`, `valueAxis.reverse`, `hatchStrength`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
+Plus the [shared options](options.md). This type does not accept `detailFields`, `valueAxis.min`, `valueAxis.max`, `valueAxis.tickStep`, `valueAxis.includeZero`, `valueAxis.percent`, `valueAxis.log`, `valueAxis.reverse`, `hatchStrength`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `legend`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
 ## Annotations
 

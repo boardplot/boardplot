@@ -415,7 +415,7 @@ function SpecChart({ parsed, channel, listening, spec: _spec, theme, size, targe
     if (prepared && prepared.kind !== 'table') throw new Error('Expected a prepared table.');
     const { onGeometry: _onGeometry, fixedSize: _fixedSize, deferLayout: _deferLayout, ...table } = host;
     const Table = loadedTableChart()!;
-    return <Table {...common as object} {...table} onRowSelect={onRowSelect} isRowSelectable={isRowSelectable} onWarnings={reportWarnings} data={data as TableData} annotations={annotations as Annotation[] | undefined} prepared={prepared} />;
+    return <Table {...common as object} {...table} onRowSelect={onRowSelect} isRowSelectable={isRowSelectable} onWarnings={reportWarnings} data={data as TableData} {...{ annotations } as object} prepared={prepared} />;
   }
   if (prepared && prepared.kind !== 'svg') throw new Error('Expected a prepared SVG chart.');
   const Chart = componentFor(type);

@@ -98,6 +98,12 @@ export const VALUE_AXIS_ONLY_REASONS: Readonly<Record<keyof typeof VALUE_AXIS_ON
 
 export const LEGEND_REFUSED_REASONS: Readonly<Record<string, string>> = {
   box: 'a box plot names every row beside its box and its method note explains the box, whiskers and dots; drop legend',
+  dimswitch: 'a dimswitch names every row and column in its table and draws no key; drop legend',
+  histogram: 'a histogram has one series, named by its axis title, and draws no key; drop legend',
+  kpi: 'a KPI card names its figure in its label and draws no key; drop legend',
+  pvm: 'a price-volume-mix bridge names every step beside its bar and draws no key; drop legend',
+  sankey: 'a sankey names every node beside its band and draws no key; drop legend',
+  sparkline: 'a sparkline has no room for a key and draws none; drop legend',
 };
 
 export const LEGEND_DRAWS_REASONS: Readonly<Record<string, string>> = {

@@ -45,7 +45,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | reference | number |  |  | A 1 px dashed line at this value in the muted ink. The scale always includes it. On a framed sparkline with valueLabel 'last' its value prints in the column of the last value, muted. |
 | ringTone | string | `'good'`, `'warn'`, `'bad'` |  | Paints the end ring in this tone instead of the highlight. Refused with ring 'none'. |
 
-Plus the [shared options](options.md). This type does not accept `detailFields`, `labels`, `valueAxis`, `story`, `hatchStrength`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `bandFraction`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
+Plus the [shared options](options.md). This type does not accept `detailFields`, `labels`, `valueAxis`, `story`, `hatchStrength`, `rounding`, `annotations`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `bandFraction`, `legend`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
 ## Annotations
 

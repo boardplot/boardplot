@@ -75,7 +75,7 @@ export const cohortOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptio
   averages: z
     .union([z.literal(false), z.literal('weighted')])
     .optional()
-    .describe('Weighted column average = total active / total base of the observed cohorts.'),
+    .describe('Heatmap only. Weighted column average = total active / total base of the observed cohorts.'),
   methodNote: z
     .boolean()
     .optional()
