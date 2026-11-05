@@ -9,7 +9,6 @@ import { structureCount } from '../../structureCounts';
 import { boundsOf, type Rect } from '../../geometry';
 import { fmtPathNumber as fmtN } from '../../curve';
 import { inferLinearYDomain } from '../../axis';
-import { floorTextScale } from '../../target';
 import { frameTextOptions, normalizeLegendOption, slotDemandHeight, solveFrame, type FrameInput, type LegendItemInput } from '../../frame';
 import { collectGridLegendItems, gridLegendInput, gridPanelsKeepEndNames, hatchStrengthFor } from '../../grid/gridKey';
 import { balanceVarianceTierPlots, VARIANCE_TIER, varianceTierWeights } from '../../grid/varianceTiers';
@@ -62,7 +61,7 @@ import {
   WIDE_CANVAS_MIN_WIDTH,
 } from '../../theme';
 import { GRID_MAX_TRACKS } from './limits';
-import { DEFAULT_TARGET, TARGET_SIZE, type TargetSizeOptions } from '../../target';
+import { DEFAULT_TARGET, floorTextScale, TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { STACK_ROOM } from '../band/labels';
 import { cellMeta, cellValue, type OwnerRef } from '../../types/cell';
 import type { ThemeRef } from '../../types/theme';
@@ -1301,6 +1300,7 @@ function layoutAuthoredGrid(
     }
   }
   let sizingRows = rowWeights;
+  let sizedRows = rowWeights;
   let askedRows: number[] | undefined;
   let packedTiers = false;
   // Slide and print step their type down on a short canvas and keep their value labels; only then do the tier minimums count.
@@ -1323,9 +1323,12 @@ function layoutAuthoredGrid(
     const available = area.h - rowGaps.reduce((sum, gap) => sum + gap, 0);
     const weight = naturalTierWeights.reduce((sum, value) => sum + value, 0);
     const packed = children.every(child => !child.panel.align) && !options.anchors?.baselines;
+    let reportedRows: number[] | undefined;
     // A slot under its panel's minimum draws a strip below a gap, although the canvas holds every minimum.
     const minimums = children.map(child => child.geometry.sizing?.minHeight ?? 0);
     if (packed && children.some((child, index) => child.slot.h + 0.5 < minimums[index]!) && minimums.reduce((sum, value) => sum + value, 0) <= available) {
+      // The repair moves the tiers only: the grid still reports the size of the slots it asked for.
+      reportedRows = rowWeights.map((_, row) => tierSlots[provisional.findIndex(p => p.row === row)]!.h);
       const heights = heightsHoldingMinimums(available, naturalTierWeights, minimums);
       children.forEach((child, index) => {
         child.slot.h = heights[index]!;
@@ -1359,13 +1362,14 @@ function layoutAuthoredGrid(
       }
     }
     rowWeights = rowWeights.map((_, row) => tierSlots[provisional.findIndex(p => p.row === row)]!.h);
-    sizingRows = rowWeights;
+    sizedRows = reportedRows ?? rowWeights;
+    sizingRows = sizedRows;
     // A packed tier takes the height its content needs, not its slot: the slots can add up to more
     // than the canvas, and a minimum scaled by them refuses a canvas where every tier fits.
     if (packed) {
       packedTiers = true;
       const rowChild = (row: number) => children.find(child => child.placement.row === row)?.geometry;
-      sizingRows = rowWeights.map((weight, row) => rowChild(row)?.sizing?.minHeight ?? weight);
+      sizingRows = sizedRows.map((weight, row) => rowChild(row)?.sizing?.minHeight ?? weight);
       // A tier below its plot floor draws a strip: the canvas then grows to what the panels ask for.
       if (children.some(child => child.geometry.size.height + 1e-6 < (child.geometry.frame.plotMinHeight ?? 0))) {
         askedRows = sizingRows.map((height, row) => Math.max(height, rowChild(row)?.frame.plotMinHeight ?? 0));
@@ -1510,7 +1514,7 @@ function layoutAuthoredGrid(
   return {
     type: 'grid',
     size,
-    sizing: withReadoutPlotHeight(gridSizing(size, area, children.map(child => ({ geometry: child.geometry, ...child.placement })), rowWeights, columnWeights, rowGaps, columnGaps, automaticRows, sizingRows, askedRows, typeStepsFirst),
+    sizing: withReadoutPlotHeight(gridSizing(size, area, children.map(child => ({ geometry: child.geometry, ...child.placement })), sizedRows, columnWeights, rowGaps, columnGaps, automaticRows, sizingRows, askedRows, typeStepsFirst),
       size, automaticRows ? children : []),
     plot: area,
     scene,
