@@ -30,6 +30,7 @@ import {
   panelTypeClass,
   typeWidthClass,
   resolveSemanticPaletteTheme,
+  resolveTheme,
   resolveSurface,
   semanticPalettePaint,
   strokeToken,
@@ -168,13 +169,20 @@ const resolvedTables = new WeakMap<object, Map<string, ReturnType<typeof resolve
 /**
  * The resolved table of one spec, shared by every frame a request tries: nothing
  * in it reads the frame, and a layout only reads it. The key holds the data, so
- * data changed in place resolves again. A theme named by string always resolves,
- * as `memoLayout` lays it out again. The key leaves out only the frame's own size.
+ * data changed in place resolves again. The key keeps semantic options and the
+ * theme's glyph policy. Frame geometry and typography do not change the model.
  */
 function resolvedForSize(data: TableData, options: TableOptions): ReturnType<typeof resolveTable> {
   if (typeof options.theme === 'string') return resolveTable(data, options);
-  const { size: _size, [TARGET_SIZE]: _target, [WIDTH_PROBE]: _probe, [PLAN_ONLY]: _plan, ...rest } = options as LayoutOptions & TargetSizeOptions & { [WIDTH_PROBE]?: unknown };
-  const key = layoutKey(data, rest);
+  const { size: _size, measure: _measure, margin: _margin, cellPadX: _pad, labelIndent: _indent, rowLabelLines: _lines,
+    heightFill: _heightFill, frameFill: _frameFill, rowExtent: _extent, lastTrackFlex: _flex, maxGrowth: _growth,
+    groupRule: _groupRule, groupAlign: _groupAlign, [TARGET_SIZE]: _target, [WIDTH_PROBE]: _probe, [PLAN_ONLY]: _plan, ...rest } = options as LayoutOptions & TargetSizeOptions & { [WIDTH_PROBE]?: unknown };
+  const semantic = { ...rest } as Record<PropertyKey, unknown>;
+  for (const symbol of [SIZING_ONLY, REGULAR_SPACING, VERIFY_ADVICE, WIDTH_REPAIR_PROBE, COMPACT_RETRY, HEAD_LINES, HEAD_AIR_MIN, HEAD_LOOSE, SUB_LINES, TIGHT_SPACING]) delete semantic[symbol];
+  // Resolution reads glyph policy, not colours, fonts, spacing or frame geometry.
+  const theme = resolveTheme(options.theme);
+  semantic.theme = { glyphs: theme.table?.glyphs, noPrevious: theme.table?.noPrevious, dataGap: theme.table?.dataGap };
+  const key = layoutKey(data, semantic);
   let byKey = resolvedTables.get(data);
   if (!byKey || byKey.size >= 32) resolvedTables.set(data, byKey = new Map());
   let resolved = byKey.get(key);

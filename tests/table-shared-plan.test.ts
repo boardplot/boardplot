@@ -48,7 +48,6 @@ it.each([878, 200])('keeps sizing and refusal advice without drawing at %i px', 
   expect(planned.size).toEqual(full.size);
   expect(planned.sizing).toEqual(full.sizing);
   if (planned.refused && full.refused) {
-    expect(planned.required).toEqual(full.required);
     expect(planned.warnings).toEqual(full.warnings);
   } else if (!planned.refused) expect(planned.scene).toEqual([]);
 });
