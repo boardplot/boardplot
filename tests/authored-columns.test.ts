@@ -91,6 +91,18 @@ describe('authored column settings', () => {
     expect(geometry.warnings.find(warning => warning.code === 'option-ignored')?.field).toEqual(['options', 'columnOverrides', '2021-02', 'align']);
   });
 
+  // A panel's Total value does not read align, so it must not count as a reader: only the panel head does.
+  it('warns on a panel align that no head reads', () => {
+    const field = (geometry: Geometry<any, any>, id: string) => geometry.warnings.find(warning => warning.code === 'option-ignored' && warning.field?.[2] === id && warning.field?.[3] === 'align');
+    const withOptions = (id: string, options: object, columnOverrides: object, size: object) => {
+      const found = fixture('bartable', id);
+      return chart('bartable').layout(found.data, { ...found.options, ...options, columnOverrides, size }) as Geometry<any, any>;
+    };
+    expect(field(withOptions('no-column-heads', {}, { sales: { align: 'center' } }, { width: 760 }), 'sales')).toBeDefined();
+    expect(field(withOptions('cascade-two-periods', { columnHeads: false }, { y21: { align: 'right' } }, { width: 900 }), 'y21')).toBeDefined();
+    expect(field(withOptions('column-widths', {}, { sales: { align: 'right', headAlign: 'left' } }, { width: 760 }), 'sales')).toBeDefined();
+  });
+
   // A rename that stops at the head leaves the hover calling the column by another name.
   it.each([
     ['bartable', 'total-top', 'sales'],

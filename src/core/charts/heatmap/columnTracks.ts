@@ -112,7 +112,7 @@ function losesText(drawn: Drawn, natural: Drawn): boolean {
 const hidesLabel = (drawn: Drawn) => (drawn as Geometry<object, object>).labels.some((label) => label.hidden) || drawn.warnings.some((warning) => warning.code === 'label-hidden');
 
 /** Which placed labels read a column's alignment: its head, and its cell text. */
-export interface AlignReaders { head: (id: string) => string; cell: (labelId: string, id: string) => boolean }
+export interface AlignReaders<D> { head: (id: string) => string; cell: (labelId: string, id: string, data: D) => boolean }
 
 type ColumnSetting = { width?: number; align?: string; headAlign?: string };
 type WidthOptions = { columnOverrides?: Readonly<Record<string, ColumnSetting | undefined>>; size?: { width?: number } };
@@ -125,7 +125,7 @@ type WidthOptions = { columnOverrides?: Readonly<Record<string, ColumnSetting | 
  * settings runs one layout, one whose widths fit runs two, and head keys alone
  * run a second layout only when a head is hidden.
  */
-export function yieldingWidths<D, O extends object, G extends LayoutResult<any, any>>(type: string, layout: (data: D, options?: O) => G, trackIds: (data: D) => readonly string[], readers: AlignReaders): (data: D, options?: O) => G {
+export function yieldingWidths<D, O extends object, G extends LayoutResult<any, any>>(type: string, layout: (data: D, options?: O) => G, trackIds: (data: D) => readonly string[], readers: AlignReaders<D>): (data: D, options?: O) => G {
   return (data, options) => {
     const drawn = layout(data, options);
     const read = (options ?? {}) as WidthOptions;
@@ -180,7 +180,7 @@ export function yieldingWidths<D, O extends object, G extends LayoutResult<any, 
       for (const id of headIds) {
         const override = overrides[id]!;
         const head = placed.includes(readers.head(id));
-        const cell = placed.some((label) => readers.cell(label, id));
+        const cell = placed.some((label) => readers.cell(label, id, data));
         if (override.headAlign !== undefined && !head) silent(id, 'headAlign');
         if (override.align !== undefined && !cell && (!head || override.headAlign !== undefined)) silent(id, 'align');
       }

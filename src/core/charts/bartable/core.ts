@@ -18,7 +18,8 @@ export const bartableCore: ChartCore<BarTableData, BarTableOptions, BarTableMark
   aliases: ['bar-table', 'table-bars'],
   layout: layoutBarTable,
   finishLayout: (layout) => yieldingWidths('bartable', layout, (data) => [...(data.columns ?? []).map((column) => column.id), ...data.panels.map((panel) => panel.id)], {
-    head: (id) => `head:${id}`, cell: (label, id) => label.startsWith(`cell:${id}:`) || label === `total:${id}`,
+    head: (id) => `head:${id}`, // Only number cells read align. Nothing inside a panel does: its Total and values keep their place.
+    cell: (label, id, data) => (data.columns ?? []).some((column) => column.id === id) && (label.startsWith(`cell:${id}:`) || label === `total:${id}`),
   }),
   categoryLabels: calendarCategories,
   defaults: { total: true },
