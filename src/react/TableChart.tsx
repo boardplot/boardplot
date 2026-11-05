@@ -561,7 +561,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     handleRef,
     onContentWidth,
     fillHeight = false,
-    rowLabelLead,
+    rowLabelLead: authoredRowLabelLead,
     portalContainer,
     onRowSelect: authoredRowSelect,
     interactions = true,
@@ -580,6 +580,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
   const onRowSelect = interactions ? authoredRowSelect : undefined;
   const sortable = interactions ? authoredSortable : false;
   const flags = hoverFlags(hover);
+  const rowLabelLead = useStableValue(authoredRowLabelLead);
   // A table normally takes its height from its rows and observes only width.
   // fillHeight uses the host's fixed height when the probe observes one.
   const container = useContainerSize({ size, target, fit, fallbackSize, needsHeight: fillHeight });
@@ -656,7 +657,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
   const manyLabelLines = (tableOptions?.rowLabelLines ?? 2) > 2;
   // The selected palette paints the chips and the tone text, as the SVG layout passes it.
   const stylesheet = useMemo(() => theme && tableStylesheet(theme, request?.target, statement, cohort, typeof stickyLabels === 'object', textScaleOf(request?.options), tableOptions?.palette, manyLabelLines), [theme, request?.target, request?.options.textScale, request?.options.textSize, statement, cohort, typeof stickyLabels === 'object', tableOptions?.palette, manyLabelLines]);
-  const themeScope = stylesheet === undefined ? '' : stylesheetHash(stylesheet);
+  const themeScope = useMemo(() => stylesheet === undefined ? '' : stylesheetHash(stylesheet), [stylesheet]);
 
   const floorRevision = useDeferredRevision();
   // By content: an inline `size={{ … }}` is a new object on every render and must not remake the refusal.
@@ -716,9 +717,9 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     Record<Id, boolean>
   >(initialInlineVisibility);
   const isInlineVisibilityControlled = controlledInlineVisibility !== undefined;
-  const inlineVisibility = isInlineVisibilityControlled
+  const inlineVisibility = useStableValue(isInlineVisibilityControlled
     ? controlledInlineVisibility
-    : uncontrolledInlineVisibility;
+    : uncontrolledInlineVisibility);
   const [uncontrolledSort, setUncontrolledSort] = useState<TableSort | null>(defaultSort ?? null);
 
   /**
@@ -1997,7 +1998,7 @@ function groupColIndex(ids: readonly Id[], indices: ReadonlyMap<Id, number>): nu
   return first;
 }
 
-function TableHead({
+const TableHead = memo(function TableHead({
   columnIndices,
   table,
   columns,
@@ -2185,7 +2186,7 @@ function TableHead({
       </div>
     </div>
   );
-}
+});
 
 /**
  * A column head as the SVG sets it: the label in capitals, or as
@@ -2278,7 +2279,7 @@ interface SharedRowProps {
  * row is closed (hidden content keeps its element), so the reverse
  * animation runs the same path the forward one did.
  */
-function TableRowGroup({ node, hidden, ...shared }: SharedRowProps & {
+const TableRowGroup = memo(function TableRowGroup({ node, hidden, ...shared }: SharedRowProps & {
   node: TableRowNode;
   hidden: boolean;
 }): ReactElement {
@@ -2306,7 +2307,7 @@ function TableRowGroup({ node, hidden, ...shared }: SharedRowProps & {
       ) : null}
     </div>
   );
-}
+});
 
 const TableRowPage = memo(function TableRowPage({ nodes, index, contain, ...shared }: SharedRowProps & { nodes: readonly TableRowNode[]; index: number; contain: boolean }) {
   return <div data-bp-row-page={index}

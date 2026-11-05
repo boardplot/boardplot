@@ -4,7 +4,7 @@ import { getChartDefinition, measure } from '../src/index';
 import { autoPlotShare } from '../src/core/sizing';
 
 // @ts-expect-error The scorecard is a JavaScript script without declarations.
-import { auditGeometry, auditScene, auditRepairs, applyRepair, compareOutcomes, outcomes, outcomeShard, visibleTextHash } from '../scripts/layout-scorecard.mjs';
+import { auditHeight, auditGeometry, auditScene, auditRepairs, applyRepair, compareOutcomes, outcomes, outcomeShard, visibleTextHash } from '../scripts/layout-scorecard.mjs';
 
 // An appended story must not create a plot-share failure or hide a genuinely small plot.
 it('excludes only an automatic below-chart story from the S1 denominator', () => {
@@ -34,6 +34,14 @@ const sample = () => {
   return { type: 'line', data: fixture.data, options: { ...fixture.options, size: { width: 400 } } };
 };
 const caseItem = { fixture: 'line/check', width: 400, theme: 'authored', height: 'auto', setting: 'default' };
+
+// Table cards may shrink at a narrower width; chart families that retain the height floor still fail S2.
+it('checks height ordering only for chart types that retain the wider-card floor', () => {
+  const geometry = { size: { height: 200 } };
+  const wider = { width: 480, height: 240 };
+  for (const type of ['table', 'dimswitch']) expect(auditHeight({ ...caseItem, fixture: type + '/check' }, geometry, wider)).toEqual([]);
+  expect(auditHeight(caseItem, geometry, wider).map((finding: { rule: string }) => finding.rule)).toEqual(['S2']);
+});
 const textNode = (id: string, x = 30, y = 30, extra = {}) => ({ t: 'text', id, x, y, lines: ['Label'], font: { family: 'Arial', size: 14, weight: 400 }, fill: { token: 'ink' }, ...extra });
 const sceneFindings = (scene: unknown[], labels: unknown[] = [], decisions: unknown[] = [], omissions: unknown[] = []) => auditScene(caseItem, sample(), {
   size: { width: 400, height: 200 }, plot: { x: 0, y: 0, w: 400, h: 200 }, scene, labels, debug: { decisions },

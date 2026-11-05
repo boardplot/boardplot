@@ -235,6 +235,10 @@ export function createMeasurer(): TextMeasurer {
  */
 const WIDTH_CACHE_LIMIT = 65536;
 
+const cachedTextMeasurers = new WeakSet<TextMeasurer>();
+export function markCachedTextMeasurer<T extends TextMeasurer>(measure: T): T { cachedTextMeasurers.add(measure); return measure; }
+export const isCachedTextMeasurer = (measure: TextMeasurer): boolean => cachedTextMeasurers.has(measure);
+
 /**
  * An exact measurer over `rawWidth`, which must be a pure function of the text
  * and the font's fields. The cache is keyed by field values, because callers
@@ -263,7 +267,7 @@ export function cachedMeasurer(rawWidth: (text: string, font: FontSpec) => numbe
     plans.push(next);
     return last = next;
   };
-  return (text, font) => {
+  return markCachedTextMeasurer((text, font) => {
     let current = plan(font);
     let width = current.widths.get(text);
     if (width === undefined) {
@@ -274,7 +278,7 @@ export function cachedMeasurer(rawWidth: (text: string, font: FontSpec) => numbe
       widthCount++;
     }
     return { width, height: current.height, ascent: current.ascent };
-  };
+  });
 }
 
 interface FontPlan extends Pick<FontSpec, 'family' | 'size' | 'weight' | 'style' | 'letterSpacing' | 'tabular' | 'lineHeight'> {
