@@ -12,6 +12,7 @@ import '../src/core/charts';
 import { render } from '../src/cli/render';
 import { getFixtures, getRefusalExamples } from '../src/fixtures';
 import { getChartSchemas, listCharts } from '../src/core/registry';
+import { retireChartSettings } from '../src/core/retired';
 import { IGNORED_OPTION_KEYS, LEGEND_REFUSED, schemaRefusedKeys, valueAxisRefusal } from '../src/core/schema/capability';
 import { SparklineChart } from '../src/react/charts/sparkline';
 
@@ -102,6 +103,8 @@ describe('refusal contract', () => {
         if (path[0] === 'valueAxis' && ['show', 'gridlines'].includes(path[1]!) && valueAxisRefusal(type, path[1]!) !== undefined) continue;
         const options: Record<string, unknown> = {};
         setAt(options, path, true);
+        // A retired key is dropped with a remove patch before the schema runs, so it never refuses.
+        if (retireChartSettings(type, { options }).warnings.length > 0) continue;
         const error = cliErrors(type, options).find((candidate) => candidate.path === `/options/${path.join('/')}`);
         const suggest = error?.suggest ?? '';
         const where = `${type} ${dotted}: ${suggest || error?.message || 'no error'}`;
@@ -167,6 +170,8 @@ describe('refusal contract', () => {
         const options: Record<string, unknown> = {};
         // A number, not true: true was once a valid bartable cascade and now draws as its variant.
         setAt(options, path, shapes ? 1 : 'not-a-listed-value');
+        // A key this form has no part for is dropped before the schema runs, so its value is never read.
+        if (retireChartSettings(type, { options }).warnings.length > 0) continue;
         const message = cliErrors(type, options).find((error) => error.path === `/options/${path.join('/')}`)?.message.replace(`options.${path.join('.')}: `, '') ?? 'no error';
         const where = `${type} ${path.join('.')}: ${message}`;
         if (!shapes) {
