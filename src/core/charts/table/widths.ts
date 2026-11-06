@@ -64,16 +64,9 @@ interface TableWidthView {
 
 type WidthOptions = TableOptions & { [LABEL_WRAP_FLOOR]?: boolean; [SOFT_LABEL_CAP]?: boolean };
 
-/** Only a discarded regular rung may stop before its tracks and warnings are complete. */
-export interface TableWidthProbe { canvasWidth: number; footerInset: number }
-export interface TableWidthMiss { widthMiss: true; minimumW: number; totalW: number; cellPadX: number }
-type TableWidthPlan = Exclude<ReturnType<typeof tableWidthsOnce>, TableWidthMiss>;
-
 /** One content width rule. Dense padding is a fallback only when normal padding cannot fit. */
-export function tableWidths(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions, view: TableWidthView, probe: TableWidthProbe | undefined): TableWidthPlan | TableWidthMiss;
-export function tableWidths(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options?: WidthOptions, view?: TableWidthView): TableWidthPlan;
-export function tableWidths(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions = {}, view: TableWidthView = {}, probe?: TableWidthProbe): TableWidthPlan | TableWidthMiss {
-  if (options.columnHeads !== false) return tableWidthsWithHeads(table, theme, measure, options, view, probe);
+export function tableWidths(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions = {}, view: TableWidthView = {}): ReturnType<typeof tableWidthsWithHeads> {
+  if (options.columnHeads !== false) return tableWidthsWithHeads(table, theme, measure, options, view);
   // No head draws, so no head pays for a track: only the cells size the columns.
   const { columnHeads: _heads, ...withHeads } = options;
   const bare = (columns: readonly ResolvedColumn[]) => columns.map((col): ResolvedColumn => {
@@ -85,12 +78,10 @@ export function tableWidths(table: ResolvedTable, theme: Theme, measure: TextMea
     ...(view.columns === undefined ? {} : { columns: bare(view.columns) }),
     ...(view.allColumns === undefined ? {} : { allColumns: bare(view.allColumns) }),
     ...(view.defaultColumns === undefined ? {} : { defaultColumns: bare(view.defaultColumns) }),
-  }, probe);
+  });
 }
 
-function tableWidthsWithHeads(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions, view: TableWidthView, probe: TableWidthProbe | undefined): TableWidthPlan | TableWidthMiss;
-function tableWidthsWithHeads(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions, view: TableWidthView): TableWidthPlan;
-function tableWidthsWithHeads(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions, view: TableWidthView, probe?: TableWidthProbe): TableWidthPlan | TableWidthMiss {
+function tableWidthsWithHeads(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions = {}, view: TableWidthView = {}) {
   const { defaultColumns, ...own } = view;
   const shown = own.columns ?? visibleColumns(table);
   if (own.scroll && defaultColumns !== undefined
@@ -100,13 +91,11 @@ function tableWidthsWithHeads(table: ResolvedTable, theme: Theme, measure: TextM
     // The width the labels and their folded-row hints need, not the room a wide frame handed the label: only that keeps rows from wrapping.
     if (track !== undefined && base.labelNeed !== undefined) own.labelKeep = Math.min(track, Math.max(base.labelNeed, base.labelBeforeFill ?? 0));
   }
-  const regular = tableWidthsOnce(table, theme, measure, options, own, probe);
-  if ('widthMiss' in regular) return regular;
+  const regular = tableWidthsOnce(table, theme, measure, options, own);
   const count = (view.columns ?? visibleColumns(table)).length;
   const densePad = count >= 25 ? 3 : count >= DENSE_COLUMNS ? 5 : regular.cellPadX;
   if (options.cellPadX !== undefined || densePad >= regular.cellPadX || Math.max(regular.minimumW, regular.totalW) <= (view.available ?? Infinity)) return regular;
   const dense = tableWidthsOnce(table, theme, measure, { ...options, cellPadX: densePad }, own);
-  if ('widthMiss' in dense) return dense;
   const regularOverflow = regular.warnings.find(warning => warning.code === 'table-overflow');
   // The wider-size repair must also fit after normal padding returns.
   if (regularOverflow) dense.warnings = dense.warnings.map(warning => warning.code === 'table-overflow' ? regularOverflow : warning);
@@ -405,7 +394,7 @@ function measuredTable(table: ResolvedTable, theme: Theme, measure: TextMeasurer
 }
 
 /** Solve measured content, authored widths and floors against the available frame. */
-function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions = {}, view: TableWidthView = {}, probe?: TableWidthProbe) {
+function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions = {}, view: TableWidthView = {}) {
   const { cols, widthRows, spacerBefore, spacerTotal, figures, wideTable, cellPadX, labelColumn, labelLead, groupCell, headingFaces, regularFonts, cellStep, indentStep, childCount, indents, operatorSlot, rowIndent, cellFont, columnHeaderText, chipSpan, sumOf, hasChanges, uncutLabelWidth, regular, dense } = measuredTable(table, theme, measure, options, view);
   const available = view.available ?? Infinity;
   const warnings: LintWarning[] = [];
@@ -445,12 +434,6 @@ function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasur
   // on both surfaces; the warning offers that width when a fixed frame narrows them.
   const floorFlexIds = cols.filter(col => col.kind === 'rowLabel' || col.kind === 'text').map(col => col.id);
   const minimumW = Math.max(sumOf(sizingMinimums), sumOf(shrinkReach(cols, floorFlexIds, wideTable, sizingTracks, sizingMinimums, (dense ?? regular).labelFloor)));
-  // Explicit padding keeps the current frame and disables the automatic dense-padding fallback.
-  // Keep the layout's subtraction order at fractional width boundaries.
-  if (probe && !view.scroll && options.cellPadX !== undefined && cellPadX === probe.footerInset
-    && probe.canvasWidth < probe.canvasWidth - available + minimumW) {
-    return { widthMiss: true as const, minimumW, totalW, cellPadX };
-  }
   if (totalW > available && flexIds.length > 0) {
     // Shrink priority: prose (text) columns absorb the deficit first —
     // they truncate gracefully; entity names (rowLabel) are cut only when

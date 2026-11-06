@@ -1,4 +1,4 @@
-import { tableWidths, type TableWidthProbe, type TableWidthMiss } from './widths';
+import { tableWidths } from './widths';
 import { PLAN_ONLY, copyPlannedValue, deferLayout, isPlanned, materializeLayout, plannedCutCount, layoutKey, optionKey, tableTextMeasure, withPlanInputs } from '../../layoutPlan';
 import { liftOrFallback, missesSize, tightSpacingWarning } from '../tableFit';
 import { chartTheme } from '../chartEnv';
@@ -199,10 +199,8 @@ const widthPlans = new WeakMap<object, Map<string, ReturnType<typeof tableWidths
  * patch names, so an open height leaves it out of the key. A layout only reads
  * the plan. A theme named by string always measures again, as `memoLayout` does.
  */
-function sharedWidthPlan(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: LayoutOptions, view: Parameters<typeof tableWidths>[4] & object, probe: TableWidthProbe | undefined): ReturnType<typeof tableWidths> | TableWidthMiss;
-function sharedWidthPlan(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: LayoutOptions, view: Parameters<typeof tableWidths>[4] & object): ReturnType<typeof tableWidths>;
-function sharedWidthPlan(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: LayoutOptions, view: Parameters<typeof tableWidths>[4] & object, probe?: TableWidthProbe): ReturnType<typeof tableWidths> | TableWidthMiss {
-  if (typeof options.theme === 'string') return tableWidths(table, theme, measure, options, view, probe);
+function sharedWidthPlan(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: LayoutOptions, view: Parameters<typeof tableWidths>[4] & object): ReturnType<typeof tableWidths> {
+  if (typeof options.theme === 'string') return tableWidths(table, theme, measure, options, view);
   const { size, [TARGET_SIZE]: target, [WIDTH_PROBE]: _probe, [COMPACT_RETRY]: _retry, [PLAN_ONLY]: _plan, ...rest } = options as LayoutOptions & TargetSizeOptions & { [WIDTH_PROBE]?: unknown };
   // These flags choose a fit candidate or its row/frame work. Width-affecting head and spacer values are in view.
   // Keep public options and the width solver's LABEL_WRAP_FLOOR/SOFT_LABEL_CAP flags unchanged.
@@ -216,14 +214,9 @@ function sharedWidthPlan(table: ResolvedTable, theme: Theme, measure: TextMeasur
     typeClass: panelTypeClass(options) ?? typeWidthClass(resolveSize(size).width) })}`;
   let byKey = widthPlans.get(table);
   if (!byKey) widthPlans.set(table, byKey = new Map());
+  if (byKey.size >= 32 && !byKey.has(key)) byKey.delete(byKey.keys().next().value!);
   let plan = byKey.get(key);
-  if (plan === undefined) {
-    const measured = tableWidths(table, theme, measure, options, view, probe);
-    // A later drawing pass may use this key. Only complete plans enter the cache.
-    if ('widthMiss' in measured) return measured;
-    if (byKey.size >= 32) byKey.delete(byKey.keys().next().value!);
-    byKey.set(key, plan = measured);
-  }
+  if (plan === undefined) byKey.set(key, plan = tableWidths(table, theme, measure, options, view));
   return plan;
 }
 
@@ -272,7 +265,7 @@ function layoutTableLadder(authoredData: TableData, options: TableOptions, resol
   const base = options;
   const sizingOnly = (options as LayoutOptions)[SIZING_ONLY] === true;
   const formatFits: FormatFits = new Map();
-  const once = (step: LayoutOptions, widthOnly: true | 'regular-rung' = true) => layoutTableOnce(authoredData, step, resolved, sizingOnly, formatFits, fits, widthOnly);
+  const once = (step: LayoutOptions) => layoutTableOnce(authoredData, step, resolved, sizingOnly, formatFits, fits, true);
   const targetSize = (options as TargetSizeOptions)[TARGET_SIZE];
   // A floor that misses full width never reads its scene. Keep the initial height pass intact.
   const fullSizingOnly = sizingOnly && resolveSize(options.size).width !== targetSize?.sizePx.width;
@@ -333,7 +326,7 @@ function layoutTableLadder(authoredData: TableData, options: TableOptions, resol
   // A table that misses on height alone goes straight to the compact density: air between figures does not buy rows.
   if (widthFits(full)) return withWidthRepair(compactTable(authoredData, options, full, margin, Math.min(pad, 6), undefined, resolved, sizingOnly, formatFits));
   const rung = (step: { pad: number; heads?: number }) =>
-    once({ ...base, margin, cellPadX: step.pad, ...(step.heads === undefined ? {} : { [HEAD_LINES]: step.heads }) }, 'regular-rung');
+    once({ ...base, margin, cellPadX: step.pad, ...(step.heads === undefined ? {} : { [HEAD_LINES]: step.heads }) });
   // Each rung is narrower than the one before, so where the narrowest misses the width every rung does.
   const narrowest = rung({ pad: Math.min(pad, 3), heads: 2 });
   if (narrowest.sizing !== undefined && !widthFits(narrowest)) return withWidthRepair(compactTable(authoredData, options, full, margin, Math.min(pad, 3), 2, resolved, sizingOnly, formatFits));
@@ -606,8 +599,8 @@ function layoutTableOnce(
   authoredData: TableData, options: LayoutOptions, initialResolved: ReturnType<typeof resolveTable>, sizingOnly: boolean, formatFits: FormatFits,
   /** Given a pass's sizing, whether its caller reads the scene. A pass without one always draws. */
   wantsScene?: (probe: Geometry<TableMarks, TableDerived>) => boolean,
-  /** The regular rungs also discard width warnings; the initial candidate keeps its overflow repair. */
-  widthOnlyOnMiss: boolean | 'regular-rung' = false,
+  /** This ladder candidate is discarded on width alone, so its rows need not be prepared on a miss. */
+  widthOnlyOnMiss = false,
 ): Geometry<TableMarks, TableDerived> {
   const tight = options[TIGHT_SPACING]?.columns === true;
   const tightRows = options[TIGHT_SPACING]?.rows === true;
@@ -783,24 +776,9 @@ function layoutTableOnce(
     if (ladder.rowHeight !== undefined) ladder.rowHeight = ladder.lineBox(ladder.label) + 2;
   }
   const { lineBox, pad: levelPad } = ladder;
-  const widthView = {
+  const widthPlan = sharedWidthPlan(table, theme, measure, options, {
     columns: cols, rows, widthRows, fullRows, available: plot.w, spacerTotal, headLines: options[HEAD_LINES], subLines: options[SUB_LINES], headGlue: options[HEAD_LOOSE] !== true,
-  };
-  let widthPlan = sharedWidthPlan(table, theme, measure, options, widthView,
-    widthOnlyOnMiss === 'regular-rung' && (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.width !== false
-      ? { canvasWidth: size.width, footerInset: cellPadX } : undefined);
-  if ('widthMiss' in widthPlan) {
-    const sizing = tableSizing(size, plot, plot.y, widthPlan.totalW, widthPlan.minimumW);
-    if (size.width < sizing.minWidth) {
-      const x = Math.round(plot.x), y = Math.round(plot.y);
-      return sizingProbe(sizing, {
-        table: { x, y, w: widthPlan.totalW, h: 0 }, columns: [], rows: [],
-        headerBand: { x, y, w: widthPlan.totalW, h: 0 },
-      });
-    }
-    // Sizing can round a floor a few ULPs down. A rung the ladder can select needs its complete plan.
-    widthPlan = sharedWidthPlan(table, theme, measure, options, widthView);
-  }
+  });
   cellPadX = widthPlan.cellPadX;
   if (frameInput.footerInset !== cellPadX) {
     frameInput.footerInset = cellPadX;

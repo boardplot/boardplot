@@ -3,7 +3,6 @@ import '../src/core/charts';
 import { getFixtures } from '../src/fixtures';
 import { layoutResolvedRequest, planResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { renderSvg } from '../src/core/svg/renderSvg';
-import { resolveTheme } from '../src/core/theme';
 import { layoutTable, layoutTableCard } from '../src/core/charts/table/layout';
 import * as tableResolution from '../src/core/charts/table/resolve';
 import { ENGINE_NOTES, SOFT_LABEL_CAP, LABEL_WRAP_FLOOR } from '../src/core/charts/table/tracks';
@@ -262,47 +261,6 @@ it.each([undefined, 'Effect'])('reuses dimension forms with current inline visib
   } finally {
     compile.mockRestore();
     resolve.mockRestore();
-  }
-});
-
-// A disposable width miss may omit tracks, but a fitting or drawing caller must receive the full plan.
-it('rejects only explicit-padding width probes and keeps complete plans available', () => {
-  const data: TableData = {
-    columns: [{ id: 'label', kind: 'rowLabel', label: 'Long label heading', width: 180.25 },
-      { id: 'value', kind: 'value', label: 'Long value heading', width: 140.5 }],
-    rows: [{ id: 'a', label: 'A label', cells: { value: 123456 } }],
-  };
-  const theme = resolveTheme('bridge');
-  for (const columnHeads of [undefined, false] as const) {
-    const options: TableOptions = { cellPadX: 3, columnHeads };
-    const table = tableResolution.resolveTable(data, options).table;
-    const view = { available: 100.25 };
-    const full = tableWidths.tableWidths(table, theme, defaultMeasurer, options, view);
-    const probe = { canvasWidth: 124.25, footerInset: 3 };
-    expect(tableWidths.tableWidths(table, theme, defaultMeasurer, options, view, probe)).toEqual({
-      widthMiss: true, minimumW: full.minimumW, totalW: full.totalW, cellPadX: 3,
-    });
-    // Each full solve creates fresh font callbacks. Compare its tracks and serializable result.
-    const samePlan = (actual: ReturnType<typeof tableWidths.tableWidths> | tableWidths.TableWidthMiss,
-      expected: ReturnType<typeof tableWidths.tableWidths>) => {
-      expect(actual).not.toHaveProperty('widthMiss');
-      if ('widthMiss' in actual) return;
-      expect(actual.widths).toEqual(expected.widths);
-      expect(JSON.stringify(actual)).toBe(JSON.stringify(expected));
-    };
-    samePlan(tableWidths.tableWidths(table, theme, defaultMeasurer, options, view), full);
-    samePlan(tableWidths.tableWidths(table, theme, defaultMeasurer, options, view, { ...probe, footerInset: 4 }), full);
-
-    const fitting = { available: full.minimumW + 0.25 };
-    samePlan(tableWidths.tableWidths(table, theme, defaultMeasurer, options, fitting,
-      { ...probe, canvasWidth: fitting.available + 24 }),
-      tableWidths.tableWidths(table, theme, defaultMeasurer, options, fitting));
-    const scrolling = { ...view, scroll: true };
-    samePlan(tableWidths.tableWidths(table, theme, defaultMeasurer, options, scrolling, probe),
-      tableWidths.tableWidths(table, theme, defaultMeasurer, options, scrolling));
-    const automatic = { columnHeads };
-    samePlan(tableWidths.tableWidths(table, theme, defaultMeasurer, automatic, view, probe),
-      tableWidths.tableWidths(table, theme, defaultMeasurer, automatic, view));
   }
 });
 
