@@ -2777,7 +2777,7 @@ fixtures.push({
     ],
     series: [{ id: 'orders', label: 'Orders', values: [30, 34, 31, 62, 70, 66] }],
   },
-  options: { title: 'Orders doubled after the April launch', unit: 'Orders, thousand', source: 'Illustrative data', valueAxis: { min: 0, max: 80 } },
+  options: { title: 'Orders doubled after the April launch', unit: 'thousand', source: 'Illustrative data', valueAxis: { min: 0, max: 80 } },
   annotations: [
     { kind: 'box', id: 'launch-window', from: { categoryId: 'apr', value: 8 }, to: { categoryId: 'jun', value: 78 }, dashed: true },
     { kind: 'line', id: 'old-level', from: { categoryId: 'jan', value: 50 }, to: { categoryId: 'mar', value: 50 } },

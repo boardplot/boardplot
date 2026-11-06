@@ -75,7 +75,8 @@ export function drawingFailure(kind: 'line' | 'arrow' | 'box', from: Resolved, t
 
 /** The seats of a text annotation, in order: on the point, above, below, right, left. */
 export function textSeats(at: Point, size: { w: number; h: number }): SlotCandidate[] {
-  const seat = (slot: string, x: number, y: number, penalty: number): SlotCandidate => ({ slot, rect: { x, y, w: size.w, h: size.h }, penalty });
+  // Text may sit inside a bar, with a halo for contrast. It never straddles a bar's edge: that seat is blocked.
+  const seat = (slot: string, x: number, y: number, penalty: number): SlotCandidate => ({ slot, rect: { x, y, w: size.w, h: size.h }, penalty, overColumns: true, needsBacking: true });
   const { w, h } = size;
   return [
     seat('at', at.x - w / 2, at.y - h / 2, 0),

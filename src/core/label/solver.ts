@@ -678,8 +678,9 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
           seat.needsBacking = true;
         }
       } else if (ownMarks.length > 0) seat.needsBacking = true;
-      if (!seat.leaderFrom && !req.noLeader) {
-        seat.leaderFrom = nearestPointOf(cand.rect, rect);
+      // A move of about a line reads without a leader, and so does text still on its own mark.
+      if (!seat.leaderFrom && !req.noLeader && Math.hypot(move.x ?? 0, move.y ?? 0) >= MOVED_LEADER_MIN && !ownMarks.some((o) => rectContains(o.rect, rect, 0))) {
+        seat.leaderFrom = req.anchor ? nearestPointOf(anchorBox(req.anchor), rect) : movedLeaderStart(cand.rect, move);
         seat.leaderVertical = true;
       }
       return seat;
@@ -1244,6 +1245,15 @@ function nearestPointOf(rect: Rect, other: Rect): Point {
     return from <= to ? (from + to) / 2 : otherLow > low ? low + size : low;
   };
   return { x: nearest(rect.x, rect.w, other.x, other.w), y: nearest(rect.y, rect.h, other.y, other.h) };
+}
+
+/** The shortest authored move that draws a leader back to the mark: about one text line. */
+const MOVED_LEADER_MIN = 12;
+
+/** Where a moved seat's leader starts with no anchor: the old seat's edge on the far side from the move, next to its mark. */
+function movedLeaderStart(seat: Rect, move: LabelOffset): Point {
+  const edge = (low: number, size: number, by = 0): number => (by > 0 ? low : by < 0 ? low + size : low + size / 2);
+  return { x: edge(seat.x, seat.w, move.x), y: edge(seat.y, seat.h, move.y) };
 }
 
 /** A side leader starts at the marker's edge, as a line end's does. */

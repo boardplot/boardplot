@@ -900,7 +900,7 @@ Four annotation kinds draw on data positions, so a drawing stays on its data at 
 
 | Kind | Fields | Draws |
 |---|---|---|
-| `text` | `at`, `text`, `id`, `priority` | Text on the point, or above, below, right or left of it, 8 px away. `${value}` prints as written. |
+| `text` | `at`, `text`, `id`, `priority` | Text on the point, or above, below, right or left of it, 8 px away. Text inside a bar gets a halo, and text never straddles a bar's edge. `${value}` prints as written. |
 | `line` | `from`, `to`, `dashed`, `id` | A straight line. |
 | `arrow` | `from`, `to`, `dashed`, `id` | A straight arrow, with its head at `to`. |
 | `box` | `from`, `to`, `dashed`, `id` | An unfilled box, with `from` and `to` as opposite corners. |

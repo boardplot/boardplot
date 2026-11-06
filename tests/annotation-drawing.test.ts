@@ -47,3 +47,11 @@ it('a label inside a box stays free', () => {
   expect(geometry.labels.find((label) => label.id === 'annotation:T')!.slot).toBe('at');
   expect(geometry.warnings.map((warning) => warning.code)).not.toContain('draw-crosses-text');
 });
+
+// Writing inside a bar is the plainest use of text on a chart: the bar must not hide it.
+it('text at a value inside a bar draws there', () => {
+  const geometry = layoutColumn(columns, { valueAxis: { min: 0, max: 100 }, annotations: [{ kind: 'text', id: 'T', at: { categoryId: 'b', value: 20 }, text: 'Inside' }] } as never);
+  const text = geometry.labels.find((label) => label.id === 'annotation:T')!;
+  expect(text.hidden).toBeFalsy();
+  expect(text.slot).toBe('at');
+});

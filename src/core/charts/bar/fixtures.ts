@@ -1382,7 +1382,7 @@ fixtures.push({
     ],
     series: [{ id: 'sales', label: 'Sales', values: [82, 64, 41, 23] }],
   },
-  options: { title: 'Sales fall from north to west', unit: 'Sales, EUR m', source: 'Illustrative data', valueAxis: { min: 0, max: 120 } },
+  options: { title: 'Sales fall from north to west', unit: 'EUR m', source: 'Illustrative data', valueAxis: { min: 0, max: 120 } },
   annotations: [
     { kind: 'arrow', id: 'gap', from: { categoryId: 'north', value: 100 }, to: { categoryId: 'west', value: 50 } },
     { kind: 'text', id: 'gap-note', at: { categoryId: 'east', value: 100 }, text: 'Gap to close' },
