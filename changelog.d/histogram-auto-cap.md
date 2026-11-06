@@ -1,3 +1,0 @@
-### Fixed
-
-- Histogram: a long tail no longer makes the default binning refuse its own choice. When the narrower automatic width would need more than 250 bins, as with `[1, 2, …, 10, 400, 1200, 3000]`, `bins: 'auto'` takes the Sturges width and warns `histogram-auto-sturges`, naming an `openAbove` value that gathers the far tail into one open last bin (`bins: { openAbove: 20 }` for that sample). The method note names Sturges. Before, the chart was refused with `histogram-bin-explosion` on `options.bins`, which the author had not set. An authored `bins` width, count or `openAbove` that needs more than 250 bins is still refused.
