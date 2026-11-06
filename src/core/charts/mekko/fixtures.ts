@@ -371,9 +371,9 @@ fixtures.push(
   {
     id: 'bar-inside-base-values', title: 'Mekko bar values inside the base', kind: 'example',
     data: { categories: [{ id: 'a', label: 'Group A' }, { id: 'b', label: 'Group B' }, { id: 'c', label: 'Group C' }],
-      series: [{ id: 'value', label: 'Value', values: [80, 60, 100] },
-        { id: 'width', label: 'Width', values: [30, 40, 30] }] },
-    options: { title: 'Values inside each variable-width bar', variant: 'bar', widthSeriesId: 'width', labelPosition: 'insideBase' },
+      series: [{ id: 'value', label: 'Value', unit: '%', values: [80, 60, 100] },
+        { id: 'width', label: 'Width', role: 'reference', unit: '$bn', values: [30, 40, 30] }] },
+    options: { title: 'Values inside each variable-width bar', variant: 'bar', widthSeriesId: 'width', unit: '%', valueAxis: { show: true }, axisTitles: { primary: 'Value, %' }, labelPosition: 'insideBase' },
   },
 );
 

@@ -660,7 +660,7 @@ function layoutHorizontalWaterfall(
     const level = source.derived.levels[bar.id]!;
     const pattern = mark?.t === 'rect' && mark.pattern !== 'hollow' ? mark.pattern : undefined;
     const paint = mark?.t === 'rect' ? mark.fill : undefined;
-    return positionBarLabel(request, options, {
+    const positioned = positionBarLabel(request, options, {
       rect: bar.rect, size: { width: transformed.w, height: transformed.h }, orientation: 'horizontal',
       endPositive: Math.abs(Math.max(level.start, level.end)) >= Math.abs(Math.min(level.start, level.end)),
       zero: level.start === level.end, edgeGap: 4, outsideGap: 8,
@@ -668,6 +668,8 @@ function layoutHorizontalWaterfall(
       insidePaint: paint, insidePattern: pattern,
       insideFill: paint ? effectiveFill(paintColor(theme, paint), pattern, theme) : theme.color.background,
     });
+    // A value left of the plot would take the seat of its row's name and refuse the chart.
+    return { ...positioned, candidates: positioned.candidates.filter(candidate => candidate.rect.x >= horizontalPlot.x) };
   });
   const horizontalPins = Object.fromEntries(
     Object.entries(options.labelPlacements ?? {}).map(([id, slot]) => [id, mapSlot(slot)]),

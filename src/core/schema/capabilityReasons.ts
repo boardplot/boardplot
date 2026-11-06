@@ -161,6 +161,7 @@ export function valueAxisReason(type: string, key: string, why: 'only' | 'capabi
  * and fails on a refusal this table does not answer.
  */
 const ALTERNATIVES: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  labelPosition: { '*': "this type draws no bar values to position. Set it on a bar chart, or in the panel options of a grid" },
   transpose: {
     '*': "orientation is the chart type: type 'bar' draws horizontal bars and type 'column' vertical ones",
     waterfall: 'a waterfall turns with options.variant',

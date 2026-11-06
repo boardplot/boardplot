@@ -686,6 +686,17 @@ it('keeps auto bridge output and existing pins unchanged in either orientation',
   }
 });
 
+// Every row name keeps its seat: a negative total's outside seat lay on its name and refused a chart that auto draws.
+it('draws a horizontal bridge with a negative total at outsideEnd', () => {
+  const definition = getChartDefinition('waterfall')!;
+  const data = definition.normalize({ items: [
+    { id: 'open', type: 'total', value: 100 }, { id: 'step', value: -150 }, { id: 'close', type: 'total' },
+  ] });
+  const result = requireGeometry(definition.layout(data, { ...definition.defaults, variant: 'horizontal', labelPosition: 'outsideEnd', size: { width: 720, height: 400 } } as never));
+  expect(result.labels.find(label => label.id === 'total:close')?.hidden).toBeUndefined();
+  expect(result.labels.find(label => label.id === 'total:close')?.slot).toBe('outsideRight');
+});
+
 // A bridge crosses zero by geometry, so the sign of the step must not choose its inside end.
 it('uses the farther-from-zero bridge edge and the upper edge on a tie', () => {
   const definition = getChartDefinition('waterfall')!;
