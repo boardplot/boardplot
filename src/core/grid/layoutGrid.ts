@@ -23,6 +23,7 @@ import { KPI_HOST_TEXT, KPI_VALUE_SIZE } from '../typeFloors';
 import { stringsIn } from '../frame';
 import { authoredStrings } from '../strings';
 import { defaultMeasurer, wrapText, type FontSpec, type TextMeasurer } from '../text';
+import { lineBoxes } from '../textClip';
 import { canvasMargin, panelTypeClass, resolveTheme, themeForWidth, typeWidthClass, type TypeWidthClass } from '../theme';
 import type { GridData, GridPanel } from '../types/data';
 import type { ThemeRef } from '../types/theme';
@@ -58,6 +59,10 @@ function serializableOptions(options: object & { measure?: unknown }): object {
 const TIER_WEIGHT_FIRST = 2.2;
 const TIER_SLACK_PASSES = 32;
 const TIER_SLACK_BACKOFFS = 8;
+/** The plot a squashed tier keeps (balanceVarianceTierPlots steps in at 10 px), with rounding room. */
+const TIER_PLOT_FLOOR = 10.5;
+/** The warnings of a panel that keeps a value off its plot. */
+const DROPPED_VALUE_WARNINGS = new Set(['label-hidden', 'values-in-note', 'value-labels-dropped-series']);
 
 /**
  * The name every panel shares as options.scaleGroup.y, or null. Panels on one
@@ -399,7 +404,7 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
     // Reserve the caption above the child's first ink, not just above its plot.
     if (options.target && tierReserve > 0) {
       for (let pass = 0; pass < 3; pass++) {
-        const missing = Math.ceil(tierReserve - occupiedBounds(geo).y);
+        const missing = Math.ceil(tierReserve - occupiedBounds(geo, measure).y);
         if (missing <= 0) break;
         const margin = finalOptions.margin as Record<string, number> | undefined;
         finalOptions = { ...finalOptions, margin: { ...margin, top: (margin?.top ?? marginTop) + missing } };
@@ -499,7 +504,7 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
   };
 
   const measureTierContents = (laidOut: GridChild[]) => {
-    const childContent = laidOut.map((child) => occupiedBounds(child.geo));
+    const childContent = laidOut.map((child) => occupiedBounds(child.geo, measure));
     const tierLabels = laidOut.map((child, index) => {
       if (!child.tierCaption && !child.tierDetail) return undefined;
       const font = { family: theme.type.family, ...theme.type.axis };
@@ -584,22 +589,56 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
   const requirements = () => gridSizing(size, area, sizingChildren(),
     packedTiers ? [...bottomUpOrder].reverse().map(index => children[index]!.geo.sizing!.minHeight) : rowWeights,
     Array(columns).fill(1), rowGaps, Array(columns - 1).fill(gap), true);
-  // A short probe already needs a larger canvas. Packing slack there cannot
-  // make it renderable and can repeatedly cross label-wrapping thresholds.
-  if (packedTiers && requirements().minHeight <= size.height) {
+  let tierRepaired = false;
+  let plainFits = () => true;
+  const packTiers = (repair: boolean) => {
     const weights = tierWeights(data.panels);
     const wSum = weights.reduce((sum, weight) => sum + weight, 0);
     const gapFloor = Math.min(4, theme.space.tierGap);
     const gapCapacity = (theme.space.tierGap - gapFloor) * (n - 1);
+    const contentTotal = () => tierContents.localContent.reduce((sum, bounds) => sum + bounds.h, 0);
+    const tierMinimums = () => children.map((child) => child.geo.sizing?.minHeight ?? 0);
+    const settle = (heights: number[]) => {
+      slots.forEach((slot, index) => { slots[index] = { ...slot, h: heights[index]! }; });
+      let y = area.y + area.h;
+      for (const i of bottomUpOrder) { y -= slots[i]!.h; slots[i] = { ...slots[i]!, y }; y -= theme.space.tierGap; }
+      children = balanceVarianceTierPlots(slots, layoutChildren(), varianceWeights, layoutChildren);
+      tierContents = measureTierContents(children);
+    };
+    // A panel that the weights give less than its own minimum draws a flat strip, although the
+    // canvas holds every minimum. Each panel takes its minimum, the rest follows the weights.
+    const minimums = tierMinimums();
+    const usable = area.h - theme.space.tierGap * (n - 1);
+    if (repair && !varianceWeights && slots.some((slot, i) => slot.h + 0.5 < minimums[i]! && children[i]!.geo.plot.h < (children[i]!.geo.frame.plotMinHeight ?? 0)) && minimums.reduce((a, b) => a + b, 0) <= usable) {
+      tierRepaired = true;
+      settle(heightsHoldingMinimums(usable, weights, minimums));
+    }
+    // Content that needs more than the canvas gives (a tier at its plot floor keeps its frame) takes
+    // the height from the panels that still have plot to give, down to their minimums.
+    const squeeze = (deficit: number): boolean => {
+      const give = children.map((child, i) => child.geo.plot.h > TIER_PLOT_FLOOR ? weights[i]! : 0);
+      const giveSum = give.reduce((a, b) => a + b, 0);
+      if (giveSum === 0) return false;
+      const before = { slots: slots.map((slot) => ({ ...slot })), children, tierContents, total: contentTotal(), sharedX, sharedW };
+      tierRepaired = true;
+      const floors = tierMinimums();
+      settle(slots.map((slot, i) => Math.max(Math.min(slot.h, floors[i]!), slot.h - deficit * give[i]! / giveSum)));
+      if (contentTotal() < before.total - 0.5) return true;
+      before.slots.forEach((slot, i) => { slots[i] = slot; });
+      ({ children, tierContents, sharedX, sharedW } = before);
+      return false;
+    };
+    const slackNow = () => area.h - packReserve - theme.space.tierGap * (n - 1) - contentTotal();
+    plainFits = () => slackNow() >= -gapCapacity - 1;
     for (let pass = 0; pass < TIER_SLACK_PASSES; pass++) {
-      const slack =
-        area.h -
-        packReserve -
-        theme.space.tierGap * (n - 1) -
-        tierContents.localContent.reduce((sum, bounds) => sum + bounds.h, 0);
+      const slack = slackNow();
       if (slack < 0 && slack >= -gapCapacity) {
         effectiveTierGap = theme.space.tierGap + slack / (n - 1);
         break;
+      }
+      if (slack < -gapCapacity) {
+        if (!repair || !squeeze(-slack - gapCapacity)) break;
+        continue;
       }
       if (slack <= theme.space.tierGap) break;
       const previousSlots = slots.map((slot) => ({ ...slot }));
@@ -641,6 +680,38 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
         sharedW = previousSharedW;
         break;
       }
+    }
+    if (repair && slackNow() < -gapCapacity - 1) {
+      warnings.push({ code: 'grid-panel-too-short', severity: 'warn',
+        message: `the tiers need ${Math.ceil(-slackNow() - gapCapacity)} px more height than the canvas gives, so the top tier runs into the frame above it`,
+        suggest: 'increase the grid height' });
+    }
+  };
+  // A short probe already needs a larger canvas. Packing slack there cannot
+  // make it renderable and can repeatedly cross label-wrapping thresholds.
+  if (packedTiers && requirements().minHeight <= size.height) {
+    const state = () => ({ slots: slots.map((slot) => ({ ...slot })), children, tierContents, sharedX, sharedW, gap: effectiveTierGap, warnings: warnings.slice() });
+    const restore = (saved: ReturnType<typeof state>) => {
+      saved.slots.forEach((slot, i) => { slots[i] = slot; });
+      ({ children, tierContents, sharedX, sharedW } = saved);
+      effectiveTierGap = saved.gap;
+      warnings.length = 0;
+      warnings.push(...saved.warnings);
+    };
+    const start = state();
+    tierRepaired = false;
+    packTiers(true);
+    if (tierRepaired) {
+      // A repair gives way when it raises a panel's minimum above the canvas, or when the plain
+      // packing fits the canvas and keeps more values: it exists for tiers that do not fit.
+      const repaired = state();
+      const raised = requirements().minHeight > size.height;
+      const droppedValues = () => children.reduce((sum, child) => sum + child.geo.warnings.filter((warning) => DROPPED_VALUE_WARNINGS.has(warning.code)).length, 0);
+      const repairedDrops = droppedValues();
+      restore(start);
+      packTiers(false);
+      const fits = plainFits();
+      if (!raised && !(fits && droppedValues() < repairedDrops)) restore(repaired);
     }
   }
   const sizing = requirements();
@@ -855,8 +926,30 @@ export function withoutCategoryLabels(labels: unknown): unknown {
   return { ...(isRecord(labels) ? labels : {}), category: false };
 }
 
-function occupiedBounds(geometry: Geometry): Rect {
+/** Slot heights that hold every panel's minimum: a panel under its share keeps the minimum, the others split the rest by weight. */
+export function heightsHoldingMinimums(usable: number, weights: readonly number[], minimums: readonly number[]): number[] {
+  const held = new Set<number>();
+  for (;;) {
+    const free = usable - [...held].reduce((sum, i) => sum + minimums[i]!, 0);
+    const open = weights.reduce((sum, weight, i) => sum + (held.has(i) ? 0 : weight), 0);
+    const heights = weights.map((weight, i) => held.has(i) ? minimums[i]! : free * weight / open);
+    const under = heights.flatMap((height, i) => !held.has(i) && height < minimums[i]! ? [i] : []);
+    if (under.length === 0) return heights;
+    under.forEach((i) => held.add(i));
+  }
+}
+
+/**
+ * What a panel covers when the grid packs it. A rotated name claims only a small square at its
+ * anchor (the panel reserves the band itself), so the box of each rotated text is added: a panel
+ * moved by its claims alone would draw its names past the canvas.
+ */
+export function occupiedBounds(geometry: Geometry, measure: TextMeasurer): Rect {
   const rects = geometry.debug.occupied.filter((item) => item.kind !== 'reserved').map((item) => item.rect);
+  for (const node of geometry.scene) {
+    if (node.t !== 'text' || !node.rotate || node.opacity === 0) continue;
+    for (const box of lineBoxes(node, measure)) rects.push({ x: box.x0, y: box.y0, w: box.x1 - box.x0, h: box.y1 - box.y0 });
+  }
   if (rects.length === 0) return geometry.plot;
   const x1 = minOf(rects.map((rect) => rect.x));
   const y1 = minOf(rects.map((rect) => rect.y));

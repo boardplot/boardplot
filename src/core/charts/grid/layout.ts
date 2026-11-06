@@ -9,7 +9,7 @@ import { structureCount } from '../../structureCounts';
 import { boundsOf, type Rect } from '../../geometry';
 import { fmtPathNumber as fmtN } from '../../curve';
 import { inferLinearYDomain } from '../../axis';
-import { frameTextOptions, normalizeLegendOption, solveFrame, type FrameInput, type LegendItemInput } from '../../frame';
+import { frameTextOptions, normalizeLegendOption, slotDemandHeight, solveFrame, type FrameInput, type LegendItemInput } from '../../frame';
 import { collectGridLegendItems, gridLegendInput, gridPanelsKeepEndNames, hatchStrengthFor } from '../../grid/gridKey';
 import { balanceVarianceTierPlots, VARIANCE_TIER, varianceTierWeights } from '../../grid/varianceTiers';
 import { scalePanelSemantics } from '../../grid/sharedScale';
@@ -25,6 +25,8 @@ import {
   sharedCategoryLabelOwner,
   sharedYGroup,
   withoutCategoryLabels,
+  heightsHoldingMinimums,
+  occupiedBounds,
   type GridDerived as ComposedGridDerived,
   type GridMarks as ComposedGridMarks,
 } from '../../grid/layoutGrid';
@@ -59,7 +61,7 @@ import {
   WIDE_CANVAS_MIN_WIDTH,
 } from '../../theme';
 import { GRID_MAX_TRACKS } from './limits';
-import { DEFAULT_TARGET, TARGET_SIZE, type TargetSizeOptions } from '../../target';
+import { DEFAULT_TARGET, floorTextScale, TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { STACK_ROOM } from '../band/labels';
 import { cellMeta, cellValue, type OwnerRef } from '../../types/cell';
 import type { ThemeRef } from '../../types/theme';
@@ -1297,6 +1299,13 @@ function layoutAuthoredGrid(
       });
     }
   }
+  let sizingRows = rowWeights;
+  let sizedRows = rowWeights;
+  let askedRows: number[] | undefined;
+  let packedTiers = false;
+  // Slide and print step their type down on a short canvas and keep their value labels; only then do the tier minimums count.
+  const typeStepsFirst = options.target !== undefined && floorTextScale(options.target) !== undefined
+    && options.textScale === undefined && options.textSize === undefined && options.belowMinimum !== 'refuse';
   if (naturalTierWeights) {
     // Final margins can change header wrapping and label rows. Balance the
     // plots after alignment, preserving the margins that alignment measured.
@@ -1310,10 +1319,23 @@ function layoutAuthoredGrid(
     }
     // Automatic tiers spend the canvas on visible content, like the compact
     // composition path. Empty child margins do not become extra tier gutters.
-    const contentHeight = () => children.reduce((sum, child) => sum + authoredOccupiedBounds(child.geometry).h, 0);
+    const contentHeight = () => children.reduce((sum, child) => sum + occupiedBounds(child.geometry, measure).h, 0);
     const available = area.h - rowGaps.reduce((sum, gap) => sum + gap, 0);
     const weight = naturalTierWeights.reduce((sum, value) => sum + value, 0);
     const packed = children.every(child => !child.panel.align) && !options.anchors?.baselines;
+    let reportedRows: number[] | undefined;
+    // A slot under its panel's minimum draws a strip below a gap, although the canvas holds every minimum.
+    const minimums = children.map(child => child.geometry.sizing?.minHeight ?? 0);
+    if (packed && !typeStepsFirst && children.some((child, index) => child.slot.h + 0.5 < minimums[index]! && child.geometry.plot.h < (child.geometry.frame.plotMinHeight ?? 0))
+      && minimums.reduce((sum, value) => sum + value, 0) <= available) {
+      // The repair moves the tiers only: the grid still reports the size of the slots it asked for.
+      reportedRows = rowWeights.map((_, row) => tierSlots[provisional.findIndex(p => p.row === row)]!.h);
+      const heights = heightsHoldingMinimums(available, naturalTierWeights, minimums);
+      children.forEach((child, index) => {
+        child.slot.h = heights[index]!;
+        child.geometry = child.relayout!(child.margin);
+      });
+    }
     if (packed && children.every(child => child.slot.h >= (child.geometry.sizing?.minHeight ?? 0))) {
       for (let pass = 0; pass < 8; pass++) {
         const slack = available - contentHeight();
@@ -1341,12 +1363,25 @@ function layoutAuthoredGrid(
       }
     }
     rowWeights = rowWeights.map((_, row) => tierSlots[provisional.findIndex(p => p.row === row)]!.h);
+    sizedRows = reportedRows ?? rowWeights;
+    sizingRows = sizedRows;
+    // A packed tier takes the height its content needs, not its slot: the slots can add up to more
+    // than the canvas, and a minimum scaled by them refuses a canvas where every tier fits.
+    if (packed) {
+      packedTiers = true;
+      const rowChild = (row: number) => children.find(child => child.placement.row === row)?.geometry;
+      sizingRows = sizedRows.map((weight, row) => rowChild(row)?.sizing?.minHeight ?? weight);
+      // A tier below its plot floor draws a strip: the canvas then grows to what the panels ask for.
+      if (children.some(child => child.geometry.size.height + 1e-6 < (child.geometry.frame.plotMinHeight ?? 0))) {
+        askedRows = sizingRows.map((height, row) => Math.max(height, rowChild(row)?.frame.plotMinHeight ?? 0));
+      }
+    }
     rowBands = trackBands(area.y, area.h, rowWeights, rowGaps, options.gutters?.rows !== undefined);
     tierSlots.forEach((slot, index) => { slot.y = rowBands[provisional[index]!.row]!.start; });
     let bottom = area.y + area.h;
     for (const index of packed ? bottomUpTierOrder(panels) : []) {
       const child = children[index]!;
-      const bounds = authoredOccupiedBounds(child.geometry);
+      const bounds = occupiedBounds(child.geometry, measure);
       child.slot.y = bottom - bounds.y - bounds.h;
       rowBands[child.placement.row] = { start: bottom - bounds.h, size: bounds.h };
       bottom -= bounds.h + (rowGaps[child.placement.row - 1] ?? 0);
@@ -1475,11 +1510,12 @@ function layoutAuthoredGrid(
     marks.alignmentRules!.push({ id: rule.id, nodeId, orientation: rule.orientation });
   }
 
+  if (packedTiers) slotDemandHeight.add(frameResult.frame);
   const compactNotes = children.flatMap((child) => child.geometry.a11y.compactNotes ?? []);
   return {
     type: 'grid',
     size,
-    sizing: withReadoutPlotHeight(gridSizing(size, area, children.map(child => ({ geometry: child.geometry, ...child.placement })), rowWeights, columnWeights, rowGaps, columnGaps, automaticRows),
+    sizing: withReadoutPlotHeight(gridSizing(size, area, children.map(child => ({ geometry: child.geometry, ...child.placement })), sizedRows, columnWeights, rowGaps, columnGaps, automaticRows, sizingRows, askedRows, typeStepsFirst),
       size, automaticRows ? children : []),
     plot: area,
     scene,
