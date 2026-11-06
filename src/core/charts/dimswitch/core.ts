@@ -6,7 +6,7 @@ import type { Geometry } from '../../types/scene';
 import { CARD_MIN_WIDTH, chartSizing, heightOmitted, isWidthProbe, VERIFY_ADVICE, WIDTH_PROBE } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { classFloor, layoutKey, layoutTable, memoLayout, REGULAR_SPACING, type TableMarks } from '../table/layout';
-import { resolveTable } from '../table/resolve';
+import { prepareTableData, resolvePreparedTable, resolveTable } from '../table/resolve';
 import { compileDimSwitch, currentDimSwitchOptions, dimSwitchTableWarnings, dimswitchRowId, FOLDED, hostPeriods, PARTIAL_NOTE_OFF, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning, type DimSwitchForm } from './compile';
 import type { DimSwitchData, DimSwitchOptions, DimSwitchDerived } from './types';
 import { minOf } from '../../arrays';
@@ -46,7 +46,7 @@ function prepareForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSw
   const without=<T extends object>(value:T):T=>{const copy={...value} as Record<PropertyKey,unknown>; for (const symbol of PER_PROBE) delete copy[symbol]; return copy as T;};
   const compute=():PreparedForm=>{
     const compiled=compileDimSwitch(data,options,form);
-    const resolved=resolveTable(compiled.data,compiled.options);
+    const resolved=resolvePreparedTable(prepareTableData(compiled.data,compiled.options),compiled.options);
     const noteMetadata:PreparedForm['noteMetadata']=new Map();
     for (const text of (compiled.options as {[ENGINE_NOTES]?: string[]})[ENGINE_NOTES] ?? []) {
       const meta=engineNoteMeta(text);

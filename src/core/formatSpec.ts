@@ -1126,8 +1126,7 @@ function textPlan(spec: NumberFormatSpec): TextPlan {
   return next;
 }
 
-export function formatWithSpec(value: number, spec: NumberFormatSpec): string {
-  if (value == null || !Number.isFinite(value) || Object.is(value, -0)) return formatWithSpecUncached(value, spec);
+function boundSpecTexts(): void {
   if (specTexts >= MAX_SPEC_TEXTS) {
     // Bound long-lived hosts: drop every shared text and every plan that points at one.
     for (const texts of sharedTexts.values()) texts.clear();
@@ -1135,7 +1134,26 @@ export function formatWithSpec(value: number, spec: NumberFormatSpec): string {
     specTexts = 0;
     textGeneration++;
   }
-  const texts = textPlan(spec).texts;
+}
+
+export function formatWithSpec(value: number, spec: NumberFormatSpec): string {
+  if (value == null || !Number.isFinite(value) || Object.is(value, -0)) return formatWithSpecUncached(value, spec);
+  boundSpecTexts();
+  return formatPlannedNumber(value, spec, textPlan(spec).texts);
+}
+
+/** The table owns and finalizes this spec before compiling it. Public mutable specs use formatWithSpec. */
+export function compileNumberFormat(spec: NumberFormatSpec): (value: number) => string {
+  let plan: TextPlan | undefined;
+  return (value) => {
+    if (value == null || !Number.isFinite(value) || Object.is(value, -0)) return formatWithSpecUncached(value, spec);
+    boundSpecTexts();
+    if (plan === undefined || plan.generation !== textGeneration || plan.small !== currentSmallValues()) plan = textPlan(spec);
+    return formatPlannedNumber(value, spec, plan.texts);
+  };
+}
+
+function formatPlannedNumber(value: number, spec: NumberFormatSpec, texts: TextPlan['texts']): string {
   if (texts === undefined) return formatWithSpecUncached(value, spec);
   const cached = texts.get(value);
   if (cached !== undefined) {

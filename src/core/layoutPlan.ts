@@ -16,7 +16,8 @@ const keyFunction = (_key: string, value: unknown): unknown => {
 };
 type TextPlan = { font: FontSpec; texts: Map<string, TextSize> };
 type FontPlans = { families: Map<FontSpec['family'], Map<number, TextPlan[]>>; last?: TextPlan };
-type Inputs = { json: WeakMap<object, string>; themes: WeakMap<object, number>; texts: WeakMap<TextMeasurer, FontPlans> };
+type InputKeyReader = (value: object) => string | undefined;
+type Inputs = { json: WeakMap<object, string>; themes: WeakMap<object, number>; texts: WeakMap<TextMeasurer, FontPlans>; exactKeys?: Map<InputKeyReader, WeakMap<object, string | undefined>> };
 let inputs: Inputs | undefined;
 
 /** Synchronous probes share snapshots; the next public call reads mutable inputs again. */
@@ -24,6 +25,18 @@ export function withPlanInputs<T>(run: () => T): T {
   if (inputs) return run();
   inputs = { json: new WeakMap(), themes: new WeakMap(), texts: new WeakMap() };
   try { return run(); } finally { inputs = undefined; }
+}
+
+/** Size probes share an exact input snapshot. A new public request checks mutable inputs again. */
+export function memoExactInputKey(value: object, read: InputKeyReader): string | undefined {
+  if (!inputs) return read(value);
+  const readers = inputs.exactKeys ??= new Map();
+  let keys = readers.get(read);
+  if (!keys) readers.set(read, keys = new WeakMap());
+  if (keys.has(value)) return keys.get(value);
+  const key = read(value);
+  keys.set(value, key);
+  return key;
 }
 
 function inputJson(value: object): string {
@@ -194,6 +207,7 @@ export function copyPlannedValue<T>(value: T, copies = new Map<object, unknown>(
     const entry = copyPlannedValue((value as Record<PropertyKey, unknown>)[key], copies);
     // Note metadata stays outside a note's public fields, also on the copy a caller receives.
     if (typeof key === 'symbol' && !Object.prototype.propertyIsEnumerable.call(value, key)) Object.defineProperty(copy, key, { value: entry, configurable: true });
+    else if (key === '__proto__') Object.defineProperty(copy, key, { value: entry, enumerable: true, writable: true, configurable: true });
     else copy[key] = entry;
   }
   return copy as T;

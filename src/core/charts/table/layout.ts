@@ -30,7 +30,6 @@ import {
   panelTypeClass,
   typeWidthClass,
   resolveSemanticPaletteTheme,
-  resolveTheme,
   resolveSurface,
   semanticPalettePaint,
   strokeToken,
@@ -54,12 +53,12 @@ import { fitTableFormats, formatsFittedWarning } from './fitFormats';
 import { qualifierFont, tableInk, tableRuleInk } from './statement';
 import { chipHeight, chipPaints, hasPolarityBadge, isFigureCell, polarityBadgeInk, onTableGround, statusSquare, statusSquarePaint, tableGround, toneTextPaint } from './chips';
 import { lastObservedIndex, type SparklineDomain } from '../sparkline/layout';
-import { resolveTable, ZERO_LIFT, type ZeroLiftOptions } from './resolve';
+import { resolveTable, prepareTableData, resolvePreparedTable, ZERO_LIFT, type ZeroLiftOptions } from './resolve';
 import type { ResolvedTable } from '../../types/table';
 import { DEFAULT_EMPTY_MESSAGE } from '../../emptyData';
 import { cellDrawsTabular, cellHoldsNumber, emptyMessageRow, expansionRootsHidden, finalClosers, hasNoDataRows, groupSpans, heatColumn, printsFigures, rowGrounds, tableFootnotes, visibleColumns, visibleInlineRows, visibleRows } from './view';
 import { fixedHeightCanvas, rowDrivenHeight, spareShare } from '../../rowCanvas';
-import { heightOmitted, rowSizing, VERIFY_ADVICE, WIDTH_PROBE, FIXED_SIZE_PROBE } from '../../sizing';
+import { heightOmitted, rowSizing, VERIFY_ADVICE, WIDTH_PROBE } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { textScaleOf } from '../../typeFloors';
 import { maxOf, minOf, pushAll } from '../../arrays';
@@ -164,31 +163,9 @@ export function layoutTable(authoredData: TableData, options: TableOptions = {},
   return (options as LayoutOptions)[PLAN_ONLY] || (options as LayoutOptions)[SIZING_ONLY] ? geometry : materializeLayout(geometry);
 }
 
-const resolvedTables = new WeakMap<object, Map<string, ReturnType<typeof resolveTable>>>();
-
-/**
- * The resolved table of one spec, shared by every frame a request tries: nothing
- * in it reads the frame, and a layout only reads it. The key holds the data, so
- * data changed in place resolves again. The key keeps semantic options and the
- * theme's glyph policy. Frame geometry and typography do not change the model.
- */
+/** The data compiler owns semantic invalidation and returns a borrowed view for every frame. */
 function resolvedForSize(data: TableData, options: TableOptions): ReturnType<typeof resolveTable> {
-  if (typeof options.theme === 'string') return resolveTable(data, options);
-  const { size: _size, measure: _measure, margin: _margin, cellPadX: _pad, labelIndent: _indent, rowLabelLines: _lines,
-    heightFill: _heightFill, frameFill: _frameFill, rowExtent: _extent, lastTrackFlex: _flex, maxGrowth: _growth,
-    groupRule: _groupRule, groupAlign: _groupAlign, inlineVisibility: _inlineVisibility, [TARGET_SIZE]: _target, [WIDTH_PROBE]: _probe, [PLAN_ONLY]: _plan, ...rest } = options as LayoutOptions & TargetSizeOptions & { [WIDTH_PROBE]?: unknown };
-  const semantic = { ...rest } as Record<PropertyKey, unknown>;
-  for (const symbol of [SIZING_ONLY, REGULAR_SPACING, VERIFY_ADVICE, WIDTH_REPAIR_PROBE, COMPACT_RETRY, HEAD_LINES, HEAD_AIR_MIN, HEAD_LOOSE, SUB_LINES, TIGHT_SPACING, FIXED_SIZE_PROBE, ENGINE_NOTES, SOFT_LABEL_CAP, LABEL_WRAP_FLOOR]) delete semantic[symbol];
-  // Resolution reads glyph policy, not colours, fonts, spacing or frame geometry.
-  const theme = resolveTheme(options.theme);
-  semantic.theme = JSON.stringify({ glyphs: theme.table?.glyphs, noPrevious: theme.table?.noPrevious, dataGap: theme.table?.dataGap });
-  const key = layoutKey(data, semantic);
-  let byKey = resolvedTables.get(data);
-  if (!byKey) resolvedTables.set(data, byKey = new Map());
-  if (byKey.size >= 32 && !byKey.has(key)) byKey.delete(byKey.keys().next().value!);
-  let resolved = byKey.get(key);
-  if (resolved === undefined) byKey.set(key, resolved = resolveTable(data, options));
-  return resolved;
+  return resolvePreparedTable(prepareTableData(data, options), options);
 }
 
 const widthPlans = new WeakMap<object, Map<string, ReturnType<typeof tableWidths>>>();

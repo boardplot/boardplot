@@ -6,12 +6,13 @@
  */
 
 import { disclosuresShown } from '../../notes';
+import { copyPlannedValue, memoExactInputKey } from '../../layoutPlan';
 import { caseInsensitiveValue, inputConversion } from '../../inputConversion';
 import { bandFor } from '../../bandSelect';
 import { datePatternFromExample, formatDate, parseISODate } from '../../dateFormat';
 import { readDateFormat } from '../../dateFormatRead';
 import { currencyWholeNumbers, MINUS } from '../../format';
-import { MAX_FORMAT_DECIMALS, nonzeroDecimals, typicalDecimals, withSmallValues, zeroLifts } from '../../formatPrecision';
+import { MAX_FORMAT_DECIMALS, nonzeroDecimals, typicalDecimals, withSmallValues, currentSmallValues, zeroLifts } from '../../formatPrecision';
 import { unitPrinted } from '../../frame';
 import {
   AUTOMATIC_FORMAT,
@@ -19,7 +20,7 @@ import {
   MAGNITUDE_FIGURES,
   MAGNITUDE_GROUP,
   type MagnitudeGroupSource,
-  formatWithSpec,
+  compileNumberFormat,
   parseFormatExample as parseExample,
   effectiveScale,
   roundedNumber,
@@ -282,15 +283,137 @@ interface FlatRow {
   order: number; // document order
 }
 
-export function resolveTable(data: TableData, options: TableOptions = {}, magnitudeSource: TableData = data): ResolveResult {
-  // The React grid, its server snapshot and DimSwitch resolve outside a chart layout: each follows the table's smallValues mode.
-  return withSmallValues(options.smallValues, () => resolveTableIn(data, options, magnitudeSource));
+/** Internal accounting model. Views borrow its cells; public results must own their copy. */
+export interface PreparedTableData {
+  readonly rowIds: readonly Id[];
+  readonly columnIds: readonly Id[];
+  readonly rowIndex: ReadonlyMap<Id, number>;
+  readonly columnIndex: ReadonlyMap<Id, number>;
+  readonly resolve: (options: TableOptions) => ResolveResult;
 }
 
-function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource: TableData): ResolveResult {
-  const liftsBefore = zeroLifts.count;
-  const liftMode = (options as ZeroLiftOptions)[ZERO_LIFT];
-  const automaticAs = (on: boolean): NumberFormatSpec['automatic'] => on && liftMode !== 'none' ? liftMode ?? true : false;
+const preparedData = new WeakMap<TableData, Map<string, PreparedTableData>>();
+const sharedPreparedData = new Map<string, PreparedTableData>();
+const MAX_SHARED_KEY_CHARS = 128 * 1024;
+const MAX_SHARED_TOTAL_CHARS = 2 * 1024 * 1024;
+let sharedKeyChars = 0;
+const modelSymbols = new Map<symbol, number>([AUTOMATIC_FORMAT, MAGNITUDE_GROUP, MAGNITUDE_FIGURES, ZERO_LIFT].map((symbol, index) => [symbol, index]));
+
+/** Exact plain-data content, including private format metadata. Unsupported objects get no retained cache. */
+function modelContentKey(value: unknown): string | undefined {
+  const parts: string[] = [];
+  const seen = new Map<object, number>();
+  const active = new Set<object>();
+  let supported = true;
+  const write = (value: unknown): void => {
+    if (!supported) return;
+    if (value === null) { parts.push('null;'); return; }
+    switch (typeof value) {
+      case 'undefined': parts.push('undefined;'); return;
+      case 'string': parts.push('s', JSON.stringify(value)); return;
+      case 'boolean': parts.push(value ? 'true;' : 'false;'); return;
+      case 'number': parts.push('n', Object.is(value, -0) ? '-0' : String(value), ';'); return;
+      case 'object': break;
+      default: supported = false; return;
+    }
+    const prototype = Object.getPrototypeOf(value);
+    const array = Array.isArray(value);
+    if (!array && prototype !== Object.prototype && prototype !== null) { supported = false; return; }
+    const known = seen.get(value);
+    if (known !== undefined) {
+      if (active.has(value)) { supported = false; return; }
+      parts.push('ref', String(known), ';'); return;
+    }
+    seen.set(value, seen.size);
+    active.add(value);
+    parts.push(array ? `array${value.length}{` : prototype === null ? 'record{' : 'object{');
+    for (const key of Reflect.ownKeys(value)) {
+      if (array && key === 'length') continue;
+      const property = Object.getOwnPropertyDescriptor(value, key)!;
+      if (!('value' in property)) { supported = false; return; }
+      if (typeof key === 'symbol') {
+        const index = modelSymbols.get(key);
+        if (index === undefined) { supported = false; return; }
+        parts.push('symbol', String(index), ':');
+      } else parts.push('key', JSON.stringify(key), ':');
+      write(Reflect.get(value, key));
+    }
+    parts.push('}');
+    active.delete(value);
+  };
+  write(value);
+  return supported ? parts.join('') : undefined;
+}
+
+/** Prepare structure and raw calculations once, independently of expansion and display precision. */
+export function prepareTableData(data: TableData, options: TableOptions = {}, magnitudeSource: TableData = data): PreparedTableData {
+  return withSmallValues(options.smallValues, () => {
+    const theme = resolveTheme(options.theme);
+    // These are the inputs read by accounting, formatting and row ordering. Geometry and paint do not enter the model.
+    const semantic = {
+      locale: options.locale, strings: options.strings, variant: options.variant, density: isCohortDensity(options.density ?? 'regular'),
+      nulls: options.nulls, levelOffset: options.levelOffset, columnHeads: options.columnHeads,
+      disclosures: disclosuresShown(options), highlight: options.highlight, sort: options.sort, topN: options.topN,
+      format: options.format, unit: options.unit, magnitude: options.magnitude, target: options.target,
+      subtitle: options.subtitle, unitShown: options.unitShown, encodings: options.encodings,
+      signs: options.signs, driverTones: options.driverTones, judgements: options.judgements,
+      totalPosition: options.totalPosition, colorblindSafe: options.colorblindSafe,
+      theme: { glyphs: theme.table?.glyphs, noPrevious: theme.table?.noPrevious, dataGap: theme.table?.dataGap },
+      // Top-N ranks the complete formatted table before folding it. Its inner resolution must retain the current precision.
+      ...(options.topN ? { columnVisibility: options.columnVisibility, [ZERO_LIFT]: (options as ZeroLiftOptions)[ZERO_LIFT] } : {}),
+    };
+    // These inputs become separate owned snapshots. Keep each graph exact, and read data once per public request.
+    const dataContent = memoExactInputKey(data, modelContentKey);
+    const magnitudeContent = magnitudeSource === data ? 'same;' : memoExactInputKey(magnitudeSource, modelContentKey);
+    const semanticContent = modelContentKey([semantic, currentSmallValues()]);
+    const content = dataContent === undefined || magnitudeContent === undefined || semanticContent === undefined ? undefined
+      : dataContent.length + ':' + dataContent + magnitudeContent.length + ':' + magnitudeContent + semanticContent;
+    const key = content;
+    let models = key === undefined ? undefined : preparedData.get(data);
+    if (!models && key !== undefined) preparedData.set(data, models = new Map());
+    let model = key === undefined ? undefined : models!.get(key) ?? (content === undefined ? undefined : sharedPreparedData.get(content));
+    if (!model) {
+      const before = zeroLifts.count;
+      try {
+        // Retained closures read only snapshots. A theme reference keeps its identity, and the model never reads a measurer.
+        const owned = copyPlannedValue(data);
+        const { theme: authoredTheme, measure: _measure, ...kept } = options;
+        model = compileTableData(owned, { ...copyPlannedValue(kept), theme: authoredTheme }, magnitudeSource === data ? owned : copyPlannedValue(magnitudeSource));
+      } finally { zeroLifts.count = before; }
+      // Bound the bytes, not only the entries: a large table is never pinned by the process-wide map.
+      if (content !== undefined && content.length <= MAX_SHARED_KEY_CHARS) {
+        sharedKeyChars += content.length;
+        while (sharedPreparedData.size >= 32 || sharedKeyChars > MAX_SHARED_TOTAL_CHARS) {
+          const oldest = sharedPreparedData.keys().next().value!;
+          sharedKeyChars -= oldest.length;
+          sharedPreparedData.delete(oldest);
+        }
+        sharedPreparedData.set(content, model);
+      }
+    }
+    if (key !== undefined && !models!.has(key)) {
+      if (models!.size >= 32) models!.delete(models!.keys().next().value!);
+      models!.set(key, model);
+    }
+    return model;
+  });
+}
+
+/** Only view state, column visibility and ZERO_LIFT may change after preparation. The returned graph is borrowed. */
+export function resolvePreparedTable(model: PreparedTableData, options: TableOptions = {}): ResolveResult {
+  return withSmallValues(options.smallValues, () => model.resolve(options));
+}
+
+export function resolveTable(data: TableData, options: TableOptions = {}, magnitudeSource: TableData = data): ResolveResult {
+  const borrowed = resolvePreparedTable(prepareTableData(data, options, magnitudeSource), options);
+  const owned = copyPlannedValue(borrowed);
+  // Top-N consumes these private evaluated states after the public shape has been copied.
+  evaluatedStates.set(owned, evaluatedStates.get(borrowed)!);
+  return owned;
+}
+
+function compileTableData(data: TableData, options: TableOptions, magnitudeSource: TableData): PreparedTableData {
+  const modelLiftsBefore = zeroLifts.count;
   // Formats repeat across cells; each caller still gets its own mutable spec.
   const formats = new Map<string, NumberFormatSpec>();
   // Every entry (resolveChartRequest, the registry layout) has put the chart's marks into the language tag.
@@ -381,9 +504,6 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
   }
   const records: ComputedCellRecord[] = [];
   const autoFootnotes = new Set<string>();
-  /** Row labels whose changes took a tone, by the direction that judged them. */
-  const lowerJudged = new Set<string>();
-  const higherJudged = new Set<string>();
   // Columns whose aggregate skipped a null child: the partial footnote is theirs.
   const partialColumnIds = new Set<Id>();
   const headMarksPartial = disclosuresShown(options) && options.columnHeads !== false;
@@ -451,7 +571,8 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
   }
   validateGroups(data, colById);
   validateCalcRefs(columns, colById);
-  const toggleResolution = resolveColumnToggles(data, options, colById, warnings);
+  const toggleResolution = resolveColumnToggles(data, { ...options, columnVisibility: undefined }, colById, warnings);
+  const toggleWarningAt = warnings.length;
 
   // ---- rows: flatten (nested sugar → flat canonical), uniqueness, levels ----
   const flat = flattenRows(data.rows);
@@ -492,7 +613,8 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
     const kept = list.filter((child) => child.inline !== true);
     if (kept.length > 0) treeChildrenOf.set(parentId, kept);
   }
-  const expansion = resolveExpansion(flat, treeChildrenOf, options, warnings, generatedOthers);
+  const expansionWarningAt = warnings.length;
+  const expansion = resolveExpansion(flat, treeChildrenOf, {}, warnings, generatedOthers);
 
   // ---- the accounting model: WHICH rows are summands of which parent ----
   // Resolved ONCE here and reused by aggregation, the rounding-gap check and
@@ -854,6 +976,68 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
       owner: { rowId, colId },
     });
   }
+
+  const rawWarnings = warnings;
+  const rawRecords = records;
+  const rawFootnotes = autoFootnotes;
+  const rawCells = rawState;
+  const childGroups = childrenOf;
+  const rawLifts = zeroLifts.count - modelLiftsBefore;
+  const rowIds = flat.map(row => row.id);
+  const rowIndex = new Map(rowIds.map((id, index) => [id, index]));
+  const columnIndex = new Map(columnIds.map((id, index) => [id, index]));
+  const formatted = new Map<string, { result: ResolveResult; lifts: number; views: Map<string, ResolveResult> }>();
+  return { rowIds, columnIds, rowIndex, columnIndex, resolve(current) {
+    const formatKey = JSON.stringify([current.columnVisibility, (current as ZeroLiftOptions)[ZERO_LIFT]]);
+    let display = formatted.get(formatKey);
+    if (!display) {
+      const before = zeroLifts.count;
+      const result = formatTable({ ...options, columnVisibility: current.columnVisibility, [ZERO_LIFT]: (current as ZeroLiftOptions)[ZERO_LIFT] } as TableOptions);
+      display = { result, lifts: zeroLifts.count - before, views: new Map() };
+      if (formatted.size >= 32) formatted.delete(formatted.keys().next().value!);
+      formatted.set(formatKey, display);
+    } else zeroLifts.count += display.lifts;
+    zeroLifts.count += rawLifts;
+    const viewKey = JSON.stringify(current.expansion);
+    let view = display.views.get(viewKey ?? "");
+    if (!view) {
+      const toggleWarnings: LintWarning[] = [];
+      const expansionWarnings: LintWarning[] = [];
+      const toggles = toggleResolution.toggles.map(toggle => ({ ...toggle, visible: current.columnVisibility?.[toggle.id] ?? toggle.defaultVisible }));
+      columnVisibilityWarnings(toggles, current, toggleWarnings);
+      const expanded = resolveExpansion(flat, treeChildrenOf, current, expansionWarnings, generatedOthers);
+      const base = display.result;
+      const rows = base.table.rows.map(row => row.hasChildren ? { ...row, defaultExpanded: expanded.get(row.id)! } : row.inlineRows ? { ...row } : row);
+      const rowsById = new Map(rows.map(row => [row.id, row]));
+      for (let index = 0; index < rows.length; index++) {
+        const row = rows[index]!;
+        if (row.inlineRows) row.inlineRows = row.inlineRows.map(line => rowsById.get(line.id)!);
+      }
+      view = { ...base, table: { ...base.table, rows, columnToggles: toggles }, warnings: [
+        ...base.warnings.slice(0, toggleWarningAt), ...toggleWarnings,
+        ...base.warnings.slice(toggleWarningAt, expansionWarningAt), ...expansionWarnings,
+        ...base.warnings.slice(expansionWarningAt),
+      ] };
+      evaluatedStates.set(view, evaluatedStates.get(base)!);
+      if (display.views.size >= 32) display.views.delete(display.views.keys().next().value!);
+      display.views.set(viewKey ?? "", view);
+    }
+    return view;
+  } };
+
+  function formatTable(options: TableOptions): ResolveResult {
+  const liftsBefore = zeroLifts.count;
+  const liftMode = (options as ZeroLiftOptions)[ZERO_LIFT];
+  const automaticAs = (on: boolean): NumberFormatSpec['automatic'] => on && liftMode !== 'none' ? liftMode ?? true : false;
+  const warnings = rawWarnings.slice();
+  const records = rawRecords.map(record => ({ ...record }));
+  const autoFootnotes = new Set(rawFootnotes);
+  const lowerJudged = new Set<string>();
+  const higherJudged = new Set<string>();
+  const rawState = new Map([...rawCells].map(([id, cells]) => [id, new Map(cells)]));
+  partitionLeafIds.set(rawState, partitionLeafIds.get(rawCells)!);
+  // Ordering is a view of the accounting tree, so a formatted variant cannot reorder the retained model.
+  const childrenOf = new Map([...childGroups].map(([id, rows]) => [id, rows.slice()]));
 
   // ---- display specs: from data + options ONLY (before any width solving) ----
   const locale = localeDefaults(options.locale);
@@ -1227,6 +1411,20 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
     return rowSpec && (rowOverridesColumn(rowId!) || !ownFormatColumns.has(colId)) ? groupCellSpecs.get(rowId!)?.get(colId) ?? rowSpec : specs.get(colId)!;
   };
   // `lift: false` prints the plain rounded text, which the near-zero base check reads.
+  // Final display specs belong to this model. Repeated cells share a compiled formatter without public mutation checks.
+  const displayFormats = new Map<NumberFormatSpec, Map<string, (value: number) => string>>();
+  const displayFormat = (base: NumberFormatSpec, decimals: number, automatic: NumberFormatSpec['automatic'], hoisted: boolean, clearCurrency = false) => {
+    let variants = displayFormats.get(base);
+    if (!variants) displayFormats.set(base, variants = new Map());
+    const key = `${decimals}:${automatic}:${hoisted}:${clearCurrency}`;
+    let format = variants.get(key);
+    if (!format) {
+      const spec = { ...base, decimals, automatic, ...(clearCurrency ? { currencyWhole: undefined } : {}),
+        ...(hoisted ? { prefix: '', suffix: '', magnitudeInAffix: true as const } : {}) };
+      variants.set(key, format = compileNumberFormat(spec));
+    }
+    return format;
+  };
   const formatNumber = (raw: number, colId: Id, rowId?: Id, lift = true): string => {
     const cellSpec = rowId ? cellSpecs.get(rowId)?.get(colId) : undefined;
     const rowSpec = rowId ? rowSpecs.get(rowId) : undefined;
@@ -1241,21 +1439,17 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
     // printed twice: fitFormats lifts a figure its fitted precision would
     // print as 0 that way.
     const base = rowPath ? rowSpec! : specs.get(colId)!;
-    if (cellSpec && !sameUnit(cellSpec, base)) return formatWithSpec(raw, lift ? cellSpec : { ...cellSpec, automatic: false });
+    if (cellSpec && !sameUnit(cellSpec, base)) return displayFormat(cellSpec, cellSpec.decimals, lift ? cellSpec.automatic : false, false)(raw);
     const decimals = cellSpec?.decimals ?? (rowPath ? groupCellSpecs.get(rowId!)?.get(colId)?.decimals : undefined) ?? base.decimals;
     if (rowPath) {
       // A measure group's exact zero prints "0": no decimals, no magnitude letter.
       if (raw === 0 && lift && !cellSpec && groupOf(rowById.get(rowId!)!) !== undefined) return '0';
       const hoisted = rowId !== undefined && hoistedRowUnits.has(rowId);
       const automatic = lift && (cellSpec ? cellSpec.automatic : rowSpec!.automatic);
-      if (!hoisted) return formatWithSpec(raw, { ...rowSpec!, decimals, automatic });
-      return formatWithSpec(raw, { ...rowSpec!, decimals, automatic, prefix: '', suffix: '', magnitudeInAffix: true });
+      return displayFormat(rowSpec!, decimals, automatic, hoisted)(raw);
     }
-    const spec = { ...specs.get(colId)!, decimals, ...(cellSpec ? { currencyWhole: undefined, automatic: cellSpec.automatic } : {}), ...(lift ? {} : { automatic: false }) };
-    const rendered =
-      unitByCol.get(colId) == null
-        ? formatWithSpec(raw, spec)
-        : formatWithSpec(raw, { ...spec, prefix: '', suffix: '', magnitudeInAffix: true });
+    const automatic = lift ? cellSpec ? cellSpec.automatic : base.automatic : false;
+    const rendered = displayFormat(base, decimals, automatic, unitByCol.get(colId) != null, cellSpec !== undefined)(raw);
     const localized =
       localeDerivedColumns.has(colId) && locale.minusGlyph === '-' && rendered.startsWith(MINUS)
         ? `-${rendered.slice(MINUS.length)}`
@@ -1886,7 +2080,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
   }
 
   const result: ResolveResult = {
-    ...(zeroLifts.count === liftsBefore ? {} : { lifted: true as const }),
+    ...(zeroLifts.count === liftsBefore && rawLifts === 0 ? {} : { lifted: true as const }),
     table: {
       columns: resolvedColumns,
       columnGroups: (data.columnGroups ?? []).map((g) => ({
@@ -1913,6 +2107,7 @@ function resolveTableIn(data: TableData, options: TableOptions, magnitudeSource:
   };
   evaluatedStates.set(result, rawState);
   return result;
+  }
 }
 
 // ---------- helpers ----------
@@ -2398,15 +2593,7 @@ function resolveColumnToggles(
     }
   }
 
-  for (const toggleId of Object.keys(options.columnVisibility ?? {})) {
-    if (!toggleIds.has(toggleId)) {
-      warnings.push({
-        code: 'column-visibility-ref-unknown',
-        severity: 'warn',
-        message: `columnVisibility references unknown toggle '${toggleId}' — no columns were changed`,
-      });
-    }
-  }
+  columnVisibilityWarnings(data.columnToggles ?? [], options, warnings);
 
   return {
     membership,
@@ -2421,6 +2608,17 @@ function resolveColumnToggles(
       };
     }),
   };
+}
+
+function columnVisibilityWarnings(toggles: readonly { id: Id }[], options: TableOptions, warnings: LintWarning[]): void {
+  const ids = new Set(toggles.map(toggle => toggle.id));
+  for (const toggleId of Object.keys(options.columnVisibility ?? {})) {
+    if (!ids.has(toggleId)) warnings.push({
+      code: 'column-visibility-ref-unknown',
+      severity: 'warn',
+      message: `columnVisibility references unknown toggle '${toggleId}' — no columns were changed`,
+    });
+  }
 }
 
 function validateGroups(data: TableData, colById: Map<Id, TableColumn>): void {

@@ -5,9 +5,9 @@ import { compositeColor } from '../src/core/color';
 import { layoutScatter } from '../src/core/charts/scatter/layout';
 import { logSpecFormat } from '../src/core/charts/scatter/logAxis';
 import { formatAutomaticNumber as formatAutomaticNumberSync, formatNumber } from '../src/core/format';
-import { shareSetDecimals } from '../src/core/formatPrecision';
+import { shareSetDecimals, withSmallValues, zeroLifts } from '../src/core/formatPrecision';
 import { shareSetFormatter } from '../src/core/format';
-import { defaultFormatSpec, formatExampleProblem, formatterFromExample, formatWithSpec, parseFormatExample, readFormatExamples, roundedNumber, sameUnit, seriesRasterFormatter, signedFormatterFromExample, unscaledFormatLint } from '../src/core/formatSpec';
+import { compileNumberFormat, defaultFormatSpec, formatExampleProblem, formatterFromExample, formatWithSpec, parseFormatExample, readFormatExamples, roundedNumber, sameUnit, seriesRasterFormatter, signedFormatterFromExample, unscaledFormatLint } from '../src/core/formatSpec';
 import { niceDomain } from '../src/core/scale';
 import type { SceneNode } from '../src/core/types/scene';
 import { createElement } from 'react';
@@ -20,6 +20,26 @@ import { TableChart } from '../src/react/charts/table';
 import { prepareChart } from '../src/react/prepare';
 
 describe('ordinary number examples', () => {
+  it('compiled table formats preserve small-value modes and lift counts on reused values', () => {
+    for (const spec of [defaultFormatSpec(), parseFormatExample('$1.2M'), parseFormatExample('+20.5%'), parseFormatExample('(1,234)')]) {
+      const compiled = compileNumberFormat(spec);
+      for (const mode of ['bound', 'zero', 'scientific', 'p-value', 'bound'] as const) withSmallValues(mode, () => {
+        for (const value of [0.0004, -0.0004, 0, -0, 1_234_567, Infinity, NaN, 0.0004]) {
+          const before = zeroLifts.count;
+          const expected = formatWithSpec(value, spec);
+          const lifts = zeroLifts.count - before;
+          const compiledBefore = zeroLifts.count;
+          expect(compiled(value)).toBe(expected);
+          expect(zeroLifts.count - compiledBefore).toBe(lifts);
+        }
+      });
+    }
+    const mutable = defaultFormatSpec();
+    formatWithSpec(12.345, mutable);
+    mutable.decimals = 2;
+    expect(formatWithSpec(12.345, mutable)).toBe('12.35');
+  });
+
   const column = (format: string, values: number[]) => {
     const request = resolveChartRequest({ type: 'column', data: {
       categories: values.map((_, index) => ({ id: String(index) })), series: [{ id: 's', values }],
