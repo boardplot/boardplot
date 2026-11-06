@@ -1199,4 +1199,14 @@ fixtures.push({
   ],
 });
 
+fixtures.push(
+  {
+    id: 'inside-base-values', title: 'Combo column values inside the base', kind: 'example',
+    data: { categories: [{ id: 'a', label: 'Period A' }, { id: 'b', label: 'Period B' }, { id: 'c', label: 'Period C' }],
+      series: [{ id: 'value', label: 'Column value', values: [80, 60, 100] },
+        { id: 'line', label: 'Line value', kind: 'line', values: [50, 70, 80] }] },
+    options: { title: 'Column values near the base', labelPosition: 'insideBase' },
+  },
+);
+
 registerFixtures('combo', fixtures);

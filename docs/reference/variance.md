@@ -123,6 +123,8 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | missing-prior-dash | example | A market with no prior year prints an en dash, not an empty slot |
 | authored-relative-decimals | torture | Relative changes retain the authored precision |
 | partial-period | example | A running month hatches both the actual and its variance cap |
+| absolute-centered-values | example | Absolute variance values at the center |
+| integrated-centered-values | example | Integrated totals on one paint |
 
 ## Not for
 

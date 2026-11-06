@@ -124,6 +124,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | blank-values | torture | A value the data lacks prints the not-applicable mark at the pane start |
 | own-scales-mixed | torture | Panes of very different size on their own scales each draw a value axis |
 | column-overrides | example | columnOverrides sets the name column and the difference column, beating centerColumnWidth |
+| centered-values | example | Butterfly values at the center |
 
 ## Not for
 

@@ -1362,4 +1362,13 @@ fixtures.push({
   options: { title: 'South leads', unit: '$m', source: 'Illustrative data', size: { width: 640 }, columnOverrides: { label: { width: 200 } } },
 });
 
+fixtures.push(
+  {
+    id: 'centered-values', title: 'Bar values at the center', kind: 'example',
+    data: { categories: [{ id: 'a', label: 'Group A' }, { id: 'b', label: 'Group B' }, { id: 'c', label: 'Group C' }],
+      series: [{ id: 'value', label: 'Value', values: [80, -65, 100] }] },
+    options: { title: 'Values at the center of each bar', variant: 'grouped', labelPosition: 'center' },
+  },
+);
+
 registerFixtures('bar', fixtures);

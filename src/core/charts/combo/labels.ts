@@ -1,3 +1,4 @@
+import { hasLabelPosition, positionBarLabel } from '../band/labelPosition';
 /**
  * Combo phase 3: mark geometry in, label requests out. Axis titles,
  * segment values, grand totals, line end labels and category names, in the
@@ -614,6 +615,26 @@ export function planComboLabels(
     return lineYsByCat[ci]!;
   };
   grandTotalLabels(env, domain, area, paints, requests, lineYsAt, strokes);
+  if (hasLabelPosition(domain.options)) for (let i = 0; i < requests.length; i++) {
+    const request = requests[i]!;
+    const first = request.candidates[0];
+    if (!first || !/^(segment|grandTotal):/.test(request.id)) continue;
+    const ci = domain.cats.findIndex(cat => cat.id === request.owner.categoryId);
+    const total = request.id.startsWith('grandTotal:');
+    const single = total ? totalColumn(domain, ci) : undefined;
+    const place = geometry.segments.find(segment => segment.ci === ci && segment.s.id === (total ? single?.id : request.owner.seriesId));
+    if (!place) continue;
+    const { s, si, v, rect } = place;
+    const c = domain.cats[ci]!;
+    const val = s.vals[ci]!;
+    const positioned = positionBarLabel(request, domain.options, {
+      rect, size: { width: first.rect.w, height: first.rect.h }, orientation: 'vertical', endPositive: v >= 0, zero: v === 0,
+      edgeGap: total ? first.slot === 'insideTop' ? 4 : 8 : 4, fallback: total ? undefined : 'stack', muted: request.bodyInk !== undefined,
+      insideFill: paints.inside(s, val, c, si), insidePaint: paints.cell(s, val, c, si), insidePattern: paints.pattern(s, val, c),
+    });
+    requests[i] = positioned === request ? request : { ...positioned, candidates: clearOfStrokes(positioned.candidates, strokes) };
+  }
+
   const fills = geometry.segments.map((segment) => segment.rect);
   const segmentSeats = requests.flatMap((r) =>
     r.kind === 'segment' && !r.redundant && r.candidates[0]?.slot === 'insideCenter' ? [r.candidates[0].rect] : []);

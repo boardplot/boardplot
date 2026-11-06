@@ -809,3 +809,19 @@ describe('label content parts', () => {
     expect(unread.warnings).toContainEqual(expect.objectContaining({ fix: [{ op: 'remove', path: '/options/labels/point' }] }));
   });
 });
+
+// Unsupported variants must refuse the new option in direct layouts as well as schema-backed entry points.
+it('refuses label positions that a variant cannot draw', () => {
+  const data = { categories: [{ id: 'a' }, { id: 'b' }], series: [
+    { id: 'value', values: [80, 60] }, { id: 'ref', role: 'reference', values: [70, 65] },
+  ] };
+  for (const [type, options] of [
+    ['bar', { variant: 'tornado', labelPosition: 'center' }],
+    ['variance', { variant: 'relative', variance: { vs: 'ref' }, labelPosition: 'center' }],
+    ['column', { variant: 'stacked', labelPosition: 'outsideEnd' }],
+  ] as const) {
+    const definition = getChartDefinition(type)!;
+    expect(() => definition.layout(definition.normalize(data), { ...definition.defaults, ...options } as never))
+      .toThrow(expect.objectContaining({ code: 'label-position-unsupported', path: 'options.labelPosition', suggest: expect.stringContaining('auto') }));
+  }
+});

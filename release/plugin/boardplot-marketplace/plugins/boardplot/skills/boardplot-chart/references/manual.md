@@ -816,6 +816,38 @@ An option a chart type does not read is ignored with an `option-ignored` warning
 
 Bar, line, waterfall and diagram have a design card: what the chart says, when to use it and when not, and four to eight rules. `boardplot_describe` prints the message, the use, the not-when and the first two rules; `path: "design"` (CLI: `boardplot describe bar --path design`) prints every rule. Each rule is marked `engine` or `describe`. Render checks the `engine` rules on the drawn chart and returns each finding as a warning with severity `advice`, a code that starts with `design-`, one sentence and a `docs` link to the rule. A `fix` patch is included only when it can apply to the input as sent. Otherwise follow `suggest`; for example, a waterfall built from rows gets written advice when a patch would target generated items. Advice never changes the drawing and never refuses. A render returns at most three, the MCP server returns each code once per session, and a refused render returns none. The `describe` rules need the author's judgment, such as the business order of a bridge.
 
+## Position of bar value labels
+
+Set `options.labelPosition` once to move the values on a chart's bars. The four positions match the choices in Excel. Omit the option, or use `'auto'`, to keep the chart's normal placement.
+
+| Value | Position |
+|---|---|
+| `'center'` | The middle of the drawn bar on each axis. |
+| `'insideEnd'` | Inside the edge farther from zero. |
+| `'insideBase'` | Inside the edge nearer zero. |
+| `'outsideEnd'` | Outside the edge farther from zero. |
+
+The end is the edge with the larger absolute value. The definition applies to bars on an axis and to floating bridge steps. A falling bridge step above zero has its end at the top and its base at the bottom. Below zero, the edges reverse. A step that crosses zero uses the top edge on a tie. For horizontal bars, read right and left for top and bottom.
+
+A requested seat must fit and stay clear of other text, lines and axis-break gaps. Inside text needs its width plus 8 px and its height plus 2 px. A vertical edge seat needs its height plus 4 px. When an inside seat cannot be used, a floating bridge step tries above the bar, then below. A horizontal bridge step tries right, then left. The floating-step fallback keeps that order below zero too. A bridge total or a bar on an axis falls back outside its end. A zero-length bar uses an outside seat. Segment values keep their existing thin-segment fallbacks. Values with muted words such as “to date” or “(partial)” use outside seats.
+
+Integrated variance totals use the requested seat only when one paint holds the whole label. Their fallbacks remain `insideBase`, then `insideEnd`. Integrated totals never move outside. The variance caps and delta labels keep their positions.
+
+| Chart and variant | Supported values |
+|---|---|
+| Waterfall, vertical or horizontal, including cases; PVM | All |
+| Grouped column and bar; histogram; absolute variance | All |
+| Mekko bar; butterfly; pyramid | All |
+| Combo with one column series; Pareto | All |
+| Stacked and stacked100 column and bar; stacked and stacked100 Mekko; Likert | All except `'outsideEnd'` |
+| Combo with two or more column series; integrated variance | All except `'outsideEnd'` |
+
+A total above two or more stack parts stays above the stack. A stacked column or bar with one drawn part moves its total with the option, except in stacked100. A combo column with one drawn part moves its total too. Waterfall segment values and the sums or totals of segmented bridge bars keep their existing seats. PVM's net change takes the space directly past the closing bar when its total moves inside.
+
+`labelPlacements` pins take precedence and keep their existing slot meanings. `labelDensity`, `valueLabels`, `labels` and authored cell labels still decide which values print. `labelPosition` takes precedence over the theme's `marks.barLabels` setting. The chart keeps the plot room reserved by its normal placement. A grid panel accepts the option through that panel's own options.
+
+Football-field and tornado bars, relative variance, bullet, funnel, bartable and chart types without supported bar values do not accept the option. A combo without column series accepts only `'auto'`. Unsupported variants and values report `label-position-unsupported` at `options.labelPosition` and list accepted values.
+
 ## Log scales on a line
 
 Set `options.valueAxis.log` to `true` or `'y'` to draw a plain line with positive values and value-axis bounds on a log10 axis. Area and bump variants, percent mode, trends, phases, monotone fans, and gap fills with mismatched or monotone interpolation are refused.

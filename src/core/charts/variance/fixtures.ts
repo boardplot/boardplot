@@ -503,4 +503,21 @@ fixtures.push({
   },
 });
 
+fixtures.push(
+  {
+    id: 'absolute-centered-values', title: 'Absolute variance values at the center', kind: 'example',
+    data: { categories: [{ id: 'a', label: 'Group A' }, { id: 'b', label: 'Group B' }, { id: 'c', label: 'Group C' }],
+      series: [{ id: 'value', label: 'Value', values: [140, 50, 110] },
+        { id: 'ref', label: 'Reference', role: 'reference', values: [60, 100, 70] }] },
+    options: { title: 'Variance values at the center', variant: 'absolute', variance: { vs: 'ref' }, labelPosition: 'center' },
+  },
+  {
+    id: 'integrated-centered-values', title: 'Integrated totals on one paint', kind: 'example',
+    data: { categories: [{ id: 'a', label: 'Group A' }, { id: 'b', label: 'Group B' }, { id: 'c', label: 'Group C' }],
+      series: [{ id: 'value', label: 'Value', values: [100, 100, 100] },
+        { id: 'ref', label: 'Reference', role: 'reference', values: [80, 50, 120] }] },
+    options: { title: 'Totals centered where one fill holds them', variant: 'integrated', variance: { vs: 'ref' }, labelPosition: 'center' },
+  },
+);
+
 registerFixtures('variance', fixtures);

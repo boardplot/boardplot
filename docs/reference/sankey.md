@@ -85,7 +85,7 @@ One form; its chart ID is `sankey`.
 | columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
 | linkValue | string | `'none'`, `'large'` | `'large'` | Flow values on the ribbons: 'large' (default) prints the value of every ribbon at least one line high at its arriving end, right aligned to the next bar; thinner ribbons print nothing, and a value that would cover a node label is left out. 'none' prints node values only. |
 
-Plus the [shared options](options.md). This type does not accept `detailFields`, `labels`, `valueAxis`, `story`, `hatchStrength`, `rounding`, `annotations`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `bandFraction`, `legend`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
+Plus the [shared options](options.md). This type does not accept `detailFields`, `labels`, `labelPosition`, `valueAxis`, `story`, `hatchStrength`, `rounding`, `annotations`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `bandFraction`, `legend`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
 ## Annotations
 

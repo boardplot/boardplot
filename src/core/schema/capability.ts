@@ -70,6 +70,9 @@ export const IGNORED_OPTION_KEYS: ReadonlySet<string> = new Set([
  * inheriting every key.
  */
 export const OPTION_CAPABILITY = {
+  labelPosition: {
+    implementedBy: ['bar', 'butterfly', 'column', 'combo', 'histogram', 'likert', 'mekko', 'pareto', 'pvm', 'pyramid', 'variance', 'waterfall'],
+  },
   animate: {
     implementedBy: [],
   },

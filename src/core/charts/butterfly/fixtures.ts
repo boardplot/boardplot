@@ -414,4 +414,13 @@ fixtures.push({
   },
 });
 
+fixtures.push(
+  {
+    id: 'centered-values', title: 'Butterfly values at the center', kind: 'example',
+    data: { categories: [{ id: 'a', label: 'Group A' }, { id: 'b', label: 'Group B' }, { id: 'c', label: 'Group C' }],
+      series: [{ id: 'left', label: 'First', values: [80, 60, 100] }, { id: 'right', label: 'Second', values: [70, 90, 80] }] },
+    options: { title: 'Values at the center of each side', a: 'left', b: 'right', labelPosition: 'center' },
+  },
+);
+
 registerFixtures('butterfly', fixtures);

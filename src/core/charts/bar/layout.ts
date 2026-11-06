@@ -1,3 +1,4 @@
+import { refuseLabelPosition } from '../band/labelPosition';
 import { pickedValues, withValueLabelDefaults } from '../band/valueSelection';
 import { chartPalette, chartTheme } from '../chartEnv';
 import { chartString } from '../../strings/bar';
@@ -206,6 +207,9 @@ export function layoutBar(
   options: BarOptions = {},
   annotationPass?: BarAnnotationPass,
 ): Geometry<BarMarks, BarDerived> {
+  const variant = options.variant ?? 'grouped';
+  if (variant !== 'grouped') refuseLabelPosition(options, `bar ${variant}`,
+    variant === 'stacked' || variant === 'stacked100' ? ['center', 'insideEnd', 'insideBase'] : []);
   const dropped: LintWarning[] = [];
   options = withoutShareAnnotations(withValueLabelDefaults(withLocaleStrings(options), 'bar', options.variant, dropped), options.variant === 'stacked100', dropped);
   const layout = (next: BarOptions) => layoutBarSized(data, next, annotationPass);

@@ -90,7 +90,7 @@ One form; its chart ID is `tilemap`.
 | overlayMeasure | string |  |  | The measure the overlay glyphs show, e.g. 'Activation progress, %'. The overlay key prints it as a heading without a category swatch, apart from the colour key; Harvey-ball overlays without it warn geo-overlay-measure-unnamed. |
 | regionValues | boolean |  |  | Print each tile's value under its code, e.g. 'CA' over '52'. Unset prints the values when every value fits its tile and keeps the codes alone when one does not. true prints them where they fit: a tile too small for both keeps its code and the layout warns that its value shows on hover only. false prints codes only. |
 
-Plus the [shared options](options.md). This type does not accept `detailFields`, `valueAxis`, `highlight`, `story`, `rounding`, `annotations`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `bandFraction`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
+Plus the [shared options](options.md). This type does not accept `detailFields`, `labelPosition`, `valueAxis`, `highlight`, `story`, `rounding`, `annotations`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `bandFraction`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
 ## Annotations
 

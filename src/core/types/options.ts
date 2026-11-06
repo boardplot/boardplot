@@ -445,6 +445,8 @@ export interface DetailField {
   unit?: string;
 }
 
+export type LabelPosition = 'auto' | 'center' | 'insideEnd' | 'insideBase' | 'outsideEnd';
+
 export interface BaseOptions {
   /**
    * Accessible presentation. `title` emits the SVG hover title (default false);
@@ -569,6 +571,8 @@ export interface BaseOptions {
   /** Named theme palette (theme.color.palettes key) for the series ramp. */
   palette?: string;
   labelDensity?: LabelDensity; // default 'smart'
+  /** Position of bar values. Pins win; auto keeps the chart's normal seats. */
+  labelPosition?: LabelPosition;
   labels?: false | Partial<Record<LabelKind, boolean | LabelContent>>;
   labelPlacements?: Record<Id, SlotId>;
   /**

@@ -1,3 +1,5 @@
+import { effectiveFill } from '../../theme';
+import { positionBarLabel } from '../band/labelPosition';
 import { chartString } from '../../strings/butterfly';
 import { chartString as commonString } from '../../strings';
 import { layoutValueAxis } from '../../axis';
@@ -976,7 +978,7 @@ export function layoutButterfly(
                 ? PRIORITY.extreme
                 : PRIORITY.interior + Math.min(99, Math.abs(v))) +
             (rowHl || highlights.has(series.id) ? PRIORITY.highlightBonus : 0);
-      labelRequests.push({
+      labelRequests.push(positionBarLabel({
         id: `point:${series.id}:${r.id}`,
         kind: 'point',
         owner: { seriesId: series.id, categoryId: r.id },
@@ -989,7 +991,10 @@ export function layoutButterfly(
         // series or categories the shared note could name them from.
         noteText: `${comparison?.periods?.[series.id]?.label ?? (side === 'a' ? aLabel : bLabel)} ${text} (${r.label})`,
         candidates,
-      });
+      }, opts, {
+        rect, size: tsize, orientation: 'horizontal', endPositive: dir > 0, zero: v === 0, edgeGap: 4, outsideGap,
+        insideFill: effectiveFill(resolveCss(paint), patternOf(scen), theme), insidePaint: paint, insidePattern: patternOf(scen),
+      }));
     }
 
     // ---- center category label ----
@@ -1135,7 +1140,7 @@ export function layoutButterfly(
   const placedById = new Map(solved.placed.map((l) => [l.id, l] as const));
   const anchorX = (dir: -1 | 1, sid: Id, catId: Id, tipX: number): number => {
     const vl = placedById.get(`point:${sid}:${catId}`);
-    if (!vl || vl.hidden || vl.slot !== 'outsideEnd') return tipX;
+    if (!vl || vl.hidden || !vl.slot.startsWith('outside')) return tipX;
     return dir < 0
       ? Math.min(tipX, vl.rect.x - 4)
       : Math.max(tipX, vl.rect.x + vl.rect.w + 4);
@@ -1213,7 +1218,7 @@ export function layoutButterfly(
       const right = dirOf(side, side === 'a' ? rows[i]!.a : rows[i]!.b) > 0;
       const bar = (side === 'b' ? marks.right : marks.left)[i]!.rect;
       const value = placedById.get(`point:${sid}:${rows[i]!.id}`);
-      const outside = value && !value.hidden && value.slot === 'outsideEnd';
+      const outside = value && !value.hidden && value.slot.startsWith('outside');
       const end = right ? (outside ? value.rect.x + value.rect.w : bar.x + bar.w) : (outside ? value.rect.x : bar.x);
       // Only a label already beside its value, on the far side, moves in.
       if (right ? label.rect.x < end : label.rect.x + label.rect.w > end) return;

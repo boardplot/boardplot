@@ -70,7 +70,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | density | string | `'compact'`, `'regular'` | `'regular'` | Card density. 'compact' uses the smaller figure and spark share, and a 280 px default card width instead of 360. An unsized card takes its content height. 'regular' is the default. |
 | comparisons | string | `'chip'`, `'text'` |  | How compare[] and attainment are drawn. Omitted, a standalone regular card without a spark draws the steering form: the comparisons as rows of toned text with their names in a column, the attainment as a progress bar with a 100% tick, in one band on a wide card; a grid panel, a compact card, a card with a spark and a card whose height cannot hold the form draw chips. 'chip' tints a chip behind each; 'text' draws each as delta is drawn: text in its tone, no fill, compare entries on one row. colorblindSafe paints good and bad deltas, chips, attainment and value bands with the theme's colour-blind pair. |
 
-Plus the [shared options](options.md). This type does not accept `detailFields`, `valueAxis`, `story`, `hatchStrength`, `rounding`, `annotations`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `bandFraction`, `legend`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
+Plus the [shared options](options.md). This type does not accept `detailFields`, `labelPosition`, `valueAxis`, `story`, `hatchStrength`, `rounding`, `annotations`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `bandFraction`, `legend`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
 ## Annotations
 

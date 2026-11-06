@@ -1,3 +1,4 @@
+import { positionBarLabel, refuseLabelPosition } from '../band/labelPosition';
 import { chartString } from '../../strings/variance';
 import { breakUnsupported, chartTheme } from '../chartEnv';
 import { bandFloorSizing } from '../waterfall/bandFloor';
@@ -174,6 +175,9 @@ export function layoutVariance(
   data: ChartData,
   options: VarianceOptions = {} as VarianceOptions,
 ): Geometry<VarianceMarks, VarianceDerived> {
+  const variant = options.variant ?? 'absolute';
+  if (variant !== 'absolute') refuseLabelPosition(options, `variance ${variant}`,
+    variant === 'integrated' ? ['center', 'insideEnd', 'insideBase'] : []);
   const warnings: LintWarning[] = [];
   breakUnsupported('variance', options, warnings);
   const theme = resolveSemanticPaletteTheme(
@@ -1058,7 +1062,7 @@ export function layoutVariance(
       if (mv.labelOverride === false) return;
       const words = toDateIds.has(c.id) ? toDateLabel(text, labelFont, toDate, theme, measure) : undefined;
       const tsize = words?.size ?? measure(text, labelFont);
-      labelRequests.push({
+      labelRequests.push(positionBarLabel({
         id: `point:${c.id}`,
         claimId: `var:abs:${c.id}`,
         claimText: absolute(d, ci, true),
@@ -1075,7 +1079,11 @@ export function layoutVariance(
           (hl ? PRIORITY.highlightBonus : 0),
         // The muted words never sit inside the fill.
         candidates: deltaBarCandidates(rect, tsize, d < 0, toneCss(tone, mv.fill)).filter(candidate => !words || !candidate.insideFill).map(candidate => ({ ...candidate, ...(pattern && candidate.insideFill ? { insidePattern: pattern, insideFill: effectiveFill(toneCss(tone, mv.fill), pattern, theme) } : {}), insidePaint: mv.fill ? { css: mv.fill } : tone === 'neutral' ? { token: 'neutralMark' as const } : tonePaint(tone, undefined, true) })),
-      });
+      }, options, {
+        rect, size: tsize, orientation: 'vertical', endPositive: d >= 0, zero: d === 0, edgeGap: 2, muted: words !== undefined,
+        insidePaint: tonePaint(tone, mv.fill, true), insidePattern: pattern,
+        insideFill: effectiveFill(toneCss(tone, mv.fill), pattern, theme),
+      }));
       return;
     }
 
@@ -1217,7 +1225,7 @@ export function layoutVariance(
         rect: { x: bx - 4 - tsize.width, y: acEdgeY - tsize.height / 2, w: tsize.width, h: tsize.height },
         penalty: 1 + fallback,
       });
-      labelRequests.push({
+      labelRequests.push(positionBarLabel({
         id: `total:${c.id}`,
         kind: 'total',
         owner,
@@ -1226,7 +1234,16 @@ export function layoutVariance(
         font: strongFont,
         priority: PRIORITY.total + (hl ? PRIORITY.highlightBonus : 0),
         candidates: candidates.filter(candidate => candidate.rect.x >= bx && candidate.rect.x + candidate.rect.w <= bx + bw),
-      });
+      }, options, {
+        rect: barRect, size: tsize, orientation: 'vertical', endPositive: above, zero: ac === 0, edgeGap: 4, fallback: 'inside',
+        paints: [
+          { rect: { ...barRect, y: above ? y(footEdgeVal) : y0, h: footH },
+            insidePaint: actualPaint(mv.fill), insidePattern: pattern,
+            insideFill: effectiveFill(paintColor(theme, actualPaint(mv.fill)), pattern, theme) },
+          ...(insideCap ? [{ rect: capRect!, insidePaint, insidePattern: pattern,
+            insideFill: effectiveFill(paintColor(theme, insidePaint), pattern, theme) }] : []),
+        ],
+      }));
     }
 
     // Notation rule: the Δ reads outside its cap, in the

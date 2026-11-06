@@ -122,6 +122,8 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | option-value-labels-all | column.grouped | example | Every quarter prints its value (valueLabels all) |
 | grouped-twelve-slide | column.grouped | torture | Two series over twelve units on a full slide print all 24 values |
 | key-right-slide | column.grouped | example | Clustered columns on a slide with the key in a column right of the plot |
+| inside-base-values | column.grouped | example | Column values inside the base |
+| stacked-inside-base-values | column.stacked | example | Stacked column values inside each base |
 
 ## bar
 
@@ -187,6 +189,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | option-small-values-p-value | bar.grouped | torture | Every rate prints as an APA p-value (smallValues p-value) |
 | key-left | bar.stacked | example | Stacked bars with the key in a column left of the plot |
 | column-overrides | bar.grouped | example | columnOverrides sets the width of the name column |
+| centered-values | bar.grouped | example | Bar values at the center |
 
 ## line
 
@@ -457,6 +460,9 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | single-segment-authored-format | waterfall.vertical | example | One segment prints one value at the authored precision |
 | repeated-segment-key | waterfall.vertical | torture | Equal segment names and colours share one key |
 | column-overrides | waterfall.horizontal | example | A horizontal bridge with authored name and value bands |
+| centered-values | waterfall.vertical | example | Centered bridge values with a thin falling step |
+| horizontal-centered-values | waterfall.horizontal | example | Centered horizontal bridge values |
+| sign-inside-values | waterfall.vertical | example | Inside values on signed bridge fills |
 
 ## kpi
 
@@ -541,6 +547,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | ranked-campaigns-key-shown | combo.dual-axis | torture | Campaign names too long for their columns read as ranks with the key printed (notes.show) |
 | ranked-campaigns-rank-key-only | combo.dual-axis | torture | Campaign names too long for their columns read as ranks; only the rank key prints (notes.show ranks) |
 | area-capacity-behind-columns | combo.overlay | example | Order columns in front of a capacity area, with a plan corridor and a launch period |
+| inside-base-values | combo.overlay | example | Combo column values inside the base |
 
 ## variance
 
@@ -561,6 +568,8 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | missing-prior-dash | variance.absolute | example | A market with no prior year prints an en dash, not an empty slot |
 | authored-relative-decimals | variance.relative | torture | Relative changes retain the authored precision |
 | partial-period | variance.integrated | example | A running month hatches both the actual and its variance cap |
+| absolute-centered-values | variance.absolute | example | Absolute variance values at the center |
+| integrated-centered-values | variance.integrated | example | Integrated totals on one paint |
 
 ## bullet
 
@@ -832,6 +841,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | torture-long-labels | mekko.stacked100 | torture | Torture: long names at a generous size read whole, never cut |
 | percent-format-on-shares | mekko.stacked100 | torture | Shares use the percent format and totals stay absolute |
 | rounding-smallest-tie | mekko.stacked100 | torture | Equal-remainder ties favor the smaller share |
+| bar-inside-base-values | mekko.bar | example | Mekko bar values inside the base |
 
 ## sparkline
 
@@ -1045,6 +1055,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | blank-values | butterfly | torture | A value the data lacks prints the not-applicable mark at the pane start |
 | own-scales-mixed | butterfly | torture | Panes of very different size on their own scales each draw a value axis |
 | column-overrides | butterfly | example | columnOverrides sets the name column and the difference column, beating centerColumnWidth |
+| centered-values | butterfly | example | Butterfly values at the center |
 
 ## likert
 
@@ -1065,6 +1076,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | twelve-statements-slide | likert | torture | Twelve statements on a full slide print their shares inside the bars |
 | column-overrides | likert | example | columnOverrides sets the widths, alignment and head words of the name, net and base columns |
 | columns-after-plot | likert | example | columnOrder moves the net and base columns to the other side of the marks |
+| inside-base-values | likert | example | Response shares inside each segment base |
 
 ## histogram
 

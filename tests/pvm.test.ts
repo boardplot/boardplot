@@ -726,3 +726,19 @@ describe('pvm labels.point and columnOverrides', () => {
     expect(geometry.warnings.map((warning) => warning.code)).toContain('option-ignored');
   });
 });
+
+// Moving the total inside must free its outside seat without losing the net when an axis break blocks the move.
+it('keeps the closing net beside an inside total and above an outside fallback', () => {
+  const base = requireGeometry(laid(0, { size: { width: 960, height: 600 }, labelDensity: 'full' }));
+  const baselineNet = base.labels.find(label => label.id === 'net:current')!;
+  for (const labelPosition of ['center', 'insideBase'] as const) {
+    const positioned = requireGeometry(laid(0, { size: { width: 960, height: 600 }, labelDensity: 'full', labelPosition }));
+    const total = positioned.labels.find(label => label.id === 'total:current')!;
+    const net = positioned.labels.find(label => label.id === 'net:current')!;
+    expect(net.hidden).toBeUndefined();
+    expect(positioned.plot).toEqual(base.plot);
+    expect(positioned.marks).toEqual(base.marks);
+    if (total.slot.startsWith('inside')) expect(net.rect.y).toBeCloseTo(baselineNet.rect.y + baselineNet.rect.h + 2);
+    else expect(net.rect.y + net.rect.h).toBeLessThan(total.rect.y);
+  }
+});

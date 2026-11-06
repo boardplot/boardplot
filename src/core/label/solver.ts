@@ -110,6 +110,8 @@ export interface SlotCandidate {
   slot: SlotId;
   rect: Rect;
   penalty: number;
+  /** An authored bar position keeps clear of rules and its own whisker as well as other marks. */
+  keepOffLines?: true;
   /** Optional multi-line text override for wrapped candidate slots. */
   lines?: string[];
   /** A deliberate gutter seat, such as a line endpoint. Canvas bounds still apply. */
@@ -617,7 +619,7 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
           // A slot over columns lies wholly on one column or clear of them:
           // a label across a fill edge is half on the page and half on the
           // fill, and no one paint reads on both.
-          if (o.kind === 'mark' && (isOwnMark(o.owner, req.owner, req.kind, o.part) || (overColumns && isColumnPart(o.part) && rectContains(o.rect, rect, 0)))) return false;
+          if (o.kind === 'mark' && ((isOwnMark(o.owner, req.owner, req.kind, o.part) && (!req.candidates[index]!.keepOffLines || o.part === undefined || isColumnPart(o.part))) || (overColumns && isColumnPart(o.part) && rectContains(o.rect, rect, 0)))) return false;
           // A seat on another series' area fill, clear of its edges, reads on that fill.
           if (o.kind === 'mark' && o.part === AREA_FILL_PART && req.candidates[index]!.onFill?.seriesId === o.owner.seriesId) return false;
           if (req.ownStrokeClear && o.kind === 'mark' && (o.part === undefined || o.part === AREA_FILL_PART) && !o.polygon && o.owner.seriesId === req.owner.seriesId && !rectsOverlap(o.rect, rect)) return false;
@@ -915,7 +917,7 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
     // what a label on the page gets where it crosses a line.
     {
       const across = req.candidates.findIndex((cand) =>
-        (!req.noLeader || (!cand.leaderFrom && (!req.anchor || !nearerOtherMark(req, cand, occupied, ctx.pointOwnership !== undefined)))) && withinMarkBand(cand) && !cand.insideFill && !leaderExceedsLimit(req, cand) && !crossesLabel(leaderFor(cand)) && (!ctx.canvas || rectContains(ctx.canvas, cand.rect, 0)) && !onLeader(cand.rect, req.pad ?? pad) && !crowdsSeriesValue(cand) && !inTickColumn(cand.rect) &&
+        !cand.keepOffLines && (!req.noLeader || (!cand.leaderFrom && (!req.anchor || !nearerOtherMark(req, cand, occupied, ctx.pointOwnership !== undefined)))) && withinMarkBand(cand) && !cand.insideFill && !leaderExceedsLimit(req, cand) && !crossesLabel(leaderFor(cand)) && (!ctx.canvas || rectContains(ctx.canvas, cand.rect, 0)) && !onLeader(cand.rect, req.pad ?? pad) && !crowdsSeriesValue(cand) && !inTickColumn(cand.rect) &&
         !anyHit(occupied, cand.rect, req.pad ?? pad, (o) => !(o.part === 'trendLine' || o.part === 'zeroLine' || (req.protect === true && o.part === 'referenceLine') || (o.kind === 'mark' && isOwnMark(o.owner, req.owner, req.kind, o.part)))));
       if (across >= 0) {
         const cand = req.candidates[across]!;

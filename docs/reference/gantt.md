@@ -99,7 +99,7 @@ One form; its chart ID is `gantt`.
 | columnOverrides.*.label | string |  |  | Head text. |
 | columnOrder | array |  |  | Order of whole blocks; blocks left out follow in default order. Ids: meta, plot. |
 
-Plus the [shared options](options.md). This type does not accept `format`, `detailFields`, `valueAxis`, `hatchStrength`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
+Plus the [shared options](options.md). This type does not accept `format`, `detailFields`, `labelPosition`, `valueAxis`, `hatchStrength`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
 ## Annotations
 

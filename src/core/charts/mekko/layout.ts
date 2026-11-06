@@ -1,3 +1,4 @@
+import { refuseLabelPosition } from '../band/labelPosition';
 import { PLOT_FLOOR_RECT } from '../../sizing';
 import { sk, stackParts, withoutShareMean } from '../band/stacks';
 import { chartString } from '../../strings/mekko';
@@ -330,6 +331,7 @@ export function layoutMekko(
   data: ChartData,
   options: MekkoOptions = {},
 ): Geometry<MekkoMarks, MekkoDerived> {
+  if ((options.variant ?? 'stacked100') !== 'bar') refuseLabelPosition(options, 'stacked mekko', ['center', 'insideEnd', 'insideBase']);
   // A percent mekko with no authored legend first tries to name each series
   // in the widest column. It keeps that only when every series' label there
   // printed; otherwise the key comes back.

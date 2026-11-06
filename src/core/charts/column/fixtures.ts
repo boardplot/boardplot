@@ -2751,4 +2751,19 @@ fixtures.push({
   },
 });
 
+fixtures.push(
+  {
+    id: 'inside-base-values', title: 'Column values inside the base', kind: 'example',
+    data: { categories: [{ id: 'a', label: 'Group A' }, { id: 'b', label: 'Group B' }, { id: 'c', label: 'Group C' }],
+      series: [{ id: 'value', label: 'Value', values: [80, -65, 100] }] },
+    options: { title: 'Values inside the column base', variant: 'grouped', labelPosition: 'insideBase' },
+  },
+  {
+    id: 'stacked-inside-base-values', title: 'Stacked column values inside each base', kind: 'example',
+    data: { categories: [{ id: 'a', label: 'Group A' }, { id: 'b', label: 'Group B' }, { id: 'c', label: 'Group C' }],
+      series: [{ id: 'first', label: 'First', values: [60, 50, 90] }, { id: 'second', label: 'Second', values: [40, 60, 0] }] },
+    options: { title: 'Values inside each segment base', variant: 'stacked', labelPosition: 'insideBase' },
+  },
+);
+
 registerFixtures('column', fixtures);

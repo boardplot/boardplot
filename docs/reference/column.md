@@ -281,3 +281,5 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | option-value-labels-all | example | Every quarter prints its value (valueLabels all) |
 | grouped-twelve-slide | torture | Two series over twelve units on a full slide print all 24 values |
 | key-right-slide | example | Clustered columns on a slide with the key in a column right of the plot |
+| inside-base-values | example | Column values inside the base |
+| stacked-inside-base-values | example | Stacked column values inside each base |

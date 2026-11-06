@@ -665,3 +665,74 @@ describe('waterfall columnOverrides', () => {
     expect(draw({ variant: 'horizontal', size: { width: 720 }, columnOverrides: { nope: { width: 90 } } }).warnings.map((warning) => warning.code)).toContain('generated-id-unknown');
   });
 });
+
+// Chart-wide placement must preserve legacy output and the meaning of an authored falling-step pin.
+it('keeps auto bridge output and existing pins unchanged in either orientation', () => {
+  const definition = getChartDefinition('waterfall')!;
+  const data = definition.normalize({ items: [
+    { id: 'open', type: 'total', value: 100 }, { id: 'loss', value: -50 }, { id: 'close', type: 'total' },
+  ] });
+  for (const variant of ['vertical', 'horizontal']) {
+    const options = { ...definition.defaults, variant, size: { width: 720, height: 400 } };
+    const draw = (extra: object) => requireGeometry(definition.layout(data, { ...options, ...extra } as never));
+    expect(draw({ labelPosition: 'auto' })).toEqual(draw({}));
+    const pin = { labelPlacements: { 'sum:loss': variant === 'vertical' ? 'insideEnd' : 'outsideLeft' } };
+    const original = draw(pin).labels.find(label => label.id === 'sum:loss');
+    const positioned = draw({ ...pin, labelPosition: 'center' }).labels.find(label => label.id === 'sum:loss');
+    expect(positioned?.hidden).toBeUndefined();
+    expect(positioned?.rect).toEqual(original?.rect);
+    expect(positioned?.slot).toBe(original?.slot);
+    expect(draw({ labelPosition: 'center' }).plot).toEqual(draw({}).plot);
+  }
+});
+
+// Every row name keeps its seat: a negative total's outside seat lay on its name and refused a chart that auto draws.
+it('draws a horizontal bridge with a negative total at outsideEnd', () => {
+  const definition = getChartDefinition('waterfall')!;
+  const data = definition.normalize({ items: [
+    { id: 'open', type: 'total', value: 100 }, { id: 'step', value: -150 }, { id: 'close', type: 'total' },
+  ] });
+  const result = requireGeometry(definition.layout(data, { ...definition.defaults, variant: 'horizontal', labelPosition: 'outsideEnd', size: { width: 720, height: 400 } } as never));
+  expect(result.labels.find(label => label.id === 'total:close')?.hidden).toBeUndefined();
+  expect(result.labels.find(label => label.id === 'total:close')?.slot).toBe('outsideRight');
+});
+
+// A trend arm placed before the values took the only seat of a segmented step, and the row rule then hid every step value.
+it('keeps every value of a bridge with a trend arm at each position', () => {
+  const definition = getChartDefinition('waterfall')!;
+  const data = definition.normalize({ items: [
+    { id: 'fy21', label: 'FY21', type: 'total', value: 142 }, { id: 'price', label: 'Price', value: 38 },
+    { id: 'volume', label: 'Volume', segments: [{ id: 'b2b', label: 'B2B', value: 11 }, { id: 'b2c', label: 'B2C', value: 6 }] },
+    { id: 'gross', label: 'Gross', type: 'subtotal' }, { id: 'cost', label: 'Cost', value: -24 }, { id: 'fy24', label: 'FY24', type: 'total' },
+  ] });
+  for (const labelPosition of ['center', 'insideEnd', 'insideBase', 'outsideEnd']) {
+    const result = requireGeometry(definition.layout(data, { ...definition.defaults, variant: 'vertical', labelDensity: 'full', labelPosition, annotations: [{ kind: 'cagr' }] } as never));
+    expect(result.labels.filter(label => /^(sum|total):/.test(label.id) && label.hidden).map(label => label.id)).toEqual([]);
+  }
+});
+
+// A count on a new seat read as displaced, so a histogram kept only its tallest bin's count.
+it('keeps the counts of a histogram at each position', () => {
+  const definition = getChartDefinition('histogram')!;
+  const fixture = getFixtures('histogram').find(entry => entry.id === 'claim-amount-open-tail')!;
+  const auto = requireGeometry(definition.layout(definition.normalize(fixture.data), { ...definition.defaults, ...fixture.options } as never));
+  const shown = (labels: typeof auto.labels) => labels.filter(label => label.kind === 'point' && !label.hidden).length;
+  const positioned = requireGeometry(definition.layout(definition.normalize(fixture.data), { ...definition.defaults, ...fixture.options, labelPosition: 'outsideEnd' } as never));
+  expect(shown(positioned.labels)).toBe(shown(auto.labels));
+});
+
+// A bridge crosses zero by geometry, so the sign of the step must not choose its inside end.
+it('uses the farther-from-zero bridge edge and the upper edge on a tie', () => {
+  const definition = getChartDefinition('waterfall')!;
+  for (const [start, delta, upper] of [[100, -50, true], [-100, 50, false], [-50, 100, true]] as const) {
+    const data = definition.normalize({ items: [
+      { id: 'open', type: 'total', value: start }, { id: 'step', value: delta }, { id: 'close', type: 'total' },
+    ] });
+    const result = requireGeometry(definition.layout(data, { ...definition.defaults, variant: 'vertical', labelPosition: 'insideEnd', size: { width: 720, height: 400 } } as never));
+    const label = result.labels.find(label => label.id === 'sum:step')!;
+    const rect = (result.marks as { bars: { id: string; rect: Geometry['plot'] }[] }).bars.find(bar => bar.id === 'step')!.rect;
+    expect(label.hidden).toBeUndefined();
+    expect(label.slot).toBe('insideBarEnd');
+    expect(label.rect.y).toBeCloseTo(upper ? rect.y + 2 : rect.y + rect.h - label.rect.h - 2);
+  }
+});

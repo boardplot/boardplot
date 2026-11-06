@@ -112,3 +112,4 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | torture-long-labels | torture | Torture: long names at a generous size read whole, never cut |
 | percent-format-on-shares | torture | Shares use the percent format and totals stay absolute |
 | rounding-smallest-tie | torture | Equal-remainder ties favor the smaller share |
+| bar-inside-base-values | example | Mekko bar values inside the base |

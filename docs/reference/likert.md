@@ -119,6 +119,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | twelve-statements-slide | torture | Twelve statements on a full slide print their shares inside the bars |
 | column-overrides | example | columnOverrides sets the widths, alignment and head words of the name, net and base columns |
 | columns-after-plot | example | columnOrder moves the net and base columns to the other side of the marks |
+| inside-base-values | example | Response shares inside each segment base |
 
 ## Not for
 

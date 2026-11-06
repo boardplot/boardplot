@@ -7,6 +7,8 @@
 import { valueAxisRefusal, type OPTION_CAPABILITY, type VALUE_AXIS_CAPABILITY, type VALUE_AXIS_ONLY } from './capability';
 
 export const OPTION_REASONS: Readonly<Record<keyof typeof OPTION_CAPABILITY, string>> = {
+  labelPosition:
+    "this type has no supported bar value labels to position. Set labelPosition on a supported bar chart, or on a grid panel through that panel's options",
   animate:
     "no chart type implements 'animate' — this library emits static, deterministic SVG; use 'interactive: true' for data-bp-* hover/focus semantics, or animate the emitted SVG downstream",
   debug:
@@ -159,6 +161,7 @@ export function valueAxisReason(type: string, key: string, why: 'only' | 'capabi
  * and fails on a refusal this table does not answer.
  */
 const ALTERNATIVES: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  labelPosition: { '*': "this type draws no bar values to position. Set it on a bar chart, or in the panel options of a grid" },
   transpose: {
     '*': "orientation is the chart type: type 'bar' draws horizontal bars and type 'column' vertical ones",
     waterfall: 'a waterfall turns with options.variant',

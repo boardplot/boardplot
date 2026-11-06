@@ -1,3 +1,4 @@
+import { hasLabelPosition, refuseLabelPosition } from '../band/labelPosition';
 import { copyFrame } from '../../footer';
 import { sk, stackParts } from '../band/stacks';
 import { chartString } from '../../strings/combo';
@@ -364,6 +365,11 @@ export function layoutCombo(
   options: ComboOptions = {},
   gutterOverride?: EndpointGutters,
 ): Geometry<ComboMarks, ComboDerived> {
+  if (hasLabelPosition(options)) {
+    const columns = data.series.filter(series => series.role !== 'reference' && (series.kind ?? 'column') === 'column');
+    if (columns.length !== 1) refuseLabelPosition(options, columns.length === 0 ? 'combo without columns' : 'stacked combo',
+      columns.length === 0 ? [] : ['center', 'insideEnd', 'insideBase']);
+  }
   const geo = withBandValueNotes(data, withLocaleStrings(options), next => {
     let cur = next;
     let geometry = layoutComboPass(data, cur, gutterOverride);
