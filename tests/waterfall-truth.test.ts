@@ -697,6 +697,30 @@ it('draws a horizontal bridge with a negative total at outsideEnd', () => {
   expect(result.labels.find(label => label.id === 'total:close')?.slot).toBe('outsideRight');
 });
 
+// A trend arm placed before the values took the only seat of a segmented step, and the row rule then hid every step value.
+it('keeps every value of a bridge with a trend arm at each position', () => {
+  const definition = getChartDefinition('waterfall')!;
+  const data = definition.normalize({ items: [
+    { id: 'fy21', label: 'FY21', type: 'total', value: 142 }, { id: 'price', label: 'Price', value: 38 },
+    { id: 'volume', label: 'Volume', segments: [{ id: 'b2b', label: 'B2B', value: 11 }, { id: 'b2c', label: 'B2C', value: 6 }] },
+    { id: 'gross', label: 'Gross', type: 'subtotal' }, { id: 'cost', label: 'Cost', value: -24 }, { id: 'fy24', label: 'FY24', type: 'total' },
+  ] });
+  for (const labelPosition of ['center', 'insideEnd', 'insideBase', 'outsideEnd']) {
+    const result = requireGeometry(definition.layout(data, { ...definition.defaults, variant: 'vertical', labelDensity: 'full', labelPosition, annotations: [{ kind: 'cagr' }] } as never));
+    expect(result.labels.filter(label => /^(sum|total):/.test(label.id) && label.hidden).map(label => label.id)).toEqual([]);
+  }
+});
+
+// A count on a new seat read as displaced, so a histogram kept only its tallest bin's count.
+it('keeps the counts of a histogram at each position', () => {
+  const definition = getChartDefinition('histogram')!;
+  const fixture = getFixtures('histogram').find(entry => entry.id === 'claim-amount-open-tail')!;
+  const auto = requireGeometry(definition.layout(definition.normalize(fixture.data), { ...definition.defaults, ...fixture.options } as never));
+  const shown = (labels: typeof auto.labels) => labels.filter(label => label.kind === 'point' && !label.hidden).length;
+  const positioned = requireGeometry(definition.layout(definition.normalize(fixture.data), { ...definition.defaults, ...fixture.options, labelPosition: 'outsideEnd' } as never));
+  expect(shown(positioned.labels)).toBe(shown(auto.labels));
+});
+
 // A bridge crosses zero by geometry, so the sign of the step must not choose its inside end.
 it('uses the farther-from-zero bridge edge and the upper edge on a tie', () => {
   const definition = getChartDefinition('waterfall')!;

@@ -669,7 +669,7 @@ export function layoutHistogram(
    * density gate drops on purpose ('minimal') has not lost a seat. A hidden
    * axis keeps them too, since nothing else would carry the scale.
    */
-  const NATURAL_SEATS: ReadonlySet<string> = new Set(['outsideTop', 'outsideBottom', 'insideEnd']);
+  const NATURAL_SEATS: ReadonlySet<string> = new Set(['outsideTop', 'outsideBottom', 'insideEnd', 'insideBarCenter', 'insideBarEnd', 'insideBarBase', 'outsideBarTop', 'outsideBarBottom']);
   const bars = column.marks.bars;
   const binStep = bars.length > 1 ? Math.abs(bars[1]!.rect.x - bars[0]!.rect.x) : Infinity;
   const countsDisplaced = options.labels !== false && options.labels?.point !== false && options.labelDensity !== 'full'

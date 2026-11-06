@@ -1,4 +1,4 @@
-import { hasLabelPosition, refuseLabelPosition } from '../band/labelPosition';
+import { refuseLabelPosition } from '../band/labelPosition';
 import { PLOT_FLOOR_RECT } from '../../sizing';
 import { sk, stackParts, withoutShareMean } from '../band/stacks';
 import { chartString } from '../../strings/mekko';
@@ -401,14 +401,13 @@ function layoutMekkoPass(
   // The totals of a percent mekko sit on one line above equal-height columns, so one that fails thins the whole row.
   // Bar and unit column tops form a staircase: each total keeps its own seat and only one without a seat drops.
   if (domain.mode === 'percent') solveCtx.valueRows = [{ ids: domain.cats.map(category => `total:${category.id}`), alternate: true }];
-  const positionedAnnotations = hasLabelPosition(options) ? annotateMekko(env, domain, area, geometry, occupied, solveCtx) : undefined;
   const solved = solveLabels(requests, occupied, solveCtx);
   applyValueAxisTitleInk(solved.placed);
   pushAll(warnings, solved.warnings);
   const namedAll = named && everySeriesNamed(domain, area, solved.placed);
   // A failed try is discarded: skip the annotation pass and the assembly.
   if (named && !namedAll) return { geometry: undefined!, namedAll };
-  const annotated = positionedAnnotations ?? annotateMekko(env, domain, area, geometry, occupied, solveCtx);
+  const annotated = annotateMekko(env, domain, area, geometry, occupied, solveCtx);
   pushAll(warnings, annotated.warnings);
   return { geometry: assembleMekkoGeometry({ env, domain, area, paints, geometry, solved, annotated, occupied, warnings }), namedAll };
 }

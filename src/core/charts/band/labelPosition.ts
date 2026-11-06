@@ -76,9 +76,13 @@ export function positionBarLabel(request: LabelRequest, options: PositionOptions
     return paint ? [{ ...candidate, needsBacking: false,
       insideFill: paint.insideFill, insidePaint: paint.insidePaint, insidePattern: paint.insidePattern }] : [];
   });
-  return { ...request, candidates: [
+  const others = (['center', 'insideEnd', 'insideBase'] as const).filter(at => at !== position).flatMap(inside);
+  const clear = [
     ...asked,
     ...next.map((candidate, i) => ({ ...candidate, penalty: i + 1 })),
     ...old.map(candidate => ({ ...candidate, penalty: candidate.penalty + next.length + 2 })),
-  ].map(candidate => ({ ...candidate, keepOffLines: true, overRules: false, overValueLines: false })) };
+    ...others.map(candidate => ({ ...candidate, penalty: next.length + 40 })),
+  ].map(candidate => ({ ...candidate, keepOffLines: true as const, overRules: false, overValueLines: false }));
+  // When lines block every clear seat, the value keeps the seats auto gives it: it never drops for its position alone.
+  return { ...request, candidates: [...clear, ...request.candidates.map(candidate => ({ ...candidate, penalty: candidate.penalty + next.length + 80 }))] };
 }

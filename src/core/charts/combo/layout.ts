@@ -578,7 +578,7 @@ function layoutComboFramePass(
     },
   };
   // Reference lines and endpoints take their seats before column values.
-  const joint = hasLabelPosition(options) || (domain.options.annotations ?? []).some(annotation => annotation.kind === 'valueLine');
+  const joint = (domain.options.annotations ?? []).some(annotation => annotation.kind === 'valueLine');
   const annotatedFirst = joint ? annotateCombo(env, domain, area, geometry, occupied, solveCtx, requests) : undefined;
   const chartIds = new Set(requests.map(request => request.id));
   const solved: SolveResult = annotatedFirst

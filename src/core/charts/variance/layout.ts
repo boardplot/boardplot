@@ -1,4 +1,4 @@
-import { hasLabelPosition, positionBarLabel, refuseLabelPosition } from '../band/labelPosition';
+import { positionBarLabel, refuseLabelPosition } from '../band/labelPosition';
 import { chartString } from '../../strings/variance';
 import { breakUnsupported, chartTheme } from '../chartEnv';
 import { bandFloorSizing } from '../waterfall/bandFloor';
@@ -1404,55 +1404,6 @@ export function layoutVariance(
     plot,
     labelPad: 2,
   });
-  // ---- annotations: {categoryId} → variance bar top, value = Δ (or Δ%) ----
-  const catIndex = new Map(cats.map((c, i) => [c.id, i] as const));
-  const resolveAnchor = (ref: AnchorRef): AnchorResolution | null => {
-    const norm = typeof ref === 'string' ? { categoryId: ref, edge: 'total' as const } : ref;
-    if (!('categoryId' in norm)) return null;
-    const ci = catIndex.get(norm.categoryId);
-    if (ci === undefined) return null;
-    const c = cats[ci]!;
-    const value = deltaOf(ci);
-    const top = anchorTopY[ci] ?? null;
-    if (value === null || top === null) return null;
-    return {
-      x: band.center(ci),
-      y: norm.edge === 'start' ? y0 : top,
-      value,
-      date: c.date, label: c.label,
-      owner: { categoryId: c.id },
-    };
-  };
-  const plottedValues = (mode === 'integrated' ? acArr : cats.map((_, ci) => deltaOf(ci))).filter((v): v is number => v !== null);
-  const meanValue =
-    plottedValues.length > 0
-      ? plottedValues.reduce((a, b) => a + b, 0) / plottedValues.length
-      : undefined;
-  // An absolute chart plots differences of percent levels: those are points, not percent.
-  const valueLinePercentLevels = (!percentDifferences && options.unit === '%') || mode === 'relative'
-    || integratedPercent;
-  const annotate = () => runAnnotatePass({
-    annotations: options.annotations ?? [],
-    resolve: resolveAnchor,
-    defaultSpan:
-      cats.length >= 2 ? { from: cats[0]!.id, to: cats[cats.length - 1]!.id } : undefined,
-    occupied,
-    plot,
-    // Annotation labels draw bold (see labelsToNodes below), so the pass measures them bold.
-    theme: emphasisLabelTheme(theme),
-    plainLabelWeight: theme.type.label.weight,
-    measure,
-    format: options.format,
-    locale: options.locale?.language,
-    strings: options.strings,
-    valueLinePercentLevels,
-    valueLineUnit: percentDifferences ? PERCENTAGE_POINTS : integratedPercent ? '%' : undefined,
-    solveCtx,
-    yScale: y,
-    meanValue,
-    partialCategories: partialIds(cats),
-  });
-  const positionedAnnotations = hasLabelPosition(options) ? annotate() : undefined;
   const solved: SolveResult & { stranded?: LabelRequest[] } = mode === 'integrated'
     ? solveVarianceLabels(labelRequests, occupied, solveCtx, liftSeats)
     : solveLabels(labelRequests, occupied, solveCtx);
@@ -1486,7 +1437,54 @@ export function layoutVariance(
   for (const l of solved.placed) { const ink = pinInk.get(l.id); if (ink) l.ink = ink; }
   pushAll(warnings, solved.warnings);
 
-  const annResult = positionedAnnotations ?? annotate();
+  // ---- annotations: {categoryId} → variance bar top, value = Δ (or Δ%) ----
+  const catIndex = new Map(cats.map((c, i) => [c.id, i] as const));
+  const resolveAnchor = (ref: AnchorRef): AnchorResolution | null => {
+    const norm = typeof ref === 'string' ? { categoryId: ref, edge: 'total' as const } : ref;
+    if (!('categoryId' in norm)) return null;
+    const ci = catIndex.get(norm.categoryId);
+    if (ci === undefined) return null;
+    const c = cats[ci]!;
+    const value = deltaOf(ci);
+    const top = anchorTopY[ci] ?? null;
+    if (value === null || top === null) return null;
+    return {
+      x: band.center(ci),
+      y: norm.edge === 'start' ? y0 : top,
+      value,
+      date: c.date, label: c.label,
+      owner: { categoryId: c.id },
+    };
+  };
+  const plottedValues = (mode === 'integrated' ? acArr : cats.map((_, ci) => deltaOf(ci))).filter((v): v is number => v !== null);
+  const meanValue =
+    plottedValues.length > 0
+      ? plottedValues.reduce((a, b) => a + b, 0) / plottedValues.length
+      : undefined;
+  // An absolute chart plots differences of percent levels: those are points, not percent.
+  const valueLinePercentLevels = (!percentDifferences && options.unit === '%') || mode === 'relative'
+    || integratedPercent;
+  const annResult = runAnnotatePass({
+    annotations: options.annotations ?? [],
+    resolve: resolveAnchor,
+    defaultSpan:
+      cats.length >= 2 ? { from: cats[0]!.id, to: cats[cats.length - 1]!.id } : undefined,
+    occupied,
+    plot,
+    // Annotation labels draw bold (see labelsToNodes below), so the pass measures them bold.
+    theme: emphasisLabelTheme(theme),
+    plainLabelWeight: theme.type.label.weight,
+    measure,
+    format: options.format,
+    locale: options.locale?.language,
+    strings: options.strings,
+    valueLinePercentLevels,
+    valueLineUnit: percentDifferences ? PERCENTAGE_POINTS : integratedPercent ? '%' : undefined,
+    solveCtx,
+    yScale: y,
+    meanValue,
+    partialCategories: partialIds(cats),
+  });
   // A wider percent reference keeps its full text and the gap from plotted values.
   // Use the same one-pass gutter reserve as column and line when no clear seat remains.
   if ((valueLinePercentLevels || percentDifferences) && mode !== 'relative' && !(VALUE_LINE_RESERVE in options)) {

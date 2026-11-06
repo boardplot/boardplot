@@ -652,10 +652,7 @@ function layoutHorizontalWaterfall(
     if (!hasLabelPosition(options) || !bar || !/^(sum|total):/.test(label.id) || authoredPin) return request;
     const item = data.items.find(item => item.id === categoryId);
     const segmented = (item?.segments?.length ?? 0) > 0 || bar.segments.length > 1;
-    if (segmented) {
-      request.candidates = candidates.filter(candidate => !candidate.slot.startsWith('inside'));
-      return request;
-    }
+    if (segmented) return request;
     const mark = scene.find(node => node.id === bar.segments[0]?.nodeId);
     const level = source.derived.levels[bar.id]!;
     const pattern = mark?.t === 'rect' && mark.pattern !== 'hollow' ? mark.pattern : undefined;
@@ -668,8 +665,8 @@ function layoutHorizontalWaterfall(
       insidePaint: paint, insidePattern: pattern,
       insideFill: paint ? effectiveFill(paintColor(theme, paint), pattern, theme) : theme.color.background,
     });
-    // A value left of the plot would take the seat of its row's name and refuse the chart.
-    return { ...positioned, candidates: positioned.candidates.filter(candidate => candidate.rect.x >= horizontalPlot.x) };
+    // A seat the option adds left of the plot would take its row's name and refuse the chart.
+    return { ...positioned, candidates: positioned.candidates.filter(candidate => candidate.slot !== 'outsideBarLeft' || candidate.rect.x >= horizontalPlot.x) };
   });
   const horizontalPins = Object.fromEntries(
     Object.entries(options.labelPlacements ?? {}).map(([id, slot]) => [id, mapSlot(slot)]),
@@ -1969,16 +1966,13 @@ function layoutWaterfallWithPad(
         }] : []),
       ],
     };
-    if (hasLabelPosition(options) && segmentedMark && !options.labelPlacements?.[valueRequest.id]) {
-      valueRequest.candidates = valueRequest.candidates.filter(candidate => !candidate.slot.startsWith('inside'));
-    } else {
-      valueRequest = positionBarLabel(valueRequest, options, {
-        rect: barRect, size: tsize, orientation: 'vertical',
-        endPositive: Math.abs(Math.max(lvl.start, lvl.end)) >= Math.abs(Math.min(lvl.start, lvl.end)),
-        zero: itemValue === 0, edgeGap: 2, fallback: isTotal ? undefined : 'bridge',
-        insidePaint, insidePattern, insideFill: effectiveFill(paintColor(theme, insidePaint), insidePattern, theme),
-      });
-    }
+    // A segmented bar's value keeps today's seats: it would otherwise read as the value of one part.
+    if (!segmentedMark) valueRequest = positionBarLabel(valueRequest, options, {
+      rect: barRect, size: tsize, orientation: 'vertical',
+      endPositive: Math.abs(Math.max(lvl.start, lvl.end)) >= Math.abs(Math.min(lvl.start, lvl.end)),
+      zero: itemValue === 0, edgeGap: 2, fallback: isTotal ? undefined : 'bridge',
+      insidePaint, insidePattern, insideFill: effectiveFill(paintColor(theme, insidePaint), insidePattern, theme),
+    });
     if (!valuesOff) labelRequests.push(valueRequest);
     if (caseIndex !== undefined) caseValues[i]!.push(valueRequest);
     // The closing total's net change over the opening total: a second bold value above the total's own.
@@ -2019,7 +2013,7 @@ function layoutWaterfallWithPad(
         netRequest.candidates = [
           ...netRequest.candidates.map(candidate => ({ ...candidate,
             rect: { ...candidate.rect, y: negative ? outsideY : yTop - candidate.rect.h - 4 } })),
-          ...netRequest.candidates.map(candidate => ({ ...candidate, penalty: candidate.penalty + 3 })),
+          ...netRequest.candidates.map(candidate => ({ ...candidate, penalty: candidate.penalty + 3, outsidePlot: true })),
         ];
       }
       labelRequests.push(netRequest);
@@ -2130,25 +2124,21 @@ function layoutWaterfallWithPad(
       ids: rowValues.filter(request => `${request.kind}:${request.owner.seriesId ?? ''}` === role).map(request => request.id),
       alternate: true,
     }));
-  let solved!: ReturnType<typeof solveLabels>;
-  const solveValues = () => {
-    solved = solveLabels(labelRequests, occupied, solveCtx);
-    applyValueAxisTitleInk(solved.placed);
-    pushAll(warnings, solved.warnings);
-    // A step's value beside its bar reads in its sign's ink; one inside a fill
-    // keeps the contrast ink the solver chose for it.
-    if (signBridge) {
-      for (const label of solved.placed) {
-        const tone = label.id.startsWith('sum:') ? stepTones.get(label.id.slice('sum:'.length)) : undefined;
-        if (tone && tone !== 'neutral' && !label.slot?.startsWith('inside')) label.ink = options.colorblindSafe === true ? colorblindPaint(tone) : { token: tone };
-      }
-      if (closingNet !== undefined) {
-        const net = solved.placed.find((label) => label.id.startsWith('net:'));
-        if (net && closingNet.tone !== 'neutral') net.ink = options.colorblindSafe === true ? colorblindPaint(closingNet.tone) : { token: closingNet.tone };
-      }
+  const solved = solveLabels(labelRequests, occupied, solveCtx);
+  applyValueAxisTitleInk(solved.placed);
+  pushAll(warnings, solved.warnings);
+  // A step's value beside its bar reads in its sign's ink; one inside a fill
+  // keeps the contrast ink the solver chose for it.
+  if (signBridge) {
+    for (const label of solved.placed) {
+      const tone = label.id.startsWith('sum:') ? stepTones.get(label.id.slice('sum:'.length)) : undefined;
+      if (tone && tone !== 'neutral' && !label.slot?.startsWith('inside')) label.ink = options.colorblindSafe === true ? colorblindPaint(tone) : { token: tone };
     }
-  };
-  if (!hasLabelPosition(options)) solveValues();
+    if (closingNet !== undefined) {
+      const net = solved.placed.find((label) => label.id.startsWith('net:'));
+      if (net && closingNet.tone !== 'neutral') net.ink = options.colorblindSafe === true ? colorblindPaint(closingNet.tone) : { token: closingNet.tone };
+    }
+  }
 
   // ---- annotations ----
   const totalsOrder = items.filter((it) => it.type !== 'delta');
@@ -2231,7 +2221,6 @@ function layoutWaterfallWithPad(
     },
   });
   pushAll(warnings, annResult.warnings);
-  if (hasLabelPosition(options)) solveValues();
 
   // ---- emit ----
   const allLabels: PlacedLabel[] = [...solved.placed, ...annResult.labels];

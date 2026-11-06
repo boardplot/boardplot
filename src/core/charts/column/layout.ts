@@ -1,4 +1,4 @@
-import { hasLabelPosition, refuseLabelPosition } from '../band/labelPosition';
+import { refuseLabelPosition } from '../band/labelPosition';
 import { pickedValues, withValueLabelDefaults } from '../band/valueSelection';
 import { sk, stackParts, withoutShareAnnotations } from '../band/stacks';
 import { chartString } from '../../strings/column';
@@ -947,7 +947,6 @@ function layoutColumnPass(
     seriesUniform: keepEachValue || pickedValues(domain.options) ? undefined : bandValueLabelUniformity(),
   });
   positionColumnLabels(domain, paints, scene, requests);
-  const positionedAnnotations = hasLabelPosition(options) ? annotateColumn(domain, area, scene, occupied, solveCtx, []) : undefined;
   const solved = solveLabels(keepValuesWithoutAxis(requests, domain.density, domain.va.show === true), occupied, solveCtx);
   // A running period keeps a cue: a to-date value without a seat, or words wider than the drawn column, bring the hatch key back.
   const toDate = toDateOnValues(domain);
@@ -983,7 +982,7 @@ function layoutColumnPass(
     : undefined;
   if (ratioTierResult) pushAll(scene.nodes, ratioTierResult.nodes);
   pushAll(warnings, ratioTierSpacingWarnings(area.tier, solved.placed));
-  const annotated = positionedAnnotations ?? annotateColumn(domain, area, scene, occupied, solveCtx, solved.placed);
+  const annotated = annotateColumn(domain, area, scene, occupied, solveCtx, solved.placed);
   pushAll(warnings, annotated.warnings);
   const lane = settled.lane
     ? emitEventLane(theme, {
