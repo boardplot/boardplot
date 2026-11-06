@@ -3,18 +3,21 @@ import '../src/core/charts';
 import { getFixtures } from '../src/fixtures';
 import { layoutResolvedRequest, planResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { renderSvg } from '../src/core/svg/renderSvg';
-import { layoutTable, layoutTableCard } from '../src/core/charts/table/layout';
+import { withEngineNotes } from '../src/core/notes';
+import { layoutTable, layoutTableCard, prepareTableExecutor } from '../src/core/charts/table/layout';
 import * as tableResolution from '../src/core/charts/table/resolve';
 import { ENGINE_NOTES, SOFT_LABEL_CAP, LABEL_WRAP_FLOOR } from '../src/core/charts/table/tracks';
-import { FIXED_SIZE_PROBE } from '../src/core/sizing';
+import { FIXED_SIZE_PROBE, WIDTH_PROBE } from '../src/core/sizing';
 import { PLAN_ONLY, materializeLayout } from '../src/core/layoutPlan';
 import * as tablePlans from '../src/core/layoutPlan';
 import * as tableWidths from '../src/core/charts/table/widths';
 import * as dimensionCompiler from '../src/core/charts/dimswitch/compile';
+import * as tableFitPolicy from '../src/core/charts/table/fitPolicy';
 import type { TableData, TableOptions } from '../src/core/types/table';
 import type { DimSwitchData, DimSwitchDerived, DimSwitchOptions } from '../src/core/charts/dimswitch/types';
 import type { Geometry } from '../src/core/types/scene';
 import { defaultMeasurer, type TextMeasurer } from '../src/core/text';
+import { resolveTheme } from '../src/core/theme';
 
 const fixture = getFixtures('table').find((entry) => entry.id === 'steering-monthly')!;
 
@@ -69,6 +72,9 @@ it('defers drawing and returns an isolated result from the same numeric plan', (
   expect(plan.scene).toEqual([]);
   const first = materializeLayout(plan);
   const expected = JSON.stringify(first);
+  const text = first.scene.find(node => node.t === 'text')!;
+  if (text.t === 'text') { text.font.size = 999; text.lines.push('Changed line'); }
+  first.marks.rows[0]!.h = 999;
   first.scene.length = 0;
   first.derived.table.rows[0]!.label = 'changed';
   const repeated = layoutTableCard(data, options);
@@ -276,4 +282,92 @@ it('keeps note kinds when one dimension data object renders at a second width', 
   const fresh = noteKinds(structuredClone(entry.data) as DimSwitchData, 878);
   expect(fresh?.length).toBeGreaterThan(0);
   expect(noteKinds(data, 878)).toEqual(fresh);
+});
+
+// A retained executor must not reuse old footer, canvas or refusal metadata when only the frame changes.
+it('settles each frame of a prepared table exactly as a fresh executor', () => {
+  const data: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel', width: 180 }, { id: 'status', kind: 'status', label: 'Status', width: 74, labels: { pending: 'Waiting for a detailed review', 'at-risk': 'Waiting for a different review' } },
+      { id: 'value', kind: 'value', label: 'Value', width: 110 }],
+    rows: [{ id: 'a', label: 'A long row label that can wrap', cells: { status: 'pending', value: 123456 } },
+      { id: 'b', label: 'Another row', cells: { status: 'at-risk', value: 234567 } }],
+  };
+  const executor = prepareTableExecutor(data);
+  const theme = { preset: 'bridge' as const };
+  for (const size of [{ width: 332 }, { width: 878, height: 140 }, { width: 878, height: 500 }, { width: 332, height: 320 }, undefined]) {
+    const options: TableOptions = { theme, size, source: 'Reported values', footnotes: ['A source note'], notes: { show: ['note', 'disclosure'] }, cellPadX: 3 };
+    const actual = executor.runCard(options);
+    const fresh = layoutTableCard(structuredClone(data), options);
+    expect(JSON.stringify(actual)).toBe(JSON.stringify(fresh));
+  }
+});
+
+// A shared table view must keep disclosure notes typed correctly in a later request's fresh note scope.
+it('replays disclosure metadata for retained executors and equal cloned inputs', () => {
+  const data: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'value', kind: 'value', label: 'Value' }],
+    rows: [{ id: 'a', label: 'A', cells: { value: { state: 'suppressed' } } }],
+  };
+  const retained = prepareTableExecutor(data);
+  const render = (executor: ReturnType<typeof prepareTableExecutor>, height: number) => withEngineNotes(() =>
+    executor.run({ size: { width: 878, height }, notes: { show: ['disclosure'] } }), true);
+  const first = render(retained, 200);
+  const notes = first.frame.noteList!.map(({ text, kind }) => ({ text, kind }));
+  expect(notes).toEqual([{ text: tableResolution.SUPPRESSED_FOOTNOTE, kind: 'disclosure' }]);
+  // Different heights require a fresh frame while the numeric view is unchanged.
+  expect(render(retained, 201).frame.noteList!.map(({ text, kind }) => ({ text, kind }))).toEqual(notes);
+  const cloned = prepareTableExecutor(structuredClone(data));
+  expect(render(cloned, 202).frame.noteList!.map(({ text, kind }) => ({ text, kind }))).toEqual(notes);
+});
+
+// A host retry at an already checked width must reuse its fit without losing the scene or caller isolation.
+it('retains a complete table fit across a repair probe and fresh equal input', () => {
+  const data: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'value', kind: 'value' }],
+    rows: [{ id: 'a', label: 'Retained repair', cells: { value: 17 } }],
+  };
+  const options: TableOptions = { size: { width: 878 }, theme: { preset: 'bridge' }, source: 'Original source' };
+  const planned = layoutTableCard(data, { ...options, [PLAN_ONLY]: true, [WIDTH_PROBE]: 'table' } as TableOptions);
+  const fits = vi.spyOn(tableFitPolicy, 'executeTableFit');
+  try {
+    const drawn = layoutTableCard(structuredClone(data), structuredClone(options));
+    expect(fits).not.toHaveBeenCalled();
+    expect(drawn.scene.length).toBeGreaterThan(0);
+    expect(JSON.stringify(drawn)).toBe(JSON.stringify(materializeLayout(planned)));
+    const expected = JSON.stringify(drawn);
+    drawn.derived.table.rows[0]!.label = 'Changed returned row';
+    drawn.scene.length = 0;
+    expect(JSON.stringify(layoutTableCard(structuredClone(data), structuredClone(options)))).toBe(expected);
+  } finally { fits.mockRestore(); }
+});
+
+// A sizing result can be drawn later, after the original data and nested options have changed.
+it('keeps retained numeric plans independent of later caller edits', () => {
+  const data: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'value', kind: 'value' }],
+    rows: [{ id: 'a', label: 'Owned input', cells: { value: 23 } }],
+  };
+  const options: TableOptions = { size: { width: 900 }, theme: { preset: 'bridge' }, a11y: { title: true } };
+  const originalData = structuredClone(data);
+  const originalOptions = structuredClone(options);
+  const planned = layoutTable(data, { ...options, [PLAN_ONLY]: true } as TableOptions);
+  data.rows[0]!.label = 'Changed input';
+  data.rows[0]!.cells!.value = 900;
+  options.a11y!.title = false;
+  const owned = materializeLayout(planned);
+  expect(owned.derived.table.rows[0]!.label).toBe('Owned input');
+  expect(JSON.stringify(owned)).toBe(JSON.stringify(layoutTable(originalData, originalOptions)));
+  expect(JSON.stringify(layoutTable(data, options))).not.toBe(JSON.stringify(owned));
+});
+
+// Copying a resolved theme must not turn its responsive type sizes into authored fixed sizes.
+it.each([332, 1234])('keeps owned-theme footer type at %i px', (width) => {
+  const data: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'value', kind: 'value' }],
+    rows: [{ id: 'a', label: 'Theme ownership', cells: { value: 31 } }],
+  };
+  const options: TableOptions = { size: { width }, title: 'Owned theme footer', source: 'Reported figures', footnotes: ['One source note'] };
+  const direct = layoutTable(data, { ...options, theme: 'bridge' });
+  const owned = layoutTable(structuredClone(data), { ...options, theme: { preset: 'bridge', overrides: resolveTheme('bridge') } });
+  expect(JSON.stringify(owned)).toBe(JSON.stringify(direct));
 });

@@ -84,6 +84,24 @@ export const DEFAULT_TRACK_GROWTH = 2.5;
  */
 export const INLINE_LABEL_INDENT = 8;
 
+/** Ordered level maxima for one intrinsic-body policy. Published entries are never changed. */
+export interface BodyWidthMeasurement {
+  authored: boolean;
+  maxTextWidth: number | undefined;
+  labelLines: number | undefined;
+  figuresOnly: boolean;
+  hinted: boolean;
+  inlineIndent: number | undefined;
+  levels: readonly number[];
+  widths: readonly number[];
+}
+
+/** One column slot per resolved column; candidates reuse body measurements without string keys. */
+export interface BodyWidthMeasurements {
+  columnIndex: ReadonlyMap<Id, number>;
+  columns: BodyWidthMeasurement[][];
+}
+
 /** The faces a table draws, derived once from the theme and its ladder. */
 export interface TableFonts {
   header: FontSpec;
@@ -235,7 +253,7 @@ export function browserSlack(font: FontSpec, width: number): number {
 
 export interface WidthContext {
   /** Cell content by level, independent of column padding, header faces and indentation. */
-  bodyWidths?: Map<string, Map<number, number>>;
+  bodyWidths?: BodyWidthMeasurements;
   theme?: Theme;
   measure: TextMeasurer;
   fonts: TableFonts;
@@ -385,12 +403,17 @@ function encodingTrackWidth(column: ResolvedColumn, rows: readonly ResolvedRow[]
  * affix DOES share the label's line, so the track pays for both, and so does
  * a collapsed hint where the surface prints one (`ctx.hint`).
  */
-function intrinsicBodyWidths(column: ResolvedColumn, rows: readonly ResolvedRow[], ctx: WidthContext, figuresOnly: boolean): Map<number, number> {
-  const key = JSON.stringify([column.id, column.width === undefined, column.maxTextWidth, ctx.labelLines, figuresOnly, ctx.hint !== undefined, ctx.inlineIndent]);
-  const known = ctx.bodyWidths?.get(key);
+function intrinsicBodyWidths(column: ResolvedColumn, rows: readonly ResolvedRow[], ctx: WidthContext, figuresOnly: boolean): BodyWidthMeasurement {
+  const slot = ctx.bodyWidths?.columnIndex.get(column.id);
+  const variants = slot === undefined ? undefined : ctx.bodyWidths!.columns[slot]!;
+  const authored = column.width !== undefined;
+  const hinted = ctx.hint !== undefined;
+  const known = variants?.find(value => value.authored === authored && value.maxTextWidth === column.maxTextWidth
+    && value.labelLines === ctx.labelLines && value.figuresOnly === figuresOnly && value.hinted === hinted && value.inlineIndent === ctx.inlineIndent);
   if (known) return known;
   const isRowLabel = column.kind === 'rowLabel';
-  const levels = new Map<number, number>();
+  const levels: number[] = [];
+  const widths: number[] = [];
   for (const row of rows) {
     if (row.inline === true) continue;
     if (isRowLabel && row.role === 'section') continue;
@@ -429,7 +452,9 @@ function intrinsicBodyWidths(column: ResolvedColumn, rows: readonly ResolvedRow[
       width = chip + (ctx.slack?.(ctx.fonts.chip, chip) ?? 0) + 2 * CHIP_PAD_X;
     }
     const step = isRowLabel ? row.step : 0;
-    let cellMax = Math.max(levels.get(step) ?? 0, width);
+    let index = levels.indexOf(step);
+    if (index < 0) { index = levels.length; levels.push(step); widths.push(0); }
+    let cellMax = Math.max(widths[index]!, width);
     for (const line of row.inlineRows ?? []) {
       const lineFont = ctx.changeFont?.(row.step) ?? ctx.inlineFont(row.step, line.polarity !== undefined);
       const text = isRowLabel ? line.label : (line.cells[column.id]?.displayed ?? '');
@@ -441,10 +466,12 @@ function intrinsicBodyWidths(column: ResolvedColumn, rows: readonly ResolvedRow[
         ctx.measure(text, figureFont(lineFont, tabular)).width + (isRowLabel ? ctx.inlineIndent ?? 8 : 0),
       );
     }
-    levels.set(step, cellMax);
+    widths[index] = cellMax;
   }
-  ctx.bodyWidths?.set(key, levels);
-  return levels;
+  const result = { authored, maxTextWidth: column.maxTextWidth, labelLines: ctx.labelLines, figuresOnly, hinted, inlineIndent: ctx.inlineIndent, levels, widths };
+  if (variants && variants.length >= 64) variants.shift();
+  variants?.push(result);
+  return result;
 }
 
 export function intrinsicColumnWidth(
@@ -457,7 +484,8 @@ export function intrinsicColumnWidth(
   const isRowLabel = column.kind === 'rowLabel';
   const headerW = figuresOnly ? 0 : headerContentWidth(column, ctx);
   let cellMax = 0;
-  for (const [level, width] of intrinsicBodyWidths(column, rows, ctx, figuresOnly)) cellMax = Math.max(cellMax, width + (isRowLabel ? ctx.rowIndent(level) : 0));
+  const body = intrinsicBodyWidths(column, rows, ctx, figuresOnly);
+  for (let index = 0; index < body.widths.length; index++) cellMax = Math.max(cellMax, body.widths[index]! + (isRowLabel ? ctx.rowIndent(body.levels[index]!) : 0));
   const natural = Math.ceil(Math.max(headerW, cellMax + (figuresOnly ? 0 : ctx.reserve?.(column) ?? 0)) + 2 * ctx.padX);
   return column.kind === 'rowLabel' && column.width === undefined && column.maxWidth !== undefined ? Math.min(natural, column.maxWidth) : natural;
 }
@@ -673,41 +701,42 @@ export function columnTracks(
 }
 
 /**
- * Share frame slack between value tracks, up to the growth cap, and give the
- * rest to an unauthored label track, so the table and its rules end at the
- * frame edge (every table, one value track too). Both surfaces use whole pixels and the same rounding
- * order.
+ * Share frame slack between value tracks, up to the growth cap. The remaining room belongs to
+ * an unauthored label track. The numeric result retains input order and the existing rounding.
  */
-export function frameFillExtras(tracks: readonly { id: Id; width: number }[], slack: number, growth?: number | false, labelId?: Id): Map<Id, number> {
+export function frameFillAmounts(widths: readonly number[], slack: number, growth?: number | false): { values: number[]; remainder: number } {
   const maxGrowth = growth ?? DEFAULT_TRACK_GROWTH;
-  const extras = new Map<Id, number>();
   const room = Math.floor(slack);
-  const total = tracks.reduce((sum, track) => sum + track.width, 0);
-  if (room < 1) return extras;
+  const total = widths.reduce((sum, width) => sum + width, 0);
+  if (room < 1) return { values: [], remainder: 0 };
   const valueRoom = total <= 0 ? 0 : maxGrowth === false ? room : Math.min(room, Math.floor(total * (maxGrowth - 1)));
-  // The room fills the narrowest tracks first, each up to its own growth cap, so the value tracks even out and no
-  // single wide track takes the leftover (a Q4 column with a wider head would grow in proportion and take it).
-  const cap = (width: number) => (maxGrowth === false ? Infinity : width * (maxGrowth - 1));
-  const fill = (level: number) => tracks.reduce((sum, track) => sum + Math.min(cap(track.width), Math.max(0, level - track.width)), 0);
+  // Preserve the binary search and addition order of the public track algorithm.
+  const cap = (width: number) => maxGrowth === false ? Infinity : width * (maxGrowth - 1);
+  const fill = (level: number) => widths.reduce((sum, width) => sum + Math.min(cap(width), Math.max(0, level - width)), 0);
   let low = 0;
-  let high = Math.max(0, maxOf(tracks.map((track) => track.width))) + valueRoom;
+  let high = Math.max(0, maxOf(widths)) + valueRoom;
   for (let pass = 0; pass < 60; pass++) {
     const mid = (low + high) / 2;
     if (fill(mid) < valueRoom) low = mid; else high = mid;
   }
-  const shares = tracks.map((track, index) => ({ id: track.id, index, exact: total <= 0 ? 0
-    : Math.min(cap(track.width), Math.max(0, high - track.width)) }));
+  const shares = widths.map(width => total <= 0 ? 0 : Math.min(cap(width), Math.max(0, high - width)));
   let left = valueRoom;
-  for (const share of shares) {
-    const whole = Math.floor(share.exact);
-    extras.set(share.id, whole);
+  const values = shares.map(exact => {
+    const whole = Math.floor(exact);
     left -= whole;
-  }
-  // The px the rounding left go to the largest fractions, earlier tracks first.
-  for (const share of [...shares].sort((a, b) => (b.exact - Math.floor(b.exact)) - (a.exact - Math.floor(a.exact)) || a.index - b.index).slice(0, Math.max(0, left))) {
-    extras.set(share.id, extras.get(share.id)! + 1);
-  }
-  if (labelId !== undefined && room > valueRoom) extras.set(labelId, room - valueRoom);
+    return whole;
+  });
+  const order = shares.map((_share, index) => index).sort((a, b) =>
+    (shares[b]! - Math.floor(shares[b]!)) - (shares[a]! - Math.floor(shares[a]!)) || a - b);
+  for (const index of order.slice(0, Math.max(0, left))) values[index] = values[index]! + 1;
+  return { values, remainder: room > valueRoom ? room - valueRoom : 0 };
+}
+
+export function frameFillExtras(tracks: readonly { id: Id; width: number }[], slack: number, growth?: number | false, labelId?: Id): Map<Id, number> {
+  const { values, remainder } = frameFillAmounts(tracks.map(track => track.width), slack, growth);
+  const extras = new Map<Id, number>();
+  for (let index = 0; index < values.length; index++) extras.set(tracks[index]!.id, values[index]!);
+  if (labelId !== undefined && remainder > 0) extras.set(labelId, remainder);
   return extras;
 }
 

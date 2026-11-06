@@ -6,7 +6,7 @@
  */
 
 import { disclosuresShown } from '../../notes';
-import { copyPlannedValue, memoExactInputKey } from '../../layoutPlan';
+import { copyPlannedValue, memoExactInputKey, ownPlanInput } from '../../layoutPlan';
 import { caseInsensitiveValue, inputConversion } from '../../inputConversion';
 import { bandFor } from '../../bandSelect';
 import { datePatternFromExample, formatDate, parseISODate } from '../../dateFormat';
@@ -285,6 +285,7 @@ interface FlatRow {
 
 /** Internal accounting model. Views borrow its cells; public results must own their copy. */
 export interface PreparedTableData {
+  readonly source: TableData;
   readonly rowIds: readonly Id[];
   readonly columnIds: readonly Id[];
   readonly rowIndex: ReadonlyMap<Id, number>;
@@ -377,8 +378,10 @@ export function prepareTableData(data: TableData, options: TableOptions = {}, ma
       try {
         // Retained closures read only snapshots. A theme reference keeps its identity, and the model never reads a measurer.
         const owned = copyPlannedValue(data);
+        ownPlanInput(owned);
         const { theme: authoredTheme, measure: _measure, ...kept } = options;
         model = compileTableData(owned, { ...copyPlannedValue(kept), theme: authoredTheme }, magnitudeSource === data ? owned : copyPlannedValue(magnitudeSource));
+        ownPlanInput(model);
       } finally { zeroLifts.count = before; }
       // Bound the bytes, not only the entries: a large table is never pinned by the process-wide map.
       if (content !== undefined && content.length <= MAX_SHARED_KEY_CHARS) {
@@ -413,6 +416,7 @@ export function resolveTable(data: TableData, options: TableOptions = {}, magnit
 }
 
 function compileTableData(data: TableData, options: TableOptions, magnitudeSource: TableData): PreparedTableData {
+  const source = data;
   const modelLiftsBefore = zeroLifts.count;
   // Formats repeat across cells; each caller still gets its own mutable spec.
   const formats = new Map<string, NumberFormatSpec>();
@@ -987,7 +991,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   const rowIndex = new Map(rowIds.map((id, index) => [id, index]));
   const columnIndex = new Map(columnIds.map((id, index) => [id, index]));
   const formatted = new Map<string, { result: ResolveResult; lifts: number; views: Map<string, ResolveResult> }>();
-  return { rowIds, columnIds, rowIndex, columnIndex, resolve(current) {
+  return { source, rowIds, columnIds, rowIndex, columnIndex, resolve(current) {
     const formatKey = JSON.stringify([current.columnVisibility, (current as ZeroLiftOptions)[ZERO_LIFT]]);
     let display = formatted.get(formatKey);
     if (!display) {

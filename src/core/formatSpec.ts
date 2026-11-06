@@ -587,18 +587,21 @@ function isPlainTree(node: unknown): node is Record<string, unknown> {
 }
 
 /** `node` with each format example passed through `change`, the same object where nothing changed. */
-function mapExamples<T>(node: T, change: (example: string, owner: Record<string, unknown>, path: (string | number)[]) => string, seen = new Map<unknown, unknown>(), keys: 'format' | 'all' | 'none' = 'format', path: (string | number)[] = []): T {
+function mapExamples<T>(node: T, change: (example: string, owner: Record<string, unknown>, path: (string | number)[]) => string, seen = new Map<unknown, unknown>(), keys: 'format' | 'all' | 'none' = 'format', path: (string | number)[] = [], plain?: { value: boolean }): T {
   if (!isPlainTree(node)) return node;
   if (seen.has(node)) return seen.get(node) as T;
   seen.set(node, node);
   let changed: Record<string, unknown> | undefined;
   for (const key of Object.keys(node)) {
+    const descriptor = plain && Object.getOwnPropertyDescriptor(node, key);
     const child = node[key];
+    // A getter or a Proxy can answer differently on the next read, so the second collection pass still runs.
+    if (plain && (!descriptor || !('value' in descriptor) || !Object.is(descriptor.value, child))) plain.value = false;
     const example = keys === 'all' || (keys === 'format' && key === 'format');
     // `cells` is keyed by column id, so a text column named format holds no example; a cell object's own format does.
     const childPath = [...path, Array.isArray(node) ? Number(key) : key];
     const next = typeof child === 'string' ? (example ? change(child, node, childPath) : child)
-      : mapExamples(child, change, seen, key === 'axisFormat' ? 'all' : key === 'cells' ? 'none' : 'format', childPath);
+      : mapExamples(child, change, seen, key === 'axisFormat' ? 'all' : key === 'cells' ? 'none' : 'format', childPath, plain);
     if (next === child) continue;
     changed ??= Array.isArray(node) ? [...node] as unknown as Record<string, unknown> : Object.assign(Object.create(Object.getPrototypeOf(node) as object | null) as object, node) as Record<string, unknown>;
     changed[key] = next;
@@ -673,15 +676,22 @@ export function readFormatExamples<D, O>(data: D, options: O): { data: D; option
     const whole = spec.thousandsSep ? '1,234' : decimals === 3 ? '0' : '1';
     return standIn.slice(0, body.index) + whole + (decimals ? `.${'5'.repeat(decimals)}` : '') + standIn.slice(body.index + body.text.trimEnd().length);
   };
-  data = mapExamples(data, rewrite, undefined, 'format', ['data']);
-  options = mapExamples(options, rewrite, undefined, 'format', ['options']);
   const examples = new Set<string>();
   const collect = (example: string) => {
     if (decimalExample(example) !== undefined) examples.add(example);
     return example;
   };
-  mapExamples(data, collect);
-  mapExamples(options, collect);
+  const originalData = data, originalOptions = options;
+  const plain = { value: true };
+  const rewriteAndCollect = (example: string, owner: Record<string, unknown>, field: (string | number)[]) => collect(rewrite(example, owner, field));
+  data = mapExamples(data, rewriteAndCollect, undefined, 'format', ['data'], plain);
+  options = mapExamples(options, rewriteAndCollect, undefined, 'format', ['options'], plain);
+  // Rewrites can change aliases, and getters can change the second reading.
+  if (!plain.value || data !== originalData || options !== originalOptions) {
+    examples.clear();
+    mapExamples(data, collect);
+    mapExamples(options, collect);
+  }
   if (examples.size === 0) return { data, options, warnings };
   const numbers = treeNumbers(data);
   const readings = new Map([...examples].map((example) => [example, exampleReading(example, numbers)]));

@@ -5,7 +5,7 @@ import type { ChartCore } from '../../registry';
 import type { Geometry } from '../../types/scene';
 import { CARD_MIN_WIDTH, chartSizing, heightOmitted, isWidthProbe, VERIFY_ADVICE, WIDTH_PROBE } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
-import { classFloor, layoutKey, layoutTable, memoLayout, REGULAR_SPACING, type TableMarks } from '../table/layout';
+import { classFloor, layoutKey, prepareTableExecutor, memoLayout, REGULAR_SPACING, type TableMarks } from '../table/layout';
 import { prepareTableData, resolvePreparedTable, resolveTable } from '../table/resolve';
 import { compileDimSwitch, currentDimSwitchOptions, dimSwitchTableWarnings, dimswitchRowId, FOLDED, hostPeriods, PARTIAL_NOTE_OFF, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning, type DimSwitchForm } from './compile';
 import type { DimSwitchData, DimSwitchOptions, DimSwitchDerived } from './types';
@@ -19,7 +19,7 @@ export function resolveDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   return {...compiled,...resolved,compileWarnings:compiled.warnings,computedCells:[...resolved.computedCells,...records]};
 }
 
-type PreparedForm = { compiled: ReturnType<typeof compileDimSwitch>; resolved: ReturnType<typeof resolveTable>; noteMetadata: Map<string, NonNullable<ReturnType<typeof engineNoteMeta>>> };
+type PreparedForm = { compiled: ReturnType<typeof compileDimSwitch>; resolved: ReturnType<typeof resolveTable>; executor: ReturnType<typeof prepareTableExecutor>; noteMetadata: Map<string, NonNullable<ReturnType<typeof engineNoteMeta>>> };
 
 /** The options a probe sets for itself. The compiled form does not depend on them, so a probe at another size reuses it. */
 const PER_PROBE = [TARGET_SIZE, WIDTH_PROBE, REGULAR_SPACING, PLAN_ONLY] as const;
@@ -54,7 +54,7 @@ function prepareForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSw
     }
     // The source key still checks mutable input; this generated table stays private until materialization copies it.
     ownPlanInput(compiled.data);
-    return {compiled:{...compiled,options:without(compiled.options)},resolved,noteMetadata};
+    return {compiled:{...compiled,options:without(compiled.options)},resolved,executor:prepareTableExecutor(compiled.data,compiled.options,resolved),noteMetadata};
   };
   if (typeof options.theme === 'string') return withProbe(compute());
   const {size:_size,inlineVisibility:_inlineVisibility,...rest}=without(options);
@@ -78,7 +78,7 @@ function layoutForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwi
   const resolved=prepared.resolved;
   // The compile is shared across spacing passes and carries the first pass's options: the spacing is this request's.
   // Period selection reads compact-floor slack, so it retains that floor even during ordinary rendering.
-  const geometry=layoutTable(compiled.data,{...options,...compiled.options,[PLAN_ONLY]:true,[REGULAR_SPACING]:(options as {[REGULAR_SPACING]?: boolean})[REGULAR_SPACING]} as typeof compiled.options,resolved,true);
+  const geometry=prepared.executor.run({...options,...compiled.options,[PLAN_ONLY]:true,[REGULAR_SPACING]:(options as {[REGULAR_SPACING]?: boolean})[REGULAR_SPACING]} as typeof compiled.options,true,resolved);
   // The frame can reach its automatic height without a second compile.
   if ((options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === false
     && typeof compiled.options.size === 'object' && compiled.options.size.height !== undefined

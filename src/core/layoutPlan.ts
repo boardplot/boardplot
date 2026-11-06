@@ -183,28 +183,30 @@ export function copyPlannedValue<T>(value: T, copies = new Map<object, unknown>(
   if (Array.isArray(value)) {
     const copy: unknown[] = [];
     copies.set(value, copy);
-    for (const entry of value) copy.push(copyPlannedValue(entry, copies));
+    for (const entry of value) copy.push(entry !== null && typeof entry === 'object' ? copyPlannedValue(entry, copies) : entry);
     return copy as T;
   }
   if (value instanceof Map) {
     const copy = new Map();
     copies.set(value, copy);
-    for (const [key, entry] of value) copy.set(key, copyPlannedValue(entry, copies));
+    for (const [key, entry] of value) copy.set(key, entry !== null && typeof entry === 'object' ? copyPlannedValue(entry, copies) : entry);
     return copy as T;
   }
   if (value instanceof Set) {
     const copy = new Set();
     copies.set(value, copy);
-    for (const entry of value) copy.add(copyPlannedValue(entry, copies));
+    for (const entry of value) copy.add(entry !== null && typeof entry === 'object' ? copyPlannedValue(entry, copies) : entry);
     return copy as T;
   }
-  if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) return value;
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) return value;
   // A null-prototype record (cells keyed by column id) stays one, so a column named __proto__ keeps its cell.
   const copy: Record<PropertyKey, unknown> = footerPlans.has(value as FrameGeometry)
-    ? copyFrame(value as FrameGeometry) as Record<PropertyKey, unknown> : Object.getPrototypeOf(value) === null ? emptyIdRecord() : {};
+    ? copyFrame(value as FrameGeometry) as Record<PropertyKey, unknown> : prototype === null ? emptyIdRecord() : {};
   copies.set(value, copy);
   for (const key of Reflect.ownKeys(value)) {
-    const entry = copyPlannedValue((value as Record<PropertyKey, unknown>)[key], copies);
+    const source = (value as Record<PropertyKey, unknown>)[key];
+    const entry = source !== null && typeof source === 'object' ? copyPlannedValue(source, copies) : source;
     // Note metadata stays outside a note's public fields, also on the copy a caller receives.
     if (typeof key === 'symbol' && !Object.prototype.propertyIsEnumerable.call(value, key)) Object.defineProperty(copy, key, { value: entry, configurable: true });
     else if (key === '__proto__') Object.defineProperty(copy, key, { value: entry, enumerable: true, writable: true, configurable: true });

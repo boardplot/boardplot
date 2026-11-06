@@ -112,6 +112,17 @@ describe('ordinary number examples', () => {
     }
   });
 
+  // Prevents an accessor's later format reading from losing its warning when shared objects are visited once.
+  it('keeps ambiguous-format warnings from a shared accessor after the rewrite pass', () => {
+    let reads = 0;
+    const series = { get format() { return ++reads === 1 ? '1.2' : '1.234'; }, values: [0.512, 1200] };
+    const result = readFormatExamples({ series: [series, series] }, {});
+    expect(result.warnings).toEqual([expect.objectContaining({
+      code: 'format-reads-as-group',
+      message: "format '1.234' reads as a thousands group on this chart, so 0.512 prints 1",
+    })]);
+  });
+
   // Prevents bracketed units from disappearing while spreadsheet colours still warn and do not print.
   it('keeps bracketed units and drops spreadsheet colour tokens with a warning', () => {
     expect(formatterFromExample('0.0 [kWh]', undefined)(1234.5)).toBe('1,234.5 [kWh]');
@@ -835,4 +846,12 @@ describe('the automatic number rule', () => {
     }).map(([name]) => name);
     expect(slow).toEqual([]);
   });
+});
+
+// A Proxy can return another format example than its stored field, and a cached reading must not round the number on that gap.
+it('reads a proxied column format example from the value the Proxy returns', async () => {
+  const column = new Proxy({ id: 'v', kind: 'value', format: '1,234' }, { get: (target, key, receiver) => key === 'format' ? '1.234' : Reflect.get(target, key, receiver) });
+  const data = { columns: [{ id: 'label', kind: 'rowLabel' }, column], rows: [{ id: 'a', label: 'Orders', cells: { v: 0.512 } }] };
+  const prepared = JSON.stringify(await prepareChart({ type: 'table', data, options: { size: { width: 600 } } } as never));
+  expect(prepared).toContain('"displayed":"0.512"');
 });
