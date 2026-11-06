@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import '../src/core/charts';
 import { getChart } from '../src/core/registry';
 import { getFixtures } from '../src/fixtures';
-import { measure } from '../src/index';
+import { layoutResolvedRequest, measure, resolveChartRequest } from '../src/index';
 import type { Geometry, Paint } from '../src/core/types/scene';
 import { paintColor, registerTheme, resolveTheme } from '../src/core/theme';
 import { layoutGrid } from '../src/core/charts/grid/layout';
@@ -438,6 +438,86 @@ describe('facet reflow on a phone card', () => {
     expect(short.refused).toBeUndefined();
     expect(titleColumns(short)).toBe(3);
     expect(titleColumns(layout({ size: { width: 320, height: 900 } }))).toBe(2);
+  });
+});
+
+describe('tiers keep the height their parts need', () => {
+  const regions = ['Administration', 'Manufacturing', 'Merchandising', 'Infrastructure', 'Communications', 'Transportation', 'Procurement', 'Engineering-Ops']
+    .map((label) => ({ id: label.toLowerCase().replace(/\W+/g, '-'), label }));
+  const regionData = { categories: regions, series: [
+    { id: 'ac', label: 'Actual', values: [362, 327, 355, 365, 366, 406, 375, 412] },
+    { id: 'py', label: 'PY', role: 'reference' as const, scenario: 'PY' as const, values: [352, 292, 421, 408, 416, 342, 420, 448] }] };
+  const laidOut = (request: Record<string, unknown>) => layoutResolvedRequest(resolveChartRequest(request as never)) as unknown as Geometry;
+  const regionTiers = [
+    { id: 'base', type: 'column', data: regionData },
+    { id: 'tier', type: 'variance', data: regionData, options: { variant: 'relative', variance: { of: 'ac', vs: 'py' } } }];
+  const german = { ...regionData, categories: ['Baden-Württemberg', 'Niedersachsen', 'Ruhrgebiet', 'Oberfranken', 'Abschreibungen', 'Umsatzerlöse', 'Personalaufwand', 'Sonstige']
+    .map((label) => ({ id: label.toLowerCase().replace(/\W+/g, '-'), label })) };
+  const rowPlaced = (data: unknown) => [
+    { id: 'base', type: 'column', row: 1, column: 0, data },
+    { id: 'tier', type: 'variance', row: 0, column: 0, data, options: { variant: 'relative', variance: { of: 'ac', vs: 'py' } } }];
+  const framed = { title: 'Revenue by region', subtitle: { measure: 'Revenue', period: 'FY26' }, unit: 'EUR m', source: 'Invented data', sharedAxis: 'category' };
+  // With an open height the grid stayed too short for its rotated names, so a tier was squeezed to a strip.
+  it('keeps the height rotated category names need', () => {
+    const grid = laidOut({ type: 'grid', data: { panels: rowPlaced(german) }, options: { ...framed, target: 'slide', size: { width: 480, unit: 'px' } } });
+    const codes = grid.warnings.map((warning) => warning.code);
+    expect(codes).toContain('category-labels-rotated');
+    expect(codes).not.toContain('text-clipped');
+    expect(grid.size.height).toBeGreaterThan(385);
+  });
+  // The weights alone gave a middle panel less than its own minimum, so its plot was a strip the canvas had room to avoid.
+  it('gives every panel its minimum height when the canvas holds them all', () => {
+    const years = Array.from({ length: 9 }, (_, index) => ({ id: String(2015 + index) }));
+    const line = (id: string, values: number[]) => ({ id, type: 'line', title: `Panel ${id}`,
+      data: { categories: years, series: [{ id, label: id, values }] }, options: { legend: 'none', seriesLabels: 'none' } });
+    const grid = laidOut({ type: 'grid', data: { panels: [
+      line('a', [94, 95.5, 96.8, 97.4, 98.1, 99, 97.2, 98, 99.1]),
+      line('b', [100, 103, 106, 109, 112, 118, 128, 135, 129]),
+      line('c', [6, 5.5, 5, 5.3, 6, 12, 9, 7, 7.5])] },
+    options: { title: 'Three panels', sharedAxis: 'category', sharedScale: false, target: 'print', size: { width: 180, unit: 'mm' } } });
+    for (const panel of (grid.marks as unknown as { panels: { id: string; chart: { geometry: Geometry } }[] }).panels) {
+      expect(panel.chart.geometry.size.height + 1).toBeGreaterThanOrEqual(panel.chart.geometry.sizing!.minHeight);
+    }
+  });
+  // A tier that keeps its frame at the plot floor pushed the stack up until its caption printed over the subtitle.
+  it('keeps the tier caption under the subtitle on a short canvas', () => {
+    const upright = { ...regionData, categories: ['Net revenue', 'Churn rate', 'Marketing', 'North', 'Ruhr', 'Highlands', 'Deprec.', 'Plains']
+      .map((label) => ({ id: label.toLowerCase().replace(/\W+/g, '-'), label })) };
+    const grid = laidOut({ type: 'grid', data: { panels: regionTiers.map((panel) => ({ ...panel, data: upright })) }, options: {
+      title: 'Revenue by region', subtitle: { measure: 'Revenue', period: 'FY26' }, unit: 'EUR m', source: 'Invented data', sharedAxis: 'category', target: 'dashboard', size: { width: 960, height: 300 } } });
+    const caption = grid.labels.find((label) => label.id.endsWith('tier:caption'));
+    expect(caption).toBeDefined();
+    expect(caption!.rect.y).toBeGreaterThanOrEqual(grid.plot.y - 1);
+  });
+  const first = (count: number) => ({ categories: regionData.categories.slice(0, count), series: regionData.series.map((item) => ({ ...item, values: item.values.slice(0, count) })) });
+  // The row tracks added up to more than the canvas, so the minimum scaled by them refused a height where both tiers fit.
+  it('draws a row-placed tier grid at a height above what its parts need', () => {
+    const grid = laidOut({ type: 'grid', data: { panels: rowPlaced(first(3)) }, options: { ...framed, target: 'report', size: { width: 480, height: 300, unit: 'px' } } });
+    expect(grid.refused).toBeFalsy();
+    expect(grid.size.height).toBe(300);
+  });
+  // The minimum counts the tiers alone, but a grid with no authored height must still draw at the height its panels ask for.
+  it.each([
+    { target: 'report', heightAbove: 324 },
+    { target: 'print', heightAbove: 342 },
+    { target: 'dashboard', heightAbove: 335 },
+  ])('draws a row-placed tier grid with no authored height tall enough ($target)', ({ target, heightAbove }) => {
+    const grid = laidOut({ type: 'grid', data: { panels: rowPlaced(first(5)) }, options: { ...framed, target, size: { width: 480, unit: 'px' } } });
+    expect(grid.warnings.map((warning) => warning.code)).not.toContain('grid-panel-too-short');
+    expect(grid.size.height).toBeGreaterThan(heightAbove);
+  });
+  // An aligned grid kept the old slot weights in its minimum only, so a canvas that draws today would refuse by 5 px.
+  it('still draws an aligned tier grid at the authored size it fits', () => {
+    const three = { categories: ['Alpha', 'Beta', 'Gamma'].map((label) => ({ id: label.toLowerCase(), label })), series: [
+      { id: 'ac', label: 'Actual', values: [360, 397, 384] },
+      { id: 'py', label: 'PY', role: 'reference' as const, scenario: 'PY' as const, values: [350, 403, 366] }] };
+    const stretch = { align: { vertical: 'stretch' } };
+    const grid = laidOut({ type: 'grid', data: { panels: [
+      { id: 'base', type: 'column', data: three, ...stretch },
+      { id: 'tier', type: 'variance', data: three, ...stretch, options: { variant: 'relative', variance: { of: 'ac', vs: 'py' } } }] },
+    options: { ...framed, size: { width: 480, height: 308, unit: 'px' } } });
+    expect(grid.refused).toBeFalsy();
+    expect(grid.size).toEqual({ width: 480, height: 308 });
   });
 });
 
