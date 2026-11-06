@@ -5,7 +5,7 @@ import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request'
 import { registerTheme, resolveTheme } from '../src/core/theme';
 import { prepareChart } from '../src/react/prepare';
 import { prepareTableData, resolvePreparedTable, resolveTable, ZERO_LIFT } from '../src/core/charts/table/resolve';
-import { AUTOMATIC_FORMAT, MAGNITUDE_GROUP, MAGNITUDE_FIGURES } from '../src/core/formatSpec';
+import { AUTOMATIC_FORMAT, LABEL_ONLY_ROW, MAGNITUDE_GROUP, MAGNITUDE_FIGURES } from '../src/core/formatSpec';
 import { zeroLifts } from '../src/core/formatPrecision';
 import { withPlanInputs } from '../src/core/layoutPlan';
 import type { TableData, TableOptions } from '../src/core/types/table';
@@ -142,6 +142,17 @@ it('keeps distinct prepared content apart and preserves private format symbols',
   const withFunction = Object.assign(accountingData(), { callback });
   expect(prepareTableData(withFunction)).not.toBe(prepareTableData(withFunction));
   expect(prepareTableData(Object.assign(accountingData(), { callback }))).not.toBe(prepareTableData(withFunction));
+});
+
+// DimSwitch marks label-only rows, and a key that rejects the marker compiled one table six times per render.
+it('reuses the prepared model for data with label-only rows', () => {
+  const marked = (flag: boolean): TableData => {
+    const data = accountingData();
+    if (flag) Object.assign(data.rows[0]!, { [LABEL_ONLY_ROW]: true });
+    return data;
+  };
+  expect(prepareTableData(marked(true))).toBe(prepareTableData(marked(true)));
+  expect(prepareTableData(marked(true))).not.toBe(prepareTableData(marked(false)));
 });
 
 // Snapshotting JSON-authored cells must keep "__proto__" as data rather than change an object's prototype.

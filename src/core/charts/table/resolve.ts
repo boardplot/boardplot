@@ -17,6 +17,7 @@ import { unitPrinted } from '../../frame';
 import {
   AUTOMATIC_FORMAT,
   type AutomaticFormatSource,
+  LABEL_ONLY_ROW,
   MAGNITUDE_FIGURES,
   MAGNITUDE_GROUP,
   type MagnitudeGroupSource,
@@ -298,7 +299,7 @@ const sharedPreparedData = new Map<string, PreparedTableData>();
 const MAX_SHARED_KEY_CHARS = 128 * 1024;
 const MAX_SHARED_TOTAL_CHARS = 2 * 1024 * 1024;
 let sharedKeyChars = 0;
-const modelSymbols = new Map<symbol, number>([AUTOMATIC_FORMAT, MAGNITUDE_GROUP, MAGNITUDE_FIGURES, ZERO_LIFT].map((symbol, index) => [symbol, index]));
+const modelSymbols = new Map<symbol, number>([AUTOMATIC_FORMAT, MAGNITUDE_GROUP, MAGNITUDE_FIGURES, ZERO_LIFT, LABEL_ONLY_ROW].map((symbol, index) => [symbol, index]));
 
 /** Exact plain-data content, including private format metadata. Unsupported objects get no retained cache. */
 function modelContentKey(value: unknown): string | undefined {
