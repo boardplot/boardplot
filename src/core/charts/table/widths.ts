@@ -7,7 +7,7 @@ import type { Id } from '../../types/cell';
 import type { LintWarning } from '../../types/scene';
 import type { Theme } from '../../types/theme';
 import type { ResolvedTable, ResolvedColumn, ResolvedRow, ResolvedCell, TableOptions } from '../../types/table';
-import { levelLadder } from './ladder';
+import { isCohortDensity, levelLadder } from './ladder';
 import { textScaleOf, tableHeadFloorPx } from '../../typeFloors';
 import { targetFloorsPx, TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { footerType } from '../../footer';
@@ -334,7 +334,10 @@ function measureTableTracks(table: ResolvedTable, theme: Theme, measure: TextMea
    * dense one, which it can still draw at.
    */
   const regular = trackWidths(regularFonts);
-  const dense = cols.length >= DENSE_COLUMNS ? trackWidths(tableFonts(theme, ladder, cols.length)) : undefined;
+  // Dense heads change only tracking. An authored head face can make the two plans identical.
+  const denseFonts = cols.length >= DENSE_COLUMNS ? tableFonts(theme, ladder, cols.length) : undefined;
+  const dense = denseFonts === undefined ? undefined : denseFonts.header.letterSpacing === regularFonts.header.letterSpacing
+    ? regular : trackWidths(denseFonts);
   return { cols, rows, widthRows, spacerBefore, spacerTotal, figures, wideTable, cellPadX, labelColumn, labelLead, groupCell, headingFaces, regularFonts, cellStep, indentStep, childCount, indents, operatorSlot, rowIndent, cellFont, affixRoom, columnHeaderText, chipSpan, sumOf, hasChanges, uncutLabelWidth, regular, dense };
 }
 
@@ -353,7 +356,9 @@ const measuredBodies = new WeakMap<ResolvedTable, Map<string, Map<string, Map<nu
 /** Cell text is independent of the fitting rung's padding, head face and label indent. */
 function measuredBodyWidths(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions, view: TableWidthView, rows: readonly ResolvedRow[]) {
   const key = JSON.stringify([theme.type, theme.table, measureId(measure), measureId(view.slack),
-    options.density, options.target, textScaleOf(options), options.inlineVisibility, rows.map(row => row.id)]);
+    // Ordinary densities change row air only. Cohort densities also change the measured type.
+    isCohortDensity(options.density ?? 'regular') ? options.density : undefined,
+    options.target, textScaleOf(options), options.inlineVisibility, rows.map(row => row.id)]);
   let variants = measuredBodies.get(table);
   if (!variants) measuredBodies.set(table, variants = new Map());
   let widths = variants.get(key);
@@ -369,7 +374,7 @@ function measuredTable(table: ResolvedTable, theme: Theme, measure: TextMeasurer
   const ids = (entries: readonly { id: Id }[] | undefined) => entries?.map(entry => entry.id);
   const key = JSON.stringify([
     theme.type, theme.table, measureId(measure), measureId(view.slack),
-    options.density, options.target, textScaleOf(options), options.cellPadX, options.labelIndent,
+    isCohortDensity(options.density ?? 'regular') ? options.density : undefined, options.target, textScaleOf(options), options.cellPadX, options.labelIndent,
     options.outlineMarks, options.figures, options.inlineVisibility, options.rowLabelLines, options[LABEL_WRAP_FLOOR],
     ids(view.columns), ids(view.rows), ids(view.widthRows), ids(view.fullRows), ids(view.allColumns),
     view.spacerTotal, view.scroll, view.headLines, view.headGlue, view.withMarks, view.trailingTracking,

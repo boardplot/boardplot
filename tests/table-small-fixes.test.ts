@@ -5,6 +5,7 @@ import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request'
 import { requireGeometry } from '../src/core/sizing';
 import { repaintGeometry } from '../src/core/repaintGeometry';
 import { resolveTable } from '../src/core/charts/table/resolve';
+import type { TableMarks } from '../src/core/charts/table/layout';
 import { sortRows } from '../src/core/charts/table/view';
 import { preparedTableRecords } from '../src/core/a11y/structuralRecords';
 import { displayedValueText, interactionValueText } from '../src/core/a11y/valueText';
@@ -1381,6 +1382,24 @@ it('does not report an overflow for a pixel of rounding in the shrink', () => {
   };
   const geometry = layout('table', data, { theme: 'boardroom', variant: 'benchmark', size: { width: 1235, height: 700 } });
   expect(geometry.warnings.filter((warning) => warning.code === 'table-overflow')).toEqual([]);
+});
+
+// Bulk shrinking must keep the last removed pixel on the same column when another track reaches its floor.
+it('keeps wide-table shrink order at unequal floors and fractional widths', () => {
+  const measure: typeof defaultMeasurer = (text, font) => ({ ...defaultMeasurer(text, font), width: text.length === 0 ? 0 : 10 });
+  for (const [fraction, width] of [[0, 500], [0, 280], [0.25, 500]] as const) {
+    const tracks = [15 + fraction, 17, ...Array<number>(17).fill(30)];
+    const data: TableData = {
+      columns: [{ id: 'label', kind: 'rowLabel', label: '', width: 14 },
+        ...tracks.map((width, i) => ({ id: `v${i}`, kind: 'value' as const, label: '', width }))],
+      rows: [{ id: 'a', label: 'A', cells: Object.fromEntries(tracks.map((_, i) => [`v${i}`, 1])) }],
+    };
+    const geometry = layout('table', data, { measure, columnHeads: false, cellPadX: 2, frameFill: 'none',
+      margin: { left: 0, right: 0 }, size: { width, height: 800 }, belowMinimum: 'refuse' });
+    expect((geometry.marks as unknown as TableMarks).columns.map(column => column.w)).toEqual(width === 280
+      ? Array<number>(20).fill(14)
+      : [14, fraction === 0 ? 14 : 13, 14, 26, ...Array<number>(16).fill(27)]);
+  }
 });
 
 // The post-pass measured every non-wrap text column at its two-line width in each pass, also when the shrink cut none of them.

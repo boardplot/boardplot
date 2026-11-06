@@ -57,6 +57,28 @@ export function hiddenTotalFoldWarnings(rows: readonly TableRow[], collapsed: It
     suggest: 'Raise options.depth or open rows in options.expansion, so that member rows print, or keep the Total.' }];
 }
 export const dimswitchRowId = (variant: string, member: string, measure?: string): string => key(variant, member, ...(measure ? [measure] : []));
+
+function tableOptionsOf(options: DimSwitchOptions) {
+  const {variant:_v,depth:_d,splits:_sp,order:_o,show:_sh,thresholds:_t,minimumSample:_m,expansion:_e,widths:_w,columnOverrides:_overrides,columnOrder:_co,bars:_b,rowVisibility:_rv,...tableOptions}=options;
+  // Generated columns already applied visibility. A cohort row cannot hold the two-line dimswitch cell.
+  if (tableOptions.columnVisibility) tableOptions.columnVisibility={};
+  if ((tableOptions.density as string | undefined)?.startsWith('cohort')) delete tableOptions.density;
+  return tableOptions;
+}
+
+const tableDefaults = (form: DimSwitchForm, pinned: CompiledDimSwitch['options']['stickyLabels']) => ({
+  variant:'steering' as const,stickyLabels:pinned,mountCollapsed:false,fitFormats:true,
+  labelIndent:form.card ? {base:12,step:12} : {base:25,step:17},...(form.card ? {cellPadX:3} : {}),
+});
+
+/** Current visibility keeps the compiler's property order even when the input adds or removes the field. */
+export function currentDimSwitchOptions(compiled: CompiledDimSwitch['options'], options: DimSwitchOptions, form: DimSwitchForm, effectLabel?: string): CompiledDimSwitch['options'] {
+  const {inlineVisibility:_inline,expansion,...kept}=compiled;
+  const tableOptions=tableOptionsOf(options);
+  return {...tableDefaults(form,kept.stickyLabels),...tableOptions,...kept,
+    ...(effectLabel ? {inlineVisibility:{effect:false,...tableOptions.inlineVisibility}} : {}),expansion};
+}
+
 /** Fields of a resolved expression (measure references are inlined before this runs). */
 const fields = (expr: DimSwitchExpression): string[] => typeof expr === 'number' || 'measure' in expr ? [] : 'field' in expr ? [expr.field] : 'total' in expr ? [] : [...fields(expr.a), ...fields(expr.b)];
 /** Measure ids an expression names. */
@@ -822,11 +844,8 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     if (blockColumns.length || authoredPeriods.length) warnings.push(...hiddenTotalFoldWarnings(rows,collapsed,totalId));
     return records.filter(record=>record.kind!=='calc' || !hiddenIds.has(record.rowId));
   }
-  const {variant:_v,depth:_d,splits:_sp,order:_o,show:_sh,thresholds:_t,minimumSample:_m,expansion:_e,widths,columnOverrides:overrides,columnOrder:_co,bars:_b,rowVisibility:_rv,...tableOptions}=options;
-  // The columns left the table above, and generatedIdWarnings reported any other id. An empty record also covers the raw options a layout spreads first.
-  if (tableOptions.columnVisibility) tableOptions.columnVisibility={};
-  // A cohort density is a fixed one-line row and a dimswitch cell holds two lines: it is retired here and ignored (retired.ts).
-  if ((tableOptions.density as string | undefined)?.startsWith('cohort')) delete tableOptions.density;
+  const {widths,columnOverrides:overrides}=options;
+  const tableOptions=tableOptionsOf(options);
   const width={label:widths?.label ?? 320,range:widths?.range ?? 110,change:widths?.change ?? 92,period:widths?.period ?? 94};
   // The card form: value tracks as wide as their content, the label track at most 140 px (its labels wrap).
   const fixed=(w:number)=>form.card ? {} : {width:w};
@@ -882,7 +901,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     // Range and its comparisons form one block between labels and periods.
     ],columnGroups:[{id:'labels',label:'Labels',heading:false,columns:['label']},...(blockColumns.length ? [{id:'block',label:'Range',heading:false,columns:blockColumns}] : [])],rows},
     // No rowExtent: under the default the rules end at the last track.
-    options:{variant:'steering',stickyLabels:pinned,mountCollapsed:false,fitFormats:true,labelIndent:form.card ? {base:12,step:12} : {base:25,step:17},...(form.card ? {cellPadX:3} : {}),...tableOptions,
+    options:{...tableDefaults(form,pinned),...tableOptions,
       ...(notes.length ? {[ENGINE_NOTES]:notes} : {}),
       ...(labelWidth!==undefined && !form.card ? {[SOFT_LABEL_CAP]:true} : {}),
       ...{[LABEL_WRAP_FLOOR]:true},

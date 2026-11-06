@@ -33,8 +33,17 @@ function inputJson(value: object): string {
 }
 
 const inputVersions = new WeakMap<object, { json: string; version: number }>();
+const ownedInputVersions = new WeakMap<object, number>();
 let nextInputVersion = 0;
+
+/** A completed private model that callers only receive through a deep copy. Never mark caller inputs. */
+export function ownPlanInput(value: object): void {
+  if (!ownedInputVersions.has(value)) ownedInputVersions.set(value, nextInputVersion++);
+}
+
 function inputVersion(value: object): number {
+  const owned = ownedInputVersions.get(value);
+  if (owned !== undefined) return owned;
   const json = inputJson(value);
   let known = inputVersions.get(value);
   if (!known || known.json !== json) inputVersions.set(value, known = { json, version: nextInputVersion++ });

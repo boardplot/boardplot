@@ -10,7 +10,9 @@ import { FIXED_SIZE_PROBE } from '../src/core/sizing';
 import { PLAN_ONLY, materializeLayout } from '../src/core/layoutPlan';
 import * as tablePlans from '../src/core/layoutPlan';
 import * as tableWidths from '../src/core/charts/table/widths';
+import * as dimensionCompiler from '../src/core/charts/dimswitch/compile';
 import type { TableData, TableOptions } from '../src/core/types/table';
+import type { DimSwitchData, DimSwitchDerived, DimSwitchOptions } from '../src/core/charts/dimswitch/types';
 import type { Geometry } from '../src/core/types/scene';
 import { defaultMeasurer, type TextMeasurer } from '../src/core/text';
 
@@ -121,6 +123,48 @@ it('reuses the selected plan across repeated resolved requests', () => {
   }
 });
 
+// Private compiled models must not hide source edits or leak through mutable public results.
+it('keeps dimension table source edits and returned compiled data isolated', () => {
+  const entry = getFixtures('dimswitch')[0]!;
+  const data = structuredClone(entry.data) as DimSwitchData;
+  const options: DimSwitchOptions = { ...entry.options, theme: { preset: 'bridge' }, size: { width: 878 },
+    columnOverrides: { label: { label: 'Metric' } } };
+  const render = (source = data, settings = options) => {
+    const result = layoutResolvedRequest(resolveChartRequest({ type: 'dimswitch', data: source, options: settings }));
+    expect(result.refused).not.toBe(true);
+    return result as unknown as Geometry<object, DimSwitchDerived>;
+  };
+  const first = render();
+  const expected = JSON.stringify(first);
+  first.scene.length = 0;
+  first.derived.table.rows[0]!.label = 'Changed result';
+  first.derived.compiled.data.rows[0]!.label = 'Changed compiled row';
+  first.derived.compiled.data.columns[0]!.label = 'Changed compiled column';
+  expect(JSON.stringify(render())).toBe(expected);
+
+  const sums = data.facts[0]!.sums;
+  const field = Object.keys(sums).find(key => typeof sums[key] === 'number')!;
+  sums[field] = (sums[field] as number) + 17;
+  const changedData = JSON.stringify(render());
+  expect(changedData).not.toBe(expected);
+  expect(changedData).toBe(JSON.stringify(render(structuredClone(data), structuredClone(options))));
+  options.columnOverrides!.label!.label = 'Revised metric';
+  const changedOptions = JSON.stringify(render());
+  expect(changedOptions).not.toBe(changedData);
+  expect(changedOptions).toBe(JSON.stringify(render(structuredClone(data), structuredClone(options))));
+
+  const plans = vi.spyOn(tablePlans, 'deferLayout');
+  const widths = vi.spyOn(tableWidths, 'tableWidths');
+  try {
+    expect(JSON.stringify(render())).toBe(changedOptions);
+    expect(plans).not.toHaveBeenCalled();
+    expect(widths).not.toHaveBeenCalled();
+  } finally {
+    plans.mockRestore();
+    widths.mockRestore();
+  }
+});
+
 // Ordinary rendering promises a verified width, while measurement still finds the exact floor.
 it('returns a safe width-only table repair without requiring exact minimum advice', () => {
   const spec = { type: 'table', data: structuredClone(fixture.data),
@@ -168,4 +212,68 @@ it('keeps hidden symbol keys hidden on a copied result', () => {
   const copy = tablePlans.copyPlannedValue({ note: Object.defineProperty({ text: 'a' }, hidden, { value: { kind: 'b' }, configurable: true }) });
   expect(Object.getOwnPropertyDescriptor(copy.note, hidden)?.enumerable).toBe(false);
   expect((copy.note as unknown as Record<symbol, unknown>)[hidden]).toEqual({ kind: 'b' });
+});
+
+// A visibility change reuses the private data while returning the current options and exact property shape.
+it.each([undefined, 'Effect'])('reuses dimension forms with current inline visibility and effect label %s', (effectLabel) => {
+  const entry = getFixtures('dimswitch')[0]!;
+  const data = structuredClone(entry.data) as DimSwitchData;
+  if (effectLabel === undefined) delete data.effectLabel;
+  else data.effectLabel = effectLabel;
+  const base: DimSwitchOptions = { ...entry.options, theme: { preset: 'bridge' }, variant: 'by-member', depth: 3, splits: true };
+  delete base.inlineVisibility;
+  const render = (source: DimSwitchData, options: DimSwitchOptions) => {
+    const result = layoutResolvedRequest(resolveChartRequest({ type: 'dimswitch', data: source, options }));
+    expect(result.refused).not.toBe(true);
+    return result as unknown as Geometry<object, DimSwitchDerived>;
+  };
+  const compile = vi.spyOn(dimensionCompiler, 'compileDimSwitch');
+  const resolve = vi.spyOn(tableResolution, 'resolveTable');
+  const variants: Pick<DimSwitchOptions, 'inlineVisibility'>[] = [{}, { inlineVisibility: { change: false } }, { inlineVisibility: undefined },
+    { inlineVisibility: { change: true } }, {}, { inlineVisibility: { change: false, effect: true } }];
+  try {
+    for (const [index, visibility] of variants.entries()) {
+      // Different widths force outer layout work even when undefined equals an absent option there.
+      const options: DimSwitchOptions = index === 5
+        ? { ...visibility, ...base, size: { width: 3000 + index } }
+        : { ...base, size: { width: 3000 + index }, ...visibility };
+      compile.mockClear();
+      resolve.mockClear();
+      const actual = render(data, options);
+      if (index > 0) { expect(compile).not.toHaveBeenCalled(); expect(resolve).not.toHaveBeenCalled(); }
+      const current = actual.derived.compiled.options;
+      const fresh = render(structuredClone(data), structuredClone(options));
+      expect(Object.hasOwn(current, 'inlineVisibility')).toBe(Object.hasOwn(fresh.derived.compiled.options, 'inlineVisibility'));
+      expect(current.inlineVisibility).toStrictEqual(fresh.derived.compiled.options.inlineVisibility);
+      const left = JSON.stringify(actual), right = JSON.stringify(fresh);
+      const mismatch = [...left].findIndex((character, at) => character !== right[at]);
+      expect(left === right, JSON.stringify({ index, effectLabel, mismatch, actual: left.slice(mismatch - 50, mismatch + 180), fresh: right.slice(mismatch - 50, mismatch + 180) })).toBe(true);
+      if (current.inlineVisibility) current.inlineVisibility.change = !current.inlineVisibility.change;
+      expect(JSON.stringify(render(data, options)) === JSON.stringify(fresh), 'The next result stays isolated from edited returned options').toBe(true);
+    }
+    const noteOptions: DimSwitchOptions = { ...base, size: { width: 3000 }, inlineVisibility: { change: false }, notes: { show: ['disclosure'] } };
+    const shown = render(data, noteOptions);
+    noteOptions.notes!.show = ['method'];
+    const hidden = render(data, noteOptions);
+    expect(hidden.frame.noteList?.find(note => note.text === 'Week 2 to date')?.kind).toBe('disclosure');
+    expect(JSON.stringify(hidden.frame)).not.toBe(JSON.stringify(shown.frame));
+    expect(JSON.stringify(hidden) === JSON.stringify(render(structuredClone(data), structuredClone(noteOptions))), 'Caller note edits match a fresh render').toBe(true);
+  } finally {
+    compile.mockRestore();
+    resolve.mockRestore();
+  }
+});
+
+// A kept dimension form must not change a note from disclosure to method when one data object renders at a second width.
+it('keeps note kinds when one dimension data object renders at a second width', () => {
+  const entry = getFixtures('dimswitch').find(fixture => fixture.id === 'by-member')!;
+  const noteKinds = (data: DimSwitchData, width: number) => {
+    const result = layoutResolvedRequest(resolveChartRequest({ type: 'dimswitch', data, options: { ...entry.options, size: { width } } }));
+    return (result as unknown as Geometry).frame.noteList?.map(note => [note.text, note.kind]);
+  };
+  const data = structuredClone(entry.data) as DimSwitchData;
+  noteKinds(data, 332);
+  const fresh = noteKinds(structuredClone(entry.data) as DimSwitchData, 878);
+  expect(fresh?.length).toBeGreaterThan(0);
+  expect(noteKinds(data, 878)).toEqual(fresh);
 });

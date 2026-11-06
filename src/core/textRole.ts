@@ -95,15 +95,8 @@ const DIGITS = "\\p{Nd}[\\p{Nd}.,'’  ٫٬، ]*";
 const SIGN = '[+\\-–−؜‎‏]*';
 const PERCENT = '(?:%|٪|‰|pp|x|×)';
 const ONE_NUMBER = `${SIGN}\\s?${CURRENCY}?\\s?${SIGN}${DIGITS}${MAGNITUDE}?\\s?${PERCENT}?[؜‎‏]?\\s?${CURRENCY}?\\s?${MAGNITUDE}?`;
-/**
- * One number, or one number with its share behind it the way a slice
- * prints "35.6M (37%)", or one number in brackets, which is how the
- * accounting sign writes a negative: "($1,200,000.00)".
- */
-const NUMBER_ALONE = new RegExp(
-  `^(?:${ONE_NUMBER}(?:\\s?\\(${ONE_NUMBER}\\))?|\\(${ONE_NUMBER}\\))$`,
-  'u',
-);
+/** Accounting brackets and number/share pairs reuse this one anchored number grammar. */
+const NUMBER_ALONE = new RegExp(`^${ONE_NUMBER}$`, 'u');
 /**
  * What the engine prints where a number could not be computed. It stands in
  * a value slot and has no digits to align, so it counts as a number rather
@@ -121,7 +114,13 @@ const NUMBER_PLACEHOLDER = /^(?:n\/a|n\.m\.|[-–—])$/;
 export function isNumberAlone(text: string): boolean {
   const trimmed = text.replace(/\s+/g, ' ').trim();
   if (trimmed === '') return true;
-  return NUMBER_PLACEHOLDER.test(trimmed) || NUMBER_ALONE.test(trimmed);
+  if (NUMBER_PLACEHOLDER.test(trimmed)) return true;
+  const open = trimmed.indexOf('(');
+  if (open < 0) return NUMBER_ALONE.test(trimmed);
+  if (!trimmed.endsWith(')')) return false;
+  // ONE_NUMBER contains no brackets. Any nested or extra pair fails the same anchored matcher.
+  return NUMBER_ALONE.test(trimmed.slice(open + 1, -1))
+    && (open === 0 || NUMBER_ALONE.test(trimmed.slice(0, open).trimEnd()));
 }
 
 /**
