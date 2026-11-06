@@ -975,7 +975,7 @@ export function layoutSparkline(
       });
     }
   }
-  const solved = solveLabels(requests, occupied, labelCtx(theme, size, {}, {
+  const solved = solveLabels(requests, occupied, labelCtx(theme, size, { labelOffsets: options.labelOffsets }, {
     measure,
     plot: box,
     labelPad: 0,

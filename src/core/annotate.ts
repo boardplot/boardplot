@@ -1886,21 +1886,26 @@ function finishAnnotatePass(
     if (!glyph) continue;
     const placement = glyph.placements.get(String(label.slot));
     if (!placement) continue;
-    label.rect = placement.labelRect;
+    // A labelOffsets move shifted the whole seat: the text and the chip go with it, and the leader still ends at the anchor.
+    const dx = label.rect.x - placement.groupRect.x;
+    const dy = label.rect.y - placement.groupRect.y;
+    const labelRect = dx === 0 && dy === 0 ? placement.labelRect : { ...placement.labelRect, x: placement.labelRect.x + dx, y: placement.labelRect.y + dy };
+    const chipCenter = dx === 0 && dy === 0 ? placement.chipCenter : { x: placement.chipCenter.x + dx, y: placement.chipCenter.y + dy };
+    label.rect = labelRect;
     if (label.hidden) {
       glyph.nodeIds.splice(0);
       continue;
     }
     label.leader = calloutGlyphLeader(
-      placement.chipCenter,
+      chipCenter,
       placement.anchor,
       glyph.radius,
     );
-    const glyphNodes = calloutGlyphNodes(glyph, placement.chipCenter, input.theme);
+    const glyphNodes = calloutGlyphNodes(glyph, chipCenter, input.theme);
     nodes.push(...glyphNodes);
     const chipRect = {
-      x: placement.chipCenter.x - glyph.radius,
-      y: placement.chipCenter.y - glyph.radius,
+      x: chipCenter.x - glyph.radius,
+      y: chipCenter.y - glyph.radius,
       w: glyph.radius * 2,
       h: glyph.radius * 2,
     };

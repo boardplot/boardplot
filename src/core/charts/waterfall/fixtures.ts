@@ -187,6 +187,27 @@ export const fixtures: Fixture<WaterfallData, WaterfallOptions>[] = [
     ],
   },
   {
+    id: 'callout-label-offset',
+    title: 'labelOffsets moves a callout up from its step',
+    kind: 'example',
+    data: {
+      items: [
+        { id: 'open', label: 'Opening', type: 'total', value: 200 },
+        { id: 'volume', label: 'Volume', value: 42 },
+        { id: 'price', label: 'Price', value: -18 },
+        { id: 'costs', label: 'Costs', value: -36 },
+        { id: 'close', label: 'Closing', type: 'total' },
+      ],
+    },
+    options: {
+      title: 'Costs take back most of the volume gain',
+      unit: 'EUR m',
+      source: 'Illustrative bridge',
+      labelOffsets: { 'annotation:callout-1': { y: -40 } },
+    },
+    annotations: [{ kind: 'callout', at: 'costs', text: 'Energy contracts renewed' }],
+  },
+  {
     id: 'bracket-low-steps',
     title: 'A bracket stands directly above low steps',
     kind: 'example',

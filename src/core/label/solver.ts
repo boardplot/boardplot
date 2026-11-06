@@ -324,9 +324,13 @@ export interface LabelRequest {
   leaderClearsAxis?: boolean;
 }
 
+export type LabelOffset = { x?: number; y?: number };
+
 export interface SolveCtx {
   density: LabelDensity;
   pins: Record<Id, SlotId>;
+  /** Authored moves by label id, in px (options.labelOffsets). A move that is blocked keeps the chosen seat and warns. */
+  labelOffsets?: Record<Id, LabelOffset>;
   measure: TextMeasurer;
   plot: Rect;
   /** Full canvas — candidates outside it are rejected. */
@@ -369,6 +373,7 @@ interface LabelCtxOptions {
   focus?: FocusInput | null;
   labelDensity?: LabelDensity;
   labelPlacements?: Record<Id, SlotId>;
+  labelOffsets?: Record<Id, LabelOffset>;
 }
 
 /**
@@ -386,6 +391,7 @@ export function labelCtx(
     focus: options.focus,
     density: options.labelDensity ?? 'smart',
     pins: options.labelPlacements ?? {},
+    labelOffsets: options.labelOffsets,
     canvas: { x: 0, y: 0, w: size.width, h: size.height },
     darkInk: theme.color.ink,
     lightInk: theme.color.inkInverse,
@@ -600,13 +606,10 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
     // A bare value in the tick label column reads as a tick; a name or a named reference ('50.0 Plan') does not.
     const inTickColumn = (rect: Rect, air = 0): boolean => ['point', 'segment', 'total', 'grandTotal'].includes(req.kind)
       && (occupied.tickColumns?.some((column) => rectsOverlap(column, rect, air)) ?? false);
-    const blockAt = (index: number, padding: number): Block => {
-      const key = `${index}:${padding}`;
-      const cached = blocks.get(key);
-      if (cached) return cached;
-      const { rect, overColumns, overRules, overLegend } = req.candidates[index]!;
+    const blockOf = (cand: SlotCandidate, padding: number, moved = false): Block => {
+      const { rect, overColumns, overRules, overLegend } = cand;
       let value: Block = 'free';
-      if (!withinMarkBand(req.candidates[index]!) || (ctx.canvas && !rectContains(ctx.canvas, rect, 0))) {
+      if ((!moved && !withinMarkBand(cand)) || (ctx.canvas && !rectContains(ctx.canvas, rect, 0))) {
         value = 'hard';
       } else {
         // Hard when any counted hit is not a label, else label when any is: the order of hits does not matter.
@@ -614,24 +617,24 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
         const hard = anyHit(occupied, rect, padding, (o) => {
           if (o.kind === 'annotation' && selfAnn && o.owner.annotationId === selfAnn) return false;
           if (overRules && (o.part === 'referenceLine' || o.part === CROSSABLE_RULE_PART)) return false;
-          if (req.candidates[index]!.overValueLines && isValueLine(o)) return false;
+          if (cand.overValueLines && isValueLine(o)) return false;
           if (overLegend && o.kind === 'legend') return false;
           // A slot over columns lies wholly on one column or clear of them:
           // a label across a fill edge is half on the page and half on the
           // fill, and no one paint reads on both.
-          if (o.kind === 'mark' && ((isOwnMark(o.owner, req.owner, req.kind, o.part) && (!req.candidates[index]!.keepOffLines || o.part === undefined || isColumnPart(o.part))) || (overColumns && isColumnPart(o.part) && rectContains(o.rect, rect, 0)))) return false;
+          if (o.kind === 'mark' && ((isOwnMark(o.owner, req.owner, req.kind, o.part) && (!cand.keepOffLines || o.part === undefined || isColumnPart(o.part))) || (overColumns && isColumnPart(o.part) && rectContains(o.rect, rect, 0)))) return false;
           // A seat on another series' area fill, clear of its edges, reads on that fill.
-          if (o.kind === 'mark' && o.part === AREA_FILL_PART && req.candidates[index]!.onFill?.seriesId === o.owner.seriesId) return false;
+          if (o.kind === 'mark' && o.part === AREA_FILL_PART && cand.onFill?.seriesId === o.owner.seriesId) return false;
           if (req.ownStrokeClear && o.kind === 'mark' && (o.part === undefined || o.part === AREA_FILL_PART) && !o.polygon && o.owner.seriesId === req.owner.seriesId && !rectsOverlap(o.rect, rect)) return false;
           // An inside seat needs no air from its own series' next piece (a stacked
           // band's slice of the next category): only an actual overlap blocks it there.
           // A seat inside a stacked area's band was cut clear of the band's drawn edges
           // (insideBandEdges); the edge claims are boxes around a slope and say no more.
           if (o.kind === 'mark' && req.owner.seriesId !== undefined && o.owner.seriesId === req.owner.seriesId
-            && req.candidates[index]!.slot.startsWith('inside') && (req.candidates[index]!.slot.startsWith('insideBand') || !rectsOverlap(o.rect, rect, 0))) return false;
+            && cand.slot.startsWith('inside') && (cand.slot.startsWith('insideBand') || !rectsOverlap(o.rect, rect, 0))) return false;
           // The same cut keeps it clear of the next band's edge, so a neighbour band's fill does not block it either.
           // Any inside seat reads on its own mark, which draws over an area fill (combo draws its columns in front).
-          if (o.kind === 'mark' && o.part === AREA_FILL_PART && (req.candidates[index]!.slot.startsWith('insideBand') || req.candidates[index]!.insideFill !== undefined)) return false;
+          if (o.kind === 'mark' && o.part === AREA_FILL_PART && (cand.slot.startsWith('insideBand') || cand.insideFill !== undefined)) return false;
           if (o.kind === 'label') {
             sawLabel = true;
             return false;
@@ -640,16 +643,62 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
         });
         if (hard) value = 'hard';
         else if (sawLabel) value = 'label';
-        if (value !== 'hard' && inTickColumn(rect, req.candidates[index]!.tickAir)) value = 'hard';
+        if (value !== 'hard' && inTickColumn(rect, cand.tickAir)) value = 'hard';
         // The tick labels themselves (axis claims with a text box, not a rule): the same air.
-        const tickAir = req.candidates[index]!.tickAir;
+        const tickAir = cand.tickAir;
         if (value !== 'hard' && tickAir && anyHit(occupied, rect, tickAir, (o) => o.kind === 'axis' && o.rect.w > 2 && o.rect.h > 2)) value = 'hard';
         if (value === 'free' && onLeader(rect, padding)) value = 'label';
         // A pin is judged at pad 0 and keeps its seat by the author's word: the 6 px rule is for the cascade.
-        if (value === 'free' && pinOf(req) !== req.candidates[index]!.slot && crowdsSeriesValue(req.candidates[index]!)) value = 'label';
+        if (value === 'free' && pinOf(req) !== cand.slot && crowdsSeriesValue(cand)) value = 'label';
       }
+      return value;
+    };
+    const blockAt = (index: number, padding: number): Block => {
+      const key = `${index}:${padding}`;
+      const cached = blocks.get(key);
+      if (cached) return cached;
+      const value = blockOf(req.candidates[index]!, padding);
       blocks.set(key, value);
       return value;
+    };
+    // An authored move: the seat as chosen, shifted. Its text keeps the ink of a fill only while it lies wholly on its
+    // own mark. Off that mark a white value would land on the page, so it takes page ink and a halo.
+    const offset = ctx.labelOffsets?.[req.id];
+    const movedSeat = (cand: SlotCandidate, move: LabelOffset): SlotCandidate => {
+      const rect = { ...cand.rect, x: cand.rect.x + (move.x ?? 0), y: cand.rect.y + (move.y ?? 0) };
+      const ownMarks = occupied.hitsWhich(rect, 0).filter((o) => o.kind === 'mark' && isOwnMark(o.owner, req.owner, req.kind, o.part));
+      const seat: SlotCandidate = { ...cand, rect };
+      if (cand.insideFill !== undefined || cand.onFill) {
+        if (!ownMarks.some((o) => rectContains(o.rect, rect, 0))) {
+          delete seat.insideFill;
+          delete seat.insidePaint;
+          delete seat.insideMatrix;
+          delete seat.insidePattern;
+          delete seat.onFill;
+          seat.needsBacking = true;
+        }
+      } else if (ownMarks.length > 0) seat.needsBacking = true;
+      if (!seat.leaderFrom && !req.noLeader) {
+        seat.leaderFrom = nearestPointOf(cand.rect, rect);
+        seat.leaderVertical = true;
+      }
+      return seat;
+    };
+    /** The seat a chosen candidate ends up in: moved where the move is free, otherwise as chosen, with a warning. */
+    const settled = (cand: SlotCandidate, padding: number): SlotCandidate => {
+      if (!offset) return cand;
+      const seat = movedSeat(cand, offset);
+      if (blockOf(seat, padding, true) === 'free') return seat;
+      const offCanvas = ctx.canvas !== undefined && !rectContains(ctx.canvas, seat.rect, 0);
+      const blockers = describeBlockers(occupied.hitsWhich(seat.rect, padding), req, selfAnn, offCanvas ? 'the canvas edge' : 'the air a neighbouring label keeps');
+      warnings.push({
+        code: 'label-offset-blocked',
+        severity: 'warn',
+        message: `labelOffsets moves label '${req.id}' onto ${blockers}, so the label stays in seat '${cand.slot}'`,
+        owner: req.owner,
+        suggest: 'Use a smaller or another offset, or give the chart more room.',
+      });
+      return cand;
     };
     /**
      * Slots an author could still plausibly pin — never the immovable ones.
@@ -781,7 +830,7 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
         });
       } else if (blockAt(index, 0) === 'free' && (req.leaderClear !== 'includingPins' || !leaderFor(req.candidates[index]!) ||
         !leaderPieces(leaderFor(req.candidates[index]!)!.d).some(([a, b]) => occupied.hitsWhich(pieceBox(a, b), 0).some(o => o.kind === 'label' && segmentHitsRect(a, b, o.rect))))) {
-        const cand = req.candidates[index]!;
+        const cand = settled(req.candidates[index]!, 0);
         const label = finalize(base, req, cand, true, darkInk, lightInk);
         placed.push(label);
         occupied.claim(cand.rect, 'label', req.owner, TOTAL_KINDS.has(req.kind) ? TOTAL_PART : undefined);
@@ -878,14 +927,14 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
           if (!cand.onFill) ambiguous.push(cand);
           continue;
         }
-        place(cand, tried.length === 1 ? 'first candidate free' : `candidate ${tried.length} free`);
+        place(settled(cand, cand.pad ?? req.pad ?? pad), tried.length === 1 ? 'first candidate free' : `candidate ${tried.length} free`);
         done = true;
         break;
       }
     }
     if (done) continue;
     if (crossing && req.leaderAvoidsLabels) {
-      place(crossing, 'every free seat draws its leader across a label');
+      place(settled(crossing, crossing.pad ?? req.pad ?? pad), 'every free seat draws its leader across a label');
       warnings.push({
         code: 'label-leader-crossing',
         severity: 'warn',
@@ -901,14 +950,15 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
       const led = ambiguous.find((cand) => anchorLeader(cand.rect, anchorFor(cand.rect)) && !leaderExceedsLimit(req, { ...cand, leaderFrom: anchorFor(cand.rect) }) &&
         !crossesLabel(anchorLeader(cand.rect, anchorFor(cand.rect))));
       if (led) {
-        const leader = anchorLeader(led.rect, anchorFor(led.rect))!;
-        place(led, 'nearer another mark: leader from its anchor', leader);
+        const seat = settled(led, led.pad ?? req.pad ?? pad);
+        const leader = anchorLeader(seat.rect, anchorFor(seat.rect)) ?? anchorLeader(led.rect, anchorFor(led.rect))!;
+        place(seat, 'nearer another mark: leader from its anchor', leader);
         // The leader's end keeps its gutter clear: a later label touching it would read the leader as its minus sign.
         const [x, y] = leader.d.trim().split(/[\s,A-Za-z]+/).filter(Boolean).slice(-2).map(Number) as [number, number];
         const reach = LEADER_GUTTER_RATIO * led.rect.h;
         occupied.claim({ x: x - reach, y: y - reach, w: 2 * reach, h: 2 * reach }, 'label', req.owner);
       }
-      else place(ambiguous[0]!, 'nearer another mark; too close to its anchor for a leader');
+      else place(settled(ambiguous[0]!, ambiguous[0]!.pad ?? req.pad ?? pad), 'nearer another mark; too close to its anchor for a leader');
       continue;
     }
 
@@ -920,13 +970,22 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
         !cand.keepOffLines && (!req.noLeader || (!cand.leaderFrom && (!req.anchor || !nearerOtherMark(req, cand, occupied, ctx.pointOwnership !== undefined)))) && withinMarkBand(cand) && !cand.insideFill && !leaderExceedsLimit(req, cand) && !crossesLabel(leaderFor(cand)) && (!ctx.canvas || rectContains(ctx.canvas, cand.rect, 0)) && !onLeader(cand.rect, req.pad ?? pad) && !crowdsSeriesValue(cand) && !inTickColumn(cand.rect) &&
         !anyHit(occupied, cand.rect, req.pad ?? pad, (o) => !(o.part === 'trendLine' || o.part === 'zeroLine' || (req.protect === true && o.part === 'referenceLine') || (o.kind === 'mark' && isOwnMark(o.owner, req.owner, req.kind, o.part)))));
       if (across >= 0) {
-        const cand = req.candidates[across]!;
+        const cand = settled(req.candidates[across]!, req.pad ?? pad);
         const label = finalize(base, req, cand, false, darkInk, lightInk);
         label.halo = true;
         placed.push(label);
         occupied.claim(cand.rect, 'label', req.owner, TOTAL_KINDS.has(req.kind) ? TOTAL_PART : undefined);
         claimLeader(label);
         decisions.push({ labelId: req.id, strategy: 'candidatesOccupied', tried, chose: cand.slot, reason: note(req.protect ? 'highlighted value crosses a reference line' : 'label crosses a trend or zero line') });
+        continue;
+      }
+    }
+
+    // Nothing fits where it stands: the first seat, moved, is the one more try an offset gets.
+    if (offset && first && !(req.noLeader && first.leaderFrom)) {
+      const seat = movedSeat(first, offset);
+      if (blockOf(seat, first.pad ?? req.pad ?? pad, true) === 'free') {
+        place(seat, 'every seat is taken; the moved first seat is free');
         continue;
       }
     }
@@ -1177,6 +1236,16 @@ function withOwnedSeats(requests: LabelRequest[], model: PointOwnership, pinOf: 
   });
 }
 
+/** The point of `rect` nearest `other`: the middle of their overlap on an axis they share, else the near edge. */
+function nearestPointOf(rect: Rect, other: Rect): Point {
+  const nearest = (low: number, size: number, otherLow: number, otherSize: number): number => {
+    const from = Math.max(low, otherLow);
+    const to = Math.min(low + size, otherLow + otherSize);
+    return from <= to ? (from + to) / 2 : otherLow > low ? low + size : low;
+  };
+  return { x: nearest(rect.x, rect.w, other.x, other.w), y: nearest(rect.y, rect.h, other.y, other.h) };
+}
+
 /** A side leader starts at the marker's edge, as a line end's does. */
 const LED_FROM_R = 3;
 
@@ -1184,7 +1253,7 @@ const LED_FROM_R = 3;
 type Block = 'free' | 'label' | 'hard';
 
 /** Human-readable list of what actually sits in a refused pin's slot. */
-function describeBlockers(hits: OccupiedRect[], req: LabelRequest, selfAnn: string | undefined): string {
+function describeBlockers(hits: OccupiedRect[], req: LabelRequest, selfAnn: string | undefined, none = 'the canvas edge'): string {
   const parts: string[] = [];
   for (const o of hits) {
     if (o.kind === 'annotation' && selfAnn && o.owner.annotationId === selfAnn) continue;
@@ -1192,7 +1261,7 @@ function describeBlockers(hits: OccupiedRect[], req: LabelRequest, selfAnn: stri
     const label = `${o.kind}${o.part ? ` '${o.part}'` : ''} of ${formatOwner(o.owner)}`;
     if (!parts.includes(label)) parts.push(label);
   }
-  return parts.length > 0 ? parts.join('; ') : 'the canvas edge';
+  return parts.length > 0 ? parts.join('; ') : none;
 }
 
 export function sameOwner(a: OwnerRef, b: OwnerRef): boolean {

@@ -397,6 +397,8 @@ function layoutHorizontalWaterfall(
     ...options,
     variant: 'vertical',
     labelPosition: undefined,
+    // Offsets are screen pixels, so only the final horizontal solve applies them.
+    labelOffsets: undefined,
     annotations: [],
   };
   // No annotations in this pass, so no leg deficit and no second pass.
