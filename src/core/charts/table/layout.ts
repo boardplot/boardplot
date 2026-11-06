@@ -1,7 +1,11 @@
-import { tableWidths } from './widths';
+import { staticFrame } from '../../footer';
+import { executeTableFit, COMPACT_RETRY, SIZING_ONLY, HEAD_LINES, TIGHT_SPACING, HEAD_AIR_MIN, HEAD_LOOSE, TIGHT_PAD, SUB_LINES, REGULAR_SPACING, type LayoutOptions } from './fitPolicy';
+export { REGULAR_SPACING } from './fitPolicy';
+import { tableWidths, prepareTableWidthRung, solveTableWidthRung, type TableWidthPlan, type TableWidthRungPlan, type TableWidthProbe, type TableWidthMiss } from './widths';
 import { PLAN_ONLY, copyPlannedValue, deferLayout, isPlanned, materializeLayout, plannedCutCount, layoutKey, optionKey, tableTextMeasure, withPlanInputs } from '../../layoutPlan';
-import { liftOrFallback, missesSize, tightSpacingWarning } from '../tableFit';
+import { liftOrFallback } from '../tableFit';
 import { chartTheme } from '../chartEnv';
+import { zeroLifts } from '../../formatPrecision';
 import { structureCount } from '../../structureCounts';
 /**
  * Table layout measures resolveTable()'s semantic model, selects a numeric fit,
@@ -44,9 +48,9 @@ import { tableCellKey, tableCellNodeId } from './cellKey';
 import { isCohortDensity, levelLadder } from './ladder';
 import { presetLanguage } from './presets';
 import {
-  CHIP_PAD_X, HINT_GAP, INDENT_BASE, MARK_SIZE, kindFont, strongColumnFont,
+  CHIP_PAD_X, HINT_GAP, MARK_SIZE, kindFont, strongColumnFont,
   HEADING_CUT_MIN as CUT_MIN, SECTION_CHIP_GAP as BADGE_GAP,
-  ENGINE_NOTES, LABEL_WRAP_FLOOR, SOFT_LABEL_CAP, INLINE_LABEL_INDENT, cellPadX as trackCellPadX, figureFont, inlineFont as ladderInlineFont, changeLineFont, changeLineFitFont,
+  ENGINE_NOTES, INLINE_LABEL_INDENT, cellPadX as trackCellPadX, figureFont, inlineFont as ladderInlineFont, changeLineFont, changeLineFitFont,
   rowFont as ladderRowFont, tableFonts,
 } from './tracks';
 import { groupHeadingFaces, groupHeadingLabel, groupHeadingNote, groupHeadingWidth, groupHeadingWrap } from './groupHeading';
@@ -54,12 +58,12 @@ import { fitTableFormats, formatsFittedWarning } from './fitFormats';
 import { qualifierFont, tableInk, tableRuleInk } from './statement';
 import { chipHeight, chipPaints, hasPolarityBadge, isFigureCell, polarityBadgeInk, onTableGround, statusSquare, statusSquarePaint, tableGround, toneTextPaint } from './chips';
 import { lastObservedIndex, type SparklineDomain } from '../sparkline/layout';
-import { resolveTable, ZERO_LIFT, type ZeroLiftOptions } from './resolve';
+import { resolveTable, prepareTableData, resolvePreparedTable, ZERO_LIFT, type PreparedTableData, type ZeroLiftOptions } from './resolve';
 import type { ResolvedTable } from '../../types/table';
 import { DEFAULT_EMPTY_MESSAGE } from '../../emptyData';
 import { cellDrawsTabular, cellHoldsNumber, emptyMessageRow, expansionRootsHidden, finalClosers, hasNoDataRows, groupSpans, heatColumn, printsFigures, rowGrounds, tableFootnotes, visibleColumns, visibleInlineRows, visibleRows } from './view';
 import { fixedHeightCanvas, rowDrivenHeight, spareShare } from '../../rowCanvas';
-import { heightOmitted, rowSizing, VERIFY_ADVICE, WIDTH_PROBE, FIXED_SIZE_PROBE } from '../../sizing';
+import { heightOmitted, rowSizing, VERIFY_ADVICE, WIDTH_PROBE, FIXED_SIZE_PROBE, FORCE_COMPACT, ACCEPTANCE_PROBE } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { textScaleOf } from '../../typeFloors';
 import { maxOf, minOf, pushAll } from '../../arrays';
@@ -106,34 +110,13 @@ function cellRole(kind: ColumnKind, text: string): { role?: 'category' } {
   return cellHoldsNumber(kind, text) ? {} : { role: 'category' };
 }
 
-const COMPACT_RETRY = Symbol('tableCompactRetry');
-/** A class-floor probe reads sizing, not the selected rung's scene. */
-const SIZING_ONLY = Symbol('tableSizingOnly');
-/** A ladder step lets the value heads wrap to two lines. */
-const HEAD_LINES = Symbol('tableHeadLines');
-/** The tight rung (refuse-less): which air shrinks, across (cell air, gaps, side margins) and down (row air, top and bottom margins). */
-const TIGHT_SPACING = Symbol('tableTightSpacing');
-/** The head and group rows at their least air (no air above the head, 7 px to its rule), whatever the theme's `headPad` and `groupPad`. */
-const HEAD_AIR_MIN = Symbol('tableHeadAirMin');
-/** The tight rung's last try: a head may break before a short last word ("PERIOD" over "1"). */
-const HEAD_LOOSE = Symbol('tableHeadLoose');
-/** The tight rung's cell air; a column gap is twice this, the side margin too. */
-const TIGHT_PAD = 2;
 /** The most air a row takes above and below its line, as the theme's `table.rows.pad` allows. */
 const TABLE_PAD_MAX = 16;
 /** The air kept between the stretched rows and the footer. */
 const STANDOFF_BELOW = 12;
 /** A body row that holds no rows of its own: the rows that take spare canvas height. */
 const isLeafRow = (row: ResolvedRow): boolean => row.role !== 'total' && row.role !== 'section' && !row.hasChildren;
-/** The last height step: sub-labels on one line, cut with a title, where a pinned height misses. */
-const SUB_LINES = Symbol('tableSubLines');
-/** Regular spacing only: no tight rung. A caller that has other regular forms to try first (dimswitch) or only reads the floor (classFloor) sets it. */
-export const REGULAR_SPACING = Symbol('tableRegularSpacing');
-/** The compact retry carries the canvas height its caller gave the full table. */
-type LayoutOptions = TableOptions & { [PLAN_ONLY]?: boolean; [SIZING_ONLY]?: boolean; [COMPACT_RETRY]?: number; [HEAD_LINES]?: number; [TIGHT_SPACING]?: { columns: boolean; rows: boolean }; [HEAD_AIR_MIN]?: boolean; [SUB_LINES]?: number; [REGULAR_SPACING]?: boolean; [HEAD_LOOSE]?: boolean; [ENGINE_NOTES]?: string[]; [SOFT_LABEL_CAP]?: boolean; [LABEL_WRAP_FLOOR]?: boolean };
 type FormatFits = Map<string, ReturnType<typeof fitTableFormats>>;
-/** The frame gutter of a card-class table: 12 px a side at 480 px and narrower. */
-const CARD_GUTTER = 12;
 
 /** The cell texts a layout cut (each keeps its full text as a title). */
 function cutCount(geometry: Geometry<TableMarks, TableDerived>): number {
@@ -151,44 +134,85 @@ function cutCount(geometry: Geometry<TableMarks, TableDerived>): number {
  * text.
  */
 export function layoutTable(authoredData: TableData, options: TableOptions = {}, resolved = resolvedForSize(authoredData, options), preserveCompactFloor = false): Geometry<TableMarks, TableDerived> {
-  // A nonzero figure lifted off "0.0" ("0.0005") is wider than the plain rounded text. Where that costs a refusal,
-  // a cut or a compact step the rounded text does not take, it prints its bound ("<0.1"), also where the bound costs
-  // one too: the automatic number rule never prints a nonzero figure as a bare "0.0". Only where the bound would
-  // refuse a size the rounded text draws at does the rounded text draw.
-  const geometry = liftOrFallback((mode) => {
-    if (mode === 'full') return layoutTableLadder(authoredData, options, resolved, preserveCompactFloor);
-    const step = { ...options, [ZERO_LIFT]: mode } as TableOptions & ZeroLiftOptions;
-    return layoutTableLadder(authoredData, step, resolvedForSize(authoredData, step), preserveCompactFloor);
-  }, (lifted, plain) => costsWidth(lifted, plain, options), resolved.lifted,
-  (bound, plain) => missesFrame(bound, options) && !missesFrame(plain, options));
-  return (options as LayoutOptions)[PLAN_ONLY] || (options as LayoutOptions)[SIZING_ONLY] ? geometry : materializeLayout(geometry);
+  return prepareTableExecutor(authoredData, options, resolved).run(options, preserveCompactFloor);
 }
 
-const resolvedTables = new WeakMap<object, Map<string, ReturnType<typeof resolveTable>>>();
+type PreparedCandidate = ReturnType<typeof prepareTableCandidate>;
+
+/** Resolved themes are frozen and carry ownership outside their fields. */
+function snapshotTableOptions(options: TableOptions): TableOptions {
+  const theme = { preset: typeof options.theme === 'string' ? options.theme : options.theme?.preset, overrides: resolveTheme(options.theme) };
+  return { ...copyPlannedValue({ ...options, theme: undefined }), theme };
+}
 
 /**
- * The resolved table of one spec, shared by every frame a request tries: nothing
- * in it reads the frame, and a layout only reads it. The key holds the data, so
- * data changed in place resolves again. The key keeps semantic options and the
- * theme's glyph policy. Frame geometry and typography do not change the model.
+ * One table owns its numeric candidates across frame probes. A candidate prepares
+ * semantic rows, formatting, typography, spacers and legend once. Size and notes
+ * remain execution inputs, so settling a frame never resolves the table again.
  */
+export function prepareTableExecutor(authoredData: TableData, initialOptions: TableOptions = {}, initialResolved?: ReturnType<typeof resolveTable>) {
+  const candidates = new WeakMap<ReturnType<typeof resolveTable>, Map<string, PreparedCandidate>>();
+  const run = (options: TableOptions = initialOptions, preserveCompactFloor = false, suppliedResolved?: ReturnType<typeof resolveTable>, preparedInput?: PreparedTableData): Geometry<TableMarks, TableDerived> => withPlanInputs(() => {
+    const input = preparedInput ?? prepareTableData(authoredData, options);
+    const resolved = suppliedResolved ?? (options === initialOptions && initialResolved ? initialResolved : resolvePreparedTable(input, options));
+    if (!preparedInput) options = snapshotTableOptions(options);
+    const geometry = liftOrFallback((mode) => {
+      const variant = mode === 'full' ? options : { ...options, [ZERO_LIFT]: mode } as TableOptions & ZeroLiftOptions;
+      const model = mode === 'full' ? resolved : resolvedForSize(authoredData, variant);
+      const formatFits: FormatFits = new Map();
+      // Decode the frame-only inputs once for the whole ordered policy.
+      const { size: _size, mode: _mode, belowMinimum: _below,
+        [TARGET_SIZE]: _target, [PLAN_ONLY]: _plan, [WIDTH_PROBE]: _width,
+        [FIXED_SIZE_PROBE]: _fixed, [FORCE_COMPACT]: _forced, [ACCEPTANCE_PROBE]: _accept,
+        [SIZING_ONLY]: _sizing, [COMPACT_RETRY]: _retry, [ENGINE_NOTES]: _notes, ...stable } = variant as LayoutOptions & Record<symbol, unknown>;
+      const variantKey = optionKey(stable);
+      return executeTableFit(input.source, variant, model.table, preserveCompactFloor,
+        (candidate, sizingOnly, selected, widthOnlyOnMiss = false) => {
+          const current = Object.keys(candidate).length === 0 && Object.getOwnPropertySymbols(candidate).length === 0
+            ? variant : { ...variant, ...candidate };
+          // Candidate records carry only spacing changes. Height and retry
+          // metadata are consumed after the shared preparation.
+          const { size: _candidateSize, [COMPACT_RETRY]: _candidateHeight, ...spacing } = candidate;
+          const typeClass = panelTypeClass(current) ?? typeWidthClass(resolveSize(current.size).width);
+          const key = variantKey + ':' + optionKey(spacing) + ':' + typeClass;
+          let byKey = candidates.get(model);
+          if (!byKey) candidates.set(model, byKey = new Map());
+          let prepared = byKey.get(key);
+          if (!prepared) {
+            prepared = prepareTableCandidate(input.source, current, model, formatFits);
+            if (byKey.size >= 256) byKey.delete(byKey.keys().next().value!);
+            byKey.set(key, prepared);
+          }
+          return prepared(current, sizingOnly, selected, widthOnlyOnMiss);
+        }, cutCount, hasHeadAir);
+    }, (lifted, plain) => costsWidth(lifted, plain, options), resolved.lifted,
+    (bound, plain) => missesFrame(bound, options) && !missesFrame(plain, options));
+    return (options as LayoutOptions)[PLAN_ONLY] || (options as LayoutOptions)[SIZING_ONLY] ? geometry : materializeLayout(geometry);
+  });
+  const runCard = (options: TableOptions = initialOptions): Geometry<TableMarks, TableDerived> => withPlanInputs(() => {
+    const input = prepareTableData(authoredData, options);
+    // Width-search markers belong to the registry. A complete raw table answer is identical at the same frame.
+    const { [WIDTH_PROBE]: _width, ...keyOptions } = options as LayoutOptions & { [WIDTH_PROBE]?: unknown };
+    if (typeof options.theme !== 'string') keyOptions.theme = { preset: options.theme?.preset, overrides: resolveTheme(options.theme) };
+    return memoLayout(input, keyOptions, () => {
+      const planned = { ...snapshotTableOptions(options), [PLAN_ONLY]: true };
+      const geometry = run(planned, false, undefined, input);
+      const precise = (options as LayoutOptions)[SIZING_ONLY] || (options as { [VERIFY_ADVICE]?: boolean })[VERIFY_ADVICE] || missesFrame(geometry, options);
+      const sized = precise ? classFloor((_data, frame) => run(frame, false, undefined, input), input.source, planned, geometry) : geometry;
+      return widthRepairHeight(input.source, planned, sized, runCard);
+    }, 8);
+  });
+  return { run, runCard };
+}
+
+/** The registry keeps this executor for every size and repair probe of one table. */
+export function prepareTableCardExecutor(data: TableData): (options?: TableOptions) => Geometry<TableMarks, TableDerived> {
+  return prepareTableExecutor(data).runCard;
+}
+
+/** The data compiler owns semantic invalidation and returns a borrowed view for every frame. */
 function resolvedForSize(data: TableData, options: TableOptions): ReturnType<typeof resolveTable> {
-  if (typeof options.theme === 'string') return resolveTable(data, options);
-  const { size: _size, measure: _measure, margin: _margin, cellPadX: _pad, labelIndent: _indent, rowLabelLines: _lines,
-    heightFill: _heightFill, frameFill: _frameFill, rowExtent: _extent, lastTrackFlex: _flex, maxGrowth: _growth,
-    groupRule: _groupRule, groupAlign: _groupAlign, inlineVisibility: _inlineVisibility, [TARGET_SIZE]: _target, [WIDTH_PROBE]: _probe, [PLAN_ONLY]: _plan, ...rest } = options as LayoutOptions & TargetSizeOptions & { [WIDTH_PROBE]?: unknown };
-  const semantic = { ...rest } as Record<PropertyKey, unknown>;
-  for (const symbol of [SIZING_ONLY, REGULAR_SPACING, VERIFY_ADVICE, WIDTH_REPAIR_PROBE, COMPACT_RETRY, HEAD_LINES, HEAD_AIR_MIN, HEAD_LOOSE, SUB_LINES, TIGHT_SPACING, FIXED_SIZE_PROBE, ENGINE_NOTES, SOFT_LABEL_CAP, LABEL_WRAP_FLOOR]) delete semantic[symbol];
-  // Resolution reads glyph policy, not colours, fonts, spacing or frame geometry.
-  const theme = resolveTheme(options.theme);
-  semantic.theme = JSON.stringify({ glyphs: theme.table?.glyphs, noPrevious: theme.table?.noPrevious, dataGap: theme.table?.dataGap });
-  const key = layoutKey(data, semantic);
-  let byKey = resolvedTables.get(data);
-  if (!byKey) resolvedTables.set(data, byKey = new Map());
-  if (byKey.size >= 32 && !byKey.has(key)) byKey.delete(byKey.keys().next().value!);
-  let resolved = byKey.get(key);
-  if (resolved === undefined) byKey.set(key, resolved = resolveTable(data, options));
-  return resolved;
+  return resolvePreparedTable(prepareTableData(data, options), options);
 }
 
 const widthPlans = new WeakMap<object, Map<string, ReturnType<typeof tableWidths>>>();
@@ -199,8 +223,10 @@ const widthPlans = new WeakMap<object, Map<string, ReturnType<typeof tableWidths
  * patch names, so an open height leaves it out of the key. A layout only reads
  * the plan. A theme named by string always measures again, as `memoLayout` does.
  */
-function sharedWidthPlan(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: LayoutOptions, view: Parameters<typeof tableWidths>[4] & object): ReturnType<typeof tableWidths> {
-  if (typeof options.theme === 'string') return tableWidths(table, theme, measure, options, view);
+function sharedWidthPlan(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: LayoutOptions, view: Parameters<typeof tableWidths>[4] & object, probe: TableWidthProbe | undefined): ReturnType<typeof tableWidths> | TableWidthMiss;
+function sharedWidthPlan(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: LayoutOptions, view: Parameters<typeof tableWidths>[4] & object): ReturnType<typeof tableWidths>;
+function sharedWidthPlan(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: LayoutOptions, view: Parameters<typeof tableWidths>[4] & object, probe?: TableWidthProbe): ReturnType<typeof tableWidths> | TableWidthMiss {
+  if (typeof options.theme === 'string') return tableWidths(table, theme, measure, options, view, probe);
   const { size, [TARGET_SIZE]: target, [WIDTH_PROBE]: _probe, [COMPACT_RETRY]: _retry, [PLAN_ONLY]: _plan, ...rest } = options as LayoutOptions & TargetSizeOptions & { [WIDTH_PROBE]?: unknown };
   // These flags choose a fit candidate or its row/frame work. Width-affecting head and spacer values are in view.
   // Keep public options and the width solver's LABEL_WRAP_FLOOR/SOFT_LABEL_CAP flags unchanged.
@@ -214,9 +240,14 @@ function sharedWidthPlan(table: ResolvedTable, theme: Theme, measure: TextMeasur
     typeClass: panelTypeClass(options) ?? typeWidthClass(resolveSize(size).width) })}`;
   let byKey = widthPlans.get(table);
   if (!byKey) widthPlans.set(table, byKey = new Map());
-  if (byKey.size >= 32 && !byKey.has(key)) byKey.delete(byKey.keys().next().value!);
   let plan = byKey.get(key);
-  if (plan === undefined) byKey.set(key, plan = tableWidths(table, theme, measure, options, view));
+  if (plan === undefined) {
+    const measured = tableWidths(table, theme, measure, options, view, probe);
+    // A later drawing pass may use this key. Only complete plans enter the cache.
+    if ('widthMiss' in measured) return measured;
+    if (byKey.size >= 32) byKey.delete(byKey.keys().next().value!);
+    byKey.set(key, plan = measured);
+  }
   return plan;
 }
 
@@ -260,91 +291,6 @@ function hasHeadAir(options: TableOptions): boolean {
     || (group !== undefined && groupAirAboveLeast(group, Math.ceil(strokeToken(theme, 'hair'))));
 }
 
-// The fit ladder changes spacing, not cell values or cohort density.
-function layoutTableLadder(authoredData: TableData, options: TableOptions, resolved: ReturnType<typeof resolveTable>, preserveCompactFloor: boolean): Geometry<TableMarks, TableDerived> {
-  const base = options;
-  const sizingOnly = (options as LayoutOptions)[SIZING_ONLY] === true;
-  const formatFits: FormatFits = new Map();
-  const once = (step: LayoutOptions) => layoutTableOnce(authoredData, step, resolved, sizingOnly, formatFits, fits, true);
-  const targetSize = (options as TargetSizeOptions)[TARGET_SIZE];
-  // A floor that misses full width never reads its scene. Keep the initial height pass intact.
-  const fullSizingOnly = sizingOnly && resolveSize(options.size).width !== targetSize?.sizePx.width;
-  // A side the caller left open is no limit: the frame grows there, so only a fixed side can miss.
-  // The registry lays an open side out at a provisional size and names it open in TARGET_SIZE.
-  const open = (options as TargetSizeOptions)[TARGET_SIZE]?.fixed;
-  const widthFits = (geometry: Geometry<TableMarks, TableDerived>) => open?.width === false || geometry.size.width >= (geometry.sizing?.minWidth ?? 0);
-  const heightFits = (geometry: Geometry<TableMarks, TableDerived>) => options.size === undefined || open?.height === false || geometry.size.height >= (geometry.sizing?.minHeight ?? 0);
-  const fits = (geometry: Geometry<TableMarks, TableDerived>) => widthFits(geometry) && heightFits(geometry);
-  // A rung that misses is read for its size, plot and floor only, so it stops before its scene.
-  let full = layoutTableOnce(authoredData, base, resolved, fullSizingOnly, formatFits, options.belowMinimum === 'refuse' ? undefined : fits, options.belowMinimum !== 'refuse');
-  // A wider-size patch reruns the original spacing. A compact rung must not
-  // advertise a width that fits only its temporary margins or cell padding.
-  const widthRepair = full.warnings.find(warning => warning.code === 'table-overflow' && warning.fix?.length);
-  const withWidthRepair = (drawn: Geometry<TableMarks, TableDerived>) => {
-    if (widthRepair) drawn.warnings = drawn.warnings.map(warning =>
-      warning.code === 'table-overflow' && warning.fix?.length ? widthRepair : warning);
-    return drawn;
-  };
-  const pad = options.cellPadX ?? trackCellPadX(full.marks.columns.length);
-  const margin = { ...base.margin, left: Math.min(base.margin?.left ?? CARD_GUTTER, CARD_GUTTER), right: Math.min(base.margin?.right ?? CARD_GUTTER, CARD_GUTTER) };
-  // The gutter rung: the full table with 12 px sides, where the frame's own margin is wider.
-  const gutterHelps = full.plot.x > margin.left + 0.5 || full.size.width - (full.plot.x + full.plot.w) > margin.right + 0.5;
-  // An open height keeps a rung's own: the frame grows to the rows that rung draws.
-  const fixedHeight = !heightOmitted(options.size) && open?.height !== false;
-  /** The floor is the last rung's: the compact table draws where this rung's tracks or rows no longer fit. */
-  const withFloor = (drawn: Geometry<TableMarks, TableDerived>) => {
-    // Ordinary rendering needs the selected spacing to fit, not the minimum of spacing it did not select.
-    // Measurement and composed selectors retain the exact compact floor.
-    if (!sizingOnly && !preserveCompactFloor && !(options as { [VERIFY_ADVICE]?: boolean })[VERIFY_ADVICE]) return withWidthRepair(drawn);
-    const compact = drawn.sizing === undefined ? undefined : compactTable(authoredData, options, full, margin, Math.min(pad, 3), 2, resolved, true, formatFits);
-    if (compact?.sizing && !compact.refused) {
-      drawn.sizing = { ...drawn.sizing!, minWidth: Math.min(drawn.sizing!.minWidth, compact.sizing.minWidth),
-        minHeight: fixedHeight ? Math.min(drawn.sizing!.minHeight, compact.sizing.minHeight) : drawn.sizing!.minHeight };
-    }
-    return withWidthRepair(drawn);
-  };
-  if (options.belowMinimum === 'refuse' || !full.sizing) return full;
-  if (fits(full)) {
-    if (fullSizingOnly) full = layoutTableOnce(authoredData, base, resolved, false, formatFits);
-    // A table that fits names the same minimum as one that steps down (one minimum at every width).
-    // An open width keeps the full table's: the frame grows to it rather than stepping down.
-    const cut = cutCount(full);
-    const gutter = cut === 0 || !gutterHelps ? undefined : layoutTableOnce(authoredData, { ...base, margin }, resolved, false, formatFits);
-    const drawn = gutter?.sizing !== undefined && fits(gutter) && cutCount(gutter) < cut ? gutter : full;
-    return open?.width === false ? drawn : withFloor(drawn);
-  }
-  // Head air gives way before row air: a pinned height that the theme's head and group air
-  // alone miss keeps the full rows with the head at its least air.
-  if (widthFits(full) && fixedHeight && hasHeadAir(options)) {
-    const lean = once({ ...base, [HEAD_AIR_MIN]: true });
-    if (lean.sizing !== undefined && fits(lean)) {
-      withFloor(lean);
-      lean.warnings.push({ code: 'table-compact-fallback', severity: 'info', message: 'The full table did not fit. The head and group rows took their least air.' });
-      return lean;
-    }
-  }
-  // A table that misses on height alone goes straight to the compact density: air between figures does not buy rows.
-  if (widthFits(full)) return withWidthRepair(compactTable(authoredData, options, full, margin, Math.min(pad, 6), undefined, resolved, sizingOnly, formatFits));
-  const rung = (step: { pad: number; heads?: number }) =>
-    once({ ...base, margin, cellPadX: step.pad, ...(step.heads === undefined ? {} : { [HEAD_LINES]: step.heads }) });
-  // Each rung is narrower than the one before, so where the narrowest misses the width every rung does.
-  const narrowest = rung({ pad: Math.min(pad, 3), heads: 2 });
-  if (narrowest.sizing !== undefined && !widthFits(narrowest)) return withWidthRepair(compactTable(authoredData, options, full, margin, Math.min(pad, 3), 2, resolved, sizingOnly, formatFits));
-  const tried = new Set<string>(gutterHelps ? [] : [`${pad}`]);
-  for (const step of [{ pad }, { pad: Math.min(pad, 6) }, { pad: Math.min(pad, 3) }, { pad: Math.min(pad, 3), heads: 2 }]) {
-    const key = `${step.pad}${step.heads === undefined ? '' : `:${step.heads}`}`;
-    if (tried.has(key)) continue;
-    tried.add(key);
-    const last = step.heads === undefined ? rung(step) : narrowest;
-    if (last.sizing === undefined || (widthFits(last) && heightFits(last))) {
-      withFloor(last);
-      last.warnings.push({ code: 'table-compact-fallback', severity: 'info', message: `The full table did not fit. ${step.pad === pad && step.heads === undefined ? '12 px side margins were' : `${step.pad} px cell air${step.heads === undefined ? '' : ', heads on two lines'} and 12 px side margins were`} used.` });
-      return last;
-    }
-  }
-  return withWidthRepair(compactTable(authoredData, options, full, margin, Math.min(pad, 3), 2, resolved, sizingOnly, formatFits));
-}
-
 /** A layout of the wider frame that a table-overflow patch names; it adds no patch of its own. */
 const WIDTH_REPAIR_PROBE = Symbol('tableWidthRepairProbe');
 
@@ -354,7 +300,7 @@ const WIDTH_REPAIR_PROBE = Symbol('tableWidthRepairProbe');
  * height it needs. A layout that only draws would pay a second layout for every such table, so it reports the
  * warning with no patch and sends the caller to measure. A table without a fixed height keeps its width patch.
  */
-function widthRepairHeight(data: TableData, options: TableOptions, geometry: Geometry<TableMarks, TableDerived>): Geometry<TableMarks, TableDerived> {
+function widthRepairHeight(data: TableData, options: TableOptions, geometry: Geometry<TableMarks, TableDerived>, run = (options: TableOptions) => layoutTableCard(data, options)): Geometry<TableMarks, TableDerived> {
   if ((options as { [WIDTH_REPAIR_PROBE]?: boolean })[WIDTH_REPAIR_PROBE] || (options as LayoutOptions)[SIZING_ONLY]) return geometry;
   const warning = geometry.warnings.find(w => w.code === 'table-overflow' && w.fix?.length);
   const patch = warning?.fix?.[0];
@@ -368,7 +314,7 @@ function widthRepairHeight(data: TableData, options: TableOptions, geometry: Geo
     });
     return geometry;
   }
-  const wider = layoutTableCard(data, { ...options, size, [WIDTH_REPAIR_PROBE]: true } as TableOptions);
+  const wider = run({ ...options, size, [WIDTH_REPAIR_PROBE]: true } as TableOptions);
   const needed = wider.refused || !wider.sizing ? undefined : Math.ceil(wider.sizing.minHeight);
   if (needed !== undefined && needed > size.height) {
     geometry.warnings = geometry.warnings.map(w => w === warning
@@ -379,14 +325,7 @@ function widthRepairHeight(data: TableData, options: TableOptions, geometry: Geo
 
 /** The registered table layout: select spacing and use the content height at the requested width. */
 export function layoutTableCard(data: TableData, options: TableOptions = {}): Geometry<TableMarks, TableDerived> {
-  return memoLayout(data, options, () => {
-    const planned = { ...options, [PLAN_ONLY]: true };
-    const geometry = layoutTable(data, planned);
-    // Class recalibration changes only the reported floor. A fitting ordinary table keeps its selected class.
-    const precise = (options as LayoutOptions)[SIZING_ONLY] || (options as { [VERIFY_ADVICE]?: boolean })[VERIFY_ADVICE] || missesFrame(geometry, options);
-    const sized = precise ? classFloor(layoutTable, data, planned, geometry) : geometry;
-    return widthRepairHeight(data, planned, sized);
-  });
+  return prepareTableExecutor(data).runCard(options);
 }
 
 const layouts = new WeakMap<object, Map<string, unknown>>();
@@ -398,7 +337,7 @@ const layouts = new WeakMap<object, Map<string, unknown>>();
  * A named theme bypasses the memo because the name can be registered again.
  * shortcut: retain 32 results per data object; a new result replaces the oldest.
  */
-export function memoLayout<G>(data: object, options: object, layout: () => G): G {
+export function memoLayout<G>(data: object, options: object, layout: () => G, limit = 32): G {
   return withPlanInputs(() => {
   const finish = (value: G): G => isPlanned(value as object)
     ? ((options as LayoutOptions)[PLAN_ONLY] ? { ...value, warnings: [...(value as Geometry).warnings] } : materializeLayout(value as Geometry)) as G
@@ -408,7 +347,7 @@ export function memoLayout<G>(data: object, options: object, layout: () => G): G
   const key = layoutKey(data, answerOptions);
   let byKey = layouts.get(data);
   if (!byKey) layouts.set(data, byKey = new Map());
-  if (byKey.size >= 32 && !byKey.has(key)) byKey.delete(byKey.keys().next().value!);
+  if (byKey.size >= limit && !byKey.has(key)) byKey.delete(byKey.keys().next().value!);
   if (!byKey.has(key)) byKey.set(key, layout());
   return finish(byKey.get(key) as G);
   });
@@ -453,79 +392,6 @@ export function classFloor<D extends object, O extends Omit<TableOptions, 'varia
 }
 
 const classFloors = new WeakMap<object, Map<string, number>>();
-/** The last step: the compact density, tight margins and, where the height was left open, a row-driven height. */
-function compactTable(
-  authoredData: TableData, options: TableOptions, full: Geometry<TableMarks, TableDerived>,
-  margin: NonNullable<TableOptions['margin']>, cellPadX: number, heads: number | undefined,
-  resolved: ReturnType<typeof resolveTable>, sizingOnly: boolean, formatFits: FormatFits,
-): Geometry<TableMarks, TableDerived> {
-  const compactOptions: LayoutOptions = {
-    ...options,
-    density: isCohortDensity(options.density ?? 'regular') ? options.density : 'compact',
-    margin,
-    // Tighter than the full table, never wider: a dense table already pads 3 or 5 px.
-    cellPadX,
-    labelIndent: { base: 8 + (options.outlineMarks === true ? INDENT_BASE : 0), step: 8 },
-    // A fixed height never grows (docs/manual.md, "Fixed height"): only an omitted height turns automatic.
-    size: heightOmitted(options.size) ? { width: full.size.width } : { width: full.size.width, height: full.size.height },
-    [COMPACT_RETRY]: full.size.height,
-    ...(heads === undefined ? {} : { [HEAD_LINES]: heads }),
-  };
-  // Refuse-less: comfort air is a preference. Where the compact table still misses
-  // a fixed side, the side margins, cell air and spacers shrink to a readable floor, and the row air
-  // too where the height misses. Text, numbers and columns stay as they are; the warning names the
-  // size that keeps compact spacing.
-  // The most the tight rung can take across: cell air on both sides of each track, the side margins,
-  // the spacers and the label indents. A miss wider than that skips the futile layout (a dimswitch
-  // period search probes many such widths).
-  const tightens = (geometry: Geometry<TableMarks, TableDerived>) => {
-    const across = 2 * Math.max(0, cellPadX - TIGHT_PAD) * geometry.marks.columns.length
-      + Math.max(0, geometry.plot.x - TIGHT_PAD * 2) + Math.max(0, geometry.size.width - geometry.plot.x - geometry.plot.w - TIGHT_PAD * 2)
-      + (authoredData.columnGroups ?? []).reduce((sum, group) => sum + Math.max(0, (group.spacer ?? 0) - TIGHT_PAD * 2), 0)
-      + 6 + 4 * Math.max(0, maxOf(resolved.table.rows.map((row) => row.level))) + 4;
-    const missed = missesSize(geometry, options);
-    const reachable = !missed.width || (geometry.sizing?.minWidth ?? 0) - geometry.size.width <= across;
-    return !(options as LayoutOptions)[REGULAR_SPACING] && geometry.sizing !== undefined && (missed.width || missed.height) && reachable;
-  };
-  // A table the tight rung replaces is read for its size and floor only, so it stops before its scene.
-  let compact = layoutTableOnce(authoredData, compactOptions, resolved, sizingOnly, formatFits, (geometry) => !tightens(geometry));
-  const misses = missesSize(compact, options);
-  const { width: missesWidth, height: missesHeight } = misses;
-  let lastOptions = compactOptions;
-  if (tightens(compact) && compact.sizing) {
-    const tightWarning = tightSpacingWarning(misses, { width: 'cell air, column gaps and side margins', height: 'row air and top and bottom margins' }, 'the table', 'compact', { ...compact, sizing: compact.sizing }, options);
-    compact = layoutTableOnce(authoredData, lastOptions = {
-      ...compactOptions, [TIGHT_SPACING]: { columns: missesWidth, rows: missesHeight },
-      ...(missesWidth ? {
-        cellPadX: Math.min(cellPadX, TIGHT_PAD),
-        labelIndent: { base: TIGHT_PAD + (options.outlineMarks === true ? INDENT_BASE : 0), step: TIGHT_PAD * 2 },
-      } : {}),
-      margin: {
-        ...(missesHeight ? { top: TIGHT_PAD * 2, bottom: TIGHT_PAD * 2 } : {}), ...margin,
-        ...(missesWidth ? { left: Math.min(margin.left ?? CARD_GUTTER, TIGHT_PAD * 2), right: Math.min(margin.right ?? CARD_GUTTER, TIGHT_PAD * 2) } : {}),
-      },
-    }, resolved, sizingOnly, formatFits);
-    // A head kept whole ("WEEK 1") gives way before the table misses its width.
-    if (missesSize(compact, options).width && resolved.table.columns.some((col) => / \S{1,2}$/u.test(col.label ?? ''))) {
-      const loose = layoutTableOnce(authoredData, { ...lastOptions, [HEAD_LOOSE]: true }, resolved, sizingOnly, formatFits);
-      if (!missesSize(loose, options).width) { compact = loose; lastOptions = { ...lastOptions, [HEAD_LOOSE]: true }; }
-    }
-    compact.warnings.push(tightWarning);
-  }
-  // A pinned height that still misses takes the sub-labels back to one line before it refuses:
-  // a wrapped sub-label must not refuse a table that draws with it on one line. Each keeps its
-  // track's cell air, cut with the full text as a title, as a head label is.
-  if (missesHeight && compact.sizing && compact.size.height + 0.5 < compact.sizing.minHeight
-    && resolved.table.columns.some((col) => col.subLabel !== undefined)) {
-    const warnings = compact.warnings;
-    compact = layoutTableOnce(authoredData, { ...lastOptions, [SUB_LINES]: 1 }, resolved, sizingOnly, formatFits);
-    // The tight rung's size advice still holds.
-    for (const warning of warnings) if (warning.code === 'table-tight-spacing' && !compact.warnings.includes(warning)) compact.warnings.push(warning);
-  }
-  compact.warnings.push({ code: 'table-compact-fallback', severity: 'info', message: `The full table did not fit. Compact spacing and tight margins${heightOmitted(options.size) ? ' and automatic height' : ''} were used.` });
-  return compact;
-}
-
 function prepareTableView(data: TableData, options: TableOptions, table: ResolvedTable) {
   // The totals-only step of a depth control: every level-0 data row
   // goes with its subtree and the totals and section headings stay.
@@ -582,7 +448,8 @@ const tableFrames = new WeakMap<ResolvedTable, Map<string, TableFrame>>();
 
 /** Frame text is independent of the table's spacing and header rungs. */
 function sharedTableFrame(table: ResolvedTable, input: Parameters<typeof solveFrame>[0]): TableFrame {
-  const key = optionKey(input);
+  // The solver reads these two flags outside its input, and a shared table outlives one request.
+  const key = `${staticFrame.pinned}:${staticFrame.live}:${optionKey(input)}`;
   let frames = tableFrames.get(table);
   if (!frames) tableFrames.set(table, frames = new Map());
   let value = frames.get(key);
@@ -595,16 +462,11 @@ function sharedTableFrame(table: ResolvedTable, input: Parameters<typeof solveFr
   return value;
 }
 
-function layoutTableOnce(
-  authoredData: TableData, options: LayoutOptions, initialResolved: ReturnType<typeof resolveTable>, sizingOnly: boolean, formatFits: FormatFits,
-  /** Given a pass's sizing, whether its caller reads the scene. A pass without one always draws. */
-  wantsScene?: (probe: Geometry<TableMarks, TableDerived>) => boolean,
-  /** This ladder candidate is discarded on width alone, so its rows need not be prepared on a miss. */
-  widthOnlyOnMiss = false,
-): Geometry<TableMarks, TableDerived> {
+function prepareTableCandidate(
+  authoredData: TableData, options: LayoutOptions, initialResolved: ReturnType<typeof resolveTable>, formatFits: FormatFits,
+) {
   const tight = options[TIGHT_SPACING]?.columns === true;
   const tightRows = options[TIGHT_SPACING]?.rows === true;
-  let size = resolveSize(options.size);
   const measure = tableTextMeasure(options.measure ?? defaultMeasurer);
   let data = authoredData;
   let resolved = initialResolved;
@@ -708,7 +570,7 @@ function layoutTableOnce(
 
   // Horizontal cell air: the column-count default, or the px an author
   // names for a board with tighter tracks.
-  let cellPadX = options.cellPadX ?? trackCellPadX(cols.length);
+  const initialCellPadX = options.cellPadX ?? trackCellPadX(cols.length);
   // A lane cut at fixed edges names them in one row above the grid.
   // `legend: 'none'` drops the row: a host that draws its own key
   // for the same scale would otherwise show two.
@@ -720,48 +582,6 @@ function layoutTableOnce(
   const keyEntries = keyless ? [] : heatEntries;
   const arrowEntries = keyless ? [] : arrowShapes;
   const authored = authoredNotes(options);
-  const frameInput: Parameters<typeof solveFrame>[0] = {
-      size,
-      margin: { ...canvasMargin(theme, size.width), ...options.margin },
-      ...frameTextOptions(options),
-      // uniform money unit hoisted out of every cell → the frame slot
-      // (solveFrame prepends 'in' itself)
-      unit: table.unit ?? options.unit,
-      // rows/cols, not table.rows/table.columns: this surface is static, so a
-      // marker inside a collapsed row or a hidden column is unreachable here
-      // and its footnote would point at nothing
-      footnotes: [...tableNotes, ...authored, ...(options[ENGINE_NOTES] ?? [])],
-      // Nothing in a table points at a note: no head or cell carries a
-      // mark, so a "1)" before the note is a number the reader cannot follow
-      // (the same rule as for the engine's own notes). The author's
-      // notes stay notes and print without a number.
-      numberedFootnotes: authored,
-      unreferencedNotes: authored.map((_, i) => i + 1),
-      // A table's notes read in the tertiary ink where the theme names one.
-      footnoteInk: 'inkMeta',
-      // The notes and the source keep the cell air in from both edges, as on React, also at canvas margin 0.
-      footerInset: cellPadX,
-      ...(keyEntries.length + arrowEntries.length > 0 ? {
-        legend: {
-          options: legendRequired(options.legend, warnings, 'table', theme, keyEntries.length > 0 ? 'its heat bands cut at edges no cell prints' : 'its arrow shapes stand for shares no cell prints'),
-          items: [
-            ...keyEntries.map((entry) => ({ id: entry.id, label: entry.label, paint: entry.fill, key: 'box' as const, stroke: { token: 'grid' as const } })),
-            ...arrowEntries.map((entry) => ({ id: entry.id, label: entry.label, paint: { token: 'ink' as const }, key: 'glyph' as const, glyph: entry.glyph })),
-          ],
-        },
-        legendFont: 'footnote' as const,
-      } : {}),
-      theme,
-      measure,
-  };
-  let framePlan = sharedTableFrame(table, frameInput);
-  let frame = framePlan.frame;
-  let plot = frame.plot;
-  // Text drawn on an authored ground, by paint: whether it reads there is decided in the theme it is painted in.
-  const groundTexts = new Map<string, Paint>();
-  // Status labels cut to their track, by column, with the rows of a label drawn as the square alone: the notes list names each in full.
-  const statusCuts = new Map<Id, Map<string, { shown: string; full: string; rows: string[] }>>();
-  const statusFits = new Map<string, Map<string, { text: string; title?: string } | null>>();
   const surface = resolveSurface(theme);
   // ---- the level ladder ----
   // Every step is derived from `theme.type`, never written as a literal: a
@@ -776,23 +596,21 @@ function layoutTableOnce(
     if (ladder.rowHeight !== undefined) ladder.rowHeight = ladder.lineBox(ladder.label) + 2;
   }
   const { lineBox, pad: levelPad } = ladder;
-  const widthPlan = sharedWidthPlan(table, theme, measure, options, {
-    columns: cols, rows, widthRows, fullRows, available: plot.w, spacerTotal, headLines: options[HEAD_LINES], subLines: options[SUB_LINES], headGlue: options[HEAD_LOOSE] !== true,
-  });
-  cellPadX = widthPlan.cellPadX;
-  if (frameInput.footerInset !== cellPadX) {
-    frameInput.footerInset = cellPadX;
-    framePlan = sharedTableFrame(table, frameInput);
-    frame = framePlan.frame;
-    plot = frame.plot;
-  }
-  const nodes: SceneNode[] = [...frame.nodes];
-  // The table grid lives on INTEGER pixels regardless of the frame's
-  // fractional plot origin — hairlines on .92px y render as 2px grey smears
-  // and 1/3px column anchors antialias into fake font-weight differences.
-  const gridX = Math.round(plot.x);
-  const gridY = Math.round(plot.y);
-  const { widths, sizingMinimums, totalW, minimumW, fonts, regularFonts, columnHeaderText, cellFont, indentStep, rowIndent, operatorSlot, childCount, hasChanges: hasChangesById } = widthPlan;
+  const widthViewBase = {
+    columns: cols, rows, widthRows, fullRows, spacerTotal,
+    headLines: options[HEAD_LINES], subLines: options[SUB_LINES], headGlue: options[HEAD_LOOSE] !== true,
+  };
+  // Explicit-padding SVG rungs have no public host policy to apply. Keep their
+  // measurements and solve numeric arrays directly as frame width changes.
+  const preparedWidth = options.cellPadX !== undefined && options.columnHeads !== false
+    ? prepareTableWidthRung(table, theme, measure, options, widthViewBase) : undefined;
+  function prepareRows(options: LayoutOptions, widthPlan: TableWidthPlan | TableWidthRungPlan, size: Size, plot: Rect) {
+    const gridX = Math.round(plot.x);
+    const cellPadX = widthPlan.cellPadX;
+    const { fonts, regularFonts, columnHeaderText, cellFont, indentStep, rowIndent, hasChanges: hasChangesById } = widthPlan;
+  // Status labels cut to their track, by column, with the rows of a label drawn as the square alone: the notes list names each in full.
+  const statusCuts = new Map<Id, Map<string, { shown: string; full: string; rows: string[] }>>();
+  const statusFits = new Map<string, Map<string, { text: string; title?: string } | null>>();
   const rowFont = (role: RowRole, level: number, hasChildren: boolean, hasChanges = false): FontSpec =>
     ladderRowFont(theme, ladder, regularFonts, role, level, hasChildren, hasChanges);
   // Theme conventions for the ink: the section heading's colour, and
@@ -893,24 +711,6 @@ function layoutTableOnce(
     return block;
   }
   const inlineFont = (level: number, signed: boolean): FontSpec => ladderInlineFont(theme, ladder, level, signed);
-  const sumOf = (map: Map<Id, number>): number => [...map.values()].reduce((a, b) => a + b, spacerTotal);
-  pushAll(warnings, widthPlan.warnings);
-  function sizingProbe(sizing: ReturnType<typeof tableSizing>, marks: TableMarks): Geometry<TableMarks, TableDerived> {
-    return {
-      type: 'table', size, sizing, plot, scene: [], labels: [], axes: [], annotations: [], frame: frame.frame, marks,
-      derived: { table, computedCells: resolved.computedCells }, a11y: { title: '', desc: '', counts: [] }, warnings,
-      debug: { occupied: [], decisions: [] },
-    };
-  }
-  // An open-height floor reads only minWidth; neither the ladder nor withFloor consumes its row geometry.
-  if ((sizingOnly && (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === false && !heightOmitted(options.size))
-    || (widthOnlyOnMiss && (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.width !== false && size.width < size.width - plot.w + minimumW)) {
-    return sizingProbe(tableSizing(size, plot, plot.y, totalW, minimumW), {
-      table: { x: gridX, y: gridY, w: totalW, h: 0 },
-      columns: cols.map(col => ({ id: col.id, x: gridX, w: widths.get(col.id)! })), rows: [],
-      headerBand: { x: gridX, y: gridY, w: totalW, h: 0 },
-    });
-  }
   /** The room a row's unit affix takes on its label's line. */
   function affixRoom(row: ResolvedRow, font: FontSpec): number {
     if (row.unitAffix === undefined) return 0;
@@ -984,7 +784,7 @@ function layoutTableOnce(
   const themeGroup = themeGroupPad(theme);
   const groupPad = tightRows ? { top: 2, bottom: 2 }
     : leanHead && themeGroup !== undefined && groupAirAboveLeast(themeGroup, ruleSpace) ? undefined : themeGroup;
-  const headRoom = (col: ResolvedColumn) => Math.max(1, Math.round(widths.get(col.id)!) - 2 * cellPadX - (col.kind === 'rowLabel' ? rowIndent(0) : 0));
+  const headRoom = (col: ResolvedColumn) => Math.max(1, Math.round(widthAt(widthPlan, col.id)) - 2 * cellPadX - (col.kind === 'rowLabel' ? rowIndent(0) : 0));
   // The head text glues a short last word to the one before it; the drawn lines print a plain space.
   // A track squeezed below the glued head takes the head broken at its last space.
   const headerFits = new Map(cols.map(col => {
@@ -1017,7 +817,7 @@ function layoutTableOnce(
     // its neighbour by 16 px and draws no cell there, so nothing else
     // moves and the group heading centres over its own columns.
     x += spacerBefore.get(col.id) ?? 0;
-    const w = Math.round(widths.get(col.id)!);
+    const w = Math.round(widthAt(widthPlan, col.id));
     colX.set(col.id, { x, w });
     x += w;
   }
@@ -1200,9 +1000,139 @@ function layoutTableOnce(
   const cutNotes = cols.flatMap((col) => {
     const cut = statusCuts.get(col.id);
     const entry = ({ shown, full, rows: named }: { shown: string; full: string; rows: string[] }) => `${shown !== '' ? shown : named.join(', ')} = ${full}`;
-    return cut ? [disclosureNote(`${col.label}: ${[...cut.values()].map(entry).join('; ')}`)] : [];
-  }).filter((note) => !(options[ENGINE_NOTES] ?? []).includes(note));
-  if (!sizingOnly && cutNotes.length > 0) return layoutTableOnce(authoredData, { ...options, [ENGINE_NOTES]: [...(options[ENGINE_NOTES] ?? []), ...cutNotes] }, initialResolved, sizingOnly, formatFits, wantsScene, widthOnlyOnMiss);
+    return cut ? [`${col.label}: ${[...cut.values()].map(entry).join('; ')}`] : [];
+  });
+    return { sectionInk, ofWhichMuted, rowHeight, sectionNatural, inlineBlock, inlineFont, noteStatusCut, statusFit, hasGroups, headsDrawn, hasGroupHeads, headPadBottom, groupPad, headerFits, subFits, headerSubH, colX, groupWraps, groupLineCount, groupLineH, groupExtraH, headerGroupH, headerH, spanRule, groupAlign, tableW, rowX, rowW, wrappedLines, cutTitles, rowExtra, labelHead, affixBelow, plannedCellText, plannedCuts, cutNotes };
+  }
+  let previousRows: {
+    x: number; y: number; width: number; canvasWidth: number; cellPadX: number; compact: boolean;
+    fonts: TableWidthPlan['fonts']; widths: number[]; value: ReturnType<typeof prepareRows>;
+  } | undefined;
+  function rowsAt(options: LayoutOptions, widthPlan: TableWidthPlan | TableWidthRungPlan, size: Size, plot: Rect) {
+    const compact = options[COMPACT_RETRY] !== undefined;
+    if (previousRows && previousRows.x === plot.x && previousRows.y === plot.y && previousRows.width === plot.w
+      && previousRows.canvasWidth === size.width && previousRows.cellPadX === widthPlan.cellPadX
+      && previousRows.compact === compact && previousRows.fonts === widthPlan.fonts
+      && cols.every((col, index) => previousRows!.widths[index] === widthAt(widthPlan, col.id))) return previousRows.value;
+    const value = prepareRows(options, widthPlan, size, plot);
+    previousRows = { x: plot.x, y: plot.y, width: plot.w, canvasWidth: size.width,
+      cellPadX: widthPlan.cellPadX, compact, fonts: widthPlan.fonts,
+      widths: cols.map(col => widthAt(widthPlan, col.id)), value };
+    return value;
+  }
+  const preparedWarnings = warnings;
+  const liftedByFormatting = resolved !== initialResolved && resolved.lifted;
+  return function executeCandidate(options: LayoutOptions, sizingOnly: boolean,
+    wantsScene?: (probe: Geometry<TableMarks, TableDerived>) => boolean,
+    widthOnlyOnMiss: boolean | 'regular-rung' = false,
+  ): Geometry<TableMarks, TableDerived> {
+  // A retained formatting variant must still participate in the small-value fallback.
+  if (liftedByFormatting) zeroLifts.count++;
+  // Views outlive the request's note registry. Every tableFootnotes entry is a
+  // disclosure, including when this retained candidate skips view preparation.
+  for (const note of tableNotes) disclosureNote(note);
+  let size = resolveSize(options.size);
+  let engineNotes = options[ENGINE_NOTES] ?? [];
+  for (;;) {
+  // Each settlement starts with the same semantic warnings. Frame and width
+  // warnings belong only to the final numeric frame.
+  let warnings = [...preparedWarnings];
+  let cellPadX = initialCellPadX;
+  const frameInput: Parameters<typeof solveFrame>[0] = {
+      size,
+      margin: { ...canvasMargin(theme, size.width), ...options.margin },
+      ...frameTextOptions(options),
+      // uniform money unit hoisted out of every cell → the frame slot
+      // (solveFrame prepends 'in' itself)
+      unit: table.unit ?? options.unit,
+      // rows/cols, not table.rows/table.columns: this surface is static, so a
+      // marker inside a collapsed row or a hidden column is unreachable here
+      // and its footnote would point at nothing
+      footnotes: [...tableNotes, ...authored, ...engineNotes],
+      // Nothing in a table points at a note: no head or cell carries a
+      // mark, so a "1)" before the note is a number the reader cannot follow
+      // (the same rule as for the engine's own notes). The author's
+      // notes stay notes and print without a number.
+      numberedFootnotes: authored,
+      unreferencedNotes: authored.map((_, i) => i + 1),
+      // A table's notes read in the tertiary ink where the theme names one.
+      footnoteInk: 'inkMeta',
+      // The notes and the source keep the cell air in from both edges, as on React, also at canvas margin 0.
+      footerInset: cellPadX,
+      ...(keyEntries.length + arrowEntries.length > 0 ? {
+        legend: {
+          options: legendRequired(options.legend, warnings, 'table', theme, keyEntries.length > 0 ? 'its heat bands cut at edges no cell prints' : 'its arrow shapes stand for shares no cell prints'),
+          items: [
+            ...keyEntries.map((entry) => ({ id: entry.id, label: entry.label, paint: entry.fill, key: 'box' as const, stroke: { token: 'grid' as const } })),
+            ...arrowEntries.map((entry) => ({ id: entry.id, label: entry.label, paint: { token: 'ink' as const }, key: 'glyph' as const, glyph: entry.glyph })),
+          ],
+        },
+        legendFont: 'footnote' as const,
+      } : {}),
+      theme,
+      measure,
+  };
+  let framePlan = sharedTableFrame(table, frameInput);
+  let frame = framePlan.frame;
+  let plot = frame.plot;
+  // Text drawn on an authored ground, by paint: whether it reads there is decided in the theme it is painted in.
+  const groundTexts = new Map<string, Paint>();
+  const widthView = { ...widthViewBase, available: plot.w };
+  const widthProbe = widthOnlyOnMiss === 'regular-rung' && (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.width !== false
+    ? { canvasWidth: size.width, footerInset: cellPadX } : undefined;
+  let widthPlan: TableWidthPlan | TableWidthRungPlan | TableWidthMiss = preparedWidth
+    ? solveTableWidthRung(preparedWidth, plot.w, options, widthProbe)
+    : sharedWidthPlan(table, theme, measure, options, widthView, widthProbe);
+  if ('widthMiss' in widthPlan) {
+    const sizing = tableSizing(size, plot, plot.y, widthPlan.totalW, widthPlan.minimumW);
+    if (size.width < sizing.minWidth) {
+      const x = Math.round(plot.x), y = Math.round(plot.y);
+      return sizingProbe(sizing, {
+        table: { x, y, w: widthPlan.totalW, h: 0 }, columns: [], rows: [],
+        headerBand: { x, y, w: widthPlan.totalW, h: 0 },
+      });
+    }
+    // Sizing can round a floor a few ULPs down. A rung the ladder can select needs its complete plan.
+    widthPlan = preparedWidth ? solveTableWidthRung(preparedWidth, plot.w, options) as TableWidthRungPlan : sharedWidthPlan(table, theme, measure, options, widthView);
+  }
+  cellPadX = widthPlan.cellPadX;
+  if (frameInput.footerInset !== cellPadX) {
+    frameInput.footerInset = cellPadX;
+    framePlan = sharedTableFrame(table, frameInput);
+    frame = framePlan.frame;
+    plot = frame.plot;
+  }
+  // The table grid lives on INTEGER pixels regardless of the frame's
+  // fractional plot origin — hairlines on .92px y render as 2px grey smears
+  // and 1/3px column anchors antialias into fake font-weight differences.
+  const gridX = Math.round(plot.x);
+  const gridY = Math.round(plot.y);
+  const { sizingMinimums, totalW, minimumW, fonts, columnHeaderText, cellFont, indentStep, rowIndent, operatorSlot, childCount } = widthPlan;
+  const sumOf = (map: Map<Id, number> | readonly number[]): number => [...map.values()].reduce((a, b) => a + b, spacerTotal);
+  pushAll(warnings, widthPlan.warnings);
+  function sizingProbe(sizing: ReturnType<typeof tableSizing>, marks: TableMarks): Geometry<TableMarks, TableDerived> {
+    return {
+      type: 'table', size, sizing, plot, scene: [], labels: [], axes: [], annotations: [], frame: frame.frame, marks,
+      derived: { table, computedCells: resolved.computedCells }, a11y: { title: '', desc: '', counts: [] }, warnings,
+      debug: { occupied: [], decisions: [] },
+    };
+  }
+  // An open-height floor reads only minWidth; neither the ladder nor withFloor consumes its row geometry.
+  if ((sizingOnly && (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === false && !heightOmitted(options.size))
+    || (widthOnlyOnMiss && (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.width !== false && size.width < size.width - plot.w + minimumW)) {
+    return sizingProbe(tableSizing(size, plot, plot.y, totalW, minimumW), {
+      table: { x: gridX, y: gridY, w: totalW, h: 0 },
+      columns: cols.map(col => ({ id: col.id, x: gridX, w: widthAt(widthPlan, col.id) })), rows: [],
+      headerBand: { x: gridX, y: gridY, w: totalW, h: 0 },
+    });
+  }
+  const rowModel = rowsAt(options, widthPlan, size, plot);
+  const { sectionInk, ofWhichMuted, rowHeight, sectionNatural, inlineBlock, inlineFont, noteStatusCut, statusFit, hasGroups, headsDrawn, hasGroupHeads, headPadBottom, groupPad, headerFits, subFits, headerSubH, colX, groupWraps, groupLineCount, groupLineH, groupExtraH, headerGroupH, headerH, spanRule, groupAlign, tableW, rowX, rowW, wrappedLines, cutTitles, rowExtra, labelHead, affixBelow, plannedCellText, plannedCuts } = rowModel;
+  const cutNotes = rowModel.cutNotes.map(disclosureNote).filter(note => !engineNotes.includes(note));
+  if (!sizingOnly && cutNotes.length > 0) {
+    engineNotes = [...engineNotes, ...cutNotes];
+    continue;
+  }
 
   const rowY = new Map<Id, { y: number; h: number }>();
   let y = gridY + headerH;
@@ -1224,7 +1154,11 @@ function layoutTableOnce(
     const callerH = options[COMPACT_RETRY];
     const grow = rowDrivenHeight({ options: callerH === undefined || !heightOmitted(options.size) ? options : {}, width: size.width, height: size.height, chromeH: size.height - plot.h, rowsH: y - plot.y + 4,
       ...(callerH === undefined ? {} : { ceiling: callerH }) });
-    if (grow !== undefined) return layoutTableOnce(authoredData, { ...options, size: { width: size.width, height: grow } }, initialResolved, sizingOnly, formatFits, wantsScene, widthOnlyOnMiss);
+    if (grow !== undefined) {
+      size = { width: size.width, height: grow };
+      options = { ...options, size };
+      continue;
+    }
   }
   // The first open-height pass already measured the rows. Move only the frame
   // when its top and width stay fixed; otherwise the normal height retry handles it.
@@ -1242,8 +1176,6 @@ function layoutTableOnce(
         framePlan = nextFramePlan;
         frame = nextFrame;
         plot = frame.plot;
-        nodes.length = 0;
-        pushAll(nodes, frame.nodes);
       }
     }
   }
@@ -1314,6 +1246,7 @@ function layoutTableOnce(
   const plannedWarnings = [...warnings];
   return deferLayout(geometry, () => {
   warnings = [...plannedWarnings];
+  const nodes: SceneNode[] = [...frame.nodes];
   plannedCuts();
   const numericStats = new Map<
     Id,
@@ -2463,6 +2396,12 @@ function layoutTableOnce(
     debug: { occupied, decisions: [] },
   };
   }, plannedCuts);
+  }
+  };
+}
+
+function widthAt(plan: TableWidthPlan | TableWidthRungPlan, id: Id): number {
+  return 'columnIndex' in plan ? plan.widths[plan.columnIndex.get(id)!]! : plan.widths.get(id)!;
 }
 
 function tableSizing(size: Size, plot: Rect, bottom: number, totalW: number, minimumW: number) {

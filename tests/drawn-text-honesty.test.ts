@@ -4,6 +4,7 @@ import { render } from '../src/cli/render';
 import { getFixtures } from '../src/fixtures';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { defaultMeasurer } from '../src/core/text';
+import { isNumberAlone } from '../src/core/textRole';
 import { emphasisWeight, resolveTheme } from '../src/core/theme';
 import { clippedTextWarnings } from '../src/core/textClip';
 import type { Geometry } from '../src/core/types/scene';
@@ -12,6 +13,17 @@ import { censusCase } from '../scripts/number-census.mjs';
 
 const svgOf = (spec: unknown): string => (render({ spec, format: 'svg', return: ['svg'] }).body as { svg: string }).svg;
 const descOf = (svg: string) => /<desc[^>]*>([\s\S]*?)<\/desc>/.exec(svg)?.[1] ?? '';
+
+// Accounting and share labels must keep numeric typography without treating prose or nested brackets as numbers.
+it('keeps numeric roles for Unicode numbers, accounting and shares', () => {
+  for (const text of ['', '  ', 'n/a', 'n.m.', '—', '1,234.50', '−1.2bn', '12USD', '35.6M (37%)',
+    '35.6M(37%)', ' 35.6M\n(37%) ', '($1,200,000.00)', '( 12 )', '(−1.2bn)', '؜-١٬٢٣٤٫٥',
+    '١٢٪؜', '𝟙𝟚𝟛', '١٢ (۳۴٪)']) expect(isNumberAlone(text), text).toBe(true);
+  for (const text of ['USD12', '12 May 2026', '12 vs target', '(12)(34)', '12 ((34))', '(12) (34)',
+    '12 (34) (56)', '12 (34) trailing', '12 (n/a)', 'n/a (34)', '()', '12 )', '12 (34', '($12))']) {
+    expect(isNumberAlone(text), text).toBe(false);
+  }
+});
 
 describe('the description states the drawn numbers', () => {
   // The description reformatted the raw value and said "0%, 1%" where the labels read "6%, 54%".

@@ -105,6 +105,8 @@ export interface ChartCore<
   /** Alias-specific values for existing options, applied before authored options. */
   aliasDefaults?: Record<string, Partial<O>>;
   layout: LayoutFn<D, O, M, DV>;
+  /** Prepares private chart data once for all size and note trials in this request. */
+  prepareLayout?(data: D, options?: O): LayoutFn<D, O, M, DV>;
   /** Wraps the finished layout, for a check that must see the chart the registry accepts. */
   finishLayout?: (layout: LayoutFn<D, O, M, DV>) => LayoutFn<D, O, M, DV>;
   defaults: Partial<O>;
@@ -289,7 +291,8 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
     if (def.type === 'grid') data = inheritGridTarget(data, target, textScale, textSize);
     if (def.categoryLabels) data = withCalendarLabels(data, authored?.locale?.language, def.categoryLabels);
     const origins = new WeakMap<object, object>();
-    const legendLayout = prepareLegendLayout(def, data, origins);
+    const layoutDefinition = def.prepareLayout ? { ...def, layout: def.prepareLayout(data, prepared) } : def;
+    const legendLayout = prepareLegendLayout(layoutDefinition, data, origins);
     // The fixed result's identity includes its labels and their geometry.
     // Equal note text at another frame cannot reuse this note variant.
     let noteLayouts = new WeakMap<object, Map<string, FitLayout<O, M, DV>>>();
@@ -396,7 +399,7 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
           const noteKey = JSON.stringify([...noted]);
           let noteRun = variants.get(noteKey);
           if (!noteRun) {
-            noteRun = prepareLegendLayout(def, data, origins);
+            noteRun = prepareLegendLayout(layoutDefinition, data, origins);
             variants.set(noteKey, noteRun);
             noteRuns.push(noteRun);
           }

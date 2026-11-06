@@ -5,9 +5,9 @@ import { compositeColor } from '../src/core/color';
 import { layoutScatter } from '../src/core/charts/scatter/layout';
 import { logSpecFormat } from '../src/core/charts/scatter/logAxis';
 import { formatAutomaticNumber as formatAutomaticNumberSync, formatNumber } from '../src/core/format';
-import { shareSetDecimals } from '../src/core/formatPrecision';
+import { shareSetDecimals, withSmallValues, zeroLifts } from '../src/core/formatPrecision';
 import { shareSetFormatter } from '../src/core/format';
-import { defaultFormatSpec, formatExampleProblem, formatterFromExample, formatWithSpec, parseFormatExample, readFormatExamples, roundedNumber, sameUnit, seriesRasterFormatter, signedFormatterFromExample, unscaledFormatLint } from '../src/core/formatSpec';
+import { compileNumberFormat, defaultFormatSpec, formatExampleProblem, formatterFromExample, formatWithSpec, parseFormatExample, readFormatExamples, roundedNumber, sameUnit, seriesRasterFormatter, signedFormatterFromExample, unscaledFormatLint } from '../src/core/formatSpec';
 import { niceDomain } from '../src/core/scale';
 import type { SceneNode } from '../src/core/types/scene';
 import { createElement } from 'react';
@@ -20,6 +20,26 @@ import { TableChart } from '../src/react/charts/table';
 import { prepareChart } from '../src/react/prepare';
 
 describe('ordinary number examples', () => {
+  it('compiled table formats preserve small-value modes and lift counts on reused values', () => {
+    for (const spec of [defaultFormatSpec(), parseFormatExample('$1.2M'), parseFormatExample('+20.5%'), parseFormatExample('(1,234)')]) {
+      const compiled = compileNumberFormat(spec);
+      for (const mode of ['bound', 'zero', 'scientific', 'p-value', 'bound'] as const) withSmallValues(mode, () => {
+        for (const value of [0.0004, -0.0004, 0, -0, 1_234_567, Infinity, NaN, 0.0004]) {
+          const before = zeroLifts.count;
+          const expected = formatWithSpec(value, spec);
+          const lifts = zeroLifts.count - before;
+          const compiledBefore = zeroLifts.count;
+          expect(compiled(value)).toBe(expected);
+          expect(zeroLifts.count - compiledBefore).toBe(lifts);
+        }
+      });
+    }
+    const mutable = defaultFormatSpec();
+    formatWithSpec(12.345, mutable);
+    mutable.decimals = 2;
+    expect(formatWithSpec(12.345, mutable)).toBe('12.35');
+  });
+
   const column = (format: string, values: number[]) => {
     const request = resolveChartRequest({ type: 'column', data: {
       categories: values.map((_, index) => ({ id: String(index) })), series: [{ id: 's', values }],
@@ -90,6 +110,17 @@ describe('ordinary number examples', () => {
       ['00', '1', '1,235'], ['000', '1', '1,235'], ['0,0%', '1,2%', '1.234,5%'], ['0,00 %', '1,20 %', '1.234,50 %']]) {
       expect([1.2, 1234.5].map(formatterFromExample(example!, undefined)), example).toEqual([small, grouped]);
     }
+  });
+
+  // Prevents an accessor's later format reading from losing its warning when shared objects are visited once.
+  it('keeps ambiguous-format warnings from a shared accessor after the rewrite pass', () => {
+    let reads = 0;
+    const series = { get format() { return ++reads === 1 ? '1.2' : '1.234'; }, values: [0.512, 1200] };
+    const result = readFormatExamples({ series: [series, series] }, {});
+    expect(result.warnings).toEqual([expect.objectContaining({
+      code: 'format-reads-as-group',
+      message: "format '1.234' reads as a thousands group on this chart, so 0.512 prints 1",
+    })]);
   });
 
   // Prevents bracketed units from disappearing while spreadsheet colours still warn and do not print.
@@ -815,4 +846,12 @@ describe('the automatic number rule', () => {
     }).map(([name]) => name);
     expect(slow).toEqual([]);
   });
+});
+
+// A Proxy can return another format example than its stored field, and a cached reading must not round the number on that gap.
+it('reads a proxied column format example from the value the Proxy returns', async () => {
+  const column = new Proxy({ id: 'v', kind: 'value', format: '1,234' }, { get: (target, key, receiver) => key === 'format' ? '1.234' : Reflect.get(target, key, receiver) });
+  const data = { columns: [{ id: 'label', kind: 'rowLabel' }, column], rows: [{ id: 'a', label: 'Orders', cells: { v: 0.512 } }] };
+  const prepared = JSON.stringify(await prepareChart({ type: 'table', data, options: { size: { width: 600 } } } as never));
+  expect(prepared).toContain('"displayed":"0.512"');
 });

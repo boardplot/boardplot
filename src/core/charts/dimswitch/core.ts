@@ -1,11 +1,13 @@
-import { PLAN_ONLY } from '../../layoutPlan';
+import { PLAN_ONLY, ownPlanInput } from '../../layoutPlan';
+import { engineNote, engineNoteMeta } from '../../notes';
+import { ENGINE_NOTES } from '../table/tracks';
 import type { ChartCore } from '../../registry';
 import type { Geometry } from '../../types/scene';
 import { CARD_MIN_WIDTH, chartSizing, heightOmitted, isWidthProbe, VERIFY_ADVICE, WIDTH_PROBE } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
-import { classFloor, layoutKey, layoutTable, memoLayout, REGULAR_SPACING, type TableMarks } from '../table/layout';
-import { resolveTable } from '../table/resolve';
-import { compileDimSwitch, dimSwitchTableWarnings, dimswitchRowId, FOLDED, hostPeriods, PARTIAL_NOTE_OFF, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning, type DimSwitchForm } from './compile';
+import { classFloor, layoutKey, prepareTableExecutor, memoLayout, REGULAR_SPACING, type TableMarks } from '../table/layout';
+import { prepareTableData, resolvePreparedTable, resolveTable } from '../table/resolve';
+import { compileDimSwitch, currentDimSwitchOptions, dimSwitchTableWarnings, dimswitchRowId, FOLDED, hostPeriods, PARTIAL_NOTE_OFF, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning, type DimSwitchForm } from './compile';
 import type { DimSwitchData, DimSwitchOptions, DimSwitchDerived } from './types';
 import { minOf } from '../../arrays';
 
@@ -17,7 +19,7 @@ export function resolveDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   return {...compiled,...resolved,compileWarnings:compiled.warnings,computedCells:[...resolved.computedCells,...records]};
 }
 
-type PreparedForm = { compiled: ReturnType<typeof compileDimSwitch>; resolved: ReturnType<typeof resolveTable> };
+type PreparedForm = { compiled: ReturnType<typeof compileDimSwitch>; resolved: ReturnType<typeof resolveTable>; executor: ReturnType<typeof prepareTableExecutor>; noteMetadata: Map<string, NonNullable<ReturnType<typeof engineNoteMeta>>> };
 
 /** The options a probe sets for itself. The compiled form does not depend on them, so a probe at another size reuses it. */
 const PER_PROBE = [TARGET_SIZE, WIDTH_PROBE, REGULAR_SPACING, PLAN_ONLY] as const;
@@ -31,11 +33,31 @@ const keptForms = new WeakMap<object, Map<string, PreparedForm>>();
  */
 function prepareForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwitchForm): PreparedForm {
   const probe=PER_PROBE.flatMap(symbol=>symbol in options ? [[symbol,(options as Record<symbol,unknown>)[symbol]] as const] : []);
-  const withProbe=(prepared:PreparedForm):PreparedForm=>({resolved:prepared.resolved,compiled:{...prepared.compiled,options:{...prepared.compiled.options,...Object.fromEntries(probe)}}});
+  const withProbe=(prepared:PreparedForm):PreparedForm=>{
+    // Compiled note strings outlive the request-local metadata that gives them their kind.
+    for (const [text,meta] of prepared.noteMetadata) {
+      engineNote(text,meta.kind,meta.short,meta.values,meta.list);
+      const active=engineNoteMeta(text);
+      if (active) Object.assign(active,meta);
+    }
+    const current={...currentDimSwitchOptions(prepared.compiled.options,without(options),form,data.effectLabel),...Object.fromEntries(probe)};
+    return {...prepared,compiled:{...prepared.compiled,options:current}};
+  };
   const without=<T extends object>(value:T):T=>{const copy={...value} as Record<PropertyKey,unknown>; for (const symbol of PER_PROBE) delete copy[symbol]; return copy as T;};
-  const compute=():PreparedForm=>{const compiled=compileDimSwitch(data,options,form);return {compiled:{...compiled,options:without(compiled.options)},resolved:resolveTable(compiled.data,compiled.options)};};
+  const compute=():PreparedForm=>{
+    const compiled=compileDimSwitch(data,options,form);
+    const resolved=resolvePreparedTable(prepareTableData(compiled.data,compiled.options),compiled.options);
+    const noteMetadata:PreparedForm['noteMetadata']=new Map();
+    for (const text of (compiled.options as {[ENGINE_NOTES]?: string[]})[ENGINE_NOTES] ?? []) {
+      const meta=engineNoteMeta(text);
+      if (meta) noteMetadata.set(text,{...meta});
+    }
+    // The source key still checks mutable input; this generated table stays private until materialization copies it.
+    ownPlanInput(compiled.data);
+    return {compiled:{...compiled,options:without(compiled.options)},resolved,executor:prepareTableExecutor(compiled.data,compiled.options,resolved),noteMetadata};
+  };
   if (typeof options.theme === 'string') return withProbe(compute());
-  const {size:_size,...rest}=without(options);
+  const {size:_size,inlineVisibility:_inlineVisibility,...rest}=without(options);
   const key=`${layoutKey(data,rest)}:${form.card === true}:${form.hide ?? 0}`;
   let byKey=keptForms.get(data);
   if (!byKey || byKey.size >= 64) keptForms.set(data,byKey=new Map());
@@ -56,7 +78,7 @@ function layoutForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwi
   const resolved=prepared.resolved;
   // The compile is shared across spacing passes and carries the first pass's options: the spacing is this request's.
   // Period selection reads compact-floor slack, so it retains that floor even during ordinary rendering.
-  const geometry=layoutTable(compiled.data,{...options,...compiled.options,[PLAN_ONLY]:true,[REGULAR_SPACING]:(options as {[REGULAR_SPACING]?: boolean})[REGULAR_SPACING]} as typeof compiled.options,resolved,true);
+  const geometry=prepared.executor.run({...options,...compiled.options,[PLAN_ONLY]:true,[REGULAR_SPACING]:(options as {[REGULAR_SPACING]?: boolean})[REGULAR_SPACING]} as typeof compiled.options,true,resolved);
   // The frame can reach its automatic height without a second compile.
   if ((options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === false
     && typeof compiled.options.size === 'object' && compiled.options.size.height !== undefined

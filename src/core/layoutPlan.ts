@@ -16,7 +16,8 @@ const keyFunction = (_key: string, value: unknown): unknown => {
 };
 type TextPlan = { font: FontSpec; texts: Map<string, TextSize> };
 type FontPlans = { families: Map<FontSpec['family'], Map<number, TextPlan[]>>; last?: TextPlan };
-type Inputs = { json: WeakMap<object, string>; themes: WeakMap<object, number>; texts: WeakMap<TextMeasurer, FontPlans> };
+type InputKeyReader = (value: object) => string | undefined;
+type Inputs = { json: WeakMap<object, string>; themes: WeakMap<object, number>; texts: WeakMap<TextMeasurer, FontPlans>; exactKeys?: Map<InputKeyReader, WeakMap<object, string | undefined>> };
 let inputs: Inputs | undefined;
 
 /** Synchronous probes share snapshots; the next public call reads mutable inputs again. */
@@ -26,6 +27,18 @@ export function withPlanInputs<T>(run: () => T): T {
   try { return run(); } finally { inputs = undefined; }
 }
 
+/** Size probes share an exact input snapshot. A new public request checks mutable inputs again. */
+export function memoExactInputKey(value: object, read: InputKeyReader): string | undefined {
+  if (!inputs) return read(value);
+  const readers = inputs.exactKeys ??= new Map();
+  let keys = readers.get(read);
+  if (!keys) readers.set(read, keys = new WeakMap());
+  if (keys.has(value)) return keys.get(value);
+  const key = read(value);
+  keys.set(value, key);
+  return key;
+}
+
 function inputJson(value: object): string {
   let key = inputs?.json.get(value);
   if (key === undefined) { key = JSON.stringify(value, keyFunction); inputs?.json.set(value, key); }
@@ -33,8 +46,17 @@ function inputJson(value: object): string {
 }
 
 const inputVersions = new WeakMap<object, { json: string; version: number }>();
+const ownedInputVersions = new WeakMap<object, number>();
 let nextInputVersion = 0;
+
+/** A completed private model that callers only receive through a deep copy. Never mark caller inputs. */
+export function ownPlanInput(value: object): void {
+  if (!ownedInputVersions.has(value)) ownedInputVersions.set(value, nextInputVersion++);
+}
+
 function inputVersion(value: object): number {
+  const owned = ownedInputVersions.get(value);
+  if (owned !== undefined) return owned;
   const json = inputJson(value);
   let known = inputVersions.get(value);
   if (!known || known.json !== json) inputVersions.set(value, known = { json, version: nextInputVersion++ });
@@ -161,30 +183,33 @@ export function copyPlannedValue<T>(value: T, copies = new Map<object, unknown>(
   if (Array.isArray(value)) {
     const copy: unknown[] = [];
     copies.set(value, copy);
-    for (const entry of value) copy.push(copyPlannedValue(entry, copies));
+    for (const entry of value) copy.push(entry !== null && typeof entry === 'object' ? copyPlannedValue(entry, copies) : entry);
     return copy as T;
   }
   if (value instanceof Map) {
     const copy = new Map();
     copies.set(value, copy);
-    for (const [key, entry] of value) copy.set(key, copyPlannedValue(entry, copies));
+    for (const [key, entry] of value) copy.set(key, entry !== null && typeof entry === 'object' ? copyPlannedValue(entry, copies) : entry);
     return copy as T;
   }
   if (value instanceof Set) {
     const copy = new Set();
     copies.set(value, copy);
-    for (const entry of value) copy.add(copyPlannedValue(entry, copies));
+    for (const entry of value) copy.add(entry !== null && typeof entry === 'object' ? copyPlannedValue(entry, copies) : entry);
     return copy as T;
   }
-  if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) return value;
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) return value;
   // A null-prototype record (cells keyed by column id) stays one, so a column named __proto__ keeps its cell.
   const copy: Record<PropertyKey, unknown> = footerPlans.has(value as FrameGeometry)
-    ? copyFrame(value as FrameGeometry) as Record<PropertyKey, unknown> : Object.getPrototypeOf(value) === null ? emptyIdRecord() : {};
+    ? copyFrame(value as FrameGeometry) as Record<PropertyKey, unknown> : prototype === null ? emptyIdRecord() : {};
   copies.set(value, copy);
   for (const key of Reflect.ownKeys(value)) {
-    const entry = copyPlannedValue((value as Record<PropertyKey, unknown>)[key], copies);
+    const source = (value as Record<PropertyKey, unknown>)[key];
+    const entry = source !== null && typeof source === 'object' ? copyPlannedValue(source, copies) : source;
     // Note metadata stays outside a note's public fields, also on the copy a caller receives.
     if (typeof key === 'symbol' && !Object.prototype.propertyIsEnumerable.call(value, key)) Object.defineProperty(copy, key, { value: entry, configurable: true });
+    else if (key === '__proto__') Object.defineProperty(copy, key, { value: entry, enumerable: true, writable: true, configurable: true });
     else copy[key] = entry;
   }
   return copy as T;

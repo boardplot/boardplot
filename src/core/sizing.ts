@@ -1,4 +1,4 @@
-import { PLAN_ONLY, materializeLayout, withPlanInputs } from './layoutPlan';
+import { PLAN_ONLY, isPlanned, materializeLayout, withPlanInputs } from './layoutPlan';
 import { boundsOf, type Rect, type Size } from './geometry';
 import { NormalizeError, resolveSize, resolveSubtitle } from './normalize/shared';
 import { panelTypeClass, WIDE_CANVAS_MIN_WIDTH } from './theme';
@@ -849,9 +849,12 @@ export function prepareFitLayout<D, O extends ChartOptions, M extends object, DV
       // Registry and legend passes change labels, warnings and scene nodes.
       // Give them their own result, while the fixed evaluator keeps its frame.
       const fitted = fitOrRepair(definition, data, options, at);
+      const owned = !fitted.refused && !(options as { [PLAN_ONLY]?: boolean } | undefined)?.[PLAN_ONLY] && isPlanned(fitted);
       const selected = !fitted.refused && !(options as { [PLAN_ONLY]?: boolean } | undefined)?.[PLAN_ONLY]
         ? materializeLayout(fitted) : fitted;
-      const copy = copyLayout(selected);
+      // Materialization already copied every scene field for this caller.
+      const copy = owned ? selected : copyLayout(selected);
+      if (owned && !copy.refused) copy.a11y.desc = singleStops(copy.a11y.desc);
       origins.set(copy, origins.get(fitted) ?? fitted);
       if (!copy.refused && !(options as { [PLAN_ONLY]?: boolean } | undefined)?.[PLAN_ONLY]) sourceFollowsContent(copy, options);
       return withPlotFloorWarning(copy, options, definition.title);

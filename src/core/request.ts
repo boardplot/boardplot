@@ -307,14 +307,18 @@ export function planResolvedRequest(request: ResolvedChartRequest): Pick<LayoutR
 function layoutRequest(request: ResolvedChartRequest): LayoutResult {
   const finish = (result: LayoutResult): LayoutResult => (request.options as { [PLAN_ONLY]?: boolean })[PLAN_ONLY]
     ? result : withClipWarnings(result, request.fontMetrics);
+  const table = request.type === 'table' || request.type === 'dimswitch';
+  const probe = table ? layoutWidthProbe : layoutOnce;
   const first = layoutOnce(request);
-  const fitted = widthsGiveWay(request, first, layoutOnce);
+  const fitted = widthsGiveWay(request, first, layoutOnce, probe);
   if (fitted) return finish(fitted[1]);
   const [asked, result] = steppedType(request, first) ?? [request, first];
   const plainRequest = withoutAskedNotes(asked, result);
   const plain = plainRequest && layoutOnce(plainRequest);
   const drawn = plain && !plain.refused ? askedNotesOff(plain, result) : result;
-  const fittedLate = widthsGiveWay(asked, drawn, layoutOnce);
+  // An unchanged refusal already tried the same authored widths.
+  const fittedLate = table && asked === request && drawn === first
+    ? undefined : widthsGiveWay(asked, drawn, layoutOnce, probe);
   return finish(fittedLate ? fittedLate[1] : drawn);
 }
 
@@ -369,6 +373,7 @@ function withPanelOverrides(level: WidthLevel, [step, ...rest]: readonly WidthSt
  */
 function widthsGiveWay(
   request: ResolvedChartRequest, result: LayoutResult, layout: (asked: ResolvedChartRequest) => LayoutResult,
+  probe: (asked: ResolvedChartRequest) => LayoutResult = layout,
 ): [ResolvedChartRequest, LayoutResult] | undefined {
   if (!result.refused || result.warnings[0]?.code !== 'size-below-floor') return undefined;
   const grid = request.type === 'grid';
@@ -377,7 +382,7 @@ function widthsGiveWay(
   const asking = (overrides: readonly Record<string, ColumnOverride>[]): ResolvedChartRequest => (grid
     ? { ...request, data: groups.reduce((data, group, at) => withPanelOverrides(data, group.path!, overrides[at]!), request.data as WidthLevel) as typeof request.data }
     : { ...request, options: { ...request.options, columnOverrides: overrides[0]! } as typeof request.options });
-  const fit = widthsThatDraw(groups, request.size.width, (overrides) => !layout(asking(overrides)).refused);
+  const fit = widthsThatDraw(groups, request.size.width, (overrides) => !probe(asking(overrides)).refused);
   if (!fit) return undefined;
   const asked = asking(fit.overrides);
   const drawn = layout(asked);
@@ -421,6 +426,13 @@ function withClipWarnings(result: LayoutResult, measure: TextMeasurer): LayoutRe
 function layoutOnce(request: ResolvedChartRequest): LayoutResult {
   const run = preparedLayout(request);
   try { return drawnAdvice(request, run(request.options), run); } finally { run.finish(); }
+}
+
+/** Authored-width trials need acceptance only; the chosen result keeps full advice and drawing. */
+function layoutWidthProbe(request: ResolvedChartRequest): LayoutResult {
+  const run = preparedLayout(request);
+  try { return run({ ...request.options, [PLAN_ONLY]: true } as RequestOptions); }
+  finally { run.finish(); }
 }
 
 /**
@@ -913,6 +925,7 @@ export function measureResolvedRequest(request: ResolvedChartRequest): ChartMeas
     let asked = request;
     let layoutAt = open(request);
     let first = layoutAt(request.options);
+    const initial = first;
     // The same step as layoutResolvedRequest, so measure agrees with render and canDraw; the sizing probes then use the stepped text.
     const stepped = steppedType(request, first, steppedRequest => { layoutAt = open(steppedRequest); return layoutAt(steppedRequest.options); });
     const drawnBy = (opened: ResolvedChartRequest) => open(opened)(opened.options);
@@ -925,7 +938,8 @@ export function measureResolvedRequest(request: ResolvedChartRequest): ChartMeas
       const plain = plainAt(plainRequest.options);
       if (!plain.refused) return measureWithLayout(plainRequest, askedNotesOff(plain, first), plainAt);
     }
-    const fittedLate = widthsGiveWay(asked, first, drawnBy);
+    const unchangedTable = (request.type === 'table' || request.type === 'dimswitch') && asked === request && first === initial;
+    const fittedLate = unchangedTable ? undefined : widthsGiveWay(asked, first, drawnBy);
     if (fittedLate) return measureWithLayout(fittedLate[0], fittedLate[1], open(fittedLate[0]));
     return measureWithLayout(asked, first, layoutAt);
   } finally { for (const run of runs) run.finish(); }
