@@ -130,6 +130,23 @@ export function sideAwayFrom(point: Point, others: readonly (readonly Point[])[]
  * (Liang-Barsky clipping). A label box tested with the stroke's half width
  * plus its air as `pad` touches the drawn line exactly when this is true.
  */
+/** The part of the segment from `a` to `b` inside `rect` grown by `pad`, as fractions [t0, t1] of it, or undefined when it misses. */
+export function segmentSpanInRect(a: Point, b: Point, rect: Rect, pad = 0): [number, number] | undefined {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  let t0 = 0;
+  let t1 = 1;
+  const clip = (p: number, q: number): boolean => {
+    if (p === 0) return q >= 0;
+    const t = q / p;
+    if (p < 0) t0 = Math.max(t0, t);
+    else t1 = Math.min(t1, t);
+    return t0 <= t1;
+  };
+  return clip(-dx, a.x - rect.x + pad) && clip(dx, rect.x + rect.w + pad - a.x)
+    && clip(-dy, a.y - rect.y + pad) && clip(dy, rect.y + rect.h + pad - a.y) ? [t0, t1] : undefined;
+}
+
 export function segmentHitsRect(a: Point, b: Point, rect: Rect, pad = 0): boolean {
   const x0 = rect.x - pad;
   const y0 = rect.y - pad;

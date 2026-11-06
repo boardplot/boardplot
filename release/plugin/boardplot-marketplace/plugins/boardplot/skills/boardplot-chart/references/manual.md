@@ -848,6 +848,85 @@ A total above two or more stack parts stays above the stack. A stacked column or
 
 Football-field and tornado bars, relative variance, bullet, funnel, bartable and chart types without supported bar values do not accept the option. A combo without column series accepts only `'auto'`. Unsupported variants and values report `label-position-unsupported` at `options.labelPosition` and list accepted values.
 
+## Moving text and drawing on a chart
+
+This section covers three things: moving a label, a bracket's seat, and four drawing annotations.
+
+### Which option moves a label
+
+- Use `labelPosition` to move all values on a chart's bars to one named position.
+- Use `labelPlacements` to pin one label to a named slot that the chart offers.
+- Use `labelOffsets` to move one label by a set distance from the seat it would take.
+
+### Read a label's id
+
+Each label of an SVG render carries `label:` and its id in `data-id`, such as `label:annotation:callout-2` for the id `annotation:callout-2` or `label:sum:price` for `sum:price`. An annotation's id comes from its `id`, otherwise from its kind and its position in `annotations`. To list every id, give `labelOffsets` an id that does not exist: the warning `label-offset-unknown` names the valid ids of that render.
+
+### `labelOffsets`
+
+`options.labelOffsets` maps a label id to `{ x, y }`, in px on the rendered chart. Positive `x` moves right, and positive `y` moves down.
+
+```json
+{
+  "type": "waterfall",
+  "data": {
+    "items": [
+      { "id": "open", "label": "Opening", "type": "total", "value": 200 },
+      { "id": "volume", "label": "Volume", "value": 42 },
+      { "id": "costs", "label": "Costs", "value": -36 },
+      { "id": "close", "label": "Closing", "type": "total" }
+    ]
+  },
+  "annotations": [{ "kind": "callout", "at": "costs", "text": "Energy contracts renewed" }],
+  "options": { "labelOffsets": { "annotation:callout-1": { "y": -40 } } }
+}
+```
+
+- The solver chooses the seat first, with any pin, and the offset moves it. Natural seats do not change.
+- A move that meets another mark, another label or the canvas edge is not made. The label stays in its chosen seat, and the warning `label-offset-blocked` names what blocks it. If no seat is free, the moved first seat is tried once before the label is hidden. An offset never hides a label that would otherwise draw.
+- A moved label gets a leader back to its seat, unless the label is a value that takes none. A seat that already has a leader keeps it.
+- A value moved within its own bar keeps its ink. A value moved off its bar prints in page ink with a halo, so white text never lands on the page.
+- A callout with an icon or a status moves with its chip, and its leader still ends at its anchor.
+- A bracket's offset moves its label only, not its run.
+- On a horizontal waterfall, `x` and `y` stay screen pixels.
+
+### Where a bracket stands
+
+A `bracket` on a waterfall stands directly above its own bars and their values. It moves to the row at the top of the plot when its label, run or ticks would meet something there. A `valueLine` authored after a bracket is not yet claimed when the bracket chooses its seat, so author the value line first to keep the bracket off it.
+
+### Drawing annotations
+
+Four annotation kinds draw on data positions, so a drawing stays on its data at every size.
+
+| Kind | Fields | Draws |
+|---|---|---|
+| `text` | `at`, `text`, `id`, `priority` | Text on the point, or above, below, right or left of it, 8 px away. `${value}` prints as written. |
+| `line` | `from`, `to`, `dashed`, `id` | A straight line. |
+| `arrow` | `from`, `to`, `dashed`, `id` | A straight arrow, with its head at `to`. |
+| `box` | `from`, `to`, `dashed`, `id` | An unfilled box, with `from` and `to` as opposite corners. |
+
+A point is an anchor such as `"q2"`, `{ "categoryId": "q2", "seriesId": "plan" }` or `{ "pointId": "p7" }`, or a category with a value in axis units: `{ "categoryId": "q2", "value": 120 }`.
+
+```json
+{
+  "type": "column",
+  "data": {
+    "categories": [{ "id": "q1", "label": "Q1" }, { "id": "q2", "label": "Q2" }, { "id": "q3", "label": "Q3" }],
+    "series": [{ "id": "orders", "label": "Orders", "values": [30, 60, 45] }]
+  },
+  "annotations": [
+    { "kind": "arrow", "from": { "categoryId": "q1", "value": 50 }, "to": { "categoryId": "q2", "value": 74 } },
+    { "kind": "text", "at": { "categoryId": "q3", "value": 70 }, "text": "New contract" }
+  ],
+  "options": { "valueAxis": { "min": 0, "max": 80 } }
+}
+```
+
+- A value outside the plot, a chart with no value scale and an anchor that does not resolve give the warning `bad-anchor` and draw nothing. A drawing does not extend the axis.
+- Lines, arrows and boxes take the ink and rule width of a bracket and no other styling. A label may sit inside a box, because only the box's edges block it.
+- No line crosses text. A stretch that would cross a label is cut around it with 2 px of air, and the warning `draw-crosses-text` names the annotation. The rest of the drawing stays. A value or a name that seats after a drawing keeps off its strokes.
+- These kinds take bar, box, bullet, butterfly, column, combo, dot, funnel, heatmap, line, Mekko, Pareto, pie, likert, pyramid, PVM, scatter, slope, variance and waterfall, and a grid panel of those types through its options. Other chart types drop them with the warning `unsupported-annotation`. A horizontal waterfall draws no annotations, and a warning says so.
+
 ## Log scales on a line
 
 Set `options.valueAxis.log` to `true` or `'y'` to draw a plain line with positive values and value-axis bounds on a log10 axis. Area and bump variants, percent mode, trends, phases, monotone fans, and gap fills with mismatched or monotone interpolation are refused.

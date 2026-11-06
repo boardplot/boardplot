@@ -124,6 +124,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | key-right-slide | column.grouped | example | Clustered columns on a slide with the key in a column right of the plot |
 | inside-base-values | column.grouped | example | Column values inside the base |
 | stacked-inside-base-values | column.stacked | example | Stacked column values inside each base |
+| drawing-kinds | column.grouped | example | A text, a line, an arrow and a box drawn on data positions |
 
 ## bar
 
@@ -190,6 +191,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | key-left | bar.stacked | example | Stacked bars with the key in a column left of the plot |
 | column-overrides | bar.grouped | example | columnOverrides sets the width of the name column |
 | centered-values | bar.grouped | example | Bar values at the center |
+| drawing-on-value-axis | bar.grouped | example | An arrow and a text on a horizontal value axis |
 
 ## line
 
@@ -265,6 +267,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | iso-months-year-row | line.line | example | ISO month ids across two years print months and a year row |
 | rates-as-fractions | line.line | torture | SQL fractions use percentage cells at input |
 | ordered-ramp-rest-apart | line.line | example | Rest only has to differ from the ordered ramp (othersShade 'apart') |
+| drawing-kinds | line.line | example | A text, a line, an arrow and a box at category and value points |
 | small-drawer | line.line | example | A plain line chart in a 480 by 200 drawer |
 | weekly-orders-anomalies | line.line | example | Two weeks break out of the normal order range (anomaly on a line) |
 | weekly-events-lane | line.line | example | Event lane over a weekly line: dotted rules behind the data, the rest numbered in the key |
@@ -438,6 +441,8 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | interview-status-buildup | waterfall.vertical | example | Interview pipeline build-up by status |
 | revenue-build-up | waterfall.vertical | example | Revenue → EBIT build-up with diff arrow |
 | step-brackets | waterfall.vertical | example | Brackets over bridge steps print their sums |
+| callout-label-offset | waterfall.vertical | example | labelOffsets moves a callout up from its step |
+| bracket-low-steps | waterfall.vertical | example | A bracket stands directly above low steps |
 | build-down | waterfall.vertical | example | Build-down: revenue to net income |
 | whole-axis-opt-out | waterfall.vertical | example | Whole value axis kept with an explicit false |
 | automatic-axis-break | waterfall.vertical | example | Explicit automatic break makes small steps on a large base easier to compare |

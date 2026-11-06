@@ -25,5 +25,5 @@ export const mekkoCore: ChartCore<
   categoryLabels: calendarCategories,
   prepare: prepareFractionData,
   defaults: { variant: 'stacked100' },
-  annotationKinds: ['cagr', 'diff', 'delta', 'note', 'callout', 'valueLine', 'indicator100', 'abs']
+  annotationKinds: ['cagr', 'diff', 'delta', 'note', 'callout', 'valueLine', 'indicator100', 'abs', 'text', 'line', 'arrow', 'box']
 };

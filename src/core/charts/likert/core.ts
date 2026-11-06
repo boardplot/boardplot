@@ -24,5 +24,5 @@ export const likertCore: ChartCore<
   aliases: ['diverging-stacked'],
   layout: layoutLikert,
   defaults: { neutral: 'split', summary: 'net', sortBy: 'sheet' },
-  annotationKinds: ['cagr', 'diff', 'delta', 'note', 'callout']
+  annotationKinds: ['cagr', 'diff', 'delta', 'note', 'callout', 'text', 'line', 'arrow', 'box']
 };

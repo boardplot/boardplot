@@ -29,5 +29,5 @@ export const lineCore: ChartCore<LineChartData, LineOptions, LineMarks, LineDeri
     return prepareFractionData(options ? lowerLineX(data, options) : data);
   },
   defaults: { variant: 'line' },
-  annotationKinds: ['cagr', 'diff', 'delta', 'note', 'callout', 'valueLine', 'indicator100', 'abs', 'event', 'band']
+  annotationKinds: ['cagr', 'diff', 'delta', 'note', 'callout', 'valueLine', 'indicator100', 'abs', 'event', 'band', 'text', 'line', 'arrow', 'box']
 };

@@ -649,6 +649,10 @@ function addCalloutHeadIssues(annotation: Record<string, unknown>, ctx: z.Refine
  * would print another number.
  */
 const ANNOTATION_FIELDS: Record<string, readonly string[]> = {
+  text: ['at'],
+  line: ['from', 'to', 'dashed'],
+  arrow: ['from', 'to', 'dashed'],
+  box: ['from', 'to', 'dashed'],
   diff: ['from', 'to', 'mode', 'placement', 'caption'],
   cagr: ['from', 'to', 'suffix', 'period', 'shape'],
   delta: ['at', 'vs', 'placement', 'caption'],
@@ -664,10 +668,62 @@ const ANNOTATION_FIELDS: Record<string, readonly string[]> = {
 /** Every kind takes these, or refuses them with a message of its own (text, glyphs, the callout head). */
 const SHARED_ANNOTATION_FIELDS = ['kind', 'id', 'text', 'format', 'priority', 'icon', 'status', 'headline', 'arrow'];
 /** The anchor fields of each kind; all are required but a cagr's, which default to the ends, and an event's, which may take a date (addEventIssues). */
-const ANCHOR_FIELDS: Record<string, readonly string[]> = { diff: ['from', 'to'], bracket: ['from', 'to'], cagr: ['from', 'to'], delta: ['at', 'vs'], abs: ['at'], note: ['at'], callout: ['at'], event: ['at'] };
+const ANCHOR_FIELDS: Record<string, readonly string[]> = { text: ['at'], line: ['from', 'to'], arrow: ['from', 'to'], box: ['from', 'to'], diff: ['from', 'to'], bracket: ['from', 'to'], cagr: ['from', 'to'], delta: ['at', 'vs'], abs: ['at'], note: ['at'], callout: ['at'], event: ['at'] };
 const ANCHOR_SHAPE = "a category id such as 'c1', { categoryId, seriesId? }, { pointId } on scatter, or { valueLineId }";
 /** The keys an object anchor takes (AnchorRef in types/annotations.ts). */
 const ANCHOR_KEYS = ['categoryId', 'seriesId', 'segmentId', 'edge', 'pointId', 'valueLineId'];
+
+/** The fields each drawing kind takes, beside `kind`. They refuse every other shared field. */
+const DRAWING_FIELDS: Record<string, readonly string[]> = {
+  text: ['at', 'text', 'id', 'priority'],
+  line: ['from', 'to', 'dashed', 'id'],
+  arrow: ['from', 'to', 'dashed', 'id'],
+  box: ['from', 'to', 'dashed', 'id'],
+};
+
+/**
+ * A drawing's point: an anchor, or { categoryId, value } with a finite value in axis units.
+ * No other kind takes `value` in an anchor.
+ */
+function addDrawingIssues(annotation: Record<string, unknown>, ctx: z.RefinementCtx, timeX: boolean): void {
+  const kind = String(annotation.kind);
+  const fields = DRAWING_FIELDS[kind]!;
+  const takes = `a ${kind} takes ${fields.join(', ')}`;
+  for (const key of Object.keys(annotation)) {
+    if (key === 'kind' || fields.includes(key)) continue;
+    const near = misspelledField(key, fields);
+    ctx.addIssue({ code: 'custom', path: [key], message: near ? `unknown ${kind} field '${key}' — try: ${near}` : `${takes}, not '${key}'; drop '${key}'`, params: near ? { renameTo: near } : { refused: true } });
+  }
+  for (const field of ANCHOR_FIELDS[kind]!) {
+    const point = annotation[field];
+    if (point === undefined) {
+      ctx.addIssue({ code: 'custom', path: [field], message: `a ${kind} needs '${field}', a point: ${ANCHOR_SHAPE}, or { categoryId, value }` });
+      continue;
+    }
+    if (typeof point !== 'object' || point === null || Array.isArray(point) || !Object.hasOwn(point, 'value')) {
+      if (!isAnchorRef(point, timeX)) ctx.addIssue({ code: 'custom', path: [field], message: `'${field}' is a point: ${ANCHOR_SHAPE}, or { categoryId, value }${timeX ? ', or epoch milliseconds on a time axis' : ''}` });
+      else if (typeof point === 'object' && point !== null) {
+        for (const key of Object.keys(point).filter((name) => !ANCHOR_KEYS.includes(name))) {
+          const near = misspelledField(key, [...ANCHOR_KEYS, 'value']);
+          ctx.addIssue({ code: 'custom', path: [field, key], message: near ? `unknown point field '${key}' — try: ${near}` : `unknown point field '${key}'; a point takes ${ANCHOR_KEYS.join(', ')}, or categoryId and value`, params: near ? { renameTo: near } : { refused: true } });
+        }
+      }
+      continue;
+    }
+    const { categoryId, value } = point as { categoryId?: unknown; value?: unknown };
+    if (!(typeof value === 'number' && Number.isFinite(value))) ctx.addIssue({ code: 'custom', path: [field, 'value'], message: `the value of '${field}' is a finite number in axis units` });
+    if (!(typeof categoryId === 'string' && categoryId !== '') && !(timeX && typeof categoryId === 'number' && Number.isFinite(categoryId))) ctx.addIssue({ code: 'custom', path: [field, 'categoryId'], message: `a point with a value needs its categoryId` });
+    for (const key of Object.keys(point).filter((name) => name !== 'categoryId' && name !== 'value')) {
+      ctx.addIssue({ code: 'custom', path: [field, key], message: `a point with a value takes categoryId and value, not '${key}'`, params: { refused: true } });
+    }
+  }
+  if (kind === 'text' && (typeof annotation.text !== 'string' || annotation.text.trim() === '')) {
+    ctx.addIssue({ code: 'custom', path: ['text'], message: 'a text annotation needs its text, a non-empty string' });
+  }
+  if (Object.hasOwn(annotation, 'dashed') && typeof annotation.dashed !== 'boolean') {
+    ctx.addIssue({ code: 'custom', path: ['dashed'], message: `${kind} dashed is true or false` });
+  }
+}
 
 function isAnchorRef(value: unknown, timeX = false): boolean {
   if (typeof value === 'string') return value !== '';
@@ -730,17 +786,21 @@ function addAnnotationFieldIssues(annotation: Record<string, unknown>, ctx: z.Re
 
 const existingAnnotationSchema = (timeX = false) => z
   .object({
-    kind: z.enum(['diff', 'cagr', 'delta', 'bracket', 'abs', 'note', 'callout', 'valueLine', 'indicator100', 'event']).describe('Annotation operation; its anchors and additional fields are checked by the chart annotation pass.'),
+    kind: z.enum(['diff', 'cagr', 'delta', 'bracket', 'abs', 'note', 'callout', 'valueLine', 'indicator100', 'event', 'text', 'line', 'arrow', 'box']).describe('Annotation operation; its anchors and additional fields are checked by the chart annotation pass.'),
     id: z.string().optional().describe('Stable annotation identity; omission generates an id from kind and authored order.'),
-    text: z.string().optional().describe("Authored annotation text; on valueLine, text is read as label with an info warning when label is absent or equal. Refused on indicator100. ${value} prints the computed number in it: a cagr's rate with its suffix, a diff's change, a delta's difference, the anchored value of an abs, note or callout; a note or callout on a mark that prints the same number leaves it to the mark and reports annotation-value-on-mark. Without ${value}, text on a cagr, diff, delta or abs replaces the number, warns annotation-authored-override and the claim record marks the override."),
-    format: z.string().optional().describe("Number format: annotation > anchored series > chart. Diff uses to, then from. CAGR and relative/reversed diff need a percent example; value differences use pp for percent levels. Refused on event and indicator100."),
-    priority: z.number().optional().describe('Annotation label priority during collision resolution.'),
+    text: z.string().optional().describe("Authored annotation text; on valueLine, text is read as label with an info warning when label is absent or equal. Refused on indicator100, line, arrow and box. On a text annotation it is the text itself, and ${value} prints as written. Elsewhere ${value} prints the computed number in it: a cagr's rate with its suffix, a diff's change, a delta's difference, the anchored value of an abs, note or callout; a note or callout on a mark that prints the same number leaves it to the mark and reports annotation-value-on-mark. Without ${value}, text on a cagr, diff, delta or abs replaces the number, warns annotation-authored-override and the claim record marks the override."),
+    format: z.string().optional().describe("Number format: annotation > anchored series > chart. Diff uses to, then from. CAGR and relative/reversed diff need a percent example; value differences use pp for percent levels. Refused on event, indicator100, text, line, arrow and box."),
+    priority: z.number().optional().describe('Annotation label priority during collision resolution. Refused on line, arrow and box.'),
     icon: annotationIconSchema.optional().describe('Registered icon for note or callout annotations; cannot be combined with status.'),
     status: z.enum(['good', 'bad', 'warn', 'info']).optional().describe('Semantic status glyph for a note or callout; cannot be combined with icon.'),
     shape: z.enum(['bracket', 'arrow']).optional().describe("A cagr's form: 'bracket', the default, runs over the marks, and 'arrow' is one straight arrow with the rate in an oval on it."),
   })
   .catchall(z.unknown().describe('Kind-specific annotation field, such as at, from or to; the annotation pass validates anchors and other requirements.'))
   .superRefine((annotation, ctx) => {
+    if (annotation.kind === 'text' || annotation.kind === 'line' || annotation.kind === 'arrow' || annotation.kind === 'box') {
+      addDrawingIssues(annotation as Record<string, unknown>, ctx, timeX);
+      return;
+    }
     addAnnotationFieldIssues(annotation as Record<string, unknown>, ctx, timeX);
     if (annotation.icon && annotation.status) {
       ctx.addIssue({

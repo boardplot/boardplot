@@ -23,5 +23,5 @@ export const funnelCore: ChartCore<
   categoryLabels: calendarCategories,
   prepare: prepareFractionData,
   defaults: { worstDropCallout: false },
-  annotationKinds: ['note', 'callout', 'delta', 'abs', 'diff', 'cagr']
+  annotationKinds: ['note', 'callout', 'delta', 'abs', 'diff', 'cagr', 'text', 'line', 'arrow', 'box']
 };

@@ -19,5 +19,5 @@ export const paretoCore: ChartCore<
   aliases: ['pareto-chart'],
   layout: layoutPareto,
   defaults: { threshold: 80, cumulative: true, methodNote: false },
-  annotationKinds: ['note', 'callout', 'cagr', 'diff', 'delta']
+  annotationKinds: ['note', 'callout', 'cagr', 'diff', 'delta', 'text', 'line', 'arrow', 'box']
 };

@@ -2766,4 +2766,23 @@ fixtures.push(
   },
 );
 
+fixtures.push({
+  id: 'drawing-kinds',
+  title: 'A text, a line, an arrow and a box drawn on data positions',
+  kind: 'example',
+  data: {
+    categories: [
+      { id: 'jan', label: 'Jan' }, { id: 'feb', label: 'Feb' }, { id: 'mar', label: 'Mar' },
+      { id: 'apr', label: 'Apr' }, { id: 'may', label: 'May' }, { id: 'jun', label: 'Jun' },
+    ],
+    series: [{ id: 'orders', label: 'Orders', values: [30, 34, 31, 62, 70, 66] }],
+  },
+  options: { title: 'Orders doubled after the April launch', unit: 'Orders, thousand', source: 'Illustrative data', valueAxis: { min: 0, max: 80 } },
+  annotations: [
+    { kind: 'box', id: 'launch-window', from: { categoryId: 'apr', value: 8 }, to: { categoryId: 'jun', value: 78 }, dashed: true },
+    { kind: 'line', id: 'old-level', from: { categoryId: 'jan', value: 50 }, to: { categoryId: 'mar', value: 50 } },
+    { kind: 'arrow', id: 'step-up', from: { categoryId: 'mar', value: 56 }, to: { categoryId: 'apr', value: 72 } },
+    { kind: 'text', id: 'launch-note', at: { categoryId: 'feb', value: 72 }, text: 'Launch moved the level' },
+  ],
+});
 registerFixtures('column', fixtures);

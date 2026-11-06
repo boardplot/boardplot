@@ -32,6 +32,7 @@ import { leaderPath } from './svgPath';
 import { anchorValueBox, arrowSeats, finishCalloutHeads, leaderCrossesLabel, leadersOffAnchorValues, valueEdgeToward, type CalloutHeadPlan } from './annotateCallout';
 import { composedTextRole, computedTextRole } from './textRole';
 import { drawCagrArm, drawDiffArm, trimAnnotationGuides, type ArmDrawPass } from './annotateArms';
+import { cutDrawingsAroundText, drawDrawing, drawingFailure, resolveDrawingPoint, textSeats, type DrawingCuts } from './annotateDrawing';
 import type { ComparisonLayout } from './annotateLinks';
 import type { GapBracketFrame, GapBracketPlan } from './annotateGapBracket';
 import { wrapText, type FontSpec, type TextMeasurer } from './text';
@@ -417,6 +418,8 @@ interface AnnotateRun {
   /** True where a difference prints as zero under `fmtSigned`. */
   printsZero: (v: number) => boolean;
   calloutGlyphPlans: Map<Id, CalloutGlyphPlan>;
+  /** Arrow shafts of the drawing annotations, by node id, each with its head. Set once a drawing runs. */
+  drawings?: DrawingCuts;
   /** Callouts with a headline or an arrow, finished after the solve. */
   calloutHeads: Map<Id, CalloutHeadPlan>;
   gapBrackets: GapBracketPlan[];
@@ -509,7 +512,8 @@ export function runAnnotatePass(input: AnnotatePassInput): AnnotatePassResult {
     const secondaryLine = ann.kind === 'valueLine' && ann.axis === 'secondary';
     const valuesNotShares = sharesOnly && ann.kind !== 'valueLine';
     const referenceFormat = secondaryLine ? input.secondaryFormat : valuesNotShares ? undefined : input.format;
-    const anchorFormat = 'at' in ann && ann.at !== undefined ? input.resolve(ann.at)?.format
+    const anchorFormat = ann.kind === 'text' || ann.kind === 'line' || ann.kind === 'arrow' || ann.kind === 'box' ? undefined
+      : 'at' in ann && ann.at !== undefined ? input.resolve(ann.at)?.format
       : ann.kind === 'diff' ? (input.resolve(ann.to)?.format ?? input.resolve(ann.from)?.format)
         : ann.kind === 'valueLine' ? secondaryLine ? input.secondaryFormat : seriesMeanFormat(input, ann) : undefined;
     const example = ann.format ?? anchorFormat;
@@ -564,7 +568,7 @@ export function runAnnotatePass(input: AnnotatePassInput): AnnotatePassResult {
     // The scope owns the log; a comparison hook reached through the arm
     // drawers can only append to it, owned by the annotation it is drawing.
     scope.warn = (code, message, suggest) => warn(scope, code, message, suggest);
-    placeAnnotation(scope, ann);
+    placeAnnotation(scope, ann, run);
     if (anchorErrors.length) for (const warning of warnings.slice(warningStart)) {
       if (warning.code === 'bad-anchor') warning.message += `: ${[...new Set(anchorErrors)].join('; ')}`;
     }
@@ -579,7 +583,7 @@ function seriesMeanFormat(input: AnnotatePassInput, ann: Extract<Annotation, { k
   return mean && !('error' in mean) ? mean.format : undefined;
 }
 
-function placeAnnotation(s: AnnotationScope, ann: Annotation): void {
+function placeAnnotation(s: AnnotationScope, ann: Annotation, run: AnnotateRun): void {
   switch (ann.kind) {
     case 'cagr':
       return placeCagr(s, ann);
@@ -604,6 +608,12 @@ function placeAnnotation(s: AnnotationScope, ann: Annotation): void {
     case 'event':
       // Drawn by the event lane (column, combo, line) or by gantt itself.
       return;
+    case 'text':
+      return placeDrawingText(s, ann);
+    case 'line':
+    case 'arrow':
+    case 'box':
+      return placeDrawing(s, ann, run);
   }
 }
 
@@ -1466,6 +1476,43 @@ function placeIndicator100(s: AnnotationScope, ann: Extract<Annotation, { kind: 
   });
 }
 
+/** Authored text at a point, seated by the solver. It prints as written, with no leader. */
+function placeDrawingText(s: AnnotationScope, ann: Extract<Annotation, { kind: 'text' }>): void {
+  const { input, id } = s;
+  const at = resolveDrawingPoint(input, ann.at);
+  if ('error' in at) return warn(s, 'bad-anchor', `text '${id}': ${at.error}`);
+  const font = { family: input.theme.type.family, ...input.theme.type.label };
+  const lines = ann.text.split('\n');
+  const lineH = input.measure('X', font).height;
+  const size = { w: Math.max(0, ...lines.map((line) => input.measure(line, font).width)), h: lineH * lines.length };
+  s.labelRequests.push({
+    id: `annotation:${id}`,
+    kind: 'annotation',
+    role: 'note',
+    owner: { annotationId: id },
+    text: ann.text,
+    lines,
+    typeRole: 'label',
+    font,
+    priority: ann.priority ?? PRIORITY.extreme,
+    noLeader: true,
+    candidates: textSeats(at, size),
+  });
+  s.placed.push({ id, kind: 'text', computedText: ann.text, tone: 'neutral', nodeIds: [], labelId: `annotation:${id}` });
+}
+
+/** A line, an arrow or a box. It goes through no solver: its nodes are drawn and its strokes claimed here. */
+function placeDrawing(s: AnnotationScope, ann: Extract<Annotation, { kind: 'line' | 'arrow' | 'box' }>, run: AnnotateRun): void {
+  const { input, id } = s;
+  const from = resolveDrawingPoint(input, ann.from);
+  const to = resolveDrawingPoint(input, ann.to);
+  const failure = drawingFailure(ann.kind, from, to);
+  if (failure !== undefined) return warn(s, 'bad-anchor', `${ann.kind} '${id}': ${failure}`);
+  run.drawings ??= new Map();
+  const nodeIds = drawDrawing(ann, id, from as Point, to as Point, input.theme, input.occupied, s.nodes, s.nid, run.drawings);
+  s.placed.push({ id, kind: ann.kind, computedText: '', tone: 'neutral', nodeIds });
+}
+
 /** Leader-routed text callout near an anchor. */
 function calloutLabel(
   s: AnnotationScope,
@@ -1922,6 +1969,7 @@ function finishAnnotatePass(
   });
   if (leaderAnchors.size > 0) leadersOffAnchorValues(solved.placed, leaderAnchors, input.occupied);
   trimAnnotationGuides(nodes, input.occupied);
+  if (run.drawings) cutDrawingsAroundText(nodes, placed, input.occupied, warnings, run.drawings);
   pruneOrphanAnnotationArms(nodes, placed, solved.placed);
   // `band` and `event` carry a span and a caption and no number at all. There
   // is nothing to derive and nothing to measure, so the record says `authored`

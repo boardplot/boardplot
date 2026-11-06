@@ -14,5 +14,5 @@ export const boxCore: ChartCore<BoxData, BoxOptions, BoxMarks, BoxDerived> = {
   aliases: ['boxplot', 'box-and-whisker'],
   layout: layoutBox,
   defaults: {},
-  annotationKinds: ['cagr', 'diff', 'delta']
+  annotationKinds: ['cagr', 'diff', 'delta', 'text', 'line', 'arrow', 'box']
 };

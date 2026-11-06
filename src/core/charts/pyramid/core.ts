@@ -19,5 +19,5 @@ export const pyramidCore: ChartCore<
   aliases: ['age-pyramid', 'population-pyramid'],
   layout: layoutPyramid,
   defaults: { basis: 'count' },
-  annotationKinds: ['cagr', 'diff', 'delta', 'note', 'callout']
+  annotationKinds: ['cagr', 'diff', 'delta', 'note', 'callout', 'text', 'line', 'arrow', 'box']
 };

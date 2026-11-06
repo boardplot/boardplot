@@ -15,5 +15,5 @@ export const bulletCore: ChartCore<BulletData, BulletOptions, BulletMarks, Bulle
   summary: 'Bullet-graph KPI rows — qualitative bands, dark measure bar, target tick, delta vs target',
   layout: layoutBullet,
   defaults: {},
-  annotationKinds: ['callout', 'note', 'delta', 'abs', 'diff', 'cagr', 'valueLine', 'band']
+  annotationKinds: ['callout', 'note', 'delta', 'abs', 'diff', 'cagr', 'valueLine', 'band', 'text', 'line', 'arrow', 'box']
 };
