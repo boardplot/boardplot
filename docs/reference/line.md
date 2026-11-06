@@ -222,7 +222,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | referenceBands[].label | string |  |  | REQUIRED. The band's name, printed bold at the start of its entry in the column right of the plot: the level or range as the reader should say it. Example: '60+'. |
 | referenceBands[].description | string |  |  | What the level means, in plain type after the name; it wraps under it when the column is narrow. Example: 'very strong cycle'. |
 
-Plus the [shared options](options.md). This type does not accept `valueAxis.break`. This type ignores `animate`, `debug`, `rowLabels`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `bandFraction` with an `option-ignored` warning.
+Plus the [shared options](options.md). This type does not accept `labelPosition`, `valueAxis.break`. This type ignores `animate`, `debug`, `rowLabels`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `bandFraction` with an `option-ignored` warning.
 
 ## Annotations
 

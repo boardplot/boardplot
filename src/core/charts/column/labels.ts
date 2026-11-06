@@ -1,3 +1,4 @@
+import { hasLabelPosition, positionBarLabel } from '../band/labelPosition';
 /**
  * Column phase 3, label planning: the phase 2 geometry in, label requests
  * for the solver out. The value labels come first (their font step reports
@@ -1005,4 +1006,28 @@ function pointCandidates(
     },
     ...(inside ? [{ slot: 'insideEnd', rect: { x: cx - w / 2, y: markBot - h - 2, w, h }, penalty: 2, insideFill }] : []),
   ];
+}
+
+/** Position only bar values; multi-part totals and all other labels keep their seats. */
+export function positionColumnLabels(domain: ColumnDomain, paints: ColumnPaints, scene: ColumnMarkGeometry, requests: LabelRequest[]): void {
+  if (!hasLabelPosition(domain.options)) return;
+  for (let i = 0; i < requests.length; i++) {
+    const request = requests[i]!;
+    if (!/^(point|segment|grandTotal):/.test(request.id)) continue;
+    const candidates = scene.bars.filter(bar => bar.c.id === request.owner.categoryId);
+    const drawn = candidates.filter(bar => bar.v !== 0);
+    const total = request.id.startsWith('grandTotal:');
+    const place = total
+      ? domain.variant === 'stacked' && drawn.length === 1 ? drawn[0] : undefined
+      : candidates.find(bar => bar.s.id === request.owner.seriesId);
+    const first = request.candidates[0];
+    if (!place || !first) continue;
+    const { s, c, ci, si, v, rect } = place;
+    const val = s.vals[ci]!;
+    requests[i] = positionBarLabel(request, domain.options, {
+      rect, size: { width: first.rect.w, height: first.rect.h }, orientation: 'vertical', endPositive: v >= 0, zero: v === 0,
+      edgeGap: 2, fallback: total || domain.variant === 'grouped' ? undefined : 'stack', muted: request.bodyInk !== undefined,
+      insideFill: paints.inside(s, val, c, si), insidePaint: paints.cell(s, val, c, si), insidePattern: paints.pattern(s, val, c),
+    });
+  }
 }

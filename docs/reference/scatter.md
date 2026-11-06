@@ -144,7 +144,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | qualitativeAxes | boolean |  |  | Axes that read as directions, not scales: no tick numbers and no gridlines; each axis prints strings.axisLow ('Lower') and strings.axisHigh ('Higher') at its ends and its title in bold between two arrows, the y axis in a column left of the plot. Needs axisTitles. Positions keep their numeric scale. |
 | methodNote | boolean |  |  | Default false. true adds the method footnotes: axes that do not start at zero, and for quadrants the cut points with their source, the tie rule, the shading, units on a cut point, empty boxes and a divider that falls outside the range. Clipped and dropped points are required for interpretation and print regardless. |
 
-Plus the [shared options](options.md). This type does not accept `detailFields`, `valueAxis.break`, `hatchStrength`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `bandFraction` with an `option-ignored` warning.
+Plus the [shared options](options.md). This type does not accept `detailFields`, `labelPosition`, `valueAxis.break`, `hatchStrength`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `bandFraction` with an `option-ignored` warning.
 
 ## Annotations
 

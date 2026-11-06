@@ -1,3 +1,4 @@
+import { hasLabelPosition, positionBarLabel } from '../band/labelPosition';
 import { generatedIdWarnings } from '../../schema/generatedColumns';
 import { chartString } from '../../strings/waterfall';
 import { chartPalette, chartTheme } from '../chartEnv';
@@ -394,6 +395,7 @@ function layoutHorizontalWaterfall(
   const verticalOptions: WaterfallOptions = {
     ...options,
     variant: 'vertical',
+    labelPosition: undefined,
     annotations: [],
   };
   // No annotations in this pass, so no leg deficit and no second pass.
@@ -633,7 +635,7 @@ function layoutHorizontalWaterfall(
           ].filter((candidate) => !segment || candidate.slot === 'insideCenter'
             || (!stackedRow && !siblings.some((other) => rectsOverlap(candidate.rect, other.rect))));
     const authoredPin = options.labelPlacements?.[label.id];
-    return {
+    const request: LabelRequest = {
       id: label.id,
       kind: label.kind,
       owner: label.owner,
@@ -647,6 +649,25 @@ function layoutHorizontalWaterfall(
       ...(label.hidden === 'redundant' && label.kind !== 'category' ? { redundant: true } : {}),
       ...(label.swatch ? { swatch: label.swatch } : {}),
     };
+    if (!hasLabelPosition(options) || !bar || !/^(sum|total):/.test(label.id) || authoredPin) return request;
+    const item = data.items.find(item => item.id === categoryId);
+    const segmented = (item?.segments?.length ?? 0) > 0 || bar.segments.length > 1;
+    if (segmented) {
+      request.candidates = candidates.filter(candidate => !candidate.slot.startsWith('inside'));
+      return request;
+    }
+    const mark = scene.find(node => node.id === bar.segments[0]?.nodeId);
+    const level = source.derived.levels[bar.id]!;
+    const pattern = mark?.t === 'rect' && mark.pattern !== 'hollow' ? mark.pattern : undefined;
+    const paint = mark?.t === 'rect' ? mark.fill : undefined;
+    return positionBarLabel(request, options, {
+      rect: bar.rect, size: { width: transformed.w, height: transformed.h }, orientation: 'horizontal',
+      endPositive: Math.abs(Math.max(level.start, level.end)) >= Math.abs(Math.min(level.start, level.end)),
+      zero: level.start === level.end, edgeGap: 4, outsideGap: 8,
+      fallback: label.id.startsWith('sum:') ? 'bridge' : undefined,
+      insidePaint: paint, insidePattern: pattern,
+      insideFill: paint ? effectiveFill(paintColor(theme, paint), pattern, theme) : theme.color.background,
+    });
   });
   const horizontalPins = Object.fromEntries(
     Object.entries(options.labelPlacements ?? {}).map(([id, slot]) => [id, mapSlot(slot)]),
@@ -665,7 +686,7 @@ function layoutHorizontalWaterfall(
       const id = label.id.startsWith('sum:') ? label.id.slice('sum:'.length) : undefined;
       const level = id === undefined ? undefined : source.derived.levels[id];
       const tone = level ? stepTone(level.end - level.start, data.items.find((it) => it.id === label.owner.categoryId)?.direction) : 'neutral';
-      if (tone !== 'neutral' && label.slot !== 'insideCenter') label.ink = options.colorblindSafe === true ? colorblindPaint(tone) : { token: tone };
+      if (tone !== 'neutral' && !label.slot?.startsWith('inside')) label.ink = options.colorblindSafe === true ? colorblindPaint(tone) : { token: tone };
     }
   }
   pushAll(scene, labelsToNodes(theme, labels, fontForLabel, scene));
@@ -1893,7 +1914,7 @@ function layoutWaterfallWithPad(
     const centredX = bx + bw / 2 - tsize.width / 2;
     const outerCase = caseIndex === 0 || (caseIndex !== undefined && caseIndex === cases.length - 1);
     const outsideSlot = negative ? 'outsideBottom' as const : 'outsideTop' as const;
-    const valueRequest: LabelRequest = {
+    let valueRequest: LabelRequest = {
       id: isTotal ? `total:${it.id}` : `sum:${it.id}`,
       kind: isTotal ? 'total' : 'segment',
       // A one-part value names its segment back, so a pinned segment placed first takes the value; an authored text keeps its seat.
@@ -1946,6 +1967,16 @@ function layoutWaterfallWithPad(
         }] : []),
       ],
     };
+    if (hasLabelPosition(options) && segmentedMark && !options.labelPlacements?.[valueRequest.id]) {
+      valueRequest.candidates = valueRequest.candidates.filter(candidate => !candidate.slot.startsWith('inside'));
+    } else {
+      valueRequest = positionBarLabel(valueRequest, options, {
+        rect: barRect, size: tsize, orientation: 'vertical',
+        endPositive: Math.abs(Math.max(lvl.start, lvl.end)) >= Math.abs(Math.min(lvl.start, lvl.end)),
+        zero: itemValue === 0, edgeGap: 2, fallback: isTotal ? undefined : 'bridge',
+        insidePaint, insidePattern, insideFill: effectiveFill(paintColor(theme, insidePaint), insidePattern, theme),
+      });
+    }
     if (!valuesOff) labelRequests.push(valueRequest);
     if (caseIndex !== undefined) caseValues[i]!.push(valueRequest);
     // The closing total's net change over the opening total: a second bold value above the total's own.
@@ -1954,9 +1985,10 @@ function layoutWaterfallWithPad(
       const netText = closingNet.text;
       const netSize = measure(netText, strongFont);
       // With the values off the change takes the total's own seat, so no gap stays under it.
-      const netY = valuesOff ? (negative ? outsideY : yTop - netSize.height - 4) : negative ? outsideY + tsize.height + 2 : outsideY - netSize.height - 2;
+      const netAtBar = valuesOff;
+      const netY = netAtBar ? (negative ? outsideY : yTop - netSize.height - 4) : negative ? outsideY + tsize.height + 2 : outsideY - netSize.height - 2;
       boldValueIds.add(netId);
-      labelRequests.push({
+      const netRequest: LabelRequest = {
         id: netId,
         kind: 'total',
         owner: stepOwner,
@@ -1975,10 +2007,20 @@ function layoutWaterfallWithPad(
           ...(closingNet.lines.length === 2 ? [(() => {
             const w = Math.max(...closingNet.lines.map((line) => measure(line, strongFont).width));
             const h = netSize.height * 2;
-            return { slot: outsideSlot, rect: { x: bx + bw / 2 - w / 2, y: valuesOff ? (negative ? outsideY : yTop - h - 4) : negative ? outsideY + tsize.height + 2 : outsideY - h - 2, w, h }, penalty: 2, lines: closingNet.lines };
+            return { slot: outsideSlot, rect: { x: bx + bw / 2 - w / 2, y: netAtBar ? (negative ? outsideY : yTop - h - 4) : negative ? outsideY + tsize.height + 2 : outsideY - h - 2, w, h }, penalty: 2, lines: closingNet.lines };
           })()] : []),
         ],
-      });
+      };
+      if (hasLabelPosition(options) && !segmentedMark && !valuesOff && !options.labelPlacements?.[netId]) {
+        // The net shares the total's anchor; a leader to the bar would cross the total's value.
+        netRequest.noLeader = true;
+        netRequest.candidates = [
+          ...netRequest.candidates.map(candidate => ({ ...candidate,
+            rect: { ...candidate.rect, y: negative ? outsideY : yTop - candidate.rect.h - 4 } })),
+          ...netRequest.candidates.map(candidate => ({ ...candidate, penalty: candidate.penalty + 3 })),
+        ];
+      }
+      labelRequests.push(netRequest);
     }
 
     // ---- category label: once per step ----
@@ -2086,21 +2128,25 @@ function layoutWaterfallWithPad(
       ids: rowValues.filter(request => `${request.kind}:${request.owner.seriesId ?? ''}` === role).map(request => request.id),
       alternate: true,
     }));
-  const solved = solveLabels(labelRequests, occupied, solveCtx);
-  applyValueAxisTitleInk(solved.placed);
-  pushAll(warnings, solved.warnings);
-  // A step's value beside its bar reads in its sign's ink; one inside a fill
-  // keeps the contrast ink the solver chose for it.
-  if (signBridge) {
-    for (const label of solved.placed) {
-      const tone = label.id.startsWith('sum:') ? stepTones.get(label.id.slice('sum:'.length)) : undefined;
-      if (tone && tone !== 'neutral' && label.slot !== 'insideEnd') label.ink = options.colorblindSafe === true ? colorblindPaint(tone) : { token: tone };
+  let solved!: ReturnType<typeof solveLabels>;
+  const solveValues = () => {
+    solved = solveLabels(labelRequests, occupied, solveCtx);
+    applyValueAxisTitleInk(solved.placed);
+    pushAll(warnings, solved.warnings);
+    // A step's value beside its bar reads in its sign's ink; one inside a fill
+    // keeps the contrast ink the solver chose for it.
+    if (signBridge) {
+      for (const label of solved.placed) {
+        const tone = label.id.startsWith('sum:') ? stepTones.get(label.id.slice('sum:'.length)) : undefined;
+        if (tone && tone !== 'neutral' && !label.slot?.startsWith('inside')) label.ink = options.colorblindSafe === true ? colorblindPaint(tone) : { token: tone };
+      }
+      if (closingNet !== undefined) {
+        const net = solved.placed.find((label) => label.id.startsWith('net:'));
+        if (net && closingNet.tone !== 'neutral') net.ink = options.colorblindSafe === true ? colorblindPaint(closingNet.tone) : { token: closingNet.tone };
+      }
     }
-    if (closingNet !== undefined) {
-      const net = solved.placed.find((label) => label.id.startsWith('net:'));
-      if (net && closingNet.tone !== 'neutral') net.ink = options.colorblindSafe === true ? colorblindPaint(closingNet.tone) : { token: closingNet.tone };
-    }
-  }
+  };
+  if (!hasLabelPosition(options)) solveValues();
 
   // ---- annotations ----
   const totalsOrder = items.filter((it) => it.type !== 'delta');
@@ -2183,6 +2229,7 @@ function layoutWaterfallWithPad(
     },
   });
   pushAll(warnings, annResult.warnings);
+  if (hasLabelPosition(options)) solveValues();
 
   // ---- emit ----
   const allLabels: PlacedLabel[] = [...solved.placed, ...annResult.labels];

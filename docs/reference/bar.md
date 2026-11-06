@@ -226,3 +226,4 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | option-small-values-p-value | torture | Every rate prints as an APA p-value (smallValues p-value) |
 | key-left | example | Stacked bars with the key in a column left of the plot |
 | column-overrides | example | columnOverrides sets the width of the name column |
+| centered-values | example | Bar values at the center |

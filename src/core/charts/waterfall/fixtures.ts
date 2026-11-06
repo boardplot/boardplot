@@ -666,4 +666,39 @@ fixtures.push({
   options: { title: 'Renewals carry the balance up by $112k', unit: '$k', variant: 'horizontal', size: { width: 720 }, columnOverrides: { label: { width: 200 }, value: { width: 90 } } },
 });
 
+fixtures.push(
+  {
+    id: 'centered-values', title: 'Centered bridge values with a thin falling step', kind: 'example',
+    data: { items: [
+      { id: 'open', label: 'Opening', type: 'total', value: 100 },
+      { id: 'gain', label: 'Increase', value: 40 },
+      { id: 'thin', label: 'Small decrease', value: -2 },
+      { id: 'loss', label: 'Decrease', value: -30 },
+      { id: 'close', label: 'Closing', type: 'total' },
+    ] },
+    options: { title: 'Bridge values at the center', variant: 'vertical', labelPosition: 'center' },
+  },
+  {
+    id: 'horizontal-centered-values', title: 'Centered horizontal bridge values', kind: 'example',
+    data: { items: [
+      { id: 'open', label: 'Opening', type: 'total', value: 80 },
+      { id: 'gain', label: 'Increase', value: 50 },
+      { id: 'thin', label: 'Small decrease', value: -1 },
+      { id: 'close', label: 'Closing', type: 'total' },
+    ] },
+    options: { title: 'Horizontal bridge values at the center', variant: 'horizontal', labelPosition: 'center' },
+  },
+  {
+    id: 'sign-inside-values', title: 'Inside values on signed bridge fills', kind: 'example',
+    data: { items: [
+      { id: 'open', label: 'Opening', type: 'total', value: 100 },
+      { id: 'gain', label: 'Increase', value: 60 },
+      { id: 'loss', label: 'Decrease', value: { number: -55, scenario: 'FC' } },
+      { id: 'close', label: 'Closing', type: 'total' },
+    ] },
+    options: { title: 'Inside values keep contrast on signed fills', variant: 'vertical', labelPosition: 'center',
+      theme: { preset: 'standard', overrides: { marks: { bridge: 'sign' } } } },
+  },
+);
+
 registerFixtures('waterfall', fixtures);

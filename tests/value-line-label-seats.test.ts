@@ -51,3 +51,33 @@ it('does not step a dot value past a target line onto another dot', () => {
     .map((d) => `${l.id} covers ${d.id}`));
   expect(covered).toEqual([]);
 });
+
+// Bar position preferences must keep legacy pins, scales and explicit auto output intact.
+it('keeps grouped bar and column auto output, pins and plot geometry', () => {
+  const data = { categories: [{ id: 'a' }, { id: 'b' }], series: [{ id: 'value', values: [80, -60] }] };
+  for (const type of ['column', 'bar']) {
+    const draw = (options: object) => {
+      const result = layoutResolvedRequest(resolveChartRequest({ type, data, options: { size: { width: 720, height: 400 }, ...options } } as never));
+      if (result.refused) throw new Error('refused');
+      return result;
+    };
+    const plain = draw({});
+    expect(draw({ labelPosition: 'auto' }).scene).toEqual(plain.scene);
+    const pin = { labelPlacements: { 'point:value:a': 'insideEnd' } };
+    expect(draw({ ...pin, labelPosition: 'center' }).labels.find(label => label.id === 'point:value:a')?.rect)
+      .toEqual(draw(pin).labels.find(label => label.id === 'point:value:a')?.rect);
+    expect(draw({ labelPosition: 'center' }).plot).toEqual(plain.plot);
+  }
+});
+
+// An annotation through an authored inside seat must move the value clear of the line.
+it('falls back outside when a value line blocks a requested column center', () => {
+  const result = layoutResolvedRequest(resolveChartRequest({ type: 'column',
+    data: { categories: [{ id: 'a' }], series: [{ id: 'value', values: [100] }] },
+    options: { labelPosition: 'center', annotations: [{ kind: 'valueLine', value: 50 }], size: { width: 720, height: 400 } },
+  } as never));
+  if (result.refused) throw new Error('refused');
+  const label = result.labels.find(label => label.id === 'point:value:a')!;
+  expect(label.hidden).toBeUndefined();
+  expect(label.slot).toBe('outsideBarTop');
+});

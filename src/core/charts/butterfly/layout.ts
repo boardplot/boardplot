@@ -1,3 +1,5 @@
+import { effectiveFill } from '../../theme';
+import { hasLabelPosition, positionBarLabel } from '../band/labelPosition';
 import { chartString } from '../../strings/butterfly';
 import { chartString as commonString } from '../../strings';
 import { layoutValueAxis } from '../../axis';
@@ -976,7 +978,7 @@ export function layoutButterfly(
                 ? PRIORITY.extreme
                 : PRIORITY.interior + Math.min(99, Math.abs(v))) +
             (rowHl || highlights.has(series.id) ? PRIORITY.highlightBonus : 0);
-      labelRequests.push({
+      labelRequests.push(positionBarLabel({
         id: `point:${series.id}:${r.id}`,
         kind: 'point',
         owner: { seriesId: series.id, categoryId: r.id },
@@ -989,7 +991,10 @@ export function layoutButterfly(
         // series or categories the shared note could name them from.
         noteText: `${comparison?.periods?.[series.id]?.label ?? (side === 'a' ? aLabel : bLabel)} ${text} (${r.label})`,
         candidates,
-      });
+      }, opts, {
+        rect, size: tsize, orientation: 'horizontal', endPositive: dir > 0, zero: v === 0, edgeGap: 4, outsideGap,
+        insideFill: effectiveFill(resolveCss(paint), patternOf(scen), theme), insidePaint: paint, insidePattern: patternOf(scen),
+      }));
     }
 
     // ---- center category label ----
@@ -1119,6 +1124,72 @@ export function layoutButterfly(
     plot,
     labelPad: LABEL_PAD,
   });
+  function annotate(placed: PlacedLabel[]) {
+    // ---- annotations ----
+    // Point callouts clear outside value labels; two-anchor comparisons use actual tips.
+    const placedById = new Map(placed.map((l) => [l.id, l] as const));
+    const anchorX = (dir: -1 | 1, sid: Id, catId: Id, tipX: number): number => {
+      const vl = placedById.get(`point:${sid}:${catId}`);
+      if (!vl || vl.hidden || vl.slot !== 'outsideEnd') return tipX;
+      return dir < 0
+        ? Math.min(tipX, vl.rect.x - 4)
+        : Math.max(tipX, vl.rect.x + vl.rect.w + 4);
+    };
+    const resolve = (ref: AnchorRef): AnchorResolution | null => {
+      const norm = typeof ref === 'string' ? { categoryId: ref } : ref;
+      if (!('categoryId' in norm) || !norm.categoryId) return null;
+      const i = rows.findIndex((r) => r.id === norm.categoryId);
+      if (i < 0) return null;
+      const r = rows[i]!;
+      const sid = norm.seriesId ?? sB.id;
+      const side = sid === sA.id ? 'a' : sid === sB.id ? 'b' : null;
+      if (!side) return null;
+      const v = side === 'a' ? r.a : r.b;
+      if (v === null) return null;
+      const len = Math.max(lenOf[side](Math.abs(v)), 0.5);
+      return {
+        x: anchorX(dirOf(side, v), sid, r.id, zeroOf(side) + dirOf(side, v) * len),
+        y: band.position(i) + band.bandwidth / 2,
+        value: v,
+        format: side === 'a' ? sA.format : sB.format,
+        date: comparison?.periods?.[sid]?.date ?? r.date,
+        label: comparison?.periods?.[sid]?.label ?? r.label,
+        // A pyramid's two sides are its periods, which the label already names.
+        ...(comparison?.periods ? {} : { series: { id: sid, label: side === 'a' ? aLabel : bLabel } }),
+        row: { y: band.position(i), h: band.bandwidth },
+        owner: { seriesId: sid, categoryId: r.id },
+      };
+    };
+    // Comparisons sit as brackets just outside the bars and value labels
+    // of the pane they end in.
+    const outerEdge = { left: centerX0, right: centerX1 };
+    for (const m of marks.left) outerEdge.left = Math.min(outerEdge.left, m.rect.x);
+    for (const m of marks.right) outerEdge.right = Math.max(outerEdge.right, m.rect.x + m.rect.w);
+    for (const l of placed) {
+      if (l.hidden || l.kind !== 'point' || l.id.startsWith('diff:')) continue;
+      if (l.owner.seriesId === sA.id) outerEdge.left = Math.min(outerEdge.left, l.rect.x);
+      else outerEdge.right = Math.max(outerEdge.right, l.rect.x + l.rect.w);
+    }
+    const brackets = marginBracketLayout(theme, { left: outerEdge.left - BRACKET_CLEAR, right: outerEdge.right + BRACKET_CLEAR });
+    const annResult = runAnnotatePass({
+      annotations,
+      resolve,
+      comparisonLayout: brackets,
+      defaultSpan:
+        rows.length >= 2 ? { from: rows[0]!.id, to: rows[rows.length - 1]!.id } : undefined,
+      occupied,
+      plot,
+      theme,
+      measure,
+      format: opts.format,
+      locale: opts.locale?.language,
+      strings: opts.strings,
+      differenceFormat: comparison?.differenceFormat,
+      solveCtx,
+    });
+    return { annResult, placedById, brackets, outerEdge };
+  }
+  const positionedAnnotations = hasLabelPosition(opts) ? annotate([]) : undefined;
   const solved = solveLabels(labelRequests, occupied, solveCtx);
   pushAll(warnings, solved.warnings);
   for (const label of solved.placed) if (label.id.startsWith('na:')) label.ink = { token: 'inkMuted' };
@@ -1130,68 +1201,8 @@ export function layoutButterfly(
     }
   }
 
-  // ---- annotations ----
-  // Point callouts clear outside value labels; two-anchor comparisons use actual tips.
-  const placedById = new Map(solved.placed.map((l) => [l.id, l] as const));
-  const anchorX = (dir: -1 | 1, sid: Id, catId: Id, tipX: number): number => {
-    const vl = placedById.get(`point:${sid}:${catId}`);
-    if (!vl || vl.hidden || vl.slot !== 'outsideEnd') return tipX;
-    return dir < 0
-      ? Math.min(tipX, vl.rect.x - 4)
-      : Math.max(tipX, vl.rect.x + vl.rect.w + 4);
-  };
-  const resolve = (ref: AnchorRef): AnchorResolution | null => {
-    const norm = typeof ref === 'string' ? { categoryId: ref } : ref;
-    if (!('categoryId' in norm) || !norm.categoryId) return null;
-    const i = rows.findIndex((r) => r.id === norm.categoryId);
-    if (i < 0) return null;
-    const r = rows[i]!;
-    const sid = norm.seriesId ?? sB.id;
-    const side = sid === sA.id ? 'a' : sid === sB.id ? 'b' : null;
-    if (!side) return null;
-    const v = side === 'a' ? r.a : r.b;
-    if (v === null) return null;
-    const len = Math.max(lenOf[side](Math.abs(v)), 0.5);
-    return {
-      x: anchorX(dirOf(side, v), sid, r.id, zeroOf(side) + dirOf(side, v) * len),
-      y: band.position(i) + band.bandwidth / 2,
-      value: v,
-      format: side === 'a' ? sA.format : sB.format,
-      date: comparison?.periods?.[sid]?.date ?? r.date,
-      label: comparison?.periods?.[sid]?.label ?? r.label,
-      // A pyramid's two sides are its periods, which the label already names.
-      ...(comparison?.periods ? {} : { series: { id: sid, label: side === 'a' ? aLabel : bLabel } }),
-      row: { y: band.position(i), h: band.bandwidth },
-      owner: { seriesId: sid, categoryId: r.id },
-    };
-  };
-  // Comparisons sit as brackets just outside the bars and value labels
-  // of the pane they end in.
-  const outerEdge = { left: centerX0, right: centerX1 };
-  for (const m of marks.left) outerEdge.left = Math.min(outerEdge.left, m.rect.x);
-  for (const m of marks.right) outerEdge.right = Math.max(outerEdge.right, m.rect.x + m.rect.w);
-  for (const l of solved.placed) {
-    if (l.hidden || l.kind !== 'point' || l.id.startsWith('diff:')) continue;
-    if (l.owner.seriesId === sA.id) outerEdge.left = Math.min(outerEdge.left, l.rect.x);
-    else outerEdge.right = Math.max(outerEdge.right, l.rect.x + l.rect.w);
-  }
-  const brackets = marginBracketLayout(theme, { left: outerEdge.left - BRACKET_CLEAR, right: outerEdge.right + BRACKET_CLEAR });
-  const annResult = runAnnotatePass({
-    annotations,
-    resolve,
-    comparisonLayout: brackets,
-    defaultSpan:
-      rows.length >= 2 ? { from: rows[0]!.id, to: rows[rows.length - 1]!.id } : undefined,
-    occupied,
-    plot,
-    theme,
-    measure,
-    format: opts.format,
-    locale: opts.locale?.language,
-    strings: opts.strings,
-    differenceFormat: comparison?.differenceFormat,
-    solveCtx,
-  });
+  const { annResult, placedById, brackets, outerEdge } = positionedAnnotations ?? annotate(solved.placed);
+  if (positionedAnnotations) for (const label of solved.placed) placedById.set(label.id, label);
   pushAll(warnings, annResult.warnings);
   if (redesign) seatDeltas();
   // A delta beside its own value, on its row, sits one label height after the

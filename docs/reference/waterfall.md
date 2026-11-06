@@ -168,3 +168,6 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | single-segment-authored-format | example | One segment prints one value at the authored precision |
 | repeated-segment-key | torture | Equal segment names and colours share one key |
 | column-overrides | example | A horizontal bridge with authored name and value bands |
+| centered-values | example | Centered bridge values with a thin falling step |
+| horizontal-centered-values | example | Centered horizontal bridge values |
+| sign-inside-values | example | Inside values on signed bridge fills |

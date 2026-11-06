@@ -215,7 +215,7 @@ Set protected only where the claim is true: the lock states that the zone is pro
 | heightFill | string | `'rows'`, `'none'` | `'rows'` | Spare canvas height, read by hierarchy (org chart) and customer-journey. 'rows' (default): a canvas with a set height grows the gaps between the levels up to 2.6 times. 'none': natural gaps, the block centred. |
 | highlight | string \| array |  |  | Architecture only: the node and edge ids that carry the message. They take the accent, and everything else recedes. |
 
-Plus the [shared options](options.md). This type does not accept `belowMinimum`, `unit`, `unitShown`, `strings`, `format`, `detailFields`, `smallValues`, `labelDensity`, `labels`, `labelPlacements`, `legend`, `valueAxis`, `scaleGroup`, `story`, `focus`, `hatchStrength`, `rounding`, `annotations`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `bandFraction`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
+Plus the [shared options](options.md). This type does not accept `belowMinimum`, `unit`, `unitShown`, `strings`, `format`, `detailFields`, `smallValues`, `labelDensity`, `labels`, `labelPosition`, `labelPlacements`, `legend`, `valueAxis`, `scaleGroup`, `story`, `focus`, `hatchStrength`, `rounding`, `annotations`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `bandFraction`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
 ## Annotations
 

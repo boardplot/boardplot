@@ -1,3 +1,4 @@
+import { hasLabelPosition, refuseLabelPosition } from '../band/labelPosition';
 import { pickedValues, withValueLabelDefaults } from '../band/valueSelection';
 import { chartPalette, chartTheme } from '../chartEnv';
 import { chartString } from '../../strings/bar';
@@ -206,6 +207,9 @@ export function layoutBar(
   options: BarOptions = {},
   annotationPass?: BarAnnotationPass,
 ): Geometry<BarMarks, BarDerived> {
+  const variant = options.variant ?? 'grouped';
+  if (variant !== 'grouped') refuseLabelPosition(options, `bar ${variant}`,
+    variant === 'stacked' || variant === 'stacked100' ? ['center', 'insideEnd', 'insideBase'] : []);
   const dropped: LintWarning[] = [];
   options = withoutShareAnnotations(withValueLabelDefaults(withLocaleStrings(options), 'bar', options.variant, dropped), options.variant === 'stacked100', dropped);
   const layout = (next: BarOptions) => layoutBarSized(data, next, annotationPass);
@@ -606,6 +610,7 @@ function layoutStandardBar(
     ? [valueAxisTitleRequest(area.axisTitle, area.axisTitleAt, 'end', 'axis:x:title')]
     : [];
   const values = keepValuesWithoutAxis(planBarLabels(domain, paints, area, scene, warnings), solveCtx.density, options.valueAxis?.show === true);
+  const positionedAnnotations = hasLabelPosition(options) ? annotateBar(domain, area, scene, occupied, solveCtx, annotationPass) : undefined;
   const solved = solveLabels([...titleRequests, ...values, ...local.requests], occupied, solveCtx);
   // A running period keeps a cue: a to-date value without a seat, or a value and words taller than the drawn row, bring the hatch key back.
   const toDate = toDateOnValues(domain);
@@ -620,7 +625,7 @@ function layoutStandardBar(
   pushAll(warnings, solved.warnings);
   // Prune the local indicator when its label hides.
   pruneOrphanAnnotationArms(scene.nodes, local.placed, solved.placed);
-  const annotated = annotateBar(domain, area, scene, occupied, solveCtx, annotationPass);
+  const annotated = positionedAnnotations ?? annotateBar(domain, area, scene, occupied, solveCtx, annotationPass);
   // A CAGR arm too near its bars to give its arrow end the minimum shaft
   // (MIN_LEG) gets the room it lacked, over at most three more layouts.
   const room = (options as { [RIGHT_ROOM]?: number; [CAGR_TRIES]?: number; [BAND_PAD]?: number; [BAND_TRIES]?: number });

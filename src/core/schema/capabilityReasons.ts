@@ -7,6 +7,8 @@
 import { valueAxisRefusal, type OPTION_CAPABILITY, type VALUE_AXIS_CAPABILITY, type VALUE_AXIS_ONLY } from './capability';
 
 export const OPTION_REASONS: Readonly<Record<keyof typeof OPTION_CAPABILITY, string>> = {
+  labelPosition:
+    "this type has no supported bar value labels to position. Set labelPosition on a supported bar chart, or on a grid panel through that panel's options",
   animate:
     "no chart type implements 'animate' — this library emits static, deterministic SVG; use 'interactive: true' for data-bp-* hover/focus semantics, or animate the emitted SVG downstream",
   debug:

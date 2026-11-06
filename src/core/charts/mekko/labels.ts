@@ -1,3 +1,4 @@
+import { hasLabelPosition, positionBarLabel } from '../band/labelPosition';
 import { chartString } from '../../strings/mekko';
 import { namesOnly } from '../../markVisibility';
 import { formatterFromExample } from '../../formatSpec';
@@ -475,5 +476,22 @@ export function planMekkoLabels(
     unitNamed ||= area.showTotals && printsTotal;
     if (area.showCats) categoryLabel(ctx, ci, visibleCol, edges);
   });
+  if (hasLabelPosition(env.options)) for (let i = 0; i < ctx.requests.length; i++) {
+    const request = ctx.requests[i]!;
+    const first = request.candidates[0];
+    const total = request.id.startsWith('total:');
+    if (!first || !(domain.mode === 'bar' ? total : request.id.startsWith('segment:'))) continue;
+    const place = geometry.segments.find(segment => domain.cats[segment.ci]!.id === request.owner.categoryId
+      && (total || segment.s.id === request.owner.seriesId));
+    if (!place) continue;
+    const { s, si, ci, v, rect } = place;
+    const c = domain.cats[ci]!;
+    const val = s.vals[ci]!;
+    ctx.requests[i] = positionBarLabel(request, env.options, {
+      rect, size: { width: first.rect.w, height: first.rect.h }, orientation: 'vertical', endPositive: v >= 0, zero: v === 0,
+      edgeGap: 2, outsideGap: v < 0 ? 4 : 2, fallback: total ? undefined : 'stack',
+      insideFill: paints.inside(s, val, c, si, v), insidePaint: paints.cell(s, val, c, si, v), insidePattern: paints.pattern(s, val),
+    });
+  }
   return ctx.requests;
 }

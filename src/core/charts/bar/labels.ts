@@ -1,3 +1,4 @@
+import { hasLabelPosition, positionBarLabel } from '../band/labelPosition';
 /**
  * Standard bar phase 3, label planning: the phase 2 geometry in, label
  * requests for the solver out. Row by row: the value labels (points or
@@ -378,6 +379,30 @@ export function planBarLabels(domain: BarDomain, paints: BarPaints, area: BarAre
   }, options.labelDensity ?? 'smart', options.labelPlacements, {
     categories: cats.length, pitch: band.step / (variant === 'grouped' ? dataSeries.length : 1), orientation: 'horizontal', measure,
   });
+  if (hasLabelPosition(options)) for (let i = 0; i < requests.length; i++) {
+    const request = requests[i]!;
+    if (!/^(point|segment|grandTotal):/.test(request.id)) continue;
+    const ci = cats.findIndex(cat => cat.id === request.owner.categoryId);
+    const cat = cats[ci];
+    const first = request.candidates[0];
+    if (!cat || !first) continue;
+    const bars = scene.bars[ci]!;
+    const drawn = bars.filter(bar => bar.v !== 0);
+    const total = request.id.startsWith('grandTotal:');
+    const bar = total
+      ? variant === 'stacked' && !(TOTAL_COLUMN in options) && drawn.length === 1 ? drawn[0] : undefined
+      : bars.find(bar => bar.s.id === request.owner.seriesId);
+    if (!bar) continue;
+    const twin = halves?.pos === bar.s.id ? bars.find(other => other.s.id === halves.neg)?.rect : undefined;
+    const rect = twin ? unionRect(twin, bar.rect) : bar.rect;
+    const cell = bar.s.cells[ci]!;
+    const { paint, pattern } = paints.cell(bar.s, cat, cell.meta, cell.v);
+    requests[i] = positionBarLabel(request, options, {
+      rect, size: { width: first.rect.w, height: first.rect.h }, orientation: 'horizontal', endPositive: bar.v >= 0, zero: bar.v === 0,
+      edgeGap: LABEL_GAP, outsideGap: LABEL_GAP, fallback: total || variant === 'grouped' ? undefined : 'stack', muted: request.bodyInk !== undefined,
+      insideFill: paints.css(paint, pattern), insidePaint: paint, insidePattern: pattern,
+    });
+  }
   return requests;
 }
 

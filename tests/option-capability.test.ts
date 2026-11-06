@@ -177,6 +177,7 @@ describe('OPTION_CAPABILITY census', () => {
  */
 describe('OPTION_CAPABILITY census, behaviour: an accepted key changes the drawing', () => {
   const PROBES: Partial<Record<keyof typeof OPTION_CAPABILITY, readonly unknown[]>> = {
+    labelPosition: ['insideBase', 'center'],
     rowLabels: [{ align: 'right' }, { align: 'left' }],
     categoryAxis: [{ crossesBetween: false }, { dateTicks: 'quarters' }],
     categoryLabels: ['staircase'],
@@ -322,7 +323,7 @@ describe('published option behaviour census', () => {
     unitShown: true, source: 'Option census source', footnotes: ['Option census footnote'],
     notes: { show: [] }, theme: 'standard-dark', locale: { language: 'de-DE' },
     strings: { source: 'Census source' }, format: '0.000', smallValues: 'scientific',
-    palette: 'categorical', labelDensity: 'minimal', labels: false,
+    palette: 'categorical', labelDensity: 'minimal', labelPosition: 'insideBase', labels: false,
     labelPlacements: { census: 'above' }, legend: 'top', valueAxis: { min: -100 },
     scaleGroup: { y: 'census-scale' }, rowLabels: { align: 'right' },
     categoryAxis: { crossesBetween: false }, categoryLabels: 'staircase',
@@ -346,6 +347,7 @@ describe('published option behaviour census', () => {
 
   /** Options | companion settings | reason. Applied to both renders. */
   const COMPANIONS: Record<string, { options: Options; reason: string }> = {
+    'pyramid.labelPosition': { options: { size: { width: 960, height: 900 } }, reason: 'The representative fixture has eighteen rows; its default bars are too short for inside values.' },
     'bar.sharesOfOneWhole': { options: { variant: 'stacked' }, reason: 'Only stacks have parts of one whole.' },
     'column.sharesOfOneWhole': { options: { variant: 'stacked' }, reason: 'Only stacks have parts of one whole.' },
     'choropleth.colorblindSafe': { options: { scale: { kind: 'diverging', midpoint: 0, polarity: 'higherIsBetter' } }, reason: 'Needs two scale poles.' },

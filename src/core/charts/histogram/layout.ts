@@ -516,6 +516,7 @@ export function layoutHistogram(
     ...(frequencyFormat === undefined ? {} : { format: frequencyFormat }),
     // Every bin count matters: offer every seat before naming an undrawn bin.
     labelDensity: options.labelDensity ?? 'full',
+    ...(options.labelPosition === undefined ? {} : { labelPosition: options.labelPosition }),
     labels: pointLabels(),
     ...(options.labelPlacements === undefined ? {} : { labelPlacements: options.labelPlacements }),
     ...(options.highlight === undefined ? {} : { highlight: options.highlight }),

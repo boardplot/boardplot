@@ -367,4 +367,14 @@ fixtures.push({
 
 fixtures.push({ id: 'rounding-smallest-tie', title: 'Equal-remainder ties favor the smaller share', kind: 'torture', data: { categories: [{ id: 'a', label: 'A' }], series: [{ id: 'large', label: 'Large', unit: '$', values: [4025] }, { id: 'small', label: 'Small', unit: '$', values: [3025] }, { id: 'other', label: 'Other', unit: '$', values: [2025] }, { id: 'tiny', label: 'Smallest', unit: '$', values: [925] }] }, options: { title: 'The smaller share gets the tie adjustment', variant: 'stacked100', rounding: 'sum-consistent', format: '1%', size: { width: 700, height: 400 } } });
 
+fixtures.push(
+  {
+    id: 'bar-inside-base-values', title: 'Mekko bar values inside the base', kind: 'example',
+    data: { categories: [{ id: 'a', label: 'Group A' }, { id: 'b', label: 'Group B' }, { id: 'c', label: 'Group C' }],
+      series: [{ id: 'value', label: 'Value', values: [80, 60, 100] },
+        { id: 'width', label: 'Width', values: [30, 40, 30] }] },
+    options: { title: 'Values inside each variable-width bar', variant: 'bar', widthSeriesId: 'width', labelPosition: 'insideBase' },
+  },
+);
+
 registerFixtures('mekko', fixtures);

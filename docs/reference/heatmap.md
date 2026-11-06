@@ -87,7 +87,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | minBase | number |  |  | Low-base threshold. Cells whose series bases entry is below it draw hatched, with a note. |
 | missing | string | `'hatch'`, `'blank'` |  | How a cell with no value is drawn. 'hatch' (the default) stripes the cell and names it in the key. 'blank' draws no fill and no stripe; the same key entry or note still says that a blank cell is no data. A blank cell keeps its grid line and dash, so it does not read as the palest value. A low base (bases and minBase) stays hatched. |
 
-Plus the [shared options](options.md). This type does not accept `valueAxis`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `topN`, `bandFraction`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
+Plus the [shared options](options.md). This type does not accept `labelPosition`, `valueAxis`, `rounding`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `topN`, `bandFraction`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
 ## Annotations
 

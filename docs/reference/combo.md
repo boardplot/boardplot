@@ -220,3 +220,4 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | ranked-campaigns-key-shown | torture | Campaign names too long for their columns read as ranks with the key printed (notes.show) |
 | ranked-campaigns-rank-key-only | torture | Campaign names too long for their columns read as ranks; only the rank key prints (notes.show ranks) |
 | area-capacity-behind-columns | example | Order columns in front of a capacity area, with a plan corridor and a launch period |
+| inside-base-values | example | Combo column values inside the base |

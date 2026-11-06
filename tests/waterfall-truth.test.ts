@@ -665,3 +665,39 @@ describe('waterfall columnOverrides', () => {
     expect(draw({ variant: 'horizontal', size: { width: 720 }, columnOverrides: { nope: { width: 90 } } }).warnings.map((warning) => warning.code)).toContain('generated-id-unknown');
   });
 });
+
+// Chart-wide placement must preserve legacy output and the meaning of an authored falling-step pin.
+it('keeps auto bridge output and existing pins unchanged in either orientation', () => {
+  const definition = getChartDefinition('waterfall')!;
+  const data = definition.normalize({ items: [
+    { id: 'open', type: 'total', value: 100 }, { id: 'loss', value: -50 }, { id: 'close', type: 'total' },
+  ] });
+  for (const variant of ['vertical', 'horizontal']) {
+    const options = { ...definition.defaults, variant, size: { width: 720, height: 400 } };
+    const draw = (extra: object) => requireGeometry(definition.layout(data, { ...options, ...extra } as never));
+    expect(draw({ labelPosition: 'auto' })).toEqual(draw({}));
+    const pin = { labelPlacements: { 'sum:loss': variant === 'vertical' ? 'insideEnd' : 'outsideLeft' } };
+    const original = draw(pin).labels.find(label => label.id === 'sum:loss');
+    const positioned = draw({ ...pin, labelPosition: 'center' }).labels.find(label => label.id === 'sum:loss');
+    expect(positioned?.hidden).toBeUndefined();
+    expect(positioned?.rect).toEqual(original?.rect);
+    expect(positioned?.slot).toBe(original?.slot);
+    expect(draw({ labelPosition: 'center' }).plot).toEqual(draw({}).plot);
+  }
+});
+
+// A bridge crosses zero by geometry, so the sign of the step must not choose its inside end.
+it('uses the farther-from-zero bridge edge and the upper edge on a tie', () => {
+  const definition = getChartDefinition('waterfall')!;
+  for (const [start, delta, upper] of [[100, -50, true], [-100, 50, false], [-50, 100, true]] as const) {
+    const data = definition.normalize({ items: [
+      { id: 'open', type: 'total', value: start }, { id: 'step', value: delta }, { id: 'close', type: 'total' },
+    ] });
+    const result = requireGeometry(definition.layout(data, { ...definition.defaults, variant: 'vertical', labelPosition: 'insideEnd', size: { width: 720, height: 400 } } as never));
+    const label = result.labels.find(label => label.id === 'sum:step')!;
+    const rect = (result.marks as { bars: { id: string; rect: Geometry['plot'] }[] }).bars.find(bar => bar.id === 'step')!.rect;
+    expect(label.hidden).toBeUndefined();
+    expect(label.slot).toBe('insideBarEnd');
+    expect(label.rect.y).toBeCloseTo(upper ? rect.y + 2 : rect.y + rect.h - label.rect.h - 2);
+  }
+});

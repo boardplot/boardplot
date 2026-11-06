@@ -414,4 +414,15 @@ fixtures.push({
   options: { title: 'Clear goals earn the strongest agreement', values: 'counts', source: 'Pulse survey, invented data', size: { width: 800 }, columnOrder: ['base', 'net', 'plot'] },
 });
 
+fixtures.push(
+  {
+    id: 'inside-base-values', title: 'Response shares inside each segment base', kind: 'example',
+    data: { scale: FIVE_POINT, items: [
+      { id: 'first', label: 'The first step is clear', values: [20, 20, 20, 20, 20] },
+      { id: 'next', label: 'The next step is clear', values: [15, 25, 20, 25, 15] },
+    ] },
+    options: { title: 'Response shares near each segment base', values: 'counts', neutral: 'split', labelPosition: 'insideBase', labelDensity: 'full' },
+  },
+);
+
 registerFixtures('likert', fixtures);

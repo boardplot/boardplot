@@ -80,7 +80,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | range.values | boolean |  |  | Default false. true prints each range's low and high value beside its caps. |
 | range.midLabel | string |  |  | The key entry for the open marker that draws each supplied range.mid, for example 'Peer midpoint'. Default 'Midpoint'. When only some rows carry a mid, a note names the others. |
 
-Plus the [shared options](options.md). This type does not accept `valueAxis.log`, `valueAxis.reverse`, `valueAxis.break`, `hatchStrength`, `rounding`. This type ignores `animate`, `debug`, `categoryAxis`, `categoryLabels`, `secondaryAxis` with an `option-ignored` warning.
+Plus the [shared options](options.md). This type does not accept `labelPosition`, `valueAxis.log`, `valueAxis.reverse`, `valueAxis.break`, `hatchStrength`, `rounding`. This type ignores `animate`, `debug`, `categoryAxis`, `categoryLabels`, `secondaryAxis` with an `option-ignored` warning.
 
 ## Annotations
 
