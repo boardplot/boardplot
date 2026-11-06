@@ -16,6 +16,7 @@ import { highlightPaintWarnings } from '../../paintWarnings';
 import type { PaintWarningRule } from '../../types/scene';
 import type { AnchorResolution } from '../../annotate';
 import { runAnnotatePass } from '../../annotatePass';
+import { BRACKET_GAP, BRACKET_TICK } from '../../annotateParts';
 import { formatWithSpec, levelFormatSpec, levelFormatterFromExample, seriesRasterFormatter, signedFormatterFromExample } from '../../formatSpec';
 import { boxGap, cleanFloat, rectsOverlap, type Rect } from '../../geometry';
 import { createOccupiedIndex } from '../../label/occupied';
@@ -1452,8 +1453,9 @@ function layoutWaterfallWithPad(
   if (categoryRow) pushAll(warnings, catPlan.warnings);
   // spanning annotations (cagr) need arm headroom above the tallest bar
   // 12 px for the arms; the second pass adds what the arms still lack.
-  // A bracket over steps stands above the highest value label: its own label, its ticks, and
-  // the room a value label needs over the tallest bar.
+  // A bracket over steps stands right above its bars, or at the top where that seat is taken. This
+  // room holds the top seat above the highest value label: its label, its ticks, and the room a
+  // value label needs over the tallest bar.
   const bracketLabelH = measure('X', { family: theme.type.family, ...theme.type.label }).height;
   const bracketRoom = (options.annotations ?? []).some((a) => a.kind === 'bracket') ? Math.ceil(2 * bracketLabelH + 8) : 0;
   const annPad = ((options.annotations ?? []).some((a) => a.kind === 'cagr') ? 12 + extraAnnPad : extraAnnPad) + bracketRoom;
@@ -2211,10 +2213,18 @@ function layoutWaterfallWithPad(
       if (total) return { code: 'bracket-span-total', error: `step '${total.id}' is a total, so the span has no one sum; bracket only delta steps` };
       // The step values, not level differences: next to a large balance the rounded levels lose a small step.
       const values = steps.map((x) => ({ id: x.id, value: compensatedSum(x.segments.map((seg) => seg.value)) }));
+      const y = annPlot.y + bracketLabelH + 3;
+      // The drawn bar boxes, so a mixed-sign step counts its whole height, and the span's visible value labels.
+      const spanIds = new Set(steps.map((x) => x.id));
+      const tops = [
+        ...marks.bars.filter((bar) => spanIds.has(bar.id)).map((bar) => bar.rect.y),
+        ...solved.placed.filter((label) => !label.hidden && label.kind !== 'category' && label.owner.categoryId !== undefined && spanIds.has(label.owner.categoryId)).map((label) => label.rect.y),
+      ];
       return {
         left: band.position(i),
         right: band.position(j) + band.bandwidth,
-        y: annPlot.y + bracketLabelH + 3,
+        y,
+        spanY: Math.max(y, Math.min(...tops) - BRACKET_GAP - BRACKET_TICK),
         sum: compensatedSum(values.map((step) => step.value)),
         steps: values,
       };

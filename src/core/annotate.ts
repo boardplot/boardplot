@@ -24,7 +24,7 @@ import { autoDecimals, roundHalfUp, roundsToZero, typicalDecimals } from './form
 import { yearSpan, yearSpanFromLabels } from './periodYears';
 
 export { yearSpan } from './periodYears';
-import { rectsOverlap, unionRect, type Point, type Rect } from './geometry';
+import { rectContains, rectsOverlap, unionRect, type Point, type Rect } from './geometry';
 import { compileIcon, type IconName } from './icons';
 import type { OccupiedIndex } from './label/occupied';
 import { leaderFor, leaderHeightOf, leaderTerminus, PRIORITY, solveLabels, type LabelRequest, type SlotCandidate, type SolveCtx } from './label/solver';
@@ -58,7 +58,7 @@ import type {
   SceneNode,
 } from './types/scene';
 import type { Theme } from './types/theme';
-import { indicator100LabelRect, lineLabelGutterLines, namedLineText, pruneOrphanAnnotationArms } from './annotateParts';
+import { BRACKET_TICK, indicator100LabelRect, lineLabelGutterLines, namedLineText, pruneOrphanAnnotationArms } from './annotateParts';
 import { SHARES_OF_ONE_WHOLE_FIX, valuelessFix } from './stackAdds';
 import { maxOf, pushAll } from './arrays';
 
@@ -185,10 +185,11 @@ export interface AnnotatePassInput {
   defaultSpan?: { from: AnchorRef; to: AnchorRef };
   /**
    * A bridge's bracket span: the drawn x range of the steps `from` to `to` (inclusive), their
-   * signed sum and the y of the one row every bracket stands in. A refusal names its cause.
+   * signed sum, `spanY`, the y right above those bars and their values, and `y`, the top row
+   * a bracket falls back to where that seat is taken. A refusal names its cause.
    */
   resolveSpan?: (from: Id, to: Id) =>
-    | { left: number; right: number; y: number; sum: number; steps: { id: Id; value: number }[] }
+    | { left: number; right: number; y: number; spanY: number; sum: number; steps: { id: Id; value: number }[] }
     | { code: string; error: string };
   /** The exact years between two readings of a time axis (zoneYearSpan); a CAGR uses them instead of dates or labels. */
   elapsedYears?: (from: AnchorResolution, to: AnchorResolution) => number | undefined;
@@ -791,9 +792,6 @@ function spanLead(s: AnnotationScope, a: AnchorResolution, b: AnchorResolution, 
   return lead && (period || colon) ? `${lead}:` : lead;
 }
 
-/** Bracket ticks hang this far down from the bracket's run. */
-const BRACKET_TICK = 5;
-
 function placeBracket(s: AnnotationScope, ann: Extract<Annotation, { kind: 'bracket' }>): void {
   const { input, id } = s;
   if (!input.resolveSpan) return warn(s, 'unsupported', `bracket '${id}': this chart has no steps to add up`);
@@ -805,15 +803,25 @@ function placeBracket(s: AnnotationScope, ann: Extract<Annotation, { kind: 'brac
   const composed = ann.label ? `${ann.label} ${sumText}` : sumText;
   const label = authored(s, 'bracket', composed, ann.text, sumText);
   const lineId = s.nid('bracket');
-  const { left, right, y } = span;
+  const { left, right } = span;
+  const font = { family: input.theme.type.family, ...input.theme.type.label };
+  const size = input.measure(label.text, font);
+  const labelRectAt = (top: number): Rect => ({ x: (left + right - size.width) / 2, y: top - 3 - size.height, w: size.width, h: size.height });
+  const runRectAt = (top: number): Rect => ({ x: left - 1, y: top - 1, w: right - left + 2, h: BRACKET_TICK + 2 });
+  // Right above its bars when the label, run and ticks are all free there; otherwise the top row.
+  const seat = unionRect(labelRectAt(span.spanY), runRectAt(span.spanY));
+  const canvas = input.solveCtx.canvas;
+  const y = input.occupied.hits(seat, 2) || (canvas && !rectContains(canvas, seat, 0)) ? span.y : span.spanY;
   s.nodes.push({
     t: 'path', id: lineId,
     d: `M${left} ${y + BRACKET_TICK}L${left} ${y}L${right} ${y}L${right} ${y + BRACKET_TICK}`,
     stroke: { token: 'ink' }, width: strokeToken(input.theme, 'rule'), owner: { annotationId: id }, part: 'bracket',
   });
-  input.occupied.claim({ x: left - 1, y: y - 1, w: right - left + 2, h: BRACKET_TICK + 2 }, 'annotation', { annotationId: id }, 'bracket');
-  const font = { family: input.theme.type.family, ...input.theme.type.label };
-  const size = input.measure(label.text, font);
+  input.occupied.claim(runRectAt(y), 'annotation', { annotationId: id }, 'bracket');
+  // A later bracket sees this label. A label that already meets another claim stays unclaimed: it is hidden
+  // if the solver finds it blocked, and its claim must not take the seat from the label it meets.
+  const labelRect = labelRectAt(y);
+  if (!input.occupied.hits(labelRect, 2, (claim) => claim.owner.annotationId === id)) input.occupied.claim(labelRect, 'annotation', { annotationId: id }, 'bracketLabel');
   s.labelRequests.push({
     id: `annotation:${id}`,
     kind: 'annotation',
@@ -823,7 +831,7 @@ function placeBracket(s: AnnotationScope, ann: Extract<Annotation, { kind: 'brac
     lines: [label.text],
     typeRole: 'label', font,
     priority: ann.priority ?? PRIORITY.valueLine,
-    candidates: [{ slot: 'aboveBracket', rect: { x: (left + right - size.width) / 2, y: y - 3 - size.height, w: size.width, h: size.height }, penalty: 0 }],
+    candidates: [{ slot: 'aboveBracket', rect: labelRect, penalty: 0 }],
   });
   s.placed.push({
     id, kind: 'bracket', computedText: label.computed, nodeIds: [lineId], labelId: `annotation:${id}`,

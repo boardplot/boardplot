@@ -49,8 +49,9 @@ export type Annotation<X extends string | number = Id> =
   | (AnnotationBase & {
       /**
        * A bracket over the steps `from` to `to` (inclusive) of a bridge. The engine adds up the
-       * steps and prints the sum, after `label` when one is given: "Commercial +81". Brackets
-       * over one chart stand in one row above the steps.
+       * steps and prints the sum, after `label` when one is given: "Commercial +81". A bracket
+       * stands directly above its own bars and their values, or in the row at the top of the plot
+       * when that seat is taken.
        */
       kind: 'bracket';
       from: X;

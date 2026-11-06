@@ -15,6 +15,11 @@ import type { Id } from './types/cell';
 import type { PlacedAnnotation, PlacedLabel, SceneNode } from './types/scene';
 import { maxOf } from './arrays';
 
+/** Bracket ticks hang this far down from the bracket's run. */
+export const BRACKET_TICK = 5;
+/** Air between a bracket's ticks and the bars and values it stands over. */
+export const BRACKET_GAP = 4;
+
 /** Shared with layouts that reserve space for edge-period value labels. */
 export function indicator100LabelRect(plot: Rect, y: number, size: { width: number; height: number }, side: 'left' | 'right'): Rect {
   return { x: side === 'left' ? plot.x - 14 - size.width : plot.x + plot.w + 14,

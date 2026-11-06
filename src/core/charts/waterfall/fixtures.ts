@@ -187,6 +187,27 @@ export const fixtures: Fixture<WaterfallData, WaterfallOptions>[] = [
     ],
   },
   {
+    id: 'bracket-low-steps',
+    title: 'A bracket stands directly above low steps',
+    kind: 'example',
+    data: {
+      items: [
+        { id: 'open', label: 'Opening', type: 'total', value: 400 },
+        { id: 'loss', label: 'Write-off', value: -310 },
+        { id: 'fees', label: 'Fees', value: 24 },
+        { id: 'interest', label: 'Interest', value: 18 },
+        { id: 'tax', label: 'Tax', value: -12 },
+        { id: 'close', label: 'Closing', type: 'total' },
+      ],
+    },
+    options: {
+      title: 'Small income steps follow one large write-off',
+      unit: 'EUR m',
+      source: 'Illustrative bridge',
+    },
+    annotations: [{ kind: 'bracket', from: 'fees', to: 'tax', label: 'Other items' }],
+  },
+  {
     id: 'build-down',
     title: 'Build-down: revenue to net income',
     kind: 'example',
