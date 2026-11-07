@@ -914,10 +914,12 @@ function drawInsetBarGap(
   const w = parts ? input.measure(`${parts.lead}\u00A0`, regular).width + input.measure(parts.value, font).width : input.measure(text, font).width;
   const h = input.measure(text, font).height;
   // The label needs the arrow's middle and some shaft on both sides.
-  if (Math.abs(long.x - shortX) < w + (look.standard ? 2 * look.depth + 8 : 4 * ARM_ARROW)) return false;
-  // A row another annotation already runs along would merge two arrows into one.
-  if (!parts && input.occupied.hitsWhich({ x: Math.min(shortX, long.x), y: y - 4, w: Math.abs(long.x - shortX), h: 8 }, 0)
-    .some((claim) => claim.kind === 'annotation' && claim.owner.annotationId !== annId)) return false;
+  // Signed: a long value past the shorter bar can push the arrow's start beyond the longer bar's end.
+  if (long.x - shortX < w + (look.standard ? 2 * look.depth + 8 : 4 * ARM_ARROW)) return false;
+  // A row another annotation already runs along would merge two arrows into one, and a mark in the
+  // row (a range whisker) would sit under the shaft.
+  if (!parts && input.occupied.hitsWhich({ x: shortX, y: y - 4, w: long.x - shortX, h: 8 }, 0)
+    .some((claim) => claim.kind === 'mark' || (claim.kind === 'annotation' && claim.owner.annotationId !== annId))) return false;
   pushGuide(pass, 'leader0', annId, { x: long.x, y: dropFrom }, { x: long.x, y });
   const lineId = nid('diffLine');
   const direction = Math.sign(tipX - tailX);

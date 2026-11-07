@@ -154,4 +154,11 @@ it('a bar difference rides its row only where the row is clear', () => {
   const start = edge.find((node) => node.part === 'diffArrow' && node.t === 'line')!;
   const barB = (edge.find((node) => node.t === 'rect' && (node.owner as { categoryId?: string } | undefined)?.categoryId === 'b') as unknown as { rect: { y: number; h: number } }).rect;
   expect(start.y1! < barB.y || start.y1! > barB.y + barB.h).toBe(true);
+  // A long value past the shorter bar, or a range whisker in its row, keeps the arrow out of that row.
+  for (const values of [[100, { number: 99, label: '99 units of goods' }], [80, { number: 20, range: { low: 10, high: 40 } }]]) {
+    const scene = run(values as never, [diff('a', 'b')], { size: { width: 960, height: 320 } }).scene;
+    const shaft = scene.find((node) => node.part === 'diffArrow' && node.t === 'line')!;
+    const rowB = (scene.find((node) => node.t === 'rect' && (node.owner as { categoryId?: string } | undefined)?.categoryId === 'b') as unknown as { rect: { y: number; h: number } }).rect;
+    expect(shaft.y1! < rowB.y || shaft.y1! > rowB.y + rowB.h, JSON.stringify(values[1])).toBe(true);
+  }
 });
