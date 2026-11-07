@@ -620,6 +620,9 @@ export function garbled(text, m) {
 
 /** A figure written with the other decimal mark than the chart's marks. */
 function wrongMarks(text, m) {
+  // Without the other mark there is nothing to find; removing authored text cannot add one.
+  const other = m.decimal === '.' ? ',' : m.decimal === ',' ? '.' : undefined;
+  if (!other || !text.includes(other)) return undefined;
   if (m.authored?.length) {
     text = text.replace(/\s+/g, '');
     // A wrapped line is a part of an authored text; a card row can hold an authored text and more.

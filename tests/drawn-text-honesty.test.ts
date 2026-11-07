@@ -9,7 +9,7 @@ import { emphasisWeight, resolveTheme } from '../src/core/theme';
 import { clippedTextWarnings } from '../src/core/textClip';
 import type { Geometry } from '../src/core/types/scene';
 // @ts-expect-error The census script is plain JavaScript.
-import { censusCase } from '../scripts/number-census.mjs';
+import { censusCase, garbled } from '../scripts/number-census.mjs';
 
 const svgOf = (spec: unknown): string => (render({ spec, format: 'svg', return: ['svg'] }).body as { svg: string }).svg;
 const descOf = (svg: string) => /<desc[^>]*>([\s\S]*?)<\/desc>/.exec(svg)?.[1] ?? '';
@@ -185,4 +185,14 @@ describe('mekko column names', () => {
     const drawn = (id: string) => geometry.scene.flatMap((n) => (n.t === 'text' && n.id === `label:category:${id}` ? [n.lines.join(' ')] : []))[0] ?? '';
     expect(ids.map(drawn).map((text, i) => text.startsWith(names[i]!))).toEqual(ids.map(() => true));
   });
+});
+
+// The census skips authored text before it looks for the other decimal mark; the skip must not hide a real wrong mark.
+it('flags a figure in the other decimal mark and spares authored text', () => {
+  const en = { decimal: '.', authored: ['Plant1,5'] };
+  const de = { decimal: ',', authored: [] };
+  expect(garbled('1,5 m', en)).toContain("decimal comma in a chart with '.' marks");
+  expect(garbled('Plant1,5', en)).toEqual([]);
+  expect(garbled('1.5 m', de)).toContain("decimal point in a chart with ',' marks");
+  expect(garbled('1,5 m', de)).toEqual([]);
 });
