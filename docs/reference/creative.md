@@ -137,7 +137,7 @@ One form; its chart ID is `creative`.
 | rowOverrides | object |  |  | Settings per generated row. Ids: ctr, cpa, roas, hookRate, holdRate, frequency. |
 | rowOverrides.*.label | string |  |  | Row name. |
 
-Plus the [shared options](options.md). This type does not accept `a11y`, `belowMinimum`, `margin`, `canvas`, `unit`, `unitShown`, `strings`, `format`, `detailFields`, `smallValues`, `labelDensity`, `labels`, `labelPosition`, `labelPlacements`, `legend`, `valueAxis`, `scaleGroup`, `highlight`, `story`, `focus`, `hatchStrength`, `rounding`, `annotations`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `bandFraction`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
+Plus the [shared options](options.md). This type does not accept `a11y`, `belowMinimum`, `margin`, `canvas`, `unit`, `unitShown`, `strings`, `format`, `detailFields`, `smallValues`, `labelDensity`, `labels`, `labelPosition`, `labelPlacements`, `labelOffsets`, `legend`, `valueAxis`, `scaleGroup`, `highlight`, `story`, `focus`, `hatchStrength`, `rounding`, `annotations`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `bandFraction`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
 
 ## Annotations
 

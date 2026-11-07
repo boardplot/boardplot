@@ -21,7 +21,7 @@ const BARE_NAME_FIELD = {
 
 interface AnnotationAnchor {
   field: string;
-  type: 'AnchorRef' | 'AnchorRef | number' | 'categoryId';
+  type: 'AnchorRef' | 'AnchorRef | number' | 'AnchorRef | { categoryId, value }' | 'categoryId';
   required: boolean;
 }
 
@@ -79,6 +79,9 @@ const ANNOTATION_OPTIONAL: Partial<Record<AnnotationKind, Record<string, Optiona
     },
     attainment: { meaning: 'boolean | { seriesId, direction }. Shades each category between its actual and the line.', types: ['bar', 'bullet', 'column', 'line'] },
   },
+  line: { dashed: 'boolean, default false. Draws the line in the dash of a reference line.' },
+  arrow: { dashed: 'boolean, default false. Draws the shaft in the dash of a reference line.' },
+  box: { dashed: 'boolean, default false. Draws the edges in the dash of a reference line.' },
   bracket: { label: 'string. Name printed before the sum, "Commercial +81". Without it the bracket prints the sum alone.' },
   indicator100: { side: 'left | right, default left. Side of the plot the 100% mark sits on.' },
   event: {
@@ -103,6 +106,8 @@ function optionalFields(kind: AnnotationKind, type: string): Record<string, stri
   }
   return fields;
 }
+
+const DRAWING_POINT_NOTE = 'A point is an anchor or { categoryId, value } with value in axis units. A value outside the plot, a chart with no value scale or an anchor that does not resolve warns bad-anchor and draws nothing; the axis does not grow.';
 
 /** Anchor requirements come from Annotation and the shared annotation pass, whose schema permits extra fields. */
 function describeAnnotation(kind: AnnotationKind, type: string) {
@@ -152,6 +157,17 @@ function describeAnnotation(kind: AnnotationKind, type: string) {
       break;
     case 'indicator100':
       notes = ['No anchor is required. The chart needs a value scale that can represent 100.'];
+      break;
+    case 'text':
+      anchors = [{ field: 'at', type: 'AnchorRef | { categoryId, value }', required: true }];
+      requiredFields = ['text'];
+      notes = [DRAWING_POINT_NOTE, 'The text prints as written, ${value} included. It takes id and priority, and no other field.'];
+      break;
+    case 'line':
+    case 'arrow':
+    case 'box':
+      anchors = ['from', 'to'].map(field => ({ field, type: 'AnchorRef | { categoryId, value }', required: true }));
+      notes = [DRAWING_POINT_NOTE, `${kind === 'box' ? 'from and to are opposite corners, the box has no fill, and text inside it stays free. ' : ''}A stretch that would cross text is cut and warns draw-crosses-text. It takes dashed and id, and no other field.`];
       break;
   }
   if (kind === 'diff' && type === 'line') notes.push('Diff labels precede point and end labels. Same-category arms attach there; anchored strokes do not displace them.');

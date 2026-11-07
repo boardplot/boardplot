@@ -22,5 +22,5 @@ export const heatmapCore: ChartCore<HeatmapData, HeatmapOptions, HeatmapMarks, H
   categoryLabels: calendarCategories,
   prepare: prepareFractionData,
   defaults: { scale: 'continuous', variant: 'value' },
-  annotationKinds: ['cagr', 'diff', 'callout', 'note', 'delta', 'abs']
+  annotationKinds: ['cagr', 'diff', 'callout', 'note', 'delta', 'abs', 'text', 'line', 'arrow', 'box']
 };

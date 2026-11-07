@@ -519,6 +519,7 @@ export function layoutHistogram(
     ...(options.labelPosition === undefined ? {} : { labelPosition: options.labelPosition }),
     labels: pointLabels(),
     ...(options.labelPlacements === undefined ? {} : { labelPlacements: options.labelPlacements }),
+    ...(options.labelOffsets === undefined ? {} : { labelOffsets: options.labelOffsets }),
     ...(options.highlight === undefined ? {} : { highlight: options.highlight }),
     ...(options.colorblindSafe === undefined ? {} : { colorblindSafe: options.colorblindSafe }),
     ...(options.interactive === undefined ? {} : { interactive: options.interactive }),

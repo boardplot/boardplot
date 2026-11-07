@@ -113,3 +113,17 @@ it('points an event date that is a category id to at with the first category', (
   expect(viaOptions[0]?.suggest).toContain('"at": "y19"');
   expect(errors(column({ kind: 'event', at: 'y21', label: 'Launch' }))).toEqual([]);
 });
+
+// A format on a shape prints nothing, and a value in a callout's anchor was silently ignored: each must be refused at its field.
+it('refuses what a drawing kind does not take, and a value in another kind\'s anchor', () => {
+  expect(errors(column({ kind: 'line', from: 'y19', to: { categoryId: 'y23', value: 120 }, dashed: true }))).toEqual([]);
+  expect(errors(column({ kind: 'text', at: { categoryId: 'y21', value: 120 }, text: 'Note', priority: 900 }))).toEqual([]);
+  const format = errors(column({ kind: 'arrow', from: 'y19', to: 'y23', format: '0.0' }));
+  expect(format[0]).toMatchObject({ path: '/annotations/0/format' });
+  expect(format[0]?.message).toContain('from, to, dashed, id');
+  expect(errors(column({ kind: 'box', from: 'y19', to: 'y23', text: 'Note' }))[0]).toMatchObject({ path: '/annotations/0/text' });
+  expect(errors(column({ kind: 'text', at: 'y19', text: 'Note', dashed: true }))[0]).toMatchObject({ path: '/annotations/0/dashed' });
+  expect(errors(column({ kind: 'line', from: { categoryId: 'y19', value: Infinity }, to: 'y23' }))[0]).toMatchObject({ path: '/annotations/0/from/value' });
+  expect(errors(column({ kind: 'callout', at: { categoryId: 'y19', value: 120 }, text: 'Note' }))[0]).toMatchObject({ path: '/annotations/0/at/value' });
+});
+

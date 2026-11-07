@@ -1339,6 +1339,8 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
     resolve: (ref) => withPrinted(resolve(ref)),
     deltaAcrossRows: true,
     valueAxis: 'horizontal',
+    // For the drawing annotations' value points; value lines are taken out of this pass above.
+    xScale: x,
     defaultSpan:
       cats.length >= 2 ? { from: cats[0]!.id, to: cats[cats.length - 1]!.id } : undefined,
     occupied,

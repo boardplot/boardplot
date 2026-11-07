@@ -69,3 +69,39 @@ it('a bracket whose label the solver hid leaves no bracket path', () => {
   expect(hidden.hidden).toBeTruthy();
   expect(geometry.scene.some((node) => node.owner.annotationId === 'bracket-1')).toBe(false);
 });
+
+// A bracket over low steps floated far above them, so it read as belonging to the tall bars: it must stand over its own bars.
+it('a bracket stands directly above its low steps', () => {
+  const low = { items: [
+    { id: 'a', label: 'Start', type: 'total' as const, value: 400 },
+    { id: 'b', label: 'Loss', value: -310 },
+    { id: 'c', label: 'Fees', value: 24 },
+    { id: 'd', label: 'Tax', value: -12 },
+    { id: 'e', label: 'End', type: 'total' as const },
+  ] };
+  const geometry = layoutWaterfall(low, { annotations: [{ kind: 'bracket', from: 'c', to: 'd', label: 'Other' }] } as never);
+  const run = geometry.debug.occupied.find((claim) => claim.part === 'bracket')!;
+  const tops = geometry.labels.filter((label) => !label.hidden && label.kind !== 'annotation' && ['c', 'd'].includes(label.owner.categoryId ?? '') && label.kind !== 'category').map((label) => label.rect.y);
+  // The run's box ends 3 px over the highest value of the span (4 px air, less the box's 1 px margin).
+  expect(run.rect.y + run.rect.h).toBeCloseTo(Math.min(...tops) - 3, 5);
+  expect(run.rect.y).toBeGreaterThan(geometry.plot.y + 40);
+});
+
+// Two brackets whose wide labels want one seat would overprint, or a bracket's ticks would cross a bar: the second must fall back to the top row.
+it('a bracket whose seat is taken stands in the top row', () => {
+  const low = { items: [
+    { id: 'a', label: 'Start', type: 'total' as const, value: 400 },
+    { id: 'b', label: 'Loss', value: -310 },
+    { id: 'c', label: 'Fees', value: 24 },
+    { id: 'd', label: 'Rent', value: 18 },
+    { id: 'e', label: 'End', type: 'total' as const },
+  ] };
+  const geometry = layoutWaterfall(low, { annotations: [
+    { kind: 'bracket', from: 'c', to: 'c', label: 'Fees over the period' },
+    { kind: 'bracket', from: 'd', to: 'd', label: 'Rent over the period' },
+  ] } as never);
+  const [first, second] = geometry.debug.occupied.filter((claim) => claim.part === 'bracket');
+  expect(second!.rect.y).toBeLessThan(first!.rect.y);
+  const labels = geometry.labels.filter((label) => label.kind === 'annotation' && !label.hidden);
+  expect(labels).toHaveLength(2);
+});

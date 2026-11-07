@@ -324,7 +324,7 @@ describe('published option behaviour census', () => {
     notes: { show: [] }, theme: 'standard-dark', locale: { language: 'de-DE' },
     strings: { source: 'Census source' }, format: '0.000', smallValues: 'scientific',
     palette: 'categorical', labelDensity: 'minimal', labelPosition: 'insideBase', labels: false,
-    labelPlacements: { census: 'above' }, legend: 'top', valueAxis: { min: -100 },
+    labelPlacements: { census: 'above' }, labelOffsets: { census: { y: 12 } }, legend: 'top', valueAxis: { min: -100 },
     scaleGroup: { y: 'census-scale' }, rowLabels: { align: 'right' },
     categoryAxis: { crossesBetween: false }, categoryLabels: 'staircase',
     sort: { categories: 'reverse' }, topN: { n: 2 }, bandFraction: 0.3,
@@ -542,6 +542,7 @@ describe('published option behaviour census', () => {
             : [{ kind: 'note', at: (fixture.data as { categories?: { id: string }[] }).categories?.[0]?.id ?? 'census', text: 'Census annotation' }];
         }
         if (key === 'labelPlacements' && baseline.labels[0]) value = { [baseline.labels[0].id]: 'insideCenter' };
+        if (key === 'labelOffsets' && baseline.labels.some(label => !label.hidden)) value = { [baseline.labels.find(label => !label.hidden)!.id]: { y: 12 } };
         if (key === 'viewDomain' && type !== 'scatter') value = { x: [ids[1] ?? ids[0], ids.at(-1)] };
         if (key === 'a' || key === 'b') value = series.find(id => id !== current) ?? value;
         if (key === 'labelRegions') value = []; // An explicit empty set removes the authored region labels.

@@ -596,7 +596,7 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
         message: `${truncated.length} placed label(s) omit text; the reading lists their full text in labelsTruncated`,
         suggest: 'give the labels more room or shorten their text' });
     }
-    pushAll(geo.warnings, unmatchedIdWarnings(geo, data, def.type === 'sankey' ? undefined : options?.highlight, pins, nested));
+    pushAll(geo.warnings, unmatchedIdWarnings(geo, data, def.type === 'sankey' ? undefined : options?.highlight, pins, options?.labelOffsets, nested));
     if (!(options as { [PLAN_ONLY]?: boolean })[PLAN_ONLY]) geo.presentation = presentationInfo(geo, target, panelTypeClass(options), textScale);
     pushAll(geo.warnings, removedNames);
     return geo;
@@ -880,7 +880,7 @@ function hiddenLabelCollision(title: string, geo: Geometry<object, object>, owed
  * Read off the finished geometry for every type: the ids its marks own and
  * the labels its solver placed or hid.
  */
-function unmatchedIdWarnings(geo: Geometry<object, object>, data: unknown, highlight: unknown, pins: Record<string, unknown> | undefined, nested: boolean): LintWarning[] {
+function unmatchedIdWarnings(geo: Geometry<object, object>, data: unknown, highlight: unknown, pins: Record<string, unknown> | undefined, offsets: Record<string, unknown> | undefined, nested: boolean): LintWarning[] {
   const list = (ids: Iterable<string>) => {
     const all = [...new Set(ids)];
     return all.length > 20 ? `${all.slice(0, 20).join(', ')} and ${all.length - 20} more` : all.join(', ') || 'none';
@@ -921,6 +921,22 @@ function unmatchedIdWarnings(geo: Geometry<object, object>, data: unknown, highl
         message: `labelPlacements names label '${id}', which this chart does not draw, so the pin does nothing; label ids: ${list(labels)}`,
         suggest: 'Use a label id from the list, or remove the pin.',
         ...(nested ? {} : { field: ['options', 'labelPlacements', id] }),
+      });
+    }
+  }
+  const moved = Object.keys(offsets ?? {});
+  if (moved.length > 0) {
+    const labels = [...geo.labels.map((label) => label.id), ...geo.debug.decisions.map((decision) => decision.labelId)];
+    // A grid's panel labels read '<panel>/<id>' and take their offsets from the panel's own options.
+    const own = geo.type === 'grid' ? labels.filter((id) => !id.includes('/')) : labels;
+    const known = new Set(own);
+    for (const id of moved.filter((key) => !known.has(key))) {
+      warnings.push({
+        code: 'label-offset-unknown',
+        severity: 'warn',
+        message: `labelOffsets names label '${id}', which this chart does not draw, so the offset does nothing; label ids: ${list(own)}`,
+        suggest: geo.type === 'grid' ? 'Set labelOffsets in the options of the panel that draws the label.' : 'Use a label id from the list, or remove the offset.',
+        ...(nested ? {} : { field: ['options', 'labelOffsets', id] }),
       });
     }
   }

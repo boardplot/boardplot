@@ -565,6 +565,7 @@ function layoutComboFramePass(
     focus: options.focus,
     density: env.density,
     pins: options.labelPlacements ?? {},
+    labelOffsets: options.labelOffsets,
     measure: env.measure,
     plot: area.plot,
     canvas: { x: 0, y: 0, w: size.width, h: size.height },

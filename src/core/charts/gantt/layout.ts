@@ -402,6 +402,7 @@ function layoutGanttPass(data: GanttData, options: GanttOptions = {}, keyed: Rea
     focus: options.focus,
     density: options.labelDensity ?? 'smart',
     pins: options.labelPlacements ?? {},
+    labelOffsets: options.labelOffsets,
     measure: env.measure,
     plot: body.plot,
     canvas: { x: 0, y: 0, w: size.width, h: size.height },

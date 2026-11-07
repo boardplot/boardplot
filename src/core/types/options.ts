@@ -575,6 +575,8 @@ export interface BaseOptions {
   labelPosition?: LabelPosition;
   labels?: false | Partial<Record<LabelKind, boolean | LabelContent>>;
   labelPlacements?: Record<Id, SlotId>;
+  /** Moves a label from its chosen seat by a set distance in px, positive x right and positive y down. A blocked move keeps the seat and warns. */
+  labelOffsets?: Record<Id, { x?: number; y?: number }>;
   /**
    * Where the category names go (column, combo, pareto). 'axis' (default): the
    * row under the axis. 'staircase': each name in the free space over the
