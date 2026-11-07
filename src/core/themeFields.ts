@@ -185,6 +185,16 @@ const THEME_FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = Object.freeze
   'marks.nodeStrokeWidth': 'Width in px of a diagram node ring and a group frame (0 to 3). Absent uses stroke.hair.',
   'marks.restOutline':
     'false draws the marks that recede under a highlight (color.rest) without the separation outline marks.contrastEdge: true adds to a fill too close to the background. Absent means true.',
+  'marks.arrow':
+    "The look of every annotation arrow: a drawn arrow, a callout arrow, a CAGR bracket or growth arrow, a difference, a link, a gap bracket and a band bracket. Absent keys keep the standard: a filled head 8 px long and 7 px wide in color.ink, a shaft in stroke.mark, the tip 6 px off the edge of the mark it points at, the tail 4 px off its text and a shaft of at least 24 px. A difference or bracket tip still touches its level guide. A callout with no seat that keeps the shaft draws no arrow and warns callout-arrow-no-room.",
+  'marks.arrow.style':
+    "'compact' brings back the arrows before the standard: heads 4 to 10 px by kind, a stroke.rule shaft, the tip on the point and no shortest shaft; the other marks.arrow keys then do nothing. Absent means 'standard'.",
+  'marks.arrow.head': 'Head length in px, tip to base (4 to 24). Absent means 8.',
+  'marks.arrow.headWidth': 'Head width in px at its base (3 to 24). Absent means 7.',
+  'marks.arrow.tipGap': 'Air in px between the tip and the edge of the mark it points at (0 to 24). Absent means 6.',
+  'marks.arrow.tailGap': 'Air in px between the tail and its text (0 to 16). Absent means 4.',
+  'marks.arrow.stroke': 'Shaft width in px (0.5 to 4). Absent means the thin `stroke.rule` line; 1.5 matches `stroke.mark`.',
+  'marks.arrow.minShaft': 'The shortest shaft in px, tail to head base (0 to 96). A callout arrow seats its text this far out. Absent means 24.',
   'marks.areaFromOrigin':
     "true places the first and last category of an area chart (line variants area, stacked-area, stacked100-area) on the plot edges, so the bands start at the value axis; an authored categoryAxis.crossesBetween wins. Absent keeps the categories centred in their bands.",
   'marks.barLabels':

@@ -92,6 +92,39 @@ it('an arrow from a text annotation starts at the edge of that text at every wid
     const shaft = geometry.scene.find((node) => node.t === 'line' && node.part === 'drawing') as never as { x1: number; y1: number };
     const gap = Math.hypot(Math.max(text.x - shaft.x1, 0, shaft.x1 - text.x - text.w), Math.max(text.y - shaft.y1, 0, shaft.y1 - text.y - text.h));
     expect(gap).toBeGreaterThan(1);
-    expect(gap).toBeLessThan(5);
+    // The standard's 4 px tail gap, up to √2 of it off a corner of the text.
+    expect(gap).toBeLessThan(4 * Math.SQRT2 + 0.1);
+  }
+});
+
+// The arrow standard (marks.arrow): a callout arrow and a drawn arrow to a line point must never shrink to a
+// head smaller than the marker, touch the marker, or keep a stub of a shaft, at any width.
+it('callout and drawn arrows keep the head, tip gap and shortest shaft of the standard at every width', () => {
+  const line = getChartDefinition('line')!;
+  const data = {
+    categories: ['a', 'b', 'c', 'd', 'e', 'f'].map((id) => ({ id, label: id.toUpperCase() })),
+    series: [{ id: 's', label: 'S', values: [18, 19, 21, 24, 27, 29] }],
+  };
+  const pathPoints = (d: string) => [...d.matchAll(/-?\d+(?:\.\d+)?/g)].map(Number);
+  for (const width of [360, 480, 720, 960]) {
+    for (const annotation of [
+      { kind: 'callout', id: 'c', at: { categoryId: 'c', seriesId: 's' }, text: 'Price cut', arrow: true },
+      { kind: 'arrow', id: 'c', from: { categoryId: 'a', value: 28 }, to: { categoryId: 'c', seriesId: 's' } },
+    ]) {
+      type Node = { t: string; owner?: { annotationId?: string; categoryId?: string }; d?: string; x1?: number; y1?: number; cx?: number; cy?: number; fill?: unknown };
+      const geometry = line.layout(data as never, { size: { width, height: 320 }, valueAxis: { min: 15, max: 30 }, annotations: [annotation] } as never) as unknown as { scene: Node[] };
+      const owned = geometry.scene.filter((node) => node.owner?.annotationId === 'c' && node.t !== 'text');
+      const head = owned.find((node) => node.t === 'path' && node.fill !== undefined);
+      expect(head, `${annotation.kind} at ${width}`).toBeDefined();
+      const [tx, ty, b1x, b1y, b2x, b2y] = pathPoints(head!.d!) as [number, number, number, number, number, number];
+      const base = { x: (b1x + b2x) / 2, y: (b1y + b2y) / 2 };
+      expect(Math.hypot(tx - base.x, ty - base.y)).toBeCloseTo(8, 1);
+      expect(Math.hypot(b1x - b2x, b1y - b2y)).toBeCloseTo(7, 1);
+      const point = geometry.scene.find((node) => node.t === 'circle' && node.owner?.categoryId === 'c')!;
+      expect(Math.hypot(tx - point.cx!, ty - point.cy!)).toBeGreaterThanOrEqual(3 + 6 - 0.01);
+      const shaft = owned.find((node) => node !== head && (node.t === 'line' || node.t === 'path'))!;
+      const [sx, sy] = shaft.d ? pathPoints(shaft.d) as [number, number] : [shaft.x1!, shaft.y1!];
+      expect(Math.hypot(base.x - sx, base.y - sy), `${annotation.kind} at ${width}`).toBeGreaterThanOrEqual(24 - 0.5);
+    }
   }
 });

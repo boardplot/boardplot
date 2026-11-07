@@ -10,7 +10,7 @@ import { emphasisWeight, strokeToken, dashToken } from './theme';
 import type { AnchorResolution } from './annotate';
 import type { ArmDrawPass } from './annotateArms';
 import { PRIORITY } from './label/solver';
-import { arrowHeadPath, arrowShaftEnd } from './svgPath';
+import { arrowLook } from './annotationArrow';
 import { wrapText } from './text';
 import { computedTextRole } from './textRole';
 import type { Annotation } from './types/annotations';
@@ -148,8 +148,11 @@ function planGapBracket(
     add({ t: 'line', id: `${base}:guide${i}`, x1: end.x + RING, y1: end.y, x2: spine, y2: end.y, stroke: { token: 'leader' }, width: strokeToken(input.theme, 'rule'), dash: dashToken(input.theme, 'reference'), owner, part: 'leader' });
   }
   const up = head.y < tail.y ? -1 : 1;
-  add({ t: 'path', id: `${base}:bracket`, d: `M${spine} ${tail.y}L${spine} ${head.y - up * arrowShaftEnd(ARROW, strokeToken(input.theme, 'rule'))}`, stroke: { token: 'ink' }, width: strokeToken(input.theme, 'rule'), owner, part: 'bracket' });
-  add({ t: 'path', id: `${base}:bracketHead`, d: arrowHeadPath({ x: spine, y: head.y }, up * Math.PI / 2, ARROW), fill: { token: 'ink' }, owner, part: 'arrowHead' });
+  const look = arrowLook(input.theme, { size: ARROW });
+  // A gap too short for the head keeps a plain spine between its guides: the head never shrinks, and never reaches past the tail.
+  const headed = !look.standard || bottom - top >= look.depth + 2;
+  add({ t: 'path', id: `${base}:bracket`, d: `M${spine} ${tail.y}L${spine} ${head.y - (headed ? up * look.shaftEnd : 0)}`, stroke: { token: 'ink' }, width: look.stroke, owner, part: 'bracket' });
+  if (headed) add({ t: 'path', id: `${base}:bracketHead`, d: look.head({ x: spine, y: head.y }, up * Math.PI / 2), fill: { token: 'ink' }, owner, part: 'arrowHead' });
   // Rings last, over the line ends and the guides' starts.
   for (const [i, end] of [tail, head].entries()) {
     add({ t: 'circle', id: `${base}:ring${i}`, cx: end.x, cy: end.y, r: RING, fill: { token: 'background' }, stroke: { token: 'ink' }, strokeWidth: strokeToken(input.theme, 'mark'), owner, part: 'gapRing' });

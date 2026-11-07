@@ -254,7 +254,7 @@ export const ANNOTATION_KIND_PURPOSES: Record<AnnotationKind, string> = {
   band: 'Draws an inclusive category span as a shaded band or bracket, or a value-axis plan corridor, tolerance band or attainment fill, with a collision-managed label.',
   text: 'Places authored text at a point through the label solver: on the point, or above, below, right or left of it. The text prints as written.',
   line: 'Draws a straight line between two points or from a text annotation, in the ink and rule width of a bracket; a stretch that would cross text is cut.',
-  arrow: 'Draws a straight arrow between two points or from a text annotation to a point, in the ink and rule width of a bracket; a stretch that would cross text is cut.',
+  arrow: 'Draws a straight arrow between two points or from a text annotation to a point, in the theme arrow look (`marks.arrow`); a stretch that would cross text is cut.',
   box: 'Draws an unfilled box with two points as opposite corners, wrapping whole category bands, in the ink and rule width of a bracket; text inside the box stays free.',
   event: 'Places a dated event in the lane above the plot as a block with a pole to the data, or, when it does not fit, as a numbered marker with an entry in the event key below the plot; periods draw a thin bar.',
 };

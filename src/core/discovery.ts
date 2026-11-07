@@ -61,7 +61,7 @@ const ANNOTATION_OPTIONAL: Partial<Record<AnnotationKind, Record<string, Optiona
   callout: {
     preferSide: 'left | right | above | below. Side the solver tries first; the label keeps a leader when it moves.',
     headline: 'string. A bold first line over the text, which then prints in plain type; ${value} in it prints the anchored value from the data. Example: "headline": "${value}", "text": "Peak in handheld-loom demand" prints 153 in bold over the words.',
-    arrow: 'boolean, default false. A thin arrow from the text to the anchored point; the first line sits level with the point, right or left of it, where there is room. Not with icon or status. Example: "arrow": true.',
+    arrow: 'boolean, default false. An arrow from the text to the anchored point, in the arrow standard of theme marks.arrow: the text stands far enough out for a 24 px shaft, level with the point right or left of it, or over or under it, where there is room. With no such seat it draws without the arrow and warns callout-arrow-no-room. Not with icon or status. Example: "arrow": true.',
   },
   valueLine: {
     value: "number | 'mean', default mean. A number draws the line there; mean has the engine compute it.",

@@ -29,7 +29,8 @@ import { compileIcon, type IconName } from './icons';
 import type { OccupiedIndex } from './label/occupied';
 import { leaderFor, leaderHeightOf, leaderTerminus, PRIORITY, solveLabels, type LabelRequest, type SlotCandidate, type SolveCtx } from './label/solver';
 import { leaderPath } from './svgPath';
-import { anchorValueBox, arrowSeats, finishCalloutHeads, leaderCrossesLabel, leadersOffAnchorValues, valueEdgeToward, type CalloutHeadPlan } from './annotateCallout';
+import { arrowLook } from './annotationArrow';
+import { anchorValueBox, arrowSeats, calloutArrowLook, calloutArrowReach, finishCalloutHeads, leaderCrossesLabel, leadersOffAnchorValues, valueEdgeToward, type CalloutHeadPlan } from './annotateCallout';
 import { composedTextRole, computedTextRole } from './textRole';
 import { drawCagrArm, drawDiffArm, trimAnnotationGuides, type ArmDrawPass } from './annotateArms';
 import { boxCorners, cutDrawingsAroundText, drawDrawing, drawingFailure, resolveDrawingPoint, textSeats, type DrawingCuts } from './annotateDrawing';
@@ -1541,7 +1542,8 @@ function placeDrawing(s: AnnotationScope, ann: Extract<Annotation, { kind: 'line
   const failure = drawingFailure(ann.kind, from, to);
   if (failure !== undefined) return warn(s, 'bad-anchor', `${ann.kind} '${id}': ${failure}`);
   run.drawings ??= new Map();
-  const nodeIds = drawDrawing(ann, id, from as Point, to as Point, input.theme, input.occupied, s.nodes, s.nid, run.drawings);
+  const nodeIds = drawDrawing(ann, id, from as Point, to as Point, input.theme, input.occupied, s.nodes, s.nid, run.drawings,
+    ann.kind === 'box' ? undefined : (to as { mark?: number }).mark, shortArrow(s.warnings, id));
   s.placed.push({ id, kind: ann.kind, computedText: '', tone: 'neutral', nodeIds });
 }
 
@@ -1549,8 +1551,19 @@ function isTextEnd(point: unknown): point is { annotationId: Id } {
   return typeof point === 'object' && point !== null && 'annotationId' in point;
 }
 
-/** The air between a text and the line or arrow that starts or ends at it. */
+/** The air between a text and the line or arrow that starts or ends at it, under `marks.arrow.style: 'compact'` and for a line. */
 const TEXT_END_GAP = 3;
+
+/** The warning of an arrow whose shaft is shorter than the theme's shortest. */
+function shortArrow(warnings: LintWarning[], id: Id): (shaft: number, minimum: number, dropped: boolean) => void {
+  return (shaft, minimum, dropped) => warnings.push({
+    code: 'arrow-short', severity: 'warn', owner: { annotationId: id },
+    message: dropped
+      ? `arrow '${id}': its ends lie too close together for a head and a shaft, so it is not drawn`
+      : `arrow '${id}': its shaft is ${Math.round(shaft)} px, under the ${minimum} px an arrow needs to read as one`,
+    suggest: 'Move the arrow\'s start farther from its end, or draw a line.',
+  });
+}
 
 /**
  * After the solve: a line or an arrow with an end on a text annotation runs from the nearest point of that
@@ -1560,10 +1573,12 @@ function drawFromText(input: AnnotatePassInput, run: AnnotateRun, drawing: TextD
   const fail = (why: string): void => {
     warnings.push({ code: 'bad-anchor', severity: 'warn', message: `${drawing.ann.kind} '${drawing.id}': ${why}, so it is not drawn`, owner: { annotationId: drawing.id } });
   };
+  const look = drawing.ann.kind === 'arrow' ? arrowLook(input.theme, { size: 0 }) : undefined;
+  const gap = look?.standard ? look.tailGap : TEXT_END_GAP;
   const seatOf = (end: Point | { textId: Id }): Rect | undefined | null => {
     if (!('textId' in end)) return undefined;
     const label = labels.find((entry) => entry.id === `annotation:${end.textId}`);
-    return label && !label.hidden ? inflate(label.rect, TEXT_END_GAP) : null;
+    return label && !label.hidden ? inflate(label.rect, gap) : null;
   };
   const fromSeat = seatOf(drawing.from);
   const toSeat = seatOf(drawing.to);
@@ -1576,8 +1591,14 @@ function drawFromText(input: AnnotatePassInput, run: AnnotateRun, drawing: TextD
   const to = toSeat ? nearest(toSeat, aimFrom) : aimTo;
   if ((fromSeat && rectContains(fromSeat, { ...to, w: 0, h: 0 })) || (toSeat && rectContains(toSeat, { ...from, w: 0, h: 0 })) || Math.hypot(to.x - from.x, to.y - from.y) < 1) return fail('its other end lies on the text');
   run.drawings ??= new Map();
-  drawing.record.nodeIds = drawDrawing(drawing.ann, drawing.id, from, to, input.theme, input.occupied, nodes, drawing.nid, run.drawings);
+  drawing.record.nodeIds = drawDrawing(drawing.ann, drawing.id, from, to, input.theme, input.occupied, nodes, drawing.nid, run.drawings,
+    toSeat ? undefined : (drawing.to as { mark?: number }).mark, shortArrow(warnings, drawing.id));
 }
+
+/** Radius of a line point's marker: a callout arrow's tip keeps its gap off its edge. */
+const CALLOUT_MARKER_R = 3;
+/** How far from its point a callout arrow looks for the value printed there. */
+const VALUE_BOX_REACH = 24;
 
 /** Leader-routed text callout near an anchor. */
 function calloutLabel(
@@ -1843,9 +1864,14 @@ function calloutLabel(
   }
   // An arrow callout first tries the seats beside its point, level with it.
   const arrow = head.arrow === true && !glyph
-    ? { anchor: { x: at.x, y: at.y }, nodeIds: [s.nid('arrow'), s.nid('arrowHead')], owner: { annotationId: annId } }
+    ? { anchor: { x: at.x, y: at.y }, edge: at.lineAnchored ? CALLOUT_MARKER_R : 0, nodeIds: [s.nid('arrow'), s.nid('arrowHead')], owner: { annotationId: annId } } as NonNullable<CalloutHeadPlan['arrow']>
     : undefined;
-  if (arrow) all = [...arrowSeats(arrow.anchor, w, h, lineH, prefer), ...all];
+  if (arrow) {
+    const look = calloutArrowLook(input.theme);
+    const valueBox = look.standard ? anchorValueBox(input.occupied, { x: at.x, y: at.y, w: 0, h: 0 }, at.owner, VALUE_BOX_REACH) : undefined;
+    if (valueBox) arrow.valueBox = valueBox;
+    all = [...arrowSeats(arrow.anchor, w, h, lineH, prefer, calloutArrowReach(look, arrow.edge), look.standard, valueBox), ...all];
+  }
   if (arrow || head.headline !== undefined) s.run.calloutHeads.set(`annotation:${annId}`, { font, headline: head.headline !== undefined, headlineLines, headlineWeight: emphasisWeight(input.theme), ...(arrow ? { arrow } : {}) });
   if (input.gridCallouts && (kind === 'callout' || kind === 'note')) {
     const { rows, bounds, grid, sideLimit } = input.gridCallouts;
@@ -2026,7 +2052,7 @@ function finishAnnotatePass(
     };
     input.occupied.claim(chipRect, 'annotation', glyph.owner, 'calloutGlyph');
   }
-  finishCalloutHeads(input.theme, solved.placed, run.calloutHeads, nodes, input.occupied);
+  finishCalloutHeads(input.theme, solved.placed, run.calloutHeads, nodes, input.occupied, warnings);
   // The mark each callout's, note's, abs's or delta's leader runs from (a glyph chip's leader runs to it instead).
   const leaderAnchors = new Map<Id, OwnerRef>();
   input.annotations.forEach((annotation, index) => {

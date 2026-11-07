@@ -909,7 +909,7 @@ Four annotation kinds draw on data positions, so a drawing stays on its data at 
 
 A point is an anchor such as `"q2"`, `{ "categoryId": "q2", "seriesId": "plan" }` or `{ "pointId": "p7" }`, or a category with a value in axis units: `{ "categoryId": "q2", "value": 120 }`. A `line` or `arrow` end given by category sits on the category's centre.
 
-A `line` or `arrow` end may also be `{ "annotationId": "launch-note" }`, the `id` of a `text` annotation. The end then attaches to the nearest edge of that text, 3 px away, wherever the text seats at the drawn width. An id that names no text annotation, and a text that finds no seat, give `bad-anchor` and draw nothing.
+A `line` or `arrow` end may also be `{ "annotationId": "launch-note" }`, the `id` of a `text` annotation. The end then attaches to the nearest edge of that text, 4 px away for an arrow and 3 px for a line, wherever the text seats at the drawn width. An id that names no text annotation, and a text that finds no seat, give `bad-anchor` and draw nothing.
 
 ```json
 {
@@ -927,7 +927,8 @@ A `line` or `arrow` end may also be `{ "annotationId": "launch-note" }`, the `id
 ```
 
 - A value outside the plot, a chart with no value scale and an anchor that does not resolve give the warning `bad-anchor` and draw nothing. A drawing does not extend the axis.
-- Lines, arrows and boxes take the ink and rule width of a bracket and no other styling. A label may sit inside a box, because only the box's edges block it.
+- Lines and boxes take the ink and rule width of a bracket and no other styling. A label may sit inside a box, because only the box's edges block it.
+- Every annotation arrow follows one standard: a drawn arrow, a callout arrow, a CAGR bracket or growth arrow, a difference, a link, a gap bracket and a band bracket. The head is filled, 8 px long and 7 px wide, in the ink colour. The shaft is the thin `stroke.rule` line; `marks.arrow.stroke` sets its width in px. An arrow to a data point stops 6 px off the edge of the point's marker, and its tail starts 4 px off its text. A difference between line points keeps the same 6 px off the marker at both ends. A CAGR bracket leg reaches 16 px past the shaft's end, head included, because its arm carries the length. The plot keeps its height. A difference or a bracket still touches its level guide. A drawn arrow whose shaft is shorter than 24 px warns `arrow-short`. A callout arrow seats its text far enough out for a 24 px shaft; where no seat leaves that room, the callout draws without the arrow and warns `callout-arrow-no-room`. The theme key `marks.arrow` holds the numbers, and `marks.arrow.style: "compact"` brings back the smaller arrows of 0.57.
 - No line crosses text. A stretch that would cross a label is cut around it with 2 px of air, and the warning `draw-crosses-text` names the annotation. The rest of the drawing stays. A value or a name that seats after a drawing keeps off its strokes.
 - These kinds take bar, box, bullet, butterfly, column, combo, dot, funnel, heatmap, line, Mekko, Pareto, pie, likert, pyramid, PVM, scatter, slope, variance and waterfall, and a grid panel of those types through its options. Other chart types drop them with the warning `unsupported-annotation`. A horizontal waterfall draws no annotations, and a warning says so.
 

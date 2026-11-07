@@ -2442,6 +2442,80 @@ fixtures.push(
       },
     ],
   },
+  /** A callout arrow under the arrow standard: an 8 x 7 px head, the tip 6 px off the marker, a shaft of at least 24 px. */
+  {
+    id: 'callout-arrow',
+    title: 'Callout arrow from a note to the point it names',
+    kind: 'example',
+    data: {
+      categories: [
+        { id: 'q1-24', label: 'Q1 24' }, { id: 'q2-24', label: 'Q2 24' }, { id: 'q3-24', label: 'Q3 24' }, { id: 'q4-24', label: 'Q4 24' },
+        { id: 'q1-25', label: 'Q1 25' }, { id: 'q2-25', label: 'Q2 25' }, { id: 'q3-25', label: 'Q3 25' }, { id: 'q4-25', label: 'Q4 25' },
+      ],
+      series: [
+        { id: 'us', label: 'Our share', values: [18, 19, 19, 21, 24, 27, 28, 29] },
+        { id: 'rival', label: 'Main rival', values: [26, 26, 25, 24, 23, 22, 22, 21] },
+      ],
+    },
+    options: {
+      title: 'We overtook the main rival in Q1 2025',
+      unit: '%',
+      source: 'Illustrative panel data',
+      valueAxis: { min: 15, max: 30 },
+      highlight: ['us'],
+    },
+    annotations: [{ kind: 'callout', at: { categoryId: 'q4-24', seriesId: 'us' }, text: 'Price cut in Q4 24', preferSide: 'below', arrow: true }],
+  },
+  /** The same callout under the theme key marks.arrow.style 'compact': the small head and 1 px shaft before the arrow standard. */
+  {
+    id: 'callout-arrow-compact',
+    title: 'Callout arrow in the compact arrow look',
+    kind: 'example',
+    data: {
+      categories: [
+        { id: 'q1-24', label: 'Q1 24' }, { id: 'q2-24', label: 'Q2 24' }, { id: 'q3-24', label: 'Q3 24' }, { id: 'q4-24', label: 'Q4 24' },
+        { id: 'q1-25', label: 'Q1 25' }, { id: 'q2-25', label: 'Q2 25' }, { id: 'q3-25', label: 'Q3 25' }, { id: 'q4-25', label: 'Q4 25' },
+      ],
+      series: [
+        { id: 'us', label: 'Our share', values: [18, 19, 19, 21, 24, 27, 28, 29] },
+        { id: 'rival', label: 'Main rival', values: [26, 26, 25, 24, 23, 22, 22, 21] },
+      ],
+    },
+    options: {
+      theme: { preset: 'bridge', overrides: { marks: { arrow: { style: 'compact' } } } },
+      title: 'We overtook the main rival in Q1 2025',
+      unit: '%',
+      source: 'Illustrative panel data',
+      valueAxis: { min: 15, max: 30 },
+      highlight: ['us'],
+    },
+    annotations: [{ kind: 'callout', at: { categoryId: 'q4-24', seriesId: 'us' }, text: 'Price cut in Q4 24', preferSide: 'below', arrow: true }],
+  },
+  /** The same callout with the theme key marks.arrow.stroke 1.5: a shaft as heavy as the data marks. */
+  {
+    id: 'callout-arrow-heavy',
+    title: 'Callout arrow with a heavy shaft',
+    kind: 'example',
+    data: {
+      categories: [
+        { id: 'q1-24', label: 'Q1 24' }, { id: 'q2-24', label: 'Q2 24' }, { id: 'q3-24', label: 'Q3 24' }, { id: 'q4-24', label: 'Q4 24' },
+        { id: 'q1-25', label: 'Q1 25' }, { id: 'q2-25', label: 'Q2 25' }, { id: 'q3-25', label: 'Q3 25' }, { id: 'q4-25', label: 'Q4 25' },
+      ],
+      series: [
+        { id: 'us', label: 'Our share', values: [18, 19, 19, 21, 24, 27, 28, 29] },
+        { id: 'rival', label: 'Main rival', values: [26, 26, 25, 24, 23, 22, 22, 21] },
+      ],
+    },
+    options: {
+      theme: { preset: 'bridge', overrides: { marks: { arrow: { stroke: 1.5 } } } },
+      title: 'We overtook the main rival in Q1 2025',
+      unit: '%',
+      source: 'Illustrative panel data',
+      valueAxis: { min: 15, max: 30 },
+      highlight: ['us'],
+    },
+    annotations: [{ kind: 'callout', at: { categoryId: 'q4-24', seriesId: 'us' }, text: 'Price cut in Q4 24', preferSide: 'below', arrow: true }],
+  },
 );
 
 /**

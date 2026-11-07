@@ -257,6 +257,9 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | shared-recession-period-bands | line.line | example | Period annotations separate the starting quarter, recession and recovery |
 | tolerance-band | line.line | example | Tolerance band around a 90 indexed target |
 | two-series-level-diff | line.line | example | Multi-series line with last-period difference and series CAGR |
+| callout-arrow | line.line | example | Callout arrow from a note to the point it names |
+| callout-arrow-compact | line.line | example | Callout arrow in the compact arrow look |
+| callout-arrow-heavy | line.line | example | Callout arrow with a heavy shaft |
 | line-compact-380 | line.line | example | Line in a 380px dashboard column |
 | torture-long-labels | line.line | torture | Torture: long names at a generous size read whole, never cut |
 | highlight-overlap | line.line | torture | Actual remains visible when plan overlaps |

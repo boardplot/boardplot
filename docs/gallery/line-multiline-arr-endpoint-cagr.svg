@@ -55,8 +55,8 @@
 <circle data-id="marker:cloud:fy23" data-part="marker" cx="399.44" cy="260.29" r="3" fill="#1E4FD8"/>
 <circle data-id="marker:cloud:fy24" data-part="marker" cx="498.56" cy="210.69" r="3" fill="#1E4FD8"/>
 <circle data-id="marker:cloud:fy25" data-part="marker" cx="597.69" cy="156.70" r="3" fill="#FFFFFF" stroke="#1E4FD8" stroke-width="1.5"/>
-<path data-id="ann:cagr-1:arm:0" data-part="arm" d="M102.0625 112.69999999999999L102.0625 102.69999999999999L596.2061947472474 102.69999999999999" fill="none" stroke="#0B1B3A" stroke-width="1" stroke-linejoin="round"/>
-<path data-id="ann:cagr-1:arrowHead:1" data-part="arrowHead" d="M597.69 102.70L593.23 104.97L593.23 100.43Z" fill="#0B1B3A" stroke-linejoin="round"/>
+<path data-id="ann:cagr-1:arm:0" data-part="arm" d="M102.0625 112.69999999999999L102.0625 102.69999999999999L596.0446428571429 102.69999999999999" fill="none" stroke="#0B1B3A" stroke-width="1" stroke-linejoin="round"/>
+<path data-id="ann:cagr-1:arrowHead:1" data-part="arrowHead" d="M597.69 102.70L589.69 106.20L589.69 99.20Z" fill="#0B1B3A" stroke-linejoin="round"/>
 <line data-id="forecast-divider:fy25" data-part="forecastDivider" x1="548.13" y1="135.70" x2="548.13" y2="374.10" stroke="#9AA5B8" stroke-width="1" stroke-dasharray="4 3"/>
 <text data-id="label:series:cloud" data-part="series" data-bp-role="category" x="613.69" y="161.36" text-anchor="start" font-size="13" font-weight="600" fill="#1E4FD8"><tspan>Cloud ARR </tspan><tspan>189</tspan></text>
 <text data-id="label:forecast:fy25" data-part="annotation" data-bp-role="caption" x="552.13" y="126.75" text-anchor="start" font-size="12" font-weight="400" fill="#5B6B86"><tspan x="552.13" dy="0">FC</tspan></text>
