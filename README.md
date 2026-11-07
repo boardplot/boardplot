@@ -1,6 +1,10 @@
 # Boardplot
 
-Boardplot is a chart library for AI agents and React apps: one JSON spec gives a consulting-grade business chart for reports, dashboards and slides, as SVG, PNG or a React component.
+Boardplot draws waterfalls, Mekko (Marimekko) charts, variance charts and management tables for slides, reports and dashboards. It is free and open source under Apache-2.0.
+
+Give an AI agent such as Claude Code or Codex your data and say what the chart should show. Boardplot runs on your computer and needs Node.js 22.12 or newer. Your agent may need a paid plan. In PowerPoint a chart is a picture, so to change it you ask the agent to draw it again.
+
+Developers can add the same charts to a React dashboard as responsive components with tooltips.
 
 **[Gallery](docs/gallery.md)** · [Manual](docs/manual.md) · [Chart reference](docs/reference/) · [AI agents](#ai-agents) · [React](#react) · [Changelog](CHANGELOG.md) · Apache-2.0
 
@@ -10,6 +14,16 @@ Boardplot is a chart library for AI agents and React apps: one JSON spec gives a
 </picture>
 
 This stacked column chart is one JSON spec drawn by `boardplot render`; the variance to the prior year above each column is computed from the data. Boardplot has <!-- BEGIN GENERATED COUNTS -->37 chart types, 83 variants and 661 example specs<!-- END GENERATED COUNTS -->; the [gallery](docs/gallery.md) shows each type with its spec.
+
+## Who it is for
+
+- **People who build decks and reports.** Get the waterfalls, Mekko charts and variance charts of a board deck as images for PowerPoint, Keynote or Word. Boardplot needs no licence fee or add-in. See [PowerPoint or Keynote deck](docs/use-cases.md#powerpoint-or-keynote-deck).
+- **Business people who work with an AI agent.** The agent writes the chart spec, so you write no code. You need a local agent, such as Claude Code or Codex, and Node.js 22.12 or newer. It does not work in Claude chat, because the chart tools run on your computer. Claude Code needs a paid Claude plan. Ask your IT team if you cannot install software. See [AI agents](#ai-agents) for the setup and [Use cases](docs/use-cases.md) for example prompts.
+- **Developers who build dashboards.** The React components are responsive, with tooltips, click handlers for drill-down, zoom on time-based line and area charts, and sortable, foldable tables. See [React](#react).
+
+## Limits
+
+In PowerPoint a chart is a picture, so colleagues cannot edit its data there. Charts do not animate their drawing or data updates.
 
 ## Why Boardplot
 
@@ -80,7 +94,7 @@ This writes `charts/revenue.svg` and prints the result as JSON. Add `--format pn
 
 The package has ES module entries only (`import`, not `require`). A new `npm init` project is CommonJS, so run `npm pkg set type=module` before a server-side script imports Boardplot.
 
-Boardplot is at 0.x: options and output can change between minor versions. [CHANGELOG.md](CHANGELOG.md) lists each change.
+Boardplot is at 0.x: defaults and output can change between minor versions, and options can be renamed or removed. A spec with a retired setting still draws and warns: a renamed setting maps to its successor, and a removed setting is ignored. A setting that never existed is refused. [CHANGELOG.md](CHANGELOG.md) lists each change.
 
 ## AI agents
 
