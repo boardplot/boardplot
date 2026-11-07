@@ -111,17 +111,18 @@ it('callout and drawn arrows keep the head, tip gap and shortest shaft of the st
       { kind: 'callout', id: 'c', at: { categoryId: 'c', seriesId: 's' }, text: 'Price cut', arrow: true },
       { kind: 'arrow', id: 'c', from: { categoryId: 'a', value: 28 }, to: { categoryId: 'c', seriesId: 's' } },
     ]) {
-      const geometry = line.layout(data as never, { size: { width, height: 320 }, valueAxis: { min: 15, max: 30 }, annotations: [annotation] } as never);
+      type Node = { t: string; owner?: { annotationId?: string; categoryId?: string }; d?: string; x1?: number; y1?: number; cx?: number; cy?: number; fill?: unknown };
+      const geometry = line.layout(data as never, { size: { width, height: 320 }, valueAxis: { min: 15, max: 30 }, annotations: [annotation] } as never) as unknown as { scene: Node[] };
       const owned = geometry.scene.filter((node) => node.owner?.annotationId === 'c' && node.t !== 'text');
-      const head = owned.find((node) => node.t === 'path' && 'fill' in node) as { d: string } | undefined;
+      const head = owned.find((node) => node.t === 'path' && node.fill !== undefined);
       expect(head, `${annotation.kind} at ${width}`).toBeDefined();
-      const [tx, ty, b1x, b1y, b2x, b2y] = pathPoints(head!.d) as [number, number, number, number, number, number];
+      const [tx, ty, b1x, b1y, b2x, b2y] = pathPoints(head!.d!) as [number, number, number, number, number, number];
       const base = { x: (b1x + b2x) / 2, y: (b1y + b2y) / 2 };
       expect(Math.hypot(tx - base.x, ty - base.y)).toBeCloseTo(8, 1);
       expect(Math.hypot(b1x - b2x, b1y - b2y)).toBeCloseTo(7, 1);
-      const point = geometry.scene.find((node) => node.t === 'circle' && node.owner?.categoryId === 'c') as { cx: number; cy: number };
-      expect(Math.hypot(tx - point.cx, ty - point.cy)).toBeGreaterThanOrEqual(3 + 6 - 0.01);
-      const shaft = owned.find((node) => node !== head && (node.t === 'line' || node.t === 'path')) as { x1?: number; y1?: number; d?: string };
+      const point = geometry.scene.find((node) => node.t === 'circle' && node.owner?.categoryId === 'c')!;
+      expect(Math.hypot(tx - point.cx!, ty - point.cy!)).toBeGreaterThanOrEqual(3 + 6 - 0.01);
+      const shaft = owned.find((node) => node !== head && (node.t === 'line' || node.t === 'path'))!;
       const [sx, sy] = shaft.d ? pathPoints(shaft.d) as [number, number] : [shaft.x1!, shaft.y1!];
       expect(Math.hypot(base.x - sx, base.y - sy), `${annotation.kind} at ${width}`).toBeGreaterThanOrEqual(24 - 0.5);
     }
