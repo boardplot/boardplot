@@ -1,5 +1,4 @@
 import type { Theme } from './types/theme';
-import { strokeToken } from './theme';
 /**
  * The headline and the arrow of a callout (kind 'callout', fields `headline`
  * and `arrow`): a bold first line over plain text, "153" over "Peak in …",
@@ -10,17 +9,24 @@ import { strokeToken } from './theme';
 import { segmentHitsRect, unionRect, type Point, type Rect } from './geometry';
 import type { OccupiedClaim, OccupiedIndex } from './label/occupied';
 import { leaderPieces, seatLeader, type SlotCandidate } from './label/solver';
-import { arrowHeadPath, arrowShaftEnd } from './svgPath';
+import { arrowLook, type ArrowLook } from './annotationArrow';
 import type { FontSpec } from './text';
 import type { Id, OwnerRef } from './types/cell';
-import type { PlacedLabel, SceneNode } from './types/scene';
+import type { LintWarning, PlacedLabel, SceneNode } from './types/scene';
 
-/** From the text to its point: long enough to read as an arrow, short enough to stay beside the point. */
-const CALLOUT_ARROW_REACH = 22;
-const ARROW_HEAD = 4;
-/** The tip stands this far off the point, and the shaft starts this far off the text. */
-const TIP_GAP = 4;
-const TAIL_GAP = 3;
+/** Under `marks.arrow.style: 'compact'`: from the text to its point, the head, and the air at the tip and at the text. */
+const COMPACT_REACH = 22;
+const COMPACT = { size: 4, tipGap: 4, tailGap: 3 };
+
+/** The arrow look of a callout. */
+export function calloutArrowLook(theme: Theme): ArrowLook {
+  return arrowLook(theme, COMPACT);
+}
+
+/** From the point to the text of a seat beside it: the air at both ends, the head and the shortest shaft. */
+export function calloutArrowReach(look: ArrowLook, edge: number): number {
+  return look.standard ? edge + look.tipGap + look.depth + look.minShaft + look.tailGap : COMPACT_REACH;
+}
 
 export interface CalloutHeadPlan {
   /** The plain face the text prints in; the headline uses the emphasis weight. */
@@ -28,7 +34,8 @@ export interface CalloutHeadPlan {
   headline: boolean;
   headlineLines?: number;
   headlineWeight?: number;
-  arrow?: { anchor: Point; nodeIds: Id[]; owner: OwnerRef };
+  /** `edge`: the radius of the marker at the anchor (0 on a bar end); the tip keeps its gap off that edge. */
+  arrow?: { anchor: Point; edge: number; nodeIds: Id[]; owner: OwnerRef };
 }
 
 /**
@@ -36,29 +43,38 @@ export interface CalloutHeadPlan {
  * the first line level with it, so the arrow runs flat. A preferred side of
  * above or below keeps its seat ahead of these.
  */
-export function arrowSeats(anchor: Point, w: number, h: number, lineH: number, prefer: string | undefined): SlotCandidate[] {
+export function arrowSeats(anchor: Point, w: number, h: number, lineH: number, prefer: string | undefined, reach: number, standard: boolean): SlotCandidate[] {
   const y = anchor.y - lineH / 2;
   const vertical = prefer === 'above' || prefer === 'below';
+  const side: SlotCandidate[] = [
+    { slot: 'arrowRight', rect: { x: anchor.x + reach, y, w, h }, penalty: vertical ? 0.5 : prefer === 'left' ? -2.5 : -3 },
+    { slot: 'arrowLeft', rect: { x: anchor.x - reach - w, y, w, h }, penalty: vertical ? 0.6 : prefer === 'left' ? -3 : -2.5 },
+  ];
+  if (!standard) return side;
+  // Under the standard the text also stands the full reach over or under its point, so a preferred side above or below keeps its arrow.
   return [
-    { slot: 'arrowRight', rect: { x: anchor.x + CALLOUT_ARROW_REACH, y, w, h }, penalty: vertical ? 0.5 : prefer === 'left' ? -2.5 : -3 },
-    { slot: 'arrowLeft', rect: { x: anchor.x - CALLOUT_ARROW_REACH - w, y, w, h }, penalty: vertical ? 0.6 : prefer === 'left' ? -3 : -2.5 },
+    ...side,
+    { slot: 'arrowAbove', rect: { x: anchor.x - w / 2, y: anchor.y - reach - h, w, h }, penalty: prefer === 'above' ? -3 : prefer === 'below' ? 0.8 : 0.7 },
+    { slot: 'arrowBelow', rect: { x: anchor.x - w / 2, y: anchor.y + reach, w, h }, penalty: prefer === 'below' ? -3 : prefer === 'above' ? 0.8 : 0.75 },
   ];
 }
 
 /** Where the shaft leaves the text: the side facing the point, level with the point where the text spans it. */
-function tail(rect: Rect, anchor: Point): Point {
+function tail(rect: Rect, anchor: Point, gap: number): Point {
   const y = Math.min(Math.max(anchor.y, rect.y), rect.y + rect.h);
-  if (anchor.x < rect.x) return { x: rect.x - TAIL_GAP, y };
-  if (anchor.x > rect.x + rect.w) return { x: rect.x + rect.w + TAIL_GAP, y };
-  return { x: anchor.x, y: anchor.y < rect.y ? rect.y - TAIL_GAP : rect.y + rect.h + TAIL_GAP };
+  if (anchor.x < rect.x) return { x: rect.x - gap, y };
+  if (anchor.x > rect.x + rect.w) return { x: rect.x + rect.w + gap, y };
+  return { x: anchor.x, y: anchor.y < rect.y ? rect.y - gap : rect.y + rect.h + gap };
 }
 
 /**
  * After the solve: the text prints plain under a bold headline, and the arrow
  * runs from the text to its point and claims its run. A hidden callout draws
- * no arrow.
+ * no arrow. A seat too near its point for the shortest shaft keeps its leader,
+ * draws no arrow and warns: an arrow never shrinks below the standard.
  */
-export function finishCalloutHeads(theme: Theme, labels: PlacedLabel[], plans: ReadonlyMap<Id, CalloutHeadPlan>, nodes: SceneNode[], occupied: OccupiedIndex): void {
+export function finishCalloutHeads(theme: Theme, labels: PlacedLabel[], plans: ReadonlyMap<Id, CalloutHeadPlan>, nodes: SceneNode[], occupied: OccupiedIndex, warnings: LintWarning[]): void {
+  const look = calloutArrowLook(theme);
   for (const label of labels) {
     const plan = plans.get(label.id);
     if (!plan) continue;
@@ -72,24 +88,34 @@ export function finishCalloutHeads(theme: Theme, labels: PlacedLabel[], plans: R
       label.headWeight = plan.headlineWeight;
     }
     if (!plan.arrow) continue;
-    const { anchor, owner } = plan.arrow;
-    const from = tail(label.rect, anchor);
+    const { anchor, owner, edge } = plan.arrow;
+    const from = tail(label.rect, anchor, look.tailGap);
     const length = Math.hypot(anchor.x - from.x, anchor.y - from.y);
-    if (length <= TIP_GAP + ARROW_HEAD) {
+    const tipGap = look.standard ? edge + look.tipGap : look.tipGap;
+    // Half a pixel of slack: a seat beside the point sits at the shortest shaft exactly.
+    const tooShort = look.standard ? length - tipGap - look.depth < look.minShaft - 0.5 : length <= look.tipGap + COMPACT.size;
+    if (tooShort) {
       plan.arrow.nodeIds.splice(0);
+      if (look.standard) {
+        warnings.push({
+          code: 'callout-arrow-no-room', severity: 'warn', owner,
+          message: `callout '${owner.annotationId}': its text found no seat far enough from its point for an arrow of ${look.minShaft} px, so it is drawn without the arrow`,
+          suggest: 'Give the callout a preferSide with free room, or leave arrow out.',
+        });
+      }
       continue;
     }
     const ux = (anchor.x - from.x) / length;
     const uy = (anchor.y - from.y) / length;
-    const tip = { x: anchor.x - ux * TIP_GAP, y: anchor.y - uy * TIP_GAP };
-    const shaft = arrowShaftEnd(ARROW_HEAD, strokeToken(theme, 'rule'));
+    const tip = { x: anchor.x - ux * tipGap, y: anchor.y - uy * tipGap };
+    const shaft = look.shaftEnd;
     const end = { x: tip.x - ux * shaft, y: tip.y - uy * shaft };
     const [shaftId, headId] = plan.arrow.nodeIds as [Id, Id];
     // The arrow replaces any leader the seat carried.
     delete label.leader;
     nodes.push(
-      { t: 'path', id: shaftId, d: `M${from.x} ${from.y}L${end.x} ${end.y}`, stroke: { token: 'ink' }, width: strokeToken(theme, 'rule'), owner, part: 'calloutArrow' },
-      { t: 'path', id: headId, d: arrowHeadPath(tip, Math.atan2(uy, ux), ARROW_HEAD), fill: { token: 'ink' }, owner, part: 'calloutArrow' },
+      { t: 'path', id: shaftId, d: `M${from.x} ${from.y}L${end.x} ${end.y}`, stroke: { token: 'ink' }, width: look.stroke, owner, part: 'calloutArrow' },
+      { t: 'path', id: headId, d: look.head(tip, Math.atan2(uy, ux)), fill: { token: 'ink' }, owner, part: 'calloutArrow' },
     );
     occupied.claim(
       { x: Math.min(from.x, tip.x) - 0.5, y: Math.min(from.y, tip.y) - 0.5, w: Math.abs(tip.x - from.x) + 1, h: Math.abs(tip.y - from.y) + 1 },

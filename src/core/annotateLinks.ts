@@ -7,7 +7,7 @@ import type { Theme } from './types/theme';
 import type { AnchorResolution } from './annotate';
 import type { ArmDrawPass } from './annotateArms';
 import { PRIORITY } from './label/solver';
-import { arrowHeadPath, arrowShaftEnd } from './svgPath';
+import { arrowLook } from './annotationArrow';
 import { computedTextRole } from './textRole';
 import type { AnnotationDerivation, PlacedAnnotation, PlacedLabel, SceneNode } from './types/scene';
 import { maxOf } from './arrays';
@@ -127,21 +127,22 @@ export function marginBracketLayout(theme: Theme, margins: BracketMargins, optio
     },
     emit(labels) {
       const nodes: SceneNode[] = [];
+      const look = arrowLook(theme, { size: BRACKET_ARROW });
       for (const bracket of brackets) {
         const { annotation, side, tickEnd, spine, from, to, arrow } = bracket;
         const label = labels.find((l) => l.id === annotation.labelId);
         if (!label || label.hidden) continue;
         const owner = { annotationId: annotation.id };
         const pathId = `ann:${annotation.id}:bracket`;
-        const end = arrow ? tickEnd + side * arrowShaftEnd(BRACKET_ARROW, strokeToken(theme, 'rule')) : tickEnd;
+        const end = arrow ? tickEnd + side * look.shaftEnd : tickEnd;
         nodes.push({
           t: 'path', id: pathId, d: `M${tickEnd} ${from}L${spine} ${from}L${spine} ${to}L${end} ${to}`,
-          stroke: { token: 'ink' }, width: strokeToken(theme, 'rule'), owner, part: 'bracket',
+          stroke: { token: 'ink' }, width: arrow ? look.stroke : strokeToken(theme, 'rule'), owner, part: 'bracket',
         });
         annotation.nodeIds.push(pathId);
         if (arrow) {
           const headId = `ann:${annotation.id}:comparisonHead`;
-          nodes.push({ t: 'path', id: headId, d: arrowHeadPath({ x: tickEnd, y: to }, side === 1 ? Math.PI : 0, BRACKET_ARROW), fill: { token: 'ink' }, owner, part: 'arrowHead' });
+          nodes.push({ t: 'path', id: headId, d: look.head({ x: tickEnd, y: to }, side === 1 ? Math.PI : 0), fill: { token: 'ink' }, owner, part: 'arrowHead' });
           annotation.nodeIds.push(headId);
         }
       }

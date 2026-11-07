@@ -147,6 +147,10 @@ export const THEME_SHAPE: ShapeNode = object({
     sliceOutline: flag, othersOutline: flag, contrastEdge: flag, nodeFill: optOneOf('role', 'panel'), kpiCaret: flag, kpiSlotFill: flag,
     bridge: optOneOf('neutral', 'sign'), funnelFill: optOneOf('status', 'ramp'), statusFill: optOneOf('quiet', 'full'),
     bulletBandFill: optOneOf('light', 'full'),
+    arrow: opt(object({
+      style: optOneOf('standard', 'compact'), head: optNum(4, 24), headWidth: optNum(3, 24),
+      tipGap: optNum(0, 24), tailGap: optNum(0, 16), minShaft: optNum(0, 96),
+    })),
   })),
   labels: opt(object({ endLabelPlacement: optOneOf('gutter', 'lineEnd'), ink: optOneOf('ink', 'muted') })),
   valueAxis: opt(object({ titles: flag, includeZero: flag, dualAxis: flag, gridDash: optOneOf('solid', 'dotted', 'dashed') })),

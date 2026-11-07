@@ -9,7 +9,7 @@ import { formatterFromExample } from './formatSpec';
 import { rectsOverlap, type Rect } from './geometry';
 import { PRIORITY, type LabelRequest, type SlotCandidate } from './label/solver';
 import type { OccupiedIndex } from './label/occupied';
-import { arrowHeadPath } from './svgPath';
+import { arrowLook } from './annotationArrow';
 import { chartString } from './strings/a11y-valueLineRecords';
 import { strokeToken, dashToken, signedFillPaint } from './theme';
 import type { TextMeasurer } from './text';
@@ -900,7 +900,8 @@ function placeEraBracket(
   const bracketY = roomAbove >= size.height + 12 ? bandPlot.y - 7 : bandPlot.y + size.height + 6;
   const left = rect.x;
   const right = rect.x + rect.w;
-  const arrowInset = Math.min(5, rect.w / 2);
+  const look = arrowLook(ctx.input.theme, { size: 5 });
+  const arrowInset = Math.min(look.standard ? look.shaftEnd : 5, rect.w / 2);
   const bracketIds: Id[] = [];
   const lineId = ctx.nid('bracket');
   bracketIds.push(lineId);
@@ -912,7 +913,7 @@ function placeEraBracket(
     x2: right - arrowInset,
     y2: bracketY,
     stroke: { token: 'ink' },
-    width: strokeToken(ctx.input.theme, 'rule'),
+    width: look.stroke,
     owner: { annotationId: ctx.id },
     part: 'bandBracket',
   });
@@ -925,7 +926,7 @@ function placeEraBracket(
     ctx.nodes.push({
       t: 'path',
       id: headId,
-      d: arrowHeadPath({ x, y: bracketY }, angle, 5),
+      d: look.head({ x, y: bracketY }, angle),
       fill: { token: 'ink' },
       owner: { annotationId: ctx.id },
       part: 'bandArrowHead',

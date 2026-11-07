@@ -11,15 +11,17 @@ import { valueMapper } from './annotateTargets';
 import { segmentSpanInRect, type Point, type Rect } from './geometry';
 import type { OccupiedIndex } from './label/occupied';
 import type { SlotCandidate } from './label/solver';
-import { arrowHeadPath, arrowShaftEnd } from './svgPath';
+import { arrowLook } from './annotationArrow';
 import { dashToken, strokeToken } from './theme';
 import type { Annotation, DrawingPoint } from './types/annotations';
 import type { Id } from './types/cell';
 import type { LintWarning, PlacedAnnotation, SceneNode } from './types/scene';
 import type { Theme } from './types/theme';
 
-/** Size of a drawn arrow's head. */
+/** Size of a drawn arrow's head under `marks.arrow.style: 'compact'`. */
 const DRAWING_ARROW_HEAD = 6;
+/** Radius of a line point's marker: an arrow's tip keeps its gap from the marker's edge. */
+const POINT_MARKER_R = 3;
 /** Air between a drawn stroke and a label it is cut around. */
 const CUT_CLEARANCE = 2;
 /** Half the width of a stroke's claim. */
@@ -32,8 +34,11 @@ const TEXT_GAP = 8;
 /** Arrow shafts by node id: the head, and the tip its shaft points to. */
 export type DrawingCuts = Map<Id, { headId: Id; tip: Point }>;
 
-/** A resolved point. `band` is the span of its category along the category axis, for a point given as { categoryId, value }. */
-type Resolved = (Point & { band?: [number, number] }) | { error: string };
+/**
+ * A resolved point. `band` is the span of its category along the category axis, for a point given as { categoryId, value }.
+ * `mark` is the radius of the mark the point sits on (0 for a bar end), for a point given by a data anchor.
+ */
+type Resolved = (Point & { band?: [number, number]; mark?: number }) | { error: string };
 
 /** The air a box keeps outside a category band, the solver's label pad. */
 const BOX_BAND_PAD = 2;
@@ -42,7 +47,7 @@ const BOX_BAND_PAD = 2;
 export function resolveDrawingPoint(input: AnnotatePassInput, point: DrawingPoint): Resolved {
   if (typeof point !== 'object' || point === null || !('value' in point)) {
     const found = input.resolve(point as never);
-    return found ? { x: found.x, y: found.y } : { error: 'unresolvable anchor' };
+    return found ? { x: found.x, y: found.y, mark: found.lineAnchored ? POINT_MARKER_R : 0 } : { error: 'unresolvable anchor' };
   }
   const mapper = valueMapper(input);
   if (!mapper) return { error: `this chart has no value scale, so it has no place for value ${point.value}` };
@@ -134,7 +139,11 @@ function claimStroke(occupied: OccupiedIndex, a: Point, b: Point, id: Id): void 
   ]);
 }
 
-/** Draws the nodes of a line, an arrow or a box and claims its strokes. Returns the node ids. */
+/**
+ * Draws the nodes of a line, an arrow or a box and claims its strokes. Returns the node ids.
+ * `toMark` is the radius of the mark under an arrow's end: the tip stops the
+ * theme's tip gap off its edge. `short` hears of a shaft under the theme's shortest.
+ */
 export function drawDrawing(
   ann: Extract<Annotation, { kind: 'line' | 'arrow' | 'box' }>,
   id: Id,
@@ -145,8 +154,11 @@ export function drawDrawing(
   nodes: SceneNode[],
   nid: (part: string) => Id,
   cuts: DrawingCuts,
+  toMark?: number,
+  short?: (shaft: number, minimum: number) => void,
 ): Id[] {
-  const width = strokeToken(theme, 'rule');
+  const look = ann.kind === 'arrow' ? arrowLook(theme, { size: DRAWING_ARROW_HEAD }) : undefined;
+  const width = look?.stroke ?? strokeToken(theme, 'rule');
   const owner = { annotationId: id };
   const paint = { stroke: { token: 'ink' } as const, width, owner, part: 'drawing', ...(ann.dashed ? { dash: dashToken(theme, 'reference') } : {}) };
   const run = (a: Point, b: Point): Id => {
@@ -170,16 +182,24 @@ export function drawDrawing(
       return run(a, b);
     });
   }
-  claimStroke(occupied, from, to, id);
-  if (ann.kind === 'line') return [run(from, to)];
-  const length = Math.hypot(to.x - from.x, to.y - from.y);
-  const ux = (to.x - from.x) / length;
-  const uy = (to.y - from.y) / length;
-  const shaft = Math.min(arrowShaftEnd(DRAWING_ARROW_HEAD, width), length);
-  const shaftId = run(from, { x: to.x - ux * shaft, y: to.y - uy * shaft });
+  if (!look) {
+    claimStroke(occupied, from, to, id);
+    return [run(from, to)];
+  }
+  const full = Math.hypot(to.x - from.x, to.y - from.y);
+  const ux = (to.x - from.x) / full;
+  const uy = (to.y - from.y) / full;
+  // The tip stops short of the mark it points at; a point in open plot keeps it.
+  const pull = look.standard && toMark !== undefined ? Math.min(toMark + look.tipGap, full / 2) : 0;
+  const tip = { x: to.x - ux * pull, y: to.y - uy * pull };
+  const length = full - pull;
+  if (look.standard && length - look.depth < look.minShaft) short?.(Math.max(0, length - look.depth), look.minShaft);
+  claimStroke(occupied, from, tip, id);
+  const shaft = Math.min(look.shaftEnd, length);
+  const shaftId = run(from, { x: tip.x - ux * shaft, y: tip.y - uy * shaft });
   const headId = nid('drawingHead');
-  nodes.push({ t: 'path', id: headId, d: arrowHeadPath(to, Math.atan2(uy, ux), DRAWING_ARROW_HEAD), fill: { token: 'ink' }, owner, part: 'drawing' });
-  cuts.set(shaftId, { headId, tip: to });
+  nodes.push({ t: 'path', id: headId, d: look.head(tip, Math.atan2(uy, ux)), fill: { token: 'ink' }, owner, part: 'drawing' });
+  cuts.set(shaftId, { headId, tip });
   return [shaftId, headId];
 }
 

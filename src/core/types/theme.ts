@@ -487,6 +487,13 @@ export interface Theme {
      * apart on rows that do not print their band names.
      */
     bulletBandFill?: 'light' | 'full';
+    /**
+     * The look of every annotation arrow (a drawn arrow, a callout arrow, a
+     * bracket, a difference, a growth arrow, a link): head size, stroke and
+     * the air at both ends. 'compact' brings back the small heads and 1 px
+     * strokes of before; see themeFields.
+     */
+    arrow?: ThemeArrow;
   };
   /** Label conventions; absent keeps the shipped placement. */
   labels?: {
@@ -634,6 +641,21 @@ export interface Theme {
    * (reference, forecast, guide), dotted [1, 3] for dotted lines.
    */
   dash?: Partial<Record<DashRole, number[]>>;
+}
+
+/** The annotation arrow look (`marks.arrow`). Absent keys keep the standard: an 8 x 7 px head, 6 px tip gap, 4 px tail gap, 24 px shaft. */
+export interface ThemeArrow {
+  style?: 'standard' | 'compact';
+  /** Head length in px, tip to base. */
+  head?: number;
+  /** Head width in px at its base. */
+  headWidth?: number;
+  /** Air in px between the tip and the edge of the mark it points at. */
+  tipGap?: number;
+  /** Air in px between the tail and its text. */
+  tailGap?: number;
+  /** The shortest shaft in px, tail to head base. */
+  minShaft?: number;
 }
 
 /** The stroke roles of the theme. */
