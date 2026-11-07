@@ -128,3 +128,30 @@ it('callout and drawn arrows keep the head, tip gap and shortest shaft of the st
     }
   }
 });
+
+// A bar difference that rides its row must not cover the shorter bar's value, cut through a bar, or merge with another difference into one arrow.
+it('a bar difference rides its row only where the row is clear', () => {
+  const bar = getChartDefinition('bar')!;
+  type Node = { t: string; part?: string; owner?: { annotationId?: string }; d?: string; y1?: number; y2?: number; x1?: number; x2?: number };
+  type Label = { owner: { categoryId?: string }; kind: string; hidden?: unknown; rect: { x: number; y: number; w: number; h: number } };
+  const run = (values: number[], annotations: unknown[], options: object = {}) => bar.layout({
+    categories: values.map((_, i) => ({ id: 'abc'[i]!, label: 'ABC'[i]! })),
+    series: [{ id: 's', label: 'S', values }],
+  } as never, { size: { width: 360, height: 260 }, annotations, ...options } as never) as unknown as { scene: Node[]; labels: Label[] };
+  const diff = (from: string, to: string, extra: object = {}) => ({ kind: 'diff', id: `${from}${to}`, mode: 'absolute', from: { categoryId: from, seriesId: 's' }, to: { categoryId: to, seriesId: 's', ...extra } });
+  // The head stops right of the value printed past a short bar.
+  const small = run([100, 1], [diff('a', 'b')]);
+  const value = small.labels.find((label) => label.owner.categoryId === 'b' && label.kind !== 'category' && !label.hidden)!;
+  const head = small.scene.find((node) => node.part === 'arrowHead')!;
+  const tipX = Number(head.d!.match(/^M(-?[\d.]+)/)![1]);
+  expect(tipX).toBeGreaterThan(value.rect.x + value.rect.w);
+  // Two differences into one row keep two separate shafts.
+  const shafts = run([100, 80, 20], [diff('a', 'c'), diff('b', 'c')]).scene.filter((node) => node.part === 'diffArrow' && node.t === 'line');
+  expect(shafts).toHaveLength(2);
+  expect(Math.abs(shafts[0]!.y1! - shafts[1]!.y1!)).toBeGreaterThan(4);
+  // An end on a bar's start edge keeps the arrow between the rows, off the bar it would cut through.
+  const edge = run([82, 23], [diff('a', 'b', { edge: 'start' })]).scene;
+  const start = edge.find((node) => node.part === 'diffArrow' && node.t === 'line')!;
+  const barB = (edge.find((node) => node.t === 'rect' && (node.owner as { categoryId?: string } | undefined)?.categoryId === 'b') as unknown as { rect: { y: number; h: number } }).rect;
+  expect(start.y1! < barB.y || start.y1! > barB.y + barB.h).toBe(true);
+});

@@ -9,6 +9,7 @@ import type { Point, Rect } from './geometry';
 import { PRIORITY, type LabelRequest } from './label/solver';
 import { ovalPath } from './svgPath';
 import { arrowLook, type ArrowLook } from './annotationArrow';
+import { anchorValueBox } from './annotateCallout';
 import { computedTextRole } from './textRole';
 import type { OccupiedIndex } from './label/occupied';
 import type { Id, OwnerRef } from './types/cell';
@@ -896,9 +897,15 @@ function drawInsetBarGap(
   if (dropStrip.h > 0 && input.occupied.hitsWhich(dropStrip, 0).some((claim) => claim.kind === 'mark' &&
     (parts ? claim.owner.seriesId !== short.owner.seriesId : !own(claim.owner)))) return false;
   const look = armLook(input.theme);
+  // Two categories ride a row only from the bars' far ends: an end on a bar's start edge would run the arrow through that bar.
+  const atEnd = (end: AnchorResolution, bar: Rect) => Math.abs(end.x - (bar.x + bar.w)) < 1;
+  if (!parts && (!atEnd(short, shortBar) || !atEnd(long, longBar))) return false;
+  // A value printed past the shorter bar's end stays clear: the arrow stops off that value instead.
+  const shortValue = parts ? undefined : anchorValueBox(input.occupied, { x: short.x, y: short.y - 1, w: 0, h: 2 }, short.owner, 24);
+  const shortEdge = shortValue && shortValue.x >= short.x - 2 ? shortValue.x + shortValue.w : short.x;
   // Two categories: the head points at `to`, at its bar's end or touching the drop.
   const towardLong = !parts && b === long;
-  const shortX = short.x + (look.standard && !parts ? look.tipGap : INSET_TIP_GAP);
+  const shortX = shortEdge + (look.standard && !parts ? look.tipGap : INSET_TIP_GAP);
   const tipX = towardLong ? long.x - 1 : shortX;
   const tailX = towardLong ? shortX : long.x;
   const regular: FontSpec = { family: input.theme.type.family, ...input.theme.type.label };
@@ -908,6 +915,9 @@ function drawInsetBarGap(
   const h = input.measure(text, font).height;
   // The label needs the arrow's middle and some shaft on both sides.
   if (Math.abs(long.x - shortX) < w + (look.standard ? 2 * look.depth + 8 : 4 * ARM_ARROW)) return false;
+  // A row another annotation already runs along would merge two arrows into one.
+  if (!parts && input.occupied.hitsWhich({ x: Math.min(shortX, long.x), y: y - 4, w: Math.abs(long.x - shortX), h: 8 }, 0)
+    .some((claim) => claim.kind === 'annotation' && claim.owner.annotationId !== annId)) return false;
   pushGuide(pass, 'leader0', annId, { x: long.x, y: dropFrom }, { x: long.x, y });
   const lineId = nid('diffLine');
   const direction = Math.sign(tipX - tailX);
