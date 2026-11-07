@@ -25,5 +25,5 @@ export const varianceCore: ChartCore<
   categoryLabels: calendarCategories,
   prepare: prepareFractionData,
   defaults: {},
-  annotationKinds: ['cagr', 'diff', 'delta', 'abs', 'note', 'callout', 'valueLine']
+  annotationKinds: ['cagr', 'diff', 'delta', 'abs', 'note', 'callout', 'valueLine', 'text', 'line', 'arrow', 'box']
 };

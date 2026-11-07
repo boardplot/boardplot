@@ -22,5 +22,5 @@ export const butterflyCore: ChartCore<
   categoryLabels: calendarCategories,
   prepare: prepareFractionData,
   defaults: { sortBy: 'sheet', sharedScale: true, negatives: 'direction' },
-  annotationKinds: ['cagr', 'delta', 'diff', 'note', 'callout', 'abs']
+  annotationKinds: ['cagr', 'delta', 'diff', 'note', 'callout', 'abs', 'text', 'line', 'arrow', 'box']
 };

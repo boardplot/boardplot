@@ -228,6 +228,8 @@ function assertGeometry(type: string, geometry: Geometry, theme: Theme, fixtureI
         const { x, y, w, h } = label.rect;
         return rulePieces.some(([px, y1, y2]) => px >= x && px <= x + w && Math.max(y1, y2) > y && Math.min(y1, y2) < y + h);
       }
+      // A drawing breaks around text after the labels have their seats: its claim may reach a label, a drawn stretch may not.
+      if (item.part === 'drawing') return geometry.scene.some((node) => node.t === 'line' && node.part === 'drawing' && segmentHitsRect({ x: node.x1, y: node.y1 }, { x: node.x2, y: node.y2 }, label.rect));
       // A value that keeps its seat across a reference line does so on a halo (SlotCandidate.overRules),
       // and so does a scatter name across a trend or Pareto line (the solver's trendLine rule).
       if ((item.part === 'referenceLine' || item.part === 'trendLine') && label.halo === true) return false;

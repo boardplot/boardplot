@@ -21,7 +21,7 @@ export const pieCore: ChartCore<ChartData, PieOptions, PieMarks, PieDerived> = {
   categoryLabels: calendarCategories,
   prepare: prepareFractionData,
   defaults: {},
-  annotationKinds: ['cagr', 'diff', 'note', 'callout', 'delta', 'abs'],
+  annotationKinds: ['cagr', 'diff', 'note', 'callout', 'delta', 'abs', 'text', 'line', 'arrow', 'box'],
   lint: (data, options): LintWarning[] => {
     const warnings: LintWarning[] = [];
     const n = data.categories.length;

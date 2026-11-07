@@ -2766,4 +2766,24 @@ fixtures.push(
   },
 );
 
+fixtures.push({
+  id: 'drawing-kinds',
+  title: 'A box around the launch months, the old level and an arrow from a note',
+  kind: 'example',
+  data: {
+    categories: [
+      { id: 'jan', label: 'Jan' }, { id: 'feb', label: 'Feb' }, { id: 'mar', label: 'Mar' },
+      { id: 'apr', label: 'Apr' }, { id: 'may', label: 'May' }, { id: 'jun', label: 'Jun' },
+    ],
+    series: [{ id: 'orders', label: 'Orders', values: [30, 34, 31, 62, 70, 66] }],
+  },
+  options: { title: 'Orders doubled after the April launch', unit: 'thousand', source: 'Illustrative data', valueAxis: { min: 0, max: 80 }, labelPosition: 'insideEnd' },
+  annotations: [
+    { kind: 'box', id: 'launch-months', from: { categoryId: 'apr', value: 0 }, to: { categoryId: 'jun', value: 80 }, dashed: true },
+    { kind: 'line', id: 'old-level', from: { categoryId: 'jan', value: 36 }, to: { categoryId: 'mar', value: 36 }, dashed: true },
+    { kind: 'text', id: 'old-level-note', at: { categoryId: 'feb', value: 42 }, text: 'Before launch: under 36' },
+    { kind: 'text', id: 'launch-note', at: { categoryId: 'feb', value: 64 }, text: 'Launch moved the level' },
+    { kind: 'arrow', id: 'step-up', from: { annotationId: 'launch-note' }, to: { categoryId: 'apr', value: 65 } },
+  ],
+});
 registerFixtures('column', fixtures);

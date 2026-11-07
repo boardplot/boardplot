@@ -3264,4 +3264,25 @@ const logAxisFixture: LineFixture = {
   options: { title: 'Active users grow over five years', unit: 'users', source: 'Illustrative data', valueAxis: { log: true, show: true } },
 };
 
-registerFixtures('line', [...fixtures, smallDrawerFixture, anomalyLineFixture, weeklyEventsLineFixture, eventsKeyLineFixture, focusFixture, nearZeroTailsFixture, partialWeekFixture, hostCardFixture, hostCardUnitShownFixture, markInkFixture, cellLabelFixture, ...cohortLineFixtures, briefLineFixture, themeConventionsFixture, areaFromOriginFixture, ...coverageLineFixtures, cycleBandsFixture, gapBracketFixture, stackedAreaBenchmarkFixture, stackedAreaRestFixture, strokeSamplerFixture, ratioPlainFormatRefusal, rebaseMissingNoteFixture, rebaseZeroNoteFixture, bandHeadroomFixture, lateStartFixture, trendFixture, ...continuousLineFixtures, logAxisFixture]);
+const drawingKindsFixture: Fixture<LineChartData, LineOptions> = {
+  id: 'drawing-kinds',
+  title: 'A box over the maintenance weeks, the normal load and an arrow from a note',
+  kind: 'example',
+  data: {
+    categories: [
+      { id: 'w1', label: 'W1' }, { id: 'w2', label: 'W2' }, { id: 'w3', label: 'W3' }, { id: 'w4', label: 'W4' },
+      { id: 'w5', label: 'W5' }, { id: 'w6', label: 'W6' }, { id: 'w7', label: 'W7' }, { id: 'w8', label: 'W8' },
+    ],
+    series: [{ id: 'load', label: 'Load', values: [52, 54, 51, 38, 35, 37, 49, 53] }],
+  },
+  options: { title: 'Load dropped during the maintenance weeks', unit: '%', source: 'Illustrative data', valueAxis: { min: 20, max: 60 } },
+  annotations: [
+    { kind: 'box', id: 'maintenance', from: { categoryId: 'w4', value: 30 }, to: { categoryId: 'w6', value: 42 } },
+    { kind: 'line', id: 'normal-load', from: { categoryId: 'w1', value: 53 }, to: { categoryId: 'w8', value: 53 }, dashed: true },
+    { kind: 'text', id: 'normal-load-note', at: { categoryId: 'w2', value: 58 }, text: 'Normal load' },
+    { kind: 'text', id: 'maintenance-note', at: { categoryId: 'w2', value: 28 }, text: 'Planned maintenance' },
+    { kind: 'arrow', id: 'low-point', from: { annotationId: 'maintenance-note' }, to: { categoryId: 'w5', value: 33 } },
+  ],
+};
+
+registerFixtures('line', [...fixtures, drawingKindsFixture, smallDrawerFixture, anomalyLineFixture, weeklyEventsLineFixture, eventsKeyLineFixture, focusFixture, nearZeroTailsFixture, partialWeekFixture, hostCardFixture, hostCardUnitShownFixture, markInkFixture, cellLabelFixture, ...cohortLineFixtures, briefLineFixture, themeConventionsFixture, areaFromOriginFixture, ...coverageLineFixtures, cycleBandsFixture, gapBracketFixture, stackedAreaBenchmarkFixture, stackedAreaRestFixture, strokeSamplerFixture, ratioPlainFormatRefusal, rebaseMissingNoteFixture, rebaseZeroNoteFixture, bandHeadroomFixture, lateStartFixture, trendFixture, ...continuousLineFixtures, logAxisFixture]);

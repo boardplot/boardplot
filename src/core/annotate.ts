@@ -24,7 +24,7 @@ import { autoDecimals, roundHalfUp, roundsToZero, typicalDecimals } from './form
 import { yearSpan, yearSpanFromLabels } from './periodYears';
 
 export { yearSpan } from './periodYears';
-import { rectsOverlap, unionRect, type Point, type Rect } from './geometry';
+import { inflate, rectContains, rectsOverlap, unionRect, type Point, type Rect } from './geometry';
 import { compileIcon, type IconName } from './icons';
 import type { OccupiedIndex } from './label/occupied';
 import { leaderFor, leaderHeightOf, leaderTerminus, PRIORITY, solveLabels, type LabelRequest, type SlotCandidate, type SolveCtx } from './label/solver';
@@ -32,10 +32,11 @@ import { leaderPath } from './svgPath';
 import { anchorValueBox, arrowSeats, finishCalloutHeads, leaderCrossesLabel, leadersOffAnchorValues, valueEdgeToward, type CalloutHeadPlan } from './annotateCallout';
 import { composedTextRole, computedTextRole } from './textRole';
 import { drawCagrArm, drawDiffArm, trimAnnotationGuides, type ArmDrawPass } from './annotateArms';
+import { boxCorners, cutDrawingsAroundText, drawDrawing, drawingFailure, resolveDrawingPoint, textSeats, type DrawingCuts } from './annotateDrawing';
 import type { ComparisonLayout } from './annotateLinks';
 import type { GapBracketFrame, GapBracketPlan } from './annotateGapBracket';
 import { wrapText, type FontSpec, type TextMeasurer } from './text';
-import { defaultAnnotationId, type AnchorRef, type Annotation } from './types/annotations';
+import { defaultAnnotationId, type AnchorRef, type Annotation, type DrawingEnd, type DrawingPoint } from './types/annotations';
 import type { Id, OwnerRef } from './types/cell';
 import {
   buildExtendedEraBandCandidates,
@@ -58,7 +59,7 @@ import type {
   SceneNode,
 } from './types/scene';
 import type { Theme } from './types/theme';
-import { indicator100LabelRect, lineLabelGutterLines, namedLineText, pruneOrphanAnnotationArms } from './annotateParts';
+import { BRACKET_TICK, indicator100LabelRect, lineLabelGutterLines, namedLineText, pruneOrphanAnnotationArms } from './annotateParts';
 import { SHARES_OF_ONE_WHOLE_FIX, valuelessFix } from './stackAdds';
 import { maxOf, pushAll } from './arrays';
 
@@ -185,10 +186,11 @@ export interface AnnotatePassInput {
   defaultSpan?: { from: AnchorRef; to: AnchorRef };
   /**
    * A bridge's bracket span: the drawn x range of the steps `from` to `to` (inclusive), their
-   * signed sum and the y of the one row every bracket stands in. A refusal names its cause.
+   * signed sum, `spanY`, the y right above those bars and their values, and `y`, the top row
+   * a bracket falls back to where that seat is taken. A refusal names its cause.
    */
   resolveSpan?: (from: Id, to: Id) =>
-    | { left: number; right: number; y: number; sum: number; steps: { id: Id; value: number }[] }
+    | { left: number; right: number; y: number; spanY: number; sum: number; steps: { id: Id; value: number }[] }
     | { code: string; error: string };
   /** The exact years between two readings of a time axis (zoneYearSpan); a CAGR uses them instead of dates or labels. */
   elapsedYears?: (from: AnchorResolution, to: AnchorResolution) => number | undefined;
@@ -290,6 +292,8 @@ export interface AnnotatePassInput {
   meanSpan?(scope: { from?: Id; to?: Id }): string | undefined;
   /** Category outer edges for inclusive background bands. */
   resolveCategoryBand?: (categoryId: Id) => CategoryBand | null;
+  /** Category bands that only drawings read: a box given by category wraps the band (charts with no resolveCategoryBand). */
+  drawingCategoryBand?: (categoryId: Id) => CategoryBand | null;
   /** On a continuous axis: the slot of one drawn period, for a band from and to the same x. */
   resolvePeriodSlot?: (categoryId: Id) => CategoryBand | null;
   /** Visible plot area when `plot` includes annotation headroom. */
@@ -416,6 +420,10 @@ interface AnnotateRun {
   /** True where a difference prints as zero under `fmtSigned`. */
   printsZero: (v: number) => boolean;
   calloutGlyphPlans: Map<Id, CalloutGlyphPlan>;
+  /** Arrow shafts of the drawing annotations, by node id, each with its head. Set once a drawing runs. */
+  drawings?: DrawingCuts;
+  /** Lines and arrows with an end on a text annotation, drawn once that text has its seat. */
+  textDrawings?: TextDrawing[];
   /** Callouts with a headline or an arrow, finished after the solve. */
   calloutHeads: Map<Id, CalloutHeadPlan>;
   gapBrackets: GapBracketPlan[];
@@ -508,7 +516,8 @@ export function runAnnotatePass(input: AnnotatePassInput): AnnotatePassResult {
     const secondaryLine = ann.kind === 'valueLine' && ann.axis === 'secondary';
     const valuesNotShares = sharesOnly && ann.kind !== 'valueLine';
     const referenceFormat = secondaryLine ? input.secondaryFormat : valuesNotShares ? undefined : input.format;
-    const anchorFormat = 'at' in ann && ann.at !== undefined ? input.resolve(ann.at)?.format
+    const anchorFormat = ann.kind === 'text' || ann.kind === 'line' || ann.kind === 'arrow' || ann.kind === 'box' ? undefined
+      : 'at' in ann && ann.at !== undefined ? input.resolve(ann.at)?.format
       : ann.kind === 'diff' ? (input.resolve(ann.to)?.format ?? input.resolve(ann.from)?.format)
         : ann.kind === 'valueLine' ? secondaryLine ? input.secondaryFormat : seriesMeanFormat(input, ann) : undefined;
     const example = ann.format ?? anchorFormat;
@@ -563,7 +572,7 @@ export function runAnnotatePass(input: AnnotatePassInput): AnnotatePassResult {
     // The scope owns the log; a comparison hook reached through the arm
     // drawers can only append to it, owned by the annotation it is drawing.
     scope.warn = (code, message, suggest) => warn(scope, code, message, suggest);
-    placeAnnotation(scope, ann);
+    placeAnnotation(scope, ann, run);
     if (anchorErrors.length) for (const warning of warnings.slice(warningStart)) {
       if (warning.code === 'bad-anchor') warning.message += `: ${[...new Set(anchorErrors)].join('; ')}`;
     }
@@ -578,7 +587,7 @@ function seriesMeanFormat(input: AnnotatePassInput, ann: Extract<Annotation, { k
   return mean && !('error' in mean) ? mean.format : undefined;
 }
 
-function placeAnnotation(s: AnnotationScope, ann: Annotation): void {
+function placeAnnotation(s: AnnotationScope, ann: Annotation, run: AnnotateRun): void {
   switch (ann.kind) {
     case 'cagr':
       return placeCagr(s, ann);
@@ -603,6 +612,12 @@ function placeAnnotation(s: AnnotationScope, ann: Annotation): void {
     case 'event':
       // Drawn by the event lane (column, combo, line) or by gantt itself.
       return;
+    case 'text':
+      return placeDrawingText(s, ann);
+    case 'line':
+    case 'arrow':
+    case 'box':
+      return placeDrawing(s, ann, run);
   }
 }
 
@@ -791,9 +806,6 @@ function spanLead(s: AnnotationScope, a: AnchorResolution, b: AnchorResolution, 
   return lead && (period || colon) ? `${lead}:` : lead;
 }
 
-/** Bracket ticks hang this far down from the bracket's run. */
-const BRACKET_TICK = 5;
-
 function placeBracket(s: AnnotationScope, ann: Extract<Annotation, { kind: 'bracket' }>): void {
   const { input, id } = s;
   if (!input.resolveSpan) return warn(s, 'unsupported', `bracket '${id}': this chart has no steps to add up`);
@@ -805,15 +817,25 @@ function placeBracket(s: AnnotationScope, ann: Extract<Annotation, { kind: 'brac
   const composed = ann.label ? `${ann.label} ${sumText}` : sumText;
   const label = authored(s, 'bracket', composed, ann.text, sumText);
   const lineId = s.nid('bracket');
-  const { left, right, y } = span;
+  const { left, right } = span;
+  const font = { family: input.theme.type.family, ...input.theme.type.label };
+  const size = input.measure(label.text, font);
+  const labelRectAt = (top: number): Rect => ({ x: (left + right - size.width) / 2, y: top - 3 - size.height, w: size.width, h: size.height });
+  const runRectAt = (top: number): Rect => ({ x: left - 1, y: top - 1, w: right - left + 2, h: BRACKET_TICK + 2 });
+  // Right above its bars when the label, run and ticks are all free there; otherwise the top row.
+  const seat = unionRect(labelRectAt(span.spanY), runRectAt(span.spanY));
+  const canvas = input.solveCtx.canvas;
+  const y = input.occupied.hits(seat, 2) || (canvas && !rectContains(canvas, seat, 0)) ? span.y : span.spanY;
   s.nodes.push({
     t: 'path', id: lineId,
     d: `M${left} ${y + BRACKET_TICK}L${left} ${y}L${right} ${y}L${right} ${y + BRACKET_TICK}`,
     stroke: { token: 'ink' }, width: strokeToken(input.theme, 'rule'), owner: { annotationId: id }, part: 'bracket',
   });
-  input.occupied.claim({ x: left - 1, y: y - 1, w: right - left + 2, h: BRACKET_TICK + 2 }, 'annotation', { annotationId: id }, 'bracket');
-  const font = { family: input.theme.type.family, ...input.theme.type.label };
-  const size = input.measure(label.text, font);
+  input.occupied.claim(runRectAt(y), 'annotation', { annotationId: id }, 'bracket');
+  // A later bracket sees this label. A label that already meets another claim stays unclaimed: it is hidden
+  // if the solver finds it blocked, and its claim must not take the seat from the label it meets.
+  const labelRect = labelRectAt(y);
+  if (!input.occupied.hits(labelRect, 2, (claim) => claim.owner.annotationId === id)) input.occupied.claim(labelRect, 'annotation', { annotationId: id }, 'bracketLabel');
   s.labelRequests.push({
     id: `annotation:${id}`,
     kind: 'annotation',
@@ -823,7 +845,7 @@ function placeBracket(s: AnnotationScope, ann: Extract<Annotation, { kind: 'brac
     lines: [label.text],
     typeRole: 'label', font,
     priority: ann.priority ?? PRIORITY.valueLine,
-    candidates: [{ slot: 'aboveBracket', rect: { x: (left + right - size.width) / 2, y: y - 3 - size.height, w: size.width, h: size.height }, penalty: 0 }],
+    candidates: [{ slot: 'aboveBracket', rect: labelRect, penalty: 0 }],
   });
   s.placed.push({
     id, kind: 'bracket', computedText: label.computed, nodeIds: [lineId], labelId: `annotation:${id}`,
@@ -1458,6 +1480,105 @@ function placeIndicator100(s: AnnotationScope, ann: Extract<Annotation, { kind: 
   });
 }
 
+/** Authored text at a point, seated by the solver. It prints as written, with no leader. */
+function placeDrawingText(s: AnnotationScope, ann: Extract<Annotation, { kind: 'text' }>): void {
+  const { input, id } = s;
+  const at = resolveDrawingPoint(input, ann.at);
+  if ('error' in at) return warn(s, 'bad-anchor', `text '${id}': ${at.error}`);
+  const font = { family: input.theme.type.family, ...input.theme.type.label };
+  const lines = ann.text.split('\n');
+  const lineH = input.measure('X', font).height;
+  const size = { w: Math.max(0, ...lines.map((line) => input.measure(line, font).width)), h: lineH * lines.length };
+  s.labelRequests.push({
+    id: `annotation:${id}`,
+    kind: 'annotation',
+    role: 'note',
+    owner: { annotationId: id },
+    text: ann.text,
+    lines,
+    typeRole: 'label',
+    font,
+    priority: ann.priority ?? PRIORITY.extreme,
+    noLeader: true,
+    candidates: textSeats(at, size),
+  });
+  s.placed.push({ id, kind: 'text', computedText: ann.text, tone: 'neutral', nodeIds: [], labelId: `annotation:${id}` });
+}
+
+/** A line or an arrow waiting for the seat of the text it starts or ends at. */
+interface TextDrawing {
+  ann: Extract<Annotation, { kind: 'line' | 'arrow' }>;
+  id: Id;
+  from: Point | { textId: Id };
+  to: Point | { textId: Id };
+  nid: (part: string) => Id;
+  record: PlacedAnnotation;
+}
+
+/** A line, an arrow or a box. It goes through no solver: its nodes are drawn and its strokes claimed here. */
+function placeDrawing(s: AnnotationScope, ann: Extract<Annotation, { kind: 'line' | 'arrow' | 'box' }>, run: AnnotateRun): void {
+  const { input, id } = s;
+  if (ann.kind !== 'box' && (isTextEnd(ann.from) || isTextEnd(ann.to))) {
+    const end = (point: DrawingEnd, field: 'from' | 'to'): Point | { textId: Id } | string => {
+      if (!isTextEnd(point)) {
+        const at = resolveDrawingPoint(input, point);
+        return 'error' in at ? `${field}: ${at.error}` : at;
+      }
+      const texts = input.annotations.flatMap((annotation, index) => annotation.kind === 'text' ? [defaultAnnotationId(annotation, index)] : []);
+      if (!texts.includes(point.annotationId)) return `${field}: annotationId '${point.annotationId}' names no text annotation${texts.length ? `; text ids: ${texts.join(', ')}` : ''}`;
+      return { textId: point.annotationId };
+    };
+    const from = end(ann.from, 'from');
+    const to = end(ann.to, 'to');
+    if (typeof from === 'string' || typeof to === 'string') return warn(s, 'bad-anchor', `${ann.kind} '${id}': ${typeof from === 'string' ? from : to}`);
+    const record: PlacedAnnotation = { id, kind: ann.kind, computedText: '', tone: 'neutral', nodeIds: [] };
+    s.placed.push(record);
+    (run.textDrawings ??= []).push({ ann, id, from, to, nid: s.nid, record });
+    return;
+  }
+  const ends = [resolveDrawingPoint(input, ann.from as DrawingPoint), resolveDrawingPoint(input, ann.to as DrawingPoint)] as const;
+  const [from, to] = ann.kind === 'box' ? boxCorners(input, ...ends) : ends;
+  const failure = drawingFailure(ann.kind, from, to);
+  if (failure !== undefined) return warn(s, 'bad-anchor', `${ann.kind} '${id}': ${failure}`);
+  run.drawings ??= new Map();
+  const nodeIds = drawDrawing(ann, id, from as Point, to as Point, input.theme, input.occupied, s.nodes, s.nid, run.drawings);
+  s.placed.push({ id, kind: ann.kind, computedText: '', tone: 'neutral', nodeIds });
+}
+
+function isTextEnd(point: unknown): point is { annotationId: Id } {
+  return typeof point === 'object' && point !== null && 'annotationId' in point;
+}
+
+/** The air between a text and the line or arrow that starts or ends at it. */
+const TEXT_END_GAP = 3;
+
+/**
+ * After the solve: a line or an arrow with an end on a text annotation runs from the nearest point of that
+ * text's seat, so it stays on the text at every size. A text that is not drawn takes its drawing with it.
+ */
+function drawFromText(input: AnnotatePassInput, run: AnnotateRun, drawing: TextDrawing, labels: PlacedLabel[], nodes: SceneNode[], warnings: LintWarning[]): void {
+  const fail = (why: string): void => {
+    warnings.push({ code: 'bad-anchor', severity: 'warn', message: `${drawing.ann.kind} '${drawing.id}': ${why}, so it is not drawn`, owner: { annotationId: drawing.id } });
+  };
+  const seatOf = (end: Point | { textId: Id }): Rect | undefined | null => {
+    if (!('textId' in end)) return undefined;
+    const label = labels.find((entry) => entry.id === `annotation:${end.textId}`);
+    return label && !label.hidden ? inflate(label.rect, TEXT_END_GAP) : null;
+  };
+  const fromSeat = seatOf(drawing.from);
+  const toSeat = seatOf(drawing.to);
+  if (fromSeat === null || toSeat === null) return fail(`text '${'textId' in drawing.from && fromSeat === null ? drawing.from.textId : (drawing.to as { textId: Id }).textId}' has no place on the chart`);
+  const centre = (end: Point | { textId: Id }, seat: Rect | undefined): Point => seat ? { x: seat.x + seat.w / 2, y: seat.y + seat.h / 2 } : end as Point;
+  const nearest = (seat: Rect, toward: Point): Point => ({ x: Math.min(Math.max(toward.x, seat.x), seat.x + seat.w), y: Math.min(Math.max(toward.y, seat.y), seat.y + seat.h) });
+  const aimFrom = centre(drawing.from, fromSeat);
+  const aimTo = centre(drawing.to, toSeat);
+  const from = fromSeat ? nearest(fromSeat, aimTo) : aimFrom;
+  const to = toSeat ? nearest(toSeat, aimFrom) : aimTo;
+  if ((fromSeat && rectContains(fromSeat, { ...to, w: 0, h: 0 })) || (toSeat && rectContains(toSeat, { ...from, w: 0, h: 0 })) || Math.hypot(to.x - from.x, to.y - from.y) < 1) return fail('its other end lies on the text');
+  run.drawings ??= new Map();
+  drawing.record.nodeIds = drawDrawing(drawing.ann, drawing.id, from, to, input.theme, input.occupied, nodes, drawing.nid, run.drawings);
+}
+
 /** Leader-routed text callout near an anchor. */
 function calloutLabel(
   s: AnnotationScope,
@@ -1763,6 +1884,8 @@ function calloutLabel(
     // On a grid, a seat nearer another row's cell than its own is
     // ambiguous, and takes a leader from its cell if nothing else is free.
     ...(gridRow?.end !== undefined ? { anchor: box } : {}),
+    // A labelOffsets move leads back to the mark itself, not to the edge of the seat it left.
+    movedLeaderFrom: { x: at.x, y: at.y },
   });
   if (glyph) s.run.calloutGlyphPlans.set(`annotation:${annId}`, glyph);
   s.placed.push({
@@ -1878,21 +2001,26 @@ function finishAnnotatePass(
     if (!glyph) continue;
     const placement = glyph.placements.get(String(label.slot));
     if (!placement) continue;
-    label.rect = placement.labelRect;
+    // A labelOffsets move shifted the whole seat: the text and the chip go with it, and the leader still ends at the anchor.
+    const dx = label.rect.x - placement.groupRect.x;
+    const dy = label.rect.y - placement.groupRect.y;
+    const labelRect = dx === 0 && dy === 0 ? placement.labelRect : { ...placement.labelRect, x: placement.labelRect.x + dx, y: placement.labelRect.y + dy };
+    const chipCenter = dx === 0 && dy === 0 ? placement.chipCenter : { x: placement.chipCenter.x + dx, y: placement.chipCenter.y + dy };
+    label.rect = labelRect;
     if (label.hidden) {
       glyph.nodeIds.splice(0);
       continue;
     }
     label.leader = calloutGlyphLeader(
-      placement.chipCenter,
+      chipCenter,
       placement.anchor,
       glyph.radius,
     );
-    const glyphNodes = calloutGlyphNodes(glyph, placement.chipCenter, input.theme);
+    const glyphNodes = calloutGlyphNodes(glyph, chipCenter, input.theme);
     nodes.push(...glyphNodes);
     const chipRect = {
-      x: placement.chipCenter.x - glyph.radius,
-      y: placement.chipCenter.y - glyph.radius,
+      x: chipCenter.x - glyph.radius,
+      y: chipCenter.y - glyph.radius,
       w: glyph.radius * 2,
       h: glyph.radius * 2,
     };
@@ -1909,6 +2037,8 @@ function finishAnnotatePass(
   });
   if (leaderAnchors.size > 0) leadersOffAnchorValues(solved.placed, leaderAnchors, input.occupied);
   trimAnnotationGuides(nodes, input.occupied);
+  for (const drawing of run.textDrawings ?? []) drawFromText(input, run, drawing, solved.placed, nodes, warnings);
+  if (run.drawings) cutDrawingsAroundText(nodes, placed, input.occupied, warnings, run.drawings);
   pruneOrphanAnnotationArms(nodes, placed, solved.placed);
   // `band` and `event` carry a span and a caption and no number at all. There
   // is nothing to derive and nothing to measure, so the record says `authored`

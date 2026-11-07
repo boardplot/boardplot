@@ -19,5 +19,5 @@ export const scatterCore: ChartCore<
   aliases: ['bubble'],
   layout: layoutScatter,
   defaults: { sizeBy: 'area', maxPointLabels: 300 },
-  annotationKinds: ['diff', 'delta', 'abs', 'note', 'callout', 'valueLine']
+  annotationKinds: ['diff', 'delta', 'abs', 'note', 'callout', 'valueLine', 'text', 'line', 'arrow', 'box']
 };

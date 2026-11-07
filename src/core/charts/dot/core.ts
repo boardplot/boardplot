@@ -21,6 +21,6 @@ export const dotCore: ChartCore<ChartData, DotOptions, DotMarks, DotDerived> = {
   hardMinimumKeepsNames: true,
   categoryLabels: calendarCategories,
   defaults: { variant: 'dot' },
-  annotationKinds: ['valueLine', 'callout', 'note', 'delta', 'abs', 'diff', 'cagr'],
+  annotationKinds: ['valueLine', 'callout', 'note', 'delta', 'abs', 'diff', 'cagr', 'text', 'line', 'arrow', 'box'],
   prepare: prepareRangeData
 };

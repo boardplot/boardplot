@@ -18,5 +18,5 @@ export const comboCore: ChartCore<ChartData, BaseOptions, ComboMarks, ComboDeriv
   categoryLabels: (categories, language) => calendarCategories(categories, language, true),
   prepare: prepareFractionData,
   defaults: {},
-  annotationKinds: ['cagr', 'diff', 'delta', 'note', 'callout', 'valueLine', 'abs', 'event', 'band']
+  annotationKinds: ['cagr', 'diff', 'delta', 'note', 'callout', 'valueLine', 'abs', 'event', 'band', 'text', 'line', 'arrow', 'box']
 };

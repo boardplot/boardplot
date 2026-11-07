@@ -85,7 +85,7 @@ function stackColumn(
           ((val.format ?? s.format) ? formatterFromExample((val.format ?? s.format)!, env.options.locale?.language)(mode === 'percent' || val.isPct ? v : domain.absAt(s, ci)!) : val.isPct ? (mode === 'unit' ? env.cellPctFmt : env.authoredPctFmt)(v) : mode === 'percent' ? domain.shareTexts.get(`${c.id}\0${s.id}`) ?? env.pctFmt(v) : env.fmt(domain.absAt(s, ci)!)),
       },
     });
-    out.claims.claim(rect, 'mark', { seriesId: s.id, categoryId: c.id });
+    out.claims.claim(rect, 'mark', { seriesId: s.id, categoryId: c.id }, 'bar');
     segs.push({ seriesId: s.id, rect, nodeId });
     out.segments.push({ s, si, ci, v, rect });
   }

@@ -29,6 +29,6 @@ export const columnCore: ChartCore<
   },
   categoryLabels: (categories, language) => calendarCategories(categories, language, true),
   defaults: { variant: 'grouped', referenceStyle: 'tick' },
-  annotationKinds: ['cagr', 'diff', 'delta', 'note', 'callout', 'valueLine', 'indicator100', 'abs', 'event', 'band'],
+  annotationKinds: ['cagr', 'diff', 'delta', 'note', 'callout', 'valueLine', 'indicator100', 'abs', 'event', 'band', 'text', 'line', 'arrow', 'box'],
   prepare: prepareRangeData
 };

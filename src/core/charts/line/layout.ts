@@ -1201,7 +1201,7 @@ function layoutLinePass(
         || domain.x?.range && domain.isArea && label.owner.categoryId === domain.cats[0]?.id))) {
     return layoutLinePass(data, { ...withoutInlineFallback(options), [END_LABEL_KEY]: true } as LineOptions);
   }
-  keepEndValueOrder(solved.placed, plan.labelRequests, solveCtx.pins);
+  keepEndValueOrder(solved.placed, plan.labelRequests, solveCtx.pins, solveCtx.labelOffsets);
   applyValueAxisTitleInk(solved.placed);
   for (const label of solved.placed) if (hosts.has(label.id)) label.printedIn = hosts.get(label.id)!;
   pushAll(warnings, solved.warnings);
@@ -1244,13 +1244,13 @@ function layoutLinePass(
  * seats them one by one, so a later value can take the step over an earlier
  * one; the seats it found are handed out again in that order.
  */
-function keepEndValueOrder(placed: PlacedLabel[], requests: readonly LabelRequest[], pins: Readonly<Record<string, unknown>>): void {
+function keepEndValueOrder(placed: PlacedLabel[], requests: readonly LabelRequest[], pins: Readonly<Record<string, unknown>>, offsets: Readonly<Record<string, unknown>> | undefined): void {
   const index = new Map(requests.map((request, i) => [request.id, i]));
   const anchorOf = (label: PlacedLabel) => requests[index.get(label.id)!]?.candidates.find((candidate) => candidate.slot === label.slot)?.leaderFrom
     ?? { x: label.rect.x - 7, y: label.rect.y + label.rect.h / 2 };
   const groups = new Map<Id | undefined, PlacedLabel[]>();
   for (const label of placed) {
-    if (label.kind !== 'point' || label.hidden !== undefined || !index.has(label.id) || pins[label.id] !== undefined || requests[index.get(label.id)!]?.pinnedSlot !== undefined || !(label.slot === 'right' || label.slot.startsWith('rightStep'))) continue;
+    if (label.kind !== 'point' || label.hidden !== undefined || !index.has(label.id) || pins[label.id] !== undefined || offsets?.[label.id] !== undefined || requests[index.get(label.id)!]?.pinnedSlot !== undefined || !(label.slot === 'right' || label.slot.startsWith('rightStep'))) continue;
     groups.set(label.owner.categoryId, [...(groups.get(label.owner.categoryId) ?? []), label]);
   }
   for (const group of groups.values()) {

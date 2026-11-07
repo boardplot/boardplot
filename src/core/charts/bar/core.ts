@@ -17,6 +17,6 @@ export const barCore: ChartCore<ChartData, BarOptions, BarMarks, BarDerived> = {
   layout: (data, options) => layoutBar(prepareFractionData(data), options),
   categoryLabels: calendarCategories,
   defaults: { variant: 'grouped', referenceStyle: 'tick' },
-  annotationKinds: ['valueLine', 'indicator100', 'callout', 'note', 'delta', 'abs', 'diff', 'band', 'cagr'],
+  annotationKinds: ['valueLine', 'indicator100', 'callout', 'note', 'delta', 'abs', 'diff', 'band', 'cagr', 'text', 'line', 'arrow', 'box'],
   prepare: prepareRangeData
 };
