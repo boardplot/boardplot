@@ -884,7 +884,8 @@ Each label of an SVG render carries `label:` and its id in `data-id`, such as `l
 
 - The solver chooses the seat first, with any pin, and the offset moves it. Natural seats do not change.
 - A move that meets another mark, another label or the canvas edge is not made. The label stays in its chosen seat, and the warning `label-offset-blocked` names what blocks it. If no seat is free, the moved first seat is tried once before the label is hidden. An offset never hides a label that would otherwise draw.
-- A moved label gets a leader back to its seat, unless the label is a value that takes none. A seat that already has a leader keeps it.
+- A label moved 12 px or more off its own bar gets a leader back to its mark, unless the label is a value that takes none. A seat that already has a leader keeps it. A leader that would cross text is not drawn, and the chart warns `label-offset-blocked`.
+- An annotation's drawing stays where it is, and a move onto that drawing is blocked.
 - A value moved within its own bar keeps its ink. A value moved off its bar prints in page ink with a halo, so white text never lands on the page.
 - A callout with an icon or a status moves with its chip, and its leader still ends at its anchor.
 - A bracket's offset moves its label only, not its run.
@@ -900,7 +901,7 @@ Four annotation kinds draw on data positions, so a drawing stays on its data at 
 
 | Kind | Fields | Draws |
 |---|---|---|
-| `text` | `at`, `text`, `id`, `priority` | Text on the point, or above, below, right or left of it, 8 px away. Text inside a bar gets a halo, and text never straddles a bar's edge. `${value}` prints as written. |
+| `text` | `at`, `text`, `id`, `priority` | Text on the point, or above, below, right or left of it, 8 px away. Text inside a bar gets a halo, and text never straddles a bar's edge. Text that finds no seat, such as on a pie slice or a filled heatmap cell, goes to the note with a warning. `${value}` prints as written. |
 | `line` | `from`, `to`, `dashed`, `id` | A straight line. |
 | `arrow` | `from`, `to`, `dashed`, `id` | A straight arrow, with its head at `to`. |
 | `box` | `from`, `to`, `dashed`, `id` | An unfilled box, with `from` and `to` as opposite corners. |

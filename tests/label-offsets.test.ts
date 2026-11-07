@@ -72,3 +72,14 @@ it('a callout with a chip keeps its offset, with the chip beside it and the lead
   const chip = (geo: typeof base) => geo.scene.find((node) => node.part === 'calloutGlyph' && node.t === 'circle') as never as { cx: number; cy: number };
   expect([chip(geometry).cx - chip(base).cx, chip(geometry).cy - chip(base).cy]).toEqual([-30, 30]);
 });
+
+// A moved value's leader must never cost another value its seat, nor run through its text.
+it('a moved label keeps every other value, and a leader that would cross text goes with a warning', () => {
+  const data = { categories: ['q1', 'q2', 'q3', 'q4'].map((id) => ({ id, label: id })), series: [{ id: 's', label: 'S', values: [30, 30, 30, 32] }] };
+  const size = { size: { width: 720, height: 300 }, valueAxis: { min: 0, max: 80 } };
+  const plain = layoutColumn(data, size as never);
+  const geometry = layoutColumn(data, { ...size, labelOffsets: { 'point:s:q3': { x: -400, y: -30 } } } as never);
+  for (const id of ['point:s:q1', 'point:s:q2', 'point:s:q4']) expect(label(geometry, id).rect).toEqual(label(plain, id).rect);
+  expect((label(geometry, 'point:s:q3') as { leader?: unknown }).leader).toBeUndefined();
+  expect(geometry.warnings.find((warning) => warning.code === 'label-offset-blocked')!.message).toContain('leader');
+});

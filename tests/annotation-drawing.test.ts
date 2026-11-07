@@ -2,6 +2,8 @@ import './helpers/link-core';
 import { expect, it } from 'vitest';
 
 import { layoutColumn } from '../src/core/charts/column/layout';
+import '../src/core/charts';
+import { getChartDefinition } from '../src/core/registry';
 import { layoutPie } from '../src/core/charts/pie/layout';
 
 const columns = {
@@ -54,4 +56,13 @@ it('text at a value inside a bar draws there', () => {
   const text = geometry.labels.find((label) => label.id === 'annotation:T')!;
   expect(text.hidden).toBeFalsy();
   expect(text.slot).toBe('at');
+});
+
+// A note takes a plain date on a time axis, so a drawing written the same way must not fail as an unknown anchor.
+it('a drawing takes plain dates on a time axis', () => {
+  const data = { x: ['2024-01-01', '2024-02-01', '2024-03-01'], series: [{ id: 's', label: 'S', values: [1, 2, 3] }] };
+  const line = getChartDefinition('line')!;
+  const geometry = line.layout(line.normalize(data), { xAxis: { type: 'time' }, annotations: [{ kind: 'arrow', id: 'A', from: '2024-01-01', to: '2024-03-01' }] } as never) as ReturnType<typeof layoutColumn>;
+  expect(geometry.warnings.some((warning) => warning.code === 'bad-anchor')).toBe(false);
+  expect(geometry.scene.some((node) => node.part === 'drawing')).toBe(true);
 });

@@ -216,7 +216,8 @@ export function resolveLineXOptions(options: LineOptions, model: LineXModel, cat
         return [];
       case 'diff': return [{ ...a, from: anchor(a.from as Anchor, path('from'), what), to: anchor(a.to as Anchor, path('to'), what) }];
       case 'delta': return [{ ...a, at: anchor(a.at as Anchor, path('at'), what), ...(typeof a.vs === 'number' ? {} : { vs: anchor(a.vs as Anchor, path('vs'), what) }) }];
-      case 'abs': case 'note': case 'callout': return [{ ...a, at: anchor(a.at as Anchor, path('at'), what) }];
+      case 'abs': case 'note': case 'callout': case 'text': return [{ ...a, at: anchor(a.at as Anchor, path('at'), what) }];
+      case 'line': case 'arrow': case 'box': return [{ ...a, from: anchor(a.from as Anchor, path('from'), what), to: anchor(a.to as Anchor, path('to'), what) }];
       case 'valueLine': return [{ ...a, ...(a.from === undefined ? {} : { from: exact(a.from as string, path('from'), what) }), ...(a.to === undefined ? {} : { to: exact(a.to as string, path('to'), what) }) }];
       case 'band': {
         // A band may start or end between readings; the layout reads its x values and clips them.

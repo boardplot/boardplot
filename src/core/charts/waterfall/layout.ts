@@ -1846,7 +1846,7 @@ function layoutWaterfallWithPad(
     const inputIndex = new Map(drawSegments.map((s, k) => [s.id, k]));
     segRects.sort((a, b) => (inputIndex.get(a.id) ?? 0) - (inputIndex.get(b.id) ?? 0));
     // A mixed step claims its sub-bars one by one above; the gap between them is air.
-    if (!(mixed && caseId === undefined)) occupied.claim(barRect, 'mark', stepOwner);
+    if (!(mixed && caseId === undefined)) occupied.claim(barRect, 'mark', stepOwner, 'bar');
     marks.bars.push({ id: it.id, rect: barRect, segments: segRects });
 
     // connector to next item (explicit connectors handled after the loop)
