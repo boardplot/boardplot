@@ -23,7 +23,23 @@ This stacked column chart is one JSON spec drawn by `boardplot render`; the vari
 
 ## Limits
 
-In PowerPoint a chart is a picture, so colleagues cannot edit its data there. Charts do not animate their drawing or data updates.
+In PowerPoint a chart is a picture, so colleagues cannot edit its data there. If your team edits chart numbers on the slide, use a PowerPoint add-in. Charts do not animate their drawing or data updates.
+
+## How it compares
+
+Checked November 2026 against the public pages of Apache ECharts. Boardplot is not affiliated with it.
+
+| | Boardplot | Apache ECharts |
+|---|---|---|
+| Where it runs | On your computer through an AI agent or the command line, or in a React app | In web apps and on a Node server |
+| Output | SVG, PNG, React component | Canvas or SVG in the browser, SVG or PNG on a server |
+| Price | Free, Apache-2.0. An AI agent may need its own plan | Free, Apache-2.0 |
+| Waterfall | Built in, totals computed | Built from stacked bars |
+| Mekko | Built in | Not in its listed chart types. A custom series can draw one |
+| AI | Your own agent calls it | Your own agent can write its configuration |
+| Animation | No animated drawing or data updates. Short hover and row transitions in React | Built in |
+
+Choose ECharts for animated or streaming charts.
 
 ## Why Boardplot
 
