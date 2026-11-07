@@ -331,6 +331,8 @@ export interface SolveCtx {
   pins: Record<Id, SlotId>;
   /** Authored moves by label id, in px (options.labelOffsets). A move that is blocked keeps the chosen seat and warns. */
   labelOffsets?: Record<Id, LabelOffset>;
+  /** Internal: each label's seat without any offset. A move may not land on another label's seat, placed yet or not. */
+  naturalSeats?: ReadonlyMap<Id, Rect>;
   measure: TextMeasurer;
   plot: Rect;
   /** Full canvas — candidates outside it are rejected. */
@@ -421,6 +423,14 @@ function dropsFromRow(row: { mode: 'all' | 'alternate' | 'none'; eligible: Id[];
 }
 
 export function solveLabels(requests: LabelRequest[], occupied: OccupiedIndex, ctx: SolveCtx): SolveResult {
+  // An authored move must not take a later label's seat: solve once without offsets on a copy, and keep those seats.
+  if (ctx.labelOffsets && !ctx.naturalSeats && Object.keys(ctx.labelOffsets).length > 0) {
+    const probe = createOccupiedIndex(ctx.plot);
+    probe.tickColumns = occupied.tickColumns;
+    for (const claim of occupied.snapshot()) probe.claim(claim.rect, claim.kind, claim.owner, claim.part, claim.polygon);
+    const natural = solveLabels(requests, probe, { ...ctx, labelOffsets: undefined });
+    ctx = { ...ctx, naturalSeats: new Map(natural.placed.flatMap((label) => label.hidden ? [] : [[label.id, label.rect] as const])) };
+  }
   if (!ctx.valueRows?.length) return solveLabelPass(requests, occupied, ctx);
   const initial = occupied.snapshot();
   const pinned = new Set(requests.filter(req => req.pinnedSlot ?? ctx.pins[req.id]).map(req => req.id));
@@ -523,6 +533,8 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
   const leaderRuns: [Point, Point][] = [];
   // An authored move must not push another label away. Its leader claims nothing until every label of the pass has a seat.
   const moved: PlacedLabel['id'][] = [];
+  // The gutter boxes a moved label claims at its leader's end: its own leader may cross them.
+  const ownRooms = new Map<PlacedLabel['id'], Rect>();
   const keepOffLeader = (label: PlacedLabel, req: LabelRequest): void => {
     if (req.leaderAvoidsLabels && label.leader && !moved.includes(label.id)) leaderRuns.push(...leaderPieces(label.leader.d, 64));
   };
@@ -651,6 +663,9 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
         const tickAir = cand.tickAir;
         if (value !== 'hard' && tickAir && anyHit(occupied, rect, tickAir, (o) => o.kind === 'axis' && o.rect.w > 2 && o.rect.h > 2)) value = 'hard';
         if (value === 'free' && onLeader(rect, padding)) value = 'label';
+        if (value === 'free' && isMoved && ctx.naturalSeats) {
+          for (const [id, seat] of ctx.naturalSeats) if (id !== req.id && rectsOverlap(seat, rect, padding)) value = 'label';
+        }
         // A pin is judged at pad 0 and keeps its seat by the author's word: the 6 px rule is for the cascade.
         if (value === 'free' && pinOf(req) !== cand.slot && crowdsSeriesValue(cand)) value = 'label';
       }
@@ -963,7 +978,9 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
         // The leader's end keeps its gutter clear: a later label touching it would read the leader as its minus sign.
         const [x, y] = leader.d.trim().split(/[\s,A-Za-z]+/).filter(Boolean).slice(-2).map(Number) as [number, number];
         const reach = LEADER_GUTTER_RATIO * led.rect.h;
-        occupied.claim({ x: x - reach, y: y - reach, w: 2 * reach, h: 2 * reach }, 'label', req.owner);
+        const room = { x: x - reach, y: y - reach, w: 2 * reach, h: 2 * reach };
+        occupied.claim(room, 'label', req.owner);
+        if (moved.includes(req.id)) ownRooms.set(req.id, room);
       }
       else place(settled(ambiguous[0]!, ambiguous[0]!.pad ?? req.pad ?? pad), 'nearer another mark; too close to its anchor for a leader');
       continue;
@@ -1008,7 +1025,7 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
     const label = placed.find((entry) => entry.id === id);
     if (!label?.leader) continue;
     const pieces = leaderPieces(label.leader.d);
-    if (pieces.some(([a, b]) => occupied.hitsWhich(pieceBox(a, b), 0).some((o) => o.kind === 'label' && !sameOwner(o.owner, label.owner) && segmentHitsRect(a, b, o.rect)))) {
+    if (pieces.some(([a, b]) => occupied.hitsWhich(pieceBox(a, b), 0).some((o) => o.kind === 'label' && !sameRect(o.rect, label.rect) && !(ownRooms.has(id) && sameRect(o.rect, ownRooms.get(id)!)) && segmentHitsRect(a, b, o.rect)))) {
       delete label.leader;
       warnings.push({
         code: 'label-offset-blocked',
@@ -1269,6 +1286,10 @@ function nearestPointOf(rect: Rect, other: Rect): Point {
     return from <= to ? (from + to) / 2 : otherLow > low ? low + size : low;
   };
   return { x: nearest(rect.x, rect.w, other.x, other.w), y: nearest(rect.y, rect.h, other.y, other.h) };
+}
+
+function sameRect(a: Rect, b: Rect): boolean {
+  return a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
 }
 
 /** The shortest authored move that draws a leader back to the mark: about one text line. */

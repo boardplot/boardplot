@@ -93,3 +93,21 @@ it('a moved label keeps a leader that crosses only its own room', () => {
   expect((label(geometry, 'point:coverage:w5') as { leader?: unknown }).leader).toBeDefined();
   expect(geometry.warnings.some((warning) => warning.code === 'label-offset-blocked')).toBe(false);
 });
+
+// A move judged only against labels already seated took a later label's seat, and that label went to the note.
+it('a move onto a later label\'s seat is blocked, and that label still draws', () => {
+  const definition = getChartDefinition('column')!;
+  const data = { categories: ['q1', 'q2', 'q3', 'q4'].map((id) => ({ id, label: id.toUpperCase() })), series: [{ id: 's', label: 'S', values: [30, 60, 45, 52] }] };
+  const geometry = definition.layout(definition.normalize(data), { ...definition.defaults, size: { width: 360, height: 316 }, labelOffsets: { 'category:q2': { x: 80 } } } as never) as ReturnType<typeof layoutColumn>;
+  expect(label(geometry, 'category:q3').hidden).toBeUndefined();
+  expect(geometry.warnings.find((warning) => warning.code === 'label-offset-blocked')!.message).toContain("'category:q2'");
+});
+
+// The leader check skipped every label of the same owner, so a leader ran through the series name unwarned.
+it('a moved leader that crosses another label of the same owner goes', () => {
+  const line = getChartDefinition('line')!;
+  const fixture = getFixtures('line').find((entry) => entry.id === 'actuals-forecast-operating-rate')! as { data: unknown; options: object };
+  const geometry = line.layout(line.normalize(fixture.data), { ...line.defaults, ...fixture.options, labelOffsets: { 'point:market:fy27': { x: 60, y: 24 } } } as never) as ReturnType<typeof layoutColumn>;
+  expect(label(geometry, 'point:market:fy27').leader).toBeUndefined();
+  expect(geometry.warnings.find((warning) => warning.code === 'label-offset-blocked')!.message).toContain('leader');
+});
