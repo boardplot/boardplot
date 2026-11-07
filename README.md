@@ -1,6 +1,6 @@
 # Boardplot
 
-Boardplot draws consulting-grade waterfalls, Mekko (Marimekko) charts, variance charts and management tables for slides, reports and dashboards. It is free and open source under Apache-2.0.
+Boardplot draws consulting-grade charts and management tables for business work: slides, reports and dashboards. Its chart types include waterfalls, Mekko (Marimekko) charts and variance charts. It is free and open source under Apache-2.0.
 
 Give an AI agent such as Claude Code or Codex your data and say what the chart should show. Boardplot runs on your computer and needs Node.js 22.12 or newer. Your agent may need a paid plan. In PowerPoint a chart is a picture, so to change it you ask the agent to draw it again.
 
@@ -27,19 +27,23 @@ In PowerPoint a chart is a picture, so colleagues cannot edit its data there. If
 
 ## How it compares
 
-Checked November 2026 against the public pages of Apache ECharts. Boardplot is not affiliated with it.
+Apache ECharts is a widely used general-purpose chart library for interactive web apps. Boardplot draws consulting-grade business charts for slides, reports and dashboards. The two can work side by side.
+
+Sources checked 7 November 2026: [ECharts features](https://echarts.apache.org/en/feature.html), [waterfall charts](https://echarts.apache.org/handbook/en/how-to/chart-types/bar/waterfall/), [server rendering](https://echarts.apache.org/handbook/en/how-to/cross-platform/server/), [animation](https://echarts.apache.org/handbook/en/how-to/animation/transition/) and the [ECharts MCP server](https://github.com/apache/echarts-mcp). Boardplot is not affiliated with Apache ECharts.
 
 | | Boardplot | Apache ECharts |
 |---|---|---|
-| Where it runs | On your computer through an AI agent or the command line, or in a React app | In web apps and on a Node server |
-| Output | SVG, PNG, React component | Canvas or SVG in the browser, SVG or PNG on a server |
-| Price | Free, Apache-2.0. An AI agent may need its own plan | Free, Apache-2.0 |
-| Waterfall | Built in, totals computed | Built from stacked bars |
-| Mekko | Built in | Not in its listed chart types. A custom series can draw one |
-| AI | Your own agent calls it | Your own agent can write its configuration |
-| Animation | No animated drawing or data updates. Short hover and row transitions in React | Built in |
+| Made for | Business charts for slides, reports and management dashboards | Interactive charts in web apps, including very large data sets |
+| Where it runs | In Node.js through an AI agent, the CLI or JavaScript, and in React apps | In the browser and on a Node.js server |
+| Output | SVG, PNG and React components | Canvas or SVG in the browser, SVG or PNG files in the browser or on a server |
+| Software price | Free, Apache-2.0 | Free, Apache-2.0 |
+| Waterfall | Built in, totals computed from the data | Drawn with stacked bars, as its handbook shows |
+| Mekko | Built in | Can be drawn with a custom series |
+| AI agents | MCP server and CLI included | An example MCP server from Apache ECharts, and community MCP servers |
+| Interaction | Tooltips, click handlers for drill-down, zoom in time-based line and area charts, and sortable tables in React | Zoom, brush selection, legends and tooltips built in |
+| Animation | No animation of chart drawing or data updates. Transitions in React tables and story steps | Built in, also for data updates |
 
-Choose ECharts for animated or streaming charts.
+Choose ECharts for interactive web charts, large data sets, animation or streaming. Choose Boardplot for consulting-grade business charts with built-in actual, plan and forecast notation for slides, reports and dashboards.
 
 ## Why Boardplot
 
