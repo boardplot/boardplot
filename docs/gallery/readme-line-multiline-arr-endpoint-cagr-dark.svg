@@ -55,7 +55,7 @@
 <circle data-id="marker:cloud:fy23" data-part="marker" cx="476.74" cy="266.96" r="3" fill="#8FA8F0"/>
 <circle data-id="marker:cloud:fy24" data-part="marker" cx="596.81" cy="214.16" r="3" fill="#8FA8F0"/>
 <circle data-id="marker:cloud:fy25" data-part="marker" cx="716.88" cy="156.70" r="3" fill="#0B1B3A" stroke="#8FA8F0" stroke-width="1.5"/>
-<path data-id="ann:cagr-1:arm:0" data-part="arm" d="M116.53472222222223 112.69999999999999L116.53472222222223 102.69999999999999L714.6676587301589 102.69999999999999" fill="none" stroke="#FFFFFF" stroke-width="1.5" stroke-linejoin="round"/>
+<path data-id="ann:cagr-1:arm:0" data-part="arm" d="M116.53472222222223 112.69999999999999L116.53472222222223 102.69999999999999L715.2390873015875 102.69999999999999" fill="none" stroke="#FFFFFF" stroke-width="1" stroke-linejoin="round"/>
 <path data-id="ann:cagr-1:arrowHead:1" data-part="arrowHead" d="M716.88 102.70L708.88 106.20L708.88 99.20Z" fill="#FFFFFF" stroke-linejoin="round"/>
 <line data-id="forecast-divider:fy25" data-part="forecastDivider" x1="656.85" y1="135.70" x2="656.85" y2="388.10" stroke="#5B6B86" stroke-width="1" stroke-dasharray="4 3"/>
 <text data-id="label:series:cloud" data-part="series" data-bp-role="category" x="732.88" y="161.36" text-anchor="start" font-size="13" font-weight="600" fill="#8FA8F0"><tspan>Cloud ARR </tspan><tspan>189</tspan></text>

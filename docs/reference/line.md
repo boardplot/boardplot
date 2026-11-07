@@ -392,6 +392,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | two-series-level-diff | example | Multi-series line with last-period difference and series CAGR |
 | callout-arrow | example | Callout arrow from a note to the point it names |
 | callout-arrow-compact | example | Callout arrow in the compact arrow look |
+| callout-arrow-heavy | example | Callout arrow with a heavy shaft |
 | line-compact-380 | example | Line in a 380px dashboard column |
 | torture-long-labels | torture | Torture: long names at a generous size read whole, never cut |
 | highlight-overlap | torture | Actual remains visible when plan overlaps |

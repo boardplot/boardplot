@@ -643,7 +643,7 @@ export interface Theme {
   dash?: Partial<Record<DashRole, number[]>>;
 }
 
-/** The annotation arrow look (`marks.arrow`). Absent keys keep the standard: an 8 x 7 px head, 6 px tip gap, 4 px tail gap, 24 px shaft. */
+/** The annotation arrow look (`marks.arrow`). Absent keys keep the standard: an 8 x 7 px head, a `stroke.rule` shaft, 6 px tip gap, 4 px tail gap, 24 px shaft. */
 export interface ThemeArrow {
   style?: 'standard' | 'compact';
   /** Head length in px, tip to base. */
@@ -656,6 +656,8 @@ export interface ThemeArrow {
   tailGap?: number;
   /** The shortest shaft in px, tail to head base. */
   minShaft?: number;
+  /** Shaft width in px. Absent means the thin `stroke.rule` line. */
+  stroke?: number;
 }
 
 /** The stroke roles of the theme. */

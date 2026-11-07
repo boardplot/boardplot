@@ -193,6 +193,7 @@ const THEME_FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = Object.freeze
   'marks.arrow.headWidth': 'Head width in px at its base (3 to 24). Absent means 7.',
   'marks.arrow.tipGap': 'Air in px between the tip and the edge of the mark it points at (0 to 24). Absent means 6.',
   'marks.arrow.tailGap': 'Air in px between the tail and its text (0 to 16). Absent means 4.',
+  'marks.arrow.stroke': 'Shaft width in px (0.5 to 4). Absent means the thin `stroke.rule` line; 1.5 matches `stroke.mark`.',
   'marks.arrow.minShaft': 'The shortest shaft in px, tail to head base (0 to 96). A callout arrow seats its text this far out, and a CAGR bracket keeps its legs this long. Absent means 24.',
   'marks.areaFromOrigin':
     "true places the first and last category of an area chart (line variants area, stacked-area, stacked100-area) on the plot edges, so the bands start at the value axis; an authored categoryAxis.crossesBetween wins. Absent keeps the categories centred in their bands.",

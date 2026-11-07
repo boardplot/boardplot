@@ -318,9 +318,9 @@ function drawLiftedCagrArm(
   const stubs = a.lineAnchored && b.lineAnchored && (!a.series && !b.series || buriedA || buriedB);
   const look = armLook(input.theme);
   if (!stubs) {
-    // Under the standard the leg's shaft reaches the shortest shaft above the head; 'compact' keeps 16 px past the shaft's end.
+    // Under the standard a leg keeps half the shortest shaft above its head (the arm carries the length); 'compact' keeps 16 px past the shaft's end.
     const legFloor = look.standard
-      ? Math.min(fromY - ARM_START_GAP, toY - endGap - look.depth) - look.minShaft
+      ? Math.min(fromY - ARM_START_GAP, toY - endGap - look.depth) - look.minShaft / 2
       : Math.min(fromY - ARM_START_GAP, toY - endGap - look.shaftEnd) - MIN_LEG;
     if (armY > legFloor) {
       const candidate = Math.max(legFloor, armFloor);
@@ -334,9 +334,7 @@ function drawLiftedCagrArm(
       ) {
         armY = candidate;
       }
-      // Under the standard the room asked for brings the leg floor down to the highest seat a run may take,
-      // so one more layout closes it; an arm lifted over that seat would ask one step at a time.
-      if (armY > legFloor) pass.addLegDeficit((look.standard ? Math.max(armY, armFloor) : armY) - legFloor);
+      if (armY > legFloor) pass.addLegDeficit(armY - legFloor);
     }
   }
 
@@ -592,7 +590,7 @@ function drawShiftedCagrArm(
   }
   const look = armLook(input.theme);
   const legFloor = look.standard
-    ? Math.max(fromX + startGap, toX + endGap + look.depth) + (inset ? INSET_MIN_LEG : look.minShaft)
+    ? Math.max(fromX + startGap, toX + endGap + look.depth) + (inset ? INSET_MIN_LEG : look.minShaft / 2)
     : Math.max(fromX + startGap, toX + endGap + look.shaftEnd) + (inset ? INSET_MIN_LEG : MIN_LEG);
   if (armX < legFloor) {
     // The arm moves out to the minimum shaft; its label takes whichever side
@@ -683,7 +681,7 @@ function drawVerticalLevelDiff(
   // The shaft stops inside the head, short of the tip.
   const shaftEndY = headTipY - (y1 > y0 ? 1 : -1) * look.shaftEnd;
   nodes.push({
-    t: 'line', id: lineId, x1: x, y1: y0 + (look.standard && a.lineAnchored && Math.abs(x - a.x) < 0.5 ? (y1 > y0 ? 1 : -1) * (LEVEL_POINT_R + 2) : 0), x2: x, y2: shaftEndY,
+    t: 'line', id: lineId, x1: x, y1: y0 + (look.standard && a.lineAnchored && Math.abs(x - a.x) < 0.5 ? (y1 > y0 ? 1 : -1) * (LEVEL_POINT_R + look.tipGap) : 0), x2: x, y2: shaftEndY,
     stroke: { token: 'ink' }, width: look.stroke, owner: { annotationId: annId }, part: 'diffArrow',
   });
   const headId = nid('arrowHead');
@@ -816,7 +814,7 @@ export function drawHorizontalLevelDiff(
   const headTipX = x1 + (x1 > x0 ? -1 : 1) * (onPoint ? LEVEL_POINT_R + look.tipGap : 1);
   const shaftEndX = headTipX - (x1 > x0 ? 1 : -1) * look.shaftEnd;
   nodes.push({
-    t: 'line', id: lineId, x1: x0 + (look.standard && a.lineAnchored && Math.abs(y - a.y) < 0.5 ? (x1 > x0 ? 1 : -1) * (LEVEL_POINT_R + 2) : 0), y1: y, x2: shaftEndX, y2: y,
+    t: 'line', id: lineId, x1: x0 + (look.standard && a.lineAnchored && Math.abs(y - a.y) < 0.5 ? (x1 > x0 ? 1 : -1) * (LEVEL_POINT_R + look.tipGap) : 0), y1: y, x2: shaftEndX, y2: y,
     stroke: { token: 'ink' }, width: look.stroke, owner: { annotationId: annId }, part: 'diffArrow',
   });
   const headId = nid('arrowHead');

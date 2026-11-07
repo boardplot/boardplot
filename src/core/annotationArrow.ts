@@ -21,7 +21,7 @@ export const ARROW_STANDARD = { head: 8, headWidth: 7, tipGap: 6, tailGap: 4, mi
 export interface ArrowLook {
   /** False under `marks.arrow.style: 'compact'`. */
   standard: boolean;
-  /** The shaft's width. */
+  /** The shaft's width: `marks.arrow.stroke`, else the thin `stroke.rule` line. */
   stroke: number;
   /** Head length, tip to base, along the shaft. */
   depth: number;
@@ -63,7 +63,7 @@ export function arrowLook(theme: Pick<Theme, 'marks' | 'stroke'>, compact: Compa
       head: (tip, angle) => arrowHeadPath(tip, angle, compact.size),
     };
   }
-  const stroke = strokeToken(theme, 'mark');
+  const stroke = spec?.stroke ?? strokeToken(theme, 'rule');
   const depth = spec?.head ?? ARROW_STANDARD.head;
   const half = (spec?.headWidth ?? ARROW_STANDARD.headWidth) / 2;
   return {

@@ -149,7 +149,7 @@ export const THEME_SHAPE: ShapeNode = object({
     bulletBandFill: optOneOf('light', 'full'),
     arrow: opt(object({
       style: optOneOf('standard', 'compact'), head: optNum(4, 24), headWidth: optNum(3, 24),
-      tipGap: optNum(0, 24), tailGap: optNum(0, 16), minShaft: optNum(0, 96),
+      tipGap: optNum(0, 24), tailGap: optNum(0, 16), minShaft: optNum(0, 96), stroke: optNum(0.5, 4),
     })),
   })),
   labels: opt(object({ endLabelPlacement: optOneOf('gutter', 'lineEnd'), ink: optOneOf('ink', 'muted') })),
