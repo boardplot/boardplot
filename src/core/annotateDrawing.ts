@@ -155,7 +155,7 @@ export function drawDrawing(
   nid: (part: string) => Id,
   cuts: DrawingCuts,
   toMark?: number,
-  short?: (shaft: number, minimum: number) => void,
+  short?: (shaft: number, minimum: number, dropped: boolean) => void,
 ): Id[] {
   const look = ann.kind === 'arrow' ? arrowLook(theme, { size: DRAWING_ARROW_HEAD }) : undefined;
   const width = look?.stroke ?? strokeToken(theme, 'rule');
@@ -193,7 +193,11 @@ export function drawDrawing(
   const pull = look.standard && toMark !== undefined ? Math.min(toMark + look.tipGap, full / 2) : 0;
   const tip = { x: to.x - ux * pull, y: to.y - uy * pull };
   const length = full - pull;
-  if (look.standard && length - look.depth < look.minShaft) short?.(Math.max(0, length - look.depth), look.minShaft);
+  if (look.standard && length - look.depth < look.minShaft) {
+    // An arrow with no shaft left is not drawn: its head would reach behind its tail.
+    short?.(Math.max(0, length - look.depth), look.minShaft, length - look.depth < 1);
+    if (length - look.depth < 1) return [];
+  }
   claimStroke(occupied, from, tip, id);
   const shaft = Math.min(look.shaftEnd, length);
   const shaftId = run(from, { x: tip.x - ux * shaft, y: tip.y - uy * shaft });

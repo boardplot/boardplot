@@ -35,7 +35,7 @@ export interface CalloutHeadPlan {
   headlineLines?: number;
   headlineWeight?: number;
   /** `edge`: the radius of the marker at the anchor (0 on a bar end); the tip keeps its gap off that edge. */
-  arrow?: { anchor: Point; edge: number; nodeIds: Id[]; owner: OwnerRef };
+  arrow?: { anchor: Point; edge: number; nodeIds: Id[]; owner: OwnerRef; valueBox?: Rect };
 }
 
 /**
@@ -43,7 +43,7 @@ export interface CalloutHeadPlan {
  * the first line level with it, so the arrow runs flat. A preferred side of
  * above or below keeps its seat ahead of these.
  */
-export function arrowSeats(anchor: Point, w: number, h: number, lineH: number, prefer: string | undefined, reach: number, standard: boolean): SlotCandidate[] {
+export function arrowSeats(anchor: Point, w: number, h: number, lineH: number, prefer: string | undefined, reach: number, standard: boolean, valueBox?: Rect): SlotCandidate[] {
   const y = anchor.y - lineH / 2;
   const vertical = prefer === 'above' || prefer === 'below';
   const side: SlotCandidate[] = [
@@ -51,11 +51,14 @@ export function arrowSeats(anchor: Point, w: number, h: number, lineH: number, p
     { slot: 'arrowLeft', rect: { x: anchor.x - reach - w, y, w, h }, penalty: vertical ? 0.6 : prefer === 'left' ? -3 : -2.5 },
   ];
   if (!standard) return side;
-  // Under the standard the text also stands the full reach over or under its point, so a preferred side above or below keeps its arrow.
+  // Under the standard the text also stands the full reach over or under its point, and over or
+  // under the value printed there, so a preferred side above or below keeps its arrow.
+  const top = Math.min(anchor.y, valueBox?.y ?? anchor.y);
+  const bottom = Math.max(anchor.y, valueBox ? valueBox.y + valueBox.h : anchor.y);
   return [
     ...side,
-    { slot: 'arrowAbove', rect: { x: anchor.x - w / 2, y: anchor.y - reach - h, w, h }, penalty: prefer === 'above' ? -3 : prefer === 'below' ? 0.8 : 0.7 },
-    { slot: 'arrowBelow', rect: { x: anchor.x - w / 2, y: anchor.y + reach, w, h }, penalty: prefer === 'below' ? -3 : prefer === 'above' ? 0.8 : 0.75 },
+    { slot: 'arrowAbove', rect: { x: anchor.x - w / 2, y: top - reach - h, w, h }, penalty: prefer === 'above' ? -3 : prefer === 'below' ? 0.8 : 0.7 },
+    { slot: 'arrowBelow', rect: { x: anchor.x - w / 2, y: bottom + reach, w, h }, penalty: prefer === 'below' ? -3 : prefer === 'above' ? 0.8 : 0.75 },
   ];
 }
 
@@ -88,8 +91,14 @@ export function finishCalloutHeads(theme: Theme, labels: PlacedLabel[], plans: R
       label.headWeight = plan.headlineWeight;
     }
     if (!plan.arrow) continue;
-    const { anchor, owner, edge } = plan.arrow;
+    const { owner, valueBox } = plan.arrow;
+    let { anchor, edge } = plan.arrow;
     const from = tail(label.rect, anchor, look.tailGap);
+    // An arrow that would run through the value printed at its point aims at that value's edge instead.
+    if (look.standard && valueBox && segmentHitsRect(from, anchor, valueBox)) {
+      anchor = { x: Math.min(Math.max(from.x, valueBox.x), valueBox.x + valueBox.w), y: Math.min(Math.max(from.y, valueBox.y), valueBox.y + valueBox.h) };
+      edge = 0;
+    }
     const length = Math.hypot(anchor.x - from.x, anchor.y - from.y);
     const tipGap = look.standard ? edge + look.tipGap : look.tipGap;
     // Half a pixel of slack: a seat beside the point sits at the shortest shaft exactly.

@@ -316,9 +316,9 @@ function drawLiftedCagrArm(
   // one series of several runs its legs to that series' points instead,
   // unless a leg would pass another series' point on the way.
   const stubs = a.lineAnchored && b.lineAnchored && (!a.series && !b.series || buriedA || buriedB);
+  const look = armLook(input.theme);
   if (!stubs) {
     // Under the standard the leg's shaft reaches the shortest shaft above the head; 'compact' keeps 16 px past the shaft's end.
-    const look = armLook(input.theme);
     const legFloor = look.standard
       ? Math.min(fromY - ARM_START_GAP, toY - endGap - look.depth) - look.minShaft
       : Math.min(fromY - ARM_START_GAP, toY - endGap - look.shaftEnd) - MIN_LEG;
@@ -334,7 +334,9 @@ function drawLiftedCagrArm(
       ) {
         armY = candidate;
       }
-      if (armY > legFloor) pass.addLegDeficit(armY - legFloor);
+      // Under the standard the room asked for brings the leg floor down to the highest seat a run may take,
+      // so one more layout closes it; an arm lifted over that seat would ask one step at a time.
+      if (armY > legFloor) pass.addLegDeficit((look.standard ? Math.max(armY, armFloor) : armY) - legFloor);
     }
   }
 
@@ -342,24 +344,24 @@ function drawLiftedCagrArm(
   const headId = nid('arrowHead');
   if (stubs) {
     const STUB = 10;
-    const armEnd = b.x - direction * armLook(input.theme).shaftEnd;
+    const armEnd = b.x - direction * look.shaftEnd;
     nodes.push({
       t: 'path', id: pathId, d: `M${a.x} ${armY + STUB}L${a.x} ${armY}L${armEnd} ${armY}`,
-      stroke: { token: 'ink' }, width: armLook(input.theme).stroke, owner: { annotationId: annId }, part: 'arm',
+      stroke: { token: 'ink' }, width: look.stroke, owner: { annotationId: annId }, part: 'arm',
     });
     nodes.push({
-      t: 'path', id: headId, d: armLook(input.theme).head({ x: b.x, y: armY }, direction === 1 ? 0 : Math.PI),
+      t: 'path', id: headId, d: look.head({ x: b.x, y: armY }, direction === 1 ? 0 : Math.PI),
       fill: { token: 'ink' }, owner: { annotationId: annId }, part: 'arrowHead',
     });
     claimSegment(input.occupied, annId, a.x, armY + STUB, a.x, armY, 'leg');
     claimSegment(input.occupied, annId, a.x, armY, armEnd, armY, 'arm');
-    claimArrowHead(input.occupied, annId, b.x, armY, armLook(input.theme), direction === 1 ? 0 : Math.PI);
+    claimArrowHead(input.occupied, annId, b.x, armY, look, direction === 1 ? 0 : Math.PI);
   } else {
     // A buried anchor's leg runs down to the segment edge, or to the point.
     const reach = (anchor: AnchorResolution) => anchor.y - (anchor.lineAnchored ? 6 : 4);
     const legStartY = buriedA ? reach(a) : fromY - ARM_START_GAP;
     const tipY = buriedB ? reach(b) : toY - endGap;
-    const legEndY = tipY - armLook(input.theme).shaftEnd;
+    const legEndY = tipY - look.shaftEnd;
     const up = legRuns(input.occupied, a.x, armY, legStartY, a).reverse()
       .map(([top, bottom]) => `M${a.x} ${bottom}L${a.x} ${top}`).join('');
     const down = legRuns(input.occupied, b.x, armY, legEndY, b)
@@ -367,11 +369,11 @@ function drawLiftedCagrArm(
     nodes.push({
       t: 'path', id: pathId,
       d: `${up}L${b.x} ${armY}${down}`,
-      stroke: { token: 'ink' }, width: armLook(input.theme).stroke, owner: { annotationId: annId }, part: 'arm',
+      stroke: { token: 'ink' }, width: look.stroke, owner: { annotationId: annId }, part: 'arm',
     });
     nodes.push({
       t: 'path', id: headId,
-      d: armLook(input.theme).head({ x: b.x, y: tipY }, Math.PI / 2),
+      d: look.head({ x: b.x, y: tipY }, Math.PI / 2),
       fill: { token: 'ink' }, owner: { annotationId: annId }, part: 'arrowHead',
     });
     claimSegment(input.occupied, annId, a.x, legStartY, a.x, armY, 'leg');
@@ -384,7 +386,6 @@ function drawLiftedCagrArm(
     } else claimSegment(input.occupied, annId, a.x, armY, b.x, armY, 'arm');
     claimSegment(input.occupied, annId, b.x, armY, b.x, legEndY, 'leg');
     // A head 4 px over the end label claims its own box (it points down, 4.5 px tall), not a square past its tip.
-    const look = armLook(input.theme);
     if (onArm) {
       input.occupied.claim(look.standard ? { x: b.x - look.half, y: tipY - look.depth, w: look.half * 2, h: look.depth } : { x: b.x - 3, y: tipY - 5, w: 6, h: 5 },
         'annotation', { annotationId: annId }, 'arrowHead');
@@ -613,16 +614,16 @@ function drawShiftedCagrArm(
 
   const pathId = nid('arm');
   const headId = nid('arrowHead');
-  const legEndX = toX + endGap + armLook(input.theme).shaftEnd;
+  const legEndX = toX + endGap + look.shaftEnd;
   const d = `M${fromX + startGap} ${a.y}L${armX} ${a.y}L${armX} ${b.y}L${legEndX} ${b.y}`;
   nodes.push({
-    t: 'path', id: pathId, d, stroke: { token: 'ink' }, width: armLook(input.theme).stroke,
+    t: 'path', id: pathId, d, stroke: { token: 'ink' }, width: look.stroke,
     owner: { annotationId: annId }, part: 'arm',
   });
   nodes.push({
     t: 'path',
     id: headId,
-    d: armLook(input.theme).head({ x: toX + endGap, y: b.y }, Math.PI),
+    d: look.head({ x: toX + endGap, y: b.y }, Math.PI),
     fill: { token: 'ink' },
     owner: { annotationId: annId },
     part: 'arrowHead',
@@ -630,7 +631,7 @@ function drawShiftedCagrArm(
   claimSegment(input.occupied, annId, fromX + startGap, a.y, armX, a.y, 'leg');
   claimSegment(input.occupied, annId, armX, a.y, armX, b.y, 'arm');
   claimSegment(input.occupied, annId, armX, b.y, legEndX, b.y, 'leg');
-  claimArrowHead(input.occupied, annId, toX + endGap, b.y, armLook(input.theme), Math.PI);
+  claimArrowHead(input.occupied, annId, toX + endGap, b.y, look, Math.PI);
 
   const midY = (spanY0 + spanY1) / 2;
   if (inset) {
@@ -679,17 +680,18 @@ function drawVerticalLevelDiff(
   const look = armLook(input.theme);
   const onPoint = look.standard && b.lineAnchored && Math.abs(x - b.x) < 0.5;
   const headTipY = y1 + (y1 > y0 ? -1 : 1) * (onPoint ? LEVEL_POINT_R + look.tipGap : 1);
-  const shaftEndY = headTipY + (y1 > y0 ? -1 : 1) * -armLook(input.theme).shaftEnd;
+  // The shaft stops inside the head, short of the tip.
+  const shaftEndY = headTipY - (y1 > y0 ? 1 : -1) * look.shaftEnd;
   nodes.push({
     t: 'line', id: lineId, x1: x, y1: y0 + (look.standard && a.lineAnchored && Math.abs(x - a.x) < 0.5 ? (y1 > y0 ? 1 : -1) * (LEVEL_POINT_R + 2) : 0), x2: x, y2: shaftEndY,
-    stroke: { token: 'ink' }, width: armLook(input.theme).stroke, owner: { annotationId: annId }, part: 'diffArrow',
+    stroke: { token: 'ink' }, width: look.stroke, owner: { annotationId: annId }, part: 'diffArrow',
   });
   const headId = nid('arrowHead');
   const angle = y1 > y0 ? Math.PI / 2 : -Math.PI / 2;
   nodes.push({
     t: 'path',
     id: headId,
-    d: armLook(input.theme).head({ x, y: headTipY }, angle),
+    d: look.head({ x, y: headTipY }, angle),
     fill: { token: 'ink' },
     owner: { annotationId: annId },
     part: 'arrowHead',
@@ -812,17 +814,17 @@ export function drawHorizontalLevelDiff(
   const look = armLook(input.theme);
   const onPoint = look.standard && b.lineAnchored && Math.abs(y - b.y) < 0.5;
   const headTipX = x1 + (x1 > x0 ? -1 : 1) * (onPoint ? LEVEL_POINT_R + look.tipGap : 1);
-  const shaftEndX = headTipX + (x1 > x0 ? -1 : 1) * -armLook(input.theme).shaftEnd;
+  const shaftEndX = headTipX - (x1 > x0 ? 1 : -1) * look.shaftEnd;
   nodes.push({
     t: 'line', id: lineId, x1: x0 + (look.standard && a.lineAnchored && Math.abs(y - a.y) < 0.5 ? (x1 > x0 ? 1 : -1) * (LEVEL_POINT_R + 2) : 0), y1: y, x2: shaftEndX, y2: y,
-    stroke: { token: 'ink' }, width: armLook(input.theme).stroke, owner: { annotationId: annId }, part: 'diffArrow',
+    stroke: { token: 'ink' }, width: look.stroke, owner: { annotationId: annId }, part: 'diffArrow',
   });
   const headId = nid('arrowHead');
   const angle = x1 > x0 ? 0 : Math.PI;
   nodes.push({
     t: 'path',
     id: headId,
-    d: armLook(input.theme).head({ x: headTipX, y }, angle),
+    d: look.head({ x: headTipX, y }, angle),
     fill: { token: 'ink' },
     owner: { annotationId: annId },
     part: 'arrowHead',
@@ -910,7 +912,7 @@ function drawInsetBarGap(
   });
   const headId = nid('arrowHead');
   nodes.push({
-    t: 'path', id: headId, d: armLook(input.theme).head({ x: tipX, y }, Math.PI),
+    t: 'path', id: headId, d: look.head({ x: tipX, y }, Math.PI),
     fill: { token: 'ink' }, owner: { annotationId: annId }, part: 'arrowHead',
   });
   const midX = (tipX + long.x) / 2;

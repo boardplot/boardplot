@@ -1555,10 +1555,12 @@ function isTextEnd(point: unknown): point is { annotationId: Id } {
 const TEXT_END_GAP = 3;
 
 /** The warning of an arrow whose shaft is shorter than the theme's shortest. */
-function shortArrow(warnings: LintWarning[], id: Id): (shaft: number, minimum: number) => void {
-  return (shaft, minimum) => warnings.push({
+function shortArrow(warnings: LintWarning[], id: Id): (shaft: number, minimum: number, dropped: boolean) => void {
+  return (shaft, minimum, dropped) => warnings.push({
     code: 'arrow-short', severity: 'warn', owner: { annotationId: id },
-    message: `arrow '${id}': its shaft is ${Math.round(shaft)} px, under the ${minimum} px an arrow needs to read as one`,
+    message: dropped
+      ? `arrow '${id}': its ends lie too close together for a head and a shaft, so it is not drawn`
+      : `arrow '${id}': its shaft is ${Math.round(shaft)} px, under the ${minimum} px an arrow needs to read as one`,
     suggest: 'Move the arrow\'s start farther from its end, or draw a line.',
   });
 }
@@ -1595,6 +1597,8 @@ function drawFromText(input: AnnotatePassInput, run: AnnotateRun, drawing: TextD
 
 /** Radius of a line point's marker: a callout arrow's tip keeps its gap off its edge. */
 const CALLOUT_MARKER_R = 3;
+/** How far from its point a callout arrow looks for the value printed there. */
+const VALUE_BOX_REACH = 24;
 
 /** Leader-routed text callout near an anchor. */
 function calloutLabel(
@@ -1860,11 +1864,13 @@ function calloutLabel(
   }
   // An arrow callout first tries the seats beside its point, level with it.
   const arrow = head.arrow === true && !glyph
-    ? { anchor: { x: at.x, y: at.y }, edge: at.lineAnchored ? CALLOUT_MARKER_R : 0, nodeIds: [s.nid('arrow'), s.nid('arrowHead')], owner: { annotationId: annId } }
+    ? { anchor: { x: at.x, y: at.y }, edge: at.lineAnchored ? CALLOUT_MARKER_R : 0, nodeIds: [s.nid('arrow'), s.nid('arrowHead')], owner: { annotationId: annId } } as NonNullable<CalloutHeadPlan['arrow']>
     : undefined;
   if (arrow) {
     const look = calloutArrowLook(input.theme);
-    all = [...arrowSeats(arrow.anchor, w, h, lineH, prefer, calloutArrowReach(look, arrow.edge), look.standard), ...all];
+    const valueBox = look.standard ? anchorValueBox(input.occupied, { x: at.x, y: at.y, w: 0, h: 0 }, at.owner, VALUE_BOX_REACH) : undefined;
+    if (valueBox) arrow.valueBox = valueBox;
+    all = [...arrowSeats(arrow.anchor, w, h, lineH, prefer, calloutArrowReach(look, arrow.edge), look.standard, valueBox), ...all];
   }
   if (arrow || head.headline !== undefined) s.run.calloutHeads.set(`annotation:${annId}`, { font, headline: head.headline !== undefined, headlineLines, headlineWeight: emphasisWeight(input.theme), ...(arrow ? { arrow } : {}) });
   if (input.gridCallouts && (kind === 'callout' || kind === 'note')) {
