@@ -1373,7 +1373,7 @@ fixtures.push(
 
 fixtures.push({
   id: 'drawing-on-value-axis',
-  title: 'An arrow and a text on a horizontal value axis',
+  title: 'A line at the top level and an arrow over the gap, on a horizontal value axis',
   kind: 'example',
   data: {
     categories: [
@@ -1382,10 +1382,11 @@ fixtures.push({
     ],
     series: [{ id: 'sales', label: 'Sales', values: [82, 64, 41, 23] }],
   },
-  options: { title: 'Sales fall from north to west', unit: 'EUR m', source: 'Illustrative data', valueAxis: { min: 0, max: 120 } },
+  options: { title: 'West sells 59 less than North', unit: 'EUR m', source: 'Illustrative data', valueAxis: { min: 0, max: 100 } },
   annotations: [
-    { kind: 'arrow', id: 'gap', from: { categoryId: 'north', value: 100 }, to: { categoryId: 'west', value: 50 } },
-    { kind: 'text', id: 'gap-note', at: { categoryId: 'east', value: 100 }, text: 'Gap to close' },
+    { kind: 'line', id: 'north-level', from: { categoryId: 'north', value: 82 }, to: { categoryId: 'west', value: 82 }, dashed: true },
+    { kind: 'text', id: 'gap-note', at: { categoryId: 'west', value: 52 }, text: 'Gap 59' },
+    { kind: 'arrow', id: 'gap', from: { categoryId: 'west', value: 24 }, to: { categoryId: 'west', value: 81 } },
   ],
 });
 registerFixtures('bar', fixtures);

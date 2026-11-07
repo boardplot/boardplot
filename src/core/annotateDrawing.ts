@@ -32,7 +32,11 @@ const TEXT_GAP = 8;
 /** Arrow shafts by node id: the head, and the tip its shaft points to. */
 export type DrawingCuts = Map<Id, { headId: Id; tip: Point }>;
 
-type Resolved = Point | { error: string };
+/** A resolved point. `band` is the span of its category along the category axis, for a point given as { categoryId, value }. */
+type Resolved = (Point & { band?: [number, number] }) | { error: string };
+
+/** The air a box keeps outside a category band, the solver's label pad. */
+const BOX_BAND_PAD = 2;
 
 /** The point in the plot, or why there is none. A value never extends the axis. */
 export function resolveDrawingPoint(input: AnnotatePassInput, point: DrawingPoint): Resolved {
@@ -48,7 +52,32 @@ export function resolveDrawingPoint(input: AnnotatePassInput, point: DrawingPoin
   if (!Number.isFinite(mapped) || mapped < low - 0.5 || mapped > high + 0.5) return { error: `value ${point.value} lies outside the plot; a drawing does not extend the axis` };
   const category = categoryPosition(input, point.categoryId);
   if (category === undefined) return { error: 'unresolvable category' };
-  return mapper.axis === 'y' ? { x: category, y: mapped } : { x: mapped, y: category };
+  const band = categorySpan(input, point.categoryId);
+  return { ...(mapper.axis === 'y' ? { x: category, y: mapped } : { x: mapped, y: category }), ...(band ? { band } : {}) };
+}
+
+/** A category's band along its axis, where the chart gives bands. */
+function categorySpan(input: AnnotatePassInput, categoryId: Id): [number, number] | undefined {
+  const band = (input.resolveCategoryBand ?? input.drawingCategoryBand)?.(categoryId);
+  if (!band) return undefined;
+  return isCategoryAlongY(band) ? [band.y, band.y + band.h] : [band.x, band.x + band.w];
+}
+
+/**
+ * A box's two corners. An end given by category spans that category's whole band, with a small pad, so
+ * the box wraps whole bars, their values and line markers; both ends on one category wrap that category.
+ */
+export function boxCorners(input: AnnotatePassInput, from: Resolved, to: Resolved): [Resolved, Resolved] {
+  if ('error' in from || 'error' in to || (!from.band && !to.band)) return [from, to];
+  const alongX = valueMapper(input)?.axis === 'y';
+  const reach = (point: Point & { band?: [number, number] }): [number, number] => {
+    const at = alongX ? point.x : point.y;
+    return point.band ? [point.band[0] - BOX_BAND_PAD, point.band[1] + BOX_BAND_PAD] : [at, at];
+  };
+  const [a, b] = [reach(from), reach(to)];
+  const low = Math.min(a[0], b[0]);
+  const high = Math.max(a[1], b[1]);
+  return alongX ? [{ x: low, y: from.y }, { x: high, y: to.y }] : [{ x: from.x, y: low }, { x: to.x, y: high }];
 }
 
 /** A category's position along its axis: the middle of its band where the chart gives bands, else its anchor. */

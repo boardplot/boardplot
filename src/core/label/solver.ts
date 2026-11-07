@@ -162,6 +162,8 @@ export interface SlotCandidate {
    * draws no leader, as a label touching its mark needs none.
    */
   leaderVertical?: boolean;
+  /** A straight leader from `leaderFrom` to this point (a moved value's run from its own bar). */
+  leaderTo?: Point;
   /** Upper bound for a custom leader, such as an annotation glyph connector. */
   leaderLengthBound?: number;
   /** How far, in px, a mark value's seat may stand from its natural seat, in place of the label-line steps. */
@@ -306,6 +308,8 @@ export interface LabelRequest {
    * the anchor. A seat whose own leader is drawn is never ambiguous.
    */
   anchor?: { x: number; y: number; w?: number; h?: number };
+  /** The point on its mark a label's leader starts from once labelOffsets moves it, where the request has no anchor (a callout). Read by moves only. */
+  movedLeaderFrom?: Point;
   /**
    * The label's drawn leader crosses no other label: a seat whose leader
    * would is passed over, and a placed leader claims its run, so no later
@@ -682,10 +686,27 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
     // An authored move: the seat as chosen, shifted. Its text keeps the ink of a fill only while it lies wholly on its
     // own mark. Off that mark a white value would land on the page, so it takes page ink and a halo.
     const offset = ctx.labelOffsets?.[req.id];
-    const movedSeat = (cand: SlotCandidate, move: LabelOffset): SlotCandidate => {
-      const rect = { ...cand.rect, x: cand.rect.x + (move.x ?? 0), y: cand.rect.y + (move.y ?? 0) };
+    // The bar a value belongs to: its leader runs from that bar's end, and a move inside it keeps the inner padding.
+    const ownBar = (cand: SlotCandidate): Rect | undefined => {
+      if (!MOVED_VALUE_KINDS.has(req.kind)) return undefined;
+      let best: OccupiedClaim | undefined;
+      for (const o of occupied.hitsWhich(cand.rect, OWN_BAR_REACH)) {
+        if (o.kind !== 'mark' || !isColumnPart(o.part) || !isOwnMark(o.owner, req.owner, req.kind, o.part)) continue;
+        if (!best || boxGap(o.rect, cand.rect) < boxGap(best.rect, cand.rect)) best = o;
+      }
+      return best?.rect;
+    };
+    /** The seat as chosen, shifted, or why the move cannot be made. */
+    const movedSeat = (cand: SlotCandidate, move: LabelOffset): SlotCandidate & { besideBar?: true } => {
+      let rect = { ...cand.rect, x: cand.rect.x + (move.x ?? 0), y: cand.rect.y + (move.y ?? 0) };
+      const bar = ownBar(cand);
+      // A value that stays inside its bar keeps the inner padding the solver gives an inside seat.
+      if (bar && (cand.insideFill !== undefined || cand.onFill) && rectContains(bar, rect, 0) && !rectContains(bar, rect, INSIDE_PAD)
+        && rect.w <= bar.w - 2 * INSIDE_PAD && rect.h <= bar.h - 2 * INSIDE_PAD) {
+        rect = { ...rect, x: Math.min(Math.max(rect.x, bar.x + INSIDE_PAD), bar.x + bar.w - INSIDE_PAD - rect.w), y: Math.min(Math.max(rect.y, bar.y + INSIDE_PAD), bar.y + bar.h - INSIDE_PAD - rect.h) };
+      }
       const ownMarks = occupied.hitsWhich(rect, 0).filter((o) => o.kind === 'mark' && isOwnMark(o.owner, req.owner, req.kind, o.part));
-      const seat: SlotCandidate = { ...cand, rect };
+      const seat: SlotCandidate & { besideBar?: true } = { ...cand, rect };
       if (cand.insideFill !== undefined || cand.onFill) {
         if (!ownMarks.some((o) => rectContains(o.rect, rect, 0))) {
           delete seat.insideFill;
@@ -698,28 +719,31 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
       } else if (ownMarks.length > 0) seat.needsBacking = true;
       // A move of about a line reads without a leader, and so does text still on its own mark.
       if (!seat.leaderFrom && !req.noLeader && Math.hypot(move.x ?? 0, move.y ?? 0) >= MOVED_LEADER_MIN && !ownMarks.some((o) => rectContains(o.rect, rect, 0))) {
-        seat.leaderFrom = req.anchor ? nearestPointOf(anchorBox(req.anchor), rect) : movedLeaderStart(cand.rect, move);
-        seat.leaderVertical = true;
+        if (bar) {
+          const run = movedValueRun(bar, rect);
+          if (run === 'beside') seat.besideBar = true;
+          else if (run !== 'over') {
+            seat.leaderFrom = run.from;
+            seat.leaderTo = run.to;
+          }
+        } else {
+          seat.leaderFrom = req.anchor ? nearestPointOf(anchorBox(req.anchor), rect) : req.movedLeaderFrom ?? movedLeaderStart(cand.rect, move);
+          seat.leaderVertical = true;
+        }
       }
       return seat;
     };
+    /** Whether a moved seat is free: clear of every claim and every other label's seat, with a leader that reads. */
+    const moveIsFree = (seat: SlotCandidate & { besideBar?: true }, padding: number): boolean => !seat.besideBar && blockOf(seat, padding, true) === 'free';
     /** The seat a chosen candidate ends up in: moved where the move is free, otherwise as chosen, with a warning. */
     const settled = (cand: SlotCandidate, padding: number): SlotCandidate => {
       if (!offset) return cand;
       const seat = movedSeat(cand, offset);
-      if (blockOf(seat, padding, true) === 'free') {
+      if (moveIsFree(seat, padding)) {
         moved.push(req.id);
         return seat;
       }
-      const offCanvas = ctx.canvas !== undefined && !rectContains(ctx.canvas, seat.rect, 0);
-      const blockers = describeBlockers(occupied.hitsWhich(seat.rect, padding), req, selfAnn, offCanvas ? 'the canvas edge' : 'the air a neighbouring label keeps');
-      warnings.push({
-        code: 'label-offset-blocked',
-        severity: 'warn',
-        message: `labelOffsets moves label '${req.id}' onto ${blockers}, so the label stays in seat '${cand.slot}'`,
-        owner: req.owner,
-        suggest: 'Use a smaller or another offset, or give the chart more room.',
-      });
+      warnings.push(offsetBlockedWarning(req, seat, occupied, padding, selfAnn, ctx));
       return cand;
     };
     /**
@@ -1008,7 +1032,7 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
     // Nothing fits where it stands: the first seat, moved, is the one more try an offset gets.
     if (offset && first && !(req.noLeader && first.leaderFrom)) {
       const seat = movedSeat(first, offset);
-      if (blockOf(seat, first.pad ?? req.pad ?? pad, true) === 'free') {
+      if (moveIsFree(seat, first.pad ?? req.pad ?? pad)) {
         moved.push(req.id);
         place(seat, 'every seat is taken; the moved first seat is free');
         continue;
@@ -1294,6 +1318,72 @@ function sameRect(a: Rect, b: Rect): boolean {
 
 /** The shortest authored move that draws a leader back to the mark: about one text line. */
 const MOVED_LEADER_MIN = 12;
+/** Value labels whose leader, after a move, runs from their own bar. */
+const MOVED_VALUE_KINDS = new Set<LabelKind>(['point', 'segment', 'total', 'grandTotal']);
+/** How far from its seat a value's own bar may lie. */
+const OWN_BAR_REACH = 8;
+/** The air a value moved inside its bar keeps from the bar's edges. */
+const INSIDE_PAD = 4;
+/** A moved value's leader at least this steep (rise over run) reads as a pointer, not as a minus sign beside the number. */
+const MOVED_LEADER_MIN_SLOPE = 0.5;
+
+/**
+ * A moved value's leader: straight from the nearest point of its own bar to the middle of the label's
+ * bottom edge (top edge when the label sits lower than the bar's middle), so it never meets the side
+ * of the number, where it would read as a minus sign. 'over': the label still stands over or under its
+ * bar and needs no leader. 'beside': the run would be nearly level or too short, so the value would
+ * read as a neighbour's and the move is not made.
+ */
+function movedValueRun(bar: Rect, rect: Rect): { from: Point; to: Point } | 'over' | 'beside' {
+  const gutter = LEADER_GUTTER_RATIO * rect.h;
+  const above = rect.y + rect.h / 2 < bar.y + bar.h / 2;
+  const to = { x: rect.x + rect.w / 2, y: above ? rect.y + rect.h + gutter : rect.y - gutter };
+  const from = { x: Math.min(Math.max(to.x, bar.x), bar.x + bar.w), y: Math.min(Math.max(to.y, bar.y), bar.y + bar.h) };
+  const dx = Math.abs(to.x - from.x);
+  const dy = Math.abs(to.y - from.y);
+  if (dy >= MOVED_LEADER_MIN_SLOPE * dx && Math.hypot(dx, dy) >= LEADER_MIN_DRAWN_RATIO * rect.h) return { from, to };
+  return dx === 0 && dy < rect.h ? 'over' : 'beside';
+}
+
+/** The warning for a move that is not made, in plain words: what is in the way, and what to do. */
+function offsetBlockedWarning(req: LabelRequest, seat: SlotCandidate & { besideBar?: true }, occupied: OccupiedIndex, padding: number, selfAnn: string | undefined, ctx: SolveCtx): LintWarning {
+  const leave = 'so the label stays where the chart placed it';
+  let what: string;
+  let suggest = 'Use a smaller or another offset, or give the chart more room.';
+  if (ctx.canvas && !rectContains(ctx.canvas, seat.rect, 0) || ctx.plot && !rectsOverlap(ctx.plot, seat.rect, 0)) {
+    what = `would move label '${req.id}' off the chart`;
+    suggest = 'Use a smaller offset.';
+  } else if (seat.besideBar) {
+    what = `would set value '${req.id}' beside its bar, where it reads as a neighbour's value`;
+    suggest = 'Move it further up or down, so its leader can reach its bar.';
+  } else {
+    const hits = occupied.hitsWhich(seat.rect, padding).filter((o) => !(o.kind === 'annotation' && selfAnn && o.owner.annotationId === selfAnn && (o.part === 'bracketLabel' || !rectsOverlap(o.rect, seat.rect, 0)))
+      && !(o.kind === 'mark' && isOwnMark(o.owner, req.owner, req.kind, o.part)));
+    const other = [...(ctx.naturalSeats ?? [])].find(([id, rect]) => id !== req.id && rectsOverlap(rect, seat.rect, padding))?.[0];
+    what = `would move label '${req.id}' onto ${plainBlockers(hits, other)}`;
+  }
+  return { code: 'label-offset-blocked', severity: 'warn', message: `labelOffsets ${what}, ${leave}`, owner: req.owner, suggest };
+}
+
+/** What a moved label would land on, in plain words. */
+function plainBlockers(hits: OccupiedRect[], otherLabel: Id | undefined): string {
+  const parts: string[] = [];
+  const add = (text: string): void => {
+    if (!parts.includes(text)) parts.push(text);
+  };
+  for (const o of hits) {
+    const of = Object.keys(o.owner).length > 0 ? ` of ${formatOwner(o.owner)}` : '';
+    if (o.kind === 'label') add(`the label${of}`);
+    else if (o.kind === 'mark') add(`the mark${of}`);
+    else if (o.kind === 'annotation') add(`the annotation${o.owner.annotationId ? ` '${o.owner.annotationId}'` : ''}`);
+    else if (o.kind === 'axis') add('the axis labels');
+    else if (o.kind === 'legend') add('the legend');
+    else if (o.kind === 'frame') add('the title or the notes');
+    else add(`the ${o.kind}${of}`);
+  }
+  if (otherLabel !== undefined) add(`the place of label '${otherLabel}'`);
+  return parts.length > 0 ? parts.join('; ') : 'the space around another label';
+}
 
 /** Where a moved seat's leader starts with no anchor: the old seat's edge on the far side from the move, next to its mark. */
 function movedLeaderStart(seat: Rect, move: LabelOffset): Point {
@@ -1453,6 +1543,7 @@ export function leaderHeightOf(cand: SlotCandidate): number {
 function leaderAt(cand: SlotCandidate, lineHeight: number): { d: string; curved: boolean } | undefined {
   const from = cand.leaderFrom;
   if (!from) return undefined;
+  if (cand.leaderTo) return { d: leaderPath(from, cand.leaderTo, Infinity), curved: false };
   const minimum = LEADER_MIN_DRAWN_RATIO * lineHeight;
   const approachesFromLeft = from.x <= cand.rect.x;
   const toEdge = leaderTerminus(cand.rect, from, lineHeight);

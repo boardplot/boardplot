@@ -124,7 +124,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | key-right-slide | column.grouped | example | Clustered columns on a slide with the key in a column right of the plot |
 | inside-base-values | column.grouped | example | Column values inside the base |
 | stacked-inside-base-values | column.stacked | example | Stacked column values inside each base |
-| drawing-kinds | column.grouped | example | A text, a line, an arrow and a box drawn on data positions |
+| drawing-kinds | column.grouped | example | A box around the launch months, the old level and an arrow from a note |
 
 ## bar
 
@@ -191,7 +191,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | key-left | bar.stacked | example | Stacked bars with the key in a column left of the plot |
 | column-overrides | bar.grouped | example | columnOverrides sets the width of the name column |
 | centered-values | bar.grouped | example | Bar values at the center |
-| drawing-on-value-axis | bar.grouped | example | An arrow and a text on a horizontal value axis |
+| drawing-on-value-axis | bar.grouped | example | A line at the top level and an arrow over the gap, on a horizontal value axis |
 
 ## line
 
@@ -267,7 +267,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | iso-months-year-row | line.line | example | ISO month ids across two years print months and a year row |
 | rates-as-fractions | line.line | torture | SQL fractions use percentage cells at input |
 | ordered-ramp-rest-apart | line.line | example | Rest only has to differ from the ordered ramp (othersShade 'apart') |
-| drawing-kinds | line.line | example | A text, a line, an arrow and a box at category and value points |
+| drawing-kinds | line.line | example | A box over the maintenance weeks, the normal load and an arrow from a note |
 | small-drawer | line.line | example | A plain line chart in a 480 by 200 drawer |
 | weekly-orders-anomalies | line.line | example | Two weeks break out of the normal order range (anomaly on a line) |
 | weekly-events-lane | line.line | example | Event lane over a weekly line: dotted rules behind the data, the rest numbered in the key |

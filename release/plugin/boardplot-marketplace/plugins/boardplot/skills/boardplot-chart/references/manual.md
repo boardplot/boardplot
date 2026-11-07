@@ -885,6 +885,9 @@ Each label of an SVG render carries `label:` and its id in `data-id`, such as `l
 - The solver chooses the seat first, with any pin, and the offset moves it. Natural seats do not change.
 - A move that meets another mark, another label or the canvas edge is not made. The label stays in its chosen seat, and the warning `label-offset-blocked` names what blocks it. If no seat is free, the moved first seat is tried once before the label is hidden. An offset never hides a label that would otherwise draw.
 - A label moved 12 px or more off its own bar gets a leader back to its mark, unless the label is a value that takes none. A seat that already has a leader keeps it. A leader that would cross text is not drawn, and the chart warns `label-offset-blocked`.
+- A value moved off its bar leads from the top or end of its own bar into the near edge of its text. A move that sets a value beside its bar, where a level leader would read as a minus sign or as a neighbour's value, is not made and warns `label-offset-blocked`. Move it further up or down.
+- A value moved within its bar stays 4 px inside the bar's edges.
+- A moved callout's leader starts at its mark.
 - An annotation's drawing stays where it is, and a move onto that drawing is blocked.
 - A value moved within its own bar keeps its ink. A value moved off its bar prints in page ink with a halo, so white text never lands on the page.
 - A callout with an icon or a status moves with its chip, and its leader still ends at its anchor.
@@ -904,9 +907,11 @@ Four annotation kinds draw on data positions, so a drawing stays on its data at 
 | `text` | `at`, `text`, `id`, `priority` | Text on the point, or above, below, right or left of it, 8 px away. Text inside a bar gets a halo, and text never straddles a bar's edge. Text that finds no seat, such as on a pie slice or a filled heatmap cell, goes to the note with a warning. `${value}` prints as written. |
 | `line` | `from`, `to`, `dashed`, `id` | A straight line. |
 | `arrow` | `from`, `to`, `dashed`, `id` | A straight arrow, with its head at `to`. |
-| `box` | `from`, `to`, `dashed`, `id` | An unfilled box, with `from` and `to` as opposite corners. |
+| `box` | `from`, `to`, `dashed`, `id` | An unfilled box, with `from` and `to` as opposite corners. A corner given by category takes the outer edge of that category's band, so the box wraps whole bars and their values. `from` and `to` may name one category. |
 
-A point is an anchor such as `"q2"`, `{ "categoryId": "q2", "seriesId": "plan" }` or `{ "pointId": "p7" }`, or a category with a value in axis units: `{ "categoryId": "q2", "value": 120 }`.
+A point is an anchor such as `"q2"`, `{ "categoryId": "q2", "seriesId": "plan" }` or `{ "pointId": "p7" }`, or a category with a value in axis units: `{ "categoryId": "q2", "value": 120 }`. A `line` or `arrow` end given by category sits on the category's centre.
+
+A `line` or `arrow` end may also be `{ "annotationId": "launch-note" }`, the `id` of a `text` annotation. The end then attaches to the nearest edge of that text, 3 px away, wherever the text seats at the drawn width. An id that names no text annotation, and a text that finds no seat, give `bad-anchor` and draw nothing.
 
 ```json
 {
@@ -916,8 +921,8 @@ A point is an anchor such as `"q2"`, `{ "categoryId": "q2", "seriesId": "plan" }
     "series": [{ "id": "orders", "label": "Orders", "values": [30, 60, 45] }]
   },
   "annotations": [
-    { "kind": "arrow", "from": { "categoryId": "q1", "value": 50 }, "to": { "categoryId": "q2", "value": 74 } },
-    { "kind": "text", "at": { "categoryId": "q3", "value": 70 }, "text": "New contract" }
+    { "kind": "text", "id": "contract", "at": { "categoryId": "q1", "value": 70 }, "text": "New contract" },
+    { "kind": "arrow", "from": { "annotationId": "contract" }, "to": { "categoryId": "q2", "value": 64 } }
   ],
   "options": { "valueAxis": { "min": 0, "max": 80 } }
 }

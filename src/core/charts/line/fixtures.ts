@@ -3266,7 +3266,7 @@ const logAxisFixture: LineFixture = {
 
 const drawingKindsFixture: Fixture<LineChartData, LineOptions> = {
   id: 'drawing-kinds',
-  title: 'A text, a line, an arrow and a box at category and value points',
+  title: 'A box over the maintenance weeks, the normal load and an arrow from a note',
   kind: 'example',
   data: {
     categories: [
@@ -3275,12 +3275,13 @@ const drawingKindsFixture: Fixture<LineChartData, LineOptions> = {
     ],
     series: [{ id: 'load', label: 'Load', values: [52, 54, 51, 38, 35, 37, 49, 53] }],
   },
-  options: { title: 'Load dropped during the maintenance weeks', unit: 'Load, %', source: 'Illustrative data', valueAxis: { min: 20, max: 60 } },
+  options: { title: 'Load dropped during the maintenance weeks', unit: '%', source: 'Illustrative data', valueAxis: { min: 20, max: 60 } },
   annotations: [
-    { kind: 'box', id: 'maintenance', from: { categoryId: 'w4', value: 28 }, to: { categoryId: 'w6', value: 44 } },
-    { kind: 'line', id: 'normal-load', from: { categoryId: 'w1', value: 58 }, to: { categoryId: 'w8', value: 58 }, dashed: true },
-    { kind: 'arrow', id: 'drop', from: { categoryId: 'w2', value: 44 }, to: { categoryId: 'w4', value: 34 } },
-    { kind: 'text', id: 'maintenance-note', at: { categoryId: 'w5', value: 50 }, text: 'Planned maintenance' },
+    { kind: 'box', id: 'maintenance', from: { categoryId: 'w4', value: 30 }, to: { categoryId: 'w6', value: 42 } },
+    { kind: 'line', id: 'normal-load', from: { categoryId: 'w1', value: 53 }, to: { categoryId: 'w8', value: 53 }, dashed: true },
+    { kind: 'text', id: 'normal-load-note', at: { categoryId: 'w2', value: 58 }, text: 'Normal load' },
+    { kind: 'text', id: 'maintenance-note', at: { categoryId: 'w2', value: 28 }, text: 'Planned maintenance' },
+    { kind: 'arrow', id: 'low-point', from: { annotationId: 'maintenance-note' }, to: { categoryId: 'w5', value: 33 } },
   ],
 };
 

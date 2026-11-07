@@ -16,6 +16,7 @@ import { highlightPaintWarnings } from '../../paintWarnings';
 import type { PaintWarningRule } from '../../types/scene';
 import type { AnchorResolution } from '../../annotate';
 import { runAnnotatePass } from '../../annotatePass';
+import { categoryBandFromCenters } from '../../annotateFields';
 import { BRACKET_GAP, BRACKET_TICK } from '../../annotateParts';
 import { formatWithSpec, levelFormatSpec, levelFormatterFromExample, seriesRasterFormatter, signedFormatterFromExample } from '../../formatSpec';
 import { boxGap, cleanFloat, rectsOverlap, type Rect } from '../../geometry';
@@ -2185,6 +2186,8 @@ function layoutWaterfallWithPad(
   const annResult = runAnnotatePass({
     annotations,
     resolve,
+    // A box given by category wraps the step's whole band.
+    drawingCategoryBand: categoryBandFromCenters(items.map((it) => it.id), plot, (i) => band.center(i), 'x'),
     defaultSpan:
       totalsOrder.length >= 2
         ? { from: totalsOrder[0]!.id, to: totalsOrder[totalsOrder.length - 1]!.id }

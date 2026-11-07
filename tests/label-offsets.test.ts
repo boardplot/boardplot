@@ -55,8 +55,9 @@ it('a value moved off its bar takes page ink and a halo, and within its bar keep
   expect(within.rect.y).toBe(start.rect.y + 8);
   expect(JSON.stringify(within.ink)).toContain('inkInverse');
   expect(within.halo).toBeUndefined();
-  const off = label(layoutColumn(stack, { variant: 'stacked', size: { width: 480, height: 400 }, labelOffsets: { [id]: { x: 120 } } } as never), id);
-  expect(off.rect.x).toBe(start.rect.x + 120);
+  const top = 'segment:t:a';
+  const off = label(layoutColumn(stack, { variant: 'stacked', size: { width: 480, height: 400 }, labelOffsets: { [top]: { x: 20, y: -90 } } } as never), top);
+  expect(off.rect.x).toBe(label(base, top).rect.x + 20);
   expect(JSON.stringify(off.ink)).not.toContain('inkInverse');
   expect(off.halo).toBe(true);
 });
@@ -82,7 +83,7 @@ it('a moved label keeps every other value, and a leader that would cross text go
   const geometry = layoutColumn(data, { ...size, labelOffsets: { 'point:s:q3': { x: -400, y: -30 } } } as never);
   for (const id of ['point:s:q1', 'point:s:q2', 'point:s:q4']) expect(label(geometry, id).rect).toEqual(label(plain, id).rect);
   expect((label(geometry, 'point:s:q3') as { leader?: unknown }).leader).toBeUndefined();
-  expect(geometry.warnings.find((warning) => warning.code === 'label-offset-blocked')!.message).toContain('leader');
+  expect(geometry.warnings.find((warning) => warning.code === 'label-offset-blocked')!.message).toContain("'point:s:q3'");
 });
 
 // A moved label's own leader room is no text: the leader back to its point must stay.
@@ -110,4 +111,40 @@ it('a moved leader that crosses another label of the same owner goes', () => {
   const geometry = line.layout(line.normalize(fixture.data), { ...line.defaults, ...fixture.options, labelOffsets: { 'point:market:fy27': { x: 60, y: 24 } } } as never) as ReturnType<typeof layoutColumn>;
   expect(label(geometry, 'point:market:fy27').leader).toBeUndefined();
   expect(geometry.warnings.find((warning) => warning.code === 'label-offset-blocked')!.message).toContain('leader');
+});
+
+// A moved value's level leader into the side of "503" read as "−503": the leader must run up from its own bar into the label's bottom.
+it('a moved value leads from its own bar top into the label bottom, and a sideways move is refused', () => {
+  const data = { categories: ['a', 'b', 'c', 'd', 'e', 'f'].map((id) => ({ id, label: id.toUpperCase() })), series: [{ id: 's', label: 'S', values: [412, 398, 431, 503, 497, 488] }] };
+  const draw = (move: { x?: number; y?: number }) => layoutColumn(data, { size: { width: 960, height: 360 }, labelOffsets: { 'point:s:d': move } } as never);
+  const up = draw({ x: 24, y: -16 });
+  const moved = label(up, 'point:s:d');
+  const top = (up.scene.find((node) => node.t === 'rect' && node.owner.categoryId === 'd' && node.id.startsWith('mark:')) as never as { rect: { y: number } }).rect.y;
+  const [x1, y1, x2, y2] = (moved.leader as { d: string }).d.match(/-?[\d.]+/g)!.map(Number);
+  expect(y1).toBeCloseTo(top, 1);
+  expect(y2).toBeGreaterThan(moved.rect.y + moved.rect.h);
+  expect(Math.abs(y2! - y1!)).toBeGreaterThanOrEqual(0.5 * Math.abs(x2! - x1!));
+  const side = draw({ x: 40 });
+  expect(label(side, 'point:s:d').leader).toBeUndefined();
+  const warning = side.warnings.find((entry) => entry.code === 'label-offset-blocked')!.message;
+  expect(warning).toContain('beside its bar');
+  expect(warning).not.toMatch(/seat '|outsideTop|unowned/);
+});
+
+// A value moved inside its bar stopped 2 px from the edge and looked misplaced: it keeps the inside padding.
+it('a value moved inside its bar keeps 4 px from the bar edges', () => {
+  const stack = { categories: columns.categories, series: [{ id: 's', label: 'S', values: [100, 80] }, { id: 't', label: 'T', values: [60, 50] }] };
+  const geometry = layoutColumn(stack, { variant: 'stacked', size: { width: 960, height: 400 }, labelOffsets: { 'segment:s:a': { x: 96 } } } as never);
+  const moved = label(geometry, 'segment:s:a').rect;
+  const bar = (geometry.scene.find((node) => node.t === 'rect' && node.owner.seriesId === 's' && node.owner.categoryId === 'a' && node.id.startsWith('mark:')) as never as { rect: { x: number; w: number } }).rect;
+  expect(moved.x + moved.w).toBeCloseTo(bar.x + bar.w - 4, 6);
+});
+
+// A moved callout's leader started at the seat it left, 8 px above its bar, and floated: it must start at the mark.
+it('a moved callout leads back to its mark', () => {
+  const fixture = getFixtures('waterfall').find((entry) => entry.id === 'callout-label-offset')! as unknown as { data: never; options: object; annotations: never };
+  const geometry = layoutWaterfall(fixture.data, { ...fixture.options, annotations: fixture.annotations } as never);
+  const leader = (label(geometry, 'annotation:callout-1').leader as { d: string }).d.match(/-?[\d.]+/g)!.map(Number);
+  const bar = geometry.marks.bars.find((entry) => entry.id === 'costs')!.rect;
+  expect(leader[1]).toBeCloseTo(bar.y, 1);
 });

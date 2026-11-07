@@ -2768,7 +2768,7 @@ fixtures.push(
 
 fixtures.push({
   id: 'drawing-kinds',
-  title: 'A text, a line, an arrow and a box drawn on data positions',
+  title: 'A box around the launch months, the old level and an arrow from a note',
   kind: 'example',
   data: {
     categories: [
@@ -2777,12 +2777,13 @@ fixtures.push({
     ],
     series: [{ id: 'orders', label: 'Orders', values: [30, 34, 31, 62, 70, 66] }],
   },
-  options: { title: 'Orders doubled after the April launch', unit: 'thousand', source: 'Illustrative data', valueAxis: { min: 0, max: 80 } },
+  options: { title: 'Orders doubled after the April launch', unit: 'thousand', source: 'Illustrative data', valueAxis: { min: 0, max: 80 }, labelPosition: 'insideEnd' },
   annotations: [
-    { kind: 'box', id: 'launch-window', from: { categoryId: 'apr', value: 8 }, to: { categoryId: 'jun', value: 78 }, dashed: true },
-    { kind: 'line', id: 'old-level', from: { categoryId: 'jan', value: 50 }, to: { categoryId: 'mar', value: 50 } },
-    { kind: 'arrow', id: 'step-up', from: { categoryId: 'mar', value: 56 }, to: { categoryId: 'apr', value: 72 } },
-    { kind: 'text', id: 'launch-note', at: { categoryId: 'feb', value: 72 }, text: 'Launch moved the level' },
+    { kind: 'box', id: 'launch-months', from: { categoryId: 'apr', value: 0 }, to: { categoryId: 'jun', value: 80 }, dashed: true },
+    { kind: 'line', id: 'old-level', from: { categoryId: 'jan', value: 36 }, to: { categoryId: 'mar', value: 36 }, dashed: true },
+    { kind: 'text', id: 'old-level-note', at: { categoryId: 'feb', value: 42 }, text: 'Before launch: under 36' },
+    { kind: 'text', id: 'launch-note', at: { categoryId: 'feb', value: 64 }, text: 'Launch moved the level' },
+    { kind: 'arrow', id: 'step-up', from: { annotationId: 'launch-note' }, to: { categoryId: 'apr', value: 65 } },
   ],
 });
 registerFixtures('column', fixtures);

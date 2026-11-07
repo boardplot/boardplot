@@ -697,7 +697,19 @@ function addDrawingIssues(annotation: Record<string, unknown>, ctx: z.Refinement
   for (const field of ANCHOR_FIELDS[kind]!) {
     const point = annotation[field];
     if (point === undefined) {
-      ctx.addIssue({ code: 'custom', path: [field], message: `a ${kind} needs '${field}', a point: ${ANCHOR_SHAPE}, or { categoryId, value }` });
+      ctx.addIssue({ code: 'custom', path: [field], message: `a ${kind} needs '${field}', a point: ${ANCHOR_SHAPE}, or { categoryId, value }${kind === 'line' || kind === 'arrow' ? ", or { annotationId } of a text" : ''}` });
+      continue;
+    }
+    if (typeof point === 'object' && point !== null && !Array.isArray(point) && Object.hasOwn(point, 'annotationId')) {
+      if (kind !== 'line' && kind !== 'arrow') {
+        ctx.addIssue({ code: 'custom', path: [field, 'annotationId'], message: `a ${kind}'s '${field}' is a data point; { annotationId } is an end of a line or an arrow`, params: { refused: true } });
+        continue;
+      }
+      const { annotationId } = point as { annotationId?: unknown };
+      if (typeof annotationId !== 'string' || annotationId === '') ctx.addIssue({ code: 'custom', path: [field, 'annotationId'], message: `annotationId names a text annotation by its id, a non-empty string` });
+      for (const key of Object.keys(point).filter((name) => name !== 'annotationId')) {
+        ctx.addIssue({ code: 'custom', path: [field, key], message: `an end on a text takes annotationId only, not '${key}'`, params: { refused: true } });
+      }
       continue;
     }
     if (typeof point !== 'object' || point === null || Array.isArray(point) || !Object.hasOwn(point, 'value')) {

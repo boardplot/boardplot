@@ -21,6 +21,9 @@ export type AnchorRef<X extends string | number = Id> =
 /** A drawing's point: an anchor, or the spot on a category's position at `value`, in axis units. */
 export type DrawingPoint<X extends string | number = Id> = AnchorRef<X> | { categoryId: X; value: number };
 
+/** A line's or an arrow's end: a point, or the edge of a `text` annotation, by its id. */
+export type DrawingEnd<X extends string | number = Id> = DrawingPoint<X> | { annotationId: Id };
+
 export interface AnnotationBase {
   id?: Id; // default: `${kind}-${n}` in authored order
   text?: string; // replaces auto text; `${value}` remains a live field
@@ -116,8 +119,13 @@ export type Annotation<X extends string | number = Id> =
   | (Omit<AnnotationBase, 'text'> & { kind: 'indicator100'; side?: 'left' | 'right'; /** Refused: it prints a fixed '100%'. */ text?: never })
   /** Authored text at a point, seated by the label solver. It takes `id` and `priority` only. */
   | { kind: 'text'; id?: Id; priority?: number; at: DrawingPoint<X>; text: string; format?: never }
-  /** A straight line, an arrow or an unfilled box between two points, in the ink and rule width of a bracket. They take `id` only. */
-  | { kind: 'line' | 'arrow' | 'box'; id?: Id; from: DrawingPoint<X>; to: DrawingPoint<X>; dashed?: boolean; text?: never; format?: never; priority?: never }
+  /**
+   * A straight line or arrow between two points, in the ink and rule width of a bracket. An end may be
+   * `{ annotationId }` of a `text` annotation: it then starts at the nearest edge of that text, at every size.
+   */
+  | { kind: 'line' | 'arrow'; id?: Id; from: DrawingEnd<X>; to: DrawingEnd<X>; dashed?: boolean; text?: never; format?: never; priority?: never }
+  /** An unfilled box with two points as opposite corners. An end given by category spans that category's band. */
+  | { kind: 'box'; id?: Id; from: DrawingPoint<X>; to: DrawingPoint<X>; dashed?: boolean; text?: never; format?: never; priority?: never }
   | (AnnotationBase & {
       /**
        * Inclusive category span as a shade or bracket, or a value-axis plan
@@ -245,8 +253,8 @@ export const ANNOTATION_KIND_PURPOSES: Record<AnnotationKind, string> = {
   indicator100: "Maps 100 through the chart's value scale and draws a side tick with a 100% label.",
   band: 'Draws an inclusive category span as a shaded band or bracket, or a value-axis plan corridor, tolerance band or attainment fill, with a collision-managed label.',
   text: 'Places authored text at a point through the label solver: on the point, or above, below, right or left of it. The text prints as written.',
-  line: 'Draws a straight line between two points, in the ink and rule width of a bracket; a stretch that would cross text is cut.',
-  arrow: 'Draws a straight arrow between two points, in the ink and rule width of a bracket; a stretch that would cross text is cut.',
-  box: 'Draws an unfilled box with two points as opposite corners, in the ink and rule width of a bracket; text inside the box stays free.',
+  line: 'Draws a straight line between two points or from a text annotation, in the ink and rule width of a bracket; a stretch that would cross text is cut.',
+  arrow: 'Draws a straight arrow between two points or from a text annotation to a point, in the ink and rule width of a bracket; a stretch that would cross text is cut.',
+  box: 'Draws an unfilled box with two points as opposite corners, wrapping whole category bands, in the ink and rule width of a bracket; text inside the box stays free.',
   event: 'Places a dated event in the lane above the plot as a block with a pole to the data, or, when it does not fit, as a numbered marker with an entry in the event key below the plot; periods draw a thin bar.',
 };

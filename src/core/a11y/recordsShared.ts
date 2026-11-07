@@ -85,7 +85,7 @@ export function ownerContains(owner: OwnerRef, required: OwnerRef): boolean {
   return keys.length > 0;
 }
 
-function matchesAnchor(owner: OwnerRef, anchor: AnchorRef): boolean {
+function matchesAnchor(owner: OwnerRef, anchor: AnchorRef | { annotationId: string }): boolean {
   if (typeof anchor === 'string') return [owner.categoryId, owner.pointId, owner.rowId].includes(anchor);
   const { edge: _edge, ...keys } = anchor as OwnerRef & { edge?: string };
   return ownerContains(owner, keys);

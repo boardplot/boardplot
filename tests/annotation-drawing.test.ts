@@ -66,3 +66,32 @@ it('a drawing takes plain dates on a time axis', () => {
   expect(geometry.warnings.some((warning) => warning.code === 'bad-anchor')).toBe(false);
   expect(geometry.scene.some((node) => node.part === 'drawing')).toBe(true);
 });
+
+// A box edge on a category's centre cut its bars and values in half, and a box over one category was refused.
+it('a box given by category wraps whole bars, also on one category', () => {
+  const box = (from: string, to: string) => layoutColumn(columns, { valueAxis: { min: 0, max: 100 }, annotations: [{ kind: 'box', id: 'B', from: { categoryId: from, value: 0 }, to: { categoryId: to, value: 90 } }] } as never);
+  const bar = (geometry: ReturnType<typeof layoutColumn>, id: string) => (geometry.scene.find((node) => node.t === 'rect' && node.owner.categoryId === id && node.id.startsWith('mark:')) as never as { rect: { x: number; w: number } }).rect;
+  const xs = (geometry: ReturnType<typeof layoutColumn>) => (geometry.scene.filter((node) => node.part === 'drawing') as never as { x1: number; x2: number }[]).flatMap((run) => [run.x1, run.x2]);
+  const wide = box('a', 'b');
+  expect(Math.min(...xs(wide))).toBeLessThan(bar(wide, 'a').x);
+  expect(Math.max(...xs(wide))).toBeGreaterThan(bar(wide, 'b').x + bar(wide, 'b').w);
+  const one = box('c', 'c');
+  expect(one.warnings.map((warning) => warning.code)).not.toContain('bad-anchor');
+  expect(Math.min(...xs(one))).toBeLessThan(bar(one, 'c').x);
+  expect(Math.max(...xs(one))).toBeGreaterThan(bar(one, 'c').x + bar(one, 'c').w);
+});
+
+// An arrow given by data points drifted off its note as the width changed: from a text it must start at that text's edge.
+it('an arrow from a text annotation starts at the edge of that text at every width', () => {
+  for (const width of [360, 960]) {
+    const geometry = layoutColumn(columns, { size: { width, height: 360 }, valueAxis: { min: 0, max: 100 }, annotations: [
+      { kind: 'text', id: 'note', at: { categoryId: 'a', value: 85 }, text: 'A note' },
+      { kind: 'arrow', id: 'A', from: { annotationId: 'note' }, to: { categoryId: 'c', value: 55 } },
+    ] } as never);
+    const text = geometry.labels.find((label) => label.id === 'annotation:note')!.rect;
+    const shaft = geometry.scene.find((node) => node.t === 'line' && node.part === 'drawing') as never as { x1: number; y1: number };
+    const gap = Math.hypot(Math.max(text.x - shaft.x1, 0, shaft.x1 - text.x - text.w), Math.max(text.y - shaft.y1, 0, shaft.y1 - text.y - text.h));
+    expect(gap).toBeGreaterThan(1);
+    expect(gap).toBeLessThan(5);
+  }
+});

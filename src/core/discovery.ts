@@ -21,7 +21,7 @@ const BARE_NAME_FIELD = {
 
 interface AnnotationAnchor {
   field: string;
-  type: 'AnchorRef' | 'AnchorRef | number' | 'AnchorRef | { categoryId, value }' | 'categoryId';
+  type: 'AnchorRef' | 'AnchorRef | number' | 'AnchorRef | { categoryId, value }' | 'AnchorRef | { categoryId, value } | { annotationId }' | 'categoryId';
   required: boolean;
 }
 
@@ -165,9 +165,12 @@ function describeAnnotation(kind: AnnotationKind, type: string) {
       break;
     case 'line':
     case 'arrow':
+      anchors = ['from', 'to'].map(field => ({ field, type: 'AnchorRef | { categoryId, value } | { annotationId }' as const, required: true }));
+      notes = [DRAWING_POINT_NOTE, `An end { annotationId } names a text annotation: the ${kind} starts or ends at the nearest edge of that text, at every size, and is not drawn when the text is not. A { categoryId, value } end stands on the category's centre. A stretch that would cross text is cut and warns draw-crosses-text. It takes dashed and id, and no other field.`];
+      break;
     case 'box':
       anchors = ['from', 'to'].map(field => ({ field, type: 'AnchorRef | { categoryId, value }', required: true }));
-      notes = [DRAWING_POINT_NOTE, `${kind === 'box' ? 'from and to are opposite corners, the box has no fill, and text inside it stays free. ' : ''}A stretch that would cross text is cut and warns draw-crosses-text. It takes dashed and id, and no other field.`];
+      notes = [DRAWING_POINT_NOTE, 'from and to are opposite corners, the box has no fill, and text inside it stays free. A { categoryId, value } corner spans that category\'s whole band, so the box wraps whole bars, values and markers; from and to on one category wrap that category. A stretch that would cross text is cut and warns draw-crosses-text. It takes dashed and id, and no other field.'];
       break;
   }
   if (kind === 'diff' && type === 'line') notes.push('Diff labels precede point and end labels. Same-category arms attach there; anchored strokes do not displace them.');

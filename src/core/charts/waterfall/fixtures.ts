@@ -203,7 +203,7 @@ export const fixtures: Fixture<WaterfallData, WaterfallOptions>[] = [
       title: 'Costs take back most of the volume gain',
       unit: 'EUR m',
       source: 'Illustrative bridge',
-      labelOffsets: { 'annotation:callout-1': { y: -40 } },
+      labelOffsets: { 'annotation:callout-1': { y: -24 } },
     },
     annotations: [{ kind: 'callout', at: 'costs', text: 'Energy contracts renewed' }],
   },
