@@ -55,11 +55,12 @@ export function arrowSeats(anchor: Point, w: number, h: number, lineH: number, p
   // under the value printed there, so a preferred side above or below keeps its arrow.
   const top = Math.min(anchor.y, valueBox?.y ?? anchor.y);
   const bottom = Math.max(anchor.y, valueBox ? valueBox.y + valueBox.h : anchor.y);
+  // The solver takes the first free seat, so the preferred side goes first.
   return [
     ...side,
     { slot: 'arrowAbove', rect: { x: anchor.x - w / 2, y: top - reach - h, w, h }, penalty: prefer === 'above' ? -3 : prefer === 'below' ? 0.8 : 0.7 },
     { slot: 'arrowBelow', rect: { x: anchor.x - w / 2, y: bottom + reach, w, h }, penalty: prefer === 'below' ? -3 : prefer === 'above' ? 0.8 : 0.75 },
-  ];
+  ].sort((a, b) => a.penalty - b.penalty);
 }
 
 /** Where the shaft leaves the text: the side facing the point, level with the point where the text spans it. */
