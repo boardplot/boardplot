@@ -213,7 +213,7 @@ Defaults are the `bridge` preset.
 | marks.arrow.headWidth | number |  |  |  | Head width in px at its base (3 to 24). Absent means 7. |
 | marks.arrow.tipGap | number |  |  |  | Air in px between the tip and the edge of the mark it points at (0 to 24). Absent means 6. |
 | marks.arrow.tailGap | number |  |  |  | Air in px between the tail and its text (0 to 16). Absent means 4. |
-| marks.arrow.minShaft | number |  |  |  | The shortest shaft in px, tail to head base (0 to 96). A callout arrow seats its text this far out, and a CAGR bracket keeps its legs this long. Absent means 24. |
+| marks.arrow.minShaft | number |  |  |  | The shortest shaft in px, tail to head base (0 to 96). A callout arrow seats its text this far out. Absent means 24. |
 | marks.arrow.stroke | number |  |  |  | Shaft width in px (0.5 to 4). Absent means the thin `stroke.rule` line; 1.5 matches `stroke.mark`. |
 | labels | object |  |  |  | Label conventions. Absent keeps the shipped placement. |
 | labels.endLabelPlacement | string |  | `'gutter'`, `'lineEnd'` |  | Default for the line option endLabelPlacement: 'gutter' puts every end label right of the plot, 'lineEnd' puts the label of a series that ends early beside its last point. |

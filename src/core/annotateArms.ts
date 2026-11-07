@@ -318,10 +318,9 @@ function drawLiftedCagrArm(
   const stubs = a.lineAnchored && b.lineAnchored && (!a.series && !b.series || buriedA || buriedB);
   const look = armLook(input.theme);
   if (!stubs) {
-    // Under the standard a leg keeps half the shortest shaft above its head (the arm carries the length); 'compact' keeps 16 px past the shaft's end.
-    const legFloor = look.standard
-      ? Math.min(fromY - ARM_START_GAP, toY - endGap - look.depth) - look.minShaft / 2
-      : Math.min(fromY - ARM_START_GAP, toY - endGap - look.shaftEnd) - MIN_LEG;
+    // A leg keeps 16 px past the shaft's end in either look (the arm carries the length): the larger
+    // head of the standard takes it from the shaft, so a bracket asks no more room than before.
+    const legFloor = Math.min(fromY - ARM_START_GAP, toY - endGap - look.shaftEnd) - MIN_LEG;
     if (armY > legFloor) {
       const candidate = Math.max(legFloor, armFloor);
       const candidateArm: Rect = { x: spanX0, y: candidate - 3, w: spanX1 - spanX0, h: 6 };
@@ -589,9 +588,7 @@ function drawShiftedCagrArm(
     armX += ARM_STEP;
   }
   const look = armLook(input.theme);
-  const legFloor = look.standard
-    ? Math.max(fromX + startGap, toX + endGap + look.depth) + (inset ? INSET_MIN_LEG : look.minShaft / 2)
-    : Math.max(fromX + startGap, toX + endGap + look.shaftEnd) + (inset ? INSET_MIN_LEG : MIN_LEG);
+  const legFloor = Math.max(fromX + startGap, toX + endGap + look.shaftEnd) + (inset ? INSET_MIN_LEG : MIN_LEG);
   if (armX < legFloor) {
     // The arm moves out to the minimum shaft; its label takes whichever side
     // of it is free (pushCagrPlacement offers both).
