@@ -1,6 +1,6 @@
 # Boardplot
 
-Boardplot draws waterfalls, Mekko (Marimekko) charts, variance charts and management tables for slides, reports and dashboards. It is free and open source under Apache-2.0.
+Boardplot draws consulting-grade waterfalls, Mekko (Marimekko) charts, variance charts and management tables for slides, reports and dashboards. It is free and open source under Apache-2.0.
 
 Give an AI agent such as Claude Code or Codex your data and say what the chart should show. Boardplot runs on your computer and needs Node.js 22.12 or newer. Your agent may need a paid plan. In PowerPoint a chart is a picture, so to change it you ask the agent to draw it again.
 
@@ -18,7 +18,7 @@ This stacked column chart is one JSON spec drawn by `boardplot render`; the vari
 ## Who it is for
 
 - **People who build decks and reports.** Get the waterfalls, Mekko charts and variance charts of a board deck as images for PowerPoint, Keynote or Word. Boardplot needs no licence fee or add-in. See [PowerPoint or Keynote deck](docs/use-cases.md#powerpoint-or-keynote-deck).
-- **Business people who work with an AI agent.** The agent writes the chart spec, so you write no code. You need a local agent, such as Claude Code or Codex, and Node.js 22.12 or newer. It does not work in Claude chat, because the chart tools run on your computer. Claude Code needs a paid Claude plan. Ask your IT team if you cannot install software. See [AI agents](#ai-agents) for the setup and [Use cases](docs/use-cases.md) for example prompts.
+- **Business people who work with an AI agent.** The agent writes the chart spec, so you write no code. You need a local agent, such as Claude Code or Codex, and Node.js 22.12 or newer. It does not work in Claude on the web or on a phone, because the chart tools run on your computer. Claude Code needs a paid Claude plan or an API account. Ask your IT team if you cannot install software. See [AI agents](#ai-agents) for the setup and [Use cases](docs/use-cases.md) for example prompts.
 - **Developers who build dashboards.** The React components are responsive, with tooltips, click handlers for drill-down, zoom on time-based line and area charts, and sortable, foldable tables. See [React](#react).
 
 ## Limits

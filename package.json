@@ -1,7 +1,7 @@
 {
   "name": "boardplot",
   "version": "0.57.0",
-  "description": "Waterfall, Mekko (Marimekko) and variance charts and management tables for slides, reports and dashboards. Use it through Claude Code, Codex or other MCP agents, or as responsive React components with tooltips. Open source, Apache-2.0.",
+  "description": "Consulting-grade waterfall, Mekko (Marimekko) and variance charts and management tables for slides, reports and dashboards. Use it through Claude Code, Codex or other MCP agents, or as responsive React components with tooltips. Open source, Apache-2.0.",
   "mcpName": "io.github.boardplot/boardplot",
   "type": "module",
   "license": "Apache-2.0",

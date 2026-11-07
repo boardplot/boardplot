@@ -6,7 +6,7 @@ To have an AI agent build a slide deck, an analysis page, a React dashboard or a
 
 ## What Boardplot is
 
-Boardplot draws business charts: 37 chart types, tables and maps among them, with every label placed by one collision solver. The output is deterministic SVG or a React component, so the same spec gives the same drawing byte for byte. Totals, differences, shares and growth rates are computed from the data, and each render reports the numbers the engine derived.
+Boardplot draws consulting-grade charts: 37 chart types, tables and maps among them, with every label placed by one collision solver. The output is deterministic SVG or a React component, so the same spec gives the same drawing byte for byte. Totals, differences, shares and growth rates are computed from the data, and each render reports the numbers the engine derived.
 
 ## The spec
 
