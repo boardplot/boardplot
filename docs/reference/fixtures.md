@@ -160,6 +160,8 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | option-dashed-connectors | bar.stacked | example | Product mix across quarters |
 | plan-corridor | bar.grouped | example | Horizontal plan corridor on regional revenue |
 | grouped-cloud-cagr | bar.grouped | example | Grouped bars with a series CAGR arrow and last-year difference |
+| diff-on-arrow | bar.grouped | example | Difference between two regions on its arrow |
+| diff-beside-arrow | bar.grouped | example | Difference with placement 'label': the arrow off the rows |
 | tolerance-band | bar.grouped | example | Regional values against an authored tolerance band |
 | bar-compact-380 | bar.grouped | example | Bar in a 380px dashboard column |
 | torture-long-labels | bar.grouped | torture | Torture: long names at a generous size read whole, never cut |

@@ -200,6 +200,8 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | option-dashed-connectors | example | Product mix across quarters |
 | plan-corridor | example | Horizontal plan corridor on regional revenue |
 | grouped-cloud-cagr | example | Grouped bars with a series CAGR arrow and last-year difference |
+| diff-on-arrow | example | Difference between two regions on its arrow |
+| diff-beside-arrow | example | Difference with placement 'label': the arrow off the rows |
 | tolerance-band | example | Regional values against an authored tolerance band |
 | bar-compact-380 | example | Bar in a 380px dashboard column |
 | torture-long-labels | torture | Torture: long names at a generous size read whole, never cut |
