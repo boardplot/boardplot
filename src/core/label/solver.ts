@@ -617,8 +617,8 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
         // Hard when any counted hit is not a label, else label when any is: the order of hits does not matter.
         let sawLabel = false;
         const hard = anyHit(occupied, rect, padding, (o) => {
-          // A moved label leaves its annotation's drawing where it is, so that drawing blocks the move.
-          if (!isMoved && o.kind === 'annotation' && selfAnn && o.owner.annotationId === selfAnn) return false;
+          // A moved label leaves its annotation's drawing where it is, so a move onto that drawing is blocked. The claim of its own old seat blocks nothing.
+          if (o.kind === 'annotation' && selfAnn && o.owner.annotationId === selfAnn && (!isMoved || o.part === 'bracketLabel' || !rectsOverlap(o.rect, rect, 0))) return false;
           if (overRules && (o.part === 'referenceLine' || o.part === CROSSABLE_RULE_PART)) return false;
           if (cand.overValueLines && isValueLine(o)) return false;
           if (overLegend && o.kind === 'legend') return false;
@@ -1008,7 +1008,7 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
     const label = placed.find((entry) => entry.id === id);
     if (!label?.leader) continue;
     const pieces = leaderPieces(label.leader.d);
-    if (pieces.some(([a, b]) => occupied.hitsWhich(pieceBox(a, b), 0).some((o) => o.kind === 'label' && !sameRect(o.rect, label.rect) && segmentHitsRect(a, b, o.rect)))) {
+    if (pieces.some(([a, b]) => occupied.hitsWhich(pieceBox(a, b), 0).some((o) => o.kind === 'label' && !sameOwner(o.owner, label.owner) && segmentHitsRect(a, b, o.rect)))) {
       delete label.leader;
       warnings.push({
         code: 'label-offset-blocked',
@@ -1269,10 +1269,6 @@ function nearestPointOf(rect: Rect, other: Rect): Point {
     return from <= to ? (from + to) / 2 : otherLow > low ? low + size : low;
   };
   return { x: nearest(rect.x, rect.w, other.x, other.w), y: nearest(rect.y, rect.h, other.y, other.h) };
-}
-
-function sameRect(a: Rect, b: Rect): boolean {
-  return a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
 }
 
 /** The shortest authored move that draws a leader back to the mark: about one text line. */

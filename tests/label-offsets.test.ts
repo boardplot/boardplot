@@ -5,6 +5,7 @@ import { expect, it } from 'vitest';
 import { layoutColumn } from '../src/core/charts/column/layout';
 import { layoutWaterfall } from '../src/core/charts/waterfall/layout';
 import { getChartDefinition } from '../src/core/registry';
+import { getFixtures } from '../src/fixtures';
 
 const bridge = { items: [
   { id: 'a', label: 'Start', type: 'total' as const, value: 100 },
@@ -82,4 +83,13 @@ it('a moved label keeps every other value, and a leader that would cross text go
   for (const id of ['point:s:q1', 'point:s:q2', 'point:s:q4']) expect(label(geometry, id).rect).toEqual(label(plain, id).rect);
   expect((label(geometry, 'point:s:q3') as { leader?: unknown }).leader).toBeUndefined();
   expect(geometry.warnings.find((warning) => warning.code === 'label-offset-blocked')!.message).toContain('leader');
+});
+
+// A moved label's own leader room is no text: the leader back to its point must stay.
+it('a moved label keeps a leader that crosses only its own room', () => {
+  const line = getChartDefinition('line')!;
+  const fixture = getFixtures('line').find((entry) => entry.id === 'line-cell-label-on-last-complete-week')! as { data: unknown; options: object };
+  const geometry = line.layout(line.normalize(fixture.data), { ...line.defaults, ...fixture.options, labelOffsets: { 'point:coverage:w5': { y: -14 } } } as never) as ReturnType<typeof layoutColumn>;
+  expect((label(geometry, 'point:coverage:w5') as { leader?: unknown }).leader).toBeDefined();
+  expect(geometry.warnings.some((warning) => warning.code === 'label-offset-blocked')).toBe(false);
 });
