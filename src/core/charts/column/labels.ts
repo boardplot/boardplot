@@ -291,7 +291,7 @@ function pointRequests(
       ...(typeof val.labelOverride === 'string' ? { keepWhenDense: true as const } : {}),
       // A point label prints no percent part (label-part-unavailable).
       ...namesOnly(content!.filter((part) => part !== 'percent'), val.labelOverride),
-      candidates: pointCandidates(rect, tsize, v < 0, paints.inside(s, val, c, si), y, rangeOf(s, ci), outset, rows[index])
+      candidates: pointCandidates(rect, tsize, v < 0, paints.inside(s, val, c, si), y, rangeOf(s, ci), outset, rows[index], scene.refTickYs.get(c.id))
         .map(candidate => ({ ...candidate, rect: clampX(candidate.rect), insidePaint, insidePattern })),
     });
   }
@@ -799,7 +799,12 @@ export function planColumnLabels(
         { slot: 'rightOfTickAbove', rect: box(primaryX, ry - size.height - 4, size), penalty: 2 },
         { slot: 'rightOfTickBelow', rect: box(primaryX, ry + 4, size), penalty: 3 },
         { slot: 'leftOfTick', rect: box(bx - 12 - size.width, ry - size.height / 2, size), penalty: 4 },
-      ],
+      // A side seat keeps its centre in the gaps beside its column: centred over a neighbour's column (above
+      // its top, where the seat is free) the value reads as that column's plan.
+      ].filter((candidate) => {
+        const mid = candidate.rect.x + candidate.rect.w / 2;
+        return (ci === 0 || mid >= bx - band.step + band.bandwidth) && (ci === cats.length - 1 || mid <= bx + band.step);
+      }),
     });
   });
   const end = scene.netLineEnd;
@@ -959,6 +964,8 @@ function pointCandidates(
   /** Extra clearance outside the column end (anomaly flag marker). */
   outset = 0,
   rows?: SeatRows,
+  /** The y of each reference tick across this category (a plan tick). */
+  tickYs: readonly number[] = [],
 ): SlotCandidate[] {
   const cx = rect.x + rect.w / 2;
   const markTop = rect.y;
@@ -980,31 +987,39 @@ function pointCandidates(
   // side bearing (1 px), and the box stays clear of the column end. The
   // 28 px floor is for a label along a bar; a column value reads across.
   const inside = tsize.width <= rect.w && tsize.height + 4 <= rect.h;
+  // A reference tick over the column's end, too close for the value to stand between them, keeps the
+  // value on its own column: inside the end comes before the rows above the tick, where it would read as the tick's.
+  const tickBlocks = (from: number, to: number) => tickYs.some((ty) => ty > from && ty < to);
+  const underTick = (penalty: number, slotY: number): SlotCandidate[] => inside ? [{ slot: 'insideEnd', rect: { x: cx - w / 2, y: slotY, w, h }, penalty, insideFill }] : [];
   if (!negative) {
+    const blocked = !range && tickBlocks(yTop - h - 6, yTop - 0.5);
     return [
       ...beside,
       // A reference line across this seat (an average marker) does not move
       // the value: it crosses the line on a halo, level with its neighbours.
       { slot: 'outsideTop', rect: { x: cx - w / 2, y: yTop - h - 4, w, h }, penalty: 0, overRules: true },
+      ...(blocked ? underTick(0.25, markTop + 2) : []),
       ...(rows?.lifted === undefined ? [] : [{ slot: 'outsideTopLifted', rect: { x: cx - w / 2, y: rows.lifted, w, h }, penalty: 0.5 }]),
       {
         slot: 'outsideTopShifted',
         rect: { x: cx - w / 2, y: rows?.stagger ?? yTop - 2 * h - 8, w, h },
         penalty: 1,
       },
-      ...(inside ? [{ slot: 'insideEnd', rect: { x: cx - w / 2, y: markTop + 2, w, h }, penalty: 2, insideFill }] : []),
+      ...(inside && !blocked ? [{ slot: 'insideEnd', rect: { x: cx - w / 2, y: markTop + 2, w, h }, penalty: 2, insideFill }] : []),
     ];
   }
+  const blocked = !range && tickBlocks(yBot + 0.5, yBot + h + 6);
   return [
     ...beside,
     { slot: 'outsideBottom', rect: { x: cx - w / 2, y: yBot + 4, w, h }, penalty: 0, overRules: true },
+    ...(blocked ? underTick(0.25, markBot - h - 2) : []),
     ...(rows?.lifted === undefined ? [] : [{ slot: 'outsideBottomLifted', rect: { x: cx - w / 2, y: rows.lifted, w, h }, penalty: 0.5 }]),
     {
       slot: 'outsideBottomShifted',
       rect: { x: cx - w / 2, y: rows?.stagger ?? yBot + h + 8, w, h },
       penalty: 1,
     },
-    ...(inside ? [{ slot: 'insideEnd', rect: { x: cx - w / 2, y: markBot - h - 2, w, h }, penalty: 2, insideFill }] : []),
+    ...(inside && !blocked ? [{ slot: 'insideEnd', rect: { x: cx - w / 2, y: markBot - h - 2, w, h }, penalty: 2, insideFill }] : []),
   ];
 }
 

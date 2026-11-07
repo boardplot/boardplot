@@ -844,6 +844,31 @@ export const fixtures: Fixture<RangeChartData, AnomalyColumnOptions>[] = [
     ],
   },
   {
+    // A plan tick over a column short of plan keeps the column's value inside its end, and the
+    // delta and the callout on that column stack straight above the tick.
+    id: 'plan-ticks-delta-callout',
+    title: 'Actual columns with plan ticks, a delta and a callout stacked over the one year below plan',
+    kind: 'example',
+    data: {
+      categories: ['FY21', 'FY22', 'FY23', 'FY24', 'FY25'].map((label) => ({ id: label.toLowerCase(), label })),
+      series: [
+        { id: 'revenue', label: 'Revenue', values: [410, 455, 470, 552, 588] },
+        { id: 'plan', label: 'Plan', role: 'reference', values: [400, 450, 505, 545, 580] },
+      ],
+    },
+    options: {
+      title: 'FY23 was the only year below plan',
+      unit: 'EUR m',
+      source: 'Illustrative data',
+      highlight: ['fy23'],
+      referenceStyle: 'tick',
+    },
+    annotations: [
+      { kind: 'delta', at: { categoryId: 'fy23', seriesId: 'revenue' }, vs: { categoryId: 'fy23', seriesId: 'plan' } },
+      { kind: 'callout', at: { categoryId: 'fy23', seriesId: 'revenue' }, text: 'Supplier switch delayed launches' },
+    ],
+  },
+  {
     // Ranked dense columns: values wider than their columns lift clear of the
     // taller neighbour or stagger one row up on a short leader, none floats.
     id: 'ranked-dense-staggered',

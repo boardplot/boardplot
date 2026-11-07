@@ -33,6 +33,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | stacked100-shares-sum | column.stacked100 | torture | Torture: 100% stacked shares that add up to 100% in every column |
 | stacked100-energy-mix | column.stacked100 | example | Stacked 100% column with absolute totals and 100% indicator |
 | clustered-brand-gap | column.grouped | example | Clustered columns with value axis, gridlines, and diff arrow |
+| plan-ticks-delta-callout | column.grouped | example | Actual columns with plan ticks, a delta and a callout stacked over the one year below plan |
 | ranked-dense-staggered | column.grouped | example | Ranked dense columns: staggered values, tick step, dotted grid, muted labels, highlight emphasis |
 | ratio-tier-zero-denominator | column.grouped | torture | Torture: zero denominator stays visible as n/a in the ratio tier |
 | negative-stacks | column.stacked | torture | Torture: negatives mixed into stacks, one all-negative column |

@@ -196,6 +196,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | stacked100-shares-sum | torture | Torture: 100% stacked shares that add up to 100% in every column |
 | stacked100-energy-mix | example | Stacked 100% column with absolute totals and 100% indicator |
 | clustered-brand-gap | example | Clustered columns with value axis, gridlines, and diff arrow |
+| plan-ticks-delta-callout | example | Actual columns with plan ticks, a delta and a callout stacked over the one year below plan |
 | ranked-dense-staggered | example | Ranked dense columns: staggered values, tick step, dotted grid, muted labels, highlight emphasis |
 | ratio-tier-zero-denominator | torture | Torture: zero denominator stays visible as n/a in the ratio tier |
 | negative-stacks | torture | Torture: negatives mixed into stacks, one all-negative column |

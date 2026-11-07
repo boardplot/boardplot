@@ -317,6 +317,11 @@ export interface AnnotatePassInput {
    */
   calloutRowPitch?: number;
   /**
+   * Columns: a callout, note or delta whose seat above its column is blocked by a reference tick, or
+   * taken by another note on the same column, stacks straight above it.
+   */
+  calloutColumnStack?: boolean;
+  /**
    * A callout's leader is claimed, and a seat whose leader crosses a label
    * set before it is passed over. Scatter solves its callouts before the
    * point names, on an open plot, so crowded callouts go to the note.
@@ -1689,6 +1694,16 @@ function calloutLabel(
     }
     return { slot, rect: labelRect, penalty, ...(leader ? { leaderFrom: edgeToward(labelRect) } : {}) };
   };
+  const sharing = (kind === 'callout' || kind === 'note' || kind === 'delta') ? input.annotations.filter((other) =>
+    ['callout', 'note', 'delta'].includes(other.kind) && 'at' in other && other.at !== undefined && samePoint(other.at as AnchorRef)).length : 0;
+  const columnTop = input.calloutColumnStack === true && !glyph && !anchor.lineAnchored && box.w === 0 && sharing > 0;
+  const stackSeats: SlotCandidate[] = [];
+  if (columnTop) {
+    const aboveRect = { x: at.x - w / 2, y: top - h - gap, w, h };
+    const ticks = input.occupied.hitsWhich(aboveRect, 0).filter((claim) => claim.kind === 'mark');
+    const base = Math.min(top - gap, ...ticks.map((claim) => claim.rect.y - 4));
+    for (let k = 0; k < sharing; k++) stackSeats.push(mk(`aboveStack${k}`, at.x - w / 2, base - h - k * (h + 4), 0.1 * (k + 1)));
+  }
   let all: SlotCandidate[] = [
     mk(
       'above',
@@ -1708,6 +1723,9 @@ function calloutLabel(
       prefer === 'below' ? -1 : 3,
       glyph !== undefined,
     ),
+    // A column's seat above, stacked: over a plan tick across the column's end, and over the other notes
+    // on the same column (a delta, then its callout), straight above it with no leader.
+    ...stackSeats,
     // over or under the first point of a late-starting line, the
     // note may also end at the point, where its own line has not started. The centred seat
     // lost to the line's first climb, and the note moved to the side its author did not ask for.
