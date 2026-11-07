@@ -27,6 +27,7 @@ Before you open a pull request that changes code, run once:
 
 - `npm run typecheck`. The compiler rechecks changed inputs and keeps its graph in the ignored `node_modules/.cache`.
 - The test files of the area you changed: `npx vitest run <files>`. Add `tests/golden-svg.test.ts` when the change can affect chart output.
+- When the change can affect chart output, also the layout scorecard of each chart type whose goldens changed: `npm run check:scorecard -- --only <type,...>`. One type takes seconds. Record intended changes before the first push, as the Tests section says, so CI does not fail on a stale baseline. Update the React markup the same way: `MARKUP_UPDATE=1 npx vitest run tests/entry-markup.test.tsx`.
 - `npm run docs:build` when you change documentation or its generator. Check that it leaves no unexpected diff.
 - `npm run smoke:package` only for packaging or bundle changes. It builds through `npm pack`, so do not build first.
 
@@ -59,8 +60,8 @@ Vitest's default reporter hides `console.log` of a passing test. For debug outpu
 - A new test needs one sentence that names the real problem it prevents. Put it in a comment above the test. Prefer adding a case to an existing file of the same area.
 - Do not add a test that repeats a golden, pins docs wording or describe text, lists option keys, or checks an internal helper whose output the goldens draw. The option-capability probe census is the exception.
 - Sweeps over fixtures, widths or themes are manual scripts, not vitest files. The guard censuses stay in vitest: the measured floor (content sizing and card floor), React against measure, axe accessibility, spec parity, headless layout, repaint light to dark, CLI grammar over the shipped docs, and the option-capability probe. They catch fixture-specific bugs that a golden re-baseline accepts.
-- Run `npm run check:scorecard` to check fixture geometry, frame text and series names across widths, themes and selected settings. It also checks repairs, text overlap, line crossings and label omissions. CI runs it on every pull request in 12 shards. Run it locally only to debug a failed shard. Re-record all outcomes with `npm run check:scorecard -- --record`.
-- When the scorecard gate fails, render each changed case at its recorded width and inspect it. Re-record the baseline, then list each changed case and its reason in the PR body, as for goldens.
+- Run `npm run check:scorecard` to check fixture geometry, frame text and series names across widths, themes and selected settings. It also checks repairs, text overlap, line crossings and label omissions. CI runs it on every pull request in 12 shards. Locally, run it only for the chart types you changed (`--only <type,...>`) or to debug a failed shard. Re-record all outcomes with `npm run check:scorecard -- --record`.
+- When the scorecard reports CHANGED cases, locally or in CI, render each changed case at its recorded width and inspect it. Re-record the intended cases (`--only <type,...> --record` for the types you ran), then list each changed case and its reason in the PR body, as for goldens.
 
 ## Generated files
 
