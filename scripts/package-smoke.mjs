@@ -768,18 +768,22 @@ function jsonOutput(command, args, options) {
   }
 }
 
-function packOutput(output) {
+// npm 11 prints `npm pack --json` as an array, npm 12 as an object keyed by package name.
+// A build log can come first, so the result starts at the last unindented opening bracket.
+export function packOutput(output) {
   const lines = output.split(/\r?\n/);
   let jsonStart = -1;
   for (let index = lines.length - 1; index >= 0; index -= 1) {
-    if (lines[index].trim() === '[') {
+    const line = lines[index].trimEnd();
+    if (line === '[' || line === '{') {
       jsonStart = index;
       break;
     }
   }
-  if (jsonStart < 0) fail(`npm pack returned no JSON array:\n${output}`);
+  if (jsonStart < 0) fail(`npm pack returned no JSON:\n${output}`);
   try {
-    return JSON.parse(lines.slice(jsonStart).join('\n'));
+    const parsed = JSON.parse(lines.slice(jsonStart).join('\n'));
+    return Array.isArray(parsed) ? parsed : Object.values(parsed);
   } catch {
     fail(`npm pack returned malformed JSON:\n${output}`);
   }
