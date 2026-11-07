@@ -940,7 +940,7 @@ function placeDiff(s: AnnotationScope, ann: Extract<Annotation, { kind: 'diff' }
     a.owner.categoryId === b.owner.categoryId && a.owner.seriesId !== b.owner.seriesId ? input.barInset.gapWord : '';
   // The word is furniture: the record keeps the number alone as the computed text.
   const label = gapWord ? { text: `${gapWord}\u00A0${computed}`, computed } : authored(s, 'diff', lead ? `${lead} ${computed}` : computed, ann.text, computed);
-  drawDiffArm(s, a, b, label.text, id, label.computed, derivation, gapWord ? { lead: gapWord, value: computed } : undefined);
+  drawDiffArm(s, a, b, label.text, id, label.computed, derivation, gapWord ? { lead: gapWord, value: computed } : undefined, ann.placement);
 }
 
 function placeNote(s: AnnotationScope, ann: Extract<Annotation, { kind: 'callout' | 'note' }>): void {

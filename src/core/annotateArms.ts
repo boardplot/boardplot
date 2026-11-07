@@ -9,6 +9,7 @@ import type { Point, Rect } from './geometry';
 import { PRIORITY, type LabelRequest } from './label/solver';
 import { ovalPath } from './svgPath';
 import { arrowLook, type ArrowLook } from './annotationArrow';
+import { anchorValueBox } from './annotateCallout';
 import { computedTextRole } from './textRole';
 import type { OccupiedIndex } from './label/occupied';
 import type { Id, OwnerRef } from './types/cell';
@@ -863,11 +864,14 @@ function anchorBar(occupied: OccupiedIndex, anchor: AnchorResolution): Rect | un
 }
 
 /**
- * Bar inset: the gap between two positive bars of one category. A dotted drop
- * runs from the longer bar's end into the shorter bar's row, and an arrow
- * runs left from there to the shorter bar's end, its "gap +103" label on a
- * white plate on the arrow. Returns false when the bars do not allow it (a
- * negative value, a bar between the two), and the generic arrow draws.
+ * A difference on horizontal bars, drawn in the shorter bar's row: a dotted
+ * drop runs from the longer bar's end into that row, and an arrow runs between
+ * the drop and the shorter bar's end with its label on a plate in a break of
+ * the shaft, in the row of the gap it measures. Two bars of one category
+ * (`parts`, "gap +103") point at the shorter bar; two categories point at the
+ * `to` end. Returns false when the bars do not allow it (a negative value, a
+ * bar the drop would cross, no room for the label and some shaft), and the
+ * level arrow draws.
  */
 function drawInsetBarGap(
   pass: ArmDrawPass,
@@ -876,7 +880,7 @@ function drawInsetBarGap(
   text: string,
   annId: Id,
   computed: string,
-  parts: ComparisonParts,
+  parts: ComparisonParts | undefined,
   derivation?: AnnotationDerivation,
 ): boolean {
   const { input, nodes, labelRequests, placed, nid } = pass;
@@ -887,35 +891,55 @@ function drawInsetBarGap(
   if (!longBar || !shortBar) return false;
   const y = short.y;
   const dropFrom = long.y < y ? longBar.y + longBar.h : longBar.y;
-  // A mark of a third series between the two rows would be crossed by the drop.
+  // A mark between the two rows that reaches the longer bar's end would be crossed by the drop.
   const dropStrip: Rect = { x: long.x - 1, y: Math.min(dropFrom, y) + 1, w: 2, h: Math.max(Math.abs(y - dropFrom) - 2, 0) };
-  if (dropStrip.h > 0 && input.occupied.hitsWhich(dropStrip, 0).some((claim) => claim.kind === 'mark' && claim.owner.seriesId !== short.owner.seriesId)) return false;
+  const own = (owner: OwnerRef) => [short, long].some((end) => owner.categoryId === end.owner.categoryId && owner.seriesId === end.owner.seriesId);
+  if (dropStrip.h > 0 && input.occupied.hitsWhich(dropStrip, 0).some((claim) => claim.kind === 'mark' &&
+    (parts ? claim.owner.seriesId !== short.owner.seriesId : !own(claim.owner)))) return false;
   const look = armLook(input.theme);
-  const tipX = short.x + INSET_TIP_GAP;
+  // Two categories ride a row only from the bars' far ends: an end on a bar's start edge would run the arrow through that bar.
+  const atEnd = (end: AnchorResolution, bar: Rect) => Math.abs(end.x - (bar.x + bar.w)) < 1;
+  if (!parts && (!atEnd(short, shortBar) || !atEnd(long, longBar))) return false;
+  // A value printed past the shorter bar's end stays clear: the arrow stops off that value instead.
+  const shortValue = parts ? undefined : anchorValueBox(input.occupied, { x: short.x, y: short.y - 1, w: 0, h: 2 }, short.owner, 24);
+  const shortEdge = shortValue && shortValue.x >= short.x - 2 ? shortValue.x + shortValue.w : short.x;
+  // Two categories: the head points at `to`, at its bar's end or touching the drop.
+  const towardLong = !parts && b === long;
+  const shortX = shortEdge + (look.standard && !parts ? look.tipGap : INSET_TIP_GAP);
+  const tipX = towardLong ? long.x - 1 : shortX;
+  const tailX = towardLong ? shortX : long.x;
   const regular: FontSpec = { family: input.theme.type.family, ...input.theme.type.label };
   const font: FontSpec = { ...regular, weight: emphasisWeight(input.theme) };
-  const runs = [{ text: `${parts.lead}\u00A0` }, { text: parts.value, weight: font.weight }];
-  const w = input.measure(`${parts.lead}\u00A0`, regular).width + input.measure(parts.value, font).width;
+  const runs = parts ? [{ text: `${parts.lead}\u00A0` }, { text: parts.value, weight: font.weight }] : [{ text, weight: font.weight }];
+  const w = parts ? input.measure(`${parts.lead}\u00A0`, regular).width + input.measure(parts.value, font).width : input.measure(text, font).width;
   const h = input.measure(text, font).height;
   // The label needs the arrow's middle and some shaft on both sides.
-  if (long.x - tipX < w + (look.standard ? 2 * look.depth + 8 : 4 * ARM_ARROW)) return false;
+  // Signed: a long value past the shorter bar can push the arrow's start beyond the longer bar's end.
+  if (long.x - shortX < w + (look.standard ? 2 * look.depth + 8 : 4 * ARM_ARROW)) return false;
+  // A row another annotation already runs along would merge two arrows into one, and a mark in the
+  // row (a range whisker) would sit under the shaft.
+  if (!parts && input.occupied.hitsWhich({ x: shortX, y: y - 4, w: long.x - shortX, h: 8 }, 0)
+    .some((claim) => claim.kind === 'mark' || (claim.kind === 'annotation' && claim.owner.annotationId !== annId))) return false;
   pushGuide(pass, 'leader0', annId, { x: long.x, y: dropFrom }, { x: long.x, y });
   const lineId = nid('diffLine');
+  const direction = Math.sign(tipX - tailX);
   nodes.push({
-    t: 'line', id: lineId, x1: long.x, y1: y, x2: tipX + look.shaftEnd, y2: y,
+    t: 'line', id: lineId, x1: tailX, y1: y, x2: tipX - direction * look.shaftEnd, y2: y,
     stroke: { token: 'ink' }, width: look.stroke, owner: { annotationId: annId }, part: 'diffArrow',
   });
   const headId = nid('arrowHead');
+  const angle = direction > 0 ? 0 : Math.PI;
   nodes.push({
-    t: 'path', id: headId, d: look.head({ x: tipX, y }, Math.PI),
+    t: 'path', id: headId, d: look.head({ x: tipX, y }, angle),
     fill: { token: 'ink' }, owner: { annotationId: annId }, part: 'arrowHead',
   });
-  const midX = (tipX + long.x) / 2;
+  const [left, right] = [Math.min(tipX, tailX), Math.max(tipX, tailX)];
+  const midX = (left + right) / 2;
   const seat: Rect = { x: midX - w / 2, y: y - h / 2, w, h };
   // The arrow claims its run either side of the label's seat, so the label can sit on it.
-  input.occupied.claim({ x: tipX, y: y - 2, w: Math.max(seat.x - 2 - tipX, 0), h: 4 }, 'annotation', { annotationId: annId });
-  input.occupied.claim({ x: seat.x + seat.w + 2, y: y - 2, w: Math.max(long.x - seat.x - seat.w - 2, 0), h: 4 }, 'annotation', { annotationId: annId });
-  claimArrowHead(input.occupied, annId, tipX, y, look, Math.PI);
+  input.occupied.claim({ x: left, y: y - 2, w: Math.max(seat.x - 2 - left, 0), h: 4 }, 'annotation', { annotationId: annId });
+  input.occupied.claim({ x: seat.x + seat.w + 2, y: y - 2, w: Math.max(right - seat.x - seat.w - 2, 0), h: 4 }, 'annotation', { annotationId: annId });
+  claimArrowHead(input.occupied, annId, tipX, y, look, angle);
   labelRequests.push({
     id: `annotation:${annId}`,
     kind: 'annotation',
@@ -934,7 +958,7 @@ function drawInsetBarGap(
   });
   placed.push({
     id: annId, kind: 'diff', computedText: computed,
-    tone: parts.value.startsWith('−') || parts.value.startsWith('-') ? 'bad' : 'neutral',
+    tone: (parts?.value ?? computed).startsWith('−') || (parts?.value ?? computed).startsWith('-') ? 'bad' : 'neutral',
     nodeIds: [lineId, headId], labelId: `annotation:${annId}`,
     ...(derivation ? { derivation } : {}),
   });
@@ -974,13 +998,15 @@ export function drawDiffArm(
   computed: string,
   derivation?: AnnotationDerivation,
   parts?: ComparisonParts,
+  placement?: 'auto' | 'label' | 'bracket',
 ): void {
   if (pass.input.comparisonLayout) {
     pass.input.comparisonLayout.draw(pass, a, b, text, annId, 'diff', computed, derivation);
     return;
   }
   if (pass.input.valueAxis === 'horizontal') {
-    if (parts && drawInsetBarGap(pass, a, b, text, annId, computed, parts, derivation)) return;
+    // placement 'label' keeps the arrow off the rows with its label beside it, the layout before the row form.
+    if ((parts || placement !== 'label') && drawInsetBarGap(pass, a, b, text, annId, computed, parts, derivation)) return;
     drawHorizontalLevelDiff(pass, a, b, text, annId, computed, derivation);
     return;
   }

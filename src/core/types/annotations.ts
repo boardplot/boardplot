@@ -188,6 +188,10 @@ export type Annotation<X extends string | number = Id> =
  * ends, dashed guides, a bracket with an arrowhead and the gap as a large
  * number. 'auto' (default) draws it where gapFill washes the same two series
  * and keeps the label elsewhere. 'label' keeps the label at the anchor.
+ * On a bar chart, a diff between two categories of one series rides in the
+ * shorter bar's row under 'auto': an arrow from the longer bar's end to the
+ * `to` end with the number in a break of the shaft. 'label' keeps the arrow
+ * off the rows with its label beside it.
  * Other anchors and other charts keep the label.
  */
 export interface GapPlacement {

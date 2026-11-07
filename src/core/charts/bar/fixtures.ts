@@ -817,6 +817,30 @@ fixtures.push(
   },
 );
 
+/** A difference between two categories rides in the shorter bar's row, the number on its arrow. */
+const diffOnArrow = {
+  id: 'diff-on-arrow',
+  title: 'Difference between two regions on its arrow',
+  kind: 'example' as const,
+  data: {
+    categories: [{ id: 'north', label: 'North' }, { id: 'south', label: 'South' }, { id: 'east', label: 'East' }, { id: 'west', label: 'West' }],
+    series: [{ id: 'sales', label: 'Sales', values: [82, 64, 41, 23] }],
+  },
+  options: {
+    title: 'West sells 59 less than North',
+    unit: 'EUR m',
+    source: 'Illustrative data',
+    highlight: ['north', 'west'],
+  },
+  annotations: [{ kind: 'diff' as const, mode: 'absolute' as const, from: { categoryId: 'north', seriesId: 'sales' }, to: { categoryId: 'west', seriesId: 'sales' } }],
+};
+fixtures.push(diffOnArrow, {
+  ...diffOnArrow,
+  id: 'diff-beside-arrow',
+  title: "Difference with placement 'label': the arrow off the rows",
+  annotations: [{ ...diffOnArrow.annotations[0]!, placement: 'label' as const }],
+});
+
 const toleranceFixture = fixtures.find(fixture => fixture.id === 'plan-corridor')!;
 fixtures.push({
   ...toleranceFixture,
