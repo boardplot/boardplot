@@ -955,6 +955,8 @@ export interface WaterfallOptions extends BaseOptionsFor<'waterfall'> {
   signColor?: boolean;
   /** Horizontal bridge: the name band (label) and the value band (value), in px. */
   columnOverrides?: Record<string, { width?: number }>;
+  /** Where step brackets stand: 'shared' (default) puts all on one row, 'span' each right above its own steps. */
+  bracketRow?: 'shared' | 'span';
 }
 export type LineInterpolation = 'linear' | 'step-after' | 'step-before' | 'monotone';
 export type GapFillTone = 'good' | 'bad' | 'neutral';

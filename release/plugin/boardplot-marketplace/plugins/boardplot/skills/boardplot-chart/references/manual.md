@@ -898,7 +898,7 @@ Each label of an SVG render carries `label:` and its id in `data-id`, such as `l
 
 ### Where a bracket stands
 
-A `bracket` on a waterfall stands directly above its own bars and their values. It moves to the row at the top of the plot when its label, run or ticks would meet something there. A `valueLine` authored after a bracket is not yet claimed when the bracket chooses its seat, so author the value line first to keep the bracket off it.
+The `bracket`s of one waterfall stand on one row: the lowest row that clears every bracketed span and its values. A single bracket stands directly above its own bars and their values. A bracket moves to the row at the top of the plot when its label, run or ticks would meet something on its row. The plot keeps room above it for that top row only where a bracket stands there. Where every bracket stands on its row below, the empty band goes back to the plot. `bracketRow: "span"` stands each bracket directly above its own bars and their values instead. A `valueLine` authored after a bracket is not yet claimed when the bracket chooses its seat, so author the value line first to keep the bracket off it.
 
 ### Drawing annotations
 

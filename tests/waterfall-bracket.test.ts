@@ -105,3 +105,23 @@ it('a bracket whose seat is taken stands in the top row', () => {
   const labels = geometry.labels.filter((label) => label.kind === 'annotation' && !label.hidden);
   expect(labels).toHaveLength(2);
 });
+
+// Brackets of one bridge at different heights read as unrelated groups, and their row changed with the width:
+// they must share one row, and bracketRow 'span' keeps each right above its own steps.
+it('the brackets of one bridge share one row, and span keeps each above its steps', () => {
+  const annotations = [
+    { kind: 'bracket', from: 'b', to: 'c', label: 'Commercial' },
+    { kind: 'bracket', from: 'd', to: 'e', label: 'Costs' },
+  ];
+  const runs = (options: object) => layoutWaterfall(data, { size: { width: 960 }, annotations, ...options } as never)
+    .debug.occupied.filter((claim) => claim.part === 'bracket').map((claim) => claim.rect.y);
+  const [first, second] = runs({});
+  expect(second).toBeCloseTo(first!, 5);
+  const [own1, own2] = runs({ bracketRow: 'span' });
+  expect(own2).toBeGreaterThan(own1! + 10);  // Two wide labels over neighbour steps meet on one row, and the top row seats only one: both stay drawn.
+  const narrow = layoutWaterfall(data, { size: { width: 320 }, annotations: [
+    { kind: 'bracket', id: 'b0', from: 'b', to: 'b', label: 'Outer' },
+    { kind: 'bracket', id: 'b1', from: 'c', to: 'c', label: 'Inner' },
+  ] } as never);
+  expect(narrow.labels.filter((label) => label.kind === 'annotation' && !label.hidden)).toHaveLength(2);
+});

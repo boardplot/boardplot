@@ -452,6 +452,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | interview-status-buildup | waterfall.vertical | example | Interview pipeline build-up by status |
 | revenue-build-up | waterfall.vertical | example | Revenue → EBIT build-up with diff arrow |
 | step-brackets | waterfall.vertical | example | Brackets over bridge steps print their sums |
+| step-brackets-span | waterfall.vertical | example | bracketRow 'span' stands each bracket right above its own steps |
 | callout-label-offset | waterfall.vertical | example | labelOffsets moves a callout up from its step |
 | bracket-low-steps | waterfall.vertical | example | A bracket stands directly above low steps |
 | build-down | waterfall.vertical | example | Build-down: revenue to net income |
