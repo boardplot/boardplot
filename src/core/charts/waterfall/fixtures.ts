@@ -214,6 +214,34 @@ export const fixtures: Fixture<WaterfallData, WaterfallOptions>[] = [
     ],
   },
   {
+    id: 'total-change-bracket',
+    title: 'The total change runs as the growth bracket over the step brackets',
+    kind: 'example',
+    data: {
+      items: [
+        { id: 'fy24', label: 'EBIT FY24', type: 'total', value: 180 },
+        { id: 'volume', label: 'Volume', value: 34 },
+        { id: 'mix', label: 'Mix', value: 12 },
+        { id: 'price', label: 'Price', value: 21 },
+        { id: 'material', label: 'Material', value: -28 },
+        { id: 'labour', label: 'Labour', value: -19 },
+        { id: 'energy', label: 'Energy', value: -14 },
+        { id: 'fy25', label: 'EBIT FY25', type: 'total' },
+      ],
+    },
+    options: {
+      title: 'Cost inflation eats most of the commercial gains',
+      subtitle: 'EBIT bridge, FY24 to FY25',
+      unit: '€ million',
+      source: 'Illustrative bridge',
+    },
+    annotations: [
+      { kind: 'bracket', from: 'volume', to: 'price', label: 'Commercial' },
+      { kind: 'bracket', from: 'material', to: 'energy', label: 'Cost inflation' },
+      { kind: 'diff', from: { categoryId: 'fy24' }, to: { categoryId: 'fy25' }, mode: 'both' },
+    ],
+  },
+  {
     id: 'callout-label-offset',
     title: 'labelOffsets moves a callout up from its step',
     kind: 'example',

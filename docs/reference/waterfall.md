@@ -152,6 +152,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | revenue-build-up | example | Revenue → EBIT build-up with diff arrow |
 | step-brackets | example | Brackets over bridge steps print their sums |
 | step-brackets-span | example | bracketRow 'span' stands each bracket right above its own steps |
+| total-change-bracket | example | The total change runs as the growth bracket over the step brackets |
 | callout-label-offset | example | labelOffsets moves a callout up from its step |
 | bracket-low-steps | example | A bracket stands directly above low steps |
 | build-down | example | Build-down: revenue to net income |
