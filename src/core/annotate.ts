@@ -1701,7 +1701,10 @@ function calloutLabel(
   if (columnTop) {
     const aboveRect = { x: at.x - w / 2, y: top - h - gap, w, h };
     const ticks = input.occupied.hitsWhich(aboveRect, 0).filter((claim) => claim.kind === 'mark');
-    const base = Math.min(top - gap, ...ticks.map((claim) => claim.rect.y - 4));
+    // The stack starts over a reference tick and over the column's own value printed above it.
+    const value = input.printedLabels?.find((label) => label.kind === 'point' && label.hidden === undefined &&
+      label.owner.categoryId === anchor.owner.categoryId && label.owner.seriesId === anchor.owner.seriesId && label.rect.y < top);
+    const base = Math.min(top - gap, ...ticks.map((claim) => claim.rect.y - 4), ...(value ? [value.rect.y - 4] : []));
     for (let k = 0; k < sharing; k++) stackSeats.push(mk(`aboveStack${k}`, at.x - w / 2, base - h - k * (h + 4), 0.1 * (k + 1)));
   }
   let all: SlotCandidate[] = [

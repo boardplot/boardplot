@@ -185,6 +185,12 @@ it('a column under its plan tick keeps its value, and its notes stack straight a
   const centre = (label: Label) => label.rect.x + label.rect.w / 2;
   expect(Math.abs(centre(delta) - centre(callout))).toBeLessThan(1);
   expect(callout.rect.y + callout.rect.h).toBeLessThanOrEqual(delta.rect.y);
+  // A lone delta on a column whose value prints above it stands straight over that value, not on a curved leader.
+  const lone = (layoutColumn({ categories: data.categories, series: [{ id: 'act', label: 'Actual', values: [412, 450, 561] }] } as never,
+    { size: { width: 960, height: 300 }, annotations: [{ kind: 'delta', id: 'd', at: { categoryId: 'c', seriesId: 'act' }, vs: { categoryId: 'a', seriesId: 'act' } }] } as never) as unknown as { labels: Label[] }).labels;
+  const [loneDelta, value] = [lone.find((label) => label.id === 'annotation:d')!, lone.find((label) => label.id === 'point:act:c')!];
+  expect(loneDelta.leader).toBeUndefined();
+  expect(loneDelta.rect.y + loneDelta.rect.h).toBeLessThanOrEqual(value.rect.y);
   // On a narrow chart a plan value never stands centred over a neighbour's column, where it reads as that column's plan.
   const five = { categories: ['a', 'b', 'c', 'd', 'e'].map((id) => ({ id, label: id.toUpperCase() })), series: [
     { id: 'act', label: 'Actual', values: [410, 455, 470, 552, 588] }, { id: 'plan', label: 'Plan', role: 'reference', values: [400, 450, 505, 545, 580] }] };
