@@ -331,23 +331,40 @@ function layoutVerticalWaterfall(
   // nothing seats gets the 30 px band. A leg still short widens by its
   // deficit.
   let pad = 0;
-  let pass = layoutWaterfallWithPad(data, options, pad, true, undefined, !options.annotations?.length);
+  let cut = 0;
+  const lay = (band: number, enforceBreakOrder: boolean) => layoutWaterfallWithPad(data, options, band, true, undefined, enforceBreakOrder, cut);
+  let pass = lay(pad, !options.annotations?.length);
+  // The brackets' shared row can stand lower than the top row the bracket room holds. The empty
+  // part goes back to the plot, at most in two rounds: the taller plot lifts the bars, so a cut of
+  // the whole gap is always safe and leaves a smaller gap. A round is kept only while every bracket
+  // stays on its row and no label is newly hidden or warned about.
+  const hiddenCount = (geometry: Geometry<WaterfallMarks, WaterfallDerived>) => geometry.labels.filter((label) => label.hidden !== undefined && label.hidden !== 'redundant').length;
+  for (let round = 0; round < 2 && (pass.bracketSlack ?? 0) >= 1; round++) {
+    const before = cut;
+    cut += Math.floor(pass.bracketSlack!);
+    const next = lay(pad, !options.annotations?.length);
+    if ((next.bracketSlack ?? -1) < 0 || hiddenCount(next.geometry) > hiddenCount(pass.geometry) || (next.geometry.warnings?.length ?? 0) > (pass.geometry.warnings?.length ?? 0)) {
+      cut = before;
+      break;
+    }
+    pass = next;
+  }
   const cagr = (options.annotations ?? []).some((a) => a.kind === 'cagr');
   const unseated = (geometry: Geometry<WaterfallMarks, WaterfallDerived>) =>
     geometry.labels.some((label) => label.id.startsWith('annotation:') && label.hidden === 'collision');
   while (cagr && pad < 48 && (unseated(pass.geometry) || (pad < 18 && pass.annotationLegDeficit > 0))) {
     pad += 6;
-    pass = layoutWaterfallWithPad(data, options, pad, true, undefined, false);
+    pass = lay(pad, false);
   }
   if (pad > 0) {
     pad = unseated(pass.geometry) ? 18 : pad + 4;
-    pass = layoutWaterfallWithPad(data, options, pad, true, undefined, false);
+    pass = lay(pad, false);
   }
   // A leg short by half a pixel or less reads as full length (as on column); another round
   // would add 3 px of band and could push a fixed card under its plot floor.
   for (let i = 0; i < 3 && pass.annotationLegDeficit > 0.5; i++) {
     pad += Math.ceil(pass.annotationLegDeficit) + 2;
-    pass = layoutWaterfallWithPad(data, options, pad, true, undefined, false);
+    pass = lay(pad, false);
   }
   // A note or callout the seat cascade could not seat falls to the free-space scan, which
   // draws no leader when it lands over its step. On a broken axis the bars stand 12 px
@@ -362,7 +379,7 @@ function layoutVerticalWaterfall(
   if (!cagr && freeSeated(pass.geometry)) {
     const warned = pass.geometry.warnings?.length ?? 0;
     for (let grown = 6; grown <= 48; grown += 6) {
-      const next = layoutWaterfallWithPad(data, options, grown, true, undefined, false);
+      const next = lay(grown, false);
       if (!freeSeated(next.geometry) && !noteHidden(next.geometry) && (next.geometry.warnings?.length ?? 0) <= warned) { pass = next; break; }
     }
   }
@@ -378,10 +395,10 @@ function layoutVerticalWaterfall(
       let repaired = pass;
       while (repairPad < 48 && unseated(repaired.geometry)) {
         repairPad += 6;
-        repaired = layoutWaterfallWithPad(data, options, repairPad, true, undefined, true);
+        repaired = lay(repairPad, true);
       }
       if (!unseated(repaired.geometry)) {
-        const settled = layoutWaterfallWithPad(data, options, repairPad + 4, true, undefined, true);
+        const settled = lay(repairPad + 4, true);
         pass = unseated(settled.geometry) ? repaired : settled;
       }
     }
@@ -838,7 +855,11 @@ function layoutWaterfallWithPad(
   categoryRow = true,
   automaticOverride?: LinearBreak,
   enforceBreakOrder = true,
+  /** Px of the bracket room given back to the plot (layoutVerticalWaterfall). */
+  bracketCut = 0,
 ): { geometry: Geometry<WaterfallMarks, WaterfallDerived>; annotationLegDeficit: number; unsafeBreak?: boolean;
+  /** The empty px between the bracket top row and the brackets' shared row, when every bracket stands on that row. */
+  bracketSlack?: number;
   repairBreak?: () => { geometry: Geometry<WaterfallMarks, WaterfallDerived>; annotationLegDeficit: number; unsafeBreak?: boolean } } {
   const fmtPlain = (value: number, settings: Parameters<typeof plainNumber>[1] = {}) => plainNumber(value, { locale: options.locale?.language, ...settings });
   const warnings: LintWarning[] = [];
@@ -1456,11 +1477,11 @@ function layoutWaterfallWithPad(
   if (categoryRow) pushAll(warnings, catPlan.warnings);
   // spanning annotations (cagr) need arm headroom above the tallest bar
   // 12 px for the arms; the second pass adds what the arms still lack.
-  // A bracket over steps stands right above its bars, or at the top where that seat is taken. This
+  // A bracket over steps stands on the brackets' shared row, or at the top where that seat is taken. This
   // room holds the top seat above the highest value label: its label, its ticks, and the room a
-  // value label needs over the tallest bar.
+  // value label needs over the tallest bar. `bracketCut` gives back what the shared row leaves empty.
   const bracketLabelH = measure('X', { family: theme.type.family, ...theme.type.label }).height;
-  const bracketRoom = (options.annotations ?? []).some((a) => a.kind === 'bracket') ? Math.ceil(2 * bracketLabelH + 8) : 0;
+  const bracketRoom = (options.annotations ?? []).some((a) => a.kind === 'bracket') ? Math.max(0, Math.ceil(2 * bracketLabelH + 8) - bracketCut) : 0;
   const annPad = ((options.annotations ?? []).some((a) => a.kind === 'cagr') ? 12 + extraAnnPad : extraAnnPad) + bracketRoom;
   const axisTitle = categoryRow && axisTitleAllowed(options.labels) ? planValueAxisTitle(options.axisTitles?.primary, theme, measure, plotWidth) : undefined;
   const axisTitleBand = valueAxisTitleBand(axisTitle, theme, measure, annPad);
@@ -2180,6 +2201,27 @@ function layoutWaterfallWithPad(
     w: plot.w,
     h: plot.h + annPad,
   };
+  // A bracket falls back to the top row where its seat is taken.
+  const bracketTopRow = annPlot.y + bracketLabelH + 3;
+  // The y right above the drawn boxes of steps i to j (a mixed-sign step counts its whole height) and their visible value labels.
+  const spanSeat = (i: number, j: number): number => {
+    const spanIds = new Set(items.slice(i, j + 1).map((x) => x.id));
+    const tops = [
+      ...marks.bars.filter((bar) => spanIds.has(bar.id)).map((bar) => bar.rect.y),
+      ...solved.placed.filter((label) => !label.hidden && label.kind !== 'category' && label.owner.categoryId !== undefined && spanIds.has(label.owner.categoryId)).map((label) => label.rect.y),
+    ];
+    return Math.min(...tops) - BRACKET_GAP - BRACKET_TICK;
+  };
+  // The brackets of one bridge share one row: the lowest row that clears every bracketed span and its values.
+  // A span the bridge refuses (a total in it, an unknown id) takes no part.
+  const bracketSpans = cases.length > 0 ? [] : annotations.flatMap((a) => {
+    if (a.kind !== 'bracket') return [];
+    const i = items.findIndex((x) => x.id === a.from);
+    const j = items.findIndex((x) => x.id === a.to);
+    return i >= 0 && j >= i && items.slice(i, j + 1).every((x) => x.type === 'delta') ? [[i, j] as const] : [];
+  });
+  const bracketRowFree = bracketSpans.length ? Math.min(...bracketSpans.map(([i, j]) => spanSeat(i, j))) : undefined;
+  const bracketRow = bracketRowFree === undefined ? undefined : Math.max(bracketTopRow, bracketRowFree);
   const sourceValues = annotations.some(annotation => annotation.kind === 'valueLine')
     ? data.items.flatMap(item => item.values ?? (item.segments?.length ? item.segments.map(segment => segment.value) : [item.value ?? null]))
       .filter(value => value !== null) : [];
@@ -2218,18 +2260,12 @@ function layoutWaterfallWithPad(
       if (total) return { code: 'bracket-span-total', error: `step '${total.id}' is a total, so the span has no one sum; bracket only delta steps` };
       // The step values, not level differences: next to a large balance the rounded levels lose a small step.
       const values = steps.map((x) => ({ id: x.id, value: compensatedSum(x.segments.map((seg) => seg.value)) }));
-      const y = annPlot.y + bracketLabelH + 3;
-      // The drawn bar boxes, so a mixed-sign step counts its whole height, and the span's visible value labels.
-      const spanIds = new Set(steps.map((x) => x.id));
-      const tops = [
-        ...marks.bars.filter((bar) => spanIds.has(bar.id)).map((bar) => bar.rect.y),
-        ...solved.placed.filter((label) => !label.hidden && label.kind !== 'category' && label.owner.categoryId !== undefined && spanIds.has(label.owner.categoryId)).map((label) => label.rect.y),
-      ];
       return {
         left: band.position(i),
         right: band.position(j) + band.bandwidth,
-        y,
-        spanY: Math.max(y, Math.min(...tops) - BRACKET_GAP - BRACKET_TICK),
+        y: bracketTopRow,
+        // Each bracket stands on the shared row; `bracketRow: 'span'` keeps it right above its own steps.
+        spanY: options.bracketRow === 'span' ? Math.max(bracketTopRow, spanSeat(i, j)) : bracketRow!,
         sum: compensatedSum(values.map((step) => step.value)),
         steps: values,
       };
@@ -2331,7 +2367,13 @@ function layoutWaterfallWithPad(
     warnings,
     debug: { occupied: occupied.snapshot(), decisions: [...solved.decisions, ...annResult.decisions] },
   };
-  return { geometry, annotationLegDeficit: annResult.legDeficit, unsafeBreak,
+  // Each drawn bracket label stands on the shared row (labelOffsets come later), so the room over it is empty.
+  const bracketLabels = new Set(annResult.placed.filter((placed) => placed.kind === 'bracket').map((placed) => `annotation:${placed.id}`));
+  // A single bracket keeps its room, as before.
+  const onRow = bracketSpans.length >= 2 && options.bracketRow !== 'span' && annResult.labels
+    .filter((label) => bracketLabels.has(label.id) && label.hidden === undefined)
+    .every((label) => label.rect.y + label.rect.h + 3 >= bracketRow! - 0.5);
+  return { geometry, annotationLegDeficit: annResult.legDeficit, unsafeBreak, ...(onRow ? { bracketSlack: bracketRowFree! - bracketTopRow } : {}),
     ...(unsafeBreak && !enforceBreakOrder ? { repairBreak: () => drawBridge(options) } : {}) };
   }
 

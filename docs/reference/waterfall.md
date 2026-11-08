@@ -111,6 +111,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | variant | string | `'vertical'`, `'horizontal'` |  | Left out: vertical columns, turned into a horizontal bridge when the step names would rotate, shorten or drop, the horizontal bridge draws without a new finding, and the spec has no cases and no annotations. 'vertical' always keeps columns. A horizontal bridge draws no annotations: an old spec draws without them and warns option-ignored, so use vertical for annotations. |
 | build | string | `'up'`, `'down'` | `'up'` | Build label in the accessible description; defaults to up. Item types and signed values determine accumulation in both modes. |
 | signColor | boolean |  |  | Paint each plain step good or bad by sign × item direction, as column's signColor; zero is neutral. Default true unless the theme sets marks.bridge or a palette is named; false paints steps neutral. colorblindSafe paints signed steps, labels and key swatches with the theme's colour-blind pair. |
+| bracketRow | string | `'shared'`, `'span'` |  | Where the step brackets stand. 'shared' (default): all brackets of the bridge on one row, the lowest row that clears every bracketed span and its values. 'span': each bracket right above its own steps and their values. Either way a bracket moves to the top row where its seat is taken. |
 | columnOverrides | object |  |  | Horizontal bridge only: width in px of the name band (label) and the value band (value). With variant 'vertical' it is refused. Left out, the variant is chosen without it, and a bridge that draws vertical warns option-ignored. |
 | columnOverrides.*.width | number |  |  | Track width in px. It beats the width the type would pick. |
 
@@ -150,6 +151,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | interview-status-buildup | example | Interview pipeline build-up by status |
 | revenue-build-up | example | Revenue → EBIT build-up with diff arrow |
 | step-brackets | example | Brackets over bridge steps print their sums |
+| step-brackets-span | example | bracketRow 'span' stands each bracket right above its own steps |
 | callout-label-offset | example | labelOffsets moves a callout up from its step |
 | bracket-low-steps | example | A bracket stands directly above low steps |
 | build-down | example | Build-down: revenue to net income |
