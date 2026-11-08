@@ -344,6 +344,7 @@ function annotateColumn(
     ceilingRects.push({ x: area.frame.plot.x, y: area.frame.plot.y + area.ruleH + 4, w: area.axisTitle.width, h: area.axisTitle.height });
   }
   return runAnnotatePass({
+    calloutColumnStack: true,
     target: domain.options.target,
     // The growth bracket seats its label on its run.
     cagrLabelOnArm: true,

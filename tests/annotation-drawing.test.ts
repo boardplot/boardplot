@@ -162,3 +162,54 @@ it('a bar difference rides its row only where the row is clear', () => {
     expect(shaft.y1! < rowB.y || shaft.y1! > rowB.y + rowB.h, JSON.stringify(values[1])).toBe(true);
   }
 });
+
+// A plan tick just over a column's end must not push the column's value above the tick, where it reads as
+// the plan's, and a delta and a callout on that column must stack above it instead of one being dropped or
+// leading in from the side on an S-shaped leader.
+it('a column under its plan tick keeps its value, and its notes stack straight above', () => {
+  const data = {
+    categories: ['a', 'b', 'c'].map((id) => ({ id, label: id.toUpperCase() })),
+    series: [{ id: 'act', label: 'Actual', values: [455, 470, 552] }, { id: 'plan', label: 'Plan', role: 'reference', values: [450, 505, 545] }],
+  };
+  type Label = { id: string; slot: string; rect: { x: number; y: number; w: number; h: number }; hidden?: unknown; leader?: unknown };
+  const at = { categoryId: 'b', seriesId: 'act' };
+  const layout = (annotations: object[]) => (layoutColumn(data as never, { size: { width: 960, height: 300 }, referenceStyle: 'tick', annotations } as never) as unknown as { labels: Label[] }).labels;
+  expect(layout([]).find((label) => label.id === 'point:act:b')!.slot).toBe('insideEnd');
+  const labels = layout([
+    { kind: 'delta', id: 'd', at, vs: { categoryId: 'b', seriesId: 'plan' } },
+    { kind: 'callout', id: 'c', at, text: 'Supplier switch delayed launches' },
+  ]);
+  const find = (id: string) => labels.find((label) => label.id === id)!;
+  const [delta, callout] = [find('annotation:d'), find('annotation:c')];
+  for (const note of [delta, callout]) expect([note.hidden, note.leader]).toEqual([undefined, undefined]);
+  const centre = (label: Label) => label.rect.x + label.rect.w / 2;
+  expect(Math.abs(centre(delta) - centre(callout))).toBeLessThan(1);
+  expect(callout.rect.y + callout.rect.h).toBeLessThanOrEqual(delta.rect.y);
+  // A note wider than its column stacks from its own column's tick, not from a taller neighbour's under its text.
+  const fy = (id: string) => ({ categoryId: 'fy23', seriesId: id });
+  const wide = (getChartDefinition('column')!.layout({ categories: ['FY21', 'FY22', 'FY23', 'FY24', 'FY25'].map((label) => ({ id: label.toLowerCase(), label })), series: [
+    { id: 'revenue', label: 'Revenue', values: [410, 455, 470, 552, 588] }, { id: 'plan', label: 'Plan', role: 'reference', values: [400, 450, 505, 545, 580] }] } as never,
+  { size: { width: 720, height: 405 }, title: 'FY23 was the only year below plan', unit: 'EUR m', source: 'Illustrative data', legend: 'top', highlight: ['fy23'], referenceStyle: 'tick', annotations: [
+    { kind: 'delta', id: 'd', at: fy('revenue'), vs: fy('plan') },
+    { kind: 'callout', id: 'c', at: fy('revenue'), text: 'Supplier switch delayed launches' }] } as never) as unknown as { labels: Label[] }).labels;
+  for (const id of ['annotation:d', 'annotation:c']) expect(wide.find((label) => label.id === id)!.hidden, id).toBeUndefined();
+  // A lone delta on a column whose value prints above it stands straight over that value, not on a curved leader.
+  const lone = (layoutColumn({ categories: data.categories, series: [{ id: 'act', label: 'Actual', values: [412, 450, 561] }] } as never,
+    { size: { width: 960, height: 300 }, annotations: [{ kind: 'delta', id: 'd', at: { categoryId: 'c', seriesId: 'act' }, vs: { categoryId: 'a', seriesId: 'act' } }] } as never) as unknown as { labels: Label[] }).labels;
+  const [loneDelta, value] = [lone.find((label) => label.id === 'annotation:d')!, lone.find((label) => label.id === 'point:act:c')!];
+  expect(loneDelta.leader).toBeUndefined();
+  expect(loneDelta.rect.y + loneDelta.rect.h).toBeLessThanOrEqual(value.rect.y);
+  // On a narrow chart a plan value never stands centred over a neighbour's column, where it reads as that column's plan.
+  const five = { categories: ['a', 'b', 'c', 'd', 'e'].map((id) => ({ id, label: id.toUpperCase() })), series: [
+    { id: 'act', label: 'Actual', values: [410, 455, 470, 552, 588] }, { id: 'plan', label: 'Plan', role: 'reference', values: [400, 450, 505, 545, 580] }] };
+  const narrow = layoutColumn(five as never, { size: { width: 360, height: 300 }, referenceStyle: 'tick', highlight: ['c'] } as never) as unknown as
+    { labels: (Label & { kind: string; owner: { categoryId?: string } })[]; scene: { t: string; part?: string; owner?: { categoryId?: string }; rect?: Label['rect'] }[] };
+  const columns = narrow.scene.filter((node) => node.t === 'rect' && node.rect && node.owner?.categoryId);
+  for (const tick of narrow.labels.filter((label) => label.kind === 'tick' && label.hidden === undefined)) {
+    for (const column of columns.filter((node) => node.owner!.categoryId !== tick.owner.categoryId)) {
+      const r = column.rect!;
+      const mid = tick.rect.x + tick.rect.w / 2;
+      expect(mid <= r.x || mid >= r.x + r.w, `${tick.id} over ${column.owner!.categoryId}`).toBe(true);
+    }
+  }
+});

@@ -317,6 +317,11 @@ export interface AnnotatePassInput {
    */
   calloutRowPitch?: number;
   /**
+   * Columns: a callout, note or delta whose seat above its column is blocked by a reference tick, or
+   * taken by another note on the same column, stacks straight above it.
+   */
+  calloutColumnStack?: boolean;
+  /**
    * A callout's leader is claimed, and a seat whose leader crosses a label
    * set before it is passed over. Scatter solves its callouts before the
    * point names, on an open plot, so crowded callouts go to the note.
@@ -1689,6 +1694,25 @@ function calloutLabel(
     }
     return { slot, rect: labelRect, penalty, ...(leader ? { leaderFrom: edgeToward(labelRect) } : {}) };
   };
+  const stackMembers = (kind === 'callout' || kind === 'note' || kind === 'delta') ? input.annotations.filter((other) =>
+    ['callout', 'note', 'delta'].includes(other.kind) && 'at' in other && other.at !== undefined && samePoint(other.at as AnchorRef)) : [];
+  const sharing = stackMembers.length;
+  // An arrow callout keeps the distance its arrow needs, and an empty one the leader that shows where it points.
+  const columnTop = input.calloutColumnStack === true && !glyph && head.arrow !== true && w > 0 && !anchor.lineAnchored && box.w === 0 && sharing > 0;
+  const stackSeats: SlotCandidate[] = [];
+  if (columnTop) {
+    // Every note on the column starts its stack from one base, found under the widest of their texts, so the notes keep apart.
+    const stackW = Math.max(w, ...stackMembers.map((other) => 'text' in other && typeof other.text === 'string' ? input.measure(other.text, font).width : 0));
+    const aboveRect = { x: at.x - stackW / 2, y: top - h - gap, w: stackW, h };
+    const ticks = input.occupied.hitsWhich(aboveRect, 0).filter((claim) => claim.kind === 'mark');
+    // The stack starts over a reference tick and over the column's own value printed above it.
+    const value = input.printedLabels?.find((label) => label.kind === 'point' && label.hidden === undefined &&
+      label.owner.categoryId === anchor.owner.categoryId && label.owner.seriesId === anchor.owner.seriesId && label.rect.y < top);
+    const base = Math.min(top - gap, ...ticks.map((claim) => claim.rect.y - 4), ...(value ? [value.rect.y - 4] : []));
+    // The notes stack in the order they are listed: each prefers the seat at its own place.
+    const place = Math.max(0, stackMembers.indexOf(ann));
+    for (let k = 0; k < sharing; k++) stackSeats.push(mk(`aboveStack${k}`, at.x - w / 2, base - h - k * (h + 4), 0.1 * (1 + Math.abs(k - place))));
+  }
   let all: SlotCandidate[] = [
     mk(
       'above',
@@ -1708,6 +1732,9 @@ function calloutLabel(
       prefer === 'below' ? -1 : 3,
       glyph !== undefined,
     ),
+    // A column's seat above, stacked: over a plan tick across the column's end, and over the other notes
+    // on the same column (a delta, then its callout), straight above it with no leader.
+    ...stackSeats,
     // over or under the first point of a late-starting line, the
     // note may also end at the point, where its own line has not started. The centred seat
     // lost to the line's first climb, and the note moved to the side its author did not ask for.
