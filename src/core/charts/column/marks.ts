@@ -410,7 +410,10 @@ function referenceMarks(
         ? tickGeometry.claim
         : refStyle === 'marker'
           ? { x: bx + bw / 2 - REFERENCE_MARKER_R - 1, y: ry - REFERENCE_MARKER_R - 1, w: 2 * REFERENCE_MARKER_R + 2, h: 2 * REFERENCE_MARKER_R + 2 }
-          : tickGeometry.claim;
+          // A tick behind its column claims the strip of a tick in front, 2 px past each side, so it
+          // takes no room a label had. Its ends reach at most 2 px further: the label pad (2 px) keeps
+          // their ink outside every label box.
+          : back ? referenceTickGeometry('vertical', bx, ry, -2, bw + 2).claim : tickGeometry.claim;
       if (integrated) claims.claim(claimRect, 'mark', owner, 'referenceTick');
       // A reference drawn as a line is one a highlighted value may cross.
       else claims.claim(claimRect, 'mark', owner, refStyle === 'line' ? 'referenceLine' : undefined);
