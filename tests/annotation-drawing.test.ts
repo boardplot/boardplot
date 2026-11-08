@@ -311,3 +311,31 @@ it('a named value line at the series end value prints its name beside that value
   { size: { width: 360, height: 240 }, valueLabels: 'all', annotations: [{ kind: 'valueLine', id: 'n', value: 53, label: 'Normal operating load' }] } as never) as unknown as { labels: Label[] };
   expect(joint.labels.find((entry) => entry.id === 'valueLine:n')!.text).toBe('Normal operating load 53');
 });
+
+// A callout over a column in a two-tier grid was dropped at 360 px: the tier was too short for its text on one line.
+// The grid grows at an open height until the callout seats, wrapped over the column's plan tick.
+it('a callout in a grid tier seats at 360 px, wrapped over its column', async () => {
+  const { render } = await import('../src/cli/render');
+  const fy = {
+    categories: ['FY21', 'FY22', 'FY23', 'FY24', 'FY25'].map((label) => ({ id: label.toLowerCase(), label })),
+    series: [
+      { id: 'ac', label: 'Actual', scenario: 'AC', values: [410, 455, 470, 552, 588] },
+      { id: 'pl', label: 'Plan', scenario: 'PL', role: 'reference', values: [400, 450, 505, 545, 580] },
+    ],
+  };
+  const spec = { type: 'grid', data: { panels: [
+    { id: 'rev', type: 'column', data: fy, options: { labels: { tick: false }, highlight: ['fy23'] }, annotations: [{ kind: 'callout', at: { categoryId: 'fy23', seriesId: 'ac' }, text: 'Supplier switch delayed launches' }] },
+    { id: 'dpl', type: 'variance', data: fy, options: { variant: 'absolute', variance: { vs: 'pl' } } },
+  ] }, options: { sharedAxis: 'category', legend: 'top', unit: 'EUR m', title: 'FY23 was the only year below plan',
+    subtitle: { measure: 'Revenue', period: 'FY21 to FY25', scenarios: ['AC', 'PL'] }, sharedScale: false, size: { width: 360 } } };
+  const body = render({ spec: spec as never, return: ['svg'] }).body as { warnings?: { code: string }[]; svg?: string };
+  expect((body.warnings ?? []).map((warning) => warning.code)).not.toContain('label-hidden');
+  // Two lines over the column, not one line on a leader from a free spot.
+  expect(body.svg).toMatch(/Supplier switch<\/tspan>|>Supplier switch</);
+  // The wrapped seat reaches over the neighbours: it leaves the room a note on the next column needs.
+  const pair = render({ spec: { type: 'column', data: { categories: ['c0', 'c1', 'c2'].map((id) => ({ id, label: id.toUpperCase() })),
+    series: [{ id: 's', label: 'S', values: [40, 60, 50] }] }, options: { size: { width: 320 }, annotations: [
+    { kind: 'callout', id: 'a', at: { categoryId: 'c0', seriesId: 's' }, text: 'Supplier switch delayed launches' },
+    { kind: 'note', id: 'b', at: { categoryId: 'c1', seriesId: 's' }, text: 'Demand returned after launch' }] } } as never, return: ['svg'] }).body as { warnings?: { code: string }[] };
+  expect((pair.warnings ?? []).map((warning) => warning.code)).not.toContain('label-hidden');
+});

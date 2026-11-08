@@ -274,6 +274,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | stacked-plus-dpy-tiered | example | Opt-in scaled ΔPY% tier above stacked revenue |
 | three-tier | example | Three tiers: actuals, ΔPY absolute, ΔPY% |
 | weekly-actual-vs-plan | example | Actual vs plan by week: AC columns with PL ticks over a ΔPL tier |
+| actual-vs-plan-callout | example | Actual vs plan by year with a callout on the year below plan, over a ΔPL tier |
 | compact-tier-slack | torture | Torture: compact tiers distribute vertical slack |
 | facet-regions | example | Facets: four regions, 2×2 |
 | facet-regions-ranked | torture | Facets ordered by last value, largest first |

@@ -39,6 +39,14 @@ const WEEKLY_ORDERS = {
   ],
 };
 
+const FY_PLAN = {
+  categories: ['FY21', 'FY22', 'FY23', 'FY24', 'FY25'].map((label) => ({ id: label.toLowerCase(), label })),
+  series: [
+    { id: 'ac', label: 'Actual', scenario: 'AC', values: [410, 455, 470, 552, 588] },
+    { id: 'pl', label: 'Plan', scenario: 'PL', role: 'reference', values: [400, 450, 505, 545, 580] },
+  ],
+};
+
 export const fixtures: Fixture<GridInput, GridLayoutOptions>[] = [
   {
     id: 'stacked-plus-dpy',
@@ -150,6 +158,30 @@ export const fixtures: Fixture<GridInput, GridLayoutOptions>[] = [
       title: 'Orders beat plan in six of eight weeks; W06 fell 14k short',
       subtitle: { measure: 'Weekly orders', period: 'W01 to W08 2026', scenarios: ['AC', 'PL'] },
       source: 'Illustrative order book',
+    },
+  },
+  {
+    // A callout on the one year below plan: at phone width the grid grows until it seats, wrapped over the column's plan tick.
+    id: 'actual-vs-plan-callout',
+    title: 'Actual vs plan by year with a callout on the year below plan, over a ΔPL tier',
+    kind: 'example',
+    data: {
+      panels: [
+        {
+          id: 'rev', type: 'column', data: FY_PLAN, options: { labels: { tick: false }, highlight: ['fy23'] },
+          annotations: [{ kind: 'callout', at: { categoryId: 'fy23', seriesId: 'ac' }, text: 'Supplier switch delayed launches' }],
+        },
+        { id: 'dpl', type: 'variance', data: FY_PLAN, options: { variant: 'absolute', variance: { vs: 'pl' } } },
+      ],
+    },
+    options: {
+      sharedAxis: 'category',
+      legend: 'top',
+      unit: 'EUR m',
+      title: 'FY23 was the only year below plan',
+      subtitle: { measure: 'Revenue', period: 'FY21 to FY25', scenarios: ['AC', 'PL'] },
+      source: 'Illustrative data',
+      sharedScale: false,
     },
   },
   {
