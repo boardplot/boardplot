@@ -428,6 +428,12 @@ function layoutVerticalWaterfall(
       }
     }
   }
+  // The growth bracket takes the band over the bridge. Where that hides a label, and the arrow at
+  // the bars hides fewer, the total change keeps its arrow (placement 'label').
+  if (hiddenCount(pass.geometry) > 0 && options.annotations?.some((a) => totalChangeBracket(a, data))) {
+    const arrow = layoutVerticalWaterfall(data, { ...options, annotations: options.annotations.map((a) => (a.kind === 'diff' || a.kind === 'delta') && totalChangeBracket(a, data) ? { ...a, placement: 'label' as const } : a) });
+    if (hiddenCount(arrow) < hiddenCount(pass.geometry)) return arrow;
+  }
   return withBridgeGap(pass.geometry);
 }
 
