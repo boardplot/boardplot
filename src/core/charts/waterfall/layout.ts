@@ -334,7 +334,7 @@ function layoutVerticalWaterfall(
   let cut = 0;
   const lay = (band: number, enforceBreakOrder: boolean) => layoutWaterfallWithPad(data, options, band, true, undefined, enforceBreakOrder, cut);
   let pass = lay(pad, !options.annotations?.length);
-  // The brackets' shared row can stand lower than the top row the bracket room holds. The empty
+  // The brackets' shared row (one bracket's own seat) can stand lower than the top row the bracket room holds. The empty
   // part goes back to the plot, at most in two rounds: the taller plot lifts the bars, so a cut of
   // the whole gap is always safe and leaves a smaller gap. A round is kept only while every bracket
   // stays on its row and no label is newly hidden or warned about.
@@ -2369,8 +2369,7 @@ function layoutWaterfallWithPad(
   };
   // Each drawn bracket label stands on the shared row (labelOffsets come later), so the room over it is empty.
   const bracketLabels = new Set(annResult.placed.filter((placed) => placed.kind === 'bracket').map((placed) => `annotation:${placed.id}`));
-  // A single bracket keeps its room, as before.
-  const onRow = bracketSpans.length >= 2 && options.bracketRow !== 'span' && annResult.labels
+  const onRow = bracketRowFree !== undefined && options.bracketRow !== 'span' && annResult.labels
     .filter((label) => bracketLabels.has(label.id) && label.hidden === undefined)
     .every((label) => label.rect.y + label.rect.h + 3 >= bracketRow! - 0.5);
   return { geometry, annotationLegDeficit: annResult.legDeficit, unsafeBreak, ...(onRow ? { bracketSlack: bracketRowFree! - bracketTopRow } : {}),
