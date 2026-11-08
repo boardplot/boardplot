@@ -870,6 +870,64 @@ export const fixtures: Fixture<RangeChartData, AnomalyColumnOptions>[] = [
     ],
   },
   {
+    // A difference across the whole year: the growth bracket over the columns, its value and percent on the run.
+    id: 'monthly-diff-bracket',
+    title: 'Twelve monthly columns with a difference in value and percent from the first to the last month',
+    kind: 'example',
+    data: {
+      categories: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((label) => ({ id: label.toLowerCase(), label })),
+      series: [{ id: 'tickets', label: 'Tickets', values: [412, 398, 431, 447, 452, 468, 503, 497, 488, 512, 534, 561] }],
+    },
+    options: {
+      title: 'Support tickets rose 36% over the year',
+      unit: 'tickets',
+      source: 'Illustrative data',
+      labelDensity: 'minimal',
+    },
+    annotations: [
+      { kind: 'diff', from: { categoryId: 'jan', seriesId: 'tickets' }, to: { categoryId: 'dec', seriesId: 'tickets' }, mode: 'both' },
+    ],
+  },
+  {
+    // placement 'label' keeps the arrow in a free gap between the columns with its number beside it.
+    id: 'monthly-diff-between',
+    title: 'Twelve monthly columns with a difference whose arrow stands between the columns',
+    kind: 'example',
+    data: {
+      categories: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((label) => ({ id: label.toLowerCase(), label })),
+      series: [{ id: 'tickets', label: 'Tickets', values: [412, 398, 431, 447, 452, 468, 503, 497, 488, 512, 534, 561] }],
+    },
+    options: {
+      title: 'Support tickets rose 36% over the year',
+      unit: 'tickets',
+      source: 'Illustrative data',
+      labelDensity: 'minimal',
+    },
+    annotations: [
+      { kind: 'diff', from: { categoryId: 'jan', seriesId: 'tickets' }, to: { categoryId: 'dec', seriesId: 'tickets' }, placement: 'label' },
+    ],
+  },
+  {
+    // A delta between two column totals takes the bracket too, with the value difference and the percent change.
+    id: 'monthly-delta-both',
+    title: 'Highlighted first and last month with a delta in value and percent',
+    kind: 'example',
+    data: {
+      categories: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((label) => ({ id: label.toLowerCase(), label })),
+      series: [{ id: 'tickets', label: 'Tickets', values: [412, 398, 431, 447, 452, 468, 503, 497, 488, 512, 534, 561] }],
+    },
+    options: {
+      title: 'Support tickets rose by 149 over the year',
+      unit: 'tickets',
+      source: 'Illustrative data',
+      labelDensity: 'minimal',
+      highlight: ['jan', 'dec'],
+    },
+    annotations: [
+      { kind: 'delta', at: { categoryId: 'dec', seriesId: 'tickets' }, vs: { categoryId: 'jan', seriesId: 'tickets' }, mode: 'both' },
+    ],
+  },
+  {
     // Ranked dense columns: values wider than their columns lift clear of the
     // taller neighbour or stagger one row up on a short leader, none floats.
     id: 'ranked-dense-staggered',

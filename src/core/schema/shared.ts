@@ -590,12 +590,13 @@ function addAnnotationFormatIssues(annotation: { kind: string; format?: string }
     return;
   }
   const mode = Object.hasOwn(annotation, 'mode') ? (annotation as { mode?: unknown }).mode : undefined;
-  const rate = annotation.kind === 'cagr' || (annotation.kind === 'diff' && mode !== 'absolute');
+  // A format shapes the one number a mode prints in the values' unit: under 'both' the value difference, beside which the percent keeps its own format.
+  const rate = annotation.kind === 'cagr' || (annotation.kind === 'diff' && mode !== 'absolute' && mode !== 'both') || (annotation.kind === 'delta' && mode === 'relative');
   if (rate && unit !== 'percent') {
-    issue(`${annotation.kind === 'cagr' ? 'a cagr' : 'a relative diff'} prints a percent, so its format is a percent example such as +0.0% or +0.00%`);
+    issue(`${annotation.kind === 'cagr' ? 'a cagr' : `a relative ${annotation.kind}`} prints a percent, so its format is a percent example such as +0.0% or +0.00%`);
   }
-  if (annotation.kind === 'diff' && mode === 'absolute' && unit === 'percent') {
-    issue("an absolute diff prints the difference in the values' unit; a difference of two percent levels is in percentage points, written +1.0pp");
+  if (annotation.kind === 'diff' && (mode === 'absolute' || mode === 'both') && unit === 'percent') {
+    issue(`${mode === 'both' ? "a diff in mode 'both'" : 'an absolute diff'} prints the difference in the values' unit; a difference of two percent levels is in percentage points, written +1.0pp`);
   }
 }
 
@@ -655,7 +656,7 @@ const ANNOTATION_FIELDS: Record<string, readonly string[]> = {
   box: ['from', 'to', 'dashed'],
   diff: ['from', 'to', 'mode', 'placement', 'caption'],
   cagr: ['from', 'to', 'suffix', 'period', 'shape'],
-  delta: ['at', 'vs', 'placement', 'caption'],
+  delta: ['at', 'vs', 'mode', 'placement', 'caption'],
   bracket: ['from', 'to', 'label'],
   abs: ['at'],
   note: ['at', 'icon', 'status'],
@@ -801,7 +802,7 @@ const existingAnnotationSchema = (timeX = false) => z
     kind: z.enum(['diff', 'cagr', 'delta', 'bracket', 'abs', 'note', 'callout', 'valueLine', 'indicator100', 'event', 'text', 'line', 'arrow', 'box']).describe('Annotation operation; its anchors and additional fields are checked by the chart annotation pass.'),
     id: z.string().optional().describe('Stable annotation identity; omission generates an id from kind and authored order.'),
     text: z.string().optional().describe("Authored annotation text; on valueLine, text is read as label with an info warning when label is absent or equal. Refused on indicator100, line, arrow and box. On a text annotation it is the text itself, and ${value} prints as written. Elsewhere ${value} prints the computed number in it: a cagr's rate with its suffix, a diff's change, a delta's difference, the anchored value of an abs, note or callout; a note or callout on a mark that prints the same number leaves it to the mark and reports annotation-value-on-mark. Without ${value}, text on a cagr, diff, delta or abs replaces the number, warns annotation-authored-override and the claim record marks the override."),
-    format: z.string().optional().describe("Number format: annotation > anchored series > chart. Diff uses to, then from. CAGR and relative/reversed diff need a percent example; value differences use pp for percent levels. Refused on event, indicator100, text, line, arrow and box."),
+    format: z.string().optional().describe("Number format: annotation > anchored series > chart. Diff uses to, then from. CAGR, a relative or reversed diff and a relative delta need a percent example; value differences, also under mode both, use pp for percent levels. Refused on event, indicator100, text, line, arrow and box."),
     priority: z.number().optional().describe('Annotation label priority during collision resolution. Refused on line, arrow and box.'),
     icon: annotationIconSchema.optional().describe('Registered icon for note or callout annotations; cannot be combined with status.'),
     status: z.enum(['good', 'bad', 'warn', 'info']).optional().describe('Semantic status glyph for a note or callout; cannot be combined with icon.'),
@@ -839,6 +840,12 @@ const existingAnnotationSchema = (timeX = false) => z
     // values by design (an 'abs' on a stacked100 segment must report the
     // value, not the share), so it has no share basis to divide by; until a
     // share-aware resolver exists the value is refused, not advertised.
+    if (annotation.kind === 'delta' && Object.hasOwn(annotation, 'mode')) {
+      const mode = (annotation as { mode?: unknown }).mode;
+      if (mode !== 'absolute' && mode !== 'relative' && mode !== 'both') {
+        ctx.addIssue({ code: 'custom', path: ['mode'], message: `unknown delta mode '${String(mode)}' — expected 'absolute', 'relative' or 'both'` });
+      }
+    }
     if (annotation.kind === 'diff') {
       // Object.hasOwn, not a plain read: the parse output is an ordinary
       // object, so an absent `mode` would answer from a polluted prototype
@@ -846,14 +853,14 @@ const existingAnnotationSchema = (timeX = false) => z
       const mode = Object.hasOwn(annotation, 'mode')
         ? (annotation as { mode?: unknown }).mode
         : undefined;
-      if (mode !== undefined && mode !== 'relative' && mode !== 'absolute' && mode !== 'reversed') {
+      if (mode !== undefined && mode !== 'relative' && mode !== 'absolute' && mode !== 'reversed' && mode !== 'both') {
         ctx.addIssue({
           code: 'custom',
           path: ['mode'],
           message:
             mode === 'pctOf100'
               ? "diff mode 'pctOf100' is not implemented — annotation anchors resolve to absolute values, so the engine cannot derive share percentage points; use mode:'absolute' for the raw difference, or author the shares as data if the reader needs points of 100%"
-              : `unknown diff mode '${String(mode)}' — expected 'relative', 'absolute' or 'reversed'`,
+              : `unknown diff mode '${String(mode)}' — expected 'relative', 'absolute', 'reversed' or 'both'`,
         });
       }
     }

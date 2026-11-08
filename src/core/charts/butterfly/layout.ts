@@ -448,7 +448,8 @@ export function layoutButterfly(
   const diffNaturalW = diffHead === undefined ? 0 : columnWidth(measure, [...diffText].map(([id, text]) => ({ text, font: diffFont(id) })), { text: diffHead, font: strongFont });
   // An authored delta of b over a on a row the column covers would print the same number twice: the column keeps it.
   const isPairDelta = (ann: NonNullable<typeof opts.annotations>[number]): boolean => {
-    if (ann.kind !== 'delta' || ann.text !== undefined || typeof ann.vs === 'number') return false;
+    // The column prints the value difference only: a percent mode keeps its own label.
+    if (ann.kind !== 'delta' || ann.text !== undefined || typeof ann.vs === 'number' || (ann.mode ?? 'absolute') !== 'absolute') return false;
     const at = typeof ann.at === 'string' ? { categoryId: ann.at } : ann.at as { categoryId?: Id; seriesId?: Id };
     const vs = typeof ann.vs === 'string' ? { categoryId: ann.vs } : ann.vs as { categoryId?: Id; seriesId?: Id };
     return at.categoryId !== undefined && at.categoryId === vs.categoryId && diffText.has(at.categoryId) && (at.seriesId ?? sB.id) === sB.id && vs.seriesId === sA.id;

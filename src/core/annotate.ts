@@ -10,7 +10,7 @@ import { emphasisWeight, strokeToken, dashToken } from './theme';
  * `shiftCapsule` steps the arm outward on horizontal value axes (bars).
  * Labels attach via the solver with kind 'annotation'.
  *
- * v1 implements: cagr, diff (relative/absolute/reversed), callout, note,
+ * v1 implements: cagr, diff (relative/absolute/reversed/both), callout, note,
  * valueLine, indicator100, delta, band. Events are not placed here: column,
  * combo and line draw them in the event lane (core/eventLane), gantt draws
  * its own. Charts provide an anchor resolver; the pass is orientation-aware
@@ -32,7 +32,7 @@ import { leaderPath } from './svgPath';
 import { arrowLook } from './annotationArrow';
 import { anchorValueBox, arrowSeats, calloutArrowLook, calloutArrowReach, finishCalloutHeads, leaderCrossesLabel, leadersOffAnchorValues, valueEdgeToward, type CalloutHeadPlan } from './annotateCallout';
 import { composedTextRole, computedTextRole } from './textRole';
-import { drawCagrArm, drawDiffArm, trimAnnotationGuides, type ArmDrawPass } from './annotateArms';
+import { drawCagrArm, drawDiffArm, drawSpanBracket, trimAnnotationGuides, type ArmDrawPass } from './annotateArms';
 import { boxCorners, cutDrawingsAroundText, drawDrawing, drawingFailure, resolveDrawingPoint, textSeats, type DrawingCuts } from './annotateDrawing';
 import type { ComparisonLayout } from './annotateLinks';
 import type { GapBracketFrame, GapBracketPlan } from './annotateGapBracket';
@@ -216,6 +216,11 @@ export interface AnnotatePassInput {
    * Column and combo set it; others keep the label over the run.
    */
   cagrLabelOnArm?: boolean;
+  /**
+   * Column: a diff or delta between two column totals that are not neighbours draws as the growth
+   * bracket over the columns, with the difference for its label.
+   */
+  spanBracket?: (annotation: Annotation) => boolean;
   theme: Theme;
   /**
    * The weight the text of an arrow callout and the body under a headline prints
@@ -876,17 +881,18 @@ function placeDiff(s: AnnotationScope, ann: Extract<Annotation, { kind: 'diff' }
   // absolute branch and draw the raw difference as if it were
   // percentage points; anchors resolve to absolute values, so there is
   // no share basis here to divide by.
-  if (mode !== 'relative' && mode !== 'reversed' && mode !== 'absolute') {
+  if (mode !== 'relative' && mode !== 'reversed' && mode !== 'absolute' && mode !== 'both') {
     return warn(
       s,
       'diff-mode-unimplemented',
       `diff '${id}': mode '${String(mode)}' is not implemented — nothing is drawn`,
       mode === 'pctOf100'
         ? "use mode:'absolute' for the raw difference, or author the shares as data if the reader needs points of 100%"
-        : "use 'relative', 'absolute' or 'reversed'",
+        : "use 'relative', 'absolute', 'reversed' or 'both'",
     );
   }
   let computed: string;
+  let pctText = '';
   let derivation: AnnotationDerivation;
   if (mode === 'relative' || mode === 'reversed') {
     const [base, tip] = mode === 'reversed' ? [b, a] : [a, b];
@@ -921,7 +927,11 @@ function placeDiff(s: AnnotationScope, ann: Extract<Annotation, { kind: 'diff' }
       );
     }
   } else {
-    computed = s.run.fmtSigned(b.value - a.value);
+    // 'both' adds the percent change from `from`, in the percent format, beside the value difference.
+    if (mode === 'both' && a.value === 0) return warn(s, 'ref-zero', `diff '${id}': mode 'both' needs a nonzero 'from'`);
+    const pct = mode === 'both' ? ((b.value - a.value) / Math.abs(a.value)) * 100 : 0;
+    pctText = mode === 'both' ? formatAutomaticPercent(pct, typicalDecimals([pct]), true, input.locale) : '';
+    computed = s.run.fmtSigned(b.value - a.value) + (mode === 'both' ? ` (${pctText})` : '');
     derivation = {
       basis: 'derived',
       op: 'annotation-diff-absolute@1',
@@ -933,7 +943,8 @@ function placeDiff(s: AnnotationScope, ann: Extract<Annotation, { kind: 'diff' }
     };
   }
   if (gapPlacement(s, ann, a, b)) {
-    const text = mode !== 'absolute' ? computed : gapNumber(s, ann, a, b, b.value - a.value, computed);
+    const value = mode === 'relative' || mode === 'reversed' ? computed : gapNumber(s, ann, a, b, b.value - a.value, s.run.fmtSigned(b.value - a.value));
+    const text = mode === 'both' ? `${value} (${pctText})` : value;
     // The spine runs base to tip, the way the value reads: a reversed diff swaps the ends.
     const [tail, head] = mode === 'reversed' ? [b, a] : [a, b];
     return drawGapBracket(s, ann, tail, head, authored(s, 'diff', text, ann.text, text), derivation);
@@ -945,6 +956,7 @@ function placeDiff(s: AnnotationScope, ann: Extract<Annotation, { kind: 'diff' }
     a.owner.categoryId === b.owner.categoryId && a.owner.seriesId !== b.owner.seriesId ? input.barInset.gapWord : '';
   // The word is furniture: the record keeps the number alone as the computed text.
   const label = gapWord ? { text: `${gapWord}\u00A0${computed}`, computed } : authored(s, 'diff', lead ? `${lead} ${computed}` : computed, ann.text, computed);
+  if (input.spanBracket?.(ann)) return drawSpanBracket(s, a, b, label.text, id, 'diff', label.computed, derivation);
   drawDiffArm(s, a, b, label.text, id, label.computed, derivation, gapWord ? { lead: gapWord, value: computed } : undefined, ann.placement);
 }
 
@@ -999,25 +1011,42 @@ function placeDelta(s: AnnotationScope, ann: Extract<Annotation, { kind: 'delta'
   warnPartialComparison(s, 'delta', partialAnchors(s, at, vsAnchor));
   const atValue = vsAnchor ? (at.comparisonValue ?? at.value) : at.value;
   const d = atValue - vsValue;
-  const computed = s.run.fmtSigned(d);
+  const mode = ann.mode ?? 'absolute';
+  if (mode !== 'absolute' && vsValue === 0) return warn(s, 'ref-zero', `delta '${id}': mode '${mode}' needs a nonzero vs`);
+  // The percent change reads from vs, over its magnitude, as diff's relative mode does.
+  const pct = (d / Math.abs(vsValue)) * 100;
+  // An authored format shapes the one number printed; beside a value ('both') the percent keeps the percent format.
+  const pctText = ann.format && mode === 'relative' ? s.run.fmtSigned(pct) : formatAutomaticPercent(pct, typicalDecimals([pct]), true, input.locale);
+  const computed = mode === 'relative' ? pctText : mode === 'both' ? `${s.run.fmtSigned(d)} (${pctText})` : s.run.fmtSigned(d);
   // A difference that prints as zero has no direction to judge.
   const tone = s.run.printsZero(d) ? undefined : d > 0 ? 'good' : 'bad';
   // On a chart that asks for it, a delta against another row's mark
   // names that row and sits on its own row between the two marks.
   const acrossRows = input.deltaAcrossRows === true && vsAnchor !== null &&
     vsAnchor.owner.categoryId !== undefined && vsAnchor.owner.categoryId !== at.owner.categoryId;
-  const derivation: AnnotationDerivation = {
-    basis: 'derived',
-    op: 'annotation-delta@1',
-    inputs: [
-      { ref: `at:${anchorRefLabel(ann.at)}`, value: atValue },
-      { ref: typeof ann.vs === 'number' ? 'vs:literal' : `vs:${anchorRefLabel(ann.vs)}`, value: vsValue },
-    ],
-    raw: d,
-  };
+  const vsRef = typeof ann.vs === 'number' ? 'vs:literal' : `vs:${anchorRefLabel(ann.vs)}`;
+  const derivation: AnnotationDerivation = mode === 'relative'
+    ? {
+      basis: 'derived',
+      op: 'annotation-diff-relative@1',
+      inputs: [{ ref: `base:${vsRef.slice(3)}`, value: vsValue }, { ref: `tip:${anchorRefLabel(ann.at)}`, value: atValue }],
+      raw: pct,
+    }
+    : {
+      basis: 'derived',
+      op: 'annotation-delta@1',
+      inputs: [{ ref: `at:${anchorRefLabel(ann.at)}`, value: atValue }, { ref: vsRef, value: vsValue }],
+      raw: d,
+    };
   if (gapPlacement(s, ann, at, vsAnchor)) {
-    const text = gapNumber(s, ann, vsAnchor!, at, d, computed);
+    // The bracket prints the value difference at the precision of the printed values, in the mode asked for.
+    const value = mode === 'relative' ? computed : gapNumber(s, ann, vsAnchor!, at, d, s.run.fmtSigned(d));
+    const text = mode === 'both' ? `${value} (${pctText})` : value;
     return drawGapBracket(s, ann, vsAnchor!, at, authored(s, 'delta', text, ann.text, text), derivation);
+  }
+  if (vsAnchor && input.spanBracket?.(ann)) {
+    const label = authored(s, 'delta', computed, ann.text, computed);
+    return drawSpanBracket(s, comparisonAnchor(vsAnchor) ?? vsAnchor, comparisonAnchor(at) ?? at, label.text, id, 'delta', label.computed, derivation);
   }
   const label = authored(s, 'delta', acrossRows && vsAnchor.label ? `${computed} vs ${vsAnchor.label}` : computed, ann.text, computed);
   const seat = acrossRows ? { ...at, x: (at.x + vsAnchor.x) / 2 } : at;
