@@ -833,7 +833,7 @@ A requested seat must fit and stay clear of other text, lines and axis-break gap
 
 Integrated variance totals use the requested seat only when one paint holds the whole label. Their fallbacks remain `insideBase`, then `insideEnd`. Integrated totals never move outside. The variance caps and delta labels keep their positions.
 
-On a column with a reference series (`role: "reference"`, drawn as a tick), a tick just over a column's end leaves no room for the value between them. The value then prints inside the column's end, under the tick, and not above the tick, where it would read as the plan's value. To keep the value above the tick, pin it: `labelPlacements: { "point:revenue:fy23": "outsideTopShifted" }`. A reference value beside its tick stays in the gaps beside its own column. Where only a seat over a neighbour's column is free, the value goes to the notes.
+On a column with a reference series (`role: "reference"`, drawn as a tick), a tick just over a column's end leaves no room for the value between them. The value then prints inside the column's end, under the tick, and not above the tick, where it would read as the plan's value. To keep the value above the tick, pin it: `labelPlacements: { "point:revenue:fy23": "outsideTopShifted" }`. A reference value beside its tick stays in the gaps beside its own column. Where only a seat over a neighbour's column is free, the value goes to the notes. Where the chart has one reference series, the key names it and a named value ("400 Plan") is too wide for the gap beside its column, every value of that series prints the number alone ("400"). To keep the name, set the tick content: `labels: { tick: ["absolute", "series"] }`.
 
 | Chart and variant | Supported values |
 |---|---|

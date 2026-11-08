@@ -86,10 +86,13 @@ export function kindSetting(options: AnomalyColumnOptions, kind: LabelKind): boo
  * The key is the chart's own legend, or the grid's (PANEL_KEYED).
  */
 export function pyTickKeyed(domain: Pick<ColumnDomain, 'options' | 'pyRef'>, legend: { items: { id: Id }[] } | undefined): boolean {
-  const ref = domain.pyRef;
-  if (!ref || kindSetting(domain.options, 'tick') !== true) return false;
-  return legend?.items.some((item) => item.id === ref.id) === true ||
-    (domain.options as { [PANEL_KEYED]?: boolean })[PANEL_KEYED] === true;
+  return domain.pyRef !== undefined && tickKeyed(domain.options, legend, domain.pyRef.id);
+}
+
+/** Whether the key names reference series `id` and its tick values keep the default content. */
+export function tickKeyed(options: AnomalyColumnOptions, legend: { items: { id: Id }[] } | undefined, id: Id): boolean {
+  if (kindSetting(options, 'tick') !== true) return false;
+  return legend?.items.some((item) => item.id === id) === true || (options as { [PANEL_KEYED]?: boolean })[PANEL_KEYED] === true;
 }
 
 export function contentOf(options: AnomalyColumnOptions, kind: LabelKind, dflt: LabelContent): LabelContent | null {
