@@ -185,6 +185,27 @@ export const fixtures: Fixture<GridInput, GridLayoutOptions>[] = [
     },
   },
   {
+    // The variance tier under the columns: the week labels stand between the columns and the ΔPL bars.
+    id: 'weekly-actual-vs-plan-variance-below',
+    title: 'Actual vs plan by week with the ΔPL tier below the columns',
+    kind: 'example',
+    data: {
+      panels: [
+        { id: 'orders', type: 'column', data: WEEKLY_ORDERS, options: { labels: { tick: false } } },
+        { id: 'dpl', type: 'variance', data: WEEKLY_ORDERS, options: { variant: 'absolute', variance: { vs: 'pl' } } },
+      ],
+    },
+    options: {
+      sharedAxis: 'category',
+      variancePosition: 'below',
+      legend: 'top',
+      unit: 'k orders',
+      title: 'Orders beat plan in six of eight weeks; W06 fell 14k short',
+      subtitle: { measure: 'Weekly orders', period: 'W01 to W08 2026', scenarios: ['AC', 'PL'] },
+      source: 'Illustrative order book',
+    },
+  },
+  {
     id: 'compact-tier-slack',
     title: 'Torture: compact tiers distribute vertical slack',
     kind: 'torture',

@@ -1613,6 +1613,11 @@ export interface GridOptions extends Omit<BaseOptionsFor<'grid'>, 'format'> {
   /** Category-aligned column/variance tiers use 4:1 plot heights unless authored tracks or a shared y scale apply. */
   sharedAxis?: 'category' | 'none';
   /**
+   * Where category-aligned variance tiers stand: 'above' the column panel (default), the column's category labels
+   * at the bottom of the exhibit, or 'below' it, the column's category labels between the columns and the tiers.
+   */
+  variancePosition?: 'above' | 'below';
+  /**
    * Numeric panels with matching unit and format read against one value scale,
    * so panel heights compare in facets and category-aligned tiers.
    *

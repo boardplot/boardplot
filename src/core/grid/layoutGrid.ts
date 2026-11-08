@@ -111,11 +111,18 @@ export function sharedCategoryLabelOwner(panels: { options?: object }[]): number
   });
 }
 
-/** Bottom-up tier order: the shared category-axis owner anchors the exhibit. */
-export function bottomUpTierOrder(panels: { options?: object }[]): number[] {
+/**
+ * Bottom-up tier order: the shared category-axis owner anchors the exhibit. The other tiers stand over it in
+ * authored order, or under it in authored order with `variancePosition: 'below'`.
+ */
+export function bottomUpTierOrder(panels: { type?: string; options?: object }[], position: GridOptions['variancePosition'] = 'above'): number[] {
   const owner = sharedCategoryLabelOwner(panels);
   const indexes = panels.map((_, index) => index);
-  return owner < 0 ? indexes : [owner, ...indexes.filter((index) => index !== owner)];
+  // With every category label off, 'below' still anchors on the column panel.
+  const anchor = owner >= 0 ? owner : position === 'below' ? panels.findIndex((panel) => panel.type === 'column') : -1;
+  if (anchor < 0) return indexes;
+  const others = indexes.filter((index) => index !== anchor);
+  return position === 'below' ? [...others.reverse(), anchor] : [anchor, ...others];
 }
 
 /** Only variance tiers imply a shared category stack. Facets keep array order. */
@@ -272,7 +279,7 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
   // ---- panel slots ----
   const n = data.panels.length;
   const categoryOwner = compactTiers ? sharedCategoryLabelOwner(data.panels) : -1;
-  const bottomUpOrder = bottomUpTierOrder(data.panels);
+  const bottomUpOrder = bottomUpTierOrder(data.panels, options.variancePosition);
   const columns = share === 'category' ? 1 : Math.max(1, options.columns ?? 1);
   const rows = Math.ceil(n / columns);
   const facetGaps = (options as { [FACET_GAPS]?: { row: number; column: number } })[FACET_GAPS];

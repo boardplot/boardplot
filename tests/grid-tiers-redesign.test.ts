@@ -546,3 +546,28 @@ describe('tier captions wrap to the panel width', () => {
     expect(grid.warnings.map((warning) => warning.code)).toContain('labels-truncated');
   });
 });
+
+// A variance tier listed first, to stand under the columns, became the category-axis owner at the bottom and grew
+// a 960 px grid to 1493 px. variancePosition: 'below' keeps the column panel as the owner and puts the tiers under it.
+it('stands the variance tiers under the column panel with variancePosition below', () => {
+  const { data, options } = getFixtures('grid').find((f) => f.id === 'weekly-actual-vs-plan')! as { data: { panels: { id: string }[] }; options: Record<string, unknown> };
+  const panels = [...data.panels, { ...data.panels[1]!, id: 'dpl2' }];
+  const at = (variancePosition?: string) => measure({ type: 'grid', data: { panels }, options: { ...options, ...(variancePosition ? { variancePosition } : {}), size: { width: 960 } } } as never).geometry as unknown as Geometry & { marks: { panels: { id: string; plot: { y: number } }[] } };
+  const below = at('below');
+  const y = (id: string) => below.marks.panels.find((panel) => panel.id === id)!.plot.y;
+  // The tiers follow the columns in authored order, and the week labels stay with the columns.
+  expect(y('orders')).toBeLessThan(y('dpl'));
+  expect(y('dpl')).toBeLessThan(y('dpl2'));
+  expect(below.labels.some((label) => label.id.startsWith('orders/category'))).toBe(true);
+  expect(below.labels.some((label) => label.id.startsWith('dpl/category') || label.id.startsWith('dpl2/category'))).toBe(false);
+  // The default keeps them over the columns, at the same height.
+  const above = at();
+  expect(above.marks.panels.find((panel) => panel.id === 'orders')!.plot.y).toBeGreaterThan(above.marks.panels.find((panel) => panel.id === 'dpl')!.plot.y);
+  expect(below.size.height).toBe(above.size.height);
+  // With every category label off, the tiers still stand under the columns.
+  const quiet = measure({ type: 'grid', data: { panels: panels.map((panel) => ({ ...panel, options: { ...(panel as { options?: object }).options, labels: { category: false } } })) },
+    options: { ...options, variancePosition: 'below', size: { width: 960 } } } as never).geometry as unknown as typeof below;
+  const quietY = (id: string) => quiet.marks.panels.find((panel) => panel.id === id)!.plot.y;
+  expect(quietY('orders')).toBeLessThan(quietY('dpl'));
+  expect(quietY('dpl')).toBeLessThan(quietY('dpl2'));
+});

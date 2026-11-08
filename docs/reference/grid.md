@@ -167,6 +167,7 @@ Facets, variance tiers and metric stacks with shared categories and computed rea
 | alignmentRules[].fromPanelId | string |  |  | Panel whose top or left slot edge starts the guide; omission uses the grid content edge. |
 | alignmentRules[].toPanelId | string |  |  | Panel whose bottom or right slot edge ends the guide; omission uses the grid content edge. |
 | sharedAxis | string | `'category'`, `'none'` |  | Metric stacks imply category and use top-down order with independent scales. Otherwise default: category only for exactly one column panel plus one or more variance panels (no integrated variance); none otherwise. none honours columns and array order. category uses one column in bottom-up order with the category-axis owner at the bottom; it warns if columns or panelOrder are overridden. These column/variance tiers use 4:1 plot heights unless authored tracks or a shared y scale apply. |
+| variancePosition | string | `'above'`, `'below'` |  | Category tiers only: where the variance tiers stand. 'above' (default) puts them over the column panel, with the category labels at the bottom of the exhibit. 'below' puts them under it in authored order, with the category labels between the columns and the tiers. |
 | sharedScale | boolean |  |  | Default: panels share one y scale in every sharedAxis mode only with evidence that they show one measure: every numeric panel names the same non-empty unit and format, the grid names a unit, or the panels come from repeat or a scaleGroup. Without that evidence each panel keeps its own scale, also when all panels are the same chart type. Set true to share panels without a unit, false for independent panel domains. Metric stacks always use independent zero scales and refuse true. |
 | panelOrder | string | `'sheet'`, `'lastDesc'`, `'lastAsc'`, `'totalDesc'`, `'totalAsc'` |  | Facet panel order: 'sheet' keeps the authored array (default), 'last*' ranks by each panel's final value, 'total*' by its sum. Panels with no measurable value stay last in both directions. |
 | reflow | boolean |  |  | Facets only: a grid of more panels than a numeric columns count, on a card under 480 px, takes columns as a maximum. Where a panel drops category names for room, it draws with fewer columns, down to two, at the largest count that prints every name and that an authored height seats. Default true; false keeps the authored count. |
@@ -275,6 +276,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | three-tier | example | Three tiers: actuals, ΔPY absolute, ΔPY% |
 | weekly-actual-vs-plan | example | Actual vs plan by week: AC columns with PL ticks over a ΔPL tier |
 | actual-vs-plan-callout | example | Actual vs plan by year with a callout on the year below plan, over a ΔPL tier |
+| weekly-actual-vs-plan-variance-below | example | Actual vs plan by week with the ΔPL tier below the columns |
 | compact-tier-slack | torture | Torture: compact tiers distribute vertical slack |
 | facet-regions | example | Facets: four regions, 2×2 |
 | facet-regions-ranked | torture | Facets ordered by last value, largest first |
