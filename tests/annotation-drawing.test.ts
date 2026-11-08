@@ -225,6 +225,11 @@ it('a keyed plan tick drops its name where the named value has no seat beside it
     { labels: { kind: string; text: string; hidden?: unknown }[] }).labels.filter((label) => label.kind === 'tick');
   expect(ticks({}).map((label) => [label.text, label.hidden])).toEqual(['400', '450', '505', '545', '580'].map((text) => [text, undefined]));
   expect(ticks({ labels: { tick: ['absolute', 'series'] } }).map((label) => label.text)).toContain('400 Plan');
+  // Two references draw alike ticks: their values keep the names that tell them apart.
+  const two = { ...data, series: [...data.series, { id: 'target', label: 'Target', role: 'reference', values: [350, 500, 420, 490, 620] }] };
+  const named = (getChartDefinition('column')!.layout(two as never, { size: { width: 400, height: 300 }, referenceStyle: 'tick', legend: 'top' } as never) as unknown as
+    { labels: { kind: string; text: string }[] }).labels.filter((label) => label.kind === 'tick');
+  expect(named.every((label) => / (Plan|Target)$/.test(label.text))).toBe(true);
 });
 
 // A difference across all twelve months of a narrow column chart lost its number (no seat right of its arrow beside the

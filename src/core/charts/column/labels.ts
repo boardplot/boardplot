@@ -775,9 +775,10 @@ export function planColumnLabels(
   for (const s of tickContent && domain.variant !== 'stacked100' ? domain.refSeries : []) {
     const textOf = (ci: number, content: LabelContent) =>
       composeText(domain, content, domain.plottedOf(s, ci)!, null, cats[ci]!.label ?? cats[ci]!.id, s.label, false, domain.valueSpec.forSeries(s));
-    // Where the key names the series and a named value ("400 Plan") is too wide for the gap beside its
-    // column, every value of the series drops the name ("400"). Authored tick content keeps it.
-    const nameless = domain.refStyle !== 'marker' && tickContent!.includes('series') && tickKeyed(domain.options, area.frame.legend, s.id) &&
+    // Where the key names the only reference series and a named value ("400 Plan") is too wide for the gap
+    // beside its column, every value of the series drops the name ("400"). Authored tick content keeps it,
+    // and so do two or more references, whose ticks look alike.
+    const nameless = domain.refStyle !== 'marker' && domain.refSeries.length === 1 && tickContent!.includes('series') && tickKeyed(domain.options, area.frame.legend, s.id) &&
       cats.some((c, ci) => ci < cats.length - 1 && domain.plottedOf(s, ci) !== null &&
         leadOf(ci, pyRef?.id === s.id && pyGrowth.has(c.id)) + measure(textOf(ci, tickContent!), tickFont).width / 2 > band.step - band.bandwidth);
     cats.forEach((c, ci) => {
