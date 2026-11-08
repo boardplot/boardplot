@@ -1694,18 +1694,24 @@ function calloutLabel(
     }
     return { slot, rect: labelRect, penalty, ...(leader ? { leaderFrom: edgeToward(labelRect) } : {}) };
   };
-  const sharing = (kind === 'callout' || kind === 'note' || kind === 'delta') ? input.annotations.filter((other) =>
-    ['callout', 'note', 'delta'].includes(other.kind) && 'at' in other && other.at !== undefined && samePoint(other.at as AnchorRef)).length : 0;
-  const columnTop = input.calloutColumnStack === true && !glyph && !anchor.lineAnchored && box.w === 0 && sharing > 0;
+  const stackMembers = (kind === 'callout' || kind === 'note' || kind === 'delta') ? input.annotations.filter((other) =>
+    ['callout', 'note', 'delta'].includes(other.kind) && 'at' in other && other.at !== undefined && samePoint(other.at as AnchorRef)) : [];
+  const sharing = stackMembers.length;
+  // An arrow callout keeps the distance its arrow needs, and an empty one the leader that shows where it points.
+  const columnTop = input.calloutColumnStack === true && !glyph && head.arrow !== true && w > 0 && !anchor.lineAnchored && box.w === 0 && sharing > 0;
   const stackSeats: SlotCandidate[] = [];
   if (columnTop) {
-    const aboveRect = { x: at.x - w / 2, y: top - h - gap, w, h };
+    // Every note on the column starts its stack from one base, found under the widest of their texts, so the notes keep apart.
+    const stackW = Math.max(w, ...stackMembers.map((other) => 'text' in other && typeof other.text === 'string' ? input.measure(other.text, font).width : 0));
+    const aboveRect = { x: at.x - stackW / 2, y: top - h - gap, w: stackW, h };
     const ticks = input.occupied.hitsWhich(aboveRect, 0).filter((claim) => claim.kind === 'mark');
     // The stack starts over a reference tick and over the column's own value printed above it.
     const value = input.printedLabels?.find((label) => label.kind === 'point' && label.hidden === undefined &&
       label.owner.categoryId === anchor.owner.categoryId && label.owner.seriesId === anchor.owner.seriesId && label.rect.y < top);
     const base = Math.min(top - gap, ...ticks.map((claim) => claim.rect.y - 4), ...(value ? [value.rect.y - 4] : []));
-    for (let k = 0; k < sharing; k++) stackSeats.push(mk(`aboveStack${k}`, at.x - w / 2, base - h - k * (h + 4), 0.1 * (k + 1)));
+    // The notes stack in the order they are listed: each prefers the seat at its own place.
+    const place = Math.max(0, stackMembers.indexOf(ann));
+    for (let k = 0; k < sharing; k++) stackSeats.push(mk(`aboveStack${k}`, at.x - w / 2, base - h - k * (h + 4), 0.1 * (1 + Math.abs(k - place))));
   }
   let all: SlotCandidate[] = [
     mk(

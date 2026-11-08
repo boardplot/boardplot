@@ -862,6 +862,7 @@ export const fixtures: Fixture<RangeChartData, AnomalyColumnOptions>[] = [
       source: 'Illustrative data',
       highlight: ['fy23'],
       referenceStyle: 'tick',
+      legend: 'top',
     },
     annotations: [
       { kind: 'delta', at: { categoryId: 'fy23', seriesId: 'revenue' }, vs: { categoryId: 'fy23', seriesId: 'plan' } },
