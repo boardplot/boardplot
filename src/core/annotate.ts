@@ -217,8 +217,8 @@ export interface AnnotatePassInput {
    */
   cagrLabelOnArm?: boolean;
   /**
-   * Column: a diff or delta between two column totals that are not neighbours draws as the growth
-   * bracket over the columns, with the difference for its label.
+   * Column and waterfall: a diff or delta between two totals that are not neighbours draws as the
+   * growth bracket over the marks between, with the difference on its run.
    */
   spanBracket?: (annotation: Annotation) => boolean;
   theme: Theme;

@@ -70,7 +70,7 @@ import {
   strokeToken,
   secondaryType,
 } from '../../theme';
-import type { AnchorRef } from '../../types/annotations';
+import type { AnchorRef, Annotation } from '../../types/annotations';
 import { cellMeta, cellValue, isPctCell, type Direction, type Id } from '../../types/cell';
 import type { WaterfallData, WaterfallItem } from '../../types/data';
 import type { WaterfallOptions } from '../../types/options';
@@ -305,6 +305,28 @@ function automaticWaterfall(
   return fits ? { geometry: horizontal, horizontal: true } : staysVertical;
 }
 
+/**
+ * The total change of a bridge, a difference between its first and its last total, runs as the
+ * growth bracket, as a far column difference does (`bracketsOverColumns`): a leg up from each
+ * total and a run over the steps. A difference between other totals keeps its arrow.
+ */
+function totalChangeBracket(annotation: Annotation, data: WaterfallData): boolean {
+  if ((annotation.kind !== 'diff' && annotation.kind !== 'delta') || annotation.placement === 'label' || data.cases?.length) return false;
+  const [from, to] = annotation.kind === 'diff' ? [annotation.from, annotation.to] : [annotation.vs, annotation.at];
+  const id = (ref: unknown) => typeof ref === 'string' ? ref
+    : ref !== null && typeof ref === 'object' && 'categoryId' in ref && !('seriesId' in ref) && ((ref as { edge?: string }).edge ?? 'total') === 'total' ? (ref as { categoryId: Id }).categoryId : undefined;
+  const totals = data.items.filter((item) => item.type === 'total' || item.type === 'subtotal');
+  const ends = [totals[0]?.id, totals[totals.length - 1]?.id];
+  const pair = [id(from), id(to)];
+  return totals.length >= 2 && data.items.indexOf(totals[totals.length - 1]!) - data.items.indexOf(totals[0]!) > 1
+    && pair.every((x) => x !== undefined && ends.includes(x)) && pair[0] !== pair[1];
+}
+
+/** The annotations whose arms need the growth band over the bars. */
+function growthArms(options: WaterfallOptions, data: WaterfallData): boolean {
+  return (options.annotations ?? []).some((a) => a.kind === 'cagr' || totalChangeBracket(a, data));
+}
+
 function layoutVerticalWaterfall(
   data: WaterfallData,
   options: WaterfallOptions,
@@ -352,7 +374,7 @@ function layoutVerticalWaterfall(
     if ((next.bracketSlack ?? -1) < 0 || hiddenCount(next.geometry) > hiddenCount(pass.geometry) || (next.geometry.warnings?.length ?? 0) > (pass.geometry.warnings?.length ?? 0)) cut = 0;
     else pass = next;
   }
-  const cagr = (options.annotations ?? []).some((a) => a.kind === 'cagr');
+  const cagr = growthArms(options, data);
   const unseated = (geometry: Geometry<WaterfallMarks, WaterfallDerived>) =>
     geometry.labels.some((label) => label.id.startsWith('annotation:') && label.hidden === 'collision');
   while (cagr && pad < 48 && (unseated(pass.geometry) || (pad < 18 && pass.annotationLegDeficit > 0))) {
@@ -405,6 +427,12 @@ function layoutVerticalWaterfall(
         pass = unseated(settled.geometry) ? repaired : settled;
       }
     }
+  }
+  // The growth bracket takes the band over the bridge. Where that hides a label, and the arrow at
+  // the bars hides fewer, the total change keeps its arrow (placement 'label').
+  if (hiddenCount(pass.geometry) > 0 && options.annotations?.some((a) => totalChangeBracket(a, data))) {
+    const arrow = layoutVerticalWaterfall(data, { ...options, annotations: options.annotations.map((a) => (a.kind === 'diff' || a.kind === 'delta') && totalChangeBracket(a, data) ? { ...a, placement: 'label' as const } : a) });
+    if (hiddenCount(arrow) < hiddenCount(pass.geometry)) return arrow;
   }
   return withBridgeGap(pass.geometry);
 }
@@ -1485,7 +1513,7 @@ function layoutWaterfallWithPad(
   // value label needs over the tallest bar. `bracketCut` gives back what the shared row leaves empty.
   const bracketLabelH = measure('X', { family: theme.type.family, ...theme.type.label }).height;
   const bracketRoom = (options.annotations ?? []).some((a) => a.kind === 'bracket') ? Math.max(0, Math.ceil(2 * bracketLabelH + 8) - bracketCut) : 0;
-  const annPad = ((options.annotations ?? []).some((a) => a.kind === 'cagr') ? 12 + extraAnnPad : extraAnnPad) + bracketRoom;
+  const annPad = (growthArms(options, data) ? 12 + extraAnnPad : extraAnnPad) + bracketRoom;
   const axisTitle = categoryRow && axisTitleAllowed(options.labels) ? planValueAxisTitle(options.axisTitles?.primary, theme, measure, plotWidth) : undefined;
   const axisTitleBand = valueAxisTitleBand(axisTitle, theme, measure, annPad);
   const plot: Rect = {
@@ -1578,7 +1606,7 @@ function layoutWaterfallWithPad(
   const hangingRoom = options.labels === false || !categoryRow ? 0 : measure('0', strongFont).height + 4;
   const hangingReserve = hangingLabelReserve(plot.h, [dLo, dHi], hangingEnd, hangingRoom);
   // These category steps finish before the height-dependent rotation step.
-  if (categoryRow && !options.annotations?.some(a => a.kind === 'cagr')
+  if (categoryRow && !growthArms(options, data)
     && ['fit', 'wrap', 'font-down'].includes(catPlan.step)) {
     fixedPlotChrome(frameResult, catBandH + 8 + axisTitleBand);
   }
@@ -2231,6 +2259,7 @@ function layoutWaterfallWithPad(
   const annResult = runAnnotatePass({
     annotations,
     resolve,
+    spanBracket: (annotation) => totalChangeBracket(annotation, data),
     // A box given by category wraps the step's whole band.
     drawingCategoryBand: categoryBandFromCenters(items.map((it) => it.id), plot, (i) => band.center(i), 'x'),
     defaultSpan:

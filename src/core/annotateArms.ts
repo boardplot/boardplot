@@ -291,7 +291,8 @@ function drawLiftedCagrArm(
   const direction = a.x <= b.x ? 1 : -1;
   const fromY = direction === 1 ? startY : endY;
   const toY = direction === 1 ? endY : startY;
-  const onArm = input.cagrLabelOnArm === true;
+  // A difference drawn as the growth bracket always prints on its run, as on column.
+  const onArm = input.cagrLabelOnArm === true || kind !== 'cagr';
   const endGap = onArm ? ARM_END_GAP_ON_ARM : ARM_END_GAP;
   const endpointCeiling = Math.min(startY, endY) - ARM_CLEARANCE - 8;
   const labelX = (spanX0 + spanX1) / 2 - tsize.width / 2;
@@ -336,7 +337,8 @@ function drawLiftedCagrArm(
       ) {
         armY = candidate;
       }
-      if (armY > legFloor) pass.addLegDeficit(armY - legFloor);
+      // A difference's run lifted above its floor cannot take a seat over it: its legs need the floor to clear them.
+      if (armY > legFloor) pass.addLegDeficit((kind === 'cagr' ? armY : Math.max(armY, armFloor)) - legFloor);
     }
   }
 

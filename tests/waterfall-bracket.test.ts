@@ -4,6 +4,8 @@ import { expect, it } from 'vitest';
 import { claimsForChart } from '../src/core/claims';
 import { layoutWaterfall } from '../src/core/charts/waterfall/layout';
 import { recomputeClaim } from './helpers/recompute';
+import { render } from '../src/cli/render';
+import '../src/core/charts';
 
 const data = {
   items: [
@@ -124,4 +126,46 @@ it('the brackets of one bridge share one row, and span keeps each above its step
     { kind: 'bracket', id: 'b1', from: 'c', to: 'c', label: 'Inner' },
   ] } as never);
   expect(narrow.labels.filter((label) => label.kind === 'annotation' && !label.hidden)).toHaveLength(2);
+});
+
+// The total change of a bridge drew dotted level lines through every bar, and its number landed on a step's value:
+// it must run as the growth bracket, over the bracket row, and placement 'label' keeps the arrow at the bars.
+it('the change between first and last total runs as the growth bracket over the brackets', () => {
+  const annotations = [
+    { kind: 'bracket', from: 'b', to: 'c', label: 'Commercial' },
+    { kind: 'diff', from: { categoryId: 'a' }, to: { categoryId: 'f' }, mode: 'both' },
+  ];
+  const draw = (diff: object) => layoutWaterfall(data, { size: { width: 960 }, annotations: [annotations[0], { ...annotations[1], ...diff }] } as never);
+  const geometry = draw({});
+  const change = geometry.labels.find((label) => label.kind === 'annotation' && label.text.startsWith('+34'))!;
+  expect(change.text).toBe('+34 (+34%)');
+  expect(change.slot).toBe('onArm');
+  const bracket = geometry.labels.find((label) => label.kind === 'annotation' && label.text.startsWith('Commercial'))!;
+  // The run goes through the middle of its label, over the top of the bracket label.
+  expect(change.rect.y + change.rect.h / 2).toBeLessThan(bracket.rect.y);
+  expect(draw({ placement: 'label' }).labels.find((label) => label.text === '+34 (+34%)')!.slot).not.toBe('onArm');
+});
+
+// The growth bracket takes the band where a note over the first step had its seat, so the note was hidden
+// where main drew it: the total change must keep its arrow when that hides fewer labels.
+it('the total change keeps its arrow where the growth bracket would hide a note', () => {
+  const spec = {
+    type: 'waterfall',
+    data: { items: [
+      { id: 'a', label: 'Start', type: 'total', value: 1000 },
+      { id: 'b', label: 'Step 0', value: -100 },
+      { id: 'c', label: 'Step 1', value: 50 },
+      { id: 'd', label: 'Step 2', value: -30 },
+      { id: 'e', label: 'Step 3', value: 20 },
+      { id: 'f', label: 'End', type: 'total' },
+    ] },
+    options: { size: { width: 400 }, theme: 'studio', title: 'Title here for the chart', unit: 'EUR', source: 'Src', valueAxis: { break: 'auto' } },
+    annotations: [
+      { kind: 'note', at: 'b', text: 'New supplier contract' },
+      { kind: 'note', at: 'c', text: 'Line 3 yield programme' },
+      { kind: 'diff', from: 'a', to: 'f', mode: 'both' },
+    ],
+  };
+  const body = render({ spec: spec as never, return: ['svg'] }).body as { warnings?: { code: string }[] };
+  expect((body.warnings ?? []).map((warning) => warning.code)).not.toContain('label-hidden');
 });
