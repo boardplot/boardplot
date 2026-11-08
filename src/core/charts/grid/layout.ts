@@ -1086,7 +1086,7 @@ function layoutAuthoredGrid(
   const naturalTierWeights = options.sharedAxis === 'category' && options.rows === undefined && sharedYGroup(rawPanels) === null
     ? varianceTierWeights(rawPanels) : undefined;
   if (options.sharedAxis === 'category') {
-    const bottomUp = bottomUpTierOrder(rawPanels);
+    const bottomUp = bottomUpTierOrder(rawPanels, options.variancePosition);
     const weights = tierWeights(rawPanels);
     const columns = Array.isArray(options.columns) ? options.columns.length : options.columns;
     if ((columns ?? 1) !== 1 || options.panelOrder !== undefined || rawPanels.some(panel => panel.row !== undefined || panel.column !== undefined || panel.span !== undefined)
@@ -1425,7 +1425,7 @@ function layoutAuthoredGrid(
     rowBands = trackBands(area.y, area.h, rowWeights, rowGaps, options.gutters?.rows !== undefined);
     tierSlots.forEach((slot, index) => { slot.y = rowBands[provisional[index]!.row]!.start; });
     let bottom = area.y + area.h;
-    for (const index of packed ? bottomUpTierOrder(panels) : []) {
+    for (const index of packed ? bottomUpTierOrder(panels, options.variancePosition) : []) {
       const child = children[index]!;
       const bounds = occupiedBounds(child.geometry, measure);
       child.slot.y = bottom - bounds.y - bounds.h;

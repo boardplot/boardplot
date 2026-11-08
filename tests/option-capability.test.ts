@@ -448,6 +448,7 @@ describe('published option behaviour census', () => {
     ["gantt", "colHeaders", "Needs metadata columns: gantt transformation-program."],
     ["grid treemap waffle", "valueAxis", "Reader at a11y/categoryRecords.ts:68 and grid/layout.ts:694, needs a panel that reads a domain, not proved."],
     ["grid", "sharedScale", "Needs panels on different scales: grid weekly-actual-vs-plan with false."],
+    ["grid", "variancePosition", "Needs column/variance category tiers: grid weekly-actual-vs-plan with 'below'."],
     ["grid", "reflow", "Needs a facet grid on a phone card; tests/grid-tiers-redesign.test.ts covers reflow on one."],
     ["heatmap status", "labels", "Acts on a label this variant draws: status review-status-legend-none with false."],
     ["heatmap", "scale", "Needs a value variant: heatmap regional-monthly-performance with 'discrete'."],

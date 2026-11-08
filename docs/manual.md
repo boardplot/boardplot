@@ -53,7 +53,7 @@ The table maps a frequent business message to a Boardplot type, the most common 
 
 | Message | Type and key options | Fixture | Common pitfall |
 |---|---|---|---|
-| Actual vs plan per period | `grid`, `sharedAxis: "category"`: a `column` panel with AC and the PL series as `role: "reference"`, a `variance` panel with `variant: "absolute"` and `variance: { vs: "pl" }` | `weekly-actual-vs-plan` | AC and PL as grouped columns: the reader must find each gap by eye. |
+| Actual vs plan per period | `grid`, `sharedAxis: "category"`: a `column` panel with AC and the PL series as `role: "reference"`, a `variance` panel with `variant: "absolute"` and `variance: { vs: "pl" }`. The ΔPL tier stands over the columns; `variancePosition: "below"` puts it under them | `weekly-actual-vs-plan`, `weekly-actual-vs-plan-variance-below` | AC and PL as grouped columns: the reader must find each gap by eye. |
 | Actual vs prior year | `column`, `variant: "stacked"`, one PY series with `role: "reference"`; for ΔPY tiers, `grid` with `variance` panels | `integrated-stacked-variance`, `three-tier` | A PY series without `role: "reference"` draws as one more data series. |
 | Ranking | `bar`, `sort: { categories: "desc" }` | `margin-by-brand` | Columns with long category names; a bar keeps the names on one line. |
 | Trend against plan | `line`, the actual series and a plan series with `scenario: "PL"`, `gapFill` between them | `option-cost-gap` | `gapFill` tones follow the order in `between`: with the cost named first, above plan is bad, so set `positiveTone: "bad"`. |
