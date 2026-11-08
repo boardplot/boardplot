@@ -118,5 +118,10 @@ it('the brackets of one bridge share one row, and span keeps each above its step
   const [first, second] = runs({});
   expect(second).toBeCloseTo(first!, 5);
   const [own1, own2] = runs({ bracketRow: 'span' });
-  expect(own2).toBeGreaterThan(own1! + 10);
+  expect(own2).toBeGreaterThan(own1! + 10);  // Two wide labels over neighbour steps meet on one row, and the top row seats only one: both stay drawn.
+  const narrow = layoutWaterfall(data, { size: { width: 320 }, annotations: [
+    { kind: 'bracket', id: 'b0', from: 'b', to: 'b', label: 'Outer' },
+    { kind: 'bracket', id: 'b1', from: 'c', to: 'c', label: 'Inner' },
+  ] } as never);
+  expect(narrow.labels.filter((label) => label.kind === 'annotation' && !label.hidden)).toHaveLength(2);
 });

@@ -334,20 +334,23 @@ function layoutVerticalWaterfall(
   let cut = 0;
   const lay = (band: number, enforceBreakOrder: boolean) => layoutWaterfallWithPad(data, options, band, true, undefined, enforceBreakOrder, cut);
   let pass = lay(pad, !options.annotations?.length);
-  // The brackets' shared row (one bracket's own seat) can stand lower than the top row the bracket room holds. The empty
-  // part goes back to the plot, at most in two rounds: the taller plot lifts the bars, so a cut of
-  // the whole gap is always safe and leaves a smaller gap. A round is kept only while every bracket
-  // stays on its row and no label is newly hidden or warned about.
   const hiddenCount = (geometry: Geometry<WaterfallMarks, WaterfallDerived>) => geometry.labels.filter((label) => label.hidden !== undefined && label.hidden !== 'redundant').length;
-  for (let round = 0; round < 2 && (pass.bracketSlack ?? 0) >= 1; round++) {
-    const before = cut;
-    cut += Math.floor(pass.bracketSlack!);
+  // Two wide bracket labels can meet on the shared row, and the top row seats only one of them. Where
+  // the brackets' own seats hide fewer labels, the bridge keeps those seats, as under bracketRow 'span'.
+  if (options.bracketRow !== 'span' && options.annotations?.some((a) => a.kind === 'bracket')
+    && pass.geometry.labels.some((label) => label.id.startsWith('annotation:') && label.hidden !== undefined && label.hidden !== 'redundant')) {
+    const own = layoutWaterfallWithPad(data, { ...options, bracketRow: 'span' }, pad, true, undefined, !options.annotations.length);
+    if (hiddenCount(own.geometry) < hiddenCount(pass.geometry)) return layoutVerticalWaterfall(data, { ...options, bracketRow: 'span' });
+  }
+  // The brackets' row can stand lower than the top row the bracket room holds. The empty part goes
+  // back to the plot in one round: the taller plot lifts the bars, so a cut of the whole gap is
+  // always safe. The round is kept only while every bracket stays on its row and no label is newly
+  // hidden or warned about.
+  if ((pass.bracketSlack ?? 0) >= 1) {
+    cut = Math.floor(pass.bracketSlack!);
     const next = lay(pad, !options.annotations?.length);
-    if ((next.bracketSlack ?? -1) < 0 || hiddenCount(next.geometry) > hiddenCount(pass.geometry) || (next.geometry.warnings?.length ?? 0) > (pass.geometry.warnings?.length ?? 0)) {
-      cut = before;
-      break;
-    }
-    pass = next;
+    if ((next.bracketSlack ?? -1) < 0 || hiddenCount(next.geometry) > hiddenCount(pass.geometry) || (next.geometry.warnings?.length ?? 0) > (pass.geometry.warnings?.length ?? 0)) cut = 0;
+    else pass = next;
   }
   const cagr = (options.annotations ?? []).some((a) => a.kind === 'cagr');
   const unseated = (geometry: Geometry<WaterfallMarks, WaterfallDerived>) =>
@@ -2372,7 +2375,7 @@ function layoutWaterfallWithPad(
   const onRow = bracketRowFree !== undefined && options.bracketRow !== 'span' && annResult.labels
     .filter((label) => bracketLabels.has(label.id) && label.hidden === undefined)
     .every((label) => label.rect.y + label.rect.h + 3 >= bracketRow! - 0.5);
-  return { geometry, annotationLegDeficit: annResult.legDeficit, unsafeBreak, ...(onRow ? { bracketSlack: bracketRowFree! - bracketTopRow } : {}),
+  return { geometry, annotationLegDeficit: annResult.legDeficit, unsafeBreak, ...(onRow ? { bracketSlack: Math.min(bracketRowFree! - bracketTopRow, bracketRoom) } : {}),
     ...(unsafeBreak && !enforceBreakOrder ? { repairBreak: () => drawBridge(options) } : {}) };
   }
 
