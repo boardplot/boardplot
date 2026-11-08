@@ -277,8 +277,8 @@ export interface ColumnMarkGeometry {
   refTickYs: Map<Id, number[]>;
   /** Per category, the y of every plan tick drawn behind its column. */
   behindTickYs: Map<Id, number[]>;
-  /** How far a plan tick behind its column reaches past each side. */
-  planEnds: number;
+  /** How far a plan tick behind its column reaches past each side; undefined where it draws in front. */
+  planEnds: number | undefined;
   flagMarkers: Map<Id, FlagMarker>;
   /** The net line's last edge, where its label hangs. */
   netLineEnd: { x: number; y: number } | undefined;

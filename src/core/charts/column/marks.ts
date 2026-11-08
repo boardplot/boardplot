@@ -328,7 +328,7 @@ function referenceMarks(
   claims: OccupiedIndex,
   behind: SceneNode[],
   behindTickYs: Map<Id, number[]>,
-  planEnds: number,
+  planEnds: number | undefined,
 ): ColumnMarks['referenceTicks'] {
   const { theme, measure, cats, refSeries, variant, plottedOf, refStyle, pyRef, pyGrowth, valueSpec } = domain;
   const { band, y } = area;
@@ -368,7 +368,7 @@ function referenceMarks(
       // A gap under 4 px for the outside tick falls back to the tick across the column (dense cards).
       const reach = outsideTickReach(domain, band, ci) ?? 8;
       const out = integrated || (outside && reach >= 4);
-      const back = domain.tickBehind && !out;
+      const back = planEnds !== undefined && !out;
       const ends = back ? planEnds : 2;
       const tickGeometry = referenceTickGeometry('vertical', bx, ry, out ? bw : -ends, bw + (integrated ? 8 : out ? reach : ends));
       if (refStyle === 'marker') {
@@ -539,8 +539,8 @@ export function layoutColumnMarks(
   domain: ColumnDomain,
   paints: ColumnPaints,
   area: ColumnArea,
-  /** How far a plan tick behind its column reaches past each side (planTickEnds). */
-  planEnds = 2,
+  /** How far a plan tick behind its column reaches past each side (planTickEnds); undefined draws it in front. */
+  planEnds?: number,
 ): ColumnMarkGeometry {
   const { theme, size, va, anomaly } = domain;
   const { frame, plot, y, y0 } = area;

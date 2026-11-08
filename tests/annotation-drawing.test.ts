@@ -251,6 +251,8 @@ it('a plan tick draws behind its column, and each column short of plan keeps its
   const front = run({ referenceTick: { position: 'front' } });
   expect(front.scene.some((node) => node.part === 'referenceCasing')).toBe(true);
   expect(at(front.scene, 'ref:plan:a')).toBeGreaterThan(at(front.scene, 'mark:act:a'));
+  // Columns that touch would hide the whole tick behind them: it stays in front.
+  expect(run({ bandFraction: 1 }).scene.some((node) => node.part === 'referenceCasing')).toBe(true);
 });
 
 // A difference across all twelve months of a narrow column chart lost its number (no seat right of its arrow beside the
