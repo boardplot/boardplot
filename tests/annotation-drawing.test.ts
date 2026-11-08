@@ -216,6 +216,17 @@ it('a column under its plan tick keeps its value, and its notes stack straight a
   }
 });
 
+// At 360 px the named plan values ("400 Plan") found no seat beside their ticks and all went to the notes.
+// With the key naming Plan, they print as numbers; authored tick content keeps the name.
+it('a keyed plan tick drops its name where the named value has no seat beside its column', () => {
+  const data = { categories: ['a', 'b', 'c', 'd', 'e'].map((id) => ({ id, label: id.toUpperCase() })), series: [
+    { id: 'act', label: 'Actual', values: [410, 455, 470, 552, 588] }, { id: 'plan', label: 'Plan', role: 'reference', values: [400, 450, 505, 545, 580] }] };
+  const ticks = (options: object) => (getChartDefinition('column')!.layout(data as never, { size: { width: 360, height: 300 }, referenceStyle: 'tick', legend: 'top', ...options } as never) as unknown as
+    { labels: { kind: string; text: string; hidden?: unknown }[] }).labels.filter((label) => label.kind === 'tick');
+  expect(ticks({}).map((label) => [label.text, label.hidden])).toEqual(['400', '450', '505', '545', '580'].map((text) => [text, undefined]));
+  expect(ticks({ labels: { tick: ['absolute', 'series'] } }).map((label) => label.text)).toContain('400 Plan');
+});
+
 // A difference across all twelve months of a narrow column chart lost its number (no seat right of its arrow beside the
 // last column). As a total difference it runs as the growth bracket over the columns and keeps the values' row.
 // The percent modes of a delta and a diff must print the right numbers.

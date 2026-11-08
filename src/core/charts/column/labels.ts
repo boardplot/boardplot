@@ -29,7 +29,7 @@ import { restValueHiding, restValuesHidden } from '../../restLabels';
 import { emphasisWeight } from '../../theme';
 import { NET_TICK_REACH, netInsideStack, outsideTickReach } from './marks';
 import type { IntegratedVariancePoint } from './layout';
-import { contentOf, edgeNameFont, kindSetting, pyTickKeyed, rightEdgeSeriesLabels, RIGHT_EDGE_GAP, shareTextOf, toDateOnValues } from './domain';
+import { contentOf, edgeNameFont, kindSetting, pyTickKeyed, tickKeyed, rightEdgeSeriesLabels, RIGHT_EDGE_GAP, shareTextOf, toDateOnValues } from './domain';
 import { toDateLabel } from '../../partialPeriod';
 import {
   ANOMALY_FLAG_GAP,
@@ -767,46 +767,59 @@ export function planColumnLabels(
   const pyKeyed = pyTickKeyed(domain, area.frame.legend);
   // Every reference prints its value beside its mark; the
   // integrated PY tick, which reaches further out, leads its label out 12 px.
-  for (const s of tickContent && domain.variant !== 'stacked100' ? domain.refSeries : []) cats.forEach((c, ci) => {
-    const v = domain.plottedOf(s, ci);
-    if (v === null) return;
-    const integrated = pyRef?.id === s.id && pyGrowth.has(c.id);
-    const ry = y(v);
-    const bx = band.position(ci);
-    // Where the key names the integrated PY tick, its label is the value alone ("82").
-    const valueOnly = integrated && pyKeyed;
-    const text = composeText(domain, valueOnly ? ['absolute'] : tickContent!, v, null, c.label ?? c.id, s.label, false, domain.valueSpec.forSeries(s));
-    const size = measure(text, tickFont);
-    // The label starts 3 px past a tick that reaches out beside the column.
+  // The label starts 3 px past a tick that reaches out beside the column.
+  const leadOf = (ci: number, integrated: boolean) => {
     const reach = outsideTickReach(domain, band, ci);
-    const primaryX = bx + band.bandwidth + (integrated ? PY_TICK_LEAD : reach !== undefined && reach >= 4 ? reach + 3 : 5);
-    requests.push({
-      id: `tick:${s.id}:${c.id}`,
-      kind: 'tick',
-      owner: { seriesId: s.id, categoryId: c.id },
-      text,
-      lines: [text],
-      typeRole: 'label', font: tickFont,
-      // A plain reference value takes the seat the column values leave.
-      priority: integrated ? PRIORITY.valueLine : PRIORITY.interior - 1,
-      candidates: [
-        // A dot sits mid-column: its value goes beside the dot first, clear of its ring.
-        ...(domain.refStyle === 'marker' ? [
-          { slot: 'rightOfMarker', rect: box(band.center(ci) + REFERENCE_MARKER_R + 4, ry - size.height / 2, size), penalty: 0 },
-          { slot: 'leftOfMarker', rect: box(band.center(ci) - REFERENCE_MARKER_R - 4 - size.width, ry - size.height / 2, size), penalty: 0.5 },
-        ] : []),
-        { slot: 'rightOfTick', rect: box(primaryX, ry - size.height / 2, size), penalty: 1 },
-        { slot: 'rightOfTickAbove', rect: box(primaryX, ry - size.height - 4, size), penalty: 2 },
-        { slot: 'rightOfTickBelow', rect: box(primaryX, ry + 4, size), penalty: 3 },
-        { slot: 'leftOfTick', rect: box(bx - 12 - size.width, ry - size.height / 2, size), penalty: 4 },
-      // A side seat keeps its centre in the gaps beside its column: centred over a neighbour's column (above
-      // its top, where the seat is free) the value reads as that column's plan.
-      ].filter((candidate) => {
-        const mid = candidate.rect.x + candidate.rect.w / 2;
-        return (ci === 0 || mid >= bx - band.step + band.bandwidth) && (ci === cats.length - 1 || mid <= bx + band.step);
-      }),
+    return integrated ? PY_TICK_LEAD : reach !== undefined && reach >= 4 ? reach + 3 : 5;
+  };
+  for (const s of tickContent && domain.variant !== 'stacked100' ? domain.refSeries : []) {
+    const textOf = (ci: number, content: LabelContent) =>
+      composeText(domain, content, domain.plottedOf(s, ci)!, null, cats[ci]!.label ?? cats[ci]!.id, s.label, false, domain.valueSpec.forSeries(s));
+    // Where the key names the series and a named value ("400 Plan") is too wide for the gap beside its
+    // column, every value of the series drops the name ("400"). Authored tick content keeps it.
+    const nameless = domain.refStyle !== 'marker' && tickContent!.includes('series') && tickKeyed(domain.options, area.frame.legend, s.id) &&
+      cats.some((c, ci) => ci < cats.length - 1 && domain.plottedOf(s, ci) !== null &&
+        leadOf(ci, pyRef?.id === s.id && pyGrowth.has(c.id)) + measure(textOf(ci, tickContent!), tickFont).width / 2 > band.step - band.bandwidth);
+    cats.forEach((c, ci) => {
+      const v = domain.plottedOf(s, ci);
+      if (v === null) return;
+      const integrated = pyRef?.id === s.id && pyGrowth.has(c.id);
+      const ry = y(v);
+      const bx = band.position(ci);
+      // Where the key names the integrated PY tick, its label is the value alone ("82").
+      const valueOnly = (integrated && pyKeyed) || nameless;
+      const text = textOf(ci, valueOnly ? tickContent!.filter((part) => part !== 'series') : tickContent!);
+      const size = measure(text, tickFont);
+      const primaryX = bx + band.bandwidth + leadOf(ci, integrated);
+      requests.push({
+        id: `tick:${s.id}:${c.id}`,
+        kind: 'tick',
+        owner: { seriesId: s.id, categoryId: c.id },
+        text,
+        lines: [text],
+        typeRole: 'label', font: tickFont,
+        // A plain reference value takes the seat the column values leave.
+        priority: integrated ? PRIORITY.valueLine : PRIORITY.interior - 1,
+        candidates: [
+          // A dot sits mid-column: its value goes beside the dot first, clear of its ring.
+          ...(domain.refStyle === 'marker' ? [
+            { slot: 'rightOfMarker', rect: box(band.center(ci) + REFERENCE_MARKER_R + 4, ry - size.height / 2, size), penalty: 0 },
+            { slot: 'leftOfMarker', rect: box(band.center(ci) - REFERENCE_MARKER_R - 4 - size.width, ry - size.height / 2, size), penalty: 0.5 },
+          ] : []),
+          { slot: 'rightOfTick', rect: box(primaryX, ry - size.height / 2, size), penalty: 1 },
+          { slot: 'rightOfTickAbove', rect: box(primaryX, ry - size.height - 4, size), penalty: 2 },
+          { slot: 'rightOfTickBelow', rect: box(primaryX, ry + 4, size), penalty: 3 },
+          // Left of its tick, between two ticks of its series, a value reads as the left neighbour's.
+        ...(ci > 0 && domain.plottedOf(s, ci - 1) !== null ? [] : [{ slot: 'leftOfTick', rect: box(bx - 12 - size.width, ry - size.height / 2, size), penalty: 4 }]),
+        // A side seat keeps its centre in the gaps beside its column: centred over a neighbour's column (above
+        // its top, where the seat is free) the value reads as that column's plan.
+        ].filter((candidate) => {
+          const mid = candidate.rect.x + candidate.rect.w / 2;
+          return (ci === 0 || mid >= bx - band.step + band.bandwidth) && (ci === cats.length - 1 || mid <= bx + band.step);
+        }),
+      });
     });
-  });
+  }
   const end = scene.netLineEnd;
   if (end) {
     const text = netLineName(domain.dataSeries, domain.netLineSeries, domain.stacks, domain.options.strings);
