@@ -40,7 +40,8 @@ export type Annotation<X extends string | number = Id> =
       // 'pctOf100' is not in the advertised union: it is not implemented, and
       // every non-relative mode would fall into the absolute branch, drawing
       // the raw difference as if it were percentage points. The schema and the annotate pass refuse it by name.
-      mode?: 'relative' | 'absolute' | 'reversed'; // default 'relative'
+      /** 'relative' (default) the percent change from `from` to `to`, 'reversed' from `to` to `from`, 'absolute' the value difference, 'both' the value difference and the percent change as "+149 (+36%)". */
+      mode?: 'relative' | 'absolute' | 'reversed' | 'both';
     } & GapPlacement)
   | (AnnotationBase & {
       kind: 'cagr';
@@ -64,7 +65,13 @@ export type Annotation<X extends string | number = Id> =
       to: X;
       label?: string;
     })
-  | (AnnotationBase & { kind: 'delta'; at: AnchorRef<X>; vs: AnchorRef<X> | number } & GapPlacement)
+  | (AnnotationBase & {
+      kind: 'delta';
+      at: AnchorRef<X>;
+      vs: AnchorRef<X> | number;
+      /** 'absolute' (default) prints at − vs, 'relative' the percent change from vs, 'both' the two as "+149 (+36%)". */
+      mode?: 'absolute' | 'relative' | 'both';
+    } & GapPlacement)
   | (AnnotationBase & { kind: 'abs'; at: AnchorRef<X> }) // true-value flag (outlier marker)
   | (AnnotationBase & { kind: 'note'; at: AnchorRef<X>; text: string } & AnnotationGlyphSlot)
   | (AnnotationBase & {
@@ -192,6 +199,9 @@ export type Annotation<X extends string | number = Id> =
  * shorter bar's row under 'auto': an arrow from the longer bar's end to the
  * `to` end with the number in a break of the shaft. 'label' keeps the arrow
  * off the rows with its label beside it.
+ * On a column chart, a diff or delta between the totals of two columns
+ * that are not neighbours runs as the growth bracket over the columns under
+ * 'auto', as a cagr does. 'label' keeps the arrow between the columns.
  * Other anchors and other charts keep the label.
  */
 export interface GapPlacement {

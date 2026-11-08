@@ -240,6 +240,7 @@ function pushCagrPlacement(
   candidates: LabelRequest['candidates'],
   nodeIds: Id[],
   derivation?: AnnotationDerivation,
+  kind: 'cagr' | 'diff' | 'delta' = 'cagr',
 ): void {
   pass.labelRequests.push({
     id: `annotation:${annId}`,
@@ -254,7 +255,7 @@ function pushCagrPlacement(
   });
   pass.placed.push({
     id: annId,
-    kind: 'cagr',
+    kind,
     computedText: computed,
     nodeIds,
     labelId: `annotation:${annId}`,
@@ -270,6 +271,7 @@ function drawLiftedCagrArm(
   annId: Id,
   computed: string,
   derivation?: AnnotationDerivation,
+  kind: 'cagr' | 'diff' | 'delta' = 'cagr',
 ): void {
   const { input, nodes, nid } = pass;
   const { font, tsize } = measureArmLabel(input, text);
@@ -394,7 +396,7 @@ function drawLiftedCagrArm(
     ...(onArm && !stubs ? [{ slot: 'onArm', rect: labelAt(armY), penalty: 0 }] : []),
     { slot: 'aboveArm', rect: { x: labelX, y: armY - 4 - tsize.height, w: tsize.width, h: tsize.height }, penalty: onArm ? 1 : 0 },
     { slot: 'belowArm', rect: { x: labelX, y: armY + 4, w: tsize.width, h: tsize.height }, penalty: onArm ? 2 : 1 },
-  ], [pathId, headId], derivation);
+  ], [pathId, headId], derivation, kind);
 }
 
 /**
@@ -963,6 +965,12 @@ function drawInsetBarGap(
     ...(derivation ? { derivation } : {}),
   });
   return true;
+}
+
+/** A difference between two column totals drawn as the growth bracket over the columns, as a total difference. */
+export function drawSpanBracket(pass: ArmDrawPass, a: AnchorResolution, b: AnchorResolution, text: string, annId: Id,
+  kind: 'diff' | 'delta', computed: string, derivation?: AnnotationDerivation): void {
+  drawLiftedCagrArm(pass, a, b, text, annId, computed, derivation, kind);
 }
 
 export function drawCagrArm(

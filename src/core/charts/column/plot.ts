@@ -36,6 +36,7 @@ import { prepareRatioTier, ratioTierCanRender, ratioTierMetrics } from '../../ra
 import { bandScale, brokenLinearScale, linearScale, seatRoom } from '../../scale';
 import type { FontSpec } from '../../text';
 import { canvasMargin, panelTypeClass, emphasisWeight, strokeToken, dashToken, secondaryFont } from '../../theme';
+import type { Annotation } from '../../types/annotations';
 import type { Id } from '../../types/cell';
 import type { LegendOptions } from '../../types/options';
 import type { LintWarning } from '../../types/scene';
@@ -612,6 +613,23 @@ const STACKED100_COLUMN_MAX = 110;
 const CAGR_ON_ARM_MIN = 16;
 
 /** The plot rect: reserve category band, grand-total headroom, cagr arm room; then the value scale. */
+/**
+ * A `diff` or `delta` between the totals of two columns that are not neighbours: a total difference. It draws as the growth bracket over the columns, as a `cagr` does, with the
+ * difference for its label. `placement: 'label'` keeps the arrow between the columns.
+ */
+export function bracketsOverColumns(annotation: Annotation, domain: Pick<ColumnDomain, 'cats' | 'dataSeries'>): boolean {
+  if ((annotation.kind !== 'diff' && annotation.kind !== 'delta') || annotation.placement === 'label') return false;
+  const [from, to] = annotation.kind === 'diff' ? [annotation.from, annotation.to] : [annotation.vs, annotation.at];
+  // A column's total: the category itself, or the one series a single-series chart stacks.
+  const index = (ref: unknown) => {
+    const id = typeof ref === 'string' ? ref
+      : ref !== null && typeof ref === 'object' && 'categoryId' in ref && ((ref as { seriesId?: Id }).seriesId === undefined || (domain.dataSeries.length === 1 && (ref as { seriesId?: Id }).seriesId === domain.dataSeries[0]!.id)) ? (ref as { categoryId: Id }).categoryId : undefined;
+    return id === undefined ? -1 : domain.cats.findIndex((cat) => cat.id === id);
+  };
+  const [i, j] = [index(from), index(to)];
+  return i >= 0 && j >= 0 && Math.abs(i - j) > 1;
+}
+
 export function columnPlotArea(
   domain: ColumnDomain,
   frame: FrameResult,
@@ -644,7 +662,7 @@ export function columnPlotArea(
   const gtH = measure('0', strongFont).height;
   // A total that misses a part carries "(partial)" on a second line.
   const partialH = (ci: number) => { const words = partialWords(domain, ci); return words ? measure(words, toDateFont(theme)).height : 0; };
-  const hasCagr = (options.annotations ?? []).some((a) => a.kind === 'cagr');
+  const hasCagr = (options.annotations ?? []).some((a) => a.kind === 'cagr' || bracketsOverColumns(a, domain));
   const integratedGrowthH = domain.pyRef && kindSetting(options, 'growth') !== false ? measure('+88.8%', strongFont).height + 4 : 0;
   // The rule sentence is engine-added furniture, so it computes its reserve
   // in the SAME decision that adds it instead of hunting for a free
@@ -732,7 +750,7 @@ export function columnPlotArea(
   const plotH0 = frame.plot.h - catBandH - ratioTierHeight - topPad;
   const hangingReserve = hangingLabelReserve(plotH0, [dLo, dHi], hangingEnd, hangingRoom);
   if (!stair && options.categoryLabels !== 'staircase' && ['fit', 'wrap', 'font-down', 'stride'].includes(catPlan.step)
-    && !options.annotations?.some(annotation => annotation.kind === 'cagr' || annotation.kind === 'event')
+    && !options.annotations?.some(annotation => annotation.kind === 'cagr' || annotation.kind === 'event' || bracketsOverColumns(annotation, domain))
     && ![CAGR_PAD, VALUE_LINE_RESERVE, TICK_LABEL_RESERVE, BAND_PAD].some(marker => marker in options)) {
     fixedPlotChrome(frame);
     const chrome = plotChromeFloor.get(frame.frame);

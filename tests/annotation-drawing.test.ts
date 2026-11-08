@@ -2,6 +2,8 @@ import './helpers/link-core';
 import { expect, it } from 'vitest';
 
 import { layoutColumn } from '../src/core/charts/column/layout';
+import { layoutLine } from '../src/core/charts/line/layout';
+import { render } from '../src/cli/render';
 import '../src/core/charts';
 import { getChartDefinition } from '../src/core/registry';
 import { layoutPie } from '../src/core/charts/pie/layout';
@@ -212,4 +214,64 @@ it('a column under its plan tick keeps its value, and its notes stack straight a
       expect(mid <= r.x || mid >= r.x + r.w, `${tick.id} over ${column.owner!.categoryId}`).toBe(true);
     }
   }
+});
+
+// A difference across all twelve months of a narrow column chart lost its number (no seat right of its arrow beside the
+// last column). As a total difference it runs as the growth bracket over the columns and keeps the values' row.
+// The percent modes of a delta and a diff must print the right numbers.
+it('a far column difference runs as the growth bracket and keeps its number at 360 px, and a delta prints percent', () => {
+  const data = {
+    categories: ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'].map((id) => ({ id, label: id })),
+    series: [{ id: 's', label: 'S', values: [412, 398, 431, 447, 452, 468, 503, 497, 488, 512, 534, 561] }],
+  };
+  const at = (categoryId: string) => ({ categoryId, seriesId: 's' });
+  const column = getChartDefinition('column')!;
+  type Label = { id: string; text: string; hidden?: unknown; slot: string; leader?: unknown };
+  const run = (annotation: object) => column.layout(data as never, { size: { width: 360, height: 300 }, labelDensity: 'minimal', annotations: [{ id: 'd', ...annotation }] } as never) as unknown as
+    { labels: Label[]; scene: { owner?: { annotationId?: string }; part?: string }[] };
+  const label = (annotation: object) => run(annotation).labels.find((entry) => entry.id === 'annotation:d')!;
+  const far = run({ kind: 'diff', from: at('jan'), to: at('dec') });
+  expect(far.labels.find((entry) => entry.id === 'annotation:d')).toMatchObject({ text: '+36%', slot: 'onArm' });
+  expect(far.labels.find((entry) => entry.id === 'annotation:d')!.hidden).toBeUndefined();
+  expect(far.scene.some((node) => node.owner?.annotationId === 'd' && node.part === 'arm')).toBe(true);
+  // The values keep the seats they take without the difference: one row, no leaders.
+  const values = (labels: Label[]) => labels.filter((entry) => entry.id.startsWith('point:')).map((entry) => [entry.slot, entry.leader !== undefined]);
+  const plain = column.layout(data as never, { size: { width: 360, height: 300 }, labelDensity: 'minimal' } as never) as unknown as { labels: Label[] };
+  expect(values(far.labels)).toEqual(values(plain.labels));
+  expect(label({ kind: 'diff', from: at('jan'), to: at('dec'), mode: 'both' }).text).toBe('+149 (+36%)');
+  // placement 'label' keeps the arrow at the columns; a delta between the totals takes the bracket as well.
+  expect(label({ kind: 'diff', from: at('jan'), to: at('dec'), placement: 'label' }).slot).not.toBe('onArm');
+  expect(label({ kind: 'delta', at: at('dec'), vs: at('jan'), mode: 'both' })).toMatchObject({ text: '+149 (+36%)', slot: 'onArm' });
+  // A reference series is not the column's total: its difference keeps the arrow at its ticks.
+  const planned = { ...data, series: [...data.series, { id: 'plan', label: 'Plan', role: 'reference', values: data.series[0]!.values.map((v) => v - 50) }] };
+  const planDiff = (column.layout(planned as never, { size: { width: 600, height: 400 }, annotations: [{ kind: 'diff', id: 'd', from: { categoryId: 'jan', seriesId: 'plan' }, to: { categoryId: 'dec', seriesId: 'plan' } }] } as never) as unknown as
+    { labels: Label[] }).labels.find((entry) => entry.id === 'annotation:d')!;
+  expect(planDiff.slot).not.toBe('onArm');
+  // A format shapes the number a mode prints in the values' unit; a relative delta prints a percent.
+  const refusal = (annotation: object) => (render({ spec: { type: 'line', data: { categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], series: [{ id: 's', label: 'S', values: [40, 50] }] },
+    options: { annotations: [annotation] } } as never, return: ['svg'] }).body as { errors?: unknown[] }).errors?.length ?? 0;
+  expect(refusal({ kind: 'diff', from: 'a', to: 'b', mode: 'both', format: '$0.0' })).toBe(0);
+  expect(refusal({ kind: 'delta', at: 'b', vs: 'a', mode: 'relative', format: '$0.0' })).toBeGreaterThan(0);
+  // A butterfly's difference column prints the value difference only, so a percent delta keeps its label.
+  const butterfly = getChartDefinition('butterfly')!;
+  const kept = (butterfly.layout({ categories: [{ id: 'c', label: 'C' }], series: [{ id: 'a', label: 'A', values: [40] }, { id: 'b', label: 'B', values: [50] }] } as never,
+    { a: 'a', b: 'b', size: { width: 960, height: 300 }, diffColumn: true, annotations: [{ kind: 'delta', id: 'd', mode: 'relative', at: { categoryId: 'c', seriesId: 'b' }, vs: { categoryId: 'c', seriesId: 'a' } }] } as never) as unknown as
+    { labels: Label[] }).labels.find((entry) => entry.id === 'annotation:d');
+  expect(kept?.text).toBe('+25%');
+  expect(label({ kind: 'delta', at: at('dec'), vs: at('jan'), mode: 'relative' }).text).toBe('+36%');
+  // An authored format shapes the value but not the percent beside it.
+  const line = getChartDefinition('line')!;
+  const pair = { categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], series: [{ id: 'p', label: 'P', values: [10, 40] }, { id: 'q', label: 'Q', values: [20, 50] }] };
+  const formatted = (line.layout(pair as never, { size: { width: 960, height: 400 }, valueLabels: 'all', annotations: [
+    { kind: 'delta', id: 'd', at: { categoryId: 'b', seriesId: 'q' }, vs: { categoryId: 'b', seriesId: 'p' }, placement: 'label', mode: 'both', format: '$0.0' }] } as never) as unknown as
+    { labels: { id: string; text: string }[] }).labels.find((entry) => entry.id === 'annotation:d')!.text;
+  expect(formatted).toBe('+$10.0 (+25%)');
+  // A gap bracket that a long label beside it moves keeps the mode too.
+  const six = { categories: [...'abcdef'].map((id) => ({ id, label: id })), series: [
+    { id: 'first', label: 'first', values: [10, 40, 20, 50, 30, 40] }, { id: 'second', label: 'second', values: [20, 50, 30, 60, 40, 50] }] };
+  const bracketed = (layoutLine(six as never, { size: { width: 960, height: 300 }, valueLabels: 'all', seriesLabels: 'none', annotations: [
+    { kind: 'diff', id: 'diff', from: { categoryId: 'a', seriesId: 'first' }, to: { categoryId: 'f', seriesId: 'first' }, text: 'Comparison of first and last period in the baseline series' },
+    { kind: 'delta', id: 'd', at: { categoryId: 'f', seriesId: 'second' }, vs: { categoryId: 'f', seriesId: 'first' }, placement: 'bracket', mode: 'relative' }] } as never) as unknown as
+    { labels: { id: string; text: string }[] }).labels.find((entry) => entry.id === 'annotation:d')!.text;
+  expect(bracketed).toBe('+25%');
 });

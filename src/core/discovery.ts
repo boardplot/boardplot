@@ -51,8 +51,8 @@ const GAP_BRACKET_FIELDS: Record<string, OptionalField> = {
 };
 
 const ANNOTATION_OPTIONAL: Partial<Record<AnnotationKind, Record<string, OptionalField>>> = {
-  diff: { mode: "relative | absolute | reversed, default relative. relative prints the percent change from 'from' to 'to', reversed the change from 'to' to 'from', absolute the value difference.", ...GAP_BRACKET_FIELDS },
-  delta: GAP_BRACKET_FIELDS,
+  diff: { mode: "relative | absolute | reversed | both, default relative. relative prints the percent change from 'from' to 'to', reversed the change from 'to' to 'from', absolute the value difference, both the value difference with the percent change beside it.", ...GAP_BRACKET_FIELDS },
+  delta: { mode: "absolute | relative | both, default absolute. absolute prints at minus vs, relative the percent change from vs to at, both the two as '+149 (+36%)'. relative and both need a nonzero vs.", ...GAP_BRACKET_FIELDS },
   cagr: {
     suffix: "string, default 'p.a.'. Text after the rate.",
     period: "boolean. Print the period before the rate from the anchors' category labels, '2014–2019: +5.8% p.a.'. Default true when the chart carries two or more CAGRs, so nested brackets are told apart by their text, false otherwise. An arrow's ends show its span, so an arrow prints the rate alone unless period is true.",

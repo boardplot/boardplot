@@ -61,7 +61,7 @@ import { cellValueText, planColumnLabels, planColumnValueLabels, positionColumnL
 import { layoutColumnMarks } from './marks';
 import { PY_TICK_LEAD, TICK_LABEL_RESERVE, type ColumnArea, type ColumnDomain, type ColumnMarkGeometry, type ComputedTotal } from './model';
 import { columnPaints } from './paints';
-import { CAGR_PAD, CATEGORY_NOTES, columnPlotArea, SEGMENT_NOTE, solveColumnFrame } from './plot';
+import { bracketsOverColumns, CAGR_PAD, CATEGORY_NOTES, columnPlotArea, SEGMENT_NOTE, solveColumnFrame } from './plot';
 import { categoryNotesDiffer, FORCE_CATEGORY_RANKS, rankNotes } from '../combo/categoryRanks';
 import type { AnomalyColumnOptions, AnomalyDerived } from './types';
 import type { EmittedLane } from '../../eventLane';
@@ -345,6 +345,7 @@ function annotateColumn(
   }
   return runAnnotatePass({
     calloutColumnStack: true,
+    spanBracket: (annotation) => bracketsOverColumns(annotation, domain),
     target: domain.options.target,
     // The growth bracket seats its label on its run.
     cagrLabelOnArm: true,
