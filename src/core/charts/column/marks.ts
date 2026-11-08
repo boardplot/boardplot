@@ -313,6 +313,11 @@ function anomalyFurniture(
  * `refTickYs` collects, per category, the y of every non-marker tick
  * (leader clearance): such a tick strokes across the bar edge at y(v), and
  * an outside-sliver leader must never attach on top of it.
+ *
+ * A plan tick across its column (referenceTick.position 'behind', the
+ * default) goes to `behind`, drawn before the columns: the column hides
+ * the stretch it covers, and the ends that reach past it mark the plan.
+ * Its y also goes to `behindTickYs`.
  */
 function referenceMarks(
   domain: ColumnDomain,
@@ -321,6 +326,9 @@ function referenceMarks(
   refTickYs: Map<Id, number[]>,
   nodes: SceneNode[],
   claims: OccupiedIndex,
+  behind: SceneNode[],
+  behindTickYs: Map<Id, number[]>,
+  planEnds: number,
 ): ColumnMarks['referenceTicks'] {
   const { theme, measure, cats, refSeries, variant, plottedOf, refStyle, pyRef, pyGrowth, valueSpec } = domain;
   const { band, y } = area;
@@ -360,7 +368,9 @@ function referenceMarks(
       // A gap under 4 px for the outside tick falls back to the tick across the column (dense cards).
       const reach = outsideTickReach(domain, band, ci) ?? 8;
       const out = integrated || (outside && reach >= 4);
-      const tickGeometry = referenceTickGeometry('vertical', bx, ry, out ? bw : -2, bw + (integrated ? 8 : out ? reach : 2));
+      const back = domain.tickBehind && !out;
+      const ends = back ? planEnds : 2;
+      const tickGeometry = referenceTickGeometry('vertical', bx, ry, out ? bw : -ends, bw + (integrated ? 8 : out ? reach : ends));
       if (refStyle === 'marker') {
         nodes.push({
           t: 'circle',
@@ -373,8 +383,7 @@ function referenceMarks(
           display: { value: valueSpec.forSeries(s, s.vals[ci]?.format)(v) },
         });
       } else {
-        nodes.push(referenceCasing(nodeId, tickGeometry.line, strokeToken(theme, 'rule'), owner));
-        nodes.push({
+        const line: SceneNode = {
           t: 'line',
           id: nodeId,
           ...tickGeometry.line,
@@ -386,7 +395,11 @@ function referenceMarks(
           owner,
           part: refStyle === 'tick' ? 'referenceTick' : 'referenceLine',
           display: { value: valueSpec.forSeries(s, s.vals[ci]?.format)(v) },
-        });
+        };
+        if (back) {
+          behind.push(line);
+          behindTickYs.set(c.id, [...(behindTickYs.get(c.id) ?? []), ry]);
+        } else nodes.push(referenceCasing(nodeId, tickGeometry.line, strokeToken(theme, 'rule'), owner), line);
       }
       // The claim must cover the INK: a 'marker' reference is a circle of
       // r 3.5 around the category center, and a band-wide ±2px strip
@@ -526,6 +539,8 @@ export function layoutColumnMarks(
   domain: ColumnDomain,
   paints: ColumnPaints,
   area: ColumnArea,
+  /** How far a plan tick behind its column reaches past each side (planTickEnds). */
+  planEnds = 2,
 ): ColumnMarkGeometry {
   const { theme, size, va, anomaly } = domain;
   const { frame, plot, y, y0 } = area;
@@ -577,6 +592,7 @@ export function layoutColumnMarks(
   const ribbons = domain.ribbonsOn ? columnRibbons(domain, paints, area, nodes) : [];
   if (domain.connectorsOn && domain.variant !== 'grouped') stackConnectors({ ...domain, axis: 'y', scale: area.y, band: area.band }, nodes, claims);
   const marks: ColumnMarks = { bars: [], referenceTicks: [], ...(ribbons.length > 0 ? { ribbons } : {}) };
+  const barsAt = nodes.length;
   const { rangeNodes, ...bars } = columnBars(domain, paints, area, marks, nodes, claims);
   if (rangeNodes.length > 0) {
     pushAll(nodes, rangeNodes);
@@ -608,7 +624,10 @@ export function layoutColumnMarks(
     if (anomalyMarks.length > 0) marks.anomaly = anomalyMarks;
   }
   const refTickYs = new Map<Id, number[]>();
-  marks.referenceTicks = referenceMarks(domain, paints, area, refTickYs, nodes, claims);
+  const behindTicks: SceneNode[] = [];
+  const behindTickYs = new Map<Id, number[]>();
+  marks.referenceTicks = referenceMarks(domain, paints, area, refTickYs, nodes, claims, behindTicks, behindTickYs, planEnds);
+  nodes.splice(barsAt, 0, ...behindTicks);
   const netLineEnd = domain.netLineOn ? netLineMarks(domain, area, nodes, claims) : undefined;
   if (!domain.netLineOn) netTotalTicks(domain, area, nodes, claims, refTickYs);
   // valueLine strips are claimed by the annotate pass AFTER labels are solved;
@@ -625,7 +644,7 @@ export function layoutColumnMarks(
     // A part the rule crosses seats its value in the stretch the rule leaves, as it does for a tick.
     for (const c of domain.cats) refTickYs.set(c.id, [...(refTickYs.get(c.id) ?? []), y(v)]);
   });
-  return { nodes, claims, axes, marks, ...bars, refTickYs, netLineEnd };
+  return { nodes, claims, axes, marks, ...bars, refTickYs, behindTickYs, planEnds, netLineEnd };
 }
 
 

@@ -111,6 +111,8 @@ export interface ColumnDomain extends ColumnEnv {
   statFmt: (v: number) => string;
   variant: ColumnVariant;
   refStyle: 'tick' | 'line' | 'marker';
+  /** A plan tick across its column draws behind the column (referenceTick.position, default 'behind'). */
+  tickBehind: boolean;
   signColor: boolean;
   /** The one PY reference that carries the integrated growth grammar on a stacked column. */
   pyRef: NormSer | undefined;
@@ -273,6 +275,10 @@ export interface ColumnMarkGeometry {
   segEdges: Map<string, { v0: number; v1: number; v: number }>;
   /** Per category, the y of every non-marker reference tick (leader clearance). */
   refTickYs: Map<Id, number[]>;
+  /** Per category, the y of every plan tick drawn behind its column. */
+  behindTickYs: Map<Id, number[]>;
+  /** How far a plan tick behind its column reaches past each side. */
+  planEnds: number;
   flagMarkers: Map<Id, FlagMarker>;
   /** The net line's last edge, where its label hangs. */
   netLineEnd: { x: number; y: number } | undefined;
@@ -293,6 +299,9 @@ export const PANEL_KEYED = Symbol.for('boardplot.panelKeyed');
  * label of the last column needs; the column is laid out again with it.
  */
 export const TICK_LABEL_RESERVE = Symbol('tickLabelReserve');
+
+/** Most a plan tick behind its column reaches past each side. */
+export const PLAN_TICK_REACH = 4;
 
 /** The integrated PY tick reaches 8 px past its column; its label starts 4 px further out. */
 export const PY_TICK_LEAD = 12;

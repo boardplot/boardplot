@@ -429,6 +429,7 @@ describe('published option behaviour census', () => {
     ["bar choropleth line", "methodNote", "Adds a note only where the data needs one: choropleth world-inflation, bar stacked100-slivers with null values."],
     ["bar column combo", "referenceStyle", "Needs a reference mark: combo option-reference-line with 'marker'."],
     ["bar combo", "referenceTick", "Needs a reference tick: combo option-reference-tick-highlight."],
+    ["column", "referenceTick", "Needs a plan tick across a column: column plan-ticks-front with { position: 'front' }."],
     ["bartable box grid heatmap kpi line slope sparkline status dimswitch table variance waffle", "labelDensity", "Thins labels only where they compete: box cycle-time-by-team with 'minimal'. Others: reader at frame.ts:1222, needs competing labels, not proved."],
     ["bartable column combo dot status table tilemap treemap variance waffle waterfall", "legend", "Draws a key only with parts to name: variance dpy-absolute-regions with 'bottom'."],
     ["bartable", "segmentValues", "The representative fixture gives every row a range, and a row with a range prints end labels only; the single-panel fixture shows the parts."],

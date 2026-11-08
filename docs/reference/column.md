@@ -79,6 +79,8 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | grandTotalLabels | boolean |  |  | Show category stack-total labels in addition to segment labels; default on for the stacked variant and off for stacked100, where every bar would end on the same share. true keeps the absolute total on a 100% stack. |
 | sharesOfOneWhole | boolean |  |  | true declares every stacked series a share of the same whole, such as channel shares of all orders: the stack then has a total, and percent series warn non-additive-stack only where a category adds to more than 100. Stacked and stacked100 only; refused on other variants. |
 | referenceStyle | string | `'tick'`, `'line'`, `'marker'` | `'tick'` | Reference-series mark style; defaults to tick. |
+| referenceTick | object |  |  | Where the reference tick draws, read under referenceStyle 'tick' only. A tick beside its column (the integrated PY tick of a stacked column) is unchanged. |
+| referenceTick.position | string | `'behind'`, `'front'` | `'behind'` | Where a plan tick draws. 'behind' (default): behind its column, reaching up to 4 px past each side (2 px where a plan value beside it needs the room), so the column stays whole and the ends mark the plan; a column short of its plan prints its value inside its end. 'front': over the column on a page-colour band, 2 px past each side, the earlier look. |
 | netLine | boolean \| object |  |  | Per-category ticks at a cumulative boundary of stacked columns, connected by default. |
 | netLine.seriesId | string |  |  | Series whose cumulative boundary receives a tick; omitted uses the positive stack top, or the negative stack bottom when no value is positive. |
 | netLine.connectors | boolean |  |  | Connect adjacent category ticks as a stepped line; defaults to true for columns. |
@@ -197,6 +199,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | stacked100-energy-mix | example | Stacked 100% column with absolute totals and 100% indicator |
 | clustered-brand-gap | example | Clustered columns with value axis, gridlines, and diff arrow |
 | plan-ticks-delta-callout | example | Actual columns with plan ticks, a delta and a callout stacked over the one year below plan |
+| plan-ticks-front | example | Actual columns with plan ticks drawn over the columns |
 | monthly-diff-bracket | example | Twelve monthly columns with a difference in value and percent from the first to the last month |
 | monthly-diff-between | example | Twelve monthly columns with a difference whose arrow stands between the columns |
 | monthly-delta-both | example | Highlighted first and last month with a delta in value and percent |

@@ -232,6 +232,27 @@ it('a keyed plan tick drops its name where the named value has no seat beside it
   expect(named.every((label) => / (Plan|Target)$/.test(label.text))).toBe(true);
 });
 
+// A plan tick drew over its column on a page-colour band: the band cut a light line through every column above
+// plan, and two columns short of plan put their values in different seats (one in the gap, one inside).
+// The tick now draws behind its column, and every column short of plan prints its value inside its end.
+it('a plan tick draws behind its column, and each column short of plan keeps its value inside its end', () => {
+  const data = { categories: ['a', 'b', 'c', 'd'].map((id) => ({ id, label: id.toUpperCase() })), series: [
+    { id: 'act', label: 'Actual', values: [118, 109, 131, 112] }, { id: 'plan', label: 'Plan', role: 'reference', values: [115, 115, 122, 126] }] };
+  type Node = { id: string; part?: string };
+  const run = (options: object) => getChartDefinition('column')!.layout(data as never, { size: { width: 960, height: 400 }, referenceStyle: 'tick', ...options } as never) as unknown as
+    { scene: Node[]; labels: { id: string; slot: string }[] };
+  const at = (scene: Node[], id: string) => scene.findIndex((node) => node.id === id);
+  const behind = run({});
+  expect(behind.scene.some((node) => node.part === 'referenceCasing')).toBe(false);
+  expect(at(behind.scene, 'ref:plan:a')).toBeLessThan(at(behind.scene, 'mark:act:a'));
+  const slot = (labels: { id: string; slot: string }[], id: string) => labels.find((label) => label.id === `point:act:${id}`)!.slot;
+  expect([slot(behind.labels, 'b'), slot(behind.labels, 'd')]).toEqual(['insideEnd', 'insideEnd']);
+  // 'front' keeps the earlier look: the tick over the column on its band.
+  const front = run({ referenceTick: { position: 'front' } });
+  expect(front.scene.some((node) => node.part === 'referenceCasing')).toBe(true);
+  expect(at(front.scene, 'ref:plan:a')).toBeGreaterThan(at(front.scene, 'mark:act:a'));
+});
+
 // A difference across all twelve months of a narrow column chart lost its number (no seat right of its arrow beside the
 // last column). As a total difference it runs as the growth bracket over the columns and keeps the values' row.
 // The percent modes of a delta and a diff must print the right numbers.
