@@ -1286,6 +1286,21 @@ function rightLineSeats(
   ];
 }
 
+/**
+ * The seated point value near the line's right end (where its label seats first) that prints the line's own value:
+ * the label beside it would print that number twice. Only a value the solver has already seated counts, and only
+ * one whose mark sits at the line's exact value, so the number never leaves the chart and never names another level.
+ */
+function repeatsEndValue(input: AnnotatePassInput, v: number, valueText: string, y: number, size: { width: number; height: number }): Rect | undefined {
+  const right = input.plot.x + input.plot.w;
+  const near = (rect: Rect) => rect.x + rect.w >= right - 2 * size.width && rect.x <= right + size.width &&
+    Math.abs(rect.y + rect.h / 2 - y) <= 2 * size.height;
+  const sameValue = (owner: PlacedLabel['owner']) => owner.categoryId !== undefined &&
+    input.resolve({ categoryId: owner.categoryId, ...(owner.seriesId === undefined ? {} : { seriesId: owner.seriesId }) })?.value === v;
+  return (input.printedLabels ?? []).find((label) => label.kind === 'point' && label.hidden === undefined && label.text === valueText &&
+    near(label.rect) && sameValue(label.owner))?.rect;
+}
+
 /** The valueLine's label request, at the line end (or above the line on a horizontal value axis). Returns the text, '' for none. */
 function valueLineLabel(
   s: AnnotationScope,
@@ -1298,11 +1313,17 @@ function valueLineLabel(
   const span = input.meanSpan?.({ from: ann.from, to: ann.to });
   const isMean = ann.value === 'mean' || ann.value === undefined;
   const valueText = (isMean ? s.run.statFmt : s.run.fmt)(v);
+  const font = { family: input.theme.type.family, ...input.theme.type.label };
+  // A named line whose number a printed value beside its end already shows ("53%" at the series end)
+  // prints its name alone. A label that places the number itself ("${value}") keeps it.
+  const endValue = typeof ann.label === 'string' && !ann.label.includes('${value}') && axis === 'y' && (ann.side ?? 'right') === 'right'
+    ? repeatsEndValue(input, v, valueText, y, input.measure(`${ann.label} ${valueText}`, font)) : undefined;
+  const nameOnly = endValue !== undefined;
   const labelText =
-    ann.label === false ? '' : ann.label !== undefined ? namedLineText(ann.label, valueText, v, id)
+    ann.label === false ? '' : typeof ann.label === 'string' && nameOnly ? ann.label
+      : ann.label !== undefined ? namedLineText(ann.label, valueText, v, id)
       : (isMean ? `${input.strings?.average ?? localeStrings(input.locale).average} ${valueText}${span ? ` (${span})` : ''}` : valueText);
   if (!labelText) return labelText;
-  const font = { family: input.theme.type.family, ...input.theme.type.label };
   const row = input.valueLineRows?.get(id);
   if (row) {
     const rowFont = { ...font, weight: emphasisWeight(input.theme) };
@@ -1368,7 +1389,10 @@ function valueLineLabel(
           },
         ]
       : side === 'right'
-        ? rightLineSeats(input, labelText, font, size, y, rightSeat)
+        // A name without its number stands just left of the value it shares, so the two read as one: "Normal load 53%".
+        // It sits that close on purpose, so it goes ahead of the seats that keep air from other labels.
+        ? [...(endValue ? [{ slot: 'beforeEndValue', rect: { x: endValue.x - 4 - size.width, y: y - size.height - LINE_LABEL_GAP, w: size.width, h: size.height }, penalty: -1 }] : []),
+          ...rightLineSeats(input, labelText, font, size, y, rightSeat)]
         : [
           // Inside the plot the centred slot would sit on the label's own
           // dashed line (the solver ignores the annotation's own claims), so

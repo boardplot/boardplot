@@ -275,3 +275,39 @@ it('a far column difference runs as the growth bracket and keeps its number at 3
     { labels: { id: string; text: string }[] }).labels.find((entry) => entry.id === 'annotation:d')!.text;
   expect(bracketed).toBe('+25%');
 });
+
+// A named value line at the level the series ends on printed "Normal load 53%" beside the end value "53%": the number twice.
+it('a named value line at the series end value prints its name beside that value at every width', () => {
+  const line = getChartDefinition('line')!;
+  const data = {
+    categories: ['w1', 'w2', 'w3', 'w4', 'w5', 'w6', 'w7', 'w8'].map((id) => ({ id, label: id.toUpperCase() })),
+    series: [{ id: 'load', label: 'Load', values: [52, 54, 51, 38, 35, 37, 49, 53] }],
+  };
+  type Label = { id: string; text: string; rect: { x: number; y: number; w: number; h: number }; hidden?: string };
+  const layout = (width: number, label: string) => (line.layout(line.normalize(data), { size: { width, height: 340 }, unit: '%', valueAxis: { min: 30, max: 60 }, valueLabels: 'extremes',
+    annotations: [{ kind: 'valueLine', id: 'normal', value: 53, label }] } as never) as unknown as { labels: Label[] }).labels;
+  for (const width of [360, 960]) {
+    const labels = layout(width, 'Normal load');
+    const name = labels.find((entry) => entry.id === 'valueLine:normal')!;
+    const end = labels.find((entry) => entry.text === '53%' && entry.id.startsWith('point:'))!;
+    expect(name.text, `at ${width}`).toBe('Normal load');
+    expect(name.hidden).toBeUndefined();
+    // The name ends just left of the value and shares its row.
+    expect(end.rect.x - (name.rect.x + name.rect.w), `at ${width}`).toBeGreaterThanOrEqual(0);
+    expect(end.rect.x - (name.rect.x + name.rect.w), `at ${width}`).toBeLessThan(12);
+    expect(Math.abs(end.rect.y + end.rect.h / 2 - (name.rect.y + name.rect.h / 2))).toBeLessThan(name.rect.h);
+    // A label that places the number itself keeps it.
+    expect(layout(width, 'Normal load ${value}').find((entry) => entry.id === 'valueLine:normal')!.text).toBe('Normal load 53%');
+  }
+  // An end value at another level that rounds to the same text does not take the line's number.
+  const near = line.layout(line.normalize({ ...data, series: [{ id: 'load', label: 'Load', values: [51, 54, 52, 57, 55, 51, 50, 52.6] }] }),
+    { size: { width: 960, height: 340 }, format: '1%', valueAxis: { min: 50, max: 60 }, valueLabels: 'last',
+      annotations: [{ kind: 'valueLine', id: 'normal', value: 53.4, label: 'Normal load' }] } as never) as unknown as { labels: Label[] };
+  expect(near.labels.find((entry) => entry.id === 'valueLine:normal')!.text).toBe('Normal load 53%');
+  // A combo solves the end value together with the line's label: the end value can still lose its seat, so the label keeps its number.
+  const combo = getChartDefinition('combo')!;
+  const joint = combo.layout(combo.normalize({ categories: ['a', 'b', 'c'].map((id) => ({ id, label: id })),
+    series: [{ id: 's', kind: 'line', label: 'S', values: [10, 20, 53] }, { id: 't', kind: 'line', label: 'T', values: [9, 21, 52] }] }),
+  { size: { width: 360, height: 240 }, valueLabels: 'all', annotations: [{ kind: 'valueLine', id: 'n', value: 53, label: 'Normal operating load' }] } as never) as unknown as { labels: Label[] };
+  expect(joint.labels.find((entry) => entry.id === 'valueLine:n')!.text).toBe('Normal operating load 53');
+});

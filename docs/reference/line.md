@@ -404,6 +404,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | rates-as-fractions | torture | SQL fractions use percentage cells at input |
 | ordered-ramp-rest-apart | example | Rest only has to differ from the ordered ramp (othersShade 'apart') |
 | drawing-kinds | example | A box over the maintenance weeks, the normal load and an arrow from a note |
+| value-line-end-value | example | A named value line at the series end value prints its name beside that value |
 | small-drawer | example | A plain line chart in a 480 by 200 drawer |
 | weekly-orders-anomalies | example | Two weeks break out of the normal order range (anomaly on a line) |
 | weekly-events-lane | example | Event lane over a weekly line: dotted rules behind the data, the rest numbered in the key |

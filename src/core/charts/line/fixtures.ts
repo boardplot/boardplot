@@ -3359,4 +3359,17 @@ const drawingKindsFixture: Fixture<LineChartData, LineOptions> = {
   ],
 };
 
-registerFixtures('line', [...fixtures, drawingKindsFixture, smallDrawerFixture, anomalyLineFixture, weeklyEventsLineFixture, eventsKeyLineFixture, focusFixture, nearZeroTailsFixture, partialWeekFixture, hostCardFixture, hostCardUnitShownFixture, markInkFixture, cellLabelFixture, ...cohortLineFixtures, briefLineFixture, themeConventionsFixture, areaFromOriginFixture, ...coverageLineFixtures, cycleBandsFixture, gapBracketFixture, stackedAreaBenchmarkFixture, stackedAreaRestFixture, strokeSamplerFixture, ratioPlainFormatRefusal, rebaseMissingNoteFixture, rebaseZeroNoteFixture, bandHeadroomFixture, lateStartFixture, trendFixture, ...continuousLineFixtures, logAxisFixture]);
+// A named value line at the level the series ends on: its name stands beside the end value, which carries the number once.
+const valueLineEndValueFixture: Fixture<LineChartData, LineOptions> = {
+  id: 'value-line-end-value',
+  title: 'A named value line at the series end value prints its name beside that value',
+  kind: 'example',
+  data: drawingKindsFixture.data,
+  options: { title: 'Load dropped during the maintenance weeks', unit: '%', source: 'Illustrative data', valueAxis: { min: 30, max: 60 }, valueLabels: 'extremes' },
+  annotations: [
+    { kind: 'band', style: 'shade', from: 'w4', to: 'w6', label: 'Planned maintenance' },
+    { kind: 'valueLine', value: 53, label: 'Normal load' },
+  ],
+};
+
+registerFixtures('line', [...fixtures, drawingKindsFixture, valueLineEndValueFixture, smallDrawerFixture, anomalyLineFixture, weeklyEventsLineFixture, eventsKeyLineFixture, focusFixture, nearZeroTailsFixture, partialWeekFixture, hostCardFixture, hostCardUnitShownFixture, markInkFixture, cellLabelFixture, ...cohortLineFixtures, briefLineFixture, themeConventionsFixture, areaFromOriginFixture, ...coverageLineFixtures, cycleBandsFixture, gapBracketFixture, stackedAreaBenchmarkFixture, stackedAreaRestFixture, strokeSamplerFixture, ratioPlainFormatRefusal, rebaseMissingNoteFixture, rebaseZeroNoteFixture, bandHeadroomFixture, lateStartFixture, trendFixture, ...continuousLineFixtures, logAxisFixture]);
