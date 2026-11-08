@@ -980,6 +980,8 @@ The line reference has the full recipe under "Cycle bands", and the fixture `cyc
 
 `valueLine.text` is read as `label` when `label` is absent or equal, with an info warning and a rename fix. Different `text` and `label` values remain refused. `indicator100.text` remains refused.
 
+A named `valueLine` prints its name and its number, "Normal load 53%". Where the series prints the same number at its end beside the line, the name stands alone just left of that value, so the number prints once: "Normal load" next to "53%". A `label` with `${value}`, such as `"Normal load ${value}"`, always prints the number.
+
 For a `valueLine` with `value: "mean"`, `seriesId` selects the series. A paired `from` and `to` selects the inclusive category window. The mean line spans only that window. Adjacent shaded `band` annotations have a hairline between them, so each period remains distinct.
 
 ## Times and numbers on the x axis of a line
