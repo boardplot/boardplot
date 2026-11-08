@@ -40,6 +40,7 @@ import {
   type ColumnMarkGeometry,
   type ColumnPaints,
   PY_TICK_LEAD,
+  PLAN_TICK_REACH,
 } from './model';
 import { composedTextRole } from '../../textRole';
 import { textScaleOf } from '../../typeFloors';
@@ -74,6 +75,47 @@ function composeLines(
 function composeText(...args: Parameters<typeof composeLines>): string {
   return composeLines(...args).join(' ');
 }
+
+/** The solver's default label pad. */
+const LABEL_PAD = 2;
+
+/**
+ * How far a plan tick behind its column reaches past each side, or undefined
+ * where it draws in front: under referenceTick.position 'front', and where the
+ * columns stand under 7 px apart, which would hide the tick's ends too.
+ * It reaches 4 px, less where the gap is narrow (3 px stay between two
+ * ticks). It keeps the 2 px of a tick in front where the 2 px more would push
+ * a plan value beside its tick, named or as a number, into the next column or
+ * the end of its tick: the label starts 3 px past its tick's end and keeps
+ * the label pad.
+ */
+export function planTickEnds(domain: ColumnDomain, area: ColumnArea): number | undefined {
+  const { band, tickFont, y } = area;
+  const gap = band.step - band.bandwidth;
+  if (!domain.tickBehind || gap < MIN_BEHIND_GAP) return undefined;
+  const ends = Math.max(2, Math.min(PLAN_TICK_REACH, (gap - 3) / 2));
+  const content = contentOf(domain.options, 'tick', ['absolute', 'series']);
+  if (ends <= 2 || !content || domain.variant === 'stacked100') return ends;
+  const pushed = domain.refSeries.some((s) => domain.cats.some((c, ci) => {
+    const v = domain.plottedOf(s, ci);
+    if (v === null || ci === domain.cats.length - 1) return false;
+    const next = domain.plottedOf(s, ci + 1);
+    return [content, content.filter((part) => part !== 'series')].some((parts) => {
+      const size = domain.measure(composeText(domain, parts, v, null, c.label ?? c.id, s.label, false, domain.valueSpec.forSeries(s)), tickFont);
+      const top = y(v) - size.height / 2 - LABEL_PAD;
+      const bottom = y(v) + size.height / 2 + LABEL_PAD;
+      // What the label meets at its height: the next column, and the end of the next tick.
+      const column = top < y(domain.negBotP[ci + 1]!) && bottom > y(domain.posTopP[ci + 1]!);
+      const tick = next !== null && top < y(next) && bottom > y(next);
+      const fits = (lead: number, nextEnds: number) => lead + size.width + LABEL_PAD <= Math.min(column ? gap : Infinity, tick ? gap - nextEnds : Infinity);
+      return fits(5, 2) && !fits(ends + 3, ends);
+    });
+  }));
+  return pushed ? 2 : ends;
+}
+
+/** The least gap between two columns that shows a plan tick behind them. */
+const MIN_BEHIND_GAP = 7;
 
 /**
  * An empty category prints one "n/a" on the baseline; on a 100% stack its
@@ -291,7 +333,7 @@ function pointRequests(
       ...(typeof val.labelOverride === 'string' ? { keepWhenDense: true as const } : {}),
       // A point label prints no percent part (label-part-unavailable).
       ...namesOnly(content!.filter((part) => part !== 'percent'), val.labelOverride),
-      candidates: pointCandidates(rect, tsize, v < 0, paints.inside(s, val, c, si), y, rangeOf(s, ci), outset, rows[index], scene.refTickYs.get(c.id))
+      candidates: pointCandidates(rect, tsize, v < 0, paints.inside(s, val, c, si), y, rangeOf(s, ci), outset, rows[index], scene.refTickYs.get(c.id), scene.behindTickYs.get(c.id))
         .map(candidate => ({ ...candidate, rect: clampX(candidate.rect), insidePaint, insidePattern })),
     });
   }
@@ -770,7 +812,7 @@ export function planColumnLabels(
   // The label starts 3 px past a tick that reaches out beside the column.
   const leadOf = (ci: number, integrated: boolean) => {
     const reach = outsideTickReach(domain, band, ci);
-    return integrated ? PY_TICK_LEAD : reach !== undefined && reach >= 4 ? reach + 3 : 5;
+    return integrated ? PY_TICK_LEAD : reach !== undefined && reach >= 4 ? reach + 3 : (scene.planEnds ?? 2) + 3;
   };
   for (const s of tickContent && domain.variant !== 'stacked100' ? domain.refSeries : []) {
     const textOf = (ci: number, content: LabelContent) =>
@@ -980,6 +1022,8 @@ function pointCandidates(
   rows?: SeatRows,
   /** The y of each reference tick across this category (a plan tick). */
   tickYs: readonly number[] = [],
+  /** The y of each plan tick drawn behind this category's columns. */
+  behindYs: readonly number[] = [],
 ): SlotCandidate[] {
   const cx = rect.x + rect.w / 2;
   const markTop = rect.y;
@@ -1005,9 +1049,17 @@ function pointCandidates(
   // value on its own column: inside the end comes before the rows above the tick, where it would read as the tick's.
   const tickBlocks = (from: number, to: number) => tickYs.some((ty) => ty > from && ty < to);
   const underTick = (penalty: number, slotY: number): SlotCandidate[] => inside ? [{ slot: 'insideEnd', rect: { x: cx - w / 2, y: slotY, w, h }, penalty, insideFill }] : [];
+  // A column short of a plan tick drawn behind it prints its value inside its end, whatever the
+  // distance to the tick: every column short of plan keeps one seat, at every width. The other
+  // seats follow, so a pin (labelPlacements) still finds them.
+  const shortOfPlan = inside && !range && behindYs.some((ty) => (negative ? ty > yBot + 0.5 : ty < yTop - 0.5));
+  const insideFirst = (seats: SlotCandidate[]): SlotCandidate[] => !shortOfPlan ? seats : [
+    { slot: 'insideEnd', rect: { x: cx - w / 2, y: negative ? markBot - h - 2 : markTop + 2, w, h }, penalty: 0, insideFill },
+    ...seats.filter((seat) => seat.slot !== 'insideEnd').map((seat) => ({ ...seat, penalty: seat.penalty + 1 })),
+  ];
   if (!negative) {
     const blocked = !range && tickBlocks(yTop - h - 6, yTop - 0.5);
-    return [
+    return insideFirst([
       ...beside,
       // A reference line across this seat (an average marker) does not move
       // the value: it crosses the line on a halo, level with its neighbours.
@@ -1020,10 +1072,10 @@ function pointCandidates(
         penalty: 1,
       },
       ...(inside && !blocked ? [{ slot: 'insideEnd', rect: { x: cx - w / 2, y: markTop + 2, w, h }, penalty: 2, insideFill }] : []),
-    ];
+    ]);
   }
   const blocked = !range && tickBlocks(yBot + 0.5, yBot + h + 6);
-  return [
+  return insideFirst([
     ...beside,
     { slot: 'outsideBottom', rect: { x: cx - w / 2, y: yBot + 4, w, h }, penalty: 0, overRules: true },
     ...(blocked ? underTick(0.25, markBot - h - 2) : []),
@@ -1034,7 +1086,7 @@ function pointCandidates(
       penalty: 1,
     },
     ...(inside && !blocked ? [{ slot: 'insideEnd', rect: { x: cx - w / 2, y: markBot - h - 2, w, h }, penalty: 2, insideFill }] : []),
-  ];
+  ]);
 }
 
 /** Position only bar values; multi-part totals and all other labels keep their seats. */

@@ -112,6 +112,13 @@ export const columnOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptio
   grandTotalLabels: z.boolean().optional().describe("Show category stack-total labels in addition to segment labels; default on for the stacked variant and off for stacked100, where every bar would end on the same share. true keeps the absolute total on a 100% stack."),
   sharesOfOneWhole: z.boolean().optional().describe("true declares every stacked series a share of the same whole, such as channel shares of all orders: the stack then has a total, and percent series warn non-additive-stack only where a category adds to more than 100. Stacked and stacked100 only; refused on other variants."),
   referenceStyle: z.enum(['tick', 'line', 'marker']).optional().describe("Reference-series mark style; defaults to tick."),
+  referenceTick: z
+    .object({
+      position: z.enum(['behind', 'front']).optional().describe("Where a plan tick draws. 'behind' (default): behind its column, reaching up to 4 px past each side (2 px where a plan value beside it needs the room), so the column stays whole and the ends mark the plan; a column short of its plan prints its value inside its end. 'front': over the column on a page-colour band, 2 px past each side, the earlier look.").meta({ default: 'behind' }),
+    })
+    .strict()
+    .optional()
+    .describe("Where the reference tick draws, read under referenceStyle 'tick' only. A tick beside its column (the integrated PY tick of a stacked column) is unchanged."),
   netLine: z
     .union([
       z.boolean(),

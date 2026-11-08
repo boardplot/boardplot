@@ -57,7 +57,7 @@ import { groupedOffsets } from '../band/groups';
 import { textScaleOf } from '../../typeFloors';
 import { anomalyReceipt } from './anomaly';
 import { edgeNameFont, KEY_EDGE_SERIES, kindSetting, resolveColumnDomain, toDateOnValues } from './domain';
-import { cellValueText, planColumnLabels, planColumnValueLabels, positionColumnLabels, type DigitSeats } from './labels';
+import { cellValueText, planColumnLabels, planColumnValueLabels, planTickEnds, positionColumnLabels, type DigitSeats } from './labels';
 import { layoutColumnMarks } from './marks';
 import { PY_TICK_LEAD, TICK_LABEL_RESERVE, type ColumnArea, type ColumnDomain, type ColumnMarkGeometry, type ComputedTotal } from './model';
 import { columnPaints } from './paints';
@@ -909,7 +909,7 @@ function layoutColumnPass(
     area = columnPlotArea(domain, framed.frame, warnings);
     warnings.push(axisBreakHeightOrderWarning());
   }
-  const scene = layoutColumnMarks(domain, paints, area);
+  const scene = layoutColumnMarks(domain, paints, area, planTickEnds(domain, area));
   // Phase 2 claimed into its own index; replay it, in claim order, into the run's.
   for (const c of scene.claims.snapshot()) occupied.claim(c.rect, c.kind, c.owner, c.part);
   if (scene.claims.tickColumns) occupied.tickColumns = scene.claims.tickColumns;

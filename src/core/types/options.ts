@@ -790,6 +790,15 @@ export interface ColumnOptions extends Omit<BaseOptionsFor<'column'>, 'categoryA
   /** Every stacked series is a share of the same whole; the stack then has a total. Stacked variants only. */
   sharesOfOneWhole?: boolean;
   referenceStyle?: 'tick' | 'line' | 'marker'; // default 'tick'
+  /**
+   * Where a plan tick draws, read under `referenceStyle: 'tick'` only.
+   * 'behind' (default): behind its column, reaching up to 4 px past each
+   * side (2 px where a plan value beside it needs the room), and a column
+   * short of its plan prints its value inside its end.
+   * 'front': over the column on a page-colour band, 2 px past each side,
+   * and the value takes its earlier seat.
+   */
+  referenceTick?: { position?: 'behind' | 'front' };
   /** Per-category cumulative-boundary ticks; ordered column axes connect them by default. */
   netLine?: boolean | { seriesId?: Id; connectors?: boolean };
   /** Computed arithmetic-average rule; Id[] limits the contributing series. Categories marked partial are left out unless includePartial is true. */
@@ -884,7 +893,7 @@ export interface TornadoCases {
 export interface BarOptions
   extends Omit<
     ColumnOptions,
-    'ratioTier' | 'variant' | 'anomaly' | 'rowLabels' | 'events'
+    'ratioTier' | 'variant' | 'anomaly' | 'rowLabels' | 'events' | 'referenceTick'
     | 'seriesRamp' | 'othersShade' | 'seriesLabels' | 'shareLabels' | 'window' | 'viewDomain' | 'categoryLabels' | 'categoryAxis' | 'ribbons'
   > {
   /** Settings per generated column, by column id. A width beats the width the type would pick. */

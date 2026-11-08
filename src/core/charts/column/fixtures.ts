@@ -870,6 +870,26 @@ export const fixtures: Fixture<RangeChartData, AnomalyColumnOptions>[] = [
     ],
   },
   {
+    // referenceTick.position 'front': the earlier look, the plan tick over the column on a page-colour band.
+    id: 'plan-ticks-front',
+    title: 'Actual columns with plan ticks drawn over the columns',
+    kind: 'example',
+    data: {
+      categories: ['W01', 'W02', 'W03', 'W04', 'W05', 'W06'].map((label) => ({ id: label.toLowerCase(), label })),
+      series: [
+        { id: 'orders', label: 'Orders', values: [118, 124, 109, 131, 127, 112] },
+        { id: 'plan', label: 'Plan', role: 'reference', values: [115, 120, 115, 122, 125, 126] },
+      ],
+    },
+    options: {
+      title: 'Orders beat plan in four of six weeks',
+      unit: 'k orders',
+      source: 'Illustrative data',
+      referenceTick: { position: 'front' },
+      legend: 'top',
+    },
+  },
+  {
     // A difference across the whole year: the growth bracket over the columns, its value and percent on the run.
     id: 'monthly-diff-bracket',
     title: 'Twelve monthly columns with a difference in value and percent from the first to the last month',
