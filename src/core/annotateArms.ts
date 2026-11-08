@@ -337,7 +337,8 @@ function drawLiftedCagrArm(
       ) {
         armY = candidate;
       }
-      if (armY > legFloor) pass.addLegDeficit(armY - legFloor);
+      // A difference's run lifted above its floor cannot take a seat over it: its legs need the floor to clear them.
+      if (armY > legFloor) pass.addLegDeficit((kind === 'cagr' ? armY : Math.max(armY, armFloor)) - legFloor);
     }
   }
 
