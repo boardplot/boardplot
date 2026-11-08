@@ -1914,9 +1914,10 @@ function calloutLabel(
       };
       seat('aboveWrap', cx, wTop - hh - gap, prefer === 'above' ? -1 : 0);
       // A lone note on a column wraps straight above it, over its value and a reference tick, before the free spot on a leader.
-      // It reaches over its neighbours, so it stands only where no other note or callout needs that room.
+      // It reaches over its neighbours, so it stands only where no other note or callout needs that room,
+      // and its narrowest wrap comes first: the more lines, the less it reaches over them.
       if (stackBase !== undefined && !otherNotes.some((other) => Math.abs(other.x - at.x) < (ww + other.w) / 2 + gap)) {
-        seat('aboveStackWrap', at.x - ww / 2, stackBase - hh, -50);
+        seat('aboveStackWrap', at.x - ww / 2, stackBase - hh, -50 - (wrapped.length - 2) * 20);
       }
       seat('rightWrapAt', wRight + gap * 2, sideY - hh / 2, prefer === 'right' ? -1 : 1, true);
       seat('leftWrapAt', wLeft - ww - gap * 2, sideY - hh / 2, prefer === 'left' ? -1 : 2, true);
