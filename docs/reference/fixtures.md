@@ -903,6 +903,7 @@ Every fixture is a complete spec that renders. `boardplot_fixtures` returns them
 | stacked-plus-dpy-tiered | grid.tiers | example | Opt-in scaled ΔPY% tier above stacked revenue |
 | three-tier | grid.tiers | example | Three tiers: actuals, ΔPY absolute, ΔPY% |
 | weekly-actual-vs-plan | grid.tiers | example | Actual vs plan by week: AC columns with PL ticks over a ΔPL tier |
+| actual-vs-plan-callout | grid.tiers | example | Actual vs plan by year with a callout on the year below plan, over a ΔPL tier |
 | compact-tier-slack | grid.tiers | torture | Torture: compact tiers distribute vertical slack |
 | facet-regions | grid.facets | example | Facets: four regions, 2×2 |
 | facet-regions-ranked | grid.facets | torture | Facets ordered by last value, largest first |

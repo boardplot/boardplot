@@ -219,7 +219,7 @@ export function layoutGrid(
     }
   }
   const legacy = (at: GridLayoutOptions) => layoutLegacyGrid({ ...normalized, panels: ordered.panels }, at);
-  const legacyGrid = (at: GridLayoutOptions) => withSliverRoom(withOnePanelContent(withTierPlot(legacy(at), ordered.panels, at), legacy, ordered.panels, at), legacy, at, data);
+  const legacyGrid = (at: GridLayoutOptions) => withNoteRoom(withSliverRoom(withOnePanelContent(withTierPlot(legacy(at), ordered.panels, at), legacy, ordered.panels, at), legacy, at, data), legacy, ordered.panels, at);
   const geometry = withWarnings(authored ? layoutAuthoredGrid(ordered.panels, options, normalized.repeatFacet === true)
     : legacyGrid(reflowed(legacyGrid, ordered.panels, options, data)), ordered.warnings);
   if (!geometry.refused && heightOmitted(options.size) && geometry.sizing?.fit === 'content'
@@ -227,6 +227,52 @@ export function layoutGrid(
     return layoutGrid(data, { ...options, size: { width: geometry.size.width, height: geometry.sizing.naturalHeight } });
   }
   return withCardFloor(geometry, ordered.panels.map((panel) => panel.type), options);
+}
+
+/**
+ * A grid at an open height whose panel hides an authored callout or note (a tier too short for the text over its
+ * column) reports as its natural height the canvas that gives that panel's plot room for the text on two lines,
+ * scaled by the panel's share of the plots. One probe at that height: kept only where it seats every such text.
+ */
+function withNoteRoom(
+  geometry: LayoutResult<GridMarks, GridDerived>,
+  relayout: (options: GridLayoutOptions) => LayoutResult<GridMarks, GridDerived>,
+  panels: GridPanelSpec[],
+  options: GridLayoutOptions,
+): LayoutResult<GridMarks, GridDerived> {
+  const sizing = geometry.sizing;
+  const open = (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === false;
+  const authored = panels.some((panel) => [...(panel.annotations ?? []), ...((panel.options as { annotations?: unknown[] } | undefined)?.annotations ?? [])]
+    .some((annotation) => ['callout', 'note'].includes((annotation as { kind?: string }).kind ?? '')));
+  if (!open || !authored || !sizing || geometry.refused) return geometry;
+  const hidden = (layout: LayoutResult<GridMarks, GridDerived>) => layout.refused ? [] : layout.labels.filter((label) => label.hidden === 'collision' && label.id.includes('/annotation:'));
+  const at = (height: number) => relayout({ ...options, size: { ...resolveSize(options.size), width: geometry.size.width, height } });
+  const notes = hidden(geometry);
+  const content = (naturalHeight: number) => ({ ...geometry, sizing: { ...sizing, fit: 'content' as const, naturalHeight } });
+  // A canvas the room raised that seats every note is the natural height, when the grid's own height hides one.
+  // The natural height can settle on another (its own natural height, or the plot floor's): both are checked.
+  if (notes.length === 0) {
+    // A grid laid out at its own start height has no grown height to keep. Only a passed height (the height
+    // a note grew it to, handed back by the sizing loop) can be shrunk back to the natural height.
+    if (heightOmitted(options.size) || geometry.size.height <= sizing.naturalHeight + 1) return geometry;
+    const natural = at(sizing.naturalHeight);
+    const settles = natural.refused ? undefined : natural.sizing?.naturalHeight;
+    const hides = hidden(natural).length > 0 || (settles !== undefined && Math.abs(settles - sizing.naturalHeight) > 1
+      && settles < geometry.size.height && hidden(at(settles)).length > 0);
+    return hides ? content(geometry.size.height) : geometry;
+  }
+  // A layout below the natural height is a sizing probe: the grid draws at its natural height or taller, and grows there.
+  if (geometry.size.height < sizing.naturalHeight - 1) return geometry;
+  const plots = geometry.marks.panels.map((panel) => panel.chart?.geometry.plot.h ?? 0);
+  const total = plots.reduce((sum, plot) => sum + plot, 0);
+  const need = Math.max(...notes.map((label) => {
+    const plot = plots[panels.findIndex((panel) => label.id.startsWith(`${panel.id}/`))] ?? 0;
+    return plot > 0 ? (2 * label.rect.h + 8) * total / plot : 0;
+  }));
+  if (!(need > 0)) return geometry;
+  const height = Math.ceil(Math.max(geometry.size.height, sizing.naturalHeight) + need);
+  const probe = at(height);
+  return probe.refused || hidden(probe).length > 0 ? geometry : content(height);
 }
 
 /** The facet panels that drop category names for room (category-stride): a width loss, whatever the height. */

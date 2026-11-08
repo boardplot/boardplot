@@ -1753,6 +1753,8 @@ function calloutLabel(
   // An arrow callout keeps the distance its arrow needs, and an empty one the leader that shows where it points.
   const columnTop = input.calloutColumnStack === true && !glyph && head.arrow !== true && w > 0 && !anchor.lineAnchored && box.w === 0 && sharing > 0;
   const stackSeats: SlotCandidate[] = [];
+  let stackBase: number | undefined;
+  let otherNotes: { x: number; w: number }[] = [];
   if (columnTop) {
     // Every note on the column starts its stack from one base, found under the widest of their texts, so the notes keep apart.
     const stackW = Math.max(w, ...stackMembers.map((other) => 'text' in other && typeof other.text === 'string' ? input.measure(other.text, font).width : 0));
@@ -1762,6 +1764,12 @@ function calloutLabel(
     const value = input.printedLabels?.find((label) => label.kind === 'point' && label.hidden === undefined &&
       label.owner.categoryId === anchor.owner.categoryId && label.owner.seriesId === anchor.owner.seriesId && label.rect.y < top);
     const base = Math.min(top - gap, ...ticks.map((claim) => claim.rect.y - 4), ...(value ? [value.rect.y - 4] : []));
+    if (sharing === 1) stackBase = base;
+    otherNotes = input.annotations.flatMap((other) => {
+      if (other === ann || (other.kind !== 'callout' && other.kind !== 'note') || typeof other.text !== 'string') return [];
+      const x = input.resolve(other.at)?.x;
+      return x === undefined ? [] : [{ x, w: input.measure(other.text, font).width }];
+    });
     // The notes stack in the order they are listed: each prefers the seat at its own place.
     const place = Math.max(0, stackMembers.indexOf(ann));
     for (let k = 0; k < sharing; k++) stackSeats.push(mk(`aboveStack${k}`, at.x - w / 2, base - h - k * (h + 4), 0.1 * (1 + Math.abs(k - place))));
@@ -1905,6 +1913,11 @@ function calloutLabel(
         wrappedSeats.push(candidate);
       };
       seat('aboveWrap', cx, wTop - hh - gap, prefer === 'above' ? -1 : 0);
+      // A lone note on a column wraps straight above it, over its value and a reference tick, before the free spot on a leader.
+      // It reaches over its neighbours, so it stands only where no other note or callout needs that room.
+      if (stackBase !== undefined && !otherNotes.some((other) => Math.abs(other.x - at.x) < (ww + other.w) / 2 + gap)) {
+        seat('aboveStackWrap', at.x - ww / 2, stackBase - hh, -50);
+      }
       seat('rightWrapAt', wRight + gap * 2, sideY - hh / 2, prefer === 'right' ? -1 : 1, true);
       seat('leftWrapAt', wLeft - ww - gap * 2, sideY - hh / 2, prefer === 'left' ? -1 : 2, true);
       seat('belowWrap', cx, wBottom + gap, prefer === 'below' ? -1 : 3);
