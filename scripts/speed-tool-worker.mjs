@@ -2,7 +2,8 @@
 // checkout through tsx and answers JSON-line commands on stdin:
 //   {"op":"first","i":n}            render case n once: ms, sha256 and, in cover mode, whether changed code ran
 //   {"op":"time","i":n,"k":k,"gc":b} render case n k times: mean ms per draw; checks the output against the first sha
-// Usage: node --expose-gc scripts/speed-tool-worker.mjs <root> <time|cover> <inputs.json> [changed-lines.json]
+//   {"op":"count","i":n}            count mode: render case n once and count the calls that mark a layout pass
+// Usage: node --expose-gc scripts/speed-tool-worker.mjs <root> <time|cover|count> <inputs.json> [changed-lines.json]
 import { readFileSync, realpathSync } from 'node:fs';
 import { Session } from 'node:inspector/promises';
 import { createRequire, findSourceMap } from 'node:module';
@@ -15,16 +16,17 @@ const [rootArg, mode, inputsFile, changedFile] = process.argv.slice(2);
 // Node resolves imported files through symlinks, including macOS /var -> /private/var.
 const root = realpathSync(rootArg);
 const cover = mode === 'cover';
+const count = mode === 'count';
 const send = (message) => process.stdout.write(`${JSON.stringify(message)}\n`);
 
 // Coverage starts before the engine compiles, so every engine function is counted.
 let session;
-if (cover) {
+if (cover || count) {
   session = new Session();
   session.connect();
   await session.post('Profiler.enable');
   await session.post('Debugger.enable');
-  await session.post('Profiler.startPreciseCoverage', { callCount: true, detailed: true });
+  await session.post('Profiler.startPreciseCoverage', { callCount: true, detailed: cover });
 }
 process.setSourceMapsEnabled(true);
 const { register } = await import(pathToFileURL(createRequire(join(root, 'package.json')).resolve('tsx/esm/api')).href);
@@ -46,12 +48,14 @@ function renderRequest(request) {
 
 const cases = golden.goldenCases().map((c) => ({
   key: `golden/${c.key}`,
+  type: c.definition.type,
   draw: () => golden.renderGolden(c.definition, c.fixture, c.variant).output,
 }));
 for (const input of JSON.parse(readFileSync(inputsFile, 'utf8'))) {
   const request = input.request;
   cases.push({
     key: input.key,
+    type: request.type,
     // The clone is outside the timer; the engine may keep references into the request.
     prepare: () => structuredClone(request),
     draw: (copy) => {
@@ -132,6 +136,32 @@ async function changedRan() {
   return false;
 }
 
+// ---- count mode: the functions that mark one layout pass, by source file and name.
+// A layout request reaches fitSizeMemo; a memo miss runs fitSize, one full layout at one fixed size.
+// The chart type's own layout function is no count: a table plans through other functions, and a grid lays
+// out its panels through fitSize.
+const PASS_FUNCTIONS = [
+  ['requests', 'src/core/sizing.ts', 'fitSizeMemo'],
+  ['layouts', 'src/core/sizing.ts', 'fitSize'],
+  ['labels', 'src/core/label/solver.ts', 'solveLabels'],
+  ['frames', 'src/core/frame.ts', 'solveFrame'],
+].map(([column, file, name]) => [column, pathToFileURL(join(root, file)).href, name]);
+
+/** Calls of each pass-marking function since the last coverage take. */
+async function passCounts() {
+  const { result } = await session.post('Profiler.takePreciseCoverage');
+  const counts = { requests: 0, layouts: 0, labels: 0, frames: 0 };
+  for (const script of result) {
+    const url = script.url.split('?')[0];
+    for (const fn of script.functions) {
+      // Without block detail, the first range of a function holds its call count.
+      const calls = fn.ranges[0].count;
+      for (const [column, file, name] of PASS_FUNCTIONS) if (url === file && fn.functionName === name) counts[column] += calls;
+    }
+  }
+  return counts;
+}
+
 // Changed code that runs while the modules load is reported; load is outside the timer, so it does not count for a case.
 const loadRan = cover ? await changedRan() : false;
 send({ ready: true, keys: cases.map((c) => c.key), loadRan });
@@ -161,6 +191,11 @@ for await (const line of createInterface({ input: process.stdin })) {
         if (firstSha.has(command.i) && sha(output) !== firstSha.get(command.i)) throw new Error(`unstable output for ${c.key}`);
       }
       send({ i: command.i, ms: total / command.k });
+    } else if (command.op === 'count') {
+      const copy = c.prepare?.();
+      await session.post('Profiler.takePreciseCoverage');
+      const output = c.draw(copy);
+      send({ i: command.i, key: c.key, type: c.type, ...(await passCounts()), error: output.startsWith('ERROR:') ? output.slice(0, 300) : undefined });
     } else if (command.op === 'expect') {
       firstSha.set(command.i, command.sha);
       send({ i: command.i });
