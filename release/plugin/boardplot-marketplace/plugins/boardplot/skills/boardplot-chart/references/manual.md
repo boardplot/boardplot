@@ -862,6 +862,8 @@ This section covers three things: moving a label, a bracket's seat, and four dra
 - Use `labelPlacements` to pin one label to a named slot that the chart offers.
 - Use `labelOffsets` to move one label by a set distance from the seat it would take.
 
+A shaded band's name keeps its existing placement preference within the plot, including reserved annotation headroom. A name that would leave the plot tries the existing inside seats first, on one line and then two lines. To keep the previous outside seat of a band with `id: "maintenance"`, set `options.labelPlacements` to `{ "annotation:maintenance": "aboveBandEnd" }`. Pins keep their previous candidate order. The solver still checks a pinned seat for collisions and uses a fallback when the seat is blocked.
+
 ### Read a label's id
 
 Each label of an SVG render carries `label:` and its id in `data-id`, such as `label:annotation:callout-2` for the id `annotation:callout-2` or `label:sum:price` for `sum:price`. An annotation's id comes from its `id`, otherwise from its kind and its position in `annotations`. To list every id, give `labelOffsets` an id that does not exist: the warning `label-offset-unknown` names the valid ids of that render.

@@ -3372,4 +3372,14 @@ const valueLineEndValueFixture: Fixture<LineChartData, LineOptions> = {
   ],
 };
 
-registerFixtures('line', [...fixtures, drawingKindsFixture, valueLineEndValueFixture, smallDrawerFixture, anomalyLineFixture, weeklyEventsLineFixture, eventsKeyLineFixture, focusFixture, nearZeroTailsFixture, partialWeekFixture, hostCardFixture, hostCardUnitShownFixture, markInkFixture, cellLabelFixture, ...cohortLineFixtures, briefLineFixture, themeConventionsFixture, areaFromOriginFixture, ...coverageLineFixtures, cycleBandsFixture, gapBracketFixture, stackedAreaBenchmarkFixture, stackedAreaRestFixture, strokeSamplerFixture, ratioPlainFormatRefusal, rebaseMissingNoteFixture, rebaseZeroNoteFixture, bandHeadroomFixture, lateStartFixture, trendFixture, ...continuousLineFixtures, logAxisFixture]);
+const shadeBandInsideWrapFixture: Fixture<LineChartData, LineOptions> = {
+  ...valueLineEndValueFixture,
+  id: 'shade-band-inside-wrap',
+  title: 'A narrow shaded band wraps its name inside',
+  options: { ...valueLineEndValueFixture.options, subtitle: { measure: 'Load by week' }, size: { width: 360 } },
+  annotations: [
+    { kind: 'band', id: 'maintenance', style: 'shade', from: 'w4', to: 'w6', label: 'Planned maintenance' },
+  ],
+};
+
+registerFixtures('line', [...fixtures, drawingKindsFixture, valueLineEndValueFixture, shadeBandInsideWrapFixture, smallDrawerFixture, anomalyLineFixture, weeklyEventsLineFixture, eventsKeyLineFixture, focusFixture, nearZeroTailsFixture, partialWeekFixture, hostCardFixture, hostCardUnitShownFixture, markInkFixture, cellLabelFixture, ...cohortLineFixtures, briefLineFixture, themeConventionsFixture, areaFromOriginFixture, ...coverageLineFixtures, cycleBandsFixture, gapBracketFixture, stackedAreaBenchmarkFixture, stackedAreaRestFixture, strokeSamplerFixture, ratioPlainFormatRefusal, rebaseMissingNoteFixture, rebaseZeroNoteFixture, bandHeadroomFixture, lateStartFixture, trendFixture, ...continuousLineFixtures, logAxisFixture]);
