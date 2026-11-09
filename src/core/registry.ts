@@ -891,8 +891,12 @@ function unmatchedIdWarnings(geo: Geometry<object, object>, data: unknown, highl
   if (asked.length > 0 && !geo.warnings.some((warning) => warning.code === 'highlight-unknown-id')) {
     // Line and slope highlight drawn data series, not categories or reference lines.
     const seriesOnly = geo.type === 'line' || geo.type === 'slope';
+    // Marks also retain empty lines and omitted bump series for data records; only scene owners are drawn.
+    const dataSeries = seriesOnly ? new Set((geo.marks as { series: { seriesId: string }[] }).series.map(series => series.seriesId)) : undefined;
     // A grid prefixes each panel's nodes with '<panel>/', and its highlight names panels.
-    const owned = seriesOnly ? (geo.marks as { series: { seriesId: string }[] }).series.map(series => series.seriesId) : geo.scene.flatMap((node) => [
+    const owned = geo.scene.flatMap((node) => dataSeries
+      ? node.owner?.seriesId !== undefined && dataSeries.has(node.owner.seriesId) ? [node.owner.seriesId] : []
+      : [
       ...(node.id?.includes('/') ? [node.id.slice(0, node.id.indexOf('/'))] : []),
       ...Object.values(node.owner ?? {}).filter((id): id is string => typeof id === 'string'),
     ]);
