@@ -295,7 +295,7 @@ function optionsPage(list) {
   const rows = fieldRows(sharedOptionFields()).map((field) => [field.branch ? `${field.path} (${field.branch})` : field.path, field.type, values(field), fallback(field), field.description]);
   return withContents([
     '# Shared options', '', GENERATED, '',
-    'These options are shared across chart types. Each type page names its exceptions, ignored settings and overrides. To author a spec, start with compact `boardplot_describe` and request any needed field by path, for example `{ "type": "bar", "path": "options.title" }`. `detail: "full"` exports the exhaustive type contract and can be large.', '',
+    'These options are shared across chart types. Each type page names its exceptions, ignored settings and overrides. To author a spec, start with compact `boardplot_describe` and request any needed field by path, for example `{ "type": "bar", "path": "options.title" }`. `detail: "full"` adds complete descriptions of the own fields of the type.', '',
     '## Options', '', table(['Path', 'Type', 'Values', 'Default', 'Meaning'], rows), '',
     'Set `locale.decimal` (and optionally `locale.thousands`) to choose the marks of every number in the chart, as in a spreadsheet. The default is `1,234.5` in every language; `locale.language` changes words only, never the marks. Format examples give only the shape; `1.2%` and `1,2 %` both mean one decimal; `1,2 %` keeps its space and prints `1.2 %` by default.', '',
     '## Target and size', '',
@@ -398,7 +398,7 @@ function llmsIndex(list) {
     '> Boardplot draws consulting-grade business charts, tables and maps as SVG or PNG, and provides responsive React components. Use its six MCP tools, CLI or React package. The local runtime needs Node.js 22.12 or newer. PowerPoint receives a chart image, with no editable chart data.', '',
     '## MCP start', '',
     'A chart spec has required `type` and `data` fields and optional `name`, `options`, `annotations` and `theme` fields. Pass a valid spec directly to `boardplot_render`. Check `ok`, `warnings`, `reading` and the actual output format before using the result.', '',
-    '- Known chart type: `boardplot_describe` returns its compact contract and a working example. Use `path` for any field that needs more detail. `detail: "full"` exports the exhaustive contract and can be large.',
+    '- Known chart type: `boardplot_describe` returns its compact contract and a working example. Use `path` for any field that needs more detail. `detail: "full"` adds complete descriptions of the own fields of the type.',
     '- Unknown chart type: `boardplot_list` lists the available types and use cases.',
     '- Example needed: `boardplot_fixtures` with `type` and `id` returns one runnable spec. Listings are paginated; pass `nextCursor` as `cursor` with the same filters.',
     '- Fixed container: `boardplot_measure` reports the size the spec needs at the requested width.',

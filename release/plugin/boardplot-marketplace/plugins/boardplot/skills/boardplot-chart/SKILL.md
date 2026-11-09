@@ -13,10 +13,10 @@ Use the Boardplot MCP tools for chart images. Tool names may have a host prefix.
 - **Known chart type, unfamiliar fields:** call `boardplot_describe` with `type`. Start from its example. Compact responses name accepted shared options and define `cell` and annotation anchors when used.
 - **Uncertain chart type:** call `boardplot_list` for types, use cases and supported alternatives.
 - **Example needed:** call `boardplot_fixtures` with `type`, then retrieve the chosen `id` with the same `type`. Listings are paginated.
-- **One field unclear or cut off with …:** call `boardplot_describe` with `type` and `path`, such as `options.valueAxis.break`. Reserve `detail: "full"` for the whole contract. Full responses can exceed 100 KB. If the response includes `design`, request `path: "design"` when the design decision needs its full guidance.
+- **One field unclear or cut off with …:** call `boardplot_describe` with `type` and `path`, such as `options.valueAxis.break`. Reserve `detail: "full"` for the whole contract of the type's own fields. If the response includes `design`, request `path: "design"` when the design decision needs its full guidance.
 - **Fixed container or size refusal:** call `boardplot_measure` with the spec and width. Use its measured size. [Sizing](references/manual.md#sizing) explains targets and units.
 
-When the chart supports row mapping, pass the user's data file as `rowsFile` with `columns`. Keep required template metadata such as map packs and table columns. Other data shapes go in `spec.data`. [Rows as data](references/manual.md#rows-as-data) lists the mappings.
+When the chart supports row mapping, pass the user's data file as `rowsFile` with `columns`. Keep required template metadata such as map packs and table columns. Other data shapes go in `spec.data`. The `columns` argument of `boardplot_render` lists the roles each chart needs. The CLI takes the same roles as `--columns category=c,series=s,value=v`.
 
 Read `ok`, `warnings`, `reading` and the actual returned format before using a render. PNG can fall back to SVG. Follow error `fix` or `suggest` for a refusal. [Errors and warnings](references/manual.md#reading-errors-and-warnings) and [PNG output](references/manual.md#png-output) cover repairs. Set `outDir` when files are needed, or request `return: ["reading", "svg"]` for inline SVG.
 

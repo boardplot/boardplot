@@ -120,6 +120,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
+| highlight | string \| array |  |  | Select drawn data series by ID. On one plain data line without a fan, category IDs instead emphasize those points: larger markers and values in focus ink while the line keeps its paint. Series IDs take precedence. References do not count as data series. Several data series, area, stacked and bump forms keep series-only highlighting. Unsupported IDs warn highlight-unknown-id and leave the chart unchanged. Explicit value-label suppression and authored marker shapes remain effective. |
 | rounding | string | `'nearest'`, `'sum-consistent'` |  | stacked100-area defaults to sum-consistent rounding of complete computed wholes. Authored percentages and incomplete total100 bases keep their values. nearest rounds each computed share separately. Other line variants do not use this setting. |
 | trend | boolean \| object |  |  | One least-squares line per shown data series, using the shared scatter fit. Fits every non-null source value in the shown range, with at least 3 points; min-max sampling changes the drawn points, not the fit. Regular month, quarter and year dates fit on the calendar period index and keep their spacing; exact 7-day steps fit per week; other dates use elapsed UTC days and exact date spacing; other categories use their original positions. The dashed series-colour line covers only its fitted range and is clipped to the value axis. The legend prints the series name, signed slope per month, quarter, year, week, day or period, and r². The layout derived.trends receipt carries slope, intercept, r² and the fit moments. Plain line and area only; stacks and bump refuse trend-unsupported. Too few points warn trend-undefined. A window or zoom changes the fitted range. Default false. |
 | trend.label | string |  |  | Name of the fitted lines in the legend; default Linear trend. |
@@ -407,6 +408,8 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | ordered-ramp-rest-apart | example | Rest only has to differ from the ordered ramp (othersShade 'apart') |
 | drawing-kinds | example | A box over the maintenance weeks, the normal load and an arrow from a note |
 | value-line-end-value | example | A named value line at the series end value prints its name beside that value |
+| shade-band-inside-wrap | example | A narrow shaded band wraps its name inside |
+| point-emphasis | example | A selected trough emphasizes its marker and value while the line keeps its ink |
 | small-drawer | example | A plain line chart in a 480 by 200 drawer |
 | weekly-orders-anomalies | example | Two weeks break out of the normal order range (anomaly on a line) |
 | weekly-events-lane | example | Event lane over a weekly line: dotted rules behind the data, the rest numbered in the key |

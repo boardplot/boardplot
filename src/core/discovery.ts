@@ -401,7 +401,8 @@ export function describeType(type: string, detail: 'compact' | 'full' = 'compact
   const example = definition.discovery?.example;
   const ids = chartIds(definition.type);
   const data = full ? fieldRows(dataFields, true) : fieldLines(dataFields, true);
-  const options = full ? fieldRows(optionFields(definition.type), true) : fieldLines(own, true);
+  // Shared options are the same block on every type: full lists their names, and path returns one in full.
+  const options = full ? fieldRows(own, true) : fieldLines(own, true);
   const usesCell = !full && [dataFields, own].some(fields => compactFields(fields).some(row => row.type !== undefined));
   const usesAnchor = definition.annotationKinds.some(kind => describeAnnotation(kind, definition.type).anchors.length > 0);
   const { metricStack, ...reading } = readingSchema.properties;
@@ -420,8 +421,7 @@ export function describeType(type: string, detail: 'compact' | 'full' = 'compact
     options,
     ...(usesCell ? { cell: CELL_CONTRACT } : {}),
     ...(usesAnchor ? { anchor: ANCHOR_FORM } : {}),
-    sharedOptions: full ? 'Shared options are included in options.'
-      : `${shared.length ? `Additional shared options: ${shared.join(', ')}. ` : ''}Use path for one field, for example {"type":"${definition.type}","path":"options.title"}. Rows ending in … are shortened.`,
+    sharedOptions: `${shared.length ? `Additional shared options: ${shared.join(', ')}. ` : ''}Use path for one field, for example {"type":"${definition.type}","path":"options.title"}.${full ? '' : ' Rows ending in … are shortened.'}`,
     ...(notAccepted.length ? { notAccepted } : {}),
     ...(ignored.length ? { ignored } : {}),
     sizing: {

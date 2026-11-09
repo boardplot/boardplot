@@ -470,9 +470,11 @@ describe('the verbs', () => {
     expect(JSON.parse(runCli(['describe', 'table']).log[0]!).cell).toBeUndefined();
     const starter = JSON.parse(runCli(['describe', 'dimswitch']).log[0]!).example;
     expect(render({ spec: starter }).body).toMatchObject({ ok: true });
+    // Full detail names shared options instead of repeating their block; path returns one in full.
     const full = JSON.parse(runCli(['describe', 'bar', '--full']).log[0]!);
+    expect(full.sharedOptions).toMatch(/\btitle\b/);
     const lookup = JSON.parse(runCli(['describe', 'bar', '--path', 'options.title']).log[0]!);
-    expect(full.options).toEqual(expect.arrayContaining(lookup.fields));
+    expect(lookup.fields).toEqual([expect.objectContaining({ path: 'title', description: expect.any(String) })]);
     const spec = { ...compact.example, options: { ...compact.example.options, title: 'Regional revenue' } };
     const result = render({ spec });
     expect(result.body).toMatchObject({ ok: true, reading: { title: 'Regional revenue' } });
@@ -842,7 +844,7 @@ describe('render and measure on the command line', () => {
     const dir = tdir();
     writeFileSync(join(dir, 'rows.csv'), 'month,segment,revenue\nJan,B2B,10\nJan,B2B,12\n');
     const result = runCli(['render', writeDoc(dir, 'spec.json', { type: 'column' }), '--rows', join(dir, 'rows.csv'), '--columns', 'category=month,series=segment,value=revenue']);
-    expect(envelope(result).errors).toMatchObject([{ code: 'ambiguous-mapping', path: '/rowsFile', message: expect.stringContaining('rows[1].segment') }]);
+    expect(envelope(result).errors).toMatchObject([{ code: 'ambiguous-mapping', path: '/rowsFile', message: expect.stringContaining('rowsFile row 2.segment') }]);
   });
 
   it('reads a semicolon CSV, detected from its header, with decimal commas as decimals', () => {
@@ -879,7 +881,8 @@ describe('render and measure on the command line', () => {
     expect(render({ spec, rowsFile: repeated, columns }).body.warnings).toContainEqual(expect.objectContaining({ code: 'rows-header-repeated' }));
     const invalid = join(dir, 'invalid.tsv');
     writeFileSync(invalid, 'month\tsegment\trevenue\nJan\tNorth\t1,5\n');
-    expect(runVerb(() => render({ spec, rowsFile: invalid, columns })).body.errors).toMatchObject([{ code: 'invalid-value', path: '/rowsFile', message: expect.stringContaining('rows[0].revenue') }]);
+    // A file-row error must name the source cell an agent edits; the category adapter gave only rows[0].
+    expect(runVerb(() => render({ spec, rowsFile: invalid, columns })).body.errors).toMatchObject([{ code: 'invalid-value', path: '/rowsFile', displayPath: 'rowsFile row 1.revenue', message: expect.stringContaining('rowsFile row 1.revenue') }]);
     const unknown = join(dir, 'rows.xml');
     writeFileSync(unknown, tab);
     expect(runVerb(() => render({ spec, rowsFile: unknown, columns })).body.errors).toMatchObject([{ code: 'rows-unreadable', path: '/rowsFile' }]);
@@ -902,7 +905,7 @@ describe('render and measure on the command line', () => {
     const dir = tdir();
     writeFileSync(join(dir, 'rows.csv'), 'Month;Segment;Revenue\nJan;A;980\nFeb;A;1.234\n');
     const result = runCli(['render', writeDoc(dir, 'spec.json', { type: 'column' }), '--rows', join(dir, 'rows.csv'), '--columns', 'category=Month,series=Segment,value=Revenue']);
-    expect(envelope(result).errors).toMatchObject([{ code: 'invalid-value', path: '/rowsFile', message: expect.stringContaining('rows[1].Revenue') }]);
+    expect(envelope(result).errors).toMatchObject([{ code: 'invalid-value', path: '/rowsFile', displayPath: 'rowsFile row 2.Revenue', message: expect.stringContaining('rowsFile row 2.Revenue') }]);
   });
 
   const rowsRender = (csv: string | Buffer, valueKind = 'number') => {

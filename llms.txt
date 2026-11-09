@@ -6,7 +6,7 @@
 
 A chart spec has required `type` and `data` fields and optional `name`, `options`, `annotations` and `theme` fields. Pass a valid spec directly to `boardplot_render`. Check `ok`, `warnings`, `reading` and the actual output format before using the result.
 
-- Known chart type: `boardplot_describe` returns its compact contract and a working example. Use `path` for any field that needs more detail. `detail: "full"` exports the exhaustive contract and can be large.
+- Known chart type: `boardplot_describe` returns its compact contract and a working example. Use `path` for any field that needs more detail. `detail: "full"` adds complete descriptions of the own fields of the type.
 - Unknown chart type: `boardplot_list` lists the available types and use cases.
 - Example needed: `boardplot_fixtures` with `type` and `id` returns one runnable spec. Listings are paginated; pass `nextCursor` as `cursor` with the same filters.
 - Fixed container: `boardplot_measure` reports the size the spec needs at the requested width.

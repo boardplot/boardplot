@@ -62,13 +62,13 @@ const finding = {
   type: 'object',
   properties: {
     code: { type: 'string' },
-    severity: { type: 'string', enum: ['advice', 'info', 'warn', 'error'], description: 'Warning severity, when supplied.' },
-    path: { type: 'string', description: 'JSON pointer into the submitted spec or tool arguments. Row findings point into /rows or to /rowsFile. displayPath identifies the source row and column.' },
-    displayPath: { type: 'string', description: 'Readable source location, when supplied. File-row findings name the row and column here while path remains /rowsFile.' },
+    severity: { type: 'string', enum: ['advice', 'info', 'warn', 'error'] },
+    path: { type: 'string', description: 'JSON pointer into the spec or the tool arguments.' },
+    displayPath: { type: 'string', description: 'The source row and column, for a row finding.' },
     message: { type: 'string' },
     expected: { type: 'object' },
     received: {},
-    fix: { type: 'array', description: 'Proposed JSON Patch operations for the input named by path. Spec paths apply to the spec and argument paths to the tool arguments. For a file-row finding, edit the source cell named by displayPath instead of replacing rowsFile.' },
+    fix: { type: 'array', description: 'JSON Patch for the input at path, when the engine can propose one.' },
     suggest: { type: 'string' },
     docs: { type: 'string' },
   },
@@ -84,12 +84,8 @@ function output(properties: Record<string, unknown>): Record<string, unknown> {
     properties: {
       ok: { type: 'boolean' }, engineRev: { type: 'number' },
       version: { type: 'string', description: 'The build this server runs, exactly as boardplot --version prints it.' },
-      errors: { ...findings, description: 'Actionable failures. Spec validation returns up to ten errors, followed by more-errors when additional failures remain.' },
-      warnings: { ...findings, description: 'Non-blocking findings. Repeated theme and design advice may be omitted within a server session.' },
-      fontTables: {
-        type: 'object', description: 'Custom font metrics active on this server, when configured.',
-        properties: { families: { type: 'array', items: { type: 'string' } }, faces: { type: 'integer' } },
-      },
+      errors: findings, warnings: findings,
+      fontTables: { type: 'object', description: 'Custom font metrics, when configured.', properties: { families: { type: 'array', items: { type: 'string' } }, faces: { type: 'integer' } } },
       ...properties,
     },
     required: ['ok'],
@@ -204,7 +200,7 @@ export function toolInputs() {
     boardplot_list: z.strictObject({}),
     boardplot_describe: z.strictObject({
       type: z.enum([...chartTypes(), 'theme']).describe("Chart type or alias, such as bar or bridge. Use theme for presets and theme tokens."),
-      detail: z.enum(['compact', 'full']).default('compact').describe('Use compact for a starter contract and shared option names, then path for one field. full is an exhaustive reference with every effective option field, complete descriptions and all fixture IDs. Full responses can exceed 100 KB, so request full only when the whole contract is needed.'),
+      detail: z.enum(['compact', 'full']).default('compact').describe('Use compact for a starter contract and shared option names, then path for one field. full adds complete descriptions of the own data and option fields, the reading schema and all fixture IDs. Shared options stay names; use path for one.'),
       path: z.string().optional().describe("One field and its children, such as options.title or data.series[].values. Prefix data. or options. to disambiguate. Use design for complete design guidance when the response includes design. Not with schema or type theme."),
       schema: z.enum(['data', 'options']).optional().describe('Return the JSON Schema for data or options instead of descriptive rows. Not with path or type theme.'),
     }),
@@ -285,7 +281,7 @@ export function toolDefinitions(): ToolDefinition[] {
     {
       name: 'boardplot_describe',
       title: 'Describe one chart type',
-      description: 'Learn a known chart type without a catalogue call. Compact detail returns a starter spec, data and option fields, shared option names, sizing and fixture IDs. Use path for one field or a description ending in …, which marks shortened text. A field lookup reports acceptance or refusal. Use full only for the exhaustive contract. Type theme returns theme presets and tokens.',
+      description: 'Learn a known chart type without a catalogue call. Compact detail returns a starter spec, data and option fields, shared option names, sizing and fixture IDs. Use path for one field or a description ending in …, which marks shortened text. A field lookup reports acceptance or refusal. Use full for complete descriptions of the own fields of the type. Type theme returns theme presets and tokens.',
       inputSchema: jsonInput(inputs.boardplot_describe),
       outputSchema: output(described),
       annotations: READ_ONLY,
@@ -293,11 +289,11 @@ export function toolDefinitions(): ToolDefinition[] {
     {
       name: 'boardplot_render',
       title: 'Draw a chart',
-      description: 'Draw charts from a supplied spec, with optional data from inline rows or a local file. Call directly when the spec is ready: rendering also validates input and returns ok false with actionable errors on failure. The default response includes a reading of labels, omissions and computed values. Request inline SVG, PNG image content or files through the output arguments. Inspect warnings, the reading and the actual output format before using the chart.',
+      description: 'Draw charts from a supplied spec, with optional data from inline rows or a local file. Call directly when the spec is ready: rendering also validates input and returns ok false with actionable errors on failure. The default response includes a reading of labels, omissions and computed values. Request inline SVG, PNG image content or files through the output arguments. Inspect warnings, the reading and the actual output format before using the chart. Errors stop at ten, then more-errors. A fix is a JSON Patch for the spec or the arguments, as its path names; for a file row, edit the source cell that displayPath names. Repeated design advice appears once per server session.',
       inputSchema: jsonInput(inputs.boardplot_render),
       outputSchema: output({
         ...drawn,
-        charts: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, ...drawn } } },
+        charts: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, ...drawn, reading: { type: 'object', description: 'The top-level reading shape.' } } } },
         outputs: { type: 'array', items: { type: 'string' } },
       }),
       // overwrite can replace files; the default still allocates fresh names.

@@ -144,10 +144,10 @@ function readColumns(columns: unknown, shape: RowsShape): { contract: RowContrac
  * either 1234 with a German thousands dot or 1.234 with a decimal point;
  * 0.505 cannot be a thousands group and reads as a decimal.
  */
-function valueCell(value: unknown, kind: (typeof VALUE_KINDS)[number], decimalComma: boolean, path: string): unknown {
+function valueCell(value: unknown, kind: (typeof VALUE_KINDS)[number], decimalComma: boolean, source: { path: string; displayPath: string }): unknown {
   if (decimalComma && typeof value === 'string' && /^\s*-?[1-9]\d{0,2}\.\d{3}\s*$/.test(value)) {
-    throw new InputError('invalid-value', `${path}: '${value.trim()}' in a semicolon CSV is either ${value.trim().replace(/\./g, '')} with a thousands dot or ${value.trim()} with a decimal point`, {
-      path: '/rowsFile', received: receivedDescription(value),
+    throw new InputError('invalid-value', `${source.displayPath}: '${value.trim()}' in a semicolon CSV is either ${value.trim().replace(/\./g, '')} with a thousands dot or ${value.trim()} with a decimal point`, {
+      ...source, received: receivedDescription(value),
       suggest: 'Write the number without the thousands dot, or with a decimal comma.',
     });
   }
@@ -218,7 +218,7 @@ function adaptItemRows(
       if (role === 'label' && shape === 'scatter' && (raw === undefined || raw === null)) continue;
       if (['value', 'x', 'y', 'size'].includes(role)) {
         const kind = role === 'size' ? 'number' : valueKind;
-        const value = valueCell(raw, kind, decimalComma, `rows[${index}].${column}`);
+        const value = valueCell(raw, kind, decimalComma, source);
         if (typeof value === 'string') throw new InputError('invalid-value', `${source.displayPath}: '${value}' is not a numeric cell`, {
           ...source, received: receivedDescription(raw),
           ...(WRITTEN_NUMBER.test(value) ? { suggest: plainNumberAdvice(value, kind, decimalComma) } : {}),
@@ -410,7 +410,7 @@ function adaptTableRows(
         });
       }
       // An empty field is a missing value outside text columns: no number, status or date is empty text.
-      const cell = raw === undefined || (raw === '' && input.kind !== 'text') ? null : input.kind === 'value' ? valueCell(raw, 'number', decimalComma, `rows[${index}].${input.id}`) : raw;
+      const cell = raw === undefined || (raw === '' && input.kind !== 'text') ? null : input.kind === 'value' ? valueCell(raw, 'number', decimalComma, source) : raw;
       // A value column takes numbers: text it cannot read as one is refused here, as category rows refuse it, not drawn as missing.
       if (input.kind === 'value' && typeof cell === 'string') {
         throw new InputError('invalid-value', `${source.displayPath}: '${cell}' is not a numeric cell`, {
@@ -454,7 +454,7 @@ function readObservation(
   const raw = own(row, column);
   const source = sourceField(rowsArgument, contract, index, column);
   const received = receivedDescription(raw, raw !== undefined);
-  const value = raw === undefined || (typeof raw === 'string' && !raw.trim()) ? null : valueCell(raw, 'number', decimalComma, `rows[${index}].${column}`);
+  const value = raw === undefined || (typeof raw === 'string' && !raw.trim()) ? null : valueCell(raw, 'number', decimalComma, source);
   if (value === null) {
     throw new InputError('missing-value', `${source.displayPath}: the observation is missing; a ${shape} draws every row and takes no missing value`, {
       ...source, received, suggest: `Remove the rows without a ${column} before the call, or fill in their values.`,
@@ -616,7 +616,9 @@ export function adaptRows(spec: unknown, columns: unknown, source: RowsSource): 
   const contract = rowContract as NamedColumnContract;
   // A row without the value column stays without it, so the adapter names the column as missing.
   const rows = sourceRows.map((row, index) => (Object.hasOwn(row, contract.value)
-    ? { ...row, [contract.value]: valueCell(row[contract.value], valueKind, decimalComma, `rows[${index}].${contract.value}`) }
+    ? { ...row, [contract.value]: valueCell(row[contract.value], valueKind, decimalComma, {
+        path: argumentPath(`rows[${index}].${contract.value}`, rowsArgument, contract), displayPath: `${rowsArgument.slice(1)} row ${index + 1}.${contract.value}`,
+      }) }
     : row));
   // Reuse the existing single-series adapter, including value, duplicate and state checks.
   // Pick a private column name that cannot replace a source column.
@@ -635,16 +637,20 @@ export function adaptRows(spec: unknown, columns: unknown, source: RowsSource): 
     const cell = source && Object.hasOwn(source, column!) ? source[column!] : undefined;
     const suggest = column === contract.value && typeof cell === 'string' && WRITTEN_NUMBER.test(cell)
       ? plainNumberAdvice(cell, valueKind, decimalComma) : error.suggest;
-    throw new InputError(error.code, `${error.path ? `${error.path}: ` : ''}${error.message}`, {
+    // Name the source cell as the other row adapters do: row counted from 1, the source column.
+    const displayPath = row === undefined ? undefined : `${rowsArgument.slice(1)} row ${Number(row) + 1}.${map && column === mapSeriesColumn ? contract.category : column}`;
+    throw new InputError(error.code, `${displayPath ?? error.path}${displayPath ?? error.path ? ': ' : ''}${error.message}`, {
       path: argumentPath(map ? error.path.replace(`.${mapSeriesColumn}`, `.${contract.category}`) : error.path, rowsArgument, contract), ...(suggest ? { suggest } : {}),
+      ...(displayPath ? { displayPath } : {}),
       ...(source && Object.hasOwn(source, column!) ? { received: receivedDescription(cell) } : {}),
     });
   }
   const data = isRecord(spec.data) ? spec.data : {};
   if (map) adapted.data.series[0]?.values.forEach((cell, index) => {
     if (cell !== null && typeof cell === 'object' && 'date' in cell) {
-      throw new InputError('invalid-value', `rows[${index}].${contract.value}: a map needs a number or null, not a date`, {
-        path: argumentPath(`rows[${index}].${contract.value}`, rowsArgument, contract),
+      const displayPath = `${rowsArgument.slice(1)} row ${index + 1}.${contract.value}`;
+      throw new InputError('invalid-value', `${displayPath}: a map needs a number or null, not a date`, {
+        path: argumentPath(`rows[${index}].${contract.value}`, rowsArgument, contract), displayPath,
       });
     }
   });

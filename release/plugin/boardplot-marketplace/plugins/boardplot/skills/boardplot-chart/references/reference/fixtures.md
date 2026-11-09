@@ -283,6 +283,8 @@ The CLI prints every match in one response through `boardplot fixtures --type <t
 | ordered-ramp-rest-apart | line.line | example | Rest only has to differ from the ordered ramp (othersShade 'apart') |
 | drawing-kinds | line.line | example | A box over the maintenance weeks, the normal load and an arrow from a note |
 | value-line-end-value | line.line | example | A named value line at the series end value prints its name beside that value |
+| shade-band-inside-wrap | line.line | example | A narrow shaded band wraps its name inside |
+| point-emphasis | line.line | example | A selected trough emphasizes its marker and value while the line keeps its ink |
 | small-drawer | line.line | example | A plain line chart in a 480 by 200 drawer |
 | weekly-orders-anomalies | line.line | example | Two weeks break out of the normal order range (anomaly on a line) |
 | weekly-events-lane | line.line | example | Event lane over a weekly line: dotted rules behind the data, the rest numbered in the key |

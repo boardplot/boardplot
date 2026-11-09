@@ -2,14 +2,6 @@
 
 Boardplot is in 0.x: options and output can change between minor versions. Each release lists its changes here.
 
-## Unreleased
-
-### Changed
-
-- Compact chart discovery now includes accepted shared option names and definitions for value cells and annotation anchors when needed. Ignored settings remain distinct from refused settings. Full discovery includes all effective option fields and independently readable descriptions.
-- MCP output schemas document reading fields, optional font information and source-row locations. Tool names and arguments remain compatible.
-- MCP guidance uses direct rendering for ready specs and compact discovery or field lookups for routine questions. The chart skill links to a complete local reference set in marketplace and offline ZIP installations.
-
 ## 0.57.0
 
 ### Added
@@ -71,6 +63,10 @@ Boardplot is in 0.x: options and output can change between minor versions. Each 
 ### Changed
 
 - Shaded-band names now try seats within the plot before seats beyond it. The plot includes reserved annotation headroom. Seats within the plot keep their previous order, so a clear name above a band stays there. A name that would leave the plot can instead wrap inside. Previously, the one-line `aboveBand`, `aboveBandEnd` and `aboveBandStart` seats preceded extended inside seats even when outside the plot. To restore the previous outside seat in the narrow maintenance example, use `{ "options": { "labelPlacements": { "annotation:maintenance": "aboveBandEnd" } } }`. For the same band as the first annotation without an explicit ID, use `{ "options": { "labelPlacements": { "annotation:band-1": "aboveBandEnd" } } }`. Use the band's own annotation ID and previous slot for other bands. Pins keep their previous candidate order and collision fallback. Bracket bands keep their placement order.
+- `boardplot_describe` in compact detail names the accepted shared options and defines value cells and annotation anchors where a type uses them, so a known type needs no `boardplot_list` call. Full detail keeps the type's own fields with complete descriptions; shared options stay names, and `path` returns one in full.
+- MCP output schemas declare the chart reading, `severity` and `displayPath` on findings, and the font tables. A file-row error on a category chart now names its source cell in `displayPath`, such as `rowsFile row 1.v`, and its message counts rows from 1, as the other row errors do. Before, it printed `rows[0].v`. Tool names and arguments stay the same.
+- The dimswitch describe example shows a child measure, a computed CAC ratio and the member level.
+- The chart skill sends a ready spec straight to render and a known type to compact discovery, and no longer asks for the manual before the first chart. Its references are packaged beside it, so every link resolves in the marketplace and offline ZIP installs.
 - A dimswitch with `columnHeads: false` prints its partial Range or period note in the frame, or warns `dimswitch-partial-note-off-frame` where the frame has no place, also where the note would raise the height floor.
 - A table's inline line follows the alignment of its column, on a column that is not right-aligned, in the SVG as in React.
 - The manual, the README and `boardplot --help` describe the document that draws several charts in one call, `{ "version": 1, "charts": [...] }` with a name per chart: one CLI start for all charts, and one refused chart refuses the call. Before, only the MCP tool description named it.
