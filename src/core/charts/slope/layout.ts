@@ -297,6 +297,8 @@ export function layoutSlope(
       ...(options.locale?.language !== undefined ? { language: options.locale.language } : {}),
     });
   if (fold) ({ plotted: plottedSeries, listed: seriesNorm } = fold);
+  // A missing or unplotted series cannot take emphasis or mute the plotted lines.
+  for (const id of highlights) if (!plottedSeries.some(series => series.id === id)) highlights.delete(id);
   const changes: Record<Id, { abs: number; pct: number | null }> = emptyIdRecord();
   for (const s of plottedSeries) {
     const abs = cleanDiff(s.b.v!, s.a.v!);

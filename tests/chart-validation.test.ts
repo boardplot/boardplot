@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import { render } from '../src/cli/render';
 import { layoutDiagram } from '../src/core/charts/diagram/layout';
+import type { GridMarks } from '../src/core/charts/grid/layout';
 import { diagramSceneId } from '../src/core/charts/diagram/ids';
 import { rectLineDistance, type Rect } from '../src/core/geometry';
 import type { DiagramData, DiagramMarks, DiagramOptions, DiagramPolylineRoute } from '../src/core/types/diagram';
@@ -775,6 +776,87 @@ describe('ignored options', () => {
 
 describe('edge inputs that draw', () => {
   const body = (spec: unknown) => render({ spec }).body as { ok: boolean; errors?: { code: string; message: string }[] };
+  // An unsupported highlight must warn without muting the chart or changing a valid series highlight.
+  it.each(['line', 'area', 'stacked-area', 'stacked100-area', 'bump', 'slope'] as const)('ignores unsupported highlights on %s', (variant) => {
+    const type = variant === 'slope' ? 'slope' : 'line';
+    const data = { categories: ['a', 'b'], series: [
+      { id: 'first', values: [12, 18] }, { id: 'second', values: [20, 15] },
+      { id: 'reference', role: 'reference', values: [16, 16] },
+    ] };
+    const lay = (highlight?: string | string[]) => {
+      const request = resolveChartRequest({ type, data, options: {
+        size: { width: 720, height: 400 }, ...(type === 'line' ? { variant } : {}),
+        ...(highlight === undefined ? {} : { highlight }),
+      } } as never);
+      const result = layoutResolvedRequest(request);
+      if (result.refused) throw new Error(JSON.stringify(result.warnings));
+      return result;
+    };
+    const plain = lay();
+    const selected = lay('first');
+    expect(selected.scene).not.toEqual(plain.scene);
+    for (const id of ['missing-id', 'a', 'reference']) {
+      for (const valid of [false, true]) {
+        const result = lay(valid ? ['first', id, id] : id);
+        const expected = valid ? selected : plain;
+        expect(result.warnings.filter(warning => warning.code === 'highlight-unknown-id')).toEqual([
+          expect.objectContaining({ severity: 'warn', field: ['options', 'highlight'] }),
+        ]);
+        expect(result.scene).toEqual(expected.scene);
+        expect(result.marks).toEqual(expected.marks);
+      }
+    }
+  });
+  // An unsupported panel highlight must not change the shared series colours of any grid panel.
+  it.each(['line', 'slope'] as const)('ignores unsupported highlights in a %s grid', (type) => {
+    const data = { categories: ['a', 'b'], series: [
+      { id: 'first', values: [12, 18] }, { id: 'second', values: [20, 15] },
+      { id: 'reference', role: 'reference', values: [16, 16] },
+    ] };
+    const lay = (highlight?: string | string[]) => {
+      const request = resolveChartRequest({ type: 'grid', data: { panels: [
+        { id: 'left', type, row: 0, column: 0, data, options: highlight === undefined ? {} : { highlight } },
+        { id: 'right', type, row: 0, column: 1, data: { ...data, series: [...data.series].reverse() } },
+      ] }, options: { columns: 2, size: { width: 960, height: 600 } } } as never);
+      const result = layoutResolvedRequest(request);
+      if (result.refused) throw new Error(JSON.stringify(result.warnings));
+      return result;
+    };
+    const plain = lay();
+    const selected = lay('first');
+    expect(selected.scene).not.toEqual(plain.scene);
+    for (const id of ['missing-id', 'a', 'reference']) {
+      for (const valid of [false, true]) {
+        const result = lay(valid ? ['first', id, id] : id);
+        const expected = valid ? selected : plain;
+        expect(result.warnings.filter(warning => warning.code === 'highlight-unknown-id')).toEqual([
+          expect.objectContaining({ severity: 'warn' }),
+        ]);
+        expect(result.scene).toEqual(expected.scene);
+        expect((result.marks.panels as GridMarks['panels']).map(panel => panel.chart!.geometry.marks)).toEqual(
+          (expected.marks.panels as GridMarks['panels']).map(panel => panel.chart!.geometry.marks),
+        );
+      }
+    }
+  });
+  // A series that draws nothing must warn when highlighted, so authors know their selection has no visible target.
+  it.each(['bump focus', 'all-null'] as const)('warns for a highlight excluded by %s', (exclusion) => {
+    const data = { categories: ['a', 'b'], series: [
+      { id: 'first', values: [12, 18] },
+      { id: 'second', values: exclusion === 'all-null' ? [null, null] : [20, 15] },
+    ] };
+    for (const highlight of ['second', ['first', 'second', 'second']]) {
+      const request = resolveChartRequest({ type: 'line', data, options: {
+        size: { width: 960, height: 600 }, highlight,
+        ...(exclusion === 'bump focus' ? { variant: 'bump', bump: { focus: ['first'] } } : {}),
+      } } as never);
+      const result = layoutResolvedRequest(request);
+      if (result.refused) throw new Error(JSON.stringify(result.warnings));
+      expect(result.warnings.filter(warning => warning.code === 'highlight-unknown-id')).toEqual([
+        expect.objectContaining({ severity: 'warn', field: ['options', 'highlight'] }),
+      ]);
+    }
+  });
   // Blank series names gave an internal 'invalid SVG numeric' error in every chart with a series key.
   it('draws a series key whose names are blank', () => {
     for (const type of ['column', 'scatter', 'treemap'] as const) {

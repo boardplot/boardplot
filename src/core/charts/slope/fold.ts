@@ -177,7 +177,8 @@ function negativeMember(series: readonly NormSer[]): NormSer | undefined {
   return series.find((s) => (s.a.v ?? 0) < 0 || (s.b.v ?? 0) < 0);
 }
 
-function otherLineId(taken: readonly NormSer[]): Id {
+/** The id of the fold's 'Other' line: 'other', prefixed until no series takes it. */
+export function otherLineId(taken: readonly { id: Id }[]): Id {
   let id: Id = 'other';
   while (taken.some((s) => s.id === id)) id = `_${id}`;
   return id;

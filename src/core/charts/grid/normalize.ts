@@ -1,8 +1,9 @@
 import type { MetricStackData } from './metricStack';
 import { isRecord } from '../../lint/shared';
 import { ownedDocumentCopy } from '../../doc/ownedDocumentCopy';
-import { NormalizeError, substitute } from '../../normalize/shared';
+import { NormalizeError, resolveHighlight, substitute } from '../../normalize/shared';
 import type { GridOptions } from '../../types/options';
+import { otherLineId } from '../slope/fold';
 
 export type GridTrackScope = 'row' | 'column' | 'all';
 export type GridRepeatFacet = 'series' | 'category';
@@ -372,7 +373,15 @@ function facetLabel(raw: unknown, by: GridRepeatFacet | undefined, value: string
  */
 function stylesOwnSeries(panel: GridPanelSpec, gridPalette: unknown, themeFacts?: (panelTheme: unknown) => GridThemeFacts): boolean {
   const options = isRecord(panel.options) ? panel.options : {};
-  if (options.highlight !== undefined || options.emphasis !== undefined || options.seriesRamp !== undefined || (options.palette ?? gridPalette) !== undefined) return true;
+  // Unsupported line/slope ids still reach the child for its warning, but do not opt the grid out of shared colours.
+  const seriesOnly = panel.type === 'line' || panel.type === 'slope' && options.variant !== 'diverging';
+  const highlights = resolveHighlight(typeof options.highlight === 'string' || Array.isArray(options.highlight) ? options.highlight : undefined);
+  const ids = panelSeriesIds(panel);
+  // A slope fold can create a selectable Other line after the grid has assigned colours.
+  const foldedId = otherLineId(ids.map(id => ({ id })));
+  const hasHighlight = seriesOnly ? highlights.some(id => ids.includes(id)
+    || panel.type === 'slope' && options.foldBelowShare !== undefined && id === foldedId) : options.highlight !== undefined;
+  if (hasHighlight || options.emphasis !== undefined || options.seriesRamp !== undefined || (options.palette ?? gridPalette) !== undefined) return true;
   if (themeFacts?.(options.theme).stylesSeries) return true;
   const series = isRecord(panel.data) && Array.isArray(panel.data.series) ? panel.data.series : [];
   return series.some((item) => isRecord(item) && item.role !== 'reference' && (item.fill !== undefined || item.colorRole !== undefined));
