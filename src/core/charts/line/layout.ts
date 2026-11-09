@@ -31,7 +31,8 @@ import type { AnchorResolution, AnnotatePassResult } from '../../annotate';
 import { zoneYearSpan } from '../../timeAxis';
 import { emitEventLane, percentLevels, runAnnotatePass, settleEventLane } from '../../annotatePass';
 import { categoryBandFromCenters, categoryTargetFields, spliceAnnotationNodes, type CategoryBand } from '../../annotateFields';
-import type { Rect } from '../../geometry';
+import { corridorEdgeRects } from '../../annotateTargets';
+import { rectsOverlap, type Rect } from '../../geometry';
 import { heightOmitted, PLOT_FLOOR_RECT } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { labelsToNodes } from '../../label/emit';
@@ -52,7 +53,7 @@ import { fillShadingKinds, fillShadings, forecastBoundaryX, regroundOnShadings, 
 import { planLineLabels, type LineLabelPlan } from './labelPlan';
 import { BUMP_FOLDED } from './bump';
 import { X_PARTIAL_ROW } from './xTicks';
-import { END_LABEL_KEY, END_LABEL_WIDE, INLINE_FALLBACK, endUnitSuffix, lineToDateIds, usesEndLabelKey, usesInlineFallback, type EndpointLabelStrategy } from './labels';
+import { END_LABEL_KEY, END_LABEL_WIDE, INLINE_FALLBACK, endUnitSuffix, lineToDateIds, pointLabelsFollowShape, usesEndLabelKey, usesInlineFallback, type EndpointLabelStrategy } from './labels';
 import { lineValueStats } from './means';
 import { laneScale } from './continuous';
 import type { LineAnomaly, LineArea, LineDomain, LineEnv, LineMarkGeometry, LinePaints, LineReserves, LineText } from './model';
@@ -307,6 +308,34 @@ function settleLineLabels(
   return ratioTierResult;
 }
 
+/** Category spans shared by the annotation pass and its early reference-edge check. */
+function lineCategoryBandResolver(domain: LineDomain, area: LineArea): (categoryId: Id) => CategoryBand | null {
+  const { plot, xOf, categoryOrder: catIndex } = area;
+  // Authored forecast category bands share the last actual point.
+  const centred = categoryBandFromCenters(domain.cats.map((c) => c.id), plot, xOf, 'x');
+  const splits = area.forecast.map((boundary) => ({ boundary, x: forecastBoundaryX(boundary, xOf, 'point') }));
+  return (categoryId: Id): CategoryBand | null => {
+    // A continuous axis: a band edge is an exact x, clipped to the plot.
+    if (domain.x && area.xOfValue) {
+      const x = domain.x.model.read(categoryId, 'options.annotations');
+      return { x: Math.min(plot.x + plot.w, Math.max(plot.x, area.xOfValue(x))), w: 0 };
+    }
+    const band = centred(categoryId);
+    const ci = catIndex.get(categoryId);
+    if (!band || !('x' in band) || ci === undefined) return band;
+    let left = band.x;
+    let right = band.x + band.w;
+    for (const { boundary, x } of splits) {
+      if (ci === boundary.categoryIndex) left = x;
+      if (ci === boundary.categoryIndex - 1) {
+        right = x;
+        left = Math.min(left, x);
+      }
+    }
+    return { x: left, w: right - left };
+  };
+}
+
 /** Phase 4: the annotation pass, anchored on the drawn points. */
 function annotateLine(
   env: LineEnv,
@@ -383,29 +412,7 @@ function annotateLine(
       ...(ci > 0 && pv[rowOf.get(s)!]!.findIndex((value) => value !== null) === ci ? { lineStart: true } : {}),
     };
   };
-  // Authored forecast category bands share the last actual point.
-  const centred = categoryBandFromCenters(cats.map((c) => c.id), plot, xOf, 'x');
-  const splits = area.forecast.map((boundary) => ({ boundary, x: forecastBoundaryX(boundary, xOf, 'point') }));
-  const resolveCategoryBand = (categoryId: Id): CategoryBand | null => {
-    // A continuous axis: a band edge is an exact x, clipped to the plot.
-    if (domain.x && area.xOfValue) {
-      const x = domain.x.model.read(categoryId, 'options.annotations');
-      return { x: Math.min(plot.x + plot.w, Math.max(plot.x, area.xOfValue(x))), w: 0 };
-    }
-    const band = centred(categoryId);
-    const ci = catIndex.get(categoryId);
-    if (!band || !('x' in band) || ci === undefined) return band;
-    let left = band.x;
-    let right = band.x + band.w;
-    for (const { boundary, x } of splits) {
-      if (ci === boundary.categoryIndex) left = x;
-      if (ci === boundary.categoryIndex - 1) {
-        right = x;
-        left = Math.min(left, x);
-      }
-    }
-    return { x: left, w: right - left };
-  };
+  const resolveCategoryBand = lineCategoryBandResolver(domain, area);
   // A one-period band on a continuous axis covers its period's slot: halfway to each drawn neighbour,
   // the same reach on the far side at the ends. An x no period is drawn at has no slot.
   const resolvePeriodSlot = (categoryId: Id): CategoryBand | null => {
@@ -1128,6 +1135,14 @@ function layoutLinePass(
   if (plan.endpointWiden) return layoutLinePass(data, { ...options, [END_LABEL_WIDE]: true } as LineOptions);
   if (plan.endpointFallback && !usesEndLabelKey(options)) return endNameFallback(data, options, domain, env);
   if (anomalyMarks) seatFlaggedValues(plan.labelRequests, domain.anomaly!.seriesId, anomalyMarks);
+  if (pointLabelsFollowShape(env, domain) && reserves.annList.some(ann => ann.kind === 'band' && ann.style === 'corridor')) {
+    const input = { plot: area.forecastPlot, yScale: area.y, theme, resolveCategoryBand: lineCategoryBandResolver(domain, area) };
+    const edges = reserves.annList.flatMap(ann => ann.kind === 'band' ? corridorEdgeRects(ann, input) : []);
+    for (const request of plan.labelRequests) if (request.kind === 'point') {
+      request.candidates = request.candidates.filter(candidate => candidate.overRules !== false
+        || !edges.some(edge => rectsOverlap(candidate.rect, edge, 2)));
+    }
+  }
   // a value folded into its name prints there, not at its point,
   // when the name's fitted lines hold it; otherwise it stays owed.
   const folded = (options as { [BUMP_FOLDED]?: ReadonlyMap<string, string> })[BUMP_FOLDED];

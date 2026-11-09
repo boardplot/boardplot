@@ -534,7 +534,12 @@ describe('published option behaviour census', () => {
         if ('not' in field) continue;
         // Only the architecture variant reads highlight, and the agent-approval golden shows it.
         if (type === 'diagram' && key === 'highlight') continue;
-        const current = authored[key] ?? (definition.defaults as Options)[key] ?? field.default;
+        // The line's usual fixture has several series, so only a single-line fixture can show pointLabelSide.
+        const probeFixture = type === 'line' && key === 'pointLabelSide'
+          ? getFixtures(type).find(item => item.id === 'point-emphasis')! : fixture;
+        const probeAuthored: Options = probeFixture === fixture ? authored : { ...probeFixture.options as Options,
+          ...(probeFixture.annotations ? { annotations: probeFixture.annotations } : {}) };
+        const current = probeAuthored[key] ?? (definition.defaults as Options)[key] ?? field.default;
         let value = key in VALUES && JSON.stringify(VALUES[key]) !== JSON.stringify(current)
           ? VALUES[key] : sample(field, current);
         if (key === 'focus' && fixture.hover) value = { owner: fixture.hover.owner };
@@ -578,18 +583,18 @@ describe('published option behaviour census', () => {
         const companions: Options = { ...COMPANIONS[`${type}.${key}`]?.options };
         if (key === 'notes' && type !== 'creative') companions.footnotes = ['Census note'];
         if (key === 'unitShown') companions.unit = 'Census unit';
-        let changed = { ...authored, ...companions, [key]: value };
-        const before = Object.keys(companions).length ? draw(type, fixture, { ...authored, ...companions }) : baseline;
+        let changed = { ...probeAuthored, ...companions, [key]: value };
+        const before = probeFixture !== fixture || Object.keys(companions).length ? draw(type, probeFixture, { ...probeAuthored, ...companions }) : baseline;
         expect(before.refused, `${type}.${key}: companion settings must draw`).toBe(false);
         // Use a schema-valid fallback before rendering; never count a rejected sample as behaviour.
         let parsed = definition.optionsSchema.safeParse(changed);
         if (!parsed.success) {
           value = sample(field, current);
-          changed = { ...authored, ...companions, [key]: value };
+          changed = { ...probeAuthored, ...companions, [key]: value };
           parsed = definition.optionsSchema.safeParse(changed);
         }
         try {
-          const after = draw(type, fixture, changed, parsed.success ? parsed.data as Options : undefined);
+          const after = draw(type, probeFixture, changed, parsed.success ? parsed.data as Options : undefined);
           const namedWarning = after.warnings.some(warning =>
             !before.warnings.some(old => JSON.stringify(old) === JSON.stringify(warning))
             && (warning.field?.includes(key) || new RegExp(`\\b${key}\\b`).test(`${warning.message} ${warning.suggest ?? ''}`)));

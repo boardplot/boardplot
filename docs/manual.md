@@ -907,6 +907,8 @@ This section covers three things: moving a label, a bracket's seat, and four dra
 - Use `labelPlacements` to pin one label to a named slot that the chart offers.
 - Use `labelOffsets` to move one label by a set distance from the seat it would take.
 
+On one plain data line without a fan, `options.pointLabelSide` defaults to `"shape"`. The first finite value prefers the left of its point, a strict local peak prefers above, a strict local trough prefers below, and the last finite value prefers the right. Flat plateaus keep their previous preference. Reference series do not count as data lines. Several data series, area, stacked, bump and fan forms keep the previous placement. The label solver can use a fallback to avoid collisions, and `labelPlacements` pins take precedence. A reference line through a preferred seat blocks that seat. The solver uses the next candidate instead of cutting the reference line around the value. Set `"pointLabelSide": "auto"` to restore the previous candidate order and endpoint reserves. `valueLabels`, `labels` and cell labels still decide which values print.
+
 A shaded band's name keeps its existing placement preference within the plot, including reserved annotation headroom. A name that would leave the plot tries the existing inside seats first, on one line and then two lines. To keep the previous outside seat of a band with `id: "maintenance"`, set `options.labelPlacements` to `{ "annotation:maintenance": "aboveBandEnd" }`. Pins keep their previous candidate order. The solver still checks a pinned seat for collisions and uses a fallback when the seat is blocked.
 
 ### Read a label's id

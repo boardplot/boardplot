@@ -754,7 +754,7 @@ export function seatFlaggedValues(
 ): void {
   for (const request of requests) {
     if (request.kind !== 'point' || request.owner.seriesId !== seriesId) continue;
-    request.candidates = request.candidates.map((candidate) => ({ ...candidate, overRules: true }));
+    request.candidates = request.candidates.map((candidate) => ({ ...candidate, overRules: candidate.overRules ?? true }));
     const flag = flags.get(request.owner.categoryId!);
     const first = request.candidates[0];
     if (!flag || !first) continue;

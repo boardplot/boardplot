@@ -45,7 +45,7 @@ import { lineFrameFootnotes } from './footnotes';
 import { gapFillPaint } from './difference';
 import { anomalyLegendItems, anomalyRuleLines, anomalyRuleReserve, columnCorridorPaint } from '../column/anomaly';
 import { withUnit } from '../../unitJoin';
-import { defaultValueContent, endUnitSuffix, fanEdgeInKey, flaggedPoints, lineFocusFont, lineToDateIds, PLOT_END_AIR, pointLabelEndRoom, pointLabelSelection, prepareEndpointLabels, usesEndLabelKey, valueUnit } from './labels';
+import { defaultValueContent, endUnitSuffix, fanEdgeInKey, flaggedPoints, lineFocusFont, lineToDateIds, PLOT_END_AIR, pointLabelEndRoom, pointLabelSelection, prepareEndpointLabels, usesEndLabelKey, valueUnit, pointLabelsFollowShape } from './labels';
 import { forecastBoundaryX, latestRingReach } from './marks';
 import { rangeRuns } from './range';
 import { outerFanEdge } from './fan';
@@ -120,7 +120,7 @@ export function lineReserves(env: LineEnv, domain: LineDomain, paints: LinePaint
   }
   // Before the names: the name column starts clear of the last values. A
   // value the near-zero group withholds is still counted, which only adds air.
-  const categoryEndRoom = pointLabelEndRoom({ valueLabels: labelModes.values, valueLabelsAuthored: options.valueLabels !== undefined, labelOnly: domain.labelOnly, lastWithheld: new Set(), valueContent, variant,
+  const categoryEndRoom = pointLabelEndRoom({ shapeSides: pointLabelsFollowShape(env, domain), shapeEnd: labelModes.series !== 'end' && !usesEndLabelKey(options), markerExtent: paints.markerExtent, valueLabels: labelModes.values, valueLabelsAuthored: options.valueLabels !== undefined, labelOnly: domain.labelOnly, lastWithheld: new Set(), valueContent, variant,
     contentOf: text.contentOf, drawnSeries, pv, rowOf, cats, rebased, composeText, composeEndText: text.composeEndText, absOf, measure, labelFont, highlights,
     sharesWithheld: domain.sharesWithheld, ...valueUnit(options, isBump, rebased), isStacked: domain.isStacked, flagged: flaggedPoints(domain), pointHighlights: env.pointHighlights,
     ...(domain.x ? { endToDate: { ids: lineToDateIds(env, domain, text), words: options.strings?.toDate ?? chartString(options, 'toDate'), theme: env.theme, measure } } : {}) });

@@ -1118,6 +1118,8 @@ export interface LineOptions extends Omit<BaseOptionsFor<'line'>, 'annotations'>
    * plain line defaults to 'none', the title names it.
    */
   seriesLabels?: SeriesLabelMode | { only: Id[] };
+  /** Point-value side preference. 'shape' defaults on one plain data line without a fan: first finite value left, strict peak above, strict trough below, last finite value right. References do not count. Flat plateaus keep their preference. The solver and labelPlacements pins still apply. 'auto' restores the previous candidate order and endpoint reserves. Other forms keep auto. */
+  pointLabelSide?: 'shape' | 'auto';
   /** Which point values print, each at its own point. Default 'last'; 'ends' on stacked100-area, 'none' on bump. */
   valueLabels?: ValueLabelMode;
   /**

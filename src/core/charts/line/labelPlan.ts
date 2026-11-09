@@ -15,7 +15,7 @@ import type { Annotation } from '../../types/annotations';
 import type { Id } from '../../types/cell';
 import type { LintWarning } from '../../types/scene';
 import { joinTieValues, placeBumpStartLabels, placeBumpTieLabels } from './bump';
-import { defaultValueContent, fanEdgeInKey, flaggedPoints, lineFocusFont, lineToDateIds, placeCategoryLabels, placeEndpointLabels, placeInlineSeriesLabels, placePointValueLabels, pointValueWidths, usesEndLabelKey, usesInlineFallback, usesWideEndLabels, valueUnit } from './labels';
+import { defaultValueContent, fanEdgeInKey, flaggedPoints, lineFocusFont, lineToDateIds, placeCategoryLabels, placeEndpointLabels, placeInlineSeriesLabels, placePointValueLabels, pointValueWidths, usesEndLabelKey, usesInlineFallback, usesWideEndLabels, valueUnit, pointLabelsFollowShape } from './labels';
 import { placeXTickLabels } from './xTicks';
 import { outerFanEdge } from './fan';
 import { restValuesHidden } from '../../restLabels';
@@ -136,7 +136,7 @@ export function planLineLabels(
     // Authored furniture that divides at a transition stands on the same split.
     dividers: area.forecast.map((boundary, index) => ({ x: forecastXs[index]!, ci: boundary.lastActualIndex })),
     ...(isBump ? { bump: { headroom: area.topPad, named: new Set([...endLabels, ...reserves.startLabels].map((label) => `${label.s.id}:${label.ci}`)) } } : {}),
-    flagged: flaggedPoints(domain), pointHighlights: env.pointHighlights, markerExtent: paints.markerExtent,
+    shapeSides: pointLabelsFollowShape(env, domain), flagged: flaggedPoints(domain), pointHighlights: env.pointHighlights, markerExtent: paints.markerExtent,
     ...(focusValue ? { focusFont: focusValue } : {}),
     toDate: { ids: lineToDateIds(env, domain, text), words: domain.options.strings?.toDate ?? chartString(domain.options, 'toDate'), theme: env.theme, measure },
   };
