@@ -152,13 +152,17 @@ describe('line partial point', () => {
     expect(shared.xs[0]).toBeCloseTo(words([11]).xs[0], 6);
   });
   // A time axis has no category name: a PNG showed the running week only as a hollow marker.
-  it('says "to date" for a running reading on a time axis, under the reading or in the key value', () => {
+  it('says "to date" for a running reading on a time axis, beside or under the reading or in the key value', () => {
     const fixture = getFixtures('line').find(entry => entry.id === 'x-time-partial-week') as any;
     const texts = (width: number, more = {}) => nodes((measure({ type: 'line', data: fixture.data, options: { ...fixture.options, size: { width }, ...more } } as never) as any).geometry)
       .filter(node => node.t === 'text').map(node => `${node.id}=${node.lines.join(' ')}`);
-    expect(texts(320)).toContain('label:xpartial:0=to date');
+    const beside = 'label:point:orders:2026-10-18T22:00:00.000Z:body=to date';
+    expect(texts(320).filter(text => text.endsWith('to date'))).toEqual([beside]);
+    expect(texts(720).filter(text => text.endsWith('to date'))).toEqual([beside]);
     expect(texts(720, { valueLabels: 'none' })).toContain('label:xpartial:0=to date');
-    expect(texts(720).filter(text => text.endsWith('to date'))).toEqual(['frame:legendLabel:3=Orders 655 orders to date']);
+    // pointLabelSide auto restores the seats under the reading and in the key.
+    expect(texts(320, { pointLabelSide: 'auto' })).toContain('label:xpartial:0=to date');
+    expect(texts(720, { pointLabelSide: 'auto' }).filter(text => text.endsWith('to date'))).toEqual(['frame:legendLabel:3=Orders 655 orders to date']);
   });
 });
 
