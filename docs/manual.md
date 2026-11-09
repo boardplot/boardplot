@@ -740,6 +740,8 @@ The KPI hero figure prefers 1.5 × the M title size, rounded in the table unit, 
 
 ## Reading errors and warnings
 
+On line charts, including area and bump variants, and on plain slope charts, `options.highlight` selects drawn data series by ID. A category ID, a reference-series ID or an unknown ID produces one `highlight-unknown-id` warning. Unsupported IDs do not change the chart's colours, markers or label priority. A list that also names a valid series keeps that series highlighted.
+
 A callout that uses a side other than `preferSide` reports `callout-side-changed` at info level. The warning names the callout and the side used. It does not change placement.
 
 A callout or note text wider than any free seat wraps to two to four lines at the width that fits, next to its point. A line break written as `\n` stays where the author put it. Text that still finds no seat is named in the "Not labelled on the chart" note, as before.

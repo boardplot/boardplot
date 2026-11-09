@@ -775,6 +775,37 @@ describe('ignored options', () => {
 
 describe('edge inputs that draw', () => {
   const body = (spec: unknown) => render({ spec }).body as { ok: boolean; errors?: { code: string; message: string }[] };
+  // An unsupported highlight must warn without muting the chart or changing a valid series highlight.
+  it.each(['line', 'area', 'stacked-area', 'stacked100-area', 'bump', 'slope'] as const)('ignores unsupported highlights on %s', (variant) => {
+    const type = variant === 'slope' ? 'slope' : 'line';
+    const data = { categories: ['a', 'b'], series: [
+      { id: 'first', values: [12, 18] }, { id: 'second', values: [20, 15] },
+      { id: 'reference', role: 'reference', values: [16, 16] },
+    ] };
+    const lay = (highlight?: string | string[]) => {
+      const request = resolveChartRequest({ type, data, options: {
+        size: { width: 720, height: 400 }, ...(type === 'line' ? { variant } : {}),
+        ...(highlight === undefined ? {} : { highlight }),
+      } } as never);
+      const result = layoutResolvedRequest(request);
+      if (result.refused) throw new Error(JSON.stringify(result.warnings));
+      return result;
+    };
+    const plain = lay();
+    const selected = lay('first');
+    expect(selected.scene).not.toEqual(plain.scene);
+    for (const id of ['missing-id', 'a', 'reference']) {
+      for (const valid of [false, true]) {
+        const result = lay(valid ? ['first', id, id] : id);
+        const expected = valid ? selected : plain;
+        expect(result.warnings.filter(warning => warning.code === 'highlight-unknown-id')).toEqual([
+          expect.objectContaining({ severity: 'warn', field: ['options', 'highlight'] }),
+        ]);
+        expect(result.scene).toEqual(expected.scene);
+        expect(result.marks).toEqual(expected.marks);
+      }
+    }
+  });
   // Blank series names gave an internal 'invalid SVG numeric' error in every chart with a series key.
   it('draws a series key whose names are blank', () => {
     for (const type of ['column', 'scatter', 'treemap'] as const) {

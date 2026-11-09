@@ -96,6 +96,7 @@ Boardplot is in 0.x: options and output can change between minor versions. Each 
 
 ### Fixed
 
+- Line charts, including area and bump variants, and plain slope charts ignore unsupported highlight IDs before choosing colours, markers and label priority. Category IDs and reference-series IDs now warn `highlight-unknown-id`, as unknown IDs already did. A valid series highlight in the same list still works. Valid inputs keep their previous appearance.
 - An unknown option named like another library's axis title (`xTitle`, `yAxisTitle`, `xLabel`, `y_axis_label`) points to `axisTitles.x` or `axisTitles.y` where the type has them, else to `axisTitles`, and a type without axis titles names no near key. Before, `xTitle` and `yTitle` answered "try: title" with a fix patch that moved the axis title into the chart title, and `yLabel` pointed to `labels`.
 - A grid of tiers with an open height now keeps the height its parts need. A row-placed grid with long or rotated category names no longer squeezes a tier to a strip: a German-name slide grid at 480 px draws 437 px high instead of 385 px.
 - A row-placed tier grid draws at an authored height where it used to refuse, when each tier still fits its own minimum. Slide and print step their type down first, as before.

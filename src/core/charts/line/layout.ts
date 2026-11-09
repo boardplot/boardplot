@@ -1046,6 +1046,9 @@ function layoutLinePass(
     field: ['options', 'legend'] });
   const env = resolveLineEnv(options, warnings);
   const domain = resolveLineDomain(data, options, env, warnings);
+  // Only drawn data series can take emphasis; unsupported ids must not alter paints or label priority.
+  for (const id of env.highlights) if (!domain.drawnSeries.some(series => series.id === id)) env.highlights.delete(id);
+  env.anyHighlight = env.highlights.size > 0;
   const paints = linePaints(env, domain, warnings);
   const text = lineText(env, domain);
   // A fan cut at its right edge runs on past its last reading, over every seat beside it: the key carries the last values.
