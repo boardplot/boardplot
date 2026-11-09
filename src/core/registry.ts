@@ -23,7 +23,7 @@ import { DENSITY_VALUES, UNVERIFIED_DENSITY_REFUSALS, authoredNotes, dataOrder, 
 import { layoutWithLegendPolicy, prepareLegendLayout } from './legendPolicy';
 import { loadedDeferred } from './deferred';
 import { markLostOnBandWarnings } from './paintWarnings';
-import { casingUnderFills, labelsOnFills, fillEdges, marksOnBands, referenceLineClearance, withoutOrphanAnnotationMarks } from './markVisibility';
+import { casingUnderFills, labelsOnFills, fillEdges, marksOnBands, markersAtPrintedValues, referenceLineClearance, withoutOrphanAnnotationMarks } from './markVisibility';
 import { groundEdges } from './label/emit';
 import { withoutRepeatedAxisBreaks } from './axis';
 import { colorblindRoles, DEFAULT_PRESET, panelTypeClass, REMOVED_NAMES, removedNameWarnings, resolveTargetTheme, stampHatchLook } from './theme';
@@ -751,6 +751,7 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
       geo = verifiedDensityRefusal(geo, def.title, options ?? {}, (size) => layoutWithFooter(data, { ...authored, size, [ACCEPTANCE_PROBE]: true } as unknown as O));
       if (!geo.refused) {
         finishCutLabelNotes(geo);
+        markersAtPrintedValues(geo);
         reportLabelOmissions(geo, options, data);
       }
       if (!(options as { [FULL_LAYOUT_PROBE]?: boolean })[FULL_LAYOUT_PROBE]

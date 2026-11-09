@@ -140,7 +140,7 @@ export const THEME_SHAPE: ShapeNode = object({
   }),
   legend: opt(object({ auto: flag, required: optOneOf('bottom', 'top') })),
   marks: opt(object({
-    lineMarkers: optOneOf('auto', 'none'), areaTint: optNum(0, 1), nodeRadius: optNum(0, 16),
+    lineMarkers: optOneOf('auto', 'none', 'labels'), areaTint: optNum(0, 1), nodeRadius: optNum(0, 16),
     nodeStroke: optOneOf('axis', 'grid', 'leader', 'ink', 'inkMuted'), nodeStrokeWidth: optNum(0, 3),
     restOutline: flag, areaFromOrigin: flag, barLabels: optOneOf('auto', 'outside'), comboColumnTint: optNum(0, 1),
     comboLine: optOneOf('series', 'ink'), sparkEnd: optOneOf('dot', 'ring'), sparkEndLabel: flag,

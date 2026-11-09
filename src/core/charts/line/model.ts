@@ -175,6 +175,8 @@ export interface LinePaints {
   dashOf(s: NormSer, dataIdx: number): number[] | undefined;
   legendDashOf(s: NormSer, dataIdx: number): number[] | undefined;
   markerOf(s: NormSer, dataIdx: number, ci: number): MarkerShape;
+  /** Automatic markers on one plain data line follow the final printed values. */
+  labelMarkers: boolean;
   hollowAt(s: NormSer, ci: number): boolean;
   pointScenario(s: NormSer, ci: number): Scenario | undefined;
   bumpPointState(row: (number | null)[], ci: number): { state: string } | Record<string, never>;

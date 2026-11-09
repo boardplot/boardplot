@@ -25,6 +25,8 @@ import { renderFanWashes } from './fan';
 import { actualHeader, forecastDividerAt, forecastStroke, placeForecastHeaders } from './forecast';
 import { pathFor, renderLineMarks, renderPhaseFills, reversePathTail } from './marks';
 import { lineMeans } from './means';
+import { defaultValueContent, flaggedPoints, pointLabelSelection } from './labels';
+import { MARKER_MAX_CATS } from './paints';
 import type { LineArea, LineDomain, LineEnv, LineMarkGeometry, LinePaints, LineReserves, LineText } from './model';
 import { layoutReferenceBands } from './referenceBands';
 import { drawLineTrends } from './trend';
@@ -148,6 +150,17 @@ export function layoutLineMarks(
   // The "FC" row sits on the plot top (over the phase row, when there is one), centred over the divider it names.
   placeForecastHeaders(area.forecast, xOf, area.forecastPlot, area.forecastHeaderInPlot ? area.forecastPlot.y + 2 : area.forecastPlot.y - area.phaseHeaderHeight - area.forecastHeaderHeight, text.secondaryFont, measure, headerRequests, claims, options.strings!.forecastHeader!, forecastDividerAt(domain), actualHeader(domain));
   const baseY = dLo <= 0 && dHi >= 0 ? y(0) : plot.y + plot.h;
+  // Dense lines create only possible value markers. Small lines keep their existing
+  // collision claims until the final pass removes markers whose values did not print.
+  const markerCandidates = paints.labelMarkers && cats.length > MARKER_MAX_CATS ? new Set(pointLabelSelection({
+    valueLabels: domain.labelModes.values, valueLabelsAuthored: options.valueLabels !== undefined, labelOnly: domain.labelOnly,
+    lastWithheld: new Set(), contentOf: text.contentOf, valueContent: defaultValueContent(domain.variant, domain.labelModes.seriesValueContent),
+    drawnSeries, pv: domain.labelPv, rowOf, cats, flagged: flaggedPoints(domain), variant: domain.variant, pointHighlights: env.pointHighlights,
+  }).flatMap(pick => pick.only)) : undefined;
+  if (markerCandidates) for (const seriesId of reserves.keyValues.keys()) {
+    const ci = domain.lastIdxOf.get(seriesId);
+    if (ci !== undefined) markerCandidates.add(ci);
+  }
   const rendered = renderLineMarks({
     theme,
     highlights: env.highlights,
@@ -171,6 +184,7 @@ export function layoutLineMarks(
     interpolationFor,
     dashOf: paints.dashOf,
     markerOf: paints.markerOf,
+    ...(paints.labelMarkers ? { labelMarkers: { candidates: markerCandidates, highlights: env.pointHighlights } } : {}),
     hollowAt: paints.hollowAt,
     rebased: domain.rebased,
     variant: domain.variant,

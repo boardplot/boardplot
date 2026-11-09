@@ -3355,7 +3355,7 @@ const drawingKindsFixture: Fixture<LineChartData, LineOptions> = {
     { kind: 'line', id: 'normal-load', from: { categoryId: 'w1', value: 53 }, to: { categoryId: 'w8', value: 53 }, dashed: true },
     { kind: 'text', id: 'normal-load-note', at: { categoryId: 'w2', value: 58 }, text: 'Normal load' },
     { kind: 'text', id: 'maintenance-note', at: { categoryId: 'w2', value: 28 }, text: 'Planned maintenance' },
-    { kind: 'arrow', id: 'low-point', from: { annotationId: 'maintenance-note' }, to: { categoryId: 'w5', value: 33 } },
+    { kind: 'arrow', id: 'low-point', from: { annotationId: 'maintenance-note' }, to: { categoryId: 'w5', seriesId: 'load' } },
   ],
 };
 
@@ -3386,7 +3386,7 @@ const pointEmphasisFixture: Fixture<LineChartData, LineOptions> = {
   ...valueLineEndValueFixture,
   id: 'point-emphasis',
   title: 'A selected trough emphasizes its marker and value while the line keeps its ink',
-  options: { ...valueLineEndValueFixture.options, subtitle: { measure: 'Load by week' }, highlight: ['w5'], pointLabelSide: 'shape', valueAxis: { min: 30, max: 60, gridlines: true } },
+  options: { ...valueLineEndValueFixture.options, subtitle: { measure: 'Load by week' }, highlight: ['w5'], pointLabelSide: 'shape', theme: { overrides: { marks: { lineMarkers: 'labels' } } }, valueAxis: { min: 30, max: 60, gridlines: true } },
 };
 
 registerFixtures('line', [...fixtures, drawingKindsFixture, valueLineEndValueFixture, shadeBandInsideWrapFixture, pointEmphasisFixture, smallDrawerFixture, anomalyLineFixture, weeklyEventsLineFixture, eventsKeyLineFixture, focusFixture, nearZeroTailsFixture, partialWeekFixture, hostCardFixture, hostCardUnitShownFixture, markInkFixture, cellLabelFixture, ...cohortLineFixtures, briefLineFixture, themeConventionsFixture, areaFromOriginFixture, ...coverageLineFixtures, cycleBandsFixture, gapBracketFixture, stackedAreaBenchmarkFixture, stackedAreaRestFixture, strokeSamplerFixture, ratioPlainFormatRefusal, rebaseMissingNoteFixture, rebaseZeroNoteFixture, bandHeadroomFixture, lateStartFixture, trendFixture, ...continuousLineFixtures, logAxisFixture]);

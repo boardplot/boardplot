@@ -411,7 +411,7 @@ describe('continuous axis layout', () => {
   // data.partial is the continuous axis's way to mark a part-covered period; a value with no reading must say so.
   it('marks the reading data.partial names, and warns for one that names no reading', () => {
     const data = { x: ['2026-01-05', '2026-01-12', '2026-01-19'], partial: ['2026-01-19', '2026-01-26'], series: [{ id: 'a', label: 'Orders', values: [7, 7, 3] }] };
-    const { geometry, svg } = lay(data, { xAxis: { type: 'time', zone: 'UTC' } });
+    const { geometry, svg } = lay(data, { xAxis: { type: 'time', zone: 'UTC' }, theme: { overrides: { marks: { lineMarkers: 'auto' } } } });
     expect(geometry.warnings.map((w) => w.code)).toContain('x-partial-no-reading');
     const marker = (x: string) => svg.match(new RegExp(`<circle data-id="marker:a:${x}"[^>]*>`))![0];
     expect(marker('2026-01-19T00:00:00.000Z')).toContain('stroke=');

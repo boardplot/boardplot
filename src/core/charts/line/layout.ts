@@ -35,6 +35,7 @@ import { rectsOverlap, type Rect } from '../../geometry';
 import { heightOmitted, PLOT_FLOOR_RECT } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { labelsToNodes } from '../../label/emit';
+import { LABEL_MARKER, type LabelMarkerNode } from '../../markVisibility';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import type { TickBandDerived } from '../../label/tickRow';
 import { labelCtx, leaderPieces, seatLeader, solveLabels, type LabelRequest, type SolveCtx, type SolveResult } from '../../label/solver';
@@ -395,7 +396,9 @@ function annotateLine(
     // stays absolute. absOf === pvOf outside stacked100-area, and rebase100 is ignored under
     // stacked100-area, so under rebase100 the plotted index is the value.
     const value = rebased ? v : (absOf(s, ci) ?? v);
-    const markerRadius = scene.marks.series.find(entry => entry.seriesId === s.id)?.points.find(point => point.categoryId === c.id)?.markerRadius;
+    const point = scene.marks.series.find(entry => entry.seriesId === s.id)?.points.find(point => point.categoryId === c.id);
+    if (point) scene.rendered.retainMarker?.(s, ci, point, occupied);
+    const markerRadius = point?.markerRadius;
     return {
       x: xOf(ci),
       y: py,
@@ -690,6 +693,26 @@ function assembleLineGeometry(input: LineAssembly): Geometry<LineMarks, LineDeri
   const { plot, xOf } = area;
   const { nodes, axes, marks } = scene;
   const allLabels: PlacedLabel[] = [...solved.placed, ...annResult.labels];
+  const automaticMarkers = nodes.filter(node => (node as LabelMarkerNode)[LABEL_MARKER]);
+  if (automaticMarkers.length) {
+    const carriers = new Map<string, Id[]>();
+    const add = (seriesId: Id, categoryId: Id, labelId: Id) => {
+      const key = `${seriesId}\0${categoryId}`;
+      const ids = carriers.get(key) ?? [];
+      ids.push(labelId);
+      carriers.set(key, ids);
+    };
+    for (const label of allLabels) for (const owner of label.printsFor ?? (label.kind === 'point' ? [label.owner] : [])) {
+      if (owner.seriesId !== undefined && owner.categoryId !== undefined) add(owner.seriesId, owner.categoryId, label.printedIn ?? label.id);
+    }
+    for (const item of area.frame.legend?.items ?? []) {
+      const ci = domain.lastIdxOf.get(item.id);
+      if (ci !== undefined && input.reserves.keyValues.has(item.id)) add(item.id, cats[ci]!.id, item.labelId);
+    }
+    for (const node of automaticMarkers) {
+      (node as LabelMarkerNode)[LABEL_MARKER]!.labelIds = carriers.get(`${node.owner.seriesId}\0${node.owner.categoryId}`) ?? [];
+    }
+  }
   const lineFocus = !isBump && !domain.isArea && variant === 'line' && env.anyHighlight && options.highlightMode !== 'fade';
   // An `abs` callout on a focus point restates that series' value, so it takes the series' face too.
   const focusAbs = new Map<string, Id>(lineFocus ? input.reserves.annList.flatMap((a, n) => {

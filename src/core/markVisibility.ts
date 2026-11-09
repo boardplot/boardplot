@@ -56,6 +56,30 @@ import type { Geometry, MarkOnBand, Paint, PlacedLabel, SceneNode, SeparationRul
 import type { Theme } from './types/theme';
 import type { OwnerRef } from './types/cell';
 
+/** A line's automatic marker follows its value after the registry finishes label notes. */
+export const LABEL_MARKER = Symbol('labelMarker');
+export type LabelMarkerNode = SceneNode & { [LABEL_MARKER]?: {
+  localId: string;
+  labelIds: string[];
+  point: { nodeId?: string };
+} };
+
+/** Grid composition keeps the local dependency ids and prefixes the marker id. */
+export function markersAtPrintedValues(geometry: Pick<Geometry, 'scene' | 'labels'>): void {
+  if (!geometry.scene.some(node => (node as LabelMarkerNode)[LABEL_MARKER])) return;
+  const visible = new Set(geometry.labels.filter(label => !label.hidden).map(label => label.id));
+  // Frame keys carry endpoint values as text nodes rather than point labels.
+  for (const node of geometry.scene) if (node.t === 'text') visible.add(node.id);
+  geometry.scene = geometry.scene.filter(node => {
+    const marker = (node as LabelMarkerNode)[LABEL_MARKER];
+    if (!marker) return true;
+    const prefix = node.id.slice(0, -marker.localId.length);
+    if (marker.labelIds.some(id => visible.has(prefix + id))) return true;
+    delete marker.point.nodeId;
+    return false;
+  });
+}
+
 /**
  * The repo's own bar for a categorical fill against its surface —
  * `seriesBackgroundFloor`, themeValidate.ts:207. Not a new number.

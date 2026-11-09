@@ -1082,6 +1082,12 @@ The `notation` preset follows the IBCS® Standards; IBCS is a registered tradema
 
 A theme object containing only `{ overrides }`, at the spec root or in `options.theme`, uses the default `bridge` preset. A full theme object keeps its existing meaning.
 
+On one plain data line without a fan, automatic markers follow the values that finally print. A value hidden by collision handling or moved to a note no longer keeps its automatic marker. Set `marks.lineMarkers` to `"labels"` to request this default explicitly. Reference series do not count as data lines. Several data series, area, stacked, bump, fan and combo forms keep their existing marker policy.
+
+With `"labels"`, isolated readings, partial periods, highlighted points and readings named by annotation anchors keep their markers even when their values do not print. A category-only annotation anchor names the reading on the one data line. A drawing position with an explicit `value` does not name a reading. An authored `series.marker` wins, including `"none"`. Reference marks and the latest-point ring stay. Every reading keeps its point record and interaction anchor.
+
+To restore the previous density policy, merge `{ "options": { "theme": { "overrides": { "marks": { "lineMarkers": "auto" } } } } }` into the spec and keep the existing preset. The previous policy shows automatic markers up to 12 categories and removes them past that count. `"none"` keeps its existing behavior, including the partial-period, point-highlight and bump exceptions.
+
 `space.canvas` overrides can contain only `base` or `wide`, and any subset of `top`, `right`, `bottom` and `left`. Missing classes and sides keep the preset values. Each side stays within 0 to 96 px. A class needs a side object, so write `{ base: { top: 16 } }` instead of `{ base: 16 }`.
 
 A brand theme is a preset plus overrides:

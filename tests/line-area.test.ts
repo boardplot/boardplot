@@ -11,6 +11,65 @@ import { paintColor, resolveTheme, strokeToken } from '../src/core/theme';
 import { arrowLook } from '../src/core/annotationArrow';
 import type { Geometry, Paint } from '../src/core/types/scene';
 import { getFixtures } from '../src/fixtures';
+import { interactionRecords } from '../src/core/a11y/records';
+
+// Hiding a point value must remove its automatic marker without losing the reading, its hover anchor, or a necessary notation cue.
+it('keeps automatic markers with printed values without losing readings', () => {
+  const draw = (series = {}, options = {}, categories: unknown[] = ['a', 'b', 'c']) => {
+    const request = resolveChartRequest({ type: 'line',
+      data: { categories, series: [{ id: 's', values: [10, { number: 12, label: false }, 14], ...series }] },
+      options: { title: false, valueLabels: 'all', seriesLabels: 'none', size: { width: 640, height: 300 }, ...options },
+    } as never);
+    const geometry = requireGeometry(layoutResolvedRequest(request));
+    const records = interactionRecords({ request, geometry, scope: request.scope, claims: [] });
+    return { geometry, records };
+  };
+  const markerIds = (geometry: Geometry) => geometry.scene.filter(node => node.part === 'marker').map(node => node.owner.categoryId);
+  const automatic = draw();
+  expect(markerIds(automatic.geometry)).toEqual(['a', 'c']);
+  const points = (automatic.geometry.marks as unknown as LineMarks).series[0]!.points;
+  expect(points.map(point => point.categoryId)).toEqual(['a', 'b', 'c']);
+  expect(points[1]!.nodeId).toBeUndefined();
+  expect(automatic.records).toHaveLength(3);
+  expect(automatic.records.every(record => record.anchor !== undefined)).toBe(true);
+  expect(automatic.records.find(record => record.target.owner.categoryId === 'b')!.nodeIds).toEqual([]);
+  expect(markerIds(draw({ marker: 'square' }).geometry)).toEqual(['a', 'b', 'c']);
+  expect(markerIds(draw({}, { theme: { overrides: { marks: { lineMarkers: 'auto' } } } }).geometry)).toEqual(['a', 'b', 'c']);
+  expect(markerIds(draw({}, { valueLabels: 'none', highlight: ['b'] }).geometry)).toEqual(['b']);
+  expect(markerIds(draw({ marker: 'none' }, { highlight: ['b'] }).geometry)).toEqual([]);
+  expect(markerIds(draw({}, { valueLabels: 'none' }, ['a', { id: 'b', partial: true }, 'c']).geometry)).toEqual(['b']);
+  expect(markerIds(draw({ values: [10, null, 14], interpolateGaps: false }, { valueLabels: 'none' }).geometry)).toEqual(['a', 'c']);
+
+  const categories = Array.from({ length: 10 }, (_, i) => ({ id: `c${i}`, label: `M${i + 1}` }));
+  const values = Array.from({ length: 10 }, (_, i) => 100 + i);
+  const crowded = draw({ label: 'Sample series', values }, { seriesLabels: 'end', size: { width: 320, height: 300 } }, categories);
+  const labels = crowded.geometry.labels.filter(label => label.kind === 'point');
+  expect(labels.some(label => label.noted)).toBe(true);
+  expect(markerIds(crowded.geometry)).toEqual(labels.filter(label => !label.hidden).map(label => label.owner.categoryId));
+  expect(crowded.records).toHaveLength(10);
+  expect(crowded.records.every(record => record.anchor !== undefined)).toBe(true);
+  const sceneIds = new Set(crowded.geometry.scene.map(node => node.id));
+  expect(crowded.records.every(record => record.nodeIds.every(id => sceneIds.has(id)))).toBe(true);
+});
+
+// An annotation must keep a visible target on a dense line even when the reading has no printed value.
+it('keeps automatic markers at resolved annotation targets on a dense line', () => {
+  const draw = (annotations: unknown[], marker?: string) => requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'line',
+    data: { categories: Array.from({ length: 13 }, (_, i) => `c${i}`), series: [{ id: 's', values: Array.from({ length: 13 }, (_, i) => 10 + i), ...(marker ? { marker } : {}) }] },
+    options: { title: false, valueLabels: 'none', seriesLabels: 'none', size: { width: 640, height: 300 }, annotations },
+  } as never)));
+  for (const at of [{ categoryId: 'c5', seriesId: 's' }, { categoryId: 'c5' }]) {
+    const annotations = [{ kind: 'callout', at, text: 'Review', arrow: true }, { kind: 'text', at, text: 'Reading' }];
+    const geometry = draw(annotations);
+    const markers = geometry.scene.filter(node => node.part === 'marker');
+    expect(markers.map(node => node.owner.categoryId)).toEqual(['c5']);
+    const points = (geometry.marks as unknown as LineMarks).series[0]!.points;
+    expect(points).toHaveLength(13);
+    expect(points[5]!.nodeId).toBe(markers[0]!.id);
+    expect(draw(annotations, 'none').scene.filter(node => node.part === 'marker')).toEqual([]);
+  }
+  expect(draw([{ kind: 'arrow', from: { categoryId: 'c1', value: 20 }, to: { categoryId: 'c5', value: 15 } }]).scene.filter(node => node.part === 'marker')).toEqual([]);
+});
 
 // Band names must not leave the plot when a wrap fits, or crowd marks by abandoning clear plot headroom.
 it('keeps band names within the plot while preserving headroom seats and authored pins', () => {
@@ -56,7 +115,7 @@ it.each([360, 960])('emphasizes one line point without recolouring the line at %
   const draw = (highlight?: string, seriesId = 'load', overrides = {}) => {
     const request = resolveChartRequest({ type: 'line',
       data: { categories: ['a', 'b', 'c'], series: [{ id: seriesId, values: [48, 35, 53] }] },
-      options: { size: { width, height: 360 }, valueAxis: { min: 30, max: 60 }, valueLabels: 'ends', highlight, ...overrides },
+      options: { size: { width, height: 360 }, valueAxis: { min: 30, max: 60 }, valueLabels: 'ends', theme: { overrides: { marks: { lineMarkers: 'auto' } } }, highlight, ...overrides },
       annotations: [{ kind: 'arrow', id: 'gap', from: { categoryId: 'b', value: 58 }, to: { categoryId: 'b', seriesId } }],
     } as never);
     return { geometry: requireGeometry(layoutResolvedRequest(request)), theme: request.theme };

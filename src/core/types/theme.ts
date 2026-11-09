@@ -315,13 +315,16 @@ export interface Theme {
    */
   marks?: {
     /**
-     * Default point markers on line series: 'auto' (a circle per point up to
-     * 12 categories, none past that; every combo line) or 'none'. Under
-     * 'none' a partial period keeps its hollow marker and a bump chart its
-     * identity shapes, as past the density cutoff. The latest-point ring is
-     * not a marker and stays.
+     * On one plain data line without a fan, absent or 'labels' keeps automatic
+     * markers where values finally print. Annotation targets, isolated readings, partial periods
+     * and highlighted points keep their markers when their values do not print.
+     * An authored series.marker wins, including 'none'. Reference series do
+     * not count as data lines and keep their existing marks. Other forms keep
+     * their existing policy. On a plain line, 'auto' restores automatic markers
+     * up to 12 categories, none past that. 'none' keeps its existing partial-period,
+     * point-highlight and bump exceptions. The latest-point ring stays.
      */
-    lineMarkers?: 'auto' | 'none';
+    lineMarkers?: 'auto' | 'none' | 'labels';
     /**
      * A single unstacked area (line variant 'area', one series, no authored
      * paint, palette or PY/PL scenario): absent fills it in its series

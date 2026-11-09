@@ -259,6 +259,8 @@ export function linePaints(env: LineEnv, domain: LineDomain, warnings: LintWarni
     fade && !highlights.has(s.id) ? fadedPaint(paint) : paint;
   const css = (paint: Paint): string => paintColor(theme, paint);
   const markersOff = theme.marks?.lineMarkers === 'none';
+  const labelMarkers = domain.variant === 'line' && !isBump && !domain.fan && dataSeries.length === 1
+    && (theme.marks?.lineMarkers === undefined || theme.marks.lineMarkers === 'labels');
   const paintCategoryIndex = new Map(cats.map((category, index) => [category.id, index] as const));
   const shadedBandRanges = (options.annotations ?? []).flatMap((annotation) => {
     if (annotation.kind !== 'band' || (annotation.style ?? 'shade') !== 'shade') return [];
@@ -471,7 +473,7 @@ export function linePaints(env: LineEnv, domain: LineDomain, warnings: LintWarni
   const pointScenario = (s: NormSer, ci: number): Scenario | undefined => s.vals[ci]!.scenario ?? s.scenario;
   const pointSelected = (s: NormSer, ci: number): boolean => s.role !== 'reference' && env.pointHighlights.has(cats[ci]!.id);
   const markerOf: LinePaints['markerOf'] = (s, dataIdx, ci) =>
-    s.marker ?? (pointSelected(s, ci) ? 'circle' : bumpStory ? bumpStory.isContext(s) ? 'none' : 'circle' : isBump ? bumpSlot(dataIdx).shape : isArea || ((markersOff || cats.length > MARKER_MAX_CATS) && cats[ci]!.partial !== true) ? 'none' : contextRank.has(s.id) ? plainGrey ? LINE_GREY_SHAPES[contextRank.get(s.id)! % LINE_GREY_SHAPES.length]! : BUMP_SHAPES[contextRank.get(s.id)! % BUMP_SHAPES.length]! : 'circle');
+    s.marker ?? (pointSelected(s, ci) ? 'circle' : bumpStory ? bumpStory.isContext(s) ? 'none' : 'circle' : isBump ? bumpSlot(dataIdx).shape : isArea || ((markersOff || !labelMarkers && cats.length > MARKER_MAX_CATS) && cats[ci]!.partial !== true) ? 'none' : contextRank.has(s.id) ? plainGrey ? LINE_GREY_SHAPES[contextRank.get(s.id)! % LINE_GREY_SHAPES.length]! : BUMP_SHAPES[contextRank.get(s.id)! % BUMP_SHAPES.length]! : 'circle');
   const hollowAt: LinePaints['hollowAt'] = (s, ci) => {
     const sc = pointScenario(s, ci);
     return sc === 'PY' || sc === 'PL' || sc === 'FC' || cats[ci]!.partial === true;
@@ -507,6 +509,7 @@ export function linePaints(env: LineEnv, domain: LineDomain, warnings: LintWarni
     // readable. A partial period keeps a (hollow) marker where density drops
     // the rest. A theme without default markers drops them as the cutoff does.
     markerOf,
+    labelMarkers,
     hollowAt,
     pointScenario,
     // A bump point carries BOTH quantities: `display.value` stays the metric

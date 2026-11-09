@@ -5,7 +5,7 @@ import type { Point, Rect } from '../../geometry';
 import type { OccupiedIndex } from '../../label/occupied';
 import { AREA_FILL_PART, PRIORITY, type LabelRequest } from '../../label/solver';
 import { polylineYAt } from '../../label/areaGround';
-import { isOthersFill, othersSeparation } from '../../markVisibility';
+import { isOthersFill, othersSeparation, LABEL_MARKER, type LabelMarkerNode } from '../../markVisibility';
 import { linePath } from '../../svgPath';
 import { strokeToken, dashToken, markRolePaint, mixedPaint, seriesPaint as themeSeriesPaint } from '../../theme';
 import type { FontSpec, TextMeasurer } from '../../text';
@@ -38,6 +38,8 @@ export interface LinePhaseResolved {
 
 export interface RenderedLineMarks {
   marks: LineMarks;
+  /** A resolved annotation names its reading, even when no point value prints. */
+  retainMarker?: (series: NormSer, ci: number, point: LineMarks['series'][number]['points'][number], occupied: OccupiedIndex) => void;
   baselineId: Id;
   analyticalSceneStart: number;
   paintedAreaCats: Map<Id, Set<number>>;
@@ -762,21 +764,30 @@ export function markerPath(shape: 'triangle' | 'diamond', point: Point, scale = 
 }
 
 function renderMarkers(input: RenderLineMarksInput, series: NormSer, dataIdx: number, entry: LineMarks['series'][number], geometry: SeriesGeometry, claims: ClaimContext): void {
+  const isolated = input.labelMarkers ? new Set(geometry.runs.filter(run => run.length === 1).map(run => run[0]!.ci)) : undefined;
   geometry.allPoints.forEach((point) => {
-    const shape = input.markerOf(series, dataIdx, point.ci);
+    const categoryId = input.cats[point.ci]!.id;
+    const followsValue = input.labelMarkers && series.marker === undefined && input.cats[point.ci]!.partial !== true
+      && !input.labelMarkers.highlights.has(categoryId) && !isolated?.has(point.ci);
+    const shape = followsValue && input.labelMarkers?.candidates && !input.labelMarkers.candidates.has(point.ci)
+      ? 'none' : input.markerOf(series, dataIdx, point.ci);
     if (input.isStacked && geometry.row[point.ci] === null) {
       entry.points.push({ categoryId: input.cats[point.ci]!.id, x: point.x, y: point.y });
       return;
     }
     const extent = input.markerExtent(series, dataIdx, point.ci);
+    const record: LineMarks['series'][number]['points'][number] = { categoryId, x: point.x, y: point.y,
+      ...(extent ? { highlighted: true as const, markerRadius: extent.reach } : {}) };
     let nodeId: Id | undefined;
     if (shape !== 'none') {
       nodeId = `marker:${series.id}:${input.cats[point.ci]!.id}`;
       pushMarkerNode(input, series, dataIdx, geometry.row, point, shape, nodeId, extent?.scale);
+      record.nodeId = nodeId;
+      if (followsValue) (input.nodes[input.nodes.length - 1]! as LabelMarkerNode)[LABEL_MARKER] = { localId: nodeId, labelIds: [], point: record };
       const reach = extent ? Math.max(4, extent.reach + 1) : 4;
       input.occupied.claim({ x: point.x - reach, y: point.y - reach, w: 2 * reach, h: 2 * reach }, 'mark', claims.lineOwner(series.id, input.cats[point.ci]!.id));
     }
-    entry.points.push({ categoryId: input.cats[point.ci]!.id, x: point.x, y: point.y, ...(nodeId ? { nodeId } : {}), ...(extent ? { highlighted: true as const, markerRadius: extent.reach } : {}) });
+    entry.points.push(record);
   });
 }
 
@@ -931,6 +942,7 @@ interface RenderLineMarksInput {
   interpolationFor: (series: NormSer) => LineInterpolation;
   dashOf: (series: NormSer, dataIdx: number) => number[] | undefined;
   markerOf: (series: NormSer, dataIdx: number, categoryIndex: number) => MarkerShape;
+  labelMarkers?: { candidates?: ReadonlySet<number>; highlights: ReadonlySet<Id> };
   hollowAt: (series: NormSer, categoryIndex: number) => boolean;
   rebased: boolean;
   variant: LineVariant;
@@ -999,7 +1011,22 @@ export function renderLineMarks(input: RenderLineMarksInput): RenderedLineMarks 
       ...(geometry.bottomByRun ? { bottom: geometry.runs.flatMap(run => edgePolyline(geometry.bottomByRun!.get(run)!)) } : {}),
     }];
   })) : undefined;
-  return { marks, baselineId, analyticalSceneStart, paintedAreaCats, areaOutlines, ...(rangeEdges ? { rangeEdges } : {}) };
+  const retainMarker: RenderedLineMarks['retainMarker'] = input.labelMarkers ? (series, ci, point, occupied) => {
+    if (series.marker !== undefined) return;
+    const dataIdx = input.drawnSeries.indexOf(series);
+    if (dataIdx < 0) return;
+    if (point.nodeId) {
+      const node = input.nodes.find(node => node.id === point.nodeId) as LabelMarkerNode | undefined;
+      if (node) delete node[LABEL_MARKER];
+      return;
+    }
+    const shape = input.markerOf(series, dataIdx, ci);
+    if (shape === 'none') return;
+    point.nodeId = `marker:${series.id}:${point.categoryId}`;
+    pushMarkerNode(input, series, dataIdx, geometries[dataIdx]!.row, { ...point, ci }, shape, point.nodeId);
+    occupied.claim({ x: point.x - 4, y: point.y - 4, w: 8, h: 8 }, 'mark', claims.lineOwner(series.id, point.categoryId));
+  } : undefined;
+  return { marks, baselineId, analyticalSceneStart, paintedAreaCats, areaOutlines, ...(rangeEdges ? { rangeEdges } : {}), ...(retainMarker ? { retainMarker } : {}) };
 }
 
 function linearYAt(points: readonly Point[], x: number): number {
