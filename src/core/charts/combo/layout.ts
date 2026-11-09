@@ -98,6 +98,8 @@ export interface ComboMarks {
     areaNodeId?: Id; // area-kind only: the fill path under the line
     points: { categoryId: Id; x: number; y: number; markerNodeId?: Id }[];
   }[];
+  /** One entry per drawn reference value (tick, line or marker), as on column and bar. */
+  referenceTicks: { seriesId: Id; categoryId: Id; rect: Rect; nodeId: Id }[];
 }
 
 export interface ComboDerived {
