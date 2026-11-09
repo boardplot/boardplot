@@ -844,7 +844,9 @@ describe('render and measure on the command line', () => {
     const dir = tdir();
     writeFileSync(join(dir, 'rows.csv'), 'month,segment,revenue\nJan,B2B,10\nJan,B2B,12\n');
     const result = runCli(['render', writeDoc(dir, 'spec.json', { type: 'column' }), '--rows', join(dir, 'rows.csv'), '--columns', 'category=month,series=segment,value=revenue']);
-    expect(envelope(result).errors).toMatchObject([{ code: 'ambiguous-mapping', path: '/rowsFile', message: expect.stringContaining('rowsFile row 2.segment') }]);
+    // The prefix and the body count rows from 1 alike: a 0-based body named the wrong file row.
+    expect(envelope(result).errors).toMatchObject([{ code: 'ambiguous-mapping', path: '/rowsFile', displayPath: 'rowsFile row 2.segment', message: expect.stringContaining('rowsFile row 2.segment') }]);
+    expect((envelope(result).errors as { message: string }[])[0]!.message).toContain('(rows 1 and 2)');
   });
 
   it('reads a semicolon CSV, detected from its header, with decimal commas as decimals', () => {
