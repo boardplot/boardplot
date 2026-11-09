@@ -148,7 +148,7 @@ npm install -g boardplot
 
 Claude Code and Codex also take the server without the plugin: `claude mcp add boardplot -- boardplot-mcp` or `codex mcp add boardplot -- boardplot-mcp`.
 
-Then ask the agent for a chart, for example "Use Boardplot to draw an EBIT bridge from this data". [llms.txt](llms.txt) indexes the manual and the chart reference for language models.
+Then ask for a chart, for example "Use Boardplot to draw an EBIT bridge from this data". An agent with a valid spec can render it directly. For an unfamiliar type, `boardplot_describe` returns a starter spec and the accepted fields. Use `boardplot_list` when choosing a type, or `boardplot_fixtures` for examples. `boardplot_measure` helps fit a constrained container. Read the render's warnings and actual output format before placing the chart. [MCP examples](docs/manual.md#getting-a-chart-with-mcp) show the calls. [llms.txt](llms.txt) indexes the full reference.
 
 ## React
 

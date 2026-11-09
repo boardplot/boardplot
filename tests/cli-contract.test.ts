@@ -460,6 +460,41 @@ describe('the verbs', () => {
     });
   });
 
+  // A known chart must expose its value and shared-option contracts without a catalogue lookup, or an agent can reject a valid title.
+  it('authors a chart from its compact contract and resolves shared options in full detail', () => {
+    const compact = JSON.parse(runCli(['describe', 'bar']).log[0]!);
+    expect(compact.cell).toEqual(expect.any(String));
+    expect(compact.anchor).toEqual(expect.any(String));
+    expect(compact.sharedOptions).toMatch(/\btitle\b/);
+    // Table cells follow their column kinds, not the numeric value-cell contract used by bar series.
+    expect(JSON.parse(runCli(['describe', 'table']).log[0]!).cell).toBeUndefined();
+    const starter = JSON.parse(runCli(['describe', 'dimswitch']).log[0]!).example;
+    expect(render({ spec: starter }).body).toMatchObject({ ok: true });
+    // Full detail names shared options instead of repeating their block; path returns one in full.
+    const full = JSON.parse(runCli(['describe', 'bar', '--full']).log[0]!);
+    expect(full.sharedOptions).toMatch(/\btitle\b/);
+    const lookup = JSON.parse(runCli(['describe', 'bar', '--path', 'options.title']).log[0]!);
+    expect(lookup.fields).toEqual([expect.objectContaining({ path: 'title', description: expect.any(String) })]);
+    const spec = { ...compact.example, options: { ...compact.example.options, title: 'Regional revenue' } };
+    const result = render({ spec });
+    expect(result.body).toMatchObject({ ok: true, reading: { title: 'Regional revenue' } });
+  });
+
+  // Shared column fields must stay readable without losing the requirements of each column kind.
+  it('coalesces identical full contracts and retains the branches where each applies', () => {
+    const full = JSON.parse(runCli(['describe', 'table', '--full']).log[0]!);
+    const ids = full.data.filter((field: { path: string }) => field.path === 'columns[].id');
+    const kinds = full.data.filter((field: { path: string }) => field.path === 'columns[].kind');
+    expect(ids).toHaveLength(1);
+    expect(ids[0]).toMatchObject({ type: 'string', required: true });
+    expect(kinds.length).toBeGreaterThan(1);
+    for (const kind of kinds) {
+      expect(kind.required).toBe(true);
+      expect(kind.values).toHaveLength(1);
+      expect(ids[0].branch.split(' | ')).toContain(kind.branch);
+    }
+  });
+
   it('refuses a mistyped verb with a typed envelope that names the verbs', () => {
     const result = runCli(['rendr', '--nope']);
     expect(result.code).toBe(1);
@@ -809,7 +844,7 @@ describe('render and measure on the command line', () => {
     const dir = tdir();
     writeFileSync(join(dir, 'rows.csv'), 'month,segment,revenue\nJan,B2B,10\nJan,B2B,12\n');
     const result = runCli(['render', writeDoc(dir, 'spec.json', { type: 'column' }), '--rows', join(dir, 'rows.csv'), '--columns', 'category=month,series=segment,value=revenue']);
-    expect(envelope(result).errors).toMatchObject([{ code: 'ambiguous-mapping', path: '/rowsFile', message: expect.stringContaining('rows[1].segment') }]);
+    expect(envelope(result).errors).toMatchObject([{ code: 'ambiguous-mapping', path: '/rowsFile', message: expect.stringContaining('rowsFile row 2.segment') }]);
   });
 
   it('reads a semicolon CSV, detected from its header, with decimal commas as decimals', () => {
@@ -846,7 +881,8 @@ describe('render and measure on the command line', () => {
     expect(render({ spec, rowsFile: repeated, columns }).body.warnings).toContainEqual(expect.objectContaining({ code: 'rows-header-repeated' }));
     const invalid = join(dir, 'invalid.tsv');
     writeFileSync(invalid, 'month\tsegment\trevenue\nJan\tNorth\t1,5\n');
-    expect(runVerb(() => render({ spec, rowsFile: invalid, columns })).body.errors).toMatchObject([{ code: 'invalid-value', path: '/rowsFile', message: expect.stringContaining('rows[0].revenue') }]);
+    // A file-row error must name the source cell an agent edits; the category adapter gave only rows[0].
+    expect(runVerb(() => render({ spec, rowsFile: invalid, columns })).body.errors).toMatchObject([{ code: 'invalid-value', path: '/rowsFile', displayPath: 'rowsFile row 1.revenue', message: expect.stringContaining('rowsFile row 1.revenue') }]);
     const unknown = join(dir, 'rows.xml');
     writeFileSync(unknown, tab);
     expect(runVerb(() => render({ spec, rowsFile: unknown, columns })).body.errors).toMatchObject([{ code: 'rows-unreadable', path: '/rowsFile' }]);
@@ -869,7 +905,7 @@ describe('render and measure on the command line', () => {
     const dir = tdir();
     writeFileSync(join(dir, 'rows.csv'), 'Month;Segment;Revenue\nJan;A;980\nFeb;A;1.234\n');
     const result = runCli(['render', writeDoc(dir, 'spec.json', { type: 'column' }), '--rows', join(dir, 'rows.csv'), '--columns', 'category=Month,series=Segment,value=Revenue']);
-    expect(envelope(result).errors).toMatchObject([{ code: 'invalid-value', path: '/rowsFile', message: expect.stringContaining('rows[1].Revenue') }]);
+    expect(envelope(result).errors).toMatchObject([{ code: 'invalid-value', path: '/rowsFile', displayPath: 'rowsFile row 2.Revenue', message: expect.stringContaining('rowsFile row 2.Revenue') }]);
   });
 
   const rowsRender = (csv: string | Buffer, valueKind = 'number') => {

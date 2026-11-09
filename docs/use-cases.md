@@ -1,14 +1,16 @@
 # Use cases: Boardplot with an AI agent
 
+Contents: [Install](#install), [PowerPoint or Keynote deck](#powerpoint-or-keynote-deck), [Analysis page or Claude artifact](#analysis-page-or-claude-artifact), [React dashboard](#react-dashboard), [Word or PDF report](#word-or-pdf-report), [Recurring report](#recurring-report).
+
 This page shows how to get finished results from an AI agent such as Claude Code or Codex with Boardplot: a slide deck, an analysis page, a React dashboard, a Word report or a weekly report. Install Boardplot once, then name it in the prompt. The agent writes the chart specs, draws the charts with the Boardplot tools and puts them into the result.
 
-Each use case has the same parts: what you get, example prompts to copy, what the agent does, tips for better results, and the limits. Each use case also links a worked example in [examples](https://github.com/boardplot/boardplot/tree/main/docs/examples): the data, the specs, the finished file and the script that builds it, all with invented data. The [manual](manual.md) explains the spec, the tools and every option.
+Choose the destination section for settings and examples. The [worked examples](https://github.com/boardplot/boardplot/tree/main/docs/examples) include invented data, specs, finished files and build scripts. The [manual](manual.md) is a reference for questions about the spec and tool behavior.
 
 ## Install
 
 - **Claude Code and Codex:** install the plugin. It adds the Boardplot MCP server and the `boardplot-chart` skill. See [AI agents](../README.md#ai-agents) in the README.
-- **Other MCP clients:** install the package globally and add the stdio server `boardplot-mcp`. The same README section has the config.
-- **React apps:** add the package to the project. See [React](../README.md#react) in the README.
+- **Other MCP clients:** install the package globally and add the stdio server `boardplot-mcp`. See [MCP setup](../README.md#ai-agents) for the configuration.
+- **React apps:** follow [React installation](#react-installation).
 
 To check the install, start a new session and ask:
 
@@ -16,18 +18,28 @@ To check the install, start a new session and ask:
 Use Boardplot to draw a small column chart from sample data as PNG. Tell me the Boardplot version and the file path.
 ```
 
-The agent calls `boardplot_render`, writes the PNG and reports the version that every Boardplot tool returns. [The plugin setup](../release/plugin/boardplot-marketplace/plugins/boardplot/SETUP.md) has the full checks and the troubleshooting.
+The agent calls `boardplot_render` and reports the output path and running version. Confirm that the requested PNG was produced. A rasterizer warning can accompany SVG fallback. [The plugin setup](../release/plugin/boardplot-marketplace/plugins/boardplot/SETUP.md) has the full checks and the troubleshooting.
 
 **Tips for every use case:**
 
-- **Give the data as a file.** Name a CSV or JSON export in the prompt, for example `data/orders.csv`. The agent passes the file to Boardplot as `rowsFile`, so the numbers go from the file to the chart and never pass through the model. See [Rows as data](manual.md#rows-as-data).
+- **Give the data as a file.** Name a CSV or JSON export in the prompt, for example `data/orders.csv`. For a supported row mapping, the agent passes the file as `rowsFile`, so the numbers go directly into the chart. Other chart data shapes go in `spec.data`. See [Rows as data](manual.md#rows-as-data).
 - **Name the destination.** Say "for a slide", "for a Word report" or "for a dashboard". The agent then sets the `target`, which sets the type sizes for that medium. See [Sizing](manual.md#sizing).
 - **Give your brand colours.** Give the hex codes of your highlight and series colours, or a theme file. The agent passes them as a theme, for example `{ "preset": "standard", "overrides": { "color": { "highlight": "#0B5CAD" } } }`. See [the theme reference](reference/theme.md).
 - **Say what each chart should show.** A title that states the finding, such as "Online orders keep growing", gives a better chart than "Orders by week".
 
+### React installation
+
+In an existing React project, install Boardplot:
+
+```sh
+npm install boardplot
+```
+
+Boardplot uses the project's React and React DOM dependencies. Import charts from their per-type entries, such as `boardplot/react/column`. The [React reference](reference/react.md) covers components, sizing and server preparation.
+
 ## PowerPoint or Keynote deck
 
-**You get:** a new deck with Boardplot charts, or your existing deck with its charts replaced by Boardplot charts.
+**You get:** a new deck with Boardplot charts, or the requested chart changes in an existing deck.
 
 **Example prompts:**
 
@@ -46,9 +58,9 @@ Add a revenue bridge from FY24 to FY25 to slide 4 of strategy.pptx, drawn with B
 **What the agent does:** Boardplot draws the chart images, and the agent's own PowerPoint tool, such as a pptx skill or a Python library, places them in the file. For each chart, the agent:
 
 1. Reads the data from your file, or from the chart it replaces.
-2. Calls `boardplot_describe` for the chart type and writes the spec.
+2. Writes the spec, using `boardplot_describe` when the chart contract is unfamiliar.
 3. Calls `boardplot_render` with `target: "slide"`, `format: "png"` and the size of the picture box, for example `options.size: { "width": 660, "height": 372, "unit": "pt" }`.
-4. Places the PNG in the picture box.
+4. Checks `ok`, warnings and the returned format, then places the chart in the picture box. A PNG request can return SVG when a rasterizer is unavailable. See [PNG output](manual.md#png-output).
 
 The PNG has 2 pixels per layout pixel, the default `scale`, and records 192 dpi. PowerPoint, Keynote and Word read the dpi, so they place a scale-2 PNG at the chart's own size, with sharp text. Without a size, a `slide` chart is 888 × 396 pt, the content area of a 16:9 slide.
 
@@ -88,7 +100,7 @@ Write a one-page HTML report on last month's marketing spend from exports/spend.
 **What the agent does:**
 
 1. Analyses the data and decides which finding each chart shows.
-2. Calls `boardplot_render` with the data file as `rowsFile` and `return: ["reading", "svg"]`. The answer carries the chart's SVG markup in `svg`.
+2. Calls `boardplot_render` with `return: ["reading", "svg"]`. Uses `rowsFile` when the chart supports the file's row mapping, or supplies `spec.data`. The answer carries the chart's SVG markup in `svg`.
 3. Puts each SVG inline in the page. The page needs no script and loads nothing from the network to show the charts.
 4. Reads the `reading` of each render, the numbers Boardplot computed (totals, differences, growth rates), and uses them in the text, so text and chart agree.
 
@@ -123,7 +135,7 @@ Move the charts of this dashboard from our current chart library to Boardplot. K
 
 **What the agent does:**
 
-1. Calls `boardplot_list` and `boardplot_describe` to choose the chart types and their options.
+1. Chooses chart types from the requested result. Calls `boardplot_list` when the type is uncertain and `boardplot_describe` when its fields are unfamiliar.
 2. Uses the per-type components, such as `ColumnChart` from `boardplot/react/column`, with `size="container"`, so each chart lays out in its card.
 3. Wraps the page in `BoardplotTheme` with `target="dashboard"` and your theme, so every chart shares one look.
 4. In Next.js, prepares the charts on the server with `prepareChart`, so the first paint shows the chart.
@@ -132,7 +144,7 @@ The [React reference](reference/react.md) has each part: [per-type components](r
 
 **Tips:**
 
-- Ask the agent to draw each chart once with `boardplot_render` before it writes the component. A refusal or a warning then shows up before the page is built.
+- Inspect the component's refusals and warnings in the rendered page. MCP can check a standalone spec when needed. A separate MCP render is not required to build a React chart.
 - Name the chart for each card if you know it, for example "a waterfall for the margin bridge".
 - When you move a dashboard, ask the agent to list each old chart with the Boardplot type it chose.
 
@@ -191,7 +203,7 @@ Every Monday, read exports/orders.csv and write the weekly business review with 
 Write a script that renders the charts in reports/specs/ from the latest exports with the Boardplot CLI, so our scheduled job can run it without an agent.
 ```
 
-**What the agent does:** in the first run, the agent writes one spec per chart and saves it as a template, without data. In each later run, it calls `boardplot_render` with the template, the new export as `rowsFile` and the column names in `columns`. A refused call has `ok: false` and errors with a `path`, a `suggest` sentence and often a `fix`, a JSON Patch the agent applies to the spec. See [Reading errors and warnings](manual.md#reading-errors-and-warnings).
+**What the agent does:** for charts with a supported row mapping, save one spec template per chart. Keep required metadata such as map packs, table columns and series labels. In each later run, call `boardplot_render` with the template, the new export as `rowsFile` and the source column names in `columns`. A refused render returns `ok: false` and errors with a `path` and, when available, a `suggest` or `fix`. Apply spec repairs to the spec and argument repairs to the tool arguments. A file-row error points to `/rowsFile` and identifies its source cell in `displayPath`. Edit that cell in the data file. See [Reading errors and warnings](manual.md#reading-errors-and-warnings).
 
 A scheduled job needs no agent. It runs the CLI on the same templates:
 
@@ -213,7 +225,7 @@ It writes `out/<date>/weekly-orders.png`, named after the template's `name`, and
 **Limits:**
 
 - The MCP server reads `rowsFile` only from its allowed folders: the client's roots, its working directory, the system temp folder and the folders in `BOARDPLOT_ROWS_ROOTS`. Other paths are refused with `rows-outside-roots`.
-- PNG needs `@resvg/resvg-js`, an optional dependency, or Chrome. On a Linux server, install one of the fonts the manual lists, or the render returns only the SVG with the warning `raster-fonts-missing`. See [Getting a chart with MCP](manual.md#getting-a-chart-with-mcp).
+- PNG needs `@resvg/resvg-js`, an optional dependency, or Chrome. On Linux, resvg also needs one of the fonts listed in the manual. Without those fonts, Boardplot tries Chrome. If Chrome is unavailable too, the render returns SVG with `raster-fonts-missing`. See [PNG output](manual.md#png-output).
 - A CSV with grouping marks in numbers, such as `1.234,5`, is refused. Export plain numbers.
 
 **Worked example:** [docs/examples/recurring-report](https://github.com/boardplot/boardplot/tree/main/docs/examples/recurring-report) is a weekly business review. `render.sh`, the CLI script for a scheduled job, draws three templates from three warehouse exports, including a table that computes the week-on-week, year-on-year and plan changes, and writes one page to send.

@@ -44,13 +44,13 @@ One form; its chart ID is `gantt`.
 | Path | Type | Required | Meaning |
 |---|---|---|---|
 | rows | array | yes | Task and cadence rows displayed in the supplied order. |
-| rows[].id (rows[] branch 1) | string | yes | Unique timeline row identity. |
-| rows[].label (rows[] branch 1) | string | yes | Visible timeline row name. |
-| rows[].sublabel (rows[] branch 1) | string |  | Second line under the row name, such as what the row measures. Printed in the label font and muted ink, on one line and never cut; the name band takes the wider of name and sublabel. On narrow canvases it follows the name on the row's name line. labels.activity: false hides it with the name. |
-| rows[].indent (rows[] branch 1) | integer |  | Nonnegative indentation level for the row label. |
-| rows[].cols (rows[] branch 1) | array |  | Metadata columns beside the row label, such as owner and status; up to three are displayed. A cell is text, or text with a tone. |
-| rows[].cols[].text (rows[] branch 1) | string | yes | Cell text, such as a status word. |
-| rows[].cols[].tone (rows[] branch 1) | string |  | Status tone; omitted, the cell is plain text. A tone is drawn as a small filled marker in the tone's colour before the text. The row's bars and chevrons without a colorRole take the same colour, as do those of rows indented under it without a status, so the status column keys them. One of `'good'`, `'warn'`, `'bad'`, `'neutral'`. |
+| rows[].id (rows[] branch 1 \| rows[] branch 2) | string | yes | Unique timeline row identity. |
+| rows[].label (rows[] branch 1 \| rows[] branch 2) | string | yes | Visible timeline row name. |
+| rows[].sublabel (rows[] branch 1 \| rows[] branch 2) | string |  | Second line under the row name, such as what the row measures. Printed in the label font and muted ink, on one line and never cut; the name band takes the wider of name and sublabel. On narrow canvases it follows the name on the row's name line. labels.activity: false hides it with the name. |
+| rows[].indent (rows[] branch 1 \| rows[] branch 2) | integer |  | Nonnegative indentation level for the row label. |
+| rows[].cols (rows[] branch 1 \| rows[] branch 2) | array |  | Metadata columns beside the row label, such as owner and status; up to three are displayed. A cell is text, or text with a tone. |
+| rows[].cols[].text (rows[] branch 1 \| rows[] branch 2) | string | yes | Cell text, such as a status word. |
+| rows[].cols[].tone (rows[] branch 1 \| rows[] branch 2) | string |  | Status tone; omitted, the cell is plain text. A tone is drawn as a small filled marker in the tone's colour before the text. The row's bars and chevrons without a colorRole take the same colour, as do those of rows indented under it without a status, so the status column keys them. One of `'good'`, `'warn'`, `'bad'`, `'neutral'`. |
 | rows[].kind (rows[] branch 1) | string |  | Task row containing individual timeline items; task is the default row kind. One of `'task'`. |
 | rows[].items (rows[] branch 1) | array | yes | Timeline items placed in this task row. |
 | rows[].items[].id (rows[] branch 1) | string | yes | Unique item identity used by annotations and scene elements. |
@@ -65,13 +65,6 @@ One form; its chart ID is `gantt`.
 | rows[].items[].anchor.toItemId (rows[] branch 1) | string | yes | Target item id whose start or end anchors this item. |
 | rows[].items[].anchor.edge (rows[] branch 1) | string | yes | Target edge used to resolve the anchored start date. One of `'start'`, `'end'`. |
 | rows[].items[].anchor.offsetDays (rows[] branch 1) | integer |  | Signed number of days added to the target edge; defaults to zero. |
-| rows[].id (rows[] branch 2) | string | yes | Unique timeline row identity. |
-| rows[].label (rows[] branch 2) | string | yes | Visible timeline row name. |
-| rows[].sublabel (rows[] branch 2) | string |  | Second line under the row name, such as what the row measures. Printed in the label font and muted ink, on one line and never cut; the name band takes the wider of name and sublabel. On narrow canvases it follows the name on the row's name line. labels.activity: false hides it with the name. |
-| rows[].indent (rows[] branch 2) | integer |  | Nonnegative indentation level for the row label. |
-| rows[].cols (rows[] branch 2) | array |  | Metadata columns beside the row label, such as owner and status; up to three are displayed. A cell is text, or text with a tone. |
-| rows[].cols[].text (rows[] branch 2) | string | yes | Cell text, such as a status word. |
-| rows[].cols[].tone (rows[] branch 2) | string |  | Status tone; omitted, the cell is plain text. A tone is drawn as a small filled marker in the tone's colour before the text. The row's bars and chevrons without a colorRole take the same colour, as do those of rows indented under it without a status, so the status column keys them. One of `'good'`, `'warn'`, `'bad'`, `'neutral'`. |
 | rows[].kind (rows[] branch 2) | string | yes | Cadence row showing repeated dated event markers. One of `'cadence'`. |
 | rows[].events (rows[] branch 2) | array | yes | Dated events placed along this cadence row. |
 | rows[].events[].id (rows[] branch 2) | string | yes | Unique event identity shared with the timeline mark id namespace. |

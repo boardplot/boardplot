@@ -23,6 +23,7 @@ import { listCharts } from '../src/core/registry';
 import { ADOPTED_THEME_LIMIT, adoptedThemeCount } from '../src/core/themeStore';
 import { availableRasterizer, pngSize } from '../src/cli/raster';
 import { render } from '../src/cli/render';
+import { buildFontTables, loadFontReader, serializeFontTables } from '../src/cli/fontTables';
 
 interface RpcResponse {
   jsonrpc: '2.0';
@@ -246,8 +247,14 @@ describe('boardplot MCP server', () => {
     for (const name of ['theme', 'waterfall', 'bridge', 'doughnut', 'bubble']) expect(accepted).toContain(name);
   });
 
-  it('declares every key a tool returns in its output schema', () => {
-    const declared = new Map(tools().map((tool) => [tool.name, Object.keys(tool.outputSchema.properties as object)]));
+  // Typed clients need the returned reading fields and active fonts to inspect the chart without guessing hidden output keys.
+  it('declares every key a tool returns in its output schema', async () => {
+    const definitions = new Map(tools().map((tool) => [tool.name, tool.outputSchema.properties as Record<string, any>]));
+    await loadFontReader();
+    const cwd = mkdtempSync(join(tmpdir(), 'boardplot-mcp-output-schema-'));
+    dirs.push(cwd);
+    const fontFile = join(cwd, 'fonts.json');
+    writeFileSync(fontFile, serializeFontTables(buildFontTables(join(ROOT, 'tests/fixtures/fonts')).tables));
     const example = (callTool('boardplot_describe', { type: 'waterfall' }).structuredContent as { example: object }).example;
     const column = (callTool('boardplot_describe', { type: 'column' }).structuredContent as { example: object }).example;
     const calls: [string, unknown][] = [
@@ -258,9 +265,32 @@ describe('boardplot MCP server', () => {
       ['boardplot_render', { spec: { type: 'radar', data: {} } }],
       ['boardplot_measure', { spec: column }], ['boardplot_measure', { spec: { version: 1, charts: [{ name: 'a', ...example }] } }],
     ];
-    const undeclared = calls.flatMap(([name, args]) => Object.keys(callTool(name, args).structuredContent)
-      .filter((key) => !declared.get(name)!.includes(key)).map((key) => `${name}.${key}`));
-    expect([...new Set(undeclared)]).toEqual([]);
+    const previousFonts = process.env.BOARDPLOT_FONT_TABLES;
+    process.env.BOARDPLOT_FONT_TABLES = fontFile;
+    try {
+      const undeclared = calls.flatMap(([name, args]) => {
+        const body = callTool(name, args).structuredContent as Record<string, any>;
+        const declared = definitions.get(name)!;
+        const missing = Object.keys(body).filter((key) => !(key in declared)).map((key) => `${name}.${key}`);
+        const readings = body.charts ? body.charts.map((chart: any) => chart.reading) : [body.reading];
+        if (name === 'boardplot_render') for (const reading of readings) {
+          for (const key of Object.keys(reading ?? {})) {
+            if (!(key in declared.reading.properties)) missing.push(`${name}.reading.${key}`);
+          }
+        }
+        expect(body.fontTables).toMatchObject({ families: expect.any(Array), faces: expect.any(Number) });
+        if (declared.fontTables) {
+          for (const key of Object.keys(body.fontTables)) {
+            if (!(key in declared.fontTables.properties)) missing.push(`${name}.fontTables.${key}`);
+          }
+        }
+        return missing;
+      });
+      expect([...new Set(undeclared)]).toEqual([]);
+    } finally {
+      if (previousFonts === undefined) delete process.env.BOARDPLOT_FONT_TABLES;
+      else process.env.BOARDPLOT_FONT_TABLES = previousFonts;
+    }
   });
 
   it('rejects malformed envelopes without killing the spawned server', () => {

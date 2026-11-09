@@ -26,52 +26,28 @@ A KPI table: measures by one hierarchical dimension by period, switchable betwee
     "dimension": {
       "label": "Channel",
       "total": { "id": "total", "label": "Total" },
-      "members": [{ "id": "paid", "label": "Paid Search" }, { "id": "organic", "label": "Organic" }],
-      "headline": ["spend", "revenue"]
+      "headline": ["orders", "cac"],
+      "members": [{ "id": "paid", "label": "Paid Search" }, { "id": "organic", "label": "Organic" }]
     },
     "measures": [
       {
         "id": "orders",
-        "scale": "count",
         "label": "Orders",
-        "change": "relative",
+        "scale": "count",
         "value": { "field": "orders" },
         "judge": { "family": "volume", "base": "orders" }
       },
       {
         "id": "new",
-        "scale": "count",
         "label": "New customers",
+        "scale": "count",
         "parentId": "orders",
         "value": { "field": "nc" }
       },
       {
-        "id": "existing",
-        "scale": "count",
-        "label": "Existing customers",
-        "parentId": "orders",
-        "value": { "op": "sub", "a": { "field": "orders" }, "b": { "field": "nc" } }
-      },
-      {
-        "id": "revenue",
-        "scale": "money",
-        "label": "Net revenue",
-        "value": { "field": "rev" },
-        "format": "$1.2",
-        "unit": "$"
-      },
-      {
-        "id": "spend",
-        "scale": "money",
-        "label": "Marketing spend",
-        "value": { "field": "spend" },
-        "format": "$1.2",
-        "unit": "$"
-      },
-      {
         "id": "cac",
-        "scale": "perUnit",
         "label": "CAC",
+        "scale": "perUnit",
         "value": { "op": "div", "a": { "field": "spend" }, "b": { "field": "nc" } },
         "format": "$1.2",
         "unit": "$",
@@ -79,87 +55,46 @@ A KPI table: measures by one hierarchical dimension by period, switchable betwee
       }
     ],
     "periods": [
-      { "id": "range", "label": "Range", "kind": "range" },
-      { "id": "prior", "label": "Prior", "kind": "prior" },
-      { "id": "w1", "label": "Week 1" },
-      { "id": "w2", "label": "Week 2", "partial": true }
+      { "id": "range", "label": "Current period", "kind": "range" },
+      { "id": "prior", "label": "Prior period", "kind": "prior" },
+      { "id": "w1", "label": "Week 1" }
     ],
     "facts": [
       {
         "memberId": "total",
         "periodId": "range",
-        "sums": { "orders": 120, "nc": 60, "rev": 12000, "spend": 1800 },
-        "ref": { "orders": 110, "nc": 50, "rev": 11000, "spend": 1900 }
+        "sums": { "orders": 120, "nc": 60, "spend": 1800 }
       },
       {
         "memberId": "total",
         "periodId": "prior",
-        "sums": { "orders": 128, "nc": 62, "rev": 12500, "spend": 1830 },
-        "ref": { "orders": 110, "nc": 50, "rev": 11000, "spend": 1900 }
+        "sums": { "orders": 100, "nc": 50, "spend": 1700 }
       },
       {
         "memberId": "total",
         "periodId": "w1",
-        "sums": { "orders": 136, "nc": 64, "rev": 13000, "spend": 1860 },
-        "ref": { "orders": 110, "nc": 50, "rev": 11000, "spend": 1900 }
+        "sums": { "orders": 60, "nc": 30, "spend": 900 },
+        "ref": { "orders": 50 }
       },
-      {
-        "memberId": "total",
-        "periodId": "w2",
-        "sums": { "orders": 144, "nc": 66, "rev": 13500, "spend": 1890 },
-        "ref": { "orders": 110, "nc": 50, "rev": 11000, "spend": 1900 }
-      },
-      {
-        "memberId": "paid",
-        "periodId": "range",
-        "sums": { "orders": 105, "nc": 53, "rev": 10500, "spend": 1600 },
-        "ref": { "orders": 95, "nc": 43, "rev": 9500, "spend": 1700 }
-      },
-      {
-        "memberId": "paid",
-        "periodId": "prior",
-        "sums": { "orders": 113, "nc": 55, "rev": 11000, "spend": 1630 },
-        "ref": { "orders": 95, "nc": 43, "rev": 9500, "spend": 1700 }
-      },
+      { "memberId": "paid", "periodId": "range", "sums": { "orders": 80, "nc": 45, "spend": 1800 } },
+      { "memberId": "paid", "periodId": "prior", "sums": { "orders": 70, "nc": 38, "spend": 1700 } },
       {
         "memberId": "paid",
         "periodId": "w1",
-        "sums": { "orders": 121, "nc": 57, "rev": 11500, "spend": 1660 },
-        "ref": { "orders": 95, "nc": 43, "rev": 9500, "spend": 1700 }
+        "sums": { "orders": 40, "nc": 22, "spend": 900 },
+        "ref": { "orders": 35 }
       },
-      {
-        "memberId": "paid",
-        "periodId": "w2",
-        "sums": { "orders": 129, "nc": 59, "rev": 12000, "spend": 1690 },
-        "ref": { "orders": 95, "nc": 43, "rev": 9500, "spend": 1700 }
-      },
-      {
-        "memberId": "organic",
-        "periodId": "range",
-        "sums": { "orders": 60, "nc": 32, "rev": 6000 },
-        "ref": { "orders": 50, "nc": 22, "rev": 5000 }
-      },
-      {
-        "memberId": "organic",
-        "periodId": "prior",
-        "sums": { "orders": 68, "nc": 34, "rev": 6500 },
-        "ref": { "orders": 50, "nc": 22, "rev": 5000 }
-      },
+      { "memberId": "organic", "periodId": "range", "sums": { "orders": 40, "nc": 15 } },
+      { "memberId": "organic", "periodId": "prior", "sums": { "orders": 30, "nc": 12 } },
       {
         "memberId": "organic",
         "periodId": "w1",
-        "sums": { "orders": 76, "nc": 36, "rev": 7000 },
-        "ref": { "orders": 50, "nc": 22, "rev": 5000 }
-      },
-      {
-        "memberId": "organic",
-        "periodId": "w2",
-        "sums": { "orders": 84, "nc": 38, "rev": 7500 },
-        "ref": { "orders": 50, "nc": 22, "rev": 5000 }
+        "sums": { "orders": 20, "nc": 8 },
+        "ref": { "orders": 15 }
       }
     ]
   },
-  "options": { "variant": "by-measure", "depth": 1, "title": "Channel performance" }
+  "options": { "variant": "by-measure", "depth": 2, "title": "Channel performance" }
 }
 ```
 
