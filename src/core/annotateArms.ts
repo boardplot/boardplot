@@ -679,11 +679,11 @@ function drawVerticalLevelDiff(
   // The tip touches the level guide; one that runs down to the point itself stops off the point's marker.
   const look = armLook(input.theme);
   const onPoint = look.standard && b.lineAnchored && Math.abs(x - b.x) < 0.5;
-  const headTipY = y1 + (y1 > y0 ? -1 : 1) * (onPoint ? LEVEL_POINT_R + look.tipGap : 1);
+  const headTipY = y1 + (y1 > y0 ? -1 : 1) * (onPoint ? (b.markerRadius ?? LEVEL_POINT_R) + look.tipGap : 1);
   // The shaft stops inside the head, short of the tip.
   const shaftEndY = headTipY - (y1 > y0 ? 1 : -1) * look.shaftEnd;
   nodes.push({
-    t: 'line', id: lineId, x1: x, y1: y0 + (look.standard && a.lineAnchored && Math.abs(x - a.x) < 0.5 ? (y1 > y0 ? 1 : -1) * (LEVEL_POINT_R + look.tipGap) : 0), x2: x, y2: shaftEndY,
+    t: 'line', id: lineId, x1: x, y1: y0 + (look.standard && a.lineAnchored && Math.abs(x - a.x) < 0.5 ? (y1 > y0 ? 1 : -1) * ((a.markerRadius ?? LEVEL_POINT_R) + look.tipGap) : 0), x2: x, y2: shaftEndY,
     stroke: { token: 'ink' }, width: look.stroke, owner: { annotationId: annId }, part: 'diffArrow',
   });
   const headId = nid('arrowHead');
@@ -813,10 +813,10 @@ export function drawHorizontalLevelDiff(
   pushGuide(pass, 'leader1', annId, { x: x1, y: b.y }, { x: x1, y });
   const look = armLook(input.theme);
   const onPoint = look.standard && b.lineAnchored && Math.abs(y - b.y) < 0.5;
-  const headTipX = x1 + (x1 > x0 ? -1 : 1) * (onPoint ? LEVEL_POINT_R + look.tipGap : 1);
+  const headTipX = x1 + (x1 > x0 ? -1 : 1) * (onPoint ? (b.markerRadius ?? LEVEL_POINT_R) + look.tipGap : 1);
   const shaftEndX = headTipX - (x1 > x0 ? 1 : -1) * look.shaftEnd;
   nodes.push({
-    t: 'line', id: lineId, x1: x0 + (look.standard && a.lineAnchored && Math.abs(y - a.y) < 0.5 ? (x1 > x0 ? 1 : -1) * (LEVEL_POINT_R + look.tipGap) : 0), y1: y, x2: shaftEndX, y2: y,
+    t: 'line', id: lineId, x1: x0 + (look.standard && a.lineAnchored && Math.abs(y - a.y) < 0.5 ? (x1 > x0 ? 1 : -1) * ((a.markerRadius ?? LEVEL_POINT_R) + look.tipGap) : 0), y1: y, x2: shaftEndX, y2: y,
     stroke: { token: 'ink' }, width: look.stroke, owner: { annotationId: annId }, part: 'diffArrow',
   });
   const headId = nid('arrowHead');

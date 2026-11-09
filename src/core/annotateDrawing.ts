@@ -47,7 +47,7 @@ const BOX_BAND_PAD = 2;
 export function resolveDrawingPoint(input: AnnotatePassInput, point: DrawingPoint): Resolved {
   if (typeof point !== 'object' || point === null || !('value' in point)) {
     const found = input.resolve(point as never);
-    return found ? { x: found.x, y: found.y, mark: found.lineAnchored ? POINT_MARKER_R : 0 } : { error: 'unresolvable anchor' };
+    return found ? { x: found.x, y: found.y, mark: found.lineAnchored ? found.markerRadius ?? POINT_MARKER_R : 0 } : { error: 'unresolvable anchor' };
   }
   const mapper = valueMapper(input);
   if (!mapper) return { error: `this chart has no value scale, so it has no place for value ${point.value}` };

@@ -122,10 +122,17 @@ export function lineReserves(env: LineEnv, domain: LineDomain, paints: LinePaint
   // value the near-zero group withholds is still counted, which only adds air.
   const categoryEndRoom = pointLabelEndRoom({ valueLabels: labelModes.values, valueLabelsAuthored: options.valueLabels !== undefined, labelOnly: domain.labelOnly, lastWithheld: new Set(), valueContent, variant,
     contentOf: text.contentOf, drawnSeries, pv, rowOf, cats, rebased, composeText, composeEndText: text.composeEndText, absOf, measure, labelFont, highlights,
-    sharesWithheld: domain.sharesWithheld, ...valueUnit(options, isBump, rebased), isStacked: domain.isStacked, flagged: flaggedPoints(domain),
+    sharesWithheld: domain.sharesWithheld, ...valueUnit(options, isBump, rebased), isStacked: domain.isStacked, flagged: flaggedPoints(domain), pointHighlights: env.pointHighlights,
     ...(domain.x ? { endToDate: { ids: lineToDateIds(env, domain, text), words: options.strings?.toDate ?? chartString(options, 'toDate'), theme: env.theme, measure } } : {}) });
   // Area labels fit inside their bands; their width does not inset the data.
   if (isArea) categoryEndRoom.left = categoryEndRoom.right = 0;
+  // Selected endpoint markers keep their painted extent inside the plot, even with values hidden.
+  if (env.pointHighlights.size > 0 && cats.length > 0) drawnSeries.forEach((series, index) => {
+    const first = paints.markerExtent(series, index, 0);
+    const last = paints.markerExtent(series, index, cats.length - 1);
+    if (first && first.reach > 0) categoryEndRoom.left = Math.max(categoryEndRoom.left, first.reach + PLOT_END_AIR);
+    if (last && last.reach > 0) categoryEndRoom.right = Math.max(categoryEndRoom.right, last.reach + PLOT_END_AIR);
+  });
   // The latest-point ring's paint keeps the same air to the plot's end.
   if (options.latestPoint !== undefined && options.latestPoint !== 'none') {
     categoryEndRoom.right = Math.max(categoryEndRoom.right, latestRingReach(env.theme) + PLOT_END_AIR);
@@ -725,7 +732,7 @@ function forecastHeaderClear(domain: LineDomain, forecast: readonly ForecastBoun
   });
 }
 
-function gridTopRoom(domain: LineDomain, reserves: LineReserves, text: LineText, plotH: number): number {
+function gridTopRoom(env: LineEnv, domain: LineDomain, reserves: LineReserves, text: LineText, plotH: number, markerExtent?: LinePaints['markerExtent']): number {
   if (domain.gridDataHi === undefined) return 0;
   const log = domain.options.valueAxis?.log === true || domain.options.valueAxis?.log === 'y';
   const room = (value: number, seat: number): number => log
@@ -746,14 +753,15 @@ function gridTopRoom(domain: LineDomain, reserves: LineReserves, text: LineText,
     valueLabels: labelModes.values, valueLabelsAuthored: domain.options.valueLabels !== undefined, labelOnly: domain.labelOnly,
     lastWithheld: new Set(usesEndLabelKey(domain.options) ? domain.drawnSeries.map(series => series.id) : []), contentOf: text.contentOf,
     valueContent: defaultValueContent(domain.variant, labelModes.seriesValueContent), drawnSeries: domain.drawnSeries, pv: domain.pv, rowOf: domain.rowOf,
-    flagged: flaggedPoints(domain), variant: domain.variant,
+    flagged: flaggedPoints(domain), variant: domain.variant, cats: domain.cats, pointHighlights: env.pointHighlights,
   });
-  for (const { series, row, only } of picks) {
+  for (const { series, dataIdx, row, only } of picks) {
     for (const ci of only) {
       if (series.vals[ci]?.labelOverride === false) continue;
       const value = row[ci]!;
       const climbs = (row[ci - 1] ?? -Infinity) > value || (row[ci + 1] ?? -Infinity) > value;
-      top = Math.max(top, room(value, climbs ? 2 * text.labelH + 9 : text.labelH + 5));
+      const markerExtra = Math.max(0, (markerExtent?.(series, dataIdx, ci)?.reach ?? 3) - 3);
+      top = Math.max(top, room(value, (climbs ? 2 * text.labelH + 9 : text.labelH + 5) + markerExtra));
     }
   }
   return top;
@@ -797,6 +805,7 @@ export function linePlotArea(
   reserves: LineReserves,
   framed: { frame: FrameResult; margin: LineArea['margin']; leftMargin: number },
   warnings: LintWarning[],
+  markerExtent?: LinePaints['markerExtent'],
 ): LineArea {
   const { theme, measure, isBump, size } = env;
   const { options, cats, seriesNorm, drawnSeries, phases, dLo, dHi } = domain;
@@ -917,7 +926,7 @@ export function linePlotArea(
   const legendGap = headInPlot ? frame.plot.y - frame.legend!.rect.y - frame.legend!.rect.h : 0;
   const tickHead = headInPlot && axis.axisShown ? Math.max(0, measure('0', text.secondaryFont).height / 2 - legendGap) : 0;
   const innerHead = headInPlot ? Math.min(Math.max(tickHead, topPad), plot.h) : 0;
-  const topRoom = innerHead + gridTopRoom(domain, reserves, text, plot.h - innerHead);
+  const topRoom = innerHead + gridTopRoom(env, domain, reserves, text, plot.h - innerHead, markerExtent);
   const yRange: [number, number] = isBump
     ? reverse ? [plot.y + plot.h, plot.y] : [plot.y, plot.y + plot.h]
     : reverse ? [plot.y + innerHead, plot.y + plot.h] : [plot.y + plot.h, plot.y + topRoom];

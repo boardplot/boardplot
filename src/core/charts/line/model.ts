@@ -55,6 +55,8 @@ export interface LineEnv {
   /** An authored { pct } cell keeps its own face; formatShare is for computed shares (column parity). */
   authoredPctFmt: (p: number) => string;
   highlights: Set<Id>;
+  /** Category ids selected on one plain data line, separate from series emphasis. */
+  pointHighlights: Set<Id>;
   anyHighlight: boolean;
   density: LabelDensity;
 }
@@ -158,6 +160,9 @@ export interface LinePaints {
   bandRules(): LineBandRule[];
   seriesCrossesShadedBand(s: NormSer): boolean;
   series(s: NormSer, dataIdx: number): Paint;
+  point(s: NormSer, dataIdx: number, ci: number): Paint;
+  /** Selected marker geometry; undefined keeps the existing marker and clearance. */
+  markerExtent(s: NormSer, dataIdx: number, ci: number): { scale: number; reach: number } | undefined;
   /** `forecast` asks for the hatched forecast region's fill. */
   areaFill(s: NormSer, dataIdx: number, forecast?: boolean): Paint;
   /** Whether the series draws its area fill: the stacked bands and a lone or lead area do, the other series of an unstacked area are lines. */

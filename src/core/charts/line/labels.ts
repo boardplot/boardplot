@@ -28,7 +28,7 @@ import { noteName } from '../../calendarData';
 import { partialKeyForced, saysToDate, toDateFits, toDateLabel } from '../../partialPeriod';
 import { chartString } from '../../strings';
 import type { Theme } from '../../types/theme';
-import type { LineDomain, LineEnv, LineText } from './model';
+import type { LineDomain, LineEnv, LinePaints, LineText } from './model';
 import { maxOf, minOf, pushAll } from '../../arrays';
 
 type LineVariant = 'line' | 'area' | 'stacked-area' | 'stacked100-area';
@@ -814,6 +814,7 @@ interface PointLabelInput {
   measure: TextMeasurer;
   labelFont: FontSpec;
   highlights: Set<Id>;
+  pointHighlights?: ReadonlySet<Id>;
   categoryIndices?: number[];
   sharesWithheld: ReadonlySet<Id>;
   /** The unit the last value of a series carries when nothing else prints it. */
@@ -851,7 +852,7 @@ function pointLabelSeeds(input: PointLabelInput): PointLabelSeed[] {
     if (!text && cell.labelOverride !== false) continue;
     const endpoint = ci === drawn[0] || ci === last;
     const extreme = value === min || value === max;
-    const highlighted = input.highlights.has(series.id) || input.highlights.has(category.id);
+    const highlighted = input.highlights.has(series.id) || input.highlights.has(category.id) || input.pointHighlights?.has(category.id);
     const priority = cell.priority ?? (endpoint ? PRIORITY.endpoint : extreme ? PRIORITY.extreme : PRIORITY.interior + Math.min(99, Math.abs(value))) + (highlighted ? PRIORITY.highlightBonus : 0);
     seeds.push({ ci, text, w: input.measure(text || '0', input.labelFont).width, priority, suppressed: cell.labelOverride === false, extreme });
   }
@@ -957,6 +958,8 @@ export function lineToDateIds(env: LineEnv, domain: LineDomain, text: Pick<LineT
 
 function pushPointRequests(input: {
   continued?: boolean;
+  /** The selected point's painted marker extent, absent for unchanged points. */
+  markerRadiusOf?: (categoryIndex: number) => number | undefined;
   candidates: PointLabelCandidate[];
   series: NormSer;
   cats: Category[];
@@ -1100,6 +1103,14 @@ function pushPointRequests(input: {
         : away === 'above' ? ['above', 'below', 'aboveShifted', 'belowShifted']
           : ['above', 'aboveShifted', 'below', 'belowShifted'];
       const px = input.xOf(candidate.ci);
+      const markerExtra = Math.max(0, (input.markerRadiusOf?.(candidate.ci) ?? 3) - 3);
+      // Own marks do not block their labels in the solver, so these seats keep the marker gap.
+      const clearMarker = (slot: string, rect: Rect): Rect => markerExtra === 0 ? rect : {
+        ...rect,
+        x: rect.x + (slot.startsWith('left') ? -markerExtra : slot.startsWith('right') ? markerExtra : 0),
+        y: rect.y + (slot.startsWith('above') || slot === 'forecastAboveEdge' ? -markerExtra
+          : slot.startsWith('below') || slot === 'forecastBelowEdge' ? markerExtra : 0),
+      };
       // A line through the point itself holds the same value there: the value
       // reads true for it too, so it rivals no seat (cohort curves meet).
       const at = { x: px, y: candidate.py, w: 0, h: 0 };
@@ -1197,8 +1208,11 @@ function pushPointRequests(input: {
         // the series gap kept, a value with no seat over its point goes to the note.
         .filter((seat) => !((named || input.bump) && seat.slot.startsWith('below')))
         .filter((seat) => input.fillTo === undefined || (seat.y + labelH / 2 - candidate.py) * (input.fillTo - candidate.py) <= 0)
-        .map((seat) => ({ slot: seat.slot, rect: containedRect(bounds, seat.x, seat.y, w, labelH), penalty: seat.penalty ?? (seat.slot.endsWith('Right') ? 1.5 : order.indexOf(seat.slot)) }))
-        .concat(rescue)
+        .map((seat) => {
+          const moved = clearMarker(seat.slot, { x: seat.x, y: seat.y, w, h: labelH });
+          return { slot: seat.slot, rect: containedRect(bounds, moved.x, moved.y, w, labelH), penalty: seat.penalty ?? (seat.slot.endsWith('Right') ? 1.5 : order.indexOf(seat.slot)) };
+        })
+        .concat(rescue.map(seat => ({ ...seat, rect: clearMarker(seat.slot, seat.rect) })))
         .sort((a, b) => a.penalty - b.penalty)
         .flatMap((seat) => {
           const { slot, rect, penalty } = seat;
@@ -1239,6 +1253,9 @@ function pushPointRequests(input: {
  * Otherwise a string cell label also selects its point.
  */
 export function pointLabelSelection(input: {
+  cats: Category[];
+  /** Category ids emphasized on one plain data line. Explicit label suppression still wins. */
+  pointHighlights?: ReadonlySet<Id>;
   /** Series whose first value is already printed in the range key. */
   firstWithheld?: ReadonlySet<Id>;
   valueLabels: ValueLabelMode;
@@ -1289,10 +1306,12 @@ export function pointLabelSelection(input: {
     const authored = textOnly ? [] : drawn.filter(ci => typeof series.vals[ci]?.labelOverride === 'string');
     // A flagged value prints in every mode but labels.point false, as a flagged column's does.
     const flagged = input.flagged?.seriesId === series.id && pointContent !== null ? drawn.filter((ci) => input.flagged!.at.has(ci)) : [];
+    const emphasized = mode !== 'none' && input.pointHighlights?.size
+      ? drawn.filter(ci => input.pointHighlights!.has(input.cats[ci]!.id) && series.vals[ci]?.labelOverride !== false) : [];
     const withheld = input.lastWithheld.has(series.id) ? last : -1;
     // A zero-tail group cannot withhold authored text that has no other carrier.
     const keepAuthoredLast = typeof series.vals[last]?.labelOverride === 'string' && !input.lastCarried?.has(series.id);
-    const only = [...new Set([...engine, ...authored, ...flagged])]
+    const only = [...new Set([...engine, ...authored, ...flagged, ...emphasized])]
       .filter(ci => (ci !== withheld || keepAuthoredLast) && (ci !== first || !input.firstWithheld?.has(series.id)))
       .sort((a, b) => a - b);
     return only.length > 0 ? [{ series, dataIdx, row, content, only, ...(extra >= 0 ? { lastActual: extra } : {}) }] : [];
@@ -1343,6 +1362,7 @@ export function pointValueWidths(input: Parameters<typeof placePointValueLabels>
 }
 
 export function placePointValueLabels(input: Parameters<typeof pointLabelSelection>[0] & {
+  markerExtent?: LinePaints['markerExtent'];
   drawnEdges?: ReadonlyMap<Id, { runs: Point[][]; bottom?: Point[] }>;
   cats: Category[];
   variant: LineVariant;
@@ -1420,7 +1440,7 @@ export function placePointValueLabels(input: Parameters<typeof pointLabelSelecti
     const namedEnd = input.valueLabels !== 'all' && !input.isStacked && !input.bump && (input.endNamed.has(series.id)
       || input.labelRequests.some(request => request.kind === 'series' && request.owner.seriesId === series.id));
     // Every highlight mode, fade included: fade has no focus font, but its focus value needs the seat too.
-    pushPointRequests({ continued: input.drawnEdges !== undefined, highlighted: input.highlights.has(series.id) && !input.bump && input.variant === 'line', regularRow: input.valueLabels === 'all' && !input.isStacked, namedEnd, candidates, series, cats: input.cats, isStacked: input.isStacked, variant: input.variant, labelH: input.labelH, step: input.step, density: input.density, plot: input.plot, labelFont: seriesFont, labelRequests: input.labelRequests, ownQueries, others, otherQueries, xOf: input.xOf, besideLast: !input.endNamed.has(series.id), ...(bandEdges ? { bandEdges } : {}), ...(input.bump ? { bump: input.bump } : {}), topBand: input.isStacked && dataIdx === input.drawnSeries.length - 1, row, ...(input.isStacked ? { painted: input.paintedAreaCats.get(series.id) } : {}), ...(input.variant === 'area' && input.drawnSeries.length > 1 && input.paintedAreaCats.has(series.id) ? { fillTo: input.y(0) } : {}), lost, restHidden: input.isStacked && input.restHidden?.(series) === true, ...(input.toDate ? { toDate: input.toDate } : {}) });
+    pushPointRequests({ markerRadiusOf: (ci) => input.markerExtent?.(series, dataIdx, ci)?.reach, continued: input.drawnEdges !== undefined, highlighted: input.highlights.has(series.id) && !input.bump && input.variant === 'line', regularRow: input.valueLabels === 'all' && !input.isStacked, namedEnd, candidates, series, cats: input.cats, isStacked: input.isStacked, variant: input.variant, labelH: input.labelH, step: input.step, density: input.density, plot: input.plot, labelFont: seriesFont, labelRequests: input.labelRequests, ownQueries, others, otherQueries, xOf: input.xOf, besideLast: !input.endNamed.has(series.id), ...(bandEdges ? { bandEdges } : {}), ...(input.bump ? { bump: input.bump } : {}), topBand: input.isStacked && dataIdx === input.drawnSeries.length - 1, row, ...(input.isStacked ? { painted: input.paintedAreaCats.get(series.id) } : {}), ...(input.variant === 'area' && input.drawnSeries.length > 1 && input.paintedAreaCats.has(series.id) ? { fillTo: input.y(0) } : {}), lost, restHidden: input.isStacked && input.restHidden?.(series) === true, ...(input.toDate ? { toDate: input.toDate } : {}) });
     // The last actual's value is an extra the default adds where a seat is free;
     // with none it gives way quietly, as no default promised it.
     // An authored cell label is the author's, not the default's: it keeps its note.

@@ -75,6 +75,7 @@ export function resolveLineEnv(options: LineOptions, warnings: LintWarning[]): L
     pctFmt: (p: number) => formatShare(p, options.locale?.language),
     authoredPctFmt: (p: number) => formatAuthoredPercent(p, options.locale?.language),
     highlights,
+    pointHighlights: new Set(),
     anyHighlight: highlights.size > 0,
     density: options.labelDensity ?? 'smart',
   };

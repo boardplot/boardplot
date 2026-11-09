@@ -55,7 +55,7 @@ import { X_PARTIAL_ROW } from './xTicks';
 import { END_LABEL_KEY, END_LABEL_WIDE, INLINE_FALLBACK, endUnitSuffix, lineToDateIds, usesEndLabelKey, usesInlineFallback, type EndpointLabelStrategy } from './labels';
 import { lineValueStats } from './means';
 import { laneScale } from './continuous';
-import type { LineAnomaly, LineArea, LineDomain, LineEnv, LineMarkGeometry, LineReserves, LineText } from './model';
+import type { LineAnomaly, LineArea, LineDomain, LineEnv, LineMarkGeometry, LinePaints, LineReserves, LineText } from './model';
 import { viewportMeanSpan } from '../../viewport';
 import { anomalyA11y, anomalyReceipt, columnCorridorPaint, lineAnomalyFurniture, seatFlaggedValues } from '../column/anomaly';
 import type { AnomalyDerived } from '../column/types';
@@ -84,7 +84,7 @@ export interface LineMarks {
     areaNodeId?: Id;
     /** Dashed AC→FC continuation path node, when a per-cell FC split exists. */
     fcPathNodeId?: Id;
-    points: { categoryId: Id; x: number; y: number; nodeId?: Id }[];
+    points: { categoryId: Id; x: number; y: number; nodeId?: Id; highlighted?: true; markerRadius?: number }[];
   }[];
   gapFills?: {
     nodeId: Id;
@@ -367,6 +367,7 @@ function annotateLine(
     // stays absolute. absOf === pvOf outside stacked100-area, and rebase100 is ignored under
     // stacked100-area, so under rebase100 the plotted index is the value.
     const value = rebased ? v : (absOf(s, ci) ?? v);
+    const markerRadius = scene.marks.series.find(entry => entry.seriesId === s.id)?.points.find(point => point.categoryId === c.id)?.markerRadius;
     return {
       x: xOf(ci),
       y: py,
@@ -378,6 +379,7 @@ function annotateLine(
       // A category anchor reads the first drawn series, so it is named too.
       ...(dataSeries.length > 1 ? { series: { id: s.id, label: s.label } } : {}),
       lineAnchored: true,
+      ...(markerRadius === undefined ? {} : { markerRadius }),
       ...(ci > 0 && pv[rowOf.get(s)!]!.findIndex((value) => value !== null) === ci ? { lineStart: true } : {}),
     };
   };
@@ -657,6 +659,7 @@ function lineDerived(
 interface LineAssembly {
   env: LineEnv;
   seriesPaint: (series: NormSer, dataIdx: number) => Paint;
+  pointPaint: LinePaints['point'];
   /** The fill resolver of the areas; a forecast value's backing takes the forecast region's fill. */
   areaFill: (series: NormSer, dataIdx: number, forecast: boolean) => Paint;
   domain: LineDomain;
@@ -713,6 +716,12 @@ function assembleLineGeometry(input: LineAssembly): Geometry<LineMarks, LineDeri
     const index = drawnSeries.findIndex(s => s.id === focusSeriesOf(label));
     label.ink = seriesTextPaint(input.seriesPaint(drawnSeries[index]!, index));
     label.font = { ...(label.font ?? text.labelFont), weight: emphasisWeight(env.theme) };
+  }
+  for (const label of allLabels) {
+    if (label.kind !== 'point' || label.owner.categoryId === undefined || !env.pointHighlights.has(label.owner.categoryId)) continue;
+    const index = drawnSeries.findIndex(series => series.id === label.owner.seriesId);
+    const ci = cats.findIndex(category => category.id === label.owner.categoryId);
+    if (index >= 0 && ci >= 0) label.ink = seriesTextPaint(input.pointPaint(drawnSeries[index]!, index, ci));
   }
   // Label hierarchy: under a highlight the names and values of the other
   // series are secondary text, in their own line's text paint, so the focus series leads.
@@ -1046,6 +1055,15 @@ function layoutLinePass(
     field: ['options', 'legend'] });
   const env = resolveLineEnv(options, warnings);
   const domain = resolveLineDomain(data, options, env, warnings);
+  // A reference does not add a data line, but every series id keeps its series meaning.
+  if (domain.variant === 'line' && !env.isBump && !domain.fan && domain.dataSeries.length === 1) {
+    const row = domain.pv[domain.rowOf.get(domain.dataSeries[0]!)!]!;
+    domain.cats.forEach((category, ci) => {
+      if (row[ci] !== null && env.highlights.has(category.id) && !domain.seriesNorm.some(series => series.id === category.id)) {
+        env.pointHighlights.add(category.id);
+      }
+    });
+  }
   // Only drawn data series can take emphasis; unsupported ids must not alter paints or label priority.
   for (const id of env.highlights) if (!domain.drawnSeries.some(series => series.id === id)) env.highlights.delete(id);
   env.anyHighlight = env.highlights.size > 0;
@@ -1067,7 +1085,7 @@ function layoutLinePass(
     solve: (key, w) => ({ ...solveLineFrame(env, domain, paints, text, held, w, key), key }),
     area: (framed, w) => {
       const count = w.length;
-      const area = linePlotArea(env, domain, text, held, framed, w);
+      const area = linePlotArea(env, domain, text, held, framed, w, paints.markerExtent);
       // Keep the 80 px compact plot floor; the invalid-base warning remains. The floor is measured on
       // the rect the sizing hold reads (PLOT_FLOOR_RECT in assembleLineGeometry), not on the full plot.
       if (options.mode !== 'compact' || !domain.rebaseSuppressed.length || domain.rebaseCompact || area.forecastPlot.h >= 80) return area;
@@ -1075,7 +1093,7 @@ function layoutLinePass(
       w.length = count;
       const next = solveLineFrame(env, domain, paints, text, held, w, framed.key);
       Object.assign(framed, next);
-      return linePlotArea(env, domain, text, held, framed, w);
+      return linePlotArea(env, domain, text, held, framed, w, paints.markerExtent);
     },
     ...(domain.x ? { scale: laneScale(domain.x) } : {}),
     axis: (area) => laneAxis(area, area.plot),
@@ -1222,7 +1240,7 @@ function layoutLinePass(
     : undefined;
   if (lane) pushAll(warnings, lane.warnings);
   const geometry = assembleLineGeometry({
-    env, domain, area, text, reserves, scene, plan, solved, annResult, ratioTierResult, occupied, warnings, lane, areaFill: paints.areaFill, seriesPaint: paints.keyPaint,
+    env, domain, area, text, reserves, scene, plan, solved, annResult, ratioTierResult, occupied, warnings, lane, areaFill: paints.areaFill, seriesPaint: paints.keyPaint, pointPaint: paints.point,
   });
   // Read by layoutLine only; a symbol key stays out of the published geometry.
   if (annResult.gapBracketNeed > 0) Object.assign(geometry, { [GAP_BRACKET_RESERVE]: annResult.gapBracketNeed });
