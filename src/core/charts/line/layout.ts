@@ -1273,8 +1273,12 @@ function layoutLinePass(
   if (pointLabelsFollowShape(env, domain) && !(options as { [POINT_LABEL_CENTERED_ROOM]?: boolean })[POINT_LABEL_CENTERED_ROOM]) {
     const noted = (options as { [NOTED_LABELS]?: ReadonlySet<Id> })[NOTED_LABELS];
     const visible = (label: PlacedLabel) => label.hidden === undefined && !noted?.has(label.id);
+    // Only an inner value lost by collision is retried; density thinning stays with the solver.
+    // The shape room widens the reserve for the end values themselves, so an end value that
+    // collides with its own open-side room is not what the narrower plot cost (input/in-line).
+    const ends = new Set([domain.cats[0]?.id, domain.cats.at(-1)?.id]);
     const lost = geometry.labels.filter(label => label.kind === 'point' && !noted?.has(label.id)
-      && (label.hidden === 'collision' || label.hidden === 'density'));
+      && label.hidden === 'collision' && !ends.has(label.owner.categoryId));
     if (lost.length) {
       const centred = layoutLinePass(data, { ...options, [POINT_LABEL_CENTERED_ROOM]: true } as LineOptions);
       const printed = new Set(centred.labels.filter(visible).map(label => label.id));
