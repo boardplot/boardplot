@@ -141,7 +141,7 @@ The response includes a starter spec and the type's data and option fields. `sha
 
 - To resolve one field, pass `path`, such as `options.valueAxis.break` or `data.items[].value`. The response gives that field and its children in full, or explains a refusal under `refused`.
 - A description ending in … is shortened. Query that path when you need the remaining text.
-- To read all effective option fields and every fixture ID, pass `detail: "full"`. The CLI equivalent is `boardplot describe waterfall --full`.
+- When you need the whole contract, pass `detail: "full"` for an exhaustive reference with all effective option fields and every fixture ID. Use compact detail and `path` for routine chart requests. The CLI equivalent is `boardplot describe waterfall --full`.
 - To obtain a JSON Schema, pass `schema: "data"` or `schema: "options"`. Use `schema` or `path` in one call, not both.
 - When the response includes `design`, use `path: "design"` if the design decision needs the complete guidance.
 - To define a theme, pass `type: "theme"`. Theme discovery accepts `detail`, but not `path` or `schema`.
@@ -193,7 +193,7 @@ A PNG above 100 million pixels (`width × height × scale²`) is refused with `p
 
 ### Size warnings and refusals
 
-A render refusal keeps its size estimate in `expected.minimum` and `fix`. Library `canDraw()` returns the estimate as `minimum`. CLI and MCP measurement return the refusal size as `required`.
+A size refusal includes `expected.minimum` and `fix` when Boardplot found a size that fits. Library `canDraw()` returns the estimate as `minimum`. CLI and MCP measurement can return `ok: true` with a non-null `refused` result. Check `refused.required` for verified dimensions when present, or follow `refused.suggest`.
 
 A drawn chart can report `plot-under-floor`, `aspect-cap`, `height-off-ladder` or `plot-under-min` without a `fix`. Render has not drawn the height that a repair would name. Follow `suggest`: measure a verified size, omit the height, or widen the chart for an aspect warning.
 
@@ -822,8 +822,8 @@ EOF
 }
 ```
 
-- `path` is a JSON Pointer. Chart findings point into the submitted spec. Tool-argument findings point into the arguments, for example `/rowsFile` or `/width`.
-- `fix` is a JSON Patch against the same input as `path`: the spec for chart findings, or the tool arguments for argument findings. Apply it to that input as sent, or follow `suggest`. It is absent when the engine has no single repair. A size warning on a chart that draws never carries one, and `measure` names a drawn size instead.
+- `path` is a JSON Pointer into the submitted spec or tool arguments. An inline-row finding can point to `/rows/0/revenue`. A file-row finding points to `/rowsFile`, with the source row and column in `displayPath`, for example `rowsFile row 1.revenue`. An argument error can point to `/width` or `/columns/value`.
+- `fix` contains proposed JSON Patch operations. Apply spec paths to the submitted spec and argument paths to the tool arguments. For a file-row finding, edit the source cell named by `displayPath` instead of replacing the `rowsFile` path. Follow `suggest` when no single repair is available. A size warning on a chart that draws has no `fix`. Use `measure` to find a size that draws.
 - `docs` names the reference section that describes the field.
 - Spec errors come sorted by path, at most ten, then one `more-errors` entry with the count. Tool-argument validation can return only its first error.
 

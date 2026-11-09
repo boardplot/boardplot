@@ -317,19 +317,27 @@ function fieldLines(fields: readonly SchemaFieldReference[], withRequired = fals
   return lines;
 }
 
-/** Full rows: every declared fact and the whole description, one row per path. */
+/** Full rows retain every fact, sharing identical contracts across union branches. */
 export function fieldRows(fields: readonly SchemaFieldReference[], withRequired = false): FieldRow[] {
-  return mergeAlternatives(fields).map((field) => ({
-    path: field.path,
-    ...(field.branch ? { branch: field.branch } : {}),
-    type: field.type,
-    ...(withRequired && field.required ? { required: true as const } : {}),
-    ...(field.values ? { values: field.values } : {}),
-    ...(field.values && field.valuesExhaustive === false ? { valuesOpen: true as const } : {}),
-    ...(Object.hasOwn(field, 'default') ? { default: field.default } : {}),
-    ...(field.defaultDependsOn ? { defaultDependsOn: field.defaultDependsOn } : {}),
-    description: field.description,
-  }));
+  const rows = new Map<string, FieldRow>();
+  for (const field of mergeAlternatives(fields)) {
+    const row: FieldRow = {
+      path: field.path,
+      type: field.type,
+      ...(withRequired && field.required ? { required: true as const } : {}),
+      ...(field.values ? { values: field.values } : {}),
+      ...(field.values && field.valuesExhaustive === false ? { valuesOpen: true as const } : {}),
+      ...(Object.hasOwn(field, 'default') ? { default: field.default } : {}),
+      ...(field.defaultDependsOn ? { defaultDependsOn: field.defaultDependsOn } : {}),
+      description: field.description,
+    };
+    const key = JSON.stringify(row);
+    const existing = rows.get(key);
+    if (!existing) rows.set(key, { ...row, ...(field.branch ? { branch: field.branch } : {}) });
+    else if (!field.branch) delete existing.branch;
+    else if (existing.branch) existing.branch += ` | ${field.branch}`;
+  }
+  return [...rows.values()];
 }
 
 const COMPACT_FIXTURES = 5;
@@ -413,7 +421,7 @@ export function describeType(type: string, detail: 'compact' | 'full' = 'compact
     ...(usesCell ? { cell: CELL_CONTRACT } : {}),
     ...(usesAnchor ? { anchor: ANCHOR_FORM } : {}),
     sharedOptions: full ? 'Shared options are included in options.'
-      : `${shared.length ? `Additional shared options: ${shared.join(', ')}. ` : ''}For complete field details, call boardplot_describe with {"type":"${definition.type}","path":"options.title"}. Rows ending in … are shortened.`,
+      : `${shared.length ? `Additional shared options: ${shared.join(', ')}. ` : ''}Use path for one field, for example {"type":"${definition.type}","path":"options.title"}. Rows ending in … are shortened.`,
     ...(notAccepted.length ? { notAccepted } : {}),
     ...(ignored.length ? { ignored } : {}),
     sizing: {

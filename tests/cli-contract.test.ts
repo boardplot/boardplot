@@ -468,12 +468,29 @@ describe('the verbs', () => {
     expect(compact.sharedOptions).toMatch(/\btitle\b/);
     // Table cells follow their column kinds, not the numeric value-cell contract used by bar series.
     expect(JSON.parse(runCli(['describe', 'table']).log[0]!).cell).toBeUndefined();
+    const starter = JSON.parse(runCli(['describe', 'dimswitch']).log[0]!).example;
+    expect(render({ spec: starter }).body).toMatchObject({ ok: true });
     const full = JSON.parse(runCli(['describe', 'bar', '--full']).log[0]!);
     const lookup = JSON.parse(runCli(['describe', 'bar', '--path', 'options.title']).log[0]!);
     expect(full.options).toEqual(expect.arrayContaining(lookup.fields));
     const spec = { ...compact.example, options: { ...compact.example.options, title: 'Regional revenue' } };
     const result = render({ spec });
     expect(result.body).toMatchObject({ ok: true, reading: { title: 'Regional revenue' } });
+  });
+
+  // Shared column fields must stay readable without losing the requirements of each column kind.
+  it('coalesces identical full contracts and retains the branches where each applies', () => {
+    const full = JSON.parse(runCli(['describe', 'table', '--full']).log[0]!);
+    const ids = full.data.filter((field: { path: string }) => field.path === 'columns[].id');
+    const kinds = full.data.filter((field: { path: string }) => field.path === 'columns[].kind');
+    expect(ids).toHaveLength(1);
+    expect(ids[0]).toMatchObject({ type: 'string', required: true });
+    expect(kinds.length).toBeGreaterThan(1);
+    for (const kind of kinds) {
+      expect(kind.required).toBe(true);
+      expect(kind.values).toHaveLength(1);
+      expect(ids[0].branch.split(' | ')).toContain(kind.branch);
+    }
   });
 
   it('refuses a mistyped verb with a typed envelope that names the verbs', () => {

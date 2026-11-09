@@ -205,7 +205,7 @@ Every Monday, read exports/orders.csv and write the weekly business review with 
 Write a script that renders the charts in reports/specs/ from the latest exports with the Boardplot CLI, so our scheduled job can run it without an agent.
 ```
 
-**What the agent does:** for charts with a supported row mapping, save one spec template per chart. Keep required metadata such as map packs, table columns and series labels. In each later run, call `boardplot_render` with the template, the new export as `rowsFile` and the source column names in `columns`. A refused call returns `ok: false` and errors with a `path`, `suggest` and, when available, a `fix`. Apply a spec repair to the spec and a tool-argument repair to the tool arguments. See [Reading errors and warnings](manual.md#reading-errors-and-warnings).
+**What the agent does:** for charts with a supported row mapping, save one spec template per chart. Keep required metadata such as map packs, table columns and series labels. In each later run, call `boardplot_render` with the template, the new export as `rowsFile` and the source column names in `columns`. A refused render returns `ok: false` and errors with a `path` and, when available, a `suggest` or `fix`. Apply spec repairs to the spec and argument repairs to the tool arguments. A file-row error points to `/rowsFile` and identifies its source cell in `displayPath`. Edit that cell in the data file. See [Reading errors and warnings](manual.md#reading-errors-and-warnings).
 
 A scheduled job needs no agent. It runs the CLI on the same templates:
 
@@ -227,7 +227,7 @@ It writes `out/<date>/weekly-orders.png`, named after the template's `name`, and
 **Limits:**
 
 - The MCP server reads `rowsFile` only from its allowed folders: the client's roots, its working directory, the system temp folder and the folders in `BOARDPLOT_ROWS_ROOTS`. Other paths are refused with `rows-outside-roots`.
-- PNG needs `@resvg/resvg-js`, an optional dependency, or Chrome. On a Linux server, install one of the fonts the manual lists, or the render returns only the SVG with the warning `raster-fonts-missing`. See [PNG output](manual.md#png-output).
+- PNG needs `@resvg/resvg-js`, an optional dependency, or Chrome. On Linux, resvg also needs one of the fonts listed in the manual. Without those fonts, Boardplot tries Chrome. If Chrome is unavailable too, the render returns SVG with `raster-fonts-missing`. See [PNG output](manual.md#png-output).
 - A CSV with grouping marks in numbers, such as `1.234,5`, is refused. Export plain numbers.
 
 **Worked example:** [docs/examples/recurring-report](https://github.com/boardplot/boardplot/tree/main/docs/examples/recurring-report) is a weekly business review. `render.sh`, the CLI script for a scheduled job, draws three templates from three warehouse exports, including a table that computes the week-on-week, year-on-year and plan changes, and writes one page to send.

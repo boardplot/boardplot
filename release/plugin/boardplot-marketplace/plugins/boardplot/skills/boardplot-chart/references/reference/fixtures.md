@@ -8,7 +8,7 @@ Contents: [column](#column), [bar](#bar), [line](#line), [dimswitch](#dimswitch)
 
 Each fixture contains a runnable `spec`, its chart `type`, chart variant `chart`, `id`, `kind` and `useCase`. Start with `boardplot_fixtures` scoped to a type. Retrieve one example with its `type` and `id`, or continue a listing with `nextCursor` as `cursor` and the same filters. Each page contains at most 25 fixtures. `kind` filters listings and defaults to `example`; an explicit `id` selects the fixture regardless of `kind`.
 
-The CLI provides the same examples through `boardplot fixtures --type <type>`, with `--id`, `--kind` and `--cursor` flags. The package export `boardplot/fixtures` provides `getFixtures(type)` and `allFixtures()`. Example fixtures show ordinary use cases. Torture fixtures exercise edge cases.
+The CLI prints every match in one response through `boardplot fixtures --type <type>`, with optional `--id` and `--kind` flags. Pagination applies only to the MCP tool. The package export `boardplot/fixtures` provides `getFixtures(type)` and `allFixtures()`. Example fixtures show ordinary use cases. Torture fixtures exercise edge cases.
 
 ## column
 

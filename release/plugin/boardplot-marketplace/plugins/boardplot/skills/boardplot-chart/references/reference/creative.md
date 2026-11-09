@@ -60,15 +60,11 @@ One form; its chart ID is `creative`.
 |---|---|---|---|
 | id | string | yes | Stable identifier for the creative. |
 | media | object | yes | Embedded raster media or an explicit placeholder. |
-| media.aspect (media branch 1) | string | yes | Authored media width-to-height ratio. One of `'1:1'`, `'4:5'`, `'9:16'`. |
-| media.alt (media branch 1) | string | yes | Accessible description of the creative media. |
+| media.aspect (media branch 1 \| media branch 2 \| media branch 3) | string | yes | Authored media width-to-height ratio. One of `'1:1'`, `'4:5'`, `'9:16'`. |
+| media.alt (media branch 1 \| media branch 2 \| media branch 3) | string | yes | Accessible description of the creative media. |
 | media.kind (media branch 1) | string | yes | Media has not been supplied. One of `'placeholder'`. |
-| media.aspect (media branch 2) | string | yes | Authored media width-to-height ratio. One of `'1:1'`, `'4:5'`, `'9:16'`. |
-| media.alt (media branch 2) | string | yes | Accessible description of the creative media. |
 | media.kind (media branch 2) | string | yes | Authored image media. One of `'image'`. |
 | media.src (media branch 2) | string | yes | Authored image source reference; this contract does not fetch media. |
-| media.aspect (media branch 3) | string | yes | Authored media width-to-height ratio. One of `'1:1'`, `'4:5'`, `'9:16'`. |
-| media.alt (media branch 3) | string | yes | Accessible description of the creative media. |
 | media.kind (media branch 3) | string | yes | Authored video represented by its poster. One of `'video'`. |
 | media.poster (media branch 3) | string | yes | Authored poster-image reference; this contract does not fetch or play video. |
 | facts | object | yes | Creative identity, currency and reported runtime. |

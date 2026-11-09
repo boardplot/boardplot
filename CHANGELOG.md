@@ -2,6 +2,14 @@
 
 Boardplot is in 0.x: options and output can change between minor versions. Each release lists its changes here.
 
+## Unreleased
+
+### Changed
+
+- Compact chart discovery now includes accepted shared option names and definitions for value cells and annotation anchors when needed. Ignored settings remain distinct from refused settings. Full discovery includes all effective option fields and independently readable descriptions.
+- MCP output schemas document reading fields, optional font information and source-row locations. Tool names and arguments remain compatible.
+- MCP guidance uses direct rendering for ready specs and compact discovery or field lookups for routine questions. The chart skill links to a complete local reference set in marketplace and offline ZIP installations.
+
 ## 0.57.0
 
 ### Added

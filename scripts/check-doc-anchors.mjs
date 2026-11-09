@@ -64,7 +64,7 @@ const sourceSkill = `${pluginRoot}/${skillPath}`;
 const sourceReferences = `${sourceSkill}/references`;
 const referenceFiles = readdirSync(join(ROOT, sourceReferences), { recursive: true })
   .filter((file) => file.endsWith('.md')).map((file) => `${sourceReferences}/${file.replaceAll('\\', '/')}`);
-checkFiles([`${sourceSkill}/SKILL.md`, `${sourceReferences}/manual.md`, ...referenceFiles],
+checkFiles([`${pluginRoot}/README.md`, `${pluginRoot}/SETUP.md`, `${sourceSkill}/SKILL.md`, `${sourceReferences}/manual.md`, ...referenceFiles],
   (path) => path.startsWith(`${pluginRoot}/`) ? readSource(path) : null, 'the marketplace plugin');
 
 const manual = process.argv.includes('--manual');
@@ -85,8 +85,11 @@ if (zip !== -1) {
     if (!contents.has(path)) contents.set(path, execFileSync('unzip', ['-p', archive, path], { encoding: 'utf8' }));
     return contents.get(path);
   };
-  const references = [...entries].filter((file) => file.startsWith(`${skillPath}/references/`) && file.endsWith('.md'));
-  checkFiles([`${skillPath}/SKILL.md`, `${skillPath}/references/manual.md`, ...references], read, 'the zip');
+  // Cowork contains the plugin at the ZIP root; Claude Code wraps it in a marketplace.
+  const root = entries.has(`${skillPath}/SKILL.md`) ? '' : 'boardplot-marketplace/plugins/boardplot/';
+  const skill = `${root}${skillPath}`;
+  const references = [...entries].filter((file) => file.startsWith(`${skill}/references/`) && file.endsWith('.md'));
+  checkFiles([`${root}README.md`, `${root}SETUP.md`, `${skill}/SKILL.md`, `${skill}/references/manual.md`, ...references], read, 'the zip');
 }
 
 for (const failure of failures) console.error(failure);

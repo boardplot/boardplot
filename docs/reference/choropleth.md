@@ -57,15 +57,13 @@ One form; its chart ID is `choropleth`.
 | overlays[].glyph.shares[].tone (overlays[].glyph branch 1) | string |  | Semantic glyph tone resolved through the theme. One of `'good'`, `'bad'`, `'warn'`, `'neutral'`, `'info'`. |
 | overlays[].glyph.kind (overlays[].glyph branch 2) | string | yes | Draw a fractionally filled Harvey ball. One of `'harvey'`. |
 | overlays[].glyph.value (overlays[].glyph branch 2) | number | yes | Filled fraction from 0, empty, to 1, full. |
-| overlays[].glyph.tone (overlays[].glyph branch 2) | string |  | Semantic glyph tone resolved through the theme. One of `'good'`, `'bad'`, `'warn'`, `'neutral'`, `'info'`. |
+| overlays[].glyph.tone (overlays[].glyph branch 2 \| overlays[].glyph branch 4 \| overlays[].glyph branch 5) | string |  | Semantic glyph tone resolved through the theme. One of `'good'`, `'bad'`, `'warn'`, `'neutral'`, `'info'`. |
 | overlays[].glyph.kind (overlays[].glyph branch 3) | string | yes | Draw a semantic status glyph. One of `'status'`. |
 | overlays[].glyph.status (overlays[].glyph branch 3) | string | yes | Status judgment shown by the glyph. One of `'good'`, `'bad'`, `'warn'`, `'neutral'`. |
 | overlays[].glyph.kind (overlays[].glyph branch 4) | string | yes | Draw a named built-in icon. One of `'icon'`. |
 | overlays[].glyph.name (overlays[].glyph branch 4) | string | yes | Name from the built-in icon catalogue: alert calendar check conversation document flag gear lightbulb lock people star target workflow. |
-| overlays[].glyph.tone (overlays[].glyph branch 4) | string |  | Semantic glyph tone resolved through the theme. One of `'good'`, `'bad'`, `'warn'`, `'neutral'`, `'info'`. |
 | overlays[].glyph.kind (overlays[].glyph branch 5) | string | yes | Draw a geometric location marker. One of `'marker'`. |
 | overlays[].glyph.shape (overlays[].glyph branch 5) | string |  | Marker outline; defaults to circle. One of `'circle'`, `'square'`, `'diamond'`. |
-| overlays[].glyph.tone (overlays[].glyph branch 5) | string |  | Semantic glyph tone resolved through the theme. One of `'good'`, `'bad'`, `'warn'`, `'neutral'`, `'info'`. |
 | overlays[].label | string | yes | Readable name for this overlay or pie share. |
 | overlays[].size | string |  | Glyph size tier; defaults to md. One of `'sm'`, `'md'`, `'lg'`. |
 | overlays[].a11y | string |  | Authored accessible description for the overlay. |

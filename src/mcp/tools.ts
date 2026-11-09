@@ -63,11 +63,12 @@ const finding = {
   properties: {
     code: { type: 'string' },
     severity: { type: 'string', enum: ['advice', 'info', 'warn', 'error'], description: 'Warning severity, when supplied.' },
-    path: { type: 'string', description: 'JSON pointer into the submitted spec for chart findings, or into the tool arguments for argument errors.' },
+    path: { type: 'string', description: 'JSON pointer into the submitted spec or tool arguments. Row findings point into /rows or to /rowsFile. displayPath identifies the source row and column.' },
+    displayPath: { type: 'string', description: 'Readable source location, when supplied. File-row findings name the row and column here while path remains /rowsFile.' },
     message: { type: 'string' },
     expected: { type: 'object' },
     received: {},
-    fix: { type: 'array', description: 'Proposed JSON Patch operations. Chart patches apply to the submitted spec. Argument patches apply to the tool arguments.' },
+    fix: { type: 'array', description: 'Proposed JSON Patch operations for the input named by path. Spec paths apply to the spec and argument paths to the tool arguments. For a file-row finding, edit the source cell named by displayPath instead of replacing rowsFile.' },
     suggest: { type: 'string' },
     docs: { type: 'string' },
   },
@@ -105,7 +106,7 @@ const absolutePath = (description: string) =>
 const rowArguments = {
   rows: z.array(z.looseObject({})).optional()
     .describe('Inline records for one chart, without a document wrapper. Use rows or rowsFile, never both. One row per category/series pair, waterfall item, scatter point, Sankey link, map region, table row, or histogram/box observation. Keep data.pack for maps and data.columns for tables. Requires columns except for tables.'),
-  rowsFile: absolutePath('Read records directly from a local file of at most 10 MB: .json holds an array of objects, .csv/.tsv/.txt has a header row. Use rowsFile or rows, never both, with one chart and no document wrapper. Requires columns except for tables. Keep data.pack for maps and data.columns for tables. Allowed folders: client roots, server working directory, temp folder, or BOARDPLOT_ROWS_ROOTS. Semicolon-separated files and decimal-comma values are detected.').optional(),
+  rowsFile: absolutePath('Read records directly from a local file of at most 10 MB: .json holds an array of objects, .csv/.tsv/.txt has a header row. Use rowsFile or rows, never both, with one chart and no document wrapper. Requires columns except for tables. Keep data.pack for maps and data.columns for tables. Allowed folders: client roots, server working directory, temp folder, or BOARDPLOT_ROWS_ROOTS. Semicolon-separated files are detected and accept decimal-comma values.').optional(),
   columns: z.strictObject({
     category: z.string().optional().describe('Source column containing category, map region or box group IDs.'),
     series: z.string().optional().describe('Source column containing series IDs.'),
@@ -154,13 +155,13 @@ const measured = {
   size: { ...size, description: 'The layout size in px. The height is the height the chart draws: a pinned frame taller than the chart reports only the part the chart uses.' },
   ...presented,
   minWidth: { type: 'number' }, minHeight: { type: 'number' },
-  minHeightAtWidth: { type: 'number', description: 'The height needed at exactly the width measured at. minHeight also holds at minWidth and can be taller.' },
+  minHeightAtWidth: { type: 'number', description: 'The height needed at the measured width, using minWidth if the requested width is smaller. minHeight also holds at minWidth and can be taller.' },
   naturalWidth: { type: 'number' }, naturalHeight: { type: 'number' },
   comfortableWidth: { type: 'number' }, comfortableHeight: { type: 'number' },
   compactFloor: { type: 'object', description: 'The smallest size the type still draws at, in compact mode, when it has one.' },
   fit: { type: 'string', enum: ['fill', 'content'] }, mode: { type: 'string' },
   titleLines: { type: ['number', 'null'] },
-  refused: { type: ['object', 'null'], description: 'null, or { code, message, required: { width, height } }.' },
+  refused: { type: ['object', 'null'], description: 'null when the requested size fits, otherwise { code, message, required?, suggest? }. required is a verified { width, height } when available. A size refusal can accompany ok true.' },
 };
 
 /** What `describe` returns: the chart contract, or the theme contract for type theme. */
@@ -175,17 +176,17 @@ const described = {
   densities: { type: 'object', description: 'detail full: per density value, the options it refuses when they ask for content, and the no-op forms it accepts.' },
   example: { type: ['object', 'null'] },
   data: { type: ['object', 'array'] }, options: { type: ['object', 'array'] },
-  sharedOptions: { type: 'string' },
-  cell: { type: 'string', description: 'Value-cell definition when the data contract uses cell.' },
+  sharedOptions: { type: 'string', description: 'Compact detail: additional accepted shared option names and an exact path lookup example.' },
+  cell: { type: 'string', description: 'Value-cell definition when the contract uses cell.' },
   anchor: { type: 'string', description: 'Anchor definition for the annotations this type supports.' },
   notAccepted: { type: 'array', items: { type: 'string' }, description: 'Options this type refuses after ignored settings have been removed.' },
-  ignored: { type: 'array', items: { type: 'string' }, description: 'Full detail only. Options or option values this type ignores with an option-ignored warning and a remove patch.' },
+  ignored: { type: 'array', items: { type: 'string' }, description: 'Options or option values this type ignores with an option-ignored warning and a remove patch. Present in compact and full detail.' },
   sizing: { type: 'object' },
   annotations: { type: ['object', 'array'] }, fixtures: { type: ['object', 'array'] },
   moreFixtures: { type: 'number', description: 'Fixtures left out of the compact list.' },
   presets: { type: 'array', items: { type: 'string' } }, tokens: { type: ['object', 'array'] },
   errorCodes: { type: 'object' },
-  part: { type: 'string', enum: ['data', 'options', 'spec', 'design'], description: "path or schema: the half of the spec the answer describes; spec for path name, the bare chart's own name; design for path design." },
+  part: { type: 'string', enum: ['data', 'options', 'spec', 'design'], description: "The section returned by path or schema. spec identifies the bare chart's name field. design identifies the design guidance." },
   path: { type: 'string', description: 'path: the field as the contract spells it.' },
   fields: { type: 'array', items: { type: 'object' }, description: 'path: the field and every field below it, in full rows.' },
   refused: { type: 'string', description: 'path: why this type refuses the field.' },
@@ -203,13 +204,13 @@ export function toolInputs() {
     boardplot_list: z.strictObject({}),
     boardplot_describe: z.strictObject({
       type: z.enum([...chartTypes(), 'theme']).describe("Chart type or alias, such as bar or bridge. Use theme for presets and theme tokens."),
-      detail: z.enum(['compact', 'full']).default('compact').describe('compact returns a starter contract and shared option names. full returns every effective option field, complete descriptions and all fixture IDs.'),
+      detail: z.enum(['compact', 'full']).default('compact').describe('Use compact for a starter contract and shared option names, then path for one field. full is an exhaustive reference with every effective option field, complete descriptions and all fixture IDs. Full responses can exceed 100 KB, so request full only when the whole contract is needed.'),
       path: z.string().optional().describe("One field and its children, such as options.title or data.series[].values. Prefix data. or options. to disambiguate. Use design for complete design guidance when the response includes design. Not with schema or type theme."),
       schema: z.enum(['data', 'options']).optional().describe('Return the JSON Schema for data or options instead of descriptive rows. Not with path or type theme.'),
     }),
     boardplot_render: z.strictObject({
       spec,
-      format: z.enum(['svg', 'png']).default('svg').describe('Requested image format. PNG adds image content on success. Rasterization failure returns SVG with warnings, so check the actual output before placing it.'),
+      format: z.enum(['svg', 'png']).default('svg').describe('Requested image format. PNG adds image content on success. With no usable rasterizer, PNG falls back to SVG with warnings. Other PNG export errors can fail the call. Explicit svg includes markup when return and outDir are omitted.'),
       target,
       width: z.number().positive().optional().describe('Canvas width in px; overrides options.size. For pt or mm, put { width, height, unit } in spec options.size instead.'),
       height: z.number().positive().optional().describe('Canvas height in px; overrides options.size.'),
@@ -223,7 +224,7 @@ export function toolInputs() {
     boardplot_measure: z.strictObject({
       spec,
       target,
-      width: z.number().positive().optional().describe('Width in px to measure at; pt or mm go in spec options.size.'),
+      width: z.number().positive().optional().describe('Width in px to measure at. Height estimates use at least minWidth. Put pt or mm in spec options.size.'),
       ...rowArguments,
     }),
     boardplot_fixtures: z.strictObject({
@@ -284,7 +285,7 @@ export function toolDefinitions(): ToolDefinition[] {
     {
       name: 'boardplot_describe',
       title: 'Describe one chart type',
-      description: 'Learn the data and options for a known chart type, or inspect a theme. Returns a minimal working spec, field contracts, sizing and fixture IDs without a prior catalogue call. Start with compact detail and use path for a needed field or a row ending in …, which marks shortened text. Full detail returns the complete option contract. A field lookup reports whether the type accepts or refuses that field.',
+      description: 'Learn a known chart type without a catalogue call. Compact detail returns a starter spec, data and option fields, shared option names, sizing and fixture IDs. Use path for one field or a description ending in …, which marks shortened text. A field lookup reports acceptance or refusal. Use full only for the exhaustive contract. Type theme returns theme presets and tokens.',
       inputSchema: jsonInput(inputs.boardplot_describe),
       outputSchema: output(described),
       annotations: READ_ONLY,
@@ -305,7 +306,7 @@ export function toolDefinitions(): ToolDefinition[] {
     {
       name: 'boardplot_measure',
       title: 'Measure a chart without drawing',
-      description: 'Find the size a chart needs for a fixed-width container or after a size refusal. Returns minimum, natural and comfortable dimensions in pixels without drawing. At the requested width, use minHeightAtWidth as the height floor and naturalHeight as the target height. A refused result explains the size needed to fit. Measure only when sizing information is needed.',
+      description: 'Find chart dimensions for a constrained container or after a size refusal. Returns minimum, natural and comfortable dimensions in pixels without an image. Keep the container at least minWidth wide, use minHeightAtWidth as the height floor and naturalHeight as the target height. Check refused even when ok is true. A refusal includes required dimensions when a fitting size was found.',
       inputSchema: jsonInput(inputs.boardplot_measure),
       outputSchema: output({
         ...measured,
