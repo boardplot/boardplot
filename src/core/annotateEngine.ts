@@ -14,6 +14,7 @@
 
 import { runAnnotatePass } from './annotate';
 import { drawCagrArm, drawHorizontalLevelDiff } from './annotateArms';
+import { corridorEdgeRects } from './annotateTargets';
 import { publishDeferred } from './deferred';
 import { emitEventLane, settleEventLane } from './eventLane';
 import { defaultAnnotationId } from './types/annotations';
@@ -31,7 +32,7 @@ function valueAnnotationLabels(labels: readonly PlacedLabel[], annotations: unkn
 }
 
 export function linkAnnotateEngine(): void {
-  publishDeferred('annotate', { runAnnotatePass, settleEventLane, emitEventLane, drawCagrArm, drawHorizontalLevelDiff, valueAnnotationLabels });
+  publishDeferred('annotate', { runAnnotatePass, settleEventLane, emitEventLane, drawCagrArm, drawHorizontalLevelDiff, valueAnnotationLabels, corridorEdgeRects });
 }
 
 linkAnnotateEngine();

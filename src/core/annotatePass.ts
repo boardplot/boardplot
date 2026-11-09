@@ -106,6 +106,11 @@ export function settleEventLane<F extends { frame: FrameResult }, A>(input: Lane
   return requireDeferred('annotate').settleEventLane(input);
 }
 
+/** The stroked edges of a corridor band, from the engine: a chart with a band waits for it like any annotated chart. */
+export function corridorEdgeRects(...args: Parameters<AnnotateEngine['corridorEdgeRects']>): ReturnType<AnnotateEngine['corridorEdgeRects']> {
+  return requireDeferred('annotate').corridorEdgeRects(...args);
+}
+
 /** Draws a settled lane; a lane exists only once the engine is here. */
 export function emitEventLane(...args: Parameters<AnnotateEngine['emitEventLane']>): EmittedLane {
   return requireDeferred('annotate').emitEventLane(...args);
