@@ -223,6 +223,8 @@ export interface LineReserves {
   keyValues: ReadonlyMap<Id, string>;
   /** How far inside the plot the first and last category sit: a centred end value and the latest-point ring keep their air to the edge. */
   categoryEndRoom: { left: number; right: number };
+  /** The centred end room where `categoryEndRoom` holds the wider open-side room of shape point values; the row takes it when the side room would cost a tick (plot.ts categoryRow). */
+  centredEndRoom?: { left: number; right: number };
   startLabels: ReturnType<typeof import('./bump').buildBumpStartLabels>['startLabels'];
   startReserve: number;
   /** The annotations the pass will draw: bump drops value arithmetic, stacked100-area adds its 100% indicator. */
@@ -257,6 +259,8 @@ export interface LineArea {
   ratioTier: PrepareRatioTierResult['tier'];
   categoryOverhang: number;
   catPlan: CategoryRowPlan;
+  /** The first and last category leave the open-side room of shape point values, not the centred room. */
+  sideEndRoom: boolean;
   /** categoryAxis.dateTicks: the first category of every interval, each drawn as a tick under the plot. */
   intervalTicks?: boolean[];
   showCategoryTickRow: boolean;

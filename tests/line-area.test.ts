@@ -26,6 +26,16 @@ it('keeps the flagged 942 trough visible at 900 px', () => {
   }
 });
 
+// The open-side end room narrowed the category step, and a row of twelve values that the centred room prints fell to its two end values.
+it('prints every value of a twelve-month row that the centred end room prints', () => {
+  const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'line',
+    data: { categories: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+      series: [{ id: 'orders', values: [70000, 91737, 74587, 37757, 28491, 56013, 80061, 69843, 47060, 50949, 78043, 86203] }] },
+    options: { title: 'Orders by month', valueLabels: 'all', size: { width: 720 } },
+  } as never)));
+  expect(geometry.labels.filter(label => label.kind === 'point' && label.hidden === undefined)).toHaveLength(12);
+});
+
 // Band names must not leave the plot when a wrap fits, or crowd marks by abandoning clear plot headroom.
 it('keeps band names within the plot while preserving headroom seats and authored pins', () => {
   const fixture = getFixtures('line').find(item => item.id === 'shade-band-inside-wrap')!;

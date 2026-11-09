@@ -1270,19 +1270,16 @@ function layoutLinePass(
       Object.assign(geometry, { [BAND_PAD]: Math.max((geometry as { [BAND_PAD]?: number })[BAND_PAD] ?? 0, need) });
     }
   }
-  if (pointLabelsFollowShape(env, domain) && !(options as { [POINT_LABEL_CENTERED_ROOM]?: boolean })[POINT_LABEL_CENTERED_ROOM]) {
+  // The open-side end room must not cost a label the centred room prints. A pass
+  // that hides no label cannot; one that hides any is laid out once more on the
+  // centred room and keeps the side room only if it prints every centred label.
+  if (area.sideEndRoom) {
     const noted = (options as { [NOTED_LABELS]?: ReadonlySet<Id> })[NOTED_LABELS];
     const visible = (label: PlacedLabel) => label.hidden === undefined && !noted?.has(label.id);
-    // Only an inner value lost by collision is retried; density thinning stays with the solver.
-    // The shape room widens the reserve for the end values themselves, so an end value that
-    // collides with its own open-side room is not what the narrower plot cost (input/in-line).
-    const ends = new Set([domain.cats[0]?.id, domain.cats.at(-1)?.id]);
-    const lost = geometry.labels.filter(label => label.kind === 'point' && !noted?.has(label.id)
-      && label.hidden === 'collision' && !ends.has(label.owner.categoryId));
-    if (lost.length) {
+    if (geometry.labels.some(label => !visible(label))) {
       const centred = layoutLinePass(data, { ...options, [POINT_LABEL_CENTERED_ROOM]: true } as LineOptions);
-      const printed = new Set(centred.labels.filter(visible).map(label => label.id));
-      if (lost.some(label => printed.has(label.id)) && geometry.labels.filter(visible).every(label => printed.has(label.id))) return centred;
+      const printed = new Map(geometry.labels.filter(visible).map(label => [label.id, label.text] as const));
+      if (!centred.labels.filter(visible).every(label => printed.get(label.id) === label.text)) return centred;
     }
   }
   return geometry;
