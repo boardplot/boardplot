@@ -197,6 +197,20 @@ it('floats a dual-axis line over the columns on its own scale when no zero-based
   expect(geometry.labels.some((label) => label.id === 'point:margin:m3' && !label.hidden)).toBe(true);
 });
 
+// With valueLabels 'none' a floated line dropped its right ticks and printed no value, so it had no readable scale.
+it('keeps the right ticks of a dual-axis line whose values do not print', () => {
+  const categories = Array.from({ length: 24 }, (_, i) => ({ id: `m${i}` }));
+  const geometry = requireGeometry(layoutCombo({
+    categories,
+    series: [
+      { id: 'revenue', label: 'Revenue', kind: 'column', values: categories.map((_, i) => 12 + 4 * Math.abs(Math.sin(i / 4))) },
+      { id: 'margin', label: 'Margin', kind: 'line', axis: 'secondary', unit: '%', values: categories.map((_, i) => (i % 7 === 3 ? 11 : 22 + 11 * Math.sin(i))) },
+    ],
+  }, { size: { width: 1184, height: 528 }, title: 'Revenue and margin', secondaryAxis: { acknowledge: true }, valueLabels: 'none' }));
+  expect(geometry.warnings.some((w) => w.code === 'dual-axis-line-floated')).toBe(false);
+  expect(geometry.scene.some((node) => node.id.startsWith('axis:y2:tick:'))).toBe(true);
+});
+
 // A primary line of 1000 over columns of 10 fell outside the plot, because the float sized the left scale from the columns alone.
 it('keeps the whole primary scale when a primary line stands above the columns', () => {
   const categories = Array.from({ length: 6 }, (_, i) => ({ id: `m${i}` }));
