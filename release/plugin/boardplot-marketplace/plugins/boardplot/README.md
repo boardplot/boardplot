@@ -4,16 +4,12 @@ This plugin brings Boardplot to Claude Code and Codex. It has:
 
 - the Boardplot MCP tools, started from the manifest of each host. This is
   the main route;
-- one skill for charts, `boardplot-chart`, with the Boardplot manual;
+- one skill for charts, `boardplot-chart`, with local references loaded as needed;
 - the Boardplot CLI as a fallback. The plugin adds no `boardplot` command;
   the skill says how to call the CLI.
 
 The runtime draws consulting-grade SVG and PNG charts and reports, for each
 chart, the numbers it derived and the labels it placed.
-
-The plugin ships **no `bin/` folder**. Plugins hosted on claude.ai are
-rejected when they have one, because `bin/` entries reach PATH without
-showing on the admin approval screen.
 
 ## Install
 
@@ -47,8 +43,8 @@ into a Boardplot cache folder, together with the optional
 that cache folder, so the npm settings of the project you work in never
 apply; your own user-level npm settings do.
 
-For a machine without access to the npm registry, use the offline ZIP:
-`SETUP.md` has the steps, the checks, the update steps and troubleshooting.
+For a machine without access to the npm registry, use the offline ZIP.
+[Setup](SETUP.md) covers installation, updates and troubleshooting.
 
 ## Runtime contract
 

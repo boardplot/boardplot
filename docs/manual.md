@@ -1,5 +1,7 @@
 # Boardplot manual
 
+Contents: [What Boardplot is](#what-boardplot-is), [The spec](#the-spec), [Choosing a chart](#choosing-a-chart), [Bartable totals](#bartable-totals), [Getting a chart with MCP](#getting-a-chart-with-mcp), [Getting a chart with the CLI](#getting-a-chart-with-the-cli), [Getting a chart in React](#getting-a-chart-in-react), [Story steps](#story-steps), [Notes under the chart](#notes-under-the-chart), [Sizing](#sizing), [Reading errors and warnings](#reading-errors-and-warnings), [Position of bar value labels](#position-of-bar-value-labels), [Moving text and drawing on a chart](#moving-text-and-drawing-on-a-chart), [Log scales on a line](#log-scales-on-a-line), [Named reference bands on a line](#named-reference-bands-on-a-line), [Times and numbers on the x axis of a line](#times-and-numbers-on-the-x-axis-of-a-line), [Calendar ticks on dated categories](#calendar-ticks-on-dated-categories), [Themes](#themes), [Where the reference is](#where-the-reference-is).
+
 To have an AI agent build a slide deck, an analysis page, a React dashboard or a report with Boardplot charts, start with [Use cases](use-cases.md).
 
 ## What Boardplot is
@@ -41,7 +43,7 @@ Every chart is one JSON object, the spec.
 
 `options.valueAxis.tickStep` sets ticks at multiples of a positive step and extends the linear axis outward without cutting data, except that dot keeps its data ends when at least two multiples fit inside. The step must give 1 to 20 intervals, otherwise nice ticks are drawn with `tick-step-ignored`.
 
-A field the type does not list is an error. `boardplot_render`, `boardplot_measure`, the CLI and the React component `BoardplotChart` all take this spec.
+Use `boardplot_describe` with a field `path` to check whether a type accepts a setting. Compact responses omit shared option details. `boardplot_render`, `boardplot_measure`, the CLI and the React component `BoardplotChart` take the same spec.
 
 A KPI accepts `data.label: ""` to omit its label and the space for the label. The accessible name falls back to `KPI`.
 
@@ -72,43 +74,11 @@ The `bartable` Total adds the rows given; if you cut rows, send a residual row w
 
 ## Getting a chart with MCP
 
-The MCP server `boardplot` has six tools. Each answers with JSON; a rejected call carries `ok: false` and an `errors` list. Every answer carries `engineRev` and `version`, the build exactly as `boardplot --version` prints it, so a host can tell a stale server from the CLI beside it.
+Call `boardplot_render` directly when you have a valid spec. Use `boardplot_describe` to learn a known type, or `boardplot_list` to choose a type. Each tool returns JSON with `ok`, `engineRev` and `version`. A rejected call returns `ok: false` and an `errors` list. `version` identifies the running build, as `boardplot --version` does for the CLI.
 
-| Tool | Call it to | What comes back |
-|---|---|---|
-| `boardplot_list` | see which chart types exist | each type, the most common first, with summary, use cases, chart IDs (`type.variant`), aliases and size floor; the shared options; the theme presets; chart forms Boardplot does not draw |
-| `boardplot_describe` | write a spec for one type | the data fields, the options with values and defaults, a minimal spec, the size floor, the annotation kinds and fixture ids |
-| `boardplot_render` | draw a spec | a reading of the drawing (derived numbers, labels placed and dropped), warnings, the SVG on request, a PNG with `format: "png"` |
-| `boardplot_measure` | fit a chart to a known width | the minimum, natural and comfortable size, the number of title lines, a refusal with the pixels it needs |
-| `boardplot_fixtures` | start from a complete example | runnable specs with real-looking data, by `type` or `id` |
-| `boardplot_feedback` | report a Boardplot problem | a draft report and `issueUrl`, a prefilled GitHub issue the user opens and submits; it sends nothing |
+### Draw a chart
 
-A render refusal keeps its size estimate in `expected.minimum` and `fix`. Library `canDraw()` returns it as `minimum`. A render that draws reports `plot-under-floor`, `aspect-cap`, `height-off-ladder` and `plot-under-min` with no `fix`, because render has not drawn the height a patch would name. Their `suggest` says to call `measure` for a verified size or to leave the height out, and for the aspect warnings also to widen the chart. Measurement draws each size it names. For `plot-under-floor` and a refusal it names a size that draws without a size warning, and CLI and MCP measurement return the refusal size as `required`. For `aspect-cap`, `height-off-ladder` and `plot-under-min` it tries the heights of the standard ladder that the aspect cap allows, nearest first, and names the first that draws with no size warning. A table with a fixed height that draws wider than its frame reports `table-overflow` with no `fix` in a render, and measurement names the width and the height the wider frame needs. A data warning such as `dual-axis` does not reject a size. The height search is bounded. If no tested size draws within the bound, the warning carries no `fix`, and `suggest` asks for less content, a wider chart or a changed setting.
-
-A worked example, an EBIT bridge. Ask for the waterfall contract:
-
-```json
-{ "name": "boardplot_describe", "arguments": { "type": "waterfall" } }
-```
-
-The answer has a minimal spec and one line per field, the first clause of its description; a line that ends in … leaves text out, and `path` returns all of it. `"detail": "full"` (MCP), or `boardplot describe <type> --full` (CLI), returns the whole description of each field and every fixture id. `"path": "valueAxis.break"` returns that one field and the fields below it in full, or, when the type refuses the field, the reason under `refused`; a leading `data.` or `options.` picks the half, as in `data.items[].value`. `"schema": "data"` or `"options"` returns the JSON Schema of that half, for a generator that fills a schema. An excerpt of the plain answer:
-
-```json
-{
-  "ok": true,
-  "type": "waterfall",
-  "data": {
-    "items": "array, required. Ordered bridge items…",
-    "items[].id": "string, required. Unique bridge-item identity used by connectors and annotations.",
-    "items[].label": "string. Displayed bridge-item name…",
-    "items[].type": "\"delta\" | \"subtotal\" | \"total\". Delta contribution by default…",
-    "items[].value": "cell. Signed delta contribution, or an optional check value for a subtotal or total…"
-  },
-  "sizing": { "minWidth": 280, "minHeight": 270, "fit": "fill" }
-}
-```
-
-Then draw it:
+This call requests an EBIT bridge as PNG:
 
 ```json
 {
@@ -132,7 +102,9 @@ Then draw it:
 }
 ```
 
-The result holds the chart as an image content block and this JSON, shown here in part:
+The `fy25` item has no value, so Boardplot computes the FY25 total as 133. When a total has a supplied value, Boardplot checks that value against the sum. A mismatch produces `derived-mismatch` and draws the computed total.
+
+A successful PNG render returns an image content block and JSON such as this excerpt. Check the actual output before placing it: a PNG request can fall back to SVG. [PNG output](#png-output) explains the conditions.
 
 ```json
 {
@@ -146,6 +118,44 @@ The result holds the chart as an image content block and this JSON, shown here i
 }
 ```
 
+### Choose a tool
+
+| Tool | Use when | Result |
+|---|---|---|
+| `boardplot_render` | A spec is ready to draw | Validation, a reading of the chart, warnings, optional SVG markup or a requested PNG image |
+| `boardplot_describe` | You need the fields for a known chart type | Data and options, a starter spec, size floors, annotations and fixture IDs |
+| `boardplot_list` | You need to choose a chart type | Types, use cases, aliases, variants, shared options, themes and supported alternatives |
+| `boardplot_fixtures` | You need a complete example | Runnable specs, filtered by type or retrieved by type and ID |
+| `boardplot_measure` | The chart must fit a known container, or rendering reports a size problem | Minimum, natural and comfortable dimensions at the requested width |
+| `boardplot_feedback` | Boardplot fails, refuses valid input or draws something misleading | A draft report and prefilled `issueUrl` for the user to review and submit. Nothing is sent |
+
+### Read a chart contract
+
+For a known type, request its compact contract:
+
+```json
+{ "name": "boardplot_describe", "arguments": { "type": "waterfall" } }
+```
+
+The response includes a starter spec and the type's data and option fields. `sharedOptions` names additional accepted shared options. The response defines value cells and annotation anchors when it uses those concepts. A field omitted from the compact option rows can still be supported.
+
+- To resolve one field, pass `path`, such as `options.valueAxis.break` or `data.items[].value`. The response gives that field and its children in full, or explains a refusal under `refused`.
+- A description ending in … is shortened. Query that path when you need the remaining text.
+- To read all effective option fields and every fixture ID, pass `detail: "full"`. The CLI equivalent is `boardplot describe waterfall --full`.
+- To obtain a JSON Schema, pass `schema: "data"` or `schema: "options"`. Use `schema` or `path` in one call, not both.
+- When the response includes `design`, use `path: "design"` if the design decision needs the complete guidance.
+- To define a theme, pass `type: "theme"`. Theme discovery accepts `detail`, but not `path` or `schema`.
+
+### Retrieve examples
+
+Call `boardplot_fixtures` with `type` to list examples of that chart type. Retrieve a chosen fixture with its `type` and `id`, then replace the example's data and text. An ID is unique within its chart type.
+
+Listings return up to 25 fixtures. When `nextCursor` is present, pass it as `cursor` with the same `type` and `kind` to retrieve the next page. Omitting `type` lists examples across all types. `kind` filters listings to `example` (default), `torture` (stress cases) or `all`. Retrieving a specific ID bypasses the `kind` filter.
+
+### Read a render result
+
+Check `ok`, `warnings` and `reading` before using the chart. `reading` reports the drawn series, label counts, omitted content and computed values. Image content carries PNG, `svg` carries inline SVG, and `outputs` lists written files.
+
 Each derived reading has `visible: true` when it has displayed text. A calculation that is not printed has `visible: false` and `displayed: "Not displayed"`. `reading.omissions` lists each hidden label and its destination. This includes axis labels removed before placement and values moved straight to a note. A label without a replacement label or note has destination `reading.omissions`, which keeps its text. One `label-hidden` warning reports the missing labels for the chart. Redundant labels, whose information is printed elsewhere, do not cause this warning.
 
 A treemap leaves out items whose `value` is zero or null, warns `treemap-item-left-out` and names the items in a note. Only drawn items enter totals, shares and cell counts; negative values and data without a value above zero are refused.
@@ -156,9 +166,40 @@ A football field leaves out methods whose cells are null or have no `range`, war
 
 `reading.counts` lists structural counts and their exact phrases in the accessible description. A host can match these phrases without parsing prose. See [Chart reading counts](reference/reading.md).
 
-The last item has no value, so the engine computed the FY25 total of 133. A total that carries a value is checked against the sum; the computed value is drawn and the render warns `derived-mismatch`.
+### Output settings
 
-`boardplot_render` takes `spec` and optionally `format` (`svg` or `png`), `target` (see [Sizing](#sizing)), `width` and `height` in px, `scale` (PNG pixels per layout pixel, default 2), `background` (`theme` by default; `transparent` leaves the canvas out, while halos and hollow marks keep the theme background colour, so place the chart on a surface of that colour), `return` (`["reading"]` by default; add `"svg"` for the markup) and `outDir`, an absolute directory to write the files to. PNG uses `@resvg/resvg-js`, an optional dependency, when it is installed, and otherwise Chrome or Chromium, found on the usual paths or through `BOARDPLOT_CHROME_PATH`. With neither, the render returns the SVG and the warning `no-rasterizer`. Chrome's exit code does not decide: on a busy machine Chrome writes the PNG and then exits 2, so a PNG that decodes at the requested size counts as drawn. Without one, Boardplot runs Chrome once more and then fails with `png-export-failed` (exit 2), whose message names the cause: a browser that would not start, the 60 s timeout, a crash, or Chrome's exit code with its last line of output. On Linux, resvg draws with the first family of the theme stack that fontconfig lists, else Liberation Sans, Arimo, Nimbus Sans, DejaVu Sans or Noto Sans; with none of them installed Chrome draws the PNG, and without Chrome the render returns the SVG and the warning `raster-fonts-missing`. A chart with characters the theme font has no width for, such as emoji or CJK, is drawn by Chrome when Chrome is installed, because resvg draws them as boxes and loses the whole label with them. On macOS and Windows, which ship those fonts, Chrome clears the warning; on other systems the warning `png-glyph-coverage` stays, because Chrome draws boxes when no installed font covers a character. Without Chrome the render keeps the resvg PNG and warns `png-glyph-coverage`, naming the labels that can be lost. A PNG above 100 million pixels (width x height x `scale` squared) is refused with `png-too-large` (exit 1), because the rasterizer would run out of memory; draw the SVG, lower `scale` or shrink the canvas. `boardplot_list` reports the limit as `limits.pngPixelsMax`. A PNG records 96 dpi times `scale`. [PowerPoint or Keynote deck](use-cases.md#powerpoint-or-keynote-deck) says how slide and document tools place it.
+| Argument | Meaning |
+|---|---|
+| `format` | Requested `svg` or `png`. Without an explicit format, a `.svg` or `.png` output filename selects the format. Otherwise the default is SVG with a reading-only response |
+| `return` | Response fields. Default `["reading"]`. Add `"svg"` for inline markup |
+| `outDir` | Absolute output directory, or a `.svg` or `.png` file path for one chart. Omit it when files are unnecessary. `outputs` lists the paths written |
+| `overwrite` | Default `false`: a taken filename gets a numbered suffix. `true` replaces existing output files |
+| `target` | Reading context: `report`, `dashboard`, `slide` or `print`. See [Sizing](#sizing) |
+| `width`, `height` | Layout pixels. Put pt or mm dimensions in `spec.options.size` with `unit` |
+| `scale` | PNG device pixels per layout pixel. Default 2 |
+| `background` | Default `theme`. `transparent` omits the canvas, while halos and hollow marks retain the theme background colour. Use a display surface of that colour |
+
+### PNG output
+
+PNG rendering uses the optional `@resvg/resvg-js` package, or Chrome or Chromium. Boardplot checks the usual browser paths and `BOARDPLOT_CHROME_PATH`. With no rasterizer, Boardplot returns SVG and the warning `no-rasterizer`.
+
+On Linux, resvg uses the first installed family in the theme stack, then tries Liberation Sans, Arimo, Nimbus Sans, DejaVu Sans or Noto Sans. Without those fonts, Chrome draws the PNG. If Chrome is unavailable too, Boardplot returns SVG with `raster-fonts-missing`.
+
+Characters missing from the theme's width tables, such as emoji or CJK, use Chrome when available. Chrome clears the coverage warning on macOS and Windows, which ship those fonts. On other systems, `png-glyph-coverage` remains because the installed fonts may still lack the glyphs. Without Chrome, Boardplot keeps the resvg PNG and warns `png-glyph-coverage`, naming labels that can be lost.
+
+Boardplot accepts a browser PNG only when it decodes at the requested size, even if the browser exits with an error. A failed browser export is retried once, then returns `png-export-failed` with exit code 2. The error names a start failure, the 60-second timeout, a crash, or the browser's exit code and last output line.
+
+A PNG above 100 million pixels (`width × height × scale²`) is refused with `png-too-large` and exit code 1. Lower `scale`, reduce the canvas, or use SVG. `boardplot_list` reports the limit as `limits.pngPixelsMax`. PNG records `96 × scale` dpi. [Deck guidance](use-cases.md#powerpoint-or-keynote-deck) explains placement in slide and document tools.
+
+### Size warnings and refusals
+
+A render refusal keeps its size estimate in `expected.minimum` and `fix`. Library `canDraw()` returns the estimate as `minimum`. CLI and MCP measurement return the refusal size as `required`.
+
+A drawn chart can report `plot-under-floor`, `aspect-cap`, `height-off-ladder` or `plot-under-min` without a `fix`. Render has not drawn the height that a repair would name. Follow `suggest`: measure a verified size, omit the height, or widen the chart for an aspect warning.
+
+Measurement draws each size it names. For `plot-under-floor` and refusals, measurement names a size that draws without a size warning. For `aspect-cap`, `height-off-ladder` and `plot-under-min`, measurement tries the allowed standard heights, nearest first. A fixed-height table that extends beyond its frame reports `table-overflow`. Measurement names the width and height the wider frame needs. A data warning such as `dual-axis` does not reject a size.
+
+The height search is bounded. When no tested size fits, the warning has no `fix`. Follow `suggest` to reduce content, widen the chart or change a setting.
 
 ### Accepted input forms
 
@@ -174,7 +215,11 @@ Explicit `--format svg` or MCP `format: "svg"`, without return or an output path
 
 ### Rows as data
 
-A query result does not have to be copied into `data`. `boardplot_render` and `boardplot_measure` take a flat table, one row per category and series pair, as `rows` inline or as `rowsFile`, the absolute path of a local `.json` file (an array of row objects), or a `.csv`, `.tsv` or `.txt` file (a header row) of at most 10 MB. A CSV whose header line holds more semicolons than commas is read as semicolon-separated, as German-locale exports are, and a file whose header line holds more tabs than commas and semicolons is read as tab-separated, as a table pasted from a spreadsheet is; a tab-separated file keeps the dot as its decimal mark. In a semicolon file the value column reads a decimal comma as a decimal (0,505 is 0.505); a number with grouping marks such as 1.234,5 is refused with its row, and so is 1.234, which could be 1234 or 1.234. A leading byte order mark is skipped. Read from a file, the numbers never pass through the model. `columns` names the source column for each role: `category`, `series` and `value` are required, `categoryLabel`, `seriesLabel`, `unit`, `date` and `state` (`na`, `nm` or `suppressed` for a cell whose value is null; a heatmap keeps it as the series' `states`) are optional. Each role names its own column, with one exception: `date` may name the category column, so one SQL date column gives both the category ids and their dates. A category without a `categoryLabel` gets no label, so an ISO date id such as `2026-01-01` prints as a short date ('Jan', with the year on its own row) on the axis and in the hover card. `valueKind` says how the value column is written: `number` (the default), `percent` (50.5 is 50.5 %) or `fraction` (0.505 is 50.5 %).
+For supported chart types, `boardplot_render` and `boardplot_measure` can fill one bare spec from a query result. Pass either inline `rows` or `rowsFile`, never both. A versioned document of several charts does not take row input. Category charts use one row per category and series pair. `rowsFile` is the absolute path of a local `.json` file (an array of row objects), or a `.csv`, `.tsv` or `.txt` file (a header row) of at most 10 MB. A CSV whose header line holds more semicolons than commas is read as semicolon-separated, as German-locale exports are, and a file whose header line holds more tabs than commas and semicolons is read as tab-separated, as a table pasted from a spreadsheet is; a tab-separated file keeps the dot as its decimal mark. In a semicolon file the value column reads a decimal comma as a decimal (0,505 is 0.505); a number with grouping marks such as 1.234,5 is refused with its row, and so is 1.234, which could be 1234 or 1.234. A leading byte order mark is skipped. Read from a file, the numbers never pass through the model.
+
+For category charts, `columns` maps roles to source field names, such as `{ "category": "region", "series": "product", "value": "revenue" }`. `category`, `series` and `value` are required, `categoryLabel`, `seriesLabel`, `unit`, `date` and `state` (`na`, `nm` or `suppressed` for a cell whose value is null; a heatmap keeps it as the series' `states`) are optional. Each role names its own column, with one exception: `date` may name the category column, so one SQL date column gives both the category ids and their dates. A category without a `categoryLabel` gets no label, so an ISO date id such as `2026-01-01` prints as a short date ('Jan', with the year on its own row) on the axis and in the hover card.
+
+`valueKind` says how the value column is written: `number` (the default), `percent` (50.5 is 50.5 %) or `fraction` (0.505 is 50.5 %). Table, histogram, box and Sankey row mappings accept `number` only.
 
 The MCP server reads a `rowsFile` only from an allowed folder. The allowed folders are the roots the client sends (the server asks for them when the client declares the roots capability), the server's working directory (unless it is the filesystem root), the system temp folder, and every folder in the environment variable `BOARDPLOT_ROWS_ROOTS` (several separated by `:`, on Windows by `;`). The check runs on the resolved path, so a symlink that points outside is refused too. A file outside these folders is refused with `rows-outside-roots`, and nothing is read. `outDir` follows the same rule: a path outside these folders, also through a symlinked folder, is refused with `out-outside-roots`, and nothing is written. The CLI's `--rows` and `--out` take any path you name.
 
@@ -208,9 +253,9 @@ Waterfall (alias `bridge`) takes one row per item. Use `--columns label=item,val
 
 Scatter (alias `bubble`) takes one row per point. Use `--columns x=effort,y=output,size=volume,label=item,group=team`, or the same roles in the MCP `columns` object. Only `x` and `y` are required. `size` supplies bubble magnitude. `label` supplies the point name. `group` fills `points[].group` and creates `data.groups` in first-appearance order. A matching group in the spec keeps its label and style. With no group column, the spec's groups stay as authored. With no label column, point labels use their generated ids.
 
-Sankey takes one row per link, the shape of a `GROUP BY source, target` result. Use `--columns source=from_page,target=to_page,value=visits`, or the same roles in the MCP `columns` object. `source`, `target` and `value` are required. For flows between segments month to month, add `sourceStage` and `targetStage` (for example the month and the next month): then a node is the pair of stage and id, so the same segment in two months is two nodes. A numeric id is read as text. Rows with the same ends add up.
+Sankey takes one row per link, the shape of a `GROUP BY source, target` result. Use `--columns source=from_page,target=to_page,value=visits`, or the same roles in the MCP `columns` object. `source`, `target` and `value` are required. For flows between segments month to month, add `sourceStage` and `targetStage` (for example the month and the next month): then a node is the pair of stage and id, so the same segment in two months is two nodes. A numeric id is read as text. Rows with the same ends add up. Sankey accepts `valueKind: "number"` only. To label flows as shares, keep numeric counts and use `options.nodeValue: "share"`.
 
-Both mappings generate ids `row-1`, `row-2`, and so on. Labels can repeat. Rows replace `data.items` or `data.points`; other authored data stays in the spec. Named columns must exist in the source. Invalid cells report their source row and column. The reading and measure report the row count, SHA-256 and ignored columns, as for category rows. `valueKind` applies to the waterfall value or both scatter coordinates; bubble size stays a number. For different coordinate kinds, pass numeric cells in JSON rows and set each axis format in the spec. These mappings work with CLI render/measure and MCP `boardplot_render`/`boardplot_measure`, for inline rows and JSON or CSV files.
+The waterfall and scatter mappings generate ids `row-1`, `row-2`, and so on. Labels can repeat. Rows replace `data.items` or `data.points`; other authored data stays in the spec. Named columns must exist in the source. Invalid cells report their source row and column. The reading and measure report the row count, SHA-256 and ignored columns, as for category rows. `valueKind` applies to the waterfall value or both scatter coordinates; bubble size stays a number. For different coordinate kinds, pass numeric cells in JSON rows and set each axis format in the spec. These mappings work with CLI render/measure and MCP `boardplot_render`/`boardplot_measure`, for inline rows and JSON or CSV files.
 
 ### Table rows
 
@@ -777,10 +822,10 @@ EOF
 }
 ```
 
-- `path` is a JSON Pointer into the spec you sent.
-- `fix` is a JSON Patch. Apply it to that spec as it is, or read `suggest` and change the field yourself. It is absent when the engine has no single repair. A size warning on a chart that draws never carries one, and `measure` names a drawn size instead.
+- `path` is a JSON Pointer. Chart findings point into the submitted spec. Tool-argument findings point into the arguments, for example `/rowsFile` or `/width`.
+- `fix` is a JSON Patch against the same input as `path`: the spec for chart findings, or the tool arguments for argument findings. Apply it to that input as sent, or follow `suggest`. It is absent when the engine has no single repair. A size warning on a chart that draws never carries one, and `measure` names a drawn size instead.
 - `docs` names the reference section that describes the field.
-- Errors come sorted by path, at most ten, then one `more-errors` entry with the count.
+- Spec errors come sorted by path, at most ten, then one `more-errors` entry with the count. Tool-argument validation can return only its first error.
 
 `options.locale: "de"` means `{ language: "de" }`. A language sets words only. Decimal and grouping marks come only from `options.locale.decimal` and `options.locale.thousands`. A root `locale` on a bare chart remains invalid, with a fix that moves its value into options.
 
@@ -816,7 +861,7 @@ An option a chart type does not read is ignored with an `option-ignored` warning
 
 ### Design advice
 
-Bar, line, waterfall and diagram have a design card: what the chart says, when to use it and when not, and four to eight rules. `boardplot_describe` prints the message, the use, the not-when and the first two rules; `path: "design"` (CLI: `boardplot describe bar --path design`) prints every rule. Each rule is marked `engine` or `describe`. Render checks the `engine` rules on the drawn chart and returns each finding as a warning with severity `advice`, a code that starts with `design-`, one sentence and a `docs` link to the rule. A `fix` patch is included only when it can apply to the input as sent. Otherwise follow `suggest`; for example, a waterfall built from rows gets written advice when a patch would target generated items. Advice never changes the drawing and never refuses. A render returns at most three, the MCP server returns each code once per session, and a refused render returns none. The `describe` rules need the author's judgment, such as the business order of a bridge.
+A chart contract can include a `design` card: what the chart says, when to use it, when another type fits better, and design guidance. Compact `boardplot_describe` prints the message, use, limitations and first two rules; `path: "design"` (CLI: `boardplot describe bar --path design`) prints every rule. Each rule is marked `engine` or `describe`. Render checks the `engine` rules on the drawn chart and returns each finding as a warning with severity `advice`, a code that starts with `design-`, one sentence and a `docs` link to the rule. A `fix` patch is included only when it can apply to the input as sent. Otherwise follow `suggest`; for example, a waterfall built from rows gets written advice when a patch would target generated items. Advice never changes the drawing and never refuses. A render returns at most three, the MCP server returns each code once per session, and a refused render returns none. The `describe` rules need the author's judgment, such as the business order of a bridge.
 
 ## Position of bar value labels
 

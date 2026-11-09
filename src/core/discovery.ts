@@ -1,4 +1,4 @@
-import { readingCountsSchema, readingMetricStackSchema } from './schema/reading';
+import { readingSchema } from './schema/reading';
 /** Schema-backed discovery for CLI, MCP and docs. Never imported by browser chart cores. */
 import * as z from 'zod';
 import { getFixtures } from '../fixtures';
@@ -6,7 +6,7 @@ import { BARE_CHART_NAME, NAME_RULE } from './doc/document';
 import { getChartDefinition } from './registry';
 import { schemaReference, type SchemaFieldReference } from './schema/reference';
 import { ANNOTATION_KIND_PURPOSES, type AnnotationKind } from './types/annotations';
-import { fieldLine, firstClause, optionFields, PRESET_THEME_NAMES, sharedOptionFields, shortSummaryFor, useCasesFor, chartIds, chartIdOf, compactDesignCard, designCardFor } from './catalog';
+import { ANCHOR_FORM, CELL_CONTRACT, fieldLine, firstClause, optionFields, PRESET_THEME_NAMES, sharedOptionFields, shortSummaryFor, useCasesFor, chartIds, chartIdOf, compactDesignCard, designCardFor } from './catalog';
 import { themeFieldReference } from './themeFields';
 import { themes } from './theme';
 import { IGNORED_OPTION_KEYS, LEGEND_DRAWS, schemaRefusedKeys, valueAxisRefusal } from './schema/capability';
@@ -203,8 +203,7 @@ function childKeys(fields: readonly Pick<SchemaFieldReference, 'path'>[], prefix
 }
 
 /**
- * The shared value cell (number, pct or date object) is described once in
- * boardplot_list. A field or array whose items are cells folds into one row;
+ * A field or array whose items are value cells folds into one row;
  * returns the folded type, or undefined when the field is not a cell.
  */
 export function cellType(fields: readonly Pick<SchemaFieldReference, 'path'>[], path: string): string | undefined {
@@ -266,9 +265,8 @@ function isReserved(field: Pick<SchemaFieldReference, 'description'>): boolean {
 
 /**
  * The fields discovery shows. A path repeated by schema alternatives is listed
- * once with the values of every branch, a cell folds into one row, and a subtree whose fields repeat an
- * earlier subtree is folded into one row that names the earlier path. Refused
- * (`never`) fields are not shown: a field that is not listed is not accepted.
+ * once with the values of every branch, and a cell folds into one row.
+ * Refused (`never`), reserved and deprecated fields are not shown.
  */
 function compactFields(all: readonly SchemaFieldReference[]): CompactField[] {
   const fields = mergeAlternatives(all);
@@ -293,11 +291,10 @@ function compactFields(all: readonly SchemaFieldReference[]): CompactField[] {
 
 /**
  * Compact rows keyed by path: `type[, required][, one of ...][, default ...]. clause`.
- * A long row that repeats an earlier row word for word points at it instead.
+ * Each row carries its own meaning, including when another path has the same contract.
  */
 function fieldLines(fields: readonly SchemaFieldReference[], withRequired = false): Record<string, string> {
   const lines: Record<string, string> = {};
-  const first = new Map<string, string>();
   const grouped = new Map<string, CompactField>();
   for (const row of compactFields(fields)) {
     const { branch, ...facts } = row.field;
@@ -308,13 +305,9 @@ function fieldLines(fields: readonly SchemaFieldReference[], withRequired = fals
     else grouped.set(key, { ...row, field: { ...facts, ...(tag ? { branch: tag } : {}) } });
   }
   for (const row of grouped.values()) {
-    const earlier = first.get(row.meaning);
-    const reference = earlier && earlier !== row.field.path ? `See ${earlier}.` : undefined;
-    const meaning = reference && reference.length < row.meaning.length ? reference : row.meaning;
-    if (!earlier) first.set(row.meaning, row.field.path);
     // Short string-literal unions state the type and all allowed values once.
     const literal = !row.type && row.field.type === 'string' && !!row.field.values?.length && row.field.values.length <= 3 && row.field.valuesExhaustive !== false;
-    const line = fieldLine(literal ? { ...row.field, values: undefined } : row.field, meaning, {
+    const line = fieldLine(literal ? { ...row.field, values: undefined } : row.field, row.meaning, {
       required: withRequired && row.field.required,
       ...(literal ? { type: row.field.values!.map(value => JSON.stringify(value)).join(' | ') } : row.type ? { type: row.type } : {}),
     }).replace(/\. $/, '');
@@ -349,7 +342,7 @@ const COMPACT_FIXTURES = 5;
  * The annotation subtree is left to the
  * `annotations` section, which lists the kinds this type draws.
  */
-function typeOptions(type: string): { own: SchemaFieldReference[]; notAccepted: string[]; ignored: string[] } {
+export function typeOptions(type: string): { own: SchemaFieldReference[]; shared: string[]; notAccepted: string[]; ignored: string[] } {
   const base = new Map<string, SchemaFieldReference[]>();
   for (const field of sharedOptionFields()) base.set(field.path, [...base.get(field.path) ?? [], field]);
   const all = optionFields(type);
@@ -377,7 +370,10 @@ function typeOptions(type: string): { own: SchemaFieldReference[]; notAccepted: 
     ...['show', 'gridlines'].filter(key => valueAxisRefusal(type, key) !== undefined).map(key => `valueAxis.${key}`),
     ...(Object.hasOwn(LEGEND_DRAWS, type) ? ["legend: 'none'", "legend: 'auto'"] : []),
   ];
-  return { own, notAccepted: [...notAccepted, ...refusedOwn.map((field) => field.path)].filter(path => !ignored.includes(path)), ignored };
+  const ownPaths = new Set(own.map(field => field.path));
+  const shared = advertised.filter(field => !/[.[]/.test(field.path) && !refused(field.path)
+    && !ownPaths.has(field.path) && !ignored.includes(field.path)).map(field => field.path);
+  return { own, shared, notAccepted: [...notAccepted, ...refusedOwn.map((field) => field.path)].filter(path => !ignored.includes(path)), ignored };
 }
 
 function fields(schema: z.ZodType, defaults?: unknown): SchemaFieldReference[] {
@@ -389,17 +385,22 @@ export function describeType(type: string, detail: 'compact' | 'full' = 'compact
   const definition = getChartDefinition(type);
   if (!definition) throw new Error(`unknown chart type '${type}'`);
   const full = detail === 'full';
-  const { own, notAccepted, ignored } = typeOptions(definition.type);
+  const { own, shared, notAccepted, ignored } = typeOptions(definition.type);
   const dataFields = fields(definition.dataSchema);
   const fixtures = getFixtures(definition.type);
   const shown = full ? fixtures : fixtures.filter((fixture) => fixture.kind === 'example').slice(0, COMPACT_FIXTURES);
   const sizing = definition.sizing!;
   const example = definition.discovery?.example;
   const ids = chartIds(definition.type);
+  const data = full ? fieldRows(dataFields, true) : fieldLines(dataFields, true);
+  const options = full ? fieldRows(optionFields(definition.type), true) : fieldLines(own, true);
+  const usesCell = !full && [dataFields, own].some(fields => compactFields(fields).some(row => row.type !== undefined));
+  const usesAnchor = definition.annotationKinds.some(kind => describeAnnotation(kind, definition.type).anchors.length > 0);
+  const { metricStack, ...reading } = readingSchema.properties;
   return {
     type: definition.type,
     summary: full ? definition.summary : shortSummaryFor(definition.type, definition.summary),
-    ...(full ? { reading: { counts: readingCountsSchema, ...(definition.type === 'grid' ? { metricStack: readingMetricStackSchema } : {}) } } : {}),
+    ...(full ? { reading: { ...reading, ...(definition.type === 'grid' ? { metricStack } : {}) } } : {}),
     useCases: useCasesFor(definition.type, detail),
     ...(designCardFor(definition.type) ? { design: full ? structuredClone(designCardFor(definition.type)) : compactDesignCard(definition.type) } : {}),
     ...(ids.length ? { ids } : {}),
@@ -407,11 +408,14 @@ export function describeType(type: string, detail: 'compact' | 'full' = 'compact
     ...(full && definition.discovery?.notFor ? { notFor: definition.discovery.notFor } : {}),
     ...(full && definition.discovery?.densities ? { densities: structuredClone(definition.discovery.densities) } : {}),
     example: example ? { type: definition.type, ...structuredClone(example) } : null,
-    data: full ? fieldRows(dataFields, true) : fieldLines(dataFields, true),
-    options: full ? fieldRows(own, true) : fieldLines(own, true),
-    sharedOptions: 'plus boardplot_list sharedOptions, which a path here replaces. … ends a cut row: describe its path for the rest',
+    data,
+    options,
+    ...(usesCell ? { cell: CELL_CONTRACT } : {}),
+    ...(usesAnchor ? { anchor: ANCHOR_FORM } : {}),
+    sharedOptions: full ? 'Shared options are included in options.'
+      : `${shared.length ? `Additional shared options: ${shared.join(', ')}. ` : ''}For complete field details, call boardplot_describe with {"type":"${definition.type}","path":"options.title"}. Rows ending in … are shortened.`,
     ...(notAccepted.length ? { notAccepted } : {}),
-    ...(full && ignored.length ? { ignored } : {}),
+    ...(ignored.length ? { ignored } : {}),
     sizing: {
       minWidth: sizing.minWidth,
       minHeight: sizing.minHeight,

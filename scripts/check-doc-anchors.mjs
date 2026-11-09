@@ -3,14 +3,13 @@
  * Every `docs` pointer a diagnostic can emit has to land on an existing file
  * and heading. Literal pointers are read from the string literals in src; a
  * per-type pointer is expanded over the chart types and, for `#${base}`, over
- * the sections chartSchemaDiagnostic is called with. `--zip <plugin zip>`
- * also checks that every relative link in the packaged SKILL.md and in the
- * skill's references/manual.md resolves inside the zip. `--manual` checks the
- * same manual links in the source tree, before docs:build re-roots them into
- * the skill's copy, without building a package.
+ * the sections chartSchemaDiagnostic is called with. The marketplace skill
+ * and every local reference are checked on each run. `--zip <plugin zip>`
+ * checks the same files in the archive. `--manual` also checks the authored
+ * source guides and chart references. Local links include heading anchors.
  */
 import { execFileSync } from 'node:child_process';
-import { readdirSync, readFileSync, existsSync } from 'node:fs';
+import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
 import { dirname, join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -37,33 +36,59 @@ for (const [file, anchor] of pointers) {
 
 function checkLinks(file, text, read, location) {
   for (const [, target] of text.replace(/^```[\s\S]*?^```$/gm, '').matchAll(/\]\(([^)\s]+)\)/g)) {
-    if (/^[a-z]+:|^#/.test(target)) continue;
+    if (/^[a-z][a-z0-9+.-]*:|^\/\//i.test(target)) continue;
     const [path, anchor] = target.split('#');
-    const resolved = posix.normalize(posix.join(posix.dirname(file), path));
+    const resolved = path ? posix.normalize(posix.join(posix.dirname(file), path)) : file;
     const content = read(resolved);
     if (content === null) failures.push(`${file} links ${target}, which is not in ${location}`);
     else if (anchor && !anchors(content).has(anchor)) failures.push(`${file} links ${target}, which has no such heading`);
   }
 }
 
+const readSource = (path) => {
+  const absolute = join(ROOT, path);
+  return existsSync(absolute) && statSync(absolute).isFile() ? readFileSync(absolute, 'utf8') : null;
+};
+
+function checkFiles(files, read, location) {
+  for (const file of new Set(files)) {
+    const text = read(file);
+    if (text === null) failures.push(`${file} is not in ${location}`);
+    else checkLinks(file, text, read, location);
+  }
+}
+
+const pluginRoot = 'release/plugin/boardplot-marketplace/plugins/boardplot';
+const skillPath = 'skills/boardplot-chart';
+const sourceSkill = `${pluginRoot}/${skillPath}`;
+const sourceReferences = `${sourceSkill}/references`;
+const referenceFiles = readdirSync(join(ROOT, sourceReferences), { recursive: true })
+  .filter((file) => file.endsWith('.md')).map((file) => `${sourceReferences}/${file.replaceAll('\\', '/')}`);
+checkFiles([`${sourceSkill}/SKILL.md`, `${sourceReferences}/manual.md`, ...referenceFiles],
+  (path) => path.startsWith(`${pluginRoot}/`) ? readSource(path) : null, 'the marketplace plugin');
+
 const manual = process.argv.includes('--manual');
 if (manual) {
-  const file = 'docs/manual.md';
-  checkLinks(file, readFileSync(join(ROOT, file), 'utf8'), (path) => existsSync(join(ROOT, path)) ? readFileSync(join(ROOT, path), 'utf8') : null, 'the source tree');
+  const references = readdirSync(join(ROOT, 'docs/reference')).filter((file) => file.endsWith('.md'))
+    .map((file) => `docs/reference/${file}`);
+  checkFiles(['docs/manual.md', 'docs/use-cases.md', 'docs/FONTS.md', 'docs/TELEMETRY.md', ...references],
+    readSource, 'the source tree');
 }
 
 const zip = process.argv.indexOf('--zip');
 if (zip !== -1) {
   const archive = process.argv[zip + 1];
   const entries = new Set(execFileSync('unzip', ['-Z1', archive], { encoding: 'utf8' }).split('\n').map((entry) => entry.replace(/^\.\//, '')));
-  const read = (path) => entries.has(path) ? execFileSync('unzip', ['-p', archive, path], { encoding: 'utf8' }) : null;
-  for (const file of ['skills/boardplot-chart/SKILL.md', 'skills/boardplot-chart/references/manual.md']) {
-    const text = read(file);
-    if (text === null) failures.push(`${file} is not in the zip`);
-    else checkLinks(file, text, read, 'the zip');
-  }
+  const contents = new Map();
+  const read = (path) => {
+    if (!entries.has(path)) return null;
+    if (!contents.has(path)) contents.set(path, execFileSync('unzip', ['-p', archive, path], { encoding: 'utf8' }));
+    return contents.get(path);
+  };
+  const references = [...entries].filter((file) => file.startsWith(`${skillPath}/references/`) && file.endsWith('.md'));
+  checkFiles([`${skillPath}/SKILL.md`, `${skillPath}/references/manual.md`, ...references], read, 'the zip');
 }
 
 for (const failure of failures) console.error(failure);
-console.log(`check-doc-anchors: ${new Set(pointers.map((pointer) => pointer.join('#'))).size} diagnostic pointers${manual ? ', manual links' : ''}${zip === -1 ? '' : ', SKILL.md links'}, ${failures.length} failed`);
+console.log(`check-doc-anchors: ${new Set(pointers.map((pointer) => pointer.join('#'))).size} diagnostic pointers, marketplace reference links${manual ? ', source reference links' : ''}${zip === -1 ? '' : ', ZIP reference links'}, ${failures.length} failed`);
 process.exitCode = failures.length ? 1 : 0;

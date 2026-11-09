@@ -1,5 +1,7 @@
 # Setup
 
+Contents: [Requirements](#requirements), [Marketplace route](#marketplace-route), [Offline ZIP route](#offline-zip-route), [CLI without PATH](#cli-without-path), [Troubleshooting](#troubleshooting).
+
 ## Requirements
 
 - Node.js 22.12 or newer on the machine that starts the runtime, with
@@ -65,8 +67,8 @@ codex plugin add boardplot@boardplot
 
 Start a new Codex task and ask it to use the `boardplot-chart` skill to
 render a small column chart. Check that the tools `boardplot_list`,
-`boardplot_describe`, `boardplot_fixtures`, `boardplot_measure` and
-`boardplot_render` are there.
+`boardplot_describe`, `boardplot_fixtures`, `boardplot_measure`,
+`boardplot_render` and `boardplot_feedback` are there.
 
 ### Update
 
@@ -149,8 +151,10 @@ codex plugin add boardplot@boardplot
 
 ## CLI without PATH
 
-The plugin puts nothing on PATH. Each verb of the CLI is also an MCP tool.
-Prefer the tools; they need no path.
+The plugin puts nothing on PATH. The six MCP tools have corresponding CLI
+commands: `list`, `describe`, `fixtures`, `measure`, `render` and `feedback`.
+CLI commands take flags and positional arguments. `fonts` and `telemetry`
+are CLI-only commands. Use MCP when its tools are available.
 
 On both routes, call the plugin's launcher by its path. It runs the
 Boardplot version of the plugin: the bundled runtime on the offline ZIP

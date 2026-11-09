@@ -337,13 +337,13 @@ export function fieldLine(
 }
 
 /** How an annotation names the data element it attaches to. */
-const ANCHOR_FORM = 'An annotation anchor is a category or item id string, or an object with categoryId plus optional seriesId, segmentId and edge (start, end, total); pointId addresses a scatter point. Category anchors, including from/to, take category ids, not category labels.';
+export const ANCHOR_FORM = 'An annotation anchor is a category or item id string, or an object with categoryId plus optional seriesId, segmentId and edge (start, end, total); pointId addresses a scatter point. Category anchors, including from/to, take category ids, not category labels.';
 
 /**
  * The value cell most series-based types share, described once here. Describe
  * folds every field that takes this cell into one row of type `cell`.
  */
-const CELL_CONTRACT = 'A number, null (missing), or an object with one of number, pct (50.5 means 50.5%) or date (ISO 8601), plus optional fill, format, label (text or false), priority, scenario (AC|PY|PL|FC), footnote and, on range types, range {low, high, mid}.';
+export const CELL_CONTRACT = 'A number, null (missing), or an object with one of number, pct (50.5 means 50.5%) or date (ISO 8601), plus optional fill, format, label (text or false), priority, scenario (AC|PY|PL|FC), footnote and, on range types, range {low, high, mid}.';
 
 /** Top-level shared options by path, with their nested keys named in the type. */
 function sharedOptionsSummary(): Record<string, string> {

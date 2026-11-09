@@ -3,7 +3,7 @@
  * Writes the generated documentation from the payloads the tools return:
  * docs/reference/<type>.md from `describe <type> --full`, options.md,
  * theme.md, react.md and fixtures.md, the chart table in README.md,
- * llms.txt and the plugin skill's copy of the manual. `--check` reports
+ * llms.txt and the plugin skill's local references. `--check` reports
  * stale files instead of writing them.
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import '../src/core/charts/index.ts';
 import { getChartDefinition } from '../src/core/registry.ts';
-import { cellType, fieldRows } from '../src/core/discovery.ts';
+import { cellType, fieldRows, typeOptions } from '../src/core/discovery.ts';
 import { byTypeOrder, sharedOptionFields } from '../src/core/catalog.ts';
 import { LABEL_KINDS } from '../src/core/schema/capability.ts';
 import { markdownCell, schemaReference } from '../src/core/schema/reference.ts';
@@ -260,6 +260,7 @@ function designSection(card) {
 export function typePage(type, anchorForm) {
   const description = described(type);
   const definition = getChartDefinition(type);
+  const ownOptions = fieldRows(typeOptions(type).own, true);
   const aliases = description.aliases?.length ? ` Aliases: ${description.aliases.map((alias) => `\`${alias}\``).join(', ')}.` : '';
   const lines = [
     `# ${definition.title}`, '', GENERATED, '', `${description.summary.replace(/\.?$/, '.')} Type \`${type}\`.${aliases}`, '',
@@ -269,8 +270,8 @@ export function typePage(type, anchorForm) {
     '## Minimal spec', '', code(description.example), '',
     '## Data', '', ...(dataRows(description).some(([, type]) => type.includes('cell')) ? ['A `cell` is a number, null or a value object; see [Value cell](options.md#value-cell).', ''] : []),
     table(['Path', 'Type', 'Required', 'Meaning'], dataRows(description)), '',
-    '## Options', '', description.options.length
-      ? table(['Path', 'Type', 'Values', 'Default', 'Meaning'], foldCells(description.options).map((field) => [field.branch ? `${field.path} (${field.branch})` : field.path, field.type, values(field), fallback(field), field.description]))
+    '## Options', '', ownOptions.length
+      ? table(['Path', 'Type', 'Values', 'Default', 'Meaning'], foldCells(ownOptions).map((field) => [field.branch ? `${field.path} (${field.branch})` : field.path, field.type, values(field), fallback(field), field.description]))
       : 'This type has no options of its own.', '',
     `Plus the [shared options](options.md).${description.notAccepted ? ` This type does not accept ${description.notAccepted.map((path) => `\`${path}\``).join(', ')}.` : ''}${description.ignored ? ` This type ignores ${description.ignored.map((path) => `\`${path}\``).join(', ')} with an \`option-ignored\` warning.` : ''}`, '',
     '## Annotations', '', ...annotationSection(description, anchorForm), '',
@@ -294,7 +295,7 @@ function optionsPage(list) {
   const rows = fieldRows(sharedOptionFields()).map((field) => [field.branch ? `${field.path} (${field.branch})` : field.path, field.type, values(field), fallback(field), field.description]);
   return withContents([
     '# Shared options', '', GENERATED, '',
-    'Every chart type accepts these options unless its own page names them as not accepted. A type page lists the options that are its own, and a path listed there replaces the shared one.', '',
+    'These options are shared across chart types. Each type page names its exceptions, ignored settings and overrides. For one type\'s complete option contract, call `boardplot_describe` with `detail: "full"`. For one field, pass its path, for example `{ "type": "bar", "path": "options.title" }`.', '',
     '## Options', '', table(['Path', 'Type', 'Values', 'Default', 'Meaning'], rows), '',
     'Set `locale.decimal` (and optionally `locale.thousands`) to choose the marks of every number in the chart, as in a spreadsheet. The default is `1,234.5` in every language; `locale.language` changes words only, never the marks. Format examples give only the shape; `1.2%` and `1,2 %` both mean one decimal; `1,2 %` keeps its space and prints `1.2 %` by default.', '',
     '## Target and size', '',
@@ -385,7 +386,8 @@ function fixturesPage(types) {
   ]);
   return withContents([
     '# Fixtures', '', GENERATED, '',
-    'Every fixture is a complete spec that renders. `boardplot_fixtures` returns them (`type`, `chart`, `id`, `kind`), as does `boardplot fixtures --type <type>`; the package export `boardplot/fixtures` returns all of them in one array. Example fixtures show a use case with real-looking data; torture fixtures are stress cases for regression.', '',
+    'Each fixture contains a runnable `spec`, its chart `type`, chart variant `chart`, `id`, `kind` and `useCase`. Start with `boardplot_fixtures` scoped to a type. Retrieve one example with its `type` and `id`, or continue a listing with `nextCursor` as `cursor` and the same filters. Each page contains at most 25 fixtures. `kind` filters listings and defaults to `example`; an explicit `id` selects the fixture regardless of `kind`.', '',
+    'The CLI provides the same examples through `boardplot fixtures --type <type>`, with `--id`, `--kind` and `--cursor` flags. The package export `boardplot/fixtures` provides `getFixtures(type)` and `allFixtures()`. Example fixtures show ordinary use cases. Torture fixtures exercise edge cases.', '',
     ...sections,
   ]).join('\n');
 }
@@ -393,12 +395,24 @@ function fixturesPage(types) {
 function llmsIndex(list) {
   const summaries = list.types.map((entry) => `- [${entry.type}](docs/reference/${entry.type}.md): ${entry.summary}`);
   return ['# Boardplot', '',
-    '> Boardplot draws consulting-grade business charts for slides, reports and dashboards, such as waterfall, Mekko (Marimekko) and variance charts and management tables, as SVG, PNG and responsive React components with tooltips. An AI agent on a local host drives it through six MCP tools or a JSON-in JSON-out CLI, and a developer can use React code. The runtime needs Node.js 22.12 or newer. The same spec, settings and engine version give byte-identical SVG. In PowerPoint a chart is a picture, so a user cannot edit its data there.', '',
-    'Every chart is one spec, `{ "type", "data", "options", "annotations", "theme" }`, of which `type` and `data` are required. The MCP tools are `boardplot_list`, `boardplot_describe`, `boardplot_render`, `boardplot_measure`, `boardplot_fixtures` and `boardplot_feedback`; the CLI verbs of the same names take the same JSON. Render and measure read a query result from a local JSON or CSV file through `rowsFile` and `columns`, so its numbers never pass through the model; `boardplot_describe` with `path` answers one field.', '',
-    '## Start here', '', '- [Manual](docs/manual.md): the spec, the tools, the CLI, React, targets and sizing, errors and themes', '- [Use cases](docs/use-cases.md): example prompts and agent steps for a slide deck, an analysis page, a React dashboard, a Word or PDF report and a recurring report', '',
+    '> Boardplot draws consulting-grade business charts, tables and maps as SVG or PNG, and provides responsive React components. Use its six MCP tools, CLI or React package. The local runtime needs Node.js 22.12 or newer. PowerPoint receives a chart image, with no editable chart data.', '',
+    '## MCP start', '',
+    'A chart spec has required `type` and `data` fields and optional `name`, `options`, `annotations` and `theme` fields. Pass a valid spec directly to `boardplot_render`. Check `ok`, `warnings`, `reading` and the actual output format before using the result.', '',
+    '- Known chart type: `boardplot_describe` returns its compact contract and a working example. Use `path` for one field or `detail: "full"` for the complete contract.',
+    '- Unknown chart type: `boardplot_list` lists the available types and use cases.',
+    '- Example needed: `boardplot_fixtures` with `type` and `id` returns one runnable spec. Listings are paginated; pass `nextCursor` as `cursor` with the same filters.',
+    '- Fixed container: `boardplot_measure` reports the size the spec needs at the requested width.',
+    '- Boardplot defect: `boardplot_feedback` drafts a report for the user to review and submit.', '',
+    'For supported row mappings, render and measure accept a local file through `rowsFile` and `columns`, or inline `rows`. The file route reads source numbers directly. The six MCP tools have corresponding CLI commands without the `boardplot_` prefix. CLI commands use positional arguments and flags.', '',
+    '## Task guides', '',
+    '- [MCP example](docs/manual.md#getting-a-chart-with-mcp): a working call and output handling',
+    '- [Rows as data](docs/manual.md#rows-as-data): source files, column mapping and supported chart types',
+    '- [Sizing](docs/manual.md#sizing): targets, units and container dimensions',
+    '- [Use cases](docs/use-cases.md): slide decks, analysis pages, React dashboards, Word or PDF reports and recurring reports',
+    '- [CLI](docs/manual.md#getting-a-chart-with-the-cli): command arguments and file output', '',
     '## Chart references', '', ...summaries, '',
     '## Optional', '',
-    '- [Shared options](docs/reference/options.md): options every type accepts, the value cell and annotation anchors',
+    '- [Shared options](docs/reference/options.md): common options, type-specific exceptions, value cells and annotation anchors',
     '- [Theme](docs/reference/theme.md): presets, every token and the theme errors',
     '- [React](docs/reference/react.md): BoardplotChart and the per-type components, container sizing, server preparation, export',
     '- [Fixtures](docs/reference/fixtures.md): every runnable example by type',
@@ -444,22 +458,37 @@ function typeSizesBlock() {
     table(['Target', 'Unit', ...head], floors), TYPE_END].join('\n');
 }
 
-/** Where the plugin skill keeps its copy of the manual. */
-const SKILL_MANUAL = 'release/plugin/boardplot-marketplace/plugins/boardplot/skills/boardplot-chart/references/manual.md';
+const PLUGIN_ROOT = 'release/plugin/boardplot-marketplace/plugins/boardplot';
+const SKILL_REFERENCES = `${PLUGIN_ROOT}/skills/boardplot-chart/references`;
 
-/**
- * The manual as the plugin skill reads it. Links point from docs/; they are
- * re-rooted to the runtime copy of docs/ that the offline ZIP bundles under
- * the plugin root. A marketplace install has no runtime folder; the skill
- * names the MCP tools for those pages instead.
- */
-function skillManual(manual) {
-  const from = posix.dirname(SKILL_MANUAL.replace(/^.*\/plugins\/boardplot\//, ''));
-  const body = manual.replace(/\]\(([^)\s#][^)\s]*)\)/g, (link, target) => {
-    if (/^[a-z]+:/i.test(target)) return link;
-    return `](${posix.relative(from, posix.normalize(posix.join('runtime/docs', target)))})`;
-  });
-  return `<!-- Generated by scripts/generate-reference.mjs from docs/manual.md. -->\n\n${body}`;
+/** The same local reference paths work in marketplace and offline ZIP installs. */
+function skillReferences(pages, manual) {
+  const sources = new Map([...pages, ['docs/manual.md', manual]]);
+  for (const file of ['docs/use-cases.md', 'docs/FONTS.md', 'docs/TELEMETRY.md', 'docs/reference/reading.md']) {
+    sources.set(file, readFileSync(resolve(ROOT, file), 'utf8'));
+  }
+  const copies = new Map();
+  for (const [source, text] of sources) {
+    const destination = `${SKILL_REFERENCES}/${source.slice('docs/'.length)}`;
+    const body = text.replace(/\]\(([^)\s]+)\)/g, (link, target) => {
+      if (/^[a-z][a-z0-9+.-]*:|^#|^\/\//i.test(target)) return link;
+      const [path, anchor] = target.split('#');
+      const resolved = posix.normalize(posix.join(posix.dirname(source), path));
+      let copied;
+      let copiedAnchor = anchor;
+      if (sources.has(resolved)) copied = `${SKILL_REFERENCES}/${resolved.slice('docs/'.length)}`;
+      else if (resolved === 'README.md' && anchor === 'react') {
+        copied = `${SKILL_REFERENCES}/use-cases.md`;
+        copiedAnchor = 'react-installation';
+      } else if ((resolved === 'README.md' && anchor === 'ai-agents') || resolved === `${PLUGIN_ROOT}/SETUP.md`) {
+        copied = `${PLUGIN_ROOT}/SETUP.md`;
+        copiedAnchor = undefined;
+      } else throw new Error(`${source}: no plugin reference target for ${target}`);
+      return `](${posix.relative(posix.dirname(destination), copied)}${copiedAnchor ? `#${copiedAnchor}` : ''})`;
+    });
+    copies.set(destination, `<!-- Generated by scripts/generate-reference.mjs from ${source}. -->\n\n${body}`);
+  }
+  return copies;
 }
 
 /** Every generated file, keyed by its path from the repository root. */
@@ -481,7 +510,7 @@ export function generatedFiles() {
   };
   return new Map([...pages, ['llms.txt', llmsIndex(listed)],
     ...readmes.map((file) => [file, readme(file)]),
-    ['docs/manual.md', manual], [SKILL_MANUAL, skillManual(manual)],
+    ['docs/manual.md', manual], ...skillReferences(pages, manual),
     ...galleryFiles({ list: listed, counts, summary: plainSummary, specJson: compactJson, slug })]);
 }
 

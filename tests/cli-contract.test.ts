@@ -460,6 +460,22 @@ describe('the verbs', () => {
     });
   });
 
+  // A known chart must expose its value and shared-option contracts without a catalogue lookup, or an agent can reject a valid title.
+  it('authors a chart from its compact contract and resolves shared options in full detail', () => {
+    const compact = JSON.parse(runCli(['describe', 'bar']).log[0]!);
+    expect(compact.cell).toEqual(expect.any(String));
+    expect(compact.anchor).toEqual(expect.any(String));
+    expect(compact.sharedOptions).toMatch(/\btitle\b/);
+    // Table cells follow their column kinds, not the numeric value-cell contract used by bar series.
+    expect(JSON.parse(runCli(['describe', 'table']).log[0]!).cell).toBeUndefined();
+    const full = JSON.parse(runCli(['describe', 'bar', '--full']).log[0]!);
+    const lookup = JSON.parse(runCli(['describe', 'bar', '--path', 'options.title']).log[0]!);
+    expect(full.options).toEqual(expect.arrayContaining(lookup.fields));
+    const spec = { ...compact.example, options: { ...compact.example.options, title: 'Regional revenue' } };
+    const result = render({ spec });
+    expect(result.body).toMatchObject({ ok: true, reading: { title: 'Regional revenue' } });
+  });
+
   it('refuses a mistyped verb with a typed envelope that names the verbs', () => {
     const result = runCli(['rendr', '--nope']);
     expect(result.code).toBe(1);
