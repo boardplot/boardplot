@@ -53,6 +53,8 @@ const NAME_PRIORITY = PRIORITY.endpoint + 1;
 /** Internal second pass: a bounded end-label set that needs a key; 'inline' when it replaces authored inline names, which the pass drops. */
 export const END_LABEL_KEY = Symbol('lineEndLabelKey');
 export const END_LABEL_WIDE = Symbol('lineEndLabelWide');
+/** Internal retry: centred endpoint room gives a hidden point value the plot width it needs. */
+export const POINT_LABEL_CENTERED_ROOM = Symbol('pointLabelCenteredRoom');
 /** The inline names stand in for end names that did not fit (layout.ts). */
 export const INLINE_FALLBACK = Symbol('lineInlineFallback');
 export const usesInlineFallback = (options: LineOptions): boolean => (options as LineOptions & { [INLINE_FALLBACK]?: boolean })[INLINE_FALLBACK] === true;

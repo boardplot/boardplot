@@ -52,7 +52,7 @@ import { fillShadingKinds, fillShadings, forecastBoundaryX, regroundOnShadings, 
 import { planLineLabels, type LineLabelPlan } from './labelPlan';
 import { BUMP_FOLDED } from './bump';
 import { X_PARTIAL_ROW } from './xTicks';
-import { END_LABEL_KEY, END_LABEL_WIDE, INLINE_FALLBACK, endUnitSuffix, lineToDateIds, pointLabelsFollowShape, usesEndLabelKey, usesInlineFallback, type EndpointLabelStrategy } from './labels';
+import { END_LABEL_KEY, END_LABEL_WIDE, INLINE_FALLBACK, POINT_LABEL_CENTERED_ROOM, endUnitSuffix, lineToDateIds, pointLabelsFollowShape, usesEndLabelKey, usesInlineFallback, type EndpointLabelStrategy } from './labels';
 import { lineValueStats } from './means';
 import { laneScale } from './continuous';
 import type { LineAnomaly, LineArea, LineDomain, LineEnv, LineMarkGeometry, LinePaints, LineReserves, LineText } from './model';
@@ -1268,6 +1268,17 @@ function layoutLinePass(
     if (tie) {
       const need = Math.ceil((tie.rect?.h ?? text.labelH) / 2) + 2;
       Object.assign(geometry, { [BAND_PAD]: Math.max((geometry as { [BAND_PAD]?: number })[BAND_PAD] ?? 0, need) });
+    }
+  }
+  if (pointLabelsFollowShape(env, domain) && !(options as { [POINT_LABEL_CENTERED_ROOM]?: boolean })[POINT_LABEL_CENTERED_ROOM]) {
+    const noted = (options as { [NOTED_LABELS]?: ReadonlySet<Id> })[NOTED_LABELS];
+    const visible = (label: PlacedLabel) => label.hidden === undefined && !noted?.has(label.id);
+    const lost = geometry.labels.filter(label => label.kind === 'point' && !noted?.has(label.id)
+      && (label.hidden === 'collision' || label.hidden === 'density'));
+    if (lost.length) {
+      const centred = layoutLinePass(data, { ...options, [POINT_LABEL_CENTERED_ROOM]: true } as LineOptions);
+      const printed = new Set(centred.labels.filter(visible).map(label => label.id));
+      if (lost.some(label => printed.has(label.id)) && geometry.labels.filter(visible).every(label => printed.has(label.id))) return centred;
     }
   }
   return geometry;

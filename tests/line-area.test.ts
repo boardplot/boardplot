@@ -12,6 +12,20 @@ import { arrowLook } from '../src/core/annotationArrow';
 import type { Geometry, Paint } from '../src/core/types/scene';
 import { getFixtures } from '../src/fixtures';
 
+// Extra endpoint room must not move a flagged trough value into notes when the centred reserve can still print it.
+it('keeps the flagged 942 trough visible at 900 px', () => {
+  for (const id of ['weekly-orders-anomalies', 'orders-strict-k']) for (const theme of [undefined, 'notation']) {
+    const fixture = getFixtures('line').find(item => item.id === id)!;
+    const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'line', data: fixture.data,
+      annotations: fixture.annotations, options: { ...fixture.options, size: { width: 900 }, theme },
+    } as never)));
+    const trough = geometry.labels.find(label => label.id === 'point:orders:w15');
+    expect(trough?.text, `${id}/${theme}`).toBe('942');
+    expect(trough?.hidden, `${id}/${theme}`).toBeUndefined();
+    expect(geometry.scene.some(node => node.t === 'text' && node.id === 'label:point:orders:w15'), `${id}/${theme}`).toBe(true);
+  }
+});
+
 // Band names must not leave the plot when a wrap fits, or crowd marks by abandoning clear plot headroom.
 it('keeps band names within the plot while preserving headroom seats and authored pins', () => {
   const fixture = getFixtures('line').find(item => item.id === 'shade-band-inside-wrap')!;
