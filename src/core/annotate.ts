@@ -124,6 +124,8 @@ export interface AnchorResolution {
    * Bar/column/waterfall anchors keep drop legs.
    */
   lineAnchored?: boolean;
+  /** Actual marker extent supplied for an emphasized line point; arrows keep clear of its edge. */
+  markerRadius?: number;
   /**
    * The anchor is the first drawn point of a line series that starts after
    * the first category. Its own line runs only to the right, so a callout
@@ -1958,7 +1960,7 @@ function calloutLabel(
   }
   // An arrow callout first tries the seats beside its point, level with it.
   const arrow = head.arrow === true && !glyph
-    ? { anchor: { x: at.x, y: at.y }, edge: at.lineAnchored ? CALLOUT_MARKER_R : 0, nodeIds: [s.nid('arrow'), s.nid('arrowHead')], owner: { annotationId: annId } } as NonNullable<CalloutHeadPlan['arrow']>
+    ? { anchor: { x: at.x, y: at.y }, edge: at.lineAnchored ? at.markerRadius ?? CALLOUT_MARKER_R : 0, nodeIds: [s.nid('arrow'), s.nid('arrowHead')], owner: { annotationId: annId } } as NonNullable<CalloutHeadPlan['arrow']>
     : undefined;
   if (arrow) {
     const look = calloutArrowLook(input.theme);

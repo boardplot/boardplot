@@ -777,15 +777,17 @@ describe('ignored options', () => {
 describe('edge inputs that draw', () => {
   const body = (spec: unknown) => render({ spec }).body as { ok: boolean; errors?: { code: string; message: string }[] };
   // An unsupported highlight must warn without muting the chart or changing a valid series highlight.
-  it.each(['line', 'area', 'stacked-area', 'stacked100-area', 'bump', 'slope'] as const)('ignores unsupported highlights on %s', (variant) => {
+  it.each(['line', 'area', 'stacked-area', 'stacked100-area', 'bump', 'slope', 'fan'] as const)('ignores unsupported highlights on %s', (variant) => {
     const type = variant === 'slope' ? 'slope' : 'line';
     const data = { categories: ['a', 'b'], series: [
-      { id: 'first', values: [12, 18] }, { id: 'second', values: [20, 15] },
+      { id: 'first', values: [12, 18] }, { id: 'second', values: variant === 'fan' ? [5, 10] : [20, 15] },
+      ...(variant === 'fan' ? [{ id: 'upper', values: [22, 25] }] : []),
       { id: 'reference', role: 'reference', values: [16, 16] },
     ] };
     const lay = (highlight?: string | string[]) => {
       const request = resolveChartRequest({ type, data, options: {
-        size: { width: 720, height: 400 }, ...(type === 'line' ? { variant } : {}),
+        size: { width: 720, height: 400 }, ...(type === 'line' ? { variant: variant === 'fan' ? 'line' : variant } : {}),
+        ...(variant === 'fan' ? { fan: { of: 'first', bands: [{ low: 'second', high: 'upper', label: 'Range' }] } } : {}),
         ...(highlight === undefined ? {} : { highlight }),
       } } as never);
       const result = layoutResolvedRequest(request);

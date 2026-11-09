@@ -1074,6 +1074,8 @@ export interface LineXAxis {
 }
 
 export interface LineOptions extends Omit<BaseOptionsFor<'line'>, 'annotations'> {
+  /** Drawn series IDs, or category IDs on one plain data line without a fan. Category selection enlarges the marker and focuses its value while preserving line ink. Series IDs win a shared ID. References do not count as data lines. Unsupported IDs warn without changing the drawing. */
+  highlight?: Id | Id[];
   /** On a time x axis, x anchors also accept epoch milliseconds, including categoryId, date and end. */
   annotations?: Annotation<string | number>[];
   /** Least-squares fit per shown series (line/area) over every source value in the shown range. Regular months, quarters and years fit on the period index; other dates use weeks or elapsed UTC days; otherwise category positions. The key prints slope per period unit and r². At least 3 non-null points; window/zoom sets the fitted range. */

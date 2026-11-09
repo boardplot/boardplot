@@ -7,7 +7,8 @@ import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request'
 import { requireGeometry } from '../src/core/sizing';
 import type { LineMarks } from '../src/core/charts/line/layout';
 import { contrastRatio } from '../src/core/color';
-import { paintColor, resolveTheme } from '../src/core/theme';
+import { paintColor, resolveTheme, strokeToken } from '../src/core/theme';
+import { arrowLook } from '../src/core/annotationArrow';
 import type { Geometry, Paint } from '../src/core/types/scene';
 import { getFixtures } from '../src/fixtures';
 
@@ -48,6 +49,44 @@ it('keeps band names within the plot while preserving headroom seats and authore
   expect(comboLabel?.hidden).toBeUndefined();
   expect(comboLabel?.slot).toBe('aboveBand');
   expect(comboLabel?.lines).toEqual(['Price test']);
+});
+
+// Point emphasis must keep the line's ink and leave arrow tips and value labels clear of the enlarged marker.
+it.each([360, 960])('emphasizes one line point without recolouring the line at %i px', (width) => {
+  const draw = (highlight?: string, seriesId = 'load', overrides = {}) => {
+    const request = resolveChartRequest({ type: 'line',
+      data: { categories: ['a', 'b', 'c'], series: [{ id: seriesId, values: [48, 35, 53] }] },
+      options: { size: { width, height: 360 }, valueAxis: { min: 30, max: 60 }, valueLabels: 'ends', highlight, ...overrides },
+      annotations: [{ kind: 'arrow', id: 'gap', from: { categoryId: 'b', value: 58 }, to: { categoryId: 'b', seriesId } }],
+    } as never);
+    return { geometry: requireGeometry(layoutResolvedRequest(request)), theme: request.theme };
+  };
+  const plain = draw();
+  const focused = draw('b');
+  const marker = (g: Geometry) => g.scene.find(node => node.part === 'marker' && node.owner.categoryId === 'b');
+  const before = marker(plain.geometry), after = marker(focused.geometry);
+  if (before?.t !== 'circle' || after?.t !== 'circle') throw new Error('missing circle marker');
+  expect(after.r).toBeCloseTo(before.r * Math.max(1, strokeToken(focused.theme, 'focus') / strokeToken(focused.theme, 'data')));
+  expect(after.r).toBeGreaterThan(before.r);
+  expect(paintColor(focused.theme, after.fill!)).toBe(paintColor(focused.theme, { token: 'focus' }));
+  const lineInk = (g: Geometry) => g.scene.filter(node => node.part === 'line').map(node => 'stroke' in node && { stroke: node.stroke, width: 'width' in node ? node.width : undefined });
+  expect(lineInk(focused.geometry)).toEqual(lineInk(plain.geometry));
+  const value = focused.geometry.labels.find(label => label.id === 'point:load:b');
+  expect(value?.hidden).toBeUndefined();
+  expect(value?.text).toBe('35');
+  expect(value?.font?.weight ?? focused.theme.type.label.weight).toBe(focused.theme.type.label.weight);
+  expect(paintColor(focused.theme, value!.ink)).toBe(paintColor(focused.theme, { token: 'focus' }));
+  const head = focused.geometry.scene.find(node => node.t === 'path' && node.part === 'drawing' && node.owner.annotationId === 'gap');
+  if (head?.t !== 'path') throw new Error('missing arrow head');
+  const tip = /^M\s*([-\d.]+)[ ,]+([-\d.]+)/.exec(head.d)!;
+  expect(after.cy - Number(tip[2])).toBeCloseTo(after.r + arrowLook(focused.theme, { size: 6 }).tipGap, 2);
+  expect(focused.geometry.warnings.some(warning => warning.code === 'highlight-unknown-id')).toBe(false);
+  for (const options of [{ labels: false }, { labels: { point: false } }, { valueLabels: 'none' }]) {
+    expect(draw('b', 'load', options).geometry.labels.some(label => label.id === 'point:load:b' && !label.hidden)).toBe(false);
+  }
+  const shared = draw('b', 'b').geometry;
+  const sharedMarker = marker(shared);
+  expect(sharedMarker?.t === 'circle' && sharedMarker.r).toBe(before.r);
 });
 
 // A linear value axis misplaces values by orders of magnitude when a log axis is requested.

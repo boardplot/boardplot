@@ -3382,4 +3382,11 @@ const shadeBandInsideWrapFixture: Fixture<LineChartData, LineOptions> = {
   ],
 };
 
-registerFixtures('line', [...fixtures, drawingKindsFixture, valueLineEndValueFixture, shadeBandInsideWrapFixture, smallDrawerFixture, anomalyLineFixture, weeklyEventsLineFixture, eventsKeyLineFixture, focusFixture, nearZeroTailsFixture, partialWeekFixture, hostCardFixture, hostCardUnitShownFixture, markInkFixture, cellLabelFixture, ...cohortLineFixtures, briefLineFixture, themeConventionsFixture, areaFromOriginFixture, ...coverageLineFixtures, cycleBandsFixture, gapBracketFixture, stackedAreaBenchmarkFixture, stackedAreaRestFixture, strokeSamplerFixture, ratioPlainFormatRefusal, rebaseMissingNoteFixture, rebaseZeroNoteFixture, bandHeadroomFixture, lateStartFixture, trendFixture, ...continuousLineFixtures, logAxisFixture]);
+const pointEmphasisFixture: Fixture<LineChartData, LineOptions> = {
+  ...valueLineEndValueFixture,
+  id: 'point-emphasis',
+  title: 'A selected trough emphasizes its marker and value while the line keeps its ink',
+  options: { ...valueLineEndValueFixture.options, subtitle: { measure: 'Load by week' }, highlight: ['w5'], valueAxis: { min: 30, max: 60, gridlines: true } },
+};
+
+registerFixtures('line', [...fixtures, drawingKindsFixture, valueLineEndValueFixture, shadeBandInsideWrapFixture, pointEmphasisFixture, smallDrawerFixture, anomalyLineFixture, weeklyEventsLineFixture, eventsKeyLineFixture, focusFixture, nearZeroTailsFixture, partialWeekFixture, hostCardFixture, hostCardUnitShownFixture, markInkFixture, cellLabelFixture, ...cohortLineFixtures, briefLineFixture, themeConventionsFixture, areaFromOriginFixture, ...coverageLineFixtures, cycleBandsFixture, gapBracketFixture, stackedAreaBenchmarkFixture, stackedAreaRestFixture, strokeSamplerFixture, ratioPlainFormatRefusal, rebaseMissingNoteFixture, rebaseZeroNoteFixture, bandHeadroomFixture, lateStartFixture, trendFixture, ...continuousLineFixtures, logAxisFixture]);

@@ -740,7 +740,9 @@ The KPI hero figure prefers 1.5 × the M title size, rounded in the table unit, 
 
 ## Reading errors and warnings
 
-On line charts, including area and bump variants, and on plain slope charts, `options.highlight` selects drawn data series by ID. A category ID, a reference-series ID or an unknown ID produces one `highlight-unknown-id` warning. Unsupported IDs do not change the chart's colours, markers or label priority. A list that also names a valid series keeps that series highlighted.
+On line charts and plain slope charts, `options.highlight` selects drawn data series by ID. On one plain data line without a fan, a category ID also selects that point. For example, `"highlight": ["w5"]` enlarges W5's marker and paints the marker and its value in the theme's focus ink. The line keeps its paint and width. The marker grows by the theme's focus-to-data stroke ratio. An authored series fill keeps priority, as with series emphasis. Marker shapes, hollow forecast markers and explicit `marker: "none"` remain effective. Point values stay at their regular weight unless the series itself is also highlighted.
+
+Category emphasis adds the selected value to the requested value labels. Explicit `labels: false`, `labels.point: false`, `valueLabels: "none"` and cell `label: false` still hide it. Reference series do not count as data lines. Several data series, area, stacked, bump and fan forms keep series-only highlighting. Series IDs take precedence when a category has the same ID. An unsupported category ID, reference-series ID or unknown ID produces one `highlight-unknown-id` warning without changing the chart. A list that also names a valid series keeps that series highlighted. Remove the category ID from `highlight` to restore the ordinary marker and value.
 
 A callout that uses a side other than `preferSide` reports `callout-side-changed` at info level. The warning names the callout and the side used. It does not change placement.
 

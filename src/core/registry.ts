@@ -889,7 +889,7 @@ function unmatchedIdWarnings(geo: Geometry<object, object>, data: unknown, highl
   const asked = typeof highlight === 'string' ? [highlight] : Array.isArray(highlight) ? highlight.filter((id): id is string => typeof id === 'string') : [];
   // A waterfall checks its bar ids itself.
   if (asked.length > 0 && !geo.warnings.some((warning) => warning.code === 'highlight-unknown-id')) {
-    // Line and slope highlight drawn data series, not categories or reference lines.
+    // Line and slope highlight drawn data series. Eligible line points record their own selection.
     const seriesOnly = geo.type === 'line' || geo.type === 'slope';
     // Marks also retain empty lines and omitted bump series for data records; only scene owners are drawn.
     const dataSeries = seriesOnly ? new Set((geo.marks as { series: { seriesId: string }[] }).series.map(series => series.seriesId)) : undefined;
@@ -904,13 +904,17 @@ function unmatchedIdWarnings(geo: Geometry<object, object>, data: unknown, highl
     const points = (data as { points?: unknown } | undefined)?.points;
     if (Array.isArray(points)) pushAll(owned, points.map((point) => (point as { group?: unknown } | null)?.group).filter((id): id is string => typeof id === 'string'));
     const known = new Set(owned);
+    if (geo.type === 'line') {
+      const series = (geo.marks as { series: { points: { categoryId: string; highlighted?: true }[] }[] }).series;
+      for (const entry of series) for (const point of entry.points) if (point.highlighted) known.add(point.categoryId);
+    }
     const unknown = [...new Set(asked.filter((id) => !known.has(id)))];
     if (unknown.length > 0) {
       warnings.push({
         code: 'highlight-unknown-id',
         severity: 'warn',
         message: seriesOnly
-          ? `highlight names ${unknown.map((id) => `'${id}'`).join(', ')}, which cannot highlight a drawn data series of this chart; series ids here: ${list(owned)}`
+          ? `highlight names ${unknown.map((id) => `'${id}'`).join(', ')}, which cannot highlight a drawn data series${geo.type === 'line' ? ' or eligible point' : ''} of this chart; series ids here: ${list(owned)}${geo.type === 'line' ? '. Category emphasis works only on a plain line with one data series and no fan.' : ''}`
           : `highlight names ${unknown.map((id) => `'${id}'`).join(', ')}, which no mark of this chart carries, so nothing is highlighted for it; ids here: ${list(owned)}`,
         suggest: seriesOnly ? 'Name a drawn data series id of this chart, or remove the highlight.' : 'Name a series, category, point or row id of this chart.',
         // A grid panel's field is relative to the panel; the grid names the panel in the message.

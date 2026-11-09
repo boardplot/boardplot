@@ -742,22 +742,23 @@ function markerDisplay(input: RenderLineMarksInput, series: NormSer, row: (numbe
   };
 }
 
-function pushMarkerNode(input: RenderLineMarksInput, series: NormSer, dataIdx: number, row: (number | null)[], point: Pt, shape: MarkerShape, id: Id): void {
-  const stroke = series.role === 'reference' ? input.refPaintOf(series) : input.seriesPaint(series, dataIdx);
+function pushMarkerNode(input: RenderLineMarksInput, series: NormSer, dataIdx: number, row: (number | null)[], point: Pt, shape: MarkerShape, id: Id, scale = 1): void {
+  const stroke = series.role === 'reference' ? input.refPaintOf(series) : input.pointPaint(series, dataIdx, point.ci);
   const hollow = input.hollowAt(series, point.ci);
   const fill: Paint = hollow ? { token: 'background' } : stroke;
   const owner = { seriesId: series.id, categoryId: input.cats[point.ci]!.id };
   const display = markerDisplay(input, series, row, point.ci);
-  if (shape === 'circle') input.nodes.push({ t: 'circle', id, cx: point.x, cy: point.y, r: 3, fill, ...(hollow ? { stroke } : {}), owner, part: 'marker', display });
-  else if (shape === 'square') input.nodes.push({ t: 'rect', id, rect: { x: point.x - 3, y: point.y - 3, w: 6, h: 6 }, fill, ...(hollow ? { stroke, strokeWidth: strokeToken(input.theme, 'mark') } : {}), owner, part: 'marker', display });
-  else if (shape !== 'none') input.nodes.push({ t: 'path', id, d: markerPath(shape, point), fill, ...(hollow ? { stroke, width: strokeToken(input.theme, 'mark') } : {}), owner, part: 'marker', display });
+  const r = 3 * scale;
+  if (shape === 'circle') input.nodes.push({ t: 'circle', id, cx: point.x, cy: point.y, r, fill, ...(hollow ? { stroke } : {}), owner, part: 'marker', display });
+  else if (shape === 'square') input.nodes.push({ t: 'rect', id, rect: { x: point.x - r, y: point.y - r, w: 2 * r, h: 2 * r }, fill, ...(hollow ? { stroke, strokeWidth: strokeToken(input.theme, 'mark') } : {}), owner, part: 'marker', display });
+  else if (shape !== 'none') input.nodes.push({ t: 'path', id, d: markerPath(shape, point, scale), fill, ...(hollow ? { stroke, width: strokeToken(input.theme, 'mark') } : {}), owner, part: 'marker', display });
 }
 
 /** A triangle or diamond marker round `point`; combo draws its markers with it too. */
-export function markerPath(shape: 'triangle' | 'diamond', point: Point): string {
+export function markerPath(shape: 'triangle' | 'diamond', point: Point, scale = 1): string {
   return shape === 'triangle'
-    ? `M${fmtN(point.x)} ${fmtN(point.y - 3.5)}L${fmtN(point.x + 3.5)} ${fmtN(point.y + 3)}L${fmtN(point.x - 3.5)} ${fmtN(point.y + 3)}Z`
-    : `M${fmtN(point.x)} ${fmtN(point.y - 4)}L${fmtN(point.x + 4)} ${fmtN(point.y)}L${fmtN(point.x)} ${fmtN(point.y + 4)}L${fmtN(point.x - 4)} ${fmtN(point.y)}Z`;
+    ? `M${fmtN(point.x)} ${fmtN(point.y - 3.5 * scale)}L${fmtN(point.x + 3.5 * scale)} ${fmtN(point.y + 3 * scale)}L${fmtN(point.x - 3.5 * scale)} ${fmtN(point.y + 3 * scale)}Z`
+    : `M${fmtN(point.x)} ${fmtN(point.y - 4 * scale)}L${fmtN(point.x + 4 * scale)} ${fmtN(point.y)}L${fmtN(point.x)} ${fmtN(point.y + 4 * scale)}L${fmtN(point.x - 4 * scale)} ${fmtN(point.y)}Z`;
 }
 
 function renderMarkers(input: RenderLineMarksInput, series: NormSer, dataIdx: number, entry: LineMarks['series'][number], geometry: SeriesGeometry, claims: ClaimContext): void {
@@ -767,13 +768,15 @@ function renderMarkers(input: RenderLineMarksInput, series: NormSer, dataIdx: nu
       entry.points.push({ categoryId: input.cats[point.ci]!.id, x: point.x, y: point.y });
       return;
     }
+    const extent = input.markerExtent(series, dataIdx, point.ci);
     let nodeId: Id | undefined;
     if (shape !== 'none') {
       nodeId = `marker:${series.id}:${input.cats[point.ci]!.id}`;
-      pushMarkerNode(input, series, dataIdx, geometry.row, point, shape, nodeId);
-      input.occupied.claim({ x: point.x - 4, y: point.y - 4, w: 8, h: 8 }, 'mark', claims.lineOwner(series.id, input.cats[point.ci]!.id));
+      pushMarkerNode(input, series, dataIdx, geometry.row, point, shape, nodeId, extent?.scale);
+      const reach = extent ? Math.max(4, extent.reach + 1) : 4;
+      input.occupied.claim({ x: point.x - reach, y: point.y - reach, w: 2 * reach, h: 2 * reach }, 'mark', claims.lineOwner(series.id, input.cats[point.ci]!.id));
     }
-    entry.points.push({ categoryId: input.cats[point.ci]!.id, x: point.x, y: point.y, ...(nodeId ? { nodeId } : {}) });
+    entry.points.push({ categoryId: input.cats[point.ci]!.id, x: point.x, y: point.y, ...(nodeId ? { nodeId } : {}), ...(extent ? { highlighted: true as const, markerRadius: extent.reach } : {}) });
   });
 }
 
@@ -918,6 +921,8 @@ interface RenderLineMarksInput {
   /** The theme's hatch pitch and line weight, for the stacked bands' forecast overlay. */
   hatch?: { gap: number; width: number; share: number };
   seriesPaint: (series: NormSer, dataIdx: number) => Paint;
+  pointPaint: (series: NormSer, dataIdx: number, categoryIndex: number) => Paint;
+  markerExtent: (series: NormSer, dataIdx: number, categoryIndex: number) => { scale: number; reach: number } | undefined;
   forecastLinePaint: (series: NormSer, dataIdx: number) => Paint;
   areaFillPaint: (series: NormSer, dataIdx: number, forecast?: boolean) => Paint;
   areaFilled: (series: NormSer) => boolean;

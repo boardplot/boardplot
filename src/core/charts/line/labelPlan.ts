@@ -136,7 +136,7 @@ export function planLineLabels(
     // Authored furniture that divides at a transition stands on the same split.
     dividers: area.forecast.map((boundary, index) => ({ x: forecastXs[index]!, ci: boundary.lastActualIndex })),
     ...(isBump ? { bump: { headroom: area.topPad, named: new Set([...endLabels, ...reserves.startLabels].map((label) => `${label.s.id}:${label.ci}`)) } } : {}),
-    flagged: flaggedPoints(domain),
+    flagged: flaggedPoints(domain), pointHighlights: env.pointHighlights, markerExtent: paints.markerExtent,
     ...(focusValue ? { focusFont: focusValue } : {}),
     toDate: { ids: lineToDateIds(env, domain, text), words: domain.options.strings?.toDate ?? chartString(domain.options, 'toDate'), theme: env.theme, measure },
   };

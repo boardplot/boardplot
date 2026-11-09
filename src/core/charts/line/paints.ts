@@ -425,6 +425,7 @@ export function linePaints(env: LineEnv, domain: LineDomain, warnings: LintWarni
   if (quietRest) pushAll(warnings, othersShadeUnavailableWarnings(theme, { token: 'markInk' }));
   const ordered = (s: NormSer): boolean =>
     emphasis === 'ordered' && !s.colorRole && !(grey && highlights.has(s.id));
+  const focusPaint = (s: NormSer): Paint => s.fill ? { css: s.fill } : { token: 'focus' };
   const series = (s: NormSer, dataIdx: number): Paint => {
     let paint: Paint;
     const scenarioInk = scenarioStyleOf(s)?.ink;
@@ -432,7 +433,7 @@ export function linePaints(env: LineEnv, domain: LineDomain, warnings: LintWarni
     else if (s.fill) paint = { css: s.fill };
     else if (ordered(s)) paint = orderedRampPaint(dataIdx, dataSeries.length, quietRest);
     else if (bumpStory && !s.colorRole) paint = bumpStory.paintOf(s.id);
-    else if (grey) paint = highlights.has(s.id) ? { token: 'focus' } : !s.colorRole ? contextPaint(s) : markRolePaint(s.colorRole);
+    else if (grey) paint = highlights.has(s.id) ? focusPaint(s) : !s.colorRole ? contextPaint(s) : markRolePaint(s.colorRole);
     else if (heroMode) paint = s.id === heroId ? { token: 'markInk' } : contextPaint(s);
     else if (s.colorRole) paint = markRolePaint(s.colorRole);
     else if (scenarioInk) paint = { token: scenarioInk };
@@ -468,11 +469,27 @@ export function linePaints(env: LineEnv, domain: LineDomain, warnings: LintWarni
   const dashOf = (s: NormSer, dataIdx: number): number[] | undefined =>
     s.lineStyle === 'dashed' ? dashToken(theme, 'reference') : s.lineStyle === 'dotted' ? dashToken(theme, 'dotted') : isBump ? bumpSlot(dataIdx).dash : undefined;
   const pointScenario = (s: NormSer, ci: number): Scenario | undefined => s.vals[ci]!.scenario ?? s.scenario;
+  const pointSelected = (s: NormSer, ci: number): boolean => s.role !== 'reference' && env.pointHighlights.has(cats[ci]!.id);
+  const markerOf: LinePaints['markerOf'] = (s, dataIdx, ci) =>
+    s.marker ?? (pointSelected(s, ci) ? 'circle' : bumpStory ? bumpStory.isContext(s) ? 'none' : 'circle' : isBump ? bumpSlot(dataIdx).shape : isArea || ((markersOff || cats.length > MARKER_MAX_CATS) && cats[ci]!.partial !== true) ? 'none' : contextRank.has(s.id) ? plainGrey ? LINE_GREY_SHAPES[contextRank.get(s.id)! % LINE_GREY_SHAPES.length]! : BUMP_SHAPES[contextRank.get(s.id)! % BUMP_SHAPES.length]! : 'circle');
+  const hollowAt: LinePaints['hollowAt'] = (s, ci) => {
+    const sc = pointScenario(s, ci);
+    return sc === 'PY' || sc === 'PL' || sc === 'FC' || cats[ci]!.partial === true;
+  };
   return {
     css,
     bandRules: () => [...bandRules.values()],
     seriesCrossesShadedBand,
     series,
+    point: (s, dataIdx, ci) => pointSelected(s, ci) ? shadeSafeStroke(focusPaint(s), s, focusPaint(s)) : series(s, dataIdx),
+    markerExtent: (s, dataIdx, ci) => {
+      if (!pointSelected(s, ci)) return undefined;
+      const dataStroke = strokeToken(theme, 'data');
+      const scale = Math.max(1, strokeToken(theme, 'focus') / (dataStroke > 0 ? dataStroke : 1));
+      const shape = markerOf(s, dataIdx, ci);
+      const radius = shape === 'none' ? 0 : shape === 'triangle' ? 3.5 : shape === 'diamond' ? 4 : 3;
+      return { scale, reach: radius === 0 ? 0 : radius * scale + (hollowAt(s, ci) ? strokeToken(theme, 'mark') / 2 : 0) };
+    },
     areaFill,
     areaFilled,
     keyPaint,
@@ -489,12 +506,8 @@ export function linePaints(env: LineEnv, domain: LineDomain, warnings: LintWarni
     // Bump ignores the density cutoff: the marker is what makes a crossing
     // readable. A partial period keeps a (hollow) marker where density drops
     // the rest. A theme without default markers drops them as the cutoff does.
-    markerOf: (s, dataIdx, ci) =>
-      s.marker ?? (bumpStory ? bumpStory.isContext(s) ? 'none' : 'circle' : isBump ? bumpSlot(dataIdx).shape : isArea || ((markersOff || cats.length > MARKER_MAX_CATS) && cats[ci]!.partial !== true) ? 'none' : contextRank.has(s.id) ? plainGrey ? LINE_GREY_SHAPES[contextRank.get(s.id)! % LINE_GREY_SHAPES.length]! : BUMP_SHAPES[contextRank.get(s.id)! % BUMP_SHAPES.length]! : 'circle'),
-    hollowAt: (s, ci) => {
-      const sc = pointScenario(s, ci);
-      return sc === 'PY' || sc === 'PL' || sc === 'FC' || cats[ci]!.partial === true;
-    },
+    markerOf,
+    hollowAt,
     pointScenario,
     // A bump point carries BOTH quantities: `display.value` stays the metric
     // and `display.state` names the rank the y position encodes.

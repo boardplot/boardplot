@@ -159,6 +159,8 @@ export function layoutLineMarks(
     // weight, 9.6 px apart along x at the default strength; lower strengths spread and fade them.
     hatch: bandHatch(theme, options.hatchStrength),
     seriesPaint: paints.series,
+    pointPaint: paints.point,
+    markerExtent: paints.markerExtent,
     areaFillPaint: paints.areaFill,
     areaFilled: paints.areaFilled,
     // A plain line's forecast keeps its colour; the dashes, open markers and divider mark it.
