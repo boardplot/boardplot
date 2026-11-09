@@ -131,19 +131,24 @@ it('reads step amounts and explicit stack totals while keeping level comparisons
     categories: [{ id: 'a', label: 'A', date: '2022-01-01' }, { id: 'b', label: 'B', date: '2023-01-01' }],
     series: [{ id: 'x', label: 'X', values: [10, 20] }, { id: 'y', label: 'Y', values: [30, 40] }],
   };
-  for (const variant of ['stacked-area', 'stacked100-area'] as const) {
-    const options = { variant, valueLabels: 'none', seriesLabels: 'none' } as const;
+  // A category anchor without a series means the stack total on an area, as on a stacked column.
+  // It printed the bottom band's value at the stack top.
+  const layouts = [
+    ['stacked-area', (annotation: object) => layoutLine(data, { variant: 'stacked-area', valueLabels: 'none', seriesLabels: 'none', annotations: [annotation] } as never)],
+    ['stacked100-area', (annotation: object) => layoutLine(data, { variant: 'stacked100-area', valueLabels: 'none', seriesLabels: 'none', annotations: [annotation] } as never)],
+    ['stacked column', (annotation: object) => layoutColumn(data, { variant: 'stacked', valueLabels: 'none', annotations: [annotation] } as never)],
+  ] as const;
+  for (const [variant, layout] of layouts) {
     for (const [at, expected] of [
       [{ categoryId: 'b', edge: 'total' }, '60'],
-      ['b', '20'],
-      [{ categoryId: 'b' }, '20'],
+      ['b', '60'],
+      [{ categoryId: 'b' }, '60'],
       [{ categoryId: 'b', seriesId: 'x', edge: 'total' }, '20'],
     ] as const) {
-      const geometry = layoutLine(data, { ...options, annotations: [{ kind: 'abs', at }] });
+      const geometry = layout({ kind: 'abs', at });
       expect.soft(geometry.annotations[0]?.computedText, `${variant} ${JSON.stringify(at)}`).toBe(expected);
     }
-    const growth = layoutLine(data, { ...options, annotations: [{ kind: 'cagr' }] });
-    expect.soft(annOf(growth, 'cagr')?.computedText, variant).toBe('X +100.0% p.a.');
+    expect.soft(annOf(layout({ kind: 'cagr' }), 'cagr')?.computedText, variant).toBe('+50.0% p.a.');
   }
 });
 

@@ -364,9 +364,10 @@ function annotateLine(
     const ci = catIndex.get(norm.categoryId);
     if (ci === undefined) return null;
     const c = cats[ci]!;
-    // An explicit total reads every band. String anchors keep reading the first series.
+    // On a stack, a category anchor without a series reads every band, as column, bar, combo and mekko do.
+    // The first band's value printed at the stack top read as the total.
     // A suppressed 100% category has no total. Directly authored shares have no amount to add, so their total is the plotted percent.
-    if (isStacked && typeof ref !== 'string' && norm.edge === 'total' && !norm.seriesId && drawnSeries.length > 1) {
+    if (isStacked && !norm.seriesId && drawnSeries.length > 1) {
       if (compositionInvalidAt(ci)) return null;
       const top = drawnSeries[drawnSeries.length - 1]!;
       const amounts = drawnSeries.map(s => rebased ? pv[rowOf.get(s)!]![ci]! : absOf(s, ci));
