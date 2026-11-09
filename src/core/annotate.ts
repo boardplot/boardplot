@@ -2227,6 +2227,11 @@ function settleEraBands(
     const req = requests.find((r) => r.id === plan.labelId);
     if (!req) continue;
     req.candidates = buildExtendedEraBandCandidates(plan, input, false);
+    // Keep the existing preference within the plot, including its reserved headroom.
+    // Only defer seats beyond the plot. Pins keep the first candidate with their slot.
+    if (plan.style === 'shade' && (req.pinnedSlot ?? input.solveCtx.pins[plan.labelId]) === undefined) {
+      req.candidates.sort((a, b) => Number(!rectContains(input.plot, a.rect)) - Number(!rectContains(input.plot, b.rect)));
+    }
   }
   const solved = solveLabels(requests, input.occupied, input.solveCtx);
   const stillHidden = run.eraBands.filter((plan) => solved.placed.find((l) => l.id === plan.labelId)?.hidden);

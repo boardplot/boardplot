@@ -9,6 +9,46 @@ import type { LineMarks } from '../src/core/charts/line/layout';
 import { contrastRatio } from '../src/core/color';
 import { paintColor, resolveTheme } from '../src/core/theme';
 import type { Geometry, Paint } from '../src/core/types/scene';
+import { getFixtures } from '../src/fixtures';
+
+// Band names must not leave the plot when a wrap fits, or crowd marks by abandoning clear plot headroom.
+it('keeps band names within the plot while preserving headroom seats and authored pins', () => {
+  const fixture = getFixtures('line').find(item => item.id === 'shade-band-inside-wrap')!;
+  for (const pinned of [false, true]) {
+    const request = resolveChartRequest({ type: 'line', data: fixture.data, annotations: fixture.annotations,
+      options: { ...fixture.options, ...(pinned ? { labelPlacements: { 'annotation:maintenance': 'aboveBandEnd' } } : {}) },
+    } as never);
+    const geometry = requireGeometry(layoutResolvedRequest(request));
+    const band = geometry.scene.find(node => node.t === 'rect' && node.part === 'band' && node.owner.annotationId === 'maintenance');
+    const label = geometry.labels.find(item => item.id === 'annotation:maintenance');
+    if (band?.t !== 'rect' || !label) throw new Error('missing maintenance band or name');
+    expect(label.hidden).toBeUndefined();
+    if (pinned) {
+      expect(label.slot).toBe('aboveBandEnd');
+      expect(label.rect.y + label.rect.h).toBeLessThan(band.rect.y);
+    } else {
+      expect(label.lines).toEqual(['Planned', 'maintenance']);
+      expect(label.rect.x).toBeGreaterThanOrEqual(band.rect.x + 4);
+      expect(label.rect.x + label.rect.w).toBeLessThanOrEqual(band.rect.x + band.rect.w - 4);
+      expect(label.rect.y).toBeGreaterThanOrEqual(band.rect.y + 4);
+      expect(label.rect.y + label.rect.h).toBeLessThanOrEqual(band.rect.y + band.rect.h - 4);
+    }
+  }
+  const sensors = getFixtures('line').find(item => item.id === 'x-time-uneven-sensors')!;
+  const pinnedRequest = resolveChartRequest({ type: 'line', data: sensors.data, annotations: sensors.annotations,
+    options: { ...sensors.options, labelPlacements: { 'annotation:band-1': 'topCenterInside' } },
+  } as never);
+  const pinnedLabel = requireGeometry(layoutResolvedRequest(pinnedRequest)).labels.find(item => item.id === 'annotation:band-1');
+  expect(pinnedLabel?.hidden).toBeUndefined();
+  expect(pinnedLabel?.slot).toBe('topCenterInside');
+  expect(pinnedLabel?.lines).toEqual(['Pump offline']);
+  const combo = getFixtures('combo').find(item => item.id === 'option-band-shade')!;
+  const comboRequest = resolveChartRequest({ type: 'combo', data: combo.data, annotations: combo.annotations, options: combo.options } as never);
+  const comboLabel = requireGeometry(layoutResolvedRequest(comboRequest)).labels.find(item => item.id === 'annotation:price-test');
+  expect(comboLabel?.hidden).toBeUndefined();
+  expect(comboLabel?.slot).toBe('aboveBand');
+  expect(comboLabel?.lines).toEqual(['Price test']);
+});
 
 // A linear value axis misplaces values by orders of magnitude when a log axis is requested.
 it('draws decade ticks evenly on a log axis and refuses zero', () => {
