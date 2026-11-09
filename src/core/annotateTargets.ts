@@ -376,6 +376,31 @@ function resolveSpan(ctx: TargetPassCtx, from?: Id, to?: Id): Rect | null {
   return categorySpanRect(start, end, plot);
 }
 
+/** The stroked edges a plan corridor will draw, for seats that must stay clear before the annotation pass. */
+export function corridorEdgeRects(
+  ann: Extract<Annotation, { kind: 'band' }>,
+  input: Pick<TargetScaleInput, 'plot' | 'bandPlot' | 'xScale' | 'yScale' | 'resolveCategoryBand' | 'theme'>,
+): Rect[] {
+  if (ann.style !== 'corridor' || scenarioPaint(ann.scenario).pattern !== 'outline') return [];
+  const mapper = valueMapper(input);
+  const bounds = finitePair(ann.low, ann.high);
+  if (!mapper || !bounds) return [];
+  const plot = input.bandPlot ?? input.plot;
+  let span = plot;
+  if (ann.from !== undefined || ann.to !== undefined) {
+    if (ann.from === undefined || ann.to === undefined) return [];
+    const from = input.resolveCategoryBand?.(ann.from), to = input.resolveCategoryBand?.(ann.to);
+    if (!from || !to) return [];
+    span = categorySpanRect(from, to, plot);
+  }
+  const rect = valueBandRect(span, bounds.low, bounds.high, mapper, plot);
+  if (!rect) return [];
+  const width = strokeToken(input.theme, 'hair');
+  return mapper.axis === 'y'
+    ? [rect.y, rect.y + rect.h].map(y => ({ x: rect.x, y: y - width / 2, w: rect.w, h: width }))
+    : [rect.x, rect.x + rect.w].map(x => ({ x: x - width / 2, y: rect.y, w: width, h: rect.h }));
+}
+
 function placeCorridorOrTolerance(
   ctx: TargetPassCtx,
   ann: Extract<Annotation, { kind: 'band' }>,

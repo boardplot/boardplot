@@ -16,7 +16,7 @@ import { formatAutomaticPercent, notApplicableGlyph, numberRange } from '../../f
 import { percentCellsOnly } from '../../annotatePass';
 import { frameTextOptions, normalizeLegendOption, plotHeightAfter, shareUnitOptions, solveFrame, type FrameBand, type FrameInput, type FrameResult, type LegendItemInput, authoredFootnoteCount } from '../../frame';
 import { stepDownFont } from '../../label/rowFit';
-import { planCategoryRow, rotatedLeftOverhang } from '../../label/categoryRow';
+import { planCategoryRow, rotatedLeftOverhang, type CategoryRowPlan } from '../../label/categoryRow';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { PRIORITY } from '../../label/solver';
 import { prepareRatioTier, ratioTierCanRender, ratioTierMetrics } from '../../ratioTier';
@@ -25,7 +25,7 @@ import { linearScale, seatRoom } from '../../scale';
 import { logScale, logSpecFormat, logTickTiers } from '../logAxis';
 import type { FontSpec, TextMeasurer } from '../../text';
 import { strokeToken, dashToken, canvasMargin, emphasisWeight, secondaryFont } from '../../theme';
-import { X_PARTIAL_ROW, planXTicks, timeZoneNote, xTickRowPlan } from './xTicks';
+import { X_PARTIAL_ROW, planXTicks, timeZoneNote, xTickRowPlan, type XTickPlan } from './xTicks';
 import { NATURAL_BAND_STEP, plotFloorRows } from '../../sizing';
 import type { Annotation } from '../../types/annotations';
 import type { Id } from '../../types/cell';
@@ -45,7 +45,7 @@ import { lineFrameFootnotes } from './footnotes';
 import { gapFillPaint } from './difference';
 import { anomalyLegendItems, anomalyRuleLines, anomalyRuleReserve, columnCorridorPaint } from '../column/anomaly';
 import { withUnit } from '../../unitJoin';
-import { defaultValueContent, endUnitSuffix, fanEdgeInKey, flaggedPoints, lineFocusFont, lineToDateIds, PLOT_END_AIR, pointLabelEndRoom, pointLabelSelection, prepareEndpointLabels, usesEndLabelKey, valueUnit } from './labels';
+import { defaultValueContent, endUnitSuffix, fanEdgeInKey, flaggedPoints, lineFocusFont, lineToDateIds, PLOT_END_AIR, POINT_LABEL_CENTERED_ROOM, pointLabelEndRoom, pointLabelSelection, prepareEndpointLabels, usesEndLabelKey, valueUnit, pointLabelsFollowShape } from './labels';
 import { forecastBoundaryX, latestRingReach } from './marks';
 import { rangeRuns } from './range';
 import { outerFanEdge } from './fan';
@@ -120,28 +120,35 @@ export function lineReserves(env: LineEnv, domain: LineDomain, paints: LinePaint
   }
   // Before the names: the name column starts clear of the last values. A
   // value the near-zero group withholds is still counted, which only adds air.
-  const categoryEndRoom = pointLabelEndRoom({ valueLabels: labelModes.values, valueLabelsAuthored: options.valueLabels !== undefined, labelOnly: domain.labelOnly, lastWithheld: new Set(), valueContent, variant,
-    contentOf: text.contentOf, drawnSeries, pv, rowOf, cats, rebased, composeText, composeEndText: text.composeEndText, absOf, measure, labelFont, highlights,
-    sharesWithheld: domain.sharesWithheld, ...valueUnit(options, isBump, rebased), isStacked: domain.isStacked, flagged: flaggedPoints(domain), pointHighlights: env.pointHighlights,
-    ...(domain.x ? { endToDate: { ids: lineToDateIds(env, domain, text), words: options.strings?.toDate ?? chartString(options, 'toDate'), theme: env.theme, measure } } : {}) });
-  // Area labels fit inside their bands; their width does not inset the data.
-  if (isArea) categoryEndRoom.left = categoryEndRoom.right = 0;
-  // Selected endpoint markers keep their painted extent inside the plot, even with values hidden.
-  if (env.pointHighlights.size > 0 && cats.length > 0) drawnSeries.forEach((series, index) => {
-    const first = paints.markerExtent(series, index, 0);
-    const last = paints.markerExtent(series, index, cats.length - 1);
-    if (first && first.reach > 0) categoryEndRoom.left = Math.max(categoryEndRoom.left, first.reach + PLOT_END_AIR);
-    if (last && last.reach > 0) categoryEndRoom.right = Math.max(categoryEndRoom.right, last.reach + PLOT_END_AIR);
-  });
-  // The latest-point ring's paint keeps the same air to the plot's end.
-  if (options.latestPoint !== undefined && options.latestPoint !== 'none') {
-    categoryEndRoom.right = Math.max(categoryEndRoom.right, latestRingReach(env.theme) + PLOT_END_AIR);
-  }
-  // A cut range maps to the plot edges, including the snapped edges of zoom buckets.
-  if (domain.x) {
-    if (domain.x.shown[0]! > domain.x.lo) categoryEndRoom.left = 0;
-    if (domain.x.shown[domain.x.shown.length - 1]! < domain.x.hi) categoryEndRoom.right = 0;
-  }
+  const endRoom = (shapeSides: boolean) => {
+    const room = pointLabelEndRoom({ shapeSides, shapeEnd: labelModes.series !== 'end' && !usesEndLabelKey(options), markerExtent: paints.markerExtent, valueLabels: labelModes.values, valueLabelsAuthored: options.valueLabels !== undefined, labelOnly: domain.labelOnly, lastWithheld: new Set(), valueContent, variant,
+      contentOf: text.contentOf, drawnSeries, pv, rowOf, cats, rebased, composeText, composeEndText: text.composeEndText, absOf, measure, labelFont, highlights,
+      sharesWithheld: domain.sharesWithheld, ...valueUnit(options, isBump, rebased), isStacked: domain.isStacked, flagged: flaggedPoints(domain), pointHighlights: env.pointHighlights,
+      ...(domain.x ? { endToDate: { ids: lineToDateIds(env, domain, text), words: options.strings?.toDate ?? chartString(options, 'toDate'), theme: env.theme, measure } } : {}) });
+    // Area labels fit inside their bands; their width does not inset the data.
+    if (isArea) room.left = room.right = 0;
+    // Selected endpoint markers keep their painted extent inside the plot, even with values hidden.
+    if (env.pointHighlights.size > 0 && cats.length > 0) drawnSeries.forEach((series, index) => {
+      const first = paints.markerExtent(series, index, 0);
+      const last = paints.markerExtent(series, index, cats.length - 1);
+      if (first && first.reach > 0) room.left = Math.max(room.left, first.reach + PLOT_END_AIR);
+      if (last && last.reach > 0) room.right = Math.max(room.right, last.reach + PLOT_END_AIR);
+    });
+    // The latest-point ring's paint keeps the same air to the plot's end.
+    if (options.latestPoint !== undefined && options.latestPoint !== 'none') {
+      room.right = Math.max(room.right, latestRingReach(env.theme) + PLOT_END_AIR);
+    }
+    // A cut range maps to the plot edges, including the snapped edges of zoom buckets.
+    if (domain.x) {
+      if (domain.x.shown[0]! > domain.x.lo) room.left = 0;
+      if (domain.x.shown[domain.x.shown.length - 1]! < domain.x.hi) room.right = 0;
+    }
+    return room;
+  };
+  const shaped = pointLabelsFollowShape(env, domain) && !(options as { [POINT_LABEL_CENTERED_ROOM]?: boolean })[POINT_LABEL_CENTERED_ROOM];
+  const categoryEndRoom = endRoom(shaped);
+  const centred = shaped ? endRoom(false) : undefined;
+  const centredEndRoom = centred && (centred.left !== categoryEndRoom.left || centred.right !== categoryEndRoom.right) ? centred : undefined;
   const bumpFolded = (options as { [BUMP_FOLDED]?: ReadonlyMap<string, string> })[BUMP_FOLDED];
   const endpointInput: Parameters<typeof prepareEndpointLabels>[0] = {
     options, names: labelModes.series, valueContent, endRoom: categoryEndRoom.right, labelOnly: domain.labelOnly, variant, isBump, isArea, drawnSeries, cats,
@@ -208,6 +215,7 @@ export function lineReserves(env: LineEnv, domain: LineDomain, paints: LinePaint
     endpoint,
     keyValues,
     categoryEndRoom,
+    ...(centredEndRoom ? { centredEndRoom } : {}),
     startLabels,
     startReserve,
     annList,
@@ -550,7 +558,33 @@ function valueAxisTicks(env: LineEnv, domain: LineDomain) {
  * interval from "Q1".
  */
 function categoryRow(env: LineEnv, domain: LineDomain, text: LineText, reserves: LineReserves, frame: FrameResult, valueAxisReserve: number, warnings: LintWarning[]) {
-  if (domain.x) return continuousRow(env, domain, domain.x, text, reserves, frame, valueAxisReserve, warnings);
+  type Room = LineReserves['categoryEndRoom'];
+  const on = (room: Room, sink: LintWarning[]): ReturnType<typeof categoryNameRow> & { xTicks?: XTickPlan } => domain.x
+    ? continuousRow(env, domain, domain.x, text, room, frame, valueAxisReserve, sink)
+    : categoryNameRow(env, domain, text, room, frame, valueAxisReserve, sink);
+  const centred = reserves.centredEndRoom;
+  if (!centred) return { ...on(reserves.categoryEndRoom, warnings), endRoom: reserves.categoryEndRoom, sideEndRoom: false };
+  // The open-side room of shape point values takes only room the row can spare: the
+  // centred row prints every category name, and the side room prints the same row.
+  const before = warnings.length;
+  const fallback = { ...on(centred, warnings), endRoom: centred, sideEndRoom: false };
+  if (!domain.x && (fallback.catPlan.stride !== 1 || !fallback.catPlan.keep.every(Boolean))) return fallback;
+  const sink: LintWarning[] = [];
+  const side = on(reserves.categoryEndRoom, sink);
+  if (rowSignature(side.catPlan) !== rowSignature(fallback.catPlan)) return fallback;
+  warnings.length = before;
+  pushAll(warnings, sink);
+  return { ...side, endRoom: reserves.categoryEndRoom, sideEndRoom: true };
+}
+
+/** What a category row prints: which names, in which lines, font and turn. */
+function rowSignature(plan: CategoryRowPlan): string {
+  return JSON.stringify([plan.stride, plan.rotation, plan.maxLines, plan.font.size, plan.typeRole, plan.keep,
+    plan.infos.map((info) => [info.lines, info.truncated]), plan.yearRow?.years.map((year) => year.text),
+    plan.underRow?.items.map((item) => item.text), plan.cutNotes]);
+}
+
+function categoryNameRow(env: LineEnv, domain: LineDomain, text: LineText, room: LineReserves['categoryEndRoom'], frame: FrameResult, valueAxisReserve: number, warnings: LintWarning[]) {
   const { theme, measure } = env;
   const { options, cats, population } = domain;
   const n = cats.length;
@@ -563,7 +597,7 @@ function categoryRow(env: LineEnv, domain: LineDomain, text: LineText, reserves:
   let categoryPlotX = frame.plot.x + valueAxisReserve;
   let categoryPlotWidth = Math.max(10, frame.plot.w - valueAxisReserve);
   const grid = population ?? domain.timeline;
-  const spanOf = (x0: number, width: number) => categorySpan({ x: x0, w: width }, grid?.span ?? n, crossesBetween, reserves.categoryEndRoom);
+  const spanOf = (x0: number, width: number) => categorySpan({ x: x0, w: width }, grid?.span ?? n, crossesBetween, room);
   // On a proportional time axis the shortest gap is the step labels must fit.
   const categoryStepFor = (x0: number, width: number) => categoryStep(spanOf(x0, width).w, population ? n : grid?.span ?? n, crossesBetween);
   const categoryCentersFor = (x0: number, width: number) =>
@@ -607,7 +641,7 @@ function categoryRow(env: LineEnv, domain: LineDomain, text: LineText, reserves:
   if (dated) {
     warnings.length = warningsBefore;
     const months = { ...options, categoryAxis: { ...options.categoryAxis, dateTicks: 'months' as const } };
-    return categoryRow(env, { ...domain, cats: dated, options: months }, text, reserves, frame, valueAxisReserve, warnings);
+    return categoryNameRow(env, { ...domain, cats: dated, options: months }, text, room, frame, valueAxisReserve, warnings);
   }
   let categoryOverhang = rotatedLeftOverhang(catPlan, categoryCentersFor(categoryPlotX, categoryPlotWidth), 4);
   let categoryRightOverhang = 0;
@@ -642,9 +676,9 @@ function categoryRow(env: LineEnv, domain: LineDomain, text: LineText, reserves:
  * The tick row of a continuous axis (xTicks.ts), planned on the span the
  * readings take: the axis range runs from plot edge to plot edge.
  */
-function continuousRow(env: LineEnv, domain: LineDomain, x: NonNullable<LineDomain['x']>, text: LineText, reserves: LineReserves, frame: FrameResult, valueAxisReserve: number, warnings: LintWarning[]) {
+function continuousRow(env: LineEnv, domain: LineDomain, x: NonNullable<LineDomain['x']>, text: LineText, room: LineReserves['categoryEndRoom'], frame: FrameResult, valueAxisReserve: number, warnings: LintWarning[]) {
   const plotX = frame.plot.x + valueAxisReserve;
-  const span = categorySpan({ x: plotX, w: Math.max(10, frame.plot.w - valueAxisReserve) }, 2, false, reserves.categoryEndRoom);
+  const span = categorySpan({ x: plotX, w: Math.max(10, frame.plot.w - valueAxisReserve) }, 2, false, room);
   const xTicks = planXTicks({
     model: x.model, lo: x.lo, hi: x.hi,
     xOf: (value) => span.x + (value - x.lo) / (x.hi - x.lo) * span.w,
@@ -819,8 +853,8 @@ export function linePlotArea(
   const ratioTierPrepared = prepareRatioTier(options.ratioTier, cats, seriesNorm, theme, measure, Math.max(10, frame.plot.w - axis.valueAxisReserve), flatNumerator ? domain.fmt : undefined, options.target, notApplicableGlyph(options.strings), options.locale?.language);
   warnings.push(...ratioTierPrepared.warnings);
   const row = categoryRow(env, domain, text, reserves, frame, axis.valueAxisReserve, warnings);
-  const { catPlan, categoryOverhang, categoryRightOverhang, crossesBetween, intervalTicks } = row;
-  const xTicks = 'xTicks' in row ? row.xTicks : undefined;
+  const { catPlan, categoryOverhang, categoryRightOverhang, crossesBetween, intervalTicks, endRoom, sideEndRoom } = row;
+  const xTicks = row.xTicks;
   // Read from annList, not options.annotations: bump drops the value-arithmetic
   // kinds, and reserving headroom for a bracket never drawn is dead space.
   const hasCagr = annList.some((a) => a.kind === 'cagr');
@@ -848,7 +882,7 @@ export function linePlotArea(
   const plotW = Math.max(10, frame.plot.w - (axis.axisShown || axis.disclosedTicks ? axis.valueAxisReserve : 0) - categoryOverhang - categoryRightOverhang);
   const n = cats.length;
   const grid = domain.population ?? domain.timeline;
-  const span = categorySpan({ x: plotX, w: plotW }, grid?.span ?? n, crossesBetween, reserves.categoryEndRoom);
+  const span = categorySpan({ x: plotX, w: plotW }, grid?.span ?? n, crossesBetween, endRoom);
   const xOf = (ci: number): number => (domain.timeline && !domain.population) || domain.x
     ? round2(liveCategoryX(ci, n, crossesBetween, span, grid))
     : liveCategoryX(ci, n, crossesBetween, span, grid);
@@ -936,6 +970,7 @@ export function linePlotArea(
     ratioTier: ratioTierPrepared.tier,
     categoryOverhang,
     catPlan,
+    sideEndRoom,
     ...(intervalTicks && showCategoryTickRow ? { intervalTicks } : {}),
     showCategoryTickRow,
     categoryTickReserve,

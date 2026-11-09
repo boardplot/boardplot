@@ -12,6 +12,30 @@ import { arrowLook } from '../src/core/annotationArrow';
 import type { Geometry, Paint } from '../src/core/types/scene';
 import { getFixtures } from '../src/fixtures';
 
+// Extra endpoint room must not move a flagged trough value into notes when the centred reserve can still print it.
+it('keeps the flagged 942 trough visible at 900 px', () => {
+  for (const id of ['weekly-orders-anomalies', 'orders-strict-k']) for (const theme of [undefined, 'notation']) {
+    const fixture = getFixtures('line').find(item => item.id === id)!;
+    const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'line', data: fixture.data,
+      annotations: fixture.annotations, options: { ...fixture.options, size: { width: 900 }, theme },
+    } as never)));
+    const trough = geometry.labels.find(label => label.id === 'point:orders:w15');
+    expect(trough?.text, `${id}/${theme}`).toBe('942');
+    expect(trough?.hidden, `${id}/${theme}`).toBeUndefined();
+    expect(geometry.scene.some(node => node.t === 'text' && node.id === 'label:point:orders:w15'), `${id}/${theme}`).toBe(true);
+  }
+});
+
+// The open-side end room narrowed the category step, and a row of twelve values that the centred room prints fell to its two end values.
+it('prints every value of a twelve-month row that the centred end room prints', () => {
+  const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'line',
+    data: { categories: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+      series: [{ id: 'orders', values: [70000, 91737, 74587, 37757, 28491, 56013, 80061, 69843, 47060, 50949, 78043, 86203] }] },
+    options: { title: 'Orders by month', valueLabels: 'all', size: { width: 720 } },
+  } as never)));
+  expect(geometry.labels.filter(label => label.kind === 'point' && label.hidden === undefined)).toHaveLength(12);
+});
+
 // Band names must not leave the plot when a wrap fits, or crowd marks by abandoning clear plot headroom.
 it('keeps band names within the plot while preserving headroom seats and authored pins', () => {
   const fixture = getFixtures('line').find(item => item.id === 'shade-band-inside-wrap')!;
@@ -87,6 +111,53 @@ it.each([360, 960])('emphasizes one line point without recolouring the line at %
   const shared = draw('b', 'b').geometry;
   const sharedMarker = marker(shared);
   expect(sharedMarker?.t === 'circle' && sharedMarker.r).toBe(before.r);
+});
+
+// Finite endpoint values and strict extrema keep their sides across widths, but reference lines must block a side seat instead of striking through its value.
+it.each([360, 960])('places single-line values on the open side at %i px', (width) => {
+  const draw = (pointLabelSide?: 'shape' | 'auto', labelPlacements?: Record<string, string>, reference = false) => requireGeometry(layoutResolvedRequest(resolveChartRequest({
+    type: 'line', data: { categories: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'], series: [{ id: 'load', values: [null, 52, 54, 50, 50, 35, 53, null] }] },
+    options: { size: { width, height: 360 }, valueAxis: { min: 30, max: 60 }, valueLabels: 'all', ...(pointLabelSide ? { pointLabelSide } : {}), labelPlacements },
+    annotations: reference ? [{ kind: 'valueLine', value: 53, label: 'Normal load' }] : [],
+  } as never)));
+  const shape = draw();
+  const label = (g: Geometry, id: string) => g.labels.find(label => label.id === `point:load:${id}`)!;
+  for (const [id, slot] of [['b', 'left'], ['c', 'above'], ['f', 'below'], ['g', 'right']]) {
+    const value = label(shape, id!);
+    expect(value.hidden).toBeUndefined();
+    expect(value.slot).toBe(slot);
+    expect(value.rect.x).toBeGreaterThanOrEqual(0);
+    expect(value.rect.x + value.rect.w).toBeLessThanOrEqual(width);
+  }
+  const auto = draw('auto');
+  for (const id of ['d', 'e']) expect(label(shape, id).slot).toBe(label(auto, id).slot);
+  expect(label(auto, 'b').slot).not.toBe('left');
+  expect(label(auto, 'g').slot).not.toBe('right');
+  expect(label(draw(undefined, { 'point:load:b': 'below' }), 'b').slot).toBe('below');
+  expect(label(draw(undefined, undefined, true), 'g').slot).toBe('above');
+});
+
+// A reference through an endpoint's side seat must move the value clear instead of leaving dash fragments beside the text.
+it('keeps preferred endpoint values off numeric, computed and band references', () => {
+  const references = [
+    { annotations: [{ kind: 'valueLine', value: 53 }] },
+    { annotations: [{ kind: 'valueLine', value: 'mean' }] },
+    { anomaly: { method: 'mad', baseline: 'median' } },
+    { anomaly: { method: 'threshold', high: 53 } },
+    { annotations: [{ kind: 'band', style: 'corridor', low: 45, high: 53 }] },
+  ];
+  for (const reference of references) {
+    const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({
+      type: 'line',
+      data: { categories: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'], series: [{ id: 'load', values: [52, 54, 53, 51, 55, 52, 54, 53] }] },
+      options: { ...reference, valueLabels: 'last', seriesLabels: 'none', valueAxis: { min: 30, max: 60 }, size: { width: 720, height: 360 } },
+    } as never)));
+    const value = geometry.labels.find(label => label.id === 'point:load:h')!;
+    const point = (geometry.marks as unknown as LineMarks).series[0]!.points.at(-1)!;
+    expect(value.hidden).toBeUndefined();
+    expect(value.slot, JSON.stringify(reference)).not.toBe('right');
+    expect(value.rect.y + value.rect.h < point.y || value.rect.y > point.y).toBe(true);
+  }
 });
 
 // A linear value axis misplaces values by orders of magnitude when a log axis is requested.

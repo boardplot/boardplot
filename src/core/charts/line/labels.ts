@@ -53,6 +53,8 @@ const NAME_PRIORITY = PRIORITY.endpoint + 1;
 /** Internal second pass: a bounded end-label set that needs a key; 'inline' when it replaces authored inline names, which the pass drops. */
 export const END_LABEL_KEY = Symbol('lineEndLabelKey');
 export const END_LABEL_WIDE = Symbol('lineEndLabelWide');
+/** Internal retry: centred endpoint room gives a hidden point value the plot width it needs. */
+export const POINT_LABEL_CENTERED_ROOM = Symbol('pointLabelCenteredRoom');
 /** The inline names stand in for end names that did not fit (layout.ts). */
 export const INLINE_FALLBACK = Symbol('lineInlineFallback');
 export const usesInlineFallback = (options: LineOptions): boolean => (options as LineOptions & { [INLINE_FALLBACK]?: boolean })[INLINE_FALLBACK] === true;
@@ -957,6 +959,8 @@ export function lineToDateIds(env: LineEnv, domain: LineDomain, text: Pick<LineT
 }
 
 function pushPointRequests(input: {
+  /** The existing seat preferred by the shape of one plain line. */
+  shapeSide?: ReadonlyMap<number, string>;
   continued?: boolean;
   /** The selected point's painted marker extent, absent for unchanged points. */
   markerRadiusOf?: (categoryIndex: number) => number | undefined;
@@ -1126,7 +1130,7 @@ function pushPointRequests(input: {
       const rescue = [
         // The first focus value has the same level seat as the last value,
         // mirrored left. A steep rise can block every seat over the point.
-        ...(candidate.ci === firstDrawn && input.highlighted ? [
+        ...(candidate.ci === firstDrawn && (input.highlighted || input.shapeSide?.get(candidate.ci) === 'left') ? [
           { slot: 'left', rect: { x: px - w - 7, y: candidate.py - labelH / 2, w, h: labelH }, penalty: 4 },
         ] : []),
         // Use the plot's 8 px axis gutter, with 2 px left clear, when clamping
@@ -1238,6 +1242,12 @@ function pushPointRequests(input: {
     }
     // A continued edge can occupy the near seats; keep the existing higher seats and leaders.
     if (computed && !continuedEnd) slots = slots.filter(slot => !slot.leaderFrom && !/Shifted|Raised|Step/.test(slot.slot));
+    const preferred = continuedEnd ? undefined : input.shapeSide?.get(candidate.ci);
+    if (preferred) {
+      const held = slots.filter(slot => slot.slot === preferred);
+      // An anomaly corridor must also block a preferred endpoint seat.
+      slots = [...held.map(slot => preferred === 'left' || preferred === 'right' ? { ...slot, overRules: false } : slot), ...slots.filter(slot => slot.slot !== preferred)];
+    }
     if (!candidate.suppressed && !rest && !keep[index]) input.lost.thinned.push(name);
     input.labelRequests.push({ id: `point:${input.series.id}:${category.id}`, kind: 'point', role: composedTextRole(candidate.text), owner: { seriesId: input.series.id, categoryId: category.id }, text: candidate.text, lines: words?.lines ?? [candidate.text], ...words?.request, typeRole: 'label', font: input.labelFont, priority: candidate.priority, redundant, ...lost, ...restFields, candidates: slots, ...(computed && !input.highlighted && !continuedEnd ? { noLeader: true } : {}),
       // A value over a neighbour's point reads as that point's value.
@@ -1326,12 +1336,21 @@ export function defaultValueContent(variant: LineVariant, seriesValueContent: La
 /** Air between the plot edge and a value centred on the end point, or the latest-point ring. */
 export const PLOT_END_AIR = 4;
 
+/** Shape preferences apply only where one plain data line has one unambiguous set of values. */
+export function pointLabelsFollowShape(env: LineEnv, domain: LineDomain): boolean {
+  return domain.options.pointLabelSide !== 'auto' && domain.variant === 'line'
+    && !env.isBump && !domain.fan && domain.dataSeries.length === 1;
+}
+
 /**
- * How far inside the plot the first and last category must sit so a value
- * centred on its point keeps PLOT_END_AIR to the plot edge. A stacked value
- * moves inward along its band instead and needs no room.
+ * How far inside the plot the first and last category must sit so a centred
+ * value, or a preferred side value, keeps PLOT_END_AIR to the plot edge.
+ * A stacked value moves inward along its band instead and needs no room.
  */
 export function pointLabelEndRoom(input: Parameters<typeof pointLabelSelection>[0] & Omit<PointLabelInput, 'series' | 'row' | 'content' | 'categoryIndices'> & { isStacked: boolean;
+  shapeSides?: boolean;
+  shapeEnd?: boolean;
+  markerExtent?: LinePaints['markerExtent'];
   /** A continuous axis's last point stands at the plot end: its room counts the to-date words under the value. */
   endToDate?: ToDateWords }): { left: number; right: number } {
   const room = { left: 0, right: 0 };
@@ -1341,10 +1360,12 @@ export function pointLabelEndRoom(input: Parameters<typeof pointLabelSelection>[
     const categoryIndices = pick.only.filter((ci) => ci === 0 || ci === last);
     for (const seed of pointLabelSeeds({ ...input, series: pick.series, row: pick.row, content: pick.content, categoryIndices })) {
       if (seed.suppressed) continue;
-      if (seed.ci === 0) room.left = Math.max(room.left, seed.w / 2 + PLOT_END_AIR);
+      const shape = input.shapeSides && pick.row.filter(value => value !== null).length > 1;
+      const sideGap = 7 + Math.max(0, (input.markerExtent?.(pick.series, pick.dataIdx, seed.ci)?.reach ?? 3) - 3);
+      if (seed.ci === 0) room.left = Math.max(room.left, (shape ? seed.w + sideGap : seed.w / 2) + PLOT_END_AIR);
       const words = seed.ci === last && input.endToDate?.ids.has(input.cats[last]!.id)
         ? toDateLabel(seed.text, input.labelFont, input.endToDate.words, input.endToDate.theme, input.endToDate.measure).size.width : seed.w;
-      if (seed.ci === last) room.right = Math.max(room.right, words / 2 + PLOT_END_AIR);
+      if (seed.ci === last) room.right = Math.max(room.right, (shape && input.shapeEnd ? words + sideGap : words / 2) + PLOT_END_AIR);
     }
   }
   return room;
@@ -1362,6 +1383,7 @@ export function pointValueWidths(input: Parameters<typeof placePointValueLabels>
 }
 
 export function placePointValueLabels(input: Parameters<typeof pointLabelSelection>[0] & {
+  shapeSides?: boolean;
   markerExtent?: LinePaints['markerExtent'];
   drawnEdges?: ReadonlyMap<Id, { runs: Point[][]; bottom?: Point[] }>;
   cats: Category[];
@@ -1417,6 +1439,21 @@ export function placePointValueLabels(input: Parameters<typeof pointLabelSelecti
     return [series.id, stroke] as const;
   }));
   for (const { series, dataIdx, row, content, only, lastActual } of pointLabelSelection(input)) {
+    const shapeSide = input.shapeSides ? new Map<number, string>() : undefined;
+    if (shapeSide) {
+      const runs = drawnRuns(row, series.interpolateGaps);
+      const first = runs[0]?.[0], last = runs.at(-1)?.at(-1);
+      if (first !== undefined && last !== undefined && first !== last) {
+        shapeSide.set(first, 'left');
+        shapeSide.set(last, 'right');
+        for (const run of runs) for (let i = 1; i < run.length - 1; i++) {
+          const ci = run[i]!, py = input.y(row[ci]!);
+          const before = input.y(row[run[i - 1]!]!), after = input.y(row[run[i + 1]!]!);
+          if (py < before && py < after) shapeSide.set(ci, 'above');
+          else if (py > before && py > after) shapeSide.set(ci, 'below');
+        }
+      }
+    }
     const seriesFont = input.focusFont && input.highlights.has(series.id) ? input.focusFont : input.labelFont;
     const candidates = buildPointCandidates({ ...input, labelFont: seriesFont, series, dataIdx, row, content, categoryIndices: only });
     // A value near its forecast divider moves to the actual side,
@@ -1440,7 +1477,7 @@ export function placePointValueLabels(input: Parameters<typeof pointLabelSelecti
     const namedEnd = input.valueLabels !== 'all' && !input.isStacked && !input.bump && (input.endNamed.has(series.id)
       || input.labelRequests.some(request => request.kind === 'series' && request.owner.seriesId === series.id));
     // Every highlight mode, fade included: fade has no focus font, but its focus value needs the seat too.
-    pushPointRequests({ markerRadiusOf: (ci) => input.markerExtent?.(series, dataIdx, ci)?.reach, continued: input.drawnEdges !== undefined, highlighted: input.highlights.has(series.id) && !input.bump && input.variant === 'line', regularRow: input.valueLabels === 'all' && !input.isStacked, namedEnd, candidates, series, cats: input.cats, isStacked: input.isStacked, variant: input.variant, labelH: input.labelH, step: input.step, density: input.density, plot: input.plot, labelFont: seriesFont, labelRequests: input.labelRequests, ownQueries, others, otherQueries, xOf: input.xOf, besideLast: !input.endNamed.has(series.id), ...(bandEdges ? { bandEdges } : {}), ...(input.bump ? { bump: input.bump } : {}), topBand: input.isStacked && dataIdx === input.drawnSeries.length - 1, row, ...(input.isStacked ? { painted: input.paintedAreaCats.get(series.id) } : {}), ...(input.variant === 'area' && input.drawnSeries.length > 1 && input.paintedAreaCats.has(series.id) ? { fillTo: input.y(0) } : {}), lost, restHidden: input.isStacked && input.restHidden?.(series) === true, ...(input.toDate ? { toDate: input.toDate } : {}) });
+    pushPointRequests({ shapeSide, markerRadiusOf: (ci) => input.markerExtent?.(series, dataIdx, ci)?.reach, continued: input.drawnEdges !== undefined, highlighted: input.highlights.has(series.id) && !input.bump && input.variant === 'line', regularRow: input.valueLabels === 'all' && !input.isStacked, namedEnd, candidates, series, cats: input.cats, isStacked: input.isStacked, variant: input.variant, labelH: input.labelH, step: input.step, density: input.density, plot: input.plot, labelFont: seriesFont, labelRequests: input.labelRequests, ownQueries, others, otherQueries, xOf: input.xOf, besideLast: !input.endNamed.has(series.id), ...(bandEdges ? { bandEdges } : {}), ...(input.bump ? { bump: input.bump } : {}), topBand: input.isStacked && dataIdx === input.drawnSeries.length - 1, row, ...(input.isStacked ? { painted: input.paintedAreaCats.get(series.id) } : {}), ...(input.variant === 'area' && input.drawnSeries.length > 1 && input.paintedAreaCats.has(series.id) ? { fillTo: input.y(0) } : {}), lost, restHidden: input.isStacked && input.restHidden?.(series) === true, ...(input.toDate ? { toDate: input.toDate } : {}) });
     // The last actual's value is an extra the default adds where a seat is free;
     // with none it gives way quietly, as no default promised it.
     // An authored cell label is the author's, not the default's: it keeps its note.

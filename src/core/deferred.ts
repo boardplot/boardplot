@@ -41,6 +41,7 @@ export interface AnnotateEngine {
   emitEventLane: typeof import('./eventLane').emitEventLane;
   drawCagrArm: typeof import('./annotateArms').drawCagrArm;
   drawHorizontalLevelDiff: typeof import('./annotateArms').drawHorizontalLevelDiff;
+  corridorEdgeRects: typeof import('./annotateTargets').corridorEdgeRects;
   /** Callout and note labels that print their anchor's value (`${value}`), for the hidden-label note. */
   valueAnnotationLabels: (labels: readonly import('./types/scene').PlacedLabel[], annotations: unknown) => [import('./types/scene').PlacedLabel, object][];
 }
