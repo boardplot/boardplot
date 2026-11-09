@@ -247,7 +247,7 @@ export function adaptNamedColumns(input: NamedColumnsInput): NamedColumnsResult 
     const first = seenPairs.get(pair);
     if (first !== undefined) {
       refuse('ambiguous-mapping', `rows[${rowIndex}].${seriesColumn}`,
-        `category '${categoryId}' and series '${seriesId}' appear twice (rows ${first} and ${rowIndex}); one value per pair is required, and identical repeats are refused as well`);
+        `category '${categoryId}' and series '${seriesId}' appear twice (rows ${first + 1} and ${rowIndex + 1}); one value per pair is required, and identical repeats are refused as well`);
     }
     seenPairs.set(pair, rowIndex);
     if (contract.state !== undefined) {
