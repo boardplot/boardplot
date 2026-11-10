@@ -34,7 +34,7 @@ import { PRIORITY, solveLabels, type LabelRequest, type SolveCtx } from './label
 import { NormalizeError } from './normalize/shared';
 import { wrapText, type FontSpec, type TextMeasurer } from './text';
 import { colorblindPaint, microType, typeWidthClass, emphasisWeight, strokeToken, dashToken } from './theme';
-import { defaultAnnotationId, type Annotation, type EventGlyph, type EventOptions, type EventTone } from './types/annotations';
+import { annotationRef, defaultAnnotationId, type Annotation, type EventGlyph, type EventOptions, type EventTone } from './types/annotations';
 import type { Id, OwnerRef } from './types/cell';
 import type { LintWarning, Paint, PlacedAnnotation, PlacedLabel, SceneNode } from './types/scene';
 import type { Theme } from './types/theme';
@@ -113,6 +113,7 @@ function resolveEvents(input: {
     if (annotation.kind !== 'event') return;
     const ann = annotation as EventAnnotation;
     const id = defaultAnnotationId(ann, index);
+    const ref = annotationRef(annotation, index, `options.annotations[${index}]`);
     const warn = (code: string, message: string, suggest?: string) =>
       warnings.push({ code, severity: 'warn', message, owner: { annotationId: id }, ...(suggest ? { suggest } : {}) });
     let pos: number;
@@ -137,15 +138,15 @@ function resolveEvents(input: {
       }
     } else if (ann.date !== undefined) {
       if (!dated) {
-        throw new NormalizeError('event-date-unresolvable', `options.annotations[${index}].date`,
+        throw new NormalizeError('event-date-unresolvable', `${ref.name}.date`,
           `event '${id}' has a date, but not every category carries an ISO date to place it by`,
-          "give each category an ISO 'date', or anchor the event to a category with 'at'");
+          "give each category an ISO 'date', or anchor the event to a category with 'at'", undefined, ref.segments.length ? [...ref.segments, 'date'] : []);
       }
       const parsed = parseISODate(ann.date);
       if (!parsed && parseTimeText(ann.date)) {
-        throw new NormalizeError('event-time-needs-x-axis', `options.annotations[${index}].date`,
+        throw new NormalizeError('event-time-needs-x-axis', `${ref.name}.date`,
           `event '${id}' gives a time of day, and the categories are days, so the time has no place`,
-          "give the day only (yyyy-mm-dd), or draw the readings on a continuous axis: data.x with options.xAxis: { type: 'time' }");
+          "give the day only (yyyy-mm-dd), or draw the readings on a continuous axis: data.x with options.xAxis: { type: 'time' }", undefined, ref.segments.length ? [...ref.segments, 'date'] : []);
       }
       const at = parsed ? posOfDay(dayOf(parsed)) : null;
       if (at === null) {

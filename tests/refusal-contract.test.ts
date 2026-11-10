@@ -14,6 +14,7 @@ import { callTool } from '../src/mcp/server';
 import { getFixtures, getRefusalExamples } from '../src/fixtures';
 import { getChartSchemas, listCharts } from '../src/core/registry';
 import { retireChartSettings } from '../src/core/retired';
+import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { IGNORED_OPTION_KEYS, LEGEND_REFUSED, schemaRefusedKeys, valueAxisRefusal } from '../src/core/schema/capability';
 import { SparklineChart } from '../src/react/charts/sparkline';
 
@@ -376,11 +377,26 @@ describe('refusal contract', () => {
     expect(firstError(dimswitch)).toMatchObject({ code: 'table-sort-segments-unsupported', path: '/options/sort/segments', received: { type: 'string', value: 'desc' } });
   });
 
-  // A panel's annotation refusal counts its index after the registry drops the kinds the panel does not draw, so the grid pointed at another annotation.
-  it('gives a grid panel annotation refusal no pointer rather than one at another annotation', () => {
-    const scatter = { id: 's', type: 'scatter', data: { points: [{ id: 'p', x: 1, y: 1 }] }, options: { valueAxis: { log: 'y' } },
-      annotations: [{ kind: 'indicator100' }, { kind: 'valueLine', value: -1 }] };
-    expect((render({ spec: { type: 'grid', data: { panels: [scatter] } } }).body.errors as Finding[])[0]).toMatchObject({ code: 'log-nonpositive', path: '' });
+  // An annotation refusal counted its index after the registry dropped the kinds the chart does not draw, and named the root list for options.annotations, so it pointed at another annotation or at nothing.
+  it('points an annotation refusal at the annotation the author wrote, in either list and in a grid panel', () => {
+    const annotations = [{ kind: 'indicator100' }, { kind: 'valueLine', value: -1 }];
+    const scatter = { type: 'scatter', data: { points: [{ id: 'p', x: 1, y: 1 }] }, options: { valueAxis: { log: 'y' } } };
+    const firstError = (spec: object) => (render({ spec }).body.errors as (Finding & { received?: unknown })[])[0];
+    const received = { type: 'object' };
+    expect(firstError({ ...scatter, annotations })).toMatchObject({ code: 'log-nonpositive', path: '/annotations/1', displayPath: 'annotations[1]', received });
+    expect(firstError({ ...scatter, options: { ...scatter.options, annotations } })).toMatchObject({ path: '/options/annotations/1', displayPath: 'options.annotations[1]', received });
+    expect(firstError({ type: 'grid', data: { panels: [{ id: 's', ...scatter, annotations }] } })).toMatchObject({ path: '/data/panels/0/annotations/1', received });
+  });
+
+  // The grid recorded a panel's resolved options in its geometry with the annotations' origin tag, an engine-internal key a caller receives through measure and onGeometry.
+  it('records grid panel annotations without their origin', () => {
+    const panel = { id: 'p', type: 'line', data: { categories: [{ id: 'a' }, { id: 'b' }], series: [{ id: 's', values: [1, 2] }] }, annotations: [{ kind: 'valueLine', value: 1.5 }] };
+    for (const columns of [undefined, [1]]) {
+      const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'grid', data: { panels: [panel] }, options: { size: { width: 960, height: 600 }, ...(columns ? { columns } : {}) } } as never)) as Node;
+      const recorded = geometry.marks.panels[0].chart.options.annotations[0];
+      expect(recorded).toEqual({ kind: 'valueLine', value: 1.5 });
+      expect(Object.getOwnPropertySymbols(recorded)).toEqual([]);
+    }
   });
 
   // A likert labelPosition refusal from its inner bar lost the pointer to /options/labelPosition that main gave.
@@ -389,6 +405,23 @@ describe('refusal contract', () => {
       options: { values: 'counts', labelPosition: 'outsideEnd' } };
     expect((render({ spec }).body.errors as (Finding & { received?: unknown })[])[0])
       .toMatchObject({ code: 'label-position-unsupported', path: '/options/labelPosition', received: { type: 'string', value: 'outsideEnd' } });
+  });
+
+  // `sort: "desc"` is read as `{ categories: "desc" }`, so a finding about it pointed at /options/sort/categories, a field the author never wrote, and its patch removed that field.
+  it('points a finding about a short-form option at the option the author wrote', () => {
+    const fixture = (type: string, id: string) => structuredClone(getFixtures(type).find((entry) => entry.id === id)!) as Node;
+    const table = fixture('table', 'department-steering-mini');
+    expect((render({ spec: { type: 'table', data: table.data, options: { ...table.options, sort: 'desc' } } }).body.errors as (Finding & { received?: unknown })[])[0])
+      .toMatchObject({ code: 'table-rank-unranked', path: '/options/sort', received: { type: 'string', value: 'desc' } });
+    const cohort = fixture('cohort', 'saas-logo-retention');
+    const warning = (render({ spec: { type: 'cohort', data: cohort.data, options: { ...cohort.options, sort: true } } }).body.warnings as (Finding & { fix?: unknown })[])
+      .find((entry) => entry.code === 'option-ignored' && entry.path.startsWith('/options/sort'));
+    expect(warning).toMatchObject({ path: '/options/sort', fix: [{ op: 'remove', path: '/options/sort' }] });
+    // A patch that adds a field inside the short form replaces the authored option with its expanded form.
+    const butterfly = fixture('butterfly', 'period-comparisons');
+    const ignored = (render({ spec: { type: 'butterfly', data: butterfly.data, options: { ...butterfly.options, sort: 'desc' } } }).body.warnings as (Finding & { fix?: unknown })[])
+      .find((entry) => entry.code === 'butterfly-sort-ignored');
+    expect(ignored?.fix).toEqual([{ op: 'replace', path: '/options/sort', value: { categories: 'sheet' } }]);
   });
 
   // A 150,000-category column ran for more than 15 minutes; above the item budget it must refuse at once and name the fix.

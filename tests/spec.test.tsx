@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { act } from 'react';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -23,7 +24,7 @@ vi.mock('../src/react/SceneRenderer', () => ({ SceneRenderer: ({ geometry, theme
 } }));
 import { BoardplotChart } from '../src/react/spec';
 import { parseChartSpec } from '../src/react/parseChartSpec';
-import { mountedMarkup } from './helpers/spec-chunks';
+import { mount, mountedMarkup } from './helpers/spec-chunks';
 import { withoutSvgFooter } from '../src/react/footerFrame';
 import { layoutContainerRequest } from '../src/react/containerLayout';
 
@@ -44,6 +45,23 @@ function cli(args: string[]) {
 }
 
 describe('spec React entry', () => {
+  // The spec path handed options.annotations to the chart as its root list, so a warning about one pointed at /annotations/0, a list the author did not write.
+  it('points an annotation warning at the list the spec wrote it in', async () => {
+    const data = { x: [1, 2], series: [{ id: 's', values: [1, 2] }] };
+    const options = { xAxis: { type: 'number' }, size: { width: 720, height: 405 } };
+    const annotations = [{ kind: 'cagr' }];
+    const field = async (spec: object) => {
+      const seen: { code: string; field?: readonly unknown[] }[][] = [];
+      const host = document.body.appendChild(document.createElement('div'));
+      const root = await mount(<BoardplotChart spec={spec as never} onWarnings={(warnings) => seen.push(warnings)} />, host);
+      await act(async () => { root.unmount(); });
+      host.remove();
+      return seen.at(-1)?.find((warning) => warning.code === 'x-cagr-unsupported')?.field;
+    };
+    expect(await field({ type: 'line', data, options: { ...options, annotations } })).toEqual(['options', 'annotations', 0]);
+    expect(await field({ type: 'line', data, options, annotations })).toEqual(['annotations', 0]);
+  });
+
   // The spec entry links its chart engine on demand, so its charts are
   // mounted rather than server-rendered; the drawn geometry is the claim.
   it.each(listCharts().map(chart => chart.type))('%s demos share CLI canonical SVGs and render through the spec component', async type => {

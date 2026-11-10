@@ -18,7 +18,7 @@ import { PRIORITY, solveLabels, type LabelRequest } from '../label/solver';
 import { accessibleTitle, NormalizeError, resolveCanvasOptions, resolveSize } from '../normalize/shared';
 import { getChart } from '../registry';
 import { panelNoteData } from '../panelNoteData';
-import { GridChildRefusal, gridRowHeights, gridSizing, hasKpiFigure, inheritedScaleUnit, layoutChildChart, smallestKpiValueSize } from './childLayout';
+import { GridChildRefusal, gridRowHeights, gridSizing, hasKpiFigure, inheritedScaleUnit, layoutChildChart, panelAnnotations, recordedPanelOptions, smallestKpiValueSize } from './childLayout';
 import { KPI_HOST_TEXT, KPI_VALUE_SIZE } from '../typeFloors';
 import { stringsIn } from '../frame';
 import { authoredStrings } from '../strings';
@@ -49,11 +49,6 @@ export interface GridDerived {
   sharedPlotX?: number;
   sharedPlotW?: number;
   tierGap?: number;
-}
-
-function serializableOptions(options: object & { measure?: unknown }): object {
-  const { measure: _measure, ...rest } = options;
-  return rest;
 }
 
 const TIER_WEIGHT_FIRST = 2.2;
@@ -375,7 +370,7 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
       ...(compactTiers
         ? { ...(suppressTitle ? { title: '' } : {}), ...(labels !== undefined ? { labels } : {}) }
         : {}),
-      ...(panel.annotations ? { annotations: panel.annotations } : {}),
+      ...panelAnnotations(panel),
       ...(legendInput && def.type === 'column' ? { [Symbol.for('boardplot.panelKeyed')]: true } : {}),
       ...(uniformLineEndpointLegend && def.type === 'line'
         ? { gridEndpointIdentity: 'legend' as const }
@@ -428,7 +423,7 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
     return {
       def,
       geo,
-      recordOptions: serializableOptions(finalOptions),
+      recordOptions: recordedPanelOptions(finalOptions),
       tierCaption,
       ...(tierDetail ? { tierDetail } : {}),
     };

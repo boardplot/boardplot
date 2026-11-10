@@ -24,11 +24,16 @@ export function optionShape(key: string, value: unknown): unknown {
   return key === 'theme' ? themeShape(value) : value;
 }
 
-/** Normalize input once before validation or layout, including grid children. */
+/**
+ * Normalize input once before validation or layout, including grid children.
+ * `shortForms` lists the option fields the author wrote in a short form that has no fields of its own
+ * (`sort: "desc"`, `topN: 5`): a finding about a field inside the expanded form points at the authored field.
+ */
 export function normalizeOptionShapes<C extends { options?: unknown; data?: unknown; annotations?: unknown }>(
   type: string, input: C, canonical: (name: string) => string | undefined = name => name,
-): { chart: C; warnings: LintWarning[] } {
+): { chart: C; warnings: LintWarning[]; shortForms: (string | number)[][] } {
   const warnings: LintWarning[] = [];
+  const shortForms: (string | number)[][] = [];
   let chart = input;
   const annotations = (raw: unknown, field: (string | number)[]): unknown => {
     if (!Array.isArray(raw)) return raw;
@@ -55,7 +60,10 @@ export function normalizeOptionShapes<C extends { options?: unknown; data?: unkn
     for (const key of ['footnotes', 'source', 'locale', 'sort', 'topN', 'theme', 'annotations']) {
       if (!Object.hasOwn(options, key)) continue;
       const value = key === 'annotations' ? annotations(options[key], ['options', key]) : optionShape(key, options[key]);
-      if (value !== options[key]) options = { ...options, [key]: value };
+      if (value === options[key]) continue;
+      // A theme of overrides only keeps the authored fields and gains a preset; every other short form is not an object.
+      if (key !== 'theme' && key !== 'annotations') shortForms.push(['options', key]);
+      options = { ...options, [key]: value };
     }
     if (options !== input.options) chart = { ...chart, options };
   }
@@ -65,6 +73,7 @@ export function normalizeOptionShapes<C extends { options?: unknown; data?: unkn
     const child = (raw: unknown, field: (string | number)[]) => {
       if (!isRecord(raw) || typeof raw.type !== 'string') return raw;
       const normalized = normalizeOptionShapes(canonical(raw.type) ?? raw.type, raw, canonical);
+      for (const form of normalized.shortForms) shortForms.push([...field, ...form]);
       for (const warning of normalized.warnings) warnings.push({ ...warning,
         field: [...field, ...warning.field!],
         fix: warning.fix?.map(operation => ({ ...operation, path: toJsonPointer(field) + operation.path })) });
@@ -77,5 +86,5 @@ export function normalizeOptionShapes<C extends { options?: unknown; data?: unkn
       chart = { ...chart, data: { ...data, ...(panels === undefined ? {} : { panels }), ...(template === undefined ? {} : { template }) } };
     }
   }
-  return { chart, warnings };
+  return { chart, warnings, shortForms };
 }

@@ -80,7 +80,7 @@ import { footnoteSuffix } from '../../footnoteMark';
 import { textScaleOf } from '../../typeFloors';
 import { DEFAULT_TARGET, TARGET_SIZE, targetFloorsPx, type TargetSizeOptions } from '../../target';
 import { seriesTextPaint } from '../../theme';
-import { defaultAnnotationId } from '../../types/annotations';
+import { annotationRef, defaultAnnotationId } from '../../types/annotations';
 import { disclosureNote } from '../../notes';
 import { maxOf, pushAll } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
@@ -459,12 +459,15 @@ export function layoutButterfly(
   };
   const annotations = (opts.annotations ?? []).filter((ann) => diffText.size === 0 || !isPairDelta(ann));
   if (annotations.length < (opts.annotations ?? []).length) {
+    // The first covered delta, where the author wrote it; one without an origin has no field.
+    const covered = (opts.annotations ?? []).findIndex((ann) => !annotations.includes(ann));
+    const field = annotationRef(opts.annotations![covered], covered).segments;
     warnings.push({
       code: 'delta-column-covers-annotation',
       severity: 'info',
       message: 'a delta annotation of the second series over the first on one row repeats the difference column, so only the column prints it',
       suggest: 'drop the annotation, or set options.diffColumn to false to keep it',
-      field: ['annotations'],
+      ...(field.length ? { field } : {}),
     });
   }
 
