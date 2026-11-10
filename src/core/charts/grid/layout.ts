@@ -45,7 +45,7 @@ import { accessibleTitle, NormalizeError, normalizeCategory, normalizeSeriesValu
 import { getChart } from '../../registry';
 import { requireChartCores } from '../../deferred';
 import { panelNoteData } from '../../panelNoteData';
-import { GridChildRefusal, gridRowHeights, gridSizing, hasKpiFigure, inheritedScaleUnit, layoutChildChart, smallestKpiValueSize, takeRefusedPanel } from '../../grid/childLayout';
+import { GridChildRefusal, gridRowHeights, gridSizing, hasKpiFigure, inheritedScaleUnit, layoutChildChart, panelAnnotations, recordedPanelOptions, smallestKpiValueSize, takeRefusedPanel } from '../../grid/childLayout';
 import { rebaseRefusal, sameField } from '../../normalize/innerRefusal';
 import { KPI_HOST_TEXT, KPI_VALUE_SIZE } from '../../typeFloors';
 import { LEFT_OUT_OF_NOTE, panelNoteTexts, stringsIn } from '../../frame';
@@ -201,10 +201,15 @@ function authoredPanelRefusal(error: NormalizeError, data: GridInput, options: G
     if (!panel) return undefined;
     const [head, ...rest] = segments;
     if (head === 'data') return sameField(child.data, panel.data, rest) ? [...at, ...segments] : undefined;
+    // An annotation refusal points by the origin panelAnnotations gave it: the panel's own list, or its options.annotations.
+    if (head === 'annotations' || (head === 'options' && rest[0] === 'annotations')) {
+      const own = head === 'annotations';
+      const list = own ? panel.annotations : (panel.options as { annotations?: unknown } | undefined)?.annotations;
+      const field = own ? rest : rest.slice(1);
+      return own === Object.hasOwn(panel, 'annotations') && sameField(childOptions.annotations, list, field) ? [...at, ...segments] : undefined;
+    }
     const path = head === 'options' ? rest : undefined;
-    // An annotation refusal counts its index in the list the registry kept after it dropped the kinds the chart does not
-    // draw, so the index can name another authored annotation. No pointer until annotation refusals count authored indexes.
-    if (!path || path[0] === 'annotations') return undefined;
+    if (!path) return undefined;
     if (sameField(childOptions, panel.options, path)) return [...at, 'options', ...path];
     return GRID_HANDED_DOWN.has(path[0]!) && sameField(childOptions, options, path) ? ['options', ...path] : undefined;
   });
@@ -1713,7 +1718,7 @@ function layoutAuthoredChild(
       ...(hasKpiFigure(panel.type) && kpiValueSize !== undefined ? { [KPI_VALUE_SIZE]: kpiValueSize } : {}),
       ...(panel.type === 'kpi' ? { [KPI_HOST_TEXT]: stringsIn([panel.title, panel.caption, parentOptions.title, parentOptions.subtitle, parentOptions.footnotes, parentOptions.source]) } : {}),
       ...(panel.type === 'variance' && isAuthoredVarianceStack(panels, parentOptions) ? { [VARIANCE_TIER]: panels.length } : {}),
-      ...(panel.annotations ? { annotations: panel.annotations } : {}),
+      ...panelAnnotations(panel),
       ...(parentOptions.palette !== undefined && panelOptions.palette === undefined
         ? { palette: parentOptions.palette }
         : {}),
@@ -1742,8 +1747,7 @@ function layoutAuthoredChild(
         if (geometry.refused) throw new GridChildRefusal(panel.id, geometry);
       }
     }
-    const { measure: _measure, ...serializable } = resolvedOptions;
-    recordOptions = serializable;
+    recordOptions = recordedPanelOptions(resolvedOptions);
     const captionY = compactTiers && isAuthoredVarianceStack(panels, parentOptions)
       ? authoredOccupiedBounds(geometry).y - resolvedOptions.margin.top - theme.space.labelPad : 0;
     const band = panelCaptionBand({ ...captionPanel, options: resolvedOptions }, theme, measure, { x: 0, y: captionY, w: slot.w, h: slot.h }, new Set(resolveHighlight(parentOptions.highlight)), compactTiers);
@@ -2666,7 +2670,7 @@ function probePanelGeometry(
   return layoutChildChart(panel.data, {
     ...definition.defaults,
     ...panelOptions,
-    ...(panel.annotations ? { annotations: panel.annotations } : {}),
+    ...panelAnnotations(panel),
     theme: panelOptions.theme ?? options.theme,
     size: { width: 720, height: 405 },
     valueAxis,

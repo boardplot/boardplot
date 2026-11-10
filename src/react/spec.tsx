@@ -8,6 +8,7 @@ import { chartTypeAliases, schemaLoaders } from './schemaLoaders';
 import { getChart, getChartSchemas, registerChartSchemas } from '../core/registry';
 import type { Id } from '../core/types/cell';
 import type { Annotation } from '../core/types/annotations';
+import { withAnnotationOrigins } from '../core/annotationOrigin';
 import type { DocumentFinding } from '../core/doc/diagnostics';
 import type { Geometry, LintWarning } from '../core/types/scene';
 import type { RenderTarget } from '../core/types/options';
@@ -400,8 +401,12 @@ function SpecChart({ parsed, channel, listening, spec: _spec, theme, size, targe
   const { ready, failure } = useChartEngine(type);
   const engineFailure = useMemo(() => (failure === undefined ? undefined : chunkFailure(`'${type}' chart engine`, failure)), [type, failure]);
   useSpecErrorReport(channel, engineFailure ?? (ready ? NO_ERRORS : undefined), listening);
-  // Chart-level annotations win over options.annotations, as in resolveChartRequest.
-  const annotations = parsed.request.annotations ?? (options as { annotations?: Annotation[] }).annotations;
+  // Chart-level annotations win over options.annotations, as in resolveChartRequest. The chart takes either list as
+  // its annotations prop, so each entry records here the list the author wrote it in, for refusal pointers.
+  const rootAnnotations = parsed.request.annotations;
+  const optionAnnotations = (options as { annotations?: Annotation[] }).annotations;
+  const annotations = useMemo(() => rootAnnotations ? withAnnotationOrigins(rootAnnotations, ['annotations'])
+    : optionAnnotations && withAnnotationOrigins(optionAnnotations, ['options', 'annotations']), [rootAnnotations, optionAnnotations]);
   const common = { ...options, ...(target === undefined ? {} : { target }), ...(theme === undefined ? {} : { theme }), ...(size === undefined ? {} : { size }) };
   const frame = useSpecFrame({ type, data, options: common }, { ...host, size, theme, target, prepared });
   const reportWarnings = useMemo(() => onWarnings && ((warnings: LintWarning[]) => {

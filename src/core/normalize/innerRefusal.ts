@@ -5,6 +5,7 @@
  * right or absent. They run only when a refusal is thrown.
  */
 import { parseJsonPointer, toJsonPointer } from '../diagnostics/jsonPatch';
+import { annotationRef } from '../types/annotations';
 import { NormalizeError } from './shared';
 
 type Segments = readonly (string | number)[];
@@ -61,9 +62,17 @@ export function hostedLayout<T>(hostOptions: object, innerOptions: object, run: 
     if (error instanceof NormalizeError) {
       rebaseRefusal(error, segments => {
         const [head, ...rest] = segments;
+        // An annotation pointer starts with the origin the request gave the authored entry. It holds where the host
+        // passed that entry on unchanged; the inner chart's list can be shorter or hold entries the host added.
+        const origin = head === 'annotations' ? 2 : head === 'options' && rest[0] === 'annotations' ? 3 : 0;
+        if (origin) {
+          const key = JSON.stringify(segments.slice(0, origin));
+          const entry = (from: object) => ((from as { annotations?: unknown[] }).annotations ?? [])
+            .find((annotation, index) => JSON.stringify(annotationRef(annotation, index).segments) === key);
+          const inner = entry(innerOptions), host = entry(hostOptions);
+          return inner !== undefined && host !== undefined && sameField(inner, host, segments.slice(origin)) ? segments : undefined;
+        }
         if (head === 'options') return sameField(innerOptions, hostOptions, rest) ? segments : undefined;
-        // A root annotation pointer reads the list the request put in options.annotations.
-        if (head === 'annotations') return sameField(innerOptions, hostOptions, segments) ? segments : undefined;
         return undefined;
       });
     }

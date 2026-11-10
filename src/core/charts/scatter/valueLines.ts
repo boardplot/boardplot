@@ -10,13 +10,15 @@
  */
 
 import { NormalizeError } from '../../normalize/shared';
-import { defaultAnnotationId, type Annotation } from '../../types/annotations';
+import { annotationRef, defaultAnnotationId, type Annotation } from '../../types/annotations';
 import type { Id } from '../../types/cell';
 import type { LintWarning } from '../../types/scene';
 
 /** A value line the annotation pass draws, with the value it draws it at. */
 export interface DrawnValueLine {
   index: number;
+  /** The pointer and display name of the authored annotation. */
+  ref: ReturnType<typeof annotationRef>;
   id: Id;
   value: number;
   isMean: boolean;
@@ -41,7 +43,7 @@ export function drawnValueLines(annotations: readonly Annotation[] | undefined, 
     if (!isMean && spanned && ann.tolerance === undefined && ann.attainment === undefined) return;
     const value = isMean ? meanY : (ann.value as number);
     if (!Number.isFinite(value)) return;
-    lines.push({ index, id: defaultAnnotationId(ann, index), value, isMean });
+    lines.push({ index, ref: annotationRef(ann, index), id: defaultAnnotationId(ann, index), value, isMean });
   });
   return lines;
 }
@@ -68,11 +70,11 @@ export function refuseValueLinesOutsideAxis(
     const what = line.isMean ? `the mean of the plotted points (${format(line.value)})` : format(line.value);
     throw new NormalizeError(
       'value-line-outside-axis',
-      `annotations[${line.index}]`,
+      line.ref.name,
       `valueLine '${line.id}' sits at ${what}, ${bound === 'max' ? 'above' : 'below'} the vertical axis, which valueAxis.${bound} ends at ${format(domain[bound === 'max' ? 1 : 0])}, so the line would be drawn outside the plot`,
       `move valueAxis.${bound} past ${format(line.value)}, or drop valueAxis.${bound} and let the axis extend to the line`,
       undefined,
-      ['annotations', line.index],
+      line.ref.segments,
     );
   }
 }

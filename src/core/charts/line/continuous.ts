@@ -10,6 +10,7 @@ import { seriesRasterFormatter } from '../../formatSpec';
 import { NormalizeError } from '../../normalize/shared';
 import type { LaneScale } from '../../eventLane';
 import { formatTimePattern, instantName, resolveTimes, timeAnnotationAnchors, timePrecision, zoneClock, type TimePrecision, type ZoneClock } from '../../timeAxis';
+import { annotationRef } from '../../types/annotations';
 import type { Cell } from '../../types/cell';
 import type { Category, LineCategoryData, LineChartData, LineXValue } from '../../types/data';
 import type { LineOptions, LineXAxis } from './types';
@@ -188,37 +189,40 @@ export function resolveLineXOptions(options: LineOptions, model: LineXModel, cat
     if (typeof value === 'string' && idSet.has(value)) return value;
     return byX.get(model.read(value, path));
   };
-  const exact = (value: string | number, path: string, what: string): string => {
+  const exact = (value: string | number, path: string, what: string, segments?: (string | number)[]): string => {
     const id = readingAt(value, path);
     if (id !== undefined) return id;
     throw new NormalizeError('x-anchor-no-reading', path, `${what} names x ${JSON.stringify(value)}, where no series has a reading; the nearest readings are ${nearest(model.read(value, path))}`,
-      'name the x of a reading exactly, as data.x gives it');
+      'name the x of a reading exactly, as data.x gives it', undefined, segments);
   };
-  const anchor = (value: Anchor | undefined, path: string, what: string): Anchor | undefined => {
+  /** An annotation anchor; `segments` points at it where the author wrote the annotation, or is [] for none. */
+  const anchor = (value: Anchor | undefined, path: string, what: string, segments: (string | number)[]): Anchor | undefined => {
     if (value === undefined) return value;
-    if (typeof value === 'string' || typeof value === 'number') return exact(value, path, what);
-    if (typeof value === 'object' && value.categoryId !== undefined) return { ...value, categoryId: exact(value.categoryId, `${path}.categoryId`, what) };
+    if (typeof value === 'string' || typeof value === 'number') return exact(value, path, what, segments);
+    if (typeof value === 'object' && value.categoryId !== undefined) return { ...value, categoryId: exact(value.categoryId, `${path}.categoryId`, what, segments.length ? [...segments, 'categoryId'] : []) };
     return value;
   };
   /** The x values of each band's ends: a band wholly outside the range is left out. */
   const bandEnds = new Map<object, number[]>();
   const authored = options.annotations?.flatMap((raw, index) => {
     const a = (model.clock ? timeAnnotationAnchors(raw) : raw) as unknown as Record<string, unknown> & { kind: string; id?: string };
-    const path = (key: string) => `options.annotations[${index}].${key}`;
+    const ref = annotationRef(raw, index, `options.annotations[${index}]`);
+    const path = (key: string) => `${ref.name}.${key}`;
+    const segmentsOf = (key: string) => (ref.segments.length ? [...ref.segments, key] : []);
     const what = `annotation '${a.id ?? `${a.kind}-${index + 1}`}'`;
     switch (a.kind) {
       case 'cagr':
         // A time axis counts the years between the two readings; a number axis has no years.
-        if (model.clock) return [{ ...a, ...(a.from === undefined ? {} : { from: anchor(a.from as Anchor, path('from'), what) }), ...(a.to === undefined ? {} : { to: anchor(a.to as Anchor, path('to'), what) }) }];
-        warnings.push({ code: 'x-cagr-unsupported', severity: 'warn', field: ['options', 'annotations', index],
+        if (model.clock) return [{ ...a, ...(a.from === undefined ? {} : { from: anchor(a.from as Anchor, path('from'), what, segmentsOf('from')) }), ...(a.to === undefined ? {} : { to: anchor(a.to as Anchor, path('to'), what, segmentsOf('to')) }) }];
+        warnings.push({ code: 'x-cagr-unsupported', severity: 'warn', ...(ref.segments.length ? { field: ref.segments } : {}),
           message: `${what}: a CAGR is a rate per year, and a number axis has no years, so it is not drawn`,
           suggest: "use a 'diff' annotation between two readings for the change over the range" });
         return [];
-      case 'diff': return [{ ...a, from: anchor(a.from as Anchor, path('from'), what), to: anchor(a.to as Anchor, path('to'), what) }];
-      case 'delta': return [{ ...a, at: anchor(a.at as Anchor, path('at'), what), ...(typeof a.vs === 'number' ? {} : { vs: anchor(a.vs as Anchor, path('vs'), what) }) }];
-      case 'abs': case 'note': case 'callout': case 'text': return [{ ...a, at: anchor(a.at as Anchor, path('at'), what) }];
-      case 'line': case 'arrow': case 'box': return [{ ...a, from: anchor(a.from as Anchor, path('from'), what), to: anchor(a.to as Anchor, path('to'), what) }];
-      case 'valueLine': return [{ ...a, ...(a.from === undefined ? {} : { from: exact(a.from as string, path('from'), what) }), ...(a.to === undefined ? {} : { to: exact(a.to as string, path('to'), what) }) }];
+      case 'diff': return [{ ...a, from: anchor(a.from as Anchor, path('from'), what, segmentsOf('from')), to: anchor(a.to as Anchor, path('to'), what, segmentsOf('to')) }];
+      case 'delta': return [{ ...a, at: anchor(a.at as Anchor, path('at'), what, segmentsOf('at')), ...(typeof a.vs === 'number' ? {} : { vs: anchor(a.vs as Anchor, path('vs'), what, segmentsOf('vs')) }) }];
+      case 'abs': case 'note': case 'callout': case 'text': return [{ ...a, at: anchor(a.at as Anchor, path('at'), what, segmentsOf('at')) }];
+      case 'line': case 'arrow': case 'box': return [{ ...a, from: anchor(a.from as Anchor, path('from'), what, segmentsOf('from')), to: anchor(a.to as Anchor, path('to'), what, segmentsOf('to')) }];
+      case 'valueLine': return [{ ...a, ...(a.from === undefined ? {} : { from: exact(a.from as string, path('from'), what, segmentsOf('from')) }), ...(a.to === undefined ? {} : { to: exact(a.to as string, path('to'), what, segmentsOf('to')) }) }];
       case 'band': {
         // A band may start or end between readings; the layout reads its x values and clips them.
         if (a.from === undefined && a.to === undefined) return [a];

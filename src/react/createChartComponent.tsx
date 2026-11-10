@@ -11,6 +11,7 @@ import { BoardplotThemeContext } from './themeContext';
 import { drawnRequest } from '../core/drawnRequest';
 import type { ChartRequest, RequestOptions } from '../core/request';
 import type { Annotation } from '../core/types/annotations';
+import { withAnnotationOrigins } from '../core/annotationOrigin';
 import type { Id } from '../core/types/cell';
 import type { Geometry, LintWarning } from '../core/types/scene';
 import type { OptionsInput } from '../core/types/optionInput';
@@ -232,7 +233,9 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
     const asked = container ? measured.size : size;
     // A zoomed view is a derived spec: the range as its view, or the readings in coarser buckets.
     const inherited = useMemo(() => ({ strings: providerStrings, language: languageOf(provider?.locale) }), [providerStrings, provider?.locale]);
-    const zoomed = useZoom({ type, data, annotations, options: noteOptions as Record<string, unknown>, zoom: noData ? undefined : zoom, width: typeof asked === 'object' ? asked.width : undefined, inherited });
+    // The annotations prop is the chart's options.annotations, unless the spec path recorded the root list.
+    const authoredAnnotations = useMemo(() => annotations && withAnnotationOrigins(annotations, ['options', 'annotations']), [annotations]);
+    const zoomed = useZoom({ type, data, annotations: authoredAnnotations, options: noteOptions as Record<string, unknown>, zoom: noData ? undefined : zoom, width: typeof asked === 'object' ? asked.width : undefined, inherited });
     // A prepared chart attaches the server's layout, which is checked against the current request. Print lays out
     // at once: the browser takes the printed page right after the print listener's render (printLayout.ts).
     // A zoomed view is a new request, so the server's layout no longer matches it and the client lays it out.

@@ -1,5 +1,5 @@
 import { normalizeCell, normalizedNumber, NormalizeError } from './shared';
-import type { Annotation } from '../types/annotations';
+import { annotationRef, type Annotation } from '../types/annotations';
 import type { LintWarning } from '../types/scene';
 import type { RangeCell } from '../types/cell';
 import { maxOf } from '../arrays';
@@ -64,9 +64,11 @@ export function prepareFractionAnnotations(annotations: Annotation[] | undefined
   if (!annotations?.some(ann => ann.kind === 'valueLine' && ann.valueKind !== undefined)) return annotations;
   return annotations.map((ann, index) => {
     if (ann.kind !== 'valueLine' || ann.valueKind === undefined) return ann;
-    const path = `options.annotations[${index}]`;
+    const ref = annotationRef(ann, index, `options.annotations[${index}]`);
+    const path = ref.name;
     if (ann.valueKind !== 'fraction' || typeof ann.value !== 'number') {
-      throw new NormalizeError('invalid-annotation', `${path}.valueKind`, "valueLine valueKind 'fraction' needs a numeric value");
+      throw new NormalizeError('invalid-annotation', `${path}.valueKind`, "valueLine valueKind 'fraction' needs a numeric value", undefined, undefined,
+        ref.segments.length ? [...ref.segments, 'valueKind'] : []);
     }
     const { valueKind: _kind, ...rest } = ann;
     const tolerance = ann.tolerance;

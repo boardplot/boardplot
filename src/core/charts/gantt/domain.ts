@@ -9,6 +9,7 @@ import { formatDate, parseISODate } from '../../dateFormat';
 import { NormalizeError, resolveHighlight, resolveSize } from '../../normalize/shared';
 import { compareText, defaultMeasurer } from '../../text';
 import { resolveSemanticPaletteTheme, resolveSurface, emphasisWeight } from '../../theme';
+import { annotationRef } from '../../types/annotations';
 import type { Id } from '../../types/cell';
 import type { GanttCell, GanttData, GanttItem } from '../../types/data';
 import type { LabelKind } from '../../types/options';
@@ -269,7 +270,10 @@ function resolveGanttEvents(
   authoredEvents.forEach((annotation, i) => {
     const id = annotation.id ?? `event-${i + 1}`;
     if (eventIds.has(id) || id === 'today' || id === 'elapsed') {
-      throw new NormalizeError('duplicate-id', `options.annotations[${i}]`, `duplicate event id '${id}'`);
+      const ref = annotationRef(annotation, i, `options.annotations[${i}]`);
+      // An event without its own id has a generated one: the pointer names the entry, not an id the author left out.
+      const at = annotation.id === undefined ? ref.segments : [...ref.segments, 'id'];
+      throw new NormalizeError('duplicate-id', ref.name, `duplicate event id '${id}'`, undefined, undefined, ref.segments.length ? at : []);
     }
     eventIds.add(id);
     const at =

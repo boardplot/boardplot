@@ -25,6 +25,7 @@ import {
   resolveSize,
 } from '../../normalize/shared';
 import { applyAxisBounds, applyTickStep, axisGrid, niceDomain } from '../../scale';
+import { annotationRef } from '../../types/annotations';
 import { type Id } from '../../types/cell';
 import type { Category, LineChartData } from '../../types/data';
 import type { LintWarning } from '../../types/scene';
@@ -515,9 +516,11 @@ function valueDomain(d: Core & { cumTop: number[][]; cumBot: number[][] }, isBum
     if (variant === 'stacked100-area' && (annotation.value < 0 || annotation.value > 100)) {
       throw new NormalizeError(
         'value-line-composition-domain',
-        `annotations[${annotationIndex}]`,
+        annotationRef(annotation, annotationIndex).name,
         `valueLine '${annotationId}' at ${annotation.value} is outside the fixed 0..100 composition axis`,
         'keep the value line between 0 and 100; a reference line cannot rescale a 100% composition',
+        undefined,
+        annotationRef(annotation, annotationIndex).segments,
       );
     }
     if (annotation.value < lo || annotation.value > hi) domainExtendingValueLines.push({ id: annotationId, value: annotation.value });
