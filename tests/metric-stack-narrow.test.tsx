@@ -81,14 +81,43 @@ it('thins values and names to every second category plus the latest value where 
   expect(narrow).not.toMatch(/every second/i);
 });
 
-// A phone card under the width that places every value threw metric-stack-spacing with no size to ask for.
-it('refuses a 286 px phone card with the width that places every value, and draws at that width', () => {
+// A value without a seat refused the whole stack, so a width between two drawn widths was refused.
+it('drops a value that finds no seat on a 286 px phone card, with a warning and a note', () => {
   const fixture = metricStackFixtures.find(f => f.id === 'metric-stack-volume')!;
-  const at = (width: number) => render({ spec: { type: 'grid', data: fixture.data, options: { ...fixture.options, size: { width } } } }).body as { ok: boolean; errors?: { code: string; fix?: { value: unknown }[] }[] };
-  expect(at(300).ok).toBe(true);
-  const refused = at(286).errors?.[0];
-  expect(refused).toMatchObject({ code: 'size-below-floor', fix: [{ value: { width: 289 } }] });
-  expect(at(289).ok).toBe(true);
+  const drawn = render({ spec: { type: 'grid', data: fixture.data, options: { ...fixture.options, size: { width: 286 } } } }).body as
+    { ok: boolean; warnings: { code: string; detail?: { hidden?: string[] } }[]; notes: { text: string }[] };
+  expect(drawn.ok).toBe(true);
+  expect(drawn.warnings.find(w => w.code === 'label-hidden')?.detail?.hidden).toContain('conversion:value:2026-09');
+  expect(drawn.notes.some(note => note.text.startsWith('Not labelled on the chart: 2.8'))).toBe(true);
+});
+
+// A stack solved its labels at density 'full' whatever labelDensity said, and refused at every width when line values collided.
+it("draws a long line panel under labelDensity 'minimal' with its latest value, at every width", () => {
+  const weeks = Array.from({ length: 53 }, (_, i) => ({ id: `w${i + 1}`, label: `W${i + 1}` }));
+  const long = {
+    categories: weeks,
+    measures: [
+      { id: 'started', label: 'Started', values: weeks.map((_, i) => 900 + (i * 37) % 180) },
+      { id: 'finished', label: 'Finished', values: weeks.map((_, i) => 80 + (i * 53) % 40) },
+    ],
+    panels: data.panels,
+    windows: { base: { from: 'w1', to: 'w4', label: 'Jan' }, compare: { from: 'w44', to: 'w47', label: 'Nov' } },
+  };
+  for (const width of [1184, 1600, 2400]) {
+    const drawn = render({ spec: { type: 'grid', data: long, options: { stack: {}, title: 'Weekly cases', labelDensity: 'minimal', size: { width } } }, return: ['svg'] }).body as
+      { ok: boolean; svg: string };
+    expect(drawn.ok, `${width} px`).toBe(true);
+    expect(drawn.svg, `${width} px`).toContain('data-id="label:rate:value:w53"');
+    expect(drawn.svg, `${width} px`).not.toContain('data-id="label:rate:value:w20"');
+  }
+});
+
+// Under 'minimal' the values the density gate drops counted as lost labels, so an authored wide gutter that fits gave way to the default.
+it("keeps an authored wide gutter under labelDensity 'minimal'", () => {
+  const drawn = render({ spec: { type: 'grid', data, options: { stack: { columnOverrides: { gutter: { width: 240 } } }, title: 'Starts rise', labelDensity: 'minimal', size: { width: 1200 } } } }).body as
+    { ok: boolean; warnings: { code: string }[] };
+  expect(drawn.ok).toBe(true);
+  expect(drawn.warnings.map(w => w.code)).not.toContain('generated-column-width-capped');
 });
 
 it('rounds a rate span once, from the unrounded window rate, at the panel decimals', () => {
