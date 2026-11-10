@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { expect, it } from 'vitest';
 import '../src/core/charts';
 import { render } from '../src/cli/render';
+import { measure } from '../src/cli/measure';
 import { GridChart } from '../src/react/charts/grid';
 import { computeMetricStack } from '../src/core/charts/grid/metricStack';
 import { metricStackFixtures } from '../src/core/charts/grid/metricStackFixtures';
@@ -34,13 +35,24 @@ it('draws a metric stack on a 320 px card with each readout above its panel', ()
 
 it('refuses a plot height under its floor with a coded fix, in React as in the CLI', async () => {
   const options = { stack: { heights: [40, 40] }, size: { width: 900 } };
-  expect(body(options).errors?.[0]).toMatchObject({ code: 'metric-stack-spacing', fix: [{ op: 'replace', path: '/options/stack/heights/0' }] });
+  expect(body(options).errors?.[0]).toMatchObject({ code: 'metric-stack-spacing', fix: [{ op: 'replace', path: '/options/stack/heights/0' }, { op: 'replace', path: '/options/stack/heights/1' }] });
   const host = document.createElement('div');
   const root = createRoot(host);
   await act(async () => root.render(createElement(GridChart as never, { data, ...options })));
   await act(async () => { await new Promise(done => setTimeout(done, 50)); });
   expect(host.querySelector('[data-bp-refused]')?.getAttribute('data-bp-refused')).toBe('metric-stack-spacing');
   act(() => root.unmount());
+});
+
+// The patch raised one panel and left the next refused, and measure refused the patched height with the need of a wider class's larger type.
+it('draws the heights its spacing patch advises, through render and measure', () => {
+  const spec = { type: 'grid', data, options: { stack: { heights: [40, 40] }, title: 'Starts rise', size: { width: 900 } } };
+  const fix = (body(spec.options).errors?.[0]?.fix ?? []) as { path: string; value: number }[];
+  const heights = [40, 40];
+  for (const op of fix) heights[Number(op.path.split('/').at(-1))] = op.value;
+  const patched = { ...spec, options: { ...spec.options, stack: { heights } } };
+  expect(body(patched.options).ok).toBe(true);
+  expect((measure({ spec: patched }).body as { ok: boolean }).ok).toBe(true);
 });
 
 it('prints a change span in the unit of its marks, with the divide step in its claims', () => {

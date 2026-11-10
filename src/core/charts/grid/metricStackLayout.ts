@@ -323,7 +323,12 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
     const factor = maxOf(minimumHeights.map((h,i) => h / options.rows![i]!));
     heights = options.rows.map(w => w * factor);
   }
-  heights.forEach((h,i) => { if (!Number.isFinite(h) || h < minimumHeights[i]!) spacingError(`options.stack.heights.${i}`, `Panel '${data.panels[i]!.id}' needs at least ${minimumHeights[i]} px for its readout and value labels`, heightFix(i, minimumHeights[i]!)); });
+  // One refusal for every panel under its floor: a patch that raised one panel would leave the next one refused.
+  const short = heights.flatMap((h,i) => !Number.isFinite(h) || h < minimumHeights[i]! ? [i] : []);
+  if (short.length) {
+    const fix = stack.heights ? short.flatMap(i => heightFix(i, minimumHeights[i]!)!) : undefined;
+    spacingError(`options.stack.heights.${short[0]}`, `${short.map(i => `Panel '${data.panels[i]!.id}' needs at least ${minimumHeights[i]} px`).join(', ')} for its readout and value labels`, fix);
+  }
   const headRoom = heads?.reduce((sum, head) => sum + head.h, 0) ?? 0;
   const partialOnValues = computed.panels.some(p => p.panel.type === 'column' && computed.partial.some(i => p.values[i] !== null));
   // A running period with no marker to point at its note says "to date" on its axis name.

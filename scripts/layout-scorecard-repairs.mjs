@@ -88,4 +88,5 @@ export const REPAIRS = [
   {"type":"line","name":"line-reference-band-composition","fixture":"stacked100-area-revenue-mix","options":{"referenceBands":[{"id":"a","label":"A","low":10,"high":150}]}},
   {"type":"scatter","name":"scatter-log-both-nonpositive","fixture":"negative-quadrants","options":{"valueAxis":{"log":"both"}}},
   {"type":"cohort","name":"cohort-heatmap-column-order","fixture":"heatmap-weighted-total","options":{"variant":"heatmap","columnOrder":["periods"]}},
+  {"type":"grid","name":"grid-metric-stack-heights","fixture":"metric-stack-volume","options":{"stack":{"heights":[40,40,40]}}},
 ];
