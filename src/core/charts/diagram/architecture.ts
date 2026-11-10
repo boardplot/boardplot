@@ -378,10 +378,18 @@ function bandFrames(band: Band): BandFrame[] {
 
 const unitIndex = (units: readonly Unit[], id: string): number => units.findIndex((unit) => unit.nodes.some((node) => node.id === id));
 
-/** How many node columns fit a width. Under 400 px each node takes its own row. */
+/**
+ * How many node columns fit a width: as many as hold the widest node with its text on one line, with the narrowest
+ * gutter between two columns, and never fewer than one per 40 u, where a long name wraps. A wider gutter that a label
+ * asks for and a zone frame narrow the columns later, in place. Under 380 px each node takes its own row.
+ */
 function columnsFor(env: Env): number {
-  const { plot, u } = env;
-  return plot.w < 380 ? 1 : Math.max(1, Math.floor((plot.w + 6 * u) / (40 * u)));
+  const { plot, u, data, name, text, measure } = env;
+  if (plot.w < 380) return 1;
+  const gutter = 2 * GAP_HALF;
+  const node = Math.max(...data.nodes.map((item) => Math.ceil(Math.max(measure(item.label, name).width,
+    item.secondaryLabel ? measure(item.secondaryLabel, text).width : 0)) + 1 + 4 * u + (item.icon ? 3.5 * u : 0) + lockWidth(item, u) + stackOf(item)));
+  return Math.max(1, Math.floor((plot.w + 6 * u) / (40 * u)), Math.floor((plot.w + gutter) / (node + gutter)));
 }
 
 /** Every arrangement worth trying, widest first. */
@@ -1552,8 +1560,9 @@ function grown(rect: Rect, by: number): Rect {
   return { x: rect.x - by, y: rect.y - by, w: rect.w + 2 * by, h: rect.h + 2 * by };
 }
 
+/** A seat above the plot would sit on the title, where the label solver hides it, so it does not count as clear. */
 function labelClear(box: Rect, blockers: readonly Rect[], plot: Rect): boolean {
-  if (box.x < plot.x || box.x + box.w > plot.x + plot.w) return false;
+  if (box.x < plot.x || box.x + box.w > plot.x + plot.w || box.y < plot.y) return false;
   const left = box.x - TEXT_CLEARANCE;
   const top = box.y - TEXT_CLEARANCE;
   const right = left + (box.w + 2 * TEXT_CLEARANCE);
