@@ -45,7 +45,7 @@ const quiet = args.includes('--quiet');
 // --spec a.json,b.json: census of request files ({ type, data, options, annotations }) instead of the fixtures.
 const specs = arg('spec')?.split(',');
 
-const SCALE = { thousand: 1e3, million: 1e6, billion: 1e9, Tausend: 1e3, Million: 1e6, Millionen: 1e6, Milliarden: 1e9, '': 1, k: 1e3, K: 1e3, M: 1e6, m: 1e6, B: 1e9, bn: 1e9, Bn: 1e9, Mio: 1e6, Mrd: 1e9, Tsd: 1e3 };
+const SCALE = { thousand: 1e3, million: 1e6, billion: 1e9, trillion: 1e12, T: 1e12, Tausend: 1e3, Million: 1e6, Millionen: 1e6, Milliarden: 1e9, '': 1, k: 1e3, K: 1e3, M: 1e6, m: 1e6, B: 1e9, bn: 1e9, Bn: 1e9, Mio: 1e6, Mrd: 1e9, Tsd: 1e3 };
 const CURRENCY_CODES = new Set(Intl.supportedValuesOf('currency'));
 const SUPER = { '⁻': '-', '⁺': '', '⁰': 0, '¹': 1, '²': 2, '³': 3, '⁴': 4, '⁵': 5, '⁶': 6, '⁷': 7, '⁸': 8, '⁹': 9 };
 
@@ -65,7 +65,7 @@ const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
  */
 export function tokens(text, m) {
   const group = `[${esc(m.thousands)}\\u202f\\u00a0\\u2009' ’]`;
-  const re = new RegExp(String.raw`([<>≈~]?)\s?([+\-−]?)\s?(\p{Sc}|[A-Z]{2,3}\$|CHF\s?)?\s?(\d{1,3}(?:${group}\d{3})+(?:${esc(m.decimal)}\d+)?|\d+(?:${esc(m.decimal)}\d+)?|${esc(m.decimal)}\d+)(?:\s?[×x]\s?10([⁻⁺]?[⁰¹²³⁴⁵⁶⁷⁸⁹]+))?(?:(m)(?![\p{L}])|\s?(thousand|million|billion|Tausend|Millionen|Million|Milliarden|Mrd|Mio|Tsd|bn|Bn|[kKMB])(?![\p{L}]))?\s?(%|pp|p\.p\.)?(?:\s?(\p{Sc}))?`, 'gu');
+  const re = new RegExp(String.raw`([<>≈~]?)\s?([+\-−]?)\s?(\p{Sc}|[A-Z]{2,3}\$|CHF\s?)?\s?(\d{1,3}(?:${group}\d{3})+(?:${esc(m.decimal)}\d+)?|\d+(?:${esc(m.decimal)}\d+)?|${esc(m.decimal)}\d+)(?:\s?[×x]\s?10([⁻⁺]?[⁰¹²³⁴⁵⁶⁷⁸⁹]+))?(?:(m)(?![\p{L}])|\s?(thousand|million|billion|trillion|Tausend|Millionen|Million|Milliarden|Mrd|Mio|Tsd|bn|Bn|[kKMBT])(?![\p{L}]))?\s?(%|pp|p\.p\.)?(?:\s?(\p{Sc}))?`, 'gu');
   const found = [];
   // ISO dates and times are not values.
   text = text.replace(/\d{4}-\d{2}(?:-\d{2})?(?:T[\d:.]+Z?)?/g, (date) => ' '.repeat(date.length));
@@ -454,7 +454,8 @@ export function censusCase(type, fixture, width, localeName, measured) {
 
   // 2. Collisions and mixed magnitudes inside one column, row or series.
   // A table whose rows name their own formats reads one unit per row; its columns mix units by design.
-  const rowFormatted = type === 'table' && flatRows(data.rows ?? []).some((row) => row.format !== undefined || row.scale !== undefined);
+  // A dimswitch row is a measure with its own scale, so its columns mix units too.
+  const rowFormatted = type === 'dimswitch' || (type === 'table' && flatRows(data.rows ?? []).some((row) => row.format !== undefined || row.scale !== undefined));
   for (const [key, entries] of groupValues) {
     const byText = new Map();
     for (const entry of entries) {
@@ -541,7 +542,12 @@ export function censusCase(type, fixture, width, localeName, measured) {
 
   // 4. Axis ticks and keys: one magnitude per axis; units printed once per text.
   const tickGroups = new Map();
+  // A log axis steps by decades by design ("100M", "1B"): its position is not affine in its value.
+  const affine = (ticks) => ticks.length < 3 || ticks.every((tick) => Math.abs((tick.pos - ticks[0].pos) * (ticks[1].at - ticks[0].at)
+    - (ticks[1].pos - ticks[0].pos) * (tick.at - ticks[0].at)) <= 1e-6 * Math.abs((ticks[1].pos - ticks[0].pos) * (tick.at - ticks[0].at) || 1));
+  const logTicks = new Set((geometry.axes ?? []).filter((axis) => (axis.ticks ?? []).every((tick) => typeof tick.at === 'number' && typeof tick.pos === 'number') && !affine(axis.ticks)).flatMap((axis) => axis.ticks.map((tick) => tick.labelId)));
   for (const entry of texts) {
+    if (logTicks.has(entry.id)) continue;
     const tick = /^(?:(.*)\/)?axis:([^:]+):tick:/.exec(entry.id) ?? /^(?:(.*)\/)?(key|legend)[:-]/.exec(entry.id);
     if (!tick) continue;
     const key = `${tick[1] ?? ''}:${tick[2]}`;
@@ -623,14 +629,17 @@ function wrongMarks(text, m) {
   // Without the other mark there is nothing to find; removing authored text cannot add one.
   const other = m.decimal === '.' ? ',' : m.decimal === ',' ? '.' : undefined;
   if (!other || !text.includes(other)) return undefined;
+  // Removing spaces must not make a decimal mark of a list comma ("(0.6, 17)"): the text as printed must match too.
+  const spaced = text;
   if (m.authored?.length) {
     text = text.replace(/\s+/g, '');
     // A wrapped line is a part of an authored text; a card row can hold an authored text and more.
     if (m.authored.some((piece) => piece.includes(text))) return undefined;
     for (const piece of m.authored) text = text.split(piece).join(' ');
   }
-  if (m.decimal === '.' && /(?<![\d,])\d{1,3},(?:\d{1,2}|\d{4,})(?![\d,])/u.test(text)) return "decimal comma in a chart with '.' marks";
-  if (m.decimal === ',' && /(?<![\d.])\d{1,3}\.(?:\d{1,2}|\d{4,})(?![\d.])/u.test(text)) return "decimal point in a chart with ',' marks";
+  const comma = /(?<![\d,])\d{1,3},(?:\d{1,2}|\d{4,})(?![\d,])/u, point = /(?<![\d.])\d{1,3}\.(?:\d{1,2}|\d{4,})(?![\d.])/u;
+  if (m.decimal === '.' && comma.test(text) && comma.test(spaced)) return "decimal comma in a chart with '.' marks";
+  if (m.decimal === ',' && point.test(text) && point.test(spaced)) return "decimal point in a chart with ',' marks";
   return undefined;
 }
 

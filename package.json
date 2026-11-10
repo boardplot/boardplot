@@ -379,6 +379,7 @@
     "prepack": "npm run build",
     "smoke:package": "node scripts/package-smoke.mjs",
     "check:scorecard": "tsx scripts/layout-scorecard.mjs",
+    "check:generated": "tsx scripts/generated-specs.mjs",
     "smoke:next": "node scripts/next-smoke.mjs",
     "generate:chart-entries": "node scripts/generate-chart-entries.mjs",
     "check:chart-entries": "node scripts/generate-chart-entries.mjs --check",

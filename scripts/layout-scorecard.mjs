@@ -576,6 +576,33 @@ function strokeHitsRect(a, b, rect, radius, startCap, endCap) {
     || (endCap === 'round' && rectLineDistance(rect, [b]) <= radius + EPS);
 }
 
+/** R7: the labels the layout requested that have no drawn text and no reading.omissions entry. */
+export function undrawnLabels(request, geometry, reading) {
+  const omissions = new Set(reading.omissions.map(omission => omission.labelId));
+  const labels = new Map(geometry.labels.map(label => [label.id, label]));
+  const ticks = geometry.axes?.flatMap(axis => axis.ticks) ?? [];
+  const requested = new Set([...labels.keys(), ...geometry.debug.decisions.map(decision => decision.labelId), ...ticks.flatMap(tick => tick.labelId ? [tick.labelId] : [])]);
+  // Histogram replaces the delegated column names with its bin-edge axis.
+  // Exclude only those obsolete requests, and keep every final axis request.
+  // Whole-number data names one value per bin, at the bin centre, instead of the edges.
+  const binning = geometry.derived?.binning;
+  // An open last bin is named on its own: its upper edge, the largest observation, has no tick.
+  const binEdges = binning?.openAbove !== undefined ? binning.edges.slice(0, -1) : binning?.edges;
+  const axisValues = binning?.perValue ? binEdges?.slice(1).map(edge => edge - 0.5) : binEdges;
+  const histogramAxis = request.type === 'histogram' && axisValues && geometry.axes?.some(axis => axis.axis === 'x'
+    && axis.ticks.length === axisValues.length && axis.ticks.every((tick, i) => tick.at === axisValues[i]));
+  if (histogramAxis) for (const bin of geometry.marks.bins) requested.delete(`category:${bin.id}`);
+  const drawnIds = new Set(geometry.scene.filter(drawn).map(node => node.id));
+  const missing = [];
+  for (const id of requested) {
+    const label = labels.get(id);
+    if (!omissions.has(id) && !drawnIds.has(id) && !(label?.nodeId && drawnIds.has(label.nodeId)) && !drawnIds.has(`label:${id}`)) {
+      missing.push({ id, kind: label?.kind ?? 'solver request' });
+    }
+  }
+  return missing;
+}
+
 export function auditScene(item, request, geometry, reading) {
   const findings = [], add = (rule, subject, message, detail) => findings.push({ ...item, rule, severity: 2, subject, message, detail });
   const resolved = resolveChartRequest(request), theme = themeForWidth(resolved.theme, geometry.size.width);
@@ -627,26 +654,8 @@ export function auditScene(item, request, geometry, reading) {
       }
     }
   }
-  const omissions = new Set(reading.omissions.map(omission => omission.labelId));
-  const labels = new Map(geometry.labels.map(label => [label.id, label]));
-  const ticks = geometry.axes?.flatMap(axis => axis.ticks) ?? [];
-  const requested = new Set([...labels.keys(), ...geometry.debug.decisions.map(decision => decision.labelId), ...ticks.flatMap(tick => tick.labelId ? [tick.labelId] : [])]);
-  // Histogram replaces the delegated column names with its bin-edge axis.
-  // Exclude only those obsolete requests, and keep every final axis request.
-  // Whole-number data names one value per bin, at the bin centre, instead of the edges.
-  const binning = geometry.derived?.binning;
-  // An open last bin is named on its own: its upper edge, the largest observation, has no tick.
-  const binEdges = binning?.openAbove !== undefined ? binning.edges.slice(0, -1) : binning?.edges;
-  const axisValues = binning?.perValue ? binEdges?.slice(1).map(edge => edge - 0.5) : binEdges;
-  const histogramAxis = request.type === 'histogram' && axisValues && geometry.axes?.some(axis => axis.axis === 'x'
-    && axis.ticks.length === axisValues.length && axis.ticks.every((tick, i) => tick.at === axisValues[i]));
-  if (histogramAxis) for (const bin of geometry.marks.bins) requested.delete(`category:${bin.id}`);
-  const drawnIds = new Set(texts.map(text => text.node.id));
-  for (const id of requested) {
-    const label = labels.get(id);
-    if (!omissions.has(id) && !drawnIds.has(id) && !(label?.nodeId && drawnIds.has(label.nodeId)) && !drawnIds.has(`label:${id}`)) {
-      add('R7', id, 'Requested label has no drawn text and no reading.omissions entry', { label: id, kind: label?.kind ?? 'solver request' });
-    }
+  for (const { id, kind } of undrawnLabels(request, geometry, reading)) {
+    add('R7', id, 'Requested label has no drawn text and no reading.omissions entry', { label: id, kind });
   }
   return findings;
 }
@@ -715,7 +724,7 @@ function set(object, path, value) {
   node[parts.at(-1)] = value;
 }
 
-function leaves(schema, prefix = '', result = new Map()) {
+export function leaves(schema, prefix = '', result = new Map()) {
   const def = schema._zod.def;
   if (def.innerType) return leaves(def.innerType, prefix, result);
   if (def.type === 'pipe') return leaves(def.in, prefix, result);
@@ -1059,7 +1068,8 @@ async function main() {
   process.exitCode = result.failures || changes.length || numberFailures.length ? 1 : 0;
 }
 
-if (!isMainThread) {
+// Another script's worker can import this module; only the scorecard's own workers run it.
+if (!isMainThread && workerData?.url === import.meta.url) {
   parentPort.postMessage(scorecard(workerData.shard, workerData.shards, workerData.only));
 } else if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
   main().catch((error) => { console.error(error.message ?? error); process.exitCode = 2; });
