@@ -290,6 +290,11 @@ describe('unknown option keys are refused on every type', () => {
     const both = cliErrors({ ...spec, options: { ...spec.options, variant: 'grouped' } }).errors.find(entry => entry.path === '/options/stacked') as Finding & { fix?: unknown };
     expect(both.suggest).toBe(suggest);
     expect(both.fix).toBeUndefined();
+    // Two switches of one option would race on its value: each names its value and neither patches.
+    const two = cliErrors({ ...spec, options: { ...spec.options, stacked100: true } }).errors as (Finding & { fix?: unknown })[];
+    expect(two.find(entry => entry.path === '/options/stacked')).toMatchObject({ suggest });
+    expect(two.find(entry => entry.path === '/options/stacked100')).toMatchObject({ suggest: "Remove 'stacked100' and set variant: \"stacked100\"." });
+    expect(two.filter(entry => entry.fix)).toEqual([]);
     // A strict options schema (diagram) words the same key the same way.
     const tree = getFixtures('diagram').find(entry => (entry.options as { variant?: string }).variant === 'hierarchy')!;
     const { variant: _treeVariant, ...treeOptions } = tree.options as Record<string, unknown>;
@@ -297,6 +302,8 @@ describe('unknown option keys are refused on every type', () => {
     const refusal = cliErrors(diagram).errors.find(entry => entry.path === '/options/hierarchy') as Finding & { fix?: JsonPatchOperation[] };
     expect(refusal.suggest).toBe("Remove 'hierarchy' and set variant: \"hierarchy\".");
     expect(JSON.parse(callTool('boardplot_render', { spec: applyFix(diagram, refusal.fix!) }).text).ok).toBe(true);
+    const twoDiagram = cliErrors({ ...diagram, options: { ...diagram.options, roadmap: true } }).errors as (Finding & { fix?: unknown })[];
+    expect(twoDiagram.filter(entry => entry.code === 'unknown-option').map(entry => entry.fix)).toEqual([undefined, undefined]);
   });
 });
 

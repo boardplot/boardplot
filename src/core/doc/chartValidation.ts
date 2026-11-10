@@ -600,7 +600,7 @@ function sweepStrippedOptionKeys(
     const renameFits = !switched && (!nearest?.near || moved !== undefined || valueFitsKey(schema, parent, nearest.key, valueAtPath(authored, keyPath)));
     const holder = valueAtPath(authored, parent);
     const fix = renameFits && moved === undefined ? typoRenameFix(field, nearest, siblings, holder)
-      : switched && isRecord(holder) && !Object.hasOwn(holder, switched.target) ? [
+      : switched && switchStandsAlone(schema, parent, key, switched.target, siblings, holder) ? [
         { op: 'remove' as const, path: toJsonPointer(field) },
         { op: 'add' as const, path: toJsonPointer([...field.slice(0, -1), switched.target]), value: switched.value },
       ] : undefined;
@@ -649,6 +649,17 @@ function switchedOption(schema: z.ZodType, parent: readonly (string | number)[],
     if (named !== undefined) found.push({ target, value: named });
   }
   return found.length === 1 && valueFitsKey(schema, parent, found[0]!.target, found[0]!.value) ? found[0] : undefined;
+}
+
+/**
+ * Whether a switch key may patch its option: the object holding it does not set the
+ * option yet, and no other unknown key set to true there switches the same option
+ * (`stacked` and `stacked100` both on), or the patches would race on one value.
+ */
+function switchStandsAlone(schema: z.ZodType, parent: readonly (string | number)[], key: string, target: string, siblings: readonly string[], holder: unknown): boolean {
+  if (!isRecord(holder) || Object.hasOwn(holder, target)) return false;
+  return !Object.keys(holder).some((other) => other !== key && holder[other] === true && !siblings.includes(other)
+    && switchedOption(schema, parent, other, siblings, true)?.target === target);
 }
 
 /** Check a data value in its authored object as well, so union branches see their other fields. */
@@ -777,11 +788,11 @@ function unknownKeyText(
   }
   const switched = switchedOption(schema, path.slice(0, -1), key, known, valueAtPath(authored, path));
   if (switched) {
-    const parent = source?.same && isRecord(source.parent) ? source.parent : undefined;
+    const parent = source?.same ? source.parent : undefined;
     return {
       message: `unknown key '${key}' — try: ${switched.target}; known keys: ${known.join(', ')}`,
       suggest: `Remove '${key}' and set ${switched.target}: ${JSON.stringify(switched.value)}.`,
-      ...(parent && !Object.hasOwn(parent, switched.target) ? { fix: [
+      ...(switchStandsAlone(schema, path.slice(0, -1), key, switched.target, known, parent) ? { fix: [
         { op: 'remove' as const, path: source!.path },
         { op: 'add' as const, path: `${source!.path.slice(0, source!.path.lastIndexOf('/'))}/${switched.target}`, value: switched.value },
       ] } : {}),
