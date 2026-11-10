@@ -10,6 +10,8 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import '../src/core/charts';
 import { render } from '../src/cli/render';
+import { layoutRefusal } from '../src/core/emptyData';
+import { NormalizeError } from '../src/core/normalize/shared';
 import { getFixtures, getRefusalExamples } from '../src/fixtures';
 import { getChartSchemas, listCharts } from '../src/core/registry';
 import { retireChartSettings } from '../src/core/retired';
@@ -216,6 +218,24 @@ describe('refusal contract', () => {
     const style = cliErrors('waterfall', { valueAxis: { break: { from: 0, to: 1, style: 'zigzag' } } })[0]!;
     expect(style.message).toContain('"straight"');
     expect(style.message).not.toContain('wiggle');
+  });
+
+  // A layout refusal thrown with a display path (rows[id].cells[col]) reached the caller with path '' and the whole spec as the received value.
+  it('points a layout refusal with a display path at the authored field and its value', () => {
+    const table = getFixtures('table').find((entry) => entry.id === 'table-scorecard')!;
+    const rows = structuredClone((table.data as { rows: { cells: Record<string, unknown> }[] }).rows);
+    rows[1]!.cells.state = 'unclear';
+    const status = render({ spec: { type: 'table', data: { ...(table.data as object), rows }, options: table.options } }).body.errors as (Finding & { received?: unknown })[];
+    expect(status[0]).toMatchObject({ code: 'status-value-invalid', path: '/data/rows/1/cells/state', received: { type: 'string', value: 'unclear' } });
+    const diagram = getFixtures('diagram').find((entry) => entry.id === 'protected-request')!;
+    const nodes = structuredClone((diagram.data as { nodes: Record<string, unknown>[] }).nodes);
+    nodes[2]!.caption = 'Sent over the network';
+    const caption = render({ spec: { type: 'diagram', data: { ...(diagram.data as object), nodes }, options: diagram.options } }).body.errors as Finding[];
+    expect(caption[0]).toMatchObject({ code: 'invalid-membership', path: '/data/nodes/2/caption', suggest: 'use secondaryLabel' });
+    // React and canDraw hosts read the same field off the layout refusal.
+    const error = new NormalizeError('status-value-invalid', 'rows[garden-cafe].cells[state]', 'invalid status');
+    const data = { rows: [{ id: 'garden-cafe', cells: { state: 'unclear' } }] };
+    expect(layoutRefusal('table', 'Table', { width: 720, height: 405 }, error, { data }).warnings[0]!.field).toEqual(['data', 'rows', 0, 'cells', 'state']);
   });
 
   it('points a reversed slope at the bump chart', () => {

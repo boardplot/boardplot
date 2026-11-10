@@ -45,6 +45,7 @@ import { withSize, type Length } from './size';
 import { assertSpecObject } from '../core/inputError';
 import { pushAll } from '../core/arrays';
 import { themeShape } from '../core/normalize/optionShapes';
+import { displayPathField } from '../core/normalize/shared';
 
 interface LoadedSpec {
   doc: BoardplotDoc;
@@ -467,9 +468,9 @@ function layoutFailure(chart: DocChart, error: unknown): DocumentFinding {
     fix?: JsonPatchOperation[]; segments?: readonly (string | number)[];
     expected?: DocumentFinding['expected'];
   };
-  // A display path like `series[revenue].values` is not a pointer; only the
-  // segments a refusal carries, or a plain dotted path, name a real field.
-  const field = failure.segments ?? (failure.path && !/[[\]]/.test(failure.path) ? failure.path.split('.') : undefined);
+  // A display path like `series[revenue].values` is not a pointer: the
+  // segments a refusal carries name the field, else the path read in the chart.
+  const field = failure.segments ?? (failure.path ? displayPathField({ data: chart.data, options: chart.options }, failure.path) : undefined);
   return {
     code: failure.code ?? 'layout-error',
     message: failure.message,
