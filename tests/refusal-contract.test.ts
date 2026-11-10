@@ -401,6 +401,11 @@ describe('refusal contract', () => {
     const warning = (render({ spec: { type: 'cohort', data: cohort.data, options: { ...cohort.options, sort: true } } }).body.warnings as (Finding & { fix?: unknown })[])
       .find((entry) => entry.code === 'option-ignored' && entry.path.startsWith('/options/sort'));
     expect(warning).toMatchObject({ path: '/options/sort', fix: [{ op: 'remove', path: '/options/sort' }] });
+    // A patch that adds a field inside the short form replaces the authored option with its expanded form.
+    const butterfly = fixture('butterfly', 'period-comparisons');
+    const ignored = (render({ spec: { type: 'butterfly', data: butterfly.data, options: { ...butterfly.options, sort: 'desc' } } }).body.warnings as (Finding & { fix?: unknown })[])
+      .find((entry) => entry.code === 'butterfly-sort-ignored');
+    expect(ignored?.fix).toEqual([{ op: 'replace', path: '/options/sort', value: { categories: 'sheet' } }]);
   });
 
   // A 150,000-category column ran for more than 15 minutes; above the item budget it must refuse at once and name the fix.

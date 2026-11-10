@@ -3,7 +3,7 @@ import type { DocExpansion } from './docExpand';
 import { canonicalChartType } from '../registry';
 import { receivedDescription, schemaDiagnostic, type DiagnosticMetadata } from '../diagnostics/describe';
 import { addWhereAbsent, parseJsonPointer, readJsonPointer, toJsonPointer, type JsonPatchOperation } from '../diagnostics/jsonPatch';
-import { normalizeOptionShapes } from '../normalize/optionShapes';
+import { normalizeOptionShapes, optionShape } from '../normalize/optionShapes';
 
 interface DiagnosticSource { input: unknown; sources: DocExpansion['sources'] }
 interface NamedDocument { charts: { name: string; type: string }[] }
@@ -93,21 +93,59 @@ export function completeDiagnostic<T extends Finding>(finding: T, input?: unknow
 }
 
 /**
- * A finding inside an option the author wrote in short form (`sort: "desc"` read as `{ categories: "desc" }`)
- * points at the authored field. A patch that removes a field inside it removes the field; any other patch
- * into it could not apply to the authored spec, so the finding keeps no patch.
+ * A finding about an option the author wrote in short form (`sort: "desc"` read as `{ categories: "desc" }`)
+ * points at the authored option, and so does its patch. A `remove` inside the option removes the option. An
+ * `add` or `replace` inside it replaces the option with its expanded form after that operation. A patch that
+ * cannot be built exactly for the authored option is dropped.
  */
 function authoredShortForm<T extends Finding>(finding: T, authoredChart: unknown): T {
-  if (!finding.field || authoredChart === null || typeof authoredChart !== 'object') return finding;
+  // Only a finding with a field, or without a document path, writes its patch relative to the chart.
+  const relativeFix = finding.fix !== undefined && (finding.field !== undefined || !finding.path?.startsWith('/'));
+  if ((!finding.field && !relativeFix) || authoredChart === null || typeof authoredChart !== 'object') return finding;
   const { shortForms } = normalizeOptionShapes(canonicalChartType((authoredChart as { type?: string }).type ?? '') ?? '', authoredChart as object, canonicalChartType);
-  const field = finding.field;
-  const form = shortForms.find(prefix => field.length > prefix.length && prefix.every((key, i) => key === field[i]));
-  if (!form) return finding;
-  const pointer = toJsonPointer(form);
-  const fix = finding.fix?.map((operation): JsonPatchOperation | undefined => !operation.path.startsWith(`${pointer}/`) ? operation
-    : operation.op === 'remove' ? { op: 'remove', path: pointer } : undefined);
-  const { fix: _fix, ...rest } = finding;
-  return { ...rest, field: form, ...(fix && fix.every(Boolean) ? { fix: fix as JsonPatchOperation[] } : {}) } as unknown as T;
+  if (shortForms.length === 0) return finding;
+  const inside = (segments: readonly (string | number)[]) =>
+    shortForms.find(prefix => segments.length > prefix.length && prefix.every((key, i) => String(key) === String(segments[i])));
+  const field = finding.field && inside(finding.field);
+  // The expanded value of each short form, as the patch so far changes it.
+  const expanded = new Map<string, unknown>();
+  const authoredOption = (form: (string | number)[]) => {
+    const pointer = toJsonPointer(form);
+    if (!expanded.has(pointer)) {
+      const authored = form.reduce<any>((node, key) => node?.[key], authoredChart);
+      expanded.set(pointer, structuredClone(optionShape(String(form.at(-1)), authored)));
+    }
+    return { pointer, value: expanded.get(pointer) };
+  };
+  const rewrite = (operation: JsonPatchOperation): JsonPatchOperation | undefined => {
+    const segments = parseJsonPointer(operation.path);
+    const form = inside(segments);
+    if (!form) return operation;
+    const { pointer, value } = authoredOption(form);
+    if (operation.op === 'remove') return { op: 'remove', path: pointer };
+    if (operation.op !== 'add' && operation.op !== 'replace') return undefined;
+    const rest = segments.slice(form.length);
+    const parent = rest.slice(0, -1).reduce<any>((node, key) => (node !== null && typeof node === 'object' ? node[key] : undefined), value);
+    const key = String(rest.at(-1));
+    if (parent === null || typeof parent !== 'object') return undefined;
+    if (Array.isArray(parent)) {
+      const index = key === '-' ? parent.length : Number(key);
+      if (!Number.isInteger(index) || index < 0 || index > parent.length - (operation.op === 'replace' ? 1 : 0)) return undefined;
+      parent.splice(index, operation.op === 'replace' ? 1 : 0, operation.value);
+    } else {
+      if (operation.op === 'replace' && !Object.hasOwn(parent, key)) return undefined;
+      parent[key] = operation.value;
+    }
+    return { op: 'replace', path: pointer, value: structuredClone(value) };
+  };
+  const fix = relativeFix ? finding.fix!.map(rewrite) : finding.fix;
+  if (!field && fix === finding.fix) return finding;
+  const { fix: _fix, field: _field, ...rest } = finding;
+  return {
+    ...rest,
+    ...(field ? { field } : finding.field ? { field: finding.field } : {}),
+    ...(fix && fix.every(Boolean) ? { fix: fix as JsonPatchOperation[] } : {}),
+  } as unknown as T;
 }
 
 export function completeChartDiagnostic<T extends Finding>(document: NamedDocument, chart: { name: string; type: string }, finding: T, relative: readonly (string | number)[] = []) {
