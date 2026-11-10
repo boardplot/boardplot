@@ -318,7 +318,7 @@ function refuseSignColor(data: ChartData, options: BarOptions): void {
     'sign-color-unsupported',
     'options.signColor',
     `signColor requires variant 'grouped' with exactly one data-role series; got variant '${variant}' with ${dataSeries} data-role series`,
-    'drop signColor, or split the stack into one bar chart per measure',
+    'drop signColor, or split the stack into one bar chart per measure', undefined, ['options', 'signColor'],
   );
 }
 
@@ -1932,7 +1932,7 @@ function planTornado(
     throw new NormalizeError(
       'tornado-base-required',
       'options.baseValue',
-      'tornado requires options.baseValue: the output metric computed with every driver at its base input',
+      'tornado requires options.baseValue: the output metric computed with every driver at its base input', undefined, undefined, ['options', 'baseValue'],
     );
   }
   const base =
@@ -1941,7 +1941,7 @@ function planTornado(
     throw new NormalizeError(
       'tornado-base-required',
       'options.baseValue',
-      'tornado baseValue must be a finite number in the same units as the case series',
+      'tornado baseValue must be a finite number in the same units as the case series', undefined, undefined, ['options', 'baseValue'],
     );
   }
   const cases = options.tornado;
@@ -1949,14 +1949,14 @@ function planTornado(
     throw new NormalizeError(
       'tornado-cases-required',
       'options.tornado',
-      'tornado requires options.tornado.low and options.tornado.high naming which series carries which case; case identity cannot be inferred from series order',
+      'tornado requires options.tornado.low and options.tornado.high naming which series carries which case; case identity cannot be inferred from series order', undefined, undefined, ['options', 'tornado'],
     );
   }
   if (cases.low === cases.high) {
     throw new NormalizeError(
       'tornado-cases-identical',
       'options.tornado',
-      `tornado.low and tornado.high must name different series; both name '${cases.low}'`,
+      `tornado.low and tornado.high must name different series; both name '${cases.low}'`, undefined, undefined, ['options', 'tornado'],
     );
   }
   const lowSeries = dataSeries.find((series) => series.id === cases.low);
@@ -1965,14 +1965,14 @@ function planTornado(
     throw new NormalizeError(
       'tornado-case-unknown',
       'options.tornado.low',
-      `tornado.low '${cases.low}' is not a data-role series; got ${dataSeries.map((s) => s.id).join(', ')}`,
+      `tornado.low '${cases.low}' is not a data-role series; got ${dataSeries.map((s) => s.id).join(', ')}`, undefined, undefined, ['options', 'tornado', 'low'],
     );
   }
   if (!highSeries) {
     throw new NormalizeError(
       'tornado-case-unknown',
       'options.tornado.high',
-      `tornado.high '${cases.high}' is not a data-role series; got ${dataSeries.map((s) => s.id).join(', ')}`,
+      `tornado.high '${cases.high}' is not a data-role series; got ${dataSeries.map((s) => s.id).join(', ')}`, undefined, undefined, ['options', 'tornado', 'high'],
     );
   }
 

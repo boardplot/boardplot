@@ -905,7 +905,7 @@ export function resolveTheme(ref?: ThemeRef): Theme {
       'unknown-theme',
       'options.theme',
       `unknown theme '${String(presetName)}'`,
-      unknownThemeSuggest(String(presetName)),
+      unknownThemeSuggest(String(presetName)), undefined, ['options', 'theme'],
     );
   }
   if (typeof ref === 'string' || !ref.overrides) return own(base);
@@ -1023,7 +1023,7 @@ function checkedOverride(base: Theme, overrides: DeepPartial<Theme>, presetName:
       'options.theme.overrides',
       `overrides on preset '${presetName}' produce a structurally invalid theme — ${issues.join('; ')}`,
       repair?.suggest ?? 'keep each token within its declared type and bounds',
-      repair?.fix,
+      repair?.fix, ['options', 'theme', 'overrides'],
     );
   }
   // `parsed.data` is the GATE, not the result: the schema does not model
@@ -1063,7 +1063,7 @@ function checkedOverride(base: Theme, overrides: DeepPartial<Theme>, presetName:
       `overrides on preset '${presetName}' erase a judgment token — ${blocking
         .map((b) => `${b.code}: ${b.message}`)
         .join('; ')}`,
-      blocking.find((b) => b.suggest)?.suggest,
+      blocking.find((b) => b.suggest)?.suggest, undefined, ['options', 'theme', 'overrides'],
     );
   }
   return own(merged);

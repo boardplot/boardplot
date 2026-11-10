@@ -85,7 +85,7 @@ export function trendTimeline(cats: Category[], source: Category[] = cats): { po
 export function fitLineTrends(domain: Omit<LineDomain, 'trends'>, warnings: LintWarning[]): LineTrend[] {
   if (!domain.options.trend) return [];
   if (domain.isStacked || domain.bumpDerived) {
-    throw new NormalizeError('trend-unsupported', 'options.trend', "trend needs variant 'line' or 'area'; a stack or rank is not a series value");
+    throw new NormalizeError('trend-unsupported', 'options.trend', "trend needs variant 'line' or 'area'; a stack or rank is not a series value", undefined, undefined, ['options', 'trend']);
   }
   const population = domain.population;
   const lo = population ? population.indexes[0]! : 0;

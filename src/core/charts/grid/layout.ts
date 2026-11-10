@@ -201,12 +201,10 @@ function authoredPanelRefusal(error: NormalizeError, data: GridInput, options: G
     if (!panel) return undefined;
     const [head, ...rest] = segments;
     if (head === 'data') return sameField(child.data, panel.data, rest) ? [...at, ...segments] : undefined;
-    // A panel reads root annotations from options.annotations.
-    const path = head === 'options' ? rest : head === 'annotations' ? segments : undefined;
-    if (!path) return undefined;
-    if (path[0] === 'annotations' && Object.hasOwn(panel, 'annotations')) {
-      return sameField(childOptions.annotations, panel.annotations, path.slice(1)) ? [...at, ...path] : undefined;
-    }
+    const path = head === 'options' ? rest : undefined;
+    // An annotation refusal counts its index in the list the registry kept after it dropped the kinds the chart does not
+    // draw, so the index can name another authored annotation. No pointer until annotation refusals count authored indexes.
+    if (!path || path[0] === 'annotations') return undefined;
     if (sameField(childOptions, panel.options, path)) return [...at, 'options', ...path];
     return GRID_HANDED_DOWN.has(path[0]!) && sameField(childOptions, options, path) ? ['options', ...path] : undefined;
   });

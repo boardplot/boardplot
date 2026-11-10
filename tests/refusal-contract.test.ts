@@ -376,6 +376,21 @@ describe('refusal contract', () => {
     expect(firstError(dimswitch)).toMatchObject({ code: 'table-sort-segments-unsupported', path: '/options/sort/segments', received: { type: 'string', value: 'desc' } });
   });
 
+  // A panel's annotation refusal counts its index after the registry drops the kinds the panel does not draw, so the grid pointed at another annotation.
+  it('gives a grid panel annotation refusal no pointer rather than one at another annotation', () => {
+    const scatter = { id: 's', type: 'scatter', data: { points: [{ id: 'p', x: 1, y: 1 }] }, options: { valueAxis: { log: 'y' } },
+      annotations: [{ kind: 'indicator100' }, { kind: 'valueLine', value: -1 }] };
+    expect((render({ spec: { type: 'grid', data: { panels: [scatter] } } }).body.errors as Finding[])[0]).toMatchObject({ code: 'log-nonpositive', path: '' });
+  });
+
+  // A likert labelPosition refusal from its inner bar lost the pointer to /options/labelPosition that main gave.
+  it('keeps the option pointer of a host type inner refusal', () => {
+    const spec = { type: 'likert', data: { scale: [{ id: 'no' }, { id: 'mid', role: 'neutral' }, { id: 'yes' }], items: [{ id: 'q', values: [1, 1, 1] }] },
+      options: { values: 'counts', labelPosition: 'outsideEnd' } };
+    expect((render({ spec }).body.errors as (Finding & { received?: unknown })[])[0])
+      .toMatchObject({ code: 'label-position-unsupported', path: '/options/labelPosition', received: { type: 'string', value: 'outsideEnd' } });
+  });
+
   // A 150,000-category column ran for more than 15 minutes; above the item budget it must refuse at once and name the fix.
   it('refuses a column above the item budget before layout', () => {
     const n = 150_000;

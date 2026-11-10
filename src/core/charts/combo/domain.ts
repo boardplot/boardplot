@@ -705,7 +705,7 @@ function comboAnomalyModel(
       'anomaly-single-series',
       'options.anomaly',
       `anomaly on a combo judges its one line series; got ${lineSeries.length} — a robust score across two different measures is meaningless`,
-      "give exactly one series kind 'line', or chart the measure on its own line chart",
+      "give exactly one series kind 'line', or chart the measure on its own line chart", undefined, ['options', 'anomaly'],
     );
   }
   refuseAnomalySpec(spec);
