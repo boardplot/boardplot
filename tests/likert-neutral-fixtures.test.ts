@@ -2,6 +2,8 @@ import { expect, it } from 'vitest';
 import { layoutResolvedRequest, renderSvg, resolveChartRequest } from '../src/index';
 import { getFixtures } from '../src/fixtures';
 import { render } from '../src/cli/render';
+import { contrastRatio } from '../src/core/color';
+import { markVisibilityFloor } from '../src/core/markVisibility';
 
 // The example subtitles stated one neutral treatment, so the other Neutral setting drew a sentence that contradicted the bars.
 it('likert examples state the neutral treatment of the option, not the one they were authored with', () => {
@@ -34,4 +36,14 @@ it('likert default ramp clears the adjacent-colour floor with the neutral split 
     const body = render({ spec: { type: 'likert', data: fixture.data, options: { ...(fixture.options as object), ...(theme ? { theme } : {}) } } }).body as { warnings: { code: string }[] };
     expect(body.warnings.map((warning) => warning.code), `${id} ${theme}`).not.toContain('series-adjacent-similar');
   }
+});
+
+// Moving the neutral apart from its neighbours washed it toward the page past the mark floor, so the segment nearly vanished.
+it('likert neutral keeps the mark floor while it steps apart from its neighbours', () => {
+  const fixture = getFixtures('likert').find((item) => item.id === 'employee-engagement-5pt')!;
+  const request = resolveChartRequest({ type: 'likert', data: fixture.data, options: { ...(fixture.options as object), theme: { preset: 'bridge', overrides: { color: { neutralMark: '#3779b1' } } } } });
+  const result = layoutResolvedRequest(request);
+  if (result.refused) throw new Error('employee-engagement-5pt refused');
+  const fill = /data-id="mark:[^"]+:likert:n:pos"[^>]*fill="(#[0-9a-fA-F]{6})"/.exec(renderSvg(result, request.theme))![1]!;
+  expect(contrastRatio(fill, request.theme.color.background)).toBeGreaterThanOrEqual(markVisibilityFloor(request.theme.color.background));
 });
