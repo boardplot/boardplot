@@ -67,10 +67,13 @@ type LegendOptionInput = 'none' | 'auto' | LegendOptions['position'] | LegendOpt
  * (top by default: one row above the plot, which keeps the plot's width).
  * `reason` completes "the legend cannot be hidden because ...".
  */
+/** The chart types whose key `legend: 'none'` cannot hide; each names its own `<type>-legend-required` code. */
+export type KeyRequiredType = 'bartable' | 'choropleth' | 'cohort' | 'heatmap' | 'pareto' | 'status' | 'table' | 'tilemap' | 'variance' | 'waffle' | 'waterfall';
+
 export function legendRequired(
   option: LegendOptionInput,
   warnings: LintWarning[],
-  chartType: string,
+  chartType: KeyRequiredType,
   theme?: Theme,
   reason = 'the mapped range and no-data encoding must remain explicit',
 ): LegendOptions {
