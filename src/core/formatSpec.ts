@@ -1881,8 +1881,11 @@ export function seriesRasterFormatter(
     if (!defaultExample || autoMagnitude) spec.decimals = set ? setDecimals(raster, spec, autoMagnitude) : rasterDecimals(raster, spec);
     // Four significant digits is a preference, not a cap: different values that print one text under the engine scale get the decimals that part them.
     if (autoMagnitude) {
-      const scaled = raster.filter((value): value is number => value != null && Number.isFinite(value) && (set || Math.abs(value) >= MAGNITUDE_DIVISOR[spec.magnitude]));
+      // A set lifts for the values it shows, never past the automatic cap: two values that both print their bound do not tie.
+      const scaled = raster.filter((value): value is number => value != null && Number.isFinite(value) && (set
+        ? !roundsToZero(value / MAGNITUDE_DIVISOR[spec.magnitude], spec.decimals) : Math.abs(value) >= MAGNITUDE_DIVISOR[spec.magnitude]));
       spec.decimals += distinctDecimalLift(scaled.map((value) => ({ value, format: (extra: number) => formatWithSpec(value, { ...spec, decimals: spec.decimals + extra }) })));
+      if (set) spec.decimals = Math.min(spec.decimals, AUTO_MAX_DECIMALS);
     }
     if (currencyWholeNumbers(unit, target) && !set) spec.currencyWhole = true;
     // The unit rule already prints part of this raster whole, so a whole value under it
@@ -1981,7 +1984,8 @@ export function setFormatPlan(
   values: Iterable<number | null | undefined>,
   { role = 'value', format, locale, unit, target }: { role?: SetRole; format?: string; locale?: string; unit?: string; target?: RenderTarget } = {},
 ): SetFormatPlan {
-  if (role === 'value') {
+  // An authored share format wins, as an authored value format does.
+  if (role === 'value' || format) {
     const raster = seriesRasterFormatter(format, values, locale, unit, target, undefined, 'set');
     return { ...raster, magnitude: raster.spec.magnitude, decimals: raster.spec.decimals };
   }

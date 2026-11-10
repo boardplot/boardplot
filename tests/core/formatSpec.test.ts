@@ -293,6 +293,7 @@ describe('setFormatPlan', () => {
     expect(texts([12, 0.004])).toBe('12.000 · 0.004');
     expect(texts([1.2e6, 8e3])).toBe('1.200M · 0.008M');
     expect(texts([1.2e9, 3e4])).toBe('1.2B · <0.1B');
+    expect(texts([1.18e9, 2e4, 3e4])).toBe('1.18B · <0.01B · <0.01B');
   });
 
   // Prevents the set rule from overriding what an author wrote: a chart, series or cell format keeps its own scale and decimals.
@@ -308,5 +309,6 @@ describe('setFormatPlan', () => {
     expect(texts([9.7, 31.02, 71, 48, 13], { role: 'share' })).toBe('9.7% · 31.0% · 71.0% · 48.0% · 13.0%');
     expect(texts([31.02, 71, 48], { role: 'share' })).toBe('31% · 71% · 48%');
     expect(texts([31.02, 0.04], { role: 'share' })).toBe('31.02% · 0.04%');
+    expect(texts([9.7, 31], { role: 'share', format: '9%' })).toBe('10% · 31%');
   });
 });
