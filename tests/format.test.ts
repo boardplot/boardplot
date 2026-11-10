@@ -18,6 +18,7 @@ import { renderSvg } from '../src/core/svg/renderSvg';
 import { LineChart } from '../src/react/charts/line';
 import { TableChart } from '../src/react/charts/table';
 import { prepareChart } from '../src/react/prepare';
+import { render } from '../src/cli/render';
 
 describe('ordinary number examples', () => {
   it('compiled table formats preserve small-value modes and lift counts on reused values', () => {
@@ -874,4 +875,71 @@ it('reads a proxied column format example from the value the Proxy returns', asy
   const data = { columns: [{ id: 'label', kind: 'rowLabel' }, column], rows: [{ id: 'a', label: 'Orders', cells: { v: 0.512 } }] };
   const prepared = JSON.stringify(await prepareChart({ type: 'table', data, options: { size: { width: 600 } } } as never));
   expect(prepared).toContain('"displayed":"0.512"');
+});
+
+describe('a unit that names a scale takes no second one', () => {
+  const drawnTexts = (type: string, data: unknown, options: object) => {
+    const request = resolveChartRequest({ type, data, options } as never);
+    return [...renderSvg(requireGeometry(layoutResolvedRequest(request)), request.theme).matchAll(/<text\b[^>]*>(.*?)<\/text>/gs)].map(match => match[1]!.replace(/<[^>]*>/g, ''));
+  };
+  const scaled = (texts: string[]) => texts.filter(text => /\d(?:\.\d+)?\s?[MB]\b/.test(text));
+  const stack = { categories: ['FY23', 'FY24', 'FY25', 'FY26'], series: [{ id: 'a', label: 'Hardware', values: [46_000_000, 45_000_000, 42_000_000, 40_000_000] },
+    { id: 'b', label: 'Software', values: [20_000_000, 26_000_000, 33_000_000, 41_000_000] }, { id: 'c', label: 'Services', values: [18_000_000, 20_000_000, 22_000_000, 24_000_000] }] };
+
+  // The compact stack totals of a narrow card printed "105.0M" under "in $m": millions of millions.
+  it('prints compact column totals whole under a scale unit', () => {
+    const texts = drawnTexts('column', stack, { variant: 'stacked', unit: '$m', mode: 'compact', subtitle: { measure: 'Revenue' }, size: { width: 320 } });
+    expect(texts.some(text => /^\d{2,3},\d{3},\d{3}$/.test(text))).toBe(true);
+    expect(scaled(texts)).toEqual([]);
+  });
+
+  // A grid printed "$m" over panels that named no unit, and the panels printed "20M" under it.
+  it('gives a grid scale unit to the panels that name none', () => {
+    const panel = (id: string) => ({ id, type: 'column', title: id, data: { categories: ['FY24', 'FY25'], series: [{ id: 'rev', label: 'Revenue', values: [20_000_000, 44_000_000] }] } });
+    const texts = drawnTexts('grid', { panels: [panel('North'), panel('South')] }, { unit: '$m', columns: 2, sharedAxis: 'none', size: { width: 720 } });
+    expect(texts).toContain('20,000,000');
+    expect(scaled(texts)).toEqual([]);
+  });
+
+  // Kpi panels printed the inherited "$m" beside their labels, so the grid dropped its own unit line and a table panel beside them showed no unit.
+  it('keeps the grid unit line when kpi panels take its scale unit', () => {
+    const table = { columns: [{ id: 'label', kind: 'rowLabel', label: 'Region' }, { id: 'fy25', kind: 'value', label: 'FY25' }], rows: [{ id: 'north', label: 'North', cells: { fy25: 8.5 } }] };
+    const texts = drawnTexts('grid', { panels: [{ id: 'k', type: 'kpi', data: { label: 'Orders', value: 120 }, options: { title: 'Orders' } },
+      { id: 't', type: 'table', data: table, options: { title: 'By region' } }] }, { title: 'Revenue', unit: '$m', columns: 2, size: { width: 720 } });
+    expect(texts).toContain('$m');
+    expect(texts.filter(text => text.includes('in $m'))).toEqual([]);
+  });
+
+  // A table panel under the grid's "$m" printed 8,540,000 as "8.5" with "(M)" in its head: millions of millions.
+  it('prints a table panel whole under the grid scale unit', () => {
+    const table = { columns: [{ id: 'label', kind: 'rowLabel', label: 'Region' }, { id: 'fy25', kind: 'value', label: 'FY25' }],
+      rows: [{ id: 'north', label: 'North', cells: { fy25: 8_540_000 } }, { id: 'south', label: 'South', cells: { fy25: 1_160_000 } }] };
+    const texts = drawnTexts('grid', { panels: [{ id: 'k1', type: 'kpi', data: { label: 'Orders', value: 120 } }, { id: 'k2', type: 'kpi', data: { label: 'Revenue', value: 20_500_000 } },
+      { id: 't', type: 'table', data: table }] }, { title: 'Revenue', unit: '$m', columns: 3, size: { width: 900 } });
+    expect(texts).toEqual(expect.arrayContaining(['8,540,000', '1,160,000', '$m']));
+    expect(texts.filter(text => /\(M\)|\d[MB]\b/.test(text))).toEqual([]);
+  });
+
+  // A panel whose series named "%" took the grid's "$m" and was refused with unit-conflict.
+  it('leaves a panel that names a unit in its data to that unit', () => {
+    const panel = { id: 'rate', type: 'column', data: { categories: ['A'], series: [{ id: 's', unit: '%', values: [25] }] } };
+    const result = render({ spec: { type: 'grid', data: { panels: [panel] }, options: { unit: '$m', sharedAxis: 'none', sharedScale: false, size: { width: 960, height: 600 } } }, return: [] } as never);
+    expect((result.body as { errors?: { code: string }[] }).errors).toEqual([]);
+  });
+
+  // A combo line that named no unit beside a "$m" column printed "24M": the unit check reads it in "$m", the formatter did not.
+  it('reads a unit-less combo series in the unit its group names', () => {
+    const data = { categories: ['Q1'], series: [{ id: 'revenue', unit: '$m', values: [12_000_000] }, { id: 'cost', kind: 'line', values: [24_000_000] }] };
+    const texts = drawnTexts('combo', data, { axisTitles: { primary: 'Amount ($m)' }, valueAxis: { show: true, min: 0, max: 30_000_000, tickStep: 5_000_000 }, size: { width: 960, height: 600 } });
+    expect(texts).toContain('24,000,000');
+    expect(scaled(texts)).toEqual([]);
+  });
+
+  // A combo secondary line without a unit printed "12M" under the subtitle's "in $m".
+  it('holds a unit-less combo secondary line to the chart scale unit', () => {
+    const data = { categories: ['Q1', 'Q2'], series: [{ id: 'rev', label: 'Revenue', values: [30_000_000, 54_000_000] }, { id: 'cost', label: 'Cost', kind: 'line', axis: 'secondary', values: [12_000_000, 14_000_000] }] };
+    const texts = drawnTexts('combo', data, { unit: '$m', secondaryAxis: { acknowledge: true }, subtitle: { measure: 'Revenue and cost' }, size: { width: 480 } });
+    expect(texts).toContain('12,000,000');
+    expect(scaled(texts)).toEqual([]);
+  });
 });
