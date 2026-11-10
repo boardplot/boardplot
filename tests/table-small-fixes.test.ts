@@ -25,6 +25,7 @@ import type { TableData } from '../src/core/types/table';
 import type { Paint, SceneNode } from '../src/core/types/scene';
 import { getFixtures } from '../src/fixtures';
 import { render } from '../src/cli/render';
+import { unscaledFormatLint } from '../src/core/formatSpec';
 
 vi.mock('../src/core/schema/unknownKeyWords', async (importActual) => {
   const actual = await importActual<typeof import('../src/core/schema/unknownKeyWords')>();
@@ -1682,6 +1683,11 @@ it('prints whole figures under a unit that names a scale, with no engine magnitu
   expect(subtitle.lines.join(' ').replace(/\s+/g, ' ')).toBe('Revenue in $k');
   const records = preparedTableRecords(table, data, { chartId: 't' } as never, options);
   expect(interactionValueText(records.find((record) => record.target.owner.rowId === 'north')!.value)).not.toMatch(/M/);
+  // Whole figures under "EUR m" read as millions of millions: the table warns, as the other charts do, unless a column scales itself.
+  const eurM = { unit: 'EUR m' };
+  expect(unscaledFormatLint(eurM, data, layout('table', data, eurM)).map((warning) => warning.code)).toEqual(['unit-scale-digits']);
+  const scaled = { ...data, columns: data.columns.map((column) => (column.kind === 'value' ? { ...column, format: '1.2M' } : column)) } as TableData;
+  expect(unscaledFormatLint(eurM, scaled, layout('table', scaled, eurM))).toEqual([]);
 });
 
 // With columnHeads false the magnitude letter went into the hidden head, so 9,500,000 printed "9.5" under a title in "$k".
