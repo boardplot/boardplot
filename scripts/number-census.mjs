@@ -61,7 +61,7 @@ function marks(locale) {
 
 const ENGLISH = { decimal: '.', thousands: ',' };
 /** The chart types whose label requests name their claims (LabelRequest.claimIds); the census checks each claim is bound. */
-export const CLAIMED_AT_REQUEST = new Set(['waterfall', 'pvm', 'combo', 'pareto', 'pyramid', 'likert', 'status', 'waffle', 'histogram', 'column', 'bar', 'mekko', 'pie', 'box', 'variance', 'scatter', 'gantt', 'funnel', 'creative', 'line']);
+export const CLAIMED_AT_REQUEST = new Set(['waterfall', 'pvm', 'combo', 'pareto', 'pyramid', 'likert', 'status', 'waffle', 'histogram', 'column', 'bar', 'mekko', 'pie', 'box', 'variance', 'scatter', 'gantt', 'funnel', 'creative', 'line', 'grid']);
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
@@ -602,12 +602,23 @@ export function censusCase(type, fixture, width, localeName, measured) {
   // 3b. A type that names its claims at the label request binds each claim to a label (hidden or not) or a
   // text node, or states that it does not print it. Anything else is a printed number the reading cannot find.
   if (CLAIMED_AT_REQUEST.has(type)) {
+    // Every panel of a grid, also of a grid inside a grid, with the full prefix of its claim ids.
+    const panelsOf = (geo, prefix) => (geo.marks?.panels ?? []).filter((panel) => panel.chart).flatMap((panel) => [
+      { prefix: `${prefix}${panel.id}/`, panel },
+      ...(panel.type === 'grid' ? panelsOf(panel.chart.geometry, `${prefix}${panel.id}/`) : [])]);
+    const panels = type === 'grid' ? panelsOf(geometry, '') : [];
+    // A grid panel's annotation claim is `<panel>/annotation:<id>`.
+    const annotations = [...(geometry.annotations ?? []).map((annotation) => [`annotation:${annotation.id}`, annotation]),
+      ...panels.flatMap(({ prefix, panel }) => panel.chart.geometry.annotations.map((annotation) => [`${prefix}annotation:${annotation.id}`, annotation]))];
     const named = new Set([...(geometry.labels ?? []).flatMap((label) => label.claimIds ?? []),
-      ...(geometry.annotations ?? []).filter((annotation) => annotation.labelId).map((annotation) => `annotation:${annotation.id}`)]);
+      ...annotations.filter(([, annotation]) => annotation.labelId).map(([id]) => id)]);
     // An annotation without a label (a line, an arrow, a box) prints no number, in every chart type.
     const unprinted = new Set([...unprintedClaims(geometry),
-      ...(geometry.annotations ?? []).filter((annotation) => !annotation.labelId && annotation.computedText === '').map((annotation) => `annotation:${annotation.id}`)]);
+      ...annotations.filter(([, annotation]) => !annotation.labelId && annotation.computedText === '').map(([id]) => id)]);
+    // A grid panel's claim follows the contract of the panel's own type.
+    const outside = panels.filter(({ panel }) => !CLAIMED_AT_REQUEST.has(panel.type)).map(({ prefix }) => prefix);
     for (const claim of claims) {
+      if (outside.some((prefix) => claim.id.startsWith(prefix))) continue;
       if (named.has(claim.id) || textById.has(claim.nodeId) || unprinted.has(claim.id)) continue;
       flag('unbound', 'reading', { id: claim.id, text: claim.output.displayed, raw: claim.output.raw, why: `${claim.op}: no label names this claim and the chart does not state it as unprinted` });
     }
