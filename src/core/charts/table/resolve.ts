@@ -1053,6 +1053,8 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   const scales = (example: string) => scalesWithMagnitude(parseFormatExample(example));
   const specs = new Map<Id, NumberFormatSpec>();
   const formatExamples = new Map<Id, string>();
+  /** Columns that hold the table's forced magnitude; each keeps its own nonzero figures nonzero (below). */
+  const forcedColumns = new Set<Id>();
   const localeDerivedColumns = new Set<Id>();
   for (const col of [...valueCols, ...computedCols]) {
     // A document-level format-by-example describes the table's VALUE scale.
@@ -1077,20 +1079,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
     if (scales((sourceColumns.get(col.id) as { format?: string } | undefined)?.format ?? inherited ?? defaultExample(col))
       && (options.magnitude === 'million' || options.magnitude === 'thousand')) {
       forceScale(spec, options.magnitude === 'million' ? 'm' : 'k', locale.thousands);
-      // Nonzero stays nonzero, as on a money row: a column of $42 and $71 under a forced thousand
-      // reads in whole units at its example's decimals, not "0"; a larger column adds decimals.
-      const values = flat.flatMap((row) => {
-        const raw = cellFormat(row.cells[col.id]) === undefined ? rawState.get(row.id)?.get(col.id)?.raw : undefined;
-        return typeof raw === 'number' && raw !== 0 ? [raw] : [];
-      });
-      if (spec.lockMagnitude && values.some((value) => roundedNumber(value, spec) === 0)) {
-        if (spec.magnitude === 'k' || values.every((value) => Math.abs(value) < 1000)) {
-          const authored = parseFormatExample(example);
-          spec.decimals = authored.magnitude === 'none' ? authored.decimals : 0;
-          spec.magnitude = 'none';
-        }
-        spec.decimals = values.reduce((decimals, value) => nonzeroDecimals(value / MAGNITUDE_DIVISOR[spec.magnitude], decimals), spec.decimals);
-      }
+      if (spec.lockMagnitude) forcedColumns.add(col.id);
     }
     if (sourceExample !== undefined) holdAuthoredScale(spec, locale.thousands);
     specs.set(col.id, spec);
@@ -1353,6 +1342,26 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
     return decimals > 1 ? `0${locale.decimal}${'1234'.slice(0, decimals)}` : `1${locale.decimal}2`;
   }
 
+  /** Whether a cell prints through its column's spec: a row or cell format carries its own unit and precision. */
+  const printsThroughColumn = (row: FlatRow, colId: Id): boolean =>
+    !(rowSpecs.has(row.id) && (row.calc !== undefined || row.inline === true || !ownFormatColumns.has(colId))) && !cellSpecs.get(row.id)?.has(colId);
+  // Nonzero stays nonzero, as on a money row: a column of $42 and $71 under a forced thousand
+  // reads in whole units at its example's decimals, not "0"; a larger column adds decimals.
+  for (const colId of forcedColumns) {
+    const spec = specs.get(colId)!;
+    const values = flat.flatMap((row) => {
+      const raw = printsThroughColumn(row, colId) ? rawState.get(row.id)?.get(colId)?.raw : undefined;
+      return typeof raw === 'number' && raw !== 0 ? [raw] : [];
+    });
+    if (!values.some((value) => roundedNumber(value, spec) === 0)) continue;
+    if (spec.magnitude === 'k' || values.every((value) => Math.abs(value) < 1000)) {
+      const authored = parseFormatExample(formatExamples.get(colId)!);
+      spec.decimals = authored.magnitude === 'none' ? authored.decimals : 0;
+      spec.magnitude = 'none';
+    }
+    spec.decimals = values.reduce((decimals, value) => nonzeroDecimals(value / MAGNITUDE_DIVISOR[spec.magnitude], decimals), spec.decimals);
+  }
+
   // ---- units once: hoist money units out of cells ----
   // uniform across all money columns → the frame's unit slot ("in €M");
   // mixed → per-column header labels; percent stays per-cell (signs are data)
@@ -1360,9 +1369,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   // A head names a magnitude only when every cell prints in it: a '1.2k' column whose largest cell
   // rolls to "1.1M" prints each cell with its own letter, not "1.1M" under "(k)".
   const rollsOff = (colId: Id, spec: NumberFormatSpec): boolean => spec.magnitude !== 'none' && flat.some((row) => {
-    // Only a cell that prints through the column's spec: a row or cell format carries its own unit.
-    const rowPath = rowSpecs.has(row.id) && (row.calc !== undefined || row.inline === true || !ownFormatColumns.has(colId));
-    if (rowPath || cellSpecs.get(row.id)?.has(colId)) return false;
+    if (!printsThroughColumn(row, colId)) return false;
     const raw = rawState.get(row.id)?.get(colId)?.raw;
     return typeof raw === 'number' && raw !== 0 && effectiveScale(Math.abs(raw), spec).magnitude !== spec.magnitude;
   });

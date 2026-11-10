@@ -334,6 +334,19 @@ it('keeps a small money column nonzero under a forced magnitude', () => {
   }, { magnitude: 'thousand' });
   expect(table.rows.map((row) => [row.cells.spend!.displayed, row.cells.early!.displayed, row.cells.delta!.displayed])).toEqual([['124', '42.0', '+69.0%'], ['96', '55.0', '−5.5%']]);
   expect(table.columns.find((column) => column.id === 'early')!.unitLabel).toBe('$');
+  // A cell that prints through its row's own format does not move the column out of thousands.
+  const inline = resolveTable({
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'rev', kind: 'value', format: '$1k' }],
+    rows: [{ id: 'rev', label: 'Revenue', cells: { rev: 124_000 } }, { id: 'growth', label: 'vs prior', inline: true, format: '+1.1%', cells: { rev: 5 } }],
+  }, { magnitude: 'thousand' }).table;
+  expect(inline.rows.map((row) => row.cells.rev!.displayed)).toEqual(['124', '+5.0%']);
+  expect(inline.columns.find((column) => column.id === 'rev')!.unitLabel).toBe('$k');
+  const byRow = resolveTable({
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'jan', kind: 'value' }, { id: 'feb', kind: 'value' }],
+    rows: [{ id: 'rev', label: 'Revenue', format: '$1k', cells: { jan: 124_000, feb: 96_000 } }, { id: 'rate', label: 'Rate', format: '1.2%', cells: { jan: 5, feb: 4 } },
+      { id: 'orders', label: 'Orders', format: '1,234', cells: { jan: 12, feb: 9 } }],
+  }, { magnitude: 'thousand' }).table;
+  expect(byRow.rows.map((row) => [row.cells.jan!.displayed, row.unitAffix])).toEqual([['124', '$k'], ['5.0%', undefined], ['12', undefined]]);
 });
 
 // A forced million took "$" and "x" out of rows it did not scale: only a scale letter leaves the cells.
