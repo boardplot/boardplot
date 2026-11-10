@@ -884,7 +884,7 @@ it('reads each cohort rate from the value the matrix prints, or nothing where it
   const cohorts = Array.from({ length: 12 }, (_, i) => ({ id: `w${i + 1}`, label: `Week ${i + 1}`, active: Array.from({ length: 12 - i }, (_, t) => Math.round(800 * 0.88 ** t)) }));
   const texts = new Set<string>();
   for (const options of [{ size: { width: 720, height: 420 } }, { size: { width: 480, height: 420 }, unit: '% of cohort base' }, { size: { width: 400, height: 500 } }]) {
-    const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'cohort', data: { cohorts }, options } as never));
+    const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'cohort', data: { cohorts }, options } as never)) as Geometry;
     for (const claim of claimsForChart('cohort', geometry)) {
       const [, row, period] = claim.id.split(':');
       const label = geometry.labels.find((item) => item.id === `point:${row === 'average' ? 'weighted-average' : row}:${period}` && !item.hidden);
