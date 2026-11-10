@@ -134,6 +134,8 @@ export type ThemePaintSource =
   /** The third or later story line of a highlighted bump chart: index `index` of `count` story colours (bumpStoryPaints). */
   | { kind: 'bump-story'; index: number; count: number }
   | { kind: 'colorblind'; role: 'good' | 'bad' | 'goodFill' | 'badFill' }
+  /** Step `index` of `count` series that share one colour role (roleSteps): `stroke` holds a thin line or small dot to the 3:1 mark floor. */
+  | { kind: 'role-step'; base: Paint; index: number; count: number; stroke?: true }
   | { kind: 'pie-ramp'; base: Paint; index: number; count: number; /** The pie draws an Others slice; the ramp keeps its steps apart from that colour. */ withOthers?: true; /** 'apart': Others only has to differ from the named steps. */ othersShade?: 'apart' }
   | {
       kind: 'visible-tint';

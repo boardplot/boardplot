@@ -1,5 +1,5 @@
-import { contrastRatio, tint } from './color';
-import { oklabLightness, swatchApart } from './themeRules';
+import { contrastRatio, mixColors, tint } from './color';
+import { oklabLightness, PALETTE_NORMAL_FLOOR, palettePerceptualDistance, swatchApart } from './themeRules';
 
 /** The light-page mark floor (markVisibilityFloor), held by every slice tint on a light page. */
 const PAGE_FLOOR = 1.4;
@@ -106,6 +106,74 @@ function computePieRamp(base: string, background: string, count: number, apartFr
     }
   }
   return { tints, distinguishableCount };
+}
+
+/** How far a role step may run away from the page (toward black on a light page, white on a dark one) or toward it. */
+const ROLE_SHADE_MAX = 0.7;
+const ROLE_TINT_MAX = 0.85;
+/** Neighbouring role steps stand at most this far apart (OKLab x100), so two series do not jump to the palest step. */
+const ROLE_SPREAD_MAX = 14;
+
+// shortcut: unbounded memo of a pure function; keys are theme colours and series counts, a few per chart.
+const roleStepMemo = new Map<string, string[]>();
+
+/**
+ * The colours of `count` series that share one colour role. Every step clears
+ * the mark floor against the page (1.4:1 for a fill on a light page, 3:1 on a
+ * dark page and for a stroke, which draws a thin line or a small dot), and
+ * every two steps meet the swatch floor (12 OKLab normal, the floor of
+ * series-adjacent-similar). A fill step also stays that far from `others`,
+ * the Others colour a chart may draw beside it (a waffle's rest, a topN
+ * bucket). The first step is the role's colour, the next wash toward the
+ * page. Where the page side has no room for them all, the last steps run away
+ * from it (a darker shade on a light page). Where both sides together have no
+ * room, the steps spread over the visible range as far apart as it allows,
+ * strongest first.
+ */
+export function roleSteps(base: string, background: string, count: number, stroke: boolean, others?: string): string[] {
+  const key = `${base}|${background}|${count}|${stroke}|${others ?? ''}`;
+  const known = roleStepMemo.get(key);
+  if (known) return [...known];
+  const dark = isDarkPage(background);
+  const floor = stroke || dark ? DARK_PAGE_FLOOR : PAGE_FLOOR;
+  const pole = dark ? '#FFFFFF' : '#000000';
+  // A fill also stays a swatch step from the Others colour beside it (a waffle's rest, a topN bucket), unless the role is that colour.
+  const keepApart = others !== undefined && swatchApart(base, others);
+  // The visible stretch of the line from the far shade through the base to the page, at 0.01 steps.
+  const line: string[] = [];
+  let baseAt = -1;
+  for (let i = -Math.round(ROLE_SHADE_MAX * 100); i <= Math.round(ROLE_TINT_MAX * 100); i++) {
+    const color = i < 0 ? mixColors(base, pole, 1 + i / 100) : tint(base, i / 100, background);
+    if (contrastRatio(color, background) < floor || (keepApart && !swatchApart(color, others))) continue;
+    if (i <= 0) baseAt = line.length;
+    line.push(color);
+  }
+  const apart = (a: string, b: string, gap: number) => palettePerceptualDistance(a, b, 'normal') >= gap && (gap < PALETTE_NORMAL_FLOOR || swatchApart(a, b));
+  // Indices stepping from `from` by `dir`, each the first at least `gap` from the one before.
+  const walk = (from: number, dir: 1 | -1, gap: number, want: number): number[] => {
+    const found: number[] = [];
+    for (let i = from + dir, prev = from; i >= 0 && i < line.length && found.length < want; i += dir) {
+      if (apart(line[prev]!, line[i]!, gap)) found.push(prev = i);
+    }
+    return found;
+  };
+  let steps: number[] | undefined;
+  // The base, or the visible shade nearest it, leads; fewest shades first, widest gap first.
+  for (let shades = 0; !steps && baseAt >= 0 && shades < count; shades++) {
+    for (let gap = ROLE_SPREAD_MAX; !steps && gap >= PALETTE_NORMAL_FLOOR; gap -= 0.5) {
+      const up = walk(baseAt, -1, gap, shades);
+      const down = walk(baseAt, 1, gap, count - 1 - shades);
+      if (up.length === shades && down.length === count - 1 - shades) steps = [baseAt, ...down, ...up];
+    }
+  }
+  // No room at the floor: spread from the strongest visible step, as far apart as the range allows.
+  for (let gap = PALETTE_NORMAL_FLOOR; !steps && line.length > 0 && gap > 0; gap -= 0.5) {
+    const down = walk(0, 1, gap, count - 1);
+    if (down.length === count - 1) steps = [0, ...down];
+  }
+  const colors = steps ? steps.map((i) => line[i]!) : Array.from({ length: count }, () => base);
+  roleStepMemo.set(key, colors);
+  return [...colors];
 }
 
 /**
