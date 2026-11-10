@@ -810,16 +810,17 @@ describe('render and measure on the command line', () => {
   it('prints each warn-level warning on stderr under --quiet, before the written paths', () => {
     const dir = tdir();
     const out = join(dir, 'out');
-    const untitled = { ...SPEC, options: {} };
+    // An untitled pie with a negative slice: the slice warning prints, the title advice does not.
+    const untitled = { type: 'pie', data: { ...SPEC.data, series: [{ id: 'rev', label: 'Revenue', values: [84, -91] }] }, options: {} };
     const result = runCli(['render', writeDoc(dir, 'untitled.json', untitled), '--out', out, '--quiet']);
     expect(result.log).toEqual([JSON.stringify({ ok: true, outputs: [join(out, 'chart.svg')] })]);
     expect(result.error).toEqual([
-      'warning missing-message-title: consulting titles carry the message; this title is missing or generic',
+      "warning pie-negative-value: category 'q2': negative value -91 cannot be a share — slice dropped",
       `Wrote ${join(out, 'chart.svg')}`,
     ]);
     // --out - keeps stderr one JSON object.
     const piped = runCli(['render', writeDoc(dir, 'untitled.json', untitled), '--out', '-', '--quiet']);
-    expect(JSON.parse(piped.error.join('\n')).warnings).toContainEqual(expect.objectContaining({ code: 'missing-message-title' }));
+    expect(JSON.parse(piped.error.join('\n')).warnings).toContainEqual(expect.objectContaining({ code: 'pie-negative-value' }));
   });
 
   it.skipIf(!availableRasterizer())('draws a PNG for --out x.png without --format', () => {

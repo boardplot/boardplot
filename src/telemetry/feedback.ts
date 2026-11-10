@@ -29,7 +29,7 @@ function names(value: unknown, pattern: RegExp, field: string): string[] {
   const list = typeof value === 'string' ? value.split(',').map((entry) => entry.trim()).filter(Boolean) : value;
   if (!Array.isArray(list) || !list.every((entry) => typeof entry === 'string' && pattern.test(entry))) {
     throw new InputError('invalid-argument', `${field} takes names as Boardplot spells them (${pattern}), not text`, {
-      path: `/${field}`, suggest: `Pass only ${field === 'codes' ? 'warning and error codes such as label-dropped' : 'option key names such as valueAxis'}.`,
+      path: `/${field}`, suggest: `Pass only ${field === 'codes' ? 'warning and error codes such as label-hidden' : 'option key names such as valueAxis'}.`,
     });
   }
   return [...new Set(list as string[])].sort();

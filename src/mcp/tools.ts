@@ -233,7 +233,7 @@ export function toolInputs() {
       category: z.enum(FEEDBACK_CATEGORIES),
       summary: z.string().describe(`One line, at most ${SUMMARY_MAX} characters, on what Boardplot did wrong. No client names, numbers, labels or paths.`),
       type: z.string().optional().describe('The chart type involved.'),
-      codes: z.array(z.string()).optional().describe('Warning or error codes from the response, such as label-dropped.'),
+      codes: z.array(z.string()).optional().describe('Warning or error codes from the response, such as label-hidden.'),
       optionKeys: z.array(z.string()).optional().describe('Option names involved, such as valueAxis.'),
     }),
   };
@@ -289,7 +289,7 @@ export function toolDefinitions(): ToolDefinition[] {
     {
       name: 'boardplot_render',
       title: 'Draw a chart',
-      description: 'Draw charts from a supplied spec, with optional data from inline rows or a local file. Call directly when the spec is ready: rendering also validates input and returns ok false with actionable errors on failure. The default response includes a reading of labels, omissions and computed values. Request inline SVG, PNG image content or files through the output arguments. Inspect warnings, the reading and the actual output format before using the chart. Errors stop at ten, then more-errors. A fix is a JSON Patch for the spec or the arguments, as its path names; for a file row, edit the source cell that displayPath names. Repeated design advice appears once per server session.',
+      description: 'Draw charts from a supplied spec, with optional data from inline rows or a local file. Call directly when the spec is ready: rendering also validates input and returns ok false with actionable errors on failure. The default response includes a reading of labels, omissions and computed values. Request inline SVG, PNG image content or files through the output arguments. Inspect warnings, the reading and the actual output format before using the chart. Errors stop at ten, then more-errors. A fix is a JSON Patch for the spec or the arguments, as its path names; for a file row, edit the source cell that displayPath names. Repeated design advice appears once per server session. ok false means nothing was drawn; a warn warning needs a review; info and advice need no retry.',
       inputSchema: jsonInput(inputs.boardplot_render),
       outputSchema: output({
         ...drawn,

@@ -62,7 +62,7 @@ The table maps a frequent business message to a Boardplot type, the most common 
 | KPIs and a margin statement by channel over weeks | `dimswitch`, `dimension.sums: true`, measures with a `value` formula over the sums, `partOf` and `result` for the statement lines | `statement-channels` | A rate in the sums: the Total adds it up across the channels. Put counts and amounts in the sums, and let the formula divide. |
 | Revenue report by segment against prior year and plan | `table`, `variant: "hierarchy"`, one `columnGroups` block per period, `computed` YoY and vs-plan columns | `management-report-compact` | A typed percentage column: parent rows add up the children's percentages. A `computed` column derives each row's own ratio. |
 | Bridge: what moved the number | `waterfall`, `items[].type` `"total"` at both ends, deltas between; `pvm` for price, volume and mix | `ebit-bridge` | A typed end total: Boardplot sums the deltas, and a total value that differs warns `derived-mismatch`. |
-| Mix or share | `column`, `variant: "stacked100"` | `stacked100-energy-mix` | A pie with more than six slices warns `pie-too-many-slices`, and pies do not compare periods. |
+| Mix or share | `column`, `variant: "stacked100"` | `stacked100-energy-mix` | A pie with more than six slices gets the advice `pie-too-many-slices`, and pies do not compare periods. |
 | KPI overview | `kpi` with `data.delta: { vs, scenario }` per card; for many metrics, `table` with `variant: "steering"` | `arr-card`, `steering-monthly` | A long row of cards where one table compares the metrics. |
 | Status review | `status`, `options.states` with a `tone` each and a `pattern` on the at-risk state | `programme-rollout-rag` | Tone alone: a state without a pattern is lost in a grayscale print. |
 | Distribution | `histogram` for one group, `box` for several | `order-value-distribution`, `deal-size-by-region` | A column of averages hides the spread and the skew. |
@@ -828,6 +828,7 @@ EOF
 - `fix` contains proposed JSON Patch operations. Apply spec paths to the submitted spec and argument paths to the tool arguments. For a file-row finding, edit the source cell named by `displayPath` instead of replacing the `rowsFile` path. Follow `suggest` when no single repair is available. A size warning on a chart that draws has no `fix`. Use `measure` to find a size that draws.
 - `docs` names the reference section that describes the field.
 - Spec errors come sorted by path, at most ten, then one `more-errors` entry with the count. Tool-argument validation can return only its first error.
+- `ok: false` means nothing was drawn. A `warn` warning needs a review of the drawing. `info` and `advice` need no retry.
 
 `options.locale: "de"` means `{ language: "de" }`. A language sets words only. Decimal and grouping marks come only from `options.locale.decimal` and `options.locale.thousands`. A root `locale` on a bare chart remains invalid, with a fix that moves its value into options.
 
@@ -865,7 +866,7 @@ An option a chart type does not read is ignored with an `option-ignored` warning
 
 A chart contract can include a `design` card: what the chart says, when to use it, when another type fits better, and design guidance. Compact `boardplot_describe` prints the message, use, limitations and first two rules; `path: "design"` (CLI: `boardplot describe bar --path design`) prints every rule. Each rule is marked `engine` or `describe`. Render checks the `engine` rules on the drawn chart and returns each finding as a warning with severity `advice`, a code that starts with `design-`, one sentence and a `docs` link to the rule. A `fix` patch is included only when it can apply to the input as sent. Otherwise follow `suggest`; for example, a waterfall built from rows gets written advice when a patch would target generated items. Advice never changes the drawing and never refuses. A render returns at most three, the MCP server returns each code once per session, and a refused render returns none. The `describe` rules need the author's judgment, such as the business order of a bridge.
 
-Two layout checks also return `advice`: `height-off-ladder`, an authored height between the standard height steps, and `dead-band`, an empty band on the canvas. They do not count towards the three design findings, and the MCP server returns them with every chart that has them.
+Other checks also return `advice`: `height-off-ladder` (an authored height between the standard height steps), `dead-band` (an empty band on the canvas), `missing-message-title`, `series-overload`, `pie-too-many-slices`, `legend-redundant`, `line-peer-overload` and `pareto-tail-crowded`. They do not count towards the three design findings, and the MCP server returns them with every chart that has them.
 
 ## Position of bar value labels
 
