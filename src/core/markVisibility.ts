@@ -52,6 +52,7 @@ import { contrastRatio, relativeLuminance, parseColor } from './color';
 import { MARK_CONTRAST_FLOOR } from './themeRules';
 import { contrastInkPaint, mixedPaint, paintColor, paintTokenColor, strokeToken } from './theme';
 import { measureText } from './text';
+import { createOccupiedIndex } from './label/occupied';
 import type { Geometry, MarkOnBand, Paint, PlacedLabel, SceneNode, SeparationRule } from './types/scene';
 import type { Theme } from './types/theme';
 import type { OwnerRef } from './types/cell';
@@ -876,8 +877,9 @@ function linesBehindText(scene: SceneNode[]): SceneNode[] {
     for (const [, y1, , y2] of straightSegments(node) ?? []) reach.push([Math.min(y1, y2) + (node.ty ?? 0) - half - TEXT_TOUCH_PX, Math.max(y1, y2) + (node.ty ?? 0) + half + TEXT_TOUCH_PX]);
   }
   if (reach.length === 0) return scene;
-  const boxes = glyphBoxes(scene, (y0, y1) => reach.some(([a, b]) => a <= y1 && b >= y0));
+  const boxes = glyphBoxes(scene, reachesBand(reach));
   if (boxes.length === 0) return scene;
+  const nearBoxes = glyphBoxIndex(boxes);
   return scene.map((node) => {
     if (!behindText(node)) return node;
     const segments = straightSegments(node);
@@ -890,7 +892,7 @@ function linesBehindText(scene: SceneNode[]): SceneNode[] {
       const a: [number, number] = [x1 + dx, y1 + dy];
       const b: [number, number] = [x2 + dx, y2 + dy];
       const cuts: [number, number][] = [];
-      for (const box of boxes) {
+      for (const box of nearBoxes(a, b, half + REFERENCE_LABEL_CLEARANCE)) {
         // A line through the glyphs or within 1 px of them breaks (a line never touches text);
         // one that passes further away stays whole.
         if (!segmentInBox(a, b, box, half + TEXT_TOUCH_PX)) continue;
@@ -918,6 +920,49 @@ function linesBehindText(scene: SceneNode[]): SceneNode[] {
     const { x1: _x1, y1: _y1, x2: _x2, y2: _y2, t: _t, width, ...rest } = node;
     return { ...rest, t: 'path', width, d };
   });
+}
+
+/**
+ * `reach.some(([a, b]) => a <= y1 && b >= y0)` by binary search: the bands sorted by start, with the
+ * largest end among the first k. A band with a NaN end never matches, so it is left out.
+ */
+function reachesBand(reach: readonly [number, number][]): (y0: number, y1: number) => boolean {
+  const sorted = reach.filter(([a, b]) => a === a && b === b).sort((p, q) => p[0] - q[0]);
+  const maxEnd: number[] = [];
+  for (const [, b] of sorted) maxEnd.push(Math.max(maxEnd.at(-1) ?? -Infinity, b));
+  return (y0, y1) => {
+    let low = 0;
+    let high = sorted.length;
+    while (low < high) {
+      const mid = (low + high) >> 1;
+      if (sorted[mid]![0] <= y1) low = mid + 1; else high = mid;
+    }
+    return low > 0 && maxEnd[low - 1]! >= y0;
+  };
+}
+
+/**
+ * The glyph boxes a segment can come within `grow` of, in their scene order: a grid index over the
+ * boxes' page bounds. A rotated box claims the square around its anchor that holds every corner.
+ * The query pads twice the reach and 1 px more, so every box segmentInBox would meet is returned.
+ */
+function glyphBoxIndex(boxes: readonly GlyphBox[]): (a: [number, number], b: [number, number], grow: number) => GlyphBox[] {
+  const index = createOccupiedIndex({ x: 0, y: 0, w: 0, h: 0 });
+  const byOwner = new Map<OwnerRef, GlyphBox>();
+  for (const box of boxes) {
+    const owner: OwnerRef = {};
+    byOwner.set(owner, box);
+    if (box.sin === 0) index.claim({ x: box.x0, y: box.y0, w: box.x1 - box.x0, h: box.y1 - box.y0 }, 'label', owner);
+    else {
+      const r = Math.max(...[box.x0, box.x1].flatMap((x) => [box.y0, box.y1].map((y) => Math.hypot(x - box.ax, y - box.ay))));
+      index.claim({ x: box.ax - r, y: box.ay - r, w: 2 * r, h: 2 * r }, 'label', owner);
+    }
+  }
+  return (a, b, grow) => {
+    const rect = { x: Math.min(a[0], b[0]), y: Math.min(a[1], b[1]), w: Math.abs(b[0] - a[0]), h: Math.abs(b[1] - a[1]) };
+    // A NaN coordinate meets no box in segmentInBox either; the index scans all boxes then.
+    return index.hitsWhich(rect, 2 * grow + 1).map((claim) => byOwner.get(claim.owner)!);
+  };
 }
 
 /**
