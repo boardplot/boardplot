@@ -1285,6 +1285,8 @@ export function layoutHeatmap(
           font: valueFont,
           ...(valueFont !== labelFont ? { fontStep: valueFont } : {}),
           priority: cell.meta?.priority ?? basePriority + bonus(r.id, c.id),
+          // A highlighted value passes the minimal density gate.
+          ...(bonus(r.id, c.id) > 0 ? { keepWhenDense: true as const } : {}),
           candidates: [
             {
               slot: 'insideCenter',
@@ -1925,6 +1927,7 @@ export function layoutHeatmap(
       lines: [text],
       font: valueLabelFont,
       priority: cell.meta?.priority ?? (cell.v === extremeMax || cell.v === extremeMin ? PRIORITY.extreme : PRIORITY.interior + Math.min(99, Math.abs(cell.v))) + bonus(r.id, c.id),
+      ...(bonus(r.id, c.id) > 0 ? { keepWhenDense: true as const } : {}),
       candidates: [inside
         ? { slot: 'insideCenter', rect: { x: cx - tsize.width / 2, y: cy - tsize.height / 2, w: tsize.width, h: tsize.height }, penalty: 0, insideFill, insidePaint: low ? { token: 'background' } : paint }
         : { slot: 'right', rect: { x: besideX, y: cy - tsize.height / 2, w: tsize.width, h: tsize.height }, penalty: 0 }],

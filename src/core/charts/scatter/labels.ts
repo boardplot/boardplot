@@ -727,6 +727,8 @@ function pointLabelRequests(
         ...(callout !== undefined ? { headLines: 1, headWeight: nameFont.weight } : {}),
         // An authored callout outranks the plain names.
         priority: callout === undefined ? priority : priority + PRIORITY.highlightBonus,
+        // A highlighted value passes the minimal density gate.
+        ...(hl ? { keepWhenDense: true as const } : {}),
         // With a value printed, the bubble's centre is the value's seat.
         candidates: seats(name, bubbleMode && value === undefined && !block ? insideFill() : undefined, false, nameFont, block, true),
         labelGap: NAME_GAP,
@@ -763,6 +765,7 @@ function pointLabelRequests(
       // small point keeps its name before a large one prints its number; a
       // highlighted point's value keeps its rank.
       priority: hl ? priority - 1 : priority - 1 - PRIORITY.extreme,
+      ...(hl ? { keepWhenDense: true as const } : {}),
       candidates: valueSeats,
       labelGap: NAME_GAP,
       role: 'value',

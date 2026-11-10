@@ -216,7 +216,7 @@ export interface LabelRequest {
   ownStroke?: readonly { hits(rect: Rect, pad: number): boolean }[];
   /** This numeric label names a mark rather than a separate readout rail. false: a name or other text, never bound to the plot. */
   markAnchored?: boolean;
-  /** Authored value text stays eligible when the planner ranks engine values. */
+  /** Authored value text and a highlighted value stay eligible when the planner ranks engine values, and pass the 'minimal' density gate. */
   keepWhenDense?: true;
   /** An engine value outside the guaranteed set, or one its chart already reports lost: with no free seat it drops as `density` and the frame notes it. */
   quietWhenCrowded?: true;

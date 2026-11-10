@@ -987,6 +987,8 @@ export function layoutButterfly(
         lines: [text],
         font: valueFont,
         priority,
+        // A highlighted value passes the minimal density gate.
+        ...(rowHl || highlights.has(series.id) ? { keepWhenDense: true as const } : {}),
         redundant: meta?.label === false || labelsOff('point'),
         // A hidden value's note names its side and row: a pyramid's data has no
         // series or categories the shared note could name them from.
