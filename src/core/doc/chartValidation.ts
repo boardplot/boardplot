@@ -5,12 +5,12 @@ import { canonicalChartType, chartInputName, getChartSchemas, unsupported } from
 import { caseInsensitiveValue, inputConversion, replaceInputValue } from '../inputConversion';
 import { parseWithInputConversions } from '../schema/inputConversions';
 import { schemaNodeAtPath, type JsonSchemaNode } from '../schema/nodes';
-import { annotationSchema, diagnosedSafeParse } from '../schema/shared';
+import { annotationKindTakes, annotationSchema, diagnosedSafeParse } from '../schema/shared';
 import { flattenIssues } from '../schema/flattenIssues';
 import { allowedValues, expectedTypes } from '../diagnostics/describe';
 import { refusalSuggest } from '../schema/capabilityReasons';
 import { LABEL_KINDS } from '../schema/capability';
-import { WORDING_KEYS, closestKey, closestOptionKey, dataKeySynonym, movedKey, nearestOptionTerm, typoRenameFix, unknownKeySuggest, unknownOptionMessage, valueChangeSuggest } from '../schema/unknownKeyWords';
+import { WORDING_KEYS, closestKey, dataKeyAlternative, closestOptionKey, dataKeySynonym, movedKey, nearestOptionTerm, typoRenameFix, unknownKeySuggest, unknownOptionMessage, valueChangeSuggest } from '../schema/unknownKeyWords';
 import { ownedDocumentCopy } from './docExpand';
 import { chartSchemaDiagnostic, chartSchemaSource, completeChartDiagnostic } from './diagnostics';
 import { parseJsonPointer, toJsonPointer, type JsonPatchOperation } from '../diagnostics/jsonPatch';
@@ -159,7 +159,7 @@ function parseChartInput(doc: BoardplotDoc, chart: DocChart, envelope: DocumentE
   if (!dataResult.success && (!selectedSchema || optResult.success)) {
     for (const i of flattenIssues(dataResult.error.issues).flatMap(splitUnknownKeys)) {
       const source = i.code === 'unrecognized_keys' ? chartSchemaSource(doc, chart, 'data', i.path, chart.data) : undefined;
-      const unknown = unknownKeyText(i, dataSchema, def.optionsSchema as z.ZodType, undefined, chart.data, source);
+      const unknown = unknownKeyText(i, dataSchema, def.optionsSchema as z.ZodType, undefined, chart.data, source, def.type);
       // The repair is the expected condition, as on every non-schema finding.
       const diagnostic = chartSchemaDiagnostic(doc, chart, 'data', unknown ? { ...i, message: unknown.suggest } : i, chart.data, isEmptyDataIssue(i, chart.data) ? EMPTY_DATA : 'invalid-data',
         unknown?.message ?? schemaIssueMessage(i, chart.data, i.path as (string | number)[], dataSchema) +
@@ -594,6 +594,15 @@ function sweepStrippedOptionKeys(
     // A rename is advice only when the near option takes the authored value too.
     const renameFits = !nearest?.near || moved !== undefined || valueFitsKey(schema, parent, nearest.key, valueAtPath(authored, keyPath));
     const fix = renameFits && moved === undefined ? typoRenameFix(field, nearest, siblings, valueAtPath(authored, parent)) : undefined;
+    // labels.valueLine where the type labels each valueLine annotation itself: that annotation's label does the job.
+    const own = known && !nearest?.near ? annotationLabel(schema, authored, key, field) : undefined;
+    if (own) {
+      envelope.errors.push(completeChartDiagnostic(source.doc, source.chart, {
+        code: 'unknown-option', message: `${where}: unknown option '${dotted}'; each ${key} annotation sets its own label`,
+        displayPath: `${pathBase}.${dotted}`, suggest: own.suggest, ...(own.fix ? { fix: own.fix } : {}),
+      }, field));
+      continue;
+    }
     envelope.errors.push(completeChartDiagnostic(source.doc, source.chart, {
       code: 'unknown-option',
       message: `${where}: ${unknownOptionMessage(dotted, nearest, moved)}`,
@@ -603,6 +612,29 @@ function sweepStrippedOptionKeys(
     }, field));
   }
   return stripped.length > 0;
+}
+
+/**
+ * A label kind the type does not read that names an annotation kind it takes with a
+ * `label` field (labels.valueLine on a line): the way out is that annotation's label.
+ * `labels.<kind>: false` patches `label: false` onto each such annotation that sets no label.
+ */
+function annotationLabel(schema: z.ZodType, authored: Record<string, unknown>, kind: string, field: readonly (string | number)[]): { suggest: string; fix?: JsonPatchOperation[] } | undefined {
+  const takes = schemaNodeAtPath(schema, ['annotations', 0]).flatMap((node) => [node, ...(node.anyOf ?? []), ...(node.oneOf ?? [])])
+    .some((branch) => branch.properties?.kind?.const === kind || (branch.properties?.kind?.enum ?? []).includes(kind)) && annotationKindTakes(kind, 'label');
+  if (!takes) return undefined;
+  const hide = isRecord(authored.labels) && authored.labels[kind] === false;
+  const suggest = hide ? `Remove 'labels.${kind}' and set label: false on each { kind: '${kind}' } annotation.` : `Remove 'labels.${kind}'; set the label on each { kind: '${kind}' } annotation.`;
+  const annotations = Array.isArray(authored.annotations) ? authored.annotations : [];
+  const targets = annotations.flatMap((item, index) => (isRecord(item) && item.kind === kind ? [{ item, index }] : []));
+  // Without labels.<kind>: false the annotations print their labels as before, so removing the key is the patch.
+  if (!hide) return { suggest, fix: [{ op: 'remove', path: toJsonPointer(field) }] };
+  if (targets.some(({ item }) => Object.hasOwn(item, 'label'))) return { suggest };
+  const base = field.slice(0, -2);
+  return { suggest, fix: [
+    { op: 'remove', path: toJsonPointer(field) },
+    ...targets.map(({ index }) => ({ op: 'add' as const, path: toJsonPointer([...base, 'annotations', index, 'label']), value: false })),
+  ] };
 }
 
 /** Whether the options schema takes `value` under `key` in the object at `parent`: the value alone, set where the rename would put it. */
@@ -680,7 +712,7 @@ function splitUnknownKeys(issue: z.core.$ZodIssue): z.core.$ZodIssue[] {
  */
 function unknownKeyText(
   issue: z.core.$ZodIssue, schema: z.ZodType, optionsSchema?: z.ZodType, optionsType?: string, authored?: unknown,
-  source?: ReturnType<typeof chartSchemaSource>,
+  source?: ReturnType<typeof chartSchemaSource>, dataType?: string,
 ): { message: string; suggest: string; fix?: JsonPatchOperation[] } | undefined {
   if (issue.code !== 'unrecognized_keys') return undefined;
   const path = issue.path as (string | number)[];
@@ -734,7 +766,9 @@ function unknownKeyText(
       return { message, suggest: `'${key}' is not read; '${closest.key}' is already set. Remove '${key}' only if it repeats the value.` };
     }
     const content = valueAtPath(authored, path);
+    const alternative = closest?.near || dataType === undefined ? undefined : dataKeyAlternative(dataType, path);
     const suggest = closest?.near ? unknownKeySuggest(key, closest)
+      : alternative ? alternative
       : content !== null && typeof content === 'object'
         ? `'${key}' is not a data key of this chart, and its content is not drawn. Move the content to one of: ${known.length ? known.join(', ') : "the chart's documented data keys"}.`
         : unknownKeySuggest(key, closest);

@@ -142,6 +142,20 @@ export function typoRenameFix(field: readonly (string | number)[], nearest: { ke
  */
 const MOVED_KEYS: ReadonlyMap<string, string> = new Map([['labels.growth', 'dualAxis.growth'], ['averageMarker', 'annotations'], ['width', 'size.width'], ['height', 'size.height'], ['preset', 'variant']]);
 
+/**
+ * Data keys a sibling type reads that this type words in another place, keyed by
+ * type and data path with indices left out: the suggest names that place. The
+ * schema cannot tell these apart, so this list is the one place they live.
+ */
+const DATA_KEY_ALTERNATIVES: ReadonlyMap<string, string> = new Map([
+  ['grid categories.footnote', "Remove 'footnote'; put the note in options.footnotes, or mark a running period with partial: true and word it in data.states.partial.footnote."],
+]);
+
+/** The suggest that names where this type takes an unknown data key, if the list names one. */
+export function dataKeyAlternative(type: string, path: readonly (string | number)[]): string | undefined {
+  return DATA_KEY_ALTERNATIVES.get(`${type} ${path.filter((segment) => typeof segment === 'string').join('.')}`);
+}
+
 /** Where a refused dotted option path lives instead, when `takes` accepts that place. */
 export function movedKey(dotted: string, takes: (path: readonly string[]) => boolean): string | undefined {
   // xTitle is axisTitles.x where the type names its axes x and y, else the axisTitles its docs describe.

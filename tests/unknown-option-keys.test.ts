@@ -268,6 +268,22 @@ describe('unknown option keys are refused on every type', () => {
       for (const warning of retired) expect(patchApplies(spec, warning.fix!), JSON.stringify(warning.fix)).toBe(true);
     }
   });
+  // A key a sibling type reads (labels.valueLine on column) was refused on line with only "Remove", not the setting that works here.
+  it('names the setting that does the job where a sibling type reads the refused key', () => {
+    const line = getFixtures('line')[0]!;
+    const spec = { type: 'line', data: line.data, options: { ...line.options, labels: { valueLine: false }, annotations: [{ kind: 'valueLine', value: 'mean' }] } };
+    const refusal = cliErrors(spec).errors.find(entry => entry.path === '/options/labels/valueLine') as Finding & { fix?: JsonPatchOperation[] };
+    expect(refusal.suggest).toBe("Remove 'labels.valueLine' and set label: false on each { kind: 'valueLine' } annotation.");
+    expect(refusal.fix).toEqual([{ op: 'remove', path: '/options/labels/valueLine' }, { op: 'add', path: '/options/annotations/0/label', value: false }]);
+    expect(JSON.parse(callTool('boardplot_render', { spec: applyFix(spec, refusal.fix!) }).text).ok).toBe(true);
+    expect(reactErrors(spec)).toContainEqual(expect.objectContaining({ suggest: refusal.suggest }));
+    const stack = getFixtures('grid').find(entry => entry.id === 'metric-stack-volume')!;
+    const categories = structuredClone((stack.data as { categories: Record<string, unknown>[] }).categories);
+    categories[0]!.footnote = 'Partial month';
+    const footnote = cliErrors({ type: 'grid', data: { ...(stack.data as object), categories }, options: stack.options }).errors[0]!;
+    expect(footnote).toMatchObject({ path: '/data/categories/0/footnote' });
+    expect(footnote.suggest).toContain('options.footnotes');
+  });
   // showValues: true answered "Rename to labels", and labels: true is refused too, so an agent looped.
   it('renames only when the near option takes the authored value', () => {
     const fixture = getFixtures('column')[0]!;
