@@ -1,5 +1,6 @@
 import type { OptionsInput } from '../core/types/optionInput';
 import { hasPolarityBadge, isFigureCell, polarityBadgeInk } from '../core/charts/table/chips';
+import { chartString } from '../core/strings/table';
 import { belowTableViewportFloor, tableWidths } from '../core/charts/table/widths';
 import {
   createContext,
@@ -1614,7 +1615,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     ...(sticky.sections ? { '--bp-sections-top': sticky.head === 'page' ? `calc(${sticky.top}px + var(--bp-head-h,0px))` : sticky.head === 'table' ? 'var(--bp-head-h,0px)' : '0px' } : {}),
   } : undefined;
   // The scroller takes the grid's name once it overflows (markScrollRegion).
-  scrollLabel.current = frame.title || (typeof tableOptions.title === 'string' ? tableOptions.title : 'Table');
+  scrollLabel.current = frame.title || (typeof tableOptions.title === 'string' ? tableOptions.title : chartString(tableOptions, 'tableTitle'));
   const gridProps = {
     role: isTree ? 'treegrid' : 'grid',
     'aria-label': scrollLabel.current,
@@ -1744,7 +1745,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
       {/* `legend: 'none'` drops the key row, as on the SVG. */}
       <TableCaption frame={frame} theme={theme}
         keyEntries={tableOptions.legend === 'none' ? [] : heatKey(columns, heatLanes, theme, tableOptions.strings, tableOptions.locale?.language)}
-        arrowEntries={tableOptions.legend === 'none' ? [] : arrowKey(columns, rows)} />
+        arrowEntries={tableOptions.legend === 'none' ? [] : arrowKey(columns, rows, tableOptions.locale?.language)} />
       <p id={summaryId} className="bp-summary">{frame.summary}</p>
       <TableColumnToggles toggles={toolbar ? table.columnToggles : []} visibility={columnVisibility} onToggle={toggleColumns} />
       {pageHead ? (

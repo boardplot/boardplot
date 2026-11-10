@@ -420,7 +420,7 @@ export function layoutCohort(
     derived,
     a11y: {
       title: accessibleTitle(options.title, chartString(options, 'title', { measure: cohortMeasure(options).toLocaleLowerCase(options.locale?.language ?? 'en'), cohorts: String(derived.cohorts.length), periods: String(visible.length) })),
-      counts: [structureCount('cohorts', derived.cohorts.length), structureCount('periods', visible.length),
+      counts: [structureCount('cohorts', derived.cohorts.length, undefined, options), structureCount('periods', visible.length, undefined, options),
         structureCount('cells', unobserved, chartString(options, 'cells', { count: String(unobserved) })),
         ...(derived.averages ? [derived.averages[visible[0]!]!, derived.averages[visible.at(-1)!]!].flatMap(a => a.value === null ? [] : [structureCount('cohorts', a.support, chartString(options, 'support', { count: String(a.support) }))]) : [])],
       desc: describe(derived, periodNames, unobserved, options, visible),

@@ -180,9 +180,7 @@ function layoutCohortExhibitOnce(
   };
   const removed = sourceData.cohorts[sourceData.cohorts.length - 1]!;
   const exclusion = options.excludeCurrentPeriod
-    ? disclosureNote(/^de(?:-|$)/i.test(options.locale?.language ?? '')
-      ? `Ausgeschlossen: laufende Periode. Kohorte ${removed.label ?? removed.id}; letzte Beobachtung jeder früheren Kohorte.`
-      : `Excluded: running period. Cohort ${removed.label ?? removed.id}; last observation of each earlier cohort.`)
+    ? disclosureNote(chartString(options, 'excludedRunning', { cohort: removed.label ?? removed.id }))
     : undefined;
   const full = buildExhibit(data, outputDerived, visible, options, [...warnings], exclusion);
   // Refuse-less: track air is a preference. Where the regular tracks miss a fixed

@@ -65,7 +65,8 @@ const EN = {
   "exhibitDescNoSize": "{measure} table with periods {periods}. {formula} Empty cells are unobserved{anchor}.{missing}{total}",
   "exhibitDescAnchor": "; period 0 is 100% by definition",
   "exhibitDescMissing": " A dash marks a missing count, or a rate or total that needs it.",
-  "exhibitDescTotal": " The total row is weighted by {basis}."
+  "exhibitDescTotal": " The total row is weighted by {basis}.",
+  "excludedRunning": "Excluded: running period. Cohort {cohort}; last observation of each earlier cohort."
 } as const;
 const DE: { [K in keyof typeof EN]: string } = {
   "measure": "Bindung",
@@ -132,7 +133,8 @@ const DE: { [K in keyof typeof EN]: string } = {
   "exhibitDescNoSize": "Tabelle für {measure} mit den Perioden {periods}. {formula} Leere Zellen sind unbeobachtet{anchor}.{missing}{total}",
   "exhibitDescAnchor": "; Periode 0 ist per Definition 100%",
   "exhibitDescMissing": " Ein Strich zeigt eine fehlende Anzahl oder eine Quote oder Summe, die diese Anzahl benötigt.",
-  "exhibitDescTotal": " Die Summenzeile ist nach {basis} gewichtet."
+  "exhibitDescTotal": " Die Summenzeile ist nach {basis} gewichtet.",
+  "excludedRunning": "Ausgeschlossen: laufende Periode. Kohorte {cohort}; letzte Beobachtung jeder früheren Kohorte."
 };
 
 export const { chartString } = chartStrings(EN, DE);

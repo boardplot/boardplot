@@ -321,7 +321,7 @@ it('replays disclosure metadata for retained executors and equal cloned inputs',
     executor.run({ size: { width: 878, height }, notes: { show: ['disclosure'] } }), true);
   const first = render(retained, 200);
   const notes = first.frame.noteList!.map(({ text, kind }) => ({ text, kind }));
-  expect(notes).toEqual([{ text: tableResolution.SUPPRESSED_FOOTNOTE, kind: 'disclosure' }]);
+  expect(notes).toEqual([{ text: tableResolution.suppressedFootnote(), kind: 'disclosure' }]);
   // Different heights require a fresh frame while the numeric view is unchanged.
   expect(render(retained, 201).frame.noteList!.map(({ text, kind }) => ({ text, kind }))).toEqual(notes);
   const cloned = prepareTableExecutor(structuredClone(data));

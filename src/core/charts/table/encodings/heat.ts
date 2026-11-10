@@ -1,6 +1,8 @@
 import { sequentialShare } from '../../../colorRecipes';
 import { clamp } from '../../../geometry';
 import { formatExactNumber, intervalText } from '../../../format';
+import { chartString } from '../../../strings/table';
+import { chartString as sharedString } from '../../../strings';
 import { differenceExample, formatWithSpec, parseFormatExample, specUnitKind, withChartMarks } from '../../../formatSpec';
 import { contrastInkPaint, groundTextPaint, markRolePaint, mixedPaint, semanticPalettePaint, signedFillPaint } from '../../../theme';
 import type { Direction, Id } from '../../../types/cell';
@@ -265,7 +267,7 @@ export function heatKey(columns: readonly ResolvedColumn[], ranges: ReadonlyMap<
     // Status lanes already share a relative key plus a direction note. Keep
     // that contract; fixed-edge lanes need their own numerical scale keys.
     const entries = encoding.scale === 'status'
-      ? statusEntries ??= statusKey(columns, ranges, encoding, strings)
+      ? statusEntries ??= statusKey(columns, ranges, encoding, strings, language)
       : laneHeatKey([column], ranges, theme, strings, language);
     if (entries.length === 0) continue;
     // Keep exact edges and paint in the identity. Display precision can
@@ -290,7 +292,7 @@ export function heatKey(columns: readonly ResolvedColumn[], ranges: ReadonlyMap<
 function laneHeatKey(columns: readonly ResolvedColumn[], ranges: ReadonlyMap<Id, HeatRange>, theme: Theme, strings?: StringsSpec, language?: string): HeatKeyEntry[] {
   for (const column of columns) {
     const encoding = column.cellEncoding;
-    if (encoding?.type === 'heat' && encoding.scale === 'status') return statusKey(columns, ranges, encoding, strings);
+    if (encoding?.type === 'heat' && encoding.scale === 'status') return statusKey(columns, ranges, encoding, strings, language);
     if (encoding?.type !== 'heat' || (encoding.scale !== 'absolute' && encoding.scale !== 'diverging')) continue;
     const diverging = encoding.scale === 'diverging';
     // A lane given neither bins nor steps tints continuously, scaled by its cap
@@ -306,9 +308,10 @@ function laneHeatKey(columns: readonly ResolvedColumn[], ranges: ReadonlyMap<Id,
     const spec = column.format === undefined ? undefined
       : withChartMarks(diverging ? { ...parseFormatExample(differenceExample(column.format)), signed: false } : parseFormatExample(column.format), language);
     const text = spec === undefined ? (value: number) => formatExactNumber(value, language) : (value: number) => formatWithSpec(value, spec);
+    const words = { locale: { language } };
     const band = (index: number, last: boolean) => last
-      ? `${text(edges[index - 1]!)} and more`
-      : index === 0 ? `under ${text(edges[0]!)}` : intervalText(text(edges[index - 1]!), text(edges[index]!));
+      ? chartString(words, 'tableHeatAndMore', { v1: text(edges[index - 1]!) })
+      : index === 0 ? chartString(words, 'tableHeatUnder', { v1: text(edges[0]!) }) : intervalText(text(edges[index - 1]!), text(edges[index]!), false, words);
     const swatch = (id: string, label: string, fill: Paint): HeatKeyEntry => ({ id: `heatKey:${id}`, label, fill });
     if (diverging) {
       const sides = edges.map((_, index) => ({ index: index + 1, label: band(index + 1, index === edges.length - 1) }));
@@ -317,10 +320,10 @@ function laneHeatKey(columns: readonly ResolvedColumn[], ranges: ReadonlyMap<Id,
       // direction when a lane mixes them.
       return [
         ...[...sides].reverse().map(({ index, label }) =>
-          swatch(`below${index}`, `${label} below`, bandPaint(theme, encoding, steps, index, badSide(true, column.polarity)).fill)),
-        swatch('none', `under ${text(edges[0]!)} either way`, { token: 'background' }),
+          swatch(`below${index}`, chartString(words, 'tableHeatBelowSide', { v1: label }), bandPaint(theme, encoding, steps, index, badSide(true, column.polarity)).fill)),
+        swatch('none', chartString(words, 'tableHeatEitherWay', { v1: text(edges[0]!) }), { token: 'background' }),
         ...sides.map(({ index, label }) =>
-          swatch(`above${index}`, `${label} above`, bandPaint(theme, encoding, steps, index, badSide(false, column.polarity)).fill)),
+          swatch(`above${index}`, chartString(words, 'tableHeatAboveSide', { v1: label }), bandPaint(theme, encoding, steps, index, badSide(false, column.polarity)).fill)),
       ];
     }
     const count = Math.min(steps, edges.length + 1);
@@ -388,16 +391,17 @@ function centreNoun(range: HeatRange | undefined): 'total' | 'average' {
  *
  * shortcut: the noun of the first lane; lanes with different centres would need one key each.
  */
-function statusKey(columns: readonly ResolvedColumn[], ranges: ReadonlyMap<Id, HeatRange>, encoding: { alpha: number }, strings?: StringsSpec): HeatKeyEntry[] {
+function statusKey(columns: readonly ResolvedColumn[], ranges: ReadonlyMap<Id, HeatRange>, encoding: { alpha: number }, strings?: StringsSpec, language?: string): HeatKeyEntry[] {
   const lanes = statusLanes(columns);
   const lower = lanes.length > 0 && lanes.every((column) => column.polarity === 'lowerIsBetter');
-  const noun = centreNoun(ranges.get(lanes[0]!.id));
+  const total = centreNoun(ranges.get(lanes[0]!.id)) === 'total';
+  const words = { locale: { language } };
   const swatch = (id: string, label: string, band: StatusBand): HeatKeyEntry =>
     ({ id: `heatKey:${id}`, label, fill: statusFill(band, encoding.alpha) });
   return [
-    swatch('below', strings?.heatBelow ?? `Below ${noun}`, lower ? 'good' : 'bad'),
-    swatch('around', strings?.heatAround ?? `Around ${noun}`, 'warn'),
-    swatch('above', strings?.heatAbove ?? `Above ${noun}`, lower ? 'bad' : 'good'),
+    swatch('below', strings?.heatBelow ?? chartString(words, total ? 'tableHeatBelowTotal' : 'tableHeatBelowAverage'), lower ? 'good' : 'bad'),
+    swatch('around', strings?.heatAround ?? chartString(words, total ? 'tableHeatAroundTotal' : 'tableHeatAroundAverage'), 'warn'),
+    swatch('above', strings?.heatAbove ?? chartString(words, total ? 'tableHeatAboveTotal' : 'tableHeatAboveAverage'), lower ? 'bad' : 'good'),
   ];
 }
 
@@ -409,7 +413,7 @@ function statusKey(columns: readonly ResolvedColumn[], ranges: ReadonlyMap<Id, H
  * hold one direction only. Each surface asks with the columns and rows it
  * draws, so the note never names a lane a toggle hides.
  */
-export function statusDirectionNote(columns: readonly ResolvedColumn[], ranges: ReadonlyMap<Id, HeatRange>, colorblindSafe = false): string | undefined {
+export function statusDirectionNote(columns: readonly ResolvedColumn[], ranges: ReadonlyMap<Id, HeatRange>, colorblindSafe = false, language?: string): string | undefined {
   const lanes = statusLanes(columns);
   const lower = lanes.filter((column) => column.polarity === 'lowerIsBetter');
   if (lower.length === 0 || lower.length === lanes.length) return undefined;
@@ -418,11 +422,13 @@ export function statusDirectionNote(columns: readonly ResolvedColumn[], ranges: 
     const noun = centreNoun(ranges.get(column.id));
     byNoun.set(noun, [...(byNoun.get(noun) ?? []), column.label]);
   }
+  const words = { locale: { language } };
+  const below = (noun: string) => chartString(words, noun === 'total' ? 'tableBelowTotal' : 'tableBelowAverage');
   const where = byNoun.size === 1
-    ? `below the ${[...byNoun.keys()][0]}`
-    : [...byNoun].map(([noun, labels]) => `below the ${noun} for ${labels.join(', ')}`).join(' and ');
+    ? below([...byNoun.keys()][0]!)
+    : [...byNoun].map(([noun, labels]) => chartString(words, 'tableBelowFor', { where: below(noun), columns: labels.join(', ') })).join(` ${sharedString(words, 'and')} `);
   // Under colorblindSafe the good side is not green.
-  return `Lower is better for ${lower.map((column) => column.label).join(', ')}: there, ${colorblindSafe ? 'the good tone' : 'green'} marks ${where}.`;
+  return chartString(words, colorblindSafe ? 'tableLowerBetterGood' : 'tableLowerBetterGreen', { columns: lower.map((column) => column.label).join(', '), where });
 }
 
 /**

@@ -27,6 +27,7 @@ import { numericVariant } from '../core/textRole';
 import { tableFootnotes } from '../core/charts/table/view';
 import { defaultNotePlacement, notesPointer } from '../core/notes';
 import { localeStrings } from '../core/strings';
+import { chartString } from '../core/strings/table';
 import { footerType } from '../core/footer';
 import type { ResolvedColumn, ResolvedRow, ResolvedTable } from '../core/types/table';
 import type { ResolvedChartRequest } from '../core/request';
@@ -124,7 +125,7 @@ export function tableFrame(
   // `notes.show` keeps 'note'. Elsewhere ('info', the dashboard default, or
   // 'list') they sit behind the pointer, as in ChartFooter.
   // A dimswitch hands its own disclosures (partial period, n.m., hidden periods) on in ENGINE_NOTES, after the table's.
-  const derived = [...tableFootnotes(table, rows, columns), ...((options as { [ENGINE_NOTES]?: string[] })[ENGINE_NOTES] ?? [])];
+  const derived = [...tableFootnotes(table, rows, columns, options.locale?.language), ...((options as { [ENGINE_NOTES]?: string[] })[ENGINE_NOTES] ?? [])];
   const notes = options.footnotes === false || markerNotes.length > 0 ? [] : authored;
   const placement = options.notes?.placement ?? defaultNotePlacement(options.target);
   const framed = placement === 'frame' && (options.notes?.show ?? ['note']).includes('note');
@@ -137,13 +138,13 @@ export function tableFrame(
   const listed = options.notes?.pointer === false ? [] : [...notes.slice(inFrame.length), ...(!disclosed && placement === 'info' ? derived : [])];
   const words = { ...localeStrings(options.locale?.language), ...options.strings };
   return {
-    mode, title, subtitle, source: options.source && sourceLine(options.source, options.strings?.source ?? 'Source'), footnotes, padding,
+    mode, title, subtitle, source: options.source && sourceLine(options.source, options.strings?.source ?? localeStrings(options.locale?.language).source), footnotes, padding,
     listed,
     pointer: listed.length === 0 ? undefined : placement === 'info' ? `${words.notesAndSources} (${listed.length})` : notesPointer(listed.length, words),
     markerNotes: markerNotes.join(' '),
     // The author's accessible description replaces the generated summary, as it does in the SVG.
     summary: options.a11y?.description ?? options.caption ?? [title, subtitle,
-      `Table with ${table.rows.length} rows and ${table.columns.length} columns.`]
+      `${chartString(options, 'tableDesc', { v1: String(table.rows.length), v2: String(table.columns.length) })}.`]
       .filter((part): part is string => Boolean(part)).join(' · '),
   };
 }

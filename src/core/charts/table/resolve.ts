@@ -37,6 +37,7 @@ import {
 import { NormalizeError, resolveHighlight, resolveSubtitle } from '../../normalize/shared';
 import { resolveTheme } from '../../theme';
 import { localeStrings } from '../../strings';
+import { chartString } from '../../strings/table';
 import type { Theme } from '../../types/theme';
 import { closestKey } from '../../schema/unknownKeyWords';
 import { tableCellKey } from './cellKey';
@@ -77,7 +78,6 @@ import {
   requireAdditiveRanking,
 } from './rank';
 import { BADGE_SECTION_ONLY, BADGE_TEXT_EMPTY, STATUS_VALUES, STATUS_WORDS } from './rules';
-import { ARROW_FOOTNOTE } from './encodings/arrow';
 import { heatRanges, statusDirectionNote } from './encodings/heat';
 import { chartNumberMarks } from '../../numberMarks';
 import { minOf, pushAll } from '../../arrays';
@@ -137,19 +137,11 @@ function stateGlyphs(theme: Theme | undefined, notApplicable: string = STATE_GLY
 /** The largest percent change a table prints; past it the cell is n.m. */
 export const PERCENT_DELTA_CAP = 999;
 
-const ROUNDING_FOOTNOTE = 'Figures may not add due to rounding.';
-/**
- * A heat lane on the 'column' scale (the default) ranks each column against
- * itself, so a low figure in one column can shade darker than a higher one
- * beside it. With two or more such columns nothing else tells the reader, and
- * the printed figures alone do not say it.
- */
-const HEAT_COLUMN_FOOTNOTE = 'Shading compares values within each column, not across columns.';
 /** The mark on the head of a column whose total skipped a missing value, and on its note. */
 export const PARTIAL_MARKER = '†';
-export const PARTIAL_FOOTNOTE = `${PARTIAL_MARKER} Partial aggregate: missing values skipped.`;
+export const partialFootnote = (language?: string) => chartString({ locale: { language } }, 'tablePartialNote', { marker: PARTIAL_MARKER });
 /** Carries the same marker the glyph does, so the tie survives numbering. */
-export const SUPPRESSED_FOOTNOTE = `${SUPPRESSED_MARKER} Suppressed: value withheld, not missing.`;
+export const suppressedFootnote = (language?: string) => chartString({ locale: { language } }, 'tableSuppressedNote', { marker: SUPPRESSED_MARKER });
 
 /**
  * Which non-value state a derived cell inherits when several block it.
@@ -867,7 +859,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
     } else {
       if (blockers.length > 0) {
         // With no head for the † the cell says it, so the note has nothing to point at.
-        if (options.columnHeads !== false) autoFootnotes.add(PARTIAL_FOOTNOTE);
+        if (options.columnHeads !== false) autoFootnotes.add(partialFootnote(options.locale?.language));
         partialColumnIds.add(col.id);
       }
       // A sum that skipped a child, or adds a partial one, prints marked on the cell.
@@ -1690,7 +1682,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
       const unitOf = (candidate: NumberFormatSpec): number => Math.pow(10, -candidate.decimals) * MAGNITUDE_DIVISOR[candidate.magnitude];
       const displayUnit = Math.min(unitOf(spec), minOf(kids.map((k) => unitOf(specFor(col.id, k.id)))));
       if (Math.abs(roundingGap) > displayUnit * 0.5) {
-        autoFootnotes.add(ROUNDING_FOOTNOTE);
+        autoFootnotes.add(chartString(options, 'tableRoundingNote'));
         records.push({
           rowId: row.id,
           colId: col.id,
@@ -2079,28 +2071,32 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   for (const row of ordered) {
     if (!generatedOthers.has(row.id) || !row.hasChildren) continue;
     const members = (treeChildrenOf.get(row.id) ?? []).map((child) => child.label);
-    autoFootnotes.add(`${row.label} groups ${members.join(', ')}.`);
+    autoFootnotes.add(chartString(options, 'tableGroupsNote', { group: row.label, members: members.join(', ') }));
   }
 
+  // A heat lane on the 'column' scale (the default) ranks each column against
+  // itself, so a low figure in one column can shade darker than a higher one
+  // beside it. With two or more such columns nothing else tells the reader, and
+  // the printed figures alone do not say it.
   const perColumnHeat = resolvedColumns.filter((column) => (column.kind === 'value' || column.kind === 'computed') &&
     column.cellEncoding?.type === 'heat' && (column.cellEncoding.scale ?? 'column') === 'column' &&
     column.cellEncoding.cap === undefined);
-  if (perColumnHeat.length > 1) autoFootnotes.add(HEAT_COLUMN_FOOTNOTE);
+  if (perColumnHeat.length > 1) autoFootnotes.add(chartString(options, 'tableHeatColumnNote'));
   // A traffic-light key reads higher is better unless every status lane
   // reads lower; where both directions share the table, the lanes that read
   // the other way are named, so no reader takes their green for "above".
   // `tableFootnotes` restates it for the columns a surface draws.
-  const statusNote = statusDirectionNote(resolvedColumns, heatRanges(resolvedColumns, ordered), options.colorblindSafe === true);
+  const statusNote = statusDirectionNote(resolvedColumns, heatRanges(resolvedColumns, ordered), options.colorblindSafe === true, options.locale?.language);
   if (statusNote !== undefined) autoFootnotes.add(statusNote);
   // A relative arrow key's percentages are shares of each column's largest change.
   if (resolvedColumns.some((column) => column.cellEncoding?.type === 'arrow' && column.cellEncoding.scale === 'relative' && column.kind === 'computed' && column.polarity)) {
-    autoFootnotes.add(ARROW_FOOTNOTE);
+    autoFootnotes.add(chartString(options, 'tableArrowNote'));
   }
   // A table that colours changes in both directions says which measures read
   // the other way, so green never has to be guessed.
   if (lowerJudged.size && higherJudged.size) {
-    const [fewer, word] = lowerJudged.size <= higherJudged.size ? [lowerJudged, 'Lower'] : [higherJudged, 'Higher'];
-    autoFootnotes.add(`${options.colorblindSafe === true ? 'The good tone' : 'Green'} marks a favourable change. ${word} is better for ${[...fewer].join(', ')}.`);
+    const [fewer, word] = lowerJudged.size <= higherJudged.size ? [lowerJudged, 'tableLower' as const] : [higherJudged, 'tableHigher' as const];
+    autoFootnotes.add(chartString(options, options.colorblindSafe === true ? 'tableFavourableGood' : 'tableFavourableGreen', { direction: chartString(options, word), columns: [...fewer].join(', ') }));
   }
   const footnotes = [...autoFootnotes];
   // The † in the head points at its note, so it prints only where the note does.

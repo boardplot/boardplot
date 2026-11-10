@@ -4,7 +4,7 @@ import { isNumberAlone, numericVariant } from '../../textRole';
 import type { Theme } from '../../types/theme';
 import type { Id } from '../../types/cell';
 import type { ColumnKind, ResolvedCell, ResolvedColumn, ResolvedRow, ResolvedTable, TableOptions } from '../../types/table';
-import { PARTIAL_FOOTNOTE, SUPPRESSED_FOOTNOTE } from './resolve';
+import { partialFootnote, suppressedFootnote } from './resolve';
 import { ranksAsData } from './rank';
 import { disclosureNote } from '../../notes';
 import { heatRanges, statusDirectionNote } from './encodings/heat';
@@ -65,6 +65,7 @@ export function tableFootnotes(
   table: ResolvedTable,
   rows: readonly ResolvedRow[],
   columns: readonly ResolvedColumn[],
+  language?: string,
 ): string[] {
   const emitted = new Set(columns.map((column) => column.id));
   const marked = rows.some((row) =>
@@ -78,14 +79,15 @@ export function tableFootnotes(
   // The mixed-direction status note names lanes; restated for the drawn
   // columns, it names no lane a toggle hides and drops where one direction
   // is left.
-  const statusNote = statusDirectionNote(table.columns, heatRanges(table.columns, table.rows), table.colorblindSafe);
-  const shownStatusNote = statusNote === undefined ? undefined : statusDirectionNote(columns, heatRanges(columns, rows), table.colorblindSafe);
+  const statusNote = statusDirectionNote(table.columns, heatRanges(table.columns, table.rows), table.colorblindSafe, language);
+  const shownStatusNote = statusNote === undefined ? undefined : statusDirectionNote(columns, heatRanges(columns, rows), table.colorblindSafe, language);
+  const partialNote = partialFootnote(language);
   const footnotes = table.footnotes.flatMap((note) =>
-    note === PARTIAL_FOOTNOTE && !partialShown ? []
+    note === partialNote && !partialShown ? []
       : note === statusNote ? (shownStatusNote === undefined ? [] : [shownStatusNote])
         : [note]);
   // Each auto note keys a glyph, a colour or a grouping on the table (disclosure).
-  return (marked ? [...footnotes, SUPPRESSED_FOOTNOTE] : footnotes).map(disclosureNote);
+  return (marked ? [...footnotes, suppressedFootnote(language)] : footnotes).map(disclosureNote);
 }
 
 /**
