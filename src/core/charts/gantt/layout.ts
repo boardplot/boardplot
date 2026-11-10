@@ -1,5 +1,6 @@
 import { chartString } from '../../strings/gantt';
 import { structureCount } from '../../structureCounts';
+import { withUnprintedClaims } from '../../claims/ids';
 /**
  * Gantt / timeline — consulting Gantt layout: a two-tier calendar header
  * chosen by span (years+quarters / quarters+months / months+ISO weeks),
@@ -242,7 +243,8 @@ function assembleGanttGeometry(input: {
   const n = rows.length;
   const { colWs } = body.columns;
   const laneLabelW = milestones.laneLabelW;
-  const assembled: Geometry<GanttMarks, GanttDerived> = {
+  // The elapsed band is a wash with no label: it prints no text.
+  const assembled: Geometry<GanttMarks, GanttDerived> = withUnprintedClaims<Geometry<GanttMarks, GanttDerived>>({
     type: 'gantt',
     size,
     sizing: rowSizing('gantt', size, {
@@ -284,7 +286,7 @@ function assembleGanttGeometry(input: {
     },
     warnings: input.warnings,
     debug: { occupied: input.occupied.snapshot(), decisions: solved.decisions },
-  };
+  }, input.geometry.elapsed.map((band) => `annotation:${band.id}`));
   if (band.stacked) stackedForms.add(assembled);
   return assembled;
 }
