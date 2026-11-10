@@ -2247,6 +2247,9 @@ function stampRecordDisplay(
   for (const rec of records) {
     if (rec.kind === 'reconciliation' || rec.kind === 'rounding-adjustment') {
       rec.displayed = typeof rec.raw === 'number' ? formatNumber(rec.raw, rec.colId, rec.kind === 'rounding-adjustment' ? rec.rowId : undefined) : '';
+      // The author's total prints the sum only where the sum in the cell's own format is the cell's text.
+      if (rec.kind === 'reconciliation' && typeof rec.raw === 'number'
+        && formatNumber(rec.raw, rec.colId, rec.rowId) === cellIndex.get(tableCellKey(rec.rowId, rec.colId))?.displayed) rec.printedInCell = true;
       continue;
     }
     rec.displayed = cellIndex.get(tableCellKey(rec.rowId, rec.colId))?.displayed ?? rec.displayed;

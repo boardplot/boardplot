@@ -62,7 +62,7 @@ import { lastObservedIndex, type SparklineDomain } from '../sparkline/layout';
 import { resolveTable, prepareTableData, resolvePreparedTable, ZERO_LIFT, type PreparedTableData, type ZeroLiftOptions } from './resolve';
 import type { ResolvedTable } from '../../types/table';
 import { DEFAULT_EMPTY_MESSAGE } from '../../emptyData';
-import { cellDrawsTabular, cellHoldsNumber, emptyMessageRow, expansionRootsHidden, finalClosers, hasNoDataRows, groupSpans, heatColumn, printsFigures, rowGrounds, tableFootnotes, visibleColumns, visibleInlineRows, visibleRows } from './view';
+import { cellDrawsTabular, cellHoldsNumber, emptyMessageRow, expansionRootsHidden, finalClosers, hasNoDataRows, groupSpans, heatColumn, isTotalRow, noteLineIndex, printsFigures, rowGrounds, tableFootnotes, visibleColumns, visibleInlineRows, visibleRows } from './view';
 import { fixedHeightCanvas, rowDrivenHeight, spareShare } from '../../rowCanvas';
 import { heightOmitted, rowSizing, VERIFY_ADVICE, WIDTH_PROBE, FIXED_SIZE_PROBE, FORCE_COMPACT, ACCEPTANCE_PROBE } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
@@ -660,11 +660,6 @@ function prepareTableCandidate(
   function sectionNatural(): number {
     return levelPad(1, false) * 2 + ladder.sectionBox(fonts.section.size) + sectionRuleSpace;
   }
-  /** True where an inline line prints a VALUE in this column's cell. */
-  function lineHoldsValue(line: ResolvedRow, colId: Id): boolean {
-    const cell = line.cells[colId];
-    return cell !== undefined && cell.state === 'value' && cell.displayed !== '';
-  }
   /** The id of the row-label column, where a row's note prints under its label. */
   const labelColumnId = cols.find((col) => col.kind === 'rowLabel')?.id;
   /**
@@ -705,10 +700,7 @@ function prepareTableCandidate(
     for (const col of cols) {
       if (col.noteLine !== true || col.kind === 'rowLabel') continue;
       if (row.cells[col.id]?.note === undefined) continue;
-      let slot = base + lines.length;
-      for (const [index, line] of lines.entries()) {
-        if (!lineHoldsValue(line, col.id)) { slot = base + index; break; }
-      }
+      const slot = base + noteLineIndex(lines, col.id);
       noteSlots.set(col.id, slot);
       stacked = Math.max(stacked, slot + 1);
     }
@@ -1620,7 +1612,7 @@ function prepareTableCandidate(
   const lastRow = rows[rows.length - 1];
   rows.forEach((row, ri) => {
     const { y: ry, h: rh } = rowY.get(row.id)!;
-    const isTotal = row.role === 'total' && row.kind !== 'result' && row.kind !== 'driver';
+    const isTotal = isTotalRow(row);
     const isSection = row.role === 'section';
 
     // ---- grounds: the total between its two rules, the group rows
