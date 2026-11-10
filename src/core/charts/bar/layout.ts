@@ -384,8 +384,8 @@ function annotateBar(
     if (!found) return null;
     const cat = { ...found, format: domain.dataSeries.length === 1 ? domain.dataSeries[0]!.format : undefined };
     if (norm.edge === 'start') return { ...cat, x: x0, value: 0 };
-    // a stack whose parts do not add, or whose parts are all blank, keeps its seat and has no value.
-    return { ...cat, ...noTotal(domain.partsAdd, domain.stacks[cats.findIndex((c) => c.id === norm.categoryId)]!.hasValue) };
+    // a stack whose parts do not add, or that has a blank part, keeps its seat and has no value.
+    return { ...cat, ...noTotal(domain.partsAdd, domain.stacks[cats.findIndex((c) => c.id === norm.categoryId)]!.hasValue && !domain.incompleteRows.has(norm.categoryId)) };
   };
   const passInput: AnnotatePassInput = {
     target: domain.options.target,
