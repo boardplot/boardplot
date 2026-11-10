@@ -225,6 +225,14 @@ describe('number census', () => {
     expect(of(census('grid', spec, 720), 'unbound')).toEqual([]);
   });
 
+  // A table row prints its magnitude in its unit affix ("Revenue $M"); the census did not read it and flagged every cell and rounding gap as wrong-scale.
+  it('reads a table row in the magnitude its unit affix names and still flags a row without one', () => {
+    const spec = fixtureOf('table', 'steering-table-v2');
+    spec.options = { ...spec.options, magnitude: 'million' };
+    expect(of(census('table', spec, 840), 'wrong-scale')).toEqual([]);
+    expect(of(census('table', spec, 840, retext('unit:revenue', 'net')), 'wrong-scale', 'cell:revenue:m1')).not.toEqual([]);
+  });
+
   // A map overlay label is the author's text ("UK 78%"); it was read as the overlay glyph's value.
   it('leaves overlay labels to the author and still checks a printed map value', () => {
     const spec = fixtureOf<Spec & { data: { overlays: { glyph: { value: number } }[] } }>('choropleth', 'world-footprint');
