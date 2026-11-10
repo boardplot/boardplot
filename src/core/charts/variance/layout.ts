@@ -751,7 +751,7 @@ export function layoutVariance(
       target: options.target, textScale: textScaleOf(options),
     });
   let catPlan = planRow(band);
-  const catOverhang = rotatedLeftOverhang(catPlan, cats.map((_, ci) => band.center(ci)), 4);
+  const catOverhang = rotatedLeftOverhang(catPlan, cats.map((_, ci) => band.center(ci)), 4, plotW0);
   if (catOverhang > 0) {
     plotX0 += catOverhang;
     plotW0 -= catOverhang;

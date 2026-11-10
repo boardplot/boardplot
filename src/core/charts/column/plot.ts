@@ -591,7 +591,7 @@ function columnBand(
   const ticked = authored ?? longDayMonths(cats, catPlan.stride, options.locale?.language);
   if (ticked && ticked !== authored) catPlan = planRow(band, ticked);
   // A rotated first name hangs left of its column; the band yields that much.
-  const catOverhang = stair ? 0 : rotatedLeftOverhang(catPlan, cats.map((_, ci) => band.center(ci)), 4);
+  const catOverhang = stair ? 0 : rotatedLeftOverhang(catPlan, cats.map((_, ci) => band.center(ci)), 4, plotW0);
   if (catOverhang > 0) {
     plotX0 += catOverhang;
     plotW0 -= catOverhang;

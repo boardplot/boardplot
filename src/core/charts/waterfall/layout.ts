@@ -1489,7 +1489,7 @@ function layoutWaterfallWithPad(
   const planRow = (b: typeof band) => planRowAt(b);
   let catPlan = planRow(band);
   // A rotated first name hangs left of its bar; the plot yields that much.
-  const catOverhang = categoryRow ? rotatedLeftOverhang(catPlan, items.map((_, i) => band.center(i)), 4) : 0;
+  const catOverhang = categoryRow ? rotatedLeftOverhang(catPlan, items.map((_, i) => band.center(i)), 4, plotWidth) : 0;
   if (catOverhang > 0) {
     plotLeft += catOverhang;
     plotWidth -= catOverhang;

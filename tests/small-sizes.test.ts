@@ -186,6 +186,15 @@ it('keeps every staggered column name centred over its tick', () => {
   }
 });
 
+// measure() probes a narrow grid at its floor width, where a rotated first name took more room than the panel's plot had and the band scale threw.
+it('measures a narrow grid of column panels with long names without throwing', () => {
+  const panel = (id: string) => ({ id, type: 'column', options: { title: id },
+    data: { categories: ['a', 'b', 'c'].map((c) => ({ id: c, label: `${c.toUpperCase()} quarter with a long descriptive name` })),
+      series: [{ id: 's', label: 'Sales', values: [2, 3, 4] }] } });
+  const grid = { type: 'grid', data: { panels: ['North', 'South', 'West'].map(panel) }, options: { size: { width: 320 }, columns: 3, sharedAxis: 'none' } };
+  expect(measure(grid as any).geometry).toBeDefined();
+});
+
 // A host needs the refusal's minimum to size its card without a separate measurement.
 it('keeps canDraw minimum on a fixed-size refusal', () => {
   expect(canDraw(shortCombo)).toMatchObject({ ok: false, code: 'size-below-floor', minimum: { width: 480, height: 240 } });
