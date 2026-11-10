@@ -55,6 +55,7 @@ import { rectsOverlap, type Rect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { solveLabels, type LabelRequest, type SolveCtx, type SolveResult } from '../../label/solver';
+import { HOST_CLAIMS, type HostClaims } from '../../claims/ids';
 import type { TickBandDerived } from '../../label/tickRow';
 import { accessibleTitle } from '../../normalize/shared';
 import { bandSizing } from '../../sizing';
@@ -564,6 +565,8 @@ function layoutComboFramePass(
     request.suppressedAs = 'density';
   }
   const solveCtx: SolveCtx = {
+    // A host chart names the claims of combo's labels (claims/ids.ts).
+    ...(HOST_CLAIMS in options ? { [HOST_CLAIMS]: (options as { [HOST_CLAIMS]?: HostClaims })[HOST_CLAIMS] } : {}),
     focus: options.focus,
     density: env.density,
     pins: options.labelPlacements ?? {},

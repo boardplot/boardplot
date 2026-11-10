@@ -45,6 +45,7 @@ import { authoredNotes, legendRequired, withAuthoredFootnotes, type InternalFoot
 import { disclosureNote, keepShownNotes, rankKeyShown } from '../../notes';
 import { crowdedTailCut, TAIL_SHARE_PCT } from '../../paretoTail';
 import { emptyIdRecord } from '../../idRecords';
+import { HOST_CLAIMS, withUnprintedClaims, type HostClaims } from '../../claims/ids';
 
 interface ParetoItem {
   id: Id;
@@ -98,6 +99,8 @@ export interface ParetoDerived {
   vitalFew: Id[];
   /** The cause whose cumulative share first reaches the threshold; absent under `threshold: false`. */
   crossingId?: Id;
+  /** The key's text node, where the key prints the crossing cause's share in place of the curve. */
+  keyShareNodeId?: Id;
   /** `false` when the author drew no reference: no vital few, no highlight, no verdict. */
   threshold: number | false;
   /** false ⇒ the vital few is a majority of the OBSERVED CAUSES (no concentration), or there is no threshold. */
@@ -567,9 +570,23 @@ export function layoutPareto(
   // where its equal columns would otherwise shrink to a sliver. An authored
   // valueAxis.min or max keeps its scale.
   const totalScaled = drawCumulative && (options.totalScale ?? (concentrated && options.valueAxis?.min === undefined && options.valueAxis?.max === undefined));
-  const comboOptions: ComboOptions & { [FORCE_CATEGORY_RANKS]?: true; defaultFormat?: string; [FIRST_END_BELOW_TOTALS]?: boolean; [CATEGORY_ROW_FROM_END]?: boolean; [CATEGORY_ROW_VERTICAL]?: boolean; [SECONDARY_FULL_DOMAIN]?: readonly [number, number] } = {
+  // A cause's cumulative share, and at the crossing cause the share the vital few reach, print as one text.
+  const shareClaims = (id: Id) => [`pareto:cumshare:${id}`, ...(id === crossingId ? ['pareto:vitalFew'] : [])];
+  const plottedAt = new Map(plotted.map((p, i) => [p.id, i] as const));
+  const curvePrinted = (id: Id) => curvePrints(curve, plottedAt.get(id) ?? -1, options.labels);
+  // The causes whose share the threshold rule's label prints in place of the curve's (set below).
+  const ruleCarries = new Set<Id>();
+  // A curve point names its share where the curve prints it there; the threshold rule's label names the shares it carries.
+  const claimsOf: HostClaims = (request) => {
+    const id = request.owner.categoryId;
+    if (request.kind === 'point' && request.owner.seriesId === CUMULATIVE_SERIES_ID && id !== undefined) return curvePrinted(id) ? shareClaims(id) : undefined;
+    if (request.id === `valueLine:${THRESHOLD_ANNOTATION_ID}` && ruleCarries.size > 0) return [...ruleCarries].flatMap(shareClaims);
+    return undefined;
+  };
+  const comboOptions: ComboOptions & { [HOST_CLAIMS]?: HostClaims; [FORCE_CATEGORY_RANKS]?: true; defaultFormat?: string; [FIRST_END_BELOW_TOTALS]?: boolean; [CATEGORY_ROW_FROM_END]?: boolean; [CATEGORY_ROW_VERTICAL]?: boolean; [SECONDARY_FULL_DOMAIN]?: readonly [number, number] } = {
     [SECONDARY_FULL_DOMAIN]: totalScaled ? [0, total] : undefined,
     ...stripParetoOnly(options),
+    [HOST_CLAIMS]: claimsOf,
     [CATEGORY_ROW_FROM_END]: false,
     // Cause names that must rotate stand vertical, whole, each in its column.
     // Only on a pinned height: with the height left to the chart, the taller vertical row moves the
@@ -645,7 +662,10 @@ export function layoutPareto(
     curve.forEach((cell, i) => {
       const value = typeof cell === 'number' ? cell : cell !== null && typeof cell === 'object' && 'number' in cell ? cell.number : undefined;
       const prints = typeof cell === 'number' || (cell !== null && typeof cell === 'object' && 'label' in cell && cell.label === '${value}');
-      if (prints && value !== undefined && curveShareText(value) === thresholdText(threshold)) curve[i] = { number: value, label: false };
+      if (prints && value !== undefined && curveShareText(value) === thresholdText(threshold)) {
+        curve[i] = { number: value, label: false };
+        ruleCarries.add(plotted[i]!.id);
+      }
     });
   }
   let geo = render([]);
@@ -787,11 +807,20 @@ export function layoutPareto(
       ? chartString(options, 'paretoCurveDesc')
       : chartString(options, 'paretoCurveOffDesc'));
 
-  return {
+  // Where the curve does not print the share the vital few reach, the key does. Its share is the
+  // last highlighted cause's, so the key carries the crossing cause's share only when that is the crossing cause.
+  const keyShareNodeId = key && key.highlighted === topKey(false) && crossingId !== undefined && highlighted.at(-1) === crossingId
+    ? geo.legend?.items.find((item) => highlighted.some((id) => item.id === `key:${VALUE_SERIES_ID}:${id}`))?.labelId
+    : undefined;
+  // The curve prints its start, crossing and end shares; the others are computed and not printed.
+  const printed = (id: Id) => curvePrinted(id) || ruleCarries.has(id) || (keyShareNodeId !== undefined && id === crossingId);
+  const unprinted = [
+    ...order.filter((id) => !printed(id)).map((id) => `pareto:cumshare:${id}`),
+    ...(crossingId !== undefined && !printed(crossingId) ? ['pareto:vitalFew'] : []),
+  ];
+
+  return withUnprintedClaims({
     ...geo,
-    // A printed cumulative share names its claim, so the reading quotes the printed text.
-    labels: geo.labels.map((label) => label.kind === 'point' && label.owner.seriesId === CUMULATIVE_SERIES_ID && label.owner.categoryId !== undefined
-      ? { ...label, claimIds: [`pareto:cumshare:${label.owner.categoryId}`] } : label),
     type: 'pareto',
     // No value-label floor. At a narrow card the pareto staggers its values into two
     // rows, runs staircase leaders and lists the columns with no room in a ranked note, so a
@@ -807,6 +836,7 @@ export function layoutPareto(
       populationValue,
       vitalFew,
       ...(crossingId === undefined ? {} : { crossingId }),
+      ...(keyShareNodeId === undefined ? {} : { keyShareNodeId }),
       threshold,
       concentrated,
       highlighted,
@@ -836,7 +866,7 @@ export function layoutPareto(
     // author, acknowledged the axis. Every other combo warning passes
     // through untouched.
     warnings: [...geo.warnings.filter((w) => w.code !== 'dual-axis'), ...warnings],
-  };
+  }, unprinted);
 }
 
 interface MethodNoteInput {

@@ -904,7 +904,10 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
         populationValue: Record<string, number>;
         vitalFew: string[];
         crossingId?: string;
+        keyShareNodeId?: string;
       };
+      // Where the key prints the crossing cause's share in place of the curve, both of its claims read the key.
+      const keyNode = (id?: string) => id !== undefined && id === derived.crossingId && derived.keyShareNodeId ? { nodeId: derived.keyShareNodeId } : {};
       return [
         ...derived.order.map((id) => ({
           id: `pareto:cumshare:${id}`,
@@ -915,6 +918,7 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
             { ref: 'total', value: derived.total },
           ],
           output: { raw: derived.cumulativeShare[id] ?? null, state: 'value', displayed: '' },
+          ...keyNode(id),
         })),
         // `threshold: false` names no vital few, so there is no share to claim.
         ...(derived.crossingId === undefined ? [] : [{
@@ -944,6 +948,7 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
             state: 'value' as const,
             displayed: '',
           },
+          ...keyNode(derived.crossingId),
         }]),
       ];
     }
