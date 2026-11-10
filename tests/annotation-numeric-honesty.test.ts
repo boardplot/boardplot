@@ -164,6 +164,26 @@ it('prints no stacked-area total with a missing component', () => {
   }
 });
 
+// A stacked column, bar or combo compared a full total with a partial one and printed "−50.0% p.a."; a 0 is a value.
+it('prints no growth or difference from a column, bar or combo stack total with a missing component', () => {
+  const series = (last: number | null) => [{ id: 'x', label: 'North', values: [10, 10] }, { id: 'y', label: 'South', values: [10, last] }];
+  const annotations = [{ kind: 'cagr' }, { kind: 'diff', from: 'a', to: 'b' }];
+  for (const [type, options, extra] of [['column', { variant: 'stacked' }, []], ['bar', { variant: 'stacked' }, []],
+    ['combo', { secondaryAxis: { acknowledge: true } }, [{ id: 'm', label: 'Margin', kind: 'line', axis: 'secondary', values: [5, 6] }]]] as const) {
+    for (const last of [null, 0]) {
+      const data = { categories: [{ id: 'a', label: '2022', date: '2022-01-01' }, { id: 'b', label: '2023', date: '2023-01-01' }], series: [...series(last), ...extra] };
+      const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type, data, options: { ...options, annotations } } as never)));
+      const texts = geometry.annotations.map((annotation) => annotation.computedText);
+      const growth = claimsForChart(type, geometry).filter((claim) => claim.id.startsWith('annotation:'));
+      if (last === null) {
+        expect.soft([texts, growth.length, geometry.warnings.filter((w) => w.code === 'bad-anchor').length], type).toEqual([[], 0, 2]);
+      } else {
+        expect.soft(texts, `${type} with 0`).toEqual(['−50.0% p.a.', '−50%']);
+      }
+    }
+  }
+});
+
 // A rebased stack prints an index; a series suppressed by the rebase gave its total the series' currency format.
 it('prints a rebased stacked-area total as an index', () => {
   const data = {

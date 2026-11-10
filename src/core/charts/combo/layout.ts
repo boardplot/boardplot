@@ -177,7 +177,7 @@ function annotateCombo(
     // category level: column stack total
     if (columns.length === 0) return null;
     const topPlotted = domain.posTop[ci]! > 0 ? domain.posTop[ci]! : domain.negBot[ci]!;
-    return { x: band.center(ci), y: norm.edge === 'start' ? y0 : y(topPlotted), value: domain.stackTotals[c.id]!, format: columns.length === 1 ? columns[0]!.format : undefined, ...noTotal(domain.columnsAdd, domain.anyByCat[ci]!), date: c.date, label: c.label, owner: { categoryId: c.id } };
+    return { x: band.center(ci), y: norm.edge === 'start' ? y0 : y(topPlotted), value: domain.stackTotals[c.id]!, format: columns.length === 1 ? columns[0]!.format : undefined, ...noTotal(domain.columnsAdd, domain.anyByCat[ci]! && !domain.incompleteCats.has(c.id)), date: c.date, label: c.label, owner: { categoryId: c.id } };
   };
   // extend the rect liftArm sees upward into the reserved headroom
   const lift = area.topPad - area.axisTitles.height - 8;

@@ -37,12 +37,15 @@ export function stackAdds(parts: readonly StackPart[], chartUnit: string | undef
 /** What an anchor on a stack whose parts do not add says instead of a total. */
 export const NO_STACK_TOTAL = 'the stack has no total: its parts are percents of different wholes';
 
-/** What an anchor on a category with no known value says instead of a total: blank is not 0. */
-export const NO_KNOWN_VALUE = 'the category has no known value: it is blank, not 0';
+/**
+ * What an anchor on a category without a known total says instead of one: a blank part is not 0. A growth rate or a
+ * difference from the drawn parts alone would compare a full total with a partial one; the total label still prints them.
+ */
+export const NO_KNOWN_VALUE = 'the category has no known total: a part is blank, not 0';
 
-/** The noValue an anchor on a category total carries: parts that do not add, or no known part. */
-export function noTotal(adds: boolean, hasValue: boolean): { noValue?: string } {
-  return !adds ? { noValue: NO_STACK_TOTAL } : hasValue ? {} : { noValue: NO_KNOWN_VALUE };
+/** The noValue an anchor on a category total carries: parts that do not add, or a blank part (`known` is false). */
+export function noTotal(adds: boolean, known: boolean): { noValue?: string } {
+  return !adds ? { noValue: NO_STACK_TOTAL } : known ? {} : { noValue: NO_KNOWN_VALUE };
 }
 
 /** What a mean over such a stack says instead of a number. */
@@ -53,7 +56,7 @@ export const VALUELESS_ANCHOR_FIX = 'anchor it on one series ({ categoryId, seri
 
 /** The fix a value-less anchor names for this reason. */
 export function valuelessFix(reason: string): string {
-  return reason === NO_KNOWN_VALUE ? 'give the category its value (0 when it is known to be none), or anchor on a category that has one' : VALUELESS_ANCHOR_FIX;
+  return reason === NO_KNOWN_VALUE ? 'give every part of the category its value (0 when it is known to be none), or anchor on a category that has them all' : VALUELESS_ANCHOR_FIX;
 }
 
 /** The fix both warnings name. */
