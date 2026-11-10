@@ -488,8 +488,9 @@ it('resolves defaultColumnVisibility before the DimSwitch compile and keeps it i
   const host = document.createElement('div');
   const root = createRoot(host);
   act(() => root.render(<DimSwitchChart {...fixture.options as object} defaultColumnVisibility={{ w1: false, pp: false }} data={fixture.data as never} size={{ width: 720 }} />));
-  expect(host.textContent).not.toContain('WEEK 1');
-  expect(host.textContent).toContain('WEEK 2');
+  // A head keeps its short last word on the line with a no-break space.
+  expect(host.textContent).not.toMatch(/WEEK\s1/u);
+  expect(host.textContent).toMatch(/WEEK\s2/u);
   act(() => root.unmount());
 });
 
