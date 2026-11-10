@@ -25,7 +25,7 @@ import {
   labelsOffKeepsNames,
   canvasMargin,
   effectiveFill,
-  markRolePaint,
+  colorRolePaints,
   paintColor,
   rampSlots,
   seriesPaint as themeSeriesPaint,
@@ -53,15 +53,17 @@ export function mekkoPaints(env: MekkoEnv, domain: MekkoDomain, warnings: LintWa
   const css = (p: Paint): string => paintColor(theme, p);
   // A series with its own paint keeps it; the ramp series skip a step that
   // paints the same colour, so no two series of one chart look alike.
+  // Series that share a colour role take distinct steps of it.
+  const roles = colorRolePaints(series);
   const slots = rampSlots(theme, series.map((s): Paint | undefined =>
-    s.fill ? { css: s.fill } : s.colorRole ? markRolePaint(s.colorRole, true) : highlights.has(s.id) ? { token: 'focus' } : undefined,
+    s.fill ? { css: s.fill } : s.colorRole ? roles.get(s.id)! : highlights.has(s.id) ? { token: 'focus' } : undefined,
   ), palette, series.length > 1 ? { labels: series.map((s) => s.label), warnings } : undefined);
   const receding = recedingSeriesId(series, highlights);
   // Two or more plain series beside a highlight recede on the neutral ramp, strongest to quietest.
   const rampIds = recedingRampIds(series, highlights);
   const base = (s: NormSer, dataIdx: number, scenario = s.scenario): Paint => {
     if (s.fill) return { css: s.fill };
-    if (s.colorRole) return markRolePaint(s.colorRole, true);
+    if (s.colorRole) return roles.get(s.id)!;
     if (s.id === receding) return mutedMarkPaint();
     const step = rampIds.indexOf(s.id);
     if (step >= 0) return neutralRampPaint(step, rampIds.length, scenario === 'FC');

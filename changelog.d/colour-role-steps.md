@@ -1,0 +1,4 @@
+### Changed
+
+- Series that share a `colorRole` now draw in distinct steps of that role's colour in line, stacked area, combo, funnel, mekko, butterfly, pyramid, bartable (segments and row groups), waffle, scatter groups, treemap groups and waterfall segments, as column, bar and dot already did. The key shows the same steps. Before, all such series drew in one identical colour, and several of these types warned `series-indistinguishable`. A slope chart steps them only when it draws a key, because its endpoint labels name the lines. Gantt bars, sankey nodes and status cells keep one colour per role, because there the role judges one item and its position names it. Waterfall segments with one label and one role still share one step and one key entry.
+- To bring back the earlier look, give each series its own `fill`: `{ "id": "north", "colorRole": "good", "fill": "#0FA060" }`.

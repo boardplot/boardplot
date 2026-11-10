@@ -54,7 +54,7 @@ import { defaultMeasurer, type FontSpec } from '../../text';
 import {
   canvasMargin,
   effectiveFill,
-  markRolePaint,
+  colorRolePaints,
   paintColor,
   seriesPaint as themeSeriesPaint,
   emphasisWeight,
@@ -189,6 +189,8 @@ export function layoutFunnel(
   }
   const stages = data.categories.map((c, i) => normalizeCategory(c as never, i));
   const plotted = data.series.filter((s) => s.role !== 'reference');
+  // Series that share a colour role take distinct steps of it.
+  const rolePaints = colorRolePaints(plotted);
   if (plotted.length === 0) {
     throw new NormalizeError('empty-data', 'series', 'funnel requires at least one data-role series');
   }
@@ -1188,7 +1190,7 @@ export function layoutFunnel(
     const ramp = rampFunnelPaint(theme, plotted, s, ci ?? 0, paletteRamp ? options.palette : undefined, stages.length);
     if (ramp) return ramp;
     if (s.fill) return { css: s.fill };
-    if (s.colorRole) return markRolePaint(s.colorRole, true);
+    if (s.colorRole) return rolePaints.get(s.id)!;
     const paint = themeSeriesPaint(si, paletteRamp ? options.palette : undefined);
     // A single series whose ramp has fewer steps than stages shades its one
     // paint by stage, as the centred layout does, so no two stages share a fill.
