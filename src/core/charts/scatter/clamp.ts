@@ -396,11 +396,11 @@ export function refuseClampedValueLines(
     const what = line.isMean ? `the mean of the plotted points (${format(line.value)})` : `its value ${format(line.value)}`;
     throw new NormalizeError(
       'clamp-value-line-conflict',
-      `annotations[${line.index}]`,
+      line.ref.name,
       `valueLine '${line.id}' sits at ${what}, beyond ${clampPath('y', beyond.bound)} ${beyond.limit}, so the line would be drawn outside the plot`,
       `move ${clampPath('y', beyond.bound)} past the line, or drop the value line`,
       undefined,
-      ['annotations', line.index],
+      line.ref.segments,
     );
   }
 }

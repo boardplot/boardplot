@@ -14,6 +14,7 @@ import { callTool } from '../src/mcp/server';
 import { getFixtures, getRefusalExamples } from '../src/fixtures';
 import { getChartSchemas, listCharts } from '../src/core/registry';
 import { retireChartSettings } from '../src/core/retired';
+import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { IGNORED_OPTION_KEYS, LEGEND_REFUSED, schemaRefusedKeys, valueAxisRefusal } from '../src/core/schema/capability';
 import { SparklineChart } from '../src/react/charts/sparkline';
 
@@ -376,11 +377,26 @@ describe('refusal contract', () => {
     expect(firstError(dimswitch)).toMatchObject({ code: 'table-sort-segments-unsupported', path: '/options/sort/segments', received: { type: 'string', value: 'desc' } });
   });
 
-  // A panel's annotation refusal counts its index after the registry drops the kinds the panel does not draw, so the grid pointed at another annotation.
-  it('gives a grid panel annotation refusal no pointer rather than one at another annotation', () => {
-    const scatter = { id: 's', type: 'scatter', data: { points: [{ id: 'p', x: 1, y: 1 }] }, options: { valueAxis: { log: 'y' } },
-      annotations: [{ kind: 'indicator100' }, { kind: 'valueLine', value: -1 }] };
-    expect((render({ spec: { type: 'grid', data: { panels: [scatter] } } }).body.errors as Finding[])[0]).toMatchObject({ code: 'log-nonpositive', path: '' });
+  // An annotation refusal counted its index after the registry dropped the kinds the chart does not draw, and named the root list for options.annotations, so it pointed at another annotation or at nothing.
+  it('points an annotation refusal at the annotation the author wrote, in either list and in a grid panel', () => {
+    const annotations = [{ kind: 'indicator100' }, { kind: 'valueLine', value: -1 }];
+    const scatter = { type: 'scatter', data: { points: [{ id: 'p', x: 1, y: 1 }] }, options: { valueAxis: { log: 'y' } } };
+    const firstError = (spec: object) => (render({ spec }).body.errors as (Finding & { received?: unknown })[])[0];
+    const received = { type: 'object' };
+    expect(firstError({ ...scatter, annotations })).toMatchObject({ code: 'log-nonpositive', path: '/annotations/1', displayPath: 'annotations[1]', received });
+    expect(firstError({ ...scatter, options: { ...scatter.options, annotations } })).toMatchObject({ path: '/options/annotations/1', displayPath: 'options.annotations[1]', received });
+    expect(firstError({ type: 'grid', data: { panels: [{ id: 's', ...scatter, annotations }] } })).toMatchObject({ path: '/data/panels/0/annotations/1', received });
+  });
+
+  // The grid recorded a panel's resolved options in its geometry with the annotations' origin tag, an engine-internal key a caller receives through measure and onGeometry.
+  it('records grid panel annotations without their origin', () => {
+    const panel = { id: 'p', type: 'line', data: { categories: [{ id: 'a' }, { id: 'b' }], series: [{ id: 's', values: [1, 2] }] }, annotations: [{ kind: 'valueLine', value: 1.5 }] };
+    for (const columns of [undefined, [1]]) {
+      const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'grid', data: { panels: [panel] }, options: { size: { width: 960, height: 600 }, ...(columns ? { columns } : {}) } } as never)) as Node;
+      const recorded = geometry.marks.panels[0].chart.options.annotations[0];
+      expect(recorded).toEqual({ kind: 'valueLine', value: 1.5 });
+      expect(Object.getOwnPropertySymbols(recorded)).toEqual([]);
+    }
   });
 
   // A likert labelPosition refusal from its inner bar lost the pointer to /options/labelPosition that main gave.

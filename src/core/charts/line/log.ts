@@ -2,6 +2,7 @@ import { NormalizeError } from '../../normalize/shared';
 import type { JsonPatchOperation } from '../../diagnostics/jsonPatch';
 import type { Category, LineChartData } from '../../types/data';
 import type { NormSer } from './context';
+import { annotationRef } from '../../types/annotations';
 import { lineMeans } from './means';
 import type { LineOptions } from './types';
 
@@ -11,15 +12,17 @@ function conflict(path: string, reason: string, fix: JsonPatchOperation[] = drop
   throw new NormalizeError('log-line-conflict', path, reason, 'remove valueAxis.log or the incompatible option', fix, path.split('.'));
 }
 
-function nonpositive(path: (string | number)[], value: number | string): never {
+function nonpositive(path: (string | number)[], value: number | string, pointer = path): never {
   const name = path.map((part, index) => typeof part === 'number' ? `[${part}]` : `${index ? '.' : ''}${part}`).join('');
   throw new NormalizeError('log-nonpositive', name,
     `${name} is ${value}; a log scale has no place for zero or a negative value`,
-    'use a value above zero or remove valueAxis.log', dropLog, path);
+    'use a value above zero or remove valueAxis.log', dropLog, pointer);
 }
 
-function annotationPath(index: number): (string | number)[] {
-  return ['options', 'annotations', index];
+/** A field of an annotation: named and pointed at where the author wrote it. One without an origin keeps its drawn position as its name and gets no pointer. */
+function annotationField(ann: unknown, index: number, field: (string | number)[], value: number): never {
+  const { segments } = annotationRef(ann, index);
+  return segments.length ? nonpositive([...segments, ...field], value) : nonpositive(['options', 'annotations', index, ...field], value, []);
 }
 
 /** Check source positions before a continuous x axis sorts the readings. */
@@ -76,17 +79,16 @@ export function validateLineLog(options: LineOptions, series: NormSer[]): void {
     }
   });
   options.annotations?.forEach((ann, i) => {
-    const path = annotationPath(i);
-    if (ann.kind === 'valueLine' && typeof ann.value === 'number' && ann.value <= 0) nonpositive([...path, 'value'], ann.value);
+    if (ann.kind === 'valueLine' && typeof ann.value === 'number' && ann.value <= 0) annotationField(ann, i, ['value'], ann.value);
     if (ann.kind === 'band' && (ann.style === 'corridor' || ann.style === 'tolerance' || ann.style === 'attainment')) {
       for (const key of ['value', 'low', 'high'] as const) {
         const value = ann[key];
-        if (value !== undefined && value <= 0) nonpositive([...path, key], value);
+        if (value !== undefined && value <= 0) annotationField(ann, i, [key], value);
       }
     }
     if (ann.kind === 'valueLine' && typeof ann.tolerance === 'object') {
       for (const key of ['low', 'high'] as const) {
-        if (ann.tolerance[key] <= 0) nonpositive([...path, 'tolerance', key], ann.tolerance[key]);
+        if (ann.tolerance[key] <= 0) annotationField(ann, i, ['tolerance', key], ann.tolerance[key]);
       }
     }
   });
@@ -104,6 +106,6 @@ export function validateLogTolerances(options: LineOptions, series: NormSer[], c
       : undefined;
     const value = typeof ann.value === 'number' ? ann.value : scope && 'value' in scope ? scope.value : meanValue;
     const sourceIndex = sourceAnnotations?.indexOf(ann) ?? i;
-    if (value !== undefined && value - ann.tolerance <= 0) nonpositive([...annotationPath(sourceIndex < 0 ? i : sourceIndex), 'tolerance'], value - ann.tolerance);
+    if (value !== undefined && value - ann.tolerance <= 0) annotationField(ann, sourceIndex < 0 ? i : sourceIndex, ['tolerance'], value - ann.tolerance);
   });
 }
