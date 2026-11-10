@@ -1895,9 +1895,27 @@ function sourceColor(theme: Theme, source: ThemePaintSource): string {
     const washed = amount ? tint(base, amount, theme.color.background) : base;
     if (source.kind === 'visible-tint' && source.darkApartFrom && darkPage(theme)) return washApart(theme, base, amount, source.darkApartFrom);
     if (source.kind === 'visible-tint' && source.darkMatchLight && darkPage(theme)) return washLikeLight(theme, base, amount);
-    return source.kind === 'visible-tint' && source.apart !== undefined && typeof source.amount === 'number' && amount < source.amount
+    const step = source.kind === 'visible-tint' && source.apart !== undefined && typeof source.amount === 'number' && amount < source.amount
       ? apartStep(theme, base, washed, source.apart)
       : washed;
+    const apartFrom = source.kind === 'visible-tint' ? source.apartFrom : undefined;
+    if (!apartFrom) return step;
+    // The least move from the step, toward the page or toward the base, that
+    // reads apart from each other mark and stays visible on the page. A
+    // visible mark comes first: with no such candidate, the visible one
+    // nearest to the distance is kept, and the adjacent-colour check says so.
+    const others = [apartFrom.paint].flat().map((paint) => paintColor(theme, paint));
+    const floor = source.kind !== 'visible-tint' ? 0 : source.floor === 'mark' ? markVisibilityFloor(theme.color.background) : source.floor;
+    const nearest = (color: string) => Math.min(...others.map((other) => palettePerceptualDistance(color, other)));
+    let best = step;
+    for (let percent = 0; percent < 100; percent++) {
+      for (const candidate of [mixColors(theme.color.background, step, percent / 100), mixColors(base, step, percent / 100)]) {
+        if (contrastRatio(candidate, theme.color.background) < floor) continue;
+        if (nearest(candidate) >= apartFrom.distance) return candidate;
+        if (nearest(candidate) > nearest(best)) best = candidate;
+      }
+    }
+    return best;
   }
   if (source.kind === 'brighter-pole') return brighterPole(theme);
   if (source.kind === 'table-ground') return cellGroundColor(theme, source.ground);

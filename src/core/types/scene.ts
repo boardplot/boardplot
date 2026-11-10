@@ -159,6 +159,13 @@ export type ThemePaintSource =
        */
       darkApartFrom?: { paint: Paint | Paint[]; distance: number };
       /**
+       * On any page, a wash that has to read apart from the marks beside it
+       * (a likert option next to the other side or the neutral): when the
+       * wash sits closer than `distance` OKLab to one of them, the amount
+       * walks back toward the base until it does not.
+       */
+      apartFrom?: { paint: Paint | Paint[]; distance: number };
+      /**
        * On a dark page, the wash deepens toward the base until its APCA
        * contrast with the page reaches the contrast the same wash draws on a
        * white page, so a traffic-light ground reads as clearly in dark as in
