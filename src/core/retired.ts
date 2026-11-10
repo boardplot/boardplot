@@ -366,6 +366,8 @@ export function retireChartSettings<C extends { options?: unknown; data?: unknow
     if (entry.types && !entry.types.includes(type)) continue;
     for (const at of places(next, entry.at.split('.'))) {
       const value = readAt(next, at);
+      // An empty annotation list draws what no list draws: it goes without a warning.
+      if (ANNOTATIONS_RETIRED.includes(type) && at.at(-1) === 'annotations' && Array.isArray(value) && value.length === 0) { next = setAt(next, at, undefined); continue; }
       const scalar = typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean';
       if (entry.values && !(scalar && Object.hasOwn(entry.values, String(value)))) continue;
       const successor = entry.values ? entry.values[String(value)] : value;
