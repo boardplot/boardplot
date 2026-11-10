@@ -18,6 +18,7 @@ import { renderSvg } from '../src/core/svg/renderSvg';
 import { LineChart } from '../src/react/charts/line';
 import { TableChart } from '../src/react/charts/table';
 import { prepareChart } from '../src/react/prepare';
+import { render } from '../src/cli/render';
 
 describe('ordinary number examples', () => {
   it('compiled table formats preserve small-value modes and lift counts on reused values', () => {
@@ -896,6 +897,30 @@ describe('a unit that names a scale takes no second one', () => {
     const panel = (id: string) => ({ id, type: 'column', title: id, data: { categories: ['FY24', 'FY25'], series: [{ id: 'rev', label: 'Revenue', values: [20_000_000, 44_000_000] }] } });
     const texts = drawnTexts('grid', { panels: [panel('North'), panel('South')] }, { unit: '$m', columns: 2, sharedAxis: 'none', size: { width: 720 } });
     expect(texts).toContain('20,000,000');
+    expect(scaled(texts)).toEqual([]);
+  });
+
+  // Kpi panels printed the inherited "$m" beside their labels, so the grid dropped its own unit line and a table panel beside them showed no unit.
+  it('keeps the grid unit line when kpi panels take its scale unit', () => {
+    const table = { columns: [{ id: 'label', kind: 'rowLabel', label: 'Region' }, { id: 'fy25', kind: 'value', label: 'FY25' }], rows: [{ id: 'north', label: 'North', cells: { fy25: 8.5 } }] };
+    const texts = drawnTexts('grid', { panels: [{ id: 'k', type: 'kpi', data: { label: 'Orders', value: 120 }, options: { title: 'Orders' } },
+      { id: 't', type: 'table', data: table, options: { title: 'By region' } }] }, { title: 'Revenue', unit: '$m', columns: 2, size: { width: 720 } });
+    expect(texts).toContain('$m');
+    expect(texts.filter(text => text.includes('in $m'))).toEqual([]);
+  });
+
+  // A panel whose series named "%" took the grid's "$m" and was refused with unit-conflict.
+  it('leaves a panel that names a unit in its data to that unit', () => {
+    const panel = { id: 'rate', type: 'column', data: { categories: ['A'], series: [{ id: 's', unit: '%', values: [25] }] } };
+    const result = render({ spec: { type: 'grid', data: { panels: [panel] }, options: { unit: '$m', sharedAxis: 'none', sharedScale: false, size: { width: 960, height: 600 } } }, return: [] } as never);
+    expect((result.body as { errors?: { code: string }[] }).errors).toEqual([]);
+  });
+
+  // A combo line that named no unit beside a "$m" column printed "24M": the unit check reads it in "$m", the formatter did not.
+  it('reads a unit-less combo series in the unit its group names', () => {
+    const data = { categories: ['Q1'], series: [{ id: 'revenue', unit: '$m', values: [12_000_000] }, { id: 'cost', kind: 'line', values: [24_000_000] }] };
+    const texts = drawnTexts('combo', data, { axisTitles: { primary: 'Amount ($m)' }, valueAxis: { show: true, min: 0, max: 30_000_000, tickStep: 5_000_000 }, size: { width: 960, height: 600 } });
+    expect(texts).toContain('24,000,000');
     expect(scaled(texts)).toEqual([]);
   });
 

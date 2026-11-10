@@ -375,7 +375,7 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
       ...(uniformLineEndpointLegend && def.type === 'line'
         ? { gridEndpointIdentity: 'legend' as const }
         : {}),
-      ...inheritedScaleUnit(panelOpts, options.unit),
+      ...inheritedScaleUnit(panelOpts, panel.data, options.unit),
       target: options.target, theme: panelOpts.theme ?? options.theme,
       locale: panelOpts.locale ?? options.locale,
       ...hatchStrengthFor(panelOpts as Record<string, unknown>, options),

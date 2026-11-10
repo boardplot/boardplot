@@ -450,6 +450,8 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
       cardGaps: true,
       ...frameTextOptions(options),
       subtitle,
+      // The label in the subtitle seat is the card's, not an authored measure: under unitShown the host prints the unit.
+      ...(options.unitShown === true && resolveSubtitle(options.subtitle) === undefined ? { unit: undefined } : {}),
       theme: frameTheme,
       measure,
     },

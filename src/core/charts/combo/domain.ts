@@ -786,13 +786,14 @@ export function resolveComboDomain(data: ChartData, options: ComboOptions, warni
   // acknowledged secondary group the unit its series share.
   const rasterFor = (axis: 'primary' | 'secondary') => {
     const group = seriesNorm.filter((s) => (s.axis ?? 'primary') === axis);
-    const units = new Set(group.map((s) => s.unit));
+    // A series that names no unit reads in the unit its group names, as the unit check reads it ("24M" beside "$m" revenue).
+    const units = new Set(group.flatMap((s) => (s.unit === undefined || s.unit === '%' || s.vals.every((val) => val.isPct) ? [] : [s.unit])));
     // An authored format holds both axes' labels to one scale and one decimal count (exampleSpec).
     const printed = axis === 'primary' && options.format ? seriesNorm.filter((s) => !s.format) : group;
     const shared = units.size === 1 ? [...units][0] : undefined;
     // A secondary group that names no unit reads in the chart unit the subtitle prints; one that names a scale
     // ("$m") gives it no second one ("12M" under "in $m").
-    const unnamed = units.size === 1 && shared === undefined && unitMagnitude(options.unit) !== undefined ? options.unit : undefined;
+    const unnamed = units.size === 0 && unitMagnitude(options.unit) !== undefined ? options.unit : undefined;
     return seriesRasterFormatter(axis === 'primary' ? options.format : undefined, printed.flatMap((s) => s.vals.filter((val) => !val.isPct).map((val) => val.v)),
       options.locale?.language, axis === 'primary' ? (options.unit ?? shared) : shared ?? unnamed, options.target,
       axis === 'primary' ? (options as { defaultFormat?: string }).defaultFormat : undefined, columns.length > 1);

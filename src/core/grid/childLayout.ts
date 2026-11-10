@@ -25,12 +25,17 @@ export function smallestKpiValueSize(children: Geometry[]): number | undefined {
   return sizes.length > 1 && maxOf(sizes) > minOf(sizes) ? minOf(sizes) : undefined;
 }
 
+/** Whether a panel's data names a unit anywhere: a series unit, a bar table panel unit. */
+const namesUnit = (value: unknown): boolean => Array.isArray(value) ? value.some(namesUnit)
+  : typeof value === 'object' && value !== null && Object.entries(value).some(([key, entry]) => (key === 'unit' ? typeof entry === 'string' : namesUnit(entry)));
+
 /**
  * A grid unit that names a scale ("$m") is the unit of a panel that names none, and the grid prints it:
  * the panel's numbers follow its unit rule and take no second scale ("20M" under "$m").
+ * A panel that names a unit in its options or its data keeps its own.
  */
-export function inheritedScaleUnit(panelOptions: { unit?: unknown }, gridUnit: string | undefined): { unit?: string; unitShown?: true } {
-  return panelOptions.unit === undefined && unitMagnitude(gridUnit) !== undefined ? { unit: gridUnit, unitShown: true } : {};
+export function inheritedScaleUnit(panelOptions: { unit?: unknown }, panelData: unknown, gridUnit: string | undefined): { unit?: string; unitShown?: true } {
+  return panelOptions.unit === undefined && !namesUnit(panelData) && unitMagnitude(gridUnit) !== undefined ? { unit: gridUnit, unitShown: true } : {};
 }
 
 export function layoutChildChart(

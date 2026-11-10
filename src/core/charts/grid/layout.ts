@@ -1678,7 +1678,7 @@ function layoutAuthoredChild(
         : {}),
       // A status panel resolves its hatch strength in its own layout.
       ...hatchStrengthFor(panelOptions, parentOptions),
-      ...inheritedScaleUnit(panelOptions, parentOptions.unit),
+      ...inheritedScaleUnit(panelOptions, panel.data, parentOptions.unit),
       theme: panelOptions.theme ?? parentOptions.theme,
       target: parentOptions.target,
       size: { width: slot.w, height: slot.h },
