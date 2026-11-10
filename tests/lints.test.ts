@@ -186,6 +186,18 @@ describe('honesty lints', () => {
     expect((grouped.body as { errors: unknown[] }).errors[0]).toMatchObject({ path: '/options/sharesOfOneWhole', fix: [{ op: 'remove', path: '/options/sharesOfOneWhole' }] });
   });
 
+  // Shares that add to one whole in every category warned that percentages do not stack.
+  it('non-additive-stack stays quiet when the parts add to one whole in every category', () => {
+    const lint = (web: number[], app: number[], variant = 'stacked100') => runDocLints({ charts: [chart({ type: 'column', options: { title: 'Web leads', variant },
+      data: { categories: [{ id: 'a' }, { id: 'b' }], series: [{ id: 'web', label: 'Web share', unit: '%', values: web }, { id: 'app', label: 'App share', unit: '%', values: app }] } } as never)] })
+      .filter((warning) => warning.code === 'non-additive-stack');
+    expect(lint([0.55, 0.62], [0.45, 0.38])).toEqual([]);
+    expect(lint([55, 61], [45, 40], 'stacked')).toEqual([]);
+    // Percents of different wholes still warn, and so does a blank part.
+    expect(lint([12, 18], [30, 25])).toHaveLength(1);
+    expect(lint([55, 62], [45, null as never])).toHaveLength(1);
+  });
+
   it('duplicate-category-labels triggers on identical display labels and clears on unique labels', () => {
     const duplicate = {
       categories: [{ id: 'a', label: 'North' }, { id: 'b', label: 'North' }],

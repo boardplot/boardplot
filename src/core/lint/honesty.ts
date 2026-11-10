@@ -107,6 +107,15 @@ export function runHonestyLints(charts: readonly ScopedLintChart[]): DocLintWarn
     const offending = stacked.filter((series) => statedInPercent(labelOf(series) ?? '', unitOf(series),
       cellsOfSeries(series).some((cell) => cell !== null && typeof cell === 'object' && 'pct' in cell)));
     if (offending.length === 0) continue;
+    // Parts that add to one whole (100, or 1 for fractions) in every
+    // category, within half a unit of rounding per part, are shares of
+    // that whole. A blank part leaves the sum unknown.
+    const sums = categoriesOf(chart).map((category, index) => stacked.reduce<number | null>((sum, series) => {
+      const cell = cellAt(series, category.id, index);
+      return sum === null || cell === null ? null : sum + cell;
+    }, 0));
+    const near = (whole: number) => sums.every((sum) => sum !== null && Math.abs(sum - whole) <= (whole / 200) * stacked.length);
+    if (sums.length > 0 && (near(100) || near(1))) continue;
     warnings.push(
       warning(
         chart,
