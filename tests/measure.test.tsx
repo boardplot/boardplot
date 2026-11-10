@@ -38,6 +38,15 @@ describe('shared request measurement', () => {
   it('names no height in a tight-spacing patch where the height is open', () => adviceHolds('cohort', 'cumulative-conversion-pure', { width: 320 }, 'table-tight-spacing'));
   // The table's minimum moves with the frame, so the minimum read at the asked width was not a width that holds.
   it('verifies a tight-spacing size by laying the table out at it', () => adviceHolds('table', 'fatigue-cell-encodings', { width: 720 }, 'table-tight-spacing'));
+  // Render named the table's minimum at the asked width, and at that width the table tightened again and asked for more.
+  it('checks a rendered tight-spacing size once at that size', () => {
+    const fixture = getFixtures('table').find(f => f.id === 'fatigue-cell-encodings')!;
+    const request = { type: 'table', data: fixture.data, options: { ...fixture.options, size: { width: 720 } } };
+    const render = (input: typeof request) => layoutResolvedRequest(resolveChartRequest(input)).warnings.find(w => w.code === 'table-tight-spacing');
+    const warning = render(request);
+    expect(warning?.fix).toBeDefined();
+    expect(render(applyRepair(request, warning!.fix))).toBeUndefined();
+  });
   // A pinned height too small for the asked notes was probed without them, but at the advised height the notes draw again.
   it('probes plot advice with the notes the request asks for', () => adviceHolds('pareto', 'defect-causes-method-note', { width: 400, height: 300 }, 'plot-under-floor'));
 

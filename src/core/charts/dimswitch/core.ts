@@ -11,7 +11,7 @@ import { compileDimSwitch, currentDimSwitchOptions, dimSwitchTableWarnings, dims
 import type { DimSwitchData, DimSwitchOptions, DimSwitchDerived } from './types';
 import { withUnprintedCells } from './claims';
 import { minOf } from '../../arrays';
-import { spacingNeed } from '../tableFit';
+import { checkedTightAdvice } from '../tableFit';
 import { hostedLayout } from '../../normalize/innerRefusal';
 
 export function resolveDimSwitch(data: DimSwitchData, options: DimSwitchOptions = {}, form: DimSwitchForm = {}) {
@@ -147,7 +147,7 @@ function layoutDimSwitch(data: DimSwitchData, options: DimSwitchOptions, forms: 
   }
   // The check lays out one more card. Past PROBE_PERIODS that layout is the cost of the whole request, and such a
   // table already shows only its latest periods, so its advice stays unchecked.
-  return checkedTightAdvice(best.geometry,best.shown<periods && periods<=PROBE_PERIODS ? (size) => next?.warnings.some(warning=>warning.code==='table-tight-spacing') ? next : layoutForm(data,{...options,size,
+  return checkedCardAdvice(best.geometry,best.shown<periods && periods<=PROBE_PERIODS ? (size) => next?.warnings.some(warning=>warning.code==='table-tight-spacing') ? next : layoutForm(data,{...options,size,
     [TARGET_SIZE]:{sizePx:{width:size.width,height:size.height ?? Math.round(size.width*9/16)},fixed:{width:true,height:size.height!==undefined}}} as DimSwitchOptions,{card:true,hide:periods-best.shown-1},forms) : undefined);
 }
 
@@ -160,19 +160,11 @@ type AdvisedSize = { width: number; height?: number };
  * that keeps compact spacing. `nextCard` gives that card: the one the period search already laid out where it
  * carries an advice, else a layout at the advised size.
  */
-function checkedTightAdvice(geometry: Form, nextCard?: (size: AdvisedSize) => Form): Form {
-  const at=geometry.warnings.findIndex(warning=>warning.code==='table-tight-spacing');
-  const advice=geometry.warnings[at]?.fix?.[0];
-  if (at<0 || advice?.op!=='replace' || !nextCard) return geometry;
-  const size=advice.value as AdvisedSize;
-  const next=nextCard(size);
-  if (size.width<(next.sizing?.minWidth ?? Infinity)) return geometry;
-  const again=next.warnings.find(warning=>warning.code==='table-tight-spacing')?.fix?.[0];
-  if (again?.op!=='replace') return geometry;
-  const warning=geometry.warnings[at]!;
-  const swap=(text: string) => text.replace(spacingNeed(size),spacingNeed(again.value as AdvisedSize));
-  geometry.warnings[at]={...warning,message:swap(warning.message),...(warning.suggest===undefined ? {} : {suggest:swap(warning.suggest)}),fix:[again]};
-  return geometry;
+function checkedCardAdvice(geometry: Form, nextCard?: (size: AdvisedSize) => Form): Form {
+  return checkedTightAdvice(geometry, nextCard && ((size) => {
+    const next=nextCard(size);
+    return size.width<(next.sizing?.minWidth ?? Infinity) ? undefined : next;
+  }));
 }
 
 const fixedFits=(geometry: Form) => geometry.size.width >= (geometry.sizing?.minWidth ?? 0);

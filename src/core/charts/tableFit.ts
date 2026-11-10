@@ -57,7 +57,36 @@ export function tightSpacingWarning(
     field: ['options', 'size'], fix: [{ op: 'replace', path: '/options/size', value }] };
 }
 
+type AdvisedSize = { width: number; height?: number };
+
 /** The size a 'table-tight-spacing' warning names, as its message and suggestion print it. */
-export function spacingNeed(value: { width: number; height?: number }): string {
+function spacingNeed(value: AdvisedSize): string {
   return value.height === undefined ? `${value.width} px of width` : `${value.width} × ${value.height} px`;
+}
+
+/** The size a 'table-tight-spacing' warning advises in its patch. */
+export function tightAdvice(warning: LintWarning | undefined): AdvisedSize | undefined {
+  const op = warning?.code === 'table-tight-spacing' ? warning.fix?.[0] : undefined;
+  return op?.op === 'replace' ? op.value as AdvisedSize : undefined;
+}
+
+/** The warning with its advice moved from `from` to `to`: message, suggestion and patch. */
+export function withTightAdvice(warning: LintWarning, from: AdvisedSize, to: AdvisedSize): LintWarning {
+  const swap = (text: string) => text.replace(spacingNeed(from), spacingNeed(to));
+  return { ...warning, message: swap(warning.message), ...(warning.suggest === undefined ? {} : { suggest: swap(warning.suggest) }),
+    fix: [{ op: 'replace', path: '/options/size', value: to }] };
+}
+
+/**
+ * Render's one check of the tight-spacing advice: the minimum moves with the frame, so `nextAt` lays the chart
+ * out at the advised size, and where that layout tightens again, its advice replaces the first. One layout,
+ * never a loop: measure follows the advice until it holds. `nextAt` answers undefined where no check applies.
+ */
+export function checkedTightAdvice<G extends { warnings: LintWarning[] }>(geometry: G, nextAt?: (size: AdvisedSize) => { warnings: LintWarning[] } | undefined): G {
+  const at = geometry.warnings.findIndex(warning => warning.code === 'table-tight-spacing');
+  const size = tightAdvice(geometry.warnings[at]);
+  if (!size || !nextAt) return geometry;
+  const again = tightAdvice(nextAt(size)?.warnings.find(warning => warning.code === 'table-tight-spacing'));
+  if (again) geometry.warnings[at] = withTightAdvice(geometry.warnings[at]!, size, again);
+  return geometry;
 }

@@ -31,7 +31,7 @@ import type { InteractionScope } from './a11y/types';
 import { addWhereAbsent } from './diagnostics/jsonPatch';
 import { timeAnnotationAnchors } from './timeAxis';
 import { retireChartSettings } from './retired';
-import { spacingNeed } from './charts/tableFit';
+import { checkedTightAdvice, tightAdvice, withTightAdvice } from './charts/tableFit';
 import type { OptionsInput } from './types/optionInput';
 import { normalizeOptionShapes } from './normalize/optionShapes';
 
@@ -320,7 +320,14 @@ function layoutRequest(request: ResolvedChartRequest): LayoutResult {
   const finish = (result: LayoutResult): LayoutResult => (request.options as { [PLAN_ONLY]?: boolean })[PLAN_ONLY]
     ? result : withClipWarnings(result, request.fontMetrics);
   const table = request.type === 'table' || request.type === 'dimswitch';
-  return finish(afterFirstLayout(request, layoutOnce(request), layoutOnce, table ? layoutWidthProbe : layoutOnce, layoutPlain));
+  const result = afterFirstLayout(request, layoutOnce(request), layoutOnce, table ? layoutWidthProbe : layoutOnce, layoutPlain);
+  // A table's tight-spacing size is checked once at that size. The dimswitch checks its own card in its layout;
+  // the cohort's render advice is an estimate that errs wide, and its check would cost two layouts.
+  if (request.type !== 'table' || isRefused(result)) return finish(result);
+  return finish(checkedTightAdvice(result, (size) => {
+    const next = layoutPlain({ ...request, options: { ...request.options, size } as RequestOptions });
+    return isRefused(next) ? undefined : next;
+  }));
 }
 
 /**
@@ -915,22 +922,19 @@ function measuredPlotAdvice(request: ResolvedChartRequest, result: LayoutResult,
  * four layouts, the warning keeps no patch.
  */
 function measuredTightAdvice(request: ResolvedChartRequest, result: LayoutResult, layoutAt: LayoutCall<any, any, any>): void {
-  const warning = result.warnings.find(w => w.code === 'table-tight-spacing' && w.fix !== undefined);
+  const warning = result.warnings.find(w => tightAdvice(w) !== undefined);
   if (!warning || isRefused(result)) return;
-  const sizeOf = (w: LintWarning) => { const op = w.fix?.find(fix => fix.op === 'replace' && fix.path === '/options/size'); return op && 'value' in op ? op.value as { width: number; height?: number } : undefined; };
-  const asked = sizeOf(warning);
-  let size = asked;
+  const asked = tightAdvice(warning)!;
+  let size: ReturnType<typeof tightAdvice> = asked;
   for (let pass = 0; size && pass < 4; pass++) {
     const probe = layoutAt({ ...request.options, size });
     const again = isRefused(probe) ? undefined : probe.warnings.find(w => w.code === 'table-tight-spacing');
     if (!isRefused(probe) && !again) {
-      if (size === asked) return;
-      const swap = (text: string) => text.replace(spacingNeed(asked!), spacingNeed(size!));
-      const settled: LintWarning = { ...warning, message: swap(warning.message), ...(warning.suggest === undefined ? {} : { suggest: swap(warning.suggest) }), fix: [{ op: 'replace', path: '/options/size', value: size }] };
+      const settled = size === asked ? warning : withTightAdvice(warning, asked, size);
       result.warnings = result.warnings.map(w => w === warning ? settled : w);
       return;
     }
-    size = again && sizeOf(again);
+    size = tightAdvice(again);
   }
   const { fix: _fix, ...rest } = warning;
   result.warnings = result.warnings.map(w => w === warning
