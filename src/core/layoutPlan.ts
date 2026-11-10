@@ -17,7 +17,7 @@ const keyFunction = (_key: string, value: unknown): unknown => {
 type TextPlan = { font: FontSpec; texts: Map<string, TextSize> };
 type FontPlans = { families: Map<FontSpec['family'], Map<number, TextPlan[]>>; last?: TextPlan };
 type InputKeyReader = (value: object) => string | undefined;
-type Inputs = { json: WeakMap<object, string>; themes: WeakMap<object, number>; texts: WeakMap<TextMeasurer, FontPlans>; exactKeys?: Map<InputKeyReader, WeakMap<object, string | undefined>> };
+type Inputs = { json: WeakMap<object, string>; themes: WeakMap<object, number>; texts: WeakMap<TextMeasurer, FontPlans>; exactKeys?: Map<InputKeyReader, WeakMap<object, string | undefined>>; results?: WeakMap<object, Map<string, unknown>> };
 let inputs: Inputs | undefined;
 
 /** Synchronous probes share snapshots; the next public call reads mutable inputs again. */
@@ -37,6 +37,21 @@ export function memoExactInputKey(value: object, read: InputKeyReader): string |
   const key = read(value);
   keys.set(value, key);
   return key;
+}
+
+/**
+ * One result per scope and key during a request: a repeat returns the first result. Outside a request
+ * it computes every time. The caller owns the key (all inputs) and returns a value nobody mutates.
+ */
+export function requestMemo<V>(scope: object, key: string, compute: () => V): V {
+  if (!inputs) return compute();
+  const results = inputs.results ??= new WeakMap();
+  let byKey = results.get(scope);
+  if (!byKey) results.set(scope, byKey = new Map());
+  if (byKey.has(key)) return byKey.get(key) as V;
+  const value = compute();
+  byKey.set(key, value);
+  return value;
 }
 
 function inputJson(value: object): string {

@@ -9,6 +9,7 @@ import { structureCount } from '../../structureCounts';
 import { boundsOf, type Rect } from '../../geometry';
 import { fmtPathNumber as fmtN } from '../../curve';
 import { inferLinearYDomain } from '../../axis';
+import { optionKey, requestMemo } from '../../layoutPlan';
 import { frameTextOptions, normalizeLegendOption, slotDemandHeight, solveFrame, type FrameInput, type LegendItemInput } from '../../frame';
 import { collectGridLegendItems, gridLegendInput, gridPanelsKeepEndNames, hatchStrengthFor } from '../../grid/gridKey';
 import { balanceVarianceTierPlots, VARIANCE_TIER, varianceTierWeights } from '../../grid/varianceTiers';
@@ -2629,6 +2630,26 @@ function probePanelGeometry(
   }, definition.layout as (data: unknown, options: unknown) => LayoutResult);
 }
 
+/**
+ * The y domain of a panel probe. Every grid pass of a request (size search, card steps, unit line pass)
+ * probes each panel at the same fixed size, so the domain is computed once per request. The key holds
+ * every input of probePanelGeometry; the probe size and panel defaults are constant.
+ */
+function probedPanelDomain(
+  panel: GridPanelSpec,
+  options: GridLayoutOptions,
+  valueAxis: Record<string, unknown>,
+): readonly [number, number] | null {
+  const key = optionKey({
+    type: panel.type, data: panel.data, options: panel.options, annotations: panel.annotations,
+    theme: options.theme, measure: options.measure, typeClass: gridTypeClass(options), valueAxis,
+  });
+  return requestMemo(probedPanelDomain, key, () => {
+    const probe = probePanelGeometry(panel, options, valueAxis);
+    return probe && !probe.refused ? inferLinearYDomain(probe) : null;
+  });
+}
+
 function panelValueAxisBreak(panel: GridPanelSpec): { from: number; to: number } | null {
   const valueAxis = isRecord(panel.options?.valueAxis) ? panel.options.valueAxis : undefined;
   const raw = valueAxis && isRecord(valueAxis.break) ? valueAxis.break : null;
@@ -2699,8 +2720,8 @@ function resolveSharedYDomains(
     const panelOptions = panel.options ?? {};
     const valueAxis = isRecord(panelOptions.valueAxis) ? panelOptions.valueAxis : {};
     const { break: _ignoredBreak, ...axisWithoutBreak } = valueAxis;
-    const probe = probePanelGeometry(panel, options, { ...axisWithoutBreak, show: true });
-    return probe && !probe.refused ? inferLinearYDomain(probe) : null;
+    const domain = probedPanelDomain(panel, options, { ...axisWithoutBreak, show: true });
+    return domain && [domain[0], domain[1]];
   });
 
   /*
