@@ -9,7 +9,7 @@ import { ANNOTATION_KIND_PURPOSES, type AnnotationKind } from './types/annotatio
 import { ANCHOR_FORM, CELL_CONTRACT, fieldLine, firstClause, optionFields, PRESET_THEME_NAMES, sharedOptionFields, shortSummaryFor, useCasesFor, chartIds, chartIdOf, compactDesignCard, designCardFor } from './catalog';
 import { themeFieldReference } from './themeFields';
 import { themes } from './theme';
-import { IGNORED_OPTION_KEYS, LEGEND_DRAWS, schemaRefusedKeys, valueAxisRefusal } from './schema/capability';
+import { IGNORED_ON, IGNORED_OPTION_KEYS, LEGEND_DRAWS, schemaRefusedKeys, valueAxisRefusal } from './schema/capability';
 
 /** A bare chart's `name` as describe shows it: it sits beside data and options, in neither. Kept here, off the browser bundle. */
 const BARE_NAME_FIELD = {
@@ -377,6 +377,7 @@ export function typeOptions(type: string): { own: SchemaFieldReference[]; shared
     ...schemaRefusedKeys(type).options.filter(key => IGNORED_OPTION_KEYS.has(key) || key === 'legend'),
     ...['show', 'gridlines'].filter(key => valueAxisRefusal(type, key) !== undefined).map(key => `valueAxis.${key}`),
     ...(Object.hasOwn(LEGEND_DRAWS, type) ? ["legend: 'none'", "legend: 'auto'"] : []),
+    ...Object.keys(IGNORED_ON).filter(path => IGNORED_ON[path]!.types.includes(type)),
   ];
   const ownPaths = new Set(own.map(field => field.path));
   const shared = advertised.filter(field => !/[.[]/.test(field.path) && !refused(field.path)
@@ -481,6 +482,9 @@ export function describeField(type: string, path: string) {
     const named = matches.find((field) => pathKey(field.path) === key)?.path ?? key;
     const refused = matches.find((field) => field.type === 'never' && pathKey(field.path) === key);
     if (refused) return { type: definition.type, part: half, path: named, refused: refused.description };
+    // A setting the type accepts and removes reads like a refused key the type ignores (sort on a line).
+    const ignored = half === 'options' && Object.entries(IGNORED_ON).find(([at, { types }]) => types.includes(definition.type) && (key === at || key.startsWith(`${at}.`)));
+    if (ignored) return { type: definition.type, part: half, path: named, refused: `Ignored on '${definition.type}' with an option-ignored warning: ${ignored[1].does}` };
     return { type: definition.type, part: half, path: named, fields: fieldRows(matches, half === 'data') };
   }
   if (!part && key === 'name') return { type: definition.type, part: 'spec' as const, path: 'name', fields: [{ ...BARE_NAME_FIELD }] };

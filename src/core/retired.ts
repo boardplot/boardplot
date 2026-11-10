@@ -7,7 +7,7 @@
  */
 
 import { addWhereAbsent, toJsonPointer } from './diagnostics/jsonPatch';
-import { ANNOTATIONS_RETIRED, IGNORED_OPTION_KEYS, LEGEND_REFUSED, schemaRefusedKeys, valueAxisOnly, valueAxisRefusal } from './schema/capability';
+import { ANNOTATIONS_RETIRED, IGNORED_ON, IGNORED_OPTION_KEYS, LEGEND_REFUSED, schemaRefusedKeys, valueAxisOnly, valueAxisRefusal } from './schema/capability';
 import type { LintWarning } from './types/scene';
 
 type Scalar = string | number | boolean;
@@ -195,13 +195,20 @@ export function ignoreChartSettings<C extends { options?: unknown; data?: unknow
       fix: warning.fix!.map(operation => ({ ...operation, path: toJsonPointer(at) + operation.path })) });
   }
   if (!isRecord(chart.options)) return { chart: next as C, warnings };
-  const ignore = (field: string[], severity: 'warn' | 'info' = 'warn', on: string = type) => {
+  const ignore = (field: string[], severity: 'warn' | 'info' = 'warn', on: string = type, does?: string) => {
     next = setAt(next, field, undefined);
     const dotted = field.join('.');
     warnings.push({ code: 'option-ignored', severity, field,
-      message: `${dotted} has no effect on ${on} and is ignored.`,
+      message: `${dotted} has no effect on ${on} and is ignored.${does ? ` ${does}` : ''}`,
       suggest: `Remove ${dotted}.`, fix: [{ op: 'remove', path: toJsonPointer(field) }] });
   };
+  for (const [path, { types, does }] of Object.entries(IGNORED_ON)) {
+    const field = ['options', ...path.split('.')];
+    const value = readAt(chart, field);
+    // A sub-key the schema refuses keeps its refusal (valueAxis.break on a grid).
+    const refused = isRecord(value) && path === 'valueAxis' && schemaRefusedKeys(type).valueAxis.some((key) => value[key] !== undefined);
+    if (types.includes(type) && value !== undefined && !refused) ignore(field, 'warn', type, does);
+  }
   // Most requests carry none of these settings: leave before any table is read.
   const authored = Object.keys(chart.options);
   if (!Object.hasOwn(chart, 'annotations') && !authored.some((key) => IGNORED_OPTION_KEYS.has(key) || VARIANT_SCOPED_KEYS.has(key) || key === 'valueAxis' || key === 'legend' || key === 'valueLabels')) return { chart: next as C, warnings };

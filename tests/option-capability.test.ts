@@ -24,6 +24,7 @@ import '../src/core/geo/packs';
 import '../src/core/storyLayer';
 import { NormalizeError } from '../src/core/normalize/shared';
 import { layoutRefusal } from '../src/core/emptyData';
+import { retireChartSettings } from '../src/core/retired';
 import { getChartDefinition, listCharts, type Fixture } from '../src/core/registry';
 import { OPTION_CAPABILITY, VALUE_AXIS_CAPABILITY, valueAxisOnly } from '../src/core/schema/shared';
 import { LABEL_KINDS } from '../src/core/schema/capability';
@@ -718,24 +719,29 @@ describe('published option behaviour census', () => {
    * Types | option | evidence.
    */
   const ACCEPTED_WITHOUT_EFFECT: readonly (readonly [string, string, string])[] = [
-    ["pareto", "unitShown", "The unit is always the axis name (pareto/layout.ts:473, 558), so no unit line is added."],
-    ["sparkline", "unitShown", "The unit feeds the format only (sparkline/layout.ts:774); no unit line is drawn."],
-    ["gantt", "smallValues", "Gantt prints dates only; its format is never (gantt/layout.ts:66)."],
-    ["likert", "smallValues", "Shares use the explicit share format (likert/layout.ts:549), and a share that rounds to zero is dropped (likert/layout.ts:716)."],
-    ["dimswitch table", "focus", "No reader in the table layouts."],
     ["tilemap", "focus", "Each tile label solves alone (tilemap/layout.ts solveTileLabels), so no label competes and the focus has no order to change."],
-    ["cohort", "hatchStrength", "Not sure: the not-reached hatch (cohort/layout.ts:446) draws the same at 0 and 100."],
-    ["bartable cohort histogram treemap waffle", "colorblindSafe", "These types paint no good and bad pair, and the swap acts only on that pair (registry.ts:763, schema/shared.ts:1553)."],
-    ["box", "colorblindSafe", "Not sure: the negative diff tone (annotateArms.ts:726) is not swapped."],
-    ["dimswitch table", "labelDensity", "No reader in the table layouts; the shared pass acts only on hidden labels (registry.ts:330)."],
     ["waffle", "labelDensity", "Every waffle label is a total or a headline, above the band 'minimal' drops, and no cell priority is read; 'smart' and 'full' differ only where a chart reads them."],
-    ["bartable", "highlight", "No reader in charts/bartable; only the unknown-id warning remains (registry.ts:883)."],
-    ["creative", "notes", "The card draws its own method lines (creative/layout.ts:603) and refuses footnotes."],
-    ["treemap waffle", "valueAxis", "No reader in the chart folder, and the types are not in VALUE_AXIS_ONLY (capability.ts:207)."],
-    ["grid", "valueAxis", "The grid reads only valueAxis.break (grid/layout.ts:1110), which its schema refuses. Panels read their own."],
     ["sankey", "belowMinimum", "Not sure: the fixed fallback reads it (sizing.ts:909), but no size changes the output."],
   ];
-  const gaps = new Map<string, string>([...HOST_ONLY, ...ACCEPTED_WITHOUT_EFFECT].flatMap(([types, key, reason]) =>
+  /**
+   * General preferences with nothing to act on in these types: no good and bad pair to
+   * swap, no small number to print, a unit that already prints, no hatch to vary, or a
+   * card that draws its own method lines. A warning here would be noise, so they stay
+   * silent. Every row still runs, and a row that starts to respond must be removed.
+   *
+   * Types | option | why nothing can act.
+   */
+  const NOTHING_TO_ACT_ON: readonly (readonly [string, string, string])[] = [
+    ["bartable cohort histogram treemap waffle", "colorblindSafe", "These types paint no good and bad pair, and the swap acts only on that pair (registry.ts:763, schema/shared.ts:1553)."],
+    ["box", "colorblindSafe", "Not sure: the negative diff tone (annotateArms.ts:726) is not swapped."],
+    ["gantt", "smallValues", "Gantt prints dates only; its format is never (gantt/layout.ts:66)."],
+    ["likert", "smallValues", "Shares use the explicit share format (likert/layout.ts:549), and a share that rounds to zero is dropped (likert/layout.ts:716)."],
+    ["pareto", "unitShown", "The unit is always the axis name (pareto/layout.ts:473, 558), so no unit line is added."],
+    ["sparkline", "unitShown", "The unit feeds the format only (sparkline/layout.ts:774); no unit line is drawn."],
+    ["cohort", "hatchStrength", "Not sure: the not-reached hatch (cohort/layout.ts:446) draws the same at 0 and 100."],
+    ["creative", "notes", "The card draws its own method lines (creative/layout.ts:603) and refuses footnotes."],
+  ];
+  const gaps = new Map<string, string>([...HOST_ONLY, ...ACCEPTED_WITHOUT_EFFECT, ...NOTHING_TO_ACT_ON].flatMap(([types, key, reason]) =>
     types.split(' ').map(type => [`${type}.${key}`, reason] as const)));
 
   const digest = (text: string) => createHash('sha256').update(text).digest('hex');
@@ -835,16 +841,19 @@ describe('published option behaviour census', () => {
         if (type === 'waffle' && key === 'panelGroups') value = [{ id: 'census', panels: ids, label: 'Census group' }];
         if (type === 'waffle' && key === 'subtotal') value = { series, label: 'Census subtotal' };
         if ('value' in probe) value = probe.value;
-        let changed = { ...probeAuthored, ...companions, [key]: value };
+        // The request removes a setting the type ignores before the schema reads it, as the CLI does.
+        const optionPath = (options: Options) => retireChartSettings(type, { options });
+        let changed = optionPath({ ...probeAuthored, ...companions, [key]: value }).chart.options as Options;
         // Use a schema-valid fallback before rendering; never count a rejected sample as behaviour.
         let parsed = definition.optionsSchema.safeParse(changed);
         if (!parsed.success && !('value' in probe)) {
           value = sample(field, current);
-          changed = { ...probeAuthored, ...companions, [key]: value };
+          changed = optionPath({ ...probeAuthored, ...companions, [key]: value }).chart.options as Options;
           parsed = definition.optionsSchema.safeParse(changed);
         }
         try {
           const after = draw(type, probeFixture, changed, parsed.success ? parsed.data as Options : undefined);
+          after.warnings.push(...optionPath({ ...probeAuthored, ...companions, [key]: value }).warnings);
           const namedWarning = after.warnings.some(warning =>
             !before.warnings.some(old => JSON.stringify(old) === JSON.stringify(warning))
             && (warning.field?.includes(key) || new RegExp(`\\b${key}\\b`).test(`${warning.message} ${warning.suggest ?? ''}`)));

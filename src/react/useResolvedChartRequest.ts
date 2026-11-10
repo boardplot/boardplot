@@ -65,10 +65,12 @@ export function useResolvedChartRequest(input: ChartRequest, context: RequestCon
   // By content too: every resolve writes a new locale object that carries the chart's number marks.
   const locale = useStableValue(resolved?.locale);
   const localeKey = provider ? undefined : locale;
+  // A setting the request removes with a warning leaves the layout options equal, and the layout carries the input warnings.
+  const inputWarnings = useStableValue(resolved?.inputWarnings);
   // Paint changes retain the original layout input. The renderer resolves the
   // symbolic scene against `resolved.theme`, including contrast paint rules.
   const layoutRequest = useMemo(() => resolved, [
-    request.data, resolved?.type, resolved?.scope.chart, resolved?.scope.panel, stableLayoutOptions, geometryKey, authoredSizes, localeKey,
+    request.data, resolved?.type, resolved?.scope.chart, resolved?.scope.panel, stableLayoutOptions, geometryKey, authoredSizes, localeKey, inputWarnings,
   ]);
   return { request: resolved, layoutRequest, provider, deferred: attempt.deferred };
 }
