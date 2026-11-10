@@ -1,4 +1,4 @@
-import { cleanDiff, cleanFloat } from './geometry';
+import { cleanDiff, cleanSum } from './geometry';
 
 /**
  * Descriptive statistics shared across the distribution chart family.
@@ -47,10 +47,13 @@ export function quantileType7(sorted: readonly number[], p: number): number {
   const h = (sorted.length - 1) * p;
   const lo = Math.floor(h);
   const base = sorted[lo]!;
-  if (lo + 1 >= sorted.length) return base;
-  const next = sorted[lo + 1]!;
-  // Cleaned at the size of its neighbours: −75 and 73.9 give −0.55, not −0.5500000000000043.
-  return cleanFloat(base + (h - lo) * (next - base), Math.max(Math.abs(base), Math.abs(next)));
+  const fraction = h - lo;
+  // An order statistic is an observation: it stays exact.
+  if (lo + 1 >= sorted.length || fraction === 0) return base;
+  const step = fraction * (sorted[lo + 1]! - base);
+  // Cleaned at the size of the two terms it adds, as cleanSum does: −75 and 73.9 give −0.55, not
+  // −0.5500000000000043. The larger neighbour alone is too coarse a scale: between 0.03 and 1e14 it erases real digits.
+  return cleanSum([base, step]);
 }
 
 /** Interquartile range Q(0.75) - Q(0.25) of an ALREADY ASCENDING sample. */
