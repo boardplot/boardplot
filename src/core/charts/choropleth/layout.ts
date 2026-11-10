@@ -4,7 +4,7 @@ import { chartTheme } from '../chartEnv';
 import { structureCount } from '../../structureCounts';
 import { authoredNotes, frameTextOptions, legendRequired, noteLine, solveFrame, SIDE_KEY_PLOT_SHARE, unitPrinted } from '../../frame';
 import { formatAutomaticNumber } from '../../format';
-import { formatterFromExample } from '../../formatSpec';
+import { formatterFromExample, unitMagnitude } from '../../formatSpec';
 import { boxGap, rectContains, rectHitsConvexPolygon, rectsOverlap, round2, type Rect, type Size } from '../../geometry';
 // The geo modules by name, not the '../../geo' barrel: the barrel re-exports
 // './packs', whose import registers every pack, and a choropleth must not
@@ -344,12 +344,14 @@ function layoutMapPass(
   const scale = buildGeoScale(numericValues, options, fmt, hasNoDataRegion, theme, { token: 'background' });
   // Keep this key formatting local to choropleth; tilemap keeps its scale
   // formatter. A round break prints round on the boundary ticks ('20', not '20.0').
+  // A unit that names a scale gets no second one: "20M" under "in $m" reads as 20 million millions.
+  const keyScale = unitMagnitude(options.unit) === undefined;
   scale.edgeFmt = options.format !== undefined ? scale.edgeFmt : (value: number) => {
-    const magnitude = Math.abs(value) >= 1e9 ? 1e9 : Math.abs(value) >= 1e6 ? 1e6 : Math.abs(value) >= 1e3 ? 1e3 : 1;
+    const magnitude = !keyScale ? 1 : Math.abs(value) >= 1e9 ? 1e9 : Math.abs(value) >= 1e6 ? 1e6 : Math.abs(value) >= 1e3 ? 1e3 : 1;
     const scaled = value / magnitude;
     let decimals = 0;
     while (decimals < 6 && !(Math.abs(Math.round(scaled * 10 ** decimals) - scaled * 10 ** decimals) < 1e-6)) decimals++;
-    return formatAutomaticNumber(value, { locale: options.locale?.language, magnitude: 'auto', decimals });
+    return formatAutomaticNumber(value, { locale: options.locale?.language, magnitude: keyScale ? 'auto' : 'none', decimals });
   };
   // The key and the summary name only states a reader can see: as a polygon, a marker or a label.
   const visibleStates = pack.regions.filter(region => region.polygons.length > 0 || visibleMarkerIds.has(region.id)).flatMap(region => statesById.has(region.id) ? [statesById.get(region.id)!] : []);

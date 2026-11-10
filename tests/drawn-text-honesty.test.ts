@@ -339,3 +339,24 @@ it('flags a figure in the other decimal mark and spares authored text', () => {
   expect(garbled('1.5 m', de)).toContain("decimal point in a chart with ',' marks");
   expect(garbled('1,5 m', de)).toEqual([]);
 });
+
+describe('a unit that names a scale takes no second one', () => {
+  const texts = (spec: unknown) => [...svgOf(spec).matchAll(/<text\b[^>]*>(.*?)<\/text>/gs)].map((match) => match[1]!.replace(/<[^>]*>/g, ''));
+  const scaled = (all: string[]) => all.filter((text) => /\d(?:\.\d+)?\s?[MB]\b/.test(text));
+
+  // A bar table whose chart unit is "$m" printed its bar ends "2.0M | 3.5M" under "Revenue in $m": the formatter read only the panel unit.
+  it('prints bar table ends whole under a chart scale unit', () => {
+    const all = texts({ type: 'bartable', data: { categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], series: [{ id: 's', label: 'Bookings' }],
+      panels: [{ id: 'revenue', label: 'Revenue', values: { s: [2_000_000, 3_500_000] } }] }, options: { unit: '$m', subtitle: { measure: 'Revenue' }, size: { width: 720 } } });
+    expect(all).toContain('3,500,000');
+    expect(scaled(all)).toEqual([]);
+  });
+
+  // A choropleth key under "in $m" printed its breaks "20M | 30M": the key formatter forced its own magnitude.
+  it('prints choropleth key breaks whole under a scale unit', () => {
+    const all = texts({ type: 'choropleth', data: { pack: 'de-states', regions: [{ id: 'DE-BY', value: 10_000_000 }, { id: 'DE-NW', value: 50_000_000 }] },
+      options: { unit: '$m', subtitle: { measure: 'Revenue' }, steps: [20_000_000, 30_000_000, 40_000_000, 45_000_000], labels: 'none', valueTable: false, size: { width: 960, height: 640 } } });
+    expect(all).toContain('20,000,000');
+    expect(scaled(all)).toEqual([]);
+  });
+});
