@@ -13,7 +13,7 @@ import { chartRefusals, isRefused } from './schema/refusals';
 import { movedGridWarnings, movedWidthWarnings, TRACK_WIDTH_TYPES, widthsThatDraw, type WidthGroup, type WidthStep } from './charts/columnOverrides';
 import { isRecord } from './lint/shared';
 import type { ColumnOverride } from './types/options';
-import { DEFAULT_PRESET, REMOVED_NAMES, removedNameWarnings, resolveTargetTheme, resolveTheme } from './theme';
+import { DEFAULT_PRESET, panelTypeClass, REMOVED_NAMES, removedNameWarnings, resolveTargetTheme, resolveTheme, typeWidthClass, withTypeClassCap } from './theme';
 import { DEFAULT_TARGET, floorTextScale, resolveTargetSize } from './target';
 import { textScaleOf, textSizeOf } from './typeFloors';
 import { defaultMeasurer, type TextMeasurer } from './text';
@@ -319,7 +319,30 @@ function layoutRequest(request: ResolvedChartRequest): LayoutResult {
   // An unchanged refusal already tried the same authored widths.
   const fittedLate = table && asked === request && drawn === first
     ? undefined : widthsGiveWay(asked, drawn, layoutOnce, probe);
-  return finish(fittedLate ? fittedLate[1] : drawn);
+  const last = fittedLate ? fittedLate[1] : drawn;
+  return finish(smallerClass(fittedLate ? fittedLate[0] : asked, last) ?? last);
+}
+
+/**
+ * The type steps up at 720 and at 1080 px. A chart refused for width in the class its width selects
+ * draws in the next smaller class where that draws, as it does just under the step. Else the refusal
+ * stands with its own advice. An authored belowMinimum 'refuse' keeps the refusal.
+ */
+function smallerClass(
+  request: ResolvedChartRequest, result: LayoutResult, layout: (asked: ResolvedChartRequest) => LayoutResult = layoutPlain,
+): LayoutResult | undefined {
+  const need = result.refused && result.warnings[0]?.code === 'size-below-floor' ? result.warnings[0].expected?.minimum as Size | undefined : undefined;
+  const cls = typeWidthClass(result.size.width);
+  if (!need || need.width <= result.size.width || cls === 'S' || panelTypeClass(request.options) !== undefined
+    || (request.options as RequestOptions).belowMinimum === 'refuse') return undefined;
+  const smaller = withTypeClassCap(cls === 'L' ? 'M' : 'S', () => layout(request));
+  return smaller.refused ? undefined : smaller;
+}
+
+/** One layout of the request, without the size advice a refusal searches for. */
+function layoutPlain(request: ResolvedChartRequest): LayoutResult {
+  const run = preparedLayout(request);
+  try { return run(request.options); } finally { run.finish(); }
 }
 
 interface WidthEntry { id?: string; type?: string; options?: { columnOverrides?: Record<string, ColumnOverride> }; data?: WidthLevel }
@@ -941,7 +964,9 @@ export function measureResolvedRequest(request: ResolvedChartRequest): ChartMeas
     const unchangedTable = (request.type === 'table' || request.type === 'dimswitch') && asked === request && first === initial;
     const fittedLate = unchangedTable ? undefined : widthsGiveWay(asked, first, drawnBy);
     if (fittedLate) return measureWithLayout(fittedLate[0], fittedLate[1], open(fittedLate[0]));
-    return measureWithLayout(asked, first, layoutAt);
+    // The same class step as layoutResolvedRequest, so measure does not refuse a chart that render draws.
+    const smaller = smallerClass(asked, first, drawnBy);
+    return measureWithLayout(asked, smaller ?? first, layoutAt);
   } finally { for (const run of runs) run.finish(); }
 }
 

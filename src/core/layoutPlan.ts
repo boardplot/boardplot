@@ -2,6 +2,7 @@
 import { copyFrame, footerPlans } from './footer';
 import { emptyIdRecord } from './idRecords';
 import { currentSmallValues } from './formatPrecision';
+import { typeClassCap } from './theme';
 import { isCachedTextMeasurer, type FontSpec, type TextMeasurer, type TextSize } from './text';
 import type { FrameGeometry, Geometry } from './types/scene';
 
@@ -112,9 +113,13 @@ export function optionKey(options: object): string {
     + ',[' + symbols.join(',') + '],' + JSON.stringify(currentSmallValues()) + ']';
 }
 
-/** Public data is checked by content once per request. Private model caches already own their data identity. */
+/**
+ * Public data is checked by content once per request. Private model caches already own their data identity.
+ * A type class cap enters the key, so a layout in a smaller class never reads the result of the larger one.
+ */
 export function layoutKey(data: object, options: object): string {
-  return inputVersion(data) + ':' + optionKey(options);
+  const cap = typeClassCap();
+  return (cap ? cap + ':' : '') + inputVersion(data) + ':' + optionKey(options);
 }
 
 const measurers = new WeakMap<TextMeasurer, TextMeasurer>();

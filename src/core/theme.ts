@@ -116,8 +116,26 @@ export type TypeWidthClass = 'S' | 'M' | 'L';
  * clamp to the smallest class rather than inventing a sub-S scale.
  */
 export function typeWidthClass(width: number): TypeWidthClass {
-  if (width >= WIDE_CANVAS_MIN_WIDTH) return 'L';
-  return width >= 720 ? 'M' : 'S';
+  const cls: TypeWidthClass = width >= WIDE_CANVAS_MIN_WIDTH ? 'L' : width >= 720 ? 'M' : 'S';
+  return classCap !== undefined && CLASS_ORDER.indexOf(cls) > CLASS_ORDER.indexOf(classCap) ? classCap : cls;
+}
+
+const CLASS_ORDER: readonly TypeWidthClass[] = ['S', 'M', 'L'];
+let classCap: TypeWidthClass | undefined;
+
+/** The largest width class `typeWidthClass` returns while `withTypeClassCap` runs; undefined outside it. */
+export function typeClassCap(): TypeWidthClass | undefined {
+  return classCap;
+}
+
+/**
+ * Runs a layout whose canvases take at most the width class `cap`: a chart refused for width in the
+ * class its width selects draws in the next smaller one (request.ts, smallerClass).
+ */
+export function withTypeClassCap<T>(cap: TypeWidthClass, run: () => T): T {
+  const outer = classCap;
+  classCap = cap;
+  try { return run(); } finally { classCap = outer; }
 }
 
 /**
