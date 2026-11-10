@@ -104,7 +104,7 @@ import type {
 } from '../core/types/table';
 import { stickySettings } from '../core/charts/table/sticky';
 // Both table renderers share subtitles, source lines and note disclosure.
-import { ENGINE_NOTE_KINDS, insetTint, tableFrame, tableGroundTextStyle, tablePresentation, tableRenderTheme, tableStylesheet } from './tablePresentation';
+import { ENGINE_NOTE_KINDS, insetTint, subtitlePlain, tableFrame, tableGroundTextStyle, tablePresentation, tableRenderTheme, tableStylesheet } from './tablePresentation';
 import { useStableValue } from './useStableValue';
 import { PROBE_STYLE, useContainerSize, type ContainerSizeOptions } from './useContainerSize';
 import { useDisplayWarnings } from './useDisplayWarnings';
@@ -1848,7 +1848,7 @@ function TableCaption({ frame, keyEntries, arrowEntries, theme }: {
       {frame.markerNotes ? <sup className="bp-footnote-marker" aria-label={frame.markerNotes}>1</sup> : null}
     </span> : null}
     {frame.title && frame.subtitle ? ' ' : null}
-    {frame.subtitle ? <span className="bp-subtitle">{frame.subtitle}</span> : null}
+    {frame.subtitle ? <span className="bp-subtitle">{subtitlePlain(frame.subtitle)}</span> : null}
     {keyed ? <span className="bp-key" role="list" aria-label="Key">
       {keyEntries.map((entry) => <span key={entry.id} role="listitem">
         <i aria-hidden="true" style={{ background: resolvePaint(entry.fill, theme) }} />{entry.label}

@@ -1509,19 +1509,36 @@ export function unitMissing(
   options: Record<string, unknown> | undefined,
   geo: { type?: string; scene: readonly SceneNode[]; warnings: readonly LintWarning[]; derived?: unknown },
 ): boolean {
+  return unitUnprinted(options, {
+    type: geo.type, derived: geo.derived, refused: geo.warnings.some((w) => w.severity === 'error'),
+    *texts() {
+      // A wrapped subtitle splits "in % of revenue" over two lines: read it joined.
+      yield geo.scene.flatMap((node) => (node.t === 'text' && node.id.startsWith('frame:subtitle') ? node.lines : [])).join(' ');
+      for (const node of geo.scene) if (node.t === 'text') yield node.lines.join(' ');
+    },
+  });
+}
+
+/**
+ * The unit rule on the texts a surface prints: a unit is declared, `unitShown` is not set, and no
+ * text carries the unit. `unitMissing` reads them from the drawing; the React table hands its own.
+ */
+export function unitUnprinted(
+  options: Record<string, unknown> | undefined,
+  drawn: { type?: string; refused?: boolean; derived?: unknown; texts: () => Iterable<string> },
+): boolean {
   const unit = typeof options?.unit === 'string' ? options.unit.trim() : '';
-  if (!unit || options?.unitShown === true || geo.warnings.some((w) => w.severity === 'error')) return false;
+  if (!unit || options?.unitShown === true || drawn.refused) return false;
   // A relative variance prints its differences in % on purpose; the unit is the base's, not the drawing's.
-  if (geo.type === 'variance' && (options as { variant?: string } | undefined)?.variant === 'relative') return false;
+  if (drawn.type === 'variance' && (options as { variant?: string } | undefined)?.variant === 'relative') return false;
   // Shares print with their own % sign, and options.unit names values no label shows.
-  if (printsOnlyShares(geo.type, options, geo.derived)) return false;
+  if (printsOnlyShares(drawn.type, options, drawn.derived)) return false;
   const subtitle = resolveSubtitle(options?.subtitle as BaseOptions['subtitle']);
   if (subtitle && subtitleUnitClause(unit, subtitle.measure) === '') return false;
   if (!squeezeUnit(unit)) return false;
-  // A wrapped subtitle splits "in % of revenue" over two lines: read it joined.
-  const subtitleText = geo.scene.flatMap((node) => (node.t === 'text' && node.id.startsWith('frame:subtitle') ? node.lines : [])).join(' ');
-  const carriesUnit = geo.type === 'cohort' ? textCarriesCohortUnit : textCarriesUnit;
-  return !carriesUnit(subtitleText, unit) && !geo.scene.some((node) => node.t === 'text' && carriesUnit(node.lines.join(' '), unit));
+  const carriesUnit = drawn.type === 'cohort' ? textCarriesCohortUnit : textCarriesUnit;
+  for (const text of drawn.texts()) if (carriesUnit(text, unit)) return false;
+  return true;
 }
 
 /** A unit that says percent: "%", "% of revenue", "percent", "per cent", "pct", "percentage". */

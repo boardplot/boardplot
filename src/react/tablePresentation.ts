@@ -1,5 +1,5 @@
-import { tableDisplayFloor, tableFrameMode } from '../core/charts/table/widths';
-import type { BaseOptions, Subtitle } from '../core/types/options';
+import { columnHeadText, tableDisplayFloor, tableFrameMode } from '../core/charts/table/widths';
+import type { BaseOptions } from '../core/types/options';
 import { compositeColor, contrastRatio, mixColors } from '../core/color';
 import { isSafeSvgColor, resolvePaint } from '../core/svg/paint';
 import {
@@ -26,11 +26,12 @@ import { resolveCanvasOptions, resolveSize, resolveSubtitle } from '../core/norm
 import { numericVariant } from '../core/textRole';
 import { tableFootnotes } from '../core/charts/table/view';
 import { footerParts, notesPanelLabel, notesPointer, shownNoteKinds, type EngineNoteMeta } from '../core/notes';
-import { frameText } from '../core/frameText';
+import { frameText, type SubtitleText } from '../core/frameText';
+import { plainText } from '../core/inlineBold';
 import { defaultMeasurer, type TextMeasurer } from '../core/text';
 import { emphasisWeight, resolveTheme } from '../core/theme';
 import { textScaleOf } from '../core/typeFloors';
-import { authoredNotes, subtitleLine } from '../core/frame';
+import { authoredNotes, unitUnprinted } from '../core/frame';
 import { omittedCompactNotes } from '../core/compact';
 import { localeStrings } from '../core/strings';
 import { chartString } from '../core/strings/table';
@@ -138,8 +139,21 @@ export function tableFrame(
   const kinds = (options as { [ENGINE_NOTE_KINDS]?: ReadonlyMap<string, EngineNoteMeta> })[ENGINE_NOTE_KINDS];
   const theme = footer?.theme ?? resolveTheme(options.theme);
   const width = resolveSize(options.size).width;
+  const authoredSubtitle = resolveSubtitle(options.subtitle);
+  // The unit line: a declared unit that no head, cell, note or subtitle prints stands where the subtitle goes, as in the SVG.
+  const unitLine = authoredSubtitle === undefined && panelTypeClass(options) === undefined && unitUnprinted(options as Record<string, unknown>, {
+    type: 'table',
+    *texts() {
+      if (title) yield title;
+      for (const column of columns) yield columnHeadText(column, theme);
+      for (const row of rows) { yield row.label; for (const column of columns) { const cell = row.cells[column.id]; if (cell) yield cell.displayed; } }
+      yield* authored;
+      if (options.source) yield options.source;
+    },
+  });
+  const subtitle = authoredSubtitle ?? (unitLine ? { measure: options.unit!.trim() } : undefined);
   const text = frameText({
-    target: options.target, title, subtitle: resolveSubtitle(options.subtitle), unit: table.unit ?? options.unit,
+    target: options.target, title, subtitle, unit: table.unit ?? options.unit,
     source: options.source,
     // The core line budget: notes.maxLines, else the target default, in wrapped lines of the React footer.
     notes: { ...options.notes, show: shownNoteKinds(options) as never }, strings: { ...localeStrings(language), ...options.strings },
@@ -157,25 +171,19 @@ export function tableFrame(
   const words = { ...localeStrings(language), ...options.strings };
   const { shown, panel } = footerParts(text.noteList, text.placement, shownNoteKinds(options), text.pointerOn);
   return {
-    mode, title, subtitle: subtitleText(options.subtitle, table.unit ?? options.unit), source: text.sourceOff ? undefined : text.sourceText, padding,
+    mode, title, subtitle: text.subtitle, source: text.sourceOff ? undefined : text.sourceText, padding,
     footnotes: shown, listed: panel,
     pointer: panel.length === 0 ? undefined : text.placement === 'info' ? notesPanelLabel(panel.length, words.notesAndSources) : notesPointer(panel.length, words),
     markerNotes: markerNotes.join(' '),
     // The author's accessible description replaces the generated summary, as it does in the SVG.
     summary: options.a11y?.description ?? options.caption
-      ?? [title, subtitleText(options.subtitle, table.unit ?? options.unit), `${chartString(options, 'tableDesc', { v1: String(table.rows.length), v2: String(table.columns.length) })}.`]
+      ?? [title, text.subtitle && subtitlePlain(text.subtitle), `${chartString(options, 'tableDesc', { v1: String(table.rows.length), v2: String(table.columns.length) })}.`]
         .filter((part): part is string => Boolean(part)).join(' · '),
   };
 }
 
-function subtitleText(
-  subtitle: string | Subtitle | undefined,
-  unit: string | undefined,
-): string | undefined {
-  const sub = resolveSubtitle(subtitle);
-  if (sub === undefined) return undefined;
-  return subtitleLine(unit ? { ...sub, measure: `${sub.measure} in ${unit}` } : sub);
-}
+/** The subtitle as one plain line. */
+export const subtitlePlain = (subtitle: SubtitleText): string => plainText(subtitle.segments.map((segment) => segment.text).join(''));
 
 /** The head paddings a theme sets, as stylesheet variable names and px. */
 function headPadVars(theme: Theme): [string, number][] {
