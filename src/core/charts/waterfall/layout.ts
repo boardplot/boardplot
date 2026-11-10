@@ -2433,7 +2433,9 @@ function layoutWaterfallWithPad(
         message: `item '${raw.id}': a total derives its segments; an authored segment format cannot apply`,
         suggest: 'set the total format on value.format, or format its contributing delta segments',
       });
-      segments = [{ id: '__total', value: 0 }]; // rect computed from level
+      // The rect is computed from the level. An authored value fill paints it, as on a step.
+      const fill = checkCell === null ? undefined : cellMeta(checkCell)?.fill;
+      segments = [{ id: '__total', value: 0, ...(fill ? { fill } : {}) }];
     } else if (raw.segments && raw.segments.length > 0) {
       segments = raw.segments.map((s, k) => {
         const cell = normalizeCell(s.value, `${path}.segments[${k}].value`);
