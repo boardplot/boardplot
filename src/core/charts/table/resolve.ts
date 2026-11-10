@@ -1570,9 +1570,11 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   // Computed columns are in scope: div(gp, revenue) yields a FRACTION, and
   // formatting 0.42 as '12.3%' prints "0.4%" — wrong by 100x, silently.
   // share/percentDelta are exempt: the engine itself produces their points,
-  // and so is a value column that declares its scale at the source.
+  // and so is a value column that declares its scale at the source, and a
+  // calc the author scaled by 100, as the computed message tells them to.
+  const scaledBy100 = (calc: Calc) => 'op' in calc && calc.op === 'mul' && [calc.a, calc.b].some((side) => 'lit' in side && side.lit === 100);
   for (const col of [...valueCols, ...computedCols]) {
-    if (col.kind === 'computed' ? calcYieldsPoints(col.calc) : col.percentScale === 'points') continue;
+    if (col.kind === 'computed' ? calcYieldsPoints(col.calc) || scaledBy100(col.calc) : col.percentScale === 'points') continue;
     const spec = col.kind === 'computed' ? specs.get(col.id) : col.format ? specs.get(col.id) : undefined;
     if (!spec || !(spec.suffix ?? '').includes('%')) continue;
     const vals = flat

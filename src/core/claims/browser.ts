@@ -354,23 +354,21 @@ export function claimsForChart(type: string, geo: Geometry<object, object>): Cla
   return bindClaimLabels(type, geo, [...(type === 'creative' ? creativeClaims(geo) : claimsForChartType(type, geo)), ...stackTotalClaims(geo), ...annotationClaims(geo)]);
 }
 
-/** The key of a printed total label: `grandTotal:<category>` (column, bar, combo) or `total:<id>` (mekko column, pie centre). */
-const totalKey = (label: { id: string; kind: string }): string | undefined =>
-  label.kind === 'grandTotal' || label.kind === 'total' ? /^(?:grandTotal|total):(.+)$/.exec(label.id)?.[1] : undefined;
+const STACK_TOTAL = 'stack:total:';
 
-/** A printed total the engine added up (column, bar, combo, mekko, pie) is the sum of its parts. */
+/** A printed total the engine added up (column, bar, combo, mekko, pie) is the sum of its parts. Its label request names it. */
 function stackTotalClaims(geo: Geometry<object, object>): ClaimRecordV1[] {
   const derived = geo.derived as { stackTotals?: Record<string, number>; totals?: Record<string, number>; columnTotals?: Record<string, number>;
     total?: number; stackParts?: Record<string, Record<string, number>> };
   if (!derived.stackParts) return [];
   // The layout's total says the label prints one; a pie has one total, keyed by its series.
   const hasTotal = (id: string) => (derived.stackTotals ?? derived.totals ?? derived.columnTotals)?.[id] !== undefined || derived.total !== undefined;
-  return geo.labels.flatMap(label => {
-    const id = totalKey(label);
-    if (id === undefined) return [];
+  const named = new Set(geo.labels.flatMap(label => (label.claimIds ?? []).filter(id => id.startsWith(STACK_TOTAL))));
+  return [...named].flatMap(claim => {
+    const id = claim.slice(STACK_TOTAL.length);
     const parts = Object.entries(derived.stackParts![id] ?? {});
     if (!hasTotal(id) || parts.length === 0) return [];
-    return [{ id: `stack:total:${id}`, kind: 'aggregate' as const, op: 'sum@1',
+    return [{ id: claim, kind: 'aggregate' as const, op: 'sum@1',
       inputs: parts.map(([seriesId, value]) => ({ ref: `${id}:${seriesId}`, value })),
       // The raw sum of the parts: mekko and pie keep their totals rounded to two decimals.
       output: { raw: parts.reduce((sum, [, value]) => sum + value, 0), state: 'value', displayed: '' } }];
@@ -414,7 +412,7 @@ function bindClaimLabels(type: string, geo: Geometry<object, object>, claims: Cl
 
 /**
  * The label each claim reads: the label whose request named the claim, else the label an adapter
- * pattern finds by id (annotations, stack totals, grid panels). An id two labels share finds none.
+ * pattern finds by id (annotations, grid panels). An id two labels share finds none.
  */
 function claimLabels(type: string, geo: Geometry<object, object>): Map<string, PlacedLabel> {
   const byId = new Map<string, PlacedLabel | undefined>();
@@ -439,10 +437,6 @@ function claimLabels(type: string, geo: Geometry<object, object>): Map<string, P
   };
   for (const annotation of geo.annotations ?? []) {
     if (annotation.labelId) bind(`annotation:${annotation.id}`, annotation.labelId);
-  }
-  for (const label of geo.labels) {
-    const id = totalKey(label);
-    if (id !== undefined && !bound.has(`stack:total:${id}`)) bind(`stack:total:${id}`, label.id);
   }
   if (type === 'grid') {
     for (const panel of (geo.marks as GridMarks).panels) if (panel.chart) {

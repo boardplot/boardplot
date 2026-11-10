@@ -11,6 +11,7 @@ import { createRoot } from 'react-dom/client';
 import { describe, expect, it } from 'vitest';
 import { render } from '../src/cli/render';
 import '../src/core/charts';
+import '../src/core/geo/packs';
 import { exampleData } from '../src/core/charts/dimswitch/example';
 import { describeField } from '../src/core/discovery';
 import { patchApplies, type JsonPatchOperation } from '../src/core/diagnostics/jsonPatch';
@@ -93,6 +94,13 @@ describe('a removed option keeps an old spec drawing', () => {
     dropsTheKey(clean, { ...clean, options: { ...clean.options, encodings: { 'a/b': 'heat' } } }, 'dimswitch-encoding-column', '/options/encodings/a~1b');
   });
 
+  // A share change reads no years, and years beside it changed nothing without a word.
+  it('removed by another setting: growth years under a share change', () => {
+    const clean = fixture('bartable', 'cascade-four-years');
+    expect(clean.options.cascade).toEqual({ growth: { measure: 'share-change' } });
+    dropsTheKey(clean, { ...clean, options: { ...clean.options, cascade: { growth: { measure: 'share-change', years: 4 } } } }, 'option-ignored', '/options/cascade/growth/years');
+  });
+
   // A key the type accepts and cannot draw used to pass with ok: true and change nothing.
   it('accepted with nothing to draw: topN.threshold on a pie, focus on a dimswitch', () => {
     const pie = fixture('pie');
@@ -103,6 +111,16 @@ describe('a removed option keeps an old spec drawing', () => {
     // describe of the exact path says so, as it does for a refused key the type ignores.
     expect(describeField('pie', 'options.topN.threshold')).toMatchObject({ refused: expect.stringMatching(/^Ignored on 'pie' with an option-ignored warning/) });
     expect(describeField('table', 'focus')).toMatchObject({ refused: expect.stringMatching(/^Ignored on 'table'/) });
+  });
+
+  // An authored automatic value table on a map of more than 20 regions drew no table and said nothing.
+  it('warned by the layout: an automatic value table over the region limit', () => {
+    const clean = fixture('choropleth', 'us-margin-by-state');
+    expect(clean.options.valueTable).toBeUndefined();
+    dropsTheKey(clean, { ...clean, options: { ...clean.options, valueTable: 'auto' } }, 'option-ignored', '/options/valueTable');
+    const small = fixture('choropleth', 'dach-all-region-labels');
+    expect(small.options.valueTable).toBe('auto');
+    expect(draw(small).warnings.some((warning) => warning.code === 'option-ignored')).toBe(false);
   });
 
   // Removing the setting left the layout options equal, so a prop update kept the old layout and its old warnings.
@@ -120,6 +138,15 @@ describe('a removed option keeps an old spec drawing', () => {
     mount({});
     expect(ignored()).toEqual([]);
     act(() => root.unmount());
+  });
+
+  // A stacked bar drew the same with a theme's outside value labels, and nothing said so.
+  it('warned by the layout: outside value labels on a stacked bar', () => {
+    const data = { categories: [{ id: 'q1', label: 'Q1' }, { id: 'q2', label: 'Q2' }],
+      series: [{ id: 'a', label: 'North', values: [10, 12] }, { id: 'b', label: 'South', values: [6, 7] }] };
+    const spec = (marks: object, variant = 'stacked') => ({ type: 'bar', data, options: { title: 'Sales', variant, theme: { preset: 'standard', overrides: { marks } } } });
+    dropsTheKey(spec({}), spec({ barLabels: 'outside' }), 'option-ignored', '/options/theme/overrides/marks/barLabels');
+    expect(draw(spec({ barLabels: 'outside' }, 'grouped')).warnings.some((warning) => warning.code === 'option-ignored')).toBe(false);
   });
 
   // never in a child schema would refuse a grid that exits 0 today, because the grid checks panels against it.

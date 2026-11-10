@@ -186,6 +186,22 @@ describe('honesty lints', () => {
     expect((grouped.body as { errors: unknown[] }).errors[0]).toMatchObject({ path: '/options/sharesOfOneWhole', fix: [{ op: 'remove', path: '/options/sharesOfOneWhole' }] });
   });
 
+  // Shares that add to one whole in every category warned that percentages do not stack.
+  it('non-additive-stack stays quiet when the parts add to one whole in every category', () => {
+    const lint = (web: unknown[], app: unknown[], variant = 'stacked100', extra = {}) => runDocLints({ charts: [chart({ type: 'column', options: { title: 'Web leads', variant },
+      data: { categories: [{ id: 'a' }, { id: 'b' }], series: [{ id: 'web', label: 'Web share', unit: '%', values: web }, { id: 'app', label: 'App share', unit: '%', values: app }], ...extra } } as never)] })
+      .filter((warning) => warning.code === 'non-additive-stack');
+    expect(lint([0.55, 0.62], [0.45, 0.38])).toEqual([]);
+    expect(lint([55, 61], [45, 40], 'stacked')).toEqual([]);
+    expect(lint([0.55, 0.62], [0.45, 0.38], 'stacked', { valueKind: 'fraction' })).toEqual([]);
+    // Percents of different wholes still warn, and so does a blank part.
+    expect(lint([12, 18], [30, 25])).toHaveLength(1);
+    expect(lint([55, 62], [45, null])).toHaveLength(1);
+    // Points that add to 1 are one percentage point, not one whole.
+    expect(lint([{ pct: 0.4 }, { pct: 0.3 }], [{ pct: 0.6 }, { pct: 0.7 }], 'stacked')).toHaveLength(1);
+    expect(lint([0.55, 0.62], [0.45, 0.38], 'stacked')).toHaveLength(1);
+  });
+
   it('duplicate-category-labels triggers on identical display labels and clears on unique labels', () => {
     const duplicate = {
       categories: [{ id: 'a', label: 'North' }, { id: 'b', label: 'North' }],
@@ -641,6 +657,15 @@ describe('mechanical lints', () => {
     // a series-kind content array without the 'series' token drops the names, and the key row names them instead
     expect(hasCode('series-unexplained', { charts: [chart({ type: 'line', data, options: { title: 'APAC closes the gap', labels: { series: ['absolute'] } } })] })).toBe(false);
     expect(hasCode('series-unexplained', { charts: [chart({ type: 'line', data, options: { title: 'APAC closes the gap', labels: { series: ['absolute'] }, legend: 'none' } })] })).toBe(true);
+  });
+
+  // End labels with an authored line break were drawn but read as unnamed series.
+  it('series-unexplained matches a name with a line break against its drawn lines', () => {
+    const codes = (options: object) => (render({ spec: { type: 'line', options: { title: 'Actual stays above prior year', size: { width: 480 }, ...options }, data: { categories: ['m1', 'm2', 'm3', 'm4'],
+      series: [{ id: 'a', label: 'Actual\nthis year', values: [10, 12, 13, 15] }, { id: 'b', label: 'Prior\nyear', values: [9, 10, 11, 12] }] } } }).body as { warnings: { code: string }[] })
+      .warnings.map((w) => w.code);
+    expect(codes({})).not.toContain('series-unexplained');
+    expect(codes({ labels: { series: ['absolute'] }, legend: 'none' })).toContain('series-unexplained');
   });
 
   it("series-unexplained keys combo endpoint names to the 'point' label kind", () => {

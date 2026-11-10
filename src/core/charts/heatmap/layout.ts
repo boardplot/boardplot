@@ -1625,13 +1625,20 @@ export function layoutHeatmap(
   // hue must not carry it alone (same discipline as variance's
   // "(lower is better)" suffix and column sign-color legends).
   const invertedRows = valence || (bins && declaredDirections) ? dataRows.filter((r) => r.direction === 'lowerIsBetter') : [];
+  // A cell or series format prints in the reading too: the lowest and highest value in the format of their cell, a row mean in its row's.
+  const readingText = (v: number, r?: NormRow, cell?: NormRow['cells'][number]): string =>
+    cell?.meta?.format || r?.format || r?.unit ? displayFor(v, cell?.pct ?? r!.cells.every((c) => c.v === null || c.pct), cell?.meta ?? null, r) : fmt(v);
+  const extremeText = (v: number): string => {
+    for (const r of dataRows) for (const cell of r.cells) if (cell.v === v) return readingText(v, r, cell);
+    return fmt(v);
+  };
   const a11yDesc =
     chartString(options, 'heatmapDescStart', { v1: scaleWord, v2: dataRows.length, v3: dataCols.length }) +
-    (allValues.length > 0 ? chartString(options, 'valuesRange', { v1: fmt(vMin), v2: fmt(vMax) }) : '') +
+    (allValues.length > 0 ? chartString(options, 'valuesRange', { v1: extremeText(vMin), v2: extremeText(vMax) }) : '') +
     (invertedRows.length > 0
       ? chartString(options, 'invertedRowsDesc', { v1: invertedRows.map((r) => r.label).join(', ') })
       : '') +
-    chartString(options, 'rowMeansSentence', { v1: dataRows.map((r) => { const mean = rowMeans[r.id]; return `${r.label} ${mean === null || mean === undefined ? NOT_AVAILABLE : fmt(mean)}`; }).join(', ') })
+    chartString(options, 'rowMeansSentence', { v1: dataRows.map((r) => { const mean = rowMeans[r.id]; return `${r.label} ${mean === null || mean === undefined ? NOT_AVAILABLE : readingText(mean, r)}`; }).join(', ') })
     // The reading lists every value the cells could not print.
     + (hiddenCells.length > 0 && options.heatKey === undefined
       ? ` ${(options as { strings?: { hiddenLabels?: string } }).strings?.hiddenLabels ?? HIDDEN_LABEL_LEAD}: ${hiddenCells.map(hiddenItem).join(', ')}.` : '');

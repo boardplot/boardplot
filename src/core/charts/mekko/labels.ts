@@ -304,6 +304,7 @@ function totalLabel(ctx: LabelCtx, ci: number, visibleCol: boolean, edges: { top
   ctx.requests.push({
     id: `total:${c.id}`,
     kind: 'total',
+    claimIds: [`stack:total:${c.id}`],
     owner,
     ...(mode === 'bar' ? {} : namesOnly(totalContent?.filter((part) => part !== 'percent'), undefined)),
     ...(net ? { role: composedTextRole(text) } : {}),

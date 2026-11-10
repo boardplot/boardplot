@@ -566,7 +566,7 @@ export const gridOptionsSchema = baseOptionsSchema
     sharedAxis: z
       .enum(['category', 'none'])
       .optional()
-      .describe('Metric stacks imply category and use top-down order with independent scales. Otherwise default: category only for exactly one column panel plus one or more variance panels (no integrated variance); none otherwise. none honours columns and array order. category uses one column in bottom-up order with the category-axis owner at the bottom; it warns if columns or panelOrder are overridden. These column/variance tiers use 4:1 plot heights unless authored tracks or a shared y scale apply.'),
+      .describe('Metric stacks imply category and use top-down order with independent scales. Otherwise default: category only for exactly one column panel plus one or more variance panels (no integrated variance); none otherwise. none honours columns and array order. category uses one column in bottom-up order with the category-axis owner at the bottom (over variance tiers, the column panel wherever it is listed); it warns if columns or panelOrder are overridden. These column/variance tiers use 4:1 plot heights unless authored tracks or a shared y scale apply.'),
     variancePosition: z
       .enum(['above', 'below'])
       .optional()
