@@ -625,3 +625,20 @@ describe('pareto total scale', () => {
     expect(top({ totalScale: false })).toBe(80);
   });
 });
+
+// A 100% stack with one series printed "100%" on each segment, while its records held only the raw value and no share.
+// A share is recorded exactly where one prints: a percent value axis alone prints none.
+it('records the printed share of a one-series 100% stack', () => {
+  const shares = (type: string, options: Record<string, unknown>) => {
+    const request = resolveChartRequest({ type, data: { categories: [{ id: 'a' }, { id: 'b' }], series: [{ id: 'print', values: [60, 28] }] },
+      options: { size: { width: 960, height: 480 }, ...options } } as never);
+    return interactionRecords({ request, geometry: requireGeometry(layoutResolvedRequest(request)), scope: request.scope, claims: [] })
+      .map((record) => record.share?.percent.raw);
+  };
+  for (const [type, variant] of [['column', 'stacked100'], ['bar', 'stacked100'], ['line', 'stacked100-area']] as const) {
+    expect(shares(type, { variant }), type).toEqual([100, 100]);
+  }
+  expect(shares('column', { variant: 'stacked', shareLabels: {}, labelDensity: 'full' })).toEqual([100, 100]);
+  expect(shares('column', { variant: 'stacked', shareLabels: { only: ['b'] }, labelDensity: 'full' })).toEqual([undefined, 100]);
+  expect(shares('bar', { variant: 'grouped', valueAxis: { percent: true } })).toEqual([undefined, undefined]);
+});
