@@ -812,7 +812,7 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
     }
     const warningOffset = warnings.length;
     for (const w of geo.warnings) {
-      warnings.push({ ...w, message: `[${panel.id}] ${w.message}` });
+      warnings.push({ ...w, message: `[${panel.id}] ${w.message}`, detail: { ...w.detail, panelId: panel.id } });
     }
     const tier = tierLabels[i];
     let titleNodeId: string | undefined;
