@@ -11,53 +11,53 @@
 <text data-id="frame:legendLabel:7" data-part="legendLabel" data-bp-role="category" x="45" y="642.86" text-anchor="start" font-size="12" font-weight="400" fill="#5B6B86"><tspan x="45" dy="0">Strongly disagree</tspan></text>
 <rect data-id="frame:swatch:8" data-part="swatch" x="154" y="632.56" width="12" height="12" fill="#e68f8c"/>
 <text data-id="frame:legendLabel:9" data-part="legendLabel" data-bp-role="category" x="171" y="642.86" text-anchor="start" font-size="12" font-weight="400" fill="#5B6B86"><tspan x="171" dy="0">Disagree</tspan></text>
-<rect data-id="frame:swatch:10" data-part="swatch" x="234" y="632.56" width="12" height="12" fill="#d4d8e4"/>
+<rect data-id="frame:swatch:10" data-part="swatch" x="234" y="632.56" width="12" height="12" fill="#d5d9e5"/>
 <text data-id="frame:legendLabel:11" data-part="legendLabel" data-bp-role="category" x="251" y="642.86" text-anchor="start" font-size="12" font-weight="400" fill="#5B6B86"><tspan x="251" dy="0">Neither agree nor disagree</tspan></text>
 <rect data-id="frame:swatch:12" data-part="swatch" x="410" y="632.56" width="12" height="12" fill="#99bcf7"/>
 <text data-id="frame:legendLabel:13" data-part="legendLabel" data-bp-role="category" x="427" y="642.86" text-anchor="start" font-size="12" font-weight="400" fill="#5B6B86"><tspan x="427" dy="0">Agree</tspan></text>
 <rect data-id="frame:swatch:14" data-part="swatch" x="473.50" y="632.56" width="12" height="12" fill="#5590F2"/>
 <text data-id="frame:legendLabel:15" data-part="legendLabel" data-bp-role="category" x="490.50" y="642.86" text-anchor="start" font-size="12" font-weight="400" fill="#5B6B86"><tspan x="490.50" dy="0">Strongly agree</tspan></text>
 <path data-id="axis:baseline" data-part="baseline" d="M605.97 83.2L605.97 113.26M605.97 132.61L605.97 190.3M605.97 209.65L605.97 267.35M605.97 286.7L605.97 344.39M605.97 363.74L605.97 421.43M605.97 440.78L605.97 498.48M605.97 517.83L605.97 575.52M605.97 594.87L605.97 622.5" fill="none" stroke="#0B1B3A" stroke-width="1" stroke-linejoin="round"/>
-<rect data-id="mark:purpose:likert:n:neg" data-part="segment" x="581.76" y="101.31" width="25.21" height="40.83" fill="#d4d8e4"/>
+<rect data-id="mark:purpose:likert:n:neg" data-part="segment" x="581.76" y="101.31" width="25.21" height="40.83" fill="#d5d9e5"/>
 <rect data-id="mark:purpose:likert:d" data-part="segment" x="562.39" y="101.31" width="19.37" height="40.83" fill="#e68f8c"/>
 <rect data-id="mark:purpose:likert:sd" data-part="segment" x="552.71" y="101.31" width="9.68" height="40.83" fill="#D6453F"/>
-<rect data-id="mark:purpose:likert:n:pos" data-part="segment" x="605.97" y="101.31" width="24.21" height="40.83" fill="#d4d8e4"/>
+<rect data-id="mark:purpose:likert:n:pos" data-part="segment" x="605.97" y="101.31" width="24.21" height="40.83" fill="#d5d9e5"/>
 <rect data-id="mark:purpose:likert:a" data-part="segment" x="630.18" y="101.31" width="198.53" height="40.83" fill="#99bcf7"/>
 <rect data-id="mark:purpose:likert:sa" data-part="segment" x="828.71" y="101.31" width="159.79" height="40.83" fill="#5590F2"/>
-<rect data-id="mark:manager:likert:n:neg" data-part="segment" x="572.08" y="178.35" width="34.89" height="40.83" fill="#d4d8e4"/>
+<rect data-id="mark:manager:likert:n:neg" data-part="segment" x="572.08" y="178.35" width="34.89" height="40.83" fill="#d5d9e5"/>
 <rect data-id="mark:manager:likert:d" data-part="segment" x="518.82" y="178.35" width="53.26" height="40.83" fill="#e68f8c"/>
 <rect data-id="mark:manager:likert:sd" data-part="segment" x="494.61" y="178.35" width="24.21" height="40.83" fill="#D6453F"/>
-<rect data-id="mark:manager:likert:n:pos" data-part="segment" x="605.97" y="178.35" width="33.89" height="40.83" fill="#d4d8e4"/>
+<rect data-id="mark:manager:likert:n:pos" data-part="segment" x="605.97" y="178.35" width="33.89" height="40.83" fill="#d5d9e5"/>
 <rect data-id="mark:manager:likert:a" data-part="segment" x="639.87" y="178.35" width="184" height="40.83" fill="#99bcf7"/>
 <rect data-id="mark:manager:likert:sa" data-part="segment" x="823.87" y="178.35" width="106.53" height="40.83" fill="#5590F2"/>
-<rect data-id="mark:recommend:likert:n:neg" data-part="segment" x="567.24" y="255.39" width="39.74" height="40.83" fill="#d4d8e4"/>
+<rect data-id="mark:recommend:likert:n:neg" data-part="segment" x="567.24" y="255.39" width="39.74" height="40.83" fill="#d5d9e5"/>
 <rect data-id="mark:recommend:likert:d" data-part="segment" x="518.82" y="255.39" width="48.42" height="40.83" fill="#e68f8c"/>
 <rect data-id="mark:recommend:likert:sd" data-part="segment" x="489.76" y="255.39" width="29.05" height="40.83" fill="#D6453F"/>
-<rect data-id="mark:recommend:likert:n:pos" data-part="segment" x="605.97" y="255.39" width="38.74" height="40.83" fill="#d4d8e4"/>
+<rect data-id="mark:recommend:likert:n:pos" data-part="segment" x="605.97" y="255.39" width="38.74" height="40.83" fill="#d5d9e5"/>
 <rect data-id="mark:recommend:likert:a" data-part="segment" x="644.71" y="255.39" width="179.16" height="40.83" fill="#99bcf7"/>
 <rect data-id="mark:recommend:likert:sa" data-part="segment" x="823.87" y="255.39" width="101.68" height="40.83" fill="#5590F2"/>
-<rect data-id="mark:tools:likert:n:neg" data-part="segment" x="576.92" y="332.43" width="30.05" height="40.83" fill="#d4d8e4"/>
+<rect data-id="mark:tools:likert:n:neg" data-part="segment" x="576.92" y="332.43" width="30.05" height="40.83" fill="#d5d9e5"/>
 <rect data-id="mark:tools:likert:d" data-part="segment" x="465.55" y="332.43" width="111.37" height="40.83" fill="#e68f8c"/>
 <rect data-id="mark:tools:likert:sd" data-part="segment" x="421.97" y="332.43" width="43.58" height="40.83" fill="#D6453F"/>
-<rect data-id="mark:tools:likert:n:pos" data-part="segment" x="605.97" y="332.43" width="29.05" height="40.83" fill="#d4d8e4"/>
+<rect data-id="mark:tools:likert:n:pos" data-part="segment" x="605.97" y="332.43" width="29.05" height="40.83" fill="#d5d9e5"/>
 <rect data-id="mark:tools:likert:a" data-part="segment" x="635.03" y="332.43" width="159.79" height="40.83" fill="#99bcf7"/>
 <rect data-id="mark:tools:likert:sa" data-part="segment" x="794.82" y="332.43" width="62.95" height="40.83" fill="#5590F2"/>
-<rect data-id="mark:growth:likert:n:neg" data-part="segment" x="555.13" y="409.48" width="51.84" height="40.83" fill="#d4d8e4"/>
+<rect data-id="mark:growth:likert:n:neg" data-part="segment" x="555.13" y="409.48" width="51.84" height="40.83" fill="#d5d9e5"/>
 <rect data-id="mark:growth:likert:d" data-part="segment" x="448.61" y="409.48" width="106.53" height="40.83" fill="#e68f8c"/>
 <rect data-id="mark:growth:likert:sd" data-part="segment" x="385.66" y="409.48" width="62.95" height="40.83" fill="#D6453F"/>
-<rect data-id="mark:growth:likert:n:pos" data-part="segment" x="605.97" y="409.48" width="50.84" height="40.83" fill="#d4d8e4"/>
+<rect data-id="mark:growth:likert:n:pos" data-part="segment" x="605.97" y="409.48" width="50.84" height="40.83" fill="#d5d9e5"/>
 <rect data-id="mark:growth:likert:a" data-part="segment" x="656.82" y="409.48" width="135.58" height="40.83" fill="#99bcf7"/>
 <rect data-id="mark:growth:likert:sa" data-part="segment" x="792.39" y="409.48" width="29.05" height="40.83" fill="#5590F2"/>
-<rect data-id="mark:workload:likert:n:neg" data-part="segment" x="567.24" y="486.52" width="39.74" height="40.83" fill="#d4d8e4"/>
+<rect data-id="mark:workload:likert:n:neg" data-part="segment" x="567.24" y="486.52" width="39.74" height="40.83" fill="#d5d9e5"/>
 <rect data-id="mark:workload:likert:d" data-part="segment" x="417.13" y="486.52" width="150.11" height="40.83" fill="#e68f8c"/>
 <rect data-id="mark:workload:likert:sd" data-part="segment" x="325.13" y="486.52" width="92" height="40.83" fill="#D6453F"/>
-<rect data-id="mark:workload:likert:n:pos" data-part="segment" x="605.97" y="486.52" width="38.74" height="40.83" fill="#d4d8e4"/>
+<rect data-id="mark:workload:likert:n:pos" data-part="segment" x="605.97" y="486.52" width="38.74" height="40.83" fill="#d5d9e5"/>
 <rect data-id="mark:workload:likert:a" data-part="segment" x="644.71" y="486.52" width="106.53" height="40.83" fill="#99bcf7"/>
 <rect data-id="mark:workload:likert:sa" data-part="segment" x="751.24" y="486.52" width="9.68" height="40.83" fill="#5590F2"/>
-<rect data-id="mark:speed:likert:n:neg" data-part="segment" x="574.50" y="563.56" width="32.47" height="40.83" fill="#d4d8e4"/>
+<rect data-id="mark:speed:likert:n:neg" data-part="segment" x="574.50" y="563.56" width="32.47" height="40.83" fill="#d5d9e5"/>
 <rect data-id="mark:speed:likert:d" data-part="segment" x="419.55" y="563.56" width="154.95" height="40.83" fill="#e68f8c"/>
 <rect data-id="mark:speed:likert:sd" data-part="segment" x="298.50" y="563.56" width="121.05" height="40.83" fill="#D6453F"/>
-<rect data-id="mark:speed:likert:n:pos" data-part="segment" x="605.97" y="563.56" width="31.47" height="40.83" fill="#d4d8e4"/>
+<rect data-id="mark:speed:likert:n:pos" data-part="segment" x="605.97" y="563.56" width="31.47" height="40.83" fill="#d5d9e5"/>
 <rect data-id="mark:speed:likert:a" data-part="segment" x="637.45" y="563.56" width="82.32" height="40.83" fill="#99bcf7"/>
 <rect data-id="mark:speed:likert:sa" data-part="segment" x="719.76" y="563.56" width="14.53" height="40.83" fill="#5590F2"/>
 <line data-id="seam:mark:purpose:likert:d:0" data-part="segmentSeam" x1="581.76" y1="101.31" x2="581.76" y2="142.14" stroke="#FFFFFF" stroke-width="0.5"/>
