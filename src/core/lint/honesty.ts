@@ -107,15 +107,22 @@ export function runHonestyLints(charts: readonly ScopedLintChart[]): DocLintWarn
     const offending = stacked.filter((series) => statedInPercent(labelOf(series) ?? '', unitOf(series),
       cellsOfSeries(series).some((cell) => cell !== null && typeof cell === 'object' && 'pct' in cell)));
     if (offending.length === 0) continue;
-    // Parts that add to one whole (100, or 1 for fractions) in every
-    // category, within half a unit of rounding per part, are shares of
-    // that whole. A blank part leaves the sum unknown.
-    const sums = categoriesOf(chart).map((category, index) => stacked.reduce<number | null>((sum, series) => {
+    // Parts that add to one whole in every category, within half a point
+    // of rounding per part, are shares of that whole. The whole follows
+    // how the values are given: percent points (pct cells, plain numbers)
+    // add to 100, a declared fraction to 1. A stacked100 chart reads plain
+    // numbers as weights, so either whole holds there. A blank part leaves
+    // the sum unknown.
+    const dataKind = asRecord(chart.data).valueKind;
+    const pctCells = (series: LintRecord) => cellsOfSeries(series).some((cell) => cell !== null && typeof cell === 'object' && 'pct' in cell);
+    const fraction = (series: LintRecord) => (series.valueKind ?? dataKind) === 'fraction';
+    const sumsIn = (scale: (series: LintRecord) => number) => categoriesOf(chart).map((category, index) => stacked.reduce<number | null>((sum, series) => {
       const cell = cellAt(series, category.id, index);
-      return sum === null || cell === null ? null : sum + cell;
+      return sum === null || cell === null ? null : sum + cell * scale(series);
     }, 0));
-    const near = (whole: number) => sums.every((sum) => sum !== null && Math.abs(sum - whole) <= (whole / 200) * stacked.length);
-    if (sums.length > 0 && (near(100) || near(1))) continue;
+    const addsTo100 = (sums: (number | null)[]) => sums.length > 0 && sums.every((sum) => sum !== null && Math.abs(sum - 100) <= 0.5 * stacked.length);
+    const weights = options.variant === 'stacked100' && !stacked.some((series) => pctCells(series) || fraction(series));
+    if (addsTo100(sumsIn((series) => (fraction(series) ? 100 : 1))) || (weights && addsTo100(sumsIn(() => 100)))) continue;
     warnings.push(
       warning(
         chart,
