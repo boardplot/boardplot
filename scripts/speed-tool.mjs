@@ -10,6 +10,10 @@
 // changed code: control runs), --min-ms (default 20; diagnostics only), --pairs (default 9),
 // --keep (keep the temporary checkouts), --no-fetch, --case (time only this case, a golden key such as
 // column/ranked-dense.authored or golden/..., input/... or extra/...; repeatable; skips the full identity pass).
+// --counts times nothing: it renders every golden case once in the current checkout and prints one
+// tab-separated row per case with the calls that mark a layout pass: layout requests (fitSizeMemo), full
+// layouts (fitSize), label solver runs (solveLabels) and frame solves (solveFrame). Counts do not depend on
+// machine load, so it may run on a busy machine; `--out <dir>` also writes <dir>/layout-counts.tsv.
 // Importing the module runs nothing; `markdown(report)` is exported.
 // Run it with no other heavy job of your own (builds, sweeps, test runs) on the machine.
 //
@@ -46,7 +50,7 @@
 // Output: a Markdown table on stdout and in <out>/speed.md, the full record in <out>/speed.json.
 // Exit codes: 0 pass, no evidence or skipped (read the verdict line), 1 confirmed slowdown, 2 error.
 import { execFileSync, spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -60,7 +64,7 @@ function parseArgs(argv) {
   const options = {
     base: 'origin/main', head: 'HEAD', inputs: [], cases: [], out: undefined, work: undefined,
     pairs: 9, warm: 2, top: 30, minMs: 20, screenMs: 15, limit: 1.05,
-    fetch: true, force: false, allRan: false, keep: false,
+    fetch: true, force: false, allRan: false, keep: false, counts: false,
   };
   const value = (i) => { if (argv[i + 1] === undefined) throw new Error(`${argv[i]} needs a value`); return argv[i + 1]; };
   for (let i = 0; i < argv.length; i++) {
@@ -77,6 +81,7 @@ function parseArgs(argv) {
     else if (arg === '--force') options.force = true;
     else if (arg === '--all-ran') options.allRan = true;
     else if (arg === '--keep') options.keep = true;
+    else if (arg === '--counts') options.counts = true;
     else if (arg === '--help' || arg === '-h') { console.log(readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\nimport ')[0]); process.exit(0); }
     else throw new Error(`unknown argument ${arg}`);
   }
@@ -214,12 +219,34 @@ export function markdown(report) {
   return `${lines.join('\n')}\n`;
 }
 
+/** --counts: one row per golden case of the current checkout with the calls that mark a layout pass. */
+async function layoutCounts(repo, out) {
+  const work = join(tmpdir(), `boardplot-counts-${process.pid}`);
+  mkdirSync(work, { recursive: true });
+  const inputsFile = join(work, 'inputs.json');
+  writeFileSync(inputsFile, '[]');
+  const worker = new Worker(repo, 'count', inputsFile);
+  const { keys } = await worker.read();
+  const rows = [['case', 'type', 'layout requests', 'full layouts', 'label solver runs', 'frame solves', 'error'].join('\t')];
+  try {
+    for (let i = 0; i < keys.length; i++) {
+      const r = await worker.call({ op: 'count', i });
+      rows.push([r.key.replace(/^golden\//, ''), r.type, r.requests, r.layouts, r.labels, r.frames, r.error ?? ''].join('\t'));
+    }
+  } finally { await worker.stop(); rmSync(work, { recursive: true, force: true }); }
+  const text = `${rows.join('\n')}\n`;
+  if (out) { mkdirSync(out, { recursive: true }); writeFileSync(join(out, 'layout-counts.tsv'), text); }
+  process.stdout.write(text);
+  return 0;
+}
+
 async function main() {
   const started = Date.now();
   const options = parseArgs(process.argv.slice(2));
   const repo = git(process.cwd(), 'rev-parse', '--show-toplevel');
   const modules = join(repo, 'node_modules');
   if (!existsSync(join(modules, 'tsx'))) throw new Error(`${modules} has no tsx; run npm ci first`);
+  if (options.counts) return layoutCounts(repo, options.out);
   if (options.fetch && options.base.startsWith('origin/')) git(repo, 'fetch', '--quiet', 'origin', options.base.slice('origin/'.length));
   const base = git(repo, 'rev-parse', '--verify', `${options.base}^{commit}`);
   const headRef = git(repo, 'rev-parse', '--verify', `${options.head}^{commit}`);

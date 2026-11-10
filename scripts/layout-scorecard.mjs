@@ -15,6 +15,7 @@ import { REFERENCE_LABEL_CLEARANCE } from '../src/core/markVisibility.ts';
 import { localeStrings } from '../src/core/strings.ts';
 import { NOT_AVAILABLE } from '../src/core/format.ts';
 import { cubicPoint } from '../src/core/curve.ts';
+import { plainText } from '../src/core/inlineBold.ts';
 import { formatScenarios, resolveSubtitle } from '../src/core/normalize/shared.ts';
 import { liveWindowOptions } from '../src/core/viewport.ts';
 import { printsOnlyShares } from '../src/core/frame.ts';
@@ -37,6 +38,8 @@ const THEMES = ['authored', 'notation'];
 // marks (',' and '.'); the scorecard's own German pass keeps English marks, so it reads no German figure.
 const CENSUS_DE_WIDTHS = [960, 720, 480, 400, 320];
 const EPS = 1e-6;
+// Drawn paths keep two decimals (markVisibility.ts fmt), so a seated label can measure up to 0.007 px short.
+const DRAWN_EPS = 0.01;
 const RULES = { S1: 3, S2: 3, S3: 3, S4: 3, R1: 2, R2: 2, R3: 2, R4: 2, R5: 2, R6: 2, R7: 2 };
 // A content type whose marks scale with the width takes the height of its
 // content, so a narrower card of it may be shorter (docs/manual.md, "Frame text, key and automatic height").
@@ -46,7 +49,9 @@ const S2_EXEMPT = new Set([...WIDTH_SCALED_TYPES, 'table', 'dimswitch']);
 // English table state glyphs that a locale replaces ('n/a' is 'k. A.' in German).
 const GLYPH_WORDS = [NOT_AVAILABLE];
 const normal = (text) => String(text ?? '').replace(/\s+/gu, ' ').trim();
-const subtitleNormal = (text) => normal(text).replace(/\s*·\s*/gu, ' ').trim();
+// The frame draws `**bold**` in a title or subtitle without its markers.
+const frameNormal = (text) => normal(plainText(String(text ?? '')));
+const subtitleNormal = (text) => frameNormal(text).replace(/\s*·\s*/gu, ' ').trim();
 const drawn = (node) => node.t === 'text' && node.opacity !== 0 && normal(node.lines.join(' ')) !== '';
 const clone = (value) => structuredClone(value);
 
@@ -297,8 +302,8 @@ export function auditGeometry(item, request, geometry, skipped = []) {
 
   // Only the outer frame belongs to this request. Grid child titles have an origin.
   const frameText = (part) => normal(text.filter((node) => node.part === part && !node.origin?.panels?.length).flatMap((node) => node.lines).join(' '));
-  if (typeof options.title === 'string' && !frameTextComplete(normal(options.title), frameText('title'), request)) {
-    add('S3', 'title', `title drawn ${JSON.stringify(frameText('title'))}; authored ${JSON.stringify(normal(options.title))}`);
+  if (typeof options.title === 'string' && !frameTextComplete(frameNormal(options.title), frameText('title'), request)) {
+    add('S3', 'title', `title drawn ${JSON.stringify(frameText('title'))}; authored ${JSON.stringify(frameNormal(options.title))}`);
   }
   if (options.subtitle !== undefined) {
     const authored = subtitleNormal(subtitleAuthored(options));
@@ -362,7 +367,7 @@ export function auditGeometry(item, request, geometry, skipped = []) {
       if (distance < clearance) { clearance = distance; nearest = `${node.id} / ${box.id}`; }
     }
   }
-  if (clearance + EPS < REFERENCE_LABEL_CLEARANCE) add('R1', nearest, `reference clearance ${clearance.toFixed(2)} px; floor ${REFERENCE_LABEL_CLEARANCE} px (${nearest})`);
+  if (clearance + DRAWN_EPS < REFERENCE_LABEL_CLEARANCE) add('R1', nearest, `reference clearance ${clearance.toFixed(2)} px; floor ${REFERENCE_LABEL_CLEARANCE} px (${nearest})`);
 
   let gap = Infinity, pair = '';
   const values = visibleLabels.filter((label) => ['point', 'segment', 'total', 'grandTotal', 'valueLine'].includes(label.kind));
