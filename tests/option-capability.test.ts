@@ -433,11 +433,14 @@ describe('published option behaviour census', () => {
     'cohort.focus': { fixture: 'saas-logo-retention', value: { owner: { categoryId: 't3' } } },
     'combo.focus': { value: { owner: { seriesId: 'units', categoryId: '2024' } } },
     'gantt.focus': { value: { owner: { annotationId: 'sc-2' } } },
+    'grid.focus': { fixture: 'metric-stack-volume', value: { owner: { seriesId: 'intake' } } },
     'heatmap.focus': { value: { owner: { categoryId: 'one' } } },
+    'histogram.focus': { value: { owner: { categoryId: 'bin3' } } },
     'kpi.focus': { value: { owner: { categoryId: 'kpi', segmentId: 'delta' } } },
     'likert.focus': { value: { owner: { categoryId: 'growth' } } },
     'pareto.focus': { value: { owner: { seriesId: 'pareto:value' } } },
     'pie.focus': { value: { owner: { seriesId: 'revenue', categoryId: 'hiphop' } } },
+    'sparkline.focus': { value: { owner: { categoryId: 'p3' } } },
     'status.focus': { value: { owner: { categoryId: '2021-03' } } },
     'treemap.focus': { value: { owner: { seriesId: 'platforms', categoryId: 'cloud-hosting' } } },
     'waffle.focus': { fixture: 'two-panels', value: { owner: { categoryId: 'rural' } } },
@@ -473,6 +476,9 @@ describe('published option behaviour census', () => {
     'box.labelDensity': { fixture: 'cycle-time-by-team' },
     'grid.labelDensity': { fixture: 'metric-stack-volume' },
     'heatmap.labelDensity': { fixture: 'regional-monthly-performance' },
+    // Every kpi and slope label sits at or above the band 'minimal' keeps, unless a cell authors a lower priority.
+    'kpi.labelDensity': { fixture: 'spark-ends-below-card', data: (data) => { data.spark.values[2] = { number: data.spark.values[2], priority: 100 }; return data; } },
+    'slope.labelDensity': { fixture: 'cost-per-unit-plants', data: (data) => { data.series[0].values[0] = { number: data.series[0].values[0], priority: 100 }; return data; } },
     'line.labelDensity': { fixture: 'stacked100-area-revenue-mix' },
     'status.labelDensity': { value: 'full', options: { size: { width: 320 } } },
     'variance.labelDensity': { fixture: 'integrated-fc-caps' },
@@ -503,6 +509,9 @@ describe('published option behaviour census', () => {
     'scatter.labelPlacements': { value: { 'point:j': 'above' } },
     'slope.labelPlacements': { value: { 'change:brindlevo': 'insideCenter' } },
     'status.labelPlacements': { value: { 'category:2021-03': 'insideCenter' } },
+    // A sparkline label has one seat, so the pin shows by keeping the label that 'minimal' drops.
+    'sparkline.labelPlacements': { value: { 'spark:high': 'above' }, options: { labelDensity: 'minimal' } },
+    'tilemap.labelPlacements': { fixture: 'eu27-demand-versus-plan', value: { 'category:DE': 'tileCode' } },
     'treemap.labelPlacements': { value: { 'item:cloud-hosting': 'insideCenter' } },
     'variance.labelPlacements': { value: { 'point:dach': 'insideEnd' } },
     'waffle.labelPlacements': { fixture: 'two-panels', value: { 'total:urban': 'insideCenter' } },
@@ -710,14 +719,8 @@ describe('published option behaviour census', () => {
    * Types | option | evidence.
    */
   const ACCEPTED_WITHOUT_EFFECT: readonly (readonly [string, string, string])[] = [
-    ["grid", "focus", "Text panels solve labels without options (grid/layout.ts:1931)."],
-    ["histogram", "focus", "Labels solve without options (histogram/layout.ts:776)."],
-    ["sparkline", "focus", "Labels solve with labelOffsets only (sparkline/layout.ts:978)."],
-    ["tilemap", "focus", "Not sure: the solver reads it (tilemap/layout.ts:499), but no fixture changes."],
-    ["sparkline", "labelDensity", "Labels solve with labelOffsets only (sparkline/layout.ts:978)."],
-    ["kpi slope waffle", "labelDensity", "Not sure: the solver reads it (kpi/layout.ts:891, slope/layout.ts:190, waffle/layout.ts:889), but no fixture changes."],
-    ["sparkline", "labelPlacements", "Labels solve with labelOffsets only (sparkline/layout.ts:978); only the unknown-id warning remains."],
-    ["tilemap", "labelPlacements", "Not sure: the solver reads it (tilemap/layout.ts:499), but no pin changes a fixture."],
+    ["tilemap", "focus", "Each tile label solves alone (tilemap/layout.ts solveTileLabels), so no label competes and the focus has no order to change."],
+    ["waffle", "labelDensity", "Every waffle label is a total or a headline, above the band 'minimal' drops, and no cell priority is read; 'smart' and 'full' differ only where a chart reads them."],
     ["sankey", "belowMinimum", "Not sure: the fixed fallback reads it (sizing.ts:909), but no size changes the output."],
   ];
   /**
