@@ -225,6 +225,14 @@ it('a keyed plan tick drops its name where the named value has no seat beside it
     { labels: { kind: string; text: string; hidden?: unknown }[] }).labels.filter((label) => label.kind === 'tick');
   expect(ticks({}).map((label) => [label.text, label.hidden])).toEqual(['400', '450', '505', '545', '580'].map((text) => [text, undefined]));
   expect(ticks({ labels: { tick: ['absolute', 'series'] } }).map((label) => label.text)).toContain('400 Plan');
+  // At 460 to 520 px the name test read half the label width, so the named values kept their names and all went to the notes.
+  const six = { categories: [...data.categories, { id: 'f', label: 'F' }], series: [
+    { ...data.series[0]!, values: [...data.series[0]!.values, 600] }, { ...data.series[1]!, values: [...data.series[1]!.values, 610] }] };
+  for (const width of [460, 480, 500, 520]) {
+    const hidden = (getChartDefinition('column')!.layout(six as never, { size: { width, height: 300 }, referenceStyle: 'tick', legend: 'top' } as never) as unknown as
+      { labels: { kind: string; hidden?: unknown }[] }).labels.filter((label) => label.kind === 'tick' && label.hidden !== undefined);
+    expect(hidden, `${width} px`).toEqual([]);
+  }
   // Two references draw alike ticks: their values keep the names that tell them apart.
   const two = { ...data, series: [...data.series, { id: 'target', label: 'Target', role: 'reference', values: [350, 500, 420, 490, 620] }] };
   const named = (getChartDefinition('column')!.layout(two as never, { size: { width: 400, height: 300 }, referenceStyle: 'tick', legend: 'top' } as never) as unknown as
