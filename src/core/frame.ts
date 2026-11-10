@@ -10,7 +10,7 @@ import { chartString } from './strings/frame';
  */
 
 import { currencySign } from './format';
-import { boldMeasurer, boldRuns, hasBold, markBold, plainText, splitBoldLines } from './inlineBold';
+import { boldMeasurer, boldRuns, markBold, plainText, splitBoldLines } from './inlineBold';
 import { furnitureBudget } from './aspect';
 import { COLLECT_IDENTITIES, identityCollector, type IdentityCollectionOptions, identityAppearance, identityCollisionWarnings, type SeriesIdentity as LegendItemInput } from './seriesIdentity';
 import { dedupeLegendKeys } from './label/legendFidelity';
@@ -25,10 +25,13 @@ import { containsText, cutLabels } from './label/omissions';
 import { isNumberAlone } from './textRole';
 import { PRIORITY } from './label/solver';
 import { footnoteMark } from './footnoteMark';
-import { localeStrings } from './strings/frame';
 import { withLocaleStrings } from './strings';
-import { allQuiet, isQuiet, chartNotes, copyNote, defaultNoteLines, defaultNotePlacement, engineNote, engineNoteMeta, footerParts, keepNoteMeta, notesPanelLabel, notesPointer, shownNoteKinds, sourceLine, valueNote, type ChartCredit, type ChartNote, type NoteKind, type NoteList } from './notes';
+import { allQuiet, chartNotes, copyNote, engineNote, engineNoteMeta, footerParts, keepNoteMeta, notesPanelLabel, notesPointer, shownNoteKinds, valueNote, type ChartCredit, type ChartNote, type NoteList } from './notes';
 import { harveyWedgePath } from './svgPath';
+import {
+  cappedItems, countedValuesText, frameText, HIDDEN_LABEL_LEAD, listedNoteText, listText, moreListedText, noteCap, type NoteCapOptions,
+  measureNamesUnit, subtitleUnitClause, type SubtitleText,
+} from './frameText';
 import { parseFormatExample, unitOfSpec } from './formatSpec';
 import { hasAuthoredTypeSize, type FontSpec } from './text';
 import type { Id } from './types/cell';
@@ -111,6 +114,10 @@ export function normalizeLegendOption(option: LegendOptionInput, defaultOptions?
 }
 
 export type { SeriesIdentity as LegendItemInput } from './seriesIdentity';
+export {
+  cappedItems, DEFAULT_NOTE_LIMIT, fittedNote, frameRendersUnit, HIDDEN_LABEL_LEAD, moreListedText, noteCap, subtitleLine,
+  subtitleUnitClause, unitPrinted, type NoteCapOptions,
+} from './frameText';
 
 /**
  * The share of the chart width a plot block keeps beside a key column that a spec names. The block
@@ -776,47 +783,6 @@ function shiftLegendKeyY(node: SceneNode, dy: number): void {
   }
 }
 
-function measureNamesUnit(unit: string, measure: string): boolean {
-  measure = plainText(measure);
-  const escaped = unit.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
-  return escaped.length > 0 && new RegExp(`(?<![\\p{L}\\p{N}_])${escaped}(?![\\p{L}\\p{N}_])`, 'iu').test(measure);
-}
-
-export function subtitleUnitClause(unit: string, measure: string): string {
-  const normalized = unit.trim().toLowerCase();
-  if (normalized === 'x' || normalized === '×' || normalized === 'ratio') {
-    if (/\bper\b/i.test(measure)) return '';
-    return /\bratio\b/i.test(measure) ? ' (×)' : ' ratio (×)';
-  }
-  return measureNamesUnit(unit, measure) ? '' : ` in ${unit}`;
-}
-
-/**
- * Does the subtitle print the unit clause for this exact measure and unit?
- * Callers use the same predicate before moving a unit out of endpoint labels
- * or table headers. A subtitle can still render when this returns false.
- */
-export function frameRendersUnit(
-  input: Pick<FrameInput, 'subtitle' | 'unit'>,
-): boolean {
-  return Boolean(
-    input.subtitle &&
-      input.unit &&
-      (measureNamesUnit(input.unit, input.subtitle.measure) || subtitleUnitClause(input.unit, input.subtitle.measure).length > 0),
-  );
-}
-
-/**
- * Is the unit printed outside the labels: by the subtitle, or by the host
- * under `options.unitShown`? Endpoint labels, table heads and the legend
- * check read this, so no label repeats a unit the reader already sees.
- */
-export function unitPrinted(
-  input: Pick<FrameInput, 'subtitle' | 'unit'> & { unitShown?: boolean },
-): boolean {
-  return Boolean(input.unitShown && input.unit) || frameRendersUnit(input);
-}
-
 /**
  * `unit-not-shown`: an authored options.unit printed
  * nowhere on the drawing. The subtitle prints it only beside a measure, so a
@@ -913,29 +879,6 @@ export function noteLine(lead: string, items: readonly string[], options?: NoteC
     options?.notes?.maxListed === undefined && options ? { lead, items, total, options } : undefined)];
 }
 
-const listText = (lead: string, items: readonly string[]) => `${lead}: ${items.join(', ').replace(/\.$/, '')}.`;
-
-/**
- * a capped list note names as many items as fit `fits` (two footer lines at
- * the drawn width), at most noteCap, in its order, then "and N more"; a lone last item only when
- * it fits. When not even one name fits, the note counts: "18 of 36 values", else "18 items".
- */
-export function fittedNote(list: NoteList, fits: (text: string) => boolean): string {
-  const at = (k: number) => listedNoteText(list, k);
-  // The largest k that fits; a shorter list fits whenever a longer one does.
-  let low = 0, high = Math.min(list.items.length, noteCap(list.options, list.items.length));
-  if (fits(at(high))) return at(high);
-  while (high - low > 1) { const mid = (low + high) >> 1; if (fits(at(mid))) low = mid; else high = mid; }
-  return at(low);
-}
-
-/** The list note that names the first `k` items and counts the rest; with k = 0 it only counts. */
-function listedNoteText({ lead, items, total, options }: NoteList, k: number): string {
-  const n = items.length;
-  if (k === 0) return listText(lead, [total !== undefined && total >= n ? countedValuesText(n, total, options) : moreListedText(n, options, true)]);
-  return listText(lead, k < n ? [...items.slice(0, k), moreListedText(n - k, options)] : items);
-}
-
 /** How many items a drawn list note names (the frame fitted it, `fittedNote`); undefined when `drawn` is not one of its forms. */
 function namedInDrawnNote(list: NoteList, drawn: string): number | undefined {
   const flat = (text: string) => text.replace(/\s+/g, '');
@@ -948,53 +891,6 @@ function namedInDrawnNote(list: NoteList, drawn: string): number | undefined {
 export function valueNoteLine(lead: string, items: readonly string[], options?: NoteCapOptions, total?: number): string[] {
   return noteLine(lead, items, options, total).map((line) => valueNote(line, items));
 }
-
-/** What a note line reads from the options: how many items it names, and the wording of its count. */
-export interface NoteCapOptions {
-  notes?: { maxListed?: number | 'all' };
-  strings?: { moreListed?: string };
-}
-
-/**
- * Items a note line names by default: the first 8 in the note's order, then
- * "and N more"; the reading keeps the full list. An author-set `notes.maxListed` wins: 'all'
- * names every item, 0 names none and counts them ("18 of 36 values").
- */
-export const DEFAULT_NOTE_LIMIT = 8;
-
-/** The most items one note line names; `Infinity` under `notes.maxListed: 'all'`, 0 under `notes.maxListed: 0`. */
-export function noteCap(options?: NoteCapOptions, count = 0): number {
-  const max = options?.notes?.maxListed;
-  const cap = max === 'all' ? Infinity : typeof max === 'number' && max >= 0 ? Math.floor(max) : DEFAULT_NOTE_LIMIT;
-  // With `count` items: all when only one would be left, since "and 1 more" is no shorter than the item.
-  return cap && count === cap + 1 ? count : cap;
-}
-
-/** The closing item of a capped list: the count of items left out, or of all items when the line names none. */
-export function moreListedText(count: number, options?: NoteCapOptions, alone = false): string {
-  return alone ? chartString(options as Parameters<typeof chartString>[0], 'countedItems', { count })
-    : (options?.strings?.moreListed ?? 'and {count} more').replace('{count}', String(count));
-}
-
-/** The count form of a note under `notes.maxListed: 0`: "18 of 36 values". */
-function countedValuesText(count: number, total: number, options?: NoteCapOptions): string {
-  return chartString(options as Parameters<typeof chartString>[0], 'countedValues', { count, total });
-}
-
-/**
- * The items a note line prints: the first `noteCap` items and the count of the rest ("and 3
- * more"). Under `notes.maxListed: 0` it only counts: "18 of 36 values" when the caller knows
- * the `total` of values, else "18 items".
- */
-export function cappedItems(items: readonly string[], options?: NoteCapOptions, total?: number): string[] {
-  const cap = noteCap(options, items.length);
-  if (items.length <= cap) return [...items];
-  if (cap === 0 && total !== undefined && total >= items.length) return [countedValuesText(items.length, total, options)];
-  return [...items.slice(0, cap), moreListedText(items.length - cap, options, cap === 0)];
-}
-
-/** The note line the registered layout adds for labels the drawing hid. */
-export const HIDDEN_LABEL_LEAD = 'Not labelled on the chart';
 
 /** Measure cut-label disclosures through the existing frame; a pinned canvas keeps its size. */
 export function withCutLabelNotes<O extends Pick<BaseOptions, 'notes' | 'footnotes' | 'strings' | 'locale' | 'target' | 'size'>, M extends object, D extends object>(
@@ -1756,57 +1652,12 @@ function squeezeUnit(text: string): string {
 
 type TextNode = Extract<SceneNode, { t: 'text' }>;
 
-/**
- * The subtitle as one plain line, in the order the frame prints it. A fixed slot that misses
- * moves it into the notes list. The unit stays on the canvas as the unit line.
- */
-export function subtitleLine(sub: Subtitle): string {
-  return [sub.company, sub.measure, sub.period, sub.scenarios?.length ? formatScenarios(sub.scenarios) : undefined]
-    .filter(Boolean).join(' · ');
-}
-
-/**
- * The unit a measure names after its last comma, from the space after the
- * comma (" % of all orders", " EUR m", " in $m"), or ''. A tail that does
- * not read as a unit (", quarterly") stays part of the measure.
- */
-function measureUnitTail(measure: string, unit: string | undefined): string {
-  const at = measure.lastIndexOf(', ');
-  if (at <= 0) return '';
-  const tail = measure.slice(at + 2);
-  const reads = /^(%|in\s|per\s|[$€£¥]|(?:EUR|USD|CHF|GBP|JPY|US\$)(?![\p{L}])|index\b|score\b|share of\b|# )/iu.test(plainText(tail))
-    || (unit !== undefined && unit.trim() !== '' && plainText(tail).trim().toLowerCase() === unit.trim().toLowerCase());
-  // The comma stays with the bold part, so a wrapped line never starts with it.
-  return reads ? measure.slice(at + 1) : '';
-}
-
 function measureSubtitle(
-  input: FrameInput, x: number, y: number, id: Id, nextId: () => Id, contentW: number,
+  input: FrameInput, composed: SubtitleText, x: number, y: number, id: Id, nextId: () => Id, contentW: number,
 ): { nodes: TextNode[]; rect: Rect } {
-  const authored = input.subtitle!;
-  const sub = hasBold(authored.measure) || hasBold(authored.company ?? '') || hasBold(authored.period ?? '')
-    ? { ...authored, measure: markBold(authored.measure),
-      ...(authored.company ? { company: markBold(authored.company) } : {}),
-      ...(authored.period ? { period: markBold(authored.period) } : {}) } : authored;
+  const { sub, segments } = composed;
   const font = { family: input.theme.type.family, ...input.theme.type.subtitle };
   const boldFont: FontSpec = { ...font, weight: emphasisWeight(input.theme) };
-  // Three runs max: everything before the measure, the bold measure, and
-  // one merged trailing segment — all inside a single text node below.
-  let trailing = '';
-  if (frameRendersUnit(input)) trailing += subtitleUnitClause(input.unit!, sub.measure);
-  if (sub.period) trailing += ` · ${sub.period}`;
-  if (sub.scenarios && sub.scenarios.length > 0) trailing += ` · ${formatScenarios(sub.scenarios)}`;
-  const segments: { text: string; bold: boolean }[] = [];
-  if (sub.company) segments.push({ text: `${sub.company} · `, bold: false });
-  // Only the measure is bold. A measure that names its own unit after a comma
-  // ("Orders by delivery speed, % of all orders") keeps the unit regular, as
-  // the frame's own " in <unit>" clause is.
-  const unitTail = measureUnitTail(sub.measure, input.unit);
-  // A subtitle that is the measure alone has no measure run to set apart: it
-  // prints regular.
-  const lone = !sub.company && !unitTail && !trailing;
-  segments.push({ text: sub.measure.slice(0, sub.measure.length - unitTail.length), bold: !lone });
-  if (unitTail || trailing) segments.push({ text: unitTail + trailing, bold: false });
   const lineH = font.size * (font.lineHeight ?? 1.3);
   // ONE text node with styled runs. One <text> per segment, each positioned
   // at the summed MEASURED widths of its predecessors, prints the width
@@ -2160,6 +2011,19 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
     ((input.legend.items.length ?? 0) > 0 || (input.eventKey?.legend?.length ?? 0) > 0);
   const footGap = bottomKey ? tokens.gapKeyFootnote : tokens.gapAxisFootnote;
 
+  // The frame's texts: title, subtitle with its unit clause, notes and source.
+  const footFont = withFamily(footerType(theme.type.footnote, input.target, input.textScale));
+  const footInset = Math.max(0, Math.min(input.footerInset ?? 0, (contentW - 1) / 2));
+  const footW = contentW - 2 * footInset;
+  const text = frameText({
+    target: input.target, title: input.title || undefined, subtitle: input.subtitle, unit: input.unit, source: input.source, credit: input.credit, notes: input.notes, strings: input.strings,
+    footnotes: (input.footnotes ?? []).map((note) => ({ text: note, meta: engineNoteMeta(note) })),
+    footnotesOff: input.footnotesOff, numberedFootnotes: input.numberedFootnotes, unreferencedNotes: input.unreferencedNotes,
+    numberedDisclosures: input.numberedDisclosures, pointedNotes: input.pointedNotes, compactSourceLines: input[COMPACT_SOURCE_LINES],
+    width: size.width, footWidth: footW, footFont, boldWeight: emphasisWeight(theme), measure,
+    policy: { pinned: staticFrame.pinned, live: staticFrame.live },
+  });
+
   // ---- title (action title, dominant, up to 2 lines) ----
   if (input.title) {
     // Compact keeps the title role at its smallest step, never label size.
@@ -2217,7 +2081,7 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
 
   // ---- subtitle (notation composed line; measure bold) ----
   if (input.subtitle) {
-    const subtitle = measureSubtitle(input, contentX, topY, nid('subtitle'), () => nid('subtitle'), headerW);
+    const subtitle = measureSubtitle(input, text.subtitle!, contentX, topY, nid('subtitle'), () => nid('subtitle'), headerW);
     nodes.push(...subtitle.nodes);
     occupied.claim(subtitle.rect, 'frame', {});
     frame.subtitleNodeId = subtitle.nodes[0]!.id;
@@ -2238,148 +2102,27 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
   // map credit; the rest goes to the notes list and the source line ends with
   // "+N notes". The small role, inkMuted, regular weight. A host that scales
   // text reads the size from this role only.
-  const footFont = withFamily(footerType(theme.type.footnote, input.target, input.textScale));
-  const footMeasure = (input.source && hasBold(input.source)) || input.footnotes?.some(hasBold)
-    ? boldMeasurer(measure, emphasisWeight(theme)) : measure;
   let liveFooterH = 0;
   const footLineH = footFont.size * (footFont.lineHeight ?? 1.3);
-  const footInset = Math.max(0, Math.min(input.footerInset ?? 0, (contentW - 1) / 2));
   const footX = contentX + footInset;
-  const footW = contentW - 2 * footInset;
   const fullStatic = staticFrame.pinned;
-  const placement = fullStatic ? 'frame' : input.notes?.placement ?? defaultNotePlacement(input.target);
+  // The request's note registry learns the kinds the frame gave its fitted list notes.
+  for (const { text: note, meta } of text.marked) engineNote(note, meta.kind, meta.short, meta.values, meta.list ?? null);
+  if (text.countable) staticFrame.countable = true;
+  const { placement, footMeasure, sourceText, sourceOff, sourceBlock, noteList } = text;
   // WCAG 2.2 AA 2.5.8: the 'info' footer is a 24 px button in React (ChartFooter), so the room
   // from the footer top to the canvas edge is at least 24 px; a 10 px card margin left 21 px.
   const hitRoom = (y: number) => placement === 'info' ? Math.min(y, size.height - NOTE_HIT_PX) : y;
-  const budget = fullStatic ? Infinity : input.notes?.maxLines ?? defaultNoteLines(input.target, size.width);
-  // Engine notes (method, disclosure) print only where the author asks for them (notes.show).
-  const shown = new Set<string>(input.notes?.show ?? ['note']);
-  const pointerOn = !fullStatic && !input.footnotesOff && input.notes?.pointer !== false;
-  // A note a mark points at keeps its number; a note about the exhibit
-  // prints unnumbered. The numbered list is matched in order, so a
-  // derived note that happens to repeat one of its strings does not steal its
-  // number. A numbered note is the author's (or one a mark points at); every
-  // other note is the engine's, a disclosure where its composer said so.
-  const entries: { kind: NoteKind; text: string; short?: string; drawn: string; ref?: number; ranks?: true }[] = [];
-  {
-    const notes = input.footnotes ?? [];
-    const numbered = input.numberedFootnotes ?? notes;
-    const unreferencedNotes = new Set(input.unreferencedNotes ?? []);
-    let next = 0;
-    let referenced = false;
-    const unmarked: number[] = [];
-    for (let f of notes) {
-      // The note line of hidden labels names no mark, so it never
-      // takes a number, even where a composing layout handed it on as authored.
-      const numberedHere = next < numbered.length && numbered[next] === f && !f.startsWith(`${HIDDEN_LABEL_LEAD}:`);
-      // Marked where the engine made it, never looked up by text: an authored note stays a note.
-      const numberedDisclosure = numberedHere && (input.numberedDisclosures?.includes(next + 1) ?? false);
-      const marker = numberedHere && !unreferencedNotes.has(next + 1) ? `${footnoteMark(next + 1)} ` : '';
-      if (marker) referenced = true;
-      if (numberedHere && marker === '') unmarked.push(next + 1);
-      if (numberedHere) next += 1;
-      const meta = numberedHere ? undefined : engineNoteMeta(f);
-      if (fullStatic && meta?.list) staticFrame.countable = true;
-      // a capped list note names what fits two footer lines at this width.
-      if (meta?.list) {
-        const fitted = fittedNote(meta.list, (text) => wrapFootnote(markBold(text), footFont, footW, footMeasure).length <= 2);
-        f = meta.short ? engineNote(f, 'disclosure', fitted, meta.values, meta.list) : engineNote(fitted, 'disclosure', undefined, meta.values, meta.list);
-      }
-      const kind: NoteKind = numberedDisclosure ? 'disclosure' : numberedHere ? 'note' : meta?.kind ?? 'method';
-      // A disclosure draws its short form only where it is narrower than the full note;
-      // an author-set notes.maxListed keeps its form.
-      const fittedShort = engineNoteMeta(f)?.short ?? meta?.short;
-      const short = fittedShort && (kind !== 'disclosure' || input.notes?.maxListed !== undefined || footMeasure(markBold(fittedShort), footFont).width < footMeasure(markBold(f), footFont).width) ? fittedShort : undefined;
-      const storedMeta = meta ? { ...meta, ...engineNoteMeta(f), ...(meta.ranks ? { ranks: true as const } : {}) } : undefined;
-      entries.push(keepNoteMeta({ kind, text: f, ...(short ? { short } : {}), drawn: `${marker}${kind === 'disclosure' || (kind === 'method' && !fullStatic) ? short ?? f : f}`, ...(marker ? { ref: next } : {}), ...(meta?.ranks ? { ranks: true as const } : {}) }, storedMeta));
-    }
-    // A number with no mark pointing at it sends the reader looking
-    // for one, so the note prints unnumbered and the author hears why.
-    // Without any mark references, the authored notes describe the exhibit.
-    if (!input.footnotesOff && unmarked.length > 0 && referenced) {
-      warnings.push({
-        code: 'footnote-unreferenced',
-        severity: 'info',
-        message: `${unmarked.length === 1 ? 'note' : 'notes'} ${unmarked.join(', ')} ${unmarked.length === 1 ? 'has' : 'have'} no category or cell pointing at ${unmarked.length === 1 ? 'it' : 'them'} (footnote: n), so ${unmarked.length === 1 ? 'it prints' : 'they print'} without a number`,
-        suggest: "set footnote: n on the category or cell the note explains, or keep it as a note about the whole exhibit",
-      });
-    }
-  }
-  // Author notes first, then the disclosures and the engine's method notes
-  // (a stable sort keeps each kind in composed order); source and credit last.
-  const rank: Record<NoteKind, number> = { note: 0, disclosure: 1, method: 2, source: 3, credit: 4 };
-  entries.sort((a, b) => rank[a.kind] - rank[b.kind]);
   const credit = input.credit;
-  // A required credit stays on every target and under `footnotes: false`.
-  const creditInFrame = credit !== undefined && (credit.required || fullStatic);
-  const sourceText = input.source ? sourceLine(input.source, input.strings?.source ?? localeStrings().source) : undefined;
-  const sourceOff = sourceText !== undefined && !fullStatic && input[COMPACT_SOURCE_LINES] === 0;
-  if (sourceOff) {
-    frame.source = input.source;
-    warnings.push({ code: 'footnotes-off', severity: 'info', message: `compact frame has no room for the source line: ${sourceText}` });
-  }
-  // A disclosure the author asks for (notes.show), and an author note a drawn
-  // mark points at (pointedNotes), stay in the frame outside the line budget,
-  // like a required credit. `footnotes: false` hands every other note to the
-  // host; a disclosure the author asks for stays.
-  const pointed = new Set(input.pointedNotes ?? []);
-  const kept = entries.filter((entry) => entry.kind === 'disclosure' ? shown.has('disclosure') || (entry.ranks === true && shown.has('ranks')) : !input.footnotesOff && pointed.has(entry.text));
-  const candidates = input.footnotesOff || placement === 'list' ? [] : entries.filter((entry) => !kept.includes(entry) && shown.has(entry.kind) && !isQuiet(entry));
-  // The pointer counts the notes of the kinds the author prints; the engine's
-  // hidden notes stay in the notes list without a pointer under the chart.
-  // React's 'info' footer is the exception: its "Notes and sources (N)" button lists the engine's
-  // hidden notes too (ChartFooter), so the pointer counts every note the frame does not draw and
-  // the frame reserves the button's row. A 280 px card with one hidden value drew the button
-  // below the card.
-  const infoPanel = staticFrame.live && placement === 'info';
-  // Quiet method notes alone raise no pointer: the button for them is left off where its row would grow the footer.
-  const infoCount = (hidden: readonly object[]) => allQuiet(hidden) && !(credit && !creditInFrame) ? 0 : hidden.length;
-  const listed = (k: number) => infoPanel
-    ? infoCount(entries.filter((entry) => !kept.includes(entry) && !candidates.slice(0, k).includes(entry))) + (credit && !creditInFrame ? 1 : 0)
-    : entries.filter((entry) => shown.has(entry.kind) && !kept.includes(entry) && !isQuiet(entry)).length - k + (credit && !creditInFrame ? 1 : 0);
-  const sourcePara = (k: number): string | undefined => {
-    const hidden = listed(k);
-    const pointer = pointerOn && hidden > 0 ? notesPointer(hidden, input.strings) : undefined;
-    const source = sourceOff ? undefined : sourceText;
-    if (source === undefined) return pointer;
-    return pointer === undefined ? source : `${source}${/[.!?]$/.test(source) ? '' : '.'} ${pointer}`;
-  };
-  const sourceFit = (text: string) => !fullStatic && input[COMPACT_SOURCE_LINES] === 1 ? fitText(markBold(text), footFont, footW, 1, footMeasure) : undefined;
-  const sourceLines = (text: string): string[] => sourceFit(text)?.lines ?? wrapFootnote(markBold(text), footFont, footW, footMeasure);
-  const noteLines = candidates.map((entry) => wrapFootnote(markBold(entry.drawn), footFont, footW, footMeasure));
-  // The most notes, in order, that fit the budget with the source line (and
-  // its pointer); the source line itself is never cut.
-  let k = candidates.length;
-  for (; k > 0; k--) {
-    const para = sourcePara(k);
-    const used = noteLines.slice(0, k).reduce((sum, lines) => sum + lines.length, 0) + (para ? sourceLines(para).length : 0);
-    if (used <= budget) break;
-  }
-  const visible = new Set([...candidates.slice(0, k), ...kept]);
-  const sourceBlock = sourcePara(k);
-  if (input.footnotesOff) {
-    // The host that switched the notes off carries them in its own frame, so
-    // it is told which ones the chart would have printed. The source line
-    // and a required credit stay (footer rule).
-    const leftOff = entries.filter((entry) => !kept.includes(entry)).map((entry) => entry.text);
-    if (leftOff.length) {
-      warnings.push({ code: 'footnotes-off', severity: 'info', message: `footnotes: false left these notes off: ${leftOff.join(' | ')}` });
-    }
-  }
-  const unprinted = entries.filter((entry) => !visible.has(entry)).map((entry) => entry.text);
-  if (unprinted.length > 0) frame.notes = unprinted;
-  const noteList: ChartNote[] = [
-    ...entries.map((entry) => keepNoteMeta({ kind: entry.kind, text: entry.text, ...(entry.short ? { short: entry.short } : {}), inFrame: visible.has(entry), ...(entry.ref ? { ref: entry.ref } : {}) }, engineNoteMeta(entry))),
-    ...(input.source ? [{ kind: 'source' as const, text: input.source, inFrame: !sourceOff }] : []),
-    ...(credit ? [{ kind: 'credit' as const, text: credit.text, short: credit.short, ...(credit.links.length ? { links: credit.links.map((link) => ({ ...link })) } : {}), inFrame: creditInFrame }] : []),
-  ].map((entry, i) => keepNoteMeta({ n: i + 1, ...entry }, engineNoteMeta(entry)));
+  const creditInFrame = text.creditInFrame;
+  const pointerOn = text.pointerOn;
+  pushAll(warnings, text.warnings);
+  if (sourceOff) frame.source = input.source;
+  if (text.unprinted.length > 0) frame.notes = text.unprinted;
   if (noteList.length > 0) frame.noteList = noteList;
   frame.notePlacement = placement;
   const footParts: { text: string; kind: 'source' | 'footnote' | 'credit'; lines?: string[] }[] = [
-    ...entries.filter((entry) => visible.has(entry)).map((entry) => {
-      const at = candidates.indexOf(entry);
-      return { text: entry.drawn, kind: 'footnote' as const, lines: at >= 0 ? noteLines[at] : wrapFootnote(markBold(entry.drawn), footFont, footW, footMeasure) };
-    }),
+    ...text.printed.map(({ entry, lines }) => ({ text: entry.drawn, kind: 'footnote' as const, lines })),
     ...(sourceBlock ? [{ text: sourceBlock, kind: 'source' as const }] : []),
     ...(credit && creditInFrame ? [{ text: `${chartString(input, 'mapCredit')}: ${credit.text}`, kind: 'credit' as const }] : []),
   ];
@@ -2408,8 +2151,8 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
       const p = footParts[i]!;
       // A footnote is the sentence that makes an exhibit auditable. It wraps to
       // the content width and keeps every word on the canvas.
-      const fitted = p.kind === 'source' ? sourceFit(p.text) : undefined;
-      const lines = p.lines ?? (p.kind === 'source' ? sourceLines(p.text) : wrapFootnote(p.kind === 'credit' ? p.text : markBold(p.text), footFont, footW, footMeasure));
+      const fitted = p.kind === 'source' ? text.sourceLines(p.text) : undefined;
+      const lines = p.lines ?? fitted?.lines ?? wrapFootnote(p.kind === 'credit' ? p.text : markBold(p.text), footFont, footW, footMeasure);
       bottomY -= footLineH * lines.length;
       footLines += lines.length;
       const id = nid(p.kind);

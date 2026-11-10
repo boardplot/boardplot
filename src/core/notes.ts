@@ -192,7 +192,7 @@ export function notesPointer(count: number, strings?: StringsSpec): string {
 
 /** A capped list note: the frame names as many of its items as fit two footer lines. */
 export interface NoteList { lead: string; items: readonly string[]; total?: number; options: object }
-interface EngineNoteMeta { kind: 'note' | 'method' | 'disclosure'; short?: string; values?: readonly string[]; list?: NoteList; ranks?: true; quiet?: true }
+export interface EngineNoteMeta { kind: 'note' | 'method' | 'disclosure'; short?: string; values?: readonly string[]; list?: NoteList; ranks?: true; quiet?: true }
 
 const NOTE_META = Symbol('noteMetadata');
 type Noted = { [NOTE_META]?: EngineNoteMeta };
