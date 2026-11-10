@@ -11,7 +11,7 @@ import type { StringsSpec } from '../core/types/options';
 
 import { useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react';
 import { useIsomorphicLayoutEffect as useLayoutEffect } from './useIsomorphicLayoutEffect';
-import { footerParts, notesPointer, sourceLine, unprintedNotes, type ChartNote, type CreditLink } from '../core/notes';
+import { footerParts, notesPanelLabel, notesPointer, sourceLine, unprintedNotes, type ChartNote, type CreditLink } from '../core/notes';
 import { boldRuns, hasBold, markBold } from '../core/inlineBold';
 import { footnoteMark } from '../core/footnoteMark';
 import { footerType } from '../core/footer';
@@ -163,7 +163,7 @@ export function ChartFooter({ geometry, notes, theme, sourceWord, strings, rende
       {words.mapCredit}: {linked(credit.text, credit.links)}
     </>
   );
-  const label = info ? `${words.notesAndSources} (${panel.length})` : notesPointer(panel.length, words);
+  const label = info ? notesPanelLabel(panel.length, words.notesAndSources) : notesPointer(panel.length, words);
   const sourceText = source ? sourceLine(source.text, sourceWord ?? words.source) : undefined;
   const contents = (suffix = '') => <>
       {panel.length > 0 && !renderNotes && (
@@ -279,7 +279,7 @@ function DrawnFooter({ geometry, theme, credit, words, renderNotes, notes, pad, 
   const button = panel.length > 0 && (
     <button ref={buttonRef} type="button" data-bp-notes-toggle="" aria-expanded={open} aria-controls={panelId} onClick={() => setOpen(!open)}
       style={{ position: 'relative', height: lineHeight, minHeight: 0, minWidth: 0, lineHeight: `${lineHeight}px`, verticalAlign: 'top', marginLeft: place?.nodeId ? '0.75em' : 0 }}>
-      {words.notesAndSources} ({panel.length})
+      {notesPanelLabel(panel.length, words.notesAndSources)}
       {/* WCAG 2.2 AA 2.5.8: a 24 px tall target, outside the line box. */}
       <span aria-hidden="true" style={{ position: 'absolute', left: 0, right: 0, top: -Math.max(0, (24 - lineHeight) / 2), bottom: -Math.max(0, (24 - lineHeight) / 2) }} />
     </button>

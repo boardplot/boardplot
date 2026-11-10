@@ -3,7 +3,7 @@ import { boldMeasurer, hasBold, markBold, splitBoldLines } from './inlineBold';
 import { footnoteMark } from './footnoteMark';
 import { INTERACTIVE_LAYOUT, footerPlans, footerType, staticFrame, wrapFootnote } from './footer';
 import { publishDeferred } from './deferred';
-import { allQuiet, isQuiet, chartNotes, copyNote, engineNoteMeta, keepNoteMeta, printsNote, shownNoteKinds, sourceLine, unprintedNotes, type ChartNote } from './notes';
+import { allQuiet, isQuiet, chartNotes, copyNote, engineNoteMeta, keepNoteMeta, notesPanelLabel, printsNote, shownNoteKinds, sourceLine, unprintedNotes, type ChartNote } from './notes';
 import { fittedNote } from './frame';
 import { emphasisWeight, panelTypeClass, spaceTokens } from './theme';
 import { chartString, localeStrings } from './strings/frame';
@@ -182,7 +182,7 @@ function notesButtonWidth(geometry: Geometry<object, object>, plan: StaticFooter
     ...(geometry.a11y?.compactNotes ?? []).map((text): ChartNote => ({ n: 0, kind: 'note', text, inFrame: false }))]);
   if (!hidden.length) return undefined;
   // ChartFooter sets the button 0.75em after the line. Quiet: only quiet method notes sit behind it, so it never takes a row of its own.
-  return { width: plan.font.size * 0.75 + plan.measure(`${chartString(plan.input, 'notesAndSources')} (${hidden.length})`, plan.font).width, quiet: allQuiet(hidden) };
+  return { width: plan.font.size * 0.75 + plan.measure(notesPanelLabel(hidden.length, chartString(plan.input, 'notesAndSources')), plan.font).width, quiet: allQuiet(hidden) };
 }
 const buttonFits = (lines: readonly string[], button: number, plan: StaticFooterPlan) =>
   lines.length > 0 && plan.measure(lines[lines.length - 1]!, plan.font).width + button <= plan.width;

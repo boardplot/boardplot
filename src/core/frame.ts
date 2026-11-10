@@ -27,7 +27,7 @@ import { PRIORITY } from './label/solver';
 import { footnoteMark } from './footnoteMark';
 import { localeStrings } from './strings/frame';
 import { withLocaleStrings } from './strings';
-import { allQuiet, isQuiet, chartNotes, copyNote, defaultNoteLines, defaultNotePlacement, engineNote, engineNoteMeta, footerParts, keepNoteMeta, notesPointer, shownNoteKinds, sourceLine, valueNote, type ChartCredit, type ChartNote, type NoteKind, type NoteList } from './notes';
+import { allQuiet, isQuiet, chartNotes, copyNote, defaultNoteLines, defaultNotePlacement, engineNote, engineNoteMeta, footerParts, keepNoteMeta, notesPanelLabel, notesPointer, shownNoteKinds, sourceLine, valueNote, type ChartCredit, type ChartNote, type NoteKind, type NoteList } from './notes';
 import { harveyWedgePath } from './svgPath';
 import { parseFormatExample, unitOfSpec } from './formatSpec';
 import { hasAuthoredTypeSize, type FontSpec } from './text';
@@ -438,7 +438,7 @@ function htmlFooterHeight(input: FrameInput, parts: ReturnType<typeof footerPart
   }
   const credit = parts.credit && `${chartString(input, 'mapCredit')}: ${parts.credit.text}`;
   const label = parts.panel.length === 0 ? undefined
-    : parts.info ? `${wordingString(input, 'notesAndSources')} (${parts.panel.length})` : notesPointer(parts.panel.length, input.strings);
+    : parts.info ? notesPanelLabel(parts.panel.length, wordingString(input, 'notesAndSources')) : notesPointer(parts.panel.length, input.strings);
   const items = [
     ...(parts.source && sourceText ? [{ w: measure(markBold(sourceText), font).width, text: sourceText }] : []),
     ...(credit && parts.info ? [{ w: measure(credit, font).width, text: credit }] : []),
