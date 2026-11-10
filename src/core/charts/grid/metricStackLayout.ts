@@ -39,34 +39,12 @@ const accent: Paint = { token: 'focus' };
 const wash = (base: Paint, weight: number, pageFloor?: number): Paint =>
   ({ token: 'markInk', theme: { kind: 'mix', from: base, to: { token: 'background' }, weight, ...(pageFloor === undefined ? {} : { pageFloor }) } });
 
-const NO_WIDER_SEARCH = Symbol('boardplot.metricStackNoWiderSearch');
+/** A gutter probe: the layout fails unless every label places. */
+const GUTTER_PROBE = Symbol('boardplot.metricStackGutterProbe');
 /** A fixed canvas too short for the readout gutter: unit beside name, headline and span on one line, tighter spacing. */
 const COMPACT_READOUT = Symbol('boardplot.metricStackCompactReadout');
 /** The widest authored gutter that still places every label, once a wider one lost a label. */
 const GUTTER_LIMIT = Symbol('boardplot.metricStackGutterLimit');
-
-/** The narrowest width up to 512 px wider that draws every label, at the same height; undefined when none does. */
-function widerThatPlaces(raw: MetricStackData, options: GridLayoutOptions, size: { width: number; height: number }, automatic: boolean): number | undefined {
-  const draws = (width: number) => {
-    try {
-      const geo = layoutMetricStack(raw, { ...options, size: automatic ? { width } : { width, height: size.height }, [NO_WIDER_SEARCH]: true } as GridLayoutOptions);
-      return geo.scene.length > 0;
-    } catch (error) { if (error instanceof NormalizeError) return false; throw error; }
-  };
-  // The received width failed; a fractional one (288.1) leaves its next whole px untested.
-  const base = Math.floor(size.width);
-  let low = base, high: number | undefined;
-  for (let step = 4; step <= 512; step *= 2) {
-    if (draws(base + step)) { high = base + step; break; }
-    low = base + step;
-  }
-  if (high === undefined) return undefined;
-  while (high - low > 1) {
-    const mid = Math.floor((low + high) / 2);
-    if (draws(mid)) high = mid; else low = mid;
-  }
-  return high;
-}
 
 /** A readout as far as it prints: a hidden seat leaves no claim, and an operand goes with the last figure that used it. */
 function printedReadout(readout: StackReadout, showHeadline: boolean, showSpan: boolean): StackReadout {
@@ -564,6 +542,9 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
         occupied.claim({x:x-4.5,y:top-4.5,w:9,h:9},'mark',cellOwner,'point');
       }
       if(valued(ci))centerText(`${p.panel.id}:value:${category.id}`,labelText,valueFont,x,top-labelGap-heightOf(valueFont),cellOwner,provisional?muted:{token:'ink'},'label','point',undefined,p.panel.type==='line'&&top+labelGap+heightOf(valueFont)<baseline-2?top+labelGap:undefined);
+      // A line point value ranks as on the line chart: the latest is its endpoint, the others interior, so 'minimal' keeps the latest.
+      const valueRequest=requests.at(-1);
+      if(p.panel.type==='line'&&valueRequest?.id===`${p.panel.id}:value:${category.id}`)valueRequest.priority=ci===latest?PRIORITY.endpoint:PRIORITY.interior;
     });
     emit({t:'line',id:`${p.panel.id}:baseline`,x1:plotX,x2:plotX+plotW,y1:baseline,y2:baseline,stroke:{token:'axis'},width:strokeToken(theme, 'rule'),owner,part:'baseline'});
     occupied.claim({x:plotX,y:baseline-0.5,w:plotW,h:1},'axis',owner,'baseline');
@@ -582,25 +563,23 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
     scene.push({t:'line',id:`stack:period:rule:${i}`,x1:x+1.5,x2:x+indexes.length*step-1.5,y1:y,y2:y,stroke:bold?{token:'ink'}:{token:'grid'},width:strokeToken(theme, bold ? 'data' : 'rule'),owner:{},part:'periodRule'});
   });
   for(const request of requests) if(yielding.has(request.id)) request.priority=PRIORITY.interior;
-  const solved=solveLabels(requests,occupied,{density:'full',pins:options.labelPlacements??{},labelOffsets:options.labelOffsets,measure,plot:frame.plot,canvas:{x:0,y:0,w:size.width,h:size.height},darkInk:theme.color.ink,lightInk:theme.color.inkInverse,labelPad:0});
+  const solved=solveLabels(requests,occupied,{density:options.labelDensity??'full',pins:options.labelPlacements??{},labelOffsets:options.labelOffsets,measure,plot:frame.plot,canvas:{x:0,y:0,w:size.width,h:size.height},darkInk:theme.color.ink,lightInk:theme.color.inkInverse,labelPad:0});
   const fonts = new Map(requests.map(request => [request.id, request.font]));
   for(const label of solved.placed) { label.ink=inks.get(label.id)??label.ink; label.font=fonts.get(label.id); }
-  const hidden=solved.placed.filter(l=>l.hidden&&!yielding.has(l.id));  if(hidden.length){
-    // An authored gutter wider than the default never refuses: it gives way to the widest gutter that places every label.
-    if(gutter>defaultGutter&&!(options as { [NO_WIDER_SEARCH]?: boolean })[NO_WIDER_SEARCH]){
-      const places=(width:number)=>{
-        try { return layoutMetricStack(raw,{...options,[GUTTER_LIMIT]:width,[NO_WIDER_SEARCH]:true} as GridLayoutOptions).scene.length>0; }
-        catch(error){ if(error instanceof NormalizeError)return false; throw error; }
-      };
-      let low=defaultGutter,high=gutter;
-      while(high-low>1){ const mid=Math.floor((low+high)/2); if(places(mid))low=mid; else high=mid; }
-      return layoutMetricStack(raw,{...options,[GUTTER_LIMIT]:low} as GridLayoutOptions);
-    }
-    // A value that finds no room on a narrow card needs width: refuse with the narrowest width that places every label.
-    const width=(options as { [NO_WIDER_SEARCH]?: boolean })[NO_WIDER_SEARCH]?undefined:widerThatPlaces(raw,options,size,automatic);
-    if(width!==undefined)return needsWidth(width);
-    spacingError('options.size',`Metric stack cannot place ${hidden.map(l=>`'${l.text}'`).join(', ')} at ${size.width} × ${size.height} px`);
+  const hidden=solved.placed.filter(l=>l.hidden&&!yielding.has(l.id));
+  const probe=(options as { [GUTTER_PROBE]?: boolean })[GUTTER_PROBE]===true;
+  if(hidden.length&&probe)spacingError('options.size',`Metric stack cannot place ${hidden.map(l=>`'${l.text}'`).join(', ')} at ${size.width} × ${size.height} px`);
+  // An authored gutter wider than the default gives way to the widest gutter that places every label.
+  if(hidden.length&&gutter>defaultGutter){
+    const places=(width:number)=>{
+      try { return layoutMetricStack(raw,{...options,[GUTTER_LIMIT]:width,[GUTTER_PROBE]:true} as GridLayoutOptions).scene.length>0; }
+      catch(error){ if(error instanceof NormalizeError)return false; throw error; }
+    };
+    let low=defaultGutter,high=gutter;
+    while(high-low>1){ const mid=Math.floor((low+high)/2); if(places(mid))low=mid; else high=mid; }
+    return layoutMetricStack(raw,{...options,[GUTTER_LIMIT]:low} as GridLayoutOptions);
   }
+  // Any other label without a seat drops: the shared note pass names it and warns label-hidden, as on every chart type.
   pushAll(scene, labelsToNodes(theme, solved.placed,()=>valueFont));
   const counts=[structureCount('panels',data.panels.length, undefined, options),structureCount('categories',data.categories.length, undefined, options),structureCount('series',data.measures.length,chartString(options, 'sourceMeasures', { v1: data.measures.length }))];
   return {type:'grid',size,plot:frame.plot,scene,labels:solved.placed,axes:[{axis:'x',baselineNodeId:`${data.panels.at(-1)!.id}:baseline`,ticks:data.categories.map((c,i)=>({at:c.id,pos:plotX+(i+0.5)*step,labelId:`stack:category:${c.id}`}))}],annotations:[],frame:frame.frame,legend:frame.legend,marks,derived:{metricStack:derived,sharedPlotX:plotX,sharedPlotW:plotW,tierGap:gap},
