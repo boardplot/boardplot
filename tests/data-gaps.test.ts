@@ -710,3 +710,20 @@ it('reads the printed text of Likert nets and shares and of Pareto cumulative sh
     }
   }
 });
+
+// Option ids may contain ':', so a share claim id can collide with another option or row; the reading must never quote another value's text.
+it('never reads a Likert share with the text of another option or row', () => {
+  const inputs = [
+    { scale: [{ id: 'x:pos', label: 'Disagree' }, { id: 'middle', label: 'Neutral', role: 'neutral' }, { id: 'x', label: 'Agree' }], items: [{ id: 'q', values: [20, 30, 50] }] },
+    { scale: [{ id: 'b:c', label: 'Disagree' }, { id: 'neutral', role: 'neutral' }, { id: 'c', label: 'Agree' }], items: [{ id: 'a', values: [20, 30, 50] }, { id: 'a:b', values: [10, 20, 70] }] },
+  ];
+  for (const data of inputs) {
+    const request = resolveChartRequest({ type: 'likert', data, options: { values: 'counts', size: { width: 1000, height: 700 } } } as never);
+    const geometry = layoutResolvedRequest(request);
+    if (geometry.refused) throw new Error('likert refused');
+    const reading = chartReading({ name: 'likert', type: 'likert', request, geometry, claims: claimsForChart('likert', geometry) });
+    const shown = reading.derived.filter((entry) => entry.claimId.startsWith('likert:share:') && entry.visible);
+    expect(shown.length).toBeGreaterThan(1);
+    for (const entry of shown) expect(entry.displayed, entry.claimId).toBe(`${entry.value}%`);
+  }
+});

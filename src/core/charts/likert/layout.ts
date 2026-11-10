@@ -1007,7 +1007,9 @@ export function layoutLikert(
       ? [label.owner, { seriesId: halves.neg, categoryId: label.owner.categoryId }] : [label.owner];
   }
   // A printed share and net name their claims, so the reading quotes the printed text.
-  const optionOf = new Map(scale.flatMap((option, i) => [seriesIdOf(i), seriesIdOf(i, 'neg'), seriesIdOf(i, 'pos')].map((id) => [id, option.id] as const)));
+  // Only the split neutral has halves. A real option's series id wins over a half's id, so 'x:pos' stays its own option.
+  const optionOf = new Map<Id, Id>(halves ? [[halves.neg, scale[neutralIndex]!.id], [halves.pos, scale[neutralIndex]!.id]] : []);
+  scale.forEach((option, i) => optionOf.set(seriesIdOf(i), option.id));
   for (const label of geo.labels) {
     const { seriesId, categoryId } = label.owner;
     if (label.kind === 'grandTotal' && summary === 'net') label.claimId = `likert:net:${categoryId}`;
