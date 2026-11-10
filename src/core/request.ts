@@ -570,7 +570,15 @@ function widthProbers(request: ResolvedChartRequest, layoutAt: LayoutCall<any, a
     const gate = sizeGate(def, request.data, { ...request.options, size: { width } }, true).gatePolicy.minWidth;
     return width + SIZE_TOLERANCE < gate ? { draws: false, floor: gate, result: undefined as unknown as LayoutResult } : undefined;
   };
-  const any = cached((width) => {
+  // A width the chart refuses with a thrown finding (a metric stack panel shorter than the larger type of a wider
+  // class asks for) does not draw there. The finding is that width's, not the asked one's.
+  const refusedAt = (probe: (width: number) => WidthProbe) => (width: number): WidthProbe => {
+    try { return probe(width); } catch (error) {
+      if (!(error instanceof NormalizeError) || width === request.size.width) throw error;
+      return { draws: false, result: undefined as unknown as LayoutResult };
+    }
+  };
+  const any = cached(refusedAt((width) => {
     const gate = gated(width);
     if (gate) return gate;
     // The asked width is the layout render made.
@@ -582,14 +590,14 @@ function widthProbers(request: ResolvedChartRequest, layoutAt: LayoutCall<any, a
     if (isRefused(drawn)) return read(first, false);
     const need = sizeNeed(first);
     return { ...read(drawn, true), ...(need !== undefined && need > width ? { upper: need } : {}) };
-  }, known);
+  }), known);
   // Drawn compact: the full chart's need is the width a refusing full layout names.
-  const full = cached((width) => {
+  const full = cached(refusedAt((width) => {
     const drawn = any(width);
     if (!drawn.draws || (drawn.result as Geometry).mode !== 'compact' || own.mode === 'compact') return drawn;
     const probe = layoutAt({ ...request.options, belowMinimum: 'refuse', size: { width }, [WIDTH_PROBE]: request.type } as RequestOptions);
     return { draws: false, floor: sizeNeed(probe), result: drawn.result };
-  });
+  }));
   return { full, any };
 }
 
@@ -896,7 +904,8 @@ export function measureLayout(request: ResolvedChartRequest, result: LayoutResul
 
 /** Exact plot repairs may spend layouts; rendering only reports its estimate. */
 function measuredPlotAdvice(request: ResolvedChartRequest, result: LayoutResult, layoutAt: LayoutCall<any, any, any>): void {
-  const warning = result.warnings.find(w => w.code === 'plot-under-floor');
+  // A grid panel's need is the panel's, which render reports too: no grid size is searched for it.
+  const warning = result.warnings.find(w => w.code === 'plot-under-floor' && w.detail?.panelId === undefined);
   if (!warning || result.refused || isRefused(result)) return;
   const clean = (size: Size) => {
     const probe = layoutAt({ ...request.options, size });

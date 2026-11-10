@@ -88,4 +88,6 @@ export const REPAIRS = [
   {"type":"line","name":"line-reference-band-composition","fixture":"stacked100-area-revenue-mix","options":{"referenceBands":[{"id":"a","label":"A","low":10,"high":150}]}},
   {"type":"scatter","name":"scatter-log-both-nonpositive","fixture":"negative-quadrants","options":{"valueAxis":{"log":"both"}}},
   {"type":"cohort","name":"cohort-heatmap-column-order","fixture":"heatmap-weighted-total","options":{"variant":"heatmap","columnOrder":["periods"]}},
+  {"type":"grid","name":"grid-panel-butterfly-sort-dated","data":{"panels":[{"id":"orders","type":"butterfly","data":{"categories":[{"id":"fy21","label":"FY21","date":"2021-12-31"},{"id":"fy22","label":"FY22","date":"2022-12-31"},{"id":"fy23","label":"FY23","date":"2023-12-31"}],"series":[{"id":"online","label":"Online","values":[100,120,144]},{"id":"store","label":"Store","values":[130,150,180]}]},"options":{"a":"online","b":"store","sort":{"categories":"desc"},"annotations":[{"id":"growth","kind":"cagr","from":{"categoryId":"fy21","seriesId":"online"},"to":{"categoryId":"fy23","seriesId":"online"}}]}}]},"options":{"columns":1}},
+  {"type":"grid","name":"grid-metric-stack-heights","fixture":"metric-stack-volume","options":{"stack":{"heights":[40,40,40]}}},
 ];
