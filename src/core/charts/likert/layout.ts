@@ -64,6 +64,7 @@ import { PRIORITY } from '../../label/solver';
 import { COLUMN_GAP, COLUMN_MIN_WIDTH, columnWidth } from '../diffColumn';
 import type { Theme, ThemeRef } from '../../types/theme';
 import { layoutBar, type BarDerived, type BarMarks } from '../bar/layout';
+import { hostedLayout } from '../../normalize/innerRefusal';
 import { DEFER_ADJACENT, EXACT_DOMAIN, LEFT_ROOM, NAME_TRACK, NO_NAME_COLUMN, RIGHT_ROOM, TOTAL_COLUMN, TOTAL_TRACK } from '../bar/model';
 import { labelOn as chartLabelOn } from '../labelOn';
 import { authoredNotes, withAuthoredFootnotes } from '../../frame';
@@ -918,7 +919,8 @@ export function layoutLikert(
       ...(labelOverride?.align !== undefined ? { rowLabels: { ...opts.rowLabels, align: labelOverride.align } } : {}),
     }, footnotes, opts.footnotes);
 
-    const drawn = layoutBar(barData, {
+    // The bars are derived shares: a bar refusal names a likert option it was handed, or nothing.
+    const drawn = hostedLayout(opts, barOptions, () => layoutBar(barData, {
       ...barOptions,
       [HOST_CLAIMS]: likertClaims,
       // Stacked statements are drawn by likert, so bar keeps no name column.
@@ -934,7 +936,7 @@ export function layoutLikert(
       ...(netDrawn ? { [TOTAL_COLUMN]: tracks?.rights.net ?? canvas.width - margin.right - baseReserve } : {}),
       ...(rows.bandPad ? { [BAND_PAD]: rows.bandPad } : {}),
     } as never,
-      likertAnnotationPass(data, shares, net, opts.format, brackets)) as Geometry<BarMarks, BarDerived>;
+      likertAnnotationPass(data, shares, net, opts.format, brackets))) as Geometry<BarMarks, BarDerived>;
     // The bar layout owes a hidden sliver's share to its generic note. Here a
     // share too narrow to print stays unlabelled: its length and colour show
     // it, and every side total and net is in the description (no prose list).

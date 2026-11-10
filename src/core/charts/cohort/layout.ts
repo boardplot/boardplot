@@ -29,6 +29,7 @@ import { clamp } from '../../geometry';
 import { smallRateDecimals, formatAutomaticNumber, formatAutomaticPercent } from '../../format';
 import { accessibleTitle } from '../../normalize/shared';
 import { layoutHeatmap, type HeatmapLayoutOptions } from '../heatmap/layout';
+import { hostedLayout } from '../../normalize/innerRefusal';
 import { paintColor, resolveSemanticPaletteTheme, semanticPalettePaint } from '../../theme';
 import type { Cell, Id } from '../../types/cell';
 import type { ChartData } from '../../types/data';
@@ -250,9 +251,9 @@ export function layoutCohort(
     return t < (rowById.get(owner.seriesId)?.observedPeriods ?? 0) ? [claimId('cohort', owner.seriesId, `t${t}`)] : undefined;
   };
 
-  const build = (extra: string[]): ReturnType<typeof layoutHeatmap> =>
+  const build = (extra: string[]): ReturnType<typeof layoutHeatmap> => {
     // Only the author's own notes keep a number; the rest are derived.
-    layoutHeatmap(hostData, withAuthoredFootnotes<HeatmapLayoutOptions & { [HOST_CLAIMS]: HostClaims }>({
+    const inner = withAuthoredFootnotes<HeatmapLayoutOptions & { [HOST_CLAIMS]: HostClaims }>({
       ...stripAnswered(options),
       [HOST_CLAIMS]: hostClaims,
       // One decimal width for every cell. The engine's own default drops the
@@ -288,7 +289,10 @@ export function layoutCohort(
       ...(reverseRows ? { sort: { segments: 'reverse' as const } } : {}),
       // A row name too long for the band is cut before its base, never the base.
       rowSuffix: Object.fromEntries(baseSuffix),
-    }, [...baseFootnotes, ...extra], options.footnotes));
+    }, [...baseFootnotes, ...extra], options.footnotes);
+    // The cells are derived rates: a heatmap refusal names a cohort option it was handed, or nothing.
+    return hostedLayout(options, inner, () => layoutHeatmap(hostData, inner));
+  };
 
   // A cell too small for its own number keeps its colour and loses its value
   // with nothing said. That silence is a defect, and a warning an

@@ -5,6 +5,7 @@ import { chartSizing, resolveSizing, sizeRefusal } from '../sizing';
 import { isVarianceTier } from './varianceTiers';
 import { maxOf, minOf } from '../arrays';
 import { unitMagnitude } from '../formatSpec';
+import { NormalizeError } from '../normalize/shared';
 
 type ChildChartLayout = (data: unknown, options: unknown) => LayoutResult;
 
@@ -38,11 +39,31 @@ export function inheritedScaleUnit(panelOptions: { unit?: unknown }, panelData: 
   return panelOptions.unit === undefined && !namesUnit(panelData) && unitMagnitude(gridUnit) !== undefined ? { unit: gridUnit, unitShown: true } : {};
 }
 
+/** The panel input a refusal came from, for the grid to point it at the authored panel (`authoredPanelRefusal`). */
+const refusedPanels = new WeakMap<NormalizeError, { panelId: string; data: unknown; options: unknown }>();
+
+/** The panel a refusal came from, once: a grid that lays out again inside another pass maps it there. */
+export function takeRefusedPanel(error: NormalizeError): { panelId: string; data: unknown; options: unknown } | undefined {
+  const panel = refusedPanels.get(error);
+  refusedPanels.delete(error);
+  return panel;
+}
+
 export function layoutChildChart(
   data: unknown,
   options: unknown,
   layout: ChildChartLayout,
+  panelId: string,
 ): LayoutResult {
+  try {
+    return childLayout(data, options, layout);
+  } catch (error) {
+    if (error instanceof NormalizeError && !refusedPanels.has(error)) refusedPanels.set(error, { panelId, data, options });
+    throw error;
+  }
+}
+
+function childLayout(data: unknown, options: unknown, layout: ChildChartLayout): LayoutResult {
   let geometry = layout(data, options);
   if (geometry.refused) return geometry;
   // Content panels stop at their natural height within a larger slot. The

@@ -61,7 +61,7 @@ interface ResolvedTargetSize {
 
 export function resolveTargetSize(target: RenderTarget, input?: CanvasSizeInput): ResolvedTargetSize {
   if (!Object.hasOwn(TARGET_TYPE_TABLES, target)) {
-    throw new NormalizeError('invalid-target', 'options.target', `unknown render target '${target}'`, Object.keys(TARGET_TYPE_TABLES).join(', '));
+    throw new NormalizeError('invalid-target', 'options.target', `unknown render target '${target}'`, Object.keys(TARGET_TYPE_TABLES).join(', '), undefined, ['options', 'target']);
   }
   if (input === undefined) {
     const sizePx = target === 'slide' ? { width: 1184, height: 528 }
@@ -72,19 +72,19 @@ export function resolveTargetSize(target: RenderTarget, input?: CanvasSizeInput)
   }
   if (typeof input === 'string') {
     if (!Object.hasOwn(SIZE_PRESETS, input)) {
-      throw new NormalizeError('invalid-size', 'options.size', `unknown size preset '${input}'`, Object.keys(SIZE_PRESETS).join(', '));
+      throw new NormalizeError('invalid-size', 'options.size', `unknown size preset '${input}'`, Object.keys(SIZE_PRESETS).join(', '), undefined, ['options', 'size']);
     }
     return { sizePx: { ...SIZE_PRESETS[input] }, fixed: { width: true, height: true } };
   }
   if (!Number.isFinite(input.width) || input.width <= 0
     || (input.height !== undefined && (!Number.isFinite(input.height) || input.height <= 0))
     || (input.unit !== undefined && !['px', 'pt', 'mm'].includes(input.unit))) {
-    throw new NormalizeError('invalid-size', 'options.size', 'size needs a width, and a height when it has one, as finite positive numbers in px, pt or mm');
+    throw new NormalizeError('invalid-size', 'options.size', 'size needs a width, and a height when it has one, as finite positive numbers in px, pt or mm', undefined, undefined, ['options', 'size']);
   }
   const width = toLayoutPx(input.width, input.unit);
   const height = input.height === undefined ? Math.round(width * (9 / 16)) : toLayoutPx(input.height, input.unit);
   if (!Number.isFinite(width) || !Number.isFinite(height)) {
-    throw new NormalizeError('invalid-size', 'options.size', 'size must remain finite after unit conversion');
+    throw new NormalizeError('invalid-size', 'options.size', 'size must remain finite after unit conversion', undefined, undefined, ['options', 'size']);
   }
   return { sizePx: { width, height }, fixed: { width: true, height: input.height !== undefined } };
 }

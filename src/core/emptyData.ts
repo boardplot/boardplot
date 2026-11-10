@@ -42,7 +42,7 @@ export function layoutRefusal(type: string, title: string, size: Size, error: No
       message: error.message,
       ...(error.suggest ? { suggest: error.suggest } : {}),
       ...(error.fix ? { fix: error.fix } : {}),
-      field: error.code === EMPTY_DATA ? ['data', ...(error.path ? error.path.split('.') : [])] : error.segments ?? (error.path ? error.path.split('.') : []),
+      field: error.segments ?? (error.code === EMPTY_DATA ? ['data', ...(error.path ? error.path.split('.') : [])] : error.path ? error.path.split('.') : []),
     }],
   };
 }

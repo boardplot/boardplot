@@ -23,6 +23,7 @@ export function assertTableRankOptions(options: TableOptions): void {
       'options.sort.segments',
       `table has no segments; sort.segments '${segments}' cannot reorder columns without breaking groups and accounting`,
       "drop sort.segments, or sort rows with sort.categories ('sheet', 'reverse', 'asc', 'desc')",
+      undefined, ['options', 'sort', 'segments'],
     );
   }
 }
@@ -56,6 +57,7 @@ export function requireAdditiveRanking(
   rows: readonly ResolvedRow[],
   path: string,
   action: string,
+  segments: readonly (string | number)[],
 ): void {
   const ranked = rows.some((row) => ranksAsData(row) && additiveRankKey(row, columns) !== null);
   if (!ranked) {
@@ -64,6 +66,7 @@ export function requireAdditiveRanking(
       path,
       `${action} needs at least one additive value column with a numeric cell; text, status and non-aggregating columns are not ranking keys`,
       "add a value column with aggregate 'sum', or drop the ranking option",
+      undefined, segments,
     );
   }
 }
@@ -140,6 +143,7 @@ function foldSiblings(
       'options.topN',
       'topN cannot regroup ofWhich or displayOnly rows; nesting them under Others would change whose total they annotate',
       'keep those rows as authored siblings, or drop options.topN',
+      undefined, ['options', 'topN'],
     );
   }
 
@@ -165,6 +169,7 @@ function foldSiblings(
         'options.topN.rest',
         'topN.rest false would drop sibling summands and change the parent total; tables keep accounting by nesting the rest under Others',
         'omit topN.rest (defaults to true), or flatten the hierarchy before omitting rows',
+        undefined, ['options', 'topN', 'rest'],
       );
     }
     const keptIds = new Set(dataRows.filter((_, index) => keep.has(index)).map((row) => row.id));
@@ -202,7 +207,7 @@ export function foldTableTopN(
   const topN = options.topN;
   const generatedOthers = new Set<Id>();
   if (!topN || topN.n <= 0) return { data, generatedOthers };
-  requireAdditiveRanking(ranked.columns, ranked.rows, 'options.topN', 'topN');
+  requireAdditiveRanking(ranked.columns, ranked.rows, 'options.topN', 'topN', ['options', 'topN']);
   const original = authoredById(data.rows);
   const folded = foldSiblings(
     undefined,

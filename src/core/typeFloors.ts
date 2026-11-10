@@ -33,10 +33,10 @@ export function textSizeOf(options: unknown): number | undefined {
   const value = (options as { textSize?: unknown } | undefined)?.textSize;
   if (value === undefined) return undefined;
   if (typeof value !== 'number' || !(value >= TEXT_SIZE_RANGE.min && value <= TEXT_SIZE_RANGE.max)) {
-    throw new NormalizeError('invalid-text-size', 'options.textSize', 'textSize must be a number from 6 to 32 (px)', 'use 13 for the sizes of a wide report chart')
+    throw new NormalizeError('invalid-text-size', 'options.textSize', 'textSize must be a number from 6 to 32 (px)', 'use 13 for the sizes of a wide report chart', undefined, ['options', 'textSize'])
   }
   if ((options as { textScale?: unknown }).textScale !== undefined) {
-    throw new NormalizeError('text-size-and-scale', 'options.textSize', 'textSize and textScale cannot be used together', 'keep one: textSize for equal text across charts, textScale to scale the width-class sizes')
+    throw new NormalizeError('text-size-and-scale', 'options.textSize', 'textSize and textScale cannot be used together', 'keep one: textSize for equal text across charts, textScale to scale the width-class sizes', undefined, ['options', 'textSize'])
   }
   return value;
 }
@@ -54,7 +54,7 @@ export function textScaleOf(options: unknown): number {
   const value = (options as { textScale?: unknown } | undefined)?.textScale;
   if (value === undefined) return 1;
   if (typeof value !== 'number' || !(value >= TEXT_SCALE_RANGE.min && value <= TEXT_SCALE_RANGE.max)) {
-    throw new NormalizeError('invalid-text-scale', 'options.textScale', `textScale must be a number from ${TEXT_SCALE_RANGE.min} to ${TEXT_SCALE_RANGE.max}`, 'use 1 for the target sizes, 1.25 for text 25 % larger')
+    throw new NormalizeError('invalid-text-scale', 'options.textScale', `textScale must be a number from ${TEXT_SCALE_RANGE.min} to ${TEXT_SCALE_RANGE.max}`, 'use 1 for the target sizes, 1.25 for text 25 % larger', undefined, ['options', 'textScale'])
   }
   return value;
 }

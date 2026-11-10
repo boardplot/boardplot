@@ -75,7 +75,7 @@ export function refuseColumnEncodings(
       'sign-color-unsupported',
       'options.signColor',
       `signColor requires variant 'grouped' with exactly one data-role series; got variant '${requestedVariant}' with ${dataSeries.length} data-role series`,
-      "drop signColor, or split the stack into one column chart per measure",
+      "drop signColor, or split the stack into one column chart per measure", undefined, ['options', 'signColor'],
     );
   }
   if (anomalySpec) {
@@ -84,7 +84,7 @@ export function refuseColumnEncodings(
         'anomaly-single-series',
         'options.anomaly',
         `anomaly needs exactly one data-role series; got ${dataSeries.length} — a robust score across two different measures is meaningless`,
-        'chart one measure per exhibit, or pre-compute the deviation upstream',
+        'chart one measure per exhibit, or pre-compute the deviation upstream', undefined, ['options', 'anomaly'],
       );
     }
     if (requestedVariant === 'stacked100') {
@@ -92,7 +92,7 @@ export function refuseColumnEncodings(
         'anomaly-composition-conflict',
         'options.anomaly',
         'anomaly is undefined on a 100% composition axis: percent shares have no deviation baseline',
-        "use variant 'grouped' on the absolute values",
+        "use variant 'grouped' on the absolute values", undefined, ['options', 'anomaly'],
       );
     }
     refuseAnomalySpec(anomalySpec);
@@ -108,7 +108,7 @@ export function refuseAnomalySpec(anomalySpec: AnomalySpec): void {
         throw new NormalizeError(
           'anomaly-k-invalid',
           'options.anomaly.k',
-          `anomaly.k must be a finite number greater than 0; got ${String(anomalySpec.k)}`,
+          `anomaly.k must be a finite number greater than 0; got ${String(anomalySpec.k)}`, undefined, undefined, ['options', 'anomaly', 'k'],
         );
       }
     } else {
@@ -117,21 +117,21 @@ export function refuseAnomalySpec(anomalySpec: AnomalySpec): void {
         throw new NormalizeError(
           'anomaly-threshold-empty',
           'options.anomaly',
-          "anomaly method 'threshold' needs at least one of low/high — a rule with no bound flags nothing and states nothing",
+          "anomaly method 'threshold' needs at least one of low/high — a rule with no bound flags nothing and states nothing", undefined, undefined, ['options', 'anomaly'],
         );
       }
       if (low !== undefined && high !== undefined && low > high) {
         throw new NormalizeError(
           'anomaly-threshold-inverted',
           'options.anomaly',
-          `anomaly threshold low (${low}) is above high (${high})`,
+          `anomaly threshold low (${low}) is above high (${high})`, undefined, undefined, ['options', 'anomaly'],
         );
       }
       if ((low !== undefined && !Number.isFinite(low)) || (high !== undefined && !Number.isFinite(high))) {
         throw new NormalizeError(
           'anomaly-threshold-inverted',
           'options.anomaly',
-          'anomaly threshold bounds must be finite numbers',
+          'anomaly threshold bounds must be finite numbers', undefined, undefined, ['options', 'anomaly'],
         );
       }
     }

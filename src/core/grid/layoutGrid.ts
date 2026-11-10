@@ -392,7 +392,7 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
       measure,
       typeClass: panelTypeClass(options) ?? typeWidthClass(resolveSize(options.size).width),
     };
-    const probe = layoutChildChart(panel.data, opts, def.layout as (data: unknown, options: unknown) => LayoutResult);
+    const probe = layoutChildChart(panel.data, opts, def.layout as (data: unknown, options: unknown) => LayoutResult, panel.id);
     if (probe.refused) throw new GridChildRefusal(panel.id, probe);
     const autoTierName = (probe.derived as { tierName?: unknown }).tierName;
     const tierCaption = compactTiers && panelOpts.title !== false
@@ -410,7 +410,7 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
     let finalOptions = tierReserve > 0 ? { ...opts, margin: { ...childMargin, top: Math.max(marginTop, tierReserve) } } : opts;
     let geo =
       tierReserve > marginTop
-        ? layoutChildChart(panel.data, finalOptions, def.layout as (data: unknown, options: unknown) => LayoutResult)
+        ? layoutChildChart(panel.data, finalOptions, def.layout as (data: unknown, options: unknown) => LayoutResult, panel.id)
         : probe;
     if (geo.refused) throw new GridChildRefusal(panel.id, geo);
     // upper endpoint labels can extend above the plot's top margin.
@@ -421,7 +421,7 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
         if (missing <= 0) break;
         const margin = finalOptions.margin as Record<string, number> | undefined;
         finalOptions = { ...finalOptions, margin: { ...margin, top: (margin?.top ?? marginTop) + missing } };
-        geo = layoutChildChart(panel.data, finalOptions, def.layout as (data: unknown, options: unknown) => LayoutResult);
+        geo = layoutChildChart(panel.data, finalOptions, def.layout as (data: unknown, options: unknown) => LayoutResult, panel.id);
         if (geo.refused) throw new GridChildRefusal(panel.id, geo);
       }
     }
