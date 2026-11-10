@@ -2484,7 +2484,7 @@ function translatePlacedLabel(
   return {
     ...label,
     id: prefix + label.id,
-    ...(label.claimId ? { claimId: prefix + label.claimId } : {}),
+    ...(label.claimIds ? { claimIds: label.claimIds.map((id) => prefix + id) } : {}),
     nodeId: label.nodeId ? prefix + label.nodeId : undefined,
     owner: prefixPanelOwner(label.owner, prefix),
     rect: translateRect(label.rect, dx, dy),

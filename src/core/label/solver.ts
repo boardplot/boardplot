@@ -33,6 +33,7 @@ import type { Id, OwnerRef, SlotId } from '../types/cell';
 import type { FocusInput, LabelDensity, LabelKind } from '../types/options';
 import type { OccupiedRect, Paint, PlaceDecision, PlacedLabel, LintWarning, TextRole } from '../types/scene';
 import { createOccupiedIndex, type OccupiedClaim, type OccupiedIndex } from './occupied';
+import { HOST_CLAIMS, requestClaims, type HostClaims } from '../claims/ids';
 import { besideOtherPoint, leaderReadsAsOwn, pointOwnership, readsAsOwnPoint, type PointOwnership, type PointOwnershipInput } from './ownership';
 
 /** Normative priority bands. */
@@ -256,7 +257,8 @@ export interface LabelRequest {
   printedIn?: Id;
   /** The marks whose value this label prints (PlacedLabel.printsFor). */
   printsFor?: OwnerRef[];
-  claimId?: Id;
+  /** The claims whose number this label prints (src/core/claims/ids.ts). */
+  claimIds?: readonly Id[];
   claimText?: string;
   noteText?: string;
   /** A reader loses this value when it is hidden: the note line names it (class 2), with `noteText`. */
@@ -331,6 +333,8 @@ export interface LabelRequest {
 export type LabelOffset = { x?: number; y?: number };
 
 export interface SolveCtx {
+  /** Internal: a host chart names the claims of the labels (claims/ids.ts). */
+  [HOST_CLAIMS]?: HostClaims;
   density: LabelDensity;
   pins: Record<Id, SlotId>;
   /** Authored moves by label id, in px (options.labelOffsets). A move that is blocked keeps the chosen seat and warns. */
@@ -401,6 +405,8 @@ export function labelCtx(
     canvas: { x: 0, y: 0, w: size.width, h: size.height },
     darkInk: theme.color.ink,
     lightInk: theme.color.inkInverse,
+    // A host chart names the claims of this delegate's labels (claims/ids.ts).
+    ...(HOST_CLAIMS in options ? { [HOST_CLAIMS]: (options as { [HOST_CLAIMS]?: HostClaims })[HOST_CLAIMS] } : {}),
     ...rest,
   };
 }
@@ -756,6 +762,7 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
     const pinnableSlots = (): SlotId[] =>
       req.candidates.flatMap((c, i) => (blockAt(i, 0) === 'hard' ? [] : [c.slot]));
 
+    const claimIds = requestClaims(req, ctx);
     const base: Omit<PlacedLabel, 'rect' | 'slot' | 'ink'> = {
       id: req.id,
       kind: req.kind,
@@ -766,7 +773,7 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
       slots,
       pinned: false,
       priority: req.priority,
-      ...(req.claimId ? { claimId: req.claimId, claimText: req.claimText } : {}),
+      ...(claimIds?.length ? { claimIds, claimText: req.claimText } : {}),
       ...(req.noteText ? { noteText: req.noteText } : {}),
       ...(req.printsFor ? { printsFor: req.printsFor } : {}),
       ...(req.owed ? { owed: true as const } : {}),

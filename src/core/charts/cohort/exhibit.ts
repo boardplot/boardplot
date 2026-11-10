@@ -54,6 +54,7 @@ import { fitsRoom, widthsThatFit, withoutWidths } from '../../generatedWidths';
 import { generatedIdWarnings } from '../../schema/generatedColumns';
 import { fitText, type FittedText } from '../../label/fitText';
 import { overrideIgnored, widthFloored } from '../heatmap/columnTracks';
+import { claimId as claimIdOf } from '../../claims/ids';
 
 const LABEL_TRACK = 118;
 const SIZE_TRACK = 96;
@@ -848,7 +849,7 @@ function buildExhibit(
     requests.push({
       id,
       kind,
-      ...(claimId ? { claimId } : {}),
+      ...(claimId ? { claimIds: [claimId] } : {}),
       typeRole: kind === 'axisTitle' || id.startsWith('cohort-header-range:') ? 'axis' : 'label',
       owner,
       text,
@@ -1093,7 +1094,7 @@ function buildExhibit(
         paint,
         undefined,
         undefined,
-        row.kind === 'total' ? undefined : `cohort:${row.id}:t${period}`,
+        row.kind === 'total' ? undefined : claimIdOf('cohort', row.id, `t${period}`),
       );
     });
   });

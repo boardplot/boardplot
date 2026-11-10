@@ -22,6 +22,8 @@
 //   garbled-unit     a unit printed twice or out of place in one text
 //   raw-digits       a text prints the binary float of a computed value (twelve or more significant decimals)
 //   wrong-marks      a text uses the other decimal mark than the chart's locale marks
+//   unbound          a chart type in CLAIMED_AT_REQUEST has a claim that no label or text node names and
+//                    that the chart does not state as unprinted
 // The script exits 0; it is an investigation tool. `--out` writes census.json with every finding.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
@@ -29,6 +31,7 @@ import { listCharts, measure, resolveChartRequest } from '../src/index.ts';
 import { getFixtures } from '../src/fixtures/index.ts';
 import '../src/core/geo/packs/all.ts';
 import { claimsForChart } from '../src/core/claims/index.ts';
+import { unprintedClaims } from '../src/core/claims/ids.ts';
 import { interactionRecords } from '../src/core/a11y/records.ts';
 import { interactionValueText } from '../src/core/a11y/valueText.ts';
 import { labelCardContent } from '../src/react/hover/labelCard.ts';
@@ -57,6 +60,8 @@ function marks(locale) {
 }
 
 const ENGLISH = { decimal: '.', thousands: ',' };
+/** The chart types whose label requests name their claims (LabelRequest.claimIds); the census checks each claim is bound. */
+export const CLAIMED_AT_REQUEST = new Set(['waterfall', 'pvm']);
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
@@ -308,7 +313,7 @@ export function censusCase(type, fixture, width, localeName, measured) {
     // author's text as written ("UK 78%"), so it is not tied to its glyph value.
     if (label.hidden || NOT_VALUES.has(label.kind) || !label.owner || /^(event|overlay):/.test(label.id)) continue;
     // The pvm net change is the difference of two totals, not a value of its owner column: its claim (below) checks it.
-    if (label.claimId === 'pvm:delta') continue;
+    if (label.claimIds?.includes('pvm:delta')) continue;
     const text = textById.get(label.nodeId ?? `label:${label.id}`) ?? label.text;
     if (!text) continue;
     // One magnitude per series, or per column: a bartable's totals of two measures are two units.
@@ -583,6 +588,18 @@ export function censusCase(type, fixture, width, localeName, measured) {
       return base !== undefined && (!/[1-9]/.test(base) || /^(<|>[−-])/.test(base.trim()));
     }
     return false;
+  }
+
+  // 3b. A type that names its claims at the label request binds each claim to a label (hidden or not) or a
+  // text node, or states that it does not print it. Anything else is a printed number the reading cannot find.
+  if (CLAIMED_AT_REQUEST.has(type)) {
+    const named = new Set([...(geometry.labels ?? []).flatMap((label) => label.claimIds ?? []),
+      ...(geometry.annotations ?? []).filter((annotation) => annotation.labelId).map((annotation) => `annotation:${annotation.id}`)]);
+    const unprinted = new Set(unprintedClaims(geometry));
+    for (const claim of claims) {
+      if (named.has(claim.id) || textById.has(claim.nodeId) || unprinted.has(claim.id)) continue;
+      flag('unbound', 'reading', { id: claim.id, text: claim.output.displayed, raw: claim.output.raw, why: `${claim.op}: no label names this claim and the chart does not state it as unprinted` });
+    }
   }
 
   // 4. Axis ticks and keys: one magnitude per axis; units printed once per text.

@@ -761,7 +761,7 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
         ...(noteText === undefined ? {} : { noteText }),
         ...(noteTexts.leftOut.has(label.id) ? { [LEFT_OUT_OF_NOTE]: true as const } : {}),
         id: prefix + label.id,
-        ...(label.claimId ? { claimId: prefix + label.claimId } : {}),
+        ...(label.claimIds ? { claimIds: label.claimIds.map((id) => prefix + id) } : {}),
         nodeId: label.nodeId ? prefix + label.nodeId : undefined,
         rect: { ...label.rect, x: label.rect.x + dx, y: label.rect.y + dy },
         backing: label.backing ? { ...label.backing, x: label.backing.x + dx, y: label.backing.y + dy } : undefined,
@@ -816,7 +816,7 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
       const moved = {
         ...label,
         id: prefix + label.id,
-        ...(label.claimId ? { claimId: prefix + label.claimId } : {}),
+        ...(label.claimIds ? { claimIds: label.claimIds.map((id) => prefix + id) } : {}),
         rect: { ...label.rect, x: label.rect.x + dx, y: label.rect.y + dy },
       };
       if (label.hidden) {

@@ -811,7 +811,7 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
     }];
     requests.push({
       id: 'point:delta',
-      claimId: 'kpi:delta:0',
+      claimIds: ['kpi:delta:0'],
       kind: 'point',
       role: composedTextRole(deltaText),
       typeRole: 'label',
@@ -832,7 +832,7 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
       fittedComparisons.push({ visual, rect, caretPad: slot.caretPad });
       requests.push({
         id: `point:compare:${index}`,
-        claimId: `kpi:delta:${index}`,
+        claimIds: [`kpi:delta:${index}`],
         kind: 'point',
         role: composedTextRole(visual.text),
         typeRole: 'label',
@@ -853,7 +853,7 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
     fittedAttainment = { lines: slot.lines, rect };
     requests.push({
       id: 'point:attainment',
-      claimId: 'kpi:attainment',
+      claimIds: ['kpi:attainment'],
       kind: 'point',
       role: composedTextRole(derived.attainment!.displayed),
       typeRole: 'label',

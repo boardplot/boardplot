@@ -96,6 +96,7 @@ import { bandSizing, NATURAL_BAND_STEP, SIZE_TOLERANCE } from '../../sizing';
 import { floorValueLabel, printedValueLabel, valueLabelPlotFloor } from './bandFloor';
 import { maxOf, minOf, pushAll } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
+import { requestClaims, withUnprintedClaims, type ClaimedRequest } from '../../claims/ids';
 
 export interface WaterfallMarks {
   bars: { id: Id; rect: Rect; segments: { id: Id; rect: Rect; nodeId: Id }[] }[];
@@ -700,6 +701,7 @@ function layoutHorizontalWaterfall(
       candidates,
       ...(label.hidden === 'redundant' && label.kind !== 'category' ? { redundant: true } : {}),
       ...(label.swatch ? { swatch: label.swatch } : {}),
+      ...(label.claimIds ? { claimIds: label.claimIds } : {}),
     };
     if (!hasLabelPosition(options) || !bar || !/^(sum|total):/.test(label.id) || authoredPin) return request;
     const item = data.items.find(item => item.id === categoryId);
@@ -1060,14 +1062,14 @@ function layoutWaterfallWithPad(
   const totals: WaterfallDerived['totals'] = bridges.reduce<WaterfallDerived['totals']>((all, bridge) => Object.assign(all, bridge.totals), emptyIdRecord());
   const valuesOff = pointValuesOff(options);
   // A host (pvm) can ask for the closing total's change over the opening total, printed over the closing column.
+  const closingChange = (options as { closingChange?: { delta: number; base: number } }).closingChange;
   const closingNet = (() => {
     const open = items[0]!;
     const close = items[items.length - 1]!;
     if (!categoryRow || cases.length > 0 || options.labels === false || items.length < 2 || open.type === 'delta' || close.type === 'delta') return undefined;
     // The host passes the change computed from its data: the accumulated closing level carries rounding residue.
-    const given = (options as { closingChange?: { delta: number; base: number } }).closingChange;
-    if (given === undefined) return undefined;
-    const { delta, base } = given;
+    if (closingChange === undefined) return undefined;
+    const { delta, base } = closingChange;
     if (!Number.isFinite(delta) || delta === 0) return undefined;
     const change = fmtSigned(delta);
     const percent = base > 0 ? `(${changePercentText((delta / base) * 100, 1, options.locale?.language)})` : '';
@@ -1666,6 +1668,8 @@ function layoutWaterfallWithPad(
   const labelRequests: LabelRequest[] = axisTitle
     ? [valueAxisTitleRequest(axisTitle, { x: plot.x, y: frameResult.plot.y + 4 }, 'start', 'axis:y:title')]
     : [];
+  // Value labels the options turn off: the reading states their claims as not printed.
+  const withheld: ClaimedRequest[] = [];
 
   // baseline (thin solid, always)
   const baselineId = 'axis:baseline';
@@ -1970,6 +1974,7 @@ function layoutWaterfallWithPad(
     let valueRequest: LabelRequest = {
       id: isTotal ? `total:${it.id}` : `sum:${it.id}`,
       kind: isTotal ? 'total' : 'segment',
+      ...(isTotal ? { claimIds: [`wf:total:${it.id}`] } : {}),
       // A one-part value names its segment back, so a pinned segment placed first takes the value; an authored text keeps its seat.
       ...(drawSegments.length === 1 && typeof drawSegments[0]!.valueLabel !== 'string' && typeof valueMeta?.valueLabel !== 'string'
         ? { printedIn: `segment:${it.id}:${drawSegments[0]!.id}` } : {}),
@@ -2027,7 +2032,7 @@ function layoutWaterfallWithPad(
       zero: itemValue === 0, edgeGap: 2, fallback: isTotal ? undefined : 'bridge',
       insidePaint, insidePattern, insideFill: effectiveFill(paintColor(theme, insidePaint), insidePattern, theme),
     });
-    if (!valuesOff) labelRequests.push(valueRequest);
+    (valuesOff ? withheld : labelRequests).push(valueRequest);
     if (caseIndex !== undefined) caseValues[i]!.push(valueRequest);
     // The closing total's net change over the opening total: a second bold value above the total's own.
     if (closingNet !== undefined && isTotal && caseIndex === undefined && i === items.length - 1) {
@@ -2071,6 +2076,9 @@ function layoutWaterfallWithPad(
         ];
       }
       labelRequests.push(netRequest);
+    } else if (closingChange !== undefined && caseIndex === undefined && i === items.length - 1) {
+      // A host's net change that this bridge does not draw.
+      withheld.push({ id: `net:${it.id}`, kind: 'total', owner: stepOwner });
     }
 
     // ---- category label: once per step ----
@@ -2349,7 +2357,7 @@ function layoutWaterfallWithPad(
     group: String(cases.length > 0 ? Math.floor(k / cases.length) : k),
     labels: [valueLabels.has(`sum:${bar.id}`) ? floorValueLabel(valueLabels.get(`sum:${bar.id}`), full) : printedValueLabel(valueLabels.get(`total:${bar.id}`))].flatMap((rect) => rect ?? []),
   })), !full);
-  const geometry: Geometry<WaterfallMarks, WaterfallDerived> = {
+  const geometry: Geometry<WaterfallMarks, WaterfallDerived> = withUnprintedClaims({
     type: 'waterfall',
     size,
     sizing: {
@@ -2395,7 +2403,7 @@ function layoutWaterfallWithPad(
     ...(paintWarningRules.length ? { paintWarningRules } : {}),
     warnings,
     debug: { occupied: occupied.snapshot(), decisions: [...solved.decisions, ...annResult.decisions] },
-  };
+  }, withheld.flatMap((request) => requestClaims(request, options) ?? []));
   // Each drawn bracket label stands on the shared row (labelOffsets come later), so the room over it is empty.
   const bracketLabels = new Set(annResult.placed.filter((placed) => placed.kind === 'bracket').map((placed) => `annotation:${placed.id}`));
   const onRow = bracketRowFree !== undefined && options.bracketRow !== 'span' && annResult.labels

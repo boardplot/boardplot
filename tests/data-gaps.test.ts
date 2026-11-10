@@ -18,6 +18,8 @@ import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request'
 import { render } from '../src/cli/render';
 import { specFromRows } from '../src/rows';
 import { claimsForChart } from '../src/core/claims';
+import { claimId, HOST_CLAIMS, type HostClaims } from '../src/core/claims/ids';
+import { layoutWaterfall } from '../src/core/charts/waterfall/layout';
 import { chartReading } from '../src/core/reading';
 import type { Geometry, LintWarning } from '../src/core/types/scene';
 import { noteTexts } from './helpers/notes';
@@ -702,7 +704,7 @@ it('reads the printed text of Likert nets and shares and of Pareto cumulative sh
     const geometry = layoutResolvedRequest(request);
     if (geometry.refused) throw new Error(`${id} refused`);
     const reading = chartReading({ name: id, type, request, geometry, claims: claimsForChart(type, geometry) });
-    const printed = geometry.labels.filter((label) => label.claimId !== undefined && claimPrefix.test(label.claimId) && !label.hidden);
+    const printed = geometry.labels.flatMap((label) => label.hidden ? [] : (label.claimIds ?? []).filter((claimId) => claimPrefix.test(claimId)).map((claimId) => ({ claimId, text: label.text })));
     expect(printed.length, id).toBeGreaterThan(type === 'likert' ? 7 : 1);
     for (const label of printed) {
       const entry = reading.derived.find((item) => item.claimId === label.claimId);
@@ -726,4 +728,28 @@ it('never reads a Likert share with the text of another option or row', () => {
     expect(shown.length).toBeGreaterThan(1);
     for (const entry of shown) expect(entry.displayed, entry.claimId).toBe(`${entry.value}%`);
   }
+});
+
+// One printed number can be two claims (a Pareto vital-few share is also its cumulative share): both must read that label.
+it('binds every claim a label names to that label', () => {
+  const data = { items: [{ id: 'open', type: 'total', value: 100 }, { id: 'gain', value: 20 }, { id: 'mid', type: 'total' }, { id: 'close', type: 'total' }] };
+  // The host prints the equal mid and closing totals once, on the closing label.
+  const hostClaims: HostClaims = (request) => request.kind !== 'total' ? undefined
+    : request.owner.categoryId === 'close' ? ['wf:total:mid', 'wf:total:close'] : request.owner.categoryId === 'open' ? ['wf:total:open'] : undefined;
+  const geometry = layoutWaterfall(data as never, { size: { width: 600, height: 400 }, [HOST_CLAIMS]: hostClaims } as never);
+  const close = geometry.labels.find((label) => label.id === 'total:close')!;
+  const claims = claimsForChart('waterfall', geometry as never);
+  for (const id of ['wf:total:mid', 'wf:total:close']) expect(claims.find((claim) => claim.id === id)?.output.displayed, id).toBe(close.text);
+});
+
+// Ids joined with ':' collided ('a' + 'b:c' and 'a:b' + 'c'): two printed Likert shares then shared one id and both read "Not displayed".
+it('keeps claim ids apart when a part holds the separator', () => {
+  expect([claimId('likert:share', 'a', 'b'), claimId('likert:share', 'a', 'b:c')]).toEqual(['likert:share:a:b', 'likert:share:a:b\\:c']);
+  const data = { scale: [{ id: 'b:c', label: 'Disagree' }, { id: 'neutral', role: 'neutral' }, { id: 'c', label: 'Agree' }], items: [{ id: 'a', values: [20, 30, 50] }, { id: 'a:b', values: [10, 20, 70] }] };
+  const request = resolveChartRequest({ type: 'likert', data, options: { values: 'counts', size: { width: 1000, height: 700 } } } as never);
+  const geometry = layoutResolvedRequest(request);
+  if (geometry.refused) throw new Error('likert refused');
+  const derived = chartReading({ name: 'likert', type: 'likert', request, geometry, claims: claimsForChart('likert', geometry) }).derived;
+  const read = (id: string) => [derived.filter((entry) => entry.claimId === id).length, derived.find((entry) => entry.claimId === id)?.displayed];
+  expect([read(claimId('likert:share', 'a', 'b:c')), read(claimId('likert:share', 'a:b', 'c'))]).toEqual([[1, '20%'], [1, '70%']]);
 });

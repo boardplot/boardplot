@@ -389,7 +389,7 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
     if (rect.w > 0 && rect.h > 0) {
       // A line value may drop below its point where a segment crosses the slot above.
       const candidates = [{slot:'fixed' as const,rect,penalty:0}, ...(below === undefined ? [] : [{slot:'fixed' as const,rect:{...rect,y:below},penalty:1}])];
-      requests.push({ id, kind, owner, text, lines, font:f, typeRole: role, priority: PRIORITY.total, pad:0, candidates, ...(claimId ? {claimId} : {}) });
+      requests.push({ id, kind, owner, text, lines, font:f, typeRole: role, priority: PRIORITY.total, pad:0, candidates, ...(claimId ? {claimIds: [claimId]} : {}) });
       inks.set(id,ink);
     }
   };

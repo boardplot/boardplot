@@ -68,7 +68,7 @@ export function readableLabelDestination(geo: Geometry<object, object>): (id: st
     const scoped = (node: Text) => !prefix || node.id.startsWith(prefix) || node.origin?.panels.some(panel => prefix.startsWith(`${panel}/`));
     const sameOwner = (node: Text) => Object.keys(owner).length > 0 && nodeOwners.get(node.id) === own;
     const sameQuantity = (node: Text) => !numeric || textRole(node) === 'value' && (painted.get(node.id)?.kind === kind
-      || label?.claimId !== undefined && painted.get(node.id)?.claimId === label.claimId || owner.rowId !== undefined && owner.colId !== undefined);
+      || label?.claimIds?.some((id) => painted.get(node.id)?.claimIds?.includes(id)) || owner.rowId !== undefined && owner.colId !== undefined);
     const match = (exact.get(normalized) ?? []).find(node => scoped(node) && (sameOwner(node) && sameQuantity(node) || named && !['value', 'axis'].includes(textRole(node))));
     if (match) return `scene:${match.id}`;
     // An explicit printsFor owner is stronger than the host's own semantic owner.
