@@ -470,7 +470,7 @@ function layoutFailure(chart: DocChart, error: unknown): DocumentFinding {
   };
   // A display path like `series[revenue].values` is not a pointer: the
   // segments a refusal carries name the field, else the path read in the chart.
-  const field = failure.segments ?? (failure.path ? displayPathField({ data: chart.data, options: chart.options }, failure.path) : undefined);
+  const field = failure.segments ?? (failure.path ? displayPathField({ data: chart.data, options: chart.options, annotations: chart.annotations }, failure.path) : undefined);
   return {
     code: failure.code ?? 'layout-error',
     message: failure.message,

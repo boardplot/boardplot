@@ -29,7 +29,7 @@ export function isEmptyDataIssue(issue: { code?: unknown; origin?: unknown; path
 }
 
 /** The layout's refusal from the error it threw (`empty-data` and every other code), as hosts and `canDraw` read it. */
-export function layoutRefusal(type: string, title: string, size: Size, error: NormalizeError, chart?: { data?: unknown; options?: unknown }): RefusedLayout {
+export function layoutRefusal(type: string, title: string, size: Size, error: NormalizeError, chart?: { data?: unknown; options?: unknown; annotations?: unknown }): RefusedLayout {
   return {
     refused: true,
     type,

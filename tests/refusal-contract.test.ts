@@ -238,6 +238,11 @@ describe('refusal contract', () => {
     expect(byId[0]).toMatchObject({ code: 'status-value-invalid', path: '/data/rows/0/cells/state', received: { type: 'string', value: 'unclear' } });
     // Where the id and the index name different items, the refusal names no field.
     expect(displayPathField({ data: { rows: [{ id: '1' }, {}] } }, 'rows[1]')).toBeUndefined();
+    // The root annotations replace options.annotations in the request, so options.annotations[0] is the root list's first item.
+    const events = getFixtures('line').find((entry) => entry.id === 'era-event-markers')!;
+    const event = (events.annotations as { kind: string }[]).find((item) => item.kind === 'event')!;
+    const rooted = render({ spec: { type: 'line', data: events.data, options: { ...events.options, annotations: [event] }, annotations: [{ kind: 'event', date: '1999-01-01', label: 'x' }] } }).body.errors as (Finding & { received?: unknown })[];
+    expect(rooted[0]).toMatchObject({ code: 'event-date-unresolvable', path: '/annotations/0/date', received: { type: 'string', value: '1999-01-01' } });
     // React and canDraw hosts read the same field off the layout refusal.
     const error = new NormalizeError('status-value-invalid', 'rows[garden-cafe].cells[state]', 'invalid status');
     const data = { rows: [{ id: 'garden-cafe', cells: { state: 'unclear' } }] };

@@ -50,9 +50,11 @@ export class NormalizeError extends Error {
  * When the two readings name different items, or several items share the
  * id, the path names no field: a wrong pointer is worse than none.
  */
-export function displayPathField(chart: { data?: unknown; options?: unknown }, path: string): (string | number)[] | undefined {
+export function displayPathField(chart: { data?: unknown; options?: unknown; annotations?: unknown }, path: string): (string | number)[] | undefined {
   const keys = [...path.matchAll(/([^.[\]]+)|\[([^\]]*)\]/g)].map((match) => ({ key: match[1] ?? match[2]!, bracket: match[2] !== undefined }));
   if (!keys.length) return undefined;
+  // The request draws the root annotations in place of options.annotations, so the layout's options.annotations[i] is the root list's item.
+  if (chart.annotations !== undefined && keys[0]?.key === 'options' && keys[1]?.key === 'annotations') keys.shift();
   const CONFLICT = -1;
   const step = (node: unknown, { key, bracket }: { key: string; bracket: boolean }): string | number | undefined => {
     if (Array.isArray(node)) {
