@@ -592,7 +592,7 @@ function columnBand(
   const ticked = authored ?? longDayMonths(cats, catPlan.stride, options.locale?.language);
   if (ticked && ticked !== authored) catPlan = planRow(band, ticked);
   // A rotated first name hangs left of its column; the band yields that much.
-  if (!stair) ({ plan: catPlan, band, x0: plotX0, width: plotW0 } = yieldToRotatedName(catPlan, band, cats.length, plotX0, plotW0, bandFor, (b, rotate) => planRow(b, ticked, rotate)));
+  if (!stair) ({ plan: catPlan, band } = yieldToRotatedName(catPlan, band, cats.length, plotX0, plotW0, bandFor, (b, rotate) => planRow(b, ticked, rotate)));
   return { band, catPlan, ...(authored?.ticks ? { intervalTicks: authored.ticks } : {}) };
 }
 

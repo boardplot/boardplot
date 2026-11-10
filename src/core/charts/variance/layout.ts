@@ -719,8 +719,8 @@ export function layoutVariance(
       ? { prefix: '', suffix: percentDifferences ? PERCENTAGE_POINTS : '%' } : {}),
   } : undefined;
   const axisReserve = va.show ? measureValueAxisWidth([dLo, dHi], axisFmt, theme, measure, 5, stepSpec, stepped.ticks) : 0;
-  let plotX0 = frameResult.plot.x + axisReserve;
-  let plotW0 = va.show ? Math.max(10, frameResult.plot.w - axisReserve) : frameResult.plot.w;
+  const plotX0 = frameResult.plot.x + axisReserve;
+  const plotW0 = va.show ? Math.max(10, frameResult.plot.w - axisReserve) : frameResult.plot.w;
   // integrated columns take 60 % of the band, so the cap
   // and the foot label read as one column with air on both sides.
   const bandFraction = options.bandFraction ?? (mode === 'relative' ? 0.55 : mode === 'integrated' ? 0.6 : 0.7);
@@ -752,7 +752,8 @@ export function layoutVariance(
       ...(rotate === false ? { rotate } : {}),
     });
   let catPlan = planRow(band);
-  ({ plan: catPlan, band, x0: plotX0, width: plotW0 } = yieldToRotatedName(catPlan, band, cats.length, plotX0, plotW0, bandFor, planRow));
+  // Only the band carries the plot's left edge and width from here on.
+  ({ plan: catPlan, band } = yieldToRotatedName(catPlan, band, cats.length, plotX0, plotW0, bandFor, planRow));
   const catInfos = catPlan.infos;
   const catFont = catPlan.font;
   const catTickMaxLines = catPlan.maxLines;

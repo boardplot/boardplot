@@ -839,7 +839,7 @@ export function comboPlotArea(
   // A ranked row (pareto) is not a timeline, so it keeps its day names.
   const ticked = authored ?? ((options as { [CATEGORY_ROW_FROM_END]?: boolean })[CATEGORY_ROW_FROM_END] === false ? undefined : longDayMonths(cats, catPlan.stride, options.locale?.language));
   if (ticked && ticked !== authored) catPlan = planRow(band, ticked);
-  if (!stair) ({ plan: catPlan, band, x0: plotX0, width: plotW0 } = yieldToRotatedName(catPlan, band, cats.length, plotX0, plotW0, bandFor, (b, rotate) => planRow(b, ticked, rotate)));
+  if (!stair) ({ plan: catPlan, band } = yieldToRotatedName(catPlan, band, cats.length, plotX0, plotW0, bandFor, (b, rotate) => planRow(b, ticked, rotate)));
   const showCatTickRow = kindSetting(domain, 'category') !== false && cats.length > 0 && !stair;
   if (showCatTickRow) {
     pushAll(warnings, catPlan.warnings);
