@@ -493,6 +493,9 @@ export function inCellBarMaxima(
 /** A closing total row: a result or driver line in the totals role reads as a body row. */
 export const isTotalRow = (row: ResolvedRow): boolean => row.role === 'total' && row.kind !== 'result' && row.kind !== 'driver';
 
+/** A section heading and a member row with laid-out children print only their label. */
+export const labelOnlyRow = (row: ResolvedRow, expanded: ReadonlySet<Id>): boolean => row.role === 'section' || (row.kind === 'member' && expanded.has(row.id));
+
 /**
  * The line a note of a `noteLine` column takes in a row's cell: the first of the shown lines that holds no value
  * there (a year-to-date block has no month before it, so its month-on-month line reads n/a), else a slot after them.
@@ -516,7 +519,10 @@ export function cellPrinted(
   options: Pick<TableOptions, 'inlineVisibility' | 'figures'>,
 ): (rowId: Id, colId: Id) => boolean {
   const rows = new Set(laidOut.rows.map((row) => row.id));
+  const byId = new Map(table.rows.map((row) => [row.id, row]));
+  const expanded = new Set(laidOut.rows.map((row) => byId.get(row.id)?.parentId).filter((id): id is Id => id !== undefined));
   const columns = new Set(laidOut.columns.map((column) => column.id));
+  const labels = new Set(table.columns.filter((column) => column.kind === 'rowLabel').map((column) => column.id));
   // `figures: false` leaves a heat lane's figures to its grounds; a closing total still prints.
   const figures = printsFigures(options.figures, table.columns.filter((column) => columns.has(column.id)));
   const heat = new Set(table.columns.filter(heatColumn).map((column) => column.id));
@@ -528,10 +534,12 @@ export function cellPrinted(
     for (const line of shown) lines.set(line.id, new Set());
     for (const column of noteLines) if (row.cells[column.id]?.note !== undefined) lines.get(shown[noteLineIndex(shown, column.id)]?.id ?? '')?.add(column.id);
   }
-  const byId = new Map(table.rows.map((row) => [row.id, row]));
   return (rowId, colId) => {
     const row = byId.get(rowId);
     if (row === undefined || !columns.has(colId) || (row.cells[colId]?.displayed ?? '') === '') return false;
+    // An inline row prints in its parent's cells, so the parent's rule decides.
+    const host = row.inline === true ? byId.get(row.parentId ?? '') ?? row : row;
+    if (labelOnlyRow(host, expanded) && !labels.has(colId)) return false;
     if (!figures && heat.has(colId) && !isTotalRow(row)) return false;
     return row.inline === true ? lines.get(rowId)?.has(colId) === false : rows.has(rowId);
   };

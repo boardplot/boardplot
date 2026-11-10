@@ -62,7 +62,7 @@ import { lastObservedIndex, type SparklineDomain } from '../sparkline/layout';
 import { resolveTable, prepareTableData, resolvePreparedTable, ZERO_LIFT, type PreparedTableData, type ZeroLiftOptions } from './resolve';
 import type { ResolvedTable } from '../../types/table';
 import { DEFAULT_EMPTY_MESSAGE } from '../../emptyData';
-import { cellDrawsTabular, cellHoldsNumber, emptyMessageRow, expansionRootsHidden, finalClosers, hasNoDataRows, groupSpans, heatColumn, isTotalRow, noteLineIndex, printsFigures, rowGrounds, tableFootnotes, visibleColumns, visibleInlineRows, visibleRows } from './view';
+import { cellDrawsTabular, cellHoldsNumber, emptyMessageRow, expansionRootsHidden, finalClosers, hasNoDataRows, groupSpans, heatColumn, isTotalRow, labelOnlyRow, noteLineIndex, printsFigures, rowGrounds, tableFootnotes, visibleColumns, visibleInlineRows, visibleRows } from './view';
 import { fixedHeightCanvas, rowDrivenHeight, spareShare } from '../../rowCanvas';
 import { heightOmitted, rowSizing, VERIFY_ADVICE, WIDTH_PROBE, FIXED_SIZE_PROBE, FORCE_COMPACT, ACCEPTANCE_PROBE } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
@@ -957,8 +957,7 @@ function prepareTableCandidate(
   let cuts = 0;
   for (const row of rows) for (const col of statusColumns) {
     const cell = row.cells[col.id];
-    const isSection = row.role === 'section';
-    if (!cell || col.kind === 'encoding' || ((isSection || (row.kind === 'member' && expandedIds.has(row.id))) && col.kind !== 'rowLabel')) continue;
+    if (!cell || col.kind === 'encoding' || (labelOnlyRow(row, expandedIds) && col.kind !== 'rowLabel')) continue;
     const track = colX.get(col.id)!;
     if (cell.kind === 'status' && cell.state === 'value') {
       const square = col.statusMark === 'square' ? statusSquare(fonts.body.size) : undefined;
@@ -976,7 +975,7 @@ function prepareTableCandidate(
     for (const row of rows) for (const col of textColumns) {
       const cell = row.cells[col.id];
       const isSection = row.role === 'section';
-      if (!cell || col.kind === 'encoding' || ((isSection || (row.kind === 'member' && expandedIds.has(row.id))) && col.kind !== 'rowLabel')) continue;
+      if (!cell || col.kind === 'encoding' || (labelOnlyRow(row, expandedIds) && col.kind !== 'rowLabel')) continue;
       const track = colX.get(col.id)!;
       if (col.kind !== 'rowLabel' && col.kind !== 'text') continue;
       const font = cellFont(cell);
@@ -1708,7 +1707,7 @@ function prepareTableCandidate(
         );
         continue;
       }
-      if ((isSection || (row.kind === 'member' && expandedIds.has(row.id))) && col.kind !== 'rowLabel') continue;
+      if (labelOnlyRow(row, expandedIds) && col.kind !== 'rowLabel') continue;
       // A section heading sits on its rule, at the bottom of its row under the air above it,
       // next to the block it opens; the grid aligns it the same way.
       const drop = isSection ? Math.max(0, rh - sectionNatural() - (rowExtra.get(row.id) ?? 0)) : 0;

@@ -9,6 +9,7 @@ import { classFloor, layoutKey, prepareTableExecutor, memoLayout, REGULAR_SPACIN
 import { prepareTableData, resolvePreparedTable, resolveTable } from '../table/resolve';
 import { compileDimSwitch, currentDimSwitchOptions, dimSwitchTableWarnings, dimswitchRowId, FOLDED, hostPeriods, PARTIAL_NOTE_OFF, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning, type DimSwitchForm } from './compile';
 import type { DimSwitchData, DimSwitchOptions, DimSwitchDerived } from './types';
+import { withUnprintedCells } from './claims';
 import { minOf } from '../../arrays';
 
 export function resolveDimSwitch(data: DimSwitchData, options: DimSwitchOptions = {}, form: DimSwitchForm = {}) {
@@ -284,5 +285,5 @@ function layoutDimSwitchCard(data: DimSwitchData, options: DimSwitchOptions = {}
 
 export const dimswitchCore: ChartCore<DimSwitchData,DimSwitchOptions,TableMarks,DimSwitchDerived> = {
  type:'dimswitch',title:'Dimension switch table',summary:'A KPI table: measures by one hierarchical dimension by period, switchable between KPI rows over members and member rows over KPIs. The host supplies additive sums per member and period; Boardplot derives ratios, changes and judgement',aliases:['dim-switch-table','dim-switch'],sizing:{...chartSizing('table'),minWidth:CARD_MIN_WIDTH},defaults:{variant:'by-measure',depth:1,splits:false},annotationKinds:[],
- layout:layoutDimSwitchCard,
+ layout:(data,options)=>withUnprintedCells(layoutDimSwitchCard(data,options)),
 };

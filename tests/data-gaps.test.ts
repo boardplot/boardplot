@@ -879,6 +879,23 @@ it('reads the real value of a clipped point and a quadrant count from their labe
   expect([read('scatter:clipped:y:max:airport'), read('scatter:quadrant:count:tr')]).toEqual(['Airport 2,400', 'Stars n = 3']);
 });
 
+// A member row with laid-out children prints only its label, yet the reading left its value claims and its change lines unbound, neither drawn nor stated unprinted.
+it('states the claims of a label-only dimswitch row as unprinted and binds a drawn cell to its text', () => {
+  const fixture = (getFixtures('dimswitch') as { id: string; data: unknown; options?: Record<string, unknown> }[]).find((item) => item.id === 'statement-operators')!;
+  const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'dimswitch', data: fixture.data, options: { ...fixture.options, size: { width: 960 } } } as never)) as Geometry;
+  const claims = new Map(claimsForChart('dimswitch', geometry).map((claim) => [claim.id, claim]));
+  const unprinted = new Set(unprintedClaims(geometry));
+  const id = (rowId: string, colId: string) => `dimswitch:${JSON.stringify([rowId, colId, 'calc'])}`;
+  const member = JSON.stringify(['by-member', 'stores']);
+  for (const claimed of [id(member, 'range'), id(member, 'w1'), id(`${member}:change`, 'w1')]) {
+    expect([claims.has(claimed), claims.get(claimed)?.nodeId, unprinted.has(claimed)], claimed).toEqual([true, undefined, true]);
+  }
+  const drawn = claims.get(id(JSON.stringify(['by-member', 'stores', 'orders']), 'w1'))!;
+  const node = geometry.scene.find((item) => item.id === drawn.nodeId && item.t === 'text') as { lines: string[] } | undefined;
+  expect([node?.lines.join(' '), unprinted.has(drawn.id)]).toEqual([drawn.output.displayed, false]);
+  expect(drawn.output.displayed).not.toBe('');
+});
+
 // The reading quoted each cohort rate with its percent sign ("62%") where the narrow matrix prints "62", and quoted rates the matrix had no room to print.
 it('reads each cohort rate from the value the matrix prints, or nothing where it prints none', () => {
   const cohorts = Array.from({ length: 12 }, (_, i) => ({ id: `w${i + 1}`, label: `Week ${i + 1}`, active: Array.from({ length: 12 - i }, (_, t) => Math.round(800 * 0.88 ** t)) }));
