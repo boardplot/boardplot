@@ -520,7 +520,8 @@ describe('no nonzero value prints as 0 ', () => {
     const displayed = (result: ReturnType<typeof resolveTable>) => result.table.rows.map(row => row.cells.v!.displayed);
     expect(displayed(resolveTable(data))).toEqual(['1.2', '<0.1', '>−0.1', '0.0']);
     expect(displayed(resolveTable({ ...data, columns: [data.columns[0]!, { id: 'v', kind: 'value', label: 'Value', format: '1.2M' }] }))).toEqual(['1.2', '0.0', '0.0', '0.0']);
-    expect(displayed(resolveTable(data, { unit: 'M units' }))).toEqual(['1.2', '0.0', '0.0', '0.0']);
+    // A unit that names a scale states the data's scale as authored: the figures print whole, with no second magnitude.
+    expect(displayed(resolveTable(data, { unit: 'M units' }))).toEqual(['1,234,567', '12,345', '−12,345', '0']);
     const tiny = seriesRasterFormatter(undefined, [1, 1e-25, -Number.MIN_VALUE]);
     expect(tiny.fmt(1)).toBe('1');
     expect(tiny.fmt(1e-25)).toBe('<1');
