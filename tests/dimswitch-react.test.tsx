@@ -226,3 +226,16 @@ it('keeps the member figures and the folds of a hidden Total in the grid',()=>{
  expect(line().querySelector('button')!.getAttribute('aria-expanded')).toBe('false');
  act(()=>root.unmount());host.remove();
 });
+
+// The partial-period warning read the note placement, so a partial note the line budget moved behind the pointer stayed unwarned.
+it('warns when the line budget leaves the partial period note off the frame', async () => {
+ const host=document.createElement('div');document.body.append(host);const root=createRoot(host);
+ const long='This note is long enough to wrap onto a second line of the footer at this card width.';
+ let codes:string[]=[];
+ await act(async()=>root.render(<DimSwitchChart data={exampleData} variant="by-measure" depth={2} target="report" columnHeads={false} size={{width:640,height:600}}
+  footnotes={[long,`${long} Two.`,`${long} Three.`]} onWarnings={warnings=>{codes=warnings.map(warning=>warning.code);}}/>));
+ for (let i=0;i<50 && host.querySelector('[data-bp-loading]');i++) await act(async()=>{await new Promise(done=>setTimeout(done,20));});
+ expect(Array.from(host.querySelectorAll('figure > .bp-footnotes li'),li=>li.textContent)).not.toContain('Week 2 to date');
+ expect(codes).toContain('dimswitch-partial-note-off-frame');
+ act(()=>root.unmount());host.remove();
+});

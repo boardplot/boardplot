@@ -12,7 +12,7 @@ import type { StringsSpec } from '../core/types/options';
 import { useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react';
 import { useIsomorphicLayoutEffect as useLayoutEffect } from './useIsomorphicLayoutEffect';
 import { footerParts, notesPanelLabel, notesPointer, sourceLine, unprintedNotes, type ChartNote, type CreditLink } from '../core/notes';
-import { boldRuns, hasBold, markBold } from '../core/inlineBold';
+import { BOLD_OPEN, boldRuns, markBold } from '../core/inlineBold';
 import { footnoteMark } from '../core/footnoteMark';
 import { footerType } from '../core/footer';
 import { emphasisWeight, strokeToken, themeForWidth } from '../core/theme';
@@ -46,10 +46,11 @@ function linked(text: string, links: readonly CreditLink[] | undefined): ReactNo
   return [...parts, text];
 }
 
-/** Authored notes keep their source text in data and draw only the supported bold pairs. */
-function inlineBold(text: string, theme: Theme, baseWeight: number): ReactNode {
-  if (!hasBold(text)) return text;
-  return boldRuns(markBold(text), emphasisWeight(theme), baseWeight).map((run, i) =>
+/** Authored notes keep their source text in data and draw only the supported bold pairs (\`**…**\`, or text the core already marked). */
+export function inlineBold(text: string, theme: Theme, baseWeight: number): ReactNode {
+  const marked = markBold(text);
+  if (marked === text && !text.includes(BOLD_OPEN)) return text;
+  return boldRuns(marked, emphasisWeight(theme), baseWeight).map((run, i) =>
     run.weight === undefined ? run.text : <strong key={i} style={{ fontWeight: run.weight }}>{run.text}</strong>);
 }
 
