@@ -44,13 +44,20 @@ export function tightSpacingWarning(
   geometry: Fitted & { sizing: { minWidth: number; minHeight: number } },
   options: Pick<BaseOptions, 'size'>,
 ): LintWarning {
+  // A height the caller left open is no limit: the frame grows to the rows, so the patch pins none.
+  const heightOpen = heightOmitted(options.size) || (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === false;
   const value = {
     width: Math.ceil(Math.max(geometry.size.width, geometry.sizing.minWidth)),
-    ...(heightOmitted(options.size) ? {} : { height: Math.ceil(Math.max(geometry.size.height, geometry.sizing.minHeight)) }),
+    ...(heightOpen ? {} : { height: Math.ceil(Math.max(geometry.size.height, geometry.sizing.minHeight)) }),
   };
-  const need = value.height === undefined ? `${value.width} px of width` : `${value.width} × ${value.height} px`;
+  const need = spacingNeed(value);
   return { code: 'table-tight-spacing', severity: 'warn',
     message: `${[misses.width ? reduced.width : '', misses.height ? reduced.height : ''].filter(Boolean).join(' and ').replace(/^./, (c) => c.toUpperCase())} were reduced to fit ${subject}; ${spacing} spacing needs ${need}.`,
     suggest: `Give the table ${need} for ${spacing} spacing.`,
     field: ['options', 'size'], fix: [{ op: 'replace', path: '/options/size', value }] };
+}
+
+/** The size a 'table-tight-spacing' warning names, as its message and suggestion print it. */
+export function spacingNeed(value: { width: number; height?: number }): string {
+  return value.height === undefined ? `${value.width} px of width` : `${value.width} × ${value.height} px`;
 }

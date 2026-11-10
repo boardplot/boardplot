@@ -11,6 +11,7 @@ import { compileDimSwitch, currentDimSwitchOptions, dimSwitchTableWarnings, dims
 import type { DimSwitchData, DimSwitchOptions, DimSwitchDerived } from './types';
 import { withUnprintedCells } from './claims';
 import { minOf } from '../../arrays';
+import { spacingNeed } from '../tableFit';
 import { hostedLayout } from '../../normalize/innerRefusal';
 
 export function resolveDimSwitch(data: DimSwitchData, options: DimSwitchOptions = {}, form: DimSwitchForm = {}) {
@@ -168,9 +169,8 @@ function checkedTightAdvice(geometry: Form, nextCard?: (size: AdvisedSize) => Fo
   if (size.width<(next.sizing?.minWidth ?? Infinity)) return geometry;
   const again=next.warnings.find(warning=>warning.code==='table-tight-spacing')?.fix?.[0];
   if (again?.op!=='replace') return geometry;
-  const need=(value: AdvisedSize) => value.height===undefined ? `${value.width} px of width` : `${value.width} × ${value.height} px`;
   const warning=geometry.warnings[at]!;
-  const swap=(text: string) => text.replace(need(size),need(again.value as AdvisedSize));
+  const swap=(text: string) => text.replace(spacingNeed(size),spacingNeed(again.value as AdvisedSize));
   geometry.warnings[at]={...warning,message:swap(warning.message),...(warning.suggest===undefined ? {} : {suggest:swap(warning.suggest)}),fix:[again]};
   return geometry;
 }
