@@ -63,6 +63,19 @@ function comparisons(ctx: RecordContext, matrix: Matrix, source: Matrix['series'
   });
 }
 
+/**
+ * Whether the chart prints a share on the mark of this category: a 100 % stack prints one by default, and a
+ * plain stack prints one under shareLabels (in the columns `only` names) or a segment label content with 'percent'.
+ * A percent value axis alone prints none.
+ */
+function printsShare(options: { variant?: string; labels?: unknown; shareLabels?: { only?: readonly string[] } }, categoryId: string): boolean {
+  if (options.variant === 'stacked100' || options.variant === 'stacked100-area') return true;
+  if (options.variant !== 'stacked' || options.labels === false) return false;
+  const segment = (options.labels as { segment?: unknown } | undefined)?.segment;
+  if (Array.isArray(segment) && segment.includes('percent')) return true;
+  return segment !== false && options.shareLabels !== undefined && (options.shareLabels.only?.includes(categoryId) ?? true);
+}
+
 function shareFor(ctx: RecordContext, matrix: Matrix, mark: CellMark, value: InteractionValue): InteractionRecord['share'] {
   const options = ctx.request.options as typeof ctx.request.options & { variant?: string };
   const variants = ['stacked', 'stacked100', 'stacked100-area', 'stacked-area'];
@@ -82,9 +95,8 @@ function shareFor(ctx: RecordContext, matrix: Matrix, mark: CellMark, value: Int
   // One plotted series IS its category, and "100 % of the value you are
   // pointing at" is arithmetic, not a fact. It is a fact again as
   // soon as the basis comes from somewhere else: an authored `total100`, or
-  // a cell that already states a percentage, or a 100 % chart that prints the share.
-  const drawsShares = options.variant === 'stacked100' || options.variant === 'stacked100-area' || options.valueAxis?.percent === true;
-  if (parts.length < 2 && category?.total100 === undefined && !directShare && !drawsShares) return undefined;
+  // a cell that already states a percentage, or a chart that prints the share on this mark.
+  if (parts.length < 2 && category?.total100 === undefined && !directShare && !printsShare(options, mark.categoryId)) return undefined;
   const values = parts.map(series => valueFor(ctx, matrix, series, mark.categoryId));
   const hasNegative = values.some(part => typeof part.raw === 'number' && part.raw < 0);
   // The base prints as the values it sums print: their unit and format.
