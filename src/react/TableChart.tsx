@@ -1,3 +1,4 @@
+import type { EngineNoteMeta } from '../core/notes';
 import type { OptionsInput } from '../core/types/optionInput';
 import { hasPolarityBadge, isFigureCell, polarityBadgeInk } from '../core/charts/table/chips';
 import { chartString } from '../core/strings/table';
@@ -103,7 +104,7 @@ import type {
 } from '../core/types/table';
 import { stickySettings } from '../core/charts/table/sticky';
 // Both table renderers share subtitles, source lines and note disclosure.
-import { insetTint, tableFrame, tableGroundTextStyle, tablePresentation, tableRenderTheme, tableStylesheet } from './tablePresentation';
+import { ENGINE_NOTE_KINDS, insetTint, tableFrame, tableGroundTextStyle, tablePresentation, tableRenderTheme, tableStylesheet } from './tablePresentation';
 import { useStableValue } from './useStableValue';
 import { PROBE_STYLE, useContainerSize, type ContainerSizeOptions } from './useContainerSize';
 import { useDisplayWarnings } from './useDisplayWarnings';
@@ -1523,9 +1524,14 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
   // A dimswitch's disclosures ride on the props in ENGINE_NOTES; the request normalisation keeps string keys only.
   const engineNotes = (options as { [ENGINE_NOTES]?: string[] })[ENGINE_NOTES];
   // The footnotes walk every cell: once per table and fold state, not on each scroll render.
+  const engineKinds = (options as { [ENGINE_NOTE_KINDS]?: ReadonlyMap<string, EngineNoteMeta> })[ENGINE_NOTE_KINDS];
+  // The footer lines wrap at the grid's width less the canvas padding and the cell air on both sides.
+  const footWidth = request === undefined ? 0
+    : request.size.width - (tableOptions?.margin?.left ?? 0) - (tableOptions?.margin?.right ?? 0) - 2 * padX;
   const frameMemo = useMemo(() => table === undefined || tableOptions === undefined ? undefined
-    : tableFrame(table, engineNotes ? { ...tableOptions, [ENGINE_NOTES]: engineNotes } as TableOptions : tableOptions, rows, columns),
-  [table, tableOptions, engineNotes, rows, columns]);
+    : tableFrame(table, engineNotes ? { ...tableOptions, [ENGINE_NOTES]: engineNotes, [ENGINE_NOTE_KINDS]: engineKinds } as TableOptions : tableOptions, rows, columns,
+      request === undefined || theme === undefined ? undefined : { width: footWidth, measure: width.measure, theme }),
+  [table, tableOptions, engineNotes, engineKinds, rows, columns, request, theme, footWidth, width.measure]);
   // A group that draws no heading keeps its meaning and gives up its row
   // in the head: where no group draws one, the head is one row.
   const headRowCount = (table?.columnGroups ?? []).some((group) => group.heading !== false) ? 2 : 1;
@@ -1778,8 +1784,9 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
       )}
       {frame.footnotes.length > 0 ? (
         <ul className="bp-footnotes">
-          {frame.footnotes.map((footnote, index) => (
-            <li key={`${index}:${footnote}`}>{footnote}</li>
+          {/* A disclosure or method note prints its short form, as ChartFooter prints it. */}
+          {frame.footnotes.map((note) => (
+            <li key={note.n}>{note.kind === 'method' || note.kind === 'disclosure' ? note.short ?? note.text : note.text}</li>
           ))}
         </ul>
       ) : null}
@@ -1790,9 +1797,9 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
         <>
           <details className="bp-notes">
             <summary>{frame.pointer}</summary>
-            <ul className="bp-footnotes">{frame.listed.map((note, index) => <li key={`${index}:${note}`}>{note}</li>)}</ul>
+            <ul className="bp-footnotes">{frame.listed.map((note) => <li key={note.n}>{note.text}</li>)}</ul>
           </details>
-          <div className="bp-notes-print"><ul className="bp-footnotes">{frame.listed.map((note, index) => <li key={`${index}:${note}`}>{note}</li>)}</ul></div>
+          <div className="bp-notes-print"><ul className="bp-footnotes">{frame.listed.map((note) => <li key={note.n}>{note.text}</li>)}</ul></div>
         </>
       ) : null}
       {frame.source ? <p className="bp-source">{frame.source}</p> : null}

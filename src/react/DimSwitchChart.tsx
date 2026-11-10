@@ -3,7 +3,9 @@ import type { OptionsInput } from '../core/types/optionInput';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import type { LintWarning } from '../core/types/scene';
 import { compileDimSwitch, dimSwitchTableWarnings, foreignRowId, hiddenTotalFoldWarnings, LABELS_ONLY, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning } from '../core/charts/dimswitch/compile';
-import { defaultNotePlacement } from '../core/notes';
+import { defaultNotePlacement, engineNoteMeta, withEngineNotes } from '../core/notes';
+import { ENGINE_NOTES } from '../core/charts/table/tracks';
+import { ENGINE_NOTE_KINDS } from './tablePresentation';
 import type { DimSwitchData, DimSwitchOptions, DimSwitchVariant } from '../core/charts/dimswitch/types';
 import type { OptionKeyCheck } from '../core/schema/unknownKeys';
 import { TableChart, type TableChartProps } from './charts/table';
@@ -70,7 +72,13 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
   const stableOptions=retired.chart.options;
   const floorRequest=useStableValue({type:'dimswitch',data:stableData,options:{...stableOptions,variant,depth,splits,inlineVisibility}});
   // The grid reads values, not the computed-cell records the static audit trail carries.
-  const compiled=useMemo(()=>{const result=compileDimSwitch(stableData,{...stableOptions,variant,depth:1,splits},{records:false});freezeValue(result.data);return result;},[stableData,stableOptions,variant,splits]);
+  // The compile gives its notes their kinds (a disclosure, its short form); the table frame reads them as records.
+  const compiled=useMemo(()=>withEngineNotes(()=>{
+    const result=compileDimSwitch(stableData,{...stableOptions,variant,depth:1,splits},{records:false});freezeValue(result.data);
+    const notes=(result.options as {[ENGINE_NOTES]?:string[]})[ENGINE_NOTES] ?? [];
+    const kinds=new Map(notes.flatMap(note=>{const meta=engineNoteMeta(note); return meta ? [[note,meta] as const] : [];}));
+    return kinds.size ? {...result,options:{...result.options,[ENGINE_NOTE_KINDS]:kinds}} : result;
+  },true),[stableData,stableOptions,variant,splits]);
   const tableRequest=useMemo(()=>({request:floorRequest,options:compiled.options}),[floorRequest,compiled.options]);
   const maxDepth=compiled.maxDepth;
   if(!Number.isInteger(depth) || depth<1 || depth>maxDepth) throw new Error(`dimswitch depth must be between 1 and ${maxDepth}`);
