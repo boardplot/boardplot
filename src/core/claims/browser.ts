@@ -434,7 +434,9 @@ function claimLabelIds(type: string, geo: Geometry<object, object>): Map<string,
   return ids;
 }
 
-const QUOTIENT_OPS: ReadonlySet<string> = new Set(['cohort-retention@1', 'cohort-average@1', 'funnel-conversion@1', 'pareto-cumshare@1', 'pareto-vital-few-share@1', 'percentOf@1', 'ratio@1', 'share@1']);
+// By op name: a table calc records its expression, "percentDelta($0,$1)@1".
+const QUOTIENT_OPS: ReadonlySet<string> = new Set(['cohort-retention', 'cohort-average', 'funnel-conversion', 'pareto-cumshare', 'pareto-vital-few-share',
+  'percentOf', 'ratio', 'share', 'percentDelta', 'div', 'annotation-diff-relative', 'annotation-cagr', 'annotation-attainment']);
 
 /**
  * A derived value without float residue: 12 significant digits at the
@@ -447,7 +449,7 @@ function withoutResidue(claim: ClaimRecordV1): ClaimRecordV1 {
   if (claim.kind === 'observed' || claim.kind === 'authored' || raw === null || !Number.isFinite(raw) || raw === 0) return claim;
   let scale = Math.abs(raw);
   // A quotient leaves its operands' scale: 1 of 100,000,000 is a true 1e-8, not residue.
-  for (const input of QUOTIENT_OPS.has(claim.op) ? [] : claim.inputs) {
+  for (const input of QUOTIENT_OPS.has(claim.op.replace(/[(@].*$/, '')) ? [] : claim.inputs) {
     if (input.value !== null && Number.isFinite(input.value)) scale = Math.max(scale, Math.abs(input.value));
   }
   const digits = 12 - (Math.floor(Math.log10(scale)) - Math.floor(Math.log10(Math.abs(raw))));

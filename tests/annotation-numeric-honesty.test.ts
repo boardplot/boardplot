@@ -981,3 +981,16 @@ it('adds a reference line value unless the name holds that same number', () => {
   expect(text(20, 'FY-20')).toBe('FY-20');
   expect(text(-20, 'Floor -20')).toBe('Floor -20');
 });
+
+// A percent change of operands near 1e12 was cleaned at the operands' scale, so the claim recorded 10 for a printed +11.8%.
+it('records a percent change at its own precision, whatever the size of its operands', () => {
+  const claims = (type: string, data: unknown) => claimsForChart(type, requireGeometry(layoutResolvedRequest(resolveChartRequest({ type, data, options: { size: { width: 480 } } } as never))));
+  const kpi = claims('kpi', { label: 'Net revenue', value: 4.82e12, compare: [{ vs: 4.31e12, label: 'YoY' }] });
+  expect(kpi.find((claim) => claim.op === 'percentDelta@1')?.output.raw).toBeCloseTo(11.833, 3);
+  const table = claims('table', {
+    columns: [{ id: 'kpi', kind: 'rowLabel', label: 'KPI' }, { id: 'now', kind: 'value', label: 'Now' }, { id: 'before', kind: 'value', label: 'Before' },
+      { id: 'change', kind: 'computed', label: 'Change', format: '+1.0%', calc: { op: 'percentDelta', a: 'now', b: 'before' } }],
+    rows: [{ id: 'sessions', label: 'Sessions', cells: { now: 118.4e9, before: 121.9e9 } }],
+  });
+  expect(table.find((claim) => claim.id === 'table:sessions:change')?.output.raw).toBeCloseTo(-2.871, 3);
+});
