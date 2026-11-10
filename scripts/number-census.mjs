@@ -61,7 +61,7 @@ function marks(locale) {
 
 const ENGLISH = { decimal: '.', thousands: ',' };
 /** The chart types whose label requests name their claims (LabelRequest.claimIds); the census checks each claim is bound. */
-export const CLAIMED_AT_REQUEST = new Set(['waterfall', 'pvm', 'combo', 'pareto', 'pyramid', 'likert', 'status', 'waffle', 'histogram']);
+export const CLAIMED_AT_REQUEST = new Set(['waterfall', 'pvm', 'combo', 'pareto', 'pyramid', 'likert', 'status', 'waffle', 'histogram', 'column', 'bar', 'mekko', 'pie']);
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
@@ -604,7 +604,9 @@ export function censusCase(type, fixture, width, localeName, measured) {
   if (CLAIMED_AT_REQUEST.has(type)) {
     const named = new Set([...(geometry.labels ?? []).flatMap((label) => label.claimIds ?? []),
       ...(geometry.annotations ?? []).filter((annotation) => annotation.labelId).map((annotation) => `annotation:${annotation.id}`)]);
-    const unprinted = new Set(unprintedClaims(geometry));
+    // An annotation without a label (a line, an arrow, a box) prints no number, in every chart type.
+    const unprinted = new Set([...unprintedClaims(geometry),
+      ...(geometry.annotations ?? []).filter((annotation) => !annotation.labelId && annotation.computedText === '').map((annotation) => `annotation:${annotation.id}`)]);
     for (const claim of claims) {
       if (named.has(claim.id) || textById.has(claim.nodeId) || unprinted.has(claim.id)) continue;
       flag('unbound', 'reading', { id: claim.id, text: claim.output.displayed, raw: claim.output.raw, why: `${claim.op}: no label names this claim and the chart does not state it as unprinted` });

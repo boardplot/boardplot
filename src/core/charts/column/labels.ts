@@ -761,6 +761,8 @@ export function planColumnLabels(
     requests.push({
       id: `grandTotal:${c.id}`,
       kind: 'grandTotal',
+      // The total prints the stack's sum, so its request names that claim (claims/browser.ts stackTotalClaims).
+      claimIds: [`stack:total:${c.id}`],
       ...namesOnly(variant === 'stacked100' ? gtContent : gtContent?.filter((part) => part !== 'percent'), undefined),
       ...(net ? { role: 'category' as const } : {}),
       ...(skipped ? { redundant: true, suppressedAs: 'density' as const, owed: true as const } : {}),
