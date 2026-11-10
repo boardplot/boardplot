@@ -8,19 +8,17 @@ import type { LintWarning } from '../types/scene';
 
 /**
  * Lay out with a lifted figure ("0.0005" for "0.0"), and where the lift costs
- * width that the rounded text does not, with its bound ('compact') or with the rounded
- * text ('none'). `costs(lifted, plain)` is each type's own cost test.
- * `plainDraws(compact, plain)` says when the rounded text draws in place of the
- * bound; by default where the bound costs too.
+ * width that the rounded text ('none') does not, with its bound ('compact', "<0.1").
+ * `costs(lifted, plain)` is each type's own cost test. The rounded text only
+ * measures: it never draws, because a nonzero figure never prints as 0. Where
+ * the bound costs too, the chart takes the width the bound needs or refuses.
  */
-export function liftOrFallback<G>(layoutAs: (mode: 'full' | 'none' | 'compact') => G, costs: (lifted: G, plain: G) => boolean, lifted = false, plainDraws = costs): G {
+export function liftOrFallback<G>(layoutAs: (mode: 'full' | 'none' | 'compact') => G, costs: (lifted: G, plain: G) => boolean, lifted = false): G {
   const before = zeroLifts.count;
   const full = layoutAs('full');
   if (!lifted && zeroLifts.count === before) return full;
   const plain = layoutAs('none');
-  if (!costs(full, plain)) return full;
-  const compact = layoutAs('compact');
-  return plainDraws(compact, plain) ? plain : compact;
+  return costs(full, plain) ? layoutAs('compact') : full;
 }
 
 interface Fitted { size: { width: number; height: number }; sizing?: { minWidth: number; minHeight: number } }

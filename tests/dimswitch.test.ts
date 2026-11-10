@@ -86,6 +86,21 @@ it('prints values and generated comparisons with the explicit decimal mark', () 
  const cac=resolveDimSwitch(exampleData,withNumberMarks({locale:{decimal:','}})).table.rows.find(r=>r.id===dimswitchRowId('by-measure','total','cac'))!;
  for (const text of [cac.cells.range!.displayed,cac.cells.pp!.displayed]) expect(text).toMatch(/\d,\d/);
 });
+// At 320 px the bound "<0.1%" cost width the rounded text did not, and the table drew 0.025 as "0.0%" and −0.015 as "0.0pp".
+it('prints the bound, not zero, for small rates in a narrow table', () => {
+ const fact=(memberId:string,periodId:string,completed:number,ref?:number)=>({memberId,periodId,sums:{completed,orders:0.1},...(ref===undefined?{}:{ref:{completed:ref,orders:0.1}})});
+ const facts=[['total',0.025,0.04,0.0375,0.05,0.025],['alpha',0.04,0.02,0.03,0.03,0.01],['beta',0.01,0.06,0.045,0.07,0.04]].flatMap(([id,range,prior,plan,p1,ref])=>[
+  fact(id as string,'range',range as number),fact(id as string,'prior',prior as number),fact(id as string,'plan',plan as number),fact(id as string,'p1',p1 as number,ref as number)]);
+ const spec={type:'dimswitch',data:{
+  dimension:{label:'Team',total:{id:'total',label:'Total'},members:[{id:'alpha',label:'Alpha'},{id:'beta',label:'Beta'}],headline:['rate']},
+  measures:[{id:'rate',label:'Completion rate',scale:'percent',value:{op:'div',a:{field:'completed'},b:{field:'orders'},factor:0.1},change:'pp',judge:{family:'rate',base:'orders'}}],
+  periods:[{id:'range',label:'Range',kind:'range'},{id:'prior',label:'vs prior',kind:'prior'},{id:'plan',label:'vs plan',subLabel:'Full window',kind:'plan'},{id:'p1',label:'Period 1'}],facts},
+  options:{title:'Completion by team',widths:{change:110,period:110},variant:'by-measure',depth:2,size:{width:320}}} as any;
+ const geometry=measure(spec).geometry!;
+ const texts=[...renderSvg(geometry,resolveChartRequest(spec).theme).matchAll(/<text[^>]*>(.*?)<\/text>/gs)].map(match=>match[1]!.replace(/<[^>]+>/g,''));
+ expect(texts.filter(text=>/^[+−-]?0\.0(%|pp)$/.test(text))).toEqual([]);
+ expect(texts).toContain('&lt;0.1%');
+});
 
 describe('dimswitch compiler',()=>{
   it('refuses an expansion id that does not start with a variant, since it names no row', () => {

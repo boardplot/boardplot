@@ -357,7 +357,7 @@ export function layoutBarTable(
 ): Geometry<BarTableMarks, BarTableDerived> {
   if (options.variant !== 'cascade' || (options as { [CASCADE_LIFT]?: CascadeLift })[CASCADE_LIFT] !== undefined) return layoutBarTableOnce(authored, options);
   // A lifted growth figure ("0.0001") is wider than the rounded "0.0". Where that moves the table
-  // under its frame's minimum (the compact form), it prints its bound; where the bound does too, the rounded text.
+  // under its frame's minimum (the compact form), it prints its bound.
   const fixedWidth = (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.width !== false;
   const misses = (geometry: Geometry<BarTableMarks, BarTableDerived>) => fixedWidth && geometry.sizing !== undefined && geometry.size.width < geometry.sizing.minWidth;
   return liftOrFallback((mode) => layoutBarTableOnce(authored, { ...options, [CASCADE_LIFT]: mode } as BarTableOptions),

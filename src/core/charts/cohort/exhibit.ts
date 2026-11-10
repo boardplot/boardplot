@@ -128,7 +128,7 @@ function layoutLifted(
 ): ReturnType<typeof buildExhibit> {
   if (options.format || (options as ExhibitOptions)[COHORT_LIFT] !== undefined) return layoutCohortExhibitOnce(sourceData, options);
   // A lifted rate ("0.0000000001") is wider than the plain "0.0". Where that costs a refusal, a squeeze, tight spacing
-  // or a hidden label the plain text does not cost, the rate prints one scientific digit; where that does too, the plain text.
+  // or a hidden label the plain text does not cost, the rate prints one scientific digit.
   return liftOrFallback((mode) => layoutCohortExhibitOnce(sourceData, mode === 'full' ? options : { ...options, [COHORT_LIFT]: mode } as ExhibitOptions),
     (lifted, plain) => costsWidth(lifted, plain, options));
 }
