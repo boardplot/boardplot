@@ -40,6 +40,7 @@ import { NO_STACK_MEAN, stackAdds } from '../../stackAdds';
 import { scenarioPartners, seriesScenarioRole } from '../../scenarioPairs';
 import { OTHERS_ID, type BarDomain, type NormCat, type NormSeries } from './model';
 import { disclosuresShown } from '../../notes';
+import { isRecord } from '../../lint/shared';
 import { cappedItems } from '../../frame';
 import { dataSeriesUnitRefusal } from '../../schema/units';
 
@@ -445,6 +446,18 @@ export function resolveBarDomain(data: ChartData, options: BarOptions, warnings:
       code: 'connectors-ignored',
       severity: 'warn',
       message: 'connectors apply only to stacked and stacked100 bar charts; ignored for grouped',
+    });
+  }
+  // A stack prints each part inside its segment and the total past its end: outside value labels have no part to move.
+  if (theme.marks?.barLabels === 'outside' && (variant === 'stacked' || variant === 'stacked100')) {
+    const overrides = isRecord(options.theme) && isRecord(options.theme.overrides) ? options.theme.overrides : undefined;
+    const authored = isRecord(overrides?.marks) && overrides.marks.barLabels === 'outside';
+    warnings.push({
+      code: 'option-ignored', severity: authored ? 'warn' : 'info',
+      field: authored ? ['options', 'theme', 'overrides', 'marks', 'barLabels'] : ['options', 'theme'],
+      message: `marks.barLabels 'outside' has no effect on bar variant '${variant}' and is ignored. A stack prints each part inside its segment; only grouped bars move their values past the bar end.`,
+      suggest: authored ? "Remove marks.barLabels, or use variant 'grouped' for values past the bar ends." : "Use variant 'grouped' for values past the bar ends.",
+      ...(authored ? { fix: [{ op: 'remove' as const, path: '/options/theme/overrides/marks/barLabels' }] } : {}),
     });
   }
   const connectorScope =

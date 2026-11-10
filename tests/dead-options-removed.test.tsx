@@ -140,6 +140,15 @@ describe('a removed option keeps an old spec drawing', () => {
     act(() => root.unmount());
   });
 
+  // A stacked bar drew the same with a theme's outside value labels, and nothing said so.
+  it('warned by the layout: outside value labels on a stacked bar', () => {
+    const data = { categories: [{ id: 'q1', label: 'Q1' }, { id: 'q2', label: 'Q2' }],
+      series: [{ id: 'a', label: 'North', values: [10, 12] }, { id: 'b', label: 'South', values: [6, 7] }] };
+    const spec = (marks: object, variant = 'stacked') => ({ type: 'bar', data, options: { title: 'Sales', variant, theme: { preset: 'standard', overrides: { marks } } } });
+    dropsTheKey(spec({}), spec({ barLabels: 'outside' }), 'option-ignored', '/options/theme/overrides/marks/barLabels');
+    expect(draw(spec({ barLabels: 'outside' }, 'grouped')).warnings.some((warning) => warning.code === 'option-ignored')).toBe(false);
+  });
+
   // never in a child schema would refuse a grid that exits 0 today, because the grid checks panels against it.
   it('annotations on a grid panel and on a repeat template', () => {
     const kpi = fixture('kpi');
