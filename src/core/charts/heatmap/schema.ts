@@ -61,7 +61,7 @@ export const heatmapOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOpti
   cap: z.strictObject({
     pct: z.number().positive().optional().describe('Cap in points when every cell is a percent. Example: 20 saturates at ±20%.'),
     abs: z.number().positive().optional().describe('Cap in source units for other values.'),
-  }).optional().describe("Where the continuous scale saturates, as table heat's cap: a value at or past it paints full strength, measured from zero. Without it the good/bad scale is symmetric, full at the largest |value|, and the magnitude ramp spans the data. The discrete ladder and harvey glyphs ignore it (cap-ignored)."),
+  }).optional().describe("Where the continuous scale saturates, as table heat's cap: a value at or past it paints full strength, measured from zero. Without it the good/bad scale is symmetric, full at the largest |value|, and the magnitude ramp spans the data. The discrete ladder ignores it (cap-ignored), and harvey glyphs ignore it (option-ignored)."),
   breaks: z.array(z.number()).min(2).refine((edges) => edges.every((edge, i) => i === 0 || edge > edges[i - 1]!), 'breaks must ascend strictly')
     .optional().describe("Bin edges. Ascending, for scale 'discrete', e.g. [0, 30, 50, 100]; an edge value takes the upper bin. A series direction paints bins bad to good."),
   bubble: z.strictObject({

@@ -154,6 +154,8 @@
 ["gantt/product-launch",720,"notation","default","drawn",[],[720,364],[163,123,534,204],"948dfb118a11",[]]
 ["gantt/product-launch",960,"authored","default","drawn",[],[960,364],[167,123,766,204],"948dfb118a11",[]]
 ["gantt/product-launch",960,"notation","default","drawn",[],[960,364],[167,123,766,204],"948dfb118a11",[]]
+["gantt/repair-gantt-format",720,"authored","repair:gantt-format","drawn",[],[720,662],[197,141,499,484],"ad4558f2e2f8",[]]
+["gantt/repair-gantt-format",720,"notation","repair:gantt-format","drawn",[],[720,662],[197,141,499,484],"ad4558f2e2f8",[]]
 ["gantt/right-edge-milestone-row",320,"authored","default","drawn",[],[320,224],[99,93,206,121],"e0fcff3cca3d",[["R6","header:minor:0 / header:minor:0:text"],["R6","header:minor:2 / header:minor:2:text"],["R6","header:minor:4 / header:minor:4:text"],["R6","header:minor:6 / header:minor:6:text"]]]
 ["gantt/right-edge-milestone-row",320,"notation","default","drawn",[],[320,224],[99,93,206,121],"e0fcff3cca3d",[["R6","header:minor:0 / header:minor:0:text"],["R6","header:minor:2 / header:minor:2:text"],["R6","header:minor:4 / header:minor:4:text"],["R6","header:minor:6 / header:minor:6:text"]]]
 ["gantt/right-edge-milestone-row",400,"authored","default","drawn",[],[400,224],[124,93,261,121],"176abd978c8b",[]]

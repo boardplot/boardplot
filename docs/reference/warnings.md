@@ -350,7 +350,7 @@ Every code a render, a measure or a React chart can return, read from the source
 | `format-reads-as-group` | warn |  | core/formatSpec.ts |
 | `format-spreadsheet-code` | warn |  | core/formatSpec.ts |
 | `format-unscaled` | warn | yes | core/formatSpec.ts |
-| `format-unused` | warn | yes | dimswitch, gantt, grid |
+| `format-unused` | warn |  | dimswitch |
 | `frame-title-truncated` | warn |  | core/frame.ts |
 | `frontier-group-empty` | warn |  | scatter |
 | `frontier-single-point` | warn |  | scatter |

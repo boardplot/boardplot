@@ -4,7 +4,9 @@ import { getChartDefinition, measure } from '../src/index';
 import { autoPlotShare } from '../src/core/sizing';
 
 // @ts-expect-error The scorecard is a JavaScript script without declarations.
-import { auditHeight, auditGeometry, auditScene, auditRepairs, applyRepair, compareOutcomes, outcomes, outcomeShard, visibleTextHash } from '../scripts/layout-scorecard.mjs';
+import { auditHeight, auditGeometry, auditScene, auditRepairs, applyRepair, compareOutcomes, outcomes, outcomeShard, repairFixture, visibleTextHash } from '../scripts/layout-scorecard.mjs';
+// @ts-expect-error The list is a JavaScript module without declarations.
+import { REPAIRS } from '../scripts/layout-scorecard-repairs.mjs';
 
 // An appended story must not create a plot-share failure or hide a genuinely small plot.
 it('excludes only an automatic below-chart story from the S1 denominator', () => {
@@ -88,6 +90,31 @@ it('checks refusal repairs and persistent warning fixes on the repaired request'
   const noChange = { ...real, fix: [{ op: 'add', path: '/options/size', value: request.options.size }] };
   expect(auditRepairs(caseItem, warnedRequest, { ...warned, warnings: [noChange] })[0].message).toContain('remains');
   expect(applyRepair({ 'a/b': [1] }, [{ op: 'add', path: '/a~1b/-', value: 2 }, { op: 'test', path: '/a~1b/0', value: 1 }, { op: 'remove', path: '/a~1b/0' }])).toEqual({ 'a/b': [2] });
+});
+
+// Warnings with no `field` share a key per code: a correct patch for one read as "warning remains" while its sibling stayed.
+it('does not read a fixed warning as remaining while another warning of its code stays', () => {
+  const fixture = getFixtures('table')[0]!;
+  const request = { type: 'table', data: fixture.data, options: { ...fixture.options, valueAxis: { show: false }, labelDensity: 'full', size: { width: 720 } }, annotations: [] };
+  const measured = measure(request);
+  expect(measured.warnings.filter((warning: { code: string; field?: unknown }) => warning.code === 'option-ignored' && !warning.field)).toHaveLength(2);
+  expect(auditRepairs(caseItem, request, measured)).toEqual([]);
+});
+
+// A repair entry whose setting stops producing a patch (a fixture or a warning changed) would pass R4 with nothing to check.
+it('keeps every repair entry producing a warning or refusal with a patch', () => {
+  for (const entry of REPAIRS) {
+    const fixture = repairFixture(entry);
+    const request = { type: entry.type, data: fixture.data, options: { ...fixture.options, size: { width: entry.widths?.[0] ?? 720 } }, annotations: fixture.annotations ?? fixture.options.annotations ?? [] };
+    let fixes: unknown[];
+    try {
+      const measured = measure(request);
+      fixes = (measured.refused?.warnings ?? measured.warnings).filter((warning: { fix?: unknown[] }) => warning.fix?.length);
+    } catch (error) {
+      fixes = (error as { fix?: unknown[] }).fix?.length ? [error] : [];
+    }
+    expect(fixes.length, entry.name).toBeGreaterThan(0);
+  }
 });
 
 // Text from different scene parts can collide or leave the canvas outside the label solver.

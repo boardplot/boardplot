@@ -218,21 +218,12 @@ function layoutGridOnce(
   options = resolveCanvasOptions(options);
   assertTrackLimits(options);
   const metricStack = isMetricStackData(data);
-  // A retired option stays accepted on every layout.
-  const formatWarnings: LintWarning[] = options.format === undefined ? [] : [{
-    code: 'format-unused', severity: 'warn', field: ['options', 'format'],
-    message: "Grid-level options.format is ignored",
-    suggest: metricStack
-      ? 'Set decimals and divisor on each metric stack panel; remove the grid-level format.'
-      : 'Set format on each numeric panel in data.panels[].options.format; remove the grid-level format.',
-    fix: [{ op: 'remove', path: '/options/format' }],
-  }];
   // Metric stacks measure a fixed readout gutter and every category value.
   // Their sizing probe is not a compact column panel and must keep its floor.
   // The React grid entry links no panel core: it fetches them all at once, before any panel lays out.
   if (metricStack) {
     requireChartCores(data.panels.map((panel) => panel.type), (type) => getChart(type) !== undefined);
-    return withWarnings(layoutMetricStack(data, options), formatWarnings);
+    return layoutMetricStack(data, options);
   }
   if (options.stack) stackError('data', 'Metric stack mode needs shared categories and measures');
   const normalized = normalizeGridWithTheme(data, options);
@@ -252,7 +243,6 @@ function layoutGridOnce(
   // every panel's colour role, and its indexes are what the schema's
   // superRefine uses for issue paths.
   const ordered = orderPanels(normalized.panels, options, authored);
-  pushAll(ordered.warnings, formatWarnings);
   if (options.sharedScale === true) {
     const charts = ordered.panels.filter((panel) => panel.type !== 'text' && panel.type !== 'legend');
     const semantics = charts.map(panelScaleSemantics);
