@@ -33,6 +33,7 @@ import { chartInputName } from '../core/registry';
 import { inputConversion } from '../core/inputConversion';
 import { completeDiagnostic } from '../core/doc/diagnostics';
 import type { LintWarning } from '../core/types/scene';
+import { designCodes } from '../core/lint/design';
 import { list } from '../cli/list';
 import { describe } from '../cli/describe';
 import { fixtures } from '../cli/fixtures';
@@ -501,16 +502,18 @@ function themeLintsOnce(spec: unknown, result: VerbResult): VerbResult {
 /** The design advice codes this server process has reported. */
 const reportedAdvice = new Set<string>();
 
+/** The general design rules; other advice measures one chart and comes with every chart. */
+const onceAdvice = new Set<string>(designCodes);
+
 /**
- * Design advice (severity `advice`) comes once per code per session: an
- * author who has read a rule does not need it with every render. The CLI
- * keeps every advice.
+ * Design advice comes once per code per session: an author who has read a
+ * rule does not need it with every render. The CLI keeps every advice.
  */
 function adviceOnce(result: VerbResult): VerbResult {
   const body = result.body as { warnings?: { code: string; severity?: string }[] };
   if (!Array.isArray(body.warnings)) return result;
   const warnings = body.warnings.filter((warning) => {
-    if (warning.severity !== 'advice') return true;
+    if (warning.severity !== 'advice' || !onceAdvice.has(warning.code)) return true;
     if (reportedAdvice.has(warning.code)) return false;
     reportedAdvice.add(warning.code);
     return true;

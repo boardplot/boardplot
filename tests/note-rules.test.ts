@@ -428,8 +428,8 @@ it('note coverage keeps its original owner and kind rules', () => {
 // under notation at 480 px a taller pass seated every small label and dropped the largest slice's.
 it('a pie keeps the largest slice label and notes the smallest when the ring is short of room', () => {
   const spec = (fixtures({ type: 'pie', id: 'ten-tiny-slices', kind: 'all' }, Infinity).body as { fixtures: { spec: { options?: object } }[] }).fixtures[0]!.spec;
-  const body = render({ spec: { ...spec, options: { ...spec.options, theme: 'notation', size: { width: 480 } } }, return: ['svg'] }).body as { warnings: { code: string; message: string }[] };
-  const noted = body.warnings.find(w => w.code === 'values-in-note')?.message ?? '';
+  const body = render({ spec: { ...spec, options: { ...spec.options, theme: 'notation', size: { width: 480 } } }, return: ['svg'] }).body as { warnings: { code: string; detail?: { values?: string[] } }[] };
+  const noted = (body.warnings.find(w => w.code === 'values-in-note')?.detail?.values ?? []).join(', ');
   expect(noted).not.toContain('Market leader');
   expect(noted).toContain('Challenger 10');
 });

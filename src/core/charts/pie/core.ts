@@ -31,7 +31,7 @@ export const pieCore: ChartCore<ChartData, PieOptions, PieMarks, PieDerived> = {
     if (effective > PIE_SLICE_LIMIT) {
       warnings.push({
         code: 'pie-too-many-slices',
-        severity: 'warn',
+        severity: 'advice',
         message: `${effective} slices exceed the ${PIE_SLICE_LIMIT}-slice readability limit`,
         suggest: 'aggregate with topN: { n: 7, rest: true } or switch to a bar chart',
       });

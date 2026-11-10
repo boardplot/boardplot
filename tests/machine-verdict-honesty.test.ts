@@ -85,12 +85,12 @@ describe('a severity:error lint is a refusal, not a nag', () => {
     const { code, envelope } = runJson(['render', docPath]);
     expect(code).toBe(1);
     expect(envelope.ok).toBe(false);
-    const refusal = envelope.errors.find((e) => e.code === 'dual-axis');
+    const refusal = envelope.errors.find((e) => e.code === 'dual-axis-unacknowledged');
     expect(refusal, JSON.stringify(envelope)).toBeDefined();
     expect(refusal!.path).toBe('/charts/0/data/series/1/axis');
     expect(refusal!.suggest).toContain('acknowledge');
     // and it is not ALSO a warning — one severity, one place
-    expect(envelope.warnings.some((w) => w.code === 'dual-axis')).toBe(false);
+    expect(envelope.warnings.some((w) => w.code === 'dual-axis-unacknowledged')).toBe(false);
   });
 
   // The library layout drew this chart on one scale while the CLI refused it.
@@ -98,7 +98,7 @@ describe('a severity:error lint is a refusal, not a nag', () => {
     const dir = tdir();
     const docPath = join(dir, 'doc.json');
     writeFileSync(docPath, JSON.stringify(comboDoc));
-    const cli = runJson(['render', docPath]).envelope.errors.find((e) => e.code === 'dual-axis')!;
+    const cli = runJson(['render', docPath]).envelope.errors.find((e) => e.code === 'dual-axis-unacknowledged')!;
     const { name: _name, ...chart } = comboDoc.charts[0]!;
     const layout = layoutResolvedRequest(resolveChartRequest(chart as never));
     expect(isRefused(layout)).toBe(true);

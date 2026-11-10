@@ -9,14 +9,15 @@ export class BoardplotSpecError extends DocumentSchemaError {
     this.message = errors.map(issue => {
       // The public diagnostic retains all union branches. The display lists their collected types.
       const expected = issue.expected?.types ? { ...issue.expected, alternatives: undefined }
-        : issue.expected ?? { condition: issue.message };
+        : issue.expected ?? {};
       const replacement = issue.fix?.find((operation): operation is Extract<typeof operation, { value: unknown }> =>
         operation.op === 'replace');
       const fix = replacement ? `Replace ${replacement.path || '(root)'} with ${JSON.stringify(replacement.value)}.`
         : issue.suggest ?? 'Change this value to match the expected shape.';
       return [
         (issue.path ? atPath(issue, issue.message) : `(root): ${issue.message}`).replace(/\s+/g, ' '),
-        `Expected: ${JSON.stringify(expected)}`,
+        // An empty expectation would only repeat the message.
+        ...(JSON.stringify(expected) === '{}' ? [] : [`Expected: ${JSON.stringify(expected)}`]),
         `Fix: ${fix.replace(/\s+/g, ' ')}`,
       ].join('\n');
     }).join('\n\n');

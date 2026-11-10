@@ -28,8 +28,6 @@ import {
 import type { LintWarning } from '../types/scene';
 import type { Rect, Size } from '../geometry';
 import { contentSized, heightOmitted } from '../sizing';
-import { resolveTheme } from '../theme';
-import type { ThemeRef } from '../types/theme';
 
 /** Absolute plot floors. */
 const PLOT_MIN = { cartesianH: 120, cartesianW: 320, cardH: 40, appliesFromWidth: 720 } as const;
@@ -91,7 +89,6 @@ export function aspectDocLints(
   const ratio = width / height;
   // The bullet card takes its height from its rows too (rowDrivenHeight).
   const rowDriven = cls === 'row-driven' || cls === 'matrix' || type === 'bullet';
-  const fixedRows = (type === 'bar' || type === 'likert') && resolveTheme(options?.theme as ThemeRef | undefined).space.barRow !== undefined;
 
   // ---- aspect-cap --------------------------------------------------
   // Compared on heights so the ±2% rounding grace of height-off-ladder carries over: a
@@ -140,28 +137,21 @@ export function aspectDocLints(
     });
   }
 
-  // ---- height-off-ladder / info variant -----------------------------------
+  // ---- height-off-ladder -------------------------------------------------
   // A height the engine chose (the host left it open) is not judged
   // against the ladder; only an authored height is. The automatic heights follow the content.
-  if (onLadderStep(geo.size) === null && !automaticTall && !heightOmitted(options?.size)) {
+  // A type whose height comes from its rows has no step to snap to.
+  if (!rowDriven && onLadderStep(geo.size) === null && !automaticTall && !heightOmitted(options?.size)) {
     const nearest = nearestLadderStep(geo.size);
-    if (rowDriven) {
-      warnings.push({
-        code: 'height-off-ladder:row-driven',
-        severity: 'info',
-        message: `'${type}' canvas ${canvas} is off the standard height steps. ${fixedRows ? 'The theme fixes the row pitch, and the authored height only adds space under the rows' : type === 'table' ? 'A table takes its height from its rows, and the authored height only adds space under them' : 'This type takes its natural height from its rows, and the authored height stretches them to fill the canvas'}, so this is an observation only. The nearest step is ${nearest.name} at ${width}x${nearest.height}.`,
-      });
-    } else {
-      const snapped = patch(() => true);
-      warnings.push({
-        code: 'height-off-ladder',
-        severity: 'warn',
-        message: `'${type}' canvas ${canvas} is off the standard height steps for width ${width}. The nearest step is ${nearest.name} at ${width}x${nearest.height}.`,
-        suggest: snapped ? `Use height ${snapped.height}px at width ${width}.` : unverified,
-        field: ['options', 'size'],
-        ...(snapped ? { fix: snapped.fix } : {}),
-      });
-    }
+    const snapped = patch(() => true);
+    warnings.push({
+      code: 'height-off-ladder',
+      severity: 'advice',
+      message: `Canvas ${canvas} is off the standard height steps; the nearest is ${width}x${nearest.height}.`,
+      suggest: snapped ? `Use height ${snapped.height}px.` : unverified,
+      field: ['options', 'size'],
+      ...(snapped ? { fix: snapped.fix } : {}),
+    });
   }
 
   // ---- plot-under-min ----------------------------------------------

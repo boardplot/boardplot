@@ -56,7 +56,7 @@ function notedValuesWarning(geo: Geometry<object, object>): LintWarning | undefi
     && !warnedArrows.has(label.owner.segmentId ?? '') ? [label.noteText ?? label.text] : [])),
     ...notes.flatMap(note => engineNoteMeta(note)!.values!)])];
   return values.length === 0 ? undefined : { code: 'values-in-note', severity: 'info',
-    message: `${values.length} value${values.length === 1 ? ' has' : 's have'} no label on the chart. Notes can list or count these values; the full values follow: ${values.join(', ')}`,
+    message: `${values.length} value${values.length === 1 ? ' has' : 's have'} no label on the chart. Notes can list or count these values; detail.values names each one.`,
     detail: { values } };
 }
 
@@ -106,7 +106,7 @@ function staticFooterLayout<D, O extends object, M extends object, DV extends ob
     // static output adds may still need more room; say so instead of drawing
     // a taller SVG silently.
     if (!automatic && expanded !== geometry && expanded.size.height > geometry.size.height + 0.01) {
-      expanded.warnings.push({ code: 'static-footer-grew', severity: 'info',
+      expanded.warnings.push({ code: 'static-footer-grew', severity: 'warn',
         message: `the notes and source need ${round2(expanded.size.height)} px; the canvas grew past the set height of ${geometry.size.height} px`,
         suggest: `set the height to ${Math.ceil(expanded.size.height)} px, or shorten the notes` });
     }

@@ -1190,6 +1190,14 @@ function remapLabelKinds(
   });
 }
 
+/** Each label kind's code when it finds no seat: a node or badge without one refuses the diagram. */
+const UNPLACED: Partial<Record<DiagramLabelKind, Pick<LintWarning, 'code' | 'severity'>>> = {
+  diagramNode: { code: 'diagram-node-label-unplaced', severity: 'error' },
+  diagramSecondary: { code: 'diagram-secondary-label-unplaced', severity: 'warn' },
+  diagramCaption: { code: 'diagram-caption-unplaced', severity: 'warn' },
+  diagramBadge: { code: 'diagram-size-too-small', severity: 'error' },
+};
+
 function translateLabelLosses(
   labels: readonly PlacedLabel[],
   kinds: ReadonlyMap<string, DiagramLabelKind>,
@@ -1198,18 +1206,10 @@ function translateLabelLosses(
   for (const label of labels) {
     if (!label.hidden) continue;
     const kind = kinds.get(label.id);
-    const code =
-      kind === 'diagramNode'
-        ? 'diagram-node-label-unplaced'
-        : kind === 'diagramSecondary'
-          ? 'diagram-secondary-label-unplaced'
-          : kind === 'diagramCaption'
-            ? 'diagram-caption-unplaced'
-            : kind === 'diagramBadge' ? 'diagram-size-too-small' : undefined;
-    if (!code) continue;
+    const unplaced = kind && UNPLACED[kind];
+    if (!unplaced) continue;
     warnings.push({
-      code,
-      severity: kind === 'diagramNode' || kind === 'diagramBadge' ? 'error' : 'warn',
+      ...unplaced,
       message: `${kind} '${label.text}' has no collision-free placement`,
       ...(kind === 'diagramBadge' ? { suggest: `shorten badge '${label.text}' or give node '${label.owner.pointId}' more space` } : {}),
       ...(kind === 'diagramCaption' ? { suggest: 'increase the canvas height or node spacing; shorten the caption or move it into secondaryLabel if it must stay inside the node' } : {}),

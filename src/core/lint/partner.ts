@@ -36,7 +36,7 @@ export function runPartnerLints(charts: readonly ScopedLintChart[]): DocLintWarn
         warning(
           chart,
           'missing-message-title',
-          'warn',
+          'advice',
           'consulting titles carry the message; this title is missing or generic',
           'state the decision-relevant takeaway in options.title',
         ),
@@ -55,7 +55,7 @@ export function runPartnerLints(charts: readonly ScopedLintChart[]): DocLintWarn
         warning(
           chart,
           'series-overload',
-          'warn',
+          'advice',
           `${series.length} data series exceed the 6-series readability limit`,
           'show the top series or facet the comparison',
         ),
@@ -121,7 +121,7 @@ export function runPartnerLints(charts: readonly ScopedLintChart[]): DocLintWarn
         warning(
           chart,
           'pie-too-many-slices',
-          'warn',
+          'advice',
           `${effectiveCount} pie slices without an 'Others' slice exceed the 6-slice readability limit`,
           "aggregate small slices into 'Others' or switch to a bar chart",
         ),
@@ -139,7 +139,7 @@ export function runPartnerLints(charts: readonly ScopedLintChart[]): DocLintWarn
         warning(
           chart,
           'legend-redundant',
-          'warn',
+          'advice',
           'a forced legend repeats the only series',
           'turn the legend off and label the series directly',
           typeof series[0]!.id === 'string' ? { seriesId: series[0]!.id } : undefined,
@@ -159,7 +159,7 @@ export function runPartnerLints(charts: readonly ScopedLintChart[]): DocLintWarn
         { ...warning(
           chart,
           'legend-redundant',
-          'info',
+          'advice',
           `options.legend repeats series names requested by ${options.seriesLabels !== undefined ? 'options.seriesLabels' : 'options.labels (or its default)'}`,
           'remove options.legend to use the direct names without the repeated key',
         ), fix: [{ op: 'remove', path: `${chart.path ?? ''}/options/legend` }] },

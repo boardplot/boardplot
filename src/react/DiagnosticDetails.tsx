@@ -19,7 +19,7 @@ function Finding({ findings }: { findings: readonly DocumentFinding[] }) {
     rows.push([finding.path || '(root)', <>{messageText(finding).replace(/\s+/g, ' ')}
       {finding.received !== undefined && <div>Received: <Raw value={finding.received} /></div>}</>]);
   }
-  const expected = [...new Map(findings.filter(finding => finding.expected !== undefined).map(finding => [JSON.stringify(finding.expected), finding.expected])).values()];
+  const expected = [...new Map(findings.filter(finding => finding.expected !== undefined && Object.keys(finding.expected).length > 0).map(finding => [JSON.stringify(finding.expected), finding.expected])).values()];
   if (expected.length) rows.push(['Expected', <details><summary style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
     {first.expected?.types?.join(' | ') ?? first.expected?.condition ?? first.code}
   </summary><Raw value={expected.length === 1 ? expected[0] : expected} /></details>]);

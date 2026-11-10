@@ -2944,7 +2944,7 @@ function unionSharedYGroups(
        */
       if (group !== DEFAULT_Y_GROUP) {
         warnings.push({
-          code: 'scale-mix',
+          code: 'scale-group-not-numeric',
           severity: 'warn',
           message: `y scale group '${group}' contains a panel without a numeric linear y scale`,
         });
