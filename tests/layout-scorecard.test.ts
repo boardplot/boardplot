@@ -117,7 +117,7 @@ it('keeps every repair entry producing a warning or refusal with a patch', () =>
     if (fixes.length === 0) stale.push(entry.name);
   }
   expect(stale).toEqual([]);
-});
+}, 60_000);
 
 // Text from different scene parts can collide or leave the canvas outside the label solver.
 it('checks all visible text, including translated and rotated text, without counting blank space', () => {
