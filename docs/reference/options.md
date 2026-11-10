@@ -59,8 +59,8 @@ These options are shared across chart types. Each type page names its exceptions
 | locale.language | string |  |  | BCP 47 language tag. Changes words only, such as notes and month names. It never changes the decimal or grouping marks; they come only from locale.decimal and locale.thousands. E.g. "de"; "de_DE" is read as "de-DE"; "en-US" puts the month first (Sep 4). |
 | locale.decimal | string | `'.'`, `','` |  | Decimal mark of every number the chart prints. Default '.'. The language does not change it. |
 | locale.thousands | string | `','`, `'.'`, `'’'`, `'\\''`, `' '`, `' '` |  | Grouping mark of every number the chart prints. The apostrophe ' is the same as ’, and the narrow no-break space is the same as the space. Default ',', or '.' with decimal ','. The language does not change it. A value equal to the decimal mark uses that fallback. |
-| locale.minusGlyph | string | `'−'`, `'-'` |  | Minus glyph for locale-derived table formats; default Unicode minus. |
-| locale.weekStartsOn | number | `0`, `1` |  | First weekday for week-granularity date ticks; default Monday. Line date ticks read this field, other layouts ignore it and report it. |
+| locale.minusGlyph | string | `'−'`, `'-'` |  | Minus glyph of the numbers a table or dimswitch formats from the locale; default Unicode minus. Other types print the Unicode minus and ignore it without a warning. |
+| locale.weekStartsOn | number | `0`, `1` |  | First weekday for week ticks; default Monday. Read by categoryAxis.dateTicks 'weeks' on column, combo and line, and by the week ticks of a line time axis. Those three report it (week-start-ignored) when dateTicks asks for another interval. Other types ignore it without a warning. |
 | strings | object |  |  | Wording of built-in labels. These are the labels the renderer composes itself: author chart text stays unchanged and an explicit option still wins per label; host-level wording comes from the theme provider. |
 | strings.newItems | string |  |  | PVM entry-bar name; default New items. |
 | strings.lostItems | string |  |  | PVM exit-bar name; default Lost items. |
