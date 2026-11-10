@@ -80,14 +80,21 @@ export interface TableNeed {
   warnings: LintWarning[];
   /** The size the overflow or tight-spacing warning advises, as its patch names it. */
   advice: TableAdvice | undefined;
+  /** The drawn layout of the rung, scene and all. */
   geometry: TableGeometry;
 }
 
+/** The rung of the fit ladder that holds, with the layout it selected. */
+export interface TableRungChoice {
+  rung: TableRung;
+  cellPadX: number;
+  headLines: number;
+  /** The selected rung's layout before it is drawn: no scene yet, and none of the warnings the drawing adds. */
+  undrawn: TableGeometry;
+}
+
 /** The ladder that holds for a resolved table on its surface, at the frame its options name. */
-export function tableNeed(input: { table: ResolvedTable; surface: TableFrameSurface }): TableNeed;
-export function tableNeed(input: { table: ResolvedTable; surface: TableScrollSurface }): Omit<TableNeed, 'geometry'> & { plan: TableWidthPlan };
-export function tableNeed({ table, surface }: { table: ResolvedTable; surface: TableFrameSurface | TableScrollSurface }): TableNeed | Omit<TableNeed, 'geometry'> & { plan: TableWidthPlan } {
-  if ('scroll' in surface) return scrollNeed(table, surface);
+export function tableRung({ table, surface }: { table: ResolvedTable; surface: TableFrameSurface }): TableRungChoice {
   const rungs = new WeakMap<TableGeometry, TableCandidate>();
   let fullPad: number | undefined;
   const run: RunTableCandidate = (candidate, ...rest) => {
@@ -96,22 +103,25 @@ export function tableNeed({ table, surface }: { table: ResolvedTable; surface: T
     fullPad ??= surface.cellPadOf(geometry);
     return geometry;
   };
-  const geometry = executeTableFit(surface.data, surface.options, table, surface.preserveCompactFloor, run, surface.cutCount, surface.hasHeadAir);
-  const candidate = rungs.get(geometry) ?? {};
-  const cellPadX = surface.cellPadOf(geometry);
-  const { size, plot, sizing, marks, warnings } = geometry;
+  const undrawn = executeTableFit(surface.data, surface.options, table, surface.preserveCompactFloor, run, surface.cutCount, surface.hasHeadAir);
+  const candidate = rungs.get(undrawn) ?? {};
+  const cellPadX = surface.cellPadOf(undrawn);
+  return { rung: rungOf(candidate, cellPadX < fullPad!), cellPadX, headLines: candidate[HEAD_LINES] ?? 1, undrawn };
+}
+
+/** The need a chosen rung answers, read from its drawn layout: the drawing adds warnings (text on an authored ground). */
+export function tableNeed(choice: TableRungChoice, drawn: TableGeometry): TableNeed {
+  const { size, plot, sizing, marks, warnings } = drawn;
   return {
-    rung: rungOf(candidate, cellPadX < fullPad!),
+    rung: choice.rung, cellPadX: choice.cellPadX, headLines: choice.headLines,
     tracks: marks.columns.map((column) => ({ id: column.id, width: column.w })),
-    cellPadX,
     margins: { left: plot.x, right: size.width - plot.x - plot.w },
-    headLines: candidate[HEAD_LINES] ?? 1,
     minWidth: sizing?.minWidth ?? size.width,
     naturalWidth: sizing?.naturalWidth ?? size.width,
     height: size.height,
     warnings,
     advice: advisedSize(warnings),
-    geometry,
+    geometry: drawn,
   };
 }
 
@@ -133,7 +143,8 @@ function advisedSize(warnings: readonly LintWarning[]): TableAdvice | undefined 
 /** The overflow a scrolling host reports, checked at each width it advises until one holds. */
 const ADVICE_PASSES = 3;
 
-function scrollNeed(table: ResolvedTable, surface: TableScrollSurface): Omit<TableNeed, 'geometry'> & { plan: TableWidthPlan } {
+/** What a table needs in a host that scrolls: the full rung's tracks, and an overflow advice checked at the width it names. */
+export function tableScrollNeed({ table, surface }: { table: ResolvedTable; surface: TableScrollSurface }): Omit<TableNeed, 'geometry'> & { plan: TableWidthPlan } {
   const { theme, measure, options, view, at } = surface;
   const plan = tableWidths(table, theme, measure, options, { ...view, scroll: true });
   const warnings = at === undefined ? plan.warnings : plan.warnings.map((warning) => warning.code === 'table-overflow' ? checkedOverflow(warning, (width) => {
