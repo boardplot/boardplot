@@ -604,6 +604,24 @@ describe('chart layout edge cases', () => {
     expect(net.rect.y).toBeGreaterThanOrEqual(key.rect.y + key.rect.h);
   });
 
+  // At 320 px the period key with two long names did not wrap, so the second name ran past the plot and was dropped.
+  it('a diverging slope stacks a period key too wide for its row, and keeps both names', () => {
+    const request = {
+      type: 'slope',
+      data: { categories: [{ id: 'a', label: 'Fiscal year 2025 second half' }, { id: 'b', label: 'Fiscal year 2026 second half' }],
+        series: [{ id: 'g', label: 'Group', values: [60, 55], negative: [15, 22] }, { id: 'h', label: 'Other group', values: [50, 58], negative: [20, 12] }] },
+      options: { variant: 'diverging', size: { width: 320, height: 600 } },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const lay = layoutResolvedRequest(resolveChartRequest(request) as any) as any;
+    for (const id of ['legend:period:0', 'legend:period:1']) {
+      const label = lay.labels.find((l: { id: string }) => l.id === id);
+      expect(label?.hidden, id).toBeFalsy();
+      expect(label.rect.x + label.rect.w, id).toBeLessThanOrEqual(320);
+    }
+  });
+
   // An unsized sparkline with a title kept its 176 px card on slide, so the title wrapped one word a line and was cut.
   it('an unsized sparkline on slide is as wide as its title and keeps 320 px for a short one', () => {
     const request = (title: string) => ({
