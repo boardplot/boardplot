@@ -399,6 +399,14 @@ describe('refusal contract', () => {
     const repaired = structuredClone(sorted) as Node;
     repaired.data.panels[0].options.sort.categories = 'sheet';
     expect(tool('boardplot_render', repaired).warnings.some((warning) => warning.code === 'butterfly-sort-ignored')).toBe(false);
+    // A patch on a handed-down grid option would change the other panels too: it stays only in a one-panel grid.
+    const bar = (id: string, variant: string) => ({ id, type: 'bar', data: { categories: ['A', 'B'], series: [{ id: 'a', values: [40, 60] }, { id: 'b', values: [20, 30] }] }, options: { variant } });
+    const theme = { preset: 'standard', overrides: { marks: { barLabels: 'outside' } } };
+    for (const [panels, fix] of [[[bar('p1', 'stacked'), bar('p2', 'grouped')], undefined], [[bar('p1', 'stacked')], [{ op: 'remove', path: '/options/theme/overrides/marks/barLabels' }]]] as const) {
+      const ignored = tool('boardplot_render', { type: 'grid', data: { panels }, options: { columns: panels.map(() => 1), sharedScale: false, size: { width: 1200, height: 600 }, theme } })
+        .warnings.find((warning) => warning.code === 'option-ignored')!;
+      expect([ignored.path, ignored.fix]).toEqual(['/options/theme/overrides/marks/barLabels', fix]);
+    }
   });
 
   // An annotation refusal counted its index after the registry dropped the kinds the chart does not draw, and named the root list for options.annotations, so it pointed at another annotation or at nothing.

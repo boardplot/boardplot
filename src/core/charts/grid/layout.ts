@@ -257,7 +257,12 @@ function authoredPanelWarnings(geometry: LayoutResult<GridMarks, GridDerived>, d
   return { ...geometry, warnings: geometry.warnings.map((warning, index) => {
     const panelId = warning.detail?.panelId;
     if (panelId === undefined || (!warning.field && !warning.fix)) return warning;
-    const moved = rebaseWarning(warning, spans.get(index) ?? (() => undefined));
+    let moved = rebaseWarning(warning, spans.get(index) ?? (() => undefined));
+    // A patch on a handed-down grid option changes every panel: it stays only where the grid has no other panel.
+    if (moved.fix && geometry.marks.panels.length > 1 && !moved.fix.every((operation) => operation.path.startsWith('/data/panels/'))) {
+      const { fix: _dropped, ...rest } = moved;
+      moved = rest;
+    }
     const need = moved.fix ? undefined : panelSizeNeed(warning.fix);
     return need ? { ...moved, suggest: `Panel ${String(panelId)} needs ${need}. Give the grid more room.` } : moved;
   }) };

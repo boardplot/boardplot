@@ -31,7 +31,12 @@ export function repaintGeometry(geometry: Geometry, theme: Theme, options?: { pa
       if (!chart || chart.warningOffset === undefined) continue;
       const child = repaintGeometry(chart.geometry, chart.theme ? resolveTheme(chart.theme) : theme, chart.options);
       // A warning the repaint kept is the one the grid passed on, with its field and fix moved into the authored panel.
-      const passedOn = new Map(chart.geometry.warnings.map((warning, index) => [warning, warnings[chart.warningOffset! + index]!]));
+      // The offset can be off where the grid dropped a panel warning, so only the matching warning counts.
+      const passedOn = new Map(chart.geometry.warnings.flatMap((warning, index) => {
+        const forwarded = warnings[chart.warningOffset! + index];
+        return forwarded?.code === warning.code && forwarded.detail?.panelId === panel.id && forwarded.message === `[${panel.id}] ${warning.message}`
+          ? [[warning, forwarded] as const] : [];
+      }));
       warnings.splice(chart.warningOffset, chart.geometry.warnings.length,
         ...child.warnings.map(warning => passedOn.get(warning) ?? ({
           ...withoutPointer(warning),
