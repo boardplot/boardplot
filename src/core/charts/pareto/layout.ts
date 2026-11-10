@@ -789,6 +789,9 @@ export function layoutPareto(
 
   return {
     ...geo,
+    // A printed cumulative share names its claim, so the reading quotes the printed text.
+    labels: geo.labels.map((label) => label.kind === 'point' && label.owner.seriesId === CUMULATIVE_SERIES_ID && label.owner.categoryId !== undefined
+      ? { ...label, claimId: `pareto:cumshare:${label.owner.categoryId}` } : label),
     type: 'pareto',
     // No value-label floor. At a narrow card the pareto staggers its values into two
     // rows, runs staircase leaders and lists the columns with no room in a ranked note, so a

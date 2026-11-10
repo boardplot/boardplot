@@ -1006,6 +1006,13 @@ export function layoutLikert(
     label.printsFor = halves && label.owner.seriesId === halves.pos
       ? [label.owner, { seriesId: halves.neg, categoryId: label.owner.categoryId }] : [label.owner];
   }
+  // A printed share and net name their claims, so the reading quotes the printed text.
+  const optionOf = new Map(scale.flatMap((option, i) => [seriesIdOf(i), seriesIdOf(i, 'neg'), seriesIdOf(i, 'pos')].map((id) => [id, option.id] as const)));
+  for (const label of geo.labels) {
+    const { seriesId, categoryId } = label.owner;
+    if (label.kind === 'grandTotal' && summary === 'net') label.claimId = `likert:net:${categoryId}`;
+    else if (label.kind === 'segment' && optionOf.has(seriesId ?? '')) label.claimId = `likert:share:${categoryId}:${optionOf.get(seriesId!)}`;
+  }
   const reboundPaintWarningRules = restoreLikertPaints(geo, ramp, scale, seriesIdOf, paintWarningRules, theme);
   const statementTop = stacked ? stackStatements(geo, theme, statements, statementFont, statementLineH, margin.left, measure) : undefined;
   // Comparison brackets stand right of the bars, so the nets stay left of them.

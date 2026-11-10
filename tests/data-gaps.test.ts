@@ -693,3 +693,20 @@ describe('variance n.m. text', () => {
     expect([node.x - width / 2 >= plot.x - 0.01, node.x + width / 2 <= plot.x + plot.w + 0.01]).toEqual([true, true]);
   });
 });
+
+// The reading called a printed Likert net or share and a printed Pareto cumulative share "Not displayed": their labels named no claim.
+it('reads the printed text of Likert nets and shares and of Pareto cumulative shares', () => {
+  for (const [type, id, claimPrefix] of [['likert', 'employee-engagement-5pt', /^likert:(net|share):/], ['pareto', 'revenue-concentration', /^pareto:cumshare:/]] as const) {
+    const fixture = getFixtures(type).find((item) => item.id === id)!;
+    const request = resolveChartRequest({ type, data: fixture.data, options: fixture.options as object } as never);
+    const geometry = layoutResolvedRequest(request);
+    if (geometry.refused) throw new Error(`${id} refused`);
+    const reading = chartReading({ name: id, type, request, geometry, claims: claimsForChart(type, geometry) });
+    const printed = geometry.labels.filter((label) => label.claimId !== undefined && claimPrefix.test(label.claimId) && !label.hidden);
+    expect(printed.length, id).toBeGreaterThan(type === 'likert' ? 7 : 1);
+    for (const label of printed) {
+      const entry = reading.derived.find((item) => item.claimId === label.claimId);
+      expect([entry?.displayed, entry?.visible], label.claimId).toEqual([label.text, true]);
+    }
+  }
+});
