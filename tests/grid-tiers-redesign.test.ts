@@ -552,7 +552,7 @@ describe('tier captions wrap to the panel width', () => {
 it('stands the variance tiers under the column panel with variancePosition below', () => {
   const { data, options } = getFixtures('grid').find((f) => f.id === 'weekly-actual-vs-plan')! as { data: { panels: { id: string }[] }; options: Record<string, unknown> };
   const panels = [...data.panels, { ...data.panels[1]!, id: 'dpl2' }];
-  const at = (variancePosition?: string) => measure({ type: 'grid', data: { panels }, options: { ...options, ...(variancePosition ? { variancePosition } : {}), size: { width: 960 } } } as never).geometry as unknown as Geometry & { marks: { panels: { id: string; plot: { y: number } }[] } };
+  const at = (variancePosition?: string) => layoutResolvedRequest(resolveChartRequest({ type: 'grid', data: { panels }, options: { ...options, ...(variancePosition ? { variancePosition } : {}), size: { width: 960 } } } as never)) as unknown as Geometry & { marks: { panels: { id: string; plot: { y: number } }[] } };
   const below = at('below');
   const y = (id: string) => below.marks.panels.find((panel) => panel.id === id)!.plot.y;
   // The tiers follow the columns in authored order, and the week labels stay with the columns.
@@ -565,8 +565,8 @@ it('stands the variance tiers under the column panel with variancePosition below
   expect(above.marks.panels.find((panel) => panel.id === 'orders')!.plot.y).toBeGreaterThan(above.marks.panels.find((panel) => panel.id === 'dpl')!.plot.y);
   expect(below.size.height).toBe(above.size.height);
   // With every category label off, the tiers still stand under the columns.
-  const quiet = measure({ type: 'grid', data: { panels: panels.map((panel) => ({ ...panel, options: { ...(panel as { options?: object }).options, labels: { category: false } } })) },
-    options: { ...options, variancePosition: 'below', size: { width: 960 } } } as never).geometry as unknown as typeof below;
+  const quiet = layoutResolvedRequest(resolveChartRequest({ type: 'grid', data: { panels: panels.map((panel) => ({ ...panel, options: { ...(panel as { options?: object }).options, labels: { category: false } } })) },
+    options: { ...options, variancePosition: 'below', size: { width: 960 } } } as never)) as unknown as typeof below;
   const quietY = (id: string) => quiet.marks.panels.find((panel) => panel.id === id)!.plot.y;
   expect(quietY('orders')).toBeLessThan(quietY('dpl'));
   expect(quietY('dpl')).toBeLessThan(quietY('dpl2'));
