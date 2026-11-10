@@ -66,6 +66,7 @@ import { gridZones, zoneKeyItems } from './zones';
 import type { TrendFit } from './trend';
 import type { ScatterStrategyOptions, StrategyZonesDerived } from './types';
 import { disclosureNote, disclosuresShown, withEngineNotes } from '../../notes';
+import { withUnprintedClaims } from '../../claims/ids';
 import { omittedKey } from '../../seriesIdentity';
 import { maxOf, pushAll } from '../../arrays';
 
@@ -296,6 +297,7 @@ function assembleScatterGeometry(input: {
       yExtent: [yMin, yMax],
       ...(sizeMax !== undefined ? { sizeMax } : {}),
       ...(quadrants ? { quadrants } : {}),
+      ...(geometry.cutTicks.x || geometry.cutTicks.y ? { cutTickNodeIds: geometry.cutTicks } : {}),
       ...(zonesDerived ? { zones: zonesDerived } : {}),
       ...(clamp && clamp.records.length > 0 ? { clipped: clamp.records } : {}),
       ...(dropped ? { dropped } : {}),
@@ -320,6 +322,31 @@ function assembleScatterGeometry(input: {
       decisions: [...solved.decisions, ...annotated.decisions],
     },
   };
+}
+
+/**
+ * The claims no text of the chart prints: a trend's intercept, the cut point of a divider
+ * that is not drawn, the count of a box without a caption, a note that stays off the canvas
+ * and the real value of a clipped point without a name.
+ */
+function unprintedScatterClaims(env: ScatterEnv, domain: ScatterDomain, named: ReadonlySet<Id>): Id[] {
+  const q = domain.quadrants;
+  const captions = env.options.quadrants?.labels ?? {};
+  // A disclosure prints as a footnote; without footnotes the key names the dropped points.
+  const footnotes = disclosuresShown(env.options);
+  return [
+    ...domain.trends.map((fit) => `scatter:trend:${fit.id}:intercept`),
+    ...(q.derived ? [
+      ...(q.drawX ? [] : ['scatter:quadrant:x']),
+      ...(q.drawY ? [] : ['scatter:quadrant:y']),
+      ...QUADRANT_BOXES.filter((box) => !captions[box] || q.voidBoxes.has(box)).map((box) => `scatter:quadrant:count:${box}`),
+    ] : []),
+    ...(domain.clamp?.records ?? []).flatMap((record) => [
+      ...(footnotes ? [] : [`scatter:clipped:${record.axis}:${record.bound}`]),
+      ...record.points.filter((point) => !named.has(point.id)).map((point) => `scatter:clipped:${record.axis}:${record.bound}:${point.id}`),
+    ]),
+    ...(domain.dropped && !footnotes && env.options.legend === 'none' ? ['scatter:dropped'] : []),
+  ];
 }
 
 /** Whether a laid-out scatter hides a point name or value its note does not list. */
@@ -936,7 +963,7 @@ function layoutScatterRun(
   pushAll(warnings, solved.warnings.map(warning => warning.code === 'label-hidden'
     && notedIds.has(warning.message.match(/label '([^']+)'/)?.[1] ?? '') ? { ...warning, severity: 'info' as const } : warning));
   pushAll(warnings, annotated.warnings);
-  const drawn = assembleScatterGeometry({ env, domain, frame, area: area!, geometry, solved, annotated, occupied, warnings });
+  const drawn = withUnprintedClaims(assembleScatterGeometry({ env, domain, frame, area: area!, geometry, solved, annotated, occupied, warnings }), unprintedScatterClaims(env, domain, named));
   // The note names these by identity (or counts them): the registry's items and this chart's own names.
   const names = [...(hiddenNames ?? [])];
   const counted = new Set<Id>([...hiddenNote.counted].filter((id) => !id.startsWith('scatter:')));

@@ -1,4 +1,5 @@
 import { positionBarLabel, refuseLabelPosition } from '../band/labelPosition';
+import { withUnprintedClaims } from '../../claims/ids';
 import { chartString } from '../../strings/variance';
 import { breakUnsupported, chartTheme } from '../chartEnv';
 import { bandFloorSizing } from '../waterfall/bandFloor';
@@ -1547,7 +1548,16 @@ export function layoutVariance(
   if (toDateIds.size > 0 && (sizing.minWidth > size.width || sizing.minHeight > size.height)) {
     return layoutVariance(data, { ...options, [PARTIAL_KEY]: true } as VarianceOptions);
   }
-  return {
+  // The changes no label prints: the mode's change of a category without a value label (a gap,
+  // a value turned off), and the other change, except the absolute change an n.m. marker prints.
+  const valued = new Set(labelRequests.flatMap((request) => request.id.startsWith('point:') ? [request.id.slice('point:'.length)] : []));
+  const shownChange = mode === 'relative' ? 'pct' : 'abs';
+  const otherChange = mode === 'relative' ? 'abs' : 'pct';
+  const unprinted = cats.flatMap((c) => [
+    ...(valued.has(c.id) ? [] : [`var:${shownChange}:${c.id}`]),
+    ...(mode === 'relative' && nmCats.has(c.id) ? [] : [`var:${otherChange}:${c.id}`]),
+  ]);
+  return withUnprintedClaims({
     type: 'variance',
     size,
     sizing,
@@ -1586,7 +1596,7 @@ export function layoutVariance(
       occupied: occupied.snapshot(),
       decisions: [...solved.decisions, ...annResult.decisions],
     },
-  };
+  }, unprinted);
 
   // ---- candidate generators ----
 

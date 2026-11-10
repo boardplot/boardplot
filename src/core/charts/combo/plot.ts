@@ -214,12 +214,12 @@ export function comboPaints(env: ComboEnv, domain: ComboDomain): ComboPaints {
   };
   const receding = recedingSeriesId([...columns, ...domain.lines], highlights);
   // Series that share a colour role, columns and lines together, take distinct
-  // steps of it: a column of the fill colour, a line of the stroke colour.
-  const roleFills = colorRolePaints([...columns, ...domain.lines]);
-  const roleStrokes = colorRolePaints([...columns, ...domain.lines], false);
+  // steps of one ladder: the fill colour for columns alone, the stroke colour once a line shares it.
+  const lineIds = new Set(domain.lines.map((s) => s.id));
+  const roles = colorRolePaints([...columns, ...domain.lines], (id) => !lineIds.has(id));
   const column = (s: NormSer, colIdx: number): Paint => {
     if (s.fill) return { css: s.fill };
-    if (s.colorRole) return roleFills.get(s.id)!;
+    if (s.colorRole) return roles.get(s.id)!;
     if (s.id === receding) return mutedMarkPaint();
     const themed = tinted(s, s.scenario);
     if (themed) return themed;
@@ -262,7 +262,7 @@ export function comboPaints(env: ComboEnv, domain: ComboDomain): ComboPaints {
     : planStyle(s)?.width ?? strokeToken(theme, 'data');
   const line = (s: NormSer, li: number): Paint => {
     if (s.fill) return { css: s.fill };
-    if (s.colorRole) return roleStrokes.get(s.id)!;
+    if (s.colorRole) return roles.get(s.id)!;
     if (highlights.has(s.id)) return { token: 'focus' };
     if (s.id === receding) return mutedMarkPaint();
     const plan = planStyle(s);

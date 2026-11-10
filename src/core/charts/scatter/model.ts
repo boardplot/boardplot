@@ -43,6 +43,8 @@ export interface ScatterDerived {
   sizeMax?: number;
   /** Present only when `options.quadrants` resolved to two usable cut points. */
   quadrants?: QuadrantDerived;
+  /** The tick label nodes that print a declared cut value in place of the divider's tag. */
+  cutTickNodeIds?: { x?: Id; y?: Id };
   /** Present only for the authored strategy-zone extension. */
   zones?: StrategyZonesDerived;
   /** One record per clamp bound that moved points to an edge. */

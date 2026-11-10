@@ -197,8 +197,14 @@ function scatterOutlierClaims(geo: Geometry<object, object>): ClaimRecordV1[] {
   };
   const marks = geo.marks as { points?: { id: string; nodeId?: string }[] } | undefined;
   const nodeIdOf = new Map((marks?.points ?? []).map((point) => [point.id, point.nodeId]));
+  // A note the chart prints as a footnote; the key names the dropped points where the footnotes do not print.
+  const footnoteOf = (note: string) => geo.frame.footnoteNodeIds?.find((id) => {
+    const node = geo.scene.find((candidate) => candidate.id === id);
+    return node?.t === 'text' && node.lines.join(' ') === note;
+  });
   const claims: ClaimRecordV1[] = [];
   for (const record of derived.clipped ?? []) {
+    const noteNodeId = footnoteOf(record.note);
     const bound = { ref: `clamp.${record.axis}.${record.bound}`, value: record.limit, state: 'applied' };
     claims.push({
       id: `scatter:clipped:${record.axis}:${record.bound}`,
@@ -206,6 +212,7 @@ function scatterOutlierClaims(geo: Geometry<object, object>): ClaimRecordV1[] {
       op: 'scatter-clip-count@1',
       inputs: [bound, { ref: `plotted.${record.axis}`, value: null, state: `n=${record.points.length}` }],
       output: { raw: record.count, state: 'value', displayed: record.note },
+      ...(noteNodeId ? { nodeId: noteNodeId } : {}),
     });
     for (const point of record.points) {
       const nodeId = nodeIdOf.get(point.id);
@@ -220,12 +227,14 @@ function scatterOutlierClaims(geo: Geometry<object, object>): ClaimRecordV1[] {
     }
   }
   if (derived.dropped) {
+    const nodeId = geo.legend?.items.find((item) => item.id === '__omitted')?.labelId ?? footnoteOf(derived.dropped.note);
     claims.push({
       id: 'scatter:dropped',
       kind: 'observed',
       op: 'scatter-min-count@1',
       inputs: [{ ref: 'options.minCount', value: derived.dropped.minCount, state: 'threshold' }],
       output: { raw: derived.dropped.count, state: 'value', displayed: derived.dropped.note },
+      ...(nodeId ? { nodeId } : {}),
     });
   }
   return claims;
@@ -272,6 +281,7 @@ function scatterClaims(geo: Geometry<object, object>): ClaimRecordV1[] {
       counts: Record<string, number>;
       assignment: Record<string, string>;
     };
+    cutTickNodeIds?: { x?: string; y?: string };
   };
   const outliers = [...scatterOutlierClaims(geo), ...trendClaims(geo)];
   const quadrants = derived.quadrants;
@@ -279,6 +289,8 @@ function scatterClaims(geo: Geometry<object, object>): ClaimRecordV1[] {
   const support = Object.keys(quadrants.assignment).length;
   const cutClaim = (axis: 'x' | 'y'): ClaimRecordV1 => {
     const source = axis === 'x' ? quadrants.xSource : quadrants.ySource;
+    // A declared cut that a tick label prints bold needs no tag on its divider; the tick prints it.
+    const tick = derived.cutTickNodeIds?.[axis];
     return {
       // A DECLARED cut point is a number the document typed; a computed one
       // is a statistic measured over the plotted points. Neither is a
@@ -304,6 +316,7 @@ function scatterClaims(geo: Geometry<object, object>): ClaimRecordV1[] {
         state: 'value',
         displayed: axis === 'x' ? quadrants.xText : quadrants.yText,
       },
+      ...(tick ? { nodeId: tick } : {}),
     };
   };
   return [
@@ -387,7 +400,9 @@ function bindClaimLabels(type: string, geo: Geometry<object, object>, claims: Cl
     ? new Map(geo.scene.filter(node=>node.t==='text').map(node=>[node.id,node])) : undefined;
   return claims.map(claim => {
     const label = bound.get(claim.id);
-    const nodeId = label?.nodeId ?? claim.nodeId ?? (label ? `label:${label.id}` : undefined);
+    // A claim's own node that draws no text (a clipped point's marker) gives way to the label that prints its value.
+    const own = label && !label.hidden && !seen.has(claim.nodeId ?? '') ? undefined : claim.nodeId;
+    const nodeId = label?.nodeId ?? own ?? (label ? `label:${label.id}` : undefined);
     // The label that names the claim prints its own lines when its node id is shared with another label's node.
     if (label && !label.hidden && !label.noted && sharedNodes.has(nodeId ?? '')) {
       return withoutResidue({ ...claim, nodeId: undefined, output: { ...claim.output, displayed: label.lines.join(' '),

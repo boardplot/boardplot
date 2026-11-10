@@ -62,7 +62,7 @@ import { composedTextRole } from '../../textRole';
 import { disclosureNote } from '../../notes';
 import { maxOf, pushAll } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
-import { claimId } from '../../claims/ids';
+import { claimId, withUnprintedClaims } from '../../claims/ids';
 
 const CVR_SPAN_HEADER = 'cvr:span-header';
 
@@ -853,7 +853,9 @@ export function layoutCenteredFunnel(
   const tallestStageLabelH = twoLineH;
   const paintWarningRules: PaintWarningRule[] = [];
   pushAll(warnings, centeredAdjacentWarnings(marks, nodes, values, plotted, theme, { rules: paintWarningRules, before: warnings.filter(warning => !['pie-ramp-crowded', 'likert-ramp-invisible', 'band-lightness-insufficient', 'series-adjacent-similar', 'highlight-reads-as-loss'].includes(warning.code)).length }));
-  return {
+  // Without the total conversion column no label prints a stage's conversion from the first stage.
+  const unprinted = showTotalCvr && labelOn('point') ? [] : cumulativeCvrs.flatMap((item) => item.rate === null ? [] : [`funnel:total-cvr:${item.stageId}`]);
+  return withUnprintedClaims({
     type: 'funnel',
     size,
     // Rows share one pitch, so the tallest stage label sizes them: a hidden value makes only its own label one line.
@@ -902,7 +904,7 @@ export function layoutCenteredFunnel(
       occupied: occupied.snapshot(),
       decisions: [...solved.decisions, ...annotationResult.decisions],
     },
-  };
+  }, unprinted);
 
   function scaleValue(value: number): number {
     return maxTotal > 0 ? (value / maxTotal) * funnelWidth : 0;

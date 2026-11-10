@@ -414,9 +414,15 @@ export function linePaints(env: LineEnv, domain: LineDomain, warnings: LintWarni
   // paints the same colour, so no two series of one chart look alike.
   // An area series reserves the paint its area draws: the focus when it is
   // highlighted, a colorRole's fill role. Series that share a role take
-  // distinct steps of it: lines of the stroke colour, areas of the fill.
-  const roleStrokes = colorRolePaints(dataSeries, false);
-  const roleFills = colorRolePaints(dataSeries, true);
+  // distinct steps of it: lines of the stroke colour, areas of the fill. An
+  // unstacked area fills its lead and draws the rest as lines, so a lead
+  // whose role the lines share fills in its own line's step, never in the
+  // colour of another line.
+  const roleMixed = areaLead !== undefined ? colorRolePaints(dataSeries, (id) => id === areaLead.id) : undefined;
+  const oneLadder = (paints: Map<string, Paint>): Map<string, Paint> => roleMixed === undefined ? paints
+    : new Map([...paints].map(([id, paint]) => [id, 'theme' in paint && paint.theme?.kind === 'role-step' ? roleMixed.get(id)! : paint]));
+  const roleStrokes = oneLadder(colorRolePaints(dataSeries, false));
+  const roleFills = oneLadder(colorRolePaints(dataSeries, true));
   const slots = rampSlots(theme, dataSeries.map((s): Paint | undefined => {
     const ink = scenarioStyleOf(s)?.ink;
     if (s.fill) return { css: s.fill };

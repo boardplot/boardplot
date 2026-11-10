@@ -856,3 +856,25 @@ it('keeps claim ids apart when a part holds the separator', () => {
   const read = (id: string) => [derived.filter((entry) => entry.claimId === id).length, derived.find((entry) => entry.claimId === id)?.displayed];
   expect([read(claimId('likert:share', 'a', 'b:c')), read(claimId('likert:share', 'a:b', 'c'))]).toEqual([[1, '20%'], [1, '70%']]);
 });
+
+// The reading called every printed box median, quartile and n "Not displayed": their labels named no claim.
+it('reads the printed median, quartiles and n of each box from its labels', () => {
+  const groups = [{ id: 'north', label: 'North', observations: [12, 15, 18, 21, 24, 27, 30, 33, 36, 60] }, { id: 'south', label: 'South', observations: [8, 10, 14, 16, 19, 22, 25, 28, 31, 34] }];
+  const { geometry, claims } = readChart('box', { groups }, { boxValues: 'all' });
+  for (const [stat, label] of [['median', 'median'], ['q1', 'stat'], ['q3', 'stat'], ['n', 'boxN']]) {
+    for (const group of groups) {
+      const id = label === 'stat' ? `stat:${group.id}:${stat}` : `${label}:${group.id}`;
+      const text = geometry.labels.find((item) => item.id === id && !item.hidden)?.lines.join(' ');
+      expect([text === undefined, claims.find((claim) => claim.id === `box:${stat}:${group.id}`)?.output.displayed], id).toEqual([false, text]);
+    }
+  }
+});
+
+// The reading called the real value of a clipped scatter point and the count of a captioned quadrant "Not displayed", although the point's name and the caption print them.
+it('reads the real value of a clipped point and a quadrant count from their labels', () => {
+  const points = [['Harbour', 20, 300], ['Old Town', 35, 420], ['Airport', 58, 2400], ['Outlet', 65, 510], ['Retail Park', 80, 640]]
+    .map(([label, x, y]) => ({ id: String(label).toLowerCase().replace(' ', '-'), label, x, y }));
+  const { claims } = readChart('scatter', { points }, { valueAxis: { clamp: { max: 1000 } }, quadrants: { x: 50, y: 450, labels: { tr: 'Stars' } } });
+  const read = (id: string) => claims.find((claim) => claim.id === id)?.output.displayed;
+  expect([read('scatter:clipped:y:max:airport'), read('scatter:quadrant:count:tr')]).toEqual(['Airport 2,400', 'Stars n = 3']);
+});

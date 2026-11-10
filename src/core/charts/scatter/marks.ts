@@ -95,8 +95,8 @@ export interface ScatterMarkGeometry {
   split: { x: number; y: number };
   /** The drawn trend lines (options.trend), in fit order. */
   trendLines: TrendLine[];
-  /** Which declared cut values print bold as a tick label. */
-  cutTicks: { x: boolean; y: boolean };
+  /** The tick label nodes that print a declared cut value bold. */
+  cutTicks: { x?: Id; y?: Id };
   /** Pixel positions of the vertical (x) and horizontal (y) rules: zero lines, dividers, value lines. */
   rules: { x: number[]; y: number[] };
   /** Dots drawn in the dense paths (DENSE_POINTS), when there are any. */
@@ -297,13 +297,13 @@ function samePrintedNumber(a: string, b: string, decimal: string): boolean {
 
 /** The declared cut values print bold in their axis rows, so the boundary is named where it is read. */
 /** Sets the cut tick labels bold and says which cut values print there: their divider then needs no tag. */
-function boldCutTicks(env: ScatterEnv, domain: ScatterDomain, axes: AxisGeometry[], nodes: SceneNode[]): { x: boolean; y: boolean } {
+function boldCutTicks(env: ScatterEnv, domain: ScatterDomain, axes: AxisGeometry[], nodes: SceneNode[]): { x?: Id; y?: Id } {
   const found = cutTickLabels(env, domain, axes, nodes);
   const ids = new Set(Object.values(found));
   nodes.forEach((node, i) => {
     if (node.t === 'text' && ids.has(node.id)) nodes[i] = { ...node, font: { ...node.font, weight: emphasisWeight(env.theme) } };
   });
-  return { x: found.x !== undefined, y: found.y !== undefined };
+  return found;
 }
 
 /** An arrow from (x1, y1) to its head at (x2, y2), in the axis ink. */
