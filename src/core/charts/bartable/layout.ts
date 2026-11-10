@@ -273,12 +273,12 @@ function combinedShareNotes(
     // The schema refuses a repeat; a direct caller gets the same refusal.
     if (combined.rows.indexOf(id) !== i) {
       throw new NormalizeError('bartable-combined-share-row', `options.combinedShare.rows[${i}]`,
-        `combinedShare names row '${id}' twice, which counts it twice; name each row once`, 'drop the repeated row id');
+        `combinedShare names row '${id}' twice, which counts it twice; name each row once`, 'drop the repeated row id', undefined, ['options', 'combinedShare', 'rows', i]);
     }
     const r = rows.findIndex((row) => row.id === id);
     if (r < 0) {
       throw new NormalizeError('bartable-combined-share-row', `options.combinedShare.rows[${i}]`,
-        `combinedShare names row '${id}', which the table does not have`, `use one of the row ids: ${rows.map((row) => row.id).join(', ')}`);
+        `combinedShare names row '${id}', which the table does not have`, `use one of the row ids: ${rows.map((row) => row.id).join(', ')}`, undefined, ['options', 'combinedShare', 'rows', i]);
     }
     return r;
   });

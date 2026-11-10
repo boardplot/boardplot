@@ -555,7 +555,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   const colById = new Map<Id, TableColumn>();
   for (const c of columns) {
     if (colById.has(c.id)) {
-      throw new NormalizeError('duplicate-column-id', `columns[${c.id}]`, `duplicate column id '${c.id}'`);
+      throw new NormalizeError('duplicate-column-id', `columns[${c.id}]`, `duplicate column id '${c.id}'`, undefined, undefined, ['data', 'columns', columns.indexOf(c), 'id']);
     }
     colById.set(c.id, c);
   }
@@ -565,6 +565,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
       'row-label-count',
       'columns',
       `exactly one rowLabel column required, found ${rowLabelCols.length}`,
+      undefined, undefined, ['data', 'columns'],
     );
   }
   validateGroups(data, colById);
@@ -961,7 +962,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   const calcNotes = evaluateTableCalcs(flat, valueCols, computedCols, rawState, records, leafTotal, data.columnGroups ?? [], colById, noPrevious, id => {
     const row = flatById.get(id);
     return row ? signTo(row, null) : folded.hidden.get(id)?.sign ?? 1;
-  });
+  }, source.rows);
   if (calcNotes.nearZero) autoFootnotes.add(options.strings?.nearZeroChange ?? localeStrings(options.locale?.language).nearZeroChange);
   if (calcNotes.mixedCoverage) autoFootnotes.add(options.strings?.mixedCoverage ?? localeStrings(options.locale?.language).mixedCoverage);
   // A ratio off a negative base prints as plain arithmetic, so a reader sees -2 / -17 as 11.8%. The number stays; the lint says it is not n.m.
@@ -2040,6 +2041,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
             'date-invalid',
             `rows[${row.id}].cells[${col.id}]`,
             `'${v}' is not an ISO date (YYYY-MM-DD)`,
+            undefined, undefined, rowPointer(source.rows, (authored) => authored.id === row.id, 'cells', col.id),
           );
         }
         const pattern = datePatterns.get(col.id)!;
@@ -2383,6 +2385,17 @@ function ladderStep(row: FlatRow, byId: Map<Id, FlatRow>, offset: number): numbe
   return Math.max(0, depth + (row.role === 'total' ? 0 : offset));
 }
 
+/** The pointer of the one authored row that passes `test`, nested rows included; undefined unless exactly one row does. */
+function rowPointer(rows: TableData['rows'], test: (row: TableData['rows'][number]) => boolean, ...field: (string | number)[]): (string | number)[] | undefined {
+  const hits: (string | number)[][] = [];
+  const walk = (list: TableData['rows'], at: (string | number)[]): void => list.forEach((row, i) => {
+    if (test(row)) hits.push([...at, i, ...field]);
+    walk(row.children ?? [], [...at, i, 'children']);
+  });
+  walk(rows, ['data', 'rows']);
+  return hits.length === 1 ? hits[0] : undefined;
+}
+
 function flattenRows(rows: TableData['rows']): FlatRow[] {
   const out: FlatRow[] = [];
   const seen = new Set<Id>();
@@ -2393,26 +2406,28 @@ function flattenRows(rows: TableData['rows']): FlatRow[] {
         'duplicate-row-id',
         `rows[${row.id}]`,
         `row id '${row.id}' appears more than once — row ids are globally unique (a fact shown in two groupings needs two rows referencing it)`,
+        undefined, undefined, rowPointer(rows, (authored) => authored === row, 'id'),
       );
     }
     seen.add(row.id);
     // The schema refuses it on every validate path; this holds for a host that never ran it.
     if (row.badge !== undefined && row.role !== 'section') {
-      throw new NormalizeError('invalid-data', `rows[${row.id}].badge`, BADGE_SECTION_ONLY);
+      throw new NormalizeError('invalid-data', `rows[${row.id}].badge`, BADGE_SECTION_ONLY, undefined, undefined, rowPointer(rows, (authored) => authored === row, 'badge'));
     }
     // The schema trims the chip text and refuses it empty; a host that never ran it gets the same.
     const badgeText = row.badge?.text.trim();
-    if (badgeText === '') throw new NormalizeError('invalid-data', `rows[${row.id}].badge.text`, BADGE_TEXT_EMPTY);
+    if (badgeText === '') throw new NormalizeError('invalid-data', `rows[${row.id}].badge.text`, BADGE_TEXT_EMPTY, undefined, undefined, rowPointer(rows, (authored) => authored === row, 'badge', 'text'));
     const displayOnly = row.kind === 'result' || row.kind === 'driver';
-    if (displayOnly && row.relation !== undefined && row.relation !== 'displayOnly') throw new NormalizeError('invalid-data', `rows[${row.id}].relation`, row.kind === 'result' ? 'a result is computed from rows above; adding it to a parent counts it twice' : 'a driver explains a row; adding it to a parent counts a different measure');
-    if (row.sign !== undefined && (displayOnly || (row.relation ?? 'additive') !== 'additive')) throw new NormalizeError('invalid-data', `rows[${row.id}].sign`, 'sign requires relation additive');
-    if (row.final && row.kind !== 'result') throw new NormalizeError('invalid-data', `rows[${row.id}].final`, 'final requires kind result');
+    if (displayOnly && row.relation !== undefined && row.relation !== 'displayOnly') throw new NormalizeError('invalid-data', `rows[${row.id}].relation`, row.kind === 'result' ? 'a result is computed from rows above; adding it to a parent counts it twice' : 'a driver explains a row; adding it to a parent counts a different measure', undefined, undefined, rowPointer(rows, (authored) => authored === row, 'relation'));
+    if (row.sign !== undefined && (displayOnly || (row.relation ?? 'additive') !== 'additive')) throw new NormalizeError('invalid-data', `rows[${row.id}].sign`, 'sign requires relation additive', undefined, undefined, rowPointer(rows, (authored) => authored === row, 'sign'));
+    if (row.final && row.kind !== 'result') throw new NormalizeError('invalid-data', `rows[${row.id}].final`, 'final requires kind result', undefined, undefined, rowPointer(rows, (authored) => authored === row, 'final'));
     const declaredParent = row.parentId ?? parentId;
     if (row.parentId && parentId && row.parentId !== parentId) {
       throw new NormalizeError(
         'parent-conflict',
         `rows[${row.id}]`,
         `nested under '${parentId}' but declares parentId '${row.parentId}'`,
+        undefined, undefined, rowPointer(rows, (authored) => authored === row, 'parentId'),
       );
     }
     out.push({
@@ -2452,14 +2467,14 @@ function flattenRows(rows: TableData['rows']): FlatRow[] {
   const byId = new Map(out.map((r) => [r.id, r]));
   for (const r of out) {
     if (r.parentId && !byId.has(r.parentId)) {
-      throw new NormalizeError('parent-missing', `rows[${r.id}]`, `parentId '${r.parentId}' does not exist`);
+      throw new NormalizeError('parent-missing', `rows[${r.id}]`, `parentId '${r.parentId}' does not exist`, undefined, undefined, rowPointer(rows, (authored) => authored.id === r.id, 'parentId'));
     }
     let level = 0;
     let p = r.parentId;
     const guard = new Set<Id>([r.id]);
     while (p) {
       if (guard.has(p)) {
-        throw new NormalizeError('parent-cycle', `rows[${r.id}]`, `row hierarchy contains a cycle at '${p}'`);
+        throw new NormalizeError('parent-cycle', `rows[${r.id}]`, `row hierarchy contains a cycle at '${p}'`, undefined, undefined, rowPointer(rows, (authored) => authored.id === r.id, 'parentId'));
       }
       guard.add(p);
       level++;
@@ -2585,15 +2600,18 @@ function resolveColumnToggles(
         'duplicate-toggle-id',
         `columnToggles[${toggle.id}]`,
         `duplicate toggle id '${toggle.id}'`,
+        undefined, undefined, ['data', 'columnToggles', data.columnToggles!.indexOf(toggle), 'id'],
       );
     }
     toggleIds.add(toggle.id);
-    for (const columnId of toggle.columns) {
+    for (let ci = 0; ci < toggle.columns.length; ci++) {
+      const columnId = toggle.columns[ci]!;
       if (!colById.has(columnId)) {
         throw new NormalizeError(
           'toggle-ref-invalid',
           `columnToggles[${toggle.id}]`,
           `toggle '${toggle.id}' references unknown column '${columnId}'`,
+          undefined, undefined, ['data', 'columnToggles', data.columnToggles!.indexOf(toggle), 'columns', ci],
         );
       }
       const owner = membership.get(columnId);
@@ -2602,6 +2620,7 @@ function resolveColumnToggles(
           'toggle-ref-invalid',
           `columnToggles[${toggle.id}]`,
           `column '${columnId}' already belongs to toggle '${owner}' — a column may belong to at most one toggle group`,
+          undefined, undefined, ['data', 'columnToggles', data.columnToggles!.indexOf(toggle), 'columns', ci],
         );
       }
       membership.set(columnId, toggle.id);
@@ -2616,6 +2635,7 @@ function resolveColumnToggles(
         'toggle-group-span',
         `columnToggles[${toggle.id}]`,
         `every member of toggle '${toggle.id}' must belong to one columnGroup, or none of them to any`,
+        undefined, undefined, ['data', 'columnToggles', data.columnToggles!.indexOf(toggle), 'columns'],
       );
     }
   }
@@ -2653,15 +2673,17 @@ function validateGroups(data: TableData, colById: Map<Id, TableColumn>): void {
   const claimed = new Map<Id, Id>();
   const columnIndex = new Map(data.columns.map((column, index) => [column.id, index]));
   for (const g of groups) {
-    for (const cid of g.columns) {
+    for (let ci = 0; ci < g.columns.length; ci++) {
+      const cid = g.columns[ci]!;
       if (!colById.has(cid)) {
-        throw new NormalizeError('group-ref-invalid', `columnGroups[${g.id}]`, `references unknown column '${cid}'`);
+        throw new NormalizeError('group-ref-invalid', `columnGroups[${g.id}]`, `references unknown column '${cid}'`, undefined, undefined, ['data', 'columnGroups', groups.indexOf(g), 'columns', ci]);
       }
       if (claimed.has(cid)) {
         throw new NormalizeError(
           'group-ref-invalid',
           `columnGroups[${g.id}]`,
           `column '${cid}' already belongs to group '${claimed.get(cid)}'`,
+          undefined, undefined, ['data', 'columnGroups', groups.indexOf(g), 'columns', ci],
         );
       }
       claimed.set(cid, g.id);
@@ -2673,6 +2695,7 @@ function validateGroups(data: TableData, colById: Map<Id, TableColumn>): void {
           'group-not-contiguous',
           `columnGroups[${g.id}]`,
           `group members must be contiguous in columns[] order`,
+          undefined, undefined, ['data', 'columnGroups', groups.indexOf(g), 'columns'],
         );
       }
     }
@@ -2680,16 +2703,19 @@ function validateGroups(data: TableData, colById: Map<Id, TableColumn>): void {
 }
 
 function validateCalcRefs(columns: TableColumn[], colById: Map<Id, TableColumn>): void {
+  // Column ids are unique by now, so the owner's index is exact.
+  const columnCalc = (owner: Id): (string | number)[] => ['data', 'columns', columns.findIndex((column) => column.id === owner), 'calc'];
   const checkRef = (rid: Id, owner: Id): void => {
     const target = colById.get(rid);
     if (!target) {
-      throw new NormalizeError('calc-ref-missing', `columns[${owner}].calc`, `references unknown column '${rid}'`);
+      throw new NormalizeError('calc-ref-missing', `columns[${owner}].calc`, `references unknown column '${rid}'`, undefined, undefined, columnCalc(owner));
     }
     if (target.kind !== 'value') {
       throw new NormalizeError(
         'compute-ref-computed',
         `columns[${owner}].calc`,
         `references '${rid}' (kind '${target.kind}') — calcs may reference value columns only in v1`,
+        undefined, undefined, columnCalc(owner),
       );
     }
   };
@@ -2699,6 +2725,7 @@ function validateCalcRefs(columns: TableColumn[], colById: Map<Id, TableColumn>)
         'row-ref-in-column-calc',
         `columns[${owner}].calc`,
         `column calculations still refer to the current row — use a column id, or put a cross-row calc on the row`,
+        undefined, undefined, columnCalc(owner),
       );
     }
     checkRef(ref, owner);
@@ -2782,6 +2809,7 @@ function validateRowCalcRef(
   rowIds: Set<Id>,
   calcRows: Set<Id>,
   colById: Map<Id, TableColumn>,
+  authoredRows: TableData['rows'],
   reads?: Id[],
 ): void {
   if (typeof ref === 'string') {
@@ -2791,12 +2819,13 @@ function validateRowCalcRef(
         'calc-ref-missing',
         `rows[${owner}].calc`,
         `references unknown numeric column '${typeof ref === 'string' ? ref : ''}'`,
+        undefined, undefined, rowPointer(authoredRows, (authored) => authored.id === owner, 'calc'),
       );
     }
     return;
   }
   if (!rowIds.has(ref.row)) {
-    throw new NormalizeError('calc-ref-missing', `rows[${owner}].calc`, `references unknown row '${ref.row}'`);
+    throw new NormalizeError('calc-ref-missing', `rows[${owner}].calc`, `references unknown row '${ref.row}'`, undefined, undefined, rowPointer(authoredRows, (authored) => authored.id === owner, 'calc'));
   }
   // A calc row may read another calc row (EBIT = gross profit − opex); the caller orders them and refuses a cycle.
   if (calcRows.has(ref.row)) reads?.push(ref.row);
@@ -2807,6 +2836,7 @@ function validateRowCalcRef(
         'calc-ref-missing',
         `rows[${owner}].calc`,
         `references unknown numeric column '${ref.col}'`,
+        undefined, undefined, rowPointer(authoredRows, (authored) => authored.id === owner, 'calc'),
       );
     }
   }
@@ -2835,19 +2865,19 @@ function calcRefs(calc: Calc, refs: CalcCellRef[] = []): CalcCellRef[] {
   return refs;
 }
 
-function walkRowCalc(calc: Calc, owner: Id, rowIds: Set<Id>, calcRows: Set<Id>, colById: Map<Id, TableColumn>, reads: Id[] = []): Id[] {
-  const ref = (r: CalcCellRef) => validateRowCalcRef(r, owner, rowIds, calcRows, colById, reads);
+function walkRowCalc(calc: Calc, owner: Id, rowIds: Set<Id>, calcRows: Set<Id>, colById: Map<Id, TableColumn>, authoredRows: TableData['rows'], reads: Id[] = []): Id[] {
+  const ref = (r: CalcCellRef) => validateRowCalcRef(r, owner, rowIds, calcRows, colById, authoredRows, reads);
   if ('lit' in calc) return reads;
   if ('ref' in calc) { ref(calc.ref); return reads; }
   switch (calc.op) {
     case 'abs':
-      return walkRowCalc(calc.of, owner, rowIds, calcRows, colById, reads);
+      return walkRowCalc(calc.of, owner, rowIds, calcRows, colById, authoredRows, reads);
     case 'add':
     case 'sub':
     case 'mul':
     case 'div':
-      walkRowCalc(calc.a, owner, rowIds, calcRows, colById, reads);
-      walkRowCalc(calc.b, owner, rowIds, calcRows, colById, reads);
+      walkRowCalc(calc.a, owner, rowIds, calcRows, colById, authoredRows, reads);
+      walkRowCalc(calc.b, owner, rowIds, calcRows, colById, authoredRows, reads);
       return reads;
     case 'share':
       ref(calc.of);
@@ -2879,6 +2909,7 @@ function evaluateTableCalcs(
   colById: Map<Id, TableColumn>,
   noPrevious: 'na' | 'missing' = 'na',
   contributionSign: (id: Id) => number = () => 1,
+  authoredRows: TableData['rows'] = [],
 ): { nearZero: boolean; mixedCoverage: boolean; negativeBase: NegativeBase[] } {
   /** The first cell of each column calc and each row calc that divides by a negative cell. */
   const negativeBase = new Map<string, NegativeBase>();
@@ -2937,16 +2968,17 @@ function evaluateTableCalcs(
   const visit = new Map<Id, 'open' | 'done'>();
   const place = (row: FlatRow) => {
     if (visit.get(row.id) === 'done') return;
-    if (visit.get(row.id) === 'open') throw new NormalizeError('compute-ref-cycle', `rows[${row.id}].calc`, `row calcs form a cycle through '${row.id}'`);
+    if (visit.get(row.id) === 'open') throw new NormalizeError('compute-ref-cycle', `rows[${row.id}].calc`, `row calcs form a cycle through '${row.id}'`, undefined, undefined, rowPointer(authoredRows, (authored) => authored.id === row.id, 'calc'));
     if (row.relation === 'additive') {
       throw new NormalizeError(
         'row-calc-relation',
         `rows[${row.id}]`,
         `row '${row.id}' has calc but relation '${row.relation}' — row calculations must be ofWhich or displayOnly so they are not summed`,
+        undefined, undefined, rowPointer(authoredRows, (authored) => authored.id === row.id),
       );
     }
     visit.set(row.id, 'open');
-    for (const id of walkRowCalc(row.calc!, row.id, rowIds, calcRows, colById)) place(byId.get(id)!);
+    for (const id of walkRowCalc(row.calc!, row.id, rowIds, calcRows, colById, authoredRows)) place(byId.get(id)!);
     visit.set(row.id, 'done');
     ordered.push(row);
   };
