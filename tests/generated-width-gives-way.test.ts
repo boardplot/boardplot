@@ -113,3 +113,26 @@ describe('a form whose floor is above the asked width gives way', () => {
     expect(layout(type, data, options).refused).toBeFalsy();
   });
 });
+
+describe('an automatic height grows before a width refusal', () => {
+  const layout = (type: string, data: object, options: object) => layoutResolvedRequest(resolveChartRequest({ type, data, options } as never));
+  const steps = [['base', 'Full year 2023 reported baseline', 'total', 812000], ['d1', 'Volume and mix effects in core markets', 'delta', 46000],
+    ['d2', 'Pricing carryover from prior-year increases', 'delta', 31000], ['d3', 'Raw material cost inflation', 'delta', -58000],
+    ['d4', 'Energy surcharges (contracted)', 'delta', -12000], ['d5', 'Logistics normalization', 'delta', 9000], ['sub', 'Operational subtotal', 'subtotal'],
+    ['d6', 'Restructuring program savings', 'delta', 27000], ['d7', 'One-off legal settlement', 'delta', -19000], ['d8', 'Currency translation effects', 'delta', -7000],
+    ['d9', 'Portfolio changes net', 'delta', 4000], ['end', 'Full year 2024 reported', 'total']]
+    .map(([id, label, kind, value]) => ({ id, label, ...(kind === 'delta' ? {} : { type: kind }), ...(value === undefined ? {} : { value }) }));
+  const regions = [['north', 1000, 20000, 1100, 25300], ['east', 500, 6000, 560, 7560], ['south', 400, 4000, 900, 10800], ['west', 300, 7500, 120, 2640],
+    ['new', 0, 0, 400, 6000], ['closed', 250, 4500, 0, 0]].map(([id, q0, r0, q1, r1]) => ({ id, label: String(id), prior: { qty: q0, revenue: r0 }, current: { qty: q1, revenue: r1 } }));
+  // Each row drew at a narrower width and was refused here: the height the chart took was too short, and a taller one draws.
+  it.each([
+    ['waterfall', { items: steps }, { title: 'Dense bridge', variant: 'horizontal', valueAxis: { break: { from: 41, to: 800 } }, size: { width: 1079 } }],
+    ['pvm', { quantityUnit: 'contracts', items: regions }, {
+      title: 'Revenue grew $10.3m: price added $3.7m at prior-year volumes, plus $1.9m where price and volume moved together',
+      subtitle: { company: 'Example Software', measure: 'Revenue by region', period: 'FY24 to FY25' }, unit: '$k', interaction: 'separate',
+      source: 'Invented order book', methodNote: true, mode: 'full', size: { width: 400 },
+    }],
+  ])('%s draws', (type, data, options) => {
+    expect(layout(type, data, options).refused).toBeFalsy();
+  });
+});

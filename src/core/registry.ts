@@ -642,6 +642,14 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
     if (def.namesMustPrint === true && !full.refused && full.mode !== 'compact' && lostCategoryNames(full).length > 0) {
       const compact = compactFallbackApplies(def, options, data) ? layoutOnce({ ...options, [FORCE_COMPACT]: true } as unknown as typeof options) : full;
       if (compact !== full && !isRefused(compact) && lostCategoryNames(compact).length === 0) return compact;
+      // A height the chart takes (a fill chart below 1080 px starts at its minimum) can be too short for the
+      // names: the height it reports as natural at this width comes before a wider card.
+      const natural = full.sizing?.naturalHeight;
+      if (!resolveTargetSize(options?.target ?? DEFAULT_TARGET, options?.size).fixed.height && natural !== undefined && natural > full.size.height
+        && !(options as { [FIXED_SIZE_PROBE]?: boolean } | undefined)?.[FIXED_SIZE_PROBE]) {
+        const taller = layoutOnce({ ...options, size: { width: full.size.width, height: Math.ceil(natural) } } as O);
+        if (!isRefused(taller) && lostCategoryNames(taller).length === 0) return taller;
+      }
       const wider = widerForNames(full, options, layoutOnce);
       if (wider) return wider;
       return hiddenLabelCollision(def.title, full as Geometry<object, object>, new Map(lostCategoryNames(full).map((label) => [label.id, label.text]))) as unknown as typeof full;

@@ -1481,6 +1481,7 @@ function fitOnce<D, O extends ChartOptions, M extends object, DV extends object>
       const freed = (r: LayoutResult<M, DV>) => r.refused ? 0 : freedChromeOf(r.frame);
       // Height floor: a narrower canvas is never shorter than a wider one. A card (narrower than
       // CARD_CLASS_WIDTH) starts at the height the chart takes at the next wider card step, full or compact.
+      const ownStart = height;
       if (width < CARD_CLASS_WIDTH) height = Math.max(height, cardClassHeight(definition, data, options, width, true) ?? 0);
       // A bridge asked for an 'auto' break that finds none is a whole-axis bridge, so it keeps that plot allowance.
       // The probe is the search's own first layout (same start height), so the layout memo serves the search; it runs
@@ -1583,6 +1584,12 @@ function fitOnce<D, O extends ChartOptions, M extends object, DV extends object>
         return at(width, height);
       };
       const first = search(plotPx, height);
+      // The wider card's height can be one this width refuses on width (two value labels share a row there).
+      // The search from the chart's own start finds a height that draws, as it does at a narrower width.
+      if (height > ownStart && first.refused && first.size.width + SIZE_TOLERANCE < (first.sizing?.minWidth ?? 0)) {
+        const own = search(plotPx, ownStart);
+        if (!own.refused) return own;
+      }
       const plainPx = declared.aspect === '16:9' ? autoPlotPx(target, width) + typePlotPx(definition.type, options) : plotPx;
       if (plainPx === plotPx || hiddenForSpace(first) === 0) return first;
       const plain = search(plainPx, height);
