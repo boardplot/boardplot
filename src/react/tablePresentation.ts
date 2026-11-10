@@ -172,6 +172,8 @@ export function tableFrame(
   const { shown, panel } = footerParts(text.noteList, text.placement, shownNoteKinds(options), text.pointerOn);
   return {
     mode, title, subtitle: text.subtitle, source: text.sourceOff ? undefined : text.sourceText, padding,
+    // The frame's own findings (notes left out, notes switched off), as the SVG table reports them.
+    warnings: text.warnings,
     footnotes: shown, listed: panel,
     pointer: panel.length === 0 ? undefined : text.placement === 'info' ? notesPanelLabel(panel.length, words.notesAndSources) : notesPointer(panel.length, words),
     markerNotes: markerNotes.join(' '),

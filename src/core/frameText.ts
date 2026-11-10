@@ -236,14 +236,32 @@ export function frameText(input: FrameTextInput): FrameText {
   const noteLines = candidates.map((entry) => wrapFootnote(markBold(entry.drawn), footFont, footW, footMeasure));
   // The most notes, in order, that fit the budget with the source line (and
   // its pointer); the source line itself is never cut.
-  let k = candidates.length;
-  for (; k > 0; k--) {
+  const usedAt = (k: number) => {
     const para = sourcePara(k);
-    const used = noteLines.slice(0, k).reduce((sum, lines) => sum + lines.length, 0) + (para ? sourceLines(para).lines.length : 0);
-    if (used <= budget) break;
-  }
+    return noteLines.slice(0, k).reduce((sum, lines) => sum + lines.length, 0) + (para ? sourceLines(para).lines.length : 0);
+  };
+  let k = candidates.length;
+  for (; k > 0; k--) if (usedAt(k) <= budget) break;
   const visible = new Set([...candidates.slice(0, k), ...kept]);
   const sourceBlock = sourcePara(k);
+  // `notes.pointer: false` on a live surface: the author notes the footer does not print
+  // appear nowhere (React's 'info' footer prints none), so the author hears how many.
+  // Static output prints every enabled note and stays silent.
+  if (policy.live && !fullStatic && input.notes?.pointer === false && !input.footnotesOff && placement !== 'list') {
+    const left = entries.filter((entry) => entry.kind === 'note' && (infoPanel ? true : !visible.has(entry))).length;
+    if (left > 0) {
+      warnings.push({
+        code: 'notes-left-out',
+        severity: 'warn',
+        message: `${left} author ${left === 1 ? 'note is' : 'notes are'} not shown: ${infoPanel ? "under notes.placement 'info'" : `the line budget of ${budget} lines leaves ${left === 1 ? 'it' : 'them'} out of the footer, and`} notes.pointer: false hides the notes list`,
+        suggest: infoPanel
+          ? `Remove notes.pointer: false, so the notes button lists ${left === 1 ? 'it' : 'them'}.`
+          : `Set notes.maxLines to ${usedAt(candidates.length)} to print ${left === 1 ? 'it' : 'them'}, or remove notes.pointer: false, so "+N notes" lists ${left === 1 ? 'it' : 'them'}.`,
+        field: ['options', 'notes', 'pointer'],
+        fix: [{ op: 'remove', path: '/options/notes/pointer' }],
+      });
+    }
+  }
   if (input.footnotesOff) {
     // The host that switched the notes off carries them in its own frame, so
     // it is told which ones the chart would have printed. The source line
