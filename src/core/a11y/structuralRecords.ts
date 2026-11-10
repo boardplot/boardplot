@@ -340,8 +340,10 @@ function gridRecords(ctx: RecordContext, childRecords?: (ctx: RecordContext) => 
     return records.map(record => {
       const nodeIds = record.nodeIds.map(id => prefix + id);
       return { ...record, nodeIds,
-        claimIds: record.value.state === 'suppressed' ? []
-          : ctx.claims.filter(claim => claim.nodeId && nodeIds.includes(claim.nodeId)).map(claim => claim.id),
+        // A claim the child record names itself (a histogram bin) stays, also when no node of the record draws it.
+        claimIds: record.value.state === 'suppressed' ? [] : [...new Set([
+          ...ctx.claims.filter(claim => claim.nodeId && nodeIds.includes(claim.nodeId)).map(claim => claim.id),
+          ...record.claimIds.map(id => prefix + id).filter(id => ctx.claims.some(claim => claim.id === id))])],
         annotations: record.annotations.map(annotation => ({ ...annotation, id: prefix + annotation.id })),
         ...(record.anchor ? { anchor: { ...record.anchor, x: record.anchor.x + prepared.offset.x, y: record.anchor.y + prepared.offset.y } } : {}),
       };

@@ -34,6 +34,7 @@ import { resolveTheme } from '../src/core/theme';
 import { measure } from '../src/index';
 import { claimsForChart } from '../src/core/claims';
 import { unprintedClaims } from '../src/core/claims/ids';
+import { interactionRecords } from '../src/core/a11y/records';
 
 const SLIDE: HistogramOptions = { size: { width: 960, height: 540 } };
 /** Engine notes (the sample base, the binning rule, the hidden-count list) print under a chart only when the author asks. */
@@ -813,4 +814,17 @@ it('quotes the printed count of a bin and no text that prints another number', (
   };
   expect(bin({})).toEqual({ displayed: '3', description: '[0, 2.5)', unprinted: false });
   expect(bin({ valueAxis: { percent: true } })).toEqual({ displayed: '', description: '[0, 2.5)', unprinted: true });
+});
+
+// A histogram panel in a grid keeps the claim ids of its bin records, also where the count label is hidden.
+it('keeps the bin claims of a histogram panel in a grid', () => {
+  const request = resolveChartRequest({ type: 'grid', data: { panels: [
+    { id: 'h', type: 'histogram', data: { observations: [1, 2, 2, 3, 3, 3, 4, 4, 5, 9, 9, 12] } },
+    { id: 'k', type: 'kpi', data: { value: 42, label: 'Orders' } },
+  ] }, options: { size: { width: 900, height: 400 } } } as never);
+  const geometry = requireGeometry(layoutResolvedRequest(request));
+  const records = interactionRecords({ request, geometry, scope: request.scope, claims: claimsForChart('grid', geometry) })!;
+  const bins = records.filter(record => record.target.panel === 'h' && String(record.target.owner.categoryId).startsWith('["bin"'));
+  expect(bins.map(record => record.claimIds)).toEqual(bins.map((_, index) => [`h/histogram:bin:${index}`]));
+  expect(bins.length).toBeGreaterThan(0);
 });
