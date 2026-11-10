@@ -31,6 +31,7 @@ import type { InteractionScope } from './a11y/types';
 import { addWhereAbsent } from './diagnostics/jsonPatch';
 import { timeAnnotationAnchors } from './timeAxis';
 import { retireChartSettings } from './retired';
+import { checkedTightAdvice, tightAdvice, withTightAdvice } from './charts/tableFit';
 import type { OptionsInput } from './types/optionInput';
 import { normalizeOptionShapes } from './normalize/optionShapes';
 
@@ -322,7 +323,14 @@ function layoutRequest(request: ResolvedChartRequest): LayoutResult {
   const finish = (result: LayoutResult): LayoutResult => (request.options as { [PLAN_ONLY]?: boolean })[PLAN_ONLY]
     ? result : withClipWarnings(result, request.fontMetrics);
   const table = request.type === 'table' || request.type === 'dimswitch';
-  return finish(afterFirstLayout(request, layoutOnce(request), layoutOnce, table ? layoutWidthProbe : layoutOnce, layoutPlain));
+  const result = afterFirstLayout(request, layoutOnce(request), layoutOnce, table ? layoutWidthProbe : layoutOnce, layoutPlain);
+  // A table's tight-spacing size is checked once at that size. The dimswitch checks its own card in its layout;
+  // the cohort's render advice is an estimate that errs wide, and its check would cost two layouts.
+  if (request.type !== 'table' || isRefused(result)) return finish(result);
+  return finish(checkedTightAdvice(result, (size) => {
+    const next = layoutPlain({ ...request, options: { ...request.options, size } as RequestOptions });
+    return isRefused(next) ? undefined : next;
+  }));
 }
 
 /**
@@ -911,10 +919,37 @@ function measuredPlotAdvice(request: ResolvedChartRequest, result: LayoutResult,
   result.warnings = result.warnings.map(w => w === warning ? replacement : w);
 }
 
+/**
+ * A table's tight-spacing size, laid out until the table at that size no longer tightens: its minimum moves
+ * with the frame (wraps, head lines, the provisional height of an open one). Where no size settles within
+ * four layouts, the warning keeps no patch.
+ */
+function measuredTightAdvice(request: ResolvedChartRequest, result: LayoutResult, layoutAt: LayoutCall<any, any, any>): void {
+  const warning = result.warnings.find(w => tightAdvice(w) !== undefined);
+  if (!warning || isRefused(result)) return;
+  const asked = tightAdvice(warning)!;
+  let size: ReturnType<typeof tightAdvice> = asked;
+  for (let pass = 0; size && pass < 4; pass++) {
+    const probe = layoutAt({ ...request.options, size });
+    const again = isRefused(probe) ? undefined : probe.warnings.find(w => w.code === 'table-tight-spacing');
+    if (!isRefused(probe) && !again) {
+      const settled = size === asked ? warning : withTightAdvice(warning, asked, size);
+      result.warnings = result.warnings.map(w => w === warning ? settled : w);
+      return;
+    }
+    size = tightAdvice(again);
+  }
+  const { fix: _fix, ...rest } = warning;
+  result.warnings = result.warnings.map(w => w === warning
+    ? { ...rest, suggest: 'No size was verified within the measurement search bound. Reduce the content or change the table settings.' } : w);
+}
+
 function measureWithLayout(request: ResolvedChartRequest, result: LayoutResult,
   layoutAt: LayoutCall<any, any, any>, verify = false,
+  asked: { request: ResolvedChartRequest; layoutAt: LayoutCall<any, any, any> } = { request, layoutAt },
 ): ChartMeasurement {
-  measuredPlotAdvice(request, result, layoutAt);
+  measuredPlotAdvice(asked.request, result, asked.layoutAt);
+  measuredTightAdvice(asked.request, result, asked.layoutAt);
   const def = getChart(request.type);
   // The declared floor, with the one option that lowers it (a compact KPI
   // card) — the same answer `fitLayout` gated the layout on.
@@ -1155,6 +1190,7 @@ export function measureResolvedRequest(request: ResolvedChartRequest): ChartMeas
   try {
     let asked = request;
     let layoutAt = open(request);
+    const askedAt = layoutAt;
     let first = layoutAt(request.options);
     const initial = first;
     // The same step as layoutResolvedRequest, so measure agrees with render and canDraw; the sizing probes then use the stepped text.
@@ -1167,7 +1203,8 @@ export function measureResolvedRequest(request: ResolvedChartRequest): ChartMeas
     if (plainRequest) {
       const plainAt = open(plainRequest);
       const plain = plainAt(plainRequest.options);
-      if (!plain.refused) return measureWithLayout(plainRequest, askedNotesOff(plain, first), plainAt, true);
+      // The caller's spec keeps its notes: at a size that has room they draw again, so size advice probes the request as asked.
+      if (!plain.refused) return measureWithLayout(plainRequest, askedNotesOff(plain, first), plainAt, true, { request, layoutAt: askedAt });
     }
     const unchangedTable = (request.type === 'table' || request.type === 'dimswitch') && asked === request && first === initial;
     const fittedLate = unchangedTable ? undefined : widthsGiveWay(asked, first, drawnBy);
