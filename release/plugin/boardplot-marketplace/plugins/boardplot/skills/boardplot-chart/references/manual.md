@@ -867,7 +867,7 @@ An option a chart type does not read is ignored with an `option-ignored` warning
 
 A chart contract can include a `design` card: what the chart says, when to use it, when another type fits better, and design guidance. Compact `boardplot_describe` prints the message, use, limitations and first two rules; `path: "design"` (CLI: `boardplot describe bar --path design`) prints every rule. Each rule is marked `engine` or `describe`. Render checks the `engine` rules on the drawn chart and returns each finding as a warning with severity `advice`, a code that starts with `design-`, one sentence and a `docs` link to the rule. A `fix` patch is included only when it can apply to the input as sent. Otherwise follow `suggest`; for example, a waterfall built from rows gets written advice when a patch would target generated items. Advice never changes the drawing and never refuses. A render returns at most three, the MCP server returns each code once per session, and a refused render returns none. The `describe` rules need the author's judgment, such as the business order of a bridge.
 
-Two layout checks also return `advice`: `height-off-ladder`, an authored height between the standard height steps, and `dead-band`, an empty band on the canvas. They do not count towards the three design findings.
+Two layout checks also return `advice`: `height-off-ladder`, an authored height between the standard height steps, and `dead-band`, an empty band on the canvas. They do not count towards the three design findings, and the MCP server returns them with every chart that has them.
 
 ## Position of bar value labels
 

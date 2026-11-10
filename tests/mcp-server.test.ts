@@ -619,6 +619,14 @@ describe('boardplot MCP server', () => {
     }
   });
 
+  // The once-per-session rule for design advice hid a chart's own empty band from every chart after the first.
+  it('returns a chart-specific advice with every chart that has it', () => {
+    for (const id of ['row-scale-ragged-zero', 'attainment-shading']) {
+      const spec = body(callTool('boardplot_fixtures', { type: 'bullet', id })).fixtures[0].spec;
+      expect(body(callTool('boardplot_render', { spec })).warnings.map((warning: { code: string }) => warning.code), id).toContain('dead-band');
+    }
+  });
+
   it('keeps list and describe theme byte-identical after rendering custom themes, and bounds what it keeps', () => {
     const listBefore = callTool('boardplot_list', {}).text;
     const themeBefore = callTool('boardplot_describe', { type: 'theme' }).text;
