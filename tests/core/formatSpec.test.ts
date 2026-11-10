@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { NormalizeError } from '../../src/core/normalize/shared';
 import { MINUS } from '../../src/core/format';
-import { exampleSpec, formatNonzeroWithSpec, formatterFromExample, formatWithSpec, parseFormatExample, seriesRasterFormatter, unitOfSpec } from '../../src/core/formatSpec';
+import { exampleSpec, formatNonzeroWithSpec, formatterFromExample, formatWithSpec, parseFormatExample, seriesRasterFormatter, setFormatPlan, unitOfSpec } from '../../src/core/formatSpec';
 
 describe('parseFormatExample', () => {
   it('"+1,234" → forced sign, comma grouping', () => {
@@ -261,4 +261,52 @@ it('keeps digits inside a unit name as text', () => {
 // Prevents an engine scale chosen before rounding: 999,999.7 beside billions printed "1,000.00k".
 it('chooses an engine magnitude after rounding', () => {
   expect(seriesRasterFormatter(undefined, [2e9, 999_999.7], 'en', undefined, 'report').fmt(999_999.7)).toBe('1.00M');
+});
+
+describe('setFormatPlan', () => {
+  const texts = (values: number[], options: Parameters<typeof setFormatPlan>[1] = {}) => {
+    const plan = setFormatPlan([...values, null], { target: 'report', ...options });
+    return values.map(plan.fmt).join(' · ');
+  };
+
+  // Prevents a label that steps down to its own magnitude: "590M" beside "1.18B" makes the reader convert units to compare two bars.
+  it('prints a set at one magnitude, chosen by its largest value', () => {
+    expect(texts([1.18e9, 5.9e8, 2.9e8, 1.4e8])).toBe('1.18B · 0.59B · 0.29B · 0.14B');
+    expect(texts([-2.4e6, 1.1e6, -6e5, 3.2e6])).toBe('−2.4M · 1.1M · −0.6M · 3.2M');
+    expect(texts([9.35e5, 1.505e6, 1.835e6, 2.385e6])).toBe('0.935M · 1.505M · 1.835M · 2.385M');
+    expect(texts([5.9e9, 3e8, 5e8])).toBe('5.9B · 0.3B · 0.5B');
+    expect(setFormatPlan([1.18e9, 1.4e8], { target: 'report' })).toMatchObject({ magnitude: 'bn', decimals: 2 });
+    expect(texts([1.18e9, 5.9e8, 1.4e8], { locale: 'de' })).toBe('1,18 Mrd. · 0,59 Mrd. · 0,14 Mrd.');
+  });
+
+  // Prevents one decimal count per value: "9" beside "13.9" reads as a rounder number than its neighbours.
+  it('prints a set at one decimal count, with a trailing zero only where a value needs the place', () => {
+    expect(texts([13.9, 6.5, 9.7, 9])).toBe('13.9 · 6.5 · 9.7 · 9.0');
+    expect(texts([5, 2, 1, 0.6])).toBe('5.0 · 2.0 · 1.0 · 0.6');
+    expect(texts([5, 2, 1])).toBe('5 · 2 · 1');
+    expect(texts([1.2e6, 0, 3.4e5])).toBe('1.20M · 0.00M · 0.34M');
+    expect(texts([13.9, 6.5], { locale: 'de' })).toBe('13,9 · 6,5');
+  });
+
+  // Prevents a nonzero value that prints as 0: the set lifts its decimals up to the automatic cap, and past the cap the value prints its bound.
+  it('lifts the set for a value that would print as zero', () => {
+    expect(texts([12, 0.004])).toBe('12.000 · 0.004');
+    expect(texts([1.2e6, 8e3])).toBe('1.200M · 0.008M');
+    expect(texts([1.2e9, 3e4])).toBe('1.2B · <0.1B');
+  });
+
+  // Prevents the set rule from overriding what an author wrote: a chart, series or cell format keeps its own scale and decimals.
+  it('keeps an authored format', () => {
+    expect(texts([1.18e9, 5.9e8], { format: '1,234' })).toBe('1,180,000,000 · 590,000,000');
+    const plan = setFormatPlan([1.18e9, 5.9e8], { target: 'report' });
+    expect(plan.forSeries({ format: '1.2M' })(5.9e8)).toBe('590.0M');
+    expect(plan.forSeries({}, '1,234')(5.9e8)).toBe('590,000,000');
+  });
+
+  // Prevents a share from borrowing the decimals of an amount: shares are a set of their own in percent points.
+  it('prints a share set at its own decimal count', () => {
+    expect(texts([9.7, 31.02, 71, 48, 13], { role: 'share' })).toBe('9.7% · 31.0% · 71.0% · 48.0% · 13.0%');
+    expect(texts([31.02, 71, 48], { role: 'share' })).toBe('31% · 71% · 48%');
+    expect(texts([31.02, 0.04], { role: 'share' })).toBe('31.02% · 0.04%');
+  });
 });

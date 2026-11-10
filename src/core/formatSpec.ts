@@ -1493,6 +1493,29 @@ export function rasterDecimals(
 }
 
 /**
+ * The one decimal count of a set of comparable values (setFormatPlan), at the
+ * set's one magnitude. A value from 1 at that magnitude asks what the raster
+ * asks today (rasterDecimals). A value below 1 under an engine scale keeps the
+ * three significant digits its own scale printed (935k: "0.935M", 140M:
+ * "0.14B"). A nonzero value that would print as 0 lifts the whole set. No
+ * value asks for more than AUTO_MAX_DECIMALS, and a value that is still 0
+ * there asks for nothing: it prints its bound at the set's decimals ("<0.1B"),
+ * so one tiny value does not pad every label with zeros.
+ */
+function setDecimals(values: readonly (number | null | undefined)[], spec: NumberFormatSpec, engineScale: boolean): number {
+  const divisor = MAGNITUDE_DIVISOR[spec.magnitude];
+  let decimals = rasterDecimals(values, engineScale ? { ...spec, autoMagnitude: true } : spec);
+  for (const value of values) {
+    if (value == null || !Number.isFinite(value) || value === 0) continue;
+    const scaled = Math.abs(value / divisor);
+    const asked = engineScale && scaled < 1 ? neededDecimals(scaled, 2 - Math.floor(Math.log10(scaled))) : nonzeroDecimals(scaled, decimals);
+    const shown = Math.min(asked, AUTO_MAX_DECIMALS);
+    if (!roundsToZero(scaled, shown)) decimals = Math.max(decimals, shown);
+  }
+  return decimals;
+}
+
+/**
  * Derived statistics — means, medians, MADs, corridor bounds — are the
  * exhibit's OWN claims, not plotted data: they render in the exhibit's style
  * but never round to a DIFFERENT number than they are. Decimals lift at most
@@ -1787,7 +1810,9 @@ export function unitMagnitude(unit: string | undefined): NumberFormatSpec['magni
  * precision, as a cell `format` does. A series `unit` applies the unit rule
  * in place of the chart unit, on the exhibit raster. A series with neither
  * prints with `fmt`. `shared` keeps one precision for every series: series
- * that share a stack or a total read as one set.
+ * that share a stack or a total read as one set. `'set'` is the set rule of
+ * setFormatPlan: shared, and every value prints at the set's one magnitude
+ * and one decimal count.
  */
 export function seriesRasterFormatter(
   example: string | undefined,
@@ -1796,7 +1821,7 @@ export function seriesRasterFormatter(
   unit?: string,
   target?: RenderTarget,
   defaultExample?: string,
-  shared = false,
+  shared: boolean | 'set' = false,
 ): {
   spec: NumberFormatSpec;
   fmt: (value: number) => string;
@@ -1818,6 +1843,7 @@ export function seriesRasterFormatter(
   const spec = example ? exampleSpec(example, locale, unit, raster) : defaultExample ? localized(parseFormatExample(defaultExample, true), locale) : defaultFormatSpec(locale);
   if (!example) spec.automatic = true;
   const unscaledSpec = { ...spec };
+  const set = shared === 'set';
   let autoMagnitude = false;
   // From 1e6 the engine picks M or B from the largest value. A unit that
   // names a scale ("€M", "USD bn") gets no second one: "48B" under "in €M"
@@ -1828,8 +1854,11 @@ export function seriesRasterFormatter(
     if (max >= 1e6) {
       spec.magnitude = max >= 1e9 ? 'bn' : 'm';
       spec.rollMagnitude = false;
-      spec.autoMagnitude = true;
       autoMagnitude = true;
+    }
+    // A set prints every value at the one scale: "0.14B" beside "1.18B", never "140M".
+    if (autoMagnitude && !set) {
+      spec.autoMagnitude = true;
       // One decimal count for the values under the scale, each at its own scale.
       let stepDecimals = 0;
       for (const value of raster) {
@@ -1843,18 +1872,19 @@ export function seriesRasterFormatter(
       if (stepDecimals > 0) spec.stepDecimals = stepDecimals;
     }
   }
-  if (!example && !defaultExample && unitScale) spec.wholeFrom = 100;
+  // A set takes one decimal count: no value of it prints whole on its own (unit rule, whole counts, whole currency).
+  if (!example && !defaultExample && unitScale && !set) spec.wholeFrom = 100;
   // A unit ("%", "% of units") is not repeated on the numbers: the subtitle,
   // a panel or column head, or the axis title states it.
   if (!example) {
     // A default example's precision was set for unscaled values; after an automatic M/B the raster sets it (1.5M, not 2M).
-    if (!defaultExample || autoMagnitude) spec.decimals = rasterDecimals(raster, spec);
+    if (!defaultExample || autoMagnitude) spec.decimals = set ? setDecimals(raster, spec, autoMagnitude) : rasterDecimals(raster, spec);
     // Four significant digits is a preference, not a cap: different values that print one text under the engine scale get the decimals that part them.
     if (autoMagnitude) {
-      const scaled = raster.filter((value): value is number => value != null && Number.isFinite(value) && Math.abs(value) >= MAGNITUDE_DIVISOR[spec.magnitude]);
+      const scaled = raster.filter((value): value is number => value != null && Number.isFinite(value) && (set || Math.abs(value) >= MAGNITUDE_DIVISOR[spec.magnitude]));
       spec.decimals += distinctDecimalLift(scaled.map((value) => ({ value, format: (extra: number) => formatWithSpec(value, { ...spec, decimals: spec.decimals + extra }) })));
     }
-    if (currencyWholeNumbers(unit, target)) spec.currencyWhole = true;
+    if (currencyWholeNumbers(unit, target) && !set) spec.currencyWhole = true;
     // The unit rule already prints part of this raster whole, so a whole value under it
     // prints whole too: "32" beside "410", not "32.00".
     if (spec.wholeFrom && spec.decimals > 0 && raster.some((value) => value != null && Math.abs(value) >= spec.wholeFrom!)) spec.wholeCounts = true;
@@ -1926,6 +1956,50 @@ export function seriesRasterFormatter(
     return roundsToZero(value / MAGNITUDE_DIVISOR[spec.magnitude], ownPrecision(series, spec).decimals);
   };
   return { spec, fmt, fmtSigned, fmtPercent, percentSpec: example ? spec : percentSpec, forSeries, specForSeries, roundsToZeroAt };
+}
+
+/** What a reader compares in one set: amounts, or shares in percent points (a set of its own). */
+export type SetRole = 'value' | 'share';
+
+/** seriesRasterFormatter's result for one set, with the magnitude and decimal count the set prints at. */
+export type SetFormatPlan = ReturnType<typeof seriesRasterFormatter> & { magnitude: NumberFormatSpec['magnitude']; decimals: number };
+
+/**
+ * The precision plan of one set of comparable values: the value labels of
+ * the series that share one axis or one stack, with their totals. Every
+ * value prints at one magnitude, chosen from the largest absolute value at
+ * the engine's thresholds, and at one decimal count, the most any value
+ * asks (setDecimals): "1.18B · 0.59B · 0.29B · 0.14B", never "590M" beside
+ * "1.18B". An authored `format` keeps its meaning at the existing precedence
+ * (cell, series, chart), so the plan decides only what the author left open.
+ * A `share` set holds percent points ("9.7" for 9.7 %) and takes its own
+ * decimals: one below 10 %, none from 10 % up, the most any share asks, and
+ * a trailing zero only where a share needs that place ("9.7% · 31.0%").
+ * A value that stands alone keeps its own formatter.
+ */
+export function setFormatPlan(
+  values: Iterable<number | null | undefined>,
+  { role = 'value', format, locale, unit, target }: { role?: SetRole; format?: string; locale?: string; unit?: string; target?: RenderTarget } = {},
+): SetFormatPlan {
+  if (role === 'value') {
+    const raster = seriesRasterFormatter(format, values, locale, unit, target, undefined, 'set');
+    return { ...raster, magnitude: raster.spec.magnitude, decimals: raster.spec.decimals };
+  }
+  const shares = [...values].filter((value): value is number => value != null && Number.isFinite(value) && value !== 0).map(Math.abs);
+  let decimals = 0;
+  for (const share of shares) decimals = Math.max(decimals, neededDecimals(share, smallRateDecimals(share)));
+  for (const share of shares) {
+    const shown = Math.min(nonzeroDecimals(share, decimals), AUTO_MAX_DECIMALS);
+    if (!roundsToZero(share, shown)) decimals = Math.max(decimals, shown);
+  }
+  const spec: NumberFormatSpec = { ...defaultFormatSpec(locale), suffix: '%', decimals };
+  const signedSpec = { ...spec, signed: true };
+  const fmt = (value: number) => formatWithSpec(value, spec);
+  return {
+    spec, fmt, fmtSigned: (value) => formatWithSpec(value, signedSpec), fmtPercent: fmt, percentSpec: spec,
+    forSeries: () => fmt, specForSeries: () => spec, roundsToZeroAt: (value) => roundsToZero(value, decimals),
+    magnitude: 'none', decimals,
+  };
 }
 
 /**
