@@ -141,8 +141,8 @@ export function tableFrame(
   const text = frameText({
     target: options.target, title, subtitle: resolveSubtitle(options.subtitle), unit: table.unit ?? options.unit,
     source: options.source,
-    // The grid prints every note it is given unless the author sets a line budget.
-    notes: { ...options.notes, maxLines: options.notes?.maxLines ?? Infinity, show: shownNoteKinds(options) as never }, strings: { ...localeStrings(language), ...options.strings },
+    // The core line budget: notes.maxLines, else the target default, in wrapped lines of the React footer.
+    notes: { ...options.notes, show: shownNoteKinds(options) as never }, strings: { ...localeStrings(language), ...options.strings },
     footnotes: [
       ...tableFootnotes(table, rows, columns, language).map((note) => ({ text: note, meta: { kind: 'disclosure' as const } })),
       ...authored.map((note) => ({ text: note })),
