@@ -106,7 +106,7 @@ import type {
 } from '../core/types/table';
 import { stickySettings } from '../core/charts/table/sticky';
 // Both table renderers share subtitles, source lines and note disclosure.
-import { ENGINE_NOTE_KINDS, insetTint, tableFrame, tableGroundTextStyle, tablePresentation, tableRenderTheme, tableStylesheet } from './tablePresentation';
+import { ENGINE_NOTE_KINDS, FRAME_PRINTED, insetTint, tableFrame, tableGroundTextStyle, tablePresentation, tableRenderTheme, tableStylesheet } from './tablePresentation';
 import { useStableValue } from './useStableValue';
 import { PROBE_STYLE, useContainerSize, type ContainerSizeOptions } from './useContainerSize';
 import { useDisplayWarnings } from './useDisplayWarnings';
@@ -1534,6 +1534,12 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     : tableFrame(table, engineNotes ? { ...tableOptions, [ENGINE_NOTES]: engineNotes, [ENGINE_NOTE_KINDS]: engineKinds } as TableOptions : tableOptions, rows, columns,
       request === undefined || theme === undefined ? undefined : { width: footWidth, measure: width.measure, theme }),
   [table, tableOptions, engineNotes, engineKinds, rows, columns, request, theme, footWidth, width.measure]);
+  // A composing chart (dimswitch) hears which notes the footer printed, the final decision after the line budget.
+  const onPrinted = (options as { [FRAME_PRINTED]?: (printed: readonly string[]) => void })[FRAME_PRINTED];
+  const printedKey = frameMemo?.footnotes.map((note) => note.text).join('\n');
+  useEffect(() => {
+    if (printedKey !== undefined) onPrinted?.(printedKey === '' ? [] : printedKey.split('\n'));
+  }, [printedKey, onPrinted]);
   // A group that draws no heading keeps its meaning and gives up its row
   // in the head: where no group draws one, the head is one row.
   const headRowCount = (table?.columnGroups ?? []).some((group) => group.heading !== false) ? 2 : 1;

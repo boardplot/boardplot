@@ -3,9 +3,9 @@ import type { OptionsInput } from '../core/types/optionInput';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import type { LintWarning } from '../core/types/scene';
 import { compileDimSwitch, dimSwitchTableWarnings, foreignRowId, hiddenTotalFoldWarnings, LABELS_ONLY, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning } from '../core/charts/dimswitch/compile';
-import { defaultNotePlacement, engineNoteMeta, withEngineNotes } from '../core/notes';
+import { engineNoteMeta, withEngineNotes } from '../core/notes';
 import { ENGINE_NOTES } from '../core/charts/table/tracks';
-import { ENGINE_NOTE_KINDS } from './tablePresentation';
+import { ENGINE_NOTE_KINDS, FRAME_PRINTED } from './tablePresentation';
 import type { DimSwitchData, DimSwitchOptions, DimSwitchVariant } from '../core/charts/dimswitch/types';
 import type { OptionKeyCheck } from '../core/schema/unknownKeys';
 import { TableChart, type TableChartProps } from './charts/table';
@@ -116,15 +116,17 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
   };
   // The host's onWarnings gets the compile warnings first, then the table's, once per distinct set (as TableChart does).
   const [tableWarnings,setTableWarnings]=useState<LintWarning[]>();
+  const [printed,setPrinted]=useState<readonly string[]>();
+  const readPrinted=useCallback((next:readonly string[])=>setPrinted(before=>before!==undefined && before.join('\n')===next.join('\n') ? before : next),[]);
   const readTable=useCallback((next:LintWarning[])=>setTableWarnings(before=>before!==undefined && JSON.stringify(before)===JSON.stringify(next) ? before : next),[]);
   const warningsCallback=useRef(onWarnings); warningsCallback.current=onWarnings;
   const reported=useRef<string|undefined>(undefined);
   const wantsWarnings=onWarnings!==undefined;
   useEffect(()=>{
-    if(!wantsWarnings || tableWarnings===undefined) return;
-    // The info footer keeps an in-frame note behind its button, so the partial note has no place on the chart there.
-    const placement=stableOptions.notes?.placement ?? defaultNotePlacement(stableOptions.target);
-    const inPanel=compiled.partialNote!==undefined && placement==='info' && !compiled.warnings.some(warning=>warning.code===PARTIAL_NOTE_OFF_FRAME);
+    // A partial note waits for the footer's decision, so the host hears one set, not a set without its warning first.
+    if(!wantsWarnings || tableWarnings===undefined || (compiled.partialNote!==undefined && printed===undefined)) return;
+    // The footer's final decision: a partial note it did not print (behind the info button, or past the line budget) has no place on the chart.
+    const inPanel=compiled.partialNote!==undefined && printed!==undefined && !printed.includes(compiled.partialNote) && !compiled.warnings.some(warning=>warning.code===PARTIAL_NOTE_OFF_FRAME);
     // The compile runs at depth 1 and depth only selects folds, so a hidden Total's blank table is judged on the folds on screen.
     const totalId=stableData.dimension.total.id, totalGone=stableOptions.rowVisibility?.[totalId]===false && compiled.data.columns.length>1;
     const compileWarnings=compiled.warnings.filter(warning=>warning.code!==LABELS_ONLY || warning.field?.[1]!=='rowVisibility');
@@ -133,9 +135,9 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
     if(reported.current===key) return;
     reported.current=key;
     warningsCallback.current?.(all);
-  },[wantsWarnings,retired.warnings,compiled,stableOptions,stableData,collapsed,tableWarnings]);
+  },[wantsWarnings,retired.warnings,compiled,stableOptions,stableData,collapsed,tableWarnings,printed]);
   if(refusals.length) return <LayoutRefusal refusals={refusals} theme={options.theme} options={{...options,size:size==='container'?fallbackSize:size}}/>;
-  return <TableFloorRequestContext.Provider value={tableRequest}><Table {...compiled.options} exporter={exporter} data={compiled.data} collapsed={collapsed} onCollapsedChange={toggle}
+  return <TableFloorRequestContext.Provider value={tableRequest}><Table {...compiled.options} {...{[FRAME_PRINTED]:readPrinted}} exporter={exporter} data={compiled.data} collapsed={collapsed} onCollapsedChange={toggle}
    onColumnVisibilityChange={onColumnVisibilityChange} sortable={sortable} defaultSort={defaultSort} onSortChange={onSortChange} rootsHidden={rootsHidden}
    inlineVisibility={inlineVisibility} defaultInlineVisibility={defaultInlineVisibility} onInlineVisibilityChange={onInlineVisibilityChange}
    size={size} fit={fit} fallbackSize={fallbackSize} measureWidths={measureWidths} hover={hover} onWarnings={wantsWarnings ? readTable : undefined} onRefused={onRefused} renderRefused={renderRefused}
