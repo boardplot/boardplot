@@ -2266,7 +2266,7 @@ function sortSiblingGroups(
 ): void {
   const catSort = options.sort?.categories ?? 'sheet';
   if (catSort === 'asc' || catSort === 'desc') {
-    requireAdditiveRanking(columns, resolvedRows, 'options.sort.categories', 'sort.categories');
+    requireAdditiveRanking(columns, resolvedRows, 'options.sort.categories', 'sort.categories', ['options', 'sort', 'categories']);
   }
   if (catSort === 'sheet') {
     pinOthersLast(childrenOf, resolvedRows, generatedOthers);

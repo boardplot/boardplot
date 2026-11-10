@@ -11,10 +11,11 @@ import { compileDimSwitch, currentDimSwitchOptions, dimSwitchTableWarnings, dims
 import type { DimSwitchData, DimSwitchOptions, DimSwitchDerived } from './types';
 import { withUnprintedCells } from './claims';
 import { minOf } from '../../arrays';
+import { hostedLayout } from '../../normalize/innerRefusal';
 
 export function resolveDimSwitch(data: DimSwitchData, options: DimSwitchOptions = {}, form: DimSwitchForm = {}) {
   const compiled = compileDimSwitch(data, options, form);
-  const resolved = resolveTable(compiled.data, compiled.options);
+  const resolved = hostedLayout(options, compiled.options, () => resolveTable(compiled.data, compiled.options));
   const rows=new Map(resolved.table.rows.map(row=>[row.id,row]));
   const records=compiled.computedCells.map(record=>({...record,displayed:record.kind === 'calc' ? rows.get(record.rowId)?.cells[record.colId]?.displayed ?? '' : record.displayed}));
   return {...compiled,...resolved,compileWarnings:compiled.warnings,computedCells:[...resolved.computedCells,...records]};
@@ -47,7 +48,8 @@ function prepareForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSw
   const without=<T extends object>(value:T):T=>{const copy={...value} as Record<PropertyKey,unknown>; for (const symbol of PER_PROBE) delete copy[symbol]; return copy as T;};
   const compute=():PreparedForm=>{
     const compiled=compileDimSwitch(data,options,form);
-    const resolved=resolvePreparedTable(prepareTableData(compiled.data,compiled.options),compiled.options);
+    // The table is compiled data: a table refusal names a dimswitch option it was handed, or nothing.
+    const resolved=hostedLayout(options,compiled.options,()=>resolvePreparedTable(prepareTableData(compiled.data,compiled.options),compiled.options));
     const noteMetadata:PreparedForm['noteMetadata']=new Map();
     for (const text of (compiled.options as {[ENGINE_NOTES]?: string[]})[ENGINE_NOTES] ?? []) {
       const meta=engineNoteMeta(text);
@@ -55,7 +57,7 @@ function prepareForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSw
     }
     // The source key still checks mutable input; this generated table stays private until materialization copies it.
     ownPlanInput(compiled.data);
-    return {compiled:{...compiled,options:without(compiled.options)},resolved,executor:prepareTableExecutor(compiled.data,compiled.options,resolved),noteMetadata};
+    return {compiled:{...compiled,options:without(compiled.options)},resolved,executor:hostedLayout(options,compiled.options,()=>prepareTableExecutor(compiled.data,compiled.options,resolved)),noteMetadata};
   };
   if (typeof options.theme === 'string') return withProbe(compute());
   const {size:_size,inlineVisibility:_inlineVisibility,...rest}=without(options);
@@ -79,7 +81,8 @@ function layoutForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwi
   const resolved=prepared.resolved;
   // The compile is shared across spacing passes and carries the first pass's options: the spacing is this request's.
   // Period selection reads compact-floor slack, so it retains that floor even during ordinary rendering.
-  const geometry=prepared.executor.run({...options,...compiled.options,[PLAN_ONLY]:true,[REGULAR_SPACING]:(options as {[REGULAR_SPACING]?: boolean})[REGULAR_SPACING]} as typeof compiled.options,true,resolved);
+  const runOptions={...options,...compiled.options,[PLAN_ONLY]:true,[REGULAR_SPACING]:(options as {[REGULAR_SPACING]?: boolean})[REGULAR_SPACING]} as typeof compiled.options;
+  const geometry=hostedLayout(options,runOptions,()=>prepared.executor.run(runOptions,true,resolved));
   // The frame can reach its automatic height without a second compile.
   if ((options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === false
     && typeof compiled.options.size === 'object' && compiled.options.size.height !== undefined

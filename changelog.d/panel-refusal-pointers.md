@@ -1,0 +1,4 @@
+### Fixed
+
+- A layout refusal of a grid panel now names the field in the panel the author wrote, for example `/data/panels/2/data/items/2/value`, and its value in `received`, also when `panelOrder` draws the panel elsewhere. The display path starts with the panel, as in `panels[c].items[2].value`. Before, the path was relative to the panel's own data (`/data/items/2/value`) and named no field of the grid. A field the grid changed on its way into the panel, such as the series of a panel that `panelOrder` ranks, and every panel of a `repeat` grid get no path.
+- A refusal from the chart that a pareto, likert, pvm, histogram, cohort or dimswitch chart draws through names a field only where the host passed that option on unchanged, such as a dimswitch `sort`. Before, such a refusal could point at the host's derived data.

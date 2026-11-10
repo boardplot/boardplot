@@ -45,7 +45,8 @@ import { accessibleTitle, NormalizeError, normalizeCategory, normalizeSeriesValu
 import { getChart } from '../../registry';
 import { requireChartCores } from '../../deferred';
 import { panelNoteData } from '../../panelNoteData';
-import { GridChildRefusal, gridRowHeights, gridSizing, hasKpiFigure, inheritedScaleUnit, layoutChildChart, smallestKpiValueSize } from '../../grid/childLayout';
+import { GridChildRefusal, gridRowHeights, gridSizing, hasKpiFigure, inheritedScaleUnit, layoutChildChart, smallestKpiValueSize, takeRefusedPanel } from '../../grid/childLayout';
+import { rebaseRefusal, sameField } from '../../normalize/innerRefusal';
 import { KPI_HOST_TEXT, KPI_VALUE_SIZE } from '../../typeFloors';
 import { LEFT_OUT_OF_NOTE, panelNoteTexts, stringsIn } from '../../frame';
 import { autoPlotPx, CARD_CLASS_WIDTH, CARD_MIN_WIDTH, chartSizing, DIGIT_SEAT, heightOmitted, type DigitSeated, NARROW_SHARE_WIDTH, stackedColumnPlotPx } from '../../sizing';
@@ -165,6 +166,56 @@ export function normalizeGridWithTheme(data: unknown, options: GridLayoutOptions
 export function layoutGrid(
   data: GridInput,
   options: GridLayoutOptions = {},
+): LayoutResult<GridMarks, GridDerived> {
+  try {
+    return layoutGridOnce(data, options);
+  } catch (error) {
+    if (error instanceof NormalizeError) authoredPanelRefusal(error, data, options);
+    throw error;
+  }
+}
+
+/**
+ * Options a panel takes from the grid when it sets none of its own. Locale, strings and target are left
+ * out: the request fills them on the grid's options when the author wrote none.
+ */
+const GRID_HANDED_DOWN: ReadonlySet<string | number> = new Set(['palette', 'colorblindSafe', 'theme', 'unit', 'hatchStrength']);
+
+/**
+ * A panel's refusal points into the panel the author wrote, found by its id
+ * (panel ids are unique), not at its drawn position. A handed-down option points
+ * at the grid option. A value the grid changed on its way into the panel, and
+ * every field of a repeat panel (built from the template slice by slice), get
+ * no pointer. The display path, which leads the message, names the panel.
+ */
+function authoredPanelRefusal(error: NormalizeError, data: GridInput, options: GridLayoutOptions): void {
+  const child = takeRefusedPanel(error);
+  if (!child) return;
+  const grid = data as Partial<ExplicitGridData>;
+  const panels = Object.hasOwn(grid, 'panels') && grid.repeated !== true && Array.isArray(grid.panels) ? grid.panels : [];
+  const matches = panels.filter((panel) => panel.id === child.panelId);
+  const panel = matches.length === 1 ? matches[0]! : undefined;
+  const at = ['data', 'panels', panels.indexOf(panel!)];
+  const childOptions = child.options as Record<string, unknown>;
+  rebaseRefusal(error, (segments) => {
+    if (!panel) return undefined;
+    const [head, ...rest] = segments;
+    if (head === 'data') return sameField(child.data, panel.data, rest) ? [...at, ...segments] : undefined;
+    // A panel reads root annotations from options.annotations.
+    const path = head === 'options' ? rest : head === 'annotations' ? segments : undefined;
+    if (!path) return undefined;
+    if (path[0] === 'annotations' && Object.hasOwn(panel, 'annotations')) {
+      return sameField(childOptions.annotations, panel.annotations, path.slice(1)) ? [...at, ...path] : undefined;
+    }
+    if (sameField(childOptions, panel.options, path)) return [...at, 'options', ...path];
+    return GRID_HANDED_DOWN.has(path[0]!) && sameField(childOptions, options, path) ? ['options', ...path] : undefined;
+  });
+  error.path = `panels[${child.panelId}]${error.path ? `.${error.path}` : ''}`;
+}
+
+function layoutGridOnce(
+  data: GridInput,
+  options: GridLayoutOptions,
 ): LayoutResult<GridMarks, GridDerived> {
   options = resolveCanvasOptions(options);
   assertTrackLimits(options);
@@ -1692,14 +1743,14 @@ function layoutAuthoredChild(
       measure,
       typeClass: gridTypeClass(parentOptions),
     };
-    let geometry = layoutChildChart(panel.data, resolvedOptions, definition.layout as (data: unknown, options: unknown) => LayoutResult);
+    let geometry = layoutChildChart(panel.data, resolvedOptions, definition.layout as (data: unknown, options: unknown) => LayoutResult, panel.id);
     if (geometry.refused) throw new GridChildRefusal(panel.id, geometry);
     const tierName = (geometry.derived as { tierName?: string }).tierName;
     if (compactTiers && panelOptions.title !== false && !captionPanel.title && tierName) {
       captionPanel.title = tierName;
       if (captionHeight() > resolvedOptions.margin.top) {
         resolvedOptions.margin.top = captionHeight();
-        geometry = layoutChildChart(panel.data, resolvedOptions, definition.layout as (data: unknown, options: unknown) => LayoutResult);
+        geometry = layoutChildChart(panel.data, resolvedOptions, definition.layout as (data: unknown, options: unknown) => LayoutResult, panel.id);
         if (geometry.refused) throw new GridChildRefusal(panel.id, geometry);
       }
     }
@@ -2633,7 +2684,7 @@ function probePanelGeometry(
     valueAxis,
     measure: options.measure,
     typeClass: gridTypeClass(options),
-  }, definition.layout as (data: unknown, options: unknown) => LayoutResult);
+  }, definition.layout as (data: unknown, options: unknown) => LayoutResult, panel.id);
 }
 
 /**

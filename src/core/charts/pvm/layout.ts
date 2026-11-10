@@ -34,6 +34,7 @@ import type { WaterfallData } from '../../types/data';
 import type { WaterfallOptions } from '../../types/options';
 import type { Geometry, LintWarning } from '../../types/scene';
 import { layoutWaterfall, type WaterfallMarks } from '../waterfall/layout';
+import { hostedLayout } from '../../normalize/innerRefusal';
 import {
   PVM_RESIDUAL_TOLERANCE,
   decomposePvm,
@@ -193,7 +194,8 @@ export function layoutPvm(
       : {}),
   }, footnotes, (options as InternalFootnoteOptions).authoredFootnotes ?? options.footnotes);
 
-  const geometry = layoutWaterfall(bridge, hostOptions);
+  // The bridge is derived data: a waterfall refusal names a pvm option it was handed, or nothing.
+  const geometry = hostedLayout(options, hostOptions, () => layoutWaterfall(bridge, hostOptions));
 
   assertClosingLevel(geometry, derived);
 

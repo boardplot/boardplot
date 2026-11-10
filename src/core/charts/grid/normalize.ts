@@ -80,6 +80,11 @@ export interface ExplicitGridData {
    * is evidence for the grid's default shared y scale. Authored data cannot set it.
    */
   repeatFacet?: true;
+  /**
+   * Set by the repeat expansion only: the panels are built from the template,
+   * so a panel refusal has no authored panel to point at. Authored data cannot set it.
+   */
+  repeated?: true;
 }
 
 interface RepeatSliceData {
@@ -235,6 +240,7 @@ export function normalizeGridData(raw: unknown, options?: GridNormalizeOptions):
     panels: lockPaletteBySeriesId(panels),
     ...(rowCaption ? { rowCaption } : {}),
     ...(facet.repeat.facet ? { repeatFacet: true as const } : {}),
+    repeated: true as const,
   });
 }
 
