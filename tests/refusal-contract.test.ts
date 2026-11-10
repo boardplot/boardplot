@@ -281,6 +281,24 @@ describe('refusal contract', () => {
     expect(html).not.toContain('data-bp-refused');
   });
 
+  // Table and cohort refusals named a row by id in brackets or a list by its bare name, so the caller got an empty path or one at the chart root (/columns).
+  it('points table and cohort refusals at the authored row, cohort or list', () => {
+    const errors = (type: string, edit: (spec: Node) => void, id?: string) => {
+      const fixture = getFixtures(type).find((entry) => id === undefined || entry.id === id)!;
+      const spec = structuredClone({ type, data: fixture.data, options: fixture.options ?? {} }) as Node;
+      edit(spec);
+      return render({ spec }).body.errors as (Finding & { received?: unknown })[];
+    };
+    expect(errors('cohort', (s) => { s.data.cohorts[2].size = 5; })[0]).toMatchObject({ code: 'cohort-base-mismatch', path: '/data/cohorts/2/size', received: { type: 'number', value: 5 } });
+    // Row '1' is nested fourth under the total row: the pointer walks the authored tree to it, not to rows[1].
+    expect(errors('table', (s) => {
+      const row = s.data.rows[0].children[3];
+      row.id = '1';
+      row.parentId = 'de';
+    }, 'steering-monthly')[0]).toMatchObject({ code: 'parent-conflict', path: '/data/rows/0/children/3/parentId', received: { type: 'string', value: 'de' } });
+    expect(errors('table', (s) => { s.data.columns.push({ id: 'again', kind: 'rowLabel', label: 'Again' }); }, 'steering-monthly')[0]).toMatchObject({ code: 'row-label-count', path: '/data/columns' });
+  });
+
   // A 150,000-category column ran for more than 15 minutes; above the item budget it must refuse at once and name the fix.
   it('refuses a column above the item budget before layout', () => {
     const n = 150_000;

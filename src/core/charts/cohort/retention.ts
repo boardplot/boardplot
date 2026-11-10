@@ -52,13 +52,14 @@ export const AVERAGE_ROW_ID = 'weighted-average';
 export function deriveRetention(data: CohortData, input: RetentionInput): RetentionResult {
   const warnings: LintWarning[] = [];
   const cohorts = data?.cohorts;
-  if (Array.isArray(cohorts) && cohorts.length === 0) throw new NormalizeError('empty-data', 'cohorts', 'cohort requires at least one cohort');
+  if (Array.isArray(cohorts) && cohorts.length === 0) throw new NormalizeError('empty-data', 'cohorts', 'cohort requires at least one cohort', undefined, undefined, ['data', 'cohorts']);
   if (!Array.isArray(cohorts) || cohorts.length < 2) {
     throw new NormalizeError(
       'cohort-too-few',
       'cohorts',
       `a cohort triangle compares cohorts; ${Array.isArray(cohorts) ? cohorts.length : 0} supplied`,
       "supply at least two cohorts, or plot the single cohort with chart type 'line'",
+      undefined, ['data', 'cohorts'],
     );
   }
 
@@ -77,6 +78,7 @@ export function deriveRetention(data: CohortData, input: RetentionInput): Retent
         `cohorts[${index}].id`,
         `cohort id '${AVERAGE_ROW_ID}' is reserved for the computed average row`,
         'rename the cohort',
+        undefined, ['data', 'cohorts', index, 'id'],
       );
     }
     if (seen.has(cohort.id)) {
@@ -85,6 +87,7 @@ export function deriveRetention(data: CohortData, input: RetentionInput): Retent
         `cohorts[${index}].id`,
         `duplicate cohort id '${cohort.id}'`,
         'give every cohort a unique id',
+        undefined, ['data', 'cohorts', index, 'id'],
       );
     }
     seen.add(cohort.id);
@@ -107,6 +110,7 @@ export function deriveRetention(data: CohortData, input: RetentionInput): Retent
             `${path}[${t}]`,
             `cohort '${labelOf(index)}' has ${value} active at period ${t}; a cohort count cannot be negative`,
             'correct the count, or plot the net change with chart type \'bar\'',
+            undefined, ['data', 'cohorts', index, 'active', t],
           );
         }
         if (!Number.isInteger(value)) {
@@ -115,6 +119,7 @@ export function deriveRetention(data: CohortData, input: RetentionInput): Retent
             `${path}[${t}]`,
             `cohort '${labelOf(index)}' has ${value} active at period ${t}; this triangle plots COUNTS of members, and the base it prints in every row label ('n = ...') would have to round that`,
             'round to whole members, or scale revenue/FTE retention to whole units before plotting',
+            undefined, ['data', 'cohorts', index, 'active', t],
           );
         }
       });
@@ -125,6 +130,7 @@ export function deriveRetention(data: CohortData, input: RetentionInput): Retent
         `${path}[0]`,
         `cohort '${labelOf(index)}' has no observation at period 0, so its base is unknown and every retention rate is undefined`,
         'supply the cohort base as active[0], or drop the cohort',
+        undefined, ['data', 'cohorts', index, 'active', ...(Array.isArray(active) && active.length > 0 ? [0] : [])],
       );
     }
     if (active[0] === 0) {
@@ -133,6 +139,7 @@ export function deriveRetention(data: CohortData, input: RetentionInput): Retent
         `${path}[0]`,
         `cohort '${labelOf(index)}' has a base of 0 — retention is undefined (division by zero)`,
         'drop the cohort or merge it into the neighbouring one',
+        undefined, ['data', 'cohorts', index, 'active', 0],
       );
     }
     if (cohort.size !== undefined && cohort.size !== active[0]) {
@@ -141,6 +148,7 @@ export function deriveRetention(data: CohortData, input: RetentionInput): Retent
         `cohorts[${index}].size`,
         `cohort '${labelOf(index)}' declares size ${cohort.size} but active[0] is ${active[0]}; the engine cannot reconcile two bases`,
         'remove size, or correct it to match the period-0 count',
+        undefined, ['data', 'cohorts', index, 'size'],
       );
     }
     // Keep the TypeScript path strict too; only explicit null means missing.
@@ -151,6 +159,7 @@ export function deriveRetention(data: CohortData, input: RetentionInput): Retent
           `${path}[${t}]`,
           `cohort '${labelOf(index)}' skips period ${t}; a cohort cannot miss a period it has lived through`,
           'supply the count for that period, or truncate the cohort before it',
+          undefined, ['data', 'cohorts', index, 'active', t],
         );
       }
     }
@@ -165,6 +174,7 @@ export function deriveRetention(data: CohortData, input: RetentionInput): Retent
         `cohorts[${i}].active`,
         `cohort '${labelOf(i)}' has ${observed[i]} observations but the older cohort '${labelOf(i - 1)}' has only ${observed[i - 1]}; that is not a triangle`,
         'order cohorts chronologically, oldest first, and truncate each at the periods it has actually reached',
+        undefined, ['data', 'cohorts', i, 'active'],
       );
     }
   }

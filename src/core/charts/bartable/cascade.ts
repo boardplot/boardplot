@@ -49,7 +49,7 @@ export function deriveCascade(
     for (const value of panel.values) { starts.push(at); at += value; }
     if (!(at > 0)) {
       throw new NormalizeError('bartable-cascade-zero-total', `data.panels[${panels.indexOf(panel)}]`,
-        `cascade splits each panel's total, and panel '${panel.id}' sums to zero`, 'give the panel nonzero values or drop it');
+        `cascade splits each panel's total, and panel '${panel.id}' sums to zero`, 'give the panel nonzero values or drop it', undefined, ['data', 'panels', panels.indexOf(panel)]);
     }
     return { starts, total: at, shares: panel.values.map((value) => (value / at) * 100) };
   });
