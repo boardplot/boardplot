@@ -389,7 +389,8 @@
     "version": "node scripts/plugin-version.mjs --stage",
     "eval:tokens": "tsx evals/tokens.ts",
     "gallery": "node scripts/gallery.mjs",
-    "check:ci": "node scripts/check-manual.mjs && node scripts/check-doc-anchors.mjs && npm run check:font-metrics && npm run check:chart-entries && npm run check:choropleth-fixtures && npm run check:plugin-version && npm run eval:tokens",
+    "check:warning-codes": "tsx scripts/warning-codes.mjs --check",
+    "check:ci": "node scripts/check-manual.mjs && node scripts/check-doc-anchors.mjs && npm run check:warning-codes && npm run check:font-metrics && npm run check:chart-entries && npm run check:choropleth-fixtures && npm run check:plugin-version && npm run eval:tokens",
     "explorer": "tsx scripts/explorer/build.mjs"
   },
   "peerDependencies": {

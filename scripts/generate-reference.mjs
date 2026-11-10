@@ -2,7 +2,7 @@
 /**
  * Writes the generated documentation from the payloads the tools return:
  * docs/reference/<type>.md from `describe <type> --full`, options.md,
- * theme.md, react.md and fixtures.md, the chart table in README.md,
+ * theme.md, react.md, fixtures.md, warnings.md from the codes in src, the chart table in README.md,
  * llms.txt and the plugin skill's local references. `--check` reports
  * stale files instead of writing them.
  */
@@ -24,6 +24,7 @@ import { fixtures } from '../src/cli/fixtures.ts';
 import { REACT_SECTIONS } from './reference-react.mjs';
 import { RECIPES } from './reference-recipes.mjs';
 import { galleryFiles } from './reference-gallery.mjs';
+import { extractWarningCodes, warningsPage } from './warning-codes.mjs';
 import { chartSizing } from '../src/core/sizing.ts';
 import { TARGET_TYPE_TABLES } from '../src/core/target.ts';
 
@@ -500,6 +501,7 @@ export function generatedFiles() {
   pages.set('docs/reference/theme.md', themePage());
   pages.set('docs/reference/react.md', reactPage());
   pages.set('docs/reference/fixtures.md', fixturesPage(types));
+  pages.set('docs/reference/warnings.md', warningsPage(extractWarningCodes()));
   const manual = spliced('docs/manual.md', TYPE_BEGIN, TYPE_END, typeSizesBlock());
   // Update the root README and the release template when present.
   const readmes = ['README.md', 'release/public/README.md'].filter((file) => existsSync(resolve(ROOT, file)));

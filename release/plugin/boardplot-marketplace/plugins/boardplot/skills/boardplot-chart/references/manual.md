@@ -1170,4 +1170,5 @@ Layout measures text with bundled width tables for Geist, Helvetica and Arial, t
 - [reference/theme.md](reference/theme.md): presets, every token and the theme errors.
 - [reference/react.md](reference/react.md): `BoardplotChart`, the per-type components, container sizing, server preparation and export.
 - [reference/fixtures.md](reference/fixtures.md): every fixture by type.
+- [reference/warnings.md](reference/warnings.md): every warning and refusal code, its severities and the chart types that return it.
 - [FONTS.md](FONTS.md): width tables for a licensed font.

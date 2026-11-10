@@ -84,6 +84,9 @@ jobs:
       - name: Check the generated documentation
         run: npm run docs:build
 
+      - name: Check the warning codes and the code examples in the documents
+        run: npm run check:warning-codes
+
       - name: Build the Next example with the packed library
         run: npm run smoke:next -- --tarball "$RUNNER_TEMP"/boardplot-build/boardplot-*.tgz
 
