@@ -9,7 +9,7 @@ import { listCharts } from '../src/core/registry';
 import { colorRolePaints, groundTextPaint, paintColor, paintTokenColor, resolveTheme, themes } from '../src/core/theme';
 import { compositeColor, contrastRatio } from '../src/core/color';
 import { markVisibilityFloor, marksOnBands } from '../src/core/markVisibility';
-import { MARK_CONTRAST_FLOOR, swatchApart } from '../src/core/themeRules';
+import { MARK_CONTRAST_FLOOR, palettePerceptualDistance, swatchApart } from '../src/core/themeRules';
 import { markLostOnBandWarnings, refreshPaintWarnings } from '../src/core/paintWarnings';
 import type { Paint, SceneNode } from '../src/core/types/scene';
 import { prepareChart, serializePreparedChart } from '../src/react/prepare';
@@ -352,13 +352,16 @@ describe('draws series that share a colour role in distinct steps in every type'
   const series = (values = (i: number) => [20 + i * 5, 25 + i * 4, 22 + i * 3]) => S.map((id, i) => ({ id, label: `Series ${i + 1}`, colorRole: 'good', values: values(i) }));
   const G = ['g1', 'g2', 'g3'];
   const groups = G.map((id, i) => ({ id, label: `Group ${i + 1}`, colorRole: 'good' }));
-  const cases: [string, Record<string, unknown>, string[], keyed: boolean][] = [
+  // `filled`: in a role whose marks mix fills and lines, the filled marks; they draw the steps nearest the role's colour.
+  const cases: [string, Record<string, unknown>, string[], keyed: boolean, filled?: string[]][] = [
     ['column stacked', { type: 'column', data: { categories: cats, series: series() }, options: { variant: 'stacked' } }, S, true],
     ['bar grouped', { type: 'bar', data: { categories: cats, series: series() }, options: { variant: 'grouped' } }, S, true],
     ['dot', { type: 'dot', data: { categories: cats, series: series() } }, S, true],
     ['line', { type: 'line', data: { categories: cats, series: series() } }, S, false],
     ['line stacked-area', { type: 'line', data: { categories: cats, series: series() }, options: { variant: 'stacked-area' } }, S, false],
-    ['combo', { type: 'combo', data: { categories: cats, series: series().map((s, i) => i === 0 ? s : { ...s, kind: 'line' }) } }, S, true],
+    ['combo', { type: 'combo', data: { categories: cats, series: series().map((s, i) => i === 0 ? s : { ...s, kind: 'line' }) } }, S, true, ['s1']],
+    // The lead area of a line chart took the darkest step of the line ladder, a near-black area for a role named good.
+    ['line area lead', { type: 'line', data: { categories: cats, series: series() }, options: { variant: 'area' } }, S, false, ['s1']],
     ['funnel', { type: 'funnel', data: { categories: cats, series: series((i) => [100 - i * 10, 60 - i * 5, 30 - i * 3]) }, options: { variant: 'rows' } }, S, true],
     ['funnel centered', { type: 'funnel', data: { categories: cats, series: series((i) => [100 - i * 10, 60 - i * 5, 30 - i * 3]) }, options: { variant: 'centered' } }, S, true],
     ['mekko', { type: 'mekko', data: { categories: cats, series: series() }, options: { variant: 'stacked100' } }, S, false],
@@ -368,11 +371,11 @@ describe('draws series that share a colour role in distinct steps in every type'
     ['waffle', { type: 'waffle', data: { categories: [{ id: 'o', label: 'Orders' }], series: series((i) => [[30, 25, 15][i]!]) }, options: { variant: 'cells' } }, S, false],
     ['scatter', { type: 'scatter', data: { groups, points: G.flatMap((g, gi) => [0, 1, 2].map(k => ({ id: `${g}${k}`, group: g, label: `${g}${k}`, x: gi * 3 + k, y: gi + k * 2 }))) } }, G, true],
     // A small dot took the stroke ladder and a large marker the fill ladder, so a circle of one group and a triangle of another drew one colour.
-    ['scatter mixed markers', { type: 'scatter', width: 720, data: { groups: groups.map((g, gi) => gi === 2 ? { ...g, marker: 'triangle' } : g), points: G.flatMap((g, gi) => [0, 1].map(k => ({ id: `${g}${k}`, group: g, label: `${g}${k}`, x: gi * 3 + k, y: gi + k * 2 }))) } }, G, true],
+    ['scatter mixed markers', { type: 'scatter', width: 720, data: { groups: groups.map((g, gi) => gi === 2 ? { ...g, marker: 'triangle' } : g), points: G.flatMap((g, gi) => [0, 1].map(k => ({ id: `${g}${k}`, group: g, label: `${g}${k}`, x: gi * 3 + k, y: gi + k * 2 }))) } }, G, true, ['g3']],
     ['treemap', { type: 'treemap', data: { groups, items: G.flatMap((g, gi) => [0, 1].map(k => ({ id: `${g}${k}`, label: `${g}${k}`, group: g, value: 100 - gi * 20 - k * 10 }))) } }, G, true],
     ['waterfall', { type: 'waterfall', data: { items: [{ id: 'st', label: 'Start', type: 'total', value: 100 }, { id: 'v', label: 'Volume', segments: S.map((id, i) => ({ id, label: `Segment ${i + 1}`, colorRole: 'good', value: 10 + i * 4 })) }, { id: 'en', label: 'End', type: 'total' }] } }, S, true],
   ];
-  it.each(cases)('%s', (_, request, ids, keyed) => {
+  it.each(cases)('%s', (_, request, ids, keyed, filled) => {
     const light = layoutResolvedRequest(resolveChartRequest({ ...request, theme: 'standard', options: { title: 'Three series, one role', ...(request.options as object) } } as never));
     if (light.refused) throw new Error('refused');
     for (const theme of ['standard', 'standard-dark']) {
@@ -403,6 +406,9 @@ describe('draws series that share a colour role in distinct steps in every type'
           expect(contrastRatio(a, page), `${theme} ${a} on the page`).toBeGreaterThanOrEqual(markVisibilityFloor(page));
           for (const b of [...marks.values()].slice(i + 1)) expect(swatchApart(a, b), `${theme} ${a} / ${b}`).toBe(true);
         }
+        const base = resolvePaint({ token: 'good' }, resolveTheme(theme));
+        const near = (id: string) => palettePerceptualDistance(marks.get(id)!, base, 'normal');
+        for (const f of filled ?? []) for (const l of ids.filter(id => !filled!.includes(id))) expect(near(f), `${theme} ${f} nearer the role's colour than ${l}`).toBeLessThan(near(l));
       }
     }
   });

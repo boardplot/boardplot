@@ -1882,8 +1882,15 @@ function sourceColor(theme: Theme, source: ThemePaintSource): string {
   }
   if (source.kind === 'colorblind') return colorblindColor(theme, source.role);
   if (source.kind === 'role-step') {
-    const steps = roleSteps(paintColor(theme, source.base), theme.color.background, source.count, source.stroke === true, source.stroke ? undefined : paintTokenColor(theme, 'othersMark'));
-    return steps[source.index] ?? paintColor(theme, source.base);
+    const base = paintColor(theme, source.base);
+    const steps = roleSteps(base, theme.color.background, source.count, source.stroke === true, source.stroke ? undefined : paintTokenColor(theme, 'othersMark'));
+    if (source.fills === undefined) return steps[source.index] ?? base;
+    // A mixed role: the filled marks take the steps nearest the base (a large area never takes the darkest step), the lines the rest, each kind strongest first.
+    const near = steps.map((_, i) => i)
+      .sort((a, b) => palettePerceptualDistance(steps[a]!, base, 'normal') - palettePerceptualDistance(steps[b]!, base, 'normal') || a - b)
+      .slice(0, source.fills);
+    const own = steps.map((_, i) => i).filter((i) => near.includes(i) === (source.filled === true));
+    return steps[own[source.index]!] ?? base;
   }
   if (source.kind === 'pie-ramp' || source.kind === 'visible-tint') {
     const ramp = source.kind === 'pie-ramp'
@@ -2548,7 +2555,9 @@ export function markRolePaint(role: string, fill = false): Paint {
  * stroke floor (roleSteps). `fill` as a test by series id serves a chart that
  * draws some series as fills and others as strokes (a combo's columns and
  * lines): a role whose series mix both takes one ladder of stroke steps, so a
- * column and a line never land on one colour.
+ * column and a line never land on one colour. On that ladder the filled marks
+ * take the steps nearest the role's colour and the lines the others, each kind
+ * strongest first, so a large area never draws the darkest step.
  */
 export function colorRolePaints(series: readonly { id: string; colorRole?: string; fill?: string }[], fill: boolean | ((id: string) => boolean) = true): Map<string, Paint> {
   const filled = (id: string) => typeof fill === 'boolean' ? fill : fill(id);
@@ -2561,8 +2570,14 @@ export function colorRolePaints(series: readonly { id: string; colorRole?: strin
   for (const [role, ids] of byRole) {
     const fills = ids.every(filled);
     const base = markRolePaint(role, fills);
+    const filledIds = ids.filter(filled);
+    const mixed = filledIds.length > 0 && !fills;
+    const lineIds = ids.filter((i) => !filled(i));
     ids.forEach((id, index) => paints.set(id, ids.length === 1 ? base
-      : { token: 'token' in base ? base.token : 'series-1', theme: { kind: 'role-step', base, index, count: ids.length, ...(fills ? {} : { stroke: true as const }) } }));
+      : { token: 'token' in base ? base.token : 'series-1', theme: { kind: 'role-step', base,
+        // A mixed role counts each mark within its own kind.
+        index: mixed ? (filled(id) ? filledIds : lineIds).indexOf(id) : index, count: ids.length,
+        ...(fills ? {} : { stroke: true as const }), ...(mixed ? { fills: filledIds.length, ...(filled(id) ? { filled: true as const } : {}) } : {}) } }));
   }
   return paints;
 }

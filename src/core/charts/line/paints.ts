@@ -418,9 +418,11 @@ export function linePaints(env: LineEnv, domain: LineDomain, warnings: LintWarni
   // unstacked area fills its lead and draws the rest as lines, so a lead
   // whose role the lines share fills in its own line's step, never in the
   // colour of another line.
-  const roleStrokes = colorRolePaints(dataSeries, false);
-  const roleFills = new Map([...colorRolePaints(dataSeries, true)].map(([id, paint]) =>
-    [id, areaLead !== undefined && 'theme' in paint && paint.theme?.kind === 'role-step' ? roleStrokes.get(id)! : paint]));
+  const roleMixed = areaLead !== undefined ? colorRolePaints(dataSeries, (id) => id === areaLead.id) : undefined;
+  const oneLadder = (paints: Map<string, Paint>): Map<string, Paint> => roleMixed === undefined ? paints
+    : new Map([...paints].map(([id, paint]) => [id, 'theme' in paint && paint.theme?.kind === 'role-step' ? roleMixed.get(id)! : paint]));
+  const roleStrokes = oneLadder(colorRolePaints(dataSeries, false));
+  const roleFills = oneLadder(colorRolePaints(dataSeries, true));
   const slots = rampSlots(theme, dataSeries.map((s): Paint | undefined => {
     const ink = scenarioStyleOf(s)?.ink;
     if (s.fill) return { css: s.fill };
