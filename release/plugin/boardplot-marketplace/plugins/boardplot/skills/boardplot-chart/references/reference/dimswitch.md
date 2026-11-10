@@ -273,7 +273,7 @@ A KPI table: measures by one hierarchical dimension by period, switchable betwee
 | widths.period | number |  |  | Track of each period in px; default 94. |
 | minimumSample | object |  |  | Minimum judge base per sum field in BOTH windows (below it: neutral). Default none. |
 
-Plus the [shared options](options.md). This type does not accept `format`, `detailFields`, `labels`, `labelPosition`, `valueAxis`, `story`, `hatchStrength`, `rounding`, `annotations`, `groupRule`, `groupAlign`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `topN`, `bandFraction`, `legend`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
+Plus the [shared options](options.md). This type does not accept `format`, `detailFields`, `labels`, `labelPosition`, `valueAxis`, `story`, `hatchStrength`, `rounding`, `annotations`, `groupRule`, `groupAlign`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `topN`, `bandFraction`, `legend`, `valueAxis.show`, `valueAxis.gridlines`, `focus`, `labelDensity` with an `option-ignored` warning.
 
 ## Annotations
 

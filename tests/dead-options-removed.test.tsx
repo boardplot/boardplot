@@ -91,6 +91,15 @@ describe('a removed option keeps an old spec drawing', () => {
     dropsTheKey(clean, { ...clean, options: { ...clean.options, encodings: { 'a/b': 'heat' } } }, 'dimswitch-encoding-column', '/options/encodings/a~1b');
   });
 
+  // A key the type accepts and cannot draw used to pass with ok: true and change nothing.
+  it('accepted with nothing to draw: topN.threshold on a pie, focus on a dimswitch', () => {
+    const pie = fixture('pie');
+    const clean = { type: 'pie', data: pie.data, options: { ...pie.options, topN: { n: 3 } } };
+    dropsTheKey(clean, { ...clean, options: { ...clean.options, topN: { n: 3, threshold: 50 } } }, 'option-ignored', '/options/topN/threshold');
+    const ignored = dimswitch({ focus: { owner: { seriesId: 'a' } } }).filter((warning) => warning.code === 'option-ignored');
+    expect(ignored).toEqual([expect.objectContaining({ fix: [{ op: 'remove', path: '/options/focus' }] })]);
+  });
+
   // never in a child schema would refuse a grid that exits 0 today, because the grid checks panels against it.
   it('annotations on a grid panel and on a repeat template', () => {
     const kpi = fixture('kpi');

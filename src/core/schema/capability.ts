@@ -46,6 +46,19 @@ export const IGNORED_OPTION_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * Settings these types accept and draw nothing for, by dotted path under
+ * options. Each is removed with one option-ignored warning that says what the
+ * setting does on the types that have it (retired.ts).
+ */
+export const IGNORED_ON: Readonly<Record<string, { types: readonly string[]; does: string }>> = {
+  focus: { types: ['table', 'dimswitch'], does: 'On a chart, focus lets the labels of one data owner win contested label space. A table prints every cell and places no labels.' },
+  labelDensity: { types: ['table', 'dimswitch'], does: 'On a chart, labelDensity sets how many value labels print. A table prints every cell.' },
+  highlight: { types: ['bartable'], does: 'On a bar, column, line or table chart, highlight colours the named series or categories. A bar table draws no highlight.' },
+  valueAxis: { types: ['grid', 'treemap', 'waffle'], does: 'On a chart with a value axis, valueAxis sets its scale. A grid panel takes its own valueAxis, and a treemap or waffle has no value axis.' },
+  'topN.threshold': { types: ['butterfly', 'mekko', 'pie'], does: 'On bar and table, topN.threshold also drops a kept category below the value. Here the rank cut is topN.n alone.' },
+};
+
+/**
  * Per-capability narrowing of the shared base.
  *
  * `transpose` above is the degenerate case of this table: a key NO layout reads,
@@ -145,7 +158,7 @@ export const OPTION_CAPABILITY = {
   // Choropleth and tilemap read highlight nowhere
   // and draw the same map with and without it. Creative refuses it through
   // its strict schema, and so does every diagram variant but architecture.
-  // This row is the one refusal path.
+  // This row is the one refusal path. Bartable accepts it and ignores it with a warning (IGNORED_ON).
   highlight: {
     implementedBy: [
       'bar', 'bartable', 'box', 'bullet', 'butterfly', 'cohort', 'column', 'combo', 'diagram', 'dot',

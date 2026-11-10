@@ -9,7 +9,7 @@ import { ANNOTATION_KIND_PURPOSES, type AnnotationKind } from './types/annotatio
 import { ANCHOR_FORM, CELL_CONTRACT, fieldLine, firstClause, optionFields, PRESET_THEME_NAMES, sharedOptionFields, shortSummaryFor, useCasesFor, chartIds, chartIdOf, compactDesignCard, designCardFor } from './catalog';
 import { themeFieldReference } from './themeFields';
 import { themes } from './theme';
-import { IGNORED_OPTION_KEYS, LEGEND_DRAWS, schemaRefusedKeys, valueAxisRefusal } from './schema/capability';
+import { IGNORED_ON, IGNORED_OPTION_KEYS, LEGEND_DRAWS, schemaRefusedKeys, valueAxisRefusal } from './schema/capability';
 
 /** A bare chart's `name` as describe shows it: it sits beside data and options, in neither. Kept here, off the browser bundle. */
 const BARE_NAME_FIELD = {
@@ -377,6 +377,7 @@ export function typeOptions(type: string): { own: SchemaFieldReference[]; shared
     ...schemaRefusedKeys(type).options.filter(key => IGNORED_OPTION_KEYS.has(key) || key === 'legend'),
     ...['show', 'gridlines'].filter(key => valueAxisRefusal(type, key) !== undefined).map(key => `valueAxis.${key}`),
     ...(Object.hasOwn(LEGEND_DRAWS, type) ? ["legend: 'none'", "legend: 'auto'"] : []),
+    ...Object.keys(IGNORED_ON).filter(path => IGNORED_ON[path]!.types.includes(type)),
   ];
   const ownPaths = new Set(own.map(field => field.path));
   const shared = advertised.filter(field => !/[.[]/.test(field.path) && !refused(field.path)

@@ -127,7 +127,7 @@ Table rows with number columns and stacked bars. One panel when the rows compare
 | sharedScale | boolean |  |  | false: each panel its own scale. true: one scale, panel width follows its longest bar; weights refused. Default false, true under cascade. |
 | heightFill | string | `'rows'`, `'none'` | `'rows'` | Spare canvas height. 'rows' (default): a pinned canvas stretches the rows up to 1.25 times their pitch and thickens the bars. 'none': natural pitch. |
 
-Plus the [shared options](options.md). This type does not accept `detailFields`, `labelPosition`, `valueAxis`, `hatchStrength`, `annotations`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `bandFraction`, `valueAxis.show`, `valueAxis.gridlines` with an `option-ignored` warning.
+Plus the [shared options](options.md). This type does not accept `detailFields`, `labelPosition`, `valueAxis`, `hatchStrength`, `annotations`. This type ignores `animate`, `debug`, `rowLabels`, `categoryAxis`, `categoryLabels`, `secondaryAxis`, `sort`, `topN`, `bandFraction`, `valueAxis.show`, `valueAxis.gridlines`, `highlight` with an `option-ignored` warning.
 
 ## Annotations
 
