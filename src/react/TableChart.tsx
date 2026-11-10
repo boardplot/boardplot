@@ -106,7 +106,7 @@ import type {
 } from '../core/types/table';
 import { stickySettings } from '../core/charts/table/sticky';
 // Both table renderers share subtitles, source lines and note disclosure.
-import { ENGINE_NOTE_KINDS, FRAME_PRINTED, insetTint, tableFrame, tableGroundTextStyle, tablePresentation, tableRenderTheme, tableStylesheet } from './tablePresentation';
+import { ENGINE_NOTE_KINDS, insetTint, tableFrame, tableGroundTextStyle, tablePresentation, tableRenderTheme, tableStylesheet } from './tablePresentation';
 import { useStableValue } from './useStableValue';
 import { PROBE_STYLE, useContainerSize, type ContainerSizeOptions } from './useContainerSize';
 import { useDisplayWarnings } from './useDisplayWarnings';
@@ -346,7 +346,11 @@ function encodeStructuralIds(ids: readonly Id[]): string {
 }
 
 /** The uncompiled request whose floor the HTML table must report. Internal to DimSwitch. */
-export const TableFloorRequestContext = createContext<{ request: ChartRequest; options: TableOptions } | undefined>(undefined);
+/**
+ * Values travel here, not as props: React 18 copies props with for…in, which drops symbol keys
+ * (the compiled options' engine notes). `printed` hears which notes the footer printed.
+ */
+export const TableFloorRequestContext = createContext<{ request: ChartRequest; options: TableOptions; printed?: (printed: readonly string[]) => void } | undefined>(undefined);
 
 /** One canvas and one width cache for every table on the page; a font swap clears the cache. */
 let measureContext: CanvasRenderingContext2D | undefined;
@@ -1524,9 +1528,9 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
   const rowTree = useMemo(() => tableRowTree(table?.rows ?? [], rootsHidden), [table, rootsHidden]);
   const rowPages = useMemo(() => rowWindowed ? Array.from({ length: Math.ceil(rowTree.length / ROW_PAGE) }, (_, index) => rowTree.slice(index * ROW_PAGE, (index + 1) * ROW_PAGE)) : [], [rowWindowed, rowTree]);
   // A dimswitch's disclosures ride on the props in ENGINE_NOTES; the request normalisation keeps string keys only.
-  const engineNotes = (options as { [ENGINE_NOTES]?: string[] })[ENGINE_NOTES];
+  const engineNotes = ((compiledRequest?.options ?? options) as { [ENGINE_NOTES]?: string[] })[ENGINE_NOTES];
   // The footnotes walk every cell: once per table and fold state, not on each scroll render.
-  const engineKinds = (options as { [ENGINE_NOTE_KINDS]?: ReadonlyMap<string, EngineNoteMeta> })[ENGINE_NOTE_KINDS];
+  const engineKinds = ((compiledRequest?.options ?? options) as { [ENGINE_NOTE_KINDS]?: ReadonlyMap<string, EngineNoteMeta> })[ENGINE_NOTE_KINDS];
   // The footer lines wrap at the grid's width less the canvas padding and the cell air on both sides.
   const footWidth = request === undefined ? 0
     : request.size.width - (tableOptions?.margin?.left ?? 0) - (tableOptions?.margin?.right ?? 0) - 2 * padX;
@@ -1535,7 +1539,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
       request === undefined || theme === undefined ? undefined : { width: footWidth, measure: width.measure, theme }),
   [table, tableOptions, engineNotes, engineKinds, rows, columns, request, theme, footWidth, width.measure]);
   // A composing chart (dimswitch) hears which notes the footer printed, the final decision after the line budget.
-  const onPrinted = (options as { [FRAME_PRINTED]?: (printed: readonly string[]) => void })[FRAME_PRINTED];
+  const onPrinted = compiledRequest?.printed;
   const printedKey = frameMemo?.footnotes.map((note) => note.text).join('\n');
   useEffect(() => {
     if (printedKey !== undefined) onPrinted?.(printedKey === '' ? [] : printedKey.split('\n'));

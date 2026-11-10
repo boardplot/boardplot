@@ -10,3 +10,4 @@
 - Under `footnotes: false` the React table no longer offers the table's own notes behind a pointer.
 - A prepared table keeps its partial-total columns, so its partial-total note leaves with a hidden column.
 - The React dimswitch warns `dimswitch-partial-note-off-frame` when the line budget moves the partial-period note behind the pointer, not only under the `info` placement.
+- Under React 18 the React dimswitch shows its own notes again, such as the partial-period note. They rode on a prop that React 18 drops.
