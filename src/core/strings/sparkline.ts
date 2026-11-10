@@ -6,6 +6,7 @@ const EN = {
   "sparklineDesc": "Trend over {v1} points{v2}{v3}.",
   "endingAt": ", ending at {v1}",
   "referenceClause": ", reference {v1}",
+  "noValue": "no value",
 } as const;
 const DE: { [K in keyof typeof EN]: string } = {
   // reader-facing wording linked only by its consumers.
@@ -13,6 +14,7 @@ const DE: { [K in keyof typeof EN]: string } = {
   "sparklineDesc": "Verlauf über {v1} {v1|Punkt|Punkte}{v2}{v3}.",
   "endingAt": " mit Endwert {v1}",
   "referenceClause": " mit Referenz {v1}",
+  "noValue": "kein Wert",
 };
 
 export const { chartString } = chartStrings(EN, DE);

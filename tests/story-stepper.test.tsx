@@ -51,6 +51,11 @@ describe('story layout', () => {
     expect(shown.reading.size).toEqual(result.reading.size);
     expect(shown.reading.labelsTruncated.map(label => label.labelId)).toEqual(result.reading.labelsTruncated.map(label => label.labelId));
   });
+  // The step position in the accessible description stayed English under a German locale.
+  it('words the step position of the description in the chart language', () => {
+    const geo = layout({ ...options, locale: { language: 'de' } });
+    expect(storyView(geo, 1, true).a11y.desc).toContain(`Story-Schritt 2 von 6: ${options.story.steps[1]!.title}`);
+  });
   it('keeps every mark in place across all steps', () => {
     const geo = layout(options);
     expect(geo.story!.steps.length).toBe(6);

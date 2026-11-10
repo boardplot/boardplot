@@ -1530,7 +1530,7 @@ export function layoutVariance(
     mode === 'absolute' ? chartString(options, 'absoluteVariance') : mode === 'relative' ? chartString(options, 'relativeVariance') : chartString(options, 'integratedVariance');
   const deltaText = (ci: number): string => {
     const d = deltaOf(ci);
-    if (d === null) return 'n/a';
+    if (d === null) return chartString(options, 'notApplicable');
     return mode === 'relative' ? pctSigned(d, ci) : absolute(d, ci, true);
   };
   const a11yDesc =

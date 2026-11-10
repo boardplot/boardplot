@@ -1,4 +1,4 @@
-import { localeStrings } from '../../strings/line';
+import { chartString, localeStrings } from '../../strings/line';
 import { stringFields } from '../../strings';
 import { defaultFormatSpec, formatWithSpec, type NumberFormatSpec } from '../../formatSpec';
 import type { StringsSpec } from '../../types/options';
@@ -290,6 +290,7 @@ function collectRuns(input: {
 }
 
 function addFanRun(theme: Theme, input: {
+  language?: string;
   edges?: RangeEdge[];
   run: FanPoint[];
   runIndex: number;
@@ -312,6 +313,7 @@ function addFanRun(theme: Theme, input: {
   gapCats: Set<Id>;
 }): Id | null {
   const { run, runIndex, band, bandIndex, lowRow, highRow, cats, interpolation, fanLadder, showBounds, pathFor, reversePathTail, fmt, occupied, fanNodes, hairNodes, gapCats } = input;
+  const words = { locale: { language: input.language } };
   if (run.length < 2) {
     for (const point of run) gapCats.add(cats[point.ci]!.id);
     return null;
@@ -332,7 +334,7 @@ function addFanRun(theme: Theme, input: {
     fill: fanLadder[bandIndex]!.paint,
     owner: {},
     part: 'fanBand',
-    display: { value: `${band.label}: ${numberRange(loText, hiText)} at ${cats[widestAt]!.label ?? cats[widestAt]!.id}${(band.widths[widestAt] ?? 0) > 0 ? ' (widest)' : ''}` },
+    display: { value: `${band.label}: ${chartString(words, 'fanAt', { v1: numberRange(loText, hiText), v2: cats[widestAt]!.label ?? cats[widestAt]!.id })}${(band.widths[widestAt] ?? 0) > 0 ? chartString(words, 'fanWidest') : ''}` },
   });
   for (let k = 0; k + 1 < run.length; k++) {
     const a = run[k]!;
@@ -359,6 +361,7 @@ function addFanRun(theme: Theme, input: {
 }
 
 export function renderFanWashes(theme: Theme, input: {
+  language?: string;
   range?: LineRange;
   xOfValue?: (value: number) => number;
   fan: FanResolved | null;
@@ -396,7 +399,7 @@ export function renderFanWashes(theme: Theme, input: {
       .map(run => run.map(edge => mapEdge(edge, input.xOfValue!, y))) : undefined;
     const runs = edges ? edges.map(run => run[0]!.points.map((p, i) => ({ ci: p.ci, x: p.x, yHigh: p.y, yLow: run[1]!.points[i]!.y })))
       : collectRuns({ lowRow, highRow, cats, compositionInvalidAt, xOf, y, gapCats });
-    const nodeIds = runs.map((run, runIndex) => addFanRun(theme, { ...(edges ? { edges: edges[runIndex] } : {}), run, runIndex, band, bandIndex, lowRow, highRow, cats, interpolation, fanLadder, showBounds: fan.showBounds, pathFor, reversePathTail, fmt, numberSpec, occupied, fanNodes, hairNodes, gapCats })).filter((id): id is Id => id !== null);
+    const nodeIds = runs.map((run, runIndex) => addFanRun(theme, { language: input.language, ...(edges ? { edges: edges[runIndex] } : {}), run, runIndex, band, bandIndex, lowRow, highRow, cats, interpolation, fanLadder, showBounds: fan.showBounds, pathFor, reversePathTail, fmt, numberSpec, occupied, fanNodes, hairNodes, gapCats })).filter((id): id is Id => id !== null);
     if (nodeIds.length > 0) fanMarks.push({ bandIndex, nodeIds, low: band.low.id, high: band.high.id, label: band.label });
   });
   if (gapCats.size > 0) warnings.push({

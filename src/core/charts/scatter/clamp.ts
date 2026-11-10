@@ -1,3 +1,4 @@
+import type { BaseOptions } from '../../types/options';
 import { chartString } from '../../strings/scatter';
 /**
  * Scatter outliers: the value clamp and the minimum-count filter.
@@ -326,11 +327,11 @@ export function clampSeed(
  * beyond a bound on both axes sits in a corner and names both bounds, each with
  * its axis, because the two numbers alone do not say which is which.
  */
-export function clampStateOf(plan: ScatterClampPlan | undefined, id: Id): string | undefined {
+export function clampStateOf(plan: ScatterClampPlan | undefined, id: Id, options?: Pick<BaseOptions, 'locale' | 'strings'>): string | undefined {
   if (!plan?.clipped.has(id)) return undefined;
   const records = plan.records.filter((entry) => entry.points.some((point) => point.id === id));
-  if (records.length === 1) return `clipped at ${records[0]!.limitText}`;
-  return `clipped at ${records.map((record) => `${record.limitText} (${plan.axisNames[record.axis]})`).join(' and at ')}`;
+  if (records.length === 1) return chartString(options, 'clippedAt', { v1: records[0]!.limitText });
+  return chartString(options, 'clippedAt', { v1: records.map((record) => chartString(options, 'clippedAtAxis', { v1: record.limitText, v2: plan.axisNames[record.axis] })).join(chartString(options, 'clippedAtJoin')) });
 }
 
 /** The first applied bound a value lies beyond, if any. */

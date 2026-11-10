@@ -198,7 +198,7 @@ function anomalyRule(
         message: `anomaly rule not evaluated: ${n} non-null value(s), below the declared floor of ${ANOMALY_MIN_N} — median and MAD would be dominated by the points under test`,
         suggest: `supply at least ${ANOMALY_MIN_N} periods, or use method 'threshold' with explicit bounds`,
       });
-      counts = [structureCount('periods', n, `${n} of the`), structureCount('periods', ANOMALY_MIN_N, undefined, { locale: { language: locale } })];
+      counts = [structureCount('periods', n, chartString({ locale: { language: locale } }, 'anomalyCountOf', { v1: String(n) })), structureCount('periods', ANOMALY_MIN_N, undefined, { locale: { language: locale } })];
       rule = stringFields(words.anomalySmallSample, { count: n, minimum: ANOMALY_MIN_N }, locale);
     } else {
       const dataMedian = medianOf(values);

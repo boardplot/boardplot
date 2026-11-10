@@ -405,7 +405,7 @@ function trendTitle(data: CreativeData, key: (typeof TREND_KEYS)[number], option
 }
 
 /** One daily spark: the line on a calendar-true x axis, a dot on every observed day and the larger last mark. */
-function drawSpark(input: { id: string; rows: ReturnType<typeof trendRows>; key: (typeof TREND_KEYS)[number]; values: (number | null)[]; cell: Rect; theme: Theme; palette?: string; style: SparklineStyle; dotR: number; nodes: SceneNode[] }) {
+function drawSpark(input: { id: string; rows: ReturnType<typeof trendRows>; key: (typeof TREND_KEYS)[number]; values: (number | null)[]; cell: Rect; theme: Theme; palette?: string; style: SparklineStyle; dotR: number; nodes: SceneNode[]; language?: string }) {
   const { id, rows, key, values, cell, theme, palette, style, dotR, nodes } = input;
   const plot = plotSparkline({ box: cell, values, shape: 'line', domain: sparklineDomain([values], 'line'), style });
   // Preserve calendar spacing without allocating a row for every absent date.
@@ -424,7 +424,7 @@ function drawSpark(input: { id: string; rows: ReturnType<typeof trendRows>; key:
     });
   }
   const owner = { seriesId: `daily:${key}`, categoryId: id };
-  pushAll(nodes, emitSparklineMarks({ plot, shape: 'line', theme, palette, style, nodeId: suffix => `creative:trend:${key}:${suffix}`, owner, partPrefix: 'kpi',
+  pushAll(nodes, emitSparklineMarks({ plot, shape: 'line', theme, palette, style, nodeId: suffix => `creative:trend:${key}:${suffix}`, owner, partPrefix: 'kpi', language: input.language,
     // No authored focus on a creative card: the last day leads in series 1.
     lastPaint: semanticPalettePaint(theme, palette, 'sequential') }));
   // Every day is a dot (n is small on a review card); the last keeps its larger mark.
@@ -472,7 +472,7 @@ function trends(data: CreativeData, box: { x: number; y: number; w: number }, th
     const values = rows.map(row => row[key]);
     add(`creative:trend-title:${key}`, trendTitle(data, key, options), { x: panelX, y: titleY, w: pitch - 12 }, { font: fonts.note, ink: 'inkMuted', typeRole: 'footnote' });
     const cell = { x: panelX + 1, y: sparkTop, w: pitch * 0.72 + 2 * style.padding, h: sparkH + 2 * style.padding };
-    const { plot, points } = drawSpark({ id: data.id, rows, key, values, cell, theme, palette, style, dotR, nodes });
+    const { plot, points } = drawSpark({ id: data.id, rows, key, values, cell, theme, palette, style, dotR, nodes, language: options.locale?.language });
     // The first and the last daily value under their points, so a reader sees the size of the change, not only its shape.
     const observed = values.flatMap((value, i) => (value === null ? [] : [{ value, i }]));
     if (observed.length) {
@@ -513,7 +513,7 @@ function trendColumn(input: { data: CreativeData; rows: ReturnType<typeof trendR
       const firstText = format(observed[0]!), firstW = observed.length > 1 ? measure(firstText, fonts.note).width + 1 : 0;
       const left = firstW ? firstW + 6 : 0;
       const cell = { x: box.x + left - style.padding, y: top, w: box.w - left - lastW - 6 + 2 * style.padding, h: cellH };
-      const { plot, points } = drawSpark({ id: data.id, rows, key, values, cell, theme, palette, style, dotR: 2.2, nodes });
+      const { plot, points } = drawSpark({ id: data.id, rows, key, values, cell, theme, palette, style, dotR: 2.2, nodes, language: input.options.locale?.language });
       // Centred on its point, kept inside the spark's own band so it never reaches the next title.
       const centred = (py: number, font: FontSpec) => { const h = font.size * (font.lineHeight ?? 1.2); return Math.max(top, Math.min(py - h / 2, top + cellH - h)); };
       add(`creative:trend-last:${key}`, lastText, { x: box.x + box.w - lastW, y: centred(plot.last!.y, fonts.noteStrong), w: lastW },

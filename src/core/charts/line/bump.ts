@@ -1,4 +1,4 @@
-import { localeStrings } from '../../strings/line';
+import { chartString, localeStrings } from '../../strings/line';
 import { stringFields } from '../../strings';
 import type { StringsSpec } from '../../types/options';
 import type { Theme } from '../../types/theme';
@@ -229,8 +229,10 @@ export function renderBumpTies(theme: Theme, input: {
   marks: LineMarks;
   nodes: SceneNode[];
   occupied: OccupiedIndex;
+  language?: string;
 }): void {
   const { bump, marks, nodes, occupied } = input;
+  const words = { locale: { language: input.language } };
   if (!bump || bump.ties.length === 0) return;
   const radius = 7;
   for (const tie of bump.ties) {
@@ -246,7 +248,7 @@ export function renderBumpTies(theme: Theme, input: {
       width: strokeToken(theme, 'mark'),
       owner: { categoryId: tie.categoryId },
       part: 'tie',
-      display: { value: `rank ${tie.rank}`, state: `${tie.seriesIds.length} tied` },
+      display: { value: chartString(words, 'bumpRank', { v1: String(tie.rank) }), state: chartString(words, 'bumpTied', { v1: String(tie.seriesIds.length) }) },
     });
     occupied.claim({ x: point.x - radius, y: point.y - radius, w: radius * 2, h: radius * 2 }, 'mark', { categoryId: tie.categoryId });
   }

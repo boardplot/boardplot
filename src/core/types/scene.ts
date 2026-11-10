@@ -873,6 +873,8 @@ export interface StoryStepGeometry {
 export interface StoryGeometry {
   /** Localized live region position template. Optional for older prepared geometry. */
   stepLabel?: string;
+  /** Localized position template of the accessible description. Optional for older prepared geometry. */
+  descLabel?: string;
   /** The step the scene shows (options.story.step, else 0). */
   step: number;
   /** Where the panel sits: in an empty area of the plot, or beside the chart. */

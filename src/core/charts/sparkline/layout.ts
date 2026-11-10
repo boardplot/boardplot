@@ -318,7 +318,7 @@ export function plotSparkline(input: {
  * seen and the bridge is not read as measured; a column spark rings its
  * empty slot on the zero line. Each ring names itself as "no value".
  */
-function sparkGapNodes(theme: Theme, plot: SparklinePlot, paint: Paint, nodeId: (suffix: string) => Id, owner: (index: number) => OwnerRef, part: string): SceneNode[] {
+function sparkGapNodes(theme: Theme, plot: SparklinePlot, paint: Paint, nodeId: (suffix: string) => Id, owner: (index: number) => OwnerRef, part: string, language: string | undefined): SceneNode[] {
   const nodes: SceneNode[] = [];
   const bridged = new Set<number>();
   for (const gap of plot.gaps) {
@@ -329,7 +329,7 @@ function sparkGapNodes(theme: Theme, plot: SparklinePlot, paint: Paint, nodeId: 
     nodes.push({
       t: 'circle', id: nodeId(`gap:${gap.index}`), cx: gap.x, cy: gap.y, r: GAP_RING_RADIUS,
       fill: { token: 'background' }, stroke: paint, strokeWidth: strokeToken(theme, 'hair'), owner: owner(gap.index), part,
-      display: { value: 'no value', state: 'missing' },
+      display: { value: chartString({ locale: { language } }, 'noValue'), state: 'missing' },
     });
   }
   return nodes;
@@ -349,6 +349,8 @@ export function emitSparklineMarks(input: {
   partPrefix: 'table' | 'kpi';
   /** The last point's paint; absent keeps the spark's accent. */
   lastPaint?: Paint;
+  /** The chart language, for the words of a missing point. */
+  language?: string;
 }): SceneNode[] {
   const { plot, shape, theme, palette, style, nodeId, owner, partPrefix } = input;
   const nodes: SceneNode[] = [];
@@ -418,7 +420,7 @@ export function emitSparklineMarks(input: {
   }
 
   pushAll(nodes, sparkGapNodes(theme, plot, shape === 'column' ? columnFill : lineStroke, (suffix) => nodeId(suffix), () => owner,
-    partPrefix === 'kpi' ? 'sparkGap' : 'tableSparkGap'));
+    partPrefix === 'kpi' ? 'sparkGap' : 'tableSparkGap', input.language));
 
   if (plot.last && shape !== 'column') {
     // A theme's `marks.sparkEnd: 'ring'` draws the standalone
@@ -544,6 +546,7 @@ export function emitKpiSpark(
     nodeId: (suffix) => `mark:${suffix}`,
     owner,
     partPrefix: 'kpi',
+    language: card.locale,
   });
   pushAll(nodes, markNodes);
   if (plot.label) {
@@ -896,7 +899,7 @@ export function layoutSparkline(
     });
   }
   // A missing point is ringed on a dashed bridge, not left blank.
-  pushAll(nodes, sparkGapNodes(theme, plot, { token: 'markInk' }, (suffix) => `spark:${suffix}`, owner, 'sparkGap'));
+  pushAll(nodes, sparkGapNodes(theme, plot, { token: 'markInk' }, (suffix) => `spark:${suffix}`, owner, 'sparkGap', options.locale?.language));
   // A value with a gap on both sides has no segment to draw; a dot shows it.
   for (const run of plot.runs) {
     if (run.length !== 1) continue;

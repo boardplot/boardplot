@@ -519,7 +519,7 @@ function lineStandings(env: LineEnv, domain: LineDomain, text: LineText): { endp
     row.forEach((rank, i) => {
       if (rank !== null) at = i;
     });
-    return at === -1 ? 'no period' : (cats[at]!.label ?? cats[at]!.id);
+    return at === -1 ? chartString(domain.options, 'noPeriod') : (cats[at]!.label ?? cats[at]!.id);
   };
   const bumpExitedDesc =
     bumpExited.length > 0

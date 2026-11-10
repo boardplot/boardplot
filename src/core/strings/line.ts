@@ -59,6 +59,12 @@ const EN = {
   "timeZoneNote": "Time zone: {v1}",
   "timeZoneChangeNote": "Time zone: {v1} ({v2})",
   "offsetThen": ", then ",
+  "noPeriod": "no period",
+  "bumpRank": "rank {v1}",
+  "bumpTied": "{v1} tied",
+  "fanAt": "{v1} at {v2}",
+  "fanWidest": " (widest)",
+  "phaseRange": "{v1}: {v2} to {v3}",
 } as const;
 const DE: { [K in keyof typeof EN]: string } = {
   // reader-facing wording linked only by its consumers.
@@ -119,6 +125,12 @@ const DE: { [K in keyof typeof EN]: string } = {
   "timeZoneNote": "Zeitzone: {v1}",
   "timeZoneChangeNote": "Zeitzone: {v1} ({v2})",
   "offsetThen": ", dann ",
+  "noPeriod": "keine Periode",
+  "bumpRank": "Rang {v1}",
+  "bumpTied": "{v1} gleichauf",
+  "fanAt": "{v1} bei {v2}",
+  "fanWidest": " (am breitesten)",
+  "phaseRange": "{v1}: {v2} bis {v3}",
 };
 
 export const { chartString, localeStrings } = chartStrings(EN, DE);

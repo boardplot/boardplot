@@ -536,7 +536,7 @@ export function layoutButterfly(
     return {
       type: 'butterfly', size, sizing, plot, scene: [], labels: [], axes: [], annotations: [],
       frame: frameResult.frame, marks: { left: [], right: [], center: plot }, derived: { diffs: {} },
-      a11y: { title: 'Butterfly', desc: chartString(options, 'rowsNeedHeight') },
+      a11y: { title: chartString(options, 'butterflyName'), desc: chartString(options, 'rowsNeedHeight') },
       warnings: [{ code: 'size-below-floor', severity: 'error', message: `butterfly needs at least ${sizing.minWidth} × ${sizing.minHeight}px`,
         suggest: `use a height of at least ${sizing.minHeight}px` }], debug: { occupied: [], decisions: [] },
     };

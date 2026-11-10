@@ -20,7 +20,8 @@ import { presentationInfo } from './themeGeometry';
 import { defaultMeasurer, graphemes, wrapText, type FontSpec, type TextMeasurer } from './text';
 import type { Id, OwnerRef } from './types/cell';
 import type { BaseOptions, LocaleSpec, RenderTarget, StorySpec, StringsSpec } from './types/options';
-import { localeStrings } from './strings';
+import { localeStrings, stringFields } from './strings';
+import { chartString as storyString } from './strings/story';
 import { sizeRefusal } from './sizing';
 import { isRefused } from './schema/refusals';
 import type { Geometry, LayoutResult, LintWarning, SceneNode, StoryGeometry, StoryStepGeometry } from './types/scene';
@@ -360,6 +361,7 @@ export function applyStory(geo: Geometry<object, object>, data: unknown, options
   }
   const story: StoryGeometry = {
     stepLabel: strings.storyStep,
+    descLabel: storyString(options, 'storyStepDesc'),
     step: staticStep, placement, panel: rect, staticPanel: { ...rect, h: layout.staticHeight },
     nav: { back, next, nodes: navigation && spec.steps.length > 1 ? [...button('back', back, layout.backLines), ...button('next', next, layout.nextLines)] : [] },
     steps, base, desc: placed.geo.a11y.desc, bold: theme.type.title.weight, dim: interactionTokens(theme).dim,
@@ -407,6 +409,6 @@ export function storyView(geometry: Pick<Geometry, 'scene' | 'a11y' | 'story'>, 
   const text = [step.title, step.body].filter(Boolean).join(' ');
   return {
     scene: [...scene, panel, ...step.nodes, ...nav],
-    a11y: { ...geometry.a11y, desc: `${story.desc} Story step ${index + 1} of ${story.steps.length}: ${text}` },
+    a11y: { ...geometry.a11y, desc: `${story.desc} ${stringFields(story.descLabel ?? 'Story step {step} of {count}:', { step: String(index + 1), count: String(story.steps.length) })} ${text}` },
   };
 }

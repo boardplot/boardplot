@@ -1,3 +1,4 @@
+import { chartString } from '../../strings/line';
 import { DENSE_CATEGORY_COUNT } from '../../denseCharts';
 import { planLineStyle } from '../../planLineStyle';
 import { PALETTE_NORMAL_FLOOR, palettePerceptualDistance } from '../../themeRules';
@@ -511,7 +512,7 @@ export function linePaints(env: LineEnv, domain: LineDomain, warnings: LintWarni
     pointScenario,
     // A bump point carries BOTH quantities: `display.value` stays the metric
     // and `display.state` names the rank the y position encodes.
-    bumpPointState: (row, ci): { state: string } | Record<string, never> => (isBump && row[ci] !== null ? { state: `rank ${row[ci]}` } : {}),
+    bumpPointState: (row, ci): { state: string } | Record<string, never> => (isBump && row[ci] !== null ? { state: chartString(options, 'bumpRank', { v1: String(row[ci]) }) } : {}),
     heroMode,
     heroId,
     fanLadder,
