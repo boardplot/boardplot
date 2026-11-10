@@ -377,6 +377,30 @@ describe('refusal contract', () => {
     expect(firstError(dimswitch)).toMatchObject({ code: 'table-sort-segments-unsupported', path: '/options/sort/segments', received: { type: 'string', value: 'desc' } });
   });
 
+  // A grid passed on a panel's warning with the panel's own pointer and patch, read against the grid's spec: a size patch shrank the whole grid to one panel's need, an option patch landed at the grid root.
+  it('points a warning a grid passes on into the authored panel, or gives it none', () => {
+    const tool = (name: string, spec: object) => JSON.parse(callTool(name, { spec }).text) as { ok: boolean; warnings: (Finding & { fix?: { path: string }[]; detail?: Node })[] };
+    const table = { columns: [{ id: 'label', kind: 'rowLabel', label: '', width: 1 }, { id: 'a', kind: 'value', label: '' }, { id: 'b', kind: 'value', label: '' },
+      { id: 'trend', kind: 'encoding', label: '', width: 300, encoding: { type: 'sparkline', sourceColumns: ['a', 'b'] } }],
+    rows: [{ id: 'r', label: '', cells: { a: 1, b: 2 } }], columnToggles: [{ id: 'src', label: 'Source', columns: ['a', 'b'], defaultVisible: false }] };
+    const tables = { type: 'grid', data: { panels: ['p1', 'p2'].map((id) => ({ id, type: 'table', data: table, options: { columnHeads: false, margin: { left: 12, right: 12 } } })) },
+      options: { size: { width: 660, height: 800 }, columns: 2, sharedAxis: 'none', margin: { left: 0, right: 0, top: 0, bottom: 0 } } };
+    const butterfly = getFixtures('butterfly').find((entry) => entry.id === 'period-comparisons')!;
+    const { size: _size, ...butterflyOptions } = butterfly.options as Node;
+    const sorted = { type: 'grid', data: { panels: [{ id: 'b', type: 'butterfly', data: butterfly.data, options: { ...butterflyOptions, sort: { categories: 'desc' } }, annotations: butterfly.annotations }] },
+      options: { columns: 1, size: { width: 720 } } };
+    for (const name of ['boardplot_render', 'boardplot_measure']) {
+      const tight = tool(name, tables).warnings.filter((warning) => warning.code === 'table-tight-spacing');
+      expect(tight.map((warning) => [warning.path, warning.fix, warning.detail?.panelId, warning.suggest])).toEqual(['p1', 'p2']
+        .map((id) => ['', undefined, id, `Panel ${id} needs 330 × 80 px. Give the grid more room.`]));
+      const ignored = tool(name, sorted).warnings.find((warning) => warning.code === 'butterfly-sort-ignored')!;
+      expect(ignored.fix).toEqual([{ op: 'replace', path: '/data/panels/0/options/sort/categories', value: 'sheet' }]);
+    }
+    const repaired = structuredClone(sorted) as Node;
+    repaired.data.panels[0].options.sort.categories = 'sheet';
+    expect(tool('boardplot_render', repaired).warnings.some((warning) => warning.code === 'butterfly-sort-ignored')).toBe(false);
+  });
+
   // An annotation refusal counted its index after the registry dropped the kinds the chart does not draw, and named the root list for options.annotations, so it pointed at another annotation or at nothing.
   it('points an annotation refusal at the annotation the author wrote, in either list and in a grid panel', () => {
     const annotations = [{ kind: 'indicator100' }, { kind: 'valueLine', value: -1 }];
@@ -418,7 +442,7 @@ describe('refusal contract', () => {
       .find((entry) => entry.code === 'option-ignored' && entry.path.startsWith('/options/sort'));
     expect(warning).toMatchObject({ path: '/options/sort', fix: [{ op: 'remove', path: '/options/sort' }] });
     // A patch that adds a field inside the short form replaces the authored option with its expanded form.
-    const butterfly = fixture('butterfly', 'period-comparisons');
+    const butterfly = getFixtures('butterfly').find((entry) => entry.id === 'period-comparisons')!;
     const ignored = (render({ spec: { type: 'butterfly', data: butterfly.data, options: { ...butterfly.options, sort: 'desc' } } }).body.warnings as (Finding & { fix?: unknown })[])
       .find((entry) => entry.code === 'butterfly-sort-ignored');
     expect(ignored?.fix).toEqual([{ op: 'replace', path: '/options/sort', value: { categories: 'sheet' } }]);
