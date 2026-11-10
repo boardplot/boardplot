@@ -642,6 +642,14 @@ describe('an example is read as its author wrote it', () => {
     expect([5e-5, 1e-4].map(logSpecFormat(engine, [1e-6, 2e6]))).toEqual(['0.00005', '0.0001']);
   });
 
+  // A unit with a scale word and a noun ("k visits") printed 260,000 as "260k", which read 1,000 times too large beside it.
+  it('adds no automatic magnitude under a unit that names a scale before a noun', () => {
+    for (const unit of ['k visits', 'million tonnes', 'Tsd. Besucher']) {
+      expect(seriesRasterFormatter(undefined, [260_000, 1_011_000], 'en', unit, 'slide').fmt(260_000)).toBe('260,000');
+    }
+    expect(seriesRasterFormatter(undefined, [260_000, 1_011_000], 'en', 'minutes', 'slide').fmt(1_011_000)).toBe('1.01M');
+  });
+
   // "$1.2M" fixes one decimal, so $4.27M printed $4.3M and no example gave 42.7, 4.27 and 0.430 together: one @ per figure fixes the figures, not the decimals.
   it('prints a fixed count of significant figures for an @ example, rolls up at 1000 and keeps ticks plain', () => {
     const print = formatterFromExample('$@@@M', undefined);

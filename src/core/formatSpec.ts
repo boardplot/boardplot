@@ -1747,14 +1747,15 @@ function drawnNumberTexts(geo: { labels?: readonly PlacedLabel[]; scene: readonl
  * raster too (an authored 36.2 % must not flatten to 36 %); computed shares
  * follow `formatShare`.
  */
-const MAGNITUDE_UNIT = /^\W*(?:([a-z]{3})(\W*))?(k|mm?|mn|bn?|tn|tsd|mio|mrd|bio|thousands?|tausend|millions?|millionen|billions?|billionen|trillions?|milliard(?:en?|s)?)\W*(?:([a-z]{3})\W*)?$/i;
+const MAGNITUDE_UNIT = /^\W*(?:([a-z]{3})(\W*))?(k|mm?|mn|bn?|tn|tsd|mio|mrd|bio|thousands?|tausend|millions?|millionen|billions?|billionen|trillions?|milliard(?:en?|s)?)\W*(?:([a-z]{3})\W*)?(?:(?<=\s)\p{L}.*)?$/iu;
 const CURRENCY_CODES = new Set(Intl.supportedValuesOf('currency'));
 
 /**
  * The scale a unit names: "€M", "EUR m" and "CHFm" are millions, "k€"
  * thousands, "USD bn" billions, "Mio. CHF" millions; none for "%" or "EUR".
  * Three letters joined to the word must be a currency code: "USDm" names
- * millions, "item" does not. A currency may follow the word too.
+ * millions, "item" does not. A currency may follow the word too, and a
+ * spaced noun may end the unit: "k visits" and "million tonnes" name a scale.
  */
 export function unitMagnitude(unit: string | undefined): NumberFormatSpec['magnitude'] | undefined {
   const match = MAGNITUDE_UNIT.exec(unit ?? '');
