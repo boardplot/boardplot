@@ -24,6 +24,12 @@ export interface NormalizedDiagram {
   groupEnds: Map<string, { source?: string; target?: string }>;
 }
 
+/** The authored item with this id as pointer segments, or none where the id is absent or not unique. */
+export function authoredItem(list: readonly { id: string }[] | undefined, key: string, id: string, ...field: string[]): (string | number)[] | undefined {
+  const matches = (list ?? []).flatMap((item, index) => (item.id === id ? [index] : []));
+  return matches.length === 1 ? ['data', key, matches[0]!, ...field] : undefined;
+}
+
 const stableOrder = <T extends { id: string; order?: number }>(items: readonly T[]): T[] =>
   items
     .map((item, sourceIndex) => ({ item, sourceIndex }))
@@ -38,23 +44,23 @@ export function normalizeDiagramModel(
   rawData: DiagramData,
   rawOptions: DiagramOptions,
 ): { data: NormalizedDiagram; options: DiagramOptions } {
-  if (!Array.isArray(rawData.nodes) || rawData.nodes.length === 0) throw new NormalizeError('empty-data', 'nodes', 'diagram requires at least one node');
+  if (!Array.isArray(rawData.nodes) || rawData.nodes.length === 0) throw new NormalizeError('empty-data', 'nodes', 'diagram requires at least one node', undefined, undefined, ['data', 'nodes']);
   // Presets can add generated ports; keep those on layout-owned nodes.
   const nodes = stableOrder(rawData.nodes).map(node => ({ ...node }));
   const groups = stableOrder(rawData.groups ?? []);
   const groupEnds: NormalizedDiagram['groupEnds'] = new Map();
-  const resolveEnd = (edge: DiagramAuthoredEdge, end: 'source' | 'target'): DiagramEndpoint => {
+  const resolveEnd = (edge: DiagramAuthoredEdge, end: 'source' | 'target', index: number): DiagramEndpoint => {
     const endpoint = edge[end];
     if (!('groupId' in endpoint)) return endpoint;
-    if (rawOptions.variant !== 'architecture') throw new NormalizeError('invalid-membership', `edges[${edge.id}].${end}`, `only variant 'architecture' ends an edge on a group, not '${rawOptions.variant}'`, 'name a node, or set options.variant to architecture');
+    if (rawOptions.variant !== 'architecture') throw new NormalizeError('invalid-membership', `edges[${edge.id}].${end}`, `only variant 'architecture' ends an edge on a group, not '${rawOptions.variant}'`, 'name a node, or set options.variant to architecture', undefined, ['data', 'edges', index, end]);
     const member = nodes.find((node) => node.groupId !== undefined && groupWithin(groups, node.groupId, endpoint.groupId));
-    if (!member) throw new NormalizeError('invalid-membership', `edges[${edge.id}].${end}`, `group '${endpoint.groupId}' has no nodes to end edge '${edge.id}' on`, `add a node to group '${endpoint.groupId}'`);
+    if (!member) throw new NormalizeError('invalid-membership', `edges[${edge.id}].${end}`, `group '${endpoint.groupId}' has no nodes to end edge '${edge.id}' on`, `add a node to group '${endpoint.groupId}'`, undefined, ['data', 'edges', index, end]);
     groupEnds.set(edge.id, { ...groupEnds.get(edge.id), [end]: endpoint.groupId });
     return { nodeId: member.id };
   };
   const data: NormalizedDiagram = {
     nodes,
-    edges: (rawData.edges ?? []).map((edge) => ({ ...edge, source: resolveEnd(edge, 'source'), target: resolveEnd(edge, 'target') })).sort((a, b) => compareDiagramIds(a.id, b.id)),
+    edges: (rawData.edges ?? []).map((edge, index) => ({ ...edge, source: resolveEnd(edge, 'source', index), target: resolveEnd(edge, 'target', index) })).sort((a, b) => compareDiagramIds(a.id, b.id)),
     groups,
     lanes: stableOrder(rawData.lanes ?? []),
     key: rawData.key ?? [],
@@ -63,7 +69,7 @@ export function normalizeDiagramModel(
     ...(rawData.inset ? { inset: rawData.inset } : {}),
     groupEnds,
   };
-  validatePreset(data, rawOptions, rawData.nodes);
+  validatePreset(data, rawOptions, rawData);
   if (rawOptions.variant === 'architecture') {
     const policy = new Set(groups.filter((group) => group.kind === 'policy').map((group) => group.id));
     data.nodes = data.nodes.map((node) => (node.groupId !== undefined && policy.has(node.groupId) ? { ...node, shape: { kind: 'text' as const } } : node));
@@ -118,58 +124,57 @@ const ARCHITECTURE_NODE_REFUSALS = [
   ['ports', 'the engine picks the ports: remove them'],
 ] as const;
 
-function validateGroups(data: NormalizedDiagram, options: DiagramOptions & { variant: 'architecture' }): void {
+function validateGroups(data: NormalizedDiagram, options: DiagramOptions & { variant: 'architecture' }, authored: DiagramData): void {
   const byId = new Map(data.groups.map((group) => [group.id, group]));
   for (const group of data.groups) {
     const path = [group.id];
     for (let at = group.parentId; at !== undefined; at = byId.get(at)?.parentId) {
-      if (path.includes(at)) throw new NormalizeError('diagram-group-cycle', `groups[${group.id}].parentId`, `the groups ${[...path, at].map((id) => `'${id}'`).join(' → ')} form a cycle`, `remove parentId from group '${at}'`);
+      if (path.includes(at)) throw new NormalizeError('diagram-group-cycle', `groups[${group.id}].parentId`, `the groups ${[...path, at].map((id) => `'${id}'`).join(' → ')} form a cycle`, `remove parentId from group '${at}'`, undefined, authoredItem(authored.groups, 'groups', group.id, 'parentId'));
       path.push(at);
     }
-    if (path.length > 3) throw new NormalizeError('invalid-membership', `groups[${group.id}].parentId`, `group '${group.id}' sits ${path.length} levels deep, and zones nest up to three`, 'flatten one level');
-    if (group.parentId !== undefined && options.flow === 'lanes') throw new NormalizeError('invalid-membership', `groups[${group.id}].parentId`, "flow 'lanes' draws flat zones", "remove parentId, or use flow 'columns'");
+    if (path.length > 3) throw new NormalizeError('invalid-membership', `groups[${group.id}].parentId`, `group '${group.id}' sits ${path.length} levels deep, and zones nest up to three`, 'flatten one level', undefined, authoredItem(authored.groups, 'groups', group.id, 'parentId'));
+    if (group.parentId !== undefined && options.flow === 'lanes') throw new NormalizeError('invalid-membership', `groups[${group.id}].parentId`, "flow 'lanes' draws flat zones", "remove parentId, or use flow 'columns'", undefined, authoredItem(authored.groups, 'groups', group.id, 'parentId'));
   }
   const policies = data.groups.filter((group) => group.kind === 'policy');
-  if (policies.length > 1) throw new NormalizeError('invalid-membership', 'groups', 'an exhibit has one policy strip', `merge group '${policies[1]!.id}' into '${policies[0]!.id}'`);
+  if (policies.length > 1) throw new NormalizeError('invalid-membership', 'groups', 'an exhibit has one policy strip', `merge group '${policies[1]!.id}' into '${policies[0]!.id}'`, undefined, ['data', 'groups']);
   const policy = policies[0];
   if (!policy) return;
   if (policy.parentId !== undefined || policy.protected || data.groups.some((group) => group.parentId === policy.id)) {
-    throw new NormalizeError('invalid-membership', `groups[${policy.id}]`, 'a policy strip spans the exhibit, so it takes no parent, no child and no protection', 'use a zone for that');
+    throw new NormalizeError('invalid-membership', `groups[${policy.id}]`, 'a policy strip spans the exhibit, so it takes no parent, no child and no protection', 'use a zone for that', undefined, authoredItem(authored.groups, 'groups', policy.id));
   }
   const wired = data.edges.find((edge) => [edge.source.nodeId, edge.target.nodeId].some((id) => data.nodes.find((node) => node.id === id)?.groupId === policy.id));
-  if (wired) throw new NormalizeError('invalid-membership', `edges[${wired.id}]`, `edge '${wired.id}' touches the policy strip, whose items take no edges`, 'move the node to a zone, or remove the edge');
+  if (wired) throw new NormalizeError('invalid-membership', `edges[${wired.id}]`, `edge '${wired.id}' touches the policy strip, whose items take no edges`, 'move the node to a zone, or remove the edge', undefined, authoredItem(authored.edges, 'edges', wired.id));
 }
 
-function validateArchitecture(data: NormalizedDiagram, options: DiagramOptions & { variant: 'architecture' }, authoredNodes: readonly DiagramNode[]): void {
-  validateGroups(data, options);
+function validateArchitecture(data: NormalizedDiagram, options: DiagramOptions & { variant: 'architecture' }, authored: DiagramData): void {
+  validateGroups(data, options, authored);
   const policy = data.groups.find((group) => group.kind === 'policy')?.id;
   if (options.flow === 'lanes') {
-    if (data.lanes.length === 0) throw new NormalizeError('invalid-membership', 'lanes', "flow 'lanes' requires data.lanes", 'add data.lanes, or remove options.flow');
+    if (data.lanes.length === 0) throw new NormalizeError('invalid-membership', 'lanes', "flow 'lanes' requires data.lanes", 'add data.lanes, or remove options.flow', undefined, ['data', 'lanes']);
     const vertical = data.lanes.find((lane) => lane.orientation !== 'horizontal');
-    if (vertical) throw new NormalizeError('invalid-membership', `lanes[${vertical.id}].orientation`, "flow 'lanes' stacks horizontal lanes", `set lane '${vertical.id}' to orientation 'horizontal'`);
+    if (vertical) throw new NormalizeError('invalid-membership', `lanes[${vertical.id}].orientation`, "flow 'lanes' stacks horizontal lanes", `set lane '${vertical.id}' to orientation 'horizontal'`, undefined, authoredItem(authored.lanes, 'lanes', vertical.id, 'orientation'));
     const outside = data.nodes.find((node) => !node.laneId && (policy === undefined || node.groupId !== policy));
-    if (outside) throw new NormalizeError('invalid-membership', `nodes[${outside.id}].laneId`, `flow 'lanes' requires every node to name its lane, and '${outside.id}' names none`, `set nodes[${outside.id}].laneId`);
+    if (outside) throw new NormalizeError('invalid-membership', `nodes[${outside.id}].laneId`, `flow 'lanes' requires every node to name its lane, and '${outside.id}' names none`, `set nodes[${outside.id}].laneId`, undefined, authoredItem(authored.nodes, 'nodes', outside.id, 'laneId'));
     const policyNode = data.nodes.find((node) => policy !== undefined && node.groupId === policy && node.laneId !== undefined);
-    if (policyNode) throw new NormalizeError('invalid-membership', `nodes[${policyNode.id}].laneId`, `policy node '${policyNode.id}' cannot also belong to a lane`, 'remove laneId from the policy node, or move it out of the policy strip');
+    if (policyNode) throw new NormalizeError('invalid-membership', `nodes[${policyNode.id}].laneId`, `policy node '${policyNode.id}' cannot also belong to a lane`, 'remove laneId from the policy node, or move it out of the policy strip', undefined, authoredItem(authored.nodes, 'nodes', policyNode.id, 'laneId'));
   } else if (data.lanes.length > 0 || data.nodes.some((node) => node.laneId)) {
-    throw new NormalizeError('invalid-membership', 'lanes', "flow 'columns' reads groups, not lanes", "set options.flow to 'lanes', or remove the lanes");
+    throw new NormalizeError('invalid-membership', 'lanes', "flow 'columns' reads groups, not lanes", "set options.flow to 'lanes', or remove the lanes", undefined,
+      data.lanes.length > 0 ? ['data', 'lanes'] : undefined);
   }
   for (const node of data.nodes) {
-    // data.nodes is in stable order: the pointer names the authored node with this id, and none where the id is not unique.
-    const matches = authoredNodes.flatMap((item, index) => (item.id === node.id ? [index] : []));
-    const at = (field: string) => (matches.length === 1 ? ['data', 'nodes', matches[0]!, field] : undefined);
+    // data.nodes is in stable order: each pointer names the authored node with this id.
     for (const [field, fix] of ARCHITECTURE_NODE_REFUSALS) {
-      if (node[field] !== undefined) throw new NormalizeError('invalid-membership', `nodes[${node.id}].${field}`, `variant 'architecture' does not read ${field}`, fix, undefined, at(field));
+      if (node[field] !== undefined) throw new NormalizeError('invalid-membership', `nodes[${node.id}].${field}`, `variant 'architecture' does not read ${field}`, fix, undefined, authoredItem(authored.nodes, 'nodes', node.id, field));
     }
     if (!['rectangle', 'roundedRect', 'store'].includes(node.shape.kind)) {
-      throw new NormalizeError('invalid-membership', `nodes[${node.id}].shape`, `variant 'architecture' does not draw shape '${node.shape.kind}'`, "use shape 'rectangle', 'roundedRect' or 'store'");
+      throw new NormalizeError('invalid-membership', `nodes[${node.id}].shape`, `variant 'architecture' does not draw shape '${node.shape.kind}'`, "use shape 'rectangle', 'roundedRect' or 'store'", undefined, authoredItem(authored.nodes, 'nodes', node.id, 'shape'));
     }
-    if (node.shape.kind === 'store' && node.repeat !== undefined) throw new NormalizeError('invalid-membership', `nodes[${node.id}].repeat`, 'a store draws no stacked copies', 'remove repeat, or use a rectangle', undefined, at('repeat'));
+    if (node.shape.kind === 'store' && node.repeat !== undefined) throw new NormalizeError('invalid-membership', `nodes[${node.id}].repeat`, 'a store draws no stacked copies', 'remove repeat, or use a rectangle', undefined, authoredItem(authored.nodes, 'nodes', node.id, 'repeat'));
   }
   for (const edge of data.edges) {
-    if (edge.waypoints) throw new NormalizeError('invalid-membership', `edges[${edge.id}].waypoints`, "variant 'architecture' does not read waypoints", 'the engine routes every edge: use track to line up its nodes');
-    if (edge.routing) throw new NormalizeError('invalid-membership', `edges[${edge.id}].routing`, "variant 'architecture' does not read routing", 'the engine routes every edge: remove routing');
-    if (edge.source.portId || edge.target.portId) throw new NormalizeError('invalid-membership', `edges[${edge.id}]`, "variant 'architecture' does not read portId", 'the engine picks the ports: remove portId');
+    if (edge.waypoints) throw new NormalizeError('invalid-membership', `edges[${edge.id}].waypoints`, "variant 'architecture' does not read waypoints", 'the engine routes every edge: use track to line up its nodes', undefined, authoredItem(authored.edges, 'edges', edge.id, 'waypoints'));
+    if (edge.routing) throw new NormalizeError('invalid-membership', `edges[${edge.id}].routing`, "variant 'architecture' does not read routing", 'the engine routes every edge: remove routing', undefined, authoredItem(authored.edges, 'edges', edge.id, 'routing'));
+    if (edge.source.portId || edge.target.portId) throw new NormalizeError('invalid-membership', `edges[${edge.id}]`, "variant 'architecture' does not read portId", 'the engine picks the ports: remove portId', undefined, authoredItem(authored.edges, 'edges', edge.id));
   }
   // A self-loop sets no order, so it closes no cycle.
   const forward = data.edges.filter((edge) => edge.flow !== 'return' && edge.source.nodeId !== edge.target.nodeId);
@@ -186,14 +191,14 @@ function validateArchitecture(data: NormalizedDiagram, options: DiagramOptions &
   const looped = forward.filter((edge) => waiting.get(edge.source.nodeId)! > 0 && waiting.get(edge.target.nodeId)! > 0);
   if (looped.length > 0) {
     throw new NormalizeError('diagram-cycle', 'edges', `the forward edges ${looped.map((edge) => `'${edge.id}'`).join(', ')} form a cycle`,
-      `set flow: 'return' on the edge that closes the loop, for example '${looped[looped.length - 1]!.id}'`);
+      `set flow: 'return' on the edge that closes the loop, for example '${looped[looped.length - 1]!.id}'`, undefined, ['data', 'edges']);
   }
   const edgeIds = new Set(data.edges.map((edge) => edge.id));
   const channelled = new Set<string>();
   for (const channel of data.channels) {
     for (const id of channel.edgeIds) {
-      if (!edgeIds.has(id)) throw new NormalizeError('diagram-channel-mismatch', `channels[${channel.id}].edgeIds`, `channel '${channel.id}' names the unknown edge '${id}'`, 'name an edge of data.edges');
-      if (channelled.has(id)) throw new NormalizeError('diagram-channel-mismatch', `channels[${channel.id}].edgeIds`, `edge '${id}' is in two channels`, 'keep each edge in one channel');
+      if (!edgeIds.has(id)) throw new NormalizeError('diagram-channel-mismatch', `channels[${channel.id}].edgeIds`, `channel '${channel.id}' names the unknown edge '${id}'`, 'name an edge of data.edges', undefined, ['data', 'channels', data.channels.indexOf(channel), 'edgeIds', channel.edgeIds.indexOf(id)]);
+      if (channelled.has(id)) throw new NormalizeError('diagram-channel-mismatch', `channels[${channel.id}].edgeIds`, `edge '${id}' is in two channels`, 'keep each edge in one channel', undefined, ['data', 'channels', data.channels.indexOf(channel), 'edgeIds']);
       channelled.add(id);
     }
   }
@@ -201,42 +206,44 @@ function validateArchitecture(data: NormalizedDiagram, options: DiagramOptions &
     const edge = data.edges.find((item) => item.id === id)!;
     const other = (end: 'source' | 'target') => data.nodes.find((node) => node.id === edge[end].nodeId)?.groupId;
     const inner = (group: string | undefined, end: 'source' | 'target') => group !== undefined && (ends[end] !== undefined ? groupWithin(data.groups, ends[end]!, group) : groupWithin(data.groups, other(end) ?? '', group));
-    if (inner(ends.source, 'target') || inner(ends.target, 'source')) throw new NormalizeError('invalid-membership', `edges[${id}]`, `edge '${id}' ends on a zone that holds its other end`, 'end it on a node');
-    if (ends.source === undefined ? false : data.groups.find((group) => group.id === ends.source)?.kind === 'policy') throw new NormalizeError('invalid-membership', `edges[${id}]`, 'a policy strip takes no edges', 'end the edge on a zone');
-    if (ends.target === undefined ? false : data.groups.find((group) => group.id === ends.target)?.kind === 'policy') throw new NormalizeError('invalid-membership', `edges[${id}]`, 'a policy strip takes no edges', 'end the edge on a zone');
+    if (inner(ends.source, 'target') || inner(ends.target, 'source')) throw new NormalizeError('invalid-membership', `edges[${id}]`, `edge '${id}' ends on a zone that holds its other end`, 'end it on a node', undefined, authoredItem(authored.edges, 'edges', id));
+    if (ends.source === undefined ? false : data.groups.find((group) => group.id === ends.source)?.kind === 'policy') throw new NormalizeError('invalid-membership', `edges[${id}]`, 'a policy strip takes no edges', 'end the edge on a zone', undefined, authoredItem(authored.edges, 'edges', id, 'source'));
+    if (ends.target === undefined ? false : data.groups.find((group) => group.id === ends.target)?.kind === 'policy') throw new NormalizeError('invalid-membership', `edges[${id}]`, 'a policy strip takes no edges', 'end the edge on a zone', undefined, authoredItem(authored.edges, 'edges', id, 'target'));
   }
   const groupIds = new Set(data.groups.map((group) => group.id));
   const calloutTargets = new Set<string>();
   for (const callout of data.callouts) {
     const target = callout.target;
     const known = 'nodeId' in target ? data.nodes.some((node) => node.id === target.nodeId) : 'edgeId' in target ? edgeIds.has(target.edgeId) : groupIds.has(target.groupId);
-    if (!known) throw new NormalizeError('invalid-membership', `callouts[${callout.id}].target`, `callout '${callout.id}' names an unknown target`, 'name a node, edge or group of this diagram');
+    if (!known) throw new NormalizeError('invalid-membership', `callouts[${callout.id}].target`, `callout '${callout.id}' names an unknown target`, 'name a node, edge or group of this diagram', undefined, ['data', 'callouts', data.callouts.indexOf(callout), 'target']);
     if ('groupId' in target && options.flow === 'lanes' && data.groups.find((group) => group.id === target.groupId)?.kind !== 'policy' && !data.nodes.some((node) => node.groupId === target.groupId)) {
-      throw new NormalizeError('invalid-membership', `callouts[${callout.id}].target`, `callout '${callout.id}' targets empty zone '${target.groupId}', which has no frame in flow 'lanes'`, `add a node to zone '${target.groupId}', or choose another target`);
+      throw new NormalizeError('invalid-membership', `callouts[${callout.id}].target`, `callout '${callout.id}' targets empty zone '${target.groupId}', which has no frame in flow 'lanes'`, `add a node to zone '${target.groupId}', or choose another target`, undefined, ['data', 'callouts', data.callouts.indexOf(callout), 'target']);
     }
     const targetKey = 'nodeId' in target ? `node:${target.nodeId}` : 'edgeId' in target ? `edge:${target.edgeId}` : `group:${target.groupId}`;
-    if (calloutTargets.has(targetKey)) throw new NormalizeError('invalid-membership', `callouts[${callout.id}].target`, `callout '${callout.id}' targets a node, edge or zone that already has a callout`, 'merge the callout text into one callout');
+    if (calloutTargets.has(targetKey)) throw new NormalizeError('invalid-membership', `callouts[${callout.id}].target`, `callout '${callout.id}' targets a node, edge or zone that already has a callout`, 'merge the callout text into one callout', undefined, ['data', 'callouts', data.callouts.indexOf(callout), 'target']);
     calloutTargets.add(targetKey);
   }
 }
 
-function validatePreset(data: NormalizedDiagram, options: DiagramOptions, authoredNodes: DiagramNode[]): void {
+function validatePreset(data: NormalizedDiagram, options: DiagramOptions, authored: DiagramData): void {
   if (options.variant === 'architecture') {
-    validateArchitecture(data, options, authoredNodes);
+    validateArchitecture(data, options, authored);
     return;
   }
-  const architectureOnly = data.nodes.find((node) => node.track !== undefined || node.span !== undefined || node.repeat !== undefined || node.protected !== undefined || node.shape.kind === 'store')?.id
-    ?? data.edges.find((edge) => edge.flow !== undefined)?.id
-    ?? data.groups.find((group) => group.kind !== undefined || group.parentId !== undefined || group.protected !== undefined)?.id
+  const onlyNode = data.nodes.find((node) => node.track !== undefined || node.span !== undefined || node.repeat !== undefined || node.protected !== undefined || node.shape.kind === 'store');
+  const onlyEdge = onlyNode ? undefined : data.edges.find((edge) => edge.flow !== undefined);
+  const onlyGroup = onlyNode || onlyEdge ? undefined : data.groups.find((group) => group.kind !== undefined || group.parentId !== undefined || group.protected !== undefined);
+  const architectureOnly = onlyNode?.id ?? onlyEdge?.id ?? onlyGroup?.id
     ?? (data.channels.length > 0 ? 'channels' : data.callouts.length > 0 ? 'callouts' : data.inset ? 'inset' : undefined);
   if (architectureOnly !== undefined) {
-    throw new NormalizeError('invalid-membership', architectureOnly, `track, span, repeat, protected, shape store, edge flow, group kind, parentId, channels, callouts and inset are read only by variant 'architecture', not '${options.variant}'`, "remove them, or set options.variant to 'architecture'");
+    throw new NormalizeError('invalid-membership', architectureOnly, `track, span, repeat, protected, shape store, edge flow, group kind, parentId, channels, callouts and inset are read only by variant 'architecture', not '${options.variant}'`, "remove them, or set options.variant to 'architecture'", undefined,
+      onlyNode ? authoredItem(authored.nodes, 'nodes', onlyNode.id) : onlyEdge ? authoredItem(authored.edges, 'edges', onlyEdge.id) : onlyGroup ? authoredItem(authored.groups, 'groups', onlyGroup.id) : ['data', architectureOnly]);
   }
   const looped = data.edges.find((edge) => edge.source.nodeId === edge.target.nodeId);
-  if (looped) throw new NormalizeError('invalid-membership', `edges[${looped.id}]`, `self-loops are read only by variant 'architecture', not '${options.variant}'`, 'remove the edge');
+  if (looped) throw new NormalizeError('invalid-membership', `edges[${looped.id}]`, `self-loops are read only by variant 'architecture', not '${options.variant}'`, 'remove the edge', undefined, authoredItem(authored.edges, 'edges', looped.id));
   const membership = data.nodes.filter((node) => node.groupId || node.laneId);
   const requireKinds = () => {
-    const error = diagramKindError(authoredNodes, options);
+    const error = diagramKindError(authored.nodes, options);
     if (error) throw error;
   };
 
@@ -246,6 +253,7 @@ function validatePreset(data: NormalizedDiagram, options: DiagramOptions, author
         'invalid-membership',
         'groups',
         `variant '${options.variant}' reads lane membership, not groups`,
+        undefined, undefined, data.groups.length > 0 ? ['data', 'groups'] : undefined,
       );
     }
     if (data.lanes.length === 0 || data.lanes.some((lane) => lane.orientation !== 'vertical')) {
@@ -253,6 +261,7 @@ function validatePreset(data: NormalizedDiagram, options: DiagramOptions, author
         'invalid-membership',
         'lanes',
         `variant '${options.variant}' requires vertical lanes`,
+        undefined, undefined, ['data', 'lanes'],
       );
     }
     const member = data.nodes.find((node) => !node.laneId);
@@ -261,33 +270,35 @@ function validatePreset(data: NormalizedDiagram, options: DiagramOptions, author
         'invalid-membership',
         `nodes[${member.id}].laneId`,
         `variant '${options.variant}' requires every node to name its phase lane`,
+        undefined, undefined, authoredItem(authored.nodes, 'nodes', member.id, 'laneId'),
       );
     }
     requireKinds();
     if (options.variant === 'roadmap' && !data.nodes.some((node) => node.kind === 'milestone')) {
-      throw new NormalizeError('invalid-roadmap', 'nodes', 'roadmap requires at least one milestone');
+      throw new NormalizeError('invalid-roadmap', 'nodes', 'roadmap requires at least one milestone', undefined, undefined, ['data', 'nodes']);
     }
-    validateMonotonePins(data, options);
+    validateMonotonePins(data, options, authored);
     return;
   }
 
   if (options.variant === 'strategy-house') {
     if (data.lanes.length > 0 || data.nodes.some((node) => node.laneId)) {
-      throw new NormalizeError('invalid-membership', 'lanes', "variant 'strategy-house' reads groups, not lanes");
+      throw new NormalizeError('invalid-membership', 'lanes', "variant 'strategy-house' reads groups, not lanes", undefined, undefined,
+        data.lanes.length > 0 ? ['data', 'lanes'] : undefined);
     }
     const vision = data.nodes.filter((node) => node.kind === 'vision');
     const foundation = data.nodes.filter((node) => node.kind === 'foundation');
     if (vision.length !== 1 || vision[0]!.shape.kind !== 'roof') {
-      throw new NormalizeError('invalid-strategy-house', 'nodes', 'strategy-house requires exactly one roof-shaped vision');
+      throw new NormalizeError('invalid-strategy-house', 'nodes', 'strategy-house requires exactly one roof-shaped vision', undefined, undefined, ['data', 'nodes']);
     }
     if (foundation.length !== 1) {
-      throw new NormalizeError('invalid-strategy-house', 'nodes', 'strategy-house requires exactly one foundation');
+      throw new NormalizeError('invalid-strategy-house', 'nodes', 'strategy-house requires exactly one foundation', undefined, undefined, ['data', 'nodes']);
     }
     if (!data.nodes.some((node) => node.kind === 'initiative') || !data.nodes.some((node) => node.kind === 'enabler')) {
-      throw new NormalizeError('invalid-strategy-house', 'nodes', 'strategy-house requires initiatives and enablers');
+      throw new NormalizeError('invalid-strategy-house', 'nodes', 'strategy-house requires initiatives and enablers', undefined, undefined, ['data', 'nodes']);
     }
     if (data.groups.length === 0) {
-      throw new NormalizeError('invalid-strategy-house', 'groups', 'strategy-house requires objective groups');
+      throw new NormalizeError('invalid-strategy-house', 'groups', 'strategy-house requires objective groups', undefined, undefined, ['data', 'groups']);
     }
     const invalid = data.nodes.find(
       (node) =>
@@ -299,6 +310,7 @@ function validatePreset(data: NormalizedDiagram, options: DiagramOptions, author
         'invalid-membership',
         `nodes[${invalid.id}].groupId`,
         'strategy-house initiatives require an objective group',
+        undefined, undefined, authoredItem(authored.nodes, 'nodes', invalid.id, 'groupId'),
       );
     }
     return;
@@ -309,6 +321,7 @@ function validatePreset(data: NormalizedDiagram, options: DiagramOptions, author
       'invalid-membership',
       `nodes[${membership[0]!.id}]`,
       `variant '${options.variant}' does not read group or lane membership`,
+      undefined, undefined, authoredItem(authored.nodes, 'nodes', membership[0]!.id),
     );
   }
   if (data.lanes.length > 0 || (options.variant !== 'hierarchy' && data.groups.length > 0)) {
@@ -316,6 +329,7 @@ function validatePreset(data: NormalizedDiagram, options: DiagramOptions, author
       'invalid-membership',
       options.variant === 'hierarchy' ? 'lanes' : 'groups',
       `variant '${options.variant}' does not read this membership surface`,
+      undefined, undefined, data.lanes.length > 0 ? ['data', 'lanes'] : ['data', 'groups'],
     );
   }
 
@@ -346,7 +360,7 @@ function validateRootedDag(data: NormalizedDiagram, variant: 'hierarchy' | 'issu
     const at = path.indexOf(id);
     if (at >= 0) {
       throw new NormalizeError('diagram-cycle', 'edges', `${variant} primary graph contains a cycle: ${[...path.slice(at), id].join(' → ')}`,
-        'remove or dot (dash: dotted) one edge of the loop');
+        'remove or dot (dash: dotted) one edge of the loop', undefined, ['data', 'edges']);
     }
     if (visited.has(id)) return;
     path.push(id);
@@ -356,15 +370,15 @@ function validateRootedDag(data: NormalizedDiagram, variant: 'hierarchy' | 'issu
   };
   if (roots.length === 0) [...nodeIds].sort(compareDiagramIds).forEach(visit);
   if (roots.length !== 1) {
-    throw new NormalizeError('invalid-root', 'edges', `${variant} requires one primary root, found ${roots.length}`);
+    throw new NormalizeError('invalid-root', 'edges', `${variant} requires one primary root, found ${roots.length}`, undefined, undefined, ['data', 'edges']);
   }
   visit(roots[0]!);
   if (visited.size !== nodeIds.size) {
-    throw new NormalizeError('invalid-root', 'edges', `${variant} primary graph is disconnected`);
+    throw new NormalizeError('invalid-root', 'edges', `${variant} primary graph is disconnected`, undefined, undefined, ['data', 'edges']);
   }
 }
 
-function validateMonotonePins(data: NormalizedDiagram, options: DiagramOptions): void {
+function validateMonotonePins(data: NormalizedDiagram, options: DiagramOptions, authored: DiagramData): void {
   if (options.variant !== 'roadmap') return;
   const laneOrder = new Map(data.lanes.map((lane, index) => [lane.id, index]));
   const pinned = data.nodes
@@ -383,6 +397,7 @@ function validateMonotonePins(data: NormalizedDiagram, options: DiagramOptions):
         'non-monotone-roadmap',
         `nodes[${pinned[index]!.id}].position`,
         'authored roadmap milestone positions must increase in x and rise monotonically',
+        undefined, undefined, authoredItem(authored.nodes, 'nodes', pinned[index]!.id, 'position'),
       );
     }
   }

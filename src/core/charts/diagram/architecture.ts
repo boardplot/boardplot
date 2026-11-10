@@ -417,7 +417,7 @@ function fallbackArrangement(env: Env): Arrangement {
 }
 
 function refuseTrack(a: string, b: string): never {
-  throw new NormalizeError('diagram-track-conflict', 'nodes', `nodes '${a}' and '${b}' claim one cell`, `give '${b}' another track`);
+  throw new NormalizeError('diagram-track-conflict', 'nodes', `nodes '${a}' and '${b}' claim one cell`, `give '${b}' another track`, undefined, ['data', 'nodes']);
 }
 
 function arrangeColumns(env: Env, units: readonly Unit[], perBand: number, inner: number, cap: number): Arrangement | undefined {
