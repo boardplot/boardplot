@@ -75,10 +75,12 @@ function resolveCut(
     });
     return null;
   }
-  const value =
+  // A computed cut drops the residue of binary arithmetic at 12 significant digits, before it is printed and
+  // applied: the mean of 0.007, 0.003, 0.008 and 0.002 is 0.005, not 0.005000000000000001.
+  const value = Number((
     threshold.stat === 'median'
       ? quadrantMedian(values)
-      : values.reduce((a, v) => a + v, 0) / values.length;
+      : values.reduce((a, v) => a + v, 0) / values.length).toPrecision(12));
   if (!Number.isFinite(value)) {
     nonfinite(value);
     return null;

@@ -551,6 +551,11 @@ function shareValue(share: number | undefined, format: string | undefined, autho
   return derivedPercent(share);
 }
 
+/** A sample size: an authored `n` (values 'percent') exactly; a sum of counts at 12 significant digits, 0.9 and not 0.8999999999999999. */
+function likertBase(base: number, authored: boolean): number {
+  return authored || Number.isInteger(base) ? base : Number(base.toPrecision(12));
+}
+
 function likert(ctx: RecordContext): InteractionRecord[] {
   const data = ctx.request.data as LikertData;
   const options = ctx.request.options as LikertOptions;
@@ -568,7 +573,7 @@ function likert(ctx: RecordContext): InteractionRecord[] {
       // A count of answers says what it counts; a percent value is the response share itself.
       ...(options.values === 'percent' ? {} : { valueLabel: chartString(ctx.request.options, 'responses') }),
       fields: [field('share', chartString(ctx.request.options, 'responseShare'), shareValue(geo.derived.shares[row.id]?.[option.id], options.format, options.values === 'percent')),
-        field('base', chartString(ctx.request.options, 'sampleSize'), row.id in geo.derived.base ? numericValue(geo.derived.base[row.id]) : unavailable(chartString(ctx.request.options, 'sampleSizeMissing')))],
+        field('base', chartString(ctx.request.options, 'sampleSize'), row.id in geo.derived.base ? numericValue(likertBase(geo.derived.base[row.id]!, options.values === 'percent')) : unavailable(chartString(ctx.request.options, 'sampleSizeMissing')))],
     });
   }));
   // A neutral split across the centre line is one answer drawn as two halves

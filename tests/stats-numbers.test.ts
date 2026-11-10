@@ -19,6 +19,11 @@ import type { ParetoOptions, LineOptions, ScatterOptions } from '../src/core/typ
 import type { ChartData, ScatterData } from '../src/core/types/data';
 import { lineOptionsSchema } from '../src/core/charts/line/schema';
 import { claimsForChart } from '../src/core/claims';
+import { summarizeGroup } from '../src/core/charts/box/summary';
+import { interactionRecords } from '../src/core/a11y/records';
+import { interactionValueText } from '../src/core/a11y/valueText';
+import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
+import { requireGeometry } from '../src/core/sizing';
 
 /** Run `fn`, return the refusal it throws (code, path, message). */
 function throwsWith(fn: () => unknown): { code: string; path: string; message: string } {
@@ -480,4 +485,24 @@ it('prints the same range and tornado values for keyed and positional cells', ()
     if (format) expect(keyed.labels.some(label => label.text === '1.3')).toBe(true);
     else expect(keyed.labels.some(label => label.text === '1.25')).toBe(true);
   }
+});
+
+// A computed median printed "−$0.5499999999999972k", a Likert sample size "0.8999999999999999" and a quadrant cut
+// "Mean 0.005000000000000001". The statistics stay exact: six equal observations are no outliers.
+it('prints computed statistics without float residue', () => {
+  const draw = (spec: object) => {
+    const request = resolveChartRequest({ ...spec, options: { size: { width: 960 }, ...(spec as { options?: object }).options } } as never);
+    const geometry = requireGeometry(layoutResolvedRequest(request));
+    return { geometry, records: interactionRecords({ request, geometry, scope: request.scope, claims: [] }) };
+  };
+  const box = draw({ type: 'box', data: { groups: [{ id: 'g', label: 'G', observations: [-75, -75, -75, 73.9, 73.9, 73.9] }] }, options: { unit: '$k' } });
+  expect(interactionValueText(box.records[0]!.value)).toBe('−$0.55k');
+  const likert = draw({ type: 'likert', data: { scale: [{ id: 'd', label: 'Disagree' }, { id: 'n', label: 'Neutral', role: 'neutral' }, { id: 'a', label: 'Agree' }],
+    items: [{ id: 'q', label: 'Statement', values: [0.2, 0.3, 0.4] }] }, options: { values: 'counts' } });
+  expect(new Set(likert.records.flatMap(record => record.fields?.filter(field => field.key === 'base') ?? []).map(field => interactionValueText(field.value)))).toEqual(new Set(['0.9']));
+  const points = [[0.002, 0.007], [0.004, 0.003], [0.007, 0.008], [0.008, 0.002]].map(([x, y], i) => ({ id: `p${i}`, x, y }));
+  const scatter = draw({ type: 'scatter', data: { points }, options: { quadrants: { x: { stat: 'mean' }, y: { stat: 'mean' } } } });
+  expect(scatter.geometry.labels.map(label => label.text)).toContain('Mean 0.005');
+  const same = 0.1 + 0.2;
+  expect(summarizeGroup({ id: 'g', label: 'G', observations: Array(6).fill(same), whiskers: 'tukey' }).beyondWhiskers).toEqual([]);
 });

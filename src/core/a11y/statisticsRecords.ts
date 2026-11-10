@@ -9,7 +9,7 @@ import type { TilemapMarks } from '../charts/tilemap/types';
 import type { ScatterData } from '../types/data';
 import type { OwnerRef } from '../types/cell';
 import { normalizeCell, normalizeScenario } from '../normalize/shared';
-import { cellRecordValue, derivedPercent, makeRecord, numericValue, statedValue, textValue, withoutResidue, type RecordContext } from './recordsShared';
+import { cellRecordValue, derivedPercent, makeRecord, numericValue, statedValue, textValue, type RecordContext } from './recordsShared';
 import { DERIVED_PERCENT_FORMAT, derivedValueText, displayedValueText } from './valueText';
 import { intervalText } from '../format';
 import type { InteractionRecord, InteractionValue } from './types';
@@ -65,11 +65,13 @@ function observations(values: readonly number[], owner: OwnerRef = {}): { owner:
 
 /**
  * A statistic the engine computed (an interpolated quartile, the IQR, a
- * fence) without the residue of binary arithmetic: 186.82500000000002 reads
- * 186.825. A value that equals an observation is authored and stays exact.
+ * fence) without the residue of binary arithmetic, at 12 significant digits of
+ * its own size: 186.82500000000002 reads 186.825 and an interpolated
+ * −0.550000000000004 reads −0.55. A value that equals an observation is
+ * authored and stays exact. The statistic itself (fences, outliers) stays exact.
  */
 function computedValue(value: number | null, observed: ReadonlySet<number>): number | null {
-  return value === null || observed.has(value) ? value : withoutResidue(value);
+  return value === null || observed.has(value) || !Number.isFinite(value) ? value : Number(value.toPrecision(12));
 }
 
 /**
