@@ -19,6 +19,7 @@ import type { ParetoOptions, LineOptions, ScatterOptions } from '../src/core/typ
 import type { ChartData, ScatterData } from '../src/core/types/data';
 import { lineOptionsSchema } from '../src/core/charts/line/schema';
 import { claimsForChart } from '../src/core/claims';
+import { quantileType7 } from '../src/core/stats';
 
 /** Run `fn`, return the refusal it throws (code, path, message). */
 function throwsWith(fn: () => unknown): { code: string; path: string; message: string } {
@@ -480,4 +481,11 @@ it('prints the same range and tornado values for keyed and positional cells', ()
     if (format) expect(keyed.labels.some(label => label.text === '1.3')).toBe(true);
     else expect(keyed.labels.some(label => label.text === '1.25')).toBe(true);
   }
+});
+
+// A box median between -75 and 73.9 printed "-$0.550000000000004k", and a Likert sample size printed "0.30000000000000004".
+it('computes quantiles and Likert bases without float residue', () => {
+  expect(quantileType7([-75, 73.9], 0.5)).toBe(-0.55);
+  const scale = [{ id: 'd', label: 'Disagree' }, { id: 'n', label: 'Neutral', role: 'neutral' as const }, { id: 'a', label: 'Agree' }];
+  expect(layoutLikert({ scale, items: [{ id: 'q', label: 'Statement', values: [0.1, 0.2, 0] }] }, { values: 'counts' }).derived.base.q).toBe(0.3);
 });

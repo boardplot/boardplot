@@ -3,6 +3,7 @@ import { generatedIdWarnings } from '../../schema/generatedColumns';
 import { chartString } from '../../strings/likert';
 import { methodNote, disclosureNote, keepShownNotes } from '../../notes';
 import { structureCount } from '../../structureCounts';
+import { cleanSum } from '../../geometry';
 /**
  * Likert diverging survey (registry type 'likert') — a diverging
  * stacked bar centred on the neutral midpoint.
@@ -449,7 +450,7 @@ export function layoutLikert(
       }
     });
     const counts = raw as number[];
-    const sum = counts.reduce((a, b) => a + b, 0);
+    const sum = cleanSum(counts);
 
     if (percentInput) {
       if (Math.abs(sum - 100) > PERCENT_TOLERANCE + SHARE_EPS) {

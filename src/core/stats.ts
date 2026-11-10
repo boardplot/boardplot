@@ -1,3 +1,5 @@
+import { cleanDiff, cleanFloat } from './geometry';
+
 /**
  * Descriptive statistics shared across the distribution chart family.
  *
@@ -46,10 +48,12 @@ export function quantileType7(sorted: readonly number[], p: number): number {
   const lo = Math.floor(h);
   const base = sorted[lo]!;
   if (lo + 1 >= sorted.length) return base;
-  return base + (h - lo) * (sorted[lo + 1]! - base);
+  const next = sorted[lo + 1]!;
+  // Cleaned at the size of its neighbours: −75 and 73.9 give −0.55, not −0.5500000000000043.
+  return cleanFloat(base + (h - lo) * (next - base), Math.max(Math.abs(base), Math.abs(next)));
 }
 
 /** Interquartile range Q(0.75) - Q(0.25) of an ALREADY ASCENDING sample. */
 export function iqr(sorted: readonly number[]): number {
-  return quantileType7(sorted, 0.75) - quantileType7(sorted, 0.25);
+  return cleanDiff(quantileType7(sorted, 0.75), quantileType7(sorted, 0.25));
 }
