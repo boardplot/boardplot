@@ -237,7 +237,7 @@ export function checkRequest(request, id) {
   if (reading) {
     // A label-hidden warning that names the label reports it too.
     const warned = new Set(geometry.warnings.flatMap((warning) => warning.code !== 'label-hidden' ? []
-      : [...(warning.detail?.hidden ?? []), /^label '([^']+)'/.exec(warning.message ?? '')?.[1]].filter(Boolean)));
+      : [...(warning.detail?.hidden ?? []), warning.detail?.labelId].filter(Boolean)));
     for (const { id, kind } of undrawnLabels(request, geometry, reading)) {
       if (!warned.has(id)) violations.push({ rule: 2, signature: `${kind} ${id.split(':')[0]}`, message: `label ${id} (${kind}) is not drawn, not in reading.omissions and not in a warning` });
     }

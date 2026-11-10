@@ -18,6 +18,7 @@ import { BOARDPLOT_VERSION } from '../src/version';
 import { render } from '../src/cli/render';
 import { runVerb } from '../src/cli/result';
 import { applyRows } from '../src/cli/rows';
+import { collapseLabelHiddenWarnings } from '../src/cli/spec';
 import { measure } from '../src/cli/measure';
 import * as chartRequest from '../src/core/request';
 import { resolveTheme } from '../src/core/theme';
@@ -809,16 +810,17 @@ describe('render and measure on the command line', () => {
   it('prints each warn-level warning on stderr under --quiet, before the written paths', () => {
     const dir = tdir();
     const out = join(dir, 'out');
-    const untitled = { ...SPEC, options: {} };
+    // An untitled pie with a negative slice: the slice warning prints, the title advice does not.
+    const untitled = { type: 'pie', data: { ...SPEC.data, series: [{ id: 'rev', label: 'Revenue', values: [84, -91] }] }, options: {} };
     const result = runCli(['render', writeDoc(dir, 'untitled.json', untitled), '--out', out, '--quiet']);
     expect(result.log).toEqual([JSON.stringify({ ok: true, outputs: [join(out, 'chart.svg')] })]);
     expect(result.error).toEqual([
-      'warning missing-message-title: consulting titles carry the message; this title is missing or generic',
+      "warning pie-negative-value: category 'q2': negative value -91 cannot be a share — slice dropped",
       `Wrote ${join(out, 'chart.svg')}`,
     ]);
     // --out - keeps stderr one JSON object.
     const piped = runCli(['render', writeDoc(dir, 'untitled.json', untitled), '--out', '-', '--quiet']);
-    expect(JSON.parse(piped.error.join('\n')).warnings).toContainEqual(expect.objectContaining({ code: 'missing-message-title' }));
+    expect(JSON.parse(piped.error.join('\n')).warnings).toContainEqual(expect.objectContaining({ code: 'pie-negative-value' }));
   });
 
   it.skipIf(!availableRasterizer())('draws a PNG for --out x.png without --format', () => {
@@ -1165,4 +1167,14 @@ it('discloses the stack palette without changing its paint', () => {
     expect(grid.ok, JSON.stringify(grid.errors)).toBe(true);
     expect(grid.warnings).toContainEqual(expect.objectContaining({ code: 'stack-palette-used', message: expect.stringContaining('[parts]') }));
   }
+});
+
+// The CLI grouped hidden labels by an id it read out of the message text, so a reworded message would have left each hidden label ungrouped.
+it('groups hidden labels by the id the warning carries, not by its wording', () => {
+  const label = (id: string, hidden?: 'collision') => ({ id, kind: 'point', owner: { seriesId: 'sales', pointId: id }, ...(hidden ? { hidden } : {}) });
+  const geo = { labels: [label('p1', 'collision'), label('p2', 'collision'), label('p3')] } as never;
+  const grouped = collapseLabelHiddenWarnings(geo, ['p1', 'p2'].map((id) => ({
+    code: 'label-hidden', severity: 'warn' as const, message: 'no free seat', detail: { labelId: id },
+  })));
+  expect(grouped).toEqual([expect.objectContaining({ code: 'label-hidden', detail: { kind: 'point', seriesId: 'sales', hidden: ['p1', 'p2'], total: 3 } })]);
 });

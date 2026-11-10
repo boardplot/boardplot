@@ -202,11 +202,11 @@ export const fixtures: Fixture<ChartData, ComboOptions>[] = [
     id: 'secondary-unacknowledged',
     title: 'Refusal example: a line on its own scale without an acknowledged secondary axis',
     kind: 'torture',
-    refuses: { code: 'dual-axis' },
+    refuses: { code: 'dual-axis-unacknowledged' },
     data: revenueUnitsData,
     options: {
       // NO secondaryAxis gate: the CLI, MCP, React and the library layout
-      // refuse the chart with the error-severity 'dual-axis' lint.
+      // refuse the chart with the error-severity 'dual-axis-unacknowledged' lint.
       valueAxis: { show: true },
       title: 'Unacknowledged dual axis is refused',
       subtitle: { measure: 'Revenue and units sold', period: '2019–2024' },

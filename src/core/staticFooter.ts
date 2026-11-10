@@ -106,7 +106,7 @@ function staticFooterLayout<D, O extends object, M extends object, DV extends ob
     // static output adds may still need more room; say so instead of drawing
     // a taller SVG silently.
     if (!automatic && expanded !== geometry && expanded.size.height > geometry.size.height + 0.01) {
-      expanded.warnings.push({ code: 'static-footer-grew', severity: 'info',
+      expanded.warnings.push({ code: 'static-footer-grew', severity: 'warn',
         message: `the notes and source need ${round2(expanded.size.height)} px; the canvas grew past the set height of ${geometry.size.height} px`,
         suggest: `set the height to ${Math.ceil(expanded.size.height)} px, or shorten the notes` });
     }

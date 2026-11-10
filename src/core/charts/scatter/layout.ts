@@ -961,7 +961,7 @@ function layoutScatterRun(
   // a disclosed zone caption is an information note, like a disclosed point name.
   const notedIds = new Set([...solved.placed.filter(label => label.noted), ...own].map(label => label.id));
   pushAll(warnings, solved.warnings.map(warning => warning.code === 'label-hidden'
-    && notedIds.has(warning.message.match(/label '([^']+)'/)?.[1] ?? '') ? { ...warning, severity: 'info' as const } : warning));
+    && notedIds.has(String(warning.detail?.labelId)) ? { ...warning, severity: 'info' as const } : warning));
   pushAll(warnings, annotated.warnings);
   const drawn = withUnprintedClaims(assembleScatterGeometry({ env, domain, frame, area: area!, geometry, solved, annotated, occupied, warnings }), unprintedScatterClaims(env, domain, named));
   // The note names these by identity (or counts them): the registry's items and this chart's own names.

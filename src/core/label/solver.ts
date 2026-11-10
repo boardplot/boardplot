@@ -819,6 +819,7 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
           severity: req.priority >= REQUIRED_VALUE_PRIORITY ? 'warn' : 'info',
           message: `label '${req.id}' with text '${req.text}' (priority ${req.priority}, owner ${formatOwner(req.owner)}) was hidden: ${decisionReason}`,
           owner: req.owner,
+          detail: { labelId: req.id },
           suggest:
             slots.length === 0
               ? 'increase chart size or provide a placement candidate'

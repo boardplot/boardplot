@@ -907,7 +907,7 @@ function layoutPass(data: ChartData, options: WaffleOptions, lean = false, oneRo
     hiddenReference.noteLocation = referenceNote ? frame.frame.footnoteNodeIds?.[0] : `legend:${referenceId}`;
     // The notes list names it when a note holds it.
     if (referenceNote) hiddenReference.noted = true;
-    solved.warnings = solved.warnings.filter((warning) => warning.code !== 'label-hidden' || !warning.message.includes("label 'reference'"));
+    solved.warnings = solved.warnings.filter((warning) => warning.code !== 'label-hidden' || warning.detail?.labelId !== 'reference');
   }
   pushAll(warnings, solved.warnings);
   for (const label of solved.placed) {

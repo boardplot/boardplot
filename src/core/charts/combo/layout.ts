@@ -658,8 +658,8 @@ function layoutComboFramePass(
       return layoutComboPass(data, { ...withAuthoredFootnotes(options, [...current, ...note], authored), [UNPRINTED]: { named, runs: prior.runs + 1 } } as ComboOptions, gutterOverride, { area, geometry: marks });
     }
     // A value the note prints is not lost; one it misses still reports.
-    const inNote = new Set(unprinted.filter((l) => prior.named.has(l.id)).map((l) => `label '${l.id}'`));
-    solved.warnings = solved.warnings.filter((w) => !(w.code === 'label-hidden' && [...inNote].some((key) => w.message.startsWith(key))));
+    const inNote = new Set(unprinted.filter((l) => prior.named.has(l.id)).map((l) => l.id));
+    solved.warnings = solved.warnings.filter((w) => !(w.code === 'label-hidden' && inNote.has(String(w.detail?.labelId))));
   }
   // A value the note names that found a seat after all is taken off, so the note never says a drawn value is missing.
   const notedIds = (options as { [UNPRINTED]?: Unprinted })[UNPRINTED]?.named;

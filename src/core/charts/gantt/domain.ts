@@ -293,7 +293,7 @@ function resolveGanttEvents(
     if (day < span.d0Day || day >= span.d1Day) {
       warnings.push({
         code: 'event-out-of-range',
-        severity: 'info',
+        severity: 'warn',
         message: `event '${id}' at '${at}' lies outside the chart span — marker suppressed`,
         owner: { annotationId: id },
       });
