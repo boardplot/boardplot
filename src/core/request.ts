@@ -2,7 +2,7 @@ import { fractionLineWarnings, prepareFractionAnnotations, percentScaleWarnings 
 import { readFormatExamples } from './formatSpec';
 import { colorVariableWarnings } from './colorVariables';
 import { drawnRequest } from './drawnRequest';
-import { PLAN_ONLY, withPlanInputs, copyPlannedValue, repeatedResult, requestKey } from './layoutPlan';
+import { PLAN_ONLY, withPlanInputs, contentKey, copyPlannedValue, repeatedResult } from './layoutPlan';
 import { loadedDeferred } from './deferred';
 import { shownNoteKinds } from './notes';
 import { canonicalChartType, getChart } from './registry';
@@ -194,6 +194,7 @@ export function resolveChartRequest<D, O extends object>(
 ): ResolvedChartRequest<D, O & RequestOptions> {
   const def = getChart(input.type);
   if (!def) throw new NormalizeError('unknown-type', 'type', `unknown chart type '${input.type}'`);
+  const authoredData = input.data;
   // A caller that skipped validation (a per-type React entry) still draws a retired setting as validation does.
   const shaped = normalizeOptionShapes(def.type, input, name => getChart(name)?.type);
   input = shaped.chart;
@@ -255,6 +256,9 @@ export function resolveChartRequest<D, O extends object>(
   const fontMetrics = options.measure ?? defaultMeasurer;
   options.measure = fontMetrics;
   const data = prepared(def, read.data, options) as D;
+  if (data !== authoredData && data !== null && typeof data === 'object' && authoredData !== null && typeof authoredData === 'object') {
+    preparedFrom.set(data, authoredData);
+  }
   const inputWarnings = [...shaped.warnings, ...retired.warnings, ...read.warnings, ...requestInputWarnings(def.type, def.type === 'grid' ? data : input.data, { ...options, annotations: authoredAnnotations },
     input.annotations === undefined ? '/options/annotations' : '/annotations'),
     ...colorVariableWarnings(input.data, options.theme)];
@@ -273,6 +277,12 @@ export function resolveChartRequest<D, O extends object>(
     fixed: resolvedSize.fixed,
   };
 }
+
+/**
+ * The data a prepared copy was made from. A host keeps its data object across calls, while a prepare
+ * step or a format example makes a new copy on each (`refusedProbes`).
+ */
+const preparedFrom = new WeakMap<object, object>();
 
 /**
  * The data a layout reads. A prepare step that finds nothing to prepare (a chart with an
@@ -532,8 +542,10 @@ function widthProbers(request: ResolvedChartRequest, layoutAt: LayoutCall<any, a
       const store = shared && width !== request.size.width ? shared : local;
       if (!store.has(width)) {
         const found = probe(width);
-        // An earlier width's result is only read for its size: keep no scene alive across calls.
-        store.set(width, store === shared && found.result ? { ...found, result: { size: found.result.size } as LayoutResult } : found);
+        if (store === shared && shared.size >= STORED_WIDTHS) shared.delete(shared.keys().next().value!);
+        // An earlier width's result is only read for its size and mode: keep no scene alive across calls.
+        store.set(width, store === shared && found.result
+          ? { ...found, result: { size: found.result.size, mode: (found.result as Geometry).mode } as LayoutResult } : found);
       }
       return store.get(width)!;
     };
@@ -657,28 +669,44 @@ const TYPE_CLASS_STEPS = [720, WIDE_CANVAS_MIN_WIDTH] as const;
  * pinned height keeps the pair.
  */
 function drawnAdvice(request: ResolvedChartRequest, result: LayoutResult, layoutAt: LayoutCall<any, any, any>): LayoutResult {
-  // A story is laid out only once its layer loads, so a stored probe of a story request can keep the plain chart's size.
-  const known = result.refused && !request.fixed.height && result.warnings[0]?.code === 'size-below-floor'
-    && !(request.options as { story?: unknown }).story ? refusedProbes(request) : undefined;
-  return advisedRefusal(result, advisedWidth(request, result, layoutAt, known));
+  if (!result.refused) return result;
+  const advised = advisedRefusal(result, advisedWidth(request, result, () => widthProbers(request, layoutAt, refusalProbes(request, result)).any));
+  // The advice keeps the asked size and names a wider width, so the smaller-class attempt advice made holds for it too.
+  const step = classSteps.get(result);
+  if (step && advised !== result) classSteps.set(advised, step);
+  return advised;
+}
+
+/**
+ * The stored probes of an open-height size refusal, which render advice and a measure of the same request
+ * share. A story is laid out only once its layer loads, so a stored probe of a story request can keep the
+ * plain chart's size. `verify` marks measure's own layouts (VERIFY_ADVICE), which a table lays out otherwise.
+ */
+function refusalProbes(request: ResolvedChartRequest, result: LayoutResult, verify = false): Map<number, WidthProbe> | undefined {
+  return result.refused && !request.fixed.height && result.warnings[0]?.code === 'size-below-floor'
+    && !(request.options as { story?: unknown }).story ? refusedProbes(request, verify) : undefined;
 }
 
 const refusedSearches = new WeakMap<object, Map<string, Map<number, WidthProbe>>>();
+const STORED_WIDTHS = 64;
 
 /**
  * A probe at a width depends on the request without its size, so a host that renders a refused request
  * again at another width (a container that resizes under the floor) reuses the widths the last search drew.
- * ponytail: 4 requests per data object; a new one replaces the oldest.
+ * ponytail: 4 requests per data object and STORED_WIDTHS widths per request; a new one replaces the oldest.
  */
-function refusedProbes(request: ResolvedChartRequest): Map<number, WidthProbe> | undefined {
+function refusedProbes(request: ResolvedChartRequest, verify: boolean): Map<number, WidthProbe> | undefined {
   if (request.data === null || typeof request.data !== 'object') return undefined;
   const { size: _size, ...options } = request.options as RequestOptions;
   const { type, theme, target, fixed, inputWarnings } = request;
   // The static footer changes a chart's size once a static entry links it.
   const footer = loadedDeferred('footer') !== undefined;
-  const key = withPlanInputs(() => requestKey(request.data as object, options, { type, theme, target, fixed, inputWarnings, footer }));
-  let byKey = refusedSearches.get(request.data);
-  if (!byKey) refusedSearches.set(request.data, byKey = new Map());
+  // A prepared copy is new on each call: the store belongs to the data it was made from. The key holds the
+  // content of the data the layout reads, so an edit of either object lays out again.
+  const owner = preparedFrom.get(request.data) ?? request.data;
+  const key = withPlanInputs(() => contentKey(request.data as object, options, { type, theme, target, fixed, inputWarnings, footer, verify }));
+  let byKey = refusedSearches.get(owner);
+  if (!byKey) refusedSearches.set(owner, byKey = new Map());
   if (byKey.size >= 4 && !byKey.has(key)) byKey.delete(byKey.keys().next().value!);
   let probes = byKey.get(key);
   if (!probes) byKey.set(key, probes = new Map());
@@ -701,13 +729,13 @@ function advisedRefusal(result: LayoutResult, found: { width: number; probe: Lay
 }
 
 /** The width an open-height size refusal names: where the request draws from, searched up from the width the layout named. */
-function advisedWidth(request: ResolvedChartRequest, result: LayoutResult, layoutAt: LayoutCall<any, any, any>, known?: Map<number, WidthProbe>): { width: number; probe: LayoutResult } | undefined {
+function advisedWidth(request: ResolvedChartRequest, result: LayoutResult, any: () => (width: number) => WidthProbe): { width: number; probe: LayoutResult } | undefined {
   const finding = result.refused ? result.warnings[0] : undefined;
   const need = finding?.code === 'size-below-floor' ? finding.expected?.minimum as Size | undefined : undefined;
   if (!result.refused || !need || request.fixed.height || need.width <= result.size.width) return undefined;
   // Drawn in the next smaller type class at the asked width: there is nothing to advise.
   if (smallerClass(request, result)) return undefined;
-  return drawsFrom(widthProbers(request, layoutAt, known).any, need.width, Math.floor(result.size.width), Infinity, true);
+  return drawsFrom(any(), need.width, Math.floor(result.size.width), Infinity, true);
 }
 
 /** Grid children use the registered layout directly, so request diagnostics walk their authored input here. */
@@ -881,7 +909,7 @@ function measuredPlotAdvice(request: ResolvedChartRequest, result: LayoutResult,
 }
 
 function measureWithLayout(request: ResolvedChartRequest, result: LayoutResult,
-  layoutAt: LayoutCall<any, any, any>,
+  layoutAt: LayoutCall<any, any, any>, verify = false,
 ): ChartMeasurement {
   measuredPlotAdvice(request, result, layoutAt);
   const def = getChart(request.type);
@@ -948,7 +976,8 @@ function measureWithLayout(request: ResolvedChartRequest, result: LayoutResult,
   // chart, searched from the asked width or that floor, whichever is wider. The pair grows to the
   // height drawn there, so the size a refusal names draws too.
   const staticMinWidth = def === undefined ? 0 : declaredSizing(def, request.options).minWidth;
-  const probers = widthProbers(request, layoutAt);
+  // A refusal shares its probes with render advice: a render, then a measure of the same request, lays out a width once.
+  const probers = widthProbers(request, layoutAt, openWidth ? refusalProbes(request, result, verify) : undefined);
   let fullFrom = Infinity;
   if (openWidth) {
     const full = drawsFrom(probers.full, Math.max(request.size.width, sizing.minWidth), staticMinWidth - 1);
@@ -973,7 +1002,7 @@ function measureWithLayout(request: ResolvedChartRequest, result: LayoutResult,
   // Keep the width-specific height lazy. A caller that does not read it needs no extra layouts.
   const atWidth = Math.max(request.size.width, sizing.minWidth);
   // The one width a size refusal at an open height names, as render names it.
-  const advised = openWidth ? advisedWidth(request, result, layoutAt) : undefined;
+  const advised = openWidth ? advisedWidth(request, result, () => probers.any) : undefined;
   let atHeight: number | undefined;
   // The compact floor is reported only where this spec draws: the least height that draws at the
   // compact width, which the compact refusal there names. A spec that draws nowhere at that width
@@ -1129,20 +1158,20 @@ export function measureResolvedRequest(request: ResolvedChartRequest): ChartMeas
     const stepped = steppedType(request, first, steppedRequest => { layoutAt = open(steppedRequest); return layoutAt(steppedRequest.options); });
     const drawnBy = (opened: ResolvedChartRequest) => open(opened)(opened.options);
     const fitted = widthsGiveWay(request, first, drawnBy);
-    if (fitted) return measureWithLayout(fitted[0], fitted[1], open(fitted[0]));
+    if (fitted) return measureWithLayout(fitted[0], fitted[1], open(fitted[0]), true);
     if (stepped) [asked, first] = stepped;
     const plainRequest = withoutAskedNotes(asked, first);
     if (plainRequest) {
       const plainAt = open(plainRequest);
       const plain = plainAt(plainRequest.options);
-      if (!plain.refused) return measureWithLayout(plainRequest, askedNotesOff(plain, first), plainAt);
+      if (!plain.refused) return measureWithLayout(plainRequest, askedNotesOff(plain, first), plainAt, true);
     }
     const unchangedTable = (request.type === 'table' || request.type === 'dimswitch') && asked === request && first === initial;
     const fittedLate = unchangedTable ? undefined : widthsGiveWay(asked, first, drawnBy);
-    if (fittedLate) return measureWithLayout(fittedLate[0], fittedLate[1], open(fittedLate[0]));
+    if (fittedLate) return measureWithLayout(fittedLate[0], fittedLate[1], open(fittedLate[0]), true);
     // The same class step as layoutResolvedRequest, so measure does not refuse a chart that render draws.
     const smaller = smallerClass(asked, first, drawnBy);
-    return measureWithLayout(asked, smaller ?? first, layoutAt);
+    return measureWithLayout(asked, smaller ?? first, layoutAt, true);
   } finally { for (const run of runs) run.finish(); }
 }
 
