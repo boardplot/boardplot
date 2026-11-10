@@ -345,26 +345,306 @@ describe('published option behaviour census', () => {
     valueTableEmphasis: false,
   };
 
-  /** Options | companion settings | reason. Applied to both renders. */
-  const COMPANIONS: Record<string, { options: Options; reason: string }> = {
-    'pyramid.labelPosition': { options: { size: { width: 960, height: 900 } }, reason: 'The representative fixture has eighteen rows; its default bars are too short for inside values.' },
-    'bar.sharesOfOneWhole': { options: { variant: 'stacked' }, reason: 'Only stacks have parts of one whole.' },
-    'column.sharesOfOneWhole': { options: { variant: 'stacked' }, reason: 'Only stacks have parts of one whole.' },
+  type Probe = { fixture?: string; value?: unknown; options?: Options; data?: (data: any) => unknown; reason?: string };
+  /**
+   * Type.option | the input that shows the option. fixture replaces the representative
+   * fixture, value replaces the census value, options go into both renders, and data
+   * changes the fixture data of both renders. Prefer a shipped fixture over a data change.
+   */
+  const PROBES: Record<string, Probe> = {
+    'box.annotations': { fixture: 'dated-median-growth', value: [{ id: 'growth', kind: 'diff', from: 'before', to: 'after' }] },
+    'bullet.annotations': { fixture: 'annual-orders', value: [{ id: 'growth', kind: 'diff', from: 'fy21', to: 'fy23' }] },
+    'likert.annotations': { fixture: 'dated-survey-comparison', value: [{ id: 'growth', kind: 'diff', from: { categoryId: 'before', seriesId: 'a' }, to: { categoryId: 'after', seriesId: 'a' } }] },
+    'pvm.annotations': { fixture: 'dated-revenue-growth', value: [{ id: 'growth', kind: 'diff', from: 'prior', to: 'current' }] },
+    'pyramid.annotations': { fixture: 'dated-population-comparison', value: [{ id: 'growth', kind: 'diff', from: { categoryId: 'young', seriesId: 'before' }, to: { categoryId: 'young', seriesId: 'after' } }] },
+    'scatter.annotations': { fixture: 'log-y-under-a-decade', value: [{ kind: 'valueLine', value: 50, label: 'Census annotation' }] },
+    'cohort.averages': { fixture: 'saas-logo-retention', value: 'weighted' },
+    'bar.axisTitles': { fixture: 'valuation-football-field', value: { primary: 'census' } },
+    'bullet.axisTitles': { fixture: 'sparse-targets-overshoot', value: { primary: 'Revenue, $m census' } },
+    'histogram.axisTitles': { fixture: 'bimodal-with-far-outlier', value: { y: 'census' } },
+    'variance.axisTitles': { fixture: 'all-negative-deltas', value: { primary: 'ΔPL, $m census' } },
+    'bar.belowMinimum': { fixture: 'single-category', options: { target: 'slide', size: { width: 300, height: 200 } } },
+    'bartable.belowMinimum': { options: { size: { width: 320 } } },
+    'box.belowMinimum': { fixture: 'cycle-time-by-team', options: { target: 'slide' } },
+    'butterfly.belowMinimum': { fixture: 'period-comparisons', options: { target: 'slide', size: { width: 400, height: 225 } } },
+    'cohort.belowMinimum': { options: { size: { width: 320 } } },
+    'column.belowMinimum': { options: { size: { width: 320 } } },
+    'combo.belowMinimum': { options: { size: { width: 320 } } },
+    'dimswitch.belowMinimum': { options: { size: { width: 320 } } },
+    'dot.belowMinimum': { options: { size: { width: 320 } } },
+    'funnel.belowMinimum': { fixture: 'annual-cohort-retention', options: { size: { width: 320 } } },
+    'gantt.belowMinimum': { fixture: 'product-launch', options: { size: { width: 320 } } },
+    'grid.belowMinimum': { fixture: 'assessment-map', options: { size: { width: 320 } } },
+    'heatmap.belowMinimum': { options: { size: { width: 600, height: 120 } } },
+    'histogram.belowMinimum': { options: { size: { width: 320 } } },
+    'likert.belowMinimum': { fixture: 'twelve-statements-slide' },
+    'line.belowMinimum': { options: { size: { width: 320 } } },
+    'pareto.belowMinimum': { fixture: 'torture-pareto-flat', options: { size: { width: 330, height: 250 } } },
+    'pie.belowMinimum': { fixture: 'doughnut-device-revenue', options: { size: { width: 250, height: 400 } } },
+    'pvm.belowMinimum': { fixture: 'named-periods-and-ranges', options: { target: 'slide', size: { width: 300, height: 200 } } },
+    'pyramid.belowMinimum': { fixture: 'column-overrides', options: { target: 'slide', size: { width: 400, height: 225 } } },
+    'scatter.belowMinimum': { options: { size: { width: 320 } } },
+    'slope.belowMinimum': { fixture: 'cell-value-label', options: { target: 'slide', size: { width: 300, height: 200 } } },
+    'table.belowMinimum': { fixture: 'table-status-square' },
+    'tilemap.belowMinimum': { fixture: 'us-state-tile-grid-wide-slot' },
+    'treemap.belowMinimum': { fixture: 'growth-rect', options: { size: { width: 600, height: 300 } } },
+    'variance.belowMinimum': { fixture: 'authored-relative-decimals', options: { target: 'slide', size: { width: 300, height: 200 } } },
+    'waffle.belowMinimum': { options: { size: { width: 200 } } },
+    'waterfall.belowMinimum': { fixture: 'single-delta', options: { target: 'slide', size: { width: 300, height: 200 } } },
+    'waterfall.bracketRow': { fixture: 'step-brackets', value: 'span' },
+    'heatmap.bubble': { fixture: 'survey-journey-bubbles', value: { levels: ['Low', 'Medium', 'High'], sizeLabel: 'Census importance', colorLabel: 'Expectations exceeded, % of respondents' } },
+    'line.bump': { fixture: 'brand-share-bump', value: { direction: 'lowerIsBetter' } },
+    'waffle.cellNote': { fixture: 'coarse-grid-cell-note', value: 'none', options: { notes: { show: ['disclosure'] } } },
+    'gantt.colHeaders': { fixture: 'transformation-program', value: ['Owner census'] },
+    'bar.colorblindSafe': { fixture: 'option-sign-color' },
+    'butterfly.colorblindSafe': { options: { annotations: [{ kind: 'delta', at: { categoryId: 'c2', seriesId: 'prodB' }, vs: { categoryId: 'c2', seriesId: 'prodA' } }, { kind: 'note', at: 'c1', text: 'Census note', status: 'bad' }] } },
     'choropleth.colorblindSafe': { options: { scale: { kind: 'diverging', midpoint: 0, polarity: 'higherIsBetter' } }, reason: 'Needs two scale poles.' },
+    'column.colorblindSafe': { fixture: 'actuals-forecast-operating-rate' },
+    'combo.colorblindSafe': { fixture: 'weekly-events-lane' },
+    'dot.colorblindSafe': { fixture: 'share-shift-arrow' },
+    'funnel.colorblindSafe': { fixture: 'ramp-outcomes' },
+    'gantt.colorblindSafe': { fixture: 'transformation-program' },
+    'heatmap.colorblindSafe': { fixture: 'regional-monthly-performance' },
+    'mekko.colorblindSafe': { fixture: 'bar-mekko-profit-pool' },
+    'pareto.colorblindSafe': { options: { annotations: [{ id: 'growth', kind: 'cagr', from: 'fy21', to: 'fy24' }, { kind: 'note', at: 'fy21', text: 'Census note', status: 'bad' }] } },
+    'pie.colorblindSafe': { options: { annotations: [{ kind: 'note', at: 'pop', text: 'Census note', status: 'bad' }] } },
+    'pyramid.colorblindSafe': { options: { annotations: [{ kind: 'note', at: 'a0', text: 'Census note', status: 'bad' }] } },
+    'sankey.colorblindSafe': { fixture: 'sales-stages' },
+    'scatter.colorblindSafe': { fixture: 'negative-quadrants' },
+    'slope.colorblindSafe': { fixture: 'diverging-regions' },
+    'sparkline.colorblindSafe': { fixture: 'reference-inside-data' },
     'tilemap.colorblindSafe': { options: { scale: { kind: 'diverging', midpoint: 0, polarity: 'higherIsBetter' } }, reason: 'Needs two scale poles.' },
-    'cohort.labels': { options: { variant: 'heatmap' }, reason: 'Exhibit variants have a fixed label set.' },
-    'cohort.sort': { options: { variant: 'heatmap' }, reason: 'Only the heatmap warns that it keeps cohort order.' },
-    'dimswitch.strings': { options: { source: 'Census' }, reason: 'The probe renames the word before a source.' },
-    'table.lastTrackFlex': { options: { rowExtent: 'tracks', size: { width: 1400 } }, reason: 'Only tracks with spare width have a last track to grow.' },
-    'cohort.steps': { options: { variant: 'stepped', formatScope: 'classic' }, reason: 'Only absolute stepped classes read steps.' },
+    'pie.colors': { fixture: 'doughnut-device-revenue', value: 'sequential' },
+    'kpi.comparisons': { fixture: 'dual-compare', value: 'text' },
+    'dimswitch.driverTones': { fixture: 'statement' },
+    'table.driverTones': { fixture: 'driver-tones-grouped' },
+    'line.endLabelPlacement': { fixture: 'brand-share-bump', value: 'gutter' },
+    'column.events': { fixture: 'weekly-events-lane', value: { placement: 'key', rows: 1, groups: [{ id: 'stockout', label: 'Out of stock', tone: 'bad', glyph: 'triangle' }, { id: 'launch', label: 'Launch', tone: 'good', glyph: 'dot' }] } },
+    'combo.events': { fixture: 'weekly-events-lane', value: { placement: 'key', groups: [{ id: 'stockout', label: 'Out of stock', tone: 'bad', glyph: 'triangle' }, { id: 'launch', label: 'Launch', tone: 'good', glyph: 'dot' }] } },
+    'line.events': { fixture: 'era-event-markers', value: { placement: 'key', groups: [{ id: 'measurement', label: 'Measurement', tone: 'neutral', glyph: 'square' }, { id: 'pricing', label: 'Pricing', tone: 'bad', glyph: 'triangle' }] } },
     'cohort.figures': { options: { variant: 'stepped' }, reason: 'Only stepped fills can stop their numbers.' },
-    'table.figures': { options: { encodings: { actual: 'heat' } }, reason: 'Figures can be hidden only on a heat lane.' },
     'dimswitch.figures': { options: { encodings: { range: 'heat' } }, reason: 'Figures can be hidden only on a heat lane.' },
+    'table.figures': { options: { encodings: { actual: 'heat' } }, reason: 'Figures can be hidden only on a heat lane.' },
+    'dimswitch.fitFormats': { fixture: 'sheet', value: false, options: { size: { width: 1400 } } },
+    'table.fitFormats': { fixture: 'fit-formats-narrow-tracks', value: false },
+    'bar.focus': { fixture: 'valuation-football-field', value: { owner: { categoryId: 'dcf', seriesId: 'equity-value' } } },
+    'bartable.focus': { value: { owner: { categoryId: 'co', colId: 'n' } } },
+    'cohort.focus': { fixture: 'saas-logo-retention', value: { owner: { categoryId: 't3' } } },
+    'combo.focus': { value: { owner: { seriesId: 'units', categoryId: '2024' } } },
+    'gantt.focus': { value: { owner: { annotationId: 'sc-2' } } },
+    'heatmap.focus': { value: { owner: { categoryId: 'one' } } },
+    'kpi.focus': { value: { owner: { categoryId: 'kpi', segmentId: 'delta' } } },
+    'likert.focus': { value: { owner: { categoryId: 'growth' } } },
+    'pareto.focus': { value: { owner: { seriesId: 'pareto:value' } } },
+    'pie.focus': { value: { owner: { seriesId: 'revenue', categoryId: 'hiphop' } } },
+    'status.focus': { value: { owner: { categoryId: '2021-03' } } },
+    'treemap.focus': { value: { owner: { seriesId: 'platforms', categoryId: 'cloud-hosting' } } },
+    'waffle.focus': { fixture: 'two-panels', value: { owner: { categoryId: 'rural' } } },
+    'bullet.format': { fixture: 'exec-kpi-panel' },
+    'kpi.format': { fixture: 'value-only' },
+    'status.format': { fixture: 'status-with-values', value: '0.000', data: d => ({ ...d, cells: d.cells.map((c: object) => ({ ...c, value: 97.5 })) }) },
+    'table.format': { fixture: 'management-report' },
+    'table.frameFill': { value: 'none', options: { size: { width: 1400 } } },
+    'dimswitch.groupGround': { fixture: 'by-member', value: 'always' },
+    'table.groupGround': { fixture: 'management-report', value: 'always' },
+    'bar.hatchStrength': { fixture: 'stacked-scenario-comparison-horizontal' },
+    'butterfly.hatchStrength': { data: d => ({ ...d, series: d.series.map((s: { id: string }) => ({ ...s, scenario: 'FC' })) }) },
+    'choropleth.hatchStrength': { fixture: 'world-all-null' },
+    'combo.hatchStrength': { fixture: 'smooth-forecast-overlay' },
+    'funnel.hatchStrength': { data: d => ({ ...d, series: d.series.map((s: { id: string }) => ({ ...s, scenario: 'FC' })) }) },
+    'grid.hatchStrength': { fixture: 'stacked-plus-dpy-forecast' },
+    'heatmap.hatchStrength': { fixture: 'survey-journey-bubbles' },
+    'line.hatchStrength': { fixture: 'stacked-area-services-growth' },
+    'mekko.hatchStrength': { data: d => ({ ...d, series: d.series.map((s: { id: string }) => ({ ...s, scenario: 'FC' })) }) },
+    'slope.hatchStrength': { fixture: 'diverging-team-engagement' },
+    'status.hatchStrength': { fixture: 'programme-rollout-rag' },
+    'bartable.heightFill': { options: { size: { width: 900, height: 900 } }, reason: 'Only a pinned height has spare height to fill.' },
+    'diagram.heightFill': { options: { size: { width: 900, height: 900 } }, reason: 'Only a set height has spare height to fill.' },
     'dimswitch.heightFill': { options: { size: { width: 900, height: 900 } }, reason: 'Only a pinned height has spare height to fill.' },
     'table.heightFill': { options: { size: { width: 900, height: 900 } }, reason: 'Only a pinned height has spare height to fill.' },
-    'bartable.heightFill': { options: { size: { width: 900, height: 900 } }, reason: 'Only a pinned height has spare height to fill.' },
     'waffle.heightFill': { options: { target: 'slide', size: { width: 1184, height: 528 } }, reason: 'Only a pinned height has spare height to fill.' },
-    'diagram.heightFill': { options: { size: { width: 900, height: 900 } }, reason: 'Only a set height has spare height to fill.' },
+    'mekko.highlight': { value: 'alpha' },
+    'slope.highlight': { value: 'software-a' },
+    'line.highlightMode': { fixture: 'multiline-arr-endpoint-cagr', value: 'fade' },
+    'dimswitch.inlineVisibility': { value: { change: false } },
+    'table.inlineVisibility': { fixture: 'steering-table-v2', value: { mom: false, yoy: true, share: true } },
+    'bartable.labelDensity': { fixture: 'single-panel' },
+    'box.labelDensity': { fixture: 'cycle-time-by-team' },
+    'grid.labelDensity': { fixture: 'metric-stack-volume' },
+    'heatmap.labelDensity': { fixture: 'regional-monthly-performance' },
+    'line.labelDensity': { fixture: 'stacked100-area-revenue-mix' },
+    'status.labelDensity': { value: 'full', options: { size: { width: 320 } } },
+    'variance.labelDensity': { fixture: 'integrated-fc-caps' },
+    'bar.labelPlacements': { fixture: 'valuation-football-field', value: { 'category:analysts': 'insideCenter' } },
+    'bartable.labelPlacements': { value: { 'cell:n:co': 'insideCenter' } },
+    'box.labelPlacements': { value: { 'boxN:benelux': 'insideCenter' } },
+    'bullet.labelPlacements': { value: { 'header:1:target': 'insideCenter' } },
+    'butterfly.labelPlacements': { value: { 'category:c2': 'insideCenter' } },
+    'choropleth.labelPlacements': { value: { 'category:DE-BY': 'insideCenter' } },
+    'cohort.labelPlacements': { value: { 'cohort-header-label': 'insideCenter' } },
+    'column.labelPlacements': { value: { 'category:fy27': 'insideCenter' } },
+    'combo.labelPlacements': { value: { 'point:units:2019': 'left' } },
+    'dot.labelPlacements': { value: { 'category:central': 'insideCenter' } },
+    'funnel.labelPlacements': { value: { 'category:leads': 'insideCenter' } },
+    'gantt.labelPlacements': { value: { 'event:sc-2': 'insideCenter' } },
+    'grid.labelPlacements': { fixture: 'metric-stack-volume', value: { 'completed:arrow': 'insideCenter' } },
+    'heatmap.labelPlacements': { value: { 'category:one': 'insideCenter' } },
+    'histogram.labelPlacements': { value: { 'point:count:bin0': 'insideEnd' } },
+    'kpi.labelPlacements': { value: { 'category:label': 'insideCenter' } },
+    'likert.labelPlacements': { value: { 'grandTotal:growth': 'insideEnd' } },
+    'line.labelPlacements': { value: { 'ratioTier:operating-rate:caption': 'insideCenter' } },
+    'mekko.labelPlacements': { value: { 'total:americas': 'insideCenter' } },
+    'pareto.labelPlacements': { value: { 'axis:primary:title': 'insideCenter' } },
+    'pie.labelPlacements': { value: { 'outsidePie:revenue:hiphop': 'insideCenter' } },
+    'pvm.labelPlacements': { value: { 'total:current': 'insideEnd' } },
+    'pyramid.labelPlacements': { value: { 'category:a10': 'insideCenter' } },
+    'sankey.labelPlacements': { value: { 'stage:outcome': 'insideCenter' } },
+    'scatter.labelPlacements': { value: { 'point:j': 'above' } },
+    'slope.labelPlacements': { value: { 'change:brindlevo': 'insideCenter' } },
+    'status.labelPlacements': { value: { 'category:2021-03': 'insideCenter' } },
+    'treemap.labelPlacements': { value: { 'item:cloud-hosting': 'insideCenter' } },
+    'variance.labelPlacements': { value: { 'point:dach': 'insideEnd' } },
+    'waffle.labelPlacements': { fixture: 'two-panels', value: { 'total:urban': 'insideCenter' } },
+    'waterfall.labelPlacements': { value: { 'total:fy21': 'insideEnd' } },
+    'pyramid.labelPosition': { options: { size: { width: 960, height: 900 } }, reason: 'The representative fixture has eighteen rows; its default bars are too short for inside values.' },
+    'choropleth.labelRegions': { fixture: 'world-inflation', value: ['AE', 'AF'] },
+    'cohort.labels': { options: { variant: 'heatmap' }, reason: 'Exhibit variants have a fixed label set.' },
+    'heatmap.labels': { fixture: 'regional-monthly-performance' },
+    'status.labels': { fixture: 'review-status-legend-none' },
+    'dimswitch.lastTrackFlex': { value: true, options: { rowExtent: 'tracks', size: { width: 375 } }, reason: 'Only tracks with spare width have a last track to grow.' },
+    'table.lastTrackFlex': { options: { rowExtent: 'tracks', size: { width: 1400 } }, reason: 'Only tracks with spare width have a last track to grow.' },
+    'bartable.legend': { value: 'bottom' },
+    'cohort.legend': { fixture: 'retention-stepped-column', value: 'none' },
+    'column.legend': { value: 'bottom' },
+    'combo.legend': { fixture: 'stacked-shares-sum' },
+    'dot.legend': { value: 'bottom' },
+    'status.legend': { value: 'bottom' },
+    'table.legend': { fixture: 'fatigue-cell-encodings', value: 'bottom' },
+    'tilemap.legend': { value: 'bottom' },
+    'treemap.legend': { value: 'bottom' },
+    'variance.legend': { value: 'bottom' },
+    'waffle.legend': { fixture: 'stacked-segments' },
+    'waterfall.legend': { value: 'bottom' },
+    'dimswitch.maxGrowth': { value: 1, options: { size: { width: 375 } } },
+    'table.maxGrowth': { value: 9.5, options: { size: { width: 1400 } } },
+    'bar.methodNote': { fixture: 'valuation-football-field' },
+    'choropleth.methodNote': { fixture: 'world-inflation' },
+    'line.methodNote': { fixture: 'stacked100-area-mixed-sign-fail-closed' },
+    'dimswitch.minimumSample': { fixture: 'multiple-sample-bases', value: { orders: 500 } },
+    'heatmap.missing': { fixture: 'missing-cells', value: 'blank' },
+    'variance.missingMark': { fixture: 'missing-prior-dash', value: 'none' },
+    'butterfly.negatives': { fixture: 'negatives-own-scale', value: 'magnitude' },
+    'dimswitch.nulls': { value: 'blank', data: d => { d.facts[5].sums.orders = null; d.facts[6].sums.rev = null; return d; } },
+    'table.nulls': { value: 'blank' },
+    'dimswitch.order': { value: { by: 'revenue', desc: false }, reason: 'The sheet order is already descending by revenue.' },
+    'treemap.order': { fixture: 'growth-circle', value: 'sheet' },
+    'column.othersShade': { fixture: 'ordered-ramp-rest-apart', value: 'quietest' },
+    'line.othersShade': { fixture: 'ordered-ramp-rest-apart', value: 'quietest' },
+    'pie.othersShade': { fixture: 'others-shade-apart', value: 'quietest', options: { theme: { preset: 'standard', overrides: { color: { othersMark: '#888888' } } } } },
+    'choropleth.overlayMeasure': { fixture: 'world-footprint', value: 'Market activation progress, % census' },
+    'tilemap.overlayMeasure': { fixture: 'us-states-overlay-tones', value: 'Rollout progress, % census' },
+    'choropleth.overlayTones': { fixture: 'world-footprint', value: { warn: 'Activation behind plan census' } },
+    'tilemap.overlayTones': { fixture: 'us-states-overlay-tones', value: { good: 'Rollout ahead census', bad: 'Rollout stalled', warn: 'Rollout behind', neutral: 'Not rated', info: 'Pilot state' } },
+    'line.pointLabelSide': { fixture: 'point-emphasis', reason: 'The usual fixture has several series; only a single line shows the side.' },
+    'bar.referenceStyle': { fixture: 'topn-others', value: 'line' },
+    'column.referenceStyle': { fixture: 'integrated-stacked-variance', value: 'line' },
+    'combo.referenceStyle': { fixture: 'option-reference-line', value: 'tick' },
+    'bar.referenceTick': { fixture: 'topn-others', value: { width: 7 } },
+    'column.referenceTick': { fixture: 'plan-ticks-delta-callout', value: { position: 'front' } },
+    'combo.referenceTick': { fixture: 'option-reference-tick-highlight', value: { width: 8, color: 'highlight' } },
+    'grid.reflow': { fixture: 'nine-regions-reflow', value: false },
+    'bar.rounding': { fixture: 'stacked100-slivers', value: 'nearest' },
+    'column.rounding': { fixture: 'stacked-series-cagr', value: 'nearest' },
+    'combo.rounding': { fixture: 'stacked-shares-sum', value: 'nearest' },
+    'line.rounding': { fixture: 'stacked100-area-revenue-mix', value: 'nearest' },
+    'pie.rounding': { fixture: 'ten-tiny-slices', value: 'nearest' },
+    'table.rowExtent': { value: 'tracks', options: { size: { width: 1400 } } },
+    'table.rowLabelLines': { fixture: 'monthly-kpi-sections' },
+    'dot.rowLabels': { fixture: 'share-shift-dumbbell', options: { size: { width: 320 } } },
+    'heatmap.scale': { fixture: 'regional-monthly-performance', value: 'discrete' },
+    'line.scaleGroup': { fixture: 'actuals-forecast-market', value: { y: 'census-scale' } },
+    'line.scenarioStyle': { fixture: 'brief-current-vs-prior' },
+    'bartable.segmentValues': { fixture: 'single-panel', value: false },
+    'grid.sharedScale': { fixture: 'weekly-actual-vs-plan', value: false },
+    'bar.sharesOfOneWhole': { fixture: 'stacked-net-line-horizontal', value: true, options: { variant: 'stacked', unit: '%' }, reason: 'Only stacks have parts of one whole.' },
+    'column.sharesOfOneWhole': { fixture: 'stacked100-survey-total-column', value: false, options: { variant: 'stacked' }, reason: 'Only stacks have parts of one whole.' },
+    'dimswitch.show': { value: 'withData', data: d => { for (const f of d.facts) if (f.memberId === 'organic' && f.periodId === 'range') for (const k of Object.keys(f.sums)) f.sums[k] = 0; return d; } },
+    'box.showObservations': { fixture: 'mixed-support-groups', value: 'none' },
+    'dimswitch.signs': { fixture: 'statement', value: 'operators' },
+    'table.signs': { fixture: 'contribution-margin-statement', value: 'signed' },
+    'scatter.sizeBy': { fixture: 'portfolio-bubbles', value: 'diameter' },
+    'choropleth.smallRegionArea': { fixture: 'eu-inflation', value: 1 },
+    'bar.smallValues': { fixture: 'axis-break', value: 'p-value' },
+    'bartable.smallValues': { fixture: 'cascade-two-periods', value: 'p-value' },
+    'box.smallValues': { value: 'p-value' },
+    'bullet.smallValues': { value: 'p-value' },
+    'butterfly.smallValues': { fixture: 'tiny-side', value: 'p-value' },
+    'choropleth.smallValues': { fixture: 'overlay-measure-heading', value: 'p-value', data: d => { d.regions[0].value = 0.0004; return d; } },
+    'cohort.smallValues': { fixture: 'retention-24x24-resurrection', value: 'p-value' },
+    'column.smallValues': { value: 'p-value' },
+    'combo.smallValues': { fixture: 'margin-line-own-scale', value: 'p-value' },
+    'dimswitch.smallValues': { data: d => { d.facts[2].sums.orders = 0.0004; return d; } },
+    'dot.smallValues': { fixture: 'negatives-with-axis', value: 'p-value' },
+    'funnel.smallValues': { fixture: 'zero-stage', value: 'p-value' },
+    'grid.smallValues': { fixture: 'stacked-plus-dpy-tiered', value: 'p-value' },
+    'heatmap.smallValues': { value: 'p-value' },
+    'histogram.smallValues': { value: 'p-value' },
+    'kpi.smallValues': { fixture: 'dual-compare', data: d => { d.value = 0.0004; return d; } },
+    'line.smallValues': { fixture: 'stacked-area-services-growth', value: 'p-value' },
+    'mekko.smallValues': { value: 'p-value' },
+    'pareto.smallValues': { fixture: 'revenue-concentration', value: 'p-value' },
+    'pie.smallValues': { fixture: 'ten-tiny-slices', data: d => { d.series[0].values[0] = 0.0004; return d; } },
+    'pvm.smallValues': { fixture: 'named-periods-and-ranges', value: 'p-value' },
+    'pyramid.smallValues': { fixture: 'workforce-tenure-gender', value: 'p-value' },
+    'sankey.smallValues': { fixture: 'unbalanced-nodes', data: d => { d.links[0].value = 0.0004; return d; } },
+    'scatter.smallValues': { fixture: 'price-volume-trend', value: 'p-value' },
+    'slope.smallValues': { data: d => { d.series[0].values[0] = 0.0004; return d; } },
+    'sparkline.smallValues': { fixture: 'bare-card-spark', data: d => { d.values[7] = 0.0004; return d; } },
+    'status.smallValues': { fixture: 'status-with-values', data: d => ({ ...d, columns: [...d.columns, { id: 'm2', label: 'M2' }], cells: [{ ...d.cells[0], value: 12.4 }, { ...d.cells[0], col: 'm2', value: 0.0004 }] }) },
+    'table.smallValues': { fixture: 'hierarchy-kinds', data: d => { d.rows[1].cells.value = 0.0004; return d; } },
+    'tilemap.smallValues': { fixture: 'named-null-states', value: 'p-value', data: d => { d.regions[0].value = 0.0004; return d; } },
+    'treemap.smallValues': { value: 'p-value' },
+    'variance.smallValues': { fixture: 'all-negative-deltas', value: 'p-value' },
+    'waffle.smallValues': { value: 'p-value' },
+    'waterfall.smallValues': { fixture: 'sliver-segments', value: 'p-value' },
+    'cohort.sort': { options: { variant: 'heatmap' }, reason: 'Only the heatmap warns that it keeps cohort order.' },
+    'cohort.steps': { options: { variant: 'stepped', formatScope: 'classic' }, reason: 'Only absolute stepped classes read steps.' },
+    'dimswitch.strings': { options: { source: 'Census' }, reason: 'The probe renames the word before a source.' },
+    'waffle.subtotal': { fixture: 'stacked-segments' },
+    'line.targets': { value: [{ at: 'fy24', value: 120, seriesId: 'output' }] },
+    'choropleth.topN': { fixture: 'world-inflation' },
+    'bar.tornado': { fixture: 'dcf-npv-sensitivity', value: { low: 'high', high: 'low' } },
+    'table.totalPosition': { fixture: 'management-report' },
+    'bar.unitShown': { fixture: 'gap-after-with-connectors' },
+    'bartable.unitShown': { fixture: 'null-and-long-labels' },
+    'box.unitShown': { fixture: 'dated-median-growth' },
+    'butterfly.unitShown': { fixture: 'tiny-side' },
+    'choropleth.unitShown': { fixture: 'dense-labels' },
+    'cohort.unitShown': { fixture: 'missing-counts' },
+    'column.unitShown': { fixture: 'gap-after-with-connectors' },
+    'combo.unitShown': { fixture: 'zoom-preserves-source-mean' },
+    'dot.unitShown': { fixture: 'highlighted-dumbbell-key' },
+    'funnel.unitShown': { fixture: 'zero-stage' },
+    'gantt.unitShown': { fixture: 'single-day' },
+    'grid.unitShown': { fixture: 'three-tier' },
+    'histogram.unitShown': { fixture: 'localized-binning' },
+    'likert.unitShown': { fixture: 'column-overrides' },
+    'line.unitShown': { fixture: 'multiline-highlight-fade' },
+    'mekko.unitShown': { fixture: 'single-cell' },
+    'pie.unitShown': { options: { subtitle: undefined } },
+    'pvm.unitShown': { fixture: 'named-periods-and-ranges' },
+    'pyramid.unitShown': { fixture: 'column-overrides' },
+    'scatter.unitShown': { fixture: 'dense-paths-6000' },
+    'slope.unitShown': { fixture: 'cell-value-label' },
+    'status.unitShown': { fixture: 'status-with-values' },
+    'table.unitShown': { fixture: 'table-status-square' },
+    'tilemap.unitShown': { fixture: 'named-null-states' },
+    'treemap.unitShown': { fixture: 'one-level-shares' },
+    'variance.unitShown': { fixture: 'integrated-solid-shortfall' },
+    'waffle.unitShown': { fixture: 'two-panels' },
+    'waterfall.unitShown': { fixture: 'step-brackets' },
+    'variance.variance': { fixture: 'all-positive-deltas', value: { of: 'saas', vs: 'services' } },
+    'grid.variancePosition': { fixture: 'stacked-plus-dpy-tiered', value: 'below' },
   };
   // notes also gets one footnote (except creative, which refuses footnotes).
   // unitShown also gets an explicit unit. Both renders get the same companion.
@@ -405,95 +685,54 @@ describe('published option behaviour census', () => {
   };
 
   /**
-   * Measured no-effect pairs, not a list of confirmed engine defects. Some
-   * options need other data, a different variant, or a React host. Keep each
-   * pair explicit: new types and options must never inherit a gap. Every row
+   * Options that act only in a host, so one static chart cannot show them. Every row
    * still runs, and a row that starts to respond must be removed.
    *
-   * Types | option | reason for the one-fixture coverage gap.
+   * Types | option | where it acts and the test that covers it.
    */
-  const KNOWN_GAPS: readonly (readonly [string, string, string])[] = [
-    ["bar bartable box bullet butterfly choropleth cohort column combo dot funnel gantt grid heatmap histogram kpi likert line mekko pareto pie pvm pyramid scatter slope sparkline status dimswitch table tilemap sankey treemap variance waffle waterfall", "belowMinimum", "Runs only when the chart does not fit: box cycle-time-by-team at target slide, butterfly long-labels 320 wide. Types with no such spec: reader at registry.ts:700, needs a size under the floor, not proved."],
-    ["bar bartable box butterfly choropleth cohort column combo dot funnel gantt grid histogram likert line mekko pareto pie pvm pyramid scatter slope sparkline status table tilemap treemap variance waffle waterfall", "unitShown", "Prints only where the chart does not already state the unit: butterfly tiny-side. Types with no such spec: reader at frame.ts:806, needs a unit the frame can hoist, not proved."],
-    ["bar bartable box bullet butterfly choropleth cohort column combo dot funnel gantt grid heatmap histogram kpi likert line mekko pareto pie pvm pyramid scatter slope sparkline status dimswitch table tilemap sankey treemap variance waffle waterfall", "smallValues", "Acts on a value under the printed precision: slope diverging-team-engagement with data x 0.00001. Types with no such spec: reader at format.ts:31, needs such a value, not proved."],
-    ["bar bartable box bullet butterfly choropleth cohort column combo dot funnel gantt grid heatmap histogram kpi likert line mekko pareto pie pvm pyramid scatter slope sparkline status tilemap sankey treemap variance waffle waterfall", "labelPlacements", "Pins a label to a slot its kind can take: box salary-bands-pinned-median with { 'median:ic5': 'aboveMedian' }. Where the slot cannot apply it warns, and the warning names the slot."],
-    ["bar bartable box bullet butterfly choropleth cohort column combo dot funnel gantt grid heatmap histogram kpi likert line mekko pareto pie pvm pyramid scatter slope sparkline status dimswitch table tilemap sankey treemap variance waffle waterfall", "scaleGroup", "Shares a domain with a second chart of the group: column forecast-ci-column in a two-chart document, second chart values x 3."],
-    ["bar bartable cohort combo gantt grid heatmap histogram kpi likert pareto pie sparkline status dimswitch table tilemap treemap waffle", "focus", "Lifts a label in the solve order, so it shows only where labels compete: bar valuation-football-field with its dcf equity-value owner. Others: reader at label/solver.ts:384, needs competing labels, not proved."],
-    ["bar butterfly choropleth cohort combo funnel grid heatmap line mekko slope status", "hatchStrength", "Needs a hatched mark, which this fixture lacks: butterfly customer-spend with every series scenario FC. The hatch census above covers the rest."],
-    ["bar column heatmap bartable box butterfly cohort combo dot funnel gantt histogram mekko pareto pie pyramid scatter slope sparkline sankey treemap waffle", "colorblindSafe", "Swaps the good and bad paints, so it needs a chart that paints them: sankey sales-stages. Others: reader at grid/layoutGrid.ts:353, needs a good and bad paint, not proved."],
-    ["bar bartable box bullet butterfly choropleth cohort column combo creative diagram dot funnel gantt grid heatmap histogram kpi likert line mekko pareto pie pvm pyramid scatter slope sparkline status dimswitch table tilemap sankey treemap variance waffle waterfall", "interactive", "React host setting; the static SVG has no interaction state."],
-    ["bar butterfly column combo dot funnel heatmap line mekko pie slope", "detailFields", "Hover-record labels for cell details; the static SVG draws the same picture. Reader at a11y/details.ts:16."],
-    ["bar bullet histogram variance", "axisTitles", "Prints only under a drawn value axis: bullet sparse-targets-overshoot, variance all-negative-deltas on the variant that draws one."],
-    ["bar column", "sharesOfOneWhole", "Reader at bar/domain.ts:589 and column/domain.ts:968, needs a stack whose authored parts miss 100, not proved."],
-    ["bar", "tornado", "Only variant tornado reads it: dcf-npv-sensitivity with its real series ids."],
-    ["bar choropleth line", "methodNote", "Adds a note only where the data needs one: choropleth world-inflation, bar stacked100-slivers with null values."],
-    ["bar column combo", "referenceStyle", "Needs a reference mark: combo option-reference-line with 'marker'."],
-    ["bar combo", "referenceTick", "Needs a reference tick: combo option-reference-tick-highlight."],
-    ["column", "referenceTick", "Needs a plan tick across a column: column plan-ticks-front with { position: 'front' }."],
-    ["waterfall", "bracketRow", "Needs two brackets over steps of different heights: waterfall step-brackets-span with 'span'."],
-    ["bartable box grid heatmap kpi line slope sparkline status dimswitch table variance waffle", "labelDensity", "Thins labels only where they compete: box cycle-time-by-team with 'minimal'. Others: reader at frame.ts:1222, needs competing labels, not proved."],
-    ["bartable column combo dot status table tilemap treemap variance waffle waterfall", "legend", "Draws a key only with parts to name: variance dpy-absolute-regions with 'bottom'."],
-    ["bartable", "segmentValues", "The representative fixture gives every row a range, and a row with a range prints end labels only; the single-panel fixture shows the parts."],
-    ["bartable mekko slope", "highlight", "Names a mark of the fixture: slope market-share-shift with '2020'. On bartable it warns only when a named row is missing."],
-    ["box bullet likert pvm pyramid scatter", "annotations", "The census note has no anchor on this fixture: box dated-median-growth with a diff annotation draws one."],
-    ["box", "showObservations", "Needs observation marks: box mixed-support-groups with 'none'."],
-    ["butterfly", "negatives", "Needs a negative value: butterfly negatives-own-scale with 'magnitude'."],
-    ["choropleth", "topN", "Labels world maps only: choropleth world-inflation with { n: 2 }."],
-    ["choropleth", "labelRegions", "Labels world maps only: choropleth world-inflation with ['AE', 'AF']."],
-    ["choropleth", "smallRegionArea", "Needs small regions: choropleth eu-inflation with 0."],
-    ["choropleth tilemap", "overlayTones", "Needs an overlay with tones: choropleth world-footprint."],
-    ["choropleth tilemap", "overlayMeasure", "Needs an overlay: choropleth world-footprint with 'US'."],
-    ["column line pie", "othersShade", "Reader at column/paints.ts:86, needs an Others mark in a topN cut, not proved."],
-    ["column combo line", "events", "Needs an event lane: column weekly-events-lane with placement 'key'."],
-    ["creative", "notes", "Reader at notes.ts:147, needs a footnote, which creative refuses, not proved."],
-    ["dot", "rowLabels", "Moves a label only when it wraps: dot share-shift-dumbbell 320 wide with align 'right'."],
-    ["gantt", "colHeaders", "Needs metadata columns: gantt transformation-program."],
-    ["grid treemap waffle", "valueAxis", "Reader at a11y/categoryRecords.ts:68 and grid/layout.ts:694, needs a panel that reads a domain, not proved."],
-    ["grid", "sharedScale", "Needs panels on different scales: grid weekly-actual-vs-plan with false."],
-    ["grid", "variancePosition", "Needs column/variance category tiers: grid weekly-actual-vs-plan with 'below'."],
-    ["grid", "reflow", "Needs a facet grid on a phone card; tests/grid-tiers-redesign.test.ts covers reflow on one."],
-    ["heatmap status", "labels", "Acts on a label this variant draws: status review-status-legend-none with false."],
-    ["heatmap", "scale", "Needs a value variant: heatmap regional-monthly-performance with 'discrete'."],
-    ["heatmap", "bubble", "Needs the bubble variant: heatmap survey-journey-track with a track."],
-    ["heatmap", "missing", "Needs a missing cell: heatmap missing-cells with 'blank'."],
-    ["bullet kpi status table", "format", "Authored series, column or row formats win: kpi value-only prints it. Status: reader at status/layout.ts:193, needs values with decimals, not proved."],
-    ["kpi", "comparisons", "Needs two comparisons: kpi dual-compare with 'chip'."],
-    ["bar column combo line pie", "rounding", "Needs shares that miss the printed whole: combo stacked-shares-sum with 'nearest', pie streaming-genre-share with null values."],
-    ["line", "endLabelPlacement", "Needs the bump variant: line brand-share-bump with 'gutter'."],
-    ["line", "bump", "Needs the bump variant: line brand-share-bump."],
-    ["line", "highlightMode", "Needs an area variant: line stacked-area-services-growth with 'fade'."],
-    ["line", "scenarioStyle", "Needs scenario series: line brief-current-vs-prior."],
-    ["line", "targets", "Needs a seat for the target at a narrow width: line stacked100-area-mixed-sign-fail-closed 320 wide."],
-    ["pie", "colors", "Needs many slices: pie ten-tiny-slices with 'categorical'."],
-    ["scatter", "sizeBy", "Needs bubbles: scatter portfolio-bubbles with 'diameter'."],
-    ["cohort", "averages", "Draws only on the heatmap with cohorts of different lengths: saas-logo-retention with 'weighted'."],
-    ["cohort", "legend", "The pure exhibit of this fixture draws no key: the heatmap of the same type does."],
-    ["dimswitch", "lastTrackFlex", "Reader at table/tracks.ts:646, needs tracks that leave spare width, not proved."],
-    ["dimswitch table", "mountCollapsed", "Initial React mount state does not change the static SVG."],
-    ["dimswitch table", "paintOffscreenRows", "Offscreen React paint does not change the static SVG."],
-    ["dimswitch table", "signs", "Needs sign -1 rows: dimswitch statement, table contribution-margin-statement."],
-    ["dimswitch table", "driverTones", "Needs driver rows: dimswitch statement, table driver-tones-grouped."],
-    ["table", "totalPosition", "Needs top-level rows and a total: table mixed-top-level-rows with 'top'."],
-    ["dimswitch table", "nulls", "Needs a missing value: by-measure with every third value null."],
-    ["dimswitch table", "inlineVisibility", "Needs an inline group: table steering-table-v2. Dimswitch: reader at dimswitch/compile.ts:764, needs a change line in the group, not proved."],
-    ["dimswitch table", "foldOn", "React click behaviour: reader at TableChart.tsx:2247. The static SVG has no click."],
-    ["dimswitch table", "groupGround", "Needs an open group: dimswitch by-member, table hierarchy-kinds with 'expanded'."],
-    ["dimswitch table", "stickyLabels", "Sticky host positioning does not change the static SVG."],
-    ["dimswitch table", "sortIndicator", "Changes the React sort head only; the static SVG has no chevron."],
-    ["dimswitch table", "fitFormats", "Needs a width the figures miss: dimswitch sheet 1400 wide, table steering-monthly with value columns 34 wide."],
-    ["dimswitch table", "maxGrowth", "Needs spare frame width: dimswitch by-measure with 1 at 320, table benchmark-competitors with 1."],
-    ["dimswitch treemap", "order", "Needs siblings to sort: dimswitch by-member with { by: 'revenue' }. Treemap reads 'sheet' on its own data order."],
-    ["dimswitch", "show", "Reader at dimswitch/compile.ts:397, needs a member whose fields are all empty in Range, not proved."],
-    ["dimswitch", "minimumSample", "Needs a judge base field: dimswitch multiple-sample-bases with { orders: 57, sessions: 100 }."],
-    ["table", "frameFill", "Needs spare frame width: table status-review-relaxed with 'none' 1400 wide."],
-    ["table", "rowLabelLines", "Needs a label that wraps: table benchmark-competitors with 1."],
-    ["table", "rowExtent", "Needs spare frame width: table status-review-relaxed with 'tracks' 1400 wide."],
-    ["variance", "variance", "Needs real series ids: variance all-positive-deltas with { of: 'saas', vs: 'services' }."],
-    ["variance", "missingMark", "Needs a missing prior: variance dpy-absolute-regions with every third value null."],
-    ["waffle", "cellNote", "Reader at waffle/layout.ts:375, needs a cell with a note, not proved."],
-    ["waffle", "subtotal", "Needs several series: waffle stacked-segments."],
+  const HOST_ONLY: readonly (readonly [string, string, string])[] = [
+    ["bar bartable box bullet butterfly choropleth cohort column combo dot funnel gantt grid heatmap histogram kpi likert mekko pareto pie pvm pyramid scatter slope sparkline status dimswitch table tilemap sankey treemap variance waffle waterfall", "scaleGroup", "Shares one value domain across the charts of a React ScaleGroup (grid/sharedScale.ts) or a grid. tests/scale-group-react.test.tsx covers column, tests/grid-tiers-redesign.test.ts covers grid panels."],
+    ["bar butterfly column combo dot funnel heatmap line mekko pie slope", "detailFields", "Labels the hover record (a11y/details.ts:16). tests/hover-record-details.test.tsx covers column."],
+    ["bullet choropleth kpi mekko sparkline status", "belowMinimum", "No compact floor (sizing.ts:87), so only the request layer reads it: it stops the text step-down on a small slide (request.ts:404). tests/small-sizes.test.ts covers bar only. No CLI size changed choropleth, mekko or status."],
+    ["dimswitch table", "mountCollapsed", "Initial React mount state (TableChart.tsx). No test compares its values."],
+    ["dimswitch table", "paintOffscreenRows", "Offscreen React paint. tests/table-react.test.tsx covers it."],
+    ["dimswitch table", "foldOn", "React click behaviour (TableChart.tsx). No test covers it."],
+    ["dimswitch table", "stickyLabels", "Sticky host positioning. tests/table-react.test.tsx covers it."],
+    ["dimswitch table", "sortIndicator", "The React sort head (TableChart.tsx). No test covers it."],
   ];
-  const gaps = new Map<string, string>(KNOWN_GAPS.flatMap(([types, key, reason]) =>
+
+  /**
+   * Accepted options that no layout of these types reads: they draw the same with any
+   * value. Recorded, not fixed here. Every row still runs, and a row that starts to
+   * respond must be removed. "Not sure" marks a reader that no tried input reached.
+   *
+   * Types | option | evidence.
+   */
+  const ACCEPTED_WITHOUT_EFFECT: readonly (readonly [string, string, string])[] = [
+    ["pareto", "unitShown", "The unit is always the axis name (pareto/layout.ts:473, 558), so no unit line is added."],
+    ["sparkline", "unitShown", "The unit feeds the format only (sparkline/layout.ts:774); no unit line is drawn."],
+    ["gantt", "smallValues", "Gantt prints dates only; its format is never (gantt/layout.ts:66)."],
+    ["likert", "smallValues", "Shares use the explicit share format (likert/layout.ts:549), and a share that rounds to zero is dropped (likert/layout.ts:716)."],
+    ["grid", "focus", "Text panels solve labels without options (grid/layout.ts:1931)."],
+    ["histogram", "focus", "Labels solve without options (histogram/layout.ts:776)."],
+    ["sparkline", "focus", "Labels solve with labelOffsets only (sparkline/layout.ts:978)."],
+    ["dimswitch table", "focus", "No reader in the table layouts."],
+    ["tilemap", "focus", "Not sure: the solver reads it (tilemap/layout.ts:499), but no fixture changes."],
+    ["cohort", "hatchStrength", "Not sure: the not-reached hatch (cohort/layout.ts:446) draws the same at 0 and 100."],
+    ["bartable cohort histogram treemap waffle", "colorblindSafe", "These types paint no good and bad pair, and the swap acts only on that pair (registry.ts:763, schema/shared.ts:1553)."],
+    ["box", "colorblindSafe", "Not sure: the negative diff tone (annotateArms.ts:726) is not swapped."],
+    ["sparkline", "labelDensity", "Labels solve with labelOffsets only (sparkline/layout.ts:978)."],
+    ["dimswitch table", "labelDensity", "No reader in the table layouts; the shared pass acts only on hidden labels (registry.ts:330)."],
+    ["kpi slope waffle", "labelDensity", "Not sure: the solver reads it (kpi/layout.ts:891, slope/layout.ts:190, waffle/layout.ts:889), but no fixture changes."],
+    ["sparkline", "labelPlacements", "Labels solve with labelOffsets only (sparkline/layout.ts:978); only the unknown-id warning remains."],
+    ["tilemap", "labelPlacements", "Not sure: the solver reads it (tilemap/layout.ts:499), but no pin changes a fixture."],
+    ["bartable", "highlight", "No reader in charts/bartable; only the unknown-id warning remains (registry.ts:883)."],
+    ["creative", "notes", "The card draws its own method lines (creative/layout.ts:603) and refuses footnotes."],
+    ["treemap waffle", "valueAxis", "No reader in the chart folder, and the types are not in VALUE_AXIS_ONLY (capability.ts:207)."],
+    ["grid", "valueAxis", "The grid reads only valueAxis.break (grid/layout.ts:1110), which its schema refuses. Panels read their own."],
+    ["sankey", "belowMinimum", "Not sure: the fixed fallback reads it (sizing.ts:909), but no size changes the output."],
+  ];
+  const gaps = new Map<string, string>([...HOST_ONLY, ...ACCEPTED_WITHOUT_EFFECT].flatMap(([types, key, reason]) =>
     types.split(' ').map(type => [`${type}.${key}`, reason] as const)));
 
   const digest = (text: string) => createHash('sha256').update(text).digest('hex');
@@ -507,7 +746,8 @@ describe('published option behaviour census', () => {
       // Hosts expose these domain errors as refusals. A refusal is a response, not a silent drop.
       result = layoutRefusal(type, fixture.title, { width: 720, height: 405 }, error);
     }
-    const svg = result.refused ? '' : renderSvg(result, resolveTheme((options as Options).theme as ThemeRef | undefined));
+    // Hosts pass interactive to the renderer, as the CLI does.
+    const svg = result.refused ? '' : renderSvg(result, resolveTheme((options as Options).theme as ThemeRef | undefined), { interactive: (options as Options).interactive === true });
     // A scope hash is not visible behaviour. Keep text and aria content, but remove generated ids.
     return { refused: !!result.refused, labels: result.refused ? [] : result.labels, hash: digest(svg.replace(/ id="[^"]*"| aria-describedby="[^"]*"|url\(#[^)]*\)/g, '')), warnings: result.warnings };
   };
@@ -517,6 +757,7 @@ describe('published option behaviour census', () => {
   it('each published option changes SVG bytes or gives a warning that names the option', { timeout: 120_000 }, () => {
     const failures: string[] = [];
     const seenGaps = new Set<string>();
+    const usedProbes = new Set<string>();
     for (const { type } of listCharts()) {
       const definition = getChartDefinition(type)!;
       const schema = z.toJSONSchema(definition.optionsSchema as never, { io: 'input' }) as JsonSchema;
@@ -527,30 +768,41 @@ describe('published option behaviour census', () => {
         ...(fixture.annotations ? { annotations: fixture.annotations } : {}) };
       const baseline = draw(type, fixture, authored);
       expect(baseline.refused, `${type}: representative fixture must draw`).toBe(false);
-      const data = fixture.data as { categories?: { id: string }[]; series?: { id: string }[] };
-      const ids = data.categories?.map(c => typeof c === 'string' ? c : c.id) ?? [];
-      const series = data.series?.map(s => s.id) ?? [];
+      const befores = new Map([['||{}', baseline]]);
       for (const [key, field] of Object.entries(schema.properties ?? {})) {
         if ('not' in field) continue;
         // Only the architecture variant reads highlight, and the agent-approval golden shows it.
         if (type === 'diagram' && key === 'highlight') continue;
-        // The line's usual fixture has several series, so only a single-line fixture can show pointLabelSide.
-        const probeFixture = type === 'line' && key === 'pointLabelSide'
-          ? getFixtures(type).find(item => item.id === 'point-emphasis')! : fixture;
+        const probe: Probe = PROBES[`${type}.${key}`] ?? {};
+        usedProbes.add(`${type}.${key}`);
+        const shipped = probe.fixture ? getFixtures(type).find(item => item.id === probe.fixture) : fixture;
+        expect(shipped, `${type}.${key}: needs fixture ${probe.fixture}`).toBeDefined();
+        const probeFixture = probe.data ? { ...shipped!, data: probe.data(structuredClone(shipped!.data)) } as Fixture : shipped!;
         const probeAuthored: Options = probeFixture === fixture ? authored : { ...probeFixture.options as Options,
           ...(probeFixture.annotations ? { annotations: probeFixture.annotations } : {}) };
+        const companions: Options = { ...probe.options };
+        if (key === 'notes' && type !== 'creative') companions.footnotes = ['Census note'];
+        if (key === 'unitShown') companions.unit = 'Census unit';
+        // Draw each distinct before state once per type.
+        const beforeKey = `${probe.fixture ?? ''}|${probe.data ? key : ''}|${JSON.stringify(companions, (_, item) => item === undefined ? 'undefined' : item)}`;
+        if (!befores.has(beforeKey)) befores.set(beforeKey, draw(type, probeFixture, { ...probeAuthored, ...companions }));
+        const before = befores.get(beforeKey)!;
+        expect(before.refused, `${type}.${key}: probe input must draw`).toBe(false);
+        const data = probeFixture.data as { categories?: { id: string }[]; series?: { id: string }[] };
+        const ids = data.categories?.map(c => typeof c === 'string' ? c : c.id) ?? [];
+        const series = data.series?.map(s => s.id) ?? [];
         const current = probeAuthored[key] ?? (definition.defaults as Options)[key] ?? field.default;
         let value = key in VALUES && JSON.stringify(VALUES[key]) !== JSON.stringify(current)
           ? VALUES[key] : sample(field, current);
-        if (key === 'focus' && fixture.hover) value = { owner: fixture.hover.owner };
-        if (key === 'highlight') value = (fixture.data as { series?: { id: string }[] }).series?.[0]?.id ?? 'census';
-        if (key === 'story') value = { steps: [{ id: 'census', title: 'Census step', highlight: (fixture.data as { series?: { id: string }[] }).series?.[0]?.id ?? 'census' }] };
+        if (key === 'focus' && probeFixture.hover) value = { owner: probeFixture.hover.owner };
+        if (key === 'highlight') value = series[0] ?? 'census';
+        if (key === 'story') value = { steps: [{ id: 'census', title: 'Census step', highlight: series[0] ?? 'census' }] };
         if (key === 'annotations') {
-          value = fixture.annotations?.length ? fixture.annotations.map(a => ['valueLine', 'band', 'event'].includes(a.kind) ? { ...a, label: 'Census annotation' } : { ...a, text: 'Census annotation' })
-            : [{ kind: 'note', at: (fixture.data as { categories?: { id: string }[] }).categories?.[0]?.id ?? 'census', text: 'Census annotation' }];
+          value = probeFixture.annotations?.length ? probeFixture.annotations.map(a => ['valueLine', 'band', 'event'].includes(a.kind) ? { ...a, label: 'Census annotation' } : { ...a, text: 'Census annotation' })
+            : [{ kind: 'note', at: ids[0] ?? 'census', text: 'Census annotation' }];
         }
-        if (key === 'labelPlacements' && baseline.labels[0]) value = { [baseline.labels[0].id]: 'insideCenter' };
-        if (key === 'labelOffsets' && baseline.labels.some(label => !label.hidden)) value = { [baseline.labels.find(label => !label.hidden)!.id]: { y: 12 } };
+        if (key === 'labelPlacements' && before.labels[0]) value = { [before.labels[0].id]: 'insideCenter' };
+        if (key === 'labelOffsets' && before.labels.some(label => !label.hidden)) value = { [before.labels.find(label => !label.hidden)!.id]: { y: 12 } };
         if (key === 'viewDomain' && type !== 'scatter') value = { x: [ids[1] ?? ids[0], ids.at(-1)] };
         if (key === 'a' || key === 'b') value = series.find(id => id !== current) ?? value;
         if (key === 'labelRegions') value = []; // An explicit empty set removes the authored region labels.
@@ -565,7 +817,6 @@ describe('published option behaviour census', () => {
         if (type === 'tilemap' && key === 'regionValues') value = false;
         if (type === 'table' && key === 'magnitude') value = 'thousand';
         if (type === 'dimswitch' && key === 'depth') value = 1;
-        if (type === 'dimswitch' && key === 'order') value = { by: 'revenue', desc: true };
         if (type === 'dimswitch' && key === 'expansion') value = { depth: 1 };
         if (type === 'scatter' && key === 'zones') value = { grid: { x: [5], y: [4] } };
         // A swamped pvm base breaks the axis by default, so the probe asks for a whole axis.
@@ -580,15 +831,11 @@ describe('published option behaviour census', () => {
         if (type === 'grid' && key === 'alignmentRules') value = [{ id: 'census', orientation: 'horizontal', at: { panelId: 'rev', anchor: 'plotTop' } }];
         if (type === 'waffle' && key === 'panelGroups') value = [{ id: 'census', panels: ids, label: 'Census group' }];
         if (type === 'waffle' && key === 'subtotal') value = { series, label: 'Census subtotal' };
-        const companions: Options = { ...COMPANIONS[`${type}.${key}`]?.options };
-        if (key === 'notes' && type !== 'creative') companions.footnotes = ['Census note'];
-        if (key === 'unitShown') companions.unit = 'Census unit';
+        if ('value' in probe) value = probe.value;
         let changed = { ...probeAuthored, ...companions, [key]: value };
-        const before = probeFixture !== fixture || Object.keys(companions).length ? draw(type, probeFixture, { ...probeAuthored, ...companions }) : baseline;
-        expect(before.refused, `${type}.${key}: companion settings must draw`).toBe(false);
         // Use a schema-valid fallback before rendering; never count a rejected sample as behaviour.
         let parsed = definition.optionsSchema.safeParse(changed);
-        if (!parsed.success) {
+        if (!parsed.success && !('value' in probe)) {
           value = sample(field, current);
           changed = { ...probeAuthored, ...companions, [key]: value };
           parsed = definition.optionsSchema.safeParse(changed);
@@ -608,6 +855,7 @@ describe('published option behaviour census', () => {
         }
       }
     }
+    expect(Object.keys(PROBES).filter(pair => !usedProbes.has(pair)), 'Remove probes of options that are no longer published').toEqual([]);
     const staleGaps = [...gaps.keys()].filter(pair => !seenGaps.has(pair));
     expect(staleGaps, 'Remove gaps that now respond or are no longer published').toEqual([]);
     expect(failures).toEqual([]);
