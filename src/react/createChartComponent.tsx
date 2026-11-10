@@ -301,8 +301,13 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
     const layoutRefusals = chartRefusals(geometry?.warnings ?? []);
     const refusedHere = container && refusedOptions.length === 0 && layoutRefusals.length > 0 && layoutRefusals.every(isSizeDependentRefusal);
     // Print takes the page right after this render: a refusal there shows at once, never the busy box.
-    const settling = useRefusalSettle(refusedHere && !measured.printing, measured.client, `${measured.size.width}x${measured.size.height ?? ''}`, geometry);
-    const displayRef = useDisplayWarnings(settling ? undefined : geometry, onWarnings);
+    // A refusal of the last size waits too while a newer size lays out in the background: on a busy page the
+    // settle time can pass before that layout lands.
+    const settling = useRefusalSettle(refusedHere && !measured.printing, measured.client, `${measured.size.width}x${measured.size.height ?? ''}`, geometry)
+      || (refusedHere && resolved.pending === true);
+    // A container chart is laid out again at each width it is shown at; print shows it in the printed box as drawn.
+    const displayRef = useDisplayWarnings(settling ? undefined : geometry, onWarnings, undefined,
+      container && !measured.printing && geometry ? geometry.size.width : undefined);
     zoomed.seen(geometry && !geometry.refused && isFullGeometry(geometry) ? geometry : undefined);
     const attachZoom = zoomed.attach;
     const chartRef = useCallback((element: HTMLDivElement | null) => {

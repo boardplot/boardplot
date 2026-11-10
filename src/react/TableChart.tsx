@@ -1055,7 +1055,9 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     presentation: initialPrepared?.presentation ?? tablePresentation(layoutRequest, resolved.table),
     refused: sized?.refused,
   } : undefined, [layoutRequest, resolved, initialPrepared, sized, fittedNote, measured?.warnings, tableOptions?.columnHeads, sortable]);
-  const displayRef = useDisplayWarnings(settling ? undefined : diagnostics, onWarnings, null);
+  // A container table is laid out again at each width it is shown at, as a container chart is.
+  const displayRef = useDisplayWarnings(settling ? undefined : diagnostics, onWarnings, null,
+    size === 'container' && !container.printing ? layoutRequest?.size.width : undefined);
   const headFonts = measured?.fonts;
   const frameRoom = !rowToFrame || tableOptions?.frameFill === 'none' ? undefined
     : available === undefined ? undefined : available - (measured?.spacerTotal ?? 0);
