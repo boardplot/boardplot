@@ -520,6 +520,7 @@ export function layoutHistogram(
     labels: pointLabels(),
     ...(options.labelPlacements === undefined ? {} : { labelPlacements: options.labelPlacements }),
     ...(options.labelOffsets === undefined ? {} : { labelOffsets: options.labelOffsets }),
+    ...(options.focus === undefined ? {} : { focus: options.focus }),
     ...(options.highlight === undefined ? {} : { highlight: options.highlight }),
     ...(options.colorblindSafe === undefined ? {} : { colorblindSafe: options.colorblindSafe }),
     ...(options.interactive === undefined ? {} : { interactive: options.interactive }),
@@ -773,7 +774,7 @@ export function layoutHistogram(
   if (axis) axis.ticks = ticks;
   const occupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
   column.labels.filter((label) => !label.hidden).forEach((label) => occupied.claim(label.rect, 'label', label.owner));
-  const solved = solveLabels(requests, occupied, labelCtx(theme, size, {}, {
+  const solved = solveLabels(requests, occupied, labelCtx(theme, size, { focus: options.focus }, {
     density: 'full',
     measure,
     plot: column.plot,

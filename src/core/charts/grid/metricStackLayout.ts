@@ -563,7 +563,7 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
     scene.push({t:'line',id:`stack:period:rule:${i}`,x1:x+1.5,x2:x+indexes.length*step-1.5,y1:y,y2:y,stroke:bold?{token:'ink'}:{token:'grid'},width:strokeToken(theme, bold ? 'data' : 'rule'),owner:{},part:'periodRule'});
   });
   for(const request of requests) if(yielding.has(request.id)) request.priority=PRIORITY.interior;
-  const solved=solveLabels(requests,occupied,{density:options.labelDensity??'full',pins:options.labelPlacements??{},labelOffsets:options.labelOffsets,measure,plot:frame.plot,canvas:{x:0,y:0,w:size.width,h:size.height},darkInk:theme.color.ink,lightInk:theme.color.inkInverse,labelPad:0});
+  const solved=solveLabels(requests,occupied,{focus:options.focus,density:options.labelDensity??'full',pins:options.labelPlacements??{},labelOffsets:options.labelOffsets,measure,plot:frame.plot,canvas:{x:0,y:0,w:size.width,h:size.height},darkInk:theme.color.ink,lightInk:theme.color.inkInverse,labelPad:0});
   const fonts = new Map(requests.map(request => [request.id, request.font]));
   for(const label of solved.placed) { label.ink=inks.get(label.id)??label.ink; label.font=fonts.get(label.id); }
   // A label the density or redundancy gate drops is left out on purpose; only a label that found no seat failed.
