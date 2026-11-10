@@ -241,6 +241,15 @@ describe('hierarchy honesty', () => {
     expect(r.table.footnotes).toContain('† Partial aggregate: missing values skipped.');
     expect(columnHeaderAffix(r.table.columns.find((column) => column.partial)!)).toMatch(/ †$/);
   });
+
+  // Reason: where no head carries the †, the cells say "(partial)", and a note led by † pointed at no mark.
+  it('leads the partial note with the cell word where the head carries no †', () => {
+    const fx = getFixtures('table').find((f) => f.id === 'nulls-policy')!;
+    const r = resolveTable(fx.data as TableData, { notes: { placement: 'frame' } });
+    expect(r.table.rows.find((x) => x.id === 'emea')!.cells.q3!.displayed).toBe('19.5 (partial)');
+    expect(r.table.columns.some((column) => column.partial)).toBe(false);
+    expect(r.table.footnotes).toContain('(partial) Partial aggregate: missing values skipped.');
+  });
 });
 
 describe('rounding honesty (no fabrication)', () => {
