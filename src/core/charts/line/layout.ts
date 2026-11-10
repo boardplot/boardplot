@@ -41,6 +41,7 @@ import { labelCtx, leaderPieces, seatLeader, solveLabels, type LabelRequest, typ
 import { accessibleTitle } from '../../normalize/shared';
 import { finalizeRatioTier, ratioTierA11y, ratioTierSpacingWarnings, type FinalizedRatioTier, type RatioTierGeometry } from '../../ratioTier';
 import { defaultAnnotationId, type AnchorRef } from '../../types/annotations';
+import { noTotal } from '../../stackAdds';
 import type { Id } from '../../types/cell';
 import type { LineChartData } from '../../types/data';
 import type { Geometry, LintWarning, Paint, PlacedLabel } from '../../types/scene';
@@ -367,11 +368,12 @@ function annotateLine(
     // On a stack, a category anchor without a series reads every band, as column, bar, combo and mekko do.
     // The first band's value printed at the stack top read as the total.
     // A suppressed 100% category has no total. Directly authored shares have no amount to add, so their total is the plotted percent.
+    // A missing component leaves the total unknown, as on mekko. A rebased stack prints an index, so it takes no series format.
     if (isStacked && !norm.seriesId && drawnSeries.length > 1) {
       if (compositionInvalidAt(ci)) return null;
       const top = drawnSeries[drawnSeries.length - 1]!;
       const amounts = drawnSeries.map(s => rebased ? pv[rowOf.get(s)!]![ci]! : absOf(s, ci));
-      const sharesOnly = drawnSeries.some((s, i) => amounts[i] === null && s.vals[ci]!.v !== null);
+      const sharesOnly = !rebased && drawnSeries.some((s, i) => amounts[i] === null && s.vals[ci]!.v !== null);
       const values = sharesOnly ? drawnSeries.map(s => pv[rowOf.get(s)!]![ci]!) : amounts;
       if (values.every(value => value === null)) return null;
       const value = values.reduce<number>((total, value) => total + (value ?? 0), 0);
@@ -379,6 +381,7 @@ function annotateLine(
         x: xOf(ci),
         y: y(cumTop[dataSeries.indexOf(top)]![ci]!),
         value,
+        ...noTotal(true, !domain.incompleteStack.some(k => k.id === c.id)),
         ...(sharesOnly ? { pointValueText: domain.valueSpec.forSeries(top, top.vals[ci]?.format)(value), format: top.format } : { format: rebased ? undefined : top.format }),
         date: c.date, label: c.label ?? c.id,
         owner: { categoryId: c.id },

@@ -152,6 +152,28 @@ it('reads step amounts and explicit stack totals while keeping level comparisons
   }
 });
 
+// A stacked area drew a missing component as 0 and printed a growth rate from the partial total.
+it('prints no stacked-area total with a missing component', () => {
+  const data = {
+    categories: [{ id: 'a', label: '2022' }, { id: 'b', label: '2023' }],
+    series: [{ id: 'x', label: 'X', values: [10, 20] }, { id: 'y', label: 'Y', values: [30, null] }],
+  };
+  for (const annotation of [{ kind: 'cagr' }, { kind: 'abs', at: { categoryId: 'b', edge: 'total' } }]) {
+    const geometry = layoutLine(data, { variant: 'stacked-area', valueLabels: 'none', seriesLabels: 'none', annotations: [annotation] } as never);
+    expect.soft(geometry.annotations[0]?.computedText, annotation.kind).toBeUndefined();
+  }
+});
+
+// A rebased stack prints an index; a series suppressed by the rebase gave its total the series' currency format.
+it('prints a rebased stacked-area total as an index', () => {
+  const data = {
+    categories: [{ id: 'a' }, { id: 'b' }],
+    series: [{ id: 'x', values: [10, 20], format: '$0.0' }, { id: 'y', values: [0, 30], format: '$0.0' }, { id: 'z', values: [30, 60], format: '$0.0' }],
+  };
+  const geometry = layoutLine(data, { variant: 'stacked-area', rebase100: true, valueLabels: 'none', seriesLabels: 'none', annotations: [{ kind: 'abs', at: 'b' }] } as never);
+  expect(geometry.annotations[0]?.computedText).toBe('400');
+});
+
 // A category drawn as n.m. has no total, and a category of authored shares has a total in percent.
 it('keeps explicit stack totals honest on a 100% area with signed or authored shares', () => {
   const categories = [{ id: 'a', label: 'A', date: '2022-01-01' }, { id: 'b', label: 'B', date: '2023-01-01' }];
