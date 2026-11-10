@@ -10,7 +10,7 @@ import { chosenValueIndices } from '../band/valueSelection';
 import { namesOnly } from '../../markVisibility';
 import type { Rect } from '../../geometry';
 import { notApplicableGlyph, numberRange } from '../../format';
-import { formatWithSpec } from '../../formatSpec';
+import { formatWithSpec, unitMagnitude } from '../../formatSpec';
 import { categoryLineAlign, ROTATED_NAME_AIR, rotatedClaimRect, verticalNameRect, yearRowRequests } from '../../label/categoryRow';
 import { REFERENCE_MARKER_R } from '../band/ticks';
 import { PRIORITY, SERIES_VALUE_GAP, type LabelRequest, type SlotCandidate } from '../../label/solver';
@@ -683,8 +683,9 @@ export function planColumnLabels(
   const maxTotal = maxOf(cats.map(c => Math.abs(stackTotals[c.id]!)));
   // Compact cards try a shorter number before the density gate. Keep the
   // complete number and category for any total that still needs the note.
+  // A unit that names a scale ("$m") takes no second one: "105.0M" under "in $m" stacks two.
   const compactTotals = domain.options.mode === 'compact' && variant === 'stacked'
-    && spec.magnitude === 'none' && !spec.suffix.includes('%') && maxTotal >= 1000
+    && spec.magnitude === 'none' && unitMagnitude(domain.options.unit) === undefined && !spec.suffix.includes('%') && maxTotal >= 1000
     && fullTotals.some(total => total && measure(total.text, strongFont).width + 6 > band.step);
   const compactFormat = (value: number) => Math.abs(value) < 1000 ? totalFmt(value) : formatWithSpec(value, { ...spec,
     magnitude: Math.abs(value) >= 1e9 ? 'bn' : Math.abs(value) >= 1e6 ? 'm' : 'k', decimals: 1, significantDigits: undefined });

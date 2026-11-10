@@ -874,3 +874,36 @@ it('reads a proxied column format example from the value the Proxy returns', asy
   const prepared = JSON.stringify(await prepareChart({ type: 'table', data, options: { size: { width: 600 } } } as never));
   expect(prepared).toContain('"displayed":"0.512"');
 });
+
+describe('a unit that names a scale takes no second one', () => {
+  const drawnTexts = (type: string, data: unknown, options: object) => {
+    const request = resolveChartRequest({ type, data, options } as never);
+    return [...renderSvg(requireGeometry(layoutResolvedRequest(request)), request.theme).matchAll(/<text\b[^>]*>(.*?)<\/text>/gs)].map(match => match[1]!.replace(/<[^>]*>/g, ''));
+  };
+  const scaled = (texts: string[]) => texts.filter(text => /\d(?:\.\d+)?\s?[MB]\b/.test(text));
+  const stack = { categories: ['FY23', 'FY24', 'FY25', 'FY26'], series: [{ id: 'a', label: 'Hardware', values: [46_000_000, 45_000_000, 42_000_000, 40_000_000] },
+    { id: 'b', label: 'Software', values: [20_000_000, 26_000_000, 33_000_000, 41_000_000] }, { id: 'c', label: 'Services', values: [18_000_000, 20_000_000, 22_000_000, 24_000_000] }] };
+
+  // The compact stack totals of a narrow card printed "105.0M" under "in $m": millions of millions.
+  it('prints compact column totals whole under a scale unit', () => {
+    const texts = drawnTexts('column', stack, { variant: 'stacked', unit: '$m', mode: 'compact', subtitle: { measure: 'Revenue' }, size: { width: 320 } });
+    expect(texts.some(text => /^\d{2,3},\d{3},\d{3}$/.test(text))).toBe(true);
+    expect(scaled(texts)).toEqual([]);
+  });
+
+  // A grid printed "$m" over panels that named no unit, and the panels printed "20M" under it.
+  it('gives a grid scale unit to the panels that name none', () => {
+    const panel = (id: string) => ({ id, type: 'column', title: id, data: { categories: ['FY24', 'FY25'], series: [{ id: 'rev', label: 'Revenue', values: [20_000_000, 44_000_000] }] } });
+    const texts = drawnTexts('grid', { panels: [panel('North'), panel('South')] }, { unit: '$m', columns: 2, sharedAxis: 'none', size: { width: 720 } });
+    expect(texts).toContain('20,000,000');
+    expect(scaled(texts)).toEqual([]);
+  });
+
+  // A combo secondary line without a unit printed "12M" under the subtitle's "in $m".
+  it('holds a unit-less combo secondary line to the chart scale unit', () => {
+    const data = { categories: ['Q1', 'Q2'], series: [{ id: 'rev', label: 'Revenue', values: [30_000_000, 54_000_000] }, { id: 'cost', label: 'Cost', kind: 'line', axis: 'secondary', values: [12_000_000, 14_000_000] }] };
+    const texts = drawnTexts('combo', data, { unit: '$m', secondaryAxis: { acknowledge: true }, subtitle: { measure: 'Revenue and cost' }, size: { width: 480 } });
+    expect(texts).toContain('12,000,000');
+    expect(scaled(texts)).toEqual([]);
+  });
+});

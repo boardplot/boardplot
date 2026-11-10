@@ -1,0 +1,3 @@
+### Fixed
+
+- Column, combo and grid no longer add a magnitude letter on top of a unit that names a scale. Before, values of a million or more under "in $m" printed as "105.0M", "20M" or "12M": the compact stack totals of a narrow column card, the panels of a grid whose own unit sat on the grid, and a combo secondary line without a unit of its own. They now print whole and grouped ("105,000,000"), as the column labels, the bar table and the combo primary axis already did, and the engine still warns `unit-scale-digits`. A grid's scale unit now reaches every panel that names no unit; such a panel follows that unit's number rule and leaves the printing of the unit to the grid. To print a letter as before, give the series or the panel a format such as `"format": "1.2M"`.

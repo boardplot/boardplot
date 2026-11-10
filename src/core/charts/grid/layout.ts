@@ -44,7 +44,7 @@ import { accessibleTitle, NormalizeError, normalizeCategory, normalizeSeriesValu
 import { getChart } from '../../registry';
 import { requireChartCores } from '../../deferred';
 import { panelNoteData } from '../../panelNoteData';
-import { GridChildRefusal, gridRowHeights, gridSizing, hasKpiFigure, layoutChildChart, smallestKpiValueSize } from '../../grid/childLayout';
+import { GridChildRefusal, gridRowHeights, gridSizing, hasKpiFigure, inheritedScaleUnit, layoutChildChart, smallestKpiValueSize } from '../../grid/childLayout';
 import { KPI_HOST_TEXT, KPI_VALUE_SIZE } from '../../typeFloors';
 import { LEFT_OUT_OF_NOTE, panelNoteTexts, stringsIn } from '../../frame';
 import { autoPlotPx, CARD_CLASS_WIDTH, CARD_MIN_WIDTH, chartSizing, DIGIT_SEAT, heightOmitted, type DigitSeated, NARROW_SHARE_WIDTH, stackedColumnPlotPx } from '../../sizing';
@@ -1678,6 +1678,7 @@ function layoutAuthoredChild(
         : {}),
       // A status panel resolves its hatch strength in its own layout.
       ...hatchStrengthFor(panelOptions, parentOptions),
+      ...inheritedScaleUnit(panelOptions, parentOptions.unit),
       theme: panelOptions.theme ?? parentOptions.theme,
       target: parentOptions.target,
       size: { width: slot.w, height: slot.h },

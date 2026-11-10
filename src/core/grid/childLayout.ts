@@ -4,6 +4,7 @@ import type { Rect, Size } from '../geometry';
 import { chartSizing, resolveSizing, sizeRefusal } from '../sizing';
 import { isVarianceTier } from './varianceTiers';
 import { maxOf, minOf } from '../arrays';
+import { unitMagnitude } from '../formatSpec';
 
 type ChildChartLayout = (data: unknown, options: unknown) => LayoutResult;
 
@@ -22,6 +23,14 @@ export function smallestKpiValueSize(children: Geometry[]): number | undefined {
     .filter(({ type, nodes }) => type !== 'waffle' || nodes.length <= 1)
     .flatMap(({ nodes }) => nodes.map(node => node.t === 'text' ? node.font.size : Infinity));
   return sizes.length > 1 && maxOf(sizes) > minOf(sizes) ? minOf(sizes) : undefined;
+}
+
+/**
+ * A grid unit that names a scale ("$m") is the unit of a panel that names none, and the grid prints it:
+ * the panel's numbers follow its unit rule and take no second scale ("20M" under "$m").
+ */
+export function inheritedScaleUnit(panelOptions: { unit?: unknown }, gridUnit: string | undefined): { unit?: string; unitShown?: true } {
+  return panelOptions.unit === undefined && unitMagnitude(gridUnit) !== undefined ? { unit: gridUnit, unitShown: true } : {};
 }
 
 export function layoutChildChart(
