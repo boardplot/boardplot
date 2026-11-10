@@ -667,12 +667,11 @@ function layoutDiagramPass(
   preset.edges.forEach((edge) => {
     const rect = routed.labelBoxes.get(edge.id);
     if (!edge.label) return;
+    // An edge label that found no seat goes to the solver with none, so the reading counts it as dropped.
     if (!rect) {
-      if (options.variant === 'circular-process') {
-        edgeLabelKinds.set(`edge-label:${edge.id}`, 'diagramEdge');
-        edgeLabelRequests.push({ id: `edge-label:${edge.id}`, kind: 'annotation', typeRole: 'label', owner: { segmentId: edge.id },
-          text: edge.label, lines: [edge.label], font: edgeLabelFont, priority: PRIORITY.interior, candidates: [] });
-      }
+      edgeLabelKinds.set(`edge-label:${edge.id}`, 'diagramEdge');
+      edgeLabelRequests.push({ id: `edge-label:${edge.id}`, kind: 'annotation', typeRole: 'label', owner: { segmentId: edge.id },
+        text: edge.label, lines: [edge.label], font: edgeLabelFont, priority: PRIORITY.interior, candidates: [] });
       return;
     }
     addBoxLabelRequest(

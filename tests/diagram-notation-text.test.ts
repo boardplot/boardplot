@@ -43,3 +43,24 @@ describe('diagram inset heading and columns', () => {
     expect(warning.path).toBe('/data/inset/columnOverrides/nope');
   });
 });
+
+describe('diagram edge labels', () => {
+  // An edge label that found no seat was left out of the drawing while the reading counted no dropped label.
+  it('counts an edge label it cannot seat as dropped in the reading', () => {
+    const node = (id: string, label: string, x: number, y: number) => ({ id, kind: 'entity', shape: { kind: 'roundedRect' }, label, position: { x, y } });
+    const edge = (id: string, target: string, label: string) => ({ id, source: { nodeId: 'r' }, target: { nodeId: target }, label, routing: 'straight' });
+    const spec = { type: 'diagram', data: {
+      nodes: [node('r', 'Root', 0.5, 0.1), node('a', 'Alpha', 0.3, 0.5), node('b', 'Beta', 0.7, 0.5), node('c', 'Gamma', 0.5, 0.9)],
+      edges: [
+        edge('e1', 'a', 'A very long edge label that cannot fit anywhere near this short route at all'),
+        edge('e2', 'b', 'Another very long label that also cannot find a clear place near the route'),
+        edge('e3', 'c', 'Third long label crossing the others in a tight space of the drawing'),
+      ],
+    }, options: { variant: 'hierarchy', title: 'Unplaced edge labels', source: 'Invented' } };
+    const body = render({ spec, format: 'svg', return: ['reading'] } as never).body as any;
+    const unseated = body.warnings.filter((warning: any) => warning.code === 'diagram-edge-label-unplaced').map((warning: any) => `edge-label:${warning.owner.segmentId}`);
+    expect(unseated.length).toBeGreaterThan(0);
+    expect(body.reading.labelsDropped).toBeGreaterThanOrEqual(unseated.length);
+    expect(body.reading.omissions.map((omission: any) => omission.labelId)).toEqual(expect.arrayContaining(unseated));
+  });
+});
