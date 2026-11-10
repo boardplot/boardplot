@@ -1,0 +1,3 @@
+### Fixed
+
+- A derived claim that is not a plain sum or difference now keeps its own precision when its operands are large. Before, every derived claim was cleaned at the size of its largest operand, so a KPI of $4.82T against $4.31T recorded a change of `10` while the card printed `+11.8%`, a table change of −2.87% (also inside `abs`) recorded `−3`, and a trend slope of 0.000001 over x in the millions recorded slope `0` and R² `0` while the legend printed R² `1.00`. Sums and differences are still cleaned at the size of their operands, and a relative change of equal totals still records `0`. The SVG is unchanged.
