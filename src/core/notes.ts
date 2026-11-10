@@ -19,9 +19,11 @@ import type { StringsSpec } from './types/options';
  *   explains an encoding on the chart ("One cell = 5%", "W38 partial",
  *   "Columns by rank"), a change to the data ("1 value below zero shown as
  *   0."), or names the marks the drawing leaves unlabelled ("Not labelled on
- *   the chart: ..."). Always in the frame, outside the line budget, like a
- *   required credit. So is an author note a mark on the
- *   chart points at ("1)").
+ *   the chart: ..."). Where the author lists 'disclosure' in `notes.show`, it
+ *   prints outside the line budget, like a required credit. So does an author
+ *   note a mark on the chart points at ("1)"). Where the author asks for the
+ *   engine's notes another way (`methodNote: true`, a `notes.placement`), a
+ *   disclosure prints within the budget, after the author notes.
  */
 import { typeWidthClass } from './theme';
 import type { RenderTarget } from './types/options';
@@ -136,7 +138,14 @@ export function unprintedNotes(notes: readonly ChartNote[]): ChartNote[] {
   return notes.filter((note) => !note.inFrame && note.kind !== 'source' && !notes.some((other) => other.inFrame && other.text === note.text));
 }
 
-type NoteAsk = { methodNote?: unknown; notes?: { show?: readonly string[]; placement?: unknown } } | undefined;
+/**
+ * Set by a composing chart on the options it hands its host: its author asked for
+ * the engine's notes by `methodNote: true`, which the host never sees. The host
+ * prints them as asked, within the line budget, since no authored `notes.show` lists them.
+ */
+export const NOTES_ASKED = Symbol('notesAsked');
+
+type NoteAsk = { methodNote?: unknown; notes?: { show?: readonly string[]; placement?: unknown }; [NOTES_ASKED]?: true } | undefined;
 
 /**
  * The note kinds the chart prints: `notes.show`, else every engine note where
@@ -145,13 +154,18 @@ type NoteAsk = { methodNote?: unknown; notes?: { show?: readonly string[]; place
  */
 export function shownNoteKinds(options: NoteAsk): readonly string[] | undefined {
   if (options?.notes?.show !== undefined) return options.notes.show;
-  return options?.methodNote === true || options?.notes?.placement !== undefined ? ['note', 'method', 'disclosure'] : undefined;
+  return options?.methodNote === true || options?.notes?.placement !== undefined || options?.[NOTES_ASKED] === true
+    ? ['note', 'method', 'disclosure'] : undefined;
 }
 
-/** The options a composing chart hands its host chart, with the note kinds its `methodNote` asked for. */
+/**
+ * The options a composing chart hands its host chart: an authored `notes.show`
+ * travels as it is, a `methodNote: true` as NOTES_ASKED, so the host still tells
+ * the author's own list from the kinds asked for another way.
+ */
 export function keepShownNotes<T extends object>(options: NoteAsk, passed: T): T {
-  const show = shownNoteKinds(options);
-  return show === undefined ? passed : { ...passed, notes: { ...(passed as { notes?: object }).notes, show } };
+  if (options?.notes?.show !== undefined) return { ...passed, notes: { ...(passed as { notes?: object }).notes, show: options.notes.show } };
+  return shownNoteKinds(options) === undefined ? passed : { ...passed, [NOTES_ASKED]: true };
 }
 
 /**

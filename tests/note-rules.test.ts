@@ -4,6 +4,7 @@ import { getChart } from '../src/core/registry';
 import { getFixtures } from '../src/fixtures';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { requireGeometry, SIZE_TOLERANCE } from '../src/core/sizing';
+import { INTERACTIVE_LAYOUT } from '../src/core/footer';
 import { hiddenNoteLine, noteLine, withHiddenLabelNote } from '../src/core/frame';
 import { noteTexts } from './helpers/notes';
 import { render } from '../src/cli/render';
@@ -238,6 +239,14 @@ describe('note rules', () => {
     expect(names).toEqual(expect.arrayContaining(['D0', 'D2', 'D4']));
     expect(names).not.toContain('D1');
     expect(geo.plot.h).toBeGreaterThanOrEqual(160);
+  });
+
+  // Reason: disclosures asked for only by methodNote printed outside the line budget in a live chart and pushed the author's notes behind the pointer.
+  it('counts a disclosure asked for by methodNote against the live line budget, after the author notes', () => {
+    const fixture = getFixtures('cohort').find((entry) => entry.id === 'cumulative-conversion-pure')!;
+    const geo = requireGeometry(getChart('cohort')!.layout(fixture.data, { ...fixture.options, footnotes: ['First invented note.', 'Second invented note.'], [INTERACTIVE_LAYOUT]: true } as never));
+    expect(geo.frame.noteList!.filter((note) => note.inFrame).map((note) => note.text)).toEqual(['First invented note.', 'Second invented note.']);
+    expect(geo.frame.noteList!.some((note) => note.kind === 'disclosure')).toBe(true);
   });
 
   it('a row of plain names keeps one name per column: it turns instead of thinning', () => {

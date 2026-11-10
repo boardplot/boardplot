@@ -186,6 +186,8 @@ export interface FrameInput extends IdentityCollectionOptions, CompactSourceOpti
   credit?: ChartCredit;
   /** `options.notes`: the footer rule's placement, line budget, kinds shown and pointer. */
   notes?: BaseOptions['notes'];
+  /** The author wrote `notes.show`: only then do its disclosures print outside the line budget. */
+  notesShowAuthored?: boolean;
   /** Built-in wording for the renderer-composed labels this frame draws. */
   strings?: BaseOptions['strings'];
   footnotes?: string[];
@@ -385,7 +387,7 @@ function unreferenced(options: object & InternalFootnoteOptions & Pick<BaseOptio
 export function frameTextOptions(
   options: Pick<BaseOptions, Exclude<FrameTextKey, 'mode'> | 'textSize'> & InternalFootnoteOptions & CompactSourceOptions
     & { mode?: unknown; theme?: ThemeRef; [LEGEND_HEIGHT]?: LegendBudget },
-): Pick<FrameInput, FrameTextKey | 'footnotesOff' | 'numberedFootnotes' | 'unreferencedNotes' | 'pointedNotes' | 'legendFont' | 'compactTitleSize' | typeof CUT_LABEL_NOTES | typeof LEGEND_HEIGHT> & IdentityCollectionOptions & CompactSourceOptions {
+): Pick<FrameInput, FrameTextKey | 'notesShowAuthored' | 'footnotesOff' | 'numberedFootnotes' | 'unreferencedNotes' | 'pointedNotes' | 'legendFont' | 'compactTitleSize' | typeof CUT_LABEL_NOTES | typeof LEGEND_HEIGHT> & IdentityCollectionOptions & CompactSourceOptions {
   const mode = options.mode === 'full' || options.mode === 'compact' ? options.mode : undefined;
   const unitLine = resolveSubtitle(options.subtitle) === undefined ? unitLineSubtitle(options) : undefined;
   return {
@@ -405,6 +407,7 @@ export function frameTextOptions(
     ...(options[LIVE_NOTE_SHOW] ? { [LIVE_NOTE_SHOW]: options[LIVE_NOTE_SHOW] } : {}),
     strings: options.strings,
     ...(options.notes !== undefined || shownNoteKinds(options) !== undefined ? { notes: { ...options.notes, show: shownNoteKinds(options) as NonNullable<FrameInput['notes']>['show'] } } : {}),
+    ...(options.notes?.show !== undefined ? { notesShowAuthored: true } : {}),
     footnotes: options.footnotes === false ? [] : options.footnotes,
     ...(options.footnotesOff === true || options.footnotes === false ? { footnotesOff: true } : {}),
     numberedFootnotes: options.authoredFootnotes ?? authoredNotes(options),
@@ -2033,7 +2036,7 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
   const footInset = Math.max(0, Math.min(input.footerInset ?? 0, (contentW - 1) / 2));
   const footW = contentW - 2 * footInset;
   const text = frameText({
-    target: input.target, title: input.title || undefined, subtitle: input.subtitle, unit: input.unit, source: input.source, credit: input.credit, notes: input.notes, strings: input.strings,
+    target: input.target, title: input.title || undefined, subtitle: input.subtitle, unit: input.unit, source: input.source, credit: input.credit, notes: input.notes, notesShowAuthored: input.notesShowAuthored, strings: input.strings,
     footnotes: (input.footnotes ?? []).map((note) => ({ text: note, meta: engineNoteMeta(note) })),
     footnotesOff: input.footnotesOff, numberedFootnotes: input.numberedFootnotes, unreferencedNotes: input.unreferencedNotes,
     numberedDisclosures: input.numberedDisclosures, pointedNotes: input.pointedNotes, compactSourceLines: input[COMPACT_SOURCE_LINES],
