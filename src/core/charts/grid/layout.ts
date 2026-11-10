@@ -33,6 +33,7 @@ import {
 } from '../../grid/layoutGrid';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex } from '../../label/occupied';
+import { unprintedClaims, withUnprintedClaims } from '../../claims/ids';
 import {
   labelCtx,
   PRIORITY,
@@ -227,7 +228,10 @@ export function layoutGrid(
     && Math.abs(geometry.size.height - geometry.sizing.naturalHeight) > 1) {
     return layoutGrid(data, { ...options, size: { width: geometry.size.width, height: geometry.sizing.naturalHeight } });
   }
-  return withCardFloor(geometry, ordered.panels.map((panel) => panel.type), options);
+  const floored = withCardFloor(geometry, ordered.panels.map((panel) => panel.type), options);
+  // What a panel states it does not print holds in the grid, under the panel's prefix.
+  return floored.refused ? floored : withUnprintedClaims(floored, floored.marks.panels.flatMap((panel) =>
+    panel.chart ? unprintedClaims(panel.chart.geometry).map((id) => `${panel.id}/${id}`) : []));
 }
 
 /**
