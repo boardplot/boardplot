@@ -170,6 +170,14 @@ describe('number census', () => {
     expect(findings.filter((f) => f.class === 'mixed-units')).toEqual([]);
   });
 
+  // A funnel stepped each label down to its own magnitude, so one axis printed "1.18B" beside "590M" and the reader had to convert units.
+  it('prints the values of a funnel that cross a magnitude step at one magnitude', () => {
+    const spec = { data: { categories: [{ id: 'visits', label: 'Visits' }, { id: 'signups', label: 'Signups' }, { id: 'trials', label: 'Trials' }, { id: 'buyers', label: 'Buyers' }],
+      series: [{ id: 'paid', label: 'Paid', values: [1.18e9, 5.9e8, 2.9e8, 1.4e8] }, { id: 'organic', label: 'Organic', values: [8e6, 4e6, 2e6, 1e6] }] }, options: { target: 'report' } };
+    const { findings } = censusCase('funnel', spec, 720, 'en') as { findings: Finding[] };
+    expect(findings.filter((f) => f.class === 'mixed-units')).toEqual([]);
+  });
+
   // A log axis steps by decades ("500M", "1.0B"), so its ticks print several magnitudes by design;
   // the same ticks on a linear axis still mix magnitudes.
   it('spares log-axis ticks and still flags mixed magnitudes on a linear axis', () => {

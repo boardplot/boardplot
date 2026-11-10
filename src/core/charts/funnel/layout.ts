@@ -23,8 +23,8 @@ import type { AnchorResolution } from '../../annotate';
 import { runAnnotatePass } from '../../annotatePass';
 import { rectSeriesAdjacentWarnings } from '../../adjacentSeries';
 import { warnSpreadOverflow } from '../../collide';
-import { formatAutomaticNumber, formatAutomaticPercent, smallRateDecimals } from '../../format';
-import { formatterFromExample, seriesRasterFormatter } from '../../formatSpec';
+import { formatAutomaticNumber } from '../../format';
+import { formatterFromExample, setFormatPlan } from '../../formatSpec';
 import { cellMeta } from '../../types/cell';
 import type { Rect } from '../../geometry';
 import { clamp, rectContains, rectsOverlap } from '../../geometry';
@@ -172,10 +172,6 @@ export function layoutFunnel(
   const fmt = options.format
     ? formatterFromExample(options.format, options.locale?.language)
     : (v: number) => formatAutomaticNumber(v, { locale: options.locale?.language, decimals: autoDecimals(v) });
-  const fmtPct = (rate: number) => {
-    const pct = rate * 100;
-    return formatAutomaticPercent(pct, smallRateDecimals(pct), false, options.locale?.language);
-  };
   const highlights = new Set(resolveHighlight(options.highlight));
   const labelsOpt = options.labels;
   const labelOn = (kind: LabelKind): boolean => chartLabelOn(options, kind);
@@ -197,16 +193,13 @@ export function layoutFunnel(
   const { values, known, stageTotals, shownTotals, conversions, worstDrop, undefinedSteps, clamped } = deriveFunnel(plotted, stages, fmt, warnings, data.series);
   const glyph = missingGlyph(theme);
   const cells = plotted.map((series, si) => normalizeSeriesValues(series, stages, si, 'values', data.series));
-  // An authored format holds the whole chart to one scale and one decimal count (exampleSpec).
-  const authoredRaster = options.format ? [...values.flat(), ...Object.values(stageTotals)] : undefined;
-  // One raster per stage: the values of one stage share one decimal count, and a stage of whole counts prints none.
-  // A single series is one raster down its stages (one decimal count within a series).
-  const formats = stages.map((_, ci) => seriesRasterFormatter(options.format, authoredRaster ?? (plotted.length === 1 ? values[0]! : plotted.map((_, si) => values[si]![ci])), options.locale?.language, options.unit, options.target, undefined, true));
-  // Totals and series without format metadata print through the shared raster (one decimal count, engine scale).
-  const totalRaster = seriesRasterFormatter(options.format, authoredRaster ?? Object.values(stageTotals), options.locale?.language, options.unit, options.target);
-  // A whole count prints whole beside fractional values of its stage ("140", "1" beside "0.6"); an amount like 100.4 keeps its decimals.
-  if (!options.format) for (const format of [...formats, totalRaster]) format.spec.wholeCounts = true;
-  const { valueText, totalFmt } = funnelValueFormats(plotted, cells, formats, totalRaster);
+  // The segment values and the stage totals are one set: one magnitude and one decimal count ("0.59B" beside "1.18B", not "590M").
+  // An authored format holds the set to its own scale and decimals (exampleSpec).
+  const valuePlan = setFormatPlan([...values.flat(), ...Object.values(stageTotals)], { format: options.format, locale: options.locale?.language, unit: options.unit, target: options.target });
+  // The step conversions are a set of their own: one decimal count for every caption ("9.7%" beside "31.0%").
+  const sharePlan = setFormatPlan(conversions.flatMap((conv) => conv.rate > 1 ? [] : [conv.rate * 100]), { role: 'share', locale: options.locale?.language });
+  const fmtPct = (rate: number) => sharePlan.fmt(rate * 100);
+  const { valueText, totalFmt } = funnelValueFormats(plotted, cells, valuePlan);
   const cellText = (si: number, ci: number, value: number): string | null => {
     const label = cellMeta(cells[si]![ci]!)?.label;
     return label === false ? null : typeof label === 'string' ? label.replace(/\$\{value\}/g, valueText(si, ci, value)) : valueText(si, ci, value);

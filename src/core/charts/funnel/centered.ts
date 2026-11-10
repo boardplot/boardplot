@@ -11,8 +11,8 @@ import type { AdjacentSeriesPaintSample, PaintWarningRule } from '../../types/sc
 import type { AnchorResolution } from '../../annotate';
 import { runAnnotatePass } from '../../annotatePass';
 import { adjacentSeriesWarnings, retainAdjacentWarningRule, type AdjacentWarningCapture, type SeriesColorSample } from '../../adjacentSeries';
-import { formatAutomaticNumber, formatAutomaticPercent, notApplicableGlyph, smallRateDecimals } from '../../format';
-import { formatterFromExample, seriesRasterFormatter } from '../../formatSpec';
+import { formatAutomaticNumber, notApplicableGlyph } from '../../format';
+import { formatterFromExample, setFormatPlan } from '../../formatSpec';
 import { cellMeta } from '../../types/cell';
 import type { Rect } from '../../geometry';
 import { clamp, rectContains } from '../../geometry';
@@ -200,10 +200,6 @@ export function layoutCenteredFunnel(
   const fmt = options.format
     ? formatterFromExample(options.format, options.locale?.language)
     : (value: number) => formatAutomaticNumber(value, { locale: options.locale?.language, ...{ decimals: autoDecimals(value) } });
-  const fmtPct = (rate: number) => {
-    const pct = rate * 100;
-    return formatAutomaticPercent(pct, smallRateDecimals(pct), false, options.locale?.language);
-  };
   const highlights = new Set(resolveHighlight(options.highlight));
   const labelsOpt = options.labels;
   const labelOn = (kind: LabelKind): boolean => chartLabelOn(options, kind);
@@ -237,16 +233,10 @@ export function layoutCenteredFunnel(
       suggest: "Set variant: 'rows' to show the cell labels, or remove values[].label.",
     });
   }
-  // An authored format holds the whole chart to one scale and one decimal count (exampleSpec).
-  const authoredRaster = options.format ? [...numbers.values.flat(), ...Object.values(stageTotals)] : undefined;
-  // One raster per stage: the values of one stage share one decimal count, and a stage of whole counts prints none.
-  // A single series is one raster down its stages (one decimal count within a series).
-  const formats = stages.map((_, ci) => seriesRasterFormatter(options.format, authoredRaster ?? (plotted.length === 1 ? numbers.values[0]! : plotted.map((_, si) => numbers.values[si]![ci])), options.locale?.language, options.unit, options.target, undefined, true));
-  // Totals and series without format metadata print through the shared raster (one decimal count, engine scale).
-  const totalRaster = seriesRasterFormatter(options.format, authoredRaster ?? Object.values(stageTotals), options.locale?.language, options.unit, options.target);
-  // A whole count prints whole beside fractional values of its stage ("140", "1" beside "0.6"); an amount like 100.4 keeps its decimals.
-  if (!options.format) for (const format of [...formats, totalRaster]) format.spec.wholeCounts = true;
-  const { valueText, totalFmt } = funnelValueFormats(plotted, cells, formats, totalRaster);
+  // The segment values and the stage totals are one set: one magnitude and one decimal count ("0.59B" beside "1.18B", not "590M").
+  // An authored format holds the set to its own scale and decimals (exampleSpec).
+  const valuePlan = setFormatPlan([...numbers.values.flat(), ...Object.values(stageTotals)], { format: options.format, locale: options.locale?.language, unit: options.unit, target: options.target });
+  const { valueText, totalFmt } = funnelValueFormats(plotted, cells, valuePlan);
 
 
   const firstTotal = stageTotals[stages[0]!.id] ?? null;
@@ -265,6 +255,10 @@ export function layoutCenteredFunnel(
     const text = valueText(0, ci, total);
     return label === false ? '' : typeof label === 'string' ? label.replace(/\$\{value\}/g, text) : text;
   };
+  // The step rates and the cumulative rates are two sets of shares, each with one decimal count ("9.7%" beside "31.0%").
+  const sharePlan = (rates: readonly (number | null)[]) => setFormatPlan(rates.flatMap((rate) => rate === null || rate > 1 ? [] : [rate * 100]), { role: 'share', locale: options.locale?.language });
+  const stagePlan = sharePlan(conversions.map((conversion) => conversion.rate));
+  const cumulativePlan = sharePlan(cumulativeCvrs.map((item) => item.rate));
   const stageCvrText = (categoryIndex: number): string => {
     // The first stage has no previous one to convert from.
     if (categoryIndex === 0) return '–';
@@ -274,11 +268,11 @@ export function layoutCenteredFunnel(
       (candidate) => candidate.fromId === previous.id && candidate.toId === stage.id,
     );
     if (!conversion) return na;
-    return conversion.rate > 1 ? 'increased' : fmtPct(conversion.rate);
+    return conversion.rate > 1 ? 'increased' : stagePlan.fmt(conversion.rate * 100);
   };
   const cumulativeCvrText = (rate: number | null): string => {
     if (rate === null) return na;
-    return rate > 1 ? 'increased' : fmtPct(rate);
+    return rate > 1 ? 'increased' : cumulativePlan.fmt(rate * 100);
   };
 
   const occupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });

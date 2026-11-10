@@ -21,11 +21,12 @@ import { emptyIdRecord } from '../../idRecords';
 type Raster = { fmt: (v: number) => string; fmtPercent: (v: number) => string; forSeries: (series: { format?: string; unit?: string }, cellFormat?: string) => (v: number) => string };
 
 /**
- * The value and total texts of the rows and the centered layout. A percent
+ * The value and total texts of the rows and the centered layout, from the
+ * one plan of the funnel's values and totals (setFormatPlan). A percent
  * cell keeps its '%', as on column; an example on the cell or series
  * keeps winning. Stages of percent cells only total in percent too.
  */
-export function funnelValueFormats(plotted: readonly Series[], cells: readonly (readonly Cell[])[], formats: readonly Raster[], totalRaster: Raster): {
+export function funnelValueFormats(plotted: readonly Series[], cells: readonly (readonly Cell[])[], plan: Raster): {
   valueText: (si: number, ci: number, value: number) => string;
   totalFmt: (value: number) => string;
 } {
@@ -34,9 +35,9 @@ export function funnelValueFormats(plotted: readonly Series[], cells: readonly (
   return {
     valueText: (si, ci, value) => {
       const cell = cells[si]![ci]!;
-      return (isPctCell(cell) && !cell.format && !plotted[si]!.format ? formats[ci]!.fmtPercent : formats[ci]!.forSeries(plotted[si]!, cellMeta(cell)?.format))(value);
+      return (isPctCell(cell) && !cell.format && !plotted[si]!.format ? plan.fmtPercent : plan.forSeries(plotted[si]!, cellMeta(cell)?.format))(value);
     },
-    totalFmt: percentOnly ? totalRaster.fmtPercent : totalRaster.fmt,
+    totalFmt: percentOnly ? plan.fmtPercent : plan.fmt,
   };
 }
 
