@@ -379,3 +379,14 @@ it.each([332, 1234])('keeps owned-theme footer type at %i px', (width) => {
   const owned = layoutTable(structuredClone(data), { ...options, theme: { preset: 'bridge', overrides: resolveTheme('bridge') } });
   expect(JSON.stringify(owned)).toBe(JSON.stringify(direct));
 });
+
+describe('table need', () => {
+  // Render, measure and the React grid read one need: a rung or a track that drifts from what the layout draws sends them a wrong width.
+  it('names the rung, air and tracks the layout draws', () => {
+    const { data, options } = getFixtures('table').find((entry) => entry.id === 'steering-kpi-rows')!;
+    const need = prepareTableExecutor(data).need({ ...options, size: { width: 480, height: 509 } });
+    expect(need).toMatchObject({ rung: 'cell-air', cellPadX: 3, headLines: 2, margins: { left: 12, right: 12 } });
+    expect(need.tracks).toEqual(need.geometry.marks.columns.map((column) => ({ id: column.id, width: column.w })));
+    expect(need.warnings.find((warning) => warning.code === 'table-compact-fallback')?.message).toContain('3 px cell air, heads on two lines');
+  });
+});
