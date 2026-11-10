@@ -40,7 +40,7 @@ import { localeStrings } from '../../strings';
 import { chartString } from '../../strings/table';
 import type { Theme } from '../../types/theme';
 import { closestKey } from '../../schema/unknownKeyWords';
-import { tableCellKey } from './cellKey';
+import { floatNoise, tableCellKey } from './cellKey';
 import { isCohortDensity } from './ladder';
 import { presetLanguage } from './presets';
 import type { Id, Direction } from '../../types/cell';
@@ -228,9 +228,6 @@ function sameUnit(a: NumberFormatSpec, b: NumberFormatSpec): boolean {
     && JSON.stringify(a.glyphs) === JSON.stringify(b.glyphs) && JSON.stringify(a.exponent) === JSON.stringify(b.exponent)
     && JSON.stringify(a.magnitudeWord) === JSON.stringify(b.magnitudeWord);
 }
-
-/** Float noise from magnitude math (bn-scale): a gap this small between two figures is no disagreement. */
-const floatNoise = (a: number, b: number): number => 1e-9 * Math.max(1, Math.abs(a), Math.abs(b));
 
 export function columnHeaderAffix(column: {
   scenario?: string;

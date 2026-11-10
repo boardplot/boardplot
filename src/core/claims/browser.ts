@@ -1,7 +1,7 @@
 import type { GridDerived as StackGridDerived } from '../charts/grid/layout';
 import { creativeClaims } from '../charts/creative/claims';
 import { dimswitchClaims } from '../charts/dimswitch/claims';
-import { tableCellNodeId } from '../charts/table/cellKey';
+import { printsInCell, tableCellNodeId } from '../charts/table/cellKey';
 /** Pure claim extraction shared by browser layouts and manifest generation. */
 
 import type { BoxDerived } from '../charts/box/types';
@@ -13,7 +13,7 @@ import type { StatusDerived, StatusMarks } from '../charts/status/layout';
 import type { WaffleDerived } from '../charts/waffle/types';
 import type { GridMarks } from '../grid/layoutGrid';
 import type { OlsFit, OlsMoments } from '../ols';
-import type { Geometry, PlacedAnnotation, PlacedLabel } from '../types/scene';
+import type { Geometry, PlacedAnnotation, PlacedLabel, SceneNode } from '../types/scene';
 import type { TableDerived } from '../types/table';
 import type { TotalBasis } from '../charts/waterfall/layout';
 import { claimId } from './ids';
@@ -392,27 +392,26 @@ function stackTotalClaims(geo: Geometry<object, object>): ClaimRecordV1[] {
 function bindClaimLabels(type: string, geo: Geometry<object, object>, claims: ClaimRecordV1[]): ClaimRecordV1[] {
   const bound = claimLabels(type, geo);
   // Two labels can share an id, and so a node id ('a' + 'b:c' and 'a:b' + 'c'): such a node does not tell which label it draws.
-  const seen = new Set<string>();
   const sharedNodes = new Set<string>();
-  for (const node of geo.scene) if (node.t === 'text') (seen.has(node.id) ? sharedNodes : seen).add(node.id);
-  // DimSwitch can supply thousands of cells, also inside a grid.
-  const textNodes = type==='dimswitch' || (type==='grid' && claims.some(claim=>/(^|\/)dimswitch:\[/.test(claim.id)))
-    ? new Map(geo.scene.filter(node=>node.t==='text').map(node=>[node.id,node])) : undefined;
+  // The first text node of each id, as a scan of the scene finds it: a table or dimswitch has thousands of cells.
+  const textNodes = new Map<string, Extract<SceneNode, { t: 'text' }>>();
+  for (const node of geo.scene) if (node.t === 'text') {
+    if (textNodes.has(node.id)) sharedNodes.add(node.id);
+    else textNodes.set(node.id, node);
+  }
   return claims.map(claim => {
     const label = bound.get(claim.id);
     // A claim's own node that draws no text (a clipped point's marker) gives way to the label that prints its value.
-    const own = label && !label.hidden && !seen.has(claim.nodeId ?? '') ? undefined : claim.nodeId;
+    const own = label && !label.hidden && !textNodes.has(claim.nodeId ?? '') ? undefined : claim.nodeId;
     const nodeId = label?.nodeId ?? own ?? (label ? `label:${label.id}` : undefined);
     // The label that names the claim prints its own lines when its node id is shared with another label's node.
     if (label && !label.hidden && !label.noted && sharedNodes.has(nodeId ?? '')) {
       return withoutResidue({ ...claim, nodeId: undefined, output: { ...claim.output, displayed: label.lines.join(' '),
         ...(label.claimText !== undefined && label.text !== label.claimText ? { state: 'authored-override' } : {}) } });
     }
-    const node = textNodes && !label?.noted ? textNodes.get(nodeId ?? '') : geo.scene.find(node => node.t === 'text' && (label?.noted
-      ? label.noteLocation
-        ? label.noteLocation.endsWith(`(${node.id})`)
-        : geo.frame.footnoteNodeIds?.includes(node.id) && node.lines.join(' ').replace(/\s+/g, ' ').includes(label.text.replace(/\s+/g, ' '))
-      : node.id === nodeId));
+    const node = !label?.noted ? textNodes.get(nodeId ?? '') : geo.scene.find(node => node.t === 'text' && (label.noteLocation
+      ? label.noteLocation.endsWith(`(${node.id})`)
+      : geo.frame.footnoteNodeIds?.includes(node.id) && node.lines.join(' ').replace(/\s+/g, ' ').includes(label.text.replace(/\s+/g, ' '))));
     const noteLocation = label?.noted ? label.noteLocation ?? (node ? `Footnote (${node.id})` : undefined) : undefined;
     // A note that only counts the value ("and 236 more") does not display it: the record says so and where it went.
     const displayed = noteLocation ? (label!.noteCounted ? '' : label!.text) : label?.hidden ? '' : node?.t === 'text' ? node.lines.join(' ') : undefined;
@@ -496,6 +495,13 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
     case 'dimswitch': return dimswitchClaims(geo);
     case 'table': {
       const derived = geo.derived as TableDerived;
+      const rows = new Map(derived.table.rows.map((row) => [row.id, row]));
+      // The cell that prints the record's number: an inline row prints as a line in its parent's cell.
+      const cellNode = (c: TableDerived['computedCells'][number]) => {
+        const row = rows.get(c.rowId);
+        if (!printsInCell(c, row?.cells[c.colId]?.raw)) return undefined;
+        return row?.inline ? tableCellNodeId('cellline', row.parentId!, c.colId, row.id) : tableCellNodeId('cell', c.rowId, c.colId);
+      };
       return derived.computedCells.map((c) => ({
         id: c.kind === 'calc' || c.kind === 'aggregate' ? claimId('table', c.rowId, c.colId) : claimId('table', c.rowId, c.colId, c.kind),
         kind:
@@ -519,7 +525,7 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
           ...(i.state ? { state: i.state } : {}),
         })),
         output: { raw: c.raw, state: c.state, displayed: c.displayed },
-        nodeId: c.kind === 'calc' || c.kind === 'aggregate' ? tableCellNodeId('cell', c.rowId, c.colId) : undefined,
+        nodeId: cellNode(c),
       }));
     }
     case 'box': {

@@ -489,3 +489,50 @@ export function inCellBarMaxima(
   }
   return maxima;
 }
+
+/** A closing total row: a result or driver line in the totals role reads as a body row. */
+export const isTotalRow = (row: ResolvedRow): boolean => row.role === 'total' && row.kind !== 'result' && row.kind !== 'driver';
+
+/**
+ * The line a note of a `noteLine` column takes in a row's cell: the first of the shown lines that holds no value
+ * there (a year-to-date block has no month before it, so its month-on-month line reads n/a), else a slot after them.
+ */
+export function noteLineIndex(lines: readonly ResolvedRow[], colId: Id): number {
+  const index = lines.findIndex((line) => {
+    const cell = line.cells[colId];
+    return cell === undefined || cell.state !== 'value' || cell.displayed === '';
+  });
+  return index < 0 ? lines.length : index;
+}
+
+/**
+ * Whether a layout prints a cell's text: its column and row are laid out and the cell has text. An inline row
+ * prints as a line in the cells of its laid-out parent, where the parent shows that line and no note takes its slot.
+ * The layout draws the same cells (`layoutTable`).
+ */
+export function cellPrinted(
+  table: ResolvedTable,
+  laidOut: { rows: readonly { id: Id }[]; columns: readonly { id: Id }[] },
+  options: Pick<TableOptions, 'inlineVisibility' | 'figures'>,
+): (rowId: Id, colId: Id) => boolean {
+  const rows = new Set(laidOut.rows.map((row) => row.id));
+  const columns = new Set(laidOut.columns.map((column) => column.id));
+  // `figures: false` leaves a heat lane's figures to its grounds; a closing total still prints.
+  const figures = printsFigures(options.figures, table.columns.filter((column) => columns.has(column.id)));
+  const heat = new Set(table.columns.filter(heatColumn).map((column) => column.id));
+  const noteLines = table.columns.filter((column) => column.noteLine === true && column.kind !== 'rowLabel');
+  // Each shown line, and the columns where a note of its parent takes its slot.
+  const lines = new Map<Id, Set<Id>>();
+  for (const row of table.rows) if (rows.has(row.id)) {
+    const shown = visibleInlineRows(row, options.inlineVisibility);
+    for (const line of shown) lines.set(line.id, new Set());
+    for (const column of noteLines) if (row.cells[column.id]?.note !== undefined) lines.get(shown[noteLineIndex(shown, column.id)]?.id ?? '')?.add(column.id);
+  }
+  const byId = new Map(table.rows.map((row) => [row.id, row]));
+  return (rowId, colId) => {
+    const row = byId.get(rowId);
+    if (row === undefined || !columns.has(colId) || (row.cells[colId]?.displayed ?? '') === '') return false;
+    if (!figures && heat.has(colId) && !isTotalRow(row)) return false;
+    return row.inline === true ? lines.get(rowId)?.has(colId) === false : rows.has(rowId);
+  };
+}
