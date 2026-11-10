@@ -482,6 +482,9 @@ export function describeField(type: string, path: string) {
     const named = matches.find((field) => pathKey(field.path) === key)?.path ?? key;
     const refused = matches.find((field) => field.type === 'never' && pathKey(field.path) === key);
     if (refused) return { type: definition.type, part: half, path: named, refused: refused.description };
+    // A setting the type accepts and removes reads like a refused key the type ignores (sort on a line).
+    const ignored = half === 'options' && Object.entries(IGNORED_ON).find(([at, { types }]) => types.includes(definition.type) && (key === at || key.startsWith(`${at}.`)));
+    if (ignored) return { type: definition.type, part: half, path: named, refused: `Ignored on '${definition.type}' with an option-ignored warning: ${ignored[1].does}` };
     return { type: definition.type, part: half, path: named, fields: fieldRows(matches, half === 'data') };
   }
   if (!part && key === 'name') return { type: definition.type, part: 'spec' as const, path: 'name', fields: [{ ...BARE_NAME_FIELD }] };

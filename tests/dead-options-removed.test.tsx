@@ -12,7 +12,9 @@ import { describe, expect, it } from 'vitest';
 import { render } from '../src/cli/render';
 import '../src/core/charts';
 import { exampleData } from '../src/core/charts/dimswitch/example';
+import { describeField } from '../src/core/discovery';
 import { patchApplies, type JsonPatchOperation } from '../src/core/diagnostics/jsonPatch';
+import { BarTableChart } from '../src/react/charts/bartable';
 import { CohortChart } from '../src/react/charts/cohort';
 import { DimSwitchChart } from '../src/react/DimSwitchChart';
 import { getFixtures } from '../src/fixtures';
@@ -98,6 +100,26 @@ describe('a removed option keeps an old spec drawing', () => {
     dropsTheKey(clean, { ...clean, options: { ...clean.options, topN: { n: 3, threshold: 50 } } }, 'option-ignored', '/options/topN/threshold');
     const ignored = dimswitch({ focus: { owner: { seriesId: 'a' } } }).filter((warning) => warning.code === 'option-ignored');
     expect(ignored).toEqual([expect.objectContaining({ fix: [{ op: 'remove', path: '/options/focus' }] })]);
+    // describe of the exact path says so, as it does for a refused key the type ignores.
+    expect(describeField('pie', 'options.topN.threshold')).toMatchObject({ refused: expect.stringMatching(/^Ignored on 'pie' with an option-ignored warning/) });
+    expect(describeField('table', 'focus')).toMatchObject({ refused: expect.stringMatching(/^Ignored on 'table'/) });
+  });
+
+  // Removing the setting left the layout options equal, so a prop update kept the old layout and its old warnings.
+  it('a prop update that adds or drops an ignored setting updates the React warnings', () => {
+    const host = document.createElement('div');
+    const root = createRoot(host);
+    const seen: Warning[][] = [];
+    const data = { categories: [{ id: 'r', label: 'Row' }], series: [{ id: 'a', label: 'A' }], panels: [{ id: 'p', label: 'Value', values: { a: [10] } }] };
+    const mount = (extra: object) => act(() => root.render(createElement(BarTableChart as never, {
+      data, ...extra, size: { width: 960, height: 540 }, deferLayout: false, onWarnings: (warnings: Warning[]) => seen.push(warnings) })));
+    const ignored = () => seen.at(-1)!.filter((warning) => warning.code === 'option-ignored').map((warning) => warning.field?.join('.'));
+    mount({});
+    mount({ highlight: 'missing', animate: true });
+    expect(ignored()).toEqual(['options.highlight', 'options.animate']);
+    mount({});
+    expect(ignored()).toEqual([]);
+    act(() => root.unmount());
   });
 
   // never in a child schema would refuse a grid that exits 0 today, because the grid checks panels against it.
