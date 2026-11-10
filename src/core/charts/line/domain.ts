@@ -525,19 +525,25 @@ function valueDomain(d: Core & { cumTop: number[][]; cumBot: number[][] }, isBum
     hi = Math.max(hi, annotation.value);
   }
   // A named reference band is part of the stated range too: the axis reaches every one.
-  for (const [bandIndex, band] of (options.referenceBands ?? []).entries()) {
-    // A 100% composition keeps its fixed 0..100 scale, as a value line does.
-    const field = variant === 'stacked100-area'
-      ? (['value', 'low', 'high'] as const).find((key) => band[key] !== undefined && (band[key]! < 0 || band[key]! > 100))
-      : undefined;
+  const bands = options.referenceBands ?? [];
+  // A 100% composition keeps its fixed 0..100 scale, as a value line does.
+  const outside = (band: (typeof bands)[number]) => variant === 'stacked100-area'
+    ? (['value', 'low', 'high'] as const).find((key) => band[key] !== undefined && (band[key]! < 0 || band[key]! > 100))
+    : undefined;
+  for (const [bandIndex, band] of bands.entries()) {
+    const field = outside(band);
     if (field !== undefined) {
       const level = band[field]!;
+      // The patch removes every band outside the axis, so the spec draws; an empty list goes with its key.
+      const gone = bands.flatMap((other, index) => outside(other) === undefined ? [] : [index]);
       throw new NormalizeError(
         'reference-band-composition-domain',
         `options.referenceBands[${bandIndex}].${field}`,
         `reference band '${band.label ?? band.id ?? bandIndex + 1}' at ${level} is outside the fixed 0..100 composition axis`,
         'keep the band between 0 and 100; a reference band cannot rescale a 100% composition',
-        [{ op: 'remove', path: `/options/referenceBands/${bandIndex}` }],
+        gone.length === bands.length
+          ? [{ op: 'remove', path: '/options/referenceBands' }]
+          : gone.reverse().map((index) => ({ op: 'remove' as const, path: `/options/referenceBands/${index}` })),
         ['options', 'referenceBands', bandIndex, field],
       );
     }
