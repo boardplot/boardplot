@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import '../src/core/charts';
 import { render } from '../src/cli/render';
+import { callTool } from '../src/mcp/server';
 import { getFixtures, getRefusalExamples } from '../src/fixtures';
 import { getChartSchemas, listCharts } from '../src/core/registry';
 import { retireChartSettings } from '../src/core/retired';
@@ -216,6 +217,26 @@ describe('refusal contract', () => {
     const style = cliErrors('waterfall', { valueAxis: { break: { from: 0, to: 1, style: 'zigzag' } } })[0]!;
     expect(style.message).toContain('"straight"');
     expect(style.message).not.toContain('wiggle');
+  });
+
+  // These refusals listed only the values they refuse, and authors concluded the job could not be done: each names the setting that does it.
+  it('names the existing setting that does the job in the refusal', () => {
+    const dimswitch = getFixtures('dimswitch')[0]!;
+    const data = structuredClone(dimswitch.data) as { periods: { kind?: string }[] };
+    data.periods = data.periods.filter((period) => period.kind !== 'range');
+    expect(render({ spec: { type: 'dimswitch', data, options: dimswitch.options } }).body.errors as Finding[])
+      .toContainEqual(expect.objectContaining({ path: '/data/periods', suggest: expect.stringContaining('options.columnVisibility.range to false') }));
+    const table = getFixtures('table').find((entry) => entry.id === 'table-scorecard')!;
+    const rows = structuredClone((table.data as { rows: { cells: Record<string, unknown> }[] }).rows);
+    rows[0]!.cells.state = 'unclear';
+    const status = (render({ spec: { type: 'table', data: { ...(table.data as object), rows }, options: table.options } }).body.errors as Finding[])[0]!;
+    expect(status.suggest).toContain("{ state: 'na' }");
+    const column = getFixtures('column')[0]!;
+    const rowsResult = JSON.parse(callTool('boardplot_render', { spec: { type: 'column', data: column.data, options: column.options }, rows: [{ month: 'Jan', revenue: 3 }], columns: { category: 'month', value: 'revenue' } }).text) as { errors: Finding[] };
+    expect(rowsResult.errors[0])
+      .toMatchObject({ path: '/columns/series', suggest: expect.stringContaining('same series name on every row') });
+    expect((render({ spec: { type: 'column', data: column.data, options: column.options, theme: 'dark' } as never }).body.errors as Finding[])[0]!.suggest)
+      .toMatch(/^Use bridge-dark, standard-dark or notation-dark;/);
   });
 
   it('points a reversed slope at the bump chart', () => {

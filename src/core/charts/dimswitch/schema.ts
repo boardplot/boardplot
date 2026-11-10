@@ -55,7 +55,7 @@ export const dimswitchDataSchema: z.ZodType<DimSwitchData> = z.strictObject({
   if(m.value===undefined && !data.measures.some(p=>p.partOf===m.id && !drivers.has(p.id))) issue(['measures',i,'value'],`Measure '${m.id}' has no value and no measure names it in partOf; add a value or make it a subtotal.`);
  }
  for(const [i,h] of data.dimension.headline.entries()) if(!measures.has(h)) issue(['dimension','headline',i],`Unknown headline measure '${h}'; use a measure id, not a sums field.`);
- for(const kind of ['range','prior']) if(data.periods.filter(p=>p.kind===kind).length!==1) issue(['periods'],`Exactly one ${kind} period is required.`);
+ for(const kind of ['range','prior']) if(data.periods.filter(p=>p.kind===kind).length!==1) issue(['periods'],`Exactly one ${kind} period is required; to hide its column, keep the period and set options.columnVisibility.${kind==='range'?'range':'pp'} to false.`);
  if(data.periods.filter(p=>p.kind==='plan').length>1) issue(['periods'],'At most one plan period is allowed.');
  if(!data.periods.some(p=>!p.kind)) issue(['periods'],'At least one displayed period is required.');
  const periodIds=new Set(data.periods.map(p=>p.id));
