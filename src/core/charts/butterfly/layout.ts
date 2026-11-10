@@ -1260,6 +1260,16 @@ export function layoutButterfly(
   const rightMinimum = minimumPane('b', rightBracket ? room.right : 0);
   const minWidth = size.width - plot.w + centerW + (comparisonRun === 20
     ? leftMinimum + rightMinimum : 2 * Math.max(leftMinimum, rightMinimum));
+  // A kept bracket whose room lifts the floor above the asked width goes to the note list, as at a narrower width.
+  // Only compact, the last form before a refusal, gives it up: a full chart that does not fit still falls back to compact.
+  // One side gives way where that is enough, the narrower room first.
+  const short = minWidth - size.width;
+  if (rowDriven && opts.mode === 'compact' && short > 0 && ((leftBracket && room.left > 0) || (rightBracket && room.right > 0))) {
+    const left = leftBracket && room.left >= short, right = rightBracket && room.right >= short;
+    const bracketRoom = left && (!right || room.left <= room.right) ? { left: 0, right: room.right }
+      : right ? { left: room.left, right: 0 } : { left: 0, right: 0 };
+    return layoutButterfly(data, options, { ...comparison, bracketRoom });
+  }
   pushAll(nodes, annResult.nodes);
   pushAll(nodes, labelsToNodes(theme, allLabels, (l) =>
       l.kind === 'series' || l.id.startsWith(HEAD_PREFIX)
