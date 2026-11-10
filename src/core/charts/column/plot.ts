@@ -27,7 +27,7 @@ import {
   type LegendItemInput,
   authoredFootnoteCount, authoredNotes, noteLine, shareUnitOptions, type NoteCapOptions } from '../../frame';
 import type { Rect } from '../../geometry';
-import { categoryRowTop, hangingLabelReserve, planCategoryRow, rotatedLeftOverhang } from '../../label/categoryRow';
+import { categoryRowTop, hangingLabelReserve, planCategoryRow, yieldToRotatedName } from '../../label/categoryRow';
 import { fitText } from '../../label/fitText';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { scenarioLegendKeys } from '../../label/legendFidelity';
@@ -550,7 +550,7 @@ function columnBand(
   // stride for dates, 45° for prose); no label is hidden by a local sweep.
   // A cut name takes a note mark and prints whole in the notes; once
   // several would be cut, the row reads as ranks with the mapping in the notes.
-  const planRow = (b: typeof band, ticked?: ReturnType<typeof dateTickRow>) => {
+  const planRow = (b: typeof band, ticked?: ReturnType<typeof dateTickRow>, rotate?: false) => {
     const row = categoryLabelsAndMarks(cats, { count: authoredFootnoteCount(options), warnings }, partialAxisWords(options.strings, options, frame.legend?.items.some((item) => item.id === '__partial') || partialNamedOnValues(domain)));
     ticked?.name(row);
     const plan = withCategoryRanks(planCategoryRow({
@@ -572,6 +572,7 @@ function columnBand(
       ...ticked?.plan,
       // An authored interval counts back from the latest period, as on a line.
       ...(ticked !== undefined && ticked === authored ? { ordered: true, strideFromEnd: true } : {}),
+      ...(rotate === false ? { rotate } : {}),
     }), measure, cats.map((c) => c.label ?? c.id), (options as { [FORCE_CATEGORY_RANKS]?: true })[FORCE_CATEGORY_RANKS] === true, rankKeyShown(options));
     // Rotated total and highlighted names need their drawn width for the row height and left overhang.
     if (plan.rotation !== 0) {
@@ -591,13 +592,7 @@ function columnBand(
   const ticked = authored ?? longDayMonths(cats, catPlan.stride, options.locale?.language);
   if (ticked && ticked !== authored) catPlan = planRow(band, ticked);
   // A rotated first name hangs left of its column; the band yields that much.
-  const catOverhang = stair ? 0 : rotatedLeftOverhang(catPlan, cats.map((_, ci) => band.center(ci)), 4);
-  if (catOverhang > 0) {
-    plotX0 += catOverhang;
-    plotW0 -= catOverhang;
-    band = bandFor(plotX0, plotW0);
-    catPlan = planRow(band, ticked);
-  }
+  if (!stair) ({ plan: catPlan, band } = yieldToRotatedName(catPlan, band, cats.length, plotX0, plotW0, bandFor, (b, rotate) => planRow(b, ticked, rotate)));
   return { band, catPlan, ...(authored?.ticks ? { intervalTicks: authored.ticks } : {}) };
 }
 

@@ -643,7 +643,7 @@ function categoryNameRow(env: LineEnv, domain: LineDomain, text: LineText, room:
     const months = { ...options, categoryAxis: { ...options.categoryAxis, dateTicks: 'months' as const } };
     return categoryNameRow(env, { ...domain, cats: dated, options: months }, text, room, frame, valueAxisReserve, warnings);
   }
-  let categoryOverhang = rotatedLeftOverhang(catPlan, categoryCentersFor(categoryPlotX, categoryPlotWidth), 4);
+  let categoryOverhang = rotatedLeftOverhang(catPlan, categoryCentersFor(categoryPlotX, categoryPlotWidth), 4, categoryPlotWidth);
   let categoryRightOverhang = 0;
   if (categoryOverhang > 0) {
     categoryPlotX += categoryOverhang;

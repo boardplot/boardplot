@@ -282,6 +282,8 @@ export function categoryLineAlign(plan: Pick<CategoryRowPlan, 'rotation' | 'info
 }
 
 const SIN45 = Math.SQRT1_2;
+/** The least plot width a rotated first name leaves its plot (rotatedLeftOverhang), as the value axis leaves it. */
+const MIN_PLOT_WIDTH = 10;
 
 /**
  * Air between the baseline and the corner of a 45° name's glyph box (px).
@@ -1357,9 +1359,11 @@ export function rotatedClaimRect(
 /**
  * How far the first drawn rotated label reaches left of `minX`. A chart
  * widens its left margin by this amount and re-plans, so the name is not
- * clipped at the canvas edge.
+ * clipped at the canvas edge. The plot it takes from keeps at least
+ * MIN_PLOT_WIDTH of its `plotWidth`: a narrow panel cannot give more, and
+ * its floor check refuses or repairs the size instead.
  */
-export function rotatedLeftOverhang(plan: CategoryRowPlan, centers: readonly number[], minX: number): number {
+export function rotatedLeftOverhang(plan: CategoryRowPlan, centers: readonly number[], minX: number, plotWidth: number): number {
   // A vertical name stands inside its column.
   if (plan.rotation !== 45) return 0;
   const lineH = plan.font.size * (plan.font.lineHeight ?? 1.2);
@@ -1369,7 +1373,28 @@ export function rotatedLeftOverhang(plan: CategoryRowPlan, centers: readonly num
     const left = centers[i]! - (info.w + lineH) * SIN45;
     overhang = Math.max(overhang, minX - left);
   });
-  return Math.ceil(overhang);
+  return Math.min(Math.ceil(overhang), Math.max(0, Math.floor(plotWidth - MIN_PLOT_WIDTH)));
+}
+
+/**
+ * The room a rotated first name takes from the left of a banded plot. The plot
+ * yields it only where the row planned in the narrower plot still turns its
+ * names (45° or -90°), so they draw. Elsewhere the room would stand for a name
+ * the narrower row does not draw: the plot keeps its width and the row plans
+ * upright.
+ */
+export function yieldToRotatedName<B extends { center(index: number): number }>(
+  plan: CategoryRowPlan, band: B, count: number, x0: number, width: number,
+  bandAt: (x0: number, width: number) => B, planAt: (band: B, rotate?: false) => CategoryRowPlan,
+): { plan: CategoryRowPlan; band: B; x0: number; width: number } {
+  const centers = (b: B) => Array.from({ length: count }, (_, i) => b.center(i));
+  const overhang = rotatedLeftOverhang(plan, centers(band), 4, width);
+  if (overhang <= 0) return { plan, band, x0, width };
+  const narrowed = bandAt(x0 + overhang, width - overhang);
+  const narrowPlan = planAt(narrowed);
+  return narrowPlan.rotation !== 0
+    ? { plan: narrowPlan, band: narrowed, x0: x0 + overhang, width: width - overhang }
+    : { plan: planAt(band, false), band, x0, width };
 }
 
 /**
