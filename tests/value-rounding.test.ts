@@ -177,6 +177,19 @@ describe('heatmap means are exact, and a row without values has none', () => {
     expect(desc(grid)).toContain('Row means: U 4, S −4, N n/a.');
     expect(grid.axes.find((axis) => axis.axis === 'y')!.ticks.map((tick) => tick.at)).toEqual(['u', 's', 'n']);
   });
+
+  // The cells printed each series in its own format, and the reading printed the same values in the chart format.
+  it('reads the range and each row mean in the series format', () => {
+    const grid = layoutHeatmap({
+      categories: cats('a', 'b', 'c'),
+      series: [
+        { id: 'rev', label: 'Revenue', format: '$1.2M', values: [1_250_000, 2_400_000, 980_000] },
+        { id: 'mar', label: 'Margin', format: '12.3%', values: [12.3, 24.5, 8.7] },
+      ],
+    });
+    expect(desc(grid)).toContain('Values range 8.7% to $2.4M.');
+    expect(desc(grid)).toContain('Row means: Revenue $1.5M, Margin 15.2%.');
+  });
 });
 
 // A signed format ("+0.0%") printed "++0.1%" on the colour key while the cells read "+0.1%".
