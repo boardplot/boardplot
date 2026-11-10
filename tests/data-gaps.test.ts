@@ -894,3 +894,19 @@ it('reads each cohort rate from the value the matrix prints, or nothing where it
   }
   expect([...texts].sort()).toEqual(['%', 'bare', 'none']);
 });
+
+// A child sum within float noise of the author's total took the total cell's text, so the reading printed 1,000,000,000.0 for a sum of 1,000,000,000.5.
+it('ties a reconciled table total to its cell only where the sum prints as the cell does', () => {
+  const data = {
+    columns: [{ id: 'label', kind: 'rowLabel', label: 'Region' }, { id: 'rev', kind: 'value', label: 'Revenue', format: '1,234.5' }],
+    rows: [{ id: 'all', label: 'All regions', cells: { rev: 1_000_000_000 }, children: [
+      { id: 'north', label: 'North', cells: { rev: 600_000_000.25 } }, { id: 'south', label: 'South', cells: { rev: 400_000_000.25 } }] }],
+  };
+  const read = (rev: number) => {
+    const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'table', data: { ...data, rows: [{ ...data.rows[0], cells: { rev } }] }, options: {} } as never)) as Geometry;
+    const claim = claimsForChart('table', geometry).find((item) => item.id === 'table:all:rev:reconciliation')!;
+    return [claim.output.displayed, claim.nodeId ?? null, unprintedClaims(geometry).includes(claim.id)];
+  };
+  expect(read(1_000_000_000)).toEqual(['1,000,000,000.5', null, true]);
+  expect(read(1_000_000_000.5)).toEqual(['1,000,000,000.5', 'cell:all:rev', false]);
+});

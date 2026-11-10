@@ -10,11 +10,17 @@ import type { PresentationInfo } from '../core/types/sizing';
  */
 const SUBPIXEL_PX = 0.5;
 
-/** Host measurements report warnings only. They never enter layout, preparation or exports. */
+/**
+ * Host measurements report warnings only. They never enter layout, preparation or exports.
+ * `laidOutAt` is the frame width of a drawing that its container lays out again at every width it is shown at.
+ * Shown at another width, that drawing stands in for the next layout (the fallback frame, or the last
+ * size while a new one lays out), so its display width is not judged.
+ */
 export function useDisplayWarnings(
   geometry: { warnings?: LintWarning[]; presentation?: Pick<PresentationInfo, 'target' | 'minDisplayWidth'>; refused?: boolean } | undefined,
   onWarnings?: (warnings: LintWarning[]) => void,
   selector: string | null = 'svg[data-bp-chart]',
+  laidOutAt?: number,
 ) {
   const [wrapper, wrapperRef] = useState<HTMLElement | null>(null);
   const [observed, setObserved] = useState<{ svg: Element; width: number }>();
@@ -52,7 +58,8 @@ export function useDisplayWarnings(
     // drawing: a growing host would otherwise report the new layout as too small for one commit.
     const live = enabled && svg ? parseFloat(getComputedStyle(svg).width) : NaN;
     const width = live > 0 ? live : observed?.svg === svg ? observed?.width : undefined;
-    const below = enabled && minimum !== undefined && width !== undefined && width < minimum - SUBPIXEL_PX;
+    const standIn = laidOutAt !== undefined && width !== undefined && Math.abs(width - laidOutAt) > SUBPIXEL_PX;
+    const below = enabled && !standIn && minimum !== undefined && width !== undefined && width < minimum - SUBPIXEL_PX;
     // The width is deliberately absent: resizing within one warning state must not repeat it.
     const key = JSON.stringify([canonical, below, below ? minimum : undefined]);
     if (last.current === key) return;
@@ -63,6 +70,6 @@ export function useDisplayWarnings(
       suggest: 'Lay out the chart at the host width, provide horizontal scrolling, or offer a full-size view.',
       detail: { observedWidth: width, minDisplayWidth: minimum },
     }] : [...canonical]);
-  }, [geometry, onWarnings, enabled, observed, svg]);
+  }, [geometry, onWarnings, enabled, observed, svg, laidOutAt]);
   return wrapperRef;
 }

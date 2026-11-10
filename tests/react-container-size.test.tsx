@@ -1150,6 +1150,22 @@ it('warns observed-display-too-small only when the drawn width is a pixel or mor
   expect(tooSmall()).toBe(true);
 });
 
+// A container chart drawn at its fallback frame was reported too small for the narrower box it is about to be laid out in.
+it('does not judge a container chart drawn at its fallback frame for the box it is about to fill', () => {
+  const data = { categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], series: [{ id: 's', values: [1, 2] }] };
+  const warnings = vi.fn();
+  act(() => root.render(<ColumnChart data={data} size="container" fallbackSize={{ width: 800, height: 450 }} onWarnings={warnings} />));
+  const shown = (width: number) => {
+    const svg = host.querySelector('svg[data-bp-chart]')!;
+    const index = observers.findIndex(observer => observer.observe.mock.calls.some(([element]) => element === svg));
+    act(() => callbacks[index]!([{ target: svg, contentRect: new DOMRectReadOnly(0, 0, width, 0) } as unknown as ResizeObserverEntry], observers[index]!));
+  };
+  const tooSmall = () => (warnings.mock.calls.at(-1)?.[0] as { code: string }[]).some(warning => warning.code === 'observed-display-too-small');
+  shown(560);
+  expect(tooSmall()).toBe(false);
+  // The next test keeps the warning for a chart of a fixed size shown in a narrower box.
+});
+
 /** The print media query; `print(true)` is the moment the page is laid out for paper (printLayout.ts). */
 function printMedia() {
   const listeners = new Set<(event: MediaQueryListEvent) => void>();

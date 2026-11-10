@@ -2009,7 +2009,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
             'status-value-invalid',
             `rows[${row.id}].cells[${col.id}]`,
             `status '${v}' is not one of: ${STATUS_VALUES.join(' · ')}; for free status text use a text column with a cell tone`,
-            'Use on-track, at-risk, off-track, done or pending, or green, amber, yellow or red (any case). For free status text use a text column with a cell tone.',
+            "Use on-track, at-risk, off-track, done or pending, or green, amber, yellow or red (any case). Send { state: 'na' } for a status that cannot be decided, or use a text column with a cell tone for free text.",
           );
         }
         if (v === null) return { ...base, displayed: missingGlyph };
@@ -2247,6 +2247,9 @@ function stampRecordDisplay(
   for (const rec of records) {
     if (rec.kind === 'reconciliation' || rec.kind === 'rounding-adjustment') {
       rec.displayed = typeof rec.raw === 'number' ? formatNumber(rec.raw, rec.colId, rec.kind === 'rounding-adjustment' ? rec.rowId : undefined) : '';
+      // The author's total prints the sum only where the sum in the cell's own format is the cell's text.
+      if (rec.kind === 'reconciliation' && typeof rec.raw === 'number'
+        && formatNumber(rec.raw, rec.colId, rec.rowId) === cellIndex.get(tableCellKey(rec.rowId, rec.colId))?.displayed) rec.printedInCell = true;
       continue;
     }
     rec.displayed = cellIndex.get(tableCellKey(rec.rowId, rec.colId))?.displayed ?? rec.displayed;

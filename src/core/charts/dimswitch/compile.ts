@@ -215,7 +215,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   // Nothing to put in a cell: the one empty-data code, as for every other type (a view with no measure still draws its head and one row, below).
   if (!data.periods.length || !data.facts.length) throw new NormalizeError(EMPTY_DATA, !data.periods.length ? 'periods' : 'facts', `dimswitch requires at least one ${!data.periods.length ? 'period' : 'fact'}`);
   const range = data.periods.find(p=>p.kind === 'range')!, prior = data.periods.find(p=>p.kind === 'prior')!;
-  if (!range || !prior) throw new NormalizeError('invalid-data', 'periods', 'dimswitch requires one range and one prior period', 'give periods exactly one period of kind range and one of kind prior');
+  if (!range || !prior) throw new NormalizeError('invalid-data', 'periods', 'dimswitch requires one range and one prior period', 'Give periods one period of kind range and one of kind prior. To hide their columns, keep both and set options.columnVisibility to { range: false, pp: false }.');
   const authoredPeriods = hostPeriods(data, options), plan = data.periods.find(p=>p.kind==='plan');
   const hidden = authoredPeriods.slice(0, form.hide ?? 0), periods = authoredPeriods.slice(hidden.length);
   // options.columnVisibility takes a block column out. Range still orders and shows members, but nothing of the column prints.
