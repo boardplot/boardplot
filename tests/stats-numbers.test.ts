@@ -19,8 +19,11 @@ import type { ParetoOptions, LineOptions, ScatterOptions } from '../src/core/typ
 import type { ChartData, ScatterData } from '../src/core/types/data';
 import { lineOptionsSchema } from '../src/core/charts/line/schema';
 import { claimsForChart } from '../src/core/claims';
-import { iqr, quantileType7 } from '../src/core/stats';
 import { summarizeGroup } from '../src/core/charts/box/summary';
+import { interactionRecords } from '../src/core/a11y/records';
+import { interactionValueText } from '../src/core/a11y/valueText';
+import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
+import { requireGeometry } from '../src/core/sizing';
 
 /** Run `fn`, return the refusal it throws (code, path, message). */
 function throwsWith(fn: () => unknown): { code: string; path: string; message: string } {
@@ -484,15 +487,22 @@ it('prints the same range and tornado values for keyed and positional cells', ()
   }
 });
 
-// A box median between -75 and 73.9 printed "-$0.550000000000004k", and a Likert sample size printed "0.30000000000000004".
-it('computes quantiles and Likert bases without float residue', () => {
-  expect(quantileType7([-75, 73.9], 0.5)).toBe(-0.55);
-  // Cleaning must not erase real digits beside a far larger neighbour: an order statistic stays exact,
-  // and an interpolation keeps the digits of its smaller term.
-  const skewed = [0, 0.01, 0.02, 0.03, 1e14];
-  expect([quantileType7(skewed, 0.25), quantileType7(skewed, 0.75), iqr(skewed)]).toEqual([0.01, 0.03, 0.02]);
-  expect(summarizeGroup({ id: 'g', label: 'G', observations: skewed, whiskers: 'tukey' }).beyondWhiskers).toEqual([1e14]);
-  expect(quantileType7([0.03, 1e14], 0.1) - 1e13).toBeCloseTo(0.027, 2);
-  const scale = [{ id: 'd', label: 'Disagree' }, { id: 'n', label: 'Neutral', role: 'neutral' as const }, { id: 'a', label: 'Agree' }];
-  expect(layoutLikert({ scale, items: [{ id: 'q', label: 'Statement', values: [0.1, 0.2, 0] }] }, { values: 'counts' }).derived.base.q).toBe(0.3);
+// A computed median printed "−$0.5499999999999972k", a Likert sample size "0.8999999999999999" and a quadrant cut
+// "Mean 0.005000000000000001". The statistics stay exact: six equal observations are no outliers.
+it('prints computed statistics without float residue', () => {
+  const draw = (spec: object) => {
+    const request = resolveChartRequest({ ...spec, options: { size: { width: 960 }, ...(spec as { options?: object }).options } } as never);
+    const geometry = requireGeometry(layoutResolvedRequest(request));
+    return { geometry, records: interactionRecords({ request, geometry, scope: request.scope, claims: [] }) };
+  };
+  const box = draw({ type: 'box', data: { groups: [{ id: 'g', label: 'G', observations: [-75, -75, -75, 73.9, 73.9, 73.9] }] }, options: { unit: '$k' } });
+  expect(interactionValueText(box.records[0]!.value)).toBe('−$0.55k');
+  const likert = draw({ type: 'likert', data: { scale: [{ id: 'd', label: 'Disagree' }, { id: 'n', label: 'Neutral', role: 'neutral' }, { id: 'a', label: 'Agree' }],
+    items: [{ id: 'q', label: 'Statement', values: [0.2, 0.3, 0.4] }] }, options: { values: 'counts' } });
+  expect(new Set(likert.records.flatMap(record => record.fields?.filter(field => field.key === 'base') ?? []).map(field => interactionValueText(field.value)))).toEqual(new Set(['0.9']));
+  const points = [[0.002, 0.007], [0.004, 0.003], [0.007, 0.008], [0.008, 0.002]].map(([x, y], i) => ({ id: `p${i}`, x, y }));
+  const scatter = draw({ type: 'scatter', data: { points }, options: { quadrants: { x: { stat: 'mean' }, y: { stat: 'mean' } } } });
+  expect(scatter.geometry.labels.map(label => label.text)).toContain('Mean 0.005');
+  const same = 0.1 + 0.2;
+  expect(summarizeGroup({ id: 'g', label: 'G', observations: Array(6).fill(same), whiskers: 'tukey' }).beyondWhiskers).toEqual([]);
 });
