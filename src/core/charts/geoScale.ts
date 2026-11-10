@@ -525,6 +525,7 @@ export function ingestGeoRegions(
             `(${resolution.candidates.join(', ')}) and '${collision}' is already listed ` +
             `as '${claimedBy.get(collision)}'`
           : `region '${datum.id}' resolves to duplicate ${pack.regionWord} '${collision}'`,
+          undefined, undefined, ['data', 'regions', index, 'id'],
       );
     }
     for (const id of claims) claimedBy.set(id, datum.id);
@@ -564,9 +565,9 @@ export function ingestGeoRegions(
 function normalizeGeoRegionState(value: number | null, state: unknown, index: number): NamedColumnState | undefined {
   if (state === undefined) return undefined;
   if (!(NAMED_COLUMN_STATES as readonly unknown[]).includes(state)) {
-    throw new NormalizeError('invalid-state', `regions[${index}].state`, 'region state must be suppressed, nm or na');
+    throw new NormalizeError('invalid-state', `regions[${index}].state`, 'region state must be suppressed, nm or na', undefined, undefined, ['data', 'regions', index, 'state']);
   }
-  if (value !== null) throw new NormalizeError('state-with-value', `regions[${index}].state`, 'a region state requires value null');
+  if (value !== null) throw new NormalizeError('state-with-value', `regions[${index}].state`, 'a region state requires value null', undefined, undefined, ['data', 'regions', index, 'state']);
   return state as NamedColumnState;
 }
 export const geoStatePattern = (state: NamedColumnState) => NAMED_STATE_PATTERN[state];

@@ -87,7 +87,7 @@ export function normalizeScenario(s: string | undefined, path: string, namedBase
 export function normalizeCategory(raw: string | Category, index: number): Category {
   if (typeof raw === 'string') return { id: raw, label: raw };
   if (!raw || typeof raw !== 'object' || !raw.id) {
-    throw new NormalizeError('missing-id', `categories[${index}]`, 'category requires an id');
+    throw new NormalizeError('missing-id', `categories[${index}]`, 'category requires an id', undefined, undefined, ['data', 'categories', index]);
   }
   return { ...raw, label: raw.label ?? raw.id };
 }
@@ -115,11 +115,21 @@ export function normalizeCell(raw: unknown, path: string): Cell {
   throw new NormalizeError('invalid-cell', path, `expected number, null, or cell object`);
 }
 
-/** Point-keyed values ⇒ positional. */
+function seriesPointer(series: unknown, seriesIndex: number, field: string, authored: readonly unknown[] | null | undefined): (string | number)[] | undefined {
+  const at = authored === undefined ? seriesIndex : authored === null ? -1 : authored.indexOf(series);
+  return at < 0 ? undefined : ['data', 'series', at, field];
+}
+
+/**
+ * Point-keyed values ⇒ positional. A refusal points at data.series[seriesIndex], or, when the caller
+ * passes the authored list, at the index of `series` in it; null means the caller cannot know the authored item.
+ */
 export function normalizeSeriesValues(
   series: Series & { values: unknown },
   categories: Category[],
   seriesIndex: number,
+  field: 'values' | 'negative' = 'values',
+  authored?: readonly unknown[] | null,
 ): Cell[] {
   const raw = series.values as unknown[];
   const path = `series[${series.id ?? seriesIndex}].values`;
@@ -127,7 +137,7 @@ export function normalizeSeriesValues(
     throw new NormalizeError(
       'invalid-values', path, 'values must be an array',
       'Send values as a JSON array, one entry per category.',
-      undefined, ['data', 'series', seriesIndex, 'values'],
+      undefined, seriesPointer(series, seriesIndex, field, authored),
     );
   }
   const pointKeyed = raw.every(
@@ -145,7 +155,7 @@ export function normalizeSeriesValues(
       'length-mismatch', path,
       `${raw.length} values for ${categories.length} categories`,
       `Send ${categories.length} values, one per category, or drop the extra categories.`,
-      undefined, ['data', 'series', seriesIndex, 'values'],
+      undefined, seriesPointer(series, seriesIndex, field, authored),
     );
   }
   // Array.from visits a hole of a sparse array as undefined, which reads as a missing value; map would keep the hole.

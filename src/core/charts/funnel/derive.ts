@@ -65,11 +65,12 @@ export function deriveFunnel(
   stages: Category[],
   fmt: (v: number) => string,
   warnings: LintWarning[],
+  authored: readonly Series[],
 ): FunnelNumbers {
   let clamped = 0;
   const raw: (number | null)[][] = plotted.map(() => []);
   const values = plotted.map((s, si) =>
-    normalizeSeriesValues(s as Series & { values: unknown }, stages, si).map((cell, ci) => {
+    normalizeSeriesValues(s as Series & { values: unknown }, stages, si, 'values', authored).map((cell, ci) => {
       const v = cellValue(cell);
       raw[si]![ci] = v;
       const owner = { seriesId: s.id, categoryId: stages[ci]!.id };

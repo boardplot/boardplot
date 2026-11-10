@@ -196,7 +196,7 @@ export function layoutPareto(
   const warnings: LintWarning[] = [];
 
   if (!data || !Array.isArray(data.items) || data.items.length === 0) {
-    throw new NormalizeError('empty-data', 'items', 'pareto requires at least one item');
+    throw new NormalizeError('empty-data', 'items', 'pareto requires at least one item', undefined, undefined, ['data', 'items']);
   }
 
   // ---- fail closed on anything that would poison every derived number ----
@@ -204,10 +204,10 @@ export function layoutPareto(
   data.items.forEach((item, i) => {
     const path = `items[${i}]`;
     if (!item || typeof item !== 'object' || !item.id) {
-      throw new NormalizeError('missing-id', path, 'each pareto item requires an id');
+      throw new NormalizeError('missing-id', path, 'each pareto item requires an id', undefined, undefined, ['data', 'items', i]);
     }
     if (seen.has(item.id)) {
-      throw new NormalizeError('duplicate-id', path, `duplicate item id '${item.id}'`);
+      throw new NormalizeError('duplicate-id', path, `duplicate item id '${item.id}'`, undefined, undefined, ['data', 'items', i]);
     }
     seen.add(item.id);
     const raw = item.value as unknown as Cell;
@@ -217,6 +217,7 @@ export function layoutPareto(
         `${path}.value`,
         `item '${item.id}' supplies a share; a Pareto derives every share from the plotted values`,
         'supply counts or amounts — cumulative shares are computed, never authored',
+        undefined, ['data', 'items', i, 'value'],
       );
     }
     if (raw === null || raw === undefined) {
@@ -225,6 +226,7 @@ export function layoutPareto(
         `${path}.value`,
         `item '${item.id}' has no value; a missing cause cannot be part of a total`,
         "drop the item, or state 0 if the cause was measured and did not occur",
+        undefined, ['data', 'items', i, 'value'],
       );
     }
     if (typeof raw !== 'number' || Number.isNaN(raw) || !Number.isFinite(raw)) {
@@ -233,6 +235,7 @@ export function layoutPareto(
         `${path}.value`,
         `item '${item.id}' has a non-finite value (${String(raw)})`,
         'supply a finite number',
+        undefined, ['data', 'items', i, 'value'],
       );
     }
     if (raw < 0) {
@@ -241,6 +244,7 @@ export function layoutPareto(
         `${path}.value`,
         `item '${item.id}' is negative (${raw}); cumulative share stops being monotone, so the curve would descend`,
         'use a waterfall or a variance chart for signed contributions',
+        undefined, ['data', 'items', i, 'value'],
       );
     }
   });
@@ -337,6 +341,7 @@ export function layoutPareto(
       'items',
       `the plotted values sum to ${total}; every cumulative share would be 0/0`,
       'a Pareto needs at least one positive value',
+      undefined, ['data', 'items'],
     );
   }
 

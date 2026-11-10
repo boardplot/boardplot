@@ -203,6 +203,7 @@ function bumpIdentity(env: LineEnv, domain: LineDomain, warnings: LintWarning[])
         `(${bumpRampLen} ramp colours x ${BUMP_SHAPES.length} marker shapes x ${BUMP_DASH_ROLES.length} line styles) — past that two entities ` +
         `would be drawn identically and a crossing between them could not be read at all`,
       'rank fewer entities, give the extra series an explicit `fill`, or facet into small multiples with grid repeat',
+      undefined, ['data', 'series'],
     );
   }
   if (autoIdentity > bumpRampLen) {

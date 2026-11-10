@@ -764,7 +764,7 @@ export function resolveComboDomain(data: ChartData, options: ComboOptions, warni
   const dataSeries = seriesNorm.filter((s) => s.role !== 'reference');
   const refs = seriesNorm.filter((s) => s.role === 'reference');
   if (dataSeries.length === 0) {
-    throw new NormalizeError('empty-data', 'series', 'combo requires at least one data-role series');
+    throw new NormalizeError('empty-data', 'series', 'combo requires at least one data-role series', undefined, undefined, ['data', 'series']);
   }
   const columns = dataSeries.filter((s) => s.kind === 'column');
   const lines = dataSeries.filter((s) => s.kind !== 'column');

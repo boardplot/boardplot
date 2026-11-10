@@ -209,10 +209,10 @@ export function layoutCenteredFunnel(
   const labelOn = (kind: LabelKind): boolean => chartLabelOn(options, kind);
 
   if (!data || !Array.isArray(data.categories) || data.categories.length === 0) {
-    throw new NormalizeError('empty-data', 'categories', 'funnel requires at least one stage');
+    throw new NormalizeError('empty-data', 'categories', 'funnel requires at least one stage', undefined, undefined, ['data', 'categories']);
   }
   if (!Array.isArray(data.series) || data.series.length === 0) {
-    throw new NormalizeError('empty-data', 'series', 'funnel requires at least one series');
+    throw new NormalizeError('empty-data', 'series', 'funnel requires at least one series', undefined, undefined, ['data', 'series']);
   }
   const stages = data.categories.map((category, index) =>
     normalizeCategory(category as never, index),
@@ -221,15 +221,15 @@ export function layoutCenteredFunnel(
   // Series that share a colour role take distinct steps of it.
   const rolePaints = colorRolePaints(plotted);
   if (plotted.length === 0) {
-    throw new NormalizeError('empty-data', 'series', 'funnel requires at least one data-role series');
+    throw new NormalizeError('empty-data', 'series', 'funnel requires at least one data-role series', undefined, undefined, ['data', 'series']);
   }
-  const numbers = deriveFunnel(plotted, stages, fmt, warnings);
+  const numbers = deriveFunnel(plotted, stages, fmt, warnings, data.series);
   const { stageTotals, conversions, worstDrop } = numbers;
   // Geometry draws a missing value as nothing (0 wide); its text and every
   // derived rate read the nullable numbers.
   const values = numbers.values.map((row) => row.map((value) => value ?? 0));
   const glyph = missingGlyph(theme);
-  const cells = plotted.map((series, si) => normalizeSeriesValues(series, stages, si));
+  const cells = plotted.map((series, si) => normalizeSeriesValues(series, stages, si, 'values', data.series));
   if (plotted.length > 1 && cells.some(row => row.some(cell => cellMeta(cell)?.label !== undefined))) {
     warnings.push({
       code: 'funnel-cell-label-ignored', severity: 'warn',

@@ -714,9 +714,9 @@ export function layoutSparkline(
     || authoredNotes(options).length > 0;
   const size = framed ? framedCardSize(options, theme, measure) : resolveSize(cardSize(options, SPARKLINE_SIZE));
   const cells = (data.values ?? []).map((cell, index) => normalizeCell(cell, `values[${index}]`));
-  if (cells.length === 0) throw new NormalizeError('empty-data', 'values', 'sparkline requires at least two values');
+  if (cells.length === 0) throw new NormalizeError('empty-data', 'values', 'sparkline requires at least two values', undefined, undefined, ['data', 'values']);
   if (cells.length < 2) {
-    throw new NormalizeError('invalid-count', 'values', 'sparkline requires at least two values');
+    throw new NormalizeError('invalid-count', 'values', 'sparkline requires at least two values', undefined, undefined, ['data', 'values']);
   }
   const values = cells.map((cell) => cellValue(cell));
   const labels = data.labels;

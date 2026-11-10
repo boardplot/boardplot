@@ -196,10 +196,11 @@ export function layoutSlope(
       'empty-data',
       'categories',
       chartString(options, 'slopeNeedsTwoCategories'),
+      undefined, undefined, ['data', 'categories'],
     );
   }
   if (!Array.isArray(data.series) || data.series.length === 0) {
-    throw new NormalizeError('empty-data', 'series', 'slope requires at least one series');
+    throw new NormalizeError('empty-data', 'series', 'slope requires at least one series', undefined, undefined, ['data', 'series']);
   }
   const allCats: Category[] = data.categories.map((c, i) => normalizeCategory(c as never, i));
   const omittedCategories = allCats.slice(1, -1).map(category => category.label ?? category.id);
@@ -230,7 +231,7 @@ export function layoutSlope(
   };
   let seriesNorm: NormSer[] = data.series
     .map((s, si) => {
-      if (!s?.id) throw new NormalizeError('missing-id', `series[${si}]`, 'series requires an id');
+      if (!s?.id) throw new NormalizeError('missing-id', `series[${si}]`, 'series requires an id', undefined, undefined, ['data', 'series', si]);
       const cells = normalizeSeriesValues(s, allCats, si);
       return {
         id: s.id,
@@ -253,7 +254,7 @@ export function layoutSlope(
   const formats = seriesRasterFormatter(options.format, seriesNorm.flatMap((s) => [s.a, s.b].flatMap((end) => (end.isPct ? [] : [end.v]))),
     options.locale?.language, options.unit, options.target);
   if (seriesNorm.length === 0) {
-    throw new NormalizeError('empty-data', 'series', 'slope requires at least one data-role series');
+    throw new NormalizeError('empty-data', 'series', 'slope requires at least one data-role series', undefined, undefined, ['data', 'series']);
   }
 
   // ---- plotted set (both endpoints present) + derived changes ----

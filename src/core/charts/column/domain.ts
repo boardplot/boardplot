@@ -945,7 +945,7 @@ export function resolveColumnDomain(data: ChartData, options: AnomalyColumnOptio
   const plotted = seriesNorm.filter((s) => s.role !== 'reference');
   const refSeries = seriesNorm.filter((s) => s.role === 'reference');
   if (plotted.length === 0) {
-    throw new NormalizeError('empty-data', 'series', 'column requires at least one data-role series');
+    throw new NormalizeError('empty-data', 'series', 'column requires at least one data-role series', undefined, undefined, ['data', 'series']);
   }
   if (variant === 'grouped' || variant === 'stacked') {
     const refusal = dataSeriesUnitRefusal(seriesNorm, options.unit);

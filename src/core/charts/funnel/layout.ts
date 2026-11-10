@@ -182,21 +182,21 @@ export function layoutFunnel(
 
   // ---- normalize ----
   if (!data || !Array.isArray(data.categories) || data.categories.length === 0) {
-    throw new NormalizeError('empty-data', 'categories', 'funnel requires at least one stage');
+    throw new NormalizeError('empty-data', 'categories', 'funnel requires at least one stage', undefined, undefined, ['data', 'categories']);
   }
   if (!Array.isArray(data.series) || data.series.length === 0) {
-    throw new NormalizeError('empty-data', 'series', 'funnel requires at least one series');
+    throw new NormalizeError('empty-data', 'series', 'funnel requires at least one series', undefined, undefined, ['data', 'series']);
   }
   const stages = data.categories.map((c, i) => normalizeCategory(c as never, i));
   const plotted = data.series.filter((s) => s.role !== 'reference');
   // Series that share a colour role take distinct steps of it.
   const rolePaints = colorRolePaints(plotted);
   if (plotted.length === 0) {
-    throw new NormalizeError('empty-data', 'series', 'funnel requires at least one data-role series');
+    throw new NormalizeError('empty-data', 'series', 'funnel requires at least one data-role series', undefined, undefined, ['data', 'series']);
   }
-  const { values, known, stageTotals, shownTotals, conversions, worstDrop, undefinedSteps, clamped } = deriveFunnel(plotted, stages, fmt, warnings);
+  const { values, known, stageTotals, shownTotals, conversions, worstDrop, undefinedSteps, clamped } = deriveFunnel(plotted, stages, fmt, warnings, data.series);
   const glyph = missingGlyph(theme);
-  const cells = plotted.map((series, si) => normalizeSeriesValues(series, stages, si));
+  const cells = plotted.map((series, si) => normalizeSeriesValues(series, stages, si, 'values', data.series));
   // An authored format holds the whole chart to one scale and one decimal count (exampleSpec).
   const authoredRaster = options.format ? [...values.flat(), ...Object.values(stageTotals)] : undefined;
   // One raster per stage: the values of one stage share one decimal count, and a stage of whole counts prints none.

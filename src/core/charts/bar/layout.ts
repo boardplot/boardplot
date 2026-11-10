@@ -871,7 +871,7 @@ function rowIntervalValues(data: ChartData, options: BarOptions): (number | null
   const spine = options.variant === 'tornado' ? options.baseValue : options.currentValue;
   return [
     ...(data?.series ?? []).filter((series) => series.role !== 'reference').flatMap((series, index) =>
-      normalizeSeriesValues(series, cats, index).flatMap((cell) => {
+      normalizeSeriesValues(series, cats, index, 'values', data.series).flatMap((cell) => {
         const range = typeof cell === 'object' && cell !== null && 'range' in cell
           ? (cell as { range?: { low?: number; high?: number; mid?: number } }).range
           : undefined;
@@ -1625,10 +1625,10 @@ function planFootballField(
 ): RowIntervalPlan {
   const { warnings, labelOn, highlights } = ctx;
   if (!data || !Array.isArray(data.categories) || data.categories.length === 0) {
-    throw new NormalizeError('empty-data', 'categories', 'football-field requires at least one method');
+    throw new NormalizeError('empty-data', 'categories', 'football-field requires at least one method', undefined, undefined, ['data', 'categories']);
   }
   if (!Array.isArray(data.series) || data.series.length === 0) {
-    throw new NormalizeError('empty-data', 'series', 'football-field requires one data series');
+    throw new NormalizeError('empty-data', 'series', 'football-field requires one data series', undefined, undefined, ['data', 'series']);
   }
   let cats = data.categories.map((category, index) => normalizeCategory(category as never, index));
   const sourceSeries = data.series.filter((series) => (series.role ?? 'data') === 'data');
@@ -1637,6 +1637,7 @@ function planFootballField(
       'football-field-one-series',
       'series',
       `football-field requires exactly one data-role series, got ${sourceSeries.length}`,
+      undefined, undefined, ['data', 'series'],
     );
   }
   if (data.series.length !== sourceSeries.length) {
@@ -1676,7 +1677,7 @@ function planFootballField(
   // rule the standard bar path applies through `valueSpec.forSeries`.
   const fmt = ctx.forSeries(series);
   const missingRange: number[] = [];
-  let cells = normalizeSeriesValues(series, cats, 0).map((cell, ci) => {
+  let cells = normalizeSeriesValues(series, cats, 0, 'values', data.series).map((cell, ci) => {
     const range = resolveCellRange(
       cell,
       `series[${series.id}].values[${ci}]`,
@@ -1693,6 +1694,7 @@ function planFootballField(
       `series[${series.id}].values[${first}].range`,
       chartString(options, 'footballRangeRequired'),
       chartString(options, 'footballRangeSuggest'),
+      undefined, ['data', 'series', data.series.indexOf(series), 'values'],
     );
   }
   const missing = new Set(missingRange);
@@ -1903,10 +1905,10 @@ function planTornado(
 ): RowIntervalPlan {
   const { warnings, paletteRamp, fmt, labelOn, highlights, theme } = ctx;
   if (!data || !Array.isArray(data.categories) || data.categories.length === 0) {
-    throw new NormalizeError('empty-data', 'categories', 'tornado requires at least one driver');
+    throw new NormalizeError('empty-data', 'categories', 'tornado requires at least one driver', undefined, undefined, ['data', 'categories']);
   }
   if (!Array.isArray(data.series) || data.series.length === 0) {
-    throw new NormalizeError('empty-data', 'series', 'tornado requires two case series');
+    throw new NormalizeError('empty-data', 'series', 'tornado requires two case series', undefined, undefined, ['data', 'series']);
   }
   const cats = data.categories.map((category, index) => normalizeCategory(category as never, index));
   const dataSeries = data.series.filter((series) => (series.role ?? 'data') === 'data');
@@ -1915,6 +1917,7 @@ function planTornado(
       'tornado-two-series',
       'series',
       `tornado requires exactly two data-role series (the low-input case and the high-input case), got ${dataSeries.length}`,
+      undefined, undefined, ['data', 'series'],
     );
   }
   if (data.series.length !== dataSeries.length) {
@@ -2020,8 +2023,8 @@ function planTornado(
     });
   }
 
-  const lowCells = normalizeSeriesValues(lowSeries, cats, 0);
-  const highCells = normalizeSeriesValues(highSeries, cats, 1);
+  const lowCells = normalizeSeriesValues(lowSeries, cats, 0, 'values', data.series);
+  const highCells = normalizeSeriesValues(highSeries, cats, 1, 'values', data.series);
 
   interface DerivedRow {
     index: number;
@@ -2085,6 +2088,7 @@ function planTornado(
       'empty-data',
       'series',
       'every tornado driver was dropped for a missing case output; nothing is left to plot',
+      undefined, undefined, ['data', 'series'],
     );
   }
 

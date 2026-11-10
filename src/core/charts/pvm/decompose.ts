@@ -161,6 +161,7 @@ export function assertReconciles(
       `decomposition does not reconcile: total change ${delta} vs. effects summing to ${sum} ` +
         `(residual ${residual}, tolerance ${PVM_RESIDUAL_TOLERANCE * scale})`,
       'this is an engine defect, not an input problem — report the dataset',
+      undefined, ['data', 'items'],
     );
   }
   return residual;
@@ -179,7 +180,7 @@ export function decomposePvm(
   options?: Pick<import('../../types/options').BaseOptions, 'locale' | 'strings'>,
 ): PvmDecomposeResult {
   if (!data || !Array.isArray(data.items) || data.items.length === 0) {
-    throw new NormalizeError('empty-data', 'items', 'pvm requires at least one item', 'add one item with prior and current { qty, revenue }');
+    throw new NormalizeError('empty-data', 'items', 'pvm requires at least one item', 'add one item with prior and current { qty, revenue }', undefined, ['data', 'items']);
   }
 
   const items = data.items;
@@ -195,6 +196,7 @@ export function decomposePvm(
           `items[${item.id}].${period}`,
           `item '${item.id}' has a non-finite ${period} qty or revenue — a bridge cannot be drawn from it`,
           'supply finite numbers for qty and revenue in both periods',
+          undefined, ['data', 'items', items.indexOf(item), period],
         );
       }
       if (point.qty < 0) {
@@ -203,6 +205,7 @@ export function decomposePvm(
           `items[${item.id}].${period}.qty`,
           `item '${item.id}' has ${period} qty ${point.qty} — a negative volume has no price interpretation`,
           'net returns and credits into the period before authoring the bridge',
+          undefined, ['data', 'items', items.indexOf(item), period, 'qty'],
         );
       }
       if (point.qty === 0 && point.revenue !== 0) {
@@ -211,6 +214,7 @@ export function decomposePvm(
           `items[${item.id}].${period}`,
           `item '${item.id}' has ${period} qty 0 with revenue ${point.revenue} — price cannot be derived`,
           'give the item its units, or move the amount to an item that carries volume',
+          undefined, ['data', 'items', items.indexOf(item), period],
         );
       }
       if (point.revenue < 0 && point.qty > 0) negativePrice.push(item.id);
@@ -247,6 +251,7 @@ export function decomposePvm(
         ? 'no item carries volume in BOTH periods — the prior average price p0 is undefined, so volume and mix cannot be separated'
         : `the ${common.length} common items carry prior qty 0 in total — the prior average price p0 is undefined`,
       "chart the new-versus-lost split as a plain 'waterfall' instead",
+      undefined, ['data', 'items'],
     );
   }
 

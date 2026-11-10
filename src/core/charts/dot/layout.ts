@@ -220,14 +220,14 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
 
   // ---- normalize ----
   if (!data || !Array.isArray(data.categories) || data.categories.length === 0) {
-    throw new NormalizeError('empty-data', 'categories', 'dot requires at least one category');
+    throw new NormalizeError('empty-data', 'categories', 'dot requires at least one category', undefined, undefined, ['data', 'categories']);
   }
   if (!Array.isArray(data.series) || data.series.length === 0) {
-    throw new NormalizeError('empty-data', 'series', 'dot requires at least one series');
+    throw new NormalizeError('empty-data', 'series', 'dot requires at least one series', undefined, undefined, ['data', 'series']);
   }
   const rawCats = data.categories.map((c, i) => normalizeCategory(c as never, i));
   const normSeries: NormSeries[] = data.series.map((s, i) => {
-    if (!s?.id) throw new NormalizeError('missing-id', `series[${i}]`, 'series requires an id');
+    if (!s?.id) throw new NormalizeError('missing-id', `series[${i}]`, 'series requires an id', undefined, undefined, ['data', 'series', i]);
     const cells = normalizeSeriesValues(s, rawCats, i).map((c, ci) => ({
       v: cellValue(c),
       ...(isPctCell(c) ? { isPct: true } : {}),
@@ -265,7 +265,7 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
     });
   }
   if (dataSeries.length === 0) {
-    throw new NormalizeError('no-data-series', 'series', 'dot requires at least one data-role series');
+    throw new NormalizeError('no-data-series', 'series', 'dot requires at least one data-role series', undefined, undefined, ['data', 'series']);
   }
   // Exhibit-wide format raster — dot shares the column/bar
   // family rule: style from the example, one precision from the plotted
@@ -285,6 +285,7 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
       'dumbbell-two-series',
       'series',
       `dumbbell requires exactly 2 data series, got ${dataSeries.length}`,
+      undefined, undefined, ['data', 'series'],
     );
   }
   if (variant === 'lollipop' && dataSeries.length !== 1) {
@@ -292,6 +293,7 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
       'lollipop-one-series',
       'series',
       `lollipop requires exactly 1 data series, got ${dataSeries.length}`,
+      undefined, undefined, ['data', 'series'],
     );
   }
   dataSeries.forEach((s, i) => (s.slot = i));

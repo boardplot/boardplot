@@ -62,23 +62,33 @@ export function resolveGanttEnv(options: GanttOptions, warnings: LintWarning[]):
   };
 }
 
-const parseDay = (s: string, path: string): number => {
+const parseDay = (s: string, path: string, row: number, list: 'items' | 'events', index: number, field: string): number => {
   const d = parseISODate(s);
-  if (!d) throw new NormalizeError('invalid-date', path, `invalid ISO date '${s}'`);
+  if (!d) throw new NormalizeError('invalid-date', path, `invalid ISO date '${s}'`, undefined, undefined, ['data', 'rows', row, list, index, field]);
   return dayNum(d);
 };
 
+/** The authored pointer of the one item with this id; item and event ids are unique across the rows. */
+function itemPointer(data: GanttData, id: Id, ...field: string[]): (string | number)[] | undefined {
+  for (const [ri, row] of data.rows.entries()) {
+    if (row.kind === 'cadence') continue;
+    const ii = row.items.findIndex((item) => item?.id === id);
+    if (ii >= 0) return ['data', 'rows', ri, 'items', ii, ...field];
+  }
+  return undefined;
+}
+
 function normalizeRows(data: GanttData, warnings: LintWarning[]): { rows: NormRow[]; itemById: Map<Id, NormItem> } {
   if (!data || !Array.isArray(data.rows) || data.rows.length === 0) {
-    throw new NormalizeError('empty-data', 'rows', 'gantt requires at least one row');
+    throw new NormalizeError('empty-data', 'rows', 'gantt requires at least one row', undefined, undefined, ['data', 'rows']);
   }
   const rowIds = new Set<Id>();
   const markIds = new Set<Id>();
   const itemById = new Map<Id, NormItem>();
   const rows: NormRow[] = data.rows.map((raw, ri) => {
-    if (!raw?.id) throw new NormalizeError('missing-id', `rows[${ri}]`, 'row requires an id');
+    if (!raw?.id) throw new NormalizeError('missing-id', `rows[${ri}]`, 'row requires an id', undefined, undefined, ['data', 'rows', ri, 'id']);
     if (rowIds.has(raw.id)) {
-      throw new NormalizeError('duplicate-id', `rows[${raw.id}]`, `duplicate row id '${raw.id}'`);
+      throw new NormalizeError('duplicate-id', `rows[${raw.id}]`, `duplicate row id '${raw.id}'`, undefined, undefined, ['data', 'rows', ri, 'id']);
     }
     rowIds.add(raw.id);
     let cols = (raw.cols ?? []).map((cell) => (typeof cell === 'string' ? { text: cell } : cell));
@@ -93,20 +103,21 @@ function normalizeRows(data: GanttData, warnings: LintWarning[]): { rows: NormRo
     }
     const items = (raw.kind === 'cadence' ? [] : raw.items).map((it, ii): NormItem => {
       const path = `rows[${raw.id}].items[${ii}]`;
-      if (!it?.id) throw new NormalizeError('missing-id', path, 'item requires an id');
+      if (!it?.id) throw new NormalizeError('missing-id', path, 'item requires an id', undefined, undefined, ['data', 'rows', ri, 'items', ii, 'id']);
       if (markIds.has(it.id)) {
-        throw new NormalizeError('duplicate-id', path, `duplicate item id '${it.id}'`);
+        throw new NormalizeError('duplicate-id', path, `duplicate item id '${it.id}'`, undefined, undefined, ['data', 'rows', ri, 'items', ii, 'id']);
       }
       if (!ITEM_KINDS.includes(it.kind)) {
         throw new NormalizeError(
           'invalid-kind', path,
           `unknown item kind '${String(it.kind)}'`, ITEM_KINDS.join(', '),
+          undefined, ['data', 'rows', ri, 'items', ii, 'kind'],
         );
       }
-      const startDay = parseDay(it.start, `${path}.start`);
-      const endIncl = it.end !== undefined ? parseDay(it.end, `${path}.end`) : startDay;
+      const startDay = parseDay(it.start, `${path}.start`, ri, 'items', ii, 'start');
+      const endIncl = it.end !== undefined ? parseDay(it.end, `${path}.end`, ri, 'items', ii, 'end') : startDay;
       if (endIncl < startDay) {
-        throw new NormalizeError('invalid-range', path, `end '${it.end}' precedes start '${it.start}'`);
+        throw new NormalizeError('invalid-range', path, `end '${it.end}' precedes start '${it.start}'`, undefined, undefined, ['data', 'rows', ri, 'items', ii, 'end']);
       }
       const norm: NormItem = {
         id: it.id,
@@ -133,10 +144,10 @@ function normalizeRows(data: GanttData, warnings: LintWarning[]): { rows: NormRo
             events: raw.events.map((event, ei) => {
               const path = `rows[${raw.id}].events[${ei}]`;
               if (markIds.has(event.id)) {
-                throw new NormalizeError('duplicate-id', path, `duplicate cadence event id '${event.id}'`);
+                throw new NormalizeError('duplicate-id', path, `duplicate cadence event id '${event.id}'`, undefined, undefined, ['data', 'rows', ri, 'events', ei, 'id']);
               }
               markIds.add(event.id);
-              return { id: event.id, day: parseDay(event.date, `${path}.date`) };
+              return { id: event.id, day: parseDay(event.date, `${path}.date`, ri, 'events', ei, 'date') };
             }),
             marker: raw.marker ?? 'diamond',
             colorRole: raw.colorRole,
@@ -420,7 +431,7 @@ export function resolveGanttDomain(data: GanttData, env: GanttEnv, warnings: Lin
   const allItems = rows.flatMap((r) => r.items);
   const allCadenceDays = rows.flatMap((r) => r.cadence?.events.map((event) => event.day) ?? []);
   if (allItems.length === 0 && allCadenceDays.length === 0) {
-    throw new NormalizeError('empty-data', 'rows', 'gantt requires at least one item or cadence date');
+    throw new NormalizeError('empty-data', 'rows', 'gantt requires at least one item or cadence date', undefined, undefined, ['data', 'rows']);
   }
   // Anchor resolution, topological; an anchored item keeps its duration.
   const anchorState = new Map<Id, 1 | 2>();
@@ -428,7 +439,7 @@ export function resolveGanttDomain(data: GanttData, env: GanttEnv, warnings: Lin
     const st = anchorState.get(it.id);
     if (st === 2) return;
     if (st === 1) {
-      throw new NormalizeError('anchor-cycle', it.path, `anchor cycle involving item '${it.id}'`);
+      throw new NormalizeError('anchor-cycle', it.path, `anchor cycle involving item '${it.id}'`, undefined, undefined, itemPointer(data, it.id, 'anchor'));
     }
     anchorState.set(it.id, 1);
     if (it.anchor) {
@@ -437,6 +448,7 @@ export function resolveGanttDomain(data: GanttData, env: GanttEnv, warnings: Lin
         throw new NormalizeError(
           'unknown-anchor', it.path,
           `anchor target '${it.anchor.toItemId}' not found`,
+          undefined, undefined, itemPointer(data, it.id, 'anchor', 'toItemId'),
         );
       }
       resolveAnchor(target);

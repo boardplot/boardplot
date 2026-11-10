@@ -160,7 +160,7 @@ function layoutTreemapAt(data: TreemapData, options: TreemapOptions, memo: Map<s
 
   // ---- normalize: items, groups, positive values ----
   if (!data || !Array.isArray(data.items) || data.items.length === 0) {
-    throw new NormalizeError('empty-data', 'items', 'treemap requires at least one item');
+    throw new NormalizeError('empty-data', 'items', 'treemap requires at least one item', undefined, undefined, ['data', 'items']);
   }
   const leftOut: string[] = [];
   const grouped = data.items.some((item) => item.value !== null && item.value > 0 && item.group !== undefined) || (data.groups?.length ?? 0) > 0;
@@ -184,7 +184,7 @@ function layoutTreemapAt(data: TreemapData, options: TreemapOptions, memo: Map<s
     }
     return [{ id: item.id, label: item.label ?? item.id, ...(item.group !== undefined ? { group: item.group } : {}), value: item.value, index }];
   });
-  if (items.length === 0) throw new NormalizeError('empty-data', 'items', chartString(options, 'treemapNoPositiveValues'));
+  if (items.length === 0) throw new NormalizeError('empty-data', 'items', chartString(options, 'treemapNoPositiveValues'), undefined, undefined, ['data', 'items']);
   if (leftOut.length) options = { ...options, notes: { ...options.notes, show: [...new Set([...(options.notes?.show ?? ['note']), 'disclosure' as const])] } };
   if (shape === 'circle' && items.length > TREEMAP_CIRCLE_MAX_ITEMS) {
     throw new NormalizeError('treemap-circle-too-many-items', 'options.variant',

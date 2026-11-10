@@ -97,18 +97,18 @@ export function lowerLineX(data: LineChartData, options: Pick<LineOptions, 'xAxi
     if (xs[order[k]!] === xs[order[k - 1]!]) {
       const a = Math.min(order[k - 1]!, order[k]!), b = Math.max(order[k - 1]!, order[k]!);
       throw new NormalizeError('x-duplicate', `data.x[${b}]`, `data.x[${a}] and data.x[${b}] are the same x (${JSON.stringify(data.x[a])}, ${JSON.stringify(data.x[b])}); one x holds one reading per series`,
-        'drop or merge the repeated reading upstream');
+        'drop or merge the repeated reading upstream', undefined, ['data', 'x', b]);
     }
   }
   data.series.forEach((series, si) => {
     const values = series.values as unknown[];
     if (!Array.isArray(values) || values.length !== xs.length) {
       throw new NormalizeError('x-values-length', `series[${series.id ?? si}].values`, `series '${series.id}' has ${Array.isArray(values) ? values.length : 0} values for ${xs.length} x values; on a continuous axis each series gives one value per x, in the order of data.x`,
-        'give a value, or null for a missing reading, at every x');
+        'give a value, or null for a missing reading, at every x', undefined, ['data', 'series', si, 'values']);
     }
     values.forEach((value, vi) => {
       if (typeof value === 'object' && value !== null && 'categoryId' in value) {
-        throw new NormalizeError('x-values-keyed', `series[${series.id}].values[${vi}]`, 'a keyed { categoryId, value } entry has no category to name on a continuous axis', 'give the values in the order of data.x, with null where a series has no reading');
+        throw new NormalizeError('x-values-keyed', `series[${series.id}].values[${vi}]`, 'a keyed { categoryId, value } entry has no category to name on a continuous axis', 'give the values in the order of data.x, with null where a series has no reading', undefined, ['data', 'series', si, 'values', vi]);
       }
     });
   });

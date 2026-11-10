@@ -310,13 +310,14 @@ export function layoutLikert(
   const seenOption = new Set<Id>();
   scale.forEach((option, i) => {
     if (!option || typeof option !== 'object' || !option.id) {
-      throw new NormalizeError('missing-id', `data.scale[${i}]`, 'each scale option requires an id');
+      throw new NormalizeError('missing-id', `data.scale[${i}]`, 'each scale option requires an id', undefined, undefined, ['data', 'scale', i]);
     }
     if (seenOption.has(option.id)) {
       throw new NormalizeError(
         'likert-duplicate-option',
         `data.scale[${i}].id`,
         `duplicate scale option '${option.id}'; the shares of one option would be split across two segments`,
+        undefined, undefined, ['data', 'scale', i, 'id'],
       );
     }
     seenOption.add(option.id);
@@ -411,17 +412,18 @@ export function layoutLikert(
   const items: NormItem[] = data.items.map((item, index) => {
     const path = `data.items[${index}]`;
     if (!item || typeof item !== 'object' || !item.id) {
-      throw new NormalizeError('missing-id', path, 'each likert item requires an id');
+      throw new NormalizeError('missing-id', path, 'each likert item requires an id', undefined, undefined, ['data', 'items', index]);
     }
     if (seenItem.has(item.id)) {
       throw new NormalizeError(
         'likert-duplicate-item',
         `${path}.id`,
         `duplicate item id '${item.id}'`,
+        undefined, undefined, ['data', 'items', index, 'id'],
       );
     }
     seenItem.add(item.id);
-    const raw = alignToScale(item, scale, path);
+    const raw = alignToScale(item, scale, path, index);
     raw.forEach((value, i) => {
       const where = `${path}.values[${i}] ('${scale[i]!.id}')`;
       if (value === null || value === undefined) {
@@ -430,6 +432,7 @@ export function layoutLikert(
           where,
           `statement '${item.id}' has no value for option '${scale[i]!.id}'; a missing response category is not zero, and treating it as zero would shrink the base`,
           'state 0 if the option was offered and nobody chose it, or drop the option from the scale',
+          undefined, valuePointer(item, index, scale, i),
         );
       }
       if (typeof value !== 'number' || !Number.isFinite(value)) {
@@ -438,6 +441,7 @@ export function layoutLikert(
           where,
           `statement '${item.id}' has a non-finite value (${String(value)}) for option '${scale[i]!.id}'`,
           'supply a finite count or percentage',
+          undefined, valuePointer(item, index, scale, i),
         );
       }
       if (value < 0) {
@@ -446,6 +450,7 @@ export function layoutLikert(
           where,
           `statement '${item.id}' has a negative value (${value}) for option '${scale[i]!.id}'; the sign in a diverging Likert encodes WHICH SIDE an option sits on and is derived from the scale, never authored`,
           'supply the response count or percentage as a non-negative number',
+          undefined, valuePointer(item, index, scale, i),
         );
       }
     });
@@ -459,6 +464,7 @@ export function layoutLikert(
           `${path}.values`,
           `statement '${item.id}' is declared as percentages but sums to ${trimNumber(sum)}, outside 100 ± ${PERCENT_TOLERANCE}; rescaling it silently would publish a distribution nobody measured`,
           'correct the input, or supply counts and let the shares be derived',
+          undefined, ['data', 'items', index, 'values'],
         );
       }
       // Verbatim: the authored percentages ARE the shares. Renormalising the
@@ -482,6 +488,7 @@ export function layoutLikert(
           'likert-empty-item',
           `${path}.n`,
           `statement '${item.id}' declares n = ${String(item.n)}; a base of zero makes every share 0/0`,
+          undefined, undefined, ['data', 'items', index, 'n'],
         );
       }
       return { id: item.id, label: item.label ?? item.id, counts, shares, base: item.n, index };
@@ -493,6 +500,7 @@ export function layoutLikert(
         `${path}.values`,
         `statement '${item.id}' has no responses (the declared options sum to ${sum}); every share would be 0/0`,
         'drop the statement, or state the responses it actually received',
+        undefined, ['data', 'items', index, 'values'],
       );
     }
     if (item.n !== undefined && Math.abs(item.n - sum) > SHARE_EPS) {
@@ -1344,6 +1352,14 @@ function statementLabelTheme(ref: ThemeRef | undefined, size: number): ThemeRef 
   };
 }
 
+/** The authored value of scale option `i` in item `index`: by position, or in the keyed entry that names the option. */
+function valuePointer(item: LikertItem, index: number, scale: LikertScaleOption[], i: number): (string | number)[] {
+  const values = item.values as unknown[];
+  if (typeof values[0] !== 'object' || values[0] === null) return ['data', 'items', index, 'values', i];
+  const at = values.findIndex((entry) => (entry as LikertResponse).optionId === scale[i]!.id);
+  return at < 0 ? ['data', 'items', index, 'values'] : ['data', 'items', index, 'values', at, 'value'];
+}
+
 /**
  * Positional or keyed values, resolved against the declared scale. Both forms
  * must cover every declared option: the base is the sum of the DECLARED
@@ -1353,6 +1369,7 @@ function alignToScale(
   item: LikertItem,
   scale: LikertScaleOption[],
   path: string,
+  index: number,
 ): (number | null)[] {
   const values = item.values;
   if (!Array.isArray(values)) {
@@ -1360,6 +1377,7 @@ function alignToScale(
       'likert-values-arity',
       `${path}.values`,
       `statement '${item.id}' has no values array`,
+      undefined, undefined, ['data', 'items', index, 'values'],
     );
   }
   const keyed = values.length > 0 && typeof values[0] === 'object' && values[0] !== null;
@@ -1370,6 +1388,7 @@ function alignToScale(
         `${path}.values`,
         `statement '${item.id}' supplies ${values.length} values for a ${scale.length}-point scale; positional values are matched to the scale by position, so the mismatch cannot be resolved`,
         `supply ${scale.length} values, or use the { optionId, value } form`,
+        undefined, ['data', 'items', index, 'values'],
       );
     }
     return values as (number | null)[];
@@ -1382,6 +1401,7 @@ function alignToScale(
         `${path}.values[${i}]`,
         `statement '${item.id}' mixes positional and keyed values`,
         'use one form for the whole item',
+        undefined, ['data', 'items', index, 'values', i],
       );
     }
     if (!scale.some((option) => option.id === entry.optionId)) {
@@ -1390,6 +1410,7 @@ function alignToScale(
         `${path}.values[${i}].optionId`,
         `statement '${item.id}' answers option '${entry.optionId}', which is not on the declared scale`,
         scale.map((option) => option.id).join(', '),
+        undefined, ['data', 'items', index, 'values', i, 'optionId'],
       );
     }
     if (byOption.has(entry.optionId)) {
@@ -1397,6 +1418,7 @@ function alignToScale(
         'likert-duplicate-option',
         `${path}.values[${i}].optionId`,
         `statement '${item.id}' answers option '${entry.optionId}' twice`,
+        undefined, undefined, ['data', 'items', index, 'values', i, 'optionId'],
       );
     }
     byOption.set(entry.optionId, entry.value);

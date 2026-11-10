@@ -203,16 +203,16 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
 
   // ---- normalize ----
   if (!data || typeof data.label !== 'string') {
-    throw new NormalizeError('missing-label', 'label', 'kpi requires a label');
+    throw new NormalizeError('missing-label', 'label', 'kpi requires a label', undefined, undefined, ['data', 'label']);
   }
   if (typeof data.value !== 'number' || !Number.isFinite(data.value)) {
-    throw new NormalizeError('invalid-number', 'value', 'kpi requires a finite numeric value');
+    throw new NormalizeError('invalid-number', 'value', 'kpi requires a finite numeric value', undefined, undefined, ['data', 'value']);
   }
   if (data.delta && data.compare) {
-    throw new NormalizeError('conflicting-options', 'compare', 'kpi accepts either delta or compare, not both');
+    throw new NormalizeError('conflicting-options', 'compare', 'kpi accepts either delta or compare, not both', undefined, undefined, ['data', 'compare']);
   }
   if (data.compare && (data.compare.length < 1 || data.compare.length > 2)) {
-    throw new NormalizeError('invalid-count', 'compare', 'kpi compare requires one or two entries');
+    throw new NormalizeError('invalid-count', 'compare', 'kpi compare requires one or two entries', undefined, undefined, ['data', 'compare']);
   }
   const value = data.value;
   const valueBand = data.bands?.length ? bandFor(value, data.bands) : undefined;
@@ -264,7 +264,7 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
   if (data.delta) {
     const vs = data.delta.vs;
     if (typeof vs !== 'number' || !Number.isFinite(vs)) {
-      throw new NormalizeError('invalid-number', 'delta.vs', 'delta.vs must be a finite number');
+      throw new NormalizeError('invalid-number', 'delta.vs', 'delta.vs must be a finite number', undefined, undefined, ['data', 'delta', 'vs']);
     }
     const direction = data.delta.direction ?? 'higherIsBetter';
     const { mode, refused } = changeMode(value, vs, data.delta.mode, 'relative', percentMeasure);
@@ -331,10 +331,10 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
   if (data.compare) {
     derived.comparisons = data.compare.map((comparison, index) => {
       if (typeof comparison.vs !== 'number' || !Number.isFinite(comparison.vs)) {
-        throw new NormalizeError('invalid-number', `compare[${index}].vs`, 'comparison reference must be finite');
+        throw new NormalizeError('invalid-number', `compare[${index}].vs`, 'comparison reference must be finite', undefined, undefined, ['data', 'compare', index, 'vs']);
       }
       if (typeof comparison.label !== 'string' || comparison.label.trim().length === 0) {
-        throw new NormalizeError('missing-label', `compare[${index}].label`, 'comparison label must be nonblank');
+        throw new NormalizeError('missing-label', `compare[${index}].label`, 'comparison label must be nonblank', undefined, undefined, ['data', 'compare', index, 'label']);
       }
       const label = comparison.label.trim();
       const { mode, refused } = changeMode(value, comparison.vs, comparison.mode, 'both', percentMeasure);
@@ -400,10 +400,10 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
   if (data.attainment) {
     const attainment = data.attainment;
     if (typeof attainment.vs !== 'number' || !Number.isFinite(attainment.vs)) {
-      throw new NormalizeError('invalid-number', 'attainment.vs', 'attainment reference must be finite');
+      throw new NormalizeError('invalid-number', 'attainment.vs', 'attainment reference must be finite', undefined, undefined, ['data', 'attainment', 'vs']);
     }
     if (typeof attainment.label !== 'string' || attainment.label.trim().length === 0) {
-      throw new NormalizeError('missing-label', 'attainment.label', 'attainment label must be nonblank');
+      throw new NormalizeError('missing-label', 'attainment.label', 'attainment label must be nonblank', undefined, undefined, ['data', 'attainment', 'label']);
     }
     const label = attainment.label.trim();
     const suppressed = attainment.vs <= 0;

@@ -198,10 +198,10 @@ export function layoutVariance(
 
   // ---- normalize ----
   if (!data || !Array.isArray(data.categories) || data.categories.length === 0) {
-    throw new NormalizeError('empty-data', 'categories', 'variance requires at least one category');
+    throw new NormalizeError('empty-data', 'categories', 'variance requires at least one category', undefined, undefined, ['data', 'categories']);
   }
   if (!Array.isArray(data.series) || data.series.length === 0) {
-    throw new NormalizeError('empty-data', 'series', 'variance requires at least one series');
+    throw new NormalizeError('empty-data', 'series', 'variance requires at least one series', undefined, undefined, ['data', 'series']);
   }
   const spec = options.variance;
   if (!spec || !spec.vs) {
@@ -215,7 +215,7 @@ export function layoutVariance(
   const mode = options.variant ?? 'absolute';
   const cats: Category[] = data.categories.map((c, i) => normalizeCategory(c as never, i));
   const seriesNorm: NormSer[] = data.series.map((s, si) => {
-    if (!s?.id) throw new NormalizeError('missing-id', `series[${si}]`, 'series requires an id');
+    if (!s?.id) throw new NormalizeError('missing-id', `series[${si}]`, 'series requires an id', undefined, undefined, ['data', 'series', si]);
     const cells = normalizeSeriesValues(s, cats, si);
     const vals: NormVal[] = cells.map((cell, ci) => {
       const meta = cellMeta(cell);
@@ -247,7 +247,7 @@ export function layoutVariance(
   });
   const dataSeries = seriesNorm.filter((s) => s.role !== 'reference');
   if (dataSeries.length === 0) {
-    throw new NormalizeError('empty-data', 'series', 'variance requires at least one data-role series');
+    throw new NormalizeError('empty-data', 'series', 'variance requires at least one data-role series', undefined, undefined, ['data', 'series']);
   }
   const refSeries = seriesNorm.find((s) => s.id === spec.vs);
   if (!refSeries) {

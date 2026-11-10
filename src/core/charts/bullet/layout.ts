@@ -414,13 +414,13 @@ export function layoutBullet(
 
   // ---- normalize ----
   if (!data || !Array.isArray(data.rows) || data.rows.length === 0) {
-    throw new NormalizeError('empty-data', 'rows', 'bullet requires at least one row');
+    throw new NormalizeError('empty-data', 'rows', 'bullet requires at least one row', undefined, undefined, ['data', 'rows']);
   }
   const seen = new Set<Id>();
   const rows: NormRow[] = data.rows.map((r: BulletRow, i) => {
-    if (!r?.id) throw new NormalizeError('missing-id', `rows[${i}]`, 'bullet row requires an id');
+    if (!r?.id) throw new NormalizeError('missing-id', `rows[${i}]`, 'bullet row requires an id', undefined, undefined, ['data', 'rows', i, 'id']);
     if (seen.has(r.id)) {
-      throw new NormalizeError('duplicate-id', `rows[${i}]`, `duplicate row id '${r.id}'`);
+      throw new NormalizeError('duplicate-id', `rows[${i}]`, `duplicate row id '${r.id}'`, undefined, undefined, ['data', 'rows', i, 'id']);
     }
     seen.add(r.id);
     const targetFormat = cellMeta(r.target ?? null)?.format;

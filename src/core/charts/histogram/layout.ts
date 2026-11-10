@@ -101,6 +101,7 @@ function validateObservations(data: HistogramData): number[] {
       'observations',
       'histogram requires data.observations: an array of raw numeric observations',
       'pass { "observations": [12, 18, 21, ...] }',
+      undefined, ['data', 'observations'],
     );
   }
   const observations = data.observations;
@@ -112,16 +113,18 @@ function validateObservations(data: HistogramData): number[] {
         `observations[${i}]`,
         `observations[${i}] is ${String(value)}; a histogram bins finite numbers only`,
         'remove null/NaN/Infinity observations before charting, or state the missing count in a footnote',
+        undefined, ['data', 'observations', i],
       );
     }
   }
-  if (observations.length === 0) throw new NormalizeError('empty-data', 'observations', 'histogram requires observations');
+  if (observations.length === 0) throw new NormalizeError('empty-data', 'observations', 'histogram requires observations', undefined, undefined, ['data', 'observations']);
   if (observations.length < MIN_N) {
     throw new NormalizeError(
       'histogram-too-few',
       'observations',
       `${observations.length} observations cannot show a distribution; a histogram needs at least ${MIN_N}`,
       "use chart type 'dot' to plot the values themselves, or 'table' to list them",
+      undefined, ['data', 'observations'],
     );
   }
   return observations;
@@ -145,6 +148,7 @@ export function layoutHistogram(
       'observations',
       `all ${n} observations equal ${min}; there is no distribution to bin`,
       "use chart type 'kpi' to state the single value",
+      undefined, ['data', 'observations'],
     );
   }
 

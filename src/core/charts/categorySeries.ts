@@ -39,16 +39,16 @@ export function normalizeCategorySeries<S extends Series & { values: unknown }, 
   series: (s: S, cells: Cell[], cats: Category[]) => R,
 ): { cats: Category[]; series: R[] } {
   if (!data || !Array.isArray(data.categories) || data.categories.length === 0) {
-    throw new NormalizeError('empty-data', 'categories', `${type} requires at least one category`);
+    throw new NormalizeError('empty-data', 'categories', `${type} requires at least one category`, undefined, undefined, ['data', 'categories']);
   }
   if (!Array.isArray(data.series) || data.series.length === 0) {
-    throw new NormalizeError('empty-data', 'series', `${type} requires at least one series`);
+    throw new NormalizeError('empty-data', 'series', `${type} requires at least one series`, undefined, undefined, ['data', 'series']);
   }
   const cats: Category[] = (data.categories as unknown[]).map((c, i) => normalizeCategory(c as never, i));
   return {
     cats,
     series: data.series.map((s, si) => {
-      if (!s?.id) throw new NormalizeError('missing-id', `series[${si}]`, 'series requires an id');
+      if (!s?.id) throw new NormalizeError('missing-id', `series[${si}]`, 'series requires an id', undefined, undefined, ['data', 'series', si]);
       return series(s, normalizeSeriesValues(s, cats, si), cats);
     }),
   };

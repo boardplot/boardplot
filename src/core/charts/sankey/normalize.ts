@@ -59,7 +59,7 @@ const linkKey = (source: Id, target: Id): Id => `${source}>${target}`;
 export function sankeyGraph(data: SankeyData, options: SankeyOptions): SankeyGraph {
   const warnings: LintWarning[] = [];
   if (!data || !Array.isArray(data.links) || data.links.length === 0) {
-    throw new NormalizeError('empty-data', 'links', 'sankey requires at least one link', 'Add links of source, target and value.');
+    throw new NormalizeError('empty-data', 'links', 'sankey requires at least one link', 'Add links of source, target and value.', undefined, ['data', 'links']);
   }
   const staged = data.links[0]!.sourceStage !== undefined || data.links[0]!.targetStage !== undefined;
   data.links.forEach((link, index) => {
@@ -82,7 +82,7 @@ export function sankeyGraph(data: SankeyData, options: SankeyOptions): SankeyGra
   const zero = data.links.filter((link) => link.value === 0).length;
   if (zero > 0) warnings.push({ code: 'sankey-zero-link', severity: 'info', message: `${zero} link${zero === 1 ? '' : 's'} with value 0 draw nothing` });
   const links = data.links.map((link, index) => ({ link, index })).filter(({ link }) => link.value > 0);
-  if (links.length === 0) throw new NormalizeError('empty-data', 'links', 'every sankey link has value 0, so nothing flows', 'Send at least one link above 0.');
+  if (links.length === 0) throw new NormalizeError('empty-data', 'links', 'every sankey link has value 0, so nothing flows', 'Send at least one link above 0.', undefined, ['data', 'links']);
 
   // ---- the shared id order: data.nodes, then first seen in links ----
   const spec = new Map((data.nodes ?? []).map((node) => [node.id, node] as const));

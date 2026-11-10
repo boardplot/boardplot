@@ -323,14 +323,14 @@ function layoutPiePass(
 
   // ---- normalize (exactly one data series; extras ignored with a warning) ----
   if (!data || !Array.isArray(data.categories) || data.categories.length === 0) {
-    throw new NormalizeError('empty-data', 'categories', 'pie requires at least one category');
+    throw new NormalizeError('empty-data', 'categories', 'pie requires at least one category', undefined, undefined, ['data', 'categories']);
   }
   if (!Array.isArray(data.series) || data.series.length === 0) {
-    throw new NormalizeError('empty-data', 'series', 'pie requires exactly one series');
+    throw new NormalizeError('empty-data', 'series', 'pie requires exactly one series', undefined, undefined, ['data', 'series']);
   }
   const dataSeries = data.series.filter((s) => s.role !== 'reference');
   const ser = dataSeries[0] ?? data.series[0]!;
-  if (!ser.id) throw new NormalizeError('missing-id', 'series[0]', 'series requires an id');
+  if (!ser.id) throw new NormalizeError('missing-id', 'series[0]', 'series requires an id', undefined, undefined, ['data', 'series', data.series.indexOf(ser)]);
   if (data.series.length > 1) {
     warnings.push({
       code: 'pie-single-series',
@@ -347,7 +347,7 @@ function layoutPiePass(
   }
   const sid = ser.id;
   let cats: Category[] = data.categories.map((c, i) => normalizeCategory(c as never, i));
-  const cells = normalizeSeriesValues(ser, cats, 0);
+  const cells = normalizeSeriesValues(ser, cats, 0, 'values', data.series);
   // A percent options.format sets the precision of the computed shares. It prints the slice values too
   // only when they are percents (a % unit, percent cells, or values adding to 100); counts or money would read as percent.
   const shareExample = shareFormatExample(options);
@@ -461,7 +461,7 @@ function layoutPiePass(
   // ---- derive: total + shares ----
   const total = slices.reduce((a, s) => a + (s.v ?? 0), 0);
   if (total <= 0) {
-    throw new NormalizeError('empty-data', 'series', 'pie requires a positive total');
+    throw new NormalizeError('empty-data', 'series', 'pie requires a positive total', undefined, undefined, ['data', 'series']);
   }
   const shares: Record<Id, number> = emptyIdRecord();
   for (const s of slices) shares[s.cat.id] = cleanFloat(((s.v ?? 0) / total) * 100);

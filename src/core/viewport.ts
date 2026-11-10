@@ -31,7 +31,7 @@ export function applyCategoryViewport<S extends { id: string; vals: { v: number 
   if (!input.domain && !input.window) return undefined;
   const first = input.domain ? input.categories.findIndex(category => category.id === input.domain!.x[0]) : 0;
   const last = input.domain ? input.categories.findIndex(category => category.id === input.domain!.x[1]) : input.categories.length - 1;
-  if (first < 0 || last < 0) throw new NormalizeError('unknown-category', 'viewDomain.x', 'Zoom endpoints must name source categories.');
+  if (first < 0 || last < 0) throw new NormalizeError('unknown-category', 'viewDomain.x', 'Zoom endpoints must name source categories.', undefined, undefined, ['options', 'viewDomain', 'x', first < 0 ? 0 : 1]);
   const lo = Math.min(first, last), hi = Math.max(first, last) + 1;
   const original = {
     categories: input.categories.slice(),
@@ -106,11 +106,11 @@ export function liveWindowOptions<T extends Pick<BaseOptions, 'subtitle' | 'loca
 }
 
 /** Numeric viewport limits are exact scale inputs, independent of data extents. */
-export function numericViewportRange(range: [number, number] | undefined, fallback: [number, number]): [number, number] {
+export function numericViewportRange(range: [number, number] | undefined, fallback: [number, number], axis: 'x' | 'y'): [number, number] {
   if (!range) return fallback;
   const lo = Math.min(...range), hi = Math.max(...range);
   if (!Number.isFinite(lo) || !Number.isFinite(hi) || lo === hi) {
-    throw new NormalizeError('invalid-domain', 'viewDomain', 'Numeric zoom needs two distinct finite endpoints.');
+    throw new NormalizeError('invalid-domain', 'viewDomain', 'Numeric zoom needs two distinct finite endpoints.', undefined, undefined, ['options', 'viewDomain', axis]);
   }
   return [lo, hi];
 }

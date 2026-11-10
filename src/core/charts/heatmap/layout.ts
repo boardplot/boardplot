@@ -247,10 +247,10 @@ export function layoutHeatmap(
 
   // ---- normalize ----
   if (!data || !Array.isArray(data.categories) || data.categories.length === 0) {
-    throw new NormalizeError('empty-data', 'categories', 'heatmap requires at least one category (column)');
+    throw new NormalizeError('empty-data', 'categories', 'heatmap requires at least one category (column)', undefined, undefined, ['data', 'categories']);
   }
   if (!Array.isArray(data.series) || data.series.length === 0) {
-    throw new NormalizeError('empty-data', 'series', 'heatmap requires at least one series (row)');
+    throw new NormalizeError('empty-data', 'series', 'heatmap requires at least one series (row)', undefined, undefined, ['data', 'series']);
   }
   const rawCats = data.categories.map((c, i) => normalizeCategory(c as never, i));
   const overrides = options.columnOverrides ?? {};
@@ -260,10 +260,10 @@ export function layoutHeatmap(
   // The name of a category follows it into a turned matrix.
   let cols: NormCol[] = rawCats.map((c) => ({ id: c.id, label: overrides[c.id]?.label ?? c.label ?? c.id, date: c.date, ...(c.footnote === undefined ? {} : { footnote: c.footnote }) }));
   let rows: NormRow[] = data.series.map((s, i) => {
-    if (!s?.id) throw new NormalizeError('missing-id', `series[${i}]`, 'series requires an id');
+    if (!s?.id) throw new NormalizeError('missing-id', `series[${i}]`, 'series requires an id', undefined, undefined, ['data', 'series', i]);
     const { sizes, bases, states } = s;
     if ((sizes?.length ?? 0) > rawCats.length || (bases?.length ?? 0) > rawCats.length || (states?.length ?? 0) > rawCats.length) {
-      throw new NormalizeError('length-mismatch', `series[${s.id}]`, `series '${s.id}' has more sizes, bases or states than the ${rawCats.length} categories`, 'give one size, base and state per category, in category order');
+      throw new NormalizeError('length-mismatch', `series[${s.id}]`, `series '${s.id}' has more sizes, bases or states than the ${rawCats.length} categories`, 'give one size, base and state per category, in category order', undefined, ['data', 'series', i]);
     }
     const cells = normalizeSeriesValues(s, rawCats, i).map((c, ci) => ({
       v: cellValue(c),

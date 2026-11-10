@@ -160,7 +160,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
   const highlights = new Set(resolveHighlight(options.highlight));
 
   if (!data || !Array.isArray(data.groups) || data.groups.length === 0) {
-    throw new NormalizeError('empty-data', 'groups', 'box requires at least one group', 'add groups[].observations');
+    throw new NormalizeError('empty-data', 'groups', 'box requires at least one group', 'add groups[].observations', undefined, ['data', 'groups']);
   }
   if (data.groups.every((group) => (group.observations?.length ?? 0) === 0)) {
     throw new NormalizeError(
@@ -168,6 +168,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
       'groups[].observations',
       'every group is empty — a box plot cannot be drawn from zero observations',
       'supply raw observations for at least one group',
+      undefined, ['data', 'groups'],
     );
   }
 
@@ -388,6 +389,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
       'groups[].observations',
       'no group draws anything: every group is empty or suppressed',
       "show small-n observations (showObservations: 'small-n') or supply larger samples",
+      undefined, ['data', 'groups'],
     );
   }
 

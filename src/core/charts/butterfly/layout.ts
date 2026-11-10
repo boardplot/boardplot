@@ -177,10 +177,10 @@ export function layoutButterfly(
     throw new NormalizeError('empty-data', 'data', 'butterfly requires categories and series');
   }
   if (data.series.length === 0 || data.categories.length === 0) {
-    throw new NormalizeError('empty-data', data.series.length === 0 ? 'series' : 'categories', 'butterfly requires at least one category and two series');
+    throw new NormalizeError('empty-data', data.series.length === 0 ? 'series' : 'categories', 'butterfly requires at least one category and two series', undefined, undefined, ['data', data.series.length === 0 ? 'series' : 'categories']);
   }
   if (data.series.length < 2) {
-    throw new NormalizeError('too-few-series', 'series', 'butterfly requires at least two series');
+    throw new NormalizeError('too-few-series', 'series', 'butterfly requires at least two series', undefined, undefined, ['data', 'series']);
   }
   if (!opts.a || !opts.b) {
     throw new NormalizeError('missing-option', 'options.a', "butterfly requires options 'a' and 'b' naming the two mirrored series");
@@ -345,7 +345,7 @@ export function layoutButterfly(
   }
 
   if (rows.length === 0) {
-    throw new NormalizeError('empty-data', 'categories', 'butterfly requires at least one category');
+    throw new NormalizeError('empty-data', 'categories', 'butterfly requires at least one category', undefined, undefined, ['data', 'categories']);
   }
 
   const diffs: ButterflyDerived['diffs'] = emptyIdRecord();
