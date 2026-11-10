@@ -7,7 +7,7 @@ import { logSpecFormat } from '../src/core/charts/scatter/logAxis';
 import { formatAutomaticNumber as formatAutomaticNumberSync, formatNumber } from '../src/core/format';
 import { shareSetDecimals, withSmallValues, zeroLifts } from '../src/core/formatPrecision';
 import { shareSetFormatter } from '../src/core/format';
-import { compileNumberFormat, defaultFormatSpec, formatExampleProblem, formatterFromExample, formatWithSpec, parseFormatExample, readFormatExamples, roundedNumber, sameUnit, seriesRasterFormatter, signedFormatterFromExample, unscaledFormatLint } from '../src/core/formatSpec';
+import { compileNumberFormat, defaultFormatSpec, formatExampleProblem, formatterFromExample, formatWithSpec, parseFormatExample, readFormatExamples, roundedNumber, sameUnit, seriesRasterFormatter, signedFormatterFromExample, unitMagnitude, unscaledFormatLint } from '../src/core/formatSpec';
 import { niceDomain } from '../src/core/scale';
 import type { SceneNode } from '../src/core/types/scene';
 import { createElement } from 'react';
@@ -640,6 +640,25 @@ describe('an example is read as its author wrote it', () => {
     expect(valued.scene.some((node) => node.t === 'text' && node.lines.join(' ') === 'b 2M')).toBe(true);
     const engine = seriesRasterFormatter(undefined, [1e-6, 1, 2e6], 'en', undefined, 'slide').spec;
     expect([5e-5, 1e-4].map(logSpecFormat(engine, [1e-6, 2e6]))).toEqual(['0.00005', '0.0001']);
+  });
+
+  // A unit with a scale word and a noun ("k visits") printed 260,000 as "260k", which read 1,000 times too large beside it.
+  it('adds no automatic magnitude under a unit that names a scale before a noun', () => {
+    for (const unit of ['k visits', 'million tonnes', 'Mio. Besucher', 'K users', 'M users', 'Milliarde Besuche', 'mn users']) {
+      expect(seriesRasterFormatter(undefined, [260_000, 1_011_000], 'en', unit, 'slide').fmt(260_000)).toBe('260,000');
+    }
+    expect(unitMagnitude('Milliarde Besuche')).toBe(unitMagnitude('Milliarden Besuche'));
+    expect(seriesRasterFormatter(undefined, [260_000, 1_011_000], 'en', 'minutes', 'slide').fmt(1_011_000)).toBe('1.01M');
+    // A physical unit, a rate or a word that is no scale names no scale: no whole-number rule from 100 up.
+    for (const unit of ['mm Hg', 'mm rain', 'm per second', 'm / s', 'k / visit', 'k visits per day', 'constructor calls', 'toString count']) {
+      expect(unitMagnitude(unit), unit).toBeUndefined();
+    }
+    // A format example with a scale word before a noun now divides by that scale (main printed "125,000.0 M entry").
+    expect(formatterFromExample('1.2 M entry', 'en')(125_000)).toBe('0.1 M entry');
+    const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'column',
+      data: { categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], series: [{ id: 'p', label: 'Pressure', values: [125.5, 98.2] }] },
+      options: { unit: 'mm Hg', labels: { value: true }, size: { width: 480, height: 320 } } })));
+    expect(geometry.labels.some((label) => !label.hidden && label.text === '125.5')).toBe(true);
   });
 
   // "$1.2M" fixes one decimal, so $4.27M printed $4.3M and no example gave 42.7, 4.27 and 0.430 together: one @ per figure fixes the figures, not the decimals.

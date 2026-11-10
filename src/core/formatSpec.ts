@@ -1749,19 +1749,28 @@ function drawnNumberTexts(geo: { labels?: readonly PlacedLabel[]; scene: readonl
  */
 const MAGNITUDE_UNIT = /^\W*(?:([a-z]{3})(\W*))?(k|mm?|mn|bn?|tn|tsd|mio|mrd|bio|thousands?|tausend|millions?|millionen|billions?|billionen|trillions?|milliard(?:en?|s)?)\W*(?:([a-z]{3})\W*)?$/i;
 const CURRENCY_CODES = new Set(Intl.supportedValuesOf('currency'));
+// A scale word of MAGNITUDE_UNIT before a spaced noun of letters ("k visits", "Mio. Besucher"). Lowercase "m" and "mm"
+// stay out: "m height" and "mm Hg" are physical units. A unit with "per" or a slash is a rate and never matches.
+const SCALED_NOUN_UNIT = /^(?!.*\bper\b)(k|mm?|mn|bn?|tn|tsd|mio|mrd|bio|thousands?|tausend|millions?|millionen|billions?|billionen|trillions?|milliard(?:en?|s)?)\.?\s+\p{L}+(?:\s+\p{L}+)*$/iu;
+const scaleOfWord = (word: string): NumberFormatSpec['magnitude'] => {
+  const letter = MAGNITUDE_WORD_LETTER[word.toLowerCase()] ?? word.toLowerCase();
+  return letter === 'k' ? 'k' : letter === 'b' ? 'bn' : letter === 't' ? 't' : 'm';
+};
 
 /**
  * The scale a unit names: "€M", "EUR m" and "CHFm" are millions, "k€"
  * thousands, "USD bn" billions, "Mio. CHF" millions; none for "%" or "EUR".
  * Three letters joined to the word must be a currency code: "USDm" names
- * millions, "item" does not. A currency may follow the word too.
+ * millions, "item" does not. A currency may follow the word too. A scale
+ * before a noun names one as well: "k visits", "million tonnes", "M users".
  */
 export function unitMagnitude(unit: string | undefined): NumberFormatSpec['magnitude'] | undefined {
+  const word = SCALED_NOUN_UNIT.exec(unit?.trim() ?? '')?.[1];
+  if (word !== undefined && word !== 'm' && word !== 'mm') return scaleOfWord(word);
   const match = MAGNITUDE_UNIT.exec(unit ?? '');
   if (!match || (match[1] && !match[2] && !CURRENCY_CODES.has(match[1].toUpperCase()))) return undefined;
   if (match[4] && (match[1] || !CURRENCY_CODES.has(match[4].toUpperCase()))) return undefined;
-  const letter = MAGNITUDE_WORD_LETTER[match[3]!.toLowerCase()] ?? match[3]!.toLowerCase();
-  return letter === 'k' ? 'k' : letter === 'b' ? 'bn' : letter === 't' ? 't' : 'm';
+  return scaleOfWord(match[3]!);
 }
 
 /**
