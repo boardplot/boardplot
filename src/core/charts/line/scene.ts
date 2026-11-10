@@ -150,6 +150,7 @@ export function layoutLineMarks(
   const baseY = dLo <= 0 && dHi >= 0 ? y(0) : plot.y + plot.h;
   const rendered = renderLineMarks({
     theme,
+    language: options.locale?.language,
     highlights: env.highlights,
     drawnSeries, refSeries: domain.refSeries, pv, rowOf, cats, isStacked, isArea, compositionInvalidAt, y, cumTop, cumBot, xOf,
     hasSuppressed100: domain.nmCats100.size > 0 || domain.naCats100.size > 0, baseY, plot,
@@ -209,12 +210,14 @@ export function layoutLineMarks(
   });
   // uncertainty fan: nested washes, outermost first, behind everything
   renderFanWashes(theme, {
+    language: options.locale?.language,
     range: domain.x?.range, xOfValue: area.xOfValue,
     fan: domain.fan, fanPaints: paints.fanPaints, fanLadder: paints.fanLadder, interpolationFor, pv, rowOf, cats, compositionInvalidAt, xOf, y,
     pathFor, reversePathTail, fmt: domain.fmt, numberSpec: domain.valueSpec.spec, occupied: claims, warnings, nodes, marks, analyticalSceneStart,
   });
   const phaseRequests: LabelRequest[] = [];
   const phaseDerived = renderPhaseFills(theme, {
+    language: options.locale?.language,
     range: domain.x?.range, xOfValue: area.xOfValue,
     phases: domain.phases, pv, rowOf, cats, xOf, y, baseY, plot: area.forecastPlot, phaseHeaderHeight: area.phaseHeaderHeight,
     paletteRamp: env.paletteRamp, palette: options.palette, fmt: domain.fmt, measure, tickFont,

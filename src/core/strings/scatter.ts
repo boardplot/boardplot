@@ -88,6 +88,10 @@ const EN = {
   "cutMeanCapital": "Mean",
   "pointsCountRight": ", points on it count right",
   "pointsCountAbove": ", points on it count above",
+  "sizeValue": "Size {v1}",
+  "clippedAt": "clipped at {v1}",
+  "clippedAtAxis": "{v1} ({v2})",
+  "clippedAtJoin": " and at ",
 } as const;
 const DE: { [K in keyof typeof EN]: string } = {
   // reader-facing wording linked only by its consumers.
@@ -177,6 +181,10 @@ const DE: { [K in keyof typeof EN]: string } = {
   "cutMeanCapital": "Mittelwert",
   "pointsCountRight": ", Punkte darauf zählen rechts",
   "pointsCountAbove": ", Punkte darauf zählen oben",
+  "sizeValue": "Größe {v1}",
+  "clippedAt": "abgeschnitten bei {v1}",
+  "clippedAtAxis": "{v1} ({v2})",
+  "clippedAtJoin": " und bei ",
 };
 
 export const { chartString } = chartStrings(EN, DE);

@@ -20,6 +20,7 @@ const EN = {
   "noFlaggedPeriodClause": " No period flagged.",
   "flaggedClause": " Flagged: {v1}.",
   "priorYearKey": "PY",
+  "anomalyCountOf": "{v1} of the",
 } as const;
 const DE: { [K in keyof typeof EN]: string } = {
   // reader-facing wording linked only by its consumers.
@@ -41,6 +42,7 @@ const DE: { [K in keyof typeof EN]: string } = {
   "noFlaggedPeriodClause": " Keine Periode markiert.",
   "flaggedClause": " Markiert: {v1}.",
   "priorYearKey": "PY",
+  "anomalyCountOf": "{v1} von",
 };
 
 export const { chartString, localeStrings } = chartStrings(EN, DE);

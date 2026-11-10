@@ -1702,7 +1702,7 @@ export function layoutBullet(
   const a11yRows = rows
     .map((row) => {
       const f = rowFmt(row);
-      const v = !shown('actual') ? '' : row.value !== null ? ` ${f(row.value)}` : ' n/a';
+      const v = !shown('actual') ? '' : row.value !== null ? ` ${f(row.value)}` : ` ${chartString(options, 'notApplicable')}`;
       const t =
         row.target !== null
           ? (shown('target') ? ` vs ${targetWord(options)} ${f(row.target)}` : '') +
@@ -1847,7 +1847,7 @@ function layoutBulletOnTargetScale(
   };
   // The note breaks after the target, before its hint (' · lower is better').
   const targetParts = (row: TargetScaleRow): string[] => [
-    row.target === null ? `no ${targetWord(options)}` : `${targetWord(options)} ${rowFmt(row as NormRow)(row.target)}`,
+    row.target === null ? chartString(options, 'noTarget', { v1: targetWord(options) }) : `${targetWord(options)} ${rowFmt(row as NormRow)(row.target)}`,
     ...(row.direction === 'lowerIsBetter' && !(typeof options.labels === 'object' && options.labels.direction === false) && options.strings?.lowerBetter !== '' ? [chartString(options, 'lowerBetterHint')] : []),
   ];
   pushAll(warnings, generatedIdWarnings('bullet', 'columnVisibility', options.columnVisibility, [...(ctx.labelOn('category') ? ['label'] : []), ...(ctx.labelOn('point') ? ['actual', 'share'] : []), ...(ctx.labelOn('annotation') ? ['delta'] : [])]));

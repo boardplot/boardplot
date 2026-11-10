@@ -1,3 +1,4 @@
+import { chartString } from '../../strings/scatter';
 import type { SlotCandidate } from '../../label/solver';
 import type { Theme } from '../../types/theme';
 import { formatAutomaticNumber } from '../../format';
@@ -550,7 +551,7 @@ function pointMarks(
     const nodeId = `mark:${p.id}`;
     nodeIdOf.set(p.id, nodeId);
     const owner = { pointId: p.id };
-    const clippedAt = clampStateOf(clamp, p.id);
+    const clippedAt = clampStateOf(clamp, p.id, options);
     const display = {
       // The REAL coordinates, on a clipped point too: the mark moved, the
       // value did not, and this string is what the hover card and the
@@ -558,7 +559,7 @@ function pointMarks(
       value: [
         `X ${axisFmt.x(p.x)}`,
         `Y ${axisFmt.y(p.y)}`,
-        ...(p.size === null ? [] : [`Size ${fmt(p.size)}`]),
+        ...(p.size === null ? [] : [chartString(options, 'sizeValue', { v1: fmt(p.size) })]),
       ].join(', '),
       ...(clippedAt ? { state: clippedAt } : {}),
     };

@@ -1,0 +1,3 @@
+### Fixed
+
+- Under `locale: { language: 'de' }` more charts print their own words in German: the story step position in the accessible description, the hover and accessible values of a scatter point's size and clip, a bump rank and tie, a fan band's widest point, a line phase's range, a missing line, sparkline or KPI spark point, a heatmap cell with no data and a status cell with no status, the blank cell note of a heatmap, a bullet row without a target, a missing bullet or variance value, the butterfly's name when it is too small to draw, and the count in an anomaly rule that has too few periods. English output is unchanged.

@@ -594,8 +594,8 @@ export function layoutHeatmap(
     ...(topOnly && valueNote === undefined ? [disclosureNote(chartString(options, 'heatmapTopValuesNote'))] : []),
     ...(valueNote ? [disclosureNote(valueNote)] : []),
     ...(bubble && missingCells ? [disclosureNote(statesPresent.length
-      ? (missingLook === 'blank' ? `Blank cells: ${noDataNames}.` : chartString(options, 'hatchedCells', { v1: noDataNames }))
-      : missingLook === 'blank' ? 'Blank cells: no data.' : chartString(options, 'hatchedNoData'))] : []),
+      ? (missingLook === 'blank' ? chartString(options, 'blankCells', { v1: noDataNames }) : chartString(options, 'hatchedCells', { v1: noDataNames }))
+      : missingLook === 'blank' ? chartString(options, 'blankNoData') : chartString(options, 'hatchedNoData'))] : []),
     ...(anyLowBase
       ? [disclosureNote(chartString(options, 'heatmapBaseNote', { v1: bubble ? chartString(options, 'circles') : chartString(options, 'cellsLower'), v2: formatAutomaticNumber(options.minBase!, { locale: options.locale?.language }) }))] : []),
   ];
@@ -1209,7 +1209,7 @@ export function layoutHeatmap(
         part: 'cell',
         display:
           cell.v === null
-            ? { state: cell.state ? stateNames[cell.state] : 'No data' }
+            ? { state: cell.state ? stateNames[cell.state] : chartString(options, 'noData') }
             : { value: displayFor(cell.v, cell.pct, cell.meta, r) },
       });
       occupied.claim(rect, 'mark', owner);

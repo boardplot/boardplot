@@ -1,3 +1,4 @@
+import { chartString as lineString } from '../../strings/line';
 import { NOT_AVAILABLE, NOT_MEANINGFUL } from '../../format';
 import { gapMarkerNode } from '../../dataGaps';
 import { cubicPoint, curvePathFromSegments, drawnStroke, fmtPathNumber as fmtN, monotonePath, monotoneSegments, monotoneYAt, splitCurve, splitCurveSegmentsAtX, type CurveSegment } from '../../curve';
@@ -729,7 +730,7 @@ function markBridgedGaps(input: RenderLineMarksInput, series: NormSer, dataIdx: 
       const x = input.xOf(ci);
       const t = (x - a.x) / (b.x - a.x);
       const y = segment ? cubicPoint(segment, t).y : geometry.interpolation === 'step-after' ? a.y : geometry.interpolation === 'step-before' ? b.y : a.y + (b.y - a.y) * t;
-      input.nodes.push(gapMarkerNode(input.theme, { id: `gap:${series.id}:${input.cats[ci]!.id}`, x, y, ink: paint, owner: { seriesId: series.id, categoryId: input.cats[ci]!.id } }));
+      input.nodes.push(gapMarkerNode(input.theme, { id: `gap:${series.id}:${input.cats[ci]!.id}`, x, y, ink: paint, owner: { seriesId: series.id, categoryId: input.cats[ci]!.id }, language: input.language }));
     }
   }
 }
@@ -899,6 +900,8 @@ function renderReferences(input: RenderLineMarksInput, claims: ClaimContext): vo
 }
 
 interface RenderLineMarksInput {
+  /** The chart language, for the words of hover and accessible values. */
+  language?: string;
   range?: LineRange;
   xOfValue?: (value: number) => number;
   theme: Theme;
@@ -983,7 +986,7 @@ export function renderLineMarks(input: RenderLineMarksInput): RenderedLineMarks 
     pushAll(input.nodes, ink.filter(raised));
   }
   renderAreaSeparators(input, geometries, paintedAreaCats);
-  renderBumpTies(input.theme, { bump: input.bump, marks, nodes: input.nodes, occupied: input.occupied });
+  renderBumpTies(input.theme, { bump: input.bump, marks, nodes: input.nodes, occupied: input.occupied, language: input.language });
   // A focused bump keeps every ranked entity in its records (the data
   // table) at its rank, with no node drawn.
   for (const series of input.bumpOmitted ?? []) {
@@ -1122,6 +1125,7 @@ function phasePaint(phase: LinePhase, index: number, paletteRamp: string[] | und
 const PHASE_BAND_TINT = 0.84;
 
 export function renderPhaseFills(theme: Theme, input: {
+  language?: string;
   range?: LineRange;
   xOfValue?: (value: number) => number;
   phases: LinePhaseResolved | null;
@@ -1172,13 +1176,13 @@ export function renderPhaseFills(theme: Theme, input: {
     if (banded) {
       const bandPaint = phasePaint(phase, index, input.paletteRamp, input.palette);
       fills.push({ t: 'path', id: `mark:phase:${phase.id}`, d: `M${fmtN(start.x)} ${fmtN(input.plot.y)}L${fmtN(end.x)} ${fmtN(input.plot.y)}L${fmtN(end.x)} ${fmtN(input.plot.y + input.plot.h)}L${fmtN(start.x)} ${fmtN(input.plot.y + input.plot.h)}Z`,
-        fill: 'tint' in bandPaint ? { ...bandPaint, tint: PHASE_BAND_TINT } : bandPaint, owner: { seriesId: phases.series.id, annotationId: phase.id }, part: 'phaseFill', display: { value: `${phase.label}: ${input.fmt(start.value)} to ${input.fmt(end.value)}` } });
+        fill: 'tint' in bandPaint ? { ...bandPaint, tint: PHASE_BAND_TINT } : bandPaint, owner: { seriesId: phases.series.id, annotationId: phase.id }, part: 'phaseFill', display: { value: lineString({ locale: { language: input.language } }, 'phaseRange', { v1: phase.label, v2: input.fmt(start.value), v3: input.fmt(end.value) }) } });
     }
     const span = ranged?.spans[index];
     const top = span ? edgePath(span, linePath)
       : phases.interpolation === 'monotone' ? monotonePathBetween(curvePoints, start, end) : linePath([{ x: start.x, y: start.y }, ...curvePoints.filter((point) => point.x > start.x && point.x < end.x), { x: end.x, y: end.y }]);
     const nodeId = `mark:phase:${phase.id}`;
-    if (!banded) fills.push({ t: 'path', id: nodeId, d: `${top}L${fmtN(end.x)} ${fmtN(input.baseY)}L${fmtN(start.x)} ${fmtN(input.baseY)}Z`, fill: phasePaint(phase, index, input.paletteRamp, input.palette), stroke: { token: 'axis' }, width: strokeToken(theme, 'hair'), dash: dashToken(theme, 'reference'), owner: { seriesId: phases.series.id, annotationId: phase.id }, part: 'phaseFill', display: { value: `${phase.label}: ${input.fmt(start.value)} to ${input.fmt(end.value)}` } });
+    if (!banded) fills.push({ t: 'path', id: nodeId, d: `${top}L${fmtN(end.x)} ${fmtN(input.baseY)}L${fmtN(start.x)} ${fmtN(input.baseY)}Z`, fill: phasePaint(phase, index, input.paletteRamp, input.palette), stroke: { token: 'axis' }, width: strokeToken(theme, 'hair'), dash: dashToken(theme, 'reference'), owner: { seriesId: phases.series.id, annotationId: phase.id }, part: 'phaseFill', display: { value: lineString({ locale: { language: input.language } }, 'phaseRange', { v1: phase.label, v2: input.fmt(start.value), v3: input.fmt(end.value) }) } });
     // A linear fill claims its outline, one convex quad per stretch, so the
     // series' last value can sit over its own point; a monotone
     // curve bulges past its chords and keeps the box.

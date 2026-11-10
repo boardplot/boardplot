@@ -56,6 +56,7 @@ const EN = {
   "gapBelow": "below {v1}",
   "gapAbove": "above {v1}",
   "gapOn": "on {v1}",
+  "noTarget": "no {v1}",
 } as const;
 const DE: { [K in keyof typeof EN]: string } = {
   // reader-facing wording linked only by its consumers.
@@ -113,6 +114,7 @@ const DE: { [K in keyof typeof EN]: string } = {
   "gapBelow": "unter {v1}",
   "gapAbove": "über {v1}",
   "gapOn": "{v1} erreicht",
+  "noTarget": "kein {v1}",
 };
 
 export const { chartString } = chartStrings(EN, DE);

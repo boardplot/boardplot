@@ -105,5 +105,6 @@ export function emitSparkline(
     nodeId: context.nodeId,
     owner: context.owner,
     partPrefix: 'table',
+    language: metrics.language,
   }).map(node => node.t === 'text' ? { ...node, typeRole: 'label' as const } : node);
 }

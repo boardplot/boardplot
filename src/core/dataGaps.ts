@@ -1,3 +1,4 @@
+import { chartString as gapString } from './strings/sparkline';
 import type { Theme } from './types/theme';
 import { strokeToken } from './theme';
 /**
@@ -81,10 +82,10 @@ export function warnMissingValue(warnings: LintWarning[], where: string, owner: 
  * slot. Its hover record says "no value". One shape for every type (line,
  * sparkline, kpi spark, column), keyed once where a key is drawn.
  */
-export function gapMarkerNode(theme: Theme, input: { id: string; x: number; y: number; ink: Paint; owner: OwnerRef; r?: number }): SceneNode {
+export function gapMarkerNode(theme: Theme, input: { id: string; x: number; y: number; ink: Paint; owner: OwnerRef; r?: number; language?: string }): SceneNode {
   return {
     t: 'circle', id: input.id, cx: input.x, cy: input.y, r: input.r ?? 3,
     fill: { token: 'background' }, stroke: input.ink, strokeWidth: strokeToken(theme, 'mark'), owner: input.owner,
-    part: 'gapMarker', display: { value: 'no value', state: 'missing' },
+    part: 'gapMarker', display: { value: gapString({ locale: { language: input.language } }, 'noValue'), state: 'missing' },
   };
 }

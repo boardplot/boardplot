@@ -548,7 +548,7 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
         ...(state ? hatchOf(state) : {}),
         owner,
         part: 'cell',
-        display: { state: state?.label ?? 'No status', ...(binding?.value !== undefined ? { value: valueForStatus(binding.value, raster, options.format !== undefined) } : {}) },
+        display: { state: state?.label ?? chartString(options, 'noStatus'), ...(binding?.value !== undefined ? { value: valueForStatus(binding.value, raster, options.format !== undefined) } : {}) },
       });
       // The edge is a separate closed path inside the fill. Its stroke cannot cover the cell gutter.
       // Reserve both possible edge widths even when this theme needs none, so repaint keeps its path.
