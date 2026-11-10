@@ -2647,9 +2647,19 @@ function probedPanelDomain(
   });
   return requestMemo(probedPanelDomain, key, () => {
     const probe = probePanelGeometry(panel, options, valueAxis);
-    // A bar or dot panel draws its value axis across, under category rows: that axis is the one valueAxis pins.
-    return probe && !probe.refused ? inferLinearYDomain(probe) ?? inferLinearYDomain(probe, 'x') : null;
+    return probe && !probe.refused ? inferLinearYDomain(probe, panelValueAxis(panel)) : null;
   });
+}
+
+/**
+ * The axis whose scale the shared valueAxis pin sets. A bar or dot panel draws its value axis across, under its
+ * category rows. Other types with a horizontal value axis (butterfly and pyramid panes, a tornado, a football
+ * field) keep a scale of their own that the pin does not set, so they read as having no shareable vertical axis.
+ */
+function panelValueAxis(panel: GridPanelSpec): 'x' | 'y' {
+  const type = getChart(panel.type)?.type;
+  const variant = panel.options?.variant;
+  return type === 'dot' || (type === 'bar' && variant !== 'tornado' && variant !== 'football-field') ? 'x' : 'y';
 }
 
 function panelValueAxisBreak(panel: GridPanelSpec): { from: number; to: number } | null {
@@ -2699,7 +2709,7 @@ function groupHonorsSharedBreak(
     } catch {
       return false;
     }
-    if (!geometry || geometry.refused || !geometry.axes.some((axis) => axis.axis === 'y' && axis.break !== undefined)) return false;
+    if (!geometry || geometry.refused || !geometry.axes.some((axis) => axis.axis === panelValueAxis(panel) && axis.break !== undefined)) return false;
   }
   return true;
 }
