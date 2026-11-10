@@ -1312,7 +1312,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
    */
   const hoistedUnitSet = new Set(hoistedRowUnits.values());
   const figureRows = flat.filter((row) => !row.calc && valueCols.some((col) => typeof rawState.get(row.id)?.get(col.id)?.raw === 'number'));
-  const headUnit = figureRows.length > 1 && hoistedUnitSet.size === 1 && figureRows.every((row) => hoistedRowUnits.has(row.id))
+  const headUnit = options.columnHeads !== false && figureRows.length > 1 && hoistedUnitSet.size === 1 && figureRows.every((row) => hoistedRowUnits.has(row.id))
     ? [...hoistedUnitSet][0] : undefined;
   function defaultExample(col: Extract<TableColumn, { kind: 'value' | 'computed' }>): string {
     // a points-valued calc has no magnitude to derive — its unit IS the
@@ -1416,6 +1416,11 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   const composes = bareScale && !!authoredUnit && (carriesScale || (scaleWords.length === 0 && /^(?:[A-Z]{3}|\p{Sc})$/u.test(authoredUnit)));
   const composedUnit = composes ? carriesScale ? authoredUnit : `${authoredUnit} ${candidateUnit}` : candidateUnit;
   const uniformUnit = composedUnit && frameCarriesUnit ? composedUnit : null;
+  // Without a head row a head unit prints nowhere, and "9.5" under a title in "$k" reads as $9.5k:
+  // each cell keeps its unit and its magnitude letter.
+  if (options.columnHeads === false && uniformUnit === null) {
+    for (const [id, unit] of unitByCol) if (unit !== null) { unitByCol.set(id, null); lettersInCells.add(id); }
+  }
   if (uniformUnit !== null && options.unit !== undefined && options.unit !== uniformUnit && !composes) {
     warnings.push({
       code: 'table-unit-overridden',
@@ -2100,13 +2105,6 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   const footnotes = [...autoFootnotes];
   // The † in the head points at its note, so it prints only where the note does.
   if (headMarksPartial) for (const column of resolvedColumns) if (partialColumnIds.has(column.id)) column.partial = true;
-  // A unit that only a head prints leaves with the head, so the reader needs to hear it.
-  if (options.columnHeads === false) {
-    const units = [...new Set(resolvedColumns.flatMap((column) => column.unitLabel ?? []))];
-    if (units.length > 0) warnings.push({ code: 'column-heads-unit-hidden', severity: 'warn', field: ['options', 'columnHeads'],
-      message: `columnHeads: false removes the only print of the unit ${units.join(', ')}`,
-      suggest: 'Name the unit in the subtitle or a footnote, or use formats that print it in each cell.' });
-  }
 
   const result: ResolveResult = {
     ...(zeroLifts.count === liftsBefore && rawLifts === 0 ? {} : { lifted: true as const }),

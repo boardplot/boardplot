@@ -1683,3 +1683,15 @@ it('prints whole figures under a unit that names a scale, with no engine magnitu
   const records = preparedTableRecords(table, data, { chartId: 't' } as never, options);
   expect(interactionValueText(records.find((record) => record.target.owner.rowId === 'north')!.value)).not.toMatch(/M/);
 });
+
+// With columnHeads false the magnitude letter went into the hidden head, so 9,500,000 printed "9.5" under a title in "$k".
+it('keeps the magnitude letter in the cells when the column heads are hidden', () => {
+  const data = { columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'fy25', kind: 'value', label: 'FY2025' }],
+    rows: [{ id: 'revenue', label: 'Revenue', cells: { fy25: 9500000 } }, { id: 'costs', label: 'Costs', cells: { fy25: 5200000 } }] } as unknown as TableData;
+  const shown = resolveTable(data, { title: 'Revenue and costs' }).table;
+  expect(shown.rows.map((row) => row.cells.fy25!.displayed)).toEqual(['9.5', '5.2']);
+  expect(shown.columns.find((column) => column.id === 'fy25')!.unitLabel).toBe('M');
+  const hidden = resolveTable(data, { title: 'Revenue and costs', columnHeads: false });
+  expect(hidden.table.rows.map((row) => row.cells.fy25!.displayed)).toEqual(['9.5M', '5.2M']);
+  expect(hidden.warnings.map((warning) => warning.code)).not.toContain('column-heads-unit-hidden');
+});
