@@ -669,6 +669,19 @@ it('names the categories a default pie cut folds into Others', () => {
   expect(omitted(9)).toEqual([]);
 });
 
+// A grid panel on a number x axis has no authored categories, and its reading must not crash the render that draws it.
+it('reads a line panel on a number x axis as the line alone reads', () => {
+  const line = { type: 'line', data: { x: [0, 1, 2], series: [{ id: 's', label: 'Sales', values: [4, 6, 5] }] },
+    options: { xAxis: { type: 'number' }, labels: { point: false } } };
+  const read = (spec: object) => render({ spec, return: ['reading'] }).body as { ok: boolean; reading: ChartReading };
+  const alone = read({ ...line, options: { ...line.options, size: { width: 640, height: 360 } } });
+  const grid = read({ type: 'grid', data: { panels: [{ id: 'p', ...line }] }, options: { columns: 1, size: { width: 640, height: 360 } } });
+  expect(grid.ok).toBe(true);
+  expect(grid.reading.omissions.filter(item => item.labelId.startsWith('p/point:')))
+    .toEqual(alone.reading.omissions.filter(item => item.labelId.startsWith('point:')).map(item => ({ ...item, labelId: `p/${item.labelId}` })));
+  expect(alone.reading.omissions.filter(item => item.labelId.startsWith('point:'))).toHaveLength(3);
+});
+
 it('recognizes series names printed in a key, legend or replacement label', () => {
   for (const legend of [undefined, 'bottom'] as const) {
     const body = render({ spec: { type: 'line', data: {
