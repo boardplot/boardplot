@@ -769,6 +769,27 @@ it('reads the scatter trend slope and r² from the key', () => {
   for (const part of ['slope', 'r2']) expect(claims.find((claim) => claim.id === `scatter:trend:all:${part}`)?.output.displayed).toBe(node.lines.join(' '));
 });
 
+// A stack total claim exists only where its label request names it: a total request that forgets the name drops the number from the reading.
+it('reads each printed stack total of column, bar, mekko and pie from its label', () => {
+  const categories = [{ id: 'north', label: 'North' }, { id: 'south', label: 'South' }, { id: 'west', label: 'West' }];
+  const series = [{ id: 'retail', label: 'Retail', values: [42, 38, 46] }, { id: 'online', label: 'Online', values: [18, 24, 16] }];
+  const cases: [string, object, object][] = [
+    ['column', { categories, series }, { variant: 'stacked', grandTotalLabels: true }],
+    ['bar', { categories, series }, { variant: 'stacked', grandTotalLabels: true }],
+    ['mekko', { categories, series }, {}],
+    ['pie', { categories, series: [{ id: 'sales', label: 'Sales', values: [42, 38, 46] }] }, { doughnut: 0.6 }],
+  ];
+  for (const [type, data, options] of cases) {
+    const { geometry, claims } = readChart(type, data, options);
+    const totals = geometry.labels.filter((label) => (label.kind === 'grandTotal' || label.kind === 'total') && !label.hidden);
+    expect(totals.length, type).toBeGreaterThan(0);
+    for (const label of totals) {
+      const id = `stack:total:${label.id.replace(/^(grandTotal|total):/, '')}`;
+      expect(claims.find((claim) => claim.id === id)?.output.displayed, `${type} ${id}`).toBe(label.lines.join(' '));
+    }
+  }
+});
+
 // A Likert share that rounds to zero or belongs to an excluded neutral is not printed; the chart must say so, or the census reads it as a lost number.
 it('names every Likert claim at a label or states it as unprinted', () => {
   const scale = [{ id: 'no', label: 'Disagree' }, { id: 'mid', label: 'Neutral', role: 'neutral' }, { id: 'yes', label: 'Agree' }];

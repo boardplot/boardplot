@@ -1161,6 +1161,7 @@ function layoutPiePass(
     labelRequests.push({
       id: `total:${sid}`,
       kind: 'total',
+      claimIds: [`stack:total:${sid}`],
       owner: { seriesId: sid },
       text,
       lines,

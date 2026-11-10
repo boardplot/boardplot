@@ -325,6 +325,7 @@ export function planBarLabels(domain: BarDomain, paints: BarPaints, area: BarAre
       requests.push({
         id: `grandTotal:${cat.id}`,
         kind: 'grandTotal',
+        claimIds: [`stack:total:${cat.id}`],
         markAnchored: true,
         // The total prints the value alone: it names its one part back, so a pinned part placed first takes the value.
         ...(part && !words ? { printedIn: part } : {}),
