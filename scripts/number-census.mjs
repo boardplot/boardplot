@@ -65,12 +65,13 @@ const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
  */
 export function tokens(text, m) {
   const group = `[${esc(m.thousands)}\\u202f\\u00a0\\u2009' ’]`;
-  const re = new RegExp(String.raw`([<>≈~]?)\s?([+\-−]?)\s?(\p{Sc}|[A-Z]{2,3}\$|CHF\s?)?\s?(\d{1,3}(?:${group}\d{3})+(?:${esc(m.decimal)}\d+)?|\d+(?:${esc(m.decimal)}\d+)?|${esc(m.decimal)}\d+)(?:\s?[×x]\s?10([⁻⁺]?[⁰¹²³⁴⁵⁶⁷⁸⁹]+))?(?:(m)(?![\p{L}])|\s?(thousand|million|billion|trillion|Tausend|Millionen|Million|Milliarden|Mrd|Mio|Tsd|bn|Bn|[kKMBT])(?![\p{L}]))?\s?(%|pp|p\.p\.)?(?:\s?(\p{Sc}))?`, 'gu');
+  const re = new RegExp(String.raw`([<>≈~]?)\s?([+\-−]?)\s?(\p{Sc}|[A-Z]{2,3}\$|CHF\s?)?\s?(\d{1,3}(?:${group}\d{3})+(?:${esc(m.decimal)}\d+)?|\d+(?:${esc(m.decimal)}\d+)?|${esc(m.decimal)}\d+)(?:\s?[×x]\s?10([⁻⁺]?[⁰¹²³⁴⁵⁶⁷⁸⁹]+))?(?:(m)(?![\p{L}])|\s?(?:([A-Z]{3})\s)?(thousand|million|billion|trillion|Tausend|Millionen|Million|Milliarden|Mrd|Mio|Tsd|bn|Bn|[kKMBT])(?![\p{L}]))?\s?(%|pp|p\.p\.)?(?:\s?(\p{Sc}))?`, 'gu');
   const found = [];
   // ISO dates and times are not values.
   text = text.replace(/\d{4}-\d{2}(?:-\d{2})?(?:T[\d:.]+Z?)?/g, (date) => ' '.repeat(date.length));
   for (const match of text.matchAll(re)) {
-    const [, bound, signText, prefix, body, exponent, glued, spaced, pct, postfix] = match;
+    // A currency code may stand between the figure and its magnitude: "1.3 CHF M".
+    const [, bound, signText, prefix, body, exponent, glued, code, spaced, pct, postfix] = match;
     const letter = glued ?? spaced ?? '';
     // A word glued in front ("W36", "Q1", "FY2024", "H2") is a name, not a value.
     const before = match[0].startsWith(' ') ? ' ' : text[match.index - 1];
@@ -87,7 +88,7 @@ export function tokens(text, m) {
     const digits = plain.replace('.', '').replace(/^0+/, '');
     found.push({
       text: match[0].trim(), bound: bound || undefined, value: sign * value * scale, half: 0.5 * 10 ** -decimals * scale,
-      decimals, letter, scale, pct: pct === '%' ? '%' : pct ? 'pp' : '', currency: prefix?.trim() || postfix || '',
+      decimals, letter, scale, pct: pct === '%' ? '%' : pct ? 'pp' : '', currency: prefix?.trim() || code || postfix || '',
       significant: digits.length || (value === 0 ? 0 : 1), index: match.index,
     });
   }
@@ -96,8 +97,13 @@ export function tokens(text, m) {
 
 /** Whether a token says `raw` at its printed precision under factor f (f converts raw to the printed unit). */
 function says(token, raw, f = 1) {
-  if (token.bound === '<') return Math.abs(raw * f) < Math.abs(token.value) + token.half * 1e-6 && Math.sign(raw) === Math.sign(token.value || raw);
-  if (token.bound === '>') return Math.abs(raw * f) > Math.abs(token.value) - token.half * 1e-6;
+  if (token.bound === '<' || token.bound === '>') {
+    // A bound toward zero ("<0.1%", ">−0.1pp") says a value between zero and the bound; one away from zero
+    // (">999%", "<−999%") says a value beyond it. Both keep the sign of the bound.
+    const inward = (token.bound === '<') === (token.value > 0);
+    const size = Math.abs(raw * f), edge = Math.abs(token.value), slack = token.half * 1e-6;
+    return Math.sign(raw * f) === Math.sign(token.value || raw * f) && (inward ? size < edge + slack : size > edge - slack);
+  }
   const tolerance = token.half * (1 + 1e-9) + Math.abs(token.value) * 1e-12;
   return Math.abs(raw * f - token.value) <= tolerance;
 }
@@ -296,13 +302,15 @@ export function censusCase(type, fixture, width, localeName, measured) {
   }
   const NOT_VALUES = new Set(['category', 'series', 'axisTitle', 'legend', 'title', 'subtitle']);
   for (const label of geometry.labels ?? []) {
-    // Event labels name events and their dates; they print no value of the owner.
-    if (label.hidden || NOT_VALUES.has(label.kind) || !label.owner || label.id.startsWith('event:')) continue;
+    // Event labels name events and their dates; they print no value of the owner. A map overlay label prints the
+    // author's text as written ("UK 78%"), so it is not tied to its glyph value.
+    if (label.hidden || NOT_VALUES.has(label.kind) || !label.owner || /^(event|overlay):/.test(label.id)) continue;
     // The pvm net change is the difference of two totals, not a value of its owner column: its claim (below) checks it.
     if (label.claimId === 'pvm:delta') continue;
     const text = textById.get(label.nodeId ?? `label:${label.id}`) ?? label.text;
     if (!text) continue;
-    addPrinted(label.owner, label.id, text, [`kind:${label.kind}:${label.owner.seriesId ?? ''}`]);
+    // One magnitude per series, or per column: a bartable's totals of two measures are two units.
+    addPrinted(label.owner, label.id, text, [`kind:${label.kind}:${label.owner.seriesId ?? label.owner.colId ?? ''}`]);
   }
 
   // Header and row-label magnitudes of a table, for hoisted units.
@@ -315,7 +323,8 @@ export function censusCase(type, fixture, width, localeName, measured) {
   // The unit a whole table reads in: its label column's header ("EUR K") or the subtitle ("in €M").
   const labelHeader = labelColumn ? headerScale.get(`col:${labelColumn}`) : undefined;
   if (labelHeader?.letter) headerScale.set('label-header', labelHeader);
-  const subtitle = texts.find((entry) => /(?:^|\/)frame:subtitle:/.test(entry.id));
+  // Any subtitle line can name the unit: "Monthly net cash movement", then "in CHF M · Q1 2026".
+  const subtitle = texts.find((entry) => /(?:^|\/)frame:subtitle:/.test(entry.id) && namedMagnitude(entry.text));
   if (type === 'table' && subtitle && namedMagnitude(subtitle.text)) headerScale.set('subtitle', { text: subtitle.text, letter: namedMagnitude(subtitle.text) });
   if (labelColumn) for (const entry of texts) {
     const cell = /^(?:.*\/)?cell:([^:]+):(.+)$/.exec(entry.id);
@@ -359,6 +368,13 @@ export function censusCase(type, fixture, width, localeName, measured) {
     if (/^\(?\d+:\d+\)?$/.test(printed.text.trim())) return;
     const found = tokens(printed.text, m);
     if (found.length === 0) return;
+    // A bullet prints its gap as its printed value minus its printed target, and an authored precision stands:
+    // "−$0.1" between "$0.4" and "$0.5" is right, although the exact gap is −0.038.
+    if (type === 'bullet' && printed.surface === 'svg' && printed.id.startsWith('delta:')) {
+      const row = printed.id.slice('delta:'.length);
+      const [value] = tokens(textById.get(`label:point:${row}`) ?? '', m), [target] = tokens(textById.get(`label:target-value:${row}`) ?? '', m);
+      if (value && target) candidates = [...candidates, { raw: value.value - target.value, name: 'printed value - printed target', scaled: true, derived: true }];
+    }
     // A percent beside a value and its comparison (target, median, base) can be their ratio or change.
     if (found.some((token) => token.pct === '%')) {
       const value = candidates.find((candidate) => candidate.name === 'value');
@@ -408,6 +424,16 @@ export function censusCase(type, fixture, width, localeName, measured) {
     if (printed.surface === 'svg' && /\p{L}{3,}/u.test(found.reduce((rest, token) => rest.replace(token.text, ' '), printed.text))) return;
     // No agreement: a scale error when another factor makes it agree, else a mismatch.
     const token = found.length === 1 ? found[0] : found.reduce((a, b) => (Math.abs(b.value - candidates[0].raw) < Math.abs(a.value - candidates[0].raw) ? b : a));
+    // Sum-consistent rounding moves a share off its nearest rounding by one step (reading.rounding).
+    // A table share column rounds by largest remainder to exactly 100% (resolve), the same one step.
+    const shareColumn = (type === 'table' && (data.columns ?? []).find((column) => column.id === owner?.colId)?.calc?.op === 'share')
+      || /share/i.test(printed.id);
+    // A share with no `rounding` takes its chart's default; stacked100 columns and areas default to sum-consistent.
+    const shareRecord = options.rounding === undefined && candidates.some((candidate) => candidate.name === 'share.percent');
+    const oneStep = (list) => (options.rounding === 'sum-consistent' || shareColumn || shareRecord)
+      && list.some((candidate) => says({ ...token, half: token.half * 3 }, candidate.raw, token.pct === '%' ? 100 : 1) || says({ ...token, half: token.half * 3 }, candidate.raw));
+    // A source value one step off is that rounding before any other scale is tried ("10%" for a 9.25% share).
+    if (oneStep(candidates.filter((candidate) => !candidate.derived))) return;
     const scale = ownerScale(owner);
     for (const candidate of candidates) {
       const alt = ALT_FACTORS.find((f) => says(token, candidate.raw * (candidate.scaled ? 1 : scale), f) && !scalesFor(owner).some((other) => Math.abs(other * f / scale - 1) < 1e-9));
@@ -416,13 +442,7 @@ export function censusCase(type, fixture, width, localeName, measured) {
         return;
       }
     }
-    // Sum-consistent rounding moves a share off its nearest rounding by one step (reading.rounding).
-    // A table share column rounds by largest remainder to exactly 100% (resolve), the same one step.
-    const shareColumn = (type === 'table' && (data.columns ?? []).find((column) => column.id === owner?.colId)?.calc?.op === 'share')
-      || /share/i.test(printed.id);
-    // A share with no `rounding` takes its chart's default; stacked100 columns and areas default to sum-consistent.
-    const shareRecord = options.rounding === undefined && candidates.some((candidate) => candidate.name === 'share.percent');
-    if ((options.rounding === 'sum-consistent' || shareColumn || shareRecord) && candidates.some((candidate) => says({ ...token, half: token.half * 3 }, candidate.raw, token.pct === '%' ? 100 : 1) || says({ ...token, half: token.half * 3 }, candidate.raw))) return;
+    if (oneStep(candidates)) return;
     // A rebased series prints its index, which no record holds.
     if (options.rebase100 || options.rebase !== undefined || options.index !== undefined) return;
     if (token.value === 0 && !token.bound && candidates.some((candidate) => candidate.raw !== 0 && !honestZero(candidate.raw, example))) {
@@ -510,6 +530,9 @@ export function censusCase(type, fixture, width, localeName, measured) {
   }
 
   // 3. Claims: the displayed text says the raw value, and a derivation recomputes.
+  // The text each table cell's record states, also for a hidden column (engineNm reads a hidden base here).
+  const cellDisplayed = new Map(records.filter((record) => record.target.owner?.rowId !== undefined && typeof record.value.displayed === 'string')
+    .map((record) => [`${record.target.owner.rowId}:${record.target.owner.colId}`, record.value.displayed]));
   for (const claim of claims) {
     if (claim.output.state === 'value' && typeof claim.output.raw === 'number' && claim.output.displayed) {
       const found = tokens(claim.output.displayed, m);
@@ -524,6 +547,8 @@ export function censusCase(type, fixture, width, localeName, measured) {
         const shareCell = cell && (data.columns ?? []).find((column) => column.id === cell[2])?.calc?.op === 'share';
         const ok = found.some((token) => says(token, raw) || (signed && says(token, -raw)) || ((token.pct === '%' || type === 'cohort') && says(token, raw, 100)) || (!token.letter && says(token, raw, 1 / dataScale))
           || (!token.letter && says(token, raw, 1 / contextScale))
+          // A series authored in "USD bn" prints its total as "13.9 USD bn": the series unit's scale, as for its labels.
+          || authoredScales.some((scale) => says(token, claim.output.raw * scale))
           || (shareCell && says({ ...token, half: token.half * 3 }, raw, token.pct === '%' ? 1 : 0.01)));
         if (!ok) {
           const token = found[0];
@@ -534,10 +559,28 @@ export function censusCase(type, fixture, width, localeName, measured) {
         }
       }
     }
-    try {
-      const verdict = recomputeClaim(claim);
-      if (verdict && verdict.status === 'mismatch') flag('derived', 'reading', { id: claim.id, text: claim.output.displayed, raw: claim.output.raw, why: `${claim.op}: recomputes to ${verdict.expected}` });
-    } catch { /* ops recompute does not know */ }
+    let verdict;
+    try { verdict = recomputeClaim(claim); } catch { /* ops recompute does not know */ }
+    // Outside the catch: an error of the census's own rules fails the check, never passes a claim.
+    if (verdict && verdict.status === 'mismatch' && !engineNm(claim)) flag('derived', 'reading', { id: claim.id, text: claim.output.displayed, raw: claim.output.raw, why: `${claim.op}: recomputes to ${verdict.expected}` });
+  }
+
+  /** An n.m. the engine owes to more than the claim's two operands show. */
+  function engineNm(claim) {
+    if (claim.output.state !== 'nm' && claim.output.state !== 'n.m.') return false;
+    // Under basis 'previous' a period with no survivors makes every later cell of its cohort n.m. (cohort retention).
+    const cell = /^cohort:(.+):t(\d+)$/.exec(claim.id);
+    if (type === 'cohort' && options.basis === 'previous' && cell) {
+      return (data.cohorts ?? []).find((cohort) => cohort.id === cell[1])?.active?.slice(0, Number(cell[2])).includes(0) === true;
+    }
+    // A percent change off a base cell the table prints as zero ("0", "0.0", or "<0.1", which rounds to zero) is n.m.
+    // (table resolve, near-zero base). A hidden base column states its text in its record.
+    if (claim.op.startsWith('percentDelta') && claim.nodeId && claim.inputs[1]?.ref) {
+      const ref = claim.inputs[1].ref;
+      const base = textById.get(claim.nodeId.replace(/cell:.*$/, `cell:${ref}`)) ?? cellDisplayed.get(ref);
+      return base !== undefined && (!/[1-9]/.test(base) || /^(<|>[−-])/.test(base.trim()));
+    }
+    return false;
   }
 
   // 4. Axis ticks and keys: one magnitude per axis; units printed once per text.

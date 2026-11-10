@@ -191,6 +191,109 @@ describe('number census', () => {
     expect(garbled('Not labelled on the chart: Payments (0.6, 17), and 1 more.', withAuthored)).toEqual([]);
     expect(garbled('Payments 1,5 m (0.6, 17)', withAuthored)).toContain("decimal comma in a chart with '.' marks");
   });
+
+  type Spec = { data: unknown; options?: Record<string, unknown>; annotations?: unknown[] };
+  const fixtureOf = <T extends Spec = Spec>(type: string, id: string) => structuredClone(getFixtures(type).find((f) => f.id === id)!) as unknown as T;
+  /** Census findings of a spec at one width; `edit` changes the drawn geometry first, to plant a defect. */
+  const census = (type: string, spec: Spec, width: number, edit?: (geometry: Geometry) => void): Finding[] => {
+    const measured = measure({ type, data: spec.data, options: { ...spec.options, size: { width } }, annotations: spec.annotations ?? [] } as never) as { geometry: Geometry };
+    edit?.(measured.geometry);
+    return (censusCase(type, spec, width, 'en', measured) as { findings: Finding[] }).findings;
+  };
+  const retext = (id: string, text: string) => (geometry: Geometry) => {
+    const node = geometry.scene.find((n) => n.id === id);
+    if (node?.t !== 'text') throw new Error(`no text ${id}`);
+    node.lines = [text];
+  };
+  const of = (findings: Finding[], cls: string, id?: string) => findings.filter((f) => f.class === cls && (id === undefined || f.id.includes(id)));
+
+  // A bartable's totals of two measures ("$k" savings, a count of roles) were read as one group of mixed magnitudes.
+  it('reads bartable totals per column and still flags mixed magnitudes in one column', () => {
+    const spec = fixtureOf('bartable', 'null-and-long-labels');
+    spec.data = scaled(spec.data, 1e6);
+    expect(of(census('bartable', spec, 320), 'mixed-units')).toEqual([]);
+    expect(of(census('bartable', spec, 320, retext('label:end:fte:a', '18,000,000')), 'mixed-units')).not.toEqual([]);
+  });
+
+  // A map overlay label is the author's text ("UK 78%"); it was read as the overlay glyph's value.
+  it('leaves overlay labels to the author and still checks a printed map value', () => {
+    const spec = fixtureOf<Spec & { data: { overlays: { glyph: { value: number } }[] } }>('choropleth', 'world-footprint');
+    for (const overlay of spec.data.overlays) overlay.glyph.value = 0;
+    expect(of(census('choropleth', spec, 720), 'mismatch')).toEqual([]);
+    expect(of(census('choropleth', spec, 720, retext('label:value-table-value:GB', '80')), 'mismatch', 'value-table-value:GB')).not.toEqual([]);
+  });
+
+  // Under basis 'previous' a period with no survivors makes every later cell of its cohort n.m.; the census recomputed a rate.
+  it('accepts the n.m. tail after a period with no survivors and still flags an n.m. without one', () => {
+    const spec = fixtureOf<Spec & { data: { cohorts: { id: string; active: number[] }[] } }>('cohort', 'retention-previous-period');
+    const [first, second] = spec.data.cohorts;
+    first!.active[1] = 0;
+    expect(of(census('cohort', spec, 320), 'derived')).toEqual([]);
+    const blank = (geometry: Geometry) => {
+      const row = (geometry.derived as { cohorts: { id: string; retention: (number | null)[] }[] }).cohorts.find((c) => c.id === second!.id)!;
+      row.retention[1] = null;
+    };
+    expect(of(census('cohort', spec, 320, blank), 'derived', `${second!.id}:t1`)).not.toEqual([]);
+  });
+
+  // ">−0.1pp" says a change between −0.1 and 0; the census read it as a magnitude above 0.1.
+  it('reads a negative bound toward zero and still flags a bound the value breaks', () => {
+    const spec = fixtureOf<Spec & { data: { measures: { id: string; value: { factor?: number } }[] } }>('dimswitch', 'thresholds-by-kind');
+    spec.data.measures.find((entry) => entry.id === 'rate')!.value.factor = 0.1;
+    const id = 'cell:["by-measure","total","rate"]:pp';
+    expect(census('dimswitch', spec, 400).filter((f) => f.class === 'wrong-scale')).toEqual([]);
+    expect(census('dimswitch', spec, 400, retext(id, '>−0.01pp')).filter((f) => f.id === id)).not.toEqual([]);
+  });
+
+  // Sum-consistent rounding prints a share one step off ("10%" for 9.25%); the census read it as another scale first.
+  it('reads a sum-consistent share before another scale and still flags a share at the wrong scale', () => {
+    const spec = fixtureOf<Spec & { data: { categories: { id: string; label: string }[]; series: { values: number[] }[] } }>('mekko', 'rounding-smallest-tie');
+    spec.data.categories = [...spec.data.categories, { id: 'b', label: 'Second market' }];
+    for (const series of spec.data.series) series.values = [...series.values, ...series.values];
+    expect(of(census('mekko', spec, 320), 'wrong-scale')).toEqual([]);
+    expect(census('mekko', spec, 320, retext('label:segment:tiny:b', '1%')).map((f) => f.class)).toContain('wrong-scale');
+  });
+
+  // A percent change off a base the table prints as 0 is n.m. (near-zero base); the census recomputed it.
+  it('accepts n.m. off a base printed as zero and still flags n.m. off a printed base', () => {
+    const spec = fixtureOf('table', 'department-steering-mini');
+    spec.data = scaled(spec.data, 1e-3);
+    expect(of(census('table', spec, 400), 'derived')).toEqual([]);
+    expect(of(census('table', spec, 400, retext('cell:operations:py', '<0.1')), 'derived')).toEqual([]);
+    expect(of(census('table', spec, 400, retext('cell:operations:py', '440')), 'derived', 'operations:yoy')).not.toEqual([]);
+  });
+
+  // A hidden base column is read from its record: an n.m. was accepted for any hidden base, also a nonzero one.
+  it('accepts n.m. off a hidden base that prints as zero and flags n.m. off a hidden nonzero base', () => {
+    const spec = fixtureOf('table', 'steering-theme-conventions');
+    const small = { ...spec, data: scaled(spec.data, 1e-3) };
+    expect(of(census('table', small, 400), 'derived')).toEqual([]);
+    const nm = (geometry: Geometry) => {
+      const cell = (geometry.derived as { computedCells: { rowId: string; colId: string; raw: number | null; state: string; displayed: string }[] })
+        .computedCells.find((c) => c.rowId === 'revenue-north' && c.colId === 'yoy')!;
+      Object.assign(cell, { raw: null, state: 'nm', displayed: 'n.m.' });
+    };
+    expect(of(census('table', spec, 400, nm), 'derived', 'revenue-north:yoy')).not.toEqual([]);
+  });
+
+  // "1.3 CHF M" puts a currency code between the figure and its magnitude, and the second subtitle line names it.
+  it('reads a magnitude after a currency code', () => {
+    expect(tokens('1.3 CHF M', en)[0]?.value).toBe(1.3e6);
+    const spec = fixtureOf('table', 'shared-spaced-cash-movement');
+    spec.data = scaled(spec.data, 1e3);
+    expect(of(census('table', spec, 320), 'wrong-scale')).toEqual([]);
+  });
+
+  // A bullet prints its gap as printed value minus printed target, so "−$0.1" between "$0.4" and "$0.5" is right.
+  it('reads a bullet gap from its printed operands and still flags a gap that is neither', () => {
+    const spec = fixtureOf<Spec & { data: { rows: { id: string; value: unknown; target: unknown }[] } }>('bullet', 'columns-hidden');
+    spec.options = { ...spec.options, sharedScale: true };
+    const revenue = spec.data.rows.find((row) => row.id === 'revenue')!;
+    revenue.value = { number: 0.412, format: '$412k' };
+    revenue.target = { number: 0.45, format: '$450k' };
+    expect(of(census('bullet', spec, 600), 'wrong-scale')).toEqual([]);
+    expect(census('bullet', spec, 600, retext('label:delta:revenue', '−$0.2')).filter((f) => f.id === 'delta:revenue')).not.toEqual([]);
+  });
 });
 
 describe('a key label leaves room for its own value', () => {
