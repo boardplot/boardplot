@@ -5,7 +5,7 @@ import type { OptionsInput } from '../core/types/optionInput';
 import { hasPolarityBadge, isFigureCell, polarityBadgeInk } from '../core/charts/table/chips';
 import { chartString } from '../core/strings/table';
 import { belowTableViewportFloor, columnHeadText } from '../core/charts/table/widths';
-import { tableNeed } from '../core/charts/table/need';
+import { tableScrollNeed } from '../core/charts/table/need';
 import {
   createContext,
   memo,
@@ -1046,7 +1046,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     const sidesAt = (frameTheme: Theme, frameWidth: number) => size === 'container' || size === undefined
       ? { left: marginLeft, right: marginRight } : { ...canvasMargin(frameTheme, frameWidth), ...margin };
     const sides = sidesAt(theme, size === undefined || size === 'container' ? 0 : resolveSize(size).width);
-    return tableNeed({ table, surface: {
+    return tableScrollNeed({ table, surface: {
       scroll: true, theme, measure: width.measure,
       options: { ...tableOptions, density, target: request?.target, inlineVisibility, [SOFT_LABEL_CAP]: softLabelCap, [LABEL_WRAP_FLOOR]: labelWrapFloor },
       view: {
