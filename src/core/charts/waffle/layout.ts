@@ -31,7 +31,7 @@ import { rowDrivenHeight } from '../../rowCanvas';
 import { defaultMeasurer, wrapText, type FontSpec } from '../../text';
 import { textRole } from '../../textRole';
 import { arrowHeadPath, arrowShaftEnd } from '../../svgPath';
-import { strokeToken, dashToken, canvasMargin, contrastInkPaint, markRolePaint, mixedPaint, surfaceFloorPaint, panelTypeClass, resolveTheme, seriesPaint, spaceTokens, themeForWidth } from '../../theme';
+import { strokeToken, dashToken, canvasMargin, contrastInkPaint, colorRolePaints, markRolePaint, mixedPaint, surfaceFloorPaint, panelTypeClass, resolveTheme, seriesPaint, spaceTokens, themeForWidth } from '../../theme';
 import { DEFAULT_TARGET, kpiHeroSizesPx, panelHeroSizesPx, TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { KPI_VALUE_SIZE, textScaleOf } from '../../typeFloors';
 import { cellMeta, cellValue, type Id } from '../../types/cell';
@@ -306,8 +306,10 @@ function layoutPass(data: ChartData, options: WaffleOptions, lean = false, oneRo
   }
 
   // ---- paints: the first series takes the first palette colour; the rest of the panel is the others ground ----
+  // Series that share a colour role take distinct steps of it.
+  const roles = colorRolePaints(series.map(({ ser }) => ser));
   const paints: Paint[] = series.map(({ ser }, si) =>
-    ser.fill ? { css: ser.fill } : ser.colorRole ? markRolePaint(ser.colorRole, true) : seriesPaint(si, palette ? options.palette : undefined));
+    ser.fill ? { css: ser.fill } : ser.colorRole ? roles.get(ser.id)! : seriesPaint(si, palette ? options.palette : undefined));
   // Rest cells carry no outline (a field of boxed cells draws the eye to the empty part). The Others
   // fill deepens toward the mark ink (lightens on a dark page) just past the mark floor instead; a fill that clears it stays.
   const restPaint: Paint = surfaceFloorPaint({ token: 'othersMark' }, []);

@@ -344,6 +344,52 @@ it('draws series that share a colour role in distinct steps of that colour', () 
   }
 });
 
+// Only column, bar and dot stepped a shared colour role; every other type drew such series in one colour, so the reader could not tell them apart.
+describe('draws series that share a colour role in distinct steps in every type', () => {
+  const cats = ['a', 'b', 'c'].map(id => ({ id, label: id.toUpperCase() }));
+  const S = ['s1', 's2', 's3'];
+  const series = (values = (i: number) => [20 + i * 5, 25 + i * 4, 22 + i * 3]) => S.map((id, i) => ({ id, label: `Series ${i + 1}`, colorRole: 'good', values: values(i) }));
+  const G = ['g1', 'g2', 'g3'];
+  const groups = G.map((id, i) => ({ id, label: `Group ${i + 1}`, colorRole: 'good' }));
+  const cases: [string, Record<string, unknown>, string[], keyed: boolean][] = [
+    ['line', { type: 'line', data: { categories: cats, series: series() } }, S, false],
+    ['line stacked-area', { type: 'line', data: { categories: cats, series: series() }, options: { variant: 'stacked-area' } }, S, false],
+    ['combo', { type: 'combo', data: { categories: cats, series: series().map((s, i) => i === 0 ? s : { ...s, kind: 'line' }) } }, S, true],
+    ['funnel', { type: 'funnel', data: { categories: cats, series: series((i) => [100 - i * 10, 60 - i * 5, 30 - i * 3]) }, options: { variant: 'rows' } }, S, true],
+    ['funnel centered', { type: 'funnel', data: { categories: cats, series: series((i) => [100 - i * 10, 60 - i * 5, 30 - i * 3]) }, options: { variant: 'centered' } }, S, true],
+    ['mekko', { type: 'mekko', data: { categories: cats, series: series() }, options: { variant: 'stacked100' } }, S, false],
+    ['slope with a key', { type: 'slope', data: { categories: cats.slice(0, 2), series: series((i) => [10 + i * 6, 14 + i * 3]) }, options: { legend: 'top' } }, S, true],
+    ['butterfly', { type: 'butterfly', data: { categories: cats, series: series().slice(0, 2) }, options: { a: 's1', b: 's2' } }, S.slice(0, 2), false],
+    ['bartable', { type: 'bartable', data: { categories: cats, series: S.map((id, i) => ({ id, label: `Series ${i + 1}`, colorRole: 'good' })), panels: [{ id: 'p', label: 'P', unit: '$m', values: { s1: [20, 25, 22], s2: [25, 29, 25], s3: [30, 33, 28] } }] } }, S, true],
+    ['waffle', { type: 'waffle', data: { categories: [{ id: 'o', label: 'Orders' }], series: series((i) => [[30, 25, 15][i]!]) }, options: { variant: 'cells' } }, S, false],
+    ['scatter', { type: 'scatter', data: { groups, points: G.flatMap((g, gi) => [0, 1, 2].map(k => ({ id: `${g}${k}`, group: g, label: `${g}${k}`, x: gi * 3 + k, y: gi + k * 2 }))) } }, G, true],
+    ['treemap', { type: 'treemap', data: { groups, items: G.flatMap((g, gi) => [0, 1].map(k => ({ id: `${g}${k}`, label: `${g}${k}`, group: g, value: 100 - gi * 20 - k * 10 }))) } }, G, true],
+    ['waterfall', { type: 'waterfall', data: { items: [{ id: 'st', label: 'Start', type: 'total', value: 100 }, { id: 'v', label: 'Volume', segments: S.map((id, i) => ({ id, label: `Segment ${i + 1}`, colorRole: 'good', value: 10 + i * 4 })) }, { id: 'en', label: 'End', type: 'total' }] } }, S, true],
+  ];
+  it.each(cases)('%s', (_, request, ids, keyed) => {
+    for (const theme of ['standard', 'standard-dark']) {
+      const geo = layoutResolvedRequest(resolveChartRequest({ ...request, theme, options: { title: 'Three series, one role', ...(request.options as object) } } as never));
+      if (geo.refused) throw new Error('refused');
+      const marks = new Map<string, string>();
+      const keys = new Map<string, string>();
+      for (const node of geo.scene) {
+        const id = node.owner?.segmentId ?? node.owner?.seriesId ?? node.owner?.pointId?.slice(0, 2);
+        const paint = 'fill' in node && node.fill ? node.fill : 'stroke' in node ? node.stroke : undefined;
+        if (!id || !ids.includes(id) || !paint || node.t === 'text' || /casing|leader|label|halo|connector|baseline|gridline|hit|track|rule/i.test(node.part ?? '')) continue;
+        const css = resolvePaint(paint, resolveTheme(theme));
+        if (css.toLowerCase() === resolveTheme(theme).color.background.toLowerCase()) continue;
+        const target = /swatch|legendKey/.test(node.part ?? '') ? keys : marks;
+        if (!target.has(id)) target.set(id, css);
+      }
+      expect(new Set(ids.map(id => marks.get(id))).size, `${theme} marks`).toBe(ids.length);
+      // A key, where one is drawn, shows each series in its mark's colour.
+      if (keyed) expect(keys.size, `${theme} key`).toBe(ids.length);
+      for (const [id, key] of keys) expect(key, `${theme} key ${id}`).toBe(marks.get(id));
+      expect(geo.warnings.map(w => w.code), theme).not.toContain('series-indistinguishable');
+    }
+  });
+});
+
 // Scenario series took their rank colour, so a prior year listed first painted darker than the actual and the look changed with series order.
 it.each(['column', 'bar'] as const)('paints scenario %s series from the actual, whatever the series order', (type) => {
   const series = {

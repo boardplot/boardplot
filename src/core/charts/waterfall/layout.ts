@@ -59,7 +59,7 @@ import {
   canvasMargin,
   colorblindPaint,
   effectiveFill,
-  markRolePaint,
+  colorRolePaints,
   paintColor,
   panelTypeClass,
   seriesPaint as themeSeriesPaint,
@@ -1026,6 +1026,11 @@ function layoutWaterfallWithPad(
     }
   }
 
+  // Segment identities that share a colour role take distinct steps of it. Identities with
+  // one label and one role are one segment to the reader: they share a step and one key.
+  const roleKey = (identity: { id: Id; label?: string; colorRole?: string }) => `${identity.label ?? identity.id}\u0000${identity.colorRole}`;
+  const roleSteps = colorRolePaints([...new Map([...segmentCatalog.values()].map((identity) => [roleKey(identity), { id: roleKey(identity), colorRole: identity.colorRole }])).values()]);
+  const segmentRoles = new Map([...segmentCatalog.values()].flatMap((identity) => roleSteps.has(roleKey(identity)) ? [[identity.id, roleSteps.get(roleKey(identity))!]] : []));
   const fixedKeys: LegendItemInput[] = [];
   if (items.some(it => it.type !== 'delta' && !it.authoredSegments)) fixedKeys.push({ id: '__keyTotal', label: chartString(options, 'total'), paint: { token: 'total' } });
   const segmentPaints = new Map(distinguishSeries([
@@ -2503,9 +2508,9 @@ function layoutWaterfallWithPad(
     return segmentPaints.get(identity.id) ?? rawIdentityPaint(identity);
   }
 
-  function rawIdentityPaint(identity: { colorRole?: string; slot: number }): Paint {
+  function rawIdentityPaint(identity: { id: Id; colorRole?: string; slot: number }): Paint {
     return identity.colorRole
-      ? markRolePaint(identity.colorRole, true)
+      ? segmentRoles.get(identity.id)!
       : themeSeriesPaint(identity.slot, paletteRamp ? options.palette : undefined);
   }
 

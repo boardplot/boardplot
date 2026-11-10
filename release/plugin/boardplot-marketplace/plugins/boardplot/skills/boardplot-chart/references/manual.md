@@ -1133,7 +1133,7 @@ Keep shared design tokens in application data when possible. If CSS owns the tok
 
 ### Stable series colours
 
-Assign `colorRole` from one map keyed by series id before filtering or rendering. Use the same map for every chart and export. A `series-N` role always selects step N of `color.series`, with N starting at 1. It does not select a step of `options.palette`. An explicit `fill` still wins over `colorRole`.
+Assign `colorRole` from one map keyed by series id before filtering or rendering. Use the same map for every chart and export. A `series-N` role always selects step N of `color.series`, with N starting at 1. It does not select a step of `options.palette`. An explicit `fill` still wins over `colorRole`. Series of one chart that share a role draw in distinct steps of its colour. Gantt bars, sankey nodes, status cells and slope lines without a key keep the one colour, because their position or label names each item.
 
 ```ts
 const series = [{ id: 'core', values: [42] }, { id: 'extra', values: [18] }];

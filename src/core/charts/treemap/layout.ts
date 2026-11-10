@@ -32,7 +32,7 @@ import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { textSizeOf } from '../../typeFloors';
 import { spread1DResult, warnSpreadOverflow } from '../../collide';
 import { defaultMeasurer, graphemes, splitNameBreaks, wrapText, type FontSpec, type TextMeasurer } from '../../text';
-import { contrastInkPaint, emphasisWeight, groupRampPaint, strokeToken, canvasMargin, markRolePaint, paintColor, panelTypeClass, resolveTheme, seriesPaint, themeForWidth } from '../../theme';
+import { contrastInkPaint, emphasisWeight, groupRampPaint, strokeToken, canvasMargin, colorRolePaints, paintColor, panelTypeClass, resolveTheme, seriesPaint, themeForWidth } from '../../theme';
 import type { Id } from '../../types/cell';
 import type { Geometry, LintWarning, Paint, SceneNode } from '../../types/scene';
 import { figureRole } from '../cardRoles';
@@ -212,9 +212,12 @@ function layoutTreemapAt(data: TreemapData, options: TreemapOptions, memo: Map<s
   if (byValue) groups = groups.map((g, i) => ({ g, i })).sort((a, b) => b.g.total - a.g.total || a.i - b.i).map(({ g }) => g);
   // Steps follow the drawn order: the largest group takes the first, strongest step. Groups are
   // parts of one total, so they share one colour family by rank (group-ramp); a palette keeps its hues.
+  // Groups that share a colour role take distinct steps of it, in drawn order too.
+  const specOf = (id: Id) => groupSpecs.find((s) => s.id === id) as { id: Id; colorRole?: string; fill?: string } | undefined;
+  const roles = colorRolePaints(groups.map((g) => specOf(g.id) ?? { id: g.id }));
   groups.forEach((g, gi) => {
-    const spec = groupSpecs.find((s) => s.id === g.id) as { colorRole?: string; fill?: string } | undefined;
-    g.paint = spec?.fill ? { css: spec.fill } : spec?.colorRole ? markRolePaint(spec.colorRole, true)
+    const spec = specOf(g.id);
+    g.paint = spec?.fill ? { css: spec.fill } : spec?.colorRole ? roles.get(g.id)!
       : palette ? seriesPaint(gi, options.palette) : grouped ? groupRampPaint(gi, groups.length) : seriesPaint(gi);
   });
   const ordered = groups.flatMap((g) => g.items);

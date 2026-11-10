@@ -55,6 +55,7 @@ import {
   labelsOffKeepsNames,
   seriesPaint,
   canvasMargin,
+  colorRolePaints,
   markRolePaint,
   panelTypeClass,
   resolveSemanticPaletteTheme,
@@ -413,9 +414,13 @@ export function layoutSlope(
   // ---- paints (consulting grey + one accent; de-emphasis via light tint) ----
   // A line whose colorRole is 'highlight' is an authored focus too.
   const anyHighlight = highlights.size > 0 || seriesNorm.some((s) => !s.fill && s.colorRole === 'highlight');
+  // Endpoint labels name the lines, so lines that share a colour role keep its one
+  // colour. A drawn key names them by colour, so there they take distinct steps of it.
+  const keyDrawn = !!options.legend && options.legend !== 'none' && options.legend !== 'auto';
+  const roles = keyDrawn ? colorRolePaints(seriesNorm, false) : undefined;
   const rawLinePaint = (s: NormSer): Paint => {
     if (s.fill) return { css: s.fill };
-    if (s.colorRole) return markRolePaint(s.colorRole);
+    if (s.colorRole) return roles?.get(s.id) ?? markRolePaint(s.colorRole);
     if (highlights.has(s.id)) return semanticPalettePaint(theme, options.palette, 'focus');
     // A receded line and its end dots stay 3:1 on the page; a named palette keeps its own rank.
     if (anyHighlight && (options.palette === undefined || theme.color.palettes?.[options.palette] === undefined)) return mutedMarkPaint();

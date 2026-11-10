@@ -42,6 +42,7 @@ import { tableRuleInk } from '../table/statement';
 import { defaultMeasurer, splitNameBreaks, type FontSpec, type TextMeasurer } from '../../text';
 import {
   canvasMargin,
+  colorRolePaints,
   markRolePaint,
   paintColor,
   panelTypeClass,
@@ -575,15 +576,18 @@ function layoutBarTableOnce(
   ];
 
   // ---- paints and the key ----
+  // Segments, or row groups, that share a colour role take distinct steps of it.
+  const roles = colorRolePaints(series);
   const own = series.map((s): Paint | undefined =>
-    s.fill ? { css: s.fill } : s.colorRole ? markRolePaint(s.colorRole, true) : undefined);
+    s.fill ? { css: s.fill } : s.colorRole ? roles.get(s.id)! : undefined);
   const slots = rampSlots(theme, own, options.palette,
     series.length > 1 ? { labels: series.map((s) => s.label ?? s.id), warnings } : undefined);
   const paints = series.map((_, i) => own[i] ?? seriesPaint(slots[i]!, options.palette));
   // Row groups colour the bars by a row attribute; a residual row is neutral.
   const groups = data.rowGroups?.groups ?? [];
+  const groupRoles = colorRolePaints(groups);
   const groupOwn = groups.map((g): Paint | undefined =>
-    g.fill ? { css: g.fill } : g.colorRole ? markRolePaint(g.colorRole, true) : undefined);
+    g.fill ? { css: g.fill } : g.colorRole ? groupRoles.get(g.id)! : undefined);
   const groupSlots = groups.length > 0 ? rampSlots(theme, groupOwn, options.palette, groups.length > 1 ? { labels: groups.map((g) => g.label ?? g.id), warnings } : undefined) : [];
   const groupPaints = groups.map((_, i) => groupOwn[i] ?? seriesPaint(groupSlots[i]!, options.palette));
   const rowPaint = (r: number, s: number): Paint => {

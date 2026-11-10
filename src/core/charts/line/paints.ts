@@ -16,7 +16,7 @@ import { NormalizeError } from '../../normalize/shared';
 import { DEFAULT_OTHERS_SHADE } from '../../othersShade';
 import { othersShadeUnavailableWarnings } from '../../paintWarnings';
 import { bumpStoryPaints } from '../../colorRecipes';
-import { dashToken, strokeToken, labelsOffKeepsNames, markRolePaint, markRoleToken, mixedPaint, orderedRampPaint, paintColor, rampSlots, secondaryFont, seriesPaint as themeSeriesPaint } from '../../theme';
+import { colorRolePaints, dashToken, strokeToken, labelsOffKeepsNames, markRoleToken, mixedPaint, orderedRampPaint, paintColor, rampSlots, secondaryFont, seriesPaint as themeSeriesPaint } from '../../theme';
 import type { Id, Scenario } from '../../types/cell';
 import type { MarkerShape } from '../../types/data';
 import type { LabelContent, LabelKind } from '../../types/options';
@@ -412,12 +412,15 @@ export function linePaints(env: LineEnv, domain: LineDomain, warnings: LintWarni
   // A series with its own paint keeps it; the ramp series skip a step that
   // paints the same colour, so no two series of one chart look alike.
   // An area series reserves the paint its area draws: the focus when it is
-  // highlighted, a colorRole's fill role.
+  // highlighted, a colorRole's fill role. Series that share a role take
+  // distinct steps of it: lines of the stroke colour, areas of the fill.
+  const roleStrokes = colorRolePaints(dataSeries, false);
+  const roleFills = colorRolePaints(dataSeries, true);
   const slots = rampSlots(theme, dataSeries.map((s): Paint | undefined => {
     const ink = scenarioStyleOf(s)?.ink;
     if (s.fill) return { css: s.fill };
     if (isArea && grey && highlights.has(s.id)) return { token: 'focus' };
-    return s.colorRole ? markRolePaint(s.colorRole, isArea) : ink ? { token: ink } : undefined;
+    return s.colorRole ? (isArea ? roleFills : roleStrokes).get(s.id)! : ink ? { token: ink } : undefined;
   }), palette, !grey && !heroMode && !isBump && emphasis !== 'ordered' && dataSeries.length > 1 ? { labels: dataSeries.map((s) => s.label), warnings } : undefined);
   // A Rest series (colorRole 'others') beside the ordered ramp is the quietest part (othersShade).
   const quietRest = emphasis === 'ordered' && (options.othersShade ?? DEFAULT_OTHERS_SHADE) === 'quietest' &&
@@ -433,9 +436,9 @@ export function linePaints(env: LineEnv, domain: LineDomain, warnings: LintWarni
     else if (s.fill) paint = { css: s.fill };
     else if (ordered(s)) paint = orderedRampPaint(dataIdx, dataSeries.length, quietRest);
     else if (bumpStory && !s.colorRole) paint = bumpStory.paintOf(s.id);
-    else if (grey) paint = highlights.has(s.id) ? focusPaint(s) : !s.colorRole ? contextPaint(s) : markRolePaint(s.colorRole);
+    else if (grey) paint = highlights.has(s.id) ? focusPaint(s) : !s.colorRole ? contextPaint(s) : roleStrokes.get(s.id)!;
     else if (heroMode) paint = s.id === heroId ? { token: 'markInk' } : contextPaint(s);
-    else if (s.colorRole) paint = markRolePaint(s.colorRole);
+    else if (s.colorRole) paint = roleStrokes.get(s.id)!;
     else if (scenarioInk) paint = { token: scenarioInk };
     else if (dataSeries.length === 1) paint = themeSeriesPaint(dataIdx, palette, s.scenario);
     else paint = themeSeriesPaint(isBump ? bumpSlot(dataIdx).color : slots[dataIdx] ?? dataIdx, palette);
@@ -447,7 +450,7 @@ export function linePaints(env: LineEnv, domain: LineDomain, warnings: LintWarni
     if (s.fill) return { css: s.fill };
     if (ordered(s)) return orderedRampPaint(dataIdx, dataSeries.length, quietRest);
     if (grey && highlights.has(s.id)) return { token: 'focus' };
-    if (s.colorRole) return markRolePaint(s.colorRole, true);
+    if (s.colorRole) return roleFills.get(s.id)!;
     const scenarioInk = scenarioStyleOf(s)?.ink;
     if (scenarioInk) return { token: scenarioInk };
     if (dataSeries.length === 1) return themeSeriesPaint(dataIdx, palette, s.scenario);

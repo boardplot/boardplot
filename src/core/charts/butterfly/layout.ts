@@ -51,7 +51,7 @@ import { authoredFootnoteCount, authoredNotes, frameTextOptions, normalizeLegend
 import { defaultMeasurer, type FontSpec, type TextMeasurer } from '../../text';
 import {
   canvasMargin,
-  markRolePaint,
+  colorRolePaints,
   paintColor,
   panelTypeClass,
   resolveSemanticPaletteTheme,
@@ -403,10 +403,13 @@ export function layoutButterfly(
   const tickBold: FontSpec = { ...tickFont, weight: emphasisWeight(theme) };
 
   // ---- paints ----
+  // The two sides draw in two colours by default; sides that share a colour role
+  // take distinct steps of it, so the colour still tells them apart.
+  const roles = colorRolePaints([sA, sB]);
   const paintOf = (s: Series, fallback: () => Paint): Paint => {
     if (highlights.has(s.id)) return semanticPalettePaint(theme, opts.palette, 'focus');
     if (s.fill) return { css: s.fill };
-    if (s.colorRole) return markRolePaint(s.colorRole, true);
+    if (s.colorRole) return roles.get(s.id)!;
     const scen = normalizeScenario(s.scenario, `series[${s.id}].scenario`);
     if (scen === 'PY') return semanticPalettePaint(theme, opts.palette, 'neutralLight');
     return fallback();

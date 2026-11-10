@@ -22,7 +22,7 @@ import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { linearScale } from '../../scale';
 import { linearAxisSpec, logScale, logSpecFormat, logTickTiers } from './logAxis';
 import { wrapText, type FontSpec, type TextMeasurer } from '../../text';
-import { canvasMargin, markRolePaint, mutedMarkPaint, paintColor, panelTypeClass, seriesPaint as themeSeriesPaint } from '../../theme';
+import { canvasMargin, colorRolePaints, mutedMarkPaint, paintColor, panelTypeClass, seriesPaint as themeSeriesPaint } from '../../theme';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import type { Id } from '../../types/cell';
 import type { LegendOptions } from '../../types/options';
@@ -139,10 +139,14 @@ export function scatterPaints(
     const drawn = pts.filter((p) => p.group === gid && p.marker !== 'none');
     groupLarge.set(gid, drawn.length > 0 && drawn.every(large));
   }
+  // Groups that share a colour role take distinct steps of it.
+  const roleGroups = [...groups].map(([id, g]) => ({ id, colorRole: g.colorRole }));
+  const roleFills = colorRolePaints(roleGroups);
+  const roleStrokes = colorRolePaints(roleGroups, false);
   const rolePaint = (gid: Id, fill: boolean): Paint | undefined => {
     const g = groups.get(gid)!;
     // The rest role recedes as a muted mark: its page-pale 'others' fill would not read as a dot.
-    return g.colorRole === 'others' ? mutedMarkPaint() : g.colorRole ? markRolePaint(g.colorRole, fill) : undefined;
+    return g.colorRole === 'others' ? mutedMarkPaint() : g.colorRole ? (fill ? roleFills : roleStrokes).get(gid)! : undefined;
   };
   const group = (gid: Id | undefined): Paint => {
     if (gid === undefined) return themeSeriesPaint(0, palette);

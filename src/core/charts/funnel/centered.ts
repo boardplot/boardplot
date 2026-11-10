@@ -33,7 +33,7 @@ import { defaultMeasurer, type FontSpec, type TextMeasurer } from '../../text';
 import { rowSizing } from '../../sizing';
 import {
   effectiveFill,
-  markRolePaint,
+  colorRolePaints,
   mixedPaint,
   paintColor,
   PLAN_MUTED_PAINT,
@@ -218,6 +218,8 @@ export function layoutCenteredFunnel(
     normalizeCategory(category as never, index),
   );
   const plotted = data.series.filter((series) => series.role !== 'reference');
+  // Series that share a colour role take distinct steps of it.
+  const rolePaints = colorRolePaints(plotted);
   if (plotted.length === 0) {
     throw new NormalizeError('empty-data', 'series', 'funnel requires at least one data-role series');
   }
@@ -910,7 +912,7 @@ export function layoutCenteredFunnel(
     const ramp = rampFunnelPaint(theme, plotted, series, stageIndex, paletteRamp ? options.palette : undefined, stages.length);
     if (ramp) return ramp;
     if (series.fill) return { css: series.fill };
-    if (series.colorRole) return markRolePaint(series.colorRole, true);
+    if (series.colorRole) return rolePaints.get(series.id)!;
     // A single series leads in series 1, like any first series.
     return themeSeriesPaint(seriesIndex, paletteRamp ? options.palette : undefined);
   }
