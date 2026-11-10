@@ -63,6 +63,11 @@ export function recordedPanelOptions(options: object & { measure?: unknown }): o
   return withoutAnnotationOrigins(rest);
 }
 
+/** The panel input a laid-out panel came from, where one of its warnings carries a field or a fix (`authoredPanelWarnings`). */
+const laidOutPanels = new WeakMap<object, { data: unknown; options: unknown }>();
+
+export const panelInput = (geometry: object): { data: unknown; options: unknown } | undefined => laidOutPanels.get(geometry);
+
 export function layoutChildChart(
   data: unknown,
   options: unknown,
@@ -70,7 +75,9 @@ export function layoutChildChart(
   panelId: string,
 ): LayoutResult {
   try {
-    return childLayout(data, options, layout);
+    const geometry = childLayout(data, options, layout);
+    if (geometry.warnings.some(warning => warning.field || warning.fix)) laidOutPanels.set(geometry, { data, options });
+    return geometry;
   } catch (error) {
     if (error instanceof NormalizeError && !refusedPanels.has(error)) refusedPanels.set(error, { panelId, data, options });
     throw error;

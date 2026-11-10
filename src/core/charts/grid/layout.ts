@@ -45,8 +45,8 @@ import { accessibleTitle, NormalizeError, normalizeCategory, normalizeSeriesValu
 import { getChart } from '../../registry';
 import { requireChartCores } from '../../deferred';
 import { panelNoteData } from '../../panelNoteData';
-import { GridChildRefusal, gridRowHeights, gridSizing, hasKpiFigure, inheritedScaleUnit, layoutChildChart, panelAnnotations, recordedPanelOptions, smallestKpiValueSize, takeRefusedPanel } from '../../grid/childLayout';
-import { rebaseRefusal, sameField } from '../../normalize/innerRefusal';
+import { GridChildRefusal, gridRowHeights, gridSizing, hasKpiFigure, inheritedScaleUnit, layoutChildChart, panelAnnotations, panelInput, recordedPanelOptions, smallestKpiValueSize, takeRefusedPanel } from '../../grid/childLayout';
+import { rebaseRefusal, rebaseWarning, sameField, type Rebase } from '../../normalize/innerRefusal';
 import { KPI_HOST_TEXT, KPI_VALUE_SIZE } from '../../typeFloors';
 import { LEFT_OUT_OF_NOTE, panelNoteTexts, stringsIn } from '../../frame';
 import { autoPlotPx, CARD_CLASS_WIDTH, CARD_MIN_WIDTH, chartSizing, DIGIT_SEAT, heightOmitted, type DigitSeated, NARROW_SHARE_WIDTH, stackedColumnPlotPx } from '../../sizing';
@@ -181,23 +181,23 @@ export function layoutGrid(
  */
 const GRID_HANDED_DOWN: ReadonlySet<string | number> = new Set(['palette', 'colorblindSafe', 'theme', 'unit', 'hatchStrength']);
 
+type PanelInput = { panelId: string; data: unknown; options: unknown };
+
 /**
- * A panel's refusal points into the panel the author wrote, found by its id
+ * A finding of a panel points into the panel the author wrote, found by its id
  * (panel ids are unique), not at its drawn position. A handed-down option points
- * at the grid option. A value the grid changed on its way into the panel, and
- * every field of a repeat panel (built from the template slice by slice), get
- * no pointer. The display path, which leads the message, names the panel.
+ * at the grid option. A value the grid changed on its way into the panel, the
+ * panel's size (the grid gives it its slot), and every field of a repeat panel
+ * (built from the template slice by slice), get no pointer.
  */
-function authoredPanelRefusal(error: NormalizeError, data: GridInput, options: GridLayoutOptions): void {
-  const child = takeRefusedPanel(error);
-  if (!child) return;
+function authoredPanelRebase(child: PanelInput, data: GridInput, options: GridLayoutOptions): Rebase {
   const grid = data as Partial<ExplicitGridData>;
   const panels = Object.hasOwn(grid, 'panels') && grid.repeated !== true && Array.isArray(grid.panels) ? grid.panels : [];
   const matches = panels.filter((panel) => panel.id === child.panelId);
   const panel = matches.length === 1 ? matches[0]! : undefined;
   const at = ['data', 'panels', panels.indexOf(panel!)];
   const childOptions = child.options as Record<string, unknown>;
-  rebaseRefusal(error, (segments) => {
+  return (segments) => {
     if (!panel) return undefined;
     const [head, ...rest] = segments;
     if (head === 'data') return sameField(child.data, panel.data, rest) ? [...at, ...segments] : undefined;
@@ -209,17 +209,70 @@ function authoredPanelRefusal(error: NormalizeError, data: GridInput, options: G
       return own === Object.hasOwn(panel, 'annotations') && sameField(childOptions.annotations, list, field) ? [...at, ...segments] : undefined;
     }
     const path = head === 'options' ? rest : undefined;
-    if (!path) return undefined;
+    // The grid gives a panel its size: a panel's size is no field of the authored spec.
+    if (!path || path[0] === 'size') return undefined;
     if (sameField(childOptions, panel.options, path)) return [...at, 'options', ...path];
     return GRID_HANDED_DOWN.has(path[0]!) && sameField(childOptions, options, path) ? ['options', ...path] : undefined;
-  });
+  };
+}
+
+/** A panel's refusal, moved into the authored panel. The display path, which leads the message, names the panel. */
+function authoredPanelRefusal(error: NormalizeError, data: GridInput, options: GridLayoutOptions): void {
+  const child = takeRefusedPanel(error);
+  if (!child) return;
+  rebaseRefusal(error, authoredPanelRebase(child, data, options));
   error.path = `panels[${child.panelId}]${error.path ? `.${error.path}` : ''}`;
+}
+
+/** The size a panel's size patch asks for, in words, or undefined. */
+function panelSizeNeed(fix: LintWarning['fix']): string | undefined {
+  for (const operation of fix ?? []) {
+    if (operation.op !== 'replace' && operation.op !== 'add') continue;
+    const value = operation.value as { width?: unknown; height?: unknown } | number;
+    const size = operation.path === '/options/size' ? value as { width?: unknown; height?: unknown }
+      : operation.path === '/options/size/width' ? { width: value } : operation.path === '/options/size/height' ? { height: value } : undefined;
+    const width = typeof size?.width === 'number' ? size.width : undefined, height = typeof size?.height === 'number' ? size.height : undefined;
+    if (width !== undefined && height !== undefined) return `${width} × ${height} px`;
+    if (width !== undefined) return `a width of ${width} px`;
+    if (height !== undefined) return `a height of ${height} px`;
+  }
+  return undefined;
+}
+
+/**
+ * The warnings the grid passes on from its panels, with field and fix moved into the authored panel by the
+ * refusal's rule. A size patch of a panel has no place in the grid's spec: the suggestion names the
+ * panel and its need instead. Runs only where a panel warning carries a field or a fix.
+ */
+function authoredPanelWarnings(geometry: LayoutResult<GridMarks, GridDerived>, data: GridInput, options: GridLayoutOptions): LayoutResult<GridMarks, GridDerived> {
+  if (geometry.refused || !geometry.warnings.some((warning) => warning.detail?.panelId !== undefined && (warning.field || warning.fix))) return geometry;
+  const spans = new Map<number, Rebase>();
+  for (const panel of geometry.marks.panels) {
+    const chart = panel.chart;
+    if (chart?.warningOffset === undefined) continue;
+    const input = panelInput(chart.geometry);
+    const rebase = input ? authoredPanelRebase({ panelId: panel.id, ...input }, data, options) : () => undefined;
+    for (let index = 0; index < chart.geometry.warnings.length; index++) spans.set(chart.warningOffset + index, rebase);
+  }
+  return { ...geometry, warnings: geometry.warnings.map((warning, index) => {
+    const panelId = warning.detail?.panelId;
+    if (panelId === undefined || (!warning.field && !warning.fix)) return warning;
+    let moved = rebaseWarning(warning, spans.get(index) ?? (() => undefined));
+    // A patch on a handed-down grid option changes every panel: it stays only where the grid has no other panel.
+    if (moved.fix && geometry.marks.panels.length > 1 && !moved.fix.every((operation) => operation.path.startsWith('/data/panels/'))) {
+      const { fix: _dropped, ...rest } = moved;
+      moved = rest;
+    }
+    const need = moved.fix ? undefined : panelSizeNeed(warning.fix);
+    return need ? { ...moved, suggest: `Panel ${String(panelId)} needs ${need}. Give the grid more room.` } : moved;
+  }) };
 }
 
 function layoutGridOnce(
   data: GridInput,
   options: GridLayoutOptions,
 ): LayoutResult<GridMarks, GridDerived> {
+  const authoredOptions = options;
   options = resolveCanvasOptions(options);
   assertTrackLimits(options);
   const metricStack = isMetricStackData(data);
@@ -272,7 +325,7 @@ function layoutGridOnce(
     && Math.abs(geometry.size.height - geometry.sizing.naturalHeight) > 1) {
     return layoutGrid(data, { ...options, size: { width: geometry.size.width, height: geometry.sizing.naturalHeight } });
   }
-  const floored = withCardFloor(geometry, ordered.panels.map((panel) => panel.type), options);
+  const floored = withCardFloor(authoredPanelWarnings(geometry, data, authoredOptions), ordered.panels.map((panel) => panel.type), options);
   // What a panel states it does not print holds in the grid, under the panel's prefix.
   return floored.refused ? floored : withUnprintedClaims(floored, floored.marks.panels.flatMap((panel) =>
     panel.chart ? unprintedClaims(panel.chart.geometry).map((id) => `${panel.id}/${id}`) : []));
@@ -2470,13 +2523,13 @@ function appendAuthoredChild(
     decisions.push({ ...decision, labelId: prefix + decision.labelId });
   }
   const warningOffset = warnings.length;
-  // A child's field and fix are relative to the panel, not to the grid
-  // chart, so they would point at the grid's own options; the message names the panel.
+  // A child's field and fix are relative to the panel: `authoredPanelWarnings` moves them into the authored panel.
   pushAll(
     warnings,
-    child.geometry.warnings.map(({ field: _field, fix: _fix, ...warning }) => ({
+    child.geometry.warnings.map((warning) => ({
       ...warning,
       message: `[${child.panel.id}] ${warning.message}`,
+      detail: { ...warning.detail, panelId: child.panel.id },
       owner: warning.owner ? prefixPanelOwner(warning.owner, prefix) : undefined,
     })),
   );
