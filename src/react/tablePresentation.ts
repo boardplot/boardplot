@@ -110,9 +110,6 @@ export interface TableFooter {
   theme: Theme;
 }
 
-/** A composing chart's callback: the texts of the notes the React footer printed. */
-export const FRAME_PRINTED = Symbol('tableFramePrinted');
-
 /** Disclosure kinds a composing layout (dimswitch) gave its \`ENGINE_NOTES\`, by text. */
 export const ENGINE_NOTE_KINDS = Symbol('tableEngineNoteKinds');
 

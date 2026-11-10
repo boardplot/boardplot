@@ -5,7 +5,7 @@ import type { LintWarning } from '../core/types/scene';
 import { compileDimSwitch, dimSwitchTableWarnings, foreignRowId, hiddenTotalFoldWarnings, LABELS_ONLY, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning } from '../core/charts/dimswitch/compile';
 import { engineNoteMeta, withEngineNotes } from '../core/notes';
 import { ENGINE_NOTES } from '../core/charts/table/tracks';
-import { ENGINE_NOTE_KINDS, FRAME_PRINTED } from './tablePresentation';
+import { ENGINE_NOTE_KINDS } from './tablePresentation';
 import type { DimSwitchData, DimSwitchOptions, DimSwitchVariant } from '../core/charts/dimswitch/types';
 import type { OptionKeyCheck } from '../core/schema/unknownKeys';
 import { TableChart, type TableChartProps } from './charts/table';
@@ -79,7 +79,7 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
     const kinds=new Map(notes.flatMap(note=>{const meta=engineNoteMeta(note); return meta ? [[note,meta] as const] : [];}));
     return kinds.size ? {...result,options:{...result.options,[ENGINE_NOTE_KINDS]:kinds}} : result;
   },true),[stableData,stableOptions,variant,splits]);
-  const tableRequest=useMemo(()=>({request:floorRequest,options:compiled.options}),[floorRequest,compiled.options]);
+
   const maxDepth=compiled.maxDepth;
   if(!Number.isInteger(depth) || depth<1 || depth>maxDepth) throw new Error(`dimswitch depth must be between 1 and ${maxDepth}`);
   const foreign=foreignRowId(controlledCollapsed) ?? foreignRowId(defaultCollapsed);
@@ -118,6 +118,7 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
   const [tableWarnings,setTableWarnings]=useState<LintWarning[]>();
   const [printed,setPrinted]=useState<readonly string[]>();
   const readPrinted=useCallback((next:readonly string[])=>setPrinted(before=>before!==undefined && before.join('\n')===next.join('\n') ? before : next),[]);
+  const tableRequest=useMemo(()=>({request:floorRequest,options:compiled.options,printed:readPrinted}),[floorRequest,compiled.options,readPrinted]);
   const readTable=useCallback((next:LintWarning[])=>setTableWarnings(before=>before!==undefined && JSON.stringify(before)===JSON.stringify(next) ? before : next),[]);
   const warningsCallback=useRef(onWarnings); warningsCallback.current=onWarnings;
   const reported=useRef<string|undefined>(undefined);
@@ -137,7 +138,7 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
     warningsCallback.current?.(all);
   },[wantsWarnings,retired.warnings,compiled,stableOptions,stableData,collapsed,tableWarnings,printed]);
   if(refusals.length) return <LayoutRefusal refusals={refusals} theme={options.theme} options={{...options,size:size==='container'?fallbackSize:size}}/>;
-  return <TableFloorRequestContext.Provider value={tableRequest}><Table {...compiled.options} {...{[FRAME_PRINTED]:readPrinted}} exporter={exporter} data={compiled.data} collapsed={collapsed} onCollapsedChange={toggle}
+  return <TableFloorRequestContext.Provider value={tableRequest}><Table {...compiled.options} exporter={exporter} data={compiled.data} collapsed={collapsed} onCollapsedChange={toggle}
    onColumnVisibilityChange={onColumnVisibilityChange} sortable={sortable} defaultSort={defaultSort} onSortChange={onSortChange} rootsHidden={rootsHidden}
    inlineVisibility={inlineVisibility} defaultInlineVisibility={defaultInlineVisibility} onInlineVisibilityChange={onInlineVisibilityChange}
    size={size} fit={fit} fallbackSize={fallbackSize} measureWidths={measureWidths} hover={hover} onWarnings={wantsWarnings ? readTable : undefined} onRefused={onRefused} renderRefused={renderRefused}
