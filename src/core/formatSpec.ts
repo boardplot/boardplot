@@ -1627,6 +1627,85 @@ export function unscaledFormatLint(
   data: unknown,
   geo?: { labels?: readonly PlacedLabel[]; scene: readonly SceneNode[] },
 ): LintWarning[] {
+  return [...chartFormatLint(options, data, geo), ...placedFormatZeros(data)];
+}
+
+type FormatPlace = { format: unknown; values: readonly unknown[]; path: (string | number)[] };
+const numberIn = (cell: unknown): number[] => {
+  const value = typeof cell === 'number' ? cell : (cell as { number?: unknown; v?: unknown } | null)?.number ?? (cell as { v?: unknown } | null)?.v;
+  return typeof value === 'number' && Number.isFinite(value) ? [value] : [];
+};
+
+/**
+ * A format set below the chart prints its values through itself: a series, a bar table or table column, a table cell.
+ * Each one warns when it prints a nonzero value as its zero, as options.format does. A table row format is left out:
+ * the table keeps a nonzero row value off zero itself.
+ */
+function placedFormatZeros(data: unknown): LintWarning[] {
+  type TableRow = { cells?: Record<string, unknown>; children?: TableRow[] };
+  const own = data as { series?: { format?: unknown; values?: unknown[] }[]; columns?: { id?: unknown; format?: unknown; values?: unknown[] }[]; rows?: TableRow[] } | undefined;
+  const places: FormatPlace[] = [];
+  (Array.isArray(own?.series) ? own.series : []).forEach((series, i) => places.push({ format: series?.format, values: Array.isArray(series?.values) ? series.values : [], path: ['data', 'series', i, 'format'] }));
+  const rows: { row: TableRow; path: (string | number)[] }[] = [];
+  const walk = (list: unknown, path: (string | number)[]) => (Array.isArray(list) ? list : []).forEach((row: TableRow, i) => {
+    rows.push({ row, path: [...path, i] });
+    walk(row?.children, [...path, i, 'children']);
+  });
+  walk(own?.rows, ['data', 'rows']);
+  const cellFormat = (cell: unknown) => (typeof cell === 'object' && cell !== null ? (cell as { format?: unknown }).format : undefined);
+  (Array.isArray(own?.columns) ? own.columns : []).forEach((column, i) => places.push({
+    format: column?.format,
+    // A bar table column holds its values; a table column prints every cell without a format of its own.
+    values: Array.isArray(column?.values) ? column.values
+      : rows.map(({ row }) => row?.cells?.[String(column?.id)]).filter((cell) => cellFormat(cell) === undefined),
+    path: ['data', 'columns', i, 'format'],
+  }));
+  for (const { row, path } of rows) for (const [colId, cell] of Object.entries(row?.cells ?? {})) {
+    if (cellFormat(cell) !== undefined) places.push({ format: cellFormat(cell), values: [cell], path: [...path, 'cells', colId, 'format'] });
+  }
+  return places.flatMap(({ format: authored, values, path }) => {
+    if (typeof authored !== 'string') return [];
+    const numbers = values.flatMap(numberIn);
+    let format: string;
+    let spec: NumberFormatSpec;
+    try {
+      format = formatExampleText(authored);
+      format = exampleReading(format, numbers).decimals ?? format;
+      spec = parseFormatExample(format);
+    } catch { return []; }
+    const body = numericBody(format);
+    // A % format over fractions is percent-scale-suspect's case; over points it prints them as given.
+    if (!body || spec.ordinal || spec.exponent || spec.significantDigits !== undefined || (spec.suffix.includes('%') && !numbers.some((v) => Math.abs(v) > 1))) return [];
+    const zero = formatWithSpec(0, spec);
+    const zeroed = numbers.filter((v) => v !== 0 && formatWithSpec(v, spec) === zero);
+    if (zeroed.length === 0) return [];
+    let decimals = spec.decimals + 1;
+    const shows = (example: string) => { const finer = parseFormatExample(example); return zeroed.every((v) => formatWithSpec(v, finer) !== formatWithSpec(0, finer)); };
+    while (decimals < MAX_FORMAT_DECIMALS && !shows(finerExample(format, spec, body, decimals))) decimals++;
+    const finer = finerExample(format, spec, body, decimals);
+    return [{
+      code: 'format-hides-values',
+      severity: 'warn' as const,
+      message: `format '${format}' prints the nonzero value ${zeroed[0]} as ${zero}`,
+      suggest: `set a finer format such as '${finer}', or remove the format to let the engine pick the precision`,
+      field: path,
+      fix: [{ op: 'replace' as const, path: `/${path.map((part) => String(part).replace(/~/g, '~0').replace(/\//g, '~1')).join('/')}`, value: finer }],
+    }];
+  });
+}
+
+/** The example of `format` with `decimals` decimals; an integer part of 0 keeps three decimals from reading as a group ("0.004", not "1.004"). */
+function finerExample(format: string, spec: NumberFormatSpec, found: { index: number; text: string }, decimals: number): string {
+  const body = found.text.trimEnd(); // as parseFormatExample: a space after the number belongs to the unit
+  return format.slice(0, found.index) + formatWithSpec(((spec.thousandsSep ? 1234 : decimals === 3 ? 0 : 1) + 0.123456789),
+    { ...spec, decimals, signed: false, prefix: '', suffix: '', magnitude: 'none', magnitudeWord: undefined, locale: undefined }) + format.slice(found.index + body.length);
+}
+
+function chartFormatLint(
+  options: Record<string, unknown> | undefined,
+  data: unknown,
+  geo?: { labels?: readonly PlacedLabel[]; scene: readonly SceneNode[] },
+): LintWarning[] {
   const authored = typeof options?.format === 'string' ? options.format : undefined;
   // Series rows, one row of values (sparkline, kpi), or waterfall items.
   const own = data as { series?: { values?: unknown[] }[]; values?: unknown[]; items?: { value?: unknown }[] } | undefined;
@@ -1669,13 +1748,14 @@ export function unscaledFormatLint(
   // series prints scaled by 100, not as given.
   // A nonzero value that prints as the zero does ("0.0" for 0.004) loses its
   // sign and size; the fix carries the decimals that show it.
-  const found = numericBody(format);
-  const body = found && { index: found.index, text: found.text.trimEnd() }; // as parseFormatExample: a space after the number belongs to the unit
+  const body = numericBody(format);
   // A figure count names its own precision: it shows every nonzero value and hides what its count says.
   const figures = spec.significantDigits;
   const checked = options?.variant !== 'bump' && !spec.suffix.includes('%') && figures === undefined;
+  // A % format over points prints them as given, so a nonzero point it rounds to 0% is lost too.
+  const points = options?.variant !== 'bump' && spec.suffix.includes('%') && figures === undefined && numbers.flat().some((v) => Math.abs(v) > 1);
   const zero = formatWithSpec(0, spec);
-  const zeroed = checked ? numbers.flat().filter((v) => v !== 0 && formatWithSpec(v, spec) === zero) : [];
+  const zeroed = checked || points ? numbers.flat().filter((v) => v !== 0 && formatWithSpec(v, spec) === zero) : [];
   // An authored scale holds the chart to one precision (shareAuthoredScale): the warning says what that draws.
   const locale = (options?.locale as { language?: string } | undefined)?.language;
   const shared = spec.magnitude !== 'none' && figures === undefined ? seriesRasterFormatter(format, numbers.flat(), locale, unit) : undefined;
@@ -1686,9 +1766,8 @@ export function unscaledFormatLint(
   const hidden = (row: readonly number[]) => distinct(row) > 1 && new Set(row.map((v) => formatWithSpec(v, spec))).size === 1;
   const hides = checked && numbers.some(hidden);
   if ((hides || raised || zeroed.length > 0) && body) {
-    // The finer body keeps the style; an integer part of 0 keeps three decimals from reading as a group ("0.004", not "1.004").
-    const finerAt = (decimals: number) => format.slice(0, body.index) + formatWithSpec(((spec.thousandsSep ? 1234 : decimals === 3 ? 0 : 1) + 0.123456789),
-      { ...spec, decimals, signed: false, prefix: '', suffix: '', magnitude: 'none', magnitudeWord: undefined, locale: undefined }) + format.slice(body.index + body.text.length);
+    // The finer body keeps the style.
+    const finerAt = (decimals: number) => finerExample(format, spec, body, decimals);
     // The proposed example must show what this one hides: every value of a hidden row apart, every zeroed value off 0.
     const shows = (example: string) => {
       const finerSpec = parseFormatExample(example);

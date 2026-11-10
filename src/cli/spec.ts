@@ -435,6 +435,10 @@ function panelUnitLints(data: unknown, geo: Geometry, base: (string | number)[] 
         .map((warning) => ({ ...warning, message: `[${panel.id}] ${warning.message}`, field: [...own, 'options', 'unit'] })),
       ...unitInFormatLints(panel.chart.options as Record<string, unknown>, own)
         .map((warning) => ({ ...warning, message: `[${panel.id}] ${warning.message}` })),
+      // A panel's own formats: the panel's options and data, by their path in the grid.
+      ...(index >= 0 ? unscaledFormatLint((authored![index] as Record<string, unknown>).options as Record<string, unknown> | undefined, (authored![index] as Record<string, unknown>).data) : [])
+        .map((warning) => ({ ...warning, message: `[${panel.id}] ${warning.message}`, field: [...own, ...(warning.field ?? [])],
+          ...(warning.fix ? { fix: warning.fix.map((op) => ({ ...op, path: `/${own.join('/')}${op.path}` })) } : {}) })),
       ...panelUnitLints(index >= 0 ? (authored![index] as Record<string, unknown>).data : undefined, child, [...own, 'data']),
     ];
   });

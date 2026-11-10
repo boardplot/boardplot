@@ -136,7 +136,16 @@ function unitKind(token) {
 }
 
 /** The authored format a table cell prints through, as resolve picks it, or a chart's own. */
-function authoredFormat(type, data, options, owner) {
+function authoredFormat(type, data, options, owner, panel) {
+  // A grid panel prints through its own type, data and options; "outer/inner" names a panel of a nested grid.
+  if (type === 'grid' && panel) {
+    const [id, ...rest] = panel.split('/');
+    const inner = (data?.panels ?? []).find((entry) => entry.id === id);
+    return inner ? authoredFormat(inner.type, inner.data, inner.options ?? {}, owner, rest.join('/')) : undefined;
+  }
+  // A bar table's figure column prints through its own format.
+  const column = type === 'bartable' && owner?.colId !== undefined ? (data?.columns ?? []).find((entry) => entry.id === owner.colId) : undefined;
+  if (typeof column?.format === 'string') return column.format;
   if (type === 'table' && owner?.rowId !== undefined) {
     const row = findRow(data.rows ?? [], owner.rowId);
     const column = (data.columns ?? []).find((entry) => entry.id === owner.colId);
@@ -346,7 +355,7 @@ export function censusCase(type, fixture, width, localeName, measured) {
     const numbers = recordNumbers(record, m);
     if (numbers.length === 0) continue;
     const owner = record.target.owner;
-    const example = authoredFormat(type, data, options, owner);
+    const example = authoredFormat(type, data, options, owner, record.target.panel);
     const surfaces = [];
     // A card or a description of a table cell reads beside the cell's header and row label.
     const groups = owner?.rowId !== undefined ? [`col:${owner.colId}`, `row:${owner.rowId}`] : [];

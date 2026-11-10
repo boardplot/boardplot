@@ -225,6 +225,18 @@ describe('number census', () => {
     expect(of(census('grid', spec, 720), 'unbound')).toEqual([]);
   });
 
+  // The census looked for the authored format of a bar table column or a grid panel in the chart's options only, so a zero the author's format prints was flagged false.
+  it('reads the format of a bar table column and a grid panel and still flags a zero that format does not print', () => {
+    const categories = [{ id: 'north', label: 'North' }, { id: 'south', label: 'South' }];
+    const bartable = { data: { categories, series: [{ id: 'web', label: 'Web' }], columns: [{ id: 'stores', label: 'Stores', format: '1.2', values: [0.042, 0.3] }],
+      panels: [{ id: 'sales', label: 'Sales', values: { web: [40, 60] } }] } };
+    expect(of(census('bartable', bartable, 480), 'false-zero')).toEqual([]);
+    expect(of(census('bartable', bartable, 480, retext('label:cell:stores:south', '0')), 'false-zero', 'stores:south')).not.toEqual([]);
+    const grid = { data: { panels: [{ id: 'sales', type: 'column', options: { format: '1,234' },
+      data: { categories, series: [{ id: 'web', label: 'Web', values: [0.042, 12] }] } }] } };
+    expect(of(census('grid', grid, 720), 'false-zero')).toEqual([]);
+  });
+
   // A map overlay label is the author's text ("UK 78%"); it was read as the overlay glyph's value.
   it('leaves overlay labels to the author and still checks a printed map value', () => {
     const spec = fixtureOf<Spec & { data: { overlays: { glyph: { value: number } }[] } }>('choropleth', 'world-footprint');

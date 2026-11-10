@@ -573,6 +573,25 @@ describe('an example is read as its author wrote it', () => {
     expect(sameUnit('\u20ac Mio.', '\u20acm')).toBe(true);
   });
 
+  // A series, column or cell format and a percent format printed a nonzero value as 0 without a warning: the lint read only a chart's options.format.
+  it('warns where any authored format prints a nonzero value as zero', () => {
+    const fixes = (options: Record<string, unknown>, data: unknown) => unscaledFormatLint(options, data)
+      .filter((warning) => warning.code === 'format-hides-values').map((warning) => warning.fix?.[0]);
+    expect(fixes({ format: '12%' }, { series: [{ values: [0.2, 30] }] })).toEqual([{ op: 'replace', path: '/options/format', value: '1.1%' }]);
+    expect(fixes({}, { series: [{ format: '1,234', values: [0.042, 12] }] })).toEqual([{ op: 'replace', path: '/data/series/0/format', value: '1,234.12' }]);
+    expect(fixes({}, { columns: [{ id: 'stores', format: '1,234', values: [0.042, 3] }] })).toEqual([{ op: 'replace', path: '/data/columns/0/format', value: '1,234.12' }]);
+    const table = { columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'rev', kind: 'value', format: '1,234' }],
+      rows: [{ id: 'all', cells: { rev: 12 }, children: [{ id: 'north', cells: { rev: 0.042 } }, { id: 'south', cells: { rev: { v: 0.3, format: '1.2' } } }] }] };
+    expect(fixes({}, table).map((fix) => fix?.path)).toEqual(['/data/columns/1/format']);
+    table.rows[0]!.children[1]!.cells.rev = { v: 0.03, format: '1.2' };
+    expect(fixes({}, table).map((fix) => fix?.path)).toEqual(['/data/columns/1/format', '/data/rows/0/children/1/cells/rev/format']);
+    const grid = { type: 'grid', data: { panels: [{ id: 'sales', type: 'column', options: { format: '1,234' },
+      data: { categories: [{ id: 'a', label: 'North' }, { id: 'b', label: 'South' }], series: [{ id: 's', label: 'Sales', values: [0.042, 12] }] } }] } };
+    const warnings = (render({ spec: grid, return: ['reading'] } as never).body as { warnings: { code: string; fix?: unknown[] }[] }).warnings;
+    expect(warnings.filter((warning) => warning.code === 'format-hides-values').map((warning) => warning.fix))
+      .toEqual([[{ op: 'replace', path: '/data/panels/0/options/format', value: '1,234.12' }]]);
+  });
+
   // A spaced single letter is SI unit text ("12 m/s", "50 B"), but it scaled as millions and bytes lost their unit; the warning's fix also dropped the space.
   it('keeps a spaced single letter a unit and keeps the space in the warning fix', () => {
     const print = (example: string, value: number) => formatWithSpec(value, parseFormatExample(example));
