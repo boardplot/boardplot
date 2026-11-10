@@ -9,11 +9,10 @@ import type { LogAxes } from '../logAxis';
 export { fitLogTicks, linearAxisSpec, logAxesOf, logDomain, logScale, logSpecFormat, logTickTiers } from '../logAxis';
 export type { LogAxes } from '../logAxis';
 
-/** The patch that takes `axis` off the log scale and keeps the other one on it. */
-function dropLogFix(log: ValueAxisOptions['log'], axis: 'x' | 'y'): JsonPatchOperation[] {
-  return log === 'both'
-    ? [{ op: 'replace', path: '/options/valueAxis/log', value: axis === 'x' ? 'y' : 'x' }]
-    : [{ op: 'remove', path: '/options/valueAxis/log' }];
+/** The patch that takes every axis in `bad` off the log scale and keeps the others on it. */
+function dropLogFix(log: ValueAxisOptions['log'], bad: ReadonlySet<'x' | 'y'>): JsonPatchOperation[] {
+  const keep = log === 'both' && bad.size === 1 ? ([...bad][0] === 'x' ? 'y' : 'x') : undefined;
+  return keep ? [{ op: 'replace', path: '/options/valueAxis/log', value: keep }] : [{ op: 'remove', path: '/options/valueAxis/log' }];
 }
 
 /**
@@ -28,15 +27,23 @@ export function refuseNonPositiveOnLog(options: ScatterStrategyOptions, axes: Lo
   if (!axes.x && !axes.y) return;
   const log = options.valueAxis?.log;
   const side = (axis: 'x' | 'y') => (axis === 'x' ? 'horizontal' : 'vertical');
-  const refuse = (axis: 'x' | 'y', what: string, value: number | string, segments: (string | number)[], remove: string): never => {
-    const keep = log === 'both' ? ` (log: '${axis === 'x' ? 'y' : 'x'}' keeps the ${side(axis === 'x' ? 'y' : 'x')} axis on a log scale)` : '';
+  // Every offending axis is found first, so the patch drops the log scale on all of them and the patched spec draws.
+  const found: { axis: 'x' | 'y'; what: string; value: number | string; segments: (string | number)[]; remove: string }[] = [];
+  const refuse = (axis: 'x' | 'y', what: string, value: number | string, segments: (string | number)[], remove: string): void => {
+    found.push({ axis, what, value, segments, remove });
+  };
+  const finish = (): void => {
+    const first = found[0];
+    if (!first) return;
+    const bad = new Set(found.map((item) => item.axis));
+    const keep = log === 'both' && bad.size === 1 ? ` (log: '${first.axis === 'x' ? 'y' : 'x'}' keeps the ${side(first.axis === 'x' ? 'y' : 'x')} axis on a log scale)` : '';
     throw new NormalizeError(
       'log-nonpositive',
-      what,
-      `${what} is ${value}, and the ${side(axis)} axis is on a log scale, which has no place for zero or a negative value`,
-      `${remove}, or drop valueAxis.log${keep}`,
-      dropLogFix(log, axis),
-      segments,
+      first.what,
+      `${first.what} is ${first.value}, and the ${side(first.axis)} axis is on a log scale, which has no place for zero or a negative value`,
+      `${first.remove}, or drop valueAxis.log${keep}`,
+      dropLogFix(log, bad),
+      first.segments,
     );
   };
   for (const axis of ['x', 'y'] as const) {
@@ -59,7 +66,7 @@ export function refuseNonPositiveOnLog(options: ScatterStrategyOptions, axes: Lo
     const cut = options.quadrants?.[axis];
     if (typeof cut === 'number' && cut <= 0) refuse(axis, `options.quadrants.${axis}`, cut, ['options', 'quadrants', axis], 'cut above zero');
   }
-  if (!axes.y) return;
+  if (!axes.y) return finish();
   const va = options.valueAxis ?? {};
   for (const bound of ['min', 'max'] as const) {
     const value = va[bound];
@@ -73,4 +80,5 @@ export function refuseNonPositiveOnLog(options: ScatterStrategyOptions, axes: Lo
     const low = typeof ann.tolerance === 'number' ? line.value - ann.tolerance : (ann.tolerance?.low ?? line.value);
     if (Math.min(line.value, low) <= 0) refuse('y', line.ref.name, Math.min(line.value, low), line.ref.segments, 'move the value line and its band above zero');
   }
+  finish();
 }
