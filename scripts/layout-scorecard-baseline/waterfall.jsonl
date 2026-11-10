@@ -222,6 +222,8 @@
 ["waterfall/neutral-steps",720,"notation","default","drawn",[],[720,481],[24,83,672,338],"d7e94d77c38b",[]]
 ["waterfall/neutral-steps",960,"authored","default","drawn",[],[960,481],[28,83,904,338],"d7e94d77c38b",[]]
 ["waterfall/neutral-steps",960,"notation","default","drawn",[],[960,481],[28,83,904,338],"d7e94d77c38b",[]]
+["waterfall/repair-waterfall-orient",720,"authored","repair:waterfall-orient","drawn",[],[720,424],[89,109,565,279],"c2176f4032d0",[]]
+["waterfall/repair-waterfall-orient",720,"notation","repair:waterfall-orient","drawn",[],[720,424],[89,109,565,279],"c2176f4032d0",[]]
 ["waterfall/repeated-segment-key",320,"authored","default","drawn",[],[320,433],[16,101,288,274],"e2e7b8db003c",[]]
 ["waterfall/repeated-segment-key",320,"notation","default","drawn",[],[320,433],[16,101,288,274],"e2e7b8db003c",[]]
 ["waterfall/repeated-segment-key",400,"authored","default","drawn",[],[400,433],[16,101,368,274],"e2e7b8db003c",[]]

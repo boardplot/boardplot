@@ -410,6 +410,8 @@
 ["scatter/price-volume-trend",720,"notation","default","drawn",[],[720,540],[53,135,644,327],"184e574034fe",[]]
 ["scatter/price-volume-trend",960,"authored","default","drawn",[],[960,540],[57,135,876,327],"184e574034fe",[]]
 ["scatter/price-volume-trend",960,"notation","default","drawn",[],[960,540],[57,135,876,327],"184e574034fe",[]]
+["scatter/repair-scatter-log-both-nonpositive",720,"authored","repair:scatter-log-both-nonpositive","refused",["log-nonpositive"],null,null,null,[]]
+["scatter/repair-scatter-log-both-nonpositive",720,"notation","repair:scatter-log-both-nonpositive","refused",["log-nonpositive"],null,null,null,[]]
 ["scatter/risk-impact-likelihood",320,"authored","default","drawn",[],[320,546],[37,152,270,308],"97d015ad93c1",[]]
 ["scatter/risk-impact-likelihood",320,"notation","default","drawn",[],[320,546],[37,152,270,308],"97d015ad93c1",[]]
 ["scatter/risk-impact-likelihood",400,"authored","default","drawn",[],[400,465],[37,131,350,263],"bd408f69312b",[]]

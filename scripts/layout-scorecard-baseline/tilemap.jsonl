@@ -102,6 +102,8 @@
 ["tilemap/outlier-steps-and-missing-values",720,"notation","default","drawn",[],[720,649],[24,140,672,473],"365474488969",[]]
 ["tilemap/outlier-steps-and-missing-values",960,"authored","default","drawn",[],[960,811],[28,140,904,635],"365474488969",[]]
 ["tilemap/outlier-steps-and-missing-values",960,"notation","default","drawn",[],[960,811],[28,140,904,635],"365474488969",[]]
+["tilemap/repair-tilemap-legend-none",720,"authored","repair:tilemap-legend-none","refused",["invalid-options"],null,null,null,[]]
+["tilemap/repair-tilemap-legend-none",720,"notation","repair:tilemap-legend-none","refused",["invalid-options"],null,null,null,[]]
 ["tilemap/tile-key-bottom",320,"authored","default","drawn",[],[320,370],[16,87,288,186],"76446b7fd135",[]]
 ["tilemap/tile-key-bottom",320,"notation","default","drawn",[],[320,370],[16,87,288,186],"76446b7fd135",[]]
 ["tilemap/tile-key-bottom",400,"authored","default","drawn",[],[400,403],[16,87,368,237],"b9b6205c8d48",[]]

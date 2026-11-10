@@ -178,6 +178,8 @@
 ["kpi/note-and-compact",720,"notation","default","drawn",[],[720,157],[12,12,696,133],"bdedfa2054ee",[]]
 ["kpi/note-and-compact",960,"authored","default","drawn",[],[960,157],[12,12,936,133],"bdedfa2054ee",[]]
 ["kpi/note-and-compact",960,"notation","default","drawn",[],[960,157],[12,12,936,133],"bdedfa2054ee",[]]
+["kpi/repair-kpi-labels-short-ok",720,"authored","repair:kpi-labels-short-ok","refused",["invalid-data"],null,null,null,[]]
+["kpi/repair-kpi-labels-short-ok",720,"notation","repair:kpi-labels-short-ok","refused",["invalid-data"],null,null,null,[]]
 ["kpi/slot-natural-sizes",320,"authored","default","drawn",[],[320,176],[12,67,296,74],"2770b7adb509",[]]
 ["kpi/slot-natural-sizes",320,"notation","default","drawn",[],[320,176],[12,67,296,74],"2770b7adb509",[]]
 ["kpi/slot-natural-sizes",400,"authored","default","drawn",[],[400,176],[12,67,376,74],"2770b7adb509",[]]

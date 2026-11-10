@@ -90,6 +90,8 @@
 ["pvm/no-point-labels",720,"notation","default","drawn",[],[720,482],[24,108,672,281],"36347a9534d3",[]]
 ["pvm/no-point-labels",960,"authored","default","drawn",[],[960,509],[28,108,904,308],"36347a9534d3",[]]
 ["pvm/no-point-labels",960,"notation","default","drawn",[],[960,509],[28,108,904,308],"36347a9534d3",[]]
+["pvm/repair-pvm-highlight",720,"authored","repair:pvm-highlight","refused",["pvm-highlight-on-sign"],null,null,null,[]]
+["pvm/repair-pvm-highlight",720,"notation","repair:pvm-highlight","refused",["pvm-highlight-on-sign"],null,null,null,[]]
 ["pvm/revenue-bridge-method-note",320,"authored","default","drawn",[],[320,486],[16,134,288,218],"92775875d39d",[]]
 ["pvm/revenue-bridge-method-note",320,"notation","default","drawn",[],[320,486],[16,134,288,218],"92775875d39d",[]]
 ["pvm/revenue-bridge-method-note",400,"authored","default","drawn",[],[400,462],[16,117,368,225],"a5c2e7b78c5e",[]]

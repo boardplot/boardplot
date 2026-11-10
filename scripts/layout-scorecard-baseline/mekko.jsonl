@@ -70,6 +70,8 @@
 ["mekko/percent-format-on-shares",720,"notation","default","drawn",[],[720,352],[64,101,633,237],"cb1f0d42258e",[]]
 ["mekko/percent-format-on-shares",960,"authored","default","drawn",[],[960,379],[68,101,865,264],"cb1f0d42258e",[]]
 ["mekko/percent-format-on-shares",960,"notation","default","drawn",[],[960,379],[68,101,865,264],"cb1f0d42258e",[]]
+["mekko/repair-mekko-pct-units",720,"authored","repair:mekko-pct-units","drawn",[],[720,329],[49,50,647,211],"12dabf713ac4",[]]
+["mekko/repair-mekko-pct-units",720,"notation","repair:mekko-pct-units","drawn",[],[720,329],[49,50,647,211],"12dabf713ac4",[]]
 ["mekko/rounding-smallest-tie",320,"authored","default","drawn",[],[320,331],[16,111,288,206],"cf49e371ee2f",[]]
 ["mekko/rounding-smallest-tie",320,"notation","default","drawn",[],[320,331],[16,111,288,206],"cf49e371ee2f",[]]
 ["mekko/rounding-smallest-tie",400,"authored","default","drawn",[],[400,314],[16,90,368,210],"cf49e371ee2f",[]]

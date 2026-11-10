@@ -445,8 +445,9 @@ export function layoutHeatmap(
   // use the ladder. Paints stay theme-symbolic unless the author supplies a fill.
   const declaredDirections = rows.some((r) => r.direction !== undefined);
   const valence = vMin < 0 || (scale === 'continuous' && declaredDirections);
-  if (options.cap && (scale === 'discrete' || glyph === 'harvey')) {
-    warnings.push({ code: 'cap-ignored', severity: 'warn', message: `cap does not apply to ${glyph === 'harvey' ? 'harvey glyphs' : 'the discrete rating ladder'}; it sets where the continuous scale saturates`, suggest: 'drop cap', field: ['options', 'cap'], fix: [{ op: 'remove', path: '/options/cap' }] });
+  // Harvey glyphs never get here with a cap: the request drops it on that variant first (retired.ts).
+  if (options.cap && scale === 'discrete') {
+    warnings.push({ code: 'cap-ignored', severity: 'warn', message: 'cap does not apply to the discrete rating ladder; it sets where the continuous scale saturates', suggest: 'drop cap', field: ['options', 'cap'], fix: [{ op: 'remove', path: '/options/cap' }] });
   }
   if (declaredDirections && ((scale === 'discrete' && !bins) || glyph === 'harvey')) {
     warnings.push({

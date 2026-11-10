@@ -338,11 +338,6 @@ function layoutGanttPass(data: GanttData, options: GanttOptions = {}, keyed: Rea
     fullCardOptions.set(data, full);
   }
   const warnings: LintWarning[] = [];
-  if (options.format !== undefined) warnings.push({
-    code: 'format-unused', severity: 'warn', field: ['options', 'format'],
-    message: "'gantt' has no value labels of its own; options.format is ignored",
-    suggest: 'Remove options.format. Gantt formats calendar dates through its date options.', fix: [{ op: 'remove', path: '/options/format' }],
-  });
   const env = resolveGanttEnv(options, warnings);
   const domain = resolveGanttDomain(data, env, warnings);
   const heightOpen = autoHeight || (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === false;

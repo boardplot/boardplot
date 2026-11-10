@@ -250,6 +250,8 @@
 ["variance/ref-nonpositive-suppression",720,"notation","default","drawn",[],[720,349],[24,129,672,190],"7c40377e7fa6",[]]
 ["variance/ref-nonpositive-suppression",960,"authored","default","drawn",[],[960,376],[28,129,904,217],"7c40377e7fa6",[]]
 ["variance/ref-nonpositive-suppression",960,"notation","default","drawn",[],[960,376],[28,129,904,217],"7c40377e7fa6",[]]
+["variance/repair-variance-sort-dated",720,"authored","repair:variance-sort-dated","drawn",[],[720,499],[24,159,672,284],"e9246c9aed7b",[]]
+["variance/repair-variance-sort-dated",720,"notation","repair:variance-sort-dated","drawn",[],[720,499],[24,159,672,284],"e9246c9aed7b",[]]
 ["variance/torture-long-labels",320,"authored","default","drawn",[],[320,569],[16,157,288,247],"6b5d73a87940",[]]
 ["variance/torture-long-labels",320,"notation","default","drawn",[],[320,569],[16,157,288,247],"6b5d73a87940",[]]
 ["variance/torture-long-labels",400,"authored","default","drawn",[],[400,569],[16,136,368,244],"a56447c20e11",[]]

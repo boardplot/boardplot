@@ -150,6 +150,8 @@
 ["likert/manager-review-4pt",720,"notation","default","drawn",[],[720,407.6],[221,83,475,201],"332f20c09c3d",[]]
 ["likert/manager-review-4pt",960,"authored","default","drawn",[],[960,407.6],[237,83,696,201],"332f20c09c3d",[]]
 ["likert/manager-review-4pt",960,"notation","default","drawn",[],[960,407.6],[237,83,696,201],"332f20c09c3d",[]]
+["likert/repair-likert-sort-conflict",720,"authored","repair:likert-sort-conflict","drawn",[],[720,487.3],[219,83,478,281],"cacbe0d86dd5",[]]
+["likert/repair-likert-sort-conflict",720,"notation","repair:likert-sort-conflict","drawn",[],[720,487.3],[219,83,478,281],"cacbe0d86dd5",[]]
 ["likert/service-survey-neutral-negative",320,"authored","default","drawn",[],[320,317],[16,91,288,130],"9931f890f3de",[]]
 ["likert/service-survey-neutral-negative",320,"notation","default","drawn",[],[320,317],[16,91,288,130],"9931f890f3de",[]]
 ["likert/service-survey-neutral-negative",400,"authored","default","drawn",[],[400,299],[16,91,368,130],"9a0f4aaeac66",[]]

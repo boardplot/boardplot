@@ -28,6 +28,7 @@ import { renderSvg } from '../src/core/svg/renderSvg.ts';
 import { textRole, numericVariant } from '../src/core/textRole.ts';
 import { parseColor } from '../src/core/color.ts';
 import { variants } from './explorer/variants.mjs';
+import { REPAIRS } from './layout-scorecard-repairs.mjs';
 import { chartId } from './explorer/cardspec.mjs';
 import { censusCase, EXCEPTIONS_FILE, failureLine, unexcepted } from './number-census.mjs';
 
@@ -683,6 +684,10 @@ export function applyRepair(request, operations) {
   return root;
 }
 const warningKey = warning => JSON.stringify([warning.code, warning.field ?? [], warning.owner ?? {}]);
+// Warnings with no `field` (every retired-setting warning is one) share a key per code. Their patch paths tell them apart,
+// so a fixed warning is not read as remaining because another warning of its code stays.
+const fixPaths = warning => JSON.stringify((warning.fix ?? []).map(op => op.path));
+const sameWarning = (a, b) => warningKey(a) === warningKey(b) && (a.field || !a.fix?.length || !b.fix?.length || fixPaths(a) === fixPaths(b));
 export function auditRepairs(item, request, measured, thrown) {
   const findings = [], warnings = thrown ? [thrown] : measured.refused?.warnings ?? measured.warnings;
   for (const warning of warnings) {
@@ -705,7 +710,7 @@ export function auditRepairs(item, request, measured, thrown) {
         const fixed = applyRepair(request, repair.operations), after = measure(fixed);
         if (!after.geometry) { findings.push({ ...item, rule: 'R4', severity: 2, subject, message: 'The advertised repair still refuses', detail: { ...detail, codes: (after.refused?.warnings ?? after.warnings).map(w => w.code) } }); continue; }
         renderSvg(after.geometry, resolveChartRequest(fixed).theme);
-        if (after.warnings.some(next => warningKey(next) === warningKey(warning))) findings.push({ ...item, rule: 'R4', severity: 2, subject, message: 'The warning remains after its fix patch', detail });
+        if (after.warnings.some(next => sameWarning(next, warning))) findings.push({ ...item, rule: 'R4', severity: 2, subject, message: 'The warning remains after its fix patch', detail });
       } catch (error) {
         findings.push({ ...item, rule: 'R4', severity: 2, subject, message: `The advertised repair failed: ${error.message}`, detail });
       }
@@ -769,13 +774,23 @@ function settingsFor(type, fixture, form) {
   return settings;
 }
 
+/** The fixture of a repair entry: the named fixture's data and options with the problem setting on top. */
+export function repairFixture(entry) {
+  const base = entry.fixture ? getFixtures(entry.type).find(fixture => fixture.id === entry.fixture) : undefined;
+  if (entry.fixture && !base) throw new Error(`Repair fixture missing: ${entry.type}/${entry.fixture}`);
+  const options = { ...clone(base?.options ?? {}), ...clone(entry.options) };
+  for (const key of entry.drop ?? []) delete options[key];
+  return { id: `repair-${entry.name}`, data: clone(entry.data ?? base.data), options, annotations: entry.annotations ?? base?.annotations };
+}
+
 /** Rebuild a recorded case for a rendered finding review. */
 export function requestForCase(item) {
   const [type, ...parts] = item.fixture.split('/'), id = parts.join('/');
-  const fixture = [...getFixtures(type), ...getRefusalExamples(type)].find(fixture => fixture.id === id);
+  const repair = item.setting.startsWith('repair:') ? repairFixture(REPAIRS.find(entry => entry.type === type && `repair-${entry.name}` === id)) : undefined;
+  const fixture = repair ?? [...getFixtures(type), ...getRefusalExamples(type)].find(fixture => fixture.id === id);
   if (!fixture) throw new Error(`Fixture missing: ${item.fixture}`);
-  let options = fixture.options ?? {}, annotations, locale;
-  if (!['default', 'fixed=400x300'].includes(item.setting)) {
+  let options = fixture.options ?? {}, annotations = repair?.annotations, locale;
+  if (!repair && !['default', 'fixed=400x300'].includes(item.setting)) {
     const split = item.setting.lastIndexOf(':'), formId = item.setting.slice(0, split), name = item.setting.slice(split + 1);
     const form = variants[type].variants.find(form => form.id === formId);
     if (name === 'locale=de') { options = { ...options, ...form.options }; locale = { language: 'de' }; }
@@ -855,6 +870,12 @@ export function scorecard(shard = 0, shards = 1, only = undefined) {
     if (outcomeShard({ fixture: `${type}/${fixture.id}`, setting: 'default' }, shards) !== shard) continue;
     run(type, fixture, fixture.options ?? {}, theme, 'default', WIDTHS);
     run(type, fixture, fixture.options ?? {}, theme, 'fixed=400x300', [400], 300);
+  }
+  // Problem settings whose engine patch the scorecard applies (R4): one width unless an entry names its own, as the patch does not depend on it.
+  for (const entry of REPAIRS) {
+    const fixture = repairFixture(entry), setting = `repair:${entry.name}`;
+    if (!selects(only, `${entry.type}/${fixture.id}`) || outcomeShard({ fixture: `${entry.type}/${fixture.id}`, setting }, shards) !== shard) continue;
+    for (const theme of THEMES) run(entry.type, fixture, fixture.options, theme, setting, entry.widths ?? [720], 'auto', fixture.annotations);
   }
   let sampledVariants = 0;
   for (const { type } of listCharts()) for (const form of variants[type]?.variants ?? []) {
@@ -978,7 +999,8 @@ async function main() {
     const [type, id, extra] = entry.split('/');
     // Rows carry the type name, not an alias.
     const known = extra === undefined && listCharts().some((chart) => chart.type === type)
-      && (id === undefined || [...getFixtures(type), ...getRefusalExamples(type)].some((fixture) => fixture.id === id));
+      && (id === undefined || [...getFixtures(type), ...getRefusalExamples(type)].some((fixture) => fixture.id === id)
+        || REPAIRS.some((entry) => entry.type === type && `repair-${entry.name}` === id));
     if (!known) throw new Error(`--only: no fixture ${entry}; name a type or type/id, with the type name, not an alias`);
   }
   const known = JSON.parse(readFileSync(new URL('./layout-scorecard-known.json', import.meta.url), 'utf8'));

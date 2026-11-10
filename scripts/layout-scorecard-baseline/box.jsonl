@@ -110,6 +110,8 @@
 ["box/outliers-withheld-method-note",720,"notation","default","drawn",[],[720,488],[145,95,551,255],"6e66dec2557b",[]]
 ["box/outliers-withheld-method-note",960,"authored","default","drawn",[],[960,473],[149,95,783,268],"6e66dec2557b",[]]
 ["box/outliers-withheld-method-note",960,"notation","default","drawn",[],[960,473],[149,95,783,268],"6e66dec2557b",[]]
+["box/repair-box-break-invalid",720,"authored","repair:box-break-invalid","drawn",[],[720,394],[106,95,591,239],"b8a56ae3c1b3",[]]
+["box/repair-box-break-invalid",720,"notation","repair:box-break-invalid","drawn",[],[720,394],[106,95,591,239],"b8a56ae3c1b3",[]]
 ["box/salary-bands-p10p90",320,"authored","default","drawn",[],[320,397],[112,127,192,196],"cf0d72393af8",[]]
 ["box/salary-bands-p10p90",320,"notation","default","drawn",[],[320,397],[112,127,192,196],"cf0d72393af8",[]]
 ["box/salary-bands-p10p90",400,"authored","default","drawn",[],[400,391],[112,106,272,211],"cdcea1031844",[]]
