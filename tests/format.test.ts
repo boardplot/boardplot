@@ -910,6 +910,16 @@ describe('a unit that names a scale takes no second one', () => {
     expect(texts.filter(text => text.includes('in $m'))).toEqual([]);
   });
 
+  // A table panel under the grid's "$m" printed 8,540,000 as "8.5" with "(M)" in its head: millions of millions.
+  it('prints a table panel whole under the grid scale unit', () => {
+    const table = { columns: [{ id: 'label', kind: 'rowLabel', label: 'Region' }, { id: 'fy25', kind: 'value', label: 'FY25' }],
+      rows: [{ id: 'north', label: 'North', cells: { fy25: 8_540_000 } }, { id: 'south', label: 'South', cells: { fy25: 1_160_000 } }] };
+    const texts = drawnTexts('grid', { panels: [{ id: 'k1', type: 'kpi', data: { label: 'Orders', value: 120 } }, { id: 'k2', type: 'kpi', data: { label: 'Revenue', value: 20_500_000 } },
+      { id: 't', type: 'table', data: table }] }, { title: 'Revenue', unit: '$m', columns: 3, size: { width: 900 } });
+    expect(texts).toEqual(expect.arrayContaining(['8,540,000', '1,160,000', '$m']));
+    expect(texts.filter(text => /\(M\)|\d[MB]\b/.test(text))).toEqual([]);
+  });
+
   // A panel whose series named "%" took the grid's "$m" and was refused with unit-conflict.
   it('leaves a panel that names a unit in its data to that unit', () => {
     const panel = { id: 'rate', type: 'column', data: { categories: ['A'], series: [{ id: 's', unit: '%', values: [25] }] } };
