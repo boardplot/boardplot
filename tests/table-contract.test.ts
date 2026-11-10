@@ -355,6 +355,23 @@ describe('validation errors teach the vocabulary', () => {
     });
     expect(r.warnings.some((w) => w.code === 'percent-scale-suspect')).toBe(true);
   });
+  // A ratio the author scaled by 100, as the warning says to, still warned that it looked like a fraction.
+  it('does not lint a ratio column already scaled by 100, and still lints the plain ratio', () => {
+    const r = resolveTable({
+      columns: [
+        { id: 'label', kind: 'rowLabel' },
+        { id: 'visits', kind: 'value' },
+        { id: 'sales', kind: 'value' },
+        { id: 'rate', kind: 'computed', format: '1.2%', calc: { op: 'mul', a: { op: 'div', a: { ref: 'sales' }, b: { ref: 'visits' } }, b: { lit: 100 } } },
+        { id: 'ratio', kind: 'computed', format: '1.2%', calc: { op: 'div', a: { ref: 'sales' }, b: { ref: 'visits' } } },
+      ],
+      rows: [
+        { id: 'a', cells: { visits: 5000, sales: 60 } },
+        { id: 'b', cells: { visits: 4000, sales: 36 } },
+      ],
+    });
+    expect(r.warnings.filter((w) => w.code === 'percent-scale-suspect').map((w) => w.message.slice(0, 15))).toEqual(["column 'ratio':"]);
+  });
 });
 
 describe('materiality is display-only', () => {
