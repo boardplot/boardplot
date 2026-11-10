@@ -374,6 +374,8 @@
 ["grid/repair-grid-legend",720,"notation","repair:grid-legend","drawn",[],[720,575],[24,75,672,464],"48d06a389ac4",[]]
 ["grid/repair-grid-metric-stack-heights",720,"authored","repair:grid-metric-stack-heights","refused",["metric-stack-spacing"],null,null,null,[]]
 ["grid/repair-grid-metric-stack-heights",720,"notation","repair:grid-metric-stack-heights","refused",["metric-stack-spacing"],null,null,null,[]]
+["grid/repair-grid-panel-butterfly-sort-dated",720,"authored","repair:grid-panel-butterfly-sort-dated","drawn",[],[720,202],[24,20,672,172],"0e88385b9874",[]]
+["grid/repair-grid-panel-butterfly-sort-dated",720,"notation","repair:grid-panel-butterfly-sort-dated","drawn",[],[720,202],[24,20,672,172],"0e88385b9874",[]]
 ["grid/repeat-regions",320,"authored","default","drawn",[],[320,416.6],[16,113,288,220],"93442fc83f7b",[]]
 ["grid/repeat-regions",320,"notation","default","drawn",[],[320,417.6],[16,113,288,221],"84bca437bfe9",[]]
 ["grid/repeat-regions",400,"authored","default","drawn",[],[400,416.6],[16,113,368,220],"84bca437bfe9",[]]
