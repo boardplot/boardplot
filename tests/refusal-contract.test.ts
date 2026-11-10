@@ -11,7 +11,7 @@ import { z } from 'zod';
 import '../src/core/charts';
 import { render } from '../src/cli/render';
 import { layoutRefusal } from '../src/core/emptyData';
-import { NormalizeError } from '../src/core/normalize/shared';
+import { NormalizeError, displayPathField } from '../src/core/normalize/shared';
 import { getFixtures, getRefusalExamples } from '../src/fixtures';
 import { getChartSchemas, listCharts } from '../src/core/registry';
 import { retireChartSettings } from '../src/core/retired';
@@ -232,6 +232,12 @@ describe('refusal contract', () => {
     nodes[2]!.caption = 'Sent over the network';
     const caption = render({ spec: { type: 'diagram', data: { ...(diagram.data as object), nodes }, options: diagram.options } }).body.errors as Finding[];
     expect(caption[0]).toMatchObject({ code: 'invalid-membership', path: '/data/nodes/2/caption', suggest: 'use secondaryLabel' });
+    // A row id can be '1': the bracket names the row with that id, never the second row.
+    const idRows = [{ ...rows[0]!, id: '1', cells: { ...rows[0]!.cells, state: 'unclear' } }, { ...rows[1]!, id: 'other', cells: { ...rows[1]!.cells, state: 'on-track' } }];
+    const byId = render({ spec: { type: 'table', data: { ...(table.data as object), rows: idRows }, options: table.options } }).body.errors as (Finding & { received?: unknown })[];
+    expect(byId[0]).toMatchObject({ code: 'status-value-invalid', path: '/data/rows/0/cells/state', received: { type: 'string', value: 'unclear' } });
+    // Where the id and the index name different items, the refusal names no field.
+    expect(displayPathField({ data: { rows: [{ id: '1' }, {}] } }, 'rows[1]')).toBeUndefined();
     // React and canDraw hosts read the same field off the layout refusal.
     const error = new NormalizeError('status-value-invalid', 'rows[garden-cafe].cells[state]', 'invalid status');
     const data = { rows: [{ id: 'garden-cafe', cells: { state: 'unclear' } }] };

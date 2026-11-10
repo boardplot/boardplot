@@ -43,15 +43,26 @@ export class NormalizeError extends Error {
  * from the chart, then from its data, then from its options; a path whose
  * last key is absent names it under the first parent that exists.
  * Undefined when no reading finds the parent.
+ *
+ * Throw sites put ids and indices alike in brackets (`rows[${row.id}]`,
+ * `series[${si}]`), and an id can be '1'. A bracket names the one item with
+ * that id; it reads as an index only where that item carries no other id.
+ * When the two readings name different items, or several items share the
+ * id, the path names no field: a wrong pointer is worse than none.
  */
 export function displayPathField(chart: { data?: unknown; options?: unknown }, path: string): (string | number)[] | undefined {
   const keys = [...path.matchAll(/([^.[\]]+)|\[([^\]]*)\]/g)].map((match) => ({ key: match[1] ?? match[2]!, bracket: match[2] !== undefined }));
   if (!keys.length) return undefined;
+  const CONFLICT = -1;
   const step = (node: unknown, { key, bracket }: { key: string; bracket: boolean }): string | number | undefined => {
     if (Array.isArray(node)) {
-      if (/^\d+$/.test(key)) return Number(key) < node.length ? Number(key) : undefined;
-      const index = bracket ? node.findIndex((item) => (item as { id?: unknown } | null)?.id === key) : -1;
-      return index >= 0 ? index : undefined;
+      const at = /^\d+$/.test(key) && Number(key) < node.length ? Number(key) : undefined;
+      if (!bracket) return at;
+      const idOf = (item: unknown) => (typeof item === 'string' ? item : (item as { id?: unknown } | null)?.id);
+      const byId = node.flatMap((item, index) => (idOf(item) === key ? [index] : []));
+      const byIndex = at !== undefined && (idOf(node[at]) === undefined || String(idOf(node[at])) === key) ? at : undefined;
+      if (byId.length > 1 || (byId.length === 1 && byIndex !== undefined && byId[0] !== byIndex)) return CONFLICT;
+      return byId[0] ?? byIndex;
     }
     return node !== null && typeof node === 'object' && Object.hasOwn(node, key) ? key : undefined;
   };
@@ -62,6 +73,7 @@ export function displayPathField(chart: { data?: unknown; options?: unknown }, p
       const field = [...root];
       for (const [index, key] of keys.entries()) {
         const next = step(node, key);
+        if (next === CONFLICT) return undefined;
         const last = index === keys.length - 1;
         if (next === undefined && !(last && !whole && !key.bracket && node !== null && typeof node === 'object' && !Array.isArray(node))) break;
         field.push(next ?? key.key);
