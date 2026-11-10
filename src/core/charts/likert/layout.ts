@@ -662,6 +662,7 @@ export function layoutLikert(
     warnings,
     semanticPalettePaint(theme, opts.palette, 'neutralMark'),
     paintWarningRules,
+    !oddScale || neutralMode === 'exclude',
   );
 
   const seriesIdOf = (i: number, half?: 'neg' | 'pos') =>
@@ -1482,18 +1483,21 @@ function divergingRamp(
   warnings: LintWarning[],
   neutralPaint: Paint,
   paintWarningRules: PaintWarningRule[],
+  sidesTouch: boolean,
 ): { css: string; paint: Paint }[] {
   const rule: Extract<PaintWarningRule, { kind: 'likert-ramp-invisible' }> = {
     kind: 'likert-ramp-invisible', before: warnings.length, options: [],
   };
   // Steps from the extreme: each one keeps RAMP_APART more contrast from the
   // token than the one before, so the floor cannot fold two options into one.
-  const visible = (paint: Paint, amount: number, optionIndex: number, fromExtreme = 0, darkApartFrom?: Paint[]): { css: string; paint: Paint } => {
+  const visible = (paint: Paint, amount: number, optionIndex: number, fromExtreme = 0, apartFrom?: Paint[]): { css: string; paint: Paint } => {
     rule.options.push({ label: scale[optionIndex]!.label ?? scale[optionIndex]!.id, paint, amount });
     const recipe = {
       kind: 'visible-tint' as const, base: paint, amount, floor: 'mark' as const,
       ...(fromExtreme > 0 ? { apart: RAMP_APART ** fromExtreme } : {}),
-      ...(darkApartFrom?.length ? { darkApartFrom: { paint: darkApartFrom, distance: PALETTE_NORMAL_FLOOR } } : {}),
+      // The neutral keeps its dark-page walk toward the token.
+      ...(apartFrom?.length ? { apartFrom: { paint: apartFrom, distance: PALETTE_NORMAL_FLOOR },
+        ...(optionIndex === neutralIndex ? { darkApartFrom: { paint: apartFrom, distance: PALETTE_NORMAL_FLOOR } } : {}) } : {}),
     };
     const resolvedPaint: Paint = amount === 0 ? paint
       : { token: 'token' in paint ? paint.token : 'neutral', theme: recipe };
@@ -1509,15 +1513,19 @@ function divergingRamp(
     // k = 0 is the most negative option, which is the outermost segment.
     out[i] = visible(signedFillPaint('bad'), wash(negativeIndices.length - 1 - k, negativeIndices.length), i, k);
   });
+  // With no neutral drawn between them, the mildest options of the two sides
+  // touch; the good one steps back toward its token until it reads apart.
+  const mildestBad = out[negativeIndices.at(-1) ?? -1];
   positiveIndices.forEach((i, k) => {
-    out[i] = visible(colorblindPaint('good', true), wash(k, positiveIndices.length), i, positiveIndices.length - 1 - k);
+    out[i] = visible(colorblindPaint('good', true), wash(k, positiveIndices.length), i, positiveIndices.length - 1 - k,
+      k === 0 && sidesTouch && mildestBad ? [mildestBad.paint] : undefined);
   });
   if (neutralIndex >= 0) {
     // The centre is the quietest tone on the chart: a grey washed further than
     // the mildest coloured option, so the sides read as colour and the centre
-    // as a pale grey. On a dark page the mark floor stops every wash at about
-    // the same lightness, so the grey steps back toward its token until it sits
-    // a palette step from both neighbours.
+    // as a pale grey. Where that grey sits closer than a palette step to a
+    // neighbour (on a dark page the mark floor stops every wash at about the
+    // same lightness), it steps back toward its token until it does not.
     const neighbours = [out[negativeIndices.at(-1) ?? -1], out[positiveIndices[0] ?? -1]].flatMap((entry) => entry ? [entry.paint] : []);
     out[neutralIndex] = visible(neutralPaint, NEUTRAL_WASH, neutralIndex, 0, neighbours);
   }
