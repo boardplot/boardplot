@@ -1987,8 +1987,8 @@ function layoutWaterfallWithPad(
         (isTotal ? PRIORITY.total : endpoint ? PRIORITY.endpoint : PRIORITY.extreme) +
         (highlights.has(cat.id) ? PRIORITY.highlightBonus : 0),
       ...(valueMeta?.valueLabel === false ? { redundant: true } : {}),
-      // An authored value passes the density gate, as on column and bar.
-      ...(typeof valueMeta?.valueLabel === 'string' ? { keepWhenDense: true as const } : {}),
+      // An authored or a highlighted value passes the density gate, as on column and bar.
+      ...(typeof valueMeta?.valueLabel === 'string' || highlights.has(cat.id) ? { keepWhenDense: true as const } : {}),
       candidates: [
         { slot: outsideSlot, rect: { x: centredX, y: outsideY, w: tsize.width, h: tsize.height }, penalty: 0 },
         // Crowded, the outer cases' totals stand the series value gap apart over the 2 px case gap, or two equal totals read as one number.

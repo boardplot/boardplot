@@ -525,6 +525,29 @@ describe('requested line values', () => {
     }
   });
 
+  // Minimal density still dropped a highlighted variance delta or slope end under an authored priority 0, a highlighted dot's range bounds and a highlighted waterfall step.
+  it('keeps highlighted variance, slope, dot range and waterfall values under minimal density', () => {
+    const low = (number: number) => ({ number, priority: 0 });
+    const cases = [
+      ...(['absolute', 'relative'] as const).map((variant) => ({ type: 'variance', want: 'point:b', options: { variant, variance: { of: 'ac', vs: 'py' }, highlight: ['b'] },
+        data: { categories: [{ id: 'a', label: 'North' }, { id: 'b', label: 'South' }, { id: 'c', label: 'East' }],
+          series: [{ id: 'ac', label: 'Actual', values: [128, low(96), 84] }, { id: 'py', label: 'Prior year', role: 'reference', values: [117, 104, 78] }] } })),
+      { type: 'slope', want: 'series:s:b', options: { highlight: ['s'] },
+        data: { categories: [{ id: 'a', label: '2020' }, { id: 'b', label: '2025' }],
+          series: [{ id: 'n', label: 'North', values: [11, 24] }, { id: 's', label: 'South', values: [low(22), low(19)] }, { id: 'e', label: 'East', values: [18, 15] }] } },
+      { type: 'dot', want: 'rangeValue:m:b:low', options: { highlight: ['b'], range: { values: true } },
+        data: { categories: [{ id: 'a', label: 'North' }, { id: 'b', label: 'South' }],
+          series: [{ id: 'm', label: 'Margin', values: [{ number: 28, range: { low: 24, high: 32 } }, { number: 25, range: { low: 21, high: 30 } }] }] } },
+      { type: 'waterfall', want: 'sum:price', options: { highlight: ['price'] },
+        data: { items: [{ id: 'start', label: 'FY21', type: 'total', value: 100 }, { id: 'price', label: 'Price', value: 10 }, { id: 'cost', label: 'Cost', value: -4 }, { id: 'end', label: 'FY22', type: 'total' }] } },
+    ];
+    for (const { type, want, options, data } of cases) {
+      const geo = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type, data, options: { ...options, labelDensity: 'minimal' } } as never)));
+      const label = geo.labels.find(item => item.id === want);
+      expect.soft([label?.id, label?.hidden], type).toEqual([want, undefined]);
+    }
+  });
+
   const spec = (values: number[], width: number, categories = values.map((_, i) => ({ id: `m${i}`, label: `M${i + 1}` }))) => ({
     type: 'line', data: { categories, series: [{ id: 'rate', label: 'Rate', values }] },
     options: { valueLabels: 'all', size: { width } },
