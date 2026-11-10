@@ -189,7 +189,10 @@ export function copyPlannedValue<T>(value: T, copies = new Map<object, unknown>(
   if (value instanceof Map) {
     const copy = new Map();
     copies.set(value, copy);
-    for (const [key, entry] of value) copy.set(key, entry !== null && typeof entry === 'object' ? copyPlannedValue(entry, copies) : entry);
+    // A key goes through the same copy as an entry, so a lookup with the copied object finds it.
+    for (const [key, entry] of value) {
+      copy.set(key !== null && typeof key === 'object' ? copyPlannedValue(key, copies) : key, entry !== null && typeof entry === 'object' ? copyPlannedValue(entry, copies) : entry);
+    }
     return copy as T;
   }
   if (value instanceof Set) {
