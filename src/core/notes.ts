@@ -180,6 +180,11 @@ export function rankKeyShown(options: { notes?: { show?: readonly string[] } } |
   return show?.includes('disclosure') === true || show?.includes('ranks') === true;
 }
 
+/** The label of the button that opens the notes panel under 'info': "Notes and sources (3)". */
+export function notesPanelLabel(count: number, word: string): string {
+  return `${word} (${count})`;
+}
+
 /** The pointer to the notes list. */
 export function notesPointer(count: number, strings?: StringsSpec): string {
   return stringFields(count === 1 ? strings?.noteOne ?? localeStrings().noteOne : strings?.noteMany ?? localeStrings().noteMany, { count });

@@ -70,6 +70,15 @@ export interface TableWidthMiss { widthMiss: true; minimumW: number; totalW: num
 export type TableWidthPlan = ReturnType<typeof materializeTableWidthPlan>;
 export type TableWidthRungPlan = Exclude<ReturnType<typeof solveTableWidthRung>, TableWidthMiss>;
 
+/**
+ * A column head as every surface sets it: the label in the theme's case
+ * (`table.head.case`) and the affix as written ("SPEND ($k)"). The tracks
+ * also glue a short last word to the one before it; the React grid does not.
+ */
+export function columnHeadText(column: ResolvedColumn, theme: Pick<Theme, 'table'>): string {
+  return fieldHeadText(column.label, theme) + columnHeaderAffix(column);
+}
+
 /** One content width rule. Dense padding is a fallback only when normal padding cannot fit. */
 export function tableWidths(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions, view: TableWidthView, probe: TableWidthProbe | undefined): TableWidthPlan | TableWidthMiss;
 export function tableWidths(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options?: WidthOptions, view?: TableWidthView): TableWidthPlan;
@@ -162,7 +171,7 @@ function measureTableTracks(table: ResolvedTable, theme: Theme, measure: TextMea
   // A short last word stays on the line before it: a narrow card broke "WEEK 1" into "WEEK" over "1".
   // The tight rung lets it break again: "PERIOD" over "1" beats a card that leaves the period out.
   const columnHeaderText = (col: (typeof cols)[number]) => {
-    const text = fieldHeadText(col.label, theme) + columnHeaderAffix(col);
+    const text = columnHeadText(col, theme);
     return view.headGlue === false ? text : text.replace(/ (\S{1,2})$/u, '\u00a0$1');
   };
   /** The tracks every column takes at one set of head faces, and the cuts they report. */

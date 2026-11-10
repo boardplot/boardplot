@@ -1,7 +1,7 @@
 import type { OptionsInput } from '../core/types/optionInput';
 import { hasPolarityBadge, isFigureCell, polarityBadgeInk } from '../core/charts/table/chips';
 import { chartString } from '../core/strings/table';
-import { belowTableViewportFloor, tableWidths } from '../core/charts/table/widths';
+import { belowTableViewportFloor, columnHeadText, tableWidths } from '../core/charts/table/widths';
 import {
   createContext,
   memo,
@@ -39,9 +39,8 @@ import { publishTableChart } from './specHandover';
 import { registeredType } from './chartEntry';
 import { tableCore } from '../core/charts/table/core';
 import { tableCellNodeId } from '../core/charts/table/cellKey';
-import { fieldHeadText } from '../core/charts/table/headFace';
 import { groupHeadingLabel } from '../core/charts/table/groupHeading';
-import { columnHeaderAffix, resolveTable } from '../core/charts/table/resolve';
+import { resolveTable } from '../core/charts/table/resolve';
 import {
   cellDrawsTabular,
   collapsedByDefault,
@@ -2137,12 +2136,12 @@ const TableHead = memo(function TableHead({
         {columns.map((column) => {
           if (windowIds !== undefined && !windowIds.has(column.id)) {
             return hiddenColumns.has(column.id) ? null : (
-              <div key={column.id} role="columnheader" aria-colindex={columnIndices.get(column.id)} data-bp-lite="" style={liteStyle(trackColumn?.get(column.id))}>{headText(column, theme)}</div>
+              <div key={column.id} role="columnheader" aria-colindex={columnIndices.get(column.id)} data-bp-lite="" style={liteStyle(trackColumn?.get(column.id))}>{columnHeadText(column, theme ?? {})}</div>
             );
           }
           const sortable = sortableIds.has(column.id);
           const active = sortable && sort?.column === column.id ? sort.direction : undefined;
-          const text = headText(column, theme);
+          const text = columnHeadText(column, theme ?? {});
           return (
             <div
               key={column.id}
@@ -2190,15 +2189,6 @@ const TableHead = memo(function TableHead({
     </div>
   );
 });
-
-/**
- * A column head as the SVG sets it: the label in capitals, or as
- * authored under `table.head.case: 'asis'`, and the affix as
- * written ("SPEND ($k)").
- */
-function headText(column: ResolvedColumn, theme: Pick<Theme, 'table'> | undefined): string {
-  return `${fieldHeadText(column.label, theme ?? {})}${columnHeaderAffix(column)}`;
-}
 
 /** The pin offset and the explicit track a head cell carries, or nothing. */
 function headCellStyle(
