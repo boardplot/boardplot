@@ -325,6 +325,17 @@ it('keeps the authored decimals of a small money row under a forced magnitude', 
   expect(table.rows.map((row) => row.cells.q1!.displayed)).toEqual(['4,120', '$12.93']);
 });
 
+// A forced thousand printed a $42 cost per order in a '$1.1' column as "0", and the change column beside it as "n.m.".
+it('keeps a small money column nonzero under a forced magnitude', () => {
+  const { table } = resolveTable({
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'spend', kind: 'value', format: '$1k' }, { id: 'early', kind: 'value', format: '$1.1' },
+      { id: 'late', kind: 'value', format: '$1.1' }, { id: 'delta', kind: 'computed', calc: { op: 'percentDelta', a: 'late', b: 'early' }, format: '+1.1%' }],
+    rows: [{ id: 'a', label: 'Spring offer', cells: { spend: 124_000, early: 42, late: 71 } }, { id: 'b', label: 'Summer offer', cells: { spend: 96_000, early: 55, late: 52 } }],
+  }, { magnitude: 'thousand' });
+  expect(table.rows.map((row) => [row.cells.spend!.displayed, row.cells.early!.displayed, row.cells.delta!.displayed])).toEqual([['124', '42.0', '+69.0%'], ['96', '55.0', '−5.5%']]);
+  expect(table.columns.find((column) => column.id === 'early')!.unitLabel).toBe('$');
+});
+
 // A forced million took "$" and "x" out of rows it did not scale: only a scale letter leaves the cells.
 it('keeps the unit in the cells of a row that prints no scale letter under a forced magnitude', () => {
   const { table } = resolveTable({

@@ -1077,6 +1077,20 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
     if (scales((sourceColumns.get(col.id) as { format?: string } | undefined)?.format ?? inherited ?? defaultExample(col))
       && (options.magnitude === 'million' || options.magnitude === 'thousand')) {
       forceScale(spec, options.magnitude === 'million' ? 'm' : 'k', locale.thousands);
+      // Nonzero stays nonzero, as on a money row: a column of $42 and $71 under a forced thousand
+      // reads in whole units at its example's decimals, not "0"; a larger column adds decimals.
+      const values = flat.flatMap((row) => {
+        const raw = cellFormat(row.cells[col.id]) === undefined ? rawState.get(row.id)?.get(col.id)?.raw : undefined;
+        return typeof raw === 'number' && raw !== 0 ? [raw] : [];
+      });
+      if (spec.lockMagnitude && values.some((value) => roundedNumber(value, spec) === 0)) {
+        if (spec.magnitude === 'k' || values.every((value) => Math.abs(value) < 1000)) {
+          const authored = parseFormatExample(example);
+          spec.decimals = authored.magnitude === 'none' ? authored.decimals : 0;
+          spec.magnitude = 'none';
+        }
+        spec.decimals = values.reduce((decimals, value) => nonzeroDecimals(value / MAGNITUDE_DIVISOR[spec.magnitude], decimals), spec.decimals);
+      }
     }
     if (sourceExample !== undefined) holdAuthoredScale(spec, locale.thousands);
     specs.set(col.id, spec);
