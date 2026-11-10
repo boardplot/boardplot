@@ -609,11 +609,11 @@ describe('columnHeads: false', () => {
       { id: 'a', kind: 'value', label: 'A very long head that would widen its column', format: '$1.2m' }, { id: 'b', kind: 'value', label: 'B', format: '1.2%' }],
     rows: [{ id: 'r1', label: 'One', cells: { a: 1200000, b: 3 } }, { id: 'r2', label: 'Two', cells: { a: 2400000, b: 4 } }],
   };
-  // A head that no longer draws must not keep a wide track, and the unit it alone printed must not vanish in silence.
-  it('sizes tracks from cells alone and warns when the head held the only unit', () => {
+  // A head that no longer draws must not keep a wide track, and the unit it alone printed must not vanish: the cells keep it.
+  it('sizes tracks from cells alone and keeps the unit in the cells when the head held the only unit', () => {
     const track = (options: TableOptions) => layoutTable(data, { size: { width: 900 }, frameFill: 'none', ...options }).marks!.columns.find((column) => column.id === 'a')!.w;
     expect(track({ columnHeads: false })).toBeLessThan(track({}));
-    expect(resolveTable(data, { columnHeads: false }).warnings.map((warning) => warning.code)).toContain('column-heads-unit-hidden');
-    expect(resolveTable(data, {}).warnings.map((warning) => warning.code)).not.toContain('column-heads-unit-hidden');
+    expect(resolveTable(data, { columnHeads: false }).table.rows.map((row) => row.cells.a!.displayed)).toEqual(['$1.2M', '$2.4M']);
+    expect(resolveTable(data, {}).table.rows.map((row) => row.cells.a!.displayed)).toEqual(['1.2', '2.4']);
   });
 });
