@@ -1,7 +1,7 @@
 import { PLAN_ONLY, isPlanned, materializeLayout, withPlanInputs } from './layoutPlan';
 import { boundsOf, type Rect, type Size } from './geometry';
 import { NormalizeError, resolveSize, resolveSubtitle } from './normalize/shared';
-import { panelTypeClass, WIDE_CANVAS_MIN_WIDTH } from './theme';
+import { panelTypeClass, typeClassCap, WIDE_CANVAS_MIN_WIDTH } from './theme';
 import { DEFAULT_TARGET, resolveTargetSize, TARGET_SIZE, type TargetSizeOptions } from './target';
 import { getChart, type ChartCore, type ChartOptions } from './registry';
 import { singleStops } from './strings';
@@ -1789,7 +1789,8 @@ function fitSizeMemo<D, O extends ChartOptions, M extends object, DV extends obj
   } finally {
     memoKeyData = undefined;
   }
-  const key = `${memoId(definition)}|${memoId(data)}|${compactFallback}|${definition.type === 'gantt' && card ? memoId(card) : ''}|${optionsKey}`;
+  // A capped type class (withTypeClassCap) lays out the same options in smaller type.
+  const key = `${memoId(definition)}|${memoId(data)}|${compactFallback}|${definition.type === 'gantt' && card ? memoId(card) : ''}|${typeClassCap() ?? ''}|${optionsKey}`;
   // Until a layout reads the share, it runs the same for every share; so either none of the
   // layouts under this key read it (result) or all do (byShare). The long key is hashed once.
   const entry = memo.get(key) ?? {};

@@ -1519,3 +1519,21 @@ it('draws a KPI, a pie and a column below 280 px when their content fits, and re
   expect(at('column', hundred, {}, 200, 240)).toMatchObject({ refused: true, warnings: [{ code: 'size-below-floor', expected: { minimum: { width: 280 } } }] });
   expect(at('column', hundred, {}, 280, 240).refused).toBeFalsy();
 });
+
+describe('the type class step at 720 px', () => {
+  const status = (width: number) => ({
+    type: 'status', theme: 'notation',
+    data: {
+      rows: [{ id: 'team', label: 'Team and its much longer descriptive name' }],
+      columns: [{ id: 'month', label: 'Month and its much longer descriptive name' }],
+      cells: [{ row: 'team', col: 'month', state: 'ok', value: { number: 97.5, format: '1.0%' } }],
+    },
+    options: { title: 'Attainment stays on plan', states: [{ id: 'ok', label: 'On plan', tone: 'good' }], size: { width } },
+  });
+  // A chart that drew at 719 px was refused at 720 px, where its text steps up to the M class and no longer fits.
+  it('draws in S type where the M type does not fit, and measure agrees', () => {
+    expect(layoutResolvedRequest(resolveChartRequest(status(719) as never)).refused).toBeUndefined();
+    expect(layoutResolvedRequest(resolveChartRequest(status(720) as never)).refused).toBeUndefined();
+    expect(measure(status(720) as never).refused).toBeUndefined();
+  });
+});
