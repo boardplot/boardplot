@@ -38,8 +38,8 @@ function validateBumpInput(input: {
   cats: Category[];
 }): void {
   const { options, targetsLength, dataSeries, cats } = input;
-  if (dataSeries.length < 2) throw new NormalizeError('bump-two-series', 'series', 'a rank chart needs at least two data-role series — one entity is a flat line at rank 1, which states nothing about who overtook whom');
-  if (cats.length < 2) throw new NormalizeError('bump-two-categories', 'categories', "a rank chart needs at least two categories — crossings are the message and one period has none", "use chart type 'slope' for two points");
+  if (dataSeries.length < 2) throw new NormalizeError('bump-two-series', 'series', 'a rank chart needs at least two data-role series — one entity is a flat line at rank 1, which states nothing about who overtook whom', undefined, undefined, ['data', 'series']);
+  if (cats.length < 2) throw new NormalizeError('bump-two-categories', 'categories', "a rank chart needs at least two categories — crossings are the message and one period has none", "use chart type 'slope' for two points", undefined, ['data', 'categories']);
   const conflicts: [string, boolean][] = [
     ['rebase100', Boolean(options.rebase100)],
     ['ratioTier', options.ratioTier !== undefined],
@@ -59,6 +59,7 @@ function validateBumpIds(dataSeries: NormSer[]): void {
     'series',
     `series id${duplicateIds.length === 1 ? '' : 's'} ${duplicateIds.map((id) => `'${id}'`).join(', ')} appear more than once — the ranking receipt is keyed by series id, so two entities under one id cannot both be ranked, drawn or described`,
     'give every ranked entity its own id',
+    undefined, ['data', 'series'],
   );
 }
 
@@ -121,7 +122,7 @@ export function prepareBump(input: {
     for (const series of empty) seriesNorm.splice(seriesNorm.indexOf(series), 1);
   }
   const dataSeries = seriesNorm.filter((series) => series.role !== 'reference');
-  if (dataSeries.length < 2) throw new NormalizeError('bump-two-series', 'series', `after dropping entities that hold no rank anywhere, ${dataSeries.length} data-role series remain — a rank chart needs at least two`);
+  if (dataSeries.length < 2) throw new NormalizeError('bump-two-series', 'series', `after dropping entities that hold no rank anywhere, ${dataSeries.length} data-role series remain — a rank chart needs at least two`, undefined, undefined, ['data', 'series']);
   validateBumpIds(dataSeries);
   const bridging = dataSeries.filter((series) => series.interpolateGaps);
   if (bridging.length > 0) {

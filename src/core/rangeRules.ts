@@ -83,6 +83,7 @@ function assertRangeOrder(raw: unknown): void {
           `series[${si}].values[${ci}].range`,
           `range-inverted: range low ${low} exceeds high ${high}`,
           'swap low/high or correct the source interval',
+          undefined, ['data', 'series', si, 'values', ci, ...(cell === entry ? [] : ['value']), 'range'],
         );
       }
     });
@@ -94,10 +95,10 @@ export function prepareRangeData<T>(data: T): T {
   if (typeof data !== 'object' || data === null) return data;
   const chart = data as { categories?: unknown; series?: unknown; };
   if (Array.isArray(chart.categories) && chart.categories.length === 0) {
-    throw new NormalizeError('empty-data', 'categories', 'range chart requires at least one category');
+    throw new NormalizeError('empty-data', 'categories', 'range chart requires at least one category', undefined, undefined, ['data', 'categories']);
   }
   if (Array.isArray(chart.series) && chart.series.length === 0) {
-    throw new NormalizeError('empty-data', 'series', 'range chart requires at least one series');
+    throw new NormalizeError('empty-data', 'series', 'range chart requires at least one series', undefined, undefined, ['data', 'series']);
   }
   return prepareFractionData(data);
 }

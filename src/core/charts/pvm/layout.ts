@@ -247,6 +247,7 @@ export function assertClosingLevel(
       'items',
       'the host bridge produced no closing level for the drawn effects, so the decomposition could not be re-audited against the picture',
       'this is an engine defect, not an input problem — report the dataset',
+      undefined, ['data', 'items'],
     );
   }
   const gap = drawn - derived.currentRevenue;
@@ -258,6 +259,7 @@ export function assertClosingLevel(
       `the drawn bridge does not land on the current-period revenue: prior ${derived.priorRevenue} plus the drawn effects ` +
         `reaches ${drawn}, but the items sum to ${derived.currentRevenue} (gap ${gap}, tolerance ${PVM_RESIDUAL_TOLERANCE * scale})`,
       'this is an engine defect, not an input problem — report the dataset',
+      undefined, ['data', 'items'],
     );
   }
 }

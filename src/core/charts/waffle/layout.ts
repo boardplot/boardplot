@@ -154,14 +154,14 @@ function layoutPass(data: ChartData, options: WaffleOptions, lean = false, oneRo
 
   // ---- normalize: categories are panels, series are segments ----
   if (!data || !Array.isArray(data.categories) || data.categories.length === 0) {
-    throw new NormalizeError('empty-data', 'categories', 'waffle requires at least one category');
+    throw new NormalizeError('empty-data', 'categories', 'waffle requires at least one category', undefined, undefined, ['data', 'categories']);
   }
   if (!Array.isArray(data.series) || data.series.length === 0) {
-    throw new NormalizeError('empty-data', 'series', 'waffle requires at least one series');
+    throw new NormalizeError('empty-data', 'series', 'waffle requires at least one series', undefined, undefined, ['data', 'series']);
   }
   const cats: Category[] = data.categories.map((c, i) => normalizeCategory(c as never, i));
   const series = data.series.map((s, si) => {
-    if (!s.id) throw new NormalizeError('missing-id', `series[${si}]`, 'series requires an id');
+    if (!s.id) throw new NormalizeError('missing-id', `series[${si}]`, 'series requires an id', undefined, undefined, ['data', 'series', si]);
     return { ser: s, label: s.label ?? s.id, cells: normalizeSeriesValues(s, cats, si) };
   });
   const square = (options.variant ?? 'cells') === 'square';

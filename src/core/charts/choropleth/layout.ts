@@ -1559,6 +1559,7 @@ function resolveLabelRegionIds(
         `region '${id}' is ambiguous in pack '${pack.id}' — ` +
           `${resolution.candidates.join(', ')} all answer to it`,
         `use one of ${resolution.candidates.join(', ')}`,
+        undefined, ['options', 'labelRegions', index],
       );
     }
     if (resolution.kind === 'unknown') {
@@ -1568,6 +1569,7 @@ function resolveLabelRegionIds(
         `labelRegions[${index}]`,
         `region '${id}' is not present in pack '${pack.id}'`,
         suggestion ? `did you mean '${suggestion}'?` : undefined,
+        undefined, ['options', 'labelRegions', index],
       );
     }
     resolved.add(resolution.id);

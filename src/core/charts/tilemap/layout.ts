@@ -147,7 +147,7 @@ function layoutTilemapPass(
   const warnings: LintWarning[] = geoOptionRefusals(options, 'tilemap');
 
   // Zero listed regions would draw a map of "no data" tiles, which shows nothing (the schema says the same).
-  if (!data.regions.length) throw new NormalizeError(EMPTY_DATA, 'regions', 'tilemap requires at least one region', 'add regions[].id and value');
+  if (!data.regions.length) throw new NormalizeError(EMPTY_DATA, 'regions', 'tilemap requires at least one region', 'add regions[].id and value', undefined, ['data', 'regions']);
   const pack = getTilePack(data.pack);
   const idIndex = geoRegionIdIndex(pack.regions);
   const { valuesById, statesById, leftOut } = ingestGeoRegions(data.regions, idIndex, { where: `tile pack '${pack.id}'`, regionWord: 'tile-pack region' }, warnings, (id, index) => {

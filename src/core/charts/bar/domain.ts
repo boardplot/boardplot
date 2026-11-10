@@ -466,7 +466,7 @@ export function resolveBarDomain(data: ChartData, options: BarOptions, warnings:
   const dataSeries = sortSegments(normSeries.filter((s) => s.role === 'data'), options.sort?.segments, (s) => s.cells.reduce((sum, cell) => sum + (cell.v ?? 0), 0));
   const refSeries = normSeries.filter((s) => s.role === 'reference');
   if (dataSeries.length === 0) {
-    throw new NormalizeError('no-data-series', 'series', 'bar requires at least one data-role series');
+    throw new NormalizeError('no-data-series', 'series', 'bar requires at least one data-role series', undefined, undefined, ['data', 'series']);
   }
   if (variant === 'grouped' || variant === 'stacked') {
     const refusal = dataSeriesUnitRefusal(normSeries, options.unit);

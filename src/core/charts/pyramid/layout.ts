@@ -150,10 +150,10 @@ export function layoutPyramid(
     throw new NormalizeError('empty-data', 'data', 'pyramid requires bands and groups');
   }
   if (data.bands.length === 0) {
-    throw new NormalizeError('empty-data', 'bands', 'pyramid requires at least one band');
+    throw new NormalizeError('empty-data', 'bands', 'pyramid requires at least one band', undefined, undefined, ['data', 'bands']);
   }
   if (data.groups.length === 0) {
-    throw new NormalizeError('empty-data', 'groups', 'pyramid requires two groups');
+    throw new NormalizeError('empty-data', 'groups', 'pyramid requires two groups', undefined, undefined, ['data', 'groups']);
   }
   if (data.groups.length !== 2) {
     throw new NormalizeError(
@@ -163,6 +163,7 @@ export function layoutPyramid(
       data.groups.length < 2
         ? 'a one-sided pyramid is a bar chart — use `bar`'
         : 'three or more groups have no mirrored geometry — use a bar or column chart',
+        undefined, ['data', 'groups'],
     );
   }
 
@@ -179,6 +180,7 @@ export function layoutPyramid(
       'groups[1].id',
       `both groups are named '${groupIds[0]}'; the two mirrored sides must be distinguishable`,
       'give each group its own id',
+      undefined, ['data', 'groups', 1, 'id'],
     );
   }
   // Two dated snapshots share no common whole: pooling them gives each side a
@@ -219,6 +221,7 @@ export function layoutPyramid(
           ? `a group sums to 0 across every band (${groupIds[0]}: ${totals[groupIds[0]]}, ${groupIds[1]}: ${totals[groupIds[1]]}), so its shares would be 0/0`
           : `both groups sum to ${grandTotal} across every band, so every share would be 0/0`,
         "supply at least one positive count per group, or use basis: 'count'",
+        undefined, ['data', 'groups'],
       );
     }
     shares = emptyIdRecord() as NonNullable<PyramidDerived['shares']>;
@@ -491,7 +494,7 @@ export function layoutPyramid(
 
 function requireGroupId(group: PyramidGroup | undefined, index: number): Id {
   if (!group || typeof group !== 'object' || !group.id) {
-    throw new NormalizeError('missing-id', `groups[${index}]`, 'each pyramid group requires an id');
+    throw new NormalizeError('missing-id', `groups[${index}]`, 'each pyramid group requires an id', undefined, undefined, ['data', 'groups', index]);
   }
   return group.id;
 }
@@ -507,10 +510,10 @@ function validateBands(raw: PyramidBand[]): PyramidBand[] {
   raw.forEach((band, i) => {
     const path = `bands[${i}]`;
     if (!band || typeof band !== 'object' || !band.id) {
-      throw new NormalizeError('missing-id', path, 'each pyramid band requires an id');
+      throw new NormalizeError('missing-id', path, 'each pyramid band requires an id', undefined, undefined, ['data', 'bands', i]);
     }
     if (seen.has(band.id)) {
-      throw new NormalizeError('duplicate-id', path, `duplicate band id '${band.id}'`);
+      throw new NormalizeError('duplicate-id', path, `duplicate band id '${band.id}'`, undefined, undefined, ['data', 'bands', i]);
     }
     seen.add(band.id);
     if (typeof band.from !== 'number' || !Number.isFinite(band.from)) {
@@ -519,6 +522,7 @@ function validateBands(raw: PyramidBand[]): PyramidBand[] {
         `${path}.from`,
         `band '${band.id}' has a non-finite lower bound (${String(band.from)})`,
         'every band needs a finite `from`',
+        undefined, ['data', 'bands', i, 'from'],
       );
     }
     if (band.to !== undefined && (typeof band.to !== 'number' || !Number.isFinite(band.to))) {
@@ -527,6 +531,7 @@ function validateBands(raw: PyramidBand[]): PyramidBand[] {
         `${path}.to`,
         `band '${band.id}' has a non-finite upper bound (${String(band.to)})`,
         'omit `to` to declare the band open-ended, or give it a finite number',
+        undefined, ['data', 'bands', i, 'to'],
       );
     }
     if (band.to !== undefined && !(band.to > band.from)) {
@@ -535,6 +540,7 @@ function validateBands(raw: PyramidBand[]): PyramidBand[] {
         `${path}.to`,
         `band '${band.id}' spans from ${band.from} to ${band.to}: a band's \`to\` must be greater than its \`from\``,
         'bands are authored ascending, lowest first',
+        undefined, ['data', 'bands', i, 'to'],
       );
     }
   });
@@ -546,6 +552,7 @@ function validateBands(raw: PyramidBand[]): PyramidBand[] {
         `bands[${i}].from`,
         `bands must be authored in strictly ascending order: band '${raw[i]!.id}' starts at ${raw[i]!.from}, which is not above band '${raw[i - 1]!.id}' at ${raw[i - 1]!.from}`,
         'author the bands lowest-first; the engine reverses them for rendering',
+        undefined, ['data', 'bands', i, 'from'],
       );
     }
   }
@@ -559,6 +566,7 @@ function validateBands(raw: PyramidBand[]): PyramidBand[] {
         `bands[${i}].to`,
         `band '${here.id}' is open-ended but is followed by '${next.id}': only the LAST band may omit \`to\`, because an open band in the middle makes contiguity uncheckable`,
         `give '${here.id}' a \`to\` of ${next.from}`,
+        undefined, ['data', 'bands', i, 'to'],
       );
     }
     if (here.to !== next.from) {
@@ -570,6 +578,7 @@ function validateBands(raw: PyramidBand[]): PyramidBand[] {
           ? `bands '${here.id}' and '${next.id}' leave a gap of ${trim(gap)} (${trim(here.to)} to ${trim(next.from)}): that population is missing from the exhibit, and the two bands would be drawn as neighbours`
           : `bands '${here.id}' and '${next.id}' overlap by ${trim(-gap)} (${trim(next.from)} to ${trim(here.to)}): the overlapping population would be counted twice`,
         `set bands[${i + 1}].from to ${trim(here.to)}, or close the gap with another band`,
+        undefined, ['data', 'bands', i + 1, 'from'],
       );
     }
   }
@@ -586,6 +595,7 @@ function validateBands(raw: PyramidBand[]): PyramidBand[] {
           `bands[${raw.indexOf(band)}]`,
           `band '${band.id}' is ${trim(w)} wide but '${first.id}' is ${trim(width)} wide: row heights are equal, so a wider band's bar reads as a larger cohort than it is`,
           `re-bucket every band to a common width of ${trim(width)}`,
+          undefined, ['data', 'bands', raw.indexOf(band)],
         );
       }
     }
@@ -606,7 +616,7 @@ function closedWidth(bands: PyramidBand[]): number | null {
 function readValues(group: PyramidGroup, index: number, bands: PyramidBand[]): number[] {
   const path = `groups[${index}].values`;
   if (!Array.isArray(group.values)) {
-    throw new NormalizeError('empty-data', path, `group '${group.id}' has no values array`);
+    throw new NormalizeError('empty-data', path, `group '${group.id}' has no values array`, undefined, undefined, ['data', 'groups', index, 'values']);
   }
   // The form is decided by the WHOLE array, not by its first element. Sampling
   // values[0] only meant `[1, {bandId,value}]` took the positional path and was
@@ -622,6 +632,7 @@ function readValues(group: PyramidGroup, index: number, bands: PyramidBand[]): n
       `${path}[${bare}]`,
       `group '${group.id}' mixes bare values with { bandId, value } records (${recordAt.length} of ${group.values.length} are records, and index ${bare} is not); one form per group`,
       'use one form throughout: either a positional array or { bandId, value } for every band',
+      undefined, ['data', 'groups', index, 'values', bare],
     );
   }
   const out: number[] = [];
@@ -633,10 +644,11 @@ function readValues(group: PyramidGroup, index: number, bands: PyramidBand[]): n
         path,
         `group '${group.id}' supplies ${group.values.length} values for ${bands.length} bands; a positional array is matched band by band, so the counts must agree`,
         `supply ${bands.length} values, or use the { bandId, value } form`,
+        undefined, ['data', 'groups', index, 'values'],
       );
     }
     bands.forEach((band, i) => {
-      out.push(check((group.values as unknown[])[i], `${path}[${i}]`, group.id, band.id));
+      out.push(check((group.values as unknown[])[i], `${path}[${i}]`, group.id, band.id, index, i, false));
     });
     return out;
   }
@@ -649,6 +661,7 @@ function readValues(group: PyramidGroup, index: number, bands: PyramidBand[]): n
         'pyramid-values-arity',
         `${path}[${i}]`,
         `group '${group.id}' supplies band '${record.bandId}' twice`,
+        undefined, undefined, ['data', 'groups', index, 'values', i],
       );
     }
     byBand.set(record.bandId, { value: record.value, at: i });
@@ -664,11 +677,12 @@ function readValues(group: PyramidGroup, index: number, bands: PyramidBand[]): n
         (missing.length > 0 ? `; no value for ${missing.map((id) => `'${id}'`).join(', ')}` : '') +
         (unknown.length > 0 ? `; unknown band ${unknown.map((id) => `'${id}'`).join(', ')}` : ''),
       'every band needs exactly one value per group',
+      undefined, ['data', 'groups', index, 'values'],
     );
   }
   for (const band of bands) {
     const hit = byBand.get(band.id)!;
-    out.push(check(hit.value, `${path}[${hit.at}].value`, group.id, band.id));
+    out.push(check(hit.value, `${path}[${hit.at}].value`, group.id, band.id, index, hit.at, true));
   }
   return out;
 }
@@ -677,14 +691,20 @@ function isBound(v: unknown): boolean {
   return typeof v === 'object' && v !== null && 'bandId' in (v as object);
 }
 
+/** The authored cell: an entry of the positional array, or the value of a { bandId, value } record. */
+function cellAt(group: number, entry: number, record: boolean): (string | number)[] {
+  return ['data', 'groups', group, 'values', entry, ...(record ? ['value'] : [])];
+}
+
 /** One cell, one refusal per failure mode — no coercion, no substituted zero. */
-function check(raw: unknown, path: string, groupId: Id, bandId: Id): number {
+function check(raw: unknown, path: string, groupId: Id, bandId: Id, group: number, entry: number, record: boolean): number {
   if (isPctCell(raw as Cell)) {
     throw new NormalizeError(
       'pyramid-percent-input',
       path,
       `group '${groupId}' supplies a share for band '${bandId}'; a pyramid derives every share from the counts, and an authored share would be a second source of truth`,
       "supply counts or amounts and set basis: 'shareOfTotal'",
+      undefined, cellAt(group, entry, record),
     );
   }
   if (raw === null || raw === undefined) {
@@ -693,6 +713,7 @@ function check(raw: unknown, path: string, groupId: Id, bandId: Id): number {
       path,
       `group '${groupId}' has no value for band '${bandId}'; a band with no number renders as zero and reads as "nobody lives here"`,
       'state 0 if the band was measured and is empty, or drop the band from both groups',
+      undefined, cellAt(group, entry, record),
     );
   }
   if (typeof raw !== 'number' || Number.isNaN(raw) || !Number.isFinite(raw)) {
@@ -701,6 +722,7 @@ function check(raw: unknown, path: string, groupId: Id, bandId: Id): number {
       path,
       `group '${groupId}' has a non-finite value for band '${bandId}' (${String(raw)})`,
       'supply a finite number',
+      undefined, cellAt(group, entry, record),
     );
   }
   if (raw < 0) {
@@ -709,6 +731,7 @@ function check(raw: unknown, path: string, groupId: Id, bandId: Id): number {
       path,
       `group '${groupId}' is negative for band '${bandId}' (${raw}); a population cannot be negative, and a mirrored pane would draw |value| and hide the sign`,
       'use a butterfly or variance chart for signed data',
+      undefined, cellAt(group, entry, record),
     );
   }
   return raw;

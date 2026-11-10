@@ -195,6 +195,7 @@ export function normalizeGridData(raw: unknown, options?: GridNormalizeOptions):
       'missing-panels',
       'panels',
       "grid data must own 'panels' or 'repeat' — inherited properties do not count",
+      undefined, undefined, ['data', 'panels'],
     );
   }
   // The schema-owning definition parses first. React calls this semantic step
@@ -220,6 +221,7 @@ export function normalizeGridData(raw: unknown, options?: GridNormalizeOptions):
       'missing-panels',
       'panels',
       "grid data must own 'panels' or 'repeat' — inherited properties do not count",
+      undefined, undefined, ['data', 'panels'],
     );
   }
   const facet = input as RepeatGridData;
@@ -291,6 +293,7 @@ function sliceFacetSource(
       'invalid-facet-source',
       'template.data',
       `repeat.facet '${by}' needs template.data.categories and template.data.series`,
+      undefined, undefined, ['data', 'template', 'data'],
     );
   }
   const source = raw as RepeatFacetSource;
@@ -306,6 +309,7 @@ function sliceBySeries(source: RepeatFacetSource, value: string): RepeatFacetSou
       'missing-facet-value',
       `template.data.series`,
       `missing series '${value}' for repeat.facet 'series'`,
+      undefined, undefined, ['data', 'template', 'data', 'series'],
     );
   }
   if (match.role === 'reference') {
@@ -313,6 +317,7 @@ function sliceBySeries(source: RepeatFacetSource, value: string): RepeatFacetSou
       'invalid-facet-value',
       'repeat.values',
       `reference series '${value}' cannot be a series facet — pick a plotted series`,
+      undefined, undefined, ['data', 'repeat', 'values'],
     );
   }
   const references = series.filter((entry) => entry.role === 'reference' && entry.id !== value);
@@ -328,6 +333,7 @@ function sliceByCategory(source: RepeatFacetSource, value: string): RepeatFacetS
       'missing-facet-value',
       'template.data.categories',
       `missing category '${value}' for repeat.facet 'category'`,
+      undefined, undefined, ['data', 'template', 'data', 'categories'],
     );
   }
   return {

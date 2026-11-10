@@ -74,7 +74,7 @@ export interface ZoneGeometry {
 }
 
 /** A zone keyed in the legend row names itself with its label and shows its fill as the swatch. */
-function refuseUnkeyableZone(zone: StrategyZoneCell | StrategyZoneRegion, path: string): void {
+function refuseUnkeyableZone(zone: StrategyZoneCell | StrategyZoneRegion, path: string, list: 'cells' | 'regions', index: number): void {
   if ((zone.labelAt ?? 'plot') === 'plot') return;
   if (!zone.label || zone.tone === 'none') {
     throw new NormalizeError(
@@ -82,6 +82,7 @@ function refuseUnkeyableZone(zone: StrategyZoneCell | StrategyZoneRegion, path: 
       `${path}.labelAt`,
       `strategy zone '${zone.id}' is keyed in the legend (labelAt '${zone.labelAt}') ${zone.label ? "with tone 'none', so its swatch would be empty" : 'without a label to key it by'}`,
       zone.label ? "give the zone a tone, or keep labelAt 'plot'" : "add a label, or keep labelAt 'plot'",
+      undefined, ['options', 'zones', ...(list === 'cells' ? ['grid', 'cells'] : ['regions']), index, 'labelAt'],
     );
   }
 }
@@ -97,6 +98,7 @@ export function validateStrategyZones(options: ScatterStrategyOptions): void {
           'zone-thresholds-empty',
           `options.zones.grid.${axis}`,
           `strategy-zone ${axis} thresholds require at least one value`,
+          undefined, undefined, ['options', 'zones', 'grid', axis],
         );
       }
       grid[axis].forEach((value, index) => {
@@ -105,6 +107,7 @@ export function validateStrategyZones(options: ScatterStrategyOptions): void {
             'zone-threshold-nonfinite',
             `options.zones.grid.${axis}[${index}]`,
             'strategy-zone thresholds must be finite',
+            undefined, undefined, ['options', 'zones', 'grid', axis, index],
           );
         }
         if (index > 0 && !(value > grid[axis][index - 1]!)) {
@@ -112,6 +115,7 @@ export function validateStrategyZones(options: ScatterStrategyOptions): void {
             'zone-threshold-order',
             `options.zones.grid.${axis}[${index}]`,
             'strategy-zone thresholds must be strictly increasing',
+            undefined, undefined, ['options', 'zones', 'grid', axis, index],
           );
         }
       });
@@ -125,6 +129,7 @@ export function validateStrategyZones(options: ScatterStrategyOptions): void {
           'zone-band-label-count',
           `options.zones.grid.${axis}Labels`,
           `strategy-zone ${axis} band labels require exactly ${expected} entries`,
+          undefined, undefined, ['options', 'zones', 'grid', `${axis}Labels`],
         );
       }
     }
@@ -136,6 +141,7 @@ export function validateStrategyZones(options: ScatterStrategyOptions): void {
           'duplicate-id',
           `options.zones.grid.cells[${index}]`,
           `duplicate strategy-zone cell id '${cell.id}'`,
+          undefined, undefined, ['options', 'zones', 'grid', 'cells', index, 'id'],
         );
       }
       ids.add(cell.id);
@@ -144,6 +150,7 @@ export function validateStrategyZones(options: ScatterStrategyOptions): void {
           'zone-cell-outside-grid',
           `options.zones.grid.cells[${index}]`,
           `strategy-zone cell '${cell.id}' addresses row ${cell.row}, column ${cell.column} outside the derived grid`,
+          undefined, undefined, ['options', 'zones', 'grid', 'cells', index],
         );
       }
       const position = `${cell.column}:${cell.row}`;
@@ -152,10 +159,11 @@ export function validateStrategyZones(options: ScatterStrategyOptions): void {
           'zone-cell-duplicate-position',
           `options.zones.grid.cells[${index}]`,
           `more than one strategy-zone cell addresses row ${cell.row}, column ${cell.column}`,
+          undefined, undefined, ['options', 'zones', 'grid', 'cells', index],
         );
       }
       positions.add(position);
-      refuseUnkeyableZone(cell, `options.zones.grid.cells[${index}]`);
+      refuseUnkeyableZone(cell, `options.zones.grid.cells[${index}]`, 'cells', index);
     }
     return;
   }
@@ -165,17 +173,19 @@ export function validateStrategyZones(options: ScatterStrategyOptions): void {
       'zone-regions-empty',
       'options.zones.regions',
       'strategy zones require at least one region',
+      undefined, undefined, ['options', 'zones', 'regions'],
     );
   }
   const ids = new Set<Id>();
   for (const [index, region] of zones.regions.entries()) {
     validateZoneRegion(region, index);
-    refuseUnkeyableZone(region, `options.zones.regions[${index}]`);
+    refuseUnkeyableZone(region, `options.zones.regions[${index}]`, 'regions', index);
     if (ids.has(region.id)) {
       throw new NormalizeError(
         'duplicate-id',
         `options.zones.regions[${index}]`,
         `duplicate strategy-zone region id '${region.id}'`,
+        undefined, undefined, ['options', 'zones', 'regions', index, 'id'],
       );
     }
     ids.add(region.id);
@@ -188,6 +198,7 @@ function validateZoneRegion(region: StrategyZoneRegion, index: number): void {
       'missing-id',
       `options.zones.regions[${index}]`,
       'strategy-zone region requires an id',
+      undefined, undefined, ['options', 'zones', 'regions', index, 'id'],
     );
   }
   if (!Array.isArray(region.points) || region.points.length < 3) {
@@ -195,6 +206,7 @@ function validateZoneRegion(region: StrategyZoneRegion, index: number): void {
       'zone-region-too-short',
       `options.zones.regions[${index}].points`,
       'strategy-zone polygon requires at least three points',
+      undefined, undefined, ['options', 'zones', 'regions', index, 'points'],
     );
   }
   region.points.forEach((point, pointIndex) => {
@@ -203,6 +215,7 @@ function validateZoneRegion(region: StrategyZoneRegion, index: number): void {
         'zone-region-nonfinite',
         `options.zones.regions[${index}].points[${pointIndex}]`,
         'strategy-zone polygon points must be finite',
+        undefined, undefined, ['options', 'zones', 'regions', index, 'points', pointIndex],
       );
     }
   });

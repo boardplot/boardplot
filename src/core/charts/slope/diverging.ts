@@ -106,7 +106,7 @@ export function layoutDivergingSlope(
 
   // ---- normalize ----
   if (!data || !Array.isArray(data.categories) || data.categories.length < 2) {
-    throw new NormalizeError('empty-data', 'categories', "slope variant 'diverging' requires two categories (periods)");
+    throw new NormalizeError('empty-data', 'categories', "slope variant 'diverging' requires two categories (periods)", undefined, undefined, ['data', 'categories']);
   }
   if (data.categories.length > 2) {
     throw new NormalizeError(
@@ -114,6 +114,7 @@ export function layoutDivergingSlope(
       'categories',
       `slope variant 'diverging' compares exactly two periods, got ${data.categories.length}: an area between three or more survey waves suggests a path between them`,
       "keep the first and last period here; draw a trend over more waves with type 'line', or one wave's full answer scale with type 'likert'",
+      undefined, ['data', 'categories'],
     );
   }
   const cats: Category[] = data.categories.map((c, i) => normalizeCategory(c as never, i));
@@ -125,7 +126,7 @@ export function layoutDivergingSlope(
   interface Norm { s: DivergingSeries; label: string; g: DivergingGroup; isPct: boolean; formats: { positive: (string | undefined)[]; negative: (string | undefined)[] } }
   const groups: Norm[] = [];
   (data.series as DivergingSeries[]).forEach((s, si) => {
-    if (!s?.id) throw new NormalizeError('missing-id', `series[${si}]`, 'series requires an id');
+    if (!s?.id) throw new NormalizeError('missing-id', `series[${si}]`, 'series requires an id', undefined, undefined, ['data', 'series', si]);
     if (s.role === 'reference') return;
     if (!Array.isArray(s.negative)) {
       throw new NormalizeError(
@@ -133,10 +134,11 @@ export function layoutDivergingSlope(
         `series[${s.id}].negative`,
         `series '${s.id}' has no negative share: variant 'diverging' draws values as the positive share and negative as the negative share`,
         `add "negative": [<period 1>, <period 2>] to series '${s.id}', as positive numbers`,
+        undefined, ['data', 'series', si, 'negative'],
       );
     }
     const pos = normalizeSeriesValues(s, cats, si);
-    const neg = normalizeSeriesValues({ ...s, values: s.negative }, cats, si);
+    const neg = normalizeSeriesValues({ ...s, values: s.negative }, cats, si, 'negative');
     const pv = pos.map(cellValue);
     const nv = neg.map(cellValue);
     if ([...pv, ...nv].some((v) => v === null)) {
@@ -154,6 +156,7 @@ export function layoutDivergingSlope(
         `series[${s.id}]`,
         `series '${s.id}' has a share below zero: both shares are counts of respondents, so the negative share is drawn downward but given as a positive number`,
         'give every share as a positive number, for example 12 rather than -12',
+        undefined, ['data', 'series', si],
       );
     }
     const positive: [number, number] = [pv[0]!, pv[1]!];
@@ -176,13 +179,14 @@ export function layoutDivergingSlope(
       },
     });
   });
-  if (groups.length === 0) throw new NormalizeError('empty-data', 'series', "slope variant 'diverging' requires at least one group with both shares in both periods");
+  if (groups.length === 0) throw new NormalizeError('empty-data', 'series', "slope variant 'diverging' requires at least one group with both shares in both periods", undefined, undefined, ['data', 'series']);
   if (groups.length > MAX_GROUPS) {
     throw new NormalizeError(
       'slope-diverging-too-many-groups',
       'series',
       `slope variant 'diverging' draws one panel per group and reads up to ${MAX_GROUPS} groups, got ${groups.length}`,
       "group the series further, or draw the net score per group with type 'likert' (sortBy 'net')",
+      undefined, ['data', 'series'],
     );
   }
   for (const { s, g } of groups) {

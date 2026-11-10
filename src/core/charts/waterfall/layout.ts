@@ -917,7 +917,7 @@ function layoutWaterfallWithPad(
 
   // ---- normalize ----
   if (!data || !Array.isArray(data.items) || data.items.length === 0) {
-    throw new NormalizeError('empty-data', 'items', 'waterfall requires at least one item');
+    throw new NormalizeError('empty-data', 'items', 'waterfall requires at least one item', undefined, undefined, ['data', 'items']);
   }
   // A multi-case bridge normalises each case's values as items '<item>:<case>'
   // whose one segment is the case; `items` keeps one per step for the band,
@@ -2421,7 +2421,7 @@ function layoutWaterfallWithPad(
   // ---- helpers ----
 
   function normalizeItem(raw: WaterfallItem, i: number): NormItem {
-    if (!raw?.id) throw new NormalizeError('missing-id', `items[${i}]`, 'item requires an id');
+    if (!raw?.id) throw new NormalizeError('missing-id', `items[${i}]`, 'item requires an id', undefined, undefined, ['data', 'items', i, 'id']);
     const type = raw.type ?? 'delta';
     const path = `items[${raw.id}]`;
     const checkCell = raw.value !== undefined ? normalizeCell(raw.value, `${path}.value`) : null;
@@ -2440,7 +2440,7 @@ function layoutWaterfallWithPad(
       segments = raw.segments.map((s, k) => {
         const cell = normalizeCell(s.value, `${path}.segments[${k}].value`);
         const v = cellValue(cell);
-        if (v === null) throw new NormalizeError('missing-value', `${path}.segments[${k}]`, 'segment needs a numeric value');
+        if (v === null) throw new NormalizeError('missing-value', `${path}.segments[${k}]`, 'segment needs a numeric value', undefined, undefined, ['data', 'items', i, 'segments', k]);
         const meta = cellMeta(cell);
         return {
           id: s.id ?? `s${k}`,

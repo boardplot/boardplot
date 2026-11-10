@@ -219,9 +219,9 @@ function normalizePoint(
   warnings: LintWarning[],
   hasAuthoredLabels: boolean,
 ): NormPt | null {
-  if (!raw?.id) throw new NormalizeError('missing-id', `points[${i}]`, 'point requires an id');
+  if (!raw?.id) throw new NormalizeError('missing-id', `points[${i}]`, 'point requires an id', undefined, undefined, ['data', 'points', i, 'id']);
   if (seenIds.has(raw.id)) {
-    throw new NormalizeError('duplicate-id', `points[${raw.id}]`, `duplicate point id '${raw.id}'`);
+    throw new NormalizeError('duplicate-id', `points[${raw.id}]`, `duplicate point id '${raw.id}'`, undefined, undefined, ['data', 'points', i, 'id']);
   }
   seenIds.add(raw.id);
   const path = `points[${raw.id}]`;
@@ -300,13 +300,13 @@ function normalizeScatterData(
   warnings: LintWarning[],
 ): { groupMap: Map<Id, NormGroup>; plottable: NormPt[]; noPosition: string[] } {
   if (!data || !Array.isArray(data.points) || data.points.length === 0) {
-    throw new NormalizeError('empty-data', 'points', 'scatter requires at least one point');
+    throw new NormalizeError('empty-data', 'points', 'scatter requires at least one point', undefined, undefined, ['data', 'points']);
   }
   const groupMap = new Map<Id, NormGroup>();
   (data.groups ?? []).forEach((g, i) => {
-    if (!g?.id) throw new NormalizeError('missing-id', `groups[${i}]`, 'group requires an id');
+    if (!g?.id) throw new NormalizeError('missing-id', `groups[${i}]`, 'group requires an id', undefined, undefined, ['data', 'groups', i, 'id']);
     if (groupMap.has(g.id)) {
-      throw new NormalizeError('duplicate-id', `groups[${g.id}]`, `duplicate group id '${g.id}'`);
+      throw new NormalizeError('duplicate-id', `groups[${g.id}]`, `duplicate group id '${g.id}'`, undefined, undefined, ['data', 'groups', i, 'id']);
     }
     groupMap.set(g.id, {
       id: g.id,
@@ -328,7 +328,7 @@ function normalizeScatterData(
     else if (raw?.id !== undefined && (cellValue(normalizeCell(raw.x, `points[${raw.id}].x`)) === null || cellValue(normalizeCell(raw.y, `points[${raw.id}].y`)) === null)) noPosition.push(raw.label ?? raw.id);
   });
   if (plottable.length === 0) {
-    throw new NormalizeError('empty-data', 'points', 'scatter has no plottable points (all x/y missing)');
+    throw new NormalizeError('empty-data', 'points', 'scatter has no plottable points (all x/y missing)', undefined, undefined, ['data', 'points']);
   }
   // With groups declared, a group a point names but the list lacks is most
   // likely a typo: it still gets its own legend entry, named by its id.
@@ -485,8 +485,8 @@ function scatterAxisDomain(
     [dyLo, dyHi] = stepped.domain;
     stepTicks = stepped.ticks;
   }
-  [dxLo, dxHi] = numericViewportRange(options.viewDomain?.x, [dxLo, dxHi]);
-  [dyLo, dyHi] = numericViewportRange(options.viewDomain?.y, [dyLo, dyHi]);
+  [dxLo, dxHi] = numericViewportRange(options.viewDomain?.x, [dxLo, dxHi], 'x');
+  [dyLo, dyHi] = numericViewportRange(options.viewDomain?.y, [dyLo, dyHi], 'y');
   // The axis ends ON the clamp, so a clipped point lands exactly on the edge
   // and the footnote's number is a line the reader can find.
   if (clamp?.edges.x.min !== undefined) dxLo = clamp.edges.x.min;

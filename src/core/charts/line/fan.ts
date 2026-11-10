@@ -61,24 +61,31 @@ function validateDeclaration(input: {
       [`fan.bands[${k}].high`, band.high],
     ]),
   ];
-  for (const [path, id] of named) {
-    if (!seriesById.has(id)) throw new NormalizeError('fan-series-unknown', path, `fan names unknown series '${id}' — a band is DECLARED DATA, so every bound must exist in data.series`, `add a series with id '${id}', or point this bound at one of: ${seriesNorm.map((s) => `'${s.id}'`).join(', ')}`);
+  // named[0] is fan.of; named[1 + 2k] and named[2 + 2k] are the low and high bound of band k.
+  const pointer = (entry: [string, Id]): (string | number)[] => {
+    const at = named.indexOf(entry);
+    return at === 0 ? ['options', 'fan', 'of'] : ['options', 'fan', 'bands', (at - 1) >> 1, at % 2 === 1 ? 'low' : 'high'];
+  };
+  for (const entry of named) {
+    const [path, id] = entry;
+    if (!seriesById.has(id)) throw new NormalizeError('fan-series-unknown', path, `fan names unknown series '${id}' — a band is DECLARED DATA, so every bound must exist in data.series`, `add a series with id '${id}', or point this bound at one of: ${seriesNorm.map((s) => `'${s.id}'`).join(', ')}`, undefined, pointer(entry));
   }
   // The key and the notes name each band by its label; a band without one would print as nothing.
   spec.bands.forEach((band, k) => {
-    if (typeof band.label !== 'string' || band.label.trim() === '') throw new NormalizeError('fan-band-unlabelled', `fan.bands[${k}].label`, `fan.bands[${k}] has no label — '80% predictive interval' and 'min/max of three scenarios' draw the same band and mean different things`, "add a label that says what the interval means, such as '80% predictive interval'");
+    if (typeof band.label !== 'string' || band.label.trim() === '') throw new NormalizeError('fan-band-unlabelled', `fan.bands[${k}].label`, `fan.bands[${k}] has no label — '80% predictive interval' and 'min/max of three scenarios' draw the same band and mean different things`, "add a label that says what the interval means, such as '80% predictive interval'", undefined, ['options', 'fan', 'bands', k, 'label']);
   });
   const seen = new Map<Id, string>([[spec.of, 'fan.of']]);
-  for (const [path, id] of named.slice(1)) {
+  for (const entry of named.slice(1)) {
+    const [path, id] = entry;
     const first = seen.get(id);
-    if (first !== undefined) throw new NormalizeError('fan-series-reused', path, `series '${id}' is used twice by the fan (${first} and ${path}) — each bound and the centre must be its own series, or the bands drawn are not the bands declared`, 'give each band its own low/high series; a shared bound means two intervals claim the same numbers');
+    if (first !== undefined) throw new NormalizeError('fan-series-reused', path, `series '${id}' is used twice by the fan (${first} and ${path}) — each bound and the centre must be its own series, or the bands drawn are not the bands declared`, 'give each band its own low/high series; a shared bound means two intervals claim the same numbers', undefined, pointer(entry));
     seen.set(id, path);
   }
-  if (spec.bands.length > 4) throw new NormalizeError('fan-too-many-bands', 'fan.bands', `${spec.bands.length} bands exceed the four the tint ladder can keep apart — past four the washes are indistinguishable and the exhibit claims a precision the reader cannot see`, 'four nested intervals is the legibility limit; drop or merge bands');
+  if (spec.bands.length > 4) throw new NormalizeError('fan-too-many-bands', 'fan.bands', `${spec.bands.length} bands exceed the four the tint ladder can keep apart — past four the washes are indistinguishable and the exhibit claims a precision the reader cannot see`, 'four nested intervals is the legibility limit; drop or merge bands', undefined, ['options', 'fan', 'bands']);
   if (variant === 'stacked-area' || variant === 'stacked100-area') throw new NormalizeError('fan-composition-conflict', 'variant', `variant '${variant}' stacks each series onto the ones below it; a band around one member of a composition bounds nothing the reader can see, because the member's own position depends on its neighbours' values`, "use variant 'line' for a fan, and a separate exhibit for the composition");
   if (isArea) throw new NormalizeError('fan-area-conflict', 'variant', `variant '${variant}' fills from the trajectory down to the baseline with an opaque fill that paints OVER the lower half of every band — the reader would see only the upper edge of each interval, i.e. a one-sided uncertainty, while the legend key beside it names the whole interval`, "use variant 'line' for a fan — the fan IS the fill, and a second fill under it hides half of what it declares");
-  if (rebase100) throw new NormalizeError('fan-rebase-conflict', 'rebase100', 'rebase100 divides EACH series by its OWN value at the base category, so the bounds and the centre are rescaled by different divisors and the bands stop nesting — the fan would still be drawn, and would be wrong', 'rebase the numbers before authoring them, so centre and bounds share one base, or drop rebase100');
-  if (gapFill) throw new NormalizeError('fan-gapfill-conflict', 'gapFill', 'gapFill and fan are two wash systems in one plot — a reader cannot tell an uncertainty band from a shaded difference, and the picture would answer neither question', 'keep the fan and drop gapFill, or split them into two exhibits');
+  if (rebase100) throw new NormalizeError('fan-rebase-conflict', 'rebase100', 'rebase100 divides EACH series by its OWN value at the base category, so the bounds and the centre are rescaled by different divisors and the bands stop nesting — the fan would still be drawn, and would be wrong', 'rebase the numbers before authoring them, so centre and bounds share one base, or drop rebase100', undefined, ['options', 'rebase100']);
+  if (gapFill) throw new NormalizeError('fan-gapfill-conflict', 'gapFill', 'gapFill and fan are two wash systems in one plot — a reader cannot tell an uncertainty band from a shaded difference, and the picture would answer neither question', 'keep the fan and drop gapFill, or split them into two exhibits', undefined, ['options', 'gapFill']);
 }
 
 function buildBands(input: {
@@ -108,6 +115,7 @@ function buildBands(input: {
         `fan.bands[${k}]`,
         `band '${band.label}' is inverted at category '${catLabel(ci)}': low '${band.low.id}' = ${lo} is above high '${band.high.id}' = ${hi}`,
         'swap the low and high series ids for this band — the engine will not swap them for you, because a silently corrected bound hides which series is actually which',
+        undefined, ['options', 'fan', 'bands', k],
       );
       band.widths[ci] = hi - lo;
     });
@@ -135,6 +143,7 @@ function validateNesting(input: {
         `fan.bands[${k + 1}]`,
         `bands are not nested at category '${cats[ci]!.label ?? cats[ci]!.id}': band ${k} '${outer.label}' spans ${ol}..${oh} and does not contain band ${k + 1} '${inner.label}' spanning ${il}..${ih} — bands must be authored OUTERMOST FIRST`,
         'reorder the bands outermost-first in the document, or fix the bound values; the engine will not reorder them, because a reordered fan hides an authoring error the reader can never see',
+        undefined, ['options', 'fan', 'bands', k + 1],
       );
     }
   }
@@ -159,6 +168,7 @@ function validateCenter(input: {
       'fan.of',
       `the central series '${of.id}' = ${center} at category '${cats[ci]!.label ?? cats[ci]!.id}' lies outside its innermost band '${band.label}' (${lo}..${hi}) — the centre and the bounds do not describe the same quantity`,
       'check that fan.of names the central trajectory and that the bound series are aligned to the same categories; a fan whose centre escapes its own interval is drawing two different series as one',
+      undefined, ['options', 'fan', 'of'],
     );
   }
 }
@@ -181,7 +191,7 @@ export function resolveFan(input: {
   validateDeclaration({ spec, seriesById, seriesNorm, variant, isArea, rebase100, gapFill });
   const of = seriesById.get(spec.of)!;
   const ofRow = pv[rowOf.get(of)!]!;
-  if (ofRow.every((value) => value === null)) throw new NormalizeError('fan-center-empty', 'fan.of', `the central series '${of.id}' is null in every category — a fan with no trajectory is bands around nothing`, 'give the central series values, or point fan.of at the series that carries the projection');
+  if (ofRow.every((value) => value === null)) throw new NormalizeError('fan-center-empty', 'fan.of', `the central series '${of.id}' is null in every category — a fan with no trajectory is bands around nothing`, 'give the central series values, or point fan.of at the series that carries the projection', undefined, ['options', 'fan', 'of']);
   const bands = buildBands({ spec, seriesById, cats, pv, rowOf });
   validateNesting({ bands, cats, pv, rowOf });
   validateCenter({ of, ofRow, band: bands[bands.length - 1]!, cats, pv, rowOf });

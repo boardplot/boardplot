@@ -847,13 +847,13 @@ function normalizeStatusInput(
   states: StatusState[];
 } {
   if (!data || !Array.isArray(data.rows) || data.rows.length === 0) {
-    throw new NormalizeError('empty-data', 'rows', 'status requires at least one row');
+    throw new NormalizeError('empty-data', 'rows', 'status requires at least one row', undefined, undefined, ['data', 'rows']);
   }
   if (!Array.isArray(data.columns) || data.columns.length === 0) {
-    throw new NormalizeError('empty-data', 'columns', 'status requires at least one column');
+    throw new NormalizeError('empty-data', 'columns', 'status requires at least one column', undefined, undefined, ['data', 'columns']);
   }
   if (!Array.isArray(data.cells)) {
-    throw new NormalizeError('invalid-data', 'cells', 'status cells must be an array');
+    throw new NormalizeError('invalid-data', 'cells', 'status cells must be an array', undefined, undefined, ['data', 'cells']);
   }
   if (!Array.isArray(options?.states) || options.states.length === 0) {
     throw new NormalizeError(
@@ -873,7 +873,7 @@ function normalizeStatusInput(
 
   const rows = data.rows.map((row, index) => {
     if (!row?.id) {
-      throw new NormalizeError('missing-id', `rows[${index}]`, 'status row requires an id');
+      throw new NormalizeError('missing-id', `rows[${index}]`, 'status row requires an id', undefined, undefined, ['data', 'rows', index]);
     }
     return { id: row.id, label: row.label ?? row.id };
   });
@@ -883,6 +883,7 @@ function normalizeStatusInput(
         'missing-id',
         `columns[${index}]`,
         'status column requires an id',
+        undefined, undefined, ['data', 'columns', index],
       );
     }
     return { id: column.id, label: options.columnOverrides?.[column.id]?.label ?? column.label ?? column.id };
@@ -896,6 +897,7 @@ function normalizeStatusInput(
         'unknown-row',
         `cells[${index}].row`,
         `status cell references unknown row '${cell.row}'`,
+        undefined, undefined, ['data', 'cells', index, 'row'],
       );
     }
     if (!columnIds.has(cell.col)) {
@@ -903,6 +905,7 @@ function normalizeStatusInput(
         'unknown-column',
         `cells[${index}].col`,
         `status cell references unknown column '${cell.col}'`,
+        undefined, undefined, ['data', 'cells', index, 'col'],
       );
     }
     const binding = `${cell.row}\u0000${cell.col}`;
@@ -911,6 +914,7 @@ function normalizeStatusInput(
         'duplicate-binding',
         `cells[${index}]`,
         `status cell binding '${cell.row}/${cell.col}' is duplicated`,
+        undefined, undefined, ['data', 'cells', index],
       );
     }
     bindings.add(binding);

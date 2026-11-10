@@ -249,6 +249,7 @@ function lineVariant(options: LineOptions, isBump: boolean, seriesNorm: NormSer[
         'bump-variant-conflict',
         'valueAxis.percent',
         "variant 'bump' plots derived ranks; valueAxis.percent promotes the chart to a 100% area composition, which ranks cannot form — drop one of the two",
+        undefined, undefined, ['options', 'valueAxis', 'percent'],
       );
     }
     // An author who wanted percent-formatted lines gets shares of a stacked whole without a word.
@@ -751,7 +752,7 @@ export function resolveLineDomain(data: LineChartData, input: LineOptions, env: 
   let dataSeries = seriesNorm.filter((s) => s.role !== 'reference');
   let refSeries = seriesNorm.filter((s) => s.role === 'reference');
   if (dataSeries.length === 0) {
-    throw new NormalizeError('empty-data', 'series', 'line requires at least one data-role series');
+    throw new NormalizeError('empty-data', 'series', 'line requires at least one data-role series', undefined, undefined, ['data', 'series']);
   }
   const seriesById = new Map(seriesNorm.map((series) => [series.id, series] as const));
   const targets = collectTargets(seriesNorm, cats, options, warnings);

@@ -104,7 +104,7 @@ function mekkoSeriesRoles(options: MekkoOptions, seriesNorm: NormSer[], warnings
   }
   const series = seriesNorm.filter((s) => s.role !== 'reference' && s !== widthSer);
   if (series.length === 0) {
-    throw new NormalizeError('empty-data', 'series', 'mekko requires at least one data-role series');
+    throw new NormalizeError('empty-data', 'series', 'mekko requires at least one data-role series', undefined, undefined, ['data', 'series']);
   }
   // One value per category cannot hold several series: draw them as stacked columns rather than drop all but the first.
   if (options.variant === 'bar' && series.length > 1) {

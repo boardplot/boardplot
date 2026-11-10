@@ -257,6 +257,34 @@ describe('refusal contract', () => {
       .toMatch(/^Use bridge-dark, standard-dark or notation-dark;/);
   });
 
+  // These refusals named a bracket path or a bare list name, so the caller got an empty path or one at the chart root (/series), and a tornado named the wrong series.
+  it('points chart refusals at the authored value, item or list', () => {
+    const errors = (type: string, edit: (spec: Node) => void, id?: string) => {
+      const fixture = getFixtures(type).find((entry) => id === undefined || entry.id === id)!;
+      const spec = structuredClone({ type, data: fixture.data, options: fixture.options ?? {} }) as Node;
+      edit(spec);
+      return render({ spec }).body.errors as (Finding & { received?: unknown })[];
+    };
+    // A { bandId, value } record in reversed band order: the pointer names the record's value.
+    expect(errors('pyramid', (s) => {
+      const bands = s.data.bands as Node[];
+      s.data.groups[0].values = (s.data.groups[0].values as number[]).map((value, i) => ({ bandId: bands[i]!.id, value })).reverse();
+      s.data.groups[0].values[1].value = -1;
+    })[0]).toMatchObject({ code: 'pyramid-negative-value', path: '/data/groups/0/values/1/value', received: { type: 'number', value: -1 } });
+    // The anchored item is found by its id '1', not read as index 1.
+    expect(errors('gantt', (s) => {
+      s.data.rows[2].items[0].id = '1';
+      s.data.rows[2].items[0].anchor = { toItemId: 'nope', edge: 'end' };
+    })[0]).toMatchObject({ code: 'unknown-anchor', path: '/data/rows/2/items/0/anchor/toItemId', received: { type: 'string', value: 'nope' } });
+    expect(errors('pie', (s) => { s.data.series[0].values = (s.data.series[0].values as number[]).map(() => 0); })[0]).toMatchObject({ code: 'empty-data', path: '/data/series' });
+    // With a reference series first, the short high case is the third authored series, not the second.
+    expect(errors('bar', (s) => {
+      const high = (s.data.series as Node[]).find((entry) => entry.id === 'high')!;
+      high.values = (high.values as unknown[]).slice(1);
+      s.data.series.unshift({ id: 'ref', label: 'Ref', role: 'reference', values: s.data.categories.map(() => 1) });
+    }, 'dcf-npv-sensitivity')[0]).toMatchObject({ code: 'length-mismatch', path: '/data/series/2/values' });
+  });
+
   it('points a reversed slope at the bump chart', () => {
     const [error] = cliErrors('slope', { valueAxis: { reverse: true } });
     expect(error!.suggest).toBe("Remove 'valueAxis.reverse'; for ranks with 1 on top, draw type 'line' with options.variant 'bump' and options.bump.direction 'lowerIsBetter'; to flip a numeric scale, draw type 'line' with options.valueAxis.reverse.");

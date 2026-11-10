@@ -510,7 +510,7 @@ function orderPanels(
     const series = data?.series;
     if (!Array.isArray(series)) return null;
     const categories = Array.isArray(data?.categories) ? data.categories.map(normalizeCategory) : undefined;
-    const normalized = categories ? series.map((entry, si) => ({ ...entry, values: normalizeSeriesValues(entry, categories, si) })) : series;
+    const normalized = categories ? series.map((entry, si) => ({ ...entry, values: normalizeSeriesValues(entry, categories, si, 'values', null) })) : series;
     // The child reads the same category-ordered cells that decide its panel's rank.
     if (categories) panel.data = { ...data, categories, series: normalized };
     const measured = normalized.filter((entry) => entry?.role !== 'reference');
@@ -1182,6 +1182,7 @@ function layoutAuthoredGrid(
             `panels[${index}]`,
             `panels '${rawPanels[first]!.id}' and '${rawPanels[index]!.id}' both occupy row ${r}, column ${c}`,
             'move a panel or reduce its span',
+            undefined, ['data', 'panels', index],
           );
         }
         occupant.set(`${r}:${c}`, index);
