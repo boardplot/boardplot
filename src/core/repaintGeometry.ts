@@ -3,10 +3,13 @@ import { refreshPaintWarnings } from './paintWarnings';
 import { groundEdges } from './label/emit';
 import { paintColor, resolvePalette, resolveTheme } from './theme';
 import type { GridMarks } from './grid/layoutGrid';
-import type { Geometry, Paint, SceneNode } from './types/scene';
+import type { Geometry, LintWarning, Paint, SceneNode } from './types/scene';
 import type { Theme, ThemeRef } from './types/theme';
 
 interface SceneThemeBinding { prefix: string; theme: ThemeRef }
+
+/** A paint warning the repaint wrote again is relative to the panel: it keeps no field and no fix in the grid. */
+const withoutPointer = ({ field: _field, fix: _fix, ...warning }: LintWarning): LintWarning => warning;
 
 /** Re-evaluate paint and its diagnostics without changing a coordinate or derived value. */
 export function repaintGeometry(geometry: Geometry, theme: Theme, options?: { palette?: string }): Geometry {
@@ -27,10 +30,18 @@ export function repaintGeometry(geometry: Geometry, theme: Theme, options?: { pa
       const chart = panel.chart;
       if (!chart || chart.warningOffset === undefined) continue;
       const child = repaintGeometry(chart.geometry, chart.theme ? resolveTheme(chart.theme) : theme, chart.options);
+      // A warning the repaint kept is the one the grid passed on, with its field and fix moved into the authored panel.
+      // The offset can be off where the grid dropped a panel warning, so only the matching warning counts.
+      const passedOn = new Map(chart.geometry.warnings.flatMap((warning, index) => {
+        const forwarded = warnings[chart.warningOffset! + index];
+        return forwarded?.code === warning.code && forwarded.detail?.panelId === panel.id && forwarded.message === `[${panel.id}] ${warning.message}`
+          ? [[warning, forwarded] as const] : [];
+      }));
       warnings.splice(chart.warningOffset, chart.geometry.warnings.length,
-        ...child.warnings.map(warning => ({
-          ...warning,
+        ...child.warnings.map(warning => passedOn.get(warning) ?? ({
+          ...withoutPointer(warning),
           message: `[${panel.id}] ${warning.message}`,
+          detail: { ...warning.detail, panelId: panel.id },
           ...(chart.warningOwnerPrefix === undefined ? {} : {
             owner: warning.owner ? {
               ...warning.owner,

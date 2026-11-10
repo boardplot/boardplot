@@ -548,3 +548,19 @@ it('lists a heatmap matrix once in the prepared chart', async () => {
   const lists = new Set(result.scene.flatMap(node => node.t === 'text' && 'token' in node.ink && node.ink.theme?.kind === 'contrast-ink' && node.ink.theme.matrix ? [node.ink.theme.matrix] : []));
   expect(lists.size).toBe(1);
 });
+
+// A grid that drops a nested panel's warning shifts the next panel's offset; repaint then kept a warning about the previous theme in the nested panel's place.
+it('drops a grid panel warning the new theme no longer raises, behind a nested grid', () => {
+  const long = 'Pneumonoultramicroscopicsilicovolcanoconiosis'.repeat(2);
+  const column = (id: string) => ({ id, type: 'column', data: { categories: [{ id: 'q1', label: long }, { id: 'q2', label: 'Q2' }], series: [{ id: 's', values: [10, 12] }] } });
+  const theme = (focus: string) => ({ preset: 'standard', overrides: { color: { focus } } });
+  const request = (focus: string) => ({ type: 'grid', theme: theme(focus), data: { panels: [
+    { id: 'nested', type: 'grid', data: { panels: [column('c1'), column('c2')] }, options: { sharedAxis: 'category' } },
+    { id: 'wf', type: 'waterfall', data: { items: [{ id: 'a', label: 'Start', type: 'total', value: 10 }, { id: 'd', label: 'Delta', value: 2 }, { id: 't', label: 'End', type: 'total' }] }, options: { highlight: ['d'] } },
+  ] }, options: { columns: [1, 1], size: { width: 600, height: 1000 }, margin: { left: 0, right: 0, top: 0, bottom: 0 }, gutter: 0 } }) as never;
+  const red = layoutResolvedRequest(resolveChartRequest(request('#d62728')));
+  const blue = layoutResolvedRequest(resolveChartRequest(request('#1f5fbf')));
+  if (red.refused || blue.refused) throw new Error('refused');
+  expect(red.warnings.map(w => w.code)).toContain('highlight-reads-as-loss');
+  expect(repaintGeometry(red, resolveTheme(theme('#1f5fbf') as never)).warnings.map(w => w.code)).toEqual(blue.warnings.map(w => w.code));
+});

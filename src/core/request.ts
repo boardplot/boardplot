@@ -904,7 +904,8 @@ export function measureLayout(request: ResolvedChartRequest, result: LayoutResul
 
 /** Exact plot repairs may spend layouts; rendering only reports its estimate. */
 function measuredPlotAdvice(request: ResolvedChartRequest, result: LayoutResult, layoutAt: LayoutCall<any, any, any>): void {
-  const warning = result.warnings.find(w => w.code === 'plot-under-floor');
+  // A grid panel's need is the panel's, which render reports too: no grid size is searched for it.
+  const warning = result.warnings.find(w => w.code === 'plot-under-floor' && w.detail?.panelId === undefined);
   if (!warning || result.refused || isRefused(result)) return;
   const clean = (size: Size) => {
     const probe = layoutAt({ ...request.options, size });
