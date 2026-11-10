@@ -982,15 +982,25 @@ it('adds a reference line value unless the name holds that same number', () => {
   expect(text(-20, 'Floor -20')).toBe('Floor -20');
 });
 
-// A percent change of operands near 1e12 was cleaned at the operands' scale, so the claim recorded 10 for a printed +11.8%.
-it('records a percent change at its own precision, whatever the size of its operands', () => {
-  const claims = (type: string, data: unknown) => claimsForChart(type, requireGeometry(layoutResolvedRequest(resolveChartRequest({ type, data, options: { size: { width: 480 } } } as never))));
+// A quotient or fit was cleaned at its operands' scale: a percent change of operands near 1e12 recorded 10 for a
+// printed +11.8%, and a slope of 1e-6 over x in the millions recorded 0. Equal totals must still record no change.
+it('records a quotient at its own precision, whatever the size of its operands', () => {
+  const claims = (type: string, data: unknown, options: object = {}, annotations?: unknown[]) => claimsForChart(type, requireGeometry(layoutResolvedRequest(
+    resolveChartRequest({ type, data, options: { size: { width: 480 }, ...options }, ...(annotations ? { annotations } : {}) } as never))));
   const kpi = claims('kpi', { label: 'Net revenue', value: 4.82e12, compare: [{ vs: 4.31e12, label: 'YoY' }] });
   expect(kpi.find((claim) => claim.op === 'percentDelta@1')?.output.raw).toBeCloseTo(11.833, 3);
-  const table = claims('table', {
+  const table = (calc: unknown) => claims('table', {
     columns: [{ id: 'kpi', kind: 'rowLabel', label: 'KPI' }, { id: 'now', kind: 'value', label: 'Now' }, { id: 'before', kind: 'value', label: 'Before' },
-      { id: 'change', kind: 'computed', label: 'Change', format: '+1.0%', calc: { op: 'percentDelta', a: 'now', b: 'before' } }],
+      { id: 'change', kind: 'computed', label: 'Change', format: '+1.0%', calc }],
     rows: [{ id: 'sessions', label: 'Sessions', cells: { now: 118.4e9, before: 121.9e9 } }],
-  });
-  expect(table.find((claim) => claim.id === 'table:sessions:change')?.output.raw).toBeCloseTo(-2.871, 3);
+  }).find((claim) => claim.id === 'table:sessions:change')?.output.raw;
+  expect(table({ op: 'percentDelta', a: 'now', b: 'before' })).toBeCloseTo(-2.871, 3);
+  expect(table({ op: 'abs', of: { op: 'percentDelta', a: 'now', b: 'before' } })).toBeCloseTo(2.871, 3);
+  const trend = claims('scatter', { points: [{ id: 'a', x: 0, y: 0 }, { id: 'b', x: 1e6, y: 1 }, { id: 'c', x: 2e6, y: 2 }] }, { trend: true });
+  expect(trend.find((claim) => claim.op === 'ols-slope@2')?.output.raw).toBeCloseTo(1e-6, 12);
+  expect(trend.find((claim) => claim.op === 'ols-r2@2')?.output.raw).toBeCloseTo(1, 9);
+  const growth = claims('line', { categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }],
+    series: [{ id: 'x', label: 'X', values: [0.3, 0.1] }, { id: 'y', label: 'Y', values: [0, 0.2] }] }, { variant: 'stacked-area' },
+  [{ id: 'growth', kind: 'diff', from: 'a', to: 'b', mode: 'relative' }]);
+  expect(growth.find((claim) => claim.op.startsWith('annotation-diff-relative'))?.output.raw).toBe(0);
 });

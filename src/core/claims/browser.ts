@@ -434,22 +434,29 @@ function claimLabelIds(type: string, geo: Geometry<object, object>): Map<string,
   return ids;
 }
 
-// By op name: a table calc records its expression, "percentDelta($0,$1)@1".
-const QUOTIENT_OPS: ReadonlySet<string> = new Set(['cohort-retention', 'cohort-average', 'funnel-conversion', 'pareto-cumshare', 'pareto-vital-few-share',
-  'percentOf', 'ratio', 'share', 'percentDelta', 'div', 'annotation-diff-relative', 'annotation-cagr', 'annotation-attainment']);
+// Ops that only add and subtract their operands, so the result shares their scale. A table calc records its
+// expression ("sub(ref($0),ref($1))@1"): it is additive when every op in it is.
+const ADDITIVE_OPS: ReadonlySet<string> = new Set(['sum', 'mean', 'difference', 'waterfall-total', 'likert-net', 'pvm-effect', 'pvm-reconciliation',
+  'rounding-gap', 'annotation-delta', 'annotation-diff-absolute', 'add', 'sub', 'delta', 'abs', 'ref', 'lit']);
+const SUBTRACTING_OPS: ReadonlySet<string> = new Set(['sub', 'delta', 'difference', 'percentDelta', 'annotation-diff-relative', 'annotation-cagr']);
 
 /**
- * A derived value without float residue: 12 significant digits at the
- * scale of its largest operand, so a PVM residual of 5.7e-14 beside effects in
- * the hundreds records 0 and a CAGR records 10, not 10.000000000000009. The
- * change stays far inside the receipt tolerance (1e-9 of the same scale).
+ * A derived value without float residue, kept at 12 significant digits. A sum or difference is cleaned
+ * at the scale of its largest operand, so a PVM residual of 5.7e-14 beside effects in the hundreds records 0.
+ * Every other op (a quotient, a fit, a nested expression) leaves its operands' scale: 1 of 100,000,000 is a
+ * true 1e-8 and a slope of 1e-6 over x in the millions is no residue, so it is cleaned at its own scale
+ * (a CAGR records 10, not 10.000000000000009). A quotient of a difference below 1e-12 is the difference's
+ * residue (equal totals summed in another order) and records 0. The change stays far inside the receipt
+ * tolerance (1e-9 of the same scale).
  */
 function withoutResidue(claim: ClaimRecordV1): ClaimRecordV1 {
   const raw = claim.output.raw;
   if (claim.kind === 'observed' || claim.kind === 'authored' || raw === null || !Number.isFinite(raw) || raw === 0) return claim;
+  const ops = claim.op.replace(/@\d+$/, '').match(/[a-z][\w-]*/gi) ?? [];
+  const additive = ops.every(op => ADDITIVE_OPS.has(op));
+  if (!additive && Math.abs(raw) < 1e-12 && ops.some(op => SUBTRACTING_OPS.has(op))) return { ...claim, output: { ...claim.output, raw: 0 } };
   let scale = Math.abs(raw);
-  // A quotient leaves its operands' scale: 1 of 100,000,000 is a true 1e-8, not residue.
-  for (const input of QUOTIENT_OPS.has(claim.op.replace(/[(@].*$/, '')) ? [] : claim.inputs) {
+  for (const input of additive ? claim.inputs : []) {
     if (input.value !== null && Number.isFinite(input.value)) scale = Math.max(scale, Math.abs(input.value));
   }
   const digits = 12 - (Math.floor(Math.log10(scale)) - Math.floor(Math.log10(Math.abs(raw))));
