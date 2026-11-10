@@ -1154,6 +1154,11 @@ describe('TableChart reads the footer rule notes model', () => {
     expect(head()).toMatch(/^week\u00a01$/iu);
     act(() => root.render(<TableChart data={weeks(36)} target="report" />));
     expect(head()).toMatch(/^week 1$/iu);
+    // A sort chevron shares the cell: a head that fits only without it broke inside its last word.
+    act(() => root.render(<TableChart data={weeks(76)} target="report" frameFill="none" />));
+    expect(head()).toMatch(/^week\u00a01$/iu);
+    act(() => root.render(<TableChart data={weeks(76)} target="report" frameFill="none" sortable />));
+    expect(head()).toMatch(/^week 1$/iu);
   });
 
   // The React source line doubled a bold source word ("Source: **Source:** …") and printed a bare colon under an empty source word.

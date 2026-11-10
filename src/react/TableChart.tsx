@@ -81,6 +81,7 @@ import {
   ENGINE_NOTES,
   SOFT_LABEL_CAP,
   LABEL_WRAP_FLOOR,
+  SORT_CHEVRON_RESERVE,
   type TableFonts,
 } from '../core/charts/table/tracks';
 import { DEFAULT_EMPTY_MESSAGE } from '../core/emptyData';
@@ -1066,14 +1067,16 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     size === 'container' && !container.printing ? layoutRequest?.size.width : undefined);
   // The core's head text: a short last word stays on the line before it ("WEEK 1"), and a track
   // narrower than a glued word takes the head broken at its spaces, as the SVG table draws it.
+  // A sort button shares the cell with its chevron, as the width solver reserves it.
   const headTexts = useMemo(() => measured === undefined ? undefined : new Map(allColumns.map((column) => {
     const glued = measured.columnHeaderText(column);
     const track = measured.widths.get(column.id);
     if (track === undefined || !glued.includes('\u00a0')) return [column.id, glued] as const;
-    const room = Math.round(track) - 2 * padX - (column.kind === 'rowLabel' ? measured.rowIndent(0) : 0);
+    const room = Math.round(track) - 2 * padX - (column.kind === 'rowLabel' ? measured.rowIndent(0) : 0)
+      - (sortableIds.has(column.id) ? SORT_CHEVRON_RESERVE : 0);
     const fits = glued.split(' ').every((word) => width.measure(word.replace(/\u00a0/gu, ' '), measured.fonts.header).width <= room);
     return [column.id, fits ? glued : glued.replace(/\u00a0/gu, ' ')] as const;
-  })), [measured, allColumns, padX, width.measure]);
+  })), [measured, allColumns, padX, width.measure, sortableIds]);
   const headFonts = measured?.fonts;
   const frameRoom = !rowToFrame || tableOptions?.frameFill === 'none' ? undefined
     : available === undefined ? undefined : available - (measured?.spacerTotal ?? 0);
