@@ -1917,8 +1917,9 @@ export function seriesRasterFormatter(
     return made;
   };
   const plainSpec = (series: { unit?: string }): NumberFormatSpec => {
-    const wholeFrom = !defaultExample && unitMagnitude(series.unit) ? 100 : undefined;
-    const currencyWhole = currencyWholeNumbers(series.unit, target);
+    // A set keeps one decimal count for a series with its own unit too.
+    const wholeFrom = !defaultExample && !set && unitMagnitude(series.unit) ? 100 : undefined;
+    const currencyWhole = !set && currencyWholeNumbers(series.unit, target);
     // A series unit that names a scale gets no engine scale on top.
     const unscaled = autoMagnitude && unitMagnitude(series.unit) !== undefined;
     const base = example || series.unit === undefined || (wholeFrom === spec.wholeFrom && currencyWhole === Boolean(spec.currencyWhole) && !unscaled) ? spec
@@ -1999,9 +2000,14 @@ export function setFormatPlan(
   const spec: NumberFormatSpec = { ...defaultFormatSpec(locale), suffix: '%', decimals };
   const signedSpec = { ...spec, signed: true };
   const fmt = (value: number) => formatWithSpec(value, spec);
+  // A series or cell format wins over the set, as on the value path.
+  const byExample = memoFormatterFromExample(locale);
   return {
     spec, fmt, fmtSigned: (value) => formatWithSpec(value, signedSpec), fmtPercent: fmt, percentSpec: spec,
-    forSeries: () => fmt, specForSeries: () => spec, roundsToZeroAt: (value) => roundsToZero(value, decimals),
+    forSeries: (series, cellFormat) => cellFormat ? byExample(cellFormat, series.unit) : series.format ? byExample(series.format, series.unit) : fmt,
+    specForSeries: (series) => series.format ? exampleSpec(series.format, locale, series.unit) : spec,
+    roundsToZeroAt: (value, series = {}, cellFormat) => cellFormat || series.format
+      ? byExample((cellFormat ?? series.format)!, series.unit)(value) === byExample((cellFormat ?? series.format)!, series.unit)(0) : roundsToZero(value, decimals),
     magnitude: 'none', decimals,
   };
 }

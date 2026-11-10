@@ -286,6 +286,10 @@ describe('setFormatPlan', () => {
     expect(texts([5, 2, 1])).toBe('5 · 2 · 1');
     expect(texts([1.2e6, 0, 3.4e5])).toBe('1.20M · 0.00M · 0.34M');
     expect(texts([13.9, 6.5], { locale: 'de' })).toBe('13,9 · 6,5');
+    // A series unit keeps the set's one decimal count: no whole currency or unit rule per series.
+    const euros = setFormatPlan([1200, 1.2], { target: 'report', unit: 'EUR' });
+    expect([1200, 1.2].map(euros.forSeries({ unit: 'EUR' })).join(' · ')).toBe('1,200.0 · 1.2');
+    expect([1200, 1.2].map(euros.forSeries({ unit: 'EURm' })).join(' · ')).toBe('1,200.0 · 1.2');
   });
 
   // Prevents a nonzero value that prints as 0: the set lifts its decimals up to the automatic cap, and past the cap the value prints its bound.
@@ -294,6 +298,7 @@ describe('setFormatPlan', () => {
     expect(texts([1.2e6, 8e3])).toBe('1.200M · 0.008M');
     expect(texts([1.2e9, 3e4])).toBe('1.2B · <0.1B');
     expect(texts([1.18e9, 2e4, 3e4])).toBe('1.18B · <0.01B · <0.01B');
+    expect(texts([1.2e9, 1e4, 2e4])).toBe('1.2B · <0.1B · <0.1B');
   });
 
   // Prevents the set rule from overriding what an author wrote: a chart, series or cell format keeps its own scale and decimals.
@@ -310,5 +315,9 @@ describe('setFormatPlan', () => {
     expect(texts([31.02, 71, 48], { role: 'share' })).toBe('31% · 71% · 48%');
     expect(texts([31.02, 0.04], { role: 'share' })).toBe('31.02% · 0.04%');
     expect(texts([9.7, 31], { role: 'share', format: '9%' })).toBe('10% · 31%');
+    expect(texts([9.7, 31], { role: 'share', format: '1.00%' })).toBe('9.70% · 31.00%');
+    const shares = setFormatPlan([9.7, 31], { role: 'share' });
+    expect(shares.forSeries({ format: '1.00%' })(9.7)).toBe('9.70%');
+    expect(shares.forSeries({}, '1.00%')(9.7)).toBe('9.70%');
   });
 });
