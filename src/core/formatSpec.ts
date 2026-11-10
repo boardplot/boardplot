@@ -1732,11 +1732,12 @@ export function unscaledFormatLint(
 const SEVEN_DIGITS = /(?<![\d.,])(?:\d{1,3}([,.\s\u00a0\u202f'’])\d{3}(?:\1\d{3})+|\d{7,})(?!\d)/u;
 const NOT_VALUE_LABELS = new Set(['category', 'series', 'axisTitle']);
 
-/** The texts of the drawn value labels and axis ticks: what a reader reads as numbers. */
+/** The texts of the drawn value labels, axis ticks and numeric table cells: what a reader reads as numbers. */
 function drawnNumberTexts(geo: { labels?: readonly PlacedLabel[]; scene: readonly SceneNode[] }): string[] {
   return [
     ...(geo.labels ?? []).flatMap((label) => (label.hidden || NOT_VALUE_LABELS.has(label.kind) ? [] : [label.text])),
-    ...geo.scene.flatMap((node) => (node.t === 'text' && node.id.includes(':tick:') ? [node.lines.join(' ')] : [])),
+    ...geo.scene.flatMap((node) => (node.t === 'text' && (node.id.includes(':tick:') || (node.part === 'tableCell' && node.role !== 'category'))
+      ? [node.lines.join(' ')] : [])),
   ];
 }
 

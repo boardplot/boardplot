@@ -285,7 +285,9 @@ export function censusCase(type, fixture, width, localeName, measured) {
     .map((entry) => [entry.id, SCALE[dataMagnitude(entry.unit)]]));
   const ownerScale = (owner) => seriesScale.get(owner?.seriesId) ?? dataScale;
   // Every unit a chart, a panel or a series authors ("$m" on a grid panel): the scales its data may be in.
-  const authoredScales = type === 'table' ? [] : [...new Set(unitStrings({ options, data }).map(dataMagnitude).filter(Boolean).map((letter) => SCALE[letter]))];
+  // A table that prints options.unit as its unit ("in $k" over whole figures) holds its data in it too.
+  const tableUnitScale = type === 'table' && unitLetter && !(geometry.warnings ?? []).some((warning) => warning.code === 'table-unit-overridden') ? [SCALE[unitLetter]] : [];
+  const authoredScales = type === 'table' ? tableUnitScale : [...new Set(unitStrings({ options, data }).map(dataMagnitude).filter(Boolean).map((letter) => SCALE[letter]))];
   const scalesFor = (owner) => [...new Set([ownerScale(owner), ...authoredScales])];
 
   // Owner -> printed texts in the SVG: table cells by id, chart labels by owner.
