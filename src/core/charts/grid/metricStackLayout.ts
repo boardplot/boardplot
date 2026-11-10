@@ -566,7 +566,8 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   const solved=solveLabels(requests,occupied,{density:options.labelDensity??'full',pins:options.labelPlacements??{},labelOffsets:options.labelOffsets,measure,plot:frame.plot,canvas:{x:0,y:0,w:size.width,h:size.height},darkInk:theme.color.ink,lightInk:theme.color.inkInverse,labelPad:0});
   const fonts = new Map(requests.map(request => [request.id, request.font]));
   for(const label of solved.placed) { label.ink=inks.get(label.id)??label.ink; label.font=fonts.get(label.id); }
-  const hidden=solved.placed.filter(l=>l.hidden&&!yielding.has(l.id));
+  // A label the density or redundancy gate drops is left out on purpose; only a label that found no seat failed.
+  const hidden=solved.placed.filter(l=>(l.hidden==='collision'||l.hidden==='tooSmall')&&!yielding.has(l.id));
   const probe=(options as { [GUTTER_PROBE]?: boolean })[GUTTER_PROBE]===true;
   if(hidden.length&&probe)spacingError('options.size',`Metric stack cannot place ${hidden.map(l=>`'${l.text}'`).join(', ')} at ${size.width} × ${size.height} px`);
   // An authored gutter wider than the default gives way to the widest gutter that places every label.

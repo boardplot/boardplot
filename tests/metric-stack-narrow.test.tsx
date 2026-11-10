@@ -112,6 +112,14 @@ it("draws a long line panel under labelDensity 'minimal' with its latest value, 
   }
 });
 
+// Under 'minimal' the values the density gate drops counted as lost labels, so an authored wide gutter that fits gave way to the default.
+it("keeps an authored wide gutter under labelDensity 'minimal'", () => {
+  const drawn = render({ spec: { type: 'grid', data, options: { stack: { columnOverrides: { gutter: { width: 240 } } }, title: 'Starts rise', labelDensity: 'minimal', size: { width: 1200 } } } }).body as
+    { ok: boolean; warnings: { code: string }[] };
+  expect(drawn.ok).toBe(true);
+  expect(drawn.warnings.map(w => w.code)).not.toContain('generated-column-width-capped');
+});
+
 it('rounds a rate span once, from the unrounded window rate, at the panel decimals', () => {
   // Jan–Feb: 149 of 10,000 is 1.49%; May–Jun: 12,345 of 100,000 is 12.345%.
   const rates = {
