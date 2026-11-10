@@ -2102,13 +2102,6 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   const footnotes = [...autoFootnotes];
   // The † in the head points at its note, so it prints only where the note does.
   if (headMarksPartial) for (const column of resolvedColumns) if (partialColumnIds.has(column.id)) column.partial = true;
-  // A unit that only a head prints leaves with the head, so the reader needs to hear it.
-  if (options.columnHeads === false) {
-    const units = [...new Set(resolvedColumns.flatMap((column) => column.unitLabel ?? []))];
-    if (units.length > 0) warnings.push({ code: 'column-heads-unit-hidden', severity: 'warn', field: ['options', 'columnHeads'],
-      message: `columnHeads: false removes the only print of the unit ${units.join(', ')}`,
-      suggest: 'Name the unit in the subtitle or a footnote, or use formats that print it in each cell.' });
-  }
 
   const result: ResolveResult = {
     ...(zeroLifts.count === liftsBefore && rawLifts === 0 ? {} : { lifted: true as const }),
