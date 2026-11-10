@@ -878,6 +878,14 @@ export function removedNameWarnings(options: { theme?: unknown; palette?: unknow
   return warnings;
 }
 
+/** The way out of an unknown theme name: the themes whose name holds it as a word ('dark' names every dark theme) come first. */
+function unknownThemeSuggest(name: string): string {
+  const names = Object.keys(themes);
+  const word = name.toLowerCase();
+  const named = names.filter((candidate) => candidate.split('-').includes(word));
+  return named.length ? `Use ${named.length > 1 ? `${named.slice(0, -1).join(', ')} or ${named.at(-1)}` : named[0]}; the themes are ${names.join(', ')}.` : `Use one of: ${names.join(', ')}.`;
+}
+
 export function resolveTheme(ref?: ThemeRef): Theme {
   // The shipped default is Bridge. A document that wants the old look pins
   // `theme: 'boardroom'` (light) or `theme: 'standard-dark'` (dark) explicitly.
@@ -897,7 +905,7 @@ export function resolveTheme(ref?: ThemeRef): Theme {
       'unknown-theme',
       'options.theme',
       `unknown theme '${String(presetName)}'`,
-      Object.keys(themes).join(', '),
+      unknownThemeSuggest(String(presetName)),
     );
   }
   if (typeof ref === 'string' || !ref.overrides) return own(base);

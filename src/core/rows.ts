@@ -131,6 +131,10 @@ function readColumns(columns: unknown, shape: RowsShape): { contract: RowContrac
   if (missing !== undefined) {
     throw new InputError('invalid-argument', `columns.${missing} must name the source column that holds the ${missing}`, {
       path: `/columns/${missing}`, expected: { types: ['string'] },
+      // One series is still a series column: the rows carry no default series name.
+      suggest: missing === 'series'
+        ? 'For one series, add a source column with the same series name on every row and name it in columns.series.'
+        : `Name the source column that holds the ${missing} in columns.${missing}.`,
     });
   }
   return { contract: contract as RowContract, valueKind: valueKind as (typeof VALUE_KINDS)[number] };
