@@ -8,14 +8,15 @@ import '../src/core/geo/packs/dach';
 import { getChart } from '../src/core/registry';
 import { getFixtures, getRefusalExamples } from '../src/fixtures';
 import { canDraw, measure } from '../src/index';
-import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
+import { layoutResolvedRequest, measureLayout, resolveChartRequest } from '../src/core/request';
+import { typeClassCap } from '../src/core/theme';
 import { interactionRecords } from '../src/core/a11y/records';
 import { BoardplotTheme } from '../src/react/BoardplotTheme';
 import { layoutDiagram } from '../src/core/charts/diagram/layout';
 import type { DiagramData, DiagramMarks } from '../src/core/types/diagram';
 import { boundsOf, rectLineDistance, rectsOverlap } from '../src/core/geometry';
 import type { SlopeChartData } from '../src/core/types/data';
-import type { Geometry } from '../src/core/types/scene';
+import type { Geometry, LayoutResult } from '../src/core/types/scene';
 import { cutLabels } from '../src/core/label/omissions';
 import { render } from '../src/cli/render';
 import { measure as cliMeasure } from '../src/cli/measure';
@@ -736,6 +737,75 @@ it('names the size that render draws in measure', () => {
   expect(found).toBeLessThan(700);
   const fitted = { ...map, options: { ...map.options, size: { width: 720, height: Math.round((found - (drawn - 270)) * 10) / 10 } } };
   expect((render({ spec: fitted }).body as { size: { height: number } }).size.height).toBeCloseTo(found, 0);
+});
+
+describe('the cost of a size refusal', () => {
+  const at = (type: string, id: string, data: unknown, width: number) => {
+    const fixture = getFixtures(type).find((f) => f.id === id)!;
+    return resolveChartRequest({ type, data, options: { ...fixture.options, annotations: fixture.annotations, size: { width } } } as never);
+  };
+  const dataOf = (type: string, id: string) => getFixtures(type).find((f) => f.id === id)!.data;
+  // A React host measures a chart it rendered refused; the measure must not lay out the widths render advice already searched.
+  it('lays out each width once when a refused render is measured', () => {
+    const widths: number[] = [];
+    const heatmap = getChart('heatmap')!;
+    const layout = heatmap.layout;
+    const spy = vi.spyOn(heatmap, 'layout').mockImplementation((data, options) => {
+      const size = (options as { size?: { width: number; height?: number } }).size;
+      if (size && size.height === undefined && (options as { belowMinimum?: string }).belowMinimum !== 'refuse') widths.push(size.width);
+      return layout(data, options);
+    });
+    try {
+      const request = at('heatmap', 'torture-long-labels', structuredClone(dataOf('heatmap', 'torture-long-labels')), 320);
+      const refused = layoutResolvedRequest(request);
+      expect(refused.refused).toBe(true);
+      const measured = measureLayout(request, refused);
+      expect(measured.refused?.warnings[0]?.fix).toEqual(refused.warnings[0]?.fix);
+    } finally { spy.mockRestore(); }
+    expect(widths.length).toBeGreaterThan(5);
+    expect(new Set(widths).size).toBe(widths.length);
+  });
+
+  // Measure's full-chart search reads whether a stored width drew compact; a stored probe without its mode named a compact width as the minimum.
+  it('names a minimum width where a refused box draws in full', () => {
+    const data = structuredClone(dataOf('box', 'mixed-support-groups'));
+    const request = at('box', 'mixed-support-groups', data, 280);
+    const { minWidth } = measureLayout(request, layoutResolvedRequest(request));
+    expect((layoutResolvedRequest(at('box', 'mixed-support-groups', data, minWidth)) as Geometry).mode).not.toBe('compact');
+  });
+
+  // A grid prepares a new data object on every call, so a host that renders it refused again at another width searched every width again.
+  it('reuses the widths a refused grid searched when the host renders it at another width', () => {
+    const grid = getChart('grid')!;
+    const layout = grid.layout;
+    let calls = 0;
+    const spy = vi.spyOn(grid, 'layout').mockImplementation((data, options) => { calls++; return layout(data, options); });
+    const count = (run: () => LayoutResult) => { calls = 0; const result = run(); return [calls, result.warnings[0]] as const; };
+    try {
+      const data = structuredClone(dataOf('grid', 'status-panel-hatched-key'));
+      layoutResolvedRequest(at('grid', 'status-panel-hatched-key', data, 280));
+      const [again, advice] = count(() => layoutResolvedRequest(at('grid', 'status-panel-hatched-key', data, 300)));
+      const [fresh, freshAdvice] = count(() => layoutResolvedRequest(at('grid', 'status-panel-hatched-key', structuredClone(data), 300)));
+      expect(advice).toEqual(freshAdvice);
+      expect(again).toBeLessThan(fresh / 2);
+    } finally { spy.mockRestore(); }
+  });
+
+  // Advice copies the refusal it advises on, so render tried the smaller type class a second time for the copy.
+  it('tries the smaller type class once for a refused render', () => {
+    const table = getChart('table')!;
+    const layout = table.layout;
+    let capped = 0;
+    const spy = vi.spyOn(table, 'layout').mockImplementation((data, options) => {
+      if (typeClassCap() !== undefined && (options as { size?: { width: number } }).size?.width === 720) capped++;
+      return layout(data, options);
+    });
+    try {
+      const refused = layoutResolvedRequest(at('table', 'cohort-heat-calendar', structuredClone(dataOf('table', 'cohort-heat-calendar')), 720));
+      expect(refused.refused).toBe(true);
+    } finally { spy.mockRestore(); }
+    expect(capped).toBe(1);
+  });
 });
 
 // Prevents a pinned slope from refusing a 180–269 px slot where its end labels fit, from drawing a
