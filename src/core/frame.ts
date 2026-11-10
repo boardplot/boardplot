@@ -233,6 +233,8 @@ export interface FrameInput extends IdentityCollectionOptions, CompactSourceOpti
   legend?: { options: LegendOptions; items: LegendItemInput[] };
   /** The layout chose the key beside the plot itself, and checks the room itself: no fallback to the row above the plot. */
   sideKeyFixed?: boolean;
+  /** The chart does not fit its width with the key beside the plot: the key stands in the row above the plot. */
+  sideKeyGivesWay?: boolean;
   /** Automatic legend keys use the footnote token ('compact': the smaller of it and the secondary step); explicit keys keep axis type. */
   legendFont?: 'footnote' | 'compact';
   theme: Theme;
@@ -2534,13 +2536,15 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
       // rows fit the height; else the key stands in the row above the plot, as it does by default.
       const columnH = items.reduce((h, it) => h + Math.max(keyTextH(it), ringH(it)) + 4, -4);
       const plotW = size.width - margin.right - margin.left - sideLegendW - 16 - Math.max(0, input.plotInset?.left ?? 0);
-      const widthShort = plotW < SIDE_KEY_PLOT_SHARE * size.width;
+      const shareShort = plotW < SIDE_KEY_PLOT_SHARE * size.width;
+      const widthShort = shareShort || input.sideKeyGivesWay === true;
       if (widthShort || columnH > bottomY - topY) {
         warnings.push({
           code: 'legend-side-fallback',
           severity: 'warn',
-          message: widthShort
+          message: shareShort
             ? `the key stays in the row above the plot: a column beside it would leave the plot ${Math.round(Math.max(0, plotW))} px, under ${Math.round(SIDE_KEY_PLOT_SHARE * 100)}% of the ${Math.round(size.width)} px width`
+            : widthShort ? `the key stays in the row above the plot: with a column beside it the chart does not fit the ${Math.round(size.width)} px width`
             : `the key stays in the row above the plot: its ${Math.round(columnH)} px column is taller than the ${Math.round(Math.max(0, bottomY - topY))} px beside the plot`,
           suggest: widthShort ? 'Give the chart more width, or shorten the series names, to keep the key beside the plot.' : 'Give the chart more height, or show fewer series, to keep the key beside the plot.',
           field: ['options', 'legend'],

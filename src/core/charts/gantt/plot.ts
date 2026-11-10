@@ -22,7 +22,7 @@ import type { LintWarning, Paint } from '../../types/scene';
 import { GANTT_ROW_PITCH, MAX_COLS, ganttItemPrintsName } from './domain';
 import { barSurfaces, cadenceRowPaint, milestonePaints } from './marks';
 import { badgeStrip, markerBand } from './events';
-import { LABEL_PAD, laneTop, MIN_ROW_H, NO_LANE, rowTextFloor, RULE_LABEL_GAP, type GanttBand, type GanttBody, type GanttDomain, type GanttEnv, type GanttPaints, type MetadataColumns, type NormItem, type NormRow, type RowLabel, type RowNames } from './model';
+import { LABEL_PAD, laneTop, MIN_ROW_H, NO_LANE, rowTextFloor, SIDE_KEY_OFF, RULE_LABEL_GAP, type GanttBand, type GanttBody, type GanttDomain, type GanttEnv, type GanttPaints, type MetadataColumns, type NormItem, type NormRow, type RowLabel, type RowNames } from './model';
 import { maxOf, minOf } from '../../arrays';
 import { alignedX, columnPlan, type AuthoredWidths, type GanttColumnSettings } from './columns';
 
@@ -294,6 +294,7 @@ export function ganttFrame(
       numberedDisclosures: keyDisclosed ? milestoneKey.map((_, i) => numbered.length - milestoneKey.length + i + 1) : [],
       pointedNotes: [...frameTextOptions(options).pointedNotes ?? [], ...domain.eventFootnotes, ...milestoneKey],
       legend: colorKey(env, domain, paints, warnings),
+      ...((options as { [SIDE_KEY_OFF]?: true })[SIDE_KEY_OFF] ? { sideKeyGivesWay: true } : {}),
       theme,
       measure,
     },
