@@ -595,7 +595,7 @@ function sweepStrippedOptionKeys(
     const renameFits = !nearest?.near || moved !== undefined || valueFitsKey(schema, parent, nearest.key, valueAtPath(authored, keyPath));
     const fix = renameFits && moved === undefined ? typoRenameFix(field, nearest, siblings, valueAtPath(authored, parent)) : undefined;
     // labels.valueLine where the type labels each valueLine annotation itself: that annotation's label does the job.
-    const own = known && !nearest?.near ? annotationLabel(schema, authored, key, field) : undefined;
+    const own = known && !nearest?.near ? annotationLabel(schema, authored, key, field, source.chart, source.segments.slice(0, -1)) : undefined;
     if (own) {
       envelope.errors.push(completeChartDiagnostic(source.doc, source.chart, {
         code: 'unknown-option', message: `${where}: unknown option '${dotted}'; each ${key} annotation sets its own label`,
@@ -619,21 +619,28 @@ function sweepStrippedOptionKeys(
  * `label` field (labels.valueLine on a line): the way out is that annotation's label.
  * `labels.<kind>: false` patches `label: false` onto each such annotation that sets no label.
  */
-function annotationLabel(schema: z.ZodType, authored: Record<string, unknown>, kind: string, field: readonly (string | number)[]): { suggest: string; fix?: JsonPatchOperation[] } | undefined {
+function annotationLabel(
+  schema: z.ZodType, authored: Record<string, unknown>, kind: string, field: readonly (string | number)[],
+  chart: unknown, container: (string | number)[],
+): { suggest: string; fix?: JsonPatchOperation[] } | undefined {
   const takes = schemaNodeAtPath(schema, ['annotations', 0]).flatMap((node) => [node, ...(node.anyOf ?? []), ...(node.oneOf ?? [])])
     .some((branch) => branch.properties?.kind?.const === kind || (branch.properties?.kind?.enum ?? []).includes(kind)) && annotationKindTakes(kind, 'label');
   if (!takes) return undefined;
   const hide = isRecord(authored.labels) && authored.labels[kind] === false;
   const suggest = hide ? `Remove 'labels.${kind}' and set label: false on each { kind: '${kind}' } annotation.` : `Remove 'labels.${kind}'; set the label on each { kind: '${kind}' } annotation.`;
-  const annotations = Array.isArray(authored.annotations) ? authored.annotations : [];
-  const targets = annotations.flatMap((item, index) => (isRecord(item) && item.kind === kind ? [{ item, index }] : []));
   // Without labels.<kind>: false the annotations print their labels as before, so removing the key is the patch.
   if (!hide) return { suggest, fix: [{ op: 'remove', path: toJsonPointer(field) }] };
-  if (targets.some(({ item }) => Object.hasOwn(item, 'label'))) return { suggest };
-  const base = field.slice(0, -2);
+  // The request draws the annotations at the chart (or panel) root in place of options.annotations when both are set.
+  const holder = valueAtPath(chart, container);
+  const root = isRecord(holder) && holder.annotations !== undefined;
+  const annotations = root ? holder.annotations : authored.annotations;
+  const base = root ? [...container, 'annotations'] : [...field.slice(0, -2), 'annotations'];
+  const targets = Array.isArray(annotations) ? annotations.flatMap((item, index) => (isRecord(item) && item.kind === kind ? [{ item, index }] : [])) : [];
+  // The patch keeps the label hidden only when it can set label: false on each annotation of that kind.
+  if (targets.length === 0 || targets.some(({ item }) => Object.hasOwn(item, 'label'))) return { suggest };
   return { suggest, fix: [
     { op: 'remove', path: toJsonPointer(field) },
-    ...targets.map(({ index }) => ({ op: 'add' as const, path: toJsonPointer([...base, 'annotations', index, 'label']), value: false })),
+    ...targets.map(({ index }) => ({ op: 'add' as const, path: toJsonPointer([...base, index, 'label']), value: false })),
   ] };
 }
 

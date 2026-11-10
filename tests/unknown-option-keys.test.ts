@@ -277,6 +277,13 @@ describe('unknown option keys are refused on every type', () => {
     expect(refusal.fix).toEqual([{ op: 'remove', path: '/options/labels/valueLine' }, { op: 'add', path: '/options/annotations/0/label', value: false }]);
     expect(JSON.parse(callTool('boardplot_render', { spec: applyFix(spec, refusal.fix!) }).text).ok).toBe(true);
     expect(reactErrors(spec)).toContainEqual(expect.objectContaining({ suggest: refusal.suggest }));
+    // The root list replaces options.annotations in the request, so the patch must hide the label there.
+    const rooted = { type: 'line', data: line.data, options: { ...line.options, labels: { valueLine: false } }, annotations: [{ kind: 'valueLine', value: 'mean' }] };
+    const rootFix = (cliErrors(rooted).errors.find(entry => entry.path === '/options/labels/valueLine') as { fix?: JsonPatchOperation[] }).fix!;
+    expect(rootFix).toEqual([{ op: 'remove', path: '/options/labels/valueLine' }, { op: 'add', path: '/annotations/0/label', value: false }]);
+    const drawn = JSON.parse(callTool('boardplot_render', { spec: applyFix(rooted, rootFix), return: ['svg'] }).text);
+    expect(drawn.ok).toBe(true);
+    expect(drawn.svg).not.toMatch(/Average/);
     const stack = getFixtures('grid').find(entry => entry.id === 'metric-stack-volume')!;
     const categories = structuredClone((stack.data as { categories: Record<string, unknown>[] }).categories);
     categories[0]!.footnote = 'Partial month';
