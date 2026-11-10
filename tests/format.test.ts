@@ -7,7 +7,7 @@ import { logSpecFormat } from '../src/core/charts/scatter/logAxis';
 import { formatAutomaticNumber as formatAutomaticNumberSync, formatNumber } from '../src/core/format';
 import { shareSetDecimals, withSmallValues, zeroLifts } from '../src/core/formatPrecision';
 import { shareSetFormatter } from '../src/core/format';
-import { compileNumberFormat, defaultFormatSpec, formatExampleProblem, formatterFromExample, formatWithSpec, parseFormatExample, readFormatExamples, roundedNumber, sameUnit, seriesRasterFormatter, signedFormatterFromExample, unscaledFormatLint } from '../src/core/formatSpec';
+import { compileNumberFormat, defaultFormatSpec, formatExampleProblem, formatterFromExample, formatWithSpec, parseFormatExample, readFormatExamples, roundedNumber, sameUnit, seriesRasterFormatter, signedFormatterFromExample, unitMagnitude, unscaledFormatLint } from '../src/core/formatSpec';
 import { niceDomain } from '../src/core/scale';
 import type { SceneNode } from '../src/core/types/scene';
 import { createElement } from 'react';
@@ -644,10 +644,16 @@ describe('an example is read as its author wrote it', () => {
 
   // A unit with a scale word and a noun ("k visits") printed 260,000 as "260k", which read 1,000 times too large beside it.
   it('adds no automatic magnitude under a unit that names a scale before a noun', () => {
-    for (const unit of ['k visits', 'million tonnes', 'Tsd. Besucher']) {
+    for (const unit of ['k visits', 'million tonnes', 'Mio. Besucher', 'K users', 'M users']) {
       expect(seriesRasterFormatter(undefined, [260_000, 1_011_000], 'en', unit, 'slide').fmt(260_000)).toBe('260,000');
     }
     expect(seriesRasterFormatter(undefined, [260_000, 1_011_000], 'en', 'minutes', 'slide').fmt(1_011_000)).toBe('1.01M');
+    // A physical unit or a rate names no scale: no whole-number rule from 100 up.
+    for (const unit of ['mm Hg', 'mm rain', 'm per second', 'm / s', 'k / visit']) expect(unitMagnitude(unit)).toBeUndefined();
+    const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'column',
+      data: { categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], series: [{ id: 'p', label: 'Pressure', values: [125.5, 98.2] }] },
+      options: { unit: 'mm Hg', labels: { value: true }, size: { width: 480, height: 320 } } })));
+    expect(geometry.labels.some((label) => !label.hidden && label.text === '125.5')).toBe(true);
   });
 
   // "$1.2M" fixes one decimal, so $4.27M printed $4.3M and no example gave 42.7, 4.27 and 0.430 together: one @ per figure fixes the figures, not the decimals.

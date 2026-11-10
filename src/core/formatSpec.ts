@@ -1747,17 +1747,27 @@ function drawnNumberTexts(geo: { labels?: readonly PlacedLabel[]; scene: readonl
  * raster too (an authored 36.2 % must not flatten to 36 %); computed shares
  * follow `formatShare`.
  */
-const MAGNITUDE_UNIT = /^\W*(?:([a-z]{3})(\W*))?(k|mm?|mn|bn?|tn|tsd|mio|mrd|bio|thousands?|tausend|millions?|millionen|billions?|billionen|trillions?|milliard(?:en?|s)?)\W*(?:([a-z]{3})\W*)?(?:(?<=\s)\p{L}.*)?$/iu;
+const MAGNITUDE_UNIT = /^\W*(?:([a-z]{3})(\W*))?(k|mm?|mn|bn?|tn|tsd|mio|mrd|bio|thousands?|tausend|millions?|millionen|billions?|billionen|trillions?|milliard(?:en?|s)?)\W*(?:([a-z]{3})\W*)?$/i;
 const CURRENCY_CODES = new Set(Intl.supportedValuesOf('currency'));
+// A scale before a spaced noun of letters ("k visits", "Mio. Besucher"). Lowercase "m" and "mm" stay out:
+// "m per second" and "mm Hg" are physical units. A unit with a slash or "per" is a rate and never matches.
+const NOUN_SCALES: Record<string, NumberFormatSpec['magnitude']> = {
+  k: 'k', K: 'k', M: 'm', bn: 'bn', thousand: 'k', thousands: 'k', tsd: 'k', tausend: 'k', million: 'm', millions: 'm',
+  mio: 'm', millionen: 'm', billion: 'bn', billions: 'bn', mrd: 'bn', milliarden: 'bn', trillion: 't', trillions: 't',
+};
+const SCALED_NOUN_UNIT = /^(\p{L}+)\.?\s+(?!per\b)\p{L}+(?:\s+\p{L}+)*$/iu;
 
 /**
  * The scale a unit names: "€M", "EUR m" and "CHFm" are millions, "k€"
  * thousands, "USD bn" billions, "Mio. CHF" millions; none for "%" or "EUR".
  * Three letters joined to the word must be a currency code: "USDm" names
- * millions, "item" does not. A currency may follow the word too, and a
- * spaced noun may end the unit: "k visits" and "million tonnes" name a scale.
+ * millions, "item" does not. A currency may follow the word too. A scale
+ * before a noun names one as well: "k visits", "million tonnes", "M users".
  */
 export function unitMagnitude(unit: string | undefined): NumberFormatSpec['magnitude'] | undefined {
+  const word = SCALED_NOUN_UNIT.exec(unit?.trim() ?? '')?.[1];
+  const nounScale = word === undefined ? undefined : NOUN_SCALES[word] ?? (word.length > 1 ? NOUN_SCALES[word.toLowerCase()] : undefined);
+  if (nounScale) return nounScale;
   const match = MAGNITUDE_UNIT.exec(unit ?? '');
   if (!match || (match[1] && !match[2] && !CURRENCY_CODES.has(match[1].toUpperCase()))) return undefined;
   if (match[4] && (match[1] || !CURRENCY_CODES.has(match[4].toUpperCase()))) return undefined;
