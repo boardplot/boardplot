@@ -401,7 +401,21 @@ function bindClaimLabels(type: string, geo: Geometry<object, object>, claims: Cl
 
 /** Adapters without claimId use the same label map, including through grids. */
 function claimLabelIds(type: string, geo: Geometry<object, object>): Map<string, string> {
-  const ids = new Map(geo.labels.filter(label => label.claimId).map(label => [label.claimId!, label.id]));
+  // A claim id that printed labels with different texts carry is ambiguous: ids joined with ':' can collide
+  // across rows ('a' + 'b:c' and 'a:b' + 'c'). It stays unbound rather than quote another value's text.
+  const ids = new Map<string, string>();
+  const printed = new Map<string, string>();
+  const ambiguous = new Set<string>();
+  for (const label of geo.labels) {
+    if (!label.claimId) continue;
+    if (!label.hidden) {
+      const text = printed.get(label.claimId);
+      if (text !== undefined && text !== label.text) ambiguous.add(label.claimId);
+      printed.set(label.claimId, label.text);
+    }
+    if (!label.hidden || !printed.has(label.claimId)) ids.set(label.claimId, label.id);
+  }
+  for (const claimId of ambiguous) ids.delete(claimId);
   for (const annotation of geo.annotations ?? []) {
     if (annotation.labelId) ids.set(`annotation:${annotation.id}`, annotation.labelId);
   }

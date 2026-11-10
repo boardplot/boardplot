@@ -115,6 +115,16 @@ describe('structured spec errors', () => {
     expect(both.errors[0]).toMatchObject({ path: '/annotations/0/text', fix: [{ op: 'remove', path: '/annotations/0/text' }] });
     const indicator = await captured(() => parseChartSpec(chart({ kind: 'indicator100', text: 'Full' })));
     expect(indicator.errors[0]).toMatchObject({ path: '/annotations/0/text', fix: [{ op: 'remove', path: '/annotations/0/text' }] });
+    // A band or event caption given as text was dropped without a warning: they print label only.
+    for (const annotation of [{ kind: 'band', from: 'A', to: 'B', text: 'Forecast' }, { kind: 'event', at: 'B', text: 'Launch' }]) {
+      const read = await parseChartSpec(chart(annotation));
+      const { text, ...rest } = annotation;
+      expect(read.warnings.find(warning => warning.code === 'annotation-text-as-label'), annotation.kind).toMatchObject({
+        path: '/charts/0/annotations/0/text', fix: [{ op: 'test' }, { op: 'replace', value: { ...rest, label: text } }],
+      });
+      const conflict = await captured(() => parseChartSpec(chart({ ...annotation, label: 'Plan' })));
+      expect(conflict.errors[0], annotation.kind).toMatchObject({ path: '/annotations/0/text', fix: [{ op: 'remove', path: '/annotations/0/text' }] });
+    }
   });
 
   it('carries the object shape and the way out of a refused key into React as the CLI prints them', async () => {

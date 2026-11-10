@@ -220,6 +220,14 @@ it('keeps hidden symbol keys hidden on a copied result', () => {
   expect((copy.note as unknown as Record<symbol, unknown>)[hidden]).toEqual({ kind: 'b' });
 });
 
+// A cache hit copied a Map's values but kept its key objects, so a lookup with the copied object missed.
+it('finds a Map entry and a Set member by the copied object after a cache hit', () => {
+  const plot = { x: 1 };
+  const copy = tablePlans.copyPlannedValue({ plot, members: new Set([plot]), byPlot: new Map([[plot, 'a']]) });
+  expect(copy.plot).not.toBe(plot);
+  expect([copy.members.has(copy.plot), copy.byPlot.get(copy.plot)]).toEqual([true, 'a']);
+});
+
 // A visibility change reuses the private data while returning the current options and exact property shape.
 it.each([undefined, 'Effect'])('reuses dimension forms with current inline visibility and effect label %s', (effectLabel) => {
   const entry = getFixtures('dimswitch')[0]!;

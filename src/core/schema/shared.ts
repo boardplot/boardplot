@@ -756,6 +756,11 @@ function misspelledField(key: string, fields: readonly string[]): string | undef
   });
 }
 
+/** A valueLine, band or event prints label: a different text beside it is refused, since normalize reads a lone text as label. */
+function labelConflict(annotation: { kind: unknown; label?: unknown; text?: unknown }): boolean {
+  return ['valueLine', 'band', 'event'].includes(annotation.kind as string) && Object.hasOwn(annotation, 'label') && annotation.label !== annotation.text;
+}
+
 /** Unknown keys, missing or malformed anchors, and a valueLine value that is no number. */
 function addAnnotationFieldIssues(annotation: Record<string, unknown>, ctx: z.RefinementCtx, timeX = false): void {
   const kind = String(annotation.kind);
@@ -768,7 +773,7 @@ function addAnnotationFieldIssues(annotation: Record<string, unknown>, ctx: z.Re
       path: [key],
       message: near
         ? `unknown ${kind} field '${key}' — try: ${near}`
-        : `unknown ${kind} field '${key}'; a ${kind} takes ${[...fields, 'id', ...(kind === 'valueLine' || kind === 'indicator100' ? [] : ['text']), 'format', 'priority'].join(', ')}`,
+        : `unknown ${kind} field '${key}'; a ${kind} takes ${[...fields, 'id', ...(['valueLine', 'indicator100', 'band', 'event'].includes(kind) ? [] : ['text']), 'format', 'priority'].join(', ')}`,
       params: near ? { renameTo: near } : { refused: true },
     });
   }
@@ -801,7 +806,7 @@ const existingAnnotationSchema = (timeX = false) => z
   .object({
     kind: z.enum(['diff', 'cagr', 'delta', 'bracket', 'abs', 'note', 'callout', 'valueLine', 'indicator100', 'event', 'text', 'line', 'arrow', 'box']).describe('Annotation operation; its anchors and additional fields are checked by the chart annotation pass.'),
     id: z.string().optional().describe('Stable annotation identity; omission generates an id from kind and authored order.'),
-    text: z.string().optional().describe("Authored annotation text; on valueLine, text is read as label with an info warning when label is absent or equal. Refused on indicator100, line, arrow and box. On a text annotation it is the text itself, and ${value} prints as written. Elsewhere ${value} prints the computed number in it: a cagr's rate with its suffix, a diff's change, a delta's difference, the anchored value of an abs, note or callout; a note or callout on a mark that prints the same number leaves it to the mark and reports annotation-value-on-mark. Without ${value}, text on a cagr, diff, delta or abs replaces the number, warns annotation-authored-override and the claim record marks the override."),
+    text: z.string().optional().describe("Authored annotation text; on valueLine and event, text is read as label with an info warning when label is absent or equal, and refused beside a different label. Refused on indicator100, line, arrow and box. On a text annotation it is the text itself, and ${value} prints as written. Elsewhere ${value} prints the computed number in it: a cagr's rate with its suffix, a diff's change, a delta's difference, the anchored value of an abs, note or callout; a note or callout on a mark that prints the same number leaves it to the mark and reports annotation-value-on-mark. Without ${value}, text on a cagr, diff, delta or abs replaces the number, warns annotation-authored-override and the claim record marks the override."),
     format: z.string().optional().describe("Number format: annotation > anchored series > chart. Diff uses to, then from. CAGR, a relative or reversed diff and a relative delta need a percent example; value differences, also under mode both, use pp for percent levels. Refused on event, indicator100, text, line, arrow and box."),
     priority: z.number().optional().describe('Annotation label priority during collision resolution. Refused on line, arrow and box.'),
     icon: annotationIconSchema.optional().describe('Registered icon for note or callout annotations; cannot be combined with status.'),
@@ -874,14 +879,14 @@ const existingAnnotationSchema = (timeX = false) => z
         ctx.addIssue({ code: 'custom', path: ['caption'], message: `${annotation.kind} caption is a non-empty string` });
       }
     }
-    // Conflicting valueLine captions remain ambiguous. indicator100 has fixed text.
-    if ((annotation.kind === 'indicator100' || (annotation.kind === 'valueLine' && Object.hasOwn(annotation, 'label') && annotation.label !== annotation.text)) && Object.hasOwn(annotation, 'text')) {
+    // Conflicting valueLine and event captions remain ambiguous. indicator100 has fixed text.
+    if ((annotation.kind === 'indicator100' || labelConflict(annotation)) && Object.hasOwn(annotation, 'text')) {
       ctx.addIssue({
         code: 'custom',
         path: ['text'],
-        message: annotation.kind === 'valueLine'
-          ? "a valueLine prints label, not text; drop 'text', label is set"
-          : "an indicator100 prints a fixed '100%' and no authored text; drop 'text'",
+        message: annotation.kind === 'indicator100'
+          ? "an indicator100 prints a fixed '100%' and no authored text; drop 'text'"
+          : `${annotation.kind === 'event' ? 'an' : 'a'} ${annotation.kind} prints label, not text; drop 'text', label is set`,
         params: { refused: true },
       });
     }
@@ -948,7 +953,7 @@ const bandAnnotationSchema = (timeX = false) => z
   .object({
     kind: z.literal('band').describe('Era band spanning inclusive category ids, or a value-axis plan corridor, tolerance band or attainment fill.'),
     id: z.string().optional().describe('Stable band annotation identity; omission generates an id from kind and authored order.'),
-    text: z.string().optional().describe('Shared annotation text override; band captions use label.'),
+    text: z.string().optional().describe('Read as label with an info warning when label is absent or equal; refused beside a different label.'),
     format: formatExample.optional().describe('Shared annotation value format; the band caption itself is authored text.'),
     priority: z.number().optional().describe('Band label priority during collision resolution.'),
     from: (timeX ? z.union([idSchema, z.number().finite()]) : idSchema).optional().describe('First category included in the band; required for era shade/bracket, optional clip for value-axis bands.' + (timeX ? ' A time axis also takes epoch milliseconds.' : '')),
@@ -980,6 +985,9 @@ const bandAnnotationSchema = (timeX = false) => z
   .catchall(z.unknown())
   .superRefine((band, ctx) => {
     addAnnotationFieldIssues(band as Record<string, unknown>, ctx, timeX);
+    if (labelConflict(band) && Object.hasOwn(band, 'text')) {
+      ctx.addIssue({ code: 'custom', path: ['text'], message: "a band prints label, not text; drop 'text', label is set", params: { refused: true } });
+    }
     const style = band.style ?? 'shade';
     const target = style === 'corridor' || style === 'tolerance' || style === 'attainment';
     if (!target) {

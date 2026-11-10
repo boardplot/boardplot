@@ -921,7 +921,13 @@ export function resolveComboDomain(data: ChartData, options: ComboOptions, warni
   const shared = lineBandScaleInput ? dualAxisScales(lineBandScaleInput) : undefined;
   if (shared) primary = { dLo: 0, dHi: shared.pticks[shared.pticks.length - 1]!, pticks: shared.pticks };
   // Only columns may share the lower band: a primary line or value line above them needs the whole scale.
-  const floatOver = (clearance: number) => hi <= maxOf(posTop) ? floatedLineScales(maxOf(posTop), lines, secondaryLine, clearance) : undefined;
+  // A floated line has no right ticks: its printed low and high, or the flagged values and
+  // corridor bounds of an anomaly on it, state its scale. It floats only when those print;
+  // otherwise the plain dual axis keeps the right ticks.
+  const floatValuesPrint = anomalyRun?.onSecondary === true
+    || ['all', 'extremes'].includes(comboValueLabels(options, anatomy, cats.length, true))
+      && options.labels !== false && options.labels?.point !== false;
+  const floatOver = (clearance: number) => floatValuesPrint && hi <= maxOf(posTop) ? floatedLineScales(maxOf(posTop), lines, secondaryLine, clearance) : undefined;
   const floated = lineBandScaleInput && !shared
     ? floatOver((options as { [FLOAT_BAND_CLEARANCE]?: number })[FLOAT_BAND_CLEARANCE] ?? lineBandScaleInput.clearance ?? LINE_CLEARANCE) : undefined;
   if (floated) primary = floated.primary;

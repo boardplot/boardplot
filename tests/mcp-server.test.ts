@@ -774,4 +774,24 @@ describe('boardplot MCP server', () => {
       [2, undefined],
     ]);
   });
+  // A line with no newline was held whole until it ended, so a client could grow the server's memory without bound.
+  it('refuses an oversized line while it is read and drops its rest', async () => {
+    const child = spawn(TSX, [MCP_SERVER], { cwd: ROOT, stdio: ['pipe', 'pipe', 'pipe'] });
+    const replies: RpcResponse[] = [];
+    const lines = createInterface({ input: child.stdout });
+    lines.on('line', (line) => replies.push(JSON.parse(line) as RpcResponse));
+    try {
+      child.stdin.write('{"jsonrpc":"2.0","id":1,"method":"ping","params":{"pad":"');
+      child.stdin.write(Buffer.alloc(11 * 1024 * 1024, 0x61));
+      // The answer comes before the line ends.
+      await vi.waitFor(() => expect(replies.map((reply) => reply.error?.code)).toEqual([-32600]), { timeout: 10_000, interval: 20 });
+      child.stdin.write(`${'b'.repeat(1024)}"}}\n${JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'ping' })}\n`);
+      // The rest of the refused line is dropped, not parsed as a new line.
+      await vi.waitFor(() => expect(replies.map((reply) => [reply.id, reply.error?.code])).toEqual([[null, -32600], [2, undefined]]), { timeout: 10_000, interval: 20 });
+    } finally {
+      child.kill();
+      lines.close();
+      await new Promise<void>((done) => child.once('close', () => done()));
+    }
+  });
 });

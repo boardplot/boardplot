@@ -20,6 +20,19 @@ describe('diagram text under the notation unit', () => {
   });
 });
 
+describe('architecture columns', () => {
+  // An eight-step chain at 1600 px wrapped its last node to a second row and dropped the long labels between the steps.
+  it('keeps a chain in one row where its nodes fit, and draws the labels between them', () => {
+    const steps = Array.from({ length: 8 }, (_, index) => ({ id: `n${index + 1}`, kind: 'entity', shape: { kind: 'roundedRect' }, label: `Step ${index + 1}`, role: 'primary' }));
+    const verbs = ['Request', 'Validated order', 'Approved', 'Scheduled job', 'Processed', 'Shipped goods', 'Delivered'];
+    const edges = verbs.map((verb, index) => ({ id: `e${index + 1}`, source: { nodeId: `n${index + 1}` }, target: { nodeId: `n${index + 2}` }, label: `${verb} and then more detail text` }));
+    const spec = { type: 'diagram', data: { nodes: steps, edges }, options: { variant: 'architecture', title: 'Eight step chain', source: 'Invented', size: { width: 1600 } } };
+    const geometry = layoutResolvedRequest(resolveChartRequest(spec as never)) as any;
+    expect(new Set(geometry.marks.nodes.map((node: any) => node.rect.y)).size).toBe(1);
+    expect(geometry.labels.filter((label: any) => label.id.startsWith('edge-label:') && !label.hidden)).toHaveLength(7);
+  });
+});
+
 describe('diagram inset heading and columns', () => {
   const fixture = getFixtures('diagram').find((entry) => entry.id === 'inset-no-heading')!;
   const body = (inset: object) => render({ spec: { type: 'diagram', data: { ...(fixture.data as object), inset: { title: 'Service levels', rows: [{ label: 'Failed loads', value: '3' }], ...inset } }, options: fixture.options } as never, format: 'svg' } as never).body as any;
@@ -41,5 +54,26 @@ describe('diagram inset heading and columns', () => {
   it('warns on a wrong column under data.inset', () => {
     const warning = body({ columnOverrides: { nope: { width: 90 } } }).warnings.find((item: any) => item.code === 'generated-id-unknown');
     expect(warning.path).toBe('/data/inset/columnOverrides/nope');
+  });
+});
+
+describe('diagram edge labels', () => {
+  // An edge label that found no seat was left out of the drawing while the reading counted no dropped label.
+  it('counts an edge label it cannot seat as dropped in the reading', () => {
+    const node = (id: string, label: string, x: number, y: number) => ({ id, kind: 'entity', shape: { kind: 'roundedRect' }, label, position: { x, y } });
+    const edge = (id: string, target: string, label: string) => ({ id, source: { nodeId: 'r' }, target: { nodeId: target }, label, routing: 'straight' });
+    const spec = { type: 'diagram', data: {
+      nodes: [node('r', 'Root', 0.5, 0.1), node('a', 'Alpha', 0.3, 0.5), node('b', 'Beta', 0.7, 0.5), node('c', 'Gamma', 0.5, 0.9)],
+      edges: [
+        edge('e1', 'a', 'A very long edge label that cannot fit anywhere near this short route at all'),
+        edge('e2', 'b', 'Another very long label that also cannot find a clear place near the route'),
+        edge('e3', 'c', 'Third long label crossing the others in a tight space of the drawing'),
+      ],
+    }, options: { variant: 'hierarchy', title: 'Unplaced edge labels', source: 'Invented' } };
+    const body = render({ spec, format: 'svg', return: ['reading'] } as never).body as any;
+    const unseated = body.warnings.filter((warning: any) => warning.code === 'diagram-edge-label-unplaced').map((warning: any) => `edge-label:${warning.owner.segmentId}`);
+    expect(unseated.length).toBeGreaterThan(0);
+    expect(body.reading.labelsDropped).toBeGreaterThanOrEqual(unseated.length);
+    expect(body.reading.omissions.map((omission: any) => omission.labelId)).toEqual(expect.arrayContaining(unseated));
   });
 });

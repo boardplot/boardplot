@@ -822,7 +822,7 @@ export function planColumnLabels(
     // and so do two or more references, whose ticks look alike.
     const nameless = domain.refStyle !== 'marker' && domain.refSeries.length === 1 && tickContent!.includes('series') && tickKeyed(domain.options, area.frame.legend, s.id) &&
       cats.some((c, ci) => ci < cats.length - 1 && domain.plottedOf(s, ci) !== null &&
-        leadOf(ci, pyRef?.id === s.id && pyGrowth.has(c.id)) + measure(textOf(ci, tickContent!), tickFont).width / 2 > band.step - band.bandwidth);
+        leadOf(ci, pyRef?.id === s.id && pyGrowth.has(c.id)) + measure(textOf(ci, tickContent!), tickFont).width > band.step - band.bandwidth);
     cats.forEach((c, ci) => {
       const v = domain.plottedOf(s, ci);
       if (v === null) return;

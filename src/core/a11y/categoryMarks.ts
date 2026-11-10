@@ -79,9 +79,10 @@ function cellMarks(ctx: RecordContext): CellMark[] | undefined {
       categoryId: point.categoryId, seriesId: series.seriesId, nodeIds: point.nodeId ? [point.nodeId] : [], anchor: { x: point.x, y: point.y },
     }))));
     case 'combo': {
-      const { columns, lines } = marks as unknown as ComboMarks;
+      const { columns, lines, referenceTicks } = marks as unknown as ComboMarks;
       return [...columns.flatMap(column => column.segments.map(segment => ({ categoryId: column.categoryId, seriesId: segment.seriesId, nodeIds: [segment.nodeId], anchor: segment.rect }))),
-        ...lines.flatMap(line => line.points.map(point => ({ categoryId: point.categoryId, seriesId: line.seriesId, nodeIds: point.markerNodeId ? [point.markerNodeId] : [], anchor: { x: point.x, y: point.y } })))];
+        ...lines.flatMap(line => line.points.map(point => ({ categoryId: point.categoryId, seriesId: line.seriesId, nodeIds: point.markerNodeId ? [point.markerNodeId] : [], anchor: { x: point.x, y: point.y } }))),
+        ...referenceTicks.map(mark => ({ ...mark, nodeIds: [mark.nodeId], anchor: mark.rect }))];
     }
     case 'heatmap': return (marks as unknown as HeatmapMarks).cells.map(cell => ({ ...cell, nodeIds: [cell.nodeId], anchor: cell.rect }));
     case 'dot': return (marks as unknown as DotMarks).rows.flatMap(row => row.dots.map(dot => ({ categoryId: row.categoryId, seriesId: dot.seriesId, nodeIds: [dot.nodeId], anchor: { x: dot.cx, y: dot.cy } })));

@@ -300,12 +300,18 @@ export function layoutDivergingSlope(
   const areasW = swatchesW + (tight ? KEY_GAP_MIN : KEY_GAP);
   const keyW = periodW(keyRun);
   const keyWraps = areasW + keyW > plot0.w + 1e-6;
+  // On its own row the run shortens to fit. Where even KEY_RUN_MIN does not fit, the key
+  // stacks: the open dot and the first name on one row, the filled dot and the second below.
+  // ponytail: a single name wider than the plot still drops; wrap the name if that case appears.
+  const ownRun = Math.min(KEY_RUN, plot0.w - periodW(0));
+  const keyStacks = keyWraps && ownRun < KEY_RUN_MIN;
+  const run = keyWraps ? ownRun : keyRun;
   const netName = chartString(options, 'slopeNetName');
   const netRest = chartString(options, 'slopeNetKey', { v1: posName, v2: negName, v3: p2, v4: p1 });
   const netNameW = measure(netName, headFont).width;
   const netKeyW = netNameW + measure(netRest, labelFont).width;
-  const periodEnd = (keyWraps ? 0 : areasW) + keyW;
-  const netInline = showNet && periodEnd + KEY_GAP + netKeyW <= plot0.w + 1e-6;
+  const periodEnd = keyStacks ? DOT_R * 2 + 6 + Math.max(w1, w2) : (keyWraps ? 0 : areasW) + periodW(run);
+  const netInline = showNet && !keyStacks && periodEnd + KEY_GAP + netKeyW <= plot0.w + 1e-6;
   // A definition wider than the plot wraps in full, however long the period
   // names are; the name keeps its weight on the first line.
   const netWrapW = plot0.w - (netNameW - measure(netName, labelFont).width);
@@ -318,7 +324,7 @@ export function layoutDivergingSlope(
   const lowRowAt = 1;
   const periodRow = keyWraps ? (lowOwnRow ? 2 : 1) : 0;
   // The net definition sits on the row after the last key row, whether the low-base key or the period key took it.
-  const lastKeyRow = (lowOwnRow ? 1 : 0) + (keyWraps ? 1 : 0);
+  const lastKeyRow = (lowOwnRow ? 1 : 0) + (keyWraps ? 1 : 0) + (keyStacks ? 1 : 0);
   const keyH = keyRowH * (1 + lastKeyRow + (showNet && !netInline ? 1 : 0)) + (netInline ? 0 : (netLines.length - 1) * netPitch);
   const keyCy = plot0.y + textH / 2;
   {
@@ -339,16 +345,19 @@ export function layoutDivergingSlope(
   }
   const keyX = keyWraps ? plot0.x : plot0.x + areasW;
   const periodCy = keyCy + periodRow * keyRowH;
-  const k0 = keyX + w1 + 6 + DOT_R;
-  const k1 = k0 + DOT_R + keyRun + DOT_R;
-  fixed('legend:period:0', 'category', { categoryId: c0.id }, [p1], labelFont, [{ x: keyX, y: periodCy - textH / 2, w: w1, h: textH }], PRIORITY.reference, false);
-  fixed('legend:period:1', 'category', { categoryId: c1.id }, [p2], labelFont, [{ x: k1 + DOT_R + 6, y: periodCy - textH / 2, w: w2, h: textH }], PRIORITY.reference, false);
+  // A stacked key runs down from the open dot to the filled dot, its names to the right.
+  const k0 = keyStacks ? keyX + DOT_R : keyX + w1 + 6 + DOT_R;
+  const k1 = keyStacks ? k0 : k0 + DOT_R + run + DOT_R;
+  const cy1 = keyStacks ? periodCy + keyRowH : periodCy;
+  const name0X = keyStacks ? k0 + DOT_R + 6 : keyX;
+  fixed('legend:period:0', 'category', { categoryId: c0.id }, [p1], labelFont, [{ x: name0X, y: periodCy - textH / 2, w: w1, h: textH }], PRIORITY.reference, false);
+  fixed('legend:period:1', 'category', { categoryId: c1.id }, [p2], labelFont, [{ x: k1 + DOT_R + 6, y: cy1 - textH / 2, w: w2, h: textH }], PRIORITY.reference, false);
   nodes.push(
-    { t: 'line', id: 'legend:period:run', x1: k0, y1: periodCy, x2: k1, y2: periodCy, stroke: keyInk, width: strokeToken(theme, 'data'), owner: {}, part: 'legendKey' },
+    { t: 'line', id: 'legend:period:run', x1: k0, y1: periodCy, x2: k1, y2: cy1, stroke: keyInk, width: strokeToken(theme, 'data'), owner: {}, part: 'legendKey' },
     { t: 'circle', id: 'legend:period:open', cx: k0, cy: periodCy, r: DOT_R, fill: { token: 'background' }, stroke: keyInk, strokeWidth: strokeToken(theme, 'mark'), owner: { categoryId: c0.id }, part: 'legendKey' },
-    { t: 'circle', id: 'legend:period:filled', cx: k1, cy: periodCy, r: DOT_R, fill: keyInk, owner: { categoryId: c1.id }, part: 'legendKey' },
+    { t: 'circle', id: 'legend:period:filled', cx: k1, cy: cy1, r: DOT_R, fill: keyInk, owner: { categoryId: c1.id }, part: 'legendKey' },
   );
-  occupied.claim({ x: k0 - DOT_R, y: periodCy - DOT_R, w: k1 - k0 + 2 * DOT_R, h: 2 * DOT_R }, 'mark', {});
+  occupied.claim({ x: k0 - DOT_R, y: periodCy - DOT_R, w: k1 - k0 + 2 * DOT_R, h: cy1 - periodCy + 2 * DOT_R }, 'mark', {});
   if (showNet) {
     const netX = netInline ? plot0.x + periodEnd + KEY_GAP : plot0.x;
     netLines.forEach((text, li) => {
