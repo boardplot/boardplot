@@ -85,3 +85,31 @@ describe('wrong generated ids through the CLI', () => {
     expect(codes(type, id, options).map((warning) => warning.code)).toContain('generated-id-unknown');
   });
 });
+
+describe('a form whose floor is above the asked width gives way', () => {
+  const layout = (type: string, data: object, options: object) => layoutResolvedRequest(resolveChartRequest({ type, data, options } as never));
+  const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const ganttRows = [
+    ['build', 'Platform build, data migration and the hosting contract for every regional office', 'bar'],
+    ['pilot', 'Pilot rollout in the three largest stores with the new point-of-sale software', 'chevron'],
+    ['train', 'Staff training, help-desk handover and the first quarterly review of the program', 'bar'],
+  ].map(([id, label, kind], i) => ({ id, label, items: [{ id: `${id}-item`, kind, start: `2026-0${2 * i + 1}-05`, end: `2026-0${2 * i + 3}-27` }] }));
+  // Each row drew at a narrower width and was refused here: a bracket, a column count or a side key raised the floor above the width.
+  it.each([
+    ['butterfly', {
+      categories: [{ id: 'fy21', label: 'FY21' }, { id: 'fy22', label: 'FY22' }, { id: 'fy23', label: 'FY23' }],
+      series: [{ id: 'online', label: 'Online', values: [100000, 120000, 144000] }, { id: 'store', label: 'Store', values: [130000, 150000, 180000] }],
+    }, {
+      a: 'online', b: 'store', title: 'Online grows 20% a year; Store is 30 ahead in FY21', theme: 'notation', size: { width: 600 },
+      annotations: [{ id: 'growth', kind: 'cagr', from: { categoryId: 'fy21', seriesId: 'online' }, to: { categoryId: 'fy23', seriesId: 'online' } },
+        { id: 'gap', kind: 'diff', mode: 'absolute', from: { categoryId: 'fy21', seriesId: 'online' }, to: { categoryId: 'fy21', seriesId: 'store' } }],
+    }],
+    ['waffle', {
+      categories: weekdays.map((day) => ({ id: day.toLowerCase(), label: day })),
+      series: [{ id: 'share', label: 'Share', values: [12, 38, 5, 0.4, 100, 57.5, 66] }],
+    }, { title: 'Share of orders by weekday', theme: 'notation', size: { width: 480 } }],
+    ['gantt', { rows: ganttRows }, { title: 'Program plan', today: '2026-07-03', legend: { position: 'right' }, size: { width: 470 } }],
+  ])('%s draws', (type, data, options) => {
+    expect(layout(type, data, options).refused).toBeFalsy();
+  });
+});

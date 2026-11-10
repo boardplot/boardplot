@@ -25,7 +25,7 @@ import { createOccupiedIndex } from '../../label/occupied';
 import { labelCtx, PRIORITY, solveLabels, type LabelRequest, type SolveCtx } from '../../label/solver';
 import { accessibleTitle, normalizeCategory, normalizeSeriesValues, NormalizeError, resolveSize } from '../../normalize/shared';
 import { type RoundingAdjustment } from '../../shareRounding';
-import { heightOmitted, resolveSizing } from '../../sizing';
+import { heightOmitted, resolveSizing, SIZE_TOLERANCE } from '../../sizing';
 import { rowDrivenHeight } from '../../rowCanvas';
 import { defaultMeasurer, wrapText, type FontSpec } from '../../text';
 import { textRole } from '../../textRole';
@@ -463,14 +463,18 @@ function layoutPass(data: ChartData, options: WaffleOptions, lean = false, oneRo
   const labelRoom = (rows: number[][], pi: number, w: number): number => square && !rows.some((row) => row[row.length - 1] === pi) ? w + colGap - LABEL_CLEAR : w;
   // Both modes wrap to at most two rows, groups kept together, when a label word is wider than its room;
   // square mode also wraps when one row leaves a panel under the floor.
-  // The floor is that of the two-row form, so it does not depend on the width asked for.
+  // Square mode's floor is that of the two-row form, so it does not depend on the width asked for. A cells
+  // floor is that of the columns drawn, so compact, the last form before a refusal, takes only a column count
+  // whose cells fit the plot: more columns would refuse a width that fewer columns draw.
   const minColumns = oneRow && !square ? n : Math.min(n, Math.max(Math.ceil(n / 2), maxOf(groups.map((group) => group.panels.length))));
+  const cellsFit = (cols: number) => square || options.mode !== 'compact'
+    || cols * grid.columns * MIN_PITCH + (cols - 1) * gutter <= plot.w + SIZE_TOLERANCE;
   let panelRows = rowsFor(n);
   for (let c = n; c >= minColumns; c--) {
     panelRows = rowsFor(c);
     const cols = maxOf(panelRows.map((row) => row.length));
     const w = (plot.w - (cols - 1) * gutter) / cols;
-    if ((!square || w >= SQUARE_MIN_SIDE) && panels.every((_, pi) => longestWord[pi]! <= labelRoom(panelRows, pi, w))) break;
+    if ((!square || w >= SQUARE_MIN_SIDE) && cellsFit(cols) && panels.every((_, pi) => longestWord[pi]! <= labelRoom(panelRows, pi, w))) break;
   }
   // Two rows split evenly: 4 + 4 or 3 + 2, never 7 + 1 or 4 + 1.
   if (panelRows.length > 1) {
