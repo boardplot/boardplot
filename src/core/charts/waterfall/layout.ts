@@ -54,7 +54,7 @@ import { changePercentText, formatAutomaticNumber as plainNumber } from '../../f
 import { authoredDecimals } from '../../formatPrecision';
 import { authoredNotes, frameTextOptions, legendRequired, normalizeLegendOption, solveFrame, fixedPlotChrome, type LegendItemInput, plotHeightAfter } from '../../frame';
 import { defaultMeasurer, type FontSpec } from '../../text';
-import { CROWDED_NAMES, categoryLineAlign, categoryRowTop, hangingLabelReserve, planCategoryRow, rotatedClaimRect, rotatedLeftOverhang } from '../../label/categoryRow';
+import { CROWDED_NAMES, categoryLineAlign, categoryRowTop, hangingLabelReserve, planCategoryRow, rotatedClaimRect, yieldToRotatedName } from '../../label/categoryRow';
 import {
   canvasMargin,
   colorblindPaint,
@@ -1472,7 +1472,7 @@ function layoutWaterfallWithPad(
   const dateNumericTicks = isDateNumericTickSequence(items.map((it) => it.label));
   // One cascade decides the whole row (wrap, font step, uniform
   // stride for dates, 45° for prose); no name is hidden by a local sweep.
-  const planRowAt = (b: typeof band, widths?: number[]) =>
+  const planRowAt = (b: typeof band, widths?: number[], rotate?: false) =>
     planCategoryRow({
       labels: items.map((it) => it.label),
       centers: items.map((_, i) => b.center(i)),
@@ -1483,19 +1483,16 @@ function layoutWaterfallWithPad(
       plotHeight: frameResult.plot.h,
       target: options.target, textScale: textScaleOf(options),
       range: b.range, spreadBeforeRotate: categoryRow,
+      ...(rotate === false ? { rotate } : {}),
     });
   // The upright spread before the 45° step lives in planCategoryRow.
   // A horizontal bridge draws no row, so it skips the spread.
-  const planRow = (b: typeof band) => planRowAt(b);
+  const planRow = (b: typeof band, rotate?: false) => planRowAt(b, undefined, rotate);
   let catPlan = planRow(band);
   // A rotated first name hangs left of its bar; the plot yields that much.
-  const catOverhang = categoryRow ? rotatedLeftOverhang(catPlan, items.map((_, i) => band.center(i)), 4, plotWidth) : 0;
-  if (catOverhang > 0) {
-    plotLeft += catOverhang;
-    plotWidth -= catOverhang;
-    band = bandFor(plotLeft, plotWidth);
-    catPlan = planRow(band);
-  }
+  const widthBeforeRow = plotWidth;
+  if (categoryRow) ({ plan: catPlan, band, x0: plotLeft, width: plotWidth } = yieldToRotatedName(catPlan, band, items.length, plotLeft, plotWidth, bandFor, planRow));
+  const catOverhang = widthBeforeRow - plotWidth;
   const catInfos = catPlan.infos;
   const catFont = catPlan.font;
   const catRowH = catPlan.rowHeight;

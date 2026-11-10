@@ -16,7 +16,7 @@ import { authoredDateTicks, longDayMonths, type dateTickRow } from '../../calend
 import type { Rect } from '../../geometry';
 import { authoredNotes, frameTextOptions, normalizeLegendOption, noteLine, plotHeightAfter, recordFreedChrome, solveFrame, textCarriesUnit, type FrameBand, type FrameInput, type FrameResult, type LegendItemInput, authoredFootnoteCount } from '../../frame';
 import { plotFloorRows } from '../../sizing';
-import { CATEGORY_ROW_FROM_END, CATEGORY_ROW_VERTICAL, calendarLike, categoryRowTop, hangingLabelReserve, planCategoryRow, rotatedLeftOverhang } from '../../label/categoryRow';
+import { CATEGORY_ROW_FROM_END, CATEGORY_ROW_VERTICAL, calendarLike, categoryRowTop, hangingLabelReserve, planCategoryRow, yieldToRotatedName } from '../../label/categoryRow';
 import { staircaseDirection, staircaseOn, staircaseRoom, staircaseState } from '../../label/staircase';
 import { segmentSeparationStroke } from '../../markVisibility';
 import { scenarioLegendKeys } from '../../label/legendFidelity';
@@ -804,7 +804,7 @@ export function comboPlotArea(
   // Combo publishes the rank to name mapping, so it takes ranks over a
   // row of cut names. `withCategoryRanks` keeps that decision, and the strings
   // that carry the mapping, out of the shared cascade every type imports.
-  const planRow = (b: typeof band, ticked?: ReturnType<typeof dateTickRow>) => {
+  const planRow = (b: typeof band, ticked?: ReturnType<typeof dateTickRow>, rotate?: false) => {
     const row = categoryLabelsAndMarks(cats, { count: authoredFootnoteCount(options), warnings }, partialAxisWords(options.strings, options, frame.legend?.items.some((item) => item.id === '__partial') || partialNamedOnTotals(env, domain)));
     ticked?.name(row);
     return withCategoryRanks(planCategoryRow({
@@ -831,6 +831,7 @@ export function comboPlotArea(
       ...ticked?.plan,
       // An authored interval counts back from the latest period, as on a line.
       ...(ticked !== undefined && ticked === authored ? { ordered: true, strideFromEnd: true } : {}),
+      ...(rotate === false ? { rotate } : {}),
     }), measure, cats.map((c) => c.label ?? c.id), (options as { [FORCE_CATEGORY_RANKS]?: true })[FORCE_CATEGORY_RANKS] === true, rankKeyShown(options));
   };
   // categoryAxis.dateTicks sets the interval; without it a long day row names its months.
@@ -838,13 +839,7 @@ export function comboPlotArea(
   // A ranked row (pareto) is not a timeline, so it keeps its day names.
   const ticked = authored ?? ((options as { [CATEGORY_ROW_FROM_END]?: boolean })[CATEGORY_ROW_FROM_END] === false ? undefined : longDayMonths(cats, catPlan.stride, options.locale?.language));
   if (ticked && ticked !== authored) catPlan = planRow(band, ticked);
-  const catOverhang = stair ? 0 : rotatedLeftOverhang(catPlan, cats.map((_, ci) => band.center(ci)), 4, plotW0);
-  if (catOverhang > 0) {
-    plotX0 += catOverhang;
-    plotW0 -= catOverhang;
-    band = bandFor(plotX0, plotW0);
-    catPlan = planRow(band, ticked);
-  }
+  if (!stair) ({ plan: catPlan, band, x0: plotX0, width: plotW0 } = yieldToRotatedName(catPlan, band, cats.length, plotX0, plotW0, bandFor, (b, rotate) => planRow(b, ticked, rotate)));
   const showCatTickRow = kindSetting(domain, 'category') !== false && cats.length > 0 && !stair;
   if (showCatTickRow) {
     pushAll(warnings, catPlan.warnings);

@@ -1377,6 +1377,27 @@ export function rotatedLeftOverhang(plan: CategoryRowPlan, centers: readonly num
 }
 
 /**
+ * The room a rotated first name takes from the left of a banded plot. The plot
+ * yields it only where the row planned in the narrower plot still turns its
+ * names (45° or -90°), so they draw. Elsewhere the room would stand for a name
+ * the narrower row does not draw: the plot keeps its width and the row plans
+ * upright.
+ */
+export function yieldToRotatedName<B extends { center(index: number): number }>(
+  plan: CategoryRowPlan, band: B, count: number, x0: number, width: number,
+  bandAt: (x0: number, width: number) => B, planAt: (band: B, rotate?: false) => CategoryRowPlan,
+): { plan: CategoryRowPlan; band: B; x0: number; width: number } {
+  const centers = (b: B) => Array.from({ length: count }, (_, i) => b.center(i));
+  const overhang = rotatedLeftOverhang(plan, centers(band), 4, width);
+  if (overhang <= 0) return { plan, band, x0, width };
+  const narrowed = bandAt(x0 + overhang, width - overhang);
+  const narrowPlan = planAt(narrowed);
+  return narrowPlan.rotation !== 0
+    ? { plan: narrowPlan, band: narrowed, x0: x0 + overhang, width: width - overhang }
+    : { plan: planAt(band, false), band, x0, width };
+}
+
+/**
  * The box of a -90° name (CategoryRowPlan rotation 90) as the solver and the
  * label emitter use it: the emitter turns a rotated label about the right
  * edge of its box, `lineHeight * sin 45° / 2` under its top, and ends the

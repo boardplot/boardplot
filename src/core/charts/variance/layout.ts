@@ -44,7 +44,7 @@ import { boxGap, cleanDiff, cleanFloat, cleanSum, type Rect } from '../../geomet
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { DEFAULT_TARGET, resolveTargetSize, TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { labelsToNodes } from '../../label/emit';
-import { categoryLineAlign, planCategoryRow, rotatedClaimRect, rotatedLeftOverhang, yearRowRequests } from '../../label/categoryRow';
+import { categoryLineAlign, planCategoryRow, rotatedClaimRect, yearRowRequests, yieldToRotatedName } from '../../label/categoryRow';
 import {
   isDateNumericTickSequence,
   type TickBandDerived,
@@ -739,7 +739,7 @@ export function layoutVariance(
   // Date/numeric ticks are one line on one row; prose wraps to two
   // and may stagger, so a crowded prose axis reserves its second tier.
   const dateNumericTicks = isDateNumericTickSequence(cats.map((c) => c.label ?? c.id));
-  const planRow = (b: typeof band) =>
+  const planRow = (b: typeof band, rotate?: false) =>
     planCategoryRow({
       ...categoryLabelsAndMarks(cats, { count: authoredFootnoteCount(options), warnings }, partialAxisWords(options.strings, options, legendInput?.items.some((item) => item.id === '__partial') || partialNamed)),
       centers: cats.map((_, ci) => b.center(ci)),
@@ -749,15 +749,10 @@ export function layoutVariance(
       measure,
       plotHeight: frameResult.plot.h,
       target: options.target, textScale: textScaleOf(options),
+      ...(rotate === false ? { rotate } : {}),
     });
   let catPlan = planRow(band);
-  const catOverhang = rotatedLeftOverhang(catPlan, cats.map((_, ci) => band.center(ci)), 4, plotW0);
-  if (catOverhang > 0) {
-    plotX0 += catOverhang;
-    plotW0 -= catOverhang;
-    band = bandFor(plotX0, plotW0);
-    catPlan = planRow(band);
-  }
+  ({ plan: catPlan, band, x0: plotX0, width: plotW0 } = yieldToRotatedName(catPlan, band, cats.length, plotX0, plotW0, bandFor, planRow));
   const catInfos = catPlan.infos;
   const catFont = catPlan.font;
   const catTickMaxLines = catPlan.maxLines;
