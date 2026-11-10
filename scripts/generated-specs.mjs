@@ -2,6 +2,7 @@
 // and checks four rules on every drawn case. A manual investigation tool: it exits 0 when it ran.
 //
 // Usage: npm run check:generated -- [--seed <n>] [--only <type,...>] [--cases <n per type>] [--jobs <n>] [--out <dir>]
+//        npm run check:generated -- --spec <saved failing spec.json>   (checks rules 1 to 3 on that one request)
 //
 // A case is a fixture, a list of named changes and a theme, drawn at a series of widths with an
 // automatic height. The seed and the type fix every case, so `--only <type>` rebuilds the cases of a full run.
@@ -12,11 +13,12 @@
 //   3 number    every printed number is in the reading: the number census (scripts/number-census.mjs), authored theme
 //   4 width     a spec that draws at a width draws at every wider width of its series
 // For each distinct failure (type, rule, signature) it removes the changes one at a time while the failure stays
-// and writes the smallest case as a request file to <out>/<n>-<type>-<rule>.json; <out>/index.json lists them.
-import { mkdirSync, writeFileSync } from 'node:fs';
+// and writes the smallest case as a request file to <out>/<n>-<type>-<rule>.json; <out>/index.json lists them,
+// each with the seed, the command of its run and the command that reruns that one file.
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { availableParallelism } from 'node:os';
-import { resolve } from 'node:path';
+import { basename, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 import { getChartDefinition, listCharts, measure, resolveChartRequest } from '../src/index.ts';
@@ -61,17 +63,30 @@ const sample = (next, list, n) => {
 // Numbers that place or count things rather than carry a value.
 const LAYOUT_KEYS = new Set(['order', 'capacity', 'padding', 'width', 'height', 'offset', 'repeat', 'indent', 'offsetDays',
   'row', 'column', 'columns', 'top', 'right', 'bottom', 'left', 'minObservations', 'thresholdPct', 'level', 'depth', 'index']);
-/** Map every value number of a data object; `i` counts the values in document order. */
+/**
+ * Map every value number of a data object; `i` counts the values in document order. A formula (an object with an
+ * `op`, such as a dimswitch measure's value) keeps its constants and its factor: they are not data.
+ */
 function mapValues(data, fn) {
   let i = 0;
-  const walk = (value, key) => {
-    if (typeof value === 'number') return LAYOUT_KEYS.has(key) ? value : fn(value, i++);
-    if (Array.isArray(value)) return value.map((entry) => walk(entry, key));
-    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k, entry]) => [k, walk(entry, k)]));
+  const walk = (value, key, formula) => {
+    if (typeof value === 'number') return formula || LAYOUT_KEYS.has(key) ? value : fn(value, i++);
+    if (Array.isArray(value)) return value.map((entry) => walk(entry, key, formula));
+    if (value && typeof value === 'object') {
+      const inner = formula || typeof value.op === 'string';
+      return Object.fromEntries(Object.entries(value).map(([k, entry]) => [k, walk(entry, k, inner)]));
+    }
     return value;
   };
-  return walk(data, '');
+  return walk(data, '', false);
 }
+/** The value without its authored formats (`format`, `valueFormat`) at any depth. */
+const withoutFormats = (value) => {
+  if (Array.isArray(value)) return value.map(withoutFormats);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.entries(value).filter(([key, entry]) => !(['format', 'valueFormat'].includes(key) && typeof entry === 'string'))
+    .map(([key, entry]) => [key, withoutFormats(entry)]));
+};
 // Keep a scaled value free of float residue: the census flags binary-float digits of computed values only.
 const clean = (value) => Number(value.toPrecision(12));
 // A copied entry: a plain string entry (a category) and every id and label get a suffix; other strings (colours, references) stay.
@@ -172,7 +187,7 @@ const fixtureOf = (type, id) => getFixtures(type).find((fixture) => fixture.id =
 /** The request of a case at one width. Changes apply in order. */
 export function requestFor(item, width) {
   const fixture = fixtureOf(item.type, item.fixture);
-  const options = clone(fixture.options ?? {});
+  let options = clone(fixture.options ?? {});
   let data = clone(fixture.data);
   for (const change of item.changes) {
     if (change.startsWith('opt:')) {
@@ -180,15 +195,26 @@ export function requestFor(item, width) {
       setPath(options, change.slice(4, at), JSON.parse(change.slice(at + 1)));
     } else data = DATA_CHANGES[change.slice(5)](data);
   }
+  // An authored format states the magnitude and precision of the unscaled data ("$412k", "12%", "1,234"):
+  // beside scaled data it is an absurd input, so a scaled case prints in the engine's own formats.
+  if (item.changes.some((change) => change.startsWith('data:scale-'))) { data = withoutFormats(data); options = withoutFormats(options); }
+  // No annotations, no key: the empty list is the retired top-level form and makes every CLI render warn.
+  const annotations = clone(fixture.annotations ?? fixture.options?.annotations ?? []);
   return { type: item.type, data, options: { ...options, size: { width } },
-    annotations: clone(fixture.annotations ?? fixture.options?.annotations ?? []), ...(item.theme === 'authored' ? {} : { theme: item.theme }) };
+    ...(annotations.length ? { annotations } : {}), ...(item.theme === 'authored' ? {} : { theme: item.theme }) };
 }
 
 const normalMessage = (message) => String(message ?? '').replace(/'[^']*'|"[^"]*"/g, '…').replace(/\d+(\.\d+)?/g, 'N').slice(0, 120);
 
 /** Draw one case at one width and check rules 1 to 3. */
 export function checkWidth(item, width) {
-  const request = requestFor(item, width);
+  return checkRequest(requestFor(item, width), item.fixture);
+}
+
+/** Check rules 1 to 3 on one request at its width: a case, or a saved failing spec. */
+export function checkRequest(request, id) {
+  const item = { type: request.type, fixture: id, theme: request.theme ?? 'authored' };
+  const width = request.options.size.width;
   const violations = [];
   const crash = (stage, error) => violations.push({ rule: 1, signature: `${stage}: ${normalMessage(error?.message ?? error)}`, message: String(error?.stack ?? error).split('\n').slice(0, 3).join(' | ') });
   let resolved, measured;
@@ -317,8 +343,14 @@ export function runTypes(types, seed, count) {
 
 function main() {
   const args = process.argv.slice(2);
-  const usage = 'Usage: npm run check:generated -- [--seed <n>] [--only <type,...>] [--cases <n per type>] [--jobs <n>] [--out <dir>]';
+  const usage = 'Usage: npm run check:generated -- [--seed <n>] [--only <type,...>] [--cases <n per type>] [--jobs <n>] [--out <dir>] | --spec <file>';
   let seed = 1, count = 40, only, out, jobs = availableParallelism() - 1;
+  if (args[0] === '--spec' && args[1] && args.length === 2) {
+    const result = checkRequest(JSON.parse(readFileSync(args[1], 'utf8')), basename(args[1], '.json'));
+    console.log([`${args[1]}: ${result.status}${result.codes ? ` (${result.codes.join(', ')})` : ''}, ${result.violations.length} violations`,
+      ...result.violations.map((v) => `  ${v.rule} ${RULE_NAMES[v.rule]} ${v.message.slice(0, 300)}`)].join('\n'));
+    return Promise.resolve();
+  }
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--seed' && /^\d+$/.test(args[i + 1] ?? '')) seed = Number(args[++i]);
     else if (args[i] === '--cases' && /^\d+$/.test(args[i + 1] ?? '')) count = Number(args[++i]);
@@ -351,7 +383,7 @@ function main() {
     const index = distinct.map((entry, i) => {
       const file = `${String(i + 1).padStart(3, '0')}-${entry.type}-${RULE_NAMES[entry.rule]}.json`;
       writeFileSync(resolve(out, file), JSON.stringify(entry.request, null, 2) + '\n');
-      return { file, seed, command: command(entry.type), type: entry.type, rule: `${entry.rule} ${RULE_NAMES[entry.rule]}`, signature: entry.signature,
+      return { file, seed, command: command(entry.type), rerun: `npm run check:generated -- --spec ${resolve(out, file)}`, type: entry.type, rule: `${entry.rule} ${RULE_NAMES[entry.rule]}`, signature: entry.signature,
         cases: entry.count, fixture: entry.smallest.fixture, changes: entry.smallest.changes, theme: entry.smallest.theme, width: entry.smallest.width, message: entry.message };
     });
     writeFileSync(resolve(out, 'index.json'), JSON.stringify({ seed, cases: count, rows, failures: index }, null, 1) + '\n');
@@ -373,7 +405,7 @@ function main() {
     if (mostlyRefused.length) lines.push(`Changes refused in 80% or more of their case-widths: ${mostlyRefused.join('; ')}`, '');
     lines.push('Distinct failures, most cases first:');
     for (const entry of index) lines.push(`  ${entry.file} [${entry.cases}] ${entry.rule} ${entry.signature}: ${entry.message.slice(0, 200)}`);
-    lines.push('', `Smallest failing specs and index.json: ${out}`);
+    lines.push('', `Smallest failing specs and index.json: ${out}`, `Rerun one of them: npm run check:generated -- --spec ${out}/<file>`);
     console.log(lines.join('\n'));
   });
 }
