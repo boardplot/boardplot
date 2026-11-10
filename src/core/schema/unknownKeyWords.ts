@@ -20,7 +20,7 @@ export const WORDING_KEYS: ReadonlySet<string> = new Set(['strings']);
 
 /** Words an author reaches for where the schema has a different key. */
 const KEY_SYNONYMS = new Map([['type', 'kind'], ['formula', 'calc']]);
-const DATA_KEY_SYNONYMS = new Map([...KEY_SYNONYMS, ['values', 'observations'], ['color', 'fill'], ['colour', 'fill'], ['name', 'label']]);
+const DATA_KEY_SYNONYMS = new Map([...KEY_SYNONYMS, ['values', 'observations'], ['color', 'fill'], ['colour', 'fill'], ['stroke', 'fill'], ['name', 'label']]);
 
 /** A data synonym is useful only where the target is a known key. */
 export function dataKeySynonym(key: string, known: readonly string[]): string | undefined {

@@ -298,6 +298,36 @@ describe('unknown option keys are refused on every type', () => {
     expect(suggestFor(false)).toBe("Rename 'showValues' to 'labels'.");
     expect(suggestFor(true)).toMatch(/^Remove 'showValues': without it the chart prints its default labels\. Set labels to false/);
   });
+  // stacked: true answered "set 'variant' instead" without the value, so an agent guessed variant values and retried.
+  it('names the value an unknown boolean key switches on and patches it where the option is unset', () => {
+    const fixture = getFixtures('column')[0]!;
+    const { variant: _variant, ...options } = fixture.options as Record<string, unknown>;
+    const spec = { type: 'column', data: fixture.data, options: { ...options, stacked: true } };
+    const suggest = "Remove 'stacked' and set variant: \"stacked\".";
+    const fix = [{ op: 'remove', path: '/options/stacked' }, { op: 'add', path: '/options/variant', value: 'stacked' }];
+    const mcp = JSON.parse(callTool('boardplot_render', { spec }).text) as { errors: (Finding & { fix?: JsonPatchOperation[] })[] };
+    expect(mcp.errors).toContainEqual(expect.objectContaining({ code: 'unknown-option', suggest, fix }));
+    expect(reactErrors(spec)).toContainEqual(expect.objectContaining({ code: 'unknown-option', suggest }));
+    expect(JSON.parse(callTool('boardplot_render', { spec: applyFix(spec, fix as JsonPatchOperation[]) }).text).ok).toBe(true);
+    // An authored variant is the author's choice: the suggest names the value, and no patch overwrites it.
+    const both = cliErrors({ ...spec, options: { ...spec.options, variant: 'grouped' } }).errors.find(entry => entry.path === '/options/stacked') as Finding & { fix?: unknown };
+    expect(both.suggest).toBe(suggest);
+    expect(both.fix).toBeUndefined();
+    // Two switches of one option would race on its value: each names its value and neither patches.
+    const two = cliErrors({ ...spec, options: { ...spec.options, stacked100: true } }).errors as (Finding & { fix?: unknown })[];
+    expect(two.find(entry => entry.path === '/options/stacked')).toMatchObject({ suggest });
+    expect(two.find(entry => entry.path === '/options/stacked100')).toMatchObject({ suggest: "Remove 'stacked100' and set variant: \"stacked100\"." });
+    expect(two.filter(entry => entry.fix)).toEqual([]);
+    // A strict options schema (diagram) words the same key the same way.
+    const tree = getFixtures('diagram').find(entry => (entry.options as { variant?: string }).variant === 'hierarchy')!;
+    const { variant: _treeVariant, ...treeOptions } = tree.options as Record<string, unknown>;
+    const diagram = { type: 'diagram', data: tree.data, options: { ...treeOptions, hierarchy: true } };
+    const refusal = cliErrors(diagram).errors.find(entry => entry.path === '/options/hierarchy') as Finding & { fix?: JsonPatchOperation[] };
+    expect(refusal.suggest).toBe("Remove 'hierarchy' and set variant: \"hierarchy\".");
+    expect(JSON.parse(callTool('boardplot_render', { spec: applyFix(diagram, refusal.fix!) }).text).ok).toBe(true);
+    const twoDiagram = cliErrors({ ...diagram, options: { ...diagram.options, roadmap: true } }).errors as (Finding & { fix?: unknown })[];
+    expect(twoDiagram.filter(entry => entry.code === 'unknown-option').map(entry => entry.fix)).toEqual([undefined, undefined]);
+  });
 });
 
 describe('unknown data keys', () => {
@@ -320,6 +350,8 @@ describe('unknown data keys', () => {
       ] },
       { spec: { type: 'bar', data: { categories: ['North'], series: [{ id: 'r', labell: 'Revenue', values: [90] }] } },
         renames: [['/data/series/0/labell', '/data/series/0/label', 'Revenue']] },
+      { spec: { type: 'line', data: { categories: ['Q1', 'Q2'], series: [{ id: 'r', values: [90, 95], stroke: '#1F77B4' }] } },
+        renames: [['/data/series/0/stroke', '/data/series/0/fill', '#1F77B4']] },
     ];
     const findings = (spec: object) => (render({ spec }).body.errors ?? []) as (Finding & { fix?: JsonPatchOperation[] })[];
     for (const { spec, renames } of cases) {
@@ -348,6 +380,10 @@ describe('unknown data keys', () => {
     expect(incompatible.suggest).not.toContain("to 'label'");
     expect(incompatible.suggest).not.toContain('Remove');
     expect(incompatible.fix).toBeUndefined();
+    // A fill draws only a literal colour, so a dash pattern under 'stroke' gets no rename to fill.
+    const dashed = findings(bar({ stroke: 'dashed' })).find(entry => entry.path === '/data/series/0/stroke')!;
+    expect(dashed.message).not.toContain('try: fill');
+    expect(dashed.fix).toBeUndefined();
     const competing = findings(bar({ color: '#123456', colour: '#654321' }));
     expect(competing.filter(entry => /\/colou?r$/.test(entry.path ?? '')).map(entry => entry.fix)).toEqual([undefined, undefined]);
 

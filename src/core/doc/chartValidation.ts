@@ -10,6 +10,7 @@ import { flattenIssues } from '../schema/flattenIssues';
 import { allowedValues, expectedTypes } from '../diagnostics/describe';
 import { refusalSuggest } from '../schema/capabilityReasons';
 import { LABEL_KINDS } from '../schema/capability';
+import { literalColor } from '../colorLiteral';
 import { WORDING_KEYS, closestKey, dataKeyAlternative, closestOptionKey, dataKeySynonym, movedKey, nearestOptionTerm, typoRenameFix, unknownKeySuggest, unknownOptionMessage, valueChangeSuggest } from '../schema/unknownKeyWords';
 import { ownedDocumentCopy } from './docExpand';
 import { chartSchemaDiagnostic, chartSchemaSource, completeChartDiagnostic } from './diagnostics';
@@ -175,11 +176,13 @@ function parseChartInput(doc: BoardplotDoc, chart: DocChart, envelope: DocumentE
     // union, and a union reports one wrapper issue whose message is the useless
     // string "Invalid input" while the field-level reason sits nested inside.
     for (const i of flattenIssues(optResult.error.issues).flatMap(splitUnknownKeys)) {
-      const unknown = unknownKeyText(i, def.optionsSchema as z.ZodType, undefined, def.type, chart.options);
+      const source = i.code === 'unrecognized_keys' ? chartSchemaSource(doc, chart, 'options', i.path, chart.options) : undefined;
+      const unknown = unknownKeyText(i, def.optionsSchema as z.ZodType, undefined, def.type, chart.options, source);
       // A key a strict object refuses is the same finding as a key a plain one strips.
-      envelope.errors.push(chartSchemaDiagnostic(doc, chart, 'options', unknown ? { ...i, message: unknown.suggest } : i, chart.options ?? {}, unknown ? 'unknown-option' : 'invalid-options',
+      const diagnostic = chartSchemaDiagnostic(doc, chart, 'options', unknown ? { ...i, message: unknown.suggest } : i, chart.options ?? {}, unknown ? 'unknown-option' : 'invalid-options',
         unknown?.message ?? schemaIssueMessage(i, chart.options ?? {}, i.path as (string | number)[], def.optionsSchema as z.ZodType),
-        unknown?.suggest ?? withEventAtHint(chart, i, issueSuggestion(i, def.type, true, i.path as (string | number)[]))));
+        unknown?.suggest ?? withEventAtHint(chart, i, issueSuggestion(i, def.type, true, i.path as (string | number)[])));
+      envelope.errors.push(unknown?.fix ? { ...diagnostic, fix: unknown.fix } : diagnostic);
     }
     return null;
   }
@@ -588,12 +591,19 @@ function sweepStrippedOptionKeys(
     // At the top the near miss also reads the words an option's values use (showValues -> labels).
     const near = parent.length === 0 ? nearestOptionKey(key, schema) : undefined;
     const siblings = known ?? expectedObjectKeys(schema, parent);
-    const nearest = near ? { key: near, near: true } : closestOptionKey(key, siblings);
     const dotted = keyPath.join('.');
     const moved = movedKey(dotted, (target) => expectedObjectKeys(schema, target.slice(0, -1)).includes(target.at(-1)!));
+    // `stacked: true` names a value of one option (variant: 'stacked'): that setting does the job.
+    const switched = moved === undefined && !known ? switchedOption(schema, parent, key, siblings, valueAtPath(authored, keyPath)) : undefined;
+    const nearest = switched ? { key: switched.target, near: true } : near ? { key: near, near: true } : closestOptionKey(key, siblings);
     // A rename is advice only when the near option takes the authored value too.
-    const renameFits = !nearest?.near || moved !== undefined || valueFitsKey(schema, parent, nearest.key, valueAtPath(authored, keyPath));
-    const fix = renameFits && moved === undefined ? typoRenameFix(field, nearest, siblings, valueAtPath(authored, parent)) : undefined;
+    const renameFits = !switched && (!nearest?.near || moved !== undefined || valueFitsKey(schema, parent, nearest.key, valueAtPath(authored, keyPath)));
+    const holder = valueAtPath(authored, parent);
+    const fix = renameFits && moved === undefined ? typoRenameFix(field, nearest, siblings, holder)
+      : switched && switchStandsAlone(schema, parent, key, switched.target, siblings, holder) ? [
+        { op: 'remove' as const, path: toJsonPointer(field) },
+        { op: 'add' as const, path: toJsonPointer([...field.slice(0, -1), switched.target]), value: switched.value },
+      ] : undefined;
     // labels.valueLine where the type labels each valueLine annotation itself: that annotation's label does the job.
     const own = known && !nearest?.near ? annotationLabel(schema, authored, key, field, source.chart, source.segments.slice(0, -1)) : undefined;
     if (own) {
@@ -607,7 +617,8 @@ function sweepStrippedOptionKeys(
       code: 'unknown-option',
       message: `${where}: ${unknownOptionMessage(dotted, nearest, moved)}`,
       displayPath: `${pathBase}.${dotted}`,
-      suggest: renameFits ? unknownKeySuggest(key, nearest, moved) : valueChangeSuggest(key, nearest!.key, kinds),
+      suggest: renameFits ? unknownKeySuggest(key, nearest, moved)
+        : switched ? `Remove '${key}' and set ${switched.target}: ${JSON.stringify(switched.value)}.` : valueChangeSuggest(key, nearest!.key, kinds),
       ...(fix ? { fix } : {}),
     }, field));
   }
@@ -656,6 +667,38 @@ function valueFitsKey(schema: z.ZodType, parent: readonly (string | number)[], k
     } else probe = { [segment]: probe };
   }
   return !(schema.safeParse(probe).error?.issues ?? []).some((issue) => place.every((segment, index) => issue.path[index] === segment));
+}
+
+/**
+ * The option an unknown key set to true switches on: `stacked: true` where the type takes
+ * `variant: 'stacked'`. Only the one option among `siblings` whose schema lists the key as a
+ * string value (case folded), and only where the schema takes that value.
+ */
+function switchedOption(schema: z.ZodType, parent: readonly (string | number)[], key: string, siblings: readonly string[], value: unknown): { target: string; value: string } | undefined {
+  if (value !== true) return undefined;
+  const found: { target: string; value: string }[] = [];
+  for (const target of siblings) {
+    const values = new Set<string>();
+    const collect = (node: JsonSchemaNode): void => {
+      for (const item of [...(node.enum ?? []), node.const]) if (typeof item === 'string') values.add(item);
+      for (const branch of [...(node.anyOf ?? []), ...(node.oneOf ?? []), ...(node.allOf ?? [])]) collect(branch);
+    };
+    schemaNodeAtPath(schema, [...parent, target]).forEach(collect);
+    const named = [...values].find((candidate) => candidate.toLowerCase() === key.toLowerCase());
+    if (named !== undefined) found.push({ target, value: named });
+  }
+  return found.length === 1 && valueFitsKey(schema, parent, found[0]!.target, found[0]!.value) ? found[0] : undefined;
+}
+
+/**
+ * Whether a switch key may patch its option: the object holding it does not set the
+ * option yet, and no other unknown key set to true there switches the same option
+ * (`stacked` and `stacked100` both on), or the patches would race on one value.
+ */
+function switchStandsAlone(schema: z.ZodType, parent: readonly (string | number)[], key: string, target: string, siblings: readonly string[], holder: unknown): boolean {
+  if (!isRecord(holder) || Object.hasOwn(holder, target)) return false;
+  return !Object.keys(holder).some((other) => other !== key && holder[other] === true && !siblings.includes(other)
+    && switchedOption(schema, parent, other, siblings, true)?.target === target);
 }
 
 /** Check a data value in its authored object as well, so union branches see their other fields. */
@@ -763,7 +806,10 @@ function unknownKeyText(
     ...flatItems,
   };
   let closest = closestKey(key, known, optionsType === undefined ? 'data' : 'option');
-  if (optionsType === undefined && closest?.near && !dataValueFitsKey(schema, authored, path, closest.key)) {
+  // The schema takes any string as a fill; the layout draws only a literal colour, so `stroke: 'dashed'` is no fill.
+  const content = valueAtPath(authored, path);
+  if (optionsType === undefined && closest?.near && (!dataValueFitsKey(schema, authored, path, closest.key)
+    || (closest.key === 'fill' && typeof content === 'string' && literalColor(content) === null))) {
     closest = { ...closest, near: false };
   }
   const message = `unknown key '${key}'${closest?.near ? ` — try: ${closest.key}` : ''}${known.length ? `; known keys: ${known.join(', ')}` : ''}`;
@@ -772,7 +818,6 @@ function unknownKeyText(
     if (closest?.near && isRecord(object) && Object.hasOwn(object, closest.key)) {
       return { message, suggest: `'${key}' is not read; '${closest.key}' is already set. Remove '${key}' only if it repeats the value.` };
     }
-    const content = valueAtPath(authored, path);
     const alternative = closest?.near || dataType === undefined ? undefined : dataKeyAlternative(dataType, path);
     const suggest = closest?.near ? unknownKeySuggest(key, closest)
       : alternative ? alternative
@@ -781,6 +826,18 @@ function unknownKeyText(
         : unknownKeySuggest(key, closest);
     const fix = closest?.near ? dataRenameFix(key, closest, known, source) : undefined;
     return { message, suggest, ...(fix ? { fix } : {}) };
+  }
+  const switched = switchedOption(schema, path.slice(0, -1), key, known, valueAtPath(authored, path));
+  if (switched) {
+    const parent = source?.same ? source.parent : undefined;
+    return {
+      message: `unknown key '${key}' — try: ${switched.target}; known keys: ${known.join(', ')}`,
+      suggest: `Remove '${key}' and set ${switched.target}: ${JSON.stringify(switched.value)}.`,
+      ...(switchStandsAlone(schema, path.slice(0, -1), key, switched.target, known, parent) ? { fix: [
+        { op: 'remove' as const, path: source!.path },
+        { op: 'add' as const, path: `${source!.path.slice(0, source!.path.lastIndexOf('/'))}/${switched.target}`, value: switched.value },
+      ] } : {}),
+    };
   }
   return {
     message,

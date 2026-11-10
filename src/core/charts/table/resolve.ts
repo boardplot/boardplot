@@ -2009,7 +2009,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
             'status-value-invalid',
             `rows[${row.id}].cells[${col.id}]`,
             `status '${v}' is not one of: ${STATUS_VALUES.join(' · ')}; for free status text use a text column with a cell tone`,
-            'Use on-track, at-risk, off-track, done or pending, or green, amber, yellow or red (any case). For free status text use a text column with a cell tone.',
+            "Use on-track, at-risk, off-track, done or pending, or green, amber, yellow or red (any case). Send { state: 'na' } for a status that cannot be decided, or use a text column with a cell tone for free text.",
           );
         }
         if (v === null) return { ...base, displayed: missingGlyph };
