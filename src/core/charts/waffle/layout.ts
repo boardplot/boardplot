@@ -244,7 +244,7 @@ function layoutPass(data: ChartData, options: WaffleOptions, lean = false, oneRo
     if (total > 100 + WHOLE_TOLERANCE) {
       throw new NormalizeError('waffle-over-100', `categories[${cat.id}]`,
         `the values of '${cat.id}' add up to ${Math.round(total * 1e6) / 1e6}; one waffle holds at most 100`,
-        "Lower the values so they add up to 100 or less. If the values are fractions, add valueKind: 'fraction'.");
+        "Lower the values so they add up to 100 or less. If the values are fractions, add valueKind: 'fraction'.", undefined, ['data', 'categories', ci]);
     }
     const noValue = values.every((value) => value === null);
     missingPanel.push(noValue);

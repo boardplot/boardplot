@@ -1973,6 +1973,11 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
           ...(band === undefined ? {} : { band: { to: band.to, ...(bandIndex > 0 ? { from: obj!.bands![bandIndex - 1]!.to } : {}), ...(band.label === undefined ? {} : { label: band.label }) } }) };
       }
       case 'status': {
+        // Every authored row with this cell's row id, nested rows included, as pointer segments.
+        const rowPaths = (rows: TableData['rows'], base: (string | number)[]): (string | number)[][] => rows.flatMap((candidate, index) => [
+          ...(candidate.id === row.id ? [[...base, index]] : []),
+          ...(candidate.children ? rowPaths(candidate.children, [...base, index, 'children']) : []),
+        ]);
         const given = typeof authored === 'number' ? authored : obj?.v;
         const written = typeof authored === 'string' ? authored : typeof given === 'string' ? given : null;
         let v = written;
@@ -1990,26 +1995,20 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
         if (v !== null && !(STATUS_VALUES as readonly string[]).includes(v)) {
           const converted = caseInsensitiveValue(v, STATUS_VALUES) ?? (Object.hasOwn(STATUS_WORDS, v.toLowerCase()) ? STATUS_WORDS[v.toLowerCase()] : undefined);
           if (converted !== undefined) {
-            const rowPath = (rows: TableData['rows'], base: (string | number)[]): (string | number)[] | undefined => {
-              for (const [index, candidate] of rows.entries()) {
-                const path = [...base, index];
-                if (candidate.id === row.id) return path;
-                const child = candidate.children && rowPath(candidate.children, [...path, 'children']);
-                if (child) return child;
-              }
-              return undefined;
-            };
-            const field = [...rowPath(data.rows, ['data', 'rows'])!, 'cells', col.id, ...(obj ? ['v'] : [])];
+            const field = [...rowPaths(data.rows, ['data', 'rows'])[0]!, 'cells', col.id, ...(obj ? ['v'] : [])];
             warnings.push(inputConversion(field, v, converted));
             v = converted;
           }
         }
         if (v !== null && !(STATUS_VALUES as readonly string[]).includes(v)) {
+          // The pointer names the authored row with this id, and none where the id is not unique.
+          const paths = rowPaths(data.rows, ['data', 'rows']);
           throw new NormalizeError(
             'status-value-invalid',
             `rows[${row.id}].cells[${col.id}]`,
             `status '${v}' is not one of: ${STATUS_VALUES.join(' · ')}; for free status text use a text column with a cell tone`,
             "Use on-track, at-risk, off-track, done or pending, or green, amber, yellow or red (any case). Send { state: 'na' } for a status that cannot be decided, or use a text column with a cell tone for free text.",
+            undefined, paths.length === 1 ? [...paths[0]!, 'cells', col.id, ...(obj ? ['v'] : [])] : undefined,
           );
         }
         if (v === null) return { ...base, displayed: missingGlyph };

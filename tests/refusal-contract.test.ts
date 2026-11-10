@@ -10,8 +10,6 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import '../src/core/charts';
 import { render } from '../src/cli/render';
-import { layoutRefusal } from '../src/core/emptyData';
-import { NormalizeError, displayPathField } from '../src/core/normalize/shared';
 import { callTool } from '../src/mcp/server';
 import { getFixtures, getRefusalExamples } from '../src/fixtures';
 import { getChartSchemas, listCharts } from '../src/core/registry';
@@ -221,8 +219,8 @@ describe('refusal contract', () => {
     expect(style.message).not.toContain('wiggle');
   });
 
-  // A layout refusal thrown with a display path (rows[id].cells[col]) reached the caller with path '' and the whole spec as the received value.
-  it('points a layout refusal with a display path at the authored field and its value', () => {
+  // A layout refusal thrown with only a display path (rows[id].cells[col]) reached the caller with path '' and the whole spec as the received value.
+  it('points a layout refusal at the authored field and its value', () => {
     const table = getFixtures('table').find((entry) => entry.id === 'table-scorecard')!;
     const rows = structuredClone((table.data as { rows: { cells: Record<string, unknown> }[] }).rows);
     rows[1]!.cells.state = 'unclear';
@@ -237,17 +235,6 @@ describe('refusal contract', () => {
     const idRows = [{ ...rows[0]!, id: '1', cells: { ...rows[0]!.cells, state: 'unclear' } }, { ...rows[1]!, id: 'other', cells: { ...rows[1]!.cells, state: 'on-track' } }];
     const byId = render({ spec: { type: 'table', data: { ...(table.data as object), rows: idRows }, options: table.options } }).body.errors as (Finding & { received?: unknown })[];
     expect(byId[0]).toMatchObject({ code: 'status-value-invalid', path: '/data/rows/0/cells/state', received: { type: 'string', value: 'unclear' } });
-    // Where the id and the index name different items, the refusal names no field.
-    expect(displayPathField({ data: { rows: [{ id: '1' }, {}] } }, 'rows[1]')).toBeUndefined();
-    // The root annotations replace options.annotations in the request, so options.annotations[0] is the root list's first item.
-    const events = getFixtures('line').find((entry) => entry.id === 'era-event-markers')!;
-    const event = (events.annotations as { kind: string }[]).find((item) => item.kind === 'event')!;
-    const rooted = render({ spec: { type: 'line', data: events.data, options: { ...events.options, annotations: [event] }, annotations: [{ kind: 'event', date: '1999-01-01', label: 'x' }] } }).body.errors as (Finding & { received?: unknown })[];
-    expect(rooted[0]).toMatchObject({ code: 'event-date-unresolvable', path: '/annotations/0/date', received: { type: 'string', value: '1999-01-01' } });
-    // React and canDraw hosts read the same field off the layout refusal.
-    const error = new NormalizeError('status-value-invalid', 'rows[garden-cafe].cells[state]', 'invalid status');
-    const data = { rows: [{ id: 'garden-cafe', cells: { state: 'unclear' } }] };
-    expect(layoutRefusal('table', 'Table', { width: 720, height: 405 }, error, { data }).warnings[0]!.field).toEqual(['data', 'rows', 0, 'cells', 'state']);
   });
 
   // These refusals listed only the values they refuse, and authors concluded the job could not be done: each names the setting that does it.

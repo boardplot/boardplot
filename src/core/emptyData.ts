@@ -6,7 +6,7 @@
  */
 
 import { localeStrings } from './strings/ui';
-import { NormalizeError, displayPathField } from './normalize/shared';
+import { NormalizeError } from './normalize/shared';
 import { chartSizing, resolveSizing } from './sizing';
 import type { Size } from './geometry';
 import type { RefusedLayout } from './types/scene';
@@ -29,7 +29,7 @@ export function isEmptyDataIssue(issue: { code?: unknown; origin?: unknown; path
 }
 
 /** The layout's refusal from the error it threw (`empty-data` and every other code), as hosts and `canDraw` read it. */
-export function layoutRefusal(type: string, title: string, size: Size, error: NormalizeError, chart?: { data?: unknown; options?: unknown; annotations?: unknown }): RefusedLayout {
+export function layoutRefusal(type: string, title: string, size: Size, error: NormalizeError): RefusedLayout {
   return {
     refused: true,
     type,
@@ -42,8 +42,7 @@ export function layoutRefusal(type: string, title: string, size: Size, error: No
       message: error.message,
       ...(error.suggest ? { suggest: error.suggest } : {}),
       ...(error.fix ? { fix: error.fix } : {}),
-      field: error.code === EMPTY_DATA ? ['data', ...(error.path ? error.path.split('.') : [])]
-        : error.segments ?? (error.path ? (chart && displayPathField(chart, error.path)) ?? error.path.split('.') : []),
+      field: error.code === EMPTY_DATA ? ['data', ...(error.path ? error.path.split('.') : [])] : error.segments ?? (error.path ? error.path.split('.') : []),
     }],
   };
 }

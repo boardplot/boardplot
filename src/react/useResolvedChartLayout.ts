@@ -99,7 +99,7 @@ export function useDeferrableChartLayout(
     try { return { geometry: revision === 0 ? asFirstFrame(linked, () => layoutContainerRequest(layoutRequest, shownFit)) : layoutContainerRequest(layoutRequest, shownFit) }; }
     catch (error) {
       if (errorAsRefusal && error instanceof NormalizeError) {
-        return { geometry: layoutRefusal(layoutRequest.type, getChart(layoutRequest.type)?.title ?? layoutRequest.type, layoutRequest.size, error, layoutRequest) };
+        return { geometry: layoutRefusal(layoutRequest.type, getChart(layoutRequest.type)?.title ?? layoutRequest.type, layoutRequest.size, error) };
       }
       if (!(error instanceof DeferredCoreError)) throw error;
       return { deferred: error.module, failure: error.failure };

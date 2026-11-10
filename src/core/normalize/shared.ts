@@ -37,57 +37,6 @@ export class NormalizeError extends Error {
 }
 
 /**
- * The field a refusal's display path names in the authored chart, for a
- * refusal thrown without segments: `rows[cafe].cells[state]` is
- * data.rows[i].cells.state, where item i has the id `cafe`. The path is read
- * from the chart, then from its data, then from its options; a path whose
- * last key is absent names it under the first parent that exists.
- * Undefined when no reading finds the parent.
- *
- * Throw sites put ids and indices alike in brackets (`rows[${row.id}]`,
- * `series[${si}]`), and an id can be '1'. A bracket names the one item with
- * that id; it reads as an index only where that item carries no other id.
- * When the two readings name different items, or several items share the
- * id, the path names no field: a wrong pointer is worse than none.
- */
-export function displayPathField(chart: { data?: unknown; options?: unknown; annotations?: unknown }, path: string): (string | number)[] | undefined {
-  const keys = [...path.matchAll(/([^.[\]]+)|\[([^\]]*)\]/g)].map((match) => ({ key: match[1] ?? match[2]!, bracket: match[2] !== undefined }));
-  if (!keys.length) return undefined;
-  // The request draws the root annotations in place of options.annotations, so the layout's options.annotations[i] is the root list's item.
-  if (chart.annotations !== undefined && keys[0]?.key === 'options' && keys[1]?.key === 'annotations') keys.shift();
-  const CONFLICT = -1;
-  const step = (node: unknown, { key, bracket }: { key: string; bracket: boolean }): string | number | undefined => {
-    if (Array.isArray(node)) {
-      const at = /^\d+$/.test(key) && Number(key) < node.length ? Number(key) : undefined;
-      if (!bracket) return at;
-      const idOf = (item: unknown) => (typeof item === 'string' ? item : (item as { id?: unknown } | null)?.id);
-      const byId = node.flatMap((item, index) => (idOf(item) === key ? [index] : []));
-      const byIndex = at !== undefined && (idOf(node[at]) === undefined || String(idOf(node[at])) === key) ? at : undefined;
-      if (byId.length > 1 || (byId.length === 1 && byIndex !== undefined && byId[0] !== byIndex)) return CONFLICT;
-      return byId[0] ?? byIndex;
-    }
-    return node !== null && typeof node === 'object' && Object.hasOwn(node, key) ? key : undefined;
-  };
-  const roots: (string | number)[][] = [[], ['data'], ['options']];
-  for (const whole of [true, false]) {
-    for (const root of roots) {
-      let node: unknown = root.reduce<unknown>((value, key) => (value as Record<string | number, unknown>)?.[key], chart);
-      const field = [...root];
-      for (const [index, key] of keys.entries()) {
-        const next = step(node, key);
-        if (next === CONFLICT) return undefined;
-        const last = index === keys.length - 1;
-        if (next === undefined && !(last && !whole && !key.bracket && node !== null && typeof node === 'object' && !Array.isArray(node))) break;
-        field.push(next ?? key.key);
-        node = next === undefined ? undefined : (node as Record<string | number, unknown>)[next];
-        if (last) return field;
-      }
-    }
-  }
-  return undefined;
-}
-
-/**
  * A BCP 47 language tag in canonical form: "de_DE" and "de-de" read "de-DE"
  *. Null when Intl rejects the tag, which the schema reports at its path
  * instead of failing inside the first number the layout formats.
