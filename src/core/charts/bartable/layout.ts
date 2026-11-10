@@ -459,7 +459,7 @@ function layoutBarTableOnce(
       }),
       ...(total == null ? [] : typeof total === 'number' ? [total] : [total.low, total.high]),
     ];
-    const { fmt, spec } = seriesRasterFormatter(panel.format ?? options.format, raster, locale, panel.unit, options.target);
+    const { fmt, spec } = seriesRasterFormatter(panel.format ?? options.format, raster, locale, panel.unit ?? options.unit, options.target);
     const endTexts = rowSums.map((sum, r) => {
       const end = ranges[r];
       return sum === null ? stateGlyph[blankState(panel, r) ?? 'none'] : end ? range(fmt(end.low), fmt(end.high)) : fmt(sum);

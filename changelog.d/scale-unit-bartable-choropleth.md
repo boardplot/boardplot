@@ -1,0 +1,3 @@
+### Fixed
+
+- The bar table and the choropleth key no longer add a magnitude letter on top of a chart unit that names a scale ("$m", "EUR m", "k€"). Before, a bar table whose `options.unit` was "$m" and whose panels named no unit printed its bar ends and total as "2.0M | 3.5M | 5.5M" under "Revenue in $m", and a choropleth key under "in $m" printed its breaks as "20M | 30M | 40M | 45M". Both read as millions of millions. They now print whole and grouped ("3,500,000", "20,000,000"), as the column, bar and table charts do, and the engine warns `unit-scale-digits`. A bar table panel's own unit still wins over the chart unit. To print a letter as before, give the panel or the map a format such as `"format": "1.2M"`.
