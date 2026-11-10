@@ -353,6 +353,42 @@ it('aligns column and line category centres in legacy category tiers', () => {
   expect((grid.derived as { sharedYDomains: object }).sharedYDomains).toHaveProperty('grid:y');
 });
 
+// Dot and bar panels draw their value axis across, and sharedScale true kept their own scales without a word.
+it('shares the horizontal value axis of dot and bar panels', () => {
+  const panel = (id: string, type: string, values: number[]) => ({ id, type, title: id, data: {
+    categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], series: [{ id: `${id}s`, label: 'Value', values }] } });
+  for (const type of ['dot', 'bar']) {
+    const grid = getChart('grid')!.layout({ panels: [panel('low', type, [10, 40]), panel('high', type, [100, 180])] },
+      { columns: 1, sharedScale: true, size: { width: 600, height: 500 } }) as Geometry;
+    expect((grid.derived as { sharedYDomains: object }).sharedYDomains, type).toHaveProperty('grid:y');
+    // A dot panel prints its value axis: both panels end on the same tick.
+    const panels = (grid.marks as { panels: { chart: { geometry: Geometry } }[] }).panels;
+    const lastTick = panels.map(p => p.chart.geometry.axes.find(a => a.axis === 'x')?.ticks.at(-1)?.at);
+    if (type === 'dot') expect(lastTick[0]).toBe(lastTick[1]);
+  }
+});
+
+// A butterfly pane keeps its own scale, so reading its axis across put its negative side into the domain of the column panels.
+it('leaves a butterfly panel out of the shared value scale', () => {
+  const butterfly = getFixtures('butterfly')[0]!;
+  const column = (id: string, values: number[]) => ({ id, type: 'column', title: id, options: { unit: '$k' }, data: {
+    categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], series: [{ id: `${id}s`, label: 'Sales', values }] } });
+  const grid = getChart('grid')!.layout({ panels: [{ id: 'split', type: 'butterfly', title: 'Split', data: butterfly.data, options: { ...butterfly.options, sharedScale: false } },
+    column('east', [10, 20]), column('west', [15, 30])] }, { columns: 3, size: { width: 1200, height: 450 } }) as Geometry;
+  expect((grid.derived as { sharedYDomains?: object }).sharedYDomains).toBeUndefined();
+});
+
+// A bar draws its value-axis break across, and the break check read the vertical axis only: two bars with one valid break were refused.
+it('shares one value-axis break across bar panels', () => {
+  const bar = (id: string, values: number[]) => ({ id, type: 'bar', title: id, options: { valueAxis: { show: true, break: { from: 40, to: 480 } } }, data: {
+    categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }, { id: 'c', label: 'C' }], series: [{ id: `${id}s`, label: 'Sales', values }] } });
+  const result = layoutResolvedRequest(resolveChartRequest({ type: 'grid', data: { panels: [bar('east', [10, 20, 520]), bar('west', [15, 30, 540])] },
+    options: { columns: 1, sharedScale: true, size: { width: 700, height: 500 } } } as never));
+  expect(result.refused).toBeFalsy();
+  expect(result.warnings.map((warning) => warning.code)).not.toContain('scale-break-incompatible');
+  expect((result as Geometry).derived).toHaveProperty('sharedYDomains.grid:y');
+});
+
 // A shared value domain must map equal value steps to equal pixel heights in mixed panels.
 it('maps a shared value scale to each panel data rectangle', () => {
   const grid = getChart('grid')!.layout({ panels: [
