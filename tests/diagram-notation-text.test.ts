@@ -20,6 +20,19 @@ describe('diagram text under the notation unit', () => {
   });
 });
 
+describe('architecture columns', () => {
+  // An eight-step chain at 1600 px wrapped its last node to a second row and dropped the long labels between the steps.
+  it('keeps a chain in one row where its nodes fit, and draws the labels between them', () => {
+    const steps = Array.from({ length: 8 }, (_, index) => ({ id: `n${index + 1}`, kind: 'entity', shape: { kind: 'roundedRect' }, label: `Step ${index + 1}`, role: 'primary' }));
+    const verbs = ['Request', 'Validated order', 'Approved', 'Scheduled job', 'Processed', 'Shipped goods', 'Delivered'];
+    const edges = verbs.map((verb, index) => ({ id: `e${index + 1}`, source: { nodeId: `n${index + 1}` }, target: { nodeId: `n${index + 2}` }, label: `${verb} and then more detail text` }));
+    const spec = { type: 'diagram', data: { nodes: steps, edges }, options: { variant: 'architecture', title: 'Eight step chain', source: 'Invented', size: { width: 1600 } } };
+    const geometry = layoutResolvedRequest(resolveChartRequest(spec as never)) as any;
+    expect(new Set(geometry.marks.nodes.map((node: any) => node.rect.y)).size).toBe(1);
+    expect(geometry.labels.filter((label: any) => label.id.startsWith('edge-label:') && !label.hidden)).toHaveLength(7);
+  });
+});
+
 describe('diagram inset heading and columns', () => {
   const fixture = getFixtures('diagram').find((entry) => entry.id === 'inset-no-heading')!;
   const body = (inset: object) => render({ spec: { type: 'diagram', data: { ...(fixture.data as object), inset: { title: 'Service levels', rows: [{ label: 'Failed loads', value: '3' }], ...inset } }, options: fixture.options } as never, format: 'svg' } as never).body as any;
