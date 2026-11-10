@@ -21,7 +21,7 @@ import { defaultMeasurer, type TextMeasurer } from './text';
 import { drawnHeight } from './drawnHeight';
 import { clippedTextWarnings } from './textClip';
 import type { Size } from './geometry';
-import type { Annotation } from './types/annotations';
+import { withAnnotationOrigins, type Annotation } from './types/annotations';
 import type { BaseOptions, LocaleSpec, RenderTarget, StringsSpec } from './types/options';
 import type { Geometry, LayoutResult, LintWarning, RefusedLayout } from './types/scene';
 import type { ResolvedSizing } from './types/sizing';
@@ -215,6 +215,9 @@ export function resolveChartRequest<D, O extends object>(
   });
   const read = readFormatExamples(input.data, authoredOptions);
   const options = read.options;
+  // The root list replaces options.annotations. A list from the type's defaults is not authored and has no origin.
+  const annotationList = input.annotations !== undefined ? ['annotations'] as const : input.options?.annotations !== undefined ? ['options', 'annotations'] as const : undefined;
+  if (annotationList && Array.isArray(options.annotations)) options.annotations = withAnnotationOrigins<Annotation>(options.annotations, annotationList);
   if (def.type === 'line' && (options as { xAxis?: { type?: string } }).xAxis?.type === 'time' && options.annotations) {
     // Records and hover cards read this request too, before the layout resolves its own anchors.
     options.annotations = options.annotations.map(annotation => timeAnnotationAnchors(annotation) as Annotation);

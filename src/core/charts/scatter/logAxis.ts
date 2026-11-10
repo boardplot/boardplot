@@ -71,6 +71,6 @@ export function refuseNonPositiveOnLog(options: ScatterStrategyOptions, axes: Lo
   for (const line of drawnValueLines(options.annotations, meanY)) {
     const ann = options.annotations![line.index] as { tolerance?: number | { low: number } };
     const low = typeof ann.tolerance === 'number' ? line.value - ann.tolerance : (ann.tolerance?.low ?? line.value);
-    if (Math.min(line.value, low) <= 0) refuse('y', `annotations[${line.index}]`, Math.min(line.value, low), ['annotations', line.index], 'move the value line and its band above zero');
+    if (Math.min(line.value, low) <= 0) refuse('y', line.ref.name, Math.min(line.value, low), line.ref.segments, 'move the value line and its band above zero');
   }
 }

@@ -254,6 +254,29 @@ export function defaultAnnotationId(annotation: { kind: AnnotationKind; id?: Id 
   return annotation.id ?? `${annotation.kind}-${index + 1}`;
 }
 
+/**
+ * Where the author wrote an annotation: `['annotations', i]` at the chart root or `['options', 'annotations', i]`.
+ * The request sets it on each authored entry before the chart drops the kinds it does not draw, so a refusal points at
+ * the authored entry, not at its position in the list the chart kept. An entry the engine adds has none.
+ */
+export const ANNOTATION_ORIGIN = Symbol('annotationOrigin');
+
+/** Each entry of an authored annotation list, copied with its origin. */
+export function withAnnotationOrigins<T>(list: readonly T[], at: readonly ('annotations' | 'options')[]): T[] {
+  return list.map((entry, index) => entry !== null && typeof entry === 'object' ? { ...entry, [ANNOTATION_ORIGIN]: [...at, index] } : entry);
+}
+
+/**
+ * The pointer segments and the display name of an annotation: from its origin, or, for an annotation without one,
+ * no pointer and the name the site gave before (`annotations[index]` by default).
+ */
+export function annotationRef(annotation: unknown, index: number, fallback = `annotations[${index}]`): { segments: (string | number)[]; name: string } {
+  const origin = annotation !== null && typeof annotation === 'object'
+    ? (annotation as { [ANNOTATION_ORIGIN]?: (string | number)[] })[ANNOTATION_ORIGIN] : undefined;
+  if (!origin) return { segments: [], name: fallback };
+  return { segments: [...origin], name: `${origin.slice(0, -1).join('.')}[${origin.at(-1)}]` };
+}
+
 /** Technical purpose text used by discovery commands for every annotation kind. */
 export const ANNOTATION_KIND_PURPOSES: Record<AnnotationKind, string> = {
   diff: 'Draws a level-difference arrow between two anchors and computes either percent change or their signed value difference.',
