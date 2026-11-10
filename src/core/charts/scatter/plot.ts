@@ -139,14 +139,21 @@ export function scatterPaints(
     const drawn = pts.filter((p) => p.group === gid && p.marker !== 'none');
     groupLarge.set(gid, drawn.length > 0 && drawn.every(large));
   }
-  // Groups that share a colour role take distinct steps of it.
+  // Groups that share a colour role take distinct steps of one ladder: the
+  // fill ladder while every point of the role is large, else the stroke
+  // ladder for all its points, so a small dot and a large marker of two groups
+  // never land on one colour and a group's points match its key.
   const roleGroups = [...groups].map(([id, g]) => ({ id, colorRole: g.colorRole }));
   const roleFills = colorRolePaints(roleGroups);
   const roleStrokes = colorRolePaints(roleGroups, false);
+  const roleSteps = colorRolePaints(roleGroups, (gid) => groupLarge.get(gid) ?? false);
   const rolePaint = (gid: Id, fill: boolean): Paint | undefined => {
     const g = groups.get(gid)!;
     // The rest role recedes as a muted mark: its page-pale 'others' fill would not read as a dot.
-    return g.colorRole === 'others' ? mutedMarkPaint() : g.colorRole ? (fill ? roleFills : roleStrokes).get(gid)! : undefined;
+    if (g.colorRole === 'others') return mutedMarkPaint();
+    if (!g.colorRole) return undefined;
+    const step = roleSteps.get(gid)!;
+    return 'theme' in step && step.theme?.kind === 'role-step' ? step : (fill ? roleFills : roleStrokes).get(gid)!;
   };
   const group = (gid: Id | undefined): Paint => {
     if (gid === undefined) return themeSeriesPaint(0, palette);

@@ -367,6 +367,8 @@ describe('draws series that share a colour role in distinct steps in every type'
     ['bartable', { type: 'bartable', data: { categories: cats, series: S.map((id, i) => ({ id, label: `Series ${i + 1}`, colorRole: 'good' })), panels: [{ id: 'p', label: 'P', unit: '$m', values: { s1: [20, 25, 22], s2: [25, 29, 25], s3: [30, 33, 28] } }] } }, S, true],
     ['waffle', { type: 'waffle', data: { categories: [{ id: 'o', label: 'Orders' }], series: series((i) => [[30, 25, 15][i]!]) }, options: { variant: 'cells' } }, S, false],
     ['scatter', { type: 'scatter', data: { groups, points: G.flatMap((g, gi) => [0, 1, 2].map(k => ({ id: `${g}${k}`, group: g, label: `${g}${k}`, x: gi * 3 + k, y: gi + k * 2 }))) } }, G, true],
+    // A small dot took the stroke ladder and a large marker the fill ladder, so a circle of one group and a triangle of another drew one colour.
+    ['scatter mixed markers', { type: 'scatter', width: 720, data: { groups: groups.map((g, gi) => gi === 2 ? { ...g, marker: 'triangle' } : g), points: G.flatMap((g, gi) => [0, 1].map(k => ({ id: `${g}${k}`, group: g, label: `${g}${k}`, x: gi * 3 + k, y: gi + k * 2 }))) } }, G, true],
     ['treemap', { type: 'treemap', data: { groups, items: G.flatMap((g, gi) => [0, 1].map(k => ({ id: `${g}${k}`, label: `${g}${k}`, group: g, value: 100 - gi * 20 - k * 10 }))) } }, G, true],
     ['waterfall', { type: 'waterfall', data: { items: [{ id: 'st', label: 'Start', type: 'total', value: 100 }, { id: 'v', label: 'Volume', segments: S.map((id, i) => ({ id, label: `Segment ${i + 1}`, colorRole: 'good', value: 10 + i * 4 })) }, { id: 'en', label: 'End', type: 'total' }] } }, S, true],
   ];

@@ -124,11 +124,12 @@ const roleStepMemo = new Map<string, string[]>();
  * every two steps meet the swatch floor (12 OKLab normal, the floor of
  * series-adjacent-similar). A fill step also stays that far from `others`,
  * the Others colour a chart may draw beside it (a waffle's rest, a topN
- * bucket). The first step is the role's colour, the next wash toward the
- * page. Where the page side has no room for them all, the last steps run away
- * from it (a darker shade on a light page). Where both sides together have no
- * room, the steps spread over the visible range as far apart as it allows,
- * strongest first.
+ * bucket). The set holds the role's colour and washes toward the page.
+ * Where the page side has no room for them all, further steps run away from
+ * it (a darker shade on a light page). Where both sides together have no
+ * room, the steps spread over the visible range as far apart as it allows.
+ * The steps come strongest first (most contrast against the page), so the
+ * series of one role run one way, from series 1 to the last.
  */
 export function roleSteps(base: string, background: string, count: number, stroke: boolean, others?: string): string[] {
   const key = `${base}|${background}|${count}|${stroke}|${others ?? ''}`;
@@ -163,7 +164,7 @@ export function roleSteps(base: string, background: string, count: number, strok
     for (let gap = ROLE_SPREAD_MAX; !steps && gap >= PALETTE_NORMAL_FLOOR; gap -= 0.5) {
       const up = walk(baseAt, -1, gap, shades);
       const down = walk(baseAt, 1, gap, count - 1 - shades);
-      if (up.length === shades && down.length === count - 1 - shades) steps = [baseAt, ...down, ...up];
+      if (up.length === shades && down.length === count - 1 - shades) steps = [...up, baseAt, ...down];
     }
   }
   // No room at the floor: spread from the strongest visible step, as far apart as the range allows.
@@ -171,7 +172,10 @@ export function roleSteps(base: string, background: string, count: number, strok
     const down = walk(0, 1, gap, count - 1);
     if (down.length === count - 1) steps = [0, ...down];
   }
-  const colors = steps ? steps.map((i) => line[i]!) : Array.from({ length: count }, () => base);
+  // More series than any gap holds: spread them evenly over the visible range, repeating only past its last colour.
+  if (!steps && line.length > 0) steps = Array.from({ length: count }, (_, i) => Math.round(count === 1 ? 0 : (i * (line.length - 1)) / (count - 1)));
+  // `line` runs from the strongest step to the page, so index order is strongest first.
+  const colors = steps ? steps.sort((a, b) => a - b).map((i) => line[i]!) : Array.from({ length: count }, () => base);
   roleStepMemo.set(key, colors);
   return [...colors];
 }

@@ -2522,8 +2522,9 @@ export function markRolePaint(role: string, fill = false): Paint {
 /**
  * The fill of each series that draws in a colour role, by series id. Series of
  * one chart that share a role take distinct steps of the role's colour (the
- * role steps, decided in the active theme), the first series the full colour, so
- * the reader can tell them apart by more than their order. A series with its
+ * role steps, decided in the active theme), strongest first, so the reader
+ * can tell them apart by more than their order and the steps run one way. The
+ * role's full colour is one of the steps. A series with its
  * own fill keeps it and takes no step. `fill: false` steps the role's stroke
  * colour (a line or a dot), as markRolePaint, and holds each step to the
  * stroke floor (roleSteps). `fill` as a test by series id serves a chart that
