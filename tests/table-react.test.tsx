@@ -43,6 +43,7 @@ import { resolveTable } from '../src/core/charts/table/resolve';
 import { defaultMeasurer } from '../src/core/text';
 import { paintColor, resolveTargetTheme, resolveTheme, themeForWidth } from '../src/core/theme';
 import { tableStylesheet } from '../src/react/tablePresentation';
+import { prepareChart } from '../src/react/prepare';
 import { toneTextPaint } from '../src/core/charts/table/chips';
 import { tableFonts } from '../src/core/charts/table/tracks';
 import { levelLadder } from '../src/core/charts/table/ladder';
@@ -1084,6 +1085,16 @@ describe('TableChart reads the footer rule notes model', () => {
     expect(listed()).toEqual(['Second']);
     act(() => root.render(<TableChart data={data} target="dashboard" locale={{ language: 'de' }} footnotes={['First']} />));
     expect(container.querySelector('.bp-notes summary')!.textContent).not.toBe('Notes and sources (1)');
+  });
+
+  // A prepared table dropped the partial-total columns, so its partial-total note stayed after its column was hidden.
+  it('drops the partial-total note of a prepared table with its hidden column', async () => {
+    const fixture = getFixtures('table').find((entry) => entry.id === 'nulls-policy')!;
+    const toggled = { ...(fixture.data as TableData), columnToggles: [{ id: 'skip', label: 'Q3', columns: ['q3'], defaultVisible: false }] };
+    const options = { ...(fixture.options as TableOptions), notes: { show: ['note', 'disclosure'] as const } };
+    const prepared = await prepareChart({ type: 'table', data: toggled, options } as never) as never;
+    act(() => root.render(<TableChart data={toggled} {...options as object} prepared={prepared} />));
+    expect(printed()).toEqual([]);
   });
 
   // The React source line doubled a bold source word ("Source: **Source:** …") and printed a bare colon under an empty source word.
