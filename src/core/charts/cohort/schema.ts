@@ -137,6 +137,7 @@ export const cohortOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptio
       });
     }
     for (const { key, message } of cohortKeyRefusals(options as Parameters<typeof cohortKeyRefusals>[0])) {
-      ctx.addIssue({ code: 'custom', path: [key], message });
+      // `refused` gives the caller the same remove patch that the layout refusal carries for React.
+      ctx.addIssue({ code: 'custom', path: [key], message, params: { refused: true } });
     }
   }) as unknown as z.ZodType<CohortOptions>;
