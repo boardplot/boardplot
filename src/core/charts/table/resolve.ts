@@ -40,7 +40,7 @@ import { localeStrings } from '../../strings';
 import { chartString } from '../../strings/table';
 import type { Theme } from '../../types/theme';
 import { closestKey } from '../../schema/unknownKeyWords';
-import { floatNoise, tableCellKey } from './cellKey';
+import { tableCellKey } from './cellKey';
 import { isCohortDensity } from './ladder';
 import { presetLanguage } from './presets';
 import type { Id, Direction } from '../../types/cell';
@@ -228,6 +228,9 @@ function sameUnit(a: NumberFormatSpec, b: NumberFormatSpec): boolean {
     && JSON.stringify(a.glyphs) === JSON.stringify(b.glyphs) && JSON.stringify(a.exponent) === JSON.stringify(b.exponent)
     && JSON.stringify(a.magnitudeWord) === JSON.stringify(b.magnitudeWord);
 }
+
+/** Float noise from magnitude math (bn-scale): a gap this small between two figures is no disagreement. */
+const floatNoise = (a: number, b: number): number => 1e-9 * Math.max(1, Math.abs(a), Math.abs(b));
 
 export function columnHeaderAffix(column: {
   scenario?: string;
@@ -2244,6 +2247,9 @@ function stampRecordDisplay(
   for (const rec of records) {
     if (rec.kind === 'reconciliation' || rec.kind === 'rounding-adjustment') {
       rec.displayed = typeof rec.raw === 'number' ? formatNumber(rec.raw, rec.colId, rec.kind === 'rounding-adjustment' ? rec.rowId : undefined) : '';
+      // The author's total prints the sum only where the sum in the cell's own format is the cell's text.
+      if (rec.kind === 'reconciliation' && typeof rec.raw === 'number'
+        && formatNumber(rec.raw, rec.colId, rec.rowId) === cellIndex.get(tableCellKey(rec.rowId, rec.colId))?.displayed) rec.printedInCell = true;
       continue;
     }
     rec.displayed = cellIndex.get(tableCellKey(rec.rowId, rec.colId))?.displayed ?? rec.displayed;

@@ -844,6 +844,8 @@ export interface ComputedCellRecord {
    * either (a) a `sum` receipt over no operands or (b) silence.
    */
   kind: 'calc' | 'aggregate' | 'reconciliation' | 'rounding-adjustment' | 'unaudited';
+  /** A reconciliation whose sum, in the cell's own format, is the text the author's total prints. */
+  printedInCell?: true;
 }
 
 export interface TableDerived {

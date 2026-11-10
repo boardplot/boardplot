@@ -13,9 +13,8 @@ import { cellPrinted } from './view';
 function withUnprintedCells(geometry: Geometry<TableMarks, TableDerived>, options: TableOptions = {}): Geometry<TableMarks, TableDerived> {
   const { table, computedCells } = geometry.derived;
   const printed = cellPrinted(table, geometry.marks, options);
-  const rows = new Map(table.rows.map((row) => [row.id, row]));
   return withUnprintedClaims(geometry, computedCells
-    .filter((c) => !printsInCell(c, rows.get(c.rowId)?.cells[c.colId]?.raw) || !printed(c.rowId, c.colId))
+    .filter((c) => !printsInCell(c) || !printed(c.rowId, c.colId))
     .map((c) => (c.kind === 'calc' || c.kind === 'aggregate' ? claimId('table', c.rowId, c.colId) : claimId('table', c.rowId, c.colId, c.kind))));
 }
 

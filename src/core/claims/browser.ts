@@ -499,7 +499,7 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
       // The cell that prints the record's number: an inline row prints as a line in its parent's cell.
       const cellNode = (c: TableDerived['computedCells'][number]) => {
         const row = rows.get(c.rowId);
-        if (!printsInCell(c, row?.cells[c.colId]?.raw)) return undefined;
+        if (!printsInCell(c)) return undefined;
         return row?.inline ? tableCellNodeId('cellline', row.parentId!, c.colId, row.id) : tableCellNodeId('cell', c.rowId, c.colId);
       };
       return derived.computedCells.map((c) => ({
