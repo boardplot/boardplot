@@ -93,7 +93,7 @@ export interface ResolveResult {
 /**
  * How an automatic format prints a nonzero value that rounds to 0: full
  * digits (default), the compact bound ("<0.1"), or 'none', the plain rounded
- * text, which width fitting measures. The layout picks it.
+ * text, which width fitting measures and which never draws. The layout picks it.
  */
 export const ZERO_LIFT = Symbol('tableZeroLift');
 export type ZeroLiftOptions = { [ZERO_LIFT]?: 'none' | 'compact' };

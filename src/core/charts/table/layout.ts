@@ -185,8 +185,7 @@ export function prepareTableExecutor(authoredData: TableData, initialOptions: Ta
           }
           return prepared(current, sizingOnly, selected, widthOnlyOnMiss);
         }, cutCount, hasHeadAir);
-    }, (lifted, plain) => costsWidth(lifted, plain, options), resolved.lifted,
-    (bound, plain) => missesFrame(bound, options) && !missesFrame(plain, options));
+    }, (lifted, plain) => costsWidth(lifted, plain, options), resolved.lifted);
     return (options as LayoutOptions)[PLAN_ONLY] || (options as LayoutOptions)[SIZING_ONLY] ? geometry : materializeLayout(geometry);
   });
   const runCard = (options: TableOptions = initialOptions): Geometry<TableMarks, TableDerived> => withPlanInputs(() => {
