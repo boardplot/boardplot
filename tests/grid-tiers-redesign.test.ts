@@ -571,3 +571,17 @@ it('stands the variance tiers under the column panel with variancePosition below
   expect(quietY('orders')).toBeLessThan(quietY('dpl'));
   expect(quietY('dpl')).toBeLessThan(quietY('dpl2'));
 });
+
+// Without variancePosition, a variance tier listed first still took the week labels, stood under the columns
+// and grew a 960 px grid to 1493 px, against the default 'above'.
+it('keeps the column panel the category owner when a variance tier is listed first', () => {
+  const { data, options } = getFixtures('grid').find((f) => f.id === 'weekly-actual-vs-plan')! as { data: { panels: { id: string }[] }; options: Record<string, unknown> };
+  const at = (panels: object[]) => measure({ type: 'grid', data: { panels }, options: { ...options, size: { width: 960 } } } as never).geometry as unknown as Geometry & { marks: { panels: { id: string; plot: { y: number } }[] } };
+  const listed = at(data.panels);
+  const varianceFirst = at([...data.panels].reverse());
+  expect(listed.marks.panels[0]!.id).toBe('orders');
+  expect(varianceFirst.size.height).toBe(listed.size.height);
+  const y = (id: string) => varianceFirst.marks.panels.find((panel) => panel.id === id)!.plot.y;
+  expect(y('dpl')).toBeLessThan(y('orders'));
+  expect(varianceFirst.labels.some((label) => label.id.startsWith('orders/category'))).toBe(true);
+});

@@ -102,13 +102,18 @@ export function measuredCaption(text: string, font: FontSpec, width: number, mea
     height: Math.max(...sizes.map(size => size.height)) + (lines.length - 1) * font.size * (font.lineHeight ?? 1.2) };
 }
 
-/** The first tier that has not explicitly suppressed category labels. */
-export function sharedCategoryLabelOwner(panels: { options?: object }[]): number {
-  return panels.findIndex((panel) => {
+/**
+ * The first tier that has not explicitly suppressed category labels. Over variance tiers the column panel
+ * owns them wherever it is listed, so the tiers stand where variancePosition puts them.
+ */
+export function sharedCategoryLabelOwner(panels: { type?: string; options?: object }[]): number {
+  const labelled = (panel: { options?: object }) => {
     const options = isRecord(panel.options) ? panel.options : {};
     if (options.labels === false) return false;
     return !isRecord(options.labels) || options.labels.category !== false;
-  });
+  };
+  const column = varianceTierWeights(panels) ? panels.findIndex((panel) => panel.type === 'column' && labelled(panel)) : -1;
+  return column >= 0 ? column : panels.findIndex(labelled);
 }
 
 /**
