@@ -659,6 +659,15 @@ describe('mechanical lints', () => {
     expect(hasCode('series-unexplained', { charts: [chart({ type: 'line', data, options: { title: 'APAC closes the gap', labels: { series: ['absolute'] }, legend: 'none' } })] })).toBe(true);
   });
 
+  // End labels with an authored line break were drawn but read as unnamed series.
+  it('series-unexplained matches a name with a line break against its drawn lines', () => {
+    const codes = (options: object) => (render({ spec: { type: 'line', options: { title: 'Actual stays above prior year', size: { width: 480 }, ...options }, data: { categories: ['m1', 'm2', 'm3', 'm4'],
+      series: [{ id: 'a', label: 'Actual\nthis year', values: [10, 12, 13, 15] }, { id: 'b', label: 'Prior\nyear', values: [9, 10, 11, 12] }] } } }).body as { warnings: { code: string }[] })
+      .warnings.map((w) => w.code);
+    expect(codes({})).not.toContain('series-unexplained');
+    expect(codes({ labels: { series: ['absolute'] }, legend: 'none' })).toContain('series-unexplained');
+  });
+
   it("series-unexplained keys combo endpoint names to the 'point' label kind", () => {
     const comboData = {
       categories: [{ id: 'q1' }, { id: 'q2' }],
