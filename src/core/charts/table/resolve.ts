@@ -28,6 +28,7 @@ import {
   nonAdditiveSpec,
   specUnitKind,
   unitOfSpec,
+  unitMagnitude,
   MAGNITUDE_DIVISOR,
   MAGNITUDE_LABEL,
   sameUnit as sameUnitText,
@@ -1334,8 +1335,10 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
       const s = rawState.get(r.id)!.get(colId);
       if (s && typeof s.raw === 'number') { maxAbs = Math.max(maxAbs, Math.abs(s.raw)); values.push(s.raw); }
     }
-    if (maxAbs >= 1e9) return `1${locale.decimal}2bn`;
-    if (maxAbs >= 1e6) return `1${locale.decimal}2m`;
+    // A unit that names a scale ("$k", "EUR m") gets no second one: "8.5M" under "in $k" reads as 8.5 million thousands.
+    // The figures print whole and grouped, as the unit rule of the other charts prints them.
+    if (maxAbs >= 1e9 && unitMagnitude(options.unit) === undefined) return `1${locale.decimal}2bn`;
+    if (maxAbs >= 1e6 && unitMagnitude(options.unit) === undefined) return `1${locale.decimal}2m`;
     if (maxAbs >= 100) return `1${locale.thousands}234`;
     // A column under 1 keeps two significant digits of its largest value: '0.012' (typicalDecimals).
     const decimals = typicalDecimals(values);

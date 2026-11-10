@@ -1670,3 +1670,16 @@ it('puts the source line under the content of a pinned canvas, and back at the b
   expect(now.y).toBeLessThan(old.y - 100);
   expect(now.footerTop).toBeLessThan(old.footerTop - 100);
 });
+
+// A table authored in "$k" printed 8.5 under "in M" and "$8.5 k M" in its hover card: a unit that names a scale takes no second one.
+it('prints whole figures under a unit that names a scale, with no engine magnitude on top', () => {
+  const data = { columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'q1', kind: 'value', label: 'Q1' }],
+    rows: [{ id: 'north', label: 'North', cells: { q1: 8540000 } }, { id: 'south', label: 'South', cells: { q1: 1160000 } }] } as unknown as TableData;
+  const options = { unit: '$k', subtitle: { measure: 'Revenue' } };
+  const { table } = resolveTable(data, options);
+  expect(table.rows.map((row) => row.cells.q1!.displayed)).toEqual(['8,540,000', '1,160,000']);
+  const subtitle = layout('table', data, options).scene.find((node): node is TextNode => node.t === 'text' && node.id.startsWith('frame:subtitle'))!;
+  expect(subtitle.lines.join(' ').replace(/\s+/g, ' ')).toBe('Revenue in $k');
+  const records = preparedTableRecords(table, data, { chartId: 't' } as never, options);
+  expect(interactionValueText(records.find((record) => record.target.owner.rowId === 'north')!.value)).not.toMatch(/M/);
+});
