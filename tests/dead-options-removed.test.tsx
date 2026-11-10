@@ -11,6 +11,7 @@ import { createRoot } from 'react-dom/client';
 import { describe, expect, it } from 'vitest';
 import { render } from '../src/cli/render';
 import '../src/core/charts';
+import '../src/core/geo/packs';
 import { exampleData } from '../src/core/charts/dimswitch/example';
 import { describeField } from '../src/core/discovery';
 import { patchApplies, type JsonPatchOperation } from '../src/core/diagnostics/jsonPatch';
@@ -110,6 +111,16 @@ describe('a removed option keeps an old spec drawing', () => {
     // describe of the exact path says so, as it does for a refused key the type ignores.
     expect(describeField('pie', 'options.topN.threshold')).toMatchObject({ refused: expect.stringMatching(/^Ignored on 'pie' with an option-ignored warning/) });
     expect(describeField('table', 'focus')).toMatchObject({ refused: expect.stringMatching(/^Ignored on 'table'/) });
+  });
+
+  // An authored automatic value table on a map of more than 20 regions drew no table and said nothing.
+  it('warned by the layout: an automatic value table over the region limit', () => {
+    const clean = fixture('choropleth', 'us-margin-by-state');
+    expect(clean.options.valueTable).toBeUndefined();
+    dropsTheKey(clean, { ...clean, options: { ...clean.options, valueTable: 'auto' } }, 'option-ignored', '/options/valueTable');
+    const small = fixture('choropleth', 'dach-all-region-labels');
+    expect(small.options.valueTable).toBe('auto');
+    expect(draw(small).warnings.some((warning) => warning.code === 'option-ignored')).toBe(false);
   });
 
   // Removing the setting left the layout options equal, so a prop update kept the old layout and its old warnings.

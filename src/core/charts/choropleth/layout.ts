@@ -431,7 +431,14 @@ function layoutMapPass(
   // A table forced beside the map leaves the map its share: authored widths give way, and the columns stay as wide as their text.
   const sideTableColumns = Math.ceil(drawnIds.length / SIDE_ROWS);
   const forcedSideColumnW = tableMode === 'side' ? (frameResult.plot.w * (1 - SIDE_MIN_SHARE) - (sideTableColumns - 1) * TABLE_GAP) / sideTableColumns : undefined;
-  const table = tableMode !== false && drawnIds.length > 0 &&
+  // An authored 'auto' that the region count turns off says so, and names the values that draw the table.
+  if (options.valueTable === 'auto' && drawnIds.length > VALUE_TABLE_MAX_ROWS && numericValues.length > 0) warnings.push({
+    code: 'option-ignored', severity: 'warn', field: ['options', 'valueTable'],
+    message: `options.valueTable 'auto' has no effect on choropleth with more than ${VALUE_TABLE_MAX_ROWS} regions and is ignored. This map has ${drawnIds.length}, so it draws no value table.`,
+    suggest: "Set valueTable to 'below' or 'side' to draw the table, or remove valueTable.",
+    fix: [{ op: 'remove', path: '/options/valueTable' }],
+  });
+  const table =tableMode !== false && drawnIds.length > 0 &&
     (tableMode !== 'auto' || (drawnIds.length <= VALUE_TABLE_MAX_ROWS && numericValues.length > 0))
     ? valueTable({ options,
         ids: drawnIds, pack, values: valuesById, states: statesById, scale, fmt, theme, measure,
