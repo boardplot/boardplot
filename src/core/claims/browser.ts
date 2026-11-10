@@ -608,17 +608,12 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
     }
     case 'cohort': {
       // "Where does 60% come from" has exactly one honest answer: the two
-      // counts it was divided from. The displayed string is read back off the
-      // cell node so the receipt quotes what the READER sees, never a second
-      // rounding of the same ratio. An exhibit cell prints through a label
-      // that names its claim, and bindClaimLabels reads that text.
+      // counts it was divided from. Every cell prints through a label that
+      // names its claim (the matrix's value label, or the exhibit's cell
+      // label), and bindClaimLabels reads that text, so the receipt quotes
+      // what the READER sees, never a second rounding of the same ratio.
       const derived = geo.derived as CohortDerived;
-      const displayed = new Map<string, string>();
       const cellNodes = new Set(geo.scene.map((node) => node.id));
-      for (const node of geo.scene) {
-        const value = node.display && 'value' in node.display ? node.display.value : undefined;
-        if (node.part === 'cell' && value !== undefined) displayed.set(node.id, value);
-      }
       const claims: ClaimRecordV1[] = [];
       // A period the heatmap does not show has no cell, so it has no receipt. An exhibit keeps the
       // receipt of a period it leaves out, with nothing displayed.
@@ -644,7 +639,7 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
             output: {
               raw: ratio,
               state: ratio === null ? missingCohortRate(row, t, derived.basis) ? 'missing' : 'n.m.' : 'value',
-              displayed: displayed.get(nodeId) ?? '',
+              displayed: '',
             },
             ...(cellNodes.has(nodeId) ? { nodeId } : {}),
           });
@@ -676,7 +671,7 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
           output: {
             raw: average.value,
             state: average.value === null && derived.cohorts.some(row => missingCohortRate(row, t, derived.basis)) ? 'missing' : `support:${average.support}`,
-            displayed: displayed.get(nodeId) ?? '',
+            displayed: '',
           },
           nodeId,
         });

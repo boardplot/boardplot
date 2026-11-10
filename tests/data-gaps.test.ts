@@ -879,6 +879,22 @@ it('reads the real value of a clipped point and a quadrant count from their labe
   expect([read('scatter:clipped:y:max:airport'), read('scatter:quadrant:count:tr')]).toEqual(['Airport 2,400', 'Stars n = 3']);
 });
 
+// The reading quoted each cohort rate with its percent sign ("62%") where the narrow matrix prints "62", and quoted rates the matrix had no room to print.
+it('reads each cohort rate from the value the matrix prints, or nothing where it prints none', () => {
+  const cohorts = Array.from({ length: 12 }, (_, i) => ({ id: `w${i + 1}`, label: `Week ${i + 1}`, active: Array.from({ length: 12 - i }, (_, t) => Math.round(800 * 0.88 ** t)) }));
+  const texts = new Set<string>();
+  for (const options of [{ size: { width: 720, height: 420 } }, { size: { width: 480, height: 420 }, unit: '% of cohort base' }, { size: { width: 400, height: 500 } }]) {
+    const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'cohort', data: { cohorts }, options } as never)) as Geometry;
+    for (const claim of claimsForChart('cohort', geometry)) {
+      const [, row, period] = claim.id.split(':');
+      const label = geometry.labels.find((item) => item.id === `point:${row === 'average' ? 'weighted-average' : row}:${period}` && !item.hidden);
+      expect(claim.output.displayed, `${claim.id} at ${options.size.width}`).toBe(label?.lines.join(' ') ?? '');
+      texts.add(claim.output.displayed.includes('%') ? '%' : claim.output.displayed === '' ? 'none' : 'bare');
+    }
+  }
+  expect([...texts].sort()).toEqual(['%', 'bare', 'none']);
+});
+
 // A child sum within float noise of the author's total took the total cell's text, so the reading printed 1,000,000,000.0 for a sum of 1,000,000,000.5.
 it('ties a reconciled table total to its cell only where the sum prints as the cell does', () => {
   const data = {
