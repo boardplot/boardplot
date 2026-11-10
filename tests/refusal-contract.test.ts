@@ -219,6 +219,24 @@ describe('refusal contract', () => {
     expect(style.message).not.toContain('wiggle');
   });
 
+  // A layout refusal thrown with only a display path (rows[id].cells[col]) reached the caller with path '' and the whole spec as the received value.
+  it('points a layout refusal at the authored field and its value', () => {
+    const table = getFixtures('table').find((entry) => entry.id === 'table-scorecard')!;
+    const rows = structuredClone((table.data as { rows: { cells: Record<string, unknown> }[] }).rows);
+    rows[1]!.cells.state = 'unclear';
+    const status = render({ spec: { type: 'table', data: { ...(table.data as object), rows }, options: table.options } }).body.errors as (Finding & { received?: unknown })[];
+    expect(status[0]).toMatchObject({ code: 'status-value-invalid', path: '/data/rows/1/cells/state', received: { type: 'string', value: 'unclear' } });
+    const diagram = getFixtures('diagram').find((entry) => entry.id === 'protected-request')!;
+    const nodes = structuredClone((diagram.data as { nodes: Record<string, unknown>[] }).nodes);
+    nodes[2]!.caption = 'Sent over the network';
+    const caption = render({ spec: { type: 'diagram', data: { ...(diagram.data as object), nodes }, options: diagram.options } }).body.errors as Finding[];
+    expect(caption[0]).toMatchObject({ code: 'invalid-membership', path: '/data/nodes/2/caption', suggest: 'use secondaryLabel' });
+    // A row id can be '1': the bracket names the row with that id, never the second row.
+    const idRows = [{ ...rows[0]!, id: '1', cells: { ...rows[0]!.cells, state: 'unclear' } }, { ...rows[1]!, id: 'other', cells: { ...rows[1]!.cells, state: 'on-track' } }];
+    const byId = render({ spec: { type: 'table', data: { ...(table.data as object), rows: idRows }, options: table.options } }).body.errors as (Finding & { received?: unknown })[];
+    expect(byId[0]).toMatchObject({ code: 'status-value-invalid', path: '/data/rows/0/cells/state', received: { type: 'string', value: 'unclear' } });
+  });
+
   // These refusals listed only the values they refuse, and authors concluded the job could not be done: each names the setting that does it.
   it('names the existing setting that does the job in the refusal', () => {
     const dimswitch = getFixtures('dimswitch')[0]!;
