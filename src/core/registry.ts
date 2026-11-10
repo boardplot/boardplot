@@ -645,7 +645,7 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
       // A height the chart takes (a fill chart below 1080 px starts at its minimum) can be too short for the
       // names: the height it reports as natural at this width comes before a wider card.
       const natural = full.sizing?.naturalHeight;
-      if ((options?.size as { height?: number } | undefined)?.height === undefined && natural !== undefined && natural > full.size.height
+      if (!resolveTargetSize(options?.target ?? DEFAULT_TARGET, options?.size).fixed.height && natural !== undefined && natural > full.size.height
         && !(options as { [FIXED_SIZE_PROBE]?: boolean } | undefined)?.[FIXED_SIZE_PROBE]) {
         const taller = layoutOnce({ ...options, size: { width: full.size.width, height: Math.ceil(natural) } } as O);
         if (!isRefused(taller) && lostCategoryNames(taller).length === 0) return taller;
