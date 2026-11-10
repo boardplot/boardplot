@@ -361,3 +361,42 @@ describe('design advice fixes', () => {
     })).not.toContain('design-line-label-points');
   });
 });
+
+describe('a fix applied as stated leaves a spec that draws', () => {
+  const refusal = (spec: any) => (render({ spec, format: 'svg' }).body as any).errors[0];
+
+  // The patch removed the last reference band and left `referenceBands: []`, which a 100% composition refuses with no band to blame.
+  it('drops the whole band list when every band is outside the 0..100 axis', () => {
+    const base = fixtureSpec('line', 'stacked100-area-revenue-mix');
+    for (const bands of [[{ id: 'a', label: 'A', low: 10, high: 150 }], [{ id: 'a', label: 'A', value: -5 }, { id: 'b', label: 'B', value: 120 }]]) {
+      const spec = { ...base, options: { ...base.options, referenceBands: bands } };
+      const error = refusal(spec);
+      expect(error.code).toBe('reference-band-composition-domain');
+      expect(error.fix).toEqual([{ op: 'remove', path: '/options/referenceBands' }]);
+      expect(render({ spec: applyPatch(spec, error.fix), format: 'svg' }).body).toMatchObject({ ok: true });
+    }
+    // A band inside the axis stays, and several bad bands go from the last index down.
+    const mixed = { ...base, options: { ...base.options, referenceBands: [{ id: 'a', label: 'A', value: 150 }, { id: 'b', label: 'B', value: 50 }, { id: 'c', label: 'C', value: -1 }] } };
+    const fix = refusal(mixed).fix;
+    expect(fix).toEqual([{ op: 'remove', path: '/options/referenceBands/2' }, { op: 'remove', path: '/options/referenceBands/0' }]);
+    expect(applyPatch(mixed, fix).options.referenceBands).toEqual([{ id: 'b', label: 'B', value: 50 }]);
+  });
+
+  // With `log: "both"` the patch named only the first axis, and the other axis, also nonpositive, still refused.
+  it('takes the log scale off every scatter axis that holds a nonpositive value', () => {
+    const base = fixtureSpec('scatter', 'negative-quadrants');
+    const spec = { ...base, options: { ...base.options, valueAxis: { ...base.options.valueAxis, log: 'both' } } };
+    const error = refusal(spec);
+    expect(error.code).toBe('log-nonpositive');
+    expect(render({ spec: applyPatch(spec, error.fix), format: 'svg' }).body).toMatchObject({ ok: true });
+  });
+
+  // A cohort key that its variant never draws was refused twice: the schema refusal came first and had no fix, the layout refusal had one.
+  it('gives the cohort key refusal that reaches the caller its remove patch', () => {
+    const base = fixtureSpec('cohort', 'heatmap-weighted-total');
+    const spec = { ...base, options: { ...base.options, variant: 'heatmap', columnOrder: ['periods'] } };
+    const error = refusal(spec);
+    expect(error.fix).toEqual([{ op: 'remove', path: '/options/columnOrder' }]);
+    expect(render({ spec: applyPatch(spec, error.fix), format: 'svg' }).body).toMatchObject({ ok: true });
+  });
+});
