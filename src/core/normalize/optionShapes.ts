@@ -34,15 +34,16 @@ export function normalizeOptionShapes<C extends { options?: unknown; data?: unkn
     if (!Array.isArray(raw)) return raw;
     let changed = false;
     const next = raw.map((item, index) => {
-      if (!isRecord(item) || item.kind !== 'valueLine' || typeof item.text !== 'string'
+      // These kinds print label and no text, so a text caption is read as their label.
+      if (!isRecord(item) || !['valueLine', 'band', 'event'].includes(item.kind as string) || typeof item.text !== 'string'
         || (Object.hasOwn(item, 'label') && item.label !== item.text)) return item;
       const { text, ...rest } = item;
       const at = [...field, index];
       const path = toJsonPointer(at);
       const renamed = { ...rest, label: text };
       warnings.push({ code: 'annotation-text-as-label', severity: 'info', field: [...at, 'text'],
-        message: 'valueLine text was read as label.',
-        suggest: 'Use label for the valueLine caption.',
+        message: `${item.kind} text was read as label.`,
+        suggest: `Use label for the ${item.kind} caption.`,
         fix: [{ op: 'test', path, value: item }, { op: 'replace', path, value: renamed }] });
       changed = true;
       return renamed;

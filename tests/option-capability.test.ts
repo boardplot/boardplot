@@ -435,7 +435,7 @@ describe('published option behaviour census', () => {
     ["bartable column combo dot status table tilemap treemap variance waffle waterfall", "legend", "Draws a key only with parts to name: variance dpy-absolute-regions with 'bottom'."],
     ["bartable", "segmentValues", "The representative fixture gives every row a range, and a row with a range prints end labels only; the single-panel fixture shows the parts."],
     ["bartable mekko slope", "highlight", "Names a mark of the fixture: slope market-share-shift with '2020'. On bartable it warns only when a named row is missing."],
-    ["box bullet gantt likert pvm pyramid scatter", "annotations", "The census note has no anchor on this fixture: box dated-median-growth with a diff annotation draws one."],
+    ["box bullet likert pvm pyramid scatter", "annotations", "The census note has no anchor on this fixture: box dated-median-growth with a diff annotation draws one."],
     ["box", "showObservations", "Needs observation marks: box mixed-support-groups with 'none'."],
     ["butterfly", "negatives", "Needs a negative value: butterfly negatives-own-scale with 'magnitude'."],
     ["choropleth", "topN", "Labels world maps only: choropleth world-inflation with { n: 2 }."],
@@ -546,7 +546,7 @@ describe('published option behaviour census', () => {
         if (key === 'highlight') value = (fixture.data as { series?: { id: string }[] }).series?.[0]?.id ?? 'census';
         if (key === 'story') value = { steps: [{ id: 'census', title: 'Census step', highlight: (fixture.data as { series?: { id: string }[] }).series?.[0]?.id ?? 'census' }] };
         if (key === 'annotations') {
-          value = fixture.annotations?.length ? fixture.annotations.map(a => a.kind === 'valueLine' ? { ...a, label: 'Census annotation' } : { ...a, text: 'Census annotation' })
+          value = fixture.annotations?.length ? fixture.annotations.map(a => ['valueLine', 'band', 'event'].includes(a.kind) ? { ...a, label: 'Census annotation' } : { ...a, text: 'Census annotation' })
             : [{ kind: 'note', at: (fixture.data as { categories?: { id: string }[] }).categories?.[0]?.id ?? 'census', text: 'Census annotation' }];
         }
         if (key === 'labelPlacements' && baseline.labels[0]) value = { [baseline.labels[0].id]: 'insideCenter' };
