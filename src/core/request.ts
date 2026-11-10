@@ -3,6 +3,7 @@ import { readFormatExamples } from './formatSpec';
 import { colorVariableWarnings } from './colorVariables';
 import { drawnRequest } from './drawnRequest';
 import { PLAN_ONLY, withPlanInputs, copyPlannedValue, repeatedResult, requestKey } from './layoutPlan';
+import { loadedDeferred } from './deferred';
 import { shownNoteKinds } from './notes';
 import { canonicalChartType, getChart } from './registry';
 import { chartSizing, compactFallbackApplies, declaredSizing, fitsSize, FIXED_SIZE_PROBE, FULL_LAYOUT_PROBE, SIZE_TOLERANCE, LAYOUT_CALL, type LayoutCall, plotFloorHeight, plotRepairHeight, resolveSizing, sizeGate, sizeRefusal, VERIFY_ADVICE, verifiedSizeRepair, WIDTH_PROBE } from './sizing';
@@ -656,7 +657,9 @@ const TYPE_CLASS_STEPS = [720, WIDE_CANVAS_MIN_WIDTH] as const;
  * pinned height keeps the pair.
  */
 function drawnAdvice(request: ResolvedChartRequest, result: LayoutResult, layoutAt: LayoutCall<any, any, any>): LayoutResult {
-  const known = result.refused && !request.fixed.height && result.warnings[0]?.code === 'size-below-floor' ? refusedProbes(request) : undefined;
+  // A story is laid out only once its layer loads, so a stored probe of a story request can keep the plain chart's size.
+  const known = result.refused && !request.fixed.height && result.warnings[0]?.code === 'size-below-floor'
+    && !(request.options as { story?: unknown }).story ? refusedProbes(request) : undefined;
   return advisedRefusal(result, advisedWidth(request, result, layoutAt, known));
 }
 
@@ -671,7 +674,9 @@ function refusedProbes(request: ResolvedChartRequest): Map<number, WidthProbe> |
   if (request.data === null || typeof request.data !== 'object') return undefined;
   const { size: _size, ...options } = request.options as RequestOptions;
   const { type, theme, target, fixed, inputWarnings } = request;
-  const key = withPlanInputs(() => requestKey(request.data as object, options, { type, theme, target, fixed, inputWarnings }));
+  // The static footer changes a chart's size once a static entry links it.
+  const footer = loadedDeferred('footer') !== undefined;
+  const key = withPlanInputs(() => requestKey(request.data as object, options, { type, theme, target, fixed, inputWarnings, footer }));
   let byKey = refusedSearches.get(request.data);
   if (!byKey) refusedSearches.set(request.data, byKey = new Map());
   if (byKey.size >= 4 && !byKey.has(key)) byKey.delete(byKey.keys().next().value!);
