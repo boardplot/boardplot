@@ -2,7 +2,7 @@ import { fractionLineWarnings, prepareFractionAnnotations, percentScaleWarnings 
 import { readFormatExamples } from './formatSpec';
 import { colorVariableWarnings } from './colorVariables';
 import { drawnRequest } from './drawnRequest';
-import { PLAN_ONLY, withPlanInputs, copyPlannedValue, repeatedResult } from './layoutPlan';
+import { PLAN_ONLY, withPlanInputs, copyPlannedValue, repeatedResult, requestKey } from './layoutPlan';
 import { shownNoteKinds } from './notes';
 import { canonicalChartType, getChart } from './registry';
 import { chartSizing, compactFallbackApplies, declaredSizing, fitsSize, FIXED_SIZE_PROBE, FULL_LAYOUT_PROBE, SIZE_TOLERANCE, LAYOUT_CALL, type LayoutCall, plotFloorHeight, plotRepairHeight, resolveSizing, sizeGate, sizeRefusal, VERIFY_ADVICE, verifiedSizeRepair, WIDTH_PROBE } from './sizing';
@@ -511,7 +511,7 @@ interface WidthProbe {
  * own mode. A drawn width names its form's floor, a refused one the width its refusal names. Probes
  * skip the repair search of a refusal, which only refines that width.
  */
-function widthProbers(request: ResolvedChartRequest, layoutAt: LayoutCall<any, any, any>): { full: (width: number) => WidthProbe; any: (width: number) => WidthProbe } {
+function widthProbers(request: ResolvedChartRequest, layoutAt: LayoutCall<any, any, any>, known?: Map<number, WidthProbe>): { full: (width: number) => WidthProbe; any: (width: number) => WidthProbe } {
   const own = request.options as RequestOptions;
   const def = getChart(request.type);
   const table = request.type === 'table' || request.type === 'dimswitch';
@@ -524,9 +524,18 @@ function widthProbers(request: ResolvedChartRequest, layoutAt: LayoutCall<any, a
     const run = preparedLayout(asked);
     try { return run(probeOptions(asked.options) as RequestOptions); } finally { run.finish(); }
   };
-  const cached = (probe: (width: number) => WidthProbe) => {
-    const known = new Map<number, WidthProbe>();
-    return (width: number) => { if (!known.has(width)) known.set(width, probe(width)); return known.get(width)!; };
+  // `shared` holds the widths of earlier calls; the asked width is this call's own layout and stays in it.
+  const cached = (probe: (width: number) => WidthProbe, shared?: Map<number, WidthProbe>) => {
+    const local = new Map<number, WidthProbe>();
+    return (width: number) => {
+      const store = shared && width !== request.size.width ? shared : local;
+      if (!store.has(width)) {
+        const found = probe(width);
+        // An earlier width's result is only read for its size: keep no scene alive across calls.
+        store.set(width, store === shared && found.result ? { ...found, result: { size: found.result.size } as LayoutResult } : found);
+      }
+      return store.get(width)!;
+    };
   };
   // Under the floor fitSize checks first a width is refused before any layout, unless one of render's
   // steps lays out another request (the type class steps happen from 720 px).
@@ -549,7 +558,7 @@ function widthProbers(request: ResolvedChartRequest, layoutAt: LayoutCall<any, a
     if (isRefused(drawn)) return read(first, false);
     const need = sizeNeed(first);
     return { ...read(drawn, true), ...(need !== undefined && need > width ? { upper: need } : {}) };
-  });
+  }, known);
   // Drawn compact: the full chart's need is the width a refusing full layout names.
   const full = cached((width) => {
     const drawn = any(width);
@@ -647,7 +656,28 @@ const TYPE_CLASS_STEPS = [720, WIDE_CANVAS_MIN_WIDTH] as const;
  * pinned height keeps the pair.
  */
 function drawnAdvice(request: ResolvedChartRequest, result: LayoutResult, layoutAt: LayoutCall<any, any, any>): LayoutResult {
-  return advisedRefusal(result, advisedWidth(request, result, layoutAt));
+  const known = result.refused && !request.fixed.height && result.warnings[0]?.code === 'size-below-floor' ? refusedProbes(request) : undefined;
+  return advisedRefusal(result, advisedWidth(request, result, layoutAt, known));
+}
+
+const refusedSearches = new WeakMap<object, Map<string, Map<number, WidthProbe>>>();
+
+/**
+ * A probe at a width depends on the request without its size, so a host that renders a refused request
+ * again at another width (a container that resizes under the floor) reuses the widths the last search drew.
+ * ponytail: 4 requests per data object; a new one replaces the oldest.
+ */
+function refusedProbes(request: ResolvedChartRequest): Map<number, WidthProbe> | undefined {
+  if (request.data === null || typeof request.data !== 'object') return undefined;
+  const { size: _size, ...options } = request.options as RequestOptions;
+  const { type, theme, target, fixed, inputWarnings } = request;
+  const key = withPlanInputs(() => requestKey(request.data as object, options, { type, theme, target, fixed, inputWarnings }));
+  let byKey = refusedSearches.get(request.data);
+  if (!byKey) refusedSearches.set(request.data, byKey = new Map());
+  if (byKey.size >= 4 && !byKey.has(key)) byKey.delete(byKey.keys().next().value!);
+  let probes = byKey.get(key);
+  if (!probes) byKey.set(key, probes = new Map());
+  return probes;
 }
 
 /** A size refusal that names the width `advisedWidth` found, and the height drawn there. */
@@ -666,13 +696,13 @@ function advisedRefusal(result: LayoutResult, found: { width: number; probe: Lay
 }
 
 /** The width an open-height size refusal names: where the request draws from, searched up from the width the layout named. */
-function advisedWidth(request: ResolvedChartRequest, result: LayoutResult, layoutAt: LayoutCall<any, any, any>): { width: number; probe: LayoutResult } | undefined {
+function advisedWidth(request: ResolvedChartRequest, result: LayoutResult, layoutAt: LayoutCall<any, any, any>, known?: Map<number, WidthProbe>): { width: number; probe: LayoutResult } | undefined {
   const finding = result.refused ? result.warnings[0] : undefined;
   const need = finding?.code === 'size-below-floor' ? finding.expected?.minimum as Size | undefined : undefined;
   if (!result.refused || !need || request.fixed.height || need.width <= result.size.width) return undefined;
   // Drawn in the next smaller type class at the asked width: there is nothing to advise.
   if (smallerClass(request, result)) return undefined;
-  return drawsFrom(widthProbers(request, layoutAt).any, need.width, Math.floor(result.size.width), Infinity, true);
+  return drawsFrom(widthProbers(request, layoutAt, known).any, need.width, Math.floor(result.size.width), Infinity, true);
 }
 
 /** Grid children use the registered layout directly, so request diagnostics walk their authored input here. */
