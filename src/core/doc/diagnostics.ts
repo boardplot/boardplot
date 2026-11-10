@@ -2,7 +2,8 @@ import type { z } from 'zod';
 import type { DocExpansion } from './docExpand';
 import { canonicalChartType } from '../registry';
 import { receivedDescription, schemaDiagnostic, type DiagnosticMetadata } from '../diagnostics/describe';
-import { addWhereAbsent, parseJsonPointer, readJsonPointer, toJsonPointer } from '../diagnostics/jsonPatch';
+import { addWhereAbsent, parseJsonPointer, readJsonPointer, toJsonPointer, type JsonPatchOperation } from '../diagnostics/jsonPatch';
+import { normalizeOptionShapes } from '../normalize/optionShapes';
 
 interface DiagnosticSource { input: unknown; sources: DocExpansion['sources'] }
 interface NamedDocument { charts: { name: string; type: string }[] }
@@ -91,6 +92,24 @@ export function completeDiagnostic<T extends Finding>(finding: T, input?: unknow
   };
 }
 
+/**
+ * A finding inside an option the author wrote in short form (`sort: "desc"` read as `{ categories: "desc" }`)
+ * points at the authored field. A patch that removes a field inside it removes the field; any other patch
+ * into it could not apply to the authored spec, so the finding keeps no patch.
+ */
+function authoredShortForm<T extends Finding>(finding: T, authoredChart: unknown): T {
+  if (!finding.field || authoredChart === null || typeof authoredChart !== 'object') return finding;
+  const { shortForms } = normalizeOptionShapes(canonicalChartType((authoredChart as { type?: string }).type ?? '') ?? '', authoredChart as object, canonicalChartType);
+  const field = finding.field;
+  const form = shortForms.find(prefix => field.length > prefix.length && prefix.every((key, i) => key === field[i]));
+  if (!form) return finding;
+  const pointer = toJsonPointer(form);
+  const fix = finding.fix?.map((operation): JsonPatchOperation | undefined => !operation.path.startsWith(`${pointer}/`) ? operation
+    : operation.op === 'remove' ? { op: 'remove', path: pointer } : undefined);
+  const { fix: _fix, ...rest } = finding;
+  return { ...rest, field: form, ...(fix && fix.every(Boolean) ? { fix: fix as JsonPatchOperation[] } : {}) } as unknown as T;
+}
+
 export function completeChartDiagnostic<T extends Finding>(document: NamedDocument, chart: { name: string; type: string }, finding: T, relative: readonly (string | number)[] = []) {
   const source = documentSource(document);
   const index = document.charts.findIndex(candidate => candidate.name === chart.name);
@@ -100,10 +119,10 @@ export function completeChartDiagnostic<T extends Finding>(document: NamedDocume
   // finding with a fix but no field still writes its fix relative to the chart, and
   // must be rebased too, or addWhereAbsent reads it against the document root and
   // turns `replace /options/size` into `add /options`, which drops every other option.
-  const { field: chartField, ...rest } = finding;
   // A theme the chart inherits from the document is fixed at the document: /theme, not /charts/N/options/theme.
   const base = index < 0 ? [] : sourceSegments(source, ['charts', index]);
   const authoredChart = base.reduce<any>((node, key) => node?.[key], source.input);
+  const { field: chartField, ...rest } = authoredShortForm(finding, authoredChart);
   const inherited = chartField?.[0] === 'options' && chartField[1] === 'theme'
     && authoredChart?.options?.theme === undefined && (source.input as { theme?: unknown } | null)?.theme !== undefined;
   const field = inherited ? undefined : chartField;
