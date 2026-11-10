@@ -4,7 +4,7 @@ export { REGULAR_SPACING } from './fitPolicy';
 import { tableWidths, prepareTableWidthRung, solveTableWidthRung, type TableWidthPlan, type TableWidthRungPlan, type TableWidthProbe, type TableWidthMiss } from './widths';
 import { PLAN_ONLY, copyPlannedValue, deferLayout, isPlanned, materializeLayout, plannedCutCount, layoutKey, optionKey, tableTextMeasure, withPlanInputs } from '../../layoutPlan';
 import { liftOrFallback } from '../tableFit';
-import { tableNeed, type TableNeed } from './need';
+import { tableNeed, tableRung, type TableNeed, type TableRungChoice } from './need';
 import { chartTheme } from '../chartEnv';
 import { zeroLifts } from '../../formatPrecision';
 import { structureCount } from '../../structureCounts';
@@ -159,11 +159,11 @@ function snapshotTableOptions(options: TableOptions): TableOptions {
 export function prepareTableExecutor(authoredData: TableData, initialOptions: TableOptions = {}, initialResolved?: ReturnType<typeof resolveTable>) {
   const candidates = new WeakMap<ReturnType<typeof resolveTable>, Map<string, PreparedCandidate>>();
   const run = (options: TableOptions = initialOptions, preserveCompactFloor = false, suppliedResolved?: ReturnType<typeof resolveTable>, preparedInput?: PreparedTableData,
-    answer?: (need: TableNeed) => void): Geometry<TableMarks, TableDerived> => withPlanInputs(() => {
+    answer?: (choice: TableRungChoice) => void): Geometry<TableMarks, TableDerived> => withPlanInputs(() => {
     const input = preparedInput ?? prepareTableData(authoredData, options);
     const resolved = suppliedResolved ?? (options === initialOptions && initialResolved ? initialResolved : resolvePreparedTable(input, options));
     if (!preparedInput) options = snapshotTableOptions(options);
-    const need = liftOrFallback((mode) => {
+    const choice = liftOrFallback((mode) => {
       const variant = mode === 'full' ? options : { ...options, [ZERO_LIFT]: mode } as TableOptions & ZeroLiftOptions;
       const model = mode === 'full' ? resolved : resolvedForSize(authoredData, variant);
       const formatFits: FormatFits = new Map();
@@ -173,7 +173,7 @@ export function prepareTableExecutor(authoredData: TableData, initialOptions: Ta
         [FIXED_SIZE_PROBE]: _fixed, [FORCE_COMPACT]: _forced, [ACCEPTANCE_PROBE]: _accept,
         [SIZING_ONLY]: _sizing, [COMPACT_RETRY]: _retry, [ENGINE_NOTES]: _notes, ...stable } = variant as LayoutOptions & Record<symbol, unknown>;
       const variantKey = optionKey(stable);
-      return tableNeed({ table: model.table, surface: { data: input.source, options: variant, preserveCompactFloor, cutCount, hasHeadAir, cellPadOf,
+      return tableRung({ table: model.table, surface: { data: input.source, options: variant, preserveCompactFloor, cutCount, hasHeadAir, cellPadOf,
         run: (candidate, sizingOnly, selected, widthOnlyOnMiss = false) => {
           const current = Object.keys(candidate).length === 0 && Object.getOwnPropertySymbols(candidate).length === 0
             ? variant : { ...variant, ...candidate };
@@ -192,9 +192,9 @@ export function prepareTableExecutor(authoredData: TableData, initialOptions: Ta
           }
           return prepared(current, sizingOnly, selected, widthOnlyOnMiss);
         } } });
-    }, (lifted, plain) => costsWidth(lifted.geometry, plain.geometry, options), resolved.lifted);
-    answer?.(need);
-    const geometry = need.geometry;
+    }, (lifted, plain) => costsWidth(lifted.undrawn, plain.undrawn, options), resolved.lifted);
+    answer?.(choice);
+    const geometry = choice.undrawn;
     return (options as LayoutOptions)[PLAN_ONLY] || (options as LayoutOptions)[SIZING_ONLY] ? geometry : materializeLayout(geometry);
   });
   const runCard = (options: TableOptions = initialOptions): Geometry<TableMarks, TableDerived> => withPlanInputs(() => {
@@ -210,11 +210,11 @@ export function prepareTableExecutor(authoredData: TableData, initialOptions: Ta
       return widthRepairHeight(input.source, planned, sized, runCard);
     }, 8);
   });
-  /** What the table needs at the frame its options name: the rung that holds and what it draws. */
+  /** What the table needs at the frame its options name: the rung that holds and what it draws, read from the drawn layout. */
   const need = (options: TableOptions = initialOptions): TableNeed => {
-    let answer: TableNeed | undefined;
-    run(options, false, undefined, undefined, (found) => { answer = found; });
-    return answer!;
+    let choice: TableRungChoice | undefined;
+    const geometry = run(options, false, undefined, undefined, (found) => { choice = found; });
+    return tableNeed(choice!, isPlanned(geometry) ? materializeLayout(geometry) : geometry);
   };
   return { run, runCard, need };
 }
