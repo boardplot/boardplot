@@ -258,7 +258,8 @@ it('accepts short option shapes and preserves their content', async () => {
   const annotation = { kind: 'valueLine', value: 1500, text: 'Target' };
   for (const item of [annotation, { ...annotation, label: 'Target' }]) {
     const line = resolveChartRequest({ type: 'column', data, annotations: [item] as never });
-    expect(line.options.annotations).toEqual([{ kind: 'valueLine', value: 1500, label: 'Target' }]);
+    // Every string key the annotation holds; the request's origin tag is a symbol key, kept for refusal pointers.
+    expect(line.options.annotations?.map(entry => Object.fromEntries(Object.entries(entry)))).toEqual([{ kind: 'valueLine', value: 1500, label: 'Target' }]);
     expect(line.inputWarnings?.filter(warning => warning.code === 'annotation-text-as-label')).toHaveLength(1);
     expect(line.inputWarnings).toContainEqual(expect.objectContaining({ severity: 'info', fix: [
       { op: 'test', path: '/charts/0/annotations/0', value: item },
