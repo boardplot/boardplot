@@ -56,7 +56,7 @@ function notedValuesWarning(geo: Geometry<object, object>): LintWarning | undefi
     && !warnedArrows.has(label.owner.segmentId ?? '') ? [label.noteText ?? label.text] : [])),
     ...notes.flatMap(note => engineNoteMeta(note)!.values!)])];
   return values.length === 0 ? undefined : { code: 'values-in-note', severity: 'info',
-    message: `${values.length} value${values.length === 1 ? ' has' : 's have'} no label on the chart. Notes can list or count these values; the full values follow: ${values.join(', ')}`,
+    message: `${values.length} value${values.length === 1 ? ' has' : 's have'} no label on the chart. Notes can list or count these values; detail.values names each one.`,
     detail: { values } };
 }
 
