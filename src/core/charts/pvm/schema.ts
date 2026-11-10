@@ -18,7 +18,7 @@ const periodSchema = z.strictObject({
 
 const itemSchema = z.strictObject({
   id: idSchema.describe("Unique item identity binding prior and current decomposition inputs."),
-  label: z.string().optional().describe("Displayed item name; defaults to its id."),
+  label: z.string().optional().describe("Item name for the author. The bridge draws effect bars, not items, so no item name prints."),
   prior: periodSchema.describe('Base period.'),
   current: periodSchema.describe('Comparison period.'),
 });
