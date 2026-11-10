@@ -1536,4 +1536,13 @@ describe('the type class step at 720 px', () => {
     expect(layoutResolvedRequest(resolveChartRequest(status(720) as never)).refused).toBeUndefined();
     expect(measure(status(720) as never).refused).toBeUndefined();
   });
+  // A table read its cached layout of the M class back in the S class, so the step did not reach tables.
+  it('reaches a table, whose layouts are cached', () => {
+    const table = (width: number) => ({
+      type: 'table', theme: 'notation',
+      data: { columns: [{ id: 'label', kind: 'rowLabel', label: 'Name' }, { id: 'v', kind: 'value', label: 'Value' }], rows: [{ id: 'r1', label: 'Abc '.repeat(26).trim(), cells: { v: 12 } }] },
+      options: { rowLabelLines: 1, size: { width } },
+    });
+    for (const width of [719, 720, 740]) expect(layoutResolvedRequest(resolveChartRequest(table(width) as never)).refused).toBeUndefined();
+  });
 });
