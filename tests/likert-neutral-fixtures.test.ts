@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest';
 import { layoutResolvedRequest, renderSvg, resolveChartRequest } from '../src/index';
 import { getFixtures } from '../src/fixtures';
+import { render } from '../src/cli/render';
 
 // The example subtitles stated one neutral treatment, so the other Neutral setting drew a sentence that contradicted the bars.
 it('likert examples state the neutral treatment of the option, not the one they were authored with', () => {
@@ -24,4 +25,13 @@ it('likert steps a share too wide for its segment down to the reader floor inste
   const shares = result.labels.filter((label) => label.kind === 'segment' && label.owner.categoryId === 'tiny');
   expect(shares.filter((label) => label.hidden).map((label) => label.owner.seriesId)).toEqual([]);
   expect(shares.find((label) => label.owner.seriesId === 'likert:d')?.font?.size).toBe(11);
+});
+
+// The default ramp failed its own adjacent-colour floor: the neutral beside the mildest agree on a light page, and the two mildest options on a dark page with the neutral excluded.
+it('likert default ramp clears the adjacent-colour floor with the neutral split or excluded, light and dark', () => {
+  for (const [id, theme] of [['employee-engagement-5pt', undefined], ['customer-effort-7pt', 'standard-dark']] as const) {
+    const fixture = getFixtures('likert').find((item) => item.id === id)!;
+    const body = render({ spec: { type: 'likert', data: fixture.data, options: { ...(fixture.options as object), ...(theme ? { theme } : {}) } } }).body as { warnings: { code: string }[] };
+    expect(body.warnings.map((warning) => warning.code), `${id} ${theme}`).not.toContain('series-adjacent-similar');
+  }
 });
