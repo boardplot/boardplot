@@ -95,7 +95,7 @@ import { layoutTargetScale, targetBandLegendItems, targetWord, type TargetScaleR
 import type { OccupiedIndex } from '../../label/occupied';
 import type { Margin } from '../../geometry';
 import type { TextMeasurer } from '../../text';
-import { autoDecimals } from '../../formatPrecision';
+import { AUTO_MAX_DECIMALS, autoDecimals } from '../../formatPrecision';
 import { composedTextRole } from '../../textRole';
 import { maxOf, minOf, pushAll } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
@@ -557,11 +557,24 @@ export function layoutBullet(
   const chartSpec = options.format
     ? exampleSpec(options.format, options.locale?.language, undefined, rows.flatMap((row) => row.isPct ? [] : [row.value, row.target]))
     : undefined;
+  const automaticSpec = (row: NormRow) => {
+    const spec = { ...defaultFormatSpec(options.locale?.language),
+      decimals: Math.max(autoDecimals(row.value ?? 0), autoDecimals(row.target ?? 0)), suffix: row.isPct ? '%' : '' };
+    if (row.value === null || row.target === null) return spec;
+    // The engine's precision shows the gap: a value and target that print alike, or that print a gap
+    // more than half a step off the exact one, take up to two more decimals.
+    const gap = cleanDiff(row.value, row.target);
+    for (let extra = 0; extra < 2 && spec.decimals < AUTO_MAX_DECIMALS; extra++) {
+      const shown = cleanDiff(roundedNumber(row.value, spec), roundedNumber(row.target, spec));
+      if ((shown !== 0 || gap === 0) && Math.abs(shown - gap) <= 0.5 * 10 ** -spec.decimals * (1 + 1e-9)) break;
+      spec.decimals++;
+    }
+    return spec;
+  };
   const rowSpecs = new Map(rows.map((row) => [row, row.meta?.format
     ? exampleSpec(row.meta.format, options.locale?.language, undefined, [row.value, row.target])
     : !row.isPct && chartSpec ? chartSpec
-      : { ...defaultFormatSpec(options.locale?.language),
-        decimals: Math.max(autoDecimals(row.value ?? 0), autoDecimals(row.target ?? 0)), suffix: row.isPct ? '%' : '' }]));
+      : automaticSpec(row)]));
   const rowFmt = (row: NormRow) => (v: number): string => formatWithSpec(v, rowSpecs.get(row)!);
   // The printed gap subtracts the printed operands; derived data keeps the exact difference.
   const shownDelta = (row: NormRow, d: number): number => row.value === null || row.target === null ? d

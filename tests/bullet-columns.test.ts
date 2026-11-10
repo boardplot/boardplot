@@ -49,6 +49,17 @@ describe('bullet target and gap columns', () => {
     }
   });
 
+  // The engine's precision printed 0.108% and 0.112% alike ("on target"), and 0.0994% against 0.0995% as a gap ten times too large.
+  it('prints an unformatted row at the precision that shows its gap', () => {
+    const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'bullet', options: { size: { width: 1200, height: 400 } }, data: { rows: [
+      { id: 'retention', label: 'Retention', value: { pct: 0.108 }, target: { pct: 0.112 } },
+      { id: 'uptime', label: 'Uptime', value: { pct: 0.0994 }, target: { pct: 0.0995 } },
+    ] } }));
+    if (geometry.refused) throw new Error('refused');
+    expect(['point:retention', 'target-value:retention', 'delta:retention'].map((id) => label(geometry, id)?.text)).toEqual(['0.108%', '0.112%', '−0.004pp']);
+    expect(['point:uptime', 'target-value:uptime', 'delta:uptime'].map((id) => label(geometry, id)?.text)).toEqual(['0.0994%', '0.0995%', '−0.0001pp']);
+  });
+
   // A value and target in scientific notation printed their nonzero gap as "0.0000" beside "above target".
   it('prints a nonzero gap in scientific notation when the value and target do', () => {
     const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'bullet',
