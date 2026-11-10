@@ -246,9 +246,11 @@ export function frameText(input: FrameTextInput): FrameText {
   const sourceBlock = sourcePara(k);
   // `notes.pointer: false` on a live surface: the author notes the footer does not print
   // appear nowhere (React's 'info' footer prints none), so the author hears how many.
-  // Static output prints every enabled note and stays silent.
+  // Static output prints every enabled note and stays silent. Only notes of a kind notes.show
+  // prints count (candidates): a kind the author switched off is no omission, and neither a
+  // higher maxLines nor the pointer would show it.
   if (policy.live && !fullStatic && input.notes?.pointer === false && !input.footnotesOff && placement !== 'list') {
-    const left = entries.filter((entry) => entry.kind === 'note' && (infoPanel ? true : !visible.has(entry))).length;
+    const left = candidates.filter((entry) => entry.kind === 'note' && (infoPanel || !visible.has(entry))).length;
     if (left > 0) {
       warnings.push({
         code: 'notes-left-out',
