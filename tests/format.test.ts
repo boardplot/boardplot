@@ -644,12 +644,17 @@ describe('an example is read as its author wrote it', () => {
 
   // A unit with a scale word and a noun ("k visits") printed 260,000 as "260k", which read 1,000 times too large beside it.
   it('adds no automatic magnitude under a unit that names a scale before a noun', () => {
-    for (const unit of ['k visits', 'million tonnes', 'Mio. Besucher', 'K users', 'M users']) {
+    for (const unit of ['k visits', 'million tonnes', 'Mio. Besucher', 'K users', 'M users', 'Milliarde Besuche', 'mn users']) {
       expect(seriesRasterFormatter(undefined, [260_000, 1_011_000], 'en', unit, 'slide').fmt(260_000)).toBe('260,000');
     }
+    expect(unitMagnitude('Milliarde Besuche')).toBe(unitMagnitude('Milliarden Besuche'));
     expect(seriesRasterFormatter(undefined, [260_000, 1_011_000], 'en', 'minutes', 'slide').fmt(1_011_000)).toBe('1.01M');
-    // A physical unit or a rate names no scale: no whole-number rule from 100 up.
-    for (const unit of ['mm Hg', 'mm rain', 'm per second', 'm / s', 'k / visit']) expect(unitMagnitude(unit)).toBeUndefined();
+    // A physical unit, a rate or a word that is no scale names no scale: no whole-number rule from 100 up.
+    for (const unit of ['mm Hg', 'mm rain', 'm per second', 'm / s', 'k / visit', 'k visits per day', 'constructor calls', 'toString count']) {
+      expect(unitMagnitude(unit), unit).toBeUndefined();
+    }
+    // A format example with a scale word before a noun now divides by that scale (main printed "125,000.0 M entry").
+    expect(formatterFromExample('1.2 M entry', 'en')(125_000)).toBe('0.1 M entry');
     const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'column',
       data: { categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], series: [{ id: 'p', label: 'Pressure', values: [125.5, 98.2] }] },
       options: { unit: 'mm Hg', labels: { value: true }, size: { width: 480, height: 320 } } })));
