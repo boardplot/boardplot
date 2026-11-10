@@ -2,14 +2,14 @@ import { describe, expect, it } from 'vitest';
 import '../src/core/charts';
 import { render } from '../src/cli/render';
 import { getFixtures } from '../src/fixtures';
-import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
+import { layoutResolvedRequest, measure, resolveChartRequest } from '../src/core/request';
 import { defaultMeasurer } from '../src/core/text';
 import { isNumberAlone } from '../src/core/textRole';
 import { emphasisWeight, resolveTheme } from '../src/core/theme';
 import { clippedTextWarnings } from '../src/core/textClip';
 import type { Geometry } from '../src/core/types/scene';
 // @ts-expect-error The census script is plain JavaScript.
-import { censusCase, garbled } from '../scripts/number-census.mjs';
+import { censusCase, garbled, tokens } from '../scripts/number-census.mjs';
 
 const svgOf = (spec: unknown): string => (render({ spec, format: 'svg', return: ['svg'] }).body as { svg: string }).svg;
 const descOf = (svg: string) => /<desc[^>]*>([\s\S]*?)<\/desc>/.exec(svg)?.[1] ?? '';
@@ -150,6 +150,46 @@ describe('number census', () => {
     fixture.options.unit = '$k';
     const { findings } = censusCase('box', fixture, 720, 'en') as { findings: { class: string }[] };
     expect(findings.filter((f) => f.class === 'wrong-scale')).toEqual([]);
+  });
+
+  const en = { decimal: '.', thousands: ',' };
+  type Finding = { class: string; id: string };
+  const scaled = <T,>(value: T, factor: number): T => JSON.parse(JSON.stringify(value), (_, v) => (typeof v === 'number' ? v * factor : v));
+
+  // The census did not know the trillion magnitude, so it read "$4.8T" as 4.8 and flagged a correct value.
+  it('reads the trillion magnitude', () => {
+    expect(tokens('$4.8T', en)[0]?.value).toBe(4.8e12);
+    expect(tokens('2.1 trillion', en)[0]?.value).toBe(2.1e12);
+  });
+
+  // A dimswitch row is a measure with its own scale, so a column that prints "120,000" orders and "12.0M" revenue is not mixed units.
+  it('reads a dimswitch column as one unit per row', () => {
+    const fixture = structuredClone(getFixtures('dimswitch').find((f) => f.id === 'no-group-heads')!) as { data: { facts: unknown } };
+    fixture.data.facts = scaled(fixture.data.facts, 1000);
+    const { findings } = censusCase('dimswitch', fixture, 320, 'en') as { findings: Finding[] };
+    expect(findings.filter((f) => f.class === 'mixed-units')).toEqual([]);
+  });
+
+  // A log axis steps by decades ("500M", "1.0B"), so its ticks print several magnitudes by design;
+  // the same ticks on a linear axis still mix magnitudes.
+  it('spares log-axis ticks and still flags mixed magnitudes on a linear axis', () => {
+    const fixture = structuredClone(getFixtures('scatter').find((f) => f.id === 'log-both-stores-revenue')!) as { data: { points: unknown }; options: Record<string, unknown> };
+    fixture.data.points = scaled(fixture.data.points, 1e6);
+    const request = { type: 'scatter', data: fixture.data, options: { ...fixture.options, size: { width: 320 } }, annotations: [] };
+    const axisFindings = (measured: unknown) => (censusCase('scatter', fixture, 320, 'en', measured) as { findings: Finding[] }).findings
+      .filter((f) => f.class === 'mixed-units' && /^:[xy]$/.test(f.id));
+    expect(axisFindings(measure(request as never))).toEqual([]);
+    // Move every tick to a position affine in its value: the axis now reads as linear.
+    const linear = measure(request as never) as { geometry: { axes: { ticks: { at: number; pos: number }[] }[] } };
+    for (const axis of linear.geometry.axes) for (const tick of axis.ticks) tick.pos = tick.at / 1e7;
+    expect(axisFindings(linear).length).toBeGreaterThan(0);
+  });
+
+  // Removing spaces before the authored-text skip turned the list comma in "(0.6, 17)" into a decimal comma.
+  it('reads a list comma as a list comma and still flags a decimal comma', () => {
+    const withAuthored = { ...en, authored: ['Plant1'] };
+    expect(garbled('Not labelled on the chart: Payments (0.6, 17), and 1 more.', withAuthored)).toEqual([]);
+    expect(garbled('Payments 1,5 m (0.6, 17)', withAuthored)).toContain("decimal comma in a chart with '.' marks");
   });
 });
 
