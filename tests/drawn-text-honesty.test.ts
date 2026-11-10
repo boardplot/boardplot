@@ -360,3 +360,18 @@ describe('a unit that names a scale takes no second one', () => {
     expect(scaled(all)).toEqual([]);
   });
 });
+
+describe('a claim quotes the text the chart prints', () => {
+  const derivedOf = (spec: unknown) => (render({ spec, return: ['reading'] } as never).body as { reading: { derived: { claimId: string; displayed: string; visible: boolean; description?: string }[] } }).reading.derived;
+  // The reading called "Done 2" a visible label of the status board, but no text on the chart prints the count.
+  it('status: a state count is not displayed and keeps its words as the description', () => {
+    const derived = derivedOf({ type: 'status', data: { rows: [{ id: 'web', label: 'Web shop' }], columns: [{ id: 'q1', label: 'Q1' }, { id: 'q2', label: 'Q2' }],
+      cells: [{ row: 'web', col: 'q1', state: 'done' }, { row: 'web', col: 'q2', state: 'done' }] }, options: { states: [{ id: 'done', label: 'Done', tone: 'good' }] } });
+    expect(derived.find(entry => entry.claimId === 'status:count:done')).toMatchObject({ displayed: 'Not displayed', visible: false, description: 'Done 2' });
+  });
+  // The reading quoted "40% = 40 of 100 cells" as printed, but the waffle prints the value, never its count of cells.
+  it('waffle: a cell count is not displayed and keeps its words as the description', () => {
+    const derived = derivedOf({ type: 'waffle', data: { categories: [{ id: 'members', label: 'Members' }], series: [{ id: 'active', label: 'Active', values: [40] }] } });
+    expect(derived.find(entry => entry.claimId === 'waffle:cells:members:active')).toMatchObject({ displayed: 'Not displayed', visible: false, description: '40% = 40 of 100 cells' });
+  });
+});

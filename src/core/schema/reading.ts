@@ -55,7 +55,7 @@ export const readingSchema = {
       type: 'array', description: 'Computed values with operation, state, displayed text and visibility. Missing or withheld values have value null.',
       items: { type: 'object', properties: {
         claimId: { type: 'string' }, op: { type: 'string' }, operation: { type: 'string' }, value: { type: ['number', 'null'] },
-        state: { type: 'string' }, displayed: { type: 'string' }, visible: { type: 'boolean' }, drawn: { type: 'boolean' },
+        state: { type: 'string' }, displayed: { type: 'string' }, description: { type: 'string' }, visible: { type: 'boolean' }, drawn: { type: 'boolean' },
         noteLocation: { type: 'string' }, inputs: { type: 'array', items: { type: 'object' } },
       } },
     },

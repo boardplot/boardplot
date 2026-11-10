@@ -1,4 +1,5 @@
 import { chartString } from '../../strings/status';
+import { withUnprintedClaims } from '../../claims/ids';
 import { chartTheme } from '../chartEnv';
 import { labelOn as chartLabelOn } from '../labelOn';
 import { separationStroke } from '../../markVisibility';
@@ -763,8 +764,9 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
   ];
   const stateSummary = describedCounts.map((entry) => entry.displayed).join(', ');
 
-  return {
-    type: 'status',
+  // Only the accessible description states the counts: no text on the chart prints one.
+  return withUnprintedClaims({
+    type: 'status' as const,
     size,
     sizing: rowSizing('status', size, {
       chromeH: size.height - gridH,
@@ -810,7 +812,7 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
       occupied: occupied.snapshot(),
       decisions: solved.decisions,
     },
-  };
+  }, describedCounts.map((entry) => `status:count:${entry.state}`));
 }
 
 /** Break a long stage name between characters before the shared fitter cuts it. */

@@ -159,6 +159,8 @@ function histogramRecords(ctx: RecordContext): InteractionRecord[] {
         : intervalText(edge(low, bin.lo, false), edge(high, bin.hi, true), last, ctx.request.options), anchor: bin.rect,
       annotations: makeRecord(ctx, { categoryId: bin.id }, numericValue(bin.count)).annotations,
       nodeIds: bin.nodeId ? [bin.nodeId] : [], members: members.map(item => item.owner),
+      // The bin's claim, whether its count label prints it or not.
+      claimIds: ctx.claims.some(claim => claim.id === `histogram:bin:${bin.index}`) ? [`histogram:bin:${bin.index}`] : [],
       fields: members.map(item => numberField(item.owner.pointId!, item.value, unit, format)),
       share: { numerator: numericValue(bin.count, noun), denominator: numericValue(derived.n, noun),
         percent: derivedPercent(derived.n > 0 ? bin.count / derived.n * 100 : null) },

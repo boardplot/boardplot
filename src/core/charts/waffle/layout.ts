@@ -23,6 +23,7 @@ import { round2, type Rect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex } from '../../label/occupied';
 import { labelCtx, PRIORITY, solveLabels, type LabelRequest, type SolveCtx } from '../../label/solver';
+import { claimId, withUnprintedClaims } from '../../claims/ids';
 import { accessibleTitle, normalizeCategory, normalizeSeriesValues, NormalizeError, resolveSize } from '../../normalize/shared';
 import { type RoundingAdjustment } from '../../shareRounding';
 import { heightOmitted, resolveSizing, SIZE_TOLERANCE } from '../../sizing';
@@ -945,7 +946,8 @@ function layoutPass(data: ChartData, options: WaffleOptions, lean = false, oneRo
   const minHeight = frameH + Math.max(blocksH(rowRequiredBottomH) + panelRows.length * floorGridH + (panelRows.length - 1) * gutter, topBlockH + keyH);
 
   const reading = panels.map((panel, pi) => describePanel(panel, series.map((s) => s.label), headlineFormat(pi), cellCount, options));
-  const geometry: Geometry<WaffleMarks, WaffleDerived> = {
+  // The chart prints each segment's value, never its count of cells.
+  const geometry: Geometry<WaffleMarks, WaffleDerived> = withUnprintedClaims({
     type: 'waffle', size,
     sizing: resolveSizing({ ...WAFFLE_SIZING, minWidth: 0 }, size, { minWidth, minHeight, naturalHeight }),
     plot, scene: nodes, labels: allLabels, axes: [], annotations: [], legend: readoutLegend ?? frame.legend, frame: frame.frame, marks,
@@ -962,7 +964,7 @@ function layoutPass(data: ChartData, options: WaffleOptions, lean = false, oneRo
         : chartString(options, 'waffleCellsDesc', { v1: n, v2: n === 1 ? 'panel' : 'panels', v3: series.length, v4: grid.rows, v5: grid.columns, v6: cellCount, v7: formatAutomaticPercent(cellShare, autoDecimals(cellShare), false, options.locale?.language), v8: reading.join(' ') }),
     },
     warnings, debug: { occupied: occupied.snapshot(), decisions: solved.decisions },
-  };
+  }, panels.flatMap((panel) => panel.segments.filter((segment) => segment.cells > 0).map((segment) => claimId('waffle:cells', panel.categoryId, segment.seriesId))));
   const fits = Math.max(minHeight, frame.frame.minHeight ?? 0) <= size.height + 1e-6 && minWidth <= size.width + 1e-6;
   return { geometry, naturalHeight, fits };
 }

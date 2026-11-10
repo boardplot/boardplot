@@ -62,6 +62,8 @@ export interface ClaimRecordV1 {
   noteLocation?: string;
   /** False when the value is not drawn on the chart: it went into a note. `displayed` is empty when the note only counts it. */
   drawn?: false;
+  /** What the value means in words ("Rate cut 254", "[0, 250)"), where the chart type has one. `displayed` stays the printed text. */
+  description?: string;
 }
 
 /**
@@ -555,8 +557,7 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
       // a bin count has no upstream cells, only the sample and the edges — but
       // `kind:'aggregate'` on an empty operand list is a derivation claim with
       // nothing behind it. These are MEASUREMENTS over the sample, and the
-      // record says so; the interval stays in `displayed`, which is the
-      // half of the statement a reader can actually act on.
+      // record says so. The interval is the claim's description; `displayed` is the count the bin's label prints.
       const derived = geo.derived as HistogramDerived;
       const marks = geo.marks as HistogramMarks;
       const binClaims: ClaimRecordV1[] = derived.counts.map((count, index) => ({
@@ -568,14 +569,11 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
           { ref: `edge:${index}`, value: derived.binning.edges[index] ?? null },
           { ref: `edge:${index + 1}`, value: derived.binning.edges[index + 1] ?? null },
         ],
-        output: {
-          raw: count,
-          state: 'value',
-          // The open last bin runs from openAbove up, to the largest observation.
-          displayed: derived.binning.openAbove !== undefined && index === derived.counts.length - 1
-            ? `[${derived.binning.edges[index]}, ${derived.binning.edges[index + 1]}]`
-            : `[${derived.binning.edges[index]}, ${derived.binning.edges[index + 1]})`,
-        },
+        output: { raw: count, state: 'value', displayed: '' },
+        // The open last bin runs from openAbove up, to the largest observation.
+        description: derived.binning.openAbove !== undefined && index === derived.counts.length - 1
+          ? `[${derived.binning.edges[index]}, ${derived.binning.edges[index + 1]}]`
+          : `[${derived.binning.edges[index]}, ${derived.binning.edges[index + 1]})`,
         ...(marks.bins?.[index]?.nodeId ? { nodeId: marks.bins[index]!.nodeId } : {}),
       }));
       const quantileClaims: ClaimRecordV1[] = (
@@ -871,7 +869,7 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
     case 'status': {
       // The cells per state the accessible description prints. Each
       // operand is one drawn cell in that state, so the count is a sum of ones
-      // a reader can check cell by cell.
+      // a reader can check cell by cell. No text on the chart prints the count.
       const derived = geo.derived as StatusDerived;
       const cells = (geo.marks as StatusMarks).cells;
       return derived.stateCounts.map(({ state, count, displayed }) => ({
@@ -879,18 +877,21 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
         kind: 'aggregate' as const,
         op: 'sum@1',
         inputs: cells.filter((cell) => cell.state === state).map((cell) => ({ ref: `${cell.row}:${cell.col}`, value: 1, state })),
-        output: { raw: count, state: 'value', displayed },
+        output: { raw: count, state: 'value', displayed: '' },
+        description: displayed,
       }));
     }
     case 'waffle': {
       // The cells drawn per segment, as status counts its cells: each operand is one drawn cell, so the count is a sum of ones.
+      // The chart prints the segment's value, never its cell count.
       const derived = geo.derived as WaffleDerived;
       return derived.panels.flatMap((panel) => panel.segments.filter((segment) => segment.cells > 0).map((segment) => ({
         id: claimId('waffle:cells', panel.categoryId, segment.seriesId),
         kind: 'aggregate' as const,
         op: 'sum@1',
         inputs: Array.from({ length: segment.cells }, (_, cell) => ({ ref: `${panel.categoryId}:${segment.seriesId}:${cell + 1}`, value: 1 })),
-        output: { raw: segment.cells, state: 'value', displayed: segment.reading },
+        output: { raw: segment.cells, state: 'value', displayed: '' },
+        description: segment.reading,
       })));
     }
     case 'pareto': {
