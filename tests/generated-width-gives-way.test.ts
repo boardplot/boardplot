@@ -109,6 +109,11 @@ describe('a form whose floor is above the asked width gives way', () => {
       series: [{ id: 'share', label: 'Share', values: [12, 38, 5, 0.4, 100, 57.5, 66] }],
     }, { title: 'Share of orders by weekday', theme: 'notation', size: { width: 480 } }],
     ['gantt', { rows: ganttRows }, { title: 'Program plan', today: '2026-07-03', legend: { position: 'right' }, size: { width: 470 } }],
+  ])('%s draws', (type, data, options) => {
+    expect(layout(type, data, options).refused).toBeFalsy();
+  });
+});
+
 describe('an automatic height grows before a width refusal', () => {
   const layout = (type: string, data: object, options: object) => layoutResolvedRequest(resolveChartRequest({ type, data, options } as never));
   const steps = [['base', 'Full year 2023 reported baseline', 'total', 812000], ['d1', 'Volume and mix effects in core markets', 'delta', 46000],
