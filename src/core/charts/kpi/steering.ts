@@ -252,7 +252,7 @@ export function planSteering(input: SteeringInput): SteeringPlan | undefined {
     const body = atBaseline(x, baseline, comparison.body, rowFont);
     body.w = bodyWidth(comparison);
     body.x = alignedLeft(x, bodyW, body.w, valueTrack?.align ?? 'left');
-    text(`point:compare:${index}`, body, comparison.body, rowFont, { owner: { categoryId: 'kpi', seriesId: comparison.id, segmentId: comparison.id }, claimId: `kpi:delta:${index}` } as Partial<LabelRequest>);
+    text(`point:compare:${index}`, body, comparison.body, rowFont, { owner: { categoryId: 'kpi', seriesId: comparison.id, segmentId: comparison.id }, claimIds: [`kpi:delta:${index}`] } as Partial<LabelRequest>);
     leads.set(`point:compare:${index}`, comparison.lead);
     const labelId = `point:compareLabel:${index}`;
     // The comparison word ('YoY', 'vs Plan') is a caption beside its number, not a value.
@@ -291,7 +291,7 @@ export function planSteering(input: SteeringInput): SteeringPlan | undefined {
   if (attainment) {
     const color: Paint = attainment.tone === 'neutral' ? { token: 'ink' } : { token: attainment.tone };
     const pctRect = atBaseline(attainmentLeft, attainmentBaseline, attainment.figure, boldFont);
-    text('point:attainment', pctRect, attainment.figure, boldFont, { owner: { categoryId: 'kpi', seriesId: 'attainment', segmentId: 'attainment' }, claimId: 'kpi:attainment', candidates: [{ slot: 'attainmentRow', rect: pctRect, penalty: 0 }] } as Partial<LabelRequest>);
+    text('point:attainment', pctRect, attainment.figure, boldFont, { owner: { categoryId: 'kpi', seriesId: 'attainment', segmentId: 'attainment' }, claimIds: ['kpi:attainment'], candidates: [{ slot: 'attainmentRow', rect: pctRect, penalty: 0 }] } as Partial<LabelRequest>);
     const space = measure(' ', rowFont).width;
     const labelRect = atBaseline(pctRect.x + pctRect.w + space, attainmentBaseline, attainment.label, rowFont);
     text('point:attainmentLabel', labelRect, attainment.label, rowFont, { owner: { categoryId: 'kpi', seriesId: 'attainment', segmentId: 'attainment' }, role: 'caption', candidates: [{ slot: 'attainmentRow', rect: labelRect, penalty: 0 }] });

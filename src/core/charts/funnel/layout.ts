@@ -82,6 +82,7 @@ import { belowCalloutCandidates, dropCallout, fitText, type FittedText, LABEL_PA
 import { composedTextRole } from '../../textRole';
 import { footnoteSuffix } from '../../footnoteMark';
 import { maxOf, pushAll } from '../../arrays';
+import { claimId } from '../../claims/ids';
 
 export interface FunnelMarks {
   rows: {
@@ -835,7 +836,7 @@ export function layoutFunnel(
       captionRects.push(stacked ?? centred);
       labelRequests.push({
         id: `conv:${conv.fromId}:${conv.toId}`,
-        claimId: `funnel:conv:${conv.fromId}:${conv.toId}`,
+        claimIds: [claimId('funnel:conv', conv.fromId, conv.toId)],
         kind: 'point',
         role: composedTextRole(text),
         owner: { categoryId: conv.fromId },

@@ -1005,7 +1005,7 @@ export function layoutVariance(
       if (tone !== 'neutral') pinInk.set(`point:${c.id}`, seriesTextPaint(paint));
       labelRequests.push({
         id: `point:${c.id}`,
-        claimId: `var:${mode === 'relative' ? 'pct' : 'abs'}:${c.id}`,
+        claimIds: [`var:${mode === 'relative' ? 'pct' : 'abs'}:${c.id}`],
         claimText: mode === 'relative' ? pctSigned(d, ci) : absolute(d, ci, true),
         kind: 'point',
         owner,
@@ -1060,7 +1060,7 @@ export function layoutVariance(
       const tsize = words?.size ?? measure(text, labelFont);
       labelRequests.push(positionBarLabel({
         id: `point:${c.id}`,
-        claimId: `var:abs:${c.id}`,
+        claimIds: [`var:abs:${c.id}`],
         claimText: absolute(d, ci, true),
         kind: 'point',
         owner,
@@ -1253,7 +1253,7 @@ export function layoutVariance(
       const outerY = above ? capRect.y : capRect.y + capRect.h;
       labelRequests.push({
         id: `point:${c.id}`,
-        claimId: `var:abs:${c.id}`,
+        claimIds: [`var:abs:${c.id}`],
         claimText: absolute(d, ci, true),
         kind: 'point',
         owner,

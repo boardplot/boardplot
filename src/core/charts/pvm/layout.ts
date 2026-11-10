@@ -43,6 +43,7 @@ import {
 import type { PvmData, PvmDerived, PvmOptions } from './types';
 import { authoredNotes, withAuthoredFootnotes, type InternalFootnoteOptions } from '../../frame';
 import { resolveTheme } from '../../theme';
+import { HOST_CLAIMS, withUnprintedClaims, type HostClaims } from '../../claims/ids';
 
 const PRIOR_ID = 'prior';
 const CURRENT_ID = 'current';
@@ -175,7 +176,15 @@ export function layoutPvm(
 
   // Only the author's own notes keep a number; the rest are derived.
   // Effects take their sign's colour unless the theme or a named palette says otherwise.
+  // Each step label prints its effect and the net change label prints the delta; the totals print no pvm claim.
+  // The net and the closing total share owner and kind, so the net is told by its request id.
+  const effectIds = new Set<string>(derived.effects.map((effect) => effect.id));
+  const claimsOf: HostClaims = (request) =>
+    request.kind === 'total' && request.id === `net:${CURRENT_ID}` ? ['pvm:delta']
+      : request.kind === 'segment' && request.owner.segmentId === undefined && effectIds.has(request.owner.categoryId ?? '') ? [`pvm:effect:${request.owner.categoryId}`]
+        : undefined;
   const hostOptions: WaterfallOptions = withAuthoredFootnotes({
+    [HOST_CLAIMS]: claimsOf,
     ...(keepShownNotes(options, pass) as WaterfallOptions),
     ...(options.palette === undefined ? { bridgeDefault: 'sign' } : {}),
     ...(netChange !== false ? { closingChange: { delta: derived.delta, base: derived.priorRevenue } } : {}),
@@ -188,14 +197,13 @@ export function layoutPvm(
 
   assertClosingLevel(geometry, derived);
 
-  return {
+  // The residual is checked, not printed; the net change is printed only on request.
+  return withUnprintedClaims({
     ...geometry,
-    // The net change label prints the claim `pvm:delta`.
-    labels: geometry.labels.map((label) => (label.id.startsWith('net:') ? { ...label, claimId: 'pvm:delta' } : label)),
     type: 'pvm',
     derived,
     warnings: [...warnings, ...geometry.warnings],
-  };
+  }, ['pvm:reconciliation', ...(netChange === false ? ['pvm:delta'] : [])]);
 }
 
 /**

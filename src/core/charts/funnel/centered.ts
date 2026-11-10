@@ -62,6 +62,7 @@ import { composedTextRole } from '../../textRole';
 import { disclosureNote } from '../../notes';
 import { maxOf, pushAll } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
+import { claimId } from '../../claims/ids';
 
 const CVR_SPAN_HEADER = 'cvr:span-header';
 
@@ -589,7 +590,7 @@ export function layoutCenteredFunnel(
       const stepSize = stepSizes[categoryIndex]!;
       labelRequests.push({
         id: `step-cvr:${stage.id}`,
-        ...(categoryIndex > 0 && conversions.some(c => c.toId === stage.id) ? { claimId: `funnel:conv:${stages[categoryIndex - 1]!.id}:${stage.id}` } : {}),
+        ...(categoryIndex > 0 && conversions.some(c => c.toId === stage.id) ? { claimIds: [claimId('funnel:conv', stages[categoryIndex - 1]!.id, stage.id)] } : {}),
         kind: 'point',
         role: composedTextRole(stepText),
         owner: { categoryId: stage.id },
@@ -612,7 +613,7 @@ export function layoutCenteredFunnel(
       const cvrSize = cvrSizes[categoryIndex]!;
       labelRequests.push({
         id: `total-cvr:${stage.id}`,
-        ...(cumulativeCvrs[categoryIndex]!.rate !== null ? { claimId: `funnel:total-cvr:${stage.id}` } : {}),
+        ...(cumulativeCvrs[categoryIndex]!.rate !== null ? { claimIds: [`funnel:total-cvr:${stage.id}`] } : {}),
         kind: 'point',
         role: composedTextRole(cvrText),
         owner: { categoryId: stage.id },

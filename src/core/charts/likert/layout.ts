@@ -75,6 +75,7 @@ import { wrapText } from '../../text';
 import { maxOf, minOf, pushAll } from '../../arrays';
 import { INSIDE_MIN_H } from '../band/labels';
 import { emptyIdRecord } from '../../idRecords';
+import { claimId } from '../../claims/ids';
 
 /** One rung of the response scale, ordered most-negative -> most-positive. */
 export interface LikertScaleOption {
@@ -1012,8 +1013,8 @@ export function layoutLikert(
   scale.forEach((option, i) => optionOf.set(seriesIdOf(i), option.id));
   for (const label of geo.labels) {
     const { seriesId, categoryId } = label.owner;
-    if (label.kind === 'grandTotal' && summary === 'net') label.claimId = `likert:net:${categoryId}`;
-    else if (label.kind === 'segment' && optionOf.has(seriesId ?? '')) label.claimId = `likert:share:${categoryId}:${optionOf.get(seriesId!)}`;
+    if (label.kind === 'grandTotal' && summary === 'net') label.claimIds = [`likert:net:${categoryId}`];
+    else if (label.kind === 'segment' && optionOf.has(seriesId ?? '')) label.claimIds = [claimId('likert:share', categoryId!, optionOf.get(seriesId!)!)];
   }
   const reboundPaintWarningRules = restoreLikertPaints(geo, ramp, scale, seriesIdOf, paintWarningRules, theme);
   const statementTop = stacked ? stackStatements(geo, theme, statements, statementFont, statementLineH, margin.left, measure) : undefined;

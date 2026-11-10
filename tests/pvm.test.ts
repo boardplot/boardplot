@@ -742,3 +742,16 @@ it('keeps the closing net beside an inside total and above an outside fallback',
     else expect(net.rect.y + net.rect.h).toBeLessThan(total.rect.y);
   }
 });
+
+// The reading called every printed pvm effect "Not displayed": waterfall drew the step labels and no label named the effect claims.
+it('reads each printed effect from its step label', () => {
+  const fixture = fixtures.find((item) => item.id === 'fy-revenue-bridge')!;
+  const request = resolveChartRequest({ type: 'pvm', data: fixture.data, options: fixture.options as object } as never);
+  const geometry = requireGeometry(layoutResolvedRequest(request));
+  const effects = claimsForChart('pvm', geometry as never).filter((claim) => claim.id.startsWith('pvm:effect:'));
+  expect(effects.length).toBe(5);
+  for (const claim of effects) {
+    const step = geometry.labels.find((label) => label.id === `sum:${claim.id.slice('pvm:effect:'.length)}`)!;
+    expect([claim.output.displayed, claim.nodeId], claim.id).toEqual([step.text, `label:${step.id}`]);
+  }
+});

@@ -599,8 +599,8 @@ export interface PlacedLabel extends TypographyMetadata {
   printedIn?: Id;
   /** The marks whose value this label prints: absent means its owner; [] a label that only names its mark. */
   printsFor?: OwnerRef[];
-  /** Calculation whose displayed text comes from this final label. */
-  claimId?: Id;
+  /** Calculations whose displayed text comes from this final label. */
+  claimIds?: readonly Id[];
   /** Computed text before an authored label override. */
   claimText?: string;
   /** Full text behind cut lines; emitted as the text node's `<title>`. */

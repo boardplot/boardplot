@@ -13,9 +13,10 @@ import type { StatusDerived, StatusMarks } from '../charts/status/layout';
 import type { WaffleDerived } from '../charts/waffle/types';
 import type { GridMarks } from '../grid/layoutGrid';
 import type { OlsFit, OlsMoments } from '../ols';
-import type { Geometry, PlacedAnnotation } from '../types/scene';
+import type { Geometry, PlacedAnnotation, PlacedLabel } from '../types/scene';
 import type { TableDerived } from '../types/table';
 import type { TotalBasis } from '../charts/waterfall/layout';
+import { claimId } from './ids';
 
 /**
  * Six kinds, in exactly two groups, and the split is the contract.
@@ -374,14 +375,22 @@ function stackTotalClaims(geo: Geometry<object, object>): ClaimRecordV1[] {
 
 /** Bind to the final scene, after a grid or the note pass changes placement. */
 function bindClaimLabels(type: string, geo: Geometry<object, object>, claims: ClaimRecordV1[]): ClaimRecordV1[] {
-  const ids = claimLabelIds(type, geo);
-  const labels = new Map(geo.labels.map(label => [label.id, label]));
+  const bound = claimLabels(type, geo);
+  // Two labels can share an id, and so a node id ('a' + 'b:c' and 'a:b' + 'c'): such a node does not tell which label it draws.
+  const seen = new Set<string>();
+  const sharedNodes = new Set<string>();
+  for (const node of geo.scene) if (node.t === 'text') (seen.has(node.id) ? sharedNodes : seen).add(node.id);
   // DimSwitch can supply thousands of cells, also inside a grid.
   const textNodes = type==='dimswitch' || (type==='grid' && claims.some(claim=>/(^|\/)dimswitch:\[/.test(claim.id)))
     ? new Map(geo.scene.filter(node=>node.t==='text').map(node=>[node.id,node])) : undefined;
   return claims.map(claim => {
-    const label = labels.get(ids.get(claim.id) ?? '');
+    const label = bound.get(claim.id);
     const nodeId = label?.nodeId ?? claim.nodeId ?? (label ? `label:${label.id}` : undefined);
+    // The label that names the claim prints its own lines when its node id is shared with another label's node.
+    if (label && !label.hidden && !label.noted && sharedNodes.has(nodeId ?? '')) {
+      return withoutResidue({ ...claim, nodeId: undefined, output: { ...claim.output, displayed: label.lines.join(' '),
+        ...(label.claimText !== undefined && label.text !== label.claimText ? { state: 'authored-override' } : {}) } });
+    }
     const node = textNodes && !label?.noted ? textNodes.get(nodeId ?? '') : geo.scene.find(node => node.t === 'text' && (label?.noted
       ? label.noteLocation
         ? label.noteLocation.endsWith(`(${node.id})`)
@@ -399,39 +408,44 @@ function bindClaimLabels(type: string, geo: Geometry<object, object>, claims: Cl
   });
 }
 
-/** Adapters without claimId use the same label map, including through grids. */
-function claimLabelIds(type: string, geo: Geometry<object, object>): Map<string, string> {
-  // A claim id that printed labels with different texts carry is ambiguous: ids joined with ':' can collide
-  // across rows ('a' + 'b:c' and 'a:b' + 'c'). It stays unbound rather than quote another value's text.
-  const ids = new Map<string, string>();
+/**
+ * The label each claim reads: the label whose request named the claim, else the label an adapter
+ * pattern finds by id (annotations, stack totals, grid panels). An id two labels share finds none.
+ */
+function claimLabels(type: string, geo: Geometry<object, object>): Map<string, PlacedLabel> {
+  const byId = new Map<string, PlacedLabel | undefined>();
+  for (const label of geo.labels) byId.set(label.id, byId.has(label.id) ? undefined : label);
+  // Two printed labels that name one claim with different texts make it ambiguous: it stays unbound
+  // rather than quote another value's text.
+  const bound = new Map<string, PlacedLabel>();
   const printed = new Map<string, string>();
   const ambiguous = new Set<string>();
-  for (const label of geo.labels) {
-    if (!label.claimId) continue;
+  for (const label of geo.labels) for (const id of label.claimIds ?? []) {
     if (!label.hidden) {
-      const text = printed.get(label.claimId);
-      if (text !== undefined && text !== label.text) ambiguous.add(label.claimId);
-      printed.set(label.claimId, label.text);
+      const text = printed.get(id);
+      if (text !== undefined && text !== label.text) ambiguous.add(id);
+      printed.set(id, label.text);
     }
-    if (!label.hidden || !printed.has(label.claimId)) ids.set(label.claimId, label.id);
+    if (!label.hidden || !printed.has(id)) bound.set(id, label);
   }
-  for (const claimId of ambiguous) ids.delete(claimId);
+  for (const claimId of ambiguous) bound.delete(claimId);
+  const bind = (claimId: string, labelId: string) => {
+    const label = byId.get(labelId);
+    if (label) bound.set(claimId, label);
+  };
   for (const annotation of geo.annotations ?? []) {
-    if (annotation.labelId) ids.set(`annotation:${annotation.id}`, annotation.labelId);
-  }
-  if (type === 'waterfall') {
-    for (const label of geo.labels) if (label.id.startsWith('total:')) ids.set(`wf:${label.id}`, label.id);
+    if (annotation.labelId) bind(`annotation:${annotation.id}`, annotation.labelId);
   }
   for (const label of geo.labels) {
     const id = totalKey(label);
-    if (id !== undefined && !ids.has(`stack:total:${id}`)) ids.set(`stack:total:${id}`, label.id);
+    if (id !== undefined && !bound.has(`stack:total:${id}`)) bind(`stack:total:${id}`, label.id);
   }
   if (type === 'grid') {
     for (const panel of (geo.marks as GridMarks).panels) if (panel.chart) {
-      for (const [claim, label] of claimLabelIds(panel.type, panel.chart.geometry)) ids.set(`${panel.id}/${claim}`, `${panel.id}/${label}`);
+      for (const [claim, label] of claimLabels(panel.type, panel.chart.geometry)) bind(`${panel.id}/${claim}`, `${panel.id}/${label.id}`);
     }
   }
-  return ids;
+  return bound;
 }
 
 // Ops that only add and subtract their operands, so the result shares their scale. A table calc records its
@@ -470,7 +484,7 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
     case 'table': {
       const derived = geo.derived as TableDerived;
       return derived.computedCells.map((c) => ({
-        id: `table:${c.rowId}:${c.colId}${c.kind === 'calc' || c.kind === 'aggregate' ? '' : `:${c.kind}`}`,
+        id: c.kind === 'calc' || c.kind === 'aggregate' ? claimId('table', c.rowId, c.colId) : claimId('table', c.rowId, c.colId, c.kind),
         kind:
           c.kind === 'calc'
             ? ('derived' as const)
@@ -602,7 +616,7 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
           const ratio = row.retention[t] ?? null;
           const previous = derived.basis === 'previous' && t > 0;
           claims.push({
-            id: `cohort:${row.id}:t${t}`,
+            id: claimId('cohort', row.id, `t${t}`),
             kind: 'derived',
             op: 'cohort-retention@1',
             inputs: [
@@ -668,30 +682,17 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
         totals: Record<string, number>;
         totalBasis: Record<string, TotalBasis>;
       };
-      // `displayed` carries the string the READER sees on the total label —
-      // unit prefix included. The unit is a verify-grade property of the
-      // number, not a theme decision: a build that
-      // drops the currency from a bridge total moves the claim record
-      // instead of shipping a silent integrity break. Empty when the solver hid the
-      // label without a note — `claimsForChart` binds noted labels below.
-      const totalLabels = (geo as { labels?: { id?: string; text?: string; hidden?: unknown }[] })
-        .labels ?? [];
-      const displayedByItem = new Map<string, string>();
-      for (const label of totalLabels) {
-        if (typeof label?.id !== 'string' || !label.id.startsWith('total:')) continue;
-        if (label.hidden || typeof label.text !== 'string') continue;
-        displayedByItem.set(label.id.slice('total:'.length), label.text);
-      }
+      // `displayed` is the string the READER sees on the total label, unit prefix
+      // included: the label names its claim at the request, and bindClaimLabels reads it.
       return Object.entries(derived.totals).map(([id, raw]) => {
         const basis = derived.totalBasis?.[id];
-        const displayed = displayedByItem.get(id) ?? '';
         if (basis && basis.authored === false) {
           return {
             id: `wf:total:${id}`,
             kind: 'derived' as const,
             op: 'waterfall-total@1',
             inputs: basis.inputs.map((input) => ({ ref: input.ref, value: input.value })),
-            output: { raw, state: 'value', displayed },
+            output: { raw, state: 'value', displayed: '' },
           };
         }
         return {
@@ -702,7 +703,7 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
           // named, so a reader can go and look, and NOT presented as something
           // the engine computed.
           inputs: [{ ref: basis?.ref ?? `${id}.value`, value: raw, state: 'authored' }],
-          output: { raw, state: 'authored', displayed },
+          output: { raw, state: 'authored', displayed: '' },
         };
       });
     }
@@ -851,7 +852,7 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
                 if (count === undefined) return [];
                 return [
                   {
-                    id: `likert:share:${itemId}:${optionId}`,
+                    id: claimId('likert:share', itemId, optionId),
                     kind: 'derived' as const,
                     op: 'share@1',
                     inputs: [
@@ -883,7 +884,7 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
       // The cells drawn per segment, as status counts its cells: each operand is one drawn cell, so the count is a sum of ones.
       const derived = geo.derived as WaffleDerived;
       return derived.panels.flatMap((panel) => panel.segments.filter((segment) => segment.cells > 0).map((segment) => ({
-        id: `waffle:cells:${panel.categoryId}:${segment.seriesId}`,
+        id: claimId('waffle:cells', panel.categoryId, segment.seriesId),
         kind: 'aggregate' as const,
         op: 'sum@1',
         inputs: Array.from({ length: segment.cells }, (_, cell) => ({ ref: `${panel.categoryId}:${segment.seriesId}:${cell + 1}`, value: 1 })),
@@ -967,7 +968,7 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
         derived.basis !== 'count' && derived.shares
           ? derived.order.flatMap((bandId) =>
               derived.groupIds.map((groupId) => ({
-                id: `pyramid:share:${bandId}:${groupId}`,
+                id: claimId('pyramid:share', bandId, groupId),
                 kind: 'derived' as const,
                 op: 'share@1',
                 inputs: [
@@ -1012,7 +1013,7 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
       };
       const firstStage = derived.cumulativeCvrs?.[0]?.stageId;
       return [...derived.conversions.map((c) => ({
-        id: `funnel:conv:${c.fromId}:${c.toId}`,
+        id: claimId('funnel:conv', c.fromId, c.toId),
         kind: 'derived' as const,
         op: 'funnel-conversion@1',
         inputs: [
