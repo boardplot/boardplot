@@ -1086,6 +1086,14 @@ describe('TableChart reads the footer rule notes model', () => {
     expect(container.querySelector('.bp-notes summary')!.textContent).not.toBe('Notes and sources (1)');
   });
 
+  // The React source line doubled a bold source word ("Source: **Source:** …") and printed a bare colon under an empty source word.
+  it('words the source line as the SVG frame does', () => {
+    act(() => root.render(<TableChart data={data} target="report" source="**Source:** Example" />));
+    expect(container.querySelector('.bp-source')!.textContent).toBe('**Source:** Example');
+    act(() => root.render(<TableChart data={data} target="report" source="Example" strings={{ source: '' }} />));
+    expect(container.querySelector('.bp-source')!.textContent).toBe('Example');
+  });
+
   it('ends a one-track table at the frame edge, and the rows at the last track under a capped label, as the SVG', () => {
     // every table ends at the frame edge; the label track takes the rest of the width.
     act(() => root.render(<TableChart data={data} target="report" size={{ width: 900, height: 200 }} />));

@@ -22,10 +22,12 @@ import { interactionTokens } from '../core/a11y/theme';
 import { INLINE_LINE_RATIO, LINE_BOX_EPSILON, LINE_RATIO, levelLadder, type TableDensity } from '../core/charts/table/ladder';
 import { chipPaints, onTableGround, tableGround, toneTextPaint } from '../core/charts/table/chips';
 import { CHANGE_LINE_MIN_PX, CHANGE_LINE_SIZE_STEP_PX, changeLineFont, ENGINE_NOTES, INLINE_LABEL_INDENT, tableFonts } from '../core/charts/table/tracks';
-import { formatScenarios, resolveCanvasOptions, resolveSubtitle } from '../core/normalize/shared';
+import { resolveCanvasOptions, resolveSubtitle } from '../core/normalize/shared';
 import { numericVariant } from '../core/textRole';
 import { tableFootnotes } from '../core/charts/table/view';
-import { defaultNotePlacement, notesPointer } from '../core/notes';
+import { defaultNotePlacement, notesPanelLabel, notesPointer, sourceLine } from '../core/notes';
+import { authoredNotes, subtitleLine } from '../core/frame';
+import { omittedCompactNotes } from '../core/compact';
 import { localeStrings } from '../core/strings';
 import { chartString } from '../core/strings/table';
 import { footerType } from '../core/footer';
@@ -110,8 +112,8 @@ export function tableFrame(
     : undefined;
   const mode = tableFrameMode(options);
   const subtitle = subtitleText(options.subtitle, table.unit ?? options.unit);
-  const authored = options.footnotes === false ? [] : options.footnotes ?? [];
-  const markerNotes = mode === 'compact' && options.title ? authored : [];
+  const authored = authoredNotes(options);
+  const markerNotes = mode === 'compact' ? omittedCompactNotes('table', options) : [];
   // The list is not an <ol>: no note carries a number, the author's
   // included. Nothing in a table points at one, and a
   // "1)" that no head or cell refers to is a number the reader cannot
@@ -140,24 +142,13 @@ export function tableFrame(
   return {
     mode, title, subtitle, source: options.source && sourceLine(options.source, options.strings?.source ?? localeStrings(options.locale?.language).source), footnotes, padding,
     listed,
-    pointer: listed.length === 0 ? undefined : placement === 'info' ? `${words.notesAndSources} (${listed.length})` : notesPointer(listed.length, words),
+    pointer: listed.length === 0 ? undefined : placement === 'info' ? notesPanelLabel(listed.length, words.notesAndSources) : notesPointer(listed.length, words),
     markerNotes: markerNotes.join(' '),
     // The author's accessible description replaces the generated summary, as it does in the SVG.
     summary: options.a11y?.description ?? options.caption ?? [title, subtitle,
       `${chartString(options, 'tableDesc', { v1: String(table.rows.length), v2: String(table.columns.length) })}.`]
       .filter((part): part is string => Boolean(part)).join(' · '),
   };
-}
-
-/**
- * The source credit as the SVG frame draws it: "Source: <source>",
- * unless the text already opens with that word. A copy of `sourceLine` in
- * core/frame.ts, which does not export it.
- */
-function sourceLine(source: string, word: string): string {
-  const opensWithWord = source.slice(0, word.length).toLowerCase() === word.toLowerCase() &&
-    /^\p{L}*\s*:/u.test(source.slice(word.length));
-  return opensWithWord ? source : `${word}: ${source}`;
 }
 
 /**
@@ -178,10 +169,7 @@ function subtitleText(
 ): string | undefined {
   const sub = resolveSubtitle(subtitle);
   if (sub === undefined) return undefined;
-  const measure = unit ? `${sub.measure} in ${unit}` : sub.measure;
-  return [sub.company, measure, sub.period, sub.scenarios?.length ? formatScenarios(sub.scenarios) : undefined]
-    .filter((part): part is string => Boolean(part))
-    .join(' · ');
+  return subtitleLine(unit ? { ...sub, measure: `${sub.measure} in ${unit}` } : sub);
 }
 
 /** The head paddings a theme sets, as stylesheet variable names and px. */

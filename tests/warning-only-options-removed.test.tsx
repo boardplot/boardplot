@@ -12,6 +12,8 @@ import { parseJsonPointer, patchApplies, type JsonPatchOperation } from '../src/
 import { BarChart } from '../src/react/charts/bar';
 import { ColumnChart } from '../src/react/charts/column';
 import { getFixtures } from '../src/fixtures';
+import { measure } from '../src';
+import { callTool } from '../src/mcp/server';
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -150,5 +152,21 @@ describe('a warning-only option leaves an old spec drawing', () => {
     const crowded = withOptions({ ...tornado, data: { ...(tornado.data as object), categories: many, series } }, { topN: { n: 5 }, size: { width: 900 } });
     const warning = draw(crowded).warnings.find((candidate) => candidate.code === 'tornado-topn-ignored');
     expect(warning!.fix).toBeUndefined();
+  });
+
+  // A caller that sends `annotations: []` to a type that draws none got "annotations is retired and ignored" and a patch for a list that holds nothing.
+  it('an empty annotations list on a type that draws none warns nothing, at the root and in the options', () => {
+    const table = fixture('table', 'steering-monthly');
+    const clean = draw(table);
+    for (const spec of [{ ...table, annotations: [] }, withOptions(table, { annotations: [] })]) {
+      const cli = draw(spec);
+      expect(cli.warnings.map((warning) => warning.code)).toEqual(clean.warnings.map((warning) => warning.code));
+      expect(cli.svg).toBe(clean.svg);
+      const mcp = JSON.parse(callTool('boardplot_render', { spec, return: ['svg'] }).text) as { warnings?: Warning[] };
+      expect((mcp.warnings ?? []).some((warning) => warning.code === 'option-deprecated')).toBe(false);
+      const measured = measure({ ...spec, options: { ...spec.options, size: { width: 720 } } } as Parameters<typeof measure>[0]);
+      expect(measured.warnings.some((warning) => warning.code === 'option-deprecated')).toBe(false);
+    }
+    expect(draw({ ...table, annotations: [{ kind: 'valueLine', value: 1 }] }).warnings.some((warning) => warning.code === 'option-deprecated')).toBe(true);
   });
 });
