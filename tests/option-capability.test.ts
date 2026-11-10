@@ -478,7 +478,8 @@ describe('published option behaviour census', () => {
     'heatmap.labelDensity': { fixture: 'regional-monthly-performance' },
     // Every kpi and slope label sits at or above the band 'minimal' keeps, unless a cell authors a lower priority.
     'kpi.labelDensity': { fixture: 'spark-ends-below-card', data: (data) => { data.spark.values[2] = { number: data.spark.values[2], priority: 100 }; return data; } },
-    'slope.labelDensity': { fixture: 'cost-per-unit-plants', data: (data) => { data.series[0].values[0] = { number: data.series[0].values[0], priority: 100 }; return data; } },
+    // Minimal keeps a highlighted end, so the low priority goes on Leipzig, not the highlighted Gdańsk.
+    'slope.labelDensity': { fixture: 'cost-per-unit-plants', data: (data) => { data.series[1].values[0] = { number: data.series[1].values[0], priority: 100 }; return data; } },
     'line.labelDensity': { fixture: 'stacked100-area-revenue-mix' },
     'status.labelDensity': { value: 'full', options: { size: { width: 320 } } },
     'variance.labelDensity': { fixture: 'integrated-fc-caps' },

@@ -35,7 +35,7 @@ import { unprintedClaims } from '../src/core/claims/ids.ts';
 import { interactionRecords } from '../src/core/a11y/records.ts';
 import { interactionValueText } from '../src/core/a11y/valueText.ts';
 import { labelCardContent } from '../src/react/hover/labelCard.ts';
-import { formatWithSpec, parseFormatExample } from '../src/core/formatSpec.ts';
+import { exampleSpec, formatWithSpec, parseFormatExample } from '../src/core/formatSpec.ts';
 import { recomputeClaim } from '../tests/helpers/recompute.ts';
 
 const args = process.argv.slice(2);
@@ -375,11 +375,18 @@ export function censusCase(type, fixture, width, localeName, measured) {
     if (/^\(?\d+:\d+\)?$/.test(printed.text.trim())) return;
     const found = tokens(printed.text, m);
     if (found.length === 0) return;
-    // A bullet prints its gap as its printed value minus its printed target, and an authored precision stands:
-    // "−$0.1" between "$0.4" and "$0.5" is right, although the exact gap is −0.038.
+    // Bullet gap rule (bullet/layout.ts shownDelta): the printed gap is the printed value minus the printed target, at the row's
+    // precision, also when the target column is hidden. So "−$0.1" between "$0.4" and "$0.5" is right, although the exact gap is −0.038.
     if (type === 'bullet' && printed.surface === 'svg' && printed.id.startsWith('delta:')) {
       const row = printed.id.slice('delta:'.length);
-      const [value] = tokens(textById.get(`label:point:${row}`) ?? '', m), [target] = tokens(textById.get(`label:target-value:${row}`) ?? '', m);
+      const format = candidates.find((candidate) => candidate.name === 'value')?.value?.format;
+      const source = (data.rows ?? []).find((entry) => entry.id === row);
+      const number = (cell) => (typeof cell === 'number' ? cell : cell?.number);
+      const hiddenTarget = () => {
+        if (!format || typeof number(source?.target) !== 'number') return '';
+        return formatWithSpec(number(source.target), exampleSpec(format, resolved.options.locale?.language, undefined, [number(source.value), number(source.target)]));
+      };
+      const [value] = tokens(textById.get(`label:point:${row}`) ?? '', m), [target] = tokens(textById.get(`label:target-value:${row}`) ?? hiddenTarget(), m);
       if (value && target) candidates = [...candidates, { raw: value.value - target.value, name: 'printed value - printed target', scaled: true, derived: true }];
     }
     // A percent beside a value and its comparison (target, median, base) can be their ratio or change.

@@ -1001,6 +1001,8 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
             labelRequests.push({
               id: `rangeValue:${s.id}:${cat.id}:${end}`, kind: 'point', role: composedTextRole(text), owner: { categoryId: cat.id, seriesId: `__range:${s.id}` },
               text, lines: [text], typeRole: 'label', font: labelFont, priority: PRIORITY.interior,
+              // The bounds of a highlighted point pass the minimal density gate with its value.
+              ...(bonus(cat.id, s.id) > 0 ? { keepWhenDense: true as const } : {}),
               candidates: [
                 { slot: end === 'low' ? 'leftOfCap' : 'rightOfCap', rect: side(end === 'low' ? capX - LABEL_GAP - size.width : capX + LABEL_GAP), penalty: 0 },
                 // Inside the range under or over the rail, where a bound on the plot edge still fits.

@@ -321,7 +321,7 @@ function annotateColumn(
       value: stackTotals[c.id]!,
       pointValueText: domain.totalFmt(stackTotals[c.id]!),
       format: dataSeries.length === 1 ? dataSeries[0]!.format : undefined,
-      ...noTotal(totalsAdd(domain), domain.stacks[ci]!.hasValue),
+      ...noTotal(totalsAdd(domain), domain.stacks[ci]!.hasValue && !domain.incompleteCats.has(c.id)),
       date: c.date,
       label: c.label ?? c.id,
       owner: { categoryId: c.id },

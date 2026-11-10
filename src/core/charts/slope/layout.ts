@@ -852,6 +852,8 @@ export function layoutSlope(
         ...(r.fontStep ? { fontStep: r.fontStep } : {}),
         font: endFontOf(r.s),
         priority: r.priority,
+        // A highlighted end passes the minimal density gate, also under an authored low priority.
+        ...(highlights.has(r.s.id) ? { keepWhenDense: true as const } : {}),
         // Spread boxes may touch (SPREAD_GAP), so the solver pads them by 0.
         pad: -TOUCH_TOLERANCE,
         candidates: [{

@@ -1017,6 +1017,8 @@ export function layoutVariance(
         priority:
           (mv.priority ?? PRIORITY.endpoint + Math.min(99, Math.abs(d))) +
           (hl ? PRIORITY.highlightBonus : 0),
+        // A highlighted value passes the minimal density gate, also under an authored low priority.
+        ...(hl ? { keepWhenDense: true as const } : {}),
         candidates: relativePointCandidates(cx, yv, y0, tsize, d < 0, pin.r, isVarianceTier(options), !isVarianceTier(options) || isSingleVarianceTier(options)),
       });
       return;
@@ -1073,6 +1075,7 @@ export function layoutVariance(
         priority:
           (mv.priority ?? PRIORITY.endpoint + Math.min(99, Math.abs(d))) +
           (hl ? PRIORITY.highlightBonus : 0),
+        ...(hl ? { keepWhenDense: true as const } : {}),
         // The muted words never sit inside the fill.
         candidates: deltaBarCandidates(rect, tsize, d < 0, toneCss(tone, mv.fill)).filter(candidate => !words || !candidate.insideFill).map(candidate => ({ ...candidate, ...(pattern && candidate.insideFill ? { insidePattern: pattern, insideFill: effectiveFill(toneCss(tone, mv.fill), pattern, theme) } : {}), insidePaint: mv.fill ? { css: mv.fill } : tone === 'neutral' ? { token: 'neutralMark' as const } : tonePaint(tone, undefined, true) })),
       }, options, {

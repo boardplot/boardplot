@@ -576,7 +576,8 @@ export function layoutBullet(
     : !row.isPct && chartSpec ? chartSpec
       : automaticSpec(row)]));
   const rowFmt = (row: NormRow) => (v: number): string => formatWithSpec(v, rowSpecs.get(row)!);
-  // The printed gap subtracts the printed operands; derived data keeps the exact difference.
+  // Bullet gap rule: the printed gap is the printed value minus the printed target, at the row's precision, also when
+  // the target column is hidden (scripts/number-census.mjs reads it so); derived data keeps the exact difference.
   const shownDelta = (row: NormRow, d: number): number => row.value === null || row.target === null ? d
     : cleanDiff(roundedNumber(row.value, rowSpecs.get(row)!), roundedNumber(row.target, rowSpecs.get(row)!));
   const valueTextOf = (row: NormRow): string | null => {
