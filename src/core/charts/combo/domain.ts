@@ -136,7 +136,7 @@ function comboAxisGate(options: ComboOptions, seriesNorm: readonly NormSer[], co
       for (const s of secondaryRequested) s.axis = 'primary';
       const ids = secondaryRequested.map((s) => `'${s.id}'`).join(', ');
       warnings.push({
-        code: 'dual-axis',
+        code: 'dual-axis-unacknowledged',
         severity: 'error',
         message:
           `series ${ids} ${secondaryRequested.length === 1 ? 'requests' : 'request'} the secondary axis ` +

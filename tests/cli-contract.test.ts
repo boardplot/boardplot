@@ -18,6 +18,7 @@ import { BOARDPLOT_VERSION } from '../src/version';
 import { render } from '../src/cli/render';
 import { runVerb } from '../src/cli/result';
 import { applyRows } from '../src/cli/rows';
+import { collapseLabelHiddenWarnings } from '../src/cli/spec';
 import { measure } from '../src/cli/measure';
 import * as chartRequest from '../src/core/request';
 import { resolveTheme } from '../src/core/theme';
@@ -1165,4 +1166,14 @@ it('discloses the stack palette without changing its paint', () => {
     expect(grid.ok, JSON.stringify(grid.errors)).toBe(true);
     expect(grid.warnings).toContainEqual(expect.objectContaining({ code: 'stack-palette-used', message: expect.stringContaining('[parts]') }));
   }
+});
+
+// The CLI grouped hidden labels by an id it read out of the message text, so a reworded message would have left each hidden label ungrouped.
+it('groups hidden labels by the id the warning carries, not by its wording', () => {
+  const label = (id: string, hidden?: 'collision') => ({ id, kind: 'point', owner: { seriesId: 'sales', pointId: id }, ...(hidden ? { hidden } : {}) });
+  const geo = { labels: [label('p1', 'collision'), label('p2', 'collision'), label('p3')] } as never;
+  const grouped = collapseLabelHiddenWarnings(geo, ['p1', 'p2'].map((id) => ({
+    code: 'label-hidden', severity: 'warn' as const, message: 'no free seat', detail: { labelId: id },
+  })));
+  expect(grouped).toEqual([expect.objectContaining({ code: 'label-hidden', detail: { kind: 'point', seriesId: 'sales', hidden: ['p1', 'p2'], total: 3 } })]);
 });

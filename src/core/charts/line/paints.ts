@@ -165,7 +165,7 @@ function heroPlan(env: LineEnv, domain: LineDomain, warnings: LintWarning[]): { 
   if (!env.isBump && variant === 'line' && !heroMode && !env.anyHighlight && drawnSeries.length > 3) {
     warnings.push({
       code: 'line-peer-overload',
-      severity: 'info',
+      severity: 'advice',
       message: `${drawnSeries.length} peer-styled lines are hard to follow — highlight one series, set emphasis 'first', or facet into small multiples (grid repeat)`,
     });
   }

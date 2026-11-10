@@ -169,7 +169,7 @@ export function flagDroppedEndpointLabels(solved: SolveResult): void {
   // Only line end labels are 'point' labels in a combo, and the solver
   // writes label-hidden only for a collision.
   for (const warning of solved.warnings) {
-    if (warning.code !== 'label-hidden' || !warning.message.startsWith("label 'point:")) continue;
+    if (warning.code !== 'label-hidden' || !String(warning.detail?.labelId).startsWith('point:')) continue;
     warning.severity = 'warn';
     warning.message += `; nothing within ${ENDPOINT_MAX_GAP}px of its point is free`;
   }

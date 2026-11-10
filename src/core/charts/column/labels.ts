@@ -524,11 +524,10 @@ function anomalyRuleRequest(domain: ColumnDomain, area: ColumnArea, requests: La
     warnings.push({
       code: 'label-hidden',
       severity: 'warn',
-      // The label id is spelled into the message on purpose, so
-      // that `label '<id>'` can be parsed out of every warning carrying this code.
       message:
         "label 'anomaly:rule' was suppressed by labels.valueLine while its corridor and flag markers still render — the reader is shown a threshold with no stated rule",
       owner: { annotationId: 'anomaly:rule' },
+      detail: { labelId: 'anomaly:rule' },
       suggest: 'enable labels.valueLine so the corridor explains itself, or drop options.anomaly',
     });
     return;

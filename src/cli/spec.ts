@@ -374,13 +374,14 @@ function hiddenLabelId(label: PlacedLabel): string {
 }
 
 /** Collapse solver noise only in the public envelope. Geometry remains unchanged. */
-function collapseLabelHiddenWarnings(geo: Geometry, warnings: readonly LintWarning[]): LintWarning[] {
+export function collapseLabelHiddenWarnings(geo: Geometry, warnings: readonly LintWarning[]): LintWarning[] {
   const passthrough: LintWarning[] = [];
   const groups = new Map<string, { kind: string; seriesId?: string; labels: PlacedLabel[]; warnings: LintWarning[] }>();
   const labelsById = new Map(geo.labels.map((label) => [label.id, label]));
   for (const warning of warnings) {
-    const id = warning.code === 'label-hidden' ? /^label '([^']+)'/.exec(warning.message)?.[1] : undefined;
-    const label = id ? labelsById.get(id) : undefined;
+    // The emitting site names its label in `detail.labelId`.
+    const id = warning.code === 'label-hidden' ? warning.detail?.labelId : undefined;
+    const label = typeof id === 'string' ? labelsById.get(id) : undefined;
     if (!label) {
       passthrough.push(warning);
       continue;
