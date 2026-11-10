@@ -16,6 +16,9 @@ export interface StructureCount {
 import { chartString } from './strings/structureCounts';
 import type { BaseOptions } from './types/options';
 
-export function structureCount(what: StructureCount['what'], n: number, text: string | undefined = undefined, options?: Pick<BaseOptions, 'locale' | 'strings'>): StructureCount {
+/** The default phrase reads the locale, so a call without its own text must pass the options. */
+export function structureCount(what: StructureCount['what'], n: number, text: string): StructureCount;
+export function structureCount(what: StructureCount['what'], n: number, text: string | undefined, options: Pick<BaseOptions, 'locale' | 'strings'>): StructureCount;
+export function structureCount(what: StructureCount['what'], n: number, text?: string, options?: Pick<BaseOptions, 'locale' | 'strings'>): StructureCount {
   return { what, n, text: text ?? chartString(options, ({"categories":"countCategories","series":"countSeries","reference-series":"countReferenceSeries","causes":"countCauses","columns":"countColumns","rows":"countRows","points":"countPoints","groups":"countGroups","stages":"countStages","slices":"countSlices","panels":"countPanels","nodes":"countNodes","relationships":"countRelationships","regions":"countRegions","cohorts":"countCohorts","periods":"countPeriods","cells":"countCells","cases":"countCases","bands":"countBands","events":"countEvents","markers":"countMarkers","phases":"countPhases","observations":"countObservations","statements":"countStatements","scale-points":"countScalePoints","activities":"countActivities","methods":"countMethods","drivers":"countDrivers","flows":"countFlows"} as const)[what], { v1: n }) };
 }

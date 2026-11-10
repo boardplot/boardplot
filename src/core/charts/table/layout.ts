@@ -7,6 +7,7 @@ import { liftOrFallback } from '../tableFit';
 import { chartTheme } from '../chartEnv';
 import { zeroLifts } from '../../formatPrecision';
 import { structureCount } from '../../structureCounts';
+import { chartString } from '../../strings/table';
 /**
  * Table layout measures resolveTable()'s semantic model, selects a numeric fit,
  * and emits only the selected scene. Body cells are plain text nodes —
@@ -424,7 +425,7 @@ function prepareTableView(data: TableData, options: TableOptions, table: Resolve
   }
 
   return { dataRows, rows, expandedIds, fullRows, widthRows, cols, spans, bandedColumnRuns,
-    heatLanes: heatRanges(cols, rows), arrowShapes: arrowKey(cols, rows), notes: tableFootnotes(table, rows, cols),
+    heatLanes: heatRanges(cols, rows), arrowShapes: arrowKey(cols, rows, options.locale?.language), notes: tableFootnotes(table, rows, cols, options.locale?.language),
     textColumns: cols.filter(col => col.kind === 'rowLabel' || col.kind === 'text'),
     statusColumns: cols.filter(col => col.kind === 'status'),
   };
@@ -433,6 +434,15 @@ function prepareTableView(data: TableData, options: TableOptions, table: Resolve
 const tableViews = new WeakMap<ResolvedTable, { key: string; view: ReturnType<typeof prepareTableView> }>();
 
 /** The visible semantic structure is shared across every numeric frame and spacing probe. */
+/** The table's accessible name, counts and summary, in the table's language. */
+function tableA11y(options: TableOptions, rowCount: number, columnCount: number) {
+  return {
+    title: accessibleTitle(options.title, chartString(options, 'tableTitle')),
+    counts: [structureCount('rows', rowCount, undefined, options), structureCount('columns', columnCount, undefined, options)],
+    desc: chartString(options, 'tableDesc', { v1: String(rowCount), v2: String(columnCount) }),
+  };
+}
+
 function sharedTableView(data: TableData, options: TableOptions, table: ResolvedTable) {
   const key = layoutKey(data, { expansion: options.expansion, topN: options.topN });
   let known = tableViews.get(table);
@@ -1239,7 +1249,7 @@ function prepareTableCandidate(
       rows: rows.map((row) => ({ id: row.id, ...rowY.get(row.id)! })),
     },
     derived: { table, computedCells: resolved.computedCells },
-    a11y: { title: accessibleTitle(options.title, 'Table'), counts: [structureCount('rows', dataRows.length), structureCount('columns', cols.length)], desc: `Table with ${dataRows.length} rows and ${cols.length} columns` },
+    a11y: tableA11y(options, dataRows.length, cols.length),
     warnings, paintWarningRules: undefined, debug: { occupied: [], decisions: [] },
   };
   const plannedWarnings = [...warnings];
@@ -2385,11 +2395,7 @@ function prepareTableCandidate(
     frame: frame.frame,
     marks,
     derived: { table, computedCells: resolved.computedCells },
-    a11y: {
-      title: accessibleTitle(options.title, 'Table'),
-      counts: [structureCount('rows', dataRows.length), structureCount('columns', cols.length)],
-      desc: `Table with ${dataRows.length} rows and ${cols.length} columns`,
-    },
+    a11y: tableA11y(options, dataRows.length, cols.length),
     warnings,
     ...(paintWarningRules.length > 0 ? { paintWarningRules } : {}),
     debug: { occupied, decisions: [] },

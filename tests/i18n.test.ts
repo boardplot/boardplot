@@ -12,6 +12,9 @@ import { requireGeometry } from '../src/core/sizing';
 import { dateTickKeep, formatDate } from '../src/core/dateFormat';
 import { resolveChartRequest } from '../src/core/request';
 import { chartString as layoutString } from '../src/core/strings/createChartComponent';
+import { resolveTable } from '../src/core/charts/table/resolve';
+import { tableFrame } from '../src/react/tablePresentation';
+import type { TableData, TableOptions } from '../src/core/types/table';
 
 const pieFixture = () => getFixtures('pie').find((fixture) => fixture.id === 'streaming-genre-share')!;
 
@@ -252,4 +255,18 @@ it('uses German wording in cohort heatmaps and exhibit tables', () => {
     expect(words).not.toContain('1.000');
     expect(geo.a11y.desc).not.toMatch(/Cohort |cohorts|Weighted average|not reached/);
   }
+});
+
+// Table notes, its accessible summary and the React frame were English under a German locale.
+it('words table notes, summary and the React source line in the table language', () => {
+  const data = { columns: [{ id: 'label', kind: 'rowLabel', label: 'Unit' }, { id: 'a', kind: 'value', label: 'Sales', format: '1,234' }],
+    rows: [{ id: 'all', label: 'All', role: 'total', totalPolicy: 'derive', children: [
+      { id: 'north', label: 'North', cells: { a: 1.4 } }, { id: 'south', label: 'South', cells: { a: 1.4 } }] }] };
+  const options = { locale: { language: 'de' }, source: 'Internal data', notes: { show: ['note', 'disclosure'] } };
+  const geo = layout('table', { data }, options);
+  expect(geo.frame.noteList!.map((note) => note.text)).toContain('Summen können wegen Rundung abweichen.');
+  expect(geo.a11y.desc).toBe('Tabelle mit 3 Zeilen und 2 Spalten');
+  const frame = tableFrame(resolveTable(data as TableData, options as TableOptions).table, options as never);
+  expect(frame.source).toBe('Quelle: Internal data');
+  expect(frame.summary).toBe('Tabelle mit 3 Zeilen und 2 Spalten.');
 });

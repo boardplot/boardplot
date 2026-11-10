@@ -4,6 +4,7 @@
  * and claims stay on the existing path.
  */
 import { NormalizeError } from '../../normalize/shared';
+import { localeStrings } from '../../strings';
 import type { Id } from '../../types/cell';
 import type {
   ResolvedColumn,
@@ -208,7 +209,8 @@ export function foldTableTopN(
     siblingGroups(ranked),
     original,
     ranked,
-    topN,
+    // The rest row takes the table language's word unless the author names it.
+    { ...topN, restLabel: topN.restLabel ?? localeStrings(options.locale?.language).others },
     usedIds(data.rows),
     generatedOthers,
   );

@@ -6,6 +6,7 @@ import type { FontSpec } from '../../../text';
 import type { SceneNode } from '../../../types/scene';
 import type { ArrowScale, EncodingContext, ResolvedColumn, ResolvedRow } from '../../../types/table';
 import { maxOf } from '../../../arrays';
+import { chartString } from '../../../strings/table';
 
 interface ArrowMetrics {
   scale: ArrowScale;
@@ -36,16 +37,13 @@ export function arrowGlyph(value: number, maxAbs: number, scale: ArrowScale): st
 }
 
 /** The arrow shapes in the order they rise, with what each means under each cut. */
-const ARROW_KEY: readonly (readonly [glyph: string, absolute: string, relative: string])[] = [
-  ['↑', 'rise over 10%', 'rise over 10% of the largest change'],
-  ['↗', 'rise over 2%, up to 10%', 'rise over 2%, up to 10% of the largest change'],
-  ['→', 'within 2%', 'within 2% of the largest change'],
-  ['↘', 'fall over 2%, up to 10%', 'fall over 2%, up to 10% of the largest change'],
-  ['↓', 'fall over 10%', 'fall over 10% of the largest change'],
-];
-
-/** The note that says what the key's percentages are shares of. */
-export const ARROW_FOOTNOTE = "An arrow's angle on a relative scale compares the change with the largest change in its column.";
+const ARROW_KEY = [
+  ['↑', 'tableArrowRise10'],
+  ['↗', 'tableArrowRise2'],
+  ['→', 'tableArrowFlat'],
+  ['↘', 'tableArrowFall2'],
+  ['↓', 'tableArrowFall10'],
+] as const;
 
 export interface ArrowKeyEntry {
   id: string;
@@ -57,7 +55,7 @@ export interface ArrowKeyEntry {
  * The key of the arrow shapes a table draws, each shape once,
  * in the order they rise. Both surfaces draw these entries.
  */
-export function arrowKey(columns: readonly ResolvedColumn[], rows: readonly ResolvedRow[]): ArrowKeyEntry[] {
+export function arrowKey(columns: readonly ResolvedColumn[], rows: readonly ResolvedRow[], language?: string): ArrowKeyEntry[] {
   const drawn = { absolute: new Set<string>(), relative: new Set<string>() };
   for (const column of columns) {
     if (column.cellEncoding?.type !== 'arrow' || column.kind !== 'computed' || !column.polarity) continue;
@@ -71,7 +69,7 @@ export function arrowKey(columns: readonly ResolvedColumn[], rows: readonly Reso
   }
   // A table with both cuts keys each: the plain shapes first, then the shares of the largest change.
   return (['absolute', 'relative'] as const).flatMap((scale) => ARROW_KEY.filter(([glyph]) => drawn[scale].has(glyph))
-    .map(([glyph, absolute, relative]) => ({ id: scale === 'absolute' ? `arrowKey:${glyph}` : `arrowKey:relative:${glyph}`, label: scale === 'absolute' ? absolute : relative, glyph })));
+    .map(([glyph, key]) => ({ id: scale === 'absolute' ? `arrowKey:${glyph}` : `arrowKey:relative:${glyph}`, label: chartString({ locale: { language } }, scale === 'absolute' ? key : `${key}Relative`), glyph })));
 }
 
 export function emitArrow(context: EncodingContext, metrics: ArrowMetrics): SceneNode[] {

@@ -10,6 +10,7 @@ import { saysToDate } from '../../partialPeriod';
 import { closestKey } from '../../schema/unknownKeyWords';
 import { cappedItems } from '../../frame';
 import { localeStrings, stringFields } from '../../strings';
+import { chartString as tableString } from '../../strings/table';
 import { AUTOMATIC_FORMAT, LABEL_ONLY_ROW, MAGNITUDE_FIGURES, MAGNITUDE_GROUP, parseFormatExample, specUnitKind, unitMagnitude, type MagnitudeGroupSource } from '../../formatSpec';
 import type { CellState, CellTone, ComputedCellRecord, TableCell, TableRow } from '../../types/table';
 import type { LintWarning } from '../../types/scene';
@@ -899,7 +900,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
       {id:'label',kind:'rowLabel',label:headOf('label',variant==='by-measure'?'KPI':data.dimension.label),...aligned('label'),...(labelWidth===undefined && !form.card ? {maxTextWidth:labelCap} : {maxWidth:labelCap})},
       ...(periodsFirst ? [...periodTracks,...blockTracks] : [...blockTracks,...periodTracks]),
     // Range and its comparisons form one block between labels and periods.
-    ],columnGroups:[{id:'labels',label:'Labels',heading:false,columns:['label']},...(blockColumns.length ? [{id:'block',label:'Range',heading:false,columns:blockColumns}] : [])],rows},
+    ],columnGroups:[{id:'labels',label:tableString(options,'dimswitchLabels'),heading:false,columns:['label']},...(blockColumns.length ? [{id:'block',label:tableString(options,'dimswitchRange'),heading:false,columns:blockColumns}] : [])],rows},
     // No rowExtent: under the default the rules end at the last track.
     options:{...tableDefaults(form,pinned),...tableOptions,
       ...(notes.length ? {[ENGINE_NOTES]:notes} : {}),
