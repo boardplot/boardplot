@@ -75,7 +75,7 @@ import { wrapText } from '../../text';
 import { maxOf, minOf, pushAll } from '../../arrays';
 import { INSIDE_MIN_H } from '../band/labels';
 import { emptyIdRecord } from '../../idRecords';
-import { claimId } from '../../claims/ids';
+import { claimId, HOST_CLAIMS, withUnprintedClaims, type HostClaims } from '../../claims/ids';
 
 /** One rung of the response scale, ordered most-negative -> most-positive. */
 export interface LikertScaleOption {
@@ -820,6 +820,13 @@ export function layoutLikert(
   const halves = oddScale && neutralMode === 'split'
     ? { neg: seriesIdOf(neutralIndex, 'neg'), pos: seriesIdOf(neutralIndex, 'pos') }
     : undefined;
+  // A printed share and net name their claims, so the reading quotes the printed text.
+  // Only the split neutral has halves. A real option's series id wins over a half's id, so 'x:pos' stays its own option.
+  const optionOf = new Map<Id, Id>(halves ? [[halves.neg, scale[neutralIndex]!.id], [halves.pos, scale[neutralIndex]!.id]] : []);
+  scale.forEach((option, i) => optionOf.set(seriesIdOf(i), option.id));
+  const likertClaims: HostClaims = ({ kind, owner: { seriesId, categoryId } }) =>
+    kind === 'grandTotal' && summary === 'net' ? [`likert:net:${categoryId}`]
+      : kind === 'segment' && optionOf.has(seriesId ?? '') ? [claimId('likert:share', categoryId!, optionOf.get(seriesId!)!)] : undefined;
   // Comparison brackets take a room right of the plot; the first
   // layout measures how wide, and every later one reserves it.
   const comparing = (opts.annotations ?? []).some((annotation) => annotation.kind === 'cagr' || annotation.kind === 'diff');
@@ -904,6 +911,7 @@ export function layoutLikert(
 
     const drawn = layoutBar(barData, {
       ...barOptions,
+      [HOST_CLAIMS]: likertClaims,
       // Stacked statements are drawn by likert, so bar keeps no name column.
       ...(stacked ? { [NO_NAME_COLUMN]: true } : {}),
       ...(nameTrack !== undefined ? { [NAME_TRACK]: nameTrack } : {}),
@@ -1007,15 +1015,6 @@ export function layoutLikert(
     label.printsFor = halves && label.owner.seriesId === halves.pos
       ? [label.owner, { seriesId: halves.neg, categoryId: label.owner.categoryId }] : [label.owner];
   }
-  // A printed share and net name their claims, so the reading quotes the printed text.
-  // Only the split neutral has halves. A real option's series id wins over a half's id, so 'x:pos' stays its own option.
-  const optionOf = new Map<Id, Id>(halves ? [[halves.neg, scale[neutralIndex]!.id], [halves.pos, scale[neutralIndex]!.id]] : []);
-  scale.forEach((option, i) => optionOf.set(seriesIdOf(i), option.id));
-  for (const label of geo.labels) {
-    const { seriesId, categoryId } = label.owner;
-    if (label.kind === 'grandTotal' && summary === 'net') label.claimIds = [`likert:net:${categoryId}`];
-    else if (label.kind === 'segment' && optionOf.has(seriesId ?? '')) label.claimIds = [claimId('likert:share', categoryId!, optionOf.get(seriesId!)!)];
-  }
   const reboundPaintWarningRules = restoreLikertPaints(geo, ramp, scale, seriesIdOf, paintWarningRules, theme);
   const statementTop = stacked ? stackStatements(geo, theme, statements, statementFont, statementLineH, margin.left, measure) : undefined;
   // Comparison brackets stand right of the bars, so the nets stay left of them.
@@ -1032,7 +1031,14 @@ export function layoutLikert(
   const stackedMin = stacked ? chromeH + rowsOf(Math.ceil(statementLineH + 4), ROW_GAP_MIN) : 0;
   const stackedNatural = stacked ? Math.max(stackedMin, chromeH + rowsOf(Math.ceil(statementLineH + 8), 2 * ROW_GAP_MIN + 4)) : 0;
 
-  return {
+  // Shares the chart does not print: a neutral left out of the bars, a share that rounds to zero. Nets print only under summary 'net'.
+  const drawnOptions = new Set([...negativeIndices, ...positiveIndices, ...(oddScale && neutralMode !== 'exclude' ? [neutralIndex] : [])]);
+  const unprinted = [
+    ...(summary === 'net' ? [] : ordered.map((item) => `likert:net:${item.id}`)),
+    ...ordered.flatMap((item) => scale.flatMap((option, i) => drawnOptions.has(i) && printed(i)(item) !== false ? [] : [claimId('likert:share', item.id, option.id)])),
+  ];
+
+  return withUnprintedClaims({
     ...geo,
     type: 'likert',
     ...(geo.sizing ? { sizing: rowSizing('likert', geo.size, {
@@ -1064,7 +1070,7 @@ export function layoutLikert(
     // Resolved from the rebound rules, so a fresh render warns as a repaint in its theme does.
     warnings: refreshPaintWarnings([...geo.warnings, ...warnings], reboundPaintWarningRules, theme),
     paintWarningRules: reboundPaintWarningRules,
-  };
+  }, unprinted);
 
   // -- helpers that need the closure ---------------------------------------
 

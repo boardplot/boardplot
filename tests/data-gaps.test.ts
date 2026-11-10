@@ -18,7 +18,7 @@ import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request'
 import { render } from '../src/cli/render';
 import { specFromRows } from '../src/rows';
 import { claimsForChart } from '../src/core/claims';
-import { claimId, HOST_CLAIMS, type HostClaims } from '../src/core/claims/ids';
+import { claimId, HOST_CLAIMS, unprintedClaims, type HostClaims } from '../src/core/claims/ids';
 import { layoutWaterfall } from '../src/core/charts/waterfall/layout';
 import { chartReading } from '../src/core/reading';
 import type { Geometry, LintWarning } from '../src/core/types/scene';
@@ -733,6 +733,50 @@ it('reads the Pareto vital-few share where the curve, the threshold rule or the 
     const entry = reading.derived.find((item) => item.claimId === 'pareto:vitalFew');
     expect([node?.t === 'text' ? node.lines.join(' ') : undefined, entry?.displayed, entry?.visible], text).toEqual([text, text, true]);
     if (nodeId) expect(claim?.nodeId).toBe(nodeId);
+  }
+});
+
+/** Lays out one request and returns its geometry, claims and reading. */
+function readChart(type: string, data: object, options: object) {
+  const request = resolveChartRequest({ type, data, options: { ...options, size: { width: 720, height: 420 } } } as never);
+  const geometry = layoutResolvedRequest(request);
+  if (geometry.refused) throw new Error(`${type} refused`);
+  const claims = claimsForChart(type, geometry);
+  return { geometry, claims, reading: chartReading({ name: type, type, request, geometry, claims }) };
+}
+
+// The reading called every printed pyramid share "Not displayed": the value labels named no claim.
+it('reads the printed text of each pyramid share', () => {
+  const bands = ['Under 30', '30 to 49', '50 and over'].map((label, i) => ({ id: `b${i}`, from: i * 20, to: i * 20 + 20, label }));
+  const { geometry, reading } = readChart('pyramid', { bands, groups: [{ id: 'east', label: 'East', values: [120, 300, 180] }, { id: 'west', label: 'West', values: [90, 250, 260] }] }, { basis: 'shareOfTotal' });
+  const shares = reading.derived.filter((entry) => entry.claimId.startsWith('pyramid:share:'));
+  expect(shares.length).toBe(6);
+  for (const entry of shares) {
+    const label = geometry.labels.find((item) => item.claimIds?.includes(entry.claimId));
+    expect([entry.displayed, entry.visible], entry.claimId).toEqual([label?.text, true]);
+    expect(entry.displayed).toBe(`${Number(entry.value).toFixed(1)}%`);
+  }
+});
+
+// The reading called the trend slope and r² "Not displayed" although the scatter key prints both.
+it('reads the scatter trend slope and r² from the key', () => {
+  const points = [[10, 52], [20, 61], [30, 75], [40, 79], [50, 94]].map(([x, y], i) => ({ id: `p${i}`, label: `Store ${i + 1}`, x, y }));
+  const { geometry, claims } = readChart('scatter', { points }, { trend: { label: 'Linear trend' } });
+  const key = geometry.legend?.items.find((item) => item.id === 'trend:all');
+  const node = geometry.scene.find((item) => item.t === 'text' && item.id === key?.labelId);
+  if (node?.t !== 'text') throw new Error('no trend key');
+  expect(node.lines.join(' ')).toContain('slope 1.0, r² 0.98');
+  for (const part of ['slope', 'r2']) expect(claims.find((claim) => claim.id === `scatter:trend:all:${part}`)?.output.displayed).toBe(node.lines.join(' '));
+});
+
+// A Likert share that rounds to zero or belongs to an excluded neutral is not printed; the chart must say so, or the census reads it as a lost number.
+it('names every Likert claim at a label or states it as unprinted', () => {
+  const scale = [{ id: 'no', label: 'Disagree' }, { id: 'mid', label: 'Neutral', role: 'neutral' }, { id: 'yes', label: 'Agree' }];
+  const items = [{ id: 'pay', label: 'Pay is fair', values: [1, 300, 699] }, { id: 'tools', label: 'Tools work', values: [400, 200, 400] }];
+  for (const options of [{ values: 'counts', neutral: 'exclude' }, { values: 'counts', summary: 'none' }]) {
+    const { geometry, claims } = readChart('likert', { scale, items }, options);
+    const named = new Set([...geometry.labels.flatMap((label) => label.claimIds ?? []), ...unprintedClaims(geometry)]);
+    expect(claims.filter((claim) => !named.has(claim.id)).map((claim) => claim.id), JSON.stringify(options)).toEqual([]);
   }
 });
 
