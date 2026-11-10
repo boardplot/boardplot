@@ -4,7 +4,8 @@ import type { EngineNoteMeta } from '../core/notes';
 import type { OptionsInput } from '../core/types/optionInput';
 import { hasPolarityBadge, isFigureCell, polarityBadgeInk } from '../core/charts/table/chips';
 import { chartString } from '../core/strings/table';
-import { belowTableViewportFloor, columnHeadText, tableWidths } from '../core/charts/table/widths';
+import { belowTableViewportFloor, columnHeadText } from '../core/charts/table/widths';
+import { tableNeed } from '../core/charts/table/need';
 import {
   createContext,
   memo,
@@ -1038,18 +1039,34 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     () => table ? visibleColumns(table, Object.fromEntries([...table.columnToggles.map((toggle) => [toggle.id, toggle.defaultVisible] as const), ...Object.entries(defaultColumnVisibility ?? {})])) : [],
     [table, defaultColumnVisibility],
   );
-  const measured = useMemo(() => table && theme ? tableWidths(table, theme, width.measure, {
-    ...tableOptions, density, target: request?.target, inlineVisibility,
-    [SOFT_LABEL_CAP]: softLabelCap, [LABEL_WRAP_FLOOR]: labelWrapFloor,
-  }, {
-    columns, allColumns, defaultColumns, rows, available, frameStart, scroll: true,
-    withMarks: !readOnlyTree || tableOptions?.outlineMarks === true,
-    sortable: sortableIds, leadWidth: rowLabelLead?.width,
-    trailingTracking: true, groupStart: groupMarks.groupStart, groupEnd: groupMarks.groupEnd,
-    slack: width.browser ? undefined : browserSlack,
-    fit: size === 'container' ? fit : undefined,
-  }) : undefined, [table, theme, width, tableOptions, density, request?.target, inlineVisibility, softLabelCap, labelWrapFloor,
-    columns, allColumns, defaultColumns, rows, available, frameStart, readOnlyTree, sortableIds, rowLabelLead?.width, groupMarks, size, fit]);
+  // The grid draws the full rung and scrolls where the table is wider; the core answers its tracks and its overflow advice.
+  const need = useMemo(() => {
+    if (!table || !theme) return undefined;
+    // A container keeps the authored side margins; a fixed frame adds the theme's canvas margin.
+    const sidesAt = (frameTheme: Theme, frameWidth: number) => size === 'container' || size === undefined
+      ? { left: marginLeft, right: marginRight } : { ...canvasMargin(frameTheme, frameWidth), ...margin };
+    const sides = sidesAt(theme, size === undefined || size === 'container' ? 0 : resolveSize(size).width);
+    return tableNeed({ table, surface: {
+      scroll: true, theme, measure: width.measure,
+      options: { ...tableOptions, density, target: request?.target, inlineVisibility, [SOFT_LABEL_CAP]: softLabelCap, [LABEL_WRAP_FLOOR]: labelWrapFloor },
+      view: {
+        columns, allColumns, defaultColumns, rows, available, frameStart,
+        withMarks: !readOnlyTree || tableOptions?.outlineMarks === true,
+        sortable: sortableIds, leadWidth: rowLabelLead?.width,
+        trailingTracking: true, groupStart: groupMarks.groupStart, groupEnd: groupMarks.groupEnd,
+        slack: width.browser ? undefined : browserSlack,
+        fit: size === 'container' ? fit : undefined,
+      },
+      margins: { left: sides.left ?? 0, right: sides.right ?? 0 },
+      at: request === undefined ? undefined : (frameWidth) => {
+        const frameTheme = tableRenderTheme({ ...request, size: { ...request.size, width: frameWidth } });
+        const frameSides = sidesAt(frameTheme, frameWidth);
+        return { theme: frameTheme, available: frameWidth - (frameSides.left ?? 0) - (frameSides.right ?? 0) };
+      },
+    } });
+  }, [table, theme, width, tableOptions, density, request, inlineVisibility, softLabelCap, labelWrapFloor,
+    columns, allColumns, defaultColumns, rows, available, frameStart, readOnlyTree, sortableIds, rowLabelLead?.width, groupMarks, size, fit, margin, marginLeft, marginRight]);
+  const measured = need?.plan;
   const padX = measured?.cellPadX ?? 12;
   const indents = measured?.indents ?? { base: 0, step: 16 };
   const operatorSlot = measured?.operatorSlot ?? 0;
@@ -1057,11 +1074,11 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
   const spacerWidths = measured?.spacerBefore ?? new Map<Id, number>();
   const labelsWrap = measured?.labelsWrap ?? false;
   const diagnostics = useMemo(() => layoutRequest && resolved ? {
-    warnings: [...resolved.warnings, ...(layoutRequest.inputWarnings ?? []), ...(fittedNote === undefined ? [] : [fittedNote]), ...(measured?.warnings ?? []), ...(sized?.warnings ?? []),
+    warnings: [...resolved.warnings, ...(layoutRequest.inputWarnings ?? []), ...(fittedNote === undefined ? [] : [fittedNote]), ...(need?.warnings ?? []), ...(sized?.warnings ?? []),
       ...(tableOptions?.columnHeads === false && sortable !== false && (sortable === true || sortable.length > 0) ? [SORT_WITHOUT_HEADS] : [])],
     presentation: initialPrepared?.presentation ?? tablePresentation(layoutRequest, resolved.table),
     refused: sized?.refused,
-  } : undefined, [layoutRequest, resolved, initialPrepared, sized, fittedNote, measured?.warnings, tableOptions?.columnHeads, sortable]);
+  } : undefined, [layoutRequest, resolved, initialPrepared, sized, fittedNote, need?.warnings, tableOptions?.columnHeads, sortable]);
   // A container table is laid out again at each width it is shown at, as a container chart is.
   const displayRef = useDisplayWarnings(settling ? undefined : diagnostics, onWarnings, null,
     size === 'container' && !container.printing ? layoutRequest?.size.width : undefined);
