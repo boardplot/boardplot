@@ -343,6 +343,10 @@ describe('refusal contract', () => {
       row.parentId = 'de';
     }, 'steering-monthly')[0]).toMatchObject({ code: 'parent-conflict', path: '/data/rows/0/children/3/parentId', received: { type: 'string', value: 'de' } });
     expect(errors('table', (s) => { s.data.columns.push({ id: 'again', kind: 'rowLabel', label: 'Again' }); }, 'steering-monthly')[0]).toMatchObject({ code: 'row-label-count', path: '/data/columns' });
+    // A dimswitch statement refusal pointed at /measures, a field the chart root does not have.
+    expect(errors('dimswitch', (s) => { s.data.measures[4].group = 'Other'; }, 'statement')[0]).toMatchObject({ code: 'invalid-data', path: '/data/measures/4/group', received: { type: 'string', value: 'Other' } });
+    // The driver is found by its id: the refusal names the driver, not the line that lists it.
+    expect(errors('dimswitch', (s) => { s.data.measures[5].sign = -1; }, 'statement')[0]).toMatchObject({ code: 'invalid-data', path: '/data/measures/5/sign' });
   });
 
   // A 150,000-category column ran for more than 15 minutes; above the item budget it must refuse at once and name the fix.
