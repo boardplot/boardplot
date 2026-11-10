@@ -62,6 +62,7 @@ import type { Annotation } from '../../types/annotations';
 import type { ColumnOptions } from '../../types/options';
 import type { Geometry, LintWarning } from '../../types/scene';
 import { layoutColumn } from '../column/layout';
+import { hostedLayout } from '../../normalize/innerRefusal';
 import { labelOn } from '../labelOn';
 import { TILED_BANDS } from '../column/plot';
 import { HOST_CLAIMS, withUnprintedClaims, type HostClaims } from '../../claims/ids';
@@ -578,8 +579,10 @@ export function layoutHistogram(
   });
   const openClause = openValue === undefined ? undefined : chartString(options, 'histogramOpenClause', { v1: fmt(openValue) });
   const size = resolveSize(options.size);
+  // The bins are derived data: a column refusal names a histogram option it was handed, or nothing.
+  const layoutBins = (binData: typeof delegateData, binOptions: ColumnOptions) => hostedLayout(options, binOptions, () => layoutColumn(binData, binOptions, true));
   let columnOptions = delegateOptions(true);
-  let column = layoutColumn(delegateData, columnOptions, true);
+  let column = layoutBins(delegateData, columnOptions);
   const allValuesLabelled = (geometry: typeof column) => counts.every((count, index) => (perValue && count === 0) || geometry.labels.some((label) => label.kind === 'point' && label.owner.categoryId === binId(index) && !label.hidden));
 
   // An instrument, not a prediction: the tick values are read back off the
@@ -597,7 +600,7 @@ export function layoutHistogram(
       ...delegateOptions(false),
       labels: pointLabels(),
     };
-    const withoutAxis = layoutColumn(delegateData, withoutAxisOptions, true);
+    const withoutAxis = layoutBins(delegateData, withoutAxisOptions);
     if (allValuesLabelled(withoutAxis)) {
       columnOptions = withoutAxisOptions;
       column = withoutAxis;
@@ -627,7 +630,7 @@ export function layoutHistogram(
       ? delegateOptions(true, tail)
       : { ...delegateOptions(false, tail), labels: pointLabels() };
     columnOptions = withTail;
-    column = layoutColumn(delegateData, columnOptions, true);
+    column = layoutBins(delegateData, columnOptions);
   }
 
   // A bin whose own count is seated in a row of counts needs no callout: "1 in 850–900" over a printed 1
@@ -640,7 +643,7 @@ export function layoutHistogram(
       tail = kept;
       const { annotations: _dropped, ...rest } = columnOptions;
       columnOptions = kept.length > 0 ? { ...rest, annotations: kept } : rest;
-      column = layoutColumn(delegateData, columnOptions, true);
+      column = layoutBins(delegateData, columnOptions);
     }
   }
   // Try exact compact counts before the note; the frequency axis keeps whole counts.
@@ -655,18 +658,18 @@ export function layoutHistogram(
       const format = formatWithSpec(0, { ...spec, magnitude, decimals });
       return roundedNumber(count, parseFormatExample(format)) === count ? { number: count, format } : count;
     }) }] };
-    const compact = layoutColumn(compactData, columnOptions, true);
+    const compact = layoutBins(compactData, columnOptions);
     if (drawnCounts(compact) > drawnCounts(column)) column = compact;
   }
 
   if (options.valueAxis?.show === undefined && !allValuesLabelled(column) && !frequencyAxisShown) {
     columnOptions = delegateOptions(true, tail);
-    column = layoutColumn(delegateData, columnOptions, true);
+    column = layoutBins(delegateData, columnOptions);
   }
   // Counts on every bar make the frequency axis a second copy, so it gives way even under an authored title.
   if (options.valueAxis?.show === undefined && !options.valueAxis?.percent && allValuesLabelled(column)) {
     const withoutAxisOptions = delegateOptions(false, tail);
-    const withoutAxis = layoutColumn(delegateData, withoutAxisOptions, true);
+    const withoutAxis = layoutBins(delegateData, withoutAxisOptions);
     if (allValuesLabelled(withoutAxis)) { columnOptions = withoutAxisOptions; column = withoutAxis; frequencyAxisShown = false; }
   }
   /**
@@ -693,7 +696,7 @@ export function layoutHistogram(
     delegateData = countData(true);
     // One count is left: no density gate may drop it.
     columnOptions = { ...delegateOptions(true), labelDensity: 'full' };
-    column = layoutColumn(delegateData, columnOptions, true);
+    column = layoutBins(delegateData, columnOptions);
     warnings.push({
       code: 'histogram-counts-peak-only',
       severity: 'info',

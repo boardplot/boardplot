@@ -16,7 +16,7 @@ export function refuseLabelPosition(options: PositionOptions, variant: string, a
   if (!hasLabelPosition(options) || accepted.includes(options.labelPosition!)) return;
   throw new NormalizeError('label-position-unsupported', 'options.labelPosition',
     `${variant} does not support labelPosition '${options.labelPosition}'`,
-    `Use labelPosition ${['auto', ...accepted].map(value => `'${value}'`).join(', ')}.`);
+    `Use labelPosition ${['auto', ...accepted].map(value => `'${value}'`).join(', ')}.`, undefined, ['options', 'labelPosition']);
 }
 
 interface BarLabelSeat extends InsidePaint {

@@ -452,7 +452,7 @@ function layoutPiePass(
   if (slices.length > PIE_SLICE_LIMIT) {
     warnings.push({
       code: 'pie-too-many-slices',
-      severity: 'warn',
+      severity: 'advice',
       message: `${slices.length} slices exceed the ${PIE_SLICE_LIMIT}-slice readability limit`,
       suggest: `aggregate with topN: { n: 7, rest: true } or switch to a bar chart`,
     });

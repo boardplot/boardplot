@@ -66,14 +66,17 @@ type LegendOptionInput = 'none' | 'auto' | LegendOptions['position'] | LegendOpt
 /**
  * A key the chart cannot be read without: a map's range and no-data encoding,
  * or a colour, hatch or glyph that no mark names. It cannot be hidden. 'none'
- * is answered with an info lint and the key at the theme's required position
+ * is answered with a warning, since the drawing differs from the spec, and the key at the theme's required position
  * (top by default: one row above the plot, which keeps the plot's width).
  * `reason` completes "the legend cannot be hidden because ...".
  */
+/** The chart types whose key `legend: 'none'` cannot hide; each names its own `<type>-legend-required` code. */
+export type KeyRequiredType = 'bartable' | 'choropleth' | 'cohort' | 'heatmap' | 'pareto' | 'status' | 'table' | 'tilemap' | 'variance' | 'waffle' | 'waterfall';
+
 export function legendRequired(
   option: LegendOptionInput,
   warnings: LintWarning[],
-  chartType: string,
+  chartType: KeyRequiredType,
   theme?: Theme,
   reason = 'the mapped range and no-data encoding must remain explicit',
 ): LegendOptions {
@@ -82,7 +85,7 @@ export function legendRequired(
   if (option === 'none') {
     warnings.push({
       code: `${chartType}-legend-required`,
-      severity: 'info',
+      severity: 'warn',
       message: `${chartType} legend cannot be hidden because ${reason}`,
     });
     return { position };

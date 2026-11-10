@@ -34,6 +34,7 @@ import type { ChartData } from '../../types/data';
 import type { ComboOptions, ParetoOptions } from '../../types/options';
 import type { Geometry, LintWarning, Paint } from '../../types/scene';
 import { layoutCombo, type ComboMarks } from '../combo/layout';
+import { hostedLayout } from '../../normalize/innerRefusal';
 import { FIRST_END_BELOW_TOTALS } from '../combo/endpoints';
 import { CATEGORY_ROW_FROM_END, CATEGORY_ROW_VERTICAL } from '../../label/categoryRow';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
@@ -281,7 +282,7 @@ export function layoutPareto(
   const autoFold = options.topN === undefined ? crowdedTailCut(ranked) : undefined;
   if (autoFold !== undefined) {
     warnings.push({
-      code: 'pareto-tail-crowded',
+      code: 'pareto-tail-folded',
       severity: 'info',
       message: `${ranked.length - autoFold} of ${ranked.length} causes are under ${TAIL_SHARE_PCT}% of the total each — they are folded into 'Rest' so the remaining ${autoFold} columns keep their names`,
       suggest: `set topN: { n: ${ranked.length} } to keep every cause as its own column, or another topN.n to cut the tail elsewhere`,
@@ -425,7 +426,7 @@ export function layoutPareto(
   if (plotted.length > 15 && !restBucket) {
     warnings.push({
       code: 'pareto-tail-crowded',
-      severity: 'warn',
+      severity: 'advice',
       message: `${plotted.length} columns: the tail is too narrow to read and adds nothing to the vital-few answer`,
       suggest: 'set topN: { n: 10, rest: true } to keep the total intact while showing the tail as one bucket',
     });
@@ -647,10 +648,13 @@ export function layoutPareto(
     categories: plotted.map((p) => ({ id: p.id, label: p.label, date: p.date })),
     series,
   } as ChartData;
-  const render = (extra: string[]) =>
+  const render = (extra: string[]) => {
     // A registered note pass can add engine notes. Only the original
     // authored subset keeps a number.
-    layoutCombo(comboData, withAuthoredFootnotes(comboOptions, [...footnotes, ...extra], (options as InternalFootnoteOptions).authoredFootnotes ?? options.footnotes));
+    const inner = withAuthoredFootnotes(comboOptions, [...footnotes, ...extra], (options as InternalFootnoteOptions).authoredFootnotes ?? options.footnotes);
+    // The columns and the curve are derived data: a combo refusal names a pareto option it was handed, or nothing.
+    return hostedLayout(options, inner, () => layoutCombo(comboData, inner));
+  };
 
   // A Pareto answers "WHICH causes". Past eight columns combo thins category
   // labels and marks the dropped ones `redundant`, so no lint fires and the

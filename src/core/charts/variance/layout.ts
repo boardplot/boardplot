@@ -1666,6 +1666,6 @@ function solveVarianceLabels(requests: LabelRequest[], occupied: OccupiedIndex, 
     stranded,
     placed: solved.placed.map(label => seated.get(label.id) ?? label),
     decisions: solved.decisions.map(decision => seated.has(decision.labelId) ? decided.get(decision.labelId) ?? decision : decision),
-    warnings: solved.warnings.filter(warning => warning.code !== 'label-hidden' || ![...seated.keys()].some(id => warning.message.startsWith(`label '${id}' `))),
+    warnings: solved.warnings.filter(warning => warning.code !== 'label-hidden' || !seated.has(String(warning.detail?.labelId))),
   };
 }

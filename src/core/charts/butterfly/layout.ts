@@ -377,7 +377,7 @@ export function layoutButterfly(
   }
   if (!sharedScale) {
     warnings.push({
-      code: 'scale-mix',
+      code: 'butterfly-pane-scales',
       severity: 'info',
       message: `panes use independent scales (${aLabel} vs ${bLabel}) — bar lengths are not comparable across the center column`,
       suggest: 'sharedScale: true for comparable panes',

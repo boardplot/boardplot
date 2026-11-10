@@ -90,7 +90,7 @@ describe('honesty lints', () => {
       options: { title: 'Regional accounts grew', unit: 'count', size: { width: 480, height: 520 },
         theme: { preset: 'boardroom', overrides: { space: { barRow: { thickness: 12, pitch: 24 } } } } } };
     const body = render({ spec, return: ['svg'] }).body as { warnings: { code: string; message: string }[] };
-    expect(body.warnings.find(w => w.code === 'height-off-ladder:row-driven')!.message).not.toContain('stretches');
+    expect(body.warnings.map(w => w.code)).not.toContain('height-off-ladder');
     expect(body.warnings.filter(w => w.code === 'dead-band')).toEqual([]);
   });
   it('partial-period-pairing triggers for unlike periods and clears with a footnote', () => {
@@ -370,11 +370,11 @@ describe('mechanical lints', () => {
     ).toBe(false);
   });
 
-  it('legend-redundant keeps the one-series warning and reports explicit line double naming as info', () => {
+  it('legend-redundant is advice for the one-series legend and for explicit line double naming', () => {
     const single = runDocLints({
       charts: [chart({ options: { title: 'Sales expand', legend: 'bottom' } })],
     }).find((warning) => warning.code === 'legend-redundant');
-    expect(single?.severity).toBe('warn');
+    expect(single?.severity).toBe('advice');
     const data = {
       categories: [{ id: 'a' }, { id: 'b' }],
       series: [{ id: 'a', values: [1, 2] }, { id: 'b', values: [2, 3] }],
@@ -383,7 +383,7 @@ describe('mechanical lints', () => {
       charts: [chart({ data, options: { title: 'Sales expand', legend: 'bottom' } })],
     }).filter((warning) => warning.code === 'legend-redundant');
     expect(doubled).toHaveLength(1);
-    expect(doubled[0]?.severity).toBe('info');
+    expect(doubled[0]?.severity).toBe('advice');
     expect(hasCode('legend-redundant', { charts: [chart({ data, options: { title: 'Sales expand' } })] })).toBe(false);
   });
 

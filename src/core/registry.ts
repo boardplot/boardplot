@@ -840,7 +840,7 @@ function inheritGridTarget<D>(data: D, target: RenderTarget, textScale: number, 
     const { textScale: _own, textSize: ownSize, ...options } = (entry.options ?? {}) as { textScale?: number; textSize?: number };
     // `textSize` on the grid applies to every panel; a panel with another value is refused, not overridden.
     if (ownSize !== undefined && ownSize !== textSize) {
-      throw new NormalizeError('grid-panel-text-size', 'options.textSize', 'a grid panel cannot set its own textSize', 'set textSize once on the grid');
+      throw new NormalizeError('grid-panel-text-size', 'options.textSize', 'a grid panel cannot set its own textSize', 'set textSize once on the grid', undefined, ['options', 'textSize']);
     }
     return { ...entry, options: { ...options, target, ...(textSize !== undefined ? { textSize } : textScale === 1 ? {} : { textScale }) } };
   };

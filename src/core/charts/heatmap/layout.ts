@@ -34,7 +34,7 @@ import { accessibleTitle,
   resolveHighlight,
   resolveSize,
 } from '../../normalize/shared';
-import { authoredNotes, frameTextOptions, legendOff, legendRequired, normalizeLegendOption, solveFrame, plotHeightAfter, authoredFootnoteCount, valueNoteLine, DEFAULT_NOTE_LIMIT, HIDDEN_LABEL_LEAD, type LegendItemInput } from '../../frame';
+import { authoredNotes, frameTextOptions, legendOff, legendRequired, normalizeLegendOption, solveFrame, plotHeightAfter, authoredFootnoteCount, valueNoteLine, DEFAULT_NOTE_LIMIT, HIDDEN_LABEL_LEAD, type KeyRequiredType, type LegendItemInput } from '../../frame';
 import { defaultMeasurer, wrapText, type FontSpec, type TextMeasurer } from '../../text';
 import { sequentialShare } from '../../colorRecipes';
 import { niceBelow, niceStep } from '../../scale';
@@ -193,7 +193,7 @@ const TURNED = Symbol('heatmapTurned');
  * schema nor the React props take it.
  */
 export type HeatmapLayoutOptions = HeatmapOptions & {
-  heatKey?: { chartType: string; items: { id: Id; label: string; paint: Paint; stroke?: Paint }[] };
+  heatKey?: { chartType: KeyRequiredType; items: { id: Id; label: string; paint: Paint; stroke?: Paint }[] };
   /** The end of a row's label that is never cut, by row id: the cohort size (rowLabelBand). */
   rowSuffix?: Record<Id, string>;
   [TURNED]?: true;

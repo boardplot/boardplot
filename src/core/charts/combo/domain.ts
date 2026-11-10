@@ -136,7 +136,7 @@ function comboAxisGate(options: ComboOptions, seriesNorm: readonly NormSer[], co
       for (const s of secondaryRequested) s.axis = 'primary';
       const ids = secondaryRequested.map((s) => `'${s.id}'`).join(', ');
       warnings.push({
-        code: 'dual-axis',
+        code: 'dual-axis-unacknowledged',
         severity: 'error',
         message:
           `series ${ids} ${secondaryRequested.length === 1 ? 'requests' : 'request'} the secondary axis ` +
@@ -705,7 +705,7 @@ function comboAnomalyModel(
       'anomaly-single-series',
       'options.anomaly',
       `anomaly on a combo judges its one line series; got ${lineSeries.length} — a robust score across two different measures is meaningless`,
-      "give exactly one series kind 'line', or chart the measure on its own line chart",
+      "give exactly one series kind 'line', or chart the measure on its own line chart", undefined, ['options', 'anomaly'],
     );
   }
   refuseAnomalySpec(spec);

@@ -35,7 +35,7 @@ One event per CLI command or MCP tool call. Every field is listed here; the code
 | `command` | `render` | `list`, `describe`, `fixtures`, `render`, `measure` or `fonts`. |
 | `types` | `["bar"]` | Chart type names. A name Boardplot does not know is sent as `other`. |
 | `optionKeys` | `["sort", "valueAxis"]` | Top-level option names that the chart type declares. Values are never sent; an option name the type does not declare is dropped. |
-| `codes` | `["label-dropped"]` | Warning and error codes. Messages are never sent. |
+| `codes` | `["label-hidden"]` | Warning and error codes. Messages are never sent. |
 | `ok` | `true` | Whether the call succeeded. |
 | `format` | `svg` | `svg` or `png` for a render, `none` for other commands. |
 | `host` | `claude-code` | The agent or editor that ran Boardplot, as one of `claude-code`, `claude-app`, `codex`, `cursor`, `vscode`, `gemini`, `other` or `none`. Its own name and version are not sent. |
@@ -72,7 +72,7 @@ The choice lives in `telemetry.json` in `$XDG_CONFIG_HOME/boardplot/`, else `%AP
 When Boardplot does something wrong, `boardplot feedback` (or the MCP tool `boardplot_feedback`) builds a short report:
 
 ```
-boardplot feedback --category bug --type bar --codes label-dropped --summary "Bar value labels vanish at narrow widths."
+boardplot feedback --category bug --type bar --codes label-hidden --summary "Bar value labels vanish at narrow widths."
 ```
 
 The report holds the Boardplot version, `cli` or `mcp`, the OS family, the Node.js major version, the category (`bug`, `friction` or `docs`), the chart type, option names, warning and error codes, and a one-line summary of at most 280 characters. It holds no install ID, so a report is not linked to usage counts.

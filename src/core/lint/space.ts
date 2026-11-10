@@ -34,6 +34,8 @@
 import { aspectClassFor, furnitureBudget, furnitureScoped, HEIGHT_FLOOR_CLASSES, onLadderStep, type AspectClass } from '../aspect';
 import { resolveTheme, spaceTokens } from '../theme';
 import type { ThemeRef } from '../types/theme';
+import type { BaseOptions } from '../types/options';
+import { resolveCanvasOptions } from '../normalize/shared';
 import type { Rect } from '../geometry';
 import type { Geometry, LintWarning, OccupiedRect } from '../types/scene';
 import { contentSized, furnitureShare, plotFloorShare } from '../sizing';
@@ -426,6 +428,7 @@ export function spaceDocLints(
     const theme = resolveTheme((options as { theme?: ThemeRef } | undefined)?.theme);
     const tokens = spaceTokens(theme, W);
     const fixedRows = (type === 'bar' || type === 'likert') && theme.space.barRow !== undefined;
+    const margin = resolveCanvasOptions((options ?? {}) as Pick<BaseOptions, 'canvas' | 'margin'>).margin;
     const gaps: { from: number; to: number; where: 'canvas top' | 'between blocks' | 'canvas bottom' }[] = [];
     let cursor = 0;
     for (const iv of merged) {
@@ -446,10 +449,14 @@ export function spaceDocLints(
             : threshold;
       const extent = gap.to - gap.from;
       if (extent > allowance + PX_EPS) {
-        push(
-          'dead-band',
-          `'${type}' carries an empty band ${extent.toFixed(0)}px tall at the ${gap.where} (y ${gap.from.toFixed(0)} to ${gap.to.toFixed(0)}), over the ${allowance.toFixed(0)}px allowed there.`, REPAIR.deadBand,
-        );
+        // Only an authored margin on the same edge can be removed.
+        const authored = gap.where === 'canvas top' ? margin?.top : gap.where === 'canvas bottom' ? margin?.bottom : undefined;
+        warnings.push({
+          code: 'dead-band',
+          severity: 'advice',
+          message: `An empty band ${extent.toFixed(0)}px tall sits at the ${gap.where} (y ${gap.from.toFixed(0)} to ${gap.to.toFixed(0)}), over the ${allowance.toFixed(0)}px allowed there.`,
+          suggest: (authored ?? 0) > 0 ? REPAIR.deadBand : 'Lower the canvas height.',
+        });
       }
     }
   }

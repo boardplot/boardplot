@@ -184,7 +184,7 @@ export function gridRequiredKey<D, O extends ChartOptions, M extends object, DV 
   const names = keyed === candidate ? [] : (keyed.legend?.items ?? []).map((item) => keyName(keyed, item.labelId) || item.id);
   if (hidden) keyed.warnings.push({
     code: 'grid-legend-required',
-    severity: 'info',
+    severity: 'warn',
     message: names.length > 0
       ? `grid legend cannot be hidden: no direct label names ${names.join(', ')}, so the key row lists ${names.length === 1 ? 'that series' : 'those series'} only`
       : 'grid legend cannot be hidden because no direct label names the colours and markers it keys',

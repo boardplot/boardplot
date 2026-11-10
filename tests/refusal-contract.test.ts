@@ -349,6 +349,48 @@ describe('refusal contract', () => {
     expect(errors('dimswitch', (s) => { s.data.measures[5].sign = -1; }, 'statement')[0]).toMatchObject({ code: 'invalid-data', path: '/data/measures/5/sign' });
   });
 
+  // A grid panel or a host type's inner chart refused with a pointer relative to the inner chart's data (/data/items/2/value), a field the author never wrote.
+  it('points a refusal of a grid panel or a hosted chart into the spec the author wrote', () => {
+    const fixture = (type: string, id?: string) => {
+      const found = getFixtures(type).find((entry) => id === undefined || entry.id === id)!;
+      return structuredClone({ type, data: found.data, options: found.options ?? {} }) as Node;
+    };
+    const firstError = (spec: Node) => (render({ spec }).body.errors as (Finding & { received?: unknown })[])[0];
+    const panel = (id: string, spec: Node) => ({ id, type: spec.type, data: spec.data });
+    const pareto = fixture('pareto');
+    pareto.data.items[2].value = -5;
+    const column = fixture('column');
+    expect(firstError({ type: 'grid', data: { panels: [panel('a', column), panel('b', column), panel('c', pareto)] }, options: {} }))
+      .toMatchObject({ code: 'pareto-negative-value', path: '/data/panels/2/data/items/2/value', displayPath: 'panels[c].items[2].value', received: { type: 'number', value: -5 } });
+    // Ranked by last value, the first authored panel draws last: the pointer names the authored panel.
+    const ranked = fixture('grid', 'facet-regions-ranked');
+    ranked.data.panels[0].options.viewDomain = { x: ['fy23', 'nope'] };
+    expect(firstError(ranked)).toMatchObject({ code: 'unknown-category', path: '/data/panels/0/options/viewDomain/x/1', received: { type: 'string', value: 'nope' } });
+    // A repeat panel is built from the template slice by slice: no pointer rather than one into a panel list the author did not write.
+    const repeat = fixture('grid', 'repeat-regions');
+    for (const series of repeat.data.template.data.bySlice.UK.series) series.role = 'reference';
+    expect(firstError(repeat)).toMatchObject({ code: 'empty-data', path: '' });
+    // The dimswitch table refuses the sort option dimswitch passed on unchanged.
+    const dimswitch = fixture('dimswitch');
+    dimswitch.options.sort = { categories: 'sheet', segments: 'desc' };
+    expect(firstError(dimswitch)).toMatchObject({ code: 'table-sort-segments-unsupported', path: '/options/sort/segments', received: { type: 'string', value: 'desc' } });
+  });
+
+  // A panel's annotation refusal counts its index after the registry drops the kinds the panel does not draw, so the grid pointed at another annotation.
+  it('gives a grid panel annotation refusal no pointer rather than one at another annotation', () => {
+    const scatter = { id: 's', type: 'scatter', data: { points: [{ id: 'p', x: 1, y: 1 }] }, options: { valueAxis: { log: 'y' } },
+      annotations: [{ kind: 'indicator100' }, { kind: 'valueLine', value: -1 }] };
+    expect((render({ spec: { type: 'grid', data: { panels: [scatter] } } }).body.errors as Finding[])[0]).toMatchObject({ code: 'log-nonpositive', path: '' });
+  });
+
+  // A likert labelPosition refusal from its inner bar lost the pointer to /options/labelPosition that main gave.
+  it('keeps the option pointer of a host type inner refusal', () => {
+    const spec = { type: 'likert', data: { scale: [{ id: 'no' }, { id: 'mid', role: 'neutral' }, { id: 'yes' }], items: [{ id: 'q', values: [1, 1, 1] }] },
+      options: { values: 'counts', labelPosition: 'outsideEnd' } };
+    expect((render({ spec }).body.errors as (Finding & { received?: unknown })[])[0])
+      .toMatchObject({ code: 'label-position-unsupported', path: '/options/labelPosition', received: { type: 'string', value: 'outsideEnd' } });
+  });
+
   // A 150,000-category column ran for more than 15 minutes; above the item budget it must refuse at once and name the fix.
   it('refuses a column above the item budget before layout', () => {
     const n = 150_000;
