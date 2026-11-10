@@ -215,6 +215,16 @@ describe('number census', () => {
     expect(of(census('bartable', spec, 320, retext('label:end:fte:a', '18,000,000')), 'mixed-units')).not.toEqual([]);
   });
 
+  // A grid inside a grid: the census read the panel types of the outer panels only and flagged the inner variance panel.
+  it('applies the contract of a nested grid panel by its own type', () => {
+    const categories = [{ id: 'q1', label: 'Q1' }, { id: 'q2', label: 'Q2' }];
+    const series = [{ id: 'ac', label: 'Actual', scenario: 'AC', values: [40, 46] }, { id: 'pl', label: 'Plan', scenario: 'PL', role: 'reference', values: [42, 44] }];
+    const inner = { panels: [{ id: 'sales', type: 'column', data: { categories, series } },
+      { id: 'gap', type: 'variance', data: { categories, series }, options: { variant: 'absolute', variance: { vs: 'pl' } } }] };
+    const spec = { data: { panels: [{ id: 'inner', type: 'grid', data: inner }, { id: 'total', type: 'column', data: { categories, series: [series[0]] } }] } };
+    expect(of(census('grid', spec, 720), 'unbound')).toEqual([]);
+  });
+
   // A map overlay label is the author's text ("UK 78%"); it was read as the overlay glyph's value.
   it('leaves overlay labels to the author and still checks a printed map value', () => {
     const spec = fixtureOf<Spec & { data: { overlays: { glyph: { value: number } }[] } }>('choropleth', 'world-footprint');

@@ -602,17 +602,21 @@ export function censusCase(type, fixture, width, localeName, measured) {
   // 3b. A type that names its claims at the label request binds each claim to a label (hidden or not) or a
   // text node, or states that it does not print it. Anything else is a printed number the reading cannot find.
   if (CLAIMED_AT_REQUEST.has(type)) {
-    const panels = type === 'grid' ? (geometry.marks?.panels ?? []).filter((panel) => panel.chart) : [];
+    // Every panel of a grid, also of a grid inside a grid, with the full prefix of its claim ids.
+    const panelsOf = (geo, prefix) => (geo.marks?.panels ?? []).filter((panel) => panel.chart).flatMap((panel) => [
+      { prefix: `${prefix}${panel.id}/`, panel },
+      ...(panel.type === 'grid' ? panelsOf(panel.chart.geometry, `${prefix}${panel.id}/`) : [])]);
+    const panels = type === 'grid' ? panelsOf(geometry, '') : [];
     // A grid panel's annotation claim is `<panel>/annotation:<id>`.
     const annotations = [...(geometry.annotations ?? []).map((annotation) => [`annotation:${annotation.id}`, annotation]),
-      ...panels.flatMap((panel) => panel.chart.geometry.annotations.map((annotation) => [`${panel.id}/annotation:${annotation.id}`, annotation]))];
+      ...panels.flatMap(({ prefix, panel }) => panel.chart.geometry.annotations.map((annotation) => [`${prefix}annotation:${annotation.id}`, annotation]))];
     const named = new Set([...(geometry.labels ?? []).flatMap((label) => label.claimIds ?? []),
       ...annotations.filter(([, annotation]) => annotation.labelId).map(([id]) => id)]);
     // An annotation without a label (a line, an arrow, a box) prints no number, in every chart type.
     const unprinted = new Set([...unprintedClaims(geometry),
       ...annotations.filter(([, annotation]) => !annotation.labelId && annotation.computedText === '').map(([id]) => id)]);
     // A grid panel's claim follows the contract of the panel's own type.
-    const outside = panels.filter((panel) => !CLAIMED_AT_REQUEST.has(panel.type)).map((panel) => `${panel.id}/`);
+    const outside = panels.filter(({ panel }) => !CLAIMED_AT_REQUEST.has(panel.type)).map(({ prefix }) => prefix);
     for (const claim of claims) {
       if (outside.some((prefix) => claim.id.startsWith(prefix))) continue;
       if (named.has(claim.id) || textById.has(claim.nodeId) || unprinted.has(claim.id)) continue;
