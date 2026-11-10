@@ -1,0 +1,4 @@
+### Fixed
+
+- A unit that names a scale before a noun, such as `"k visits"`, `"million tonnes"`, `"Mio. Besucher"` or `"K users"`, now counts as a scaled unit, as `"$k"` and `"EUR m"` already did. The scale words are the ones a scaled unit already accepts. Lowercase `m` and `mm` stay out, because `"m height"` and `"mm Hg"` are physical units. A unit with `per` or a slash is a rate and names no scale. Before, the engine added its own magnitude to large values: a Sankey flow of 260,000 under `"k visits"` printed `260k`, which read 1,000 times too large beside the unit. It now prints `260,000`.
+- A format example whose affix is a scale word before a noun and reads as a currency affix now divides by that scale: `"1.2 M entry"` prints 125,000 as `0.1 M entry`. Before, it printed `125,000.0 M entry`.
