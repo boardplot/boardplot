@@ -239,12 +239,14 @@ function trendClaims(geo: Geometry<object, object>): ClaimRecordV1[] {
   const trends = (geo.derived as { trends?: (OlsMoments & OlsFit & { id: string })[] }).trends ?? [];
   return trends.flatMap((fit) => {
     const inputs = (['n', 'meanX', 'meanY', 'sxx', 'syy', 'sxy'] as const).map((key) => ({ ref: `trend.${fit.id}.${key}`, value: fit[key] }));
+    // The key entry of the fit prints its slope and r² (line and scatter). A group key with the same id names no entry.
+    const keyed = geo.legend?.items.filter(item => item.id === `trend:${fit.id}`) ?? [];
     return (['slope', 'intercept', 'r2'] as const).map((part) => ({
       id: `${geo.type}:trend:${fit.id}:${part}`,
       kind: 'derived' as const,
       op: `ols-${part}@2`,
       inputs,
-      ...(geo.type === 'line' && part !== 'intercept' ? { nodeId: geo.legend?.items.find(item => item.id === `trend:${fit.id}`)?.labelId } : {}),
+      ...(part !== 'intercept' ? { nodeId: keyed.length === 1 ? keyed[0]!.labelId : undefined } : {}),
       output: { raw: fit[part], state: fit[part] === null ? 'undefined' : 'value', displayed: '' },
     }));
   });

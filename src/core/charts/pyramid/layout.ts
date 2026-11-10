@@ -57,6 +57,7 @@ import { authoredNotes, withAuthoredFootnotes } from '../../frame';
 import { disclosureNote, keepShownNotes } from '../../notes';
 import { maxOf } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
+import { claimId, HOST_CLAIMS, withUnprintedClaims, type HostClaims } from '../../claims/ids';
 
 export type PyramidMarks = ButterflyMarks;
 
@@ -300,9 +301,14 @@ export function layoutPyramid(
     })),
   };
 
+  // A value label prints the band's share of its group or of the total; the "n/a" mark prints none.
+  const shareClaims: HostClaims = ({ id, kind, owner: { seriesId, categoryId } }) =>
+    isShare && kind === 'point' && seriesId !== undefined && categoryId !== undefined && id === `point:${seriesId}:${categoryId}`
+      ? [claimId('pyramid:share', categoryId, seriesId)] : undefined;
   // Only the author's own notes keep a number; the rest are derived.
-  const butterflyOptions: ButterflyOptions = withAuthoredFootnotes<ButterflyOptions>({
+  const butterflyOptions: ButterflyOptions & { [HOST_CLAIMS]: HostClaims } = withAuthoredFootnotes<ButterflyOptions & { [HOST_CLAIMS]: HostClaims }>({
     ...stripPyramidOnly(options),
+    [HOST_CLAIMS]: shareClaims,
     // a pyramid's bars fill 0.8 of the row pitch at every
     // width, so the silhouette reads as one shape; an authored value stays.
     bandFraction: options.bandFraction ?? PYRAMID_BAND_FRACTION,
@@ -455,7 +461,8 @@ export function layoutPyramid(
       .join('; ') +
     '.';
 
-  return {
+  // The ratio of the two groups per band is a receipt; the chart prints no ratio.
+  return withUnprintedClaims({
     ...geo,
     type: 'pyramid',
     derived: {
@@ -477,7 +484,7 @@ export function layoutPyramid(
       desc,
     },
     warnings: [...geo.warnings, ...warnings],
-  };
+  }, order.map((bandId) => `pyramid:ratio:${bandId}`));
 }
 
 // ---------------------------------------------------------------------------
