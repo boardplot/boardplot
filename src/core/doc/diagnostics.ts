@@ -84,7 +84,8 @@ export function completeDiagnostic<T extends Finding>(finding: T, input?: unknow
   const actual = input === undefined ? { found: false as const } : readJsonPointer(input, path);
   return { ...finding, path, ...(displayPath ? { displayPath } : {}),
     ...(finding.fix && input !== undefined ? { fix: addWhereAbsent(input, finding.fix) } : {}),
-    expected: finding.expected ?? { condition: finding.suggest ?? finding.message },
+    // Without an expectation of its own, the finding states it in message and suggest; a copy here would repeat them.
+    expected: finding.expected ?? {},
     received: finding.received ?? (input === undefined ? { type: 'unavailable' } : receivedDescription(actual.found ? actual.value : undefined, actual.found)),
     docs: finding.docs ?? docs,
   };
