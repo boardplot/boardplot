@@ -96,6 +96,18 @@ describe('hover card date', () => {
     expect(rows).toContain('(+3%)');
     expect(rows).not.toMatch(/412\s*%|400\s*%|pp/);
   });
+  // A combo reference series had no cell, so its values left the hover card and the reading that column and bar give.
+  it('a combo card lists the reference series as the column card does', () => {
+    for (const referenceStyle of ['tick', 'marker'] as const) {
+      const { request, geometry } = build({ type: 'combo', data: {
+        categories: [{ id: 'jan', label: 'Jan' }, { id: 'feb', label: 'Feb' }],
+        series: [{ id: 'actual', label: 'Actual', kind: 'column', values: [50, 52] }, { id: 'py', label: 'Last year', role: 'reference', values: [60, 61] }],
+      }, options: { referenceStyle } });
+      const feb = interactionRecords({ request, geometry, scope: request.scope, claims: [] })
+        .filter(record => record.target.owner.categoryId === 'feb');
+      expect(feb.map(record => [record.seriesLabel, record.value.raw])).toEqual([['Actual', 52], ['Last year', 61]]);
+    }
+  });
 });
 
 describe("highlightMode 'fade'", () => {

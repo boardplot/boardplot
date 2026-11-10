@@ -206,7 +206,9 @@ function columnMarks(ctx: MarkCtx): void {
         // The page-colour ring the combo line markers carry keeps the dot legible on a dark column.
         nodes.push({ t: 'circle', id, cx, cy: ry, ...referenceMarkerPaint(env.theme, paints.ref(s)), owner, part: 'referenceMarker', display });
         const mr = REFERENCE_MARKER_R + 1;
-        claims.claim({ x: cx - mr, y: ry - mr, w: mr * 2, h: mr * 2 }, 'mark', owner);
+        const rect = { x: cx - mr, y: ry - mr, w: mr * 2, h: mr * 2 };
+        claims.claim(rect, 'mark', owner);
+        g.marks.referenceTicks.push({ ...owner, rect, nodeId: id });
         return;
       }
       const tick = referenceTickGeometry('vertical', bx, ry, -2, bw + 2);
@@ -225,6 +227,7 @@ function columnMarks(ctx: MarkCtx): void {
       });
       // A reference drawn as a line is one a highlighted value may cross.
       claims.claim(tick.claim, 'mark', owner, style === 'line' ? 'referenceLine' : undefined);
+      g.marks.referenceTicks.push({ ...owner, rect: tick.claim, nodeId: id });
     });
   }
 }
@@ -481,7 +484,7 @@ export function layoutComboMarks(env: ComboEnv, domain: ComboDomain, area: Combo
     claims: createOccupiedIndex({ x: 0, y: 0, w: env.size.width, h: env.size.height }),
     axes: [],
     leftTickX: Infinity,
-    marks: { columns: [], lines: [] },
+    marks: { columns: [], lines: [], referenceTicks: [] },
     segEdges: new Map(),
     yieldingTicks: [],
     areaGrounds: [],
