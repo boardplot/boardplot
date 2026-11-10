@@ -46,7 +46,6 @@ export const REPAIRS = [
   {"type":"cohort","name":"cohort-totalpos","fixture":"retention-pure-exhibit","options":{"total":false,"totalPosition":"top"}},
   {"type":"bartable","name":"bartable-total","fixture":"impact-two-panels","options":{"total":false,"totalPosition":"top"}},
   {"type":"bartable","name":"bartable-rounding","fixture":"impact-two-panels","options":{"rounding":"nearest"}},
-  {"type":"kpi","name":"kpi-spark-labels","fixture":"spark-column","options":{}},
   {"type":"grid","name":"grid-legend","fixture":"facet-regions","options":{"legend":"top"}},
   {"type":"mekko","name":"mekko-pct-units","data":{"categories":[{"id":"a","label":"A"},{"id":"b","label":"B"}],"series":[{"id":"w","label":"W","values":[10,20],"unit":"EUR"},{"id":"s","label":"S","values":[1,2],"unit":"EUR"}]},"options":{"variant":"stacked","unit":"%","widthSeriesId":"w"}},
   {"type":"column","name":"column-annotation-text","data":{"categories":[{"id":"a","label":"A"},{"id":"b","label":"B"}],"series":[{"id":"s","label":"S","values":[12,30]}]},"options":{},"annotations":[{"kind":"valueLine","value":20,"text":"Target"}]},
@@ -86,4 +85,7 @@ export const REPAIRS = [
   {"type":"column","name":"column-legend-position-typo","fixture":"actuals-forecast-operating-rate","options":{"legend":{"position":"rigth"}}},
   {"type":"column","name":"column-fraction-line","data":{"categories":[{"id":"a","label":"A"},{"id":"b","label":"B"}],"series":[{"id":"s","label":"S","valueKind":"fraction","values":[0.4,0.6]}]},"options":{},"annotations":[{"kind":"valueLine","value":0.05}]},
   {"type":"line","name":"line-scenario-style-case","fixture":"brief-current-vs-prior","options":{"scenarioStyle":{"ac":{"width":1.5,"ink":"ink"},"py":{"width":1.25,"ink":"inkMuted"}}}},
+  {"type":"line","name":"line-reference-band-composition","fixture":"stacked100-area-revenue-mix","options":{"referenceBands":[{"id":"a","label":"A","low":10,"high":150}]}},
+  {"type":"scatter","name":"scatter-log-both-nonpositive","fixture":"negative-quadrants","options":{"valueAxis":{"log":"both"}}},
+  {"type":"cohort","name":"cohort-heatmap-column-order","fixture":"heatmap-weighted-total","options":{"variant":"heatmap","columnOrder":["periods"]}},
 ];

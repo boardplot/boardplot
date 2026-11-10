@@ -103,6 +103,7 @@ it('does not read a fixed warning as remaining while another warning of its code
 
 // A repair entry whose setting stops producing a patch (a fixture or a warning changed) would pass R4 with nothing to check.
 it('keeps every repair entry producing a warning or refusal with a patch', () => {
+  const stale: string[] = [];
   for (const entry of REPAIRS) {
     const fixture = repairFixture(entry);
     const request = { type: entry.type, data: fixture.data, options: { ...fixture.options, size: { width: entry.widths?.[0] ?? 720 } }, annotations: fixture.annotations ?? fixture.options.annotations ?? [] };
@@ -113,8 +114,9 @@ it('keeps every repair entry producing a warning or refusal with a patch', () =>
     } catch (error) {
       fixes = (error as { fix?: unknown[] }).fix?.length ? [error] : [];
     }
-    expect(fixes.length, entry.name).toBeGreaterThan(0);
+    if (fixes.length === 0) stale.push(entry.name);
   }
+  expect(stale).toEqual([]);
 });
 
 // Text from different scene parts can collide or leave the canvas outside the label solver.

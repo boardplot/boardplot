@@ -1014,6 +1014,8 @@
 ["line/repair-line-log-variant",720,"notation","repair:line-log-variant","refused",["log-line-conflict"],null,null,null,[]]
 ["line/repair-line-log-x",720,"authored","repair:line-log-x","refused",["log-line-conflict"],null,null,null,[]]
 ["line/repair-line-log-x",720,"notation","repair:line-log-x","refused",["log-line-conflict"],null,null,null,[]]
+["line/repair-line-reference-band-composition",720,"authored","repair:line-reference-band-composition","refused",["reference-band-composition-domain"],null,null,null,[]]
+["line/repair-line-reference-band-composition",720,"notation","repair:line-reference-band-composition","refused",["reference-band-composition-domain"],null,null,null,[]]
 ["line/repair-line-scenario-style-case",720,"authored","repair:line-scenario-style-case","drawn",[],[720,382],[46,83,643,239],"f5cf3b741a9c",[]]
 ["line/repair-line-scenario-style-case",720,"notation","repair:line-scenario-style-case","drawn",[],[720,382],[46,83,643,239],"f5cf3b741a9c",[]]
 ["line/repair-line-x-conflict-empty",720,"authored","repair:line-x-conflict-empty","refused",["x-axis-conflict"],null,null,null,[]]
