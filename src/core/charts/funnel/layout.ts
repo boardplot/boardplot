@@ -597,6 +597,8 @@ export function layoutFunnel(
         lines: [l.text],
         font: labelFont,
         priority: l.priority,
+        // A highlighted value passes the minimal density gate.
+        ...(highlights.has(l.sid) || highlights.has(cat.id) ? { keepWhenDense: true as const } : {}),
         // One drawn segment means the segment value IS the stage total, and
         // the bold total at the bar end already prints it, unless a missing
         // value left that total unknown.
@@ -641,6 +643,8 @@ export function layoutFunnel(
         lines: [chip.text],
         font,
         priority: segmentLabelPriority(chip.value, maxAbsValue, highlights.has(chip.sid) || highlights.has(cat.id)),
+        // A highlighted value passes the minimal density gate.
+        ...(highlights.has(chip.sid) || highlights.has(cat.id) ? { keepWhenDense: true as const } : {}),
         ...(redundant ? { redundant: true, suppressedAs: 'redundant' as const } : {}),
         candidates: fits ? [{
           slot: chipsRight ? 'chipColumn' : 'chipLine',

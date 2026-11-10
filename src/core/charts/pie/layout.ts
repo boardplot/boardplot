@@ -1118,6 +1118,8 @@ function layoutPiePass(
       // A left label column, or a ring label left of the circle, is set flush right, against it.
       ...(out && out.rect.x + out.rect.w <= cx ? { align: 'end' as const } : {}),
       priority,
+      // A highlighted value passes the minimal density gate.
+      ...(highlights.has(g.cat.id) ? { keepWhenDense: true as const } : {}),
       redundant: g.labelOverride === false,
       candidates,
     });

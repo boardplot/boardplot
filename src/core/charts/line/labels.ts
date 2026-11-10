@@ -792,6 +792,8 @@ interface PointLabelSeed {
   suppressed: boolean;
   /** The value is the lowest or the highest of its series. */
   extreme: boolean;
+  /** A highlighted value passes the minimal density gate, as the solver header promises. */
+  highlighted: boolean;
 }
 
 interface PointLabelCandidate extends PointLabelSeed {
@@ -856,7 +858,7 @@ function pointLabelSeeds(input: PointLabelInput): PointLabelSeed[] {
     const extreme = value === min || value === max;
     const highlighted = input.highlights.has(series.id) || input.highlights.has(category.id) || input.pointHighlights?.has(category.id);
     const priority = cell.priority ?? (endpoint ? PRIORITY.endpoint : extreme ? PRIORITY.extreme : PRIORITY.interior + Math.min(99, Math.abs(value))) + (highlighted ? PRIORITY.highlightBonus : 0);
-    seeds.push({ ci, text, w: input.measure(text || '0', input.labelFont).width, priority, suppressed: cell.labelOverride === false, extreme });
+    seeds.push({ ci, text, w: input.measure(text || '0', input.labelFont).width, priority, suppressed: cell.labelOverride === false, extreme, highlighted: highlighted === true });
   }
   return seeds;
 }
@@ -1250,6 +1252,7 @@ function pushPointRequests(input: {
     }
     if (!candidate.suppressed && !rest && !keep[index]) input.lost.thinned.push(name);
     input.labelRequests.push({ id: `point:${input.series.id}:${category.id}`, kind: 'point', role: composedTextRole(candidate.text), owner: { seriesId: input.series.id, categoryId: category.id }, text: candidate.text, lines: words?.lines ?? [candidate.text], ...words?.request, typeRole: 'label', font: input.labelFont, priority: candidate.priority, redundant, ...lost, ...restFields, candidates: slots, ...(computed && !input.highlighted && !continuedEnd ? { noLeader: true } : {}),
+      ...(candidate.highlighted ? { keepWhenDense: true as const } : {}),
       // A value over a neighbour's point reads as that point's value.
       ...(input.isStacked || input.bump ? {} : { anchor: { x: input.xOf(candidate.ci), y: candidate.py }, ...(computed ? { ownStrokeClear: true } : {}) }), ...(input.isStacked ? {} : { ownStroke: ownQueries }) });
   });

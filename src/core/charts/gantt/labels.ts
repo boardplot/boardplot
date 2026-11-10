@@ -188,6 +188,8 @@ function spanLabel(ctx: LabelCtx, row: RowPlace, place: ItemPlace): void {
     font: fonts.label,
     // Keep the one span name before milestones compete for the row bands.
     priority: (rowMilestoneItems.length && offCentre.length ? PRIORITY.extreme + 1 : PRIORITY.interior) + Math.min(99, duration) + bonus(ctx.env, it),
+    // A highlighted value passes the minimal density gate.
+    ...(bonus(ctx.env, it) > 0 ? { keepWhenDense: true as const } : {}),
     candidates: ctx.crossRules ? crossingRules(ctx.body.ruleClaims, seats) : seats,
   });
 }
@@ -237,6 +239,7 @@ function ruleLabel(ctx: LabelCtx, place: ItemPlace): void {
     lines: [text],
     font: ctx.env.fonts.label,
     priority: PRIORITY.interior + Math.min(99, it.endDay - it.startDay) + bonus(ctx.env, it),
+    ...(bonus(ctx.env, it) > 0 ? { keepWhenDense: true as const } : {}),
     candidates: [{ slot: 'aboveRule', rect: { x: rect.x + 4, y: rect.y + rect.h - 4 - tsize.height, w: tsize.width, h: tsize.height }, penalty: 0, overRules: true }],
   });
 }

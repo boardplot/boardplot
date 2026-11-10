@@ -877,6 +877,7 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
               ca.meta?.priority ?? rowBasePriority(ci, ca.v) + bonus(cat.id, sa.id),
               cb.meta?.priority ?? rowBasePriority(ci, cb.v) + bonus(cat.id, sb.id),
             ),
+            ...(bonus(cat.id, sa.id) + bonus(cat.id, sb.id) > 0 ? { keepWhenDense: true as const } : {}),
             candidates: insidePlotFirst([
               {
                 slot: 'left',
@@ -1090,6 +1091,8 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
             lines: [text],
             typeRole: 'label', font,
             priority: cell.meta?.priority ?? rowBasePriority(ci, v) + bonus(cat.id, s.id),
+            // A highlighted value passes the minimal density gate.
+            ...(bonus(cat.id, s.id) > 0 ? { keepWhenDense: true as const } : {}),
             candidates: [],
           };
           labelRequests.push(request);

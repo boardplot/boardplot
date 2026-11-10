@@ -168,6 +168,8 @@ function segmentLabels(ctx: LabelCtx, geometry: MekkoMarkGeometry): void {
     ctx.requests.push({
       id: `segment:${s.id}:${c.id}`,
       kind: 'segment',
+      // A highlighted value passes the minimal density gate.
+      ...(hl ? { keepWhenDense: true as const } : {}),
       owner: { seriesId: s.id, categoryId: c.id },
       // A withheld share or a share-only cell's missing amount does not print: only what prints counts.
       ...namesOnly(content.filter((part) => (part !== 'percent' || pct !== null) && (part !== 'absolute' || domain.absAt(s, ci) !== null)), val.labelOverride),

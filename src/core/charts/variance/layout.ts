@@ -1268,6 +1268,8 @@ export function layoutVariance(
         font: labelFont,
         priority:
           PRIORITY.interior + Math.min(99, Math.abs(d)) + (hl ? PRIORITY.highlightBonus : 0),
+        // A highlighted value passes the minimal density gate.
+        ...(hl ? { keepWhenDense: true as const } : {}),
         candidates: [0, 1].map((row) => ({
           slot: row === 0 ? (above ? 'aboveCap' : 'belowCap') : (above ? 'aboveCapShifted' : 'belowCapShifted'),
           rect: {

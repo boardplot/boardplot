@@ -500,6 +500,31 @@ describe('requested line values', () => {
     }
   });
 
+  // Minimal density dropped a highlighted interior value without a word, although minimal keeps highlights.
+  it('keeps highlighted interior values under minimal density', () => {
+    const line = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'line',
+      data: { categories: Array.from({ length: 12 }, (_, i) => ({ id: `c${i}` })), series: [{ id: 'a', label: 'Alpha', values: [10, 12, 11, 14, 13, 18, 17, 16, 19, 15, 20, 22] }] },
+      options: { labelDensity: 'minimal', highlight: ['c0', 'c5'] },
+    } as never)));
+    expect(line.labels.find(label => label.id === 'point:a:c5')?.hidden).toBeUndefined();
+    for (const [type, id, highlight] of [['heatmap', 'regional-monthly-performance', 'iberia'], ['mekko', 'stacked100-market-map', 'acme'], ['funnel', 'lead-funnel', 'offer'], ['cohort', 'saas-logo-retention', 't3']] as const) {
+      const fixture = getFixtures(type).find(item => item.id === id)!;
+      const geo = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type, data: fixture.data, options: { ...(fixture.options as object), labelDensity: 'minimal' } } as never)));
+      const dropped = geo.labels.filter(label => label.hidden === 'density' && [label.owner.seriesId, label.owner.categoryId].includes(highlight));
+      expect(dropped.map(label => label.id), `${type} ${id}`).toEqual([]);
+    }
+    // A value row that gives up its full set kept only its ends, and combo gave highlights no density pass.
+    for (const [request, id] of [
+      [{ type: 'line', data: { categories: ['c0', 'c1', 'c2', 'c3', 'c4', 'c5', 'c6'], series: [{ id: 's', values: [10, 20, 30, 40, 50, 60, 70] }] }, options: { valueLabels: 'all', labelDensity: 'minimal', highlight: ['c3'], pointLabelSide: 'auto', size: { width: 1200, height: 500 } } }, 'point:s:c3'],
+      [{ type: 'combo', data: { categories: ['a', 'b', 'c'], series: [{ id: 's', kind: 'line', values: [10, 20, 30] }] }, options: { valueLabels: 'all', labelDensity: 'minimal', highlight: ['s'], size: { width: 1200, height: 500 } } }, 'point:s:b'],
+      [{ type: 'combo', data: { categories: ['a'], series: [{ id: 'one', kind: 'column', values: [10] }, { id: 'two', kind: 'column', values: [20] }] }, options: { labelDensity: 'minimal', highlight: ['one'], size: { width: 800, height: 500 } } }, 'segment:one:a'],
+    ] as const) {
+      const geo = requireGeometry(layoutResolvedRequest(resolveChartRequest(request as never)));
+      const label = geo.labels.find(item => item.id === id);
+      expect([label?.id, label?.hidden], request.type).toEqual([id, undefined]);
+    }
+  });
+
   const spec = (values: number[], width: number, categories = values.map((_, i) => ({ id: `m${i}`, label: `M${i + 1}` }))) => ({
     type: 'line', data: { categories, series: [{ id: 'rate', label: 'Rate', values }] },
     options: { valueLabels: 'all', size: { width } },

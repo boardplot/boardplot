@@ -216,7 +216,7 @@ export interface LabelRequest {
   ownStroke?: readonly { hits(rect: Rect, pad: number): boolean }[];
   /** This numeric label names a mark rather than a separate readout rail. false: a name or other text, never bound to the plot. */
   markAnchored?: boolean;
-  /** Authored value text stays eligible when the planner ranks engine values. */
+  /** Authored value text and a highlighted value stay eligible when the planner ranks engine values, and pass the 'minimal' density gate. */
   keepWhenDense?: true;
   /** An engine value outside the guaranteed set, or one its chart already reports lost: with no free seat it drops as `density` and the frame notes it. */
   quietWhenCrowded?: true;
@@ -438,6 +438,8 @@ export function solveLabels(requests: LabelRequest[], occupied: OccupiedIndex, c
   if (!ctx.valueRows?.length) return solveLabelPass(requests, occupied, ctx);
   const initial = occupied.snapshot();
   const pinned = new Set(requests.filter(req => req.pinnedSlot ?? ctx.pins[req.id]).map(req => req.id));
+  // A row that gives up its full set keeps a pinned label, and under minimal density a label that density keeps (a highlighted value).
+  const held = new Set(requests.filter(req => pinned.has(req.id) || (ctx.density === 'minimal' && req.keepWhenDense)).map(req => req.id));
   const rows = ctx.valueRows.map(row => ({ ...row, eligible: [] as Id[], mode: 'all' as 'all' | 'alternate' | 'none', reason: '' }));
   const dropped = new Set<Id>();
   // With several rows, a failed pass can advance other rows too. Keep that order.
@@ -487,7 +489,7 @@ export function solveLabels(requests: LabelRequest[], occupied: OccupiedIndex, c
       row.mode = row.mode === 'all' && row.alternate ? 'alternate' : 'none';
       row.reason = `computed row ${row.mode === 'alternate' ? 'uses alternate values from the end' : 'omitted'}; unplaced: ${failed.join(', ')}`;
       row.eligible.forEach((id, index) => {
-        if (pinned.has(id)) return;
+        if (held.has(id)) return;
         if (dropsFromRow(row, index)) dropped.add(id);
         else dropped.delete(id);
       });

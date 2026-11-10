@@ -114,6 +114,8 @@ function segmentLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, geom
       ...(lines.length > 1 ? { align: 'middle' as const } : {}),
       typeRole: 'label', font: labelFont,
       priority,
+      // A highlighted value passes the minimal density gate.
+      ...(hl ? { keepWhenDense: true as const } : {}),
       redundant: val.labelOverride === false || sliver,
       // A value prints inside its own segment or nowhere. Beside the column
       // the value would stand in the gap between two stacks, as near the next
@@ -514,6 +516,7 @@ function linePointLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, ge
         lines: [text],
         typeRole: 'label', font: labelFont,
         priority: cell.priority ?? (engine && extreme ? PRIORITY.extreme : PRIORITY.interior) + (env.highlights.has(s.id) || env.highlights.has(category.id) ? PRIORITY.highlightBonus : 0),
+        ...(env.highlights.has(s.id) || env.highlights.has(category.id) ? { keepWhenDense: true as const } : {}),
         candidates: withinOneFill(slots, fills),
       });
     }
