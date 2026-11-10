@@ -736,3 +736,15 @@ it('uses the farther-from-zero bridge edge and the upper edge on a tie', () => {
     expect(label.rect.y).toBeCloseTo(upper ? rect.y + 2 : rect.y + rect.h - label.rect.h - 2);
   }
 });
+
+// A fill on a total or subtotal value was accepted and dropped: the bar kept color.total and no warning said so.
+it('paints a total and a subtotal in their authored value fill, as it paints a step', () => {
+  const drawn = layoutResolvedRequest(resolveChartRequest({ type: 'waterfall', data: { items: [
+    { id: 'open', type: 'total', value: { number: 100, fill: '#AA3300' } }, { id: 'gain', value: { number: 12, fill: '#AA3300' } },
+    { id: 'sub', type: 'subtotal', value: { number: 112, fill: '#AA3300' } }, { id: 'close', type: 'total' },
+  ] } } as never));
+  if (drawn.refused) throw new Error('waterfall refused');
+  const fillOf = (id: string) => drawn.scene.find(node => node.t === 'rect' && node.part === 'segment' && node.owner?.categoryId === id);
+  for (const id of ['open', 'gain', 'sub']) expect(fillOf(id)).toMatchObject({ fill: { css: '#AA3300' } });
+  expect(fillOf('close')).toMatchObject({ fill: { token: 'total' } });
+});
