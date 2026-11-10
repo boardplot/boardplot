@@ -345,8 +345,8 @@ Every code a render, a measure or a React chart can return, read from the source
 | `football-field-sort-segments-ignored` | warn |  | bar |
 | `football-field-topn-ignored` | warn | yes | bar |
 | `footnote-reference-unknown` | warn |  | core/footnoteMark.ts |
-| `footnote-unreferenced` | info |  | core/frame.ts |
-| `footnotes-off` | info |  | core/eventLane.ts, core/frame.ts, core/request.ts |
+| `footnote-unreferenced` | info |  | core/frameText.ts |
+| `footnotes-off` | info |  | core/eventLane.ts, core/frameText.ts, core/request.ts |
 | `format-hides-values` | warn | yes | core/formatSpec.ts |
 | `format-ignored` | warn |  | band, variance, waterfall |
 | `format-reads-as-group` | warn |  | core/formatSpec.ts |
