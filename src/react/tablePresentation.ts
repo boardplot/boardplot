@@ -24,7 +24,7 @@ import { chipPaints, onTableGround, tableGround, toneTextPaint } from '../core/c
 import { CHANGE_LINE_MIN_PX, CHANGE_LINE_SIZE_STEP_PX, changeLineFont, ENGINE_NOTES, INLINE_LABEL_INDENT, tableFonts } from '../core/charts/table/tracks';
 import { resolveCanvasOptions, resolveSize, resolveSubtitle } from '../core/normalize/shared';
 import { numericVariant } from '../core/textRole';
-import { tableFootnotes } from '../core/charts/table/view';
+import { EMPTY_ROW_ID, tableFootnotes } from '../core/charts/table/view';
 import { footerParts, notesPanelLabel, notesPointer, shownNoteKinds, type EngineNoteMeta } from '../core/notes';
 import { frameText, type SubtitleText } from '../core/frameText';
 import { plainText } from '../core/inlineBold';
@@ -176,9 +176,10 @@ export function tableFrame(
     pointer: panel.length === 0 ? undefined : text.placement === 'info' ? notesPanelLabel(panel.length, words.notesAndSources) : notesPointer(panel.length, words),
     markerNotes: markerNotes.join(' '),
     // The author's accessible description replaces the generated summary, as it does in the SVG.
-    summary: options.a11y?.description ?? options.caption
-      ?? [title, text.subtitle && subtitlePlain(text.subtitle), `${chartString(options, 'tableDesc', { v1: String(table.rows.length), v2: String(table.columns.length) })}.`]
-        .filter((part): part is string => Boolean(part)).join(' · '),
+    // The SVG table's description, counted on the view on screen: the expanded rows and the shown columns,
+    // without the row an empty table draws. The grid carries the title as its name, so this does not repeat it.
+    summary: plainText(options.a11y?.description ?? options.caption
+      ?? chartString(options, 'tableDesc', { v1: String(rows.filter((row) => row.id !== EMPTY_ROW_ID).length), v2: String(columns.length) })),
   };
 }
 
