@@ -1060,6 +1060,16 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
   // A container table is laid out again at each width it is shown at, as a container chart is.
   const displayRef = useDisplayWarnings(settling ? undefined : diagnostics, onWarnings, null,
     size === 'container' && !container.printing ? layoutRequest?.size.width : undefined);
+  // The core's head text: a short last word stays on the line before it ("WEEK 1"), and a track
+  // narrower than a glued word takes the head broken at its spaces, as the SVG table draws it.
+  const headTexts = useMemo(() => measured === undefined ? undefined : new Map(allColumns.map((column) => {
+    const glued = measured.columnHeaderText(column);
+    const track = measured.widths.get(column.id);
+    if (track === undefined || !glued.includes('\u00a0')) return [column.id, glued] as const;
+    const room = Math.round(track) - 2 * padX - (column.kind === 'rowLabel' ? measured.rowIndent(0) : 0);
+    const fits = glued.split(' ').every((word) => width.measure(word.replace(/\u00a0/gu, ' '), measured.fonts.header).width <= room);
+    return [column.id, fits ? glued : glued.replace(/\u00a0/gu, ' ')] as const;
+  })), [measured, allColumns, padX, width.measure]);
   const headFonts = measured?.fonts;
   const frameRoom = !rowToFrame || tableOptions?.frameFill === 'none' ? undefined
     : available === undefined ? undefined : available - (measured?.spacerTotal ?? 0);
@@ -1685,6 +1695,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
       pinned={pinned}
       trackColumn={trackColumn}
       theme={theme}
+      headTexts={headTexts}
       windowIds={windowIds}
       wideGroups={wideGroups}
       hidden={!headsShown}
@@ -1999,6 +2010,8 @@ interface TableHeadProps {
   trackColumn: ReadonlyMap<Id, number> | undefined;
   /** The head's case comes from `table.head.case`. */
   theme: Pick<Theme, 'table'> | undefined;
+  /** The head text of each column as the core draws it, once the tracks are measured. */
+  headTexts: ReadonlyMap<Id, string> | undefined;
   /** The columns a windowed table builds; undefined builds every column. */
   windowIds: ReadonlySet<Id> | undefined;
   /** Groups wider than the scroll box beside the pinned columns. */
@@ -2030,6 +2043,7 @@ const TableHead = memo(function TableHead({
   pinned,
   trackColumn,
   theme,
+  headTexts,
   windowIds,
   wideGroups,
   hidden,
@@ -2153,12 +2167,12 @@ const TableHead = memo(function TableHead({
         {columns.map((column) => {
           if (windowIds !== undefined && !windowIds.has(column.id)) {
             return hiddenColumns.has(column.id) ? null : (
-              <div key={column.id} role="columnheader" aria-colindex={columnIndices.get(column.id)} data-bp-lite="" style={liteStyle(trackColumn?.get(column.id))}>{columnHeadText(column, theme ?? {})}</div>
+              <div key={column.id} role="columnheader" aria-colindex={columnIndices.get(column.id)} data-bp-lite="" style={liteStyle(trackColumn?.get(column.id))}>{headTexts?.get(column.id) ?? columnHeadText(column, theme ?? {})}</div>
             );
           }
           const sortable = sortableIds.has(column.id);
           const active = sortable && sort?.column === column.id ? sort.direction : undefined;
-          const text = columnHeadText(column, theme ?? {});
+          const text = headTexts?.get(column.id) ?? columnHeadText(column, theme ?? {});
           return (
             <div
               key={column.id}

@@ -1146,6 +1146,16 @@ describe('TableChart reads the footer rule notes model', () => {
     expect(printed()).toEqual([]);
   });
 
+  // The React head broke "WEEK 1" into "WEEK" over "1" where the SVG keeps the short word on the line before it.
+  it('keeps a short last head word on its line where the track has the room', () => {
+    const weeks = (width?: number): TableData => ({ ...data, columns: [data.columns[0]!, { id: 'v', kind: 'value', label: 'Week 1', ...(width === undefined ? {} : { width }) }] });
+    const head = () => container.querySelector('[data-col-id="v"] .bp-head-label')!.textContent!;
+    act(() => root.render(<TableChart data={weeks()} target="report" />));
+    expect(head()).toMatch(/^week\u00a01$/iu);
+    act(() => root.render(<TableChart data={weeks(36)} target="report" />));
+    expect(head()).toMatch(/^week 1$/iu);
+  });
+
   // The React source line doubled a bold source word ("Source: **Source:** …") and printed a bare colon under an empty source word.
   it('words the source line as the SVG frame does', () => {
     act(() => root.render(<TableChart data={data} target="report" source="**Source:** Example" />));
