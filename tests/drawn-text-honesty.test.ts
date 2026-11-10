@@ -294,6 +294,16 @@ describe('number census', () => {
     expect(of(census('bullet', spec, 600), 'wrong-scale')).toEqual([]);
     expect(census('bullet', spec, 600, retext('label:delta:revenue', '−$0.2')).filter((f) => f.id === 'delta:revenue')).not.toEqual([]);
   });
+
+  // With the target column hidden, "−$1" between "$1" and a plan of $2 is the same rule, and the census called it a mismatch.
+  it('reads a bullet gap from its printed operands when the target column is hidden', () => {
+    const spec = fixtureOf<Spec & { data: { rows: { id: string; value: unknown; target: unknown }[] } }>('bullet', 'columns-hidden');
+    spec.options = { ...spec.options, columnVisibility: { target: false } };
+    const revenue = spec.data.rows.find((row) => row.id === 'revenue')!;
+    revenue.value = { number: 1.25, format: '$1,234' };
+    revenue.target = { number: 1.5, format: '$1,234' };
+    expect(census('bullet', spec, 600).filter((f) => f.id === 'delta:revenue')).toEqual([]);
+  });
 });
 
 describe('a key label leaves room for its own value', () => {
