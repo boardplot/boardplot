@@ -208,10 +208,13 @@ export function collectSeriesIdentities(layout: (data: unknown, options: any) =>
 }
 
 
-/** Match a complete name in visible text, never a substring of another word. */
+/**
+ * Match a complete name in visible text, never a substring of another word.
+ * A break in the name, authored or wrapped, matches any break in the text.
+ */
 export function textNames(node: SceneNode, name: string): boolean {
   if (node.t !== 'text' || !name.trim()) return false;
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escaped = name.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
   const word = new RegExp(`(?<![\\p{L}\\p{N}_])${escaped}(?![\\p{L}\\p{N}_])`, 'iu');
   return word.test(node.lines.join(' '));
 }
