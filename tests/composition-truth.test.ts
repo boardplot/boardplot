@@ -625,3 +625,13 @@ describe('pareto total scale', () => {
     expect(top({ totalScale: false })).toBe(80);
   });
 });
+
+// A 100% stack with one series printed "100%" on each segment, while its records held only the raw value and no share.
+it('records the printed share of a one-series 100% stack', () => {
+  for (const [type, variant] of [['column', 'stacked100'], ['bar', 'stacked100'], ['line', 'stacked100-area']] as const) {
+    const request = resolveChartRequest({ type, data: { categories: [{ id: 'a' }, { id: 'b' }], series: [{ id: 'print', values: [60, 28] }] },
+      options: { variant, size: { width: 480, height: 320 } } } as never);
+    const records = interactionRecords({ request, geometry: requireGeometry(layoutResolvedRequest(request)), scope: request.scope, claims: [] });
+    expect(records.map((record) => record.share?.percent.raw), type).toEqual([100, 100]);
+  }
+});
