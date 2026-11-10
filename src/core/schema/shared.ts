@@ -666,6 +666,8 @@ const ANNOTATION_FIELDS: Record<string, readonly string[]> = {
   event: ['at', 'date', 'to', 'end', 'label', 'detail', 'items', 'group', 'tone', 'placement', 'labelPlacement'],
   band: ['from', 'to', 'label', 'tone', 'style', 'divider', 'low', 'high', 'value', 'seriesId', 'scenario', 'direction'],
 };
+/** Whether an annotation kind reads a field of its own (valueLine reads label). */
+export const annotationKindTakes = (kind: string, field: string): boolean => Object.hasOwn(ANNOTATION_FIELDS, kind) && ANNOTATION_FIELDS[kind]!.includes(field);
 /** Every kind takes these, or refuses them with a message of its own (text, glyphs, the callout head). */
 const SHARED_ANNOTATION_FIELDS = ['kind', 'id', 'text', 'format', 'priority', 'icon', 'status', 'headline', 'arrow'];
 /** The anchor fields of each kind; all are required but a cagr's, which default to the ends, and an event's, which may take a date (addEventIssues). */

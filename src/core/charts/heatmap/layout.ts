@@ -25,6 +25,7 @@ import { createOccupiedIndex } from '../../label/occupied';
 import { categoryLineAlign, planCategoryRow, rotatedClaimRect } from '../../label/categoryRow';
 import { MONTH_START } from '../../label/tickRow';
 import { labelCtx, PRIORITY, solveLabels, type LabelRequest, type SolveCtx } from '../../label/solver';
+import { requestClaims, withUnprintedClaims, type ClaimedRequest } from '../../claims/ids';
 import type { TickBandDerived } from '../../label/tickRow';
 import { accessibleTitle,
   NormalizeError,
@@ -1166,6 +1167,7 @@ export function layoutHeatmap(
   const matrixPaints: Paint[] = [];
   // All or none: one cell without room takes the numbers off every cell (a blank constant column apart).
   const printValues = fitted.every((values) => values.every((value, ci) => value === null || value.fits || constantCol[ci]));
+  const withheld: ClaimedRequest[] = [];
   rows.forEach((r, ri) => {
     const values = fitted[ri]!;
     for (const value of values) if (value) valueCellW = Math.max(valueCellW, value.size.width + 4);
@@ -1303,9 +1305,13 @@ export function layoutHeatmap(
             },
           ],
         });
-      } else if (cellLabelsOn && cell.v !== null) {
-        omittedValues++;
-        hiddenCells.push({ r, c, v: cell.v });
+      } else {
+        // A value without room, or turned off, prints nowhere: a host states its claim as unprinted.
+        withheld.push({ id: `point:${r.id}:${c.id}`, kind: 'point', owner });
+        if (cellLabelsOn && cell.v !== null) {
+          omittedValues++;
+          hiddenCells.push({ r, c, v: cell.v });
+        }
       }
     });
   });
@@ -1643,7 +1649,7 @@ export function layoutHeatmap(
     + (hiddenCells.length > 0 && options.heatKey === undefined
       ? ` ${(options as { strings?: { hiddenLabels?: string } }).strings?.hiddenLabels ?? HIDDEN_LABEL_LEAD}: ${hiddenCells.map(hiddenItem).join(', ')}.` : '');
 
-  return {
+  return withUnprintedClaims({
     type: 'heatmap',
     size,
     sizing: rowSizing('heatmap', size, {
@@ -1713,7 +1719,7 @@ export function layoutHeatmap(
       occupied: occupied.snapshot(),
       decisions: [...solved.decisions, ...annResult.decisions],
     },
-  };
+  }, withheld.flatMap((request) => requestClaims(request, options) ?? []));
 
   // ---- helpers ----
 

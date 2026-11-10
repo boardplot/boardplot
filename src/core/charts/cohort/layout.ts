@@ -50,6 +50,7 @@ import { AUTOMATIC_FORMAT } from '../../formatSpec';
 import { authoredNotes, withAuthoredFootnotes } from '../../frame';
 import { disclosureNote, keepShownNotes } from '../../notes';
 import { pushAll } from '../../arrays';
+import { claimId, HOST_CLAIMS, type HostClaims } from '../../claims/ids';
 
 /** Options the adapter answers itself rather than forwarding. */
 const ANSWERED_HERE = ['palette', 'sort', 'valueAxis', 'annotations'] as const;
@@ -126,6 +127,8 @@ export function layoutCohort(
 
   const periodCount = allPeriods.periodCount;
   const periodIds = Array.from({ length: periodCount }, (_, t) => `t${t}`);
+  const periodIndex = new Map<Id, number>();
+  periodIds.forEach((id, t) => periodIndex.set(id, t));
   const periodNames = periodLabels(data.periodLabel, periodCount, options);
   // Rates and averages are derived over all periods: each average belongs to one column and goes with it.
   const everyPeriod = periodIds.map((_, t) => t);
@@ -237,10 +240,21 @@ export function layoutCohort(
     ...cohortNotes(basis, derived.averages, shownSupports, shownNotMeaningful(data, derived, visible, notMeaningful), unsupportedAveragePeriods.filter((t) => shown.has(t)), periodNames, methodNote && shown.has(0), methodNote, options),
   ];
 
+  // Each cell value the matrix prints names its rate claim (claimsForChart, case 'cohort'): a cohort's rate of a
+  // period it has reached, or the weighted average of the period.
+  const rowById = new Map(derived.cohorts.map((row) => [row.id, row]));
+  const hostClaims: HostClaims = ({ kind, owner }) => {
+    const t = periodIndex.get(owner.categoryId ?? '');
+    if (kind !== 'point' || t === undefined || owner.seriesId === undefined) return undefined;
+    if (owner.seriesId === AVERAGE_ROW_ID) return derived.averages?.[t] ? [`cohort:average:t${t}`] : undefined;
+    return t < (rowById.get(owner.seriesId)?.observedPeriods ?? 0) ? [claimId('cohort', owner.seriesId, `t${t}`)] : undefined;
+  };
+
   const build = (extra: string[]): ReturnType<typeof layoutHeatmap> =>
     // Only the author's own notes keep a number; the rest are derived.
-    layoutHeatmap(hostData, withAuthoredFootnotes<HeatmapLayoutOptions>({
+    layoutHeatmap(hostData, withAuthoredFootnotes<HeatmapLayoutOptions & { [HOST_CLAIMS]: HostClaims }>({
       ...stripAnswered(options),
+      [HOST_CLAIMS]: hostClaims,
       // One decimal width for every cell. The engine's own default drops the
       // decimal on whole numbers, which puts "60%" next to "55.2%" in one column
       // and costs the eye the alignment it scans by; integer percentages also
@@ -311,8 +325,6 @@ export function layoutCohort(
   // ---- rebuild the parts that would otherwise speak the host's language ----
   const rowIndex = new Map<Id, number>();
   derived.cohorts.forEach((row, index) => rowIndex.set(row.id, index));
-  const periodIndex = new Map<Id, number>();
-  periodIds.forEach((id, t) => periodIndex.set(id, t));
 
   const cells: CohortCellMark[] = [];
   let unobserved = 0;

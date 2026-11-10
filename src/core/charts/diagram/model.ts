@@ -140,7 +140,7 @@ function validateGroups(data: NormalizedDiagram, options: DiagramOptions & { var
   if (wired) throw new NormalizeError('invalid-membership', `edges[${wired.id}]`, `edge '${wired.id}' touches the policy strip, whose items take no edges`, 'move the node to a zone, or remove the edge');
 }
 
-function validateArchitecture(data: NormalizedDiagram, options: DiagramOptions & { variant: 'architecture' }): void {
+function validateArchitecture(data: NormalizedDiagram, options: DiagramOptions & { variant: 'architecture' }, authoredNodes: readonly DiagramNode[]): void {
   validateGroups(data, options);
   const policy = data.groups.find((group) => group.kind === 'policy')?.id;
   if (options.flow === 'lanes') {
@@ -155,13 +155,16 @@ function validateArchitecture(data: NormalizedDiagram, options: DiagramOptions &
     throw new NormalizeError('invalid-membership', 'lanes', "flow 'columns' reads groups, not lanes", "set options.flow to 'lanes', or remove the lanes");
   }
   for (const node of data.nodes) {
+    // data.nodes is in stable order: the pointer names the authored node with this id, and none where the id is not unique.
+    const matches = authoredNodes.flatMap((item, index) => (item.id === node.id ? [index] : []));
+    const at = (field: string) => (matches.length === 1 ? ['data', 'nodes', matches[0]!, field] : undefined);
     for (const [field, fix] of ARCHITECTURE_NODE_REFUSALS) {
-      if (node[field] !== undefined) throw new NormalizeError('invalid-membership', `nodes[${node.id}].${field}`, `variant 'architecture' does not read ${field}`, fix);
+      if (node[field] !== undefined) throw new NormalizeError('invalid-membership', `nodes[${node.id}].${field}`, `variant 'architecture' does not read ${field}`, fix, undefined, at(field));
     }
     if (!['rectangle', 'roundedRect', 'store'].includes(node.shape.kind)) {
       throw new NormalizeError('invalid-membership', `nodes[${node.id}].shape`, `variant 'architecture' does not draw shape '${node.shape.kind}'`, "use shape 'rectangle', 'roundedRect' or 'store'");
     }
-    if (node.shape.kind === 'store' && node.repeat !== undefined) throw new NormalizeError('invalid-membership', `nodes[${node.id}].repeat`, 'a store draws no stacked copies', 'remove repeat, or use a rectangle');
+    if (node.shape.kind === 'store' && node.repeat !== undefined) throw new NormalizeError('invalid-membership', `nodes[${node.id}].repeat`, 'a store draws no stacked copies', 'remove repeat, or use a rectangle', undefined, at('repeat'));
   }
   for (const edge of data.edges) {
     if (edge.waypoints) throw new NormalizeError('invalid-membership', `edges[${edge.id}].waypoints`, "variant 'architecture' does not read waypoints", 'the engine routes every edge: use track to line up its nodes');
@@ -219,7 +222,7 @@ function validateArchitecture(data: NormalizedDiagram, options: DiagramOptions &
 
 function validatePreset(data: NormalizedDiagram, options: DiagramOptions, authoredNodes: DiagramNode[]): void {
   if (options.variant === 'architecture') {
-    validateArchitecture(data, options);
+    validateArchitecture(data, options, authoredNodes);
     return;
   }
   const architectureOnly = data.nodes.find((node) => node.track !== undefined || node.span !== undefined || node.repeat !== undefined || node.protected !== undefined || node.shape.kind === 'store')?.id

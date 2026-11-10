@@ -54,7 +54,7 @@ import { fitsRoom, widthsThatFit, withoutWidths } from '../../generatedWidths';
 import { generatedIdWarnings } from '../../schema/generatedColumns';
 import { fitText, type FittedText } from '../../label/fitText';
 import { overrideIgnored, widthFloored } from '../heatmap/columnTracks';
-import { claimId as claimIdOf } from '../../claims/ids';
+import { claimId as claimIdOf, withUnprintedClaims } from '../../claims/ids';
 
 const LABEL_TRACK = 118;
 const SIZE_TRACK = 96;
@@ -968,6 +968,9 @@ function buildExhibit(
   }
 
   const nameAlign = alignOf('label', 'start');
+  // The rate claims the exhibit prints nowhere: periods it leaves out, and cells it leaves to their fill or empty.
+  const unprinted = derived.cohorts.flatMap((row) => Array.from({ length: row.observedPeriods }, (_, period) => period)
+    .filter((period) => !visible.includes(period)).map((period) => claimIdOf('cohort', row.id, `t${period}`)));
   rowData.forEach((row, rowIndex) => {
     // A summary row on top keeps its average bases under it and its gap above the cohorts.
     const y = tableTop + headerH + rowIndex * rowH + (totalOnTop
@@ -1066,9 +1069,11 @@ function buildExhibit(
         nodeId,
         retention,
       });
-      if (retention === null && !missing) return;
       // A filled cell reads from its fill. A cell with no fill keeps its text, because an empty column says nothing.
-      if (options.figures === false && style === 'stepped' && retention !== null && period !== 0) return;
+      if ((retention === null && !missing) || (options.figures === false && style === 'stepped' && retention !== null && period !== 0)) {
+        if (row.kind !== 'total' && period < row.observedPeriods) unprinted.push(claimIdOf('cohort', row.id, `t${period}`));
+        return;
+      }
       const text = missing ? '—' : formatValue(retention!, period);
       // Total rates follow the same threshold key as cohort rates.
       const highlighted = style === 'pure' && retention !== null && pureEmphasis(options, period, retention);
@@ -1161,7 +1166,7 @@ function buildExhibit(
     }
   }
 
-  return {
+  return withUnprintedClaims({
     type: 'cohort',
     [REGULAR_WIDTH]: regularWidth,
     size,
@@ -1187,7 +1192,7 @@ function buildExhibit(
     },
     warnings,
     debug: { occupied: occupied.snapshot(), decisions: solved.decisions },
-  };
+  }, unprinted);
 }
 
 function columnBins(derived: CohortDerived, visible: number[], scope: 'classic' | 'column', steps: readonly number[], totalId: string | undefined): Map<string, number> {
