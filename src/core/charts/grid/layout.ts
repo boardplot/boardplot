@@ -2647,7 +2647,8 @@ function probedPanelDomain(
   });
   return requestMemo(probedPanelDomain, key, () => {
     const probe = probePanelGeometry(panel, options, valueAxis);
-    return probe && !probe.refused ? inferLinearYDomain(probe) : null;
+    // A bar or dot panel draws its value axis across, under category rows: that axis is the one valueAxis pins.
+    return probe && !probe.refused ? inferLinearYDomain(probe) ?? inferLinearYDomain(probe, 'x') : null;
   });
 }
 

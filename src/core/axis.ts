@@ -157,10 +157,10 @@ interface BreakGlyphResult {
   rect: Rect;
 }
 
-/** Recover the rendered linear y-domain from two numeric ticks and the plot bounds. */
-export function inferLinearYDomain(geometry: Geometry<object, object>): [number, number] | null {
+/** Recover the rendered linear y-domain (or x-domain) from two numeric ticks and the plot bounds. */
+export function inferLinearYDomain(geometry: Geometry<object, object>, axisName: 'x' | 'y' = 'y'): [number, number] | null {
   const ticks = geometry.axes
-    .find((axis) => axis.axis === 'y')
+    .find((axis) => axis.axis === axisName)
     ?.ticks.filter((tick): tick is typeof tick & { at: number } => typeof tick.at === 'number');
   if (!ticks || ticks.length < 2) return null;
   const a = ticks[0]!;
@@ -168,7 +168,8 @@ export function inferLinearYDomain(geometry: Geometry<object, object>): [number,
   if (!b) return null;
   const valueAt = (position: number) => a.at + ((position - a.pos) * (b.at - a.at)) / (b.pos - a.pos);
   const roundDomain = (value: number): number => Math.round(value * 1e9) / 1e9;
-  const bounds = [valueAt(geometry.plot.y), valueAt(geometry.plot.y + geometry.plot.h)].map(roundDomain);
+  const [start, length] = axisName === 'y' ? [geometry.plot.y, geometry.plot.h] : [geometry.plot.x, geometry.plot.w];
+  const bounds = [valueAt(start), valueAt(start + length)].map(roundDomain);
   return [Math.min(bounds[0]!, bounds[1]!), Math.max(bounds[0]!, bounds[1]!)];
 }
 

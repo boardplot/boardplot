@@ -353,6 +353,21 @@ it('aligns column and line category centres in legacy category tiers', () => {
   expect((grid.derived as { sharedYDomains: object }).sharedYDomains).toHaveProperty('grid:y');
 });
 
+// Dot and bar panels draw their value axis across, and sharedScale true kept their own scales without a word.
+it('shares the horizontal value axis of dot and bar panels', () => {
+  const panel = (id: string, type: string, values: number[]) => ({ id, type, title: id, data: {
+    categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], series: [{ id: `${id}s`, label: 'Value', values }] } });
+  for (const type of ['dot', 'bar']) {
+    const grid = getChart('grid')!.layout({ panels: [panel('low', type, [10, 40]), panel('high', type, [100, 180])] },
+      { columns: 1, sharedScale: true, size: { width: 600, height: 500 } }) as Geometry;
+    expect((grid.derived as { sharedYDomains: object }).sharedYDomains, type).toHaveProperty('grid:y');
+    // A dot panel prints its value axis: both panels end on the same tick.
+    const panels = (grid.marks as { panels: { chart: { geometry: Geometry } }[] }).panels;
+    const lastTick = panels.map(p => p.chart.geometry.axes.find(a => a.axis === 'x')?.ticks.at(-1)?.at);
+    if (type === 'dot') expect(lastTick[0]).toBe(lastTick[1]);
+  }
+});
+
 // A shared value domain must map equal value steps to equal pixel heights in mixed panels.
 it('maps a shared value scale to each panel data rectangle', () => {
   const grid = getChart('grid')!.layout({ panels: [
