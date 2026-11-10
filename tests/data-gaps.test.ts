@@ -801,6 +801,17 @@ it('names every Likert claim at a label or states it as unprinted', () => {
   }
 });
 
+// Labels turned off hide every Likert share and net, but the chart did not state them as unprinted, so the reading held numbers no text prints.
+it('states Likert shares and nets as unprinted when labels turn them off', () => {
+  const scale = [{ id: 'no', label: 'Disagree' }, { id: 'mid', label: 'Neutral', role: 'neutral' }, { id: 'yes', label: 'Agree' }];
+  const items = [{ id: 'pay', label: 'Pay is fair', values: [100, 300, 600] }, { id: 'tools', label: 'Tools work', values: [400, 200, 400] }];
+  for (const labels of [false, { grandTotal: false }, { segment: false }]) {
+    const { geometry, claims } = readChart('likert', { scale, items }, { values: 'counts', summary: 'net', labels });
+    const named = new Set([...geometry.labels.filter((label) => !label.hidden).flatMap((label) => label.claimIds ?? []), ...unprintedClaims(geometry)]);
+    expect(claims.filter((claim) => !named.has(claim.id)).map((claim) => claim.id), JSON.stringify(labels)).toEqual([]);
+  }
+});
+
 // Option ids may contain ':', so a share claim id can collide with another option or row; the reading must never quote another value's text.
 it('never reads a Likert share with the text of another option or row', () => {
   const inputs = [
