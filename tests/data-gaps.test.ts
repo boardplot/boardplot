@@ -730,6 +730,21 @@ it('never reads a Likert share with the text of another option or row', () => {
   }
 });
 
+// Labels joined with ':' can share an id ('conv:a:b:c' for a→b:c and a:b→c): a claim read through that id quoted the other label's number.
+it('never reads a funnel rate or Likert share from another label with the same id', () => {
+  const cases = [
+    ['funnel', { categories: ['a', 'b:c', 'a:b', 'c'].map((id) => ({ id, label: `Stage ${id}` })), series: [{ id: 's', label: 'Leads', values: [100, 50, 40, 10] }] }, { variant: 'rows' }, [[claimId('funnel:conv', 'a', 'b:c'), '50% advance'], [claimId('funnel:conv', 'a:b', 'c'), '25% advance']]],
+    ['likert', { scale: [{ id: 'a', label: 'Disagree' }, { id: 'neutral', label: 'Neutral', role: 'neutral' }, { id: 'a:a', label: 'Agree' }], items: [{ id: 'a', values: [20, 30, 50] }, { id: 'a:a', values: [70, 20, 10] }] }, { values: 'counts' }, [[claimId('likert:share', 'a', 'a:a'), '50%'], [claimId('likert:share', 'a:a', 'a'), '70%']]],
+  ] as const;
+  for (const [type, data, options, expected] of cases) {
+    const request = resolveChartRequest({ type, data, options: { ...options, size: { width: 1200, height: 800 } } } as never);
+    const geometry = layoutResolvedRequest(request);
+    if (geometry.refused) throw new Error(`${type} refused`);
+    const claims = claimsForChart(type, geometry);
+    expect(expected.map(([id]) => [id, claims.find((claim) => claim.id === id)?.output.displayed]), type).toEqual(expected);
+  }
+});
+
 // One printed number can be two claims (a Pareto vital-few share is also its cumulative share): both must read that label.
 it('binds every claim a label names to that label', () => {
   const data = { items: [{ id: 'open', type: 'total', value: 100 }, { id: 'gain', value: 20 }, { id: 'mid', type: 'total' }, { id: 'close', type: 'total' }] };

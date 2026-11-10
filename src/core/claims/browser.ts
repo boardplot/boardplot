@@ -13,7 +13,7 @@ import type { StatusDerived, StatusMarks } from '../charts/status/layout';
 import type { WaffleDerived } from '../charts/waffle/types';
 import type { GridMarks } from '../grid/layoutGrid';
 import type { OlsFit, OlsMoments } from '../ols';
-import type { Geometry, PlacedAnnotation } from '../types/scene';
+import type { Geometry, PlacedAnnotation, PlacedLabel } from '../types/scene';
 import type { TableDerived } from '../types/table';
 import type { TotalBasis } from '../charts/waterfall/layout';
 import { claimId } from './ids';
@@ -375,14 +375,22 @@ function stackTotalClaims(geo: Geometry<object, object>): ClaimRecordV1[] {
 
 /** Bind to the final scene, after a grid or the note pass changes placement. */
 function bindClaimLabels(type: string, geo: Geometry<object, object>, claims: ClaimRecordV1[]): ClaimRecordV1[] {
-  const ids = claimLabelIds(type, geo);
-  const labels = new Map(geo.labels.map(label => [label.id, label]));
+  const bound = claimLabels(type, geo);
+  // Two labels can share an id, and so a node id ('a' + 'b:c' and 'a:b' + 'c'): such a node does not tell which label it draws.
+  const seen = new Set<string>();
+  const sharedNodes = new Set<string>();
+  for (const node of geo.scene) if (node.t === 'text') (seen.has(node.id) ? sharedNodes : seen).add(node.id);
   // DimSwitch can supply thousands of cells, also inside a grid.
   const textNodes = type==='dimswitch' || (type==='grid' && claims.some(claim=>/(^|\/)dimswitch:\[/.test(claim.id)))
     ? new Map(geo.scene.filter(node=>node.t==='text').map(node=>[node.id,node])) : undefined;
   return claims.map(claim => {
-    const label = labels.get(ids.get(claim.id) ?? '');
+    const label = bound.get(claim.id);
     const nodeId = label?.nodeId ?? claim.nodeId ?? (label ? `label:${label.id}` : undefined);
+    // The label that names the claim prints its own lines when its node id is shared with another label's node.
+    if (label && !label.hidden && !label.noted && sharedNodes.has(nodeId ?? '')) {
+      return withoutResidue({ ...claim, nodeId: undefined, output: { ...claim.output, displayed: label.lines.join(' '),
+        ...(label.claimText !== undefined && label.text !== label.claimText ? { state: 'authored-override' } : {}) } });
+    }
     const node = textNodes && !label?.noted ? textNodes.get(nodeId ?? '') : geo.scene.find(node => node.t === 'text' && (label?.noted
       ? label.noteLocation
         ? label.noteLocation.endsWith(`(${node.id})`)
@@ -400,11 +408,16 @@ function bindClaimLabels(type: string, geo: Geometry<object, object>, claims: Cl
   });
 }
 
-/** Adapters without claimIds use the same label map, including through grids. */
-function claimLabelIds(type: string, geo: Geometry<object, object>): Map<string, string> {
-  // A claim id that printed labels with different texts carry is ambiguous: ids joined with ':' can collide
-  // across rows ('a' + 'b:c' and 'a:b' + 'c'). It stays unbound rather than quote another value's text.
-  const ids = new Map<string, string>();
+/**
+ * The label each claim reads: the label whose request named the claim, else the label an adapter
+ * pattern finds by id (annotations, stack totals, grid panels). An id two labels share finds none.
+ */
+function claimLabels(type: string, geo: Geometry<object, object>): Map<string, PlacedLabel> {
+  const byId = new Map<string, PlacedLabel | undefined>();
+  for (const label of geo.labels) byId.set(label.id, byId.has(label.id) ? undefined : label);
+  // Two printed labels that name one claim with different texts make it ambiguous: it stays unbound
+  // rather than quote another value's text.
+  const bound = new Map<string, PlacedLabel>();
   const printed = new Map<string, string>();
   const ambiguous = new Set<string>();
   for (const label of geo.labels) for (const id of label.claimIds ?? []) {
@@ -413,22 +426,26 @@ function claimLabelIds(type: string, geo: Geometry<object, object>): Map<string,
       if (text !== undefined && text !== label.text) ambiguous.add(id);
       printed.set(id, label.text);
     }
-    if (!label.hidden || !printed.has(id)) ids.set(id, label.id);
+    if (!label.hidden || !printed.has(id)) bound.set(id, label);
   }
-  for (const claimId of ambiguous) ids.delete(claimId);
+  for (const claimId of ambiguous) bound.delete(claimId);
+  const bind = (claimId: string, labelId: string) => {
+    const label = byId.get(labelId);
+    if (label) bound.set(claimId, label);
+  };
   for (const annotation of geo.annotations ?? []) {
-    if (annotation.labelId) ids.set(`annotation:${annotation.id}`, annotation.labelId);
+    if (annotation.labelId) bind(`annotation:${annotation.id}`, annotation.labelId);
   }
   for (const label of geo.labels) {
     const id = totalKey(label);
-    if (id !== undefined && !ids.has(`stack:total:${id}`)) ids.set(`stack:total:${id}`, label.id);
+    if (id !== undefined && !bound.has(`stack:total:${id}`)) bind(`stack:total:${id}`, label.id);
   }
   if (type === 'grid') {
     for (const panel of (geo.marks as GridMarks).panels) if (panel.chart) {
-      for (const [claim, label] of claimLabelIds(panel.type, panel.chart.geometry)) ids.set(`${panel.id}/${claim}`, `${panel.id}/${label}`);
+      for (const [claim, label] of claimLabels(panel.type, panel.chart.geometry)) bind(`${panel.id}/${claim}`, `${panel.id}/${label.id}`);
     }
   }
-  return ids;
+  return bound;
 }
 
 // Ops that only add and subtract their operands, so the result shares their scale. A table calc records its

@@ -578,7 +578,9 @@ export function censusCase(type, fixture, width, localeName, measured) {
     // Under basis 'previous' a period with no survivors makes every later cell of its cohort n.m. (cohort retention).
     const cell = /^cohort:(.+):t(\d+)$/.exec(claim.id);
     if (type === 'cohort' && options.basis === 'previous' && cell) {
-      return (data.cohorts ?? []).find((cohort) => cohort.id === cell[1])?.active?.slice(0, Number(cell[2])).includes(0) === true;
+      // The claim id escapes ':' and the backslash in the cohort id (claimId in src/core/claims/ids.ts).
+      const cohortId = cell[1].replace(/\\(.)/g, '$1');
+      return (data.cohorts ?? []).find((cohort) => cohort.id === cohortId)?.active?.slice(0, Number(cell[2])).includes(0) === true;
     }
     // A percent change off a base cell the table prints as zero ("0", "0.0", or "<0.1", which rounds to zero) is n.m.
     // (table resolve, near-zero base). A hidden base column states its text in its record.
