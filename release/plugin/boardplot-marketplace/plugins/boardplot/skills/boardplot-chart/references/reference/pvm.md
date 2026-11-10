@@ -56,7 +56,7 @@ One form; its chart ID is `pvm`.
 | currentLabel | string |  | Closing total-bar name; default Current. |
 | items | array | yes | Comparable items with prior and current quantities and revenues for the price/volume/mix decomposition. |
 | items[].id | string | yes | Unique item identity binding prior and current decomposition inputs. |
-| items[].label | string |  | Displayed item name; defaults to its id. |
+| items[].label | string |  | Item name for the author. The bridge draws effect bars, not items, so no item name prints. |
 | items[].prior | object | yes | Base period. |
 | items[].prior.qty | number | yes | Units sold in the period. Never negative; 0 only with revenue 0. |
 | items[].prior.revenue | number | yes | Revenue for those units. Price is derived as revenue / qty. |

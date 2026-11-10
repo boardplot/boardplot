@@ -16,6 +16,7 @@ interface PvmPeriod {
 
 export interface PvmItem {
   id: Id;
+  /** Item name for the author. The bridge draws effect bars, not items, so no item name prints. */
   label?: string;
   prior: PvmPeriod;
   current: PvmPeriod;
