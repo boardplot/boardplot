@@ -80,11 +80,14 @@ function mapValues(data, fn) {
   };
   return walk(data, '', false);
 }
-/** The value without its authored formats (`format`, `valueFormat`) at any depth. */
+/**
+ * The value without its authored number formats at any depth. A number format is an example with a figure ("$412k",
+ * "12%", "1,234"); a `format` without one is a name and stays (a creative's media format "Video").
+ */
 const withoutFormats = (value) => {
   if (Array.isArray(value)) return value.map(withoutFormats);
   if (!value || typeof value !== 'object') return value;
-  return Object.fromEntries(Object.entries(value).filter(([key, entry]) => !(['format', 'valueFormat'].includes(key) && typeof entry === 'string'))
+  return Object.fromEntries(Object.entries(value).filter(([key, entry]) => !(['format', 'valueFormat'].includes(key) && typeof entry === 'string' && /\d/.test(entry)))
     .map(([key, entry]) => [key, withoutFormats(entry)]));
 };
 // Keep a scaled value free of float residue: the census flags binary-float digits of computed values only.

@@ -530,6 +530,9 @@ export function censusCase(type, fixture, width, localeName, measured) {
   }
 
   // 3. Claims: the displayed text says the raw value, and a derivation recomputes.
+  // The text each table cell's record states, also for a hidden column (engineNm reads a hidden base here).
+  const cellDisplayed = new Map(records.filter((record) => record.target.owner?.rowId !== undefined && typeof record.value.displayed === 'string')
+    .map((record) => [`${record.target.owner.rowId}:${record.target.owner.colId}`, record.value.displayed]));
   for (const claim of claims) {
     if (claim.output.state === 'value' && typeof claim.output.raw === 'number' && claim.output.displayed) {
       const found = tokens(claim.output.displayed, m);
@@ -556,14 +559,12 @@ export function censusCase(type, fixture, width, localeName, measured) {
         }
       }
     }
-    try {
-      const verdict = recomputeClaim(claim);
-      if (verdict && verdict.status === 'mismatch' && !engineNm(claim)) flag('derived', 'reading', { id: claim.id, text: claim.output.displayed, raw: claim.output.raw, why: `${claim.op}: recomputes to ${verdict.expected}` });
-    } catch { /* ops recompute does not know */ }
+    let verdict;
+    try { verdict = recomputeClaim(claim); } catch { /* ops recompute does not know */ }
+    // Outside the catch: an error of the census's own rules fails the check, never passes a claim.
+    if (verdict && verdict.status === 'mismatch' && !engineNm(claim)) flag('derived', 'reading', { id: claim.id, text: claim.output.displayed, raw: claim.output.raw, why: `${claim.op}: recomputes to ${verdict.expected}` });
   }
 
-  const cellDisplayed = new Map(records.filter((record) => record.target.owner?.rowId !== undefined && typeof record.value.displayed === 'string')
-    .map((record) => [`${record.target.owner.rowId}:${record.target.owner.colId}`, record.value.displayed]));
   /** An n.m. the engine owes to more than the claim's two operands show. */
   function engineNm(claim) {
     if (claim.output.state !== 'nm' && claim.output.state !== 'n.m.') return false;

@@ -263,6 +263,19 @@ describe('number census', () => {
     expect(of(census('table', spec, 400, retext('cell:operations:py', '440')), 'derived', 'operations:yoy')).not.toEqual([]);
   });
 
+  // A hidden base column is read from its record: an n.m. was accepted for any hidden base, also a nonzero one.
+  it('accepts n.m. off a hidden base that prints as zero and flags n.m. off a hidden nonzero base', () => {
+    const spec = fixtureOf('table', 'steering-theme-conventions');
+    const small = { ...spec, data: scaled(spec.data, 1e-3) };
+    expect(of(census('table', small, 400), 'derived')).toEqual([]);
+    const nm = (geometry: Geometry) => {
+      const cell = (geometry.derived as { computedCells: { rowId: string; colId: string; raw: number | null; state: string; displayed: string }[] })
+        .computedCells.find((c) => c.rowId === 'revenue-north' && c.colId === 'yoy')!;
+      Object.assign(cell, { raw: null, state: 'nm', displayed: 'n.m.' });
+    };
+    expect(of(census('table', spec, 400, nm), 'derived', 'revenue-north:yoy')).not.toEqual([]);
+  });
+
   // "1.3 CHF M" puts a currency code between the figure and its magnitude, and the second subtitle line names it.
   it('reads a magnitude after a currency code', () => {
     expect(tokens('1.3 CHF M', en)[0]?.value).toBe(1.3e6);
