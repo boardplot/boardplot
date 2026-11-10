@@ -93,6 +93,13 @@ describe('a removed option keeps an old spec drawing', () => {
     dropsTheKey(clean, { ...clean, options: { ...clean.options, encodings: { 'a/b': 'heat' } } }, 'dimswitch-encoding-column', '/options/encodings/a~1b');
   });
 
+  // A share change reads no years, and years beside it changed nothing without a word.
+  it('removed by another setting: growth years under a share change', () => {
+    const clean = fixture('bartable', 'cascade-four-years');
+    expect(clean.options.cascade).toEqual({ growth: { measure: 'share-change' } });
+    dropsTheKey(clean, { ...clean, options: { ...clean.options, cascade: { growth: { measure: 'share-change', years: 4 } } } }, 'option-ignored', '/options/cascade/growth/years');
+  });
+
   // A key the type accepts and cannot draw used to pass with ok: true and change nothing.
   it('accepted with nothing to draw: topN.threshold on a pie, focus on a dimswitch', () => {
     const pie = fixture('pie');
