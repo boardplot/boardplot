@@ -204,8 +204,10 @@ export { hasNoDataRows } from '../../emptyData';
  * and blank cells. Both surfaces append it to the rows they draw; it is never in `table.rows`, so no claim, record or
  * accessible count mentions it.
  */
+export const EMPTY_ROW_ID = 'boardplot:empty';
+
 export function emptyMessageRow(table: ResolvedTable, message: string): ResolvedRow {
-  const id = 'boardplot:empty';
+  const id = EMPTY_ROW_ID;
   const labelId = table.columns.find((column) => column.kind === 'rowLabel')?.id;
   return {
     id, label: message, hasChildren: false, level: 0, step: 0, role: 'data', relation: 'displayOnly', kind: 'detail',

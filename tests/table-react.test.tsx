@@ -43,6 +43,7 @@ import { resolveTable } from '../src/core/charts/table/resolve';
 import { defaultMeasurer } from '../src/core/text';
 import { paintColor, resolveTargetTheme, resolveTheme, themeForWidth } from '../src/core/theme';
 import { tableStylesheet } from '../src/react/tablePresentation';
+import { prepareChart } from '../src/react/prepare';
 import { toneTextPaint } from '../src/core/charts/table/chips';
 import { tableFonts } from '../src/core/charts/table/tracks';
 import { levelLadder } from '../src/core/charts/table/ladder';
@@ -1086,10 +1087,85 @@ describe('TableChart reads the footer rule notes model', () => {
     expect(container.querySelector('.bp-notes summary')!.textContent).not.toBe('Notes and sources (1)');
   });
 
+  const subtitle = () => container.querySelector('.bp-subtitle')?.textContent;
+  const summary = () => container.querySelector('.bp-summary')!.textContent;
+
+  // The React subtitle added " in <unit>" to a measure that already names it, and printed no unit line where the SVG does.
+  it('prints the unit as the core frame does', () => {
+    act(() => root.render(<TableChart data={data} target="report" subtitle="Revenue ($M)" unit="$M" />));
+    expect(subtitle()).toBe('Revenue ($M)');
+    act(() => root.render(<TableChart data={data} target="report" subtitle="Coverage" unit="x" />));
+    expect(subtitle()).toBe('Coverage ratio (×)');
+    act(() => root.render(<TableChart data={data} target="report" unit="visits" />));
+    expect(subtitle()).toBe('visits');
+    act(() => root.render(<TableChart data={data} target="report" unit="visits" unitShown />));
+    expect(subtitle()).toBeUndefined();
+  });
+
+  // Without notes.maxLines the React table printed every note; the SVG holds the target's line budget.
+  it('holds the target line budget without an authored notes.maxLines', () => {
+    const notes = ['First note', 'Second note', 'Third note', 'Fourth note', 'Fifth note'];
+    act(() => root.render(<TableChart data={data} target="report" size={{ width: 640, height: 300 }} footnotes={notes} source="Example" />));
+    expect(printed()).toEqual(notes.slice(0, printed().length));
+    expect(printed().length).toBeLessThan(notes.length);
+    expect(listed()).toEqual(notes.slice(printed().length));
+  });
+
+  // With footnotes: false under info, the React table still offered the derived notes behind a pointer; the core offers none.
+  it('offers no pointer under footnotes: false', () => {
+    const partial: TableData = { ...data, columns: [...data.columns, { id: 'w', kind: 'value', label: 'W', nulls: 'skip' }],
+      rows: [{ id: 't', label: 'Total', role: 'total', children: [{ id: 'a', label: 'A', cells: { v: 1, w: 1 } }, { id: 'b', label: 'B', cells: { v: 2, w: null } }] }] };
+    act(() => root.render(<TableChart data={partial} target="dashboard" footnotes={false} />));
+    expect(container.querySelector('.bp-notes')).toBeNull();
+  });
+
+  // The summary counted collapsed rows, hidden columns and the empty-table row, and repeated the title the grid is named by.
+  it('describes the rows and columns on screen without the title', () => {
+    const tree: TableData = { ...data, rows: [{ id: 'p', label: 'Parent', children: [{ id: 'c1', label: 'One', cells: { v: 1 } }, { id: 'c2', label: 'Two', cells: { v: 2 } }] }] };
+    act(() => root.render(<TableChart data={tree} title="Title" collapsed={['p']} />));
+    expect(summary()).toBe('Table with 1 rows and 2 columns');
+    act(() => root.render(<TableChart data={{ ...data, rows: [] }} title="Title" />));
+    expect(summary()).toBe('Table with 0 rows and 2 columns');
+  });
+
+  // The React table printed an author's **bold** markers as text.
+  it('draws bold runs in notes and the subtitle', () => {
+    act(() => root.render(<TableChart data={data} target="report" subtitle="A **bold** measure" footnotes={['A **key** limitation']} />));
+    expect(container.querySelector('figure > .bp-footnotes li strong')!.textContent).toBe('key');
+    expect(container.querySelector('.bp-subtitle strong')!.textContent).toBe('bold');
+    expect(summary()).not.toContain('*');
+  });
+
+  // A prepared table dropped the partial-total columns, so its partial-total note stayed after its column was hidden.
+  it('drops the partial-total note of a prepared table with its hidden column', async () => {
+    const fixture = getFixtures('table').find((entry) => entry.id === 'nulls-policy')!;
+    const toggled = { ...(fixture.data as TableData), columnToggles: [{ id: 'skip', label: 'Q3', columns: ['q3'], defaultVisible: false }] };
+    const options = { ...(fixture.options as TableOptions), notes: { show: ['note', 'disclosure'] as const } };
+    const prepared = await prepareChart({ type: 'table', data: toggled, options } as never) as never;
+    act(() => root.render(<TableChart data={toggled} {...options as object} prepared={prepared} />));
+    expect(printed()).toEqual([]);
+  });
+
+  // The React head broke "WEEK 1" into "WEEK" over "1" where the SVG keeps the short word on the line before it.
+  it('keeps a short last head word on its line where the track has the room', () => {
+    const weeks = (width?: number): TableData => ({ ...data, columns: [data.columns[0]!, { id: 'v', kind: 'value', label: 'Week 1', ...(width === undefined ? {} : { width }) }] });
+    const head = () => container.querySelector('[data-col-id="v"] .bp-head-label')!.textContent!;
+    act(() => root.render(<TableChart data={weeks()} target="report" />));
+    expect(head()).toMatch(/^week\u00a01$/iu);
+    act(() => root.render(<TableChart data={weeks(36)} target="report" />));
+    expect(head()).toMatch(/^week 1$/iu);
+    // A sort chevron shares the cell: a head that fits only without it broke inside its last word.
+    act(() => root.render(<TableChart data={weeks(76)} target="report" frameFill="none" />));
+    expect(head()).toMatch(/^week\u00a01$/iu);
+    act(() => root.render(<TableChart data={weeks(76)} target="report" frameFill="none" sortable />));
+    expect(head()).toMatch(/^week 1$/iu);
+  });
+
   // The React source line doubled a bold source word ("Source: **Source:** …") and printed a bare colon under an empty source word.
   it('words the source line as the SVG frame does', () => {
     act(() => root.render(<TableChart data={data} target="report" source="**Source:** Example" />));
-    expect(container.querySelector('.bp-source')!.textContent).toBe('**Source:** Example');
+    expect(container.querySelector('.bp-source')!.textContent).toBe('Source: Example');
+    expect(container.querySelector('.bp-source strong')!.textContent).toBe('Source:');
     act(() => root.render(<TableChart data={data} target="report" source="Example" strings={{ source: '' }} />));
     expect(container.querySelector('.bp-source')!.textContent).toBe('Example');
   });

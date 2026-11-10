@@ -268,5 +268,5 @@ it('words table notes, summary and the React source line in the table language',
   expect(geo.a11y.desc).toBe('Tabelle mit 3 Zeilen und 2 Spalten');
   const frame = tableFrame(resolveTable(data as TableData, options as TableOptions).table, options as never);
   expect(frame.source).toBe('Quelle: Internal data');
-  expect(frame.summary).toBe('Tabelle mit 3 Zeilen und 2 Spalten.');
+  expect(frame.summary).toBe('Tabelle mit 3 Zeilen und 2 Spalten');
 });

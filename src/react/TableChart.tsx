@@ -1,3 +1,6 @@
+import { plainText } from '../core/inlineBold';
+import { inlineBold } from './ChartFooter';
+import type { EngineNoteMeta } from '../core/notes';
 import type { OptionsInput } from '../core/types/optionInput';
 import { hasPolarityBadge, isFigureCell, polarityBadgeInk } from '../core/charts/table/chips';
 import { chartString } from '../core/strings/table';
@@ -78,6 +81,7 @@ import {
   ENGINE_NOTES,
   SOFT_LABEL_CAP,
   LABEL_WRAP_FLOOR,
+  SORT_CHEVRON_RESERVE,
   type TableFonts,
 } from '../core/charts/table/tracks';
 import { DEFAULT_EMPTY_MESSAGE } from '../core/emptyData';
@@ -103,7 +107,7 @@ import type {
 } from '../core/types/table';
 import { stickySettings } from '../core/charts/table/sticky';
 // Both table renderers share subtitles, source lines and note disclosure.
-import { insetTint, tableFrame, tableGroundTextStyle, tablePresentation, tableRenderTheme, tableStylesheet } from './tablePresentation';
+import { ENGINE_NOTE_KINDS, insetTint, tableFrame, tableGroundTextStyle, tablePresentation, tableRenderTheme, tableStylesheet } from './tablePresentation';
 import { useStableValue } from './useStableValue';
 import { PROBE_STYLE, useContainerSize, type ContainerSizeOptions } from './useContainerSize';
 import { useDisplayWarnings } from './useDisplayWarnings';
@@ -343,7 +347,11 @@ function encodeStructuralIds(ids: readonly Id[]): string {
 }
 
 /** The uncompiled request whose floor the HTML table must report. Internal to DimSwitch. */
-export const TableFloorRequestContext = createContext<{ request: ChartRequest; options: TableOptions } | undefined>(undefined);
+/**
+ * Values travel here, not as props: React 18 copies props with for…in, which drops symbol keys
+ * (the compiled options' engine notes). `printed` hears which notes the footer printed.
+ */
+export const TableFloorRequestContext = createContext<{ request: ChartRequest; options: TableOptions; printed?: (printed: readonly string[]) => void } | undefined>(undefined);
 
 /** One canvas and one width cache for every table on the page; a font swap clears the cache. */
 let measureContext: CanvasRenderingContext2D | undefined;
@@ -1057,6 +1065,18 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
   // A container table is laid out again at each width it is shown at, as a container chart is.
   const displayRef = useDisplayWarnings(settling ? undefined : diagnostics, onWarnings, null,
     size === 'container' && !container.printing ? layoutRequest?.size.width : undefined);
+  // The core's head text: a short last word stays on the line before it ("WEEK 1"), and a track
+  // narrower than a glued word takes the head broken at its spaces, as the SVG table draws it.
+  // A sort button shares the cell with its chevron, as the width solver reserves it.
+  const headTexts = useMemo(() => measured === undefined ? undefined : new Map(allColumns.map((column) => {
+    const glued = measured.columnHeaderText(column);
+    const track = measured.widths.get(column.id);
+    if (track === undefined || !glued.includes('\u00a0')) return [column.id, glued] as const;
+    const room = Math.round(track) - 2 * padX - (column.kind === 'rowLabel' ? measured.rowIndent(0) : 0)
+      - (sortableIds.has(column.id) ? SORT_CHEVRON_RESERVE : 0);
+    const fits = glued.split(' ').every((word) => width.measure(word.replace(/\u00a0/gu, ' '), measured.fonts.header).width <= room);
+    return [column.id, fits ? glued : glued.replace(/\u00a0/gu, ' ')] as const;
+  })), [measured, allColumns, padX, width.measure, sortableIds]);
   const headFonts = measured?.fonts;
   const frameRoom = !rowToFrame || tableOptions?.frameFill === 'none' ? undefined
     : available === undefined ? undefined : available - (measured?.spacerTotal ?? 0);
@@ -1521,11 +1541,22 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
   const rowTree = useMemo(() => tableRowTree(table?.rows ?? [], rootsHidden), [table, rootsHidden]);
   const rowPages = useMemo(() => rowWindowed ? Array.from({ length: Math.ceil(rowTree.length / ROW_PAGE) }, (_, index) => rowTree.slice(index * ROW_PAGE, (index + 1) * ROW_PAGE)) : [], [rowWindowed, rowTree]);
   // A dimswitch's disclosures ride on the props in ENGINE_NOTES; the request normalisation keeps string keys only.
-  const engineNotes = (options as { [ENGINE_NOTES]?: string[] })[ENGINE_NOTES];
+  const engineNotes = ((compiledRequest?.options ?? options) as { [ENGINE_NOTES]?: string[] })[ENGINE_NOTES];
   // The footnotes walk every cell: once per table and fold state, not on each scroll render.
+  const engineKinds = ((compiledRequest?.options ?? options) as { [ENGINE_NOTE_KINDS]?: ReadonlyMap<string, EngineNoteMeta> })[ENGINE_NOTE_KINDS];
+  // The footer lines wrap at the grid's width less the canvas padding and the cell air on both sides.
+  const footWidth = request === undefined ? 0
+    : request.size.width - (tableOptions?.margin?.left ?? 0) - (tableOptions?.margin?.right ?? 0) - 2 * padX;
   const frameMemo = useMemo(() => table === undefined || tableOptions === undefined ? undefined
-    : tableFrame(table, engineNotes ? { ...tableOptions, [ENGINE_NOTES]: engineNotes } as TableOptions : tableOptions, rows, columns),
-  [table, tableOptions, engineNotes, rows, columns]);
+    : tableFrame(table, engineNotes ? { ...tableOptions, [ENGINE_NOTES]: engineNotes, [ENGINE_NOTE_KINDS]: engineKinds } as TableOptions : tableOptions, rows, columns,
+      request === undefined || theme === undefined ? undefined : { width: footWidth, measure: width.measure, theme }),
+  [table, tableOptions, engineNotes, engineKinds, rows, columns, request, theme, footWidth, width.measure]);
+  // A composing chart (dimswitch) hears which notes the footer printed, the final decision after the line budget.
+  const onPrinted = compiledRequest?.printed;
+  const printedKey = frameMemo?.footnotes.map((note) => note.text).join('\n');
+  useEffect(() => {
+    if (printedKey !== undefined) onPrinted?.(printedKey === '' ? [] : printedKey.split('\n'));
+  }, [printedKey, onPrinted]);
   // A group that draws no heading keeps its meaning and gives up its row
   // in the head: where no group draws one, the head is one row.
   const headRowCount = (table?.columnGroups ?? []).some((group) => group.heading !== false) ? 2 : 1;
@@ -1585,6 +1616,8 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
   }
 
   const frame = frameMemo!;
+  // The small print's own weight: a **bold** run in a note or the source steps up from it.
+  const footWeight = theme.type.footnote.weight ?? 400;
   // The footnotes and the source line keep the cell's own air on both sides,
   // so at canvas margin 0 their text never meets the card's edge.
   const figureStyle = {
@@ -1616,7 +1649,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     ...(sticky.sections ? { '--bp-sections-top': sticky.head === 'page' ? `calc(${sticky.top}px + var(--bp-head-h,0px))` : sticky.head === 'table' ? 'var(--bp-head-h,0px)' : '0px' } : {}),
   } : undefined;
   // The scroller takes the grid's name once it overflows (markScrollRegion).
-  scrollLabel.current = frame.title || (typeof tableOptions.title === 'string' ? tableOptions.title : chartString(tableOptions, 'tableTitle'));
+  scrollLabel.current = plainText(frame.title ?? '') || (typeof tableOptions.title === 'string' ? tableOptions.title : chartString(tableOptions, 'tableTitle'));
   const gridProps = {
     role: isTree ? 'treegrid' : 'grid',
     'aria-label': scrollLabel.current,
@@ -1669,6 +1702,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
       pinned={pinned}
       trackColumn={trackColumn}
       theme={theme}
+      headTexts={headTexts}
       windowIds={windowIds}
       wideGroups={wideGroups}
       hidden={!headsShown}
@@ -1778,8 +1812,9 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
       )}
       {frame.footnotes.length > 0 ? (
         <ul className="bp-footnotes">
-          {frame.footnotes.map((footnote, index) => (
-            <li key={`${index}:${footnote}`}>{footnote}</li>
+          {/* A disclosure or method note prints its short form, as ChartFooter prints it. */}
+          {frame.footnotes.map((note) => (
+            <li key={note.n}>{inlineBold(note.kind === 'method' || note.kind === 'disclosure' ? note.short ?? note.text : note.text, theme, footWeight)}</li>
           ))}
         </ul>
       ) : null}
@@ -1790,12 +1825,12 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
         <>
           <details className="bp-notes">
             <summary>{frame.pointer}</summary>
-            <ul className="bp-footnotes">{frame.listed.map((note, index) => <li key={`${index}:${note}`}>{note}</li>)}</ul>
+            <ul className="bp-footnotes">{frame.listed.map((note) => <li key={note.n}>{inlineBold(note.text, theme, footWeight)}</li>)}</ul>
           </details>
-          <div className="bp-notes-print"><ul className="bp-footnotes">{frame.listed.map((note, index) => <li key={`${index}:${note}`}>{note}</li>)}</ul></div>
+          <div className="bp-notes-print"><ul className="bp-footnotes">{frame.listed.map((note) => <li key={note.n}>{inlineBold(note.text, theme, footWeight)}</li>)}</ul></div>
         </>
       ) : null}
-      {frame.source ? <p className="bp-source">{frame.source}</p> : null}
+      {frame.source ? <p className="bp-source">{inlineBold(frame.source, theme, footWeight)}</p> : null}
     </figure>
   );
   return wrap(withInteraction(figure));
@@ -1837,11 +1872,11 @@ function TableCaption({ frame, keyEntries, arrowEntries, theme }: {
   const keyed = keyEntries.length + arrowEntries.length > 0;
   if (!frame.title && !frame.subtitle && !keyed) return null;
   return <figcaption>
-    {frame.title ? <span className="bp-title">{frame.title}
+    {frame.title ? <span className="bp-title">{inlineBold(frame.title, theme, theme.type.title.weight ?? 400)}
       {frame.markerNotes ? <sup className="bp-footnote-marker" aria-label={frame.markerNotes}>1</sup> : null}
     </span> : null}
     {frame.title && frame.subtitle ? ' ' : null}
-    {frame.subtitle ? <span className="bp-subtitle">{frame.subtitle}</span> : null}
+    {frame.subtitle ? <span className="bp-subtitle">{inlineBold(frame.subtitle.segments.map((segment) => segment.text).join(''), theme, theme.type.subtitle.weight ?? 400)}</span> : null}
     {keyed ? <span className="bp-key" role="list" aria-label="Key">
       {keyEntries.map((entry) => <span key={entry.id} role="listitem">
         <i aria-hidden="true" style={{ background: resolvePaint(entry.fill, theme) }} />{entry.label}
@@ -1982,6 +2017,8 @@ interface TableHeadProps {
   trackColumn: ReadonlyMap<Id, number> | undefined;
   /** The head's case comes from `table.head.case`. */
   theme: Pick<Theme, 'table'> | undefined;
+  /** The head text of each column as the core draws it, once the tracks are measured. */
+  headTexts: ReadonlyMap<Id, string> | undefined;
   /** The columns a windowed table builds; undefined builds every column. */
   windowIds: ReadonlySet<Id> | undefined;
   /** Groups wider than the scroll box beside the pinned columns. */
@@ -2013,6 +2050,7 @@ const TableHead = memo(function TableHead({
   pinned,
   trackColumn,
   theme,
+  headTexts,
   windowIds,
   wideGroups,
   hidden,
@@ -2136,12 +2174,12 @@ const TableHead = memo(function TableHead({
         {columns.map((column) => {
           if (windowIds !== undefined && !windowIds.has(column.id)) {
             return hiddenColumns.has(column.id) ? null : (
-              <div key={column.id} role="columnheader" aria-colindex={columnIndices.get(column.id)} data-bp-lite="" style={liteStyle(trackColumn?.get(column.id))}>{columnHeadText(column, theme ?? {})}</div>
+              <div key={column.id} role="columnheader" aria-colindex={columnIndices.get(column.id)} data-bp-lite="" style={liteStyle(trackColumn?.get(column.id))}>{headTexts?.get(column.id) ?? columnHeadText(column, theme ?? {})}</div>
             );
           }
           const sortable = sortableIds.has(column.id);
           const active = sortable && sort?.column === column.id ? sort.direction : undefined;
-          const text = columnHeadText(column, theme ?? {});
+          const text = headTexts?.get(column.id) ?? columnHeadText(column, theme ?? {});
           return (
             <div
               key={column.id}

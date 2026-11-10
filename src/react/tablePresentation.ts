@@ -1,5 +1,5 @@
-import { tableDisplayFloor, tableFrameMode } from '../core/charts/table/widths';
-import type { BaseOptions, Subtitle } from '../core/types/options';
+import { columnHeadText, tableDisplayFloor, tableFrameMode } from '../core/charts/table/widths';
+import type { BaseOptions } from '../core/types/options';
 import { compositeColor, contrastRatio, mixColors } from '../core/color';
 import { isSafeSvgColor, resolvePaint } from '../core/svg/paint';
 import {
@@ -22,11 +22,16 @@ import { interactionTokens } from '../core/a11y/theme';
 import { INLINE_LINE_RATIO, LINE_BOX_EPSILON, LINE_RATIO, levelLadder, type TableDensity } from '../core/charts/table/ladder';
 import { chipPaints, onTableGround, tableGround, toneTextPaint } from '../core/charts/table/chips';
 import { CHANGE_LINE_MIN_PX, CHANGE_LINE_SIZE_STEP_PX, changeLineFont, ENGINE_NOTES, INLINE_LABEL_INDENT, tableFonts } from '../core/charts/table/tracks';
-import { resolveCanvasOptions, resolveSubtitle } from '../core/normalize/shared';
+import { resolveCanvasOptions, resolveSize, resolveSubtitle } from '../core/normalize/shared';
 import { numericVariant } from '../core/textRole';
-import { tableFootnotes } from '../core/charts/table/view';
-import { defaultNotePlacement, notesPanelLabel, notesPointer, sourceLine } from '../core/notes';
-import { authoredNotes, subtitleLine } from '../core/frame';
+import { EMPTY_ROW_ID, tableFootnotes } from '../core/charts/table/view';
+import { footerParts, notesPanelLabel, notesPointer, shownNoteKinds, type EngineNoteMeta } from '../core/notes';
+import { frameText } from '../core/frameText';
+import { plainText } from '../core/inlineBold';
+import { defaultMeasurer, type TextMeasurer } from '../core/text';
+import { emphasisWeight, resolveTheme } from '../core/theme';
+import { textScaleOf } from '../core/typeFloors';
+import { authoredNotes, unitUnprinted } from '../core/frame';
 import { omittedCompactNotes } from '../core/compact';
 import { localeStrings } from '../core/strings';
 import { chartString } from '../core/strings/table';
@@ -53,7 +58,7 @@ export function tablePresentation(request: ResolvedChartRequest, table: Resolved
     tableFrame(table, request.options as TableOptions));
 }
 
-interface RenderTableHtmlOptions extends Pick<BaseOptions, 'title' | 'subtitle' | 'unit' | 'source' | 'footnotes' | 'notes' | 'target' | 'mode' | 'size' | 'margin' | 'canvas' | 'strings' | 'locale' | 'a11y'> {
+interface RenderTableHtmlOptions extends Pick<BaseOptions, 'title' | 'subtitle' | 'unit' | 'source' | 'footnotes' | 'notes' | 'target' | 'mode' | 'size' | 'margin' | 'canvas' | 'strings' | 'locale' | 'a11y' | 'theme' | 'textScale' | 'textSize'> {
   caption?: string;
   interactive?: boolean;
   stickyLabels?: StickyLabels;
@@ -98,12 +103,27 @@ const COHORT_GROWTH = '\n.bp-table-grid[data-bp-density^="cohort"] [role="row"]>
 const MANY_LABEL_LINES = '\n.bp-table-grid[data-bp-label-lines]:not([data-bp-label-lines="1"]) [role="rowheader"] .bp-value{-webkit-line-clamp:var(--bp-label-lines)}'
   + '\n.bp-table-grid[data-bp-label-lines] [data-bp-defer-row]{contain-intrinsic-size:auto calc(var(--bp-label-size)*var(--bp-line-ratio) + 2*var(--bp-pad-anchor) + 1px + var(--bp-defer-lines,0)*(var(--bp-inline-box) + var(--bp-inline-gap)) + var(--bp-defer-label-lines,0)*round(up,calc(var(--bp-label-size)*var(--bp-line-ratio)),1px))}';
 
-/** HTML framing shares notes and mode selection with the React table. */
+/** The React footer the notes wrap in: its width and the measurer of the grid. */
+export interface TableFooter {
+  width: number;
+  measure: TextMeasurer;
+  theme: Theme;
+}
+
+/** Disclosure kinds a composing layout (dimswitch) gave its \`ENGINE_NOTES\`, by text. */
+export const ENGINE_NOTE_KINDS = Symbol('tableEngineNoteKinds');
+
+/**
+ * The React table's frame text, from the core's frame text function: title, subtitle with its
+ * unit clause, the notes the footer prints, the notes behind the pointer and the source line.
+ * The notes are the SVG table's, composed in the same order with the same kinds.
+ */
 export function tableFrame(
   table: ResolvedTable,
   options: RenderTableHtmlOptions,
   rows: readonly ResolvedRow[] = table.rows,
   columns: readonly ResolvedColumn[] = table.columns,
+  footer?: TableFooter,
 ) {
   options = resolveCanvasOptions(options);
   const title = options.title === false ? undefined : options.title;
@@ -111,66 +131,58 @@ export function tableFrame(
     ? `${options.margin.top ?? 0}px ${options.margin.right ?? 0}px ${options.margin.bottom ?? 0}px ${options.margin.left ?? 0}px`
     : undefined;
   const mode = tableFrameMode(options);
-  const subtitle = subtitleText(options.subtitle, table.unit ?? options.unit);
-  const authored = authoredNotes(options);
+  const language = options.locale?.language;
   const markerNotes = mode === 'compact' ? omittedCompactNotes('table', options) : [];
-  // The list is not an <ol>: no note carries a number, the author's
-  // included. Nothing in a table points at one, and a
-  // "1)" that no head or cell refers to is a number the reader cannot
-  // follow; the SVG table prints its notes the same way. `footnotes: false`
-  // hands the author's notes to the host and keeps the engine's disclosures,
-  // as the SVG frame does.
-  // As in the SVG table, the
-  // engine's notes are disclosures: they print only where `notes.show` lists
-  // 'disclosure', else they sit in the 'info' panel. The author's notes are
-  // notes, first, and print where `notes.placement` is 'frame' and
-  // `notes.show` keeps 'note'. Elsewhere ('info', the dashboard default, or
-  // 'list') they sit behind the pointer, as in ChartFooter.
-  // A dimswitch hands its own disclosures (partial period, n.m., hidden periods) on in ENGINE_NOTES, after the table's.
-  const derived = [...tableFootnotes(table, rows, columns, options.locale?.language), ...((options as { [ENGINE_NOTES]?: string[] })[ENGINE_NOTES] ?? [])];
-  const notes = options.footnotes === false || markerNotes.length > 0 ? [] : authored;
-  const placement = options.notes?.placement ?? defaultNotePlacement(options.target);
-  const framed = placement === 'frame' && (options.notes?.show ?? ['note']).includes('note');
-  // An authored `notes.maxLines` holds the notes and the source line, as in the SVG; the rest go behind the pointer.
-  // shortcut: one note counts as one line here (the grid wraps after layout); count wrapped lines if a host needs it.
-  const budget = options.notes?.maxLines === undefined ? Infinity : Math.max(0, options.notes.maxLines - (options.source ? 1 : 0));
-  const inFrame = framed ? notes.slice(0, budget) : [];
-  const disclosed = (options.notes?.show ?? []).includes('disclosure');
-  const footnotes = [...inFrame, ...(disclosed ? derived : [])];
-  const listed = options.notes?.pointer === false ? [] : [...notes.slice(inFrame.length), ...(!disclosed && placement === 'info' ? derived : [])];
-  const words = { ...localeStrings(options.locale?.language), ...options.strings };
+  // A compact card names its notes at the title marker; the author's notes leave the footer.
+  const authored = markerNotes.length > 0 ? [] : authoredNotes(options);
+  const engine = (options as { [ENGINE_NOTES]?: string[] })[ENGINE_NOTES] ?? [];
+  const kinds = (options as { [ENGINE_NOTE_KINDS]?: ReadonlyMap<string, EngineNoteMeta> })[ENGINE_NOTE_KINDS];
+  const theme = footer?.theme ?? resolveTheme(options.theme);
+  const width = resolveSize(options.size).width;
+  const authoredSubtitle = resolveSubtitle(options.subtitle);
+  // The unit line: a declared unit that no head, cell, note or subtitle prints stands where the subtitle goes, as in the SVG.
+  const unitLine = authoredSubtitle === undefined && panelTypeClass(options) === undefined && unitUnprinted(options as Record<string, unknown>, {
+    type: 'table',
+    *texts() {
+      if (title) yield title;
+      for (const column of columns) yield columnHeadText(column, theme);
+      for (const row of rows) { yield row.label; for (const column of columns) { const cell = row.cells[column.id]; if (cell) yield cell.displayed; } }
+      yield* authored;
+      if (options.source) yield options.source;
+    },
+  });
+  const subtitle = authoredSubtitle ?? (unitLine ? { measure: options.unit!.trim() } : undefined);
+  const text = frameText({
+    target: options.target, title, subtitle, unit: table.unit ?? options.unit,
+    source: options.source,
+    // The core line budget: notes.maxLines, else the target default, in wrapped lines of the React footer.
+    notes: { ...options.notes, show: shownNoteKinds(options) as never }, strings: { ...localeStrings(language), ...options.strings },
+    footnotes: [
+      ...tableFootnotes(table, rows, columns, language).map((note) => ({ text: note, meta: { kind: 'disclosure' as const } })),
+      ...authored.map((note) => ({ text: note })),
+      ...engine.map((note) => ({ text: note, meta: kinds?.get(note) ?? { kind: 'disclosure' as const } })),
+    ],
+    footnotesOff: options.footnotes === false, numberedFootnotes: authored, unreferencedNotes: authored.map((_, i) => i + 1),
+    width, footWidth: footer?.width ?? width, footFont: { family: theme.type.family, ...footerType(theme.type.footnote, options.target, textScaleOf(options)) },
+    boldWeight: emphasisWeight(theme), measure: footer?.measure ?? defaultMeasurer,
+    // The React grid is a live surface: under 'info' its button lists every note the footer leaves off.
+    policy: { pinned: false, live: true },
+  });
+  const words = { ...localeStrings(language), ...options.strings };
+  const { shown, panel } = footerParts(text.noteList, text.placement, shownNoteKinds(options), text.pointerOn);
   return {
-    mode, title, subtitle, source: options.source && sourceLine(options.source, options.strings?.source ?? localeStrings(options.locale?.language).source), footnotes, padding,
-    listed,
-    pointer: listed.length === 0 ? undefined : placement === 'info' ? notesPanelLabel(listed.length, words.notesAndSources) : notesPointer(listed.length, words),
+    mode, title, subtitle: text.subtitle, source: text.sourceOff ? undefined : text.sourceText, padding,
+    footnotes: shown, listed: panel,
+    pointer: panel.length === 0 ? undefined : text.placement === 'info' ? notesPanelLabel(panel.length, words.notesAndSources) : notesPointer(panel.length, words),
     markerNotes: markerNotes.join(' '),
     // The author's accessible description replaces the generated summary, as it does in the SVG.
-    summary: options.a11y?.description ?? options.caption ?? [title, subtitle,
-      `${chartString(options, 'tableDesc', { v1: String(table.rows.length), v2: String(table.columns.length) })}.`]
-      .filter((part): part is string => Boolean(part)).join(' · '),
+    // The SVG table's description, counted on the view on screen: the expanded rows and the shown columns,
+    // without the row an empty table draws. The grid carries the title as its name, so this does not repeat it.
+    summary: plainText(options.a11y?.description ?? options.caption
+      ?? chartString(options, 'tableDesc', { v1: String(rows.filter((row) => row.id !== EMPTY_ROW_ID).length), v2: String(columns.length) })),
   };
 }
 
-/**
- * The subtitle line as plain text — ONE implementation for every
- * string-emitting surface: this renderer and `TableChart`, which imports it
- * from here instead of keeping a second copy.
- *
- * `resolveSubtitle` first, because `subtitle` is a union of string and object
- * and the STRING form is the common authoring one.
- * Treating it as an opaque label dropped the unit on the floor: the SVG of the
- * same table printed "Revenue in $M" while this surface printed "Revenue" over
- * cells whose $M had already been HOISTED out of them — the money lost its
- * scale on one surface only.
- */
-function subtitleText(
-  subtitle: string | Subtitle | undefined,
-  unit: string | undefined,
-): string | undefined {
-  const sub = resolveSubtitle(subtitle);
-  if (sub === undefined) return undefined;
-  return subtitleLine(unit ? { ...sub, measure: `${sub.measure} in ${unit}` } : sub);
-}
 
 /** The head paddings a theme sets, as stylesheet variable names and px. */
 function headPadVars(theme: Theme): [string, number][] {
