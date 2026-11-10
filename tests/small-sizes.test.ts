@@ -806,6 +806,22 @@ describe('the cost of a size refusal', () => {
     } finally { spy.mockRestore(); }
     expect(capped).toBe(1);
   });
+
+  // A caller that edits the prepared data of a resolved diagram between two refused renders got the advice of the data before the edit.
+  it('advises on the prepared data as edited between two refused renders', () => {
+    const team = (id: string) => ({ id, kind: 'entity', shape: { kind: 'roundedRect' }, label: `Regional sales team ${id}` });
+    const spec = () => ({ type: 'diagram', data: { nodes: [team('north')], edges: [] as unknown[] }, options: { variant: 'hierarchy', title: 'Sales structure', size: { width: 120 } } });
+    const grow = (data: { nodes: unknown[]; edges: unknown[] }) => ['east', 'south', 'west', 'central'].forEach((id, index, ids) => {
+      data.nodes.push(team(id));
+      data.edges.push({ id: `to-${id}`, source: { nodeId: index ? ids[index - 1]! : 'north' }, target: { nodeId: id } });
+    });
+    const request = resolveChartRequest(spec() as never);
+    expect(layoutResolvedRequest(request).refused).toBe(true);
+    grow(request.data as never);
+    const edited = spec();
+    grow(edited.data);
+    expect(layoutResolvedRequest(request).warnings[0]).toEqual(layoutResolvedRequest(resolveChartRequest(edited as never)).warnings[0]);
+  });
 });
 
 // Prevents a pinned slope from refusing a 180–269 px slot where its end labels fit, from drawing a

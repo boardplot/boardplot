@@ -2,7 +2,7 @@ import { fractionLineWarnings, prepareFractionAnnotations, percentScaleWarnings 
 import { readFormatExamples } from './formatSpec';
 import { colorVariableWarnings } from './colorVariables';
 import { drawnRequest } from './drawnRequest';
-import { PLAN_ONLY, withPlanInputs, copyPlannedValue, optionKey, repeatedResult, requestKey } from './layoutPlan';
+import { PLAN_ONLY, withPlanInputs, contentKey, copyPlannedValue, repeatedResult } from './layoutPlan';
 import { loadedDeferred } from './deferred';
 import { shownNoteKinds } from './notes';
 import { canonicalChartType, getChart } from './registry';
@@ -257,7 +257,7 @@ export function resolveChartRequest<D, O extends object>(
   options.measure = fontMetrics;
   const data = prepared(def, read.data, options) as D;
   if (data !== authoredData && data !== null && typeof data === 'object' && authoredData !== null && typeof authoredData === 'object') {
-    preparedFrom.set(data, { data: authoredData, options });
+    preparedFrom.set(data, authoredData);
   }
   const inputWarnings = [...shaped.warnings, ...retired.warnings, ...read.warnings, ...requestInputWarnings(def.type, def.type === 'grid' ? data : input.data, { ...options, annotations: authoredAnnotations },
     input.annotations === undefined ? '/options/annotations' : '/annotations'),
@@ -279,10 +279,10 @@ export function resolveChartRequest<D, O extends object>(
 }
 
 /**
- * The data a prepared copy was made from, and the options it was made with. A host keeps its data object
- * across calls, while a prepare step or a format example makes a new copy on each (`refusedProbes`).
+ * The data a prepared copy was made from. A host keeps its data object across calls, while a prepare
+ * step or a format example makes a new copy on each (`refusedProbes`).
  */
-const preparedFrom = new WeakMap<object, { data: object; options: object }>();
+const preparedFrom = new WeakMap<object, object>();
 
 /**
  * The data a layout reads. A prepare step that finds nothing to prepare (a chart with an
@@ -701,14 +701,10 @@ function refusedProbes(request: ResolvedChartRequest, verify: boolean): Map<numb
   const { type, theme, target, fixed, inputWarnings } = request;
   // The static footer changes a chart's size once a static entry links it.
   const footer = loadedDeferred('footer') !== undefined;
-  // A prepared copy is new on each call: the store belongs to the data it was made from, and the key holds
-  // that data's content and the options it was prepared with, the size left out.
-  const source = preparedFrom.get(request.data);
-  const owner = source?.data ?? request.data;
-  const key = withPlanInputs(() => {
-    const { size: _made, ...made } = (source?.options ?? {}) as RequestOptions;
-    return requestKey(owner, options, { type, theme, target, fixed, inputWarnings, footer, verify, ...(source ? { prepared: optionKey(made) } : {}) });
-  });
+  // A prepared copy is new on each call: the store belongs to the data it was made from. The key holds the
+  // content of the data the layout reads, so an edit of either object lays out again.
+  const owner = preparedFrom.get(request.data) ?? request.data;
+  const key = withPlanInputs(() => contentKey(request.data as object, options, { type, theme, target, fixed, inputWarnings, footer, verify }));
   let byKey = refusedSearches.get(owner);
   if (!byKey) refusedSearches.set(owner, byKey = new Map());
   if (byKey.size >= 4 && !byKey.has(key)) byKey.delete(byKey.keys().next().value!);

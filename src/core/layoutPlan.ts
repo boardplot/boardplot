@@ -240,6 +240,12 @@ export function copyPlannedValue<T>(value: T, copies = new Map<object, unknown>(
 
 const requestResults = new WeakMap<object, Map<string, unknown>>();
 
+/** The key of a public request by the content of its data: equal for two copies of the same data. */
+export function contentKey(data: object, options: object, resolved: object): string {
+  const cap = typeClassCap();
+  return `${cap ? cap + ':' : ''}${inputJson(data)}:${optionKey(options)}:${inputJson(resolved)}`;
+}
+
 /** The key of a public request: data and options by content, and the resolved fields (type, theme, target ...). */
 export function requestKey(data: object, options: object, resolved: object): string {
   return `${layoutKey(data, options)}:${inputJson(resolved)}`;
