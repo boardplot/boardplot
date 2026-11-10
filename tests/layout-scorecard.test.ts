@@ -35,6 +35,30 @@ const sample = () => {
 };
 const caseItem = { fixture: 'line/check', width: 400, theme: 'authored', height: 'auto', setting: 'default' };
 
+// Reference paths keep two decimals, so a label seated on the 3 px floor must not read as too close.
+it('allows path rounding in the reference clearance and keeps a real shortfall', () => {
+  const geometry = measure(sample()).geometry!;
+  const label = geometry.labels.find(entry => !entry.hidden && geometry.scene.some(node => node.id === entry.nodeId))!;
+  const r1 = (gap: number) => {
+    const y = label.rect.y - gap;
+    const scene = [...geometry.scene.filter(node => node.id === label.nodeId),
+      { t: 'path', id: 'ref', part: 'reference', d: `M${label.rect.x} ${y}L${label.rect.x + label.rect.w} ${y}` }];
+    return auditGeometry(caseItem, sample(), { ...geometry, scene, labels: [label] } as never)
+      .filter((f: { rule: string }) => f.rule === 'R1');
+  };
+  expect(r1(2.995)).toEqual([]);
+  expect(r1(2.98)).toHaveLength(1);
+});
+
+// The frame draws a bold title or subtitle without its ** markers; the authored text must match the drawn text.
+it('compares a bold title and subtitle without their markers', () => {
+  for (const subtitle of ['**Revenue** in EUR m', { measure: '**Revenue**', period: '2025' }]) {
+    const request = { type: 'column', data: { categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], series: [{ id: 'v', label: 'Revenue', values: [1, 2] }] },
+      options: { title: '**Revenue** by year', subtitle, unit: 'EUR m', size: { width: 480 } } };
+    expect(auditGeometry(caseItem, request, measure(request as never).geometry!).filter((f: { rule: string }) => f.rule === 'S3')).toEqual([]);
+  }
+});
+
 // Table cards may shrink at a narrower width; chart families that retain the height floor still fail S2.
 it('checks height ordering only for chart types that retain the wider-card floor', () => {
   const geometry = { size: { height: 200 } };
