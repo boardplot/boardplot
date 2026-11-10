@@ -64,6 +64,7 @@ import type { Geometry, LintWarning } from '../../types/scene';
 import { layoutColumn } from '../column/layout';
 import { labelOn } from '../labelOn';
 import { TILED_BANDS } from '../column/plot';
+import { HOST_CLAIMS, withUnprintedClaims, type HostClaims } from '../../claims/ids';
 import { axisTitleAllowed } from '../../axis';
 import { localeStrings, stringFields } from '../../strings';
 import { AUTO_LEGEND, isAutomaticLegend } from '../../legendPolicy';
@@ -467,6 +468,11 @@ export function layoutHistogram(
     ],
   } as ChartData);
   let delegateData = countData(false);
+  // A bin's count label prints its claim. A share label (percent axis) prints another number, so it names none.
+  const binClaims: HostClaims = (request) => {
+    const index = request.kind === 'point' && !options.valueAxis?.percent ? counts.findIndex((_, i) => binId(i) === request.owner.categoryId) : -1;
+    return index >= 0 ? [`histogram:bin:${index}`] : undefined;
+  };
 
   /**
    * Explicit passthrough, never a spread of the caller's options: a spread
@@ -534,6 +540,7 @@ export function layoutHistogram(
     ...(captioned ? { axisTitles: { primary: caption } } : options.axisTitles?.y === undefined || !frequencyAxis ? {} : { axisTitles: { primary: options.axisTitles.y } }),
     bandFraction: options.bandFraction ?? 1,
     [TILED_BANDS]: true,
+    [HOST_CLAIMS]: binClaims,
     } as ColumnOptions;
   };
 
@@ -857,12 +864,18 @@ export function layoutHistogram(
       : formatAutomaticNumber(counts[index]!, { locale: options.locale?.language, decimals: 0 })} (${binLabels[index]})`;
   }
 
-  return {
+  // The quantiles are never printed. A bin prints no count where the histogram turns its label off or prints its share.
+  const pointsOff = options.labels === false || (options.labels?.point === false && !open) || options.valueAxis?.percent === true;
+  const withheld = counts.flatMap((_, index) => {
+    const value = delegateData.series[0]!.values[index];
+    return pointsOff || (typeof value === 'object' && value !== null && (value as { label?: unknown }).label === false) ? [`histogram:bin:${index}`] : [];
+  });
+  return withUnprintedClaims({
     ...column,
     type: 'histogram',
     size,
     marks: { bars: column.marks.bars, bins },
     derived,
     warnings: [...warnings, ...column.warnings],
-  };
+  }, [...withheld, 'histogram:q1', 'histogram:median', 'histogram:q3']);
 }

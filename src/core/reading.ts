@@ -100,6 +100,8 @@ interface DerivedNumber {
   op: string;
   operation: string;
   displayed: string;
+  /** What the value means in words, where the chart type has a description; `displayed` is the printed text. */
+  description?: string;
   /** Whether a final label or other published text displays this calculation. */
   visible: boolean;
   /** Destination when the displayed value is published in a note. */
@@ -118,6 +120,7 @@ function derivedNumbers(claims: readonly ClaimRecordV1[]): DerivedNumber[] {
     op: claim.op,
     operation: operationWords(claim.op),
     displayed: claim.output.displayed || 'Not displayed',
+    ...(claim.description ? { description: claim.description } : {}),
     visible: claim.output.displayed.length > 0,
     ...(claim.noteLocation ? { noteLocation: claim.noteLocation } : {}),
     ...(claim.drawn === false ? { drawn: false as const } : {}),
