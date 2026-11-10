@@ -91,6 +91,11 @@ const affix = (m: DimSwitchMeasure): string | undefined => {
   return (m.unit === '%' || m.unit === 'pp') && (kind === 'percent' || kind === 'pp') ? undefined : m.unit;
 };
 interface Value { raw: number | null; state: CellState; blank?: boolean; nearZero?: true; negativeBase?: true }
+/** The pointer of the one authored entry of `list` with this id, or no pointer ([]): React compiles without the schema, so an id can repeat there. */
+const pointAt = (at: readonly (string | number)[], list: readonly { id: string }[], id: string, ...field: string[]): (string | number)[] => {
+  const hits = list.flatMap((entry, index) => entry.id === id ? [index] : []);
+  return hits.length === 1 ? [...at, hits[0]!, ...field] : [];
+};
 const combine = (op: 'add' | 'sub' | 'mul' | 'div', a: number, b: number) => op === 'sub' ? cleanDiff(a, b) : op === 'add' ? cleanSum([a, b]) : op === 'mul' ? a * b : a / b;
 function evaluate(expr: DimSwitchExpression, sums: DimSwitchSums | undefined, total?: DimSwitchSums): Value {
   if (typeof expr === 'number') return { raw: expr, state: 'value' };
@@ -213,16 +218,16 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   };
   const variant = options.variant ?? 'by-measure', depth = options.depth ?? 1;
   // Nothing to put in a cell: the one empty-data code, as for every other type (a view with no measure still draws its head and one row, below).
-  if (!data.periods.length || !data.facts.length) throw new NormalizeError(EMPTY_DATA, !data.periods.length ? 'periods' : 'facts', `dimswitch requires at least one ${!data.periods.length ? 'period' : 'fact'}`);
+  if (!data.periods.length || !data.facts.length) throw new NormalizeError(EMPTY_DATA, !data.periods.length ? 'periods' : 'facts', `dimswitch requires at least one ${!data.periods.length ? 'period' : 'fact'}`, undefined, undefined, ['data', !data.periods.length ? 'periods' : 'facts']);
   const range = data.periods.find(p=>p.kind === 'range')!, prior = data.periods.find(p=>p.kind === 'prior')!;
-  if (!range || !prior) throw new NormalizeError('invalid-data', 'periods', 'dimswitch requires one range and one prior period', 'Give periods one period of kind range and one of kind prior. To hide their columns, keep both and set options.columnVisibility to { range: false, pp: false }.');
+  if (!range || !prior) throw new NormalizeError('invalid-data', 'periods', 'dimswitch requires one range and one prior period', 'Give periods one period of kind range and one of kind prior. To hide their columns, keep both and set options.columnVisibility to { range: false, pp: false }.', undefined, ['data', 'periods']);
   const authoredPeriods = hostPeriods(data, options), plan = data.periods.find(p=>p.kind==='plan');
   const hidden = authoredPeriods.slice(0, form.hide ?? 0), periods = authoredPeriods.slice(hidden.length);
   // options.columnVisibility takes a block column out. Range still orders and shows members, but nothing of the column prints.
   const blockColumns = ['range', 'pp', ...(plan ? ['pl'] : [])].filter(id => options.columnVisibility?.[id] !== false);
   const drawnBlock = new Set(blockColumns), rangeDrawn = drawnBlock.has('range');
   const blockCells = () => { const cells: Record<string, TableCell> = emptyIdRecord(); for (const id of blockColumns) cells[id] = null; return cells; };
-  if (data.periods.filter(p=>p.kind==='plan').length>1) throw new NormalizeError('invalid-count', 'periods', 'dimswitch permits at most one plan period', 'keep one period of kind plan');
+  if (data.periods.filter(p=>p.kind==='plan').length>1) throw new NormalizeError('invalid-count', 'periods', 'dimswitch permits at most one plan period', 'keep one period of kind plan', undefined, ['data', 'periods']);
   for (const setting of [options.thresholds,options.thresholds?.period,options.thresholds?.prior,options.thresholds?.plan]) for (const family of ['volume','cost','rate','effect'] as const) {
     const pair=setting?.[family];
     if (pair && (!pair.every(Number.isFinite) || !(pair[0]>=0 && pair[0]<=pair[1]))) throw new NormalizeError('invalid-number', 'options.thresholds', `dimswitch thresholds.${family} must satisfy 0 <= first <= second.`);
@@ -231,19 +236,22 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   let memberLevels=0;
   for (const member of data.dimension.members) {
     const seen=new Set<string>(); let current:DimSwitchMember|undefined=member; let level=0;
+    let child: DimSwitchMember | undefined;
     while(current) {
-      if(seen.has(current.id)) throw new NormalizeError('parent-cycle', 'dimension.members', 'dimswitch member hierarchy contains a cycle');
+      // The parentId of the member before closes the cycle.
+      if(seen.has(current.id)) throw new NormalizeError('parent-cycle', 'dimension.members', 'dimswitch member hierarchy contains a cycle', undefined, undefined, pointAt(['data', 'dimension', 'members'], data.dimension.members, child!.id, 'parentId'));
       seen.add(current.id);level++;
       const parent: string | undefined=current.parentId;
-      if(parent && !memberIndex.has(parent)) throw new NormalizeError('parent-missing', 'dimension.members', `Unknown dimswitch parent ${parent}`);
-      current=parent ? memberIndex.get(parent) : undefined;
+      if(parent && !memberIndex.has(parent)) throw new NormalizeError('parent-missing', 'dimension.members', `Unknown dimswitch parent ${parent}`, undefined, undefined, pointAt(['data', 'dimension', 'members'], data.dimension.members, current.id, 'parentId'));
+      child=current; current=parent ? memberIndex.get(parent) : undefined;
     }
     memberLevels=Math.max(memberLevels,level);
   }
   const measures = new Map(data.measures.map(m=>[m.id,m]));
-  const measure = (id: string, from: string) => {
+  // `field` is the field of measure `from` that names `id`.
+  const measure = (id: string, from: string, field: string) => {
     const m = measures.get(id);
-    if (!m) throw new NormalizeError('calc-ref-missing', 'measures', `dimswitch measure '${from}' names unknown measure '${id}'; use a measures[].id.`);
+    if (!m) throw new NormalizeError('calc-ref-missing', 'measures', `dimswitch measure '${from}' names unknown measure '${id}'; use a measures[].id.`, undefined, undefined, pointAt(['data', 'measures'], data.measures, from, field));
     return m;
   };
   const warnings: CompiledDimSwitch['warnings'] = [];
@@ -288,14 +296,14 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
 
   // ---------- the statement: parts, drivers, results ----------
   const driverOwner = new Map<string, string>();
-  for (const m of data.measures) if (m.drivers !== undefined) {
+  for (const [index, m] of data.measures.entries()) if (m.drivers !== undefined) {
     const ids = refs(m.drivers);
-    if (!ids.length || fields(m.drivers).length || usesTotal(m.drivers)) throw new NormalizeError('invalid-data', 'measures', `dimswitch measure '${m.id}': drivers is a formula over { measure } references and numbers, not sums fields.`);
-    if (new Set(ids).size > 6) throw new NormalizeError('invalid-data', 'measures', `dimswitch measure '${m.id}': at most 6 drivers; the effect split evaluates every order of them.`);
+    if (!ids.length || fields(m.drivers).length || usesTotal(m.drivers)) throw new NormalizeError('invalid-data', 'measures', `dimswitch measure '${m.id}': drivers is a formula over { measure } references and numbers, not sums fields.`, undefined, undefined, ['data', 'measures', index, 'drivers']);
+    if (new Set(ids).size > 6) throw new NormalizeError('invalid-data', 'measures', `dimswitch measure '${m.id}': at most 6 drivers; the effect split evaluates every order of them.`, undefined, undefined, ['data', 'measures', index, 'drivers']);
     for (const id of ids) {
-      const driver = measure(id, m.id);
-      if (id === m.id || driverOwner.has(id) && driverOwner.get(id) !== m.id) throw new NormalizeError('invalid-data', 'measures', `dimswitch measure '${id}': a driver explains one other line; '${m.id}' and '${driverOwner.get(id) ?? m.id}' both name it.`);
-      if (driver.sign !== undefined || driver.result || driver.drivers !== undefined) throw new NormalizeError('invalid-data', 'measures', `dimswitch measure '${id}': a driver takes no sign, result or drivers; it is printed, never added.`);
+      const driver = measure(id, m.id, 'drivers');
+      if (id === m.id || driverOwner.has(id) && driverOwner.get(id) !== m.id) throw new NormalizeError('invalid-data', 'measures', `dimswitch measure '${id}': a driver explains one other line; '${m.id}' and '${driverOwner.get(id) ?? m.id}' both name it.`, undefined, undefined, ['data', 'measures', index, 'drivers']);
+      if (driver.sign !== undefined || driver.result || driver.drivers !== undefined) throw new NormalizeError('invalid-data', 'measures', `dimswitch measure '${id}': a driver takes no sign, result or drivers; it is printed, never added.`, undefined, undefined, pointAt(['data', 'measures'], data.measures, id, driver.sign !== undefined ? 'sign' : driver.result ? 'result' : 'drivers'));
       driverOwner.set(id, m.id);
     }
   }
@@ -305,19 +313,23 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   for (const start of data.measures) {
     const path = new Map<string, number>();
     const edges: string[] = [];
+    let child: DimSwitchMeasure | undefined;
     let current: DimSwitchMeasure | undefined = start;
     while (current && !placed.has(current.id)) {
       const cycleAt = path.get(current.id);
       if (cycleAt !== undefined) throw new NormalizeError('invalid-data', 'measures',
         `dimswitch measure placement forms a cycle: ${edges.slice(cycleAt).join('; ')}.`,
-        'remove one partOf or drivers reference in this cycle');
+        'remove one partOf or drivers reference in this cycle', undefined,
+        // The edge out of the line before closes the cycle: its partOf, or the drivers of its owner.
+        child!.partOf !== undefined ? pointAt(['data', 'measures'], data.measures, child!.id, 'partOf') : pointAt(['data', 'measures'], data.measures, driverOwner.get(child!.id)!, 'drivers'));
       path.set(current.id, edges.length);
       const parent = current.partOf ?? driverOwner.get(current.id);
       if (parent === undefined) break;
       edges.push(current.partOf !== undefined
         ? `'${current.id}'.partOf -> '${parent}'`
         : `'${current.id}' is a driver in '${parent}'.drivers`);
-      current = measure(parent, current.id);
+      child = current;
+      current = measure(parent, current.id, 'partOf');
     }
     for (const id of path.keys()) placed.add(id);
   }
@@ -327,25 +339,25 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   const partsOf = (id: string) => data.measures.filter(m => m.partOf === id && !isDriver(m));
   const childrenOf = (id: string) => data.measures.filter(m => placeOf(m) === id);
   const isSubtotal = (m: DimSwitchMeasure) => partsOf(m.id).length > 0;
-  for (const m of data.measures) {
+  for (const [index, m] of data.measures.entries()) {
     if (m.partOf !== undefined) {
-      const parent = measure(m.partOf, m.id);
-      if (m.parentId !== undefined || m.splitOf !== undefined || parent.parentId !== undefined || parent.splitOf !== undefined) throw new NormalizeError('invalid-data', 'measures', `dimswitch measure '${m.id}': partOf and split fields (parentId, splitOf) do not mix.`);
-      if (parent.result) throw new NormalizeError('invalid-data', 'measures', `dimswitch measure '${m.id}': a result has no parts; name its lines in its value instead.`);
+      const parent = measure(m.partOf, m.id, 'partOf');
+      if (m.parentId !== undefined || m.splitOf !== undefined || parent.parentId !== undefined || parent.splitOf !== undefined) throw new NormalizeError('invalid-data', 'measures', `dimswitch measure '${m.id}': partOf and split fields (parentId, splitOf) do not mix.`, undefined, undefined, ['data', 'measures', index, 'partOf']);
+      if (parent.result) throw new NormalizeError('invalid-data', 'measures', `dimswitch measure '${m.id}': a result has no parts; name its lines in its value instead.`, undefined, undefined, ['data', 'measures', index, 'partOf']);
     }
-    if (m.result && (m.sign !== undefined || m.partOf !== undefined || m.value === undefined)) throw new NormalizeError('invalid-data', 'measures', `dimswitch measure '${m.id}': a result is a top-level line with a value that names its lines, e.g. { "op": "sub", "a": { "measure": "income" }, "b": { "measure": "costs" } }; it takes no sign or partOf.`);
-    if (m.change === 'absolute' && percentMeasure(m)) throw new NormalizeError('invalid-data', 'measures', `dimswitch measure '${m.id}': a percent measure changes in points; use change 'pp', not 'absolute'.`);
-    if (m.value === undefined && !isSubtotal(m)) throw new NormalizeError('invalid-data', 'measures', `dimswitch measure '${m.id}' has no value and no measure names it in partOf; add a value or make it a subtotal.`);
+    if (m.result && (m.sign !== undefined || m.partOf !== undefined || m.value === undefined)) throw new NormalizeError('invalid-data', 'measures', `dimswitch measure '${m.id}': a result is a top-level line with a value that names its lines, e.g. { "op": "sub", "a": { "measure": "income" }, "b": { "measure": "costs" } }; it takes no sign or partOf.`, undefined, undefined, ['data', 'measures', index, 'result']);
+    if (m.change === 'absolute' && percentMeasure(m)) throw new NormalizeError('invalid-data', 'measures', `dimswitch measure '${m.id}': a percent measure changes in points; use change 'pp', not 'absolute'.`, undefined, undefined, ['data', 'measures', index, 'change']);
+    if (m.value === undefined && !isSubtotal(m)) throw new NormalizeError('invalid-data', 'measures', `dimswitch measure '${m.id}' has no value and no measure names it in partOf; add a value or make it a subtotal.`, undefined, undefined, ['data', 'measures', index, 'value']);
   }
   // A group that holds any statement line is a statement: all its lines keep their rows, their bars and their order.
   const statementGroups = new Set<string>();
   const statementField = (m: DimSwitchMeasure) => m.partOf !== undefined || m.sign !== undefined || m.result === true || m.drivers !== undefined || isDriver(m) || isSubtotal(m);
   const groupOf = (m: DimSwitchMeasure): string | undefined => m.group ?? (placeOf(m) !== undefined ? groupOf(measures.get(placeOf(m)!)!) : isDriver(m) ? groupOf(measures.get(driverOwner.get(m.id)!)!) : undefined);
-  for (const m of data.measures) if (statementField(m)) {
+  for (const [index, m] of data.measures.entries()) if (statementField(m)) {
     const g = groupOf(m);
-    if (g === undefined) throw new NormalizeError('invalid-data', 'measures', `dimswitch measure '${m.id}': a statement line needs a group; the group is the statement (e.g. "Contribution margin").`);
+    if (g === undefined) throw new NormalizeError('invalid-data', 'measures', `dimswitch measure '${m.id}': a statement line needs a group; the group is the statement (e.g. "Contribution margin").`, undefined, undefined, ['data', 'measures', index, 'group']);
     const place = placeOf(m);
-    if (place !== undefined && m.group !== undefined && groupOf(measures.get(place)!) !== m.group) throw new NormalizeError('invalid-data', 'measures', `dimswitch measure '${m.id}': its group differs from the group of '${place}'; a line sits in its subtotal's group.`);
+    if (place !== undefined && m.group !== undefined && groupOf(measures.get(place)!) !== m.group) throw new NormalizeError('invalid-data', 'measures', `dimswitch measure '${m.id}': its group differs from the group of '${place}'; a line sits in its subtotal's group.`, undefined, undefined, ['data', 'measures', index, 'group']);
     statementGroups.add(g);
   }
   const inStatement = (m: DimSwitchMeasure) => { const g = groupOf(m); return g !== undefined && statementGroups.has(g); };
@@ -357,7 +369,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   if (effectMeasures.length) {
     for (const kind of ['prior',...(periods.length ? ['period' as const] : []),...(plan ? ['plan' as const] : [])] as DimSwitchComparisonKind[]) if (!thresholdFor('effect',kind,options)) throw new NormalizeError('invalid-number', 'options.thresholds', `dimswitch options.thresholds.effect or thresholds.${kind}.effect is required for judge family effect: two ascending numbers in the statement unit.`);
     const scales = new Set(effectMeasures.filter(m => !isDriver(m)).map(m => m.scale ?? m.format ?? ''));
-    if (scales.size > 1) throw new NormalizeError('invalid-data', 'measures', `dimswitch effect lines must share one scale and format; ${[...scales].map(s => `'${s}'`).join(' and ')} differ. One threshold pair cannot judge two units.`);
+    if (scales.size > 1) throw new NormalizeError('invalid-data', 'measures', `dimswitch effect lines must share one scale and format; ${[...scales].map(s => `'${s}'`).join(' and ')} differ. One threshold pair cannot judge two units.`, undefined, undefined, ['data', 'measures']);
   }
 
   // ---------- expressions: measure references inlined ----------
@@ -365,7 +377,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   const valueOf = (id: string): DimSwitchExpression => {
     const done = resolved.get(id);
     if (done !== undefined) return done;
-    if (resolving.has(id)) throw new NormalizeError('invalid-data', 'measures', `dimswitch measure '${id}' refers to itself through { measure } references.`);
+    if (resolving.has(id)) throw new NormalizeError('invalid-data', 'measures', `dimswitch measure '${id}' refers to itself through { measure } references.`, undefined, undefined, pointAt(['data', 'measures'], data.measures, id, ...(measures.get(id)?.value === undefined ? [] : ['value'])));
     resolving.add(id);
     const m = measures.get(id)!;
     const expr = m.value === undefined ? composed(id) : inline(m.value, id);
@@ -374,7 +386,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   };
   const inline = (e: DimSwitchExpression, from: string): DimSwitchExpression => {
     if (typeof e === 'number' || 'field' in e) return e;
-    if ('measure' in e) { const m = measure(e.measure, from); const v = valueOf(m.id); return percentMeasure(m) ? { op: 'mul', a: v, b: 0.01 } : v; }
+    if ('measure' in e) { const m = measure(e.measure, from, 'value'); const v = valueOf(m.id); return percentMeasure(m) ? { op: 'mul', a: v, b: 0.01 } : v; }
     if ('total' in e) return {total:inline(e.total,from)};
     return { ...e, a: inline(e.a, from), b: inline(e.b, from) };
   };

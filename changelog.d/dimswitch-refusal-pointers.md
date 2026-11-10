@@ -1,0 +1,3 @@
+### Fixed
+
+- A dimswitch refusal about its periods, members or measures now points at the authored field, for example `/data/measures/4/group` or `/data/dimension/members/1/parentId`. Before, it pointed at `/measures` or `/periods`, a field the spec does not have. A refusal about one line names that line's field (`partOf`, `drivers`, `group`, `change`, `value`, `result`). A refusal about a driver or a reference is found by its id, and gets no pointer when React draws data in which the id repeats. A refusal about all lines at once, such as effect lines of two scales, points at `/data/measures`.
