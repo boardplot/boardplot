@@ -237,6 +237,24 @@ describe('refusal contract', () => {
     expect(byId[0]).toMatchObject({ code: 'status-value-invalid', path: '/data/rows/0/cells/state', received: { type: 'string', value: 'unclear' } });
   });
 
+  // Diagram refusals named a node or edge by id in brackets, or a list by its bare name, so the caller got an empty path or one at the chart root (/lanes).
+  it('points diagram refusals at the authored node, edge or list', () => {
+    const fixture = getFixtures('diagram').find((entry) => entry.id === 'protected-request')!;
+    const errors = (data: Node, options: Node = {}) => render({ spec: { type: 'diagram', data: { ...(fixture.data as object), ...data }, options: { ...fixture.options, ...options } } }).body.errors as (Finding & { received?: unknown })[];
+    const edges = structuredClone((fixture.data as Node).edges) as Node[];
+    edges[2]!.source = { groupId: 'empty' };
+    expect(errors({ edges, groups: [...(fixture.data as Node).groups, { id: 'empty', title: 'Empty' }] })[0]).toMatchObject({ path: '/data/edges/2/source', received: { type: 'object', keys: ['groupId'] } });
+    // Node '1' is authored last and drawn first: the pointer names the node with that id, not the second node.
+    const nodes = structuredClone((fixture.data as Node).nodes) as Node[];
+    nodes.forEach((node, index) => { node.order = nodes.length - index; });
+    nodes[4]!.id = '1';
+    nodes[4]!.shape = { kind: 'circle' };
+    for (const edge of edges) for (const end of [edge.source, edge.target]) if (end.nodeId === 'private') end.nodeId = '1';
+    edges[2]!.source = { nodeId: 'checks' };
+    expect(errors({ nodes, edges })[0]).toMatchObject({ code: 'invalid-membership', path: '/data/nodes/4/shape', received: { type: 'object', keys: ['kind'] } });
+    expect(errors({}, { flow: 'lanes' })[0]).toMatchObject({ code: 'invalid-membership', path: '/data/lanes', received: { type: 'missing' } });
+  });
+
   // These refusals listed only the values they refuse, and authors concluded the job could not be done: each names the setting that does it.
   it('names the existing setting that does the job in the refusal', () => {
     const dimswitch = getFixtures('dimswitch')[0]!;

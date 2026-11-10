@@ -34,7 +34,7 @@ import type {
 import { rowDrivenHeight } from '../../rowCanvas';
 import { chartSizing, contentSizing, heightOmitted, resolveSizing, sizeRefusal } from '../../sizing';
 import { diagramSceneId } from './ids';
-import { normalizeDiagramModel, type NormalizedDiagram } from './model';
+import { authoredItem, normalizeDiagramModel, type NormalizedDiagram } from './model';
 import {
   createDiagramPalette,
   groupOwner,
@@ -427,6 +427,7 @@ function layoutDiagramPass(
         'diagram-node-unplaced',
         `nodes[${node.id}]`,
         `variant '${options.variant}' did not place node '${node.id}'`,
+        undefined, undefined, authoredItem(rawData.nodes, 'nodes', node.id),
       );
     }
     const icon = node.icon ?? (node.shape.kind === 'icon' ? node.shape.name : undefined);
