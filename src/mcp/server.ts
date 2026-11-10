@@ -18,7 +18,6 @@ import { linkStoryLayer } from '../core/storyLayer';
 import { linkAnnotateEngine } from '../core/annotateEngine';
 import { linkThemeShapeRules } from '../core/themeShapeRules';
 import { registerAllGeoPacks } from '../core/geo/packs';
-import { createInterface } from 'node:readline';
 import { execFile } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -664,10 +663,6 @@ export function startMcpServer(): void {
   // Same runtime-ownership rule as the CLI's main(): verdicts and bytes must
   // not depend on foreign Object.prototype members.
   sanitizeObjectPrototype((message) => console.error(`⚠ ${message}`));
-  const rl = createInterface({ input: process.stdin, terminal: false });
-  // bound every input before parsing it. One JSON-RPC line carries at
-  // most one document, and the largest legitimate documents are far below
-  // this; anything bigger is a mistake or a resource soak.
   let initialized = false;
   let rootsSupported = false;
   let rootsRequests = 0;
@@ -692,21 +687,8 @@ export function startMcpServer(): void {
     });
     process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: rootsRequest, method: 'roots/list' })}\n`);
   };
-  rl.on('close', () => {
-    settleRoots?.([]);
-    try { usage.flush(); } catch { /* no event */ }
-  });
-  rl.on('line', (line) => {
+  const handleLine = (line: string) => {
     if (!line.trim()) return;
-    // Byte length, not character count: multi-byte UTF-8 would otherwise
-    // slip past the cap by up to 4x.
-    if (Buffer.byteLength(line, 'utf8') > MCP_LIMITS.maxJsonLineBytes) {
-      return respondError(
-        null,
-        -32600,
-        `request line exceeds ${MCP_LIMITS.maxJsonLineBytes} bytes; split the spec into smaller requests`,
-      );
-    }
     let parsed: unknown;
     try {
       parsed = JSON.parse(line) as unknown;
@@ -797,7 +779,62 @@ export function startMcpServer(): void {
     } catch (e) {
       respondError(req.id, -32603, e instanceof Error ? e.message : String(e));
     }
+  };
+  // Bound every input while it is read, before parsing it. One JSON-RPC line carries at most one document, and the
+  // largest legitimate documents are far below this; anything bigger is a mistake or a resource soak.
+  const lines = boundedLines(MCP_LIMITS.maxJsonLineBytes, handleLine, () => respondError(
+    null,
+    -32600,
+    `request line exceeds ${MCP_LIMITS.maxJsonLineBytes} bytes; split the spec into smaller requests`,
+  ));
+  process.stdin.on('data', (chunk: Buffer) => lines.push(chunk));
+  process.stdin.once('end', () => {
+    lines.end();
+    settleRoots?.([]);
+    try { usage.flush(); } catch { /* no event */ }
   });
+}
+
+/**
+ * Splits a byte stream into lines and holds at most `maxBytes` of one line. readline keeps a line whole until its
+ * newline, so a line that never ends would grow the server without bound. A longer line calls `onOverflow` once, at
+ * the chunk that passes the limit, and its rest up to the newline is dropped as it arrives. The limit counts bytes,
+ * not characters, so multi-byte UTF-8 cannot slip past it.
+ */
+function boundedLines(maxBytes: number, onLine: (line: string) => void, onOverflow: () => void) {
+  let parts: Buffer[] = [];
+  let held = 0;
+  let dropping = false;
+  const emit = () => {
+    const line = Buffer.concat(parts, held).toString('utf8');
+    parts = [];
+    held = 0;
+    onLine(line.endsWith('\r') ? line.slice(0, -1) : line);
+  };
+  return {
+    push(chunk: Buffer) {
+      for (let start = 0; start < chunk.length;) {
+        const newline = chunk.indexOf(0x0a, start);
+        const end = newline === -1 ? chunk.length : newline;
+        if (!dropping) {
+          held += end - start;
+          if (held > maxBytes) {
+            dropping = true;
+            parts = [];
+            held = 0;
+            onOverflow();
+          } else parts.push(Buffer.from(chunk.subarray(start, end)));
+        }
+        if (newline === -1) return;
+        if (dropping) dropping = false;
+        else emit();
+        start = newline + 1;
+      }
+    },
+    end() {
+      if (!dropping && held > 0) emit();
+    },
+  };
 }
 
 // direct execution (bin)
