@@ -271,7 +271,9 @@ function resolveGanttEvents(
     const id = annotation.id ?? `event-${i + 1}`;
     if (eventIds.has(id) || id === 'today' || id === 'elapsed') {
       const ref = annotationRef(annotation, i, `options.annotations[${i}]`);
-      throw new NormalizeError('duplicate-id', ref.name, `duplicate event id '${id}'`, undefined, undefined, ref.segments.length ? [...ref.segments, 'id'] : []);
+      // An event without its own id has a generated one: the pointer names the entry, not an id the author left out.
+      const at = annotation.id === undefined ? ref.segments : [...ref.segments, 'id'];
+      throw new NormalizeError('duplicate-id', ref.name, `duplicate event id '${id}'`, undefined, undefined, ref.segments.length ? at : []);
     }
     eventIds.add(id);
     const at =

@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import { ANNOTATION_ORIGIN } from '../core/annotationOrigin';
 
 const immutable = new WeakSet<object>();
 
@@ -27,6 +28,8 @@ function sameContent(left: unknown, right: unknown): boolean {
   }
   if (Array.isArray(right) || !isPlain(left) || !isPlain(right)) return false;
   const keys = Object.keys(left);
+  // An annotation's origin decides its refusal pointer: the same entry moved to the other list is a new value.
+  if (!sameContent((left as Record<symbol, unknown>)[ANNOTATION_ORIGIN], (right as Record<symbol, unknown>)[ANNOTATION_ORIGIN])) return false;
   return keys.length === Object.keys(right).length && keys.every((key) =>
     Object.hasOwn(right, key) && sameContent((left as Record<string, unknown>)[key], (right as Record<string, unknown>)[key]));
 }

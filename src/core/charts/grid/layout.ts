@@ -45,7 +45,7 @@ import { accessibleTitle, NormalizeError, normalizeCategory, normalizeSeriesValu
 import { getChart } from '../../registry';
 import { requireChartCores } from '../../deferred';
 import { panelNoteData } from '../../panelNoteData';
-import { GridChildRefusal, gridRowHeights, gridSizing, hasKpiFigure, inheritedScaleUnit, layoutChildChart, panelAnnotations, smallestKpiValueSize, takeRefusedPanel } from '../../grid/childLayout';
+import { GridChildRefusal, gridRowHeights, gridSizing, hasKpiFigure, inheritedScaleUnit, layoutChildChart, panelAnnotations, recordedPanelOptions, smallestKpiValueSize, takeRefusedPanel } from '../../grid/childLayout';
 import { rebaseRefusal, sameField } from '../../normalize/innerRefusal';
 import { KPI_HOST_TEXT, KPI_VALUE_SIZE } from '../../typeFloors';
 import { LEFT_OUT_OF_NOTE, panelNoteTexts, stringsIn } from '../../frame';
@@ -1757,8 +1757,7 @@ function layoutAuthoredChild(
         if (geometry.refused) throw new GridChildRefusal(panel.id, geometry);
       }
     }
-    const { measure: _measure, ...serializable } = resolvedOptions;
-    recordOptions = serializable;
+    recordOptions = recordedPanelOptions(resolvedOptions);
     const captionY = compactTiers && isAuthoredVarianceStack(panels, parentOptions)
       ? authoredOccupiedBounds(geometry).y - resolvedOptions.margin.top - theme.space.labelPad : 0;
     const band = panelCaptionBand({ ...captionPanel, options: resolvedOptions }, theme, measure, { x: 0, y: captionY, w: slot.w, h: slot.h }, new Set(resolveHighlight(parentOptions.highlight)), compactTiers);

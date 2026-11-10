@@ -6,7 +6,7 @@ import { isVarianceTier } from './varianceTiers';
 import { maxOf, minOf } from '../arrays';
 import { unitMagnitude } from '../formatSpec';
 import { NormalizeError } from '../normalize/shared';
-import { withAnnotationOrigins } from '../types/annotations';
+import { withAnnotationOrigins, withoutAnnotationOrigins } from '../types/annotations';
 
 type ChildChartLayout = (data: unknown, options: unknown) => LayoutResult;
 
@@ -55,6 +55,12 @@ export function panelAnnotations(panel: { annotations?: unknown[]; options?: obj
   if (panel.annotations) return { annotations: withAnnotationOrigins(panel.annotations, ['annotations']) };
   const own = (panel.options as { annotations?: unknown } | undefined)?.annotations;
   return Array.isArray(own) ? { annotations: withAnnotationOrigins(own, ['options', 'annotations']) } : {};
+}
+
+/** A panel's options as the geometry records them for a caller: no measurer, and annotations without their origin. */
+export function recordedPanelOptions(options: object & { measure?: unknown }): object {
+  const { measure: _measure, ...rest } = options;
+  return withoutAnnotationOrigins(rest);
 }
 
 export function layoutChildChart(

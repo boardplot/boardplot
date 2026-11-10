@@ -1,5 +1,6 @@
 /** Annotations: semantic, data-bound, collision-managed. */
 
+import { ANNOTATION_ORIGIN, annotationOriginOf } from '../annotationOrigin';
 import type { IconName } from '../icons';
 import type { Direction, Id, Scenario } from './cell';
 
@@ -259,11 +260,18 @@ export function defaultAnnotationId(annotation: { kind: AnnotationKind; id?: Id 
  * The request sets it on each authored entry before the chart drops the kinds it does not draw, so a refusal points at
  * the authored entry, not at its position in the list the chart kept. An entry the engine adds has none.
  */
-export const ANNOTATION_ORIGIN = Symbol('annotationOrigin');
+export { ANNOTATION_ORIGIN, withAnnotationOrigins } from '../annotationOrigin';
+const originOf = annotationOriginOf;
 
-/** Each entry of an authored annotation list, copied with its origin. */
-export function withAnnotationOrigins<T>(list: readonly T[], at: readonly ('annotations' | 'options')[]): T[] {
-  return list.map((entry, index) => entry !== null && typeof entry === 'object' ? { ...entry, [ANNOTATION_ORIGIN]: [...at, index] } : entry);
+/** Options as a caller receives them: annotations without the origin the engine keeps for refusal pointers. */
+export function withoutAnnotationOrigins<T>(options: T): T {
+  const list = (options as { annotations?: unknown } | null | undefined)?.annotations;
+  if (!Array.isArray(list) || !list.some(originOf)) return options;
+  return { ...options, annotations: list.map((entry) => {
+    if (!originOf(entry)) return entry;
+    const { [ANNOTATION_ORIGIN]: _origin, ...rest } = entry as Record<PropertyKey, unknown>;
+    return rest;
+  }) };
 }
 
 /**
@@ -271,8 +279,7 @@ export function withAnnotationOrigins<T>(list: readonly T[], at: readonly ('anno
  * no pointer and the name the site gave before (`annotations[index]` by default).
  */
 export function annotationRef(annotation: unknown, index: number, fallback = `annotations[${index}]`): { segments: (string | number)[]; name: string } {
-  const origin = annotation !== null && typeof annotation === 'object'
-    ? (annotation as { [ANNOTATION_ORIGIN]?: (string | number)[] })[ANNOTATION_ORIGIN] : undefined;
+  const origin = originOf(annotation);
   if (!origin) return { segments: [], name: fallback };
   return { segments: [...origin], name: `${origin.slice(0, -1).join('.')}[${origin.at(-1)}]` };
 }

@@ -14,6 +14,7 @@ import { callTool } from '../src/mcp/server';
 import { getFixtures, getRefusalExamples } from '../src/fixtures';
 import { getChartSchemas, listCharts } from '../src/core/registry';
 import { retireChartSettings } from '../src/core/retired';
+import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { IGNORED_OPTION_KEYS, LEGEND_REFUSED, schemaRefusedKeys, valueAxisRefusal } from '../src/core/schema/capability';
 import { SparklineChart } from '../src/react/charts/sparkline';
 
@@ -385,6 +386,17 @@ describe('refusal contract', () => {
     expect(firstError({ ...scatter, annotations })).toMatchObject({ code: 'log-nonpositive', path: '/annotations/1', displayPath: 'annotations[1]', received });
     expect(firstError({ ...scatter, options: { ...scatter.options, annotations } })).toMatchObject({ path: '/options/annotations/1', displayPath: 'options.annotations[1]', received });
     expect(firstError({ type: 'grid', data: { panels: [{ id: 's', ...scatter, annotations }] } })).toMatchObject({ path: '/data/panels/0/annotations/1', received });
+  });
+
+  // The grid recorded a panel's resolved options in its geometry with the annotations' origin tag, an engine-internal key a caller receives through measure and onGeometry.
+  it('records grid panel annotations without their origin', () => {
+    const panel = { id: 'p', type: 'line', data: { categories: [{ id: 'a' }, { id: 'b' }], series: [{ id: 's', values: [1, 2] }] }, annotations: [{ kind: 'valueLine', value: 1.5 }] };
+    for (const columns of [undefined, [1]]) {
+      const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'grid', data: { panels: [panel] }, options: { size: { width: 960, height: 600 }, ...(columns ? { columns } : {}) } } as never)) as Node;
+      const recorded = geometry.marks.panels[0].chart.options.annotations[0];
+      expect(recorded).toEqual({ kind: 'valueLine', value: 1.5 });
+      expect(Object.getOwnPropertySymbols(recorded)).toEqual([]);
+    }
   });
 
   // A likert labelPosition refusal from its inner bar lost the pointer to /options/labelPosition that main gave.
