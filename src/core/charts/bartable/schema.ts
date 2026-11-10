@@ -194,7 +194,7 @@ export const bartableOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOpt
       share: z.boolean().optional().describe('Computed share column beside each panel; default true. rounding defaults to \'sum-consistent\' here, so each adds up to 100%.'),
       growth: z.strictObject({
         measure: z.enum(['cagr', 'share-change']).describe("'cagr': each row's CAGR, first panel to last, in %. 'share-change': last share minus first, in pp."),
-        years: z.number().positive().optional().describe("Years from first to last panel for 'cagr'; default read from the panel labels (2019, FY24)."),
+        years: z.number().positive().optional().describe("Years from first to last panel for 'cagr'; default read from the panel labels (2019, FY24). 'share-change' reads no years and warns option-ignored."),
         label: z.string().trim().min(1).optional().describe('Column head; default from the panel labels.'),
       }).optional().describe('Growth column after the last panel.'),
   }).optional().describe("Settings of variant 'cascade'; refused with variant 'panels'."),

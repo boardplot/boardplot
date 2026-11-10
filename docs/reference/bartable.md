@@ -122,7 +122,7 @@ Table rows with number columns and stacked bars. One panel when the rows compare
 | cascade.share | boolean |  |  | Computed share column beside each panel; default true. rounding defaults to 'sum-consistent' here, so each adds up to 100%. |
 | cascade.growth | object |  |  | Growth column after the last panel. |
 | cascade.growth.measure | string | `'cagr'`, `'share-change'` |  | 'cagr': each row's CAGR, first panel to last, in %. 'share-change': last share minus first, in pp. |
-| cascade.growth.years | number |  |  | Years from first to last panel for 'cagr'; default read from the panel labels (2019, FY24). |
+| cascade.growth.years | number |  |  | Years from first to last panel for 'cagr'; default read from the panel labels (2019, FY24). 'share-change' reads no years and warns option-ignored. |
 | cascade.growth.label | string |  |  | Column head; default from the panel labels. |
 | sharedScale | boolean |  |  | false: each panel its own scale. true: one scale, panel width follows its longest bar; weights refused. Default false, true under cascade. |
 | heightFill | string | `'rows'`, `'none'` | `'rows'` | Spare canvas height. 'rows' (default): a pinned canvas stretches the rows up to 1.25 times their pitch and thickens the bars. 'none': natural pitch. |

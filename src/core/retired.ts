@@ -165,7 +165,7 @@ export function valueLabelsIgnoredWarning(type: 'bar' | 'column', variant: strin
  * per variant. A spec without any of them reads no table below.
  */
 const VARIANT_SCOPED_KEYS: ReadonlySet<string> = new Set([
-  'annotations', 'arrow', 'averageMarker', 'averages', 'baseValue', 'cap', 'cohortSizeLabel', 'connectors', 'currentValue', 'designatedPeriod', 'diverging',
+  'annotations', 'arrow', 'averageMarker', 'averages', 'baseValue', 'cap', 'cascade', 'cohortSizeLabel', 'connectors', 'currentValue', 'designatedPeriod', 'diverging',
   'excludeCurrentPeriod', 'exhibitLabel', 'formatScope', 'gapColumn', 'grandTotalLabels', 'heightFill', 'netLine', 'rebase100', 'rounding', 'showPercentSign',
   'stageShade', 'targetColumns', 'tornado', 'totalCvr', 'worstDropCallout',
 ]);
@@ -322,6 +322,9 @@ function ignoreVariantSettings(type: string, chart: unknown, options: Record<str
   } else if (type === 'bartable') {
     // 'sum-consistent' keeps its own refusal; under a cascade the share settings decide.
     if (options.variant !== 'cascade' && options.rounding === 'nearest') drop(['options', 'rounding'], typeof options.variant === 'string' ? options.variant : 'panels');
+    // A share change needs no years: only a CAGR reads them.
+    const growth = isRecord(options.cascade) && isRecord(options.cascade.growth) ? options.cascade.growth : undefined;
+    if (growth?.measure === 'share-change' && growth.years !== undefined) ignore(['options', 'cascade', 'growth', 'years'], 'warn', "bartable growth measure 'share-change'");
   } else if (type === 'line') {
     const percent = isRecord(options.valueAxis) && options.valueAxis.percent;
     if (options.variant === 'stacked100-area' || (percent && options.variant !== 'bump')) dropAll(['rebase100'], 'stacked100-area');
