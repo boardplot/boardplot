@@ -13,6 +13,7 @@ import { formatAutomaticNumber, seriesValueFormatter } from '../../format';
 import { wrapText } from '../../text';
 import { labelCtx, PRIORITY, seatLeader, type LabelRequest, type SlotCandidate, type SolveCtx } from '../../label/solver';
 import { middleNearerOther, nameReadsAsOwn } from './nameReading';
+import type { Id } from '../../types/cell';
 import type { LintWarning, Paint } from '../../types/scene';
 import { HIGHLIGHT_RING_GAP, quadrantBoxRect, type PlacedPoint, type ScatterMarkGeometry } from './marks';
 import {
@@ -273,7 +274,7 @@ function zoneLabelRequests(sites: ZoneLabelSite[], area: ScatterPlotArea, env: S
  * `.y`. Reformatting the number here is what put a threshold on the chart that
  * the classifier had not used.
  */
-function dividerTagRequests(q: QuadrantPlan, area: ScatterPlotArea, env: ScatterEnv, requests: LabelRequest[], pts: readonly { x: number; y: number }[], printed: { x: boolean; y: boolean }): void {
+function dividerTagRequests(q: QuadrantPlan, area: ScatterPlotArea, env: ScatterEnv, requests: LabelRequest[], pts: readonly { x: number; y: number }[], printed: { x?: Id; y?: Id }): void {
   const quadrants = q.derived!;
   const { plot } = area;
   // Measured in the emphasis the layout draws a value line in, so the seat holds the drawn tag.
@@ -292,6 +293,7 @@ function dividerTagRequests(q: QuadrantPlan, area: ScatterPlotArea, env: Scatter
     const line = `${chartString(env.options, source === 'declared' ? 'cutAt' : source === 'median' ? 'medianName' : 'cutMeanCapital')} ${text}${tie[id]}`;
     return {
       id: `quadrant:cut:${id}`,
+      claimIds: [`scatter:quadrant:${id}`],
       kind: 'valueLine',
       role: composedTextRole(line),
       owner: { valueLineId: `quadrant:${id}` },
@@ -419,6 +421,7 @@ function quadrantCaptionRequests(
     });
     requests.push({
       id: `quadrant:caption:${box}`,
+      claimIds: [`scatter:quadrant:count:${box}`],
       kind: 'category',
       owner: { categoryId: `quadrant:${box}` },
       text: lines.join(' '),
@@ -719,6 +722,8 @@ function pointLabelRequests(
           : undefined;
       requests.push({
         id: `point:${p.id}`,
+        // The value a clipped point really has prints in its name.
+        ...(clipped.length ? { claimIds: clipped.map((record) => `scatter:clipped:${record.axis}:${record.bound}:${p.id}`) } : {}),
         kind: 'point',
         owner: { pointId: p.id },
         text: callout === undefined ? name : `${name} ${callout}`,

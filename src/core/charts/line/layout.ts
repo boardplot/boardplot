@@ -1,3 +1,4 @@
+import { withUnprintedClaims } from '../../claims/ids';
 import { chartString } from '../../strings/line';
 import { withLocaleStrings } from '../../strings';
 import type { Theme } from '../../types/theme';
@@ -848,7 +849,8 @@ function assembleLineGeometry(input: LineAssembly): Geometry<LineMarks, LineDeri
     : area.axisTickSpec ? tickFormatter(area.axisTickSpec, bandLevels) : area.axisFmt;
   const a11yDesc = lineA11yDesc(env, domain, area, marks, variantName, text) + referenceBandsA11y(input.reserves.referenceBands, bandFmt, domain.options)
     + (usesEndLabelKey(options) ? chartString(domain.options, 'lineEndKeyDesc') : '');
-  return {
+  // A trend's key prints its slope and r², never its intercept.
+  return withUnprintedClaims({
     type: 'line',
     size: env.size,
     plot,
@@ -881,7 +883,7 @@ function assembleLineGeometry(input: LineAssembly): Geometry<LineMarks, LineDeri
       occupied: input.occupied.snapshot(),
       decisions: [...solved.decisions, ...annResult.decisions],
     },
-  };
+  }, domain.trends.map((fit) => `line:trend:${fit.id}:intercept`));
 }
 
 /**

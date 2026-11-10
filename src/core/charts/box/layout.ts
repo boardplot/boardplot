@@ -69,6 +69,7 @@ import type {
 } from './types';
 import { autoDecimals } from '../../formatPrecision';
 import { annotateBox } from './annotations';
+import { withUnprintedClaims } from '../../claims/ids';
 import { composedTextRole } from '../../textRole';
 import { textScaleOf } from '../../typeFloors';
 import { DEFAULT_TARGET } from '../../target';
@@ -1082,6 +1083,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
         ];
         labelRequests.push({
           id: `stat:${row.id}:${stat}`, kind: 'point', role: composedTextRole(text), owner, text, lines: [text], font: labelFont,
+          ...(stat === 'q1' || stat === 'q3' ? { claimIds: [`box:${stat}:${row.id}`] } : {}),
           priority: PRIORITY.interior, candidates,
         });
       }
@@ -1126,6 +1128,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
       const align = options.rowLabels?.align ?? 'left';
       labelRequests.push({
         id: `boxN:${row.id}`,
+        claimIds: [`box:n:${row.id}`],
         kind: 'annotation', role: composedTextRole(text, 'note'),
         owner,
         text,
@@ -1155,6 +1158,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
       const textSize = lines.length === 1 ? measure(text, tickFont) : { width: nWidth(lines), height: lines.length * lineH };
       labelRequests.push({
         id: `boxN:${row.id}`,
+        claimIds: [`box:n:${row.id}`],
         kind: 'annotation', role: composedTextRole(text, 'note'),
         owner,
         text,
@@ -1201,6 +1205,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
       const clearBottom = Math.max(rowY + boxH, hasPoints ? painted.maxY : -Infinity);
       labelRequests.push({
         id: `median:${row.id}`,
+        claimIds: [`box:median:${row.id}`],
         kind: 'point', role: composedTextRole(text),
         owner,
         text,
@@ -1308,7 +1313,14 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
     groups: rows,
   };
 
-  return annotateBox({
+  // The statistics no label prints: a median without its value label, the quartiles
+  // without boxValues 'all', and n with the labels off.
+  const unprinted = rows.flatMap((row) => [
+    ...(labelOn('point') && row.median !== null && row.state !== 'points' ? [] : [`box:median:${row.id}`]),
+    ...(['q1', 'q3'] as const).filter((stat) => !(allValues && row.state === 'box' && row[stat] !== null)).map((stat) => `box:${stat}:${row.id}`),
+    ...(labelsOff ? [`box:n:${row.id}`] : []),
+  ]);
+  return annotateBox(withUnprintedClaims({
     type: 'box',
     size,
     sizing: sizingFor(bracketRoom),
@@ -1351,7 +1363,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
       occupied: occupied.snapshot(),
       decisions: solved.decisions,
     },
-  }, data, options, {
+  }, unprinted), data, options, {
     occupied, theme, measure, solveCtx, xScale: x,
     bracketRight: plot.x + plot.w + BRACKET_CLEAR,
     wrapLead,

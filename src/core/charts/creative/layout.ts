@@ -25,7 +25,8 @@ import {
   semanticPalettePaint,
 } from '../../theme';
 import type { BaseOptions, RenderTarget } from '../../types/options';
-import type { OwnerRef } from '../../types/cell';
+import type { Id, OwnerRef } from '../../types/cell';
+import { withUnprintedClaims } from '../../claims/ids';
 import type { Geometry, SceneNode, LintWarning, PaintToken, TextRole, TypographyRole } from '../../types/scene';
 import type { ChartSizing } from '../../types/sizing';
 import type { Theme } from '../../types/theme';
@@ -104,6 +105,7 @@ interface TextSpec {
   ink?: PaintToken;
   role?: TextRole;
   typeRole: TypographyRole;
+  claimIds?: readonly Id[];
 }
 interface Placed { h: number; w: number }
 
@@ -116,7 +118,8 @@ function textBuilder(requests: LabelRequest[], inks: Map<string, PaintToken>, me
     const x = spec.align === 'end' ? box.x + box.w - w : spec.align === 'middle' ? box.x + (box.w - w) / 2 : box.x;
     requests.push({ id, kind: 'item', owner: spec.owner ?? {}, text, lines: wrapped.lines, font: spec.font, priority: 700, typeRole: spec.typeRole,
       candidates: [{ slot: 'cell', rect: { x, y: box.y, w, h }, penalty: 0 }],
-      ...(spec.align && spec.align !== 'start' ? { align: spec.align } : {}), ...(spec.role ? { role: spec.role } : {}) });
+      ...(spec.align && spec.align !== 'start' ? { align: spec.align } : {}), ...(spec.role ? { role: spec.role } : {}),
+      ...(spec.claimIds ? { claimIds: spec.claimIds } : {}) });
     if (spec.ink) inks.set(id, spec.ink);
     return { h, w };
   };
@@ -648,6 +651,13 @@ function layoutForm(data: CreativeData, options: CreativeOptions & Pick<BaseOpti
 
   const noteLines: [string, string][] = notesOff ? [] : [...(comparison ? [['creative:comparison', comparison] as [string, string]] : []), ...definitions.map((text, i): [string, string] => [i === 0 ? 'creative:definitions' : `creative:definitions:${i}`, text])];
   const fatigueOwner = { seriesId: 'fatigue', categoryId: data.id };
+  // The last method line prints the observed change; the window means print nowhere.
+  const changeClaims = fatigue.rule && fatigue.changePct !== null ? ['creative:fatigue:change'] : undefined;
+  const claimsAt = (index: number) => index === fatigueLines.length - 1 ? changeClaims : undefined;
+  const unprinted = [
+    ...(fatigue.rule ? (['baseline', 'current'] as const).filter((key) => fatigue[key].mean !== null).map((key) => `creative:fatigue:${key}`) : []),
+    ...(notesOff && changeClaims ? changeClaims : []),
+  ];
   let strip: ReturnType<typeof trends>, contentEnd: number;
   if (three) {
     // Three columns: the media with its caption, the head with the table, the trends. The method lines run across the foot, joined while a line has room.
@@ -657,17 +667,19 @@ function layoutForm(data: CreativeData, options: CreativeOptions & Pick<BaseOpti
     // The foot is the source line's size, so a long method fits a line of the wide card.
     const footFont: FontSpec = { family: theme.type.family, ...footerType(theme.type.footnote, options.target, options.textScale) };
     const foot = { font: footFont, ink: 'inkMuted' as const, typeRole: 'footnote' as const };
-    const joined = (items: [string, string][]) => items.reduce<[string, string][]>((lines, [id, text]) => {
+    const joined = (items: [string, string, (readonly Id[])?][]) => items.reduce<[string, string, (readonly Id[])?][]>((lines, [id, text, claimIds]) => {
       const last = lines[lines.length - 1];
-      if (last && measure(`${last[1]} ${text}`, footFont).width <= plot.w) last[1] += ` ${text}`;
-      else lines.push([id, text]);
+      if (last && measure(`${last[1]} ${text}`, footFont).width <= plot.w) {
+        last[1] += ` ${text}`;
+        if (claimIds) last[2] = [...(last[2] ?? []), ...claimIds];
+      } else lines.push([id, text, claimIds]);
       return lines;
     }, []);
-    const fatigueMethod = notesOff ? [] : fatigueLines.slice(1).map((text, i): [string, string] => [`creative:fatigue:${i + 1}`, text]);
+    const fatigueMethod = notesOff ? [] : fatigueLines.slice(1).map((text, i): [string, string, (readonly Id[])?] => [`creative:fatigue:${i + 1}`, text, claimsAt(i + 1)]);
     let top = Math.max(metrics.end, strip.end, columnsEnd) + 12;
     for (const [id, text] of joined(noteLines)) top += add(id, text, { x: plot.x, w: plot.w, y: top }, foot).h + 2;
     top += add('creative:fatigue:0', fatigueLines[0]!, { x: plot.x, w: plot.w, y: top }, { ...foot, ...(fatigue.rule ? { font: { ...footFont, weight: fonts.strong } } : {}), owner: fatigueOwner }).h + 2;
-    for (const [id, text] of joined(fatigueMethod)) top += add(id, text, { x: plot.x, w: plot.w, y: top }, { ...foot, owner: fatigueOwner }).h + 2;
+    for (const [id, text, claimIds] of joined(fatigueMethod)) top += add(id, text, { x: plot.x, w: plot.w, y: top }, { ...foot, owner: fatigueOwner, ...(claimIds ? { claimIds } : {}) }).h + 2;
     contentEnd = top - 2;
   } else {
     // The notes: the left column under the media on a wide card, under the table when stacked.
@@ -685,7 +697,8 @@ function layoutForm(data: CreativeData, options: CreativeOptions & Pick<BaseOpti
       for (const [index, text] of (notesOff ? fatigueLines.slice(0, 1) : fatigueLines).entries()) {
         // With a rule, its verdict leads in the strong weight; the method lines follow as notes.
         const strong = index === 0 && fatigue.rule !== undefined;
-        top += add(`creative:fatigue:${index}`, text, { ...box, y: top }, { ...(strong ? { font: fonts.noteStrong, typeRole: 'footnote' as const } : muted(fonts.note)), owner: fatigueOwner }).h + 2;
+        const claimIds = claimsAt(index);
+        top += add(`creative:fatigue:${index}`, text, { ...box, y: top }, { ...(strong ? { font: fonts.noteStrong, typeRole: 'footnote' as const } : muted(fonts.note)), owner: fatigueOwner, ...(claimIds ? { claimIds } : {}) }).h + 2;
       }
       return top;
     };
@@ -713,11 +726,11 @@ function layoutForm(data: CreativeData, options: CreativeOptions & Pick<BaseOpti
     if (token && node.t === 'text') node.ink = { token };
   }
   pushAll(nodes, labelNodes);
-  return { type: 'creative', size, sizing: resolveSizing(creativeSizing, size, { minHeight: requiredHeight, naturalHeight: requiredHeight }),
+  return withUnprintedClaims({ type: 'creative', size, sizing: resolveSizing(creativeSizing, size, { minHeight: requiredHeight, naturalHeight: requiredHeight }),
     plot, scene: nodes, labels: solved.placed, axes: [], annotations: [], frame: frame.frame,
     marks: { media, metrics: metrics.marks }, derived: { fatigue, deltas: (plan.columns.includes('delta') ? plan.rows : []).map(([key]) => ({ key, ...data.metrics[key], ...creativeDelta(key, data.metrics[key], options) })) },
     a11y: { title: accessibleTitle(options.title, data.facts.name), desc: chartString(options, 'creativeDesc', { v1: data.media.alt, v2: fatigueLines.join(' ') }) },
-    warnings: [...warnings, ...(frame.frame.warnings ?? []), ...solved.warnings], debug: { occupied: occupied.snapshot(), decisions: solved.decisions } };
+    warnings: [...warnings, ...(frame.frame.warnings ?? []), ...solved.warnings], debug: { occupied: occupied.snapshot(), decisions: solved.decisions } }, unprinted);
 }
 
 /** The pad the solver keeps between two labels on the card. */
