@@ -8,7 +8,7 @@ import { resolve } from 'node:path';
 import { isatty } from 'node:tty';
 import { isDeepStrictEqual } from 'node:util';
 import '../core/charts';
-import { requireGeometry, VERIFY_ADVICE, verifiedSizeRepair } from '../core/sizing';
+import { requireGeometry, VERIFY_ADVICE } from '../core/sizing';
 import { layoutResolvedRequest, measureLayout, resolveChartRequest, type ChartMeasurement } from '../core/request';
 import { completeChartDiagnostic, completeDiagnostic, completeDocumentDiagnostic, type DocumentFinding } from '../core/doc/diagnostics';
 import {
@@ -592,36 +592,6 @@ function heightVerifier(doc: BoardplotDoc, chart: DocChart, target?: RenderTarge
   });
 }
 
-/**
- * Measurement verifies a size that a refusal or a plot-floor warning names by drawing it, and searches for
- * a size that draws when it does not. Data and proportion warnings do not reject a size.
- */
-function verifySizeAdvice(doc: BoardplotDoc, chart: DocChart, findings: DocumentFinding[], target?: RenderTarget): void {
-  for (const finding of findings) {
-    const operation = finding.fix?.find(op => op.op !== 'test' && op.path.endsWith('/options/size'));
-    if (!operation || !('value' in operation)) continue;
-    const value = operation.value as { width: number; height: number; unit?: string };
-    const repair = verifiedSizeRepair(value, size => drawsWithout(doc, chart, { ...value, ...size }, target,
-      new Set([finding.code, 'plot-under-floor', 'size-below-floor'])));
-    if (repair.size) {
-      if (repair.size.width !== value.width || repair.size.height !== value.height) {
-        operation.value = { ...value, ...repair.size };
-        if (finding.code === 'plot-under-floor') {
-          finding.message = finding.message.replace(/the chart needs \d+ px/, `the chart needs ${repair.size.height} px`);
-          finding.suggest = `Give the chart ${repair.size.height} px of height, or leave the height out so the chart takes it.`;
-        } else {
-          finding.expected = { ...finding.expected, minimum: operation.value };
-          finding.message = `The chart needs at least ${repair.size.width} × ${repair.size.height}${value.unit ?? 'px'}.`;
-        }
-      }
-      continue;
-    }
-    delete finding.fix;
-    finding.suggest = `No size could be verified within ${repair.limit.width} × ${repair.limit.height}${value.unit ?? 'px'}. Reduce the content or change the chart settings.`;
-    finding.expected = { condition: finding.suggest };
-  }
-}
-
 /** Complete every finding this chart added with its pointer, expected/received and docs. */
 function completing<T>(doc: BoardplotDoc, chart: DocChart, envelope: DocumentEnvelope, work: () => T): T {
   const errors = envelope.errors.length;
@@ -671,8 +641,6 @@ export function measureChart(doc: BoardplotDoc, chart: DocChart, envelope: Docum
     const request = { ...resolved.request, options: { ...resolved.request.options, [VERIFY_ADVICE]: true } };
     const layout = layoutResolvedRequest(request);
     const measured = measureLayout(request, layout);
-    const floorWarnings = measured.warnings.filter((warning) => warning.code === 'plot-under-floor');
-    verifySizeAdvice(doc, chart, [...(measured.refused?.warnings ?? []), ...floorWarnings] as DocumentFinding[], target);
     pushAll(envelope.warnings, measured.warnings.filter((warning) => warning.severity !== 'error'));
     if (layout.refused) return { ...measured, target: resolved.request.target };
     const judgedChart = judged(chart, resolved, layout, envelope, false, {}, heightVerifier(doc, chart, target));

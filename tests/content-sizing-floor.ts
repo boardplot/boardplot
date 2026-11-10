@@ -1,9 +1,9 @@
 import { expect, it } from 'vitest';
 import '../src/core/charts';
 import '../src/core/geo/packs';
-import { getChart, listCharts } from '../src/core/registry';
+import { listCharts } from '../src/core/registry';
 import { getFixtures } from '../src/fixtures';
-import { measure } from '../src/core/request';
+import { layoutResolvedRequest, measure, resolveChartRequest } from '../src/core/request';
 
 /**
  * Every example fixture renders at its measured floor, in both modes. A
@@ -23,7 +23,8 @@ export function floorCases(part: number, parts: number): void {
       const options = { ...fixture.options, annotations: fixture.annotations, mode };
       const m = measure({ type, data: fixture.data, options });
       const size = { width: m.minWidth, height: m.minHeight };
-      const result = getChart(type)!.layout(fixture.data, { ...options, size });
+      // Laid out as render lays it out: authored column widths give way there, as they do at the measured floor.
+      const result = layoutResolvedRequest(resolveChartRequest({ type, data: fixture.data, options: { ...options, size } }));
       // A refusal for any reason means nothing drew at the floor.
       expect(result.refused ? result.warnings.map(w => w.code) : 'drawn', `${type}/${fixture.id} at ${JSON.stringify(size)}`).toBe('drawn');
       expect(result.warnings.filter(w => (w.code === 'size-below-floor' || w.code === 'diagram-size-too-small')),

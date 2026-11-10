@@ -1853,12 +1853,14 @@ function columnBarFloor(geometry: Pick<Geometry<object, object>, 'type' | 'size'
   return Math.min(CARD_MIN_WIDTH, Math.ceil(geometry.size.width - geometry.plot.w + (geometry.plot.w * MIN_COLUMN_BAR) / thinnest));
 }
 
-/** Lay out one fixed size. Height searches never enter the search again. */
-function fitSize<D, O extends ChartOptions, M extends object, DV extends object>(
+/**
+ * The floor `fitSize` checks before it lays anything out, and whether the frame is in the tight band
+ * (compact below the type's own minimum). Size advice reads it to skip widths this check refuses.
+ */
+export function sizeGate<D, O extends ChartOptions, M extends object, DV extends object>(
   definition: ChartCore<D, O, M, DV>, data: D, options: O | undefined, compactFallback: boolean,
-): LayoutResult<M, DV> {
-  const declared = declaredSizing(definition, options);
-  const requested = resolveSize(options?.size, options?.target);
+  declared = declaredSizing(definition, options), requested = resolveSize(options?.size, options?.target),
+): { tight: boolean; gatePolicy: ChartSizing } {
   const nested = panelTypeClass(options) !== undefined;
   const floor = requestFloor(declared);
   // Between the compact floor and the type's own minimum the chart is drawn
@@ -1876,6 +1878,18 @@ function fitSize<D, O extends ChartOptions, M extends object, DV extends object>
   // the size `measure` verifies and reports, so a host that reads it keeps a size that draws.
   const gateWidth = definition.type === 'column' && !columnCannotFit(data, options, requested.width) ? Math.min(floor.width, NARROW_MIN_WIDTH) : floor.width;
   const gatePolicy = tight ? { ...declared, minWidth: gateWidth, minHeight: floor.height } : declared;
+  return { tight, gatePolicy };
+}
+
+/** Lay out one fixed size. Height searches never enter the search again. */
+function fitSize<D, O extends ChartOptions, M extends object, DV extends object>(
+  definition: ChartCore<D, O, M, DV>, data: D, options: O | undefined, compactFallback: boolean,
+): LayoutResult<M, DV> {
+  const declared = declaredSizing(definition, options);
+  const requested = resolveSize(options?.size, options?.target);
+  const nested = panelTypeClass(options) !== undefined;
+  const floor = requestFloor(declared);
+  const { tight, gatePolicy } = sizeGate(definition, data, options, compactFallback, declared, requested);
   if (!nested && !fitsSize(requested, definition.type === 'grid' ? { ...gatePolicy, minHeight: 0 } : gatePolicy)) {
     return sizeRefusal(definition.type, definition.title, requested, resolveSizing(gatePolicy, requested));
   }

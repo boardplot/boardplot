@@ -2,10 +2,11 @@ import { fractionLineWarnings, prepareFractionAnnotations, percentScaleWarnings 
 import { readFormatExamples } from './formatSpec';
 import { colorVariableWarnings } from './colorVariables';
 import { drawnRequest } from './drawnRequest';
-import { PLAN_ONLY, withPlanInputs, copyPlannedValue, repeatedResult } from './layoutPlan';
+import { PLAN_ONLY, withPlanInputs, copyPlannedValue, repeatedResult, requestKey } from './layoutPlan';
+import { loadedDeferred } from './deferred';
 import { shownNoteKinds } from './notes';
 import { canonicalChartType, getChart } from './registry';
-import { chartSizing, compactFallbackApplies, declaredSizing, fitsSize, FIXED_SIZE_PROBE, FULL_LAYOUT_PROBE, SIZE_TOLERANCE, LAYOUT_CALL, type LayoutCall, plotFloorHeight, plotRepairHeight, resolveSizing, sizeRefusal, VERIFY_ADVICE, verifiedSizeRepair, WIDTH_PROBE } from './sizing';
+import { chartSizing, compactFallbackApplies, declaredSizing, fitsSize, FIXED_SIZE_PROBE, FULL_LAYOUT_PROBE, SIZE_TOLERANCE, LAYOUT_CALL, type LayoutCall, plotFloorHeight, plotRepairHeight, resolveSizing, sizeGate, sizeRefusal, VERIFY_ADVICE, verifiedSizeRepair, WIDTH_PROBE } from './sizing';
 import { EMPTY_DATA, hasNoDataRows } from './emptyData';
 import { NormalizeError, canonicalLanguage, substitute } from './normalize/shared';
 import { withNumberMarks } from './numberMarks';
@@ -13,7 +14,7 @@ import { chartRefusals, isRefused } from './schema/refusals';
 import { movedGridWarnings, movedWidthWarnings, TRACK_WIDTH_TYPES, widthsThatDraw, type WidthGroup, type WidthStep } from './charts/columnOverrides';
 import { isRecord } from './lint/shared';
 import type { ColumnOverride } from './types/options';
-import { DEFAULT_PRESET, panelTypeClass, REMOVED_NAMES, removedNameWarnings, resolveTargetTheme, resolveTheme, typeWidthClass, withTypeClassCap } from './theme';
+import { DEFAULT_PRESET, panelTypeClass, REMOVED_NAMES, removedNameWarnings, resolveTargetTheme, resolveTheme, typeWidthClass, WIDE_CANVAS_MIN_WIDTH, withTypeClassCap } from './theme';
 import { DEFAULT_TARGET, floorTextScale, resolveTargetSize } from './target';
 import { textScaleOf, textSizeOf } from './typeFloors';
 import { defaultMeasurer, type TextMeasurer } from './text';
@@ -308,19 +309,28 @@ function layoutRequest(request: ResolvedChartRequest): LayoutResult {
   const finish = (result: LayoutResult): LayoutResult => (request.options as { [PLAN_ONLY]?: boolean })[PLAN_ONLY]
     ? result : withClipWarnings(result, request.fontMetrics);
   const table = request.type === 'table' || request.type === 'dimswitch';
-  const probe = table ? layoutWidthProbe : layoutOnce;
-  const first = layoutOnce(request);
-  const fitted = widthsGiveWay(request, first, layoutOnce, probe);
-  if (fitted) return finish(fitted[1]);
-  const [asked, result] = steppedType(request, first) ?? [request, first];
+  return finish(afterFirstLayout(request, layoutOnce(request), layoutOnce, table ? layoutWidthProbe : layoutOnce, layoutPlain));
+}
+
+/**
+ * Render's steps after its first layout of a request: authored widths give way, the type steps down
+ * on a slide or print canvas, asked notes move to the notes list, the next smaller type class. Each
+ * returns before any layout where it does not apply. Width searches take the same steps (`widthProbers`).
+ */
+function afterFirstLayout(request: ResolvedChartRequest, first: LayoutResult, layout: (asked: ResolvedChartRequest) => LayoutResult,
+  probe: (asked: ResolvedChartRequest) => LayoutResult, plainLayout: (asked: ResolvedChartRequest) => LayoutResult): LayoutResult {
+  const table = request.type === 'table' || request.type === 'dimswitch';
+  const fitted = widthsGiveWay(request, first, layout, probe);
+  if (fitted) return fitted[1];
+  const [asked, result] = steppedType(request, first, layout) ?? [request, first];
   const plainRequest = withoutAskedNotes(asked, result);
-  const plain = plainRequest && layoutOnce(plainRequest);
+  const plain = plainRequest && layout(plainRequest);
   const drawn = plain && !plain.refused ? askedNotesOff(plain, result) : result;
   // An unchanged refusal already tried the same authored widths.
   const fittedLate = table && asked === request && drawn === first
-    ? undefined : widthsGiveWay(asked, drawn, layoutOnce, probe);
+    ? undefined : widthsGiveWay(asked, drawn, layout, probe);
   const last = fittedLate ? fittedLate[1] : drawn;
-  return finish(smallerClass(fittedLate ? fittedLate[0] : asked, last) ?? last);
+  return smallerClass(fittedLate ? fittedLate[0] : asked, last, plainLayout) ?? last;
 }
 
 /**
@@ -331,6 +341,17 @@ function layoutRequest(request: ResolvedChartRequest): LayoutResult {
 function smallerClass(
   request: ResolvedChartRequest, result: LayoutResult, layout: (asked: ResolvedChartRequest) => LayoutResult = layoutPlain,
 ): LayoutResult | undefined {
+  // Size advice asks first (advisedWidth); the same refusal is not laid out twice.
+  const known = classSteps.get(result);
+  if (known?.request === request) return known.drawn;
+  const drawn = classStep(request, result, layout);
+  classSteps.set(result, { request, drawn });
+  return drawn;
+}
+
+const classSteps = new WeakMap<LayoutResult, { request: ResolvedChartRequest; drawn: LayoutResult | undefined }>();
+
+function classStep(request: ResolvedChartRequest, result: LayoutResult, layout: (asked: ResolvedChartRequest) => LayoutResult): LayoutResult | undefined {
   const need = result.refused && result.warnings[0]?.code === 'size-below-floor' ? result.warnings[0].expected?.minimum as Size | undefined : undefined;
   const cls = typeWidthClass(result.size.width);
   if (!need || need.width <= result.size.width || cls === 'S' || panelTypeClass(request.options) !== undefined
@@ -478,52 +499,215 @@ function askedNotesOff(plain: LayoutResult, refused: LayoutResult): LayoutResult
   }] };
 }
 
+/** One width-only probe: whether the request draws there, the width its own form needs, and the layout. */
+interface WidthProbe {
+  draws: boolean; floor?: number; result: LayoutResult;
+  /** Drawn after a size refusal in the class of this width: the width that refusal names, where its own class draws again. */
+  upper?: number;
+}
+
 /**
- * An open height grows with the width, so a size refusal at an open height advises the width alone.
- * Tables keep a verified repair width without searching for the smallest possible width.
- * Measurement still finds the exact minimum. Other chart types keep their existing whole-pixel
- * advice search. The height is the one drawn there. A pinned height keeps the pair.
+ * The request at a width alone, as render draws it: its layout, then render's steps after a refusal
+ * (`afterFirstLayout`). `any` draws it at all, the compact fallback included; `full` draws it in its
+ * own mode. A drawn width names its form's floor, a refused one the width its refusal names. Probes
+ * skip the repair search of a refusal, which only refines that width.
+ */
+function widthProbers(request: ResolvedChartRequest, layoutAt: LayoutCall<any, any, any>, known?: Map<number, WidthProbe>): { full: (width: number) => WidthProbe; any: (width: number) => WidthProbe } {
+  const own = request.options as RequestOptions;
+  const def = getChart(request.type);
+  const table = request.type === 'table' || request.type === 'dimswitch';
+  const sizeNeed = (probe: LayoutResult) => (probe.refused && probe.warnings[0]?.code === 'size-below-floor'
+    ? (probe.warnings[0].expected?.minimum as Size | undefined)?.width ?? probe.sizing?.minWidth : undefined);
+  const read = (probe: LayoutResult, draws: boolean): WidthProbe => ({ draws, floor: draws ? probe.sizing?.minWidth : sizeNeed(probe), result: probe });
+  const probeOptions = (options: RequestOptions) => (table ? { ...options, [PLAN_ONLY]: true } : options);
+  // Render's own steps lay out other requests (wider authored columns, stepped type, a smaller class): fresh calls.
+  const stepLayout = (asked: ResolvedChartRequest): LayoutResult => {
+    const run = preparedLayout(asked);
+    try { return run(probeOptions(asked.options) as RequestOptions); } finally { run.finish(); }
+  };
+  // `shared` holds the widths of earlier calls; the asked width is this call's own layout and stays in it.
+  const cached = (probe: (width: number) => WidthProbe, shared?: Map<number, WidthProbe>) => {
+    const local = new Map<number, WidthProbe>();
+    return (width: number) => {
+      const store = shared && width !== request.size.width ? shared : local;
+      if (!store.has(width)) {
+        const found = probe(width);
+        // An earlier width's result is only read for its size: keep no scene alive across calls.
+        store.set(width, store === shared && found.result ? { ...found, result: { size: found.result.size } as LayoutResult } : found);
+      }
+      return store.get(width)!;
+    };
+  };
+  // Under the floor fitSize checks first a width is refused before any layout, unless one of render's
+  // steps lays out another request (the type class steps happen from 720 px).
+  const steps = (floorTextScale(request.target) !== undefined && own.textScale === undefined && own.textSize === undefined && own.belowMinimum !== 'refuse')
+    || (request.type === 'grid' ? panelWidthGroups(request.data as WidthLevel) : ownWidthGroups(request.type, own as WidthEntry['options'])).length > 0;
+  const gated = (width: number): WidthProbe | undefined => {
+    if (def === undefined || steps || panelTypeClass(own) !== undefined || typeWidthClass(width) !== 'S') return undefined;
+    const gate = sizeGate(def, request.data, { ...request.options, size: { width } }, true).gatePolicy.minWidth;
+    return width + SIZE_TOLERANCE < gate ? { draws: false, floor: gate, result: undefined as unknown as LayoutResult } : undefined;
+  };
+  const any = cached((width) => {
+    const gate = gated(width);
+    if (gate) return gate;
+    // The asked width is the layout render made.
+    const asked = width === request.size.width ? request
+      : { ...request, size: { ...request.size, width }, options: { ...request.options, size: { width } } as RequestOptions };
+    const first = layoutAt((asked === request ? request.options : probeOptions(asked.options)) as RequestOptions);
+    if (!isRefused(first)) return read(first, true);
+    const drawn = afterFirstLayout(asked, first, stepLayout, stepLayout, stepLayout);
+    if (isRefused(drawn)) return read(first, false);
+    const need = sizeNeed(first);
+    return { ...read(drawn, true), ...(need !== undefined && need > width ? { upper: need } : {}) };
+  }, known);
+  // Drawn compact: the full chart's need is the width a refusing full layout names.
+  const full = cached((width) => {
+    const drawn = any(width);
+    if (!drawn.draws || (drawn.result as Geometry).mode !== 'compact' || own.mode === 'compact') return drawn;
+    const probe = layoutAt({ ...request.options, belowMinimum: 'refuse', size: { width }, [WIDTH_PROBE]: request.type } as RequestOptions);
+    return { draws: false, floor: sizeNeed(probe), result: drawn.result };
+  });
+  return { full, any };
+}
+
+/**
+ * The smallest whole width from which every wider width draws: the one search render advice, measure,
+ * canDraw and React read. It starts at `top` and follows the widths size refusals name up to one that
+ * draws. The first pixel of each wider type class (720 and 1080 px) must draw too, else the search
+ * starts there; widths from `verifiedFrom` on are known to draw. Then it steps down: a drawn width
+ * names the floor of its own form, the next width tried, and the answer is a drawn floor, or a width
+ * a refusal named (`topNamed` for `top`), whose next narrower pixel does not draw. A form's floor holds
+ * in its own type class, and a floor that does not draw is searched between it and the drawn width
+ * above. Widths at or under `bottom` are never tried. A form that refuses only between a floor and the
+ * width above it is not seen.
+ */
+function drawsFrom(at: (width: number) => WidthProbe, top: number, bottom: number, verifiedFrom = Infinity, topNamed = false): { width: number; probe: LayoutResult } | undefined {
+  let hi = Math.max(Math.ceil(top), bottom + 1);
+  let low = bottom;
+  let probe = at(hi);
+  // Whether a refusal or a class step named hi: the pixel under it is the likely edge.
+  let named = topNamed;
+  for (let round = 0; round < 4; round++) {
+    for (let pass = 0; !probe.draws && pass < 8; pass++) {
+      // A refusal that names no wider width: the next type class can still draw.
+      const next = probe.floor !== undefined && Math.ceil(probe.floor) > hi ? Math.ceil(probe.floor) : TYPE_CLASS_STEPS.find(width => width > hi);
+      if (next === undefined) return undefined;
+      low = hi;
+      hi = next;
+      probe = at(hi);
+      named = true;
+    }
+    if (!probe.draws) return undefined;
+    const steps = TYPE_CLASS_STEPS.filter(width => width > hi && width < verifiedFrom);
+    const step = steps.find(width => !at(width).draws);
+    if (step !== undefined) {
+      [low, hi, probe, named] = [step, step, at(step), true];
+      continue;
+    }
+    // A width drawn in the next smaller class: from the width its own class names, that class draws again,
+    // and it can draw compact there first.
+    const upper = Math.max(0, ...[hi, ...steps].map(width => at(width).upper ?? 0).filter(width => width > hi && width < verifiedFrom));
+    if (upper === 0 || at(upper).draws) break;
+    [low, hi, probe, named] = [upper - 1, upper, at(upper), true];
+  }
+  if (!probe.draws) return undefined;
+  const bisect = (from: number) => {
+    let lo = from;
+    while (hi - lo > 1) {
+      const mid = Math.floor((lo + hi) / 2);
+      // Past 2^53 the next whole number is no longer a number: the middle stops moving, so the search has its answer.
+      if (mid <= lo || mid >= hi) break;
+      const next = at(mid);
+      if (next.draws) [hi, probe] = [mid, next];
+      else lo = mid;
+    }
+    return { width: hi, probe: probe.result };
+  };
+  for (let pass = 0; pass < 8; pass++) {
+    if (hi - 1 <= low) return { width: hi, probe: probe.result };
+    // At a width a refusal named or a floor, the next narrower pixel first: a form often needs a few
+    // pixels more just under the width that draws it.
+    const stepped = named;
+    if (named) {
+      const below = at(hi - 1);
+      if (!below.draws) return { width: hi, probe: probe.result };
+      [hi, probe] = [hi - 1, below];
+    }
+    const classStart = [...TYPE_CLASS_STEPS].reverse().find(width => hi >= width) ?? low + 1;
+    const floor = probe.floor === undefined ? hi : Math.min(hi, Math.max(low + 1, classStart, Math.ceil(probe.floor)));
+    // A narrower pixel that draws and names no narrower floor: the edge is further down.
+    if (floor >= hi && stepped) break;
+    named = true;
+    if (floor < hi) {
+      const atFloor = at(floor);
+      if (!atFloor.draws) return bisect(floor);
+      [hi, probe] = [floor, atFloor];
+    }
+  }
+  return bisect(low);
+}
+
+/** The first pixel of each type class above S (theme.ts `typeWidthClass`). */
+const TYPE_CLASS_STEPS = [720, WIDE_CANVAS_MIN_WIDTH] as const;
+
+/**
+ * An open height grows with the width, so a size refusal at an open height advises the width alone:
+ * the width from which this request draws under its own belowMinimum setting (`drawsFrom`), the
+ * compact chart's where the request falls back to compact. The height is the one drawn there. A
+ * pinned height keeps the pair.
  */
 function drawnAdvice(request: ResolvedChartRequest, result: LayoutResult, layoutAt: LayoutCall<any, any, any>): LayoutResult {
-  const finding = result.refused ? result.warnings[0] : undefined;
-  const need = finding?.code === 'size-below-floor' ? finding.expected?.minimum as Size | undefined : undefined;
-  if (!result.refused || !need || request.fixed.height || need.width <= result.size.width) return result;
-  // The same bounds as measure: a floor the chart declares statically is not searched under, and a width at it is the answer.
-  // The advice is still width-only there, as everywhere else.
-  const def = getChart(request.type);
-  const staticMinWidth = def === undefined ? 0 : declaredSizing(def, request.options).minWidth;
-  const floorOptions = request.type === 'table' || request.type === 'dimswitch' ? {} : { belowMinimum: 'refuse' as const };
-  // Ordinary table rendering needs a safe repair width. measure() retains its exact minimum search.
-  const safeWidth = request.type === 'table' || request.type === 'dimswitch';
-  const fullAt = (width: number): Geometry | undefined => {
-    const probe = layoutAt.probe({ ...request.options, ...floorOptions, size: { width }, [WIDTH_PROBE]: request.type, ...(safeWidth ? { [PLAN_ONLY]: true } : {}) });
-    return !isRefused(probe) && (probe as Geometry).mode !== 'compact' ? probe as Geometry : undefined;
-  };
-  let drawn = safeWidth ? fullAt(need.width) : need.width <= staticMinWidth ? undefined : fullAt(need.width - 1);
-  if (safeWidth && !drawn) return result;
-  let [low, high] = [Math.max(Math.ceil(result.size.width), staticMinWidth) - 1, safeWidth ? need.width : drawn ? need.width - 1 : need.width];
-  while (!safeWidth && drawn && high - low > 1) {
-    const mid = Math.floor((low + high) / 2);
-    // Past 2^53 the next whole number is no longer a number: the middle stops moving, so the search has its answer.
-    if (mid <= low || mid >= high) break;
-    const probe = fullAt(mid);
-    if (probe) [high, drawn] = [mid, probe];
-    else low = mid;
-  }
-  const width = high;
-  const height = drawn ? Math.max(Math.ceil(drawn.size.height), Math.ceil(result.sizing.minHeight)) : need.height;
+  // A story is laid out only once its layer loads, so a stored probe of a story request can keep the plain chart's size.
+  const known = result.refused && !request.fixed.height && result.warnings[0]?.code === 'size-below-floor'
+    && !(request.options as { story?: unknown }).story ? refusedProbes(request) : undefined;
+  return advisedRefusal(result, advisedWidth(request, result, layoutAt, known));
+}
+
+const refusedSearches = new WeakMap<object, Map<string, Map<number, WidthProbe>>>();
+
+/**
+ * A probe at a width depends on the request without its size, so a host that renders a refused request
+ * again at another width (a container that resizes under the floor) reuses the widths the last search drew.
+ * ponytail: 4 requests per data object; a new one replaces the oldest.
+ */
+function refusedProbes(request: ResolvedChartRequest): Map<number, WidthProbe> | undefined {
+  if (request.data === null || typeof request.data !== 'object') return undefined;
+  const { size: _size, ...options } = request.options as RequestOptions;
+  const { type, theme, target, fixed, inputWarnings } = request;
+  // The static footer changes a chart's size once a static entry links it.
+  const footer = loadedDeferred('footer') !== undefined;
+  const key = withPlanInputs(() => requestKey(request.data as object, options, { type, theme, target, fixed, inputWarnings, footer }));
+  let byKey = refusedSearches.get(request.data);
+  if (!byKey) refusedSearches.set(request.data, byKey = new Map());
+  if (byKey.size >= 4 && !byKey.has(key)) byKey.delete(byKey.keys().next().value!);
+  let probes = byKey.get(key);
+  if (!probes) byKey.set(key, probes = new Map());
+  return probes;
+}
+
+/** A size refusal that names the width `advisedWidth` found, and the height drawn there. */
+function advisedRefusal(result: LayoutResult, found: { width: number; probe: LayoutResult } | undefined): LayoutResult {
+  if (!found || !result.refused) return result;
+  const { width, probe: drawn } = found;
+  const height = Math.max(Math.ceil(drawn.size.height), Math.ceil(result.sizing.minHeight));
   const advice = sizeRefusal(result.type, result.title, result.size, { ...result.sizing, minWidth: width, minHeight: height }).warnings[0]!;
   const warning = {
     ...advice,
-    message: safeWidth
-      ? `${result.title} does not fit at ${Math.round(result.size.width)}px wide. A verified width is ${width}px.`
-      : `${result.title} needs at least ${width}px of width; received ${Math.round(result.size.width)}px`,
-    suggest: safeWidth
-      ? `Render it at ${width}px wide. The height follows the width.${result.sizing.hint ? ` ${result.sizing.hint}` : ''}`
-      : `Render it at ${width}px wide or wider; the height follows the width.${result.sizing.hint ? ` ${result.sizing.hint}` : ''}`,
+    message: `${result.title} needs at least ${width}px of width; received ${Math.round(result.size.width)}px`,
+    suggest: `Render it at ${width}px wide or wider; the height follows the width.${result.sizing.hint ? ` ${result.sizing.hint}` : ''}`,
     fix: [{ op: 'replace' as const, path: '/options/size', value: { width } }],
   };
   return { ...result, warnings: [warning, ...result.warnings.slice(1)] };
+}
+
+/** The width an open-height size refusal names: where the request draws from, searched up from the width the layout named. */
+function advisedWidth(request: ResolvedChartRequest, result: LayoutResult, layoutAt: LayoutCall<any, any, any>, known?: Map<number, WidthProbe>): { width: number; probe: LayoutResult } | undefined {
+  const finding = result.refused ? result.warnings[0] : undefined;
+  const need = finding?.code === 'size-below-floor' ? finding.expected?.minimum as Size | undefined : undefined;
+  if (!result.refused || !need || request.fixed.height || need.width <= result.size.width) return undefined;
+  // Drawn in the next smaller type class at the asked width: there is nothing to advise.
+  if (smallerClass(request, result)) return undefined;
+  return drawsFrom(widthProbers(request, layoutAt, known).any, need.width, Math.floor(result.size.width), Infinity, true);
 }
 
 /** Grid children use the registered layout directly, so request diagnostics walk their authored input here. */
@@ -734,10 +918,12 @@ function measureWithLayout(request: ResolvedChartRequest, result: LayoutResult,
     }
     return probe;
   };
+  // At an open height the width search below finds the minimum width and the height drawn there.
+  const openWidth = !request.fixed.height && (!result.refused || sizeRepair);
   // Text and chrome depend on width. Verify the floor at the requested
   // width (or the minimum width when the request is narrower)
   // through the same registered layout that render uses, including its notes.
-  for (let pass = 0; pass < 8; pass++) {
+  for (let pass = 0; !openWidth && pass < 8; pass++) {
     let verified = true;
     const previousWidth = sizing.minWidth;
     const previousHeight = sizing.minHeight;
@@ -757,53 +943,37 @@ function measureWithLayout(request: ResolvedChartRequest, result: LayoutResult,
     }
     if (verified || (sizing.minWidth === previousWidth && sizing.minHeight === previousHeight)) break;
   }
-  // At the automatic height a width alone takes the height it needs, so the
-  // floor above, verified at minHeight, can stand over widths that draw in full. The minimum width
-  // is the narrowest a width-only request draws in full; the pair grows to the height drawn there,
-  // so the size a refusal names draws too. Find the first whole pixel that draws.
+  // At the automatic height a width alone takes the height it needs, so the floor above, verified at
+  // minHeight, is not the minimum width. The minimum width is the one `drawsFrom` finds for the full
+  // chart, searched from the asked width or that floor, whichever is wider. The pair grows to the
+  // height drawn there, so the size a refusal names draws too.
   const staticMinWidth = def === undefined ? 0 : declaredSizing(def, request.options).minWidth;
-  if (!request.fixed.height && (!result.refused || sizeRepair) && sizing.minWidth > staticMinWidth) {
-    // The same floor rule as probeAt: a table draws below its natural width on its ladder.
-    const widthOnly = (width: number): LayoutResult => layoutAt.probe({ ...request.options, ...floorOptions, size: { width }, [WIDTH_PROBE]: request.type });
-    const fullAt = (width: number): LayoutResult | undefined => {
-      const probe = widthOnly(width);
-      return !isRefused(probe) && (probe as Geometry).mode !== 'compact' ? probe : undefined;
-    };
-    let drawn = fullAt(sizing.minWidth - 1);
-    // Width acceptance can change with labels. Keep a verified accepted upper end.
-    let [lo, hi] = [staticMinWidth - 1, sizing.minWidth - 1];
-    // A pinned pair can draw at a width where a width-only request refuses, because that takes
-    // its own height. Follow the widths the refusals name up to one that draws, then search down.
-    if (!drawn && !fullAt(sizing.minWidth)) {
-      let width = sizing.minWidth;
-      for (let pass = 0; !drawn && pass < 8; pass++) {
-        const probe = widthOnly(width);
-        if (!isRefused(probe) || probe.warnings[0]?.code !== 'size-below-floor' || !probe.sizing || probe.sizing.minWidth <= width) break;
-        lo = width;
-        width = Math.ceil(probe.sizing.minWidth);
-        hi = width;
-        drawn = fullAt(width);
-      }
-    }
-    if (drawn) {
-      while (hi - lo > 1) {
-        const mid = Math.floor((lo + hi) / 2);
-        if (mid <= lo || mid >= hi) break;
-        const probe = fullAt(mid);
-        if (probe) [hi, drawn] = [mid, probe];
-        else lo = mid;
-      }
-      const lowered = { ...sizing, minWidth: hi, minHeight: Math.max(sizing.minHeight, Math.ceil(drawn.size.height)) };
-      // The exact pair must draw too; otherwise keep the original repair advice.
-      let pairDraws = false;
-      try { pairDraws = !isRefused(probeAt({ width: lowered.minWidth, height: lowered.minHeight })); }
-      catch (error) { if (!(error instanceof NormalizeError)) throw error; }
-      if (pairDraws) sizing = resolveSizing(lowered, result.size, { ...lowered, measuredMinWidth: Math.min(sizing.measuredMinWidth, hi) });
+  const probers = widthProbers(request, layoutAt);
+  let fullFrom = Infinity;
+  if (openWidth) {
+    const full = drawsFrom(probers.full, Math.max(request.size.width, sizing.minWidth), staticMinWidth - 1);
+    if (full) {
+      fullFrom = full.width;
+      // The pinned height that draws from `from` at a width; a pinned frame can name a taller one.
+      const pinned = (width: number, from: number): number => {
+        try { return minHeightAtWidth(request, width, from, undefined, probeAt); }
+        catch (error) { if (!(error instanceof NormalizeError)) throw error; return from; }
+      };
+      // The declared height where a pinned frame at the minimum width draws with it, else the height drawn there.
+      // Either is verified at the asked width too.
+      const least = pinned(full.width, sizing.minHeight);
+      const floor = isRefused(probeAt({ width: full.width, height: least }))
+        ? pinned(full.width, Math.max(sizing.minHeight, Math.ceil(full.probe.size.height))) : least;
+      const height = request.size.width > full.width ? pinned(request.size.width, floor) : floor;
+      sizing = resolveSizing({ ...sizing, minWidth: full.width, minHeight: height }, result.size,
+        { ...sizing, minWidth: full.width, minHeight: height, measuredMinWidth: Math.min(sizing.measuredMinWidth, full.width) });
     }
   }
   // The pair above is safe at the minimum width too. A host at one width needs the height for that width.
   // Keep the width-specific height lazy. A caller that does not read it needs no extra layouts.
   const atWidth = Math.max(request.size.width, sizing.minWidth);
+  // The one width a size refusal at an open height names, as render names it.
+  const advised = openWidth ? advisedWidth(request, result, layoutAt) : undefined;
   let atHeight: number | undefined;
   // The compact floor is reported only where this spec draws: the least height that draws at the
   // compact width, which the compact refusal there names. A spec that draws nowhere at that width
@@ -813,7 +983,10 @@ function measureWithLayout(request: ResolvedChartRequest, result: LayoutResult,
     const { compactFloor: _off, ...rest } = sizing;
     sizing = rest;
   } else if (sizing.compactFloor && def !== undefined) {
-    const width = sizing.compactFloor.width;
+    // At an open height the compact floor is the width from which the request draws at all: the width a
+    // size refusal names, or else the search down from the minimum width, where the full chart draws.
+    const from = !openWidth ? undefined : advised ?? drawsFrom(probers.any, Math.min(sizing.compactFloor.width, sizing.minWidth), 0, fullFrom);
+    const width = from?.width ?? sizing.compactFloor.width;
     // Fixed-size probes: a refusal names its own estimate without the repair search, which made
     // this check cost several full measures on a slow chart. A probe that draws, draws as the host's call does.
     const at = (size: Size | { width: number }) => layoutAt({ ...request.options, size, [FIXED_SIZE_PROBE]: true });
@@ -831,6 +1004,9 @@ function measureWithLayout(request: ResolvedChartRequest, result: LayoutResult,
       height = taken;
       break;
     }
+    // Render's steps after a refusal (stepped type on a slide) draw at the width the search found, where a
+    // pinned frame without them can refuse: the height drawn there.
+    if (!drawn && from) [drawn, height] = [true, Math.ceil(from.probe.size.height)];
     const { compactFloor: _static, ...rest } = sizing;
     sizing = drawn && height !== undefined ? { ...sizing, compactFloor: { width, height } } : rest;
   }
@@ -854,8 +1030,8 @@ function measureWithLayout(request: ResolvedChartRequest, result: LayoutResult,
   // All measurement fields and repair advice describe the verified floor. A canvas below the full
   // floor that falls back to compact keeps the size compact needs, which the layout named (the
   // `belowMinimum: 'compact'` contract): the full floor is not the size the host must give.
-  let updated = result.refused ? sizeRefusal(result.type, result.title, result.size, sizing) : undefined;
-  const compactNeed = sizeRepair && def !== undefined && compactFallbackApplies(def, request.options, request.data) && !fitsSize(result.size, sizing)
+  let updated = result.refused ? advised ? advisedRefusal(result, advised) as RefusedLayout : sizeRefusal(result.type, result.title, result.size, sizing) : undefined;
+  const compactNeed = sizeRepair && !advised && def !== undefined && compactFallbackApplies(def, request.options, request.data) && !fitsSize(result.size, sizing)
     ? result.warnings[0]!.expected?.minimum as Size | undefined : undefined;
   if (compactNeed) {
     const repair = verifiedSizeRepair(compactNeed, size => {
@@ -866,7 +1042,7 @@ function measureWithLayout(request: ResolvedChartRequest, result: LayoutResult,
     if (repair.size && updated) updated = { ...updated, warnings: sizeRefusal(updated.type, updated.title, updated.size,
       { ...sizing, minWidth: repair.size.width, minHeight: repair.size.height, hint: result.sizing?.hint }).warnings };
   }
-  if (sizeRepair && updated && !compactNeed) {
+  if (sizeRepair && updated && !compactNeed && !advised) {
     const initial = updated.warnings[0]!.expected!.minimum as Size;
     const repair = verifiedSizeRepair(initial, size => {
       const probe = layoutAt({ ...request.options, size });

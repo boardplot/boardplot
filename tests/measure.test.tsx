@@ -8,7 +8,7 @@ import { getFixtures, getRefusalExamples } from '../src/fixtures';
 import { listCharts } from '../src/core/registry';
 import { resolveSize } from '../src/core/normalize/shared';
 import { defaultMeasurer } from '../src/core/text';
-import { measure, measureResolvedRequest, resolveChartRequest, type ChartMeasurement } from '../src/core/request';
+import { canDraw, layoutResolvedRequest, measure, measureResolvedRequest, resolveChartRequest, type ChartMeasurement } from '../src/core/request';
 import { measure as publicMeasure } from '../src/index';
 import { INTERACTIVE_LAYOUT } from '../src/core/footer';
 import { callTool } from '../src/mcp/server';
@@ -57,14 +57,49 @@ describe('shared request measurement', () => {
     expect(repaired.geometry).toBeDefined();
     expect(repaired.warnings.filter(w => w.severity !== 'info')).toEqual([]);
   });
-  // Prevents width advice from stopping at a coarse bracket above a width that already draws in full.
+  // Prevents width advice from stopping at a coarse bracket above a width that already draws in full, and from
+  // naming a width where the default render falls back to compact (the bar table drew full there only under 'refuse').
   it('reports the first whole-pixel width that draws the two-panel bar table in full', () => {
     const fixture = getFixtures('bartable').find(f => f.id === 'impact-two-panels')!;
     const request = { type: 'bartable', data: fixture.data, options: { ...fixture.options, size: { width: 960 } } };
     const result = measure(request);
-    const at = (width: number) => measure({ ...request, options: { ...request.options, belowMinimum: 'refuse', size: { width } } });
-    expect(at(result.minWidth).geometry).toBeDefined();
+    const at = (width: number) => measure({ ...request, options: { ...request.options, size: { width } } });
+    expect(at(result.minWidth).geometry?.mode).toBe('full');
     expect(at(result.minWidth - 1).geometry?.mode).not.toBe('full');
+  });
+  // Prevents render advice, measure and canDraw from naming three widths for one refusal (a table named
+  // 1208 in render and canDraw, 1057 in measure, and drew from 1024).
+  it('names one width for a size refusal in render, measure and canDraw, the width it draws from', () => {
+    const fixture = getFixtures('table').find(f => f.id === 'management-report')!;
+    const request = (width: number) => ({ type: 'table', data: fixture.data, options: { ...fixture.options, size: { width } } });
+    const named = (warning: { fix?: { path: string; value?: unknown }[] } | undefined) =>
+      (warning?.fix?.find(op => op.path.endsWith('/size'))?.value as { width: number } | undefined)?.width;
+    const drawn = (width: number) => !layoutResolvedRequest(resolveChartRequest(request(width))).refused;
+    const width = named(layoutResolvedRequest(resolveChartRequest(request(280))).warnings[0])!;
+    expect(named(measure(request(280)).refused?.warnings[0])).toBe(width);
+    const answer = canDraw(request(280));
+    expect(answer.ok ? undefined : (answer as { minimum?: { width: number } }).minimum?.width).toBe(width);
+    expect([drawn(width - 1), drawn(width)]).toEqual([false, true]);
+  });
+  // Prevents a minimum width read from probes that skip render's retries: a cohort exhibit that draws in full
+  // from 588 px was given 678 px, because its width probe refused where render's own layout draws.
+  it('reports the minimum width from the layouts render draws, its retries included', () => {
+    const fixture = getFixtures('cohort').find(f => f.id === 'size-after-periods')!;
+    const request = (width: number) => ({ type: 'cohort', data: fixture.data, options: { ...fixture.options, size: { width } } });
+    const { minWidth } = measure(request(960));
+    const mode = (width: number) => measure(request(width)).geometry?.mode;
+    expect(minWidth).toBe(588);
+    expect([mode(minWidth - 1), mode(minWidth)]).toEqual(['compact', 'full']);
+  });
+  // Prevents a compact floor where the chart does not draw at all, or above where it already draws: a slide
+  // column draws narrower than its 280 px card floor once its type steps down.
+  it('reports the compact floor as the narrowest width from which the request draws', () => {
+    const fixture = getFixtures('column').find(f => f.id === 'key-right-slide')!;
+    const request = (width: number) => ({ type: 'column', data: fixture.data, options: { ...fixture.options, size: { width } } });
+    const floor = measure(request(600)).compactFloor!;
+    const drawn = (width: number) => !layoutResolvedRequest(resolveChartRequest(request(width))).refused;
+    expect(floor.width).toBeLessThan(280);
+    expect([drawn(floor.width - 1), drawn(floor.width)]).toEqual([false, true]);
   });
   // Prevents a suggested bump subset from promising that its labels fit every pinned frame.
   it('leaves a bump subset to the author when its fit is not known', () => {

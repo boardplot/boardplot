@@ -129,8 +129,9 @@ it.each([148, undefined])('reports a renderable stacked100-area floor with heigh
   act(() => root.render(<LineChart data={data} {...options} onRefused={result => { actual = result; }} />));
   expect(host.querySelector('[data-bp-refused]')?.getAttribute('data-bp-refused')).toBe('size-below-floor');
   expect(actual?.size.width).toBe(options.size.width);
+  // At an open height the fix names the width alone; the height follows it.
   expect(actual?.warnings[0]).toMatchObject({ code: 'size-below-floor', expected: { minimum },
-    fix: [{ op: 'replace', path: '/options/size', value: minimum }] });
+    fix: [{ op: 'replace', path: '/options/size', value: height === undefined ? { width: minimum.width } : minimum }] });
   if (expected) {
     expect(actual?.warnings).toEqual(expected.warnings);
     expect(actual?.sizing).toEqual(expected.sizing);
@@ -692,8 +693,8 @@ it('uses the original table and dimswitch floors for open-height fill containers
   for (const { type, id, Chart, minimum } of [
     // The first full-width floor needs more height at the narrower frame.
     { type: 'table', id: 'steering-monthly', Chart: TableChart, minimum: { width: 529, height: 311 } },
-    // A fixed 280 px card folds its depth to fit the height, so its floor is the folded table's: 224 px, not the 440 px of depth 2.
-    { type: 'dimswitch', id: 'by-measure', Chart: DimSwitchChart, minimum: { width: 280, height: 224 } },
+    // An open height names the width it draws from and the height drawn there.
+    { type: 'dimswitch', id: 'by-measure', Chart: DimSwitchChart, minimum: { width: 280, height: 551 } },
   ]) for (const fillHeight of [false, true]) {
     const fixture = getFixtures(type).find(candidate => candidate.id === id)!;
     const expected = measureRequest({ type, data: fixture.data, options: { ...fixture.options, size: { width: 99 } } }).refused!;
@@ -766,7 +767,7 @@ it.each([
     expect(actual?.type).toBe(type);
     expect(actual?.size.width).toBe(size.width);
     expect(actual?.warnings[0]).toMatchObject({ code: 'size-below-floor', expected: { minimum },
-      fix: [{ op: 'replace', path: '/options/size', value: minimum }] });
+      fix: [{ op: 'replace', path: '/options/size', value: 'height' in size ? minimum : { width: minimum.width } }] });
     expect(actual?.warnings).toEqual(expected.warnings);
     expect(actual?.sizing).toEqual(expected.sizing);
     act(() => root.render(<Chart data={fixture.data} {...options} size={minimum} />));

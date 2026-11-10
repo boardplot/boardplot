@@ -240,6 +240,11 @@ export function copyPlannedValue<T>(value: T, copies = new Map<object, unknown>(
 
 const requestResults = new WeakMap<object, Map<string, unknown>>();
 
+/** The key of a public request: data and options by content, and the resolved fields (type, theme, target ...). */
+export function requestKey(data: object, options: object, resolved: object): string {
+  return `${layoutKey(data, options)}:${inputJson(resolved)}`;
+}
+
 /**
  * One public table layout. A host that lays out again on stable data reads the stored result, and the
  * result it receives is a copy, so a caller's edits never reach a later one. The key reads the data,
@@ -248,7 +253,7 @@ const requestResults = new WeakMap<object, Map<string, unknown>>();
  */
 export function repeatedResult<T>(data: object, options: object, resolved: object, layout: () => T): T {
   return withPlanInputs(() => {
-    const key = `${layoutKey(data, options)}:${inputJson(resolved)}`;
+    const key = requestKey(data, options, resolved);
     let byKey = requestResults.get(data);
     if (!byKey) requestResults.set(data, byKey = new Map());
     if (byKey.size >= 32 && !byKey.has(key)) byKey.delete(byKey.keys().next().value!);

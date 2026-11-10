@@ -1207,14 +1207,17 @@ it('keeps the name of the column after an axis break on a phone', () => {
   expect(name.hidden).toBeUndefined();
 });
 
-// A width pinned below the floor refuses, and the size search laid out a bar for every probe at the floor width, which the refusal never drew.
-it('lays out no bar for the probes that price a refusal at a pinned width', () => {
+// A width pinned below the floor refuses. The refusal named 133 px, from its own estimate, where the column, stepped to
+// bars as render draws it, draws from 120 px. The advice is the width it draws from, so its check lays out the bars.
+it('names the width from which a column that steps to bars draws', () => {
   const names = Array.from({ length: 20 }, (_, i) => `Sector number ${i + 1} of the survey`);
   const data = { categories: names.map((label, i) => ({ id: `c${i}`, label })), series: [{ id: 's', label: 'Margin', values: names.map((_, i) => 8 + ((i * 7) % 23)) }] };
-  barLayoutCalls.count = 0;
-  const refused = layoutResolvedRequest(resolveChartRequest({ type: 'column', data, options: { title: 'Margin by sector', unit: '%', size: { width: 100 } } } as never)) as Geometry;
+  const at = (width: number) => layoutResolvedRequest(resolveChartRequest({ type: 'column', data, options: { title: 'Margin by sector', unit: '%', size: { width } } } as never)) as Geometry;
+  const refused = at(100);
   expect(refused.refused).toBe(true);
-  expect(barLayoutCalls.count).toBe(0);
+  const width = (refused.warnings[0]!.fix![0] as { value: { width: number } }).value.width;
+  expect(width).toBe(120);
+  expect([at(width - 1).refused, at(width).type]).toEqual([true, 'bar']);
 });
 
 // A pinned height between the row floor and the bar's real minimum laid out a bar before the column kept its place, which slowed those columns.

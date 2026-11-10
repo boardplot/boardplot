@@ -179,11 +179,11 @@ it('returns a safe width-only table repair without requiring exact minimum advic
   const result = layoutResolvedRequest(request);
   expect(result.refused).toBe(true);
   const warning = result.warnings.find(w => w.code === 'size-below-floor')!;
-  expect(warning.message).toContain('verified width');
   const fix = warning.fix?.find(f => f.path === '/options/size');
   expect(fix && 'value' in fix).toBeTruthy();
   const size = (fix as { value: { width: number } }).value;
   expect(Object.keys(size)).toEqual(['width']);
+  expect(warning.message).toContain(`${size.width}px`);
   const repaired = layoutResolvedRequest(resolveChartRequest({ ...spec, options: { ...spec.options, size } } as Parameters<typeof resolveChartRequest>[0]));
   expect(repaired.refused).not.toBe(true);
   expect(repaired.warnings.filter(w => w.severity === 'error')).toEqual([]);
