@@ -6,9 +6,10 @@ import { repaintGeometry } from '../src/core/repaintGeometry';
 import { resolvePaint } from '../src/core/svg/paint';
 import { getFixtures } from '../src/fixtures';
 import { listCharts } from '../src/core/registry';
-import { groundTextPaint, paintColor, paintTokenColor, resolveTheme } from '../src/core/theme';
+import { colorRolePaints, groundTextPaint, paintColor, paintTokenColor, resolveTheme, themes } from '../src/core/theme';
 import { compositeColor, contrastRatio } from '../src/core/color';
-import { marksOnBands } from '../src/core/markVisibility';
+import { markVisibilityFloor, marksOnBands } from '../src/core/markVisibility';
+import { MARK_CONTRAST_FLOOR, palettePerceptualDistance, swatchApart } from '../src/core/themeRules';
 import { markLostOnBandWarnings, refreshPaintWarnings } from '../src/core/paintWarnings';
 import type { Paint, SceneNode } from '../src/core/types/scene';
 import { prepareChart, serializePreparedChart } from '../src/react/prepare';
@@ -351,10 +352,16 @@ describe('draws series that share a colour role in distinct steps in every type'
   const series = (values = (i: number) => [20 + i * 5, 25 + i * 4, 22 + i * 3]) => S.map((id, i) => ({ id, label: `Series ${i + 1}`, colorRole: 'good', values: values(i) }));
   const G = ['g1', 'g2', 'g3'];
   const groups = G.map((id, i) => ({ id, label: `Group ${i + 1}`, colorRole: 'good' }));
-  const cases: [string, Record<string, unknown>, string[], keyed: boolean][] = [
+  // `filled`: in a role whose marks mix fills and lines, the filled marks; they draw the steps nearest the role's colour.
+  const cases: [string, Record<string, unknown>, string[], keyed: boolean, filled?: string[]][] = [
+    ['column stacked', { type: 'column', data: { categories: cats, series: series() }, options: { variant: 'stacked' } }, S, true],
+    ['bar grouped', { type: 'bar', data: { categories: cats, series: series() }, options: { variant: 'grouped' } }, S, true],
+    ['dot', { type: 'dot', data: { categories: cats, series: series() } }, S, true],
     ['line', { type: 'line', data: { categories: cats, series: series() } }, S, false],
     ['line stacked-area', { type: 'line', data: { categories: cats, series: series() }, options: { variant: 'stacked-area' } }, S, false],
-    ['combo', { type: 'combo', data: { categories: cats, series: series().map((s, i) => i === 0 ? s : { ...s, kind: 'line' }) } }, S, true],
+    ['combo', { type: 'combo', data: { categories: cats, series: series().map((s, i) => i === 0 ? s : { ...s, kind: 'line' }) } }, S, true, ['s1']],
+    // The lead area of a line chart took the darkest step of the line ladder, a near-black area for a role named good.
+    ['line area lead', { type: 'line', data: { categories: cats, series: series() }, options: { variant: 'area' } }, S, false, ['s1']],
     ['funnel', { type: 'funnel', data: { categories: cats, series: series((i) => [100 - i * 10, 60 - i * 5, 30 - i * 3]) }, options: { variant: 'rows' } }, S, true],
     ['funnel centered', { type: 'funnel', data: { categories: cats, series: series((i) => [100 - i * 10, 60 - i * 5, 30 - i * 3]) }, options: { variant: 'centered' } }, S, true],
     ['mekko', { type: 'mekko', data: { categories: cats, series: series() }, options: { variant: 'stacked100' } }, S, false],
@@ -363,31 +370,64 @@ describe('draws series that share a colour role in distinct steps in every type'
     ['bartable', { type: 'bartable', data: { categories: cats, series: S.map((id, i) => ({ id, label: `Series ${i + 1}`, colorRole: 'good' })), panels: [{ id: 'p', label: 'P', unit: '$m', values: { s1: [20, 25, 22], s2: [25, 29, 25], s3: [30, 33, 28] } }] } }, S, true],
     ['waffle', { type: 'waffle', data: { categories: [{ id: 'o', label: 'Orders' }], series: series((i) => [[30, 25, 15][i]!]) }, options: { variant: 'cells' } }, S, false],
     ['scatter', { type: 'scatter', data: { groups, points: G.flatMap((g, gi) => [0, 1, 2].map(k => ({ id: `${g}${k}`, group: g, label: `${g}${k}`, x: gi * 3 + k, y: gi + k * 2 }))) } }, G, true],
+    // A small dot took the stroke ladder and a large marker the fill ladder, so a circle of one group and a triangle of another drew one colour.
+    ['scatter mixed markers', { type: 'scatter', width: 720, data: { groups: groups.map((g, gi) => gi === 2 ? { ...g, marker: 'triangle' } : g), points: G.flatMap((g, gi) => [0, 1].map(k => ({ id: `${g}${k}`, group: g, label: `${g}${k}`, x: gi * 3 + k, y: gi + k * 2 }))) } }, G, true, ['g3']],
     ['treemap', { type: 'treemap', data: { groups, items: G.flatMap((g, gi) => [0, 1].map(k => ({ id: `${g}${k}`, label: `${g}${k}`, group: g, value: 100 - gi * 20 - k * 10 }))) } }, G, true],
     ['waterfall', { type: 'waterfall', data: { items: [{ id: 'st', label: 'Start', type: 'total', value: 100 }, { id: 'v', label: 'Volume', segments: S.map((id, i) => ({ id, label: `Segment ${i + 1}`, colorRole: 'good', value: 10 + i * 4 })) }, { id: 'en', label: 'End', type: 'total' }] } }, S, true],
   ];
-  it.each(cases)('%s', (_, request, ids, keyed) => {
+  it.each(cases)('%s', (_, request, ids, keyed, filled) => {
+    const light = layoutResolvedRequest(resolveChartRequest({ ...request, theme: 'standard', options: { title: 'Three series, one role', ...(request.options as object) } } as never));
+    if (light.refused) throw new Error('refused');
     for (const theme of ['standard', 'standard-dark']) {
-      const geo = layoutResolvedRequest(resolveChartRequest({ ...request, theme, options: { title: 'Three series, one role', ...(request.options as object) } } as never));
-      if (geo.refused) throw new Error('refused');
-      const marks = new Map<string, string>();
-      const keys = new Map<string, string>();
-      for (const node of geo.scene) {
-        const id = node.owner?.segmentId ?? node.owner?.seriesId ?? node.owner?.pointId?.slice(0, 2);
-        const paint = 'fill' in node && node.fill ? node.fill : 'stroke' in node ? node.stroke : undefined;
-        if (!id || !ids.includes(id) || !paint || node.t === 'text' || /casing|leader|label|halo|connector|baseline|gridline|hit|track|rule/i.test(node.part ?? '')) continue;
-        const css = resolvePaint(paint, resolveTheme(theme));
-        if (css.toLowerCase() === resolveTheme(theme).color.background.toLowerCase()) continue;
-        const target = /swatch|legendKey/.test(node.part ?? '') ? keys : marks;
-        if (!target.has(id)) target.set(id, css);
+      const fresh = layoutResolvedRequest(resolveChartRequest({ ...request, theme, options: { title: 'Three series, one role', ...(request.options as object) } } as never));
+      if (fresh.refused) throw new Error('refused');
+      // A repaint from light to dark gives the steps a dark layout would.
+      for (const geo of theme === 'standard' ? [fresh] : [fresh, repaintGeometry(light, resolveTheme(theme), {})]) {
+        const marks = new Map<string, string>();
+        const keys = new Map<string, string>();
+        for (const node of geo.scene) {
+          const id = node.owner?.segmentId ?? node.owner?.seriesId ?? node.owner?.pointId?.slice(0, 2);
+          const paint = 'fill' in node && node.fill ? node.fill : 'stroke' in node ? node.stroke : undefined;
+          if (!id || !ids.includes(id) || !paint || node.t === 'text' || /casing|leader|label|halo|connector|baseline|gridline|hit|track|rule/i.test(node.part ?? '')) continue;
+          const css = resolvePaint(paint, resolveTheme(theme));
+          if (css.toLowerCase() === resolveTheme(theme).color.background.toLowerCase()) continue;
+          const target = /swatch|legendKey/.test(node.part ?? '') ? keys : marks;
+          if (!target.has(id)) target.set(id, css);
+        }
+        expect(new Set(ids.map(id => marks.get(id))).size, `${theme} marks`).toBe(ids.length);
+        // A key, where one is drawn, shows each series in its mark's colour.
+        if (keyed) expect(keys.size, `${theme} key`).toBe(ids.length);
+        for (const [id, key] of keys) expect(key, `${theme} key ${id}`).toBe(marks.get(id));
+        expect(geo.warnings.map(w => w.code), theme).not.toContain('series-indistinguishable');
+        // The steps stood 10.8 OKLab apart, under the swatch floor of 12, so a stack warned series-adjacent-similar on the default colours.
+        expect(geo.warnings.map(w => w.code), theme).not.toContain('series-adjacent-similar');
+        const page = resolveTheme(theme).color.background;
+        for (const [i, a] of [...marks.values()].entries()) {
+          expect(contrastRatio(a, page), `${theme} ${a} on the page`).toBeGreaterThanOrEqual(markVisibilityFloor(page));
+          for (const b of [...marks.values()].slice(i + 1)) expect(swatchApart(a, b), `${theme} ${a} / ${b}`).toBe(true);
+        }
+        const base = resolvePaint({ token: 'good' }, resolveTheme(theme));
+        const near = (id: string) => palettePerceptualDistance(marks.get(id)!, base, 'normal');
+        for (const f of filled ?? []) for (const l of ids.filter(id => !filled!.includes(id))) expect(near(f), `${theme} ${f} nearer the role's colour than ${l}`).toBeLessThan(near(l));
       }
-      expect(new Set(ids.map(id => marks.get(id))).size, `${theme} marks`).toBe(ids.length);
-      // A key, where one is drawn, shows each series in its mark's colour.
-      if (keyed) expect(keys.size, `${theme} key`).toBe(ids.length);
-      for (const [id, key] of keys) expect(key, `${theme} key ${id}`).toBe(marks.get(id));
-      expect(geo.warnings.map(w => w.code), theme).not.toContain('series-indistinguishable');
     }
   });
+});
+
+// Steps of a shared colour role sat under the swatch floor and their palest step sank into the page as a thin line or dot, in every preset.
+it.each(Object.keys(themes))('keeps two or three series of one colour role apart and visible on %s', (preset) => {
+  const theme = resolveTheme(preset);
+  const page = theme.color.background;
+  for (const role of ['good', 'bad', 'warn', 'neutral', 'highlight', 'total', 'series-1']) for (const fill of [true, false]) for (const count of [2, 3]) {
+    const series = Array.from({ length: count }, (_, i) => ({ id: `s${i}`, colorRole: role }));
+    const paints = colorRolePaints(series, fill);
+    const colors = series.map(s => paintColor(theme, paints.get(s.id)!));
+    const floor = fill ? markVisibilityFloor(page) : MARK_CONTRAST_FLOOR;
+    for (const [i, a] of colors.entries()) {
+      expect(contrastRatio(a, page), `${role} ${fill ? 'fill' : 'stroke'} ${count}: ${a} on the page`).toBeGreaterThanOrEqual(floor);
+      for (const b of colors.slice(i + 1)) expect(swatchApart(a, b), `${role} ${fill ? 'fill' : 'stroke'} ${count}: ${a} / ${b}`).toBe(true);
+    }
+  }
 });
 
 // Scenario series took their rank colour, so a prior year listed first painted darker than the actual and the look changed with series order.
