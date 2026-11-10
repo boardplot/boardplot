@@ -61,7 +61,7 @@ function marks(locale) {
 
 const ENGLISH = { decimal: '.', thousands: ',' };
 /** The chart types whose label requests name their claims (LabelRequest.claimIds); the census checks each claim is bound. */
-export const CLAIMED_AT_REQUEST = new Set(['waterfall', 'pvm']);
+export const CLAIMED_AT_REQUEST = new Set(['waterfall', 'pvm', 'combo', 'pareto']);
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**

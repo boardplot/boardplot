@@ -287,7 +287,9 @@ function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, p
     // short of the seat two rows up.
     const lift = curveStartsOnTop && above ? clearLift({ ...at('aboveStack', edgeY - tsize.height - 4, 0).rect }, strokes, 2 * tsize.height + 4) : undefined;
     const liftedSeat = lift !== undefined && lift >= MARKER_R ? [at('aboveStackLifted', edgeY - tsize.height - 4 - lift - 2, 1)] : [];
-    const named = { noteText: `${domain.columns.length === 1 ? noteName(domain.columns[0]!) : chartString(domain.options, 'total')} ${text}${words ? ` ${words.lines[1]}` : ''} (${noteName(c)})` };
+    // The total prints the stack's sum, so its request names that claim (claims/browser.ts stackTotalClaims).
+    const named = { noteText: `${domain.columns.length === 1 ? noteName(domain.columns[0]!) : chartString(domain.options, 'total')} ${text}${words ? ` ${words.lines[1]}` : ''} (${noteName(c)})`,
+      claimIds: [`stack:total:${c.id}`] };
     if (insideFont && above && edgeY + 4 + tsize.height <= y(0)) {
       requests.push({
         id: `grandTotal:${c.id}`,

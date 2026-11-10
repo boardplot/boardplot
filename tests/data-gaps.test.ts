@@ -713,6 +713,29 @@ it('reads the printed text of Likert nets and shares and of Pareto cumulative sh
   }
 });
 
+// The reading called the share the vital few reach "Not displayed" although the curve, the threshold rule or the key prints it.
+it('reads the Pareto vital-few share where the curve, the threshold rule or the key prints it', () => {
+  const causes = (values: number[]) => ['Late delivery', 'Damaged box', 'Wrong item', 'Missing part', 'Billing error', 'Other']
+    .map((label, i) => ({ id: label.toLowerCase().replace(' ', '-'), label, value: values[i] }));
+  const cases = [
+    [causes([50, 25, 10, 8, 4, 3]), {}, 'label:point:pareto:cumulative:wrong-item', '85%'],
+    [causes([50, 30, 8, 6, 4, 2]), {}, 'label:valueLine:pareto:threshold', '80%'],
+    [causes([50, 25, 10, 8, 4, 3]), { cumulative: false }, undefined, 'Top three: 85%'],
+  ] as const;
+  for (const [items, options, nodeId, text] of cases) {
+    const request = resolveChartRequest({ type: 'pareto', data: { items }, options: { ...options, size: { width: 720, height: 420 } } } as never);
+    const geometry = layoutResolvedRequest(request);
+    if (geometry.refused) throw new Error('pareto refused');
+    const claims = claimsForChart('pareto', geometry);
+    const reading = chartReading({ name: 'pareto', type: 'pareto', request, geometry, claims });
+    const claim = claims.find((item) => item.id === 'pareto:vitalFew');
+    const node = geometry.scene.find((item) => item.t === 'text' && item.id === claim?.nodeId);
+    const entry = reading.derived.find((item) => item.claimId === 'pareto:vitalFew');
+    expect([node?.t === 'text' ? node.lines.join(' ') : undefined, entry?.displayed, entry?.visible], text).toEqual([text, text, true]);
+    if (nodeId) expect(claim?.nodeId).toBe(nodeId);
+  }
+});
+
 // Option ids may contain ':', so a share claim id can collide with another option or row; the reading must never quote another value's text.
 it('never reads a Likert share with the text of another option or row', () => {
   const inputs = [
