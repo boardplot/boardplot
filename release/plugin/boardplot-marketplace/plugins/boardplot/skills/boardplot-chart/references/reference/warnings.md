@@ -47,7 +47,7 @@ Every code a render, a measure or a React chart can return, read from the source
 | `axis-break-invalid` | error | yes | core/axisBreakInvalid.ts |
 | `axis-break-unsupported` | warn |  | bar, box, core/charts/chartEnv.ts, core/grid/layoutGrid.ts, grid |
 | `axis-title-dropped` | warn |  | scatter |
-| `bad-anchor` | warn |  | core/annotate.ts, core/annotateTargets.ts, core/eventLane.ts, gantt, pie |
+| `bad-anchor` | warn |  | core/annotate.ts, core/annotateTargets.ts, core/eventLane.ts, gantt, pie, waterfall |
 | `band-attainment-empty` | warn |  | core/annotateTargets.ts |
 | `band-bounds-invalid` | warn |  | core/annotateTargets.ts |
 | `band-bounds-offscale` | warn |  | core/annotateTargets.ts |
@@ -84,6 +84,9 @@ Every code a render, a measure or a React chart can return, read from the source
 | `box-points-dense` | info |  | box |
 | `box-small-n` | warn |  | box |
 | `box-zero-iqr` | info |  | box |
+| `bracket-cases` | warn |  | waterfall |
+| `bracket-span-order` | warn |  | waterfall |
+| `bracket-span-total` | warn |  | waterfall |
 | `breaks-ignored` | warn |  | heatmap |
 | `bubble-levels` | error |  | heatmap |
 | `bubble-size-missing` | warn |  | heatmap |
@@ -259,14 +262,14 @@ Every code a render, a measure or a React chart can return, read from the source
 | `diff-mode-unimplemented` | warn |  | core/annotate.ts |
 | `diff-negative-base` | warn |  | core/annotate.ts |
 | `dimswitch-depth-folded` | warn | yes | dimswitch |
-| `dimswitch-driver-footing` | not stated at the site |  | dimswitch |
+| `dimswitch-driver-footing` | warn |  | dimswitch |
 | `dimswitch-encoding-column` | warn | yes | dimswitch |
 | `dimswitch-fact-missing` | warn |  | dimswitch |
 | `dimswitch-labels-only` | warn |  | dimswitch |
-| `dimswitch-measure-omitted` | not stated at the site |  | dimswitch |
+| `dimswitch-measure-omitted` | warn |  | dimswitch |
 | `dimswitch-partial-note-off-frame` | warn |  | dimswitch |
 | `dimswitch-scale-unit` | warn |  | dimswitch |
-| `dimswitch-subtotal-footing` | not stated at the site |  | dimswitch |
+| `dimswitch-subtotal-footing` | warn |  | dimswitch |
 | `direction-ignored` | warn |  | heatmap |
 | `discrete-quintiles` | warn |  | heatmap |
 | `draw-crosses-text` | warn |  | core/annotateDrawing.ts |
@@ -303,7 +306,7 @@ Every code a render, a measure or a React chart can return, read from the source
 | `fan-band-gap` | warn |  | line |
 | `fan-band-inverted` | error |  | line |
 | `fan-band-unlabelled` | error |  | line |
-| `fan-bands-crossed` | error | yes | line |
+| `fan-bands-crossed` | error |  | line |
 | `fan-center-empty` | error |  | line |
 | `fan-center-outside-band` | error |  | line |
 | `fan-composition-conflict` | error |  | line |
@@ -340,7 +343,7 @@ Every code a render, a measure or a React chart can return, read from the source
 | `football-field-range-required` | error |  | bar |
 | `football-field-reference-ignored` | warn |  | bar |
 | `football-field-sort-segments-ignored` | warn |  | bar |
-| `football-field-topn-ignored` | warn |  | bar |
+| `football-field-topn-ignored` | warn | yes | bar |
 | `footnote-reference-unknown` | warn |  | core/footnoteMark.ts |
 | `footnote-unreferenced` | info |  | core/frame.ts |
 | `footnotes-off` | info |  | core/eventLane.ts, core/frame.ts, core/request.ts |
@@ -417,7 +420,7 @@ Every code a render, a measure or a React chart can return, read from the source
 | `group-not-contiguous` | error |  | table |
 | `group-ref-invalid` | error |  | table |
 | `group-undeclared` | warn |  | scatter |
-| `harvey-ratings` | error |  | heatmap |
+| `harvey-ratings` | error | yes | heatmap |
 | `heatmap-legend-required` | warn |  | core/frame.ts |
 | `height-off-ladder` | advice | yes | core/lint/aspect.ts |
 | `highlight-bad-similar` | warn |  | core/themeRules.ts |
@@ -469,7 +472,7 @@ Every code a render, a measure or a React chart can return, read from the source
 | `invalid-facet-source` | error |  | grid |
 | `invalid-facet-value` | error |  | grid |
 | `invalid-font-tables` | error |  | cli/activeFontTables.ts |
-| `invalid-format` | error |  | core/formatSpec.ts |
+| `invalid-format` | error | yes | core/formatSpec.ts, core/schema/shared.ts |
 | `invalid-geometry` | error |  | react/SceneRenderer.tsx |
 | `invalid-grid` | error |  | waffle |
 | `invalid-identity` | error |  | core/rows.ts, core/schema/namedColumns.ts |
@@ -477,7 +480,7 @@ Every code a render, a measure or a React chart can return, read from the source
 | `invalid-kind` | error |  | gantt |
 | `invalid-legend-panel` | error |  | grid |
 | `invalid-locale` | error |  | core/doc/themeObject.ts, core/request.ts |
-| `invalid-membership` | error | yes | diagram |
+| `invalid-membership` | error |  | diagram |
 | `invalid-name` | not stated at the site |  | core/doc/document.ts |
 | `invalid-number` | error |  | core/normalize/shared.ts, dimswitch, kpi |
 | `invalid-option` | error |  | butterfly, react/RefusalBoundary.tsx |
@@ -567,7 +570,7 @@ Every code a render, a measure or a React chart can return, read from the source
 | `locale-ignored` | warn |  | core/doc/document.ts |
 | `log-axis-unnamed` | info |  | line, scatter |
 | `log-line-conflict` | error | yes | line |
-| `log-nonpositive` | error |  | line, scatter |
+| `log-nonpositive` | error | yes | line, scatter |
 | `log-tick-step-zero` | warn |  | line |
 | `lollipop-one-series` | error |  | dot |
 | `mark-below-effective-min` | warn |  | core/lint/type.ts |
@@ -702,8 +705,8 @@ Every code a render, a measure or a React chart can return, read from the source
 | `pyramid-nonfinite-value` | error |  | pyramid |
 | `pyramid-open-top-band` | info |  | pyramid |
 | `pyramid-percent-input` | error |  | pyramid |
-| `pyramid-shared-scale-required` | error | yes | pyramid |
-| `pyramid-sort-unsupported` | error | yes | pyramid |
+| `pyramid-shared-scale-required` | error |  | pyramid |
+| `pyramid-sort-unsupported` | error |  | pyramid |
 | `pyramid-too-many-bands` | warn |  | pyramid |
 | `pyramid-unequal-bands` | error |  | pyramid |
 | `pyramid-values-arity` | error |  | pyramid |
@@ -738,7 +741,7 @@ Every code a render, a measure or a React chart can return, read from the source
 | `rebased` | info |  | line |
 | `ref-nonpositive` | warn |  | column, kpi, variance |
 | `ref-zero` | warn |  | core/annotate.ts |
-| `reference-band-composition-domain` | error |  | line |
+| `reference-band-composition-domain` | error | yes | line |
 | `reference-band-overlap` | warn |  | line |
 | `reference-band-unexplained` | warn |  | line |
 | `reference-ignored` | info |  | dot, mekko |
@@ -902,7 +905,7 @@ Every code a render, a measure or a React chart can return, read from the source
 | `toggle-ref-invalid` | error |  | table |
 | `tone-text-contrast` | warn |  | core/themeRules.ts |
 | `too-few-series` | error |  | butterfly |
-| `too-many-items` | error | yes | core/itemBudget.ts |
+| `too-many-items` | error |  | core/itemBudget.ts |
 | `topn-omitted` | info |  | core/charts/topN.ts |
 | `topn-rest-unsupported` | warn |  | core/charts/topN.ts |
 | `tornado-annotations-ignored` | warn |  | bar |
@@ -920,7 +923,7 @@ Every code a render, a measure or a React chart can return, read from the source
 | `tornado-sort-ignored` | warn |  | bar |
 | `tornado-sort-segments-ignored` | warn |  | bar |
 | `tornado-swing-tie` | info |  | bar |
-| `tornado-topn-ignored` | warn |  | bar |
+| `tornado-topn-ignored` | warn | yes | bar |
 | `tornado-two-series` | error |  | bar |
 | `tornado-zero-swing` | info |  | bar |
 | `total-not-computed` | warn |  | column |
@@ -1039,13 +1042,13 @@ Every code a render, a measure or a React chart can return, read from the source
 | `week-start-ignored` | info |  | core/calendarLabels.ts |
 | `weekends-ignored` | info |  | gantt |
 | `x-anchor-no-reading` | error |  | line |
-| `x-axis-conflict` | error |  | line |
+| `x-axis-conflict` | error | yes | line |
 | `x-axis-needs-x` | error |  | line |
 | `x-axis-unsupported` | error |  | line |
 | `x-cagr-unsupported` | warn |  | line |
 | `x-duplicate` | error |  | line |
 | `x-invalid` | error |  | core/timeAxis.ts, line |
-| `x-needs-axis` | error |  | line |
+| `x-needs-axis` | error | yes | line |
 | `x-partial-no-reading` | warn |  | line |
 | `x-partial-words-dropped` | warn |  | line |
 | `x-range-cut` | info |  | line |

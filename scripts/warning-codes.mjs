@@ -8,7 +8,9 @@
  * `code`, where an Error subclass is constructed with it, or where it is
  * passed to a function that does one of these with its `code` parameter. A
  * code built at run time is resolved from the literal types of its parts. A
- * producer whose code cannot be resolved to literals is listed as unresolved.
+ * code read from a property comes from the objects that set that property, with
+ * the severity of the site that emits it. A left-out argument takes its default.
+ * A producer whose code cannot be resolved to literals is listed as unresolved.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
@@ -120,8 +122,44 @@ export function extractWarningCodes(root = ROOT) {
   const sites = [];
   const property = (object, name) => object.properties.find((p) => p.name && ts.isIdentifier(p.name) && p.name.text === name);
   const valueOf = (p) => (ts.isShorthandPropertyAssignment(p) ? p.name : p.initializer);
-  const carriesFix = (object) => object.properties.some((p) => (p.name && ts.isIdentifier(p.name) && p.name.text === 'fix')
-    || (ts.isSpreadAssignment(p) && /\bfix\b/.test(p.expression.getText())));
+  /**
+   * Whether a value in the `fix` position carries a patch: true, false, or
+   * `{ forward }` when a parameter passes it on.
+   */
+  const fixOf = (expression) => {
+    if (!expression) return false;
+    const node = unwrap(expression);
+    if (ts.isIdentifier(node) && node.text === 'undefined') return false;
+    const parameter = parameterOf(node);
+    if (parameter) return { forward: parameter };
+    // A patch is a list of operations; a text named `fix` is a suggestion.
+    const type = checker.getTypeAtLocation(node);
+    return !(type.flags & (ts.TypeFlags.Undefined | ts.TypeFlags.Void | ts.TypeFlags.StringLike));
+  };
+  /** A value whose type always has a `fix` (in at least one branch of a union). */
+  const typedFix = (expression) => {
+    const type = checker.getTypeAtLocation(expression);
+    return (type.isUnion() ? type.types : [type]).some((part) => {
+      const fix = part.getProperty('fix');
+      return fix !== undefined && !(fix.flags & ts.SymbolFlags.Optional);
+    });
+  };
+  /** The `fix` of an object literal: its own property, or a spread whose type has one. */
+  const objectFix = (object) => {
+    const own = property(object, 'fix');
+    if (own) return fixOf(valueOf(own));
+    return object.properties.some((p) => ts.isSpreadAssignment(p) && typedFix(p.expression));
+  };
+  /** The `fix` of a constructor call: the argument at its `fix` parameter, or a `fix` inside an argument. */
+  const constructorFix = (call, signature) => {
+    const index = signature?.parameters.findIndex((p) => p.name === 'fix') ?? -1;
+    if (index >= 0) return fixOf(call.arguments[index]);
+    const fixes = call.arguments.map((argument) => {
+      const node = unwrap(argument);
+      return ts.isObjectLiteralExpression(node) ? objectFix(node) : typedFix(node);
+    });
+    return fixes.find((fix) => fix && fix !== true) ?? fixes.includes(true);
+  };
   const isErrorClass = (node) => {
     for (let type = checker.getTypeAtLocation(node); type; type = type.isClassOrInterface() ? checker.getBaseTypes(type)[0] : undefined) {
       if (type.symbol?.name === 'Error') return true;
@@ -135,6 +173,8 @@ export function extractWarningCodes(root = ROOT) {
 
   /** Every exact string literal and JSX attribute name: the names the source spells out. */
   const literals = new Set();
+  /** Every object literal that sets `code`, with or without a message. */
+  const codeObjects = [];
   for (const file of files) {
     const visit = (node) => {
       if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) literals.add(node.text);
@@ -143,14 +183,15 @@ export function extractWarningCodes(root = ROOT) {
         const code = property(node, 'code');
         // A zod issue (`ctx.addIssue({ code: 'custom' })`) is not a Boardplot code.
         const zodIssue = ts.isCallExpression(node.parent) && /addIssue$/.test(node.parent.expression.getText());
+        if (!zodIssue && code && (ts.isPropertyAssignment(code) || ts.isShorthandPropertyAssignment(code))) codeObjects.push({ node, code });
         if (!zodIssue && code && (ts.isPropertyAssignment(code) || ts.isShorthandPropertyAssignment(code)) && (property(node, 'message') || property(node, 'severity'))) {
           const severity = property(node, 'severity');
-          sites.push({ node, code: valueOf(code), severity: severity && valueOf(severity), fix: carriesFix(node), thrown: false });
+          sites.push({ node, code: valueOf(code), severity: severity && valueOf(severity), fix: objectFix(node), thrown: false });
         }
       } else if (ts.isNewExpression(node) && node.arguments?.length && isErrorClass(node)) {
         const signature = checker.getResolvedSignature(node);
         const index = signature?.parameters.findIndex((p) => p.name === 'code') ?? -1;
-        if (index >= 0 && node.arguments[index]) sites.push({ node, code: node.arguments[index], fix: /\bfix\b/.test(node.getText()), thrown: true });
+        if (index >= 0 && node.arguments[index]) sites.push({ node, code: node.arguments[index], fix: constructorFix(node, signature), thrown: true });
       } else if (ts.isCallExpression(node)) {
         sites.push({ node, call: true });
       }
@@ -181,16 +222,19 @@ export function extractWarningCodes(root = ROOT) {
     const code = resolveCode(codeExpression);
     const severity = site.thrown ? { severities: ['error'] } : resolveSeverity(severityExpression);
     if (code.dynamic) unresolved.push({ at: where(site.node), text: unwrap(codeExpression).getText() });
-    if (code.forward || severity.forward) {
+    if (code.open) carried.push({ expression: codeExpression, severity, fix: site.fix, node: site.node });
+    if (code.forward || severity.forward || site.fix?.forward) {
       const fn = enclosingFunction(site.node);
       const list = producers.get(fn) ?? [];
       list.push({ code: code.forward, codes: code.codes ?? [], severity, fix: site.fix });
       producers.set(fn, list);
     }
     for (const value of code.codes ?? []) {
-      record(value, severity.severities ?? [], site.fix, site.node);
+      record(value, severity.severities ?? [], site.fix === true, site.node);
     }
   };
+  /** Sites whose code is read from a property: resolved after the producers, through the objects that set it. */
+  const carried = [];
   for (const site of sites) if (!site.call) emitSite(site, site.code, site.severity);
 
   // Calls to a producer: its code parameter (and severity parameter) take the literal at the call.
@@ -217,21 +261,82 @@ export function extractWarningCodes(root = ROOT) {
       if (fns.length === 0) continue;
       site.done = true;
       for (const fn of fns) for (const producer of producers.get(fn)) {
-        const at = (parameter) => site.node.arguments[fn.parameters.indexOf(parameter)];
+        // An argument left out takes the parameter's default.
+        const at = (parameter) => site.node.arguments[fn.parameters.indexOf(parameter)] ?? parameter.initializer;
         const codeArgument = producer.code && at(producer.code);
         const severityArgument = producer.severity.forward && at(producer.severity.forward);
-        const fix = producer.fix || /\bfix\b/.test(site.node.getText());
+        const fix = producer.fix?.forward ? fixOf(at(producer.fix.forward)) : producer.fix;
         const code = codeArgument ? resolveCode(codeArgument) : { codes: producer.codes };
         if (code.dynamic) unresolved.push({ at: where(site.node), text: unwrap(codeArgument).getText() });
         const severity = producer.severity.forward ? (severityArgument ? resolveSeverity(severityArgument) : { severities: [] }) : producer.severity;
-        for (const value of code.codes ?? []) record(value, severity.severities ?? [], fix, site.node);
-        if (code.forward || severity.forward) {
+        if (code.open) carried.push({ expression: codeArgument, severity, fix, node: site.node });
+        for (const value of code.codes ?? []) record(value, severity.severities ?? [], fix === true, site.node);
+        if (code.forward || severity.forward || fix?.forward) {
           const outer = enclosingFunction(site.node);
           const list = producers.get(outer) ?? [];
           list.push({ code: code.forward, codes: code.codes ?? [], severity, fix });
           producers.set(outer, list);
           changed = true;
         }
+      }
+    }
+  }
+
+  // A code read from a property (`span.code`) comes from the objects whose `code` that
+  // property declares. An object without a message or severity is only a carrier:
+  // its code takes the severity of the site that emits it. A read with no such
+  // object, or with no property to follow, cannot be resolved.
+  const stringLike = (node) => (checker.getTypeAtLocation(node).flags & ts.TypeFlags.StringLike) !== 0
+    || checker.getTypeAtLocation(node).isUnion() && checker.getTypeAtLocation(node).types.some((part) => part.flags & ts.TypeFlags.StringLike);
+  const openReads = (expression) => {
+    const node = unwrap(expression);
+    if (ts.isConditionalExpression(node)) return [...openReads(node.whenTrue), ...openReads(node.whenFalse)];
+    if (ts.isBinaryExpression(node)) return [...openReads(node.left), ...openReads(node.right)];
+    if (ts.isStringLiteralLike(node) || resolveCode(node).codes || !stringLike(node)) return [];
+    return [node];
+  };
+  const declarationsOfCode = (object) => {
+    const type = checker.getContextualType(object);
+    const parts = type ? (type.isUnion() ? type.types : [type]) : [];
+    return [property(object, 'code'), ...parts.flatMap((part) => checker.getNonNullableType(part).getProperty('code')?.declarations ?? [])];
+  };
+  const origins = codeObjects.map((entry) => ({ ...entry, declarations: new Set(declarationsOfCode(entry.node)), site: sites.some((site) => site.node === entry.node) }));
+  /** A zod refinement's own code: `ctx.addIssue({ …, params: { code } })`, read back as `issue.params.code`. */
+  const issueParams = (object) => ts.isPropertyAssignment(object.parent) && object.parent.name.getText() === 'params'
+    && ts.isObjectLiteralExpression(object.parent.parent) && ts.isCallExpression(object.parent.parent.parent)
+    && ts.isPropertyAccessExpression(object.parent.parent.parent.expression) && object.parent.parent.parent.expression.name.text === 'addIssue';
+  /**
+   * A read from a caught error, through a cast or a variable, re-emits a code the
+   * list reads at its throw: the root is a catch variable or an `unknown` parameter.
+   */
+  const caught = (node) => {
+    for (node = unwrap(node); ; node = unwrap(node)) {
+      if (ts.isPropertyAccessExpression(node)) { node = node.expression; continue; }
+      if (!ts.isIdentifier(node)) return false;
+      const declaration = symbolOf(node)?.valueDeclaration;
+      if (!declaration) return false;
+      if (ts.isVariableDeclaration(declaration) && ts.isCatchClause(declaration.parent)) return true;
+      if (ts.isParameter(declaration)) return (checker.getTypeAtLocation(declaration).flags & ts.TypeFlags.Unknown) !== 0;
+      if (ts.isVariableDeclaration(declaration) && declaration.initializer) { node = declaration.initializer; continue; }
+      return false;
+    }
+  };
+  for (const read of carried) {
+    for (const node of openReads(read.expression)) {
+      const declarations = ts.isPropertyAccessExpression(node) ? checker.getSymbolAtLocation(node.name)?.declarations ?? [] : [];
+      // A class field (`error.code`) is set by the constructor calls the list reads as thrown sites.
+      if (declarations.some((d) => ts.isPropertyDeclaration(d) || ts.isParameter(d)) || caught(node)) continue;
+      const params = ts.isPropertyAccessExpression(node) && ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === 'params';
+      const from = origins.filter((origin) => (params ? issueParams(origin.node) : declarations.some((d) => origin.declarations.has(d))));
+      if (from.length === 0) {
+        unresolved.push({ at: where(read.node), text: node.getText() });
+        continue;
+      }
+      for (const origin of from) {
+        if (origin.site) continue;
+        const code = resolveCode(valueOf(origin.code));
+        if (!code.codes?.length) unresolved.push({ at: where(origin.node), text: valueOf(origin.code).getText() });
+        for (const value of code.codes ?? []) record(value, read.severity.severities ?? [], read.fix === true, origin.node);
       }
     }
   }
