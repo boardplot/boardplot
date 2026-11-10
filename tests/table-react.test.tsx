@@ -1089,7 +1089,8 @@ describe('TableChart reads the footer rule notes model', () => {
   // The React source line doubled a bold source word ("Source: **Source:** …") and printed a bare colon under an empty source word.
   it('words the source line as the SVG frame does', () => {
     act(() => root.render(<TableChart data={data} target="report" source="**Source:** Example" />));
-    expect(container.querySelector('.bp-source')!.textContent).toBe('**Source:** Example');
+    expect(container.querySelector('.bp-source')!.textContent).toBe('Source: Example');
+    expect(container.querySelector('.bp-source strong')!.textContent).toBe('Source:');
     act(() => root.render(<TableChart data={data} target="report" source="Example" strings={{ source: '' }} />));
     expect(container.querySelector('.bp-source')!.textContent).toBe('Example');
   });

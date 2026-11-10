@@ -1,3 +1,5 @@
+import { plainText } from '../core/inlineBold';
+import { inlineBold } from './ChartFooter';
 import type { EngineNoteMeta } from '../core/notes';
 import type { OptionsInput } from '../core/types/optionInput';
 import { hasPolarityBadge, isFigureCell, polarityBadgeInk } from '../core/charts/table/chips';
@@ -104,7 +106,7 @@ import type {
 } from '../core/types/table';
 import { stickySettings } from '../core/charts/table/sticky';
 // Both table renderers share subtitles, source lines and note disclosure.
-import { ENGINE_NOTE_KINDS, insetTint, subtitlePlain, tableFrame, tableGroundTextStyle, tablePresentation, tableRenderTheme, tableStylesheet } from './tablePresentation';
+import { ENGINE_NOTE_KINDS, insetTint, tableFrame, tableGroundTextStyle, tablePresentation, tableRenderTheme, tableStylesheet } from './tablePresentation';
 import { useStableValue } from './useStableValue';
 import { PROBE_STYLE, useContainerSize, type ContainerSizeOptions } from './useContainerSize';
 import { useDisplayWarnings } from './useDisplayWarnings';
@@ -1591,6 +1593,8 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
   }
 
   const frame = frameMemo!;
+  // The small print's own weight: a **bold** run in a note or the source steps up from it.
+  const footWeight = theme.type.footnote.weight ?? 400;
   // The footnotes and the source line keep the cell's own air on both sides,
   // so at canvas margin 0 their text never meets the card's edge.
   const figureStyle = {
@@ -1622,7 +1626,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     ...(sticky.sections ? { '--bp-sections-top': sticky.head === 'page' ? `calc(${sticky.top}px + var(--bp-head-h,0px))` : sticky.head === 'table' ? 'var(--bp-head-h,0px)' : '0px' } : {}),
   } : undefined;
   // The scroller takes the grid's name once it overflows (markScrollRegion).
-  scrollLabel.current = frame.title || (typeof tableOptions.title === 'string' ? tableOptions.title : chartString(tableOptions, 'tableTitle'));
+  scrollLabel.current = plainText(frame.title ?? '') || (typeof tableOptions.title === 'string' ? tableOptions.title : chartString(tableOptions, 'tableTitle'));
   const gridProps = {
     role: isTree ? 'treegrid' : 'grid',
     'aria-label': scrollLabel.current,
@@ -1786,7 +1790,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
         <ul className="bp-footnotes">
           {/* A disclosure or method note prints its short form, as ChartFooter prints it. */}
           {frame.footnotes.map((note) => (
-            <li key={note.n}>{note.kind === 'method' || note.kind === 'disclosure' ? note.short ?? note.text : note.text}</li>
+            <li key={note.n}>{inlineBold(note.kind === 'method' || note.kind === 'disclosure' ? note.short ?? note.text : note.text, theme, footWeight)}</li>
           ))}
         </ul>
       ) : null}
@@ -1797,12 +1801,12 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
         <>
           <details className="bp-notes">
             <summary>{frame.pointer}</summary>
-            <ul className="bp-footnotes">{frame.listed.map((note) => <li key={note.n}>{note.text}</li>)}</ul>
+            <ul className="bp-footnotes">{frame.listed.map((note) => <li key={note.n}>{inlineBold(note.text, theme, footWeight)}</li>)}</ul>
           </details>
-          <div className="bp-notes-print"><ul className="bp-footnotes">{frame.listed.map((note) => <li key={note.n}>{note.text}</li>)}</ul></div>
+          <div className="bp-notes-print"><ul className="bp-footnotes">{frame.listed.map((note) => <li key={note.n}>{inlineBold(note.text, theme, footWeight)}</li>)}</ul></div>
         </>
       ) : null}
-      {frame.source ? <p className="bp-source">{frame.source}</p> : null}
+      {frame.source ? <p className="bp-source">{inlineBold(frame.source, theme, footWeight)}</p> : null}
     </figure>
   );
   return wrap(withInteraction(figure));
@@ -1844,11 +1848,11 @@ function TableCaption({ frame, keyEntries, arrowEntries, theme }: {
   const keyed = keyEntries.length + arrowEntries.length > 0;
   if (!frame.title && !frame.subtitle && !keyed) return null;
   return <figcaption>
-    {frame.title ? <span className="bp-title">{frame.title}
+    {frame.title ? <span className="bp-title">{inlineBold(frame.title, theme, theme.type.title.weight ?? 400)}
       {frame.markerNotes ? <sup className="bp-footnote-marker" aria-label={frame.markerNotes}>1</sup> : null}
     </span> : null}
     {frame.title && frame.subtitle ? ' ' : null}
-    {frame.subtitle ? <span className="bp-subtitle">{subtitlePlain(frame.subtitle)}</span> : null}
+    {frame.subtitle ? <span className="bp-subtitle">{inlineBold(frame.subtitle.segments.map((segment) => segment.text).join(''), theme, theme.type.subtitle.weight ?? 400)}</span> : null}
     {keyed ? <span className="bp-key" role="list" aria-label="Key">
       {keyEntries.map((entry) => <span key={entry.id} role="listitem">
         <i aria-hidden="true" style={{ background: resolvePaint(entry.fill, theme) }} />{entry.label}

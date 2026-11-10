@@ -26,7 +26,7 @@ import { resolveCanvasOptions, resolveSize, resolveSubtitle } from '../core/norm
 import { numericVariant } from '../core/textRole';
 import { EMPTY_ROW_ID, tableFootnotes } from '../core/charts/table/view';
 import { footerParts, notesPanelLabel, notesPointer, shownNoteKinds, type EngineNoteMeta } from '../core/notes';
-import { frameText, type SubtitleText } from '../core/frameText';
+import { frameText } from '../core/frameText';
 import { plainText } from '../core/inlineBold';
 import { defaultMeasurer, type TextMeasurer } from '../core/text';
 import { emphasisWeight, resolveTheme } from '../core/theme';
@@ -183,8 +183,6 @@ export function tableFrame(
   };
 }
 
-/** The subtitle as one plain line. */
-export const subtitlePlain = (subtitle: SubtitleText): string => plainText(subtitle.segments.map((segment) => segment.text).join(''));
 
 /** The head paddings a theme sets, as stylesheet variable names and px. */
 function headPadVars(theme: Theme): [string, number][] {
