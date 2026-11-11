@@ -81,6 +81,21 @@ it('a plain stack series skips a palette step that is not apart from an authored
   expect(geo.warnings.map(w => w.code)).not.toContain('series-adjacent-similar');
 });
 
+// A third row group took the same grey as the rest rows, so the key showed two identical swatches.
+it('keeps the row group colours of a bar table apart from its grey rest rows', () => {
+  const rows = ['North', 'East', 'South', 'West', 'Lake', 'Hill'].map((label, i) => ({ id: label.toLowerCase(), label, group: ['low', 'mid', 'high'][i % 3] }));
+  for (const theme of ['bridge', 'notation-dark']) {
+    const geo = layoutResolvedRequest(resolveChartRequest({ type: 'bartable', theme, data: {
+      categories: [...rows, { id: 'rest', label: 'Rest of world', residual: true }],
+      series: [{ id: 'rev', label: 'Revenue' }],
+      rowGroups: { title: 'Margin', groups: [{ id: 'low', label: 'Low' }, { id: 'mid', label: 'Middle' }, { id: 'high', label: 'High' }] },
+      panels: [{ id: 'y1', label: '2025', unit: '$ billion', values: { rev: [9, 8, 7, 6, 5, 4, 3] } }],
+    }, options: { title: 'Revenue by market', size: { width: 700 } } } as never));
+    if (geo.refused) throw new Error('refused');
+    expect(geo.warnings.map(w => w.code)).not.toContain('series-indistinguishable');
+  }
+});
+
 // A five-part 100% stack in the default theme warned that the theme's own stack ramp was too close.
 it('holds a theme stack ramp to the ordered step, not the categorical floors', () => {
   const series = ['a', 'b', 'c', 'd', 'e'].map((id, i) => ({ id, label: id, values: [30 - 5 * i, 32 - 5 * i] }));
