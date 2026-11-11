@@ -1790,3 +1790,8 @@ it('names no unit over a column that prints no figure', () => {
   const composed = (withEmpty: boolean) => { const { table, warnings } = byColumn(withEmpty, '1.2m', '$1.2k', { unit: 'EUR' }); return [table.unit, warnings.map((w) => w.code)]; };
   expect(composed(true)).toEqual(composed(false));
 });
+
+// A column toggle took its height from its text and padding alone: 21.6 px at phone width, under the 24 px target size.
+it('holds a table column toggle to the 24 px target height', () => {
+  expect(tableStylesheet(resolveTheme('standard'))).toMatch(/\.bp-table \.bp-col-toggle\{[^}]*min-height:24px/);
+});
