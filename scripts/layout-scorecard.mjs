@@ -205,7 +205,8 @@ function seriesOnCanvas(request, geometry, text, series) {
     for (const entry of series) if (!named.has(entry.id)) {
       const owning = panels.filter((panel) => panel.primary.some((item) => item.id === entry.id));
       if (owning.length > 0 && owning.every((panel) => panel.primary.length === 1 && text.some((node) =>
-        (node.part === 'tierCaption' || node.part === 'panelTitle') && node.id?.startsWith(`${panel.id}/`)
+        // A panel chart draws its own frame title ('<panel>/frame:title:0') when the grid shows no tier caption.
+        (node.part === 'tierCaption' || node.part === 'panelTitle' || node.part === 'title') && node.id?.startsWith(`${panel.id}/`)
         && containsName(node.lines.join(' '), nameOf(entry))))) named.add(entry.id);
     }
   }
@@ -216,6 +217,13 @@ function seriesOnCanvas(request, geometry, text, series) {
     const subtitle = normal(text.filter((node) => node.part === 'subtitle').flatMap((node) => node.lines).join(' ')).toLocaleLowerCase('en');
     if (containsName(subtitle, nameOf(widthEntry)) && subtitle.includes(String(widthEntry.unit).toLocaleLowerCase('en'))) named.add(widthEntry.id);
   }
+  // (d) Rule: one primary series is named by a drawn subtitle whose measure holds its name
+  // (src/core/legendPolicy.ts subtitleCoversSeries). A reference series, such as a Mekko width, is no primary series.
+  const primarySeries = request.type === 'grid' ? [] : series.filter((entry) => entry.role !== 'reference');
+  const measure = resolveSubtitle(request.options?.subtitle)?.measure;
+  if (primarySeries.length === 1 && !named.has(primarySeries[0].id) && measure
+    && containsName(measure, nameOf(primarySeries[0]))
+    && containsName(text.filter((node) => node.part === 'subtitle').flatMap((node) => node.lines).join(' '), nameOf(primarySeries[0]))) named.add(primarySeries[0].id);
   // A named interval names both bounds. Check that its band is actually drawn,
   // and that its key item is drawn; raw bound values alone do not suffice.
   const visibleIds = new Set(dataInk.map((node) => node.id));

@@ -1043,3 +1043,17 @@ it('an authored value line named averageMarker keeps its own format in the hover
   const line = geometry.annotations.find((annotation) => annotation.id === 'averageMarker');
   expect([line?.computedText, line?.valueText]).toEqual(['12.34', '12.34']);
 });
+
+// An abs on a series with unit % printed "4.1" beside the series label "4.1%", and "4.1" beside a bar or dot label "4.12".
+it('abs prints the anchored value as its point label does (combo, bar, dot)', () => {
+  const series = [{ id: 'r', label: 'Rate', unit: '%', values: [3.14, 4.12] }, { id: 'q', label: 'Other', unit: '%', values: [2.5, 2.7] }];
+  const categories = [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }];
+  const abs = (type: string, data: object, options: object = {}) => {
+    const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type, data, options: { title: 'T', annotations: [{ kind: 'abs', at: { categoryId: 'b', seriesId: 'r' } }], ...options } } as never) as never));
+    return geometry.annotations.find((annotation) => annotation.kind === 'abs')?.computedText;
+  };
+  expect(abs('bar', { categories, series })).toBe('4.12');
+  expect(abs('dot', { categories, series })).toBe('4.12');
+  const combo = { categories, series: [{ id: 'v', label: 'Volume', values: [100, 140] }, { ...series[0], kind: 'line', axis: 'secondary', values: [3.1, 4.1] }] };
+  expect(abs('combo', combo, { unit: '$m', secondaryAxis: { acknowledge: true } })).toBe('4.1%');
+});
