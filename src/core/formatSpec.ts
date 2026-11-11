@@ -104,6 +104,8 @@ export interface NumberFormatSpec {
   autoMagnitude?: true;
   /** The decimals every value under the engine scale shares at its own scale ("+0.50" beside "+0.04"). */
   stepDecimals?: number;
+  /** A set's magnitude (setMagnitude): a value of 1,000 or more at it prints whole, "1,540M" beside "57.50M". */
+  setScale?: true;
   /**
    * The magnitude word as the example wrote it, with the space before it
    * (" Mio.", "bn"): a value at that magnitude prints it. A value
@@ -882,6 +884,11 @@ const MAGNITUDE_NEXT: Record<NumberFormatSpec['magnitude'], NumberFormatSpec['ma
  * — a reader-facing 1.0M whose reconciliation number stayed 1,049,000 would
  * fabricate a phantom gap (see roundedNumber's contract below).
  */
+/** A label that prints 1,000 or more at its set's magnitude: its digits already carry the comparison. */
+function printsWholeInSet(value: number, spec: NumberFormatSpec, decimals: number): boolean {
+  return Boolean(spec.setScale) && Number(roundHalfUp(Math.abs(value) / MAGNITUDE_DIVISOR[spec.magnitude], decimals)) >= 1000;
+}
+
 export function effectiveScale(
   value: number,
   spec: NumberFormatSpec,
@@ -918,6 +925,7 @@ export function effectiveScale(
     }
   }
   if (spec.rollMagnitude === false) {
+    if (printsWholeInSet(value, spec, decimals)) return { magnitude, decimals: 0 };
     return spec.nonzero && !spec.automatic ? { magnitude, decimals: nonzeroDecimals(value / MAGNITUDE_DIVISOR[magnitude], decimals) } : { magnitude, decimals };
   }
   if (spec.lockMagnitude) return { magnitude, decimals: magnitude === 'k' ? 0 : decimals };
@@ -1980,7 +1988,10 @@ export function seriesRasterFormatter(
     const max = raster.reduce<number>((largest, value) => value != null && Number.isFinite(value) ? Math.max(largest, Math.abs(value)) : largest, 0);
     if (setScale || max >= 1e6) {
       // A set's magnitude (setMagnitude) holds every nonzero label, so none steps down; the decimals count as for M or B.
-      spec.magnitude = setScale ?? (max >= 1e9 ? 'bn' : 'm');
+      const engineScale = max >= 1e9 ? 'bn' : 'm';
+      // A set at the engine's own M or B prints as one scale per label does, "1,000.00M" for 999,999,900 included.
+      if (setScale && setScale !== engineScale) spec.setScale = true;
+      spec.magnitude = setScale ?? engineScale;
       spec.rollMagnitude = false;
       spec.autoMagnitude = true;
       autoMagnitude = true;
@@ -2005,7 +2016,8 @@ export function seriesRasterFormatter(
     if (!defaultExample || autoMagnitude) spec.decimals = rasterDecimals(raster, spec);
     // Four significant digits is a preference, not a cap: different values that print one text under the engine scale get the decimals that part them.
     if (autoMagnitude) {
-      const scaled = raster.filter((value): value is number => value != null && Number.isFinite(value) && Math.abs(value) >= MAGNITUDE_DIVISOR[spec.magnitude]);
+      // A label that prints whole in its set (printsWholeInSet) takes no lift.
+      const scaled = raster.filter((value): value is number => value != null && Number.isFinite(value) && Math.abs(value) >= MAGNITUDE_DIVISOR[spec.magnitude] && !printsWholeInSet(value, spec, spec.decimals));
       spec.decimals += distinctDecimalLift(scaled.map((value) => ({ value, format: (extra: number) => formatWithSpec(value, { ...spec, decimals: spec.decimals + extra }) })));
     }
     if (currencyWholeNumbers(unit, target)) spec.currencyWhole = true;
