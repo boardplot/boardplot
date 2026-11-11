@@ -2086,15 +2086,13 @@ it('advises a frame width at which the grid no longer scrolls', () => {
   expect(overflowAt(advised)).toBeUndefined();
 });
 
-// A fixed frame took the theme's side margins off the tracks' room, but the grid drew no margin: it warned table-overflow for a table that did not scroll.
-it('scrolls a fixed-frame grid that warns table-overflow', () => {
+// A fixed frame's overflow check took the theme's side margins off the room, which the grid gives way first: a table that fit its frame warned table-overflow.
+it('does not warn table-overflow for a fixed-frame table that fits its frame', () => {
   const { data, options } = getFixtures('table').find((entry) => entry.id === 'management-report-compact')!;
   const onWarnings = vi.fn();
   act(() => root.render(<TableChart data={data} {...options} size={{ width: 720 }} onWarnings={onWarnings} />));
-  const warns = (onWarnings.mock.lastCall?.[0] ?? []).some((warning: { code: string }) => warning.code === 'table-overflow');
-  // The least width the grid takes: its fixed tracks and the floor of its trailing empty track.
   const cols = container.querySelector<HTMLElement>('.bp-table-grid')!.style.getPropertyValue('--bp-cols');
-  const least = [...cols.matchAll(/(?:^|\s|minmax\()([\d.]+)px/gu)].reduce((sum, match) => sum + Number(match[1]), 0);
-  expect(warns).toBe(true);
-  expect(least).toBeGreaterThan(720);
+  const tracks = [...cols.matchAll(/(?:^|\s)([\d.]+)px/gu)].reduce((sum, match) => sum + Number(match[1]), 0);
+  expect(tracks).toBeLessThanOrEqual(720);
+  expect((onWarnings.mock.lastCall?.[0] ?? []).map((warning: { code: string }) => warning.code)).not.toContain('table-overflow');
 });
