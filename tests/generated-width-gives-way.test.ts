@@ -308,3 +308,11 @@ describe('a later step that draws stepped text names it', () => {
     expect(geometry.warnings.map((warning) => warning.code)).toContain('type-stepped');
   });
 });
+
+describe('a key beside the plot gives way where the chart then fits its width', () => {
+  // With legend 'left' this matrix drew at 285 and 287 px and was refused at 286 px, and below 282 px: the key stood beside the plot and set a floor
+  // above the width. With the key in the row above the plot it draws.
+  it.each([280, 286])('heatmap capability-matrix draws at %i px', (width) => {
+    expect(draw('heatmap', 'capability-matrix', { legend: 'left', size: { width } }).refused).toBeFalsy();
+  });
+});

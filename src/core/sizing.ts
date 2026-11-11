@@ -1262,6 +1262,20 @@ export const FORCE_COMPACT = Symbol('boardplot.forceCompact');
 export const NARROW_FORM = Symbol('boardplot.narrowForm');
 export const NARROW_FORM_TYPES: ReadonlySet<string> = new Set(['bullet', 'grid', 'heatmap', 'status', 'waffle', 'waterfall']);
 
+/** Set by `sideKeyGivesWay`: the frame stands the key in the row above the plot (its `sideKeyGivesWay` input). */
+export const SIDE_KEY_OFF = Symbol('boardplot.sideKeyOff');
+export const sideKeyOff = (options: object): boolean => (options as { [SIDE_KEY_OFF]?: true })[SIDE_KEY_OFF] === true;
+
+/**
+ * Compact, the last form before a refusal, keeps a key beside the plot only where the chart then fits its width;
+ * else the chart lays out again with the key in the row above the plot, as a narrower width draws it.
+ */
+export function sideKeyGivesWay<O extends { mode?: unknown }, G extends Geometry<object, object>>(options: O, geo: G, again: (options: O) => G): G {
+  if (options.mode !== 'compact' || sideKeyOff(options) || geo.refused || !geo.sizing || geo.sizing.minWidth <= geo.size.width + SIZE_TOLERANCE
+    || !geo.frame?.warnings?.some((warning) => warning.code === 'legend-beside-plot')) return geo;
+  return again({ ...options, [SIDE_KEY_OFF]: true });
+}
+
 /** The owning chart's width-only search; its rejected probes do not need repair advice. */
 export const WIDTH_PROBE = Symbol('boardplot.widthProbe');
 export const FIXED_SIZE_PROBE = Symbol('boardplot.fixedSizeProbe');

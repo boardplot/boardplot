@@ -30,6 +30,7 @@ import { smallRateDecimals, formatAutomaticNumber, formatAutomaticPercent } from
 import { accessibleTitle } from '../../normalize/shared';
 import { layoutHeatmap, type HeatmapLayoutOptions } from '../heatmap/layout';
 import { hostedLayout } from '../../normalize/innerRefusal';
+import { sideKeyGivesWay } from '../../sizing';
 import { paintColor, resolveSemanticPaletteTheme, semanticPalettePaint } from '../../theme';
 import type { Cell, Id } from '../../types/cell';
 import type { ChartData } from '../../types/data';
@@ -291,7 +292,7 @@ export function layoutCohort(
       rowSuffix: Object.fromEntries(baseSuffix),
     }, [...baseFootnotes, ...extra], options.footnotes);
     // The cells are derived rates: a heatmap refusal names a cohort option it was handed, or nothing.
-    return hostedLayout(options, inner, () => layoutHeatmap(hostData, inner));
+    return hostedLayout(options, inner, () => sideKeyGivesWay(inner, layoutHeatmap(hostData, inner), (keyAbove) => layoutHeatmap(hostData, keyAbove)));
   };
 
   // A cell too small for its own number keeps its colour and loses its value

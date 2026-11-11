@@ -65,7 +65,7 @@ import type {
 import { rowDrivenHeight } from '../../rowCanvas';
 import { rowLabelBand } from '../../label/rowLabels';
 import { fittedLabel, gutterBudget, GUTTER_MAX_SHARE, stepDownFont } from '../../label/rowFit';
-import { capPitch, HARD_MINIMUM, heightOmitted, matrixWidths, NARROW_FORM, rowSizing } from '../../sizing';
+import { capPitch, HARD_MINIMUM, heightOmitted, matrixWidths, NARROW_FORM, rowSizing, sideKeyOff } from '../../sizing';
 import { arrowHeadPath, arrowShaftEnd, harveyWedgePath } from '../../svgPath';
 import { nonzeroDecimals } from '../../formatPrecision';
 import { categoryLabelsAndMarks } from '../../footnoteMark';
@@ -630,6 +630,7 @@ export function layoutHeatmap(
       ...frameTextOptions(options),
       ...(derivedNotes.length > 0 ? { footnotes: [...authoredNotes(options), ...derivedNotes] } : {}),
       legend,
+      ...(sideKeyOff(options) ? { sideKeyGivesWay: true } : {}),
       theme,
       measure,
     },

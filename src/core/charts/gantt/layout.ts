@@ -41,7 +41,7 @@ import { disclosureNote, disclosuresShown } from '../../notes';
 import { rectContains, rectsOverlap, segmentHitsRect, type Rect } from '../../geometry';
 import { accessibleTitle } from '../../normalize/shared';
 import { rowDrivenHeight } from '../../rowCanvas';
-import { ACCEPTANCE_PROBE, CARD_HEIGHT_MEMO, cardReferenceHeight, FORCE_COMPACT, heightOmitted, rowSizing, SIZE_TOLERANCE } from '../../sizing';
+import { ACCEPTANCE_PROBE, CARD_HEIGHT_MEMO, cardReferenceHeight, FORCE_COMPACT, heightOmitted, rowSizing, sideKeyGivesWay } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { getChart } from '../../registry';
 import { AUTO_LEGEND } from '../../legendPolicy';
@@ -56,7 +56,7 @@ import { badgeFill, badgeLevels, layoutGanttAnnotations, ruleNodes, type GanttAn
 import { flagRowPitch, ganttSpanBlockers, planGanttLabels, planRowFlags } from './labels';
 import { fmtDay, ganttPaints, layoutGanttMarks, type GanttMarkGeometry } from './marks';
 import { COLUMN_PLAN, columnPlan, ganttColumnWarnings, resolveGanttColumns, type GanttColumnOverride, type GanttColumnPlan } from './columns';
-import { BADGE_LEVELS, LABEL_PAD, MIN_ROW_H, NO_LANE, rowTextFloor, SIDE_KEY_OFF, RULE_LABEL_GAP, type GanttBand, type GanttBody, type GanttDomain, type GanttEnv } from './model';
+import { BADGE_LEVELS, LABEL_PAD, MIN_ROW_H, NO_LANE, rowTextFloor, RULE_LABEL_GAP, type GanttBand, type GanttBody, type GanttDomain, type GanttEnv } from './model';
 import { formatDate } from '../../dateFormat';
 import { ganttBody, ganttFrame, MINIMUM_TIMELINE, STACKED_LANE_FLOOR } from './plot';
 import { maxOf, minOf, pushAll } from '../../arrays';
@@ -539,13 +539,7 @@ function layoutAuthoredColumns(data: GanttData, options: GanttOptions): Geometry
 
 export function layoutGantt(data: GanttData, options: GanttOptions = {}): Geometry<GanttMarks, GanttDerived> {
   const geo = columnPlan(options) === undefined && resolveGanttColumns(options).layoutAuthored ? layoutAuthoredColumns(data, options) : layoutGanttLabelled(data, options);
-  // Compact, the last form before a refusal, keeps the key beside the plot only where the chart then fits its width;
-  // else the key stands in the row above the plot, as it does at a narrower width.
-  if (options.mode === 'compact' && !(options as { [SIDE_KEY_OFF]?: true })[SIDE_KEY_OFF] && !geo.refused && geo.sizing
-    && geo.sizing.minWidth > geo.size.width + SIZE_TOLERANCE && geo.frame?.warnings?.some((warning) => warning.code === 'legend-beside-plot')) {
-    return layoutGantt(data, { ...options, [SIDE_KEY_OFF]: true } as GanttOptions);
-  }
-  return geo;
+  return sideKeyGivesWay(options, geo, (keyAbove) => layoutGantt(data, keyAbove));
 }
 
 /** Keep clear layouts unchanged; retry only rows whose final layout loses a milestone's identity. */

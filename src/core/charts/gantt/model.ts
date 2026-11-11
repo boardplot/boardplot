@@ -278,7 +278,5 @@ export const MIN_ROW_H = 28;
 export const ROW_FLOOR_SLACK = 0.01;
 /** The least row height at which a wrapped name and its sublabel keep their seats: the text, one gap to the next row's name, and the slack. */
 export const rowTextFloor = (label: RowLabel) => label.h + (label.sub ? 2 + label.sub.h : 0) + LABEL_PAD + ROW_FLOOR_SLACK;
-/** Internal option: the key beside the plot made the chart too wide for its width, so it stands in the row above the plot. */
-export const SIDE_KEY_OFF = Symbol('ganttSideKeyOff');
 /** Internal option: how many levels the event badges stack in, once a pass on the drawn timeline has planned them. */
 export const BADGE_LEVELS = Symbol('ganttBadgeLevels');
