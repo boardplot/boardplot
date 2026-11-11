@@ -909,3 +909,44 @@ it('refuses label positions that a variant cannot draw', () => {
       .toThrow(expect.objectContaining({ code: 'label-position-unsupported', path: 'options.labelPosition', suggest: expect.stringContaining('auto') }));
   }
 });
+
+// Top-level chart and grid-panel annotations bypassed per-type option schemas or emitted broken fixes, letting invalid event badges and unsupported annotations draw.
+it('enforces per-type annotation rules with working fixes at chart and grid-panel roots', () => {
+  const ganttData = { rows: [
+    { id: 'r1', label: 'Design', items: [{ id: 'd1', kind: 'bar', start: '2027-03-01', end: '2027-03-12', label: 'Sketches' }] },
+    { id: 'r2', label: 'Build', items: [{ id: 'b1', kind: 'bar', start: '2027-03-15', end: '2027-04-02', label: 'Prototype' }] },
+  ] };
+  const catData = { categories: ['a', 'b'], series: [{ id: 's', values: [10, 20] }] };
+  const diagram = getFixtures('diagram')[0]!;
+  const badge = [{ id: 'e1', kind: 'event', at: 'b1', label: 'Release', labelPlacement: 'badge' }];
+  const patch = (spec: unknown, fix: JsonPatchOperation[]) => {
+    const copy = structuredClone(spec);
+    expect(patchApplies(copy, fix)).toBe(true);
+    for (const op of fix) {
+      if (op.op === 'test') continue;
+      const keys = parseJsonPointer(op.path);
+      const parent = keys.slice(0, -1).reduce<Record<string, unknown>>((node, key) => node[key] as Record<string, unknown>, copy as Record<string, unknown>);
+      if (op.op === 'remove') delete parent[keys.at(-1)!];
+      else if ('value' in op) parent[keys.at(-1)!] = op.value;
+    }
+    return copy;
+  };
+  for (const [spec, code, path, fixable] of [
+    [{ type: 'gantt', data: ganttData, options: { title: 'Garden shed project' }, annotations: badge }, 'invalid-options', '/annotations/0/label', true],
+    [{ type: 'gantt', data: ganttData, annotations: [{ id: 'e1', kind: 'event', at: 'b1', label: 'Release', items: [{ label: 'Step' }] }] }, 'invalid-options', '/annotations/0/items', true],
+    [{ type: 'column', data: catData, annotations: [{ kind: 'event', at: 'a', label: '1', labelPlacement: 'badge' }] }, 'invalid-options', '/annotations/0/labelPlacement', true],
+    [{ type: 'line', data: catData, annotations: [{ kind: 'event', at: 'a', label: '1', labelPlacement: 'badge' }] }, 'invalid-options', '/annotations/0/labelPlacement', true],
+    [{ type: 'diagram', data: diagram.data, options: diagram.options, annotations: [{ kind: 'note', at: 'a', text: 'hi' }] }, 'invalid-options', '/annotations', true],
+    [{ type: 'column', data: catData, annotations: [{ id: 'dup', kind: 'valueLine', value: 10 }, { id: 'dup', kind: 'valueLine', value: 15 }] }, 'invalid-options', '/annotations/1/id', false],
+    [{ type: 'grid', data: { panels: [{ id: 'p1', type: 'gantt', data: ganttData, annotations: badge }] } }, 'invalid-data', '/data/panels/0/annotations/0/label', true],
+    [{ type: 'grid', data: { panels: [{ id: 'p1', type: 'diagram', data: diagram.data, options: diagram.options, annotations: [{ kind: 'note', at: 'a', text: 'hi' }] }] } }, 'invalid-data', '/data/panels/0/annotations', true],
+  ] as const) {
+    const result = render({ spec }).body as { ok: boolean; errors: { code: string; path: string; fix?: JsonPatchOperation[] }[] };
+    expect(result.ok, path).toBe(false);
+    expect(result.errors[0]).toMatchObject({ code, path });
+    if (fixable) {
+      expect(result.errors[0]?.fix?.length, path).toBeGreaterThan(0);
+      expect(render({ spec: patch(spec, result.errors[0]!.fix!), return: ['svg'] }).body.ok, path).toBe(true);
+    }
+  }
+});
