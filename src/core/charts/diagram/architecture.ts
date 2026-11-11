@@ -403,11 +403,22 @@ function* arrangements(env: Env): Generator<Arrangement> {
     return;
   }
   const units = unitsOf(env);
-  const cap = columnsFor(env);
-  for (let perBand = Math.min(5, rootsOf(units).length); perBand >= 1; perBand--) {
-    for (let inner = cap; inner >= 1; inner--) {
-      const arrangement = arrangeColumns(env, units, perBand, inner, cap);
-      if (arrangement) yield arrangement;
+  // A narrower cap breaks a wide zone across bands, as a narrower canvas does, so the
+  // band breaks of a narrower width stay on the list of a wider one, after its own
+  // arrangements. Lanes step down the same way. A narrower inner count is already tried
+  // under the width's own cap, so a narrower cap adds only its full inner count.
+  const seen = new Set<string>();
+  const wide = columnsFor(env);
+  for (let cap = wide; cap >= 1; cap--) {
+    for (let perBand = Math.min(5, rootsOf(units).length); perBand >= 1; perBand--) {
+      for (let inner = cap; inner >= (cap === wide ? 1 : cap); inner--) {
+        const arrangement = arrangeColumns(env, units, perBand, inner, cap);
+        if (!arrangement) continue;
+        const key = JSON.stringify([[...arrangement.cells].map(([id, cell]) => [id, cell.band, cell.c0, cell.c1, cell.r0, cell.r1]), arrangement.bands.map((band) => [band.cols, band.rows])]);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        yield arrangement;
+      }
     }
   }
 }
