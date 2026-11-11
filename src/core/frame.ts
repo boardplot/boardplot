@@ -1441,15 +1441,17 @@ function planNote(items: ReadonlyMap<Id, NoteItem>, context: { data: unknown; an
  * note: the line over the registry's items and `extras` (id and text, in the
  * order to list them), and the footnotes without the line the registry wrote.
  * `counted` holds the ids the cap leaves to its count. The caller marks the
- * labels it names with `markNotedLabels`.
+ * labels it names with `markNotedLabels`, handing it `marks`, so the labels the
+ * drawn note leaves to "and N more" read as counted, not listed.
  */
-export function hiddenNoteWith(options: object, extras: readonly { id: Id; text: string }[]): { footnotes: string[]; line: string[]; ids: Set<Id>; counted: ReadonlySet<Id> } {
-  const own = options as Pick<BaseOptions, 'footnotes'> & NoteCapOptions
+export function hiddenNoteWith(options: object, extras: readonly { id: Id; text: string }[]): { footnotes: string[]; line: string[]; ids: Set<Id>; counted: ReadonlySet<Id>; marks: object } {
+  const own = options as Pick<BaseOptions, 'footnotes' | 'strings'> & NoteCapOptions
     & { [NOTE_ITEMS]?: ReadonlyMap<Id, NoteItem>; [NOTE_LINE]?: string; [NOTE_CONTEXT]?: { data: unknown; annotations?: unknown; kindCounts?: Record<string, number> } };
   const items = new Map(own[NOTE_ITEMS]);
   for (const { id, text } of extras) items.set(id, { text });
   const plan = planNote(items, own[NOTE_CONTEXT] ?? { data: undefined }, own);
-  return { footnotes: authoredNotes(own).filter((note) => note !== own[NOTE_LINE]), line: plan.line ? [plan.line] : [], ids: new Set(items.keys()), counted: plan.counted };
+  return { footnotes: authoredNotes(own).filter((note) => note !== own[NOTE_LINE]), line: plan.line ? [plan.line] : [], ids: new Set(items.keys()), counted: plan.counted,
+    marks: { strings: own.strings, [NOTE_ITEMS]: items, [NOTE_LINE]: plan.line, [NOTE_COUNTED]: plan.counted } };
 }
 
 /**
