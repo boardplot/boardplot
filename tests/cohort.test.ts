@@ -874,7 +874,7 @@ describe('cohort — claims', () => {
     const geometry = layout({ cohorts: [{ id: 'a', active: [100_000_000, 1] }, { id: 'b', active: [100_000_000, 3] }] }, { averages: 'weighted' });
     const claims = claimsForChart('cohort', geometry as never);
     expect(claims.find((c) => c.id === 'cohort:a:t1')!.output.raw).toBe(1e-8);
-    expect(claims.find((c) => c.id === 'cohort:average:t1')!.output.raw).toBe(2e-8);
+    expect(claims.find((c) => c.id === 'cohort-average:t1')!.output.raw).toBe(2e-8);
   });
 
   // The reading called every printed exhibit cell "Not displayed", because the receipt looked for heatmap cell nodes.
@@ -908,15 +908,29 @@ describe('cohort — claims', () => {
     expect(claims.filter((c) => c.op === 'cohort-retention@1').length).toBe(9);
   });
 
-  it('carries the support count on every average claim', () => {
-    const derivedGeometry = layout(clean(), { averages: 'weighted' });
-    return import('../src/core/claims').then(({ claimsForChart }) => {
-      const claims = claimsForChart('cohort', derivedGeometry as never);
-      const averages = claims.filter((c) => c.op === 'cohort-average@1');
-      expect(averages.length).toBe(4);
-      expect(averages[3]!.output.state).toBe('support:1');
-      expect(averages[0]!.output.state).toBe('support:3');
-    });
+  // An average claim held its support count in its state, so the reading reported no number for a drawn average.
+  it('gives every average claim its number and its support pairs', async () => {
+    const { claimsForChart } = await import('../src/core/claims');
+    const claims = claimsForChart('cohort', layout(clean(), { averages: 'weighted' }) as never);
+    const averages = claims.filter((c) => c.op === 'cohort-average@1');
+    expect(averages.length).toBe(4);
+    expect(averages.map((c) => c.output.state)).toEqual(['value', 'value', 'value', 'value']);
+    expect(averages[3]!.inputs.length).toBe(2);
+    expect(averages[0]!.inputs.length).toBe(6);
+    const { render } = await import('../src/cli/render');
+    const reading = (render({ spec: { type: 'cohort', data: clean(), options: { averages: 'weighted' } }, return: ['reading'] }).body as any).reading;
+    expect(reading.derived.find((c: any) => c.claimId === 'cohort-average:t0').value).toBe(1);
+  });
+
+  // A cohort with the valid id 'average' shared its claim ids with the average row, so both printed cells read as not displayed.
+  it('keeps the claims of a cohort named average apart from the average row', async () => {
+    const { render } = await import('../src/cli/render');
+    const spec = { type: 'cohort', data: { periodLabel: 'Month', cohorts: [
+      { id: 'average', label: 'Trial', active: [100, 50] },
+      { id: 'feb', label: 'Feb', active: [100, 80] },
+    ] }, options: { averages: 'weighted' } };
+    const claims = (render({ spec, return: ['reading'] }).body as any).reading.derived.filter((c: any) => c.claimId.endsWith('t1') && c.claimId.includes('average'));
+    expect(claims.map((c: any) => [c.claimId, c.value, c.visible])).toEqual([['cohort:average:t1', 0.5, true], ['cohort-average:t1', 0.65, true]]);
   });
 
   it('names the previous-period denominator when the basis changes', async () => {
@@ -983,4 +997,31 @@ it('a narrow cohort heatmap prints its rates without the % sign instead of hidin
   expect(narrow.some((text) => text.includes('%'))).toBe(false);
   // Without a unit line naming the percent, the sign stays.
   expect(printed(432).every((text) => text.endsWith('%'))).toBe(true);
+});
+
+describe('cohort exhibit Total row claims', () => {
+  // The exhibit printed a weighted Total row whose numbers had no claim in the reading.
+  it('gives each printed Total cell a claim with its weighted value', async () => {
+    const { render } = await import('../src/cli/render');
+    const spec = { type: 'cohort', data: { periodLabel: 'Month', cohorts: [
+      { id: 'jan', label: 'Jan', active: [1000, 600, 500] },
+      { id: 'feb', label: 'Feb', active: [500, 400] },
+    ] }, options: { variant: 'pure', total: 'weighted' } };
+    const reading = (render({ spec, return: ['reading'] }).body as any).reading;
+    const totals = reading.derived.filter((claim: any) => claim.claimId.startsWith('cohort-total:'));
+    expect(totals.map((claim: any) => [claim.claimId, claim.visible])).toEqual([['cohort-total:t0', true], ['cohort-total:t1', true], ['cohort-total:t2', true]]);
+    // Period 1: (600 + 400) / (1000 + 500). Period 2: only January reached it, 500 / 1000.
+    [1, 1000 / 1500, 0.5].forEach((value, t) => expect(totals[t].value).toBeCloseTo(value, 9));
+    expect(totals.every((claim: any) => claim.displayed !== '')).toBe(true);
+    // A cohort with the valid id 'total' must keep its own claims apart from the Total row's,
+    // or two printed cells name one id and the reading reports both as not displayed.
+    const clash = { type: 'cohort', data: { periodLabel: 'Month', cohorts: [
+      { id: 'total', label: 'Trial', active: [100, 50] },
+      { id: 'feb', label: 'Feb', active: [100, 80] },
+    ] }, options: { variant: 'pure', total: 'weighted' } };
+    const claims = (render({ spec: clash, return: ['reading'] }).body as any).reading.derived
+      .filter((claim: any) => claim.claimId.endsWith(':t1') && claim.claimId.includes('total'));
+    expect(claims.map((claim: any) => [claim.claimId, claim.visible])).toEqual([['cohort:total:t1', true], ['cohort-total:t1', true]]);
+    expect(claims.map((claim: any) => claim.value)).toEqual([0.5, 0.65]);
+  });
 });

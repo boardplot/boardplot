@@ -45,7 +45,7 @@
 <line data-id="rule:group-divider:g-ytdc" data-part="tableGroupDivider" x1="958.50" y1="89" x2="958.50" y2="501.50" stroke="#D9DEE8" stroke-width="1"/>
 <line data-id="rule:group-divider:g-pace" data-part="tableGroupDivider" x1="1362.50" y1="89" x2="1362.50" y2="501.50" stroke="#D9DEE8" stroke-width="1"/>
 <line data-id="rule:group-divider:g-outlook" data-part="tableGroupDivider" x1="1830.50" y1="89" x2="1830.50" y2="501.50" stroke="#D9DEE8" stroke-width="1"/>
-<rect data-id="columnband:g-outlook:total" data-part="tableColumnBand" x="1830" y="155" width="238" height="36" fill="#dee0e8"/>
+<rect data-id="columnband:g-outlook:total" data-part="tableColumnBand" x="1831" y="155" width="237" height="36" fill="#dee0e8"/>
 <text data-id="cell:total:label" data-part="tableCell" data-bp-role="category" x="44" y="177.20" text-anchor="start" font-size="15" font-weight="600" fill="#0B1B3A"><tspan x="44" dy="0">Total</tspan></text>
 <text data-id="cell:total:mtdLy" data-part="tableCell" data-bp-role="value" x="380" y="177.20" text-anchor="end" font-size="15" font-weight="600" fill="#0B1B3A" style="font-variant-numeric: tabular-nums"><tspan x="380" dy="0">588</tspan></text>
 <text data-id="cell:total:mtdAc" data-part="tableCell" data-bp-role="value" x="456" y="177.20" text-anchor="end" font-size="15" font-weight="600" fill="#0B1B3A" style="font-variant-numeric: tabular-nums"><tspan x="456" dy="0">520</tspan></text>
@@ -68,7 +68,7 @@
 <text data-id="cell:total:foLy" data-part="tableCell" data-bp-role="value" x="1924" y="177.20" text-anchor="end" font-size="15" font-weight="600" fill="#0B1B3A" style="font-variant-numeric: tabular-nums"><tspan x="1924" dy="0">14,745</tspan></text>
 <text data-id="cell:total:foOut" data-part="tableCell" data-bp-role="category" x="2056" y="177.20" text-anchor="end" font-size="15" font-weight="600" fill="#0B1B3A"><tspan x="2056" dy="0">12,345 (partial)</tspan></text>
 <line data-id="rule:total:total" data-part="tableTotalRule" x1="32" y1="191.50" x2="2068" y2="191.50" stroke="#0B1B3A" stroke-width="1"/>
-<rect data-id="columnband:g-outlook:seg-subscriptions" data-part="tableColumnBand" x="1830" y="191" width="238" height="32" fill="#ebedf3"/>
+<rect data-id="columnband:g-outlook:seg-subscriptions" data-part="tableColumnBand" x="1831" y="191" width="237" height="32" fill="#ebedf3"/>
 <text data-id="cell:seg-subscriptions:label" data-part="tableCell" data-bp-role="category" x="60" y="210.92" text-anchor="start" font-size="14" font-weight="600" fill="#0B1B3A"><tspan x="60" dy="0">Subscriptions</tspan></text>
 <text data-id="cell:seg-subscriptions:mtdLy" data-part="tableCell" data-bp-role="value" x="380" y="210.92" text-anchor="end" font-size="14" font-weight="600" fill="#0B1B3A" style="font-variant-numeric: tabular-nums"><tspan x="380" dy="0">470</tspan></text>
 <text data-id="cell:seg-subscriptions:mtdAc" data-part="tableCell" data-bp-role="value" x="456" y="210.92" text-anchor="end" font-size="14" font-weight="600" fill="#0B1B3A" style="font-variant-numeric: tabular-nums"><tspan x="456" dy="0">431</tspan></text>
@@ -92,7 +92,7 @@
 <text data-id="cell:seg-subscriptions:foLy" data-part="tableCell" data-bp-role="value" x="1924" y="210.92" text-anchor="end" font-size="14" font-weight="600" fill="#0B1B3A" style="font-variant-numeric: tabular-nums"><tspan x="1924" dy="0">11,890</tspan></text>
 <text data-id="cell:seg-subscriptions:foOut" data-part="tableCell" data-bp-role="category" x="2056" y="210.92" text-anchor="end" font-size="14" font-weight="600" fill="#0B1B3A"><tspan x="2056" dy="0">10,330 (partial)</tspan></text>
 <line data-id="rule:row:seg-subscriptions" data-part="tableRowRule" x1="32" y1="223.50" x2="2068" y2="223.50" stroke="#D9DEE8" stroke-width="1"/>
-<rect data-id="columnband:g-outlook:subs-cloud" data-part="tableColumnBand" x="1830" y="223" width="238" height="26" fill="#ebedf3"/>
+<rect data-id="columnband:g-outlook:subs-cloud" data-part="tableColumnBand" x="1831" y="223" width="237" height="26" fill="#ebedf3"/>
 <text data-id="cell:subs-cloud:label" data-part="tableCell" data-bp-role="category" x="76" y="239.92" text-anchor="start" font-size="14" font-weight="600" fill="#0B1B3A"><tspan x="76" dy="0">Cloud</tspan></text>
 <text data-id="hint:subs-cloud" data-part="tableCollapsedHint" data-bp-role="category" x="122.50" y="239.92" text-anchor="start" font-size="13" font-weight="400" fill="#5B6B86"><tspan x="122.50" dy="0">· 2 regions</tspan></text>
 <text data-id="cell:subs-cloud:mtdLy" data-part="tableCell" data-bp-role="value" x="380" y="239.92" text-anchor="end" font-size="14" font-weight="600" fill="#0B1B3A" style="font-variant-numeric: tabular-nums"><tspan x="380" dy="0">401</tspan></text>
@@ -117,7 +117,7 @@
 <text data-id="cell:subs-cloud:foLy" data-part="tableCell" data-bp-role="value" x="1924" y="239.92" text-anchor="end" font-size="14" font-weight="600" fill="#0B1B3A" style="font-variant-numeric: tabular-nums"><tspan x="1924" dy="0">10,170</tspan></text>
 <text data-id="cell:subs-cloud:foOut" data-part="tableCell" data-bp-role="value" x="2056" y="239.92" text-anchor="end" font-size="14" font-weight="600" fill="#0B1B3A" style="font-variant-numeric: tabular-nums"><tspan x="2056" dy="0">9,320</tspan></text>
 <line data-id="rule:row:subs-cloud" data-part="tableRowRule" x1="32" y1="249.50" x2="2068" y2="249.50" stroke="#D9DEE8" stroke-width="1"/>
-<rect data-id="columnband:g-outlook:subs-onprem" data-part="tableColumnBand" x="1830" y="249" width="238" height="26" fill="#ebedf3"/>
+<rect data-id="columnband:g-outlook:subs-onprem" data-part="tableColumnBand" x="1831" y="249" width="237" height="26" fill="#ebedf3"/>
 <text data-id="cell:subs-onprem:label" data-part="tableCell" data-bp-role="category" x="76" y="265.92" text-anchor="start" font-size="14" font-weight="400" fill="#0B1B3A"><tspan x="76" dy="0">On-premises</tspan></text>
 <text data-id="cell:subs-onprem:mtdLy" data-part="tableCell" data-bp-role="value" x="380" y="265.92" text-anchor="end" font-size="14" font-weight="400" fill="#0B1B3A" style="font-variant-numeric: tabular-nums"><tspan x="380" dy="0">46</tspan></text>
 <text data-id="cell:subs-onprem:mtdAc" data-part="tableCell" data-bp-role="value" x="456" y="265.92" text-anchor="end" font-size="14" font-weight="400" fill="#0B1B3A" style="font-variant-numeric: tabular-nums"><tspan x="456" dy="0">31</tspan></text>
@@ -141,7 +141,7 @@
 <text data-id="cell:subs-onprem:foLy" data-part="tableCell" data-bp-role="value" x="1924" y="265.92" text-anchor="end" font-size="14" font-weight="400" fill="#0B1B3A" style="font-variant-numeric: tabular-nums"><tspan x="1924" dy="0">1,160</tspan></text>
 <text data-id="cell:subs-onprem:foOut" data-part="tableCell" data-bp-role="value" x="2056" y="265.92" text-anchor="end" font-size="14" font-weight="400" fill="#0B1B3A" style="font-variant-numeric: tabular-nums"><tspan x="2056" dy="0">1,010</tspan></text>
 <line data-id="rule:row:subs-onprem" data-part="tableRowRule" x1="32" y1="275.50" x2="2068" y2="275.50" stroke="#D9DEE8" stroke-width="1"/>
-<rect data-id="columnband:g-outlook:subs-addons" data-part="tableColumnBand" x="1830" y="275" width="238" height="26" fill="#ebedf3"/>
+<rect data-id="columnband:g-outlook:subs-addons" data-part="tableColumnBand" x="1831" y="275" width="237" height="26" fill="#ebedf3"/>
 <text data-id="cell:subs-addons:label" data-part="tableCell" data-bp-role="category" x="76" y="291.92" text-anchor="start" font-size="14" font-weight="400" fill="#0B1B3A"><tspan x="76" dy="0">Add-ons</tspan></text>
 <text data-id="cell:subs-addons:mtdLy" data-part="tableCell" data-bp-role="value" x="380" y="291.92" text-anchor="end" font-size="14" font-weight="400" fill="#0B1B3A" style="font-variant-numeric: tabular-nums"><tspan x="380" dy="0">23</tspan></text>
 <text data-id="cell:subs-addons:mtdAc" data-part="tableCell" data-bp-role="value" x="456" y="291.92" text-anchor="end" font-size="14" font-weight="400" fill="#0B1B3A" style="font-variant-numeric: tabular-nums"><tspan x="456" dy="0">29</tspan></text>
@@ -165,7 +165,7 @@
 <text data-id="cell:subs-addons:foLy" data-part="tableCell" data-bp-role="value" x="1924" y="291.92" text-anchor="end" font-size="14" font-weight="400" fill="#0B1B3A" style="font-variant-numeric: tabular-nums"><tspan x="1924" dy="0">560</tspan></text>
 <text data-id="cell:subs-addons:foOut" data-part="tableCell" data-bp-role="value" x="2056" y="292.80" text-anchor="end" font-size="15" font-weight="400" fill="#5B6B86" style="font-variant-numeric: tabular-nums"><tspan x="2056" dy="0">–</tspan></text>
 <line data-id="rule:block:seg-services" data-part="tableBlockRule" x1="32" y1="301.50" x2="2068" y2="301.50" stroke="#0B1B3A" stroke-width="1"/>
-<rect data-id="columnband:g-outlook:seg-services" data-part="tableColumnBand" x="1830" y="301" width="238" height="32" fill="#ebedf3"/>
+<rect data-id="columnband:g-outlook:seg-services" data-part="tableColumnBand" x="1831" y="301" width="237" height="32" fill="#ebedf3"/>
 <text data-id="cell:seg-services:label" data-part="tableCell" data-bp-role="category" x="60" y="320.92" text-anchor="start" font-size="14" font-weight="600" fill="#0B1B3A"><tspan x="60" dy="0">Services</tspan></text>
 <text data-id="cell:seg-services:mtdLy" data-part="tableCell" data-bp-role="value" x="380" y="320.92" text-anchor="end" font-size="14" font-weight="600" fill="#0B1B3A" style="font-variant-numeric: tabular-nums"><tspan x="380" dy="0">66</tspan></text>
 <text data-id="cell:seg-services:mtdAc" data-part="tableCell" data-bp-role="value" x="456" y="320.92" text-anchor="end" font-size="14" font-weight="600" fill="#0B1B3A" style="font-variant-numeric: tabular-nums"><tspan x="456" dy="0">57</tspan></text>
@@ -189,7 +189,7 @@
 <text data-id="cell:seg-services:foLy" data-part="tableCell" data-bp-role="value" x="1924" y="320.92" text-anchor="end" font-size="14" font-weight="600" fill="#0B1B3A" style="font-variant-numeric: tabular-nums"><tspan x="1924" dy="0">1,615</tspan></text>
 <text data-id="cell:seg-services:foOut" data-part="tableCell" data-bp-role="value" x="2056" y="320.92" text-anchor="end" font-size="14" font-weight="600" fill="#0B1B3A" style="font-variant-numeric: tabular-nums"><tspan x="2056" dy="0">1,590</tspan></text>
 <line data-id="rule:row:seg-services" data-part="tableRowRule" x1="32" y1="333.50" x2="2068" y2="333.50" stroke="#D9DEE8" stroke-width="1"/>
-<rect data-id="columnband:g-outlook:svc-consulting" data-part="tableColumnBand" x="1830" y="333" width="238" height="26" fill="#ebedf3"/>
+<rect data-id="columnband:g-outlook:svc-consulting" data-part="tableColumnBand" x="1831" y="333" width="237" height="26" fill="#ebedf3"/>
 <text data-id="cell:svc-consulting:label" data-part="tableCell" data-bp-role="category" x="76" y="349.92" text-anchor="start" font-size="14" font-weight="400" fill="#0B1B3A"><tspan x="76" dy="0">Consulting</tspan></text>
 <text data-id="cell:svc-consulting:mtdLy" data-part="tableCell" data-bp-role="value" x="380" y="349.92" text-anchor="end" font-size="14" font-weight="400" fill="#0B1B3A" style="font-variant-numeric: tabular-nums"><tspan x="380" dy="0">54</tspan></text>
 <text data-id="cell:svc-consulting:mtdAc" data-part="tableCell" data-bp-role="value" x="456" y="349.92" text-anchor="end" font-size="14" font-weight="400" fill="#0B1B3A" style="font-variant-numeric: tabular-nums"><tspan x="456" dy="0">41</tspan></text>
@@ -213,7 +213,7 @@
 <text data-id="cell:svc-consulting:foLy" data-part="tableCell" data-bp-role="value" x="1924" y="349.92" text-anchor="end" font-size="14" font-weight="400" fill="#0B1B3A" style="font-variant-numeric: tabular-nums"><tspan x="1924" dy="0">1,310</tspan></text>
 <text data-id="cell:svc-consulting:foOut" data-part="tableCell" data-bp-role="value" x="2056" y="349.92" text-anchor="end" font-size="14" font-weight="400" fill="#0B1B3A" style="font-variant-numeric: tabular-nums"><tspan x="2056" dy="0">1,240</tspan></text>
 <line data-id="rule:row:svc-consulting" data-part="tableRowRule" x1="32" y1="359.50" x2="2068" y2="359.50" stroke="#D9DEE8" stroke-width="1"/>
-<rect data-id="columnband:g-outlook:svc-training" data-part="tableColumnBand" x="1830" y="359" width="238" height="26" fill="#ebedf3"/>
+<rect data-id="columnband:g-outlook:svc-training" data-part="tableColumnBand" x="1831" y="359" width="237" height="26" fill="#ebedf3"/>
 <text data-id="cell:svc-training:label" data-part="tableCell" data-bp-role="category" x="76" y="375.92" text-anchor="start" font-size="14" font-weight="400" fill="#0B1B3A"><tspan x="76" dy="0">Training</tspan></text>
 <text data-id="cell:svc-training:mtdLy" data-part="tableCell" data-bp-role="value" x="380" y="375.92" text-anchor="end" font-size="14" font-weight="400" fill="#0B1B3A" style="font-variant-numeric: tabular-nums"><tspan x="380" dy="0">12</tspan></text>
 <text data-id="cell:svc-training:mtdAc" data-part="tableCell" data-bp-role="value" x="456" y="375.92" text-anchor="end" font-size="14" font-weight="400" fill="#0B1B3A" style="font-variant-numeric: tabular-nums"><tspan x="456" dy="0">16</tspan></text>
@@ -237,7 +237,7 @@
 <text data-id="cell:svc-training:foLy" data-part="tableCell" data-bp-role="value" x="1924" y="375.92" text-anchor="end" font-size="14" font-weight="400" fill="#0B1B3A" style="font-variant-numeric: tabular-nums"><tspan x="1924" dy="0">305</tspan></text>
 <text data-id="cell:svc-training:foOut" data-part="tableCell" data-bp-role="value" x="2056" y="375.92" text-anchor="end" font-size="14" font-weight="400" fill="#0B1B3A" style="font-variant-numeric: tabular-nums"><tspan x="2056" dy="0">350</tspan></text>
 <line data-id="rule:block:seg-hardware" data-part="tableBlockRule" x1="32" y1="385.50" x2="2068" y2="385.50" stroke="#0B1B3A" stroke-width="1"/>
-<rect data-id="columnband:g-outlook:seg-hardware" data-part="tableColumnBand" x="1830" y="385" width="238" height="32" fill="#ebedf3"/>
+<rect data-id="columnband:g-outlook:seg-hardware" data-part="tableColumnBand" x="1831" y="385" width="237" height="32" fill="#ebedf3"/>
 <text data-id="cell:seg-hardware:label" data-part="tableCell" data-bp-role="category" x="60" y="404.92" text-anchor="start" font-size="14" font-weight="600" fill="#0B1B3A"><tspan x="60" dy="0">Hardware</tspan></text>
 <text data-id="cell:seg-hardware:mtdLy" data-part="tableCell" data-bp-role="value" x="380" y="404.92" text-anchor="end" font-size="14" font-weight="600" fill="#0B1B3A" style="font-variant-numeric: tabular-nums"><tspan x="380" dy="0">52</tspan></text>
 <text data-id="cell:seg-hardware:mtdAc" data-part="tableCell" data-bp-role="value" x="456" y="404.92" text-anchor="end" font-size="14" font-weight="600" fill="#0B1B3A" style="font-variant-numeric: tabular-nums"><tspan x="456" dy="0">26</tspan></text>
@@ -261,7 +261,7 @@
 <text data-id="cell:seg-hardware:foLy" data-part="tableCell" data-bp-role="value" x="1924" y="404.92" text-anchor="end" font-size="14" font-weight="600" fill="#0B1B3A" style="font-variant-numeric: tabular-nums"><tspan x="1924" dy="0">1,240</tspan></text>
 <text data-id="cell:seg-hardware:foOut" data-part="tableCell" data-bp-role="category" x="2056" y="404.92" text-anchor="end" font-size="14" font-weight="600" fill="#0B1B3A"><tspan x="2056" dy="0">410 (partial)</tspan></text>
 <line data-id="rule:row:seg-hardware" data-part="tableRowRule" x1="32" y1="417.50" x2="2068" y2="417.50" stroke="#D9DEE8" stroke-width="1"/>
-<rect data-id="columnband:g-outlook:hw-appliances" data-part="tableColumnBand" x="1830" y="417" width="238" height="26" fill="#ebedf3"/>
+<rect data-id="columnband:g-outlook:hw-appliances" data-part="tableColumnBand" x="1831" y="417" width="237" height="26" fill="#ebedf3"/>
 <text data-id="cell:hw-appliances:label" data-part="tableCell" data-bp-role="category" x="76" y="433.92" text-anchor="start" font-size="14" font-weight="400" fill="#0B1B3A"><tspan x="76" dy="0">Appliances</tspan></text>
 <text data-id="cell:hw-appliances:mtdLy" data-part="tableCell" data-bp-role="value" x="380" y="433.92" text-anchor="end" font-size="14" font-weight="400" fill="#0B1B3A" style="font-variant-numeric: tabular-nums"><tspan x="380" dy="0">33</tspan></text>
 <text data-id="cell:hw-appliances:mtdAc" data-part="tableCell" data-bp-role="value" x="456" y="433.92" text-anchor="end" font-size="14" font-weight="400" fill="#0B1B3A" style="font-variant-numeric: tabular-nums"><tspan x="456" dy="0">21</tspan></text>
@@ -285,7 +285,7 @@
 <text data-id="cell:hw-appliances:foLy" data-part="tableCell" data-bp-role="value" x="1924" y="433.92" text-anchor="end" font-size="14" font-weight="400" fill="#0B1B3A" style="font-variant-numeric: tabular-nums"><tspan x="1924" dy="0">790</tspan></text>
 <text data-id="cell:hw-appliances:foOut" data-part="tableCell" data-bp-role="value" x="2056" y="434.80" text-anchor="end" font-size="15" font-weight="400" fill="#5B6B86" style="font-variant-numeric: tabular-nums"><tspan x="2056" dy="0">n/a</tspan></text>
 <line data-id="rule:row:hw-appliances" data-part="tableRowRule" x1="32" y1="443.50" x2="2068" y2="443.50" stroke="#D9DEE8" stroke-width="1"/>
-<rect data-id="columnband:g-outlook:hw-devices" data-part="tableColumnBand" x="1830" y="443" width="238" height="26" fill="#ebedf3"/>
+<rect data-id="columnband:g-outlook:hw-devices" data-part="tableColumnBand" x="1831" y="443" width="237" height="26" fill="#ebedf3"/>
 <text data-id="cell:hw-devices:label" data-part="tableCell" data-bp-role="category" x="76" y="459.92" text-anchor="start" font-size="14" font-weight="400" fill="#0B1B3A"><tspan x="76" dy="0">Devices</tspan></text>
 <text data-id="cell:hw-devices:mtdLy" data-part="tableCell" data-bp-role="value" x="380" y="459.92" text-anchor="end" font-size="14" font-weight="400" fill="#0B1B3A" style="font-variant-numeric: tabular-nums"><tspan x="380" dy="0">19</tspan></text>
 <text data-id="cell:hw-devices:mtdAc" data-part="tableCell" data-bp-role="value" x="456" y="459.92" text-anchor="end" font-size="14" font-weight="400" fill="#0B1B3A" style="font-variant-numeric: tabular-nums"><tspan x="456" dy="0">5</tspan></text>
@@ -309,7 +309,7 @@
 <text data-id="cell:hw-devices:foLy" data-part="tableCell" data-bp-role="value" x="1924" y="459.92" text-anchor="end" font-size="14" font-weight="400" fill="#0B1B3A" style="font-variant-numeric: tabular-nums"><tspan x="1924" dy="0">450</tspan></text>
 <text data-id="cell:hw-devices:foOut" data-part="tableCell" data-bp-role="value" x="2056" y="459.92" text-anchor="end" font-size="14" font-weight="400" fill="#0B1B3A" style="font-variant-numeric: tabular-nums"><tspan x="2056" dy="0">410</tspan></text>
 <line data-id="rule:block:seg-unallocated" data-part="tableBlockRule" x1="32" y1="469.50" x2="2068" y2="469.50" stroke="#0B1B3A" stroke-width="1"/>
-<rect data-id="columnband:g-outlook:seg-unallocated" data-part="tableColumnBand" x="1830" y="469" width="238" height="32" fill="#ebedf3"/>
+<rect data-id="columnband:g-outlook:seg-unallocated" data-part="tableColumnBand" x="1831" y="469" width="237" height="32" fill="#ebedf3"/>
 <text data-id="cell:seg-unallocated:label" data-part="tableCell" data-bp-role="category" x="60" y="488.92" text-anchor="start" font-size="14" font-weight="600" fill="#0B1B3A"><tspan x="60" dy="0">Unallocated</tspan></text>
 <text data-id="hint:seg-unallocated" data-part="tableCollapsedHint" data-bp-role="category" x="147" y="488.92" text-anchor="start" font-size="13" font-weight="400" fill="#5B6B86"><tspan x="147" dy="0">· 1 product</tspan></text>
 <text data-id="cell:seg-unallocated:mtdLy" data-part="tableCell" data-bp-role="value" x="380" y="488.92" text-anchor="end" font-size="14" font-weight="600" fill="#5B6B86" style="font-variant-numeric: tabular-nums"><tspan x="380" dy="0">0</tspan></text>

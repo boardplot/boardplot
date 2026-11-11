@@ -624,6 +624,21 @@ describe('an example is read as its author wrote it', () => {
     expect(warning?.suggest).toMatch(/'1\.1\d* m\/s'/);
   });
 
+  // A format warning printed "2,345,678" on a chart that prints "2.345.678", and for values already in a "$B" unit it advised a nine-decimal "+$1.123456789B".
+  it('prints format warnings with the chart marks and drops a scale the unit already states', () => {
+    const series = (values: number[]) => ({ series: [{ id: 's', values }] });
+    const [unscaled] = unscaledFormatLint({ format: '1,234', locale: { thousands: '.', decimal: ',' } }, series([2_345_678, 4_567]));
+    expect(unscaled?.message).toContain('values up to 2.345.678 print');
+    const [scaled] = unscaledFormatLint({ format: '+$1.0B', unit: '$B' }, series([62, 43.2, 5.5, 1.9]));
+    expect([scaled?.code, scaled?.fix]).toEqual(['format-hides-values', [{ op: 'replace', path: '/options/format', value: '+$1.0' }]]);
+    // A scale inside a currency code ('USDm') must leave the fix too, or the fix scales the values again.
+    for (const [format, fixed] of [['USDm 1.2', 'USD 1.0'], ['1.2 USDm', '1.0 USD']]) {
+      const [inCode] = unscaledFormatLint({ format, unit: 'USDm' }, series([62, 1.9]));
+      expect(inCode?.fix, format).toEqual([{ op: 'replace', path: '/options/format', value: fixed }]);
+      expect(unscaledFormatLint({ format: fixed, unit: 'USDm' }, series([62, 1.9])), fixed).toEqual([]);
+    }
+  });
+
   it('keeps every decimal a chart-level example claims', () => {
     expect(seriesRasterFormatter('1.0000', [1.0851, 1.0853, 1.0849]).fmt(1.0851)).toBe('1.0851');
     expect(seriesRasterFormatter('47.0', [45, 47]).fmt(47)).toBe('47.0');

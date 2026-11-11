@@ -6,13 +6,13 @@
  */
 
 import { NormalizeError } from './normalize/shared';
-import type { RenderTarget } from './types/options';
+import type { LocaleSpec, RenderTarget } from './types/options';
 import type { LintWarning, PlacedLabel, SceneNode } from './types/scene';
 import type { InteractionRecord } from './a11y/types';
 
 import { chartString } from './strings';
 import { fractionFormat, numberFormat } from './numberFormatCache';
-import { splitNumberMarks, wordLanguage } from './numberMarks';
+import { splitNumberMarks, withNumberMarks, wordLanguage } from './numberMarks';
 import { currencyWholeNumbers, MAGNITUDE_SUFFIX, magnitudeSuffix, MINUS, formatPercent, nonFiniteGlyph, smallRateDecimals } from './format';
 import {
   AUTO_MAX_DECIMALS,
@@ -493,6 +493,17 @@ function magnitudeAfterNumber(entry: typeof MAGNITUDE_SUFFIXES[number], lead: st
   const word = entry.re.exec(trimmed);
   if (!word || !entry.glued || tail === trimmed) return word;
   return !trimmed.slice(word[0].length).startsWith('/') && (isCurrency(lead) || isCurrency(trimmed.slice(word[0].length))) ? word : null;
+}
+
+/** A currency affix without its scale word: 'USDm ' gives 'USD ', ' Mio. €' gives ' €'. */
+function affixWithoutScale(affix: string): string {
+  const text = affix.trim();
+  if (!currencyAffixMagnitude(text)) return affix;
+  const unit = MAGNITUDE_UNIT.exec(text);
+  const at = unit ? /^\W*/.exec(text)![0].length + (unit[1]?.length ?? 0) + (unit[2]?.length ?? 0) : 0;
+  const word = unit?.[3] ?? SCALED_NOUN_UNIT.exec(text)![1]!;
+  const rest = `${text.slice(0, at)}${text.slice(at + word.length).replace(/^\./, '')}`.replace(/\s+/g, ' ').trim();
+  return `${/^\s*/.exec(affix)![0]}${rest}${/\s*$/.exec(affix)![0]}`;
 }
 
 function affixMagnitude(spec: NumberFormatSpec): void {
@@ -1334,12 +1345,17 @@ export function exampleSpec(example: string, locale?: string, unit?: string, val
 
 /**
  * The example that sets how a chart prints its computed shares: `shareLabels.format`,
+ * else the percent `series[].format` that every data series sets alike (a series format
+ * overrides options.format, and a whole prints its shares at one precision),
  * else `options.format` when it is a percent example ("1.0%"). A format without a
  * percent sign belongs to the values and gives none.
  */
-export function shareFormatExample(options: { format?: string; shareLabels?: { format?: string } }): string | undefined {
+export function shareFormatExample(options: { format?: string; shareLabels?: { format?: string } }, series: readonly { format?: string }[] = []): string | undefined {
   if (options.shareLabels?.format) return formatExampleText(options.shareLabels.format);
-  return options.format && parseFormatExample(options.format).suffix.includes('%') ? formatExampleText(options.format) : undefined;
+  const percent = (example: string | undefined): example is string => example !== undefined && parseFormatExample(example).suffix.includes('%');
+  const own = series[0]?.format;
+  if (percent(own) && series.every((s) => s.format === own)) return formatExampleText(own);
+  return percent(options.format) ? formatExampleText(options.format) : undefined;
 }
 
 /** Parse an example and return a ready-to-use formatter. The chart locale is required (pass undefined for none), so no caller forgets it. */
@@ -1808,7 +1824,8 @@ function chartFormatLint(
   // The chart's records prove a zero: what they print, not what this format would print.
   const zeroed = zeroRecords.map((record) => record.value.raw as number);
   // An authored scale holds the chart to one precision (shareAuthoredScale): the warning says what that draws.
-  const locale = (options?.locale as { language?: string } | undefined)?.language;
+  // Its figures print with the chart's marks (locale.decimal and locale.thousands), as the chart does.
+  const locale = withNumberMarks({ locale: options?.locale as LocaleSpec | undefined }).locale!.language;
   const shared = spec.magnitude !== 'none' && figures === undefined ? seriesRasterFormatter(format, numbers.flat(), locale, unit) : undefined;
   const raised = checked && shared !== undefined && shared.spec.decimals > spec.decimals;
   const smallest = numbers.flat().reduce((small, v) => v !== 0 && (small === 0 || Math.abs(v) < Math.abs(small)) ? v : small, 0);
@@ -1830,6 +1847,22 @@ function chartFormatLint(
     let decimals = Math.max(spec.decimals + 1, raised ? shared.spec.decimals : 0);
     while (decimals < MAX_FORMAT_DECIMALS && !shows(finerAt(decimals))) decimals++;
     const finer = decimals <= MAX_FORMAT_DECIMALS && shows(finerAt(decimals)) ? finerAt(decimals) : undefined;
+    // A unit that names the format's own scale ("$B") says the values are in that scale already:
+    // the letter divides them a second time, and more decimals only print "+$0.000000002B". The fix drops the letter.
+    if (spec.magnitude !== 'none' && unitMagnitude(unit) === spec.magnitude) {
+      // A scale inside a currency affix ('USDm 1.2') leaves the affix too, or parsing the fix restores it.
+      const affix = (text: string) => spec.magnitudeInAffix ? affixWithoutScale(text) : text;
+      const plain = formatWithSpec(spec.thousandsSep ? 1234 : 1, { ...spec, magnitude: 'none', magnitudeWord: undefined, magnitudeInAffix: undefined, prefix: affix(spec.prefix), suffix: affix(spec.suffix) });
+      const shown = raised ? shared.fmt(smallest) : zeroRecords[0]?.value.displayed ?? formatWithSpec(smallest, withChartMarks(spec, locale));
+      return [{
+        code: 'format-hides-values',
+        severity: 'warn',
+        message: `options.unit '${unit}' says the values are already in its scale, and format '${format}' divides them by that scale again: ${smallest} prints as ${shown}`,
+        suggest: `drop the scale from the format, such as '${plain}', and keep options.unit`,
+        field: ['options', 'format'],
+        fix: [{ op: 'replace', path: '/options/format', value: plain }],
+      }];
+    }
     return [{
       code: 'format-hides-values',
       severity: 'warn',
@@ -1850,7 +1883,7 @@ function chartFormatLint(
   return [{
     code: 'format-unscaled',
     severity: 'warn',
-    message: `format '${format}' has no scale word, so values up to ${formatWithSpec(largest, spec)} print in all their digits`,
+    message: `format '${format}' has no scale word, so values up to ${formatWithSpec(largest, withChartMarks(spec, locale))} print in all their digits`,
     suggest: `set a compact format such as '${compact}', or remove options.format to let the engine pick k, M or B`,
     field: ['options', 'format'],
     fix: [{ op: 'replace', path: '/options/format', value: compact }],

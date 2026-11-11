@@ -101,6 +101,8 @@ export interface AnchorResolution {
   pointValueText?: string;
   /** Format of the single series this anchor reads. */
   format?: string;
+  /** The value as the anchored mark's own value label prints it (unit, scale, precision); an `abs` without a format prints it. */
+  markValueText?: string;
   /**
    * Set where the anchor has a seat but no honest value (a stack
    * whose parts do not add). `value` is then not printed or computed with:
@@ -203,6 +205,8 @@ export interface AnnotatePassInput {
   gridCallouts?: { rows: ReadonlyMap<Id, Rect>; widths?: ReadonlyMap<Id, number>; bounds: Rect; grid: Rect; sideLimit: number };
   /** Wide combo value-line labels use a row above the plot. */
   valueLineRows?: ReadonlyMap<Id, Rect>;
+  /** False when the chart's `labels.valueLine: false` takes the value-line labels off; the lines stay. */
+  valueLineLabels?: boolean;
   /**
    * The top of the CAGR arms' lanes. A line puts its header rows inside
    * `plot` and the value-axis title in the row over them; a claim that ends
@@ -993,12 +997,13 @@ function placeNote(s: AnnotationScope, ann: Extract<Annotation, { kind: 'callout
   // sentence built around it is the author's, so the record carries the
   // anchor value it was substituted from and claims nothing more.
   const lines = headline === undefined ? text : `${headline}\n${text}`;
+  const printsValue = !repeats && [ann.text, ann.kind === 'callout' ? ann.headline : undefined].some((part) => part?.includes('${value}'));
   calloutLabel(s, ann, at, lines, ann.kind, undefined, lines, {
     basis: 'authored',
     op: `annotation-${ann.kind}@1`,
     inputs: [{ ref: `at:${anchorRefLabel(ann.at)}`, value: at.noValue === undefined ? at.value : null, state: 'anchor' }],
     raw: null,
-  }, placedGlyph);
+  }, placedGlyph, printsValue ? found.owner : undefined);
 }
 
 function placeDelta(s: AnnotationScope, ann: Extract<Annotation, { kind: 'delta' }>): void {
@@ -1109,7 +1114,8 @@ function placeAbs(s: AnnotationScope, ann: Extract<Annotation, { kind: 'abs' }>)
   const at = s.input.resolve(ann.at);
   if (!at) return warn(s, 'bad-anchor', `abs '${s.id}': unresolvable anchor`);
   if (valueless(s, 'abs', [at])) return;
-  const computed = s.run.fmt(at.value);
+  // Without its own format, `abs` prints the value as the anchored mark's label does ("4.1%", not "4.1").
+  const computed = ann.format === undefined && at.markValueText !== undefined ? at.markValueText : s.run.fmt(at.value);
   // `abs` restates the anchor's own plotted value. There is no arithmetic
   // to check — recording it as a derivation would be an identity, which
   // is the same thing as not checking it — so it is `observed`: a value
@@ -1120,7 +1126,7 @@ function placeAbs(s: AnnotationScope, ann: Extract<Annotation, { kind: 'abs' }>)
     op: 'annotation-abs@1',
     inputs: [{ ref: `at:${anchorRefLabel(ann.at)}`, value: at.value, state: 'anchor' }],
     raw: at.value,
-  });
+  }, undefined, label.text === label.computed ? at.owner : undefined);
 }
 
 /**
@@ -1322,7 +1328,7 @@ function valueLineLabel(
     ? repeatsEndValue(input, v, valueText, y, input.measure(`${ann.label} ${valueText}`, font)) : undefined;
   const nameOnly = endValue !== undefined;
   const labelText =
-    ann.label === false ? '' : typeof ann.label === 'string' && nameOnly ? ann.label
+    ann.label === false || input.valueLineLabels === false ? '' : typeof ann.label === 'string' && nameOnly ? ann.label
       : ann.label !== undefined ? namedLineText(ann.label, valueText, v, id)
       : (isMean ? `${input.strings?.average ?? localeStrings(input.locale).average} ${valueText}${span ? ` (${span})` : ''}` : valueText);
   if (!labelText) return labelText;
@@ -1672,6 +1678,8 @@ function calloutLabel(
   computed = text,
   derivation?: AnnotationDerivation,
   glyph?: CalloutGlyphPlan,
+  /** The mark whose value the text prints. */
+  valueOwner?: OwnerRef,
 ): void {
   const { input, id: annId } = s;
   const at = calloutAttachment(anchor, kind, glyph);
@@ -2018,6 +2026,7 @@ function calloutLabel(
     nodeIds: glyph?.nodeIds ?? arrow?.nodeIds ?? [],
     labelId: `annotation:${annId}`,
     ...(derivation ? { derivation } : {}),
+    ...(valueOwner ? { valueOwner } : {}),
   });
 }
 

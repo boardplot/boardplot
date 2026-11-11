@@ -380,6 +380,26 @@ it('keeps the unit in the cells of a row that prints no scale letter under a for
   expect(table.rows.map((row) => row.unitAffix)).toEqual(['$M', '$M', undefined, undefined]);
 });
 
+// One small cell lifted a whole row of an authored '$1M' format to "$4.000M, $6.000M, $0.002M".
+// The lift must still reach every small cell the row format prints: computed, subtotal and result cells.
+it('lifts only the cell that would print 0 in a row of an authored scaled format', () => {
+  const { table } = resolveTable({
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'q1', kind: 'value' }, { id: 'q2', kind: 'value' }, { id: 'q3', kind: 'value' },
+      { id: 'twice', kind: 'computed', calc: { op: 'mul', a: { ref: 'q3' }, b: { lit: 2 } } }],
+    rows: [{ id: 'cost', label: 'Cost', format: '$1M', cells: { q1: 4_000_000, q2: 6_000_000, q3: 1_500 } },
+      { id: 'fees', label: 'Fees', format: '$1M', cells: { q1: 4_000_000, q2: 6_000_000, q3: 200_000 } },
+      { id: 'group', label: 'Group', kind: 'subtotal', format: '$1M', children: [
+        { id: 'one', label: 'One', format: '$1M', cells: { q1: 5_000_000, q2: 1_000_000, q3: 1_000 } },
+        { id: 'two', label: 'Two', format: '$1M', cells: { q1: 3_000_000, q2: 1_000_000, q3: 600 } }] },
+      { id: 'net', label: 'Net', kind: 'result', format: '$1M', calc: { op: 'sub', a: { ref: { row: 'cost' } }, b: { ref: { row: 'two' } } } }],
+  });
+  const printed = (id: string) => ['q1', 'q2', 'q3', 'twice'].map((col) => table.rows.find((row) => row.id === id)!.cells[col]!.displayed);
+  expect(printed('cost')).toEqual(['$4M', '$6M', '$0.002M', '$0.003M']);
+  expect(printed('fees')).toEqual(['$4M', '$6M', '$0.2M', '$0.4M']);
+  expect(printed('group')).toEqual(['$8M', '$2M', '$0.002M', '$0.003M']);
+  expect(printed('net')).toEqual(['$1M', '$5M', '$0.001M', '$0.002M']);
+});
+
 // A forced thousand moved a count row with its own '1.23M' format to "5,505" under a "k" label.
 it('keeps the authored scale of a count row under a forced magnitude', () => {
   const { table } = resolveTable({
@@ -806,6 +826,16 @@ it('warns once per blank status label and offers its removal', () => {
   expect(layout('table', data).warnings.filter(warning => warning.code === 'status-label-blank')).toEqual(warnings);
 });
 
+// Changes of 4.96% and 5.04% both printed +5% but fell on two sides of a 5% materiality threshold, so they took two tones.
+it('mutes a change by its printed figure at the materiality threshold', () => {
+  const { table } = resolveTable({
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'a', kind: 'value' }, { id: 'p', kind: 'value' },
+      { id: 'd', kind: 'computed', calc: { op: 'percentDelta', a: 'a', b: 'p' }, polarity: 'higherIsBetter', format: '+1%', materiality: { pct: 5 } }],
+    rows: [104.96, 105.04, 104.4].map((a, i) => ({ id: `r${i}`, label: `Store ${i}`, cells: { a, p: 100 } })),
+  });
+  expect(table.rows.map((row) => [row.cells.d!.displayed, row.cells.d!.tone])).toEqual([['+5%', 'good'], ['+5%', 'good'], ['+4%', 'neutral']]);
+});
+
 // Under tones: 'fill' an inline line of one tone sits on its parent's fill of another tone; its text read under 4.5:1 there.
 it('prints tone text at 4.5:1 on every tone fill under tones fill', () => {
   for (const [name, preset] of Object.entries(themes)) {
@@ -815,6 +845,20 @@ it('prints tone text at 4.5:1 on every tone fill under tones fill', () => {
       expect(contrastRatio(paintColor(theme, toneTextPaint(theme, tone)), grounds[fill]), `${name} ${tone} on ${fill}`).toBeGreaterThanOrEqual(4.5);
     }
   }
+});
+
+// Two heat lanes capped at 500 and 200 looked comparable, and nothing said that each column shades on its own scale.
+it('notes per-column shading for heat lanes with different caps, not for one shared cap', () => {
+  const data: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'a', kind: 'value' }, { id: 'b', kind: 'value' }],
+    rows: [{ id: 'n', label: 'North', cells: { a: 120, b: -80 } }, { id: 's', label: 'South', cells: { a: -40, b: 60 } }],
+  };
+  const note = 'Shading compares values within each column, not across columns.';
+  const footnotes = (caps: number[]) => resolveTable(data, {
+    encodings: { a: { type: 'heat', cap: { abs: caps[0]! } }, b: { type: 'heat', cap: { abs: caps[1]! } } },
+  } as never).table.footnotes;
+  expect(footnotes([500, 200])).toContain(note);
+  expect(footnotes([500, 500])).not.toContain(note);
 });
 
 // The heavy section rule drew where the theme asks for no line: the close under closeRule 'none', above a result under resultRule 'none'.
@@ -1745,4 +1789,61 @@ it('names no unit over a column that prints no figure', () => {
   // Nor does its "$" decide how the frame's scale composes with options.unit ("EUR M").
   const composed = (withEmpty: boolean) => { const { table, warnings } = byColumn(withEmpty, '1.2m', '$1.2k', { unit: 'EUR' }); return [table.unit, warnings.map((w) => w.code)]; };
   expect(composed(true)).toEqual(composed(false));
+});
+
+// A body-row band painted its ground over the hairline that opens it, so the line vanished below the header.
+// A theme without row rules draws no hairline, and the band keeps its full width there.
+it('keeps the opening hairline of a column band visible and closes the band where no rule is drawn', () => {
+  const data = {
+    columns: [{ id: 'l', kind: 'rowLabel' }, { id: 'a', kind: 'value' }, { id: 'b', kind: 'value', band: true }],
+    rows: [{ id: 'x', label: 'North', cells: { a: 1, b: 2 } }, { id: 'y', label: 'South', cells: { a: 3, b: 4 } }],
+  };
+  const scene = (theme?: object) => requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'table', data, options: { size: { width: 360, height: 160 } }, theme } as never))).scene;
+  const parts = (nodes: SceneNode[]) => ({
+    divider: nodes.find((node): node is Extract<SceneNode, { t: 'line' }> => node.t === 'line' && node.part === 'tableGroupDivider')!,
+    bands: nodes.filter((node): node is Extract<SceneNode, { t: 'rect' }> => node.t === 'rect' && node.part === 'tableColumnBand'),
+  });
+  const ruled = parts(scene());
+  expect(ruled.bands.length).toBeGreaterThan(0);
+  for (const band of ruled.bands) expect(band.rect.x).toBeGreaterThanOrEqual(ruled.divider.x1 + ruled.divider.width / 2);
+  const bare = parts(scene({ preset: 'standard', overrides: { table: { ruleWidths: { row: 0 } } } }));
+  for (const band of bare.bands) expect(band.rect.x).toBeLessThan(bare.divider.x1);
+});
+
+// A table with a $ column and a € column printed the authored "in USD" over both, also under unitShown: the heads name each unit.
+it('leaves options.unit out of the subtitle when the columns print different units', async () => {
+  const data = { columns: [{ id: 'label', kind: 'rowLabel', label: 'Item' }, { id: 'us', kind: 'value', label: 'US', format: '$1,234' }, { id: 'eu', kind: 'value', label: 'EU', format: '€1,234' }],
+    rows: [{ id: 'sales', label: 'Sales', cells: { us: 1200, eu: 900 } }, { id: 'cost', label: 'Cost', cells: { us: 800, eu: 600 } }] };
+  const subtitle = (options: object) => layout('table', data, options).scene.find((node): node is TextNode => node.t === 'text' && node.id.startsWith('frame:subtitle'))!.lines.join(' ').trim();
+  for (const unitShown of [false, true]) {
+    const options = { unit: 'USD', unitShown, subtitle: { measure: 'Revenue' } };
+    expect(subtitle(options)).toBe('Revenue');
+    const warning = layout('table', data, options).warnings.find((w) => w.code === 'table-unit-overridden')!;
+    expect(warning.fix).toEqual([{ op: 'remove', path: '/options/unit' }]);
+  }
+  // The fix keeps the same subtitle and ends the warning.
+  expect(subtitle({ subtitle: { measure: 'Revenue' } })).toBe('Revenue');
+  expect(layout('table', data, { subtitle: { measure: 'Revenue' } }).warnings.map((w) => w.code)).not.toContain('table-unit-overridden');
+  // A bare magnitude ("1.2k", "1.2m") names no currency: options.unit stays the table's unit.
+  const scaled = { ...data, columns: data.columns.map((col) => (col.id === 'us' ? { ...col, format: '1.2k' } : col.id === 'eu' ? { ...col, format: '1.2m' } : col)) };
+  const scaledOptions = { unit: 'USD', subtitle: { measure: 'Revenue' } };
+  const scaledLayout = layout('table', scaled, scaledOptions);
+  expect(scaledLayout.scene.find((node): node is TextNode => node.t === 'text' && node.id.startsWith('frame:subtitle'))!.lines.join(' ').replace(/\s+/g, ' ').trim()).toBe('Revenue in USD');
+  expect(scaledLayout.warnings.map((w) => w.code)).not.toContain('table-unit-overridden');
+  // Without a subtitle the unit line does not print options.unit either, and the warning stays true.
+  const drawn = async (d: unknown, options: object) => {
+    const { render } = await import('../src/cli/render');
+    const body = render({ spec: { type: 'table', data: d, options }, return: ['svg'] }).body as any;
+    const texts = [...(body.svg as string).matchAll(/data-part="(title|subtitle)"[^>]*>(.*?)<\/text>/g)].map((m) => m[2]!.replace(/<[^>]*>/g, ''));
+    return { texts, codes: (body.warnings ?? []).map((w: { code: string }) => w.code) };
+  };
+  const bare = await drawn(data, { unit: 'USD', title: 'Revenue' });
+  expect(bare.texts).toEqual(['Revenue']);
+  expect(bare.codes).toContain('table-unit-overridden');
+  expect((await drawn(data, { title: 'Revenue' })).codes).not.toContain('table-unit-overridden');
+  // One unit in every head ("$M") keeps the authored unit line and warns nothing, as before.
+  const dollars = { ...data, columns: data.columns.map((col) => (col.kind === 'value' ? { ...col, format: '$1.2M' } : col)) };
+  const oneUnit = await drawn(dollars, { unit: 'USD', title: 'Revenue' });
+  expect(oneUnit.texts).toEqual(['Revenue', 'USD']);
+  expect(oneUnit.codes).not.toContain('table-unit-overridden');
 });

@@ -209,7 +209,7 @@ A KPI table: measures by one hierarchical dimension by period, switchable betwee
 | encodings.*.type (encodings.* branch 5) | string | `'arrow'` |  | Select the arrow lane. |
 | encodings.*.scale (encodings.* branch 5) | string | `'absolute'`, `'relative'` |  | 'absolute' cuts the change itself at 10 and 2 (points on a percent column); 'relative' cuts its share of the column's largest change at 10% and 2%. Default 'absolute' on a percent column, 'relative' elsewhere. |
 | encodings.*.type (encodings.* branch 6) | string | `'heat'` |  | Select the heat lane. |
-| encodings.*.cap (encodings.* branch 6) | object |  |  | Where the lane saturates; without it the largest magnitude in the column does, on both sides of zero. One lane per table, on a variance column. |
+| encodings.*.cap (encodings.* branch 6) | object |  |  | Where the lane saturates; without it the largest magnitude in the column does, on both sides of zero. Lanes with different caps add the note that shading compares values within each column. |
 | encodings.*.cap.pct (encodings.* branch 6) | number |  |  | Percent-column tint cap in points. Example: 20 for a ±20% YoY lane. |
 | encodings.*.cap.abs (encodings.* branch 6) | number |  |  | Other numeric tint cap in source units. |
 | encodings.*.alpha (encodings.* branch 6) | number |  |  | Tint weight at the cap; default 0.18, and 0.26 on scale 'status', where every painted cell takes it. Text stays readable up to 0.18 on every shipped theme and up to 0.35 on a status ground; above that the figures take the contrast ink. |

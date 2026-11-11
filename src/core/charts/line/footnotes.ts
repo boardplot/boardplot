@@ -18,6 +18,11 @@ import { nearZeroTailNote, type NearZeroTail } from './nearZero';
 import type { LineOptions } from './types';
 import { disclosureNote } from '../../notes';
 
+/** One sentence per series a rebase leaves undrawn: "Peer 1 not shown: missing base at Q1 24." */
+export function rebaseNotes(suppressed: readonly { series: string; period: string; zero: boolean }[], options: LineOptions): string[] {
+  return suppressed.map(s => stringFields(s.zero ? options.strings!.rebaseZero! : options.strings!.rebaseMissing!, { series: s.series, period: s.period }));
+}
+
 export function lineFrameFootnotes(input: {
   fan: FanResolved | null;
   cats: Category[];
@@ -38,7 +43,7 @@ export function lineFrameFootnotes(input: {
 }): string[] {
   const { fan, cats, bumpDerived, nearZeroTail, options } = input;
   const mixed = input.mixedSign ?? [];
-  const rebase = (input.rebaseSuppressed ?? []).map(s => stringFields(s.zero ? options.strings!.rebaseZero! : options.strings!.rebaseMissing!, { series: s.series, period: s.period }));
+  const rebase = rebaseNotes(input.rebaseSuppressed ?? [], options);
   return [
     ...partialFootnotes(cats, options.strings, input.partialNamed),
     ...missingStackNote(cats, input.incompleteStack ?? [], options, input.footer),
