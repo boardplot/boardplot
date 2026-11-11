@@ -1,6 +1,6 @@
 import { prepareFractionData } from '../../normalize/fraction';
 import { calendarCategories } from '../../calendarLabels';
-import { chartSizing } from '../../sizing';
+import { chartSizing, NARROW_FORM, sideKeyGivesWay } from '../../sizing';
 /** Zod-free heatmap chart registration. */
 
 import type { ChartCore } from '../../registry';
@@ -15,7 +15,12 @@ export const heatmapCore: ChartCore<HeatmapData, HeatmapOptions, HeatmapMarks, H
   title: 'Heatmap / matrix',
   summary: 'Row × column matrix — continuous or discrete color scale, in-cell values or Harvey balls',
   aliases: ['matrix'],
-  layout: (data, options) => layoutHeatmap(prepareFractionData(data), options),
+  layout: (data, options) => {
+    const prepared = prepareFractionData(data);
+    const geo = layoutHeatmap(prepared, options);
+    // The heatmap's last form is its narrow form (wrapped row names): the key beside the plot gives way only there.
+    return (options as { [NARROW_FORM]?: true } | undefined)?.[NARROW_FORM] ? sideKeyGivesWay(options!, geo, (keyAbove) => layoutHeatmap(prepared, keyAbove)) : geo;
+  },
   finishLayout: (layout) => yieldingWidths('heatmap', layout, (data) => data.categories.map((category) => (typeof category === 'object' ? category.id : category)), {
     head: (id) => `category:${id}`, cell: (label, id) => label.startsWith('point:') && label.endsWith(`:${id}`),
   }),
