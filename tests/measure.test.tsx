@@ -25,6 +25,10 @@ vi.mock('../src/react/SceneRenderer', () => ({
 }));
 import { createChartComponent } from '../src/react/createChartComponent';
 import { withoutSvgFooter } from '../src/react/footerFrame';
+import { TableChart } from '../src/react/charts/table';
+import { DimSwitchChart } from '../src/react/DimSwitchChart';
+import * as tableNeeds from '../src/core/charts/table/need';
+import { trackTemplate } from '../src/core/charts/table/tracks';
 
 describe('shared request measurement', () => {
   const adviceHolds = (type: string, id: string, size: { width: number; height?: number }, code: string) => {
@@ -206,6 +210,47 @@ describe('shared request measurement', () => {
       }
     }, type === 'diagram' || type === 'choropleth' ? 15_000 : 5_000);
   }
+
+  // The HTML grid draws the full rung and scrolls where the table is wider. Its tracks and its overflow advice
+  // come from the core's scroll-host need, so a grid that drew other tracks, or an advice in the type of the
+  // asked width (a frame past 720 px draws larger type), sent the host a width at which the grid still scrolls.
+  for (const type of ['table', 'dimswitch'] as const) it(`${type} grid draws the tracks of its need, and its overflow advice holds`, () => {
+    const needs = vi.spyOn(tableNeeds, 'tableScrollNeed');
+    const Component = (type === 'table' ? TableChart : DimSwitchChart) as unknown as (props: Record<string, unknown>) => null;
+    const drawAt = (fixture: { data: unknown; options?: Record<string, unknown> }, width: number) => {
+      needs.mockClear();
+      const size = { ...resolveSize(fixture.options?.size as never), width };
+      const html = renderToStaticMarkup(createElement(Component, { data: fixture.data, ...fixture.options, size }));
+      const at = needs.mock.results.length - 1;
+      if (at < 0) return undefined;
+      const need = needs.mock.results[at]!.value as ReturnType<typeof tableNeeds.tableScrollNeed>;
+      const { view } = (needs.mock.calls[at]![0].surface as tableNeeds.TableScrollSurface);
+      // The grid scrolls past its scroll box; the tracks' room inside the theme margins gives way first.
+      return { html, need, available: view.scrollBox?.width ?? view.available ?? Infinity };
+    };
+    const misses: string[] = [];
+    let drawnCount = 0, adviceCount = 0;
+    for (const fixture of getFixtures(type)) for (const width of [320, 480, 720]) {
+      const context = `${type}/${fixture.id} at ${width}`;
+      const drawn = drawAt(fixture, width);
+      // A frame below the viewport floor draws the refusal placeholder, not a grid.
+      if (!drawn) continue;
+      drawnCount++;
+      expect(drawn.html, context).toContain(`--bp-cols:${trackTemplate(drawn.need.plan.gridTracks)}`);
+      const advice = drawn.need.warnings.find((warning) => warning.code === 'table-overflow')?.fix?.[0];
+      if (!advice || !('value' in advice)) continue;
+      const advised = (advice.value as { width: number }).width;
+      adviceCount++;
+      const there = drawAt(fixture, advised)!;
+      const total = there.need.tracks.reduce((sum, track) => sum + track.width, there.need.plan.spacerTotal);
+      if (total > there.available + 0.5 || there.need.warnings.some((warning) => warning.code === 'table-overflow')) misses.push(`${context}: still scrolls at ${advised}`);
+    }
+    needs.mockRestore();
+    // A spy that sees no grid would pass every fixture unchecked.
+    expect(drawnCount).toBeGreaterThan(0);
+    expect(adviceCount).toBeGreaterThan(0);
+    expect(misses).toEqual([]);
+  }, 120_000);
 
   it('preserves option precedence, empty annotations, locale and omitted sizes', () => {
     const fixture = getFixtures('gantt')[0]!;

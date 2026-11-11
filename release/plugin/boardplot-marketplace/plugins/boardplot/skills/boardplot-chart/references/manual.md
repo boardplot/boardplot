@@ -340,7 +340,9 @@ Dated variance, bullet and butterfly categories keep authored order when a growt
 - Dot keeps the n largest absolute first-series values, or absolute gaps on a dumbbell.
 - Variance keeps the n largest absolute drawn differences: delta percent in `relative`, absolute difference otherwise. Missing differences count as zero.
 
-Dot and variance draw no Others row because scores and ratios are not additive. Kept categories retain authored order unless `sort.categories` reorders them. A disclosure note and `topn-omitted` name the kept count, total count and omitted categories. When a cut is needed, authored `rest: true`, `restLabel`, `showRestCount` or `threshold` produces one `topn-rest-unsupported` warning that names the ignored settings. A request with `n` at least the category count changes nothing and adds no topN warning.
+Dot and variance draw no Others row because scores and ratios are not additive. Kept categories retain authored order unless `sort.categories` reorders them. A disclosure note and `topn-omitted` name the kept count, total count and omitted categories. When a cut is needed, authored `rest: true`, `restLabel` or `showRestCount` produces one `topn-rest-unsupported` warning that names the ignored settings. A request with `n` at least the category count changes nothing and adds no topN warning. On dot, pareto, variance, pie, mekko and butterfly, `threshold` is ignored with a warning. A choropleth refuses it.
+
+On bar, column and table, `threshold` also drops a kept category whose absolute total is below it, also when `n` keeps every category. The largest category always stays.
 
 ### Missing stack parts
 

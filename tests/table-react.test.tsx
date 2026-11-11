@@ -2088,3 +2088,14 @@ it('advises a frame width at which the grid no longer scrolls', () => {
   expect(advised).toBeGreaterThan(720);
   expect(overflowAt(advised)).toBeUndefined();
 });
+
+// A fixed frame's overflow check took the theme's side margins off the room, which the grid gives way first: a table that fit its frame warned table-overflow.
+it('does not warn table-overflow for a fixed-frame table that fits its frame', () => {
+  const { data, options } = getFixtures('table').find((entry) => entry.id === 'management-report-compact')!;
+  const onWarnings = vi.fn();
+  act(() => root.render(<TableChart data={data} {...options} size={{ width: 720 }} onWarnings={onWarnings} />));
+  const cols = container.querySelector<HTMLElement>('.bp-table-grid')!.style.getPropertyValue('--bp-cols');
+  const tracks = [...cols.matchAll(/(?:^|\s)([\d.]+)px/gu)].reduce((sum, match) => sum + Number(match[1]), 0);
+  expect(tracks).toBeLessThanOrEqual(720);
+  expect((onWarnings.mock.lastCall?.[0] ?? []).map((warning: { code: string }) => warning.code)).not.toContain('table-overflow');
+});

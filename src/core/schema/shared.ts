@@ -1250,7 +1250,7 @@ const topNFields = {
   rest: z.boolean().optional().describe('Aggregate remaining categories into a rest bucket by default; false omits them where supported. On a bar mekko the rest bucket is the width-weighted mean of its rates. Pareto retains the bucket to preserve its population.'),
   restLabel: z.string().optional().describe('Authored rest-bucket name; ordinary charts default to Others and Pareto to Rest.'),
   showRestCount: z.boolean().optional().describe('Append the number of aggregated categories; ordinary charts default to false, while Pareto always discloses the count.'),
-  threshold: z.number().optional().describe('Bar-chart minimum absolute category total after the rank cut; not a universal Top-N threshold.'),
+  threshold: z.number().optional().describe('Bar, column and table: minimum absolute category total after the rank cut, also when n keeps every category. The largest category always stays. Other types ignore it with an option-ignored warning.'),
 };
 const topNCount = z.number().int().positive();
 

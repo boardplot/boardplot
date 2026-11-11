@@ -31,6 +31,46 @@ describe('architecture columns', () => {
     expect(new Set(geometry.marks.nodes.map((node: any) => node.rect.y)).size).toBe(1);
     expect(geometry.labels.filter((label: any) => label.id.startsWith('edge-label:') && !label.hidden)).toHaveLength(7);
   });
+
+  // At 720 px the column cap kept a nested zone in one band, every such layout failed to route, and the
+  // band break that drew at 480 px was never tried, so the wider canvas was refused.
+  it('still tries the band break of a narrower width, so a wider canvas still draws', () => {
+    const node = (id: string, label: string, groupId: string, track: string) => ({ id, kind: 'step', shape: { kind: 'rectangle' }, label: `${label} and its much longer descriptive name`, groupId, track });
+    const spec = (width: number) => ({ type: 'diagram', data: {
+      groups: [{ id: 'public', title: 'Public edge' }, { id: 'region', title: 'Hosting region' }, { id: 'cluster', title: 'Service cluster', parentId: 'region' },
+        { id: 'runtime', title: 'Protected runtime', parentId: 'cluster' }, { id: 'data', title: 'Data stores', parentId: 'region' }],
+      nodes: [node('gateway', 'API gateway', 'public', 'request'), node('router', 'Request router', 'cluster', 'request'), node('workers', 'Model workers', 'runtime', 'request'),
+        node('keys', 'Key service', 'runtime', 'state'), node('sessions', 'Session store', 'data', 'request'), node('ledger', 'Audit ledger', 'data', 'state')],
+      edges: [
+        { id: 'in', source: { nodeId: 'gateway' }, target: { nodeId: 'router' } },
+        { id: 'run', source: { nodeId: 'router' }, target: { nodeId: 'workers' } },
+        { id: 'seal', source: { nodeId: 'keys' }, target: { nodeId: 'workers' }, label: 'Keys and its much longer descriptive name' },
+        { id: 'write', source: { nodeId: 'workers' }, target: { nodeId: 'sessions' } },
+        { id: 'audit', source: { groupId: 'runtime' }, target: { nodeId: 'ledger' }, label: 'Audit trail and its much longer descriptive name' },
+      ],
+    }, options: { variant: 'architecture', title: 'Only the runtime reads the keys', size: { width } } });
+    for (const width of [480, 720]) expect((render({ spec: spec(width), format: 'svg' } as never).body as any).ok, `${width} px`).toBe(true);
+  });
+
+  // A wide edge label asked for room in a row gutter already as tall as it needs, so nothing grew:
+  // the diagram drew at 400 px and was refused at 440 px.
+  it('seats a wide edge label in a row that can still grow, so a wider canvas still draws', () => {
+    const node = (id: string, label: string, groupId: string, track: string, shape = 'rectangle') => ({ id, kind: 'step', shape: { kind: shape }, label: `${label} and its much longer descriptive name`, groupId, track });
+    const label = (text: string) => `${text} and its much longer descriptive name`;
+    const spec = (width: number) => ({ type: 'diagram', theme: 'notation', data: {
+      groups: [{ id: 'intake', title: 'Regional intake and validation services' }, { id: 'core', title: 'Central settlement and reconciliation platform' }],
+      nodes: [{ ...node('gateway', 'Cross-border payment instruction gateway', 'intake', 'main'), secondaryLabel: 'Validates every incoming instruction' },
+        node('screen', 'Sanctions and counterparty screening service', 'intake', 'side'),
+        node('ledger', 'Multi-currency general ledger posting engine', 'core', 'main', 'store'), node('recon', 'End-of-day reconciliation and exception workbench', 'core', 'side')],
+      edges: [
+        { id: 'post', source: { nodeId: 'gateway' }, target: { nodeId: 'ledger' }, label: label('Validated instructions') },
+        { id: 'check', source: { nodeId: 'gateway' }, target: { nodeId: 'screen' } },
+        { id: 'match', source: { nodeId: 'ledger' }, target: { nodeId: 'recon' }, label: label('Posted entries') },
+        { id: 'reject', source: { nodeId: 'recon' }, target: { nodeId: 'gateway' }, label: label('Rejected items'), flow: 'return', dash: 'dashed' },
+      ],
+    }, options: { variant: 'architecture', title: 'Every payment passes screening before it posts', size: { width }, target: 'print' } });
+    for (const width of [400, 440]) expect((render({ spec: spec(width), format: 'svg' } as never).body as any).ok, `${width} px`).toBe(true);
+  });
 });
 
 describe('diagram inset heading and columns', () => {
@@ -75,5 +115,18 @@ describe('diagram edge labels', () => {
     expect(unseated.length).toBeGreaterThan(0);
     expect(body.reading.labelsDropped).toBeGreaterThanOrEqual(unseated.length);
     expect(body.reading.omissions.map((omission: any) => omission.labelId)).toEqual(expect.arrayContaining(unseated));
+  });
+});
+
+describe('diagram hierarchy group titles', () => {
+  // A group title that grew over a neighbouring branch covered that branch's edge entry, so 840 px refused what 600 px drew.
+  it('keeps a widened group title clear of a neighbour edge, so a wider canvas still draws', () => {
+    const branch = (index: number, groupId?: string) => ({ id: `b${index}`, kind: 'entity', shape: { kind: 'roundedRect' }, label: `Branch ${index} and its much longer descriptive name`, ...(groupId ? { groupId } : {}) });
+    const spec = (width: number) => ({ type: 'diagram', data: {
+      nodes: [{ id: 'root', kind: 'entity', shape: { kind: 'roundedRect' }, label: 'Root and its much longer descriptive name' }, branch(1), branch(2), branch(3, 'group'), branch(4)],
+      groups: [{ id: 'group', title: 'An invented group title that needs two lines', role: 'secondary' }],
+      edges: [1, 2, 3, 4].map((index) => ({ id: `e${index}`, source: { nodeId: 'root' }, target: { nodeId: `b${index}` } })),
+    }, options: { variant: 'hierarchy', size: { width } } });
+    for (const width of [600, 840]) expect((render({ spec: spec(width), format: 'svg' } as never).body as any).ok, `${width} px`).toBe(true);
   });
 });

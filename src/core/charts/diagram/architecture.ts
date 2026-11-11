@@ -403,11 +403,22 @@ function* arrangements(env: Env): Generator<Arrangement> {
     return;
   }
   const units = unitsOf(env);
-  const cap = columnsFor(env);
-  for (let perBand = Math.min(5, rootsOf(units).length); perBand >= 1; perBand--) {
-    for (let inner = cap; inner >= 1; inner--) {
-      const arrangement = arrangeColumns(env, units, perBand, inner, cap);
-      if (arrangement) yield arrangement;
+  // A narrower cap breaks a wide zone across bands, as a narrower canvas does, so the
+  // band breaks of a narrower width stay on the list of a wider one, after its own
+  // arrangements. Lanes step down the same way. A narrower inner count is already tried
+  // under the width's own cap, so a narrower cap adds only its full inner count.
+  const seen = new Set<string>();
+  const wide = columnsFor(env);
+  for (let cap = wide; cap >= 1; cap--) {
+    for (let perBand = Math.min(5, rootsOf(units).length); perBand >= 1; perBand--) {
+      for (let inner = cap; inner >= (cap === wide ? 1 : cap); inner--) {
+        const arrangement = arrangeColumns(env, units, perBand, inner, cap);
+        if (!arrangement) continue;
+        const key = JSON.stringify([[...arrangement.cells].map(([id, cell]) => [id, cell.band, cell.c0, cell.c1, cell.r0, cell.r1]), arrangement.bands.map((band) => [band.cols, band.rows])]);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        yield arrangement;
+      }
     }
   }
 }
@@ -1917,10 +1928,12 @@ function placeLabels(
     const inside = geometry.gaps.find((item) => gapContains(item, segmentMiddle(longest)));
     // A wide label does not fit a gutter beside the nodes: it takes a row gutter that the run crosses.
     // A line along a gutter runs down its middle, so a label beside it takes half the gutter.
+    // A row already as tall as the label asks for holds another label, so a row that can still grow comes first.
     let wide = labelGutterWidth(block.width, longest);
+    const full = (item: Gap) => item.rect.h >= tall;
     const row = inside?.axis === 'v' && wide > env.plot.w / 3
       ? rows.filter((item) => item.rect.y > Math.min(longest[0].y, longest[1].y) && item.rect.y + item.rect.h < Math.max(longest[0].y, longest[1].y))
-        .sort((a, b) => Math.abs(a.rect.y - segmentMiddle(longest).y) - Math.abs(b.rect.y - segmentMiddle(longest).y))[0] : undefined;
+        .sort((a, b) => Number(full(a)) - Number(full(b)) || Math.abs(a.rect.y - segmentMiddle(longest).y) - Math.abs(b.rect.y - segmentMiddle(longest).y))[0] : undefined;
     const gap = row ?? inside;
     if (!gap) continue;
     // Tracks across a short horizontal edge split its column gutter into smaller label seats.

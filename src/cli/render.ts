@@ -272,7 +272,7 @@ function renderWithTables(input: RenderInput): VerbResult {
       reading: {
         ...chartReading({
           name: drawing.name, type: drawing.chart.def.type, request: drawing.chart.request,
-          geometry: drawing.chart.geo as never, claims: drawing.chart.claims,
+          geometry: drawing.chart.geo as never, claims: drawing.chart.claims, records: drawing.chart.records(),
         }),
         ...(rows.data ? { data: rows.data } : {}),
       },
