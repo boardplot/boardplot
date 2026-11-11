@@ -18,7 +18,7 @@ Use the Boardplot MCP tools for chart images. Tool names may have a host prefix.
 
 When the chart supports row mapping, pass the user's data file as `rowsFile` with `columns`. Keep required template metadata such as map packs and table columns. Other data shapes go in `spec.data`. The `columns` argument of `boardplot_render` lists the roles each chart needs. The CLI takes the same roles as `--columns category=c,series=s,value=v`.
 
-Read `ok`, `warnings`, `reading` and the actual returned format before using a render. PNG can fall back to SVG. Follow error `fix` or `suggest` for a refusal. [Errors and warnings](references/manual.md#reading-errors-and-warnings) and [PNG output](references/manual.md#png-output) cover repairs. Set `outDir` when files are needed, or request `return: ["reading", "svg"]` for inline SVG.
+Read `ok`, `warnings`, `reading` and the actual returned format before using a render. PNG can fall back to SVG. Follow error `fix` or `suggest` for a refusal. [Errors and warnings](references/manual.md#reading-errors-and-warnings) and [PNG output](references/manual.md#png-output) cover repairs. Set `outDir` when files are needed, or request `return: ["reading", "svg"]` for inline SVG. With `outDir`, `return: []` leaves the reading out of the answer, and `outputs` names the written files.
 
 ## Match the destination
 
