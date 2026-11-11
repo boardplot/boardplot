@@ -812,7 +812,7 @@ describe('chart layout edge cases', () => {
         series: [{ id: 's', label: 'Rate', values: [10.5, 12] }],
       }, options: { title: 'Sales', unit, subtitle: { measure } } };
       const svg = (render({ spec, return: ['svg'] }).body as any).svg as string;
-      return svg.match(/data-part="subtitle"[^>]*>(.*?)<\/text>/)![1].replace(/<[^>]*>/g, '').replace(/\u00A0/g, ' ');
+      return svg.match(/data-part="subtitle"[^>]*>(.*?)<\/text>/)![1]!.replace(/<[^>]*>/g, '').replace(/\u00A0/g, ' ');
     };
     expect(subtitle('Conversion percentage', '%')).toBe('Conversion percentage');
     expect(subtitle('Retention percent', '%')).toBe('Retention percent');
