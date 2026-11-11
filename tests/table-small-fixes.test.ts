@@ -1841,3 +1841,14 @@ it('keeps the air above a section label when only the width is tight', () => {
   // The second section opens a new block with a body line box of air; the first under the head takes a quarter.
   expect(h('ads')).toBeGreaterThan(h('sales'));
 });
+
+// A retained table executor kept the section air of the first height policy it saw, so the bytes depended on what was drawn before.
+it('draws a sectioned table the same at a pinned and an open height in either order', () => {
+  const fixture = getFixtures('dimswitch').find((candidate) => candidate.id === 'statement')!;
+  const draw = (data: unknown, size: object) => JSON.stringify(layout('dimswitch', data, { ...fixture.options, size }).scene);
+  const open = { width: 400 }, pinned = { width: 400, height: 900 };
+  const fresh = [draw(structuredClone(fixture.data), open), draw(structuredClone(fixture.data), pinned)];
+  const first = structuredClone(fixture.data), second = structuredClone(fixture.data);
+  expect([draw(first, open), draw(first, pinned)]).toEqual(fresh);
+  expect([draw(second, pinned), draw(second, open)]).toEqual([fresh[1], fresh[0]]);
+});

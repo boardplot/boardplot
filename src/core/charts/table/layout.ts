@@ -181,7 +181,7 @@ export function prepareTableExecutor(authoredData: TableData, initialOptions: Ta
           // metadata are consumed after the shared preparation.
           const { size: _candidateSize, [COMPACT_RETRY]: _candidateHeight, ...spacing } = candidate;
           const typeClass = panelTypeClass(current) ?? typeWidthClass(resolveSize(current.size).width);
-          const key = variantKey + ':' + optionKey(spacing) + ':' + typeClass;
+          const key = variantKey + ':' + optionKey(spacing) + ':' + typeClass + (givesSectionAir(current) ? ':air' : '');
           let byKey = candidates.get(model);
           if (!byKey) candidates.set(model, byKey = new Map());
           let prepared = byKey.get(key);
@@ -485,13 +485,20 @@ function sharedTableFrame(table: ResolvedTable, input: Parameters<typeof solveFr
   return value;
 }
 
+/**
+ * The compact retry gives a section's air back only under a pinned height: at an open height the frame grows to the rows.
+ * A prepared candidate reads it, so the candidate key carries it.
+ */
+function givesSectionAir(options: LayoutOptions): boolean {
+  return options[COMPACT_RETRY] !== undefined && !heightOmitted(options.size) && (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height !== false;
+}
+
 function prepareTableCandidate(
   authoredData: TableData, options: LayoutOptions, initialResolved: ReturnType<typeof resolveTable>, formatFits: FormatFits,
 ) {
   const tight = options[TIGHT_SPACING]?.columns === true;
   const tightRows = options[TIGHT_SPACING]?.rows === true;
-  // The compact retry gives a section's air back only under a pinned height: at an open height the frame grows to the rows.
-  const sectionAirGiven = options[COMPACT_RETRY] !== undefined && !heightOmitted(options.size) && (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height !== false;
+  const sectionAirGiven = givesSectionAir(options);
   const measure = tableTextMeasure(options.measure ?? defaultMeasurer);
   let data = authoredData;
   let resolved = initialResolved;
