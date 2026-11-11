@@ -195,7 +195,6 @@ export function resolveChartRequest<D, O extends object>(
 ): ResolvedChartRequest<D, O & RequestOptions> {
   const def = getChart(input.type);
   if (!def) throw new NormalizeError('unknown-type', 'type', `unknown chart type '${input.type}'`);
-  const authoredData = input.data;
   // A caller that skipped validation (a per-type React entry) still draws a retired setting as validation does.
   const shaped = normalizeOptionShapes(def.type, input, name => getChart(name)?.type);
   input = shaped.chart;
@@ -260,9 +259,6 @@ export function resolveChartRequest<D, O extends object>(
   const fontMetrics = options.measure ?? defaultMeasurer;
   options.measure = fontMetrics;
   const data = prepared(def, read.data, options) as D;
-  if (data !== authoredData && data !== null && typeof data === 'object' && authoredData !== null && typeof authoredData === 'object') {
-    preparedFrom.set(data, authoredData);
-  }
   const inputWarnings = [...shaped.warnings, ...retired.warnings, ...read.warnings, ...requestInputWarnings(def.type, def.type === 'grid' ? data : input.data, { ...options, annotations: authoredAnnotations },
     input.annotations === undefined ? '/options/annotations' : '/annotations'),
     ...colorVariableWarnings(input.data, options.theme)];
@@ -281,12 +277,6 @@ export function resolveChartRequest<D, O extends object>(
     fixed: resolvedSize.fixed,
   };
 }
-
-/**
- * The data a prepared copy was made from. A host keeps its data object across calls, while a prepare
- * step or a format example makes a new copy on each (`refusedProbes`).
- */
-const preparedFrom = new WeakMap<object, object>();
 
 /**
  * The data a layout reads. A prepare step that finds nothing to prepare (a chart with an
@@ -697,39 +687,65 @@ function drawnAdvice(request: ResolvedChartRequest, result: LayoutResult, layout
 }
 
 /**
- * The stored probes of an open-height size refusal, which render advice and a measure of the same request
- * share. A story is laid out only once its layer loads, so a stored probe of a story request can keep the
- * plain chart's size. `verify` marks measure's own layouts (VERIFY_ADVICE), which a table lays out otherwise.
+ * The stored width probes of a request at an open height. Render advice stores those of a size refusal,
+ * measure those of every search, so a render and then a measure, or a measure at another width, lays out
+ * a width once. A story is laid out only once its layer loads, so a stored probe of a story request can keep
+ * the plain chart's size. `verify` marks measure's own layouts (VERIFY_ADVICE), which a table lays out otherwise.
  */
 function refusalProbes(request: ResolvedChartRequest, result: LayoutResult, verify = false): Map<number, WidthProbe> | undefined {
-  return result.refused && !request.fixed.height && result.warnings[0]?.code === 'size-below-floor'
-    && !(request.options as { story?: unknown }).story ? refusedProbes(request, verify) : undefined;
+  return result.refused && result.warnings[0]?.code === 'size-below-floor' ? openWidthProbes(request, verify) : undefined;
 }
 
-const refusedSearches = new WeakMap<object, Map<string, Map<number, WidthProbe>>>();
+function openWidthProbes(request: ResolvedChartRequest, verify: boolean): Map<number, WidthProbe> | undefined {
+  return !request.fixed.height && !(request.options as { story?: unknown }).story ? storedProbes(request, verify) : undefined;
+}
+
+const storedSearches = new Map<string, Map<number, WidthProbe>>();
 const STORED_WIDTHS = 64;
+const STORED_REQUESTS = 32;
+const STORED_KEY_LENGTH = 200_000;
 
 /**
- * A probe at a width depends on the request without its size, so a host that renders a refused request
- * again at another width (a container that resizes under the floor) reuses the widths the last search drew.
- * ponytail: 4 requests per data object and STORED_WIDTHS widths per request; a new one replaces the oldest.
+ * A probe at a width depends on the request without its size, so a host that renders or measures a request
+ * again at another width (a container that resizes, an agent that tries several widths) reuses the widths
+ * the last search drew. The key holds the content of the data the layout reads and of the options, so a new
+ * copy of the same request reuses them and an edit lays out again. The key covers data made of plain objects,
+ * arrays, dates and JSON values only; other data (class instances, a Map, a BigInt) is searched without a store.
+ * ponytail: STORED_REQUESTS requests of at most STORED_KEY_LENGTH key characters and STORED_WIDTHS widths
+ * each; a new one replaces the oldest.
  */
-function refusedProbes(request: ResolvedChartRequest, verify: boolean): Map<number, WidthProbe> | undefined {
-  if (request.data === null || typeof request.data !== 'object') return undefined;
+function storedProbes(request: ResolvedChartRequest, verify: boolean): Map<number, WidthProbe> | undefined {
+  if (request.data === null || typeof request.data !== 'object' || !jsonShowsAll(request.data)) return undefined;
   const { size: _size, ...options } = request.options as RequestOptions;
   const { type, theme, target, fixed, inputWarnings } = request;
   // The static footer changes a chart's size once a static entry links it.
   const footer = loadedDeferred('footer') !== undefined;
-  // A prepared copy is new on each call: the store belongs to the data it was made from. The key holds the
-  // content of the data the layout reads, so an edit of either object lays out again.
-  const owner = preparedFrom.get(request.data) ?? request.data;
-  const key = withPlanInputs(() => contentKey(request.data as object, options, { type, theme, target, fixed, inputWarnings, footer, verify }));
-  let byKey = refusedSearches.get(owner);
-  if (!byKey) refusedSearches.set(owner, byKey = new Map());
-  if (byKey.size >= 4 && !byKey.has(key)) byKey.delete(byKey.keys().next().value!);
-  let probes = byKey.get(key);
-  if (!probes) byKey.set(key, probes = new Map());
+  let key: string;
+  try {
+    key = withPlanInputs(() => contentKey(request.data as object, options, { type, theme, target, fixed, inputWarnings, footer, verify }));
+  } catch { return undefined; } // A BigInt in the options or a cycle: no store.
+  if (key.length > STORED_KEY_LENGTH) return undefined;
+  let probes = storedSearches.get(key);
+  if (probes) storedSearches.delete(key);
+  else if (storedSearches.size >= STORED_REQUESTS) storedSearches.delete(storedSearches.keys().next().value!);
+  storedSearches.set(key, probes ??= new Map());
   return probes;
+}
+
+/** Whether JSON shows everything a layout can read from the data: plain objects, arrays, dates and JSON values. */
+function jsonShowsAll(data: object): boolean {
+  const open: unknown[] = [data];
+  const seen = new Set<object>();
+  while (open.length) {
+    const value = open.pop();
+    if (typeof value === 'bigint') return false;
+    if (value === null || typeof value !== 'object' || seen.has(value) || value instanceof Date) continue;
+    seen.add(value);
+    const prototype = Object.getPrototypeOf(value);
+    if (!Array.isArray(value) && prototype !== Object.prototype && prototype !== null) return false;
+    for (const item of Object.values(value)) open.push(item);
+  }
+  return true;
 }
 
 /** A size refusal that names the width `advisedWidth` found, and the height drawn there. */
@@ -1023,8 +1039,8 @@ function measureWithLayout(request: ResolvedChartRequest, result: LayoutResult,
   // chart, searched from the asked width or that floor, whichever is wider. The pair grows to the
   // height drawn there, so the size a refusal names draws too.
   const staticMinWidth = def === undefined ? 0 : declaredSizing(def, request.options).minWidth;
-  // A refusal shares its probes with render advice: a render, then a measure of the same request, lays out a width once.
-  const probers = widthProbers(request, layoutAt, openWidth ? refusalProbes(request, result, verify) : undefined);
+  // The search shares its probes with render advice and with earlier measures of the same request at other widths.
+  const probers = widthProbers(request, layoutAt, openWidth ? openWidthProbes(request, verify) : undefined);
   let fullFrom = Infinity;
   if (openWidth) {
     const full = drawsFrom(probers.full, Math.max(request.size.width, sizing.minWidth), staticMinWidth - 1);

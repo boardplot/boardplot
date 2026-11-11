@@ -1701,3 +1701,23 @@ it('keeps the magnitude letter in the cells when the column heads are hidden', (
   expect(hidden.table.rows.map((row) => row.cells.fy25!.displayed)).toEqual(['9.5M', '5.2M']);
   expect(hidden.warnings.map((warning) => warning.code)).not.toContain('column-heads-unit-hidden');
 });
+
+// A column that prints no figure ("Oct", still open) read "OCT (M)" while the filled months, whose rows name the unit, read bare.
+it('names no unit over a column that prints no figure', () => {
+  const months = [{ id: 'label', kind: 'rowLabel' as const }, { id: 'sep', kind: 'value' as const }, { id: 'oct', kind: 'value' as const }];
+  const byRow = resolveTable({
+    columns: months,
+    rows: [{ id: 'rev', label: 'Revenue', format: '$1.2m', cells: { sep: 7_400_000, oct: null } }, { id: 'orders', label: 'Orders', format: '1,234', cells: { sep: 80_000 } }],
+  }, { magnitude: 'million' }).table;
+  expect(byRow.columns.map((column) => column.unitLabel)).toEqual([undefined, undefined, undefined]);
+  // An empty column neither blocks nor adds the unit the frame hoists.
+  const byColumn = (withEmpty: boolean, filled: string, empty: string, options: object = {}) => resolveTable({
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'sep', kind: 'value', format: filled }, ...(withEmpty ? [{ id: 'oct', kind: 'value' as const, format: empty }] : [])],
+    rows: [{ id: 'rev', label: 'Revenue', cells: { sep: 7_400_000 } }, { id: 'cost', label: 'Cost', cells: { sep: 2_100_000 } }],
+  }, { subtitle: 'Monthly revenue', ...options });
+  expect(byColumn(true, '$1.2m', '1.2k').table.unit).toBe(byColumn(false, '$1.2m', '1.2k').table.unit);
+  expect(byColumn(true, '$1.2m', '1.2k').table.columns.find((column) => column.id === 'oct')!.unitLabel).toBeUndefined();
+  // Nor does its "$" decide how the frame's scale composes with options.unit ("EUR M").
+  const composed = (withEmpty: boolean) => { const { table, warnings } = byColumn(withEmpty, '1.2m', '$1.2k', { unit: 'EUR' }); return [table.unit, warnings.map((w) => w.code)]; };
+  expect(composed(true)).toEqual(composed(false));
+});

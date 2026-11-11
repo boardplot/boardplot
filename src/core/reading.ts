@@ -256,9 +256,14 @@ interface ChartReadingInput {
   request: ResolvedChartRequest;
   geometry: Geometry;
   claims: readonly ClaimRecordV1[];
+  /** The chart's records when the caller built them already (chartRecords). */
+  records?: ChartRecords;
 }
 
-function recordsFor(input: ChartReadingInput): { records: InteractionRecord[] | null; note?: string } {
+type ChartRecords = { records: InteractionRecord[] | null; note?: string };
+
+/** The chart's interaction records, without annotation records; null with a note where no adapter covers the type. */
+export function chartRecords(input: Omit<ChartReadingInput, 'name' | 'records'>): ChartRecords {
   try {
     return {
       records: interactionRecords({
@@ -412,7 +417,7 @@ function unrequestedLabelOmissions(input: ChartReadingInput, records: readonly I
 
 /** One chart's reading, from its accepted layout. */
 export function chartReading(input: ChartReadingInput): ChartReading {
-  const { records, note } = recordsFor(input);
+  const { records, note } = input.records ?? chartRecords(input);
   const title = (input.request.options as Record<string, unknown>).title;
   const byData = dataOrder(input.request.data, input.geometry.labels);
   const omissions = labelOmissions(input.geometry, input.request.options, input.request.data);

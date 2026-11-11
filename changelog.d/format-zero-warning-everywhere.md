@@ -1,0 +1,3 @@
+### Fixed
+
+- `format-hides-values` now warns wherever an authored format prints a nonzero value as zero: a series format, a value's own format, a bar table column, a table column, row or cell, a grid panel, and a grid repeat template. It read only a chart's `options.format` before. The warning rests on the value as the chart prints it in its hover card and reading, so a format that prints the value in another scale, a percent of a fraction, a withheld cell or a value the chart does not show raises none. Under `options.format` this also ends the warning on a chart that prints no value labels. The fix is a finer example of the same format; the warning carries no fix when no format with up to 20 decimals shows the value.

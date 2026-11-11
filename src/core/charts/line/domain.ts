@@ -14,6 +14,7 @@ import { formatStatWithSpec, seriesRasterFormatter } from '../../formatSpec';
 import { anomalyCorridor, anomalyModel, refuseAnomalySpec } from '../column/anomaly';
 import { isIncomplete, warnIncompleteComposition, warnShareRoundingDrift } from '../../dataGaps';
 import { cleanFloat } from '../../geometry';
+import { drawnVariant } from '../../stackAdds';
 import { roundWholes, shareRoundingNotes } from '../../shareRounding';
 import { parseISODate } from '../../isoDate';
 import { fitLineTrends, trendTimeline } from './trend';
@@ -262,7 +263,7 @@ function lineVariant(options: LineOptions, isBump: boolean, seriesNorm: NormSer[
         suggest: "For percent-formatted lines, remove valueAxis.percent and set data.valueKind: 'fraction' for fraction values, or a percent format such as '0%' for values already in percent. For a 100% composition, set variant: 'stacked100-area'.",
       });
     }
-    variant = 'stacked100-area';
+    variant = drawnVariant('line', options) as LineVariant;
   }
   const isStacked = variant === 'stacked-area' || variant === 'stacked100-area';
   const chartInterpolation = options.interpolate ?? 'linear';

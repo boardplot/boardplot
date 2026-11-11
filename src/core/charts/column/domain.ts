@@ -18,6 +18,7 @@ import {
   normalizeScenario,
   resolveHighlight,
   resolveSize,
+  ranksCategories,
 } from '../../normalize/shared';
 import { resolveCellRange, type DataRange } from '../../rangeRules';
 import { axisBreakInvalid } from '../../axisBreakInvalid';
@@ -36,7 +37,7 @@ import { valueLineExtent, type ValueLineExtent } from '../../valueLineDomain';
 import { applyCategoryViewport, liveWindowOptions, viewportMeanSpan } from '../../viewport';
 import { VALUE_LINE_RESERVE } from '../../annotateParts';
 import { accumulateStack, averageMarkerLine, averageMarkerMean, averageMarkerSpan, averageMarkerScope as averageMarkerScopeOf, averageOfUnaddedSums, averageOfWholeShares, grandTotalRequested, compositionBasis, mixedSignsWarning, overfullShareSum, overfullWarning, plottedMean, sortSegments, stackTotalFormatter, warnIncompleteStacks, warnShareFormatIgnored, withoutShareMean } from '../band/stacks';
-import { NO_STACK_MEAN, stackAdds } from '../../stackAdds';
+import { drawnVariant, NO_STACK_MEAN, stackAdds } from '../../stackAdds';
 import { isIncomplete, warnShareRoundingDrift } from '../../dataGaps';
 import { roundingUnavailable, shareRoundingNotes, sumConsistentShares, type RoundingAdjustment } from '../../shareRounding';
 import { chosenValueIndices } from '../band/valueSelection';
@@ -194,7 +195,9 @@ function orderColumnCategories(
 
   let othersId: Id | null = null;
   const topN = anomalySpec ? undefined : options.topN;
-  if (anomalySpec && options.topN && options.topN.n > 0 && cats.length > options.topN.n) {
+  // The rank cut the chart would make: it decides the cut, and under an anomaly rule whether the warning is true.
+  const cut = (t: NonNullable<typeof topN>) => topNCut(cats.map((_, i) => Math.abs(catTotal(i))), t.n, t.threshold);
+  if (anomalySpec && options.topN && options.topN.n > 0 && cut(options.topN).dropped.length > 0) {
     // The rule is a statement about the series as given. An 'Others' bucket
     // has no score, and dropping categories silently changes the population
     // the median and MAD are computed from — so topN is the option that goes.
@@ -205,8 +208,9 @@ function orderColumnCategories(
       suggest: 'drop options.topN, or drop options.anomaly and rank instead of flag',
     });
   }
-  if (topN && topN.n > 0 && cats.length > topN.n) {
-    const { kept: keptIdx, dropped: dropIdx } = topNCut(cats.map((_, i) => Math.abs(catTotal(i))), topN.n);
+  // A threshold can drop categories when n keeps all of them, as on a bar.
+  if (topN && topN.n > 0 && (cats.length > topN.n || topN.threshold !== undefined)) {
+    const { kept: keptIdx, dropped: dropIdx } = cut(topN);
     if (topN.rest === false || dropIdx.length === 0) {
       applyOrder(keptIdx);
     } else {
@@ -934,7 +938,7 @@ export function resolveColumnDomain(data: ChartData, options: AnomalyColumnOptio
   // never sits beside "52.2", and an all-integer series never carries
   // an example's dead ".0".
   // valueAxis.percent converts to stacked100.
-  const variant: ColumnVariant = options.valueAxis?.percent ? 'stacked100' : (options.variant ?? 'grouped');
+  const variant = (drawnVariant('column', options) ?? 'grouped') as ColumnVariant;
   // Stacked series share one precision: a stack reads as one set ("12.0" over "10.0").
   const valueSpec = rasterFormatter(options.format, seriesNorm.map((s) => [s.id, s.vals.map((val) => val.v), s.vals.map((val) => val.range ? [val.range.low, val.range.high, val.range.mid] : null)]), options.locale?.language, options.unit, options.target, variant !== 'grouped');
   const fmt = valueSpec.fmt;
@@ -942,7 +946,7 @@ export function resolveColumnDomain(data: ChartData, options: AnomalyColumnOptio
   // own precision inside the exhibit's style: an integer-rastered chart still
   // prints its mean as "Ø 27.5", never "Ø 28" (see formatStatWithSpec).
   const statFmt = (v: number) => formatStatWithSpec(v, valueSpec.spec);
-  const plotted = seriesNorm.filter((s) => s.role !== 'reference');
+  const plotted = seriesNorm.filter(ranksCategories);
   const refSeries = seriesNorm.filter((s) => s.role === 'reference');
   if (plotted.length === 0) {
     throw new NormalizeError('empty-data', 'series', 'column requires at least one data-role series', undefined, undefined, ['data', 'series']);

@@ -10,6 +10,7 @@ import { heatmapOptionsSchema } from '../src/core/charts/heatmap/schema';
 import { layoutLikert } from '../src/core/charts/likert/layout';
 import { likertOptionsSchema } from '../src/core/charts/likert/schema';
 import { lineOptionsSchema } from '../src/core/charts/line/schema';
+import { resolveTable } from '../src/core/charts/table/resolve';
 import { layoutVariance } from '../src/core/charts/variance/layout';
 import { checkItemBudget, ITEM_BUDGET } from '../src/core/itemBudget';
 import { chartNotes } from '../src/core/notes';
@@ -169,6 +170,28 @@ it('keeps the largest variance differences by size and names omissions in readin
     expect(body.reading.notes).toContainEqual(expect.objectContaining({ kind: 'disclosure', text: expect.stringContaining('Amber, Elm') }));
     expect(body.reading.values.note).toBeUndefined();
   }
+});
+
+// topN.threshold acts on a column as on the bar it turns into, also when n keeps every category; a table too, and a variance says it ignores it.
+it('applies topN.threshold on column and table and warns on variance when n keeps every category', () => {
+  const series = [{ id: 'sales', values: [40, 30, 3, 2] }];
+  const column = render({ spec: { type: 'column', data: { categories, series }, options: { size, topN: { n: 10, threshold: 10 } } }, return: ['svg'] }).body as unknown as { svg: string };
+  expect(['Amber', 'Birch', 'Cedar', 'Elm', 'Others'].filter((name) => column.svg.includes(`>${name}<`))).toEqual(['Amber', 'Birch', 'Others']);
+  const table = resolveTable({ columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'v', kind: 'value' }],
+    rows: categories.map((category, i) => ({ id: category.id, label: category.label, cells: { v: series[0]!.values[i]! } })) }, { topN: { n: 10, threshold: 10 } });
+  expect(table.table.rows.map((row) => [row.id, row.parentId ?? null])).toEqual([['amber', null], ['birch', null], ['others', null], ['cedar', 'others'], ['elm', 'others']]);
+  const delta = render({ spec: { type: 'variance', data: { categories, series: [series[0]!, { id: 'plan', role: 'reference', values: [1, 1, 1, 1] }] }, options: { size, variance, variant: 'absolute', topN: { n: 10, threshold: 10 } } } }).body as unknown as { warnings: LintWarning[] };
+  expect(delta.warnings).toContainEqual(expect.objectContaining({ code: 'option-ignored', path: '/options/topN/threshold' }));
+  // An anomaly rule keeps every period, so it says so when the threshold would have cut, and only then.
+  const anomaly = (threshold: number) => (render({ spec: { type: 'column', data: { categories, series }, options: { size, anomaly: { method: 'mad' }, topN: { n: 10, threshold } } } }).body as unknown as { warnings: LintWarning[] })
+    .warnings.filter((warning) => warning.code === 'anomaly-topn-ignored');
+  expect(anomaly(10)).toHaveLength(1);
+  expect(anomaly(1)).toHaveLength(0);
+  // The item budget sums the series the cut ranks: a reference that cancels the actuals must not let a long list through.
+  const long = Array.from({ length: ITEM_BUDGET + 1 }, (_, i) => ({ id: `item${i}` }));
+  const cancelled = { categories: long, series: [{ id: 'actual', values: long.map(() => 50) }, { id: 'plan', role: 'reference', values: long.map(() => -50) }] };
+  for (const type of ['bar', 'column']) expect(() => checkItemBudget(type, cancelled, { topN: { n: ITEM_BUDGET + 1, threshold: 10 } }), type).toThrow(/exceed/);
+  expect(() => checkItemBudget('bar', { categories: long }, { topN: { n: ITEM_BUDGET + 1, threshold: 10 } })).not.toThrow();
 });
 
 // The item budget must count only selected dot and variance categories, including a cut exactly at the budget.

@@ -1155,10 +1155,13 @@ describe('TableChart reads the footer rule notes model', () => {
   it('drops the partial-total note of a prepared table with its hidden column', async () => {
     const fixture = getFixtures('table').find((entry) => entry.id === 'nulls-policy')!;
     const toggled = { ...(fixture.data as TableData), columnToggles: [{ id: 'skip', label: 'Q3', columns: ['q3'], defaultVisible: false }] };
-    const options = { ...(fixture.options as TableOptions), notes: { show: ['note', 'disclosure'] as const } };
-    const prepared = await prepareChart({ type: 'table', data: toggled, options } as never) as never;
-    act(() => root.render(<TableChart data={toggled} {...options as object} prepared={prepared} />));
-    expect(printed()).toEqual([]);
+    for (const notes of [{ show: ['note', 'disclosure'] as const }, { placement: 'frame' as const, maxLines: 3 }]) {
+      const options = { ...(fixture.options as TableOptions), notes };
+      const prepared = await prepareChart({ type: 'table', data: toggled, options } as never) as never;
+      act(() => root.render(<TableChart data={toggled} {...options as object} prepared={prepared} />));
+      // Without the † in the head the note reads "(partial) ..."; a prepared table kept it after its column was hidden.
+      expect(printed()).toEqual([]);
+    }
   });
 
   // The React head broke "WEEK 1" into "WEEK" over "1" where the SVG keeps the short word on the line before it.
@@ -2099,4 +2102,15 @@ it('advises a frame width at which the grid no longer scrolls', () => {
   const advised = overflowAt(480)!;
   expect(advised).toBeGreaterThan(720);
   expect(overflowAt(advised)).toBeUndefined();
+});
+
+// A fixed frame's overflow check took the theme's side margins off the room, which the grid gives way first: a table that fit its frame warned table-overflow.
+it('does not warn table-overflow for a fixed-frame table that fits its frame', () => {
+  const { data, options } = getFixtures('table').find((entry) => entry.id === 'management-report-compact')!;
+  const onWarnings = vi.fn();
+  act(() => root.render(<TableChart data={data} {...options} size={{ width: 720 }} onWarnings={onWarnings} />));
+  const cols = container.querySelector<HTMLElement>('.bp-table-grid')!.style.getPropertyValue('--bp-cols');
+  const tracks = [...cols.matchAll(/(?:^|\s)([\d.]+)px/gu)].reduce((sum, match) => sum + Number(match[1]), 0);
+  expect(tracks).toBeLessThanOrEqual(720);
+  expect((onWarnings.mock.lastCall?.[0] ?? []).map((warning: { code: string }) => warning.code)).not.toContain('table-overflow');
 });

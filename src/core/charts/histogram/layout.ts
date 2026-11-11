@@ -70,7 +70,7 @@ import { axisTitleAllowed } from '../../axis';
 import { localeStrings, stringFields } from '../../strings';
 import { AUTO_LEGEND, isAutomaticLegend } from '../../legendPolicy';
 import { authoredNotes, frameTextOptions, withAuthoredFootnotes } from '../../frame';
-import { disclosureNote } from '../../notes';
+import { disclosureNote, keepShownNotes } from '../../notes';
 import { assertCountsCoverSample, cappedOpenAbove, computeBinning, countPerBin, MAX_BINS, onEdgeGrid, round12 } from './binning';
 import type {
   HistogramBinMark,
@@ -511,7 +511,7 @@ export function layoutHistogram(
           : chartString(options, 'histogramBinsShort', { v1: fmtNote(binning.width) }))} · ${sampleBase}.`
         : `${title ? `${title} · ` : ''}${sampleBase} · ${withOpen(binsText)}.`)];
     return {
-    ...frameTextOptions(options),
+    ...keepShownNotes(options, frameTextOptions(options)),
     ...(isAutomaticLegend(options) ? { [AUTO_LEGEND]: true } : {}),
     ...(options.size === undefined ? {} : { size: options.size }),
     ...(options.margin === undefined ? {} : { margin: options.margin }),

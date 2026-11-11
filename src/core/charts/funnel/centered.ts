@@ -853,8 +853,11 @@ export function layoutCenteredFunnel(
   const tallestStageLabelH = twoLineH;
   const paintWarningRules: PaintWarningRule[] = [];
   pushAll(warnings, centeredAdjacentWarnings(marks, nodes, values, plotted, theme, { rules: paintWarningRules, before: warnings.filter(warning => !['pie-ramp-crowded', 'likert-ramp-invisible', 'band-lightness-insufficient', 'series-adjacent-similar', 'highlight-reads-as-loss'].includes(warning.code)).length }));
-  // Without the total conversion column no label prints a stage's conversion from the first stage.
-  const unprinted = showTotalCvr && labelOn('point') ? [] : cumulativeCvrs.flatMap((item) => item.rate === null ? [] : [`funnel:total-cvr:${item.stageId}`]);
+  // Without the total conversion column no label prints a stage's conversion from the first stage, and without the step column none prints a step.
+  const unprinted = [
+    ...(showTotalCvr && labelOn('point') ? [] : cumulativeCvrs.flatMap((item) => item.rate === null ? [] : [`funnel:total-cvr:${item.stageId}`])),
+    ...(showStepCvr ? [] : conversions.map((conv) => claimId('funnel:conv', conv.fromId, conv.toId))),
+  ];
   return withUnprintedClaims({
     type: 'funnel',
     size,

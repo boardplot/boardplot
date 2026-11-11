@@ -61,7 +61,7 @@ export interface TableScrollSurface {
    * The theme and plot width of another frame width. The overflow advice is checked at the type
    * class of the width it names; without it the advice stands unchecked.
    */
-  at?: (width: number) => { theme: Theme; available: number };
+  at?: (width: number) => { theme: Theme; available: number; scrollBox?: TableWidthView['scrollBox'] };
 }
 
 export interface TableNeed {
@@ -150,7 +150,7 @@ export function tableScrollNeed({ table, surface }: { table: ResolvedTable; surf
   const warnings = at === undefined ? plan.warnings : plan.warnings.map((warning) => warning.code === 'table-overflow' ? checkedOverflow(warning, (width) => {
     const frame = at(width);
     const size = { ...overflowSize(warning)!, width };
-    return tableWidths(table, frame.theme, measure, { ...options, size }, { ...view, scroll: true, available: frame.available })
+    return tableWidths(table, frame.theme, measure, { ...options, size }, { ...view, scroll: true, available: frame.available, scrollBox: frame.scrollBox })
       .warnings.find((next) => next.code === 'table-overflow');
   }) : warning);
   const sides = surface.margins.left + surface.margins.right;

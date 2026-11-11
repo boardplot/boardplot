@@ -130,6 +130,7 @@ export function prepareTableRender(request: ResolvedChartRequest<TableData, Tabl
       unit: table.unit, footnotes: [...table.footnotes],
       // The table's own notes read these: the partial-total note leaves with its column, the status note words its colours.
       ...(table.partialColumnIds ? { partialColumnIds: [...table.partialColumnIds] } : {}),
+      ...(table.partialNote ? { partialNote: table.partialNote } : {}),
       ...(table.colorblindSafe ? { colorblindSafe: table.colorblindSafe } : {}),
     },
   };

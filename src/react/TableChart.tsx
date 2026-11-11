@@ -1046,11 +1046,19 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     const sidesAt = (frameTheme: Theme, frameWidth: number) => size === 'container' || size === undefined
       ? { left: marginLeft, right: marginRight } : { ...canvasMargin(frameTheme, frameWidth), ...margin };
     const sides = sidesAt(theme, size === undefined || size === 'container' ? 0 : resolveSize(size).width);
+    // The box that scrolls is the frame inside the authored margins; under the default rowExtent it reaches through
+    // the right one. The tracks are laid out inside the theme's margins, and overflow only past this box.
+    const scrollBox = (frameWidth: number) => {
+      const boxWidth = frameWidth - marginLeft - marginRight + (tableOptions?.rowExtent === undefined ? Math.max(0, marginRight) : 0);
+      return { width: boxWidth, inset: frameWidth - boxWidth };
+    };
+    const frameWidth = size === 'container' ? container.size?.width : size === undefined ? undefined : resolveSize(size).width;
     return tableScrollNeed({ table, surface: {
       scroll: true, theme, measure: width.measure,
       options: { ...tableOptions, density, target: request?.target, inlineVisibility, [SOFT_LABEL_CAP]: softLabelCap, [LABEL_WRAP_FLOOR]: labelWrapFloor },
       view: {
         columns, allColumns, defaultColumns, rows, available, frameStart,
+        scrollBox: frameWidth === undefined ? undefined : scrollBox(frameWidth),
         withMarks: !readOnlyTree || tableOptions?.outlineMarks === true,
         sortable: sortableIds, leadWidth: rowLabelLead?.width,
         trailingTracking: true, groupStart: groupMarks.groupStart, groupEnd: groupMarks.groupEnd,
@@ -1061,11 +1069,11 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
       at: request === undefined ? undefined : (frameWidth) => {
         const frameTheme = tableRenderTheme({ ...request, size: { ...request.size, width: frameWidth } });
         const frameSides = sidesAt(frameTheme, frameWidth);
-        return { theme: frameTheme, available: frameWidth - (frameSides.left ?? 0) - (frameSides.right ?? 0) };
+        return { theme: frameTheme, available: frameWidth - (frameSides.left ?? 0) - (frameSides.right ?? 0), scrollBox: scrollBox(frameWidth) };
       },
     } });
   }, [table, theme, width, tableOptions, density, request, inlineVisibility, softLabelCap, labelWrapFloor,
-    columns, allColumns, defaultColumns, rows, available, frameStart, readOnlyTree, sortableIds, rowLabelLead?.width, groupMarks, size, fit, margin, marginLeft, marginRight]);
+    columns, allColumns, defaultColumns, rows, available, frameStart, readOnlyTree, sortableIds, rowLabelLead?.width, groupMarks, size, fit, margin, marginLeft, marginRight, container.size?.width]);
   const measured = need?.plan;
   const padX = measured?.cellPadX ?? 12;
   const indents = measured?.indents ?? { base: 0, step: 16 };

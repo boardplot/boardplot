@@ -575,6 +575,20 @@ describe('bartable Total row', () => {
       [['n', 'value', 256], ['abs', 'missing', null]],
     ]);
   });
+
+  // The Total row added its rows with plain float sums, so its hover printed "Low: $0.4580000000000001bn".
+  it('cleans float residue from the Total row sums', () => {
+    const fixture = getFixtures('bartable').find((entry) => entry.id === 'impact-two-panels')!;
+    const scaled = (value: unknown): unknown => typeof value === 'number' ? value / 1000
+      : Array.isArray(value) ? value.map(scaled)
+      : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, key === 'weight' ? entry : scaled(entry)])) : value;
+    const data = { ...fixture.data, columns: scaled(fixture.data.columns), panels: scaled(fixture.data.panels) };
+    const request = resolveChartRequest({ type: 'bartable', data, options: fixture.options } as never);
+    const totals = interactionRecords({ request, geometry: requireGeometry(layoutResolvedRequest(request)), scope: request.scope, claims: [] })
+      .filter((record) => record.categoryLabel === 'Total')
+      .map((record) => [record.target.owner.colId, record.value.raw, ...(record.fields ?? []).map((field) => field.value.raw)]);
+    expect(totals).toEqual([['n', 0.256], ['abs', '0.46–0.77', 0.458, 0.766]]);
+  });
 });
 
 // A pareto tail joined to the authored rest printed its sum as the authored value ("Other 1.4000000000000000", "43" for an authored 30).
@@ -641,4 +655,6 @@ it('records the printed share of a one-series 100% stack', () => {
   expect(shares('column', { variant: 'stacked', shareLabels: {}, labelDensity: 'full' })).toEqual([100, 100]);
   expect(shares('column', { variant: 'stacked', shareLabels: { only: ['b'] }, labelDensity: 'full' })).toEqual([undefined, 100]);
   expect(shares('bar', { variant: 'grouped', valueAxis: { percent: true } })).toEqual([undefined, undefined]);
+  // A percent value axis makes a one-series column or line chart print 100% on each mark, but its records held no share.
+  for (const type of ['column', 'line']) expect(shares(type, { valueAxis: { percent: true } }), type).toEqual([100, 100]);
 });

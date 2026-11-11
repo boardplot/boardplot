@@ -1,0 +1,3 @@
+### Fixed
+
+- The React table warns `table-overflow` only when its grid scrolls sideways. In a fixed frame the tracks are laid out inside the theme's side margins, as the SVG table's are, but the grid gives that margin room away before it scrolls. The check compared the tracks with the room inside the margins, so a table that fit its frame still warned. It now compares them with the box that scrolls: the frame inside the authored margins, and under the default `rowExtent` also the authored right margin, which the grid reaches through. The advised width is the least frame at which the grid no longer scrolls, so it is smaller than before by the theme's side margins. Nothing the grid draws changes.

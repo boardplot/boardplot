@@ -534,8 +534,10 @@ export interface BaseOptions {
    * 'disclosure' the engine's notes on how to read the chart (keys, data
    * changes, "Not labelled on the chart:..."), outside the budget; 'ranks'
    * only the rank key, the disclosure that names the rank numbers a column
-   * row draws when its names do not fit (also printed by 'disclosure'). Engine
-   * notes not shown stay in the notes list. `pointer`: default true, prints
+   * row draws when its names do not fit (also printed by 'disclosure').
+   * Without `show`, `methodNote: true` or an authored `placement` prints the
+   * method notes and disclosures within the budget, after the author notes.
+   * Engine notes not shown stay in the notes list. `pointer`: default true, prints
    * "+N notes" when the notes list holds more of the kinds `show` prints.
    */
   notes?: {
