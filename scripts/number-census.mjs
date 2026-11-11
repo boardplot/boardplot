@@ -357,10 +357,12 @@ export function censusCase(type, fixture, width, localeName, measured) {
     if (cell) addPrinted({ rowId: cell[1], colId: cell[2] }, entry.id, entry.text, [`col:${cell[2]}`, `row:${cell[1]}`]);
   }
   const NOT_VALUES = new Set(['category', 'series', 'axisTitle', 'legend', 'title', 'subtitle']);
-  // A value label the layout hid still belongs to its set: the engine picks the set's magnitude from every value.
-  const hiddenKind = new Map();
+  // One magnitude per series, or per column: a bartable's totals of two measures are two units.
+  const labelGroup = (label) => `kind:${label.kind}:${label.owner.seriesId ?? label.owner.colId ?? ''}`;
+  // A value label the layout hid still belongs to its group: the engine picks the set's magnitude from every value.
+  const hiddenGroup = new Map();
   for (const label of geometry.labels ?? []) {
-    if (label.hidden && label.owner && !NOT_VALUES.has(label.kind)) hiddenKind.set(ownerKey(label.owner), label.kind);
+    if (label.hidden && label.owner && !NOT_VALUES.has(label.kind)) hiddenGroup.set(ownerKey(label.owner), `${panelOf(label.id)}|${labelGroup(label)}`);
     // Event labels name events and their dates; they print no value of the owner. A map overlay label prints the
     // author's text as written ("UK 78%"), so it is not tied to its glyph value.
     if (label.hidden || NOT_VALUES.has(label.kind) || !label.owner || /^(event|overlay):/.test(label.id)) continue;
@@ -368,8 +370,7 @@ export function censusCase(type, fixture, width, localeName, measured) {
     if (label.claimIds?.includes('pvm:delta')) continue;
     const text = textById.get(label.nodeId ?? `label:${label.id}`) ?? label.text;
     if (!text) continue;
-    // One magnitude per series, or per column: a bartable's totals of two measures are two units.
-    addPrinted(label.owner, label.id, text, [`kind:${label.kind}:${label.owner.seriesId ?? label.owner.colId ?? ''}`]);
+    addPrinted(label.owner, label.id, text, [labelGroup(label)]);
   }
 
   // Header and row-label magnitudes of a table, for hoisted units.
@@ -404,10 +405,10 @@ export function censusCase(type, fixture, width, localeName, measured) {
 
   // 1. Every record value against what each surface prints for its owner.
   const groupValues = new Map();
-  const hiddenValues = [];
+  const hiddenValues = new Map();
   for (const record of records) {
-    const hidden = hiddenKind.get(ownerKey(record.target.owner));
-    if (hidden && record.value?.kind === 'number' && typeof record.value.raw === 'number') hiddenValues.push({ kind: hidden, raw: record.value.raw });
+    const hidden = hiddenGroup.get(ownerKey(record.target.owner));
+    if (hidden && record.value?.kind === 'number' && typeof record.value.raw === 'number') hiddenValues.set(hidden, [...(hiddenValues.get(hidden) ?? []), record.value.raw]);
     // An event card states the event's own words and dates, no value of the chart.
     if (record.event) continue;
     const numbers = recordNumbers(record, m);
@@ -559,18 +560,15 @@ export function censusCase(type, fixture, width, localeName, measured) {
   const rowFormatted = type === 'dimswitch' || (type === 'table' && flatRows(data.rows ?? []).some((row) => row.format !== undefined || row.scale !== undefined));
   // setMagnitude gives a set one magnitude from 1e6 where a step prints its smallest value as 1 or more and its largest
   // with at most four digits. Where no step does, each label keeps its own scale: mixed magnitudes are the decided fallback.
-  // The set here is every value label of one unit, drawn or hidden, so the census needs no chart's own set.
-  // ponytail: two sets of one unit (butterfly panes) are judged as one; a pane that fits alone is then not checked.
-  const setSizes = new Map();
-  for (const [key, entries] of groupValues) for (const entry of entries) {
-    const unit = unitKind(entry.token);
-    if (!setSizes.has(unit)) setSizes.set(unit, { kinds: new Set(), sizes: [] });
-    setSizes.get(unit).kinds.add(/kind:([^:]+):/.exec(key)?.[1]);
-    setSizes.get(unit).sizes.push(Math.abs(entry.raw));
-  }
-  const noSetScale = (unit) => {
-    const set = setSizes.get(unit);
-    const sizes = [...set.sizes, ...hiddenValues.filter((entry) => set.kinds.has(entry.kind)).map((entry) => Math.abs(entry.raw))].filter((size) => size > 0);
+  // The set is the chart's: a butterfly or pyramid pane (one series), else every value label of the panel (a funnel's
+  // series with their totals), each with its hidden values of the same unit. Table cells take no set magnitude.
+  const paneSets = type === 'butterfly' || type === 'pyramid';
+  const noSetScale = (key, unit) => {
+    const panel = key.slice(0, key.indexOf('|') + 1);
+    if (!key.startsWith(`${panel}kind:`)) return false;
+    const keys = paneSets ? [key] : [...new Set([...groupValues.keys(), ...hiddenValues.keys()])].filter((other) => other.startsWith(`${panel}kind:`));
+    const sizes = keys.flatMap((other) => [...(groupValues.get(other) ?? []).filter((entry) => unitKind(entry.token) === unit).map((entry) => entry.raw), ...(hiddenValues.get(other) ?? [])])
+      .map(Math.abs).filter((size) => size > 0);
     const smallest = Math.min(...sizes), largest = Math.max(...sizes);
     return largest >= 1e6 && ![1e9, 1e6, 1e3].some((step) => smallest >= step && Math.round(largest / step) < 10000);
   };
@@ -602,7 +600,7 @@ export function censusCase(type, fixture, width, localeName, measured) {
       kinds.get(kind).add(entry.token.letter);
     }
     for (const [kind, letters] of kinds) {
-      if (letters.size < 2 || noSetScale(kind) || (rowFormatted && key.includes('|col:'))) continue;
+      if (letters.size < 2 || noSetScale(key, kind) || (rowFormatted && key.includes('|col:'))) continue;
       // A bare figure beside "k" figures is mixed only when the bare one is 1,000 or more.
       const lettered = [...letters].filter(Boolean);
       const bareLarge = letters.has('') && entries.some((entry) => unitKind(entry.token) === kind && !entry.token.letter && Math.abs(entry.token.value) >= 1000);

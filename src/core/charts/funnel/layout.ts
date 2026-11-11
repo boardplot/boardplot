@@ -24,7 +24,7 @@ import { runAnnotatePass } from '../../annotatePass';
 import { rectSeriesAdjacentWarnings } from '../../adjacentSeries';
 import { warnSpreadOverflow } from '../../collide';
 import { formatAutomaticNumber, formatAutomaticPercent, smallRateDecimals } from '../../format';
-import { formatterFromExample, seriesRasterFormatter, setMagnitude } from '../../formatSpec';
+import { formatterFromExample, seriesRasterFormatter } from '../../formatSpec';
 import { cellMeta } from '../../types/cell';
 import type { Rect } from '../../geometry';
 import { clamp, rectContains, rectsOverlap } from '../../geometry';
@@ -75,7 +75,7 @@ import type {
 import { authoredTrackWidth, columnOverrideWarnings, trackPlotFloor } from '../columnOverrides';
 import { layoutCenteredFunnel, rampFunnelPaint, shadeStage } from './centered';
 import { funnelComparisonLayout } from './comparisons';
-import { clampedNote, deriveFunnel, funnelValueFormats, missingGlyph } from './derive';
+import { clampedNote, deriveFunnel, funnelSetMagnitude, funnelValueFormats, missingGlyph } from './derive';
 import { INSIDE_MIN_H, INSIDE_MIN_W } from '../band/labels';
 import { barWidthForOutsideValues, OUTSIDE_GAP, outsideStart, outsideWidth } from './outsideValues';
 import { belowCalloutCandidates, dropCallout, fitText, type FittedText, LABEL_PAD, laneY, LANE_PAD, lineHeight, rowGapFraction, type DropCallout } from './rowsText';
@@ -202,7 +202,7 @@ export function layoutFunnel(
   // One raster per stage: the values of one stage share one decimal count, and a stage of whole counts prints none.
   // A single series is one raster down its stages (one decimal count within a series).
   // Values and totals are one set: one magnitude, so no label steps down to its own (1,180M · 590M, not 1.18B · 590M).
-  const scale = setMagnitude([...values.flat(), ...Object.values(stageTotals)], options.format, options.unit, options.target);
+  const scale = funnelSetMagnitude(plotted, cells, values, [stageTotals, shownTotals], options);
   const formats = stages.map((_, ci) => seriesRasterFormatter(options.format, authoredRaster ?? (plotted.length === 1 ? values[0]! : plotted.map((_, si) => values[si]![ci])), options.locale?.language, options.unit, options.target, undefined, true, scale));
   // Totals and series without format metadata print through the shared raster (one decimal count, engine scale).
   const totalRaster = seriesRasterFormatter(options.format, authoredRaster ?? Object.values(stageTotals), options.locale?.language, options.unit, options.target, undefined, false, scale);
