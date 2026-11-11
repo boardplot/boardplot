@@ -109,6 +109,8 @@ export interface ColumnDomain extends ColumnEnv {
   totalFmt: (v: number) => string;
   /** Derived statistics keep their own precision inside the raster's style. */
   statFmt: (v: number) => string;
+  /** The average marker's number, in its drawn label and its hover record alike. */
+  averageFmt: (v: number) => string;
   variant: ColumnVariant;
   refStyle: 'tick' | 'line' | 'marker';
   /** A plan tick across its column draws behind the column (referenceTick.position, default 'behind'). */

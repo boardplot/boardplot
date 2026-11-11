@@ -367,6 +367,7 @@ function annotateColumn(
     percentLevels: percentLevels(dataSeries),
     sharesFormat: domain.variant === 'stacked100',
     valueLinePercentLevels: domain.variant === 'stacked100' || domain.options.unit === '%' || domain.pctLevels,
+    averageFmt: domain.averageFmt,
     solveCtx,
     yScale: y,
     meanValue: domain.meanValue,

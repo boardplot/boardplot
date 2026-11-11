@@ -1024,3 +1024,13 @@ it('records a quotient at its own precision, whatever the size of its operands',
   [{ id: 'growth', kind: 'diff', from: 'a', to: 'b', mode: 'relative' }]);
   expect(growth.find((claim) => claim.op.startsWith('annotation-diff-relative'))?.output.raw).toBe(0);
 });
+
+// The average marker drew "Average 5.009%" while its hover value read "5.0%" (column) or "5.01%" (bar).
+it('an average marker hover value prints as its drawn label does (column, bar)', () => {
+  const data = { valueKind: 'fraction', categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }, { id: 'c', label: 'C' }], series: [{ id: 's', label: 'Rate', values: [0.05012, 0.04998, 0.05016] }] };
+  for (const type of ['column', 'bar']) {
+    const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type, data, options: { title: 'T', averageMarker: true } } as never) as never));
+    const marker = geometry.annotations.find((annotation) => annotation.id === 'averageMarker');
+    expect([marker?.computedText, marker?.valueText], type).toEqual(['Average 5.009%', '5.009%']);
+  }
+});

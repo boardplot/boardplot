@@ -81,7 +81,7 @@ export function layoutBarLocalAnnotations(domain: BarDomain, area: BarArea, warn
       // automatic format of the value itself. An authored format wins.
       const valueText = !isMean && !id.startsWith('averageMarker') && !ann.format && !domain.options.format && roundedNumber(v, domain.valueSpec.spec) !== v
         ? formatAutomaticNumber(v, { locale: domain.options.locale?.language, decimals: Math.max(autoDecimals(v), neededDecimals(v)), suffix: percent ? '%' : '' })
-        : isMean ? meanFmt(v) : percent && !ann.format && !domain.options.format ? domain.valueSpec.fmtPercent(v) : annFmt(v);
+        : isMean || id.startsWith('averageMarker') ? meanFmt(v) : percent && !ann.format && !domain.options.format ? domain.valueSpec.fmtPercent(v) : annFmt(v);
       const labelText = ann.label === false ? '' : ann.label !== undefined ? namedLineText(ann.label, valueText, v, id) : isMean ? `${domain.options.strings!.average} ${valueText}` : valueText;
       if (labelText) {
         const lines = labelText.split('\n');
