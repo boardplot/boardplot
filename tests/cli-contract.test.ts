@@ -851,6 +851,17 @@ describe('render and measure on the command line', () => {
     expect((envelope(result).errors as { message: string }[])[0]!.message).toContain('(rows 1 and 2)');
   });
 
+  // An agent that copied the columns object of the MCP tool into --columns got invalid-argument.
+  it('takes --columns as the JSON object the MCP tool takes, with the same drawing', () => {
+    const dir = tdir();
+    writeFileSync(join(dir, 'rows.csv'), 'month,segment,revenue\nJan,Retail,10\nFeb,Retail,12\n');
+    const args = ['render', writeDoc(dir, 'spec.json', { type: 'column' }), '--rows', join(dir, 'rows.csv'), '--return', 'svg', '--columns'];
+    const json = envelope(runCli([...args, '{"category":"month","series":"segment","value":"revenue"}']));
+    expect(json.ok).toBe(true);
+    expect(json.svg).toBe(envelope(runCli([...args, 'category=month,series=segment,value=revenue'])).svg);
+    expect(envelope(runCli([...args, '{"category":1}'])).errors[0]!.code).toBe('invalid-argument');
+  });
+
   it('reads a semicolon CSV, detected from its header, with decimal commas as decimals', () => {
     const dir = tdir();
     writeFileSync(join(dir, 'rows.csv'), 'Month;Segment;Revenue\nJan;"B2B, direct";10,5\nFeb;"B2B, direct";12,25\n');

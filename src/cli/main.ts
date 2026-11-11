@@ -41,6 +41,22 @@ function text(flags: Flags, key: string): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
+/** `--columns '{"category":"month","value":"revenue"}'`: the JSON object the MCP tool's columns argument takes. */
+function jsonColumns(map: string): Record<string, string> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(map);
+  } catch {
+    parsed = undefined;
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed) || Object.values(parsed).some((column) => typeof column !== 'string')) {
+    throw new InputError('invalid-argument', `--columns takes a JSON object of role and column names, not '${map}'`, {
+      suggest: 'Pass --columns \'{"category":"month","series":"segment","value":"revenue"}\', or category=month,series=segment,value=revenue.',
+    });
+  }
+  return parsed as Record<string, string>;
+}
+
 /**
  * `--rows file --columns category=month,series=segment,value=revenue`: the
  * rows file resolves against the working directory, as the spec file does.
@@ -48,7 +64,7 @@ function text(flags: Flags, key: string): string | undefined {
 function rowFlags(flags: Flags): { rowsFile?: string; columns?: Record<string, string> } {
   const file = text(flags, 'rows');
   const map = text(flags, 'columns');
-  const columns = map === undefined ? undefined : Object.fromEntries(map.split(',').map((pair) => {
+  const columns = map === undefined ? undefined : map.trim().startsWith('{') ? jsonColumns(map) : Object.fromEntries(map.split(',').map((pair) => {
     const [role, column, ...rest] = pair.split('=').map((part) => part.trim());
     if (!role || !column || rest.length) {
       throw new InputError('invalid-argument', `--columns takes role=column pairs separated by commas, not '${pair}'`, {
