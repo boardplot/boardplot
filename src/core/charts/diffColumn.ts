@@ -7,7 +7,7 @@
  * levels). Cells are labels like any other, placed by the solver in one seat.
  */
 
-import { differenceExample, exampleSpec, formatWithSpec, roundedNumber } from '../formatSpec';
+import { differenceExample, exampleSpec, formatNonzeroWithSpec, formatWithSpec, roundedNumber, type NumberFormatSpec } from '../formatSpec';
 import { formatAutomaticNumber, PERCENTAGE_POINTS } from '../format';
 import { roundHalfUp, valueSetDecimals } from '../formatPrecision';
 import { cleanDiff, type Rect } from '../geometry';
@@ -26,7 +26,7 @@ export const COLUMN_GAP = 16;
  * column foots with the two labels on the page (7.89 and 9.24 give -1.35, never -1.34 from 7.894 and 9.236).
  * A scaled format (k, m, bn) prints the operands at another scale, so it subtracts the raw values.
  */
-export function differenceFormatter(input: { format?: string; locale?: string; values: number[]; decimals?: number }): (minuend: number, subtrahend: number) => string {
+export function differenceFormatter(input: { format?: string; locale?: string; values: number[]; decimals?: number; scale?: NumberFormatSpec }): (minuend: number, subtrahend: number) => string {
   const printed = (decimals: number | undefined, scaled: boolean) => (value: number): number =>
     decimals === undefined || scaled ? value : Math.sign(value) * Number(roundHalfUp(Math.abs(value), decimals));
   if (input.format) {
@@ -34,6 +34,11 @@ export function differenceFormatter(input: { format?: string; locale?: string; v
     const round = spec.exponent ? (value: number) => roundedNumber(value, spec)
       : printed(spec.decimals, spec.magnitude !== 'none' || spec.significantDigits !== undefined || spec.autoMagnitude === true);
     return (minuend, subtrahend) => formatWithSpec(cleanDiff(round(minuend), round(subtrahend)), spec);
+  }
+  // The labels print at the set's magnitude ("1,070M"): the difference prints in it too, never in all its digits.
+  if (input.scale && input.scale.magnitude !== 'none') {
+    const spec = { ...input.scale, signed: true, prefix: '', suffix: '' };
+    return (minuend, subtrahend) => formatNonzeroWithSpec(cleanDiff(minuend, subtrahend), spec);
   }
   const decimals = input.decimals ?? valueSetDecimals(input.values);
   const round = printed(decimals, false);
