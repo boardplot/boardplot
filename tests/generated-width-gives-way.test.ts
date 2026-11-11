@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import '../src/core/charts';
 import '../src/core/geo/packs';
 import { getFixtures } from '../src/fixtures';
-import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
+import { layoutResolvedRequest, measure, resolveChartRequest } from '../src/core/request';
 import { render } from '../src/cli/render';
 
 const fixture = (type: string, id: string) => getFixtures(type as never).find((item) => item.id === id)!;
@@ -137,6 +137,7 @@ describe('an automatic height grows before a width refusal', () => {
   });
 
   // A bullet, heatmap or status chart that drew at a narrower width was refused here, because the form it picked for this width needed more.
+  // Measure then named that form's floor as the minimum width, above the width it draws at, at an open and at a pinned height.
   it.each([
     ['bullet', 485, { rows: ['fy21', 'fy22', 'fy23'].map((id, i) => ({ id, label: `FY${21 + i} and its much longer descriptive name`, value: 100 * 1.2 ** i, target: 110 * 1.2 ** i })) },
       { title: 'Orders grow 20% per year', unit: 'thousand orders', sharedScale: true, theme: 'notation', annotations: [{ id: 'growth', kind: 'cagr', from: 'fy21', to: 'fy23' }] }],
@@ -150,5 +151,10 @@ describe('an automatic height grows before a width refusal', () => {
       { title: 'Pricing review is complete', theme: 'notation', legend: 'right', target: 'slide', states: [{ id: 'reviewed', label: 'Reviewed', tone: 'info' }, { id: 'pending', label: 'Pending', tone: 'neutral' }] }],
   ])('%s draws at %i px', (type, width, data, options) => {
     expect(layout(type, data, { ...options, size: { width } }).refused).toBeFalsy();
+    for (const size of [{ width }, { width, height: 600 }]) {
+      const measured = measure({ type, data, options: { ...options, size } } as never);
+      expect(measured.geometry).toBeDefined();
+      expect(measured.minWidth).toBeLessThanOrEqual(width);
+    }
   });
 });
