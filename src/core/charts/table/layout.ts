@@ -1328,12 +1328,14 @@ function prepareTableCandidate(
       // underlined with it. The measurer already counts the label's
       // tracking; adding it again drew every underline one tracking step per
       // letter too wide.
-      const note = groupHeadingNote(g.note);
+      const spacedNote = groupHeadingNote(g.note);
       const faces = groupHeadingFaces(fonts.group);
       const noteFont = faces.note;
       const measured = groupHeadingWidth(g, faces, measure);
-      const trackedW = measured.label;
-      const labelW = trackedW + measured.note;
+      // SVG drops the note's leading space, so the note draws without it, one space further right.
+      const note = spacedNote?.trimStart();
+      const noteOffset = measured.label + (note === undefined ? 0 : measured.note - measure(note, noteFont).width);
+      const labelW = measured.label + measured.note;
       const spanStart = Math.round(first.x + cellPadX);
       const spanEnd = Math.round(last.x + last.w - cellPadX);
       const wrap = groupWraps.get(g.id);
@@ -1379,7 +1381,7 @@ function prepareTableCandidate(
         });
         if (note !== undefined) {
           nodes.push({
-            t: 'text', typeRole: 'footnote', id: `group-note:${g.id}`, x: startX + trackedW, y: labelY, lines: [note], align: 'start',
+            t: 'text', typeRole: 'footnote', id: `group-note:${g.id}`, x: startX + noteOffset, y: labelY, lines: [note], align: 'start',
             font: noteFont, ink: tableInk('secondary'), owner: {}, part: 'tableGroupHeader',
           });
         }
@@ -1412,7 +1414,7 @@ function prepareTableCandidate(
         nodes.push({
           t: 'text', typeRole: 'footnote',
           id: `group-note:${g.id}`,
-          x: startX + trackedW,
+          x: startX + noteOffset,
           y: labelY,
           lines: [note],
           align: 'start',
