@@ -17,6 +17,16 @@ export function statedInPercent(label: string, unit: string, pctCells = false): 
   return pctCells || PERCENT.test(label) || PERCENT.test(unit) || (unit === '' && NON_ADDITIVE.test(label));
 }
 
+/**
+ * The variant a chart draws: a percent value axis turns a column chart into a
+ * 100% stack and a line chart into a 100% area. Other charts draw the variant
+ * the author set.
+ */
+export function drawnVariant(type: string, options: { variant?: string; valueAxis?: { percent?: boolean } }): string | undefined {
+  if (!options.valueAxis?.percent) return options.variant;
+  return type === 'column' ? 'stacked100' : type === 'line' ? 'stacked100-area' : options.variant;
+}
+
 /** One stacked part as the additivity rule reads it. */
 interface StackPart {
   label: string;

@@ -812,6 +812,30 @@ it('states Likert shares and nets as unprinted when labels turn them off', () =>
   }
 });
 
+// A display switch hid the text of a funnel conversion, a gantt today date or event, or a line or scatter trend's slope and r², but the chart did not state the claim as unprinted, so the reading held numbers no text prints.
+it('states a claim as unprinted when a display switch hides its text', () => {
+  const funnel = { categories: [{ id: 'leads', label: 'Leads' }, { id: 'calls', label: 'Calls' }, { id: 'deals', label: 'Deals' }], series: [{ id: 'n', label: 'People', values: [1000, 400, 120] }] };
+  const gantt = { rows: [{ id: 'build', label: 'Build', items: [{ id: 'b', kind: 'bar', start: '2026-01-05', end: '2026-06-26' }, { id: 'go', kind: 'milestone', start: '2026-04-06', label: 'Go live' }] }] };
+  const line = { categories: ['Q1', 'Q2', 'Q3', 'Q4'].map((id) => ({ id, label: id })), series: [{ id: 'a', label: 'Sales', values: [20, 28, 25, 45] }, { id: 'b', label: 'Costs', values: [30, 26, 22, 18] }] };
+  const points = [[1, 2], [2, 3.5], [3, 3.9], [4, 6], [5, 5.6], [6, 8]].map(([x, y], i) => ({ id: `p${i}`, group: i < 3 ? 'low' : 'high', x, y }));
+  const scatter = { groups: [{ id: 'low', label: 'Low' }, { id: 'high', label: 'High' }], points };
+  const cases: [string, object, object][] = [
+    ['funnel', funnel, { labels: false }],
+    ['funnel', funnel, { variant: 'centered', labels: false }],
+    ['gantt', gantt, { today: '2026-03-02', labels: false, annotations: [{ id: 'review', kind: 'event', at: 'go', label: 'Board review' }] }],
+    ['line', line, { trend: true, legend: 'none' }],
+    ['scatter', scatter, { trend: { groups: 'each' }, legend: 'none' }],
+  ];
+  for (const [type, data, options] of cases) {
+    const { geometry, claims } = readChart(type, data, options);
+    const texts = new Set(geometry.scene.flatMap((node) => (node.t === 'text' ? [node.id] : [])));
+    const named = new Set([...geometry.labels.flatMap((label) => label.claimIds ?? []), ...unprintedClaims(geometry),
+      ...geometry.annotations.filter((annotation) => annotation.labelId).map((annotation) => `annotation:${annotation.id}`)]);
+    expect(claims.length, type).toBeGreaterThan(0);
+    expect(claims.filter((claim) => !named.has(claim.id) && !(claim.nodeId && texts.has(claim.nodeId))).map((claim) => claim.id), `${type} ${JSON.stringify(options)}`).toEqual([]);
+  }
+});
+
 // Option ids may contain ':', so a share claim id can collide with another option or row; the reading must never quote another value's text.
 it('never reads a Likert share with the text of another option or row', () => {
   const inputs = [

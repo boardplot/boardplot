@@ -3,7 +3,7 @@ import type { BarDerived } from '../charts/bar/layout';
 import type { ColumnDerived } from '../charts/column/layout';
 import type { LineDerived } from '../charts/line/layout';
 import type { SlopeDerived } from '../charts/slope/layout';
-import { stackAdds } from '../stackAdds';
+import { drawnVariant, stackAdds } from '../stackAdds';
 import { calendarNames } from '../calendarLabels';
 import { rectCenter } from '../geometry';
 import { normalizeCategory, normalizeScenario, normalizeSeriesValues } from '../normalize/shared';
@@ -66,11 +66,13 @@ function comparisons(ctx: RecordContext, matrix: Matrix, source: Matrix['series'
 /**
  * Whether the chart prints a share on the mark of this category: a 100 % stack prints one by default, and a
  * plain stack prints one under shareLabels (in the columns `only` names) or a segment label content with 'percent'.
- * A percent value axis alone prints none.
+ * The variant is the one the chart draws: a percent value axis makes a column or line chart a 100 % stack, and
+ * leaves a bar chart as it is.
  */
-function printsShare(options: { variant?: string; labels?: unknown; shareLabels?: { only?: readonly string[] } }, categoryId: string): boolean {
-  if (options.variant === 'stacked100' || options.variant === 'stacked100-area') return true;
-  if (options.variant !== 'stacked' || options.labels === false) return false;
+function printsShare(type: string, options: { variant?: string; valueAxis?: { percent?: boolean }; labels?: unknown; shareLabels?: { only?: readonly string[] } }, categoryId: string): boolean {
+  const variant = drawnVariant(type, options);
+  if (variant === 'stacked100' || variant === 'stacked100-area') return true;
+  if (variant !== 'stacked' || options.labels === false) return false;
   const segment = (options.labels as { segment?: unknown } | undefined)?.segment;
   if (Array.isArray(segment) && segment.includes('percent')) return true;
   return segment !== false && options.shareLabels !== undefined && (options.shareLabels.only?.includes(categoryId) ?? true);
@@ -96,7 +98,7 @@ function shareFor(ctx: RecordContext, matrix: Matrix, mark: CellMark, value: Int
   // pointing at" is arithmetic, not a fact. It is a fact again as
   // soon as the basis comes from somewhere else: an authored `total100`, or
   // a cell that already states a percentage, or a chart that prints the share on this mark.
-  if (parts.length < 2 && category?.total100 === undefined && !directShare && !printsShare(options, mark.categoryId)) return undefined;
+  if (parts.length < 2 && category?.total100 === undefined && !directShare && !printsShare(ctx.request.type, options, mark.categoryId)) return undefined;
   const values = parts.map(series => valueFor(ctx, matrix, series, mark.categoryId));
   const hasNegative = values.some(part => typeof part.raw === 'number' && part.raw < 0);
   // The base prints as the values it sums print: their unit and format.

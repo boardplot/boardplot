@@ -134,18 +134,10 @@ function foldSiblings(
   const dataIdx = rebuilt
     .map((_, index) => index)
     .filter((index) => ranksAsData(original.get(rebuilt[index]!.id)));
-  if (dataIdx.length <= topN.n) return rebuilt;
+  // A threshold can drop rows when n keeps all of them, as on a bar.
+  if (dataIdx.length <= topN.n && topN.threshold === undefined) return rebuilt;
 
   const dataRows = dataIdx.map((index) => rebuilt[index]!);
-  if (dataRows.some((row) => (original.get(row.id)?.relation ?? 'additive') !== 'additive')) {
-    throw new NormalizeError(
-      'table-topn-relation-unsupported',
-      'options.topN',
-      'topN cannot regroup ofWhich or displayOnly rows; nesting them under Others would change whose total they annotate',
-      'keep those rows as authored siblings, or drop options.topN',
-      undefined, ['options', 'topN'],
-    );
-  }
 
   const keys = dataRows.map((row) => {
     const resolved = table.rows.find((candidate) => candidate.id === row.id)!;
@@ -161,6 +153,15 @@ function foldSiblings(
   }
   const dropped = dataRows.filter((_, index) => !keep.has(index));
   if (dropped.length === 0) return rebuilt;
+  if (dataRows.some((row) => (original.get(row.id)?.relation ?? 'additive') !== 'additive')) {
+    throw new NormalizeError(
+      'table-topn-relation-unsupported',
+      'options.topN',
+      'topN cannot regroup ofWhich or displayOnly rows; nesting them under Others would change whose total they annotate',
+      'keep those rows as authored siblings, or drop options.topN',
+      undefined, ['options', 'topN'],
+    );
+  }
 
   if (topN.rest === false) {
     if (parentId !== undefined) {

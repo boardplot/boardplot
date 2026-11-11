@@ -12,6 +12,7 @@
 //               (the scorecard's R7)
 //   3 number    every printed number is in the reading: the number census (scripts/number-census.mjs), authored theme
 //   4 width     a spec that draws at a width draws at every wider width of its series
+// A number finding counts once per case and width and class, whatever view it shows in (svg, reading, hover, a11y); the views stay in the record.
 // For each distinct failure (type, rule, signature) it removes the changes one at a time while the failure stays
 // and writes the smallest case as a request file to <out>/<n>-<type>-<rule>.json; <out>/index.json lists them,
 // each with the seed, the command of its run and the command that reruns that one file.
@@ -38,6 +39,8 @@ const TEXT_BREAKPOINTS = Array.from({ length: 2000 }, (_, i) => i + 1).filter((w
 const EDGE_WIDTHS = TEXT_BREAKPOINTS.flatMap((w) => [w - 1, w]);
 const EXTRA_PER_CASE = 3;
 const THEMES = ['authored', 'notation'];
+// The views a number finding shows in, in the order that names its signature.
+const VIEWS = ['svg', 'reading', 'hover', 'a11y'];
 const RULE_NAMES = { 1: 'crash', 2: 'label', 3: 'number', 4: 'width' };
 const clone = (value) => structuredClone(value);
 
@@ -246,8 +249,11 @@ export function checkRequest(request, id) {
     const { size, ...options } = request.options;
     try {
       const census = censusCase(item.type, { id: item.fixture, data: request.data, options, annotations: request.annotations }, width, 'en', measured);
+      // One cause shows in several views (hover text, reading, SVG): a class counts once per case and width, named by its first view.
+      const viewsOf = (cls) => VIEWS.filter((view) => census.findings.some((finding) => finding.class === cls && finding.surface === view));
       for (const finding of census.findings) {
-        violations.push({ rule: 3, signature: `${finding.class} ${finding.surface}`, message: `${finding.class} ${finding.surface} ${finding.id}: ${JSON.stringify(finding.text)} source ${finding.raw ?? ''} ${finding.why ?? ''}`.trim() });
+        const views = viewsOf(finding.class);
+        violations.push({ rule: 3, signature: `${finding.class} ${views[0] ?? finding.surface}`, views, message: `${finding.class} ${finding.surface} ${finding.id}: ${JSON.stringify(finding.text)} source ${finding.raw ?? ''} ${finding.why ?? ''}`.trim() });
       }
     } catch (error) { crash('census', error); }
   }
@@ -319,8 +325,9 @@ export function runTypes(types, seed, count) {
       for (const failure of failures) {
         const key = `${type}|${failure.rule}|${failure.signature}`;
         const seen = distinct.get(key);
+        for (const view of failure.views ?? []) seen?.views.add(view);
         if (seen) { seen.where.add(`${row.cases}@${failure.width}`); if (item.changes.length < seen.item.changes.length) Object.assign(seen, { item, failure }); }
-        else distinct.set(key, { key, type, rule: failure.rule, signature: failure.signature, where: new Set([`${row.cases}@${failure.width}`]), item, failure });
+        else distinct.set(key, { key, type, rule: failure.rule, signature: failure.signature, views: new Set(failure.views ?? []), where: new Set([`${row.cases}@${failure.width}`]), item, failure });
       }
     }
     rows.push(row);
@@ -329,6 +336,7 @@ export function runTypes(types, seed, count) {
     // Case-widths that show this failure.
     entry.count = entry.where.size;
     delete entry.where;
+    entry.views = [...entry.views];
     let item = entry.item;
     for (const change of entry.item.changes) {
       const trial = { ...item, changes: item.changes.filter((c) => c !== change) };
@@ -386,7 +394,7 @@ function main() {
     const index = distinct.map((entry, i) => {
       const file = `${String(i + 1).padStart(3, '0')}-${entry.type}-${RULE_NAMES[entry.rule]}.json`;
       writeFileSync(resolve(out, file), JSON.stringify(entry.request, null, 2) + '\n');
-      return { file, seed, command: command(entry.type), rerun: `npm run check:generated -- --spec ${resolve(out, file)}`, type: entry.type, rule: `${entry.rule} ${RULE_NAMES[entry.rule]}`, signature: entry.signature,
+      return { file, seed, command: command(entry.type), rerun: `npm run check:generated -- --spec ${resolve(out, file)}`, type: entry.type, rule: `${entry.rule} ${RULE_NAMES[entry.rule]}`, signature: entry.signature, ...(entry.views.length ? { views: entry.views } : {}),
         cases: entry.count, fixture: entry.smallest.fixture, changes: entry.smallest.changes, theme: entry.smallest.theme, width: entry.smallest.width, message: entry.message };
     });
     writeFileSync(resolve(out, 'index.json'), JSON.stringify({ seed, cases: count, rows, failures: index }, null, 1) + '\n');
@@ -407,7 +415,7 @@ function main() {
       .map(([change, n]) => `${row.type} ${change} ${n}/${row.usedBy[change]}`));
     if (mostlyRefused.length) lines.push(`Changes refused in 80% or more of their case-widths: ${mostlyRefused.join('; ')}`, '');
     lines.push('Distinct failures, most cases first:');
-    for (const entry of index) lines.push(`  ${entry.file} [${entry.cases}] ${entry.rule} ${entry.signature}: ${entry.message.slice(0, 200)}`);
+    for (const entry of index) lines.push(`  ${entry.file} [${entry.cases}] ${entry.rule} ${entry.signature}${entry.views?.length > 1 ? ` (views ${entry.views.join(', ')})` : ''}: ${entry.message.slice(0, 200)}`);
     lines.push('', `Smallest failing specs and index.json: ${out}`, `Rerun one of them: npm run check:generated -- --spec ${out}/<file>`);
     console.log(lines.join('\n'));
   });

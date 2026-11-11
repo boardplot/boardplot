@@ -243,7 +243,7 @@ function assembleGanttGeometry(input: {
   const n = rows.length;
   const { colWs } = body.columns;
   const laneLabelW = milestones.laneLabelW;
-  // The elapsed band is a wash with no label: it prints no text.
+  // The elapsed band is a wash with no label: it prints no text. Neither does a today line or event whose label a switch turned off.
   const assembled: Geometry<GanttMarks, GanttDerived> = withUnprintedClaims<Geometry<GanttMarks, GanttDerived>>({
     type: 'gantt',
     size,
@@ -286,7 +286,7 @@ function assembleGanttGeometry(input: {
     },
     warnings: input.warnings,
     debug: { occupied: input.occupied.snapshot(), decisions: solved.decisions },
-  }, input.geometry.elapsed.map((band) => `annotation:${band.id}`));
+  }, [...input.geometry.elapsed, ...input.annotated.placed.filter((annotation) => !annotation.labelId)].map((annotation) => `annotation:${annotation.id}`));
   if (band.stacked) stackedForms.add(assembled);
   return assembled;
 }
