@@ -1073,6 +1073,7 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
         x: cx,
         y: cy,
         value: v,
+        markValueText: displayFor(v, cell, s),
         format: s.format,
         label: cat.label ?? cat.id,
         ...(cat.date === undefined ? {} : { date: cat.date }),
