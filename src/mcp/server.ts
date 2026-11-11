@@ -38,7 +38,7 @@ import { list } from '../cli/list';
 import { describe } from '../cli/describe';
 import { fixtures } from '../cli/fixtures';
 import { render } from '../cli/render';
-import { loadRasterFonts } from '../cli/resvg';
+import { drawsPng, loadRasterFonts } from '../cli/resvg';
 import { measure } from '../cli/measure';
 import { feedback } from '../telemetry/feedback';
 import { hostFromClient } from '../telemetry/event';
@@ -674,6 +674,7 @@ export function startMcpServer(): void {
   // just revoked never admits a rowsFile. No answer in time, an error answer
   // or a closed stdin clears the client roots.
   let rootsReady: Promise<void> = Promise.resolve();
+  let rasterReady: Promise<void> | undefined;
   let settleRoots: ((roots: string[]) => void) | undefined;
   const requestRoots = () => {
     settleRoots?.([]);
@@ -763,6 +764,9 @@ export function startMcpServer(): void {
           }
           const name = params.name;
           const args = params.arguments ?? {};
+          // Only a PNG reads raster faces, so they load before the first call that can draw one.
+          // Every later call waits behind that load too, so answers keep the order of their calls.
+          if (name === 'boardplot_render' && isRecord(args) && drawsPng(args.format, args.outDir)) rasterReady ??= loadRasterFonts();
           const answer = () => {
             const r = callTool(name, args);
             respond(req.id, {
@@ -771,8 +775,8 @@ export function startMcpServer(): void {
               ...(r.isError ? { isError: true } : {}),
             });
           };
-          if (!settleRoots) return answer();
-          return void rootsReady.then(answer).catch((e: unknown) => respondError(req.id, -32603, e instanceof Error ? e.message : String(e)));
+          if (!settleRoots && !rasterReady) return answer();
+          return void Promise.all([rootsReady, rasterReady]).then(answer).catch((e: unknown) => respondError(req.id, -32603, e instanceof Error ? e.message : String(e)));
         }
         case 'ping':
           return respond(req.id, {});
@@ -851,6 +855,5 @@ if (invoked) {
       /* not direct */
     }
   }
-  // A render can draw a PNG; its raster faces load before the first request is read.
-  if (direct) await loadRasterFonts().then(startMcpServer);
+  if (direct) startMcpServer();
 }
