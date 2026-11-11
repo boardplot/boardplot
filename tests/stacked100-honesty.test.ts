@@ -309,3 +309,16 @@ it('stacked100 drops the automatic mean valueLine of 100 and warns, a numeric on
   const percent = { categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }, { id: 'c', label: 'C' }], series: [{ id: 's0', label: 'Core', unit: '%', values: [{ pct: 40 }, { pct: 30 }, { pct: 50 }] }, { id: 's1', label: 'Edge', unit: '%', values: [{ pct: 30 }, { pct: 30 }, { pct: 20 }] }] };
   expect(kept(draw('mekko', percent, {})), 'mekko percent cells').toEqual([false, 1]);
 });
+
+// A percent series format on a 100% stack was ignored, so the shares printed whole ("51%") where the author asked for "51.2%".
+it('stacked100 prints shares at the percent format every series sets (bar, column)', () => {
+  const data = {
+    categories: [{ id: 'a', label: 'North' }, { id: 'b', label: 'South' }],
+    series: [{ id: 'web', label: 'Web', values: [512, 300], format: '0.0%' }, { id: 'store', label: 'Store', values: [488, 700], format: '0.0%' }],
+  };
+  for (const type of ['bar', 'column'] as const) {
+    const body = render({ format: 'svg', return: ['svg'], spec: { type, data, options: { variant: 'stacked100', title: 'T' } } }).body as { svg: string };
+    const shares = [...body.svg.matchAll(/data-part="segment"[^>]*><tspan[^>]*>([^<]+)</g)].map((m) => m[1]).sort();
+    expect(shares, type).toEqual(['30.0%', '48.8%', '51.2%', '70.0%']);
+  }
+});

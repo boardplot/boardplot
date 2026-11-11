@@ -819,4 +819,18 @@ describe('chart layout edge cases', () => {
     expect(subtitle('Revenue in euros', 'EUR')).toBe('Revenue in euros');
     expect(subtitle('Conversion', '%')).toBe('Conversion in %');
   });
+
+  // A small compact card dropped the rebase note to keep its plot, so two undrawn series left no trace on the page or in the reading.
+  it('lists the series a rebase leaves undrawn in the notes of a small compact card', () => {
+    const spec = { type: 'line', data: {
+      categories: [{ id: 'q1', label: 'Q1' }, { id: 'q2', label: 'Q2' }, { id: 'q3', label: 'Q3' }, { id: 'q4', label: 'Q4' }],
+      series: [{ id: 'us', label: 'Our company', values: [80, 90, 100, 110] }, { id: 'north', label: 'North peer', values: [null, 200, 210, 220] },
+        { id: 'south', label: 'South peer', values: [0, 40, 45, 50] }],
+    }, options: { rebase100: true, title: 'We beat both peers by 40 points since Q1 last year', subtitle: { measure: 'Total return' }, source: 'Invented', size: { width: 320, height: 240 } } };
+    const body = render({ spec, return: ['reading'] }).body as any;
+    expect(body.reading.mode).toBe('compact');
+    const notes = body.reading.notes.map((note: any) => note.text).join(' ');
+    expect(notes).toContain('North peer not shown');
+    expect(notes).toContain('South peer not shown');
+  });
 });
