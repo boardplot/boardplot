@@ -21,6 +21,7 @@ import { applyRows } from '../src/cli/rows';
 import { collapseLabelHiddenWarnings } from '../src/cli/spec';
 import { measure } from '../src/cli/measure';
 import * as chartRequest from '../src/core/request';
+import * as chartReadingModule from '../src/core/reading';
 import { resolveTheme } from '../src/core/theme';
 import { callTool, tools } from '../src/mcp/server';
 import { InputError, specFromRows } from '../src/rows';
@@ -804,6 +805,15 @@ describe('render and measure on the command line', () => {
     // A document answers per chart, so the parts --return names stay under charts.
     const doc = runCli(['render', writeDoc(dir, 'doc.json', { version: 1, charts: [{ name: 'one', ...SPEC }] }), '--quiet', '--return', 'svg,reading']);
     expect(Object.keys(JSON.parse(doc.log[0]!).charts[0])).toEqual(['name', 'svg', 'reading']);
+  });
+
+  // --quiet built the reading of every chart and then printed none of it.
+  it('does not build the reading that --quiet drops', () => {
+    const dir = tdir();
+    const reading = vi.spyOn(chartReadingModule, 'chartReading');
+    const result = runCli(['render', writeDoc(dir, 'bare.json', SPEC), '--out', join(dir, 'out'), '--quiet']);
+    expect(result.code).toBe(0);
+    expect(reading).not.toHaveBeenCalled();
   });
 
   // --quiet dropped every warning, so a shell loop never learned that a chart needed a fix.

@@ -146,7 +146,10 @@ function dispatch(verb: string, flags: Flags, seen: UsageSeen): VerbResult {
       }
       seen.spec = readSpecFile(first);
       const requested = text(flags, 'return');
-      const returned = (requested ?? 'reading').split(',').map((entry) => entry.trim());
+      // --quiet prints only the parts --return names, so it asks for no reading. Without --out, an
+      // explicit --format svg keeps the drawing it returns when return is not set.
+      const quiet = flags.quiet === true && requested === undefined && (text(flags, 'out') !== undefined || text(flags, 'format') === undefined);
+      const returned = quiet ? [] : (requested ?? 'reading').split(',').map((entry) => entry.trim());
       const result = render({
         spec: seen.spec,
         format: text(flags, 'format'),
@@ -158,7 +161,7 @@ function dispatch(verb: string, flags: Flags, seen: UsageSeen): VerbResult {
         outDir: stdout ? undefined : text(flags, 'out'),
         overwrite: flags.overwrite === true,
         fontTables: text(flags, 'font-tables'),
-        ...(stdout ? { return: [...returned, 'svg'] } : requested === undefined ? {} : { return: returned }),
+        ...(stdout ? { return: [...returned, 'svg'] } : requested === undefined && !quiet ? {} : { return: returned }),
         ...rowFlags(flags),
       });
       return quietRender(flags, stdout ? stdoutRender(result) : writtenPaths(result, flags.quiet === true));
