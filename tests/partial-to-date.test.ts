@@ -275,4 +275,17 @@ describe('running period whose label says "to date"', () => {
     const keyed = (measure(spec({ legend: 'bottom' }) as never) as any).geometry;
     expect(nodes(keyed).filter(node => String(node.id).startsWith('frame:legendLabel')).map(node => node.lines?.join(' '))).toContain('1 Nov to date');
   });
+
+  // The note printed the plain names first, so a later period came before an earlier one: "Q4 to date, Q3 MTD".
+  it('names the running periods in their authored order', () => {
+    const note = (labels: string[]) => {
+      const spec = { type: 'column', data: {
+        categories: [{ id: 'base', label: 'Base' }, ...labels.map((label, i) => ({ id: `p${i}`, label, partial: true }))],
+        series: [{ id: 'orders', label: 'Orders', values: [30, ...labels.map(() => 12)] }],
+      }, options: { title: 'Orders', size: { width: 600 } } };
+      return (render({ spec, return: ['reading'] }).body as any).reading.notes.map((item: any) => item.text);
+    };
+    expect(note(['Q3 MTD', 'Q4'])).toEqual(['Q3 MTD, Q4 to date']);
+    expect(note(['W37', 'W38 to date', 'W39'])).toEqual(['W37 to date, W38 to date, W39 to date']);
+  });
 });

@@ -604,6 +604,11 @@ it('prints n.m. for a row calc that compares a full total with a partial one', (
   expect(s.w!.displayed).toBe('5');
 });
 
+// A table head split a word ("SHAR" / "E") when the browser drew it a pixel wider than the SVG measured; the SVG breaks heads at spaces only.
+it('breaks a table head at spaces only in the browser', () => {
+  expect(tableStylesheet(resolveTheme('standard'))).toMatch(/\[data-bp-rowgroup="head"\] \[role="row"\]>\*\{[^}]*overflow-wrap:normal/);
+});
+
 // A row topN.rest false omits kept its value for the calcs that read it, but lost which child its total skipped.
 it('prints n.m. where a kept row calc compares a full total with a partial total that top-N omits', () => {
   const data = tableDataSchema.parse({
@@ -1791,9 +1796,23 @@ it('names no unit over a column that prints no figure', () => {
   expect(composed(true)).toEqual(composed(false));
 });
 
-// A table head split a word ("SHAR" / "E") when the browser drew it a pixel wider than the SVG measured; the SVG breaks heads at spaces only.
-it('breaks a table head at spaces only in the browser', () => {
-  expect(tableStylesheet(resolveTheme('standard'))).toMatch(/\[data-bp-rowgroup="head"\] \[role="row"\]>\*\{[^}]*overflow-wrap:normal/);
+// A body-row band painted its ground over the hairline that opens it, so the line vanished below the header.
+// A theme without row rules draws no hairline, and the band keeps its full width there.
+it('keeps the opening hairline of a column band visible and closes the band where no rule is drawn', () => {
+  const data = {
+    columns: [{ id: 'l', kind: 'rowLabel' }, { id: 'a', kind: 'value' }, { id: 'b', kind: 'value', band: true }],
+    rows: [{ id: 'x', label: 'North', cells: { a: 1, b: 2 } }, { id: 'y', label: 'South', cells: { a: 3, b: 4 } }],
+  };
+  const scene = (theme?: object) => requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'table', data, options: { size: { width: 360, height: 160 } }, theme } as never))).scene;
+  const parts = (nodes: SceneNode[]) => ({
+    divider: nodes.find((node): node is Extract<SceneNode, { t: 'line' }> => node.t === 'line' && node.part === 'tableGroupDivider')!,
+    bands: nodes.filter((node): node is Extract<SceneNode, { t: 'rect' }> => node.t === 'rect' && node.part === 'tableColumnBand'),
+  });
+  const ruled = parts(scene());
+  expect(ruled.bands.length).toBeGreaterThan(0);
+  for (const band of ruled.bands) expect(band.rect.x).toBeGreaterThanOrEqual(ruled.divider.x1 + ruled.divider.width / 2);
+  const bare = parts(scene({ preset: 'standard', overrides: { table: { ruleWidths: { row: 0 } } } }));
+  for (const band of bare.bands) expect(band.rect.x).toBeLessThan(bare.divider.x1);
 });
 
 // A table with a $ column and a € column printed the authored "in USD" over both, also under unitShown: the heads name each unit.

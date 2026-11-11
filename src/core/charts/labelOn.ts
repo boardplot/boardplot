@@ -9,3 +9,8 @@ export function labelOn(options: Pick<BaseOptions, 'labels'>, kind: LabelKind, n
   if (options.labels === false) return names.includes(kind) && labelsOffKeepsNames(options);
   return options.labels?.[kind] !== false;
 }
+
+/** Whether value-line labels print. `labels.valueLine: false` takes them off; `labels: false` keeps them, as before. */
+export function valueLineLabelsOn(options: Pick<BaseOptions, 'labels'>): boolean {
+  return options.labels === false || options.labels?.valueLine !== false;
+}
