@@ -139,6 +139,14 @@ export function withTypeClassCap<T>(cap: TypeWidthClass, run: () => T): T {
 }
 
 /**
+ * The width a step at 720 or 1080 px reads. Under a class cap it is at most the last pixel of the capped
+ * class, so a capped layout takes the steps of the width just under the step; outside a cap it is the width.
+ */
+export function classStepWidth(width: number): number {
+  return classCap === 'S' ? Math.min(width, 719) : classCap === 'M' ? Math.min(width, WIDE_CANVAS_MIN_WIDTH - 1) : width;
+}
+
+/**
  * The smallest size the theme gives its title across the width classes. A
  * compact frame sets its title at this size in the title weight, so
  * a small chart keeps a title that reads as one. A theme without steps
@@ -1577,13 +1585,13 @@ const CANVAS_MARGIN_STEPS: readonly { minWidth: number; margin: Margin }[] = [
 
 /** The default (unauthored) canvas margin at a canvas width. */
 function defaultCanvasMargin(width: number): Margin {
-  if (width >= WIDE_CANVAS_MIN_WIDTH) return SPACE_CANVAS_WIDE;
+  if (classStepWidth(width) >= WIDE_CANVAS_MIN_WIDTH) return SPACE_CANVAS_WIDE;
   for (const step of CANVAS_MARGIN_STEPS) if (width >= step.minWidth) return step.margin;
   return CANVAS_MARGIN_STEPS[CANVAS_MARGIN_STEPS.length - 1]!.margin;
 }
 
 export function spaceTokens(theme: Theme, width: number): SpaceTokens {
-  const wide = width >= WIDE_CANVAS_MIN_WIDTH;
+  const wide = classStepWidth(width) >= WIDE_CANVAS_MIN_WIDTH;
   const canvas = theme.space.canvas;
   const margin = wide ? canvas?.wide : canvas?.base;
   const fallback = defaultCanvasMargin(width);

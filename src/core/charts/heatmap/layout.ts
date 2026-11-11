@@ -40,6 +40,7 @@ import { sequentialShare } from '../../colorRecipes';
 import { niceBelow, niceStep } from '../../scale';
 import {
   canvasMargin,
+  classStepWidth,
   colorblindPaint,
   paintColor,
   panelTypeClass,
@@ -243,7 +244,7 @@ export function layoutHeatmap(
   const turned = (bubbleStyle || harveyStyle) && options[TURNED] === true;
   /** The vertical list form of a turned Harvey row: one ball and its name per line. */
   const harveyList = harveyStyle && turned;
-  const harveyWide = harveyStyle && !harveyList && size.width >= 720;
+  const harveyWide = harveyStyle && !harveyList && classStepWidth(size.width) >= 720;
 
   // ---- normalize ----
   if (!data || !Array.isArray(data.categories) || data.categories.length === 0) {
@@ -1003,7 +1004,7 @@ export function layoutHeatmap(
   const plot: Rect = { x: gridX, y: gridY, w: gridW, h: gridH };
   // A styled value matrix row is 22 px on a card under 480 px and
   // 26 px under 720 px (28 wider), never less than a value line or its name needs.
-  const rowFloor = valueStyle && size.width < 720 ? (size.width < 480 ? VALUE_ROW_CARD : VALUE_ROW_NARROW) : valueStyle && size.width >= 960 ? VALUE_ROW_WIDE : 28;
+  const rowFloor = valueStyle && classStepWidth(size.width) < 720 ? (size.width < 480 ? VALUE_ROW_CARD : VALUE_ROW_NARROW) : valueStyle && size.width >= 960 ? VALUE_ROW_WIDE : 28;
   // The value text steps down before any value is hidden. The matrix prints one text for
   // every cell and the key: first without the % sign the unit line names, then with one
   // decimal fewer, down to the precision that still tells the range's values apart. The first
@@ -1030,7 +1031,7 @@ export function layoutHeatmap(
   // A value matrix whose columns hold no value even at the label floor reads from colour
   // alone, so its rows need no value line.
   const valueLineH = valueStyle && cellLabelsOn && !allFit() ? 0 : labelFont.size * 1.2 + 8;
-  const harveyRow = harveyList ? HARVEY_LIST_ROW : size.width >= 720 ? HARVEY_ROW : HARVEY_ROW_CARD;
+  const harveyRow = harveyList ? HARVEY_LIST_ROW : classStepWidth(size.width) >= 720 ? HARVEY_ROW : HARVEY_ROW_CARD;
   const naturalCellH = bubbleStyle ? bubbleNaturalH : harveyStyle ? Math.max(harveyRow, maxOf(rowLines.map(label => label.h + 4))) : Math.max(bubble ? cellW : 0,
     Math.max(rowFloor, valueLineH, maxOf(rowLines.map(label => label.h + 4))));
   // A row keeps 28 px. The colour key's own row, where it cannot sit beside

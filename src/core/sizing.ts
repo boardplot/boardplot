@@ -1,7 +1,7 @@
 import { PLAN_ONLY, isPlanned, materializeLayout, withPlanInputs } from './layoutPlan';
 import { boundsOf, type Rect, type Size } from './geometry';
 import { NormalizeError, resolveSize, resolveSubtitle } from './normalize/shared';
-import { panelTypeClass, typeClassCap, WIDE_CANVAS_MIN_WIDTH } from './theme';
+import { classStepWidth, panelTypeClass, typeClassCap, WIDE_CANVAS_MIN_WIDTH } from './theme';
 import { DEFAULT_TARGET, resolveTargetSize, TARGET_SIZE, type TargetSizeOptions } from './target';
 import { getChart, type ChartCore, type ChartOptions } from './registry';
 import { singleStops } from './strings';
@@ -308,18 +308,18 @@ const TALL_ASPECT_CAP_WIDTH = 720;
 
 export function hostlessHeight(policy: ChartSizing, width: number, fallbackHeight: number, card = false): number {
   const full = aspectHeight(policy, { width, height: fallbackHeight });
-  const aspect = card && policy.fit === 'fill' && policy.aspect !== '16:9' && width < WIDE_CANVAS_MIN_WIDTH
+  const aspect = card && policy.fit === 'fill' && policy.aspect !== '16:9' && classStepWidth(width) < WIDE_CANVAS_MIN_WIDTH
     ? Math.min(full, aspectHeight(policy, { width: TALL_ASPECT_CAP_WIDTH, height: fallbackHeight })) : full;
   // A card starts at the type's own minimum height, never at a 16:9 strip of a
   // narrow width; the plot floor then grows it (`plotFloorHeight`).
   const floor = card && policy.fit === 'fill' ? policy.minHeight : requestFloor(policy).height;
   // A fill chart does not start at 16:9 (540 px at 960); it starts at its minimum and the
   // plot reserve (`autoPlotPx`) grows it to its content. The wide class keeps 16:9.
-  if (card && policy.fit === 'fill' && policy.aspect === '16:9' && width < WIDE_CANVAS_MIN_WIDTH) return floor;
+  if (card && policy.fit === 'fill' && policy.aspect === '16:9' && classStepWidth(width) < WIDE_CANVAS_MIN_WIDTH) return floor;
   // Below the wide class a card whose floor is above its aspect height
   // takes the floor in whole px, not the next ladder step (960 px at a4 would be 681 px for a
   // 456 px floor). The wide class keeps the ladder.
-  if (card && policy.fit === 'fill' && floor > aspect && width < WIDE_CANVAS_MIN_WIDTH) return Math.ceil(floor);
+  if (card && policy.fit === 'fill' && floor > aspect && classStepWidth(width) < WIDE_CANVAS_MIN_WIDTH) return Math.ceil(floor);
   return policy.fit === 'fill' && floor > aspect
     ? ladderHeights(width).find(step => step.height >= floor)?.height ?? floor : Math.max(floor, aspect);
 }
@@ -472,7 +472,7 @@ export function plotRepairHeight(geometry: Pick<Geometry, 'size' | 'plot' | 'fra
  * the plain floor (PLOT_FLOOR_PX). The wide class (W-L, from 1080 px) keeps its 16:9 start.
  */
 export function autoPlotPx(target: RenderTarget, width: number): number {
-  return width >= WIDE_CANVAS_MIN_WIDTH ? PLOT_FLOOR_PX[target] : Math.max(PLOT_FLOOR_PX[target], Math.round(150 + 0.115 * width));
+  return classStepWidth(width) >= WIDE_CANVAS_MIN_WIDTH ? PLOT_FLOOR_PX[target] : Math.max(PLOT_FLOOR_PX[target], Math.round(150 + 0.115 * width));
 }
 
 /**
@@ -524,12 +524,14 @@ export const MEKKO_UNIT_NARROW_PLOT_PX = -40;
  * Explicit breaks and the wide canvas keep their existing plot targets.
  */
 function wholeBridgePlotPx(type: string, options: object | undefined, width: number | undefined): number {
-  if ((type !== 'waterfall' && type !== 'pvm') || width === undefined || width >= WIDE_CANVAS_MIN_WIDTH) return 0;
+  if ((type !== 'waterfall' && type !== 'pvm') || width === undefined || classStepWidth(width) >= WIDE_CANVAS_MIN_WIDTH) return 0;
+  // The 720 px step reads the width a class cap leaves (classStepWidth); the other steps read the width.
+  const narrow = classStepWidth(width) < 720;
   const bridge = options as { variant?: string; valueAxis?: { break?: unknown } } | undefined;
   if (bridge?.valueAxis?.break !== undefined && bridge.valueAxis.break !== false) return 0;
-  if (type === 'pvm') return width < CARD_CLASS_WIDTH ? 20 : width < 720 ? 55 : 40;
-  if (bridge?.variant === 'horizontal') return width < CARD_CLASS_WIDTH ? 0 : width < 720 ? 15 : width < 960 ? 40 : 60;
-  return width < 400 ? 80 : width < 720 ? 72 : Math.max(73, 100 - (width - 720) * 27 / 240);
+  if (type === 'pvm') return width < CARD_CLASS_WIDTH ? 20 : narrow ? 55 : 40;
+  if (bridge?.variant === 'horizontal') return width < CARD_CLASS_WIDTH ? 0 : narrow ? 15 : width < 960 ? 40 : 60;
+  return width < 400 ? 80 : narrow ? 72 : Math.max(73, 100 - (width - 720) * 27 / 240);
 }
 
 /** The plot an automatic height reserves on top of autoPlotPx for this type and variant (negative: less). */
@@ -1124,7 +1126,7 @@ function grownForNotes<D, O extends ChartOptions, M extends object, DV extends o
   // On a card the content floor is often above every ladder step (the
   // 'tall' step at 480 px is 361 px), so the search had no step to try and a value stayed in the
   // note (column.stacked100 at 480 px). Below the wide class it may also grow by up to a quarter.
-  const steps = width >= WIDE_CANVAS_MIN_WIDTH || ladder.length > 0 ? ladder
+  const steps = classStepWidth(width) >= WIDE_CANVAS_MIN_WIDTH || ladder.length > 0 ? ladder
     : [Math.ceil(first.size.height * (1 + NOTE_GROWTH_SHARE))];
   let below = first.size.height;
   let top: LayoutResult<M, DV> | undefined;
@@ -1134,7 +1136,7 @@ function grownForNotes<D, O extends ChartOptions, M extends object, DV extends o
     if (next.refused || owes(next) || short(next)) { below = height; continue; }
     // Below the wide class the chart takes the smallest whole-px height
     // between the last step that still owes a note and this one, not the ladder step itself.
-    if (width >= WIDE_CANVAS_MIN_WIDTH) return next;
+    if (classStepWidth(width) >= WIDE_CANVAS_MIN_WIDTH) return next;
     let best = next;
     let low = below;
     let high = height;
@@ -1152,7 +1154,7 @@ function grownForNotes<D, O extends ChartOptions, M extends object, DV extends o
   // (A goal of one fewer than the first layout depends on how short the first was: a smaller key
   // there noted one more and stopped the search at a height that still noted a label the top seats.)
   const noted = (layout: LayoutResult<M, DV>) => layout.refused ? Infinity : layout.labels.filter(notedForSize).length;
-  if (width >= WIDE_CANVAS_MIN_WIDTH || top === undefined || noted(top) >= noted(first) || short(top)) return first;
+  if (classStepWidth(width) >= WIDE_CANVAS_MIN_WIDTH || top === undefined || noted(top) >= noted(first) || short(top)) return first;
   const goal = noted(top);
   let best = top;
   let low = first.size.height;
@@ -1213,7 +1215,7 @@ function grownForFurniture<D, O extends ChartOptions, M extends object, DV exten
   // The furniture does not shrink on a taller canvas, so the height it needs is at least
   // furniture / budget. Above the tallest step no ladder height keeps the budget: no layout to try.
   if (top === undefined || Math.ceil(furnitureShare(first) * first.size.height / budget) > top) return first;
-  if (width >= WIDE_CANVAS_MIN_WIDTH) {
+  if (classStepWidth(width) >= WIDE_CANVAS_MIN_WIDTH) {
     for (const height of steps) {
       const next = at(height);
       if (!over(next)) return next;

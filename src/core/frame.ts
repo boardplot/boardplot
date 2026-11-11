@@ -15,7 +15,7 @@ import { furnitureBudget } from './aspect';
 import { COLLECT_IDENTITIES, identityCollector, type IdentityCollectionOptions, identityAppearance, identityCollisionWarnings, type SeriesIdentity as LegendItemInput } from './seriesIdentity';
 import { dedupeLegendKeys } from './label/legendFidelity';
 import type { Margin, Rect, Size } from './geometry';
-import { resolveTargetTheme, panelTypeClass, smallestTitleSize, spaceTokens, emphasisWeight, secondaryType, strokeToken, WIDE_CANVAS_MIN_WIDTH } from './theme';
+import { classStepWidth, resolveTargetTheme, panelTypeClass, smallestTitleSize, spaceTokens, emphasisWeight, secondaryType, strokeToken, WIDE_CANVAS_MIN_WIDTH } from './theme';
 import { formatScenarios, resolveSubtitle } from './normalize/shared';
 import type { TextMeasurer } from './text';
 import { DEFAULT_TARGET, resolveTargetSize, scaleTextAtFloor, targetFloorsPx, targetTypeSizesPx } from './target';
@@ -2114,7 +2114,7 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
   }
   // Header room below the wide width class (12 -> 8 px) is freed; sizing gives it to the plot.
   if (!input.cardGaps && (input.subtitle || input.title) && theme.space.gap?.subtitlePlot === undefined
-    && size.width < WIDE_CANVAS_MIN_WIDTH) recordFreedChrome(frame, 'header-gap', REFERENCE_SUBTITLE_PLOT_GAP - tokens.gapSubtitlePlot);
+    && classStepWidth(size.width) < WIDE_CANVAS_MIN_WIDTH) recordFreedChrome(frame, 'header-gap', REFERENCE_SUBTITLE_PLOT_GAP - tokens.gapSubtitlePlot);
 
   // ---- notes, source and credit (bottom): notes grouped by kind ----
   // Every note has a kind (core/notes). The frame prints the author's notes
@@ -2217,7 +2217,7 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
     frame.footerRect = { x: contentX, y: bottomY, w: contentW, h: size.height - margin.bottom - bottomY };
     bottomY -= input.eventKey ? KEY_NOTE_GAP : footGap;    // 11 px footer text and a 10 px key-to-footer gap.
     recordFreedChrome(frame, 'footer-text', footLines * (withFamily(theme.type.footnote).size - footFont.size) * (footFont.lineHeight ?? 1.3));
-    if (!input.cardGaps && !input.eventKey && bottomKey && theme.space.gap?.axisFootnote === undefined && size.width < WIDE_CANVAS_MIN_WIDTH)
+    if (!input.cardGaps && !input.eventKey && bottomKey && theme.space.gap?.axisFootnote === undefined && classStepWidth(size.width) < WIDE_CANVAS_MIN_WIDTH)
       recordFreedChrome(frame, 'key-footer-gap', REFERENCE_FOOTER_GAP - tokens.gapKeyFootnote);
   }
   // Layout-only input also keeps compact notes and their original reference numbers.

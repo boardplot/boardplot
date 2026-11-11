@@ -88,6 +88,7 @@ import {
   resolveSemanticPaletteTheme,
   semanticPalettePaint,
   signedFillPaint,
+  classStepWidth,
   emphasisLabelTheme,
   emphasisWeight,
   strokeToken,
@@ -165,7 +166,7 @@ interface NormSer {
  * Pin geometry: a data-weight stem and a head
  * that reads at slot scale, a step heavier on the wide cards (720 px up).
  */
-const pinGeometry = (theme: Parameters<typeof strokeToken>[0], width: number): { r: number; stem: number } => width >= 720
+const pinGeometry = (theme: Parameters<typeof strokeToken>[0], width: number): { r: number; stem: number } => classStepWidth(width) >= 720
   ? { r: 5, stem: strokeToken(theme, 'data') * 1.25 }
   : { r: 4.5, stem: strokeToken(theme, 'data') };
 

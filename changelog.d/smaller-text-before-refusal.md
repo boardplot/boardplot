@@ -1,0 +1,3 @@
+### Fixed
+
+- A chart that does not fit with the larger text of its width now draws with the smaller text, as it does just under the step (720 and 1080 px). Before, only a size refusal that asked for more width stepped down, and only one class: a diagram refused for unplaced node labels at 720 px and a table that drew at 1079 px only with the small text stayed refused. Under the smaller text, margins and the other width steps also read the width just under the step, so the 720 px drawing is the 719 px drawing in a wider frame. `measure`, `canDraw` and React name the same minimum width. A size refusal that asks only for more height, `belowMinimum: 'refuse'` and a grid panel keep the refusal.
