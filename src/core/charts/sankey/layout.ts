@@ -18,7 +18,7 @@ import { structureCount } from '../../structureCounts';
 import { authoredNotes, fixedPlotChrome, frameTextOptions, hiddenNoteWith, markNotedLabels, solveFrame } from '../../frame';
 import { shareSetFormatter } from '../../format';
 import { valueNote } from '../../notes';
-import { formatterFromExample, seriesRasterFormatter } from '../../formatSpec';
+import { formatterFromExample, seriesRasterFormatter, setMagnitude } from '../../formatSpec';
 import { round2, type Rect } from '../../geometry';
 import { pushAll } from '../../arrays';
 import { generatedIdWarnings } from '../../schema/generatedColumns';
@@ -142,7 +142,9 @@ function layoutSankeyPass(data: SankeyData, options: SankeyOptions): Geometry<Sa
   const percentExample = sankeyShareFormat(options);
   const valueExample = percentExample ? undefined : options.format;
   const values = nodes.map((node) => node.value);
-  const numberFormat = seriesRasterFormatter(valueExample, [...values, ...links.map((link) => link.value)], locale, options.unit, options.target);
+  // Node and link values are one set: one magnitude, so no label steps down to its own (935M · 1,505M, not 935M · 1.505B).
+  const valueSet = [...values, ...links.map((link) => link.value)];
+  const numberFormat = seriesRasterFormatter(valueExample, valueSet, locale, options.unit, options.target, undefined, false, setMagnitude(valueSet, valueExample, options.unit, options.target));
   const fmt = numberFormat.fmt;
   const shareOf = (node: GraphNode) => (columnTotal[node.column]! > 0 ? (node.value / columnTotal[node.column]!) * 100 : 0);
   const shareFmt = percentExample ? formatterFromExample(percentExample, locale) : shareSetFormatter(nodes.map(shareOf), locale).format;

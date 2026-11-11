@@ -210,6 +210,19 @@ describe('funnel truth contract', () => {
     expect(changedGeometry.a11y).toEqual(geometry.a11y);
   });
 
+  // A set one magnitude fits on main changed: "2M · 1M" printed "2,000k · 1,000k", because 999,999 rounds up to 1M.
+  it('keeps a set whose labels print at one magnitude', () => {
+    const geometry = layout({ categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], series: [{ id: 's', values: [2000000, 999999] }] }, { target: 'report' });
+    expect(geometry.a11y.desc).toContain('A 2M');
+    expect(geometry.a11y.desc).toContain('B 1M');
+  });
+
+  // A series format printed "1.18B" on the bar, but the description switched to the set's "1,180M".
+  it.each(['rows', 'centered'])('keeps the totals of a funnel with a series format in the %s variant', (variant) => {
+    const geometry = layout({ categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], series: [{ id: 's', format: '1.23B', values: [1180000000, 590000000] }] }, { target: 'report', variant });
+    expect(geometry.a11y.desc).toContain('A 1.18B');
+  });
+
   it('warns on growth and fails closed in visible and accessible labels', () => {
     const geometry = layout({
       categories: [

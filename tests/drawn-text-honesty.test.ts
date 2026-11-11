@@ -465,6 +465,46 @@ describe('number census', () => {
     revenue.target = { number: 1.5, format: '$1,234' };
     expect(census('bullet', spec, 600).filter((f) => f.id === 'delta:revenue')).toEqual([]);
   });
+
+  const funnel = (won: number[], lost: number[]): Spec => ({
+    data: { categories: ['a', 'b', 'c', 'd'].map((id) => ({ id, label: id.toUpperCase() })), series: [{ id: 'won', label: 'Won', values: won }, { id: 'lost', label: 'Lost', values: lost }] },
+    options: { target: 'report' },
+  });
+
+  // A funnel printed "1.18B · 590M · 290M · 140M" in one set; a reader had to convert B and M to compare two bars.
+  it('prints the values of a funnel that cross a magnitude step at one magnitude', () => {
+    expect(of(census('funnel', funnel([1.18e9, 5.9e8, 2.9e8, 1.4e8], [8e6, 4e6, 2e6, 1e6]), 720), 'mixed-units')).toEqual([]);
+  });
+
+  // A set that no single magnitude fits (1.18B down to 400k) keeps one scale per label by decision; the census called that a defect,
+  // and must still report a mixed label in a set that one magnitude fits.
+  it('accepts mixed magnitudes only in a set that no single magnitude fits', () => {
+    expect(of(census('funnel', funnel([1.18e9, 5.9e8, 2.9e8, 1.4e8], [8e6, 4e6, 2e6, 4e5]), 720), 'mixed-units')).toEqual([]);
+    expect(of(census('funnel', funnel([1.18e9, 5.9e8, 2.9e8, 1.4e8], [8e6, 4e6, 2e6, 1e6]), 720, retext('label:segment:a:won', '1.18B')), 'mixed-units')).not.toEqual([]);
+  });
+
+  // Sankey nodes and a butterfly pane (and a pyramid, drawn by it) printed "1.9B · 400M" in one set.
+  it.each([
+    ['sankey', { nodes: ['a', 'b', 'c'].map((id) => ({ id, label: id.toUpperCase() })), links: [{ source: 'a', target: 'b', value: 1.5e9 }, { source: 'a', target: 'c', value: 4e8 }] }],
+    ['butterfly', { categories: ['a', 'b', 'c'].map((id) => ({ id, label: id.toUpperCase() })), series: [{ id: 'won', label: 'Won', values: [1.18e9, 5.9e8, 1.4e8] }, { id: 'lost', label: 'Lost', values: [9e8, 3e8, 2e8] }] }, { a: 'won', b: 'lost' }],
+  ] as [string, unknown, Record<string, unknown>?][])('prints the values of one %s set at one magnitude', (type, data, options) => {
+    expect(of(census(type, { data, options: { target: 'report', ...options } }, 720), 'mixed-units')).toEqual([]);
+  });
+
+  // A butterfly row printed "1,070M" on one side and "2.10B" on the other, because each side picked its own magnitude.
+  it.each([true, false])('prints both sides of a butterfly row at one magnitude (sharedScale %s)', (sharedScale) => {
+    const butterfly: Spec = { data: { categories: ['north', 'south', 'east', 'west'].map((id) => ({ id, label: id })), series: [{ id: 'last', label: 'Last year', values: [1.07e9, 5.29e8, 4.2e8, 2.38e8] }, { id: 'this', label: 'This year', values: [2.1e9, 1.3e9, 1.1e9, 1.05e9] }] }, options: { a: 'last', b: 'this', sharedScale, target: 'report' } };
+    const geometry = (measure({ type: 'butterfly', data: butterfly.data, options: { ...butterfly.options, size: { width: 720 } } } as never) as { geometry: Geometry }).geometry;
+    const north = geometry.labels.filter((label) => label.owner?.categoryId === 'north' && label.kind === 'point').map((label) => label.text);
+    expect(north).toEqual(['1,070M', '2,100M']);
+  });
+
+  // A butterfly pane ("1M · 1k", where 1,000k fits) went unreported because the other pane's 1 left no magnitude for both.
+  // Side b has its own format, so each side is its own set.
+  it('reports a mixed pane that one magnitude fits, whatever the other pane holds', () => {
+    const butterfly: Spec = { data: { categories: [{ id: 'x', label: 'X' }, { id: 'y', label: 'Y' }], series: [{ id: 'a', label: 'A', values: [1e6, 1e3] }, { id: 'b', label: 'B', format: '1.0', values: [1, 1] }] }, options: { a: 'a', b: 'b', sharedScale: false, target: 'report' } };
+    expect(of(census('butterfly', butterfly, 720, retext('label:point:a:x', '1M')), 'mixed-units').map((finding) => finding.id)).toEqual(['|kind:point:a']);
+  });
 });
 
 describe('a key label leaves room for its own value', () => {

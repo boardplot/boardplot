@@ -17,8 +17,23 @@ import type { Theme } from '../../types/theme';
 import type { FunnelDerived } from './layout';
 import { disclosureNote } from '../../notes';
 import { emptyIdRecord } from '../../idRecords';
+import { setMagnitude } from '../../formatSpec';
+import type { RenderTarget } from '../../types/options';
 
 type Raster = { fmt: (v: number) => string; fmtPercent: (v: number) => string; forSeries: (series: { format?: string; unit?: string }, cellFormat?: string) => (v: number) => string };
+
+/**
+ * One magnitude for the values and the printed totals of a funnel (setMagnitude). An
+ * authored format on the chart, a series or a cell keeps one scale per label, so the
+ * description's totals print as before.
+ */
+export function funnelSetMagnitude(
+  plotted: readonly Series[], cells: readonly (readonly Cell[])[], values: readonly (readonly (number | null)[])[],
+  totals: readonly Record<Id, number | null>[], options: { format?: string; unit?: string; target?: RenderTarget },
+): ReturnType<typeof setMagnitude> {
+  if (plotted.some((series) => series.format) || cells.some((row) => row.some((cell) => cellMeta(cell)?.format))) return undefined;
+  return setMagnitude([...values.flat(), ...totals.flatMap((total) => Object.values(total))], options.format, options.unit, options.target);
+}
 
 /**
  * The value and total texts of the rows and the centered layout. A percent
