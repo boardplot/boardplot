@@ -1534,6 +1534,8 @@ export function unitUnprinted(
   if (!unit || options?.unitShown === true || drawn.refused) return false;
   // A relative variance prints its differences in % on purpose; the unit is the base's, not the drawing's.
   if (drawn.type === 'variance' && (options as { variant?: string } | undefined)?.variant === 'relative') return false;
+  // A table whose column heads print their own, different units leaves options.unit out on purpose (table-unit-overridden).
+  if (drawn.type === 'table' && (drawn.derived as { table?: { columnUnits?: true } } | undefined)?.table?.columnUnits) return false;
   // Shares print with their own % sign, and options.unit names values no label shows.
   if (printsOnlyShares(drawn.type, options, drawn.derived)) return false;
   const subtitle = resolveSubtitle(options?.subtitle as BaseOptions['subtitle']);
