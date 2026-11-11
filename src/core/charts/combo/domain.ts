@@ -14,7 +14,7 @@ import { formatAutomaticPercent, formatShare } from '../../format';
 import { roundingUnavailable, shareRoundingNotes, sumConsistentShares, type RoundingAdjustment } from '../../shareRounding';
 import { comboValueLabels, FIRST_END_BELOW_TOTALS } from './endpoints';
 import { unitConflict, unitConflictRefusal } from '../../schema/units';
-import { formatStatWithSpec, formatterFromExample, memoFormatterFromExample, percentRasterFormatter, seriesRasterFormatter, unitMagnitude } from '../../formatSpec';
+import { formatStatWithSpec, formatterFromExample, memoFormatterFromExample, parseFormatExample, percentRasterFormatter, roundedNumber, seriesRasterFormatter, unitMagnitude } from '../../formatSpec';
 import { averageMarkerLine, averageMarkerMean, averageMarkerSpan, averageMarkerScope, averageOfUnaddedSums, warnIncompleteStacks } from '../band/stacks';
 import { anomalyCorridor, anomalyModel, refuseAnomalySpec } from '../column/anomaly';
 import type { LineAnomaly } from '../line/model';
@@ -336,6 +336,11 @@ function primaryDomain(options: ComboOptions, gate: Gate, extent: { lo: number; 
 
 /** The step of a pinned range: a ladder step that divides it, in the count nearest `rows`, more rows on a tie; else an even division. */
 function pinnedStep(lo: number, hi: number, rows: number): number {
+  return dividingStep(lo, hi, rows) ?? ((hi - lo) / rows || 1);
+}
+
+/** A ladder step that divides the range, in the count nearest `rows`, more rows on a tie. */
+function dividingStep(lo: number, hi: number, rows: number): number | undefined {
   const even = (hi - lo) / rows || 1;
   const steps = ladderSteps(even / 2, even * 2, PRIMARY_MANTISSAS)
     .filter((step) => Math.abs((hi - lo) / step - Math.round((hi - lo) / step)) < 1e-9);
@@ -344,7 +349,26 @@ function pinnedStep(lo: number, hi: number, rows: number): number {
     const off = Math.abs((hi - lo) / step - rows);
     const bestOff = Math.abs((hi - lo) / best - rows);
     return off < bestOff - 1e-9 || (Math.abs(off - bestOff) <= 1e-9 && step < best) ? step : best;
-  }, undefined) ?? even;
+  }, undefined);
+}
+
+/**
+ * Ticks for a pinned range no ladder step divides: the multiples of a ladder step inside it,
+ * in the count nearest `rows`. An even division (1.0, 1.55, 2.1 over 1.0–3.2) puts ticks
+ * on values the axis format rounds unevenly ("1.6", "2.7").
+ */
+function latticeTicks(lo: number, hi: number, rows: number): { step: number; from: number; to: number } | undefined {
+  const even = (hi - lo) / rows || 1;
+  let best: { step: number; from: number; to: number; off: number } | undefined;
+  for (const step of ladderSteps(even / 2, even * 2, PRIMARY_MANTISSAS)) {
+    const from = roundTick(Math.ceil(lo / step - 1e-9) * step);
+    const to = roundTick(Math.floor(hi / step + 1e-9) * step);
+    const intervals = Math.round((to - from) / step);
+    if (intervals < 1) continue;
+    const off = Math.abs(intervals - rows);
+    if (!best || off < best.off) best = { step, from, to, off };
+  }
+  return best && { step: best.step, from: best.from, to: best.to };
 }
 
 /**
@@ -367,6 +391,8 @@ function rightAxis(
   const lang = options.locale?.language;
   let secondaryDomain: [number, number] | undefined;
   let secStep = 1;
+  // Where the ticks run when they do not start and end at the domain's ends.
+  let secTickRange: [number, number] | undefined;
   if (secondaryActive && secOpt?.domain) {
     // Pinned secondary domain: the author declares the
     // scale's meaning (0–100% of a total) and data may only WIDEN it. The
@@ -375,7 +401,15 @@ function rightAxis(
     const lo = Math.min(secOpt.domain[0], raw.lo);
     const hi = Math.max(secOpt.domain[1], raw.hi);
     secStep = pinnedStep(lo, hi, nTicks - 1);
+    // An even division whose ticks the authored tick format rounds ("1.6" for 1.55) moves the ticks onto a ladder step's multiples.
+    const example = secOpt.format ?? secondaryRequested.find((s) => s.format)?.format;
+    const spec = example === undefined ? undefined : parseFormatExample(example);
+    const rounds = spec !== undefined && dividingStep(lo, hi, nTicks - 1) === undefined
+      && Array.from({ length: nTicks }, (_, i) => roundTick(lo + secStep * i)).some((tick) => roundedNumber(tick, spec) !== tick);
+    const lattice = rounds ? latticeTicks(lo, hi, nTicks - 1) : undefined;
+    if (lattice) secStep = lattice.step;
     secondaryDomain = [roundTick(lo), roundTick(hi)];
+    if (lattice) secTickRange = [lattice.from, lattice.to];
   } else if (secondaryActive && fixed !== undefined) {
     secStep = fixed.step;
     secondaryDomain = [roundTick(fixed.start), roundTick(fixed.start + fixed.step * (nTicks - 1))];
@@ -402,8 +436,9 @@ function rightAxis(
     secondaryRequested.every((s) => s.unit === '%' || s.vals.every((val) => val.v === null || val.isPct)) &&
     secondaryRequested.some((s) => s.unit === '%' || s.vals.some((val) => val.isPct));
   if (secondaryDomain) {
-    const rows = Math.round((secondaryDomain[1] - secondaryDomain[0]) / secStep);
-    const secTickValues = Array.from({ length: rows + 1 }, (_, i) => roundTick(secondaryDomain![0] + secStep * i));
+    const [tickFrom, tickTo] = secTickRange ?? secondaryDomain;
+    const rows = Math.round((tickTo - tickFrom) / secStep);
+    const secTickValues = Array.from({ length: rows + 1 }, (_, i) => roundTick(tickFrom + secStep * i));
     // Tick precision rasters over the TICK SET (see axis.ts tickFormatter):
     // an integer secondary ladder reads "20", not "20.0", even when the
     // secondary DATA labels carry a decimal. One decimal count for the whole
