@@ -974,6 +974,33 @@ function buildExhibit(
   ...(derived.total?.retention.flatMap((_, period) => visible.includes(period) ? [] : [claimIdOf('cohort-total', `t${period}`)]) ?? [])];
   // The claim a printed cell names: its cohort's rate, or the weighted Total of the period.
   const cellClaim = (row: { id: Id; kind?: string }, period: number) => row.kind === 'total' ? claimIdOf('cohort-total', `t${period}`) : claimIdOf('cohort', row.id, `t${period}`);
+  const cohortById = new Map(derived.cohorts.map(cohort => [cohort.id, cohort]));
+  const cells = rowData.map(row => visible.map(period => {
+    const retention = period < row.observedPeriods ? row.retention[period] ?? null : null;
+    const missing = row.kind === 'total'
+      ? derived.cohorts.some(cohort => missingCohortRate(cohort, period, derived.basis))
+      : missingCohortRate(cohortById.get(row.id)!, period, derived.basis);
+    // A filled cell reads from its fill. A cell with no fill keeps its text, because an empty column says nothing.
+    if ((retention === null && !missing) || (options.figures === false && style === 'stepped' && retention !== null && period !== 0)) {
+      return { retention, missing, printed: undefined };
+    }
+    const text = missing ? '—' : formatValue(retention!, period);
+    // Total rates follow the same threshold key as cohort rates.
+    const highlighted = style === 'pure' && retention !== null && pureEmphasis(options, period, retention);
+    const font = row.kind === 'total' && style !== 'pure' ? totalFont : highlighted ? strongFont : cellFont;
+    return { retention, missing, printed: { text, highlighted, font, measured: measure(text, font) } };
+  }));
+  // Without an authored period alignment, one period column's figures share one right edge centred under its head.
+  const periodColumns = overrides?.periods?.align === undefined ? visible.map((_, column) => {
+    const widths = cells.flatMap(row => {
+      const cell = row[column]!.printed;
+      return cell ? [cell.measured.width] : [];
+    });
+    return {
+      right: columnAt(column, 'middle') + Math.max(0, maxOf(widths)) / 2,
+      flush: new Set(widths.map(width => Math.round(width * 100))).size > 1,
+    };
+  }) : undefined;
   rowData.forEach((row, rowIndex) => {
     // A summary row on top keeps its average bases under it and its gap above the cohorts.
     const y = tableTop + headerH + rowIndex * rowH + (totalOnTop
@@ -1028,10 +1055,7 @@ function buildExhibit(
     }
 
     visible.forEach((period, column) => {
-      const retention = period < row.observedPeriods ? row.retention[period] ?? null : null;
-      const missing = row.kind === 'total'
-        ? derived.cohorts.some(cohort => missingCohortRate(cohort, period, derived.basis))
-        : missingCohortRate(derived.cohorts.find(cohort => cohort.id === row.id)!, period, derived.basis);
+      const { retention, missing, printed } = cells[rowIndex]![column]!;
       const rect: Rect = {
         x: monthLeft + column * monthW,
         y,
@@ -1072,15 +1096,11 @@ function buildExhibit(
         nodeId,
         retention,
       });
-      // A filled cell reads from its fill. A cell with no fill keeps its text, because an empty column says nothing.
-      if ((retention === null && !missing) || (options.figures === false && style === 'stepped' && retention !== null && period !== 0)) {
+      if (!printed) {
         if (period < row.observedPeriods) unprinted.push(cellClaim(row, period));
         return;
       }
-      const text = missing ? '—' : formatValue(retention!, period);
-      // Total rates follow the same threshold key as cohort rates.
-      const highlighted = style === 'pure' && retention !== null && pureEmphasis(options, period, retention);
-      const font = row.kind === 'total' && style !== 'pure' ? totalFont : highlighted ? strongFont : cellFont;
+      const { text, highlighted, font, measured } = printed;
       const ink: Paint = period === 0
         ? mutedInk
         : highlighted
@@ -1089,17 +1109,21 @@ function buildExhibit(
           : style === 'stepped' && (bin ?? 0) >= 3
             ? { token: 'inkInverse' }
             : { token: 'ink' };
+      const periodColumn = periodColumns?.[column];
+      const labelRect = periodColumn
+        ? { x: periodColumn.right - measured.width, y: y + (rowH - measured.height) / 2, w: measured.width, h: measured.height }
+        : measuredRect(text, font, periodCellAlign === 'middle' ? rect.x + rect.w / 2 : anchorIn(periodCellAlign, rect.x, rect.w), y, periodCellAlign);
       addLabel(
         `cohort-cell:${row.id}:t${period}`,
         text,
-        measuredRect(text, font, periodCellAlign === 'middle' ? rect.x + rect.w / 2 : anchorIn(periodCellAlign, rect.x, rect.w), y, periodCellAlign),
+        labelRect,
         font,
         ink,
         { seriesId: row.id, categoryId: `t${period}` },
         row.kind === 'total' ? 'total' : 'point',
         paint,
         undefined,
-        undefined,
+        periodColumn?.flush ? 'end' : undefined,
         cellClaim(row, period),
       );
     });
