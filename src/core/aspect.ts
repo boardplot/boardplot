@@ -13,9 +13,10 @@
  */
 
 import type { Size } from './geometry';
+import { classStepWidth } from './theme';
 
 /** Maximum height share for the title, key, axes and footer together. */
-export const furnitureBudget = (width: number): number => width < 720 ? 0.5 : 0.4;
+export const furnitureBudget = (width: number): number => classStepWidth(width) < 720 ? 0.5 : 0.4;
 
 export type LadderStepName = 'strip' | 'band' | 'wide' | 'broad' | 'std' | 'a4' | 'tall';
 

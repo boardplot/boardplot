@@ -14,7 +14,7 @@ import { chartRefusals, isRefused } from './schema/refusals';
 import { movedGridWarnings, movedWidthWarnings, TRACK_WIDTH_TYPES, widthsThatDraw, type WidthGroup, type WidthStep } from './charts/columnOverrides';
 import { isRecord } from './lint/shared';
 import type { ColumnOverride } from './types/options';
-import { DEFAULT_PRESET, panelTypeClass, REMOVED_NAMES, removedNameWarnings, resolveTargetTheme, resolveTheme, typeWidthClass, WIDE_CANVAS_MIN_WIDTH, withTypeClassCap } from './theme';
+import { DEFAULT_PRESET, panelTypeClass, REMOVED_NAMES, removedNameWarnings, resolveTargetTheme, resolveTheme, typeWidthClass, WIDE_CANVAS_MIN_WIDTH, withTypeClassCap, type TypeWidthClass } from './theme';
 import { DEFAULT_TARGET, floorTextScale, resolveTargetSize } from './target';
 import { textScaleOf, textSizeOf } from './typeFloors';
 import { defaultMeasurer, type TextMeasurer } from './text';
@@ -355,13 +355,22 @@ function narrowerForm(request: ResolvedChartRequest, result: LayoutResult, layou
   const need = result.refused && result.warnings[0]?.code === 'size-below-floor' ? result.warnings[0].expected?.minimum as Size | undefined : undefined;
   if (!need || need.width <= result.size.width || !NARROW_FORM_TYPES.has(request.type) || panelTypeClass(request.options) !== undefined) return undefined;
   const narrow = layout({ ...request, options: { ...request.options, [NARROW_FORM]: true } as RequestOptions });
-  return narrow.refused ? undefined : narrow;
+  return narrow.refused ? undefined : drawnBy(narrow, 'narrowerForm');
 }
 
+/** Which of render's later steps drew a result; it survives the copies render and the request cache make. */
+const DRAWN_BY = Symbol('boardplot.drawnBy');
+type DrawnBy = 'narrowerForm' | 'smallerClass';
+function drawnBy(result: LayoutResult, step: DrawnBy): LayoutResult {
+  return Object.assign(result, { [DRAWN_BY]: step });
+}
+const drawnStep = (result: LayoutResult): DrawnBy | undefined => (result as { [DRAWN_BY]?: DrawnBy })[DRAWN_BY];
+
 /**
- * The type steps up at 720 and at 1080 px. A chart refused for width in the class its width selects
- * draws in the next smaller class where that draws, as it does just under the step. Else the refusal
- * stands with its own advice. An authored belowMinimum 'refuse' keeps the refusal.
+ * The type steps up at 720 and at 1080 px. A chart refused in the class its width selects draws in the
+ * first smaller class that draws, as the width just under the step does; under the cap every width step
+ * reads that width (`classStepWidth`). A size refusal that asks only for more height, an authored
+ * belowMinimum 'refuse' and a grid panel keep the refusal with its own advice.
  */
 function smallerClass(
   request: ResolvedChartRequest, result: LayoutResult, layout: (asked: ResolvedChartRequest) => LayoutResult = layoutPlain,
@@ -377,12 +386,48 @@ function smallerClass(
 const classSteps = new WeakMap<LayoutResult, { request: ResolvedChartRequest; drawn: LayoutResult | undefined }>();
 
 function classStep(request: ResolvedChartRequest, result: LayoutResult, layout: (asked: ResolvedChartRequest) => LayoutResult): LayoutResult | undefined {
-  const need = result.refused && result.warnings[0]?.code === 'size-below-floor' ? result.warnings[0].expected?.minimum as Size | undefined : undefined;
-  const cls = typeWidthClass(result.size.width);
-  if (!need || need.width <= result.size.width || cls === 'S' || panelTypeClass(request.options) !== undefined
-    || (request.options as RequestOptions).belowMinimum === 'refuse') return undefined;
-  const smaller = withTypeClassCap(cls === 'L' ? 'M' : 'S', () => layout(request));
-  return smaller.refused ? undefined : smaller;
+  if (!stepsDown(result) || panelTypeClass(request.options) !== undefined || (request.options as RequestOptions).belowMinimum === 'refuse') return undefined;
+  const smaller = firstSmallerClass(result, () => layout(request));
+  return smaller && drawnBy(smaller, 'smallerClass');
+}
+
+/** A refusal the class step answers: any refusal but a size refusal that asks only for more height, which its size advice answers. */
+function stepsDown(result: LayoutResult): boolean {
+  if (!isRefused(result)) return false;
+  if (!result.refused || result.warnings[0]?.code !== 'size-below-floor') return true;
+  const need = result.warnings[0].expected?.minimum as Size | undefined;
+  return need !== undefined && need.width > result.size.width;
+}
+
+const SMALLER_CLASSES: Record<TypeWidthClass, readonly TypeWidthClass[]> = { L: ['M', 'S'], M: ['S'], S: [] };
+
+/** The width just under a step can itself draw only in a smaller class: the first smaller class that draws. */
+function firstSmallerClass(result: LayoutResult, layout: () => LayoutResult): LayoutResult | undefined {
+  for (const cap of SMALLER_CLASSES[typeWidthClass(result.size.width)]) {
+    const smaller = withTypeClassCap(cap, layout);
+    if (!isRefused(smaller)) return smaller;
+  }
+  return undefined;
+}
+
+/** While measure probes a chart that drew in a smaller class, each of its layouts takes render's class step. */
+let classStepping = false;
+
+function withClassStepping<T>(run: () => T): T {
+  const outer = classStepping;
+  classStepping = true;
+  try { return run(); } finally { classStepping = outer; }
+}
+
+/** A measurement whose layouts take the class step, its lazy fields included. */
+function measuredWithClassStep(measured: () => ChartMeasurement): ChartMeasurement {
+  const inner = withClassStepping(measured);
+  const fields = Object.getOwnPropertyDescriptors(inner);
+  for (const field of Object.values(fields)) {
+    const get = field.get;
+    if (get) field.get = () => withClassStepping(() => get.call(inner));
+  }
+  return Object.defineProperties({}, fields) as ChartMeasurement;
 }
 
 /** One layout of the request, without the size advice a refusal searches for. */
@@ -853,14 +898,20 @@ function preparedLayout(request: ResolvedChartRequest, verifyAdvice = false): La
     const extra = [...warnings, ...stackPaletteWarnings(request.type, request.data, request.options, result)];
     return extra.length ? { ...result, warnings: [...result.warnings, ...extra] } : result;
   };
-  const at = ((frame: RequestOptions) => {
+  const draw = (frame: RequestOptions, fresh = false): LayoutResult => {
     if (!run) return disclose(def.layout(request.data, { ...frame, theme: options.theme, [REMOVED_NAMES]: options[REMOVED_NAMES] }));
-    const current: Record<PropertyKey, unknown> = { ...options, [LAYOUT_CALL]: run };
+    const current: Record<PropertyKey, unknown> = fresh ? { ...options } : { ...options, [LAYOUT_CALL]: run };
     for (const key of ['size', 'mode', 'belowMinimum', FULL_LAYOUT_PROBE, WIDTH_PROBE, FIXED_SIZE_PROBE, PLAN_ONLY] as const) {
       if (Object.hasOwn(frame, key)) current[key] = (frame as RequestOptions & Record<PropertyKey, unknown>)[key];
       else delete current[key];
     }
     return disclose(def.layout(request.data, current));
+  };
+  // The frame probes of a chart that drew in a smaller class draw as render does at that frame:
+  // a smaller class lays out in a fresh call, as render's class step does.
+  const at = ((frame: RequestOptions) => {
+    const first = draw(frame);
+    return classStepping && stepsDown(first) ? firstSmallerClass(first, () => draw(frame, true)) ?? first : first;
   }) as LayoutCall<any, any, any>;
   at.probe = options => at({ ...options, [FULL_LAYOUT_PROBE]: true } as RequestOptions);
   at.finish = () => run?.finish();
@@ -987,6 +1038,15 @@ function measureWithLayout(request: ResolvedChartRequest, result: LayoutResult,
   layoutAt: LayoutCall<any, any, any>, verify = false,
   asked: { request: ResolvedChartRequest; layoutAt: LayoutCall<any, any, any> } = { request, layoutAt },
 ): ChartMeasurement {
+  // A chart one of render's later steps drew is measured as it drew: in its narrower form, or with
+  // render's class step at every probed frame. measure and the CLI's measureLayout both pass through here.
+  const step = drawnStep(result);
+  if (step === 'smallerClass' && !classStepping) return measuredWithClassStep(() => measureWithLayout(request, result, layoutAt, verify, asked));
+  if (step === 'narrowerForm' && !(request.options as { [NARROW_FORM]?: true })[NARROW_FORM]) {
+    const narrow = { ...request, options: { ...request.options, [NARROW_FORM]: true } as RequestOptions };
+    const run = preparedLayout(narrow, verify);
+    try { return measureWithLayout(narrow, result, run, verify); } finally { run.finish(); }
+  }
   measuredPlotAdvice(asked.request, result, asked.layoutAt);
   measuredTightAdvice(asked.request, result, asked.layoutAt);
   const def = getChart(request.type);
@@ -1264,6 +1324,7 @@ export function measureResolvedRequest(request: ResolvedChartRequest): ChartMeas
     if (fittedLate) return measureWithLayout(fittedLate[0], fittedLate[1], open(fittedLate[0]), true);
     // The same class step as layoutResolvedRequest, so measure does not refuse a chart that render draws.
     const smaller = smallerClass(asked, first, drawnBy);
+    // The floor probes and the width search take render's class step (measureWithLayout).
     if (smaller) return measureWithLayout(asked, smaller, layoutAt, true);
     // And the same narrower form. The floor probes and the width search then lay out that form too,
     // so the minimum width is one the drawn form reaches, at an open and at a pinned height.

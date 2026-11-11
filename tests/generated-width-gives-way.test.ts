@@ -5,6 +5,8 @@ import '../src/core/geo/packs';
 import { getFixtures } from '../src/fixtures';
 import { layoutResolvedRequest, measure, resolveChartRequest } from '../src/core/request';
 import { render } from '../src/cli/render';
+import { measure as cliMeasure } from '../src/cli/measure';
+import { isRefused } from '../src/core/schema/refusals';
 
 const fixture = (type: string, id: string) => getFixtures(type as never).find((item) => item.id === id)!;
 const draw = (type: string, id: string, options: object) => {
@@ -201,5 +203,35 @@ describe('a grid panel that spans columns keeps its plot under a column anchor',
     const codes = geometry.warnings.map((warning) => warning.code);
     expect(codes.filter((code) => code.startsWith('label'))).toEqual([]);
     expect(codes).toContain('grid-anchor-incompatible');
+  });
+});
+
+describe('a chart refused in the text class of its width draws in a smaller class', () => {
+  type Row = { id: string; label: string; children?: Row[] };
+  const copied = (rows: Row[]): Row[] => rows.map((row) => ({ ...row, id: `${row.id}-2`, label: `${row.label} copy`, ...(row.children ? { children: copied(row.children) } : {}) }));
+  const longLabels = (nodes: { label: string }[]) => nodes.map((node) => ({ ...node, label: `${node.label} and its much longer descriptive name` }));
+  const tree = fixture('diagram', 'profit-issue-tree');
+  const table = fixture('table', 'management-report');
+  it.each([
+    // The issue tree drew at 719 px and was refused at 720 px for unplaced node labels, a refusal that names no size.
+    ['diagram', 720, { ...tree.data as object, nodes: longLabels((tree.data as { nodes: { label: string }[] }).nodes) }, { ...tree.options, target: 'print' }],
+    // The table drew at 1079 px only in the small text class, so one step down from the large class at 1080 px was refused too.
+    ['table', 1080, { ...table.data as object, rows: [...(table.data as { rows: Row[] }).rows, ...copied((table.data as { rows: Row[] }).rows)] }, table.options],
+  ])('%s draws at %i px', (type, width, data, own) => {
+    const options = { ...own as object, size: { width } };
+    expect(isRefused(layoutResolvedRequest(resolveChartRequest({ type, data, options } as never)))).toBe(false);
+    const measured = measure({ type, data, options } as never);
+    expect(measured.geometry).toBeDefined();
+    expect(measured.minWidth).toBeLessThanOrEqual(width);
+  });
+
+  // At a pinned height the CLI measured the table drawn in the smaller class with probes in the larger one, and named 1238 px where it draws at 1080 px.
+  it('the CLI names a minimum width at which a pinned chart drawn in a smaller class draws', () => {
+    const data = { ...table.data as object, rows: [...(table.data as { rows: Row[] }).rows, ...copied((table.data as { rows: Row[] }).rows)] };
+    const cli = (size: { width: number; height: number }) => cliMeasure({ spec: { type: 'table', data, options: { ...table.options as object, size } } } as never).body as { minWidth: number; refused: unknown };
+    const { minWidth } = cli({ width: 1080, height: 900 });
+    expect(minWidth).toBeLessThanOrEqual(1080);
+    expect(cli({ width: minWidth, height: 900 }).refused).toBeNull();
+    expect(cli({ width: minWidth - 1, height: 900 }).refused).not.toBeNull();
   });
 });

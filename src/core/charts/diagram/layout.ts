@@ -11,7 +11,7 @@ import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { labelCtx, PRIORITY, seatLeader, solveLabels, type LabelRequest, type SolveCtx } from '../../label/solver';
 import { accessibleTitle, NormalizeError, resolveSize } from '../../normalize/shared';
 import { defaultMeasurer, wrapNameText, wrapText, type FontSpec } from '../../text';
-import { emphasisWeight, headingWeight, resolveSurface, strokeToken, canvasMargin, paintColor, panelTypeClass } from '../../theme';
+import { classStepWidth, emphasisWeight, headingWeight, resolveSurface, strokeToken, canvasMargin, paintColor, panelTypeClass } from '../../theme';
 import type {
   DiagramData,
   DiagramDerived,
@@ -247,7 +247,7 @@ function layoutDiagramPass(
     : issueTreeEligible(data, options) ? layoutIssueTreeCompact(data, plot, labelFont, measure, u, headingWeight(theme))
     : journeyEligible(data, options) ? layoutJourneyCompact(data, options, plot, labelFont, axisFont, measure, u, diagramPalette, headingWeight(theme), fixedHeight && spreadGaps)
     : linearEligible(data, options) ? layoutLinearCompact(data, plot, stepFont, badgeFont, captionFont, measure, u, badgeText,
-      size.width >= 720 ? 2 * stepFont.size : 0, fixedHeight)
+      classStepWidth(size.width) >= 720 ? 2 * stepFont.size : 0, fixedHeight)
     : roadmapEligible(data, options) ? layoutRoadmapCompact(data, options, plot, labelFont, laneFont, measure, u, diagramPalette, theme) : undefined;
   const edgeLabelFont = options.variant === 'architecture' ? org?.secondaryFont ?? labelFont : labelFont;
   // Refuse-less: every layout draws on a card under 480 px when it reads

@@ -31,7 +31,7 @@ import { rowDrivenHeight } from '../../rowCanvas';
 import { defaultMeasurer, wrapText, type FontSpec } from '../../text';
 import { textRole } from '../../textRole';
 import { arrowHeadPath, arrowShaftEnd } from '../../svgPath';
-import { strokeToken, dashToken, canvasMargin, contrastInkPaint, colorRolePaints, markRolePaint, mixedPaint, surfaceFloorPaint, panelTypeClass, resolveTheme, seriesPaint, spaceTokens, themeForWidth } from '../../theme';
+import { classStepWidth, strokeToken, dashToken, canvasMargin, contrastInkPaint, colorRolePaints, markRolePaint, mixedPaint, surfaceFloorPaint, panelTypeClass, resolveTheme, seriesPaint, spaceTokens, themeForWidth } from '../../theme';
 import { DEFAULT_TARGET, kpiHeroSizesPx, panelHeroSizesPx, TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { KPI_VALUE_SIZE, textScaleOf } from '../../typeFloors';
 import { cellMeta, cellValue, type Id } from '../../types/cell';
@@ -420,7 +420,7 @@ function layoutPass(data: ChartData, options: WaffleOptions, lean = false, oneRo
   const figure = figureRole(theme);
   // Several panels print panel numbers (22/18 px on a report); one panel keeps the hero size.
   const hero = n > 1
-    ? panelHeroSizesPx(target, theme.type.title.size, size.width, textScaleOf(options))
+    ? panelHeroSizesPx(target, theme.type.title.size, classStepWidth(size.width), textScaleOf(options))
     : kpiHeroSizesPx(target, theme.type.title.size, textScaleOf(options));
   const heroBase = (options as WaffleOptions & { [KPI_VALUE_SIZE]?: number })[KPI_VALUE_SIZE] ?? hero.preferred;
   // Only an authored height pins: trial heights of a width-only request do not.

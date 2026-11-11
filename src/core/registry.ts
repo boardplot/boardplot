@@ -26,7 +26,7 @@ import { markLostOnBandWarnings } from './paintWarnings';
 import { casingUnderFills, labelsOnFills, fillEdges, marksOnBands, referenceLineClearance, withoutOrphanAnnotationMarks } from './markVisibility';
 import { groundEdges } from './label/emit';
 import { withoutRepeatedAxisBreaks } from './axis';
-import { colorblindRoles, DEFAULT_PRESET, panelTypeClass, REMOVED_NAMES, removedNameWarnings, resolveTargetTheme, stampHatchLook } from './theme';
+import { classStepWidth, colorblindRoles, DEFAULT_PRESET, panelTypeClass, REMOVED_NAMES, removedNameWarnings, resolveTargetTheme, stampHatchLook } from './theme';
 import { textScaleOf, textSizeOf } from './typeFloors';
 import { DEFAULT_TARGET, resolveTargetSize, TARGET_SIZE, withDefaultTarget } from './target';
 import type { Category } from './types/data';
@@ -447,7 +447,7 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
     // refused on width, the chart reports the width that refusal names (at most 720).
     const sClassMinimum = <S extends NonNullable<typeof geo.sizing>>(minimum: S, size: { width: number; height: number }): S => {
       if (nested || isWidthProbe(def.type, options) || minimum.aspect !== 'content'
-        || size.width < 720 || minimum.minWidth >= 720) return minimum;
+        || classStepWidth(size.width) < 720 || minimum.minWidth >= 720) return minimum;
       // A type whose floor is under the card width (a KPI, a pie, a map) probes at the card width: a layout at a floor
       // of 160 px that refuses costs several times a layout at 280 px. A probe that draws there still reports the width
       // its own content needs (a map lists its small regions beside it).

@@ -32,7 +32,7 @@
  */
 
 import { aspectClassFor, furnitureBudget, furnitureScoped, HEIGHT_FLOOR_CLASSES, onLadderStep, type AspectClass } from '../aspect';
-import { resolveTheme, spaceTokens } from '../theme';
+import { classStepWidth, resolveTheme, spaceTokens } from '../theme';
 import type { ThemeRef } from '../types/theme';
 import type { BaseOptions } from '../types/options';
 import { resolveCanvasOptions } from '../normalize/shared';
@@ -235,7 +235,7 @@ export function spaceDocLints(
         ? PLOT_FLOOR_SHARE
         : cls === 'strip'
           ? PLOT_H_FLOOR_STRIP
-          : W < 720
+          : classStepWidth(W) < 720
             ? PLOT_FLOOR_SHARE
           // legend row + ≥2 footnote lines
           : legendHorizontal && footnoteLines >= 2
