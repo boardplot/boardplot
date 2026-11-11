@@ -10,6 +10,7 @@ import { getFixtures, getRefusalExamples } from '../src/fixtures';
 import { canDraw, measure } from '../src/index';
 import { layoutResolvedRequest, measureLayout, measureResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { typeClassCap } from '../src/core/theme';
+import { NARROW_FORM } from '../src/core/sizing';
 import { interactionRecords } from '../src/core/a11y/records';
 import { BoardplotTheme } from '../src/react/BoardplotTheme';
 import { layoutDiagram } from '../src/core/charts/diagram/layout';
@@ -746,13 +747,14 @@ describe('the cost of a size refusal', () => {
   };
   const dataOf = (type: string, id: string) => getFixtures(type).find((f) => f.id === id)!.data;
   // A React host measures a chart it rendered refused; the measure must not lay out the widths render advice already searched.
+  // A refused width also tries its narrower form (NARROW_FORM): that is another layout of the same width.
   it('lays out each width once when a refused render is measured', () => {
-    const widths: number[] = [];
+    const widths: string[] = [];
     const heatmap = getChart('heatmap')!;
     const layout = heatmap.layout;
     const spy = vi.spyOn(heatmap, 'layout').mockImplementation((data, options) => {
       const size = (options as { size?: { width: number; height?: number } }).size;
-      if (size && size.height === undefined && (options as { belowMinimum?: string }).belowMinimum !== 'refuse') widths.push(size.width);
+      if (size && size.height === undefined && (options as { belowMinimum?: string }).belowMinimum !== 'refuse') widths.push(`${size.width}:${NARROW_FORM in options!}`);
       return layout(data, options);
     });
     try {
