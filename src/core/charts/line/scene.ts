@@ -33,7 +33,7 @@ import { INTERVAL_TICK } from '../../intervalTicks';
 
 /** Length of a date-interval tick under the plot; the category names start 6 px below the plot. */
 /** Interval ticks closer than this (px) draw only where a label prints. */
-const MIN_TICK_GAP = 2;
+export const MIN_TICK_GAP = 2;
 /** A stacked band's forecast stripes sit 1/√2 of the theme's second-cue pitch apart (9.6 px along x at the default). */
 const BAND_HATCH_PITCH = Math.SQRT1_2;
 /** The page colour's share in a stacked band's stripe at the default strength. */
@@ -117,9 +117,11 @@ export function layoutLineMarks(
     axes.push(axisResult.axis);
   }
   // categoryAxis.dateTicks: a short tick under the plot at every interval, labelled or not.
-  // On a line that sampled itself, ticks closer than MIN_TICK_GAP merge into a bar (months over a century), so only the labelled ones draw.
-  const tickXs = domain.autoSampled ? area.intervalTicks?.flatMap((tick, ci) => (tick ? [xOf(ci)] : [])) : undefined;
-  const crowded = tickXs?.some((x, k) => k > 0 && x - tickXs[k - 1]! < MIN_TICK_GAP) === true;
+  // Where the engine chose the tick row itself (a sampled line, or a long default day row switched to months),
+  // ticks closer than MIN_TICK_GAP merge into a bar (months over a century), so only the labelled ones draw.
+  const autoTicks = domain.autoSampled || options.categoryAxis?.dateTicks === undefined;
+  const tickXs = autoTicks ? area.intervalTicks?.flatMap((tick, ci) => (tick ? [xOf(ci)] : [])) : undefined;
+  const crowded = tickXs?.some((x, k) => k > 0 && Math.abs(x - tickXs[k - 1]!) < MIN_TICK_GAP) === true;
   area.intervalTicks?.forEach((tick, ci) => {
     if (!tick || (crowded && !area.catPlan.keep[ci])) return;
     const x = xOf(ci);
