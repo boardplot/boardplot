@@ -1028,6 +1028,7 @@ function measureWithLayout(request: ResolvedChartRequest, result: LayoutResult,
   // Text and chrome depend on width. Verify the floor at the requested
   // width (or the minimum width when the request is narrower)
   // through the same registered layout that render uses, including its notes.
+  const floorStart = sizing.minWidth;
   for (let pass = 0; !openWidth && pass < 8; pass++) {
     let verified = true;
     const previousWidth = sizing.minWidth;
@@ -1047,6 +1048,19 @@ function measureWithLayout(request: ResolvedChartRequest, result: LayoutResult,
       });
     }
     if (verified || (sizing.minWidth === previousWidth && sizing.minHeight === previousHeight)) break;
+  }
+  // A refusal names the width its own form needs, which can be wider than the asked width, where another
+  // form draws at the floor height. The minimum width is then the narrowest width that draws there.
+  const drawnWidth = Math.ceil(request.size.width);
+  if (!openWidth && !result.refused && !isRefused(result) && sizing.minWidth > drawnWidth
+    && !isRefused(probeAt({ width: drawnWidth, height: sizing.minHeight }))) {
+    let [lo, hi] = [Math.floor(floorStart), drawnWidth];
+    if (!isRefused(probeAt({ width: lo, height: sizing.minHeight }))) hi = lo;
+    while (hi - lo > 1) {
+      const mid = Math.floor((lo + hi) / 2);
+      if (isRefused(probeAt({ width: mid, height: sizing.minHeight }))) lo = mid; else hi = mid;
+    }
+    sizing = resolveSizing({ ...sizing, minWidth: hi }, result.size, { ...sizing, minWidth: hi });
   }
   // At the automatic height a width alone takes the height it needs, so the floor above, verified at
   // minHeight, is not the minimum width. The minimum width is the one `drawsFrom` finds for the full

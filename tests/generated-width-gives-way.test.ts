@@ -157,4 +157,17 @@ describe('an automatic height grows before a width refusal', () => {
       expect(measured.minWidth).toBeLessThanOrEqual(width);
     }
   });
+
+  // At a pinned height measure named the width a refusal at the declared floor asked for (701 px), above 460 px, where this board draws in its own form.
+  it('measure at a pinned height names no minimum above a width that draws', () => {
+    const label = (id: string) => `${id[0]!.toUpperCase()}${id.slice(1)} and its much longer descriptive name`;
+    const measured = measure({ type: 'status', theme: 'notation', data: {
+      rows: ['pricing', 'service'].map((id) => ({ id, label: label(id) })), columns: ['draft', 'review'].map((id) => ({ id, label: label(id) })),
+      cells: [['pricing', 'draft', 'reviewed'], ['pricing', 'review', 'reviewed'], ['service', 'draft', 'reviewed'], ['service', 'review', 'pending']].map(([row, col, state]) => ({ row, col, state })) },
+    options: { states: [{ id: 'reviewed', label: 'Reviewed', tone: 'info' }, { id: 'pending', label: 'Pending', tone: 'neutral' }], legend: 'right', columnLabels: 'bottom',
+      title: 'Pricing review is complete; service review remains open', subtitle: { measure: 'Review progress by workstream and stage' }, source: 'Illustrative review log',
+      target: 'slide', size: { width: 460, height: 500 } } } as never);
+    expect(measured.geometry).toBeDefined();
+    expect(measured.minWidth).toBeLessThanOrEqual(460);
+  });
 });
