@@ -231,6 +231,8 @@ describe('number census', () => {
     spec.options = { ...spec.options, magnitude: 'million' };
     expect(of(census('table', spec, 840), 'wrong-scale')).toEqual([]);
     expect(of(census('table', spec, 840, retext('unit:revenue', 'net')), 'wrong-scale', 'cell:revenue:m1')).not.toEqual([]);
+    // An affix in millions beside a cell in thousands is a contradiction, not a repeat of the cell's magnitude.
+    expect(of(census('table', spec, 840, retext('cell:revenue:m1', '6,980.0k')), 'mixed-units', 'cell:revenue:m1')).not.toEqual([]);
   });
 
   // A map overlay label is the author's text ("UK 78%"); it was read as the overlay glyph's value.

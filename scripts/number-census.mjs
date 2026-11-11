@@ -344,7 +344,7 @@ export function censusCase(type, fixture, width, localeName, measured) {
     if (cell && cell[2] === labelColumn) headerScale.set(`row:${cell[1]}`, { text: entry.text, letter: namedMagnitude(entry.text) });
   }
   // A row's unit affix ("Revenue (net) $M") is its own text node beside the label; it names the scale of the row's
-  // bare figures. An authored affix may repeat the magnitude its format prints ("$M" beside "$7.0M"): no mixed units.
+  // bare figures. An authored affix may repeat the magnitude its format prints ("$M" beside "$7.0M"): no mixed units for that letter.
   for (const entry of texts) {
     const unit = /^(?:.*\/)?unit:(.+)$/.exec(entry.id);
     const letter = unit ? namedMagnitude(entry.text) : undefined;
@@ -435,7 +435,7 @@ export function censusCase(type, fixture, width, localeName, measured) {
       if (token.value === 0 && !token.bound && candidate.raw !== 0 && options.smallValues !== 'zero' && !honestZero(candidate.raw, example)) {
         flag('false-zero', printed.surface, { id: printed.id, text: printed.text, raw: candidate.raw, field: candidate.name });
       }
-      if (contextScale && token.letter && printed.surface === 'svg' && !context.affix) {
+      if (contextScale && token.letter && printed.surface === 'svg' && !(context.affix && context.letter === token.letter)) {
         flag('mixed-units', printed.surface, { id: printed.id, text: printed.text, raw: candidate.raw, why: `header "${context.text}" names ${context.letter}, cell prints ${token.letter}` });
       }
       if (printed.surface === 'svg' && candidate.name === 'value') {
