@@ -37,6 +37,7 @@ import { interactionValueText } from '../src/core/a11y/valueText.ts';
 import { labelCardContent } from '../src/react/hover/labelCard.ts';
 import { exampleSpec, formatWithSpec, parseFormatExample } from '../src/core/formatSpec.ts';
 import { columnOwnsFormat } from '../src/core/tableCalc.ts';
+import { localeStrings } from '../src/core/strings.ts';
 import { recomputeClaim } from '../tests/helpers/recompute.ts';
 
 const args = process.argv.slice(2);
@@ -69,8 +70,10 @@ const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
  * Every number token of a text: value in source units at the printed scale, half step of the last
  * printed digit, the magnitude letter, percent or pp, a currency sign, a bound sign.
  */
-export function tokens(text, m) {
-  const group = `[${esc(m.thousands)}\\u202f\\u00a0\\u2009' ’]`;
+export function tokens(text, m, accounting = false) {
+  // A space groups thousands only where the locale's own mark is one ("46 100%" is a value and its share, not 46,100%).
+  const spaces = /^[\u0020\u202f\u00a0\u2009]$/.test(m.thousands) ? '\\u0020\\u202f\\u00a0\\u2009' : '';
+  const group = `[${esc(m.thousands)}${spaces}'’]`;
   const re = new RegExp(String.raw`([<>≈~]?)\s?([+\-−]?)\s?(\p{Sc}|[A-Z]{2,3}\$|CHF\s?)?\s?(\d{1,3}(?:${group}\d{3})+(?:${esc(m.decimal)}\d+)?|\d+(?:${esc(m.decimal)}\d+)?|${esc(m.decimal)}\d+)(?:\s?[×x]\s?10([⁻⁺]?[⁰¹²³⁴⁵⁶⁷⁸⁹]+))?(?:(m)(?![\p{L}])|\s?(?:([A-Z]{3})\s)?(thousand|million|billion|trillion|Tausend|Millionen|Million|Milliarden|Mrd|Mio|Tsd|bn|Bn|[kKMBT])(?![\p{L}]))?\s?(%|pp|p\.p\.)?(?:\s?(\p{Sc}))?`, 'gu');
   const found = [];
   // ISO dates and times are not values.
@@ -90,7 +93,10 @@ export function tokens(text, m) {
     const decimals = plain.includes('.') ? plain.split('.')[1].length : 0;
     const power = exponent ? Number([...exponent].map((char) => SUPER[char]).join('')) : 0;
     const scale = (SCALE[letter] ?? 1) * 10 ** power;
-    const sign = signText === '-' || signText === '−' ? -1 : 1;
+    // An accounting format prints a negative in parentheses: "(683)", "($1.2M)", "(4.5%)".
+    const end = match.index + match[0].trimEnd().length, start = match.index + match[0].length - match[0].trimStart().length;
+    const wrapped = accounting && text[start - 1] === '(' && text[end] === ')';
+    const sign = signText === '-' || signText === '−' || wrapped ? -1 : 1;
     const digits = plain.replace('.', '').replace(/^0+/, '');
     found.push({
       text: match[0].trim(), bound: bound || undefined, value: sign * value * scale, half: 0.5 * 10 ** -decimals * scale,
@@ -118,18 +124,28 @@ const ALT_FACTORS = [1e3, 1e-3, 1e6, 1e-6, 1e9, 1e-9, 100, 0.01];
 
 /** Header or label text names a magnitude: "(k)", "(M)", "in $M", "$k", "EUR m". */
 function namedMagnitude(text) {
-  const hit = /(?:\(|\bin\s|^|\s)(?:\p{Sc}|([A-Z]{3})\s?)?(k|K|M|m|B|bn|Mio\.?|Mrd\.?|Tsd\.?)(?:\p{Sc}|\s?([A-Z]{3}))?(?:\)|$|\s)/u.exec(text);
-  // Capitals before or after are a currency code ("EUR K"), not the end of a word ("WEEK 1").
-  if (!hit || [hit[1], hit[3]].some((code) => code !== undefined && !CURRENCY_CODES.has(code))) return undefined;
-  hit[1] = hit[2];
-  const key = hit[1].replace('.', '');
-  return SCALE[key] ? key : undefined;
+  // Every hit is tried, as a wrapped head can hold an early false one ("ITS MUCH LONGER NAME ($k)": " ITS M" reads as a code).
+  const re = /(?:\(|\bin\s|^|\s)(?:\p{Sc}|([A-Z]{3})\s?)?(k|K|M|m|B|bn|Mio\.?|Mrd\.?|Tsd\.?)(?:\p{Sc}|\s?([A-Z]{3}))?(?:\)|$|\s)/uy;
+  for (let at = 0; at < text.length; at++) {
+    re.lastIndex = at;
+    const hit = re.exec(text);
+    // Capitals before or after are a currency code ("EUR K"), not the end of a word ("WEEK 1").
+    if (!hit || [hit[1], hit[3]].some((code) => code !== undefined && !CURRENCY_CODES.has(code))) continue;
+    const key = hit[2].replace('.', '');
+    if (SCALE[key]) return key;
+  }
+  return undefined;
 }
 
 /** The magnitude a data unit names: "$bn", "k€", "EUR m", "€m", "kEUR", "M units". */
 function dataMagnitude(unit) {
   const hit = /^(?:\p{Sc}\s?|[A-Z]{3}\s?)?(thousand|million|billion|k|K|m|M|bn|B|Mio\.?|Mrd\.?|Tsd\.?)(?:\s?(?:\p{Sc}|[A-Z]{3}))?(?:\s|$)/u.exec(unit.trim());
   return hit ? hit[1].replace('.', '') : undefined;
+}
+
+/** Whether an authored format example prints a negative in parentheses, "(1,234)". */
+function accountingExample(example) {
+  try { return example !== undefined && parseFormatExample(example).negative === 'parens'; } catch { return false; }
 }
 
 function unitKind(token) {
@@ -343,6 +359,11 @@ export function censusCase(type, fixture, width, localeName, measured) {
     const header = /^(?:.*\/)?header:(.+)$/.exec(entry.id);
     if (header) headerScale.set(`col:${header[1]}`, { text: entry.text, letter: namedMagnitude(entry.text) });
   }
+  // A column a toggle hides draws no head, but its claims read in the magnitude that head would name.
+  for (const column of geometry.derived?.table?.columns ?? []) {
+    const letter = typeof column.unitLabel === 'string' ? namedMagnitude(column.unitLabel) : undefined;
+    if (letter && !headerScale.has(`col:${column.id}`)) headerScale.set(`col:${column.id}`, { text: column.unitLabel, letter });
+  }
   const labelColumn = (data.columns ?? []).find((column) => column.kind === 'rowLabel')?.id;
   // The unit a whole table reads in: its label column's header ("EUR K") or the subtitle ("in €M").
   const labelHeader = labelColumn ? headerScale.get(`col:${labelColumn}`) : undefined;
@@ -397,7 +418,7 @@ export function censusCase(type, fixture, width, localeName, measured) {
     if (wrongMarks(printed.text, m)) return;
     // An aspect or a ratio label ("(4:5)", "16:9") names a shape, not a value.
     if (/^\(?\d+:\d+\)?$/.test(printed.text.trim())) return;
-    const found = tokens(printed.text, m);
+    const found = tokens(printed.text, m, accountingExample(example));
     if (found.length === 0) return;
     // Bullet gap rule (bullet/layout.ts shownDelta): the printed gap is the printed value minus the printed target, at the row's
     // precision, also when the target column is hidden. So "−$0.1" between "$0.4" and "$0.5" is right, although the exact gap is −0.038.
@@ -571,14 +592,19 @@ export function censusCase(type, fixture, width, localeName, measured) {
   // The text each table cell's record states, also for a hidden column (engineNm reads a hidden base here).
   const cellDisplayed = new Map(records.filter((record) => record.target.owner?.rowId !== undefined && typeof record.value.displayed === 'string')
     .map((record) => [`${record.target.owner.rowId}:${record.target.owner.colId}`, record.value.displayed]));
+  // The word a cell prints after a figure that skipped a child, where its column head does not carry the mark.
+  const partialWord = options.strings?.incomplete ?? localeStrings(resolved.options.locale?.language).incomplete;
+  // A table's cell claims by "row:column", to read what a sum added.
+  const cellClaimOf = new Map(claims.filter((claim) => claim.id.startsWith('table:')).map((claim) => [claim.id.slice('table:'.length), claim]));
   for (const claim of claims) {
     if (claim.output.state === 'value' && typeof claim.output.raw === 'number' && claim.output.displayed) {
-      const found = tokens(claim.output.displayed, m);
+      const claimCell = /^(?:.*\/)?cell:([^:]+):(.+)$/.exec(claim.nodeId ?? '') ?? (type === 'table' && !claim.nodeId ? tableClaimCell(claim.id) : null);
+      const found = tokens(claim.output.displayed, m, accountingExample(authoredFormat(type, data, options, claimCell ? { rowId: claimCell[1], colId: claimCell[2] } : undefined)));
       // A histogram bin's claim displays its range label, not its count.
       if (found.length > 0 && !/^annotation-/.test(claim.op) && !claim.op.startsWith('quadrant') && !claim.op.startsWith('histogram-bin-count') && !/count@/.test(claim.op)) {
         // A table cell reads in the magnitude its header or row label names. A claim no cell prints (a rounding gap)
         // states its figure in its row's format, so it reads in that row's magnitude too.
-        const cell = /^(?:.*\/)?cell:([^:]+):(.+)$/.exec(claim.nodeId ?? '') ?? (type === 'table' && !claim.nodeId ? tableClaimCell(claim.id) : null);
+        const cell = claimCell;
         const context = [...(cell ? [`col:${cell[2]}`, `row:${cell[1]}`] : []), 'label-header', 'subtitle'].map((key) => headerScale.get(key)).find((entry) => entry?.letter);
         const contextScale = context ? SCALE[context.letter] : 1;
         const raw = claim.output.raw * dataScale;
@@ -613,6 +639,18 @@ export function censusCase(type, fixture, width, localeName, measured) {
       // The claim id escapes ':' and the backslash in the cohort id (claimId in src/core/claims/ids.ts).
       const cohortId = cell[1].replace(/\\(.)/g, '$1');
       return (data.cohorts ?? []).find((cohort) => cohort.id === cohortId)?.active?.slice(0, Number(cell[2])).includes(0) === true;
+    }
+    // A comparison between two cells of one row that skipped different rows compares different sets of rows: it prints n.m.
+    // (table resolve, mixed coverage). A partial cell says so in its text (or its head does); a partial sum also lists only the
+    // children it added, so two sums differ where their leaf rows differ.
+    if (type === 'table' && claim.inputs.length >= 2 && new Set(claim.inputs.map((input) => input.ref.replace(/:[^:]*$/, ''))).size === 1) {
+      const leaves = (ref) => {
+        const cellClaim = cellClaimOf.get(ref);
+        if (cellClaim?.op !== 'sum@1') return undefined;
+        return cellClaim.inputs.flatMap((input) => leaves(input.ref) ?? [input.ref.replace(/:[^:]*$/, '')]);
+      };
+      const cover = claim.inputs.map((input) => ({ rows: leaves(input.ref), marked: cellDisplayed.get(input.ref)?.includes(partialWord) === true }));
+      if (comparesMixedRows(claim.op, cover)) return true;
     }
     // A percent change off a base cell the table prints as zero ("0", "0.0", or "<0.1", which rounds to zero) is n.m.
     // (table resolve, near-zero base). A hidden base column states its text in its record.
@@ -697,6 +735,63 @@ export function censusCase(type, fixture, width, localeName, measured) {
     }
   }
   return { item, status: 'drawn', findings };
+}
+
+/**
+ * Whether a table claim's expression ("percentDelta($0,$1)", "mul(div(sub($0,$1),$1),100)") sets operands against each other that
+ * cover different rows. The same rule as comparesMixedRows in src/core/charts/table/resolve.ts: sub, mul, div, delta and
+ * percentDelta compare; add and abs only pass their operands on, so a sum of partial totals stays a partial sum.
+ * `cover[i]` is what operand $i covers: its leaf rows (undefined when unknown) and whether its text says it is partial.
+ */
+function comparesMixedRows(op, cover) {
+  const source = op.replace(/@\d+$/, '');
+  let at = 0;
+  const parse = () => {
+    if (source[at] === '$') {
+      const index = /^\d+/.exec(source.slice(at + 1))?.[0] ?? '';
+      at += 1 + index.length;
+      return { refs: [Number(index)] };
+    }
+    const name = /^[A-Za-z][A-Za-z0-9]*/.exec(source.slice(at));
+    if (name && source[at + name[0].length] === '(') {
+      at += name[0].length + 1;
+      const args = [];
+      for (;;) {
+        args.push(parse());
+        if (source[at] === ',') { at += 1; continue; }
+        at += 1; // ')'
+        break;
+      }
+      return { op: name[0], args };
+    }
+    // A literal, '?' or '<…>' covers no row.
+    const rest = /^(?:\?|<[^>]*>|-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)/.exec(source.slice(at));
+    if (!rest) throw new Error(`unparsable claim expression: ${source}`);
+    at += rest[0].length;
+    return { refs: [] };
+  };
+  const refsOf = (node) => node.refs ?? node.args.flatMap(refsOf);
+  const side = (node) => {
+    const parts = refsOf(node).map((index) => cover[index]).filter(Boolean);
+    const known = parts.map((part) => part.rows).filter((rows) => rows !== undefined);
+    return { rows: known.length ? [...new Set(known.flat())].sort().join('\u001f') : undefined, marked: parts.some((part) => part.marked) };
+  };
+  const differ = (a, b) => {
+    const left = side(a), right = side(b);
+    return (left.rows !== undefined && right.rows !== undefined && left.rows !== right.rows) || left.marked !== right.marked;
+  };
+  const visit = (node) => {
+    if (!node.op) return false;
+    const [a, b] = node.args;
+    switch (node.op) {
+      case 'abs': return visit(a);
+      case 'add': return visit(a) || visit(b);
+      case 'sub': case 'mul': case 'div': return visit(a) || visit(b) || differ(a, b);
+      case 'delta': case 'percentDelta': return differ(a, b);
+      default: return false;
+    }
+  };
+  try { return visit(parse()); } catch { return false; }
 }
 
 /** A unit written twice, or a currency sign after a bare figure in English marks. */
