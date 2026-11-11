@@ -1079,6 +1079,21 @@ describe('TableChart reads the footer rule notes model', () => {
     expect(container.querySelector('.bp-notes')).toBeNull();
   });
 
+  // Reason: notes.pointer: false left author notes past the line budget nowhere on the page, and onWarnings said nothing.
+  it('warns with a fix when notes.pointer: false leaves author notes out', () => {
+    const onWarnings = vi.fn();
+    act(() => root.render(<TableChart data={data} target="report" notes={{ maxLines: 2, pointer: false }} footnotes={['First', 'Second', 'Third']} source="Example" onWarnings={onWarnings} />));
+    expect(printed()).toEqual(['First']);
+    const left = onWarnings.mock.calls.at(-1)![0].filter((warning: { code: string }) => warning.code === 'notes-left-out');
+    expect(left).toEqual([expect.objectContaining({ message: expect.stringMatching(/^2 author notes are not shown/), field: ['options', 'notes', 'pointer'],
+      fix: [{ op: 'remove', path: '/options/notes/pointer' }] })]);
+    // Reason: author notes switched off by notes.show drew this warning, whose maxLines and pointer could never show them.
+    for (const show of [[], ['method']] as const) {
+      act(() => root.render(<TableChart data={data} target="report" notes={{ show: [...show], pointer: false }} footnotes={['First', 'Second', 'Third']} onWarnings={onWarnings} />));
+      expect(onWarnings.mock.calls.at(-1)![0].map((warning: { code: string }) => warning.code)).not.toContain('notes-left-out');
+    }
+  });
+
   it('holds an authored notes.maxLines with the source line, and names the pointer in the locale', () => {
     act(() => root.render(<TableChart data={data} target="report" notes={{ maxLines: 2 }} footnotes={['First', 'Second']} source="Example" />));
     expect(printed()).toEqual(['First']);
