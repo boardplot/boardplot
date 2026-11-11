@@ -573,6 +573,44 @@ describe('an example is read as its author wrote it', () => {
     expect(sameUnit('\u20ac Mio.', '\u20acm')).toBe(true);
   });
 
+  // A format below the chart printed a nonzero value as 0 without a warning, and a guess at what the engine prints warned where it printed no zero: the chart's own records decide.
+  it('warns where an authored format prints a nonzero value as zero, and only there', () => {
+    const categories = [{ id: 'a', label: 'North' }, { id: 'b', label: 'South' }];
+    const column = (series: unknown[], options: Record<string, unknown> = {}, data: Record<string, unknown> = {}) => ({ type: 'column', data: { categories, series, ...data }, options });
+    const table = (columns: unknown[], rows: unknown[], options: Record<string, unknown> = {}) => ({ type: 'table', data: { columns: [{ id: 'label', kind: 'rowLabel', label: 'Region' }, ...columns], rows }, options });
+    const bartable = (format: string, values: number[]) => ({ type: 'bartable', data: { categories: [{ id: 'a', label: 'North' }], series: [{ id: 's', label: 'Sales' }],
+      panels: [{ id: 'p', label: 'Sales', values: { s: [1] } }], columns: [{ id: 'x', label: 'Stores', format, values }] } });
+    const repeat = (values: string[]) => ({ type: 'grid', data: { repeat: { facet: 'series', dimension: 'channel', values }, template: { type: 'column', options: { format: '1,234' },
+      data: { categories, series: [{ id: 'web', label: 'Web', values: [0.042, 12] }, { id: 'store', label: 'Store', values: [5, 9] }] } } } });
+    // Each case: the spec, then the patch path of each format-hides-values warning (null: a warning with no patch).
+    const cases: [string, unknown, (string | null)[]][] = [
+      ['series format', column([{ id: 's', label: 'S', format: '1,234', values: [0.042, 12] }]), ['/data/series/0/format']],
+      ['keyed value', column([{ id: 's', label: 'S', format: '1,234', values: [{ categoryId: 'a', value: 0.042 }, { categoryId: 'b', value: 12 }] }]), ['/data/series/0/format']],
+      ['own value format under the chart format', column([{ id: 's', label: 'S', values: [{ number: 0.042, format: '12' }, 3] }], { format: '12' }), ['/data/series/0/values/0/format']],
+      ['own value format that shows the value', column([{ id: 's', label: 'S', format: '1,234', values: [{ number: 0.042, format: '0.123' }, 12] }]), []],
+      ['scaled format that prints a nonzero figure', column([{ id: 's', label: 'S', format: '1.2k', values: [20, 1000] }]), []],
+      ['percent format over fractions', column([{ id: 's', label: 'S', format: '12%', values: [0.2, 2] }], {}, { valueKind: 'fraction' }), []],
+      ['bar table column', bartable('1,234', [0.042]), ['/data/columns/0/format']],
+      ['bar table column at the decimal limit', bartable('0.00000000000000000000', [1e-21]), [null]],
+      ['table column and cell', table([{ id: 'rev', kind: 'value', label: 'Revenue', format: '1,234' }],
+        [{ id: 'all', label: 'All', cells: { rev: 12 }, children: [{ id: 'north', label: 'North', cells: { rev: 0.042 } }, { id: 'south', label: 'South', cells: { rev: { v: 0.03, format: '1.2' } } }] }]),
+      ['/data/rows/0/children/1/cells/rev/format', '/data/columns/1/format']],
+      ['suppressed table cell', table([{ id: 'rev', kind: 'value', label: 'Revenue', format: '1,234' }], [{ id: 'r', label: 'R', cells: { rev: { v: 0.042, state: 'suppressed' } } }]), []],
+      ['table magnitude', table([{ id: 'rev', kind: 'value', label: 'Revenue', format: '1,234k' }], [{ id: 'r', label: 'R', cells: { rev: 42 } }], { magnitude: 'thousand' }), []],
+      ['inline row with its own format', table([{ id: 'rev', kind: 'value', label: 'Revenue', format: '1,234' }],
+        [{ id: 'r', label: 'R', cells: { rev: 1 }, children: [{ id: 'm', label: 'M', inline: true, relation: 'displayOnly', format: '0.0000', cells: { rev: 0.042 } }] }]), []],
+      ['grid panel', { type: 'grid', data: { panels: [{ id: 'sales', type: 'column', options: { format: '1,234' }, data: { categories, series: [{ id: 's', label: 'Sales', values: [0.042, 12] }] } }] } },
+        ['/data/panels/0/options/format']],
+      ['repeat template', repeat(['web', 'store']), ['/data/template/options/format']],
+      ['repeat template, series not drawn', repeat(['store']), []],
+    ];
+    for (const [name, spec, paths] of cases) {
+      const body = render({ spec, return: ['reading'] } as never).body as { errors?: unknown[]; warnings: { code: string; fix?: { path: string }[] }[] };
+      expect([name, body.errors ?? [], body.warnings.filter((warning) => warning.code === 'format-hides-values').map((warning) => warning.fix?.[0]?.path ?? null)])
+        .toEqual([name, [], paths]);
+    }
+  });
+
   // A spaced single letter is SI unit text ("12 m/s", "50 B"), but it scaled as millions and bytes lost their unit; the warning's fix also dropped the space.
   it('keeps a spaced single letter a unit and keeps the space in the warning fix', () => {
     const print = (example: string, value: number) => formatWithSpec(value, parseFormatExample(example));
