@@ -803,4 +803,20 @@ describe('chart layout edge cases', () => {
     const keep = Number(/at least (\d+)px/.exec(tight.geometry.warnings.find((w: { code: string }) => w.code === 'value-axis-dropped').suggest)![1]);
     expect(draw('pyramid', 'workforce-tenure-gender', { width: 900, height: keep }).geometry.axes.filter((axis: { axis: string }) => axis.axis === 'x')).toHaveLength(2);
   });
+
+  // A measure that says "percent" or "percentage" already names the % unit, so the subtitle must not add " in %".
+  it('adds no unit clause after a measure that names the unit as a word', () => {
+    const subtitle = (measure: string, unit: string) => {
+      const spec = { type: 'column', data: {
+        categories: [{ id: 'a', label: 'North' }, { id: 'b', label: 'South' }],
+        series: [{ id: 's', label: 'Rate', values: [10.5, 12] }],
+      }, options: { title: 'Sales', unit, subtitle: { measure } } };
+      const svg = (render({ spec, return: ['svg'] }).body as any).svg as string;
+      return svg.match(/data-part="subtitle"[^>]*>(.*?)<\/text>/)![1].replace(/<[^>]*>/g, '').replace(/\u00A0/g, ' ');
+    };
+    expect(subtitle('Conversion percentage', '%')).toBe('Conversion percentage');
+    expect(subtitle('Retention percent', '%')).toBe('Retention percent');
+    expect(subtitle('Revenue in euros', 'EUR')).toBe('Revenue in euros');
+    expect(subtitle('Conversion', '%')).toBe('Conversion in %');
+  });
 });
