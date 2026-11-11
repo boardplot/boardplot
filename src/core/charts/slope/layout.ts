@@ -393,7 +393,7 @@ export function layoutSlope(
   if (changeMode !== 'none' && size.width >= COLUMN_MIN_WIDTH) {
     const lang = options.locale?.language;
     const pcts = plottedSeries.flatMap((s) => (changes[s.id]!.pct === null ? [] : [changes[s.id]!.pct!]));
-    const absText = differenceFormatter({ format: options.format, locale: lang, decimals: formats.spec.decimals, values: plottedSeries.flatMap((s) => [s.a.v!, s.b.v!]) });
+    const absText = differenceFormatter({ format: options.format, locale: lang, decimals: formats.spec.decimals, values: plottedSeries.flatMap((s) => [s.a.v!, s.b.v!]), scale: formats.spec });
     const pctDecimals = Math.min(1, valueSetDecimals(pcts));
     for (const s of plottedSeries) {
       const ch = changes[s.id]!;

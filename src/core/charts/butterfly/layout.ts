@@ -446,8 +446,9 @@ export function layoutButterfly(
   // Off for a pyramid, on a card, and across two units, where a difference means nothing.
   const diffText = new Map<Id, string>();
   if ((opts.diffColumn ?? sortBy === 'diff') && redesign && !conflict && size.width >= COLUMN_MIN_WIDTH) {
-    const raster = seriesRasterFormatter(opts.format, [...aCells, ...bCells].map(cellValue), opts.locale?.language, opts.unit, opts.target);
-    const signed = differenceFormatter({ format: opts.format, locale: opts.locale?.language, decimals: raster.spec.decimals, values: [...aCells, ...bCells].flatMap((cell) => cellValue(cell) ?? []) });
+    // The panes' one magnitude (bothScale) sets the column's: "+1,030M" beside "1,070M" and "2,100M".
+    const raster = seriesRasterFormatter(opts.format, [...aCells, ...bCells].map(cellValue), opts.locale?.language, opts.unit, opts.target, undefined, false, bothScale);
+    const signed = differenceFormatter({ format: opts.format, locale: opts.locale?.language, decimals: raster.spec.decimals, values: [...aCells, ...bCells].flatMap((cell) => cellValue(cell) ?? []), scale: raster.spec });
     for (const r of rows) if (r.a !== null && r.b !== null) diffText.set(r.id, signed(r.b, r.a));
   }
   const diffOverride = opts.columnOverrides?.diff;
