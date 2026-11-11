@@ -557,3 +557,37 @@ it('gantt draws its wider reference card once per distinct request in one narrow
     expect(draws.mock.calls.filter(([, options]) => options && CARD_HEIGHT_MEMO in options).length).toBeLessThanOrEqual(2);
   } finally { draws.mockRestore(); }
 });
+
+// An anchor offset that pushed an item past the ISO date range reached the SVG serializer as NaN with no input path instead of refusing the authored offset.
+it('gantt refuses an anchor offset that moves an item outside the ISO date range', () => {
+  const spec = (offsetDays: number, planEnd = '2027-01-15') => ({
+    type: 'gantt',
+    data: {
+      rows: [
+        { id: 'plan', label: 'Planning', items: [{ id: 'plan-a', kind: 'bar', start: '2027-01-04', end: planEnd, label: 'Outline' }] },
+        { id: 'make', label: 'Making', items: [{ id: 'make-a', kind: 'bar', start: '2027-01-18', end: '2027-02-19', label: 'Assembly',
+          anchor: { toItemId: 'plan-a', edge: 'end', offsetDays } }] },
+      ],
+    },
+    options: { title: 'Workshop plan' },
+  });
+  for (const [offsetDays, planEnd] of [[1_000_000_000, '2027-01-15'], [-800_000, '2027-01-15'], [2, '9999-12-20']] as const) {
+    const { body } = render({ spec: spec(offsetDays, planEnd), return: ['svg'] });
+    const errors = (body.errors ?? []) as { code: string; path: string; message: string; suggest?: string; received?: unknown }[];
+    expect(body.ok).toBe(false);
+    expect(body.svg).toBeUndefined();
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({
+      code: 'invalid-date',
+      path: '/data/rows/1/items/0/anchor/offsetDays',
+      received: { type: 'number', value: offsetDays },
+    });
+    expect(errors[0]!.message).toContain('0000-01-01 to 9999-12-31');
+    expect(errors[0]!.message).not.toContain('NaN');
+    expect(errors[0]!.suggest).toMatch(/^\S.*\.$/);
+  }
+  const valid = render({ spec: spec(2_900_000), return: ['svg'] }).body as { ok: boolean; svg: string; errors?: unknown[] };
+  expect(valid.ok).toBe(true);
+  expect(valid.errors ?? []).toEqual([]);
+  expect(valid.svg).not.toContain('NaN');
+});

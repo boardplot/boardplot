@@ -15,7 +15,7 @@ import type { GanttCell, GanttData, GanttItem } from '../../types/data';
 import type { LabelKind } from '../../types/options';
 import type { LintWarning } from '../../types/scene';
 import { MAX_COLS, resolveGanttColumns } from './columns';
-import { TIERS, boundariesOf, ceilTo, dateFromDay, dayNum, floorTo } from './calendar';
+import { TIERS, boundariesOf, ceilTo, dateFromDay, dayNum, floorTo, isISODay } from './calendar';
 import type { GanttGranularity, GanttOptions } from './layout';
 import type {
   GanttDomain,
@@ -460,6 +460,23 @@ export function resolveGanttDomain(data: GanttData, env: GanttEnv, warnings: Lin
       const duration = it.endDay - it.startDay;
       it.startDay = edgeDay + it.anchor.offsetDays;
       it.endDay = it.startDay + duration;
+      if (!isISODay(it.startDay) || !isISODay(it.endDay - 1)) {
+        const pointer = itemPointer(data, it.id, 'anchor');
+        const authored = pointer ? (data.rows[pointer[2] as number] as { items: GanttItem[] }).items[pointer[4] as number]?.anchor : undefined;
+        const hasOffset = authored?.offsetDays !== undefined;
+        throw new NormalizeError(
+          'invalid-date',
+          hasOffset ? `${it.path}.anchor.offsetDays` : `${it.path}.anchor`,
+          hasOffset
+            ? `anchor offset ${it.anchor.offsetDays} moves item '${it.id}' outside the ISO date range (0000-01-01 to 9999-12-31)`
+            : `anchor moves item '${it.id}' outside the ISO date range (0000-01-01 to 9999-12-31)`,
+          hasOffset
+            ? "Use a smaller offset in anchor.offsetDays so the item's resolved dates stay within years 0000 to 9999."
+            : "Shorten the item or anchor it to an earlier edge so its resolved dates stay within years 0000 to 9999.",
+          undefined,
+          hasOffset ? itemPointer(data, it.id, 'anchor', 'offsetDays') : pointer,
+        );
+      }
     }
     anchorState.set(it.id, 2);
   };

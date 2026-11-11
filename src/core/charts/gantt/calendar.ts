@@ -12,6 +12,12 @@ export function dayNum(d: Date): number {
 export function dateFromDay(n: number): Date {
   return new Date(n * DAY_MS);
 }
+export const MIN_ISO_DAY = dayNum(utcDate(0, 0, 1));
+export const MAX_ISO_DAY = dayNum(utcDate(9999, 11, 31));
+/** Whether a UTC day number names a date an authored ISO date (0000-01-01 to 9999-12-31) can name. */
+export function isISODay(n: number): boolean {
+  return Number.isSafeInteger(n) && n >= MIN_ISO_DAY && n <= MAX_ISO_DAY;
+}
 export function floorTo(unit: Unit, d: Date): Date {
   switch (unit) {
     case 'week': {

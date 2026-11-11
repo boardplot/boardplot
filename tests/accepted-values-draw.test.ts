@@ -39,7 +39,7 @@ describe('a value in the spec does not set the length of a layout loop', () => {
       data: {
         rows: [
           { id: 'plan', label: 'Plan', items: [{ id: 'scope', kind: 'bar', start: '2026-04-06', end: '2026-04-17', label: 'Scope' }] },
-          { id: 'build', label: 'Build', items: [{ id: 'dev', kind: 'bar', start: '2026-04-20', end: '2026-05-22', label: 'Dev', anchor: { toItemId: 'scope', edge: 'end', offsetDays: 20_000_000 } }] },
+          { id: 'build', label: 'Build', items: [{ id: 'dev', kind: 'bar', start: '2026-04-20', end: '2026-05-22', label: 'Dev', anchor: { toItemId: 'scope', edge: 'end', offsetDays: 2_900_000 } }] },
         ],
       },
     });
