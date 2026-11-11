@@ -83,9 +83,10 @@ type Issue = {
   code?: string; message?: string; path?: PropertyKey[]; expected?: unknown;
   /**
    * A schema's own refusal of the key at `path` sets `refused: true` and gets the remove patch a `never` key gets;
-   * `renameTo` names the key the value belongs under, and the patch renames it in its object.
+   * `renameTo` names the key the value belongs under, and the patch renames it in its object;
+   * `replaceSibling` switches a sibling key on the owning object so the value at `path` fits.
    */
-  params?: { refused?: boolean; renameTo?: string; code?: string; replaceWith?: string };
+  params?: { refused?: boolean; renameTo?: string; code?: string; replaceWith?: string; replaceSibling?: { key: string; value: unknown } };
   errors?: unknown; values?: unknown[]; origin?: string; minimum?: unknown;
   maximum?: unknown; inclusive?: boolean; exact?: boolean; format?: string;
   pattern?: string; divisor?: number;
@@ -212,6 +213,14 @@ export function schemaDiagnostic(issue: Issue, input: unknown, context: Diagnost
     const ownerPath = context.path.slice(0, context.path.lastIndexOf('/'));
     const renamed = Object.fromEntries(Object.entries(owner).map(([name, value]) => [name === key ? renameTo : name, value]));
     fix.push({ op: 'test', path: ownerPath, value: owner }, { op: 'replace', path: ownerPath, value: renamed });
+  }
+  const sibling = issue.code === 'custom' ? issue.params?.replaceSibling : undefined;
+  if (!fix.length && context.allowFix && safeFixPath && context.path !== '' && actual.found && sibling !== undefined
+    && !['__proto__', 'prototype', 'constructor'].includes(sibling.key) && !/[~/]/.test(sibling.key)
+    && owner !== null && typeof owner === 'object' && !Array.isArray(owner) && Object.hasOwn(owner, sibling.key)) {
+    const siblingPath = `${context.path.slice(0, context.path.lastIndexOf('/'))}/${sibling.key}`;
+    fix.push({ op: 'test', path: siblingPath, value: (owner as Record<string, unknown>)[sibling.key] },
+      { op: 'replace', path: siblingPath, value: sibling.value });
   }
   // A schema rule that knows the value to write instead (a format example) names it.
   const replaceWith = issue.code === 'custom' ? issue.params?.replaceWith : undefined;

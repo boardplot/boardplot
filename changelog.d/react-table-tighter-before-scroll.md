@@ -1,3 +1,0 @@
-### Changed
-
-- The React table (`TableChart`, and `DimSwitchChart` through it) now takes tighter spacing before it scrolls sideways, as the SVG table does. A table wider than its box steps down the table's fit ladder (12 px side margins, 6 px and 3 px cell air, heads on two lines, compact density, tight spacing) and draws the first rung at which it fits without scrolling. Before, the grid always drew full spacing (12 px cell air, regular density) and scrolled. A table that fits at full spacing draws as before, and a table that fits at no rung still draws full spacing and scrolls with its `table-overflow` advice. To keep the old look, give the table a frame at least as wide as the old `table-overflow` advice.

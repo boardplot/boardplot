@@ -202,12 +202,11 @@ function parseChartInput(doc: BoardplotDoc, chart: DocChart, envelope: DocumentE
     }
   }
 
-  // Annotations validated (kind enum rejects garbage)
+  // Annotations validated against the shared shape first, then the chart's own options schema.
   if (chart.annotations !== undefined) {
     const time = def.type === 'line' && (parsedOptions.xAxis as { type?: string } | undefined)?.type === 'time';
     const annParse = parseWithInputConversions(z.array(annotationSchema), time ? chart.annotations.map(timeAnnotationAnchors) : chart.annotations, ['annotations']);
     const annResult = annParse.result;
-    pushAll(envelope.warnings, annParse.warnings);
     if (!annResult.success) {
       for (const i of flattenIssues(annResult.error.issues)) {
         envelope.errors.push(chartSchemaDiagnostic(doc, chart, 'annotations', i, chart.annotations, 'invalid-annotation', i.message,
@@ -215,6 +214,25 @@ function parseChartInput(doc: BoardplotDoc, chart: DocChart, envelope: DocumentE
       }
       return null;
     }
+    if (optionsTake(def.type, 'annotations')) {
+      const mergedOptions = ownedDocumentCopy({ ...def.aliasDefaults?.[chart.type], ...chart.options, annotations: ownedDocumentCopy(annResult.data) });
+      const typeAnnResult = diagnosedSafeParse(def.optionsSchema as z.ZodType, mergedOptions);
+      if (!typeAnnResult.success) {
+        const annIssues = flattenIssues(typeAnnResult.error.issues)
+          .flatMap(splitUnknownKeys)
+          .filter((issue) => issue.path[0] === 'annotations');
+        if (annIssues.length > 0) {
+          for (const i of annIssues) {
+            const rebased = { ...i, path: i.path.slice(1) };
+            envelope.errors.push(chartSchemaDiagnostic(doc, chart, 'annotations', rebased, chart.annotations, 'invalid-options',
+              schemaIssueMessage(i, mergedOptions, i.path as (string | number)[], def.optionsSchema as z.ZodType),
+              withEventAtHint(chart, rebased, issueSuggestion(i, def.type, true, i.path as (string | number)[]))));
+          }
+          return null;
+        }
+      }
+    }
+    pushAll(envelope.warnings, annParse.warnings);
     if (time || annParse.warnings.length) chart = { ...chart, annotations: ownedDocumentCopy(annResult.data) };
   }
 
@@ -445,8 +463,9 @@ function dataIssueSuggest(
         (typeof segment === 'number' && i > 0 && path[i - 1] === 'panels');
       if (structural && isRecord(next) && Object.hasOwn(next, 'type') && typeof next.type === 'string') {
         child = next.type;
-        viaOptions = path[i + 1] === 'options';
-        optionPath = viaOptions ? path.slice(i + 2) : undefined;
+        const branch = path[i + 1];
+        viaOptions = branch === 'options' || branch === 'annotations';
+        optionPath = branch === 'options' ? path.slice(i + 2) : branch === 'annotations' ? path.slice(i + 1) : undefined;
       }
       node = next;
     }
