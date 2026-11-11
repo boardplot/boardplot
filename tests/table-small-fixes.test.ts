@@ -828,6 +828,21 @@ it('holds a custom table head ink to the ink contrast floor', () => {
   expect(pale.ok).toBe(false);
   expect(pale.errors?.map((error) => error.code)).toEqual(['contrast-ink']);
   expect((render({ spec: spec('#333333') }).body as { ok: boolean }).ok).toBe(true);
+  // An operator without its own ink paints in the secondary ink, so a pale secondary ink is refused there too.
+  const operators = (ink: Record<string, string>) => render({ spec: {
+    type: 'table',
+    data: { columns: [{ id: 'label', kind: 'rowLabel', label: 'Line' }, { id: 'v', kind: 'value', label: 'Amount' }], rows: [{ id: 'a', label: 'Revenue', cells: { v: 12 } }, { id: 'b', label: 'Cost', operator: '−', cells: { v: 4 } }] },
+    options: { signs: 'operators' },
+    theme: { preset: 'standard', overrides: { table: { inks: ink } } },
+  } }).body as { ok: boolean; errors?: { code: string }[] };
+  expect(operators({ secondary: '#DDDDDD' }).errors?.map((error) => error.code)).toEqual(['contrast-ink-muted']);
+  // A figure ink used only on a dark total ground is decided against that ground, not the page.
+  const total = render({ spec: {
+    type: 'table',
+    data: { columns: [{ id: 'label', kind: 'rowLabel', label: 'Line' }, { id: 'v', kind: 'value', label: 'Amount' }], rows: [{ id: 't', label: 'Total', role: 'total', cells: { v: 12 } }] },
+    theme: { preset: 'standard', overrides: { table: { grounds: { total: '#222222' }, inks: { figure: '#FFFFFF' } } } },
+  } }).body as { ok: boolean };
+  expect(total.ok).toBe(true);
 });
 
 // The heavy section rule drew where the theme asks for no line: the close under closeRule 'none', above a result under resultRule 'none'.
