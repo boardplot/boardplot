@@ -817,6 +817,20 @@ it('prints tone text at 4.5:1 on every tone fill under tones fill', () => {
   }
 });
 
+// Two heat lanes capped at 500 and 200 looked comparable, and nothing said that each column shades on its own scale.
+it('notes per-column shading for heat lanes with different caps, not for one shared cap', () => {
+  const data: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'a', kind: 'value' }, { id: 'b', kind: 'value' }],
+    rows: [{ id: 'n', label: 'North', cells: { a: 120, b: -80 } }, { id: 's', label: 'South', cells: { a: -40, b: 60 } }],
+  };
+  const note = 'Shading compares values within each column, not across columns.';
+  const footnotes = (caps: number[]) => resolveTable(data, {
+    encodings: { a: { type: 'heat', cap: { abs: caps[0]! } }, b: { type: 'heat', cap: { abs: caps[1]! } } },
+  } as never).table.footnotes;
+  expect(footnotes([500, 200])).toContain(note);
+  expect(footnotes([500, 500])).not.toContain(note);
+});
+
 // The heavy section rule drew where the theme asks for no line: the close under closeRule 'none', above a result under resultRule 'none'.
 it('draws no heavy section rule where the theme rules are none', () => {
   const data = {

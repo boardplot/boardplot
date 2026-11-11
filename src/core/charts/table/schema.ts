@@ -381,7 +381,7 @@ export const tableOptionsObject = baseOptionsSchema.safeExtend(refusedBaseOption
         cap: z.strictObject({
           pct: z.number().positive().optional().describe('Percent-column tint cap in points. Example: 20 for a ±20% YoY lane.'),
           abs: z.number().positive().optional().describe('Other numeric tint cap in source units.'),
-        }).optional().describe('Where the lane saturates; without it the largest magnitude in the column does, on both sides of zero. One lane per table, on a variance column.'),
+        }).optional().describe('Where the lane saturates; without it the largest magnitude in the column does, on both sides of zero. Lanes with different caps add the note that shading compares values within each column.'),
         alpha: z.number().min(0).max(1).optional().describe("Tint weight at the cap; default 0.18, and 0.26 on scale 'status', where every painted cell takes it. Text stays readable up to 0.18 on every shipped theme and up to 0.35 on a status ground; above that the figures take the contrast ink."),
         excludeTotals: z.boolean().optional().describe('Leave total rows untinted; default true. Heat reads a variance, and a total has none worth colouring.'),
         steps: z.number().int().min(2).max(9).optional().describe('Band count. 5 gives the cohort ladder: 6 / 14 / 26 / 42 % of the ink over the background, then the full ink with inverse text, from the theme token surface.heatSteps. A stepped lane measures the data rows only, so a closing row does not set the scale.'),
