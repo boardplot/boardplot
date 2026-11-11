@@ -921,9 +921,10 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
       const visible = group.columnIds.filter((columnId) => drawn.has(columnId));
       if (visible.length === 0) return;
       if (group.band === true) for (const columnId of visible) banded.add(columnId);
-      if (index > 0 && columns[0]?.id !== visible[0]) {
+      // A spacer before the group is the separation, so its first column takes no hairline, as in the SVG.
+      if (index > 0 && columns[0]?.id !== visible[0] && (group.spacer ?? 0) <= 0) {
         groupStart.add(visible[0]!);
-        if ((group.spacer ?? 0) <= 0) divided = true;
+        divided = true;
       }
     });
     // A band authored on the columns themselves: the run reads as
