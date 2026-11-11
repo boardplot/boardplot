@@ -1,3 +1,4 @@
+import { valueLineLabelsOn } from '../labelOn';
 import { strokeToken, dashToken } from '../../theme';
 /**
  * Standard bar phase 4, first half: the annotations bar draws itself, before
@@ -82,7 +83,7 @@ export function layoutBarLocalAnnotations(domain: BarDomain, area: BarArea, warn
       const valueText = !isMean && !id.startsWith('averageMarker') && !ann.format && !domain.options.format && roundedNumber(v, domain.valueSpec.spec) !== v
         ? formatAutomaticNumber(v, { locale: domain.options.locale?.language, decimals: Math.max(autoDecimals(v), neededDecimals(v)), suffix: percent ? '%' : '' })
         : isMean || id === domain.averageMarkerId ? meanFmt(v) : percent && !ann.format && !domain.options.format ? domain.valueSpec.fmtPercent(v) : annFmt(v);
-      const labelText = ann.label === false ? '' : ann.label !== undefined ? namedLineText(ann.label, valueText, v, id) : isMean ? `${domain.options.strings!.average} ${valueText}` : valueText;
+      const labelText = ann.label === false || !valueLineLabelsOn(domain.options) ? '' : ann.label !== undefined ? namedLineText(ann.label, valueText, v, id) : isMean ? `${domain.options.strings!.average} ${valueText}` : valueText;
       if (labelText) {
         const lines = labelText.split('\n');
         const w = Math.max(...lines.map((l) => measure(l, strongFont).width));

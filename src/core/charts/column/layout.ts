@@ -1,3 +1,4 @@
+import { valueLineLabelsOn } from '../labelOn';
 import { refuseLabelPosition } from '../band/labelPosition';
 import { pickedValues, withValueLabelDefaults } from '../band/valueSelection';
 import { sk, stackParts, withoutShareAnnotations } from '../band/stacks';
@@ -368,6 +369,7 @@ function annotateColumn(
     sharesFormat: domain.variant === 'stacked100',
     valueLinePercentLevels: domain.variant === 'stacked100' || domain.options.unit === '%' || domain.pctLevels,
     averageMarker: domain.averageMarker,
+    valueLineLabels: valueLineLabelsOn(domain.options),
     solveCtx,
     yScale: y,
     meanValue: domain.meanValue,

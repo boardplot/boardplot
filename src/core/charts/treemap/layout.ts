@@ -786,7 +786,7 @@ function layoutTreemapAt(data: TreemapData, options: TreemapOptions, memo: Map<s
     },
     warnings, debug: { occupied: occupied.snapshot(), decisions: solved.decisions },
   };
-  markNotedLabels(geometry, hiddenNote.ids, { strings: options.strings });
+  markNotedLabels(geometry, hiddenNote.ids, hiddenNote.marks);
   const bigItemIds = new Set(ordered.filter((item) => item.value / total >= LARGE_TILE_SHARE).map((item) => item.id));
   FIT_SCORE.set(geometry, {
     hidden: solved.placed.filter((l) => l.hidden && l.kind !== 'grandTotal').length,

@@ -1,5 +1,5 @@
 import { chartString } from '../../strings/creative';
-import { canvasMargin, emphasisWeight } from '../../theme';
+import { canvasMargin, emphasisWeight, panelTypeClass, typeWidthClass, withTypeClassCap, type TypeWidthClass } from '../../theme';
 import type { Rect } from '../../geometry';
 import { formatAutomaticPercent, valueSetFormatter } from '../../format';
 import { formatDate } from '../../dateFormat';
@@ -530,7 +530,7 @@ function trendColumn(input: { data: CreativeData; rows: ReturnType<typeof trendR
 }
 
 /** The forms the card takes when a given canvas is too short for its first form, in the order they are tried. */
-interface Form { three?: true; notes?: true; tight?: true }
+interface Form { three?: true; notes?: true; tight?: true; stacked?: true }
 /** From this width a short canvas takes three columns; below it the card has no room for them. */
 const THREE_COLUMNS_FROM = 900;
 
@@ -540,32 +540,51 @@ const THREE_COLUMNS_FROM = 900;
  * (as `footnotes: false`), and a table 2 px tighter per row. When none fits, the form with the lowest floor reports it.
  */
 export function layoutCreative(data: CreativeData, options: CreativeOptions & Pick<BaseOptions, 'measure'> = {}): Geometry<CreativeMarks, CreativeDerived> {
-  if (options.columnOverrides === undefined) return layoutFirstFit(data, options);
+  try { return layoutCreativeAs(data, options, {}); } catch (error) {
+    // Text too long for the card throws before render's later steps can see a refusal. The card draws as a narrower
+    // width does: in the first smaller type class that fits (request.ts, smallerClass), then stacked in the smallest
+    // class, as under STACKED_BELOW. A grid panel keeps its class and form.
+    if (!overflows(error) || panelTypeClass(options) !== undefined || (options as { belowMinimum?: string }).belowMinimum === 'refuse') throw error;
+    const order: readonly TypeWidthClass[] = ['S', 'M', 'L'];
+    const width = resolveSize(options.size ?? { width: 960, height: 700 }).width;
+    const tries: [TypeWidthClass, Form][] = order.slice(0, order.indexOf(typeWidthClass(width))).reverse().map((cap) => [cap, {}]);
+    if (width >= STACKED_BELOW) tries.push(['S', { stacked: true }]);
+    for (const [cap, form] of tries) {
+      try { return withTypeClassCap(cap, () => layoutCreativeAs(data, options, form)); } catch (inner) { if (!overflows(inner)) throw inner; }
+    }
+    throw error;
+  }
+}
+
+const overflows = (error: unknown): boolean => error instanceof NormalizeError && error.code === 'creative-text-overflow';
+
+function layoutCreativeAs(data: CreativeData, options: CreativeOptions & Pick<BaseOptions, 'measure'>, base: Form): Geometry<CreativeMarks, CreativeDerived> {
+  if (options.columnOverrides === undefined) return layoutFirstFit(data, options, base);
   const pinned = (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height ?? !heightOmitted(options.size);
   const attempt = (next: typeof options) => {
-    try { return layoutFirstFit(data, next); } catch (error) {
-      if (error instanceof NormalizeError && error.code === 'creative-text-overflow') return undefined;
+    try { return layoutFirstFit(data, next, base); } catch (error) {
+      if (overflows(error)) return undefined;
       throw error;
     }
   };
   // With no room even at the unset widths, that spec's own overflow reports.
-  return widthsThatFit(options, attempt, pinned) ?? layoutFirstFit(data, withoutWidths(options));
+  return widthsThatFit(options, attempt, pinned) ?? layoutFirstFit(data, withoutWidths(options), base);
 }
 
-function layoutFirstFit(data: CreativeData, options: CreativeOptions & Pick<BaseOptions, 'measure'>): Geometry<CreativeMarks, CreativeDerived> {
-  const first = layoutForm(data, options, {});
+function layoutFirstFit(data: CreativeData, options: CreativeOptions & Pick<BaseOptions, 'measure'>, base: Form): Geometry<CreativeMarks, CreativeDerived> {
+  const first = layoutForm(data, options, base);
   const fits = (g: typeof first) => (g.sizing?.minHeight ?? 0) <= g.size.height + SIZE_TOLERANCE;
   // An unpinned card keeps its first form and takes the height it needs.
   const pinned = (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height ?? !heightOmitted(options.size);
   if (!pinned || fits(first)) return first;
-  const wide = first.size.width >= THREE_COLUMNS_FROM;
+  const wide = first.size.width >= THREE_COLUMNS_FROM && !base.stacked;
   const forms: Form[] = [...(wide ? [{ three: true as const }] : []), { ...(wide ? { three: true as const } : {}), notes: true }, { ...(wide ? { three: true as const } : {}), notes: true, tight: true }];
   let best = first;
   for (const form of forms) {
     // A narrower column can overflow its text; that form is then no fit, and the first form still reports the size.
     let next: typeof first;
-    try { next = layoutForm(data, options, form); } catch (error) {
-      if (error instanceof NormalizeError && error.code === 'creative-text-overflow') continue;
+    try { next = layoutForm(data, options, { ...base, ...form }); } catch (error) {
+      if (overflows(error)) continue;
       throw error;
     }
     if (fits(next)) return next;
@@ -577,7 +596,7 @@ function layoutFirstFit(data: CreativeData, options: CreativeOptions & Pick<Base
 function layoutForm(data: CreativeData, options: CreativeOptions & Pick<BaseOptions, 'measure'>, form: Form): Geometry<CreativeMarks, CreativeDerived> {
   const measure = options.measure ?? defaultMeasurer;
   const size = resolveSize(options.size ?? { width: 960, height: 700 });
-  const stacked = size.width < STACKED_BELOW;
+  const stacked = size.width < STACKED_BELOW || form.stacked === true;
   const three = form.three === true && !stacked;
   const warnings: LintWarning[] = [];
   const theme = themeForWidth(resolveSemanticPaletteTheme(resolveTheme(options.theme), options.palette, warnings), size.width);

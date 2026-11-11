@@ -1976,6 +1976,9 @@ function layoutWaterfallWithPad(
     const centredX = bx + bw / 2 - tsize.width / 2;
     const outerCase = caseIndex === 0 || (caseIndex !== undefined && caseIndex === cases.length - 1);
     const outsideSlot = negative ? 'outsideBottom' as const : 'outsideTop' as const;
+    // A step that ends on the baseline (a balance falling to zero) keeps its inside value clear of the baseline's claim,
+    // or its only free seat collides with the line and the whole row of step values goes to the note.
+    const baselineClear = Math.abs((negative ? yBot : yTop) - y0) < 1 ? 1 : 0;
     let valueRequest: LabelRequest = {
       id: isTotal ? `total:${it.id}` : `sum:${it.id}`,
       kind: isTotal ? 'total' : 'segment',
@@ -2008,11 +2011,11 @@ function layoutWaterfallWithPad(
           rect: { x: caseIndex === 0 ? bx + bw - tsize.width : bx, y: outsideY, w: tsize.width, h: tsize.height },
           penalty: isTotal ? 1 : 0,
         }] : []),
-        ...(tsize.height + 4 <= barRect.h && tsize.width + 4 <= bw ? [{
+        ...(tsize.height + 4 + baselineClear <= barRect.h && tsize.width + 4 <= bw ? [{
           slot: 'insideEnd' as const,
           rect: {
             x: bx + bw / 2 - tsize.width / 2,
-            y: negative ? yBot - tsize.height - 2 : yTop + 2,
+            y: negative ? yBot - tsize.height - 2 - baselineClear : yTop + 2 + baselineClear,
             w: tsize.width,
             h: tsize.height,
           },
@@ -2020,6 +2023,13 @@ function layoutWaterfallWithPad(
           insidePaint,
           insidePattern,
           insideFill: effectiveFill(paintColor(theme, insidePaint), insidePattern, theme),
+        }] : []),
+        // A step that ends on the baseline with no room inside has its outside seat among the category names:
+        // its value stands at its other end, the bridge seat an explicit labelPosition gives it.
+        ...(!isTotal && baselineClear > 0 ? [{
+          slot: negative ? 'outsideTop' as const : 'outsideBottom' as const,
+          rect: { x: centredX, y: negative ? yTop - tsize.height - 4 : yBot + 4, w: tsize.width, h: tsize.height },
+          penalty: 3,
         }] : []),
         // Full mode prints the start and end totals. When the centred seats collide with
         // the neighbouring bar, the end total hangs outward from its bar's outer edge.
