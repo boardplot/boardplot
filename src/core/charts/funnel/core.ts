@@ -1,6 +1,6 @@
 import { prepareFractionData } from '../../normalize/fraction';
 import { calendarCategories } from '../../calendarLabels';
-import { chartSizing } from '../../sizing';
+import { chartSizing, sideKeyGivesWay } from '../../sizing';
 /** Zod-free funnel chart registration. */
 
 import type { ChartCore } from '../../registry';
@@ -19,7 +19,11 @@ export const funnelCore: ChartCore<
   title: 'Funnel / pipeline',
   summary:
     'Stage-flow funnel: stacked rows or an honest-width centered silhouette with derived conversion rates',
-  layout: (data, options) => layoutFunnel(prepareFractionData(data), options),
+  layout: (data, options) => {
+    const prepared = prepareFractionData(data);
+    const own: FunnelOptions = options ?? {};
+    return sideKeyGivesWay(own, layoutFunnel(prepared, own), (keyAbove) => layoutFunnel(prepared, keyAbove));
+  },
   categoryLabels: calendarCategories,
   prepare: prepareFractionData,
   defaults: { worstDropCallout: false },

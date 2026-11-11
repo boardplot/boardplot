@@ -44,7 +44,7 @@ import { accessibleTitle,
 } from '../../normalize/shared';
 import { bandScale, linearScale, niceDomain } from '../../scale';
 import { rowDrivenHeight } from '../../rowCanvas';
-import { rowSizing } from '../../sizing';
+import { rowSizing, sideKeyOff } from '../../sizing';
 import { unitConflict, unitConflictRefusal } from '../../schema/units';
 import { MARK_CONTRAST_FLOOR } from '../../themeRules';
 import { authoredFootnoteCount, authoredNotes, frameTextOptions, normalizeLegendOption, solveFrame, fixedPlotChrome, type LegendItemInput } from '../../frame';
@@ -498,6 +498,7 @@ export function layoutButterfly(
       ...frameTextOptions(opts),
       footnotes: [...authoredNotes(opts), ...scaleNotes(!sharedScale, hasNegative && !directed, opts).map(disclosureNote)],
       legend: legendOpts ? { options: legendOpts, items: legendItems } : undefined,
+      ...(sideKeyOff(opts) ? { sideKeyGivesWay: true } : {}),
       theme,
       measure,
     },

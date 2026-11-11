@@ -1,6 +1,6 @@
 import { prepareFractionData } from '../../normalize/fraction';
 import { calendarCategories } from '../../calendarLabels';
-import { chartSizing } from '../../sizing';
+import { chartSizing, sideKeyGivesWay } from '../../sizing';
 /** Zod-free butterfly chart registration. */
 
 import type { ChartCore } from '../../registry';
@@ -18,7 +18,11 @@ export const butterflyCore: ChartCore<
   sizing: chartSizing('butterfly'),
   title: 'Butterfly / tornado',
   summary: 'Two mirrored horizontal panes around a shared center category column',
-  layout: (data, options) => layoutButterfly(prepareFractionData(data), options),
+  layout: (data, options) => {
+    const prepared = prepareFractionData(data);
+    const geo = layoutButterfly(prepared, options);
+    return options === undefined ? geo : sideKeyGivesWay(options, geo, (keyAbove) => layoutButterfly(prepared, keyAbove));
+  },
   categoryLabels: calendarCategories,
   prepare: prepareFractionData,
   defaults: { sortBy: 'sheet', sharedScale: true, negatives: 'direction' },

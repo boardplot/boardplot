@@ -30,7 +30,7 @@ import { accessibleTitle,
   resolveSize,
 } from '../../normalize/shared';
 import { defaultMeasurer, type FontSpec, type TextMeasurer } from '../../text';
-import { rowSizing } from '../../sizing';
+import { rowSizing, sideKeyOff } from '../../sizing';
 import {
   effectiveFill,
   colorRolePaints,
@@ -311,6 +311,7 @@ export function layoutCenteredFunnel(
         ...(numbers.undefinedSteps.length ? [disclosureNote(chartString(options, 'funnelUndefined', { v1: na }))] : []),
       ],
       legend: legendOpts ? { options: legendOpts, items: legendItems } : undefined,
+      ...(sideKeyOff(options) ? { sideKeyGivesWay: true } : {}),
       theme,
       measure,
     },
