@@ -251,8 +251,8 @@ export interface AnnotatePassInput {
   sharesFormat?: boolean;
   /** The value-line scale is percent; other annotations may use source amounts. */
   valueLinePercentLevels?: boolean;
-  /** How the chart prints its average marker's number in the drawn label; the marker's record (the hover value) prints it alike. */
-  averageFmt?: (v: number) => string;
+  /** The generated average marker and how its drawn label prints the number; the marker's record (the hover value) prints it alike. */
+  averageMarker?: { id: Id; fmt: (v: number) => string };
   /** The value-line axis keeps its percent or percentage-point unit under an authored format. */
   valueLineUnit?: '%' | 'pp';
   /** Combo's secondary value-line scale has its own unit. */
@@ -1470,7 +1470,7 @@ function placeValueLine(s: AnnotationScope, ann: Extract<Annotation, { kind: 'va
     id,
     kind: 'valueLine',
     computedText: labelText || '',
-    valueText: (id.startsWith('averageMarker') && input.averageFmt ? input.averageFmt : meanLine ? s.run.statFmt : s.run.fmt)(v),
+    valueText: (id === input.averageMarker?.id ? input.averageMarker.fmt : meanLine ? s.run.statFmt : s.run.fmt)(v),
     nodeIds: [lineId],
     labelId: labelText ? `valueLine:${id}` : undefined,
     // A mean is MEASURED over the plotted series (the observations are the

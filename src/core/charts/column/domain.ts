@@ -36,7 +36,7 @@ import type { LintWarning, PlacedAnnotation } from '../../types/scene';
 import { valueLineExtent, type ValueLineExtent } from '../../valueLineDomain';
 import { applyCategoryViewport, liveWindowOptions, viewportMeanSpan } from '../../viewport';
 import { VALUE_LINE_RESERVE } from '../../annotateParts';
-import { accumulateStack, averageMarkerLine, averageMarkerMean, averageMarkerSpan, averageMarkerScope as averageMarkerScopeOf, averageOfUnaddedSums, averageOfWholeShares, grandTotalRequested, compositionBasis, mixedSignsWarning, overfullShareSum, overfullWarning, plottedMean, sortSegments, stackTotalFormatter, warnIncompleteStacks, warnShareFormatIgnored, withoutShareMean } from '../band/stacks';
+import { accumulateStack, averageMarkerId, averageMarkerLine, averageMarkerMean, averageMarkerSpan, averageMarkerScope as averageMarkerScopeOf, averageOfUnaddedSums, averageOfWholeShares, grandTotalRequested, compositionBasis, mixedSignsWarning, overfullShareSum, overfullWarning, plottedMean, sortSegments, stackTotalFormatter, warnIncompleteStacks, warnShareFormatIgnored, withoutShareMean } from '../band/stacks';
 import { drawnVariant, NO_STACK_MEAN, stackAdds } from '../../stackAdds';
 import { isIncomplete, warnShareRoundingDrift } from '../../dataGaps';
 import { roundingUnavailable, shareRoundingNotes, sumConsistentShares, type RoundingAdjustment } from '../../shareRounding';
@@ -1105,7 +1105,7 @@ export function resolveColumnDomain(data: ChartData, options: AnomalyColumnOptio
     gtContent,
     partsAdd,
     ...(partsAdd ? {} : { meanMissing: NO_STACK_MEAN }),
-    averageFmt,
+    ...(averageMark === undefined ? {} : { averageMarker: { id: averageMarkerId(options.annotations ?? []), fmt: averageFmt } }),
     annList: columnAnnotationList(options, variant, averageMark, averageFmt, averageMarkerSpan(averageRun, meanSpan)),
     seriesCagr: stackedLike ? seriesCagrs(options, cats, dataSeries, basis.absOf, warnings) : new Map(),
   };

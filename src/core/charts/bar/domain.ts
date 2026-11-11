@@ -34,7 +34,7 @@ import { chosenValueIndices } from '../band/valueSelection';
 import { partialKeyForced, saysToDate } from '../../partialPeriod';
 import { chartString } from '../../strings';
 import type { LintWarning, Paint } from '../../types/scene';
-import { accumulateStack, averageMarkerLine, averageMarkerMean, averageMarkerScope as averageMarkerScopeOf, averageOfUnaddedSums, averageOfWholeShares, grandTotalRequested, compositionBasis, mixedSignsWarning, overfullShareSum, overfullWarning, plottedMean, sortSegments, stackTotalFormatter, warnIncompleteStacks, warnShareFormatIgnored, withoutShareMean } from '../band/stacks';
+import { accumulateStack, averageMarkerId, averageMarkerLine, averageMarkerMean, averageMarkerScope as averageMarkerScopeOf, averageOfUnaddedSums, averageOfWholeShares, grandTotalRequested, compositionBasis, mixedSignsWarning, overfullShareSum, overfullWarning, plottedMean, sortSegments, stackTotalFormatter, warnIncompleteStacks, warnShareFormatIgnored, withoutShareMean } from '../band/stacks';
 import { isIncomplete, warnShareRoundingDrift } from '../../dataGaps';
 import { roundingUnavailable, shareRoundingNotes, sumConsistentShares, type RoundingAdjustment } from '../../shareRounding';
 import { NO_STACK_MEAN, stackAdds } from '../../stackAdds';
@@ -354,7 +354,7 @@ function barAnnotations(
   averageMarkerValue: number | undefined,
   statFmt: (v: number) => string,
   averageSpan: string | undefined,
-): Pick<BarDomain, 'localAnns' | 'passAnns'> {
+): Pick<BarDomain, 'localAnns' | 'passAnns' | 'averageMarkerId'> {
   const annotationInput: Annotation[] = [...(options.annotations ?? [])];
   if (averageMarkerValue !== undefined) annotationInput.push(averageMarkerLine(annotationInput, averageMarkerValue, statFmt, averageSpan, options.strings?.average));
   const annotationsAll: Annotation[] = annotationInput.map((a, n) => ({ ...a, id: a.id ?? `${a.kind}-${n + 1}` }));
@@ -365,7 +365,7 @@ function barAnnotations(
   if (variant === 'stacked100' && labelOn(options, 'percentIndicator') && !localAnns.some((a) => a.kind === 'indicator100')) {
     localAnns.push({ kind: 'indicator100', id: 'indicator100-auto', priority: PRIORITY.endpoint });
   }
-  return { localAnns, passAnns };
+  return { localAnns, passAnns, ...(averageMarkerValue === undefined ? {} : { averageMarkerId: averageMarkerId(options.annotations ?? []) }) };
 }
 
 /**

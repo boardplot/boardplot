@@ -201,10 +201,15 @@ export function averageMarkerLine(
   span?: string,
   average = localeStrings().average,
 ): Extract<Annotation, { kind: 'valueLine' }> {
+  return { kind: 'valueLine', id: averageMarkerId(annotations), value, label: averageMarkerText(value, statFmt, span, average) };
+}
+
+/** The generated marker's id: 'averageMarker', or the next free 'averageMarker-n' when an authored annotation holds it. */
+export function averageMarkerId(annotations: readonly { id?: Id }[]): Id {
   let id = 'averageMarker';
   let suffix = 2;
   while (annotations.some((annotation) => annotation.id === id)) id = `averageMarker-${suffix++}`;
-  return { kind: 'valueLine', id, value, label: averageMarkerText(value, statFmt, span, average) };
+  return id;
 }
 
 /** The average marker's label: "Ø 42.1", and the periods it covers where the plot draws fewer. */

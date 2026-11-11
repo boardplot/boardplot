@@ -204,6 +204,8 @@ export interface BarDomain {
   localAnns: Annotation[];
   /** Everything else, for the shared annotation pass. */
   passAnns: Annotation[];
+  /** The generated average marker's id, when the chart draws one. */
+  averageMarkerId?: Id;
   lo: number;
   hi: number;
   /** Every value the exhibit renders, in draw order, for the axis-break check. */

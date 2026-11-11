@@ -1034,3 +1034,12 @@ it('an average marker hover value prints as its drawn label does (column, bar)',
     expect([marker?.computedText, marker?.valueText], type).toEqual(['Average 5.009%', '5.009%']);
   }
 });
+
+// An authored value line may take the id 'averageMarker'; its hover value kept its own format, not the generated marker's.
+it('an authored value line named averageMarker keeps its own format in the hover value', () => {
+  const data = { categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], series: [{ id: 's', label: 'Rate', values: [4.1, 5.2] }] };
+  const annotations = [{ kind: 'valueLine', id: 'averageMarker', value: 12.34, format: '0.00' }];
+  const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'column', data, options: { unit: '%', annotations } } as never) as never));
+  const line = geometry.annotations.find((annotation) => annotation.id === 'averageMarker');
+  expect([line?.computedText, line?.valueText]).toEqual(['12.34', '12.34']);
+});
