@@ -198,7 +198,7 @@ function lineAdvice(chart: ScopedLintChart): DesignWarning[] {
   const namedOnLines = options.seriesLabels !== 'key' && options.seriesLabels !== 'none';
   // End names that do not fit fall back to a key: the probe advises the fix only where it draws without a new finding.
   if (plainLines && (position === 'top' || position === 'bottom') && !namedOnLines
-    && chart.drawsWith?.({ legend: 'none', seriesLabels: 'end' }) !== false) {
+    && chart.drawsWith?.({ legend: 'none', seriesLabels: 'end' }, 'design-line-direct-labels') !== false) {
     found.push(advice(chart, 'design-line-direct-labels', '/options/legend', 'set options.legend to none and options.seriesLabels to end', [
       { op: 'replace', path: '/options/legend', value: 'none' },
       { op: 'replace', path: '/options/seriesLabels', value: 'end' },
@@ -227,7 +227,7 @@ function waterfallAdvice(chart: ScopedLintChart): DesignWarning[] {
   }
   // A horizontal bridge has its own floor and drops some annotations: the probe advises it only where it draws without a new finding.
   if (options.variant !== 'horizontal' && chart.geometry!.warnings.some((warning) => CROWDED_NAMES.has(warning.code))
-    && chart.drawsWith?.({ variant: 'horizontal' }) !== false) {
+    && chart.drawsWith?.({ variant: 'horizontal' }, 'design-waterfall-horizontal') !== false) {
     found.push(advice(chart, 'design-waterfall-horizontal', '/options/variant', 'set options.variant to horizontal; the names then read in a column left of the bars',
       [{ op: 'replace', path: '/options/variant', value: 'horizontal' }]));
   }

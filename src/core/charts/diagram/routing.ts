@@ -460,19 +460,27 @@ function resolvePort(
     }
   } else {
     const perimeter = ((source.at.perimeter % 1) + 1) % 1;
+    const halfW = rect.w / 2;
+    const topRight = halfW;
+    const bottomRight = topRight + rect.h;
+    const bottomLeft = bottomRight + rect.w;
+    const topLeft = bottomLeft + rect.h;
     const distance = perimeter * 2 * (rect.w + rect.h);
-    if (distance <= rect.w) {
-      point = { x: rect.x + rect.w / 2 + distance, y: rect.y };
+    if (distance <= topRight) {
+      point = { x: rect.x + halfW + distance, y: rect.y };
       normal = { x: 0, y: -1 };
-    } else if (distance <= rect.w + rect.h) {
-      point = { x: rect.x + rect.w, y: rect.y + distance - rect.w };
+    } else if (distance <= bottomRight) {
+      point = { x: rect.x + rect.w, y: rect.y + Math.min(rect.h, distance - topRight) };
       normal = { x: 1, y: 0 };
-    } else if (distance <= 2 * rect.w + rect.h) {
-      point = { x: rect.x + rect.w - (distance - rect.w - rect.h), y: rect.y + rect.h };
+    } else if (distance <= bottomLeft) {
+      point = { x: rect.x + rect.w - Math.min(rect.w, distance - bottomRight), y: rect.y + rect.h };
       normal = { x: 0, y: 1 };
-    } else {
-      point = { x: rect.x, y: rect.y + rect.h - (distance - 2 * rect.w - rect.h) };
+    } else if (distance <= topLeft) {
+      point = { x: rect.x, y: rect.y + rect.h - Math.min(rect.h, distance - bottomLeft) };
       normal = { x: -1, y: 0 };
+    } else {
+      point = { x: rect.x + Math.min(halfW, distance - topLeft), y: rect.y };
+      normal = { x: 0, y: -1 };
     }
   }
   return {

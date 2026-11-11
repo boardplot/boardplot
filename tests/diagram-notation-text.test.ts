@@ -130,3 +130,47 @@ describe('diagram hierarchy group titles', () => {
     for (const width of [600, 840]) expect((render({ spec: spec(width), format: 'svg' } as never).body as any).ok, `${width} px`).toBe(true);
   });
 });
+
+describe('diagram perimeter ports', () => {
+  // The clockwise perimeter walk from top centre measured a full width before the top-right corner, pushing ports past the corner outside the node and skipping the left half of the top edge.
+  it('places every perimeter fraction clockwise from top centre on the node boundary with its outward normal', () => {
+    const cases = [
+      [0, { x: 0, y: -1 }],
+      [0.1, { x: 0, y: -1 }],
+      [0.25, { x: 1, y: 0 }],
+      [0.3, { x: 0, y: 1 }],
+      [0.6, { x: 0, y: 1 }],
+      [0.75, { x: -1, y: 0 }],
+      [0.9, { x: 0, y: -1 }],
+      [1, { x: 0, y: -1 }],
+    ] as const;
+    for (const [perimeter, normal] of cases) {
+      const spec = {
+        type: 'diagram',
+        data: {
+          nodes: [
+            { id: 'mix', kind: 'entity', shape: { kind: 'rectangle' }, label: 'Mix', position: { x: 0.3, y: 0.5 }, size: { width: 280, height: 60 }, ports: [{ id: 'q', at: { perimeter } }] },
+            { id: 'bake', kind: 'entity', shape: { kind: 'rectangle' }, label: 'Bake', position: { x: 0.8, y: 0.5 } },
+          ],
+          edges: [{ id: 'm2b', source: { nodeId: 'mix', portId: 'q' }, target: { nodeId: 'bake' } }],
+        },
+        options: { variant: 'hierarchy', title: 'Bread steps', size: { width: 640, height: 300 } },
+      };
+      const geometry = layoutResolvedRequest(resolveChartRequest(spec as never)) as any;
+      expect(geometry.warnings, `perimeter ${perimeter}`).toEqual([]);
+      const mix = geometry.marks.nodes.find((node: any) => node.id === 'mix');
+      const rect = mix.rect;
+      const port = mix.ports[0];
+      const start = geometry.marks.edges[0].route.points[0];
+      expect(start, `perimeter ${perimeter}`).toEqual(port.point);
+      expect(port.normal, `perimeter ${perimeter}`).toEqual(normal);
+      const onSide = normal.x !== 0
+        ? port.point.x === (normal.x > 0 ? rect.x + rect.w : rect.x)
+        : port.point.y === (normal.y > 0 ? rect.y + rect.h : rect.y);
+      expect(onSide && port.point.x >= rect.x && port.point.x <= rect.x + rect.w && port.point.y >= rect.y && port.point.y <= rect.y + rect.h, `perimeter ${perimeter}`).toBe(true);
+      if (perimeter === 0 || perimeter === 1) expect(port.point).toEqual({ x: rect.x + rect.w / 2, y: rect.y });
+      if (perimeter === 0.1) expect(port.point).toEqual({ x: Math.round((rect.x + rect.w / 2 + 0.1 * 2 * (rect.w + rect.h)) * 2) / 2, y: rect.y });
+      if (perimeter === 0.9) expect(port.point.x).toBeLessThan(rect.x + rect.w / 2);
+    }
+  });
+});

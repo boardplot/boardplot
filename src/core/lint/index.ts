@@ -40,8 +40,11 @@ export interface LintChart {
   data: unknown;
   options?: Record<string, unknown>;
   annotations?: unknown[];
-  /** Render supplies it: whether the drawn chart still draws at its size with these options changed, and raises no new warning code. */
-  drawsWith?: (changed: Record<string, unknown>) => boolean;
+  /**
+   * Render supplies it: whether the drawn chart still draws at its size with these options changed, and raises no new warning code.
+   * `code` names the advice the probe is for: false without a probe where the caller drops that advice.
+   */
+  drawsWith?: (changed: Record<string, unknown>, code: string) => boolean;
 }
 
 export interface LintDocument {

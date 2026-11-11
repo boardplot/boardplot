@@ -438,7 +438,8 @@ function runTool(name: string, args: Record<string, unknown>): VerbResult {
     case 'boardplot_fixtures':
       return fixtures(args);
     case 'boardplot_render':
-      return render(args as { spec: unknown; return?: string[] });
+      // A design advice this process reported already is dropped (adviceOnce), so its probe does not run.
+      return render({ ...(args as { spec: unknown; return?: string[] }), adviceRead: (code) => !(onceAdvice.has(code) && reportedAdvice.has(code)) });
     case 'boardplot_measure':
       return measure(args as { spec: unknown });
     case 'boardplot_feedback':
