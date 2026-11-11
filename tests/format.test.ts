@@ -996,6 +996,30 @@ describe('a unit that names a scale takes no second one', () => {
     expect(texts).toContain('12,000,000');
     expect(scaled(texts)).toEqual([]);
   });
+
+  // A combo series with its own format formatted each label without the series' values and described single-column totals with the chart formatter, turning 78 into "$0.1k" and leaving "$0.4k"–"$7.8k" out of the description.
+  it('holds a combo series format to one scale across labels and single-column totals', () => {
+    const categories = [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }, { id: 'c', label: 'C' }, { id: 'd', label: 'D' }];
+    const options = { title: 'T', unit: 'USD' };
+    const descOf = (data: unknown) => {
+      const request = resolveChartRequest({ type: 'combo', data, options } as never);
+      return /<desc[^>]*>(.*?)<\/desc>/s.exec(renderSvg(requireGeometry(layoutResolvedRequest(request)), request.theme))?.[1] ?? '';
+    };
+    const small = { categories, series: [{ id: 's', label: 'Sales', kind: 'column', format: '$1.2M', unit: 'USD', values: [4, 12, 43, 78] }] };
+    const smallTexts = drawnTexts('combo', small, options);
+    expect(smallTexts).toEqual(expect.arrayContaining(['$4.0', '$12.0', '$43.0', '$78.0']));
+    expect(smallTexts).not.toContain('$0.1k');
+
+    const thousands = { categories, series: [{ id: 's', label: 'Sales', kind: 'column', format: '$1.2M', unit: 'USD', values: [400, 1200, 4300, 7800] }] };
+    expect(descOf(thousands)).toContain('A $0.4k, B $1.2k, C $4.3k, D $7.8k');
+
+    const lineTexts = drawnTexts('combo', { categories, series: [
+      { id: 's', label: 'Sales', kind: 'column', values: [400, 1200, 4300, 7800] },
+      { id: 'm', label: 'Cost', kind: 'line', format: '$1.2M', values: [4, 12, 43, 78] },
+    ] }, options);
+    expect(lineTexts).toContain('$78.0');
+    expect(lineTexts).not.toContain('$0.1k');
+  });
 });
 
 // Under a comma decimal mark the record lost the drawn text: "1.180M" read as 1.18M and "0,042" as 42, so the hover printed the source number.

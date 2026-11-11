@@ -315,6 +315,11 @@ describe('a key beside the plot gives way where the chart then fits its width', 
   it.each([280, 286])('heatmap capability-matrix draws at %i px', (width) => {
     expect(draw('heatmap', 'capability-matrix', { legend: 'left', size: { width } }).refused).toBeFalsy();
   });
+  // The same band: butterfly drew from 311 px and was refused at 358 to 393 px, funnel drew at 289 to 298 px and was refused at 299 to 302 px.
+  it.each([['butterfly', 'fixed-label-column', 358], ['butterfly', 'fixed-label-column', 393], ['funnel', 'lead-funnel-centered', 299], ['funnel', 'lead-funnel-centered', 302]] as const)(
+    '%s %s draws at %i px', (type, id, width) => {
+      expect(draw(type, id, { legend: 'left', size: { width } }).refused).toBeFalsy();
+    });
 });
 
 describe('a chart refused just over a margin step draws with the margins under the step', () => {

@@ -513,3 +513,15 @@ describe('refusal contract', () => {
     for (const spec of specs) expect(render({ spec }).body.errors ?? [], spec.type).toEqual([]);
   });
 });
+
+// Frozen options (Immer state, Object.freeze) with a retired nested setting threw "Cannot delete property" when the rewrite copied the frozen descriptors.
+it('frozen options with a retired setting draw and warn option-deprecated', () => {
+  const freeze = (value: unknown): unknown => {
+    if (value && typeof value === 'object') { Object.freeze(value); for (const key of Reflect.ownKeys(value)) freeze((value as Record<PropertyKey, unknown>)[key]); }
+    return value;
+  };
+  const fixture = getFixtures('pareto')[0]!;
+  const spec = freeze({ type: 'pareto', data: structuredClone(fixture.data), options: { topN: { n: 3, threshold: 0.8 } } });
+  const geometry = layoutResolvedRequest(resolveChartRequest(spec as never));
+  expect(geometry.warnings).toContainEqual(expect.objectContaining({ code: 'option-deprecated' }));
+});

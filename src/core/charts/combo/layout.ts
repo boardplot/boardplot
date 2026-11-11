@@ -69,7 +69,7 @@ import { comboValueLabels, FIRST_END_BELOW_TOTALS, flagDroppedEndpointLabels, IN
 import { applyGrowthInk, planComboLabels } from './labels';
 import { layoutComboMarks } from './marks';
 import { MARKER_R, type ComboArea, type ComboDomain, type ComboEnv, type ComboMarkGeometry, type ComboPaints } from './model';
-import { comboPaints, composeText, contentOf, comboPlotArea, refitComboFrame, solveComboFrame, toDateOnTotals } from './plot';
+import { comboPaints, contentOf, comboPlotArea, refitComboFrame, solveComboFrame, toDateOnTotals } from './plot';
 import { PARTIAL_KEY, toDateFits, toDateRoom } from '../../partialPeriod';
 import type { ComboOptions } from '../../types/options';
 import { DEFER_DENSITY_NOTES, DENSITY_VALUES, DENSITY_LAYOUT_OPTIONS, authoredNotes, noteCap, noteLine, POINTED_NOTES, withAuthoredFootnotes, type InternalFootnoteOptions } from '../../frame';
@@ -122,7 +122,7 @@ function comboAnomalyMarks(env: ComboEnv, domain: ComboDomain, anomaly: LineAnom
   const onSecondary = line?.axis === 'secondary';
   const series = domain.lines.find((s) => s.id === anomaly.seriesId)!;
   return lineAnomalyFurniture(env.theme, { strings: domain.options.strings,
-    anomaly: anomaly.model, corridorShown: anomaly.corridorShown, statFmt: anomaly.statFmt, fmt: domain.scaleFmtOf(series),
+    anomaly: anomaly.model, corridorShown: anomaly.corridorShown, statFmt: anomaly.statFmt, fmt: domain.valueFmtOf(series),
     corridorPaint: columnCorridorPaint(domain.options.colorblindSafe), plot: area.plot, y: onSecondary ? area.y2 : area.y,
     labelX: area.anomalyLabelX,
     seriesId: anomaly.seriesId, points: line?.points ?? [], font: area.labelFont, measure: env.measure,
@@ -156,8 +156,7 @@ function annotateCombo(
       const named = [...columns, ...domain.lines, ...domain.refs].find((s) => s.id === norm.seriesId);
       const series = { format: named?.format, ...(named && columns.length + domain.lines.length > 1 ? { series: { id: named.id, label: named.label } } : {}) };
       // The value as the series' own point or segment label prints it: its unit, scale and precision.
-      const markValueText = (s: NonNullable<typeof named>, v: number): string => composeText(domain, ['absolute'], { abs: v, isPct: s.vals[ci]!.isPct, format: domain.explicitFormatOf(s, s.vals[ci]!) },
-        c.label ?? c.id, s.label, s.format ? env.byExample(s.format) : domain.scaleFmtOf(s));
+      const markValueText = (s: NonNullable<typeof named>, v: number): string => domain.valueFmtOf(s, s.vals[ci])(v);
       const reference = domain.refs.find((s) => s.id === norm.seriesId);
       if (reference && geometry.nodes.some((node) => node.id === `ref:${reference.id}:${c.id}`)) {
         const v = reference.vals[ci]!.v;
@@ -294,8 +293,8 @@ function assembleComboGeometry(input: {
   const a11yDesc =
     chartString(domain.options, 'comboDescStart', { v1: cats.length, v2: partsDesc }) +
     (domain.secondaryActive ? chartString(domain.options, 'secondaryAxisDesc') : '') +
-    (totalsAdd ? chartString(domain.options, 'columnTotalsSentence', { v1: cats.map((c, ci) => `${c.label ?? c.id} ${domain.anyByCat[ci] ? fmt(stackTotals[c.id]!) : NOT_AVAILABLE}`).join(', ') }) : '.') +
-    anomalyA11y({ options: domain.options, anomaly: domain.anomaly, fmt: domain.anomaly ? domain.scaleFmtOf(domain.lines.find((s) => s.id === domain.anomaly!.seriesId)!) : fmt, cats });
+    (totalsAdd ? chartString(domain.options, 'columnTotalsSentence', { v1: cats.map((c, ci) => `${c.label ?? c.id} ${domain.anyByCat[ci] ? domain.totalFmtOf(ci)(stackTotals[c.id]!) : NOT_AVAILABLE}`).join(', ') }) : '.') +
+    anomalyA11y({ options: domain.options, anomaly: domain.anomaly, fmt: domain.anomaly ? domain.valueFmtOf(domain.lines.find((s) => s.id === domain.anomaly!.seriesId)!) : fmt, cats });
   const paintWarningRules: PaintWarningRule[] = [];
   pushAll(warnings, rectSeriesAdjacentWarnings(nodes, input.paints.css, 'vertical', env.highlights, env.theme, { rules: paintWarningRules, before: warnings.filter(warning => !['pie-ramp-crowded', 'likert-ramp-invisible', 'band-lightness-insufficient', 'series-adjacent-similar', 'highlight-reads-as-loss'].includes(warning.code)).length }));
   const catTickMaxLines = catPlan.maxLines;
@@ -480,7 +479,7 @@ function layoutComboFramePass(
     // every one fits, and each line value above its point: the line then
     // clears the column tops by its marker and a gap, not by a label row.
     const insideTotals = domain.anatomy && domain.columns.length === 1 && !domain.anomaly
-      && domain.cats.every((c) => env.measure(domain.fmt(domain.stackTotals[c.id] ?? 0), area.labelFont).width + 4 <= area.band.bandwidth);
+      && domain.cats.every((c, ci) => env.measure(domain.totalFmtOf(ci)(domain.stackTotals[c.id] ?? 0), area.labelFont).width + 4 <= area.band.bandwidth);
     const anomalyRoom = domain.anomaly ? ANOMALY_FLAG_GAP + ANOMALY_FLAG_H : 0;
     const valueRow = env.measure('0', area.labelFont).height + 14;
     const clearance = (insideTotals ? MARKER_R + 8 : area.gtH + (interiorValues ? valueRow : 8)) + anomalyRoom;

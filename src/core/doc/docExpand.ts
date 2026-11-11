@@ -3,6 +3,7 @@ import type { LintWarning } from '../types/scene';
 import { ownedDocumentCopy } from './ownedDocumentCopy';
 import { isRecord } from '../lint/shared';
 import { maxOf, pushAll } from '../arrays';
+import { idRecord } from '../schema/shared';
 
 export { ownedDocumentCopy } from './ownedDocumentCopy';
 
@@ -109,8 +110,7 @@ const repeatChartSchema = z
           .describe('Exact slice lookup; every repeat value must have one chart-data entry.'),
       })
       .describe('Facet data keyed by repeat value.'),
-    options: z
-      .record(z.string(), z.unknown().describe('Chart option value, validated by the selected chart schema after expansion.'))
+    options: idRecord(z.string(), z.unknown().describe('Chart option value, validated by the selected chart schema after expansion.'))
       .optional()
       .describe('Chart options; title and subtitle strings may contain the dimension placeholder.'),
     annotations: z.array(z.unknown().describe('Annotation copied to each expanded chart; chart validation and annotation resolution check its shape and anchors.')).optional().describe('Shared annotations attached to each expanded chart.'),

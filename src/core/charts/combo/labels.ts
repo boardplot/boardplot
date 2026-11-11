@@ -27,7 +27,7 @@ import { composeLines, composeText, contentOf, growthLine, toDateOnTotals } from
 import { toDateLabel } from '../../partialPeriod';
 import { namesOnly } from '../../markVisibility';
 import { composedTextRole } from '../../textRole';
-import { formatterFromExample } from '../../formatSpec';
+import { totalColumn } from './domain';
 import { REFERENCE_MARKER_R } from '../band/ticks';
 import { rankValueLabels } from '../band/valueDensity';
 import { noteName } from '../../calendarData';
@@ -82,9 +82,8 @@ function segmentLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, geom
   for (const { s, si, ci, v, rect } of geometry.segments) {
     const c = domain.cats[ci]!;
     const val = s.vals[ci]!;
-    const serFmt = s.format ? env.byExample(s.format) : domain.scaleFmtOf(s);
     const share = shareBasis[ci]! > 0 ? (v / shareBasis[ci]!) * 100 : null;
-    let lines = composeLines(domain, content, { abs: v, isPct: val.isPct, share, shareText: domain.shareTexts.get(`${c.id}\0${s.id}`), format: val.format ?? s.format ?? domain.options.format }, c.label ?? c.id, s.label, serFmt);
+    let lines = composeLines(domain, content, { abs: v, isPct: val.isPct, share, shareText: domain.shareTexts.get(`${c.id}\0${s.id}`) }, c.label ?? c.id, s.label, domain.valueFmtOf(s, val));
     let text = lines.join(' ');
     // The drawn part itself: a zero cell beside it is not the stack's one part.
     const single = v !== 0 && onePartDrawn(domain.columns.map(column => column.vals[ci]!.v));
@@ -154,13 +153,6 @@ function insideSeats(candidates: SlotCandidate[], rect: Rect, labelH: number): S
   return [...inside, ...edges];
 }
 
-/** The column whose cell speaks for a stack's total: the only populated one, else the only drawn (non-zero) one. */
-function totalColumn(domain: ComboDomain, ci: number): ComboDomain['columns'][number] | undefined {
-  const populated = domain.columns.filter(column => column.vals[ci]!.v !== null);
-  const drawn = populated.filter(column => column.vals[ci]!.v !== 0);
-  return populated.length === 1 ? populated[0] : drawn.length === 1 ? drawn[0] : undefined;
-}
-
 /** Grand totals, signed: above a positive top, below a negative bottom. */
 function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, paints: ComboPaints, requests: LabelRequest[], lineYs: (ci: number) => number[], strokes: readonly PolylineQueries[] = []): void {
   const gtContent = domain.columns.length > 0 && domain.columnsAdd ? contentOf(domain, 'grandTotal', ['absolute']) : null;
@@ -181,7 +173,7 @@ function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, p
     if (!domain.anyByCat[ci]) return null;
     const single = totalColumn(domain, ci);
     const cell = single?.vals[ci];
-    const composed = composeText(domain, gtContent, { abs: domain.stackTotals[c.id]!, isPct: cell?.isPct ?? false, format: cell?.format ?? single?.format ?? domain.options.format }, c.label ?? c.id, '', domain.fmt);
+    const composed = composeText(domain, gtContent, { abs: domain.stackTotals[c.id]!, isPct: cell?.isPct ?? false }, c.label ?? c.id, '', domain.totalFmtOf(ci));
     // A single column's total is its value: an authored cell label speaks for it.
     const override = cell?.labelOverride;
     if (override === false) return null;
@@ -368,7 +360,7 @@ function referenceLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, re
   for (const s of domain.refs) domain.cats.forEach((c, ci) => {
     const val = s.vals[ci]!;
     if (val.v === null) return;
-    const text = composeText(domain, content, { abs: val.v, isPct: val.isPct, format: val.format ?? s.format ?? domain.options.format }, c.label ?? c.id, s.label, s.format ? formatterFromExample(s.format, domain.options.locale?.language) : domain.fmt);
+    const text = composeText(domain, content, { abs: val.v, isPct: val.isPct }, c.label ?? c.id, s.label, domain.valueFmtOf(s, val));
     const { width: w, height: h } = env.measure(text, tickFont);
     const ry = y(val.v);
     const seat = (slot: string, x: number, top: number, penalty: number): SlotCandidate => ({ slot, rect: { x, y: top, w, h }, penalty });
@@ -489,10 +481,10 @@ function linePointLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, ge
       const engine = (content !== null && override === undefined && (mode === 'all' || extreme)) || flagged;
       if (typeof override !== 'string' && !engine) continue;
       const category = domain.cats[point.ci]!;
-      const serFmt = s.format ? env.byExample(s.format) : domain.scaleFmtOf(s);
+      const valueFmt = domain.valueFmtOf(s, cell);
       const text = typeof override === 'string'
-        ? override.replace(/\$\{value\}/g, composeText(domain, ['absolute'], { abs: cell.v ?? 0, isPct: cell.isPct, format: domain.explicitFormatOf(s, cell) }, category.label ?? category.id, s.label, serFmt))
-        : composeText(domain, (content ?? flaggedContent)!, { abs: cell.v, isPct: cell.isPct, format: domain.explicitFormatOf(s, cell) }, category.label ?? category.id, s.label, serFmt);
+        ? override.replace(/\$\{value\}/g, composeText(domain, ['absolute'], { abs: cell.v ?? 0, isPct: cell.isPct }, category.label ?? category.id, s.label, valueFmt))
+        : composeText(domain, (content ?? flaggedContent)!, { abs: cell.v, isPct: cell.isPct }, category.label ?? category.id, s.label, valueFmt);
       if (!text) continue;
       const size = env.measure(text, labelFont);
       const below = sideAwayFrom(point, others) === 'below';

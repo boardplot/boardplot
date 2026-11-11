@@ -10,7 +10,7 @@ import { formatExampleProblem } from '../formatSpec';
 // A direct namespace import lets bundlers drop unused Zod APIs and locales.
 // The named `z` namespace alias keeps those exports in the browser bundle.
 import * as z from 'zod';
-import { ownedDocumentCopy } from '../doc/docExpand';
+import { ownedDocumentCopy } from '../doc/ownedDocumentCopy';
 import {
   MAGNITUDE_CEILING,
   canonicalLanguage,
@@ -60,30 +60,40 @@ export const idSchema = z.string().min(1).describe('Nonempty stable identifier u
 
 // z.record skips an own `__proto__` key, so the key crosses the parse under a stand-in.
 const PROTO_KEY_STAND_IN = '__proto__\u200b';
+const PROTO_KEY_SHIFTED = `${PROTO_KEY_STAND_IN}\u200b`;
 
 /**
- * A record keyed by data ids (category, series, column, slice). Every id is a
- * key, `__proto__` included, and the parsed record has no prototype: an id
- * such as `constructor` that the record lacks reads as absent, not as the
- * inherited function.
+ * An open string-keyed record (data ids, label kinds, or unvalidated option
+ * bags). Every own key crosses the parse, `__proto__` included, and the parsed
+ * record has no prototype: a key such as `constructor` that the record lacks
+ * reads as absent, not as the inherited function.
  */
 export function idRecord<V extends z.ZodType>(key: z.ZodString, value: V) {
   return z.preprocess((raw, ctx) => {
-    if (raw === null || typeof raw !== 'object' || Array.isArray(raw) || !Object.hasOwn(raw, '__proto__') || Object.hasOwn(raw, PROTO_KEY_STAND_IN)) return raw;
+    if (raw === null || typeof raw !== 'object' || Array.isArray(raw) || (!Object.hasOwn(raw, '__proto__') && !Object.hasOwn(raw, PROTO_KEY_STAND_IN))) return raw;
     const renamed: Record<string, unknown> = emptyIdRecord();
     for (const [name, item] of Object.entries(raw)) {
-      if (name !== '__proto__') { renamed[name] = item; continue; }
+      if (!/^__proto__\u200b*$/.test(name)) { renamed[name] = item; continue; }
       // Checked here, so an issue names the key as authored and not the stand-in.
+      const keyChecked = key.safeParse(name);
+      if (!keyChecked.success) {
+        for (const issue of keyChecked.error.issues) ctx.addIssue({ ...issue, path: [name, ...issue.path] } as z.core.$ZodRawIssue);
+        continue;
+      }
       const checked = value.safeParse(item);
-      if (checked.success) renamed[PROTO_KEY_STAND_IN] = item;
-      else for (const issue of checked.error.issues) ctx.addIssue({ ...issue, path: ['__proto__', ...issue.path] } as z.core.$ZodRawIssue);
+      if (checked.success) renamed[`${name}\u200b`] = item;
+      else for (const issue of checked.error.issues) ctx.addIssue({ ...issue, path: [name, ...issue.path] } as z.core.$ZodRawIssue);
     }
     return renamed;
   }, z.record(key, value)).transform((parsed) => {
     // z.record built a fresh object: drop its prototype in place, and copy only to put a stand-in back.
-    if (!Object.hasOwn(parsed, PROTO_KEY_STAND_IN)) return Object.setPrototypeOf(parsed, null) as Record<string, z.output<V>>;
+    if (!Object.hasOwn(parsed, PROTO_KEY_STAND_IN) && !Object.hasOwn(parsed, PROTO_KEY_SHIFTED)) {
+      return Object.setPrototypeOf(parsed, null) as Record<string, z.output<V>>;
+    }
     const record: Record<string, z.output<V>> = emptyIdRecord();
-    for (const [name, item] of Object.entries(parsed)) record[name === PROTO_KEY_STAND_IN ? '__proto__' : name] = item;
+    for (const [name, item] of Object.entries(parsed)) {
+      record[/^__proto__\u200b+$/.test(name) ? name.slice(0, -1) : name] = item;
+    }
     return record;
   // A preprocess reads as optional input; the record stays required unless the caller adds .optional().
   }).nonoptional();
@@ -1457,15 +1467,15 @@ export const baseOptionsSchema = z.object({
   labelDensity: z.enum(['full', 'smart', 'minimal']).optional().describe("Label selection policy, default smart. full: every value label competes for a slot, and a segment value that does not fit its segment moves outside on a leader. smart: as full, but a stacked column or combo segment value prints inside its segment or not at all (where one is wider than its column, the stacked column values step down a size, to the floor; still too wide, none prints), and a segment value drops when the segment is shorter than the label height plus 4 px padding (the label width on a horizontal bar); mekko also drops segment values in columns narrower than 24 px. A labelPlacements pin keeps its label. minimal: keeps only the chart's essential labels (totals, endpoints, highlights). Collision suppression applies at every level."),
   labels: z.union([
     z.literal(false).describe('Suppress optional data labels for chart types supporting this option.'),
-    z.record(z.string(), z.union([
+    idRecord(z.string(), z.union([
       z.boolean().describe('Enable or suppress this label kind.'),
       z.array(z.string().describe('Requested label content, such as absolute, percent, category or series; supported values depend on the chart.')).describe('Ordered content parts for this label kind.'),
     ]).describe('Visibility or requested content for the named label kind.')).describe('Per-kind label settings, keyed by label kind.'),
   ]).optional().describe("Label visibility and content overrides; omission uses the selected chart policy. Unsupported chart types refuse this shared option. false turns optional labels off. An object maps a label kind (category, series, segment, point, total, grandTotal, insidePie, outsidePie, percentIndicator, restSeries, tick, axisTitle, valueLine, annotation, growth, activity, item; each chart reads its own, and a kind it does not read is refused) to true, false or content parts from absolute, percent, category and series. Another part is dropped with a warning; value draws as absolute. On a stacked column with one PY reference series, { growth: false } drops the growth arrows over the totals (↑ 6.1%) and keeps the PY ticks and their labels; { percentIndicator: false } drops the 100% marker of a 100% chart. On bar, box, column, combo, dot, line, Mekko, slope and variance, false keeps category names; { category: false } hides them. On bullet, butterfly, funnel, heatmap, pyramid and status, false keeps the row, column and stage names; on kpi it keeps the main number and the card name. Grid panels can leave category names to the grid. On a line, series false turns the series names off and point sets what each printed value shows, so { point: ['category', 'absolute'] } prints 08-16 44.7 at the point. On a stacked column or combo, { segment: ['absolute', 'percent'] } prints each segment value over its share of the stack; a stack with a negative or missing part prints the value alone and warns. restSeries sets the values of a stacked column, bar or area series whose colorRole is others: absent, they print everywhere except the dashboard target, where the hover card and the note line carry them; true prints them, false hides and notes them on every target."),
   categoryLabels: categoryLabelsSchema,
   labelPosition: z.enum(['auto', 'center', 'insideEnd', 'insideBase', 'outsideEnd']).optional().describe("Position of bar values. Default 'auto' keeps normal placement. 'center' uses the middle; 'insideEnd' and 'insideBase' use the edges farther from and nearer zero; 'outsideEnd' sits past the farther edge. Pins win. A blocked or too-small seat takes its safe fallback. Floating steps try above then below, or right then left horizontally. Axis bars try outside the end. Stacked segments keep their existing fallback; integrated variance totals stay inside. Stacked variants and integrated variance refuse outsideEnd."),
-  labelPlacements: z.record(z.string(), z.string().describe('Requested solver slot id, such as insideCenter.')).optional().describe('Authored placement pins keyed by label id; the solver checks each requested slot. On a line, a pinned end label removes the legend step of the end-label ladder. The slots a label can take depend on the chart and its data; a wrong slot warns unknown-slot and lists the valid and free slots of that render.'),
-  labelOffsets: z.record(z.string(), z.strictObject({
+  labelPlacements: idRecord(z.string(), z.string().describe('Requested solver slot id, such as insideCenter.')).optional().describe('Authored placement pins keyed by label id; the solver checks each requested slot. On a line, a pinned end label removes the legend step of the end-label ladder. The slots a label can take depend on the chart and its data; a wrong slot warns unknown-slot and lists the valid and free slots of that render.'),
+  labelOffsets: idRecord(z.string(), z.strictObject({
     x: z.number().finite().optional().describe('Pixels to the right; negative moves left.'),
     y: z.number().finite().optional().describe('Pixels down; negative moves up.'),
   }).describe('The distance to move this label, in px on the rendered chart.')).optional().describe("Moves labels by a set distance, keyed by label id, such as { 'annotation:callout-2': { y: 40 } }. A label's id is in the labels of a render and in the warnings that name it. The move starts from the seat the solver or a pin chose. A seat that is blocked keeps the label where it stands and warns label-offset-blocked; an id this chart does not draw warns label-offset-unknown. A moved label gets a leader back to its seat, unless it is a value that takes none. A value moved off its own bar prints in page ink with a halo. A bracket's offset moves its label only, not its run."),
