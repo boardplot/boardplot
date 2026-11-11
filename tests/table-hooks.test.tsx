@@ -94,3 +94,23 @@ describe('table testing attributes', () => {
     expect(fresh.querySelector('.bp-table-grid')?.hasAttribute('data-bp-wired')).toBe(true);
   });
 });
+
+// A memo row after a sibling indents with its parent; a prepared table that dropped its indent step drew it one rung deeper.
+it('indents a memo row of a serialised prepared table as the live table does', () => {
+  const data: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel', label: 'Line' }, { id: 'rev', kind: 'value', label: 'Revenue' }],
+    rows: [
+      { id: 'total', label: 'Total', cells: { rev: 100 } },
+      { id: 'north', parentId: 'total', label: 'North', cells: { rev: 60 } },
+      { id: 'online', parentId: 'total', label: 'of which online', relation: 'ofWhich', cells: { rev: 20 } },
+    ],
+  };
+  const level = (prepared: boolean): string | undefined => {
+    const snapshot = prepared ? JSON.parse(JSON.stringify(prepareTableRender(resolveChartRequest({ type: 'table', data, options })))) : undefined;
+    const host = document.createElement('div');
+    host.innerHTML = renderToStaticMarkup(<TableChart data={data} {...options} prepared={snapshot} />);
+    return host.querySelector<HTMLElement>('[data-row-id="online"]')?.style.getPropertyValue('--bp-level');
+  };
+  expect(level(false)).toBe('0');
+  expect(level(true)).toBe(level(false));
+});

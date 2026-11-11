@@ -1025,6 +1025,25 @@ it('records a quotient at its own precision, whatever the size of its operands',
   expect(growth.find((claim) => claim.op.startsWith('annotation-diff-relative'))?.output.raw).toBe(0);
 });
 
+// The average marker drew "Average 5.009%" while its hover value read "5.0%" (column) or "5.01%" (bar).
+it('an average marker hover value prints as its drawn label does (column, bar)', () => {
+  const data = { valueKind: 'fraction', categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }, { id: 'c', label: 'C' }], series: [{ id: 's', label: 'Rate', values: [0.05012, 0.04998, 0.05016] }] };
+  for (const type of ['column', 'bar']) {
+    const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type, data, options: { title: 'T', averageMarker: true } } as never) as never));
+    const marker = geometry.annotations.find((annotation) => annotation.id === 'averageMarker');
+    expect([marker?.computedText, marker?.valueText], type).toEqual(['Average 5.009%', '5.009%']);
+  }
+});
+
+// An authored value line may take the id 'averageMarker'; its hover value kept its own format, not the generated marker's.
+it('an authored value line named averageMarker keeps its own format in the hover value', () => {
+  const data = { categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], series: [{ id: 's', label: 'Rate', values: [4.1, 5.2] }] };
+  const annotations = [{ kind: 'valueLine', id: 'averageMarker', value: 12.34, format: '0.00' }];
+  const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'column', data, options: { unit: '%', annotations } } as never) as never));
+  const line = geometry.annotations.find((annotation) => annotation.id === 'averageMarker');
+  expect([line?.computedText, line?.valueText]).toEqual(['12.34', '12.34']);
+});
+
 // An abs on a series with unit % printed "4.1" beside the series label "4.1%", and "4.1" beside a bar or dot label "4.12".
 it('abs prints the anchored value as its point label does (combo, bar, dot)', () => {
   const series = [{ id: 'r', label: 'Rate', unit: '%', values: [3.14, 4.12] }, { id: 'q', label: 'Other', unit: '%', values: [2.5, 2.7] }];

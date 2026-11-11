@@ -30,7 +30,7 @@ import { allQuiet, chartNotes, copyNote, engineNote, engineNoteMeta, footerParts
 import { harveyWedgePath } from './svgPath';
 import {
   cappedItems, countedValuesText, frameText, HIDDEN_LABEL_LEAD, listedNoteText, listText, moreListedText, noteCap, type NoteCapOptions,
-  measureNamesUnit, subtitleUnitClause, type SubtitleText,
+  measureNamesUnit, subtitleUnitClause, unitWordsAsSigns, type SubtitleText,
 } from './frameText';
 import { parseFormatExample, unitOfSpec } from './formatSpec';
 import { hasAuthoredTypeSize, type FontSpec } from './text';
@@ -1633,11 +1633,7 @@ export function shareUnitLints(
   }];
 }
 
-/** The codes a sign prints for: "€1.2m" carries EUR, "12%" carries percent. Whole words only ("Europe" is no EUR). */
-const UNIT_SIGNS: readonly [RegExp, string][] = [
-  [/\b(?:EUR|euros?)\b/gi, '€'], [/\bUSD\b/gi, '$'], [/\bGBP\b/gi, '£'], [/\bJPY\b/gi, '¥'], [/\b(?:percent|pct)\b/gi, '%'],
-];
-const signedUnit = (text: string) => squeezeUnit(UNIT_SIGNS.reduce((out, [code, sign]) => out.replace(code, sign), text));
+const signedUnit = (text: string) => squeezeUnit(unitWordsAsSigns(text));
 
 /**
  * Whether a printed text already carries `unit`: the unit lint and
@@ -1653,7 +1649,7 @@ export function textCarriesUnit(text: string, unit: string): boolean {
   if (needle.replace(/[^\p{L}]/gu, '').length > 2) return signedUnit(text).includes(needle);
   const between = String.raw`[\d\s.,'’+\-−]*`;
   const pattern = [...needle].map((char) => char.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join(between);
-  return new RegExp(String.raw`(?<!\p{L})${pattern}(?!\p{L})`, 'iu').test(UNIT_SIGNS.reduce((out, [code, sign]) => out.replace(code, sign), text));
+  return new RegExp(String.raw`(?<!\p{L})${pattern}(?!\p{L})`, 'iu').test(unitWordsAsSigns(text));
 }
 
 /** Cohort headers and unit warnings accept the same authored percent words. */
