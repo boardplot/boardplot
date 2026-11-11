@@ -492,7 +492,7 @@ function layoutSankeyPass(data: SankeyData, options: SankeyOptions): Geometry<Sa
     },
     warnings, debug: { occupied: occupied.snapshot(), decisions: solved.decisions },
   };
-  markNotedLabels(geometry, hiddenNote.ids, { strings: options.strings });
+  markNotedLabels(geometry, hiddenNote.ids, hiddenNote.marks);
   return geometry;
 
 }
