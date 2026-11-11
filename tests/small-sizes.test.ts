@@ -8,7 +8,7 @@ import '../src/core/geo/packs/dach';
 import { getChart } from '../src/core/registry';
 import { getFixtures, getRefusalExamples } from '../src/fixtures';
 import { canDraw, measure } from '../src/index';
-import { layoutResolvedRequest, measureLayout, resolveChartRequest } from '../src/core/request';
+import { layoutResolvedRequest, measureLayout, measureResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { typeClassCap } from '../src/core/theme';
 import { interactionRecords } from '../src/core/a11y/records';
 import { BoardplotTheme } from '../src/react/BoardplotTheme';
@@ -795,6 +795,23 @@ describe('the cost of a size refusal', () => {
       expect(again.minWidth).toBe(first.minWidth);
     } finally { spy.mockRestore(); }
     expect(widths.size).toBeLessThanOrEqual(2);
+  });
+
+  // A caller that skips validation can pass data whose JSON hides its content (class instances, a BigInt), and the shared probe store gave the second chart the first chart's minimum width or threw.
+  it('measures unvalidated data that JSON cannot show on its own and never throws on it', () => {
+    class Row {
+      #label: string;
+      constructor(readonly _id: string, label: string) { this.#label = label; }
+      get id() { return this._id; }
+      get label() { return this.#label; }
+      get cells() { return { v: 42 }; }
+    }
+    const table = (label: string) => ({ columns: [{ id: 'label', kind: 'rowLabel', label: 'Metric' }, { id: 'v', kind: 'value', label: 'Value', format: '1,234' }],
+      rows: ['a', 'b', 'c'].map((id, i) => new Row(id, `${label} ${i + 1}`)) });
+    const measured = (data: object) => measureResolvedRequest(resolveChartRequest({ type: 'table', data, options: { size: { width: 960 } } } as never));
+    const short = measured(table('N')).minWidth;
+    expect(measured(table('A much longer row label that needs width')).minWidth).toBeGreaterThan(short);
+    expect(() => measured({ ...table('N'), note: 10n })).not.toThrow();
   });
 
   // A grid prepares a new data object on every call, so a host that renders it refused again at another width searched every width again.

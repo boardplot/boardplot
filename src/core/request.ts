@@ -709,23 +709,43 @@ const STORED_KEY_LENGTH = 200_000;
  * A probe at a width depends on the request without its size, so a host that renders or measures a request
  * again at another width (a container that resizes, an agent that tries several widths) reuses the widths
  * the last search drew. The key holds the content of the data the layout reads and of the options, so a new
- * copy of the same request reuses them and an edit lays out again.
+ * copy of the same request reuses them and an edit lays out again. The key covers data made of plain objects,
+ * arrays, dates and JSON values only; other data (class instances, a Map, a BigInt) is searched without a store.
  * ponytail: STORED_REQUESTS requests of at most STORED_KEY_LENGTH key characters and STORED_WIDTHS widths
  * each; a new one replaces the oldest.
  */
 function storedProbes(request: ResolvedChartRequest, verify: boolean): Map<number, WidthProbe> | undefined {
-  if (request.data === null || typeof request.data !== 'object') return undefined;
+  if (request.data === null || typeof request.data !== 'object' || !jsonShowsAll(request.data)) return undefined;
   const { size: _size, ...options } = request.options as RequestOptions;
   const { type, theme, target, fixed, inputWarnings } = request;
   // The static footer changes a chart's size once a static entry links it.
   const footer = loadedDeferred('footer') !== undefined;
-  const key = withPlanInputs(() => contentKey(request.data as object, options, { type, theme, target, fixed, inputWarnings, footer, verify }));
+  let key: string;
+  try {
+    key = withPlanInputs(() => contentKey(request.data as object, options, { type, theme, target, fixed, inputWarnings, footer, verify }));
+  } catch { return undefined; } // A BigInt in the options or a cycle: no store.
   if (key.length > STORED_KEY_LENGTH) return undefined;
   let probes = storedSearches.get(key);
   if (probes) storedSearches.delete(key);
   else if (storedSearches.size >= STORED_REQUESTS) storedSearches.delete(storedSearches.keys().next().value!);
   storedSearches.set(key, probes ??= new Map());
   return probes;
+}
+
+/** Whether JSON shows everything a layout can read from the data: plain objects, arrays, dates and JSON values. */
+function jsonShowsAll(data: object): boolean {
+  const open: unknown[] = [data];
+  const seen = new Set<object>();
+  while (open.length) {
+    const value = open.pop();
+    if (typeof value === 'bigint') return false;
+    if (value === null || typeof value !== 'object' || seen.has(value) || value instanceof Date) continue;
+    seen.add(value);
+    const prototype = Object.getPrototypeOf(value);
+    if (!Array.isArray(value) && prototype !== Object.prototype && prototype !== null) return false;
+    for (const item of Object.values(value)) open.push(item);
+  }
+  return true;
 }
 
 /** A size refusal that names the width `advisedWidth` found, and the height drawn there. */
