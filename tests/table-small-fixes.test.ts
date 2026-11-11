@@ -939,6 +939,30 @@ it('warns when a previous-period calc has no column group to read', () => {
   expect(afterRatio.warnings.some(warning => warning.code === 'calc-previous-ungrouped')).toBe(false);
 });
 
+// A table squeezed across by the compact retry also lost the air above its section labels, though its height was open.
+it('keeps the air above a section label when only the width is tight', () => {
+  const months = Array.from({ length: 12 }, (_, i) => `m${i}`);
+  const section = (id: string, members: string[]) => ({ id, label: id.toUpperCase(), role: 'section', children: members.map((m, i) => ({ id: m, label: m, cells: Object.fromEntries(months.map((c, j) => [c, 1_234_567 + i * 1000 + j])) })) });
+  const data = { columns: [{ id: 'label', kind: 'rowLabel', label: 'KPI' }, ...months.map((id) => ({ id, kind: 'value', label: id, format: '1,234' }))],
+    rows: [section('sales', ['revenue', 'orders']), section('ads', ['spend', 'clicks'])] };
+  const geometry = layout('table', data, { size: { width: 800 } });
+  expect(geometry.warnings.map((w) => w.code)).toContain('table-tight-spacing');
+  const h = (id: string) => (geometry.marks as unknown as TableMarks).rows.find((row) => row.id === id)!.h;
+  // The second section opens a new block with a body line box of air; the first under the head takes a quarter.
+  expect(h('ads')).toBeGreaterThan(h('sales'));
+});
+
+// A retained table executor kept the section air of the first height policy it saw, so the bytes depended on what was drawn before.
+it('draws a sectioned table the same at a pinned and an open height in either order', () => {
+  const fixture = getFixtures('dimswitch').find((candidate) => candidate.id === 'statement')!;
+  const draw = (data: unknown, size: object) => JSON.stringify(layout('dimswitch', data, { ...fixture.options, size }).scene);
+  const open = { width: 400 }, pinned = { width: 400, height: 900 };
+  const fresh = [draw(structuredClone(fixture.data), open), draw(structuredClone(fixture.data), pinned)];
+  const first = structuredClone(fixture.data), second = structuredClone(fixture.data);
+  expect([draw(first, open), draw(first, pinned)]).toEqual(fresh);
+  expect([draw(second, pinned), draw(second, open)]).toEqual([fresh[1], fresh[0]]);
+});
+
 // A status group wider than its authored track overlapped its neighbours, and a cut label kept its full text only in the SVG title.
 it('fits a status group into a narrow track and names cut labels in the notes list', () => {
   const columns = (width: number) => [
