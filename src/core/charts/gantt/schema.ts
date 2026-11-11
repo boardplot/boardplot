@@ -129,7 +129,7 @@ export const ganttOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOption
         code: 'custom',
         path: ['annotations', index, 'label'],
         message: "a badge holds at most 3 characters; use labelPlacement 'top' for a longer label",
-        params: { refused: true },
+        params: { replaceSibling: { key: 'labelPlacement', value: 'top' } },
       });
     }
   });

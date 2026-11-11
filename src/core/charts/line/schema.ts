@@ -52,6 +52,7 @@ const lineAnnotationSchema = timeAnnotationSchema.superRefine((annotation, ctx) 
       code: 'custom',
       path: ['labelPlacement'],
       message: "event labelPlacement must be 'top' or 'inline'",
+      params: typeof placement === 'string' ? { replaceWith: 'top' } : { refused: true },
     });
   }
 });

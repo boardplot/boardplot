@@ -484,21 +484,18 @@ function forwardPanelAnnotationIssues(
       code: 'custom',
       path: [...prefix],
       message: `'${type}' composition panels take no annotations — anchor them on a chart panel instead`,
+      params: { refused: true },
     });
     return;
   }
-  const merged = ownedDocumentCopy({ ...(panel.options ?? {}), annotations });
+  const merged = ownedDocumentCopy({ ...definition.aliasDefaults?.[type], ...(panel.options ?? {}), annotations });
   const parsed = definition.optionsSchema.safeParse(merged);
   if (parsed.success) return;
-  const result = {
-    error: {
-      issues: parsed.error.issues
-        .filter((issue) => issue.path[0] === 'annotations')
-        .map((issue) => ({ ...issue, path: issue.path.slice(1) })),
-    },
-  };
-  if (result.error.issues.length === 0) return;
-  result.error.issues.forEach((issue) => {
+  const issues = parsed.error.issues
+    .filter((issue) => issue.path[0] === 'annotations')
+    .map((issue) => ({ ...issue, path: issue.path.slice(1) }));
+  if (issues.length === 0) return;
+  issues.forEach((issue) => {
     if (seen) {
       const key = `${prefix.join('.')}.${issue.path.join('.')}|${issue.message}`;
       if (seen.has(key)) return;
