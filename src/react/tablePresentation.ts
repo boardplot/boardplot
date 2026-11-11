@@ -21,7 +21,7 @@ import { checkedFontFamily, checkedMotionEasing } from '../core/themeRules';
 import { interactionTokens } from '../core/a11y/theme';
 import { INLINE_LINE_RATIO, LINE_BOX_EPSILON, LINE_RATIO, levelLadder, type TableDensity } from '../core/charts/table/ladder';
 import { chipPaints, onTableGround, tableGround, toneTextPaint } from '../core/charts/table/chips';
-import { CHANGE_LINE_MIN_PX, CHANGE_LINE_SIZE_STEP_PX, changeLineFont, ENGINE_NOTES, INLINE_LABEL_INDENT, tableFonts } from '../core/charts/table/tracks';
+import { CHANGE_LINE_MIN_PX, CHANGE_LINE_SIZE_STEP_PX, changeLineFont, ENGINE_NOTES, INLINE_LABEL_INDENT, SORT_BUTTON_MIN, tableFonts } from '../core/charts/table/tracks';
 import { resolveCanvasOptions, resolveSize, resolveSubtitle } from '../core/normalize/shared';
 import { numericVariant } from '../core/textRole';
 import { EMPTY_ROW_ID, tableFootnotes } from '../core/charts/table/view';
@@ -432,7 +432,7 @@ figure.bp-table[data-bp-fill-height]{box-sizing:border-box;display:flex;flex-dir
 .bp-table-grid .bp-children[data-bp-collapsed]{max-height:0;opacity:0;pointer-events:none}
 .bp-table-grid [data-bp-rowgroup="head"] [role="row"]>*{font-size:var(--bp-header-size,var(--bp-head-size));font-weight:${cssValue(String(headFace.weight))};line-height:round(up,calc(var(--bp-header-size,var(--bp-head-size))*var(--bp-head-ratio) - ${LINE_BOX_EPSILON}px),1px);justify-content:flex-end;border-bottom:0;background:transparent;color:var(--bp-ink)}
 .bp-table-grid [data-bp-rowgroup="head"]{border-bottom:${theme.table?.ruleWidths?.head ?? strokeToken(theme, 'hair')}px solid var(--bp-rule)}.bp-table-grid [data-bp-rowgroup="head"] .bp-columns>*{letter-spacing:var(--bp-header-tracking,normal)}
-.bp-table-grid .bp-sort{min-width:24px;min-height:24px;display:inline-flex;align-items:center;gap:4px;max-width:100%;padding:0;margin:0;color:inherit;background:transparent;border:0;font:inherit;letter-spacing:inherit;text-transform:inherit;cursor:pointer}.bp-table-grid .bp-sort>span{overflow:hidden;text-overflow:ellipsis}.bp-table-grid .bp-sort svg{flex:none;color:var(--bp-ink-2)}
+.bp-table-grid .bp-sort{min-width:${SORT_BUTTON_MIN}px;min-height:${SORT_BUTTON_MIN}px;display:inline-flex;align-items:center;gap:4px;max-width:100%;padding:0;margin:0;color:inherit;background:transparent;border:0;font:inherit;letter-spacing:inherit;text-transform:inherit;cursor:pointer}.bp-table-grid .bp-sort>span{overflow:hidden;text-overflow:ellipsis}.bp-table-grid .bp-sort svg{flex:none;color:var(--bp-ink-2)}
 .bp-table-grid [aria-sort="ascending"] .bp-sort,.bp-table-grid [aria-sort="descending"] .bp-sort{font-weight:${cssValue(String(headFace.weight))}}.bp-table-grid [aria-sort="ascending"] .bp-sort svg,.bp-table-grid [aria-sort="descending"] .bp-sort svg{color:var(--bp-ink)}
 .bp-table-grid .bp-sort:focus-visible{outline:2px solid var(--bp-highlight);outline-offset:2px}
 .bp-table-grid[data-bp-sort-indicator="sorted"] .bp-sort:not([data-bp-sort-direction]) svg{visibility:hidden}.bp-table-grid[data-bp-sort-indicator="sorted"] .bp-sort:not([data-bp-sort-direction]):hover svg,.bp-table-grid[data-bp-sort-indicator="sorted"] .bp-sort:not([data-bp-sort-direction]):focus-visible svg{visibility:visible}
