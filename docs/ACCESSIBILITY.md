@@ -16,6 +16,7 @@ Boardplot gives readers who cannot see a chart a text alternative, and keyboard 
 - A PNG has no accessible name or description. The page that shows it must add alternative text.
 - The default SVG has no data table and no keyboard access to its records. The React components add both.
 - The tab stop appears after the hover engine loads, so keyboard access to records needs JavaScript.
+- Sankey ribbons on a dark page stay translucent, at the theme's `surface.ribbonAlpha` (default 0.35), and so under 3:1 against the page. An opaque ribbon would hide the node bars and the ribbons it crosses. The node bars and their values carry each flow.
 - A generic audit can flag `role="listbox"` in the page flow. It is there on purpose. [Keyboard](reference/react.md#keyboard) gives the reason.
 
 ## Automated checks
