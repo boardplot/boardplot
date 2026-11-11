@@ -14,7 +14,9 @@
  */
 
 import { crowdedTailCut } from './paretoTail';
-import { NormalizeError } from './normalize/shared';
+import { NormalizeError, normalizeCategory, normalizeSeriesValues, ranksCategories } from './normalize/shared';
+import { cellValue } from './types/cell';
+import type { ChartData } from './types/data';
 
 export const ITEM_BUDGET = 2000;
 
@@ -85,20 +87,18 @@ interface BudgetOptions {
   window?: { last?: number };
 }
 
-/** How many bar categories have an absolute total of at least `threshold`. */
+/**
+ * How many bar or column categories have an absolute total of at least `threshold`,
+ * summed over the series and cells the topN cut reads (charts/topN.ts).
+ */
 function barTotalsAtLeast(data: unknown, threshold: number): number {
-  const series = (data as { series?: unknown } | null | undefined)?.series;
-  const categories = (data as { categories?: unknown[] } | null | undefined)?.categories ?? [];
-  const totals = new Float64Array(categories.length);
-  if (Array.isArray(series)) for (const one of series) {
-    const values = (one as { values?: unknown } | null)?.values;
-    if (!Array.isArray(values)) continue;
-    for (let i = 0; i < totals.length && i < values.length; i += 1) {
-      const cell = values[i];
-      const value = typeof cell === 'number' ? cell : (cell as { v?: unknown } | null)?.v;
-      if (typeof value === 'number' && Number.isFinite(value)) totals[i] = totals[i]! + value;
-    }
-  }
+  const { categories, series } = data as Pick<ChartData, 'categories' | 'series'>;
+  const cats = categories.map(normalizeCategory);
+  const totals = new Float64Array(cats.length);
+  series.forEach((one, index) => {
+    if (!ranksCategories(one)) return;
+    normalizeSeriesValues(one, cats, index).forEach((cell, i) => { totals[i] = totals[i]! + (cellValue(cell) ?? 0); });
+  });
   let count = 0;
   for (const total of totals) if (Math.abs(total) >= threshold) count += 1;
   return count;

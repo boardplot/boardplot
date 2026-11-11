@@ -18,6 +18,7 @@ import {
   normalizeScenario,
   resolveHighlight,
   resolveSize,
+  ranksCategories,
 } from '../../normalize/shared';
 import { resolveCellRange, type DataRange } from '../../rangeRules';
 import { axisBreakInvalid } from '../../axisBreakInvalid';
@@ -943,7 +944,7 @@ export function resolveColumnDomain(data: ChartData, options: AnomalyColumnOptio
   // own precision inside the exhibit's style: an integer-rastered chart still
   // prints its mean as "Ø 27.5", never "Ø 28" (see formatStatWithSpec).
   const statFmt = (v: number) => formatStatWithSpec(v, valueSpec.spec);
-  const plotted = seriesNorm.filter((s) => s.role !== 'reference');
+  const plotted = seriesNorm.filter(ranksCategories);
   const refSeries = seriesNorm.filter((s) => s.role === 'reference');
   if (plotted.length === 0) {
     throw new NormalizeError('empty-data', 'series', 'column requires at least one data-role series', undefined, undefined, ['data', 'series']);
