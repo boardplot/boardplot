@@ -240,3 +240,34 @@ describe('give-way edge cases', () => {
     expect(asked.sizing!.minHeight).toBeLessThanOrEqual(Math.max(plain, 151));
   });
 });
+
+// Centring each rate on its own width staggers the digits and decimal points of a period column when rates have different digit counts.
+it('aligns every figure of a period column on one shared right edge centred under its head', () => {
+  const rates: CohortData = {
+    periodLabel: 'Week',
+    cohorts: [
+      { id: 'w1', label: 'Wk 1', active: [400, 400, 24, 2] },
+      { id: 'w2', label: 'Wk 2', active: [250, 25, 160] },
+      { id: 'w3', label: 'Wk 3', active: [600, 6] },
+    ],
+  };
+  for (const variant of ['pure', 'stepped'] as const) {
+    const geometry = layout({ variant, size: { width: 640 } }, rates);
+    const head = geometry.labels.find((item) => item.id === 'cohort-header-period:1')!;
+    const base = geometry.labels.find((item) => item.id === 'cohort-average-base:t1')!;
+    const columnCentre = head.rect.x + head.rect.w / 2;
+    const cells = geometry.labels.filter((item) => item.id.startsWith('cohort-cell:') && item.id.endsWith(':t1'));
+    expect(cells).toHaveLength(4);
+    const widest = Math.max(...cells.map((item) => item.rect.w));
+    expect(Math.min(...cells.map((item) => item.rect.w))).toBeLessThan(widest);
+    for (const cell of cells) expect(cell.rect.x + cell.rect.w).toBeCloseTo(columnCentre + widest / 2, 6);
+    const nodes = geometry.scene.filter((node) => node.t === 'text' && node.id.startsWith('label:cohort-cell:') && node.id.endsWith(':t1'));
+    for (const node of nodes) if (node.t === 'text') expect([node.align, node.x]).toEqual(['end', columnCentre + widest / 2]);
+    expect(base.rect.x + base.rect.w).toBeCloseTo(columnCentre + base.rect.w / 2, 6);
+  }
+  const centred = layout({ variant: 'pure', size: { width: 640 }, columnOverrides: { periods: { align: 'center' } } }, rates);
+  const centredHead = centred.labels.find((item) => item.id === 'cohort-header-period:1')!;
+  const headCentre = centredHead.rect.x + centredHead.rect.w / 2;
+  const centredCells = centred.labels.filter((item) => item.id.startsWith('cohort-cell:') && item.id.endsWith(':t1'));
+  for (const cell of centredCells) expect(cell.rect.x + cell.rect.w / 2).toBeCloseTo(headCentre, 6);
+});
