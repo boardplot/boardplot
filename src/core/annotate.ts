@@ -203,6 +203,8 @@ export interface AnnotatePassInput {
   gridCallouts?: { rows: ReadonlyMap<Id, Rect>; widths?: ReadonlyMap<Id, number>; bounds: Rect; grid: Rect; sideLimit: number };
   /** Wide combo value-line labels use a row above the plot. */
   valueLineRows?: ReadonlyMap<Id, Rect>;
+  /** False when the chart's `labels.valueLine: false` takes the value-line labels off; the lines stay. */
+  valueLineLabels?: boolean;
   /**
    * The top of the CAGR arms' lanes. A line puts its header rows inside
    * `plot` and the value-axis title in the row over them; a claim that ends
@@ -1322,7 +1324,7 @@ function valueLineLabel(
     ? repeatsEndValue(input, v, valueText, y, input.measure(`${ann.label} ${valueText}`, font)) : undefined;
   const nameOnly = endValue !== undefined;
   const labelText =
-    ann.label === false ? '' : typeof ann.label === 'string' && nameOnly ? ann.label
+    ann.label === false || input.valueLineLabels === false ? '' : typeof ann.label === 'string' && nameOnly ? ann.label
       : ann.label !== undefined ? namedLineText(ann.label, valueText, v, id)
       : (isMean ? `${input.strings?.average ?? localeStrings(input.locale).average} ${valueText}${span ? ` (${span})` : ''}` : valueText);
   if (!labelText) return labelText;
