@@ -804,6 +804,44 @@ describe('chart layout edge cases', () => {
     expect(draw('pyramid', 'workforce-tenure-gender', { width: 900, height: keep }).geometry.axes.filter((axis: { axis: string }) => axis.axis === 'x')).toHaveLength(2);
   });
 
+  // A measure that says "percent" or "percentage" already names the % unit, so the subtitle must not add " in %".
+  it('adds no unit clause after a measure that names the unit as a word', () => {
+    const subtitle = (measure: string, unit: string) => {
+      const spec = { type: 'column', data: {
+        categories: [{ id: 'a', label: 'North' }, { id: 'b', label: 'South' }],
+        series: [{ id: 's', label: 'Rate', values: [10.5, 12] }],
+      }, options: { title: 'Sales', unit, subtitle: { measure } } };
+      const svg = (render({ spec, return: ['svg'] }).body as any).svg as string;
+      return svg.match(/data-part="subtitle"[^>]*>(.*?)<\/text>/)![1]!.replace(/<[^>]*>/g, '').replace(/\u00A0/g, ' ');
+    };
+    expect(subtitle('Conversion percentage', '%')).toBe('Conversion percentage');
+    expect(subtitle('Retention percent', '%')).toBe('Retention percent');
+    expect(subtitle('Revenue in euros', 'EUR')).toBe('Revenue in euros');
+    expect(subtitle('Conversion', '%')).toBe('Conversion in %');
+  });
+
+  // A callout or abs annotation that prints a point's value labels that point, so the reading must not list it as unlabelled.
+  it('does not list a point as unlabelled when an annotation prints its value', () => {
+    const omitted = (annotation: object) => {
+      const spec = { type: 'line', data: {
+        categories: [{ id: 'mon', label: 'Mon' }, { id: 'tue', label: 'Tue' }, { id: 'wed', label: 'Wed' }],
+        series: [{ id: 'north', label: 'North', values: [10, 12, 16] }, { id: 'south', label: 'South', values: [8, 11, 14] }],
+      }, annotations: [annotation], options: { title: 'Daily visits', valueLabels: 'none', seriesLabels: 'key' } };
+      const body = render({ spec, return: ['reading'] }).body as any;
+      return body.reading.omissions.map((item: any) => item.labelId).filter((id: string) => id.endsWith(':wed'));
+    };
+    const at = { categoryId: 'wed', seriesId: 'north' };
+    expect(omitted({ kind: 'callout', id: 'latest', at, headline: '${value}', text: 'Latest' })).toEqual(['point:south:wed']);
+    expect(omitted({ kind: 'abs', id: 'latest', at })).toEqual(['point:south:wed']);
+    // Words without the value leave the point unlabelled.
+    expect(omitted({ kind: 'callout', id: 'latest', at, text: 'Latest' })).toEqual(['point:north:wed', 'point:south:wed']);
+    // A scatter point's label is its name: an annotation that prints its y value leaves the name omitted.
+    const spec = { type: 'scatter', data: { points: [{ id: 'a', label: 'Brand A', x: 1.2, y: 2.1 }, { id: 'b', label: 'Brand B', x: 2.4, y: 3.5 }] },
+      annotations: [{ kind: 'abs', id: 'top', at: { pointId: 'a' } }], options: { title: 'Share against growth', labels: { point: false } } };
+    const scatter = (render({ spec, return: ['reading'] }).body as any).reading.omissions.map((item: any) => item.labelId);
+    expect(scatter).toEqual(['point:a', 'point:b']);
+  });
+
   // A small compact card dropped the rebase note to keep its plot, so two undrawn series left no trace on the page or in the reading.
   it('lists the series a rebase leaves undrawn in the notes of a small compact card', () => {
     const spec = { type: 'line', data: {

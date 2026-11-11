@@ -12,6 +12,9 @@ import type { LintWarning } from './types/scene';
 import type { Theme } from './types/theme';
 import { familiesOf, resolveFace, tableFamilyKey } from './fontMetrics';
 
+/** The table ink roles that step back: they fall back to the muted ink and read at its floor. */
+export const MUTED_TABLE_INKS: ReadonlySet<string> = new Set(['qualifier', 'operator', 'driver', 'toggle', 'secondary']);
+
 /** The paint roles and chart types present in a render. Omitted for full theme validation. */
 export interface ThemeUsage { roles: ReadonlySet<string>; types: ReadonlySet<string>; series?: ReadonlyMap<string, ReadonlySet<string>> }
 const uses = (usage: ThemeUsage | undefined, ...roles: string[]) => !usage || roles.every((role) => usage.roles.has(role));
@@ -554,6 +557,12 @@ export function validateTheme(theme: Theme, usage?: ThemeUsage, measuredFamilies
   if (uses(usage, 'ink')) need(c.ink, c.background, 4.5, 'ink on background', 'contrast-ink');
   if (uses(usage, 'inkMuted')) need(c.inkMuted, c.background, 3, 'inkMuted on background', 'contrast-ink-muted');
   if (uses(usage, 'inkMeta') && c.inkMeta !== undefined) need(c.inkMeta, c.background, 3, 'inkMeta on background', 'contrast-ink-muted');
+  // A table ink replaces the ink or the muted ink for its text role, so it meets that ink's floor.
+  for (const [role, ink] of Object.entries(theme.table?.inks ?? {})) {
+    if (ink === undefined || !parseColor(ink) || !uses(usage, `table.inks.${role}`)) continue;
+    if (MUTED_TABLE_INKS.has(role)) need(ink, c.background, 3, `table.inks.${role} on background`, 'contrast-ink-muted');
+    else need(ink, c.background, 4.5, `table.inks.${role} on background`, 'contrast-ink');
+  }
   // A slope's rails are read against: 3:1 like any meaningful graphic.
   // So is a data mark in the mark ink: it draws lines as thin as a hairline.
   if (uses(usage, 'markInk') && c.markInk !== undefined && parseColor(c.markInk) && contrastRatio(c.markInk, c.background) < 3) {

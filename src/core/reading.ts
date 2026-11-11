@@ -316,6 +316,9 @@ function unrequestedLabelOmissions(input: ChartReadingInput, records: readonly I
       plottedPoints: new Set((geometry.type === 'scatter' ? (geometry.marks as { points?: { id: string }[] }).points ?? [] : []).map(point => point.id)),
       capApplied: geometry.type === 'scatter' && geometry.warnings.some(warning => warning.code === 'labels-auto-off'),
       requestedValues: new Set(labels.filter(label => ['point', 'segment', 'insidePie', 'outsidePie'].includes(label.kind)).map(label => valueKey(label.owner))),
+      // A drawn annotation that prints its mark's value: that value is labelled, a scatter point's name is not.
+      annotatedValues: new Set(geometry.annotations.filter(placed => placed.valueOwner && labels.some(label => label.id === placed.labelId && !label.hidden))
+        .map(placed => valueKey(placed.valueOwner!))),
       drawnSeries: new Set(labels.filter(label => label.kind === 'series' && !label.hidden).map(label => label.owner.seriesId)),
       drawnCategories: new Set(labels.filter(label => label.kind === 'category' && !label.hidden).map(label => label.owner.categoryId)),
       keptCategories: new Set(visibleCategories.size ? visibleCategories : labels.map(label => label.owner.categoryId)),
@@ -351,7 +354,7 @@ function unrequestedLabelOmissions(input: ChartReadingInput, records: readonly I
     const valueKind = context.geometry.type !== 'line' && typeof options.variant === 'string' && options.variant.startsWith('stacked') ? 'segment' : 'point';
     // A selection explains an absent request only for a value still in the plot; viewport exclusions were skipped above.
     const selectiveValues = typeof options.valueLabels === 'string' && options.valueLabels !== 'all';
-    if (!hasValueRequest && owner.categoryId !== undefined && record.value.state === 'value'
+    if (!hasValueRequest && !context.annotatedValues.has(valueKey(owner)) && owner.categoryId !== undefined && record.value.state === 'value'
       && (disabled(valueKind) || cellLabel === false || excludedValues || selectiveValues)) {
       const reason = cellLabel === false ? 'cell-label-disabled' : excludedValues ? 'seriesLabels.only'
         : disabled(valueKind) ? 'disabled' : `valueLabels:${options.valueLabels}`;

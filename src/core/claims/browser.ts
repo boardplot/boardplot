@@ -649,7 +649,8 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
         if (!shown(t)) return;
         const nodeId = `cell:${COHORT_AVERAGE_ROW_ID}:t${t}`;
         claims.push({
-          id: `cohort:average:t${t}`,
+          // Own prefix: every cohort claim id starts 'cohort:', so an authored cohort id 'average' cannot reach it.
+          id: claimId('cohort-average', `t${t}`),
           kind: 'aggregate',
           op: 'cohort-average@1',
           // A receipt that cannot be re-derived from its own inputs is not a

@@ -500,7 +500,7 @@ it('lifts only zero-looking figures, after fitting, without costing the table it
   const fit = (values: number[], width: number) => texts(layout('table', { columns: [{ id: 'label', kind: 'rowLabel', label: 'Item', width: 140 }, { id: 'value', kind: 'value', label: 'Orders', width }],
     rows: values.map((v, i) => ({ id: `r${i}`, label: `Row ${i}`, cells: { value: v } })) }, { target: 'report', size: { width: 960 }, fitFormats: true }), 'cell:r');
   expect(fit([30680, 10336, 4], 56).filter(text => /\d/.test(text) && !text.startsWith('Row'))).toEqual(['30.7', '10.3', '<0.1']);
-  expect(fit([3068000, 1033600, 1200], 50).filter(text => /\d/.test(text) && !text.startsWith('Row'))).toEqual(['3.1', '1.0', '<0.1']);
+  expect(fit([3068000, 1033600, 1200], 50).filter(text => /\d/.test(text) && !text.startsWith('Row'))).toEqual(['3.1M', '1.0M', '1,200']);
   const money = resolveTable({ columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'a', kind: 'value' }, { id: 'b', kind: 'value' }, { id: 'c', kind: 'value' }],
     rows: [{ id: 'm', label: 'Money', scale: 'money', cells: { a: 1500, b: 40, c: 2300 } }] }, { target: 'report' }).table.rows[0]!;
   expect(['a', 'b', 'c'].map(id => money.cells[id]!.displayed)).toEqual(['1,500', '40', '2,300']);
@@ -847,6 +847,34 @@ it('prints tone text at 4.5:1 on every tone fill under tones fill', () => {
   }
 });
 
+// A custom table head ink of #DDDDDD on white drew nearly invisible heads with no finding, while ink itself is held to 4.5:1.
+it('holds a custom table head ink to the ink contrast floor', () => {
+  const spec = (head: string) => ({
+    type: 'table',
+    data: { columns: [{ id: 'label', kind: 'rowLabel', label: 'Store' }, { id: 'v', kind: 'value', label: 'Sales' }], rows: [{ id: 'a', label: 'North', cells: { v: 12 } }] },
+    theme: { preset: 'standard', overrides: { table: { inks: { head: head } } } },
+  });
+  const pale = render({ spec: spec('#DDDDDD') }).body as { ok: boolean; errors?: { code: string; message: string }[] };
+  expect(pale.ok).toBe(false);
+  expect(pale.errors?.map((error) => error.code)).toEqual(['contrast-ink']);
+  expect((render({ spec: spec('#333333') }).body as { ok: boolean }).ok).toBe(true);
+  // An operator without its own ink paints in the secondary ink, so a pale secondary ink is refused there too.
+  const operators = (ink: Record<string, string>) => render({ spec: {
+    type: 'table',
+    data: { columns: [{ id: 'label', kind: 'rowLabel', label: 'Line' }, { id: 'v', kind: 'value', label: 'Amount' }], rows: [{ id: 'a', label: 'Revenue', cells: { v: 12 } }, { id: 'b', label: 'Cost', operator: '−', cells: { v: 4 } }] },
+    options: { signs: 'operators' },
+    theme: { preset: 'standard', overrides: { table: { inks: ink } } },
+  } }).body as { ok: boolean; errors?: { code: string }[] };
+  expect(operators({ secondary: '#DDDDDD' }).errors?.map((error) => error.code)).toEqual(['contrast-ink-muted']);
+  // A figure ink used only on a dark total ground is decided against that ground, not the page.
+  const total = render({ spec: {
+    type: 'table',
+    data: { columns: [{ id: 'label', kind: 'rowLabel', label: 'Line' }, { id: 'v', kind: 'value', label: 'Amount' }], rows: [{ id: 't', label: 'Total', role: 'total', cells: { v: 12 } }] },
+    theme: { preset: 'standard', overrides: { table: { grounds: { total: '#222222' }, inks: { figure: '#FFFFFF' } } } },
+  } }).body as { ok: boolean };
+  expect(total.ok).toBe(true);
+});
+
 // Two heat lanes capped at 500 and 200 looked comparable, and nothing said that each column shades on its own scale.
 it('notes per-column shading for heat lanes with different caps, not for one shared cap', () => {
   const data: TableData = {
@@ -909,6 +937,30 @@ it('warns when a previous-period calc has no column group to read', () => {
   // A value column after a ratio column reads the ratio as its previous member, so no warning.
   const afterRatio = resolveTable({ ...data, columns: [...data.columns, { id: 'r', kind: 'computed', calc: { op: 'div', a: { ref: 'feb' }, b: { ref: 'jan' } } }, { id: 'mar', kind: 'value' }], columnGroups: [{ id: 'x', label: 'X', columns: ['r', 'mar'] }] } as TableData);
   expect(afterRatio.warnings.some(warning => warning.code === 'calc-previous-ungrouped')).toBe(false);
+});
+
+// A table squeezed across by the compact retry also lost the air above its section labels, though its height was open.
+it('keeps the air above a section label when only the width is tight', () => {
+  const months = Array.from({ length: 12 }, (_, i) => `m${i}`);
+  const section = (id: string, members: string[]) => ({ id, label: id.toUpperCase(), role: 'section', children: members.map((m, i) => ({ id: m, label: m, cells: Object.fromEntries(months.map((c, j) => [c, 1_234_567 + i * 1000 + j])) })) });
+  const data = { columns: [{ id: 'label', kind: 'rowLabel', label: 'KPI' }, ...months.map((id) => ({ id, kind: 'value', label: id, format: '1,234' }))],
+    rows: [section('sales', ['revenue', 'orders']), section('ads', ['spend', 'clicks'])] };
+  const geometry = layout('table', data, { size: { width: 800 } });
+  expect(geometry.warnings.map((w) => w.code)).toContain('table-tight-spacing');
+  const h = (id: string) => (geometry.marks as unknown as TableMarks).rows.find((row) => row.id === id)!.h;
+  // The second section opens a new block with a body line box of air; the first under the head takes a quarter.
+  expect(h('ads')).toBeGreaterThan(h('sales'));
+});
+
+// A retained table executor kept the section air of the first height policy it saw, so the bytes depended on what was drawn before.
+it('draws a sectioned table the same at a pinned and an open height in either order', () => {
+  const fixture = getFixtures('dimswitch').find((candidate) => candidate.id === 'statement')!;
+  const draw = (data: unknown, size: object) => JSON.stringify(layout('dimswitch', data, { ...fixture.options, size }).scene);
+  const open = { width: 400 }, pinned = { width: 400, height: 900 };
+  const fresh = [draw(structuredClone(fixture.data), open), draw(structuredClone(fixture.data), pinned)];
+  const first = structuredClone(fixture.data), second = structuredClone(fixture.data);
+  expect([draw(first, open), draw(first, pinned)]).toEqual(fresh);
+  expect([draw(second, pinned), draw(second, open)]).toEqual([fresh[1], fresh[0]]);
 });
 
 // A status group wider than its authored track overlapped its neighbours, and a cut label kept its full text only in the SVG title.
@@ -1374,6 +1426,11 @@ it('warns once per computed column when a ratio divides by a negative cell, and 
   expect(found[0]).toMatchObject({ severity: 'info', owner: { rowId: 'b', colId: 'm' } });
   expect(found[0]!.message).toContain('1 more');
   expect(resolved.computedCells.find((r) => r.rowId === 'b' && r.colId === 'm')).toMatchObject({ displayed: '11.8%', state: 'value' });
+  // A calculated row that a ratio column divides names the column, as a plain row does: it said "row 'p' in column 'm'".
+  const summed = resolveTable({ ...data, rows: [data.rows[1]!, data.rows[2]!, { id: 'p', label: 'Profit', relation: 'displayOnly', calc: { op: 'add', a: { ref: { row: 'b' } }, b: { ref: { row: 'c' } } } }] } as TableData);
+  const messages = summed.warnings.filter((w) => w.code === 'ratio-negative-base').map((w) => w.message);
+  expect(messages.filter((message) => message.startsWith('row '))).toEqual([]);
+  expect(messages.some((message) => message.startsWith("column 'm'"))).toBe(true);
 });
 
 // A margin row (gp / rev * 100) in a delta column printed the ratio of the changes (30.0%) and not the change of the margins (10.0%).
@@ -1791,6 +1848,25 @@ it('names no unit over a column that prints no figure', () => {
   expect(composed(true)).toEqual(composed(false));
 });
 
+// A body-row band painted its ground over the hairline that opens it, so the line vanished below the header.
+// A theme without row rules draws no hairline, and the band keeps its full width there.
+it('keeps the opening hairline of a column band visible and closes the band where no rule is drawn', () => {
+  const data = {
+    columns: [{ id: 'l', kind: 'rowLabel' }, { id: 'a', kind: 'value' }, { id: 'b', kind: 'value', band: true }],
+    rows: [{ id: 'x', label: 'North', cells: { a: 1, b: 2 } }, { id: 'y', label: 'South', cells: { a: 3, b: 4 } }],
+  };
+  const scene = (theme?: object) => requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'table', data, options: { size: { width: 360, height: 160 } }, theme } as never))).scene;
+  const parts = (nodes: SceneNode[]) => ({
+    divider: nodes.find((node): node is Extract<SceneNode, { t: 'line' }> => node.t === 'line' && node.part === 'tableGroupDivider')!,
+    bands: nodes.filter((node): node is Extract<SceneNode, { t: 'rect' }> => node.t === 'rect' && node.part === 'tableColumnBand'),
+  });
+  const ruled = parts(scene());
+  expect(ruled.bands.length).toBeGreaterThan(0);
+  for (const band of ruled.bands) expect(band.rect.x).toBeGreaterThanOrEqual(ruled.divider.x1 + ruled.divider.width / 2);
+  const bare = parts(scene({ preset: 'standard', overrides: { table: { ruleWidths: { row: 0 } } } }));
+  for (const band of bare.bands) expect(band.rect.x).toBeLessThan(bare.divider.x1);
+});
+
 // A table with a $ column and a € column printed the authored "in USD" over both, also under unitShown: the heads name each unit.
 it('leaves options.unit out of the subtitle when the columns print different units', async () => {
   const data = { columns: [{ id: 'label', kind: 'rowLabel', label: 'Item' }, { id: 'us', kind: 'value', label: 'US', format: '$1,234' }, { id: 'eu', kind: 'value', label: 'EU', format: '€1,234' }],
@@ -1827,4 +1903,28 @@ it('leaves options.unit out of the subtitle when the columns print different uni
   const oneUnit = await drawn(dollars, { unit: 'USD', title: 'Revenue' });
   expect(oneUnit.texts).toEqual(['Revenue', 'USD']);
   expect(oneUnit.codes).not.toContain('table-unit-overridden');
+});
+
+// An unformatted KPI table took one magnitude from its largest row: orders and rates printed "<0.1" and their changes "n.m.".
+it('prints each unformatted row at its own scale where one column magnitude does not fit', () => {
+  const row = (id: string, a: number, b: number) => ({ id, label: id, cells: { jan: a, feb: b }, children: [
+    { id: `${id}-mom`, label: 'MoM %', relation: 'displayOnly', inline: true, calc: { op: 'percentDelta', a: { row: id }, b: { row: id, column: 'previous' } } },
+  ] });
+  const texts = (data: unknown) => new Map(layout('table', data, { size: { width: 480, height: 320 } }).scene
+    .flatMap((node) => node.t === 'text' ? [[node.id, node.lines.join(' ')] as const] : []));
+  const columns = [{ id: 'label', kind: 'rowLabel' }, { id: 'jan', kind: 'value' }, { id: 'feb', kind: 'value' }];
+  const mixed = texts({ columns, rows: [row('revenue', 3_800_000, 3_600_000), row('orders', 17_600, 17_000), row('rate', 2.2, 2.3)] });
+  expect([mixed.get('cell:revenue:feb'), mixed.get('cell:orders:feb'), mixed.get('cell:rate:feb')]).toEqual(['3.6M', '17,000', '2.3']);
+  expect([...mixed.values()].filter((text) => text === 'n.m.')).toEqual([]);
+  // One magnitude that fits every row keeps the column's scale.
+  const fits = texts({ columns, rows: [row('revenue', 3_800_000, 3_600_000), row('spend', 750_000, 720_000)] });
+  expect([fits.get('cell:revenue:feb'), fits.get('cell:spend:feb')]).toEqual(['3.6', '0.7']);
+  // A ratio column keeps its own format: the row's millions turned a revenue ratio of 1.06 into "1.1 × 10⁻⁶M".
+  const ratio = texts({ columns: [...columns, { id: 'r', kind: 'computed', calc: { op: 'div', a: { ref: 'jan' }, b: { ref: 'feb' } } }],
+    rows: [row('revenue', 3_800_000, 3_600_000), row('orders', 17_600, 17_000)] });
+  expect([ratio.get('cell:revenue:r'), ratio.get('cell:orders:r')]).toEqual(['1.1', '1.0']);
+  // A row scale the engine picks takes the locale's minus glyph, as a column's does.
+  const minus = new Map(layout('table', { columns, rows: [{ id: 'revenue', label: 'Revenue', cells: { jan: 3_800_000, feb: -3_600_000 } }, { id: 'rate', label: 'Rate', cells: { jan: -2.3, feb: 1.1 } }] },
+    { size: { width: 480, height: 200 }, locale: { minusGlyph: '-' } }).scene.flatMap((node) => node.t === 'text' ? [[node.id, node.lines.join(' ')] as const] : []));
+  expect([minus.get('cell:revenue:feb'), minus.get('cell:rate:jan')]).toEqual(['-3.6M', '-2.3']);
 });

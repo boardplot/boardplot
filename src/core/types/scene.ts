@@ -730,6 +730,8 @@ export interface PlacedAnnotation {
    */
   labelNodeId?: Id;
   derivation?: AnnotationDerivation;
+  /** The mark whose own value the annotation prints (a callout's `${value}`, an `abs`): that value counts as labelled. */
+  valueOwner?: OwnerRef;
   /** A value line's value as its label's format prints it: the line's own format, the series' or the chart's, with its unit. */
   valueText?: string;
   /** A value line's drawn tolerance band: its bounds as the band prints them. */

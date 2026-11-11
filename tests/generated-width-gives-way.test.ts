@@ -283,4 +283,28 @@ describe('measure gives one answer in every call order', () => {
     at(later, 390);
     expect(at(later, 320)).toBe(first);
   });
+
+  // Measure kept the widths a search laid out through a call opened for another width, whose memos changed them: the refusal at
+  // 160 px named 280 x 257 px in a fresh process and 280 x 254 px after a call at 320 px. Render draws 257 px at 280 px.
+  it('names the same refusal size before and after a wider call', () => {
+    const { data, options } = fixture('status', 'column-widths');
+    const status = data as { rows: { id: string }[]; cells: { row: string }[] };
+    const own = (tag: string) => ({ ...status, rows: status.rows.map((r) => ({ ...r, id: `${r.id}-${tag}` })), cells: status.cells.map((c) => ({ ...c, row: `${c.row}-${tag}` })) });
+    const at = (spec: unknown, width: number) => measure({ type: 'status', data: spec, options: { ...options, size: { width } } } as never).warnings[0]?.expected;
+    const first = at(own('a'), 160);
+    const later = own('b');
+    at(later, 320);
+    expect(at(later, 160)).toEqual(first);
+  });
+});
+
+describe('a later step that draws stepped text names it', () => {
+  // At 480 to 488 px the stepped slide text was refused and the narrow form drew it at 21.33 px without the type-stepped note.
+  it('grid narrow form at 484 px', () => {
+    const request = { type: 'grid', data: {"panels": [{"id": "list", "type": "table", "row": 0, "column": 0, "options": {"variant": "status", "density": "compact", "legend": "none"}, "data": {"columns": [{"id": "label", "kind": "rowLabel", "label": "Initiative"}, {"id": "status", "kind": "status", "label": "Delivery status"}], "rows": [{"id": "A", "label": "A · Core expansion", "cells": {"status": "on-track"}}, {"id": "B", "label": "B · Service attach", "cells": {"status": "on-track"}}, {"id": "C", "label": "C · Partner channel", "cells": {"status": "at-risk"}}]}}, {"id": "map", "type": "scatter", "row": 0, "column": 1, "data": {"groups": [{"id": "priority", "label": "Priority"}, {"id": "selective", "label": "Selective"}], "points": [{"id": "A", "group": "priority", "label": "A", "x": 8.4, "y": 8.8}, {"id": "B", "group": "priority", "label": "B", "x": 7.1, "y": 8}, {"id": "C", "group": "selective", "label": "C", "x": 6.8, "y": 5.7}]}, "options": {"valueAxis": {"show": true, "gridlines": true}, "legend": "none", "axisTitles": {"x": "Execution feasibility", "y": "Strategic attractiveness"}, "unit": "Attractiveness × feasibility"}}]},
+      options: { ...{"title": "A–G assessment links the decision list to the portfolio map", "columns": [1.15, 1.05], "target": "slide", "theme": "notation"}, size: { width: 484 } } };
+    const geometry = layoutResolvedRequest(resolveChartRequest(request as never));
+    expect(geometry.refused).toBeFalsy();
+    expect(geometry.warnings.map((warning) => warning.code)).toContain('type-stepped');
+  });
 });
