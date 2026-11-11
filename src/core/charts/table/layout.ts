@@ -1592,7 +1592,7 @@ function prepareTableCandidate(
   const columnBandFills = new Map<string, Paint>();
   const rowWashes = new Map<string, Paint>();
   const bandedGroups = table.columnGroups.filter((g) => g.band === true);
-  const dividerXs = new Set(nodes.flatMap((node) => node.t === 'line' && node.part === 'tableGroupDivider' ? [node.x1] : []));
+  const dividerXs = new Set(nodes.flatMap((node) => node.t === 'line' && node.part === 'tableGroupDivider' && node.width > 0 ? [node.x1] : []));
   /** The x span a banded column group covers among the visible columns. */
   const bandRect = (g: { columnIds: Id[] }): { x: number; w: number } | undefined => {
     const visible = g.columnIds.filter((columnId) => colX.has(columnId));
@@ -1602,6 +1602,7 @@ function prepareTableCandidate(
     // A band stops at its last column, under 'frame' too: the empty track is
     // the row's and carries only the row's grounds and rules.
     // A band opens right of the hairline at its first column, so its ground does not paint over the line.
+    // A zero-width divider draws nothing, so the band keeps its full width there.
     const x = dividerXs.has(Math.round(first.x) + CRISP) ? Math.round(first.x) + 1 : first.x;
     return { x, w: last.x + last.w - x };
   };

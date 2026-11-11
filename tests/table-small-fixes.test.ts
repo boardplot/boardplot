@@ -1746,3 +1746,22 @@ it('names no unit over a column that prints no figure', () => {
   const composed = (withEmpty: boolean) => { const { table, warnings } = byColumn(withEmpty, '1.2m', '$1.2k', { unit: 'EUR' }); return [table.unit, warnings.map((w) => w.code)]; };
   expect(composed(true)).toEqual(composed(false));
 });
+
+// A body-row band painted its ground over the hairline that opens it, so the line vanished below the header.
+// A theme without row rules draws no hairline, and the band keeps its full width there.
+it('keeps the opening hairline of a column band visible and closes the band where no rule is drawn', () => {
+  const data = {
+    columns: [{ id: 'l', kind: 'rowLabel' }, { id: 'a', kind: 'value' }, { id: 'b', kind: 'value', band: true }],
+    rows: [{ id: 'x', label: 'North', cells: { a: 1, b: 2 } }, { id: 'y', label: 'South', cells: { a: 3, b: 4 } }],
+  };
+  const scene = (theme?: object) => requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'table', data, options: { size: { width: 360, height: 160 } }, theme } as never))).scene;
+  const parts = (nodes: SceneNode[]) => ({
+    divider: nodes.find((node): node is Extract<SceneNode, { t: 'line' }> => node.t === 'line' && node.part === 'tableGroupDivider')!,
+    bands: nodes.filter((node): node is Extract<SceneNode, { t: 'rect' }> => node.t === 'rect' && node.part === 'tableColumnBand'),
+  });
+  const ruled = parts(scene());
+  expect(ruled.bands.length).toBeGreaterThan(0);
+  for (const band of ruled.bands) expect(band.rect.x).toBeGreaterThanOrEqual(ruled.divider.x1 + ruled.divider.width / 2);
+  const bare = parts(scene({ preset: 'standard', overrides: { table: { ruleWidths: { row: 0 } } } }));
+  for (const band of bare.bands) expect(band.rect.x).toBeLessThan(bare.divider.x1);
+});
