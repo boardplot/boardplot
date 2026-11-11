@@ -177,6 +177,8 @@ function dispatch(verb: string, flags: Flags, seen: UsageSeen): VerbResult {
         outDir: stdout ? undefined : text(flags, 'out'),
         overwrite: flags.overwrite === true,
         fontTables: text(flags, 'font-tables'),
+        // --quiet prints no advice, so no advice probe runs.
+        ...(flags.quiet === true ? { adviceRead: () => false } : {}),
         ...(stdout ? { return: [...returned, 'svg'] } : requested === undefined && !quiet ? {} : { return: returned }),
         ...rowFlags(flags),
       });

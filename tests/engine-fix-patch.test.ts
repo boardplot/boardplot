@@ -351,6 +351,15 @@ describe('design advice fixes', () => {
     })).not.toContain('design-line-direct-labels');
   });
 
+  // --quiet and a repeated MCP render drop this advice, and its probe laid the chart out a second time for nothing.
+  it('runs no direct-label probe for a caller that drops the advice', () => {
+    const asked: string[] = [];
+    const spec = { ...fixtureSpec('line', 'dense-20-categories-all-labels'), options: { legend: 'bottom', seriesLabels: 'key' } };
+    const body = render({ spec, adviceRead: (code) => { asked.push(code); return false; } }).body as any;
+    expect(asked).toContain('design-line-direct-labels');
+    expect(body.warnings.map((warning: any) => warning.code)).not.toContain('design-line-direct-labels');
+  });
+
   // A zoom of 5 periods prints 5 values: the advice must count the drawn periods, not the 20 source periods.
   it('gives a zoomed line with every point labelled no label-points advice', () => {
     const periods = Array.from({ length: 20 }, (_, index) => ({ id: `p${index}`, label: `Week ${index + 1}` }));

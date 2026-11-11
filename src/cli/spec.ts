@@ -691,7 +691,7 @@ export function measureChart(doc: BoardplotDoc, chart: DocChart, envelope: Docum
  */
 export function addDocumentLints(
   doc: BoardplotDoc, envelope: DocumentEnvelope,
-  drawn: readonly { name: string; chart: DrawnChart; drawsWith?: (changed: Record<string, unknown>) => boolean }[] = [],
+  drawn: readonly { name: string; chart: DrawnChart; drawsWith?: (changed: Record<string, unknown>, code: string) => boolean }[] = [],
 ): void {
   const central = new Set<string>(lintCodes);
   // A root theme reaches every chart: name each page variable once at its source path.
