@@ -819,5 +819,10 @@ describe('chart layout edge cases', () => {
     expect(omitted({ kind: 'abs', id: 'latest', at })).toEqual(['point:south:wed']);
     // Words without the value leave the point unlabelled.
     expect(omitted({ kind: 'callout', id: 'latest', at, text: 'Latest' })).toEqual(['point:north:wed', 'point:south:wed']);
+    // A scatter point's label is its name: an annotation that prints its y value leaves the name omitted.
+    const spec = { type: 'scatter', data: { points: [{ id: 'a', label: 'Brand A', x: 1.2, y: 2.1 }, { id: 'b', label: 'Brand B', x: 2.4, y: 3.5 }] },
+      annotations: [{ kind: 'abs', id: 'top', at: { pointId: 'a' } }], options: { title: 'Share against growth', labels: { point: false } } };
+    const scatter = (render({ spec, return: ['reading'] }).body as any).reading.omissions.map((item: any) => item.labelId);
+    expect(scatter).toEqual(['point:a', 'point:b']);
   });
 });
