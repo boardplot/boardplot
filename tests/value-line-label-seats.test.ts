@@ -81,3 +81,16 @@ it('falls back outside when a value line blocks a requested column center', () =
   expect(label.hidden).toBeUndefined();
   expect(label.slot).toBe('outsideBarTop');
 });
+
+// labels.valueLine: false was accepted on bar and column but the target line still printed its label.
+it('takes the value-line label off with labels.valueLine false and keeps the line', () => {
+  const data = { categories: ['Jan', 'Feb', 'Mar'].map((label, i) => ({ id: `m${i}`, label })), series: [{ id: 'sales', values: [40, 52, 61] }] };
+  for (const type of ['column', 'bar']) {
+    for (const annotation of [{ kind: 'valueLine', value: 50, label: 'Goal' }, { kind: 'valueLine', value: 50, label: 'Goal', tolerance: 5 }]) {
+      const geometry = layoutResolvedRequest(resolveChartRequest({ type, data, annotations: [annotation], options: { labels: { valueLine: false } } } as never));
+      if (geometry.refused) throw new Error('refused');
+      expect(geometry.labels.filter((l) => l.kind === 'valueLine')).toEqual([]);
+      expect(geometry.scene.some((n) => n.part === 'valueLine')).toBe(true);
+    }
+  }
+});
