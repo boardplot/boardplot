@@ -774,6 +774,29 @@ describe('the cost of a size refusal', () => {
     expect((layoutResolvedRequest(at('box', 'mixed-support-groups', data, minWidth)) as Geometry).mode).not.toBe('compact');
   });
 
+  // A chart that draws in full and is measured again at another width, from a new copy of the same spec (an agent
+  // trying widths), laid out every narrower width of the minimum-width search again.
+  it('lays out at most two widths when a chart that draws in full is measured again at another width', () => {
+    const spec = { type: 'column', data: { categories: [{ id: 'north', label: 'North' }, { id: 'south', label: 'South' }, { id: 'east', label: 'East' }, { id: 'west', label: 'West' }],
+      series: [{ id: 'orders', label: 'Orders', values: [42, 35, 51, 28] }] }, options: { title: 'East takes the most orders', unit: 'k' } };
+    const column = getChart('column')!;
+    const layout = column.layout;
+    const widths = new Set<number>();
+    const spy = vi.spyOn(column, 'layout').mockImplementation((data, options) => {
+      const size = (options as { size?: { width: number; height?: number } }).size;
+      if (size && size.height === undefined) widths.add(size.width);
+      return layout(data, options);
+    });
+    try {
+      const first = measure({ ...structuredClone(spec), options: { ...spec.options, size: { width: 960 } } });
+      expect(first.geometry?.mode).toBe('full');
+      widths.clear();
+      const again = measure({ ...structuredClone(spec), options: { ...spec.options, size: { width: 600 } } });
+      expect(again.minWidth).toBe(first.minWidth);
+    } finally { spy.mockRestore(); }
+    expect(widths.size).toBeLessThanOrEqual(2);
+  });
+
   // A grid prepares a new data object on every call, so a host that renders it refused again at another width searched every width again.
   it('reuses the widths a refused grid searched when the host renders it at another width', () => {
     const grid = getChart('grid')!;
@@ -783,9 +806,9 @@ describe('the cost of a size refusal', () => {
     const count = (run: () => LayoutResult) => { calls = 0; const result = run(); return [calls, result.warnings[0]] as const; };
     try {
       const data = structuredClone(dataOf('grid', 'status-panel-hatched-key'));
+      const [fresh, freshAdvice] = count(() => layoutResolvedRequest(at('grid', 'status-panel-hatched-key', structuredClone(data), 300)));
       layoutResolvedRequest(at('grid', 'status-panel-hatched-key', data, 280));
       const [again, advice] = count(() => layoutResolvedRequest(at('grid', 'status-panel-hatched-key', data, 300)));
-      const [fresh, freshAdvice] = count(() => layoutResolvedRequest(at('grid', 'status-panel-hatched-key', structuredClone(data), 300)));
       expect(advice).toEqual(freshAdvice);
       expect(again).toBeLessThan(fresh / 2);
     } finally { spy.mockRestore(); }
