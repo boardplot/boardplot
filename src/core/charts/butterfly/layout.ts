@@ -239,11 +239,15 @@ export function layoutButterfly(
   // One precision per pane ("6.0" beside "7.9"), through the shared
   // raster: engine scale from 1e6, the nonzero lift, the unit rule,
   // and a pane's own format or unit.
-  // A pane is one set: one magnitude, so no label steps down to its own (5,900M · 300M, not 5.90B · 300M).
-  const paneRaster = (cells: typeof aCells) => {
-    const values = cells.map(cellValue);
-    return seriesRasterFormatter(opts.format, values, opts.locale?.language, opts.unit, opts.target, undefined, false, setMagnitude(values, opts.format, opts.unit, opts.target));
-  };
+  // A set prints at one magnitude, so no label steps down to its own (5,900M · 300M, not 5.90B · 300M). A reader
+  // compares the two sides of a row, so both sides are one set while they print one unit and neither has its own format.
+  const sideUnit = (series: typeof sA) => (series.unit ?? opts.unit)?.replace(/\s+/g, '') || undefined;
+  const ownFormat = (series: typeof sA, cells: typeof aCells) => Boolean(series.format) || cells.some((cell) => cellMeta(cell)?.format);
+  const oneSet = sideUnit(sA) === sideUnit(sB) && !ownFormat(sA, aCells) && !ownFormat(sB, bCells);
+  const magnitudeOf = (cells: typeof aCells) => setMagnitude(cells.map(cellValue), opts.format, opts.unit, opts.target);
+  const bothScale = oneSet ? magnitudeOf([...aCells, ...bCells]) : undefined;
+  const paneRaster = (cells: typeof aCells) =>
+    seriesRasterFormatter(opts.format, cells.map(cellValue), opts.locale?.language, opts.unit, opts.target, undefined, false, oneSet ? bothScale : magnitudeOf(cells));
   const rasterA = paneRaster(aCells);
   const rasterB = paneRaster(bCells);
   const fmtA = rasterA.forSeries(sA);

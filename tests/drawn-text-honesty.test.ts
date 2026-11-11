@@ -491,9 +491,18 @@ describe('number census', () => {
     expect(of(census(type, { data, options: { target: 'report', ...options } }, 720), 'mixed-units')).toEqual([]);
   });
 
+  // A butterfly row printed "1,070M" on one side and "2.10B" on the other, because each side picked its own magnitude.
+  it.each([true, false])('prints both sides of a butterfly row at one magnitude (sharedScale %s)', (sharedScale) => {
+    const butterfly: Spec = { data: { categories: ['north', 'south', 'east', 'west'].map((id) => ({ id, label: id })), series: [{ id: 'last', label: 'Last year', values: [1.07e9, 5.29e8, 4.2e8, 2.38e8] }, { id: 'this', label: 'This year', values: [2.1e9, 1.3e9, 1.1e9, 1.05e9] }] }, options: { a: 'last', b: 'this', sharedScale, target: 'report' } };
+    const geometry = (measure({ type: 'butterfly', data: butterfly.data, options: { ...butterfly.options, size: { width: 720 } } } as never) as { geometry: Geometry }).geometry;
+    const north = geometry.labels.filter((label) => label.owner?.categoryId === 'north' && label.kind === 'point').map((label) => label.text);
+    expect(north).toEqual(['1,070M', '2,100M']);
+  });
+
   // A butterfly pane ("1M · 1k", where 1,000k fits) went unreported because the other pane's 1 left no magnitude for both.
+  // Side b has its own format, so each side is its own set.
   it('reports a mixed pane that one magnitude fits, whatever the other pane holds', () => {
-    const butterfly: Spec = { data: { categories: [{ id: 'x', label: 'X' }, { id: 'y', label: 'Y' }], series: [{ id: 'a', label: 'A', values: [1e6, 1e3] }, { id: 'b', label: 'B', values: [1, 1] }] }, options: { a: 'a', b: 'b', sharedScale: false, target: 'report' } };
+    const butterfly: Spec = { data: { categories: [{ id: 'x', label: 'X' }, { id: 'y', label: 'Y' }], series: [{ id: 'a', label: 'A', values: [1e6, 1e3] }, { id: 'b', label: 'B', format: '1.0', values: [1, 1] }] }, options: { a: 'a', b: 'b', sharedScale: false, target: 'report' } };
     expect(of(census('butterfly', butterfly, 720, retext('label:point:a:x', '1M')), 'mixed-units').map((finding) => finding.id)).toEqual(['|kind:point:a']);
   });
 });
