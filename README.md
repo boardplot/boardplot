@@ -6,14 +6,14 @@ Give an AI agent such as Claude Code or Codex your data and say what the chart s
 
 Developers can add the same charts to a React dashboard as responsive components with tooltips.
 
-**[Gallery](docs/gallery.md)** · [Manual](docs/manual.md) · [Chart reference](docs/reference/) · [AI agents](#ai-agents) · [React](#react) · [Changelog](CHANGELOG.md) · Apache-2.0
+**[Gallery](https://github.com/boardplot/boardplot/blob/main/docs/gallery.md)** · [Manual](docs/manual.md) · [Chart reference](docs/reference/) · [AI agents](#ai-agents) · [React](#react) · [Changelog](CHANGELOG.md) · Apache-2.0
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/gallery/hero-dark.svg">
   <img src="docs/gallery/hero-light.svg" width="840" alt="Boardplot stacked column chart: FY25 revenue by region per quarter, AMER, EMEA and APAC, 6 to 9% above the prior year while EMEA falls from 30 to 26">
 </picture>
 
-This stacked column chart is one JSON spec drawn by `boardplot render`; the variance to the prior year above each column is computed from the data. Boardplot has <!-- BEGIN GENERATED COUNTS -->37 chart types, 83 variants and 683 example specs<!-- END GENERATED COUNTS -->; the [gallery](docs/gallery.md) shows each type with its spec.
+This stacked column chart is one JSON spec drawn by `boardplot render`; the variance to the prior year above each column is computed from the data. Boardplot has <!-- BEGIN GENERATED COUNTS -->37 chart types, 83 variants and 683 example specs<!-- END GENERATED COUNTS -->; the [gallery](https://github.com/boardplot/boardplot/blob/main/docs/gallery.md) shows each type with its spec.
 
 ## Who it is for
 
@@ -65,27 +65,27 @@ Choose ECharts for interactive web charts, large data sets, animation or streami
 
 Each chart links to its spec in the gallery. Companies, products, sources and numbers in the examples are invented.
 
-<a href="docs/gallery.md#bar"><picture>
+<a href="https://github.com/boardplot/boardplot/blob/main/docs/gallery.md#bar"><picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/gallery/readme-bar-margin-by-brand-dark.svg">
   <img src="docs/gallery/readme-bar-margin-by-brand.svg" width="840" alt="Bar chart: margin per unit by brand against the average and a 30 EUR target, with our brand highlighted">
 </picture></a>
 
-<a href="docs/gallery.md#line"><picture>
+<a href="https://github.com/boardplot/boardplot/blob/main/docs/gallery.md#line"><picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/gallery/readme-line-multiline-arr-endpoint-cagr-dark.svg">
   <img src="docs/gallery/readme-line-multiline-arr-endpoint-cagr.svg" width="840" alt="Line chart: cloud ARR grows 31.5% a year and overtakes licence revenue, with a growth bracket and a forecast year">
 </picture></a>
 
-<a href="docs/gallery.md#dimswitch"><picture>
+<a href="https://github.com/boardplot/boardplot/blob/main/docs/gallery.md#dimswitch"><picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/gallery/readme-dimswitch-statement-channels-dark.svg">
   <img src="docs/gallery/readme-dimswitch-statement-channels.svg" width="840" alt="Dimension-switch table: a contribution-margin statement per order over four weeks, with week-over-week changes and the two sales channels under the total">
 </picture></a>
 
-<a href="docs/gallery.md#table"><picture>
+<a href="https://github.com/boardplot/boardplot/blob/main/docs/gallery.md#table"><picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/gallery/readme-table-management-report-compact-dark.svg">
   <img src="docs/gallery/readme-table-management-report-compact.svg" width="840" alt="Management table: revenue by segment for month-to-date and closed year-to-date, with changes against last year and plan">
 </picture></a>
 
-<a href="docs/gallery.md#waterfall"><picture>
+<a href="https://github.com/boardplot/boardplot/blob/main/docs/gallery.md#waterfall"><picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/gallery/readme-waterfall-build-down-dark.svg">
   <img src="docs/gallery/readme-waterfall-build-down.svg" width="840" alt="Waterfall chart: a P&amp;L build-down from revenue of 100 through COGS, wages, operating costs and D&amp;A to EBIT of 16.0, then tax to net income of 11.8">
 </picture></a>
@@ -130,7 +130,7 @@ codex plugin marketplace add boardplot/boardplot
 codex plugin add boardplot@boardplot
 ```
 
-The plugin installs the npm package at its own version into a Boardplot cache folder, so PNG works without a browser. For a machine without npm registry access, each release also has an offline ZIP with the runtime bundled; that route needs Chrome or Chromium for PNG. See [the plugin README](release/plugin/boardplot-marketplace/plugins/boardplot/README.md).
+The plugin installs the npm package at its own version into a Boardplot cache folder, so PNG works without a browser. For a machine without npm registry access, each release also has an offline ZIP with the runtime bundled; that route needs Chrome or Chromium for PNG. See [the plugin README](https://github.com/boardplot/boardplot/blob/main/release/plugin/boardplot-marketplace/plugins/boardplot/README.md).
 
 Any other MCP client: install the package globally once, then add the stdio server `boardplot-mcp`. It has six tools: `boardplot_list`, `boardplot_describe`, `boardplot_fixtures`, `boardplot_measure`, `boardplot_render` and `boardplot_feedback`. With a global install, npm does not run in the folder the agent works in, so that folder's npm settings cannot change which package runs. Run the same command again to update.
 
@@ -222,7 +222,7 @@ Each chart type has its own entry, such as `boardplot/react/column`. `BoardplotC
 
 ## Documentation
 
-- [Gallery](docs/gallery.md): one drawn example of each chart type, with its spec
+- [Gallery](https://github.com/boardplot/boardplot/blob/main/docs/gallery.md): one drawn example of each chart type, with its spec
 - [Use cases](docs/use-cases.md): prompts and steps for a slide deck, an analysis page, a React dashboard, a Word report or a weekly report built by an AI agent
 - [The manual](docs/manual.md): the spec, the MCP tools, the CLI, React, sizing, errors and themes
 - [Chart reference](docs/reference/): one page per chart type, plus options, themes, React and fixtures
@@ -237,7 +237,7 @@ npm test
 npm run build
 ```
 
-`npm run docs:build` regenerates `docs/reference`, the gallery, `llms.txt` and the catalog table above. [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md) have the rules for a pull request. [SECURITY.md](SECURITY.md) says how to report a security problem.
+`npm run docs:build` regenerates `docs/reference`, the gallery, `llms.txt` and the catalog table above. [CONTRIBUTING.md](https://github.com/boardplot/boardplot/blob/main/CONTRIBUTING.md) and [AGENTS.md](https://github.com/boardplot/boardplot/blob/main/AGENTS.md) have the rules for a pull request. [SECURITY.md](https://github.com/boardplot/boardplot/blob/main/SECURITY.md) says how to report a security problem.
 
 ## License
 
