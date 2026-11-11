@@ -67,8 +67,6 @@ export interface ComboEnv {
   measure: TextMeasurer;
   highlights: Set<Id>;
   density: LabelDensity;
-  /** Memoised format-by-example for series formats. */
-  byExample: (example: string) => (v: number) => string;
 }
 
 /** Phase 1 output: the series by role, the formats per scale group, the stacks and both value domains. */
@@ -112,12 +110,10 @@ export interface ComboDomain {
   fmt: (v: number) => string;
   valueSpec: NumberFormatSpec;
   pctFmt: (v: number) => string;
-  /** The series' own scale-group formatter (an authored s.format still wins at the call sites). */
-  scaleFmtOf: (s: NormSer) => (v: number) => string;
-  /** Cell and series examples override either scale; the chart example belongs to the primary scale. */
-  explicitFormatOf: (s: NormSer, value: NormVal) => string | undefined;
-  /** Marker display on the right axis: the secondary series format, else the secondary raster. */
-  secFmt: (v: number) => string;
+  /** Formatter for one value of a series: cell format, else series format on its scale group, else chart/percent/scale. */
+  valueFmtOf: (s: NormSer, value?: NormVal) => (v: number) => string;
+  /** Formatter for category `ci`'s column stack total: the one column's value formatter, else the primary raster. */
+  totalFmtOf: (ci: number) => (v: number) => string;
   /** With a view window, the mean over the source categories (valueLine 'mean'). */
   sourceMean: number | undefined;
   /** The periods a mean covers where a window or zoom draws fewer (viewportMeanSpan). */
