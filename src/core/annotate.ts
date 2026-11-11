@@ -997,12 +997,13 @@ function placeNote(s: AnnotationScope, ann: Extract<Annotation, { kind: 'callout
   // sentence built around it is the author's, so the record carries the
   // anchor value it was substituted from and claims nothing more.
   const lines = headline === undefined ? text : `${headline}\n${text}`;
+  const printsValue = !repeats && [ann.text, ann.kind === 'callout' ? ann.headline : undefined].some((part) => part?.includes('${value}'));
   calloutLabel(s, ann, at, lines, ann.kind, undefined, lines, {
     basis: 'authored',
     op: `annotation-${ann.kind}@1`,
     inputs: [{ ref: `at:${anchorRefLabel(ann.at)}`, value: at.noValue === undefined ? at.value : null, state: 'anchor' }],
     raw: null,
-  }, placedGlyph);
+  }, placedGlyph, printsValue ? found.owner : undefined);
 }
 
 function placeDelta(s: AnnotationScope, ann: Extract<Annotation, { kind: 'delta' }>): void {
@@ -1125,7 +1126,7 @@ function placeAbs(s: AnnotationScope, ann: Extract<Annotation, { kind: 'abs' }>)
     op: 'annotation-abs@1',
     inputs: [{ ref: `at:${anchorRefLabel(ann.at)}`, value: at.value, state: 'anchor' }],
     raw: at.value,
-  });
+  }, undefined, label.text === label.computed ? at.owner : undefined);
 }
 
 /**
@@ -1677,6 +1678,8 @@ function calloutLabel(
   computed = text,
   derivation?: AnnotationDerivation,
   glyph?: CalloutGlyphPlan,
+  /** The mark whose value the text prints. */
+  valueOwner?: OwnerRef,
 ): void {
   const { input, id: annId } = s;
   const at = calloutAttachment(anchor, kind, glyph);
@@ -2023,6 +2026,7 @@ function calloutLabel(
     nodeIds: glyph?.nodeIds ?? arrow?.nodeIds ?? [],
     labelId: `annotation:${annId}`,
     ...(derivation ? { derivation } : {}),
+    ...(valueOwner ? { valueOwner } : {}),
   });
 }
 
