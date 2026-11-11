@@ -1191,8 +1191,8 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
             const authored = parseFormatExample(example);
             spec.decimals = !rowScale && authored.magnitude === 'none' ? authored.decimals : 0;
             spec.magnitude = 'none';
+            spec.decimals = values.reduce((decimals, value) => nonzeroDecimals(value / MAGNITUDE_DIVISOR[spec.magnitude], decimals), spec.decimals);
           }
-          spec.decimals = values.reduce((decimals, value) => nonzeroDecimals(value / MAGNITUDE_DIVISOR[spec.magnitude], decimals), spec.decimals);
         }
         // A large Range total must not hide the level of a smaller period. The rows of a measure group
         // share one precision: 1% of the group's largest figure, read over every figure of the group,
@@ -1226,6 +1226,19 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
             }
             groupCellSpecs.set(row.id, inRow);
           }
+        }
+        // Nonzero stays nonzero per cell: only a cell that would print 0 takes more digits ($4M, $6M, $0.002M).
+        // That is every cell the row format prints: value, computed, subtotal and calc-row cells alike.
+        if (!changeLine && group === undefined) {
+          const inRow = new Map<Id, NumberFormatSpec>();
+          for (const col of [...valueCols, ...computedCols]) {
+            if ((row.calc === undefined && columnOwnsFormat(col)) || cellFormat(row.cells[col.id]) !== undefined) continue;
+            const value = rawState.get(row.id)?.get(col.id)?.raw;
+            if (typeof value === 'number' && value !== 0 && roundedNumber(value, spec) === 0) {
+              inRow.set(col.id, { ...spec, decimals: nonzeroDecimals(value / MAGNITUDE_DIVISOR[spec.magnitude], spec.decimals) });
+            }
+          }
+          if (inRow.size > 0) groupCellSpecs.set(row.id, inRow);
         }
       }
       // The row precision above is the rule on unlifted rounding; the lift applies to the printed value only.
@@ -1429,12 +1442,23 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   if (options.columnHeads === false && uniformUnit === null) {
     for (const [id, unit] of unitByCol) if (unit !== null) { unitByCol.set(id, null); lettersInCells.add(id); }
   }
-  if (uniformUnit !== null && options.unit !== undefined && options.unit !== uniformUnit && !composes) {
+  // Columns whose formats name different units of their own ("$" and "€") print them in their heads, and
+  // options.unit names none of them for the whole table: the frame does not print it, as subtitle clause or unit line. A format
+  // states a unit through its affix or a percent; a bare magnitude ("1.2k") states none, so
+  // options.unit stays the only place that names the currency of such a column.
+  const statesUnit = (id: Id) => {
+    const spec = specs.get(id)!;
+    return specUnitKind(spec) !== 'number' || spec.prefix.trim() !== '' || spec.suffix.trim() !== '';
+  };
+  const columnUnits = uniformUnit === null && distinctUnits.length > 1 && figureColumns.every((col) => statesUnit(col.id));
+  if ((uniformUnit !== null || columnUnits) && options.unit !== undefined && options.unit !== uniformUnit && !composes) {
     warnings.push({
       code: 'table-unit-overridden',
       severity: 'warn',
       field: ['options', 'unit'],
-      message: `options.unit '${options.unit}' is not printed. The table prints '${uniformUnit}' because its column formats resolve that shared unit.`,
+      message: uniformUnit !== null
+        ? `options.unit '${options.unit}' is not printed. The table prints '${uniformUnit}' because its column formats resolve that shared unit.`
+        : `options.unit '${options.unit}' is not printed. The column heads print their own units (${distinctUnits.join(', ')}).`,
       suggest: 'Remove options.unit so the column formats supply the unit.',
       fix: [{ op: 'remove', path: '/options/unit' }],
     });
@@ -2096,11 +2120,12 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   // A heat lane on the 'column' scale (the default) ranks each column against
   // itself, so a low figure in one column can shade darker than a higher one
   // beside it. With two or more such columns nothing else tells the reader, and
-  // the printed figures alone do not say it.
-  const perColumnHeat = resolvedColumns.filter((column) => (column.kind === 'value' || column.kind === 'computed') &&
-    column.cellEncoding?.type === 'heat' && (column.cellEncoding.scale ?? 'column') === 'column' &&
-    column.cellEncoding.cap === undefined);
-  if (perColumnHeat.length > 1) autoFootnotes.add(chartString(options, 'tableHeatColumnNote'));
+  // the printed figures alone do not say it. Lanes that share one fixed cap read on one scale;
+  // two different caps, or a cap beside an uncapped lane, do not.
+  const perColumnHeat = resolvedColumns.flatMap((column) => (column.kind === 'value' || column.kind === 'computed') &&
+    column.cellEncoding?.type === 'heat' && (column.cellEncoding.scale ?? 'column') === 'column'
+    ? [column.cellEncoding.cap === undefined ? column.id : JSON.stringify(column.cellEncoding.cap)] : []);
+  if (new Set(perColumnHeat).size > 1) autoFootnotes.add(chartString(options, 'tableHeatColumnNote'));
   // A traffic-light key reads higher is better unless every status lane
   // reads lower; where both directions share the table, the lanes that read
   // the other way are named, so no reader takes their green for "above".
@@ -2138,6 +2163,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
       columnToggles: toggleResolution.toggles,
       rows: ordered,
       unit: uniformUnit ?? undefined,
+      ...(columnUnits ? { columnUnits: true as const } : {}),
       ...(data.levelNouns === undefined ? {} : { levelNouns: data.levelNouns }),
       footnotes,
       ...(partialColumnIds.size > 0 ? { partialColumnIds: [...partialColumnIds], partialNote } : {}),
@@ -3264,3 +3290,8 @@ function evalCalc(
 }
 
 export { datePatternFromExample, MINUS };
+
+/** The unit the frame prints for a table: the hoisted one, else `options.unit` unless the columns print their own. */
+export function tableFrameUnit(table: Pick<ResolvedTable, 'unit' | 'columnUnits'>, options: { unit?: string }): string | undefined {
+  return table.unit ?? (table.columnUnits ? undefined : options.unit);
+}
