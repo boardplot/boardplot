@@ -2306,18 +2306,22 @@ function neutralRampStep(theme: Theme, source: { index: number; count: number; h
   // A hatch draws its step in stripes that must reach 3:1 on the page. The light steps would all
   // deepen to the same 3:1 grey, so a hatched step runs from the neutral mark to the muted mark.
   // Where the neutral mark sits on the muted mark (a grey theme), the strong end deepens toward the ink until the steps read apart.
-  if (source.hatched) {
-    const mark = paintTokenColor(theme, 'neutralMark');
-    const ink = paintTokenColor(theme, 'markInk');
-    let strong = mark;
-    for (let weight = 0.05; weight <= 0.6 && palettePerceptualDistance(strong, muted, 'normal') / (source.count - 1) < NEUTRAL_RAMP_STEP; weight += 0.05) {
-      strong = mixColors(ink, mark, weight);
-    }
-    return mixColors(muted, strong, source.index / (source.count - 1));
-  }
+  if (source.hatched) return mixColors(muted, rampStrongEnd(theme, muted, source.count), source.index / (source.count - 1));
   const roomy = palettePerceptualDistance(muted, quiet, 'normal') / (source.count - 1) >= NEUTRAL_RAMP_STEP;
-  const strong = roomy ? muted : paintTokenColor(theme, 'neutralMark');
+  // A theme whose light neutral sits on its neutral mark (both mid greys) deepens the strong end in the same way.
+  const strong = roomy ? muted : rampStrongEnd(theme, quiet, source.count);
   return mixColors(quiet, strong, source.index / (source.count - 1));
+}
+
+/** The neutral mark, deepened toward the mark ink until `count` steps from `weak` read apart. */
+function rampStrongEnd(theme: Theme, weak: string, count: number): string {
+  const mark = paintTokenColor(theme, 'neutralMark');
+  const ink = paintTokenColor(theme, 'markInk');
+  let strong = mark;
+  for (let weight = 0.05; weight <= 0.6 && palettePerceptualDistance(strong, weak, 'normal') / (count - 1) < NEUTRAL_RAMP_STEP; weight += 0.05) {
+    strong = mixColors(ink, mark, weight);
+  }
+  return strong;
 }
 
 /**

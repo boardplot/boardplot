@@ -748,3 +748,15 @@ it('paints a total and a subtotal in their authored value fill, as it paints a s
   for (const id of ['open', 'gain', 'sub']) expect(fillOf(id)).toMatchObject({ fill: { css: '#AA3300' } });
   expect(fillOf('close')).toMatchObject({ fill: { token: 'total' } });
 });
+
+// A balance that fell to zero sent every step value to the note: the last step's seats met the baseline and the category names.
+it('labels every step of a bridge whose last step ends on the baseline', () => {
+  for (const last of [-50, -4]) {
+    const geometry = layoutResolvedRequest(resolveChartRequest({
+      type: 'waterfall',
+      data: { items: [{ id: 'open', label: 'Open', type: 'total', value: 100 }, { id: 'x', label: 'Fees', value: -30 }, { id: 'y', label: 'Tax', value: -70 - last }, { id: 'z', label: 'Rent', value: last }] },
+      options: { size: { width: 720, height: 360 } },
+    } as never)) as Geometry;
+    expect(geometry.labels.filter((l) => l.id.startsWith('sum:') && l.hidden).map((l) => l.id)).toEqual([]);
+  }
+});

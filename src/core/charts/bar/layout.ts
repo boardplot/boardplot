@@ -82,7 +82,7 @@ import type { Theme } from '../../types/theme';
 import type { FootballFieldBarOptions, TornadoBarOptions } from './types';
 import { layoutBarLocalAnnotations } from './annotations';
 import { displayFor, resolveBarDomain, textFor, toDateOnValues } from './domain';
-import { labelOn as barLabelOn } from '../labelOn';
+import { labelOn as barLabelOn, valueLineLabelsOn } from '../labelOn';
 import { planBarLabels } from './labels';
 import { layoutBarMarks } from './marks';
 import { authoredTrackWidth, columnOverrideWarnings, trackPlotFloor } from '../columnOverrides';
@@ -371,7 +371,9 @@ function annotateBar(
       const found = scene.anchorBySeg.get(`${norm.categoryId}:${norm.seriesId}`);
       if (!found) return null;
       const named = [...domain.dataSeries, ...domain.refSeries].find((s) => s.id === norm.seriesId);
-      const seg = { ...found, format: named?.format, ...(named && domain.dataSeries.length > 1 ? { series: { id: named.id, label: named.label } } : {}) };
+      const cell = named?.cells[cats.findIndex((c) => c.id === norm.categoryId)];
+      const seg = { ...found, format: named?.format, ...(named && cell && domain.variant !== 'stacked100' ? { markValueText: displayFor(domain, found.value, cell, undefined, named) } : {}),
+        ...(named && domain.dataSeries.length > 1 ? { series: { id: named.id, label: named.label } } : {}) };
       if (norm.edge === 'start') return { ...seg, x: x0 };
       return seg;
     }
@@ -403,6 +405,7 @@ function annotateBar(
     strings: domain.options.strings,
     sharesFormat: domain.variant === 'stacked100',
     valueLinePercentLevels: domain.variant === 'stacked100' || domain.options.unit === '%' || percentLevels(domain.dataSeries.map(series => ({ vals: series.cells }))),
+    valueLineLabels: valueLineLabelsOn(domain.options),
     solveCtx,
     meanValue: domain.meanValue,
     ...(domain.meanMissing ? { meanMissing: domain.meanMissing } : {}),

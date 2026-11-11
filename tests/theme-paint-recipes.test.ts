@@ -96,6 +96,20 @@ it('keeps the row group colours of a bar table apart from its grey rest rows', (
   }
 });
 
+// A host theme with mid-grey neutrals drew three receding series beside a highlight in one grey.
+it('keeps the neutral ramp steps apart when the light neutral sits on the neutral mark', () => {
+  const series = ['a', 'b', 'c', 'd'].map((id, i) => ({ id, label: `Part ${id}`, values: [6 - i, 4 - i / 2], ...(i === 0 ? { colorRole: 'highlight' } : {}) }));
+  const theme = { preset: 'bridge', overrides: { color: { neutralLight: '#929396', neutral: '#949698', neutralMark: '#949698' } } };
+  const geo = layoutResolvedRequest(resolveChartRequest({ type: 'column', data: { categories: [{ id: 'q1' }, { id: 'q2' }], series },
+    options: { title: 'Share', variant: 'stacked100', theme } } as never));
+  if (geo.refused) throw new Error('refused');
+  const active = resolveTheme(theme as never);
+  const fill = (id: string) => resolvePaint((geo.scene.find(n => n.id === `mark:${id}:q1`) as { fill: Paint }).fill, active);
+  expect(palettePerceptualDistance(fill('b'), fill('c'), 'normal')).toBeGreaterThanOrEqual(6);
+  expect(palettePerceptualDistance(fill('c'), fill('d'), 'normal')).toBeGreaterThanOrEqual(6);
+  expect(geo.warnings.map(w => w.code)).not.toContain('series-adjacent-similar');
+});
+
 // A five-part 100% stack in the default theme warned that the theme's own stack ramp was too close.
 it('holds a theme stack ramp to the ordered step, not the categorical floors', () => {
   const series = ['a', 'b', 'c', 'd', 'e'].map((id, i) => ({ id, label: id, values: [30 - 5 * i, 32 - 5 * i] }));

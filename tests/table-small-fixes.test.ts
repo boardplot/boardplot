@@ -847,6 +847,20 @@ it('prints tone text at 4.5:1 on every tone fill under tones fill', () => {
   }
 });
 
+// Two heat lanes capped at 500 and 200 looked comparable, and nothing said that each column shades on its own scale.
+it('notes per-column shading for heat lanes with different caps, not for one shared cap', () => {
+  const data: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'a', kind: 'value' }, { id: 'b', kind: 'value' }],
+    rows: [{ id: 'n', label: 'North', cells: { a: 120, b: -80 } }, { id: 's', label: 'South', cells: { a: -40, b: 60 } }],
+  };
+  const note = 'Shading compares values within each column, not across columns.';
+  const footnotes = (caps: number[]) => resolveTable(data, {
+    encodings: { a: { type: 'heat', cap: { abs: caps[0]! } }, b: { type: 'heat', cap: { abs: caps[1]! } } },
+  } as never).table.footnotes;
+  expect(footnotes([500, 200])).toContain(note);
+  expect(footnotes([500, 500])).not.toContain(note);
+});
+
 // The heavy section rule drew where the theme asks for no line: the close under closeRule 'none', above a result under resultRule 'none'.
 it('draws no heavy section rule where the theme rules are none', () => {
   const data = {
@@ -1775,4 +1789,42 @@ it('names no unit over a column that prints no figure', () => {
   // Nor does its "$" decide how the frame's scale composes with options.unit ("EUR M").
   const composed = (withEmpty: boolean) => { const { table, warnings } = byColumn(withEmpty, '1.2m', '$1.2k', { unit: 'EUR' }); return [table.unit, warnings.map((w) => w.code)]; };
   expect(composed(true)).toEqual(composed(false));
+});
+
+// A table with a $ column and a € column printed the authored "in USD" over both, also under unitShown: the heads name each unit.
+it('leaves options.unit out of the subtitle when the columns print different units', async () => {
+  const data = { columns: [{ id: 'label', kind: 'rowLabel', label: 'Item' }, { id: 'us', kind: 'value', label: 'US', format: '$1,234' }, { id: 'eu', kind: 'value', label: 'EU', format: '€1,234' }],
+    rows: [{ id: 'sales', label: 'Sales', cells: { us: 1200, eu: 900 } }, { id: 'cost', label: 'Cost', cells: { us: 800, eu: 600 } }] };
+  const subtitle = (options: object) => layout('table', data, options).scene.find((node): node is TextNode => node.t === 'text' && node.id.startsWith('frame:subtitle'))!.lines.join(' ').trim();
+  for (const unitShown of [false, true]) {
+    const options = { unit: 'USD', unitShown, subtitle: { measure: 'Revenue' } };
+    expect(subtitle(options)).toBe('Revenue');
+    const warning = layout('table', data, options).warnings.find((w) => w.code === 'table-unit-overridden')!;
+    expect(warning.fix).toEqual([{ op: 'remove', path: '/options/unit' }]);
+  }
+  // The fix keeps the same subtitle and ends the warning.
+  expect(subtitle({ subtitle: { measure: 'Revenue' } })).toBe('Revenue');
+  expect(layout('table', data, { subtitle: { measure: 'Revenue' } }).warnings.map((w) => w.code)).not.toContain('table-unit-overridden');
+  // A bare magnitude ("1.2k", "1.2m") names no currency: options.unit stays the table's unit.
+  const scaled = { ...data, columns: data.columns.map((col) => (col.id === 'us' ? { ...col, format: '1.2k' } : col.id === 'eu' ? { ...col, format: '1.2m' } : col)) };
+  const scaledOptions = { unit: 'USD', subtitle: { measure: 'Revenue' } };
+  const scaledLayout = layout('table', scaled, scaledOptions);
+  expect(scaledLayout.scene.find((node): node is TextNode => node.t === 'text' && node.id.startsWith('frame:subtitle'))!.lines.join(' ').replace(/\s+/g, ' ').trim()).toBe('Revenue in USD');
+  expect(scaledLayout.warnings.map((w) => w.code)).not.toContain('table-unit-overridden');
+  // Without a subtitle the unit line does not print options.unit either, and the warning stays true.
+  const drawn = async (d: unknown, options: object) => {
+    const { render } = await import('../src/cli/render');
+    const body = render({ spec: { type: 'table', data: d, options }, return: ['svg'] }).body as any;
+    const texts = [...(body.svg as string).matchAll(/data-part="(title|subtitle)"[^>]*>(.*?)<\/text>/g)].map((m) => m[2]!.replace(/<[^>]*>/g, ''));
+    return { texts, codes: (body.warnings ?? []).map((w: { code: string }) => w.code) };
+  };
+  const bare = await drawn(data, { unit: 'USD', title: 'Revenue' });
+  expect(bare.texts).toEqual(['Revenue']);
+  expect(bare.codes).toContain('table-unit-overridden');
+  expect((await drawn(data, { title: 'Revenue' })).codes).not.toContain('table-unit-overridden');
+  // One unit in every head ("$M") keeps the authored unit line and warns nothing, as before.
+  const dollars = { ...data, columns: data.columns.map((col) => (col.kind === 'value' ? { ...col, format: '$1.2M' } : col)) };
+  const oneUnit = await drawn(dollars, { unit: 'USD', title: 'Revenue' });
+  expect(oneUnit.texts).toEqual(['Revenue', 'USD']);
+  expect(oneUnit.codes).not.toContain('table-unit-overridden');
 });
