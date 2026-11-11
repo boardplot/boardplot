@@ -560,13 +560,20 @@ export function censusCase(type, fixture, width, localeName, measured) {
   const rowFormatted = type === 'dimswitch' || (type === 'table' && flatRows(data.rows ?? []).some((row) => row.format !== undefined || row.scale !== undefined));
   // setMagnitude gives a set one magnitude from 1e6 where a step prints its smallest value as 1 or more and its largest
   // with at most four digits. Where no step does, each label keeps its own scale: mixed magnitudes are the decided fallback.
-  // The set is the chart's: a butterfly or pyramid pane (one series), else every value label of the panel (a funnel's
-  // series with their totals), each with its hidden values of the same unit. Table cells take no set magnitude.
-  const paneSets = type === 'butterfly' || type === 'pyramid';
+  // The set is the chart's, each group with its hidden values of the same unit. Table cells take no set magnitude.
+  // A butterfly's two sides are one set while they print one unit and neither has its own format (butterfly paneRaster),
+  // else each side is its own; a pyramid mirrors one measure. Other charts: every value label of the panel (a funnel's
+  // series with their totals).
+  const mirrored = type === 'butterfly' || type === 'pyramid';
+  const sides = type === 'butterfly' ? [options.a, options.b].map((id) => (data.series ?? []).find((series) => series.id === id) ?? {}) : data.groups ?? [];
+  const hasFormat = (value) => value !== null && typeof value === 'object' && (value.format !== undefined || hasFormat(value.value));
+  const sideUnit = (side) => (side.unit ?? options.unit)?.replace(/\s+/g, '') || undefined;
+  const sidesApart = mirrored && (new Set(sides.map(sideUnit)).size > 1 || sides.some((side) => side.format !== undefined || (side.values ?? []).some(hasFormat)));
   const noSetScale = (key, unit) => {
     const panel = key.slice(0, key.indexOf('|') + 1);
     if (!key.startsWith(`${panel}kind:`)) return false;
-    const keys = paneSets ? [key] : [...new Set([...groupValues.keys(), ...hiddenValues.keys()])].filter((other) => other.startsWith(`${panel}kind:`));
+    const kind = mirrored ? `${panel}kind:${key.slice(panel.length).split(':')[1]}:` : `${panel}kind:`;
+    const keys = sidesApart ? [key] : [...new Set([...groupValues.keys(), ...hiddenValues.keys()])].filter((other) => other.startsWith(kind));
     const sizes = keys.flatMap((other) => [...(groupValues.get(other) ?? []).filter((entry) => unitKind(entry.token) === unit).map((entry) => entry.raw), ...(hiddenValues.get(other) ?? [])])
       .map(Math.abs).filter((size) => size > 0);
     const smallest = Math.min(...sizes), largest = Math.max(...sizes);
