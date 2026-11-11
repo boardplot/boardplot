@@ -604,6 +604,11 @@ it('prints n.m. for a row calc that compares a full total with a partial one', (
   expect(s.w!.displayed).toBe('5');
 });
 
+// A table head split a word ("SHAR" / "E") when the browser drew it a pixel wider than the SVG measured; the SVG breaks heads at spaces only.
+it('breaks a table head at spaces only in the browser', () => {
+  expect(tableStylesheet(resolveTheme('standard'))).toMatch(/\[data-bp-rowgroup="head"\] \[role="row"\]>\*\{[^}]*overflow-wrap:normal/);
+});
+
 // A row topN.rest false omits kept its value for the calcs that read it, but lost which child its total skipped.
 it('prints n.m. where a kept row calc compares a full total with a partial total that top-N omits', () => {
   const data = tableDataSchema.parse({
