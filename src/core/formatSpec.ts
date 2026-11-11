@@ -1967,20 +1967,15 @@ export function seriesRasterFormatter(
   if (!example) spec.automatic = true;
   const unscaledSpec = { ...spec };
   let autoMagnitude = false;
-  let setScaled = false;
   // From 1e6 the engine picks M or B from the largest value. A unit that
   // names a scale ("€M", "USD bn") gets no second one: "48B" under "in €M"
   // reads as 48 billion millions. An authored example keeps its
   // digits; unscaledFormatLint warns.
   if (!example && target !== undefined && spec.magnitude === 'none' && !unitScale) {
     const max = raster.reduce<number>((largest, value) => value != null && Number.isFinite(value) ? Math.max(largest, Math.abs(value)) : largest, 0);
-    if (setScale) {
-      spec.magnitude = setScale;
-      spec.rollMagnitude = false;
-      autoMagnitude = true;
-      setScaled = true;
-    } else if (max >= 1e6) {
-      spec.magnitude = max >= 1e9 ? 'bn' : 'm';
+    if (setScale || max >= 1e6) {
+      // A set's magnitude (setMagnitude) holds every nonzero label, so none steps down; the decimals count as for M or B.
+      spec.magnitude = setScale ?? (max >= 1e9 ? 'bn' : 'm');
       spec.rollMagnitude = false;
       spec.autoMagnitude = true;
       autoMagnitude = true;
@@ -2012,8 +2007,6 @@ export function seriesRasterFormatter(
     // The unit rule already prints part of this raster whole, so a whole value under it
     // prints whole too: "32" beside "410", not "32.00".
     if (spec.wholeFrom && spec.decimals > 0 && raster.some((value) => value != null && Math.abs(value) >= spec.wholeFrom!)) spec.wholeCounts = true;
-    // Every nonzero value of a set reaches its magnitude, so only a zero steps down: "0", not "0M". Set after the decimals, which count at the set's magnitude.
-    if (setScaled) spec.autoMagnitude = true;
   }
   // The shared raster never prints a nonzero value as 0: a
   // value the raster rounds to zero keeps the digits that show it, 0.004

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { NormalizeError } from '../../src/core/normalize/shared';
 import { MINUS } from '../../src/core/format';
-import { exampleSpec, formatNonzeroWithSpec, formatterFromExample, formatWithSpec, parseFormatExample, seriesRasterFormatter, unitOfSpec } from '../../src/core/formatSpec';
+import { exampleSpec, formatNonzeroWithSpec, formatterFromExample, formatWithSpec, parseFormatExample, seriesRasterFormatter, setMagnitude, unitOfSpec } from '../../src/core/formatSpec';
 
 describe('parseFormatExample', () => {
   it('"+1,234" → forced sign, comma grouping', () => {
@@ -231,6 +231,13 @@ it('rolls a value that would print as 0 down its word family', () => {
   expect(formatterFromExample('$1.0 trillion', 'en')(0)).toBe('$0.0 trillion');
   // An unscaled example has nothing to roll down to; a delta or accessible value lifts its decimals.
   expect(formatNonzeroWithSpec(0.004, exampleSpec('$1.0', 'en'))).toBe('$0.004');
+});
+
+// A set already at one magnitude lost its decimal under the set's magnitude: "108M · 101M" for "107.8M · 101.2M".
+it('keeps the decimals of a set whose values share one magnitude', () => {
+  const values = [107.8e6, 101.2e6];
+  const raster = seriesRasterFormatter(undefined, values, 'en', undefined, 'report', undefined, true, setMagnitude(values, undefined, undefined, 'report'));
+  expect(values.map(raster.fmt)).toEqual(['107.8M', '101.2M']);
 });
 
 // Prevents an engine or table letter a German or French reader takes for another scale: "B" for Billion (10¹²).
