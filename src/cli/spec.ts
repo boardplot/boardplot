@@ -216,6 +216,7 @@ function geometryThemeUsage(geometry: Geometry, theme: Theme): ThemeUsage {
       if (object.scenario) roles.add(`scenario.${object.scenario}`);
     }
     if (object.kind === 'colorblind' && typeof object.role === 'string') roles.add(`colorblind.${object.role}`);
+    if (object.kind === 'table-ink' && typeof object.role === 'string') roles.add(`table.inks.${object.role}`);
     for (const child of Object.values(object)) visit(child);
   };
   const bindings = sceneThemeBindings(geometry);

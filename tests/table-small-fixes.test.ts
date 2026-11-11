@@ -817,6 +817,19 @@ it('prints tone text at 4.5:1 on every tone fill under tones fill', () => {
   }
 });
 
+// A custom table head ink of #DDDDDD on white drew nearly invisible heads with no finding, while ink itself is held to 4.5:1.
+it('holds a custom table head ink to the ink contrast floor', () => {
+  const spec = (head: string) => ({
+    type: 'table',
+    data: { columns: [{ id: 'label', kind: 'rowLabel', label: 'Store' }, { id: 'v', kind: 'value', label: 'Sales' }], rows: [{ id: 'a', label: 'North', cells: { v: 12 } }] },
+    theme: { preset: 'standard', overrides: { table: { inks: { head: head } } } },
+  });
+  const pale = render({ spec: spec('#DDDDDD') }).body as { ok: boolean; errors?: { code: string; message: string }[] };
+  expect(pale.ok).toBe(false);
+  expect(pale.errors?.map((error) => error.code)).toEqual(['contrast-ink']);
+  expect((render({ spec: spec('#333333') }).body as { ok: boolean }).ok).toBe(true);
+});
+
 // The heavy section rule drew where the theme asks for no line: the close under closeRule 'none', above a result under resultRule 'none'.
 it('draws no heavy section rule where the theme rules are none', () => {
   const data = {
