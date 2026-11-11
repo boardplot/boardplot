@@ -50,15 +50,31 @@ const quiet = args.includes('--quiet');
 // --spec a.json,b.json: census of request files ({ type, data, options, annotations }) instead of the fixtures.
 const specs = arg('spec')?.split(',');
 
-const SCALE = { thousand: 1e3, million: 1e6, billion: 1e9, trillion: 1e12, T: 1e12, Tausend: 1e3, Million: 1e6, Millionen: 1e6, Milliarden: 1e9, '': 1, k: 1e3, K: 1e3, M: 1e6, m: 1e6, B: 1e9, bn: 1e9, Bn: 1e9, Mio: 1e6, Mrd: 1e9, Tsd: 1e3 };
+const SCALE = { thousand: 1e3, million: 1e6, billion: 1e9, trillion: 1e12, T: 1e12, Tausend: 1e3, Million: 1e6, Millionen: 1e6, Milliarden: 1e9, '': 1, k: 1e3, K: 1e3, M: 1e6, m: 1e6, B: 1e9, bn: 1e9, Bn: 1e9, Mio: 1e6, Mrd: 1e9, Tsd: 1e3,
+  mn: 1e6, tn: 1e12, mille: 1e3, millions: 1e6, milliard: 1e9, milliards: 1e9, Milliarde: 1e9, Billion: 1e9, Billionen: 1e12, billions: 1e9 };
 const CURRENCY_CODES = new Set(Intl.supportedValuesOf('currency'));
 const SUPER = { '⁻': '-', '⁺': '', '⁰': 0, '¹': 1, '²': 2, '³': 3, '⁴': 4, '⁵': 5, '⁶': 6, '⁷': 7, '⁸': 8, '⁹': 9 };
 
-/** The number marks of a request: German language alone keeps English marks (LocaleSpec). */
+/** The number marks of a request: German language alone keeps English marks (LocaleSpec). The language reads its magnitude words. */
 function marks(locale) {
   const decimal = locale?.decimal ?? '.';
   const thousands = locale?.thousands ?? (decimal === ',' ? '.' : ',');
-  return { decimal, thousands: thousands === decimal ? (decimal === ',' ? '.' : ',') : thousands };
+  return { decimal, thousands: thousands === decimal ? (decimal === ',' ? '.' : ',') : thousands, language: String(locale?.language ?? 'en').toLowerCase().split(/[-_]/)[0] };
+}
+
+/**
+ * The SCALE key of a magnitude word on a chart in `language`. A short form that two readers take differently
+ * is read by the chart's own: "Md" is 10⁹ and "Bn" 10¹² in French, "Bio." is 10¹²,
+ * "Billion" is 10¹² in German and "billion(s)" in French, while English "bn" and "billion" are 10⁹.
+ */
+function magnitudeKey(word, language) {
+  const key = word.replace(/\.$/, '');
+  if (key === 'Bio') return 'trillion';
+  if (key === 'Md') return 'billion';
+  if (language === 'fr' && /^(?:Bn|billions?)$/.test(key)) return 'trillion';
+  if (language === 'de' && key === 'Billion') return 'trillion';
+  // An authored "Mn", "BN" is the abbreviation in its own case.
+  return /^(?:Mn|Tn|MN|BN|TN)$/.test(key) ? key.toLowerCase() : key;
 }
 
 const ENGLISH = { decimal: '.', thousands: ',' };
@@ -74,14 +90,14 @@ export function tokens(text, m, accounting = false) {
   // A space groups thousands only where the locale's own mark is one ("46 100%" is a value and its share, not 46,100%).
   const spaces = /^[\u0020\u202f\u00a0\u2009]$/.test(m.thousands) ? '\\u0020\\u202f\\u00a0\\u2009' : '';
   const group = `[${esc(m.thousands)}${spaces}'’]`;
-  const re = new RegExp(String.raw`([<>≈~]?)\s?([+\-−]?)\s?(\p{Sc}|[A-Z]{2,3}\$|CHF\s?)?\s?(\d{1,3}(?:${group}\d{3})+(?:${esc(m.decimal)}\d+)?|\d+(?:${esc(m.decimal)}\d+)?|${esc(m.decimal)}\d+)(?:\s?[×x]\s?10([⁻⁺]?[⁰¹²³⁴⁵⁶⁷⁸⁹]+))?(?:(m)(?![\p{L}])|\s?(?:([A-Z]{3})\s)?(thousand|million|billion|trillion|Tausend|Millionen|Million|Milliarden|Mrd|Mio|Tsd|bn|Bn|[kKMBT])(?![\p{L}]))?\s?(%|pp|p\.p\.)?(?:\s?(\p{Sc}))?`, 'gu');
+  const re = new RegExp(String.raw`([<>≈~]?)\s?([+\-−]?)\s?(\p{Sc}|[A-Z]{2,3}\$|CHF\s?)?\s?(\d{1,3}(?:${group}\d{3})+(?:${esc(m.decimal)}\d+)?|\d+(?:${esc(m.decimal)}\d+)?|${esc(m.decimal)}\d+)(?:\s?[×x]\s?10([⁻⁺]?[⁰¹²³⁴⁵⁶⁷⁸⁹]+))?(?:(m)(?![\p{L}])|\s?(?:([A-Z]{3})\s)?(thousand|millions?|billions?|trillion|Tausend|Millionen|Million|Milliarden|Milliarde|Billionen|Billion|milliards?|mille|Mrd|Mio|Tsd|Bio|Md|bn|Bn|mn|tn|Mn|Tn|MN|BN|TN|[kKMBT])(?![\p{L}]))?\s?(%|pp|p\.p\.)?(?:\s?(\p{Sc}))?`, 'gu');
   const found = [];
   // ISO dates and times are not values.
   text = text.replace(/\d{4}-\d{2}(?:-\d{2})?(?:T[\d:.]+Z?)?/g, (date) => ' '.repeat(date.length));
   for (const match of text.matchAll(re)) {
     // A currency code may stand between the figure and its magnitude: "1.3 CHF M".
     const [, bound, signText, prefix, body, exponent, glued, code, spaced, pct, postfix] = match;
-    const letter = glued ?? spaced ?? '';
+    const letter = magnitudeKey(glued ?? spaced ?? '', m.language);
     // A word glued in front ("W36", "Q1", "FY2024", "H2") is a name, not a value.
     const before = match[0].startsWith(' ') ? ' ' : text[match.index - 1];
     if (!bound && !signText && !prefix && before && /[\p{L}_]/u.test(before)) continue;
@@ -123,15 +139,15 @@ function says(token, raw, f = 1) {
 const ALT_FACTORS = [1e3, 1e-3, 1e6, 1e-6, 1e9, 1e-9, 100, 0.01];
 
 /** Header or label text names a magnitude: "(k)", "(M)", "in $M", "$k", "EUR m". */
-function namedMagnitude(text) {
+function namedMagnitude(text, language) {
   // Every hit is tried, as a wrapped head can hold an early false one ("ITS MUCH LONGER NAME ($k)": " ITS M" reads as a code).
-  const re = /(?:\(|\bin\s|^|\s)(?:\p{Sc}|([A-Z]{3})\s?)?(k|K|M|m|B|bn|Mio\.?|Mrd\.?|Tsd\.?)(?:\p{Sc}|\s?([A-Z]{3}))?(?:\)|$|\s)/uy;
+  const re = /(?:\(|\bin\s|^|\s)(?:\p{Sc}|([A-Z]{3})\s?)?(k|K|M|m|B|T|bn|Bn|Md|mn|tn|Mn|Tn|Mio\.?|Mrd\.?|Bio\.?|Tsd\.?)(?:\p{Sc}|\s?([A-Z]{3}))?(?:\)|$|\s)/uy;
   for (let at = 0; at < text.length; at++) {
     re.lastIndex = at;
     const hit = re.exec(text);
     // Capitals before or after are a currency code ("EUR K"), not the end of a word ("WEEK 1").
     if (!hit || [hit[1], hit[3]].some((code) => code !== undefined && !CURRENCY_CODES.has(code))) continue;
-    const key = hit[2].replace('.', '');
+    const key = magnitudeKey(hit[2], language);
     if (SCALE[key]) return key;
   }
   return undefined;
@@ -357,11 +373,11 @@ export function censusCase(type, fixture, width, localeName, measured) {
   const headerScale = new Map();
   for (const entry of texts) {
     const header = /^(?:.*\/)?header:(.+)$/.exec(entry.id);
-    if (header) headerScale.set(`col:${header[1]}`, { text: entry.text, letter: namedMagnitude(entry.text) });
+    if (header) headerScale.set(`col:${header[1]}`, { text: entry.text, letter: namedMagnitude(entry.text, m.language) });
   }
   // A column a toggle hides draws no head, but its claims read in the magnitude that head would name.
   for (const column of geometry.derived?.table?.columns ?? []) {
-    const letter = typeof column.unitLabel === 'string' ? namedMagnitude(column.unitLabel) : undefined;
+    const letter = typeof column.unitLabel === 'string' ? namedMagnitude(column.unitLabel, m.language) : undefined;
     if (letter && !headerScale.has(`col:${column.id}`)) headerScale.set(`col:${column.id}`, { text: column.unitLabel, letter });
   }
   const labelColumn = (data.columns ?? []).find((column) => column.kind === 'rowLabel')?.id;
@@ -369,17 +385,17 @@ export function censusCase(type, fixture, width, localeName, measured) {
   const labelHeader = labelColumn ? headerScale.get(`col:${labelColumn}`) : undefined;
   if (labelHeader?.letter) headerScale.set('label-header', labelHeader);
   // Any subtitle line can name the unit: "Monthly net cash movement", then "in CHF M · Q1 2026".
-  const subtitle = texts.find((entry) => /(?:^|\/)frame:subtitle:/.test(entry.id) && namedMagnitude(entry.text));
-  if (type === 'table' && subtitle && namedMagnitude(subtitle.text)) headerScale.set('subtitle', { text: subtitle.text, letter: namedMagnitude(subtitle.text) });
+  const subtitle = texts.find((entry) => /(?:^|\/)frame:subtitle:/.test(entry.id) && namedMagnitude(entry.text, m.language));
+  if (type === 'table' && subtitle && namedMagnitude(subtitle.text, m.language)) headerScale.set('subtitle', { text: subtitle.text, letter: namedMagnitude(subtitle.text, m.language) });
   if (labelColumn) for (const entry of texts) {
     const cell = /^(?:.*\/)?cell:([^:]+):(.+)$/.exec(entry.id);
-    if (cell && cell[2] === labelColumn) headerScale.set(`row:${cell[1]}`, { text: entry.text, letter: namedMagnitude(entry.text) });
+    if (cell && cell[2] === labelColumn) headerScale.set(`row:${cell[1]}`, { text: entry.text, letter: namedMagnitude(entry.text, m.language) });
   }
   // A row's unit affix ("Revenue (net) $M") is its own text node beside the label; it names the scale of the row's
   // bare figures. An authored affix may repeat the magnitude its format prints ("$M" beside "$7.0M" or "$7,0 Mio."): no mixed units for that magnitude.
   for (const entry of texts) {
     const unit = /^(?:.*\/)?unit:(.+)$/.exec(entry.id);
-    const letter = unit ? namedMagnitude(entry.text) : undefined;
+    const letter = unit ? namedMagnitude(entry.text, m.language) : undefined;
     if (letter && !headerScale.get(`row:${unit[1]}`)?.letter) headerScale.set(`row:${unit[1]}`, { text: entry.text, letter, affix: true });
   }
 
@@ -693,11 +709,24 @@ export function censusCase(type, fixture, width, localeName, measured) {
   const affine = (ticks) => ticks.length < 3 || ticks.every((tick) => Math.abs((tick.pos - ticks[0].pos) * (ticks[1].at - ticks[0].at)
     - (ticks[1].pos - ticks[0].pos) * (tick.at - ticks[0].at)) <= 1e-6 * Math.abs((ticks[1].pos - ticks[0].pos) * (tick.at - ticks[0].at) || 1));
   const logTicks = new Set((geometry.axes ?? []).filter((axis) => (axis.ticks ?? []).every((tick) => typeof tick.at === 'number' && typeof tick.pos === 'number') && !affine(axis.ticks)).flatMap((axis) => axis.ticks.map((tick) => tick.labelId)));
+  // Panes that draw their own value axis (a butterfly on its own scales) number their ticks `axis:x:tick:0:a` and `:b`.
+  // Such panes are one set only where they read the same values; a pane on its own scale or unit is its own set.
+  const paneTicks = new Map();
+  for (const axis of geometry.axes ?? []) for (const tick of axis.ticks ?? []) {
+    const pane = /^(.*:tick:)\d+:([^:]+)$/.exec(tick.labelId ?? '');
+    if (!pane) continue;
+    if (!paneTicks.has(pane[1])) paneTicks.set(pane[1], new Map());
+    paneTicks.get(pane[1]).set(pane[2], [...(paneTicks.get(pane[1]).get(pane[2]) ?? []), tick.at]);
+  }
+  const panesAlike = (id) => {
+    const sets = [...(paneTicks.get(/^(.*:tick:)/.exec(id)?.[1]) ?? new Map()).values()].map((at) => at.join());
+    return sets.every((at) => at === sets[0]);
+  };
   for (const entry of texts) {
     if (logTicks.has(entry.id)) continue;
-    const tick = /^(?:(.*)\/)?axis:([^:]+):tick:/.exec(entry.id) ?? /^(?:(.*)\/)?(key|legend)[:-]/.exec(entry.id);
+    const tick = /^(?:(.*)\/)?axis:([^:]+):tick:(?:\d+:([^:]+))?/.exec(entry.id) ?? /^(?:(.*)\/)?(key|legend)[:-]/.exec(entry.id);
     if (!tick) continue;
-    const key = `${tick[1] ?? ''}:${tick[2]}`;
+    const key = `${tick[1] ?? ''}:${tick[2]}${tick[3] && !panesAlike(entry.id) ? `:${tick[3]}` : ''}`;
     if (!tickGroups.has(key)) tickGroups.set(key, []);
     tickGroups.get(key).push(...tokens(entry.text, m));
   }
