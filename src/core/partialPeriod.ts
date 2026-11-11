@@ -37,15 +37,22 @@ export function partialFootnotes(
 }
 
 /**
- * The running categories with the to-date words once: "W38, W39 to date". A
- * label that already says them ("1 Nov to date") gets no second copy.
+ * The running categories in authored order, with the to-date words once per run:
+ * "W38, W39 to date". A label that already says them ("1 Nov to date") gets no second copy.
  */
 function partialNames(categories: readonly Pick<Category, 'id' | 'label' | 'partial'>[], strings: StringsSpec | undefined): string | undefined {
   const toDate = strings?.toDate ?? localeStrings().toDate;
   const labels = categories.filter((c) => c.partial === true).map((c) => (c.label ?? c.id).replace(/\s*\n\s*/g, ' '));
   if (labels.length === 0) return undefined;
-  const plain = labels.filter((label) => !saysToDate(label, toDate));
-  return [...(plain.length > 0 ? [`${plain.join(', ')} ${toDate}`] : []), ...labels.filter((label) => saysToDate(label, toDate))].join(', ');
+  // Authored order: each run of plain names ends with the words once, a name that says them stays as it is.
+  const parts: string[] = [];
+  let run: string[] = [];
+  const close = () => { if (run.length > 0) parts.push(`${run.join(', ')} ${toDate}`.trim()); run = []; };
+  for (const label of labels) {
+    if (saysToDate(label, toDate)) { close(); parts.push(label); } else run.push(label);
+  }
+  close();
+  return parts.join(', ');
 }
 
 /**
