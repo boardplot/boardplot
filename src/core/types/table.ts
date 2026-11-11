@@ -809,6 +809,8 @@ export interface ResolvedTable {
   footnotes: string[]; // auto (rounding/partial) + authored
   /** Columns whose aggregates skipped a null child; the partial footnote shows only while one of them is drawn. */
   partialColumnIds?: Id[];
+  /** The partial-aggregate note as composed: it names the mark the table carries, the head's † or the cell word "(partial)". */
+  partialNote?: string;
   /** Judgments paint in theme.color.colorblind, so the notes name the good tone, not green. */
   colorblindSafe?: true;
   provenance: { source?: string; generatedNote?: string };

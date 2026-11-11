@@ -1079,6 +1079,21 @@ describe('TableChart reads the footer rule notes model', () => {
     expect(container.querySelector('.bp-notes')).toBeNull();
   });
 
+  // Reason: notes.pointer: false left author notes past the line budget nowhere on the page, and onWarnings said nothing.
+  it('warns with a fix when notes.pointer: false leaves author notes out', () => {
+    const onWarnings = vi.fn();
+    act(() => root.render(<TableChart data={data} target="report" notes={{ maxLines: 2, pointer: false }} footnotes={['First', 'Second', 'Third']} source="Example" onWarnings={onWarnings} />));
+    expect(printed()).toEqual(['First']);
+    const left = onWarnings.mock.calls.at(-1)![0].filter((warning: { code: string }) => warning.code === 'notes-left-out');
+    expect(left).toEqual([expect.objectContaining({ message: expect.stringMatching(/^2 author notes are not shown/), field: ['options', 'notes', 'pointer'],
+      fix: [{ op: 'remove', path: '/options/notes/pointer' }] })]);
+    // Reason: author notes switched off by notes.show drew this warning, whose maxLines and pointer could never show them.
+    for (const show of [[], ['method']] as const) {
+      act(() => root.render(<TableChart data={data} target="report" notes={{ show: [...show], pointer: false }} footnotes={['First', 'Second', 'Third']} onWarnings={onWarnings} />));
+      expect(onWarnings.mock.calls.at(-1)![0].map((warning: { code: string }) => warning.code)).not.toContain('notes-left-out');
+    }
+  });
+
   it('holds an authored notes.maxLines with the source line, and names the pointer in the locale', () => {
     act(() => root.render(<TableChart data={data} target="report" notes={{ maxLines: 2 }} footnotes={['First', 'Second']} source="Example" />));
     expect(printed()).toEqual(['First']);
@@ -1140,10 +1155,13 @@ describe('TableChart reads the footer rule notes model', () => {
   it('drops the partial-total note of a prepared table with its hidden column', async () => {
     const fixture = getFixtures('table').find((entry) => entry.id === 'nulls-policy')!;
     const toggled = { ...(fixture.data as TableData), columnToggles: [{ id: 'skip', label: 'Q3', columns: ['q3'], defaultVisible: false }] };
-    const options = { ...(fixture.options as TableOptions), notes: { show: ['note', 'disclosure'] as const } };
-    const prepared = await prepareChart({ type: 'table', data: toggled, options } as never) as never;
-    act(() => root.render(<TableChart data={toggled} {...options as object} prepared={prepared} />));
-    expect(printed()).toEqual([]);
+    for (const notes of [{ show: ['note', 'disclosure'] as const }, { placement: 'frame' as const, maxLines: 3 }]) {
+      const options = { ...(fixture.options as TableOptions), notes };
+      const prepared = await prepareChart({ type: 'table', data: toggled, options } as never) as never;
+      act(() => root.render(<TableChart data={toggled} {...options as object} prepared={prepared} />));
+      // Without the † in the head the note reads "(partial) ..."; a prepared table kept it after its column was hidden.
+      expect(printed()).toEqual([]);
+    }
   });
 
   // The React head broke "WEEK 1" into "WEEK" over "1" where the SVG keeps the short word on the line before it.

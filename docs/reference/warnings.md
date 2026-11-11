@@ -610,6 +610,7 @@ Every code a render, a measure or a React chart can return, read from the source
 | `non-finite-observation` | error |  | histogram |
 | `non-monotone-roadmap` | error |  | diagram |
 | `nonzero-baseline` | info |  | dot |
+| `notes-left-out` | warn | yes | core/frameText.ts |
 | `observed-display-too-small` | warn |  | react/useDisplayWarnings.ts |
 | `option-deprecated` | warn | yes | core/retired.ts, core/theme.ts |
 | `option-ignored` | info, warn | yes | bar, bartable, bullet, choropleth, cohort, core/retired.ts, diagram, dimswitch, gantt, grid, heatmap, waterfall |

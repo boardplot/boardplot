@@ -85,7 +85,7 @@ import type {
 import { rowDrivenHeight } from '../../rowCanvas';
 import { rowLabelBand } from '../../label/rowLabels';
 import { fittedLabel, gutterBudget, stepDownFont } from '../../label/rowFit';
-import { chartSizing, heightOmitted, rowSizing } from '../../sizing';
+import { chartSizing, heightOmitted, NARROW_FORM, rowSizing } from '../../sizing';
 import { DEFAULT_TARGET, TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { compactBulletRefusals } from './refusals';
 import { asColumnHeads, columnHeadFont, fitHead, headRequest } from './columnHead';
@@ -765,7 +765,8 @@ export function layoutBullet(
       : stepTo(nameFont, theme.type.footnote.size, 'axis');
   const lineH = catFont.size * 1.2;
   // Keep the bounded side-column fit if the stacked rows do not fit the height.
-  const card = size.width < 480;
+  // The card form a narrower width draws, where the wide form's floor is above the width (NARROW_FORM).
+  const card = size.width < 480 || (options as { [NARROW_FORM]?: true })[NARROW_FORM] === true;
   const catMaxLines = card || stepEst >= 2 * lineH + 4 ? 2 : 1;
   // An authored name column keeps its width: the plot gives way first, down to the width these rows need.
   const overrides = options.columnOverrides;
