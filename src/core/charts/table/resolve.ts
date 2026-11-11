@@ -883,7 +883,8 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
           rowId: row.id,
           colId: col.id,
           op: 'sum',
-          inputs,
+          // A sum a missing child stops names that child, so the record recomputes to the nothing it states.
+          inputs: derived.raw === null ? [...inputs, ...blockers.map((b) => ({ rowId: b.id, colId: col.id, value: null, state: b.state }))] : inputs,
           raw: derived.raw,
           state: derived.state,
           displayed: '', // filled after formatting

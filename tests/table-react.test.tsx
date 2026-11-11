@@ -2074,3 +2074,17 @@ describe('columnHeads: false', () => {
     expect(grid.querySelector('[role="gridcell"][data-bp-column="value"]')?.className).toContain('bp-num');
   });
 });
+
+// The overflow advice was read in the type of the asked width: a frame past 720 px draws larger type and still scrolled at the advised width.
+it('advises a frame width at which the grid no longer scrolls', () => {
+  const { data, options } = getFixtures('table').find((entry) => entry.id === 'steering-monthly')!;
+  const overflowAt = (width: number) => {
+    const onWarnings = vi.fn();
+    act(() => root.render(<TableChart data={data} {...options} size={{ width }} onWarnings={onWarnings} />));
+    const fix = onWarnings.mock.lastCall?.[0].find((warning: { code: string }) => warning.code === 'table-overflow')?.fix?.[0];
+    return fix?.value?.width as number | undefined;
+  };
+  const advised = overflowAt(480)!;
+  expect(advised).toBeGreaterThan(720);
+  expect(overflowAt(advised)).toBeUndefined();
+});
