@@ -640,7 +640,7 @@ export function censusCase(type, fixture, width, localeName, measured) {
       const cohortId = cell[1].replace(/\\(.)/g, '$1');
       return (data.cohorts ?? []).find((cohort) => cohort.id === cohortId)?.active?.slice(0, Number(cell[2])).includes(0) === true;
     }
-    // A change between two cells of one row that skipped different rows compares different sets of rows: it prints n.m.
+    // A comparison between two cells of one row that skipped different rows compares different sets of rows: it prints n.m.
     // (table resolve, mixed coverage). A partial cell says so in its text (or its head does); a partial sum also lists only the
     // children it added, so two sums differ where their leaf rows differ.
     if (type === 'table' && claim.inputs.length >= 2 && new Set(claim.inputs.map((input) => input.ref.replace(/:[^:]*$/, ''))).size === 1) {
@@ -649,9 +649,8 @@ export function censusCase(type, fixture, width, localeName, measured) {
         if (cellClaim?.op !== 'sum@1') return undefined;
         return cellClaim.inputs.flatMap((input) => leaves(input.ref) ?? [input.ref.replace(/:[^:]*$/, '')]);
       };
-      const marked = claim.inputs.map((input) => cellDisplayed.get(input.ref)?.includes(partialWord) === true);
-      const covered = new Set(claim.inputs.map((input) => leaves(input.ref)).filter((rows) => rows !== undefined).map((rows) => [...new Set(rows)].sort().join('\u001f')));
-      if (covered.size > 1 || (marked.some(Boolean) && !marked.every(Boolean))) return true;
+      const cover = claim.inputs.map((input) => ({ rows: leaves(input.ref), marked: cellDisplayed.get(input.ref)?.includes(partialWord) === true }));
+      if (comparesMixedRows(claim.op, cover)) return true;
     }
     // A percent change off a base cell the table prints as zero ("0", "0.0", or "<0.1", which rounds to zero) is n.m.
     // (table resolve, near-zero base). A hidden base column states its text in its record.
@@ -736,6 +735,63 @@ export function censusCase(type, fixture, width, localeName, measured) {
     }
   }
   return { item, status: 'drawn', findings };
+}
+
+/**
+ * Whether a table claim's expression ("percentDelta($0,$1)", "mul(div(sub($0,$1),$1),100)") sets operands against each other that
+ * cover different rows. The same rule as comparesMixedRows in src/core/charts/table/resolve.ts: sub, mul, div, delta and
+ * percentDelta compare; add and abs only pass their operands on, so a sum of partial totals stays a partial sum.
+ * `cover[i]` is what operand $i covers: its leaf rows (undefined when unknown) and whether its text says it is partial.
+ */
+function comparesMixedRows(op, cover) {
+  const source = op.replace(/@\d+$/, '');
+  let at = 0;
+  const parse = () => {
+    if (source[at] === '$') {
+      const index = /^\d+/.exec(source.slice(at + 1))?.[0] ?? '';
+      at += 1 + index.length;
+      return { refs: [Number(index)] };
+    }
+    const name = /^[A-Za-z][A-Za-z0-9]*/.exec(source.slice(at));
+    if (name && source[at + name[0].length] === '(') {
+      at += name[0].length + 1;
+      const args = [];
+      for (;;) {
+        args.push(parse());
+        if (source[at] === ',') { at += 1; continue; }
+        at += 1; // ')'
+        break;
+      }
+      return { op: name[0], args };
+    }
+    // A literal, '?' or '<…>' covers no row.
+    const rest = /^(?:\?|<[^>]*>|-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)/.exec(source.slice(at));
+    if (!rest) throw new Error(`unparsable claim expression: ${source}`);
+    at += rest[0].length;
+    return { refs: [] };
+  };
+  const refsOf = (node) => node.refs ?? node.args.flatMap(refsOf);
+  const side = (node) => {
+    const parts = refsOf(node).map((index) => cover[index]).filter(Boolean);
+    const known = parts.map((part) => part.rows).filter((rows) => rows !== undefined);
+    return { rows: known.length ? [...new Set(known.flat())].sort().join('\u001f') : undefined, marked: parts.some((part) => part.marked) };
+  };
+  const differ = (a, b) => {
+    const left = side(a), right = side(b);
+    return (left.rows !== undefined && right.rows !== undefined && left.rows !== right.rows) || left.marked !== right.marked;
+  };
+  const visit = (node) => {
+    if (!node.op) return false;
+    const [a, b] = node.args;
+    switch (node.op) {
+      case 'abs': return visit(a);
+      case 'add': return visit(a) || visit(b);
+      case 'sub': case 'mul': case 'div': return visit(a) || visit(b) || differ(a, b);
+      case 'delta': case 'percentDelta': return differ(a, b);
+      default: return false;
+    }
+  };
+  try { return visit(parse()); } catch { return false; }
 }
 
 /** A unit written twice, or a currency sign after a bare figure in English marks. */

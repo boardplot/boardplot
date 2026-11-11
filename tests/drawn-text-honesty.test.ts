@@ -343,6 +343,19 @@ describe('number census', () => {
     expect(of(census('table', spec, 1080, nm), 'derived', 'seg-services:fpVsOut')).not.toEqual([]);
   });
 
+  // Only a comparison of partial and full totals prints n.m.; an addition of them is a partial sum, and an n.m. there is a defect.
+  it('flags an n.m. on the addition of a full total and a partial one', () => {
+    const spec = fixtureOf<Spec & { data: { columns: unknown[] } }>('table', 'management-report');
+    spec.data.columns.push({ id: 'fpBoth', kind: 'computed', label: 'Pace plus outlook', calc: { op: 'add', a: { ref: 'fpPace' }, b: { ref: 'foOut' } }, format: '1,234', width: 120 });
+    expect(of(census('table', spec, 1400), 'derived')).toEqual([]);
+    const nm = (geometry: Geometry) => {
+      const cell = (geometry.derived as { computedCells: { rowId: string; colId: string; raw: number | null; state: string; displayed: string }[] })
+        .computedCells.find((c) => c.rowId === 'seg-subscriptions' && c.colId === 'fpBoth')!;
+      Object.assign(cell, { raw: null, state: 'nm', displayed: 'n.m.' });
+    };
+    expect(of(census('table', spec, 1400, nm), 'derived', 'seg-subscriptions:fpBoth')).not.toEqual([]);
+  });
+
   // A column a toggle hides draws no head; its claims were read without the head's "(M)" and called wrong-scale.
   it('reads the magnitude of a hidden column and still flags a wrong one', () => {
     const spec = fixtureOf('table', 'management-report-compact');
