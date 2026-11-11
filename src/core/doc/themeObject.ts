@@ -14,6 +14,7 @@
  * already leaves those rules out for `{ preset, overrides }`.
  */
 import { canonicalJson } from '../claims/canonical';
+import { isRecord } from '../lint/shared';
 import { resolveTheme, themes } from '../theme';
 import { canonicalLanguage, NormalizeError } from '../normalize/shared';
 import type { JsonPatchOperation } from '../diagnostics/jsonPatch';
@@ -113,17 +114,27 @@ export function rootContextErrors(root: { theme?: unknown; locale?: unknown }): 
     errors.push({ code: 'invalid-locale', message: `'${root.locale}' is not a BCP 47 language tag`, path: '/locale', suggest: 'use a tag such as "de" or "de-DE"', docs: 'docs/reference/options.md#options' });
   }
   if (root.theme !== undefined) {
-    try {
-      resolveTheme(root.theme as ThemeRef);
-    } catch (error) {
-      if (!(error instanceof NormalizeError)) throw error;
-      // The theme's own errors point into a chart's options; at the root the same field drops that segment.
+    if (typeof root.theme !== 'string' && !isRecord(root.theme)) {
       errors.push({
-        code: error.code, message: error.message, path: `/${error.path.replace(/^options\./, '').split('.').join('/')}`,
-        ...(error.suggest ? { suggest: error.suggest } : {}),
-        ...(error.fix ? { fix: error.fix.map((operation) => ({ ...operation, path: operation.path.replace(/^\/options/, '') })) } : {}),
+        code: 'invalid-theme',
+        message: 'theme: expected a preset name, a full theme object, { preset, overrides } or { overrides }',
+        path: '/theme',
+        suggest: 'Send a preset name, a full theme object, { preset, overrides } or { overrides }, or remove theme.',
         docs: 'docs/reference/theme.md#theme',
       });
+    } else {
+      try {
+        resolveTheme(root.theme as ThemeRef);
+      } catch (error) {
+        if (!(error instanceof NormalizeError)) throw error;
+        // The theme's own errors point into a chart's options; at the root the same field drops that segment.
+        errors.push({
+          code: error.code, message: error.message, path: `/${error.path.replace(/^options\./, '').split('.').join('/')}`,
+          ...(error.suggest ? { suggest: error.suggest } : {}),
+          ...(error.fix ? { fix: error.fix.map((operation) => ({ ...operation, path: operation.path.replace(/^\/options/, '') })) } : {}),
+          docs: 'docs/reference/theme.md#theme',
+        });
+      }
     }
   }
   return errors;
