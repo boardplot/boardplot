@@ -45,7 +45,7 @@ import { paintColor, resolveTargetTheme, resolveTheme, themeForWidth } from '../
 import { tableStylesheet } from '../src/react/tablePresentation';
 import { prepareChart } from '../src/react/prepare';
 import { toneTextPaint } from '../src/core/charts/table/chips';
-import { tableFonts } from '../src/core/charts/table/tracks';
+import { SORT_BUTTON_MIN, tableFonts } from '../src/core/charts/table/tracks';
 import { levelLadder } from '../src/core/charts/table/ladder';
 import {
   collapsedByDefault,
@@ -2133,4 +2133,58 @@ it('takes the first tighter rung that ends the scroll, and keeps the full rung w
   const scrolls = drawAt(320);
   expect(scrolls.pad).toBe('12px');
   expect(scrolls.overflow).toBe(true);
+});
+
+/** The pixel tracks the grid draws, and the codes of the last warnings. */
+function drawnGrid(onWarnings: ReturnType<typeof vi.fn>) {
+  const grid = gridElement();
+  const cols = grid.style.getPropertyValue('--bp-cols');
+  const tracks = [...cols.matchAll(/(?:^|\s)([\d.]+)px/gu)].map((match) => Number(match[1]));
+  const codes: string[] = (onWarnings.mock.lastCall?.[0] ?? []).map((warning: { code: string }) => warning.code);
+  return { pad: parseFloat(grid.style.getPropertyValue('--bp-cell-pad-x')), tracks, sum: tracks.reduce((sum, track) => sum + track, 0), overflow: codes.includes('table-overflow') };
+}
+
+// A rung that fit before the frame fill grew its tracks into the narrower margins of the gutter rung, which the grid
+// never draws: the table took tighter spacing and still scrolled, without the overflow warning.
+it('takes a tighter rung only where its filled tracks stay inside the box that scrolls', () => {
+  const data: TableData = { columns: [{ id: 'label', kind: 'rowLabel', label: 'Item' }, { id: 'v', kind: 'value', label: 'Value', width: 590 }],
+    rows: [{ id: 'r', label: '', cells: { v: 1 } }] };
+  const onWarnings = vi.fn();
+  act(() => root.render(<TableChart data={data} margin={{ left: 100, right: 100 }} cellPadX={24} columnHeads={false} size={{ width: 720 }} onWarnings={onWarnings} />));
+  // The box that scrolls: the frame inside the 100 px margins, through the right one.
+  const drawn = drawnGrid(onWarnings);
+  expect(drawn.sum).toBeLessThanOrEqual(620);
+  expect(drawn.overflow).toBe(false);
+});
+
+// A tighter rung drew a sort button's 24 px past the cell that clips it, so a short head lost its button's edge.
+it('takes a tighter rung only where every sort button keeps its least width', () => {
+  const data: TableData = { columns: [{ id: 'label', kind: 'rowLabel', label: 'Item', width: 290 }, { id: 'v', kind: 'value', label: 'I' }],
+    rows: [{ id: 'r', label: 'A', cells: { v: 1 } }] };
+  act(() => root.render(<TableChart data={data} frameFill="none" sortable={['v']} size={{ width: 320 }} />));
+  const drawn = drawnGrid(vi.fn());
+  expect(drawn.tracks[1]! - drawn.pad).toBeGreaterThanOrEqual(SORT_BUTTON_MIN);
+});
+
+// The rung was chosen for the nominal frame while a vertical scrollbar took width from the scroll box, so the table
+// took tighter spacing and still scrolled; once the rung shortened the rows the scrollbar went and the rung flipped back.
+it('chooses the rung for the scroll box a vertical scrollbar leaves, and keeps it when the scrollbar goes', () => {
+  const data: TableData = { columns: [{ id: 'label', kind: 'rowLabel', label: 'Item' }, { id: 'v', kind: 'value', label: 'Value', width: 314 }],
+    rows: Array.from({ length: 20 }, (_, index) => ({ id: `r${index}`, label: '', cells: { v: 1 } })) };
+  const onWarnings = vi.fn();
+  act(() => root.render(<TableChart data={data} columnHeads={false} fillHeight size={{ width: 320 }} onWarnings={onWarnings} />));
+  const nominal = drawnGrid(onWarnings);
+  expect(nominal.sum).toBeLessThanOrEqual(320);
+  const scroller = container.querySelector<HTMLElement>('.bp-scroll')!;
+  const box = (client: number) => {
+    Object.defineProperty(scroller, 'offsetWidth', { configurable: true, value: 320 });
+    Object.defineProperty(scroller, 'clientWidth', { configurable: true, value: client });
+    act(() => { scroller.dispatchEvent(new Event('scroll')); });
+  };
+  box(309);
+  const barred = drawnGrid(onWarnings);
+  expect(barred.overflow || barred.sum <= 309).toBe(true);
+  expect(barred.sum).not.toBe(nominal.sum);
+  box(320);
+  expect(drawnGrid(onWarnings)).toEqual(barred);
 });

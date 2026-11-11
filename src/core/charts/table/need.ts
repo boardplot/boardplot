@@ -10,6 +10,7 @@ import type { ResolvedTable, TableData, TableDerived, TableOptions } from '../..
 import type { TableMarks } from './layout';
 import { tableWidths, type TableWidthPlan, type TableWidthView, type WidthOptions } from './widths';
 import type { TextMeasurer } from '../../text';
+import { SORT_BUTTON_MIN } from './tracks';
 import type { Theme } from '../../types/theme';
 
 type TableGeometry = Geometry<TableMarks, TableDerived>;
@@ -189,15 +190,20 @@ export function tableScrollRung({ table, data, surface }: { table: ResolvedTable
   const box = view.scrollBox?.width ?? available;
   const run: RunTableCandidate<ScrollRung> = (candidate) => {
     const left = candidate.margin?.left ?? sides.left;
-    const room = host - left - (candidate.margin?.right ?? sides.right);
+    // The grid keeps the host's margins and fills its tracks into this room, so a rung's room never runs past the box.
+    const room = Math.min(host - left - (candidate.margin?.right ?? sides.right), box);
     const plan = tableWidths(table, theme, measure, {
       ...surface.options,
       ...(candidate.density === undefined ? {} : { density: candidate.density }),
       ...(candidate.cellPadX === undefined ? {} : { cellPadX: candidate.cellPadX }),
       ...(candidate.labelIndent === undefined ? {} : { labelIndent: candidate.labelIndent }),
     }, { ...view, scroll: true, available: room, headLines: candidate[HEAD_LINES], headGlue: candidate[HEAD_LOOSE] !== true });
-    const fits = !plan.warnings.some((warning) => warning.code === 'table-overflow');
+    // A rung fits on the tracks the grid draws, after the frame fill, where each sort button keeps its least width
+    // inside the cell's air and its group dividers. A hidden column draws a 0 px track and no button.
     const drawn = plan.tracks.reduce((sum, track) => sum + track.width, plan.spacerTotal);
+    const sortRoom = (track: { id: Id; width: number }) => track.width === 0 || !view.sortable?.has(track.id)
+      || track.width - plan.cellPadX - (view.groupStart?.has(track.id) ? 1 : 0) - (view.groupEnd?.has(track.id) ? 1 : 0) >= SORT_BUTTON_MIN;
+    const fits = !plan.warnings.some((warning) => warning.code === 'table-overflow') && drawn <= box && plan.tracks.every(sortRoom);
     return {
       size: { width: host, height: 0 }, plot: { x: left, w: room },
       sizing: { minWidth: fits ? host : host + Math.max(1, Math.ceil(drawn - box)), minHeight: 0 },

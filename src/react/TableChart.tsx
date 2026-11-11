@@ -594,6 +594,9 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
   // fillHeight uses the host's fixed height when the probe observes one.
   const container = useContainerSize({ size, target, fit, fallbackSize, needsHeight: fillHeight });
   const [scrollWidth, setScrollWidth] = useState<number>();
+  // The width a vertical scrollbar takes from the scroll box under fillHeight. It only grows: a rung that ends the
+  // scrollbar must not hand the width back, or the table would flip between rungs; the rung that fits beside it holds.
+  const [scrollGutter, setScrollGutter] = useState(0);
   const resolvedSize = size === 'container' ? container.size : size;
   const stableSize = useStableValue(typeof resolvedSize === 'object' ? resolvedSize : {});
   const authoredTableOptions: OptionsInput<TableOptions> = {
@@ -1050,7 +1053,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     // The box that scrolls is the frame inside the authored margins; under the default rowExtent it reaches through
     // the right one. The tracks are laid out inside the theme's margins, and overflow only past this box.
     const scrollBox = (frameWidth: number) => {
-      const boxWidth = frameWidth - marginLeft - marginRight + (tableOptions?.rowExtent === undefined ? Math.max(0, marginRight) : 0);
+      const boxWidth = frameWidth - marginLeft - marginRight + (tableOptions?.rowExtent === undefined ? Math.max(0, marginRight) : 0) - scrollGutter;
       return { width: boxWidth, inset: frameWidth - boxWidth };
     };
     const frameWidth = size === 'container' ? container.size?.width : size === undefined ? undefined : resolveSize(size).width;
@@ -1074,7 +1077,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
       },
     } });
   }, [table, theme, layoutRequest, width, tableOptions, density, request, inlineVisibility, softLabelCap, labelWrapFloor,
-    columns, allColumns, defaultColumns, rows, available, frameStart, readOnlyTree, sortableIds, rowLabelLead?.width, groupMarks, size, fit, margin, marginLeft, marginRight, container.size?.width]);
+    columns, allColumns, defaultColumns, rows, available, frameStart, readOnlyTree, sortableIds, rowLabelLead?.width, groupMarks, size, fit, margin, marginLeft, marginRight, container.size?.width, scrollGutter]);
   const measured = need?.plan;
   // The density of the rung the grid draws: the compact and tight rungs take the compact density.
   const drawnDensity = need?.density ?? density;
@@ -1274,6 +1277,10 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     if (scroller === null) return undefined;
     const report = () => {
       if (scroller.clientWidth > 0) setScrollWidth(before => (before ?? container.size.width) === scroller.clientWidth ? before : scroller.clientWidth);
+      if (fillHeight && scroller.clientWidth > 0) {
+        const gutter = scroller.offsetWidth - scroller.clientWidth;
+        setScrollGutter(before => Math.max(before, gutter));
+      }
       // The pinned hairline shows only while the grid is scrolled.
       setScrolled(scroller.scrollLeft > 0);
       markScrollRegion(scroller, scrollLabel.current);
