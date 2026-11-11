@@ -641,4 +641,6 @@ it('records the printed share of a one-series 100% stack', () => {
   expect(shares('column', { variant: 'stacked', shareLabels: {}, labelDensity: 'full' })).toEqual([100, 100]);
   expect(shares('column', { variant: 'stacked', shareLabels: { only: ['b'] }, labelDensity: 'full' })).toEqual([undefined, 100]);
   expect(shares('bar', { variant: 'grouped', valueAxis: { percent: true } })).toEqual([undefined, undefined]);
+  // A percent value axis makes a one-series column or line chart print 100% on each mark, but its records held no share.
+  for (const type of ['column', 'line']) expect(shares(type, { valueAxis: { percent: true } }), type).toEqual([100, 100]);
 });
