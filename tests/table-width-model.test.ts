@@ -86,3 +86,20 @@ it('finishes with huge fractional authored widths', () => {
   const result = layoutResolvedRequest(resolveChartRequest({ type: 'table', data, options: { size: { width: 960 } } } as never));
   expect(result.size.width).toBe(960);
 }, 30_000);
+
+// The grid draws a group divider as a 1 px border inside the cells of the group's first column; a track that paid only for the closing border cut that column's widest figure to an ellipsis.
+it('pays for the divider border at both ends of a column group', () => {
+  const ruledData: TableData = {
+    columns: [
+      { id: 'label', kind: 'rowLabel', label: 'Market' },
+      { id: 'a', kind: 'value', label: 'Apr', format: '#,##0' },
+      { id: 'b', kind: 'value', label: 'May', format: '#,##0' },
+    ],
+    rows: [{ id: 'group', label: 'Group', role: 'total', cells: { a: 8220, b: 8350 } }],
+  };
+  const table = resolveTable(ruledData, { cellPadX: 3 }).table;
+  const theme = resolveTheme('bridge');
+  const plain = tableWidths(table, theme, defaultMeasurer, { cellPadX: 3 }, {}).widths;
+  const ruled = tableWidths(table, theme, defaultMeasurer, { cellPadX: 3 }, { groupStart: new Set(['a']), groupEnd: new Set(['b']) }).widths;
+  expect([ruled.get('a')! - plain.get('a')!, ruled.get('b')! - plain.get('b')!]).toEqual([1, 1]);
+});
