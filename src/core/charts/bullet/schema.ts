@@ -77,4 +77,4 @@ export const bulletOptionsSchema = baseOptionsSchema
     for (const refusal of compactBulletRefusals(options)) {
       ctx.addIssue({ code: 'custom', path: refusal.field!.slice(1), message: refusal.message, params: { refused: true } });
     }
-  }).describe('Bullet rows use at most their natural 44px pitch (more when target values print above their ticks), enlarged for measured fonts. Target deltas use the label token; explicit canvas dimensions remain unchanged.') as unknown as z.ZodType<BulletOptions>;
+  }).describe('Bullet rows use at most their natural 44px pitch (more when target values print above their ticks), enlarged for measured fonts. A frame taller than the rows need keeps that pitch and leaves the extra height empty below the chart. Target deltas use the label token; explicit canvas dimensions remain unchanged.') as unknown as z.ZodType<BulletOptions>;
