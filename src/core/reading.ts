@@ -21,7 +21,7 @@ import { chartNotes, type ChartNote } from './notes';
 import type { InteractionRecord } from './a11y/types';
 import type { RoundingAdjustment } from './shareRounding';
 import { drawnRequest } from './drawnRequest';
-import type { ResolvedChartRequest } from './request';
+import { resolveChartRequest, type RequestOptions, type ResolvedChartRequest } from './request';
 import type { Geometry } from './types/scene';
 import type { StructureCount } from './structureCounts';
 export type { StructureCount } from './structureCounts';
@@ -290,7 +290,11 @@ function unrequestedLabelOmissions(input: ChartReadingInput, records: readonly I
   const valueKey = (owner: InteractionRecord['target']['owner']) => JSON.stringify([owner.seriesId, owner.categoryId, owner.pointId]);
   const buildContext = (prefix: string) => {
     const scope = omissionScope(input.geometry, input.request.options, `${prefix}point`, input.request.data);
-    const data = (scope.data ?? {}) as ChartData;
+    // A panel's source data is as authored. Its layout and its records read the prepared copy, as a chart
+    // alone does: a line's data.x becomes categories there.
+    const data = (scope.type && scope.data !== undefined
+      ? resolveChartRequest({ type: scope.type, data: scope.data, options: scope.options as RequestOptions, fontMetrics: input.request.fontMetrics }).data
+      : scope.data ?? {}) as ChartData;
     const labels = scope.geometry.labels;
     const categories = (Array.isArray(data.categories) ? data.categories : []).map(normalizeCategory);
     const seriesById = new Map((Array.isArray(data.series) ? data.series : []).filter(series => series.values !== undefined)

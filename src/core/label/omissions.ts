@@ -91,11 +91,13 @@ export function readableLabelDestination(geo: Geometry<object, object>): (id: st
 type LabelOptions = { labels?: unknown; labelDensity?: string; valueLabels?: string; seriesLabels?: unknown; labelPlacements?: Record<string, unknown> };
 
 /** Read a panel's effective choices, rather than applying the grid's choices to every panel. */
-export function omissionScope(geo: Geometry<object, object>, options: LabelOptions | undefined, id: string, data?: unknown): { geometry: Geometry<object, object>; options: LabelOptions | undefined; id: string; data: unknown } {
+export function omissionScope(geo: Geometry<object, object>, options: LabelOptions | undefined, id: string, data?: unknown, type?: string): { geometry: Geometry<object, object>; options: LabelOptions | undefined; id: string; data: unknown; type?: string } {
   const panels = (geo.marks as { panels?: { id: string; chart?: { geometry: Geometry<object, object>; options: LabelOptions } }[] }).panels;
   const panel = panels?.find(panel => id.startsWith(`${panel.id}/`) && panel.chart);
-  const sourcePanel = (data as { panels?: { id: string; data: unknown }[] } | undefined)?.panels?.find(source => source.id === panel?.id);
-  return panel?.chart ? omissionScope(panel.chart.geometry, panel.chart.options, id.slice(panel.id.length + 1), sourcePanel?.data) : { geometry: geo, options, id, data };
+  const sourcePanel = (data as { panels?: { id: string; type?: string; data: unknown }[] } | undefined)?.panels?.find(source => source.id === panel?.id);
+  // Inside a grid, `type` is the panel's chart type and `data` its source data as authored.
+  return panel?.chart ? omissionScope(panel.chart.geometry, panel.chart.options, id.slice(panel.id.length + 1), sourcePanel?.data, sourcePanel?.type)
+    : { geometry: geo, options, id, data, ...(type ? { type } : {}) };
 }
 
 /** Author choices may drop automatic labels, but an explicit label request still has to print. */
