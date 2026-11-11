@@ -1,3 +1,0 @@
-### Fixed
-
-- The React table (`TableChart`, and `DimSwitchChart` through it) no longer cuts the widest figure of a column that opens a column group or a band. The grid draws that divider as a 1 px border inside the column's cells, and the column's width paid only for the closing border, so a bold total such as "8,220" lost its last digits to an ellipsis. The column now pays for both borders. A table with a group divider can draw that column 1 to 3 px wider, and a table that fills its frame takes the same pixels from a neighbouring column. The SVG table does not change. No setting restores the old widths.
