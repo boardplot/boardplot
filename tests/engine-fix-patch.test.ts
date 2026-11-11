@@ -164,6 +164,77 @@ describe('root key fixes', () => {
       expect(render({ spec: fixed, format: 'svg' }).body).toMatchObject({ ok: true });
     }
   });
+
+  // A root locale object (or array/object subtitle or source) on a bare chart got a remove patch that dropped the authored setting, while an envelope's locale-ignored warning omitted options.locale.
+  it('moves accepted object and array furniture into bare-chart options and points envelope locale objects to options.locale', () => {
+    const sales = {
+      type: 'column',
+      data: {
+        categories: [{ id: 'x', label: 'East' }, { id: 'y', label: 'West' }],
+        series: [{ id: 'r', label: 'Sales', values: [1520.5, -310.25], format: '0.0' }],
+      },
+      options: { title: 'Sales by side' },
+    };
+    const locale = { language: 'de', decimal: ',' };
+    const bareRefused = render({ spec: { ...sales, locale }, format: 'svg' }).body as any;
+    expect(bareRefused.ok).toBe(false);
+    expect(bareRefused.errors).toEqual([expect.objectContaining({
+      code: 'unknown-field',
+      path: '/locale',
+      suggest: "Move 'locale' into options.",
+      fix: [
+        { op: 'add', path: '/options/locale', value: locale },
+        { op: 'remove', path: '/locale' },
+      ],
+    })]);
+    const bareFixed = applyPatch({ ...sales, locale }, bareRefused.errors[0].fix);
+    const bareDrawn = render({ spec: bareFixed, format: 'svg', return: ['svg'] }).body as any;
+    expect(bareDrawn.ok).toBe(true);
+    expect(bareDrawn.svg).toContain('1.520,5');
+    expect(bareDrawn.svg).toContain('−310,3');
+
+    for (const [key, value] of [
+      ['subtitle', { measure: 'Sales', period: '2026' }],
+      ['subtitle', ['EUR m', '2026']],
+      ['source', ['Company filings', 'Finance']],
+    ] as const) {
+      const spec = { ...sales, [key]: value };
+      const refused = render({ spec, format: 'svg' }).body as any;
+      expect(refused.errors[0]).toMatchObject({ code: 'unknown-field', suggest: `Move '${key}' into options.` });
+      const fixed = applyPatch(spec, refused.errors[0].fix);
+      expect(fixed.options[key]).toEqual(value);
+      expect(render({ spec: fixed, format: 'svg' }).body).toMatchObject({ ok: true });
+    }
+
+    for (const [key, bad] of [['locale', { decimal: ';' }], ['subtitle', {}], ['source', [7]]] as const) {
+      const spec = { ...sales, [key]: bad };
+      const refused = render({ spec, format: 'svg' }).body as any;
+      expect(refused.errors[0]).toMatchObject({
+        code: 'unknown-field',
+        suggest: `Remove '${key}'.`,
+        fix: [{ op: 'remove', path: `/${key}` }],
+      });
+      const fixed = applyPatch(spec, refused.errors[0].fix);
+      expect(fixed.options).not.toHaveProperty(key);
+      expect(render({ spec: fixed, format: 'svg' }).body).toMatchObject({ ok: true });
+    }
+
+    const envelope = { version: 1, locale, charts: [{ name: 'sales', ...sales }] };
+    const envDrawn = render({ spec: envelope, format: 'svg' }).body as any;
+    expect(envDrawn.ok).toBe(true);
+    const ignored = envDrawn.warnings.find((warning: any) => warning.code === 'locale-ignored');
+    expect(ignored).toMatchObject({
+      code: 'locale-ignored',
+      severity: 'warn',
+      path: '/locale',
+      message: expect.stringContaining("each chart's options.locale"),
+    });
+    const envAdvised = { version: 1, charts: [{ name: 'sales', ...sales, options: { ...sales.options, locale } }] };
+    const envFixed = render({ spec: envAdvised, format: 'svg', return: ['svg'] }).body as any;
+    expect(envFixed.ok).toBe(true);
+    expect(envFixed.warnings.map((warning: any) => warning.code)).not.toContain('locale-ignored');
+    expect(envFixed.charts[0].svg).toContain('1.520,5');
+  });
 });
 
 describe('football-field row without a range', () => {

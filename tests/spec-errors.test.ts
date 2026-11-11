@@ -147,4 +147,29 @@ describe('structured spec errors', () => {
     const hostile = new Proxy({}, { ownKeys: () => { throw unexpected; } });
     await expect(parseChartSpec(hostile)).rejects.toBe(unexpected);
   });
+
+  // A root theme that is neither a string nor a plain object crashed at layout on null and was silently ignored on numbers, booleans and arrays.
+  it('refuses a non-string, non-object root theme at /theme before layout in both CLI and React', async () => {
+    const bare = {
+      type: 'column',
+      data: { categories: [{ id: 'n', label: 'North' }, { id: 's', label: 'South' }], series: [{ id: 'v', label: 'Visits', values: [12, 19] }] },
+      options: { title: 'Visits by area' },
+    };
+    for (const theme of [null, 5, false, ['editorial']]) {
+      for (const document of [{ ...bare, theme }, { version: 1, theme, charts: [{ name: 'visits', ...bare }] }]) {
+        const cli = cliValidate(document);
+        const error = await captured(() => parseChartSpec(document));
+        expect(cli.code).toBe(1);
+        expect(error.errors).toEqual(cli.envelope.errors);
+        expect(error.errors).toEqual([expect.objectContaining({
+          code: 'invalid-theme',
+          path: '/theme',
+          message: expect.stringContaining('{ preset, overrides }'),
+        })]);
+        expect(error.errors[0]!.message).toContain('preset name');
+        expect(error.errors[0]!.message).toContain('full theme object');
+        expect(error.errors[0]!.message).toContain('{ overrides }');
+      }
+    }
+  });
 });
