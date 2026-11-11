@@ -115,9 +115,20 @@ export const RETIRED_PALETTES: ReadonlySet<string> = new Set(['garnet', 'heritag
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 
-/** A shallow copy on the node's own prototype, with its symbol marks. */
+/**
+ * A shallow copy on the node's own prototype, with its symbol marks. Every key
+ * is defined fresh and writable, so a frozen source does not freeze the copy,
+ * and defining (not assigning) keeps an own `__proto__` key off the prototype setter.
+ */
 function copyOf<T extends object>(node: T): T {
-  return Object.create(Object.getPrototypeOf(node), Object.getOwnPropertyDescriptors(node)) as T;
+  const copy = Object.create(Object.getPrototypeOf(node)) as Record<PropertyKey, unknown>;
+  for (const key of Reflect.ownKeys(node)) {
+    Object.defineProperty(copy, key, {
+      value: (node as Record<PropertyKey, unknown>)[key], writable: true, configurable: true,
+      enumerable: Object.prototype.propertyIsEnumerable.call(node, key),
+    });
+  }
+  return copy as T;
 }
 
 /** `root` with the value at `path` replaced, or removed for `undefined`; objects on the way are copied, missing ones created. */
