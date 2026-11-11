@@ -36,7 +36,7 @@ import type { Theme } from '../../types/theme';
 import { rowDrivenHeight } from '../../rowCanvas';
 import { rowLabelBand } from '../../label/rowLabels';
 import { fittedLabel, gutterBudget, pinnedRowFont, stepDownFont } from '../../label/rowFit';
-import { heightOmitted, matrixWidths, rowSizing } from '../../sizing';
+import { heightOmitted, matrixWidths, NARROW_FORM, rowSizing } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { textScaleOf } from '../../typeFloors';
 import { maxOf, minOf, pushAll } from '../../arrays';
@@ -392,7 +392,8 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
   const headerFits = columns.map((_, index) => headerWidths[index]! <= framePlot.w
     && (index === 0 || headerLeft[index]! >= headerLeft[index - 1]! + headerWidths[index - 1]! + 4)
     && (index === columns.length - 1 || headerLeft[index]! + headerWidths[index]! + 4 <= headerLeft[index + 1]!));
-  let headerTiers = !calendarHeaders && headerFits.some(fits => !fits)
+  // Heads wrapped in their columns, as a narrower width draws them, where staggered heads set a floor above the width (NARROW_FORM).
+  let headerTiers = !calendarHeaders && !(options as { [NARROW_FORM]?: true })[NARROW_FORM] && headerFits.some(fits => !fits)
     ? [2, 3].find(tiers => columns.every((_, index) => headerWidths[index]! <= framePlot.w
       && (index < tiers || headerLeft[index]! >= headerLeft[index - tiers]! + headerWidths[index - tiers]! + 4))) ?? 1 : 1;
   let staggerHeaders = headerTiers > 1;
