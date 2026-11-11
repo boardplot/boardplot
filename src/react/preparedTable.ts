@@ -61,7 +61,8 @@ function preparedCell(cell: ResolvedCell, keepRaw: boolean): ResolvedCell {
  * that dropped them drew a statement or a steering table differently from the live grid.
  */
 function preparedRow(row: ResolvedRow, rawColumns: ReadonlySet<Id>): ResolvedRow {
-  return {
+  // Every key of a resolved row is listed, so a new row field that the grid reads cannot be dropped here unseen.
+  const prepared = {
     id: row.id, label: row.label, parentId: row.parentId, hasChildren: row.hasChildren,
     defaultExpanded: row.defaultExpanded, level: row.level, role: row.role,
     // The rung the row takes on the level ladder: the grid
@@ -82,8 +83,11 @@ function preparedRow(row: ResolvedRow, rawColumns: ReadonlySet<Id>): ResolvedRow
     // A parent that does not fold and a section's chip are display too.
     foldable: row.foldable,
     badge: row.badge,
+    // A memo row's indent comes from its own step, not its level ladder rung.
+    indentStep: row.indentStep,
     cells: Object.fromEntries(Object.entries(row.cells).map(([id, cell]) => [id, preparedCell(cell, rawColumns.has(id))])),
-  };
+  } satisfies Record<keyof ResolvedRow, unknown>;
+  return prepared;
 }
 
 /** Resolve on the server; serialize only the table's display model, never calculation receipts. */

@@ -21,7 +21,7 @@ import { ownedDocumentCopy } from '../core/doc/docExpand';
 import { resolveTheme, resolvedPaintToken, seriesColorIndex } from '../core/theme';
 import { sceneThemeBindings } from '../core/repaintGeometry';
 import type { GridMarks } from '../core/grid/layoutGrid';
-import { validateTheme, type ThemeUsage } from '../core/themeRules';
+import { MUTED_TABLE_INKS, validateTheme, type ThemeUsage } from '../core/themeRules';
 import { activeFontTables } from './activeFontTables';
 import { renderSvg, XmlCharError } from '../core/svg/renderSvg';
 import { claimsForChart } from '../core/claims';
@@ -200,7 +200,8 @@ function geometryThemeUsage(geometry: Geometry, theme: Theme): ThemeUsage {
     const series = /^series-(\d+)$/.exec(token);
     role(series ? `series[${seriesColorIndex(theme, Number(series[1]) - 1)}]` : token.replace(/^status-/, 'status.'));
   };
-  const visit = (value: unknown): void => {
+  // `grounded`: under a ground-text recipe, which decides the ink again against its own ground, not the page.
+  const visit = (value: unknown, grounded = false): void => {
     if (!value || typeof value !== 'object') return;
     if (visited.has(value)) return;
     visited.add(value);
@@ -216,7 +217,13 @@ function geometryThemeUsage(geometry: Geometry, theme: Theme): ThemeUsage {
       if (object.scenario) roles.add(`scenario.${object.scenario}`);
     }
     if (object.kind === 'colorblind' && typeof object.role === 'string') roles.add(`colorblind.${object.role}`);
-    for (const child of Object.values(object)) visit(child);
+    if (object.kind === 'table-ink' && typeof object.role === 'string' && !grounded) {
+      roles.add(`table.inks.${object.role}`);
+      // A muted role without its own ink paints in the secondary ink.
+      const inks = theme.table?.inks as Record<string, string | undefined> | undefined;
+      if (MUTED_TABLE_INKS.has(object.role) && inks?.[object.role] === undefined) roles.add('table.inks.secondary');
+    }
+    for (const child of Object.values(object)) visit(child, grounded || object.kind === 'ground-text');
   };
   const bindings = sceneThemeBindings(geometry);
   for (const node of geometry.scene) {

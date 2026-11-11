@@ -273,6 +273,17 @@ function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, p
     })();
     const inside = (dy: number, slot: string) => insideDepth >= tsize.height + dy
       ? { ...at(slot, above ? edgeY + dy : edgeY - tsize.height - dy, 2), ...paints.top(ci, above) } : undefined;
+    // A line just under the column top: its slice boxes over-claim the lowered seat, and how deep the marker
+    // sits changes with the plot height. The seat steps down, at most one line, to the first depth the drawn
+    // strokes clear, and there it needs no pad, so a total that seats at one height seats at a taller one.
+    const lowered = (): SlotCandidate | undefined => {
+      if (strokes.length > 0) for (let dy = 12; dy <= 12 + tsize.height; dy++) {
+        const seat = inside(dy, 'insideEndLowered');
+        if (!seat) break;
+        if (strokes.every(stroke => !stroke.hits(seat.rect, STROKE_CLEAR))) return { ...seat, pad: 0 };
+      }
+      return inside(12, 'insideEndLowered');
+    };
     // Type steps: a line that rises from this column's top runs right of its centre;
     // the total then stands left of the line's start, level with its usual seat (pareto at 320: '120').
     // Only the first column (left of any other the total would stand over its neighbour), and only
@@ -333,7 +344,7 @@ function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, p
       ], edgeY, lineYs(ci), inside(8, 'insideEnd'),
       domain.columns.length > 1,
       // Last of all, one step further in: a line marker just inside the column top blocks the inside end by a fraction of a pixel.
-      inside(12, 'insideEndLowered')),
+      lowered()),
     });
   });
 }
