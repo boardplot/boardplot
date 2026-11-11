@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { getFixtures } from '../src/fixtures';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/index';
 import { rectContains, rectsOverlap, segmentHitsRect } from '../src/core/geometry';
@@ -13,6 +13,8 @@ import { contrastRatio } from '../src/core/color';
 import { repaintGeometry } from '../src/core/repaintGeometry';
 import { resolvePaint } from '../src/core/svg/paint';
 import { resolveTheme } from '../src/core/theme';
+import { getChart } from '../src/core/registry';
+import { CARD_HEIGHT_MEMO } from '../src/core/sizing';
 
 // Row and weekend shading must stay visible after repainting and must not cover the elapsed band.
 it('gantt paints visible row and weekend shading below the elapsed band', () => {
@@ -539,4 +541,19 @@ it('gantt keeps the Milestone key when labels.item selects only the date', () =>
   const draw = (item: string[]) => (render({ spec: { type: 'gantt', data, options: { size: { width: 900 }, labels: { item } } }, return: ['svg'] }).body as { svg: string }).svg;
   expect(draw(['value'])).toContain('>Milestone<');
   expect(draw(['category', 'value'])).not.toContain('>Milestone<');
+});
+
+// Each compact pass of a narrow gantt at an open height drew its 480 px reference card again, 45 times in this render.
+it('gantt draws its wider reference card once per distinct request in one narrow render', () => {
+  const row = (id: string, start: string, end: string, status: string) => ({ id, label: `${id} and its much longer descriptive name`, cols: ['Ana', status],
+    items: [{ id: `${id}-bar`, kind: 'bar', start, end, label: `${id} and its much longer descriptive name` }] });
+  const data = { rows: [row('Scope', '2026-01-12', '2026-02-27', 'Done'), row('Build', '2026-02-16', '2026-05-15', 'On track'), row('Pilot', '2026-05-04', '2026-06-26', 'At risk'),
+    { ...row('Launch', '2026-06-15', '2026-07-31', 'Not started'), items: [...row('Launch', '2026-06-15', '2026-07-31', '').items, { id: 'go-live', kind: 'milestone', start: '2026-07-31', label: 'Go-live and its much longer descriptive name' }] }] };
+  const gantt = getChart('gantt')!;
+  const draws = vi.spyOn(gantt, 'layout');
+  try {
+    layoutResolvedRequest(resolveChartRequest({ type: 'gantt', data, options: { title: 'Launch lands at the end of July', size: { width: 400 }, colHeaders: ['Owner', 'Status'],
+      columnOrder: ['plot', 'meta'], interactive: true, a11y: { table: 'below' } } } as never));
+    expect(draws.mock.calls.filter(([, options]) => options && CARD_HEIGHT_MEMO in options).length).toBeLessThanOrEqual(2);
+  } finally { draws.mockRestore(); }
 });

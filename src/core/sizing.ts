@@ -1334,7 +1334,26 @@ export interface CardHeightMemo {
   references?: { data: unknown; options: ChartOptions; height: number | undefined; restore?: () => void }[];
 }
 
-/** A chart-owned wider-card request shares the current call's dependency results. */
+/**
+ * Equal option values: the same value, or arrays and plain objects (frozen themes too) whose own
+ * entries are equal. Functions, class instances, Maps and Sets count by identity.
+ */
+function sameContent(a: unknown, b: unknown, depth = 0): boolean {
+  if (a === b) return true;
+  if (depth > 24 || typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  const proto = Object.getPrototypeOf(a);
+  if (proto !== Object.getPrototypeOf(b) || !Array.isArray(a) && proto !== Object.prototype && proto !== null) return false;
+  const keys = Reflect.ownKeys(a);
+  return keys.length === Reflect.ownKeys(b).length && keys.every(key => Object.hasOwn(b, key)
+    && sameContent((a as Record<PropertyKey, unknown>)[key], (b as Record<PropertyKey, unknown>)[key], depth + 1));
+}
+
+/**
+ * A chart-owned wider-card request shares the current call's dependency results.
+ * Requests match by content: each prepared pass resolves its own theme, locale and strings, and a
+ * compact gantt pass builds its request from the options the last wider draw left behind. By
+ * identity, every such pass missed and drew the wider card again.
+ */
 export function cardReferenceHeight<D, O extends ChartOptions>(data: D, options: O, wider: O,
   draw: (options: O) => LayoutResult, capture?: () => () => void,
 ): number | undefined {
@@ -1343,13 +1362,11 @@ export function cardReferenceHeight<D, O extends ChartOptions>(data: D, options:
     const result = draw(wider);
     return result.refused ? undefined : result.size.height;
   }
-  const same = (a: unknown, b: unknown) => a === b || Array.isArray(a) && Array.isArray(b)
-    && a.length === b.length && a.every((item, i) => item === b[i]);
   const entries = memo.references ??= [];
   const match = entries.find(entry => entry.data === data
     && resolveSize(entry.options.size, entry.options.target).width === resolveSize(wider.size, wider.target).width
     && [...new Set([...Object.keys(entry.options), ...Object.keys(wider)])].every(key => key === 'size'
-      || same((entry.options as Record<string, unknown>)[key], (wider as Record<string, unknown>)[key])));
+      || sameContent((entry.options as Record<string, unknown>)[key], (wider as Record<string, unknown>)[key])));
   if (match) { match.restore?.(); return match.height; }
   const result = draw({ ...wider, [CARD_HEIGHT_MEMO]: memo });
   const height = result.refused ? undefined : result.size.height;
