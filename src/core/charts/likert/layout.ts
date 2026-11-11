@@ -1042,11 +1042,13 @@ export function layoutLikert(
   const stackedMin = stacked ? chromeH + rowsOf(Math.ceil(statementLineH + 4), ROW_GAP_MIN) : 0;
   const stackedNatural = stacked ? Math.max(stackedMin, chromeH + rowsOf(Math.ceil(statementLineH + 8), 2 * ROW_GAP_MIN + 4)) : 0;
 
-  // Shares the chart does not print: a neutral left out of the bars, a share that rounds to zero. Nets print only under summary 'net'.
+  // Shares the chart does not print: a neutral left out of the bars, a share that rounds to zero, every share when
+  // labels turn segments off. Nets print only under summary 'net', and only while labels leave grand totals on.
   const drawnOptions = new Set([...negativeIndices, ...positiveIndices, ...(oddScale && neutralMode !== 'exclude' ? [neutralIndex] : [])]);
+  const sharesOn = chartLabelOn(opts, 'segment');
   const unprinted = [
-    ...(summary === 'net' ? [] : ordered.map((item) => `likert:net:${item.id}`)),
-    ...ordered.flatMap((item) => scale.flatMap((option, i) => drawnOptions.has(i) && printed(i)(item) !== false ? [] : [claimId('likert:share', item.id, option.id)])),
+    ...(summary === 'net' && chartLabelOn(opts, 'grandTotal') ? [] : ordered.map((item) => `likert:net:${item.id}`)),
+    ...ordered.flatMap((item) => scale.flatMap((option, i) => sharesOn && drawnOptions.has(i) && printed(i)(item) !== false ? [] : [claimId('likert:share', item.id, option.id)])),
   ];
 
   return withUnprintedClaims({
