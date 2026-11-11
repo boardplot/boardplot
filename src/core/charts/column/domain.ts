@@ -205,8 +205,9 @@ function orderColumnCategories(
       suggest: 'drop options.topN, or drop options.anomaly and rank instead of flag',
     });
   }
-  if (topN && topN.n > 0 && cats.length > topN.n) {
-    const { kept: keptIdx, dropped: dropIdx } = topNCut(cats.map((_, i) => Math.abs(catTotal(i))), topN.n);
+  // A threshold can drop categories when n keeps all of them, as on a bar.
+  if (topN && topN.n > 0 && (cats.length > topN.n || topN.threshold !== undefined)) {
+    const { kept: keptIdx, dropped: dropIdx } = topNCut(cats.map((_, i) => Math.abs(catTotal(i))), topN.n, topN.threshold);
     if (topN.rest === false || dropIdx.length === 0) {
       applyOrder(keptIdx);
     } else {

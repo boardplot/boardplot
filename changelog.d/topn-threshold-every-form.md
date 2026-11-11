@@ -1,0 +1,3 @@
+### Fixed
+
+- `topN.threshold` now acts on a column and a table as it does on a bar, also when `topN.n` keeps every category: a category whose absolute total is below it moves into Others, and the largest always stays. Before, a column ignored the threshold without a warning, and a table read it only when it had more rows than `n`, so the same spec drew differently once a column turned into a bar. A variance chart now ignores `topN.threshold` with an `option-ignored` warning in every case; before, it said so only when `n` cut categories. To keep the old drawing, remove `topN.threshold`. A table whose `ofWhich` or `displayOnly` rows would be folded by the threshold refuses with `table-topn-relation-unsupported`, as it does for a cut by `n`.

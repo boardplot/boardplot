@@ -115,8 +115,8 @@ function drawnCount(type: string, key: string, list: unknown[], data: unknown, o
   const topN = options?.topN;
   if (TOP_N_TYPES.has(type) && topN?.n !== undefined && topN.n > 0 && !(type === 'column' && options?.anomaly)) {
     let kept = Math.min(count, type === 'bar' ? Math.max(1, topN.n) : topN.n);
-    // A bar's threshold drops every kept category whose total is under it (topNCut in charts/topN.ts).
-    if (type === 'bar' && topN.threshold !== undefined) kept = Math.min(kept, Math.max(1, barTotalsAtLeast(data, topN.threshold)));
+    // A bar's or column's threshold drops every kept category whose total is under it (topNCut in charts/topN.ts).
+    if ((type === 'bar' || type === 'column') && topN.threshold !== undefined) kept = Math.min(kept, Math.max(1, barTotalsAtLeast(data, topN.threshold)));
     count = Math.min(count, kept + (type === 'dot' || type === 'variance' || topN.rest === false || kept === count ? 0 : 1));
   }
   if (VIEWPORT_TYPES.has(type) && key === 'categories') {
