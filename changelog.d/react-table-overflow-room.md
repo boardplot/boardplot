@@ -1,0 +1,3 @@
+### Fixed
+
+- The React table warns `table-overflow` only when its grid scrolls sideways. In a fixed frame its tracks are laid out inside the theme's side margins, as the SVG table's are, but the grid drew those margins only as empty room after the last column, so a table wider than its tracks' room still fit on screen and warned. An authored right margin that the scroll box reaches through did the same in any host. Where the tracks overflow their room, the grid now keeps that room at its end, so it scrolls, and the advised width shows every column. A table that fits draws as before. In a container, the advised width no longer adds the theme's side margins, which the grid does not draw there.

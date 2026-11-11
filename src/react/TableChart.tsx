@@ -1046,9 +1046,11 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     const sidesAt = (frameTheme: Theme, frameWidth: number) => size === 'container' || size === undefined
       ? { left: marginLeft, right: marginRight } : { ...canvasMargin(frameTheme, frameWidth), ...margin };
     const sides = sidesAt(theme, size === undefined || size === 'container' ? 0 : resolveSize(size).width);
+    // The overflow advice adds the frame's side margins to the tracks: a container's are only the authored ones.
+    const hostMargin = size === 'container' || size === undefined ? { margin: { ...margin, left: marginLeft, right: marginRight } } : {};
     return tableScrollNeed({ table, surface: {
       scroll: true, theme, measure: width.measure,
-      options: { ...tableOptions, density, target: request?.target, inlineVisibility, [SOFT_LABEL_CAP]: softLabelCap, [LABEL_WRAP_FLOOR]: labelWrapFloor },
+      options: { ...tableOptions, ...hostMargin, density, target: request?.target, inlineVisibility, [SOFT_LABEL_CAP]: softLabelCap, [LABEL_WRAP_FLOOR]: labelWrapFloor },
       view: {
         columns, allColumns, defaultColumns, rows, available, frameStart,
         withMarks: !readOnlyTree || tableOptions?.outlineMarks === true,
@@ -1098,6 +1100,22 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
   const frameRoom = !rowToFrame || tableOptions?.frameFill === 'none' ? undefined
     : available === undefined ? undefined : available - (measured?.spacerTotal ?? 0);
   const reachFrame = rowToFrame && !(tableOptions?.rowExtent === undefined && frameRoom !== undefined && Math.floor(frameRoom - trackTotal(tracks)) >= 1);
+  /**
+   * Under 'frame' the rows run through an authored right margin as well:
+   * the margin insets the columns, and the scroll box reaches past it to
+   * the figure's edge, so the empty track takes the margin too.
+   */
+  const reachEnd = reachFrame && marginRight > 0 ? marginRight : 0;
+  /**
+   * Where the tracks overflow their room, the grid keeps at its end the room it shows past them: the margin
+   * its scroll box reaches through, and in a fixed frame the theme's canvas margin, inside which the tracks
+   * are laid out as the SVG table's are. The grid then scrolls exactly when it warns `table-overflow`, and
+   * shows every column at the width the warning advises. A table that fits keeps its drawing.
+   */
+  const overflows = need?.warnings.some((warning) => warning.code === 'table-overflow') ?? false;
+  const canvasGutter = !overflows || size === 'container' || size === undefined || available === undefined ? 0
+    : Math.max(0, resolveSize(size).width - marginLeft - marginRight - available);
+  const endReach = reachFrame && overflows ? reachEnd + canvasGutter : frameReach;
   /** The track list the grid draws, spacer tracks folded in at their columns. */
   const gridTracks = measured?.gridTracks ?? [];
 
@@ -1181,10 +1199,10 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     // natural width left the margin out gave a card that sizes itself to
     // its content (`width: max-content`) no room for it: the card shrank by
     // the margin and the last column met its edge.
-    '--bp-cols': reachFrame ? `${trackTemplate(gridTracks)} minmax(${frameReach > 0 ? `${frameReach}px` : 0},1fr)` : trackTemplate(gridTracks),
+    '--bp-cols': reachFrame ? `${trackTemplate(gridTracks)} minmax(${endReach > 0 ? `${endReach}px` : 0},1fr)` : trackTemplate(gridTracks),
     // The table is exactly as wide as the columns it draws; room a capped
     // fill did not use stays to the right of it.
-    '--bp-table-width': reachFrame ? `max(${Math.round((trackTotal(gridTracks) + frameReach) * 10) / 10}px, 100%)` : `${trackTotal(gridTracks)}px`,
+    '--bp-table-width': reachFrame ? `max(${Math.round((trackTotal(gridTracks) + endReach) * 10) / 10}px, 100%)` : `${trackTotal(gridTracks)}px`,
     // Print has no animation to protect, so the tracks may be proportional
     // and the table takes the page width.
     '--bp-cols-print': `${gridTracks.map((track) => (track.width === 0 ? '0px' : `${track.natural}fr`)).join(' ')}${reachFrame ? ' 0px' : ''}`,
@@ -1194,13 +1212,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     '--bp-indent-base': `${indents.base}px`,
     '--bp-indent-step': `${indents.step}px`,
     ...(headFonts === undefined ? {} : headVars(headFonts)),
-  } as CSSProperties), [manyLabelLines, tableOptions?.rowLabelLines, gridTracks, padX, headFonts, reachFrame, frameReach, frameStart, indents]);
-  /**
-   * Under 'frame' the rows run through an authored right margin as well:
-   * the margin insets the columns, and the scroll box reaches past it to
-   * the figure's edge, so the empty track takes the margin too.
-   */
-  const reachEnd = reachFrame && marginRight > 0 ? marginRight : 0;
+  } as CSSProperties), [manyLabelLines, tableOptions?.rowLabelLines, gridTracks, padX, headFonts, reachFrame, endReach, frameStart, indents]);
   const scrollStyle = frameStart + reachEnd > 0
     ? {
       ...(frameStart > 0 ? { marginInlineStart: -frameStart } : {}),
@@ -1208,6 +1220,8 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
       maxWidth: `calc(100% + ${frameStart + reachEnd}px)`,
     } as CSSProperties
     : undefined;
+  // A grid without the empty track keeps the canvas margin as its scroll box's end padding.
+  const endPad = reachFrame ? 0 : canvasGutter;
   /**
    * The trailing empty track's cell: placed explicitly on a grid that places
    * its cells. It belongs to the row, so it takes the row's grounds, rules,
@@ -1781,7 +1795,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
   const bodyGroup = (
     <div role="rowgroup" data-bp-rowgroup="body">
       {rowWindowed ? rowPages.map((nodes, index) => <TableRowPage key={index} {...rowShared} nodes={nodes} index={index} contain={containRowPages && !labelsWrap && !printing}
-        filler={frameReach === 0 && gridWidth >= container.size.width ? undefined : filler}
+        filler={endReach === 0 && gridWidth >= container.size.width ? undefined : filler}
         light={!printing && !rowPagesInView.has(index) && !nodes.some(node => node.row.id === grid.focus?.rowId)} />)
         : sticky.sections && !pageHead
         ? sectionScopes(rowTree).map((item) => 'scope' in item
@@ -1820,7 +1834,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
           <div ref={setScroller} className="bp-scroll">{bodyGroup}</div>
         </div>
       ) : (
-        <div ref={setScroller} className="bp-scroll" style={scrollStyle}>
+        <div ref={setScroller} className="bp-scroll" style={endPad > 0 ? { ...scrollStyle, paddingInlineEnd: endPad } : scrollStyle}>
           <div ref={grid.tableRef} {...gridProps} style={{ ...gridStyle, ...stickyVars, ...printFit, '--bp-pin-end': `${pinEnd}px` } as CSSProperties}>
             {headGroup}
             {bodyGroup}
