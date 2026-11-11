@@ -69,6 +69,17 @@ describe('authored widths give way through the CLI', () => {
   });
 });
 
+describe('a self-loop label at the larger text size', () => {
+  // The loop was too short for one line of the larger text beside it, so a diagram that drew at 1079 px was refused from 1080 px.
+  it.each([1079, 1080, 1400])('draws the long retry label at %i px', (width) => {
+    const { data, options } = fixture('diagram', 'agent-approval');
+    const edges = (data as { edges: Array<{ id: string; label?: string }> }).edges.map((edge) => (edge.id === 'retry' ? { ...edge, label: 'Retry and its much longer descriptive name' } : edge));
+    const body = render({ spec: { type: 'diagram', data: { ...(data as object), edges }, options: { ...options, size: { width } } }, format: 'svg' } as never).body as { ok: boolean; svg: string };
+    expect(body.ok).toBe(true);
+    expect(body.svg).toContain('descriptive');
+  });
+});
+
 describe('wrong generated ids through the CLI', () => {
   const codes = (type: string, id: string, options: object) => {
     const { data, options: own } = fixture(type, id);
