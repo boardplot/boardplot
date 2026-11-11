@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import '../src/core/charts';
 import '../src/core/geo/packs';
 import { getFixtures } from '../src/fixtures';
-import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
+import { layoutResolvedRequest, measure, resolveChartRequest } from '../src/core/request';
 import { render } from '../src/cli/render';
 
 const fixture = (type: string, id: string) => getFixtures(type as never).find((item) => item.id === id)!;
@@ -145,6 +145,41 @@ describe('an automatic height grows before a width refusal', () => {
     }],
   ])('%s draws', (type, data, options) => {
     expect(layout(type, data, options).refused).toBeFalsy();
+  });
+
+  // A bullet, heatmap or status chart that drew at a narrower width was refused here, because the form it picked for this width needed more.
+  // Measure then named that form's floor as the minimum width, above the width it draws at, at an open and at a pinned height.
+  it.each([
+    ['bullet', 485, { rows: ['fy21', 'fy22', 'fy23'].map((id, i) => ({ id, label: `FY${21 + i} and its much longer descriptive name`, value: 100 * 1.2 ** i, target: 110 * 1.2 ** i })) },
+      { title: 'Orders grow 20% per year', unit: 'thousand orders', sharedScale: true, theme: 'notation', annotations: [{ id: 'growth', kind: 'cagr', from: 'fy21', to: 'fy23' }] }],
+    ['heatmap', 360, { categories: [1, 2, 3, 4, 5].map((n) => ({ id: `wave${n}`, label: `Wave ${n}` })), series: [
+      { id: 'procurement', label: 'Procurement', values: [12.4, 15.1, null, 18.2, 20.5] }, { id: 'logistics', label: 'Logistics', values: [8.2, null, 9.6, 11, null] },
+      { id: 'manufacturing', label: 'Manufacturing', values: [null, 22.4, 24.8, null, 28.1] }, { id: 'overhead', label: 'Overhead', values: [4.1, 4.4, null, null, 6.2] }] },
+      { title: 'Unreported waves stay blank', unit: '$m', missing: 'blank', legend: 'right', target: 'dashboard' }],
+    ['status', 500, { rows: ['pricing', 'service'].map((id) => ({ id, label: `${id} and its much longer descriptive name` })),
+      columns: ['draft', 'review'].map((id) => ({ id, label: `${id} and its much longer descriptive name` })),
+      cells: [['pricing', 'draft', 'reviewed'], ['pricing', 'review', 'reviewed'], ['service', 'draft', 'reviewed'], ['service', 'review', 'pending']].map(([row, col, state]) => ({ row, col, state })) },
+      { title: 'Pricing review is complete', theme: 'notation', legend: 'right', target: 'slide', states: [{ id: 'reviewed', label: 'Reviewed', tone: 'info' }, { id: 'pending', label: 'Pending', tone: 'neutral' }] }],
+  ])('%s draws at %i px', (type, width, data, options) => {
+    expect(layout(type, data, { ...options, size: { width } }).refused).toBeFalsy();
+    for (const size of [{ width }, { width, height: 600 }]) {
+      const measured = measure({ type, data, options: { ...options, size } } as never);
+      expect(measured.geometry).toBeDefined();
+      expect(measured.minWidth).toBeLessThanOrEqual(width);
+    }
+  });
+
+  // At a pinned height measure named the width a refusal at the declared floor asked for (701 px), above 460 px, where this board draws in its own form.
+  it('measure at a pinned height names no minimum above a width that draws', () => {
+    const label = (id: string) => `${id[0]!.toUpperCase()}${id.slice(1)} and its much longer descriptive name`;
+    const measured = measure({ type: 'status', theme: 'notation', data: {
+      rows: ['pricing', 'service'].map((id) => ({ id, label: label(id) })), columns: ['draft', 'review'].map((id) => ({ id, label: label(id) })),
+      cells: [['pricing', 'draft', 'reviewed'], ['pricing', 'review', 'reviewed'], ['service', 'draft', 'reviewed'], ['service', 'review', 'pending']].map(([row, col, state]) => ({ row, col, state })) },
+    options: { states: [{ id: 'reviewed', label: 'Reviewed', tone: 'info' }, { id: 'pending', label: 'Pending', tone: 'neutral' }], legend: 'right', columnLabels: 'bottom',
+      title: 'Pricing review is complete; service review remains open', subtitle: { measure: 'Review progress by workstream and stage' }, source: 'Illustrative review log',
+      target: 'slide', size: { width: 460, height: 500 } } } as never);
+    expect(measured.geometry).toBeDefined();
+    expect(measured.minWidth).toBeLessThanOrEqual(460);
   });
 });
 

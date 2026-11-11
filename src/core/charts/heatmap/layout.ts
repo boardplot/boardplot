@@ -64,7 +64,7 @@ import type {
 import { rowDrivenHeight } from '../../rowCanvas';
 import { rowLabelBand } from '../../label/rowLabels';
 import { fittedLabel, gutterBudget, GUTTER_MAX_SHARE, stepDownFont } from '../../label/rowFit';
-import { capPitch, HARD_MINIMUM, heightOmitted, matrixWidths, rowSizing } from '../../sizing';
+import { capPitch, HARD_MINIMUM, heightOmitted, matrixWidths, NARROW_FORM, rowSizing } from '../../sizing';
 import { arrowHeadPath, arrowShaftEnd, harveyWedgePath } from '../../svgPath';
 import { nonzeroDecimals } from '../../formatPrecision';
 import { categoryLabelsAndMarks } from '../../footnoteMark';
@@ -663,7 +663,8 @@ export function layoutHeatmap(
   // The note gutter is settled after the row band (its seats read the band width); the band reserves the bracket gutter.
   const rowGutter = bracketGutter ?? 0;
   const naturalWider = gutterBudget(capW, plot0.w, ROW_BAND_GAP + rowGutter + cols.length * 28 + (cols.length - 1) * CELL_GAP);
-  const oneLine = card ? undefined : fitRows(cellHEst >= 2 * lineH + 4 && !(valueStyle && size.width < 480) ? 2 : 1,
+  // Row names wrap, as a narrower width draws them, where the one-line band sets a floor above the width (NARROW_FORM).
+  const oneLine = card || (options as { [NARROW_FORM]?: true })[NARROW_FORM] ? undefined : fitRows(cellHEst >= 2 * lineH + 4 && !(valueStyle && size.width < 480) ? 2 : 1,
     Math.max(naturalWider, gutterBudget(capW, plot0.w, ROW_BAND_GAP + rowGutter + cols.length + (cols.length - 1) * CELL_GAP)));
   const fittedRows = oneLine && !(oneLine.labels.some((label) => label.title !== undefined))
     ? oneLine : fitRows(2, naturalWider);
