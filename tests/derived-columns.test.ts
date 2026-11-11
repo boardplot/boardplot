@@ -72,4 +72,12 @@ it('prints a difference column at the scale of the values it subtracts', () => {
   expect(shown(draw('dot', { variant: 'dumbbell', gapColumn: true }), 'gap:')).toEqual({ n: '+1.03B', s: '+80M' });
   const slope = { categories: [{ id: 'y1' }, { id: 'y2' }], series: [{ id: 'p', values: [1_070_000_000, 2_100_000_000] }, { id: 'q', values: [640_000_000, 720_000_000] }] };
   expect(shown(requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'slope', data: slope, options: { title: 'T', change: 'absolute', size: { width: 900, height: 400 } } } as never))), 'change:')).toEqual({ p: '+1.03B', q: '+80M' });
+  // A series unit that names a scale ('$m') keeps the labels unscaled, so the column adds no second scale ("+1.03M").
+  const inMillions = { categories, series: series.map((s) => ({ ...s, unit: '$m', values: s.values.map((v) => v / 1000) })) };
+  const unscaled = (type: string, data: object, options: object, prefix: string) => Object.values(shown(requireGeometry(layoutResolvedRequest(resolveChartRequest({ type, data, options: { title: 'T', size: { width: 900, height: 400 }, ...options } } as never))), prefix));
+  for (const [type, options, prefix] of [['butterfly', { a: 'p', b: 'q', diffColumn: true }, 'diff:'], ['dot', { variant: 'dumbbell', gapColumn: true }, 'gap:']] as const) {
+    expect(unscaled(type, inMillions, options, prefix).every((text) => /^\+[0-9,.]+$/.test(text)), type).toBe(true);
+  }
+  const slopeInMillions = { ...slope, series: slope.series.map((s) => ({ ...s, unit: '$m', values: s.values.map((v) => v / 1000) })) };
+  expect(unscaled('slope', slopeInMillions, { change: 'absolute' }, 'change:').every((text) => /^\+[0-9,.]+$/.test(text))).toBe(true);
 });

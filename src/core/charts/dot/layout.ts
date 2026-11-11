@@ -513,7 +513,7 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
   // ---- gap column: second minus first per row, right of the plot, off on a card ----
   const gapText = new Map<Id, string>();
   if (options.gapColumn === true && gaps !== undefined && size.width >= COLUMN_MIN_WIDTH) {
-    const signedGap = differenceFormatter({ format: options.format, locale: options.locale?.language, decimals: valueSpec.spec.decimals, values: dataSeries.flatMap((s) => s.cells.map((cell) => cell.v)).filter((v): v is number => v !== null), scale: valueSpec.spec });
+    const signedGap = differenceFormatter({ format: options.format, locale: options.locale?.language, decimals: valueSpec.spec.decimals, values: dataSeries.flatMap((s) => s.cells.map((cell) => cell.v)).filter((v): v is number => v !== null), scale: valueSpec.specForSeries(seriesKey(dataSeries[0]!)) });
     cats.forEach((c, ci) => {
       const a = dataSeries[0]!.cells[ci]!.v;
       const b = dataSeries[1]!.cells[ci]!.v;
