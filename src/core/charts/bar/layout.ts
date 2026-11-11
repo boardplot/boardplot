@@ -82,7 +82,7 @@ import type { Theme } from '../../types/theme';
 import type { FootballFieldBarOptions, TornadoBarOptions } from './types';
 import { layoutBarLocalAnnotations } from './annotations';
 import { displayFor, resolveBarDomain, textFor, toDateOnValues } from './domain';
-import { labelOn as barLabelOn } from '../labelOn';
+import { labelOn as barLabelOn, valueLineLabelsOn } from '../labelOn';
 import { planBarLabels } from './labels';
 import { layoutBarMarks } from './marks';
 import { authoredTrackWidth, columnOverrideWarnings, trackPlotFloor } from '../columnOverrides';
@@ -405,6 +405,7 @@ function annotateBar(
     strings: domain.options.strings,
     sharesFormat: domain.variant === 'stacked100',
     valueLinePercentLevels: domain.variant === 'stacked100' || domain.options.unit === '%' || percentLevels(domain.dataSeries.map(series => ({ vals: series.cells }))),
+    valueLineLabels: valueLineLabelsOn(domain.options),
     solveCtx,
     meanValue: domain.meanValue,
     ...(domain.meanMissing ? { meanMissing: domain.meanMissing } : {}),
