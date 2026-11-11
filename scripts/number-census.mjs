@@ -188,6 +188,12 @@ function findRow(rows, id) {
   return undefined;
 }
 
+/** The row and column a table claim id names ("table:rev:m1:rounding-adjustment"), shaped as a cell id match; ids escape ':' and '\'. */
+function tableClaimCell(id) {
+  const parts = id.match(/(?:\\.|[^:\\])+/g)?.map((part) => part.replace(/\\(.)/g, '$1')) ?? [];
+  return parts[0] === 'table' && parts.length >= 3 ? [id, parts[1], parts[2]] : null;
+}
+
 /** The sign a statement row prints with: the product of its own and its parents' `sign`. */
 function rowSign(rows, id, sign = 1) {
   for (const row of rows) {
@@ -337,6 +343,13 @@ export function censusCase(type, fixture, width, localeName, measured) {
     const cell = /^(?:.*\/)?cell:([^:]+):(.+)$/.exec(entry.id);
     if (cell && cell[2] === labelColumn) headerScale.set(`row:${cell[1]}`, { text: entry.text, letter: namedMagnitude(entry.text) });
   }
+  // A row's unit affix ("Revenue (net) $M") is its own text node beside the label; it names the scale of the row's
+  // bare figures. An authored affix may repeat the magnitude its format prints ("$M" beside "$7.0M" or "$7,0 Mio."): no mixed units for that magnitude.
+  for (const entry of texts) {
+    const unit = /^(?:.*\/)?unit:(.+)$/.exec(entry.id);
+    const letter = unit ? namedMagnitude(entry.text) : undefined;
+    if (letter && !headerScale.get(`row:${unit[1]}`)?.letter) headerScale.set(`row:${unit[1]}`, { text: entry.text, letter, affix: true });
+  }
 
   // 1. Every record value against what each surface prints for its owner.
   const groupValues = new Map();
@@ -422,7 +435,7 @@ export function censusCase(type, fixture, width, localeName, measured) {
       if (token.value === 0 && !token.bound && candidate.raw !== 0 && options.smallValues !== 'zero' && !honestZero(candidate.raw, example)) {
         flag('false-zero', printed.surface, { id: printed.id, text: printed.text, raw: candidate.raw, field: candidate.name });
       }
-      if (contextScale && token.letter && printed.surface === 'svg') {
+      if (contextScale && token.letter && printed.surface === 'svg' && !(context.affix && contextScale === SCALE[token.letter])) {
         flag('mixed-units', printed.surface, { id: printed.id, text: printed.text, raw: candidate.raw, why: `header "${context.text}" names ${context.letter}, cell prints ${token.letter}` });
       }
       if (printed.surface === 'svg' && candidate.name === 'value') {
@@ -552,8 +565,9 @@ export function censusCase(type, fixture, width, localeName, measured) {
       const found = tokens(claim.output.displayed, m);
       // A histogram bin's claim displays its range label, not its count.
       if (found.length > 0 && !/^annotation-/.test(claim.op) && !claim.op.startsWith('quadrant') && !claim.op.startsWith('histogram-bin-count') && !/count@/.test(claim.op)) {
-        // A table cell reads in the magnitude its header or row label names.
-        const cell = /^(?:.*\/)?cell:([^:]+):(.+)$/.exec(claim.nodeId ?? '');
+        // A table cell reads in the magnitude its header or row label names. A claim no cell prints (a rounding gap)
+        // states its figure in its row's format, so it reads in that row's magnitude too.
+        const cell = /^(?:.*\/)?cell:([^:]+):(.+)$/.exec(claim.nodeId ?? '') ?? (type === 'table' && !claim.nodeId ? tableClaimCell(claim.id) : null);
         const context = [...(cell ? [`col:${cell[2]}`, `row:${cell[1]}`] : []), 'label-header', 'subtitle'].map((key) => headerScale.get(key)).find((entry) => entry?.letter);
         const contextScale = context ? SCALE[context.letter] : 1;
         const raw = claim.output.raw * dataScale;
