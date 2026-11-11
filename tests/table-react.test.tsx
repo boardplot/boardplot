@@ -1829,6 +1829,29 @@ describe('a banded block closes on its right edge', () => {
       reactAfterRun: opensAfterRun,
     }).toEqual({ svgClose: true, svgOnceAfterYtd: 1, reactCloses: true, svgAfterRun: true, reactAfterRun: true });
   });
+
+  // A spacer before a column group is its separation: the SVG draws no divider there, and the grid drew a hairline.
+  it('opens a column group that a spacer stands off without a divider, as the SVG does', async () => {
+    const { layoutTable } = await import('../src/core/charts/table/layout');
+    const data: TableData = {
+      columns: [
+        { id: 'label', kind: 'rowLabel', label: 'Region' },
+        { id: 'a1', kind: 'value', label: 'Actual' }, { id: 'a2', kind: 'value', label: 'Plan' },
+        { id: 'b1', kind: 'value', label: 'Actual' }, { id: 'b2', kind: 'value', label: 'Plan' },
+      ],
+      columnGroups: [
+        { id: 'month', label: 'Month', columns: ['a1', 'a2'] },
+        { id: 'ytd', label: 'Year to date', columns: ['b1', 'b2'], spacer: 16 },
+      ],
+      rows: [{ id: 'n', label: 'North', cells: { a1: 12, a2: 11, b1: 120, b2: 118 } }],
+    } as TableData;
+    const geometry = layoutTable(data, { size: { width: 720, height: 200 } });
+    act(() => { root.render(<TableChart data={data} size={{ width: 720, height: 200 }} />); });
+    expect({
+      svg: geometry.scene.filter((node) => node.t === 'line' && node.part === 'tableGroupDivider').length,
+      react: container.querySelectorAll('[data-bp-group-start]').length,
+    }).toEqual({ svg: 0, react: 0 });
+  });
 });
 
 // Every heat scale must have a readable key on both surfaces, with no duplicate key for equal scales.
