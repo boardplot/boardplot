@@ -69,6 +69,13 @@ describe('column and combo stack totals stay exact until printed', () => {
     expect(desc(column)).toContain('Totals: C0 0.025, C1 0.025.');
   });
 
+  // Under a whole-number format a stack total of 0.4 printed "0" on column and bar, while a mekko total took the digit it needs.
+  it('a stack total keeps a nonzero sum off 0 under an authored whole-number format (column, bar)', () => {
+    const data = { categories: cats('c0'), series: [{ id: 'a', label: 'A', values: [0.2] }, { id: 'b', label: 'B', values: [0.2] }] };
+    expect(text(layoutColumn(data, { variant: 'stacked', format: '1,234' } as never), 'grandTotal:c0')).toBe('0.4');
+    expect(text(layoutResolvedRequest(resolveChartRequest({ type: 'bar', data, options: { variant: 'stacked', format: '1,234' } } as never) as never) as Laid, 'grandTotal:c0')).toBe('0.4');
+  });
+
   it('the description and the label of a single-series column state one total', () => {
     const data = { categories: cats('c0', 'c1', 'c2'), series: [{ id: 'a', label: 'A', values: [0.04, 0.025, 0.01] }] };
     const column = layoutColumn(data, {});
