@@ -131,6 +131,20 @@ describe('a form whose floor is above the asked width gives way', () => {
         { id: 'fx', label: 'FX', value: -6000 }, { id: 'fy24', label: 'FY24F', type: 'total' },
       ],
     }, { unit: '$m', mode: 'full', size: { width: 400 } }],
+    // The one-column card form stopped at 480 px, where the two-column grid still needed 490.
+    ['grid', {
+      panels: [
+        { id: 'list', type: 'table', row: 0, column: 0, options: { variant: 'status', density: 'compact', legend: 'none' }, data: {
+          columns: [{ id: 'label', kind: 'rowLabel', label: 'Initiative' }, { id: 'status', kind: 'status', label: 'Delivery status' }],
+          rows: [['A', 'A · Core expansion', 'on-track'], ['B', 'B · Service attach', 'on-track'], ['C', 'C · Partner channel', 'at-risk']]
+            .map(([id, label, status]) => ({ id, label, cells: { status } })),
+        } },
+        { id: 'map', type: 'scatter', row: 0, column: 1, data: {
+          groups: [{ id: 'priority', label: 'Priority' }, { id: 'selective', label: 'Selective' }],
+          points: [{ id: 'A', group: 'priority', label: 'A', x: 8.4, y: 8.8 }, { id: 'B', group: 'priority', label: 'B', x: 7.1, y: 8 }, { id: 'C', group: 'selective', label: 'C', x: 6.8, y: 5.7 }],
+        }, options: { valueAxis: { show: true, gridlines: true }, legend: 'none', axisTitles: { x: 'Execution feasibility', y: 'Strategic attractiveness' }, unit: 'Attractiveness × feasibility' } },
+      ],
+    }, { title: 'A–G assessment links the decision list to the portfolio map', columns: [1.15, 1.05], target: 'slide', theme: 'notation', size: { width: 480 } }],
   ])('%s draws', (type, data, options) => {
     expect(layout(type, data, options).refused).toBeFalsy();
   });

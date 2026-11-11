@@ -49,7 +49,7 @@ import { GridChildRefusal, gridRowHeights, gridSizing, hasKpiFigure, inheritedSc
 import { rebaseRefusal, rebaseWarning, sameField, type Rebase } from '../../normalize/innerRefusal';
 import { KPI_HOST_TEXT, KPI_VALUE_SIZE } from '../../typeFloors';
 import { LEFT_OUT_OF_NOTE, panelNoteTexts, stringsIn } from '../../frame';
-import { autoPlotPx, CARD_CLASS_WIDTH, CARD_MIN_WIDTH, chartSizing, DIGIT_SEAT, heightOmitted, type DigitSeated, NARROW_SHARE_WIDTH, stackedColumnPlotPx } from '../../sizing';
+import { autoPlotPx, CARD_CLASS_WIDTH, CARD_MIN_WIDTH, chartSizing, DIGIT_SEAT, heightOmitted, type DigitSeated, NARROW_FORM, NARROW_SHARE_WIDTH, stackedColumnPlotPx } from '../../sizing';
 import { defaultMeasurer, type FontSpec, type TextMeasurer } from '../../text';
 import {
   canvasMargin,
@@ -406,7 +406,7 @@ function reflowed(
   const columns = options.columns;
   const width = resolveSize(options.size).width;
   if (options.reflow === false || typeof columns !== 'number' || columns < 3 || panels.length <= columns
-    || width >= CARD_CLASS_WIDTH || legacyGridForm(panels, options) !== 'facets') return options;
+    || !cardForm(width, options) || legacyGridForm(panels, options) !== 'facets') return options;
   // An authored height must still seat the fewer columns' extra rows; a sizing probe's height is
   // not authored, so the automatic height grows to the reflowed grid instead.
   const fixed = (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height ?? !heightOmitted(options.size);
@@ -536,7 +536,7 @@ function withCardFloor<M extends object, D extends object>(geometry: LayoutResul
   if (geometry.refused) return geometry;
   const sizing = geometry.sizing;
   // The compact form (stackCompactPanels) draws down to the width its widest panel measures.
-  if (sizing && options.mode === 'compact' && geometry.size.width < CARD_CLASS_WIDTH && sizing.minWidth > Math.max(CARD_MIN_WIDTH, sizing.measuredMinWidth)) {
+  if (sizing && options.mode === 'compact' && cardForm(geometry.size.width, options) && sizing.minWidth > Math.max(CARD_MIN_WIDTH, sizing.measuredMinWidth)) {
     const minWidth = Math.max(CARD_MIN_WIDTH, sizing.measuredMinWidth);
     return { ...geometry, sizing: { ...sizing, minWidth, comfortableWidth: Math.ceil(minWidth * 1.25) } };
   }
@@ -552,9 +552,17 @@ function withCardFloor<M extends object, D extends object>(geometry: LayoutResul
  * when its type has one, as the same chart does alone on that card. An
  * authored mode wins. Wider grids keep full panels.
  */
-function compactPanelMode(panel: GridPanelSpec, canvasWidth: number): { mode?: 'compact' } {
+function compactPanelMode(panel: GridPanelSpec, canvasWidth: number, options: GridLayoutOptions): { mode?: 'compact' } {
   if (panel.type === 'text' || panel.type === 'legend' || panel.options?.mode !== undefined) return {};
-  return panelCompacts(panel.type) && canvasWidth < CARD_CLASS_WIDTH ? { mode: 'compact' } : {};
+  return panelCompacts(panel.type) && cardForm(canvasWidth, options) ? { mode: 'compact' } : {};
+}
+
+/**
+ * The grid draws its card form (one column, compact panels) under CARD_CLASS_WIDTH, and at a wider
+ * width that render's last step asks for it (NARROW_FORM): there the full grid's floor is above the width.
+ */
+function cardForm(width: number, options: GridLayoutOptions): boolean {
+  return width < CARD_CLASS_WIDTH || (options as { [NARROW_FORM]?: true })[NARROW_FORM] === true;
 }
 
 function withWarnings<M extends object, D extends object>(
@@ -876,11 +884,11 @@ function layoutLegacyGrid(
         ...(sharedAxis ? { valueAxis: { ...axis, gridlines: axis.gridlines ?? true, ...(index % columns === 0 ? {} : { show: false }) } } : {}),
         ...(compactTiers && panelOptions.title === undefined && panelTitle ? { title: panelTitle } : {}),
         ...(options.palette !== undefined && panelOptions.palette === undefined ? { palette: options.palette } : {}),
-        ...compactPanelMode(panel, canvasWidth),
+        ...compactPanelMode(panel, canvasWidth, options),
         // Facets: the grid's canvas margin and gutter are the panel's side margins; a
         // facet adds none of its own, so its plot spans the panel.
         // A compact panel on a narrow card spends no width on side margins either.
-        margin: { ...(facets ? { left: 0, right: 0, bottom: 0 } : compactPanelMode(panel, canvasWidth).mode ? { left: 0, right: 0 } : {}), ...margin, top: numeric(margin.top, firstRow && rowCaptionHeight > 0 ? ROW_CAPTION_TOP : headTop) + captionHeight + (firstRow ? rowCaptionHeight : 0) - pull },
+        margin: { ...(facets ? { left: 0, right: 0, bottom: 0 } : compactPanelMode(panel, canvasWidth, options).mode ? { left: 0, right: 0 } : {}), ...margin, top: numeric(margin.top, firstRow && rowCaptionHeight > 0 ? ROW_CAPTION_TOP : headTop) + captionHeight + (firstRow ? rowCaptionHeight : 0) - pull },
       },
     };
   });
@@ -1861,7 +1869,7 @@ function stackNarrowReadouts(
 ): { panels: GridPanelSpec[]; options: GridLayoutOptions } {
   const anchored = options.anchors?.categories === 'column' || options.anchors?.categories === 'all';
   const columns = Array.isArray(options.columns) ? options.columns.length : typeof options.columns === 'number' ? options.columns : undefined;
-  if (!anchored || columns === undefined || columns < 2 || width >= CARD_CLASS_WIDTH) return { panels, options };
+  if (!anchored || columns === undefined || columns < 2 || !cardForm(width, options)) return { panels, options };
   const chart = panels.find((panel) => panel.type !== 'text' && panel.type !== 'legend'
     && (panel.column ?? 0) === 0 && panel.span?.columns === columns && (panel.span?.rows ?? 1) === 1);
   const categories = chart && isRecord(chart.data) && Array.isArray(chart.data.categories) ? chart.data.categories : [];
@@ -1919,7 +1927,7 @@ function stackCompactPanels(panels: GridPanelSpec[], options: GridLayoutOptions,
     ?? (options.rows ? Math.ceil(panels.length / options.rows.length) : Math.ceil(Math.sqrt(panels.length)));
   const columns = Math.max(authored, ...panels.map((panel) => (panel.column ?? 0) + (panel.span?.columns ?? 1)));
   // A grid inside a grid panel (it carries the parent's typeClass) keeps its layout: only the outer card stacks.
-  if (options.mode !== 'compact' || panelTypeClass(options) !== undefined || width >= CARD_CLASS_WIDTH || columns < 2
+  if (options.mode !== 'compact' || panelTypeClass(options) !== undefined || !cardForm(width, options) || columns < 2
     || options.anchors !== undefined || options.alignmentRules !== undefined) return { panels, options };
   const { rows: _rows, columns: _gutterColumns, ...gutters } = options.gutters ?? {};
   return {
