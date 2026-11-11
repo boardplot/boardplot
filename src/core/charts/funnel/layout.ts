@@ -82,7 +82,7 @@ import { belowCalloutCandidates, dropCallout, fitText, type FittedText, LABEL_PA
 import { composedTextRole } from '../../textRole';
 import { footnoteSuffix } from '../../footnoteMark';
 import { maxOf, pushAll } from '../../arrays';
-import { claimId } from '../../claims/ids';
+import { claimId, withUnprintedClaims } from '../../claims/ids';
 
 export interface FunnelMarks {
   rows: {
@@ -1091,7 +1091,8 @@ export function layoutFunnel(
   const chipMinimumRowsH = (stages.length - 1) * Math.max(chipMinBar + chipUnderH + LABEL_PAD, labelH + 2 * LABEL_PAD) + chipLastH(chipMinBar);
   const paintWarningRules: PaintWarningRule[] = [];
   pushAll(warnings, rectSeriesAdjacentWarnings(nodes, (paint) => paintColor(theme, paint), 'horizontal', highlights, theme, { rules: paintWarningRules, before: warnings.filter(warning => !['pie-ramp-crowded', 'likert-ramp-invisible', 'band-lightness-insufficient', 'series-adjacent-similar', 'highlight-reads-as-loss'].includes(warning.code)).length }));
-  return {
+  // The step conversions print only as point labels: with those off, no text prints them.
+  return withUnprintedClaims({
     type: 'funnel',
     size,
     sizing: rowSizing('funnel', size, {
@@ -1131,7 +1132,7 @@ export function layoutFunnel(
       occupied: occupied.snapshot(),
       decisions: [...solved.decisions, ...annResult.decisions],
     },
-  };
+  }, labelOn('point') ? [] : conversions.map((conv) => claimId('funnel:conv', conv.fromId, conv.toId)));
 
   // ---- helpers ----
 

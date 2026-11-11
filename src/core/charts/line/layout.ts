@@ -849,7 +849,8 @@ function assembleLineGeometry(input: LineAssembly): Geometry<LineMarks, LineDeri
     : area.axisTickSpec ? tickFormatter(area.axisTickSpec, bandLevels) : area.axisFmt;
   const a11yDesc = lineA11yDesc(env, domain, area, marks, variantName, text) + referenceBandsA11y(input.reserves.referenceBands, bandFmt, domain.options)
     + (usesEndLabelKey(options) ? chartString(domain.options, 'lineEndKeyDesc') : '');
-  // A trend's key prints its slope and r², never its intercept.
+  // A trend's key prints its slope and r², never its intercept. Without its key entry no text prints either.
+  const keyed = new Set(area.frame.legend?.items.map((item) => item.id));
   return withUnprintedClaims({
     type: 'line',
     size: env.size,
@@ -883,7 +884,7 @@ function assembleLineGeometry(input: LineAssembly): Geometry<LineMarks, LineDeri
       occupied: input.occupied.snapshot(),
       decisions: [...solved.decisions, ...annResult.decisions],
     },
-  }, domain.trends.map((fit) => `line:trend:${fit.id}:intercept`));
+  }, domain.trends.flatMap((fit) => [`line:trend:${fit.id}:intercept`, ...(keyed.has(`trend:${fit.id}`) ? [] : [`line:trend:${fit.id}:slope`, `line:trend:${fit.id}:r2`])]));
 }
 
 /**
