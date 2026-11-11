@@ -34,6 +34,8 @@ import { typeDocLints } from '../core/lint/type';
 import { lineIntegrityDocLints } from '../core/lint/lineIntegrity';
 import { shareUnitLints, unitInFormatLints, unitNotShownLints } from '../core/frame';
 import { unscaledFormatLint } from '../core/formatSpec';
+import { chartRecords } from '../core/reading';
+import type { InteractionRecord } from '../core/a11y/types';
 import { chartRefusals } from '../core/schema/refusals';
 import type { Annotation } from '../core/types/annotations';
 import type { RenderTarget } from '../core/types/options';
@@ -418,17 +420,20 @@ export function collapseLabelHiddenWarnings(geo: Geometry, warnings: readonly Li
  * so another panel's unit never counts. The finding points at the authored
  * panel, or at the repeat template that made it; nested grids recurse.
  */
-function panelUnitLints(data: unknown, geo: Geometry, base: (string | number)[] = ['data']): LintWarning[] {
+function panelUnitLints(data: unknown, geo: Geometry, records: () => readonly InteractionRecord[] | null, base: (string | number)[] = ['data']): LintWarning[] {
   const panels = geo.type === 'grid' ? (geo.marks as unknown as GridMarks | undefined)?.panels ?? [] : [];
   const authored = isRecord(data) && Array.isArray(data.panels) ? data.panels : undefined;
   const owns = (nodeId: string, panelId: string) => nodeId.startsWith(`${panelId}/`) || nodeId.includes(`panel:${panelId}:`);
   // A format warning of a panel's own options and data, moved to their path in the grid.
-  const formatsAt = (spec: Record<string, unknown>, own: (string | number)[], name: string) => unscaledFormatLint(spec.options as Record<string, unknown> | undefined, spec.data)
+  const formatsAt = (spec: Record<string, unknown>, own: (string | number)[], name: string, held: () => readonly InteractionRecord[] | null) => unscaledFormatLint(spec.options as Record<string, unknown> | undefined, spec.data, undefined, held)
     .map((warning) => ({ ...warning, message: `[${name}] ${warning.message}`, field: [...own, ...(warning.field ?? [])],
       ...(warning.fix ? { fix: warning.fix.map((op) => ({ ...op, path: `/${own.join('/')}${op.path}` })) } : {}) }));
   // A repeat template that holds one chart document is checked once, at the template. Its bySlice form is not checked.
   const template = isRecord(data) && isRecord(data.template) && isRecord(data.template.data) && !('bySlice' in data.template.data) ? data.template : undefined;
-  return [...(template ? formatsAt(template, [...base, 'template'], 'template') : []), ...panels.flatMap((panel) => {
+  // The template's records are those of the panels it made.
+  const made = new Set(panels.filter((panel) => !authored?.some((item) => isRecord(item) && item.id === panel.id)).map((panel) => panel.id));
+  const templateRecords = () => (records() ?? []).filter((record) => made.has(record.target.panel ?? ''));
+  return [...(template ? formatsAt(template, [...base, 'template'], 'template', templateRecords) : []), ...panels.flatMap((panel) => {
     if (!panel.chart) return [];
     const index = authored?.findIndex((item) => isRecord(item) && item.id === panel.id) ?? -1;
     const own = index >= 0 ? [...base, 'panels', index] : [...base, 'template'];
@@ -442,14 +447,23 @@ function panelUnitLints(data: unknown, geo: Geometry, base: (string | number)[] 
       ...unitInFormatLints(panel.chart.options as Record<string, unknown>, own)
         .map((warning) => ({ ...warning, message: `[${panel.id}] ${warning.message}` })),
       // A panel's own formats: the panel's options and data, by their path in the grid.
-      ...(index >= 0 ? formatsAt(authored![index] as Record<string, unknown>, own, panel.id) : []),
-      ...panelUnitLints(index >= 0 ? (authored![index] as Record<string, unknown>).data : undefined, child, [...own, 'data']),
+      ...(index >= 0 ? formatsAt(authored![index] as Record<string, unknown>, own, panel.id, () => inPanel(records(), panel.id)) : []),
+      ...panelUnitLints(index >= 0 ? (authored![index] as Record<string, unknown>).data : undefined, child, () => inPanel(records(), panel.id), [...own, 'data']),
     ];
   })];
 }
 
+/** A grid's records of one panel, scoped as that panel's own: "p" drops the scope, "p/inner" keeps "inner". */
+function inPanel(records: readonly InteractionRecord[] | null, panel: string): InteractionRecord[] {
+  return (records ?? []).flatMap((record) => {
+    const scope = record.target.panel;
+    if (scope === panel) { const { panel: _, ...target } = record.target; return [{ ...record, target }]; }
+    return scope?.startsWith(`${panel}/`) ? [{ ...record, target: { ...record.target, panel: scope.slice(panel.length + 1) } }] : [];
+  });
+}
+
 /** The document-boundary norm lints: warnings about proportions and embed legibility. */
-function normLints(type: string, options: Record<string, unknown>, geo: Geometry, data?: unknown, verify?: HeightVerifier): LintWarning[] {
+function normLints(type: string, options: Record<string, unknown>, geo: Geometry, records: () => readonly InteractionRecord[] | null, data?: unknown, verify?: HeightVerifier): LintWarning[] {
   // Each family stands down behind any refusal already on the geometry, so a
   // refused chart gets one trace naming the real cause. They run here,
   // not inside layout, because grid panels lay out on slot-sized canvases.
@@ -462,8 +476,9 @@ function normLints(type: string, options: Record<string, unknown>, geo: Geometry
     ...unitNotShownLints(options, geo),
     ...shareUnitLints(options, geo),
     ...unitInFormatLints(options),
-    ...unscaledFormatLint(options, data, geo),
-    ...panelUnitLints(data, geo),
+    // A grid's own format reads no panel's records.
+    ...unscaledFormatLint(options, data, geo, () => (records() ?? []).filter((record) => record.target.panel === undefined)),
+    ...panelUnitLints(data, geo, records),
   ];
   pushAll(geo.warnings, rest);
   return geo.warnings;
@@ -553,7 +568,10 @@ function judged(
         });
     return null;
   }
-  const warnings = normLints(def.type, options, geo, validated.data, verify);
+  // The chart's records, built once on first use: by the format lint, else by the reading.
+  let held: ReturnType<typeof chartRecords> | undefined;
+  const records = () => (held ??= chartRecords({ type: def.type, request, geometry: geo, claims }));
+  const warnings = normLints(def.type, options, geo, () => records().records, validated.data, verify);
   // The refusal path React shares (core/schema/refusals): what refuses here
   // draws the error card there, with the same message.
   const refusals = chartRefusals(warnings);
@@ -571,7 +589,7 @@ function judged(
     });
   }
   if (refusals.length) return null;
-  return { def, geo, options, claims, request, svg, fontFamily: theme.type.family, warnings };
+  return { def, geo, options, claims, request, svg, fontFamily: theme.type.family, warnings, records };
 }
 
 export type DrawnChart = NonNullable<ReturnType<typeof drawn>>;

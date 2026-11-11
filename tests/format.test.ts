@@ -573,37 +573,42 @@ describe('an example is read as its author wrote it', () => {
     expect(sameUnit('\u20ac Mio.', '\u20acm')).toBe(true);
   });
 
-  // A series, column or cell format and a percent format printed a nonzero value as 0 without a warning: the lint read only a chart's options.format.
-  it('warns where any authored format prints a nonzero value as zero', () => {
-    const fixes = (options: Record<string, unknown>, data: unknown) => unscaledFormatLint(options, data)
-      .filter((warning) => warning.code === 'format-hides-values').map((warning) => warning.fix?.[0]);
-    expect(fixes({ format: '12%' }, { series: [{ values: [0.2, 30] }] })).toEqual([{ op: 'replace', path: '/options/format', value: '1.1%' }]);
-    expect(fixes({}, { series: [{ format: '1,234', values: [0.042, 12] }] })).toEqual([{ op: 'replace', path: '/data/series/0/format', value: '1,234.12' }]);
-    expect(fixes({}, { columns: [{ id: 'stores', format: '1,234', values: [0.042, 3] }] })).toEqual([{ op: 'replace', path: '/data/columns/0/format', value: '1,234.12' }]);
-    const table = { columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'rev', kind: 'value', format: '1,234' }],
-      rows: [{ id: 'all', cells: { rev: 12 }, children: [{ id: 'north', cells: { rev: 0.042 } }, { id: 'south', cells: { rev: { v: 0.3, format: '1.2' } } }] }] };
-    expect(fixes({}, table).map((fix) => fix?.path)).toEqual(['/data/columns/1/format']);
-    table.rows[0]!.children[1]!.cells.rev = { v: 0.03, format: '1.2' };
-    expect(fixes({}, table).map((fix) => fix?.path)).toEqual(['/data/columns/1/format', '/data/rows/0/children/1/cells/rev/format']);
-    const grid = { type: 'grid', data: { panels: [{ id: 'sales', type: 'column', options: { format: '1,234' },
-      data: { categories: [{ id: 'a', label: 'North' }, { id: 'b', label: 'South' }], series: [{ id: 's', label: 'Sales', values: [0.042, 12] }] } }] } };
-    const warnings = (render({ spec: grid, return: ['reading'] } as never).body as { warnings: { code: string; fix?: unknown[] }[] }).warnings;
-    expect(warnings.filter((warning) => warning.code === 'format-hides-values').map((warning) => warning.fix))
-      .toEqual([[{ op: 'replace', path: '/data/panels/0/options/format', value: '1,234.12' }]]);
-    // A value with its own format prints through it, not through the series or chart format.
-    expect(fixes({}, { series: [{ format: '1,234', values: [{ number: 0.042, format: '0.123' }, 12] }] })).toEqual([]);
-    expect(fixes({ format: '1,234' }, { series: [{ format: '0.123', values: [0.042, 12] }] })).toEqual([]);
-    // A keyed series value holds its number in `value`.
-    expect(fixes({}, { series: [{ format: '1,234', values: [{ categoryId: 'a', value: 0.042 }, { categoryId: 'b', value: 12 }] }] }).map((fix) => fix?.path)).toEqual(['/data/series/0/format']);
-    // A table column that declares points holds percent points below ±1 too.
-    expect(fixes({}, { columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'rate', kind: 'value', format: '12%', percentScale: 'points' }],
-      rows: [{ id: 'north', cells: { rate: 0.2 } }, { id: 'south', cells: { rate: 0.3 } }] }).map((fix) => fix?.path)).toEqual(['/data/columns/1/format']);
-    // A repeat template that holds one chart document is checked at the template.
-    const repeat = { type: 'grid', data: { repeat: { facet: 'series', dimension: 'channel', values: ['web', 'store'] }, template: { type: 'column', options: { format: '1,234' },
-      data: { categories: [{ id: 'a', label: 'North' }, { id: 'b', label: 'South' }], series: [{ id: 'web', label: 'Web', values: [0.042, 12] }, { id: 'store', label: 'Store', values: [5, 9] }] } } } };
-    const repeated = (render({ spec: repeat, return: ['reading'] } as never).body as { warnings: { code: string; fix?: unknown[] }[] }).warnings;
-    expect(repeated.filter((warning) => warning.code === 'format-hides-values').map((warning) => warning.fix))
-      .toEqual([[{ op: 'replace', path: '/data/template/options/format', value: '1,234.12' }]]);
+  // A format below the chart printed a nonzero value as 0 without a warning, and a guess at what the engine prints warned where it printed no zero: the chart's own records decide.
+  it('warns where an authored format prints a nonzero value as zero, and only there', () => {
+    const categories = [{ id: 'a', label: 'North' }, { id: 'b', label: 'South' }];
+    const column = (series: unknown[], options: Record<string, unknown> = {}, data: Record<string, unknown> = {}) => ({ type: 'column', data: { categories, series, ...data }, options });
+    const table = (columns: unknown[], rows: unknown[], options: Record<string, unknown> = {}) => ({ type: 'table', data: { columns: [{ id: 'label', kind: 'rowLabel', label: 'Region' }, ...columns], rows }, options });
+    const bartable = (format: string, values: number[]) => ({ type: 'bartable', data: { categories: [{ id: 'a', label: 'North' }], series: [{ id: 's', label: 'Sales' }],
+      panels: [{ id: 'p', label: 'Sales', values: { s: [1] } }], columns: [{ id: 'x', label: 'Stores', format, values }] } });
+    const repeat = (values: string[]) => ({ type: 'grid', data: { repeat: { facet: 'series', dimension: 'channel', values }, template: { type: 'column', options: { format: '1,234' },
+      data: { categories, series: [{ id: 'web', label: 'Web', values: [0.042, 12] }, { id: 'store', label: 'Store', values: [5, 9] }] } } } });
+    // Each case: the spec, then the patch path of each format-hides-values warning (null: a warning with no patch).
+    const cases: [string, unknown, (string | null)[]][] = [
+      ['series format', column([{ id: 's', label: 'S', format: '1,234', values: [0.042, 12] }]), ['/data/series/0/format']],
+      ['keyed value', column([{ id: 's', label: 'S', format: '1,234', values: [{ categoryId: 'a', value: 0.042 }, { categoryId: 'b', value: 12 }] }]), ['/data/series/0/format']],
+      ['own value format under the chart format', column([{ id: 's', label: 'S', values: [{ number: 0.042, format: '12' }, 3] }], { format: '12' }), ['/data/series/0/values/0/format']],
+      ['own value format that shows the value', column([{ id: 's', label: 'S', format: '1,234', values: [{ number: 0.042, format: '0.123' }, 12] }]), []],
+      ['scaled format that prints a nonzero figure', column([{ id: 's', label: 'S', format: '1.2k', values: [20, 1000] }]), []],
+      ['percent format over fractions', column([{ id: 's', label: 'S', format: '12%', values: [0.2, 2] }], {}, { valueKind: 'fraction' }), []],
+      ['bar table column', bartable('1,234', [0.042]), ['/data/columns/0/format']],
+      ['bar table column at the decimal limit', bartable('0.00000000000000000000', [1e-21]), [null]],
+      ['table column and cell', table([{ id: 'rev', kind: 'value', label: 'Revenue', format: '1,234' }],
+        [{ id: 'all', label: 'All', cells: { rev: 12 }, children: [{ id: 'north', label: 'North', cells: { rev: 0.042 } }, { id: 'south', label: 'South', cells: { rev: { v: 0.03, format: '1.2' } } }] }]),
+      ['/data/rows/0/children/1/cells/rev/format', '/data/columns/1/format']],
+      ['suppressed table cell', table([{ id: 'rev', kind: 'value', label: 'Revenue', format: '1,234' }], [{ id: 'r', label: 'R', cells: { rev: { v: 0.042, state: 'suppressed' } } }]), []],
+      ['table magnitude', table([{ id: 'rev', kind: 'value', label: 'Revenue', format: '1,234k' }], [{ id: 'r', label: 'R', cells: { rev: 42 } }], { magnitude: 'thousand' }), []],
+      ['inline row with its own format', table([{ id: 'rev', kind: 'value', label: 'Revenue', format: '1,234' }],
+        [{ id: 'r', label: 'R', cells: { rev: 1 }, children: [{ id: 'm', label: 'M', inline: true, relation: 'displayOnly', format: '0.0000', cells: { rev: 0.042 } }] }]), []],
+      ['grid panel', { type: 'grid', data: { panels: [{ id: 'sales', type: 'column', options: { format: '1,234' }, data: { categories, series: [{ id: 's', label: 'Sales', values: [0.042, 12] }] } }] } },
+        ['/data/panels/0/options/format']],
+      ['repeat template', repeat(['web', 'store']), ['/data/template/options/format']],
+      ['repeat template, series not drawn', repeat(['store']), []],
+    ];
+    for (const [name, spec, paths] of cases) {
+      const body = render({ spec, return: ['reading'] } as never).body as { errors?: unknown[]; warnings: { code: string; fix?: { path: string }[] }[] };
+      expect([name, body.errors ?? [], body.warnings.filter((warning) => warning.code === 'format-hides-values').map((warning) => warning.fix?.[0]?.path ?? null)])
+        .toEqual([name, [], paths]);
+    }
   });
 
   // A spaced single letter is SI unit text ("12 m/s", "50 B"), but it scaled as millions and bytes lost their unit; the warning's fix also dropped the space.

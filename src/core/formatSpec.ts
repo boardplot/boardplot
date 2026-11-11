@@ -8,6 +8,7 @@
 import { NormalizeError } from './normalize/shared';
 import type { RenderTarget } from './types/options';
 import type { LintWarning, PlacedLabel, SceneNode } from './types/scene';
+import type { InteractionRecord } from './a11y/types';
 
 import { chartString } from './strings';
 import { fractionFormat, numberFormat } from './numberFormatCache';
@@ -1621,16 +1622,33 @@ export function percentRasterFormatter(
  * more in all its digits ("1310000000.0" under "1.1"), and one that prints a
  * series' different values as one string hides them. The format stays the
  * author's; this warns and offers a compact or finer example of the same style.
+ * A format that prints a nonzero value as its zero warns only where the chart's
+ * own records (`records`, built only when an authored format exists) print that zero.
  */
 export function unscaledFormatLint(
   options: Record<string, unknown> | undefined,
   data: unknown,
   geo?: { labels?: readonly PlacedLabel[]; scene: readonly SceneNode[] },
+  records?: () => readonly InteractionRecord[] | null,
 ): LintWarning[] {
-  return [...chartFormatLint(options, data, geo), ...placedFormatZeros(data)];
+  const places = formatPlaces(data);
+  const chart = typeof options?.format === 'string' ? options.format : undefined;
+  const zeros = new Map<FormatPlace | undefined, InteractionRecord[]>();
+  if (places.length > 0 || chart !== undefined) {
+    for (const record of records?.() ?? []) {
+      if (!printsZero(record)) continue;
+      // The narrowest authored format that owns the value and is the one its record printed through.
+      const place = places.find((at) => at.authored === record.value.format && at.owns(record.target.owner));
+      if (place === undefined && record.value.format !== chart) continue;
+      zeros.set(place, [...(zeros.get(place) ?? []), record]);
+    }
+  }
+  return [...chartFormatLint(options, data, geo, zeros.get(undefined) ?? []), ...places.flatMap((place) => placeZeroWarning(place, zeros.get(place) ?? []))];
 }
 
-type FormatPlace = { format: unknown; values: readonly unknown[]; path: (string | number)[]; points?: boolean };
+type Owner = InteractionRecord['target']['owner'];
+/** A place where an author set a format. It names the format and builds the patch; it never decides what prints. */
+type FormatPlace = { authored: string; numbers: number[]; path: (string | number)[]; owns: (owner: Owner) => boolean };
 /** A value as authored: a keyed series value ({ categoryId, value }) holds its cell in `value`. */
 const cellOf = (entry: unknown): unknown => (typeof entry === 'object' && entry !== null && 'categoryId' in entry && 'value' in entry ? (entry as { value: unknown }).value : entry);
 /** A cell with its own format prints through that format, not through the series, column, row or chart format. */
@@ -1642,64 +1660,78 @@ const numberIn = (entry: unknown): number[] => {
   const value = typeof cell === 'number' ? cell : (cell as { number?: unknown } | null)?.number ?? (cell as { v?: unknown } | null)?.v;
   return typeof value === 'number' && Number.isFinite(value) ? [value] : [];
 };
+/** The engine's own text proves a hidden value: a nonzero number whose record displays zeros only ("0", "0.0k", "0%"). */
+const printsZero = ({ value }: InteractionRecord) => value.state === 'value' && typeof value.raw === 'number' && Number.isFinite(value.raw) && value.raw !== 0
+  && value.displayed !== undefined && /\d/.test(value.displayed) && !/[1-9]/.test(value.displayed);
 
 /**
- * A format set below the chart prints its values through itself: a series, a bar table or table column, a table cell.
- * Each one warns when it prints a nonzero value as its zero, as options.format does. A table row format is left out:
- * the table keeps a nonzero row value off zero itself.
+ * The formats set below the chart, narrowest first: a series value's or table cell's own format, a table row,
+ * a series, a bar table or table column. Each owns the values it names.
  */
-function placedFormatZeros(data: unknown): LintWarning[] {
-  type TableRow = { cells?: Record<string, unknown>; children?: TableRow[] };
-  const own = data as { series?: { format?: unknown; values?: unknown[] }[]; columns?: { id?: unknown; format?: unknown; values?: unknown[] }[]; rows?: TableRow[] } | undefined;
-  const places: FormatPlace[] = [];
-  (Array.isArray(own?.series) ? own.series : []).forEach((series, i) => places.push({ format: series?.format, values: Array.isArray(series?.values) ? series.values : [], path: ['data', 'series', i, 'format'] }));
-  const rows: { row: TableRow; path: (string | number)[] }[] = [];
+function formatPlaces(data: unknown): FormatPlace[] {
+  type TableRow = { id?: unknown; format?: unknown; cells?: Record<string, unknown>; children?: TableRow[] };
+  const own = data as { categories?: unknown[]; series?: { id?: unknown; format?: unknown; values?: unknown[] }[];
+    columns?: { id?: unknown; format?: unknown; values?: unknown[] }[]; rows?: TableRow[] } | undefined;
+  const places: FormatPlace[][] = [[], [], [], []];
+  const add = (rank: number, authored: unknown, numbers: number[], path: (string | number)[], owns: (owner: Owner) => boolean) => {
+    if (typeof authored === 'string') places[rank]!.push({ authored, numbers, path, owns });
+  };
+  const categories = Array.isArray(own?.categories) ? own.categories : [];
+  const categoryAt = (entry: unknown, j: number) => {
+    const category = categories[j] as { id?: unknown } | undefined;
+    return typeof entry === 'object' && entry !== null && 'categoryId' in entry ? entry.categoryId : typeof category === 'object' && category !== null ? category.id : category;
+  };
+  (Array.isArray(own?.series) ? own.series : []).forEach((series, i) => {
+    const values = Array.isArray(series?.values) ? series.values : [];
+    values.forEach((entry, j) => add(0, ownFormat(entry), [], ['data', 'series', i, 'values', j, ...(cellOf(entry) === entry ? [] : ['value']), 'format'],
+      (owner) => owner.seriesId === series.id && owner.categoryId === categoryAt(entry, j)));
+    add(2, series?.format, values.flatMap(numberIn), ['data', 'series', i, 'format'], (owner) => owner.seriesId === series?.id);
+  });
   const walk = (list: unknown, path: (string | number)[]) => (Array.isArray(list) ? list : []).forEach((row: TableRow, i) => {
-    rows.push({ row, path: [...path, i] });
+    for (const [colId, cell] of Object.entries(row?.cells ?? {})) {
+      add(0, ownFormat(cell), [], [...path, i, 'cells', colId, 'format'], (owner) => owner.rowId === row.id && owner.colId === colId);
+    }
+    add(1, row?.format, Object.values(row?.cells ?? {}).flatMap(numberIn), [...path, i, 'format'], (owner) => owner.rowId === row?.id);
     walk(row?.children, [...path, i, 'children']);
   });
   walk(own?.rows, ['data', 'rows']);
-  (Array.isArray(own?.columns) ? own.columns : []).forEach((column, i) => places.push({
-    format: column?.format,
-    // A bar table column holds its values; a table column prints every cell without a format of its own.
-    values: Array.isArray(column?.values) ? column.values
-      : rows.map(({ row }) => row?.cells?.[String(column?.id)]),
-    path: ['data', 'columns', i, 'format'],
-    // A column that declares points holds percent points also below ±1.
-    points: (column as { percentScale?: unknown } | undefined)?.percentScale === 'points',
-  }));
-  for (const { row, path } of rows) for (const [colId, cell] of Object.entries(row?.cells ?? {})) {
-    if (ownFormat(cell) !== undefined) places.push({ format: ownFormat(cell), values: [{ ...(cell as object), format: undefined }], path: [...path, 'cells', colId, 'format'] });
+  (Array.isArray(own?.columns) ? own.columns : []).forEach((column, i) => add(3, column?.format,
+    Array.isArray(column?.values) ? column.values.flatMap(numberIn) : [], ['data', 'columns', i, 'format'], (owner) => owner.colId === column?.id));
+  return places.flat();
+}
+
+/** The warning of one place whose format the records show printing nonzero values as zero; its patch only when a finer example within the decimal limit shows them. */
+function placeZeroWarning({ authored, numbers, path }: FormatPlace, zeroed: readonly InteractionRecord[]): LintWarning[] {
+  if (zeroed.length === 0) return [];
+  let format: string;
+  let spec: NumberFormatSpec;
+  try {
+    format = formatExampleText(authored);
+    format = exampleReading(format, numbers).decimals ?? format;
+    spec = parseFormatExample(format);
+  } catch { return []; }
+  const finer = finerShowing(format, spec, zeroed.map((record) => record.value.raw as number));
+  const pointer = `/${path.map((part) => String(part).replace(/~/g, '~0').replace(/\//g, '~1')).join('/')}`;
+  return [{
+    code: 'format-hides-values',
+    severity: 'warn' as const,
+    message: `format '${format}' prints the nonzero value ${Number((zeroed[0]!.value.raw as number).toPrecision(12))} as ${zeroed[0]!.value.displayed}`,
+    suggest: finer ? `set a finer format such as '${finer}', or remove the format to let the engine pick the precision` : 'remove the format to let the engine pick the precision',
+    field: path,
+    ...(finer ? { fix: [{ op: 'replace' as const, path: pointer, value: finer }] } : {}),
+  }];
+}
+
+/** The first example of `format`'s style, at most MAX_FORMAT_DECIMALS decimals, that prints every value off its zero; none when no such example exists. */
+function finerShowing(format: string, spec: NumberFormatSpec, values: readonly number[]): string | undefined {
+  const body = numericBody(format);
+  if (!body) return undefined;
+  const shows = (example: string) => { const finer = parseFormatExample(example); return values.every((v) => formatWithSpec(v, finer) !== formatWithSpec(0, finer)); };
+  for (let decimals = spec.decimals + 1; decimals <= MAX_FORMAT_DECIMALS; decimals++) {
+    const example = finerExample(format, spec, body, decimals);
+    if (shows(example)) return example;
   }
-  return places.flatMap(({ format: authored, values, path, points }) => {
-    if (typeof authored !== 'string') return [];
-    const numbers = values.flatMap(numberIn);
-    let format: string;
-    let spec: NumberFormatSpec;
-    try {
-      format = formatExampleText(authored);
-      format = exampleReading(format, numbers).decimals ?? format;
-      spec = parseFormatExample(format);
-    } catch { return []; }
-    const body = numericBody(format);
-    // A % format over fractions is percent-scale-suspect's case; over points it prints them as given.
-    if (!body || spec.ordinal || spec.exponent || spec.significantDigits !== undefined || (spec.suffix.includes('%') && !points && !numbers.some((v) => Math.abs(v) > 1))) return [];
-    const zero = formatWithSpec(0, spec);
-    const zeroed = numbers.filter((v) => v !== 0 && formatWithSpec(v, spec) === zero);
-    if (zeroed.length === 0) return [];
-    let decimals = spec.decimals + 1;
-    const shows = (example: string) => { const finer = parseFormatExample(example); return zeroed.every((v) => formatWithSpec(v, finer) !== formatWithSpec(0, finer)); };
-    while (decimals < MAX_FORMAT_DECIMALS && !shows(finerExample(format, spec, body, decimals))) decimals++;
-    const finer = finerExample(format, spec, body, decimals);
-    return [{
-      code: 'format-hides-values',
-      severity: 'warn' as const,
-      message: `format '${format}' prints the nonzero value ${zeroed[0]} as ${zero}`,
-      suggest: `set a finer format such as '${finer}', or remove the format to let the engine pick the precision`,
-      field: path,
-      fix: [{ op: 'replace' as const, path: `/${path.map((part) => String(part).replace(/~/g, '~0').replace(/\//g, '~1')).join('/')}`, value: finer }],
-    }];
-  });
+  return undefined;
 }
 
 /** The example of `format` with `decimals` decimals; an integer part of 0 keeps three decimals from reading as a group ("0.004", not "1.004"). */
@@ -1712,7 +1744,8 @@ function finerExample(format: string, spec: NumberFormatSpec, found: { index: nu
 function chartFormatLint(
   options: Record<string, unknown> | undefined,
   data: unknown,
-  geo?: { labels?: readonly PlacedLabel[]; scene: readonly SceneNode[] },
+  geo: { labels?: readonly PlacedLabel[]; scene: readonly SceneNode[] } | undefined,
+  zeroRecords: readonly InteractionRecord[],
 ): LintWarning[] {
   const authored = typeof options?.format === 'string' ? options.format : undefined;
   // Series rows, one row of values (sparkline, kpi), or waterfall items.
@@ -1758,10 +1791,8 @@ function chartFormatLint(
   // A figure count names its own precision: it shows every nonzero value and hides what its count says.
   const figures = spec.significantDigits;
   const checked = options?.variant !== 'bump' && !spec.suffix.includes('%') && figures === undefined;
-  // A % format over points prints them as given, so a nonzero point it rounds to 0% is lost too.
-  const points = options?.variant !== 'bump' && spec.suffix.includes('%') && figures === undefined && numbers.flat().some((v) => Math.abs(v) > 1);
-  const zero = formatWithSpec(0, spec);
-  const zeroed = checked || points ? numbers.flat().filter((v) => v !== 0 && formatWithSpec(v, spec) === zero) : [];
+  // The chart's records prove a zero: what they print, not what this format would print.
+  const zeroed = zeroRecords.map((record) => record.value.raw as number);
   // An authored scale holds the chart to one precision (shareAuthoredScale): the warning says what that draws.
   const locale = (options?.locale as { language?: string } | undefined)?.language;
   const shared = spec.magnitude !== 'none' && figures === undefined ? seriesRasterFormatter(format, numbers.flat(), locale, unit) : undefined;
@@ -1781,22 +1812,21 @@ function chartFormatLint(
       return zeroed.every((v) => print(v) !== print(0))
         && numbers.every((row) => !hidden(row) || new Set(row.map(print)).size >= distinct(row));
     };
+    // No example past the decimal limit: the formatter refuses one, and the warning then carries no patch.
     let decimals = Math.max(spec.decimals + 1, raised ? shared.spec.decimals : 0);
     while (decimals < MAX_FORMAT_DECIMALS && !shows(finerAt(decimals))) decimals++;
-    const finer = finerAt(decimals);
+    const finer = decimals <= MAX_FORMAT_DECIMALS && shows(finerAt(decimals)) ? finerAt(decimals) : undefined;
     return [{
       code: 'format-hides-values',
       severity: 'warn',
       message: raised
         ? `format '${format}' cannot show ${smallest} near its size, so the chart prints every value with ${shared.spec.decimals} decimals: ${smallest} as ${shared.fmt(smallest)}`
-        : shared && zeroed.length > 0
-        ? `format '${format}' cannot show ${zeroed[0]} on its scale, so the chart prints it as ${shared.fmt(zeroed[0]!)}`
         : zeroed.length > 0
-        ? `format '${format}' prints the nonzero value ${zeroed[0]} as ${zero}`
+        ? `format '${format}' prints the nonzero value ${Number(zeroed[0]!.toPrecision(12))} as ${zeroRecords[0]!.value.displayed}`
         : `format '${format}' prints the different values of a series as one string`,
-      suggest: `set a finer format such as '${finer}', or remove options.format to let the engine pick the precision`,
+      suggest: finer ? `set a finer format such as '${finer}', or remove options.format to let the engine pick the precision` : 'remove options.format to let the engine pick the precision',
       field: ['options', 'format'],
-      fix: [{ op: 'replace', path: '/options/format', value: finer }],
+      ...(finer ? { fix: [{ op: 'replace' as const, path: '/options/format', value: finer }] } : {}),
     }];
   }
   if (spec.magnitude !== 'none' || spec.suffix.includes('%') || unitMagnitude(unit)) return [];
