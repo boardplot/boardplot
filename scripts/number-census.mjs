@@ -36,6 +36,7 @@ import { interactionRecords } from '../src/core/a11y/records.ts';
 import { interactionValueText } from '../src/core/a11y/valueText.ts';
 import { labelCardContent } from '../src/react/hover/labelCard.ts';
 import { exampleSpec, formatWithSpec, parseFormatExample } from '../src/core/formatSpec.ts';
+import { columnOwnsFormat } from '../src/core/tableCalc.ts';
 import { recomputeClaim } from '../tests/helpers/recompute.ts';
 
 const args = process.argv.slice(2);
@@ -151,7 +152,8 @@ function authoredFormat(type, data, options, owner, panel) {
     const column = (data.columns ?? []).find((entry) => entry.id === owner.colId);
     const cell = row?.cells?.[owner.colId];
     const own = typeof cell === 'object' && cell !== null ? cell.format : undefined;
-    return own ?? column?.format ?? row?.format ?? options.format;
+    // A column that owns its format (an authored one, or the percent of a change or share) is not reached by a row or chart format.
+    return own ?? (column && columnOwnsFormat(column) ? column.format : row?.format ?? options.format);
   }
   const measure = dimswitchMeasure(type, data, owner);
   if (typeof measure?.format === 'string') return measure.format;
@@ -378,11 +380,9 @@ export function censusCase(type, fixture, width, localeName, measured) {
       for (const row of card.rows) if (row.kind === 'value') surfaces.push({ surface: 'hover', id: record.label, text: row.value ?? row.text, group: groups, card: true });
     } catch { /* events and other cards without a value row */ }
     if (record.value.kind === 'number') surfaces.push({ surface: 'a11y', id: record.label, text: interactionValueText(record.value, resolved.options.locale?.language), group: groups, card: true, only: record.value });
-    // A zero is honest only through the authored format the record printed this value through, never through another format of its panel.
-    const zeroFormat = record.value.format === example ? example : undefined;
     for (const printed of surfaces) {
       const candidates = printed.only ? [{ raw: printed.only.raw, name: 'value', value: printed.only }] : numbers;
-      checkPrinted(printed, candidates, example, owner, zeroFormat);
+      checkPrinted(printed, candidates, example, owner);
     }
   }
 
@@ -392,7 +392,7 @@ export function censusCase(type, fixture, width, localeName, measured) {
     try { return !/[1-9]/.test(formatWithSpec(raw, parseFormatExample(example))); } catch { return false; }
   }
 
-  function checkPrinted(printed, candidates, example, owner, zeroFormat) {
+  function checkPrinted(printed, candidates, example, owner) {
     // A text in the other decimal mark is its own finding (wrong-marks); its figures cannot be read here.
     if (wrongMarks(printed.text, m)) return;
     // An aspect or a ratio label ("(4:5)", "16:9") names a shape, not a value.
@@ -443,7 +443,7 @@ export function censusCase(type, fixture, width, localeName, measured) {
     }
     if (best) {
       const { token, candidate } = best;
-      if (token.value === 0 && !token.bound && candidate.raw !== 0 && options.smallValues !== 'zero' && !honestZero(candidate.raw, zeroFormat)) {
+      if (token.value === 0 && !token.bound && candidate.raw !== 0 && options.smallValues !== 'zero' && !honestZero(candidate.raw, example)) {
         flag('false-zero', printed.surface, { id: printed.id, text: printed.text, raw: candidate.raw, field: candidate.name });
       }
       if (contextScale && token.letter && printed.surface === 'svg' && !(context.affix && contextScale === SCALE[token.letter])) {
@@ -483,7 +483,7 @@ export function censusCase(type, fixture, width, localeName, measured) {
     if (oneStep(candidates)) return;
     // A rebased series prints its index, which no record holds.
     if (options.rebase100 || options.rebase !== undefined || options.index !== undefined) return;
-    if (token.value === 0 && !token.bound && candidates.some((candidate) => candidate.raw !== 0 && !honestZero(candidate.raw, zeroFormat))) {
+    if (token.value === 0 && !token.bound && candidates.some((candidate) => candidate.raw !== 0 && !honestZero(candidate.raw, example))) {
       flag('false-zero', printed.surface, { id: printed.id, text: printed.text, raw: candidates[0].raw, field: candidates[0].name });
       return;
     }
