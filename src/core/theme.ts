@@ -1583,11 +1583,22 @@ const CANVAS_MARGIN_STEPS: readonly { minWidth: number; margin: Margin }[] = [
   { minWidth: 0, margin: { top: 16, right: 16, bottom: 10, left: 16 } },
 ];
 
-/** The default (unauthored) canvas margin at a canvas width. */
+/**
+ * The default (unauthored) canvas margin at a canvas width. From a step (600, 840 and 1080 px) the sides start at
+ * the sides under the step and grow by the pixels the width grows, until they reach the step's sides: the plot
+ * never narrows as the canvas widens, so a chart that draws at a width draws at every wider width. Widths under
+ * a step keep their margins.
+ */
 function defaultCanvasMargin(width: number): Margin {
-  if (classStepWidth(width) >= WIDE_CANVAS_MIN_WIDTH) return SPACE_CANVAS_WIDE;
-  for (const step of CANVAS_MARGIN_STEPS) if (width >= step.minWidth) return step.margin;
-  return CANVAS_MARGIN_STEPS[CANVAS_MARGIN_STEPS.length - 1]!.margin;
+  const wide = classStepWidth(width) >= WIDE_CANVAS_MIN_WIDTH;
+  const at = CANVAS_MARGIN_STEPS.findIndex((step) => width >= step.minWidth);
+  const step = wide ? { minWidth: WIDE_CANVAS_MIN_WIDTH, margin: SPACE_CANVAS_WIDE } : CANVAS_MARGIN_STEPS[at]!;
+  const under = wide ? CANVAS_MARGIN_STEPS[0]!.margin : CANVAS_MARGIN_STEPS[at + 1]?.margin;
+  const { margin } = step;
+  if (under === undefined) return margin;
+  const sides = Math.min(margin.left + margin.right, under.left + under.right + width - step.minWidth);
+  const left = Math.min(margin.left, Math.ceil(sides / 2));
+  return { ...margin, left, right: sides - left };
 }
 
 export function spaceTokens(theme: Theme, width: number): SpaceTokens {

@@ -316,3 +316,15 @@ describe('a key beside the plot gives way where the chart then fits its width', 
     expect(draw('heatmap', 'capability-matrix', { legend: 'left', size: { width } }).refused).toBeFalsy();
   });
 });
+
+describe('a wider canvas never narrows the plot', () => {
+  // The default canvas margin stepped up 8 px at 840 px: a bar table that drew at 835 to 839 px was refused at 840 to 842 px.
+  // It must draw at every width from 835 px: no width over a drawn width refused, and none that drew before.
+  it('draws at every width from 835 px, across the 840 px margin step', () => {
+    const data = { categories: [{ id: 'c', label: '漢'.repeat(59) }], series: [{ id: 's', label: 'Series' }], panels: [{ id: 'p', label: 'Panel', values: { s: [1] } }] };
+    const drawn = Array.from({ length: 16 }, (_, step) => 835 + step).map((width) => !isRefused(layoutResolvedRequest(resolveChartRequest({
+      type: 'bartable', data, options: { mode: 'full', total: false, columnHeads: false, labels: { point: false }, size: { width } },
+    } as never))));
+    expect(drawn).not.toContain(false);
+  });
+});

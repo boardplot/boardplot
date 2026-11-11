@@ -47,7 +47,8 @@ export function themeForDensity(theme: Theme, density: 'comfortable' | 'compact'
   // The default margins step with the canvas width, so a known width scales
   // the margin of its own step; without one the 960 px step is the base.
   const base = spaceTokens(theme, width !== undefined && width < WIDE_CANVAS_MIN_WIDTH ? width : WIDE_CANVAS_MIN_WIDTH - 1);
-  const wide = spaceTokens(theme, WIDE_CANVAS_MIN_WIDTH);
+  // The wide margin of the width itself, or of a width past the margin ramp over the 1080 px step.
+  const wide = spaceTokens(theme, width !== undefined && width >= WIDE_CANVAS_MIN_WIDTH ? width : 2 * WIDE_CANVAS_MIN_WIDTH);
   return {
     ...theme,
     space: {
