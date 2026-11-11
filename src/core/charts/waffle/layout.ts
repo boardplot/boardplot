@@ -26,7 +26,7 @@ import { labelCtx, PRIORITY, solveLabels, type LabelRequest, type SolveCtx } fro
 import { claimId, withUnprintedClaims } from '../../claims/ids';
 import { accessibleTitle, normalizeCategory, normalizeSeriesValues, NormalizeError, resolveSize } from '../../normalize/shared';
 import { type RoundingAdjustment } from '../../shareRounding';
-import { heightOmitted, resolveSizing, SIZE_TOLERANCE } from '../../sizing';
+import { heightOmitted, NARROW_FORM, resolveSizing, SIZE_TOLERANCE } from '../../sizing';
 import { rowDrivenHeight } from '../../rowCanvas';
 import { defaultMeasurer, wrapText, type FontSpec } from '../../text';
 import { textRole } from '../../textRole';
@@ -468,9 +468,10 @@ function layoutPass(data: ChartData, options: WaffleOptions, lean = false, oneRo
   // square mode also wraps when one row leaves a panel under the floor.
   // Square mode's floor is that of the two-row form, so it does not depend on the width asked for. A cells
   // floor is that of the columns drawn, so compact, the last form before a refusal, takes only a column count
-  // whose cells fit the plot: more columns would refuse a width that fewer columns draw.
+  // whose cells fit the plot: more columns would refuse a width that fewer columns draw. So does full mode
+  // where render's last step asks for the narrower form (NARROW_FORM): there the columns picked refused.
   const minColumns = oneRow && !square ? n : Math.min(n, Math.max(Math.ceil(n / 2), maxOf(groups.map((group) => group.panels.length))));
-  const cellsFit = (cols: number) => square || options.mode !== 'compact'
+  const cellsFit = (cols: number) => square || (options.mode !== 'compact' && (options as { [NARROW_FORM]?: true })[NARROW_FORM] !== true)
     || cols * grid.columns * MIN_PITCH + (cols - 1) * gutter <= plot.w + SIZE_TOLERANCE;
   let panelRows = rowsFor(n);
   for (let c = n; c >= minColumns; c--) {
