@@ -1736,4 +1736,10 @@ it('leaves options.unit out of the subtitle when the columns print different uni
   // The fix keeps the same subtitle and ends the warning.
   expect(subtitle({ subtitle: { measure: 'Revenue' } })).toBe('Revenue');
   expect(layout('table', data, { subtitle: { measure: 'Revenue' } }).warnings.map((w) => w.code)).not.toContain('table-unit-overridden');
+  // A bare magnitude ("1.2k", "1.2m") names no currency: options.unit stays the table's unit.
+  const scaled = { ...data, columns: data.columns.map((col) => (col.id === 'us' ? { ...col, format: '1.2k' } : col.id === 'eu' ? { ...col, format: '1.2m' } : col)) };
+  const scaledOptions = { unit: 'USD', subtitle: { measure: 'Revenue' } };
+  const scaledLayout = layout('table', scaled, scaledOptions);
+  expect(scaledLayout.scene.find((node): node is TextNode => node.t === 'text' && node.id.startsWith('frame:subtitle'))!.lines.join(' ').replace(/\s+/g, ' ').trim()).toBe('Revenue in USD');
+  expect(scaledLayout.warnings.map((w) => w.code)).not.toContain('table-unit-overridden');
 });
