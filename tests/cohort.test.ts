@@ -874,7 +874,7 @@ describe('cohort — claims', () => {
     const geometry = layout({ cohorts: [{ id: 'a', active: [100_000_000, 1] }, { id: 'b', active: [100_000_000, 3] }] }, { averages: 'weighted' });
     const claims = claimsForChart('cohort', geometry as never);
     expect(claims.find((c) => c.id === 'cohort:a:t1')!.output.raw).toBe(1e-8);
-    expect(claims.find((c) => c.id === 'cohort:average:t1')!.output.raw).toBe(2e-8);
+    expect(claims.find((c) => c.id === 'cohort-average:t1')!.output.raw).toBe(2e-8);
   });
 
   // The reading called every printed exhibit cell "Not displayed", because the receipt looked for heatmap cell nodes.
@@ -919,7 +919,18 @@ describe('cohort — claims', () => {
     expect(averages[0]!.inputs.length).toBe(6);
     const { render } = await import('../src/cli/render');
     const reading = (render({ spec: { type: 'cohort', data: clean(), options: { averages: 'weighted' } }, return: ['reading'] }).body as any).reading;
-    expect(reading.derived.find((c: any) => c.claimId === 'cohort:average:t0').value).toBe(1);
+    expect(reading.derived.find((c: any) => c.claimId === 'cohort-average:t0').value).toBe(1);
+  });
+
+  // A cohort with the valid id 'average' shared its claim ids with the average row, so both printed cells read as not displayed.
+  it('keeps the claims of a cohort named average apart from the average row', async () => {
+    const { render } = await import('../src/cli/render');
+    const spec = { type: 'cohort', data: { periodLabel: 'Month', cohorts: [
+      { id: 'average', label: 'Trial', active: [100, 50] },
+      { id: 'feb', label: 'Feb', active: [100, 80] },
+    ] }, options: { averages: 'weighted' } };
+    const claims = (render({ spec, return: ['reading'] }).body as any).reading.derived.filter((c: any) => c.claimId.endsWith('t1') && c.claimId.includes('average'));
+    expect(claims.map((c: any) => [c.claimId, c.value, c.visible])).toEqual([['cohort:average:t1', 0.5, true], ['cohort-average:t1', 0.65, true]]);
   });
 
   it('names the previous-period denominator when the basis changes', async () => {

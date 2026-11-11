@@ -1327,6 +1327,15 @@ it('draws a column whose names cannot fit or rotate as bars, or lists the names 
   expect(hiddenNames(tall)).toEqual([]);
 });
 
+// Eight long names rotated 45 degrees and were all cut with an ellipsis; only the SVG title kept them, while bars had room for each.
+it('draws a column whose rotated names would be cut as bars', () => {
+  const names = ['Hospital groups West', 'Hospital groups East', 'Private clinics West', 'Private clinics East', 'Outpatient centres West', 'Outpatient centres East', 'University hospitals', 'Rehabilitation centres'];
+  const data = { categories: names.map((label, i) => ({ id: `h${i}`, label })), series: [{ id: 's', label: 'Beds', values: [48, 41, 36, 31, 26, 21, 17, 11] }] };
+  const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'column', data, options: { title: 'Beds by provider', size: { width: 480 } } })) as Geometry;
+  expect(geometry.type).toBe('bar');
+  expect(geometry.labels.filter(label => label.kind === 'category' && (label.hidden || label.title !== undefined)).map(label => label.id)).toEqual([]);
+});
+
 // The break glyph's claim reached below the axis and hid the name of the last column on a phone, so the plan column had no name.
 it('keeps the name of the column after an axis break on a phone', () => {
   const fixture = getFixtures('column').find(f => f.id === 'stacked-series-cagr')!;

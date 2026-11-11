@@ -369,9 +369,20 @@ export function cappedItems(items: readonly string[], options?: NoteCapOptions, 
   return [...items.slice(0, cap), moreListedText(items.length - cap, options, cap === 0)];
 }
 
+/** The codes a sign prints for: "€1.2m" carries EUR, "12%" carries percent. Whole words only ("Europe" is no EUR). */
+const UNIT_SIGNS: readonly [RegExp, string][] = [
+  [/\b(?:EUR|euros?)\b/gi, '€'], [/\bUSD\b/gi, '$'], [/\bGBP\b/gi, '£'], [/\bJPY\b/gi, '¥'], [/\b(?:percent(?:ages?)?|per\s+cent|pct)\b/gi, '%'],
+];
+
+/** The text with each unit word the engine knows written as its sign: "Conversion percentage" reads "Conversion %". */
+export function unitWordsAsSigns(text: string): string {
+  return UNIT_SIGNS.reduce((out, [code, sign]) => out.replace(code, sign), text);
+}
+
+/** Does the measure name the unit, as written or as one of the engine's words for it ("percent" for "%")? */
 export function measureNamesUnit(unit: string, measure: string): boolean {
-  measure = plainText(measure);
-  const escaped = unit.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+  measure = unitWordsAsSigns(plainText(measure));
+  const escaped = unitWordsAsSigns(unit.trim()).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
   return escaped.length > 0 && new RegExp(`(?<![\\p{L}\\p{N}_])${escaped}(?![\\p{L}\\p{N}_])`, 'iu').test(measure);
 }
 

@@ -81,6 +81,21 @@ it('a plain stack series skips a palette step that is not apart from an authored
   expect(geo.warnings.map(w => w.code)).not.toContain('series-adjacent-similar');
 });
 
+// A third row group took the same grey as the rest rows, so the key showed two identical swatches.
+it('keeps the row group colours of a bar table apart from its grey rest rows', () => {
+  const rows = ['North', 'East', 'South', 'West', 'Lake', 'Hill'].map((label, i) => ({ id: label.toLowerCase(), label, group: ['low', 'mid', 'high'][i % 3] }));
+  for (const theme of ['bridge', 'notation-dark']) {
+    const geo = layoutResolvedRequest(resolveChartRequest({ type: 'bartable', theme, data: {
+      categories: [...rows, { id: 'rest', label: 'Rest of world', residual: true }],
+      series: [{ id: 'rev', label: 'Revenue' }],
+      rowGroups: { title: 'Margin', groups: [{ id: 'low', label: 'Low' }, { id: 'mid', label: 'Middle' }, { id: 'high', label: 'High' }] },
+      panels: [{ id: 'y1', label: '2025', unit: '$ billion', values: { rev: [9, 8, 7, 6, 5, 4, 3] } }],
+    }, options: { title: 'Revenue by market', size: { width: 700 } } } as never));
+    if (geo.refused) throw new Error('refused');
+    expect(geo.warnings.map(w => w.code)).not.toContain('series-indistinguishable');
+  }
+});
+
 // A host theme with mid-grey neutrals drew three receding series beside a highlight in one grey.
 it('keeps the neutral ramp steps apart when the light neutral sits on the neutral mark', () => {
   const series = ['a', 'b', 'c', 'd'].map((id, i) => ({ id, label: `Part ${id}`, values: [6 - i, 4 - i / 2], ...(i === 0 ? { colorRole: 'highlight' } : {}) }));
