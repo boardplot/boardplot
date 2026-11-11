@@ -315,7 +315,12 @@ function unrequestedLabelOmissions(input: ChartReadingInput, records: readonly I
     return { categories, seriesById, geometry, data, options, visibleCategories, topNCut,
       plottedPoints: new Set((geometry.type === 'scatter' ? (geometry.marks as { points?: { id: string }[] }).points ?? [] : []).map(point => point.id)),
       capApplied: geometry.type === 'scatter' && geometry.warnings.some(warning => warning.code === 'labels-auto-off'),
-      requestedValues: new Set(labels.filter(label => ['point', 'segment', 'insidePie', 'outsidePie'].includes(label.kind)).map(label => valueKey(label.owner))),
+      requestedValues: new Set([
+        ...labels.filter(label => ['point', 'segment', 'insidePie', 'outsidePie'].includes(label.kind)).map(label => valueKey(label.owner)),
+        // An annotation that prints its mark's value labels that mark, while it is drawn.
+        ...geometry.annotations.filter(placed => placed.valueOwner && labels.some(label => label.id === placed.labelId && !label.hidden))
+          .map(placed => valueKey(placed.valueOwner!)),
+      ]),
       drawnSeries: new Set(labels.filter(label => label.kind === 'series' && !label.hidden).map(label => label.owner.seriesId)),
       drawnCategories: new Set(labels.filter(label => label.kind === 'category' && !label.hidden).map(label => label.owner.categoryId)),
       keptCategories: new Set(visibleCategories.size ? visibleCategories : labels.map(label => label.owner.categoryId)),

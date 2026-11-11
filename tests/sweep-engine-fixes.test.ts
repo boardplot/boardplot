@@ -803,4 +803,21 @@ describe('chart layout edge cases', () => {
     const keep = Number(/at least (\d+)px/.exec(tight.geometry.warnings.find((w: { code: string }) => w.code === 'value-axis-dropped').suggest)![1]);
     expect(draw('pyramid', 'workforce-tenure-gender', { width: 900, height: keep }).geometry.axes.filter((axis: { axis: string }) => axis.axis === 'x')).toHaveLength(2);
   });
+
+  // A callout or abs annotation that prints a point's value labels that point, so the reading must not list it as unlabelled.
+  it('does not list a point as unlabelled when an annotation prints its value', () => {
+    const omitted = (annotation: object) => {
+      const spec = { type: 'line', data: {
+        categories: [{ id: 'mon', label: 'Mon' }, { id: 'tue', label: 'Tue' }, { id: 'wed', label: 'Wed' }],
+        series: [{ id: 'north', label: 'North', values: [10, 12, 16] }, { id: 'south', label: 'South', values: [8, 11, 14] }],
+      }, annotations: [annotation], options: { title: 'Daily visits', valueLabels: 'none', seriesLabels: 'key' } };
+      const body = render({ spec, return: ['reading'] }).body as any;
+      return body.reading.omissions.map((item: any) => item.labelId).filter((id: string) => id.endsWith(':wed'));
+    };
+    const at = { categoryId: 'wed', seriesId: 'north' };
+    expect(omitted({ kind: 'callout', id: 'latest', at, headline: '${value}', text: 'Latest' })).toEqual(['point:south:wed']);
+    expect(omitted({ kind: 'abs', id: 'latest', at })).toEqual(['point:south:wed']);
+    // Words without the value leave the point unlabelled.
+    expect(omitted({ kind: 'callout', id: 'latest', at, text: 'Latest' })).toEqual(['point:north:wed', 'point:south:wed']);
+  });
 });
