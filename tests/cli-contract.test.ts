@@ -21,6 +21,7 @@ import { applyRows } from '../src/cli/rows';
 import { collapseLabelHiddenWarnings } from '../src/cli/spec';
 import { measure } from '../src/cli/measure';
 import * as chartRequest from '../src/core/request';
+import * as chartReadingModule from '../src/core/reading';
 import { resolveTheme } from '../src/core/theme';
 import { callTool, tools } from '../src/mcp/server';
 import { InputError, specFromRows } from '../src/rows';
@@ -806,6 +807,15 @@ describe('render and measure on the command line', () => {
     expect(Object.keys(JSON.parse(doc.log[0]!).charts[0])).toEqual(['name', 'svg', 'reading']);
   });
 
+  // --quiet built the reading of every chart and then printed none of it.
+  it('does not build the reading that --quiet drops', () => {
+    const dir = tdir();
+    const reading = vi.spyOn(chartReadingModule, 'chartReading');
+    const result = runCli(['render', writeDoc(dir, 'bare.json', SPEC), '--out', join(dir, 'out'), '--quiet']);
+    expect(result.code).toBe(0);
+    expect(reading).not.toHaveBeenCalled();
+  });
+
   // --quiet dropped every warning, so a shell loop never learned that a chart needed a fix.
   it('prints each warn-level warning on stderr under --quiet, before the written paths', () => {
     const dir = tdir();
@@ -849,6 +859,17 @@ describe('render and measure on the command line', () => {
     // The prefix and the body count rows from 1 alike: a 0-based body named the wrong file row.
     expect(envelope(result).errors).toMatchObject([{ code: 'ambiguous-mapping', path: '/rowsFile', displayPath: 'rowsFile row 2.segment', message: expect.stringContaining('rowsFile row 2.segment') }]);
     expect((envelope(result).errors as { message: string }[])[0]!.message).toContain('(rows 1 and 2)');
+  });
+
+  // An agent that copied the columns object of the MCP tool into --columns got invalid-argument.
+  it('takes --columns as the JSON object the MCP tool takes, with the same drawing', () => {
+    const dir = tdir();
+    writeFileSync(join(dir, 'rows.csv'), 'month,segment,revenue\nJan,Retail,10\nFeb,Retail,12\n');
+    const args = ['render', writeDoc(dir, 'spec.json', { type: 'column' }), '--rows', join(dir, 'rows.csv'), '--return', 'svg', '--columns'];
+    const json = envelope(runCli([...args, '{"category":"month","series":"segment","value":"revenue"}']));
+    expect(json.ok).toBe(true);
+    expect(json.svg).toBe(envelope(runCli([...args, 'category=month,series=segment,value=revenue'])).svg);
+    expect(envelope(runCli([...args, '{"category":1}'])).errors[0]!.code).toBe('invalid-argument');
   });
 
   it('reads a semicolon CSV, detected from its header, with decimal commas as decimals', () => {

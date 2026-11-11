@@ -165,8 +165,12 @@ function unknownField(
   }, input, segments, 'docs/manual.md#the-spec');
 }
 
-/** Chart furniture an author often puts at the top level; options takes each of these as a string. */
+/** Chart furniture an author often puts at the top level instead of under options. */
 const MOVABLE_KEYS = ['title', 'subtitle', 'unit', 'source', 'locale'] as const;
+
+function isMovableValue(value: unknown): boolean {
+  return typeof value === 'string' || Array.isArray(value) || isRecord(value);
+}
 
 /**
  * Reads a spec the way the caller will: `accepts` says whether a spec with no
@@ -187,7 +191,7 @@ export interface ParseHooks {
  */
 function movableKeys(input: Record<string, unknown>, strays: readonly string[], accepts: (candidate: Record<string, unknown>) => boolean): ReadonlySet<string> {
   const { options, type } = input;
-  const candidates = typeof type === 'string' ? strays.filter(key => (MOVABLE_KEYS as readonly string[]).includes(key) && typeof input[key] === 'string'
+  const candidates = typeof type === 'string' ? strays.filter(key => (MOVABLE_KEYS as readonly string[]).includes(key) && isMovableValue(input[key])
     && optionsTake(type, key) && (options === undefined || (isRecord(options) && !Object.hasOwn(options, key)))) : [];
   if (candidates.length === 0) return new Set();
   const moved = (keys: readonly string[]): boolean => {
@@ -200,7 +204,7 @@ function movableKeys(input: Record<string, unknown>, strays: readonly string[], 
 }
 
 /**
- * A top-level `title`, `subtitle`, `unit` or `source` string holds what the
+ * A top-level `title`, `subtitle`, `unit`, `source` or `locale` holds what the
  * author meant for the chart, so its fix moves it into options instead of
  * dropping it unseen, when the moved chart is accepted (`movableKeys`). Any
  * other stray key is no option name, so options would refuse it: its fix
@@ -254,7 +258,7 @@ function unknownDocFields(raw: unknown, accepts: (candidate: Record<string, unkn
     warnings.push(completeDiagnostic({
       code: 'locale-ignored',
       severity: 'warn',
-      message: "root 'locale' must be a language tag such as 'de'; anything else has no effect; explicit chart formats override the language tag",
+      message: "root 'locale' must be a language tag such as 'de'; anything else has no effect; set a locale object on each chart's options.locale; explicit chart formats override the language tag",
     }, raw, ['locale']));
   }
   if (Array.isArray(raw.charts)) {

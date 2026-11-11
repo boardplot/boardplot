@@ -35,6 +35,8 @@ interface RenderInput extends RowsInput {
   return?: readonly string[];
   /** A file built by `boardplot fonts build`; `BOARDPLOT_FONT_TABLES` names one when this is absent. */
   fontTables?: string;
+  /** Whether the caller reads a design advice code. The probe of an advice it drops does not run. */
+  adviceRead?: (code: string) => boolean;
 }
 
 const RETURNS = ['svg', 'reading'] as const;
@@ -195,7 +197,7 @@ function renderWithTables(input: RenderInput): VerbResult {
   const { doc, envelope, bare } = loaded;
   envelope.warnings.push(...options.warnings);
   envelope.warnings.push(...(rows.warnings ?? []));
-  const laid: { name: string; chart: DrawnChart; drawsWith: (changed: Record<string, unknown>) => boolean }[] = [];
+  const laid: { name: string; chart: DrawnChart; drawsWith: (changed: Record<string, unknown>, code: string) => boolean }[] = [];
   const scopeUses = new Map<string, number>();
   for (const chart of doc.charts) {
     const sized = withSize(chart, options.width, options.height, options.target ?? chart.options?.target as RenderTarget | undefined);
@@ -219,7 +221,7 @@ function renderWithTables(input: RenderInput): VerbResult {
       ...(options.background === 'transparent' ? { background: false as const } : {}),
     }, options.target);
     const drawnCodes = new Set(envelope.warnings.slice(before).map((warning) => warning.code));
-    if (drawn) laid.push({ name: chart.name, chart: drawn, drawsWith: (changed) => drawsWithOptions(doc, sized, changed, drawnCodes, options.target) });
+    if (drawn) laid.push({ name: chart.name, chart: drawn, drawsWith: (changed, code) => input.adviceRead?.(code) !== false && drawsWithOptions(doc, sized, changed, drawnCodes, options.target) });
   }
   addDocumentLints(doc, envelope, laid);
   const sent = <T extends DocumentFinding>(findings: T[]) => keepSizeUnit(attributeSizeOverride(
