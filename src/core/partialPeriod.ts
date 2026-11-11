@@ -32,10 +32,20 @@ export function partialFootnotes(
   strings: StringsSpec | undefined,
   keyed = false,
 ): string[] {
-  const labels = categories
-    .filter((category) => category.partial === true)
-    .map((category) => (category.label ?? category.id).replace(/\s*\n\s*/g, ' '));
-  return labels.length === 0 || keyed ? [] : [disclosureNote(`${labels.join(', ')} ${strings?.toDate ?? localeStrings().toDate}`)];
+  const names = partialNames(categories, strings);
+  return names === undefined || keyed ? [] : [disclosureNote(names)];
+}
+
+/**
+ * The running categories with the to-date words once: "W38, W39 to date". A
+ * label that already says them ("1 Nov to date") gets no second copy.
+ */
+function partialNames(categories: readonly Pick<Category, 'id' | 'label' | 'partial'>[], strings: StringsSpec | undefined): string | undefined {
+  const toDate = strings?.toDate ?? localeStrings().toDate;
+  const labels = categories.filter((c) => c.partial === true).map((c) => (c.label ?? c.id).replace(/\s*\n\s*/g, ' '));
+  if (labels.length === 0) return undefined;
+  const plain = labels.filter((label) => !saysToDate(label, toDate));
+  return [...(plain.length > 0 ? [`${plain.join(', ')} ${toDate}`] : []), ...labels.filter((label) => saysToDate(label, toDate))].join(', ');
 }
 
 /**
@@ -68,8 +78,7 @@ export function partialIds(categories: readonly Pick<Category, 'id' | 'partial'>
  * partial category with nothing drawn adds no key.
  */
 export function partialLegendKeys(painted: boolean, strings: StringsSpec | undefined, categories: readonly Pick<Category, 'id' | 'label' | 'partial'>[] = []): LegendItemInput[] {
-  const labels = categories.filter(c => c.partial).map(c => (c.label ?? c.id).replace(/\s*\n\s*/g, ' '));
-  const label = labels.length > 0 ? `${labels.join(', ')} ${strings?.toDate ?? localeStrings().toDate}` : strings?.partial ?? localeStrings().partial;
+  const label = partialNames(categories, strings) ?? strings?.partial ?? localeStrings().partial;
   return painted
     ? [{ id: '__partial', label, paint: { token: 'markInk' }, pattern: 'hatch45' }]
     : [];
