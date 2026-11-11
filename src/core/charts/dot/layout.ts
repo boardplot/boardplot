@@ -1305,7 +1305,8 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
     if (dot && dot.x < lx && label.rect.x > dot.x) step = { ...label.rect, x: lx + LINE_CLEAR };
     else if (dot && dot.x > lx && label.rect.x < dot.x) step = { ...label.rect, x: lx - LINE_CLEAR - label.rect.w };
     // The step must land clear of every other dot and label, and inside the canvas; else the value stays and reads on a halo.
-    if (step && step.x >= 0 && step.x + step.w <= size.width && !occupied.hitsWhich(step, solveCtx.labelPad).some((claim) => claim.part !== 'referenceLine'
+    // It moves the value at most LINE_CLEAR, so it stays beside its own dot: a longer step leaves a gap that reads as another row's.
+    if (step && Math.abs(step.x - label.rect.x) <= LINE_CLEAR && step.x >= 0 && step.x + step.w <= size.width && !occupied.hitsWhich(step, solveCtx.labelPad).some((claim) => claim.part !== 'referenceLine'
       && !(claim.kind === 'mark' && isOwnMark(claim.owner, label.owner, 'point', claim.part))
       && !(claim.kind === 'label' && claim.owner.seriesId === label.owner.seriesId && claim.owner.categoryId === label.owner.categoryId))) {
       label.rect = step;
