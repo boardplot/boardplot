@@ -153,6 +153,13 @@ describe('a form whose floor is above the asked width gives way', () => {
   ])('%s draws', (type, data, options) => {
     expect(layout(type, data, options).refused).toBeFalsy();
   });
+  // A creative name with no break point drew at 639 and 719 px and threw an overflow at 650 and 720 px:
+  // the wide card at 640 px and the larger type at 720 px narrowed its column before any step could give way.
+  it.each([650, 720])('creative draws a long unbroken name at %i px', (width) => {
+    const { data, options } = fixture('creative', 'creative-placeholder');
+    const facts = { ...(data as { facts: object }).facts, name: 'QuarterlyrevenuedashboardheroimageQuarterlyrevenuedashboardheroi' };
+    expect(layout('creative', { ...(data as object), facts }, { ...options, size: { width } }).refused).toBeFalsy();
+  });
 });
 
 describe('an automatic height grows before a width refusal', () => {
@@ -261,5 +268,43 @@ describe('a chart refused in the text class of its width draws in a smaller clas
     expect(minWidth).toBeLessThanOrEqual(1080);
     expect(cli({ width: minWidth, height: 900 }).refused).toBeNull();
     expect(cli({ width: minWidth - 1, height: 900 }).refused).not.toBeNull();
+  });
+});
+
+describe('measure gives one answer in every call order', () => {
+  // A narrower form that was refused too left measure probing that form, so 320 px named 400 in a fresh process and 752 after a call at 390 px.
+  it('names the same minimum width before and after a wider call', () => {
+    const { data, options } = fixture('waffle', 'seven-panels-narrow');
+    // Measure keeps its searches by content, so each order gets its own category ids.
+    const own = (tag: string) => ({ ...(data as object), categories: (data as { categories: { id: string }[] }).categories.map((c) => ({ ...c, id: `${c.id}-${tag}` })) });
+    const at = (spec: unknown, width: number) => measure({ type: 'waffle', data: spec, options: { ...options, size: { width } } } as never).minWidth;
+    const first = at(own('a'), 320);
+    const later = own('b');
+    at(later, 390);
+    expect(at(later, 320)).toBe(first);
+  });
+
+  // Measure kept the widths a search laid out through a call opened for another width, whose memos changed them: the refusal at
+  // 160 px named 280 x 257 px in a fresh process and 280 x 254 px after a call at 320 px. Render draws 257 px at 280 px.
+  it('names the same refusal size before and after a wider call', () => {
+    const { data, options } = fixture('status', 'column-widths');
+    const status = data as { rows: { id: string }[]; cells: { row: string }[] };
+    const own = (tag: string) => ({ ...status, rows: status.rows.map((r) => ({ ...r, id: `${r.id}-${tag}` })), cells: status.cells.map((c) => ({ ...c, row: `${c.row}-${tag}` })) });
+    const at = (spec: unknown, width: number) => measure({ type: 'status', data: spec, options: { ...options, size: { width } } } as never).warnings[0]?.expected;
+    const first = at(own('a'), 160);
+    const later = own('b');
+    at(later, 320);
+    expect(at(later, 160)).toEqual(first);
+  });
+});
+
+describe('a later step that draws stepped text names it', () => {
+  // At 480 to 488 px the stepped slide text was refused and the narrow form drew it at 21.33 px without the type-stepped note.
+  it('grid narrow form at 484 px', () => {
+    const request = { type: 'grid', data: {"panels": [{"id": "list", "type": "table", "row": 0, "column": 0, "options": {"variant": "status", "density": "compact", "legend": "none"}, "data": {"columns": [{"id": "label", "kind": "rowLabel", "label": "Initiative"}, {"id": "status", "kind": "status", "label": "Delivery status"}], "rows": [{"id": "A", "label": "A · Core expansion", "cells": {"status": "on-track"}}, {"id": "B", "label": "B · Service attach", "cells": {"status": "on-track"}}, {"id": "C", "label": "C · Partner channel", "cells": {"status": "at-risk"}}]}}, {"id": "map", "type": "scatter", "row": 0, "column": 1, "data": {"groups": [{"id": "priority", "label": "Priority"}, {"id": "selective", "label": "Selective"}], "points": [{"id": "A", "group": "priority", "label": "A", "x": 8.4, "y": 8.8}, {"id": "B", "group": "priority", "label": "B", "x": 7.1, "y": 8}, {"id": "C", "group": "selective", "label": "C", "x": 6.8, "y": 5.7}]}, "options": {"valueAxis": {"show": true, "gridlines": true}, "legend": "none", "axisTitles": {"x": "Execution feasibility", "y": "Strategic attractiveness"}, "unit": "Attractiveness × feasibility"}}]},
+      options: { ...{"title": "A–G assessment links the decision list to the portfolio map", "columns": [1.15, 1.05], "target": "slide", "theme": "notation"}, size: { width: 484 } } };
+    const geometry = layoutResolvedRequest(resolveChartRequest(request as never));
+    expect(geometry.refused).toBeFalsy();
+    expect(geometry.warnings.map((warning) => warning.code)).toContain('type-stepped');
   });
 });

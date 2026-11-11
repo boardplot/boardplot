@@ -30,7 +30,7 @@ import { allQuiet, chartNotes, copyNote, engineNote, engineNoteMeta, footerParts
 import { harveyWedgePath } from './svgPath';
 import {
   cappedItems, countedValuesText, frameText, HIDDEN_LABEL_LEAD, listedNoteText, listText, moreListedText, noteCap, type NoteCapOptions,
-  measureNamesUnit, subtitleUnitClause, type SubtitleText,
+  measureNamesUnit, subtitleUnitClause, unitWordsAsSigns, type SubtitleText,
 } from './frameText';
 import { parseFormatExample, unitOfSpec } from './formatSpec';
 import { hasAuthoredTypeSize, type FontSpec } from './text';
@@ -1441,15 +1441,17 @@ function planNote(items: ReadonlyMap<Id, NoteItem>, context: { data: unknown; an
  * note: the line over the registry's items and `extras` (id and text, in the
  * order to list them), and the footnotes without the line the registry wrote.
  * `counted` holds the ids the cap leaves to its count. The caller marks the
- * labels it names with `markNotedLabels`.
+ * labels it names with `markNotedLabels`, handing it `marks`, so the labels the
+ * drawn note leaves to "and N more" read as counted, not listed.
  */
-export function hiddenNoteWith(options: object, extras: readonly { id: Id; text: string }[]): { footnotes: string[]; line: string[]; ids: Set<Id>; counted: ReadonlySet<Id> } {
-  const own = options as Pick<BaseOptions, 'footnotes'> & NoteCapOptions
+export function hiddenNoteWith(options: object, extras: readonly { id: Id; text: string }[]): { footnotes: string[]; line: string[]; ids: Set<Id>; counted: ReadonlySet<Id>; marks: object } {
+  const own = options as Pick<BaseOptions, 'footnotes' | 'strings'> & NoteCapOptions
     & { [NOTE_ITEMS]?: ReadonlyMap<Id, NoteItem>; [NOTE_LINE]?: string; [NOTE_CONTEXT]?: { data: unknown; annotations?: unknown; kindCounts?: Record<string, number> } };
   const items = new Map(own[NOTE_ITEMS]);
   for (const { id, text } of extras) items.set(id, { text });
   const plan = planNote(items, own[NOTE_CONTEXT] ?? { data: undefined }, own);
-  return { footnotes: authoredNotes(own).filter((note) => note !== own[NOTE_LINE]), line: plan.line ? [plan.line] : [], ids: new Set(items.keys()), counted: plan.counted };
+  return { footnotes: authoredNotes(own).filter((note) => note !== own[NOTE_LINE]), line: plan.line ? [plan.line] : [], ids: new Set(items.keys()), counted: plan.counted,
+    marks: { strings: own.strings, [NOTE_ITEMS]: items, [NOTE_LINE]: plan.line, [NOTE_COUNTED]: plan.counted } };
 }
 
 /**
@@ -1534,6 +1536,8 @@ export function unitUnprinted(
   if (!unit || options?.unitShown === true || drawn.refused) return false;
   // A relative variance prints its differences in % on purpose; the unit is the base's, not the drawing's.
   if (drawn.type === 'variance' && (options as { variant?: string } | undefined)?.variant === 'relative') return false;
+  // A table whose column heads print their own, different units leaves options.unit out on purpose (table-unit-overridden).
+  if (drawn.type === 'table' && (drawn.derived as { table?: { columnUnits?: true } } | undefined)?.table?.columnUnits) return false;
   // Shares print with their own % sign, and options.unit names values no label shows.
   if (printsOnlyShares(drawn.type, options, drawn.derived)) return false;
   const subtitle = resolveSubtitle(options?.subtitle as BaseOptions['subtitle']);
@@ -1629,11 +1633,7 @@ export function shareUnitLints(
   }];
 }
 
-/** The codes a sign prints for: "€1.2m" carries EUR, "12%" carries percent. Whole words only ("Europe" is no EUR). */
-const UNIT_SIGNS: readonly [RegExp, string][] = [
-  [/\b(?:EUR|euros?)\b/gi, '€'], [/\bUSD\b/gi, '$'], [/\bGBP\b/gi, '£'], [/\bJPY\b/gi, '¥'], [/\b(?:percent|pct)\b/gi, '%'],
-];
-const signedUnit = (text: string) => squeezeUnit(UNIT_SIGNS.reduce((out, [code, sign]) => out.replace(code, sign), text));
+const signedUnit = (text: string) => squeezeUnit(unitWordsAsSigns(text));
 
 /**
  * Whether a printed text already carries `unit`: the unit lint and
@@ -1649,7 +1649,7 @@ export function textCarriesUnit(text: string, unit: string): boolean {
   if (needle.replace(/[^\p{L}]/gu, '').length > 2) return signedUnit(text).includes(needle);
   const between = String.raw`[\d\s.,'’+\-−]*`;
   const pattern = [...needle].map((char) => char.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join(between);
-  return new RegExp(String.raw`(?<!\p{L})${pattern}(?!\p{L})`, 'iu').test(UNIT_SIGNS.reduce((out, [code, sign]) => out.replace(code, sign), text));
+  return new RegExp(String.raw`(?<!\p{L})${pattern}(?!\p{L})`, 'iu').test(unitWordsAsSigns(text));
 }
 
 /** Cohort headers and unit warnings accept the same authored percent words. */

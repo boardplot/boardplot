@@ -205,6 +205,8 @@ export interface AnnotatePassInput {
   gridCallouts?: { rows: ReadonlyMap<Id, Rect>; widths?: ReadonlyMap<Id, number>; bounds: Rect; grid: Rect; sideLimit: number };
   /** Wide combo value-line labels use a row above the plot. */
   valueLineRows?: ReadonlyMap<Id, Rect>;
+  /** False when the chart's `labels.valueLine: false` takes the value-line labels off; the lines stay. */
+  valueLineLabels?: boolean;
   /**
    * The top of the CAGR arms' lanes. A line puts its header rows inside
    * `plot` and the value-axis title in the row over them; a claim that ends
@@ -253,6 +255,8 @@ export interface AnnotatePassInput {
   sharesFormat?: boolean;
   /** The value-line scale is percent; other annotations may use source amounts. */
   valueLinePercentLevels?: boolean;
+  /** The generated average marker and how its drawn label prints the number; the marker's record (the hover value) prints it alike. */
+  averageMarker?: { id: Id; fmt: (v: number) => string };
   /** The value-line axis keeps its percent or percentage-point unit under an authored format. */
   valueLineUnit?: '%' | 'pp';
   /** Combo's secondary value-line scale has its own unit. */
@@ -995,12 +999,13 @@ function placeNote(s: AnnotationScope, ann: Extract<Annotation, { kind: 'callout
   // sentence built around it is the author's, so the record carries the
   // anchor value it was substituted from and claims nothing more.
   const lines = headline === undefined ? text : `${headline}\n${text}`;
+  const printsValue = !repeats && [ann.text, ann.kind === 'callout' ? ann.headline : undefined].some((part) => part?.includes('${value}'));
   calloutLabel(s, ann, at, lines, ann.kind, undefined, lines, {
     basis: 'authored',
     op: `annotation-${ann.kind}@1`,
     inputs: [{ ref: `at:${anchorRefLabel(ann.at)}`, value: at.noValue === undefined ? at.value : null, state: 'anchor' }],
     raw: null,
-  }, placedGlyph);
+  }, placedGlyph, printsValue ? found.owner : undefined);
 }
 
 function placeDelta(s: AnnotationScope, ann: Extract<Annotation, { kind: 'delta' }>): void {
@@ -1123,7 +1128,7 @@ function placeAbs(s: AnnotationScope, ann: Extract<Annotation, { kind: 'abs' }>)
     op: 'annotation-abs@1',
     inputs: [{ ref: `at:${anchorRefLabel(ann.at)}`, value: at.value, state: 'anchor' }],
     raw: at.value,
-  });
+  }, undefined, label.text === label.computed ? at.owner : undefined);
 }
 
 /**
@@ -1253,6 +1258,12 @@ const LINE_LABEL_AIR = 12;
  * it widens (lineLabelGutterLines). A chart whose first pass hid the label
  * reserves exactly that gutter (hiddenValueLineReserve) and lays out again.
  */
+/** The x seats between `start` and `end` along a line, LINE_SEAT_STEP apart, both ends left out: from `end` leftward, or from `start` rightward. */
+function alongLine(start: number, end: number, fromStart = false): number[] {
+  const steps = Math.min(LINE_SEAT_MAX, Math.ceil((end - start) / LINE_SEAT_STEP));
+  return steps > 1 ? Array.from({ length: steps - 1 }, (_, i) => fromStart ? start + ((i + 1) * (end - start)) / steps : end - ((i + 1) * (end - start)) / steps) : [];
+}
+
 function rightLineSeats(
   input: AnnotatePassInput,
   text: string,
@@ -1268,8 +1279,7 @@ function rightLineSeats(
     ({ slot, rect: { x, y: top, w: size.width, h: size.height }, penalty });
   const end = plot.x + plot.w - size.width;
   const start = plot.x + 4;
-  const steps = Math.min(LINE_SEAT_MAX, Math.ceil((end - start) / LINE_SEAT_STEP));
-  const along = steps > 1 ? Array.from({ length: steps - 1 }, (_, i) => end - ((i + 1) * (end - start)) / steps) : [];
+  const along = alongLine(start, end);
   const lines = lineLabelGutterLines(text, (t) => input.measure(t, font).width);
   const wrappedW = Math.max(...lines.map((line) => input.measure(line, font).width));
   const wrappedH = size.height * lines.length;
@@ -1325,7 +1335,7 @@ function valueLineLabel(
     ? repeatsEndValue(input, v, valueText, y, input.measure(`${ann.label} ${valueText}`, font)) : undefined;
   const nameOnly = endValue !== undefined;
   const labelText =
-    ann.label === false ? '' : typeof ann.label === 'string' && nameOnly ? ann.label
+    ann.label === false || input.valueLineLabels === false ? '' : typeof ann.label === 'string' && nameOnly ? ann.label
       : ann.label !== undefined ? namedLineText(ann.label, valueText, v, id)
       : (isMean ? `${input.strings?.average ?? localeStrings(input.locale).average} ${valueText}${span ? ` (${span})` : ''}` : valueText);
   if (!labelText) return labelText;
@@ -1413,6 +1423,11 @@ function valueLineLabel(
           // A left label whose start is taken by the data steps to the line's right end, above or below it.
           { slot: 'insideEnd', rect: { x: input.plot.x + input.plot.w - size.width, y: y - size.height - LINE_LABEL_GAP, w: size.width, h: size.height }, penalty: 4 },
           { slot: 'insideEndLow', rect: { x: input.plot.x + input.plot.w - size.width, y: y + LINE_LABEL_GAP, w: size.width, h: size.height }, penalty: 5 },
+          // Both ends taken: even steps along the line from left to right, as a right label has them.
+          ...alongLine(input.plot.x + 4, input.plot.x + input.plot.w - size.width, true).flatMap((at, i) => [
+            { slot: `insideAlong${i + 1}`, rect: { x: at, y: y - size.height - LINE_LABEL_GAP, w: size.width, h: size.height }, penalty: 6 },
+            { slot: `insideAlong${i + 1}Low`, rect: { x: at, y: y + LINE_LABEL_GAP, w: size.width, h: size.height }, penalty: 6 },
+          ]),
         ];
   // Last resort before the label is lost: the same seats 1 px nearer the line.
   const tight = axis === 'x' ? [] : candidates.flatMap((c) => Math.abs(c.rect.y + c.rect.h - (y - LINE_LABEL_GAP)) < 1e-6 || Math.abs(c.rect.y - (y + LINE_LABEL_GAP)) < 1e-6
@@ -1471,7 +1486,7 @@ function placeValueLine(s: AnnotationScope, ann: Extract<Annotation, { kind: 'va
     id,
     kind: 'valueLine',
     computedText: labelText || '',
-    valueText: (meanLine ? s.run.statFmt : s.run.fmt)(v),
+    valueText: (id === input.averageMarker?.id ? input.averageMarker.fmt : meanLine ? s.run.statFmt : s.run.fmt)(v),
     nodeIds: [lineId],
     labelId: labelText ? `valueLine:${id}` : undefined,
     // A mean is MEASURED over the plotted series (the observations are the
@@ -1675,6 +1690,8 @@ function calloutLabel(
   computed = text,
   derivation?: AnnotationDerivation,
   glyph?: CalloutGlyphPlan,
+  /** The mark whose value the text prints. */
+  valueOwner?: OwnerRef,
 ): void {
   const { input, id: annId } = s;
   const at = calloutAttachment(anchor, kind, glyph);
@@ -2021,6 +2038,7 @@ function calloutLabel(
     nodeIds: glyph?.nodeIds ?? arrow?.nodeIds ?? [],
     labelId: `annotation:${annId}`,
     ...(derivation ? { derivation } : {}),
+    ...(valueOwner ? { valueOwner } : {}),
   });
 }
 

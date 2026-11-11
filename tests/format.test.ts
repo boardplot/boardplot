@@ -518,7 +518,8 @@ describe('no nonzero value prints as 0 ', () => {
       rows: [1_234_567, 12_345, -12_345, 0].map((value, index) => ({ id: String(index), label: String(index), cells: { v: value } })),
     };
     const displayed = (result: ReturnType<typeof resolveTable>) => result.table.rows.map(row => row.cells.v!.displayed);
-    expect(displayed(resolveTable(data))).toEqual(['1.2', '<0.1', '>−0.1', '0.0']);
+    // One magnitude would hide the two middle figures, so each unformatted row prints at its own scale.
+    expect(displayed(resolveTable(data))).toEqual(['1.2M', '12,345', '−12,345', '0.0']);
     expect(displayed(resolveTable({ ...data, columns: [data.columns[0]!, { id: 'v', kind: 'value', label: 'Value', format: '1.2M' }] }))).toEqual(['1.2', '0.0', '0.0', '0.0']);
     // A unit that names a scale states the data's scale as authored: the figures print whole, with no second magnitude.
     expect(displayed(resolveTable(data, { unit: 'M units' }))).toEqual(['1,234,567', '12,345', '−12,345', '0']);
@@ -622,6 +623,21 @@ describe('an example is read as its author wrote it', () => {
     expect(warning?.code).toBe('format-hides-values');
     expect(warning?.message).toContain("'12 m/s'");
     expect(warning?.suggest).toMatch(/'1\.1\d* m\/s'/);
+  });
+
+  // A format warning printed "2,345,678" on a chart that prints "2.345.678", and for values already in a "$B" unit it advised a nine-decimal "+$1.123456789B".
+  it('prints format warnings with the chart marks and drops a scale the unit already states', () => {
+    const series = (values: number[]) => ({ series: [{ id: 's', values }] });
+    const [unscaled] = unscaledFormatLint({ format: '1,234', locale: { thousands: '.', decimal: ',' } }, series([2_345_678, 4_567]));
+    expect(unscaled?.message).toContain('values up to 2.345.678 print');
+    const [scaled] = unscaledFormatLint({ format: '+$1.0B', unit: '$B' }, series([62, 43.2, 5.5, 1.9]));
+    expect([scaled?.code, scaled?.fix]).toEqual(['format-hides-values', [{ op: 'replace', path: '/options/format', value: '+$1.0' }]]);
+    // A scale inside a currency code ('USDm') must leave the fix too, or the fix scales the values again.
+    for (const [format, fixed] of [['USDm 1.2', 'USD 1.0'], ['1.2 USDm', '1.0 USD']]) {
+      const [inCode] = unscaledFormatLint({ format, unit: 'USDm' }, series([62, 1.9]));
+      expect(inCode?.fix, format).toEqual([{ op: 'replace', path: '/options/format', value: fixed }]);
+      expect(unscaledFormatLint({ format: fixed, unit: 'USDm' }, series([62, 1.9])), fixed).toEqual([]);
+    }
   });
 
   it('keeps every decimal a chart-level example claims', () => {

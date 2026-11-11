@@ -49,6 +49,7 @@ import {
   rampSlots,
   resolveTheme,
   seriesPaint,
+  stackApartPaint,
   themeForWidth,
   tableEmphasis,
   strokeToken,
@@ -589,7 +590,11 @@ function layoutBarTableOnce(
   const groupOwn = groups.map((g): Paint | undefined =>
     g.fill ? { css: g.fill } : g.colorRole ? groupRoles.get(g.id)! : undefined);
   const groupSlots = groups.length > 0 ? rampSlots(theme, groupOwn, options.palette, groups.length > 1 ? { labels: groups.map((g) => g.label ?? g.id), warnings } : undefined) : [];
-  const groupPaints = groups.map((_, i) => groupOwn[i] ?? seriesPaint(groupSlots[i]!, options.palette));
+  // Beside grey rest rows a plain group takes its ramp step in the active theme, apart from that grey.
+  const residualRows = data.categories.some((row) => row.residual);
+  const groupPaints = groups.map((_, i) => groupOwn[i] ?? (residualRows
+    ? stackApartPaint([...groupOwn, RESIDUAL_FILL], i, groupSlots[i]!, options.palette)
+    : seriesPaint(groupSlots[i]!, options.palette)));
   const rowPaint = (r: number, s: number): Paint => {
     const row = data.categories[r]!;
     if (row.residual) return RESIDUAL_FILL;

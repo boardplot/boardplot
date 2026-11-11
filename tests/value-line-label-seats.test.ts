@@ -81,3 +81,31 @@ it('falls back outside when a value line blocks a requested column center', () =
   expect(label.hidden).toBeUndefined();
   expect(label.slot).toBe('outsideBarTop');
 });
+
+// A left-side value-line label had seats only at the line's two ends: with both taken by the data it went to the note,
+// while a right-side label at the same width read on its line.
+it('seats a left-side value-line label along its line when both ends are taken', () => {
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const values = [0.82, 0.91, 1.12, 1.18, 0.96, 1.06, 1.28, 0.72, 0.86, 1.01, 1.14, 1.24];
+  const geometry = layoutResolvedRequest(resolveChartRequest({
+    type: 'column',
+    data: { categories: months.map((label, i) => ({ id: `m${i}`, label })), series: [{ id: 'index', values }] },
+    annotations: [{ id: 'goal', kind: 'valueLine', value: 1, label: 'Target ${value}', side: 'left' }],
+    options: { valueAxis: { show: true }, size: { width: 480, unit: 'px' } },
+  } as never));
+  if (geometry.refused) throw new Error('refused');
+  expect(geometry.labels.find((l) => l.id === 'valueLine:goal')!.hidden).toBeUndefined();
+});
+
+// labels.valueLine: false was accepted on bar and column but the target line still printed its label.
+it('takes the value-line label off with labels.valueLine false and keeps the line', () => {
+  const data = { categories: ['Jan', 'Feb', 'Mar'].map((label, i) => ({ id: `m${i}`, label })), series: [{ id: 'sales', values: [40, 52, 61] }] };
+  for (const type of ['column', 'bar']) {
+    for (const annotation of [{ kind: 'valueLine', value: 50, label: 'Goal' }, { kind: 'valueLine', value: 50, label: 'Goal', tolerance: 5 }]) {
+      const geometry = layoutResolvedRequest(resolveChartRequest({ type, data, annotations: [annotation], options: { labels: { valueLine: false } } } as never));
+      if (geometry.refused) throw new Error('refused');
+      expect(geometry.labels.filter((l) => l.kind === 'valueLine')).toEqual([]);
+      expect(geometry.scene.some((n) => n.part === 'valueLine')).toBe(true);
+    }
+  }
+});

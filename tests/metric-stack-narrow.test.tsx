@@ -299,3 +299,23 @@ it('drops only the word Change from the method line when the headline is hidden'
   expect(line({ headline: false }, 'de')).not.toContain('Änderung:');
   expect(line({}, 'en')).toContain('Change: average');
 });
+
+// A third stacked panel drew both of its measures in the same faint wash, so its key could not tell them apart.
+it('gives each stacked panel two different segment paints, also a later one and one that mixes earlier measures', () => {
+  const twoUp = (a: number, b: number) => categories.map((_, i) => a + b * i);
+  const stacked = {
+    categories,
+    measures: ['a', 'b', 'c', 'd', 'e', 'f'].map((id, i) => ({ id, label: `Part ${id}`, values: twoUp(100 + 10 * i, 3) })),
+    // The last panel mixes measures that earlier panels keyed: they must stay apart too.
+    panels: ['ab', 'cd', 'ef', 'ac'].map(id => ({ id, type: 'column', title: `Panel ${id}`, unit: 'cases', measure: { sum: [id[0], id[1]] }, readout: 'change' })),
+    windows: { base: { from: 'jan', to: 'feb', label: 'Jan–Feb' }, compare: { from: 'may', to: 'jun', label: 'May–Jun' } },
+  };
+  for (const theme of ['bridge', 'bridge-dark']) {
+    const { svg } = render({ spec: { type: 'grid', theme, data: stacked, options: { stack: {}, size: { width: 900 } } }, return: ['svg'] }).body as { svg: string };
+    const fill = (id: string) => svg.match(new RegExp(`data-id="${id}"[^>]*fill="([^"]+)"`))?.[1];
+    for (const [p, x, y] of [['ab', 'a', 'b'], ['cd', 'c', 'd'], ['ef', 'e', 'f'], ['ac', 'a', 'c']]) {
+      expect(fill(`${p}:key:${x}`)).toBeDefined();
+      expect(fill(`${p}:key:${x}`)).not.toBe(fill(`${p}:key:${y}`));
+    }
+  }
+});
