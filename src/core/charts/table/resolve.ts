@@ -1182,8 +1182,6 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
         // A level row keeps "nonzero stays nonzero", so a small money or count figure never prints as 0.
         // A row of a measure group keeps the group's precision instead: its small member prints the bound (<0.01M).
         const changeLine = row.inline === true || spec.signed;
-        // Where the row keeps its magnitude, only the cell that would print 0 takes more digits: $4M, $6M, $0.002M.
-        let liftCells = false;
         if (smallMoney || (!changeLine && group === undefined && values.some(v => v !== 0 && roundedNumber(v, spec) === 0))) {
           // A k row that would print a nonzero value as 0.0k reads in whole units, not in 0.04k.
           if (!spec.magnitudeInAffix && (smallMoney || (!rowScale && spec.lockMagnitude && spec.magnitude === 'k') || (row.scale === 'money' && spec.magnitude === 'k'))) {
@@ -1192,7 +1190,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
             spec.decimals = !rowScale && authored.magnitude === 'none' ? authored.decimals : 0;
             spec.magnitude = 'none';
             spec.decimals = values.reduce((decimals, value) => nonzeroDecimals(value / MAGNITUDE_DIVISOR[spec.magnitude], decimals), spec.decimals);
-          } else liftCells = true;
+          }
         }
         // A large Range total must not hide the level of a smaller period. The rows of a measure group
         // share one precision: 1% of the group's largest figure, read over every figure of the group,
@@ -1227,12 +1225,18 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
             groupCellSpecs.set(row.id, inRow);
           }
         }
-        if (liftCells) {
+        // Nonzero stays nonzero per cell: only a cell that would print 0 takes more digits ($4M, $6M, $0.002M).
+        // That is every cell the row format prints: value, computed, subtotal and calc-row cells alike.
+        if (!changeLine && group === undefined) {
           const inRow = new Map<Id, NumberFormatSpec>();
-          for (const [colId, value] of rowCells(row)) {
-            if (value !== 0 && roundedNumber(value, spec) === 0) inRow.set(colId, { ...spec, decimals: nonzeroDecimals(value / MAGNITUDE_DIVISOR[spec.magnitude], spec.decimals) });
+          for (const col of [...valueCols, ...computedCols]) {
+            if ((row.calc === undefined && columnOwnsFormat(col)) || cellFormat(row.cells[col.id]) !== undefined) continue;
+            const value = rawState.get(row.id)?.get(col.id)?.raw;
+            if (typeof value === 'number' && value !== 0 && roundedNumber(value, spec) === 0) {
+              inRow.set(col.id, { ...spec, decimals: nonzeroDecimals(value / MAGNITUDE_DIVISOR[spec.magnitude], spec.decimals) });
+            }
           }
-          groupCellSpecs.set(row.id, inRow);
+          if (inRow.size > 0) groupCellSpecs.set(row.id, inRow);
         }
       }
       // The row precision above is the rule on unlifted rounding; the lift applies to the printed value only.
