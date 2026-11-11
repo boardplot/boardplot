@@ -5,7 +5,7 @@ import type { OptionsInput } from '../core/types/optionInput';
 import { hasPolarityBadge, isFigureCell, polarityBadgeInk } from '../core/charts/table/chips';
 import { chartString } from '../core/strings/table';
 import { belowTableViewportFloor, columnHeadText } from '../core/charts/table/widths';
-import { tableScrollNeed } from '../core/charts/table/need';
+import { tableScrollRung } from '../core/charts/table/need';
 import {
   createContext,
   memo,
@@ -1039,9 +1039,10 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     () => table ? visibleColumns(table, Object.fromEntries([...table.columnToggles.map((toggle) => [toggle.id, toggle.defaultVisible] as const), ...Object.entries(defaultColumnVisibility ?? {})])) : [],
     [table, defaultColumnVisibility],
   );
-  // The grid draws the full rung and scrolls where the table is wider; the core answers its tracks and its overflow advice.
+  // A table wider than its box takes the first tighter rung of the fit ladder that ends the scroll, else draws the
+  // full rung and scrolls; the core answers the rung, its tracks and its overflow advice.
   const need = useMemo(() => {
-    if (!table || !theme) return undefined;
+    if (!table || !theme || !layoutRequest) return undefined;
     // A container keeps the authored side margins; a fixed frame adds the theme's canvas margin.
     const sidesAt = (frameTheme: Theme, frameWidth: number) => size === 'container' || size === undefined
       ? { left: marginLeft, right: marginRight } : { ...canvasMargin(frameTheme, frameWidth), ...margin };
@@ -1053,7 +1054,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
       return { width: boxWidth, inset: frameWidth - boxWidth };
     };
     const frameWidth = size === 'container' ? container.size?.width : size === undefined ? undefined : resolveSize(size).width;
-    return tableScrollNeed({ table, surface: {
+    return tableScrollRung({ table, data: layoutRequest.data as TableData, surface: {
       scroll: true, theme, measure: width.measure,
       options: { ...tableOptions, density, target: request?.target, inlineVisibility, [SOFT_LABEL_CAP]: softLabelCap, [LABEL_WRAP_FLOOR]: labelWrapFloor },
       view: {
@@ -1072,9 +1073,11 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
         return { theme: frameTheme, available: frameWidth - (frameSides.left ?? 0) - (frameSides.right ?? 0), scrollBox: scrollBox(frameWidth) };
       },
     } });
-  }, [table, theme, width, tableOptions, density, request, inlineVisibility, softLabelCap, labelWrapFloor,
+  }, [table, theme, layoutRequest, width, tableOptions, density, request, inlineVisibility, softLabelCap, labelWrapFloor,
     columns, allColumns, defaultColumns, rows, available, frameStart, readOnlyTree, sortableIds, rowLabelLead?.width, groupMarks, size, fit, margin, marginLeft, marginRight, container.size?.width]);
   const measured = need?.plan;
+  // The density of the rung the grid draws: the compact and tight rungs take the compact density.
+  const drawnDensity = need?.density ?? density;
   const padX = measured?.cellPadX ?? 12;
   const indents = measured?.indents ?? { base: 0, step: 16 };
   const operatorSlot = measured?.operatorSlot ?? 0;
@@ -1295,7 +1298,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
       headBox?.removeEventListener('scroll', follow);
       resize?.disconnect();
     };
-  }, [scroller, headBox, gridWidth, container.size?.width, fillHeight, rows, theme, density]);
+  }, [scroller, headBox, gridWidth, container.size?.width, fillHeight, rows, theme, drawnDensity]);
   /**
    * Column windowing: a wide table builds the cells of the pinned columns, the focused column and the
    * columns within half a viewport of the scroll box, and swaps them as the reader scrolls. The track list keeps
@@ -1701,7 +1704,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     // and so does a theme with `table.endRule: 'none'`.
     'data-bp-mark-style': theme?.table?.mark ?? (tableOptions.variant === 'steering' ? 'boxed' : 'bare'),
     'data-bp-end': undefined,
-    'data-bp-density': density,
+    'data-bp-density': drawnDensity,
     // A row label takes its `rowLabelLines` before its cut, two by default, as on the SVG.
     'data-bp-label-lines': tableOptions.rowLabelLines === 1 || manyLabelLines ? String(tableOptions.rowLabelLines) : undefined,
     // 'sorted' keeps the chevron on the sorted header alone; the other
@@ -1800,7 +1803,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
   );
 
   const figure = (
-    <figure ref={displayRef} className="bp-table" data-bp-chart="table" data-bp-table-theme={themeScope} data-bp-motion={provider?.motion} data-bp-mount={tableOptions.mountCollapsed === false ? 'open' : undefined} data-bp-density={density} data-bp-mode={frame.mode === 'compact' ? 'compact' : undefined} data-bp-fill-height={fillHeight ? '' : undefined} style={figureStyle}>
+    <figure ref={displayRef} className="bp-table" data-bp-chart="table" data-bp-table-theme={themeScope} data-bp-motion={provider?.motion} data-bp-mount={tableOptions.mountCollapsed === false ? 'open' : undefined} data-bp-density={drawnDensity} data-bp-mode={frame.mode === 'compact' ? 'compact' : undefined} data-bp-fill-height={fillHeight ? '' : undefined} style={figureStyle}>
       <TableThemeStyle stylesheet={stylesheet} scope={themeScope} nonce={styleNonce} />
       {/* `legend: 'none'` drops the key row, as on the SVG. */}
       <TableCaption frame={frame} theme={theme}

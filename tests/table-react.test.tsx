@@ -2114,3 +2114,23 @@ it('does not warn table-overflow for a fixed-frame table that fits its frame', (
   expect(tracks).toBeLessThanOrEqual(720);
   expect((onWarnings.mock.lastCall?.[0] ?? []).map((warning: { code: string }) => warning.code)).not.toContain('table-overflow');
 });
+
+// The grid drew only the full rung and scrolled where tighter spacing would have fit; tighter spacing that still scrolls must not draw.
+it('takes the first tighter rung that ends the scroll, and keeps the full rung where none does', () => {
+  const { data, options } = getFixtures('table').find((entry) => entry.id === 'steering-monthly')!;
+  const drawAt = (width: number) => {
+    const onWarnings = vi.fn();
+    act(() => root.render(<TableChart data={data} {...options} size={{ width }} onWarnings={onWarnings} />));
+    const grid = gridElement();
+    const tracks = [...grid.style.getPropertyValue('--bp-cols').matchAll(/(?:^|\s)([\d.]+)px/gu)].reduce((sum, match) => sum + Number(match[1]), 0);
+    const codes = (onWarnings.mock.lastCall?.[0] ?? []).map((warning: { code: string }) => warning.code);
+    return { pad: grid.style.getPropertyValue('--bp-cell-pad-x'), tracks, overflow: codes.includes('table-overflow') };
+  };
+  const fits = drawAt(720);
+  expect(fits.pad).not.toBe('12px');
+  expect(fits.tracks).toBeLessThanOrEqual(720);
+  expect(fits.overflow).toBe(false);
+  const scrolls = drawAt(320);
+  expect(scrolls.pad).toBe('12px');
+  expect(scrolls.overflow).toBe(true);
+});

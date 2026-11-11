@@ -211,11 +211,11 @@ describe('shared request measurement', () => {
     }, type === 'diagram' || type === 'choropleth' ? 15_000 : 5_000);
   }
 
-  // The HTML grid draws the full rung and scrolls where the table is wider. Its tracks and its overflow advice
-  // come from the core's scroll-host need, so a grid that drew other tracks, or an advice in the type of the
+  // The HTML grid draws the first rung that ends its scroll, else the full rung, and scrolls. Its tracks and its overflow
+  // advice come from the core's scroll-host need, so a grid that drew other tracks, or an advice in the type of the
   // asked width (a frame past 720 px draws larger type), sent the host a width at which the grid still scrolls.
   for (const type of ['table', 'dimswitch'] as const) it(`${type} grid draws the tracks of its need, and its overflow advice holds`, () => {
-    const needs = vi.spyOn(tableNeeds, 'tableScrollNeed');
+    const needs = vi.spyOn(tableNeeds, 'tableScrollRung');
     const Component = (type === 'table' ? TableChart : DimSwitchChart) as unknown as (props: Record<string, unknown>) => null;
     const drawAt = (fixture: { data: unknown; options?: Record<string, unknown> }, width: number) => {
       needs.mockClear();
@@ -223,7 +223,7 @@ describe('shared request measurement', () => {
       const html = renderToStaticMarkup(createElement(Component, { data: fixture.data, ...fixture.options, size }));
       const at = needs.mock.results.length - 1;
       if (at < 0) return undefined;
-      const need = needs.mock.results[at]!.value as ReturnType<typeof tableNeeds.tableScrollNeed>;
+      const need = needs.mock.results[at]!.value as ReturnType<typeof tableNeeds.tableScrollRung>;
       const { view } = (needs.mock.calls[at]![0].surface as tableNeeds.TableScrollSurface);
       // The grid scrolls past its scroll box; the tracks' room inside the theme margins gives way first.
       return { html, need, available: view.scrollBox?.width ?? view.available ?? Infinity };
