@@ -379,3 +379,29 @@ it.each([332, 1234])('keeps owned-theme footer type at %i px', (width) => {
   const owned = layoutTable(structuredClone(data), { ...options, theme: { preset: 'bridge', overrides: resolveTheme('bridge') } });
   expect(JSON.stringify(owned)).toBe(JSON.stringify(direct));
 });
+
+describe('table need', () => {
+  // Render, measure and the React grid read one need: a rung or a track that drifts from what the layout draws sends them a wrong width.
+  it('names the rung, air and tracks the layout draws', () => {
+    const { data, options } = getFixtures('table').find((entry) => entry.id === 'steering-kpi-rows')!;
+    const need = prepareTableExecutor(data).need({ ...options, size: { width: 480, height: 509 } });
+    expect(need).toMatchObject({ rung: 'cell-air', cellPadX: 3, headLines: 2, margins: { left: 12, right: 12 } });
+    expect(need.tracks).toEqual(need.geometry.marks.columns.map((column) => ({ id: column.id, width: column.w })));
+    expect(need.warnings.find((warning) => warning.code === 'table-compact-fallback')?.message).toContain('3 px cell air, heads on two lines');
+  });
+
+  // The drawing adds warnings (text on an authored ground no ink reads on); a need read before it lost them.
+  it('carries the warnings the drawing adds', () => {
+    const data: TableData = {
+      columns: [{ id: 'l', kind: 'rowLabel' }, { id: 'ac', kind: 'value' }],
+      rows: [{ id: 't', label: 'Group', role: 'total', cells: { ac: 128 } }, { id: 'a', label: 'North', cells: { ac: 70 } }],
+    };
+    const request = resolveChartRequest({ type: 'table', data, options: { size: { width: 480 } }, theme: { preset: 'standard', overrides: {
+      color: { ink: '#333333', inkInverse: '#dddddd', onFillInk: '#333333', onFillLightInk: '#dddddd' }, table: { grounds: { total: '#777777' } } } } } as Parameters<typeof resolveChartRequest>[0]);
+    const executor = prepareTableExecutor(request.data as TableData);
+    const need = executor.need(request.options as TableOptions);
+    expect(need.warnings.map((warning) => warning.code)).toContain('table-ground-text-unreadable');
+    expect(need.warnings).toEqual(executor.run(request.options as TableOptions).warnings);
+    expect(need.geometry.scene.length).toBeGreaterThan(0);
+  });
+});
