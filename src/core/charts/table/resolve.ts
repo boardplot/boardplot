@@ -139,7 +139,8 @@ export const PERCENT_DELTA_CAP = 999;
 
 /** The mark on the head of a column whose total skipped a missing value, and on its note. */
 export const PARTIAL_MARKER = '†';
-export const partialFootnote = (language?: string) => chartString({ locale: { language } }, 'tablePartialNote', { marker: PARTIAL_MARKER });
+/** The partial-aggregate note, led by the mark the table carries: the head's † or the cell word ("(partial)"). */
+export const partialFootnote = (language?: string, marker: string = PARTIAL_MARKER) => chartString({ locale: { language } }, 'tablePartialNote', { marker });
 /** Carries the same marker the glyph does, so the tie survives numbering. */
 export const suppressedFootnote = (language?: string) => chartString({ locale: { language } }, 'tableSuppressedNote', { marker: SUPPRESSED_MARKER });
 
@@ -505,6 +506,8 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   // Columns whose aggregate skipped a null child: the partial footnote is theirs.
   const partialColumnIds = new Set<Id>();
   const headMarksPartial = disclosuresShown(options) && options.columnHeads !== false;
+  // The note names the mark the cells carry: the head's † where it prints, else the cell word.
+  const partialNote = partialFootnote(options.locale?.language, headMarksPartial ? PARTIAL_MARKER : options.strings?.incomplete ?? localeStrings(options.locale?.language).incomplete);
   const highlightedRows = new Set(resolveHighlight(options.highlight));
   assertTableRankOptions(options);
   const folded = applyTableTopN(data, options);
@@ -860,7 +863,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
     } else {
       if (blockers.length > 0) {
         // With no head for the † the cell says it, so the note has nothing to point at.
-        if (options.columnHeads !== false) autoFootnotes.add(partialFootnote(options.locale?.language));
+        if (options.columnHeads !== false) autoFootnotes.add(partialNote);
         partialColumnIds.add(col.id);
       }
       // A sum that skipped a child, or adds a partial one, prints marked on the cell.
@@ -2134,7 +2137,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
       unit: uniformUnit ?? undefined,
       ...(data.levelNouns === undefined ? {} : { levelNouns: data.levelNouns }),
       footnotes,
-      ...(partialColumnIds.size > 0 ? { partialColumnIds: [...partialColumnIds] } : {}),
+      ...(partialColumnIds.size > 0 ? { partialColumnIds: [...partialColumnIds], partialNote } : {}),
       ...(options.colorblindSafe === true ? { colorblindSafe: true as const } : {}),
       provenance: {},
     },

@@ -1140,10 +1140,13 @@ describe('TableChart reads the footer rule notes model', () => {
   it('drops the partial-total note of a prepared table with its hidden column', async () => {
     const fixture = getFixtures('table').find((entry) => entry.id === 'nulls-policy')!;
     const toggled = { ...(fixture.data as TableData), columnToggles: [{ id: 'skip', label: 'Q3', columns: ['q3'], defaultVisible: false }] };
-    const options = { ...(fixture.options as TableOptions), notes: { show: ['note', 'disclosure'] as const } };
-    const prepared = await prepareChart({ type: 'table', data: toggled, options } as never) as never;
-    act(() => root.render(<TableChart data={toggled} {...options as object} prepared={prepared} />));
-    expect(printed()).toEqual([]);
+    for (const notes of [{ show: ['note', 'disclosure'] as const }, { placement: 'frame' as const, maxLines: 3 }]) {
+      const options = { ...(fixture.options as TableOptions), notes };
+      const prepared = await prepareChart({ type: 'table', data: toggled, options } as never) as never;
+      act(() => root.render(<TableChart data={toggled} {...options as object} prepared={prepared} />));
+      // Without the † in the head the note reads "(partial) ..."; a prepared table kept it after its column was hidden.
+      expect(printed()).toEqual([]);
+    }
   });
 
   // The React head broke "WEEK 1" into "WEEK" over "1" where the SVG keeps the short word on the line before it.
