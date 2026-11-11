@@ -191,6 +191,7 @@ it('applies topN.threshold on column and table and warns on variance when n keep
   const long = Array.from({ length: ITEM_BUDGET + 1 }, (_, i) => ({ id: `item${i}` }));
   const cancelled = { categories: long, series: [{ id: 'actual', values: long.map(() => 50) }, { id: 'plan', role: 'reference', values: long.map(() => -50) }] };
   for (const type of ['bar', 'column']) expect(() => checkItemBudget(type, cancelled, { topN: { n: ITEM_BUDGET + 1, threshold: 10 } }), type).toThrow(/exceed/);
+  expect(() => checkItemBudget('bar', { categories: long }, { topN: { n: ITEM_BUDGET + 1, threshold: 10 } })).not.toThrow();
 });
 
 // The item budget must count only selected dot and variance categories, including a cut exactly at the budget.

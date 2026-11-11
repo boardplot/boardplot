@@ -93,6 +93,8 @@ interface BudgetOptions {
  */
 function barTotalsAtLeast(data: unknown, threshold: number): number {
   const { categories, series } = data as Pick<ChartData, 'categories' | 'series'>;
+  // Malformed data passes here, so the layout's own refusal answers.
+  if (!Array.isArray(series) || !Array.isArray(categories)) return 0;
   const cats = categories.map(normalizeCategory);
   const totals = new Float64Array(cats.length);
   series.forEach((one, index) => {
