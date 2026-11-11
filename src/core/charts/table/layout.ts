@@ -60,7 +60,7 @@ import { fitTableFormats, formatsFittedWarning } from './fitFormats';
 import { qualifierFont, tableInk, tableRuleInk } from './statement';
 import { chipHeight, chipPaints, hasPolarityBadge, isFigureCell, polarityBadgeInk, onTableGround, statusSquare, statusSquarePaint, tableGround, toneTextPaint } from './chips';
 import { lastObservedIndex, type SparklineDomain } from '../sparkline/layout';
-import { resolveTable, prepareTableData, resolvePreparedTable, ZERO_LIFT, type PreparedTableData, type ZeroLiftOptions } from './resolve';
+import { resolveTable, prepareTableData, resolvePreparedTable, tableFrameUnit, ZERO_LIFT, type PreparedTableData, type ZeroLiftOptions } from './resolve';
 import type { ResolvedTable } from '../../types/table';
 import { DEFAULT_EMPTY_MESSAGE } from '../../emptyData';
 import { cellDrawsTabular, cellHoldsNumber, emptyMessageRow, expansionRootsHidden, finalClosers, hasNoDataRows, groupSpans, heatColumn, isTotalRow, labelOnlyRow, noteLineIndex, printsFigures, rowGrounds, tableFootnotes, visibleColumns, visibleInlineRows, visibleRows } from './view';
@@ -1058,7 +1058,7 @@ function prepareTableCandidate(
       ...frameTextOptions(options),
       // uniform money unit hoisted out of every cell → the frame slot
       // (solveFrame prepends 'in' itself)
-      unit: table.unit ?? options.unit,
+      unit: tableFrameUnit(table, options),
       // rows/cols, not table.rows/table.columns: this surface is static, so a
       // marker inside a collapsed row or a hidden column is unreachable here
       // and its footnote would point at nothing

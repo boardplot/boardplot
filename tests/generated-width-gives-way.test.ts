@@ -263,3 +263,17 @@ describe('a chart refused in the text class of its width draws in a smaller clas
     expect(cli({ width: minWidth - 1, height: 900 }).refused).not.toBeNull();
   });
 });
+
+describe('measure gives one answer in every call order', () => {
+  // A narrower form that was refused too left measure probing that form, so 320 px named 400 in a fresh process and 752 after a call at 390 px.
+  it('names the same minimum width before and after a wider call', () => {
+    const { data, options } = fixture('waffle', 'seven-panels-narrow');
+    // Measure keeps its searches by content, so each order gets its own category ids.
+    const own = (tag: string) => ({ ...(data as object), categories: (data as { categories: { id: string }[] }).categories.map((c) => ({ ...c, id: `${c.id}-${tag}` })) });
+    const at = (spec: unknown, width: number) => measure({ type: 'waffle', data: spec, options: { ...options, size: { width } } } as never).minWidth;
+    const first = at(own('a'), 320);
+    const later = own('b');
+    at(later, 390);
+    expect(at(later, 320)).toBe(first);
+  });
+});

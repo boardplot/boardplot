@@ -76,6 +76,7 @@ import { lineTrendLabel } from './trend';
 
 import type { EmittedLane } from '../../eventLane';
 import { pushAll } from '../../arrays';
+import { rebaseNotes } from './footnotes';
 
 export interface LineMarks {
   series: {
@@ -877,6 +878,8 @@ function assembleLineGeometry(input: LineAssembly): Geometry<LineMarks, LineDeri
         ...(marks.phases ? [structureCount('phases', marks.phases.length, chartString(domain.options, 'lifecyclePhasesCount', { v1: marks.phases.length }))] : []),
         ...(domain.bumpDerived?.ties.length ? [structureCount('groups', domain.bumpDerived.ties.length, chartString(domain.options, 'tiedGroupsCount', { v1: domain.bumpDerived.ties.length, v2: domain.bumpDerived.ties.length === 1 ? '' : 's' }))] : [])],
       desc: a11yDesc,
+      // A compact card below its plot floor leaves the rebase note off the page; the notes list keeps it.
+      ...(domain.rebaseCompact ? { compactNotes: [rebaseNotes(domain.rebaseSuppressed, options).join(' ')] } : {}),
     },
     warnings,
     paintWarningRules: scene.paintWarningRules,
