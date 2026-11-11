@@ -12,6 +12,7 @@
 //               (the scorecard's R7)
 //   3 number    every printed number is in the reading: the number census (scripts/number-census.mjs), authored theme
 //   4 width     a spec that draws at a width draws at every wider width of its series
+//               (past a text-size breakpoint, a refusal whose advised width draws is honest)
 // For each distinct failure (type, rule, signature) it removes the changes one at a time while the failure stays
 // and writes the smallest case as a request file to <out>/<n>-<type>-<rule>.json; <out>/index.json lists them,
 // each with the seed, the command of its run and the command that reruns that one file.
@@ -230,7 +231,12 @@ export function checkRequest(request, id) {
     return { status: 'error', violations };
   }
   const geometry = measured.geometry;
-  if (!geometry) return { status: 'refused', codes: (measured.refused?.warnings ?? measured.warnings).map((warning) => warning.code), violations };
+  if (!geometry) {
+    const warnings = measured.refused?.warnings ?? measured.warnings;
+    // The width a refusal's own size patch asks for, if it names one.
+    const advised = warnings.flatMap((warning) => warning.fix ?? []).find((op) => op.op === 'replace' && op.path === '/options/size')?.value?.width;
+    return { status: 'refused', codes: warnings.map((warning) => warning.code), ...(advised !== undefined ? { advised } : {}), violations };
+  }
   try { renderSvg(geometry, resolved.theme); } catch (error) { crash('render', error); }
   let reading;
   try { reading = chartReading({ name: 'generated', type: item.type, request: resolved, geometry, claims: [] }); } catch (error) { crash('reading', error); }
@@ -254,11 +260,21 @@ export function checkRequest(request, id) {
   return { status: 'drawn', violations };
 }
 
-/** Rule 4 on a series: every width above the narrowest drawn one draws too. */
-function widthViolations(results) {
+/**
+ * Rule 4 on a series: every width above the narrowest drawn one draws too. A text-size breakpoint between the
+ * two sets larger text, which can need more room: a refusal there is honest when no narrower width of its own
+ * text size drew and the width its size patch asks for draws, with the height still automatic.
+ */
+function widthViolations(results, item) {
   const first = results.findIndex((result) => result.status === 'drawn');
   if (first < 0) return [];
-  return results.slice(first + 1).filter((result) => result.status === 'refused').map((result) => ({
+  const honest = (result) => {
+    const own = typeWidthClass(result.width);
+    if (own === typeWidthClass(results[first].width) || result.advised === undefined || result.advised <= result.width) return false;
+    if (results.some((other) => other.status === 'drawn' && other.width < result.width && typeWidthClass(other.width) === own)) return false;
+    return typeWidthClass(result.advised) === own && checkWidth(item, result.advised).status === 'drawn';
+  };
+  return results.slice(first + 1).filter((result) => result.status === 'refused' && !honest(result)).map((result) => ({
     width: result.width, rule: 4, signature: (result.codes ?? []).join(','), drawnAt: results[first].width,
     message: `draws at ${results[first].width} px, refused at ${result.width} px (${(result.codes ?? []).join(', ')})`,
   }));
@@ -267,8 +283,8 @@ function widthViolations(results) {
 /** Whether a case still shows one failure: the same rule and signature at the same width. */
 function stillFails(item, failure) {
   if (failure.rule === 4) {
-    const at = checkWidth(item, failure.width);
-    return at.status === 'refused' && (at.codes ?? []).join(',') === failure.signature && checkWidth(item, failure.drawnAt).status === 'drawn';
+    return widthViolations([{ width: failure.drawnAt, ...checkWidth(item, failure.drawnAt) }, { width: failure.width, ...checkWidth(item, failure.width) }], item)
+      .some((v) => v.signature === failure.signature);
   }
   return checkWidth(item, failure.width).violations.some((v) => v.rule === failure.rule && v.signature === failure.signature);
 }
@@ -304,7 +320,7 @@ export function runTypes(types, seed, count) {
     for (const item of casesFor(type, seed, count)) {
       row.cases++;
       const results = item.widths.map((width) => ({ width, ...checkWidth(item, width) }));
-      const failures = [...results.flatMap((result) => result.violations.map((v) => ({ ...v, width: result.width }))), ...widthViolations(results)];
+      const failures = [...results.flatMap((result) => result.violations.map((v) => ({ ...v, width: result.width }))), ...widthViolations(results, item)];
       for (const result of results) {
         row.widths++;
         for (const change of item.changes) row.usedBy[change] = (row.usedBy[change] ?? 0) + 1;
@@ -337,7 +353,7 @@ export function runTypes(types, seed, count) {
     entry.smallest = { ...item, width: entry.failure.width };
     entry.message = (entry.failure.rule === 4 ? widthViolations([
       { width: entry.failure.drawnAt, ...checkWidth(item, entry.failure.drawnAt) }, { width: entry.failure.width, ...checkWidth(item, entry.failure.width) },
-    ])[0] : checkWidth(item, entry.failure.width).violations.find((v) => v.rule === entry.rule && v.signature === entry.signature))?.message ?? entry.failure.message;
+    ], item)[0] : checkWidth(item, entry.failure.width).violations.find((v) => v.rule === entry.rule && v.signature === entry.signature))?.message ?? entry.failure.message;
     entry.request = requestFor(item, entry.failure.width);
     delete entry.item;
   }
