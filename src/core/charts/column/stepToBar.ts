@@ -93,7 +93,9 @@ export function stepToBar(
   column: Geometry<ColumnMarks, ColumnDerived>,
 ): Geometry<ColumnMarks, ColumnDerived> | undefined {
   const names = column.labels.filter((label) => label.kind === 'category');
-  const lost = names.filter((label) => label.hidden === 'density');
+  const hidden = names.filter((label) => label.hidden === 'density');
+  // A name cut on the rotated row is lost as well: only its SVG title keeps the full text.
+  const lost = [...hidden, ...names.filter((label) => !label.hidden && label.rotate !== undefined && label.title !== undefined)];
   if (lost.length === 0 || panelTypeClass(options) !== undefined) return undefined;
   // A pinned width never draws at another width. A layout at a wider width is the size search pricing
   // a refusal of the pinned one, and its chart is not drawn, so no bar is laid out for it.
@@ -115,10 +117,14 @@ export function stepToBar(
   }
   const fits = bar.sizing !== undefined && (pinned ? fitsSize(bar.size, bar.sizing) : bar.size.width + SIZE_TOLERANCE >= bar.sizing.minWidth);
   if (bar.refused || !fits || (pinned && bar.labels.some((label) => label.kind === 'category' && label.hidden))) return undefined;
+  // Cut names still show their start. They step to bars only when the bars need at most a quarter more height
+  // than the columns (the comfortable size): many more rows would make a much taller chart, and the size search
+  // would then lay the columns out again at that height, where the names fit, as a column far taller than asked.
+  if (hidden.length === 0 && (bar.sizing?.minHeight ?? 0) > column.size.height * 1.25) return undefined;
   bar.warnings.push({
     code: 'column-stepped-to-bar',
     severity: 'info',
-    message: `${lost.length} of ${data.categories.length} category names do not fit under the columns at ${Math.round(column.size.width)}px and cannot rotate, so the chart is drawn as horizontal bars`,
+    message: `${lost.length} of ${data.categories.length} category names do not fit under the columns at ${Math.round(column.size.width)}px, upright or rotated, so the chart is drawn as horizontal bars`,
     suggest: `Set the chart type to bar, or widen the canvas to keep columns.`,
   });
   return bar as unknown as Geometry<ColumnMarks, ColumnDerived>;
