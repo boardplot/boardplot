@@ -1,4 +1,0 @@
-### Fixed
-
-- A bullet, heatmap or status chart that draws at a width no longer refuses at a wider width because the form it picks there needs more room. Where that form's floor is above the width, the chart draws the form a narrower width draws: a bullet keeps its card rows (narrow name column) up to the width where the wide rows fit, a heatmap wraps its row names, and a status board wraps its column heads in their columns instead of staggering them. `measure`, `canDraw` and the React components name the same minimum width. Every chart that drew before keeps its output; a grid panel keeps its form.
-- `measure` at a pinned height no longer names a minimum width above the asked width when the chart draws there through its narrower form, or when a refusal at the declared floor named a wider width than one that draws at the floor height. It names the narrowest width that draws at that height.

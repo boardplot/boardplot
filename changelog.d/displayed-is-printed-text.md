@@ -1,3 +1,0 @@
-### Changed
-
-- In status, waffle and histogram charts, a claim's `displayed` is now the text printed on the chart, and the words that stood there move to a new optional `description` on the claim record and on its `reading.derived` entry. A status count prints nowhere on the chart: `displayed` was `"Rate cut 254"` and is now `""`, which the reading shows as `"Not displayed"` with `visible: false`. A waffle cell count also prints nowhere: `displayed` was `"30% = 30 of 100 cells"` and is now `""`. A histogram bin was `"[0, 250)"` and is now the count its label prints, such as `"76"`, or `""` where no label prints the count, such as on a percent axis. Read `description` for the old text. Charts draw as before.
