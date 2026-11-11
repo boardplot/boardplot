@@ -31,6 +31,26 @@ describe('architecture columns', () => {
     expect(new Set(geometry.marks.nodes.map((node: any) => node.rect.y)).size).toBe(1);
     expect(geometry.labels.filter((label: any) => label.id.startsWith('edge-label:') && !label.hidden)).toHaveLength(7);
   });
+
+  // At 720 px the column cap kept a nested zone in one band, every such layout failed to route, and the
+  // band break that drew at 480 px was never tried, so the wider canvas was refused.
+  it('still tries the band break of a narrower width, so a wider canvas still draws', () => {
+    const node = (id: string, label: string, groupId: string, track: string) => ({ id, kind: 'step', shape: { kind: 'rectangle' }, label: `${label} and its much longer descriptive name`, groupId, track });
+    const spec = (width: number) => ({ type: 'diagram', data: {
+      groups: [{ id: 'public', title: 'Public edge' }, { id: 'region', title: 'Hosting region' }, { id: 'cluster', title: 'Service cluster', parentId: 'region' },
+        { id: 'runtime', title: 'Protected runtime', parentId: 'cluster' }, { id: 'data', title: 'Data stores', parentId: 'region' }],
+      nodes: [node('gateway', 'API gateway', 'public', 'request'), node('router', 'Request router', 'cluster', 'request'), node('workers', 'Model workers', 'runtime', 'request'),
+        node('keys', 'Key service', 'runtime', 'state'), node('sessions', 'Session store', 'data', 'request'), node('ledger', 'Audit ledger', 'data', 'state')],
+      edges: [
+        { id: 'in', source: { nodeId: 'gateway' }, target: { nodeId: 'router' } },
+        { id: 'run', source: { nodeId: 'router' }, target: { nodeId: 'workers' } },
+        { id: 'seal', source: { nodeId: 'keys' }, target: { nodeId: 'workers' }, label: 'Keys and its much longer descriptive name' },
+        { id: 'write', source: { nodeId: 'workers' }, target: { nodeId: 'sessions' } },
+        { id: 'audit', source: { groupId: 'runtime' }, target: { nodeId: 'ledger' }, label: 'Audit trail and its much longer descriptive name' },
+      ],
+    }, options: { variant: 'architecture', title: 'Only the runtime reads the keys', size: { width } } });
+    for (const width of [480, 720]) expect((render({ spec: spec(width), format: 'svg' } as never).body as any).ok, `${width} px`).toBe(true);
+  });
 });
 
 describe('diagram inset heading and columns', () => {
