@@ -33,7 +33,7 @@ import { spaceDocLints } from '../core/lint/space';
 import { typeDocLints } from '../core/lint/type';
 import { lineIntegrityDocLints } from '../core/lint/lineIntegrity';
 import { shareUnitLints, unitInFormatLints, unitNotShownLints } from '../core/frame';
-import { unscaledFormatLint } from '../core/formatSpec';
+import { drawsZeroNumber, unscaledFormatLint } from '../core/formatSpec';
 import { chartRecords } from '../core/reading';
 import type { InteractionRecord } from '../core/a11y/types';
 import { chartRefusals } from '../core/schema/refusals';
@@ -571,7 +571,7 @@ function judged(
   // The chart's records, built once on first use: by the format lint, else by the reading.
   let held: ReturnType<typeof chartRecords> | undefined;
   const records = () => (held ??= chartRecords({ type: def.type, request, geometry: geo, claims }));
-  const warnings = normLints(def.type, options, geo, () => records().records, validated.data, verify);
+  const warnings = normLints(def.type, options, geo, () => (drawsZeroNumber(geo.scene) ? records().records : null), validated.data, verify);
   // The refusal path React shares (core/schema/refusals): what refuses here
   // draws the error card there, with the same message.
   const refusals = chartRefusals(warnings);

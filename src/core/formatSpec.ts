@@ -1646,6 +1646,11 @@ export function unscaledFormatLint(
   return [...chartFormatLint(options, data, geo, zeros.get(undefined) ?? []), ...places.flatMap((place) => placeZeroWarning(place, zeros.get(place) ?? []))];
 }
 
+/** Whether the chart draws a number of zeros only ("0", "0.0k", "0%"), axis ticks aside. Without one there is no printed zero to prove, and the records are not built. */
+export function drawsZeroNumber(scene: readonly SceneNode[]): boolean {
+  return scene.some((node) => node.t === 'text' && !node.id.includes(':tick:') && (node.lines.join(' ').match(/\d[\d.,]*/g) ?? []).some((token) => !/[1-9]/.test(token)));
+}
+
 type Owner = InteractionRecord['target']['owner'];
 /** A place where an author set a format. It names the format and builds the patch; it never decides what prints. */
 type FormatPlace = { authored: string; numbers: number[]; path: (string | number)[]; owns: (owner: Owner) => boolean };
