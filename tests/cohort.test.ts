@@ -984,3 +984,20 @@ it('a narrow cohort heatmap prints its rates without the % sign instead of hidin
   // Without a unit line naming the percent, the sign stays.
   expect(printed(432).every((text) => text.endsWith('%'))).toBe(true);
 });
+
+describe('cohort exhibit Total row claims', () => {
+  // The exhibit printed a weighted Total row whose numbers had no claim in the reading.
+  it('gives each printed Total cell a claim with its weighted value', async () => {
+    const { render } = await import('../src/cli/render');
+    const spec = { type: 'cohort', data: { periodLabel: 'Month', cohorts: [
+      { id: 'jan', label: 'Jan', active: [1000, 600, 500] },
+      { id: 'feb', label: 'Feb', active: [500, 400] },
+    ] }, options: { variant: 'pure', total: 'weighted' } };
+    const reading = (render({ spec, return: ['reading'] }).body as any).reading;
+    const totals = reading.derived.filter((claim: any) => claim.claimId.startsWith('cohort:total:'));
+    expect(totals.map((claim: any) => [claim.claimId, claim.visible])).toEqual([['cohort:total:t0', true], ['cohort:total:t1', true], ['cohort:total:t2', true]]);
+    // Period 1: (600 + 400) / (1000 + 500). Period 2: only January reached it, 500 / 1000.
+    [1, 1000 / 1500, 0.5].forEach((value, t) => expect(totals[t].value).toBeCloseTo(value, 9));
+    expect(totals.every((claim: any) => claim.displayed !== '')).toBe(true);
+  });
+});

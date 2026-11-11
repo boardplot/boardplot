@@ -969,8 +969,11 @@ function buildExhibit(
 
   const nameAlign = alignOf('label', 'start');
   // The rate claims the exhibit prints nowhere: periods it leaves out, and cells it leaves to their fill or empty.
-  const unprinted = derived.cohorts.flatMap((row) => Array.from({ length: row.observedPeriods }, (_, period) => period)
-    .filter((period) => !visible.includes(period)).map((period) => claimIdOf('cohort', row.id, `t${period}`)));
+  const unprinted = [...derived.cohorts.flatMap((row) => Array.from({ length: row.observedPeriods }, (_, period) => period)
+    .filter((period) => !visible.includes(period)).map((period) => claimIdOf('cohort', row.id, `t${period}`))),
+  ...(derived.total?.retention.flatMap((_, period) => visible.includes(period) ? [] : [claimIdOf('cohort', 'total', `t${period}`)]) ?? [])];
+  // The claim a printed cell names: its cohort's rate, or the weighted Total of the period.
+  const cellClaim = (row: { id: Id; kind?: string }, period: number) => claimIdOf('cohort', row.kind === 'total' ? 'total' : row.id, `t${period}`);
   rowData.forEach((row, rowIndex) => {
     // A summary row on top keeps its average bases under it and its gap above the cohorts.
     const y = tableTop + headerH + rowIndex * rowH + (totalOnTop
@@ -1071,7 +1074,7 @@ function buildExhibit(
       });
       // A filled cell reads from its fill. A cell with no fill keeps its text, because an empty column says nothing.
       if ((retention === null && !missing) || (options.figures === false && style === 'stepped' && retention !== null && period !== 0)) {
-        if (row.kind !== 'total' && period < row.observedPeriods) unprinted.push(claimIdOf('cohort', row.id, `t${period}`));
+        if (period < row.observedPeriods) unprinted.push(cellClaim(row, period));
         return;
       }
       const text = missing ? '—' : formatValue(retention!, period);
@@ -1097,7 +1100,7 @@ function buildExhibit(
         paint,
         undefined,
         undefined,
-        row.kind === 'total' ? undefined : claimIdOf('cohort', row.id, `t${period}`),
+        cellClaim(row, period),
       );
     });
   });
