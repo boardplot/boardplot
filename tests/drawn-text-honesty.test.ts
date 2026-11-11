@@ -316,6 +316,63 @@ describe('number census', () => {
     expect(of(census('table', spec, 320), 'wrong-scale')).toEqual([]);
   });
 
+  // A wrapped head holds an early false hit (" ITS M" reads as a currency code); the census stopped there and never read its "($k)".
+  it('reads the magnitude of a wrapped head past an early false hit', () => {
+    const spec = fixtureOf<Spec & { data: { columns: { id: string; label: string }[] } }>('table', 'table-status-square');
+    spec.data.columns.find((column) => column.id === 'spend')!.label = 'Spend and its much longer descriptive name';
+    expect(of(census('table', spec, 719), 'wrong-scale')).toEqual([]);
+    expect(census('table', spec, 719, retext('cell:prospecting:spend', '42')).filter((f) => f.id.includes('cell:prospecting:spend'))).not.toEqual([]);
+  });
+
+  // An accounting format prints a negative as "(683)"; the census read it as +683.
+  it('reads accounting parentheses as a negative and still flags a wrong sign', () => {
+    const spec = fixtureOf('table', 'management-report');
+    expect(of(census('table', spec, 1080), 'mismatch')).toEqual([]);
+    expect(of(census('table', spec, 1080, retext('cell:total:fpDelta', '683')), 'mismatch', 'cell:total:fpDelta')).not.toEqual([]);
+  });
+
+  // A full pace against an outlook that skipped a child prints n.m. by design; the census recomputed a number.
+  it('accepts n.m. between a full sum and a partial one and still flags an n.m. between two full sums', () => {
+    const spec = fixtureOf('table', 'management-report');
+    expect(of(census('table', spec, 1080), 'derived')).toEqual([]);
+    const nm = (geometry: Geometry) => {
+      const cell = (geometry.derived as { computedCells: { rowId: string; colId: string; raw: number | null; state: string; displayed: string }[] })
+        .computedCells.find((c) => c.rowId === 'seg-services' && c.colId === 'fpVsOut')!;
+      Object.assign(cell, { raw: null, state: 'nm', displayed: 'n.m.' });
+    };
+    expect(of(census('table', spec, 1080, nm), 'derived', 'seg-services:fpVsOut')).not.toEqual([]);
+  });
+
+  // A column a toggle hides draws no head; its claims were read without the head's "(M)" and called wrong-scale.
+  it('reads the magnitude of a hidden column and still flags a wrong one', () => {
+    const spec = fixtureOf('table', 'management-report-compact');
+    const scaleCells = (rows: { cells?: Record<string, unknown>; children?: unknown[] }[]) => rows.forEach((row) => {
+      for (const [id, cell] of Object.entries(row.cells ?? {})) if (typeof cell === 'number') row.cells![id] = cell * 1e3;
+      scaleCells((row.children ?? []) as never);
+    });
+    scaleCells((spec.data as { rows: never[] }).rows);
+    // Without the authored number formats the engine picks the magnitude and names it in each head.
+    for (const column of (spec.data as { columns: { format?: string }[] }).columns) delete column.format;
+    expect(of(census('table', spec, 720), 'wrong-scale')).toEqual([]);
+    const wrong = (geometry: Geometry) => {
+      const cell = (geometry.derived as { computedCells: { rowId: string; colId: string; displayed: string }[] })
+        .computedCells.find((c) => c.rowId === 'europe-eu' && c.colId === 'ycLy')!;
+      cell.displayed = '31';
+    };
+    expect(census('table', spec, 720, wrong).filter((f) => f.id.includes('europe-eu:ycLy'))).not.toEqual([]);
+  });
+
+  // A space is a group mark only where the locale groups with one: "46 100%" is a value and its share, not 46,100%.
+  it('reads a value and its share apart and still groups with the space of a space locale', () => {
+    expect(tokens('46 100%', en).map((t: { value: number }) => t.value)).toEqual([46, 100]);
+    expect(tokens('1\u202f234\u202f567', { decimal: ',', thousands: '\u202f' }).map((t: { value: number }) => t.value)).toEqual([1234567]);
+    const spec = fixtureOf<Spec & { data: { series: { role?: string }[] } }>('column', 'stacked-value-and-share');
+    spec.data.series = [spec.data.series.find((series) => series.role !== 'reference')!];
+    spec.options = { ...spec.options, valueAxis: { ...(spec.options?.valueAxis as object), percent: true } };
+    expect(of(census('column', spec, 960), 'mismatch')).toEqual([]);
+    expect(of(census('column', spec, 960, retext('label:segment:hardware:fy23', '49 90%')), 'mismatch', 'segment:hardware:fy23')).not.toEqual([]);
+  });
+
   // A bullet prints its gap as printed value minus printed target, so "−$0.1" between "$0.4" and "$0.5" is right.
   it('reads a bullet gap from its printed operands and still flags a gap that is neither', () => {
     const spec = fixtureOf<Spec & { data: { rows: { id: string; value: unknown; target: unknown }[] } }>('bullet', 'columns-hidden');
