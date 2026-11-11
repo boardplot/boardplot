@@ -683,8 +683,9 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
         const missing = derived.cohorts.some(row => missingCohortRate(row, t, derived.basis));
         const contributors = missing ? [] : derived.cohorts.filter(row => t < row.observedPeriods && row.retention[t] !== null
           && (previous ? row.active[t - 1]! : row.base) !== 0);
+        // Own prefix: every cohort claim id starts 'cohort:', so an authored cohort id 'total' cannot reach it.
         claims.push({
-          id: claimId('cohort', 'total', `t${t}`),
+          id: claimId('cohort-total', `t${t}`),
           kind: 'aggregate',
           op: 'cohort-average@1',
           inputs: contributors.flatMap((row) => [
