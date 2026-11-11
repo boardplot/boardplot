@@ -782,6 +782,26 @@ describe('boardplot MCP server', () => {
       [2, undefined],
     ]);
   });
+  // The server loaded the 1.9 MB font reader at start, before a client had asked for any PNG.
+  it.skipIf(!availableRasterizer())('loads the raster fonts on the first call that draws a PNG, not at start', () => {
+    const hook = `data:text/javascript,${encodeURIComponent("import { registerHooks } from 'node:module'; registerHooks({ resolve(specifier, context, next) { if (specifier === 'fontkit') process.stderr.write('fontkit loaded\\n'); return next(specifier, context); } });")}`;
+    const out = mkdtempSync(join(tmpdir(), 'boardplot-mcp-lazy-'));
+    dirs.push(out);
+    const session = (args: Record<string, unknown>) => spawnSync(process.execPath, ['--import', hook, '--import', 'tsx', MCP_SERVER], {
+      cwd: ROOT, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024, timeout: 60_000,
+      input: `${[
+        { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18' } },
+        { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'boardplot_render', arguments: { spec: SPEC, ...args } } },
+      ].map((line) => JSON.stringify(line)).join('\n')}\n`,
+    });
+    const svg = session({});
+    expect(svg.stdout).toContain('"ok":true');
+    expect(svg.stderr).not.toContain('fontkit loaded');
+    const png = session({ format: 'png', scale: 1, outDir: out });
+    expect(png.stderr).toContain('fontkit loaded');
+    expect(png.stdout).toContain('"type":"image"');
+  }, 120_000);
+
   // A line with no newline was held whole until it ended, so a client could grow the server's memory without bound.
   it('refuses an oversized line while it is read and drops its rest', async () => {
     const child = spawn(TSX, [MCP_SERVER], { cwd: ROOT, stdio: ['pipe', 'pipe', 'pipe'] });

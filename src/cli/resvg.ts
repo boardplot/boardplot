@@ -33,6 +33,11 @@ export async function loadRasterFonts(): Promise<void> {
   fontkit ??= await import('fontkit');
 }
 
+/** Whether a render's format argument or out path can ask for a PNG, the only output that reads raster faces. */
+export function drawsPng(format: unknown, out: unknown): boolean {
+  return (typeof format === 'string' && /png/i.test(format)) || (typeof out === 'string' && /\.png$/i.test(out));
+}
+
 function rasterFontkit(): typeof import('fontkit') | undefined {
   if (!fontkit) {
     try {
