@@ -1131,11 +1131,26 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
       else column.push(value);
     }
   }
+  // A column without a format takes its magnitude from its largest figure. Where that magnitude prints a
+  // nonzero figure of the column as 0 (17,600 orders beside $3.8M revenue print "<0.1"), one magnitude
+  // does not fit the column: each data row without a format of its own prints at its own scale, from its own figures.
+  const unfitColumns = forcedMagnitude === undefined ? [...valueCols, ...computedCols].filter((col) => {
+    const spec = specs.get(col.id)!;
+    return localeDerivedColumns.has(col.id) && spec.magnitude !== 'none'
+      && flat.some((row) => { const raw = rawState.get(row.id)?.get(col.id)?.raw; return typeof raw === 'number' && raw !== 0 && roundedNumber(raw, { ...spec, automatic: false }) === 0; });
+  }) : [];
+  const ownScaleExamples = new Map<Id, string>();
+  for (const row of unfitColumns.length === 0 ? [] : flat) {
+    if (row.role === 'section' || row.format !== undefined || row.scale !== undefined || row.calc !== undefined || row.inline === true || groupOf(row) !== undefined) continue;
+    if (!unfitColumns.some((col) => typeof rawState.get(row.id)?.get(col.id)?.raw === 'number')) continue;
+    const values = rowValues(row);
+    if (values.length > 0) ownScaleExamples.set(row.id, exampleOf(values));
+  }
   // The spec a group row prints a column through: the row's, with the decimals that column needs.
   const groupCellSpecs = new Map<Id, Map<Id, NumberFormatSpec>>();
   for (const row of flat) {
     rowById.set(row.id, row);
-    const example = row.format ?? (row.scale ? row.scale === 'percent' ? '1.2%' : '1,234' : undefined) ?? (row.calc && calcYieldsPoints(row.calc) ? `1${locale.decimal}2%` : undefined);
+    const example = row.format ?? ownScaleExamples.get(row.id) ?? (row.scale ? row.scale === 'percent' ? '1.2%' : '1,234' : undefined) ?? (row.calc && calcYieldsPoints(row.calc) ? `1${locale.decimal}2%` : undefined);
     if (example) {
       // A count or percent row keeps its own format: a forced money scale does not reach it.
       const ownScale = row.scale === 'count' || row.scale === 'percent';
@@ -1340,13 +1355,16 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
     // No decimals on a locked thousand: the example says what the column
     // prints, and a locked thousand prints whole.
     if (options.magnitude === 'thousand') return `1${locale.thousands}234k`;
-    const colId = col.id;
-    let maxAbs = 0;
     const values: number[] = [];
     for (const r of flat) {
-      const s = rawState.get(r.id)!.get(colId);
-      if (s && typeof s.raw === 'number') { maxAbs = Math.max(maxAbs, Math.abs(s.raw)); values.push(s.raw); }
+      const s = rawState.get(r.id)!.get(col.id);
+      if (s && typeof s.raw === 'number') values.push(s.raw);
     }
+    return exampleOf(values);
+  }
+  /** The example a set of unformatted figures prints in: its scale and precision from its largest figure. */
+  function exampleOf(values: readonly number[]): string {
+    const maxAbs = values.reduce((max, value) => Math.max(max, Math.abs(value)), 0);
     // A unit that names a scale ("$k", "EUR m") gets no second one: "8.5M" under "in $k" reads as 8.5 million thousands.
     // The figures print whole and grouped, as the unit rule of the other charts prints them.
     if (maxAbs >= 1e9 && unitMagnitude(options.unit) === undefined) return `1${locale.decimal}2bn`;

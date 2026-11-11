@@ -500,7 +500,7 @@ it('lifts only zero-looking figures, after fitting, without costing the table it
   const fit = (values: number[], width: number) => texts(layout('table', { columns: [{ id: 'label', kind: 'rowLabel', label: 'Item', width: 140 }, { id: 'value', kind: 'value', label: 'Orders', width }],
     rows: values.map((v, i) => ({ id: `r${i}`, label: `Row ${i}`, cells: { value: v } })) }, { target: 'report', size: { width: 960 }, fitFormats: true }), 'cell:r');
   expect(fit([30680, 10336, 4], 56).filter(text => /\d/.test(text) && !text.startsWith('Row'))).toEqual(['30.7', '10.3', '<0.1']);
-  expect(fit([3068000, 1033600, 1200], 50).filter(text => /\d/.test(text) && !text.startsWith('Row'))).toEqual(['3.1', '1.0', '<0.1']);
+  expect(fit([3068000, 1033600, 1200], 50).filter(text => /\d/.test(text) && !text.startsWith('Row'))).toEqual(['3.1M', '1.0M', '1,200']);
   const money = resolveTable({ columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'a', kind: 'value' }, { id: 'b', kind: 'value' }, { id: 'c', kind: 'value' }],
     rows: [{ id: 'm', label: 'Money', scale: 'money', cells: { a: 1500, b: 40, c: 2300 } }] }, { target: 'report' }).table.rows[0]!;
   expect(['a', 'b', 'c'].map(id => money.cells[id]!.displayed)).toEqual(['1,500', '40', '2,300']);
@@ -1775,4 +1775,20 @@ it('names no unit over a column that prints no figure', () => {
   // Nor does its "$" decide how the frame's scale composes with options.unit ("EUR M").
   const composed = (withEmpty: boolean) => { const { table, warnings } = byColumn(withEmpty, '1.2m', '$1.2k', { unit: 'EUR' }); return [table.unit, warnings.map((w) => w.code)]; };
   expect(composed(true)).toEqual(composed(false));
+});
+
+// An unformatted KPI table took one magnitude from its largest row: orders and rates printed "<0.1" and their changes "n.m.".
+it('prints each unformatted row at its own scale where one column magnitude does not fit', () => {
+  const row = (id: string, a: number, b: number) => ({ id, label: id, cells: { jan: a, feb: b }, children: [
+    { id: `${id}-mom`, label: 'MoM %', relation: 'displayOnly', inline: true, calc: { op: 'percentDelta', a: { row: id }, b: { row: id, column: 'previous' } } },
+  ] });
+  const texts = (data: unknown) => new Map(layout('table', data, { size: { width: 480, height: 320 } }).scene
+    .flatMap((node) => node.t === 'text' ? [[node.id, node.lines.join(' ')] as const] : []));
+  const columns = [{ id: 'label', kind: 'rowLabel' }, { id: 'jan', kind: 'value' }, { id: 'feb', kind: 'value' }];
+  const mixed = texts({ columns, rows: [row('revenue', 3_800_000, 3_600_000), row('orders', 17_600, 17_000), row('rate', 2.2, 2.3)] });
+  expect([mixed.get('cell:revenue:feb'), mixed.get('cell:orders:feb'), mixed.get('cell:rate:feb')]).toEqual(['3.6M', '17,000', '2.3']);
+  expect([...mixed.values()].filter((text) => text === 'n.m.')).toEqual([]);
+  // One magnitude that fits every row keeps the column's scale.
+  const fits = texts({ columns, rows: [row('revenue', 3_800_000, 3_600_000), row('spend', 750_000, 720_000)] });
+  expect([fits.get('cell:revenue:feb'), fits.get('cell:spend:feb')]).toEqual(['3.6', '0.7']);
 });
