@@ -325,17 +325,17 @@ function assembleScatterGeometry(input: {
 }
 
 /**
- * The claims no text of the chart prints: a trend's intercept, the cut point of a divider
- * that is not drawn, the count of a box without a caption, a note that stays off the canvas
+ * The claims no text of the chart prints: a trend's intercept, its slope and r² when no key
+ * entry prints them, the cut point of a divider that is not drawn, the count of a box without a caption, a note that stays off the canvas
  * and the real value of a clipped point without a name.
  */
-function unprintedScatterClaims(env: ScatterEnv, domain: ScatterDomain, named: ReadonlySet<Id>): Id[] {
+function unprintedScatterClaims(env: ScatterEnv, domain: ScatterDomain, named: ReadonlySet<Id>, keyed: ReadonlySet<Id>): Id[] {
   const q = domain.quadrants;
   const captions = env.options.quadrants?.labels ?? {};
   // A disclosure prints as a footnote; without footnotes the key names the dropped points.
   const footnotes = disclosuresShown(env.options);
   return [
-    ...domain.trends.map((fit) => `scatter:trend:${fit.id}:intercept`),
+    ...domain.trends.flatMap((fit) => [`scatter:trend:${fit.id}:intercept`, ...(keyed.has(`trend:${fit.id}`) ? [] : [`scatter:trend:${fit.id}:slope`, `scatter:trend:${fit.id}:r2`])]),
     ...(q.derived ? [
       ...(q.drawX ? [] : ['scatter:quadrant:x']),
       ...(q.drawY ? [] : ['scatter:quadrant:y']),
@@ -963,7 +963,7 @@ function layoutScatterRun(
   pushAll(warnings, solved.warnings.map(warning => warning.code === 'label-hidden'
     && notedIds.has(String(warning.detail?.labelId)) ? { ...warning, severity: 'info' as const } : warning));
   pushAll(warnings, annotated.warnings);
-  const drawn = withUnprintedClaims(assembleScatterGeometry({ env, domain, frame, area: area!, geometry, solved, annotated, occupied, warnings }), unprintedScatterClaims(env, domain, named));
+  const drawn = withUnprintedClaims(assembleScatterGeometry({ env, domain, frame, area: area!, geometry, solved, annotated, occupied, warnings }), unprintedScatterClaims(env, domain, named, new Set(frame.legend?.items.map((item) => item.id))));
   // The note names these by identity (or counts them): the registry's items and this chart's own names.
   const names = [...(hiddenNames ?? [])];
   const counted = new Set<Id>([...hiddenNote.counted].filter((id) => !id.startsWith('scatter:')));
