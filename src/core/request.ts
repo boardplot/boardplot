@@ -1328,9 +1328,11 @@ export function measureResolvedRequest(request: ResolvedChartRequest): ChartMeas
     if (smaller) return measureWithLayout(asked, smaller, layoutAt, true);
     // And the same narrower form. The floor probes and the width search then lay out that form too,
     // so the minimum width is one the drawn form reaches, at an open and at a pinned height.
+    // A narrower form that is refused too leaves the request as asked, with its own layout: its probes must not draw the narrower form.
     let narrowRequest = asked;
-    const narrow = narrowerForm(asked, first, (opened) => { narrowRequest = opened; layoutAt = open(opened); return layoutAt(opened.options); });
-    return narrow ? measureWithLayout(narrowRequest, narrow, layoutAt, true) : measureWithLayout(asked, first, layoutAt, true);
+    let narrowAt = layoutAt;
+    const narrow = narrowerForm(asked, first, (opened) => { narrowRequest = opened; narrowAt = open(opened); return narrowAt(opened.options); });
+    return narrow ? measureWithLayout(narrowRequest, narrow, narrowAt, true) : measureWithLayout(asked, first, layoutAt, true);
   } finally { for (const run of runs) run.finish(); }
 }
 
