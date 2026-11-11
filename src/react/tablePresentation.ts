@@ -209,7 +209,8 @@ function headPadRules(): string {
     + '.bp-table-grid [data-bp-rowgroup="head"] .bp-groups>*{padding-top:var(--bp-group-pad-top,6px);padding-bottom:var(--bp-group-pad-bottom,2px)}'
     // Cohort row pitches belong to the body. Target header faces,
     // padding and wrapped lines set their own height, as in SVG layout.
-    + '.bp-table-grid [data-bp-rowgroup="head"] [role="row"]>*{height:auto;white-space:normal;overflow-wrap:break-word}'
+    // A head breaks at spaces only, as the SVG wraps it: a word a pixel wider in the browser runs into the cell air instead of splitting.
+    + '.bp-table-grid [data-bp-rowgroup="head"] [role="row"]>*{height:auto;white-space:normal;overflow-wrap:normal}'
     // A hidden column keeps its cell in a zero-wide track, and a column that
     // opens grows from zero. A label that wraps there breaks after every
     // letter and stretches its whole head row; it stays on one line instead.

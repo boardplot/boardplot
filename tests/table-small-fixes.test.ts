@@ -1790,3 +1790,8 @@ it('names no unit over a column that prints no figure', () => {
   const composed = (withEmpty: boolean) => { const { table, warnings } = byColumn(withEmpty, '1.2m', '$1.2k', { unit: 'EUR' }); return [table.unit, warnings.map((w) => w.code)]; };
   expect(composed(true)).toEqual(composed(false));
 });
+
+// A table head split a word ("SHAR" / "E") when the browser drew it a pixel wider than the SVG measured; the SVG breaks heads at spaces only.
+it('breaks a table head at spaces only in the browser', () => {
+  expect(tableStylesheet(resolveTheme('standard'))).toMatch(/\[data-bp-rowgroup="head"\] \[role="row"\]>\*\{[^}]*overflow-wrap:normal/);
+});
