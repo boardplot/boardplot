@@ -153,12 +153,20 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   const hasProvisional = computed.panels.some(p => p.states.some((state, i) => state !== 'mature' && visibleValue(p, i)));
   const hasMatureLine = (p: ComputedStackPanel) => p.panel.type === 'line' && p.states.some((state, i) =>
     i > 0 && state === 'mature' && p.states[i - 1] === 'mature' && visibleValue(p, i) && visibleValue(p, i - 1));
-  // A keyed measure keeps one paint across panel order and emphasis.
+  // A keyed measure keeps one paint across panel order and emphasis. Each stacked panel restarts
+  // the ramp, so a later panel's measures do not all land on the faintest step: a new measure takes
+  // the first step no other measure of its panel holds.
   const measureIndexes = new Map<string, number>();
   const emphasizedMeasures = new Set<string>();
   for (const p of computed.panels) if (p.panel.type === 'column' && 'sum' in p.panel.measure && p.parts.length > 1) {
+    const taken = new Set(p.panel.measure.sum.flatMap(id => measureIndexes.has(id) ? [measureIndexes.get(id)!] : []));
     for (const id of p.panel.measure.sum) {
-      if (!measureIndexes.has(id)) measureIndexes.set(id, measureIndexes.size);
+      if (!measureIndexes.has(id)) {
+        let i = 0;
+        while (taken.has(i)) i++;
+        measureIndexes.set(id, i);
+        taken.add(i);
+      }
       if (p.panel.emphasis) emphasizedMeasures.add(id);
     }
   }
