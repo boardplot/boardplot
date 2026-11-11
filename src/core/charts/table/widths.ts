@@ -207,7 +207,10 @@ function measureTableTracks(table: ResolvedTable, theme: Theme, measure: TextMea
       const intrinsicWidth = figures || !heatColumn(col)
         ? intrinsicColumnWidth(col, widthRows, context)
         : heatOnlyWidth;
-      const endRule = col.width === undefined && (figures || !heatColumn(col)) && view.groupEnd?.has(col.id) ? 1 : 0;
+      // The grid draws a group's divider as a 1 px border inside the cells of its first and last column, so
+      // the track pays for it; unpaid, the start border cut the widest figure of the column to an ellipsis.
+      const ruled = col.width === undefined && (figures || !heatColumn(col));
+      const endRule = (ruled && view.groupEnd?.has(col.id) ? 1 : 0) + (ruled && view.groupStart?.has(col.id) ? 1 : 0);
       if (col.kind === 'encoding') {
         // An authored width is the track, as for any column that is not a value; without one the track fits its end value.
         const track = (authoredTrackWidth(col, widthRows, context) ?? intrinsicWidth) + endRule;
