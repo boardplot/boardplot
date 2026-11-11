@@ -490,6 +490,8 @@ function prepareTableCandidate(
 ) {
   const tight = options[TIGHT_SPACING]?.columns === true;
   const tightRows = options[TIGHT_SPACING]?.rows === true;
+  // The compact retry gives a section's air back only under a pinned height: at an open height the frame grows to the rows.
+  const sectionAirGiven = options[COMPACT_RETRY] !== undefined && !heightOmitted(options.size) && (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height !== false;
   const measure = tableTextMeasure(options.measure ?? defaultMeasurer);
   let data = authoredData;
   let resolved = initialResolved;
@@ -655,8 +657,8 @@ function prepareTableCandidate(
       // (default one body line box) above its label, inside the row so bands and grounds run on.
       // The first row under the head takes a quarter line box (never more), so its label has
       // at least the air above that its pad and rule give it below.
-      // The compact and tight retries of a size that misses give the air back before the table refuses.
-      if (tightRows || options[COMPACT_RETRY] !== undefined) return sectionNatural();
+      // The compact and tight retries of a pinned height that misses give the air back before the table refuses.
+      if (tightRows || sectionAirGiven) return sectionNatural();
       const space = theme.table?.section?.spaceBefore ?? lineBox(ladder.label);
       return sectionNatural() + Math.round(row.id === rows[0]?.id ? Math.min(space, lineBox(ladder.label) / 4) : space);
     }

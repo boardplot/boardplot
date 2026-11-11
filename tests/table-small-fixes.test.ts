@@ -1828,3 +1828,16 @@ it('leaves options.unit out of the subtitle when the columns print different uni
   expect(oneUnit.texts).toEqual(['Revenue', 'USD']);
   expect(oneUnit.codes).not.toContain('table-unit-overridden');
 });
+
+// A table squeezed across by the compact retry also lost the air above its section labels, though its height was open.
+it('keeps the air above a section label when only the width is tight', () => {
+  const months = Array.from({ length: 12 }, (_, i) => `m${i}`);
+  const section = (id: string, members: string[]) => ({ id, label: id.toUpperCase(), role: 'section', children: members.map((m, i) => ({ id: m, label: m, cells: Object.fromEntries(months.map((c, j) => [c, 1_234_567 + i * 1000 + j])) })) });
+  const data = { columns: [{ id: 'label', kind: 'rowLabel', label: 'KPI' }, ...months.map((id) => ({ id, kind: 'value', label: id, format: '1,234' }))],
+    rows: [section('sales', ['revenue', 'orders']), section('ads', ['spend', 'clicks'])] };
+  const geometry = layout('table', data, { size: { width: 800 } });
+  expect(geometry.warnings.map((w) => w.code)).toContain('table-tight-spacing');
+  const h = (id: string) => (geometry.marks as unknown as TableMarks).rows.find((row) => row.id === id)!.h;
+  // The second section opens a new block with a body line box of air; the first under the head takes a quarter.
+  expect(h('ads')).toBeGreaterThan(h('sales'));
+});
