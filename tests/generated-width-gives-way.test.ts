@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import '../src/core/charts';
 import '../src/core/geo/packs';
 import { getFixtures } from '../src/fixtures';
-import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
+import { layoutResolvedRequest, measure, resolveChartRequest } from '../src/core/request';
 import { render } from '../src/cli/render';
 
 const fixture = (type: string, id: string) => getFixtures(type as never).find((item) => item.id === id)!;
@@ -66,6 +66,17 @@ describe('authored widths give way through the CLI', () => {
     const body = render({ spec: { type: 'choropleth', data, options: { ...options, size: { width: 480, height: 360 } } }, format: 'svg' } as never).body as { ok: boolean; warnings: { code: string; path?: string }[] };
     expect(body.ok).toBe(true);
     expect(body.warnings.map((warning) => warning.path)).toContain('/options/columnOverrides/value/label');
+  });
+});
+
+describe('a self-loop label at the larger text size', () => {
+  // The loop was too short for one line of the larger text beside it, so a diagram that drew at 1079 px was refused from 1080 px.
+  it.each([1079, 1080, 1400])('draws the long retry label at %i px', (width) => {
+    const { data, options } = fixture('diagram', 'agent-approval');
+    const edges = (data as { edges: Array<{ id: string; label?: string }> }).edges.map((edge) => (edge.id === 'retry' ? { ...edge, label: 'Retry and its much longer descriptive name' } : edge));
+    const body = render({ spec: { type: 'diagram', data: { ...(data as object), edges }, options: { ...options, size: { width } } }, format: 'svg' } as never).body as { ok: boolean; svg: string };
+    expect(body.ok).toBe(true);
+    expect(body.svg).toContain('descriptive');
   });
 });
 
@@ -134,5 +145,61 @@ describe('an automatic height grows before a width refusal', () => {
     }],
   ])('%s draws', (type, data, options) => {
     expect(layout(type, data, options).refused).toBeFalsy();
+  });
+
+  // A bullet, heatmap or status chart that drew at a narrower width was refused here, because the form it picked for this width needed more.
+  // Measure then named that form's floor as the minimum width, above the width it draws at, at an open and at a pinned height.
+  it.each([
+    ['bullet', 485, { rows: ['fy21', 'fy22', 'fy23'].map((id, i) => ({ id, label: `FY${21 + i} and its much longer descriptive name`, value: 100 * 1.2 ** i, target: 110 * 1.2 ** i })) },
+      { title: 'Orders grow 20% per year', unit: 'thousand orders', sharedScale: true, theme: 'notation', annotations: [{ id: 'growth', kind: 'cagr', from: 'fy21', to: 'fy23' }] }],
+    ['heatmap', 360, { categories: [1, 2, 3, 4, 5].map((n) => ({ id: `wave${n}`, label: `Wave ${n}` })), series: [
+      { id: 'procurement', label: 'Procurement', values: [12.4, 15.1, null, 18.2, 20.5] }, { id: 'logistics', label: 'Logistics', values: [8.2, null, 9.6, 11, null] },
+      { id: 'manufacturing', label: 'Manufacturing', values: [null, 22.4, 24.8, null, 28.1] }, { id: 'overhead', label: 'Overhead', values: [4.1, 4.4, null, null, 6.2] }] },
+      { title: 'Unreported waves stay blank', unit: '$m', missing: 'blank', legend: 'right', target: 'dashboard' }],
+    ['status', 500, { rows: ['pricing', 'service'].map((id) => ({ id, label: `${id} and its much longer descriptive name` })),
+      columns: ['draft', 'review'].map((id) => ({ id, label: `${id} and its much longer descriptive name` })),
+      cells: [['pricing', 'draft', 'reviewed'], ['pricing', 'review', 'reviewed'], ['service', 'draft', 'reviewed'], ['service', 'review', 'pending']].map(([row, col, state]) => ({ row, col, state })) },
+      { title: 'Pricing review is complete', theme: 'notation', legend: 'right', target: 'slide', states: [{ id: 'reviewed', label: 'Reviewed', tone: 'info' }, { id: 'pending', label: 'Pending', tone: 'neutral' }] }],
+  ])('%s draws at %i px', (type, width, data, options) => {
+    expect(layout(type, data, { ...options, size: { width } }).refused).toBeFalsy();
+    for (const size of [{ width }, { width, height: 600 }]) {
+      const measured = measure({ type, data, options: { ...options, size } } as never);
+      expect(measured.geometry).toBeDefined();
+      expect(measured.minWidth).toBeLessThanOrEqual(width);
+    }
+  });
+
+  // At a pinned height measure named the width a refusal at the declared floor asked for (701 px), above 460 px, where this board draws in its own form.
+  it('measure at a pinned height names no minimum above a width that draws', () => {
+    const label = (id: string) => `${id[0]!.toUpperCase()}${id.slice(1)} and its much longer descriptive name`;
+    const measured = measure({ type: 'status', theme: 'notation', data: {
+      rows: ['pricing', 'service'].map((id) => ({ id, label: label(id) })), columns: ['draft', 'review'].map((id) => ({ id, label: label(id) })),
+      cells: [['pricing', 'draft', 'reviewed'], ['pricing', 'review', 'reviewed'], ['service', 'draft', 'reviewed'], ['service', 'review', 'pending']].map(([row, col, state]) => ({ row, col, state })) },
+    options: { states: [{ id: 'reviewed', label: 'Reviewed', tone: 'info' }, { id: 'pending', label: 'Pending', tone: 'neutral' }], legend: 'right', columnLabels: 'bottom',
+      title: 'Pricing review is complete; service review remains open', subtitle: { measure: 'Review progress by workstream and stage' }, source: 'Illustrative review log',
+      target: 'slide', size: { width: 460, height: 500 } } } as never);
+    expect(measured.geometry).toBeDefined();
+    expect(measured.minWidth).toBeLessThanOrEqual(460);
+  });
+});
+
+describe('a grid panel that spans columns keeps its plot under a column anchor', () => {
+  const months = ['Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const teams = [['finance', 'Finance transformation'], ['sales', 'Sales operations'], ['supply', 'Supply chain']];
+  const panels = [
+    ...[['orders', 'Orders', 120], ['returns', 'Returns', 8], ['shipments', 'Shipments', 112]].map(([id, label, value], column) => ({ id, type: 'kpi', row: 0, column, data: { label, value } })),
+    { id: 'status', type: 'status', row: 1, column: 0, span: { columns: 3 }, data: {
+      rows: teams.map(([id, label]) => ({ id, label })),
+      columns: months.map((label) => ({ id: label.toLowerCase(), label })),
+      cells: teams.flatMap(([row], r) => months.map((month, c) => ({ row, col: month.toLowerCase(), state: ['g', 'a', 'r'][(r + c) % 3] }))),
+    }, options: { legend: 'none', states: [['g', 'On track', 'good'], ['a', 'At risk', 'warn'], ['r', 'Off track', 'bad']].map(([id, label, tone]) => ({ id, label, tone })) } },
+  ];
+  // The anchor grouped panels by their first column, so the full-width status matrix shrank to the first KPI's plot: refused at 600 px and cut at 840 px.
+  it.each([600, 840])('draws the status matrix whole at %ipx', (width) => {
+    const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'grid', data: { panels }, options: { columns: 3, legend: 'none', anchors: { plotEdges: 'column' }, size: { width } } } as never));
+    expect(geometry.refused).toBeFalsy();
+    const codes = geometry.warnings.map((warning) => warning.code);
+    expect(codes.filter((code) => code.startsWith('label'))).toEqual([]);
+    expect(codes).toContain('grid-anchor-incompatible');
   });
 });

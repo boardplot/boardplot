@@ -90,6 +90,8 @@ interface Geometry {
   zones: Array<{ id: string; bounds: Rect; titleBox: Rect; memberNodeIds: string[]; dashed: boolean; depth: number; policy?: boolean }>;
   /** What the self-loops take below their nodes. */
   loops: Rect[];
+  /** How far each self-loop hangs below its node, by edge id. */
+  loopReach: Map<string, number>;
   /** The lock beside a protected zone's title. */
   locks: Map<string, Rect>;
   lanes: Array<{ id: string; bounds: Rect; headerBox?: Rect; memberNodeIds: string[]; rule?: number }>;
@@ -704,7 +706,7 @@ function place(arrangement: Arrangement, gaps: ReadonlyMap<string, number>, env:
   const unitGap = 2 * GAP_HALF;
   const gap = (key: string, base: number) => Math.max(base, gaps.get(key) ?? 0);
   const laneLabel = lanesFlow && !arrangement.labelAbove ? laneLabelWidth(env) : 0;
-  const geometry: Geometry = { rects: new Map(), textBoxes: new Map(), icons: new Map(), badges: new Map(), zones: [], loops: [], locks: new Map(), lanes: [], labelClaims: [], xs: [], ys: [], gaps: [], width: plot.w, labelLeft: plot.x + laneLabel };
+  const geometry: Geometry = { rects: new Map(), textBoxes: new Map(), icons: new Map(), badges: new Map(), zones: [], loops: [], loopReach: new Map(), locks: new Map(), lanes: [], labelClaims: [], xs: [], ys: [], gaps: [], width: plot.w, labelLeft: plot.x + laneLabel };
   const outerL = gap('oL', 0);
   const outerR = gap('oR', 0);
   // A dashed zone's frame stands 1.5 u off its nodes and stays in the plot.
@@ -806,8 +808,10 @@ function place(arrangement: Arrangement, gaps: ReadonlyMap<string, number>, env:
       cursor += rowH[r]!;
       axisY.push([rowY[r]! + rowH[r]! / 2]);
       // A self-loop hangs below its node, with its label under it, clear of any corridor.
+      // A label without a seat beside the loop makes it reach deeper, as a gutter grows for any other edge.
       const loop = env.data.edges.filter((edge) => selfLoop(edge) && own.some((cell) => cell.r1 === r && cell.node.id === edge.source.nodeId));
-      if (loop.length > 0) cursor += LOOP_REACH * u + PITCH + (loop.some((edge) => edge.label) ? env.text.size * (env.text.lineHeight ?? 1.2) + TEXT_CLEARANCE + 1 : 0);
+      for (const edge of loop) geometry.loopReach.set(edge.id, gap(`loop:${edge.id}`, LOOP_REACH * u));
+      if (loop.length > 0) cursor += Math.max(...loop.map((edge) => geometry.loopReach.get(edge.id)!)) + PITCH + (loop.some((edge) => edge.label) ? env.text.size * (env.text.lineHeight ?? 1.2) + TEXT_CLEARANCE + 1 : 0);
       if (lane && r === lane.r1) {
         const laneBox = geometry.lanes.at(-1)!;
         cursor += 2 * u;
@@ -1072,7 +1076,7 @@ function routeLines(geometry: Geometry, env: Env, outward: ReadonlySet<string>):
   const W = xs.length;
   const H = ys.length;
   // Each self-loop holds its corner of the gutter before any other edge routes.
-  const loops = new Map(data.edges.filter(selfLoop).map((edge) => [edge.id, selfLoopRoute(rects.get(edge.source.nodeId)!, env)]));
+  const loops = new Map(data.edges.filter(selfLoop).map((edge) => [edge.id, selfLoopRoute(rects.get(edge.source.nodeId)!, geometry.loopReach.get(edge.id) ?? LOOP_REACH * env.u, env)]));
   geometry.loops = [...loops.values()].map(([a, b, c]) => ({ x: a!.x, y: a!.y, w: c!.x - a!.x, h: b!.y - a!.y }));
   const stubClaims = [...geometry.labelClaims, ...geometry.loops].map((claim) => grown(claim, TEXT_CLEARANCE));
   const blocked = obstacleGrid(geometry, W, H);
@@ -1332,9 +1336,9 @@ function frameHits(points: readonly Point[], { x, y, w, h }: Rect): Point[] {
 }
 
 /** A small loop under the right end of a node, clear of the ports at the middle of its sides. */
-function selfLoopRoute(rect: Rect, env: Env): Point[] {
+function selfLoopRoute(rect: Rect, depth: number, env: Env): Point[] {
   const bottom = rect.y + rect.h;
-  const reach = snap(bottom + LOOP_REACH * env.u);
+  const reach = snap(bottom + depth);
   const right = snap(rect.x + rect.w - 2 * env.u);
   const left = snap(right - 4 * env.u);
   return [{ x: left, y: bottom }, { x: left, y: reach }, { x: right, y: reach }, { x: right, y: bottom }];
@@ -1913,6 +1917,16 @@ function placeLabels(
       continue;
     }
     unseated.push(edge.id);
+    if (selfLoop(edge)) {
+      // A label beside a loop's leg keeps clear of its node: the loop reaches as deep as the first block
+      // of lines that fits between the leg and the node's left side needs.
+      const reach = geometry.loopReach.get(edge.id) ?? 0;
+      const room = points[0]!.x - off - 2 - geometry.rects.get(edge.source.nodeId)!.x;
+      const need = (block: LabelBlock) => q(block.height) / 2 + off;
+      const block = blocks.find((item) => need(item) > reach && item.width <= room) ?? blocks.at(-1)!;
+      needs.set(`loop:${edge.id}`, Math.max(needs.get(`loop:${edge.id}`) ?? 0, Math.ceil(need(block))));
+      continue;
+    }
     // A return tries the outer corridors before any gutter grows.
     if (edge.flow === 'return' && !outward.has(edge.id)) continue;
     const block = blocks.at(-1)!;

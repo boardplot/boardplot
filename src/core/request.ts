@@ -6,7 +6,7 @@ import { PLAN_ONLY, withPlanInputs, contentKey, copyPlannedValue, repeatedResult
 import { loadedDeferred } from './deferred';
 import { shownNoteKinds } from './notes';
 import { canonicalChartType, getChart } from './registry';
-import { chartSizing, compactFallbackApplies, declaredSizing, fitsSize, FIXED_SIZE_PROBE, FULL_LAYOUT_PROBE, SIZE_TOLERANCE, LAYOUT_CALL, type LayoutCall, plotFloorHeight, plotRepairHeight, resolveSizing, sizeGate, sizeRefusal, VERIFY_ADVICE, verifiedSizeRepair, WIDTH_PROBE } from './sizing';
+import { chartSizing, compactFallbackApplies, declaredSizing, fitsSize, FIXED_SIZE_PROBE, FULL_LAYOUT_PROBE, NARROW_FORM, NARROW_FORM_TYPES, SIZE_TOLERANCE, LAYOUT_CALL, type LayoutCall, plotFloorHeight, plotRepairHeight, resolveSizing, sizeGate, sizeRefusal, VERIFY_ADVICE, verifiedSizeRepair, WIDTH_PROBE } from './sizing';
 import { EMPTY_DATA, hasNoDataRows } from './emptyData';
 import { NormalizeError, canonicalLanguage, substitute } from './normalize/shared';
 import { withNumberMarks } from './numberMarks';
@@ -341,7 +341,21 @@ function afterFirstLayout(request: ResolvedChartRequest, first: LayoutResult, la
   const fittedLate = table && asked === request && drawn === first
     ? undefined : widthsGiveWay(asked, drawn, layout, probe);
   const last = fittedLate ? fittedLate[1] : drawn;
-  return smallerClass(fittedLate ? fittedLate[0] : asked, last, plainLayout) ?? last;
+  const final = fittedLate ? fittedLate[0] : asked;
+  const stepped = smallerClass(final, last, plainLayout) ?? last;
+  return narrowerForm(final, stepped, plainLayout) ?? stepped;
+}
+
+/**
+ * The last step before a width refusal: a type whose form for this width has a floor above it draws
+ * the form a narrower width draws, so a chart that draws at a width draws at every wider width.
+ * Every drawn chart keeps its layout; a grid panel keeps its form for the grid.
+ */
+function narrowerForm(request: ResolvedChartRequest, result: LayoutResult, layout: (asked: ResolvedChartRequest) => LayoutResult): LayoutResult | undefined {
+  const need = result.refused && result.warnings[0]?.code === 'size-below-floor' ? result.warnings[0].expected?.minimum as Size | undefined : undefined;
+  if (!need || need.width <= result.size.width || !NARROW_FORM_TYPES.has(request.type) || panelTypeClass(request.options) !== undefined) return undefined;
+  const narrow = layout({ ...request, options: { ...request.options, [NARROW_FORM]: true } as RequestOptions });
+  return narrow.refused ? undefined : narrow;
 }
 
 /**
@@ -1014,6 +1028,7 @@ function measureWithLayout(request: ResolvedChartRequest, result: LayoutResult,
   // Text and chrome depend on width. Verify the floor at the requested
   // width (or the minimum width when the request is narrower)
   // through the same registered layout that render uses, including its notes.
+  const floorStart = sizing.minWidth;
   for (let pass = 0; !openWidth && pass < 8; pass++) {
     let verified = true;
     const previousWidth = sizing.minWidth;
@@ -1033,6 +1048,19 @@ function measureWithLayout(request: ResolvedChartRequest, result: LayoutResult,
       });
     }
     if (verified || (sizing.minWidth === previousWidth && sizing.minHeight === previousHeight)) break;
+  }
+  // A refusal names the width its own form needs, which can be wider than the asked width, where another
+  // form draws at the floor height. The minimum width is then the narrowest width that draws there.
+  const drawnWidth = Math.ceil(request.size.width);
+  if (!openWidth && !result.refused && !isRefused(result) && sizing.minWidth > drawnWidth
+    && !isRefused(probeAt({ width: drawnWidth, height: sizing.minHeight }))) {
+    let [lo, hi] = [Math.floor(floorStart), drawnWidth];
+    if (!isRefused(probeAt({ width: lo, height: sizing.minHeight }))) hi = lo;
+    while (hi - lo > 1) {
+      const mid = Math.floor((lo + hi) / 2);
+      if (isRefused(probeAt({ width: mid, height: sizing.minHeight }))) lo = mid; else hi = mid;
+    }
+    sizing = resolveSizing({ ...sizing, minWidth: hi }, result.size, { ...sizing, minWidth: hi });
   }
   // At the automatic height a width alone takes the height it needs, so the floor above, verified at
   // minHeight, is not the minimum width. The minimum width is the one `drawsFrom` finds for the full
@@ -1236,7 +1264,12 @@ export function measureResolvedRequest(request: ResolvedChartRequest): ChartMeas
     if (fittedLate) return measureWithLayout(fittedLate[0], fittedLate[1], open(fittedLate[0]), true);
     // The same class step as layoutResolvedRequest, so measure does not refuse a chart that render draws.
     const smaller = smallerClass(asked, first, drawnBy);
-    return measureWithLayout(asked, smaller ?? first, layoutAt, true);
+    if (smaller) return measureWithLayout(asked, smaller, layoutAt, true);
+    // And the same narrower form. The floor probes and the width search then lay out that form too,
+    // so the minimum width is one the drawn form reaches, at an open and at a pinned height.
+    let narrowRequest = asked;
+    const narrow = narrowerForm(asked, first, (opened) => { narrowRequest = opened; layoutAt = open(opened); return layoutAt(opened.options); });
+    return narrow ? measureWithLayout(narrowRequest, narrow, layoutAt, true) : measureWithLayout(asked, first, layoutAt, true);
   } finally { for (const run of runs) run.finish(); }
 }
 

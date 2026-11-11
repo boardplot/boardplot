@@ -1081,12 +1081,23 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
   const tracks = measured?.tracks ?? [];
   const spacerWidths = measured?.spacerBefore ?? new Map<Id, number>();
   const labelsWrap = measured?.labelsWrap ?? false;
+  // A dimswitch's disclosures ride on the props in ENGINE_NOTES; the request normalisation keeps string keys only.
+  const engineNotes = ((compiledRequest?.options ?? options) as { [ENGINE_NOTES]?: string[] })[ENGINE_NOTES];
+  // The footnotes walk every cell: once per table and fold state, not on each scroll render.
+  const engineKinds = ((compiledRequest?.options ?? options) as { [ENGINE_NOTE_KINDS]?: ReadonlyMap<string, EngineNoteMeta> })[ENGINE_NOTE_KINDS];
+  // The footer lines wrap at the grid's width less the canvas padding and the cell air on both sides.
+  const footWidth = request === undefined ? 0
+    : request.size.width - (tableOptions?.margin?.left ?? 0) - (tableOptions?.margin?.right ?? 0) - 2 * padX;
+  const frameMemo = useMemo(() => table === undefined || tableOptions === undefined ? undefined
+    : tableFrame(table, engineNotes ? { ...tableOptions, [ENGINE_NOTES]: engineNotes, [ENGINE_NOTE_KINDS]: engineKinds } as TableOptions : tableOptions, rows, columns,
+      request === undefined || theme === undefined ? undefined : { width: footWidth, measure: width.measure, theme }),
+  [table, tableOptions, engineNotes, engineKinds, rows, columns, request, theme, footWidth, width.measure]);
   const diagnostics = useMemo(() => layoutRequest && resolved ? {
-    warnings: [...resolved.warnings, ...(layoutRequest.inputWarnings ?? []), ...(fittedNote === undefined ? [] : [fittedNote]), ...(need?.warnings ?? []), ...(sized?.warnings ?? []),
+    warnings: [...resolved.warnings, ...(layoutRequest.inputWarnings ?? []), ...(fittedNote === undefined ? [] : [fittedNote]), ...(need?.warnings ?? []), ...(sized?.warnings ?? []), ...(frameMemo?.warnings ?? []),
       ...(tableOptions?.columnHeads === false && sortable !== false && (sortable === true || sortable.length > 0) ? [SORT_WITHOUT_HEADS] : [])],
     presentation: initialPrepared?.presentation ?? tablePresentation(layoutRequest, resolved.table),
     refused: sized?.refused,
-  } : undefined, [layoutRequest, resolved, initialPrepared, sized, fittedNote, need?.warnings, tableOptions?.columnHeads, sortable]);
+  } : undefined, [layoutRequest, resolved, initialPrepared, sized, fittedNote, need?.warnings, frameMemo?.warnings, tableOptions?.columnHeads, sortable]);
   // A container table is laid out again at each width it is shown at, as a container chart is.
   const displayRef = useDisplayWarnings(settling ? undefined : diagnostics, onWarnings, null,
     size === 'container' && !container.printing ? layoutRequest?.size.width : undefined);
@@ -1565,17 +1576,6 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
   // fold animates the same path both ways.
   const rowTree = useMemo(() => tableRowTree(table?.rows ?? [], rootsHidden), [table, rootsHidden]);
   const rowPages = useMemo(() => rowWindowed ? Array.from({ length: Math.ceil(rowTree.length / ROW_PAGE) }, (_, index) => rowTree.slice(index * ROW_PAGE, (index + 1) * ROW_PAGE)) : [], [rowWindowed, rowTree]);
-  // A dimswitch's disclosures ride on the props in ENGINE_NOTES; the request normalisation keeps string keys only.
-  const engineNotes = ((compiledRequest?.options ?? options) as { [ENGINE_NOTES]?: string[] })[ENGINE_NOTES];
-  // The footnotes walk every cell: once per table and fold state, not on each scroll render.
-  const engineKinds = ((compiledRequest?.options ?? options) as { [ENGINE_NOTE_KINDS]?: ReadonlyMap<string, EngineNoteMeta> })[ENGINE_NOTE_KINDS];
-  // The footer lines wrap at the grid's width less the canvas padding and the cell air on both sides.
-  const footWidth = request === undefined ? 0
-    : request.size.width - (tableOptions?.margin?.left ?? 0) - (tableOptions?.margin?.right ?? 0) - 2 * padX;
-  const frameMemo = useMemo(() => table === undefined || tableOptions === undefined ? undefined
-    : tableFrame(table, engineNotes ? { ...tableOptions, [ENGINE_NOTES]: engineNotes, [ENGINE_NOTE_KINDS]: engineKinds } as TableOptions : tableOptions, rows, columns,
-      request === undefined || theme === undefined ? undefined : { width: footWidth, measure: width.measure, theme }),
-  [table, tableOptions, engineNotes, engineKinds, rows, columns, request, theme, footWidth, width.measure]);
   // A composing chart (dimswitch) hears which notes the footer printed, the final decision after the line budget.
   const onPrinted = compiledRequest?.printed;
   const printedKey = frameMemo?.footnotes.map((note) => note.text).join('\n');

@@ -81,7 +81,7 @@ export function tableFootnotes(
   // is left.
   const statusNote = statusDirectionNote(table.columns, heatRanges(table.columns, table.rows), table.colorblindSafe, language);
   const shownStatusNote = statusNote === undefined ? undefined : statusDirectionNote(columns, heatRanges(columns, rows), table.colorblindSafe, language);
-  const partialNote = partialFootnote(language);
+  const partialNote = table.partialNote ?? partialFootnote(language);
   const footnotes = table.footnotes.flatMap((note) =>
     note === partialNote && !partialShown ? []
       : note === statusNote ? (shownStatusNote === undefined ? [] : [shownStatusNote])
