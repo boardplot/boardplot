@@ -583,6 +583,15 @@ describe('boardplot MCP server', () => {
     expect(body(result).svg).toBeUndefined();
   }, 60_000);
 
+  // An agent that saved the PNG to a folder and asked for nothing back paid for the whole image again as base64.
+  it.skipIf(!availableRasterizer())('sends no image block for a PNG saved to outDir with an empty return', () => {
+    const out = mkdtempSync(join(tmpdir(), 'boardplot-mcp-png-'));
+    dirs.push(out);
+    const result = callTool('boardplot_render', { spec: SPEC, format: 'png', scale: 1, outDir: out, return: [] });
+    expect(result.content.filter((part) => part.type === 'image')).toHaveLength(0);
+    expect(body(result).outputs).toEqual([join(out, 'chart.png')]);
+  }, 60_000);
+
   it('names a width argument, not /options/size, when that argument makes the chart too small', () => {
     const [error] = body(callTool('boardplot_render', { spec: SPEC, width: 100 })).errors;
     expect(error).toMatchObject({ code: 'size-below-floor', path: '/width', fix: [{ op: 'replace', path: '/width', value: 120 }] });
