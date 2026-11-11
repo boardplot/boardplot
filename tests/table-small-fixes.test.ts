@@ -304,6 +304,11 @@ it('keeps scaled weekly levels accurate beside a large range total', () => {
   expect(printed(2)).toEqual(['5,705,293,076', '188,633,562', '195,633,562', '0']);
 });
 
+// A column toggle took its height from its text and padding alone: 21.6 px at phone width, under the 24 px target size.
+it('holds a table column toggle to the 24 px target height', () => {
+  expect(tableStylesheet(resolveTheme('standard'))).toMatch(/\.bp-table \.bp-col-toggle\{[^}]*min-height:24px/);
+});
+
 // Rounding made different acquisition costs and small fees look equal, with or without an authored format.
 it('keeps fractional per-unit costs distinct with authored and default precision', () => {
   const { table } = resolveTable({
