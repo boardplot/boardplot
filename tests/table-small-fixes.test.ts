@@ -365,6 +365,15 @@ it('keeps the unit in the cells of a row that prints no scale letter under a for
   expect(table.rows.map((row) => row.unitAffix)).toEqual(['$M', '$M', undefined, undefined]);
 });
 
+// One small cell lifted a whole row of an authored '$1M' format to "$4.000M, $6.000M, $0.002M".
+it('lifts only the cell that would print 0 in a row of an authored scaled format', () => {
+  const { table } = resolveTable({
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'q1', kind: 'value' }, { id: 'q2', kind: 'value' }, { id: 'q3', kind: 'value' }],
+    rows: [{ id: 'cost', label: 'Cost', format: '$1M', cells: { q1: 4_000_000, q2: 6_000_000, q3: 1_500 } }],
+  });
+  expect(['q1', 'q2', 'q3'].map((id) => table.rows[0]!.cells[id]!.displayed)).toEqual(['$4M', '$6M', '$0.002M']);
+});
+
 // A '1,234k' column printed 1,080,000 as "1.1M" under its "(k)" head: the example's grouped digits hold the magnitude.
 // An authored '$0k' printed 2,496,000 as "$2.5M" beside "$640k", with fitFormats off and no warning.
 it('holds the magnitude of an authored example, grouped or not', () => {
