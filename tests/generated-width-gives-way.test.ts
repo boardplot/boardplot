@@ -5,6 +5,7 @@ import '../src/core/geo/packs';
 import { getFixtures } from '../src/fixtures';
 import { layoutResolvedRequest, measure, resolveChartRequest } from '../src/core/request';
 import { render } from '../src/cli/render';
+import { measure as cliMeasure } from '../src/cli/measure';
 import { isRefused } from '../src/core/schema/refusals';
 
 const fixture = (type: string, id: string) => getFixtures(type as never).find((item) => item.id === id)!;
@@ -222,5 +223,15 @@ describe('a chart refused in the text class of its width draws in a smaller clas
     const measured = measure({ type, data, options } as never);
     expect(measured.geometry).toBeDefined();
     expect(measured.minWidth).toBeLessThanOrEqual(width);
+  });
+
+  // At a pinned height the CLI measured the table drawn in the smaller class with probes in the larger one, and named 1238 px where it draws at 1080 px.
+  it('the CLI names a minimum width at which a pinned chart drawn in a smaller class draws', () => {
+    const data = { ...table.data as object, rows: [...(table.data as { rows: Row[] }).rows, ...copied((table.data as { rows: Row[] }).rows)] };
+    const cli = (size: { width: number; height: number }) => cliMeasure({ spec: { type: 'table', data, options: { ...table.options as object, size } } } as never).body as { minWidth: number; refused: unknown };
+    const { minWidth } = cli({ width: 1080, height: 900 });
+    expect(minWidth).toBeLessThanOrEqual(1080);
+    expect(cli({ width: minWidth, height: 900 }).refused).toBeNull();
+    expect(cli({ width: minWidth - 1, height: 900 }).refused).not.toBeNull();
   });
 });

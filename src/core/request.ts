@@ -355,8 +355,16 @@ function narrowerForm(request: ResolvedChartRequest, result: LayoutResult, layou
   const need = result.refused && result.warnings[0]?.code === 'size-below-floor' ? result.warnings[0].expected?.minimum as Size | undefined : undefined;
   if (!need || need.width <= result.size.width || !NARROW_FORM_TYPES.has(request.type) || panelTypeClass(request.options) !== undefined) return undefined;
   const narrow = layout({ ...request, options: { ...request.options, [NARROW_FORM]: true } as RequestOptions });
-  return narrow.refused ? undefined : narrow;
+  return narrow.refused ? undefined : drawnBy(narrow, 'narrowerForm');
 }
+
+/** Which of render's later steps drew a result; it survives the copies render and the request cache make. */
+const DRAWN_BY = Symbol('boardplot.drawnBy');
+type DrawnBy = 'narrowerForm' | 'smallerClass';
+function drawnBy(result: LayoutResult, step: DrawnBy): LayoutResult {
+  return Object.assign(result, { [DRAWN_BY]: step });
+}
+const drawnStep = (result: LayoutResult): DrawnBy | undefined => (result as { [DRAWN_BY]?: DrawnBy })[DRAWN_BY];
 
 /**
  * The type steps up at 720 and at 1080 px. A chart refused in the class its width selects draws in the
@@ -379,7 +387,8 @@ const classSteps = new WeakMap<LayoutResult, { request: ResolvedChartRequest; dr
 
 function classStep(request: ResolvedChartRequest, result: LayoutResult, layout: (asked: ResolvedChartRequest) => LayoutResult): LayoutResult | undefined {
   if (!stepsDown(result) || panelTypeClass(request.options) !== undefined || (request.options as RequestOptions).belowMinimum === 'refuse') return undefined;
-  return firstSmallerClass(result, () => layout(request));
+  const smaller = firstSmallerClass(result, () => layout(request));
+  return smaller && drawnBy(smaller, 'smallerClass');
 }
 
 /** A refusal the class step answers: any refusal but a size refusal that asks only for more height, which its size advice answers. */
@@ -1029,6 +1038,15 @@ function measureWithLayout(request: ResolvedChartRequest, result: LayoutResult,
   layoutAt: LayoutCall<any, any, any>, verify = false,
   asked: { request: ResolvedChartRequest; layoutAt: LayoutCall<any, any, any> } = { request, layoutAt },
 ): ChartMeasurement {
+  // A chart one of render's later steps drew is measured as it drew: in its narrower form, or with
+  // render's class step at every probed frame. measure and the CLI's measureLayout both pass through here.
+  const step = drawnStep(result);
+  if (step === 'smallerClass' && !classStepping) return measuredWithClassStep(() => measureWithLayout(request, result, layoutAt, verify, asked));
+  if (step === 'narrowerForm' && !(request.options as { [NARROW_FORM]?: true })[NARROW_FORM]) {
+    const narrow = { ...request, options: { ...request.options, [NARROW_FORM]: true } as RequestOptions };
+    const run = preparedLayout(narrow, verify);
+    try { return measureWithLayout(narrow, result, run, verify); } finally { run.finish(); }
+  }
   measuredPlotAdvice(asked.request, result, asked.layoutAt);
   measuredTightAdvice(asked.request, result, asked.layoutAt);
   const def = getChart(request.type);
@@ -1306,8 +1324,8 @@ export function measureResolvedRequest(request: ResolvedChartRequest): ChartMeas
     if (fittedLate) return measureWithLayout(fittedLate[0], fittedLate[1], open(fittedLate[0]), true);
     // The same class step as layoutResolvedRequest, so measure does not refuse a chart that render draws.
     const smaller = smallerClass(asked, first, drawnBy);
-    // The floor probes and the width search lay out the class that drew, as render does.
-    if (smaller) return measuredWithClassStep(() => measureWithLayout(asked, smaller, layoutAt, true));
+    // The floor probes and the width search take render's class step (measureWithLayout).
+    if (smaller) return measureWithLayout(asked, smaller, layoutAt, true);
     // And the same narrower form. The floor probes and the width search then lay out that form too,
     // so the minimum width is one the drawn form reaches, at an open and at a pinned height.
     let narrowRequest = asked;
