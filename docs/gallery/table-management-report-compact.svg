@@ -5,10 +5,10 @@
 <text data-id="frame:subtitle:1" data-part="subtitle" data-bp-role="subtitle" x="24" y="61.32" text-anchor="start" font-size="14" font-weight="400" fill="#0B1B3A"><tspan>in $k · As of 15 July 2026</tspan></text>
 <text data-id="frame:source:2" data-part="source" data-bp-role="source" x="36" y="476.38" text-anchor="start" font-size="11" font-weight="400" fill="#5B6B86"><tspan x="36" dy="0">Source: Boardplot demo data</tspan></text>
 <text data-id="group:g-mtd" data-part="tableGroupHeader" data-bp-role="category" x="266" y="94.36" text-anchor="start" font-size="12" font-weight="400" letter-spacing="1.44" fill="#0B1B3A"><tspan x="266" dy="0">MONTH-TO-DATE</tspan></text>
-<text data-id="group-note:g-mtd" data-part="tableGroupHeader" data-bp-role="category" x="385.50" y="94.36" text-anchor="start" font-size="12" font-weight="400" fill="#5B6B86"><tspan x="385.50" dy="0"> · Jul 1–15</tspan></text>
+<text data-id="group-note:g-mtd" data-part="tableGroupHeader" data-bp-role="category" x="389" y="94.36" text-anchor="start" font-size="12" font-weight="400" fill="#5B6B86"><tspan x="389" dy="0">· Jul 1–15</tspan></text>
 <line data-id="group-rule:g-mtd" data-part="tableGroupRule" x1="242" y1="99.50" x2="466" y2="99.50" stroke="#D9DEE8" stroke-width="1"/>
 <text data-id="group:g-ytdc" data-part="tableGroupHeader" data-bp-role="category" x="553" y="94.36" text-anchor="start" font-size="12" font-weight="400" letter-spacing="1.44" fill="#0B1B3A"><tspan x="553" dy="0">YTD CLOSED</tspan></text>
-<text data-id="group-note:g-ytdc" data-part="tableGroupHeader" data-bp-role="category" x="644" y="94.36" text-anchor="start" font-size="12" font-weight="400" fill="#5B6B86"><tspan x="644" dy="0"> · Jan–Jun</tspan></text>
+<text data-id="group-note:g-ytdc" data-part="tableGroupHeader" data-bp-role="category" x="647.50" y="94.36" text-anchor="start" font-size="12" font-weight="400" fill="#5B6B86"><tspan x="647.50" dy="0">· Jan–Jun</tspan></text>
 <line data-id="group-rule:g-ytdc" data-part="tableGroupRule" x1="490" y1="99.50" x2="764" y2="99.50" stroke="#D9DEE8" stroke-width="1"/>
 <text data-id="header:label" data-part="tableHeader" data-bp-role="category" x="36" y="126.66" text-anchor="start" font-size="12" font-weight="600" fill="#0B1B3A"><tspan x="36" dy="0">SEGMENT</tspan></text>
 <text data-id="header:mtdLy" data-part="tableHeader" data-bp-role="category" x="324" y="126.66" text-anchor="end" font-size="12" font-weight="600" fill="#0B1B3A"><tspan x="324" dy="0">PRIOR YEAR</tspan></text>

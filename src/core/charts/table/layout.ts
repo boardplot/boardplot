@@ -181,7 +181,7 @@ export function prepareTableExecutor(authoredData: TableData, initialOptions: Ta
           // metadata are consumed after the shared preparation.
           const { size: _candidateSize, [COMPACT_RETRY]: _candidateHeight, ...spacing } = candidate;
           const typeClass = panelTypeClass(current) ?? typeWidthClass(resolveSize(current.size).width);
-          const key = variantKey + ':' + optionKey(spacing) + ':' + typeClass;
+          const key = variantKey + ':' + optionKey(spacing) + ':' + typeClass + (givesSectionAir(current) ? ':air' : '');
           let byKey = candidates.get(model);
           if (!byKey) candidates.set(model, byKey = new Map());
           let prepared = byKey.get(key);
@@ -485,11 +485,20 @@ function sharedTableFrame(table: ResolvedTable, input: Parameters<typeof solveFr
   return value;
 }
 
+/**
+ * The compact retry gives a section's air back only under a pinned height: at an open height the frame grows to the rows.
+ * A prepared candidate reads it, so the candidate key carries it.
+ */
+function givesSectionAir(options: LayoutOptions): boolean {
+  return options[COMPACT_RETRY] !== undefined && !heightOmitted(options.size) && (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height !== false;
+}
+
 function prepareTableCandidate(
   authoredData: TableData, options: LayoutOptions, initialResolved: ReturnType<typeof resolveTable>, formatFits: FormatFits,
 ) {
   const tight = options[TIGHT_SPACING]?.columns === true;
   const tightRows = options[TIGHT_SPACING]?.rows === true;
+  const sectionAirGiven = givesSectionAir(options);
   const measure = tableTextMeasure(options.measure ?? defaultMeasurer);
   let data = authoredData;
   let resolved = initialResolved;
@@ -655,8 +664,8 @@ function prepareTableCandidate(
       // (default one body line box) above its label, inside the row so bands and grounds run on.
       // The first row under the head takes a quarter line box (never more), so its label has
       // at least the air above that its pad and rule give it below.
-      // The compact and tight retries of a size that misses give the air back before the table refuses.
-      if (tightRows || options[COMPACT_RETRY] !== undefined) return sectionNatural();
+      // The compact and tight retries of a pinned height that misses give the air back before the table refuses.
+      if (tightRows || sectionAirGiven) return sectionNatural();
       const space = theme.table?.section?.spaceBefore ?? lineBox(ladder.label);
       return sectionNatural() + Math.round(row.id === rows[0]?.id ? Math.min(space, lineBox(ladder.label) / 4) : space);
     }
@@ -1319,12 +1328,14 @@ function prepareTableCandidate(
       // underlined with it. The measurer already counts the label's
       // tracking; adding it again drew every underline one tracking step per
       // letter too wide.
-      const note = groupHeadingNote(g.note);
+      const spacedNote = groupHeadingNote(g.note);
       const faces = groupHeadingFaces(fonts.group);
       const noteFont = faces.note;
       const measured = groupHeadingWidth(g, faces, measure);
-      const trackedW = measured.label;
-      const labelW = trackedW + measured.note;
+      // SVG drops the note's leading space, so the note draws without it, one space further right.
+      const note = spacedNote?.trimStart();
+      const noteOffset = measured.label + (note === undefined ? 0 : measured.note - measure(note, noteFont).width);
+      const labelW = measured.label + measured.note;
       const spanStart = Math.round(first.x + cellPadX);
       const spanEnd = Math.round(last.x + last.w - cellPadX);
       const wrap = groupWraps.get(g.id);
@@ -1370,7 +1381,7 @@ function prepareTableCandidate(
         });
         if (note !== undefined) {
           nodes.push({
-            t: 'text', typeRole: 'footnote', id: `group-note:${g.id}`, x: startX + trackedW, y: labelY, lines: [note], align: 'start',
+            t: 'text', typeRole: 'footnote', id: `group-note:${g.id}`, x: startX + noteOffset, y: labelY, lines: [note], align: 'start',
             font: noteFont, ink: tableInk('secondary'), owner: {}, part: 'tableGroupHeader',
           });
         }
@@ -1403,7 +1414,7 @@ function prepareTableCandidate(
         nodes.push({
           t: 'text', typeRole: 'footnote',
           id: `group-note:${g.id}`,
-          x: startX + trackedW,
+          x: startX + noteOffset,
           y: labelY,
           lines: [note],
           align: 'start',
