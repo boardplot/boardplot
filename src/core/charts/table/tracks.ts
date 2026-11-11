@@ -56,6 +56,8 @@ export const HEADING_CUT_MIN = 20;
  * chevron without claiming the pixels would clip its own label.
  */
 export const SORT_CHEVRON_RESERVE = MARK_SIZE + 4;
+/** The least width and height of a header's sort button, the 24 px target size; the React stylesheet draws it. */
+export const SORT_BUTTON_MIN = 24;
 /** Disclosure notes a composing layout (dimswitch) adds to a table: printed after the author's, without a number. */
 export const ENGINE_NOTES = Symbol('tableEngineNotes');
 /**
