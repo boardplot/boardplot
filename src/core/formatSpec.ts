@@ -1924,13 +1924,18 @@ export function unitMagnitude(unit: string | undefined): NumberFormatSpec['magni
  * more (after rounding), while the largest keeps at most four digits ("1,180M · 590M · 140M").
  * Undefined keeps one scale per label (effectiveScale): an authored format, a unit
  * that names a scale, a set below 1e6 (no engine scale), or a set no step fits.
+ * `whole`: the magnitude differs from the M or B the engine picks for the set's largest
+ * value, so a label of 1,000 or more prints whole ("1,540M", not "1,540.00M"). A set at
+ * the engine's own M or B prints as one scale per label does, "1,000.00M" for 999,999,900 included.
  */
+export interface SetMagnitude { magnitude: 'bn' | 'm' | 'k'; whole: boolean }
+
 export function setMagnitude(
   values: Iterable<number | null | undefined>,
   example: string | undefined,
   unit: string | undefined,
   target: RenderTarget | undefined,
-): NumberFormatSpec['magnitude'] | undefined {
+): SetMagnitude | undefined {
   if (example || target === undefined || unitMagnitude(unit)) return undefined;
   let min = Infinity, max = 0;
   for (const value of values) {
@@ -1945,7 +1950,7 @@ export function setMagnitude(
     return min >= MAGNITUDE_DIVISOR[magnitude] || Number(roundHalfUp(below, neededDecimals(below, 2))) >= 1000;
   };
   const step = (['bn', 'm', 'k'] as const).find(reaches);
-  return step && Math.round(max / MAGNITUDE_DIVISOR[step]) < 10000 ? step : undefined;
+  return step && Math.round(max / MAGNITUDE_DIVISOR[step]) < 10000 ? { magnitude: step, whole: step !== (max >= 1e9 ? 'bn' : 'm') } : undefined;
 }
 
 export function seriesRasterFormatter(
@@ -1957,7 +1962,7 @@ export function seriesRasterFormatter(
   defaultExample?: string,
   shared = false,
   /** The set's magnitude (setMagnitude), shared by every raster of the set: no label steps down on its own. */
-  setScale?: NumberFormatSpec['magnitude'],
+  setScale?: SetMagnitude,
 ): {
   spec: NumberFormatSpec;
   fmt: (value: number) => string;
@@ -1988,10 +1993,8 @@ export function seriesRasterFormatter(
     const max = raster.reduce<number>((largest, value) => value != null && Number.isFinite(value) ? Math.max(largest, Math.abs(value)) : largest, 0);
     if (setScale || max >= 1e6) {
       // A set's magnitude (setMagnitude) holds every nonzero label, so none steps down; the decimals count as for M or B.
-      const engineScale = max >= 1e9 ? 'bn' : 'm';
-      // A set at the engine's own M or B prints as one scale per label does, "1,000.00M" for 999,999,900 included.
-      if (setScale && setScale !== engineScale) spec.setScale = true;
-      spec.magnitude = setScale ?? engineScale;
+      if (setScale?.whole) spec.setScale = true;
+      spec.magnitude = setScale?.magnitude ?? (max >= 1e9 ? 'bn' : 'm');
       spec.rollMagnitude = false;
       spec.autoMagnitude = true;
       autoMagnitude = true;
