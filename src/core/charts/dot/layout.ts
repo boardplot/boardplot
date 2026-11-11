@@ -23,7 +23,7 @@ import type { AnchorResolution } from '../../annotate';
 import { percentCellsOnly, percentLevels, runAnnotatePass } from '../../annotatePass';
 import { applyValueAxisTitleInk, layoutValueAxis, planValueAxisTitle, valueAxisTitleRequest } from '../../axis';
 import { arrowHeadPath, arrowShaftEnd } from '../../svgPath';
-import { formatStatWithSpec, formatterFromExample, neededDecimals, seriesRasterFormatter } from '../../formatSpec';
+import { formatStatWithSpec, formatterFromExample, neededDecimals, seriesRasterFormatter, setMagnitude } from '../../formatSpec';
 import { formatAutomaticNumber } from '../../format';
 import { autoDecimals } from '../../formatPrecision';
 import { localeStrings } from '../../strings/dot';
@@ -270,9 +270,9 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
   // Exhibit-wide format raster — dot shares the column/bar
   // family rule: style from the example, one precision from the plotted
   // values, range bounds included.
-  const valueSpec = seriesRasterFormatter(options.format, normSeries.flatMap((s) =>
-      s.cells.flatMap((cell) => [cell.v, cell.range?.low, cell.range?.high, cell.range?.mid]),
-    ), options.locale?.language, options.unit, options.target);
+  // The plotted values are one set: one magnitude, so no label steps down to its own (9,600k · 400k, not 9.6M · 400k).
+  const valueSet = normSeries.flatMap((s) => s.cells.flatMap((cell) => [cell.v, cell.range?.low, cell.range?.high, cell.range?.mid]));
+  const valueSpec = seriesRasterFormatter(options.format, valueSet, options.locale?.language, options.unit, options.target, undefined, false, setMagnitude(valueSet, options.format, options.unit, options.target));
   const fmt = valueSpec.fmt;
   const percent = options.unit === '%' || percentLevels(dataSeries.map(series => ({ vals: series.cells })));
   const percentAxis = percentCellsOnly(dataSeries.map((series) => ({ vals: series.cells.map((cell) => ({ ...cell, format: cell.meta?.format })), format: series.format })));
