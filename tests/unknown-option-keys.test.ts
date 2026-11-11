@@ -328,6 +328,68 @@ describe('unknown option keys are refused on every type', () => {
     const twoDiagram = cliErrors({ ...diagram, options: { ...diagram.options, roadmap: true } }).errors as (Finding & { fix?: unknown })[];
     expect(twoDiagram.filter(entry => entry.code === 'unknown-option').map(entry => entry.fix)).toEqual([undefined, undefined]);
   });
+  // JSON.parse creates __proto__ as an own property, which z.record dropped silently instead of refusing as an unknown option.
+  it('refuses an own __proto__ option key with the same message and suggest as any other unknown key', () => {
+    const columnData = {
+      categories: [{ id: 'a', label: 'Apples' }, { id: 'b', label: 'Pears' }],
+      series: [{ id: 's', label: 'Crates', values: [8, 13] }],
+    };
+    const tableData = getFixtures('table')[0]!.data;
+    const parseWithKey = (build: (key: string) => string, key: string): object =>
+      JSON.parse(build(key)) as object;
+    const cases: [string, (key: string) => string][] = [
+      ['/data/panels/0/options/__proto__', (key) => JSON.stringify({
+        type: 'grid',
+        data: {
+          panels: [
+            { id: 'p1', type: 'column', row: 0, column: 0, data: columnData, options: { legend: 'none', [key]: { left: 0 } } },
+            { id: 'p2', type: 'text', row: 0, column: 1, data: { title: 'Pears lead', body: 'Pears outsold apples.' } },
+          ],
+        },
+        options: { size: { width: 720 }, columns: [1, 1], title: 'Fruit crates' },
+      })],
+      ['/options/__proto__', (key) => JSON.stringify({
+        type: 'column', data: columnData, options: { title: 'Fruit crates', [key]: { left: 0 } },
+      })],
+      ['/charts/0/options/__proto__', (key) => JSON.stringify({
+        version: 1, charts: [{ name: 'c', type: 'column', data: columnData, options: { title: 'Fruit crates', [key]: { left: 0 } } }],
+      })],
+      ['/charts/0/options/__proto__', (key) => JSON.stringify({
+        version: 1, charts: [{ name: 'c-$r', type: 'column', repeat: { dimension: 'r', values: ['north'] }, data: { bySlice: { north: columnData } }, options: { [key]: { left: 0 } } }],
+      })],
+      ['/data/template/options/__proto__', (key) => JSON.stringify({
+        type: 'grid', data: { repeat: { dimension: 'r', values: ['north'] }, template: { type: 'column', data: { bySlice: { north: columnData } }, options: { [key]: { left: 0 } } } },
+      })],
+      ['/options/labels/__proto__', (key) => JSON.stringify({
+        type: 'column', data: columnData, options: { labels: { [key]: true } },
+      })],
+      ['/options/__proto__', (key) => JSON.stringify({
+        type: 'table', data: tableData, options: { sort: 'desc', preset: 'plain', [key]: { polluted: true } },
+      })],
+    ];
+    for (const [expectedPath, build] of cases) {
+      const protoSpec = parseWithKey(build, '__proto__');
+      const bogusSpec = parseWithKey(build, 'bogusKey');
+      const expected = cliErrors(bogusSpec).errors.map((finding) => ({
+        ...finding,
+        path: finding.path?.replaceAll('bogusKey', '__proto__'),
+        message: finding.message.replaceAll('bogusKey', '__proto__'),
+        suggest: finding.suggest?.replaceAll('bogusKey', '__proto__'),
+        ...('displayPath' in finding && typeof finding.displayPath === 'string'
+          ? { displayPath: finding.displayPath.replaceAll('bogusKey', '__proto__') } : {}),
+      }));
+      const cli = cliErrors(protoSpec);
+      expect(cli.code, expectedPath).toBe(1);
+      expect(cli.errors, expectedPath).toEqual(expected);
+      expect(cli.errors, expectedPath).toContainEqual(expect.objectContaining({ code: 'unknown-option', path: expectedPath }));
+      const mcp = JSON.parse(callTool('boardplot_render', { spec: protoSpec }).text) as { ok: boolean; errors: Finding[] };
+      expect(mcp.ok, expectedPath).toBe(false);
+      expect(mcp.errors, expectedPath).toEqual(expected);
+      expect(reactErrors(protoSpec), expectedPath).toEqual(expected);
+    }
+    expect('left' in ({} as Record<string, unknown>)).toBe(false);
+    expect('polluted' in ({} as Record<string, unknown>)).toBe(false);
+  });
 });
 
 describe('unknown data keys', () => {
