@@ -1711,10 +1711,13 @@ it('names no unit over a column that prints no figure', () => {
   }, { magnitude: 'million' }).table;
   expect(byRow.columns.map((column) => column.unitLabel)).toEqual([undefined, undefined, undefined]);
   // An empty column neither blocks nor adds the unit the frame hoists.
-  const byColumn = (withEmpty: boolean) => resolveTable({
-    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'sep', kind: 'value', format: '$1.2m' }, ...(withEmpty ? [{ id: 'oct', kind: 'value' as const, format: '1.2k' }] : [])],
+  const byColumn = (withEmpty: boolean, filled: string, empty: string, options: object = {}) => resolveTable({
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'sep', kind: 'value', format: filled }, ...(withEmpty ? [{ id: 'oct', kind: 'value' as const, format: empty }] : [])],
     rows: [{ id: 'rev', label: 'Revenue', cells: { sep: 7_400_000 } }, { id: 'cost', label: 'Cost', cells: { sep: 2_100_000 } }],
-  }, { subtitle: 'Monthly revenue' }).table;
-  expect(byColumn(true).unit).toBe(byColumn(false).unit);
-  expect(byColumn(true).columns.find((column) => column.id === 'oct')!.unitLabel).toBeUndefined();
+  }, { subtitle: 'Monthly revenue', ...options });
+  expect(byColumn(true, '$1.2m', '1.2k').table.unit).toBe(byColumn(false, '$1.2m', '1.2k').table.unit);
+  expect(byColumn(true, '$1.2m', '1.2k').table.columns.find((column) => column.id === 'oct')!.unitLabel).toBeUndefined();
+  // Nor does its "$" decide how the frame's scale composes with options.unit ("EUR M").
+  const composed = (withEmpty: boolean) => { const { table, warnings } = byColumn(withEmpty, '1.2m', '$1.2k', { unit: 'EUR' }); return [table.unit, warnings.map((w) => w.code)]; };
+  expect(composed(true)).toEqual(composed(false));
 });
