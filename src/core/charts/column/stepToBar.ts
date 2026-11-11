@@ -93,7 +93,8 @@ export function stepToBar(
   column: Geometry<ColumnMarks, ColumnDerived>,
 ): Geometry<ColumnMarks, ColumnDerived> | undefined {
   const names = column.labels.filter((label) => label.kind === 'category');
-  const lost = names.filter((label) => label.hidden === 'density');
+  // A name cut on the rotated row is lost as well: only its SVG title keeps the full text.
+  const lost = names.filter((label) => label.hidden === 'density' || (!label.hidden && label.rotate !== undefined && label.title !== undefined));
   if (lost.length === 0 || panelTypeClass(options) !== undefined) return undefined;
   // A pinned width never draws at another width. A layout at a wider width is the size search pricing
   // a refusal of the pinned one, and its chart is not drawn, so no bar is laid out for it.
@@ -118,7 +119,7 @@ export function stepToBar(
   bar.warnings.push({
     code: 'column-stepped-to-bar',
     severity: 'info',
-    message: `${lost.length} of ${data.categories.length} category names do not fit under the columns at ${Math.round(column.size.width)}px and cannot rotate, so the chart is drawn as horizontal bars`,
+    message: `${lost.length} of ${data.categories.length} category names do not fit under the columns at ${Math.round(column.size.width)}px, upright or rotated, so the chart is drawn as horizontal bars`,
     suggest: `Set the chart type to bar, or widen the canvas to keep columns.`,
   });
   return bar as unknown as Geometry<ColumnMarks, ColumnDerived>;
