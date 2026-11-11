@@ -1134,18 +1134,30 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   // A column without a format takes its magnitude from its largest figure. Where that magnitude prints a
   // nonzero figure of the column as 0 (17,600 orders beside $3.8M revenue print "<0.1"), one magnitude
   // does not fit the column: each data row without a format of its own prints at its own scale, from its own figures.
-  const unfitColumns = forcedMagnitude === undefined ? [...valueCols, ...computedCols].filter((col) => {
+  // A computed column whose calculation changes the dimension (a ratio, a product, a share) keeps its own format:
+  // a row's inferred scale says nothing about a revenue per order.
+  const scaleChangingColumns = new Set<Id>(computedCols.filter((col) => !calcPreservesScale(col.calc)).map((col) => col.id));
+  const unfitColumns = forcedMagnitude === undefined ? [...valueCols, ...computedCols].filter((col) => !scaleChangingColumns.has(col.id)).filter((col) => {
     const spec = specs.get(col.id)!;
     return localeDerivedColumns.has(col.id) && spec.magnitude !== 'none'
       && flat.some((row) => { const raw = rawState.get(row.id)?.get(col.id)?.raw; return typeof raw === 'number' && raw !== 0 && roundedNumber(raw, { ...spec, automatic: false }) === 0; });
   }) : [];
   const ownScaleExamples = new Map<Id, string>();
+  /** Whether a row's inferred scale reaches a column: not a computed column that changes the dimension. */
+  const rowScaleReaches = (rowId: Id, colId: Id): boolean => !(ownScaleExamples.has(rowId) && scaleChangingColumns.has(colId));
   for (const row of unfitColumns.length === 0 ? [] : flat) {
     if (row.role === 'section' || row.format !== undefined || row.scale !== undefined || row.calc !== undefined || row.inline === true || groupOf(row) !== undefined) continue;
     if (!unfitColumns.some((col) => typeof rawState.get(row.id)?.get(col.id)?.raw === 'number')) continue;
     const values = rowValues(row);
     if (values.length > 0) ownScaleExamples.set(row.id, exampleOf(values));
   }
+  // Own scales only where one shows a figure the column hides: a row whose own scale is the column's
+  // (1.2M beside 450 in one row) would only add a letter to every cell.
+  const printsAsZero = (raw: number | string | null | undefined, spec: NumberFormatSpec) => typeof raw === 'number' && raw !== 0 && roundedNumber(raw, { ...spec, automatic: false }) === 0;
+  if (![...ownScaleExamples].some(([rowId, example]) => unfitColumns.some((col) => {
+    const raw = rawState.get(rowId)?.get(col.id)?.raw;
+    return printsAsZero(raw, specs.get(col.id)!) && !printsAsZero(raw, parseFormatExample(example));
+  }))) ownScaleExamples.clear();
   // The spec a group row prints a column through: the row's, with the decimals that column needs.
   const groupCellSpecs = new Map<Id, Map<Id, NumberFormatSpec>>();
   for (const row of flat) {
@@ -1247,7 +1259,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
         if (!changeLine && group === undefined) {
           const inRow = new Map<Id, NumberFormatSpec>();
           for (const col of [...valueCols, ...computedCols]) {
-            if ((row.calc === undefined && columnOwnsFormat(col)) || cellFormat(row.cells[col.id]) !== undefined) continue;
+            if ((row.calc === undefined && columnOwnsFormat(col)) || cellFormat(row.cells[col.id]) !== undefined || !rowScaleReaches(row.id, col.id)) continue;
             const value = rawState.get(row.id)?.get(col.id)?.raw;
             if (typeof value === 'number' && value !== 0 && roundedNumber(value, spec) === 0) {
               inRow.set(col.id, { ...spec, decimals: nonzeroDecimals(value / MAGNITUDE_DIVISOR[spec.magnitude], spec.decimals) });
@@ -1377,7 +1389,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
 
   /** Whether a cell prints through its row's format, which carries its own unit and precision. */
   const printsThroughRow = (row: FlatRow, colId: Id): boolean =>
-    rowSpecs.has(row.id) && (row.calc !== undefined || row.inline === true || !ownFormatColumns.has(colId));
+    rowSpecs.has(row.id) && (row.calc !== undefined || row.inline === true || (!ownFormatColumns.has(colId) && rowScaleReaches(row.id, colId)));
   /** Whether a cell prints through its column's spec: a row or cell format carries its own unit and precision. */
   const printsThroughColumn = (row: FlatRow, colId: Id): boolean => !printsThroughRow(row, colId) && !cellSpecs.get(row.id)?.has(colId);
   // Nonzero stays nonzero, as on a money row: a column of $42 and $71 under a forced thousand
@@ -1481,7 +1493,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
     const cellSpec = rowId ? cellSpecs.get(rowId)?.get(colId) : undefined;
     if (cellSpec) return cellSpec;
     const rowSpec = rowId ? rowSpecs.get(rowId) : undefined;
-    return rowSpec && (rowOverridesColumn(rowId!) || !ownFormatColumns.has(colId)) ? groupCellSpecs.get(rowId!)?.get(colId) ?? rowSpec : specs.get(colId)!;
+    return rowSpec && (rowOverridesColumn(rowId!) || (!ownFormatColumns.has(colId) && rowScaleReaches(rowId!, colId))) ? groupCellSpecs.get(rowId!)?.get(colId) ?? rowSpec : specs.get(colId)!;
   };
   // `lift: false` prints the plain rounded text, which the near-zero base check reads.
   // Final display specs belong to this model. Repeated cells share a compiled formatter without public mutation checks.
@@ -1505,7 +1517,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
     // the column names no format of its own (an authored '+1.1%' YoY column
     // keeps its percent on a row that prints its months in $M; a chart-level
     // `options.format` yields to the row).
-    const rowPath = rowSpec !== undefined && (rowOverridesColumn(rowId!) || !ownFormatColumns.has(colId));
+    const rowPath = rowSpec !== undefined && (rowOverridesColumn(rowId!) || (!ownFormatColumns.has(colId) && rowScaleReaches(rowId!, colId)));
     // A cell's own format prints whole: its unit is not the one the column
     // or the row hoists. One that names the same unit and changes only the
     // decimals prints as its row or column does, so a hoisted unit is not
@@ -1519,7 +1531,9 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
       if (raw === 0 && lift && !cellSpec && groupOf(rowById.get(rowId!)!) !== undefined) return '0';
       const hoisted = rowId !== undefined && hoistedRowUnits.has(rowId);
       const automatic = lift && (cellSpec ? cellSpec.automatic : rowSpec!.automatic);
-      return displayFormat(rowSpec!, decimals, automatic, hoisted)(raw);
+      const printed = displayFormat(rowSpec!, decimals, automatic, hoisted)(raw);
+      // A scale the row took from its own figures is derived like a column's, so it takes the locale's minus glyph too.
+      return ownScaleExamples.has(rowId!) && !cellSpec && locale.minusGlyph === '-' && printed.startsWith(MINUS) ? `-${printed.slice(MINUS.length)}` : printed;
     }
     const automatic = lift ? cellSpec ? cellSpec.automatic : base.automatic : false;
     const rendered = displayFormat(base, decimals, automatic, unitByCol.get(colId) != null, cellSpec !== undefined)(raw);

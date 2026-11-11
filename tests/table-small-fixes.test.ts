@@ -1791,4 +1791,12 @@ it('prints each unformatted row at its own scale where one column magnitude does
   // One magnitude that fits every row keeps the column's scale.
   const fits = texts({ columns, rows: [row('revenue', 3_800_000, 3_600_000), row('spend', 750_000, 720_000)] });
   expect([fits.get('cell:revenue:feb'), fits.get('cell:spend:feb')]).toEqual(['3.6', '0.7']);
+  // A ratio column keeps its own format: the row's millions turned a revenue ratio of 1.06 into "1.1 × 10⁻⁶M".
+  const ratio = texts({ columns: [...columns, { id: 'r', kind: 'computed', calc: { op: 'div', a: { ref: 'jan' }, b: { ref: 'feb' } } }],
+    rows: [row('revenue', 3_800_000, 3_600_000), row('orders', 17_600, 17_000)] });
+  expect([ratio.get('cell:revenue:r'), ratio.get('cell:orders:r')]).toEqual(['1.1', '1.0']);
+  // A row scale the engine picks takes the locale's minus glyph, as a column's does.
+  const minus = new Map(layout('table', { columns, rows: [{ id: 'revenue', label: 'Revenue', cells: { jan: 3_800_000, feb: -3_600_000 } }, { id: 'rate', label: 'Rate', cells: { jan: -2.3, feb: 1.1 } }] },
+    { size: { width: 480, height: 200 }, locale: { minusGlyph: '-' } }).scene.flatMap((node) => node.t === 'text' ? [[node.id, node.lines.join(' ')] as const] : []));
+  expect([minus.get('cell:revenue:feb'), minus.get('cell:rate:jan')]).toEqual(['-3.6M', '-2.3']);
 });
