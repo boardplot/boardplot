@@ -483,10 +483,10 @@ describe('number census', () => {
     expect(of(census('funnel', funnel([1.18e9, 5.9e8, 2.9e8, 1.4e8], [8e6, 4e6, 2e6, 1e6]), 720, retext('label:segment:a:won', '1.18B')), 'mixed-units')).not.toEqual([]);
   });
 
-  // One butterfly pane ("1M · 1k", where 1,000k fits) went unreported because the other pane's 1 left no magnitude for both.
+  // A butterfly pane ("1M · 1k", where 1,000k fits) went unreported because the other pane's 1 left no magnitude for both.
   it('reports a mixed pane that one magnitude fits, whatever the other pane holds', () => {
     const butterfly: Spec = { data: { categories: [{ id: 'x', label: 'X' }, { id: 'y', label: 'Y' }], series: [{ id: 'a', label: 'A', values: [1e6, 1e3] }, { id: 'b', label: 'B', values: [1, 1] }] }, options: { a: 'a', b: 'b', sharedScale: false, target: 'report' } };
-    expect(of(census('butterfly', butterfly, 720), 'mixed-units').map((finding) => finding.id)).toEqual(['|kind:point:a']);
+    expect(of(census('butterfly', butterfly, 720, retext('label:point:a:x', '1M')), 'mixed-units').map((finding) => finding.id)).toEqual(['|kind:point:a']);
   });
 });
 
