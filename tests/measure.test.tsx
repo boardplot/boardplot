@@ -225,7 +225,8 @@ describe('shared request measurement', () => {
       if (at < 0) return undefined;
       const need = needs.mock.results[at]!.value as ReturnType<typeof tableNeeds.tableScrollNeed>;
       const { view } = (needs.mock.calls[at]![0].surface as tableNeeds.TableScrollSurface);
-      return { html, need, available: view.available ?? Infinity };
+      // The grid scrolls past its scroll box; the tracks' room inside the theme margins gives way first.
+      return { html, need, available: view.scrollBox?.width ?? view.available ?? Infinity };
     };
     const misses: string[] = [];
     let drawnCount = 0, adviceCount = 0;

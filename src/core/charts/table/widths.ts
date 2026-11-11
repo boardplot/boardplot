@@ -60,6 +60,11 @@ export interface TableWidthView {
   labelKeep?: number;
   /** false: a head may break before a short last word (the tight rung). */
   headGlue?: boolean;
+  /**
+   * A scrolling host's box that scrolls: its width and the frame width outside it. The tracks are laid out
+   * in `available`; they overflow only past this box, and the advised frame is the box's least frame.
+   */
+  scrollBox?: { width: number; inset: number };
 }
 
 export type WidthOptions = TableOptions & { [LABEL_WRAP_FLOOR]?: boolean; [SOFT_LABEL_CAP]?: boolean };
@@ -629,11 +634,11 @@ export function solveTableWidthRung(rung: TableWidthRung, available: number, opt
     }
   }
   const narrowed = cols.some(col => col.width !== undefined && (figures || !heatColumn(col)) && widths[columnIndex.get(col.id)!]! < col.width);
-  if (narrowed || sumOf(widths) > available) {
+  if (narrowed || sumOf(widths) > (view.scrollBox?.width ?? available)) {
     // A wider frame can cross a margin breakpoint. Resolve its margins again so the fix fits.
     const margin = resolveCanvasOptions(options).margin;
-    let frameWidth = Math.ceil(totalW);
-    for (let pass = 0; pass < 4; pass++) {
+    let frameWidth = Math.ceil(totalW + (view.scrollBox?.inset ?? 0));
+    if (view.scrollBox === undefined) for (let pass = 0; pass < 4; pass++) {
       const sides = { ...canvasMargin(theme, frameWidth), ...margin };
       const next = Math.ceil(totalW + sides.left + sides.right);
       if (next === frameWidth) break;
