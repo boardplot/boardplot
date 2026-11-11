@@ -12,7 +12,8 @@
 //               (the scorecard's R7)
 //   3 number    every printed number is in the reading: the number census (scripts/number-census.mjs), authored theme
 //   4 width     a spec that draws at a width draws at every wider width of its series
-//               (past a text-size breakpoint, a refusal whose advised width draws is honest)
+//               (past a text-size breakpoint where the chart's text grows, a refusal whose advised width draws
+//               cleanly is honest)
 // For each distinct failure (type, rule, signature) it removes the changes one at a time while the failure stays
 // and writes the smallest case as a request file to <out>/<n>-<type>-<rule>.json; <out>/index.json lists them,
 // each with the seed, the command of its run and the command that reruns that one file.
@@ -257,34 +258,46 @@ export function checkRequest(request, id) {
       }
     } catch (error) { crash('census', error); }
   }
-  return { status: 'drawn', violations };
+  // Each label's cap height, so rule 4 can tell whether the chart's own text stepped between two widths.
+  return { status: 'drawn', violations, capHeights: new Map(geometry.labels.map((label) => [label.id, label.capHeight])) };
 }
+
+/** Whether a label drawn in both geometries has larger text in the second: the chart's own text stepped up. */
+const textStepped = (narrow, wide) => [...wide.capHeights].some(([id, cap]) => narrow.capHeights.has(id) && cap > narrow.capHeights.get(id) + 1e-6);
 
 /**
  * Rule 4 on a series: every width above the narrowest drawn one draws too. A text-size breakpoint between the
- * two sets larger text, which can need more room: a refusal there is honest when no narrower width of its own
- * text size drew and the width its size patch asks for draws, with the height still automatic.
+ * two can set larger text, which can need more room. A refusal there is honest when no narrower width of its own
+ * text size drew, the width its size patch asks for draws with the height still automatic and without a finding
+ * of rules 1 to 3, and the chart's labels are larger there than at the narrowest drawn width (some types keep
+ * one text size at every width). A finding at the advised width is reported at that width.
  */
 function widthViolations(results, item) {
   const first = results.findIndex((result) => result.status === 'drawn');
   if (first < 0) return [];
+  const probed = [];
   const honest = (result) => {
     const own = typeWidthClass(result.width);
     if (own === typeWidthClass(results[first].width) || result.advised === undefined || result.advised <= result.width) return false;
+    if (typeWidthClass(result.advised) !== own) return false;
     if (results.some((other) => other.status === 'drawn' && other.width < result.width && typeWidthClass(other.width) === own)) return false;
-    return typeWidthClass(result.advised) === own && checkWidth(item, result.advised).status === 'drawn';
+    const probe = checkWidth(item, result.advised);
+    probed.push(...probe.violations.map((v) => ({ ...v, width: result.advised })));
+    return probe.status === 'drawn' && probe.violations.length === 0 && textStepped(results[first], probe);
   };
-  return results.slice(first + 1).filter((result) => result.status === 'refused' && !honest(result)).map((result) => ({
+  const refused = results.slice(first + 1).filter((result) => result.status === 'refused' && !honest(result)).map((result) => ({
     width: result.width, rule: 4, signature: (result.codes ?? []).join(','), drawnAt: results[first].width,
     message: `draws at ${results[first].width} px, refused at ${result.width} px (${(result.codes ?? []).join(', ')})`,
   }));
+  return [...refused, ...probed];
 }
 
 /** Whether a case still shows one failure: the same rule and signature at the same width. */
 function stillFails(item, failure) {
   if (failure.rule === 4) {
-    return widthViolations([{ width: failure.drawnAt, ...checkWidth(item, failure.drawnAt) }, { width: failure.width, ...checkWidth(item, failure.width) }], item)
-      .some((v) => v.signature === failure.signature);
+    // The whole series: a drawn width of the refused width's own text size is the witness that the refusal is no text step.
+    return widthViolations(item.widths.map((width) => ({ width, ...checkWidth(item, width) })), item)
+      .some((v) => v.rule === 4 && v.width === failure.width && v.signature === failure.signature);
   }
   return checkWidth(item, failure.width).violations.some((v) => v.rule === failure.rule && v.signature === failure.signature);
 }
@@ -351,9 +364,8 @@ export function runTypes(types, seed, count) {
       if (stillFails(trial, entry.failure)) item = trial;
     }
     entry.smallest = { ...item, width: entry.failure.width };
-    entry.message = (entry.failure.rule === 4 ? widthViolations([
-      { width: entry.failure.drawnAt, ...checkWidth(item, entry.failure.drawnAt) }, { width: entry.failure.width, ...checkWidth(item, entry.failure.width) },
-    ], item)[0] : checkWidth(item, entry.failure.width).violations.find((v) => v.rule === entry.rule && v.signature === entry.signature))?.message ?? entry.failure.message;
+    entry.message = (entry.failure.rule === 4 ? widthViolations(item.widths.map((width) => ({ width, ...checkWidth(item, width) })), item)
+      .find((v) => v.rule === 4 && v.width === entry.failure.width) : checkWidth(item, entry.failure.width).violations.find((v) => v.rule === entry.rule && v.signature === entry.signature))?.message ?? entry.failure.message;
     entry.request = requestFor(item, entry.failure.width);
     delete entry.item;
   }
