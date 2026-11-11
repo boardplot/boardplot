@@ -908,15 +908,18 @@ describe('cohort — claims', () => {
     expect(claims.filter((c) => c.op === 'cohort-retention@1').length).toBe(9);
   });
 
-  it('carries the support count on every average claim', () => {
-    const derivedGeometry = layout(clean(), { averages: 'weighted' });
-    return import('../src/core/claims').then(({ claimsForChart }) => {
-      const claims = claimsForChart('cohort', derivedGeometry as never);
-      const averages = claims.filter((c) => c.op === 'cohort-average@1');
-      expect(averages.length).toBe(4);
-      expect(averages[3]!.output.state).toBe('support:1');
-      expect(averages[0]!.output.state).toBe('support:3');
-    });
+  // An average claim held its support count in its state, so the reading reported no number for a drawn average.
+  it('gives every average claim its number and its support pairs', async () => {
+    const { claimsForChart } = await import('../src/core/claims');
+    const claims = claimsForChart('cohort', layout(clean(), { averages: 'weighted' }) as never);
+    const averages = claims.filter((c) => c.op === 'cohort-average@1');
+    expect(averages.length).toBe(4);
+    expect(averages.map((c) => c.output.state)).toEqual(['value', 'value', 'value', 'value']);
+    expect(averages[3]!.inputs.length).toBe(2);
+    expect(averages[0]!.inputs.length).toBe(6);
+    const { render } = await import('../src/cli/render');
+    const reading = (render({ spec: { type: 'cohort', data: clean(), options: { averages: 'weighted' } }, return: ['reading'] }).body as any).reading;
+    expect(reading.derived.find((c: any) => c.claimId === 'cohort:average:t0').value).toBe(1);
   });
 
   it('names the previous-period denominator when the basis changes', async () => {
