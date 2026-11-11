@@ -11,7 +11,7 @@ import { periodSpanName } from '../../viewport';
  */
 
 import { warnIncompleteComposition } from '../../dataGaps';
-import { formatWithSpec, specUnitKind, type NumberFormatSpec } from '../../formatSpec';
+import { formatNonzeroWithSpec, specUnitKind, type NumberFormatSpec } from '../../formatSpec';
 import { SHARES_OF_ONE_WHOLE_FIX } from '../../stackAdds';
 import { defaultAnnotationId, type Annotation } from '../../types/annotations';
 import type { Id } from '../../types/cell';
@@ -103,12 +103,15 @@ export function netLineName(
 /**
  * The formatter for a stack's absolute total. A 100 % stack is shares, but its
  * total is the count behind them, so a percent format example ("0%") must not
- * put a '%' on it. Other variants keep the chart format. Column and bar share it.
+ * put a '%' on it. Other variants keep the chart format. A computed total never
+ * prints a nonzero sum as 0: under an authored "1,234" a total of 0.4 takes the
+ * digit that shows it, as a mekko total does. Column and bar share it.
  */
 export function stackTotalFormatter(variant: StackVariant, spec: NumberFormatSpec, fmt: (v: number) => string): (v: number) => string {
-  if (variant !== 'stacked100' || specUnitKind(spec) !== 'percent') return fmt;
-  const plain = { ...spec, suffix: spec.suffix.replace(/\s*%/, '') };
-  return (v) => formatWithSpec(v, plain);
+  const percentShares = variant === 'stacked100' && specUnitKind(spec) === 'percent';
+  if (!percentShares && spec.automatic) return fmt;
+  const total = percentShares ? { ...spec, suffix: spec.suffix.replace(/\s*%/, '') } : spec;
+  return (v) => formatNonzeroWithSpec(v, total);
 }
 
 /**

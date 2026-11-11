@@ -585,7 +585,7 @@ export function resolveBarDomain(data: ChartData, options: BarOptions, warnings:
   // rounding 'sum-consistent' (the default): each complete bar's shares print so they add up to 100%.
   const shareTexts = new Map<string, string>();
   const roundingAdjustments: RoundingAdjustment[] = [];
-  const shareExample = shareFormatExample(options);
+  const shareExample = shareFormatExample(options, dataSeries);
   const shareSpec = shareExample ? withChartMarks(parseFormatExample(shareExample), options.locale?.language) : undefined;
   const pctFmt = shareExample ? formatterFromExample(shareExample, options.locale?.language) : (percent: number) => formatShare(percent, options.locale?.language);
   if (options.rounding !== 'nearest') {

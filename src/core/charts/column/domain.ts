@@ -1056,7 +1056,7 @@ export function resolveColumnDomain(data: ChartData, options: AnomalyColumnOptio
   // at the chart's one share precision (or the share format's: shareLabels.format, else a percent options.format).
   const shareTexts = new Map<string, string>();
   const roundingAdjustments: RoundingAdjustment[] = [];
-  const shareExample = shareFormatExample(options);
+  const shareExample = shareFormatExample(options, dataSeries);
   const spec = shareExample ? parseFormatExample(shareExample) : undefined;
   if (options.rounding !== 'nearest') {
     for (const { c, parts } of wholes) {
@@ -1098,7 +1098,7 @@ export function resolveColumnDomain(data: ChartData, options: AnomalyColumnOptio
     ? (v: number) => formatStatWithSpec(v, { ...valueSpec.spec, suffix: '%' }) : statFmt;
   return {
     // The shares print at the chart's one precision ("9%" beside "50%"), unless a share format sets one.
-    ...env, ...(shareFormatExample(options) ? {} : { pctFmt: shareSet.format }), shareTexts, roundingAdjustments, shareNotes, options, cats, seriesNorm, dataSeries, refSeries, othersId, valueSpec, fmt, totalFmt: stackTotalFormatter(variant, valueSpec.spec, fmt), statFmt, variant,
+    ...env, pctFmt: shareExample ? formatterFromExample(shareExample, options.locale?.language) : shareSet.format, shareTexts, roundingAdjustments, shareNotes, options, cats, seriesNorm, dataSeries, refSeries, othersId, valueSpec, fmt, totalFmt: stackTotalFormatter(variant, valueSpec.spec, fmt), statFmt, variant,
     refStyle: options.referenceStyle ?? 'tick', tickBehind: (options.referenceStyle ?? 'tick') === 'tick' && options.referenceTick?.position !== 'front', signColor, pyRef, pyGrowth,
     uniformScenario, pctLevels, ...lines, ...ribbons, computedTotal, va, ...basis, anomaly, ...span, ...(stepTicks && stepAcross ? { stepTicks } : {}), meanValue, averageMark, meanSpan, ...corridor,
     activeBreak,
