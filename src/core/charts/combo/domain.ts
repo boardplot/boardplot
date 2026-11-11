@@ -14,7 +14,7 @@ import { formatAutomaticPercent, formatShare } from '../../format';
 import { roundingUnavailable, shareRoundingNotes, sumConsistentShares, type RoundingAdjustment } from '../../shareRounding';
 import { comboValueLabels, FIRST_END_BELOW_TOTALS } from './endpoints';
 import { unitConflict, unitConflictRefusal } from '../../schema/units';
-import { formatStatWithSpec, formatterFromExample, memoFormatterFromExample, parseFormatExample, percentRasterFormatter, roundedNumber, seriesRasterFormatter, unitMagnitude } from '../../formatSpec';
+import { formatStatWithSpec, formatterFromExample, parseFormatExample, percentRasterFormatter, roundedNumber, seriesRasterFormatter, unitMagnitude } from '../../formatSpec';
 import { averageMarkerLine, averageMarkerMean, averageMarkerSpan, averageMarkerScope, averageOfUnaddedSums, warnIncompleteStacks } from '../band/stacks';
 import { anomalyCorridor, anomalyModel, refuseAnomalySpec } from '../column/anomaly';
 import type { LineAnomaly } from '../line/model';
@@ -34,7 +34,7 @@ import type { LintWarning } from '../../types/scene';
 import type { Theme } from '../../types/theme';
 import { valueLineExtent, type ValueLineExtent } from '../../valueLineDomain';
 import { applyCategoryViewport, liveWindowOptions, viewportMeanSpan } from '../../viewport';
-import type { ComboDomain, ComboEnv, NormSer } from './model';
+import type { ComboDomain, ComboEnv, NormSer, NormVal } from './model';
 import { disclosuresShown } from '../../notes';
 import { maxOf } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
@@ -49,11 +49,17 @@ export function resolveComboEnv(options: ComboOptions, warnings: LintWarning[]):
     theme,
     palette: paletteRamp ? options.palette : undefined,
     size: resolveSize(options.size),
-    byExample: memoFormatterFromExample(),
     measure: options.measure ?? defaultMeasurer,
     highlights: new Set(resolveHighlight(options.highlight)),
     density: options.labelDensity ?? 'smart',
   };
+}
+
+/** The column whose cell speaks for a stack's total: the only populated one, else the only drawn (non-zero) one. */
+export function totalColumn(domain: Pick<ComboDomain, 'columns'>, ci: number): NormSer | undefined {
+  const populated = domain.columns.filter((column) => column.vals[ci]!.v !== null);
+  const drawn = populated.filter((column) => column.vals[ci]!.v !== 0);
+  return populated.length === 1 ? populated[0] : drawn.length === 1 ? drawn[0] : undefined;
 }
 
 /** A null breaks a line by default, as on line. */
@@ -976,11 +982,23 @@ export function resolveComboDomain(data: ChartData, options: ComboOptions, warni
     ? zeroAlignedAxes(primary, { lo: sLoRaw, hi: sHiRaw })
     : undefined;
   if (aligned) primary = aligned.primary;
-  const right = floated ? { secFmtSrc: rightAxis(effective, gate, { lo: sLoRaw, hi: sHiRaw }, primary, secondarySpec).secFmtSrc,
-    secondaryDomain: floated.secondaryDomain, rightTicks: [] }
+  const right = floated ? { secondaryDomain: floated.secondaryDomain, rightTicks: [] }
     : rightAxis(effective, gate, { lo: sLoRaw, hi: sHiRaw }, primary, secondarySpec,
       shared ? { step: shared.secondaryStep, start: 0 } : aligned?.secondary);
   const fmtSecondary = secondarySpec.fmt;
+  // A secondary '%' series prints its '%' like the right axis does.
+  const scaleFmtOf = (s: NormSer) => (s.axis === 'secondary' && secondaryActive && s.role !== 'reference'
+    ? (s.unit === '%' ? secondarySpec.fmtPercent : fmtSecondary) : fmt);
+  const valueFmtOf = (s: NormSer, value?: NormVal): ((v: number) => string) => {
+    const onSecondary = s.axis === 'secondary' && secondaryActive && s.role !== 'reference';
+    if (value?.format || s.format) return (onSecondary ? secondarySpec : valueSpec).forSeries(s, value?.format);
+    if (!onSecondary && options.format) return fmt;
+    return value?.isPct ? pctFmt : scaleFmtOf(s);
+  };
+  const totalFmtOf = (ci: number): ((v: number) => string) => {
+    const single = totalColumn({ columns }, ci);
+    return single ? valueFmtOf(single, single.vals[ci]) : fmt;
+  };
   const beforeCorridor = warnings.slice();
   const squeezeWarning = (): LintWarning => ({
     code: 'dual-axis-columns-squeezed', severity: 'info',
@@ -1036,13 +1054,8 @@ export function resolveComboDomain(data: ChartData, options: ComboOptions, warni
     fmt,
     valueSpec: valueSpec.spec,
     pctFmt,
-    // A secondary '%' series prints its '%' like the right axis does.
-    scaleFmtOf: (s: NormSer) => (s.axis === 'secondary' && secondaryActive ? (s.unit === '%' ? secondarySpec.fmtPercent : fmtSecondary) : fmt),
-    explicitFormatOf: (s, value) => value.format ?? s.format ?? (s.axis === 'secondary' && secondaryActive ? undefined : options.format),
-    // Fallback is the SECONDARY scale group's raster, not the primary fmt: the
-    // right axis is a different unit, and integer revenue must not strip the
-    // decimal off a 48.3-units marker display (the per-scale raster).
-    secFmt: right.secFmtSrc ? formatterFromExample(right.secFmtSrc, options.locale?.language) : fmtSecondary,
+    valueFmtOf,
+    totalFmtOf,
     sourceMean,
     meanSpan,
     averageMarkerId,
