@@ -297,3 +297,14 @@ describe('measure gives one answer in every call order', () => {
     expect(at(later, 160)).toEqual(first);
   });
 });
+
+describe('a later step that draws stepped text names it', () => {
+  // At 480 to 488 px the stepped slide text was refused and the narrow form drew it at 21.33 px without the type-stepped note.
+  it('grid narrow form at 484 px', () => {
+    const request = { type: 'grid', data: {"panels": [{"id": "list", "type": "table", "row": 0, "column": 0, "options": {"variant": "status", "density": "compact", "legend": "none"}, "data": {"columns": [{"id": "label", "kind": "rowLabel", "label": "Initiative"}, {"id": "status", "kind": "status", "label": "Delivery status"}], "rows": [{"id": "A", "label": "A · Core expansion", "cells": {"status": "on-track"}}, {"id": "B", "label": "B · Service attach", "cells": {"status": "on-track"}}, {"id": "C", "label": "C · Partner channel", "cells": {"status": "at-risk"}}]}}, {"id": "map", "type": "scatter", "row": 0, "column": 1, "data": {"groups": [{"id": "priority", "label": "Priority"}, {"id": "selective", "label": "Selective"}], "points": [{"id": "A", "group": "priority", "label": "A", "x": 8.4, "y": 8.8}, {"id": "B", "group": "priority", "label": "B", "x": 7.1, "y": 8}, {"id": "C", "group": "selective", "label": "C", "x": 6.8, "y": 5.7}]}, "options": {"valueAxis": {"show": true, "gridlines": true}, "legend": "none", "axisTitles": {"x": "Execution feasibility", "y": "Strategic attractiveness"}, "unit": "Attractiveness × feasibility"}}]},
+      options: { ...{"title": "A–G assessment links the decision list to the portfolio map", "columns": [1.15, 1.05], "target": "slide", "theme": "notation"}, size: { width: 484 } } };
+    const geometry = layoutResolvedRequest(resolveChartRequest(request as never));
+    expect(geometry.refused).toBeFalsy();
+    expect(geometry.warnings.map((warning) => warning.code)).toContain('type-stepped');
+  });
+});

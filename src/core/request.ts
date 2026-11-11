@@ -343,7 +343,7 @@ function afterFirstLayout(request: ResolvedChartRequest, first: LayoutResult, la
   const last = fittedLate ? fittedLate[1] : drawn;
   const final = fittedLate ? fittedLate[0] : asked;
   const stepped = smallerClass(final, last, plainLayout) ?? last;
-  return narrowerForm(final, stepped, plainLayout) ?? stepped;
+  return typeStepped(result, narrowerForm(final, stepped, plainLayout) ?? stepped);
 }
 
 /**
@@ -521,13 +521,22 @@ function steppedType(
     theme: resolveTargetTheme(request.options.theme, request.target, scale),
   };
   const result = layout(steppedRequest);
-  if (result.refused) return [steppedRequest, result];
   const full = first.warnings[0].expected?.minimum as Size | undefined;
-  return [steppedRequest, { ...result, warnings: [...result.warnings, {
+  const note: LintWarning = {
     code: 'type-stepped', severity: 'info',
     message: `the canvas is too small for the ${request.target} type sizes, so the text is drawn at ${Math.round(scale * 100)} % of them, down to its reader floor`,
     suggest: full === undefined ? 'Give the chart more room to draw the full type sizes.' : `Render it at ${full.width} × ${full.height}px or larger to draw the full type sizes.`,
-  }] }];
+  };
+  // A stepped layout that is refused too keeps the note for a later step that draws the stepped text (`typeStepped`).
+  if (result.refused) return [steppedRequest, Object.assign(result, { [STEPPED_NOTE]: note })];
+  return [steppedRequest, { ...result, warnings: [...result.warnings, note] }];
+}
+
+const STEPPED_NOTE = Symbol('boardplot.steppedNote');
+/** A later step that draws a request whose stepped layout was refused (`steppedType`) names the stepped text too. */
+function typeStepped(refused: LayoutResult, drawn: LayoutResult): LayoutResult {
+  const note = (refused as { [STEPPED_NOTE]?: LintWarning })[STEPPED_NOTE];
+  return note && !drawn.refused && !drawn.warnings.some((warning) => warning.code === note.code) ? { ...drawn, warnings: [...drawn.warnings, note] } : drawn;
 }
 
 /** The drawn result names every text the canvas cuts (textClip.ts); a refusal draws nothing. */
@@ -1331,14 +1340,14 @@ export function measureResolvedRequest(request: ResolvedChartRequest): ChartMeas
     // The same class step as layoutResolvedRequest, so measure does not refuse a chart that render draws.
     const smaller = smallerClass(asked, first, drawnBy);
     // The floor probes and the width search take render's class step (measureWithLayout).
-    if (smaller) return measureWithLayout(asked, smaller, layoutAt, true);
+    if (smaller) return measureWithLayout(asked, typeStepped(first, smaller), layoutAt, true);
     // And the same narrower form. The floor probes and the width search then lay out that form too,
     // so the minimum width is one the drawn form reaches, at an open and at a pinned height.
     // A narrower form that is refused too leaves the request as asked, with its own layout: its probes must not draw the narrower form.
     let narrowRequest = asked;
     let narrowAt = layoutAt;
     const narrow = narrowerForm(asked, first, (opened) => { narrowRequest = opened; narrowAt = open(opened); return narrowAt(opened.options); });
-    return narrow ? measureWithLayout(narrowRequest, narrow, narrowAt, true) : measureWithLayout(asked, first, layoutAt, true);
+    return narrow ? measureWithLayout(narrowRequest, typeStepped(first, narrow), narrowAt, true) : measureWithLayout(asked, first, layoutAt, true);
   } finally { for (const run of runs) run.finish(); }
 }
 
