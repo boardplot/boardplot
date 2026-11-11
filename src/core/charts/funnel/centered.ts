@@ -12,7 +12,7 @@ import type { AnchorResolution } from '../../annotate';
 import { runAnnotatePass } from '../../annotatePass';
 import { adjacentSeriesWarnings, retainAdjacentWarningRule, type AdjacentWarningCapture, type SeriesColorSample } from '../../adjacentSeries';
 import { formatAutomaticNumber, formatAutomaticPercent, notApplicableGlyph, smallRateDecimals } from '../../format';
-import { formatterFromExample, seriesRasterFormatter } from '../../formatSpec';
+import { formatterFromExample, seriesRasterFormatter, setMagnitude } from '../../formatSpec';
 import { cellMeta } from '../../types/cell';
 import type { Rect } from '../../geometry';
 import { clamp, rectContains } from '../../geometry';
@@ -241,9 +241,11 @@ export function layoutCenteredFunnel(
   const authoredRaster = options.format ? [...numbers.values.flat(), ...Object.values(stageTotals)] : undefined;
   // One raster per stage: the values of one stage share one decimal count, and a stage of whole counts prints none.
   // A single series is one raster down its stages (one decimal count within a series).
-  const formats = stages.map((_, ci) => seriesRasterFormatter(options.format, authoredRaster ?? (plotted.length === 1 ? numbers.values[0]! : plotted.map((_, si) => numbers.values[si]![ci])), options.locale?.language, options.unit, options.target, undefined, true));
+  // Values and totals are one set: one magnitude, so no label steps down to its own (1,180M · 590M, not 1.18B · 590M).
+  const scale = setMagnitude([...numbers.values.flat(), ...Object.values(stageTotals)], options.format, options.unit, options.target);
+  const formats = stages.map((_, ci) => seriesRasterFormatter(options.format, authoredRaster ?? (plotted.length === 1 ? numbers.values[0]! : plotted.map((_, si) => numbers.values[si]![ci])), options.locale?.language, options.unit, options.target, undefined, true, scale));
   // Totals and series without format metadata print through the shared raster (one decimal count, engine scale).
-  const totalRaster = seriesRasterFormatter(options.format, authoredRaster ?? Object.values(stageTotals), options.locale?.language, options.unit, options.target);
+  const totalRaster = seriesRasterFormatter(options.format, authoredRaster ?? Object.values(stageTotals), options.locale?.language, options.unit, options.target, undefined, false, scale);
   // A whole count prints whole beside fractional values of its stage ("140", "1" beside "0.6"); an amount like 100.4 keeps its decimals.
   if (!options.format) for (const format of [...formats, totalRaster]) format.spec.wholeCounts = true;
   const { valueText, totalFmt } = funnelValueFormats(plotted, cells, formats, totalRaster);

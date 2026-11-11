@@ -357,7 +357,10 @@ export function censusCase(type, fixture, width, localeName, measured) {
     if (cell) addPrinted({ rowId: cell[1], colId: cell[2] }, entry.id, entry.text, [`col:${cell[2]}`, `row:${cell[1]}`]);
   }
   const NOT_VALUES = new Set(['category', 'series', 'axisTitle', 'legend', 'title', 'subtitle']);
+  // A value label the layout hid still belongs to its set: the engine picks the set's magnitude from every value.
+  const hiddenKind = new Map();
   for (const label of geometry.labels ?? []) {
+    if (label.hidden && label.owner && !NOT_VALUES.has(label.kind)) hiddenKind.set(ownerKey(label.owner), label.kind);
     // Event labels name events and their dates; they print no value of the owner. A map overlay label prints the
     // author's text as written ("UK 78%"), so it is not tied to its glyph value.
     if (label.hidden || NOT_VALUES.has(label.kind) || !label.owner || /^(event|overlay):/.test(label.id)) continue;
@@ -401,7 +404,10 @@ export function censusCase(type, fixture, width, localeName, measured) {
 
   // 1. Every record value against what each surface prints for its owner.
   const groupValues = new Map();
+  const hiddenValues = [];
   for (const record of records) {
+    const hidden = hiddenKind.get(ownerKey(record.target.owner));
+    if (hidden && record.value?.kind === 'number' && typeof record.value.raw === 'number') hiddenValues.push({ kind: hidden, raw: record.value.raw });
     // An event card states the event's own words and dates, no value of the chart.
     if (record.event) continue;
     const numbers = recordNumbers(record, m);
@@ -551,6 +557,23 @@ export function censusCase(type, fixture, width, localeName, measured) {
   // A table whose rows name their own formats reads one unit per row; its columns mix units by design.
   // A dimswitch row is a measure with its own scale, so its columns mix units too.
   const rowFormatted = type === 'dimswitch' || (type === 'table' && flatRows(data.rows ?? []).some((row) => row.format !== undefined || row.scale !== undefined));
+  // setMagnitude gives a set one magnitude from 1e6 where a step prints its smallest value as 1 or more and its largest
+  // with at most four digits. Where no step does, each label keeps its own scale: mixed magnitudes are the decided fallback.
+  // The set here is every value label of one unit, drawn or hidden, so the census needs no chart's own set.
+  // ponytail: two sets of one unit (butterfly panes) are judged as one; a pane that fits alone is then not checked.
+  const setSizes = new Map();
+  for (const [key, entries] of groupValues) for (const entry of entries) {
+    const unit = unitKind(entry.token);
+    if (!setSizes.has(unit)) setSizes.set(unit, { kinds: new Set(), sizes: [] });
+    setSizes.get(unit).kinds.add(/kind:([^:]+):/.exec(key)?.[1]);
+    setSizes.get(unit).sizes.push(Math.abs(entry.raw));
+  }
+  const noSetScale = (unit) => {
+    const set = setSizes.get(unit);
+    const sizes = [...set.sizes, ...hiddenValues.filter((entry) => set.kinds.has(entry.kind)).map((entry) => Math.abs(entry.raw))].filter((size) => size > 0);
+    const smallest = Math.min(...sizes), largest = Math.max(...sizes);
+    return largest >= 1e6 && ![1e9, 1e6, 1e3].some((step) => smallest >= step && Math.round(largest / step) < 10000);
+  };
   for (const [key, entries] of groupValues) {
     const byText = new Map();
     for (const entry of entries) {
@@ -579,7 +602,7 @@ export function censusCase(type, fixture, width, localeName, measured) {
       kinds.get(kind).add(entry.token.letter);
     }
     for (const [kind, letters] of kinds) {
-      if (letters.size < 2 || (rowFormatted && key.includes('|col:'))) continue;
+      if (letters.size < 2 || noSetScale(kind) || (rowFormatted && key.includes('|col:'))) continue;
       // A bare figure beside "k" figures is mixed only when the bare one is 1,000 or more.
       const lettered = [...letters].filter(Boolean);
       const bareLarge = letters.has('') && entries.some((entry) => unitKind(entry.token) === kind && !entry.token.letter && Math.abs(entry.token.value) >= 1000);
