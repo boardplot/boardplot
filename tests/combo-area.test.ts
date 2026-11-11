@@ -4,6 +4,7 @@ import '../src/core/charts';
 import { layoutCombo } from '../src/core/charts/combo/layout';
 import { round2 } from '../src/core/geometry';
 import { requireGeometry } from '../src/core/sizing';
+import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { renderSvg } from '../src/core/svg/renderSvg';
 import { resolveTheme } from '../src/core/theme';
 import type { ChartData } from '../src/core/types/data';
@@ -255,4 +256,21 @@ it('puts pinned secondary ticks on values the axis format prints exactly', () =>
   }, { title: 'T', secondaryAxis: { acknowledge: true, domain: [1, 3.2], format: '0.0' } }));
   const ticks = geometry.scene.flatMap((node) => node.t === 'text' && node.id.startsWith('axis:y2:tick:') ? [node.lines[0]] : []);
   expect(ticks).toEqual(['1.0', '1.5', '2.0', '2.5', '3.0']);
+});
+
+// A plan line just under a column top hid that column's total at most heights: the inside seat sat at a fixed depth the line's claims covered.
+it('labels every column total under a plan line that runs just below the column tops', () => {
+  const hidden: string[] = [];
+  for (const height of [400, 432, 460, 500, 560]) {
+    const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({
+      type: 'combo',
+      data: {
+        categories: ['W1', 'W2', 'W3', 'W4'].map((label, i) => ({ id: `w${i}`, label })),
+        series: [{ id: 'sales', label: 'Sales', kind: 'column', values: [80, 96, 88, 104] }, { id: 'goal', label: 'Goal', kind: 'line', values: [79.4, 95.4, 87.4, 103.4] }],
+      },
+      options: { valueLabels: 'all', size: { width: 560, height } },
+    } as never)));
+    hidden.push(...geometry.labels.filter((l) => l.id.startsWith('grandTotal:') && l.hidden).map((l) => `${height} ${l.id}`));
+  }
+  expect(hidden).toEqual([]);
 });

@@ -4,6 +4,8 @@ import { layoutButterfly } from '../src/core/charts/butterfly/layout';
 import { layoutDot } from '../src/core/charts/dot/layout';
 import { layoutLikert } from '../src/core/charts/likert/layout';
 import { layoutSlope } from '../src/core/charts/slope/layout';
+import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
+import { requireGeometry } from '../src/core/sizing';
 
 const shown = (geo: { labels: { id: string; text: string; hidden?: string }[] }, prefix: string) =>
   Object.fromEntries(geo.labels.filter((l) => l.id.startsWith(prefix) && !l.hidden).map((l) => [l.id.slice(prefix.length), l.text]));
@@ -59,4 +61,23 @@ it('likert prints each statement base in a column, or once in the head when all 
   expect(shown(same, 'likert:base:')).toEqual({});
   expect(same.labels.some((l) => l.text === 'Net, pp · n = 300')).toBe(true);
   expect(shown(draw([[10, 20, 100, 180], [20, 30, 150, 287]], 'none'), 'likert:base:')).toEqual({});
+});
+
+// A difference column printed "+1,030,000,000.00" beside pane labels of "1,070M" and "2,100M".
+it('prints a difference column at the scale of the values it subtracts', () => {
+  const categories = [{ id: 'n', label: 'North' }, { id: 's', label: 'South' }];
+  const series = [{ id: 'p', label: '2024', values: [1_070_000_000, 640_000_000] }, { id: 'q', label: '2025', values: [2_100_000_000, 720_000_000] }];
+  const draw = (type: string, options: object) => requireGeometry(layoutResolvedRequest(resolveChartRequest({ type, data: { categories, series }, options: { title: 'T', size: { width: 900, height: 400 }, ...options } } as never)));
+  expect(shown(draw('butterfly', { a: 'p', b: 'q', diffColumn: true }), 'diff:')).toEqual({ n: '+1,030M', s: '+80M' });
+  expect(shown(draw('dot', { variant: 'dumbbell', gapColumn: true }), 'gap:')).toEqual({ n: '+1.03B', s: '+80M' });
+  const slope = { categories: [{ id: 'y1' }, { id: 'y2' }], series: [{ id: 'p', values: [1_070_000_000, 2_100_000_000] }, { id: 'q', values: [640_000_000, 720_000_000] }] };
+  expect(shown(requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'slope', data: slope, options: { title: 'T', change: 'absolute', size: { width: 900, height: 400 } } } as never))), 'change:')).toEqual({ p: '+1.03B', q: '+80M' });
+  // A series unit that names a scale ('$m') keeps the labels unscaled, so the column adds no second scale ("+1.03M").
+  const inMillions = { categories, series: series.map((s) => ({ ...s, unit: '$m', values: s.values.map((v) => v / 1000) })) };
+  const unscaled = (type: string, data: object, options: object, prefix: string) => Object.values(shown(requireGeometry(layoutResolvedRequest(resolveChartRequest({ type, data, options: { title: 'T', size: { width: 900, height: 400 }, ...options } } as never))), prefix));
+  for (const [type, options, prefix] of [['butterfly', { a: 'p', b: 'q', diffColumn: true }, 'diff:'], ['dot', { variant: 'dumbbell', gapColumn: true }, 'gap:']] as const) {
+    expect(unscaled(type, inMillions, options, prefix).every((text) => /^\+[0-9,.]+$/.test(text)), type).toBe(true);
+  }
+  const slopeInMillions = { ...slope, series: slope.series.map((s) => ({ ...s, unit: '$m', values: s.values.map((v) => v / 1000) })) };
+  expect(unscaled('slope', slopeInMillions, { change: 'absolute' }, 'change:').every((text) => /^\+[0-9,.]+$/.test(text))).toBe(true);
 });

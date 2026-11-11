@@ -25,3 +25,20 @@ it('keeps a lollipop value label off its own stem when a reference line blocks t
     expect(onStem, label.id).toBe(false);
   }
 });
+
+// Values just left of the average line stepped past it, up to 30 px from their dots, and read as the next rows' values.
+it('keeps a lollipop value beside its dot when the step past a reference line would carry it away', () => {
+  const values = [62, 58, 57, 55, 53, 52, 46, 43, 41, 40, 38, 37, 36, 34, 33, 32, 18, 15, 14, 10];
+  const geometry = layoutResolvedRequest(resolveChartRequest({
+    type: 'dot',
+    data: { categories: values.map((_, i) => ({ id: `r${i}`, label: `Row ${i + 1}` })), series: [{ id: 'n', label: 'Count', values }] },
+    options: { variant: 'lollipop', averageMarker: true, size: { width: 375, height: 700 } },
+  } as never));
+  if (geometry.refused) throw new Error('refused');
+  const dots = new Map(geometry.scene.filter((n) => n.t === 'circle' && n.part === 'dot').map((d) => [d.owner?.categoryId, d as { cx: number; r: number }]));
+  const far = geometry.labels.filter((l) => l.kind === 'point' && !l.hidden).flatMap((l) => {
+    const dot = dots.get(l.owner.categoryId)!;
+    return l.rect.x - (dot.cx + dot.r) > 12 ? [l.id] : [];
+  });
+  expect(far).toEqual([]);
+});

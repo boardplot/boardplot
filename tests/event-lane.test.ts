@@ -44,3 +44,19 @@ it('options.a11y.description replaces the generated description, event sentence 
     expect(svg, type).toContain(`>${description}</desc>`);
   }
 });
+
+// With axis titles the series key row stood under the lane, and an event pole ended at it instead of reaching its column.
+it('runs an event pole past the series key row down to its column', () => {
+  const categories = Array.from({ length: 24 }, (_, i) => ({ id: `w${i}`, label: `Week ${i + 1}` }));
+  const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({
+    type: 'combo',
+    data: { categories, series: [
+      { id: 'orders', label: 'Orders', kind: 'column', values: categories.map((_, i) => 30 + 2 * i) },
+      { id: 'share', label: 'Return share', kind: 'line', axis: 'secondary', values: categories.map((_, i) => 1.5 + i / 10) },
+    ] },
+    annotations: [{ kind: 'event', at: 'w1', label: 'Promotion' }],
+    options: { axisTitles: { primary: 'Weekly orders, k', secondary: 'Return share, %' }, secondaryAxis: { acknowledge: true }, size: { width: 1200, height: 340 } },
+  } as never))) as Geometry;
+  const poles = geometry.scene.filter((n) => n.t === 'line' && n.part === 'eventPole') as Array<{ y2: number }>;
+  expect(Math.max(...poles.map((p) => p.y2))).toBeGreaterThan(geometry.plot.y + geometry.plot.h / 3);
+});

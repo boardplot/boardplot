@@ -153,14 +153,25 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   const hasProvisional = computed.panels.some(p => p.states.some((state, i) => state !== 'mature' && visibleValue(p, i)));
   const hasMatureLine = (p: ComputedStackPanel) => p.panel.type === 'line' && p.states.some((state, i) =>
     i > 0 && state === 'mature' && p.states[i - 1] === 'mature' && visibleValue(p, i) && visibleValue(p, i - 1));
-  // A keyed measure keeps one paint across panel order and emphasis.
+  // A keyed measure keeps one paint across panel order and emphasis. The ramp restarts per panel,
+  // so a later panel's measures do not all land on the faintest step: in first-seen order, a measure
+  // takes the first step that no measure it shares any stacked panel with holds.
   const measureIndexes = new Map<string, number>();
   const emphasizedMeasures = new Set<string>();
+  const companions = new Map<string, Set<string>>();
   for (const p of computed.panels) if (p.panel.type === 'column' && 'sum' in p.panel.measure && p.parts.length > 1) {
     for (const id of p.panel.measure.sum) {
-      if (!measureIndexes.has(id)) measureIndexes.set(id, measureIndexes.size);
+      const set = companions.get(id) ?? new Set<string>();
+      p.panel.measure.sum.forEach(other => { if (other !== id) set.add(other); });
+      companions.set(id, set);
       if (p.panel.emphasis) emphasizedMeasures.add(id);
     }
+  }
+  for (const [id, others] of companions) {
+    const taken = new Set([...others].flatMap(other => measureIndexes.has(other) ? [measureIndexes.get(other)!] : []));
+    let i = 0;
+    while (taken.has(i)) i++;
+    measureIndexes.set(id, i);
   }
   const columnFill = seriesPaint(0, options.palette);
   const emphasizedFill = markRolePaint('focus', true);

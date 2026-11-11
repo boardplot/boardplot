@@ -393,11 +393,12 @@ export function layoutSlope(
   if (changeMode !== 'none' && size.width >= COLUMN_MIN_WIDTH) {
     const lang = options.locale?.language;
     const pcts = plottedSeries.flatMap((s) => (changes[s.id]!.pct === null ? [] : [changes[s.id]!.pct!]));
-    const absText = differenceFormatter({ format: options.format, locale: lang, decimals: formats.spec.decimals, values: plottedSeries.flatMap((s) => [s.a.v!, s.b.v!]) });
+    // Each line's change prints at the scale of its own labels: a unit that names a scale ("$m") gets no engine scale on top.
+    const absText = (s: NormSer) => differenceFormatter({ format: options.format, locale: lang, decimals: formats.spec.decimals, values: plottedSeries.flatMap((p) => [p.a.v!, p.b.v!]), scale: formats.specForSeries(seriesKey(s)) });
     const pctDecimals = Math.min(1, valueSetDecimals(pcts));
     for (const s of plottedSeries) {
       const ch = changes[s.id]!;
-      if (changeMode === 'absolute') changeTexts.set(s.id, absText(s.b.v!, s.a.v!));
+      if (changeMode === 'absolute') changeTexts.set(s.id, absText(s)(s.b.v!, s.a.v!));
       else if (ch.pct !== null) changeTexts.set(s.id, formatAutomaticNumber(ch.pct, { locale: lang, signed: true, decimals: pctDecimals }));
     }
   }
