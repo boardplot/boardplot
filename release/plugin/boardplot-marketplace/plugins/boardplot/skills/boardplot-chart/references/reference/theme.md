@@ -371,7 +371,7 @@ Defaults are the `bridge` preset.
 
 A retired key, such as `space.barGap`, is accepted for good: the theme draws without it and warns `option-deprecated` with a JSON Patch that removes it. A retired preset name, such as `ibcs`, draws as its successor and warns with a patch that rewrites it. An unknown key that never existed is refused with a suggest that names it and a JSON Patch that removes it. The CLI, the MCP tools, React and `parseThemeJson` from `boardplot/validate` give the same warnings, suggests and patches; `parseThemeJson` throws a refusal as an `invalid-theme` error whose patch paths start at the theme file.
 
-A resolved theme is FROZEN, all the way down. `resolveTheme`, the `theme` on a resolved request and the one a React component reads are the same deeply frozen object, so a write to one throws where it is written instead of changing a theme the engine has already judged and cached. A variant is a new object: spread the resolved theme, or pass `overrides` and let the engine merge and check them.
+A resolved theme is FROZEN, all the way down. `resolveTheme`, the `theme` on a resolved request and the one a React component reads are the same deeply frozen object, so a write to one throws where it is written instead of changing a theme the engine has already judged and cached. A variant is a new object: spread the resolved theme, or pass `overrides` and let the engine merge and check them. The engine keeps the merged theme for the `overrides` object it was given, so a change to that object after the call is not seen: pass a new object for a new theme.
 
 ## Fonts
 
