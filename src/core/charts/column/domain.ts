@@ -37,7 +37,7 @@ import { valueLineExtent, type ValueLineExtent } from '../../valueLineDomain';
 import { applyCategoryViewport, liveWindowOptions, viewportMeanSpan } from '../../viewport';
 import { VALUE_LINE_RESERVE } from '../../annotateParts';
 import { accumulateStack, averageMarkerLine, averageMarkerMean, averageMarkerSpan, averageMarkerScope as averageMarkerScopeOf, averageOfUnaddedSums, averageOfWholeShares, grandTotalRequested, compositionBasis, mixedSignsWarning, overfullShareSum, overfullWarning, plottedMean, sortSegments, stackTotalFormatter, warnIncompleteStacks, warnShareFormatIgnored, withoutShareMean } from '../band/stacks';
-import { NO_STACK_MEAN, stackAdds } from '../../stackAdds';
+import { drawnVariant, NO_STACK_MEAN, stackAdds } from '../../stackAdds';
 import { isIncomplete, warnShareRoundingDrift } from '../../dataGaps';
 import { roundingUnavailable, shareRoundingNotes, sumConsistentShares, type RoundingAdjustment } from '../../shareRounding';
 import { chosenValueIndices } from '../band/valueSelection';
@@ -938,7 +938,7 @@ export function resolveColumnDomain(data: ChartData, options: AnomalyColumnOptio
   // never sits beside "52.2", and an all-integer series never carries
   // an example's dead ".0".
   // valueAxis.percent converts to stacked100.
-  const variant: ColumnVariant = options.valueAxis?.percent ? 'stacked100' : (options.variant ?? 'grouped');
+  const variant = (drawnVariant('column', options) ?? 'grouped') as ColumnVariant;
   // Stacked series share one precision: a stack reads as one set ("12.0" over "10.0").
   const valueSpec = rasterFormatter(options.format, seriesNorm.map((s) => [s.id, s.vals.map((val) => val.v), s.vals.map((val) => val.range ? [val.range.low, val.range.high, val.range.mid] : null)]), options.locale?.language, options.unit, options.target, variant !== 'grouped');
   const fmt = valueSpec.fmt;

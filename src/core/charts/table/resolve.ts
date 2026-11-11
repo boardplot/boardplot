@@ -139,7 +139,8 @@ export const PERCENT_DELTA_CAP = 999;
 
 /** The mark on the head of a column whose total skipped a missing value, and on its note. */
 export const PARTIAL_MARKER = '†';
-export const partialFootnote = (language?: string) => chartString({ locale: { language } }, 'tablePartialNote', { marker: PARTIAL_MARKER });
+/** The partial-aggregate note, led by the mark the table carries: the head's † or the cell word ("(partial)"). */
+export const partialFootnote = (language?: string, marker: string = PARTIAL_MARKER) => chartString({ locale: { language } }, 'tablePartialNote', { marker });
 /** Carries the same marker the glyph does, so the tie survives numbering. */
 export const suppressedFootnote = (language?: string) => chartString({ locale: { language } }, 'tableSuppressedNote', { marker: SUPPRESSED_MARKER });
 
@@ -505,6 +506,8 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   // Columns whose aggregate skipped a null child: the partial footnote is theirs.
   const partialColumnIds = new Set<Id>();
   const headMarksPartial = disclosuresShown(options) && options.columnHeads !== false;
+  // The note names the mark the cells carry: the head's † where it prints, else the cell word.
+  const partialNote = partialFootnote(options.locale?.language, headMarksPartial ? PARTIAL_MARKER : options.strings?.incomplete ?? localeStrings(options.locale?.language).incomplete);
   const highlightedRows = new Set(resolveHighlight(options.highlight));
   assertTableRankOptions(options);
   const folded = applyTableTopN(data, options);
@@ -860,7 +863,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
     } else {
       if (blockers.length > 0) {
         // With no head for the † the cell says it, so the note has nothing to point at.
-        if (options.columnHeads !== false) autoFootnotes.add(partialFootnote(options.locale?.language));
+        if (options.columnHeads !== false) autoFootnotes.add(partialNote);
         partialColumnIds.add(col.id);
       }
       // A sum that skipped a child, or adds a partial one, prints marked on the cell.
@@ -1339,9 +1342,11 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
     return decimals > 1 ? `0${locale.decimal}${'1234'.slice(0, decimals)}` : `1${locale.decimal}2`;
   }
 
+  /** Whether a cell prints through its row's format, which carries its own unit and precision. */
+  const printsThroughRow = (row: FlatRow, colId: Id): boolean =>
+    rowSpecs.has(row.id) && (row.calc !== undefined || row.inline === true || !ownFormatColumns.has(colId));
   /** Whether a cell prints through its column's spec: a row or cell format carries its own unit and precision. */
-  const printsThroughColumn = (row: FlatRow, colId: Id): boolean =>
-    !(rowSpecs.has(row.id) && (row.calc !== undefined || row.inline === true || !ownFormatColumns.has(colId))) && !cellSpecs.get(row.id)?.has(colId);
+  const printsThroughColumn = (row: FlatRow, colId: Id): boolean => !printsThroughRow(row, colId) && !cellSpecs.get(row.id)?.has(colId);
   // Nonzero stays nonzero, as on a money row: a column of $42 and $71 under a forced thousand
   // reads in whole units at its example's decimals, not "0"; a larger column adds decimals.
   for (const colId of forcedColumns) {
@@ -1371,11 +1376,18 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
     return typeof raw === 'number' && raw !== 0 && effectiveScale(Math.abs(raw), spec).magnitude !== spec.magnitude;
   });
   const lettersInCells = new Set<Id>();
+  // A head names its column's unit only when a figure prints in it: an open, missing,
+  // suppressed or text-only column printed "OCT (M)" over nothing while its filled
+  // neighbours, whose rows name the unit, printed "SEP". Such a column has no say in the frame's unit.
+  const figurelessColumns = new Set<Id>();
   for (const col of [...valueCols, ...computedCols]) {
     const spec = specs.get(col.id)!;
+    if (!flat.some((row) => typeof rawState.get(row.id)?.get(col.id)?.raw === 'number' && !printsThroughRow(row, col.id))) figurelessColumns.add(col.id);
     if (!rowFormattedColumns.has(col.id) && (rollsOff(col.id, spec) || flat.some((row) => cellNamesOtherUnit(row.id, col.id, spec)))) lettersInCells.add(col.id);
-    unitByCol.set(col.id, rowFormattedColumns.has(col.id) || lettersInCells.has(col.id) ? null : unitOfSpec(spec));
+    unitByCol.set(col.id, rowFormattedColumns.has(col.id) || lettersInCells.has(col.id) || figurelessColumns.has(col.id) ? null : unitOfSpec(spec));
   }
+  // The columns that decide the frame's unit and how it composes with options.unit.
+  const figureColumns = [...valueCols, ...computedCols].filter((col) => !figurelessColumns.has(col.id));
   const headerUnitFor = (id: Id): string | null => unitByCol.get(id) ?? (rowFormattedColumns.has(id) ? headUnit ?? null : null);
   // Whether the head's unit carries a magnitude the cells print without ("$k" from '$1,234k' or
   // options.magnitude); a literal suffix ('1,234 EURk') prints the raw figure.
@@ -1387,7 +1399,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   // otherwise fall back to per-column header labels. The predicate belongs to
   // the frame, not to a guess made here: `title` alone renders NO unit slot,
   // so hoisting on it dropped '$M' off a titled table entirely.
-  const candidateUnit = distinctUnits.length === 1 && [...valueCols, ...computedCols].every(col => {
+  const candidateUnit = distinctUnits.length === 1 && figureColumns.every(col => {
     const kind = specUnitKind(specs.get(col.id)!);
     return kind === 'percent' || kind === 'pp' || headerUnitFor(col.id) === distinctUnits[0];
   }) ? distinctUnits[0]! : undefined;
@@ -1403,7 +1415,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   const authoredUnit = typeof options.unit === 'string' ? options.unit.trim() : undefined;
   const scaleWords = (authoredUnit?.split(/[\s$€£¥()]+/) ?? []).filter((word) => Object.values(MAGNITUDE_LABEL).some((label) => label !== '' && sameUnitText(word, label)));
   // Row formats can supply the unit too, so their affixes count as well as the columns'.
-  const bareScale = candidateUnit !== undefined && [...[...valueCols, ...computedCols].map((col) => specs.get(col.id)!), ...rowSpecs.values()]
+  const bareScale = candidateUnit !== undefined && [...figureColumns.map((col) => specs.get(col.id)!), ...rowSpecs.values()]
     .every((spec) => specUnitKind(spec) !== 'number' || (spec.prefix.trim() === '' && spec.suffix.trim() === ''));
   const carriesScale = scaleWords.some((word) => sameUnitText(word, candidateUnit ?? ''));
   // Only a bare currency code or symbol takes the scale appended. Any other text ('USDbn', 'EURm', 'EUR Md') may hold a scale this check cannot read.
@@ -2125,7 +2137,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
       unit: uniformUnit ?? undefined,
       ...(data.levelNouns === undefined ? {} : { levelNouns: data.levelNouns }),
       footnotes,
-      ...(partialColumnIds.size > 0 ? { partialColumnIds: [...partialColumnIds] } : {}),
+      ...(partialColumnIds.size > 0 ? { partialColumnIds: [...partialColumnIds], partialNote } : {}),
       ...(options.colorblindSafe === true ? { colorblindSafe: true as const } : {}),
       provenance: {},
     },

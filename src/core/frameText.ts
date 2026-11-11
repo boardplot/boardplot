@@ -45,6 +45,8 @@ export interface FrameTextInput {
   source?: string;
   credit?: ChartCredit;
   notes?: BaseOptions['notes'];
+  /** The author wrote `notes.show` (not only `methodNote: true` or a `notes.placement`): its disclosures print outside the line budget. */
+  notesShowAuthored?: boolean;
   strings?: BaseOptions['strings'];
   /** The composed notes in order, each with its kind. */
   footnotes: readonly FrameTextNote[];
@@ -200,12 +202,19 @@ export function frameText(input: FrameTextInput): FrameText {
   if (sourceOff) {
     warnings.push({ code: 'footnotes-off', severity: 'info', message: `compact frame has no room for the source line: ${sourceText}` });
   }
-  // A disclosure the author asks for (notes.show), and an author note a drawn
-  // mark points at (pointedNotes), stay in the frame outside the line budget,
-  // like a required credit. `footnotes: false` hands every other note to the
-  // host; a disclosure the author asks for stays.
+  // A disclosure whose kind the author lists in notes.show himself, and a note a
+  // drawn mark points at, stay in the frame outside the line budget, like a
+  // required credit: an author note in pointedNotes, a disclosure with a number
+  // (ref, a "1)" on a cut name or a milestone) or the rank key (ranks, the rank
+  // numbers under the columns), since a mark whose key sits behind the pointer
+  // does not read alone. Any other disclosure asked for only by methodNote or
+  // notes.placement counts against the live budget, after the author notes;
+  // static output prints every note anyway, so its layout keeps it too.
+  // `footnotes: false` hands every other note to the host; a printed disclosure stays.
   const pointed = new Set(input.pointedNotes ?? []);
-  const kept = entries.filter((entry) => entry.kind === 'disclosure' ? shown.has('disclosure') || (entry.ranks === true && shown.has('ranks')) : !input.footnotesOff && pointed.has(entry.text));
+  const kept = entries.filter((entry) => entry.kind === 'disclosure'
+    ? (input.notesShowAuthored === true || !policy.live || entry.ref !== undefined || entry.ranks === true) && (shown.has('disclosure') || (entry.ranks === true && shown.has('ranks')))
+    : !input.footnotesOff && pointed.has(entry.text));
   const candidates = input.footnotesOff || placement === 'list' ? [] : entries.filter((entry) => !kept.includes(entry) && shown.has(entry.kind) && !isQuiet(entry));
   // The pointer counts the notes of the kinds the author prints; the engine's
   // hidden notes stay in the notes list without a pointer under the chart.
@@ -236,14 +245,34 @@ export function frameText(input: FrameTextInput): FrameText {
   const noteLines = candidates.map((entry) => wrapFootnote(markBold(entry.drawn), footFont, footW, footMeasure));
   // The most notes, in order, that fit the budget with the source line (and
   // its pointer); the source line itself is never cut.
-  let k = candidates.length;
-  for (; k > 0; k--) {
+  const usedAt = (k: number) => {
     const para = sourcePara(k);
-    const used = noteLines.slice(0, k).reduce((sum, lines) => sum + lines.length, 0) + (para ? sourceLines(para).lines.length : 0);
-    if (used <= budget) break;
-  }
+    return noteLines.slice(0, k).reduce((sum, lines) => sum + lines.length, 0) + (para ? sourceLines(para).lines.length : 0);
+  };
+  let k = candidates.length;
+  for (; k > 0; k--) if (usedAt(k) <= budget) break;
   const visible = new Set([...candidates.slice(0, k), ...kept]);
   const sourceBlock = sourcePara(k);
+  // `notes.pointer: false` on a live surface: the author notes the footer does not print
+  // appear nowhere (React's 'info' footer prints none), so the author hears how many.
+  // Static output prints every enabled note and stays silent. Only notes of a kind notes.show
+  // prints count (candidates): a kind the author switched off is no omission, and neither a
+  // higher maxLines nor the pointer would show it.
+  if (policy.live && !fullStatic && input.notes?.pointer === false && !input.footnotesOff && placement !== 'list') {
+    const left = candidates.filter((entry) => entry.kind === 'note' && (infoPanel || !visible.has(entry))).length;
+    if (left > 0) {
+      warnings.push({
+        code: 'notes-left-out',
+        severity: 'warn',
+        message: `${left} author ${left === 1 ? 'note is' : 'notes are'} not shown: ${infoPanel ? "under notes.placement 'info'" : `the line budget of ${budget} lines leaves ${left === 1 ? 'it' : 'them'} out of the footer, and`} notes.pointer: false hides the notes list`,
+        suggest: infoPanel
+          ? `Remove notes.pointer: false, so the notes button lists ${left === 1 ? 'it' : 'them'}.`
+          : `Set notes.maxLines to ${usedAt(candidates.length)} to print ${left === 1 ? 'it' : 'them'}, or remove notes.pointer: false, so "+N notes" lists ${left === 1 ? 'it' : 'them'}.`,
+        field: ['options', 'notes', 'pointer'],
+        fix: [{ op: 'remove', path: '/options/notes/pointer' }],
+      });
+    }
+  }
   if (input.footnotesOff) {
     // The host that switched the notes off carries them in its own frame, so
     // it is told which ones the chart would have printed. The source line

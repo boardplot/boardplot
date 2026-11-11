@@ -8,6 +8,7 @@ import { isNumberAlone } from '../src/core/textRole';
 import { emphasisWeight, resolveTheme } from '../src/core/theme';
 import { clippedTextWarnings } from '../src/core/textClip';
 import type { Geometry } from '../src/core/types/scene';
+import { exampleSpec, formatWithSpec } from '../src/core/formatSpec';
 // @ts-expect-error The census script is plain JavaScript.
 import { censusCase, garbled, tokens } from '../scripts/number-census.mjs';
 
@@ -314,6 +315,134 @@ describe('number census', () => {
     const spec = fixtureOf('table', 'shared-spaced-cash-movement');
     spec.data = scaled(spec.data, 1e3);
     expect(of(census('table', spec, 320), 'wrong-scale')).toEqual([]);
+  });
+
+  // A wrapped head holds an early false hit (" ITS M" reads as a currency code); the census stopped there and never read its "($k)".
+  it('reads the magnitude of a wrapped head past an early false hit', () => {
+    const spec = fixtureOf<Spec & { data: { columns: { id: string; label: string }[] } }>('table', 'table-status-square');
+    spec.data.columns.find((column) => column.id === 'spend')!.label = 'Spend and its much longer descriptive name';
+    expect(of(census('table', spec, 719), 'wrong-scale')).toEqual([]);
+    expect(census('table', spec, 719, retext('cell:prospecting:spend', '42')).filter((f) => f.id.includes('cell:prospecting:spend'))).not.toEqual([]);
+  });
+
+  // An accounting format prints a negative as "(683)"; the census read it as +683.
+  it('reads accounting parentheses as a negative and still flags a wrong sign', () => {
+    const spec = fixtureOf('table', 'management-report');
+    expect(of(census('table', spec, 1080), 'mismatch')).toEqual([]);
+    expect(of(census('table', spec, 1080, retext('cell:total:fpDelta', '683')), 'mismatch', 'cell:total:fpDelta')).not.toEqual([]);
+  });
+
+  // A full pace against an outlook that skipped a child prints n.m. by design; the census recomputed a number.
+  it('accepts n.m. between a full sum and a partial one and still flags an n.m. between two full sums', () => {
+    const spec = fixtureOf('table', 'management-report');
+    expect(of(census('table', spec, 1080), 'derived')).toEqual([]);
+    const nm = (geometry: Geometry) => {
+      const cell = (geometry.derived as { computedCells: { rowId: string; colId: string; raw: number | null; state: string; displayed: string }[] })
+        .computedCells.find((c) => c.rowId === 'seg-services' && c.colId === 'fpVsOut')!;
+      Object.assign(cell, { raw: null, state: 'nm', displayed: 'n.m.' });
+    };
+    expect(of(census('table', spec, 1080, nm), 'derived', 'seg-services:fpVsOut')).not.toEqual([]);
+  });
+
+  // Only a comparison of partial and full totals prints n.m.; an addition of them is a partial sum, and an n.m. there is a defect.
+  it('flags an n.m. on the addition of a full total and a partial one', () => {
+    const spec = fixtureOf<Spec & { data: { columns: unknown[] } }>('table', 'management-report');
+    spec.data.columns.push({ id: 'fpBoth', kind: 'computed', label: 'Pace plus outlook', calc: { op: 'add', a: { ref: 'fpPace' }, b: { ref: 'foOut' } }, format: '1,234', width: 120 });
+    expect(of(census('table', spec, 1400), 'derived')).toEqual([]);
+    const nm = (geometry: Geometry) => {
+      const cell = (geometry.derived as { computedCells: { rowId: string; colId: string; raw: number | null; state: string; displayed: string }[] })
+        .computedCells.find((c) => c.rowId === 'seg-subscriptions' && c.colId === 'fpBoth')!;
+      Object.assign(cell, { raw: null, state: 'nm', displayed: 'n.m.' });
+    };
+    expect(of(census('table', spec, 1400, nm), 'derived', 'seg-subscriptions:fpBoth')).not.toEqual([]);
+  });
+
+  // A column a toggle hides draws no head; its claims were read without the head's "(M)" and called wrong-scale.
+  it('reads the magnitude of a hidden column and still flags a wrong one', () => {
+    const spec = fixtureOf('table', 'management-report-compact');
+    const scaleCells = (rows: { cells?: Record<string, unknown>; children?: unknown[] }[]) => rows.forEach((row) => {
+      for (const [id, cell] of Object.entries(row.cells ?? {})) if (typeof cell === 'number') row.cells![id] = cell * 1e3;
+      scaleCells((row.children ?? []) as never);
+    });
+    scaleCells((spec.data as { rows: never[] }).rows);
+    // Without the authored number formats the engine picks the magnitude and names it in each head.
+    for (const column of (spec.data as { columns: { format?: string }[] }).columns) delete column.format;
+    expect(of(census('table', spec, 720), 'wrong-scale')).toEqual([]);
+    const wrong = (geometry: Geometry) => {
+      const cell = (geometry.derived as { computedCells: { rowId: string; colId: string; displayed: string }[] })
+        .computedCells.find((c) => c.rowId === 'europe-eu' && c.colId === 'ycLy')!;
+      cell.displayed = '31';
+    };
+    expect(census('table', spec, 720, wrong).filter((f) => f.id.includes('europe-eu:ycLy'))).not.toEqual([]);
+  });
+
+  // A space is a group mark only where the locale groups with one: "46 100%" is a value and its share, not 46,100%.
+  it('reads a value and its share apart and still groups with the space of a space locale', () => {
+    expect(tokens('46 100%', en).map((t: { value: number }) => t.value)).toEqual([46, 100]);
+    expect(tokens('1\u202f234\u202f567', { decimal: ',', thousands: '\u202f' }).map((t: { value: number }) => t.value)).toEqual([1234567]);
+    const spec = fixtureOf<Spec & { data: { series: { role?: string }[] } }>('column', 'stacked-value-and-share');
+    spec.data.series = [spec.data.series.find((series) => series.role !== 'reference')!];
+    spec.options = { ...spec.options, valueAxis: { ...(spec.options?.valueAxis as object), percent: true } };
+    expect(of(census('column', spec, 960), 'mismatch')).toEqual([]);
+    expect(of(census('column', spec, 960, retext('label:segment:hardware:fy23', '49 90%')), 'mismatch', 'segment:hardware:fy23')).not.toEqual([]);
+  });
+
+  // Panes on their own scales number their ticks `axis:x:tick:0:a` and `:b`; the census read both panes as one set and called "100M" beside "10,000B" mixed units.
+  it('reads butterfly panes on their own scales apart and still flags mixed magnitudes in one pane', () => {
+    const categories = [{ id: 'north', label: 'North' }, { id: 'south', label: 'South' }];
+    const own = (second: number[]): Spec => ({
+      data: { categories, series: [{ id: 'sends', label: 'Mailings', unit: 'sends', values: [160e6, 150e6] }, { id: 'cost', label: 'Spend', unit: 'EUR', values: second }] },
+      options: { a: 'sends', b: 'cost', sharedScale: false },
+    });
+    const spec = own([15e12, 14e12]);
+    expect(of(census('butterfly', spec, 480), 'mixed-units')).toEqual([]);
+    expect(of(census('butterfly', spec, 480, retext('axis:x:tick:0:a', '50B')), 'mixed-units')).not.toEqual([]);
+    // Panes that read the same ticks are one set: a tick of the second pane in another magnitude is still mixed.
+    const alike = own([160e6, 120e6]);
+    expect(of(census('butterfly', alike, 480), 'mixed-units')).toEqual([]);
+    expect(of(census('butterfly', alike, 480, retext('axis:x:tick:1:b', '0.1B')), 'mixed-units')).not.toEqual([]);
+  });
+
+  // A French chart prints " Md" for 10⁹ and " Bn" for 10¹²; the census knew neither, and read "1.3" in "in CHF Md" as a wrong scale.
+  it('reads the French magnitude words and still flags a wrong magnitude under them', () => {
+    const spec: Spec = {
+      data: {
+        columns: [{ id: 'month', kind: 'rowLabel', label: 'Month' }, { id: 'cash', kind: 'value', label: 'Net cash' }],
+        rows: [{ id: 'jan', label: 'Jan', cells: { cash: 1.25e9 } }, { id: 'feb', label: 'Feb', cells: { cash: -0.875e9 } }],
+      },
+      options: { unit: 'CHF', locale: { language: 'fr', decimal: '.', thousands: ' ' } },
+    };
+    const clean = census('table', spec, 320);
+    expect(of(clean, 'wrong-scale')).toEqual([]);
+    expect(of(clean, 'mixed-units')).toEqual([]);
+    // A wrong figure, a wrong magnitude word ("M" for 10⁹) and the English reading of "Bn" (10⁹, where French prints 10¹²) are all found.
+    for (const wrong of ['13', '1.3 M', '1.3 Bn']) {
+      expect(census('table', spec, 320, retext('cell:jan:cash', wrong)).filter((f) => f.id.includes('cell:jan:cash')), wrong).not.toEqual([]);
+    }
+  });
+
+  // The census keeps its own list of magnitude words. It must read back every word the engine prints, in every locale, with its power:
+  // this fails when someone adds a locale word to the engine and forgets the census.
+  it('reads every magnitude word the engine prints, with its value in that locale', () => {
+    const marksOf: Record<string, { decimal: string; thousands: string }> = {
+      en: { decimal: '.', thousands: ',' }, de: { decimal: ',', thousands: '.' }, fr: { decimal: ',', thousands: '\u202f' }, es: { decimal: ',', thousands: '.' },
+    };
+    const own: Record<string, string[]> = {
+      de: ['Tsd.', 'Mio.', 'Mrd.', 'Bio.', 'Tausend', 'Millionen', 'Milliarden', 'Billionen'],
+      fr: ['milliards', 'millions', 'billions'],
+    };
+    const wrong: string[] = [];
+    for (const [language, marks] of Object.entries(marksOf)) {
+      for (const word of ['k', 'M', 'B', 'T', 'mn', 'bn', 'tn', 'Mn', 'Tn', 'MN', 'BN', 'thousand', 'million', 'billion', 'trillion', ...(own[language] ?? [])]) {
+        for (const power of [3, 6, 9, 12]) {
+          const value = 4.2 * 10 ** power;
+          const text = formatWithSpec(value, exampleSpec(`1.0${word.length === 1 ? '' : ' '}${word}`, language));
+          const read = tokens(text, { ...marks, language }) as { value: number; half: number }[];
+          if (!read.some((token) => Math.abs(token.value - value) <= token.half * (1 + 1e-9))) wrong.push(`${language} ${JSON.stringify(text)}`);
+        }
+      }
+    }
+    expect(wrong).toEqual([]);
   });
 
   // A bullet prints its gap as printed value minus printed target, so "−$0.1" between "$0.4" and "$0.5" is right.

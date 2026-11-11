@@ -1544,7 +1544,7 @@ function layoutAuthoredGrid(
     recordCategoryColumnAnchors(children, columnBands, sharedAnchors, warnings);
   }
   if (options.anchors?.baselines) {
-    children = alignBaselines(children, options.anchors.baselines, sharedAnchors);
+    children = alignBaselines(children, options.anchors.baselines, sharedAnchors, warnings);
   }
   // The resolver's membership, not the authored scaleGroup: a clamped or log panel left its group.
   const keepBaselines = options.anchors?.baselines ? {
@@ -2201,14 +2201,46 @@ function alignInside(raw: Rect, align: GridPanelSpec['align']): Rect {
   return { x, y, w, h };
 }
 
-function scopeGroups(children: AuthoredChild[], scope: GridTrackScope): AuthoredChild[][] {
+/**
+ * The panels one anchor aligns. A column group holds the panels that cover the
+ * same columns (same start and span), a row group the same rows: a panel that
+ * spans more tracks keeps its own plot instead of shrinking into its first one.
+ * With `skipped`, each eligible panel left out next to another one is named.
+ */
+function scopeGroups(
+  children: AuthoredChild[],
+  scope: GridTrackScope,
+  skipped?: { anchor: string; warnings: LintWarning[]; eligible: (child: AuthoredChild) => boolean },
+): AuthoredChild[][] {
   if (scope === 'all') return [children];
-  const groups = new Map<number, AuthoredChild[]>();
+  const startOf = (child: AuthoredChild) => scope === 'row' ? child.placement.row : child.placement.column;
+  const spanOf = (child: AuthoredChild) => scope === 'row' ? child.placement.rowSpan : child.placement.columnSpan;
+  const groups = new Map<string, AuthoredChild[]>();
   for (const child of children) {
-    const key = scope === 'row' ? child.placement.row : child.placement.column;
+    const key = `${startOf(child)}:${spanOf(child)}`;
     const members = groups.get(key) ?? [];
     members.push(child);
     groups.set(key, members);
+  }
+  if (skipped) {
+    const tracks = (child: AuthoredChild) => spanOf(child) === 1
+      ? `${scope} ${startOf(child) + 1}`
+      : `${scope}s ${startOf(child) + 1}–${startOf(child) + spanOf(child)}`;
+    const first = new Map<number, AuthoredChild>();
+    for (const group of groups.values()) {
+      const lead = group.find(skipped.eligible);
+      if (!lead) continue;
+      const other = first.get(startOf(lead));
+      if (!other) {
+        first.set(startOf(lead), lead);
+        continue;
+      }
+      skipped.warnings.push({
+        code: 'grid-anchor-incompatible',
+        severity: 'warn',
+        message: `${scope} ${skipped.anchor} alignment leaves panel '${lead.panel.id}' (${tracks(lead)}) out of the group of panel '${other.panel.id}' (${tracks(other)}) — only panels that cover the same ${scope}s are aligned`,
+      });
+    }
   }
   return [...groups.values()];
 }
@@ -2329,8 +2361,9 @@ function alignPlotEdges(
   theme: ReturnType<typeof resolveTheme>,
 ): AuthoredChild[] {
   const children = [...input];
-  for (const [groupIndex, group] of scopeGroups(children, scope).entries()) {
-    const candidates = group.filter((child) => child.relayout !== undefined);
+  const eligible = (child: AuthoredChild) => child.relayout !== undefined;
+  for (const [groupIndex, group] of scopeGroups(children, scope, { anchor: 'plot-edge', warnings, eligible }).entries()) {
+    const candidates = group.filter(eligible);
     if (candidates.length < 2) continue;
     const left = maxOf(candidates.map((child) => child.slot.x + child.geometry.plot.x));
     const right = minOf(candidates.map((child) => child.slot.x + child.geometry.plot.x + child.geometry.plot.w));
@@ -2357,9 +2390,11 @@ function alignBaselines(
   input: AuthoredChild[],
   scope: GridTrackScope,
   derived: Record<string, number>,
+  warnings: LintWarning[],
 ): AuthoredChild[] {
   const children = [...input];
-  for (const [groupIndex, group] of scopeGroups(children, scope).entries()) {
+  const eligible = (child: AuthoredChild) => child.relayout !== undefined && baselineY(child.geometry) !== null;
+  for (const [groupIndex, group] of scopeGroups(children, scope, { anchor: 'baseline', warnings, eligible }).entries()) {
     const candidates = group.flatMap((child) => {
       const baseline = baselineY(child.geometry);
       return baseline === null || !child.relayout

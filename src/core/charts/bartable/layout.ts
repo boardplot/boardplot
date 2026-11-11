@@ -24,7 +24,7 @@ import { fixedBarRow } from '../bar/model';
 import { warnIncompleteComposition } from '../../dataGaps';
 import { authoredNotes, frameTextOptions, legendRequired, moreListedText, normalizeLegendOption, solveFrame, type LegendItemInput } from '../../frame';
 import { nonAdditiveFormat, roundedNumber, seriesRasterFormatter } from '../../formatSpec';
-import type { Rect } from '../../geometry';
+import { cleanSum, type Rect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
 import { fitText, lineBox, type FittedText } from '../../label/fitText';
 import { createOccupiedIndex } from '../../label/occupied';
@@ -442,9 +442,9 @@ function layoutBarTableOnce(
     const ends = panel.ends ?? [];
     // A range draws where it prints: on a row with every part.
     const ranges = rowSums.map((sum, r) => (sum === null ? undefined : ends[r] ?? undefined));
-    const stackTotal = rowSums.every((sum) => sum !== null) ? rowSums.reduce<number>((sum, value) => sum + value!, 0) : null;
+    const stackTotal = rowSums.every((sum) => sum !== null) ? cleanSum(rowSums as number[]) : null;
     // The Total adds what the rows print: a row without a range counts its sum at both ends.
-    const sumOf = (end: 'low' | 'high') => rowSums.reduce<number>((sum, value, r) => sum + (ranges[r]?.[end] ?? value!), 0);
+    const sumOf = (end: 'low' | 'high') => cleanSum(rowSums.map((value, r) => ranges[r]?.[end] ?? value!));
     const total: BarTablePanelDerived['total'] = panel.aggregate === 'none'
       ? undefined
       : stackTotal === null
@@ -497,7 +497,7 @@ function layoutBarTableOnce(
     const summed = column.aggregate !== 'none';
     const missing = column.values.some((value) => value === null);
     if (summed && missing) column.values.forEach((value, r) => value === null && incomplete.add(r));
-    const total = summed && !missing ? column.values.reduce<number>((sum, value) => sum + value!, 0) : null;
+    const total = summed && !missing ? cleanSum(column.values as number[]) : null;
     return {
       column,
       texts: column.values.map((value, r) => (value === null ? stateGlyph[states.get(column.values)?.[r] ?? 'none'] : fmt(value))),

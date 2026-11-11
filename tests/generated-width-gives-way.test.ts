@@ -69,6 +69,17 @@ describe('authored widths give way through the CLI', () => {
   });
 });
 
+describe('a self-loop label at the larger text size', () => {
+  // The loop was too short for one line of the larger text beside it, so a diagram that drew at 1079 px was refused from 1080 px.
+  it.each([1079, 1080, 1400])('draws the long retry label at %i px', (width) => {
+    const { data, options } = fixture('diagram', 'agent-approval');
+    const edges = (data as { edges: Array<{ id: string; label?: string }> }).edges.map((edge) => (edge.id === 'retry' ? { ...edge, label: 'Retry and its much longer descriptive name' } : edge));
+    const body = render({ spec: { type: 'diagram', data: { ...(data as object), edges }, options: { ...options, size: { width } } }, format: 'svg' } as never).body as { ok: boolean; svg: string };
+    expect(body.ok).toBe(true);
+    expect(body.svg).toContain('descriptive');
+  });
+});
+
 describe('wrong generated ids through the CLI', () => {
   const codes = (type: string, id: string, options: object) => {
     const { data, options: own } = fixture(type, id);
@@ -169,5 +180,26 @@ describe('an automatic height grows before a width refusal', () => {
       target: 'slide', size: { width: 460, height: 500 } } } as never);
     expect(measured.geometry).toBeDefined();
     expect(measured.minWidth).toBeLessThanOrEqual(460);
+  });
+});
+
+describe('a grid panel that spans columns keeps its plot under a column anchor', () => {
+  const months = ['Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const teams = [['finance', 'Finance transformation'], ['sales', 'Sales operations'], ['supply', 'Supply chain']];
+  const panels = [
+    ...[['orders', 'Orders', 120], ['returns', 'Returns', 8], ['shipments', 'Shipments', 112]].map(([id, label, value], column) => ({ id, type: 'kpi', row: 0, column, data: { label, value } })),
+    { id: 'status', type: 'status', row: 1, column: 0, span: { columns: 3 }, data: {
+      rows: teams.map(([id, label]) => ({ id, label })),
+      columns: months.map((label) => ({ id: label.toLowerCase(), label })),
+      cells: teams.flatMap(([row], r) => months.map((month, c) => ({ row, col: month.toLowerCase(), state: ['g', 'a', 'r'][(r + c) % 3] }))),
+    }, options: { legend: 'none', states: [['g', 'On track', 'good'], ['a', 'At risk', 'warn'], ['r', 'Off track', 'bad']].map(([id, label, tone]) => ({ id, label, tone })) } },
+  ];
+  // The anchor grouped panels by their first column, so the full-width status matrix shrank to the first KPI's plot: refused at 600 px and cut at 840 px.
+  it.each([600, 840])('draws the status matrix whole at %ipx', (width) => {
+    const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'grid', data: { panels }, options: { columns: 3, legend: 'none', anchors: { plotEdges: 'column' }, size: { width } } } as never));
+    expect(geometry.refused).toBeFalsy();
+    const codes = geometry.warnings.map((warning) => warning.code);
+    expect(codes.filter((code) => code.startsWith('label'))).toEqual([]);
+    expect(codes).toContain('grid-anchor-incompatible');
   });
 });
