@@ -599,7 +599,8 @@ function layoutMapPass(
     // A pinned canvas too short for the grouped columns spreads the rows over every column that fits.
     if (pinnedHeight && area.h - table.size(perColumn, area.w).h - tableGap < minMapHeight) perColumn = table.rowsAcross(area.w, false);
     const block = table.size(perColumn, area.w);
-    if (tableMode === 'below' || !pinnedHeight || area.h - block.h - tableGap >= minMapHeight) {
+    // On a pinned canvas an automatic table goes under the map only when the map keeps its full natural height.
+    if (tableMode === 'below' || !pinnedHeight || area.h - block.h - tableGap >= Math.max(minMapHeight, naturalMapH(area.w, stackedShare) - 1e-6)) {
       naturalAreaH = naturalMapH(area.w, stackedShare) + tableGap + block.h;
       mapArea = { ...area, h: Math.max(10, Math.min(area.h - block.h - tableGap, naturalMapH(area.w, stackedShare))) };
       tablePlace = { x: area.x + Math.max(0, (area.w - block.w) / 2), y: area.y + mapArea.h + tableGap, perColumn, width: area.w };

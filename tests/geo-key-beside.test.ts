@@ -87,4 +87,22 @@ describe('choropleth lookup keys', () => {
     expect(geometry.labels.filter((label) => label.id.startsWith('value-table-value:') || label.id.startsWith('value-table-unit:'))).toEqual([]);
     expect(geometry.warnings.filter((warning) => warning.code === 'choropleth-lookup-partial')).toHaveLength(1);
   });
+  // Prevents an automatic value table on a short pinned canvas from stacking under the map and shrinking it to a thumbnail when the table-free map shows every value.
+  it('turns off an automatic stacked value table on a pinned canvas when it would shrink the map', () => {
+    const fixture = getFixtures('choropleth').find((item) => item.id === 'german-states-revenue')!;
+    const at = (valueTable: 'auto' | false, height = 420) => requireGeometry(layoutResolvedRequest(resolveChartRequest({
+      type: 'choropleth', data: fixture.data, options: { ...fixture.options, size: { width: 600, height }, valueTable },
+    } as never))) as ReturnType<typeof draw> & { derived: { mapFrame: { w: number; h: number } } };
+    const auto = at('auto');
+    const off = at(false);
+    expect(auto.derived.mapFrame.h).toBeGreaterThanOrEqual(off.derived.mapFrame.h);
+    expect(auto.labels.filter((label) => label.slot === 'valueTable')).toEqual([]);
+    expect(auto.warnings).toEqual([]);
+    const open = requireGeometry(layoutResolvedRequest(resolveChartRequest({
+      type: 'choropleth', data: fixture.data, options: { ...fixture.options, size: { width: 600 }, valueTable: 'auto' },
+    } as never)));
+    const tall = at('auto', open.size.height);
+    expect(tall.labels.some((label) => label.slot === 'valueTable' && !label.hidden)).toBe(true);
+    expect(tall.derived.mapFrame.h).toBeGreaterThanOrEqual(at(false, open.size.height).derived.mapFrame.h);
+  });
 });
