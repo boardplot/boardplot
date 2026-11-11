@@ -1956,7 +1956,8 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
           }
           const mat = col.materiality;
           const threshold = specs.get(col.id)!.suffix.includes('%') ? mat?.pct : mat?.abs;
-          if (threshold !== undefined && Math.abs(s.raw) < threshold) {
+          // The printed figure meets the threshold: 4.96 and 5.04 both print +5% and take one tone.
+          if (threshold !== undefined && Math.abs(roundedNumber(s.raw, specFor(col.id, row.id))) < threshold) {
             deEmphasized = true;
             tone = 'neutral';
           }
