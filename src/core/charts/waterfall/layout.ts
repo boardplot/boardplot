@@ -92,7 +92,7 @@ import { composedTextRole } from '../../textRole';
 import { scenarioLegendKeys } from '../../label/legendFidelity';
 import { textScaleOf } from '../../typeFloors';
 import { disclosureNote } from '../../notes';
-import { bandSizing, NATURAL_BAND_STEP, SIZE_TOLERANCE } from '../../sizing';
+import { bandSizing, NARROW_FORM, NATURAL_BAND_STEP, SIZE_TOLERANCE } from '../../sizing';
 import { floorValueLabel, printedValueLabel, valueLabelPlotFloor } from './bandFloor';
 import { maxOf, minOf, pushAll } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
@@ -1357,7 +1357,7 @@ function layoutWaterfallWithPad(
   function drawBridge(options: WaterfallOptions, automaticOverride?: LinearBreak, enforceBreakOrder = true): ReturnType<typeof layoutWaterfallWithPad> {
   const warnings = preparedWarnings.slice();
   // ---- scales & frame ----
-  const occupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
+  let occupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
   const margin = { ...canvasMargin(theme, size.width), ...options.margin };
   const legendItems: LegendItemInput[] = [...segmentCatalog.values()].map((identity) => ({
     id: identity.id,
@@ -2191,7 +2191,41 @@ function layoutWaterfallWithPad(
       ids: rowValues.filter(request => `${request.kind}:${request.owner.seriesId ?? ''}` === role).map(request => request.id),
       alternate: true,
     }));
-  const solved = solveLabels(labelRequests, occupied, solveCtx);
+  // The narrowest plot in which the printed step values still read (bandFloor.ts).
+  // Category names do not set it: they wrap, step down and rotate (the row cascade), so the room a
+  // rotated first name takes left of the plot is not chrome either: it comes and goes with the
+  // rotation, and counting it would make the floor jump between widths.
+  // In full mode a step value hidden for a collision goes to the note and sets no floor.
+  // A total counts unless its blocked value is owed to the note. A hidden name is the
+  // registry's check on the finished chart (namesMustPrint): a probe at a short first height
+  // hides names that the grown chart prints.
+  const full = options.mode !== 'compact';
+  const plotFloor = (placed: readonly PlacedLabel[]) => {
+    const valueLabels = new Map(placed.map((label) => [label.id, label]));
+    return valueLabelPlotFloor(plot.w, marks.bars.map((bar, k) => ({
+      bar: bar.rect,
+      group: String(cases.length > 0 ? Math.floor(k / cases.length) : k),
+      labels: [valueLabels.has(`sum:${bar.id}`) ? floorValueLabel(valueLabels.get(`sum:${bar.id}`), full) : printedValueLabel(valueLabels.get(`total:${bar.id}`))].flatMap((rect) => rect ?? []),
+    })), !full);
+  };
+  const narrowForm = (options as { [NARROW_FORM]?: true })[NARROW_FORM] === true;
+  const unlabelled = narrowForm ? occupied.snapshot() : [];
+  let solved = solveLabels(labelRequests, occupied, solveCtx);
+  let minPlotW = plotFloor(solved.placed);
+  // Step values the solver seats closer than the floor's air refuse the width: the narrower form (NARROW_FORM)
+  // thins them as a narrower width does (every second value, then none), so a chart that draws at a width draws wider.
+  if (narrowForm && minPlotW > plot.w + SIZE_TOLERANCE) for (const from of ['alternate', 'none'] as const) {
+    const index = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
+    index.tickColumns = occupied.tickColumns;
+    for (const claim of unlabelled) index.claim(claim.rect, claim.kind, claim.owner, claim.part, claim.polygon);
+    const thinned = solveLabels(labelRequests, index, { ...solveCtx, valueRows: solveCtx.valueRows!.map(row => row.ids[0]?.startsWith('sum:') ? { ...row, from } : row) });
+    const floor = plotFloor(thinned.placed);
+    if (floor > plot.w + SIZE_TOLERANCE) continue;
+    occupied = index;
+    solved = thinned;
+    minPlotW = floor;
+    break;
+  }
   applyValueAxisTitleInk(solved.placed);
   pushAll(warnings, solved.warnings);
   // A step's value beside its bar reads in its sign's ink; one inside a fill
@@ -2347,21 +2381,6 @@ function layoutWaterfallWithPad(
     ? chartString(options, 'waterfallCasesDesc', { v1: cases.length, v2: cases.map((c, k) => `${c.label ?? c.id}: ${stepsDesc(caseItems[k]!)}`).join('. ') })
     : stepsDesc(items);
 
-  // The narrowest plot in which the printed step values still read (bandFloor.ts).
-  // Category names do not set it: they wrap, step down and rotate (the row cascade), so the room a
-  // rotated first name takes left of the plot is not chrome either: it comes and goes with the
-  // rotation, and counting it would make the floor jump between widths.
-  // In full mode a step value hidden for a collision goes to the note and sets no floor.
-  // A total counts unless its blocked value is owed to the note. A hidden name is the
-  // registry's check on the finished chart (namesMustPrint): a probe at a short first height
-  // hides names that the grown chart prints.
-  const full = options.mode !== 'compact';
-  const valueLabels = new Map(solved.placed.map((label) => [label.id, label]));
-  const minPlotW = valueLabelPlotFloor(plot.w, marks.bars.map((bar, k) => ({
-    bar: bar.rect,
-    group: String(cases.length > 0 ? Math.floor(k / cases.length) : k),
-    labels: [valueLabels.has(`sum:${bar.id}`) ? floorValueLabel(valueLabels.get(`sum:${bar.id}`), full) : printedValueLabel(valueLabels.get(`total:${bar.id}`))].flatMap((rect) => rect ?? []),
-  })), !full);
   const geometry: Geometry<WaterfallMarks, WaterfallDerived> = withUnprintedClaims({
     type: 'waterfall',
     size,

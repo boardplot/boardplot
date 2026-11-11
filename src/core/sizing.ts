@@ -1256,10 +1256,11 @@ export const FORCE_COMPACT = Symbol('boardplot.forceCompact');
 /**
  * Set by render's last step before a width refusal: the form the layout picked for the width has a floor
  * above it, so the layout draws the form a narrower width draws (the bullet's card rows, the heatmap's
- * wrapped row names, the status board's heads wrapped in their columns). Only these types read it.
+ * wrapped row names, the status board's heads wrapped in their columns, the waterfall's step values
+ * thinned). Only these types read it.
  */
 export const NARROW_FORM = Symbol('boardplot.narrowForm');
-export const NARROW_FORM_TYPES: ReadonlySet<string> = new Set(['bullet', 'heatmap', 'status']);
+export const NARROW_FORM_TYPES: ReadonlySet<string> = new Set(['bullet', 'heatmap', 'status', 'waterfall']);
 
 /** The owning chart's width-only search; its rejected probes do not need repair advice. */
 export const WIDTH_PROBE = Symbol('boardplot.widthProbe');
