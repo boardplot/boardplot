@@ -225,6 +225,21 @@ it('names missing calculation inputs while keeping structural and authored place
   expect(kit.cells.a!.displayed).toBe('\u2013'); expect(kit.cells.c!.displayed).toBe('\u2013');
 });
 
+// A result row printed a dash in a percent change column although its own plan and actual cells exist.
+it('prints the percent change of a result row from its own cells', () => {
+  const data: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'plan', kind: 'value' }, { id: 'act', kind: 'value' },
+      { id: 'pct', kind: 'computed', calc: { op: 'percentDelta', a: 'act', b: 'plan' } },
+      { id: 'mix', kind: 'computed', calc: { op: 'share', of: 'act' } }],
+    rows: [{ id: 'sales', label: 'Sales', cells: { plan: 1000, act: 1100 } },
+      { id: 'costs', label: 'Costs', cells: { plan: 600, act: 650 } },
+      { id: 'profit', label: 'Profit', kind: 'result', calc: { op: 'sub', a: { ref: { row: 'sales' } }, b: { ref: { row: 'costs' } } } }],
+  };
+  const profit = resolveTable(data, { target: 'report' }).table.rows.find(r => r.id === 'profit')!;
+  expect(profit.cells.pct).toMatchObject({ raw: 12.5, state: 'value' });
+  expect(profit.cells.mix!.state).toBe('missing');
+});
+
 // An input left blank on purpose has nothing to compare, so the change keeps the structural dash and not n/a.
 it('keeps the dash when a calculation input is an explicit blank', () => {
   const data: TableData = {
