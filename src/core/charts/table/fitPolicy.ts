@@ -7,7 +7,7 @@ import { maxOf } from '../../arrays';
 import { missesSize, tightSpacingWarning } from '../tableFit';
 import { isCohortDensity } from './ladder';
 import { ENGINE_NOTES, INDENT_BASE, LABEL_WRAP_FLOOR, SOFT_LABEL_CAP, cellPadX as trackCellPadX } from './tracks';
-import type { Geometry } from '../../types/scene';
+import type { Geometry, LintWarning } from '../../types/scene';
 import type { ResolvedTable, TableData, TableDerived, TableOptions } from '../../types/table';
 import type { TableMarks } from './layout';
 
@@ -34,14 +34,26 @@ export type LayoutOptions = TableOptions & { [PLAN_ONLY]?: boolean; [SIZING_ONLY
 export const CARD_GUTTER = 12;
 
 type TableGeometry = Geometry<TableMarks, TableDerived>;
+/**
+ * What the ladder reads of a candidate layout: its frame and plot, its floor, its column count and
+ * its warnings. A drawn table layout is one; a host that lays out tracks alone (the React grid) passes its own.
+ */
+export interface FitLayout {
+  refused?: false;
+  size: { width: number; height: number };
+  plot: { x: number; w: number };
+  sizing?: { minWidth: number; minHeight: number };
+  marks: { columns: readonly unknown[] };
+  warnings: LintWarning[];
+}
 /** Overrides for one ordered numeric candidate, never a full authored options object. */
 export type TableCandidate = Pick<LayoutOptions, 'density' | 'margin' | 'cellPadX' | 'labelIndent' | 'size'> &
   Pick<LayoutOptions, typeof COMPACT_RETRY | typeof HEAD_LINES | typeof TIGHT_SPACING | typeof HEAD_AIR_MIN | typeof SUB_LINES | typeof HEAD_LOOSE>;
-export type RunTableCandidate = (candidate: TableCandidate, sizingOnly: boolean,
-  selected?: (probe: TableGeometry) => boolean, widthOnlyOnMiss?: boolean | 'regular-rung') => TableGeometry;
+export type RunTableCandidate<G extends FitLayout = TableGeometry> = (candidate: TableCandidate, sizingOnly: boolean,
+  selected?: (probe: G) => boolean, widthOnlyOnMiss?: boolean | 'regular-rung') => G;
 
 // The fit ladder changes spacing, not cell values or cohort density.
-export function executeTableFit(authoredData: TableData, options: TableOptions, resolved: ResolvedTable, preserveCompactFloor: boolean, run: RunTableCandidate, cutCount: (geometry: TableGeometry) => number, hasHeadAir: (options: TableOptions) => boolean): Geometry<TableMarks, TableDerived> {
+export function executeTableFit<G extends FitLayout = TableGeometry>(authoredData: TableData, options: TableOptions, resolved: ResolvedTable, preserveCompactFloor: boolean, run: RunTableCandidate<G>, cutCount: (geometry: G) => number, hasHeadAir: (options: TableOptions) => boolean): G {
   const sizingOnly = (options as LayoutOptions)[SIZING_ONLY] === true;
   const once = (step: TableCandidate, widthOnly: true | 'regular-rung' = true) => run(step, sizingOnly, fits, widthOnly);
   const targetSize = (options as TargetSizeOptions)[TARGET_SIZE];
@@ -50,15 +62,15 @@ export function executeTableFit(authoredData: TableData, options: TableOptions, 
   // A side the caller left open is no limit: the frame grows there, so only a fixed side can miss.
   // The registry lays an open side out at a provisional size and names it open in TARGET_SIZE.
   const open = (options as TargetSizeOptions)[TARGET_SIZE]?.fixed;
-  const widthFits = (geometry: Geometry<TableMarks, TableDerived>) => open?.width === false || geometry.size.width >= (geometry.sizing?.minWidth ?? 0);
-  const heightFits = (geometry: Geometry<TableMarks, TableDerived>) => options.size === undefined || open?.height === false || geometry.size.height >= (geometry.sizing?.minHeight ?? 0);
-  const fits = (geometry: Geometry<TableMarks, TableDerived>) => widthFits(geometry) && heightFits(geometry);
+  const widthFits = (geometry: G) => open?.width === false || geometry.size.width >= (geometry.sizing?.minWidth ?? 0);
+  const heightFits = (geometry: G) => options.size === undefined || open?.height === false || geometry.size.height >= (geometry.sizing?.minHeight ?? 0);
+  const fits = (geometry: G) => widthFits(geometry) && heightFits(geometry);
   // A rung that misses is read for its size, plot and floor only, so it stops before its scene.
   let full = run({}, fullSizingOnly, options.belowMinimum === 'refuse' ? undefined : fits, options.belowMinimum !== 'refuse');
   // A wider-size patch reruns the original spacing. A compact rung must not
   // advertise a width that fits only its temporary margins or cell padding.
   const widthRepair = full.warnings.find(warning => warning.code === 'table-overflow' && warning.fix?.length);
-  const withWidthRepair = (drawn: Geometry<TableMarks, TableDerived>) => {
+  const withWidthRepair = (drawn: G) => {
     if (widthRepair) drawn.warnings = drawn.warnings.map(warning =>
       warning.code === 'table-overflow' && warning.fix?.length ? widthRepair : warning);
     return drawn;
@@ -70,7 +82,7 @@ export function executeTableFit(authoredData: TableData, options: TableOptions, 
   // An open height keeps a rung's own: the frame grows to the rows that rung draws.
   const fixedHeight = !heightOmitted(options.size) && open?.height !== false;
   /** The floor is the last rung's: the compact table draws where this rung's tracks or rows no longer fit. */
-  const withFloor = (drawn: Geometry<TableMarks, TableDerived>) => {
+  const withFloor = (drawn: G) => {
     // Ordinary rendering needs the selected spacing to fit, not the minimum of spacing it did not select.
     // Measurement and composed selectors retain the exact compact floor.
     if (!sizingOnly && !preserveCompactFloor && !(options as { [VERIFY_ADVICE]?: boolean })[VERIFY_ADVICE]) return withWidthRepair(drawn);
@@ -124,11 +136,11 @@ export function executeTableFit(authoredData: TableData, options: TableOptions, 
 }
 
 /** The last step: the compact density, tight margins and, where the height was left open, a row-driven height. */
-function compactTable(
-  authoredData: TableData, options: TableOptions, full: Geometry<TableMarks, TableDerived>,
+function compactTable<G extends FitLayout>(
+  authoredData: TableData, options: TableOptions, full: G,
   margin: NonNullable<TableOptions['margin']>, cellPadX: number, heads: number | undefined,
-  resolved: ResolvedTable, sizingOnly: boolean, run: RunTableCandidate,
-): Geometry<TableMarks, TableDerived> {
+  resolved: ResolvedTable, sizingOnly: boolean, run: RunTableCandidate<G>,
+): G {
   const compactOptions: TableCandidate = {
     density: isCohortDensity(options.density ?? 'regular') ? options.density : 'compact',
     margin,
@@ -147,7 +159,7 @@ function compactTable(
   // The most the tight rung can take across: cell air on both sides of each track, the side margins,
   // the spacers and the label indents. A miss wider than that skips the futile layout (a dimswitch
   // period search probes many such widths).
-  const tightens = (geometry: Geometry<TableMarks, TableDerived>) => {
+  const tightens = (geometry: G) => {
     const across = 2 * Math.max(0, cellPadX - TIGHT_PAD) * geometry.marks.columns.length
       + Math.max(0, geometry.plot.x - TIGHT_PAD * 2) + Math.max(0, geometry.size.width - geometry.plot.x - geometry.plot.w - TIGHT_PAD * 2)
       + (authoredData.columnGroups ?? []).reduce((sum, group) => sum + Math.max(0, (group.spacer ?? 0) - TIGHT_PAD * 2), 0)
