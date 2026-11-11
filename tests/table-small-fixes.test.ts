@@ -847,6 +847,34 @@ it('prints tone text at 4.5:1 on every tone fill under tones fill', () => {
   }
 });
 
+// A custom table head ink of #DDDDDD on white drew nearly invisible heads with no finding, while ink itself is held to 4.5:1.
+it('holds a custom table head ink to the ink contrast floor', () => {
+  const spec = (head: string) => ({
+    type: 'table',
+    data: { columns: [{ id: 'label', kind: 'rowLabel', label: 'Store' }, { id: 'v', kind: 'value', label: 'Sales' }], rows: [{ id: 'a', label: 'North', cells: { v: 12 } }] },
+    theme: { preset: 'standard', overrides: { table: { inks: { head: head } } } },
+  });
+  const pale = render({ spec: spec('#DDDDDD') }).body as { ok: boolean; errors?: { code: string; message: string }[] };
+  expect(pale.ok).toBe(false);
+  expect(pale.errors?.map((error) => error.code)).toEqual(['contrast-ink']);
+  expect((render({ spec: spec('#333333') }).body as { ok: boolean }).ok).toBe(true);
+  // An operator without its own ink paints in the secondary ink, so a pale secondary ink is refused there too.
+  const operators = (ink: Record<string, string>) => render({ spec: {
+    type: 'table',
+    data: { columns: [{ id: 'label', kind: 'rowLabel', label: 'Line' }, { id: 'v', kind: 'value', label: 'Amount' }], rows: [{ id: 'a', label: 'Revenue', cells: { v: 12 } }, { id: 'b', label: 'Cost', operator: '−', cells: { v: 4 } }] },
+    options: { signs: 'operators' },
+    theme: { preset: 'standard', overrides: { table: { inks: ink } } },
+  } }).body as { ok: boolean; errors?: { code: string }[] };
+  expect(operators({ secondary: '#DDDDDD' }).errors?.map((error) => error.code)).toEqual(['contrast-ink-muted']);
+  // A figure ink used only on a dark total ground is decided against that ground, not the page.
+  const total = render({ spec: {
+    type: 'table',
+    data: { columns: [{ id: 'label', kind: 'rowLabel', label: 'Line' }, { id: 'v', kind: 'value', label: 'Amount' }], rows: [{ id: 't', label: 'Total', role: 'total', cells: { v: 12 } }] },
+    theme: { preset: 'standard', overrides: { table: { grounds: { total: '#222222' }, inks: { figure: '#FFFFFF' } } } },
+  } }).body as { ok: boolean };
+  expect(total.ok).toBe(true);
+});
+
 // Two heat lanes capped at 500 and 200 looked comparable, and nothing said that each column shades on its own scale.
 it('notes per-column shading for heat lanes with different caps, not for one shared cap', () => {
   const data: TableData = {
