@@ -195,7 +195,9 @@ function orderColumnCategories(
 
   let othersId: Id | null = null;
   const topN = anomalySpec ? undefined : options.topN;
-  if (anomalySpec && options.topN && options.topN.n > 0 && cats.length > options.topN.n) {
+  // The rank cut the chart would make: it decides the cut, and under an anomaly rule whether the warning is true.
+  const cut = (t: NonNullable<typeof topN>) => topNCut(cats.map((_, i) => Math.abs(catTotal(i))), t.n, t.threshold);
+  if (anomalySpec && options.topN && options.topN.n > 0 && cut(options.topN).dropped.length > 0) {
     // The rule is a statement about the series as given. An 'Others' bucket
     // has no score, and dropping categories silently changes the population
     // the median and MAD are computed from — so topN is the option that goes.
@@ -208,7 +210,7 @@ function orderColumnCategories(
   }
   // A threshold can drop categories when n keeps all of them, as on a bar.
   if (topN && topN.n > 0 && (cats.length > topN.n || topN.threshold !== undefined)) {
-    const { kept: keptIdx, dropped: dropIdx } = topNCut(cats.map((_, i) => Math.abs(catTotal(i))), topN.n, topN.threshold);
+    const { kept: keptIdx, dropped: dropIdx } = cut(topN);
     if (topN.rest === false || dropIdx.length === 0) {
       applyOrder(keptIdx);
     } else {

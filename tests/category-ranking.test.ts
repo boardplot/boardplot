@@ -182,6 +182,11 @@ it('applies topN.threshold on column and table and warns on variance when n keep
   expect(table.table.rows.map((row) => [row.id, row.parentId ?? null])).toEqual([['amber', null], ['birch', null], ['others', null], ['cedar', 'others'], ['elm', 'others']]);
   const delta = render({ spec: { type: 'variance', data: { categories, series: [series[0]!, { id: 'plan', role: 'reference', values: [1, 1, 1, 1] }] }, options: { size, variance, variant: 'absolute', topN: { n: 10, threshold: 10 } } } }).body as unknown as { warnings: LintWarning[] };
   expect(delta.warnings).toContainEqual(expect.objectContaining({ code: 'option-ignored', path: '/options/topN/threshold' }));
+  // An anomaly rule keeps every period, so it says so when the threshold would have cut, and only then.
+  const anomaly = (threshold: number) => (render({ spec: { type: 'column', data: { categories, series }, options: { size, anomaly: { method: 'mad' }, topN: { n: 10, threshold } } } }).body as unknown as { warnings: LintWarning[] })
+    .warnings.filter((warning) => warning.code === 'anomaly-topn-ignored');
+  expect(anomaly(10)).toHaveLength(1);
+  expect(anomaly(1)).toHaveLength(0);
   // The item budget sums the series the cut ranks: a reference that cancels the actuals must not let a long list through.
   const long = Array.from({ length: ITEM_BUDGET + 1 }, (_, i) => ({ id: `item${i}` }));
   const cancelled = { categories: long, series: [{ id: 'actual', values: long.map(() => 50) }, { id: 'plan', role: 'reference', values: long.map(() => -50) }] };
