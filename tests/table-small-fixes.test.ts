@@ -400,6 +400,16 @@ it('lifts only the cell that would print 0 in a row of an authored scaled format
   expect(printed('net')).toEqual(['$1M', '$5M', '$0.001M', '$0.002M']);
 });
 
+// A forced thousand moved a count row with its own '1.23M' format to "5,505" under a "k" label.
+it('keeps the authored scale of a count row under a forced magnitude', () => {
+  const { table } = resolveTable({
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'q1', kind: 'value' }],
+    rows: [{ id: 'sales', label: 'Sales', format: '$1.2m', cells: { q1: 5_100_000 } },
+      { id: 'users', label: 'Users', scale: 'count', format: '1.23M', cells: { q1: 5_505_000 } }],
+  }, { magnitude: 'thousand' });
+  expect(table.rows.map((row) => [row.cells.q1!.displayed, row.unitAffix])).toEqual([['5,100', '$k'], ['5.51M', undefined]]);
+});
+
 // A '1,234k' column printed 1,080,000 as "1.1M" under its "(k)" head: the example's grouped digits hold the magnitude.
 // An authored '$0k' printed 2,496,000 as "$2.5M" beside "$640k", with fitFormats off and no warning.
 it('holds the magnitude of an authored example, grouped or not', () => {

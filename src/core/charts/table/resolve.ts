@@ -1137,7 +1137,9 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
     rowById.set(row.id, row);
     const example = row.format ?? (row.scale ? row.scale === 'percent' ? '1.2%' : '1,234' : undefined) ?? (row.calc && calcYieldsPoints(row.calc) ? `1${locale.decimal}2%` : undefined);
     if (example) {
-      const spec = authoredSpec(example, sourceRows.get(row.id)?.format ?? example);
+      // A count or percent row keeps its own format: a forced money scale does not reach it.
+      const ownScale = row.scale === 'count' || row.scale === 'percent';
+      const spec = ownScale ? parseFormatExample(example) : authoredSpec(example, sourceRows.get(row.id)?.format ?? example);
       const authoredRow = sourceRows.get(row.id) as (TableRow & AutomaticFormatSource) | undefined;
       if (authoredRow?.format !== undefined && authoredRow[AUTOMATIC_FORMAT] !== true) holdAuthoredScale(spec, locale.thousands);
       const group = groupOf(row);
@@ -1177,7 +1179,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
           spec.decimals = 1;
           spec.lockMagnitude = false; spec.rollMagnitude = false;
         }
-        const smallMoney = !spec.magnitudeInAffix && !spec.exponent && !spec.ordinal && !rowScale && forcedMagnitude && scales(example) && values.every(v => Math.abs(v) < 1000);
+        const smallMoney = !spec.magnitudeInAffix && !spec.exponent && !spec.ordinal && !rowScale && !ownScale && forcedMagnitude && scales(example) && values.every(v => Math.abs(v) < 1000);
         // A change line prints its authored format as authored: +0.01k under '+1.2k' rounds to +0.0k and never adds decimals.
         // A level row keeps "nonzero stays nonzero", so a small money or count figure never prints as 0.
         // A row of a measure group keeps the group's precision instead: its small member prints the bound (<0.01M).
@@ -1287,7 +1289,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   const hoistedRowUnits = new Map<Id, string>();
   if (forcedMagnitude !== undefined) {
     for (const [rowId, spec] of rowSpecs) {
-      if (rowById.get(rowId)?.scale === 'money' || rowById.get(rowId)?.scale === 'perUnit'
+      if (rowById.get(rowId)?.scale !== undefined
         || rowById.get(rowId)?.calc !== undefined
         || !scales(sourceRows.get(rowId)?.format ?? '1,234')
         || valueCols.some((col) => cellNamesOtherUnit(rowId, col.id, spec))) continue;
