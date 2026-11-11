@@ -1,5 +1,6 @@
 import type { ClaimRecordV1 } from '../claims/browser';
 import type { ResolvedChartRequest } from '../request';
+import { chartNumberMarks } from '../numberMarks';
 import { textRole } from '../textRole';
 import type { AnchorRef, Annotation } from '../types/annotations';
 import { cellMeta, cellValue, isDateCell, isPctCell, type Cell, type OwnerRef } from '../types/cell';
@@ -148,7 +149,7 @@ function indexValueTexts(ctx: RecordContext): Map<string, string> {
  * 1.0) or a label of another quantity stays off the record; the card then
  * prints the source number through the format.
  */
-function readsAsValue(drawn: string, raw: number): boolean {
+function readsAsValue(drawn: string, raw: number, marks: ReturnType<typeof chartNumberMarks>): boolean {
   let text = drawn.replace(/[\s\u00a0\u202f\u2009']/g, '');
   let sign = 1;
   if (/^\(.*\)$/.test(text)) { sign = -1; text = text.slice(1, -1); }
@@ -162,21 +163,11 @@ function readsAsValue(drawn: string, raw: number): boolean {
     text = text.slice(0, -magnitude[1]!.length);
   }
   if (!/^\d[\d.,]*$/.test(text)) return false;
-  // Two separator kinds: the last one is the decimal mark. One kind: a
-  // decimal mark when it appears once with one or two digits after it.
-  const lastDot = text.lastIndexOf('.'); const lastComma = text.lastIndexOf(',');
-  let decimalMark = '';
-  if (lastDot >= 0 && lastComma >= 0) decimalMark = lastDot > lastComma ? '.' : ',';
-  else if (lastDot >= 0 || lastComma >= 0) {
-    const mark = lastDot >= 0 ? '.' : ',';
-    const parts = text.split(mark);
-    if (parts.length === 2 && parts[1]!.length > 0 && parts[1]!.length !== 3) decimalMark = mark;
-    else if (mark === '.' && parts.length === 2) decimalMark = '.';
-  }
-  const grouping = decimalMark === '.' ? ',' : decimalMark === ',' ? '.' : /[.,]/;
-  let normalized = text.split(grouping as string).join('');
-  if (decimalMark === ',') normalized = normalized.replace(',', '.');
-  const decimals = decimalMark ? (normalized.split('.')[1]?.length ?? 0) : 0;
+  // The chart's marks say which mark groups and which one is decimal: "1.180M" under a point grouping is 1,180M.
+  let normalized = marks.thousands === '.' || marks.thousands === ',' ? text.split(marks.thousands).join('') : text;
+  if (marks.decimal === ',') normalized = normalized.replace(',', '.');
+  const decimalMark = normalized.includes('.');
+  const decimals = decimalMark ? normalized.split('.')[1]!.length : 0;
   const value = Number(normalized);
   if (!Number.isFinite(value)) return false;
   const tolerance = 0.5 * Math.pow(10, -decimals) * scale + 1e-9 * Math.max(1, Math.abs(raw));
@@ -221,7 +212,7 @@ export function makeRecord(
   });
   const candidate = value.kind === 'number' && value.state === 'value' && value.displayed === undefined
     ? indexValueTexts(ctx).get(ownerKey(owner)) : undefined;
-  const drawn = candidate !== undefined && typeof value.raw === 'number' && readsAsValue(candidate, value.raw) ? candidate : undefined;
+  const drawn = candidate !== undefined && typeof value.raw === 'number' && readsAsValue(candidate, value.raw, chartNumberMarks(ctx.request.options.locale)) ? candidate : undefined;
   return {
     id: targetId(target), target, value: drawn === undefined ? value : { ...value, displayed: drawn },
     label: Object.values(owner).join(' / '), fields: [], comparisons: [], annotations,

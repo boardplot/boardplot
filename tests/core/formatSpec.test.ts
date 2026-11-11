@@ -240,6 +240,16 @@ it('keeps the decimals of a set whose values share one magnitude', () => {
   expect(values.map(raster.fmt)).toEqual(['107.8M', '101.2M']);
 });
 
+// A label of four digits at the set's magnitude printed padded decimals: "1,540.00M" beside "57.50M", "3,048.0k".
+it('prints a label of 1,000 or more at the set magnitude whole', () => {
+  const at = (values: number[]) => {
+    const raster = seriesRasterFormatter(undefined, values, 'en', undefined, 'report', undefined, true, setMagnitude(values, undefined, undefined, 'report'));
+    return values.map(raster.fmt);
+  };
+  expect(at([1540e6, 57.5e6, 43e6, 10.8e6, 9.48e6])).toEqual(['1,540M', '57.50M', '43.00M', '10.80M', '9.48M']);
+  expect(at([3048e3, 2022.3e3, 167.7e3])).toEqual(['3,048k', '2,022k', '167.7k']);
+});
+
 // Prevents an engine or table letter a German or French reader takes for another scale: "B" for Billion (10¹²).
 it('prints no bare B or T on a German or French chart without an authored word', () => {
   expect(seriesRasterFormatter(undefined, [2.5e9], 'de', undefined, 'report').fmt(2.5e9)).toBe('2,5 Mrd.');
