@@ -1374,6 +1374,11 @@ it('warns once per computed column when a ratio divides by a negative cell, and 
   expect(found[0]).toMatchObject({ severity: 'info', owner: { rowId: 'b', colId: 'm' } });
   expect(found[0]!.message).toContain('1 more');
   expect(resolved.computedCells.find((r) => r.rowId === 'b' && r.colId === 'm')).toMatchObject({ displayed: '11.8%', state: 'value' });
+  // A calculated row that a ratio column divides names the column, as a plain row does: it said "row 'p' in column 'm'".
+  const summed = resolveTable({ ...data, rows: [data.rows[1]!, data.rows[2]!, { id: 'p', label: 'Profit', relation: 'displayOnly', calc: { op: 'add', a: { ref: { row: 'b' } }, b: { ref: { row: 'c' } } } }] } as TableData);
+  const messages = summed.warnings.filter((w) => w.code === 'ratio-negative-base').map((w) => w.message);
+  expect(messages.filter((message) => message.startsWith('row '))).toEqual([]);
+  expect(messages.some((message) => message.startsWith("column 'm'"))).toBe(true);
 });
 
 // A margin row (gp / rev * 100) in a delta column printed the ratio of the changes (30.0%) and not the change of the margins (10.0%).

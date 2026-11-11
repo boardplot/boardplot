@@ -3050,7 +3050,7 @@ function evaluateTableCalcs(
       }
       states.set(col.id, { raw: res.raw, state: res.state, ...partialFrom(res, row.id, read) });
       if (res.nearZero) nearZero = true;
-      if (res.negativeBase && res.state === 'value') noteNegativeBase('row', row.id, col.id);
+      if (res.negativeBase && res.state === 'value') noteNegativeBase(ownCalc ? 'column' : 'row', row.id, col.id);
       pushCalcRecord(records, row.id, col.id, res);
     }
   }
