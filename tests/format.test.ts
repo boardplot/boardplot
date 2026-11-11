@@ -981,3 +981,14 @@ describe('a unit that names a scale takes no second one', () => {
     expect(scaled(texts)).toEqual([]);
   });
 });
+
+// Under a comma decimal mark the record lost the drawn text: "1.180M" read as 1.18M and "0,042" as 42, so the hover printed the source number.
+it('keeps the drawn text on the record under the chart number marks', async () => {
+  const { interactionRecords } = await import('../src/core/a11y/records');
+  const displayed = (type: string, series: unknown[]) => {
+    const request = resolveChartRequest({ type, data: { categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], series }, options: { target: 'report', locale: { decimal: ',', thousands: '.' } } } as never);
+    return interactionRecords({ request, geometry: requireGeometry(layoutResolvedRequest(request)), scope: request.scope, claims: [] }).map((record) => record.value.displayed);
+  };
+  expect(displayed('funnel', [{ id: 'x', label: 'X', values: [1180000000, 590000000] }, { id: 'y', label: 'Y', values: [590000000, 290000000] }])).toContain('1.180M');
+  expect(displayed('bar', [{ id: 's', label: 'S', format: '0,042', values: [1234.5, 0.042] }])).toContain('0,042');
+});
