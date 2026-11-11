@@ -101,6 +101,8 @@ export interface AnchorResolution {
   pointValueText?: string;
   /** Format of the single series this anchor reads. */
   format?: string;
+  /** The value as the anchored mark's own value label prints it (unit, scale, precision); an `abs` without a format prints it. */
+  markValueText?: string;
   /**
    * Set where the anchor has a seat but no honest value (a stack
    * whose parts do not add). `value` is then not printed or computed with:
@@ -1110,7 +1112,8 @@ function placeAbs(s: AnnotationScope, ann: Extract<Annotation, { kind: 'abs' }>)
   const at = s.input.resolve(ann.at);
   if (!at) return warn(s, 'bad-anchor', `abs '${s.id}': unresolvable anchor`);
   if (valueless(s, 'abs', [at])) return;
-  const computed = s.run.fmt(at.value);
+  // Without its own format, `abs` prints the value as the anchored mark's label does ("4.1%", not "4.1").
+  const computed = ann.format === undefined && at.markValueText !== undefined ? at.markValueText : s.run.fmt(at.value);
   // `abs` restates the anchor's own plotted value. There is no arithmetic
   // to check — recording it as a derivation would be an identity, which
   // is the same thing as not checking it — so it is `observed`: a value

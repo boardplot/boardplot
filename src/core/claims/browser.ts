@@ -670,7 +670,8 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
           }),
           output: {
             raw: average.value,
-            state: average.value === null && derived.cohorts.some(row => missingCohortRate(row, t, derived.basis)) ? 'missing' : `support:${average.support}`,
+            // A drawn average is a number like any cell; its support is the contributor pairs in `inputs`.
+            state: average.value !== null ? 'value' : derived.cohorts.some(row => missingCohortRate(row, t, derived.basis)) ? 'missing' : 'n.m.',
             displayed: '',
           },
           nodeId,

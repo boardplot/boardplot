@@ -10,6 +10,8 @@ declare module 'fontkit' {
   export interface FontkitFont {
     familyName: string;
     subfamilyName: string;
+    /** A name record by fontkit's key, such as `preferredFamily` (name ID 16); null when the face has none. */
+    getName(key: string): string | null;
     fullName: string;
     postscriptName: string;
     unitsPerEm: number;

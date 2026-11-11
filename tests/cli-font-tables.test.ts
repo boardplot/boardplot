@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import '../src/core/charts';
 import { main } from '../src/cli/main';
-import { advanceWidths, buildFontTables, loadFontReader, serializeFontTables } from '../src/cli/fontTables';
+import { advanceWidths, buildFontTables, faceNames, loadFontReader, serializeFontTables } from '../src/cli/fontTables';
 import { callTool } from '../src/mcp/server';
 import { validateTheme } from '../src/core/themeRules';
 import { resolveTheme } from '../src/core/theme';
@@ -195,5 +195,21 @@ describe('host font tables on the CLI and the MCP server', () => {
     expect(wrapText('A\uFEFFB', font('Helvetica, Arial, sans-serif'), 1000).lines).toEqual(['A\uFEFFB']);
     const source = { hasGlyphForCodePoint: () => true, glyphForCodePoint: () => ({ advanceWidth: -17 }), layout: () => ({ advanceWidth: -17 }) };
     expect(advanceWidths(source, [0xad], 1)).toEqual([0]);
+  });
+});
+
+// `fonts build` took the family from name ID 1, which carries the weight for non-RIBBI faces, so one family
+// became several in the tables. Name ID 16 is the family the font's designer states; ID 1 is the fallback.
+describe('face names', () => {
+  const face = (preferred: Record<string, string | null>) => ({
+    familyName: 'Brand Condensed Demi Bold', subfamilyName: 'Regular',
+    getName: (key: string) => preferred[key] ?? null,
+  });
+  it('takes the typographic family and subfamily when the font has them', () => {
+    expect(faceNames(face({ preferredFamily: 'Brand Condensed', preferredSubfamily: 'Demi Bold' })))
+      .toEqual({ family: 'Brand Condensed', subfamily: 'Demi Bold' });
+  });
+  it('falls back to the legacy names when it has none', () => {
+    expect(faceNames(face({}))).toEqual({ family: 'Brand Condensed Demi Bold', subfamily: 'Regular' });
   });
 });

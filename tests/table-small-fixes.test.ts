@@ -380,6 +380,26 @@ it('keeps the unit in the cells of a row that prints no scale letter under a for
   expect(table.rows.map((row) => row.unitAffix)).toEqual(['$M', '$M', undefined, undefined]);
 });
 
+// One small cell lifted a whole row of an authored '$1M' format to "$4.000M, $6.000M, $0.002M".
+// The lift must still reach every small cell the row format prints: computed, subtotal and result cells.
+it('lifts only the cell that would print 0 in a row of an authored scaled format', () => {
+  const { table } = resolveTable({
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'q1', kind: 'value' }, { id: 'q2', kind: 'value' }, { id: 'q3', kind: 'value' },
+      { id: 'twice', kind: 'computed', calc: { op: 'mul', a: { ref: 'q3' }, b: { lit: 2 } } }],
+    rows: [{ id: 'cost', label: 'Cost', format: '$1M', cells: { q1: 4_000_000, q2: 6_000_000, q3: 1_500 } },
+      { id: 'fees', label: 'Fees', format: '$1M', cells: { q1: 4_000_000, q2: 6_000_000, q3: 200_000 } },
+      { id: 'group', label: 'Group', kind: 'subtotal', format: '$1M', children: [
+        { id: 'one', label: 'One', format: '$1M', cells: { q1: 5_000_000, q2: 1_000_000, q3: 1_000 } },
+        { id: 'two', label: 'Two', format: '$1M', cells: { q1: 3_000_000, q2: 1_000_000, q3: 600 } }] },
+      { id: 'net', label: 'Net', kind: 'result', format: '$1M', calc: { op: 'sub', a: { ref: { row: 'cost' } }, b: { ref: { row: 'two' } } } }],
+  });
+  const printed = (id: string) => ['q1', 'q2', 'q3', 'twice'].map((col) => table.rows.find((row) => row.id === id)!.cells[col]!.displayed);
+  expect(printed('cost')).toEqual(['$4M', '$6M', '$0.002M', '$0.003M']);
+  expect(printed('fees')).toEqual(['$4M', '$6M', '$0.2M', '$0.4M']);
+  expect(printed('group')).toEqual(['$8M', '$2M', '$0.002M', '$0.003M']);
+  expect(printed('net')).toEqual(['$1M', '$5M', '$0.001M', '$0.002M']);
+});
+
 // A forced thousand moved a count row with its own '1.23M' format to "5,505" under a "k" label.
 it('keeps the authored scale of a count row under a forced magnitude', () => {
   const { table } = resolveTable({
@@ -806,6 +826,16 @@ it('warns once per blank status label and offers its removal', () => {
   expect(layout('table', data).warnings.filter(warning => warning.code === 'status-label-blank')).toEqual(warnings);
 });
 
+// Changes of 4.96% and 5.04% both printed +5% but fell on two sides of a 5% materiality threshold, so they took two tones.
+it('mutes a change by its printed figure at the materiality threshold', () => {
+  const { table } = resolveTable({
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'a', kind: 'value' }, { id: 'p', kind: 'value' },
+      { id: 'd', kind: 'computed', calc: { op: 'percentDelta', a: 'a', b: 'p' }, polarity: 'higherIsBetter', format: '+1%', materiality: { pct: 5 } }],
+    rows: [104.96, 105.04, 104.4].map((a, i) => ({ id: `r${i}`, label: `Store ${i}`, cells: { a, p: 100 } })),
+  });
+  expect(table.rows.map((row) => [row.cells.d!.displayed, row.cells.d!.tone])).toEqual([['+5%', 'good'], ['+5%', 'good'], ['+4%', 'neutral']]);
+});
+
 // Under tones: 'fill' an inline line of one tone sits on its parent's fill of another tone; its text read under 4.5:1 there.
 it('prints tone text at 4.5:1 on every tone fill under tones fill', () => {
   for (const [name, preset] of Object.entries(themes)) {
@@ -815,6 +845,20 @@ it('prints tone text at 4.5:1 on every tone fill under tones fill', () => {
       expect(contrastRatio(paintColor(theme, toneTextPaint(theme, tone)), grounds[fill]), `${name} ${tone} on ${fill}`).toBeGreaterThanOrEqual(4.5);
     }
   }
+});
+
+// Two heat lanes capped at 500 and 200 looked comparable, and nothing said that each column shades on its own scale.
+it('notes per-column shading for heat lanes with different caps, not for one shared cap', () => {
+  const data: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'a', kind: 'value' }, { id: 'b', kind: 'value' }],
+    rows: [{ id: 'n', label: 'North', cells: { a: 120, b: -80 } }, { id: 's', label: 'South', cells: { a: -40, b: 60 } }],
+  };
+  const note = 'Shading compares values within each column, not across columns.';
+  const footnotes = (caps: number[]) => resolveTable(data, {
+    encodings: { a: { type: 'heat', cap: { abs: caps[0]! } }, b: { type: 'heat', cap: { abs: caps[1]! } } },
+  } as never).table.footnotes;
+  expect(footnotes([500, 200])).toContain(note);
+  expect(footnotes([500, 500])).not.toContain(note);
 });
 
 // The heavy section rule drew where the theme asks for no line: the close under closeRule 'none', above a result under resultRule 'none'.

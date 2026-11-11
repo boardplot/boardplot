@@ -143,6 +143,19 @@ export function fontFilesIn(dir: string): string[] {
   return found.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
 }
 
+/**
+ * The family a face belongs to. Name ID 1 holds the legacy family, which repeats
+ * the weight for every non-RIBBI face ("Avenir Next Condensed Demi Bold"), so one
+ * family splits into several. The typographic family (name ID 16) is the standard
+ * source when the font has it; the legacy name is the fallback.
+ */
+export function faceNames(font: Pick<FontkitFont, 'familyName' | 'subfamilyName' | 'getName'>): { family: string; subfamily: string } {
+  return {
+    family: font.getName('preferredFamily') || font.familyName,
+    subfamily: font.getName('preferredSubfamily') || font.subfamilyName,
+  };
+}
+
 /** The weight a face declares: OS/2 first, subfamily name when it does not. */
 function faceWeight(font: FontkitFont): number {
   const declared = font['OS/2']?.usWeightClass;
@@ -192,6 +205,7 @@ interface WeightInstance {
  */
 function faceTable(font: FontkitFont, file: string, sha256: string, faceIndex: number, at?: WeightInstance): FontMetricFace {
   const upem = requireUnitsPerEm(font);
+  const names = faceNames(font);
   if (typeof font.hasGlyphForCodePoint !== 'function' || typeof font.glyphForCodePoint !== 'function') {
     throw new Error('the face exposes no glyph accessors');
   }
@@ -201,8 +215,8 @@ function faceTable(font: FontkitFont, file: string, sha256: string, faceIndex: n
     throw new Error('the face has no glyph for any tabled code point');
   }
   return {
-    family: font.familyName,
-    subfamily: at ? `wght ${at.weight}` : font.subfamilyName,
+    family: names.family,
+    subfamily: at ? `wght ${at.weight}` : names.subfamily,
     style: faceStyle(font),
     weight: at?.weight ?? faceWeight(font),
     file,
