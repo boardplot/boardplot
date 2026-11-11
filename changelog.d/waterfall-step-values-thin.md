@@ -1,3 +1,0 @@
-### Fixed
-
-- A waterfall that draws at a width now draws at every wider width. Before, the label solver could seat the step values in one row with less than the 8 px of air the plot floor asks for, and the chart was refused for a few pixels above a width where it drew with the step values thinned (for example, drawn at 390 px, refused from 391 to 404 px, drawn again from 405 px). Where the full row would refuse the width, the waterfall now thins the step values as the narrower width does: every second value, then none. The thinned values go to the note, as at the narrower width. A waterfall that drew before keeps its look.

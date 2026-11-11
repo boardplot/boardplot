@@ -1,8 +1,0 @@
-### Changed
-
-- Warning severities follow one definition: `warn` means the drawing differs from the spec, content is missing or a number can mislead; `info` discloses a normal engine choice; `advice` is design advice. `ok: false` means nothing was drawn. Agents review `warn` and need no retry for `info` or `advice`; the render tool text and the manual say so.
-- Now `warn`, was `info`: every `<type>-legend-required` and `grid-legend-required` (a hidden legend the chart still draws), `event-out-of-range` (a gantt event outside the time range is left out), `static-footer-grew` (a pinned height grew for its notes).
-- Now `advice`, was `warn`: `missing-message-title`, `series-overload`, `pie-too-many-slices`, `legend-redundant` (the one-series legend; the line double naming was `info`), `pareto-tail-crowded`. Now `advice`, was `info`: `line-peer-overload`. The MCP server returns them with every chart that has them; `render --quiet` no longer prints them.
-- Renamed where one code stated two different facts: the combo refusal of an unacknowledged secondary axis is `dual-axis-unacknowledged`, was `dual-axis` (the `warn` `dual-axis` stays for a drawn secondary axis). The grid warning for a scale group with a non-numeric panel is `scale-group-not-numeric`, was `scale-mix`. The butterfly note on its two pane scales is `butterfly-pane-scales`, was `scale-mix`. The pareto `info` on a folded tail is `pareto-tail-folded`, was `pareto-tail-crowded`.
-- `label-hidden` carries the hidden label's id in `detail.labelId`. The CLI groups hidden labels by it instead of reading the message.
-- The `boardplot_feedback` example code is `label-hidden`, was `label-dropped`, which no chart reports.

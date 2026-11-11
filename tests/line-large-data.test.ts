@@ -4,6 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/index';
+import { MIN_TICK_GAP } from '../src/core/charts/line/scene';
 import { renderSvg } from '../src/core/svg/renderSvg';
 import { requireGeometry } from '../src/core/sizing';
 import { maxOf, minOf, pushAll } from '../src/core/arrays';
@@ -31,6 +32,20 @@ describe('line sampling above the point budget', () => {
     const categories = days(365);
     const { svg } = draw({ type: 'line', data: { categories, series: [{ id: 's', label: 'Visits', values: categories.map((_, i) => 100 + (i % 11)) }] }, options: { size: { width: 480 }, categoryAxis: { dateTicks: 'days' } } });
     expect(svg.match(/data-id="axis:x:tick:/g)).toHaveLength(365);
+  });
+
+  // A long default day row with decimation off switches to monthly ticks whose marks merge into a solid bar when unthinned.
+  it('thins crowded engine-chosen month ticks on an unsampled daily line', () => {
+    const categories = days(5000);
+    const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({
+      type: 'line',
+      data: { categories, series: [{ id: 's', label: 'Visits', values: categories.map((_, i) => 100 + (i % 11)) }] },
+      options: { size: { width: 360 }, window: { decimate: 'none' } },
+    })));
+    const xs = geometry.scene.flatMap((n) => (n.t === 'line' && n.part === 'tick' ? [n.x1] : []));
+    expect(xs.length).toBeGreaterThan(1);
+    expect(xs.length).toBeLessThanOrEqual(20);
+    expect(minOf(xs.slice(1).map((x, i) => x - xs[i]!))).toBeGreaterThanOrEqual(MIN_TICK_GAP);
   });
 
   // A 150,000-point line threw RangeError from Math.max(...values) before sampling could reduce it.
