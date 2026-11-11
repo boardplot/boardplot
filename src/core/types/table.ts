@@ -804,6 +804,8 @@ export interface ResolvedTable {
   rows: ResolvedRow[]; // in display order
   /** Uniform money unit hoisted out of every cell ("in €M"). */
   unit?: string;
+  /** The column heads print their own, different units, so `options.unit` names none of them and the frame leaves it out. */
+  columnUnits?: true;
   /** Authored nouns for the children of each level; absent means no collapsed hint. */
   levelNouns?: LevelNoun[];
   footnotes: string[]; // auto (rounding/partial) + authored

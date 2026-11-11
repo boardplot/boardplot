@@ -1721,3 +1721,19 @@ it('names no unit over a column that prints no figure', () => {
   const composed = (withEmpty: boolean) => { const { table, warnings } = byColumn(withEmpty, '1.2m', '$1.2k', { unit: 'EUR' }); return [table.unit, warnings.map((w) => w.code)]; };
   expect(composed(true)).toEqual(composed(false));
 });
+
+// A table with a $ column and a € column printed the authored "in USD" over both, also under unitShown: the heads name each unit.
+it('leaves options.unit out of the subtitle when the columns print different units', () => {
+  const data = { columns: [{ id: 'label', kind: 'rowLabel', label: 'Item' }, { id: 'us', kind: 'value', label: 'US', format: '$1,234' }, { id: 'eu', kind: 'value', label: 'EU', format: '€1,234' }],
+    rows: [{ id: 'sales', label: 'Sales', cells: { us: 1200, eu: 900 } }, { id: 'cost', label: 'Cost', cells: { us: 800, eu: 600 } }] };
+  const subtitle = (options: object) => layout('table', data, options).scene.find((node): node is TextNode => node.t === 'text' && node.id.startsWith('frame:subtitle'))!.lines.join(' ').trim();
+  for (const unitShown of [false, true]) {
+    const options = { unit: 'USD', unitShown, subtitle: { measure: 'Revenue' } };
+    expect(subtitle(options)).toBe('Revenue');
+    const warning = layout('table', data, options).warnings.find((w) => w.code === 'table-unit-overridden')!;
+    expect(warning.fix).toEqual([{ op: 'remove', path: '/options/unit' }]);
+  }
+  // The fix keeps the same subtitle and ends the warning.
+  expect(subtitle({ subtitle: { measure: 'Revenue' } })).toBe('Revenue');
+  expect(layout('table', data, { subtitle: { measure: 'Revenue' } }).warnings.map((w) => w.code)).not.toContain('table-unit-overridden');
+});

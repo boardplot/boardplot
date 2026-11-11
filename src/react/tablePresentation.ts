@@ -25,6 +25,7 @@ import { CHANGE_LINE_MIN_PX, CHANGE_LINE_SIZE_STEP_PX, changeLineFont, ENGINE_NO
 import { resolveCanvasOptions, resolveSize, resolveSubtitle } from '../core/normalize/shared';
 import { numericVariant } from '../core/textRole';
 import { EMPTY_ROW_ID, tableFootnotes } from '../core/charts/table/view';
+import { tableFrameUnit } from '../core/charts/table/resolve';
 import { footerParts, notesPanelLabel, notesPointer, shownNoteKinds, type EngineNoteMeta } from '../core/notes';
 import { frameText } from '../core/frameText';
 import { plainText } from '../core/inlineBold';
@@ -153,7 +154,7 @@ export function tableFrame(
   });
   const subtitle = authoredSubtitle ?? (unitLine ? { measure: options.unit!.trim() } : undefined);
   const text = frameText({
-    target: options.target, title, subtitle, unit: table.unit ?? options.unit,
+    target: options.target, title, subtitle, unit: tableFrameUnit(table, options),
     source: options.source,
     // The core line budget: notes.maxLines, else the target default, in wrapped lines of the React footer.
     notes: { ...options.notes, show: shownNoteKinds(options) as never }, notesShowAuthored: options.notes?.show !== undefined,

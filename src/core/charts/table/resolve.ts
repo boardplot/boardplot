@@ -1427,12 +1427,17 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   if (options.columnHeads === false && uniformUnit === null) {
     for (const [id, unit] of unitByCol) if (unit !== null) { unitByCol.set(id, null); lettersInCells.add(id); }
   }
-  if (uniformUnit !== null && options.unit !== undefined && options.unit !== uniformUnit && !composes) {
+  // Columns whose formats name their own units ("$" and "€") print them in their heads, and
+  // options.unit names none of them for the whole table: the frame does not print it.
+  const columnUnits = uniformUnit === null && distinctUnits.length > 0;
+  if ((uniformUnit !== null || columnUnits) && options.unit !== undefined && options.unit !== uniformUnit && !composes) {
     warnings.push({
       code: 'table-unit-overridden',
       severity: 'warn',
       field: ['options', 'unit'],
-      message: `options.unit '${options.unit}' is not printed. The table prints '${uniformUnit}' because its column formats resolve that shared unit.`,
+      message: uniformUnit !== null
+        ? `options.unit '${options.unit}' is not printed. The table prints '${uniformUnit}' because its column formats resolve that shared unit.`
+        : `options.unit '${options.unit}' is not printed. The column heads print their own units (${distinctUnits.join(', ')}).`,
       suggest: 'Remove options.unit so the column formats supply the unit.',
       fix: [{ op: 'remove', path: '/options/unit' }],
     });
@@ -2135,6 +2140,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
       columnToggles: toggleResolution.toggles,
       rows: ordered,
       unit: uniformUnit ?? undefined,
+      ...(columnUnits ? { columnUnits: true as const } : {}),
       ...(data.levelNouns === undefined ? {} : { levelNouns: data.levelNouns }),
       footnotes,
       ...(partialColumnIds.size > 0 ? { partialColumnIds: [...partialColumnIds], partialNote } : {}),
@@ -3259,3 +3265,8 @@ function evalCalc(
 }
 
 export { datePatternFromExample, MINUS };
+
+/** The unit the frame prints for a table: the hoisted one, else `options.unit` unless the columns print their own. */
+export function tableFrameUnit(table: Pick<ResolvedTable, 'unit' | 'columnUnits'>, options: { unit?: string }): string | undefined {
+  return table.unit ?? (table.columnUnits ? undefined : options.unit);
+}
