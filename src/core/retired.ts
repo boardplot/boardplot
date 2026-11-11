@@ -117,9 +117,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 /** A shallow copy on the node's own prototype, with its symbol marks. */
 function copyOf<T extends object>(node: T): T {
-  const copy = Object.create(Object.getPrototypeOf(node)) as Record<PropertyKey, unknown>;
-  for (const key of Reflect.ownKeys(node)) copy[key] = (node as Record<PropertyKey, unknown>)[key];
-  return copy as T;
+  return Object.create(Object.getPrototypeOf(node), Object.getOwnPropertyDescriptors(node)) as T;
 }
 
 /** `root` with the value at `path` replaced, or removed for `undefined`; objects on the way are copied, missing ones created. */
@@ -127,9 +125,11 @@ function setAt(root: unknown, path: readonly (string | number)[], value: unknown
   const [key, ...rest] = path;
   const node = Array.isArray(root) ? [...root] : isRecord(root) ? copyOf(root) : {};
   const own = node as Record<PropertyKey, unknown>;
-  const next = rest.length ? setAt(own[key!], rest, value) : value;
+  const current = Object.hasOwn(own, key!) ? own[key!] : undefined;
+  const next = rest.length ? setAt(current, rest, value) : value;
   if (next === undefined) delete own[key!];
-  else own[key!] = next;
+  else if (Array.isArray(node)) own[key!] = next;
+  else Object.defineProperty(own, key!, { value: next, writable: true, enumerable: true, configurable: true });
   return node;
 }
 

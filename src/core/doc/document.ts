@@ -1,7 +1,7 @@
 import * as z from 'zod';
 import { isRecord } from '../lint/shared';
 import { isBareChart } from './bareChart';
-import { diagnosedSafeParse } from '../schema/shared';
+import { diagnosedSafeParse, idRecord } from '../schema/shared';
 import { documentSchemaHint, documentSchemaHintWarning } from '../schema/documentContract';
 import { flattenIssues } from '../schema/flattenIssues';
 import type { LintWarning } from '../types/scene';
@@ -69,7 +69,7 @@ const documentSchema = z.preprocess(
             name: z.string({ error: missingChartName }).min(1).describe('Unique chart name within the document, used for chart selection and output identity.'),
             type: z.string().min(1).describe('Registered chart type or alias; selects the data and options schemas.'),
             data: z.unknown().describe('Chart data; the selected chart data schema validates the contents.'),
-            options: z.record(z.string(), z.unknown().describe('Option value checked by the selected chart options schema.')).optional().describe('Chart-specific options overriding inherited document settings.'),
+            options: idRecord(z.string(), z.unknown().describe('Option value checked by the selected chart options schema.')).optional().describe('Chart-specific options overriding inherited document settings.'),
             annotations: z.array(z.unknown().describe('Data-bound annotation checked by the selected chart and annotation pass.')).optional().describe('Top-level chart annotations folded into chart options by the document loader.'),
           }).describe('Named chart specification within the document.'),
         )
