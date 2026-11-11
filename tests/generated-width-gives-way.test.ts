@@ -148,6 +148,13 @@ describe('a form whose floor is above the asked width gives way', () => {
   ])('%s draws', (type, data, options) => {
     expect(layout(type, data, options).refused).toBeFalsy();
   });
+  // A creative name with no break point drew at 639 and 719 px and threw an overflow at 650 and 720 px:
+  // the wide card at 640 px and the larger type at 720 px narrowed its column before any step could give way.
+  it.each([650, 720])('creative draws a long unbroken name at %i px', (width) => {
+    const { data, options } = fixture('creative', 'creative-placeholder');
+    const facts = { ...(data as { facts: object }).facts, name: 'QuarterlyrevenuedashboardheroimageQuarterlyrevenuedashboardheroi' };
+    expect(layout('creative', { ...(data as object), facts }, { ...options, size: { width } }).refused).toBeFalsy();
+  });
 });
 
 describe('an automatic height grows before a width refusal', () => {
