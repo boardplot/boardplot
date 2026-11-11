@@ -1250,6 +1250,12 @@ const LINE_LABEL_AIR = 12;
  * it widens (lineLabelGutterLines). A chart whose first pass hid the label
  * reserves exactly that gutter (hiddenValueLineReserve) and lays out again.
  */
+/** The x seats between `start` and `end` along a line, LINE_SEAT_STEP apart, both ends left out: from `end` leftward, or from `start` rightward. */
+function alongLine(start: number, end: number, fromStart = false): number[] {
+  const steps = Math.min(LINE_SEAT_MAX, Math.ceil((end - start) / LINE_SEAT_STEP));
+  return steps > 1 ? Array.from({ length: steps - 1 }, (_, i) => fromStart ? start + ((i + 1) * (end - start)) / steps : end - ((i + 1) * (end - start)) / steps) : [];
+}
+
 function rightLineSeats(
   input: AnnotatePassInput,
   text: string,
@@ -1265,8 +1271,7 @@ function rightLineSeats(
     ({ slot, rect: { x, y: top, w: size.width, h: size.height }, penalty });
   const end = plot.x + plot.w - size.width;
   const start = plot.x + 4;
-  const steps = Math.min(LINE_SEAT_MAX, Math.ceil((end - start) / LINE_SEAT_STEP));
-  const along = steps > 1 ? Array.from({ length: steps - 1 }, (_, i) => end - ((i + 1) * (end - start)) / steps) : [];
+  const along = alongLine(start, end);
   const lines = lineLabelGutterLines(text, (t) => input.measure(t, font).width);
   const wrappedW = Math.max(...lines.map((line) => input.measure(line, font).width));
   const wrappedH = size.height * lines.length;
@@ -1410,6 +1415,11 @@ function valueLineLabel(
           // A left label whose start is taken by the data steps to the line's right end, above or below it.
           { slot: 'insideEnd', rect: { x: input.plot.x + input.plot.w - size.width, y: y - size.height - LINE_LABEL_GAP, w: size.width, h: size.height }, penalty: 4 },
           { slot: 'insideEndLow', rect: { x: input.plot.x + input.plot.w - size.width, y: y + LINE_LABEL_GAP, w: size.width, h: size.height }, penalty: 5 },
+          // Both ends taken: even steps along the line from left to right, as a right label has them.
+          ...alongLine(input.plot.x + 4, input.plot.x + input.plot.w - size.width, true).flatMap((at, i) => [
+            { slot: `insideAlong${i + 1}`, rect: { x: at, y: y - size.height - LINE_LABEL_GAP, w: size.width, h: size.height }, penalty: 6 },
+            { slot: `insideAlong${i + 1}Low`, rect: { x: at, y: y + LINE_LABEL_GAP, w: size.width, h: size.height }, penalty: 6 },
+          ]),
         ];
   // Last resort before the label is lost: the same seats 1 px nearer the line.
   const tight = axis === 'x' ? [] : candidates.flatMap((c) => Math.abs(c.rect.y + c.rect.h - (y - LINE_LABEL_GAP)) < 1e-6 || Math.abs(c.rect.y - (y + LINE_LABEL_GAP)) < 1e-6
