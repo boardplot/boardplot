@@ -247,7 +247,7 @@ export function layoutCohort(
   const hostClaims: HostClaims = ({ kind, owner }) => {
     const t = periodIndex.get(owner.categoryId ?? '');
     if (kind !== 'point' || t === undefined || owner.seriesId === undefined) return undefined;
-    if (owner.seriesId === AVERAGE_ROW_ID) return derived.averages?.[t] ? [`cohort:average:t${t}`] : undefined;
+    if (owner.seriesId === AVERAGE_ROW_ID) return derived.averages?.[t] ? [claimId('cohort-average', `t${t}`)] : undefined;
     return t < (rowById.get(owner.seriesId)?.observedPeriods ?? 0) ? [claimId('cohort', owner.seriesId, `t${t}`)] : undefined;
   };
 
