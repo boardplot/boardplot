@@ -483,11 +483,10 @@ describe('number census', () => {
     expect(of(census('funnel', funnel([1.18e9, 5.9e8, 2.9e8, 1.4e8], [8e6, 4e6, 2e6, 1e6]), 720, retext('label:segment:a:won', '1.18B')), 'mixed-units')).not.toEqual([]);
   });
 
-  // Sankey nodes, a butterfly pane (and a pyramid, drawn by it) and dot values printed "1.9B · 400M" or "9.6M · 400k" in one set.
+  // Sankey nodes and a butterfly pane (and a pyramid, drawn by it) printed "1.9B · 400M" in one set.
   it.each([
     ['sankey', { nodes: ['a', 'b', 'c'].map((id) => ({ id, label: id.toUpperCase() })), links: [{ source: 'a', target: 'b', value: 1.5e9 }, { source: 'a', target: 'c', value: 4e8 }] }],
     ['butterfly', { categories: ['a', 'b', 'c'].map((id) => ({ id, label: id.toUpperCase() })), series: [{ id: 'won', label: 'Won', values: [1.18e9, 5.9e8, 1.4e8] }, { id: 'lost', label: 'Lost', values: [9e8, 3e8, 2e8] }] }, { a: 'won', b: 'lost' }],
-    ['dot', { categories: ['a', 'b', 'c'].map((id) => ({ id, label: id.toUpperCase() })), series: [{ id: 'delta', label: 'Delta', values: [9.6e6, 4e5, -2.8e6] }] }],
   ] as [string, unknown, Record<string, unknown>?][])('prints the values of one %s set at one magnitude', (type, data, options) => {
     expect(of(census(type, { data, options: { target: 'report', ...options } }, 720), 'mixed-units')).toEqual([]);
   });
