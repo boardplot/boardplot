@@ -6,13 +6,13 @@
  */
 
 import { NormalizeError } from './normalize/shared';
-import type { RenderTarget } from './types/options';
+import type { LocaleSpec, RenderTarget } from './types/options';
 import type { LintWarning, PlacedLabel, SceneNode } from './types/scene';
 import type { InteractionRecord } from './a11y/types';
 
 import { chartString } from './strings';
 import { fractionFormat, numberFormat } from './numberFormatCache';
-import { splitNumberMarks, wordLanguage } from './numberMarks';
+import { splitNumberMarks, withNumberMarks, wordLanguage } from './numberMarks';
 import { currencyWholeNumbers, MAGNITUDE_SUFFIX, magnitudeSuffix, MINUS, formatPercent, nonFiniteGlyph, smallRateDecimals } from './format';
 import {
   AUTO_MAX_DECIMALS,
@@ -1808,7 +1808,8 @@ function chartFormatLint(
   // The chart's records prove a zero: what they print, not what this format would print.
   const zeroed = zeroRecords.map((record) => record.value.raw as number);
   // An authored scale holds the chart to one precision (shareAuthoredScale): the warning says what that draws.
-  const locale = (options?.locale as { language?: string } | undefined)?.language;
+  // Its figures print with the chart's marks (locale.decimal and locale.thousands), as the chart does.
+  const locale = withNumberMarks({ locale: options?.locale as LocaleSpec | undefined }).locale!.language;
   const shared = spec.magnitude !== 'none' && figures === undefined ? seriesRasterFormatter(format, numbers.flat(), locale, unit) : undefined;
   const raised = checked && shared !== undefined && shared.spec.decimals > spec.decimals;
   const smallest = numbers.flat().reduce((small, v) => v !== 0 && (small === 0 || Math.abs(v) < Math.abs(small)) ? v : small, 0);
@@ -1830,6 +1831,20 @@ function chartFormatLint(
     let decimals = Math.max(spec.decimals + 1, raised ? shared.spec.decimals : 0);
     while (decimals < MAX_FORMAT_DECIMALS && !shows(finerAt(decimals))) decimals++;
     const finer = decimals <= MAX_FORMAT_DECIMALS && shows(finerAt(decimals)) ? finerAt(decimals) : undefined;
+    // A unit that names the format's own scale ("$B") says the values are in that scale already:
+    // the letter divides them a second time, and more decimals only print "+$0.000000002B". The fix drops the letter.
+    if (spec.magnitude !== 'none' && unitMagnitude(unit) === spec.magnitude) {
+      const plain = formatWithSpec(spec.thousandsSep ? 1234 : 1, { ...spec, magnitude: 'none', magnitudeWord: undefined });
+      const shown = raised ? shared.fmt(smallest) : zeroRecords[0]?.value.displayed ?? formatWithSpec(smallest, withChartMarks(spec, locale));
+      return [{
+        code: 'format-hides-values',
+        severity: 'warn',
+        message: `options.unit '${unit}' says the values are already in its scale, and format '${format}' divides them by that scale again: ${smallest} prints as ${shown}`,
+        suggest: `drop the scale from the format, such as '${plain}', and keep options.unit`,
+        field: ['options', 'format'],
+        fix: [{ op: 'replace', path: '/options/format', value: plain }],
+      }];
+    }
     return [{
       code: 'format-hides-values',
       severity: 'warn',
@@ -1850,7 +1865,7 @@ function chartFormatLint(
   return [{
     code: 'format-unscaled',
     severity: 'warn',
-    message: `format '${format}' has no scale word, so values up to ${formatWithSpec(largest, spec)} print in all their digits`,
+    message: `format '${format}' has no scale word, so values up to ${formatWithSpec(largest, withChartMarks(spec, locale))} print in all their digits`,
     suggest: `set a compact format such as '${compact}', or remove options.format to let the engine pick k, M or B`,
     field: ['options', 'format'],
     fix: [{ op: 'replace', path: '/options/format', value: compact }],
