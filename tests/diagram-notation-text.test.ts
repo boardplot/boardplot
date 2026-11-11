@@ -51,6 +51,26 @@ describe('architecture columns', () => {
     }, options: { variant: 'architecture', title: 'Only the runtime reads the keys', size: { width } } });
     for (const width of [480, 720]) expect((render({ spec: spec(width), format: 'svg' } as never).body as any).ok, `${width} px`).toBe(true);
   });
+
+  // A wide edge label asked for room in a row gutter already as tall as it needs, so nothing grew:
+  // the diagram drew at 400 px and was refused at 440 px.
+  it('seats a wide edge label in a row that can still grow, so a wider canvas still draws', () => {
+    const node = (id: string, label: string, groupId: string, track: string, shape = 'rectangle') => ({ id, kind: 'step', shape: { kind: shape }, label: `${label} and its much longer descriptive name`, groupId, track });
+    const label = (text: string) => `${text} and its much longer descriptive name`;
+    const spec = (width: number) => ({ type: 'diagram', theme: 'notation', data: {
+      groups: [{ id: 'intake', title: 'Regional intake and validation services' }, { id: 'core', title: 'Central settlement and reconciliation platform' }],
+      nodes: [{ ...node('gateway', 'Cross-border payment instruction gateway', 'intake', 'main'), secondaryLabel: 'Validates every incoming instruction' },
+        node('screen', 'Sanctions and counterparty screening service', 'intake', 'side'),
+        node('ledger', 'Multi-currency general ledger posting engine', 'core', 'main', 'store'), node('recon', 'End-of-day reconciliation and exception workbench', 'core', 'side')],
+      edges: [
+        { id: 'post', source: { nodeId: 'gateway' }, target: { nodeId: 'ledger' }, label: label('Validated instructions') },
+        { id: 'check', source: { nodeId: 'gateway' }, target: { nodeId: 'screen' } },
+        { id: 'match', source: { nodeId: 'ledger' }, target: { nodeId: 'recon' }, label: label('Posted entries') },
+        { id: 'reject', source: { nodeId: 'recon' }, target: { nodeId: 'gateway' }, label: label('Rejected items'), flow: 'return', dash: 'dashed' },
+      ],
+    }, options: { variant: 'architecture', title: 'Every payment passes screening before it posts', size: { width }, target: 'print' } });
+    for (const width of [400, 440]) expect((render({ spec: spec(width), format: 'svg' } as never).body as any).ok, `${width} px`).toBe(true);
+  });
 });
 
 describe('diagram inset heading and columns', () => {

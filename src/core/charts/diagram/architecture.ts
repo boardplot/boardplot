@@ -1928,10 +1928,12 @@ function placeLabels(
     const inside = geometry.gaps.find((item) => gapContains(item, segmentMiddle(longest)));
     // A wide label does not fit a gutter beside the nodes: it takes a row gutter that the run crosses.
     // A line along a gutter runs down its middle, so a label beside it takes half the gutter.
+    // A row already as tall as the label asks for holds another label, so a row that can still grow comes first.
     let wide = labelGutterWidth(block.width, longest);
+    const full = (item: Gap) => item.rect.h >= tall;
     const row = inside?.axis === 'v' && wide > env.plot.w / 3
       ? rows.filter((item) => item.rect.y > Math.min(longest[0].y, longest[1].y) && item.rect.y + item.rect.h < Math.max(longest[0].y, longest[1].y))
-        .sort((a, b) => Math.abs(a.rect.y - segmentMiddle(longest).y) - Math.abs(b.rect.y - segmentMiddle(longest).y))[0] : undefined;
+        .sort((a, b) => Number(full(a)) - Number(full(b)) || Math.abs(a.rect.y - segmentMiddle(longest).y) - Math.abs(b.rect.y - segmentMiddle(longest).y))[0] : undefined;
     const gap = row ?? inside;
     if (!gap) continue;
     // Tracks across a short horizontal edge split its column gutter into smaller label seats.
