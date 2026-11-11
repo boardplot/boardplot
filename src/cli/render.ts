@@ -278,7 +278,8 @@ function renderWithTables(input: RenderInput): VerbResult {
       },
     } : {}),
   }));
-  const images = drawings.flatMap((drawing) => (drawing.png ? [drawing.png] : []));
+  // A caller who saved the PNGs to a folder and asked for nothing back gets the paths, not the bytes again.
+  const images = out && input.return?.length === 0 ? [] : drawings.flatMap((drawing) => (drawing.png ? [drawing.png] : []));
   const body = charts.length === 1 && bare
     ? { ...charts[0]!, warnings }
     : { charts: charts.map((chart, index) => ({ name: drawings[index]!.name, ...chart })), warnings };

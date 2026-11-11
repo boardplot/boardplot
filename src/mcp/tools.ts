@@ -214,7 +214,7 @@ export function toolInputs() {
       background: z.enum(['theme', 'transparent']).default('theme').describe("theme (default) draws the theme's canvas; transparent leaves it out. Halos keep the theme background colour, so place the result on a surface of that colour."),
       overwrite: z.boolean().optional().describe('Replace existing output files when true. Default false. Chart names within one call still get distinct files.'),
       outDir: absolutePath('Absolute directory for the files, each named after its chart (a bare spec\'s name, default chart), or for a spec with one chart an absolute file path ending in .png or .svg; without format, that extension sets it. A new path that ends in any other letters-only extension, such as .jpg or .pdf, is refused; end it with / to make a folder of that name. It must sit under a client root, the server working directory, the temp folder or a folder in BOARDPLOT_ROWS_ROOTS. By default an existing file is not replaced: a taken name gets a -N suffix, outputs lists the paths written, and an out-name-taken warning names the requested and the written path.').optional(),
-      return: z.array(z.enum(['svg', 'reading'])).default(['reading']).describe('Response fields: reading (default) reports labels, omissions and computed values. Include svg for inline markup. PNG image content is separate.'),
+      return: z.array(z.enum(['svg', 'reading'])).default(['reading']).describe('Response fields: reading (default) reports labels, omissions and computed values. Include svg for inline markup. PNG image content is separate; with outDir, an empty return sends none.'),
       ...rowArguments,
     }),
     boardplot_measure: z.strictObject({

@@ -106,7 +106,7 @@ This call requests an EBIT bridge as PNG:
 
 The `fy25` item has no value, so Boardplot computes the FY25 total as 133. When a total has a supplied value, Boardplot checks that value against the sum. A mismatch produces `derived-mismatch` and draws the computed total.
 
-A successful PNG render returns an image content block and JSON such as this excerpt. Check the actual output before placing it: a PNG request can fall back to SVG. [PNG output](#png-output) explains the conditions.
+A successful PNG render returns an image content block and JSON such as this excerpt. With `outDir` and `return: []` it writes the files and returns only their paths in `outputs`, with no image block. Check the actual output before placing it: a PNG request can fall back to SVG. [PNG output](#png-output) explains the conditions.
 
 ```json
 {
