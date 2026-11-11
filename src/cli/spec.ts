@@ -422,7 +422,13 @@ function panelUnitLints(data: unknown, geo: Geometry, base: (string | number)[] 
   const panels = geo.type === 'grid' ? (geo.marks as unknown as GridMarks | undefined)?.panels ?? [] : [];
   const authored = isRecord(data) && Array.isArray(data.panels) ? data.panels : undefined;
   const owns = (nodeId: string, panelId: string) => nodeId.startsWith(`${panelId}/`) || nodeId.includes(`panel:${panelId}:`);
-  return panels.flatMap((panel) => {
+  // A format warning of a panel's own options and data, moved to their path in the grid.
+  const formatsAt = (spec: Record<string, unknown>, own: (string | number)[], name: string) => unscaledFormatLint(spec.options as Record<string, unknown> | undefined, spec.data)
+    .map((warning) => ({ ...warning, message: `[${name}] ${warning.message}`, field: [...own, ...(warning.field ?? [])],
+      ...(warning.fix ? { fix: warning.fix.map((op) => ({ ...op, path: `/${own.join('/')}${op.path}` })) } : {}) }));
+  // A repeat template that holds one chart document is checked once, at the template. Its bySlice form is not checked.
+  const template = isRecord(data) && isRecord(data.template) && isRecord(data.template.data) && !('bySlice' in data.template.data) ? data.template : undefined;
+  return [...(template ? formatsAt(template, [...base, 'template'], 'template') : []), ...panels.flatMap((panel) => {
     if (!panel.chart) return [];
     const index = authored?.findIndex((item) => isRecord(item) && item.id === panel.id) ?? -1;
     const own = index >= 0 ? [...base, 'panels', index] : [...base, 'template'];
@@ -436,12 +442,10 @@ function panelUnitLints(data: unknown, geo: Geometry, base: (string | number)[] 
       ...unitInFormatLints(panel.chart.options as Record<string, unknown>, own)
         .map((warning) => ({ ...warning, message: `[${panel.id}] ${warning.message}` })),
       // A panel's own formats: the panel's options and data, by their path in the grid.
-      ...(index >= 0 ? unscaledFormatLint((authored![index] as Record<string, unknown>).options as Record<string, unknown> | undefined, (authored![index] as Record<string, unknown>).data) : [])
-        .map((warning) => ({ ...warning, message: `[${panel.id}] ${warning.message}`, field: [...own, ...(warning.field ?? [])],
-          ...(warning.fix ? { fix: warning.fix.map((op) => ({ ...op, path: `/${own.join('/')}${op.path}` })) } : {}) })),
+      ...(index >= 0 ? formatsAt(authored![index] as Record<string, unknown>, own, panel.id) : []),
       ...panelUnitLints(index >= 0 ? (authored![index] as Record<string, unknown>).data : undefined, child, [...own, 'data']),
     ];
-  });
+  })];
 }
 
 /** The document-boundary norm lints: warnings about proportions and embed legibility. */

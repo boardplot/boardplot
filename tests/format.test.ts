@@ -590,6 +590,20 @@ describe('an example is read as its author wrote it', () => {
     const warnings = (render({ spec: grid, return: ['reading'] } as never).body as { warnings: { code: string; fix?: unknown[] }[] }).warnings;
     expect(warnings.filter((warning) => warning.code === 'format-hides-values').map((warning) => warning.fix))
       .toEqual([[{ op: 'replace', path: '/data/panels/0/options/format', value: '1,234.12' }]]);
+    // A value with its own format prints through it, not through the series or chart format.
+    expect(fixes({}, { series: [{ format: '1,234', values: [{ number: 0.042, format: '0.123' }, 12] }] })).toEqual([]);
+    expect(fixes({ format: '1,234' }, { series: [{ format: '0.123', values: [0.042, 12] }] })).toEqual([]);
+    // A keyed series value holds its number in `value`.
+    expect(fixes({}, { series: [{ format: '1,234', values: [{ categoryId: 'a', value: 0.042 }, { categoryId: 'b', value: 12 }] }] }).map((fix) => fix?.path)).toEqual(['/data/series/0/format']);
+    // A table column that declares points holds percent points below ±1 too.
+    expect(fixes({}, { columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'rate', kind: 'value', format: '12%', percentScale: 'points' }],
+      rows: [{ id: 'north', cells: { rate: 0.2 } }, { id: 'south', cells: { rate: 0.3 } }] }).map((fix) => fix?.path)).toEqual(['/data/columns/1/format']);
+    // A repeat template that holds one chart document is checked at the template.
+    const repeat = { type: 'grid', data: { repeat: { facet: 'series', dimension: 'channel', values: ['web', 'store'] }, template: { type: 'column', options: { format: '1,234' },
+      data: { categories: [{ id: 'a', label: 'North' }, { id: 'b', label: 'South' }], series: [{ id: 'web', label: 'Web', values: [0.042, 12] }, { id: 'store', label: 'Store', values: [5, 9] }] } } } };
+    const repeated = (render({ spec: repeat, return: ['reading'] } as never).body as { warnings: { code: string; fix?: unknown[] }[] }).warnings;
+    expect(repeated.filter((warning) => warning.code === 'format-hides-values').map((warning) => warning.fix))
+      .toEqual([[{ op: 'replace', path: '/data/template/options/format', value: '1,234.12' }]]);
   });
 
   // A spaced single letter is SI unit text ("12 m/s", "50 B"), but it scaled as millions and bytes lost their unit; the warning's fix also dropped the space.

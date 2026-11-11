@@ -1630,9 +1630,16 @@ export function unscaledFormatLint(
   return [...chartFormatLint(options, data, geo), ...placedFormatZeros(data)];
 }
 
-type FormatPlace = { format: unknown; values: readonly unknown[]; path: (string | number)[] };
-const numberIn = (cell: unknown): number[] => {
-  const value = typeof cell === 'number' ? cell : (cell as { number?: unknown; v?: unknown } | null)?.number ?? (cell as { v?: unknown } | null)?.v;
+type FormatPlace = { format: unknown; values: readonly unknown[]; path: (string | number)[]; points?: boolean };
+/** A value as authored: a keyed series value ({ categoryId, value }) holds its cell in `value`. */
+const cellOf = (entry: unknown): unknown => (typeof entry === 'object' && entry !== null && 'categoryId' in entry && 'value' in entry ? (entry as { value: unknown }).value : entry);
+/** A cell with its own format prints through that format, not through the series, column, row or chart format. */
+const ownFormat = (entry: unknown): unknown => { const cell = cellOf(entry); return typeof cell === 'object' && cell !== null ? (cell as { format?: unknown }).format : undefined; };
+/** The number a value prints through a wider format: a bare number, a number cell or a table cell; none where the value has its own format. */
+const numberIn = (entry: unknown): number[] => {
+  if (ownFormat(entry) !== undefined) return [];
+  const cell = cellOf(entry);
+  const value = typeof cell === 'number' ? cell : (cell as { number?: unknown } | null)?.number ?? (cell as { v?: unknown } | null)?.v;
   return typeof value === 'number' && Number.isFinite(value) ? [value] : [];
 };
 
@@ -1652,18 +1659,19 @@ function placedFormatZeros(data: unknown): LintWarning[] {
     walk(row?.children, [...path, i, 'children']);
   });
   walk(own?.rows, ['data', 'rows']);
-  const cellFormat = (cell: unknown) => (typeof cell === 'object' && cell !== null ? (cell as { format?: unknown }).format : undefined);
   (Array.isArray(own?.columns) ? own.columns : []).forEach((column, i) => places.push({
     format: column?.format,
     // A bar table column holds its values; a table column prints every cell without a format of its own.
     values: Array.isArray(column?.values) ? column.values
-      : rows.map(({ row }) => row?.cells?.[String(column?.id)]).filter((cell) => cellFormat(cell) === undefined),
+      : rows.map(({ row }) => row?.cells?.[String(column?.id)]),
     path: ['data', 'columns', i, 'format'],
+    // A column that declares points holds percent points also below ±1.
+    points: (column as { percentScale?: unknown } | undefined)?.percentScale === 'points',
   }));
   for (const { row, path } of rows) for (const [colId, cell] of Object.entries(row?.cells ?? {})) {
-    if (cellFormat(cell) !== undefined) places.push({ format: cellFormat(cell), values: [cell], path: [...path, 'cells', colId, 'format'] });
+    if (ownFormat(cell) !== undefined) places.push({ format: ownFormat(cell), values: [{ ...(cell as object), format: undefined }], path: [...path, 'cells', colId, 'format'] });
   }
-  return places.flatMap(({ format: authored, values, path }) => {
+  return places.flatMap(({ format: authored, values, path, points }) => {
     if (typeof authored !== 'string') return [];
     const numbers = values.flatMap(numberIn);
     let format: string;
@@ -1675,7 +1683,7 @@ function placedFormatZeros(data: unknown): LintWarning[] {
     } catch { return []; }
     const body = numericBody(format);
     // A % format over fractions is percent-scale-suspect's case; over points it prints them as given.
-    if (!body || spec.ordinal || spec.exponent || spec.significantDigits !== undefined || (spec.suffix.includes('%') && !numbers.some((v) => Math.abs(v) > 1))) return [];
+    if (!body || spec.ordinal || spec.exponent || spec.significantDigits !== undefined || (spec.suffix.includes('%') && !points && !numbers.some((v) => Math.abs(v) > 1))) return [];
     const zero = formatWithSpec(0, spec);
     const zeroed = numbers.filter((v) => v !== 0 && formatWithSpec(v, spec) === zero);
     if (zeroed.length === 0) return [];
@@ -1708,13 +1716,11 @@ function chartFormatLint(
 ): LintWarning[] {
   const authored = typeof options?.format === 'string' ? options.format : undefined;
   // Series rows, one row of values (sparkline, kpi), or waterfall items.
-  const own = data as { series?: { values?: unknown[] }[]; values?: unknown[]; items?: { value?: unknown }[] } | undefined;
-  const rows = [...(Array.isArray(own?.series) ? own.series : []), ...(Array.isArray(own?.values) ? [own] : []),
+  const own = data as { series?: { format?: unknown; values?: unknown[] }[]; values?: unknown[]; items?: { value?: unknown }[] } | undefined;
+  // A series with its own format prints through it, not through options.format.
+  const rows = [...(Array.isArray(own?.series) ? own.series.filter((series) => typeof series?.format !== 'string') : []), ...(Array.isArray(own?.values) ? [own] : []),
     ...(Array.isArray(own?.items) ? [{ values: own.items.map((item) => item?.value) }] : [])];
-  const numbers = rows.map((s) => (Array.isArray(s?.values) ? s.values : []).flatMap((cell) => {
-    const value = typeof cell === 'number' ? cell : (cell as { number?: unknown } | null)?.number;
-    return typeof value === 'number' && Number.isFinite(value) ? [value] : [];
-  }));
+  const numbers = rows.map((s) => (Array.isArray(s?.values) ? s.values : []).flatMap(numberIn));
   // A unit that names a scale gets no second one, so values of seven integer
   // digits print in full under it ("27,900,000,001 in €m"). Such values are
   // most likely in base units: the author decides. The check reads
