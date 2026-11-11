@@ -518,7 +518,8 @@ describe('no nonzero value prints as 0 ', () => {
       rows: [1_234_567, 12_345, -12_345, 0].map((value, index) => ({ id: String(index), label: String(index), cells: { v: value } })),
     };
     const displayed = (result: ReturnType<typeof resolveTable>) => result.table.rows.map(row => row.cells.v!.displayed);
-    expect(displayed(resolveTable(data))).toEqual(['1.2', '<0.1', '>−0.1', '0.0']);
+    // One magnitude would hide the two middle figures, so each unformatted row prints at its own scale.
+    expect(displayed(resolveTable(data))).toEqual(['1.2M', '12,345', '−12,345', '0.0']);
     expect(displayed(resolveTable({ ...data, columns: [data.columns[0]!, { id: 'v', kind: 'value', label: 'Value', format: '1.2M' }] }))).toEqual(['1.2', '0.0', '0.0', '0.0']);
     // A unit that names a scale states the data's scale as authored: the figures print whole, with no second magnitude.
     expect(displayed(resolveTable(data, { unit: 'M units' }))).toEqual(['1,234,567', '12,345', '−12,345', '0']);
