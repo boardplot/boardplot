@@ -122,6 +122,15 @@ describe('a form whose floor is above the asked width gives way', () => {
       series: [{ id: 'share', label: 'Share', values: [12, 38, 5, 0.4, 100, 57.5, 66] }],
     }, { title: 'Share of orders by weekday', theme: 'notation', size: { width: 480 } }],
     ['gantt', { rows: ganttRows }, { title: 'Program plan', today: '2026-07-03', legend: { position: 'right' }, size: { width: 470 } }],
+    // The solver seats the step values with less than the floor's air; at 390 px it thins them itself.
+    ['waterfall', {
+      items: [
+        { id: 'fy21', label: 'FY21', type: 'total', value: 142000 }, { id: 'price', label: 'Price', value: 38000 },
+        { id: 'volume', label: 'Volume', segments: [{ id: 'b2b', label: 'B2B', value: 11000 }, { id: 'b2c', label: 'B2C', value: 6000 }] },
+        { id: 'gross', label: 'Gross', type: 'subtotal' }, { id: 'cost', label: 'Cost', value: -24000 },
+        { id: 'fx', label: 'FX', value: -6000 }, { id: 'fy24', label: 'FY24F', type: 'total' },
+      ],
+    }, { unit: '$m', mode: 'full', size: { width: 400 } }],
   ])('%s draws', (type, data, options) => {
     expect(layout(type, data, options).refused).toBeFalsy();
   });

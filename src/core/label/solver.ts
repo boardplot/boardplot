@@ -367,8 +367,9 @@ export interface SolveCtx {
   /**
    * Ordered computed rows: keep all, every second from the end when allowed, or none.
    * `keepEnds` makes a row that is omitted keep its first and last value.
+   * `from` starts the row at a later step, for a chart whose floor the full row would put above the width.
    */
-  valueRows?: { ids: readonly Id[]; alternate?: boolean; keepEnds?: boolean }[];
+  valueRows?: { ids: readonly Id[]; alternate?: boolean; keepEnds?: boolean; from?: 'alternate' | 'none' }[];
   /**
    * The drawn line points of the plot. With it, a value
    * label on a line point takes a seat only where it reads as that point's
@@ -446,8 +447,19 @@ export function solveLabels(requests: LabelRequest[], occupied: OccupiedIndex, c
   const pinned = new Set(requests.filter(req => req.pinnedSlot ?? ctx.pins[req.id]).map(req => req.id));
   // A row that gives up its full set keeps a pinned label, and under minimal density a label that density keeps (a highlighted value).
   const held = new Set(requests.filter(req => pinned.has(req.id) || (ctx.density === 'minimal' && req.keepWhenDense)).map(req => req.id));
-  const rows = ctx.valueRows.map(row => ({ ...row, eligible: [] as Id[], mode: 'all' as 'all' | 'alternate' | 'none', reason: '' }));
+  const rows = ctx.valueRows.map(row => ({ ...row, eligible: [] as Id[], mode: (row.from ?? 'all') as 'all' | 'alternate' | 'none', reason: '' }));
   const dropped = new Set<Id>();
+  for (const row of rows) if (row.mode !== 'all') {
+    const byId = new Map(requests.map(req => [req.id, req]));
+    row.eligible = row.ids.filter(id => {
+      const req = byId.get(id);
+      return req && !(req.redundant && req.suppressedAs !== 'density');
+    });
+    row.reason = `computed row ${row.mode === 'alternate' ? 'uses alternate values from the end' : 'omitted'}; the full row needs a wider plot`;
+    row.eligible.forEach((id, index) => {
+      if (!held.has(id) && dropsFromRow(row, index)) dropped.add(id);
+    });
+  }
   // With several rows, a failed pass can advance other rows too. Keep that order.
   // Without pins or replacement links, only the declared redundancy gate can
   // produce hidden='redundant'; density drops still count, exactly as in the pass.
