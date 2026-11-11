@@ -811,8 +811,10 @@ describe('published option behaviour census', () => {
           value = probeFixture.annotations?.length ? probeFixture.annotations.map(a => ['valueLine', 'band', 'event'].includes(a.kind) ? { ...a, label: 'Census annotation' } : { ...a, text: 'Census annotation' })
             : [{ kind: 'note', at: ids[0] ?? 'census', text: 'Census annotation' }];
         }
-        if (key === 'labelPlacements' && before.labels[0]) value = { [before.labels[0].id]: 'insideCenter' };
-        if (key === 'labelOffsets' && before.labels.some(label => !label.hidden)) value = { [before.labels.find(label => !label.hidden)!.id]: { y: 12 } };
+        // A hidden label draws nothing, so a placement or offset on it can never change the output.
+        const drawn = before.labels.find(label => !label.hidden);
+        if (key === 'labelPlacements' && drawn) value = { [drawn.id]: 'insideCenter' };
+        if (key === 'labelOffsets' && drawn) value = { [drawn.id]: { y: 12 } };
         if (key === 'viewDomain' && type !== 'scatter') value = { x: [ids[1] ?? ids[0], ids.at(-1)] };
         if (key === 'a' || key === 'b') value = series.find(id => id !== current) ?? value;
         if (key === 'labelRegions') value = []; // An explicit empty set removes the authored region labels.
