@@ -380,6 +380,26 @@ it('keeps the unit in the cells of a row that prints no scale letter under a for
   expect(table.rows.map((row) => row.unitAffix)).toEqual(['$M', '$M', undefined, undefined]);
 });
 
+// One small cell lifted a whole row of an authored '$1M' format to "$4.000M, $6.000M, $0.002M".
+// The lift must still reach every small cell the row format prints: computed, subtotal and result cells.
+it('lifts only the cell that would print 0 in a row of an authored scaled format', () => {
+  const { table } = resolveTable({
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'q1', kind: 'value' }, { id: 'q2', kind: 'value' }, { id: 'q3', kind: 'value' },
+      { id: 'twice', kind: 'computed', calc: { op: 'mul', a: { ref: 'q3' }, b: { lit: 2 } } }],
+    rows: [{ id: 'cost', label: 'Cost', format: '$1M', cells: { q1: 4_000_000, q2: 6_000_000, q3: 1_500 } },
+      { id: 'fees', label: 'Fees', format: '$1M', cells: { q1: 4_000_000, q2: 6_000_000, q3: 200_000 } },
+      { id: 'group', label: 'Group', kind: 'subtotal', format: '$1M', children: [
+        { id: 'one', label: 'One', format: '$1M', cells: { q1: 5_000_000, q2: 1_000_000, q3: 1_000 } },
+        { id: 'two', label: 'Two', format: '$1M', cells: { q1: 3_000_000, q2: 1_000_000, q3: 600 } }] },
+      { id: 'net', label: 'Net', kind: 'result', format: '$1M', calc: { op: 'sub', a: { ref: { row: 'cost' } }, b: { ref: { row: 'two' } } } }],
+  });
+  const printed = (id: string) => ['q1', 'q2', 'q3', 'twice'].map((col) => table.rows.find((row) => row.id === id)!.cells[col]!.displayed);
+  expect(printed('cost')).toEqual(['$4M', '$6M', '$0.002M', '$0.003M']);
+  expect(printed('fees')).toEqual(['$4M', '$6M', '$0.2M', '$0.4M']);
+  expect(printed('group')).toEqual(['$8M', '$2M', '$0.002M', '$0.003M']);
+  expect(printed('net')).toEqual(['$1M', '$5M', '$0.001M', '$0.002M']);
+});
+
 // A forced thousand moved a count row with its own '1.23M' format to "5,505" under a "k" label.
 it('keeps the authored scale of a count row under a forced magnitude', () => {
   const { table } = resolveTable({
