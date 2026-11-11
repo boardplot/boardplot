@@ -29,7 +29,7 @@ import { wrapFootnote, type FrameBand, type FrameResult, type LegendItemInput } 
 import type { Rect, Size } from './geometry';
 import { parseISODate } from './isoDate';
 import { parseTimeText } from './isoTime';
-import type { OccupiedIndex } from './label/occupied';
+import type { OccupiedClaim, OccupiedIndex } from './label/occupied';
 import { PRIORITY, solveLabels, type LabelRequest, type SolveCtx } from './label/solver';
 import { NormalizeError } from './normalize/shared';
 import { wrapText, type FontSpec, type TextMeasurer } from './text';
@@ -821,12 +821,22 @@ export function emitEventLane(theme: Theme, input: {
   const rowTop = (row: number) => top + (plan.rows - 1 - row) * (plan.rowH + ROW_GAP);
   const tracksTop = top + plan.rows * (plan.rowH + ROW_GAP);
   const stripY = tracksTop + (plan.tracks ? plan.tracks * TRACK + 2 : 0) + f.ringR + 1;
-  // Where a pole stops: 3px above the first mark or label under the lane.
-  const stopAt = (x: number): number => {
-    if (input.mode === 'through') return laneBottom;
+  // The runs of a pole from y1: it stops 3px above the first mark or label under the lane. A series name
+  // (a key row or an axis title over the plot) is no stop: the pole breaks around it, 3px clear, and runs on to the data.
+  const poleRuns = (x: number, y1: number): [number, number][] => {
+    if (input.mode === 'through') return laneBottom > y1 ? [[y1, laneBottom]] : [];
     const hits = occupied.hitsWhich({ x: x - 1, y: laneBottom, w: 2, h: Math.max(0, input.baseline - laneBottom) })
       .filter((o) => o.kind === 'mark' || o.kind === 'label');
-    return Math.min(input.baseline, minOf(hits.map((o) => o.rect.y))) - 3;
+    const seriesName = (o: OccupiedClaim) => o.kind === 'label' && o.owner.seriesId !== undefined && o.owner.categoryId === undefined && o.owner.annotationId === undefined;
+    const end = Math.min(input.baseline, minOf(hits.filter((o) => !seriesName(o)).map((o) => o.rect.y))) - 3;
+    const runs: [number, number][] = [];
+    let from = y1;
+    for (const name of hits.filter((o) => seriesName(o) && o.rect.y < end).sort((a, b) => a.rect.y - b.rect.y)) {
+      if (name.rect.y - 3 > from) runs.push([from, name.rect.y - 3]);
+      from = Math.max(from, name.rect.y + name.rect.h + 3);
+    }
+    if (end > from) runs.push([from, end]);
+    return runs;
   };
   const requests: LabelRequest[] = [];
   const fixed = (id: string, evId: Id, text: string, lines: string[], font: FontSpec, rect: Rect, slot: string, role: 'note' | 'value' = 'note') =>
@@ -889,11 +899,10 @@ export function emitEventLane(theme: Theme, input: {
   };
   const pole = (ev: LaneEvent, x: number, y1: number) => {
     const owner = { annotationId: ev.id };
-    const y2 = stopAt(x);
-    if (y2 > y1) {
-      own(ev.id, { t: 'line', id: `ann:${ev.id}:pole`, x1: x, y1, x2: x, y2, stroke: { token: 'leader' }, width: strokeToken(theme, 'rule'), owner, part: 'eventPole' });
-      occupied.claim({ x: x - 1, y: y1, w: 2, h: y2 - y1 }, 'annotation', owner, 'eventPole');
-    }
+    poleRuns(x, y1).forEach(([from, to], k) => {
+      own(ev.id, { t: 'line', id: `ann:${ev.id}:pole${k === 0 ? '' : `:${k + 1}`}`, x1: x, y1: from, x2: x, y2: to, stroke: { token: 'leader' }, width: strokeToken(theme, 'rule'), owner, part: 'eventPole' });
+      occupied.claim({ x: x - 1, y: from, w: 2, h: to - from }, 'annotation', owner, 'eventPole');
+    });
     if (input.mode === 'through' && input.baseline > laneBottom) {
       own(ev.id, { t: 'line', id: `ann:${ev.id}:rule`, x1: x, y1: laneBottom, x2: x, y2: input.baseline, stroke: { token: 'leader' }, width: strokeToken(theme, 'rule'), dash: dashToken(theme, 'dotted'), lineCap: 'round' as const, owner, part: 'eventRule' }, true);
     }

@@ -360,8 +360,8 @@ Defaults are the `bridge` preset.
 | invalid-theme-override | overrides produce a structurally invalid theme |
 | theme-name-reserved | a full theme object uses a preset name |
 | unparseable-color | a colour is unsupported; use hex, rgb(), hsl(), oklch() or var() with a literal fallback |
-| contrast-ink | ink on background is below 4.5:1 |
-| contrast-ink-muted | inkMuted on background is below 3:1 |
+| contrast-ink | ink, or a table ink that stands for it, on background is below 4.5:1 |
+| contrast-ink-muted | inkMuted, or a muted table ink, on background is below 3:1 |
 | contrast-inside-label | a label inside a fill is below its contrast floor |
 | semantic-equals-background | good, bad or highlight equals the background |
 | good-bad-similar | good and bad are nearly identical |
