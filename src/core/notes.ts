@@ -139,9 +139,9 @@ export function unprintedNotes(notes: readonly ChartNote[]): ChartNote[] {
 }
 
 /**
- * Set by a composing chart on the options it hands its host: its author asked for
- * the engine's notes by `methodNote: true`, which the host never sees. The host
- * prints them as asked, within the line budget, since no authored `notes.show` lists them.
+ * Set by a composing chart on the options it hands its host, beside the `notes.show`
+ * it writes for a `methodNote: true` or a `notes.placement`: no author wrote that list,
+ * so the host's live frame prints those disclosures within the line budget.
  */
 export const NOTES_ASKED = Symbol('notesAsked');
 
@@ -154,18 +154,19 @@ type NoteAsk = { methodNote?: unknown; notes?: { show?: readonly string[]; place
  */
 export function shownNoteKinds(options: NoteAsk): readonly string[] | undefined {
   if (options?.notes?.show !== undefined) return options.notes.show;
-  return options?.methodNote === true || options?.notes?.placement !== undefined || options?.[NOTES_ASKED] === true
-    ? ['note', 'method', 'disclosure'] : undefined;
+  return options?.methodNote === true || options?.notes?.placement !== undefined ? ['note', 'method', 'disclosure'] : undefined;
 }
 
 /**
- * The options a composing chart hands its host chart: an authored `notes.show`
- * travels as it is, a `methodNote: true` as NOTES_ASKED, so the host still tells
- * the author's own list from the kinds asked for another way.
+ * The options a composing chart hands its host chart, with the note kinds its
+ * author asked for. A list the author did not write carries NOTES_ASKED, so the
+ * host keys its marks as before and only its live line budget tells the two apart.
  */
 export function keepShownNotes<T extends object>(options: NoteAsk, passed: T): T {
-  if (options?.notes?.show !== undefined) return { ...passed, notes: { ...(passed as { notes?: object }).notes, show: options.notes.show } };
-  return shownNoteKinds(options) === undefined ? passed : { ...passed, [NOTES_ASKED]: true };
+  const show = shownNoteKinds(options);
+  if (show === undefined) return passed;
+  const out = { ...passed, notes: { ...(passed as { notes?: object }).notes, show } };
+  return options?.notes?.show !== undefined ? out : { ...out, [NOTES_ASKED]: true };
 }
 
 /**

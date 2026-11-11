@@ -202,16 +202,18 @@ export function frameText(input: FrameTextInput): FrameText {
   if (sourceOff) {
     warnings.push({ code: 'footnotes-off', severity: 'info', message: `compact frame has no room for the source line: ${sourceText}` });
   }
-  // A disclosure whose kind the author lists in notes.show himself, and an
-  // author note a drawn mark points at (pointedNotes), stay in the frame outside
-  // the line budget, like a required credit. A disclosure asked for only by
-  // methodNote or notes.placement counts against the live budget, after the
-  // author notes; static output prints every note anyway, so its layout keeps
-  // that disclosure too. `footnotes: false` hands every other note to the host;
-  // a disclosure the author lists stays.
+  // A disclosure whose kind the author lists in notes.show himself, and a note a
+  // drawn mark points at, stay in the frame outside the line budget, like a
+  // required credit: an author note in pointedNotes, a disclosure with a number
+  // (ref, a "1)" on a cut name or a milestone) or the rank key (ranks, the rank
+  // numbers under the columns), since a mark whose key sits behind the pointer
+  // does not read alone. Any other disclosure asked for only by methodNote or
+  // notes.placement counts against the live budget, after the author notes;
+  // static output prints every note anyway, so its layout keeps it too.
+  // `footnotes: false` hands every other note to the host; a printed disclosure stays.
   const pointed = new Set(input.pointedNotes ?? []);
   const kept = entries.filter((entry) => entry.kind === 'disclosure'
-    ? (input.notesShowAuthored === true || !policy.live) && (shown.has('disclosure') || (entry.ranks === true && shown.has('ranks')))
+    ? (input.notesShowAuthored === true || !policy.live || entry.ref !== undefined || entry.ranks === true) && (shown.has('disclosure') || (entry.ranks === true && shown.has('ranks')))
     : !input.footnotesOff && pointed.has(entry.text));
   const candidates = input.footnotesOff || placement === 'list' ? [] : entries.filter((entry) => !kept.includes(entry) && shown.has(entry.kind) && !isQuiet(entry));
   // The pointer counts the notes of the kinds the author prints; the engine's

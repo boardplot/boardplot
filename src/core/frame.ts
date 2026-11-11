@@ -26,7 +26,7 @@ import { isNumberAlone } from './textRole';
 import { PRIORITY } from './label/solver';
 import { footnoteMark } from './footnoteMark';
 import { withLocaleStrings } from './strings';
-import { allQuiet, chartNotes, copyNote, engineNote, engineNoteMeta, footerParts, keepNoteMeta, notesPanelLabel, notesPointer, shownNoteKinds, valueNote, type ChartCredit, type ChartNote, type NoteList } from './notes';
+import { allQuiet, chartNotes, copyNote, engineNote, engineNoteMeta, footerParts, keepNoteMeta, notesPanelLabel, notesPointer, NOTES_ASKED, shownNoteKinds, valueNote, type ChartCredit, type ChartNote, type NoteList } from './notes';
 import { harveyWedgePath } from './svgPath';
 import {
   cappedItems, countedValuesText, frameText, HIDDEN_LABEL_LEAD, listedNoteText, listText, moreListedText, noteCap, type NoteCapOptions,
@@ -407,7 +407,7 @@ export function frameTextOptions(
     ...(options[LIVE_NOTE_SHOW] ? { [LIVE_NOTE_SHOW]: options[LIVE_NOTE_SHOW] } : {}),
     strings: options.strings,
     ...(options.notes !== undefined || shownNoteKinds(options) !== undefined ? { notes: { ...options.notes, show: shownNoteKinds(options) as NonNullable<FrameInput['notes']>['show'] } } : {}),
-    ...(options.notes?.show !== undefined ? { notesShowAuthored: true } : {}),
+    ...(options.notes?.show !== undefined && (options as { [NOTES_ASKED]?: true })[NOTES_ASKED] !== true ? { notesShowAuthored: true } : {}),
     footnotes: options.footnotes === false ? [] : options.footnotes,
     ...(options.footnotesOff === true || options.footnotes === false ? { footnotesOff: true } : {}),
     numberedFootnotes: options.authoredFootnotes ?? authoredNotes(options),

@@ -247,6 +247,14 @@ describe('note rules', () => {
     const geo = requireGeometry(getChart('cohort')!.layout(fixture.data, { ...fixture.options, footnotes: ['First invented note.', 'Second invented note.'], [INTERACTIVE_LAYOUT]: true } as never));
     expect(geo.frame.noteList!.filter((note) => note.inFrame).map((note) => note.text)).toEqual(['First invented note.', 'Second invented note.']);
     expect(geo.frame.noteList!.some((note) => note.kind === 'disclosure')).toBe(true);
+    // Reason: a composing chart stopped handing the asked-for kinds to its host, so a pareto lost its rank numbers and their key.
+    const items = ['A', 'B', 'C'].map((name, i) => ({ id: name, label: `${'W'.repeat(120)} ${name}`, value: [60, 30, 10][i]! }));
+    const options = { size: { width: 720, height: 800 }, cumulative: false, threshold: false, methodNote: true, footnotes: ['One.', 'Two.', 'Three.'] };
+    const svg = String((render({ spec: { type: 'pareto', data: { items }, options }, return: ['svg'] }).body as { svg: string }).svg);
+    expect(svg).toContain('Columns by rank (1-3)');
+    // A drawn rank number does not read without its key, so the live frame keeps the key outside the budget.
+    const live = requireGeometry(getChart('pareto')!.layout({ items }, { ...options, [INTERACTIVE_LAYOUT]: true } as never));
+    expect(live.frame.noteList!.filter((note) => note.inFrame && note.kind === 'disclosure').map((note) => note.text)).toEqual([expect.stringMatching(/^Columns by rank \(1-3\)/)]);
   });
 
   it('a row of plain names keeps one name per column: it turns instead of thinning', () => {
