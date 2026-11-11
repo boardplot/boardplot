@@ -495,6 +495,17 @@ function magnitudeAfterNumber(entry: typeof MAGNITUDE_SUFFIXES[number], lead: st
   return !trimmed.slice(word[0].length).startsWith('/') && (isCurrency(lead) || isCurrency(trimmed.slice(word[0].length))) ? word : null;
 }
 
+/** A currency affix without its scale word: 'USDm ' gives 'USD ', ' Mio. €' gives ' €'. */
+function affixWithoutScale(affix: string): string {
+  const text = affix.trim();
+  if (!currencyAffixMagnitude(text)) return affix;
+  const unit = MAGNITUDE_UNIT.exec(text);
+  const at = unit ? /^\W*/.exec(text)![0].length + (unit[1]?.length ?? 0) + (unit[2]?.length ?? 0) : 0;
+  const word = unit?.[3] ?? SCALED_NOUN_UNIT.exec(text)![1]!;
+  const rest = `${text.slice(0, at)}${text.slice(at + word.length).replace(/^\./, '')}`.replace(/\s+/g, ' ').trim();
+  return `${/^\s*/.exec(affix)![0]}${rest}${/\s*$/.exec(affix)![0]}`;
+}
+
 function affixMagnitude(spec: NumberFormatSpec): void {
   if (spec.magnitude !== 'none' || (spec.prefix === '' && spec.suffix === '')) return;
   const magnitude = currencyAffixMagnitude(spec.prefix) ?? currencyAffixMagnitude(spec.suffix);
@@ -1839,7 +1850,9 @@ function chartFormatLint(
     // A unit that names the format's own scale ("$B") says the values are in that scale already:
     // the letter divides them a second time, and more decimals only print "+$0.000000002B". The fix drops the letter.
     if (spec.magnitude !== 'none' && unitMagnitude(unit) === spec.magnitude) {
-      const plain = formatWithSpec(spec.thousandsSep ? 1234 : 1, { ...spec, magnitude: 'none', magnitudeWord: undefined });
+      // A scale inside a currency affix ('USDm 1.2') leaves the affix too, or parsing the fix restores it.
+      const affix = (text: string) => spec.magnitudeInAffix ? affixWithoutScale(text) : text;
+      const plain = formatWithSpec(spec.thousandsSep ? 1234 : 1, { ...spec, magnitude: 'none', magnitudeWord: undefined, magnitudeInAffix: undefined, prefix: affix(spec.prefix), suffix: affix(spec.suffix) });
       const shown = raised ? shared.fmt(smallest) : zeroRecords[0]?.value.displayed ?? formatWithSpec(smallest, withChartMarks(spec, locale));
       return [{
         code: 'format-hides-values',
