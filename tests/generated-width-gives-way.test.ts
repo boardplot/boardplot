@@ -121,6 +121,11 @@ describe('a form whose floor is above the asked width gives way', () => {
       categories: weekdays.map((day) => ({ id: day.toLowerCase(), label: day })),
       series: [{ id: 'share', label: 'Share', values: [12, 38, 5, 0.4, 100, 57.5, 66] }],
     }, { title: 'Share of orders by weekday', theme: 'notation', size: { width: 480 } }],
+    // Full mode picked three panel columns whose cells needed 1,072 px, where two columns draw from 712 px.
+    ['waffle', {
+      categories: [{ id: 'tel', label: 'Telecommunications' }, { id: 'man', label: 'Manufacturing' }, { id: 'pha', label: 'Pharmaceuticals' }],
+      series: [{ id: 'share', label: 'Share', values: [42, 57, 33] }],
+    }, { title: 'Share of firms with a data team', grid: { rows: 2, columns: 40 }, mode: 'full', size: { width: 720 } }],
     ['gantt', { rows: ganttRows }, { title: 'Program plan', today: '2026-07-03', legend: { position: 'right' }, size: { width: 470 } }],
     // The solver seats the step values with less than the floor's air; at 390 px it thins them itself.
     ['waterfall', {

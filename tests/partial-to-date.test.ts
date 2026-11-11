@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { getFixtures } from '../src/fixtures';
 import { measure } from '../src/index';
+import { render } from '../src/cli/render';
 
 const geometry = (width: number, labels?: unknown, last: unknown = 50): any => (measure({
   type: 'combo',
@@ -255,5 +256,23 @@ describe('to-date words over a thin variance band', () => {
     } as never) as any).geometry;
     expect(nodes(g).filter(node => node.id === 'label:point:mar:body')).toEqual([]);
     expect(nodes(g).some(node => node.part === 'legendLabel' && /^Partial$|running through today$/.test(node.lines.join(' ')))).toBe(true);
+  });
+});
+
+describe('running period whose label says "to date"', () => {
+  // The note and the hatch key added the words again to a label that already said them: "1 Nov to date to date".
+  it('names the period once in the note and in the key', () => {
+    const spec = (options: Record<string, unknown>): any => ({
+      type: 'column',
+      data: {
+        categories: [{ id: 'a', label: '25 Oct' }, { id: 'b', label: '1 Nov to date', partial: true }],
+        series: [{ id: 'orders', label: 'Orders', values: [30, 12] }],
+      },
+      options: { title: 'Weekly orders', size: { width: 600 }, ...options },
+    });
+    const noted = render({ spec: spec({}), return: ['reading'] }).body as any;
+    expect(noted.reading.notes.map((note: any) => note.text)).toEqual(['1 Nov to date']);
+    const keyed = (measure(spec({ legend: 'bottom' }) as never) as any).geometry;
+    expect(nodes(keyed).filter(node => String(node.id).startsWith('frame:legendLabel')).map(node => node.lines?.join(' '))).toContain('1 Nov to date');
   });
 });

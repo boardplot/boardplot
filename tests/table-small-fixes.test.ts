@@ -225,6 +225,21 @@ it('names missing calculation inputs while keeping structural and authored place
   expect(kit.cells.a!.displayed).toBe('\u2013'); expect(kit.cells.c!.displayed).toBe('\u2013');
 });
 
+// A result row printed a dash in a percent change column although its own plan and actual cells exist.
+it('prints the percent change of a result row from its own cells', () => {
+  const data: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'plan', kind: 'value' }, { id: 'act', kind: 'value' },
+      { id: 'pct', kind: 'computed', calc: { op: 'percentDelta', a: 'act', b: 'plan' } },
+      { id: 'mix', kind: 'computed', calc: { op: 'share', of: 'act' } }],
+    rows: [{ id: 'sales', label: 'Sales', cells: { plan: 1000, act: 1100 } },
+      { id: 'costs', label: 'Costs', cells: { plan: 600, act: 650 } },
+      { id: 'profit', label: 'Profit', kind: 'result', calc: { op: 'sub', a: { ref: { row: 'sales' } }, b: { ref: { row: 'costs' } } } }],
+  };
+  const profit = resolveTable(data, { target: 'report' }).table.rows.find(r => r.id === 'profit')!;
+  expect(profit.cells.pct).toMatchObject({ raw: 12.5, state: 'value' });
+  expect(profit.cells.mix!.state).toBe('missing');
+});
+
 // An input left blank on purpose has nothing to compare, so the change keeps the structural dash and not n/a.
 it('keeps the dash when a calculation input is an explicit blank', () => {
   const data: TableData = {
@@ -363,6 +378,16 @@ it('keeps the unit in the cells of a row that prints no scale letter under a for
   }, { magnitude: 'million' });
   expect(table.rows.map((row) => row.cells.q1!.displayed)).toEqual(['4.1', '2.5', '$215.9', '5.1x']);
   expect(table.rows.map((row) => row.unitAffix)).toEqual(['$M', '$M', undefined, undefined]);
+});
+
+// A forced thousand moved a count row with its own '1.23M' format to "5,505" under a "k" label.
+it('keeps the authored scale of a count row under a forced magnitude', () => {
+  const { table } = resolveTable({
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'q1', kind: 'value' }],
+    rows: [{ id: 'sales', label: 'Sales', format: '$1.2m', cells: { q1: 5_100_000 } },
+      { id: 'users', label: 'Users', scale: 'count', format: '1.23M', cells: { q1: 5_505_000 } }],
+  }, { magnitude: 'thousand' });
+  expect(table.rows.map((row) => [row.cells.q1!.displayed, row.unitAffix])).toEqual([['5,100', '$k'], ['5.51M', undefined]]);
 });
 
 // A '1,234k' column printed 1,080,000 as "1.1M" under its "(k)" head: the example's grouped digits hold the magnitude.
