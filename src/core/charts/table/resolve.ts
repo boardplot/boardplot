@@ -3000,10 +3000,12 @@ function evaluateTableCalcs(
     const states = rawState.get(row.id)!;
     const sourceStates = new Map(states);
     for (const col of numericCols) {
-      if (col.kind === 'computed' && !calcPreservesScale(col.calc)) continue;
+      // A share of the leaf total has no meaning for a row that is no leaf: it stays missing.
+      if (col.kind === 'computed' && 'op' in col.calc && col.calc.op === 'share') continue;
       // A delta column, or a sub column of two cells, takes the change of a nonlinear row calc's own cells
       // (a margin), not the ratio of the changes. A sum column keeps running the row calc on the sums: a YTD growth is the ratio of sums.
-      const ownCalc = col.kind === 'computed' && isChangeCalc(col.calc) && !calcIsLinear(row.calc!);
+      // A column that leaves the row's scale (a percent change, a ratio) runs on the row's own cells too.
+      const ownCalc = col.kind === 'computed' && (!calcPreservesScale(col.calc) || (isChangeCalc(col.calc) && !calcIsLinear(row.calc!)));
       const calc = ownCalc ? col.calc : row.calc!;
       const read = ownCalc ? states : sourceStates;
       let res = evalCalc(calc, row, read, leafTotal, ownCalc ? undefined : {
