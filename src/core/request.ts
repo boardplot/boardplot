@@ -582,7 +582,7 @@ interface WidthProbe {
  * own mode. A drawn width names its form's floor, a refused one the width its refusal names. Probes
  * skip the repair search of a refusal, which only refines that width.
  */
-function widthProbers(request: ResolvedChartRequest, layoutAt: LayoutCall<any, any, any>, known?: Map<number, WidthProbe>): { full: (width: number) => WidthProbe; any: (width: number) => WidthProbe } {
+function widthProbers(request: ResolvedChartRequest, layoutAt: LayoutCall<any, any, any>, known?: Map<number, WidthProbe>, verify = false): { full: (width: number) => WidthProbe; any: (width: number) => WidthProbe } {
   const own = request.options as RequestOptions;
   const def = getChart(request.type);
   const table = request.type === 'table' || request.type === 'dimswitch';
@@ -593,6 +593,12 @@ function widthProbers(request: ResolvedChartRequest, layoutAt: LayoutCall<any, a
   // Render's own steps lay out other requests (wider authored columns, stepped type, a smaller class): fresh calls.
   const stepLayout = (asked: ResolvedChartRequest): LayoutResult => {
     const run = preparedLayout(asked);
+    try { return run(probeOptions(asked.options) as RequestOptions); } finally { run.finish(); }
+  };
+  // A width kept for later calls (`known`) is laid out as render lays it out alone, in a call of its own. A call keeps
+  // memos for the request it was opened for, so a kept width must not depend on which call laid it out first.
+  const alone = (asked: ResolvedChartRequest): LayoutResult => {
+    const run = preparedLayout(asked, verify);
     try { return run(probeOptions(asked.options) as RequestOptions); } finally { run.finish(); }
   };
   // `shared` holds the widths of earlier calls; the asked width is this call's own layout and stays in it.
@@ -633,7 +639,7 @@ function widthProbers(request: ResolvedChartRequest, layoutAt: LayoutCall<any, a
     // The asked width is the layout render made.
     const asked = width === request.size.width ? request
       : { ...request, size: { ...request.size, width }, options: { ...request.options, size: { width } } as RequestOptions };
-    const first = layoutAt((asked === request ? request.options : probeOptions(asked.options)) as RequestOptions);
+    const first = asked === request ? layoutAt(request.options as RequestOptions) : known ? alone(asked) : layoutAt(probeOptions(asked.options) as RequestOptions);
     if (!isRefused(first)) return read(first, true);
     const drawn = afterFirstLayout(asked, first, stepLayout, stepLayout, stepLayout);
     if (isRefused(drawn)) return read(first, false);
@@ -1128,7 +1134,7 @@ function measureWithLayout(request: ResolvedChartRequest, result: LayoutResult,
   // height drawn there, so the size a refusal names draws too.
   const staticMinWidth = def === undefined ? 0 : declaredSizing(def, request.options).minWidth;
   // The search shares its probes with render advice and with earlier measures of the same request at other widths.
-  const probers = widthProbers(request, layoutAt, openWidth ? openWidthProbes(request, verify) : undefined);
+  const probers = widthProbers(request, layoutAt, openWidth ? openWidthProbes(request, verify) : undefined, verify);
   let fullFrom = Infinity;
   if (openWidth) {
     const full = drawsFrom(probers.full, Math.max(request.size.width, sizing.minWidth), staticMinWidth - 1);
