@@ -806,6 +806,16 @@ it('warns once per blank status label and offers its removal', () => {
   expect(layout('table', data).warnings.filter(warning => warning.code === 'status-label-blank')).toEqual(warnings);
 });
 
+// Changes of 4.96% and 5.04% both printed +5% but fell on two sides of a 5% materiality threshold, so they took two tones.
+it('mutes a change by its printed figure at the materiality threshold', () => {
+  const { table } = resolveTable({
+    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'a', kind: 'value' }, { id: 'p', kind: 'value' },
+      { id: 'd', kind: 'computed', calc: { op: 'percentDelta', a: 'a', b: 'p' }, polarity: 'higherIsBetter', format: '+1%', materiality: { pct: 5 } }],
+    rows: [104.96, 105.04, 104.4].map((a, i) => ({ id: `r${i}`, label: `Store ${i}`, cells: { a, p: 100 } })),
+  });
+  expect(table.rows.map((row) => [row.cells.d!.displayed, row.cells.d!.tone])).toEqual([['+5%', 'good'], ['+5%', 'good'], ['+4%', 'neutral']]);
+});
+
 // Under tones: 'fill' an inline line of one tone sits on its parent's fill of another tone; its text read under 4.5:1 there.
 it('prints tone text at 4.5:1 on every tone fill under tones fill', () => {
   for (const [name, preset] of Object.entries(themes)) {

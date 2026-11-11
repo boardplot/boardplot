@@ -1334,12 +1334,17 @@ export function exampleSpec(example: string, locale?: string, unit?: string, val
 
 /**
  * The example that sets how a chart prints its computed shares: `shareLabels.format`,
+ * else the percent `series[].format` that every data series sets alike (a series format
+ * overrides options.format, and a whole prints its shares at one precision),
  * else `options.format` when it is a percent example ("1.0%"). A format without a
  * percent sign belongs to the values and gives none.
  */
-export function shareFormatExample(options: { format?: string; shareLabels?: { format?: string } }): string | undefined {
+export function shareFormatExample(options: { format?: string; shareLabels?: { format?: string } }, series: readonly { format?: string }[] = []): string | undefined {
   if (options.shareLabels?.format) return formatExampleText(options.shareLabels.format);
-  return options.format && parseFormatExample(options.format).suffix.includes('%') ? formatExampleText(options.format) : undefined;
+  const percent = (example: string | undefined): example is string => example !== undefined && parseFormatExample(example).suffix.includes('%');
+  const own = series[0]?.format;
+  if (percent(own) && series.every((s) => s.format === own)) return formatExampleText(own);
+  return percent(options.format) ? formatExampleText(options.format) : undefined;
 }
 
 /** Parse an example and return a ready-to-use formatter. The chart locale is required (pass undefined for none), so no caller forgets it. */
