@@ -69,7 +69,7 @@ import { comboValueLabels, FIRST_END_BELOW_TOTALS, flagDroppedEndpointLabels, IN
 import { applyGrowthInk, planComboLabels } from './labels';
 import { layoutComboMarks } from './marks';
 import { MARKER_R, type ComboArea, type ComboDomain, type ComboEnv, type ComboMarkGeometry, type ComboPaints } from './model';
-import { comboPaints, contentOf, comboPlotArea, refitComboFrame, solveComboFrame, toDateOnTotals } from './plot';
+import { comboPaints, composeText, contentOf, comboPlotArea, refitComboFrame, solveComboFrame, toDateOnTotals } from './plot';
 import { PARTIAL_KEY, toDateFits, toDateRoom } from '../../partialPeriod';
 import type { ComboOptions } from '../../types/options';
 import { DEFER_DENSITY_NOTES, DENSITY_VALUES, DENSITY_LAYOUT_OPTIONS, authoredNotes, noteCap, noteLine, POINTED_NOTES, withAuthoredFootnotes, type InternalFootnoteOptions } from '../../frame';
@@ -155,6 +155,9 @@ function annotateCombo(
       const owner = { categoryId: c.id, seriesId: norm.seriesId };
       const named = [...columns, ...domain.lines, ...domain.refs].find((s) => s.id === norm.seriesId);
       const series = { format: named?.format, ...(named && columns.length + domain.lines.length > 1 ? { series: { id: named.id, label: named.label } } : {}) };
+      // The value as the series' own point or segment label prints it: its unit, scale and precision.
+      const markValueText = (s: NonNullable<typeof named>, v: number): string => composeText(domain, ['absolute'], { abs: v, isPct: s.vals[ci]!.isPct, format: domain.explicitFormatOf(s, s.vals[ci]!) },
+        c.label ?? c.id, s.label, s.format ? env.byExample(s.format) : domain.scaleFmtOf(s));
       const reference = domain.refs.find((s) => s.id === norm.seriesId);
       if (reference && geometry.nodes.some((node) => node.id === `ref:${reference.id}:${c.id}`)) {
         const v = reference.vals[ci]!.v;
@@ -166,13 +169,13 @@ function annotateCombo(
         const v = ls.vals[ci]!.v;
         if (v === null) return null;
         const yFor = ls.axis === 'secondary' && secondaryActive ? y2 : y;
-        return { x: band.center(ci), y: norm.edge === 'start' ? y0 : yFor(v), value: v, date: c.date, label: c.label, owner, lineAnchored: true, ...series };
+        return { x: band.center(ci), y: norm.edge === 'start' ? y0 : yFor(v), value: v, markValueText: markValueText(ls, v), date: c.date, label: c.label, owner, lineAnchored: true, ...series };
       }
       const e = geometry.segEdges.get(sk(norm.seriesId, c.id));
       if (!e) return null;
       const edge = norm.edge ?? 'end';
       const yy = edge === 'start' ? y(e.v0) : edge === 'end' ? y(e.v1) : y(Math.max(e.v0, e.v1));
-      return { x: band.center(ci), y: yy, value: e.v, date: c.date, label: c.label, owner, ...series };
+      return { x: band.center(ci), y: yy, value: e.v, ...(named ? { markValueText: markValueText(named, e.v) } : {}), date: c.date, label: c.label, owner, ...series };
     }
     // category level: column stack total
     if (columns.length === 0) return null;

@@ -243,3 +243,16 @@ it('warns when a line lies flat on the scale it shares with larger columns', () 
     { op: 'add', path: '/options/secondaryAxis', value: { acknowledge: true } },
   ]);
 });
+
+// A pinned secondary range no ladder step divides put ticks at 1.55 and 2.65, which the axis format printed as "1.6" and "2.7".
+it('puts pinned secondary ticks on values the axis format prints exactly', () => {
+  const geometry = requireGeometry(layoutCombo({
+    categories: ['a', 'b', 'c'].map((id) => ({ id })),
+    series: [
+      { id: 'volume', label: 'Volume', kind: 'column', values: [10, 15, 20] },
+      { id: 'index', label: 'Index', kind: 'line', axis: 'secondary', values: [1.2, 2, 3.2] },
+    ],
+  }, { title: 'T', secondaryAxis: { acknowledge: true, domain: [1, 3.2], format: '0.0' } }));
+  const ticks = geometry.scene.flatMap((node) => node.t === 'text' && node.id.startsWith('axis:y2:tick:') ? [node.lines[0]] : []);
+  expect(ticks).toEqual(['1.0', '1.5', '2.0', '2.5', '3.0']);
+});
