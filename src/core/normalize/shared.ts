@@ -84,6 +84,12 @@ export function normalizeScenario(s: string | undefined, path: string, namedBase
 }
 
 /** Category shorthands. */
+/**
+ * A series a bar or column ranks and cuts by: every series but a reference. The
+ * topN cut and the item budget both read it, so the budget counts what the cut keeps.
+ */
+export const ranksCategories = (series: { role?: string }): boolean => (series.role ?? 'data') === 'data';
+
 export function normalizeCategory(raw: string | Category, index: number): Category {
   if (typeof raw === 'string') return { id: raw, label: raw };
   if (!raw || typeof raw !== 'object' || !raw.id) {

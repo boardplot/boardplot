@@ -55,7 +55,7 @@ export const IGNORED_ON: Readonly<Record<string, { types: readonly string[]; doe
   labelDensity: { types: ['table', 'dimswitch'], does: 'On a chart, labelDensity sets how many value labels print. A table prints every cell.' },
   highlight: { types: ['bartable'], does: 'On a bar, column, line or table chart, highlight colours the named series or categories. A bar table draws no highlight.' },
   valueAxis: { types: ['grid', 'treemap', 'waffle'], does: 'On a chart with a value axis, valueAxis sets its scale. A grid panel takes its own valueAxis, and a treemap or waffle has no value axis.' },
-  'topN.threshold': { types: ['butterfly', 'mekko', 'pie'], does: 'On bar and table, topN.threshold also drops a kept category below the value. Here the rank cut is topN.n alone.' },
+  'topN.threshold': { types: ['butterfly', 'mekko', 'pie', 'variance'], does: 'On bar, column and table, topN.threshold also drops a kept category below the value. Here the rank cut is topN.n alone.' },
 };
 
 /**

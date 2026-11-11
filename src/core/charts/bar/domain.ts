@@ -20,6 +20,7 @@ import {
   normalizeScenario,
   resolveHighlight,
   resolveSize,
+  ranksCategories,
 } from '../../normalize/shared';
 import { resolveCellRange, type DataRange } from '../../rangeRules';
 import { defaultMeasurer } from '../../text';
@@ -463,7 +464,7 @@ export function resolveBarDomain(data: ChartData, options: BarOptions, warnings:
   const connectorScope =
     typeof options.connectors === 'object' ? (options.connectors.scope ?? 'all') : 'all';
   const { rawCats, normSeries } = normalizeBarSeries(data, warnings);
-  const dataSeries = sortSegments(normSeries.filter((s) => s.role === 'data'), options.sort?.segments, (s) => s.cells.reduce((sum, cell) => sum + (cell.v ?? 0), 0));
+  const dataSeries = sortSegments(normSeries.filter(ranksCategories), options.sort?.segments, (s) => s.cells.reduce((sum, cell) => sum + (cell.v ?? 0), 0));
   const refSeries = normSeries.filter((s) => s.role === 'reference');
   if (dataSeries.length === 0) {
     throw new NormalizeError('no-data-series', 'series', 'bar requires at least one data-role series', undefined, undefined, ['data', 'series']);

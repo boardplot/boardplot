@@ -14,7 +14,9 @@
  */
 
 import { crowdedTailCut } from './paretoTail';
-import { NormalizeError } from './normalize/shared';
+import { NormalizeError, normalizeCategory, normalizeSeriesValues, ranksCategories } from './normalize/shared';
+import { cellValue } from './types/cell';
+import type { ChartData } from './types/data';
 
 export const ITEM_BUDGET = 2000;
 
@@ -85,20 +87,20 @@ interface BudgetOptions {
   window?: { last?: number };
 }
 
-/** How many bar categories have an absolute total of at least `threshold`. */
+/**
+ * How many bar or column categories have an absolute total of at least `threshold`,
+ * summed over the series and cells the topN cut reads (charts/topN.ts).
+ */
 function barTotalsAtLeast(data: unknown, threshold: number): number {
-  const series = (data as { series?: unknown } | null | undefined)?.series;
-  const categories = (data as { categories?: unknown[] } | null | undefined)?.categories ?? [];
-  const totals = new Float64Array(categories.length);
-  if (Array.isArray(series)) for (const one of series) {
-    const values = (one as { values?: unknown } | null)?.values;
-    if (!Array.isArray(values)) continue;
-    for (let i = 0; i < totals.length && i < values.length; i += 1) {
-      const cell = values[i];
-      const value = typeof cell === 'number' ? cell : (cell as { v?: unknown } | null)?.v;
-      if (typeof value === 'number' && Number.isFinite(value)) totals[i] = totals[i]! + value;
-    }
-  }
+  const { categories, series } = data as Pick<ChartData, 'categories' | 'series'>;
+  // Malformed data passes here, so the layout's own refusal answers.
+  if (!Array.isArray(series) || !Array.isArray(categories)) return 0;
+  const cats = categories.map(normalizeCategory);
+  const totals = new Float64Array(cats.length);
+  series.forEach((one, index) => {
+    if (!ranksCategories(one)) return;
+    normalizeSeriesValues(one, cats, index).forEach((cell, i) => { totals[i] = totals[i]! + (cellValue(cell) ?? 0); });
+  });
   let count = 0;
   for (const total of totals) if (Math.abs(total) >= threshold) count += 1;
   return count;
@@ -115,8 +117,8 @@ function drawnCount(type: string, key: string, list: unknown[], data: unknown, o
   const topN = options?.topN;
   if (TOP_N_TYPES.has(type) && topN?.n !== undefined && topN.n > 0 && !(type === 'column' && options?.anomaly)) {
     let kept = Math.min(count, type === 'bar' ? Math.max(1, topN.n) : topN.n);
-    // A bar's threshold drops every kept category whose total is under it (topNCut in charts/topN.ts).
-    if (type === 'bar' && topN.threshold !== undefined) kept = Math.min(kept, Math.max(1, barTotalsAtLeast(data, topN.threshold)));
+    // A bar's or column's threshold drops every kept category whose total is under it (topNCut in charts/topN.ts).
+    if ((type === 'bar' || type === 'column') && topN.threshold !== undefined) kept = Math.min(kept, Math.max(1, barTotalsAtLeast(data, topN.threshold)));
     count = Math.min(count, kept + (type === 'dot' || type === 'variance' || topN.rest === false || kept === count ? 0 : 1));
   }
   if (VIEWPORT_TYPES.has(type) && key === 'categories') {
