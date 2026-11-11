@@ -49,7 +49,7 @@ import { accessibleTitle,
 } from '../../normalize/shared';
 import { linearScale } from '../../scale';
 import { authoredNotes, frameTextOptions, normalizeLegendOption, solveFrame, type LegendItemInput, authoredFootnoteCount } from '../../frame';
-import { rowSizing } from '../../sizing';
+import { rowSizing, sideKeyOff } from '../../sizing';
 import { defaultMeasurer, type FontSpec } from '../../text';
 import {
   canvasMargin,
@@ -242,6 +242,7 @@ export function layoutFunnel(
       ...frameTextOptions(options),
       footnotes: [...authoredNotes(options), ...clampedNote(clamped, options)],
       legend: keyed,
+      ...(sideKeyOff(options) ? { sideKeyGivesWay: true } : {}),
       theme,
       measure,
     },

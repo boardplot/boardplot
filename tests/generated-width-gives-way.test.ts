@@ -315,4 +315,20 @@ describe('a key beside the plot gives way where the chart then fits its width', 
   it.each([280, 286])('heatmap capability-matrix draws at %i px', (width) => {
     expect(draw('heatmap', 'capability-matrix', { legend: 'left', size: { width } }).refused).toBeFalsy();
   });
+  // The same band: butterfly drew from 311 px and was refused at 358 to 393 px, funnel drew at 289 to 298 px and was refused at 299 to 302 px.
+  it.each([['butterfly', 'fixed-label-column', 358], ['butterfly', 'fixed-label-column', 393], ['funnel', 'lead-funnel-centered', 299], ['funnel', 'lead-funnel-centered', 302]] as const)(
+    '%s %s draws at %i px', (type, id, width) => {
+      expect(draw(type, id, { legend: 'left', size: { width } }).refused).toBeFalsy();
+    });
+});
+
+describe('a chart refused just over a margin step draws with the margins under the step', () => {
+  // The default side margins step up 8 px at 840 px: a bar table that drew at 835 to 839 px was refused at 840 to 842 px.
+  it('draws a bar table at 840 px that draws at 839 px', () => {
+    const data = { categories: [{ id: 'c', label: '漢'.repeat(59) }], series: [{ id: 's', label: 'Series' }], panels: [{ id: 'p', label: 'Panel', values: { s: [1] } }] };
+    const drawn = [839, 840].map((width) => !isRefused(layoutResolvedRequest(resolveChartRequest({
+      type: 'bartable', data, options: { mode: 'full', total: false, columnHeads: false, labels: { point: false }, size: { width } },
+    } as never))));
+    expect(drawn).toEqual([true, true]);
+  });
 });

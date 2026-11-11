@@ -55,7 +55,7 @@ import { comboValueLabels, endpointGutters, FIRST_END_BELOW_TOTALS, INSIDE_ENDPO
 import type { ForecastBoundary } from '../line/forecast';
 import { MARKER_R, type ComboArea, type ComboDomain, type ComboEnv, type ComboPaints, type GrowthItem, type NormSer } from './model';
 import { formatAutomaticNumber, formatAutomaticPercent, formatShare } from '../../format';
-import { comboBandFraction, primaryLineMean, secondaryPrimaryRange } from './domain';
+import { comboBandFraction, primaryLineMean, secondaryPrimaryRange, totalColumn } from './domain';
 import { autoDecimals } from '../../formatPrecision';
 import { valueShareLines } from '../band/labels';
 import { categoryLabelsAndMarks, withCategoryNoteNames } from '../../footnoteMark';
@@ -602,17 +602,16 @@ export function kindSetting(domain: ComboDomain, kind: LabelKind): boolean | Lab
 export function composeLines(
   domain: ComboDomain,
   content: LabelContent,
-  value: { abs: number | null; isPct: boolean; share?: number | null; shareText?: string; format?: string },
+  value: { abs: number | null; isPct: boolean; share?: number | null; shareText?: string },
   catLabel: string,
   serLabel: string,
-  serFmt: (v: number) => string,
+  valueFmt: (v: number) => string,
 ): string[] {
   const { abs, isPct, share } = value;
-  const explicit = !value.format ? undefined : value.format === domain.options.format ? domain.fmt : formatterFromExample(value.format, domain.options.locale?.language);
   const parts: [LabelContent[number], string][] = [];
   for (const c of content) {
-    if (c === 'absolute' && abs !== null) parts.push([c, explicit ? explicit(abs) : isPct ? domain.pctFmt(abs) : serFmt(abs)]);
-    else if (c === 'percent' && abs !== null && isPct) parts.push([c, explicit ? explicit(abs) : domain.pctFmt(abs)]);
+    if (c === 'absolute' && abs !== null) parts.push([c, valueFmt(abs)]);
+    else if (c === 'percent' && abs !== null && isPct) parts.push([c, valueFmt(abs)]);
     else if (c === 'percent' && share !== undefined && share !== null) parts.push([c, value.shareText ?? formatShare(share, domain.options.locale?.language)]);
     else if (c === 'category' && catLabel) parts.push([c, catLabel]);
     else if (c === 'series' && serLabel) parts.push([c, serLabel]);
@@ -657,8 +656,8 @@ export function comboPlotArea(
     && (domain.dHi - tallest) / (domain.dHi - domain.dLo) * estPlotH >= gtH + 6 + 4
     // A total seats inside its column only where the column holds it; a narrow column puts it over
     // the top, where a line through the column top (a Pareto's first share point) takes the seat.
-    && frame.plot.w / Math.max(1, cats.length) * 0.6 >= Math.max(0, maxOf(cats.map((c) => measure(composeText(domain, gtContent ?? ['absolute'],
-      { abs: domain.stackTotals[c.id] ?? 0, isPct: false, format: domain.options.format }, c.label ?? c.id, '', domain.fmt), strongFont).width))) + 8;
+    && frame.plot.w / Math.max(1, cats.length) * 0.6 >= Math.max(0, maxOf(cats.map((c, ci) => measure(composeText(domain, gtContent ?? ['absolute'],
+      { abs: domain.stackTotals[c.id] ?? 0, isPct: totalColumn(domain, ci)?.vals[ci]?.isPct ?? false }, c.label ?? c.id, '', domain.totalFmtOf(ci)), strongFont).width))) + 8;
   const totalsRow = gtContent && !(domain.anatomy && columns.length === 1) && !totalsAirInScale ? gtH + 6 : 0;
   // A tinted column fill is no text colour: its axis title takes the ink.
   const columnTitlePaint = (paint: Paint): Paint => ('tint' in paint && paint.tint !== undefined ? { token: 'ink' } : paint);
@@ -716,8 +715,8 @@ export function comboPlotArea(
     lines,
     (series, ci) => {
       const value = series.vals[ci]!;
-      return composeText(domain, pointContent ?? ['absolute'], { abs: value.v, isPct: value.isPct, format: domain.explicitFormatOf(series, value) }, cats[ci]!.label ?? cats[ci]!.id,
-        series.label, series.format ? env.byExample(series.format) : domain.scaleFmtOf(series));
+      return composeText(domain, pointContent ?? ['absolute'], { abs: value.v, isPct: value.isPct }, cats[ci]!.label ?? cats[ci]!.id,
+        series.label, domain.valueFmtOf(series, value));
     },
     { first: s => pointContent !== null && (['ends', 'extremes', 'all'].includes(valueLabels)
       || (options.valueLabels === undefined && domain.secondaryActive && s.axis === 'secondary')),

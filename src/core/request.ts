@@ -14,7 +14,7 @@ import { chartRefusals, isRefused } from './schema/refusals';
 import { movedGridWarnings, movedWidthWarnings, TRACK_WIDTH_TYPES, widthsThatDraw, type WidthGroup, type WidthStep } from './charts/columnOverrides';
 import { isRecord } from './lint/shared';
 import type { ColumnOverride } from './types/options';
-import { DEFAULT_PRESET, panelTypeClass, REMOVED_NAMES, removedNameWarnings, resolveTargetTheme, resolveTheme, typeWidthClass, WIDE_CANVAS_MIN_WIDTH, withTypeClassCap, type TypeWidthClass } from './theme';
+import { DEFAULT_PRESET, inMarginStepBand, panelTypeClass, REMOVED_NAMES, removedNameWarnings, resolveTargetTheme, resolveTheme, typeWidthClass, WIDE_CANVAS_MIN_WIDTH, withMarginStepBelow, withTypeClassCap, type TypeWidthClass } from './theme';
 import { DEFAULT_TARGET, floorTextScale, resolveTargetSize } from './target';
 import { textScaleOf, textSizeOf } from './typeFloors';
 import { defaultMeasurer, type TextMeasurer } from './text';
@@ -343,7 +343,26 @@ function afterFirstLayout(request: ResolvedChartRequest, first: LayoutResult, la
   const last = fittedLate ? fittedLate[1] : drawn;
   const final = fittedLate ? fittedLate[0] : asked;
   const stepped = smallerClass(final, last, plainLayout) ?? last;
-  return typeStepped(result, narrowerForm(final, stepped, plainLayout) ?? stepped);
+  const drawnLast = typeStepped(result, narrowerForm(final, stepped, plainLayout) ?? stepped);
+  const below = marginBelowRequest(request, drawnLast);
+  const marginStepped = below && afterFirstLayout(below, layout(below), layout, probe, plainLayout);
+  return marginStepped && !isRefused(marginStepped) ? drawnBy(marginStepped, 'marginStep') : drawnLast;
+}
+
+/** A request whose layouts take the default canvas margins of the step under its width (`withMarginStepBelow`). */
+const MARGIN_BELOW = Symbol('boardplot.marginBelow');
+
+/**
+ * The default side margins step up at 600 and 840 px, so a few pixels over a step leave a narrower plot than the
+ * pixel under it. A chart refused there takes render's steps again with the margins of the step below and draws
+ * if that fits, so a chart that draws at a width draws at every wider width. Every drawn chart keeps its layout.
+ * An authored belowMinimum 'refuse' and a grid panel keep the refusal, as for the class step.
+ */
+function marginBelowRequest(request: ResolvedChartRequest, result: LayoutResult): ResolvedChartRequest | undefined {
+  const options = request.options as RequestOptions & { [MARGIN_BELOW]?: true };
+  if (options[MARGIN_BELOW] || !stepsDown(result) || !inMarginStepBand(request.size.width) || panelTypeClass(options) !== undefined
+    || options.belowMinimum === 'refuse') return undefined;
+  return { ...request, options: { ...options, [MARGIN_BELOW]: true } as RequestOptions };
 }
 
 /**
@@ -360,7 +379,7 @@ function narrowerForm(request: ResolvedChartRequest, result: LayoutResult, layou
 
 /** Which of render's later steps drew a result; it survives the copies render and the request cache make. */
 const DRAWN_BY = Symbol('boardplot.drawnBy');
-type DrawnBy = 'narrowerForm' | 'smallerClass';
+type DrawnBy = 'narrowerForm' | 'smallerClass' | 'marginStep';
 function drawnBy(result: LayoutResult, step: DrawnBy): LayoutResult {
   return Object.assign(result, { [DRAWN_BY]: step });
 }
@@ -914,13 +933,17 @@ function preparedLayout(request: ResolvedChartRequest, verifyAdvice = false): La
     return extra.length ? { ...result, warnings: [...result.warnings, ...extra] } : result;
   };
   const draw = (frame: RequestOptions, fresh = false): LayoutResult => {
-    if (!run) return disclose(def.layout(request.data, { ...frame, theme: options.theme, [REMOVED_NAMES]: options[REMOVED_NAMES] }));
+    if (!run) {
+      const plain = () => disclose(def.layout(request.data, { ...frame, theme: options.theme, [REMOVED_NAMES]: options[REMOVED_NAMES] }));
+      return (options as { [MARGIN_BELOW]?: true })[MARGIN_BELOW] ? withMarginStepBelow(plain) : plain();
+    }
     const current: Record<PropertyKey, unknown> = fresh ? { ...options } : { ...options, [LAYOUT_CALL]: run };
     for (const key of ['size', 'mode', 'belowMinimum', FULL_LAYOUT_PROBE, WIDTH_PROBE, FIXED_SIZE_PROBE, PLAN_ONLY] as const) {
       if (Object.hasOwn(frame, key)) current[key] = (frame as RequestOptions & Record<PropertyKey, unknown>)[key];
       else delete current[key];
     }
-    return disclose(def.layout(request.data, current));
+    // A margin-stepped request lays out with the margins of the step under its width (marginBelowRequest).
+    return (options as { [MARGIN_BELOW]?: true })[MARGIN_BELOW] ? withMarginStepBelow(() => disclose(def.layout(request.data, current))) : disclose(def.layout(request.data, current));
   };
   // The frame probes of a chart that drew in a smaller class draw as render does at that frame:
   // a smaller class lays out in a fresh call, as render's class step does.
@@ -1057,6 +1080,9 @@ function measureWithLayout(request: ResolvedChartRequest, result: LayoutResult,
   // render's class step at every probed frame. measure and the CLI's measureLayout both pass through here.
   const step = drawnStep(result);
   if (step === 'smallerClass' && !classStepping) return measuredWithClassStep(() => measureWithLayout(request, result, layoutAt, verify, asked));
+  if (step === 'marginStep' && !(request.options as { [MARGIN_BELOW]?: true })[MARGIN_BELOW]) {
+    return measureSteps({ ...request, options: { ...request.options, [MARGIN_BELOW]: true } as RequestOptions });
+  }
   if (step === 'narrowerForm' && !(request.options as { [NARROW_FORM]?: true })[NARROW_FORM]) {
     const narrow = { ...request, options: { ...request.options, [NARROW_FORM]: true } as RequestOptions };
     const run = preparedLayout(narrow, verify);
@@ -1313,6 +1339,15 @@ function measureWithLayout(request: ResolvedChartRequest, result: LayoutResult,
 }
 
 export function measureResolvedRequest(request: ResolvedChartRequest): ChartMeasurement {
+  const measured = measureSteps(request);
+  // The same margin step as layoutResolvedRequest: a chart render draws with the margins of the step below is measured so.
+  const below = measured.refused && marginBelowRequest(request, measured.refused as LayoutResult);
+  if (!below) return measured;
+  const stepped = measureSteps(below);
+  return stepped.refused ? measured : stepped;
+}
+
+function measureSteps(request: ResolvedChartRequest): ChartMeasurement {
   const runs: LayoutCall<any, any, any>[] = [];
   const open = (opened: ResolvedChartRequest) => { const run = preparedLayout(opened, true); runs.push(run); return run; };
   try {

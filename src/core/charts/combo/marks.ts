@@ -13,7 +13,6 @@ import { sweepHide } from '../../collide';
 import { layoutValueAxis } from '../../axis';
 import { bandedIntervalTicks } from '../../intervalTicks';
 import { curvePathFromSegments, drawnStroke, monotoneSegments, splitCurveSegmentsAtX, type CurveSegment } from '../../curve';
-import { formatterFromExample } from '../../formatSpec';
 import { round2, type Rect } from '../../geometry';
 import { screenEdges } from '../../label/areaGround';
 import { AREA_FILL_PART } from '../../label/solver';
@@ -175,7 +174,7 @@ function columnMarks(ctx: MarkCtx): void {
           ...(washed ? {} : { separation: { fillStep: true as const, fill: cellFill, backing: { token: 'background' as const }, pattern: cellPat } }),
           owner: { seriesId: s.id, categoryId: c.id },
           part: 'segment',
-          display: { value: (val.format ?? s.format ?? domain.options.format) ? env.byExample((val.format ?? s.format ?? domain.options.format)!)(v) : val.isPct ? domain.pctFmt(v) : domain.fmt(v) },
+          display: { value: domain.valueFmtOf(s, val)(v) },
         });
         claims.claim(rect, 'mark', { seriesId: s.id, categoryId: c.id }, 'segment');
         segs.push({ seriesId: s.id, rect, nodeId });
@@ -200,7 +199,7 @@ function columnMarks(ctx: MarkCtx): void {
       const bw = band.bandwidth;
       const owner = { seriesId: s.id, categoryId: c.id };
       const id = `ref:${s.id}:${c.id}`;
-      const display = { value: (s.vals[ci]!.format ?? s.format ?? domain.options.format) ? formatterFromExample((s.vals[ci]!.format ?? s.format ?? domain.options.format)!, domain.options.locale?.language)(v) : s.vals[ci]!.isPct ? domain.pctFmt(v) : domain.fmt(v) };
+      const display = { value: domain.valueFmtOf(s, s.vals[ci])(v) };
       if (style === 'marker') {
         const cx = band.center(ci);
         // The page-colour ring the combo line markers carry keeps the dot legible on a dark column.
@@ -441,8 +440,7 @@ function lineMark(ctx: MarkCtx, plan: LinePlan, areaNodeId: Id | undefined, ring
       const markerFill: Paint = hollow ? { token: 'background' } : paint;
       const owner = { seriesId: s.id, categoryId: c.id };
       const value = s.vals[p.ci]!;
-      const example = domain.explicitFormatOf(s, value);
-      const display = { value: example ? env.byExample(example)(value.v!) : value.isPct ? domain.pctFmt(value.v!) : domain.scaleFmtOf(s)(value.v!) };
+      const display = { value: domain.valueFmtOf(s, value)(value.v!) };
       g.nodes.push(anatomyDots && !hollow
         ? { t: 'circle', id: markerNodeId, cx: p.x, cy: p.y, r: ANATOMY_DOT_R, fill: markerFill, stroke: { token: 'background' }, strokeWidth: strokeToken(env.theme, 'mark'), owner, part: 'marker', display }
         : markerShape === 'square'

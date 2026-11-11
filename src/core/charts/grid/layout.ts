@@ -1,5 +1,4 @@
 import { alignCategoryPanels, alignValuePanels, moveChildPlot } from '../../grid/panelAlignment';
-import { currentSmallValues } from '../../formatPrecision';
 import { chartString } from '../../strings/grid';
 import { authoredStrings } from '../../strings';
 import { isRecord } from '../../lint/shared';
@@ -49,12 +48,13 @@ import { GridChildRefusal, gridRowHeights, gridSizing, hasKpiFigure, inheritedSc
 import { rebaseRefusal, rebaseWarning, sameField, type Rebase } from '../../normalize/innerRefusal';
 import { KPI_HOST_TEXT, KPI_VALUE_SIZE } from '../../typeFloors';
 import { LEFT_OUT_OF_NOTE, panelNoteTexts, stringsIn } from '../../frame';
-import { autoPlotPx, CARD_CLASS_WIDTH, CARD_MIN_WIDTH, chartSizing, DIGIT_SEAT, heightOmitted, type DigitSeated, NARROW_FORM, NARROW_SHARE_WIDTH, stackedColumnPlotPx } from '../../sizing';
+import { autoPlotPx, CARD_CLASS_WIDTH, CARD_HEIGHT_MEMO, CARD_MIN_WIDTH, chartSizing, DIGIT_SEAT, heightOmitted, type DigitSeated, LAYOUT_CALL, NARROW_FORM, NARROW_SHARE_WIDTH, stackedColumnPlotPx } from '../../sizing';
 import { defaultMeasurer, type FontSpec, type TextMeasurer } from '../../text';
 import {
   canvasMargin,
   panelTypeClass,
   themeRegistrations,
+  layoutStepKey,
   resolveTheme,
   themeForWidth,
   typeWidthClass,
@@ -420,8 +420,8 @@ function reflowed(
     return columns;
   };
   // The request path injects its measurer, so the choices are kept per measurer.
-  const { size: _size, measure, ...rest } = options;
-  const key = `${width}:${height ?? 'auto'}:${currentSmallValues()}:${themeRegistrations()}:${JSON.stringify(rest)}:${JSON.stringify(data)}`;
+  const { measure } = options;
+  const key = `${width}:${height ?? 'auto'}:${layoutCacheKey(options)}:${JSON.stringify(data)}`;
   let cache = REFLOW_CACHE.get(measure ?? DEFAULT_MEASURER);
   if (!cache) REFLOW_CACHE.set(measure ?? DEFAULT_MEASURER, cache = new Map());
   if (!cache.has(key)) {
@@ -430,6 +430,15 @@ function reflowed(
   }
   const chosen = cache.get(key)!;
   return chosen === columns ? options : { ...options, columns: chosen };
+}
+
+/**
+ * The options part of a grid cache key: every option a layout reads, symbol-keyed ones included, the type class cap,
+ * the margin step and the registered themes. The size, the measurer (the cache holder) and the call state are left out.
+ */
+function layoutCacheKey(options: GridLayoutOptions): string {
+  const { size: _size, measure: _measure, [CARD_HEIGHT_MEMO]: _card, [LAYOUT_CALL]: _call, ...rest } = options as GridLayoutOptions & Record<symbol, unknown>;
+  return `${layoutStepKey()}:${themeRegistrations()}:${optionKey(rest)}`;
 }
 
 /** The last reflow choices, by width, options and data (see reflowed). */
@@ -477,8 +486,8 @@ function withSliverRoom(
   const withNatural = (found: number | undefined) => (found === undefined ? geometry : { ...geometry, sizing: { ...sizing, naturalHeight: found } });
   // The sizing pass lays the same data out at many heights: one search per width, start, options and data.
   // The request path injects its measurer, so the results are kept per measurer.
-  const { size: _size, measure, ...rest } = options;
-  const key = `${width}:${start}:${currentSmallValues()}:${themeRegistrations()}:${JSON.stringify(rest)}:${JSON.stringify(data)}`;
+  const { measure } = options;
+  const key = `${width}:${start}:${layoutCacheKey(options)}:${JSON.stringify(data)}`;
   let cache = SLIVER_ROOM_CACHE.get(measure ?? DEFAULT_MEASURER);
   if (!cache) SLIVER_ROOM_CACHE.set(measure ?? DEFAULT_MEASURER, cache = new Map());
   if (!cache.has(key)) {

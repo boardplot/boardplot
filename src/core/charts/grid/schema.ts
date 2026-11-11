@@ -27,7 +27,7 @@ const panelSchema = z
     title: z.string().min(1).optional().describe('Short heading in the fixed slot above the panel.'),
     caption: z.string().min(1).optional().describe('Secondary line below the panel title.'),
     data: z.unknown().describe('Data accepted by the registered panel chart type.'),
-    options: z.record(z.string().describe('Option name accepted by the child chart type.'), z.unknown().describe('Value validated by the child chart options schema.')).optional().describe('Options forwarded to the child chart; inherited grid options follow the composition rules.'),
+    options: idRecord(z.string().describe('Option name accepted by the child chart type.'), z.unknown().describe('Value validated by the child chart options schema.')).optional().describe('Options forwarded to the child chart; inherited grid options follow the composition rules.'),
     annotations: z
       .array(z.unknown().describe('Annotation validated against the child chart type.'))
       .optional()
@@ -131,7 +131,7 @@ const repeatTemplateSchema = z
           .describe('One chart document sliced by repeat.facet into panels.'),
       ])
       .describe('bySlice lookup, or one chart document when repeat.facet is series or category.'),
-    options: z.record(z.string().describe('Option name accepted by the child chart type.'), z.unknown().describe('Value validated by the child chart options schema.')).optional().describe('Options forwarded to the child chart; inherited grid options follow the composition rules.'),
+    options: idRecord(z.string().describe('Option name accepted by the child chart type.'), z.unknown().describe('Value validated by the child chart options schema.')).optional().describe('Options forwarded to the child chart; inherited grid options follow the composition rules.'),
     annotations: z
       .array(z.unknown().describe('Annotation validated against the child chart type.'))
       .optional()

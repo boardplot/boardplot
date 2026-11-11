@@ -115,10 +115,19 @@ export const RETIRED_PALETTES: ReadonlySet<string> = new Set(['garnet', 'heritag
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 
-/** A shallow copy on the node's own prototype, with its symbol marks. */
+/**
+ * A shallow copy on the node's own prototype, with its symbol marks. Every key
+ * is defined fresh and writable, so a frozen source does not freeze the copy,
+ * and defining (not assigning) keeps an own `__proto__` key off the prototype setter.
+ */
 function copyOf<T extends object>(node: T): T {
   const copy = Object.create(Object.getPrototypeOf(node)) as Record<PropertyKey, unknown>;
-  for (const key of Reflect.ownKeys(node)) copy[key] = (node as Record<PropertyKey, unknown>)[key];
+  for (const key of Reflect.ownKeys(node)) {
+    Object.defineProperty(copy, key, {
+      value: (node as Record<PropertyKey, unknown>)[key], writable: true, configurable: true,
+      enumerable: Object.prototype.propertyIsEnumerable.call(node, key),
+    });
+  }
   return copy as T;
 }
 
@@ -127,9 +136,11 @@ function setAt(root: unknown, path: readonly (string | number)[], value: unknown
   const [key, ...rest] = path;
   const node = Array.isArray(root) ? [...root] : isRecord(root) ? copyOf(root) : {};
   const own = node as Record<PropertyKey, unknown>;
-  const next = rest.length ? setAt(own[key!], rest, value) : value;
+  const current = Object.hasOwn(own, key!) ? own[key!] : undefined;
+  const next = rest.length ? setAt(current, rest, value) : value;
   if (next === undefined) delete own[key!];
-  else own[key!] = next;
+  else if (Array.isArray(node)) own[key!] = next;
+  else Object.defineProperty(own, key!, { value: next, writable: true, enumerable: true, configurable: true });
   return node;
 }
 
