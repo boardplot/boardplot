@@ -36,7 +36,7 @@ import type { LintWarning, PlacedAnnotation } from '../../types/scene';
 import { valueLineExtent, type ValueLineExtent } from '../../valueLineDomain';
 import { applyCategoryViewport, liveWindowOptions, viewportMeanSpan } from '../../viewport';
 import { VALUE_LINE_RESERVE } from '../../annotateParts';
-import { accumulateStack, averageMarkerLine, averageMarkerMean, averageMarkerSpan, averageMarkerScope as averageMarkerScopeOf, averageOfUnaddedSums, averageOfWholeShares, grandTotalRequested, compositionBasis, mixedSignsWarning, overfullShareSum, overfullWarning, plottedMean, sortSegments, stackTotalFormatter, warnIncompleteStacks, warnShareFormatIgnored, withoutShareMean } from '../band/stacks';
+import { accumulateStack, averageMarkerId, averageMarkerLine, averageMarkerMean, averageMarkerSpan, averageMarkerScope as averageMarkerScopeOf, averageOfUnaddedSums, averageOfWholeShares, grandTotalRequested, compositionBasis, mixedSignsWarning, overfullShareSum, overfullWarning, plottedMean, sortSegments, stackTotalFormatter, warnIncompleteStacks, warnShareFormatIgnored, withoutShareMean } from '../band/stacks';
 import { drawnVariant, NO_STACK_MEAN, stackAdds } from '../../stackAdds';
 import { isIncomplete, warnShareRoundingDrift } from '../../dataGaps';
 import { roundingUnavailable, shareRoundingNotes, sumConsistentShares, type RoundingAdjustment } from '../../shareRounding';
@@ -1093,6 +1093,9 @@ export function resolveColumnDomain(data: ChartData, options: AnomalyColumnOptio
     warnings.push(...checks.map((warning) => warning.code === 'axis-break-invalid'
       ? { ...warning, severity: 'warn' as const, message: `${warning.message}; the chart is drawn without the break` } : warning));
   }
+  // The average marker's number, in its drawn label and its record (the hover value) alike; a percent chart keeps its '%'.
+  const averageFmt = !options.format && (variant === 'stacked100' || options.unit === '%' || pctLevels)
+    ? (v: number) => formatStatWithSpec(v, { ...valueSpec.spec, suffix: '%' }) : statFmt;
   return {
     // The shares print at the chart's one precision ("9%" beside "50%"), unless a share format sets one.
     ...env, pctFmt: shareExample ? formatterFromExample(shareExample, options.locale?.language) : shareSet.format, shareTexts, roundingAdjustments, shareNotes, options, cats, seriesNorm, dataSeries, refSeries, othersId, valueSpec, fmt, totalFmt: stackTotalFormatter(variant, valueSpec.spec, fmt), statFmt, variant,
@@ -1102,8 +1105,8 @@ export function resolveColumnDomain(data: ChartData, options: AnomalyColumnOptio
     gtContent,
     partsAdd,
     ...(partsAdd ? {} : { meanMissing: NO_STACK_MEAN }),
-    annList: columnAnnotationList(options, variant, averageMark, !options.format && (variant === 'stacked100' || options.unit === '%' || pctLevels)
-      ? (v: number) => formatStatWithSpec(v, { ...valueSpec.spec, suffix: '%' }) : statFmt, averageMarkerSpan(averageRun, meanSpan)),
+    ...(averageMark === undefined ? {} : { averageMarker: { id: averageMarkerId(options.annotations ?? []), fmt: averageFmt } }),
+    annList: columnAnnotationList(options, variant, averageMark, averageFmt, averageMarkerSpan(averageRun, meanSpan)),
     seriesCagr: stackedLike ? seriesCagrs(options, cats, dataSeries, basis.absOf, warnings) : new Map(),
   };
 }
