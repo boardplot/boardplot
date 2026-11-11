@@ -1427,15 +1427,15 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   if (options.columnHeads === false && uniformUnit === null) {
     for (const [id, unit] of unitByCol) if (unit !== null) { unitByCol.set(id, null); lettersInCells.add(id); }
   }
-  // Columns whose formats name their own units ("$" and "€") print them in their heads, and
-  // options.unit names none of them for the whole table: the frame does not print it. A format
+  // Columns whose formats name different units of their own ("$" and "€") print them in their heads, and
+  // options.unit names none of them for the whole table: the frame does not print it, as subtitle clause or unit line. A format
   // states a unit through its affix or a percent; a bare magnitude ("1.2k") states none, so
   // options.unit stays the only place that names the currency of such a column.
   const statesUnit = (id: Id) => {
     const spec = specs.get(id)!;
     return specUnitKind(spec) !== 'number' || spec.prefix.trim() !== '' || spec.suffix.trim() !== '';
   };
-  const columnUnits = uniformUnit === null && distinctUnits.length > 0 && figureColumns.every((col) => statesUnit(col.id));
+  const columnUnits = uniformUnit === null && distinctUnits.length > 1 && figureColumns.every((col) => statesUnit(col.id));
   if ((uniformUnit !== null || columnUnits) && options.unit !== undefined && options.unit !== uniformUnit && !composes) {
     warnings.push({
       code: 'table-unit-overridden',

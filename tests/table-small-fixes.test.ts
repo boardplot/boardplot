@@ -1723,7 +1723,7 @@ it('names no unit over a column that prints no figure', () => {
 });
 
 // A table with a $ column and a € column printed the authored "in USD" over both, also under unitShown: the heads name each unit.
-it('leaves options.unit out of the subtitle when the columns print different units', () => {
+it('leaves options.unit out of the subtitle when the columns print different units', async () => {
   const data = { columns: [{ id: 'label', kind: 'rowLabel', label: 'Item' }, { id: 'us', kind: 'value', label: 'US', format: '$1,234' }, { id: 'eu', kind: 'value', label: 'EU', format: '€1,234' }],
     rows: [{ id: 'sales', label: 'Sales', cells: { us: 1200, eu: 900 } }, { id: 'cost', label: 'Cost', cells: { us: 800, eu: 600 } }] };
   const subtitle = (options: object) => layout('table', data, options).scene.find((node): node is TextNode => node.t === 'text' && node.id.startsWith('frame:subtitle'))!.lines.join(' ').trim();
@@ -1742,4 +1742,20 @@ it('leaves options.unit out of the subtitle when the columns print different uni
   const scaledLayout = layout('table', scaled, scaledOptions);
   expect(scaledLayout.scene.find((node): node is TextNode => node.t === 'text' && node.id.startsWith('frame:subtitle'))!.lines.join(' ').replace(/\s+/g, ' ').trim()).toBe('Revenue in USD');
   expect(scaledLayout.warnings.map((w) => w.code)).not.toContain('table-unit-overridden');
+  // Without a subtitle the unit line does not print options.unit either, and the warning stays true.
+  const drawn = async (d: unknown, options: object) => {
+    const { render } = await import('../src/cli/render');
+    const body = render({ spec: { type: 'table', data: d, options }, return: ['svg'] }).body as any;
+    const texts = [...(body.svg as string).matchAll(/data-part="(title|subtitle)"[^>]*>(.*?)<\/text>/g)].map((m) => m[2]!.replace(/<[^>]*>/g, ''));
+    return { texts, codes: (body.warnings ?? []).map((w: { code: string }) => w.code) };
+  };
+  const bare = await drawn(data, { unit: 'USD', title: 'Revenue' });
+  expect(bare.texts).toEqual(['Revenue']);
+  expect(bare.codes).toContain('table-unit-overridden');
+  expect((await drawn(data, { title: 'Revenue' })).codes).not.toContain('table-unit-overridden');
+  // One unit in every head ("$M") keeps the authored unit line and warns nothing, as before.
+  const dollars = { ...data, columns: data.columns.map((col) => (col.kind === 'value' ? { ...col, format: '$1.2M' } : col)) };
+  const oneUnit = await drawn(dollars, { unit: 'USD', title: 'Revenue' });
+  expect(oneUnit.texts).toEqual(['Revenue', 'USD']);
+  expect(oneUnit.codes).not.toContain('table-unit-overridden');
 });

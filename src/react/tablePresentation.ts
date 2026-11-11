@@ -143,7 +143,7 @@ export function tableFrame(
   const authoredSubtitle = resolveSubtitle(options.subtitle);
   // The unit line: a declared unit that no head, cell, note or subtitle prints stands where the subtitle goes, as in the SVG.
   const unitLine = authoredSubtitle === undefined && panelTypeClass(options) === undefined && unitUnprinted(options as Record<string, unknown>, {
-    type: 'table',
+    type: 'table', derived: { table },
     *texts() {
       if (title) yield title;
       for (const column of columns) yield columnHeadText(column, theme);
