@@ -677,6 +677,25 @@ function claimsForChartType(type: string, geo: Geometry<object, object>): ClaimR
           nodeId,
         });
       });
+      // The exhibit's weighted Total row: sum(numerator)/sum(denominator) over the cohorts that reached the period.
+      derived.total?.retention.forEach((value, t) => {
+        if (!shown(t)) return;
+        const previous = derived.basis === 'previous' && t > 0;
+        const missing = derived.cohorts.some(row => missingCohortRate(row, t, derived.basis));
+        const contributors = missing ? [] : derived.cohorts.filter(row => t < row.observedPeriods && row.retention[t] !== null
+          && (previous ? row.active[t - 1]! : row.base) !== 0);
+        // Own prefix: every cohort claim id starts 'cohort:', so an authored cohort id 'total' cannot reach it.
+        claims.push({
+          id: claimId('cohort-total', `t${t}`),
+          kind: 'aggregate',
+          op: 'cohort-average@1',
+          inputs: contributors.flatMap((row) => [
+            { ref: `${row.id}:active:t${t}`, value: row.active[t] ?? null },
+            { ref: previous ? `${row.id}:active:t${t - 1}` : `${row.id}:base`, value: previous ? (row.active[t - 1] ?? null) : row.base },
+          ]),
+          output: { raw: value, state: value !== null ? 'value' : missing ? 'missing' : 'n.m.', displayed: '' },
+        });
+      });
       return claims;
     }
     case 'scatter':
