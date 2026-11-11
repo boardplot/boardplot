@@ -134,3 +134,15 @@ it('reports and removes obsolete generated references while preserving authored 
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+// The npm package ships README.md, but only the paths in package.json `files`. A relative README link to any
+// other file is dead for a reader of the installed package, so those links must be absolute. Images are left out:
+// npmjs.com resolves them against the repository.
+it('every relative README link points to a file in the npm package', () => {
+  const shipped = ['LICENSE', ...(JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).files as string[])];
+  const readme = readFileSync(join(ROOT, 'README.md'), 'utf8');
+  const targets = [...readme.matchAll(/(?:\]\(|href=")([^)"\s]+)/g)].map((match) => (match[1] ?? '').replace(/[#?].*$/, ''))
+    .filter((target) => target && !/^[a-z][a-z0-9+.-]*:|^\/\//i.test(target));
+  const notShipped = targets.filter((target) => !shipped.some((entry) => target === entry || target.startsWith(`${entry}/`)));
+  expect([...new Set(notShipped)]).toEqual([]);
+});
