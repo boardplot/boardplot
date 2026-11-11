@@ -77,3 +77,16 @@ describe('diagram edge labels', () => {
     expect(body.reading.omissions.map((omission: any) => omission.labelId)).toEqual(expect.arrayContaining(unseated));
   });
 });
+
+describe('diagram hierarchy group titles', () => {
+  // A group title that grew over a neighbouring branch covered that branch's edge entry, so 840 px refused what 600 px drew.
+  it('keeps a widened group title clear of a neighbour edge, so a wider canvas still draws', () => {
+    const branch = (index: number, groupId?: string) => ({ id: `b${index}`, kind: 'entity', shape: { kind: 'roundedRect' }, label: `Branch ${index} and its much longer descriptive name`, ...(groupId ? { groupId } : {}) });
+    const spec = (width: number) => ({ type: 'diagram', data: {
+      nodes: [{ id: 'root', kind: 'entity', shape: { kind: 'roundedRect' }, label: 'Root and its much longer descriptive name' }, branch(1), branch(2), branch(3, 'group'), branch(4)],
+      groups: [{ id: 'group', title: 'An invented group title that needs two lines', role: 'secondary' }],
+      edges: [1, 2, 3, 4].map((index) => ({ id: `e${index}`, source: { nodeId: 'root' }, target: { nodeId: `b${index}` } })),
+    }, options: { variant: 'hierarchy', size: { width } } });
+    for (const width of [600, 840]) expect((render({ spec: spec(width), format: 'svg' } as never).body as any).ok, `${width} px`).toBe(true);
+  });
+});

@@ -1287,10 +1287,19 @@ function groupsFromMembers(context: PresetContext, result: PresetLayout): Preset
       const stretches = edges.flatMap((x, at) => (at % 2 === 0 ? [{ x, w: edges[at + 1]! - x }] : []));
       const top = memberBounds.y - pad;
       const bottom = memberBounds.y + memberBounds.h + pad;
-      const beside = [...frames.filter((_, at) => at !== index), ...[...result.nodeRects].flatMap(([id, rect]) => (members.some((node) => node.id === id) ? [] : [rect]))]
+      const others = [...result.nodeRects].filter(([id]) => !members.some((node) => node.id === id));
+      const beside = [...frames.filter((_, at) => at !== index), ...others.map(([, rect]) => rect)]
         .filter((rect) => rect.y < bottom && rect.y + rect.h > top);
-      const roomLeft = Math.max(0, left - Math.max(context.plot.x, maxOf(beside.filter((rect) => rect.x + rect.w <= left).map((rect) => rect.x + rect.w + context.u))));
-      const roomRight = Math.max(0, Math.min(context.plot.x + context.plot.w, minOf(beside.filter((rect) => rect.x >= right).map((rect) => rect.x - context.u))) - right);
+      // A neighbour's own tree edge comes down through this row at its centre, and the
+      // padding can already reach past that neighbour's side, so its centre bounds the row
+      // too. The row may reach that centre: the title's inset keeps its text off the edge.
+      const neighbourCrossings = others.filter(([id, rect]) => parents.has(id) && rect.y < bottom && rect.y + rect.h > top).map(([, rect]) => centre(rect));
+      const roomLeft = Math.max(0, left - Math.max(context.plot.x, maxOf([
+        ...beside.filter((rect) => rect.x + rect.w <= left).map((rect) => rect.x + rect.w + context.u),
+        ...neighbourCrossings.filter((x) => x <= left)])));
+      const roomRight = Math.max(0, Math.min(context.plot.x + context.plot.w, minOf([
+        ...beside.filter((rect) => rect.x >= right).map((rect) => rect.x - context.u),
+        ...neighbourCrossings.filter((x) => x >= right)])) - right);
       const runs = entered.map((rect) => {
         const [a, b] = [centre(rect), parents.get(members[rects.indexOf(rect)]!.id)!].sort((p, q) => p - q);
         return { a: a!, b: b! };
