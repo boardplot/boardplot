@@ -172,3 +172,17 @@ it('names a large treemap tile when a smaller label size can fit it', () => {
   expect(label).toBeDefined();
   expect(label!.hidden).toBeUndefined();
 });
+
+// The note named five small items and "and 3 more", while the reading said the three counted names were listed in it.
+it('reads the names the drawn note leaves to its count as counted, not listed', async () => {
+  const { getFixtures } = await import('../src/fixtures');
+  const { render } = await import('../src/cli/render');
+  const fixture = getFixtures('treemap').find((f) => f.id === 'growth-rect')!;
+  const spec = { type: 'treemap', data: fixture.data, options: { ...fixture.options, size: { width: 320 } } };
+  const reading = (render({ spec, return: ['reading'] }).body as any).reading;
+  const note = reading.notes.find((n: any) => /and 3 more/.test(n.text));
+  expect(note).toBeDefined();
+  const inNote = reading.omissions.filter((o: any) => /in note/.test(o.destination));
+  expect(inNote.map((o: any) => o.labelId)).toEqual(['item:robotaxis', 'item:air-taxis', 'item:prefab-housing']);
+  expect(inNote.every((o: any) => o.destination.startsWith('Counted in note'))).toBe(true);
+});
