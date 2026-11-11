@@ -138,6 +138,34 @@ export function withTypeClassCap<T>(cap: TypeWidthClass, run: () => T): T {
   try { return run(); } finally { classCap = outer; }
 }
 
+let marginBelow = false;
+
+/** The type class cap and the canvas margin step of the running layout: the part of a layout cache key they set. */
+export function layoutStepKey(): string {
+  return (classCap ?? '') + (marginBelow ? '<' : '');
+}
+
+/**
+ * Runs a layout whose default canvas margins, at a width in a margin step band (`inMarginStepBand`), are those of the
+ * step under it: a chart refused for width just over a margin step draws with the margins of the width just under
+ * it (request.ts, marginStep). Other widths keep their margins.
+ */
+export function withMarginStepBelow<T>(run: () => T): T {
+  const outer = marginBelow;
+  marginBelow = true;
+  try { return run(); } finally { marginBelow = outer; }
+}
+
+/** Whether the default margins at this width leave a narrower plot than the pixel under its margin step has. */
+export function inMarginStepBand(width: number): boolean {
+  if (classStepWidth(width) >= WIDE_CANVAS_MIN_WIDTH) return false;
+  const at = CANVAS_MARGIN_STEPS.findIndex((step) => width >= step.minWidth);
+  const under = CANVAS_MARGIN_STEPS[at + 1];
+  if (!under) return false;
+  const { minWidth, margin } = CANVAS_MARGIN_STEPS[at]!;
+  return width - margin.left - margin.right < minWidth - 1 - under.margin.left - under.margin.right;
+}
+
 /**
  * The width a step at 720 or 1080 px reads. Under a class cap it is at most the last pixel of the capped
  * class, so a capped layout takes the steps of the width just under the step; outside a cap it is the width.
@@ -1583,10 +1611,12 @@ const CANVAS_MARGIN_STEPS: readonly { minWidth: number; margin: Margin }[] = [
   { minWidth: 0, margin: { top: 16, right: 16, bottom: 10, left: 16 } },
 ];
 
-/** The default (unauthored) canvas margin at a canvas width. */
+/** The default (unauthored) canvas margin at a canvas width, or of the step under it in `withMarginStepBelow`. */
 function defaultCanvasMargin(width: number): Margin {
   if (classStepWidth(width) >= WIDE_CANVAS_MIN_WIDTH) return SPACE_CANVAS_WIDE;
-  for (const step of CANVAS_MARGIN_STEPS) if (width >= step.minWidth) return step.margin;
+  for (const [index, step] of CANVAS_MARGIN_STEPS.entries()) {
+    if (width >= step.minWidth) return (marginBelow && inMarginStepBand(width) ? CANVAS_MARGIN_STEPS[index + 1]?.margin : undefined) ?? step.margin;
+  }
   return CANVAS_MARGIN_STEPS[CANVAS_MARGIN_STEPS.length - 1]!.margin;
 }
 

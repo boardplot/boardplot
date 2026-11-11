@@ -2,7 +2,7 @@
 import { copyFrame, footerPlans } from './footer';
 import { emptyIdRecord } from './idRecords';
 import { currentSmallValues } from './formatPrecision';
-import { typeClassCap } from './theme';
+import { layoutStepKey } from './theme';
 import { isCachedTextMeasurer, type FontSpec, type TextMeasurer, type TextSize } from './text';
 import type { FrameGeometry, Geometry } from './types/scene';
 
@@ -115,10 +115,11 @@ export function optionKey(options: object): string {
 
 /**
  * Public data is checked by content once per request. Private model caches already own their data identity.
- * A type class cap enters the key, so a layout in a smaller class never reads the result of the larger one.
+ * A type class cap and a margin step enter the key, so a layout in a smaller class or with the margins of the
+ * step below never reads the result of the other.
  */
 export function layoutKey(data: object, options: object): string {
-  const cap = typeClassCap();
+  const cap = layoutStepKey();
   return (cap ? cap + ':' : '') + inputVersion(data) + ':' + optionKey(options);
 }
 
@@ -242,7 +243,7 @@ const requestResults = new WeakMap<object, Map<string, unknown>>();
 
 /** The key of a public request by the content of its data: equal for two copies of the same data. */
 export function contentKey(data: object, options: object, resolved: object): string {
-  const cap = typeClassCap();
+  const cap = layoutStepKey();
   return `${cap ? cap + ':' : ''}${inputJson(data)}:${optionKey(options)}:${inputJson(resolved)}`;
 }
 

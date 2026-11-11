@@ -54,7 +54,7 @@ import {
   canvasMargin,
   panelTypeClass,
   themeRegistrations,
-  typeClassCap,
+  layoutStepKey,
   resolveTheme,
   themeForWidth,
   typeWidthClass,
@@ -433,12 +433,12 @@ function reflowed(
 }
 
 /**
- * The options part of a grid cache key: every option a layout reads, symbol-keyed ones included, the type class cap
- * and the registered themes. The size, the measurer (the cache holder) and the call state are left out.
+ * The options part of a grid cache key: every option a layout reads, symbol-keyed ones included, the type class cap,
+ * the margin step and the registered themes. The size, the measurer (the cache holder) and the call state are left out.
  */
 function layoutCacheKey(options: GridLayoutOptions): string {
   const { size: _size, measure: _measure, [CARD_HEIGHT_MEMO]: _card, [LAYOUT_CALL]: _call, ...rest } = options as GridLayoutOptions & Record<symbol, unknown>;
-  return `${typeClassCap() ?? ''}:${themeRegistrations()}:${optionKey(rest)}`;
+  return `${layoutStepKey()}:${themeRegistrations()}:${optionKey(rest)}`;
 }
 
 /** The last reflow choices, by width, options and data (see reflowed). */
