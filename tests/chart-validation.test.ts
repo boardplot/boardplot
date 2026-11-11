@@ -910,7 +910,7 @@ it('refuses label positions that a variant cannot draw', () => {
   }
 });
 
-// Top-level chart and grid-panel annotations bypassed per-type option schemas or emitted broken fixes, letting invalid event badges and unsupported annotations draw.
+// Top-level chart and grid-panel annotations skipped the chart type's own annotation rules, so an over-long gantt badge drew; a type without annotations must keep drawing them as before.
 it('enforces per-type annotation rules with working fixes at chart and grid-panel roots', () => {
   const ganttData = { rows: [
     { id: 'r1', label: 'Design', items: [{ id: 'd1', kind: 'bar', start: '2027-03-01', end: '2027-03-12', label: 'Sketches' }] },
@@ -936,10 +936,8 @@ it('enforces per-type annotation rules with working fixes at chart and grid-pane
     [{ type: 'gantt', data: ganttData, annotations: [{ id: 'e1', kind: 'event', at: 'b1', label: 'Release', items: [{ label: 'Step' }] }] }, 'invalid-options', '/annotations/0/items', true],
     [{ type: 'column', data: catData, annotations: [{ kind: 'event', at: 'a', label: '1', labelPlacement: 'badge' }] }, 'invalid-options', '/annotations/0/labelPlacement', true],
     [{ type: 'line', data: catData, annotations: [{ kind: 'event', at: 'a', label: '1', labelPlacement: 'badge' }] }, 'invalid-options', '/annotations/0/labelPlacement', true],
-    [{ type: 'diagram', data: diagram.data, options: diagram.options, annotations: [{ kind: 'note', at: 'a', text: 'hi' }] }, 'invalid-options', '/annotations', true],
     [{ type: 'column', data: catData, annotations: [{ id: 'dup', kind: 'valueLine', value: 10 }, { id: 'dup', kind: 'valueLine', value: 15 }] }, 'invalid-options', '/annotations/1/id', false],
     [{ type: 'grid', data: { panels: [{ id: 'p1', type: 'gantt', data: ganttData, annotations: badge }] } }, 'invalid-data', '/data/panels/0/annotations/0/label', true],
-    [{ type: 'grid', data: { panels: [{ id: 'p1', type: 'diagram', data: diagram.data, options: diagram.options, annotations: [{ kind: 'note', at: 'a', text: 'hi' }] }] } }, 'invalid-data', '/data/panels/0/annotations', true],
   ] as const) {
     const result = render({ spec }).body as { ok: boolean; errors: { code: string; path: string; fix?: JsonPatchOperation[] }[] };
     expect(result.ok, path).toBe(false);
@@ -949,4 +947,5 @@ it('enforces per-type annotation rules with working fixes at chart and grid-pane
       expect(render({ spec: patch(spec, result.errors[0]!.fix!), return: ['svg'] }).body.ok, path).toBe(true);
     }
   }
+  expect(render({ spec: { type: 'diagram', data: diagram.data, options: diagram.options, annotations: [] }, return: ['svg'] }).body.ok).toBe(true);
 });

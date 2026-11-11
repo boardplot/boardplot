@@ -491,17 +491,9 @@ function forwardPanelAnnotationIssues(
   const merged = ownedDocumentCopy({ ...definition.aliasDefaults?.[type], ...(panel.options ?? {}), annotations });
   const parsed = definition.optionsSchema.safeParse(merged);
   if (parsed.success) return;
-  const issues = parsed.error.issues.flatMap((issue): z.core.$ZodIssue[] => {
-    if (issue.code === 'unrecognized_keys' && issue.path.length === 0 && issue.keys.includes('annotations')) {
-      return [{
-        code: 'custom',
-        path: [],
-        message: `'${definition.type}' draws no annotation of any kind; drop annotations`,
-        params: { refused: true },
-      } as unknown as z.core.$ZodIssue];
-    }
-    return issue.path[0] === 'annotations' ? [{ ...issue, path: issue.path.slice(1) }] : [];
-  });
+  const issues = parsed.error.issues
+    .filter((issue) => issue.path[0] === 'annotations')
+    .map((issue) => ({ ...issue, path: issue.path.slice(1) }));
   if (issues.length === 0) return;
   issues.forEach((issue) => {
     if (seen) {
