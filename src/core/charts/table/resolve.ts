@@ -2109,11 +2109,12 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   // A heat lane on the 'column' scale (the default) ranks each column against
   // itself, so a low figure in one column can shade darker than a higher one
   // beside it. With two or more such columns nothing else tells the reader, and
-  // the printed figures alone do not say it.
-  const perColumnHeat = resolvedColumns.filter((column) => (column.kind === 'value' || column.kind === 'computed') &&
-    column.cellEncoding?.type === 'heat' && (column.cellEncoding.scale ?? 'column') === 'column' &&
-    column.cellEncoding.cap === undefined);
-  if (perColumnHeat.length > 1) autoFootnotes.add(chartString(options, 'tableHeatColumnNote'));
+  // the printed figures alone do not say it. Lanes that share one fixed cap read on one scale;
+  // two different caps, or a cap beside an uncapped lane, do not.
+  const perColumnHeat = resolvedColumns.flatMap((column) => (column.kind === 'value' || column.kind === 'computed') &&
+    column.cellEncoding?.type === 'heat' && (column.cellEncoding.scale ?? 'column') === 'column'
+    ? [column.cellEncoding.cap === undefined ? column.id : JSON.stringify(column.cellEncoding.cap)] : []);
+  if (new Set(perColumnHeat).size > 1) autoFootnotes.add(chartString(options, 'tableHeatColumnNote'));
   // A traffic-light key reads higher is better unless every status lane
   // reads lower; where both directions share the table, the lanes that read
   // the other way are named, so no reader takes their green for "above".
