@@ -1913,7 +1913,7 @@ export function unitMagnitude(unit: string | undefined): NumberFormatSpec['magni
 /**
  * One magnitude for a set of comparable values, such as the stages of a funnel with
  * their totals: the largest step at which the smallest nonzero value prints as 1 or
- * more, while the largest keeps at most four digits ("1,180M · 590M · 140M").
+ * more (after rounding), while the largest keeps at most four digits ("1,180M · 590M · 140M").
  * Undefined keeps one scale per label (effectiveScale): an authored format, a unit
  * that names a scale, a set below 1e6 (no engine scale), or a set no step fits.
  */
@@ -1931,7 +1931,12 @@ export function setMagnitude(
     max = Math.max(max, Math.abs(value));
   }
   if (max < 1e6) return undefined;
-  const step = (['bn', 'm', 'k'] as const).find((magnitude) => min >= MAGNITUDE_DIVISOR[magnitude]);
+  // The smallest value reaches a step as one scale per label prints it: 999,999 rounds up to "1M" (effectiveScale).
+  const reaches = (magnitude: 'bn' | 'm' | 'k') => {
+    const below = min / MAGNITUDE_DIVISOR[MAGNITUDE_PREVIOUS[magnitude]];
+    return min >= MAGNITUDE_DIVISOR[magnitude] || Number(roundHalfUp(below, neededDecimals(below, 2))) >= 1000;
+  };
+  const step = (['bn', 'm', 'k'] as const).find(reaches);
   return step && Math.round(max / MAGNITUDE_DIVISOR[step]) < 10000 ? step : undefined;
 }
 

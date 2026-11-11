@@ -12,7 +12,7 @@ import type { AnchorResolution } from '../../annotate';
 import { runAnnotatePass } from '../../annotatePass';
 import { adjacentSeriesWarnings, retainAdjacentWarningRule, type AdjacentWarningCapture, type SeriesColorSample } from '../../adjacentSeries';
 import { formatAutomaticNumber, formatAutomaticPercent, notApplicableGlyph, smallRateDecimals } from '../../format';
-import { formatterFromExample, seriesRasterFormatter, setMagnitude } from '../../formatSpec';
+import { formatterFromExample, seriesRasterFormatter } from '../../formatSpec';
 import { cellMeta } from '../../types/cell';
 import type { Rect } from '../../geometry';
 import { clamp, rectContains } from '../../geometry';
@@ -57,7 +57,7 @@ import type {
   SceneNode,
 } from '../../types/scene';
 import type { FunnelDerived, FunnelMarks } from './layout';
-import { clampedNote, deriveFunnel, funnelValueFormats, missingGlyph } from './derive';
+import { clampedNote, deriveFunnel, funnelSetMagnitude, funnelValueFormats, missingGlyph } from './derive';
 import { composedTextRole } from '../../textRole';
 import { disclosureNote } from '../../notes';
 import { maxOf, pushAll } from '../../arrays';
@@ -242,7 +242,7 @@ export function layoutCenteredFunnel(
   // One raster per stage: the values of one stage share one decimal count, and a stage of whole counts prints none.
   // A single series is one raster down its stages (one decimal count within a series).
   // Values and totals are one set: one magnitude, so no label steps down to its own (1,180M · 590M, not 1.18B · 590M).
-  const scale = setMagnitude([...numbers.values.flat(), ...Object.values(stageTotals)], options.format, options.unit, options.target);
+  const scale = funnelSetMagnitude(plotted, cells, numbers.values, [stageTotals, numbers.shownTotals], options);
   const formats = stages.map((_, ci) => seriesRasterFormatter(options.format, authoredRaster ?? (plotted.length === 1 ? numbers.values[0]! : plotted.map((_, si) => numbers.values[si]![ci])), options.locale?.language, options.unit, options.target, undefined, true, scale));
   // Totals and series without format metadata print through the shared raster (one decimal count, engine scale).
   const totalRaster = seriesRasterFormatter(options.format, authoredRaster ?? Object.values(stageTotals), options.locale?.language, options.unit, options.target, undefined, false, scale);
