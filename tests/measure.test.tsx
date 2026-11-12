@@ -8,6 +8,8 @@ import { getFixtures, getRefusalExamples } from '../src/fixtures';
 import { listCharts } from '../src/core/registry';
 import { resolveSize } from '../src/core/normalize/shared';
 import { defaultMeasurer } from '../src/core/text';
+import { renderSvg } from '../src/core/svg/renderSvg';
+import { resolveTheme } from '../src/core/theme';
 import { canDraw, layoutResolvedRequest, measure, measureResolvedRequest, resolveChartRequest, type ChartMeasurement } from '../src/core/request';
 import { measure as publicMeasure } from '../src/index';
 import { INTERACTIVE_LAYOUT } from '../src/core/footer';
@@ -108,26 +110,30 @@ describe('shared request measurement', () => {
     expect(answer.ok ? undefined : (answer as { minimum?: { width: number } }).minimum?.width).toBe(width);
     expect([drawn(width - 1), drawn(width)]).toEqual([false, true]);
   });
-  // Prevents measure from chasing a height floor that grows with the frame: a grid with its panel baselines on one
-  // line, which render refuses, was measured at 1.3e18 px of minimum height, and with other data never returned.
-  it('reports render\'s refusal and no runaway height for a grid whose floor grows with its frame', () => {
+  // Prevents a baseline anchor from tying panels in different rows: the lower panel gave up its plot to reach the
+  // baseline above it, each taller frame put the two baselines further apart, and no frame drew the grid.
+  it('aligns grid baselines only between panels of the same rows, so a grid of stacked panels draws', () => {
     const fixture = getFixtures('grid').find(f => f.id === 'compact-tier-slack')!;
-    const request = { type: 'grid', data: fixture.data, theme: 'notation',
-      options: { ...fixture.options, anchors: { baselines: 'all' as const }, size: { width: 720 } } };
-    const rendered = layoutResolvedRequest(resolveChartRequest(request));
-    const measured = measure(request);
-    expect([rendered.warnings[0]?.code, measured.refused?.warnings[0]?.code]).toEqual(['label-collision', 'label-collision']);
-    expect(measured.minHeight).toBeLessThanOrEqual(rendered.size.height);
+    const svg = (baselines?: 'row' | 'column' | 'all') => {
+      const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'grid', data: fixture.data, theme: 'notation',
+        options: { ...fixture.options, anchors: baselines ? { baselines } : {}, size: { width: 720 } } }));
+      return geometry.refused ? `refused ${geometry.warnings[0]?.code}` : renderSvg(geometry as Geometry, resolveTheme('notation'));
+    };
+    const [row, column] = [svg('row'), svg('column')];
+    expect([row.startsWith('<svg'), column.startsWith('<svg')]).toEqual([true, true]);
+    expect([svg('all'), column]).toEqual([row, svg()]);
   });
-  // Prevents measure from naming a height that no probe drew: on a 720 × 1800 frame each probe of this grid named
-  // about 1,800 px more, and measure named the last one, 30,248 px, where render refuses too.
+  // Prevents measure from naming a height that no layout drew: a grid refused at every height for mismatched
+  // category axes was given a minimum height of 445 px on a 720 × 300 frame.
   it('names no unverified height above a pinned frame that render refuses', () => {
-    const fixture = getFixtures('grid').find(f => f.id === 'stacked-plus-dpy-tiered')!;
-    const measured = measure({ type: 'grid', data: fixture.data,
-      options: { ...fixture.options, anchors: { baselines: 'column' as const }, size: { width: 720, height: 1800 } } });
-    expect(measured.refused?.warnings[0]?.code).toBe('label-collision');
-    expect(measured.minHeight).toBeLessThanOrEqual(1800);
-  }, 60_000);
+    const months = ['jan', 'feb', 'mar'];
+    const panels = [0, 1, 2, 3].map(region => ({ id: `region-${region}`, type: 'column', data: {
+      categories: months.map(month => ({ id: region === 0 ? month : `${month}-${region}`, label: month })),
+      series: [{ id: 'sales', label: 'Sales', values: [12, 15, 14] }] } }));
+    const measured = measure({ type: 'grid', data: { panels }, options: { sharedAxis: 'category', size: { width: 720, height: 300 } } });
+    expect(measured.refused?.warnings[0]?.code).toBe('grid-category-mismatch');
+    expect(measured.minHeight).toBeLessThanOrEqual(300);
+  });
   // Prevents a minimum width read from probes that skip render's retries: a cohort exhibit that draws in full
   // from 588 px was given 678 px, because its width probe refused where render's own layout draws.
   it('reports the minimum width from the layouts render draws, its retries included', () => {

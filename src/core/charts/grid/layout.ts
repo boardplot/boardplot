@@ -1469,6 +1469,10 @@ function layoutAuthoredGrid(
   let sizedRows = rowWeights;
   let askedRows: number[] | undefined;
   let packedTiers = false;
+  // A baseline is shared only by panels that cover the same rows. To reach the baseline of a panel above it, a lower
+  // panel takes the height of everything between them from its plot, and a taller frame makes that distance larger.
+  // So 'all' aligns as 'row' does, and 'column' sets nothing, as plotEdges skips 'row'.
+  const baselineScope = options.anchors?.baselines === 'column' ? undefined : options.anchors?.baselines;
   // Slide and print step their type down on a short canvas and keep their value labels; only then do the tier minimums count.
   const typeStepsFirst = options.target !== undefined && floorTextScale(options.target) !== undefined
     && options.textScale === undefined && options.textSize === undefined && options.belowMinimum !== 'refuse';
@@ -1488,7 +1492,7 @@ function layoutAuthoredGrid(
     const contentHeight = () => children.reduce((sum, child) => sum + occupiedBounds(child.geometry, measure).h, 0);
     const available = area.h - rowGaps.reduce((sum, gap) => sum + gap, 0);
     const weight = naturalTierWeights.reduce((sum, value) => sum + value, 0);
-    const packed = children.every(child => !child.panel.align) && !options.anchors?.baselines;
+    const packed = children.every(child => !child.panel.align) && !baselineScope;
     let reportedRows: number[] | undefined;
     // A slot under its panel's minimum draws a strip below a gap, although the canvas holds every minimum.
     const minimums = children.map(child => child.geometry.sizing?.minHeight ?? 0);
@@ -1560,11 +1564,9 @@ function layoutAuthoredGrid(
   ) {
     recordCategoryColumnAnchors(children, columnBands, sharedAnchors, warnings);
   }
-  if (options.anchors?.baselines) {
-    children = alignBaselines(children, options.anchors.baselines, sharedAnchors, warnings);
-  }
+  if (baselineScope) children = alignBaselines(children, baselineScope, sharedAnchors, warnings);
   // The resolver's membership, not the authored scaleGroup: a clamped or log panel left its group.
-  const keepBaselines = options.anchors?.baselines ? {
+  const keepBaselines = baselineScope ? {
     top: (child: AuthoredChild) => child.margin.top ?? numeric(isRecord(child.panel.options?.margin) ? child.panel.options.margin.top : undefined, 20),
     above: (child: AuthoredChild) => {
       const baseline = baselineY(child.geometry);
@@ -2403,6 +2405,7 @@ function alignPlotEdges(
   return children;
 }
 
+/** Align the baselines of the panels that cover the same rows. `scope` names the derived anchors only. */
 function alignBaselines(
   input: AuthoredChild[],
   scope: GridTrackScope,
@@ -2411,7 +2414,7 @@ function alignBaselines(
 ): AuthoredChild[] {
   const children = [...input];
   const eligible = (child: AuthoredChild) => child.relayout !== undefined && baselineY(child.geometry) !== null;
-  for (const [groupIndex, group] of scopeGroups(children, scope, { anchor: 'baseline', warnings, eligible }).entries()) {
+  for (const [groupIndex, group] of scopeGroups(children, 'row', { anchor: 'baseline', warnings, eligible }).entries()) {
     const candidates = group.flatMap((child) => {
       const baseline = baselineY(child.geometry);
       return baseline === null || !child.relayout

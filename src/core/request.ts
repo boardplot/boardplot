@@ -1150,9 +1150,9 @@ function measureWithLayout(request: ResolvedChartRequest, result: LayoutResult,
     floorDrawn = verified;
     if (verified || (sizing.minWidth === previousWidth && sizing.minHeight === previousHeight)) break;
   }
-  // A floor that no probe above drew is only the height the last refusal named, and the next probe can name a
-  // taller one at every pass (a grid whose stacked baselines move with the frame). A size refusal verifies its
-  // floor below. Any other answer then names no height above the frame or the declared floor.
+  // A floor that no probe above drew (for example on a grid refused for mismatched category axes, which draws at no
+  // height) is only the height the last refusal named, and the next probe can name a taller one at every pass. A size
+  // refusal verifies its floor below. Any other answer then names no height above the frame or the declared floor.
   const unverifiedCap = Math.max(result.size.height, resolveSizing(declared, result.size).minHeight);
   if (!openWidth && !floorDrawn && !sizeRepair && sizing.minHeight > unverifiedCap) {
     const minHeight = unverifiedCap;

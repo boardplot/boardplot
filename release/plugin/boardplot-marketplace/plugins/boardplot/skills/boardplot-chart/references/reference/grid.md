@@ -157,7 +157,7 @@ Facets, variance tiers and metric stacks with shared categories and computed rea
 | gutters.columns | number \| array |  |  | Horizontal spacing between column tracks in layout pixels. |
 | anchors | object |  |  | Opt-in shared plot edges, baselines, and category columns by row, column, or all panels. |
 | anchors.plotEdges | string | `'row'`, `'column'`, `'all'` |  | Align panel plot left and right edges within column or all groups. row is accepted but ignored: side-by-side plots do not share x edges. |
-| anchors.baselines | string | `'row'`, `'column'`, `'all'` |  | Scope for aligning panel numeric baselines vertically. |
+| anchors.baselines | string | `'row'`, `'column'`, `'all'` |  | Align numeric baselines between panels that cover the same rows. all aligns as row does. column is accepted and aligns nothing: stacked plots do not share a baseline. |
 | anchors.categories | string | `'row'`, `'column'`, `'all'` |  | column and all align plot x edges and category ticks with authored column centers. row is accepted but ignored: side-by-side plots do not share x edges. |
 | alignmentRules | array |  |  | Authored hairline guides bound to a panel plot edge, baseline, or category tick. |
 | alignmentRules[].id | string |  |  | Unique guide identifier within this grid. |
