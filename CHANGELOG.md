@@ -2,6 +2,19 @@
 
 Boardplot is in 0.x: options and output can change between minor versions. Each release lists its changes here.
 
+## 0.58.1
+
+### Changed
+
+- Cohort tables (`variant: "pure"` and `"stepped"`) line up the rates of each period column, the total row included, on one right edge, so digits and decimal points sit under each other. The column of figures stays centred under its period head. Each rate was centred on its own width before. To bring back the old look, set `options.columnOverrides.periods.align: "center"`.
+
+### Fixed
+
+- `render` and `measure` now return on some grids with `anchors.baselines` where they did not return or the Node process crashed, such as a grid whose panels are stacked in one column. The size search of a refused layout follows the size that each refusal asks for. It now stops once that size grows past a bound set from the first refusal and the frame, and refuses the grid with `label-collision`. Before, `measure` also named a minimum height from about 15,000 px to 2 × 10^47 px on some of these grids, where the chart does not draw either. A `measure` refusal for a reason other than size now names a minimum height above both the refused frame and the chart type's declared minimum height only where a layout of the chart draws at that height. Some grids with `anchors.baselines` are not fixed: on some, `render` and `measure` still run out of memory, and others are refused with `size-below-floor` and a minimum height of about 10^11 px, where the chart does not draw either.
+- A long daily line with `window: { decimate: "none" }` keeps its axis readable: the month ticks the engine picks for a long day row thin to the labelled ones when they would sit closer than 2 px. 100,000 daily points drew about 3,300 ticks that merged into a solid bar. An authored `categoryAxis.dateTicks` keeps every tick as before.
+- On a canvas with a fixed height, a choropleth's automatic value table goes under the map only when the map keeps its full natural height. Before, the table could shrink the map to a thumbnail although the map alone printed every value. When the map without the table loses no value, the table is now left out, as the `valueTable` reference describes.
+- Annotations written at a chart's top level, or at a grid panel's top level, now meet the same chart-type rules as `options.annotations`: a gantt badge label longer than 3 characters, gantt event `items`, a badge on column, combo or line, and duplicate annotation ids are refused at the authored path. The fix of an over-long badge label now switches `labelPlacement` to `'top'` instead of removing the label.
+
 ## 0.58.0
 
 ### Added
