@@ -108,6 +108,17 @@ describe('shared request measurement', () => {
     expect(answer.ok ? undefined : (answer as { minimum?: { width: number } }).minimum?.width).toBe(width);
     expect([drawn(width - 1), drawn(width)]).toEqual([false, true]);
   });
+  // Prevents measure from chasing a height floor that grows with the frame: a grid with its panel baselines on one
+  // line, which render refuses, was measured at 1.3e18 px of minimum height, and with other data never returned.
+  it('reports render\'s refusal and no runaway height for a grid whose floor grows with its frame', () => {
+    const fixture = getFixtures('grid').find(f => f.id === 'compact-tier-slack')!;
+    const request = { type: 'grid', data: fixture.data, theme: 'notation',
+      options: { ...fixture.options, anchors: { baselines: 'all' as const }, size: { width: 720 } } };
+    const rendered = layoutResolvedRequest(resolveChartRequest(request));
+    const measured = measure(request);
+    expect([rendered.warnings[0]?.code, measured.refused?.warnings[0]?.code]).toEqual(['label-collision', 'label-collision']);
+    expect(measured.minHeight).toBeLessThanOrEqual(rendered.size.height);
+  });
   // Prevents a minimum width read from probes that skip render's retries: a cohort exhibit that draws in full
   // from 588 px was given 678 px, because its width probe refused where render's own layout draws.
   it('reports the minimum width from the layouts render draws, its retries included', () => {
