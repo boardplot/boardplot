@@ -1093,13 +1093,10 @@ function measureWithLayout(request: ResolvedChartRequest, result: LayoutResult,
   const def = getChart(request.type);
   // The declared floor, with the one option that lowers it (a compact KPI
   // card) — the same answer `fitLayout` gated the layout on.
-  let sizing = resolveSizing(
-    request.type === 'grid' && result.sizing?.fit === 'content' ? { ...declaredSizing(def!, request.options), minHeight: 0 } : def === undefined
-      ? chartSizing(request.type, request.options as { density?: unknown })
-      : declaredSizing(def, request.options),
-    result.size,
-    result.sizing,
-  );
+  const declared = request.type === 'grid' && result.sizing?.fit === 'content' ? { ...declaredSizing(def!, request.options), minHeight: 0 } : def === undefined
+    ? chartSizing(request.type, request.options as { density?: unknown })
+    : declaredSizing(def, request.options);
+  let sizing = resolveSizing(declared, result.size, result.sizing);
   const declaredMinHeight = sizing.minHeight;
   const sizeRepair = result.refused && result.warnings[0]?.code === 'size-below-floor';
   const cleanHeight = (probe: LayoutResult): number => {
@@ -1130,6 +1127,8 @@ function measureWithLayout(request: ResolvedChartRequest, result: LayoutResult,
   // width (or the minimum width when the request is narrower)
   // through the same registered layout that render uses, including its notes.
   const floorStart = sizing.minWidth;
+  const naturalStart = sizing.naturalHeight;
+  let floorDrawn = false;
   for (let pass = 0; !openWidth && pass < 8; pass++) {
     let verified = true;
     const previousWidth = sizing.minWidth;
@@ -1148,7 +1147,17 @@ function measureWithLayout(request: ResolvedChartRequest, result: LayoutResult,
         measuredMinHeight: Math.max(sizing.measuredMinHeight, probe.sizing.measuredMinHeight),
       });
     }
+    floorDrawn = verified;
     if (verified || (sizing.minWidth === previousWidth && sizing.minHeight === previousHeight)) break;
+  }
+  // A floor that no probe above drew is only the height the last refusal named, and the next probe can name a
+  // taller one at every pass (a grid whose stacked baselines move with the frame). A size refusal verifies its
+  // floor below. Any other answer then names no height above the frame or the declared floor.
+  const unverifiedCap = Math.max(result.size.height, resolveSizing(declared, result.size).minHeight);
+  if (!openWidth && !floorDrawn && !sizeRepair && sizing.minHeight > unverifiedCap) {
+    const minHeight = unverifiedCap;
+    sizing = resolveSizing({ ...sizing, minHeight }, result.size, { ...sizing, minHeight,
+      measuredMinHeight: Math.min(sizing.measuredMinHeight, minHeight), naturalHeight: Math.max(minHeight, Math.min(sizing.naturalHeight, naturalStart)) });
   }
   // A refusal names the width its own form needs, which can be wider than the asked width, where another
   // form draws at the floor height. The minimum width is then the narrowest width that draws there.
