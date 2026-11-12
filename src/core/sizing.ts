@@ -701,9 +701,17 @@ export function sizeRefusal(type: string, title: string, size: Size, sizing: Res
   };
 }
 
+/**
+ * The bound of a size search that starts at `initial`: four times its width, and four times its height or
+ * 4096 px more, whichever is taller. A search ends at it in a refusal, never in a size it did not verify.
+ */
+export function sizeSearchLimit(initial: Size): Size {
+  return { width: Math.ceil(initial.width * 4), height: Math.ceil(Math.max(initial.height * 4, initial.height + 4096)) };
+}
+
 /** Measurement can spend layouts to find a working size. Render keeps its estimate. */
 export function verifiedSizeRepair(initial: Size, accepts: (size: Size) => boolean): { size?: Size; limit: Size } {
-  const limit = { width: Math.ceil(initial.width * 4), height: Math.ceil(Math.max(initial.height * 4, initial.height + 4096)) };
+  const limit = sizeSearchLimit(initial);
   for (let width = initial.width; width <= limit.width; width *= 2) {
     let low = initial.height, height = initial.height;
     for (let pass = 0; pass < 8; pass++) {

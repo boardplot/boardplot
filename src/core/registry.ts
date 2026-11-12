@@ -16,7 +16,7 @@ import type { BaseOptions, RenderTarget } from './types/options';
 import { withSmallValues } from './formatPrecision';
 import type { Geometry, LayoutResult, LintWarning, RefusedLayout } from './types/scene';
 import type { ChartSizing } from './types/sizing';
-import { CARD_MIN_WIDTH, chartSizing, declaredSizing, fitsSize, compactFallbackApplies, FORCE_COMPACT, LAYOUT_CALL, FULL_LAYOUT_PROBE, type LayoutCall, plotRepairHeight, WIDTH_PROBE, FIXED_SIZE_PROBE, ACCEPTANCE_PROBE, CARD_HEIGHT_MEMO, type CardHeightMemo, type FitLayout, isWidthProbe, compactReplacesRefusal, sizeRefusal, withoutForcedCompact, hiddenForSpace, narrowShareApplies, PLOT_SHARE, PLOT_FLOOR_SHARE, withLayoutMemo, SIZE_TOLERANCE, lostCategoryNames } from './sizing';
+import { CARD_MIN_WIDTH, chartSizing, declaredSizing, fitsSize, compactFallbackApplies, FORCE_COMPACT, LAYOUT_CALL, FULL_LAYOUT_PROBE, type LayoutCall, plotRepairHeight, WIDTH_PROBE, FIXED_SIZE_PROBE, ACCEPTANCE_PROBE, CARD_HEIGHT_MEMO, type CardHeightMemo, type FitLayout, isWidthProbe, compactReplacesRefusal, sizeRefusal, sizeSearchLimit, withoutForcedCompact, hiddenForSpace, narrowShareApplies, PLOT_SHARE, PLOT_FLOOR_SHARE, withLayoutMemo, SIZE_TOLERANCE, lostCategoryNames } from './sizing';
 import { NormalizeError, resolveCanvasOptions, resolveSize } from './normalize/shared';
 import { checkItemBudget } from './itemBudget';
 import { DENSITY_VALUES, UNVERIFIED_DENSITY_REFUSALS, authoredNotes, dataOrder, densityNoteInList, hiddenNoteLine, withDensityNotes, withCutLabelNotes, finishCutLabelNotes, footnoteSwitch, markNotedLabels, owedHiddenLabels, withHiddenLabelNote, withNoteInA11y } from './frame';
@@ -478,6 +478,13 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
       // its suggested size. Verify that size through the same note pass.
       if (!nested && geo.warnings[0]?.code === 'size-below-floor') {
         let floor = geo.sizing!;
+        // Each pass probes the floor the last probe named, and the search refuses once that floor passes the bound
+        // of the first one. A floor that grows by a factor at each probe (a grid whose stacked baselines move with
+        // the frame) passes it on the first pass. A floor that grows more slowly can stay under it for all six passes
+        // and end in the refusal below, also where a taller frame draws. measure names a taller height for that refusal
+        // only where a layout of the chart draws.
+        const limit = sizeSearchLimit({ width: Math.max(geo.size.width, floor.minWidth), height: Math.max(geo.size.height, floor.minHeight) });
+        let unbounded = false;
         // A compact call's refusal names the size compact needs. A host that pins that size gets
         // compact through the fallback in layoutFitted, so the check draws compact there too, and
         // the full chart only where compact refuses. A full call keeps its full-chart check.
@@ -511,6 +518,9 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
             if (!resolved.fixed.height && accepts(low + 1)) high = low + 1;
             while (high - low > 1) {
               const mid = Math.floor((low + high) / 2);
+              // Past 2^53, or between fractional bounds, no whole height lies strictly between them:
+              // the search would probe the same height forever. `high` drew, so it stands.
+              if (mid <= low || mid >= high) break;
               if (accepts(mid)) high = mid; else low = mid;
             }
             return sizeRefusal(def.type, def.title, geo.size, sClassMinimum({ ...floor, minHeight: high, measuredMinHeight: Math.min(floor.measuredMinHeight, high) }, geo.size));
@@ -525,10 +535,19 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
           const next = probe.sizing!;
           if (next.minWidth <= floor.minWidth && next.minHeight <= floor.minHeight) break;
           floor = { ...next, minWidth: Math.max(floor.minWidth, next.minWidth), minHeight: Math.max(floor.minHeight, next.minHeight) };
+          if (floor.minWidth > limit.width || floor.minHeight > limit.height) { unbounded = true; break; }
         }
         if (lastGeometry) return { ...hiddenLabelCollision(def.title, lastGeometry,
           owedHiddenLabels(lastGeometry, data, pins, options?.annotations, minimal)), size: geo.size };
-        return { ...geo, warnings: [{ code: 'label-collision', severity: 'error',
+        // Past the bound the refusal names no size beyond the frame on the side that grew. Measure verifies
+        // the floor a refusal names by laying the chart out there, and would chase the growing floor again.
+        const wide = unbounded && floor.minWidth > limit.width;
+        const tall = unbounded && floor.minHeight > limit.height;
+        const own = geo.sizing;
+        const sizing = !own || !(wide || tall) ? own : { ...own,
+          ...(wide ? { minWidth: Math.min(own.minWidth, geo.size.width), measuredMinWidth: Math.min(own.measuredMinWidth, geo.size.width), naturalWidth: Math.min(own.naturalWidth, geo.size.width) } : {}),
+          ...(tall ? { minHeight: Math.min(own.minHeight, geo.size.height), measuredMinHeight: Math.min(own.measuredMinHeight, geo.size.height), naturalHeight: Math.min(own.naturalHeight, geo.size.height) } : {}) };
+        return { ...geo, sizing, warnings: [{ code: 'label-collision', severity: 'error',
           message: 'The frame blocks the layout; no repair size passed the layout probe.',
           suggest: 'Shorten or move the colliding labels, or remove the conflicting annotation.' }] };
       }
