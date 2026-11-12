@@ -539,7 +539,7 @@ export const gridOptionsSchema = baseOptionsSchema
     anchors: z
       .strictObject({
         plotEdges: trackScopeSchema.optional().describe('Align panel plot left and right edges within column or all groups. row is accepted but ignored: side-by-side plots do not share x edges.'),
-        baselines: trackScopeSchema.optional().describe('Scope for aligning panel numeric baselines vertically.'),
+        baselines: trackScopeSchema.optional().describe('Align numeric baselines between panels that cover the same rows. all aligns as row does. column is accepted and aligns nothing: stacked plots do not share a baseline.'),
         categories: trackScopeSchema.optional().describe('column and all align plot x edges and category ticks with authored column centers. row is accepted but ignored: side-by-side plots do not share x edges.'),
       })
       .optional()

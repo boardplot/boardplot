@@ -479,10 +479,11 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
       if (!nested && geo.warnings[0]?.code === 'size-below-floor') {
         let floor = geo.sizing!;
         // Each pass probes the floor the last probe named, and the search refuses once that floor passes the bound
-        // of the first one. A floor that grows by a factor at each probe (a grid whose stacked baselines move with
-        // the frame) passes it on the first pass. A floor that grows more slowly can stay under it for all six passes
-        // and end in the refusal below, also where a taller frame draws. measure names a taller height for that refusal
-        // only where a layout of the chart draws.
+        // of the first one. A floor that grows by a factor at each probe, as one that moves with its frame, passes it
+        // on the first pass, so such a layout cannot keep the search running. A floor that grows more slowly can stay
+        // under it for all six passes and end in the refusal below, also where a taller frame draws. For that refusal
+        // measure names a minimum height above both the frame and the chart type's declared minimum height only where
+        // a layout of the chart draws at that height.
         const limit = sizeSearchLimit({ width: Math.max(geo.size.width, floor.minWidth), height: Math.max(geo.size.height, floor.minHeight) });
         let unbounded = false;
         // A compact call's refusal names the size compact needs. A host that pins that size gets
