@@ -77,6 +77,8 @@ import type {
   PaintWarningRule,
   PlacedLabel,
   SceneNode,
+  ShownMark,
+  ShownTexts,
 } from '../../types/scene';
 import { AUTO_LEGEND } from '../../legendPolicy';
 import { CARD_MIN_WIDTH, contentSizing } from '../../sizing';
@@ -97,6 +99,11 @@ export interface PieMarks {
     /** Fraction of the total, 0–1. */
     share: number;
   }[];
+  /**
+   * The texts each slice's label prints for its record (owner `{ categoryId }`; the label's owner
+   * also names the series): drawn where the label is, else the value its label would print.
+   */
+  shown?: ShownMark[];
 }
 
 export interface PieDerived {
@@ -821,10 +828,13 @@ function layoutPiePass(
   // The slices' shares print at one precision, "8%" beside "92%".
   const shareSet = sharesFormatter(geoms.map((g) => g.share * 100));
   const shareText = (g: SliceGeom): string => rounded?.texts.get(`${sid}\0${g.cat.id}`) ?? shareSet.format(g.share * 100);
+  // A slice's value text is made once: its mark, its label parts, its authored text and its record all read it.
+  const valueTexts = new WeakMap<SliceGeom, string>();
+  const geomText = (g: SliceGeom): string => valueTexts.get(g) ?? valueTexts.set(g, sliceText(g)).get(g)!;
 
   /** Compound parts: '35.6M' + '(37%)' when both value and percent print. */
   const composeParts = (g: SliceGeom, content: LabelContent, wrapW?: number): { parts: string[]; title?: string } => {
-    const abs = sliceText(g);
+    const abs = geomText(g);
     const both = content.includes('absolute') && content.includes('percent');
     // An outside label under a new target sets its value and share on one line.
     const joined = both && wrapW !== undefined;
@@ -851,7 +861,7 @@ function layoutPiePass(
   };
   const applyOverride = (g: SliceGeom, text: string): string =>
     typeof g.labelOverride === 'string'
-      ? g.labelOverride.replace(/\$\{value\}/g, sliceText(g))
+      ? g.labelOverride.replace(/\$\{value\}/g, geomText(g))
       : text;
 
   // ---- per-slice label block (same lines inside and outside, catalog style) ----
@@ -1069,7 +1079,7 @@ function layoutPiePass(
       ),
       owner: { seriesId: sid, categoryId: g.cat.id },
       part: 'slice',
-      display: { value: sliceText(g) },
+      display: { value: geomText(g) },
     });
     claimWedge(occupied, { seriesId: sid, categoryId: g.cat.id }, g, r, ri, polar);
     marks.slices.push({
@@ -1211,6 +1221,19 @@ function layoutPiePass(
     else delete label.title;
   }
   routeOutsideLeaders(solved.placed, leaderAnchors);
+  // The record of a slice names its category only, so its texts go to marks.shown, by the record's owner.
+  const shownParts = (g: SliceGeom, content: LabelContent | null): ShownTexts => {
+    if (typeof g.labelOverride === 'string') return g.labelOverride.includes('${value}') ? { value: geomText(g) } : {};
+    if (g.labelOverride === false || !content) return {};
+    return { ...(content.includes('absolute') ? { value: geomText(g) } : {}), ...(content.includes('percent') ? { 'share.percent': shareText(g) } : {}) };
+  };
+  marks.shown = geoms.flatMap((g): ShownMark[] => {
+    const owner = { categoryId: g.cat.id };
+    const label = solved.placed.find((l) => !l.hidden && (l.kind === 'insidePie' || l.kind === 'outsidePie') && l.owner.categoryId === g.cat.id);
+    // An inside label that landed outside prints its outside form.
+    const drawn = label ? shownParts(g, label.kind === 'insidePie' && !(label.slot === 'outside' && outsideForms.has(label.id)) ? insideContent : outsideContent) : {};
+    return [...(Object.keys(drawn).length > 0 ? [{ owner, shows: drawn, drawn: true as const }] : []), { owner, shows: { value: geomText(g) } }];
+  });
   // What a hidden slice label would have said, name first, for the note.
   const unlabelled = new Map<Id, string>();
   const noteContent = (outsideContent ?? insideContent ?? []).filter((c) => c !== 'category');

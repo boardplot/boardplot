@@ -34,7 +34,7 @@ import { spread1DResult, warnSpreadOverflow } from '../../collide';
 import { defaultMeasurer, graphemes, splitNameBreaks, wrapText, type FontSpec, type TextMeasurer } from '../../text';
 import { contrastInkPaint, emphasisWeight, groupRampPaint, strokeToken, canvasMargin, colorRolePaints, paintColor, panelTypeClass, resolveTheme, seriesPaint, themeForWidth } from '../../theme';
 import type { Id } from '../../types/cell';
-import type { Geometry, LintWarning, Paint, SceneNode } from '../../types/scene';
+import type { Geometry, LintWarning, Paint, SceneNode, ShownTexts } from '../../types/scene';
 import { figureRole } from '../cardRoles';
 import { composedTextRole } from '../../textRole';
 import {
@@ -237,6 +237,11 @@ function layoutTreemapAt(data: TreemapData, options: TreemapOptions, memo: Map<s
   const valueText = (item: Item): string => {
     const share = shareFmt((item.value / total) * 100);
     return cellValue === 'share' ? share : cellValue === 'value-share' ? `${fmt(item.value)} (${share})` : fmt(item.value);
+  };
+  /** The record values a cell's text prints (ShownTexts): its value, its share, or both, as valueText sets them. */
+  const shownOf = (item: Item): ShownTexts => {
+    const share = shareFmt((item.value / total) * 100);
+    return cellValue === 'share' ? { 'share.percent': share } : cellValue === 'value-share' ? { value: fmt(item.value), 'share.percent': share } : { value: fmt(item.value) };
   };
 
   // ---- frame: the key lists the groups with their totals ----
@@ -581,7 +586,7 @@ function layoutTreemapAt(data: TreemapData, options: TreemapOptions, memo: Map<s
     nodes.push({
       t: 'path', id: nodeId, d: pathOf(cells[k]!), fill: groupOf.get(item.id)!.paint,
       stroke: { token: 'background' }, width: strokeToken(theme, 'hair'), owner: ownerOf(item), part: 'treemapCell',
-      display: { value: valueText(item) },
+      display: { value: valueText(item), shows: shownOf(item) },
     });
     marks.cells.push({ id: item.id, ...(item.group !== undefined ? { group: item.group } : {}), nodeId });
   });
@@ -650,7 +655,7 @@ function layoutTreemapAt(data: TreemapData, options: TreemapOptions, memo: Map<s
       const elbow = side === 'left' ? region.x - ELBOW_OUT : region.x + region.w + ELBOW_OUT;
       leaders.set(id, { from: out.anchor, via: { x: elbow, y: out.anchor.y }, side, fill: groupOf.get(e.item.id)!.paint });
       requests.push({
-        id, kind: 'item', owner: ownerOf(e.item), text: lines.join(' '), lines, font: outFont, priority: PRIORITY.interior + round2(e.item.value / total * 100),
+        id, kind: 'item', owner: ownerOf(e.item), text: lines.join(' '), lines, shows: shownOf(e.item), font: outFont, priority: PRIORITY.interior + round2(e.item.value / total * 100),
         candidates: [{ slot: 'outside', rect: { x, y: spread.positions[k]! - out.h / 2, w: out.w, h: out.h }, penalty: 0, outsidePlot: true, pad: 0 }],
       });
     });
@@ -661,7 +666,7 @@ function layoutTreemapAt(data: TreemapData, options: TreemapOptions, memo: Map<s
     if (!texts[k]!.noted) return;
     const text = `${item.label} ${valueText(item)}`;
     requests.push({
-      id: `item:${item.id}`, kind: 'item', owner: ownerOf(item), text, lines: [text], font: nameFont,
+      id: `item:${item.id}`, kind: 'item', owner: ownerOf(item), text, lines: [text], shows: shownOf(item), font: nameFont,
       priority: PRIORITY.interior, redundant: true, suppressedAs: 'density', candidates: [],
     });
   });
@@ -677,7 +682,7 @@ function layoutTreemapAt(data: TreemapData, options: TreemapOptions, memo: Map<s
     else valueLines.set(id, inside.nameLines.length);
     if (inside.stepped) steppedIds.add(id);
     requests.push({
-      id, kind: inside.nameLines.length > 0 ? 'item' : 'point', owner: ownerOf(item), text: `${item.label} ${valueText(item)}`, lines, font: inside.stepped ? cellStepFont! : nameFont,
+      id, kind: inside.nameLines.length > 0 ? 'item' : 'point', owner: ownerOf(item), text: `${item.label} ${valueText(item)}`, lines, shows: shownOf(item), font: inside.stepped ? cellStepFont! : nameFont,
       keepWhenDense: item.value / total >= 0.02 ? true : undefined,
       priority: PRIORITY.interior + round2(item.value / total * 100), align: 'middle',
       candidates: [{ slot: 'inside', rect: { x: inside.at.x - inside.w / 2, y: inside.at.y - inside.h / 2, w: inside.w, h: inside.h }, penalty: 0, pad: 0, insideFill: paintColor(theme, fill), insidePaint: fill }],
@@ -734,7 +739,9 @@ function layoutTreemapAt(data: TreemapData, options: TreemapOptions, memo: Map<s
       ...node, id: `${node.id}:body`, x, align, y: label.rect.y + head * (out ? outLineH : stepped ? cellStepLineH : lineH), lines: [label.lines[head]!], font: out ? outValueFont : stepped ? cellStepValueFont! : valueFont, role: 'value',
     };
     if (head === 0) return [{ ...valueNode, id: node.id, y: node.y }];
-    return [{ ...node, x, align, y: label.rect.y, lines: label.lines.slice(0, head), role: 'category' }, valueNode];
+    // The name lines print no value: the shown texts stay on the value line.
+    const { display: _shows, ...nameNode } = node;
+    return [{ ...nameNode, x, align, y: label.rect.y, lines: label.lines.slice(0, head), role: 'category' }, valueNode];
   });
   pushAll(nodes, labelNodes);
   for (const label of solved.placed) {

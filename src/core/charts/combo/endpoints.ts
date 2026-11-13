@@ -5,6 +5,7 @@ import { LAST_RESORT_PENALTY, PRIORITY } from '../../label/solver';
 import type { FontSpec, TextMeasurer } from '../../text';
 import type { Id } from '../../types/cell';
 import type { Category } from '../../types/data';
+import type { ShownTexts } from '../../types/scene';
 import type { ComboOptions, ValueLabelMode } from '../../types/options';
 import { maxOf, minOf } from '../../arrays';
 
@@ -34,11 +35,14 @@ export interface EndpointText {
   text: string;
   ci: number;
   suppressed: boolean;
+  /** The record values the text prints, with their texts (ShownTexts). */
+  shows?: ShownTexts;
 }
 
 export function prepareComboEndpointTexts<S extends EndpointSeries>(
   series: S[],
-  textOf: (series: S, categoryIndex: number) => string,
+  /** The composed text and the record values it prints (ShownTexts); an authored text prints them where it says `${value}`. */
+  textOf: (series: S, categoryIndex: number) => { text: string; shows?: ShownTexts | undefined },
   /** Which ends the engine labels; at the others only an authored cell label prints. */
   engine: { first: boolean | ((series: S) => boolean); last: boolean },
 ): { first: Map<Id, EndpointText>; last: Map<Id, EndpointText> } {
@@ -49,8 +53,10 @@ export function prepareComboEndpointTexts<S extends EndpointSeries>(
     const value = item.vals[ci]!;
     if (authoredOnly && typeof value.labelOverride !== 'string') return;
     const composed = textOf(item, ci);
-    const text = typeof value.labelOverride === 'string' ? value.labelOverride.replace(/\$\{value\}/g, composed) : composed;
-    if (text || value.labelOverride === false) target.set(item.id, { text, ci, suppressed: value.labelOverride === false });
+    const text = typeof value.labelOverride === 'string' ? value.labelOverride.replace(/\$\{value\}/g, composed.text) : composed.text;
+    const override = value.labelOverride;
+    const shows = override === false || (typeof override === 'string' && !override.includes('${value}')) ? undefined : composed.shows;
+    if (text || override === false) target.set(item.id, { text, ci, suppressed: override === false, ...(shows ? { shows } : {}) });
   };
   for (const item of series) {
     const firstCi = item.vals.findIndex((value) => value.v !== null);
@@ -249,6 +255,8 @@ interface EndpointRequestInput {
   last: { ci: number; x: number; y: number };
   lastCat: Category;
   text: string;
+  /** The record values the text prints (ShownTexts). */
+  shows?: ShownTexts;
   labelFont: FontSpec;
   measure: TextMeasurer;
   MARKER_R: number;
@@ -478,6 +486,7 @@ export function comboEndpointRequest(input: EndpointRequestInput): LabelRequest 
     kind: 'point',
     owner: { seriesId: s.id, categoryId: lastCat.id },
     text,
+    ...(input.shows ? { shows: input.shows } : {}),
     lines: [text],
     typeRole: 'label', font: labelFont,
     ...(anatomy ? { fontStep: labelFont } : {}),

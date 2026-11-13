@@ -10,7 +10,7 @@ import type { ScatterData } from '../types/data';
 import type { OwnerRef } from '../types/cell';
 import { normalizeCell, normalizeScenario } from '../normalize/shared';
 import { cellRecordValue, derivedPercent, makeRecord, numericValue, statedValue, textValue, type RecordContext } from './recordsShared';
-import { DERIVED_PERCENT_FORMAT, derivedValueText, displayedValueText } from './valueText';
+import { DERIVED_PERCENT_FORMAT, derivedValueText, formattedValueText } from './valueText';
 import { intervalText } from '../format';
 import type { InteractionRecord, InteractionValue } from './types';
 import { pushAll } from '../arrays';
@@ -82,7 +82,7 @@ function computedValue(value: number | null, observed: ReadonlySet<number>): num
  */
 function spanValue(low: number | null, high: number | null, decimals: number, unit?: string, format?: string, locale?: string): InteractionValue {
   if (low === null || high === null) return numericValue(null);
-  const end = (raw: number) => format ? displayedValueText(numericValue(raw, unit, format), locale)
+  const end = (raw: number) => format ? formattedValueText(numericValue(raw, unit, format), locale)
     : derivedValueText(numericValue(raw, unit), decimals, false, locale);
   return textValue(chartString({ locale: { language: locale } }, 'spanText', { v1: end(low), v2: end(high) }));
 }
@@ -147,7 +147,7 @@ function histogramRecords(ctx: RecordContext): InteractionRecord[] {
     const [low, high] = derived.binLabels[bin.index]?.split(dash) ?? [];
     const edge = (text: string | undefined, raw: number, withUnit: boolean) => text
       ? (withUnit && /^[\d\s.,'\u2212+-]+$/.test(text) && unit ? joinUnit(text, unit, false, ctx.request.locale?.language) : text)
-      : displayedValueText(numericValue(raw, withUnit ? unit : undefined, format), ctx.request.locale?.language);
+      : formattedValueText(numericValue(raw, withUnit ? unit : undefined, format), ctx.request.locale?.language);
     // "1 order", not "1 orders": an English plural noun drops its s for one.
     const counted = bin.count === 1 && noun.endsWith('s') ? noun.slice(0, -1) : noun;
     return makeRecord(ctx, { categoryId: JSON.stringify(['bin', bin.lo, bin.hi]) }, numericValue(bin.count, counted), {

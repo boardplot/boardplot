@@ -104,6 +104,7 @@ import type {
   Paint,
   PlacedLabel,
   SceneNode,
+  ShownTexts,
 } from '../../types/scene';
 import { autoDecimals, currentSmallValues, roundHalfUp, roundsToZero, valueSetDecimals } from '../../formatPrecision';
 import { isSingleVarianceTier, isVarianceTier } from '../../grid/varianceTiers';
@@ -169,6 +170,16 @@ interface NormSer {
 const pinGeometry = (theme: Parameters<typeof strokeToken>[0], width: number): { r: number; stem: number } => classStepWidth(width) >= 720
   ? { r: 5, stem: strokeToken(theme, 'data') * 1.25 }
   : { r: 4.5, stem: strokeToken(theme, 'data') };
+
+/**
+ * The record values a change label prints, with its text (ShownTexts): the
+ * record's value and the comparison slot the mode plots (`cmp0.delta` or
+ * `cmp0.percent`) are one number. None where an authored text without
+ * `${value}` replaces it.
+ */
+function changeShows(text: string, slot: 'cmp0.delta' | 'cmp0.percent', override?: string | false): ShownTexts | undefined {
+  return typeof override === 'string' && !override.includes('${value}') ? undefined : { value: text, [slot]: text };
+}
 
 /** Internal option: px of one more value row over (above) or under (below) the columns, set by the second pass. */
 const LIFT_ROW = Symbol('liftRow');
@@ -927,7 +938,8 @@ export function layoutVariance(
           const change = absolute(dAbsArr[ci]!, ci, true);
           // A percent unit names the relative change, not the source measure: the change then prints bare.
           const sourceUnit = options.unit === '%' || options.unit === 'pp' ? undefined : options.unit;
-          const text = `n.m. (${absoluteFormat(ci) ? change : withUnit(change, sourceUnit, false, options.locale?.language)})`;
+          const changeText = absoluteFormat(ci) ? change : withUnit(change, sourceUnit, false, options.locale?.language);
+          const text = `n.m. (${changeText})`;
           // Centred on its category, kept inside the plot. A text wider than the plot breaks after "n.m.".
           const whole = measure(text, font);
           const split = whole.width > plot.w ? text.indexOf(' ') : -1;
@@ -947,7 +959,8 @@ export function layoutVariance(
             owner,
             typeRole: 'label',
             part: 'nmMarker',
-            display: { state: 'n.m.' },
+            // The marker prints the absolute change in place of the relative one.
+            display: { state: 'n.m.', shows: { 'cmp0.delta': changeText } },
           });
           occupied.claim(rect, 'label', owner);
         } else {
@@ -972,6 +985,7 @@ export function layoutVariance(
         part: 'stem',
       });
       const headId = `mark:head:${c.id}`;
+      const shownPct = pctSigned(d, ci);
       nodes.push({
         t: 'circle',
         id: headId,
@@ -982,7 +996,7 @@ export function layoutVariance(
         ...(unfinished(c) ? { stroke: paint } : {}),
         owner,
         part: 'head',
-        display: { value: pctSigned(d, ci) },
+        display: { value: shownPct, shows: { value: shownPct, 'cmp0.percent': shownPct } },
       });
       const pinRect: Rect = {
         x: cx - pin.r,
@@ -998,6 +1012,7 @@ export function layoutVariance(
 
       if (!kindShown('point')) return;
       let text = pctSigned(d, ci);
+      const shows = changeShows(text, 'cmp0.percent', mv.labelOverride);
       if (typeof mv.labelOverride === 'string') text = mv.labelOverride.replace(/\$\{value\}/g, text);
       if (mv.labelOverride === false) return;
       // The growth value prints bold in its pin's tone; a neutral pin keeps the ink.
@@ -1013,6 +1028,7 @@ export function layoutVariance(
         owner,
         valueRow: true,
         text,
+        ...(shows ? { shows } : {}),
         lines: words?.lines ?? [text],
         ...words?.request,
         font: strongFont,
@@ -1041,6 +1057,7 @@ export function layoutVariance(
         h: Math.max(Math.abs(yv - y0), 0.5),
       };
       const nodeId = `mark:delta:${c.id}`;
+      const shownDelta = absolute(d, ci, true);
       nodes.push({
         t: 'rect',
         id: nodeId,
@@ -1049,7 +1066,7 @@ export function layoutVariance(
         ...partialFill(tonePaint(tone, mv.fill, true)),
         owner,
         part: 'bar',
-        display: { value: absolute(d, ci, true) },
+        display: { value: shownDelta, shows: { value: shownDelta, 'cmp0.delta': shownDelta } },
       });
       occupied.claim(rect, 'mark', owner);
       marks.bars.push({ categoryId: c.id, rect, nodeId });
@@ -1058,6 +1075,7 @@ export function layoutVariance(
 
       if (!kindShown('point')) return;
       let text = absolute(d, ci, true);
+      const shows = changeShows(text, 'cmp0.delta', mv.labelOverride);
       if (typeof mv.labelOverride === 'string') text = mv.labelOverride.replace(/\$\{value\}/g, text);
       if (mv.labelOverride === false) return;
       const words = toDateIds.has(c.id) ? toDateLabel(text, labelFont, toDate, theme, measure) : undefined;
@@ -1070,6 +1088,7 @@ export function layoutVariance(
         owner,
         valueRow: true,
         text,
+        ...(shows ? { shows } : {}),
         lines: words?.lines ?? [text],
         ...words?.request,
         font: labelFont,
@@ -1109,6 +1128,7 @@ export function layoutVariance(
     const acBot = y(Math.min(0, ac));
     const barRect: Rect = { x: bx, y: acTop, w: bw, h: Math.max(acBot - acTop, 0.5) };
     const nodeId = `mark:ac:${c.id}`;
+    const shownAc = absolute(ac, ci);
     nodes.push({
       t: 'rect',
       id: nodeId,
@@ -1117,7 +1137,8 @@ export function layoutVariance(
       ...partialFill(actualPaint(mv.fill)),
       owner,
       part: 'bar',
-      display: { value: absolute(ac, ci) },
+      // The actual is the record's value and its current field.
+      display: { value: shownAc, shows: { value: shownAc, 'field:current': shownAc } },
     });
     occupied.claim(barRect, 'mark', owner);
     if (ref === null) missingDash(c.id, cx, ac >= 0 ? acTop : acBot, ac < 0);
@@ -1136,6 +1157,7 @@ export function layoutVariance(
       const capY = y(capHiVal);
       capRect = { x: bx, y: capY, w: bw, h: Math.max(y(capLoVal) - capY, 0.5) };
       const capId = `mark:cap:${c.id}`;
+      const shownCap = absolute(d, ci, true);
       nodes.push({
         t: 'rect',
         id: capId,
@@ -1149,7 +1171,7 @@ export function layoutVariance(
           : { pattern: capPattern, ...partialFill(capTone === 'neutral' ? mutedMarkPaint() : tonePaint(capTone, undefined, true)) }),
         owner,
         part: 'cap',
-        display: { value: absolute(d, ci, true) },
+        display: { value: shownCap, shows: { 'cmp0.delta': shownCap } },
       });
       occupied.claim(capRect, 'mark', owner);
       bar.cap = { rect: capRect, nodeId: capId };
@@ -1231,6 +1253,7 @@ export function layoutVariance(
         kind: 'total',
         owner,
         text,
+        shows: { value: text, 'field:current': text },
         lines: [text],
         font: strongFont,
         priority: PRIORITY.total + (hl ? PRIORITY.highlightBonus : 0),
@@ -1264,6 +1287,7 @@ export function layoutVariance(
         owner,
         valueRow: true,
         text,
+        shows: { 'cmp0.delta': text },
         lines: words?.lines ?? [text],
         ...words?.request,
         font: labelFont,

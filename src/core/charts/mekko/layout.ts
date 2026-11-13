@@ -55,7 +55,7 @@ import type { ChartData } from '../../types/data';
 import type { MekkoOptions } from '../../types/options';
 import type { Geometry, LintWarning, PaintWarningRule, PlacedLabel } from '../../types/scene';
 import { resolveMekkoDomain, resolveMekkoEnv } from './domain';
-import { columnTotalText, planMekkoLabels } from './labels';
+import { columnShownText, columnTotalText, planMekkoLabels } from './labels';
 import { layoutMekkoMarks } from './marks';
 import { colCx, type MekkoArea, type MekkoDomain, type MekkoEnv, type MekkoMarkGeometry, type MekkoPaints } from './model';
 import { kindSetting, MEKKO_NOT_DRAWN, mekkoPaints, mekkoPlotArea, solveMekkoFrame } from './plot';
@@ -176,13 +176,14 @@ function mekkoDescription(env: MekkoEnv, domain: MekkoDomain): string {
     return chartString(env.options, 'mekkoValidDesc', { v1: modeName, v2: domain.validCount, v3: series.length }) +
       widthText +
       chartString(env.options, 'mekkoInvalidDesc', { v1: cats
-        .flatMap((c, ci) => (domain.invalidAt(ci) || totalUnknown(domain, ci) ? [] : [`${c.label ?? c.id} ${columnTotalText(env, domain, ci)}`]))
+        .flatMap((c, ci) => (domain.invalidAt(ci) || totalUnknown(domain, ci) ? [] : [`${c.label ?? c.id} ${columnShownText(env, domain, ci)}`]))
         .join(', ') || 'none', v2: cats
         .filter((_, ci) => domain.invalidAt(ci))
         .map((c) => `${c.label ?? c.id} (${nm.has(c.id) ? 'n.m.' : 'n/a'})`)
         .join(', ') });
   }
-  const totals = cats.flatMap((c, ci) => (totalUnknown(domain, ci) ? [] : [`${c.label ?? c.id} ${columnTotalText(env, domain, ci)}`]));
+  // Each total as its label states it (a bar mekko's total is the bar's value).
+  const totals = cats.flatMap((c, ci) => (totalUnknown(domain, ci) ? [] : [`${c.label ?? c.id} ${columnShownText(env, domain, ci)}`]));
   return chartString(env.options, 'mekkoDesc', { v1: modeName, v2: cats.length, v3: series.length }) +
     widthText +
     (totals.length > 0 ? chartString(env.options, 'totalsSentence', { v1: totals.join(', ') }) : '.');

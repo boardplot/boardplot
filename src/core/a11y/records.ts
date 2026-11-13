@@ -9,7 +9,7 @@ import { valueLineRecords } from './valueLineRecords';
 import { categoryVariantRecords } from './categoryVariants';
 import { statisticsRecords } from './statisticsRecords';
 import { structuralRecords } from './structuralRecords';
-import { withExhibitPercentFormat, type RecordContext } from './recordsShared';
+import { withExhibitPercentFormat, withShownTexts, type RecordContext } from './recordsShared';
 import type { InteractionRecord } from './types';
 import { localizedRecordReason } from '../strings/reasons';
 import { withLocaleStrings } from '../strings';
@@ -28,6 +28,8 @@ function recordsOf(context: RecordContext): InteractionRecord[] {
   const records = categoryVariantRecords(ctx) ?? categoryRecords(ctx) ?? businessRecords(ctx)
     ?? creativeRecords(ctx) ?? statisticsRecords(ctx) ?? structuralRecords(ctx, interactionRecords);
   if (!records) throw new Error(`No interaction record adapter for chart type '${ctx.request.type}'`);
+  // A grid's panels took their texts from their own geometry; one owner can repeat across panels.
+  if (ctx.request.type !== 'grid') withShownTexts(records, ctx.geometry);
   // A grid's events and value lines are already in its panels' records (panel-scoped); its aggregated annotations would repeat them.
   if (ctx.request.type !== 'grid') {
     pushAll(records, eventRecords(ctx));

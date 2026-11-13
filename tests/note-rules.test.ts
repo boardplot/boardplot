@@ -850,3 +850,12 @@ it('names unnamed Mekko columns without repeating their values', () => {
     expect(body.svg.includes(`>${value}</tspan>`) || body.reading.omissions.some(item => item.text.includes(value))).toBe(true);
   }
 });
+
+// A value with labels off was listed in the reading at its source precision (0.123%), not as its label would print it (0.1%).
+it('lists a value with labels off in the reading as its label would print it', () => {
+  const data = { categories: ['a', 'b'].map(id => ({ id, label: id.toUpperCase() })), series: [{ id: 's', label: 'Share', format: '0.0%', values: [0.123, 0.25] }] };
+  const shown = (render({ spec: { type: 'line', data, options: { valueLabels: 'all', size: { width: 640 } } }, return: ['svg'] }).body as { svg: string }).svg;
+  expect(shown).toContain('>0.1%<');
+  const off = render({ spec: { type: 'line', data, options: { labels: false, size: { width: 640 } } }, return: ['reading'] }).body as { reading: ChartReading };
+  expect(off.reading.omissions.find(item => item.labelId === 'point:s:a')?.text).toMatch(/(^|\s)0\.1%$/);
+});

@@ -6,6 +6,7 @@
 
 import type { Rect } from '../../geometry';
 import type { Id } from '../../types/cell';
+import type { ShownMark } from '../../types/scene';
 import type { BaseOptionsFor } from '../../types/options';
 import type { RoundingAdjustment } from '../../shareRounding';
 import type { ColumnOverride } from '../../schema/generatedColumns';
@@ -208,4 +209,6 @@ interface BarTableCellMark {
 export interface BarTableMarks {
   segments: BarTableSegmentMark[];
   cells: BarTableCellMark[];
+  /** The texts the Total row's range prints, stated on its record, which no label owns (ShownMark). */
+  shown?: ShownMark[];
 }

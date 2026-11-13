@@ -89,6 +89,8 @@ import type {
   PlacedAnnotation,
   PlacedLabel,
   SceneNode,
+  ShownMark,
+  ShownTexts,
 } from '../../types/scene';
 import { composedTextRole } from '../../textRole';
 import { textScaleOf } from '../../typeFloors';
@@ -106,6 +108,8 @@ export interface DotMarks {
     stemNodeId?: Id;
   }[];
   ranges?: RangeMark[];
+  /** Value texts drawn on a label that another owner carries: a merged pair, a range bound (ShownMark). */
+  shown?: ShownMark[];
 }
 
 export interface DotDerived {
@@ -441,12 +445,14 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
   const strongFont: FontSpec = { family: theme.type.family, ...theme.type.label, weight: emphasisWeight(theme) };
 
   // ---- label texts + which side each dot labels (measured BEFORE the scale) ----
-  const textFor = (v: number, cell: { meta: CellMeta | null; isPct?: boolean }, s?: NormSeries): string | null => {
+  /** The label text of a cell from its value text (`base`, displayFor): an authored text takes it at `${value}`. */
+  const textFrom = (cell: { meta: CellMeta | null }, base: string): string | null => {
     const { meta } = cell;
     if (meta?.label === false) return null;
-    const base = displayFor(v, cell, s);
     return typeof meta?.label === 'string' ? meta.label.replace(/\$\{value\}/g, base) : base;
   };
+  const textFor = (v: number, cell: { meta: CellMeta | null; isPct?: boolean }, s?: NormSeries): string | null =>
+    cell.meta?.label === false ? null : textFrom(cell, displayFor(v, cell, s));
   // The dots of a row compare across series ("40 unchanged", "48 to 45"): every series keeps the shared precision,
   // and a series format or unit still applies (forSeries on its format and unit alone).
   const seriesKeys = new Map<NormSeries, { format?: string; unit?: string }>();
@@ -455,6 +461,10 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
   const displayFor = (v: number, cell: { meta: CellMeta | null; isPct?: boolean }, s?: NormSeries): string =>
     cell.meta?.format ? formatterFromExample(cell.meta.format, options.locale?.language)(v)
       : (cell.isPct && !s?.format ? valueSpec.fmtPercent : s ? valueSpec.forSeries(seriesKey(s)) : fmt)(v);
+  /** The value a cell's label prints, with its text (ShownTexts), from its value text (`base`, displayFor); none where an authored text leaves out `${value}`. */
+  const shownFrom = (cell: { meta: CellMeta | null }, base: string): ShownTexts | undefined =>
+    cell.meta?.label === false || (typeof cell.meta?.label === 'string' && !cell.meta.label.includes('${value}'))
+      ? undefined : { value: base };
   /** Primary label side for a dot ('right' unless dumbbell-min / negative lollipop). */
   const primarySide = (si: number, ci: number, v: number): 'left' | 'right' => {
     // A row of two dots labels its left dot left and its right dot
@@ -685,6 +695,8 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
   // ---- assemble scene ----
   const nodes: SceneNode[] = [...frameResult.nodes];
   const marks: DotMarks = { rows: [] };
+  /** Record texts of labels whose owner is not the record's (a merged pair, a range bound), by label id; kept where drawn. */
+  const otherOwnerTexts = new Map<Id, Omit<ShownMark, 'drawn'>[]>();
   const rangeMarks: RangeMark[] = [];
   // The title wraps to the first plot width; one wider than the space left of the axis end starts at that plot's left edge, so it stays on the canvas.
   const labelRequests: LabelRequest[] = axisTitle
@@ -855,13 +867,20 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
       const ca = sa.cells[ci]!;
       const cb = sb.cells[ci]!;
       if (ca.v !== null && cb.v !== null && Math.abs(x(ca.v) - x(cb.v)) < 2 * r + 2) {
-        const ta = textFor(ca.v, ca, sa);
-        const tb = textFor(cb.v, cb, sb);
+        const baseA = displayFor(ca.v, ca, sa);
+        const baseB = displayFor(cb.v, cb, sb);
+        const ta = textFrom(ca, baseA);
+        const tb = textFrom(cb, baseB);
         // Two values label the outer ends of their pair, as every other row
         // does; only an unchanged pair prints one label.
         if (ta && tb && ta === tb) {
           mergedLabel = true;
           const text = pairText(ta, tb, options);
+          // The one label prints both values; each series' record takes it.
+          otherOwnerTexts.set(`point:${cat.id}`, ([[sa, ca, baseA], [sb, cb, baseB]] as const).flatMap(([s, c, base]) => {
+            const shows = shownFrom(c, base);
+            return shows ? [{ owner: { seriesId: s.id, categoryId: cat.id }, shows }] : [];
+          }));
           const tsize = measure(text, labelFont);
           const leftX = Math.min(x(ca.v), x(cb.v));
           const rightX = Math.max(x(ca.v), x(cb.v));
@@ -998,6 +1017,8 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
         if (options.range?.values === true && cell.range.low !== cell.range.high) {
           for (const [end, capX, value] of [['low', Math.min(lowX, highX), cell.range.low], ['high', Math.max(lowX, highX), cell.range.high]] as const) {
             const text = fmt(value);
+            // A bound is a field of the point's record, which the range's own owner is not.
+            otherOwnerTexts.set(`rangeValue:${s.id}:${cat.id}:${end}`, [{ owner, shows: { [`field:${end}`]: text } }]);
             const size = measure(text, labelFont);
             const side = (dx: number) => ({ x: dx, y: cy - size.height / 2, w: size.width, h: size.height });
             labelRequests.push({
@@ -1052,6 +1073,7 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
 
       const { paint, hollow } = dotPaint(s, cat.id, cell.meta);
       const nodeId = `dot:${s.id}:${cat.id}`;
+      const valueText = displayFor(v, cell, s);
       nodes.push({
         t: 'circle',
         id: nodeId,
@@ -1065,7 +1087,8 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
         strokeWidth: hollow ? strokeToken(theme, 'mark') : strokeToken(theme, 'rule'),
         owner,
         part: 'dot',
-        display: { value: displayFor(v, cell, s) },
+        // The text its value label would print where none is drawn.
+        display: { value: valueText, shows: { value: valueText } },
       });
       occupied.claim({ x: cx - r, y: cy - r, w: 2 * r, h: 2 * r }, 'mark', owner);
       row.dots.push({ seriesId: s.id, cx, cy, nodeId });
@@ -1073,7 +1096,7 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
         x: cx,
         y: cy,
         value: v,
-        markValueText: displayFor(v, cell, s),
+        markValueText: valueText,
         format: s.format,
         label: cat.label ?? cat.id,
         ...(cat.date === undefined ? {} : { date: cat.date }),
@@ -1081,18 +1104,20 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
       });
 
       if (labelOn('point') && !mergedLabel) {
-        const text = textFor(v, cell, s);
+        const text = textFrom(cell, valueText);
         if (text) {
           const font = pointFont(cell, si);
           if (font === strongFont) boldLabelIds.add(`point:${s.id}:${cat.id}`);
           else if (variant === 'dumbbell') mutedLabelIds.add(`point:${s.id}:${cat.id}`);
           const tsize = measure(text, font);
           const primary = primarySide(si, ci, v);
+          const shows = shownFrom(cell, valueText);
           const request: LabelRequest = {
             id: `point:${s.id}:${cat.id}`,
             kind: 'point',
             owner,
             text,
+            ...(shows ? { shows } : {}),
             lines: [text],
             typeRole: 'label', font,
             priority: cell.meta?.priority ?? rowBasePriority(ci, v) + bonus(cat.id, s.id),
@@ -1238,6 +1263,9 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
     labelPad: 2,
   });
   const solved = solveLabels(labelRequests, occupied, solveCtx);
+  const shown = solved.placed.flatMap((label) => label.hidden === undefined
+    ? (otherOwnerTexts.get(label.id) ?? []).map((stated): ShownMark => ({ ...stated, drawn: true })) : []);
+  if (shown.length > 0) marks.shown = shown;
   applyValueAxisTitleInk(solved.placed);
   if (autoAxis && solved.placed.some((label) => label.kind === 'point' && label.hidden !== undefined && label.hidden !== 'redundant')) {
     return layoutDot(data, { ...options, valueAxis: { ...options.valueAxis, show: true } });
@@ -1340,7 +1368,7 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
     const label = solved.placed.find((placed) => placed.id === `point:${anchor.owner.seriesId}:${anchor.owner.categoryId}` && !placed.hidden);
     if (!label) return anchor;
     const dot = { x: anchor.x - r, y: anchor.y - r, w: 2 * r, h: 2 * r };
-    return { ...anchor, printed: { text: label.text, box: unionRect(dot, label.rect) } };
+    return { ...anchor, printed: { text: label.text, box: unionRect(dot, label.rect), ...(label.shows ? { shows: label.shows } : {}) } };
   };
   const annResult = runAnnotatePass({
     target: options.target,

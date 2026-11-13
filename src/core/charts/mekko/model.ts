@@ -173,6 +173,8 @@ export interface SegmentPlace {
   ci: number;
   v: number;
   rect: Rect;
+  /** The segment's mark: the label phase states its would-be text where no label request carries it. */
+  node: Extract<SceneNode, { t: 'rect' }>;
 }
 
 /** Phase 2 output. */

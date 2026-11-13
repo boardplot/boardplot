@@ -33,13 +33,13 @@ import { labelOn } from '../labelOn';
 import { chosenValueIndices } from '../band/valueSelection';
 import { partialKeyForced, saysToDate } from '../../partialPeriod';
 import { chartString } from '../../strings';
-import type { LintWarning, Paint } from '../../types/scene';
-import { accumulateStack, averageMarkerId, averageMarkerLine, averageMarkerMean, averageMarkerScope as averageMarkerScopeOf, averageOfUnaddedSums, averageOfWholeShares, grandTotalRequested, compositionBasis, mixedSignsWarning, overfullShareSum, overfullWarning, plottedMean, sortSegments, stackTotalFormatter, warnIncompleteStacks, warnShareFormatIgnored, withoutShareMean } from '../band/stacks';
+import type { LintWarning, Paint, ShownTexts } from '../../types/scene';
+import { accumulateStack, averageMarkerId, averageMarkerLine, averageMarkerMean, averageMarkerScope as averageMarkerScopeOf, averageOfUnaddedSums, averageOfWholeShares, grandTotalRequested, compositionBasis, mixedSignsWarning, overfullShareSum, overfullWarning, plottedMean, printsValue, sortSegments, stackTotalFormatter, warnIncompleteStacks, warnShareFormatIgnored, withoutShareMean } from '../band/stacks';
 import { isIncomplete, warnShareRoundingDrift } from '../../dataGaps';
 import { roundingUnavailable, shareRoundingNotes, sumConsistentShares, type RoundingAdjustment } from '../../shareRounding';
 import { NO_STACK_MEAN, stackAdds } from '../../stackAdds';
 import { scenarioPartners, seriesScenarioRole } from '../../scenarioPairs';
-import { OTHERS_ID, type BarDomain, type NormCat, type NormSeries } from './model';
+import { OTHERS_ID, SHOWN_SLOT, type BarDomain, type NormCat, type NormSeries } from './model';
 import { disclosuresShown } from '../../notes';
 import { isRecord } from '../../lint/shared';
 import { cappedItems } from '../../frame';
@@ -101,6 +101,29 @@ export function displayFor(domain: BarDomain, v: number, cell: BarTextCell, pctV
       ? formatterFromExample(meta.format, domain.options.locale?.language)(v)
       // A percent cell, and a Rest built from percent cells, keep their '%', as on column.
       : (cell.isPct && !s?.format ? domain.valueSpec.fmtPercent : s ? domain.valueSpec.forSeries(s) : domain.fmt)(v);
+}
+
+/** The record slot a bar's value fills: 'value', or the slot a host names (SHOWN_SLOT). */
+export function valueSlot(domain: Pick<BarDomain, 'options'>): string {
+  return (domain.options as { [SHOWN_SLOT]?: string })[SHOWN_SLOT] ?? 'value';
+}
+
+/**
+ * A label's text and the record value it prints, from one displayFor call:
+ * `text` as textFor makes it, `base` the value text itself, and `shows` its
+ * ShownTexts (the value, or on a 100 % bar (`pctVal`) its share). No `shows`
+ * where the label prints no value: `label: false` (`text` null), or an
+ * authored text without `${value}`.
+ */
+export function labelTextsFor(domain: BarDomain, v: number, cell: BarTextCell, pctVal?: number, s?: NormSeries, categoryId?: string): { text: string | null; base?: string; shows?: ShownTexts } {
+  const label = cell.meta?.label;
+  if (label === false) return { text: null };
+  const base = displayFor(domain, v, cell, pctVal, s, categoryId);
+  return {
+    text: typeof label === 'string' ? label.replace(/\$\{value\}/g, base) : base,
+    base,
+    ...(typeof label === 'string' && !printsValue(label) ? {} : { shows: { [pctVal === undefined ? valueSlot(domain) : 'share.percent']: base } }),
+  };
 }
 
 export function valueLineValue(a: Annotation & { kind: 'valueLine' }, meanValue: number | undefined): number | undefined {

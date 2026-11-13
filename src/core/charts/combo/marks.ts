@@ -162,6 +162,7 @@ function columnMarks(ctx: MarkCtx): void {
         // A column the theme washed with `marks.comboColumnTint`
         // is quiet by design and takes no separation outline, in any scheme.
         const washed = 'tint' in cellFill && cellFill.tint !== undefined;
+        const valueText = domain.valueFmtOf(s, val)(v);
         const cellSep = cellPat || washed || markOutlineOff(cellFill, env.theme) ? undefined
           : segmentSeparationStroke(cellFill, env.theme.color.background, env.theme);
         nodes.push({
@@ -174,7 +175,8 @@ function columnMarks(ctx: MarkCtx): void {
           ...(washed ? {} : { separation: { fillStep: true as const, fill: cellFill, backing: { token: 'background' as const }, pattern: cellPat } }),
           owner: { seriesId: s.id, categoryId: c.id },
           part: 'segment',
-          display: { value: domain.valueFmtOf(s, val)(v) },
+          // Its label's value text, also where it draws none: as the segment or the single column's total prints it.
+          display: { value: valueText, shows: { value: valueText } },
         });
         claims.claim(rect, 'mark', { seriesId: s.id, categoryId: c.id }, 'segment');
         segs.push({ seriesId: s.id, rect, nodeId });
@@ -199,7 +201,8 @@ function columnMarks(ctx: MarkCtx): void {
       const bw = band.bandwidth;
       const owner = { seriesId: s.id, categoryId: c.id };
       const id = `ref:${s.id}:${c.id}`;
-      const display = { value: domain.valueFmtOf(s, s.vals[ci])(v) };
+      const text = domain.valueFmtOf(s, s.vals[ci])(v);
+      const display = { value: text, shows: { value: text } };
       if (style === 'marker') {
         const cx = band.center(ci);
         // The page-colour ring the combo line markers carry keeps the dot legible on a dark column.
@@ -440,7 +443,8 @@ function lineMark(ctx: MarkCtx, plan: LinePlan, areaNodeId: Id | undefined, ring
       const markerFill: Paint = hollow ? { token: 'background' } : paint;
       const owner = { seriesId: s.id, categoryId: c.id };
       const value = s.vals[p.ci]!;
-      const display = { value: domain.valueFmtOf(s, value)(value.v!) };
+      const text = domain.valueFmtOf(s, value)(value.v!);
+      const display = { value: text, shows: { value: text } };
       g.nodes.push(anatomyDots && !hollow
         ? { t: 'circle', id: markerNodeId, cx: p.x, cy: p.y, r: ANATOMY_DOT_R, fill: markerFill, stroke: { token: 'background' }, strokeWidth: strokeToken(env.theme, 'mark'), owner, part: 'marker', display }
         : markerShape === 'square'
@@ -454,6 +458,13 @@ function lineMark(ctx: MarkCtx, plan: LinePlan, areaNodeId: Id | undefined, ring
       g.claims.claim({ x: p.x - claimR, y: p.y - claimR, w: claimR * 2, h: claimR * 2 }, 'mark', { seriesId: s.id, categoryId: c.id });
     }
     markPoints.push({ categoryId: c.id, x: p.x, y: p.y, markerNodeId });
+    // A point without a marker states its would-be value text in the marks, under an authored format.
+    const cell = s.vals[p.ci]!;
+    if (!markerNodeId && (cell.format ?? s.format ?? domain.options.format) !== undefined) {
+      // A line end's label already made this text (same formatter, same value): reuse it.
+      const endShown = [ctx.area.first.get(s.id), ctx.area.last.get(s.id)].find((end) => end?.ci === p.ci)?.shows?.value;
+      (g.marks.shown ??= []).push({ owner: { seriesId: s.id, categoryId: c.id }, shows: { value: endShown ?? domain.valueFmtOf(s, cell)(cell.v!) } });
+    }
   }
   // The ring marks the last observed point: never a forecast or plan one.
   // An authored latestPoint decides; without it the theme's ink lead line does.

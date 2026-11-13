@@ -1282,6 +1282,19 @@ function formatWithSpecUncached(value: number, spec: NumberFormatSpec): string {
 }
 
 /**
+ * A text that prints a bound, not the number: the small-values bound
+ * ("<0.001", ">−0.1", the p-value "<.001") and the change cap (">999%").
+ * Each starts with its comparison sign, and no number text does. A layout
+ * that joins the unit before it states the text puts a currency sign first
+ * ("$<0.01", "€<+0.1m", unitJoin.ts), so one leading sign of that set is
+ * passed over. A shown text states the number, so a bound is none
+ * (recordsShared.ts, annotate.ts).
+ */
+export function printsBound(text: string): boolean {
+  return /^[$€£¥]?[<>]/.test(text.trim());
+}
+
+/**
  * The numeric value a reader SEES for `value` under `spec` — the exact same
  * rounding path as formatWithSpec (toFixed on the magnitude-scaled abs,
  * INCLUDING the 1000-rollover to the next magnitude). Reconciliation math

@@ -1506,7 +1506,6 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
     const rowSpec = rowId ? rowSpecs.get(rowId) : undefined;
     return rowSpec && (rowOverridesColumn(rowId!) || (!ownFormatColumns.has(colId) && rowScaleReaches(rowId!, colId))) ? groupCellSpecs.get(rowId!)?.get(colId) ?? rowSpec : specs.get(colId)!;
   };
-  // `lift: false` prints the plain rounded text, which the near-zero base check reads.
   // Final display specs belong to this model. Repeated cells share a compiled formatter without public mutation checks.
   const displayFormats = new Map<NumberFormatSpec, Map<string, (value: number) => string>>();
   const displayFormat = (base: NumberFormatSpec, decimals: number, automatic: NumberFormatSpec['automatic'], hoisted: boolean, clearCurrency = false) => {
@@ -1521,7 +1520,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
     }
     return format;
   };
-  const formatNumber = (raw: number, colId: Id, rowId?: Id, lift = true): string => {
+  const formatNumber = (raw: number, colId: Id, rowId?: Id): string => {
     const cellSpec = rowId ? cellSpecs.get(rowId)?.get(colId) : undefined;
     const rowSpec = rowId ? rowSpecs.get(rowId) : undefined;
     // A calc or inline row uses its own spec; other data rows only where
@@ -1535,18 +1534,18 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
     // printed twice: fitFormats lifts a figure its fitted precision would
     // print as 0 that way.
     const base = rowPath ? rowSpec! : specs.get(colId)!;
-    if (cellSpec && !sameUnit(cellSpec, base)) return displayFormat(cellSpec, cellSpec.decimals, lift ? cellSpec.automatic : false, false)(raw);
+    if (cellSpec && !sameUnit(cellSpec, base)) return displayFormat(cellSpec, cellSpec.decimals, cellSpec.automatic, false)(raw);
     const decimals = cellSpec?.decimals ?? (rowPath ? groupCellSpecs.get(rowId!)?.get(colId)?.decimals : undefined) ?? base.decimals;
     if (rowPath) {
       // A measure group's exact zero prints "0": no decimals, no magnitude letter.
-      if (raw === 0 && lift && !cellSpec && groupOf(rowById.get(rowId!)!) !== undefined) return '0';
+      if (raw === 0 && !cellSpec && groupOf(rowById.get(rowId!)!) !== undefined) return '0';
       const hoisted = rowId !== undefined && hoistedRowUnits.has(rowId);
-      const automatic = lift && (cellSpec ? cellSpec.automatic : rowSpec!.automatic);
+      const automatic = cellSpec ? cellSpec.automatic : rowSpec!.automatic;
       const printed = displayFormat(rowSpec!, decimals, automatic, hoisted)(raw);
       // A scale the row took from its own figures is derived like a column's, so it takes the locale's minus glyph too.
       return ownScaleExamples.has(rowId!) && !cellSpec && locale.minusGlyph === '-' && printed.startsWith(MINUS) ? `-${printed.slice(MINUS.length)}` : printed;
     }
-    const automatic = lift ? cellSpec ? cellSpec.automatic : base.automatic : false;
+    const automatic = cellSpec ? cellSpec.automatic : base.automatic;
     const rendered = displayFormat(base, decimals, automatic, unitByCol.get(colId) != null, cellSpec !== undefined)(raw);
     const localized =
       localeDerivedColumns.has(colId) && locale.minusGlyph === '-' && rendered.startsWith(MINUS)
@@ -1554,22 +1553,6 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
         : rendered;
     return localized;
   };
-
-  // A percent change off a base the table prints as 0 ("0", "0.0") is n.m. with the
-  // near-zero note, as one off an exact zero. Only the printed base can say so, so this runs after the specs.
-  // Records are in evaluation order, so one pass also turns every later calc that reads such a cell into n.m.
-  const madeNm = new Set<string>();
-  for (const record of records) {
-    if (record.kind !== 'calc' || record.state !== 'value') continue;
-    const baseInput = record.op === 'percentDelta($0,$1)' ? record.inputs[1] : undefined;
-    const nearZeroBase = baseInput !== undefined && baseInput.value !== null && !/[1-9]/.test(formatNumber(baseInput.value, baseInput.colId, baseInput.rowId, false));
-    if (!nearZeroBase && (madeNm.size === 0 || !record.inputs.some(input => madeNm.has(JSON.stringify([input.rowId, input.colId]))))) continue;
-    record.raw = null;
-    record.state = 'nm';
-    rawState.get(record.rowId)?.set(record.colId, { raw: null, state: 'nm' });
-    madeNm.add(JSON.stringify([record.rowId, record.colId]));
-    if (nearZeroBase) autoFootnotes.add(options.strings?.nearZeroChange ?? localeStrings(options.locale?.language).nearZeroChange);
-  }
 
   // ---- share columns: largest-remainder over leaves to exactly 100.0 ----
   const displayOverride = new Map<string, string>(); // tableCellKey(rowId, colId) → displayed

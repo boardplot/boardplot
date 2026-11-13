@@ -61,8 +61,11 @@ import type {
   PlacedAnnotation,
   PlacedLabel,
   SceneNode,
+  ShownMark,
+  ShownTexts,
 } from '../../types/scene';
 import { rowDrivenHeight } from '../../rowCanvas';
+import { DeferredShownMarks } from '../../shownMarks';
 import { rowLabelBand } from '../../label/rowLabels';
 import { fittedLabel, gutterBudget, GUTTER_MAX_SHARE, stepDownFont } from '../../label/rowFit';
 import { capPitch, HARD_MINIMUM, heightOmitted, matrixWidths, NARROW_FORM, rowSizing, sideKeyOff } from '../../sizing';
@@ -80,6 +83,8 @@ import { generatedIdWarnings } from '../../schema/generatedColumns';
 
 export interface HeatmapMarks {
   cells: { seriesId: Id; categoryId: Id; rect: Rect; nodeId: Id; value: number | null }[];
+  /** The would-be texts of the values whose label is not drawn, under an authored format. */
+  wouldShow?: DeferredShownMarks;
 }
 
 export interface HeatmapDerived {
@@ -1059,6 +1064,8 @@ export function layoutHeatmap(
   const nodes: SceneNode[] = [...frameResult.nodes];
   if (continuousKey) drawContinuousKey();
   const marks: HeatmapMarks = { cells: [] };
+  // The cells whose label is not drawn: their would-be texts, made only when a record asks (DeferredShownMarks).
+  const wouldShowCells: (() => ShownMark | undefined)[] = [];
   const labelRequests: LabelRequest[] = [];
   const anchorCell = new Map<string, AnchorResolution>();
   const cellBoxes = new Map<string, Rect>();
@@ -1268,8 +1275,18 @@ export function layoutHeatmap(
         }
       }
 
+      // A value whose label is not drawn states its would-be text, under an authored format.
+      const wouldShow = () => {
+        const v = cell.v;
+        if (v === null || !(options.format || r.format || cell.meta?.format)) return;
+        wouldShowCells.push(() => {
+          const text = textFor(v, cell.pct, cell.meta, r);
+          const shows = text === null ? undefined : cellShows(text, v, cell.pct, cell.meta, r);
+          return shows ? { owner, shows } : undefined;
+        });
+      };
       if (bubble) {
-        bubbleCell(r, c, cell, rect, owner, valuePaint, css);
+        if (!bubbleCell(r, c, cell, rect, owner, valuePaint, css)) wouldShow();
         return;
       }
       const value = values[ci];
@@ -1281,12 +1298,14 @@ export function layoutHeatmap(
             : PRIORITY.interior + Math.min(99, Math.abs(cell.v ?? 0));
         if (!low) matrixPaints.push(insidePaint);
         const valueAlign = turned ? undefined : overrides[c.id]?.align;
+        const shows = cell.v === null ? undefined : cellShows(text, cell.v, cell.pct, cell.meta, r);
         labelRequests.push({
           id: `point:${r.id}:${c.id}`,
           kind: 'point',
           typeRole: 'label',
           owner,
           text,
+          ...(shows ? { shows } : {}),
           lines: [text],
           font: valueFont,
           ...(valueFont !== labelFont ? { fontStep: valueFont } : {}),
@@ -1312,6 +1331,7 @@ export function layoutHeatmap(
       } else {
         // A value without room, or turned off, prints nowhere: a host states its claim as unprinted.
         withheld.push({ id: `point:${r.id}:${c.id}`, kind: 'point', owner });
+        wouldShow();
         if (cellLabelsOn && cell.v !== null) {
           omittedValues++;
           hiddenCells.push({ r, c, v: cell.v });
@@ -1477,7 +1497,7 @@ export function layoutHeatmap(
       const cell = anchorCell.get(`${norm.categoryId}:${norm.seriesId}`);
       // The cell's own value label, when it was drawn: a note on it need not repeat it.
       const printed = solved.placed.find((label) => label.id === `point:${norm.seriesId}:${norm.categoryId}` && !label.hidden);
-      return cell && printed ? { ...cell, printed: { text: printed.text, box: cellBoxes.get(`${norm.categoryId}:${norm.seriesId}`)! } } : cell ?? null;
+      return cell && printed ? { ...cell, printed: { text: printed.text, box: cellBoxes.get(`${norm.categoryId}:${norm.seriesId}`)!, ...(printed.shows ? { shows: printed.shows } : {}) } } : cell ?? null;
     }
     const ci = cols.findIndex((c) => c.id === norm.categoryId);
     const mean = colMeans[norm.categoryId];
@@ -1652,6 +1672,7 @@ export function layoutHeatmap(
     // The reading lists every value the cells could not print.
     + (hiddenCells.length > 0 && options.heatKey === undefined
       ? ` ${(options as { strings?: { hiddenLabels?: string } }).strings?.hiddenLabels ?? HIDDEN_LABEL_LEAD}: ${hiddenCells.map(hiddenItem).join(', ')}.` : '');
+  if (wouldShowCells.length > 0) marks.wouldShow = new DeferredShownMarks(() => wouldShowCells.flatMap((cell) => cell() ?? []));
 
   return withUnprintedClaims({
     type: 'heatmap',
@@ -1909,12 +1930,12 @@ export function layoutHeatmap(
    * area its size asks for, and its value inside the circle or beside it in
    * the cell where either fits.
    */
-  function bubbleCell(r: NormRow, c: NormCol, cell: NormRow['cells'][number], rect: Rect, owner: OwnerRef, paint: Paint, css: string): void {
-    if (cell.v === null) return;
+  function bubbleCell(r: NormRow, c: NormCol, cell: NormRow['cells'][number], rect: Rect, owner: OwnerRef, paint: Paint, css: string): boolean {
+    if (cell.v === null) return false;
     const radius = radiusOf(cell.size);
     if (radius === 0) {
       if (hasSizes && cell.size === null) missingSizes++;
-      return;
+      return false;
     }
     const cx = round2(rect.x + rect.w / 2);
     const cy = round2(rect.y + rect.h / 2);
@@ -1923,24 +1944,26 @@ export function layoutHeatmap(
     bubbleNodes.push(low
       ? { t: 'path', id: `bubble:${cellKey(r, c)}`, d: `M${round2(cx - rr)} ${cy}A${rr} ${rr} 0 1 0 ${round2(cx + rr)} ${cy}A${rr} ${rr} 0 1 0 ${round2(cx - rr)} ${cy}Z`, fill: paint, pattern: 'hatch45', stroke: paint, width: strokeToken(theme, 'mark'), owner, part: 'bubble' }
       : { t: 'circle', id: `bubble:${cellKey(r, c)}`, cx, cy, r: rr, fill: paint, owner, part: 'bubble' });
-    if (!cellLabelsOn) return;
-    if (topOnly && cell.size !== levels!.length) return;
+    if (!cellLabelsOn) return false;
+    if (topOnly && cell.size !== levels!.length) return false;
     const text = textFor(cell.v, cell.pct, cell.meta, r);
-    if (!text) return;
+    if (!text) return false;
     const { size: tsize, inside, beside } = measureBubbleValue(text, radius);
     const besideX = cx + radius + 2;
     if (!showBubbleValues || (!inside && !beside)) {
       omittedValues++;
       hiddenCells.push({ r, c, v: cell.v });
-      return;
+      return false;
     }
     const insideFill = low ? paintColor(theme, { token: 'background' }) : css;
+    const shows = cellShows(text, cell.v, cell.pct, cell.meta, r);
     labelRequests.push({
       id: `point:${cellKey(r, c)}`,
       kind: 'point',
       typeRole: 'label',
       owner,
       text,
+      ...(shows ? { shows } : {}),
       lines: [text],
       font: valueLabelFont,
       priority: cell.meta?.priority ?? (cell.v === extremeMax || cell.v === extremeMin ? PRIORITY.extreme : PRIORITY.interior + Math.min(99, Math.abs(cell.v))) + bonus(r.id, c.id),
@@ -1949,6 +1972,7 @@ export function layoutHeatmap(
         ? { slot: 'insideCenter', rect: { x: cx - tsize.width / 2, y: cy - tsize.height / 2, w: tsize.width, h: tsize.height }, penalty: 0, insideFill, insidePaint: low ? { token: 'background' } : paint }
         : { slot: 'right', rect: { x: besideX, y: cy - tsize.height / 2, w: tsize.width, h: tsize.height }, penalty: 0 }],
     });
+    return true;
   }
 
   /** Round stops between the lowest and the highest value, a third of a step clear of both ends, each label once. */
@@ -2137,6 +2161,16 @@ export function layoutHeatmap(
     if (meta?.label === false) return null;
     const base = displayFor(v, pct, meta, series, shown ? cut : NO_CUT);
     return typeof meta?.label === 'string' ? meta.label.replace(/\$\{value\}/g, base) : base;
+  }
+
+  /**
+   * The record value a cell's label prints (ShownTexts), given the label's text: the whole
+   * text, or the value part of an authored `${value}` label. None where the authored label
+   * replaces the value.
+   */
+  function cellShows(text: string, v: number, pct: boolean, meta: CellMeta | null, series?: NormRow): ShownTexts | undefined {
+    if (typeof meta?.label !== 'string') return { value: text };
+    return meta.label.includes('${value}') ? { value: displayFor(v, pct, meta, series, cut) } : undefined;
   }
 
   /**

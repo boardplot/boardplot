@@ -27,8 +27,9 @@ import {
   type ColumnMarkGeometry,
   type ColumnPaints,
   type FlagMarker,
+  type NormSer,
 } from './model';
-import { contentOf, shareTextOf } from './domain';
+import { cellValueFmt, contentOf, shareTextOf } from './domain';
 import { rangeWhisker } from '../band/rangeWhisker';
 import { anomalyRuleLines, drawAnomalyRules, emitAnomalyFlag } from './anomaly';
 import { pushAll } from '../../arrays';
@@ -168,6 +169,12 @@ function columnBars(
     rangeMarks.push(whisker.mark);
   };
   const groupSlots = groupedOffsets(band.bandwidth, dataSeries.length);
+  // A bar's drawn value text and its shown text. They come from one formatter call unless an authored percent cell prints with '%'.
+  const barTexts = (s: NormSer, ci: number): { drawn: string; shown: string } => {
+    const val = s.vals[ci]!;
+    const shown = cellValueFmt(domain, s, ci)(absOf(s, ci)!);
+    return { drawn: val.isPct && !val.format && !s.format ? valueSpec.forSeries(s, val.format)(absOf(s, ci)!) : shown, shown };
+  };
   cats.forEach((c, ci) => {
     const bx = band.position(ci);
     const bw = band.bandwidth;
@@ -188,11 +195,13 @@ function columnBars(
         const rect: Rect = { x, y: Math.min(yv, y0), w: subW, h: Math.max(Math.abs(yv - y0), 0.5) };
         const fill = paints.cell(s, val, c, si);
         const pattern = paints.pattern(s, val, c);
+        const texts = barTexts(s, ci);
         emit({
           nodeId, rect, start: 0, end: v,
           fill, pattern, outline: paints.outline(c),
           owner, part: 'bar',
-          displayValue: valueSpec.forSeries(s, s.vals[ci]?.format)(absOf(s, ci)!),
+          displayValue: texts.drawn,
+          shows: { value: texts.shown },
           ...(anomaly?.flagByCategory.has(c.id) ? { displayState: 'flagged' } : {}),
         });
         marks.bars.push({ seriesId: s.id, categoryId: c.id, rect, nodeId });
@@ -218,14 +227,13 @@ function columnBars(
         return;
       }
       const rect: Rect = { x: bx, y: y(Math.max(v0, v1)), w: bw, h: Math.max(Math.abs(y(v0) - y(v1)), 0.5) };
+      const texts = barTexts(s, ci);
       emit({
         nodeId, rect, start: v0, end: v1,
         fill: paints.cell(s, val, c, si), pattern: paints.pattern(s, val, c), outline: paints.outline(c),
         owner, part: 'segment',
-        displayValue:
-          variant === 'stacked100'
-            ? shareTextOf(domain, c.id, s.id, v, val.isPct)
-            : valueSpec.forSeries(s, s.vals[ci]?.format)(absOf(s, ci)!),
+        displayValue: variant === 'stacked100' ? shareTextOf(domain, c.id, s.id, v, val.isPct) : texts.drawn,
+        shows: { value: texts.shown },
       });
       segs.push({ seriesId: s.id, rect, nodeId });
       bars.push({ s, si, c, ci, v, rect });
@@ -364,6 +372,9 @@ function referenceMarks(
       const cx = band.center(ci);
       const owner = { seriesId: s.id, categoryId: c.id };
       const nodeId = `ref:${s.id}:${c.id}`;
+      // The shown text is the series' own: one formatter call serves both unless the cell has its own format.
+      const refDrawn = valueSpec.forSeries(s, s.vals[ci]?.format)(v);
+      const refDisplay = { value: refDrawn, shows: { value: s.vals[ci]?.format === undefined ? refDrawn : valueSpec.forSeries(s)(v) } };
       const integrated = pyRef?.id === s.id && pyGrowth.has(c.id);
       // A gap under 4 px for the outside tick falls back to the tick across the column (dense cards).
       const reach = outsideTickReach(domain, band, ci) ?? 8;
@@ -380,7 +391,7 @@ function referenceMarks(
           ...referenceMarkerPaint(theme, paints.ref(s)),
           owner,
           part: 'referenceMarker',
-          display: { value: valueSpec.forSeries(s, s.vals[ci]?.format)(v) },
+          display: refDisplay,
         });
       } else {
         const line: SceneNode = {
@@ -394,7 +405,7 @@ function referenceMarks(
           ...(refStyle === 'line' ? { dash: dashToken(theme, 'dotted'), lineCap: 'round' as const } : {}),
           owner,
           part: refStyle === 'tick' ? 'referenceTick' : 'referenceLine',
-          display: { value: valueSpec.forSeries(s, s.vals[ci]?.format)(v) },
+          display: refDisplay,
         };
         if (back) {
           behind.push(line);

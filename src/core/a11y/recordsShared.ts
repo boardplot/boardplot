@@ -1,12 +1,13 @@
 import type { ClaimRecordV1 } from '../claims/browser';
 import type { ResolvedChartRequest } from '../request';
-import { chartNumberMarks } from '../numberMarks';
 import { textRole } from '../textRole';
+import { DeferredShownMarks } from '../shownMarks';
 import type { AnchorRef, Annotation } from '../types/annotations';
 import { cellMeta, cellValue, isDateCell, isPctCell, type Cell, type OwnerRef } from '../types/cell';
-import type { Geometry, PlacedAnnotation, SceneNode } from '../types/scene';
+import type { Geometry, PlacedAnnotation, SceneNode, ShownMark, ShownTexts } from '../types/scene';
 import type { InteractionRecord, InteractionScope, InteractionTarget, InteractionValue } from './types';
 import { DERIVED_PERCENT_FORMAT, percentExample } from './valueText';
+import { printsBound } from '../formatSpec';
 import type { NamedColumnState } from '../schema/namedColumns';
 import { chartString } from '../strings/a11y-statisticsRecords';
 import type { BaseOptions } from '../types/options';
@@ -18,7 +19,6 @@ export interface RecordContext {
   claims: readonly ClaimRecordV1[];
   nodeIdsByOwner?: Map<string, string[]>;
   claimsByNode?: Map<string, string[]>;
-  valueTextByOwner?: Map<string, string>;
 }
 
 function ownerKey(owner: OwnerRef): string {
@@ -116,62 +116,60 @@ function indexNodes(ctx: RecordContext): Map<string, string[]> {
   return index;
 }
 
-/**
- * The value label the chart drew for an owner, by the owner's own keys: the
- * text node with the numeric role whose owner names the same category and
- * series (and point or row where the owner has one). A hidden label leaves
- * the record without one and the card falls back to the format.
- */
-function indexValueTexts(ctx: RecordContext): Map<string, string> {
-  if (ctx.valueTextByOwner) return ctx.valueTextByOwner;
-  const index = new Map<string, string>();
-  const seen = new Set<string>();
-  for (const node of ctx.geometry.scene) {
-    // The role the renderer resolves for the node: most value labels carry
-    // none of their own and take it from their part.
-    if (node.t !== 'text' || node.part === 'interaction-label' || textRole(node) !== 'value') continue;
-    const key = ownerKey(node.owner);
-    // Two numeric texts on one owner (a value and its account median on a
-    // creative card) leave the record without a drawn label: the card then
-    // prints the format path, never the wrong number.
-    if (seen.has(key)) index.delete(key); else index.set(key, node.lines.join(' '));
-    seen.add(key);
-  }
-  ctx.valueTextByOwner = index;
-  return index;
-}
+/** A format the author set (chart, series or cell); a derived percent's share format is the engine's. */
+const authoredFormat = (value: InteractionValue): boolean => value.format !== undefined && value.derived !== 'percent';
 
 /**
- * Whether a drawn label reads as the record's own number: its digits, sign,
- * magnitude letter and percent sign, taken as a number, land within half of
- * the label's last printed unit of the source value. A share label beside a
- * level ("44%" on a 6.1 % segment), a fraction drawn as a percent ("100" on
- * 1.0) or a label of another quantity stays off the record; the card then
- * prints the source number through the format.
+ * Each record value takes the text the layout states for it (ShownTexts): the
+ * text a drawn node prints for the value, else, under an authored format, the
+ * text its label would print (a label the solver dropped, the value's own mark
+ * where no label is drawn, or `geometry.marks.shown` where the value has no node). The layout names the value; nothing here
+ * reads a number out of a text. A value without such a text keeps none. A
+ * bound ("<0.001") does not state the number, so it is no shown text.
  */
-function readsAsValue(drawn: string, raw: number, marks: ReturnType<typeof chartNumberMarks>): boolean {
-  let text = drawn.replace(/[\s\u00a0\u202f\u2009']/g, '');
-  let sign = 1;
-  if (/^\(.*\)$/.test(text)) { sign = -1; text = text.slice(1, -1); }
-  if (/^[\u2212-]/.test(text)) { sign = -sign; text = text.slice(1); } else if (text.startsWith('+')) text = text.slice(1);
-  text = text.replace(/^[$\u20ac\u00a3\u00a5]+/, '').replace(/%$/, '');
-  const magnitude = /(tn|t|bn|b|mn|mm|m|k)$/i.exec(text);
-  let scale = 1;
-  if (magnitude) {
-    const letter = magnitude[1]!.toLowerCase();
-    scale = letter === 'k' ? 1e3 : letter === 'bn' || letter === 'b' ? 1e9 : letter === 'tn' || letter === 't' ? 1e12 : 1e6;
-    text = text.slice(0, -magnitude[1]!.length);
+export function withShownTexts(records: InteractionRecord[], geometry: Geometry): InteractionRecord[] {
+  const drawn = new Map<string, Record<string, string>>();
+  const undrawn = new Map<string, Record<string, string>>();
+  const add = (index: Map<string, Record<string, string>>, owner: OwnerRef, shows: ShownTexts) => {
+    const key = ownerKey(owner);
+    const into = index.get(key) ?? {};
+    for (const [slot, text] of Object.entries(shows)) if (!printsBound(text)) into[slot] ??= text;
+    index.set(key, into);
+  };
+  const marks = geometry.marks as { shown?: readonly ShownMark[]; wouldShow?: unknown } | undefined;
+  for (const label of geometry.labels) if (label.hidden !== undefined && label.shows) add(undrawn, label.owner, label.shows);
+  for (const mark of marks?.shown ?? []) add(mark.drawn ? drawn : undrawn, mark.owner, mark.shows);
+  for (const node of geometry.scene) {
+    const shows = node.display?.shows;
+    if (!shows) continue;
+    if (node.t === 'text') { if (node.opacity !== 0) add(drawn, node.owner, shows); } else add(undrawn, node.owner, shows);
   }
-  if (!/^\d[\d.,]*$/.test(text)) return false;
-  // The chart's marks say which mark groups and which one is decimal: "1.180M" under a point grouping is 1,180M.
-  let normalized = marks.thousands === '.' || marks.thousands === ',' ? text.split(marks.thousands).join('') : text;
-  if (marks.decimal === ',') normalized = normalized.replace(',', '.');
-  const decimalMark = normalized.includes('.');
-  const decimals = decimalMark ? normalized.split('.')[1]!.length : 0;
-  const value = Number(normalized);
-  if (!Number.isFinite(value)) return false;
-  const tolerance = 0.5 * Math.pow(10, -decimals) * scale + 1e-9 * Math.max(1, Math.abs(raw));
-  return Math.abs(sign * value * scale - raw) <= tolerance;
+  // The would-be texts a chart states on demand, read once a record needs one.
+  let deferred = marks?.wouldShow instanceof DeferredShownMarks ? marks.wouldShow : undefined;
+  const wouldFor = (key: string): Record<string, string> | undefined => {
+    if (deferred) {
+      for (const mark of deferred.marks()) add(undrawn, mark.owner, mark.shows);
+      deferred = undefined;
+    }
+    return undrawn.get(key);
+  };
+  if (drawn.size === 0 && undrawn.size === 0 && !deferred) return records;
+  for (const record of records) {
+    const key = ownerKey(record.target.owner);
+    const own = drawn.get(key);
+    if (!own && !undrawn.has(key) && !deferred) continue;
+    const shown = (slot: string, value: InteractionValue): InteractionValue => {
+      if (value.kind !== 'number' || value.state !== 'value' || value.displayed !== undefined) return value;
+      const text = own?.[slot] ?? (authoredFormat(value) ? wouldFor(key)?.[slot] : undefined);
+      return text === undefined ? value : { ...value, displayed: text };
+    };
+    record.value = shown('value', record.value);
+    record.fields = record.fields.map(field => ({ ...field, value: shown(`field:${field.key}`, field.value) }));
+    if (record.share) record.share = { ...record.share, percent: shown('share.percent', record.share.percent) };
+    record.comparisons = record.comparisons.map((comparison, index) => ({ ...comparison,
+      delta: shown(`cmp${index}.delta`, comparison.delta), percent: shown(`cmp${index}.percent`, comparison.percent) }));
+  }
+  return records;
 }
 
 function claimIdsFor(ctx: RecordContext, nodeIds: string[]): string[] {
@@ -210,11 +208,8 @@ export function makeRecord(
     const text = placed?.computedText ?? annotation.text ?? ('label' in annotation ? annotation.label || '' : '');
     return printsInFull(ctx, placed, text) ? [] : [{ id, text }];
   });
-  const candidate = value.kind === 'number' && value.state === 'value' && value.displayed === undefined
-    ? indexValueTexts(ctx).get(ownerKey(owner)) : undefined;
-  const drawn = candidate !== undefined && typeof value.raw === 'number' && readsAsValue(candidate, value.raw, chartNumberMarks(ctx.request.options.locale)) ? candidate : undefined;
   return {
-    id: targetId(target), target, value: drawn === undefined ? value : { ...value, displayed: drawn },
+    id: targetId(target), target, value,
     label: Object.values(owner).join(' / '), fields: [], comparisons: [], annotations,
     claimIds: claimIdsFor(ctx, nodeIds),
     nodeIds, ...details,

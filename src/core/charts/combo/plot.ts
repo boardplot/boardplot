@@ -48,7 +48,7 @@ import type { Id } from '../../types/cell';
 import type { MarkerShape } from '../../types/data';
 import { MARKER_MAX_CATS } from '../line/paints';
 import type { LabelContent, LabelKind, LegendOptions } from '../../types/options';
-import type { LintWarning, Paint } from '../../types/scene';
+import type { LintWarning, Paint, ShownTexts } from '../../types/scene';
 import { planComboAxisTitles } from './axisTitles';
 import { categoryRanksLint, FORCE_CATEGORY_RANKS, withCategoryRanks } from './categoryRanks';
 import { comboValueLabels, endpointGutters, FIRST_END_BELOW_TOTALS, INSIDE_ENDPOINT_IDS, insideEndpointGutters, prepareComboEndpointTexts, type EndpointGutters } from './endpoints';
@@ -599,24 +599,53 @@ export function kindSetting(domain: ComboDomain, kind: LabelKind): boolean | Lab
 }
 
 /** The label's parts as lines: a value and its share (`value.share`, a stacked segment's) one over the other. */
-export function composeLines(
+/**
+ * The label's parts, each with its text, and the record values they print
+ * (ShownTexts): the value (an authored percent prints it as its percent part
+ * too) and its share of the stack.
+ */
+export function composeParts(
   domain: ComboDomain,
   content: LabelContent,
   value: { abs: number | null; isPct: boolean; share?: number | null; shareText?: string },
   catLabel: string,
   serLabel: string,
   valueFmt: (v: number) => string,
-): string[] {
+): { parts: [LabelContent[number], string][]; shows: ShownTexts | undefined } {
   const { abs, isPct, share } = value;
   const parts: [LabelContent[number], string][] = [];
+  const shows: Record<string, string> = {};
   for (const c of content) {
-    if (c === 'absolute' && abs !== null) parts.push([c, valueFmt(abs)]);
-    else if (c === 'percent' && abs !== null && isPct) parts.push([c, valueFmt(abs)]);
-    else if (c === 'percent' && share !== undefined && share !== null) parts.push([c, value.shareText ?? formatShare(share, domain.options.locale?.language)]);
-    else if (c === 'category' && catLabel) parts.push([c, catLabel]);
+    if ((c === 'absolute' || (c === 'percent' && isPct)) && abs !== null) {
+      const text = valueFmt(abs);
+      parts.push([c, text]);
+      shows.value ??= text;
+    } else if (c === 'percent' && share !== undefined && share !== null) {
+      const text = value.shareText ?? formatShare(share, domain.options.locale?.language);
+      parts.push([c, text]);
+      shows['share.percent'] ??= text;
+    } else if (c === 'category' && catLabel) parts.push([c, catLabel]);
     else if (c === 'series' && serLabel) parts.push([c, serLabel]);
   }
-  return valueShareLines(parts);
+  return { parts, shows: Object.keys(shows).length > 0 ? shows : undefined };
+}
+
+export function composeLines(...args: Parameters<typeof composeParts>): string[] {
+  return valueShareLines(composeParts(...args).parts);
+}
+
+/**
+ * A label's composed text and the record values it prints, from one
+ * composeParts call. An authored text prints the values where it says
+ * `${value}`, none without it; `label: false` prints none. The text is the
+ * composed text before an authored text replaces `${value}` in it.
+ */
+export function composeWithShows(override: string | false | undefined, ...args: Parameters<typeof composeParts>): { text: string; shows: ShownTexts | undefined } {
+  const { parts, shows } = composeParts(...args);
+  return {
+    text: valueShareLines(parts).join(' '),
+    shows: override === false || (typeof override === 'string' && !override.includes('${value}')) ? undefined : shows,
+  };
 }
 
 export function composeText(...args: Parameters<typeof composeLines>): string {
@@ -715,7 +744,8 @@ export function comboPlotArea(
     lines,
     (series, ci) => {
       const value = series.vals[ci]!;
-      return composeText(domain, pointContent ?? ['absolute'], { abs: value.v, isPct: value.isPct }, cats[ci]!.label ?? cats[ci]!.id,
+      // One composeParts call gives the text and the values it prints. The shown values do not depend on the names.
+      return composeWithShows(undefined, domain, pointContent ?? ['absolute'], { abs: value.v, isPct: value.isPct }, cats[ci]!.label ?? cats[ci]!.id,
         series.label, domain.valueFmtOf(series, value));
     },
     { first: s => pointContent !== null && (['ends', 'extremes', 'all'].includes(valueLabels)

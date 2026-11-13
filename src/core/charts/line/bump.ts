@@ -10,10 +10,10 @@ import type { OccupiedIndex } from '../../label/occupied';
 import { PRIORITY, type LabelRequest, type SlotCandidate } from '../../label/solver';
 import { NormalizeError } from '../../normalize/shared';
 import type { FontSpec } from '../../text';
-import type { Id } from '../../types/cell';
+import type { Id, OwnerRef } from '../../types/cell';
 import type { Category } from '../../types/data';
 import type { LabelContent } from '../../types/options';
-import type { LintWarning, SceneNode } from '../../types/scene';
+import type { LintWarning, SceneNode, ShownTexts } from '../../types/scene';
 import type { EndLabel, NormSer } from './context';
 import { foldBumpValue, nameSpreadSizes } from './labels';
 import { lineLabelModes } from './labelModes';
@@ -325,8 +325,10 @@ export function joinTieValues(input: {
   labelRequests: LabelRequest[];
   font: FontSpec;
   measure: (text: string, font: FontSpec) => { width: number; height: number };
-}): void {
+}): { labelId: Id; owners: OwnerRef[]; shows: ShownTexts }[] {
   const { bump, labelRequests, font, measure } = input;
+  // The label that prints the tie's one value, the members it prints it for, and its texts.
+  const printed: { labelId: Id; owners: OwnerRef[]; shows: ShownTexts }[] = [];
   for (const tie of bump?.ties ?? []) {
     const ids = new Set(tie.seriesIds.map((id) => `point:${id}:${tie.categoryId}`));
     const values = labelRequests.filter((request) => ids.has(request.id));
@@ -337,6 +339,8 @@ export function joinTieValues(input: {
       const request = labelRequests[index]!;
       if (ids.has(request.id) && request !== keep) labelRequests.splice(index, 1);
     }
+    const shows = values[0]!.shows;
+    if (shows) printed.push({ labelId: (note ?? values[0]!).id, owners: tie.seriesIds.map((seriesId) => ({ seriesId, categoryId: tie.categoryId })), shows });
     if (!note) continue;
     const text = `${note.text} · ${values[0]!.text}`;
     const w = measure(text, font).width;
@@ -362,6 +366,7 @@ export function joinTieValues(input: {
       },
     }));
   }
+  return printed;
 }
 
 function startLabelCandidates(input: {

@@ -56,7 +56,7 @@ import {
   dashToken,
 } from '../../theme';
 import type { Id, OwnerRef } from '../../types/cell';
-import type { Geometry, LintWarning, Paint, SceneNode } from '../../types/scene';
+import type { Geometry, LintWarning, Paint, SceneNode, ShownTexts } from '../../types/scene';
 import type {
   BarTableCellState,
   BarTableData,
@@ -100,6 +100,13 @@ const RANGE_FILL: Paint = { token: 'neutralLight' };
 // The outline keeps the extension apart from a light segment: the grey ramps
 // of the notation themes end in a light grey as well.
 const RANGE_STROKE: Paint = { token: 'neutral' };
+/** The Total row's id in the records and hover (BARTABLE_TOTAL_ROW in a11y/structuralRecords.ts). */
+const BARTABLE_TOTAL_ROW = '__total';
+
+/** The texts a range prints at its ends, as its record's low and high fields. */
+function rangeShows(fmt: (value: number) => string, range: { low: number; high: number }): ShownTexts {
+  return { 'field:low': fmt(range.low), 'field:high': fmt(range.high) };
+}
 // Cascade: the share column, the bracket and the shortest track a panel keeps.
 const SHARE_GAP = 8;
 const BRACKET_GAP = 6;
@@ -1050,12 +1057,12 @@ function layoutBarTableOnce(
     scene.push({ t: 'line', id, x1, y1, x2, y2, stroke, width: lineWidth, owner: {}, part });
   const label = (
     id: Id, kind: LabelRequest['kind'], owner: OwnerRef, text: string, font: FontSpec,
-    rect: Rect, fitted?: FittedText, align?: ColumnAlign,
+    rect: Rect, fitted?: FittedText, align?: ColumnAlign, shows?: ShownTexts,
   ) => {
     fonts.set(id, font);
     if (align === 'right') rightAligned.add(id);
     requests.push({
-      id, kind, owner, text, font, typeRole: kind === 'axisTitle' ? 'axis' : 'label',
+      id, kind, owner, text, font, typeRole: kind === 'axisTitle' ? 'axis' : 'label', ...(shows ? { shows } : {}),
       ...(fitted ? fittedLabel(fitted, font) : { lines: [text] }),
       ...(align === 'left' ? { align: 'start' as const } : align === 'center' ? { align: 'middle' as const } : {}),
       priority: PRIORITY.endpoint,
@@ -1288,17 +1295,19 @@ function layoutBarTableOnce(
       });
       const endText = track.endTexts[r]!;
       const owner: OwnerRef = { categoryId: row.id, colId: track.panel.id };
+      // A range prints both ends: its record's low and high fields take those texts (a11y/structuralRecords.ts, bartable).
+      const ends = range ? rangeShows(track.fmt, range) : undefined;
       if (range && range.high > range.low) {
         // Owned like the end label, so its hover and record read as the range.
         const rect: Rect = { x: track.origin + range.low * track.scale, y: barY, w: (range.high - range.low) * track.scale, h: pBarH };
         scene.push({
           t: 'rect', id: `range:${track.panel.id}:${row.id}`, rect, fill: RANGE_FILL, stroke: RANGE_STROKE,
-          strokeWidth: strokeToken(theme, 'hair'), owner, part: 'rangeExtension', display: { value: endText },
+          strokeWidth: strokeToken(theme, 'hair'), owner, part: 'rangeExtension', display: { value: endText, ...(ends ? { shows: ends } : {}) },
         });
         occupied.claim(rect, 'mark', owner, 'rangeExtension');
       }
       const rect = rowText1(endText, valueFont, top, { left: track.origin + (range?.high ?? stack.positive) * track.scale + END_GAP });
-      if (valuesPrinted || track.rowSums[r] === null) label(`end:${track.panel.id}:${row.id}`, 'total', owner, endText, cellFont, rect);
+      if (valuesPrinted || track.rowSums[r] === null) label(`end:${track.panel.id}:${row.id}`, 'total', owner, endText, cellFont, rect, undefined, undefined, ends);
       const sum = track.rowSums[r] ?? null;
       marks.cells.push({ rowId: row.id, colId: track.panel.id, kind: 'end', value: range?.low ?? sum, ...(range ? { range } : {}), text: endText, rect });
     });
@@ -1424,6 +1433,13 @@ function layoutBarTableOnce(
     plot,
     labelPad: 1,
   }));
+  // The Total row's range: its label is owned by the column, its record by the Total row.
+  const totalRanges = panelTracks.flatMap((track) => {
+    if (typeof track.total !== 'object' || track.total === null || !requests.some((request) => request.id === `total:${track.panel.id}`)) return [];
+    const drawn = solved.placed.some((placed) => placed.id === `total:${track.panel.id}` && placed.hidden === undefined);
+    return [{ owner: { categoryId: BARTABLE_TOTAL_ROW, colId: track.panel.id }, shows: rangeShows(track.fmt, track.total), ...(drawn ? { drawn: true as const } : {}) }];
+  });
+  if (totalRanges.length > 0) marks.shown = totalRanges;
   const ink: Paint = { token: 'ink' };
   // Heads print in the table family's head ink; the period names of the combined row read as captions: muted ink.
   const muted: Paint = { token: 'inkMuted' };

@@ -333,6 +333,8 @@ export function layoutPyramid(
     // the scale fills each pane, heads stand at the lane, and
     // cards put values inside the bar end in a lane as narrow as the bands.
     paneFit: true,
+    // A plotted share is the band's share of its whole in the record, not its count.
+    valueSlot: isShare ? 'share.percent' : 'value',
   };
   let geo = layoutButterfly(butterflyData, butterflyOptions, comparison);
   // An unpinned pyramid stands its rows at a 21 px pitch from 600 px wide;

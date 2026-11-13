@@ -62,9 +62,9 @@ import { bandSizing } from '../../sizing';
 import type { AnchorRef } from '../../types/annotations';
 import type { Id } from '../../types/cell';
 import type { ChartData } from '../../types/data';
-import type { Geometry, LintWarning, PaintWarningRule, PlacedLabel, SceneNode } from '../../types/scene';
+import type { Geometry, LintWarning, PaintWarningRule, PlacedLabel, SceneNode, ShownMark, ShownTexts } from '../../types/scene';
 import { applyComboAxisTitlePaint, comboAxisTitleSwatches } from './axisTitles';
-import { resolveComboDomain, resolveComboEnv, TOTALS_AXIS, FLOAT_BAND_CLEARANCE, LINE_BAND_CLEARANCE } from './domain';
+import { resolveComboDomain, resolveComboEnv, totalColumn, TOTALS_AXIS, FLOAT_BAND_CLEARANCE, LINE_BAND_CLEARANCE } from './domain';
 import { comboValueLabels, FIRST_END_BELOW_TOTALS, flagDroppedEndpointLabels, INSIDE_ENDPOINT_IDS, insideEndpointGutters, unusedEndpointGutters, type EndpointGutters } from './endpoints';
 import { applyGrowthInk, planComboLabels } from './labels';
 import { layoutComboMarks } from './marks';
@@ -101,6 +101,12 @@ export interface ComboMarks {
   }[];
   /** One entry per drawn reference value (tick, line or marker), as on column and bar. */
   referenceTicks: { seriesId: Id; categoryId: Id; rect: Rect; nodeId: Id }[];
+  /**
+   * Value texts no node of the value's own carries (ShownMark): the would-be
+   * text of a line point without a marker, and a single column's value its
+   * drawn total prints.
+   */
+  shown?: ShownMark[];
 }
 
 export interface ComboDerived {
@@ -240,6 +246,17 @@ function assembleComboGeometry(input: {
   const { frame, catPlan, band, plot, showCatTickRow, strongFont, labelFont, tickFont } = area;
   const catFont = catPlan.font;
   const allLabels: PlacedLabel[] = [...solved.placed, ...annotated.labels];
+  // A drawn total states the stack's values; one column's total prints that column's value, which its record reads.
+  const shown: ShownMark[] = [...(geometry.marks.shown ?? [])];
+  const totalShows = new Map<Id, ShownTexts>();
+  for (const label of allLabels) {
+    const categoryId = label.owner.categoryId;
+    if (label.kind !== 'grandTotal' || label.hidden !== undefined || !label.shows || categoryId === undefined) continue;
+    totalShows.set(categoryId, label.shows);
+    const ci = cats.findIndex((c) => c.id === categoryId);
+    const single = ci < 0 ? undefined : totalColumn(domain, ci);
+    if (single) shown.push({ owner: { seriesId: single.id, categoryId }, shows: label.shows, drawn: true });
+  }
   const nodes = [...frame.nodes, ...geometry.nodes];
   // A band shades behind the marks, as on column.
   spliceAnnotationNodes(nodes, annotated.nodes);
@@ -293,7 +310,8 @@ function assembleComboGeometry(input: {
   const a11yDesc =
     chartString(domain.options, 'comboDescStart', { v1: cats.length, v2: partsDesc }) +
     (domain.secondaryActive ? chartString(domain.options, 'secondaryAxisDesc') : '') +
-    (totalsAdd ? chartString(domain.options, 'columnTotalsSentence', { v1: cats.map((c, ci) => `${c.label ?? c.id} ${domain.anyByCat[ci] ? domain.totalFmtOf(ci)(stackTotals[c.id]!) : NOT_AVAILABLE}`).join(', ') }) : '.') +
+    // Each total as the chart shows it: its drawn label's text, else as that label formats it.
+    (totalsAdd ? chartString(domain.options, 'columnTotalsSentence', { v1: cats.map((c, ci) => `${c.label ?? c.id} ${domain.anyByCat[ci] ? totalShows.get(c.id)?.value ?? domain.totalFmtOf(ci)(stackTotals[c.id]!) : NOT_AVAILABLE}`).join(', ') }) : '.') +
     anomalyA11y({ options: domain.options, anomaly: domain.anomaly, fmt: domain.anomaly ? domain.valueFmtOf(domain.lines.find((s) => s.id === domain.anomaly!.seriesId)!) : fmt, cats });
   const paintWarningRules: PaintWarningRule[] = [];
   pushAll(warnings, rectSeriesAdjacentWarnings(nodes, input.paints.css, 'vertical', env.highlights, env.theme, { rules: paintWarningRules, before: warnings.filter(warning => !['pie-ramp-crowded', 'likert-ramp-invisible', 'band-lightness-insufficient', 'series-adjacent-similar', 'highlight-reads-as-loss'].includes(warning.code)).length }));
@@ -315,7 +333,7 @@ function assembleComboGeometry(input: {
     annotations: lane ? [...annotated.placed, ...lane.placed] : annotated.placed,
     legend: frame.legend,
     frame: frame.frame,
-    marks: geometry.marks,
+    marks: shown.length > 0 ? { ...geometry.marks, shown } : geometry.marks,
     derived: {
       stackTotals: totalsAdd ? stackTotals : {},
       stackParts: totalsAdd ? stackParts(stackTotals, cats, columns, (si, ci) => columns[si]!.vals[ci]!.v) : {},

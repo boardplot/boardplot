@@ -8,6 +8,7 @@ import type { BaseOptionsFor } from '../../types/options';
 import type { ColorRole, Id } from '../../types/cell';
 import type { Rect } from '../../geometry';
 import type { RoundingAdjustment } from '../../shareRounding';
+import type { ShownMark } from '../../types/scene';
 
 /** Rows and columns of the cell grid. Each cell is 100 / (rows × columns) percent. */
 export interface WaffleGrid {
@@ -115,4 +116,9 @@ export interface WaffleMarks {
     labelNodeId?: Id;
     headlineNodeId?: Id;
   }[];
+  /**
+   * Segment texts no node of the segment's owner carries: a readout value drawn on the key (owner
+   * `{ seriesId }`), and the would-be value of a segment too small for a cell.
+   */
+  shown?: ShownMark[];
 }

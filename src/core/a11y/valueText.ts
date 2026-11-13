@@ -85,13 +85,16 @@ export function derivedValueText(value: InteractionValue, decimals: number, sign
 }
 
 /**
- * A comparison's change, for the hover card: through the format the value
+ * A comparison's change, for the hover card: its shown text where the chart
+ * draws the change (`shownValueText`), else through the format the value
  * prints with, signed, so "$1,235" sits beside "−$12" and not beside
  * "−12.3456901235 $". A change between two percent levels takes the
  * format's percentage-point face. Without a format, the precision `decimals`
  * its operands carry.
  */
 export function deltaValueText(delta: InteractionValue, decimals: number, locale?: string): string {
+  const shown = shownValueText(delta);
+  if (shown !== undefined) return shown;
   if (delta.state !== 'value' || typeof delta.raw !== 'number' || !delta.format) return derivedValueText(delta, decimals, true, locale);
   // As the marks print it (exampleSpec): the authored word, the chart locale's separators, the unit's scale held.
   const spec = { ...exampleSpec(isPercentagePointUnit(delta.unit) ? differenceExample(delta.format) : delta.format, locale, delta.unit), signed: true,
@@ -100,8 +103,10 @@ export function deltaValueText(delta: InteractionValue, decimals: number, locale
   return spec.prefix || spec.suffix || spec.magnitude !== 'none' ? text : withUnit(text, delta.unit);
 }
 
-/** A signed change in percent at its format's decimals (the exhibit's), else two. */
+/** A signed change in percent: its shown text where the chart draws it, else at its format's decimals (the exhibit's), else two. */
 export function signedPercentText(percent: InteractionValue, locale?: string): string {
+  const shown = shownValueText(percent);
+  if (shown !== undefined) return shown;
   const decimals = typeof percent.raw === 'number' ? percentDecimals(percent, percent.raw) : 2;
   // The one change face: ">999%" from 1000 % up (changePercentText).
   if (percent.state === 'value' && typeof percent.raw === 'number' && !isPercentagePointUnit(percent.unit)) return changePercentText(percent.raw, Math.min(MAX_FORMAT_DECIMALS, decimals), locale);
@@ -128,10 +133,29 @@ function printsZero(label: string): boolean {
   return number !== undefined && [...number].every((char) => !/\p{Nd}/u.test(char) || digitValue(char) === 0);
 }
 
+/** Significant digits of a number's shortest exact spelling: 7.3 has 2, 215.909090909091 has 15. */
+function significantDigits(raw: number): number {
+  return Math.abs(raw).toExponential().split('e')[0]!.replace('.', '').length;
+}
+
+/**
+ * A short decimal without the residue of binary arithmetic: 7.3, not
+ * 7.300000000000001. Fifteen significant digits are all a double holds
+ * exactly. Where rounding there leaves at most twelve (a run of at least three
+ * 0s or 9s before the last digits), those digits were the arithmetic's. A long
+ * fraction (2375 / 11) keeps its source digits.
+ */
+function withoutFloatResidue(raw: number): number {
+  if (Number.isInteger(raw) || !Number.isFinite(raw)) return raw;
+  const clean = Number(raw.toPrecision(15));
+  return significantDigits(clean) <= 12 ? clean : raw;
+}
+
 /** The source number at its own precision (a computed one at most two decimals), in the reader's locale, without a unit. */
 function sourceNumberText(raw: number, locale?: string, derived = false, unit?: string, target?: RenderTarget): string {
   // A derived number drops the residue of binary arithmetic first: 6.9, not 6.90.
-  if (derived && !Number.isInteger(raw)) raw = Number(raw.toPrecision(15));
+  // A source number drops it where it is a short decimal: 7.3, not 7.300000000000001.
+  raw = derived && !Number.isInteger(raw) ? Number(raw.toPrecision(15)) : withoutFloatResidue(raw);
   // Its cap never prints a nonzero sum as 0: 0.004 reads "0.004", not "0.00".
   const decimals = derived ? nonzeroDecimals(raw, Math.min(decimalPrecision(raw), DERIVED_NUMBER_DECIMALS)) : decimalPrecision(raw);
   // Preserve the source number even below the shared formatter's decimal limit.
@@ -140,28 +164,64 @@ function sourceNumberText(raw: number, locale?: string, derived = false, unit?: 
 }
 
 /**
- * The value as the chart prints it, for the hover card: through the record's
- * format example where the series or the chart declares one (its rounding,
- * prefix and suffix, the example's own separators), else the source number
- * at its own precision; the unit placed as the marks place it. The record
- * keeps the source number, so nothing but the wording changes.
+ * The unit join, the one rule for a shown text: a bare number takes the
+ * value's unit as a mark joins it. Only digits (any script), separators and a
+ * sign are bare. A text that already carries a sign, a currency, a magnitude
+ * letter or a percent sign is complete ("4.8%" stays "4.8%", "$213k" stays).
+ * A value kept as a fraction prints as its percentage, so its bare number
+ * takes "%" ("100.0%", not "100.0 fraction"). The digits and the scale word
+ * are the label's.
+ */
+function joinShownUnit(shown: string, value: InteractionValue): string {
+  return BARE_NUMBER.test(shown) ? withUnit(shown, value.unit === 'fraction' ? '%' : value.unit) : shown;
+}
+
+/**
+ * The card's zero rule: a shown text that prints zero for a value above or
+ * below zero (a tail sharing the zero label; a whole-percent table column) is
+ * the chart's reading at its precision. The card is where a nonzero value
+ * reads as nonzero, so it prints the value at the decimals that keep it off
+ * zero instead (`formattedValueText`).
+ */
+function zeroRuleApplies(value: InteractionValue, shown: string): boolean {
+  return value.raw !== 0 && printsZero(shown);
+}
+
+/**
+ * The shown text of a number value (`displayed`: the text its label draws, or
+ * under an authored format the text its label would draw), with the unit
+ * joined to a bare number. Undefined where the value has none, or where the
+ * zero rule takes the source digits instead. The hover card and the reading
+ * print a value's shown text through this one helper.
+ */
+export function shownValueText(value: InteractionValue): string | undefined {
+  if (value.state !== 'value' || value.kind !== 'number' || typeof value.raw !== 'number') return undefined;
+  const shown = value.displayed?.trim();
+  if (!shown || zeroRuleApplies(value, shown)) return undefined;
+  return joinShownUnit(shown, value);
+}
+
+/**
+ * A value, a field, a share or a change as the hover card prints it: its
+ * shown text (`shownValueText`). A value without a shown text prints as on a
+ * chart without shown texts: through its format (`formattedValueText`). The
+ * zero rule prints there too, at the decimals that keep the value off zero.
+ * The record keeps the source number, so nothing but the wording changes.
  */
 export function displayedValueText(value: InteractionValue, locale?: string): string {
+  return shownValueText(value) ?? formattedValueText(value, locale);
+}
+
+/**
+ * A number through its record's format example where the series or the chart
+ * declares one (its rounding, prefix and suffix, the example's own
+ * separators), else the source number at its own precision; the unit placed
+ * as the marks place it. The card's zero rule prints this. A plain number
+ * whose shown text printed zero prints its source digits.
+ */
+export function formattedValueText(value: InteractionValue, locale?: string): string {
   if (value.state !== 'value' || value.kind !== 'number' || typeof value.raw !== 'number') return interactionValueText(value, locale);
-  // The label the chart drew for this value is the one text the reader has
-  // already read; a chart-level format the layout rastered over the exhibit
-  // prints there with its final decimals. A bare number takes the unit as a
-  // mark would; a label that carries its own sign or suffix is complete.
-  // A label the exhibit rounds to zero (a tail sharing the zero label;
-  // a whole-percent table column) is the chart's reading at its precision.
-  // The card is where a nonzero value reads as nonzero, so it formats.
   const drawn = value.displayed?.trim();
-  if (drawn && !(value.raw !== 0 && printsZero(drawn))) {
-    // Only a bare number takes the unit: digits (any script), separators and a
-    // sign. A label that already carries a sign, a currency, a magnitude
-    // letter or a percent sign is complete ("4.8%" stays "4.8%", "$213k" stays).
-    return BARE_NUMBER.test(drawn) ? withUnit(drawn, value.unit) : drawn;
-  }
   const derived = derivedPercentText(value, locale);
   if (derived !== undefined) return derived;
   if (value.format) {
@@ -193,7 +253,8 @@ export function interactionValueText(value: InteractionValue, locale?: string): 
     return formatDate(parsed, datePatternFromExample(value.format, locale), locale);
   }
   if (typeof value.raw !== 'number') return String(value.raw);
-  if (value.format && wholeCurrencyValue(value.raw, value.unit, value.renderTarget)) return displayedValueText(value, locale);
+  // A whole currency amount under a format prints as the chart prints it: its shown text, else through the format.
+  if (value.format && wholeCurrencyValue(value.raw, value.unit, value.renderTarget)) return shownValueText(value) ?? formattedValueText(value, locale);
   const derived = derivedPercentText(value, locale);
   if (derived !== undefined) return derived;
   const text = sourceNumberText(value.raw, locale, value.derived === 'number', value.format ? undefined : value.unit, value.renderTarget);

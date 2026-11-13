@@ -60,7 +60,7 @@ import { iqr as interquartileRange, quantileType7, sortAscending } from '../../s
 import type { ChartData } from '../../types/data';
 import type { Annotation } from '../../types/annotations';
 import type { ColumnOptions } from '../../types/options';
-import type { Geometry, LintWarning } from '../../types/scene';
+import type { Geometry, LintWarning, ShownMark } from '../../types/scene';
 import { layoutColumn } from '../column/layout';
 import { hostedLayout } from '../../normalize/innerRefusal';
 import { labelOn } from '../labelOn';
@@ -871,6 +871,13 @@ export function layoutHistogram(
       : formatAutomaticNumber(counts[index]!, { locale: options.locale?.language, decimals: 0 })} (${binLabels[index]})`;
   }
 
+  // A count label is owned by its column bar; the bin's record (a11y/statisticsRecords.ts, histogram) takes its text.
+  const shown: ShownMark[] = column.labels.flatMap((label) => {
+    const index = label.kind === 'point' && label.shows ? counts.findIndex((_, i) => binId(i) === label.owner.categoryId) : -1;
+    return index < 0 ? [] : [{ owner: { categoryId: JSON.stringify(['bin', binning.edges[index]!, binning.edges[index + 1]!]) }, shows: label.shows!,
+      ...(label.hidden ? {} : { drawn: true as const }) }];
+  });
+
   // The quantiles are never printed. A bin prints no count where the histogram turns its label off or prints its share.
   const pointsOff = options.labels === false || (options.labels?.point === false && !open) || options.valueAxis?.percent === true;
   const withheld = counts.flatMap((_, index) => {
@@ -881,7 +888,7 @@ export function layoutHistogram(
     ...column,
     type: 'histogram',
     size,
-    marks: { bars: column.marks.bars, bins },
+    marks: { bars: column.marks.bars, bins, ...(shown.length > 0 ? { shown } : {}) },
     derived,
     warnings: [...warnings, ...column.warnings],
   }, [...withheld, 'histogram:q1', 'histogram:median', 'histogram:q3']);

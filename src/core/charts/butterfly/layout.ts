@@ -75,6 +75,7 @@ import type {
   Paint,
   PlacedLabel,
   SceneNode,
+  ShownTexts,
 } from '../../types/scene';
 import { footnoteSuffix } from '../../footnoteMark';
 import { textScaleOf } from '../../typeFloors';
@@ -148,6 +149,8 @@ export function layoutButterfly(
     paneFit?: boolean;
     /** Set where the rows do not fit under the value axes of panes on their own scales: they go, the rows stay. */
     noAxis?: boolean;
+    /** The record slot (ShownTexts key) the plotted values fill: 'value', or a caller's share ('share.percent'). */
+    valueSlot?: string;
   },
 ): Geometry<ButterflyMarks, ButterflyDerived> {
   const opts = options ?? ({} as ButterflyOptions);
@@ -615,13 +618,17 @@ export function layoutButterfly(
   const markW = (r: (typeof rows)[number]): number => (r.mark ? measure(r.mark, catFontOf(r)).width : 0);
   // A cell format prints in its pane's unit, so "$k" holds its scale (exampleSpec).
   const paneUnit = (side: 'a' | 'b') => (side === 'a' ? sA : sB).unit ?? opts.unit;
+  /** A value as its label prints it, before the cell's `${value}` text: the cell format, else the pane's. */
+  const valueText = (v: number, meta: CellMeta | null, side: 'a' | 'b'): string =>
+    meta?.format ? byExample(meta.format, paneUnit(side))(v) : (side === 'a' ? fmtA : fmtB)(v);
   const textOf = (v: number | null, meta: CellMeta | null, side: 'a' | 'b'): string => {
     if (v === null) return '';
     const custom = meta?.label;
-    const text = meta?.format ? byExample(meta.format, paneUnit(side))(v) : (side === 'a' ? fmtA : fmtB)(v);
+    const text = valueText(v, meta, side);
     if (typeof custom === 'string') return custom.replace(/\$\{value\}/g, text);
     return text;
   };
+  const valueSlot = comparison?.valueSlot ?? 'value';
   const room = comparison?.bracketRoom ?? { left: 0, right: 0 };
   // Comparison exhibits already use a readable 20 px run. A comparison
   // disclosed in the footer does not need a bracket gutter on the canvas.
@@ -891,7 +898,7 @@ export function layoutButterfly(
       const series = side === 'a' ? sA : sB;
       const v = side === 'a' ? r.a : r.b;
       const meta = side === 'a' ? r.aMeta : r.bMeta;
-      const fmt = side === 'a' ? fmtA : fmtB;
+      const shownText = v === null ? undefined : valueText(v, meta, side);
       const len = v === null ? 0 : Math.max(lenOf[side](Math.abs(v)), 0.5);
       const dir = dirOf(side, v);
       const tipX = zeroOf(side) + dir * len;
@@ -916,11 +923,13 @@ export function layoutButterfly(
         ...(isOthersFill(paint) ? { separation: { fill: paint, backing: { token: 'background' } as const } } : {}),
         owner: { seriesId: series.id, categoryId: r.id },
         part: 'bar',
-        ...(v === null
+        ...(shownText === undefined
           ? {}
           : {
               display: {
-                value: meta?.format ? byExample(meta.format, paneUnit(side))(v) : fmt(v),
+                value: shownText,
+                // The text its value label would print where none is drawn.
+                shows: { [valueSlot]: shownText },
               },
             }),
       });
@@ -953,6 +962,9 @@ export function layoutButterfly(
       }
       // ---- value label at the bar end (outside-end; inside-end fallback) ----
       const text = textOf(v, meta, side);
+      // The label prints the value unless an authored text leaves out `${value}`.
+      const shows: ShownTexts | undefined = meta?.label === false || (typeof meta?.label === 'string' && !meta.label.includes('${value}'))
+        ? undefined : { [valueSlot]: shownText! };
       const tsize = measure(text, valueFont);
       if (tightRows) tsize.height = inkBox(valueFont);
       const outsideGap = paneFit ? VALUE_GAP : 6;
@@ -999,6 +1011,7 @@ export function layoutButterfly(
         kind: 'point',
         owner: { seriesId: series.id, categoryId: r.id },
         text,
+        ...(shows ? { shows } : {}),
         lines: [text],
         font: valueFont,
         priority,
@@ -1310,8 +1323,9 @@ export function layoutButterfly(
     }
   }
 
+  // Each value reads as its label prints it (its shown text): the cell format, else the pane's.
   const a11yDesc = rows
-    .map((r) => `${r.label}: ${aLabel} ${r.a === null ? '–' : fmtA(r.a)}, ${bLabel} ${r.b === null ? '–' : fmtB(r.b)}`)
+    .map((r) => `${r.label}: ${aLabel} ${r.a === null ? '–' : valueText(r.a, r.aMeta, 'a')}, ${bLabel} ${r.b === null ? '–' : valueText(r.b, r.bMeta, 'b')}`)
     .join('; ');
 
   return {

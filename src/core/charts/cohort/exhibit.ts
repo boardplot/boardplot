@@ -29,7 +29,7 @@ import {
 import { staticFrame } from '../../footer';
 import { defaultMeasurer, type FontSpec, type TextMeasurer } from '../../text';
 import type { Id } from '../../types/cell';
-import type { Geometry, LegendGeometry, LintWarning, Paint, SceneNode } from '../../types/scene';
+import type { Geometry, LegendGeometry, LintWarning, Paint, SceneNode, ShownTexts } from '../../types/scene';
 import { deriveRetention, missingCohortRate } from './retention';
 import { cohortFormula, cohortMeasure } from './wording';
 import type {
@@ -843,6 +843,8 @@ function buildExhibit(
     fitted?: FittedText,
     align?: 'middle' | 'end',
     claimId?: Id,
+    /** The record values the label prints (ShownTexts). */
+    shows?: ShownTexts,
   ) => {
     requests.push({
       id,
@@ -851,6 +853,7 @@ function buildExhibit(
       typeRole: kind === 'axisTitle' || id.startsWith('cohort-header-range:') ? 'axis' : 'label',
       owner,
       text,
+      ...(shows ? { shows } : {}),
       ...(owner.categoryId?.startsWith('t') && owner.seriesId ? {
         noteText: `${rowData.find(row => row.id === owner.seriesId)?.label ?? ''} ${text} (${periodName(data.periodLabel, Number(owner.categoryId.slice(1)), options.locale?.language)})`,
       } : {}),
@@ -1051,6 +1054,10 @@ function buildExhibit(
         { seriesId: row.id, categoryId: 'cohort-size' },
         'point',
         rowGround,
+        undefined,
+        undefined,
+        undefined,
+        { value: sizeText },
       );
     }
 
@@ -1125,6 +1132,8 @@ function buildExhibit(
         undefined,
         periodColumn?.flush ? 'end' : undefined,
         cellClaim(row, period),
+        // A missing rate prints a dash: it states no value.
+        missing ? undefined : { value: text },
       );
     });
   });

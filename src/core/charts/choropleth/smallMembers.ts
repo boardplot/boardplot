@@ -7,7 +7,7 @@ import { labelsToNodes } from '../../label/emit';
 import type { OccupiedIndex } from '../../label/occupied';
 import { PRIORITY, solveLabels, type LabelRequest, type SolveCtx } from '../../label/solver';
 import { wrapText, type FontSpec, type TextMeasurer } from '../../text';
-import type { LegendGeometry, SceneNode, TextRole } from '../../types/scene';
+import type { LegendGeometry, SceneNode, ShownTexts, TextRole } from '../../types/scene';
 import type { Theme } from '../../types/theme';
 import { emphasisWeight, strokeToken } from '../../theme';
 import { geoStatePattern, geoStateLabel, type ScaleModel } from '../geoScale';
@@ -389,10 +389,10 @@ function mapKeysOnce(input: MapKeysInput) {
   }));
 
   // ---- small-members block ----
-  const add = (id: string, label: string, rx: number, ry: number, kind: LabelRequest['kind'], categoryId?: string) => {
+  const add = (id: string, label: string, rx: number, ry: number, kind: LabelRequest['kind'], categoryId?: string, shows?: ShownTexts) => {
     const selected = categoryId ? memberFont : heading;
     const measured = measure(label, selected);
-    requests.push({ id, kind, typeRole: categoryId ? 'label' : 'axis', owner: categoryId ? { categoryId } : {}, text: label, lines: [label], font: selected,
+    requests.push({ id, kind, typeRole: categoryId ? 'label' : 'axis', owner: categoryId ? { categoryId } : {}, text: label, ...(shows ? { shows } : {}), lines: [label], font: selected,
       priority: PRIORITY.endpoint, candidates: [{ slot: 'smallMember', rect: { x: rx, y: ry + (rowH - measured.height) / 2, w: measured.width, h: measured.height }, penalty: 0 }],
       // The block heading is a caption, not an annotation value,
       // and so is the "No data" a null region reads out.
@@ -417,7 +417,9 @@ function mapKeysOnce(input: MapKeysInput) {
     occupied.claim(rect, 'legend', { categoryId: member.id }, 'smallMemberSwatch');
     add(`category:${member.id}`, member.code, left + SWATCH + SWATCH_GAP, ry, 'category', member.id);
     const value = state ? geoStateLabel(state, input.options) : textOf(member.value, member.listed, member.state);
-    add(`small-member-value:${member.id}`, value, left + columnW - columnGap - width(value, memberFont), ry, 'point', member.id);
+    // A state, a missing value or a region outside the data prints words, no value.
+    const shows = !state && member.listed && member.value !== null ? { value } : undefined;
+    add(`small-member-value:${member.id}`, value, left + columnW - columnGap - width(value, memberFont), ry, 'point', member.id, shows);
   });
   const solved = solveLabels(requests, occupied, input.solveCtx);
   const fontById = new Map(requests.map((request) => [request.id, request.font]));
@@ -584,10 +586,10 @@ export function valueTable(input: ValueTableInput) {
     const requests: LabelRequest[] = [];
     const { columns } = size(perColumn, width, full);
     const colW = columnWidth(columns, width, full);
-    const text = (id: string, label: string, f: FontSpec, left: number, top: number, kind: LabelRequest['kind'], categoryId?: string) => {
+    const text = (id: string, label: string, f: FontSpec, left: number, top: number, kind: LabelRequest['kind'], categoryId?: string, shows?: ShownTexts) => {
       const measured = measure(label, f);
       requests.push({
-        id, kind, typeRole: categoryId ? 'label' : 'axis', owner: categoryId ? { categoryId } : {}, text: label, lines: [label], font: f,
+        id, kind, typeRole: categoryId ? 'label' : 'axis', owner: categoryId ? { categoryId } : {}, text: label, ...(shows ? { shows } : {}), lines: [label], font: f,
         priority: PRIORITY.endpoint, role: categoryId ? composedTextRole(label) : 'caption',
         candidates: [{ slot: 'valueTable', rect: { x: left, y: top + (rowH - measured.height) / 2, w: measured.width, h: measured.height }, penalty: 0 }],
       });
@@ -629,7 +631,9 @@ export function valueTable(input: ValueTableInput) {
       text(`value-table-code:${row.id}`, row.code, f, alignedIn(left + swatchW, codeW, measure(row.code, f).width, overrides?.code?.align, 'left'), top, 'category', row.id);
       if (valueDrawn) {
         const valueTextW = measure(row.text, f).width;
-        text(`value-table-value:${row.id}`, row.text, f, overrides?.value?.align === undefined ? left + colW - valueTextW : alignedIn(left + colW - valueW, valueW, valueTextW, overrides.value.align, 'right'), top, 'point', row.id);
+        // A state, a missing value or a region outside the data prints words, no value.
+        const shows = !row.state && row.listed && row.value !== null ? { value: row.text } : undefined;
+        text(`value-table-value:${row.id}`, row.text, f, overrides?.value?.align === undefined ? left + colW - valueTextW : alignedIn(left + colW - valueW, valueW, valueTextW, overrides.value.align, 'right'), top, 'point', row.id, shows);
       }
     });
     const solved = solveLabels(requests, occupied, solveCtx);

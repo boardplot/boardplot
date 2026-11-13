@@ -38,7 +38,7 @@ import { readerFloorPx, tableHeadFloorPx, textScaleOf } from '../../typeFloors';
 import { plotHeightAfter, type FrameResult, type LegendItemInput } from '../../frame';
 import type { CellMeta, ComparisonDirection, Id } from '../../types/cell';
 import type { BulletOptions, LabelKind } from '../../types/options';
-import type { Geometry, LintWarning, Paint, PlacedAnnotation, SceneNode } from '../../types/scene';
+import type { Geometry, LintWarning, Paint, PlacedAnnotation, SceneNode, ShownTexts } from '../../types/scene';
 import type { Theme } from '../../types/theme';
 import { asColumnHeads, fitHead, headRequest } from './columnHead';
 import type { BulletDerived, BulletMarks } from './layout';
@@ -46,6 +46,7 @@ import { maxOf, pushAll } from '../../arrays';
 import { generatedIdWarnings } from '../../schema/generatedColumns';
 import { alignedLeft, alignedRight, authoredTrackWidth, columnOverrideWarnings, orderedBlocks } from '../columnOverrides';
 import { emptyIdRecord } from '../../idRecords';
+import type { BulletColumn } from './shown';
 
 /** A normalized row, as layoutBullet hands it over. */
 export interface TargetScaleRow {
@@ -185,6 +186,10 @@ export interface TargetScaleInput {
   deltaBody: (row: TargetScaleRow, delta: number) => string;
   deltaTone: (row: TargetScaleRow, delta: number) => 'good' | 'bad' | 'warn' | 'neutral';
   deltaVsTarget: Record<Id, number>;
+  /** The record values a printed column fills, with its text (shown.ts); without it the labels state none. */
+  columnShows?: (column: BulletColumn, text: string) => ShownTexts;
+  /** A number of the row as its value and target labels print it, before an authored label text. */
+  numberText?: (row: TargetScaleRow, value: number) => string;
   /** Lays the chart out again at a height, for an unsized card that needs its rows' height. */
   grow: (chromeH: number, rowsH: number) => Geometry<BulletMarks, BulletDerived> | undefined;
   paintWarningRules?: Geometry['paintWarningRules'];
@@ -543,6 +548,20 @@ export function layoutTargetScale(input: TargetScaleInput): Geometry<BulletMarks
       ...extra,
     });
   };
+  /** A number of the row with the record values its column fills. */
+  const numberShows = (column: BulletColumn, row: TargetScaleRow, value: number): ShownTexts | undefined =>
+    input.columnShows && input.numberText ? input.columnShows(column, input.numberText(row, value)) : undefined;
+  /** The texts a row's value, share and change labels print or would print, for its bar. */
+  const markShows = (row: TargetScaleRow, index: number): ShownTexts => {
+    if (!input.columnShows) return {};
+    const share = shares[index];
+    const delta = input.deltaVsTarget[row.id];
+    return {
+      ...(row.value === null ? {} : numberShows('actual', row, row.value)),
+      ...(share === undefined ? {} : input.columnShows('share', shareText(share))),
+      ...(delta === undefined ? {} : input.columnShows('delta', input.deltaBody(row, delta))),
+    };
+  };
   const bandPaints = targetBands(directions, target, options).map(band => band.paint);
   rows.forEach((row, index) => {
     const top = rowsTop + rowTops[index]!;
@@ -563,11 +582,13 @@ export function layoutTargetScale(input: TargetScaleInput): Geometry<BulletMarks
     // 0 % of target draws no bar; its share label still says 0 %.
     if (share !== undefined && share > 0) {
       const y = barCenter - barH / 2;
-      const display = { value: valueTexts[index] ?? input.valueText(row) ?? '' };
+      // The texts the row's labels print or would print: its value, share and change.
+      const shows = markShows(row, index);
+      const display = { value: valueTexts[index] ?? input.valueText(row) ?? '', shows };
       barNodeId = `bar:${row.id}`;
       if (share <= hi) {
         const rect: Rect = { x: x(0), y, w: Math.max(0.5, x(share) - x(0)), h: barH };
-        nodes.push({ t: 'rect', id: barNodeId, rect, ...barStyle, owner, part: 'bar', ...(hidden('actual') ? {} : { display }) });
+        nodes.push({ t: 'rect', id: barNodeId, rect, ...barStyle, owner, part: 'bar', display: hidden('actual') ? { shows } : display });
         occupied.claim(rect, 'mark', owner);
       } else {
         // Beyond the scale: the bar runs to the axis end with a break mark in it.
@@ -575,7 +596,7 @@ export function layoutTargetScale(input: TargetScaleInput): Geometry<BulletMarks
         const cut = end - OVERFLOW_BREAK_INSET;
         const rect: Rect = { x: x(0), y, w: Math.max(0.5, cut - 2 - x(0)), h: barH };
         const tail: Rect = { x: cut + 2, y, w: end - cut - 2, h: barH };
-        nodes.push({ t: 'rect', id: barNodeId, rect, ...barStyle, owner, part: 'bar', ...(hidden('actual') ? {} : { display }) });
+        nodes.push({ t: 'rect', id: barNodeId, rect, ...barStyle, owner, part: 'bar', display: hidden('actual') ? { shows } : display });
         nodes.push({ t: 'rect', id: `${barNodeId}:beyond`, rect: tail, ...barStyle, owner, part: 'barBeyondBreak' });
         const glyph = straightBreakGlyph(theme, { x: cut, y: barCenter }, `${barNodeId}:break`, owner, { token: 'axis' }, 'barBreak');
         nodes.push(...glyph.nodes);
@@ -599,22 +620,28 @@ export function layoutTargetScale(input: TargetScaleInput): Geometry<BulletMarks
         { x: alignedLeft(plot0.x, leftW, name.w, labelAlign), y: top, w: name.w, h: name.h },
         { ...fittedLabel(name, nameFont), priority: PRIORITY.endpoint + (highlights.has(row.id) ? PRIORITY.highlightBonus : 0) });
       const note = (stacked ? stackNotes : sideNotes)[index]!;
+      // A note cut short prints no whole target.
+      const targetShows = row.target === null || 'title' in note && note.title !== undefined ? undefined : numberShows('target', row, row.target);
       request(`target:${row.id}`, 'annotation', owner, note.text, noteFont,
-        { x: alignedLeft(plot0.x, leftW, note.w, labelAlign), y: noteTop, w: note.w, h: note.h }, { ...fittedLabel(note as Parameters<typeof fittedLabel>[0], noteFont), role: 'note' });
+        { x: alignedLeft(plot0.x, leftW, note.w, labelAlign), y: noteTop, w: note.w, h: note.h },
+        { ...fittedLabel(note as Parameters<typeof fittedLabel>[0], noteFont), role: 'note', ...(targetShows ? { shows: targetShows } : {}) });
       inks.set(`target:${row.id}`, { token: 'inkMuted' });
     }
     const valueText = valueTexts[index];
     if (valueText) {
       const size1 = measure(valueText, valueFont);
       const left = stacked ? plot0.x + plot0.w - (shareW ? shareW + VALUE_GAP : 0) - size1.width : cellX('actual', size1.width);
+      const label = row.meta?.label;
+      const valueShows = row.value === null || (typeof label === 'string' && !label.includes('${value}')) ? undefined : numberShows('actual', row, row.value);
       request(`point:${row.id}`, 'point', owner, valueText, valueFont,
-        { x: left, y: valueCenter - size1.height / 2, w: size1.width, h: size1.height });
+        { x: left, y: valueCenter - size1.height / 2, w: size1.width, h: size1.height }, valueShows ? { shows: valueShows } : {});
     }
     const shareLabel = shareTexts[index];
     if (shareLabel) {
       const size2 = measure(shareLabel, shareFont);
       request(`share:${row.id}`, 'annotation', owner, shareLabel, shareFont,
-        { x: stacked ? plot0.x + plot0.w - size2.width : cellX('share', size2.width), y: valueCenter - size2.height / 2, w: size2.width, h: size2.height }, { role: 'value' });
+        { x: stacked ? plot0.x + plot0.w - size2.width : cellX('share', size2.width), y: valueCenter - size2.height / 2, w: size2.width, h: size2.height },
+        { role: 'value', ...(input.columnShows ? { shows: input.columnShows('share', shareLabel) } : {}) });
       inks.set(`share:${row.id}`, { token: 'ink' });
     }
     const delta = deltas[index];
@@ -625,8 +652,10 @@ export function layoutTargetScale(input: TargetScaleInput): Geometry<BulletMarks
       const tone = input.deltaTone(row, delta);
       const left = stacked ? plot0.x + plot0.w - size3.width : cellX('delta', size3.width);
       const y = stacked ? noteTop + (deltaSeparate ? stackNoteH + 2 : 0) : valueCenter - size3.height / 2;
+      // Stacked, '+7 vs target' prints the change's own text first.
       request(labelId, 'annotation', owner, deltaLabel, deltaFont,
-        { x: left, y, w: size3.width, h: size3.height }, { role: composedTextRole(deltaLabel, 'note'), priority: PRIORITY.extreme });
+        { x: left, y, w: size3.width, h: size3.height }, { role: composedTextRole(deltaLabel, 'note'), priority: PRIORITY.extreme,
+          ...(input.columnShows ? { shows: input.columnShows('delta', deltaBodies[index]!) } : {}) });
       inks.set(labelId, { token: tone === 'neutral' ? 'ink' : tone });
       placedAnnotations.push({
         id: `delta-target:${row.id}`,

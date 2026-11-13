@@ -12,7 +12,7 @@ import { CLAIM_KIND_GROUPS, type ClaimRecordV1 } from './claims/browser';
 import { interactionRecords } from './a11y/records';
 import { dataOrder } from './frame';
 import { cutLabels, labelOmissions, omissionScope, readableLabelDestination, type LabelOmission } from './label/omissions';
-import { interactionValueText } from './a11y/valueText';
+import { interactionValueText, shownValueText } from './a11y/valueText';
 import type { OwnerRef } from './types/cell';
 import type { ChartData } from './types/data';
 import { normalizeCategory, normalizeSeriesValues } from './normalize/shared';
@@ -358,7 +358,9 @@ function unrequestedLabelOmissions(input: ChartReadingInput, records: readonly I
       && (disabled(valueKind) || cellLabel === false || excludedValues || selectiveValues)) {
       const reason = cellLabel === false ? 'cell-label-disabled' : excludedValues ? 'seriesLabels.only'
         : disabled(valueKind) ? 'disabled' : `valueLabels:${options.valueLabels}`;
-      const value = typeof cellLabel === 'string' ? cellLabel : interactionValueText(record.value, input.request.locale?.language);
+      // The text the label would carry where the value has one (its shown text, as the card prints it), else the source number.
+      const value = typeof cellLabel === 'string' ? cellLabel
+        : shownValueText(record.value) ?? interactionValueText(record.value, input.request.locale?.language);
       add(`${prefix}${valueKind}:${owner.seriesId ?? ''}:${owner.categoryId}`, `${record.label} ${value}`, reason, owner, valueKind, value);
     }
     if (context.geometry.type === 'scatter' && owner.pointId !== undefined && !hasValueRequest
@@ -410,7 +412,7 @@ function unrequestedLabelOmissions(input: ChartReadingInput, records: readonly I
       if (options.valueLabel === 'none') {
         const last = records.filter(record => (record.target.panel ? `${record.target.panel}/` : '') === prefix && record.value.state === 'value').at(-1);
         if (last) {
-          const value = interactionValueText(last.value, input.request.locale?.language);
+          const value = shownValueText(last.value) ?? interactionValueText(last.value, input.request.locale?.language);
           add(`${prefix}spark:last`, `${last.label} ${value}`, 'valueLabel:none', last.target.owner, 'point', value);
         }
       }

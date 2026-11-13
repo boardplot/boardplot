@@ -19,7 +19,7 @@ import { emphasisWeight, strokeToken, dashToken } from './theme';
 
 import type { RenderTarget } from './types/options';
 import { cagr, formatAutomaticNumber, formatAutomaticPercent, PERCENTAGE_POINTS } from './format';
-import { differenceExample, exampleSpec, formatStatWithSpec, formatWithSpec, formatterFromExample, neededDecimals, parseFormatExample, roundedNumber, specUnitKind, withChartMarks } from './formatSpec';
+import { differenceExample, exampleSpec, formatStatWithSpec, formatWithSpec, formatterFromExample, neededDecimals, parseFormatExample, printsBound, roundedNumber, specUnitKind, withChartMarks } from './formatSpec';
 import { autoDecimals, roundHalfUp, roundsToZero, typicalDecimals } from './formatPrecision';
 import { yearSpan, yearSpanFromLabels } from './periodYears';
 
@@ -58,6 +58,7 @@ import type {
   PlacedAnnotation,
   PlacedLabel,
   SceneNode,
+  ShownTexts,
 } from './types/scene';
 import type { Theme } from './types/theme';
 import { BRACKET_TICK, indicator100LabelRect, lineLabelGutterLines, namedLineText, pruneOrphanAnnotationArms } from './annotateParts';
@@ -140,8 +141,16 @@ export interface AnchorResolution {
    * The text the anchored mark already prints, and the mark's box: a heatmap
    * cell with its value inside it. A callout or note whose `${value}` would
    * print that same text drops it, and sits and leads from the box's edge.
+   * `shows` is what that drawn label states it prints (PlacedLabel.shows).
    */
-  printed?: { text: string; box: Rect };
+  printed?: { text: string; box: Rect; shows?: ShownTexts };
+  /**
+   * The texts the anchored mark states where no drawn label prints them: the
+   * texts its label would print (its node's `display.shows`, its
+   * `geometry.marks.shown` entry). A callout or note prints them only under a
+   * format the author set on the series or the chart.
+   */
+  shows?: ShownTexts;
   /**
    * The anchored mark's box, such as a scatter bubble's. A callout or note
    * rings it and leads from its edge, so neither the text nor the leader
@@ -972,7 +981,7 @@ function placeNote(s: AnnotationScope, ann: Extract<Annotation, { kind: 'callout
   const found = s.input.resolve(ann.at);
   if (!found) return warn(s, 'bad-anchor', `${ann.kind} '${s.id}': unresolvable anchor`);
   if ([ann.text, ann.kind === 'callout' ? ann.headline : undefined].some((text) => text?.includes('${value}')) && valueless(s, ann.kind, [found])) return;
-  const value = s.run.fmt(found.value);
+  const value = shownValueText(s, ann, found) ?? s.run.fmt(found.value);
   // A mark that prints this value already says the number: the note keeps its
   // words, and the token goes with the colon or dash that led into it.
   const repeats = found.printed?.text === value && (ann.text ?? '').includes('${value}');
@@ -1006,6 +1015,43 @@ function placeNote(s: AnnotationScope, ann: Extract<Annotation, { kind: 'callout
     inputs: [{ ref: `at:${anchorRefLabel(ann.at)}`, value: at.noValue === undefined ? at.value : null, state: 'anchor' }],
     raw: null,
   }, placedGlyph, printsValue ? found.owner : undefined);
+}
+
+/**
+ * The text the chart states for the anchored mark's value (ShownTexts slot
+ * `value` of the anchor's exact owner): the text its drawn label prints, else,
+ * under a format the author set on the series or the chart, the text its label
+ * would print. A label the pass solves with the annotations is not seated yet,
+ * so its text counts as the would-be text. Undefined where the chart states
+ * none, where the annotation sets its own format, and where the text is a
+ * bound ("<0.001"), which does not state the number.
+ */
+function shownValueText(s: AnnotationScope, ann: Extract<Annotation, { kind: 'callout' | 'note' }>, at: AnchorResolution): string | undefined {
+  const text = stated(s, ann, at);
+  return text === undefined || printsBound(text) ? undefined : text;
+}
+
+function stated(s: AnnotationScope, ann: Extract<Annotation, { kind: 'callout' | 'note' }>, at: AnchorResolution): string | undefined {
+  if (ann.format !== undefined) return undefined;
+  const drawn = at.printed?.shows?.value;
+  if (drawn !== undefined) return drawn;
+  const exact = (owner: OwnerRef) => {
+    const keys = Object.keys(owner) as (keyof OwnerRef)[];
+    return keys.length === Object.keys(at.owner).length && keys.every((key) => owner[key] === at.owner[key]);
+  };
+  let wouldBe: string | undefined;
+  for (const label of s.input.printedLabels ?? []) {
+    const text = label.shows?.value;
+    if (text === undefined || !exact(label.owner)) continue;
+    if (label.hidden === undefined) return text;
+    wouldBe ??= text;
+  }
+  for (const request of s.input.labelRequests ?? []) {
+    const text = request.shows?.value;
+    if (text !== undefined && exact(request.owner)) wouldBe ??= text;
+  }
+  wouldBe ??= at.shows?.value;
+  return (at.format ?? s.input.format) === undefined ? undefined : wouldBe;
 }
 
 function placeDelta(s: AnnotationScope, ann: Extract<Annotation, { kind: 'delta' }>): void {

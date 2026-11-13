@@ -16,14 +16,14 @@ import { shadesFills } from '../line/marks';
 import { PRIORITY, type LabelRequest, type SlotCandidate } from '../../label/solver';
 import type { LintWarning, Paint, PlacedLabel } from '../../types/scene';
 import { isIncomplete } from '../../dataGaps';
-import { linesSize, valueRowCrowded, warnShareParts } from '../band/labels';
+import { linesSize, valueRowCrowded, valueShareLines, warnShareParts } from '../band/labels';
 import { stepDownFont } from '../../label/rowFit';
 import { textScaleOf } from '../../typeFloors';
 import { stackSegmentCandidates } from '../../label/slots';
 import { anchorComboAxisTitles } from './axisTitles';
 import { clearLift, clearOfStrokes, comboEndpointRequest, comboValueLabels, FIRST_END_BELOW_TOTALS, nearerOwnLine, withinOneFill } from './endpoints';
 import { MARKER_R, type ComboArea, type ComboDomain, type ComboEnv, type ComboMarkGeometry, type ComboPaints } from './model';
-import { composeLines, composeText, contentOf, growthLine, toDateOnTotals } from './plot';
+import { composeParts, composeWithShows, contentOf, growthLine, toDateOnTotals } from './plot';
 import { toDateLabel } from '../../partialPeriod';
 import { namesOnly } from '../../markVisibility';
 import { composedTextRole } from '../../textRole';
@@ -83,8 +83,11 @@ function segmentLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, geom
     const c = domain.cats[ci]!;
     const val = s.vals[ci]!;
     const share = shareBasis[ci]! > 0 ? (v / shareBasis[ci]!) * 100 : null;
-    let lines = composeLines(domain, content, { abs: v, isPct: val.isPct, share, shareText: domain.shareTexts.get(`${c.id}\0${s.id}`) }, c.label ?? c.id, s.label, domain.valueFmtOf(s, val));
+    const composed = composeParts(domain, content, { abs: v, isPct: val.isPct, share, shareText: domain.shareTexts.get(`${c.id}\0${s.id}`) }, c.label ?? c.id, s.label, domain.valueFmtOf(s, val));
+    let lines = valueShareLines(composed.parts);
     let text = lines.join(' ');
+    // An authored text prints the values where it says `${value}`.
+    const shows = val.labelOverride === false || (typeof val.labelOverride === 'string' && !val.labelOverride.includes('${value}')) ? undefined : composed.shows;
     // The drawn part itself: a zero cell beside it is not the stack's one part.
     const single = v !== 0 && onePartDrawn(domain.columns.map(column => column.vals[ci]!.v));
     const printed = val.isPct || share !== null ? content : content.filter((part) => part !== 'percent');
@@ -109,6 +112,7 @@ function segmentLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, geom
         ? { printedIn: `grandTotal:${c.id}` } : {}),
       owner: { seriesId: s.id, categoryId: c.id },
       text,
+      ...(shows ? { shows } : {}),
       lines,
       ...(lines.length > 1 ? { align: 'middle' as const } : {}),
       typeRole: 'label', font: labelFont,
@@ -169,11 +173,18 @@ function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, p
   const backLink = (id: string, words: unknown) => !words && valueAlone && linked.has(id) ? { printedIn: linked.get(id) } : {};
   // A reference rule does not move a total: it crosses the rule on a halo, as on column.
   const crossesRules = domain.averageMarkerId !== undefined || (domain.options.annotations ?? []).some(annotation => annotation.kind === 'valueLine');
+  // Each total's composed text and the values it prints: the stack's total, which is a single column's own value.
+  const totals = domain.cats.map((c, ci) => {
+    if (!domain.anyByCat[ci]) return null;
+    const cell = totalColumn(domain, ci)?.vals[ci];
+    return composeWithShows(cell?.labelOverride, domain, gtContent, { abs: domain.stackTotals[c.id]!, isPct: cell?.isPct ?? false }, c.label ?? c.id, '', domain.totalFmtOf(ci));
+  });
+  const totalShows = totals.map((total) => total?.shows);
   const texts = domain.cats.map((c, ci) => {
     if (!domain.anyByCat[ci]) return null;
     const single = totalColumn(domain, ci);
     const cell = single?.vals[ci];
-    const composed = composeText(domain, gtContent, { abs: domain.stackTotals[c.id]!, isPct: cell?.isPct ?? false }, c.label ?? c.id, '', domain.totalFmtOf(ci));
+    const composed = totals[ci]!.text;
     // A single column's total is its value: an authored cell label speaks for it.
     const override = cell?.labelOverride;
     if (override === false) return null;
@@ -303,6 +314,7 @@ function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, p
         ...backLink(`grandTotal:${c.id}`, undefined),
         owner: { categoryId: c.id },
         text,
+        ...(totalShows[ci] ? { shows: totalShows[ci] } : {}),
         lines: [text],
         typeRole: 'label', font: insideFont,
         fontStep: insideFont,
@@ -320,6 +332,7 @@ function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, p
       ...backLink(`grandTotal:${c.id}`, words),
       owner: { categoryId: c.id },
       text,
+      ...(totalShows[ci] ? { shows: totalShows[ci] } : {}),
       lines: words?.lines ?? [text],
       ...words?.request,
       typeRole: 'label', font: outerFont,
@@ -360,7 +373,8 @@ function referenceLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, re
   for (const s of domain.refs) domain.cats.forEach((c, ci) => {
     const val = s.vals[ci]!;
     if (val.v === null) return;
-    const text = composeText(domain, content, { abs: val.v, isPct: val.isPct }, c.label ?? c.id, s.label, domain.valueFmtOf(s, val));
+    const composed = composeParts(domain, content, { abs: val.v, isPct: val.isPct }, c.label ?? c.id, s.label, domain.valueFmtOf(s, val));
+    const text = valueShareLines(composed.parts).join(' ');
     const { width: w, height: h } = env.measure(text, tickFont);
     const ry = y(val.v);
     const seat = (slot: string, x: number, top: number, penalty: number): SlotCandidate => ({ slot, rect: { x, y: top, w, h }, penalty });
@@ -370,7 +384,7 @@ function referenceLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, re
       id: `tick:${s.id}:${c.id}`,
       kind: 'tick',
       owner: { seriesId: s.id, categoryId: c.id },
-      text, lines: [text], typeRole: 'label', font: tickFont,
+      text, ...(composed.shows ? { shows: composed.shows } : {}), lines: [text], typeRole: 'label', font: tickFont,
       priority: PRIORITY.reference,
       candidates: [
         ...(marker ? [seat('rightOfMarker', cx + REFERENCE_MARKER_R + 4, ry - h / 2, 0), seat('leftOfMarker', cx - REFERENCE_MARKER_R - 4 - w, ry - h / 2, 0.5)] : []),
@@ -482,9 +496,10 @@ function linePointLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, ge
       if (typeof override !== 'string' && !engine) continue;
       const category = domain.cats[point.ci]!;
       const valueFmt = domain.valueFmtOf(s, cell);
-      const text = typeof override === 'string'
-        ? override.replace(/\$\{value\}/g, composeText(domain, ['absolute'], { abs: cell.v ?? 0, isPct: cell.isPct }, category.label ?? category.id, s.label, valueFmt))
-        : composeText(domain, (content ?? flaggedContent)!, { abs: cell.v, isPct: cell.isPct }, category.label ?? category.id, s.label, valueFmt);
+      const { text: composed, shows } = typeof override === 'string'
+        ? composeWithShows(override, domain, ['absolute'], { abs: cell.v ?? 0, isPct: cell.isPct }, category.label ?? category.id, s.label, valueFmt)
+        : composeWithShows(override, domain, (content ?? flaggedContent)!, { abs: cell.v, isPct: cell.isPct }, category.label ?? category.id, s.label, valueFmt);
+      const text = typeof override === 'string' ? override.replace(/\$\{value\}/g, composed) : composed;
       if (!text) continue;
       const size = env.measure(text, labelFont);
       const below = sideAwayFrom(point, others) === 'below';
@@ -518,6 +533,7 @@ function linePointLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, ge
         role: composedTextRole(text),
         owner: { seriesId: s.id, categoryId: category.id },
         text,
+        ...(shows ? { shows } : {}),
         lines: [text],
         typeRole: 'label', font: labelFont,
         priority: cell.priority ?? (engine && extreme ? PRIORITY.extreme : PRIORITY.interior) + (env.highlights.has(s.id) || env.highlights.has(category.id) ? PRIORITY.highlightBonus : 0),
@@ -657,7 +673,7 @@ export function planComboLabels(
     ]) {
       if (endpoint.end === undefined) continue;
       requests.push(comboEndpointRequest({ s, last: endpoint.point, lastCat: domain.cats[endpoint.point.ci]!,
-        text: endpoint.end.text, labelFont, measure: env.measure, MARKER_R, hasColumns: domain.columns.length > 0, band,
+        text: endpoint.end.text, ...(endpoint.end.shows ? { shows: endpoint.end.shows } : {}), labelFont, measure: env.measure, MARKER_R, hasColumns: domain.columns.length > 0, band,
         adjacentAxisActive: endpoint.first ? domain.showPrimaryAxis : rightAxisActive, highlights: env.highlights, first: endpoint.first, firstBelowTotals: (domain.options as { [FIRST_END_BELOW_TOTALS]?: boolean })[FIRST_END_BELOW_TOTALS] === true,
         sharesOnColumns: (domain.options as { [FIRST_END_BELOW_TOTALS]?: boolean })[FIRST_END_BELOW_TOTALS] === true,
         allowOnColumn: !domain.lineBand,

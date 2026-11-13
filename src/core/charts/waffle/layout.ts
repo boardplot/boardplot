@@ -36,7 +36,7 @@ import { DEFAULT_TARGET, kpiHeroSizesPx, panelHeroSizesPx, TARGET_SIZE, type Tar
 import { KPI_VALUE_SIZE, textScaleOf } from '../../typeFloors';
 import { cellMeta, cellValue, type Id } from '../../types/cell';
 import type { Category, ChartData } from '../../types/data';
-import type { Geometry, LintWarning, Paint, PlacedLabel, SceneNode } from '../../types/scene';
+import type { Geometry, LintWarning, Paint, PlacedLabel, SceneNode, ShownMark } from '../../types/scene';
 import { allocateCells, cellAt } from './cells';
 import { WAFFLE_MAX_GRID_SIDE, WAFFLE_SIZING } from './sizing';
 import { eyebrowFont, figureRole } from '../cardRoles';
@@ -324,6 +324,9 @@ function layoutPass(data: ChartData, options: WaffleOptions, lean = false, oneRo
 
   const valueText = (si: number, pi: number) => cellValue(series[si]!.cells[pi]!) === null
     ? theme.table?.glyphs?.missing ?? '–' : formatFor(si, pi)(panels[pi]!.segments[si]!.value);
+  /** The segment value a value text prints (ShownTexts); a missing value prints the glyph and states none. */
+  const shownValue = (si: number, pi: number) => cellValue(series[si]!.cells[pi]!) === null ? undefined : { value: valueText(si, pi) };
+  const shown: ShownMark[] = [];
   // The computed rest has no series format of its own: it takes the chart format, or the default.
   const restSpec = options.format ? exampleSpec(options.format, options.locale?.language, undefined, cellNumbers) : undefined;
   // As a series format: a rounded rest must not claim a different share from its cells.
@@ -652,7 +655,12 @@ function layoutPass(data: ChartData, options: WaffleOptions, lean = false, oneRo
     occupied.claim(rect, 'mark', { categoryId: panel.categoryId });
     let next = 0;
     panel.segments.forEach((segment, si) => {
-      if (segment.cells === 0) return;
+      if (segment.cells === 0) {
+        // Under half a cell: no node, so the value its text would print is stated here.
+        const shows = segment.value > 0 ? shownValue(si, pi) : undefined;
+        if (shows) shown.push({ owner: { categoryId: panel.categoryId, seriesId: segment.seriesId }, shows });
+        return;
+      }
       let d = '';
       for (let k = next; k < next + segment.cells; k++) {
         const { col, row } = cellAt(k, grid.columns, grid.rows, fillFrom);
@@ -663,7 +671,7 @@ function layoutPass(data: ChartData, options: WaffleOptions, lean = false, oneRo
       nodes.push({
         t: 'path', id: nodeId, d, fill: panelPaint(pi, si),
         owner: { seriesId: segment.seriesId, categoryId: panel.categoryId }, part: 'waffleSegment',
-        display: { value: formatFor(si, pi)(segment.value) },
+        display: { value: formatFor(si, pi)(segment.value), shows: { value: formatFor(si, pi)(segment.value) } },
       });
       segmentMarks.push({ seriesId: segment.seriesId, nodeId, cells: segment.cells });
     });
@@ -734,7 +742,7 @@ function layoutPass(data: ChartData, options: WaffleOptions, lean = false, oneRo
       nodes.push({
         t: 'path', id: nodeId, d: box(shareRect.x, shareRect.y, side), fill,
         owner: { seriesId: segment.seriesId, categoryId: panel.categoryId }, part: 'waffleSegment',
-        display: { value: formatFor(0, pi)(segment.value) },
+        display: { value: formatFor(0, pi)(segment.value), shows: { value: formatFor(0, pi)(segment.value) } },
       });
       // Not claimed: the reference label may sit on the solid square, in the ink that reads on it.
       segmentMarks.push({ seriesId: segment.seriesId, nodeId, cells: 0 });
@@ -783,7 +791,8 @@ function layoutPass(data: ChartData, options: WaffleOptions, lean = false, oneRo
       const name = series[i]?.label ?? options.strings?.others ?? strings.others;
       const fitted = wrapText(name, keyFont, Math.max(1, panelW - measure(` ${value}`, keyFont).width), 1, measure);
       const line = `${fitted.lines[0]} ${value}`;
-      requests.push({ id: `value:${panel.categoryId}:${i}`, kind: 'total', owner: { categoryId: panel.categoryId, ...(series[i] ? { seriesId: series[i]!.ser.id } : {}) }, text, lines: [line], ...(fitted.truncated ? { title: text } : {}), font: keyFont, typeRole: 'label', priority: PRIORITY.total, candidates: [{ slot: 'main', rect: { x: positions[pi]!.x, y: marks.panels[pi]!.rect.y + gridH + space.gapSubtitlePlot + i * valueStep, w: Math.min(panelW, measure(line, keyFont).width), h: measure(text, keyFont).height }, penalty: 0 }] });
+      const shows = series[i] ? shownValue(i, pi) : undefined;
+      requests.push({ id: `value:${panel.categoryId}:${i}`, kind: 'total', owner: { categoryId: panel.categoryId, ...(series[i] ? { seriesId: series[i]!.ser.id } : {}) }, text, lines: [line], ...(shows ? { shows } : {}), ...(fitted.truncated ? { title: text } : {}), font: keyFont, typeRole: 'label', priority: PRIORITY.total, candidates: [{ slot: 'main', rect: { x: positions[pi]!.x, y: marks.panels[pi]!.rect.y + gridH + space.gapSubtitlePlot + i * valueStep, w: Math.min(panelW, measure(line, keyFont).width), h: measure(text, keyFont).height }, penalty: 0 }] });
     });
   });
   // ---- the one-panel readout ----
@@ -917,6 +926,12 @@ function layoutPass(data: ChartData, options: WaffleOptions, lean = false, oneRo
     if (!label.hidden && label.id.startsWith('total:') && panels.some((panel) => missing(panel) && label.id === `total:${panel.categoryId}`)) label.ink = { token: 'inkMuted' };
   }
   const allLabels: PlacedLabel[] = solved.placed;
+  // A readout value on the key prints its segment's value under the key's owner (`{ seriesId }`).
+  if (readout) series.forEach((s, si) => {
+    const shows = shownValue(si, 0);
+    if (shows && allLabels.some((label) => label.id === `keyValue:${s.ser.id}` && !label.hidden)) shown.push({ owner: { categoryId: panels[0]!.categoryId, seriesId: s.ser.id }, shows, drawn: true });
+  });
+  if (shown.length > 0) marks.shown = shown;
   pushAll(nodes, labelsToNodes(theme, allLabels, (label) => fontOf.get(label.id) ?? labelFont).map((node): SceneNode => {
     if (node.t === 'text' && node.owner.seriesId !== undefined && (node.id.startsWith('label:key:') || node.id.startsWith('label:value:'))) {
       return { ...node, part: 'legendLabel', role: textRole(node) };

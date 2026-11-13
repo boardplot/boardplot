@@ -27,7 +27,7 @@ import {
 import type { BaseOptions, RenderTarget } from '../../types/options';
 import type { Id, OwnerRef } from '../../types/cell';
 import { withUnprintedClaims } from '../../claims/ids';
-import type { Geometry, SceneNode, LintWarning, PaintToken, TextRole, TypographyRole } from '../../types/scene';
+import type { Geometry, SceneNode, LintWarning, PaintToken, ShownMark, ShownTexts, TextRole, TypographyRole } from '../../types/scene';
 import type { ChartSizing } from '../../types/sizing';
 import type { Theme } from '../../types/theme';
 import { emitSparklineMarks, plotSparkline, sparklineDomain, sparkStyle, type SparklineStyle } from '../sparkline/layout';
@@ -54,7 +54,7 @@ export const creativeMetrics = [
 const BETTER = { ctr: 1, cpa: -1, roas: 1, hookRate: 1, holdRate: 1, frequency: 0 } as const;
 /** `deltas`: the printed "vs median" change per metric, for the claims. */
 export interface CreativeDerived { fatigue: CreativeFatigue; deltas?: { key: string; value: number | null; accountMedian: number | null; pct: number | null; text: string }[] }
-export interface CreativeMarks { media: Rect; metrics: Record<string, Rect> }
+export interface CreativeMarks { media: Rect; metrics: Record<string, Rect>; shown?: ShownMark[] }
 
 
 /**
@@ -106,10 +106,14 @@ interface TextSpec {
   role?: TextRole;
   typeRole: TypographyRole;
   claimIds?: readonly Id[];
+  /** The record values this text prints (ShownTexts). */
+  shows?: ShownTexts;
+  /** The values of another owner's record this text prints: stated there (marks.shown) while the text draws. */
+  elsewhere?: { owner: OwnerRef; shows: ShownTexts };
 }
 interface Placed { h: number; w: number }
 
-function textBuilder(requests: LabelRequest[], inks: Map<string, PaintToken>, measure: TextMeasurer) {
+function textBuilder(requests: LabelRequest[], inks: Map<string, PaintToken>, measure: TextMeasurer, elsewhere = new Map<string, ShownMark>()) {
   return (id: string, text: string, box: { x: number; y: number; w: number }, spec: TextSpec): Placed => {
     const wrapped = wrapText(text, spec.font, box.w, 12, measure);
     if (wrapped.truncated) throw new NormalizeError('creative-text-overflow', id, 'Creative text does not fit; shorten it or increase the canvas width.');
@@ -119,8 +123,9 @@ function textBuilder(requests: LabelRequest[], inks: Map<string, PaintToken>, me
     requests.push({ id, kind: 'item', owner: spec.owner ?? {}, text, lines: wrapped.lines, font: spec.font, priority: 700, typeRole: spec.typeRole,
       candidates: [{ slot: 'cell', rect: { x, y: box.y, w, h }, penalty: 0 }],
       ...(spec.align && spec.align !== 'start' ? { align: spec.align } : {}), ...(spec.role ? { role: spec.role } : {}),
-      ...(spec.claimIds ? { claimIds: spec.claimIds } : {}) });
+      ...(spec.claimIds ? { claimIds: spec.claimIds } : {}), ...(spec.shows ? { shows: spec.shows } : {}) });
     if (spec.ink) inks.set(id, spec.ink);
+    if (spec.elsewhere) elsewhere.set(id, { ...spec.elsewhere, drawn: true });
     return { h, w };
   };
 }
@@ -328,8 +333,11 @@ function metricRows(theme: Theme, data: CreativeData, box: { x: number; y: numbe
     for (const id of plan.columns) {
       const track = { ...tracks.get(id)!, y };
       const align = textAlign(id, 'cell') ?? 'end';
-      if (id === 'value') heights.push(add(`creative:value:${key}`, value, track, { ...body, align, role: composedTextRole(value) }).h);
-      else if (id === 'median') heights.push(add(`creative:median:${key}`, median, track, { ...body, align, ink: 'inkMuted', role: composedTextRole(median) }).h);
+      // The record leads with the creative's value, or with the median while the value column is hidden (a11y/creativeRecords.ts).
+      if (id === 'value') heights.push(add(`creative:value:${key}`, value, track, { ...body, align, role: composedTextRole(value),
+        ...(metric.value !== null ? { shows: { value } } : {}) }).h);
+      else if (id === 'median') heights.push(add(`creative:median:${key}`, median, track, { ...body, align, ink: 'inkMuted', role: composedTextRole(median),
+        ...(metric.accountMedian !== null ? { shows: valueDrawn ? { 'field:accountMedian': median } : { value: median } } : {}) }).h);
       else heights.push(add(`creative:delta:${key}`, delta.text, track, { ...body, font: delta.tone === 'neutral' ? fonts.row : fonts.delta, align,
         ink: delta.tone === 'good' ? 'good' : delta.tone === 'bad' ? 'bad' : 'inkMuted', role: composedTextRole(delta.text) }).h);
     }
@@ -403,6 +411,10 @@ function trendRows(data: CreativeData) {
 }
 
 const TREND_KEYS = ['spend', 'cpa', 'ctr'] as const;
+/** A trend's end label prints one day's value: the record of that day and metric (a11y/creativeRecords.ts) takes its text. */
+function dailyShows(rows: ReturnType<typeof trendRows>, key: (typeof TREND_KEYS)[number], index: number, text: string): { owner: OwnerRef; shows: ShownTexts } {
+  return { owner: { seriesId: `daily:${key}`, categoryId: rows[index]!.date }, shows: { value: text } };
+}
 function trendTitle(data: CreativeData, key: (typeof TREND_KEYS)[number], options: CreativeOptions): string {
   return `${key === 'spend' ? chartString(options, 'spendTitle') : key.toUpperCase()}, ${key === 'ctr' ? '%' : data.facts.currency}`;
 }
@@ -482,11 +494,13 @@ function trends(data: CreativeData, box: { x: number; y: number; w: number }, th
       const format = valueSetFormatter(observed.map(o => o.value), options.locale?.language, false, key === 'ctr' ? '%' : data.facts.currency, options.target);
       const first = points[0]!, last = plot.last!;
       const lastText = format(last.value), lastW = measure(lastText, fonts.noteStrong).width + 1;
-      const lastSpec = { font: fonts.noteStrong, owner: { seriesId: 'daily' }, align: 'end' as const, role: 'value' as const, typeRole: 'footnote' as const };
+      const lastSpec = { font: fonts.noteStrong, owner: { seriesId: 'daily' }, align: 'end' as const, role: 'value' as const, typeRole: 'footnote' as const,
+        elsewhere: dailyShows(rows, key, observed[observed.length - 1]!.i, lastText) };
       end = Math.max(end, labelY + add(`creative:trend-last:${key}`, lastText, { x: last.x - lastW, y: labelY, w: lastW }, lastSpec).h);
       const firstText = format(observed[0]!.value), firstW = measure(firstText, fonts.note).width + 1;
       if (observed.length > 1 && first.x + firstW + 6 <= last.x - lastW) {
-        add(`creative:trend-first:${key}`, firstText, { x: first.x, y: labelY, w: firstW }, { font: fonts.note, owner: { seriesId: 'daily' }, ink: 'inkMuted', role: 'value', typeRole: 'footnote' });
+        add(`creative:trend-first:${key}`, firstText, { x: first.x, y: labelY, w: firstW }, { font: fonts.note, owner: { seriesId: 'daily' }, ink: 'inkMuted', role: 'value', typeRole: 'footnote',
+          elsewhere: dailyShows(rows, key, observed[0]!.i, firstText) });
       }
     }
     if (values.every(value => value === null)) add(`creative:trend-empty:${key}`, chartString(options, 'unavailable'), { x: panelX, y: sparkTop + 4, w: pitch - 12 }, { font: fonts.note, ink: 'inkMuted', typeRole: 'footnote' });
@@ -510,6 +524,7 @@ function trendColumn(input: { data: CreativeData; rows: ReturnType<typeof trendR
     const top = y + titleH + 3;
     if (index === 0) sparkTop = top;
     const observed = values.flatMap((value) => (value === null ? [] : [value]));
+    const observedAt = values.flatMap((value, i) => (value === null ? [] : [i]));
     if (observed.length) {
       const format = valueSetFormatter(observed, options.locale?.language, false, key === 'ctr' ? '%' : data.facts.currency, options.target);
       const lastText = format(observed[observed.length - 1]!), lastW = measure(lastText, fonts.noteStrong).width + 1;
@@ -520,9 +535,9 @@ function trendColumn(input: { data: CreativeData; rows: ReturnType<typeof trendR
       // Centred on its point, kept inside the spark's own band so it never reaches the next title.
       const centred = (py: number, font: FontSpec) => { const h = font.size * (font.lineHeight ?? 1.2); return Math.max(top, Math.min(py - h / 2, top + cellH - h)); };
       add(`creative:trend-last:${key}`, lastText, { x: box.x + box.w - lastW, y: centred(plot.last!.y, fonts.noteStrong), w: lastW },
-        { font: fonts.noteStrong, owner: { seriesId: 'daily' }, align: 'end', role: 'value', typeRole: 'footnote' });
+        { font: fonts.noteStrong, owner: { seriesId: 'daily' }, align: 'end', role: 'value', typeRole: 'footnote', elsewhere: dailyShows(rows, key, observedAt[observedAt.length - 1]!, lastText) });
       if (firstW) add(`creative:trend-first:${key}`, firstText, { x: box.x, y: centred(points[0]!.y, fonts.note), w: firstW },
-        { font: fonts.note, owner: { seriesId: 'daily' }, ink: 'inkMuted', role: 'value', typeRole: 'footnote' });
+        { font: fonts.note, owner: { seriesId: 'daily' }, ink: 'inkMuted', role: 'value', typeRole: 'footnote', elsewhere: dailyShows(rows, key, observedAt[0]!, firstText) });
     } else add(`creative:trend-empty:${key}`, chartString(options, 'unavailable'), { ...box, y: top + 4 }, { font: fonts.note, ink: 'inkMuted', typeRole: 'footnote' });
     y = top + cellH + 14;
   }
@@ -638,7 +653,8 @@ function layoutForm(data: CreativeData, options: CreativeOptions & Pick<BaseOpti
   const requests: LabelRequest[] = [];
   const inks = new Map<string, PaintToken>();
   const fonts = cardFonts(theme, !stacked);
-  const add = textBuilder(requests, inks, measure);
+  const elsewhere = new Map<string, ShownMark>();
+  const add = textBuilder(requests, inks, measure, elsewhere);
   const muted = (font: FontSpec) => ({ font, ink: 'inkMuted' as const, typeRole: roleOf(font, fonts) });
 
   const trendW = three ? Math.round(Math.min(320, Math.max(230, plot.w * 0.26))) : 0;
@@ -745,9 +761,10 @@ function layoutForm(data: CreativeData, options: CreativeOptions & Pick<BaseOpti
     if (token && node.t === 'text') node.ink = { token };
   }
   pushAll(nodes, labelNodes);
+  const shown = solved.placed.flatMap((label) => { const mark = elsewhere.get(label.id); return mark && label.hidden === undefined ? [mark] : []; });
   return withUnprintedClaims({ type: 'creative', size, sizing: resolveSizing(creativeSizing, size, { minHeight: requiredHeight, naturalHeight: requiredHeight }),
     plot, scene: nodes, labels: solved.placed, axes: [], annotations: [], frame: frame.frame,
-    marks: { media, metrics: metrics.marks }, derived: { fatigue, deltas: (plan.columns.includes('delta') ? plan.rows : []).map(([key]) => ({ key, ...data.metrics[key], ...creativeDelta(key, data.metrics[key], options) })) },
+    marks: { media, metrics: metrics.marks, ...(shown.length > 0 ? { shown } : {}) }, derived: { fatigue, deltas: (plan.columns.includes('delta') ? plan.rows : []).map(([key]) => ({ key, ...data.metrics[key], ...creativeDelta(key, data.metrics[key], options) })) },
     a11y: { title: accessibleTitle(options.title, data.facts.name), desc: chartString(options, 'creativeDesc', { v1: data.media.alt, v2: fatigueLines.join(' ') }) },
     warnings: [...warnings, ...(frame.frame.warnings ?? []), ...solved.warnings], debug: { occupied: occupied.snapshot(), decisions: solved.decisions } }, unprinted);
 }

@@ -71,6 +71,7 @@ import type {
   PlacedAnnotation,
   PlacedLabel,
   SceneNode,
+  ShownTexts,
 } from '../../types/scene';
 import { authoredTrackWidth, columnOverrideWarnings, trackPlotFloor } from '../columnOverrides';
 import { layoutCenteredFunnel, rampFunnelPaint, shadeStage } from './centered';
@@ -209,9 +210,15 @@ export function layoutFunnel(
   // A whole count prints whole beside fractional values of its stage ("140", "1" beside "0.6"); an amount like 100.4 keeps its decimals.
   if (!options.format) for (const format of [...formats, totalRaster]) format.spec.wholeCounts = true;
   const { valueText, totalFmt } = funnelValueFormats(plotted, cells, formats, totalRaster);
-  const cellText = (si: number, ci: number, value: number): string | null => {
+  // `text` is the cell's value text when the caller already made it: it is then not made again.
+  const cellText = (si: number, ci: number, value: number, text: string = valueText(si, ci, value)): string | null => {
     const label = cellMeta(cells[si]![ci]!)?.label;
-    return label === false ? null : typeof label === 'string' ? label.replace(/\$\{value\}/g, valueText(si, ci, value)) : valueText(si, ci, value);
+    return label === false ? null : typeof label === 'string' ? label.replace(/\$\{value\}/g, text) : text;
+  };
+  /** The value text a cell's label prints (ShownTexts); none where an authored label leaves the value out. */
+  const cellShows = (si: number, ci: number, value: number, text: string = valueText(si, ci, value)): ShownTexts | undefined => {
+    const label = cellMeta(cells[si]![ci]!)?.label;
+    return label === false || (typeof label === 'string' && !label.includes('${value}')) ? undefined : { value: text };
   };
 
 
@@ -516,6 +523,7 @@ export function layoutFunnel(
   interface SegLab {
     sid: Id;
     text: string;
+    shows?: ShownTexts;
     w: number;
     h: number;
     rect: Rect;
@@ -600,6 +608,7 @@ export function layoutFunnel(
         kind: 'segment',
         owner: { categoryId: cat.id, seriesId: l.sid },
         text: l.text,
+        ...(l.shows ? { shows: l.shows } : {}),
         lines: [l.text],
         font: labelFont,
         priority: l.priority,
@@ -622,7 +631,7 @@ export function layoutFunnel(
    * The block right of the bars stands level with the bar; the line under
    * the bar starts at the bar's left edge.
    */
-  function pushChips(cat: { id: Id }, ci: number, rowChips: { si: number; sid: Id; text: string; paint: Paint; value: number }[], drawn: number): void {
+  function pushChips(cat: { id: Id }, ci: number, rowChips: { si: number; sid: Id; text: string; shows?: ShownTexts; paint: Paint; value: number }[], drawn: number): void {
     if (!chips || rowChips.length === 0) return;
     const lane = rowLanes[ci]!;
     const top = band.position(ci);
@@ -646,6 +655,7 @@ export function layoutFunnel(
         kind: 'segment',
         owner: { categoryId: cat.id, seriesId: chip.sid },
         text: chip.text,
+        ...(chip.shows ? { shows: chip.shows } : {}),
         lines: [chip.text],
         font,
         priority: segmentLabelPriority(chip.value, maxAbsValue, highlights.has(chip.sid) || highlights.has(cat.id)),
@@ -675,7 +685,7 @@ export function layoutFunnel(
     let cum = 0;
     const segRecs: FunnelMarks['rows'][number]['segments'] = [];
     const segLabs: SegLab[] = [];
-    const rowChips: { si: number; sid: Id; text: string; paint: Paint; value: number }[] = [];
+    const rowChips: { si: number; sid: Id; text: string; shows?: ShownTexts; paint: Paint; value: number }[] = [];
 
     plotted.forEach((s, si) => {
       const v = values[si]![ci] ?? null;
@@ -693,6 +703,7 @@ export function layoutFunnel(
       if (v === 0) return;
       const rect: Rect = { x: sx, y: ry, w, h: bw };
       const nodeId = `mark:${cat.id}:${s.id}`;
+      const vText = valueText(si, ci, v);
       const segmentPaint = seriesPaint(s, si, ci);
       const sep = othersSeparation(segmentPaint, theme);
       nodes.push({
@@ -705,19 +716,21 @@ export function layoutFunnel(
         ...(isOthersFill(segmentPaint) ? { separation: { fill: segmentPaint, backing: { token: 'background' } as const } } : {}),
         owner: { categoryId: cat.id, seriesId: s.id },
         part: 'segment',
-        display: { value: valueText(si, ci, v) },
+        display: { value: vText, shows: { value: vText } },
       });
       occupied.claim(rect, 'mark', { categoryId: cat.id, seriesId: s.id });
       segRecs.push({ id: s.id, rect, nodeId });
 
-      const text = cellText(si, ci, v);
+      const text = cellText(si, ci, v, vText);
+      const shows = cellShows(si, ci, v, vText);
       if (chipMode && text) {
-        rowChips.push({ si, sid: s.id, text, paint: segmentPaint, value: v });
+        rowChips.push({ si, sid: s.id, text, ...(shows ? { shows } : {}), paint: segmentPaint, value: v });
       } else if (multi && labelOn('segment') && text) {
         const t = measure(text, labelFont);
         segLabs.push({
           sid: s.id,
           text,
+          ...(shows ? { shows } : {}),
           w: t.width,
           h: t.height,
           rect,

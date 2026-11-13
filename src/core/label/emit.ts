@@ -238,6 +238,7 @@ export function labelsToNodes(
       typeRole: labelTypeRole(label),
       // A headline such as "153" is a value over the words, whatever the label's role.
       ...(head > 0 ? { role: composedTextRole(label.lines.slice(0, head).join(' '), 'note') } : label.role ? { role: label.role } : {}),
+      ...(label.shows ? { display: { shows: label.shows } } : {}),
     });
     if (head > 0) {
       nodes.push({

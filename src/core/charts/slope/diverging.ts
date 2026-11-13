@@ -24,7 +24,7 @@ import { colorblindPaint, emphasisWeight, strokeToken, canvasMargin, resolveSema
 import { cellMeta, cellValue, isPctCell, type Id } from '../../types/cell';
 import type { Category, ChartData, SlopeSeries as DivergingSeries } from '../../types/data';
 import type { SlopeOptions } from '../../types/options';
-import type { Geometry, LintWarning, Paint, SceneNode } from '../../types/scene';
+import type { Geometry, LintWarning, Paint, SceneNode, ShownTexts } from '../../types/scene';
 import { markedLabel } from '../../footnoteMark';
 import { structureCount } from '../../structureCounts';
 import { resolveSizing } from '../../sizing';
@@ -263,10 +263,10 @@ export function layoutDivergingSlope(
 
   const labelRequests: LabelRequest[] = [];
   const fontById = new Map<string, FontSpec>();
-  const fixed = (id: string, kind: LabelRequest['kind'], owner: LabelRequest['owner'], lines: string[], font: FontSpec, rects: Rect[], priority: number, middle = true, role?: LabelRequest['role'], runs?: LabelRequest['runs']): void => {
+  const fixed = (id: string, kind: LabelRequest['kind'], owner: LabelRequest['owner'], lines: string[], font: FontSpec, rects: Rect[], priority: number, middle = true, role?: LabelRequest['role'], runs?: LabelRequest['runs'], shows?: ShownTexts): void => {
     fontById.set(id, font);
     labelRequests.push({
-      id, kind, owner, text: lines.join(' '), lines, font, priority,
+      id, kind, owner, text: lines.join(' '), ...(shows ? { shows } : {}), lines, font, priority,
       ...(role ? { role } : {}),
       ...(runs ? { runs } : {}),
       ...(middle ? { align: 'middle' as const } : {}),
@@ -480,7 +480,7 @@ export function layoutDivergingSlope(
           t: 'circle', id: `dot:${id}:${side}:${cat.id}`, cx, cy, r: DOT_R,
           fill: e === 0 ? { token: 'background' } : edge,
           ...(e === 0 ? { stroke: edge, strokeWidth: strokeToken(theme, 'mark') } : {}),
-          owner: { seriesId: sid, categoryId: cat.id }, part: 'endpointDot', display: { value: text },
+          owner: { seriesId: sid, categoryId: cat.id }, part: 'endpointDot', display: { value: text, shows: { value: text } },
         });
         occupied.claim({ x: cx - DOT_R, y: cy - DOT_R, w: 2 * DOT_R, h: 2 * DOT_R }, 'mark', { seriesId: sid, categoryId: cat.id });
         const w = measure(text, labelFont).width;
@@ -488,7 +488,7 @@ export function layoutDivergingSlope(
         const below = { x: cx - w / 2, y: cy + DOT_R + 3, w, h: textH };
         const beside = { x: e === 0 ? cx - DOT_R - 3 - w : cx + DOT_R + 3, y: cy - textH / 2, w, h: textH };
         fixed(`point:${id}:${side}:${cat.id}`, 'point', { seriesId: sid, categoryId: cat.id }, [text], labelFont,
-          side === 'positive' ? [above, beside] : [below, beside], PRIORITY.endpoint);
+          side === 'positive' ? [above, beside] : [below, beside], PRIORITY.endpoint, true, undefined, undefined, { value: text });
       });
     }
     // head, top-aligned over the panel

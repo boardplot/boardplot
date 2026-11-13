@@ -77,6 +77,7 @@ import type {
   Paint,
   PlacedLabel,
   SceneNode,
+  ShownTexts,
 } from '../../types/scene';
 import { valueLineExtent } from '../../valueLineDomain';
 import { autoDecimals, valueSetDecimals } from '../../formatPrecision';
@@ -537,6 +538,10 @@ export function layoutSlope(
         }
       }
     }
+    // The end's value part, where the label prints one: an authored text prints it only through `${value}`.
+    const shows = endContent?.includes('absolute') && end.v !== null && end.labelOverride !== false
+      && (typeof end.labelOverride !== 'string' || end.labelOverride.includes('${value}'))
+      ? { value: fmtVal(end.v, end.isPct, end.format ?? s.format ?? options.format, s) } : undefined;
     const change = changes[s.id]?.abs ?? 0;
     const priority =
       end.priority ??
@@ -550,6 +555,7 @@ export function layoutSlope(
       h: tsize.height,
       priority,
       suppressed: end.labelOverride === false || !text,
+      ...(shows ? { shows } : {}),
       ...(title !== undefined ? { title } : {}),
       ...(font !== baseFont ? { fontStep: font } : {}),
       lines,
@@ -798,6 +804,7 @@ export function layoutSlope(
     // leader dots at the rail points
     ([[railXs[0], yA, c0] as const, [railXs[1], yB, c1] as const]).forEach(([dx, dy, dc]) => {
       const end = dc.id === c0.id ? s.a : s.b;
+      const valueText = fmtVal(end.v!, end.isPct, end.format ?? s.format ?? options.format, s);
       nodes.push({
         t: 'circle',
         id: `dot:${s.id}:${dc.id}`,
@@ -807,7 +814,8 @@ export function layoutSlope(
         fill: linePaint(s),
         owner: { seriesId: s.id, categoryId: dc.id },
         part: 'endpointDot',
-        display: { value: fmtVal(end.v!, end.isPct, end.format ?? s.format ?? options.format, s) },
+        // The text its end label would print where none is drawn.
+        display: { value: valueText, shows: { value: valueText } },
       });
       occupied.claim({ x: dx - 2.5, y: dy - 2.5, w: 5, h: 5 }, 'mark', {
         seriesId: s.id,
@@ -854,6 +862,7 @@ export function layoutSlope(
         kind: 'series',
         owner: { seriesId: r.s.id, categoryId: cat.id },
         text: r.text,
+        ...(r.shows ? { shows: r.shows } : {}),
         lines: r.lines,
         ...(r.title !== undefined ? { title: r.title } : {}),
         ...(r.fontStep ? { fontStep: r.fontStep } : {}),
@@ -879,6 +888,7 @@ export function layoutSlope(
         kind: 'series',
         owner: { seriesId: r.s.id, categoryId: cat.id },
         text: r.text,
+        ...(r.shows ? { shows: r.shows } : {}),
         lines: [r.text],
         font: endFontOf(r.s),
         priority: r.priority,
@@ -1153,6 +1163,8 @@ interface EndReq {
   fontStep?: FontSpec;
   /** Drawn lines: the composite, or its two-line wrap. */
   lines: string[];
+  /** The record value the label prints, with its text (ShownTexts). */
+  shows?: ShownTexts;
 }
 
 /**

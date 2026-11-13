@@ -677,12 +677,9 @@ function integratedVarianceValues(
     // the printed growth disagree with what the reader gets by dividing the
     // two printed totals, the disagreement is DISCLOSED below rather than
     // manufactured away — the same trade the tornado ordering makes.
-    // The suppression guard stays on the DISPLAYED reference on purpose: that
-    // is not an arithmetic decision but a fail-closed display one —
-    // a denominator that prints as 0 or negative is one the reader cannot use,
-    // whatever the raw number behind it was.
-    const growthPct =
-      displayedReference > 0 && reference > 0 ? (current / reference - 1) * 100 : null;
+    // Whether a growth figure exists is cut on the raw reference too: one
+    // above zero has a growth, also where it prints as 0.
+    const growthPct = reference > 0 ? (current / reference - 1) * 100 : null;
     const displayedGrowthPct =
       growthPct === null ? null : roundedNumber(growthPct, growthSpec);
     const tone: 'good' | 'bad' | 'neutral' =
@@ -708,7 +705,7 @@ function integratedVarianceValues(
       tone,
       text,
     });
-    if (displayedReference <= 0) {
+    if (growthPct === null) {
       warnings.push({
         code: 'ref-nonpositive',
         severity: 'warn',
@@ -720,7 +717,15 @@ function integratedVarianceValues(
     // the two totals the panel PRINTS can land on a different percentage.
     // That gap is a fact about the rounding, not an error — and it is
     // disclosed rather than left for the reader to discover by arithmetic.
-    if (displayedGrowthPct !== null && displayedReference > 0) {
+    // A reference above zero that prints as 0 gives the reader nothing to divide by.
+    if (displayedGrowthPct !== null && displayedReference <= 0) {
+      warnings.push({
+        code: 'integrated-growth-rounding-gap',
+        severity: 'info',
+        message: `category '${category.id}': growth ${growthFormatter(displayedGrowthPct)} is computed from the unrounded totals; the printed ${displayedCurrent} and the printed reference ${displayedReference} give no growth figure`,
+        owner: { categoryId: category.id, seriesId: pyRef.id },
+      });
+    } else if (displayedGrowthPct !== null) {
       const fromPrintedTotals = roundedNumber(
         (displayedCurrent / displayedReference - 1) * 100,
         growthSpec,
@@ -1317,6 +1322,12 @@ export function shareKey(categoryId: string, seriesId: string): string {
 }
 
 /** A segment's printed share: its sum-consistent text, else the author's percent or the chart's share format. */
+/** The formatter a cell's value label prints with: the cell or series format, or an authored percent cell's '%'. */
+export function cellValueFmt(domain: Pick<ColumnDomain, 'valueSpec'>, s: NormSer, ci: number): (v: number) => string {
+  const val = s.vals[ci]!;
+  return val.isPct && !val.format && !s.format ? domain.valueSpec.fmtPercent : domain.valueSpec.forSeries(s, val.format);
+}
+
 export function shareTextOf(domain: Pick<ColumnDomain, 'shareTexts' | 'pctFmt' | 'authoredPctFmt'>, categoryId: string, seriesId: string, pct: number, authored: boolean): string {
   return domain.shareTexts.get(shareKey(categoryId, seriesId)) ?? (authored ? domain.authoredPctFmt(pct) : domain.pctFmt(pct));
 }

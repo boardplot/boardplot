@@ -364,3 +364,65 @@ it('seats a tall card next to its column', () => {
     expect(own).toEqual([]);
   });
 });
+
+const revenue = { categories: [['a', 'Alpha'], ['b', 'Beta'], ['c', 'Gamma'], ['d', 'Delta']].map(([id, label]) => ({ id, label })),
+  series: [{ id: 'rev', label: 'Revenue', format: '$1.2M', values: [4, 12, 43, 78] }] };
+const deltaRecord = (options: object) => {
+  const { request, geometry } = build({ type: 'column', data: revenue, options: { size: { width: 480 }, ...options } });
+  return interactionRecords({ request, geometry, scope: request.scope, claims: [] }).find(record => record.target.owner.categoryId === 'd')!;
+};
+
+// The card formatted a value through its series format without the series' other values, so a stacked part whose label the chart hides (it draws the total 78) read $0.1k.
+it('prints the text a hidden stacked part label carries in its card', () => {
+  expect(labelCardContent(deltaRecord({ variant: 'stacked' })).rows.map(row => row.text)).toContain('$78.0');
+});
+
+// With labels off a value had no shown text, so its card formatted it again and printed another number than its label would.
+it('gives a value with labels off the text its label would print', () => {
+  const record = deltaRecord({ labels: false });
+  expect(record.value.displayed).toBe('$78.0');
+  expect(labelCardContent(record).rows.map(row => row.text)).toContain('$78.0');
+});
+
+// The card formatted a drawn change again, so a change labelled −4% read −4.0%.
+it('prints a drawn KPI change as the chart prints it', () => {
+  const fixture = structuredClone(getFixtures('kpi').find(item => item.id === 'text-comparisons')!);
+  const { request, geometry } = build({ type: 'kpi', data: fixture.data, options: fixture.options ?? {} });
+  const rows = labelCardContent(interactionRecords({ request, geometry, scope: request.scope, claims: [] })[0]!).rows.map(row => row.text);
+  expect(rows.some(text => text.includes('−4%'))).toBe(true);
+  expect(rows.some(text => text.includes('−4.0%'))).toBe(false);
+});
+
+// A value without a shown text printed its source digits in the card, not through its format: a scatter point read $48,250, a dropped share label 2.46%.
+it('prints a value without a shown text through its format', () => {
+  const scatter = build({ type: 'scatter', options: { format: '$0.0k' }, data: { points: [
+    { id: 'a', label: 'Store A', x: 1200, y: 48250 }, { id: 'b', label: 'Store B', x: 2400, y: 61900 }] } });
+  const point = interactionRecords({ request: scatter.request, geometry: scatter.geometry, scope: scatter.request.scope, claims: [] })
+    .find(record => record.target.owner.pointId === 'a')!;
+  expect(labelCardContent(point).rows.find(row => row.kind === 'value')?.value).toBe('$48.3k');
+  const shares = build({ type: 'column', options: { variant: 'stacked100', sharesOfOneWhole: true, size: { width: 420, height: 260 } }, data: {
+    categories: [{ id: 'q1', label: 'Q1' }],
+    series: [['a', 2.46], ['b', 47.54], ['c', 50]].map(([id, pct]) => ({ id, label: String(id).toUpperCase(), values: [{ pct }] })) } });
+  // The solver drops the label of the 2.46 % sliver, so its share has no shown text.
+  expect(shares.geometry.labels.find(label => label.id === 'segment:a:q1')?.hidden).toBeDefined();
+  const sliver = interactionRecords({ request: shares.request, geometry: shares.geometry, scope: shares.request.scope, claims: [] })
+    .find(record => record.target.owner.seriesId === 'a')!;
+  expect(labelCardContent(sliver).rows.find(row => row.kind === 'share')?.value).toBe('2%');
+});
+
+// A label that joins a currency sign before its bound ("$<0.01") counted as the value's shown text, so the card printed the bound in place of the value.
+it('prints the value, not a bound behind a currency sign, in the card', () => {
+  const line = build({ type: 'line', options: { unit: '$', labels: { point: true }, size: { width: 640, height: 360 } }, data: {
+    categories: ['q1', 'q2', 'q3'].map(id => ({ id, label: id.toUpperCase() })),
+    series: [{ id: 'a', label: 'Alpha', values: [0.26, 0.0371, 0.0000012] }] } });
+  const last = interactionRecords({ request: line.request, geometry: line.geometry, scope: line.request.scope, claims: [] })
+    .find(record => record.target.owner.categoryId === 'q3')!;
+  expect(labelCardContent(last).rows.find(row => row.kind === 'value')?.value).toBe('$0.0000012');
+  const variance = build({ type: 'variance', options: { variant: 'relative', variance: { of: 'total', vs: 'py' }, unit: '$m' }, data: {
+    categories: [{ id: 'na', label: 'North' }, { id: 'emea', label: 'EMEA' }],
+    series: [{ id: 'ac', label: 'Actual', values: [61, 0.02] },
+      { id: 'py', label: 'Prior year', role: 'reference', scenario: 'PY', values: [74, -0.02] }] } });
+  const emea = interactionRecords({ request: variance.request, geometry: variance.geometry, scope: variance.request.scope, claims: [] })
+    .find(record => record.target.owner.categoryId === 'emea')!;
+  expect(labelCardContent(emea).rows.find(row => row.kind === 'comparison')?.text).toMatch(/^vs PY: \+\$0\.04m \(/);
+});
