@@ -1312,7 +1312,7 @@ fixtures.push({
           {
             id: 'net-revenue',
             label: 'Net revenue',
-            format: '$1.2m',
+            format: '$1.2M',
             cells: { jan: 6100000, feb: 6400000, mar: 6600000, apr: 6300000, may: 6900000, jun: 7200000, ytd: 39500000, yoy: 9.8 },
             children: [
               {
@@ -1343,7 +1343,7 @@ fixtures.push({
           {
             id: 'spend',
             label: 'Marketing spend',
-            format: '$1.2m',
+            format: '$1.2M',
             cells: { jan: 1100000, feb: 1150000, mar: 1090000, apr: 1200000, may: 1240000, jun: 1310000, ytd: 7090000, yoy: 6.1 },
           },
           {
@@ -1432,14 +1432,14 @@ fixtures.push({
     ],
     rows: [
       { id: 'sales', label: 'Sales', role: 'section', children: [
-        monthlyKpi('revenue', 'Revenue', '$1.2m', KPI_REVENUE),
+        monthlyKpi('revenue', 'Revenue', '$1.2M', KPI_REVENUE),
         monthlyKpi('orders', 'Orders', '1,234', KPI_ORDERS),
         monthlyKpi('aov', 'Avg order value', '$1.2', KPI_REVENUE.map((revenue, i) => revenue / KPI_ORDERS[i]!)),
         monthlyKpi('conversion', 'Conversion rate', '1.2%', KPI_ORDERS.map((orders, i) => (orders / KPI_SESSIONS[i]!) * 100)),
         monthlyKpi('returns', 'Return rate', '1.2%', [8.0, 7.8, 7.6, 7.9, 7.4, 7.5, 7.2, 7.3, 7.4, 7.0, 8.5, 9.0], 'lowerIsBetter'),
       ] },
       { id: 'ads', label: 'Advertising', role: 'section', children: [
-        monthlyKpi('spend', 'Ad spend', '$1.2m', KPI_SPEND),
+        monthlyKpi('spend', 'Ad spend', '$1.2M', KPI_SPEND),
         monthlyKpi('roas', 'ROAS', '1.2x', KPI_REVENUE.map((revenue, i) => revenue / KPI_SPEND[i]!)),
         monthlyKpi('cpa', 'Cost per order', '$1.2', KPI_SPEND.map((spend, i) => spend / KPI_ORDERS[i]!), 'lowerIsBetter'),
         monthlyKpi('ctr', 'Click-through rate', '1.2%', [1.4, 1.4, 1.5, 1.5, 1.5, 1.4, 1.5, 1.6, 1.5, 1.6, 1.7, 1.8]),
@@ -1762,7 +1762,7 @@ function v2Sub(row: V2Row, parentId: string, shareLabel: string): TableRow {
   };
 }
 
-const V2_MONEY = '$1.2m';
+const V2_MONEY = '$1.2M';
 const V2_COUNT = '1,234';
 
 fixtures.push({
@@ -1830,9 +1830,9 @@ fixtures.push({
           totals: v2RatioTotals(V2_SPEND, V2_REVENUE, 1, 100) }),
       ] },
       { id: 'sec-traffic', label: 'Traffic', role: 'section', children: [
-        v2Kpi({ id: 'sessions', label: 'Sessions', line: V2_SESSIONS, format: '1.2m', totals: v2SumTotals(V2_SESSIONS) }, [
-          v2Sub({ id: 'sessions-paid', label: 'Paid', line: V2_SESSIONS_PAID, format: '1.2m' }, 'sessions', 'Share of sessions'),
-          v2Sub({ id: 'sessions-organic', label: 'Organic', line: V2_SESSIONS_ORGANIC, format: '1.2m' }, 'sessions', 'Share of sessions'),
+        v2Kpi({ id: 'sessions', label: 'Sessions', line: V2_SESSIONS, format: '1.2M', totals: v2SumTotals(V2_SESSIONS) }, [
+          v2Sub({ id: 'sessions-paid', label: 'Paid', line: V2_SESSIONS_PAID, format: '1.2M' }, 'sessions', 'Share of sessions'),
+          v2Sub({ id: 'sessions-organic', label: 'Organic', line: V2_SESSIONS_ORGANIC, format: '1.2M' }, 'sessions', 'Share of sessions'),
         ]),
       ] },
       { id: 'sec-mix', label: 'Web order mix', role: 'section', children: [

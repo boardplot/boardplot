@@ -694,7 +694,7 @@ const regionRows: BulletData = { rows: [
   { id: 'returns', label: 'Returns', value: 38, target: 45, direction: 'lowerIsBetter', bands: [{ to: 300, label: 'Strong' }, { to: 400, label: 'Fair' }, { to: 500, label: 'Weak' }] },
 ] };
 const targetRows: BulletData = { rows: [
-  { id: 'revenue', label: 'Revenue', value: { number: 412, format: '$412k' }, target: { number: 450, format: '$450k' } },
+  { id: 'revenue', label: 'Revenue', value: { number: 412, format: '$412' }, target: { number: 450, format: '$450' } },
   { id: 'orders', label: 'Orders', value: 1860, target: 1700 },
   { id: 'returns', label: 'Return rate', value: { pct: 6.2 }, target: { pct: 5 }, direction: 'lowerIsBetter' },
 ] };

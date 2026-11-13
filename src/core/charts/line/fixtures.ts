@@ -2920,6 +2920,7 @@ const eventsKeyLineFixture: LineFixture = {
 };
 // Column's anomaly rule on a line. Median 1,212.5, MAD 14, so the
 // corridor at k = 3.5 runs 1,139.9 to 1,285.1 and two weeks fall outside.
+// The orders print whole (series format); the statistics print one decimal (chart format).
 const anomalyLineFixture: LineFixture = {
   id: 'weekly-orders-anomalies',
   title: 'Two weeks break out of the normal order range (anomaly on a line)',
@@ -2930,13 +2931,14 @@ const anomalyLineFixture: LineFixture = {
       id: 'orders',
       label: 'Orders',
       values: [1180, 1215, 1203, 1190, 1228, 1197, 1210, 1502, 1221, 1205, 1188, 1232, 1216, 1199, 942, 1224, 1208, 1236, 1219, 1241],
+      format: '1,234',
     }],
   },
   options: {
     anomaly: { method: 'mad', baseline: 'median' },
     title: 'Two weeks break out of the normal order range',
     subtitle: { measure: 'Orders', period: 'W1 to W20 2026' },
-    format: '1,234',
+    format: '1,234.5',
     source: 'Illustrative order data',
     size: { width: 960, height: 540 },
   },
@@ -2959,7 +2961,7 @@ const coverageLineFixtures: LineFixture[] = [
     id: 'orders-threshold-corridor',
     title: 'Authored anomaly bounds with a named rule instead of the MAD corridor',
     tags: ['coverage'],
-    options: { ...anomalyLineFixture.options, anomaly: { method: 'threshold', low: 1100, high: 1400, label: 'Capacity plan' } },
+    options: { ...anomalyLineFixture.options, format: '1,234', anomaly: { method: 'threshold', low: 1100, high: 1400, label: 'Capacity plan' } },
   },
   {
     ...anomalyLineFixture,
