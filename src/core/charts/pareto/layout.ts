@@ -22,7 +22,7 @@ import { structureCount } from '../../structureCounts';
  */
 
 import { currencyWholeNumbers, formatAutomaticNumber, formatAutomaticPercent } from '../../format';
-import { formatterFromExample, seriesRasterFormatter } from '../../formatSpec';
+import { engineFormatterFromExample, formatterFromExample, seriesRasterFormatter } from '../../formatSpec';
 import { authoredDecimals } from '../../formatPrecision';
 import { accessibleTitle, NormalizeError, resolveSize } from '../../normalize/shared';
 import { CARD_CLASS_WIDTH } from '../../sizing';
@@ -154,7 +154,7 @@ function curvePrints(curve: readonly Cell[], i: number, labels: ParetoOptions['l
  * "82%" on the curve is not "81.7%" in the reading of the same point.
  */
 const CURVE_SHARE_FORMAT = '48%';
-const curveShareText = formatterFromExample(CURVE_SHARE_FORMAT, undefined);
+const curveShareText = engineFormatterFromExample(CURVE_SHARE_FORMAT, undefined);
 
 /**
  * The curve's cells with the labels it prints: its first share, the share
