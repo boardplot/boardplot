@@ -34,6 +34,7 @@ import { corridorEdgeRects, emitEventLane, percentLevels, runAnnotatePass, settl
 import { categoryBandFromCenters, categoryTargetFields, spliceAnnotationNodes, type CategoryBand } from '../../annotateFields';
 import { rectsOverlap, type Rect } from '../../geometry';
 import { heightOmitted, PLOT_FLOOR_RECT } from '../../sizing';
+import { DeferredShownMarks } from '../../shownMarks';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
@@ -89,8 +90,10 @@ export interface LineMarks {
     fcPathNodeId?: Id;
     points: { categoryId: Id; x: number; y: number; nodeId?: Id; highlighted?: true; markerRadius?: number }[];
   }[];
-  /** The value texts of points without a node of their own (ShownMark): would-be texts, and texts another series' label draws. */
+  /** The value texts of points without a node of their own (ShownMark): texts another series' label draws. */
   shown?: ShownMark[];
+  /** The would-be texts of the points under an authored format, made when a record asks. */
+  wouldShow?: DeferredShownMarks;
   gapFills?: {
     nodeId: Id;
     sign: 'positive' | 'negative';
@@ -553,9 +556,9 @@ type ShownTextOf = (seriesId: Id, categoryId: Id, slot: string, authored: boolea
  * the drawn text of a value, else under an authored format its would-be
  * text, the same order the records take them in.
  */
-function lineShownTexts(domain: LineDomain, reserves: LineReserves, plan: LineLabelPlan, labels: readonly PlacedLabel[], legend: LegendGeometry | undefined): { shown: ShownMark[]; shownText: ShownTextOf } {
+function lineShownTexts(domain: LineDomain, reserves: LineReserves, plan: LineLabelPlan, labels: readonly PlacedLabel[], legend: LegendGeometry | undefined): { shown: ShownMark[]; wouldShow: DeferredShownMarks | undefined; shownText: ShownTextOf } {
   const visible = new Map(labels.filter((label) => label.hidden === undefined).map((label) => [String(label.id), label] as const));
-  const shown: ShownMark[] = [...plan.shown];
+  const shown: ShownMark[] = [];
   const drawnFor = (labelId: Id, owners: readonly OwnerRef[], shows: ShownTexts | undefined) => {
     if (shows && visible.has(String(labelId))) for (const owner of owners) shown.push({ owner, shows, drawn: true });
   };
@@ -585,7 +588,9 @@ function lineShownTexts(domain: LineDomain, reserves: LineReserves, plan: LineLa
   for (const label of visible.values()) if (label.shows) add(drawn, label.owner, label.shows);
   return {
     shown,
-    shownText: (seriesId, categoryId, slot, authored) => drawn.get(key(seriesId, categoryId))?.[slot] ?? (authored ? would.get(key(seriesId, categoryId))?.[slot] : undefined),
+    wouldShow: plan.wouldShow.any ? new DeferredShownMarks(plan.wouldShow.all) : undefined,
+    shownText: (seriesId, categoryId, slot, authored) => drawn.get(key(seriesId, categoryId))?.[slot]
+      ?? (authored ? would.get(key(seriesId, categoryId))?.[slot] ?? plan.wouldShow.at(seriesId, categoryId)?.[slot] : undefined),
   };
 }
 
@@ -904,6 +909,7 @@ function assembleLineGeometry(input: LineAssembly): Geometry<LineMarks, LineDeri
     : area.axisTickSpec ? tickFormatter(area.axisTickSpec, bandLevels) : area.axisFmt;
   const lineShown = lineShownTexts(domain, input.reserves, plan, allLabels, area.frame.legend);
   if (lineShown.shown.length > 0) marks.shown = lineShown.shown;
+  if (lineShown.wouldShow) marks.wouldShow = lineShown.wouldShow;
   const a11yDesc = lineA11yDesc(env, domain, area, marks, variantName, text, lineShown.shownText) + referenceBandsA11y(input.reserves.referenceBands, bandFmt, domain.options)
     + (usesEndLabelKey(options) ? chartString(domain.options, 'lineEndKeyDesc') : '');
   // A trend's key prints its slope and r², never its intercept. Without its key entry no text prints either.

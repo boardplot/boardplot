@@ -13,9 +13,9 @@ import { PRIORITY, type LabelRequest } from '../../label/solver';
 import { addRatioTierRequests, type RatioTierRequestState } from '../../ratioTier';
 import type { Annotation } from '../../types/annotations';
 import type { Id } from '../../types/cell';
-import type { LintWarning, ShownMark } from '../../types/scene';
+import type { LintWarning } from '../../types/scene';
 import { joinTieValues, placeBumpStartLabels, placeBumpTieLabels } from './bump';
-import { defaultValueContent, fanEdgeInKey, flaggedPoints, lineFocusFont, lineToDateIds, placeCategoryLabels, placeEndpointLabels, placeInlineSeriesLabels, placePointValueLabels, pointShownMarks, pointValueWidths, usesEndLabelKey, usesInlineFallback, usesWideEndLabels, valueUnit, pointLabelsFollowShape } from './labels';
+import { defaultValueContent, fanEdgeInKey, flaggedPoints, lineFocusFont, lineToDateIds, placeCategoryLabels, placeEndpointLabels, placeInlineSeriesLabels, placePointValueLabels, pointWouldShows, pointValueWidths, usesEndLabelKey, usesInlineFallback, usesWideEndLabels, valueUnit, pointLabelsFollowShape, type PointWouldShows } from './labels';
 import { placeXTickLabels } from './xTicks';
 import { outerFanEdge } from './fan';
 import { restValuesHidden } from '../../restLabels';
@@ -38,8 +38,8 @@ export interface LineLabelPlan {
   xPartialGroups: string[][];
   endpointFallback: boolean;
   endpointWiden: boolean;
-  /** The would-be value texts of the points under an authored format (pointShownMarks). */
-  shown: ShownMark[];
+  /** The would-be value texts of the points under an authored format, made on demand (pointWouldShows). */
+  wouldShow: PointWouldShows;
   /** The values a tie note or a tie's kept value prints for every member (joinTieValues). */
   tieShows: ReturnType<typeof joinTieValues>;
 }
@@ -179,7 +179,7 @@ export function planLineLabels(
     : placeCategoryLabels({ show: area.showCategoryTickRow, plan: area.catPlan, cats, xOf,
       plot: { ...plot, h: plot.h + area.categoryTickGap - 6 }, labelRequests });
   return { labelRequests, ratioTierRequestState, endpointLeaderAnchors, catLabelsShown, xPartialGroups: xPartial.partial?.groups ?? [], endpointFallback: bounded?.fallback ?? false, endpointWiden: bounded?.widen ?? false,
-    shown: pointShownMarks({ ...valueInput, format: domain.options.format }), tieShows };
+    wouldShow: pointWouldShows({ ...valueInput, format: domain.options.format }), tieShows };
 }
 
 /**

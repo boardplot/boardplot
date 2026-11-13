@@ -60,11 +60,12 @@ import type {
   Paint,
   PlacedAnnotation,
   PlacedLabel,
-  SceneDisplay,
   SceneNode,
+  ShownMark,
   ShownTexts,
 } from '../../types/scene';
 import { rowDrivenHeight } from '../../rowCanvas';
+import { DeferredShownMarks } from '../../shownMarks';
 import { rowLabelBand } from '../../label/rowLabels';
 import { fittedLabel, gutterBudget, GUTTER_MAX_SHARE, stepDownFont } from '../../label/rowFit';
 import { capPitch, HARD_MINIMUM, heightOmitted, matrixWidths, NARROW_FORM, rowSizing, sideKeyOff } from '../../sizing';
@@ -82,6 +83,8 @@ import { generatedIdWarnings } from '../../schema/generatedColumns';
 
 export interface HeatmapMarks {
   cells: { seriesId: Id; categoryId: Id; rect: Rect; nodeId: Id; value: number | null }[];
+  /** The would-be texts of the values whose label is not drawn, under an authored format. */
+  wouldShow?: DeferredShownMarks;
 }
 
 export interface HeatmapDerived {
@@ -1061,6 +1064,8 @@ export function layoutHeatmap(
   const nodes: SceneNode[] = [...frameResult.nodes];
   if (continuousKey) drawContinuousKey();
   const marks: HeatmapMarks = { cells: [] };
+  // The cells whose label is not drawn: their would-be texts, made only when a record asks (DeferredShownMarks).
+  const wouldShowCells: (() => ShownMark | undefined)[] = [];
   const labelRequests: LabelRequest[] = [];
   const anchorCell = new Map<string, AnchorResolution>();
   const cellBoxes = new Map<string, Rect>();
@@ -1206,9 +1211,6 @@ export function layoutHeatmap(
       // so a highlight wash does not colour a cell that has no value.
       const blankCell = missingLook === 'blank' && cell.v === null && !cell.meta?.fill && missingCells;
       const low = !bubble && cell.v !== null && lowBase(cell);
-      const display: SceneDisplay = cell.v === null
-        ? { state: cell.state ? stateNames[cell.state] : chartString(options, 'noData') }
-        : { value: displayFor(cell.v, cell.pct, cell.meta, r) };
       nodes.push({
         t: 'rect',
         id: nodeId,
@@ -1218,7 +1220,10 @@ export function layoutHeatmap(
         ...(needsStroke ? { stroke: { token: 'grid' } as Paint, strokeWidth: strokeToken(theme, 'hair') } : {}),
         owner,
         part: 'cell',
-        display,
+        display:
+          cell.v === null
+            ? { state: cell.state ? stateNames[cell.state] : chartString(options, 'noData') }
+            : { value: displayFor(cell.v, cell.pct, cell.meta, r) },
       });
       occupied.claim(rect, 'mark', owner);
       marks.cells.push({ seriesId: seriesOf(r, c), categoryId: categoryOf(r, c), rect, nodeId, value: cell.v });
@@ -1270,12 +1275,15 @@ export function layoutHeatmap(
         }
       }
 
-      // A value whose label is not drawn states its would-be text on its cell, under an authored format.
+      // A value whose label is not drawn states its would-be text, under an authored format.
       const wouldShow = () => {
-        if (cell.v === null || !(options.format || r.format || cell.meta?.format)) return;
-        const text = textFor(cell.v, cell.pct, cell.meta, r);
-        const shows = text === null ? undefined : cellShows(text, cell.v, cell.pct, cell.meta, r);
-        if (shows) display.shows = shows;
+        const v = cell.v;
+        if (v === null || !(options.format || r.format || cell.meta?.format)) return;
+        wouldShowCells.push(() => {
+          const text = textFor(v, cell.pct, cell.meta, r);
+          const shows = text === null ? undefined : cellShows(text, v, cell.pct, cell.meta, r);
+          return shows ? { owner, shows } : undefined;
+        });
       };
       if (bubble) {
         if (!bubbleCell(r, c, cell, rect, owner, valuePaint, css)) wouldShow();
@@ -1664,6 +1672,7 @@ export function layoutHeatmap(
     // The reading lists every value the cells could not print.
     + (hiddenCells.length > 0 && options.heatKey === undefined
       ? ` ${(options as { strings?: { hiddenLabels?: string } }).strings?.hiddenLabels ?? HIDDEN_LABEL_LEAD}: ${hiddenCells.map(hiddenItem).join(', ')}.` : '');
+  if (wouldShowCells.length > 0) marks.wouldShow = new DeferredShownMarks(() => wouldShowCells.flatMap((cell) => cell() ?? []));
 
   return withUnprintedClaims({
     type: 'heatmap',

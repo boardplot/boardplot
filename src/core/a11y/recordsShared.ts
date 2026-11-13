@@ -1,6 +1,7 @@
 import type { ClaimRecordV1 } from '../claims/browser';
 import type { ResolvedChartRequest } from '../request';
 import { textRole } from '../textRole';
+import { DeferredShownMarks } from '../shownMarks';
 import type { AnchorRef, Annotation } from '../types/annotations';
 import { cellMeta, cellValue, isDateCell, isPctCell, type Cell, type OwnerRef } from '../types/cell';
 import type { Geometry, PlacedAnnotation, SceneNode, ShownMark, ShownTexts } from '../types/scene';
@@ -133,22 +134,31 @@ export function withShownTexts(records: InteractionRecord[], geometry: Geometry)
     for (const [slot, text] of Object.entries(shows)) into[slot] ??= text;
     index.set(key, into);
   };
+  const marks = geometry.marks as { shown?: readonly ShownMark[]; wouldShow?: unknown } | undefined;
   for (const label of geometry.labels) if (label.hidden !== undefined && label.shows) add(undrawn, label.owner, label.shows);
-  for (const mark of (geometry.marks as { shown?: readonly ShownMark[] } | undefined)?.shown ?? []) add(mark.drawn ? drawn : undrawn, mark.owner, mark.shows);
+  for (const mark of marks?.shown ?? []) add(mark.drawn ? drawn : undrawn, mark.owner, mark.shows);
   for (const node of geometry.scene) {
     const shows = node.display?.shows;
     if (!shows) continue;
     if (node.t === 'text') { if (node.opacity !== 0) add(drawn, node.owner, shows); } else add(undrawn, node.owner, shows);
   }
-  if (drawn.size === 0 && undrawn.size === 0) return records;
+  // The would-be texts a chart states on demand, read once a record needs one.
+  let deferred = marks?.wouldShow instanceof DeferredShownMarks ? marks.wouldShow : undefined;
+  const wouldFor = (key: string): Record<string, string> | undefined => {
+    if (deferred) {
+      for (const mark of deferred.marks()) add(undrawn, mark.owner, mark.shows);
+      deferred = undefined;
+    }
+    return undrawn.get(key);
+  };
+  if (drawn.size === 0 && undrawn.size === 0 && !deferred) return records;
   for (const record of records) {
     const key = ownerKey(record.target.owner);
     const own = drawn.get(key);
-    const would = undrawn.get(key);
-    if (!own && !would) continue;
+    if (!own && !undrawn.has(key) && !deferred) continue;
     const shown = (slot: string, value: InteractionValue): InteractionValue => {
       if (value.kind !== 'number' || value.state !== 'value' || value.displayed !== undefined) return value;
-      const text = own?.[slot] ?? (authoredFormat(value) ? would?.[slot] : undefined);
+      const text = own?.[slot] ?? (authoredFormat(value) ? wouldFor(key)?.[slot] : undefined);
       return text === undefined ? value : { ...value, displayed: text };
     };
     record.value = shown('value', record.value);

@@ -904,34 +904,67 @@ function pointValueArgs(input: PointLabelInput, ci: number, last: number | undef
   };
 }
 
+/** The would-be value texts of the drawn points, made on demand (pointWouldShows). */
+export interface PointWouldShows {
+  /** One point's texts; undefined where its value has no authored format. */
+  at: (seriesId: Id, categoryId: Id) => ShownTexts | undefined;
+  /** Every point's texts, for the records (DeferredShownMarks). */
+  all: () => ShownMark[];
+  /** Whether any drawn point has an authored format. */
+  any: boolean;
+}
+
 /**
  * The texts the value labels of the drawn points would print, for the points
  * whose value has an authored format (on its cell, its series or the chart):
  * the record of a value without a drawn label reads its would-be text here.
- * The label's own composer and arguments, its value part only.
+ * The label's own composer and arguments, its value part only. Nothing is
+ * formatted until a reader asks: a layout runs several passes and keeps one.
  */
-export function pointShownMarks(input: Omit<PointLabelInput, 'series' | 'row' | 'content'> & {
+export function pointWouldShows(input: Omit<PointLabelInput, 'series' | 'row' | 'content'> & {
   drawnSeries: NormSer[];
   pv: (number | null)[][];
   rowOf: Map<NormSer, number>;
   /** The chart's number format (options.format). */
   format: string | undefined;
-}): ShownMark[] {
-  const shown: ShownMark[] = [];
-  if (!input.composeShows) return shown;
-  for (const series of input.drawnSeries) {
+}): PointWouldShows {
+  const authored = (series: NormSer, ci: number) => (series.vals[ci]?.format ?? series.format ?? input.format) !== undefined;
+  const any = input.composeShows !== undefined && input.drawnSeries.some((series) => series.vals.some((_, ci) => authored(series, ci)));
+  const lastOf = new Map<NormSer, number | undefined>();
+  const last = (series: NormSer, row: (number | null)[]) => {
+    if (!lastOf.has(series)) {
+      let at: number | undefined;
+      for (let ci = row.length - 1; ci >= 0; ci--) if (row[ci] !== null) { at = ci; break; }
+      lastOf.set(series, at);
+    }
+    return lastOf.get(series);
+  };
+  const textsAt = (series: NormSer, ci: number): ShownTexts | undefined => {
     const row = input.pv[input.rowOf.get(series)!]!;
-    let last: number | undefined;
-    for (let ci = row.length - 1; ci >= 0; ci--) if (row[ci] !== null) { last = ci; break; }
+    if (row[ci] === null || row[ci] === undefined || !authored(series, ci)) return undefined;
     const content: LabelContent = ['absolute'];
-    row.forEach((value, ci) => {
-      if (value === null || (series.vals[ci]?.format ?? series.format ?? input.format) === undefined) return;
-      const args = pointValueArgs({ ...input, series, row, content }, ci, last);
-      const shows = args.composeShows?.(content, ...args.values);
-      if (shows) shown.push({ owner: { seriesId: series.id, categoryId: input.cats[ci]!.id }, shows });
-    });
-  }
-  return shown;
+    const args = pointValueArgs({ ...input, series, row, content }, ci, last(series, row));
+    return args.composeShows?.(content, ...args.values);
+  };
+  return {
+    any,
+    at: (seriesId, categoryId) => {
+      const series = any ? input.drawnSeries.find((item) => item.id === seriesId) : undefined;
+      const ci = series ? input.cats.findIndex((category) => category.id === categoryId) : -1;
+      return series && ci >= 0 ? textsAt(series, ci) : undefined;
+    },
+    all: () => {
+      const shown: ShownMark[] = [];
+      if (!any) return shown;
+      for (const series of input.drawnSeries) {
+        input.pv[input.rowOf.get(series)!]!.forEach((_, ci) => {
+          const shows = textsAt(series, ci);
+          if (shows) shown.push({ owner: { seriesId: series.id, categoryId: input.cats[ci]!.id }, shows });
+        });
+      }
+      return shown;
+    },
+  };
 }
 
 function buildPointCandidates(input: PointLabelInput & {
