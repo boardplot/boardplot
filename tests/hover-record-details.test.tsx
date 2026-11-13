@@ -399,7 +399,7 @@ it('prints a value without a shown text through its format', () => {
     { id: 'a', label: 'Store A', x: 1200, y: 48250 }, { id: 'b', label: 'Store B', x: 2400, y: 61900 }] } });
   const point = interactionRecords({ request: scatter.request, geometry: scatter.geometry, scope: scatter.request.scope, claims: [] })
     .find(record => record.target.owner.pointId === 'a')!;
-  expect(labelCardContent(point).rows.map(row => row.value)).toContain('$48.3k');
+  expect(labelCardContent(point).rows.find(row => row.kind === 'value')?.value).toBe('$48.3k');
   const shares = build({ type: 'column', options: { variant: 'stacked100', sharesOfOneWhole: true, size: { width: 420, height: 260 } }, data: {
     categories: [{ id: 'q1', label: 'Q1' }],
     series: [['a', 2.46], ['b', 47.54], ['c', 50]].map(([id, pct]) => ({ id, label: String(id).toUpperCase(), values: [{ pct }] })) } });
@@ -408,4 +408,21 @@ it('prints a value without a shown text through its format', () => {
   const sliver = interactionRecords({ request: shares.request, geometry: shares.geometry, scope: shares.request.scope, claims: [] })
     .find(record => record.target.owner.seriesId === 'a')!;
   expect(labelCardContent(sliver).rows.find(row => row.kind === 'share')?.value).toBe('2%');
+});
+
+// A label that joins a currency sign before its bound ("$<0.01") counted as the value's shown text, so the card printed the bound in place of the value.
+it('prints the value, not a bound behind a currency sign, in the card', () => {
+  const line = build({ type: 'line', options: { unit: '$', labels: { point: true }, size: { width: 640, height: 360 } }, data: {
+    categories: ['q1', 'q2', 'q3'].map(id => ({ id, label: id.toUpperCase() })),
+    series: [{ id: 'a', label: 'Alpha', values: [0.26, 0.0371, 0.0000012] }] } });
+  const last = interactionRecords({ request: line.request, geometry: line.geometry, scope: line.request.scope, claims: [] })
+    .find(record => record.target.owner.categoryId === 'q3')!;
+  expect(labelCardContent(last).rows.find(row => row.kind === 'value')?.value).toBe('$0.0000012');
+  const variance = build({ type: 'variance', options: { variant: 'relative', variance: { of: 'total', vs: 'py' }, unit: '$m' }, data: {
+    categories: [{ id: 'na', label: 'North' }, { id: 'emea', label: 'EMEA' }],
+    series: [{ id: 'ac', label: 'Actual', values: [61, 0.02] },
+      { id: 'py', label: 'Prior year', role: 'reference', scenario: 'PY', values: [74, -0.02] }] } });
+  const emea = interactionRecords({ request: variance.request, geometry: variance.geometry, scope: variance.request.scope, claims: [] })
+    .find(record => record.target.owner.categoryId === 'emea')!;
+  expect(labelCardContent(emea).rows.find(row => row.kind === 'comparison')?.text).toMatch(/^vs PY: \+\$0\.04m \(/);
 });
