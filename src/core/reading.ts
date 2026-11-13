@@ -13,6 +13,7 @@ import { interactionRecords } from './a11y/records';
 import { dataOrder } from './frame';
 import { cutLabels, labelOmissions, omissionScope, readableLabelDestination, type LabelOmission } from './label/omissions';
 import { interactionValueText, shownValueText } from './a11y/valueText';
+import { withUnitStandIns } from './formatSpec';
 import type { OwnerRef } from './types/cell';
 import type { ChartData } from './types/data';
 import { normalizeCategory, normalizeSeriesValues } from './normalize/shared';
@@ -422,6 +423,11 @@ function unrequestedLabelOmissions(input: ChartReadingInput, records: readonly I
 
 /** One chart's reading, from its accepted layout. */
 export function chartReading(input: ChartReadingInput): ChartReading {
+  // The reading tells an authored example from one the engine wrote, as the records and the hover card do.
+  return withUnitStandIns(input.request.options, () => readingOf(input));
+}
+
+function readingOf(input: ChartReadingInput): ChartReading {
   const { records, note } = input.records ?? chartRecords(input);
   const title = (input.request.options as Record<string, unknown>).title;
   const byData = dataOrder(input.request.data, input.geometry.labels);

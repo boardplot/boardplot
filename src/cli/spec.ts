@@ -33,7 +33,7 @@ import { spaceDocLints } from '../core/lint/space';
 import { typeDocLints } from '../core/lint/type';
 import { lineIntegrityDocLints } from '../core/lint/lineIntegrity';
 import { shareUnitLints, unitInFormatLints, unitNotShownLints } from '../core/frame';
-import { drawsZeroNumber, unscaledFormatLint } from '../core/formatSpec';
+import { drawsZeroNumber, unscaledFormatLint, type FormatLintContext, type FormatPatchCheck } from '../core/formatSpec';
 import { chartRecords } from '../core/reading';
 import type { InteractionRecord } from '../core/a11y/types';
 import { chartRefusals } from '../core/schema/refusals';
@@ -41,7 +41,7 @@ import type { Annotation } from '../core/types/annotations';
 import type { RenderTarget } from '../core/types/options';
 import type { Theme, ThemeRef } from '../core/types/theme';
 import type { Geometry, LintWarning, PaintToken, PlacedLabel } from '../core/types/scene';
-import type { JsonPatchOperation } from '../core/diagnostics/jsonPatch';
+import { parseJsonPointer, type JsonPatchOperation } from '../core/diagnostics/jsonPatch';
 import { InputError } from './result';
 import { withSize, type Length } from './size';
 import { assertSpecObject } from '../core/inputError';
@@ -297,7 +297,7 @@ function drawsAfterFix(candidate: Record<string, unknown>, call: CallSizing): bo
     const scratch: DocumentEnvelope = { ok: true, errors: [], warnings: [] };
     const drawsAt = (chart: DocChart): boolean => {
       const sized = withSize(chart, call.width, call.measure ? undefined : call.height, call.target ?? chart.options?.target as RenderTarget | undefined);
-      return (call.measure ? measureChart(loaded.doc, sized, scratch, call.target) : layoutChart(loaded.doc, sized, scratch, {}, call.target)) !== null;
+      return (call.measure ? measureChart(loaded.doc, sized, scratch, call.target) : layoutChart(loaded.doc, sized, scratch, {}, call.target, false)) !== null;
     };
     return loaded.doc.charts.every(drawsAt) && scratch.errors.length === 0;
   } catch {
@@ -427,14 +427,19 @@ export function collapseLabelHiddenWarnings(geo: Geometry, warnings: readonly Li
  * so another panel's unit never counts. The finding points at the authored
  * panel, or at the repeat template that made it; nested grids recurse.
  */
-function panelUnitLints(data: unknown, geo: Geometry, records: () => readonly InteractionRecord[] | null, base: (string | number)[] = ['data']): LintWarning[] {
+function panelUnitLints(data: unknown, geo: Geometry, records: () => readonly InteractionRecord[] | null, formats: FormatLintContext = {}, base: (string | number)[] = ['data']): LintWarning[] {
   const panels = geo.type === 'grid' ? (geo.marks as unknown as GridMarks | undefined)?.panels ?? [] : [];
   const authored = isRecord(data) && Array.isArray(data.panels) ? data.panels : undefined;
   const owns = (nodeId: string, panelId: string) => nodeId.startsWith(`${panelId}/`) || nodeId.includes(`panel:${panelId}:`);
-  // A format warning of a panel's own options and data, moved to their path in the grid.
-  const formatsAt = (spec: Record<string, unknown>, own: (string | number)[], name: string, held: () => readonly InteractionRecord[] | null) => unscaledFormatLint(spec.options as Record<string, unknown> | undefined, spec.data, undefined, held)
+  // A format warning of a panel's own options and data, moved to their path in the grid; its patch is proven there too.
+  const at = (own: (string | number)[], fix: readonly JsonPatchOperation[]) => fix.map((op) => ({ ...op, path: `/${own.join('/')}${op.path}` }));
+  const formatsAt = (spec: Record<string, unknown>, own: (string | number)[], name: string, held: () => readonly InteractionRecord[] | null) => unscaledFormatLint(
+    spec.options as Record<string, unknown> | undefined, spec.data, undefined, held, {
+      zeroDrawn: formats.zeroDrawn, scene: geo.scene,
+      ...(formats.verify ? { verify: (fix, field) => formats.verify!(at(own, fix), [...own, ...field]) } : {}),
+    })
     .map((warning) => ({ ...warning, message: `[${name}] ${warning.message}`, field: [...own, ...(warning.field ?? [])],
-      ...(warning.fix ? { fix: warning.fix.map((op) => ({ ...op, path: `/${own.join('/')}${op.path}` })) } : {}) }));
+      ...(warning.fix ? { fix: at(own, warning.fix) } : {}) }));
   // A repeat template that holds one chart document is checked once, at the template. Its bySlice form is not checked.
   const template = isRecord(data) && isRecord(data.template) && isRecord(data.template.data) && !('bySlice' in data.template.data) ? data.template : undefined;
   // The template's records are those of the panels it made.
@@ -455,7 +460,7 @@ function panelUnitLints(data: unknown, geo: Geometry, records: () => readonly In
         .map((warning) => ({ ...warning, message: `[${panel.id}] ${warning.message}` })),
       // A panel's own formats: the panel's options and data, by their path in the grid.
       ...(index >= 0 ? formatsAt(authored![index] as Record<string, unknown>, own, panel.id, () => inPanel(records(), panel.id)) : []),
-      ...panelUnitLints(index >= 0 ? (authored![index] as Record<string, unknown>).data : undefined, child, () => inPanel(records(), panel.id), [...own, 'data']),
+      ...panelUnitLints(index >= 0 ? (authored![index] as Record<string, unknown>).data : undefined, child, () => inPanel(records(), panel.id), formats, [...own, 'data']),
     ];
   })];
 }
@@ -470,7 +475,7 @@ function inPanel(records: readonly InteractionRecord[] | null, panel: string): I
 }
 
 /** The document-boundary norm lints: warnings about proportions and embed legibility. */
-function normLints(type: string, options: Record<string, unknown>, geo: Geometry, records: () => readonly InteractionRecord[] | null, data?: unknown, verify?: HeightVerifier): LintWarning[] {
+function normLints(type: string, options: Record<string, unknown>, geo: Geometry, records: () => readonly InteractionRecord[] | null, data?: unknown, verify?: HeightVerifier, formats: FormatLintContext = {}): LintWarning[] {
   // Each family stands down behind any refusal already on the geometry, so a
   // refused chart gets one trace naming the real cause. They run here,
   // not inside layout, because grid panels lay out on slot-sized canvases.
@@ -484,8 +489,8 @@ function normLints(type: string, options: Record<string, unknown>, geo: Geometry
     ...shareUnitLints(options, geo),
     ...unitInFormatLints(options),
     // A grid's own format reads no panel's records.
-    ...unscaledFormatLint(options, data, geo, () => (records() ?? []).filter((record) => record.target.panel === undefined)),
-    ...panelUnitLints(data, geo, records),
+    ...unscaledFormatLint(options, data, geo, () => records()?.filter((record) => record.target.panel === undefined) ?? null, formats),
+    ...panelUnitLints(data, geo, records, formats),
   ];
   pushAll(geo.warnings, rest);
   return geo.warnings;
@@ -530,10 +535,10 @@ interface SvgWriteOptions { idScope?: string; background?: false }
 /** The warnings that name a height. A render gives them no patch: only a drawn height is a patch, and `measure` draws it. */
 const SIZE_PATCH_CODES: ReadonlySet<string> = new Set(['aspect-cap', 'height-off-ladder', 'plot-under-floor', 'plot-under-min']);
 
-function drawn(doc: BoardplotDoc, chart: DocChart, envelope: DocumentEnvelope, write: SvgWriteOptions = {}, target?: RenderTarget, verify?: HeightVerifier) {
+function drawn(doc: BoardplotDoc, chart: DocChart, envelope: DocumentEnvelope, write: SvgWriteOptions = {}, target?: RenderTarget, verify?: HeightVerifier, proveFormat?: FormatPatchCheck) {
   const resolved = resolveRequest(doc, chart, envelope, target);
   if (!resolved) return null;
-  return judged(chart, resolved, requireGeometry(layoutResolvedRequest(resolved.request)) as Geometry, envelope, true, write, verify);
+  return judged(chart, resolved, requireGeometry(layoutResolvedRequest(resolved.request)) as Geometry, envelope, true, write, verify, proveFormat);
 }
 
 /**
@@ -551,6 +556,7 @@ function judged(
   reportWarnings: boolean,
   write: SvgWriteOptions = {},
   verify?: HeightVerifier,
+  proveFormat?: FormatPatchCheck,
 ) {
   const def = validated.definition;
   const options = request.options as Record<string, unknown>;
@@ -575,10 +581,12 @@ function judged(
         });
     return null;
   }
-  // The chart's records, built once on first use: by the format lint, else by the reading.
+  // The chart's records, built once on first use: by the format lint where a format may hide a value, else by the reading.
   let held: ReturnType<typeof chartRecords> | undefined;
   const records = () => (held ??= chartRecords({ type: def.type, request, geometry: geo, claims }));
-  const warnings = normLints(def.type, options, geo, () => (drawsZeroNumber(geo.scene) ? records().records : null), validated.data, verify);
+  let zero: boolean | undefined;
+  const warnings = normLints(def.type, options, geo, () => records().records, validated.data, verify,
+    { zeroDrawn: () => (zero ??= drawsZeroNumber(geo.scene)), ...(proveFormat ? { verify: proveFormat } : {}) });
   // The refusal path React shares (core/schema/refusals): what refuses here
   // draws the error card there, with the same message.
   const refusals = chartRefusals(warnings);
@@ -655,13 +663,38 @@ export function drawsWithOptions(
   doc: BoardplotDoc, chart: DocChart, changed: Record<string, unknown>, drawnCodes: ReadonlySet<string>, target?: RenderTarget,
 ): boolean {
   const scratch: DocumentEnvelope = { ok: true, errors: [], warnings: [] };
-  return layoutChart(doc, { ...chart, options: { ...chart.options, ...changed } }, scratch, {}, target) !== null && scratch.errors.length === 0
+  return layoutChart(doc, { ...chart, options: { ...chart.options, ...changed } }, scratch, {}, target, false) !== null && scratch.errors.length === 0
     && scratch.warnings.every((warning) => drawnCodes.has(warning.code));
 }
 
-/** Lay one chart out and run the norm lints; null when it is refused. */
-export function layoutChart(doc: BoardplotDoc, chart: DocChart, envelope: DocumentEnvelope, write: SvgWriteOptions = {}, target?: RenderTarget): DrawnChart | null {
-  return completing(doc, chart, envelope, () => drawn(doc, chart, envelope, write, target));
+/** Lay one chart out and run the norm lints; null when it is refused. `proveFormats`: a format-hides-values patch is offered only where the chart drawn with it no longer warns. */
+export function layoutChart(doc: BoardplotDoc, chart: DocChart, envelope: DocumentEnvelope, write: SvgWriteOptions = {}, target?: RenderTarget, proveFormats = true): DrawnChart | null {
+  return completing(doc, chart, envelope, () => drawn(doc, chart, envelope, write, target, undefined, proveFormats ? formatPatchCheck(doc, chart, target) : undefined));
+}
+
+/**
+ * The proof of a format patch: the chart drawn with the patch, into a scratch
+ * envelope, warns format-hides-values at that field no more. That draw proves
+ * no patch of its own.
+ */
+function formatPatchCheck(doc: BoardplotDoc, chart: DocChart, target?: RenderTarget): FormatPatchCheck {
+  return (fix, field) => {
+    const patched = structuredClone({ data: chart.data, options: chart.options ?? {} });
+    try {
+      for (const operation of fix) {
+        if (operation.op !== 'replace') return false;
+        const segments = parseJsonPointer(operation.path);
+        const parent = segments.slice(0, -1).reduce<unknown>((node, key) => (isRecord(node) || Array.isArray(node) ? (node as Record<string, unknown>)[key] : undefined), patched);
+        if (!isRecord(parent) && !Array.isArray(parent)) return false;
+        (parent as Record<string, unknown>)[segments.at(-1)!] = operation.value;
+      }
+      const scratch: DocumentEnvelope = { ok: true, errors: [], warnings: [] };
+      const again = drawn(doc, { ...chart, data: patched.data, options: patched.options }, scratch, {}, target);
+      const same = JSON.stringify(field);
+      return again !== null && scratch.errors.length === 0
+        && !again.warnings.some((warning) => warning.code === 'format-hides-values' && JSON.stringify(warning.field) === same);
+    } catch { return false; }
+  };
 }
 
 /**

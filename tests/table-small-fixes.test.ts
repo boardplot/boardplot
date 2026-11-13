@@ -25,7 +25,7 @@ import type { TableData } from '../src/core/types/table';
 import type { Paint, SceneNode } from '../src/core/types/scene';
 import { getFixtures } from '../src/fixtures';
 import { render } from '../src/cli/render';
-import { unscaledFormatLint } from '../src/core/formatSpec';
+import { AUTHORED_EXAMPLES, unscaledFormatLint, withUnitStandIns } from '../src/core/formatSpec';
 
 vi.mock('../src/core/schema/unknownKeyWords', async (importActual) => {
   const actual = await importActual<typeof import('../src/core/schema/unknownKeyWords')>();
@@ -283,7 +283,7 @@ it('keeps a computed column in its own kind under a row format and honours a com
       { id: 'rr', kind: 'computed', calc: { op: 'div', a: { ref: 'ac' }, b: { lit: 12 } } }],
     rows: [{ id: 'rev', format: '$1.2m', cells: { ac: 2500000 } }],
   }, {}).table.rows;
-  expect(['ac', 'fc', 'rr'].map(col => scaled[0]!.cells[col]!.displayed)).toEqual(['$2.5M', '$2.6M', '$0.2M']);
+  expect(['ac', 'fc', 'rr'].map(col => scaled[0]!.cells[col]!.displayed)).toEqual(['$2.5m', '$2.6m', '$0.2m']);
 });
 
 // A large Range total made unequal weekly counts and money both print as 0.2B.
@@ -385,9 +385,9 @@ it('keeps the unit in the cells of a row that prints no scale letter under a for
   expect(table.rows.map((row) => row.unitAffix)).toEqual(['$M', '$M', undefined, undefined]);
 });
 
-// One small cell lifted a whole row of an authored '$1M' format to "$4.000M, $6.000M, $0.002M".
-// The lift must still reach every small cell the row format prints: computed, subtotal and result cells.
-it('lifts only the cell that would print 0 in a row of an authored scaled format', () => {
+// One small cell lifted a whole row of an authored '$1M' format to "$4.000M, $6.000M, $0.002M", and then each small cell to "$0.002M".
+// Every cell the row format prints, computed, subtotal and result cells too, prints as the example: 1,500 as "$0M".
+it('prints every cell of an authored scaled row format as its example, small cells included', () => {
   const { table } = resolveTable({
     columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'q1', kind: 'value' }, { id: 'q2', kind: 'value' }, { id: 'q3', kind: 'value' },
       { id: 'twice', kind: 'computed', calc: { op: 'mul', a: { ref: 'q3' }, b: { lit: 2 } } }],
@@ -399,10 +399,10 @@ it('lifts only the cell that would print 0 in a row of an authored scaled format
       { id: 'net', label: 'Net', kind: 'result', format: '$1M', calc: { op: 'sub', a: { ref: { row: 'cost' } }, b: { ref: { row: 'two' } } } }],
   });
   const printed = (id: string) => ['q1', 'q2', 'q3', 'twice'].map((col) => table.rows.find((row) => row.id === id)!.cells[col]!.displayed);
-  expect(printed('cost')).toEqual(['$4M', '$6M', '$0.002M', '$0.003M']);
-  expect(printed('fees')).toEqual(['$4M', '$6M', '$0.2M', '$0.4M']);
-  expect(printed('group')).toEqual(['$8M', '$2M', '$0.002M', '$0.003M']);
-  expect(printed('net')).toEqual(['$1M', '$5M', '$0.001M', '$0.002M']);
+  expect(printed('cost')).toEqual(['$4M', '$6M', '$0M', '$0M']);
+  expect(printed('fees')).toEqual(['$4M', '$6M', '$0M', '$0M']);
+  expect(printed('group')).toEqual(['$8M', '$2M', '$0M', '$0M']);
+  expect(printed('net')).toEqual(['$1M', '$5M', '$0M', '$0M']);
 });
 
 // A forced thousand moved a count row with its own '1.23M' format to "5,505" under a "k" label.
@@ -536,8 +536,11 @@ it('resolves table cells in the table smallValues mode outside a layout', () => 
 it('prints the source digits in the card of a table cell that rounds to zero', () => {
   const data = { columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'v', kind: 'value' }], rows: [0.042, 0.0000000012].map((v, i) => ({ id: `r${i}`, label: `R${i}`, cells: { v } })) } as unknown as TableData;
   const options = { smallValues: 'zero' as const };
-  const records = preparedTableRecords(resolveTable(data, options).table, data, { chartId: 't' } as never, options);
-  expect(displayedValueText(records.find(record => record.target.owner.rowId === 'r1')!.value)).toBe('0.0000000012');
+  // As in a chart whose author wrote no format: the column's example is the engine's.
+  withUnitStandIns({ [AUTHORED_EXAMPLES]: new Set<string>() }, () => {
+    const records = preparedTableRecords(resolveTable(data, options).table, data, { chartId: 't' } as never, options);
+    expect(displayedValueText(records.find(record => record.target.owner.rowId === 'r1')!.value)).toBe('0.0000000012');
+  });
 });
 
 // A table a little wider than its card draws with tighter spacing, not a refusal box. Comfort air gives way first; every cell prints whole.
@@ -1345,7 +1348,7 @@ it('fits an overflowing percent change by its own format, not the money row form
   const measure: typeof defaultMeasurer = (text, font) => ({ ...defaultMeasurer(text, font), width: text.length * 10 });
   const g = layout('table', data, { fitFormats: true, measure, size: { width: 480 } });
   const text = (col: string) => g.scene.find((n): n is TextNode => n.t === 'text' && n.id === `cell:rev:${col}`)!.lines.join('');
-  expect([text('ac'), text('yoy')]).toEqual(['$2.5M', '25%']);
+  expect([text('ac'), text('yoy')]).toEqual(['$2.5m', '25%']);
 });
 
 // The accessible table read the percent change under a money row format as "$25" while the cell printed 25.0%.

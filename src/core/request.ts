@@ -1,5 +1,5 @@
 import { fractionLineWarnings, prepareFractionAnnotations, percentScaleWarnings } from './normalize/fraction';
-import { readFormatExamples, UNIT_STAND_INS } from './formatSpec';
+import { AUTHORED_EXAMPLES, readFormatExamples, UNIT_STAND_INS } from './formatSpec';
 import { colorVariableWarnings } from './colorVariables';
 import { drawnRequest } from './drawnRequest';
 import { PLAN_ONLY, withPlanInputs, contentKey, copyPlannedValue, repeatedResult } from './layoutPlan';
@@ -217,6 +217,8 @@ export function resolveChartRequest<D, O extends object>(
   const options = read.options;
   // The layout, the records and the hover cards print a unit-only format's stand-in as a unit (isExactExample).
   if (read.standIns.size) (options as Record<symbol, unknown>)[UNIT_STAND_INS] = read.standIns;
+  // Only the examples the author wrote print exactly; one the engine writes later keeps its own precision.
+  (options as Record<symbol, unknown>)[AUTHORED_EXAMPLES] = read.authored;
   // The root list replaces options.annotations. A list from the type's defaults is not authored and has no origin.
   const annotationList = input.annotations !== undefined ? ['annotations'] as const : input.options?.annotations !== undefined ? ['options', 'annotations'] as const : undefined;
   if (annotationList && Array.isArray(options.annotations)) options.annotations = withAnnotationOrigins<Annotation>(options.annotations, annotationList);

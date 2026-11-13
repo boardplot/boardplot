@@ -1066,8 +1066,10 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
     const example = authoredExample ?? defaultExample(col);
     if (authoredExample === undefined) localeDerivedColumns.add(col.id);
     formatExamples.set(col.id, example);
-    // An authored example prints its own scale word ("$6.1m" under "$1.2m").
-    const spec = parseFormatExample(example, authoredExample !== undefined && isExactExample(example));
+    // An authored example prints its own scale word ("$6.1m" under "$1.2m"); one that fitting or the engine wrote prints the standard letter.
+    const sourceColumn = sourceColumns.get(col.id) as ({ format?: string } & AutomaticFormatSource) | undefined;
+    const written = col.format !== undefined ? sourceColumn?.format === col.format && sourceColumn[AUTOMATIC_FORMAT] !== true : authoredExample !== undefined;
+    const spec = parseFormatExample(example, written && isExactExample(example));
     const sourceExample = (sourceColumns.get(col.id) as { format?: string } | undefined)?.format ?? inherited;
     spec.automatic = automaticAs(sourceExample === undefined && options.unit === undefined && options.magnitude !== 'million' && options.magnitude !== 'thousand');
     if (authoredExample === undefined && currencyWholeNumbers(options.unit, options.target)
@@ -1098,8 +1100,8 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   // A percent or a count has no magnitude to force.
   const forcedMagnitude: NumberFormatSpec['magnitude'] | undefined =
     options.magnitude === 'million' ? 'm' : options.magnitude === 'thousand' ? 'k' : undefined;
-  const authoredSpec = (example: string, sourceExample = example): NumberFormatSpec => {
-    const spec = parseFormatExample(example, isExactExample(example));
+  const authoredSpec = (example: string, sourceExample = example, written = false): NumberFormatSpec => {
+    const spec = parseFormatExample(example, written && isExactExample(example));
     if (forcedMagnitude !== undefined && scales(sourceExample)) {
       forceScale(spec, forcedMagnitude, locale.thousands);
     }
@@ -1169,8 +1171,10 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
     if (example) {
       // A count or percent row keeps its own format: a forced money scale does not reach it.
       const ownScale = row.scale === 'count' || row.scale === 'percent';
-      const spec = ownScale ? parseFormatExample(example, isExactExample(example)) : authoredSpec(example, sourceRows.get(row.id)?.format ?? example);
       const authoredRow = sourceRows.get(row.id) as (TableRow & AutomaticFormatSource) | undefined;
+      // The author's own row example, not one that fitting or the engine wrote.
+      const written = authoredRow?.format !== undefined && authoredRow[AUTOMATIC_FORMAT] !== true && authoredRow.format === row.format;
+      const spec = ownScale ? parseFormatExample(example, written && isExactExample(example)) : authoredSpec(example, sourceRows.get(row.id)?.format ?? example, written);
       // An authored row format prints exactly; a scale, a forced magnitude or a unit-only format sets its own precision.
       const exactRow = authoredRow?.format !== undefined && authoredRow[AUTOMATIC_FORMAT] !== true && row.scale !== 'money' && row.scale !== 'perUnit'
         && forcedMagnitude === undefined && isExactExample(example);
@@ -1298,8 +1302,8 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
           ?? sourceColumn?.format ?? sourceRow?.format ?? options.format ?? defaultExample(col);
         let inRow = cellSpecs.get(row.id);
         if (!inRow) cellSpecs.set(row.id, inRow = new Map());
-        const spec = authoredSpec(example, sourceExample);
         const sourceCell = sourceRow?.cells[col.id] as AutomaticFormatSource | undefined;
+        const spec = authoredSpec(example, sourceExample, cellFormat(sourceRow?.cells[col.id]) === example && sourceCell?.[AUTOMATIC_FORMAT] !== true);
         if (cellFormat(sourceRow?.cells[col.id]) !== undefined && sourceCell?.[AUTOMATIC_FORMAT] !== true) holdAuthoredScale(spec, locale.thousands);
         if (sourceCell?.[AUTOMATIC_FORMAT] === true) spec.automatic = automaticAs(true);
         inRow.set(col.id, spec);

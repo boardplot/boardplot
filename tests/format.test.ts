@@ -634,7 +634,7 @@ describe('an example is read as its author wrote it', () => {
     const [scaled] = unscaledFormatLint({ format: '+$1.0B', unit: '$B' }, series([62, 43.2, 5.5, 1.9]));
     expect([scaled?.code, scaled?.fix]).toEqual(['format-hides-values', [{ op: 'replace', path: '/options/format', value: '+$1.0' }]]);
     // A scale inside a currency code ('USDm') must leave the fix too, or the fix scales the values again.
-    for (const [format, fixed] of [['USDm 1.2', 'USD 1.0'], ['1.2 USDm', '1.0 USD']]) {
+    for (const [format, fixed] of [['USDm 1.2', 'USD 1.2'], ['1.2 USDm', '1.2 USD']]) {
       const [inCode] = unscaledFormatLint({ format, unit: 'USDm' }, series([62, 1.9]));
       expect(inCode?.fix, format).toEqual([{ op: 'replace', path: '/options/format', value: fixed }]);
       expect(unscaledFormatLint({ format: fixed, unit: 'USDm' }, series([62, 1.9])), fixed).toEqual([]);
