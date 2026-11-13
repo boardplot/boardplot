@@ -210,13 +210,15 @@ function layoutPass(data: ChartData, options: WaffleOptions, lean = false, oneRo
     const text = shareText(value, autoDecimals(value), options.locale?.language);
     return /^[<>]/.test(text) ? text : shareText(value, Math.max(autoDecimals(value), authoredDecimals(value)), options.locale?.language);
   };
-  // An authored chart format holds every printed share to one scale and one decimal count (exampleSpec).
+  // An authored chart format prints every share as it reads (exampleSpec).
   const cellNumbers = series.flatMap((row) => row.cells.map(cellValue));
   // A cell's own format wins, then its series' format, then options.format (the pie rule).
   const formatFor = (seriesIndex: number, panelIndex: number, exact = true): ((value: number) => string) => {
     const example = cellMeta(series[seriesIndex]!.cells[panelIndex]!)?.format ?? series[seriesIndex]!.ser.format ?? options.format;
     if (!example) return exact ? defaultFormat : (value) => shareText(value, autoDecimals(value), options.locale?.language);
     const spec = exampleSpec(example, options.locale?.language, undefined, example === options.format ? cellNumbers : undefined);
+    // An authored example prints a share exactly, its zero included; a unit-only "%" keeps the bound and the decimals of the cells.
+    if (spec.exact) return (value) => formatWithSpec(value, spec);
     return (value) => {
       const rounded = roundedNumber(value, spec);
       if ((value > 0 && rounded === 0) || (value < 100 && rounded === 100)) return shareText(value, exact ? 1 : spec.decimals, options.locale?.language);
@@ -332,6 +334,7 @@ function layoutPass(data: ChartData, options: WaffleOptions, lean = false, oneRo
   // As a series format: a rounded rest must not claim a different share from its cells.
   const restFormat = (value: number): string => {
     if (!restSpec) return defaultFormat(value);
+    if (restSpec.exact) return formatWithSpec(value, restSpec);
     const rounded = roundedNumber(value, restSpec);
     if ((value > 0 && rounded === 0) || (value < 100 && rounded === 100)) return defaultFormat(value);
     return formatWithSpec(value, { ...restSpec, decimals: rounded === value ? restSpec.decimals : Math.max(restSpec.decimals, authoredDecimals(value)) });

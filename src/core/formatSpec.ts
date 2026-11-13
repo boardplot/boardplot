@@ -127,8 +127,6 @@ export interface NumberFormatSpec {
    * zero prints the example's zero, and format-hides-values says so.
    */
   exact?: true;
-  /** An example written for this axis: its ticks print at least its decimals (tickFormatter). */
-  axisExample?: true;
 }
 
 /**
@@ -1393,10 +1391,8 @@ export function localized(spec: NumberFormatSpec, locale: string | undefined): N
  */
 export function exampleSpec(example: string, locale?: string, unit?: string, values?: Iterable<number | null | undefined>): NumberFormatSpec {
   const spec = localized(parseFormatExample(example, true), locale);
-  if (isExactExample(example)) {
-    spec.exact = true;
-    if (spec.magnitude !== 'none') spec.rollMagnitude = false;
-  } else {
+  if (isExactExample(example)) exactly(spec);
+  else {
     spec.nonzero = true;
     if (spec.magnitude !== 'none' && unitMagnitude(unit) === spec.magnitude) spec.rollMagnitude = false;
     if (values) shareAuthoredScale(spec, [...values]);
@@ -1409,6 +1405,22 @@ export function exampleSpec(example: string, locale?: string, unit?: string, val
   const integer = spec.decimals > 0 ? body.slice(0, body.lastIndexOf(spec.decimalSep)) : body;
   if (spec.thousandsSep === '' && integer.replace(/\D/g, '').length < 4) spec.thousandsSep = spec.decimalSep === ',' ? '.' : ',';
   return spec;
+}
+
+/** Print every value as the example reads: its scale word held, no lift (`exact`). */
+function exactly(spec: NumberFormatSpec): NumberFormatSpec {
+  spec.exact = true;
+  if (spec.magnitude !== 'none') spec.rollMagnitude = false;
+  return spec;
+}
+
+/**
+ * An authored example exactly as it reads, with only its own grouping: the
+ * spec of a card that prints one figure (kpi). Undefined for a unit-only
+ * format (isExactExample), which keeps a unit's data-led precision.
+ */
+export function exactExampleSpec(example: string, locale?: string): NumberFormatSpec | undefined {
+  return isExactExample(example) ? exactly(localized(parseFormatExample(example, true), locale)) : undefined;
 }
 
 /**

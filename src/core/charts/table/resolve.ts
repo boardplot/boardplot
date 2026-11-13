@@ -22,6 +22,7 @@ import {
   MAGNITUDE_GROUP,
   type MagnitudeGroupSource,
   compileNumberFormat,
+  isExactExample,
   parseFormatExample as parseExample,
   effectiveScale,
   roundedNumber,
@@ -417,13 +418,14 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   const formats = new Map<string, NumberFormatSpec>();
   // Every entry (resolveChartRequest, the registry layout) has put the chart's marks into the language tag.
   const markedLanguage = options.locale?.language;
-  const parseFormatExample = (example: string): NumberFormatSpec => {
-    let spec = formats.get(example);
+  const parseFormatExample = (example: string, keepWord = false): NumberFormatSpec => {
+    const key = keepWord ? `w${example}` : `n${example}`;
+    let spec = formats.get(key);
     if (spec === undefined) {
-      spec = parseExample(example);
+      spec = parseExample(example, keepWord);
       // The chart's marks replace the example's own (numberMarks.ts).
       spec.locale = markedLanguage;
-      formats.set(example, spec);
+      formats.set(key, spec);
     }
     return { ...spec };
   };
@@ -1064,7 +1066,8 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
     const example = authoredExample ?? defaultExample(col);
     if (authoredExample === undefined) localeDerivedColumns.add(col.id);
     formatExamples.set(col.id, example);
-    const spec = parseFormatExample(example);
+    // An authored example prints its own scale word ("$6.1m" under "$1.2m").
+    const spec = parseFormatExample(example, authoredExample !== undefined && isExactExample(example));
     const sourceExample = (sourceColumns.get(col.id) as { format?: string } | undefined)?.format ?? inherited;
     spec.automatic = automaticAs(sourceExample === undefined && options.unit === undefined && options.magnitude !== 'million' && options.magnitude !== 'thousand');
     if (authoredExample === undefined && currencyWholeNumbers(options.unit, options.target)
@@ -1096,7 +1099,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   const forcedMagnitude: NumberFormatSpec['magnitude'] | undefined =
     options.magnitude === 'million' ? 'm' : options.magnitude === 'thousand' ? 'k' : undefined;
   const authoredSpec = (example: string, sourceExample = example): NumberFormatSpec => {
-    const spec = parseFormatExample(example);
+    const spec = parseFormatExample(example, isExactExample(example));
     if (forcedMagnitude !== undefined && scales(sourceExample)) {
       forceScale(spec, forcedMagnitude, locale.thousands);
     }
@@ -1166,8 +1169,11 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
     if (example) {
       // A count or percent row keeps its own format: a forced money scale does not reach it.
       const ownScale = row.scale === 'count' || row.scale === 'percent';
-      const spec = ownScale ? parseFormatExample(example) : authoredSpec(example, sourceRows.get(row.id)?.format ?? example);
+      const spec = ownScale ? parseFormatExample(example, isExactExample(example)) : authoredSpec(example, sourceRows.get(row.id)?.format ?? example);
       const authoredRow = sourceRows.get(row.id) as (TableRow & AutomaticFormatSource) | undefined;
+      // An authored row format prints exactly; a scale, a forced magnitude or a unit-only format sets its own precision.
+      const exactRow = authoredRow?.format !== undefined && authoredRow[AUTOMATIC_FORMAT] !== true && row.scale !== 'money' && row.scale !== 'perUnit'
+        && forcedMagnitude === undefined && isExactExample(example);
       if (authoredRow?.format !== undefined && authoredRow[AUTOMATIC_FORMAT] !== true) holdAuthoredScale(spec, locale.thousands);
       const group = groupOf(row);
       // Resolve owns the row scale, including formats rewritten by width fitting.
@@ -1256,7 +1262,8 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
         }
         // Nonzero stays nonzero per cell: only a cell that would print 0 takes more digits ($4M, $6M, $0.002M).
         // That is every cell the row format prints: value, computed, subtotal and calc-row cells alike.
-        if (!changeLine && group === undefined) {
+        // An authored row format prints its zero instead, and format-hides-values says so.
+        if (!changeLine && group === undefined && !exactRow) {
           const inRow = new Map<Id, NumberFormatSpec>();
           for (const col of [...valueCols, ...computedCols]) {
             if ((row.calc === undefined && columnOwnsFormat(col)) || cellFormat(row.cells[col.id]) !== undefined || !rowScaleReaches(row.id, col.id)) continue;
@@ -1299,12 +1306,15 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
       }
     }
   }
+  // A head, a row label or the frame names a scale by its standard letter, as the
+  // chart language spells it ("$M" for a "$1.2m" format); the cells keep the authored word.
+  const namedUnit = (spec: NumberFormatSpec): string | null => unitOfSpec(spec.magnitudeWord ? { ...spec, magnitudeWord: undefined } : spec);
   // A head or a row label names a unit only when every figure under it prints
   // in that unit. A cell's own format that names another one ("€900" under
   // "$") leaves the unit in the cells.
   const cellNamesOtherUnit = (rowId: Id, colId: Id, spec: NumberFormatSpec): boolean => {
     const own = cellSpecs.get(rowId)?.get(colId);
-    return own !== undefined && typeof rawState.get(rowId)?.get(colId)?.raw === 'number' && unitOfSpec(own) !== unitOfSpec(spec);
+    return own !== undefined && typeof rawState.get(rowId)?.get(colId)?.raw === 'number' && namedUnit(own) !== namedUnit(spec);
   };
   /**
    * The unit a row-formatted money row hoists out of its cells and onto its
@@ -1321,7 +1331,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
         || !scales(sourceRows.get(rowId)?.format ?? '1,234')
         || valueCols.some((col) => cellNamesOtherUnit(rowId, col.id, spec))) continue;
       // Only a scale letter leaves the cells: a row that reads in whole units keeps "$215.9" and "5.1x".
-      const unit = spec.magnitude === 'none' ? null : unitOfSpec(spec);
+      const unit = spec.magnitude === 'none' ? null : namedUnit(spec);
       if (unit !== null) hoistedRowUnits.set(rowId, unit);
     }
   }
@@ -1429,7 +1439,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
     const spec = specs.get(col.id)!;
     if (!flat.some((row) => typeof rawState.get(row.id)?.get(col.id)?.raw === 'number' && !printsThroughRow(row, col.id))) figurelessColumns.add(col.id);
     if (!rowFormattedColumns.has(col.id) && (rollsOff(col.id, spec) || flat.some((row) => cellNamesOtherUnit(row.id, col.id, spec)))) lettersInCells.add(col.id);
-    unitByCol.set(col.id, rowFormattedColumns.has(col.id) || lettersInCells.has(col.id) || figurelessColumns.has(col.id) ? null : unitOfSpec(spec));
+    unitByCol.set(col.id, rowFormattedColumns.has(col.id) || lettersInCells.has(col.id) || figurelessColumns.has(col.id) ? null : namedUnit(spec));
   }
   // The columns that decide the frame's unit and how it composes with options.unit.
   const figureColumns = [...valueCols, ...computedCols].filter((col) => !figurelessColumns.has(col.id));
