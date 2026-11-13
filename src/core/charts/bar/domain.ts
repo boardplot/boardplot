@@ -109,14 +109,21 @@ export function valueSlot(domain: Pick<BarDomain, 'options'>): string {
 }
 
 /**
- * The record value a cell's label prints, with its text (ShownTexts): the
- * value, or on a 100 % bar (`pctVal`) its share. Undefined where the label
- * prints no value: `label: false`, or an authored text without `${value}`.
+ * A label's text and the record value it prints, from one displayFor call:
+ * `text` as textFor makes it, `base` the value text itself, and `shows` its
+ * ShownTexts (the value, or on a 100 % bar (`pctVal`) its share). No `shows`
+ * where the label prints no value: `label: false` (`text` null), or an
+ * authored text without `${value}`.
  */
-export function shownFor(domain: BarDomain, v: number, cell: BarTextCell, pctVal?: number, s?: NormSeries, categoryId?: string): ShownTexts | undefined {
+export function labelTextsFor(domain: BarDomain, v: number, cell: BarTextCell, pctVal?: number, s?: NormSeries, categoryId?: string): { text: string | null; base?: string; shows?: ShownTexts } {
   const label = cell.meta?.label;
-  if (label === false || (typeof label === 'string' && !printsValue(label))) return undefined;
-  return { [pctVal === undefined ? valueSlot(domain) : 'share.percent']: displayFor(domain, v, cell, pctVal, s, categoryId) };
+  if (label === false) return { text: null };
+  const base = displayFor(domain, v, cell, pctVal, s, categoryId);
+  return {
+    text: typeof label === 'string' ? label.replace(/\$\{value\}/g, base) : base,
+    base,
+    ...(typeof label === 'string' && !printsValue(label) ? {} : { shows: { [pctVal === undefined ? valueSlot(domain) : 'share.percent']: base } }),
+  };
 }
 
 export function valueLineValue(a: Annotation & { kind: 'valueLine' }, meanValue: number | undefined): number | undefined {

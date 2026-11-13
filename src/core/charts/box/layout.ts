@@ -819,6 +819,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
       const xQ3 = x(row.q3!);
 
       if (xLow < xQ1) {
+        const lowText = fmt(row.whiskerLow!);
         const id = `box:whiskerLow:${row.id}`;
         nodes.push({
           t: 'line',
@@ -831,7 +832,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
           width: strokeToken(theme, 'rule'),
           owner,
           part: 'boxWhisker',
-          display: { ...display, value: fmt(row.whiskerLow!), shows: observationShows(index, row.whiskerLow!, fmt(row.whiskerLow!)) },
+          display: { ...display, value: lowText, shows: observationShows(index, row.whiskerLow!, lowText) },
         });
         occupied.claim({ x: xLow, y: rowCenter - 0.5, w: xQ1 - xLow, h: 1 }, 'mark', owner, 'boxWhisker');
         const capId = `box:capLow:${row.id}`;
@@ -846,7 +847,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
           width: strokeToken(theme, 'rule'),
           owner,
           part: 'boxWhiskerCap',
-          display: { ...display, value: fmt(row.whiskerLow!) },
+          display: { ...display, value: lowText },
         });
         occupied.claim(
           { x: xLow - 0.5, y: rowCenter - capH / 2, w: 1, h: capH },
@@ -857,6 +858,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
         mark.whiskerNodeIds.push(id, capId);
       }
       if (xHigh > xQ3) {
+        const highText = fmt(row.whiskerHigh!);
         const id = `box:whiskerHigh:${row.id}`;
         nodes.push({
           t: 'line',
@@ -869,7 +871,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
           width: strokeToken(theme, 'rule'),
           owner,
           part: 'boxWhisker',
-          display: { ...display, value: fmt(row.whiskerHigh!), shows: observationShows(index, row.whiskerHigh!, fmt(row.whiskerHigh!)) },
+          display: { ...display, value: highText, shows: observationShows(index, row.whiskerHigh!, highText) },
         });
         occupied.claim({ x: xQ3, y: rowCenter - 0.5, w: xHigh - xQ3, h: 1 }, 'mark', owner, 'boxWhisker');
         const capId = `box:capHigh:${row.id}`;
@@ -884,7 +886,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
           width: strokeToken(theme, 'rule'),
           owner,
           part: 'boxWhiskerCap',
-          display: { ...display, value: fmt(row.whiskerHigh!) },
+          display: { ...display, value: highText },
         });
         occupied.claim(
           { x: xHigh - 0.5, y: rowCenter - capH / 2, w: 1, h: capH },
@@ -1013,7 +1015,8 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
       painted.minY = Math.min(painted.minY, cy - POINT_R);
       painted.maxY = Math.max(painted.maxY, cy + POINT_R);
       const id = kind === 'obs' ? `box:obs:${row.id}:${k}` : `box:beyond:${row.id}:${k}`;
-      const value = point.count > 1 ? `${fmt(point.value)} (×${point.count})` : fmt(point.value);
+      const pointText = fmt(point.value);
+      const value = point.count > 1 ? `${pointText} (×${point.count})` : pointText;
       nodes.push(
         kind === 'obs'
           ? {
@@ -1025,7 +1028,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
               fill: pointFill,
               owner,
               part: 'boxObservation',
-              display: { ...display, value, shows: observationShows(index, point.value, fmt(point.value)) },
+              display: { ...display, value, shows: observationShows(index, point.value, pointText) },
             }
           : {
               t: 'circle',
@@ -1056,7 +1059,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
         labelRequests.push({
           id: `obs:${row.id}:${k}`, kind: 'point', role: composedTextRole(value), owner, text: value, lines: [value],
           // '4.0 (×2)' prints the value of both observations.
-          shows: observationShows(index, point.value, fmt(point.value)),
+          shows: observationShows(index, point.value, pointText),
           font: labelFont, priority: PRIORITY.interior,
           candidates: [
             { slot: 'aboveDot', rect: at(cy - POINT_R - 2 - size.height), penalty: 0 },

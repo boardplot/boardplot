@@ -22,7 +22,7 @@ import { totalLabelCandidates } from '../band/totals';
 import { rankValueLabels } from '../band/valueDensity';
 import { REFERENCE_MARKER_R } from '../band/ticks';
 import { restValueHiding, restValuesHidden } from '../../restLabels';
-import { displayFor, shownFor, textFor, toDateOnValues, valueSlot, type BarTextCell } from './domain';
+import { labelTextsFor, textFor, toDateOnValues, valueSlot, type BarTextCell } from './domain';
 import { toDateLabel } from '../../partialPeriod';
 import { chartString } from '../../strings';
 import { labelOn } from '../labelOn';
@@ -158,9 +158,8 @@ export function planBarLabels(domain: BarDomain, paints: BarPaints, area: BarAre
         // offered, and the solver drops it last.
         if (!labelOn(options, 'point') || (area.thinBars && si !== 0 && bonus(cat.id, s.id) === 0)) continue;
         if (chosen && !chosen.get(s.id)?.has(ci) && typeof cell.meta?.label !== 'string') continue;
-        const text = textFor(domain, v, cell, undefined, s);
+        const { text, shows } = labelTextsFor(domain, v, cell, undefined, s);
         if (!text) continue;
-        const shows = shownFor(domain, v, cell, undefined, s);
         // A highlighted value draws in the emphasis weight (label emit), so its seat and to-date head are set at it.
         const valueFont = bonus(cat.id, s.id) > 0 ? { ...pointFont, weight: emphasisWeight(domain.theme) } : pointFont;
         const words = toDateIds.has(cat.id) ? toDateLabel(text, valueFont, toDate, domain.theme, measure) : undefined;
@@ -203,8 +202,7 @@ export function planBarLabels(domain: BarDomain, paints: BarPaints, area: BarAre
       // only; it is not printed. An authored total100 is a known whole.
       // The value it would have carried is still lost on the canvas, so the note names it.
       if (variant === 'stacked100' && domain.incompleteRows.has(cat.id) && cat.total100 === undefined) {
-        const value = textFor(domain, v, cell, undefined, s);
-        const valueShows = shownFor(domain, v, cell, undefined, s);
+        const { text: value, shows: valueShows } = labelTextsFor(domain, v, cell, undefined, s);
         // An n.m. or n/a row says so on the canvas already.
         if (value && !domain.nmRows[ci] && !domain.naRows[ci]) requests.push({
           id: `segment:${s.id}:${cat.id}`, kind: 'segment', owner, text: value, ...(valueShows ? { shows: valueShows } : {}), lines: [value], typeRole: 'label', font: labelFont,
@@ -212,10 +210,9 @@ export function planBarLabels(domain: BarDomain, paints: BarPaints, area: BarAre
         });
         continue;
       }
-      const text = textFor(domain, v, cell, variant === 'stacked100' ? val : undefined, s, cat.id);
-      if (!text) continue;
       // A 100 % bar's segment prints its share; every other segment its value.
-      const shows = shownFor(domain, v, cell, variant === 'stacked100' ? val : undefined, s, cat.id);
+      const { text, shows } = labelTextsFor(domain, v, cell, variant === 'stacked100' ? val : undefined, s, cat.id);
+      if (!text) continue;
       // The highlighted series' values print bold, as its fill stands out.
       let segmentFont = emphasizedSeries(domain, s) ? strongFont : labelFont;
       let tsize = measure(text, segmentFont);
@@ -475,6 +472,12 @@ export function referenceLabelText(domain: BarDomain, s: NormSeries, v: number, 
   return value === null ? null : `${value} ${s.label}`;
 }
 
+/** The reference label's text and, where it prints its own value, the value text its record states: one formatter call. */
+function referenceLabelTexts(domain: BarDomain, s: NormSeries, v: number, cell: BarTextCell): { text: string | null; shows?: ShownTexts } {
+  const { text: value, base, shows } = labelTextsFor(domain, v, cell, undefined, s);
+  return value === null ? { text: null } : { text: `${value} ${s.label}`, ...(shows ? { shows: { value: base! } } : {}) };
+}
+
 /**
  * Every reference prints its value. The value stands on its own
  * row, right of the tick, or further right past the bar's own value where the
@@ -489,11 +492,9 @@ function referenceLabels(domain: BarDomain, area: BarArea): LabelRequest[] {
   for (const s of refSeries) cats.forEach((cat, ci) => {
     const { v } = s.cells[ci]!;
     if (v === null) return;
-    const text = referenceLabelText(domain, s, v, s.cells[ci]!);
+    // The reference's value, ahead of its name; an authored text without `${value}` prints none (no shows).
+    const { text, shows } = referenceLabelTexts(domain, s, v, s.cells[ci]!);
     if (!text) return;
-    const label = s.cells[ci]!.meta?.label;
-    // The reference's value, ahead of its name; an authored text without `${value}` prints none.
-    const printsOwn = typeof label !== 'string' || printsValue(label);
     const size = measure(text, tickFont);
     const cy = band.position(ci) + band.bandwidth / 2 - size.height / 2;
     const rx = x(v);
@@ -510,7 +511,7 @@ function referenceLabels(domain: BarDomain, area: BarArea): LabelRequest[] {
       kind: 'tick',
       owner: { seriesId: s.id, categoryId: cat.id },
       text,
-      ...(printsOwn ? { shows: { value: displayFor(domain, v, s.cells[ci]!, undefined, s) } } : {}),
+      ...(shows ? { shows } : {}),
       lines: [text],
       typeRole: 'label', font: tickFont,
       // After every value of the bars: a reference value takes the seat the bars leave.

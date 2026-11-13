@@ -635,13 +635,17 @@ export function composeLines(...args: Parameters<typeof composeParts>): string[]
 }
 
 /**
- * The record values a label composed from `content` prints, with their texts
- * (composeParts). An authored text prints them where it says `${value}`,
- * none without it; `label: false` prints none.
+ * A label's composed text and the record values it prints, from one
+ * composeParts call. An authored text prints the values where it says
+ * `${value}`, none without it; `label: false` prints none. The text is the
+ * composed text before an authored text replaces `${value}` in it.
  */
-export function composeShows(override: string | false | undefined, ...args: Parameters<typeof composeParts>): ShownTexts | undefined {
-  if (override === false || (typeof override === 'string' && !override.includes('${value}'))) return undefined;
-  return composeParts(...args).shows;
+export function composeWithShows(override: string | false | undefined, ...args: Parameters<typeof composeParts>): { text: string; shows: ShownTexts | undefined } {
+  const { parts, shows } = composeParts(...args);
+  return {
+    text: valueShareLines(parts).join(' '),
+    shows: override === false || (typeof override === 'string' && !override.includes('${value}')) ? undefined : shows,
+  };
 }
 
 export function composeText(...args: Parameters<typeof composeLines>): string {
@@ -740,16 +744,13 @@ export function comboPlotArea(
     lines,
     (series, ci) => {
       const value = series.vals[ci]!;
-      return composeText(domain, pointContent ?? ['absolute'], { abs: value.v, isPct: value.isPct }, cats[ci]!.label ?? cats[ci]!.id,
+      // One composeParts call gives the text and the values it prints. The shown values do not depend on the names.
+      return composeWithShows(undefined, domain, pointContent ?? ['absolute'], { abs: value.v, isPct: value.isPct }, cats[ci]!.label ?? cats[ci]!.id,
         series.label, domain.valueFmtOf(series, value));
     },
     { first: s => pointContent !== null && (['ends', 'extremes', 'all'].includes(valueLabels)
       || (options.valueLabels === undefined && domain.secondaryActive && s.axis === 'secondary')),
       last: pointContent !== null && valueLabels !== 'none' },
-    (series, ci) => {
-      const value = series.vals[ci]!;
-      return composeParts(domain, pointContent ?? ['absolute'], { abs: value.v, isPct: value.isPct }, '', '', domain.valueFmtOf(series, value)).shows;
-    },
   );
   // The tick-band reserve must equal what the measured labels need,
   // and the wrap needs the band step, which depends only on the final x-extent.

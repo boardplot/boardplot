@@ -279,7 +279,8 @@ function pointRequests(
     const { s, c, ci, rect } = lastRanged.place;
     const range = rangeOf(s, ci)!;
     const fmt = domain.valueSpec.forSeries(s);
-    const text = numberRange(fmt(Math.min(range.low, range.high)), fmt(Math.max(range.low, range.high)));
+    const [lowText, highText] = [fmt(range.low), fmt(range.high)];
+    const text = numberRange(range.low <= range.high ? lowText : highText, range.low <= range.high ? highText : lowText);
     const size = measure(text, labelFont);
     const cx = rect.x + rect.w / 2;
     const capY = y(Math.max(range.low, range.high));
@@ -288,7 +289,7 @@ function pointRequests(
       kind: 'annotation', role: 'value',
       owner: { seriesId: s.id, categoryId: c.id },
       text, lines: [text], typeRole: 'label', font: labelFont,
-      shows: { 'field:low': fmt(range.low), 'field:high': fmt(range.high) },
+      shows: { 'field:low': lowText, 'field:high': highText },
       priority: PRIORITY.valueLine,
       candidates: [
         { slot: 'rightOfCap', rect: { x: cx + 8, y: capY - size.height / 2, w: size.width, h: size.height }, penalty: 0 },
@@ -827,8 +828,9 @@ export function planColumnLabels(
     return integrated ? PY_TICK_LEAD : reach !== undefined && reach >= 4 ? reach + 3 : (scene.planEnds ?? 2) + 3;
   };
   for (const s of tickContent && domain.variant !== 'stacked100' ? domain.refSeries : []) {
-    const textOf = (ci: number, content: LabelContent) =>
-      composeText(domain, content, domain.plottedOf(s, ci)!, null, cats[ci]!.label ?? cats[ci]!.id, s.label, false, domain.valueSpec.forSeries(s));
+    const partsOf = (ci: number, content: LabelContent) =>
+      composeParts(domain, content, domain.plottedOf(s, ci)!, null, cats[ci]!.label ?? cats[ci]!.id, s.label, false, domain.valueSpec.forSeries(s));
+    const textOf = (ci: number, content: LabelContent) => valueShareLines(partsOf(ci, content)).join(' ');
     // Where the key names the only reference series and a named value ("400 Plan") is too wide for the gap
     // beside its column, every value of the series drops the name ("400"). Authored tick content keeps it,
     // and so do two or more references, whose ticks look alike.
@@ -843,7 +845,8 @@ export function planColumnLabels(
       const bx = band.position(ci);
       // Where the key names the integrated PY tick, its label is the value alone ("82").
       const valueOnly = (integrated && pyKeyed) || nameless;
-      const text = textOf(ci, valueOnly ? tickContent!.filter((part) => part !== 'series') : tickContent!);
+      const parts = partsOf(ci, valueOnly ? tickContent!.filter((part) => part !== 'series') : tickContent!);
+      const text = valueShareLines(parts).join(' ');
       const size = measure(text, tickFont);
       const primaryX = bx + band.bandwidth + leadOf(ci, integrated);
       requests.push({
@@ -851,7 +854,8 @@ export function planColumnLabels(
         kind: 'tick',
         owner: { seriesId: s.id, categoryId: c.id },
         text,
-        ...(tickContent!.includes('absolute') ? { shows: { value: domain.valueSpec.forSeries(s)(v) } } : {}),
+        // The value part's text is the shown text: one formatter call.
+        ...(tickContent!.includes('absolute') ? { shows: { value: parts.find(([part]) => part === 'absolute')![1] } } : {}),
         lines: [text],
         typeRole: 'label', font: tickFont,
         // A plain reference value takes the seat the column values leave.

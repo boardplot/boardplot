@@ -41,11 +41,10 @@ export interface EndpointText {
 
 export function prepareComboEndpointTexts<S extends EndpointSeries>(
   series: S[],
-  textOf: (series: S, categoryIndex: number) => string,
+  /** The composed text and the record values it prints (ShownTexts); an authored text prints them where it says `${value}`. */
+  textOf: (series: S, categoryIndex: number) => { text: string; shows?: ShownTexts | undefined },
   /** Which ends the engine labels; at the others only an authored cell label prints. */
   engine: { first: boolean | ((series: S) => boolean); last: boolean },
-  /** The record values textOf prints, with their texts; an authored text prints them where it says `${value}`. */
-  showsOf?: (series: S, categoryIndex: number) => ShownTexts | undefined,
 ): { first: Map<Id, EndpointText>; last: Map<Id, EndpointText> } {
   const first = new Map<Id, EndpointText>();
   const last = new Map<Id, EndpointText>();
@@ -54,9 +53,9 @@ export function prepareComboEndpointTexts<S extends EndpointSeries>(
     const value = item.vals[ci]!;
     if (authoredOnly && typeof value.labelOverride !== 'string') return;
     const composed = textOf(item, ci);
-    const text = typeof value.labelOverride === 'string' ? value.labelOverride.replace(/\$\{value\}/g, composed) : composed;
+    const text = typeof value.labelOverride === 'string' ? value.labelOverride.replace(/\$\{value\}/g, composed.text) : composed.text;
     const override = value.labelOverride;
-    const shows = override === false || (typeof override === 'string' && !override.includes('${value}')) ? undefined : showsOf?.(item, ci);
+    const shows = override === false || (typeof override === 'string' && !override.includes('${value}')) ? undefined : composed.shows;
     if (text || override === false) target.set(item.id, { text, ci, suppressed: override === false, ...(shows ? { shows } : {}) });
   };
   for (const item of series) {

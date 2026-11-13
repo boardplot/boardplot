@@ -252,6 +252,8 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
     const r1 = Math.round(p * 10) / 10;
     return formatAutomaticPercent(p, Number.isInteger(r1) ? 0 : 1, signed, options.locale?.language);
   };
+  // The card's value as the format prints it, made once: the hero, its label and its shown text all use it.
+  const valueFmt = fmt(value);
 
   // ---- derive: the delta is computed by the LIBRARY, never trusted ----
   const derived: KpiDerived = {};
@@ -505,7 +507,7 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
     const endpointIndex = lastObservedIndex(sparkVals);
     const endpointFormat = endpointIndex === undefined ? undefined : cellMeta(sparkSeries.cells[endpointIndex]!)?.format;
     sparkNodeId = emitKpiSpark(nodes, sparkRect, data.spark!.kind, sparkVals, theme, options.palette, fmt, measure, requests, endpointLabel, endpointPriority, endpointFormat,
-      { heroText: fmt(value), locale: options.locale?.language, ...(data.spark!.labels ? { periods: data.spark!.labels } : {}) });
+      { heroText: valueFmt, locale: options.locale?.language, ...(data.spark!.labels ? { periods: data.spark!.labels } : {}) });
     occupied.claim(sparkRect, 'mark', { seriesId: 'spark' });
   }
   const contentBottom = sparkRect ? sparkRect.y - 4 : plot.y + plot.h;
@@ -594,11 +596,11 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
   const around = [
     ...frameResult.nodes.flatMap((node) => (node.t === 'text' ? node.lines : [])),
     ...(!options.title && kindOn('category') ? [data.label] : []),
-    data.note?.trim(), fmt(value), ...((options as { [KPI_HOST_TEXT]?: string[] })[KPI_HOST_TEXT] ?? []),
+    data.note?.trim(), valueFmt, ...((options as { [KPI_HOST_TEXT]?: string[] })[KPI_HOST_TEXT] ?? []),
   ];
   const unitBeside = unit && !unitPrinted({ subtitle, unit, unitShown: options.unitShown })
     && !around.some((text) => typeof text === 'string' && textCarriesUnit(text, unit)) ? unit : undefined;
-  const valueText = withUnit(fmt(value), unitBeside);
+  const valueText = withUnit(valueFmt, unitBeside);
   // The hero follows the M title of its target, never under the target's hero minimum.
   const hero = kpiHeroSizesPx(target, theme.type.title.size, textScale);
   const sharedFigure = (options as KpiOptions & { [KPI_VALUE_SIZE]?: number })?.[KPI_VALUE_SIZE];
@@ -687,7 +689,7 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
     valueFont = steer.valueFont;
     if (steer.valueRect && kindOn('total')) {
       requests.push({
-        id: 'total:value', kind: 'total', owner: { categoryId: 'kpi' }, text: valueText, shows: { value: fmt(value) }, lines: [valueText], font: valueFont,
+        id: 'total:value', kind: 'total', owner: { categoryId: 'kpi' }, text: valueText, shows: { value: valueFmt }, lines: [valueText], font: valueFont,
         typeRole: 'kpiValue', priority: PRIORITY.grandTotal, candidates: [{ slot: 'main', rect: steer.valueRect, penalty: 0 }],
       });
     }
@@ -803,7 +805,7 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
       owner: { categoryId: 'kpi' },
       text: valueText,
       // The number before any unit the card sets beside it.
-      shows: { value: fmt(value) },
+      shows: { value: valueFmt },
       lines: [valueText],
       font: valueFont,
       typeRole: 'kpiValue',
@@ -1119,7 +1121,7 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
   // shows, else the texts they would print. The value's would-be text too.
   const drawnLabel = (label: PlacedLabel | undefined) => label !== undefined && !label.hidden;
   const kpiOwner = { categoryId: 'kpi' };
-  const shown: ShownMark[] = [{ owner: kpiOwner, shows: { value: fmt(value) } }];
+  const shown: ShownMark[] = [{ owner: kpiOwner, shows: { value: valueFmt } }];
   comparisonShows.forEach((shows, index) => shown.push({
     owner: kpiOwner, shows, ...(drawnLabel(data.delta ? deltaLabel : comparisonLabels[index]) ? { drawn: true as const } : {}),
   }));

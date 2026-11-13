@@ -445,12 +445,14 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
   const strongFont: FontSpec = { family: theme.type.family, ...theme.type.label, weight: emphasisWeight(theme) };
 
   // ---- label texts + which side each dot labels (measured BEFORE the scale) ----
-  const textFor = (v: number, cell: { meta: CellMeta | null; isPct?: boolean }, s?: NormSeries): string | null => {
+  /** The label text of a cell from its value text (`base`, displayFor): an authored text takes it at `${value}`. */
+  const textFrom = (cell: { meta: CellMeta | null }, base: string): string | null => {
     const { meta } = cell;
     if (meta?.label === false) return null;
-    const base = displayFor(v, cell, s);
     return typeof meta?.label === 'string' ? meta.label.replace(/\$\{value\}/g, base) : base;
   };
+  const textFor = (v: number, cell: { meta: CellMeta | null; isPct?: boolean }, s?: NormSeries): string | null =>
+    cell.meta?.label === false ? null : textFrom(cell, displayFor(v, cell, s));
   // The dots of a row compare across series ("40 unchanged", "48 to 45"): every series keeps the shared precision,
   // and a series format or unit still applies (forSeries on its format and unit alone).
   const seriesKeys = new Map<NormSeries, { format?: string; unit?: string }>();
@@ -459,10 +461,10 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
   const displayFor = (v: number, cell: { meta: CellMeta | null; isPct?: boolean }, s?: NormSeries): string =>
     cell.meta?.format ? formatterFromExample(cell.meta.format, options.locale?.language)(v)
       : (cell.isPct && !s?.format ? valueSpec.fmtPercent : s ? valueSpec.forSeries(seriesKey(s)) : fmt)(v);
-  /** The value a cell's label prints, with its text (ShownTexts); none where an authored text leaves out `${value}`. */
-  const shownFor = (v: number, cell: { meta: CellMeta | null; isPct?: boolean }, s: NormSeries): ShownTexts | undefined =>
+  /** The value a cell's label prints, with its text (ShownTexts), from its value text (`base`, displayFor); none where an authored text leaves out `${value}`. */
+  const shownFrom = (cell: { meta: CellMeta | null }, base: string): ShownTexts | undefined =>
     cell.meta?.label === false || (typeof cell.meta?.label === 'string' && !cell.meta.label.includes('${value}'))
-      ? undefined : { value: displayFor(v, cell, s) };
+      ? undefined : { value: base };
   /** Primary label side for a dot ('right' unless dumbbell-min / negative lollipop). */
   const primarySide = (si: number, ci: number, v: number): 'left' | 'right' => {
     // A row of two dots labels its left dot left and its right dot
@@ -865,16 +867,18 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
       const ca = sa.cells[ci]!;
       const cb = sb.cells[ci]!;
       if (ca.v !== null && cb.v !== null && Math.abs(x(ca.v) - x(cb.v)) < 2 * r + 2) {
-        const ta = textFor(ca.v, ca, sa);
-        const tb = textFor(cb.v, cb, sb);
+        const baseA = displayFor(ca.v, ca, sa);
+        const baseB = displayFor(cb.v, cb, sb);
+        const ta = textFrom(ca, baseA);
+        const tb = textFrom(cb, baseB);
         // Two values label the outer ends of their pair, as every other row
         // does; only an unchanged pair prints one label.
         if (ta && tb && ta === tb) {
           mergedLabel = true;
           const text = pairText(ta, tb, options);
           // The one label prints both values; each series' record takes it.
-          otherOwnerTexts.set(`point:${cat.id}`, ([[sa, ca], [sb, cb]] as const).flatMap(([s, c]) => {
-            const shows = shownFor(c.v!, c, s);
+          otherOwnerTexts.set(`point:${cat.id}`, ([[sa, ca, baseA], [sb, cb, baseB]] as const).flatMap(([s, c, base]) => {
+            const shows = shownFrom(c, base);
             return shows ? [{ owner: { seriesId: s.id, categoryId: cat.id }, shows }] : [];
           }));
           const tsize = measure(text, labelFont);
@@ -1100,14 +1104,14 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
       });
 
       if (labelOn('point') && !mergedLabel) {
-        const text = textFor(v, cell, s);
+        const text = textFrom(cell, valueText);
         if (text) {
           const font = pointFont(cell, si);
           if (font === strongFont) boldLabelIds.add(`point:${s.id}:${cat.id}`);
           else if (variant === 'dumbbell') mutedLabelIds.add(`point:${s.id}:${cat.id}`);
           const tsize = measure(text, font);
           const primary = primarySide(si, ci, v);
-          const shows = shownFor(v, cell, s);
+          const shows = shownFrom(cell, valueText);
           const request: LabelRequest = {
             id: `point:${s.id}:${cat.id}`,
             kind: 'point',

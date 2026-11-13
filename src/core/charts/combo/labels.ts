@@ -23,7 +23,7 @@ import { stackSegmentCandidates } from '../../label/slots';
 import { anchorComboAxisTitles } from './axisTitles';
 import { clearLift, clearOfStrokes, comboEndpointRequest, comboValueLabels, FIRST_END_BELOW_TOTALS, nearerOwnLine, withinOneFill } from './endpoints';
 import { MARKER_R, type ComboArea, type ComboDomain, type ComboEnv, type ComboMarkGeometry, type ComboPaints } from './model';
-import { composeParts, composeShows, composeText, contentOf, growthLine, toDateOnTotals } from './plot';
+import { composeParts, composeWithShows, contentOf, growthLine, toDateOnTotals } from './plot';
 import { toDateLabel } from '../../partialPeriod';
 import { namesOnly } from '../../markVisibility';
 import { composedTextRole } from '../../textRole';
@@ -173,17 +173,18 @@ function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, p
   const backLink = (id: string, words: unknown) => !words && valueAlone && linked.has(id) ? { printedIn: linked.get(id) } : {};
   // A reference rule does not move a total: it crosses the rule on a halo, as on column.
   const crossesRules = domain.averageMarkerId !== undefined || (domain.options.annotations ?? []).some(annotation => annotation.kind === 'valueLine');
-  // The values each total prints: the stack's total, which is a single column's own value.
-  const totalShows = domain.cats.map((c, ci) => {
-    if (!domain.anyByCat[ci]) return undefined;
+  // Each total's composed text and the values it prints: the stack's total, which is a single column's own value.
+  const totals = domain.cats.map((c, ci) => {
+    if (!domain.anyByCat[ci]) return null;
     const cell = totalColumn(domain, ci)?.vals[ci];
-    return composeShows(cell?.labelOverride, domain, gtContent, { abs: domain.stackTotals[c.id]!, isPct: cell?.isPct ?? false }, c.label ?? c.id, '', domain.totalFmtOf(ci));
+    return composeWithShows(cell?.labelOverride, domain, gtContent, { abs: domain.stackTotals[c.id]!, isPct: cell?.isPct ?? false }, c.label ?? c.id, '', domain.totalFmtOf(ci));
   });
+  const totalShows = totals.map((total) => total?.shows);
   const texts = domain.cats.map((c, ci) => {
     if (!domain.anyByCat[ci]) return null;
     const single = totalColumn(domain, ci);
     const cell = single?.vals[ci];
-    const composed = composeText(domain, gtContent, { abs: domain.stackTotals[c.id]!, isPct: cell?.isPct ?? false }, c.label ?? c.id, '', domain.totalFmtOf(ci));
+    const composed = totals[ci]!.text;
     // A single column's total is its value: an authored cell label speaks for it.
     const override = cell?.labelOverride;
     if (override === false) return null;
@@ -495,13 +496,11 @@ function linePointLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, ge
       if (typeof override !== 'string' && !engine) continue;
       const category = domain.cats[point.ci]!;
       const valueFmt = domain.valueFmtOf(s, cell);
-      const text = typeof override === 'string'
-        ? override.replace(/\$\{value\}/g, composeText(domain, ['absolute'], { abs: cell.v ?? 0, isPct: cell.isPct }, category.label ?? category.id, s.label, valueFmt))
-        : composeText(domain, (content ?? flaggedContent)!, { abs: cell.v, isPct: cell.isPct }, category.label ?? category.id, s.label, valueFmt);
+      const { text: composed, shows } = typeof override === 'string'
+        ? composeWithShows(override, domain, ['absolute'], { abs: cell.v ?? 0, isPct: cell.isPct }, category.label ?? category.id, s.label, valueFmt)
+        : composeWithShows(override, domain, (content ?? flaggedContent)!, { abs: cell.v, isPct: cell.isPct }, category.label ?? category.id, s.label, valueFmt);
+      const text = typeof override === 'string' ? override.replace(/\$\{value\}/g, composed) : composed;
       if (!text) continue;
-      const shows = typeof override === 'string'
-        ? composeShows(override, domain, ['absolute'], { abs: cell.v ?? 0, isPct: cell.isPct }, category.label ?? category.id, s.label, valueFmt)
-        : composeShows(override, domain, (content ?? flaggedContent)!, { abs: cell.v, isPct: cell.isPct }, category.label ?? category.id, s.label, valueFmt);
       const size = env.measure(text, labelFont);
       const below = sideAwayFrom(point, others) === 'below';
       const centeredX = Math.max(frame.plot.x, Math.min(point.x - size.width / 2, frame.plot.x + frame.plot.w - size.width));

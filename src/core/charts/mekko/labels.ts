@@ -548,5 +548,21 @@ export function planMekkoLabels(
       insideFill: paints.inside(s, val, c, si, v), insidePaint: paints.cell(s, val, c, si, v), insidePattern: paints.pattern(s, val),
     });
   }
+  stateWouldBeTexts(env, domain, geometry, ctx.requests);
   return ctx.requests;
+}
+
+/**
+ * The would-be text of each segment mark (display.shows). A label request that
+ * carries the value for the same owner states it already: the mark then states
+ * nothing and the value is not formatted a second time.
+ */
+function stateWouldBeTexts(env: MekkoEnv, domain: MekkoDomain, geometry: MekkoMarkGeometry, requests: readonly LabelRequest[]): void {
+  const carried = new Set<string>();
+  for (const request of requests) if (request.shows?.value !== undefined) carried.add(`${request.owner.seriesId}\0${request.owner.categoryId}`);
+  for (const { s, ci, node } of geometry.segments) {
+    if (carried.has(`${s.id}\0${domain.cats[ci]!.id}`)) continue;
+    const wouldBe = segmentValueText(env, domain, s, ci);
+    if (wouldBe !== null) node.display = { ...node.display, shows: { value: wouldBe } };
+  }
 }

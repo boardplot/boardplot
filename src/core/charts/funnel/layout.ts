@@ -210,14 +210,15 @@ export function layoutFunnel(
   // A whole count prints whole beside fractional values of its stage ("140", "1" beside "0.6"); an amount like 100.4 keeps its decimals.
   if (!options.format) for (const format of [...formats, totalRaster]) format.spec.wholeCounts = true;
   const { valueText, totalFmt } = funnelValueFormats(plotted, cells, formats, totalRaster);
-  const cellText = (si: number, ci: number, value: number): string | null => {
+  // `text` is the cell's value text when the caller already made it: it is then not made again.
+  const cellText = (si: number, ci: number, value: number, text: string = valueText(si, ci, value)): string | null => {
     const label = cellMeta(cells[si]![ci]!)?.label;
-    return label === false ? null : typeof label === 'string' ? label.replace(/\$\{value\}/g, valueText(si, ci, value)) : valueText(si, ci, value);
+    return label === false ? null : typeof label === 'string' ? label.replace(/\$\{value\}/g, text) : text;
   };
   /** The value text a cell's label prints (ShownTexts); none where an authored label leaves the value out. */
-  const cellShows = (si: number, ci: number, value: number): ShownTexts | undefined => {
+  const cellShows = (si: number, ci: number, value: number, text: string = valueText(si, ci, value)): ShownTexts | undefined => {
     const label = cellMeta(cells[si]![ci]!)?.label;
-    return label === false || (typeof label === 'string' && !label.includes('${value}')) ? undefined : { value: valueText(si, ci, value) };
+    return label === false || (typeof label === 'string' && !label.includes('${value}')) ? undefined : { value: text };
   };
 
 
@@ -702,6 +703,7 @@ export function layoutFunnel(
       if (v === 0) return;
       const rect: Rect = { x: sx, y: ry, w, h: bw };
       const nodeId = `mark:${cat.id}:${s.id}`;
+      const vText = valueText(si, ci, v);
       const segmentPaint = seriesPaint(s, si, ci);
       const sep = othersSeparation(segmentPaint, theme);
       nodes.push({
@@ -714,13 +716,13 @@ export function layoutFunnel(
         ...(isOthersFill(segmentPaint) ? { separation: { fill: segmentPaint, backing: { token: 'background' } as const } } : {}),
         owner: { categoryId: cat.id, seriesId: s.id },
         part: 'segment',
-        display: { value: valueText(si, ci, v), shows: { value: valueText(si, ci, v) } },
+        display: { value: vText, shows: { value: vText } },
       });
       occupied.claim(rect, 'mark', { categoryId: cat.id, seriesId: s.id });
       segRecs.push({ id: s.id, rect, nodeId });
 
-      const text = cellText(si, ci, v);
-      const shows = cellShows(si, ci, v);
+      const text = cellText(si, ci, v, vText);
+      const shows = cellShows(si, ci, v, vText);
       if (chipMode && text) {
         rowChips.push({ si, sid: s.id, text, ...(shows ? { shows } : {}), paint: segmentPaint, value: v });
       } else if (multi && labelOn('segment') && text) {
