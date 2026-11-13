@@ -886,8 +886,8 @@ fixtures.push(
       title: 'Score vs. cost per task',
       subtitle: '16 models from 4 vendors, synthetic benchmark',
       axisTitles: { x: 'Cost per task, log scale', y: 'Score, %' },
-      // The cost ticks carry their dollar sign (axisFormat).
-      axisFormat: { x: '$0.00' },
+      // The cost ticks carry their dollar sign (axisFormat); a tick below $1 takes the decimal it needs.
+      axisFormat: { x: '$0' },
       valueAxis: { log: 'x' },
       viewDomain: { y: [0, 100] },
       legend: 'top',
