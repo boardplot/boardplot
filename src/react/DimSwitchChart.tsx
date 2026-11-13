@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } 
 import type { LintWarning } from '../core/types/scene';
 import { compileDimSwitch, dimSwitchTableWarnings, foreignRowId, hiddenTotalFoldWarnings, LABELS_ONLY, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning } from '../core/charts/dimswitch/compile';
 import { engineNoteMeta, withEngineNotes } from '../core/notes';
-import { AUTHORED_EXAMPLES, readFormatExamples, UNIT_STAND_INS, withUnitStandIns } from '../core/formatSpec';
 import { ENGINE_NOTES } from '../core/charts/table/tracks';
 import { ENGINE_NOTE_KINDS } from './tablePresentation';
 import type { DimSwitchData, DimSwitchOptions, DimSwitchVariant } from '../core/charts/dimswitch/types';
@@ -74,16 +73,13 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
   const floorRequest=useStableValue({type:'dimswitch',data:stableData,options:{...stableOptions,variant,depth,splits,inlineVisibility}});
   // The grid reads values, not the computed-cell records the static audit trail carries.
   // The compile gives its notes their kinds (a disclosure, its short form); the table frame reads them as records.
-  // Compiled as the SVG path compiles it: from the formats as the chart reads them, under its own answer of which the author wrote.
-  // The compiled options carry that answer, so a format the compile writes is not authored in the table it draws.
-  const read=useMemo(()=>readFormatExamples(stableData,stableOptions),[stableData,stableOptions]);
+  // The compile reads the formats as the SVG path does; its options carry which formats the author wrote to the table it draws.
   const compiled=useMemo(()=>withEngineNotes(()=>{
-    const source={...read.options,variant,depth:1,splits,...(read.standIns.size ? {[UNIT_STAND_INS]:read.standIns} : {}),[AUTHORED_EXAMPLES]:read.authored};
-    const result=withUnitStandIns(source,()=>compileDimSwitch(read.data,source,{records:false}));freezeValue(result.data);
+    const result=compileDimSwitch(stableData,{...stableOptions,variant,depth:1,splits},{records:false});freezeValue(result.data);
     const notes=(result.options as {[ENGINE_NOTES]?:string[]})[ENGINE_NOTES] ?? [];
     const kinds=new Map(notes.flatMap(note=>{const meta=engineNoteMeta(note); return meta ? [[note,meta] as const] : [];}));
     return kinds.size ? {...result,options:{...result.options,[ENGINE_NOTE_KINDS]:kinds}} : result;
-  },true),[read,variant,splits]);
+  },true),[stableData,stableOptions,variant,splits]);
 
   const maxDepth=compiled.maxDepth;
   if(!Number.isInteger(depth) || depth<1 || depth>maxDepth) throw new Error(`dimswitch depth must be between 1 and ${maxDepth}`);

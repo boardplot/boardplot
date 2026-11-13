@@ -11,7 +11,8 @@ import { closestKey } from '../../schema/unknownKeyWords';
 import { cappedItems } from '../../frame';
 import { localeStrings, stringFields } from '../../strings';
 import { chartString as tableString } from '../../strings/table';
-import { AUTOMATIC_FORMAT, LABEL_ONLY_ROW, MAGNITUDE_FIGURES, MAGNITUDE_GROUP, parseFormatExample, specUnitKind, unitMagnitude, type MagnitudeGroupSource } from '../../formatSpec';
+import { AUTHORED_EXAMPLES, AUTOMATIC_FORMAT, LABEL_ONLY_ROW, MAGNITUDE_FIGURES, MAGNITUDE_GROUP, parseFormatExample, readFormatExamples, specUnitKind, UNIT_STAND_INS, unitMagnitude, withUnitStandIns, type MagnitudeGroupSource } from '../../formatSpec';
+import { hasFormatRecord } from '../../formatPrecision';
 import type { CellState, CellTone, ComputedCellRecord, TableCell, TableRow } from '../../types/table';
 import type { LintWarning } from '../../types/scene';
 import type { CompiledDimSwitch, DimSwitchData, DimSwitchExpression, DimSwitchMeasure, DimSwitchMember, DimSwitchOptions, DimSwitchPeriod, DimSwitchSums, DimSwitchComparisonKind, DimSwitchJudgeBase } from './types';
@@ -206,6 +207,13 @@ const CARD_LABEL_WIDTH = 140;
 
 /** Pure compiler. The host supplies all calendar windows and additive facts. */
 export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions = {}, form: DimSwitchForm = {}): CompiledDimSwitch {
+  // A caller outside any chart (the React component) has no record of which formats the author wrote: read it
+  // here, as a request does, so the table gets the SVG path's formats and the formats the compile writes stay the engine's.
+  if (!hasFormatRecord(options)) {
+    const read = readFormatExamples(data, options);
+    const own = { ...read.options, ...(read.standIns.size ? { [UNIT_STAND_INS]: read.standIns } : {}), [AUTHORED_EXAMPLES]: read.authored };
+    return withUnitStandIns(own, () => compileDimSwitch(read.data, own, form));
+  }
   // Each measure uses the same formats for all members and periods.
   const formatDecimals = new Map<string, number>();
   const decimalsOf = (format: string) => {

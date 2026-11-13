@@ -160,6 +160,11 @@ export function isAuthoredExample(example: string): boolean {
   return authoredExamples === undefined || authoredExamples.has(example);
 }
 
+/** Whether these options, or the chart in force, carry the record of which formats the author wrote. */
+export function hasFormatRecord(options?: object): boolean {
+  return authoredOf(options) !== undefined;
+}
+
 const setKeys = new WeakMap<ReadonlySet<string>, string>();
 function setKey(set: ReadonlySet<string> | undefined): string {
   if (set === undefined) return '-';
