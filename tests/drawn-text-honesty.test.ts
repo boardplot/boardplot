@@ -287,12 +287,19 @@ describe('number census', () => {
     expect(census('mekko', spec, 320, retext('label:segment:tiny:b', '1%')).map((f) => f.class)).toContain('wrong-scale');
   });
 
-  // A percent change off a base the table prints as 0 is the change on the received base; the census must accept it.
-  it('accepts a change off a base printed as zero', () => {
+  // A percent change off a base the table prints as 0 is the change on the received base; the census must accept it, and still flag an n.m. beside a printed base.
+  it('accepts a change off a base printed as zero and still flags n.m. off a printed base', () => {
     const spec = fixtureOf('table', 'department-steering-mini');
-    spec.data = scaled(spec.data, 1e-3);
-    expect(of(census('table', spec, 420), 'derived')).toEqual([]);
-    expect(of(census('table', spec, 420, retext('cell:operations:py', '<0.1')), 'derived')).toEqual([]);
+    const small = { ...spec, data: scaled(spec.data, 1e-3) };
+    expect(of(census('table', small, 420), 'derived')).toEqual([]);
+    expect(of(census('table', small, 420, retext('cell:operations:py', '<0.1')), 'derived')).toEqual([]);
+    const nm = (geometry: Geometry) => {
+      const cell = (geometry.derived as { computedCells: { rowId: string; colId: string; raw: number | null; state: string; displayed: string }[] })
+        .computedCells.find((c) => c.rowId === 'operations' && c.colId === 'yoy')!;
+      Object.assign(cell, { raw: null, state: 'nm', displayed: 'n.m.' });
+      retext('cell:operations:yoy', 'n.m.')(geometry);
+    };
+    expect(of(census('table', spec, 420, nm), 'derived', 'operations:yoy')).toHaveLength(1);
   });
 
   // A hidden base column is read from its record: an n.m. was accepted for any hidden base, also a nonzero one.

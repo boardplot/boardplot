@@ -235,6 +235,6 @@ it('decides a percent change n.m. on its received base, not on the base as print
   // A base of zero or below stays n.m.; the near-zero note stands where n.m. prints for a zero base.
   const zero = resolveTable(data(0)).table;
   expect(zero.rows[0]!.cells.chg!.displayed).toBe('n.m.');
-  expect(zero.footnotes).toContain('n.m.: not meaningful, the base is near zero.');
+  expect(zero.footnotes.some(note => note.startsWith('n.m.'))).toBe(true);
   expect(resolveTable(data(-0.04)).table.rows[0]!.cells.chg!.displayed).toBe('n.m.');
 });

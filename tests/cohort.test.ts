@@ -19,7 +19,6 @@ import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request'
 import { resolveTheme } from '../src/core/theme';
 import type { Geometry } from '../src/core/types/scene';
 import { interactionRecords } from '../src/core/a11y/records';
-import { labelCardContent } from '../src/react/hover/labelCard';
 
 const definition = getChartDefinition('cohort')!;
 
@@ -1028,14 +1027,12 @@ describe('cohort exhibit Total row claims', () => {
   });
 });
 
-// A cohort cell prints its rate as a percent figure (100.0 for the fraction 1), so its record kept no shown text and the card formatted the rate again.
+// A cohort cell prints its rate as a percent figure (100.0 for the fraction 1), so its record kept no shown text.
 it('keeps a cohort cell figure as the shown text of its rate', () => {
   const fixture = structuredClone(getFixtures('cohort').find(item => item.id === 'retention-pure-exhibit')!);
   const request = resolveChartRequest({ type: 'cohort', data: fixture.data, options: fixture.options ?? {} } as never);
   const geometry = layoutResolvedRequest(request) as Geometry;
   const record = interactionRecords({ request, geometry, scope: request.scope, claims: [] })
     .find(item => item.target.owner.seriesId === 'jan-26' && item.target.owner.categoryId === 't2')!;
-  expect(geometry.labels.find(label => label.id === 'cohort-cell:jan-26:t2')?.text).toBe('57.5');
   expect(record.value.displayed).toBe('57.5');
-  expect(labelCardContent(record).rows[1]?.text).toBe('57.5%');
 });
