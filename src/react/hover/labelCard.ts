@@ -13,7 +13,7 @@ import { eventHeading, eventReading } from '../../core/eventReading';
 import type { Geometry, OccupiedRect, Paint, PlaceDecision, SceneNode, TextRole } from '../../core/types/scene';
 import type { Theme } from '../../core/types/theme';
 import type { InteractionComparison, InteractionRecord, InteractionValue } from '../../core/a11y/types';
-import { decimalPrecision, deltaValueText, derivedValueText as derivedText, displayedValueText, signedPercentText } from '../../core/a11y/valueText';
+import { decimalPrecision, deltaValueText, derivedValueText as derivedText, displayedValueText, fieldValueText, formattedValueText, signedPercentText } from '../../core/a11y/valueText';
 import { maxOf, pushAll } from '../../core/arrays';
 
 /**
@@ -167,8 +167,9 @@ function safeValue(value: InteractionValue, locale?: string): InteractionValue {
 }
 
 /**
- * Render one comparison as the card's comparison row: the change through the
- * value's format, the percent at the exhibit's precision. A comparison that
+ * Render one comparison as the card's comparison row: the change and its
+ * percent as the chart draws them (their shown texts), else the change through
+ * the value's format, the percent at the exhibit's precision. A comparison that
  * cannot be made (another axis, no reference value) has no row; the
  * record keeps it with its reason.
  */
@@ -184,7 +185,7 @@ function comparisonRow(comparison: InteractionComparison, locale?: string): Labe
   values: withheld ? [] : values.map(value => safeValue(value, locale)) };
 }
 
-/** A share as the chart prints its percentages: the record's format when it names one, else two decimals. */
+/** A share as the chart prints it: its shown text, else a derived share at the exhibit's precision, else two decimals. */
 function shareText(percent: InteractionValue, locale?: string): string {
   return percent.displayed || percent.derived === 'percent' || percent.format
     ? displayedValueText(percent, locale) : derivedText(percent, 2, false, locale, true);
@@ -198,7 +199,7 @@ function headingNamesDate(record: InteractionRecord, date: InteractionValue): bo
 
 function fieldRow(field: InteractionRecord['fields'][number], locale?: string): LabelCardRow {
   const label = `${field.label}:`;
-  const value = displayedValueText(field.value, locale);
+  const value = fieldValueText(field.value, locale);
   return { kind: 'field', label, value, text: `${label} ${value}`, values: [safeValue(field.value, locale)] };
 }
 
@@ -208,9 +209,10 @@ function cardContent(rows: LabelCardRow[]): LabelCardContent {
 
 /**
  * Format only the existing record facts; never infer comparisons from rounded
- * strings. The value row reads as the chart prints the value (the series
- * format and unit, `displayedValueText`), so a card beside a bar labelled
- * "213" says "$213k" and not "212.8"; `values` keeps the source number.
+ * strings. The value row, the field rows, the change and the share print the
+ * text the chart draws for each (their shown texts, `displayedValueText`), so
+ * a card beside a bar labelled "$213k" says "$213k" and not "212.8"; `values`
+ * keeps the source number.
  */
 export function labelCardContent(record: InteractionRecord, locale?: string, options?: LabelCardOptions): LabelCardContent {
   if (record.event) return eventCardContent(record.event);
@@ -232,9 +234,9 @@ export function labelCardContent(record: InteractionRecord, locale?: string, opt
       if (field.key === 'date' && headingNamesDate(record, field.value)) continue;
       // Aggregate cards show the mark's statistics. Individual observations stay
       // in the typed record for data tables and custom host content.
-      // A field prints as the chart would print it: through its format when it
-      // declares one, else at its own precision with the unit joined as the
-      // marks join it ("10.9%", "186.825 EUR k").
+      // A field prints the text the chart draws for it (its shown text), else
+      // through its format when it declares one, else at its own precision
+      // with the unit joined as the marks join it ("10.9%", "186.825 EUR k").
       if (!members.has(field.key)) rows.push(fieldRow(field, locale));
     }
     pushAll(rows, record.comparisons.flatMap(comparison => comparisonRow(comparison, locale) ?? []));
@@ -248,8 +250,9 @@ export function labelCardContent(record: InteractionRecord, locale?: string, opt
       const whole = options?.hundredPercent === true || (base.state === 'value' && base.raw === 100 && base.unit === '%');
       const wording = { locale: { language: locale } };
       const label = chartString(wording, 'shareLabel');
+      // The base is a total the record holds for the share; no label states it, so it prints through its format.
       const value = withheld ? chartString(wording, 'valueWithheld')
-        : `${shareText(record.share.percent, locale)}${whole ? '' : chartString(wording, 'ofValueClause', { v1: displayedValueText(base, locale) })}`;
+        : `${shareText(record.share.percent, locale)}${whole ? '' : chartString(wording, 'ofValueClause', { v1: formattedValueText(base, locale) })}`;
       rows.push({ kind: 'share', label, value, text: `${label} ${value}`,
       values: withheld ? [] : values.map(value => safeValue(value, locale)) });
     }

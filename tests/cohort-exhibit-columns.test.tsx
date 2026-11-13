@@ -168,7 +168,11 @@ describe('heatmap total and visiblePeriods', () => {
 // figures false stops printing only: a record or accessible value that went with it would lose the rate.
 it('figures false keeps every cell value for hover and records', () => {
   const stepped: CohortOptions = { variant: 'stepped', formatScope: 'classic', size: { width: 760 } };
-  const display = (geometry: Geometry<CohortMarks, CohortDerived>) => geometry.scene.flatMap((node) => (node.display ? [[node.id, node.display]] : []));
+  // A drawn figure's text node states its value (display.shows); the cells keep theirs.
+  const display = (geometry: Geometry<CohortMarks, CohortDerived>) => geometry.scene.flatMap((node) => {
+    const { shows: _shows, ...kept } = node.display ?? {};
+    return Object.keys(kept).length > 0 ? [[node.id, kept]] : [];
+  });
   const off = layout({ ...stepped, figures: false });
   expect(display(off)).toEqual(display(layout(stepped)));
   expect(off.labels.filter((label) => label.id.startsWith('cohort-cell:') && !label.id.endsWith(':t0'))).toEqual([]);

@@ -985,8 +985,8 @@ it('prints a magnitude the same on every surface', async () => {
     for (const output of [svg, react]) expect(output, `${format} ${language}`).toContain(`>${text}<`);
     expect(geometry.a11y.desc).toContain(text);
     const record = interactionRecords({ request, geometry, scope: request.scope, claims: [] }).find(entry => entry.target.owner.categoryId === 'a')!;
-    // Without a format the card prints the exact source number instead.
-    expect(labelCardContent(record, request.locale?.language).rows.map(row => row.text)).toContain(format === undefined ? '2.500.000.000' : text);
+    // The card prints the drawn label, also without a format.
+    expect(labelCardContent(record, request.locale?.language).rows.map(row => row.text)).toContain(text);
   }
 });
 
@@ -1056,4 +1056,21 @@ it('abs prints the anchored value as its point label does (combo, bar, dot)', ()
   expect(abs('dot', { categories, series })).toBe('4.12');
   const combo = { categories, series: [{ id: 'v', label: 'Volume', values: [100, 140] }, { ...series[0], kind: 'line', axis: 'secondary', values: [3.1, 4.1] }] };
   expect(abs('combo', combo, { unit: '$m', secondaryAxis: { acknowledge: true } })).toBe('4.1%');
+});
+
+// A callout's ${value} printed −600,000 beside a mark whose label prints −600k, so one value read as two numbers.
+it("prints ${value} in a callout as the anchored mark's drawn label prints it (column, dot)", () => {
+  const data = {
+    categories: ['cloud', 'devices', 'services', 'legacy'].map((id) => ({ id, label: id })),
+    series: [{ id: 'd', label: 'Δ vs PY', values: [9_600_000, 400_000, -600_000, -7_400_000] }],
+  };
+  const layout = (type: string, at: object | string) => requireGeometry(layoutResolvedRequest(resolveChartRequest({ type, data,
+    options: { title: 'T', size: { width: 480 }, annotations: [{ kind: 'callout', at, text: 'Held flat: ${value}' }] } } as never) as never));
+  const column = layout('column', { categoryId: 'services', seriesId: 'd' });
+  expect(column.labels.find((label) => label.id === 'point:d:services')?.text).toBe('−600k');
+  expect(column.annotations[0]?.computedText).toBe('Held flat: −600k');
+  // A dot's label stands beside the dot, so the callout leaves the repeated number out and says so.
+  const dot = layout('dot', 'services');
+  expect(dot.annotations[0]?.computedText).toBe('Held flat');
+  expect(dot.warnings.find((warning) => warning.code === 'annotation-value-on-mark')?.message).toContain('−600k');
 });

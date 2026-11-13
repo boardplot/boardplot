@@ -364,3 +364,33 @@ it('seats a tall card next to its column', () => {
     expect(own).toEqual([]);
   });
 });
+
+const revenue = { categories: [['a', 'Alpha'], ['b', 'Beta'], ['c', 'Gamma'], ['d', 'Delta']].map(([id, label]) => ({ id, label })),
+  series: [{ id: 'rev', label: 'Revenue', format: '$1.2M', values: [4, 12, 43, 78] }] };
+const deltaRecord = (options: object) => {
+  const { request, geometry } = build({ type: 'column', data: revenue, options: { size: { width: 480 }, ...options } });
+  return interactionRecords({ request, geometry, scope: request.scope, claims: [] }).find(record => record.target.owner.categoryId === 'd')!;
+};
+
+// The card formatted a value through its series format without the series' other values, so a bar labelled $78.0 read $0.1k.
+it('prints the drawn label of a stacked column in its card', () => {
+  expect(labelCardContent(deltaRecord({ variant: 'stacked' })).rows.map(row => row.text)).toContain('$78.0');
+});
+
+// With labels off a value had no shown text, so its card formatted it again and printed another number than its label would.
+it('gives a value with labels off the text its label would print', () => {
+  const record = deltaRecord({ labels: false });
+  expect(record.value.displayed).toBe('$78.0');
+  expect(labelCardContent(record).rows.map(row => row.text)).toContain('$78.0');
+});
+
+// The card formatted a drawn field and a drawn change again, so a whisker labelled 2.0 read 2 days and a change labelled −4% read −4.0%.
+it('prints a drawn box whisker and a drawn KPI change as the chart prints them', () => {
+  const card = (type: string, id: string) => {
+    const fixture = structuredClone(getFixtures(type).find(item => item.id === id)!);
+    const { request, geometry } = build({ type, data: fixture.data, options: fixture.options ?? {} });
+    return labelCardContent(interactionRecords({ request, geometry, scope: request.scope, claims: [] })[0]!).rows.map(row => row.text);
+  };
+  expect(card('box', 'cycle-time-by-team')).toContain('Whiskers: 2.0 days to 11.0 days');
+  expect(card('kpi', 'text-comparisons').find(text => text.includes('Plan'))).toContain('(−4%)');
+});

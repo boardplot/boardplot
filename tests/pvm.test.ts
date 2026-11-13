@@ -709,7 +709,8 @@ describe('pvm labels.point and columnOverrides', () => {
     const off = draw({ labels: { point: false } });
     expect(off.labels.filter((label) => /^(sum|total|segment):/.test(label.id))).toEqual([]);
     expect(off.warnings.map((warning) => warning.code)).not.toContain('values-in-note');
-    const displays = (geometry: typeof on) => geometry.scene.flatMap((node) => (node.display ? [node.display.value] : []));
+    // A drawn label's text node states its value (display.shows); the marks keep the values.
+    const displays = (geometry: typeof on) => geometry.scene.flatMap((node) => (node.display && Object.keys(node.display).some((key) => key !== 'shows') ? [node.display.value] : []));
     expect(displays(off)).toEqual(displays(on));
     const claimIds = (geometry: typeof on) => claimsForChart('pvm', geometry as never).map((claim) => claim.id);
     expect(claimIds(off)).toEqual(claimIds(on));
