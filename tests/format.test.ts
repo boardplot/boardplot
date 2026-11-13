@@ -1031,3 +1031,75 @@ it('keeps the drawn text on the record under the chart number marks', async () =
   expect(displayed('funnel', [{ id: 'x', label: 'X', values: [1180000000, 590000000] }, { id: 'y', label: 'Y', values: [590000000, 290000000] }])).toContain('1.180M');
   expect(displayed('bar', [{ id: 's', label: 'S', format: '0,042', values: [1234.5, 0.042] }])).toContain('0,042');
 });
+
+describe('an authored format prints as its example reads', () => {
+  const texts = (spec: { type: string; data: unknown; options?: Record<string, unknown> }, prefix: string) => {
+    const request = resolveChartRequest(spec as never);
+    return requireGeometry(layoutResolvedRequest(request)).scene
+      .flatMap((node) => (node.t === 'text' && node.id.startsWith(prefix) ? [node.lines.join(' ')] : []));
+  };
+  const hides = (spec: unknown) => ((render({ spec } as never).body as { warnings: { code: string; fix?: { path: string; value?: unknown }[] }[] }).warnings)
+    .filter((warning) => warning.code === 'format-hides-values');
+  const fourValues = { categories: [{ id: 'y1', label: '2024' }, { id: 'y2', label: '2025' }], series: [{ id: 'a', label: 'A', values: [4, 12] }, { id: 'b', label: 'B', values: [43, 78] }] };
+
+  // Slope labels under '$1.2M' printed $4.0 to $78.0, a scale the author never wrote, and the warning's patch kept the values hidden.
+  it('prints slope labels in the authored scale word, with a patch that shows every value', () => {
+    const spec = { type: 'slope', data: fourValues, options: { format: '$1.2M' } };
+    expect(texts(spec, 'label:series:').every((text) => text.includes('$0.0M'))).toBe(true);
+    const [warning] = hides(spec);
+    expect(warning?.fix).toEqual([{ op: 'replace', path: '/options/format', value: '$1.2' }]);
+    const patched = { ...spec, options: { format: '$1.2' } };
+    expect(texts(patched, 'label:series:').map((text) => text.replace(/[AB ]/g, '')).sort()).toEqual(['$12.0', '$4.0', '$43.0', '$78.0']);
+    expect(hides(patched)).toEqual([]);
+  });
+
+  // Tiles under '$1.2M' printed $0.1k, a scale word the author never wrote, and the warning never read map regions.
+  it('prints tilemap tiles in the authored scale word and warns where they hide a value', () => {
+    const spec = { type: 'tilemap', data: { pack: 'eu27', regions: [{ id: 'DE', value: 4 }, { id: 'FR', value: 12 }, { id: 'IT', value: 43 }, { id: 'ES', value: 78 }] }, options: { format: '$1.2M' } };
+    expect(texts(spec, 'label:category:').filter((text) => text.startsWith('$'))).toEqual(['$0.0M', '$0.0M', '$0.0M', '$0.0M']);
+    expect(hides(spec).map((warning) => warning.fix?.[0]?.path)).toEqual(['/options/format']);
+  });
+
+  // A stack total of 0.004 under '1.0' printed 0.004, a precision the author never wrote.
+  it('prints a stack total in the authored decimals', () => {
+    const spec = { type: 'column', data: { categories: [{ id: 'a', label: 'North' }, { id: 'b', label: 'South' }],
+      series: [{ id: 's', label: 'S', values: [0.002, 5] }, { id: 't', label: 'T', values: [0.002, 6] }] }, options: { format: '1.0', variant: 'stacked' } };
+    expect(texts(spec, 'label:grandTotal:')).toEqual(['0.0', '11.0']);
+  });
+
+  // A KPI of 78 under '$1.2m' printed $0.0001M: a respelled scale word and decimals the author never wrote.
+  it('prints a KPI value as its example reads', () => {
+    expect(texts({ type: 'kpi', data: { label: 'ARR', value: 78, format: '$1.2m' } }, 'label:total:value')).toEqual(['$0.0m']);
+  });
+
+  // Row formats lifted '$1.2m' to '$6.1M' and printed 2,000 under '$1M' as $0.002M, a scale word and decimals the author never wrote.
+  it('prints a table row in its authored scale word and warns where it hides a value', () => {
+    const spec = { type: 'table', data: { columns: [{ id: 'label', kind: 'rowLabel', label: 'Line' }, { id: 'q1', kind: 'value', label: 'Q1' }, { id: 'q2', kind: 'value', label: 'Q2' }],
+      rows: [{ id: 'rev', label: 'Revenue', format: '$1.2m', cells: { q1: 6.1e6, q2: 6.4e6 } }, { id: 'fee', label: 'Fees', format: '$1M', cells: { q1: 2e3, q2: 3e3 } }] } };
+    expect(texts(spec, 'cell:rev:q')).toEqual(['$6.1m', '$6.4m']);
+    expect(texts(spec, 'cell:fee:q')).toEqual(['$0M', '$0M']);
+    expect(hides(spec).map((warning) => [warning.fix?.[0]?.path, warning.fix?.[0]?.value])).toEqual([['/data/rows/1/format', '$1k']]);
+  });
+
+  // A waffle share of 0.03 under '1%' printed the bound <1%, a text the author's example never prints.
+  it('prints a small waffle share as the example rounds it and warns', () => {
+    const spec = { type: 'waffle', data: { categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], series: [{ id: 's', label: 'S', values: [0.03, 99.97] }] }, options: { format: '1%' } };
+    expect(texts(spec, 'label:total:')).toEqual(['0%', '100%']);
+    expect(hides(spec).map((warning) => warning.fix?.[0]?.path)).toEqual(['/options/format']);
+  });
+
+  // A computed column printed a change of −0.02% as 0.0% under '+1.1%' without a warning: the warning never read computed columns.
+  it('warns where a computed table column prints a change as zero', () => {
+    const spec = { type: 'table', data: { columns: [{ id: 'label', kind: 'rowLabel', label: 'Region' }, { id: 'ac', kind: 'value', label: 'Actual', format: '1,234' },
+      { id: 'py', kind: 'value', label: 'Prior', format: '1,234' }, { id: 'yoy', kind: 'computed', label: 'YoY', calc: { op: 'percentDelta', a: 'ac', b: 'py' }, format: '+1.1%' }],
+    rows: [{ id: 'n', label: 'North', cells: { ac: 4999, py: 5000 } }, { id: 's', label: 'South', cells: { ac: 5200, py: 5000 } }] } };
+    expect(texts(spec, 'cell:n:yoy')).toEqual(['0.0%']);
+    expect(hides(spec).map((warning) => [warning.fix?.[0]?.path, warning.fix?.[0]?.value])).toEqual([['/data/columns/3/format', '+1.12%']]);
+  });
+
+  // An axis format '$0.00' printed its ticks as $0.4, fewer decimals than its example shows.
+  it('prints axis ticks with at least the decimals of the axis format', () => {
+    const spec = { type: 'scatter', data: { points: [{ id: 'p', label: 'P', x: 0.1, y: 1 }, { id: 'q', label: 'Q', x: 0.9, y: 2 }] }, options: { axisFormat: { x: '$0.00' } } };
+    expect(texts(spec, 'axis:x:tick:')).toEqual(['$0.00', '$0.20', '$0.40', '$0.60', '$0.80', '$1.00']);
+  });
+});
