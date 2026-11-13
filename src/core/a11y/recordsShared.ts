@@ -134,7 +134,7 @@ export function withShownTexts(records: InteractionRecord[], geometry: Geometry)
     index.set(key, into);
   };
   for (const label of geometry.labels) if (label.hidden !== undefined && label.shows) add(undrawn, label.owner, label.shows);
-  for (const mark of (geometry.marks as { shown?: readonly ShownMark[] } | undefined)?.shown ?? []) add(undrawn, mark.owner, mark.shows);
+  for (const mark of (geometry.marks as { shown?: readonly ShownMark[] } | undefined)?.shown ?? []) add(mark.drawn ? drawn : undrawn, mark.owner, mark.shows);
   for (const node of geometry.scene) {
     const shows = node.display?.shows;
     if (!shows) continue;

@@ -361,12 +361,15 @@ export interface SeparationRule {
 export type ShownTexts = Readonly<Record<string, string>>;
 
 /**
- * A value's would-be texts where it has no node of its own (a line point with
- * no marker): a chart lists them in `geometry.marks.shown`.
+ * A value's texts where no node carries its owner (a line point with no
+ * marker, a change drawn on a node of another owner): a chart lists them in
+ * `geometry.marks.shown`. `drawn` marks a text the chart draws; without it the
+ * text is the value's would-be label text.
  */
 export interface ShownMark {
   owner: OwnerRef;
   shows: ShownTexts;
+  drawn?: true;
 }
 
 export interface SceneDisplay {
