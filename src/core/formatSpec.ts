@@ -1640,10 +1640,11 @@ export function rasterDecimals(
  * bound to full precision ("23.4", not "23.35").
  */
 export function formatStatWithSpec(value: number, spec: NumberFormatSpec): string {
-  // An authored example prints a statistic in the measure's format, as its values.
-  if (spec.exponent || spec.exact) return formatWithSpec(value, spec);
+  if (spec.exponent) return formatWithSpec(value, spec);
+  // A statistic is the engine's number, not the author's: an authored example keeps the statistic's rule here, its scale and one more decimal.
+  const base = spec.exact ? { ...spec, exact: undefined, rollMagnitude: undefined, nonzero: true as const } : spec;
   // The unit rule is for plotted values; a mean of 100.5 stays 100.5.
-  const own = { ...spec, wholeFrom: undefined };
+  const own = { ...base, wholeFrom: undefined };
   // Decimals count at the scale the label prints in: 1.25M under "1M" needs one, not the none of 1,250,000.
   const scaled = value / MAGNITUDE_DIVISOR[effectiveScale(value, own).magnitude];
   return formatWithSpec(value, { ...own, decimals: Math.max(spec.decimals, neededDecimals(scaled, spec.decimals + 1)) });
