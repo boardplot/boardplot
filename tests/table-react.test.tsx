@@ -2246,4 +2246,34 @@ describe('TableChart and DimSwitchChart print the cells the SVG prints', () => {
       expect(react.map(([id]) => svg.get(id))).toEqual(expected);
     }
   });
+
+  // A dimension switch drawn again with the props of another chart kept the cells of the first one where the two differ only in a format the author wrote.
+  it('prints the cells of its new props when it is drawn again with the props of another chart', () => {
+    const sums = (cost: number, units: number) => ({ cost, units });
+    const unitCost = (format?: string) => ({
+      dimension: { label: 'Group', total: { id: 'total', label: 'Total' }, members: [{ id: 'alpha', label: 'Alpha' }, { id: 'beta', label: 'Beta' }], headline: ['ucost'] },
+      measures: [{ id: 'ucost', label: 'Unit cost', value: { op: 'div', a: { field: 'cost' }, b: { field: 'units' } }, change: 'absolute', ...(format ? { format } : {}) }],
+      periods: [{ id: 'actual', label: 'Range', kind: 'range' }, { id: 'before', label: 'vs prior', kind: 'prior' }, { id: 'p1', label: 'Period 1' }],
+      facts: [['total', 90, 200, 2460], ['alpha', 40, 100, 1200], ['beta', 50, 100, 1260]].flatMap(([memberId, cost, units, before]) => [
+        { memberId, periodId: 'actual', sums: sums(cost as number, units as number) }, { memberId, periodId: 'before', sums: sums(before as number, units as number) },
+        { memberId, periodId: 'p1', sums: sums(before as number, units as number), ref: sums(cost as number, units as number) }]),
+    });
+    const draw = (data: object) => act(() => root.render(<DimSwitchChart data={data as never} title="Invented" size={{ width: 720 }} variant="by-measure" depth={2} />));
+    const cells = () => Array.from(container.querySelectorAll<HTMLElement>('[role="gridcell"][data-bp-row]'))
+      .map((cell) => `${cell.dataset.bpRow}:${cell.dataset.bpColumn} ${cell.querySelector('.bp-value')?.textContent ?? ''}`);
+    const mount = (data: object) => {
+      act(() => root.unmount());
+      root = createRoot(container);
+      draw(data);
+      return cells();
+    };
+    const automatic = unitCost(), written = unitCost('1,234');
+    const fresh = new Map([[automatic, mount(automatic)], [written, mount(written)]]);
+    expect(fresh.get(automatic)).not.toEqual(fresh.get(written));
+    for (const [first, second] of [[automatic, written], [written, automatic]] as const) {
+      mount(first);
+      draw(second);
+      expect(cells()).toEqual(fresh.get(second));
+    }
+  });
 });

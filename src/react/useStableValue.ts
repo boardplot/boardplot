@@ -1,6 +1,4 @@
 import { useRef } from 'react';
-import { ANNOTATION_ORIGIN } from '../core/annotationOrigin';
-import { AUTHORED_EXAMPLES, UNIT_STAND_INS } from '../core/formatPrecision';
 
 const immutable = new WeakSet<object>();
 
@@ -17,31 +15,29 @@ function isPlain(value: object): boolean {
   return prototype === Object.prototype || prototype === null;
 }
 
-/**
- * Plain objects and arrays compare by content; functions (a custom `measure`),
- * class instances and every other value by identity.
- */
-/** Two records of a chart's format examples (formatPrecision.ts) that hold the same texts. */
-function sameExamples(left: unknown, right: unknown): boolean {
-  if (left === right) return true;
-  if (!(left instanceof Set) || !(right instanceof Set) || left.size !== right.size) return false;
-  for (const example of left) if (!right.has(example)) return false;
-  return true;
-}
+/** The enumerable symbol keys of a value: the markers the engine puts on it. */
+const markersOf = (value: object) => Object.getOwnPropertySymbols(value).filter((key) => Object.prototype.propertyIsEnumerable.call(value, key));
 
+/**
+ * Plain objects and arrays compare by content, Sets by their members; functions
+ * (a custom `measure`), class instances and every other value by identity.
+ */
 function sameContent(left: unknown, right: unknown): boolean {
   if (Object.is(left, right)) return true;
   if (typeof left !== 'object' || typeof right !== 'object' || left === null || right === null) return false;
   if (Array.isArray(left)) {
     return Array.isArray(right) && left.length === right.length && left.every((item, index) => sameContent(item, right[index]));
   }
+  if (left instanceof Set || right instanceof Set) {
+    return left instanceof Set && right instanceof Set && left.size === right.size && [...left].every((member) => right.has(member));
+  }
   if (Array.isArray(right) || !isPlain(left) || !isPlain(right)) return false;
+  // A marker (a symbol key) changes what a value means: an annotation's origin, the formats the author wrote,
+  // a format the engine wrote. Every marker compares, also one added later.
+  const markers = markersOf(left);
+  if (markers.length !== markersOf(right).length || !markers.every((key) => Object.prototype.propertyIsEnumerable.call(right, key)
+    && sameContent((left as Record<symbol, unknown>)[key], (right as Record<symbol, unknown>)[key]))) return false;
   const keys = Object.keys(left);
-  // An annotation's origin decides its refusal pointer: the same entry moved to the other list is a new value.
-  if (!sameContent((left as Record<symbol, unknown>)[ANNOTATION_ORIGIN], (right as Record<symbol, unknown>)[ANNOTATION_ORIGIN])) return false;
-  // Which formats the author wrote decides how a format prints: the same options under another record are a new value.
-  if (!sameExamples((left as Record<symbol, unknown>)[AUTHORED_EXAMPLES], (right as Record<symbol, unknown>)[AUTHORED_EXAMPLES])
-    || !sameExamples((left as Record<symbol, unknown>)[UNIT_STAND_INS], (right as Record<symbol, unknown>)[UNIT_STAND_INS])) return false;
   return keys.length === Object.keys(right).length && keys.every((key) =>
     Object.hasOwn(right, key) && sameContent((left as Record<string, unknown>)[key], (right as Record<string, unknown>)[key]));
 }
