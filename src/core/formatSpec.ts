@@ -1827,20 +1827,21 @@ export function unscaledFormatLint(
     const stated = new Map<FormatPlace, Stated[]>();
     const zeros = new Map<FormatPlace, InteractionRecord[]>();
     const state = (place: FormatPlace, entry: Stated | undefined) => { if (entry) stated.set(place, [...(stated.get(place) ?? []), entry]); };
-    const byField = places.filter((place) => place.fields !== undefined);
     if (held) {
       for (const record of held) {
         const owner = record.target.owner;
         // The narrowest authored format that owns the value and is the one its record printed through.
-        const place = places.find((at) => at.fields === undefined && printsThrough(at, exact.get(at), owner, record.value));
+        const place = places.find((at) => printsThrough(at, exact.get(at), owner, record.value));
         if (place !== undefined) {
           if (exact.has(place)) { if (judging) state(place, statedEntry(place, record.value, owner, locale)); }
           else if (drawsZero() && printsZero(record)) zeros.set(place, [...(zeros.get(place) ?? []), record]);
         }
-        if (!judging || byField.length === 0) continue;
+        if (!judging) continue;
+        // A field the hover card prints through the format (a coordinate, an observation): judged for zero only.
         for (const field of record.fields ?? []) {
-          const at = byField.find((candidate) => candidate.fields!.includes(field.key) && exact.has(candidate) && printsThrough(candidate, exact.get(candidate), owner, field.value));
-          if (at) state(at, statedEntry(at, field.value, owner, locale));
+          if (field.value.kind !== 'number' || field.value.format === undefined) continue;
+          const at = places.find((candidate) => exact.has(candidate) && printsThrough(candidate, exact.get(candidate), owner, field.value));
+          if (at) state(at, statedEntry(at, field.value, owner, locale, true));
         }
       }
     } else if (judging) {
@@ -1893,8 +1894,6 @@ type FormatPlace = {
   stated?: number[];
   /** Further values the place may print; they only open the check (no record is built for a chart that cannot hide a value). */
   loose?: number[];
-  /** The record fields the place prints, in place of the record's value (a scatter point's coordinates). */
-  fields?: readonly string[];
 };
 /** An authored example as the chart reads it (exampleReading), and its exact spec. */
 type ExactPlace = { format: string; spec: NumberFormatSpec };
@@ -1953,9 +1952,10 @@ function formatPlaces(data: unknown, chart?: string, axes?: { x?: unknown; y?: u
       const { cell, format, number } = cellParts(entry);
       if (format === undefined) numbers.push(...number);
       else add(0, 'cell', format, [number], ['data', 'series', i, 'values', j, ...(cell === entry ? [] : ['value']), 'format'],
-        (owner) => owner.seriesId === series.id && owner.categoryId === categoryAt(entry, j));
+        (owner) => (owner.seriesId === series.id || (owner.seriesId === undefined && own!.series!.length === 1)) && owner.categoryId === categoryAt(entry, j));
     });
-    add(2, 'series', series?.format, [numbers], ['data', 'series', i, 'format'], (owner) => owner.seriesId === series?.id);
+    // A chart of one series (a pie) names only the category on its records.
+    add(2, 'series', series?.format, [numbers], ['data', 'series', i, 'format'], (owner) => owner.seriesId === series?.id || (owner.seriesId === undefined && own!.series!.length === 1));
     if (typeof series?.format !== 'string') chartSets.push(numbers);
   });
   // A table: a cell prints through its own format, else its row's, else its column's, else the chart's.
@@ -1963,11 +1963,13 @@ function formatPlaces(data: unknown, chart?: string, axes?: { x?: unknown; y?: u
   const columnFormat = new Set(columns.filter((column) => !Array.isArray(column?.values) && typeof column?.format === 'string').map((column) => column.id));
   const byColumn = new Map<unknown, number[]>();
   const chartByColumn = new Map<unknown, number[]>();
+  let bulletRows = false;
   const walk = (list: unknown, path: (string | number)[]) => (Array.isArray(list) ? list : []).forEach((row: TableRow, i) => {
     const rowNumbers: number[] = [];
     const chartRow: number[] = [];
     // A bullet row holds its value and target itself; its records name it as their category.
     const bullet = row?.cells === undefined && row !== null && typeof row === 'object' && ('value' in row || 'target' in row);
+    if (bullet) bulletRows = true;
     const ownsRow = (owner: Owner) => owner.rowId === row?.id || (bullet && owner.rowId === undefined && owner.categoryId === row?.id);
     if (bullet) {
       const { format, number } = cellParts(row.value);
@@ -2012,16 +2014,22 @@ function formatPlaces(data: unknown, chart?: string, axes?: { x?: unknown; y?: u
   }
   // One row of values (sparkline), waterfall items, map regions.
   if (Array.isArray(own?.values)) chartSets.push(own.values.flatMap(numberIn));
-  if (Array.isArray(own?.items)) chartSets.push(own.items.flatMap((item) => numberIn(item?.value)));
+  // A waterfall total is calculated: judged for zero, not as part of the steps' set.
+  const isTotal = (item: unknown) => typeof item === 'object' && item !== null && ['total', 'subtotal'].includes(String((item as { type?: unknown }).type));
+  const totals = Array.isArray(own?.items) ? own.items.filter(isTotal).flatMap((item) => numberIn(item?.value)) : [];
+  if (Array.isArray(own?.items)) chartSets.push(own.items.filter((item) => !isTotal(item)).flatMap((item) => numberIn(item?.value)));
   const regions = Array.isArray(own?.regions) ? own.regions : typeof own?.regions === 'object' && own.regions !== null ? Object.values(own.regions) : [];
   if (regions.length) chartSets.push(regions.flatMap((region) => numberIn(typeof region === 'object' && region !== null && 'value' in region ? (region as { value: unknown }).value : region)));
   if (chart !== undefined) {
     const place: FormatPlace = { authored: chart, kind: 'chart', sets: chartSets, path: ['options', 'format'], owns: () => true };
     // A scatter point states its coordinates through the chart format in its hover card.
-    if (points) Object.assign(place, { fields: ['x', 'y'], zeroOnly: true, loose: [...coordinates('x'), ...coordinates('y')] });
+    if (points) Object.assign(place, { zeroOnly: true, loose: [...coordinates('x'), ...coordinates('y')] });
     else if (statusChart.length) Object.assign(place, { stated: statusChart, zeroOnly: true });
     // Values in other shapes (links, groups, cohorts, observations, panels): the numbers of the data open the check.
     else if (!chartSets.some((set) => set.length)) place.loose = numbersOf(data);
+    else if (totals.length) place.loose = totals;
+    // A bullet row stands alone: its value forms no set with the other rows.
+    if (bulletRows) place.zeroOnly = true;
     places[4]!.push(place);
   }
   return places.flat();
@@ -2112,10 +2120,11 @@ function oneCellText(scene: readonly SceneNode[], colId: unknown): boolean {
 }
 
 /** The text the chart states for a record's value: its label, else the text of the hover card (formattedValueText) under its format. */
-function statedEntry(place: FormatPlace, value: InteractionValue, owner: Owner, locale: string | undefined): Stated | undefined {
+function statedEntry(place: FormatPlace, value: InteractionValue, owner: Owner, locale: string | undefined, field = false): Stated | undefined {
   if (value.state !== 'value' || value.kind !== 'number' || typeof value.raw !== 'number' || !Number.isFinite(value.raw)) return undefined;
   const text = value.displayed ?? (value.format !== undefined ? formatWithSpec(value.raw, exampleSpec(value.format, locale, value.unit)) : undefined);
-  return text === undefined ? undefined : { raw: value.raw, text, sets: setsOf(place, owner) };
+  // A calculated value (a total, a mean, a change) is judged for zero only: the sets are the authored values'.
+  return text === undefined ? undefined : { raw: value.raw, text, sets: field || value.derived !== undefined ? [] : setsOf(place, owner) };
 }
 
 /** The sets a value of a place belongs to: its series, its table row and column under the chart format; none under a cell's own format. */
