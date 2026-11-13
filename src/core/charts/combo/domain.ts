@@ -14,7 +14,7 @@ import { formatAutomaticPercent, formatShare } from '../../format';
 import { roundingUnavailable, shareRoundingNotes, sumConsistentShares, type RoundingAdjustment } from '../../shareRounding';
 import { comboValueLabels, FIRST_END_BELOW_TOTALS } from './endpoints';
 import { unitConflict, unitConflictRefusal } from '../../schema/units';
-import { formatStatWithSpec, formatterFromExample, parseFormatExample, percentRasterFormatter, roundedNumber, seriesRasterFormatter, unitMagnitude } from '../../formatSpec';
+import { axisExampleSpec, formatStatWithSpec, formatterFromExample, parseFormatExample, percentRasterFormatter, roundedNumber, seriesRasterFormatter, unitMagnitude } from '../../formatSpec';
 import { averageMarkerLine, averageMarkerMean, averageMarkerSpan, averageMarkerScope, averageOfUnaddedSums, warnIncompleteStacks } from '../band/stacks';
 import { anomalyCorridor, anomalyModel, refuseAnomalySpec } from '../column/anomaly';
 import type { LineAnomaly } from '../line/model';
@@ -458,7 +458,8 @@ function rightAxis(
           return 3;
         }))
       : 0;
-    const secTickFmt = secAxisFmtSrc
+    const secAxisSpec = secAxisFmtSrc ? axisExampleSpec(secAxisFmtSrc, options.locale?.language) : undefined;
+    const secTickFmt = secAxisSpec ? tickFormatter(secAxisSpec, secTickValues) : secAxisFmtSrc
       ? formatterFromExample(secAxisFmtSrc, options.locale?.language)
       : secFmtSrc
         ? formatterFromExample(secFmtSrc, options.locale?.language)

@@ -127,6 +127,8 @@ export interface NumberFormatSpec {
    * zero prints the example's zero, and format-hides-values says so.
    */
   exact?: true;
+  /** An example written for this axis: its ticks print at least its decimals (tickFormatter). */
+  axisExample?: true;
 }
 
 /**
@@ -1421,6 +1423,16 @@ function exactly(spec: NumberFormatSpec): NumberFormatSpec {
  */
 export function exactExampleSpec(example: string, locale?: string): NumberFormatSpec | undefined {
   return isExactExample(example) ? exactly(localized(parseFormatExample(example, true), locale)) : undefined;
+}
+
+/**
+ * A format written for an axis (scatter axisFormat, line xAxis.format, combo
+ * secondaryAxis.format) as its ticks print it: the example's scale word and
+ * at least its decimals (tickFormatter). Undefined for a unit-only format,
+ * which keeps a unit's data-led precision.
+ */
+export function axisExampleSpec(example: string, locale?: string): NumberFormatSpec | undefined {
+  return isExactExample(example) ? { ...exampleSpec(example, locale), axisExample: true } : undefined;
 }
 
 /**

@@ -86,7 +86,9 @@ export function tickFormatter(
   // One scale down the axis: an engine-chosen M or B does not step down per tick
   // as value labels do ("0.5M", not "500k" under "1.0M"); zero prints bare.
   // Ticks are not data: a significant-figure example gives them its style, and their spacing sets the digits ("$10M", "$12.5M").
-  const tickSpec: NumberFormatSpec = { ...spec, ...(spec.significantDigits === undefined ? {} : { significantDigits: undefined }), autoMagnitude: undefined, wholeFrom: undefined, decimals: Math.max(0, maxOf(scaled.map((tick) => neededDecimals(tick, cap, noise, spec.decimals)))) };
+  // An example written for this axis prints at least its own decimals ("$0.40" under "$0.00"); more only where the ticks need them.
+  const floor = spec.axisExample && spec.significantDigits === undefined ? spec.decimals : 0;
+  const tickSpec: NumberFormatSpec = { ...spec, ...(spec.significantDigits === undefined ? {} : { significantDigits: undefined }), autoMagnitude: undefined, wholeFrom: undefined, decimals: Math.max(floor, maxOf(scaled.map((tick) => neededDecimals(tick, cap, noise, spec.decimals)))) };
   const finite = ticks.filter((tick) => Number.isFinite(tick));
   const distinct = () => new Set(finite.map((tick) => formatWithSpec(tick, tickSpec))).size === new Set(finite).size;
   while (tickSpec.decimals < MAX_FORMAT_DECIMALS && !distinct()) {

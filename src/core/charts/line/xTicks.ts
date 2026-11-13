@@ -6,7 +6,8 @@
  * title closes the row at the right end.
  */
 
-import { seriesRasterFormatter } from '../../formatSpec';
+import { axisExampleSpec, seriesRasterFormatter } from '../../formatSpec';
+import { tickFormatter } from '../../axis';
 import { readDateFormat } from '../../dateFormatRead';
 import { niceStep } from '../../scale';
 import { disclosureNote } from '../../notes';
@@ -118,7 +119,9 @@ export function planXTicks(input: {
   const width = (text: string) => measure(text, font).width;
   const lineH = font.size * (font.lineHeight ?? 1.2);
   const maxTicks = axis.maxTicks ?? DEFAULT_MAX_TICKS;
-  const numberFmt = (values: readonly number[]) => (model.clock ? undefined : seriesRasterFormatter(axis.format, values, model.language).fmt);
+  // A number axis format prints its ticks with at least its decimals, more only where the ticks need them.
+  const axisSpec = model.clock || axis.format === undefined ? undefined : axisExampleSpec(axis.format, model.language);
+  const numberFmt = (values: readonly number[]) => (model.clock ? undefined : axisSpec ? tickFormatter(axisSpec, values) : seriesRasterFormatter(axis.format, values, model.language).fmt);
   const build = (values: number[], step: TimeStep | undefined, authoredLabels?: (string | undefined)[]): Row => {
     const fmt = numberFmt(values);
     return { values, step, labels: values.map((v, i) => authoredLabels?.[i] ?? labelOf(model, v, step, fmt, timeFormat?.pattern)) };

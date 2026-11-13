@@ -10,6 +10,7 @@ import { numericViewportRange } from '../../viewport';
 import { formatAutomaticNumber, numberRange } from '../../format';
 import {
   MAGNITUDE_DIVISOR,
+  axisExampleSpec,
   exampleSpec,
   formatWithSpec,
   formatterFromExample,
@@ -185,8 +186,10 @@ export function resolveScatterEnv(options: ScatterStrategyOptions, warnings: Lin
   // tick through autoDecimals on its own and printed "1.0", "1", "1.1" at
   // 0.95, 1 and 1.05.
   // An authored example prints as the marks print it: the chart locale's separators, the authored word.
-  const axisSpecOf = (format: string | undefined, scaled: NumberFormatSpec | undefined): NumberFormatSpec => (format ? exampleSpec(format, options.locale?.language) : scaled ?? countSpec);
-  const axisSpec = { x: axisSpecOf(axisFormat.x, engine.x?.spec), y: axisSpecOf(axisFormat.y, engine.y?.spec) };
+  // A format written for the axis (axisFormat) prints its ticks with at least its decimals.
+  const axisSpecOf = (format: string | undefined, scaled: NumberFormatSpec | undefined, own: string | undefined): NumberFormatSpec =>
+    (own ? axisExampleSpec(own, options.locale?.language) : undefined) ?? (format ? exampleSpec(format, options.locale?.language) : scaled ?? countSpec);
+  const axisSpec = { x: axisSpecOf(axisFormat.x, engine.x?.spec, options.axisFormat?.x), y: axisSpecOf(axisFormat.y, engine.y?.spec, options.axisFormat?.y) };
   // A cut point on a scaled axis prints at its own scale with every digit it needs ("452.345678M").
   const cutSpec = (raw: number, axis: 'x' | 'y'): NumberFormatSpec => {
     if (!engine[axis]) return axisSpec[axis];
