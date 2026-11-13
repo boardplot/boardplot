@@ -73,6 +73,8 @@ function sourceEnvelope(request: ChartRequest): { type: string; data: unknown; o
 /** Keep the serializable effective options used by this frame, including inherited context. */
 function effectiveRequest(request: ChartRequest, resolved: ResolvedChartRequest): ChartRequest {
   const { measure: _measure, ...options } = resolved.options;
+  // The engine's own markers on the options (which examples the author wrote) are not part of the source.
+  for (const key of Object.getOwnPropertySymbols(options)) delete (options as Record<symbol, unknown>)[key];
   // The source keeps the locale as written: the marks tag is internal (numberMarks.ts).
   const locale = authoredLocale(options.locale);
   if (locale === undefined) delete options.locale;
