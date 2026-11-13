@@ -1,7 +1,7 @@
 import { chartString, localizedRecordReason } from '../strings/a11y-valueText';
 import { changePercentText, currencyWholeNumbers, defaultNumberDecimals, wholeCurrencyValue, formatExactNumber, formatNumber, NOT_AVAILABLE, NOT_MEANINGFUL, isPercentagePointUnit } from '../format';
 import { withUnit } from '../unitJoin';
-import { differenceExample, exampleSpec, formatNonzeroWithSpec, formatWithSpec, parseFormatExample } from '../formatSpec';
+import { differenceExample, engineNumberSpec, exampleSpec, formatNonzeroWithSpec, formatWithSpec, parseFormatExample, specUnitKind, type NumberFormatSpec } from '../formatSpec';
 import { datePatternFromExample, formatDate, parseISODate } from '../dateFormat';
 import { MAX_FORMAT_DECIMALS, nonzeroDecimals } from '../formatPrecision';
 import type { RenderTarget } from '../types/options';
@@ -96,10 +96,12 @@ export function deltaValueText(delta: InteractionValue, decimals: number, locale
   const shown = shownValueText(delta);
   if (shown !== undefined) return shown;
   if (delta.state !== 'value' || typeof delta.raw !== 'number' || !delta.format) return derivedValueText(delta, decimals, true, locale);
+  // A change its label prints in percentage points ("0.0pp") keeps that face in the card.
+  const points = isPercentagePointUnit(delta.unit) || (delta.displayed !== undefined && specUnitKind(parseFormatExample(delta.displayed)) === 'pp');
   // As the marks print it (exampleSpec): the authored word, the chart locale's separators, the unit's scale held.
-  const spec = { ...exampleSpec(isPercentagePointUnit(delta.unit) ? differenceExample(delta.format) : delta.format, locale, delta.unit), signed: true,
+  const spec = { ...exampleSpec(points ? differenceExample(delta.format) : delta.format, locale, delta.unit), signed: true,
     currencyWhole: currencyWholeNumbers(delta.unit, delta.renderTarget) };
-  const text = formatNonzeroWithSpec(delta.raw, spec);
+  const text = offZeroText(delta.raw, spec);
   return spec.prefix || spec.suffix || spec.magnitude !== 'none' ? text : withUnit(text, delta.unit);
 }
 
@@ -231,11 +233,23 @@ export function formattedValueText(value: InteractionValue, locale?: string): st
     // A plain number the drawn label rounded to zero prints its source digits, as a value without a format does: 0.0000000012, not 0.000000001.
     if (styled || spec.currencyWhole || !drawn) {
       // The example's style at the decimals that keep a nonzero value off 0.
-      const text = spec.currencyWhole ? formatWithSpec(value.raw, spec) : formatNonzeroWithSpec(value.raw, spec);
+      const text = spec.currencyWhole ? formatWithSpec(value.raw, spec) : offZeroText(value.raw, spec);
       return styled ? text : withUnit(text, rawUnit(value));
     }
   }
   return withUnit(sourceNumberText(value.raw, locale, value.derived === 'number', value.format ? undefined : value.unit, value.renderTarget), rawUnit(value));
+}
+
+/**
+ * The card's zero rule through a format: the example's text, unless it prints
+ * a value off zero as zero. Then the value prints as before authored formats
+ * printed exactly (engineNumberSpec): in the example's style, at the decimals
+ * or the scale word that keep it off zero ("0.04%" under "0.0%"). The label,
+ * the description and the reading keep the example's zero.
+ */
+function offZeroText(raw: number, spec: NumberFormatSpec): string {
+  const text = formatNonzeroWithSpec(raw, spec);
+  return raw !== 0 && spec.exact === true && printsZero(text) ? formatNonzeroWithSpec(raw, engineNumberSpec(spec)) : text;
 }
 
 /** One interaction value as text (a suppressed value stays withheld). */

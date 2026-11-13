@@ -15,6 +15,7 @@ import { resolveChartRequest as resolvePublicRequest } from '../src/index';
 import { paintColor } from '../src/core/theme';
 import { requireGeometry } from '../src/core/sizing';
 import { renderSvg } from '../src/core/svg/renderSvg';
+import { withChartFormats } from '../src/core/formatSpec';
 import { LineChart } from '../src/react/charts/line';
 import { labelCardContent, sharedLabelCardContent, layoutLabelCardContent } from '../src/react/hover/labelCard';
 import { categorySiblings, hoverModel, hoverTargets, hoverView } from '../src/react/hover/engine';
@@ -425,4 +426,22 @@ it('prints the value, not a bound behind a currency sign, in the card', () => {
   const emea = interactionRecords({ request: variance.request, geometry: variance.geometry, scope: variance.request.scope, claims: [] })
     .find(record => record.target.owner.categoryId === 'emea')!;
   expect(labelCardContent(emea).rows.find(row => row.kind === 'comparison')?.text).toMatch(/^vs PY: \+\$0\.04m \(/);
+});
+
+// A value its label prints as the example's zero (0.04 under '0.0%') printed that zero in its card too, so no surface stated the value.
+it('keeps the digits of a value its label prints as zero in the value, change and cell rows of its card', () => {
+  const rows = (spec: object, raw: number) => {
+    const { request, geometry } = build(spec);
+    const record = interactionRecords({ request, geometry, scope: request.scope, claims: [] }).find(item => item.value.raw === raw)!;
+    // The hover engine formats the card under the chart's formats.
+    return { label: record.value.displayed, card: withChartFormats(request.options, () => labelCardContent(record).rows.map(row => row.value ?? row.text)) };
+  };
+  const column = rows({ type: 'column', options: { format: '0.0%' }, data: { categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }],
+    series: [{ id: 's', label: 'S', values: [0.04, 2] }] } }, 0.04);
+  expect([column.label, column.card[1]]).toEqual(['0.0%', '0.04%']);
+  const kpi = rows({ type: 'kpi', data: { label: 'Rate', value: 0.04, delta: { vs: 0.02, scenario: 'PY', mode: 'both' }, format: '0.0%' } }, 0.04);
+  expect(kpi.card).toEqual(expect.arrayContaining(['0.04%', '+0.02pp (+100%)']));
+  const table = rows({ type: 'table', data: { columns: [{ id: 'label', kind: 'rowLabel', label: 'Item' }, { id: 'a', kind: 'value', label: 'Actual' }],
+    rows: [{ id: 'r1', label: 'Row 1', cells: { a: { v: 4, format: '$1.2M' } } }, { id: 'r2', label: 'Row 2', cells: { a: 12 } }] } }, 4);
+  expect([table.label, table.card[1]]).toEqual(['$0.0M', '$4.0']);
 });

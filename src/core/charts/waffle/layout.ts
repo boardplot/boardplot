@@ -17,7 +17,7 @@ import { chartPalette } from '../chartEnv';
 import { structureCount } from '../../structureCounts';
 import { COMPACT_SOURCE_LINES, authoredNotes, frameTextOptions, legendRequired, normalizeLegendOption, solveFrame, type CompactSourceOptions, type FrameInput, type LegendItemInput } from '../../frame';
 import { formatAutomaticPercent, shareText } from '../../format';
-import { exampleSpec, formatWithSpec, roundedNumber } from '../../formatSpec';
+import { engineNumberSpec, exampleSpec, formatWithSpec, roundedNumber, zeroText } from '../../formatSpec';
 import { authoredDecimals, autoDecimals } from '../../formatPrecision';
 import { round2, type Rect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
@@ -213,12 +213,14 @@ function layoutPass(data: ChartData, options: WaffleOptions, lean = false, oneRo
   // An authored chart format prints every share as it reads (exampleSpec).
   const cellNumbers = series.flatMap((row) => row.cells.map(cellValue));
   // A cell's own format wins, then its series' format, then options.format (the pie rule).
-  const formatFor = (seriesIndex: number, panelIndex: number, exact = true): ((value: number) => string) => {
+  // `offZero`: the hover card's cells row, which prints a share off zero as before authored formats printed exactly.
+  const formatFor = (seriesIndex: number, panelIndex: number, exact = true, offZero = false): ((value: number) => string) => {
     const example = cellMeta(series[seriesIndex]!.cells[panelIndex]!)?.format ?? series[seriesIndex]!.ser.format ?? options.format;
     if (!example) return exact ? defaultFormat : (value) => shareText(value, autoDecimals(value), options.locale?.language);
-    const spec = exampleSpec(example, options.locale?.language, undefined, example === options.format ? cellNumbers : undefined);
+    const authored = exampleSpec(example, options.locale?.language, undefined, example === options.format ? cellNumbers : undefined);
     // An authored example prints a share exactly, its zero included; a unit-only "%" keeps the bound and the decimals of the cells.
-    if (spec.exact) return (value) => formatWithSpec(value, spec);
+    if (authored.exact && !offZero) return (value) => formatWithSpec(value, authored);
+    const spec = engineNumberSpec(authored);
     return (value) => {
       const rounded = roundedNumber(value, spec);
       if ((value > 0 && rounded === 0) || (value < 100 && rounded === 100)) return shareText(value, exact ? 1 : spec.decimals, options.locale?.language);
@@ -271,9 +273,14 @@ function layoutPass(data: ChartData, options: WaffleOptions, lean = false, oneRo
           nearest: `${Math.round(exact[si]! + 1e-9)} of ${cellCount} cells`, printed: `${whole[si]} of ${cellCount} cells`,
         });
       }
+      const shown = formatFor(si, ci)(value);
+      const cellsReading = (text: string) => chartString(options, 'waffleCellsReading', { v1: text, v2: whole[si], v3: cellCount });
+      // The hover card keeps a share off zero that the example prints as zero; the reading keeps the example's zero.
+      const offZero = values[si] !== null && !square && value !== 0 && zeroText(shown);
       return {
         seriesId: s.ser.id, value, exactCells: exact[si]!, cells: whole[si]!,
-        reading: values[si] === null ? chartString(options, 'noValue') : square ? chartString(options, 'waffleWholeReading', { v1: formatFor(si, ci)(value) }) : chartString(options, 'waffleCellsReading', { v1: formatFor(si, ci)(value), v2: whole[si], v3: cellCount }),
+        reading: values[si] === null ? chartString(options, 'noValue') : square ? chartString(options, 'waffleWholeReading', { v1: shown }) : cellsReading(shown),
+        ...(offZero ? { cardReading: cellsReading(formatFor(si, ci, true, true)(value)) } : {}),
       };
     });
     return {

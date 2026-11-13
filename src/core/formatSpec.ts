@@ -1997,7 +1997,8 @@ const cellParts = (entry: unknown): { cell: unknown; format: unknown; number: nu
 const printsZero = ({ value }: InteractionRecord) => value.state === 'value' && typeof value.raw === 'number' && Number.isFinite(value.raw) && value.raw !== 0
   && value.displayed !== undefined && zeroText(value.displayed);
 /** A text whose digits are all zero ("0", "$0.0M", "−0%"). */
-const zeroText = (text: string) => /\d/.test(text) && !/[1-9]/.test(text);
+/** A text whose every digit is 0 ("0.0%", "$0M"). */
+export const zeroText = (text: string) => /\d/.test(text) && !/[1-9]/.test(text);
 
 /**
  * The formats an author set, narrowest first: a series value's or table cell's
