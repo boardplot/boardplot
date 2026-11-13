@@ -360,6 +360,15 @@ export interface SeparationRule {
  */
 export type ShownTexts = Readonly<Record<string, string>>;
 
+/**
+ * A value's would-be texts where it has no node of its own (a line point with
+ * no marker): a chart lists them in `geometry.marks.shown`.
+ */
+export interface ShownMark {
+  owner: OwnerRef;
+  shows: ShownTexts;
+}
+
 export interface SceneDisplay {
   value?: string;
   state?: string;

@@ -3,7 +3,7 @@ import type { ResolvedChartRequest } from '../request';
 import { textRole } from '../textRole';
 import type { AnchorRef, Annotation } from '../types/annotations';
 import { cellMeta, cellValue, isDateCell, isPctCell, type Cell, type OwnerRef } from '../types/cell';
-import type { Geometry, PlacedAnnotation, SceneNode, ShownTexts } from '../types/scene';
+import type { Geometry, PlacedAnnotation, SceneNode, ShownMark, ShownTexts } from '../types/scene';
 import type { InteractionRecord, InteractionScope, InteractionTarget, InteractionValue } from './types';
 import { DERIVED_PERCENT_FORMAT, percentExample } from './valueText';
 import type { NamedColumnState } from '../schema/namedColumns';
@@ -120,8 +120,8 @@ const authoredFormat = (value: InteractionValue): boolean => value.format !== un
 /**
  * Each record value takes the text the layout states for it (ShownTexts): the
  * text a drawn node prints for the value, else, under an authored format, the
- * text its label would print (a label the solver dropped, or the value's own
- * mark where no label is drawn). The layout names the value; nothing here
+ * text its label would print (a label the solver dropped, the value's own mark
+ * where no label is drawn, or `geometry.marks.shown` where the value has no node). The layout names the value; nothing here
  * reads a number out of a text. A value without such a text keeps none.
  */
 export function withShownTexts(records: InteractionRecord[], geometry: Geometry): InteractionRecord[] {
@@ -134,6 +134,7 @@ export function withShownTexts(records: InteractionRecord[], geometry: Geometry)
     index.set(key, into);
   };
   for (const label of geometry.labels) if (label.hidden !== undefined && label.shows) add(undrawn, label.owner, label.shows);
+  for (const mark of (geometry.marks as { shown?: readonly ShownMark[] } | undefined)?.shown ?? []) add(undrawn, mark.owner, mark.shows);
   for (const node of geometry.scene) {
     const shows = node.display?.shows;
     if (!shows) continue;
