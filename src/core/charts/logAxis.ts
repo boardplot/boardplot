@@ -146,9 +146,7 @@ export function logSpecFormat(spec: NumberFormatSpec, domain?: readonly number[]
     };
   }
   const divisor = MAGNITUDE_DIVISOR[spec.magnitude];
-  // An example written for this axis prints at least its own decimals on every tick.
-  const floor = spec.axisExample && spec.significantDigits === undefined ? spec.decimals : 0;
-  return (value) => formatWithSpec(value, { ...spec, wholeFrom: undefined, decimals: Math.max(floor, neededDecimals(value / divisor, 12)) });
+  return (value) => formatWithSpec(value, { ...spec, wholeFrom: undefined, decimals: neededDecimals(value / divisor, 12) });
 }
 
 /**

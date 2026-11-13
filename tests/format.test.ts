@@ -1097,9 +1097,11 @@ describe('an authored format prints as its example reads', () => {
     expect(hides(spec).map((warning) => [warning.fix?.[0]?.path, warning.fix?.[0]?.value])).toEqual([['/data/columns/3/format', '+1.12%']]);
   });
 
-  // An axis format '$0.00' printed its ticks as $0.4, fewer decimals than its example shows.
-  it('prints axis ticks with at least the decimals of the axis format', () => {
-    const spec = { type: 'scatter', data: { points: [{ id: 'p', label: 'P', x: 0.1, y: 1 }, { id: 'q', label: 'Q', x: 0.9, y: 2 }] }, options: { axisFormat: { x: '$0.00' } } };
-    expect(texts(spec, 'axis:x:tick:')).toEqual(['$0.00', '$0.20', '$0.40', '$0.60', '$0.80', '$1.00']);
+  // An axis format '$1.2M' printed the description's x range as $4.0 to $0.1k, scale words the author never wrote, and no warning said the values hide.
+  it('prints the range an axis format states in the description as its example reads and warns', () => {
+    const spec = { type: 'scatter', data: { points: [4, 12, 43, 78].map((x, i) => ({ id: `p${i}`, label: `P${i}`, x, y: i + 1 })) }, options: { axisFormat: { x: '$1.2M' } } };
+    const description = requireGeometry(layoutResolvedRequest(resolveChartRequest(spec as never))).a11y?.desc;
+    expect(description).toContain('X from $0.0M to $0.0M');
+    expect(hides(spec).map((warning) => [warning.fix?.[0]?.path, warning.fix?.[0]?.value])).toEqual([['/options/axisFormat/x', '$1.2']]);
   });
 });

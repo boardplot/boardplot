@@ -886,8 +886,8 @@ fixtures.push(
       title: 'Score vs. cost per task',
       subtitle: '16 models from 4 vendors, synthetic benchmark',
       axisTitles: { x: 'Cost per task, log scale', y: 'Score, %' },
-      // The cost ticks carry their dollar sign (axisFormat); a tick below $1 takes the decimal it needs.
-      axisFormat: { x: '$0' },
+      // The cost ticks carry their dollar sign (axisFormat).
+      axisFormat: { x: '$0.00' },
       valueAxis: { log: 'x' },
       viewDomain: { y: [0, 100] },
       legend: 'top',
@@ -996,7 +996,7 @@ fixtures.push({
     title: 'Score vs. cost per task',
     subtitle: '16 models from 4 vendors, synthetic benchmark',
     axisTitles: { x: 'Cost per task', y: 'Score' },
-    axisFormat: { x: '$0', y: '0%' },
+    axisFormat: { x: '$0.0', y: '0%' },
     viewDomain: { x: [0, 20], y: [0, 100] },
     legend: 'top',
     frontier: { x: 'min', y: 'max', extend: true },
@@ -1039,7 +1039,7 @@ fixtures.push({
   options: {
     title: 'Coverage vs error rate for eight screening rules',
     axisTitles: { x: 'Coverage', y: 'Error rate' },
-    axisFormat: { x: '0%', y: '0%' },
+    axisFormat: { x: '0%', y: '0.0%' },
     frontier: { x: 'max', y: 'min', label: 'Best trade-off' },
     zones: {
       grid: {
