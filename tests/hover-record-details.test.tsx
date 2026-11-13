@@ -367,7 +367,7 @@ it('seats a tall card next to its column', () => {
 });
 
 const revenue = { categories: [['a', 'Alpha'], ['b', 'Beta'], ['c', 'Gamma'], ['d', 'Delta']].map(([id, label]) => ({ id, label })),
-  series: [{ id: 'rev', label: 'Revenue', format: '$1.2M', values: [4, 12, 43, 78] }] };
+  series: [{ id: 'rev', label: 'Revenue', format: '$1.2', values: [4, 12, 43, 78] }] };
 const deltaRecord = (options: object) => {
   const { request, geometry } = build({ type: 'column', data: revenue, options: { size: { width: 480 }, ...options } });
   return interactionRecords({ request, geometry, scope: request.scope, claims: [] }).find(record => record.target.owner.categoryId === 'd')!;
@@ -375,14 +375,14 @@ const deltaRecord = (options: object) => {
 
 // The card formatted a value through its series format without the series' other values, so a stacked part whose label the chart hides (it draws the total 78) read another text than its label.
 it('prints the text a hidden stacked part label carries in its card', () => {
-  expect(labelCardContent(deltaRecord({ variant: 'stacked' })).rows.map(row => row.text)).toContain('$0.0M');
+  expect(labelCardContent(deltaRecord({ variant: 'stacked' })).rows.map(row => row.text)).toContain('$78.0');
 });
 
 // With labels off a value had no shown text, so its card formatted it again and printed another number than its label would.
 it('gives a value with labels off the text its label would print', () => {
   const record = deltaRecord({ labels: false });
-  expect(record.value.displayed).toBe('$0.0M');
-  expect(labelCardContent(record).rows.map(row => row.text)).toContain('$0.0M');
+  expect(record.value.displayed).toBe('$78.0');
+  expect(labelCardContent(record).rows.map(row => row.text)).toContain('$78.0');
 });
 
 // The card formatted a drawn change again, so a change labelled −4% read −4.0%.
