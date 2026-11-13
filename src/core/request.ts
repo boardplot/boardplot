@@ -195,6 +195,10 @@ export function resolveChartRequest<D, O extends object>(
 ): ResolvedChartRequest<D, O & RequestOptions> {
   const def = getChart(input.type);
   if (!def) throw new NormalizeError('unknown-type', 'type', `unknown chart type '${input.type}'`);
+  // Options that another chart resolved or compiled (a dimension switch's table, a grid panel) carry that chart's
+  // answer of which formats its author wrote; the entries below drop symbols, so it is read here.
+  const source = input.options as { [UNIT_STAND_INS]?: ReadonlySet<string>; [AUTHORED_EXAMPLES]?: ReadonlySet<string> } | undefined;
+  const sourceStandIns = source?.[UNIT_STAND_INS], sourceAuthored = source?.[AUTHORED_EXAMPLES];
   // A caller that skipped validation (a per-type React entry) still draws a retired setting as validation does.
   const shaped = normalizeOptionShapes(def.type, input, name => getChart(name)?.type);
   input = shaped.chart;
@@ -216,9 +220,11 @@ export function resolveChartRequest<D, O extends object>(
   const read = readFormatExamples(input.data, authoredOptions);
   const options = read.options;
   // The layout, the records and the hover cards print a unit-only format's stand-in as a unit (isExactExample).
-  if (read.standIns.size) (options as Record<symbol, unknown>)[UNIT_STAND_INS] = read.standIns;
+  const standIns = sourceStandIns?.size ? new Set([...sourceStandIns, ...read.standIns]) : read.standIns;
+  if (standIns.size) (options as Record<symbol, unknown>)[UNIT_STAND_INS] = standIns;
   // Only the examples the author wrote print exactly; one the engine writes later keeps its own precision.
-  (options as Record<symbol, unknown>)[AUTHORED_EXAMPLES] = read.authored;
+  // A format that a source chart's engine wrote stays the engine's, whoever resolves it again.
+  (options as Record<symbol, unknown>)[AUTHORED_EXAMPLES] = sourceAuthored ?? read.authored;
   // The root list replaces options.annotations. A list from the type's defaults is not authored and has no origin.
   const annotationList = input.annotations !== undefined ? ['annotations'] as const : input.options?.annotations !== undefined ? ['options', 'annotations'] as const : undefined;
   if (annotationList && Array.isArray(options.annotations)) options.annotations = withAnnotationOrigins<Annotation>(options.annotations, annotationList);

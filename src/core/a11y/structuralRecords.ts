@@ -5,6 +5,7 @@ import type { GridDerived } from '../charts/grid/layout';
 import type { MetricStackData } from '../charts/grid/metricStack';
 import { wholeCurrencyValue } from '../format';
 import { LABEL_ONLY_ROW, type LabelOnlyRowSource } from '../formatSpec';
+import { AUTHORED_EXAMPLES, UNIT_STAND_INS } from '../formatPrecision';
 import { calcPreservesScale, columnOwnsFormat } from '../tableCalc';
 import type { BarTableData, BarTableDerived, BarTableMarks, BarTableOptions } from '../charts/bartable/types';
 import type { GanttMarks } from '../charts/gantt/layout';
@@ -336,7 +337,10 @@ function gridRecords(ctx: RecordContext, childRecords?: (ctx: RecordContext) => 
     if (!prepared || !input || !childRecords) return [];
     const prefix = `${panel.id}/`;
     const scope = { chart: ctx.scope.chart, panel: ctx.scope.panel ? `${ctx.scope.panel}/${panel.id}` : panel.id };
-    const records = childRecords({ request: resolveChartRequest({ type: panel.type, data: input.data, options: prepared.options as RequestOptions, fontMetrics: ctx.request.fontMetrics }), geometry: prepared.geometry, scope, claims: [] });
+    // The panel reads its formats as the grid's layout did: under the grid's answer of which formats the author wrote.
+    const formats = ctx.request.options as { [UNIT_STAND_INS]?: ReadonlySet<string>; [AUTHORED_EXAMPLES]?: ReadonlySet<string> };
+    const options = { ...prepared.options as RequestOptions, [UNIT_STAND_INS]: formats[UNIT_STAND_INS], [AUTHORED_EXAMPLES]: formats[AUTHORED_EXAMPLES] };
+    const records = childRecords({ request: resolveChartRequest({ type: panel.type, data: input.data, options, fontMetrics: ctx.request.fontMetrics }), geometry: prepared.geometry, scope, claims: [] });
     return records.map(record => {
       const nodeIds = record.nodeIds.map(id => prefix + id);
       return { ...record, nodeIds,
