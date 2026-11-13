@@ -677,12 +677,9 @@ function integratedVarianceValues(
     // the printed growth disagree with what the reader gets by dividing the
     // two printed totals, the disagreement is DISCLOSED below rather than
     // manufactured away — the same trade the tornado ordering makes.
-    // The suppression guard stays on the DISPLAYED reference on purpose: that
-    // is not an arithmetic decision but a fail-closed display one —
-    // a denominator that prints as 0 or negative is one the reader cannot use,
-    // whatever the raw number behind it was.
-    const growthPct =
-      displayedReference > 0 && reference > 0 ? (current / reference - 1) * 100 : null;
+    // Whether a growth figure exists is cut on the raw reference too: one
+    // above zero has a growth, also where it prints as 0.
+    const growthPct = reference > 0 ? (current / reference - 1) * 100 : null;
     const displayedGrowthPct =
       growthPct === null ? null : roundedNumber(growthPct, growthSpec);
     const tone: 'good' | 'bad' | 'neutral' =
@@ -708,7 +705,7 @@ function integratedVarianceValues(
       tone,
       text,
     });
-    if (displayedReference <= 0) {
+    if (growthPct === null) {
       warnings.push({
         code: 'ref-nonpositive',
         severity: 'warn',

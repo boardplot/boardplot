@@ -429,3 +429,20 @@ it('a sum of cancelling amounts is exactly 0 on a table, a bridge, a stack and a
   const topN = { categories: ['A', 'B', 'C', 'D', 'E'].map((id) => ({ id, label: id })), series: [{ id: 's', label: 'S', values: [50, 40, 0.1, 0.2, -0.3] }] };
   for (const type of ['bar', 'column']) expect(texts(type, topN, { unit: 'EUR m', topN: { n: 2, rest: true } }).filter((text) => noise.test(text))).toEqual([]);
 });
+
+// A column's growth against PY was n.m. where the PY reference prints as 0 (0.4 under '1'), though the reference is above zero.
+it('gives an integrated column growth figure wherever the received reference is above zero', () => {
+  const growth = (py: number) => {
+    const geometry = getChart('column')!.layout({
+      categories: [{ id: 'q1', label: 'Q1' }, { id: 'q2', label: 'Q2' }],
+      series: [{ id: 'online', label: 'Online', values: [0.3, 2.4] }, { id: 'retail', label: 'Retail', values: [0.2, 1.6] },
+        { id: 'py', label: 'PY', scenario: 'PY', role: 'reference', values: [py, 3.5] }],
+    }, { variant: 'stacked', format: '1', title: 'T', size: { width: 480 } } as never) as any;
+    return [geometry.labels.find((label: any) => label.id === 'annotation:integratedVariance:py:q1')?.text,
+      geometry.warnings.some((warning: any) => warning.code === 'ref-nonpositive')];
+  };
+  expect(growth(0.4)).toEqual(['+25.0%', false]);
+  // A reference of zero or below has no growth figure.
+  expect(growth(0)).toEqual(['n.m.', true]);
+  expect(growth(-0.4)).toEqual(['n.m.', true]);
+});

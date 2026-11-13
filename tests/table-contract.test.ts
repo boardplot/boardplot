@@ -110,7 +110,7 @@ describe('calc states (zero-baseline must scream, not vanish)', () => {
     rows: [
       { id: 'restructuring', cells: { actual: 650_000, plan: 0 } },
       { id: 'dormant', cells: { actual: 0, plan: 0 } },
-      // In millions: 110 vs 100 prints €0.0m vs €0.0m, a base that prints as 0 and so n.m..
+      // In millions: 110 vs 100 prints €0.0m vs €0.0m; the base is above zero, so the change is +10%.
       { id: 'normal', cells: { actual: 1_100_000, plan: 1_000_000 } },
       { id: 'tiny', cells: { actual: 110, plan: 100 } },
     ],
@@ -130,13 +130,13 @@ describe('calc states (zero-baseline must scream, not vanish)', () => {
     expect(cell('normal', 'd').raw).toBeCloseTo(10);
     expect(cell('normal', 'd').displayed).toBe('+10.0%');
   });
-  it("renders 'n.m.' with the near-zero note where the base prints as 0 ", () => {
-    expect([cell('tiny', 'plan').displayed, cell('tiny', 'd').displayed]).toEqual(['0.0', 'n.m.']);
+  it('prints the change off a base above zero that prints as 0, and n.m. with the near-zero note off a zero base', () => {
+    expect([cell('tiny', 'plan').displayed, cell('tiny', 'd').displayed]).toEqual(['0.0', '+10.0%']);
     expect(r.table.footnotes).toContain('n.m.: not meaningful, the base is near zero.');
   });
 });
 
-it('a calc that reads a change turned n.m. by its rounded-zero base is n.m. too', () => {
+it('a calc that reads a change off a base that prints as 0 takes the change on the received base', () => {
   const r = resolveTable({
     columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'm', kind: 'value', format: '1.0' }],
     rows: [
@@ -147,8 +147,8 @@ it('a calc that reads a change turned n.m. by its rounded-zero base is n.m. too'
     ],
   } as TableData);
   const shown = (id: string) => r.table.rows.find((x) => x.id === id)!.cells.m!.displayed;
-  expect([shown('chg'), shown('dbl')]).toEqual(['n.m.', 'n.m.']);
-  expect(r.computedCells.find((c) => c.rowId === 'dbl')!.state).toBe('nm');
+  expect([shown('chg'), shown('dbl')]).toEqual(['100.0%', '+200.0%']);
+  expect(r.computedCells.find((c) => c.rowId === 'dbl')!.state).toBe('value');
 });
 
 it('an authored row format keeps its digits on a count row', () => {

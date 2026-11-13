@@ -287,13 +287,12 @@ describe('number census', () => {
     expect(census('mekko', spec, 320, retext('label:segment:tiny:b', '1%')).map((f) => f.class)).toContain('wrong-scale');
   });
 
-  // A percent change off a base the table prints as 0 is n.m. (near-zero base); the census recomputed it.
-  it('accepts n.m. off a base printed as zero and still flags n.m. off a printed base', () => {
+  // A percent change off a base the table prints as 0 is the change on the received base; the census must accept it.
+  it('accepts a change off a base printed as zero', () => {
     const spec = fixtureOf('table', 'department-steering-mini');
     spec.data = scaled(spec.data, 1e-3);
-    expect(of(census('table', spec, 400), 'derived')).toEqual([]);
-    expect(of(census('table', spec, 400, retext('cell:operations:py', '<0.1')), 'derived')).toEqual([]);
-    expect(of(census('table', spec, 400, retext('cell:operations:py', '440')), 'derived', 'operations:yoy')).not.toEqual([]);
+    expect(of(census('table', spec, 420), 'derived')).toEqual([]);
+    expect(of(census('table', spec, 420, retext('cell:operations:py', '<0.1')), 'derived')).toEqual([]);
   });
 
   // A hidden base column is read from its record: an n.m. was accepted for any hidden base, also a nonzero one.
