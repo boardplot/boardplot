@@ -49,6 +49,14 @@ export const MAGNITUDE_GROUP = Symbol('magnitude-group');
 /** Figures of a group that print nowhere, by column: they still set the group's magnitude and precision. */
 export const MAGNITUDE_FIGURES = Symbol('magnitude-figures');
 export type MagnitudeGroupSource = { [MAGNITUDE_GROUP]?: string; [MAGNITUDE_FIGURES]?: readonly (readonly [string, number])[] };
+/**
+ * The scale and decimals an authored example gave the chart's values before
+ * it printed exactly: one scale shared by the values (shareAuthoredScale), a
+ * roll at 1000 and down where a value would print as 0. A number the engine
+ * works out on its own (a statistic, a tick) keeps them (engineNumberSpec).
+ */
+export const ENGINE_SCALE = Symbol('engine-scale');
+type EngineScale = Pick<NumberFormatSpec, 'magnitude' | 'decimals' | 'rollMagnitude'> & { from: Pick<NumberFormatSpec, 'magnitude' | 'decimals'> };
 /** A composing chart's row that prints a label and no value by design: its blank cells are no gap in the data, so it has no record. */
 export const LABEL_ONLY_ROW = Symbol('label-only-row');
 export type LabelOnlyRowSource = { [LABEL_ONLY_ROW]?: true };
@@ -128,6 +136,8 @@ export interface NumberFormatSpec {
    * zero prints the example's zero, and format-hides-values says so.
    */
   exact?: true;
+  /** On an exact spec: the scale its example gave before (ENGINE_SCALE). */
+  [ENGINE_SCALE]?: EngineScale;
 }
 
 /**
@@ -1237,7 +1247,20 @@ function boundSpecTexts(): void {
   }
 }
 
+let engineNumbers = false;
+/**
+ * Print every exact spec inside `print` as engineNumberSpec reads it: for a
+ * text of numbers the engine works out on its own (a legend tick, a row
+ * mean) that reaches the shared value printers.
+ */
+export function asEngineNumbers<T>(print: () => T): T {
+  const outer = engineNumbers;
+  engineNumbers = true;
+  try { return print(); } finally { engineNumbers = outer; }
+}
+
 export function formatWithSpec(value: number, spec: NumberFormatSpec): string {
+  if (engineNumbers && spec.exact) spec = engineNumberSpec(spec);
   if (value == null || !Number.isFinite(value) || Object.is(value, -0)) return formatWithSpecUncached(value, spec);
   boundSpecTexts();
   return formatPlannedNumber(value, spec, textPlan(spec).texts);
@@ -1421,8 +1444,13 @@ export function exampleSpec(example: string, locale?: string, unit?: string, val
 /** exampleSpec of an example that prints exactly (`exact`: one the author wrote) or keeps the data-led precision of a unit. */
 function specOfExample(example: string, exact: boolean, locale?: string, unit?: string, values?: Iterable<number | null | undefined>): NumberFormatSpec {
   const spec = localized(parseFormatExample(example, true), locale);
-  if (exact) exactly(spec);
-  else {
+  if (exact) {
+    const before = { ...spec };
+    if (before.magnitude !== 'none' && unitMagnitude(unit) === before.magnitude) before.rollMagnitude = false;
+    if (values) shareAuthoredScale(before, [...values]);
+    exactly(spec);
+    spec[ENGINE_SCALE] = { magnitude: before.magnitude, decimals: before.decimals, rollMagnitude: before.rollMagnitude, from: { magnitude: spec.magnitude, decimals: spec.decimals } };
+  } else {
     spec.nonzero = true;
     if (spec.magnitude !== 'none' && unitMagnitude(unit) === spec.magnitude) spec.rollMagnitude = false;
     if (values) shareAuthoredScale(spec, [...values]);
@@ -1475,12 +1503,35 @@ export function formatterFromExample(example: string, locale: string | undefined
 }
 
 /**
+ * The spec a number the engine works out on its own prints with (a mean, a
+ * median, a band bound, a tick of a per-value axis): an authored example as
+ * it printed before it became exact, with the chart's shared scale, the roll
+ * at 1000 and the roll down from 0 (ENGINE_SCALE). Other specs pass through.
+ */
+export function engineNumberSpec(spec: NumberFormatSpec): NumberFormatSpec {
+  if (!spec.exact) return spec;
+  const before = spec[ENGINE_SCALE];
+  const own: NumberFormatSpec = { ...spec, exact: undefined, nonzero: true, rollMagnitude: before?.rollMagnitude };
+  // A caller that set its own scale or decimals on the spec keeps them.
+  if (before && spec.magnitude === before.from.magnitude) own.magnitude = before.magnitude;
+  if (before && spec.decimals === before.from.decimals) own.decimals = before.decimals;
+  return own;
+}
+
+/** formatterFromExample for numbers the engine works out on its own: the example as engineNumberSpec reads it. */
+export function engineFormatterFromExample(example: string, locale: string | undefined, unit?: string, values?: Iterable<number | null | undefined>): (value: number) => string {
+  const spec = engineNumberSpec(exampleSpec(example, locale, unit, values));
+  return (value: number) => formatWithSpec(value, spec);
+}
+
+/**
  * An automatic format keeps its normal rounding and lifts only a zeroed value.
  */
 export function formatNonzeroWithSpec(value: number, spec: NumberFormatSpec): string {
   // A scaled chart value spec already keeps a nonzero value off 0 by its scale ("$1.0 billion", not "$0.001 trillion").
   // An unscaled one ("$1.0") has no scale to roll down to and lifts here ("$0.004", not "$0.0").
-  // An authored example prints exactly.
+  // An authored example prints exactly, except a number the engine works out (asEngineNumbers).
+  if (engineNumbers && spec.exact) spec = engineNumberSpec(spec);
   if (spec.automatic || spec.exact || (spec.nonzero && spec.magnitude !== 'none')) return formatWithSpec(value, spec);
   // Preserve existing callers that explicitly request this authored-format lift.
   const scaled = value / MAGNITUDE_DIVISOR[spec.autoMagnitude ? effectiveScale(value, spec).magnitude : spec.magnitude];
@@ -1642,12 +1693,12 @@ export function rasterDecimals(
 export function formatStatWithSpec(value: number, spec: NumberFormatSpec): string {
   if (spec.exponent) return formatWithSpec(value, spec);
   // A statistic is the engine's number, not the author's: an authored example keeps the statistic's rule here, its scale and one more decimal.
-  const base = spec.exact ? { ...spec, exact: undefined, rollMagnitude: undefined, nonzero: true as const } : spec;
+  const base = engineNumberSpec(spec);
   // The unit rule is for plotted values; a mean of 100.5 stays 100.5.
   const own = { ...base, wholeFrom: undefined };
   // Decimals count at the scale the label prints in: 1.25M under "1M" needs one, not the none of 1,250,000.
   const scaled = value / MAGNITUDE_DIVISOR[effectiveScale(value, own).magnitude];
-  return formatWithSpec(value, { ...own, decimals: Math.max(spec.decimals, neededDecimals(scaled, spec.decimals + 1)) });
+  return formatWithSpec(value, { ...own, decimals: Math.max(own.decimals, neededDecimals(scaled, own.decimals + 1)) });
 }
 
 /** Trend rates choose their own magnitude and precision; they never use the small-value bound policy. */

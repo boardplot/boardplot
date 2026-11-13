@@ -40,7 +40,7 @@ import type { AnchorResolution } from '../../annotate';
 import { percentLevels, runAnnotatePass } from '../../annotatePass';
 import { hiddenValueLineReserve, VALUE_LINE_RESERVE } from '../../annotateParts';
 import { defaultNumberDecimals, formatAutomaticNumber, formatAutomaticPercent, PERCENTAGE_POINTS, seriesValueFormatter } from '../../format';
-import { defaultFormatSpec, exampleSpec, formatterFromExample, formatWithSpec, parseFormatExample, roundedNumber, signedFormatterFromExample, specUnitKind } from '../../formatSpec';
+import { defaultFormatSpec, engineFormatterFromExample, engineNumberSpec, exampleSpec, formatterFromExample, formatWithSpec, parseFormatExample, roundedNumber, signedFormatterFromExample, specUnitKind } from '../../formatSpec';
 import { boxGap, cleanDiff, cleanFloat, cleanSum, type Rect } from '../../geometry';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { DEFAULT_TARGET, resolveTargetSize, TARGET_SIZE, type TargetSizeOptions } from '../../target';
@@ -722,10 +722,12 @@ export function layoutVariance(
   const stepped = applyTickStep([dLo, dHi], shownTickStep(va.tickStep, va.show === true, warnings), warnings);
   [dLo, dHi] = stepped.domain;
 
+  // A tick is the engine's number: an authored format keeps its earlier rule on it (engineNumberSpec).
+  const tickFmt = options.format ? engineFormatterFromExample(options.format, options.locale?.language, undefined, printed) : fmt;
   const axisFmt = mode === 'relative' ? (v: number) => formatAutomaticPercent(v, 0, false, options.locale?.language)
     : percentDifferences || integratedPercent ? (v: number) => options.format
-      ? formatWithSpec(v, { ...exampleSpec(options.format, options.locale?.language), prefix: '', suffix: percentDifferences ? PERCENTAGE_POINTS : '%' })
-      : formatAutomaticNumber(v, { locale: options.locale?.language, decimals: autoDecimals(v), suffix: percentDifferences ? PERCENTAGE_POINTS : '%' }) : fmt;
+      ? formatWithSpec(v, { ...engineNumberSpec(exampleSpec(options.format, options.locale?.language)), prefix: '', suffix: percentDifferences ? PERCENTAGE_POINTS : '%' })
+      : formatAutomaticNumber(v, { locale: options.locale?.language, decimals: autoDecimals(v), suffix: percentDifferences ? PERCENTAGE_POINTS : '%' }) : tickFmt;
   const stepSpec = stepped.ticks ? {
     ...(options.format ? exampleSpec(options.format, options.locale?.language) : defaultFormatSpec(options.locale?.language)),
     ...(mode === 'relative' || percentDifferences || integratedPercent

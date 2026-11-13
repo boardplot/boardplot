@@ -201,7 +201,7 @@ export function mekkoPlotArea(env: MekkoEnv, domain: MekkoDomain, frame: FrameRe
   const stepSpec = mode === 'percent' ? { ...defaultFormatSpec(options.locale?.language), suffix: '%' }
     : axisSpec ?? (options.format ? exampleSpec(options.format, options.locale?.language) : defaultFormatSpec(options.locale?.language));
   const axisFmt = domain.stepTicks ? tickFormatter(stepSpec, domain.stepTicks)
-    : mode === 'percent' ? (v: number) => formatAutomaticPercent(v, 0, false, options.locale?.language) : percentCells ? env.cellPctFmt : env.fmt;
+    : mode === 'percent' ? (v: number) => formatAutomaticPercent(v, 0, false, options.locale?.language) : percentCells ? env.cellPctFmt : env.tickFmt;
   // A percent or unit mekko on a small canvas prints every value on its
   // segment (and a unit stack its total above it), so the value axis repeats
   // them and costs the plot its left gutter. A percent chart keeps the axis

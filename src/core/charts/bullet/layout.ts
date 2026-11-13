@@ -29,7 +29,7 @@ import { categoryTargetFields, spliceAnnotationNodes } from '../../annotateField
 import { applyValueAxisTitleInk, layoutValueAxis, planValueAxisTitle, valueAxisTitleRequest } from '../../axis';
 import { contrastRatio } from '../../color';
 import { formatAutomaticNumber } from '../../format';
-import { defaultFormatSpec, exampleSpec, formatWithSpec, parseFormatExample, roundedNumber } from '../../formatSpec';
+import { defaultFormatSpec, engineNumberSpec, exampleSpec, formatWithSpec, parseFormatExample, roundedNumber } from '../../formatSpec';
 import { cleanDiff, rectContains, rectsOverlap, rowLabelX, type Rect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex } from '../../label/occupied';
@@ -1145,7 +1145,8 @@ export function layoutBullet(
         plot,
         orient: 'x',
         gridlines: options.valueAxis.gridlines ?? false,
-        format: (v) => chartSpec ? formatWithSpec(v, chartSpec)
+        // A tick is the engine's number: it keeps the example's earlier rule.
+        format: (v) => chartSpec ? formatWithSpec(v, engineNumberSpec(chartSpec))
           : formatAutomaticNumber(v, { locale: options.locale?.language, decimals: autoDecimals(v) }),
         theme,
         measure,

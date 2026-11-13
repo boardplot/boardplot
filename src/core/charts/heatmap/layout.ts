@@ -18,7 +18,7 @@ import type { AnchorResolution } from '../../annotate';
 import { runAnnotatePass } from '../../annotatePass';
 import { marginBracketLayout } from '../../annotateLinks';
 import { defaultNumberDecimals, formatAutomaticNumber, lowBaseKeyLabel, NOT_AVAILABLE, numberRange } from '../../format';
-import { AUTOMATIC_FORMAT, type AutomaticFormatSource, defaultFormatSpec, exampleSpec, formatNonzeroWithSpec, formatterFromExample, rasterDecimals, seriesRasterFormatter, parseFormatExample, specUnitKind } from '../../formatSpec';
+import { AUTOMATIC_FORMAT, asEngineNumbers, type AutomaticFormatSource, defaultFormatSpec, exampleSpec, formatNonzeroWithSpec, formatterFromExample, rasterDecimals, seriesRasterFormatter, parseFormatExample, specUnitKind } from '../../formatSpec';
 import { cleanFloat, round2, type Margin, type Rect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex } from '../../label/occupied';
@@ -519,11 +519,12 @@ export function layoutHeatmap(
   const keySeries = rows[0]?.format && rows.every(row => row.format === rows[0]!.format) ? rows[0] : undefined;
   const keyLow = cap === undefined ? vMin : Math.max(valence ? -cap : 0, Math.min(cap, vMin));
   const keyHigh = cap === undefined ? vMax : Math.max(valence ? -cap : 0, Math.min(cap, vMax));
-  const keyText = (v: number) => {
+  // A key tick is the engine's number: an authored format keeps its earlier rule on it (asEngineNumbers).
+  const keyText = (v: number) => asEngineNumbers(() => {
     const saturated = cap !== undefined && ((v === keyHigh && vMax > cap) || (v === keyLow && vMin < -cap));
     const value = saturated && Number.isInteger(v) && !pctMatrix && !options.format && !keySeries?.format ? formatAutomaticNumber(v, { locale: options.locale?.language, decimals: 0 }) : shownFor(v, pctMatrix, null, keySeries);
     return `${cap !== undefined && v === keyHigh && vMax > cap ? '>=' : cap !== undefined && v === keyLow && vMin < -cap ? '<=' : ''}${value}`;
-  };
+  });
 
   // ---- annotations (resolved to cell centers; placed by the shared pass) ----
   const annotations: Annotation[] = (options.annotations ?? []).map((a, n) => ({
@@ -1668,7 +1669,7 @@ export function layoutHeatmap(
     (invertedRows.length > 0
       ? chartString(options, 'invertedRowsDesc', { v1: invertedRows.map((r) => r.label).join(', ') })
       : '') +
-    chartString(options, 'rowMeansSentence', { v1: dataRows.map((r) => { const mean = rowMeans[r.id]; return `${r.label} ${mean === null || mean === undefined ? NOT_AVAILABLE : readingText(mean, r)}`; }).join(', ') })
+    chartString(options, 'rowMeansSentence', { v1: dataRows.map((r) => { const mean = rowMeans[r.id]; return `${r.label} ${mean === null || mean === undefined ? NOT_AVAILABLE : asEngineNumbers(() => readingText(mean, r))}`; }).join(', ') })
     // The reading lists every value the cells could not print.
     + (hiddenCells.length > 0 && options.heatKey === undefined
       ? ` ${(options as { strings?: { hiddenLabels?: string } }).strings?.hiddenLabels ?? HIDDEN_LABEL_LEAD}: ${hiddenCells.map(hiddenItem).join(', ')}.` : '');
