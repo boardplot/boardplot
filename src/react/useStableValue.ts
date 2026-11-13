@@ -1,5 +1,6 @@
 import { useRef } from 'react';
 import { ANNOTATION_ORIGIN } from '../core/annotationOrigin';
+import { AUTHORED_EXAMPLES, UNIT_STAND_INS } from '../core/formatPrecision';
 
 const immutable = new WeakSet<object>();
 
@@ -20,6 +21,14 @@ function isPlain(value: object): boolean {
  * Plain objects and arrays compare by content; functions (a custom `measure`),
  * class instances and every other value by identity.
  */
+/** Two records of a chart's format examples (formatPrecision.ts) that hold the same texts. */
+function sameExamples(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  if (!(left instanceof Set) || !(right instanceof Set) || left.size !== right.size) return false;
+  for (const example of left) if (!right.has(example)) return false;
+  return true;
+}
+
 function sameContent(left: unknown, right: unknown): boolean {
   if (Object.is(left, right)) return true;
   if (typeof left !== 'object' || typeof right !== 'object' || left === null || right === null) return false;
@@ -30,6 +39,9 @@ function sameContent(left: unknown, right: unknown): boolean {
   const keys = Object.keys(left);
   // An annotation's origin decides its refusal pointer: the same entry moved to the other list is a new value.
   if (!sameContent((left as Record<symbol, unknown>)[ANNOTATION_ORIGIN], (right as Record<symbol, unknown>)[ANNOTATION_ORIGIN])) return false;
+  // Which formats the author wrote decides how a format prints: the same options under another record are a new value.
+  if (!sameExamples((left as Record<symbol, unknown>)[AUTHORED_EXAMPLES], (right as Record<symbol, unknown>)[AUTHORED_EXAMPLES])
+    || !sameExamples((left as Record<symbol, unknown>)[UNIT_STAND_INS], (right as Record<symbol, unknown>)[UNIT_STAND_INS])) return false;
   return keys.length === Object.keys(right).length && keys.every((key) =>
     Object.hasOwn(right, key) && sameContent((left as Record<string, unknown>)[key], (right as Record<string, unknown>)[key]));
 }
