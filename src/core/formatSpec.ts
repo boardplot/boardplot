@@ -36,8 +36,12 @@ import {
   withoutLeadingZero,
   zeroLifts,
   withSmallValues,
+  withUnitStandIns,
+  isUnitStandIn,
+  isAuthoredExample,
   type SmallValues,
 } from './formatPrecision';
+export { AUTHORED_EXAMPLES, UNIT_STAND_INS, formatScopeKey, withUnitStandIns } from './formatPrecision';
 import { maxOf, minOf } from './arrays';
 import { withUnit } from './unitJoin';
 
@@ -467,31 +471,6 @@ function unitOnlyExample(text: string): string | undefined {
   return symbol ? `${symbol}1.2${unit.slice(symbol.length)}` : /\p{Sc}$/u.test(unit) ? `1.2${unit}` : `1.2 ${unit}`;
 }
 
-/** The stand-ins that readFormatExamples wrote for a chart's unit-only formats, on its resolved options. */
-export const UNIT_STAND_INS = Symbol('unit-stand-ins');
-/** The examples the author wrote for a chart, and their differences (readFormatExamples), on its resolved options. */
-export const AUTHORED_EXAMPLES = Symbol('authored-examples');
-let unitStandIns: ReadonlySet<string> | undefined;
-let authoredExamples: ReadonlySet<string> | undefined;
-
-/**
- * Run one chart's layout or text under its unit-only stand-ins and the
- * examples its author wrote; a chart without stand-ins keeps the enclosing
- * ones, and one without its own examples the enclosing examples, so a grid
- * panel follows its grid. Limit: module state for synchronous work, as
- * withSmallValues.
- */
-export function withUnitStandIns<T>(options: object | undefined, run: () => T): T {
-  const own = options as { [UNIT_STAND_INS]?: ReadonlySet<string>; [AUTHORED_EXAMPLES]?: ReadonlySet<string> } | undefined;
-  const standIns = own?.[UNIT_STAND_INS]?.size ? own[UNIT_STAND_INS] : unitStandIns;
-  const authored = own?.[AUTHORED_EXAMPLES] ?? authoredExamples;
-  if (standIns === unitStandIns && authored === authoredExamples) return run();
-  const before = { standIns: unitStandIns, authored: authoredExamples };
-  unitStandIns = standIns;
-  authoredExamples = authored;
-  try { return run(); } finally { unitStandIns = before.standIns; authoredExamples = before.authored; }
-}
-
 /** Run one chart's layout or text under its smallValues mode, its unit-only stand-ins and its authored examples. */
 export function withChartFormats<T>(options: { smallValues?: SmallValues } | undefined, run: () => T): T {
   return withSmallValues(options?.smallValues, () => withUnitStandIns(options, run));
@@ -503,9 +482,13 @@ export function withChartFormats<T>(options: { smallValues?: SmallValues } | und
  * precision of a unit. Inside a chart, an example the engine wrote (a
  * table's default column example, a composing chart's generated format)
  * keeps its own precision too: only the chart's authored examples are exact.
+ * The sets hold texts, not owners, so two cases stay as they are: an engine
+ * example with the same text as an authored one in the same chart prints
+ * exactly too, and an authored example equal to a stand-in keeps the data-led
+ * precision, because the stand-in rule wins.
  */
 export function isExactExample(example: string): boolean {
-  return unitOnlyExample(String(example)) === undefined && !unitStandIns?.has(example) && (authoredExamples === undefined || authoredExamples.has(example));
+  return unitOnlyExample(String(example)) === undefined && !isUnitStandIn(example) && isAuthoredExample(example);
 }
 
 /** The ordinary example every reader uses, including callers before request resolution. */
@@ -2092,7 +2075,7 @@ function numbersOf(node: unknown, depth = 0): number[] {
 
 /** The place's example as the chart reads it, where it prints exactly; none for a unit-only format or its stand-in (isExactExample), an ordinal or an exponent. A place holds what the author wrote. */
 function exactPlace(place: FormatPlace): ExactPlace | undefined {
-  if (unitOnlyExample(place.authored) !== undefined || unitStandIns?.has(place.authored)) return undefined;
+  if (unitOnlyExample(place.authored) !== undefined || isUnitStandIn(place.authored)) return undefined;
   try {
     const text = formatExampleText(place.authored);
     const format = exampleReading(text, place.sets.flat()).decimals ?? text;

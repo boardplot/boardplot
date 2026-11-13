@@ -12,7 +12,7 @@ import { bandFor } from '../../bandSelect';
 import { datePatternFromExample, formatDate, parseISODate } from '../../dateFormat';
 import { readDateFormat } from '../../dateFormatRead';
 import { currencyWholeNumbers, MINUS } from '../../format';
-import { MAX_FORMAT_DECIMALS, nonzeroDecimals, typicalDecimals, withSmallValues, currentSmallValues, zeroLifts } from '../../formatPrecision';
+import { MAX_FORMAT_DECIMALS, nonzeroDecimals, typicalDecimals, currentSmallValues, formatScopeKey, zeroLifts } from '../../formatPrecision';
 import { unitPrinted } from '../../frame';
 import {
   AUTOMATIC_FORMAT,
@@ -23,6 +23,7 @@ import {
   type MagnitudeGroupSource,
   compileNumberFormat,
   isExactExample,
+  withChartFormats,
   parseFormatExample as parseExample,
   effectiveScale,
   roundedNumber,
@@ -344,7 +345,8 @@ function modelContentKey(value: unknown): string | undefined {
 
 /** Prepare structure and raw calculations once, independently of expansion and display precision. */
 export function prepareTableData(data: TableData, options: TableOptions = {}, magnitudeSource: TableData = data): PreparedTableData {
-  return withSmallValues(options.smallValues, () => {
+  // The table's own formats, as a table's layout sets them: the same options give the same texts whoever calls.
+  return withChartFormats(options, () => {
     const theme = resolveTheme(options.theme);
     // These are the inputs read by accounting, formatting and row ordering. Geometry and paint do not enter the model.
     const semantic = {
@@ -362,7 +364,7 @@ export function prepareTableData(data: TableData, options: TableOptions = {}, ma
     // These inputs become separate owned snapshots. Keep each graph exact, and read data once per public request.
     const dataContent = memoExactInputKey(data, modelContentKey);
     const magnitudeContent = magnitudeSource === data ? 'same;' : memoExactInputKey(magnitudeSource, modelContentKey);
-    const semanticContent = modelContentKey([semantic, currentSmallValues()]);
+    const semanticContent = modelContentKey([semantic, currentSmallValues(), formatScopeKey()]);
     const content = dataContent === undefined || magnitudeContent === undefined || semanticContent === undefined ? undefined
       : dataContent.length + ':' + dataContent + magnitudeContent.length + ':' + magnitudeContent + semanticContent;
     const key = content;
@@ -400,7 +402,7 @@ export function prepareTableData(data: TableData, options: TableOptions = {}, ma
 
 /** Only view state, column visibility and ZERO_LIFT may change after preparation. The returned graph is borrowed. */
 export function resolvePreparedTable(model: PreparedTableData, options: TableOptions = {}): ResolveResult {
-  return withSmallValues(options.smallValues, () => model.resolve(options));
+  return withChartFormats(options, () => model.resolve(options));
 }
 
 export function resolveTable(data: TableData, options: TableOptions = {}, magnitudeSource: TableData = data): ResolveResult {

@@ -1042,6 +1042,14 @@ describe('an authored format prints as its example reads', () => {
     .filter((warning) => warning.code === 'format-hides-values');
   const fourValues = { categories: [{ id: 'y1', label: '2024' }, { id: 'y2', label: '2025' }], series: [{ id: 'a', label: 'A', values: [4, 12] }, { id: 'b', label: 'B', values: [43, 78] }] };
 
+  // The column chart's formatter cache was keyed by the example text alone, so a chart with '$M' printed in the precision of a chart with the same example drawn before it, and the reverse.
+  it('draws a column chart after another with the text it has alone', () => {
+    const columns = (format: string) => ({ type: 'column', data: { categories: ['Q1', 'Q2', 'Q3', 'Q4'], series: [{ id: 's', label: 'Sales', values: [400_000, 800_000, 600_000, 700_000] }] },
+      options: { title: 'Invented columns', format, averageMarker: true } });
+    const unitOnly = ['$400.00k', '$800.00k', '$600.00k', '$700.00k'], authored = ['$0.40M', '$0.80M', '$0.60M', '$0.70M'];
+    for (const format of ['$M', '$1.55M', '$M', '$1.55M']) expect(texts(columns(format), 'label:point:').sort()).toEqual([...(format === '$M' ? unitOnly : authored)].sort());
+  });
+
   // Slope labels under '$1.2M' printed $4.0 to $78.0, a scale the author never wrote, and the warning's patch kept the values hidden.
   it('prints slope labels in the authored scale word, with a patch that shows every value', () => {
     const spec = { type: 'slope', data: fourValues, options: { format: '$1.2M' } };
