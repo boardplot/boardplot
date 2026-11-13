@@ -717,7 +717,15 @@ function integratedVarianceValues(
     // the two totals the panel PRINTS can land on a different percentage.
     // That gap is a fact about the rounding, not an error — and it is
     // disclosed rather than left for the reader to discover by arithmetic.
-    if (displayedGrowthPct !== null && displayedReference > 0) {
+    // A reference above zero that prints as 0 gives the reader nothing to divide by.
+    if (displayedGrowthPct !== null && displayedReference <= 0) {
+      warnings.push({
+        code: 'integrated-growth-rounding-gap',
+        severity: 'info',
+        message: `category '${category.id}': growth ${growthFormatter(displayedGrowthPct)} is computed from the unrounded totals; the printed ${displayedCurrent} and the printed reference ${displayedReference} give no growth figure`,
+        owner: { categoryId: category.id, seriesId: pyRef.id },
+      });
+    } else if (displayedGrowthPct !== null) {
       const fromPrintedTotals = roundedNumber(
         (displayedCurrent / displayedReference - 1) * 100,
         growthSpec,
