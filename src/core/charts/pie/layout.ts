@@ -77,6 +77,8 @@ import type {
   PaintWarningRule,
   PlacedLabel,
   SceneNode,
+  ShownMark,
+  ShownTexts,
 } from '../../types/scene';
 import { AUTO_LEGEND } from '../../legendPolicy';
 import { CARD_MIN_WIDTH, contentSizing } from '../../sizing';
@@ -97,6 +99,11 @@ export interface PieMarks {
     /** Fraction of the total, 0–1. */
     share: number;
   }[];
+  /**
+   * The texts each slice's label prints for its record (owner `{ categoryId }`; the label's owner
+   * also names the series): drawn where the label is, else the value its label would print.
+   */
+  shown?: ShownMark[];
 }
 
 export interface PieDerived {
@@ -1211,6 +1218,19 @@ function layoutPiePass(
     else delete label.title;
   }
   routeOutsideLeaders(solved.placed, leaderAnchors);
+  // The record of a slice names its category only, so its texts go to marks.shown, by the record's owner.
+  const shownParts = (g: SliceGeom, content: LabelContent | null): ShownTexts => {
+    if (typeof g.labelOverride === 'string') return g.labelOverride.includes('${value}') ? { value: sliceText(g) } : {};
+    if (g.labelOverride === false || !content) return {};
+    return { ...(content.includes('absolute') ? { value: sliceText(g) } : {}), ...(content.includes('percent') ? { 'share.percent': shareText(g) } : {}) };
+  };
+  marks.shown = geoms.flatMap((g): ShownMark[] => {
+    const owner = { categoryId: g.cat.id };
+    const label = solved.placed.find((l) => !l.hidden && (l.kind === 'insidePie' || l.kind === 'outsidePie') && l.owner.categoryId === g.cat.id);
+    // An inside label that landed outside prints its outside form.
+    const drawn = label ? shownParts(g, label.kind === 'insidePie' && !(label.slot === 'outside' && outsideForms.has(label.id)) ? insideContent : outsideContent) : {};
+    return [...(Object.keys(drawn).length > 0 ? [{ owner, shows: drawn, drawn: true as const }] : []), { owner, shows: { value: sliceText(g) } }];
+  });
   // What a hidden slice label would have said, name first, for the note.
   const unlabelled = new Map<Id, string>();
   const noteContent = (outsideContent ?? insideContent ?? []).filter((c) => c !== 'category');

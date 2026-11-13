@@ -17,7 +17,7 @@ import { type FontSpec, type TextMeasurer } from '../../text';
 import type { Id } from '../../types/cell';
 import type { Category } from '../../types/data';
 import type { LabelContent, LabelKind, SeriesLabelMode, ValueLabelMode } from '../../types/options';
-import type { LintWarning, Paint } from '../../types/scene';
+import type { LintWarning, Paint, ShownMark, ShownTexts } from '../../types/scene';
 import type { EndLabel, EndLabelSeed, NormSer } from './context';
 import type { LineMarks } from './layout';
 import { planNearZeroTails, type NearZeroTail } from './nearZero';
@@ -28,7 +28,7 @@ import { noteName } from '../../calendarData';
 import { partialKeyForced, saysToDate, toDateFits, toDateLabel } from '../../partialPeriod';
 import { chartString } from '../../strings';
 import type { Theme } from '../../types/theme';
-import type { LineDomain, LineEnv, LinePaints, LineText } from './model';
+import type { ComposeShows, LineDomain, LineEnv, LinePaints, LineText } from './model';
 import { maxOf, minOf, pushAll } from '../../arrays';
 
 type LineVariant = 'line' | 'area' | 'stacked-area' | 'stacked100-area';
@@ -198,6 +198,8 @@ function buildEndpointSeeds(input: {
   variant: LineVariant;
   absOf: (series: NormSer, categoryIndex: number) => number | null;
   composeText: ComposeText;
+  /** The values composeText prints, by record slot. */
+  composeShows?: ComposeShows;
   printsZero: PrintsZero;
   labelOnly: ReadonlySet<Id> | undefined;
   /** stacked100-area categories whose shares are of the known parts only: not printed. */
@@ -218,6 +220,11 @@ function buildEndpointSeeds(input: {
     const source = rebased ? undefined : series.vals[ci]?.format ? { ...series, format: series.vals[ci]!.format } : series;
     const compose = (content: LabelContent, seriesLabel: string): string =>
       composeText(content, abs, pct, cats[ci]!.label ?? cats[ci]!.id, seriesLabel, endUnitSuffix, series.vals[ci]!.isPct, source, cats[ci]!.id);
+    const override = series.vals[ci]!.labelOverride;
+    // An authored text prints the value where it says `${value}`, as authoredCellText fills it.
+    const valueShows = typeof override === 'string'
+      ? override.includes('${value}') ? input.composeShows?.(variant === 'stacked100-area' ? ['percent'] : ['absolute'], abs, pct, '', '', endUnitSuffix, series.vals[ci]!.isPct, source, cats[ci]!.id) : undefined
+      : override === false ? undefined : input.composeShows?.(valueParts, abs, pct, cats[ci]!.label ?? cats[ci]!.id, '', endUnitSuffix, series.vals[ci]!.isPct, source, cats[ci]!.id);
     seeds.push({
       id: `series:${series.id}`,
       kind: 'series',
@@ -230,6 +237,7 @@ function buildEndpointSeeds(input: {
       valueText: typeof series.vals[ci]!.labelOverride === 'string'
         ? authoredCellText(series.vals[ci]!.labelOverride as string, { composeText, variant, abs, pct, isPct: series.vals[ci]!.isPct, unitSuffix: endUnitSuffix, source, categoryId: cats[ci]!.id })
         : series.vals[ci]!.labelOverride === false ? '' : compose(valueParts, ''),
+      ...(valueShows ? { valueShows } : {}),
       zeroText: composeText(valueParts, 0, 0, '', '', endUnitSuffix, false, source),
       // Every printed part is zero at its precision: the absolute value by
       // its raw number, a share by its printed text.
@@ -243,7 +251,7 @@ function buildEndpointSeeds(input: {
 }
 
 function toEndLabel(seed: EndLabelSeed, text: string, lines: string[], width: number, labelH: number): EndLabel {
-  return { id: seed.id, kind: seed.kind, ...(seed.shared ? { shared: true as const } : {}), s: seed.s, dataIdx: seed.dataIdx, ci: seed.ci, text, w: width, lines, h: Math.max(1, lines.length) * labelH, ...(seed.valueText ? { valueText: seed.valueText } : {}) };
+  return { id: seed.id, kind: seed.kind, ...(seed.shared ? { shared: true as const } : {}), s: seed.s, dataIdx: seed.dataIdx, ci: seed.ci, text, w: width, lines, h: Math.max(1, lines.length) * labelH, ...(seed.valueText ? { valueText: seed.valueText, ...(seed.valueShows ? { valueShows: seed.valueShows } : {}) } : {}) };
 }
 
 function oneLineLabels(seeds: EndLabelSeed[], textOf: (seed: EndLabelSeed) => string, labelFont: FontSpec, labelH: number, measure: TextMeasurer): EndLabel[] {
@@ -284,6 +292,8 @@ export function prepareEndpointLabels(input: {
   rebased: boolean;
   absOf: (series: NormSer, categoryIndex: number) => number | null;
   composeText: ComposeText;
+  /** The values composeText prints, by record slot. */
+  composeShows?: ComposeShows;
   printsZero: PrintsZero;
   heroMode: boolean;
   anyHighlight: boolean;
@@ -765,7 +775,7 @@ export function placeEndpointLabels(input: {
       text: label.text,
       lines: label.lines,
       ...(label.valueText && label.text.endsWith(` ${label.valueText}`)
-        ? { printsFor: [{ seriesId: label.s.id, categoryId: input.cats[label.ci]!.id }] } : {}),
+        ? { printsFor: [{ seriesId: label.s.id, categoryId: input.cats[label.ci]!.id }], ...(label.valueShows ? { shows: label.valueShows } : {}) } : {}),
       ...(label.title !== undefined ? { title: label.title } : {}),
       typeRole: 'label', font: label.font ?? input.labelFont, ...(label.font ? { fontStep: label.font } : {}),
       // A name at an early end shares its point with the last value, and the
@@ -794,6 +804,8 @@ interface PointLabelSeed {
   extreme: boolean;
   /** A highlighted value passes the minimal density gate, as the solver header promises. */
   highlighted: boolean;
+  /** The record values the label prints, with their texts (ShownTexts). */
+  shows?: ShownTexts;
 }
 
 interface PointLabelCandidate extends PointLabelSeed {
@@ -814,6 +826,9 @@ interface PointLabelInput {
   content: LabelContent;
   composeText: ComposeText;
   composeEndText?: ComposeText;
+  /** The values composeText and composeEndText print, by record slot; without them the seeds carry no shown texts. */
+  composeShows?: ComposeShows;
+  composeEndShows?: ComposeShows;
   absOf: (series: NormSer, categoryIndex: number) => number | null;
   measure: TextMeasurer;
   labelFont: FontSpec;
@@ -840,27 +855,83 @@ function pointLabelSeeds(input: PointLabelInput): PointLabelSeed[] {
     const value = row[ci]!;
     if (value === null) continue;
     const cell = series.vals[ci]!;
-    const source = input.rebased ? undefined : cell.format ? { ...series, format: cell.format } : series;
-    const pct = input.variant === 'stacked100-area' && !input.sharesWithheld.has(category.id) ? value : null;
-    const abs = input.rebased ? value : input.absOf(series, ci);
-    // The last value carries the unit nothing else on the page prints.
-    const unitSuffix = input.unitOnEvery || ci === last ? input.endUnitSuffix : '';
-    const composeText = ci === last ? input.composeEndText ?? input.composeText : input.composeText;
-    let text = composeText(input.content, abs, pct, category.label ?? category.id, series.label, unitSuffix, cell.isPct, source, category.id);
+    const args = pointValueArgs(input, ci, last);
+    let text = args.composeText(input.content, ...args.values);
     if (typeof cell.labelOverride === 'string') {
       text = authoredCellText(cell.labelOverride, {
-        composeText, variant: input.variant, abs, pct,
-        isPct: cell.isPct, unitSuffix, source, categoryId: category.id,
+        composeText: args.composeText, variant: input.variant, abs: args.values[0], pct: args.values[1],
+        isPct: cell.isPct, unitSuffix: args.values[4], source: args.values[6], categoryId: category.id,
       });
     }
     if (!text && cell.labelOverride !== false) continue;
+    // An authored text prints the value where it says `${value}`; `label: false` prints none.
+    const shows = typeof cell.labelOverride === 'string'
+      ? cell.labelOverride.includes('${value}') ? args.composeShows?.(input.variant === 'stacked100-area' ? ['percent'] : ['absolute'], ...args.values) : undefined
+      : cell.labelOverride === false ? undefined : args.composeShows?.(input.content, ...args.values);
     const endpoint = ci === drawn[0] || ci === last;
     const extreme = value === min || value === max;
     const highlighted = input.highlights.has(series.id) || input.highlights.has(category.id) || input.pointHighlights?.has(category.id);
     const priority = cell.priority ?? (endpoint ? PRIORITY.endpoint : extreme ? PRIORITY.extreme : PRIORITY.interior + Math.min(99, Math.abs(value))) + (highlighted ? PRIORITY.highlightBonus : 0);
-    seeds.push({ ci, text, w: input.measure(text || '0', input.labelFont).width, priority, suppressed: cell.labelOverride === false, extreme, highlighted: highlighted === true });
+    seeds.push({ ci, text, w: input.measure(text || '0', input.labelFont).width, priority, suppressed: cell.labelOverride === false, extreme, highlighted: highlighted === true, ...(shows ? { shows } : {}) });
   }
   return seeds;
+}
+
+/**
+ * A point value's composer and arguments, as its label composes them: the
+ * last drawn value takes the end composer and the unit nothing else prints;
+ * a rebased index has no source. The arguments after the content.
+ */
+function pointValueArgs(input: PointLabelInput, ci: number, last: number | undefined): {
+  composeText: ComposeText;
+  composeShows: ComposeShows | undefined;
+  values: [abs: number | null, pct: number | null, catLabel: string, serLabel: string, unitSuffix: string, authoredPct: boolean, source: NormSer | undefined, categoryId: Id];
+} {
+  const { series, row, cats } = input;
+  const category = cats[ci]!;
+  const value = row[ci]!;
+  const cell = series.vals[ci]!;
+  const source = input.rebased ? undefined : cell.format ? { ...series, format: cell.format } : series;
+  const pct = input.variant === 'stacked100-area' && !input.sharesWithheld.has(category.id) ? value : null;
+  const abs = input.rebased ? value : input.absOf(series, ci);
+  // The last value carries the unit nothing else on the page prints.
+  const unitSuffix = input.unitOnEvery || ci === last ? input.endUnitSuffix : '';
+  const end = ci === last;
+  return {
+    composeText: end ? input.composeEndText ?? input.composeText : input.composeText,
+    composeShows: end ? input.composeEndShows ?? input.composeShows : input.composeShows,
+    values: [abs, pct, category.label ?? category.id, series.label, unitSuffix, cell.isPct, source, category.id],
+  };
+}
+
+/**
+ * The texts the value labels of the drawn points would print, for the points
+ * whose value has an authored format (on its cell, its series or the chart):
+ * the record of a value without a drawn label reads its would-be text here.
+ * The label's own composer and arguments, its value part only.
+ */
+export function pointShownMarks(input: Omit<PointLabelInput, 'series' | 'row' | 'content'> & {
+  drawnSeries: NormSer[];
+  pv: (number | null)[][];
+  rowOf: Map<NormSer, number>;
+  /** The chart's number format (options.format). */
+  format: string | undefined;
+}): ShownMark[] {
+  const shown: ShownMark[] = [];
+  if (!input.composeShows) return shown;
+  for (const series of input.drawnSeries) {
+    const row = input.pv[input.rowOf.get(series)!]!;
+    let last: number | undefined;
+    for (let ci = row.length - 1; ci >= 0; ci--) if (row[ci] !== null) { last = ci; break; }
+    const content: LabelContent = ['absolute'];
+    row.forEach((value, ci) => {
+      if (value === null || (series.vals[ci]?.format ?? series.format ?? input.format) === undefined) return;
+      const args = pointValueArgs({ ...input, series, row, content }, ci, last);
+      const shows = args.composeShows?.(content, ...args.values);
+      if (shows) shown.push({ owner: { seriesId: series.id, categoryId: input.cats[ci]!.id }, shows });
+    });
+  }
+  return shown;
 }
 
 function buildPointCandidates(input: PointLabelInput & {
@@ -1090,7 +1161,7 @@ function pushPointRequests(input: {
       }
       if (!aboveTop && (!fits || (centred && !rect) || (input.density !== 'full' && bandH < SLIVER_MIN_H))) {
         if (!candidate.suppressed && !rest) input.lost.sliver.push(name);
-        input.labelRequests.push({ id: `point:${input.series.id}:${category.id}`, kind: 'point', role: composedTextRole(candidate.text), owner: { seriesId: input.series.id, categoryId: category.id }, text: candidate.text, lines: [candidate.text], typeRole: 'label', font: input.labelFont, priority: candidate.priority, redundant: true, ...lost, ...restFields, candidates: slots,
+        input.labelRequests.push({ id: `point:${input.series.id}:${category.id}`, kind: 'point', role: composedTextRole(candidate.text), owner: { seriesId: input.series.id, categoryId: category.id }, text: candidate.text, ...(candidate.shows ? { shows: candidate.shows } : {}), lines: [candidate.text], typeRole: 'label', font: input.labelFont, priority: candidate.priority, redundant: true, ...lost, ...restFields, candidates: slots,
           // sliver-labels-hidden reports it; the requested-row warn leaves it out.
           quietWhenCrowded: true });
         return;
@@ -1251,7 +1322,7 @@ function pushPointRequests(input: {
       slots = [...held.map(slot => preferred === 'left' || preferred === 'right' ? { ...slot, overRules: false } : slot), ...slots.filter(slot => slot.slot !== preferred)];
     }
     if (!candidate.suppressed && !rest && !keep[index]) input.lost.thinned.push(name);
-    input.labelRequests.push({ id: `point:${input.series.id}:${category.id}`, kind: 'point', role: composedTextRole(candidate.text), owner: { seriesId: input.series.id, categoryId: category.id }, text: candidate.text, lines: words?.lines ?? [candidate.text], ...words?.request, typeRole: 'label', font: input.labelFont, priority: candidate.priority, redundant, ...lost, ...restFields, candidates: slots, ...(computed && !input.highlighted && !continuedEnd ? { noLeader: true } : {}),
+    input.labelRequests.push({ id: `point:${input.series.id}:${category.id}`, kind: 'point', role: composedTextRole(candidate.text), owner: { seriesId: input.series.id, categoryId: category.id }, text: candidate.text, ...(candidate.shows ? { shows: candidate.shows } : {}), lines: words?.lines ?? [candidate.text], ...words?.request, typeRole: 'label', font: input.labelFont, priority: candidate.priority, redundant, ...lost, ...restFields, candidates: slots, ...(computed && !input.highlighted && !continuedEnd ? { noLeader: true } : {}),
       ...(candidate.highlighted ? { keepWhenDense: true as const } : {}),
       // A value over a neighbour's point reads as that point's value.
       ...(input.isStacked || input.bump ? {} : { anchor: { x: input.xOf(candidate.ci), y: candidate.py }, ...(computed ? { ownStrokeClear: true } : {}) }), ...(input.isStacked ? {} : { ownStroke: ownQueries }) });
@@ -1378,7 +1449,7 @@ export function pointLabelEndRoom(input: Parameters<typeof pointLabelSelection>[
 export function pointValueWidths(input: Parameters<typeof placePointValueLabels>[0]): Map<string, number> {
   const widths = new Map<string, number>();
   for (const { series, row, content, only } of pointLabelSelection(input)) {
-    for (const seed of pointLabelSeeds({ ...input, series, row, content, categoryIndices: only })) {
+    for (const seed of pointLabelSeeds({ ...input, composeShows: undefined, composeEndShows: undefined, series, row, content, categoryIndices: only })) {
       if (!seed.suppressed) widths.set(`${series.id}:${seed.ci}`, seed.w);
     }
   }
@@ -1394,6 +1465,9 @@ export function placePointValueLabels(input: Parameters<typeof pointLabelSelecti
   rebased: boolean;
   composeText: ComposeText;
   composeEndText?: ComposeText;
+  /** The values the composers print, by record slot: each value label states them (PointLabelInput). */
+  composeShows?: ComposeShows;
+  composeEndShows?: ComposeShows;
   absOf: (series: NormSer, categoryIndex: number) => number | null;
   measure: TextMeasurer;
   labelFont: FontSpec;

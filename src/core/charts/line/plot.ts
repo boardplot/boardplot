@@ -30,7 +30,7 @@ import { NATURAL_BAND_STEP, plotFloorRows } from '../../sizing';
 import type { Annotation } from '../../types/annotations';
 import type { Id } from '../../types/cell';
 import type { LegendOptions } from '../../types/options';
-import type { LintWarning } from '../../types/scene';
+import type { LintWarning, ShownTexts } from '../../types/scene';
 import { BUMP_FOLDED, buildBumpStartLabels } from './bump';
 
 /**
@@ -91,6 +91,7 @@ export function lineReserves(env: LineEnv, domain: LineDomain, paints: LinePaint
   const { labelFont, labelH, composeText, printsZero } = text;
   const valueContent = text.contentOf('point', defaultValueContent(variant, labelModes.seriesValueContent)) ?? [];
   const keyValues = new Map<Id, string>();
+  const keyShows = new Map<Id, ShownTexts>();
   if (usesEndLabelKey(options) && labelModes.values !== 'none' && valueContent.length > 0) {
     for (const s of drawnSeries) {
       const ci = domain.lastIdxOf.get(s.id);
@@ -100,8 +101,11 @@ export function lineReserves(env: LineEnv, domain: LineDomain, paints: LinePaint
       if (cell.labelOverride !== undefined) continue;
       const value = rebased ? pv[rowOf.get(s)!]![ci]! : absOf(s, ci);
       const source = rebased ? undefined : cell.format ? { ...s, format: cell.format } : s;
-      let printed = text.composeEndText(valueContent, value, variant === 'stacked100-area' && !domain.sharesWithheld.has(cats[ci]!.id) ? domain.labelPv[rowOf.get(s)!]![ci]! : null,
-        cats[ci]!.label ?? cats[ci]!.id, '', endUnitSuffix(options, rebased), cell.isPct, source, cats[ci]!.id);
+      const endArgs = [value, variant === 'stacked100-area' && !domain.sharesWithheld.has(cats[ci]!.id) ? domain.labelPv[rowOf.get(s)!]![ci]! : null,
+        cats[ci]!.label ?? cats[ci]!.id, '', endUnitSuffix(options, rebased), cell.isPct, source, cats[ci]!.id] as const;
+      let printed = text.composeEndText(valueContent, ...endArgs);
+      const shows = text.composeEndShows(valueContent, ...endArgs);
+      if (shows) keyShows.set(s.id, shows);
       if (domain.x?.range && isArea && labelModes.values === 'ends') {
         const first = pv[rowOf.get(s)!]!.findIndex(value => value !== null);
         if (first >= 0 && first !== ci && s.vals[first]!.labelOverride === undefined) {
@@ -153,7 +157,7 @@ export function lineReserves(env: LineEnv, domain: LineDomain, paints: LinePaint
   const endpointInput: Parameters<typeof prepareEndpointLabels>[0] = {
     options, names: labelModes.series, valueContent, endRoom: categoryEndRoom.right, labelOnly: domain.labelOnly, variant, isBump, isArea, drawnSeries, cats,
     mergeEndValues: labelModes.values !== 'none' && text.contentOf('point', ['absolute']) !== null,
-    lastIdxOf: domain.lastIdxOf, pv: domain.labelPv, rowOf, rebased, absOf, composeText: text.composeEndText, printsZero,
+    lastIdxOf: domain.lastIdxOf, pv: domain.labelPv, rowOf, rebased, absOf, composeText: text.composeEndText, composeShows: text.composeEndShows, printsZero,
     // The endpoint swatch tells lines apart; a lone fan centre needs none.
     heroMode: paints.heroMode && drawnSeries.length >= 2,
     anyHighlight: env.anyHighlight, size, labelFont: text.nameFont, labelH, measure, sharesWithheld: domain.sharesWithheld,
@@ -214,6 +218,7 @@ export function lineReserves(env: LineEnv, domain: LineDomain, paints: LinePaint
   return {
     endpoint,
     keyValues,
+    keyShows,
     categoryEndRoom,
     ...(centredEndRoom ? { centredEndRoom } : {}),
     startLabels,

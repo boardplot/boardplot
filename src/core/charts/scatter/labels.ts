@@ -14,7 +14,7 @@ import { wrapText } from '../../text';
 import { labelCtx, PRIORITY, seatLeader, type LabelRequest, type SlotCandidate, type SolveCtx } from '../../label/solver';
 import { middleNearerOther, nameReadsAsOwn } from './nameReading';
 import type { Id } from '../../types/cell';
-import type { LintWarning, Paint } from '../../types/scene';
+import type { LintWarning, Paint, ShownTexts } from '../../types/scene';
 import { HIGHLIGHT_RING_GAP, quadrantBoxRect, type PlacedPoint, type ScatterMarkGeometry } from './marks';
 import {
   QUADRANT_BOXES,
@@ -456,6 +456,14 @@ export function pointValueText(env: ScatterEnv, domain: Pick<ScatterDomain, 'pts
   return fmt(value);
 }
 
+/**
+ * The record values a point's printed value fills (a11y/statisticsRecords.ts,
+ * scatter): a bubble's size is its size field; y is the record's value and its y field.
+ */
+function valueShows(field: 'size' | 'y', text: string): ShownTexts {
+  return field === 'size' ? { 'field:size': text } : { value: text, 'field:y': text };
+}
+
 /** Point names and values: spiral candidates, auto-off above maxPointLabels. */
 function pointLabelRequests(
   env: ScatterEnv,
@@ -697,7 +705,11 @@ function pointLabelRequests(
         ((q.drawX && Math.abs(cx - area.x(q.derived!.x)) < r) || (q.drawY && Math.abs(cy - area.y(q.derived!.y)) < r));
       // A point drawn at a clipped edge prints the value it really has.
       const clipped = (domain.clamp?.records ?? []).filter((record) => record.points.some((point) => point.id === p.id));
-      const real = clipped.length ? ` ${[...new Set(clipped.map((record) => record.axis))].map((axis) => env.axisFmt[axis](p[axis])).join(', ')}` : '';
+      const clippedAxes = [...new Set(clipped.map((record) => record.axis))];
+      const real = clipped.length ? ` ${clippedAxes.map((axis) => env.axisFmt[axis](p[axis])).join(', ')}` : '';
+      // The name prints the clipped value and a joined value: the record takes those texts.
+      const nameShows: ShownTexts = Object.assign({}, ...clippedAxes.map((axis) => axis === 'x' ? { 'field:x': env.axisFmt.x(p.x) } : valueShows('y', env.axisFmt.y(p.y))),
+        joined !== undefined ? valueShows(field!, joined) : {});
       const plain = straddles ? `${p.label}${real} (${options.quadrants?.labels?.[box] ?? QUADRANT_BOX_NAME[box]})` : `${p.label}${real}`;
       const name = joined === undefined ? plain : `${plain} ${joined}`;
       // A name wider than its 2x2 box wraps on two lines inside it.
@@ -728,6 +740,7 @@ function pointLabelRequests(
         owner: { pointId: p.id },
         text: callout === undefined ? name : `${name} ${callout}`,
         lines,
+        ...(Object.keys(nameShows).length > 0 ? { shows: nameShows } : {}),
         typeRole: 'label', font,
         ...(callout !== undefined ? { headLines: 1, headWeight: nameFont.weight } : {}),
         // An authored callout outranks the plain names.
@@ -765,6 +778,7 @@ function pointLabelRequests(
       owner: { pointId: p.id },
       text: value,
       lines: [value],
+      shows: valueShows(field!, value),
       typeRole: 'label', font: area.fonts.label,
       // Names go before values. A value ranks below every name, so a
       // small point keeps its name before a large one prints its number; a

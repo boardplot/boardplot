@@ -17,7 +17,7 @@ import type { OwnerRef } from '../../types/cell';
 import type { SceneNode } from '../../types/scene';
 import { groupedOffsets } from '../band/groups';
 import { breakAxisScale, REFERENCE_MARKER_R, referenceCasing, referenceMarkerPaint, referenceTickGeometry } from '../band/ticks';
-import { displayFor } from './domain';
+import { displayFor, valueSlot } from './domain';
 import type { BarMarks } from './layout';
 import { barHalves, type BarArea, type BarDomain, type BarMarkGeometry, type BarPaints, type BarPlace, type NormCat } from './model';
 import { notApplicableGlyph } from '../../format';
@@ -70,12 +70,15 @@ function barRow(
     const owner: OwnerRef = { seriesId: s.id, categoryId: cat.id };
     const { paint, pattern, outline } = paints.cell(s, cat, cell.meta, cell.v);
     const val = grouped ? v : segment.value;
+    const valueText = displayFor(domain, v, cell, undefined, s);
     const halves = barHalves(domain.options);
     emitBarMark({ axis: 'x', theme: domain.theme, scale: area.x, activeBreak: area.activeBreak, css: (paint) => paints.css(paint) }, nodes, claims, {
       nodeId, rect, start, end, fill: paint, pattern, outline, owner,
       ...(halves?.neg === s.id ? { claimOwner: { seriesId: halves.pos, categoryId: cat.id } } : {}),
       part: grouped ? 'bar' : 'segment',
-      displayValue: displayFor(domain, v, cell, variant === 'stacked100' ? val : undefined, s, cat.id),
+      displayValue: variant === 'stacked100' ? displayFor(domain, v, cell, val, s, cat.id) : valueText,
+      // The text a value label would print where none is drawn (labels off, a hidden or 100 % segment).
+      shows: { [valueSlot(domain)]: valueText },
     });
     rowBars.push({ seriesId: s.id, rect, nodeId });
     const range = plotRange(ci, si);
@@ -100,10 +103,11 @@ function barRow(
     if (referenceStyle !== 'marker') {
       out.refTarget.push(referenceCasing(nodeId, tickGeometry.line, referenceStyle === 'line' ? strokeToken(domain.theme, 'rule') : domain.referenceTick.width, owner));
     }
+    const refText = displayFor(domain, v, refCell, undefined, rs);
     out.refTarget.push({
       id: nodeId,
       owner,
-      display: { value: displayFor(domain, v, refCell, undefined, rs) },
+      display: { value: refText, shows: { value: refText } },
       ...(referenceStyle === 'marker' ? {
         t: 'circle',
         cx: rx,

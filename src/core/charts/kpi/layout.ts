@@ -45,7 +45,7 @@ import { cardSize, emitKpiSpark, kpiSparkPeriodRowHeight, kpiSparkSeries, lastOb
 import { bandFor } from '../../bandSelect';
 import { sparkLabelsRefusal } from './sparkLabels';
 import type { KpiOptions, LabelKind } from '../../types/options';
-import type { Geometry, LintWarning, PlacedLabel, SceneNode } from '../../types/scene';
+import type { Geometry, LintWarning, PlacedLabel, SceneNode, ShownMark, ShownTexts } from '../../types/scene';
 import { KPI_HOST_TEXT, KPI_VALUE_SIZE, readerFloorPx, textScaleOf } from '../../typeFloors';
 import { DEFAULT_TARGET, kpiHeroSizesPx, scaleTextPx, TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { composedTextRole } from '../../textRole';
@@ -60,6 +60,8 @@ export interface KpiMarks {
   comparisonNodeIds?: Id[];
   attainmentNodeId?: Id;
   sparkNodeId?: Id;
+  /** The texts the card prints for its record's value, changes and attainment (ShownMark). */
+  shown?: ShownMark[];
 }
 
 interface KpiComparisonDerived {
@@ -255,6 +257,12 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
   const derived: KpiDerived = {};
   if (valueBand) derived.band = { tone: valueBand.tone ?? 'neutral', ...(valueBand.label ? { label: valueBand.label } : {}) };
   const comparisonVisuals: ComparisonVisual[] = [];
+  /** Each change's figures as its body prints them, by the record's comparison slot (cmp<i>.percent, cmp<i>.delta). */
+  const comparisonShows: ShownTexts[] = [];
+  const changeShows = (index: number, mode: ChangeMode, pct: number | null | undefined, deltaAbs: number): ShownTexts => ({
+    ...(mode === 'absolute' ? {} : { [`cmp${index}.percent`]: fmtPct(pct!, true) }),
+    ...(mode === 'relative' ? {} : { [`cmp${index}.delta`]: fmtSigned(deltaAbs) }),
+  });
   let deltaText: string | undefined;
   /** The signed figure before " vs …": the delta breaks there when it wraps. */
   let deltaBody: string | undefined;
@@ -303,6 +311,7 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
     const suffix = ` vs ${deltaScenario ?? fmt(vs)}`;
     deltaText = `${body}${suffix}`;
     deltaBody = body;
+    comparisonShows.push(changeShows(0, mode, pct, deltaAbs));
 
     const word = chartString(options, deltaAbs > 0 ? 'up' : deltaAbs < 0 ? 'down' : 'unchanged');
     const magnitude =
@@ -367,6 +376,7 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
       const firstLower = direction === 'lowerIsBetter'
         && data.compare!.findIndex((entry) => entry.direction === 'lowerIsBetter') === index;
       const displayed = `${body} ${label}`;
+      comparisonShows[index] = changeShows(index, mode, deltaPct, deltaAbs);
       const record: KpiComparisonDerived = {
         source: 'compare',
         value,
@@ -397,6 +407,8 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
     a11yDelta = derived.comparisons.map((comparison) => `, ${comparison.displayed}`).join('');
   }
 
+  /** The attainment's figure as it prints ("89%", ">999%", "n.m."). */
+  let attainmentFigure: string | undefined;
   if (data.attainment) {
     const attainment = data.attainment;
     if (typeof attainment.vs !== 'number' || !Number.isFinite(attainment.vs)) {
@@ -416,6 +428,7 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
         owner: { seriesId: 'attainment' },
       });
     }
+    attainmentFigure = suppressed ? 'n.m.' : pct! > 999 ? '>999%' : pct! < -999 ? `<${MINUS}999%` : fmtPct(pct!, false);
     derived.attainment = {
       value,
       vs: attainment.vs,
@@ -425,7 +438,7 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
       // the attainment states the same shortfall or lead.
       tone: attainment.tone ?? (suppressed ? undefined : derived.comparisons?.find((comparison) => comparison.vs === attainment.vs)?.tone) ?? 'neutral',
       state: suppressed ? 'ref-nonpositive' : 'value',
-      displayed: `${suppressed ? 'n.m.' : pct! > 999 ? '>999%' : pct! < -999 ? `<${MINUS}999%` : fmtPct(pct!, false)} ${label}`,
+      displayed: `${attainmentFigure} ${label}`,
     };
   }
 
@@ -674,7 +687,7 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
     valueFont = steer.valueFont;
     if (steer.valueRect && kindOn('total')) {
       requests.push({
-        id: 'total:value', kind: 'total', owner: { categoryId: 'kpi' }, text: valueText, lines: [valueText], font: valueFont,
+        id: 'total:value', kind: 'total', owner: { categoryId: 'kpi' }, text: valueText, shows: { value: fmt(value) }, lines: [valueText], font: valueFont,
         typeRole: 'kpiValue', priority: PRIORITY.grandTotal, candidates: [{ slot: 'main', rect: steer.valueRect, penalty: 0 }],
       });
     }
@@ -789,6 +802,8 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
       kind: 'total',
       owner: { categoryId: 'kpi' },
       text: valueText,
+      // The number before any unit the card sets beside it.
+      shows: { value: fmt(value) },
       lines: [valueText],
       font: valueFont,
       typeRole: 'kpiValue',
@@ -1050,10 +1065,10 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
     // The note keeps its own part name: the solver names a node after the
     // label kind, and a card's caption is not the card's category label.
     if (node.id === 'label:note:kpi') return { ...node, part: 'kpiNote' };
-    if (node.id === 'label:total:value') return { ...node, display: { value: valueText } };
+    if (node.id === 'label:total:value') return { ...node, display: { ...node.display, value: valueText } };
     // The visible endpoint label carries the text the reader sees (formatted /
     // custom / ellipsized); a hidden or suppressed endpoint emits no node.
-    if (node.id === 'label:spark:last' && node.t === 'text') return { ...node, display: { value: node.lines.join(' ') } };
+    if (node.id === 'label:spark:last' && node.t === 'text') return { ...node, display: { ...node.display, value: node.lines.join(' ') } };
     // The spark's first and last period read as axis text, not as figures.
     if (node.id.startsWith('label:spark:period:') && node.t === 'text') return { ...node, ink: { token: 'inkMuted' }, part: 'kpiSparkPeriod' };
     if (node.id === 'label:point:delta' && deltaText !== undefined) {
@@ -1099,6 +1114,19 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
     attainmentNodeId: attainmentLabel?.nodeId,
     sparkNodeId,
   };
+  // The changes and the attainment print on nodes of their own owners, so the
+  // card states their texts for its record here: drawn where their label
+  // shows, else the texts they would print. The value's would-be text too.
+  const drawnLabel = (label: PlacedLabel | undefined) => label !== undefined && !label.hidden;
+  const kpiOwner = { categoryId: 'kpi' };
+  const shown: ShownMark[] = [{ owner: kpiOwner, shows: { value: fmt(value) } }];
+  comparisonShows.forEach((shows, index) => shown.push({
+    owner: kpiOwner, shows, ...(drawnLabel(data.delta ? deltaLabel : comparisonLabels[index]) ? { drawn: true as const } : {}),
+  }));
+  if (derived.attainment !== undefined && derived.attainment.pct !== null && attainmentFigure !== undefined && drawnLabel(attainmentLabel)) {
+    shown.push({ owner: kpiOwner, shows: { 'field:attainment': attainmentFigure }, drawn: true });
+  }
+  marks.shown = shown;
 
   // The endpoint is only "visible" when the solver actually placed it: a
   // hidden (density) or suppressed (labels off) label describes a trend over

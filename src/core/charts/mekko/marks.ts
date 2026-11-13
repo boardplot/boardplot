@@ -16,6 +16,7 @@ import { linePath } from '../../svgPath';
 import type { Id } from '../../types/cell';
 import type { AxisGeometry, LintWarning, SceneNode } from '../../types/scene';
 import type { MekkoMarks } from './layout';
+import { segmentValueText } from './labels';
 import { colCx, colW, colX, type MekkoArea, type MekkoDomain, type MekkoEnv, type MekkoMarkGeometry, type MekkoPaints, type SegmentPlace } from './model';
 import { notApplicableGlyph } from '../../format';
 import { emptyIdRecord } from '../../idRecords';
@@ -70,6 +71,8 @@ function stackColumn(
     // showed where one band ended. A patterned cell already carries its own
     // stroke and is left alone.
     const cellSep = cellPat || markOutlineOff(cellFill, env.theme) ? undefined : separationStroke(paints.css(cellFill), env.theme.color.background, env.theme);
+    // The value text its label would print where none is drawn.
+    const wouldBe = segmentValueText(env, domain, s, ci);
     out.nodes.push({
       t: 'rect',
       id: nodeId,
@@ -83,6 +86,7 @@ function stackColumn(
       display: {
         value: (mode === 'percent' && env.options.rounding === 'sum-consistent' ? domain.shareTexts.get(`${c.id}\0${s.id}`) : undefined) ??
           ((val.format ?? s.format) ? formatterFromExample((val.format ?? s.format)!, env.options.locale?.language)(mode === 'percent' || val.isPct ? v : domain.absAt(s, ci)!) : val.isPct ? (mode === 'unit' ? env.cellPctFmt : env.authoredPctFmt)(v) : mode === 'percent' ? domain.shareTexts.get(`${c.id}\0${s.id}`) ?? env.pctFmt(v) : env.fmt(domain.absAt(s, ci)!)),
+        ...(wouldBe === null ? {} : { shows: { value: wouldBe } }),
       },
     });
     out.claims.claim(rect, 'mark', { seriesId: s.id, categoryId: c.id }, 'bar');

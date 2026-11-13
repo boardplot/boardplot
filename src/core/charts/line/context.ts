@@ -2,6 +2,7 @@ import type { FontSpec } from '../../text';
 import type { Id, Scenario } from '../../types/cell';
 import type { LabelContent } from '../../types/options';
 import type { MarkerShape } from '../../types/data';
+import type { ShownTexts } from '../../types/scene';
 import type { LineOptionTarget, LineSeriesTarget } from './types';
 
 export interface NormVal {
@@ -55,6 +56,8 @@ export interface EndLabel {
   font?: FontSpec;
   /** The last value as the point would print it; a crowded end prints it under the name. */
   valueText?: string;
+  /** The record values `valueText` prints, with their texts (ShownTexts). */
+  valueShows?: ShownTexts;
 }
 
 export interface EndLabelSeed {
@@ -74,6 +77,8 @@ export interface EndLabelSeed {
   fullText: string;
   shortText?: string;
   valueText: string;
+  /** The record values `valueText` prints, with their texts (ShownTexts). */
+  valueShows?: ShownTexts;
   /** How zero prints under this seed's own formatter (a series format can differ from the exhibit's). */
   zeroText: string;
   /**

@@ -20,7 +20,7 @@ import type { Id, Scenario } from '../../types/cell';
 import type { Category, MarkerShape } from '../../types/data';
 import type { LabelContent, LabelDensity, LabelKind } from '../../types/options';
 import type { LineLabelModes } from './labelModes';
-import type { AxisGeometry, Paint, PaintWarningRule, SceneNode } from '../../types/scene';
+import type { AxisGeometry, Paint, PaintWarningRule, SceneNode, ShownTexts } from '../../types/scene';
 import type { Theme } from '../../types/theme';
 import type { applyCategoryViewport } from '../../viewport';
 import type { NormSer, NormTarget } from './context';
@@ -199,6 +199,13 @@ export type ComposeText = (
   categoryId?: Id,
 ) => string;
 
+/**
+ * The record values a composed label prints, with their texts (ShownTexts):
+ * the absolute part as `value`, the share part as `share.percent`. Same
+ * arguments as ComposeText; undefined when the content prints neither.
+ */
+export type ComposeShows = (...args: Parameters<ComposeText>) => ShownTexts | undefined;
+
 /** The label-kind gates and the text composer every label path shares. */
 export interface LineText {
   kindSetting(kind: LabelKind): boolean | LabelContent;
@@ -206,6 +213,10 @@ export interface LineText {
   composeText: ComposeText;
   /** The end-value set uses enough decimals to separate rounded ties. */
   composeEndText: ComposeText;
+  /** The values composeText prints, with their texts. */
+  composeShows: ComposeShows;
+  /** The values composeEndText prints, with their texts. */
+  composeEndShows: ComposeShows;
   /** Whether an absolute value is zero at the precision composeText prints it in, before the nonzero lift. */
   printsZero: PrintsZero;
   tickFont: FontSpec;
@@ -221,6 +232,8 @@ export interface LineReserves {
   endpoint: EndpointLabelPlan;
   /** Last values carried by the fallback key, shared by the key and point planners. */
   keyValues: ReadonlyMap<Id, string>;
+  /** The record values each key value prints, with their texts (ShownTexts). */
+  keyShows: ReadonlyMap<Id, ShownTexts>;
   /** How far inside the plot the first and last category sit: a centred end value and the latest-point ring keep their air to the edge. */
   categoryEndRoom: { left: number; right: number };
   /** The centred end room where `categoryEndRoom` holds the wider open-side room of shape point values; the row takes it when the side room would cost a tick (plot.ts categoryRow). */

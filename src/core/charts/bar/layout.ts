@@ -77,6 +77,7 @@ import type {
   PlacedAnnotation,
   PlacedLabel,
   SceneNode,
+  ShownMark,
 } from '../../types/scene';
 import type { Theme } from '../../types/theme';
 import type { FootballFieldBarOptions, TornadoBarOptions } from './types';
@@ -106,6 +107,8 @@ export interface BarMarks {
   currentValue?: { value: number; nodeId: Id; labelId?: Id };
   /** tornado only: the base-case spine. A different claim from currentValue. */
   baseValue?: { value: number; nodeId: Id; labelId?: Id };
+  /** tornado only: the case texts the rows draw, stated for the driver's record (ShownMark). */
+  shown?: ShownMark[];
 }
 
 /** One driver's one-at-a-time sensitivity receipt. Every field is derived. */
@@ -451,6 +454,8 @@ function assembleBarGeometry(
   placedAnnotations: PlacedAnnotation[],
   occupied: OccupiedIndex,
   warnings: LintWarning[],
+  /** Record texts a label prints for another owner, by label id (planBarLabels). */
+  stated: ReadonlyMap<Id, Omit<ShownMark, 'drawn'>>,
 ): Geometry<BarMarks, BarDerived> {
   const { options, theme, size, measure, variant, cats, dataSeries, fmt, totalFmt, totals, shares, meanValue } = domain;
   const { tickFont, labelFont, strongFont, band } = area;
@@ -497,14 +502,30 @@ function assembleBarGeometry(
       : undefined;
   const variantWord =
     variant === 'grouped' ? chartString(options, 'groupedCapital') : variant === 'stacked' ? chartString(options, 'stackedCapital') : chartString(options, 'stacked100');
+  // A label that prints the value of another owner (a one-part stack's total): where it is drawn, the record takes its text.
+  const shown: ShownMark[] = [];
+  const drawnForPart = new Map<Id, string>();
+  for (const label of allLabels) {
+    const text = label.hidden === undefined ? stated.get(label.id) : undefined;
+    if (!text) continue;
+    shown.push({ ...text, drawn: true });
+    drawnForPart.set(text.owner.categoryId!, label.text);
+  }
   // One series reads out each value as its label prints it: the cell or
-  // series format and an authored label, not the chart format alone.
+  // series format and an authored label, not the chart format alone; a value
+  // its stack's total prints reads as the total prints it.
   const oneValueText = (ci: number): string | null => {
     const s = dataSeries.length === 1 ? dataSeries[0]! : undefined;
     const cell = s?.cells[ci];
     if (!s || !cell || cell.v === null) return null;
-    return textFor(domain, cell.v, cell, undefined, s) ?? displayFor(domain, cell.v, cell, undefined, s);
+    return drawnForPart.get(cats[ci]!.id) ?? textFor(domain, cell.v, cell, undefined, s) ?? displayFor(domain, cell.v, cell, undefined, s);
   };
+  // A share reads as its drawn label prints it (the label's ShownTexts); a share drawn nowhere keeps the share format.
+  const drawnShares = new Map<string, string>();
+  for (const label of allLabels) {
+    const text = label.hidden === undefined ? label.shows?.['share.percent'] : undefined;
+    if (text !== undefined) drawnShares.set(`${label.owner.categoryId}\0${label.owner.seriesId}`, text);
+  }
   // A category with no value at all has no total; the description says so
   // rather than read out a zero.
   const a11yDesc = cats
@@ -512,7 +533,7 @@ function assembleBarGeometry(
       !domain.stacks[ci]!.hasValue
         ? `${c.label} ${NOT_AVAILABLE}`
         : variant === 'stacked100'
-          ? `${c.label} ${totalFmt(totals[ci]!)} (${dataSeries.map((s, si) => `${s.label} ${domain.pctFmt(shares[ci]![si]!)}`).join(', ')})`
+          ? `${c.label} ${totalFmt(totals[ci]!)} (${dataSeries.map((s, si) => `${s.label} ${drawnShares.get(`${c.id}\0${s.id}`) ?? domain.pctFmt(shares[ci]![si]!)}`).join(', ')})`
           : `${c.label} ${oneValueText(ci) ?? totalFmt(totals[ci]!)}`,
     )
     .join(', ');
@@ -534,7 +555,7 @@ function assembleBarGeometry(
     annotations: [...placedAnnotations, ...annotated.placed],
     legend: area.frame.legend,
     frame: area.frame.frame,
-    marks: scene.marks,
+    marks: shown.length > 0 ? { ...scene.marks, shown } : scene.marks,
     derived: {
       totals: totalsById,
       stackParts: stackParts(totalsById, cats, dataSeries, (si, ci) => dataSeries[si]!.cells[ci]!.v),
@@ -612,7 +633,8 @@ function layoutStandardBar(
   const titleRequests = area.axisTitle && area.axisTitleAt && options.valueAxis?.show
     ? [valueAxisTitleRequest(area.axisTitle, area.axisTitleAt, 'end', 'axis:x:title')]
     : [];
-  const values = keepValuesWithoutAxis(planBarLabels(domain, paints, area, scene, warnings), solveCtx.density, options.valueAxis?.show === true);
+  const stated = new Map<Id, Omit<ShownMark, 'drawn'>>();
+  const values = keepValuesWithoutAxis(planBarLabels(domain, paints, area, scene, warnings, stated), solveCtx.density, options.valueAxis?.show === true);
   const solved = solveLabels([...titleRequests, ...values, ...local.requests], occupied, solveCtx);
   // A running period keeps a cue: a to-date value without a seat, or a value and words taller than the drawn row, bring the hatch key back.
   const toDate = toDateOnValues(domain);
@@ -659,7 +681,7 @@ function layoutStandardBar(
     } as BarOptions, annotationPass);
   }
   pushAll(warnings, annotated.warnings);
-  return assembleBarGeometry(domain, area, scene, solved, annotated, local.placed, occupied, warnings);
+  return assembleBarGeometry(domain, area, scene, solved, annotated, local.placed, occupied, warnings, stated);
 }
 
 /* ------------------------------------------------------------------------ *
@@ -704,6 +726,10 @@ interface RowEndpoint {
   value: number;
   /** Cascade direction: 'low' labels leftwards, 'high' rightwards. */
   side: 'low' | 'high';
+  /** The record fields the label prints (field:<key>). */
+  fields: readonly ('low' | 'high')[];
+  /** The record that holds those fields, where it is not the label's owner (a tornado driver). */
+  recordOwner?: OwnerRef;
 }
 
 interface PlannedRow {
@@ -735,6 +761,11 @@ interface RowSpine {
    * the manifest says the chart verified clean.
    */
   computedText: string;
+  /**
+   * tornado only: the text of `value` inside the drawn label, where the label
+   * is the engine's own. Each driver's record holds the value as its base field.
+   */
+  baseText?: string;
 }
 
 interface RowIntervalPlan {
@@ -1198,6 +1229,8 @@ function layoutRowIntervals(
     axes.push(axis.axis);
   }
   const marks: BarMarks = { rows: [], referenceTicks: [], rowTints: [] };
+  /** A tornado case label's texts for its driver's record, by label id. */
+  const caseTexts = new Map<Id, Omit<ShownMark, 'drawn'>>();
   const labelRequests: LabelRequest[] = axisShown && axisTitle
     ? [valueAxisTitleRequest(axisTitle, { x: rowPlan.titleEnd ?? plot.x + plot.w, y: plot.y + plot.h + 6 + (rowPlan.titleRow ? tickRowH + 2 : 0) }, 'end', 'axis:x:title')]
     : [];
@@ -1387,16 +1420,20 @@ function layoutRowIntervals(
                     penalty: 2,
                   },
                 ];
+        const shows = Object.fromEntries(endpoint.fields.map((key) => [`field:${key}`, text]));
         labelRequests.push({
           id: endpoint.id,
           kind: 'point',
           owner: endpoint.owner,
           text,
+          // A tornado case states its text for the driver's record once it is drawn (marks.shown).
+          ...(endpoint.recordOwner ? {} : { shows }),
           lines: [text],
           typeRole: 'label', font: labelFont,
           priority: PRIORITY.endpoint,
           candidates,
         });
+        if (endpoint.recordOwner) caseTexts.set(endpoint.id, { owner: endpoint.recordOwner, shows });
       }
     }
 
@@ -1544,6 +1581,16 @@ function layoutRowIntervals(
     labelPad: LABEL_PAD,
   });
   const solved = solveLabels(labelRequests, occupied, solveCtx);
+  // The case values a tornado row draws are the driver record's low and high fields.
+  const shown: ShownMark[] = solved.placed.flatMap((label) => {
+    const stated = label.hidden === undefined ? caseTexts.get(label.id) : undefined;
+    return stated ? [{ ...stated, drawn: true as const }] : [];
+  });
+  // The base case the spine label prints is each driver's base field.
+  if (spine?.baseText !== undefined && solved.placed.some((label) => label.id === `valueLine:${spine.key}` && label.hidden === undefined)) {
+    for (const cat of cats) shown.push({ owner: { categoryId: cat.id }, shows: { 'field:base': spine.baseText }, drawn: true });
+  }
+  if (shown.length > 0) marks.shown = shown;
   applyValueAxisTitleInk(solved.placed);
   // A compact tornado name prints its input range in the muted ink after it.
   for (const label of solved.placed) if (label.id.endsWith(COMPACT_RANGE_SUFFIX)) label.ink = { token: 'inkMuted' };
@@ -1817,8 +1864,8 @@ function planFootballField(
         },
       ],
       endpoints: [
-        { id: `rangeLow:${series.id}:${cat.id}`, owner, value: cell.range.low, side: 'low' },
-        { id: `rangeHigh:${series.id}:${cat.id}`, owner, value: cell.range.high, side: 'high' },
+        { id: `rangeLow:${series.id}:${cat.id}`, owner, value: cell.range.low, side: 'low', fields: ['low'] },
+        { id: `rangeHigh:${series.id}:${cat.id}`, owner, value: cell.range.high, side: 'high', fields: ['high'] },
       ],
       ...(mid ? { mid } : {}),
       leftText: fmt(cell.range.low),
@@ -2291,6 +2338,8 @@ function planTornado(
               owner: { seriesId: highSeries.id, categoryId: cat.id },
               value: row.high,
               side: 'high',
+              fields: ['low', 'high'],
+              recordOwner: { categoryId: cat.id },
             },
           ]
         : [
@@ -2299,12 +2348,16 @@ function planTornado(
               owner: { seriesId: lowSeries.id, categoryId: cat.id },
               value: row.low,
               side: row.low < row.high ? 'low' : 'high',
+              fields: ['low'],
+              recordOwner: { categoryId: cat.id },
             },
             {
               id: `tornadoHigh:${highSeries.id}:${cat.id}`,
               owner: { seriesId: highSeries.id, categoryId: cat.id },
               value: row.high,
               side: row.high > row.low ? 'high' : 'low',
+              fields: ['high'],
+              recordOwner: { categoryId: cat.id },
             },
           ];
 
@@ -2409,6 +2462,7 @@ function planTornado(
       value: base.value,
       text: base.label ?? spineComputedText,
       computedText: spineComputedText,
+      ...(base.label === undefined ? { baseText: fmt(base.value) } : {}),
     },
     ...(legend ? { legend } : {}),
     methodNotes: [

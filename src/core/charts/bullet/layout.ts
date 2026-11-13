@@ -81,6 +81,7 @@ import type {
   PlacedLabel,
   SceneNode,
   SeparationRule,
+  ShownTexts,
 } from '../../types/scene';
 import { rowDrivenHeight } from '../../rowCanvas';
 import { rowLabelBand } from '../../label/rowLabels';
@@ -99,6 +100,7 @@ import { AUTO_MAX_DECIMALS, autoDecimals } from '../../formatPrecision';
 import { composedTextRole } from '../../textRole';
 import { maxOf, minOf, pushAll } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
+import { bulletColumnShows, type BulletColumn } from './shown';
 
 export interface BulletMarks {
   rows: {
@@ -587,6 +589,12 @@ export function layoutBullet(
       ? row.meta.label.replace(/\$\{value\}/g, base)
       : base;
   };
+  // The record values each printed column fills (shown.ts). A label states the
+  // number it prints; a mark states the texts its labels would print.
+  const columnShows = bulletColumnShows(options, rows.some((row) => row.value !== null), rows.some((row) => row.target !== null));
+  /** The value as the row's value label prints it: none where an authored text replaces the number. */
+  const valueShows = (row: NormRow): ShownTexts | undefined => row.value === null || row.meta?.label === false
+    || (typeof row.meta?.label === 'string' && !row.meta.label.includes('${value}')) ? undefined : columnShows('actual', rowFmt(row)(row.value));
   /** Signed delta: '+7' / '−1.5pp', and with its comparison '+7 vs target'. */
   const deltaBody = (row: NormRow, d: number): string => {
     const spec = rowSpecs.get(row)!;
@@ -657,7 +665,7 @@ export function layoutBullet(
     : { top: 16, right: 20, bottom: 12, left: 20, ...options.margin };
   if (targetScale) {
     return layoutBulletOnTargetScale(data, options, {
-      rows, theme, size, measure, margin, occupied, warnings, highlights, labelOn, rowFmt, deltaText, deltaBody, deltaTone, deltaVsTarget,
+      rows, theme, size, measure, margin, occupied, warnings, highlights, labelOn, rowFmt, deltaText, deltaBody, deltaTone, deltaVsTarget, columnShows,
     });
   }
   // ---- band names on the rows (bandKey 'row') ----
@@ -1338,7 +1346,11 @@ export function layoutBullet(
         })),
         owner,
         part: 'bar',
-        ...(shown('actual') ? { display: { value: rowFmt(row)(row.value) } } : {}),
+        // The value, and the gap where the row has one: the texts their labels print or would print.
+        display: { ...(shown('actual') ? { value: rowFmt(row)(row.value) } : {}), shows: {
+          ...columnShows('actual', rowFmt(row)(row.value)),
+          ...(deltaVsTarget[row.id] === undefined ? {} : columnShows('gap', deltaBody(row, deltaVsTarget[row.id]!))),
+        } },
       });
       occupied.claim(rect, 'mark', owner);
       anchorByRow.set(row.id, { x: vx, y: rowCenter, value: row.value, date: row.date, label: row.label, owner });
@@ -1349,11 +1361,13 @@ export function layoutBullet(
         const text = valueTextOf(row);
         if (text) {
           const tsize = measure(text, valueFont);
+          const shows = valueShows(row);
           labelRequests.push({
             id: `point:${row.id}`,
             kind: 'point',
             owner,
             text,
+            ...(shows ? { shows } : {}),
             lines: [text],
             font: valueFont,
             priority:
@@ -1386,7 +1400,7 @@ export function layoutBullet(
         width: targetStroke,
         owner,
         part: 'target',
-        ...(shown('target') ? { display: { value: rowFmt(row)(row.target) } } : {}),
+        display: { ...(shown('target') ? { value: rowFmt(row)(row.target) } : {}), shows: columnShows('target', rowFmt(row)(row.target)) },
       });
       occupied.claim({ x: tx - Math.max(1.5, targetStroke / 2 + 0.5), y: rowY + bw * 0.08, w: Math.max(3, targetStroke + 1), h: bw * 0.84 }, 'mark', owner);
       // The target prints by its tick, in the air above the row:
@@ -1400,7 +1414,7 @@ export function layoutBullet(
         columnFonts.set(id, labelFont);
         columnInks.set(id, { token: 'ink' });
         labelRequests.push({
-          id, kind: 'annotation', owner, text, lines: [text], font: labelFont, role: 'value', priority: PRIORITY.interior, pad: 0,
+          id, kind: 'annotation', owner, text, shows: columnShows('target', text), lines: [text], font: labelFont, role: 'value', priority: PRIORITY.interior, pad: 0,
           candidates: [{ slot: 'targetColumn', rect: { x: alignedLeft(cp.rights.target! - cp.targetColW, cp.targetColW, tsize.width, overrides?.target?.align ?? 'right'), y: rowCenter - cp.colBlockH(ri) / 2, w: tsize.width, h: tsize.height }, penalty: 0 }],
         });
       } else if (targetPrints(row)) {
@@ -1414,6 +1428,7 @@ export function layoutBullet(
           kind: 'annotation',
           owner,
           text,
+          shows: columnShows('target', rowFmt(row)(row.target)),
           lines: [text],
           font: targetFont,
           role: 'value',
@@ -1439,7 +1454,7 @@ export function layoutBullet(
       const gapAlign = overrides?.gap?.align ?? 'right';
       columnFonts.set(`delta:${row.id}`, valueBaseFont);
       labelRequests.push({
-        id: `delta:${row.id}`, kind: 'annotation', role: composedTextRole(capsuleText, 'note'), owner, text: capsuleText, lines: [capsuleText],
+        id: `delta:${row.id}`, kind: 'annotation', role: composedTextRole(capsuleText, 'note'), owner, text: capsuleText, shows: columnShows('gap', capsuleText), lines: [capsuleText],
         font: valueBaseFont, priority: PRIORITY.extreme,
         candidates: [{ slot: 'gapColumn', rect: { x: alignedLeft(gapRight - cp.gapColW, cp.gapColW, tsize.width, gapAlign), y: top, w: tsize.width, h: tsize.height }, penalty: 0 }],
       });
@@ -1466,6 +1481,8 @@ export function layoutBullet(
         kind: 'annotation', role: composedTextRole(capsuleText, 'note'),
         owner,
         text: capsuleText,
+        // '+7 vs target' prints the gap's own text first.
+        shows: columnShows('gap', deltaBody(row, d)),
         lines: [capsuleText],
         font: capsuleFont,
         priority: PRIORITY.extreme,
@@ -1810,6 +1827,7 @@ function layoutBulletOnTargetScale(
     deltaBody: (row: NormRow, d: number) => string;
     deltaTone: (row: NormRow, d: number) => 'good' | 'bad' | 'warn' | 'neutral';
     deltaVsTarget: Record<Id, number>;
+    columnShows: (column: BulletColumn, text: string) => ShownTexts;
   },
 ): Geometry<BulletMarks, BulletDerived> {
   const { rows, theme, size, measure, occupied, warnings, rowFmt } = ctx;
@@ -1866,6 +1884,8 @@ function layoutBulletOnTargetScale(
     deltaBody: (row, d) => ctx.deltaBody(row as NormRow, d),
     deltaTone: (row, d) => ctx.deltaTone(row as NormRow, d),
     deltaVsTarget: ctx.deltaVsTarget,
+    columnShows: ctx.columnShows,
+    numberText: (row, value) => rowFmt(row as NormRow)(value),
     grow: (chromeH, rowsH) => {
       const height = rowDrivenHeight({ options, width: size.width, height: size.height, chromeH, rowsH });
       return height === undefined ? undefined : layoutBullet(data, { ...options, size: { width: size.width, height } });

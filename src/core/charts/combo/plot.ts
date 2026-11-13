@@ -48,7 +48,7 @@ import type { Id } from '../../types/cell';
 import type { MarkerShape } from '../../types/data';
 import { MARKER_MAX_CATS } from '../line/paints';
 import type { LabelContent, LabelKind, LegendOptions } from '../../types/options';
-import type { LintWarning, Paint } from '../../types/scene';
+import type { LintWarning, Paint, ShownTexts } from '../../types/scene';
 import { planComboAxisTitles } from './axisTitles';
 import { categoryRanksLint, FORCE_CATEGORY_RANKS, withCategoryRanks } from './categoryRanks';
 import { comboValueLabels, endpointGutters, FIRST_END_BELOW_TOTALS, INSIDE_ENDPOINT_IDS, insideEndpointGutters, prepareComboEndpointTexts, type EndpointGutters } from './endpoints';
@@ -599,24 +599,49 @@ export function kindSetting(domain: ComboDomain, kind: LabelKind): boolean | Lab
 }
 
 /** The label's parts as lines: a value and its share (`value.share`, a stacked segment's) one over the other. */
-export function composeLines(
+/**
+ * The label's parts, each with its text, and the record values they print
+ * (ShownTexts): the value (an authored percent prints it as its percent part
+ * too) and its share of the stack.
+ */
+export function composeParts(
   domain: ComboDomain,
   content: LabelContent,
   value: { abs: number | null; isPct: boolean; share?: number | null; shareText?: string },
   catLabel: string,
   serLabel: string,
   valueFmt: (v: number) => string,
-): string[] {
+): { parts: [LabelContent[number], string][]; shows: ShownTexts | undefined } {
   const { abs, isPct, share } = value;
   const parts: [LabelContent[number], string][] = [];
+  const shows: Record<string, string> = {};
   for (const c of content) {
-    if (c === 'absolute' && abs !== null) parts.push([c, valueFmt(abs)]);
-    else if (c === 'percent' && abs !== null && isPct) parts.push([c, valueFmt(abs)]);
-    else if (c === 'percent' && share !== undefined && share !== null) parts.push([c, value.shareText ?? formatShare(share, domain.options.locale?.language)]);
-    else if (c === 'category' && catLabel) parts.push([c, catLabel]);
+    if ((c === 'absolute' || (c === 'percent' && isPct)) && abs !== null) {
+      const text = valueFmt(abs);
+      parts.push([c, text]);
+      shows.value ??= text;
+    } else if (c === 'percent' && share !== undefined && share !== null) {
+      const text = value.shareText ?? formatShare(share, domain.options.locale?.language);
+      parts.push([c, text]);
+      shows['share.percent'] ??= text;
+    } else if (c === 'category' && catLabel) parts.push([c, catLabel]);
     else if (c === 'series' && serLabel) parts.push([c, serLabel]);
   }
-  return valueShareLines(parts);
+  return { parts, shows: Object.keys(shows).length > 0 ? shows : undefined };
+}
+
+export function composeLines(...args: Parameters<typeof composeParts>): string[] {
+  return valueShareLines(composeParts(...args).parts);
+}
+
+/**
+ * The record values a label composed from `content` prints, with their texts
+ * (composeParts). An authored text prints them where it says `${value}`,
+ * none without it; `label: false` prints none.
+ */
+export function composeShows(override: string | false | undefined, ...args: Parameters<typeof composeParts>): ShownTexts | undefined {
+  if (override === false || (typeof override === 'string' && !override.includes('${value}'))) return undefined;
+  return composeParts(...args).shows;
 }
 
 export function composeText(...args: Parameters<typeof composeLines>): string {
@@ -721,6 +746,10 @@ export function comboPlotArea(
     { first: s => pointContent !== null && (['ends', 'extremes', 'all'].includes(valueLabels)
       || (options.valueLabels === undefined && domain.secondaryActive && s.axis === 'secondary')),
       last: pointContent !== null && valueLabels !== 'none' },
+    (series, ci) => {
+      const value = series.vals[ci]!;
+      return composeParts(domain, pointContent ?? ['absolute'], { abs: value.v, isPct: value.isPct }, '', '', domain.valueFmtOf(series, value)).shows;
+    },
   );
   // The tick-band reserve must equal what the measured labels need,
   // and the wrap needs the band step, which depends only on the final x-extent.

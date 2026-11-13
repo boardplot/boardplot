@@ -83,6 +83,8 @@ import type {
   Paint,
   PlacedLabel,
   SceneNode,
+  ShownMark,
+  ShownTexts,
 } from '../../types/scene';
 import { stackSegmentCandidates } from '../../label/slots';
 import { digitSeat, digitSeatEdge, segmentTooShort, STACK_ROOM } from '../band/labels';
@@ -101,6 +103,12 @@ import { requestClaims, withUnprintedClaims, type ClaimedRequest } from '../../c
 export interface WaterfallMarks {
   bars: { id: Id; rect: Rect; segments: { id: Id; rect: Rect; nodeId: Id }[] }[];
   connectors: { from: Id; to: Id; nodeId: Id }[];
+  /**
+   * Value texts no label of the value's own owner carries: a value whose label
+   * the options withhold, and a one-segment step whose step value prints its
+   * segment's value (ShownMark).
+   */
+  shown?: ShownMark[];
 }
 
 /**
@@ -244,6 +252,30 @@ const SLIVER_LEADER_GAP = 10;
 
 /** The horizontal bars keep this much of the plot, as the band sum's floor. */
 const HORIZONTAL_BAR_FLOOR = 80;
+
+/** The record value a label prints, with its text (ShownTexts); none where an authored text without `${value}` replaces it. */
+function shownValue(text: string, override: string | false | undefined): ShownTexts | undefined {
+  return typeof override === 'string' && !override.includes('${value}') ? undefined : { value: text };
+}
+
+/**
+ * A one-segment step prints its value once, on the step or on the segment
+ * (printedIn). The record is the segment's, so a drawn step value states the
+ * segment's value where the segment's own label is not drawn. A bridge with
+ * cases owns its values by step and case, as its labels do.
+ */
+function oneSegmentShown(bars: WaterfallMarks['bars'], labels: readonly PlacedLabel[], cases: boolean): ShownMark[] {
+  if (cases) return [];
+  const byId = new Map(labels.map((label) => [label.id, label]));
+  return bars.flatMap((bar) => {
+    const segment = bar.segments.length === 1 ? bar.segments[0]! : undefined;
+    if (!segment || segment.id === '__value' || segment.id === '__total') return [];
+    const value = byId.get(`sum:${bar.id}`) ?? byId.get(`total:${bar.id}`);
+    const own = byId.get(`segment:${bar.id}:${segment.id}`);
+    if (!value?.shows || value.hidden !== undefined || (own && own.hidden === undefined)) return [];
+    return [{ owner: { categoryId: bar.id, segmentId: segment.id }, shows: value.shows, drawn: true as const }];
+  });
+}
 
 /** A host's `labels.point: false` (pvm): the bars stop printing their values, and the marks, hover and records keep them. */
 function pointValuesOff(options: WaterfallOptions): boolean {
@@ -693,6 +725,7 @@ function layoutHorizontalWaterfall(
       kind: label.kind,
       owner: label.owner,
       text: name ? label.title ?? label.text : label.text,
+      ...(label.shows ? { shows: label.shows } : {}),
       lines: name ? name.lines : label.lines,
       ...(name?.title !== undefined ? { title: name.title } : !name && label.title !== undefined ? { title: label.title } : {}),
       font: fontForLabel(label),
@@ -733,6 +766,8 @@ function layoutHorizontalWaterfall(
     labelPad: 2,
   }));
   const labels = solved.placed;
+  // The withheld values keep their texts; a one-segment step's drawn value is the one this solve drew.
+  marks.shown = [...(source.marks.shown ?? []).filter((mark) => !mark.drawn), ...oneSegmentShown(marks.bars, labels, cases.length > 0)];
   // The sign bridge's value ink outside the bar, as vertically.
   if (isSignBridge(theme, options)) {
     for (const label of labels) {
@@ -1675,6 +1710,10 @@ function layoutWaterfallWithPad(
     : [];
   // Value labels the options turn off: the reading states their claims as not printed.
   const withheld: ClaimedRequest[] = [];
+  // The texts of values without a label request of their own owner (WaterfallMarks.shown).
+  const undrawnShown: ShownMark[] = [];
+  // A withheld step value's label text under an authored format: the description prints it.
+  const wouldBeTexts = new Map<Id, string>();
 
   // baseline (thin solid, always)
   const baselineId = 'axis:baseline';
@@ -1777,6 +1816,9 @@ function layoutWaterfallWithPad(
       const segFmt = seg.format ? { fmt: levelFormatterFromExample(seg.format, options.locale?.language), fmtSigned: signedFormatterFromExample(seg.format, options.locale?.language) } : { fmt, fmtSigned };
       const segBase = isTotal || stackedTotal ? segFmt.fmt(seg.value) : segFmt.fmtSigned(seg.value);
       const segText = typeof seg.valueLabel === 'string' ? seg.valueLabel.replace(/\$\{value\}/g, segBase) : segBase;
+      const segShows = shownValue(segBase, seg.valueLabel);
+      // A segment with no label that prints its value: the text its label would print.
+      if (segmentedMark && (valuesOff || !segShows)) undrawnShown.push({ owner: { categoryId: it.id, segmentId: seg.id }, shows: { value: segBase } });
       const segDisplay = { value: segText };
       const breakMeta = activeBreak ? y.break : undefined;
       if (activeBreak && breakMeta && crossesLinearBreak(sStart, sEnd, activeBreak)) {
@@ -1881,6 +1923,7 @@ function layoutWaterfallWithPad(
           ...(drawSegments.length === 1 && typeof seg.valueLabel !== 'string' ? { printedIn: `${isTotal ? 'total' : 'sum'}:${it.id}` } : {}),
           owner: { categoryId: it.id, segmentId: seg.id },
           text,
+          ...(segShows ? { shows: segShows } : {}),
           lines: [text],
           font: segmentFont,
           typeRole: 'secondary' as const,
@@ -1952,8 +1995,12 @@ function layoutWaterfallWithPad(
     // The item value cell's own format and label override are honoured.
     const valueMeta = { ...(drawSegments.length === 1 ? drawSegments[0] : {}), ...it.valueMeta };
     const own = valueMeta?.format ? { fmt: levelFormatterFromExample(valueMeta.format, options.locale?.language), fmtSigned: signedFormatterFromExample(valueMeta.format, options.locale?.language) } : { fmt, fmtSigned };
-    const itemBase = isTotal ? own.fmt(itemValue) : mixed ? `net ${own.fmtSigned(itemValue)}` : own.fmtSigned(itemValue);
+    const valueBase = isTotal ? own.fmt(itemValue) : own.fmtSigned(itemValue);
+    const itemBase = mixed ? `net ${valueBase}` : valueBase;
     const text = typeof valueMeta?.valueLabel === 'string' ? valueMeta.valueLabel.replace(/\$\{value\}/g, itemBase) : itemBase;
+    const valueShows = shownValue(valueBase, valueMeta?.valueLabel);
+    if (valuesOff || !valueShows) undrawnShown.push({ owner: stepOwner, shows: { value: valueBase } });
+    if (valuesOff && (options.format !== undefined || valueMeta?.format !== undefined)) wouldBeTexts.set(isTotal ? `total:${it.id}` : `sum:${it.id}`, text);
     if (!isTotal) stepTones.set(it.id, stepTone(itemValue, it.direction));
     // A highlighted step's value is bold, as the totals are.
     const boldStep = !isTotal && categoryRow && highlights.has(cat.id);
@@ -1989,6 +2036,7 @@ function layoutWaterfallWithPad(
       owner: stepOwner,
       ...(mixed ? { role: composedTextRole(text) } : {}),
       text,
+      ...(valueShows ? { shows: valueShows } : {}),
       lines: [text],
       font,
       priority: valueMeta?.priority ??
@@ -2238,6 +2286,7 @@ function layoutWaterfallWithPad(
   }
   applyValueAxisTitleInk(solved.placed);
   pushAll(warnings, solved.warnings);
+  marks.shown = [...undrawnShown, ...oneSegmentShown(marks.bars, solved.placed, cases.length > 0)];
   // A step's value beside its bar reads in its sign's ink; one inside a fill
   // keeps the contrast ink the solver chose for it.
   if (signBridge) {
@@ -2383,8 +2432,8 @@ function layoutWaterfallWithPad(
   const stepsDesc = (bridge: NormItem[]) => bridge
     .map((it) =>
       it.type === 'delta'
-        ? `${it.label} ${labelRequests.find(label => label.id === `sum:${it.id}`)?.text ?? fmtSigned(levels[it.id]!.end - levels[it.id]!.start)}`
-        : `${it.label} ${labelRequests.find(label => label.id === `total:${it.id}`)?.text ?? fmt(totals[it.id]!)}`,
+        ? `${it.label} ${labelRequests.find(label => label.id === `sum:${it.id}`)?.text ?? wouldBeTexts.get(`sum:${it.id}`) ?? fmtSigned(levels[it.id]!.end - levels[it.id]!.start)}`
+        : `${it.label} ${labelRequests.find(label => label.id === `total:${it.id}`)?.text ?? wouldBeTexts.get(`total:${it.id}`) ?? fmt(totals[it.id]!)}`,
     )
     .join(', ');
   const a11yDesc = cases.length > 0

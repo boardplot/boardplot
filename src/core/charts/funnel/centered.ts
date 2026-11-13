@@ -13,7 +13,7 @@ import { runAnnotatePass } from '../../annotatePass';
 import { adjacentSeriesWarnings, retainAdjacentWarningRule, type AdjacentWarningCapture, type SeriesColorSample } from '../../adjacentSeries';
 import { formatAutomaticNumber, formatAutomaticPercent, notApplicableGlyph, smallRateDecimals } from '../../format';
 import { formatterFromExample, seriesRasterFormatter } from '../../formatSpec';
-import { cellMeta } from '../../types/cell';
+import { cellMeta, cellValue } from '../../types/cell';
 import type { Rect } from '../../geometry';
 import { clamp, rectContains } from '../../geometry';
 import { authoredNotes, frameTextOptions, normalizeLegendOption, solveFrame, type LegendItemInput } from '../../frame';
@@ -532,6 +532,9 @@ export function layoutCenteredFunnel(
         ...(pattern === undefined && isOthersFill(paint) ? { separation: { fill: paint, backing: { token: 'background' } as const, fallback: { stroke: { token: 'background' } as const, strokeWidth: strokeToken(theme, 'hair') } } } : {}),
         owner: { categoryId: stage.id, seriesId: series.id },
         part: 'segment',
+        // The text the stage's value would print, where its own value is drawn (a clamped negative is not).
+        ...(numbers.values[seriesIndex]![categoryIndex] === cellValue(cells[seriesIndex]![categoryIndex]!)
+          ? { display: { shows: { value: valueText(seriesIndex, categoryIndex, numbers.values[seriesIndex]![categoryIndex]!) } } } : {}),
       };
       nodes.push(pathNode);
       occupied.claim(rect, 'mark', pathNode.owner, pathNode.part);

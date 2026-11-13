@@ -8,6 +8,7 @@ import type { Id } from '../../types/cell';
 import type { Rect } from '../../geometry';
 import type { BaseOptionsFor } from '../../types/options';
 import type { ColumnMarks } from '../column/layout';
+import type { ShownMark } from '../../types/scene';
 
 /**
  * One sample, nothing else. No categories, no series, no pre-binned counts,
@@ -115,4 +116,6 @@ export interface HistogramMarks {
   /** Contiguous bars, in bin order — the column engine's own geometry. */
   bars: ColumnMarks['bars'];
   bins: HistogramBinMark[];
+  /** The count each bin's label prints, stated on the bin's record, which no label owns (ShownMark). */
+  shown?: ShownMark[];
 }

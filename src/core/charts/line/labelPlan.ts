@@ -13,9 +13,9 @@ import { PRIORITY, type LabelRequest } from '../../label/solver';
 import { addRatioTierRequests, type RatioTierRequestState } from '../../ratioTier';
 import type { Annotation } from '../../types/annotations';
 import type { Id } from '../../types/cell';
-import type { LintWarning } from '../../types/scene';
+import type { LintWarning, ShownMark } from '../../types/scene';
 import { joinTieValues, placeBumpStartLabels, placeBumpTieLabels } from './bump';
-import { defaultValueContent, fanEdgeInKey, flaggedPoints, lineFocusFont, lineToDateIds, placeCategoryLabels, placeEndpointLabels, placeInlineSeriesLabels, placePointValueLabels, pointValueWidths, usesEndLabelKey, usesInlineFallback, usesWideEndLabels, valueUnit, pointLabelsFollowShape } from './labels';
+import { defaultValueContent, fanEdgeInKey, flaggedPoints, lineFocusFont, lineToDateIds, placeCategoryLabels, placeEndpointLabels, placeInlineSeriesLabels, placePointValueLabels, pointShownMarks, pointValueWidths, usesEndLabelKey, usesInlineFallback, usesWideEndLabels, valueUnit, pointLabelsFollowShape } from './labels';
 import { placeXTickLabels } from './xTicks';
 import { outerFanEdge } from './fan';
 import { restValuesHidden } from '../../restLabels';
@@ -38,6 +38,10 @@ export interface LineLabelPlan {
   xPartialGroups: string[][];
   endpointFallback: boolean;
   endpointWiden: boolean;
+  /** The would-be value texts of the points under an authored format (pointShownMarks). */
+  shown: ShownMark[];
+  /** The values a tie note or a tie's kept value prints for every member (joinTieValues). */
+  tieShows: ReturnType<typeof joinTieValues>;
 }
 
 /** Phase 3: every label request, in the order the solver has always seen them. */
@@ -130,7 +134,7 @@ export function planLineLabels(
     endNamed: new Set([...endLabels.map((label) => label.s.id), ...(reserves.endpoint.nearZeroTail?.mode === 'shared' ? reserves.endpoint.nearZeroTail.seriesIds : [])]),
     valueContent: defaultValueContent(domain.variant, domain.labelModes.seriesValueContent), ...valueUnit(domain.options, isBump, domain.rebased),
     contentOf: text.contentOf, variant: domain.variant, drawnSeries, pv: domain.labelPv, rowOf, cats,
-    rebased: domain.rebased, composeText: text.composeText, composeEndText: text.composeEndText, absOf: domain.absOf, measure, labelFont, highlights, isStacked, y, cumTop,
+    rebased: domain.rebased, composeText: text.composeText, composeEndText: text.composeEndText, composeShows: text.composeShows, composeEndShows: text.composeEndShows, absOf: domain.absOf, measure, labelFont, highlights, isStacked, y, cumTop,
     cumBot, xOf, plot: area.forecastPlot, paintedAreaCats, areaFillPaint: paints.areaFill, paintCss: paints.css, labelH, step: area.step,
     density: env.density, labelRequests, restHidden: (series) => restValuesHidden(domain.options, series.colorRole), interpolationFor: domain.interpolationFor, sharesWithheld: domain.sharesWithheld, warnings,
     // Authored furniture that divides at a transition stands on the same split.
@@ -167,14 +171,15 @@ export function planLineLabels(
   // the fan's edge values are point values; valueLabels 'none' and labels.point false print none.
   if (domain.labelModes.values !== 'none' && text.contentOf('point', ['absolute']) !== null) addFanEdgeLabels(domain, area, marks, labelFont, labelH, labelRequests, measure);
   // A tie's shared value reads with its note at the shared point.
-  joinTieValues({ bump: domain.bumpDerived, labelRequests, font: text.tickFont, measure });
+  const tieShows = joinTieValues({ bump: domain.bumpDerived, labelRequests, font: text.tickFont, measure });
   const xPartial = xPartialWords(env, domain, area, reserves, lineToDateIds(env, domain, text));
   const catLabelsShown = area.xTicks && area.xOfValue
     ? placeXTickLabels({ show: area.showCategoryTickRow, plan: area.xTicks, xOf: area.xOfValue, row: area.frame.plot,
       bottom: plot.y + plot.h + area.categoryTickGap, plotRight: plot.x + plot.w, plotLeft: plot.x, labelRequests, ...xPartial })
     : placeCategoryLabels({ show: area.showCategoryTickRow, plan: area.catPlan, cats, xOf,
       plot: { ...plot, h: plot.h + area.categoryTickGap - 6 }, labelRequests });
-  return { labelRequests, ratioTierRequestState, endpointLeaderAnchors, catLabelsShown, xPartialGroups: xPartial.partial?.groups ?? [], endpointFallback: bounded?.fallback ?? false, endpointWiden: bounded?.widen ?? false };
+  return { labelRequests, ratioTierRequestState, endpointLeaderAnchors, catLabelsShown, xPartialGroups: xPartial.partial?.groups ?? [], endpointFallback: bounded?.fallback ?? false, endpointWiden: bounded?.widen ?? false,
+    shown: pointShownMarks({ ...valueInput, format: domain.options.format }), tieShows };
 }
 
 /**
@@ -209,7 +214,7 @@ function addFanEdgeLabels(domain: LineDomain, area: LineArea, marks: LineMarkGeo
     const py = area.y(value);
     const categoryId = domain.cats[ci]!.id;
     labelRequests.push({
-      id: `fan-edge:${id}`, kind: 'point', owner: { seriesId: id, categoryId }, text, lines: [text], typeRole: 'label', font,
+      id: `fan-edge:${id}`, kind: 'point', owner: { seriesId: id, categoryId }, text, ...(domain.rebased ? {} : { shows: { value: text } }), lines: [text], typeRole: 'label', font,
       priority: PRIORITY.extreme,
       candidates: [
         { slot: 'right', rect: { x: px + 6, y: py - labelH / 2, w, h: labelH }, penalty: 0 },

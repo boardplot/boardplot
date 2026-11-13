@@ -78,8 +78,8 @@ export function lineText(env: LineEnv, domain: LineDomain): LineText {
   // The join is the hover card's: a sign or a magnitude letter
   // sits on the number ("54m", "$54m", "54%"), a word unit after a space
   // ("54 USD m"). Glued, a word unit read "54USD m".
-  const compose = (extra: number): LineText['composeText'] => (content, abs, pct, catLabel, serLabel, unitSuffix = '', authoredPct = false, source, categoryId) => {
-    const parts: string[] = [];
+  const composeParts = (extra: number) => (content: LabelContent, abs: number | null, pct: number | null, catLabel: string, serLabel: string, unitSuffix = '', authoredPct = false, source?: NormSer, categoryId?: Id): [LabelContent[number], string][] => {
+    const parts: [LabelContent[number], string][] = [];
     const shareText = !authoredPct && source && categoryId !== undefined ? domain.shareTexts.get(`${categoryId}\0${source.id}`) : undefined;
     const lifted = (value: number, percent: boolean): string => {
       const spec = seriesRasterFormatter(source?.format ?? options.format, domain.seriesNorm.flatMap(s => s.vals.map(v => v.v)), options.locale?.language, source?.unit ?? options.unit, options.target).spec;
@@ -88,15 +88,30 @@ export function lineText(env: LineEnv, domain: LineDomain): LineText {
     };
     for (const c of content) {
       // An authored percent cell keeps its '%' on the value; a rebased index has no source.
-      if (c === 'absolute' && abs !== null) parts.push(withUnit(extra ? lifted(abs, authoredPct) : (authoredPct && source && !source.format ? valueSpec.fmtPercent : source ? valueSpec.forSeries(source) : fmt)(abs), unitSuffix, true));
+      if (c === 'absolute' && abs !== null) parts.push([c, withUnit(extra ? lifted(abs, authoredPct) : (authoredPct && source && !source.format ? valueSpec.fmtPercent : source ? valueSpec.forSeries(source) : fmt)(abs), unitSuffix, true)]);
       // A share lifts its own percent precision; the chart's number format does not apply to it.
-      else if (c === 'percent' && pct !== null) parts.push(shareText ?? (extra
+      else if (c === 'percent' && pct !== null) parts.push([c, shareText ?? (extra
         ? formatAutomaticPercent(pct, Math.min(MAX_FORMAT_DECIMALS, (authoredPct ? Math.abs(pct) < 1 && pct !== 0 ? 1 : 0 : shareDecimals(pct)) + extra), false, options.locale?.language)
-        : authoredPct ? env.authoredPctFmt(pct) : env.pctFmt(pct)));
-      else if (c === 'category' && catLabel) parts.push(catLabel);
-      else if (c === 'series' && serLabel) parts.push(serLabel);
+        : authoredPct ? env.authoredPctFmt(pct) : env.pctFmt(pct))]);
+      else if (c === 'category' && catLabel) parts.push([c, catLabel]);
+      else if (c === 'series' && serLabel) parts.push([c, serLabel]);
     }
-    return parts.join(' ');
+    return parts;
+  };
+  const compose = (extra: number): LineText['composeText'] => {
+    const of = composeParts(extra);
+    return (...args) => of(...args).map(([, part]) => part).join(' ');
+  };
+  // The values a label prints, by record slot: the absolute part is the value, the percent part its share.
+  const shows = (extra: number): LineText['composeShows'] => {
+    const of = composeParts(extra);
+    return (...args) => {
+      const parts = of(...args);
+      const value = parts.find(([kind]) => kind === 'absolute')?.[1];
+      const share = parts.find(([kind]) => kind === 'percent')?.[1];
+      if (value === undefined && share === undefined) return undefined;
+      return { ...(value === undefined ? {} : { value }), ...(share === undefined ? {} : { 'share.percent': share }) };
+    };
   };
   const composeText = compose(0);
   const endExtra = env.isBump ? 0 : distinctDecimalLift(domain.drawnSeries.flatMap(series => {
@@ -112,6 +127,9 @@ export function lineText(env: LineEnv, domain: LineDomain): LineText {
     return [{ value, format: (extra: number) => compose(extra)(share ? ['percent'] : ['absolute'], value, value, '', '', '', cell.isPct, source) }];
   }));
   const composeEndText = endExtra ? compose(endExtra) : composeText;
+  // A rebased label prints the index, not the record's value: it states none.
+  const composeShows: LineText['composeShows'] = domain.rebased ? () => undefined : shows(0);
+  const composeEndShows = endExtra && !domain.rebased ? shows(endExtra) : composeShows;
   // The raster prints no nonzero value as 0, so the near-zero group asks the
   // formatter composeText picks whether the raw value is zero at its precision.
   const printsZero: LineText['printsZero'] = (abs, authoredPct = false, source) =>
@@ -120,7 +138,7 @@ export function lineText(env: LineEnv, domain: LineDomain): LineText {
   const tickFont: FontSpec = { family: theme.type.family, ...theme.type.axis };
   const labelFont: FontSpec = { family: theme.type.family, ...theme.type.label };
   const nameFont = labelFont;
-  return { kindSetting, contentOf, composeText, composeEndText, printsZero, tickFont, secondaryFont: secondaryFont(theme), labelFont, nameFont, labelH: measure('0', labelFont).height };
+  return { kindSetting, contentOf, composeText, composeEndText, composeShows, composeEndShows, printsZero, tickFont, secondaryFont: secondaryFont(theme), labelFont, nameFont, labelH: measure('0', labelFont).height };
 }
 
 /**

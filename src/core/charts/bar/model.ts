@@ -70,6 +70,13 @@ export const EXACT_DOMAIN = Symbol('exactDomain');
 export const DEFER_ADJACENT = Symbol('deferAdjacent');
 /** Internal option: the cut row names the band gave to the notes; the refit happens once. */
 export const CUT_NOTES = Symbol('barCutNotes');
+/**
+ * Internal option: the record slot (ShownTexts key) that a host's bar values
+ * fill. Default 'value'. A host whose bars plot another quantity of its
+ * records, such as a share of a count, names that slot ('field:share').
+ * Authored JSON cannot set it.
+ */
+export const SHOWN_SLOT = Symbol('barShownSlot');
 /** The room a CAGR arm and its label take right of the plot when RIGHT_ROOM is unset. */
 export const CAGR_ROOM = 36;
 /** The room right of the longest bar for an inset CAGR arm (grouped bars): the arm 22 px out and its stroke. */

@@ -43,9 +43,9 @@ import { accessibleTitle } from '../../normalize/shared';
 import { finalizeRatioTier, ratioTierA11y, ratioTierSpacingWarnings, type FinalizedRatioTier, type RatioTierGeometry } from '../../ratioTier';
 import { defaultAnnotationId, type AnchorRef } from '../../types/annotations';
 import { noTotal } from '../../stackAdds';
-import type { Id } from '../../types/cell';
+import type { Id, OwnerRef } from '../../types/cell';
 import type { LineChartData } from '../../types/data';
-import type { Geometry, LintWarning, Paint, PlacedLabel } from '../../types/scene';
+import type { Geometry, LegendGeometry, LintWarning, Paint, PlacedLabel, ShownMark, ShownTexts } from '../../types/scene';
 import type { LiveSampling } from '../../live/types';
 import type { NormSer } from './context';
 import { resolveLineDomain, resolveLineEnv } from './domain';
@@ -89,6 +89,8 @@ export interface LineMarks {
     fcPathNodeId?: Id;
     points: { categoryId: Id; x: number; y: number; nodeId?: Id; highlighted?: true; markerRadius?: number }[];
   }[];
+  /** The value texts of points without a node of their own (ShownMark): would-be texts, and texts another series' label draws. */
+  shown?: ShownMark[];
   gapFills?: {
     nodeId: Id;
     sign: 'positive' | 'negative';
@@ -492,7 +494,7 @@ function annotateLine(
 }
 
 /** "Final standings" are the standings IN THE FINAL PERIOD, not each entity's last held rank. */
-function lineStandings(env: LineEnv, domain: LineDomain, text: LineText): { endpointDesc: string; bumpExitedDesc: string } {
+function lineStandings(env: LineEnv, domain: LineDomain, text: LineText, shownText: ShownTextOf): { endpointDesc: string; bumpExitedDesc: string } {
   const { cats, dataSeries, bumpDerived, endpoints, variant, rebased, lastIdxOf } = domain;
   const finalCi = cats.length - 1;
   const bumpFinal = bumpDerived
@@ -508,9 +510,14 @@ function lineStandings(env: LineEnv, domain: LineDomain, text: LineText): { endp
     : dataSeries
         .filter((s) => endpoints[s.id])
         .map((s) => {
+          const cell = s.vals[lastIdxOf.get(s.id)!]!;
+          // The value as the chart shows it: its drawn label, or under an authored format the label it would print.
+          const shown = variant === 'stacked100-area'
+            ? shownText(s.id, endpoints[s.id]!.categoryId, 'share.percent', false)
+            : shownText(s.id, endpoints[s.id]!.categoryId, 'value', (cell.format ?? s.format ?? domain.options.format) !== undefined);
+          if (shown !== undefined) return `${s.label} ${shown}`;
           const shareText = domain.shareTexts.get(`${endpoints[s.id]!.categoryId}\0${s.id}`);
           if (shareText !== undefined) return `${s.label} ${shareText}`;
-          const cell = s.vals[lastIdxOf.get(s.id)!]!;
           const source = rebased ? undefined : cell.format ? { ...s, format: cell.format } : s;
           return `${s.label} ${text.composeEndText(variant === 'stacked100-area' ? ['percent'] : ['absolute'], endpoints[s.id]!.value, endpoints[s.id]!.value, '', '', endUnitSuffix(domain.options, rebased), cell.isPct, source)}`;
         })
@@ -535,10 +542,57 @@ function lineStandings(env: LineEnv, domain: LineDomain, text: LineText): { endp
   return { endpointDesc, bumpExitedDesc };
 }
 
+/** The text a point's value shows (ShownTexts slot): drawn, else under an authored format the would-be text. */
+type ShownTextOf = (seriesId: Id, categoryId: Id, slot: string, authored: boolean) => string | undefined;
+
+/**
+ * The value texts the records read where no label of their own states them:
+ * the would-be texts of the points under an authored format, and the value
+ * one series' label draws for others (the first member of a near-zero group,
+ * a tie's note or its kept value). With the lookup the description reads:
+ * the drawn text of a value, else under an authored format its would-be
+ * text, the same order the records take them in.
+ */
+function lineShownTexts(domain: LineDomain, reserves: LineReserves, plan: LineLabelPlan, labels: readonly PlacedLabel[], legend: LegendGeometry | undefined): { shown: ShownMark[]; shownText: ShownTextOf } {
+  const visible = new Map(labels.filter((label) => label.hidden === undefined).map((label) => [String(label.id), label] as const));
+  const shown: ShownMark[] = [...plan.shown];
+  const drawnFor = (labelId: Id, owners: readonly OwnerRef[], shows: ShownTexts | undefined) => {
+    if (shows && visible.has(String(labelId))) for (const owner of owners) shown.push({ owner, shows, drawn: true });
+  };
+  // A near-zero group prints its one value at its first member's point (lastWithheld).
+  const tail = reserves.endpoint.nearZeroTail;
+  const [first, ...rest] = tail?.seriesIds ?? [];
+  const ci = first === undefined ? undefined : domain.lastIdxOf.get(first);
+  const category = ci === undefined ? undefined : domain.cats[ci];
+  if (category) drawnFor(`point:${first}:${category.id}`, rest.map((seriesId) => ({ seriesId, categoryId: category.id })), visible.get(`point:${first}:${category.id}`)?.shows);
+  for (const tie of plan.tieShows) drawnFor(tie.labelId, tie.owners, tie.shows);
+  // The fallback key prints each series' last value after its name.
+  for (const [seriesId, shows] of reserves.keyShows) {
+    const last = domain.lastIdxOf.get(seriesId);
+    if (last !== undefined && legend?.items.some((item) => item.id === seriesId)) shown.push({ owner: { seriesId, categoryId: domain.cats[last]!.id }, shows, drawn: true });
+  }
+  const drawn = new Map<string, Record<string, string>>();
+  const would = new Map<string, Record<string, string>>();
+  const key = (seriesId: Id | undefined, categoryId: Id | undefined) => `${seriesId}\0${categoryId}`;
+  const add = (index: Map<string, Record<string, string>>, owner: OwnerRef, shows: ShownTexts) => {
+    if (Object.keys(owner).length !== 2 || owner.seriesId === undefined || owner.categoryId === undefined) return;
+    const into = index.get(key(owner.seriesId, owner.categoryId)) ?? {};
+    for (const [slot, text] of Object.entries(shows)) into[slot] ??= text;
+    index.set(key(owner.seriesId, owner.categoryId), into);
+  };
+  for (const label of labels) if (label.hidden !== undefined && label.shows) add(would, label.owner, label.shows);
+  for (const mark of shown) add(mark.drawn ? drawn : would, mark.owner, mark.shows);
+  for (const label of visible.values()) if (label.shows) add(drawn, label.owner, label.shows);
+  return {
+    shown,
+    shownText: (seriesId, categoryId, slot, authored) => drawn.get(key(seriesId, categoryId))?.[slot] ?? (authored ? would.get(key(seriesId, categoryId))?.[slot] : undefined),
+  };
+}
+
 /** The accessible description: variant, series, presets, standings, suppressed compositions, ratio tier. */
-function lineA11yDesc(env: LineEnv, domain: LineDomain, area: LineArea, marks: LineMarks, variantName: string, text: LineText): string {
+function lineA11yDesc(env: LineEnv, domain: LineDomain, area: LineArea, marks: LineMarks, variantName: string, text: LineText, shownText: ShownTextOf): string {
   const { options, cats, drawnSeries, refSeries, interpolationFor, rebased, bumpDerived, fan, variant, nmCats100, naCats100 } = domain;
-  const { endpointDesc, bumpExitedDesc } = lineStandings(env, domain, text);
+  const { endpointDesc, bumpExitedDesc } = lineStandings(env, domain, text, shownText);
   const finalCi = cats.length - 1;
   const suppressedCompositionDesc =
     variant === 'stacked100-area' && (nmCats100.size > 0 || naCats100.size > 0)
@@ -848,7 +902,9 @@ function assembleLineGeometry(input: LineAssembly): Geometry<LineMarks, LineDeri
   const bandFmt = variant === 'stacked100-area'
     ? (v: number) => formatAutomaticPercent(v, autoDecimals(v), false, domain.options.locale?.language)
     : area.axisTickSpec ? tickFormatter(area.axisTickSpec, bandLevels) : area.axisFmt;
-  const a11yDesc = lineA11yDesc(env, domain, area, marks, variantName, text) + referenceBandsA11y(input.reserves.referenceBands, bandFmt, domain.options)
+  const lineShown = lineShownTexts(domain, input.reserves, plan, allLabels, area.frame.legend);
+  if (lineShown.shown.length > 0) marks.shown = lineShown.shown;
+  const a11yDesc = lineA11yDesc(env, domain, area, marks, variantName, text, lineShown.shownText) + referenceBandsA11y(input.reserves.referenceBands, bandFmt, domain.options)
     + (usesEndLabelKey(options) ? chartString(domain.options, 'lineEndKeyDesc') : '');
   // A trend's key prints its slope and r², never its intercept. Without its key entry no text prints either.
   const keyed = new Set(area.frame.legend?.items.map((item) => item.id));
@@ -1160,7 +1216,12 @@ function layoutLinePass(
     const id = `point:${name.s.id}:${domain.cats[name.ci]!.id}`;
     if (folded!.has(id) && name.lines.join(' ').includes(`· ${folded!.get(id)}`)) hosts.set(id, name.id);
   }
-  for (const request of plan.labelRequests) if (hosts.has(request.id)) Object.assign(request, { redundant: true, suppressedAs: 'redundant' });
+  for (const request of plan.labelRequests) if (hosts.has(request.id)) {
+    Object.assign(request, { redundant: true, suppressedAs: 'redundant' });
+    // The name prints the value after its '·': it states the value's texts.
+    const host = request.shows && plan.labelRequests.find((name) => name.id === hosts.get(request.id));
+    if (host) host.shows = request.shows;
+  }
   const solveCtx: SolveCtx = labelCtx(theme, size, domain.options, {
     density: env.density,
     measure,

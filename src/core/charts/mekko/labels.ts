@@ -16,8 +16,8 @@ import type { LabelContent, LabelKind } from '../../types/options';
 import { segmentTooShort } from '../band/labels';
 import { warnIncompleteComposition, warnShareRoundingDrift } from '../../dataGaps';
 import { shareSetDecimals } from '../../formatPrecision';
-import type { LintWarning } from '../../types/scene';
-import { colCx, colW, type MekkoArea, type MekkoDomain, type MekkoEnv, type MekkoMarkGeometry, type MekkoPaints } from './model';
+import type { LintWarning, ShownTexts } from '../../types/scene';
+import { colCx, colW, type MekkoArea, type MekkoDomain, type MekkoEnv, type MekkoMarkGeometry, type MekkoPaints, type NormSer } from './model';
 import { GUTTER_GAP, UPPER_TIER_GAP, kindSetting } from './plot';
 import { composedTextRole } from '../../textRole';
 import { planValueAxisTitle, valueAxisTitleRequest } from '../../axis';
@@ -43,7 +43,10 @@ function contentOf(env: MekkoEnv, kind: LabelKind, dflt: LabelContent): LabelCon
   return Array.isArray(s) ? s : dflt;
 }
 
-function composeText(
+type LabelPart = [LabelContent[number], string];
+
+/** The label's parts, each with its text: the absolute value, the share, the category and series names. */
+function composeParts(
   env: MekkoEnv,
   content: LabelContent,
   values: { abs: number | null; pct: number | null; authoredPct?: boolean; absIsPct?: boolean; pctText?: string },
@@ -51,16 +54,49 @@ function composeText(
   serLabel: string,
   example?: string,
   absFmt = env.fmt,
-): string {
-  const parts: string[] = [];
+): LabelPart[] {
+  const parts: LabelPart[] = [];
   for (const c of content) {
-    if (c === 'absolute' && values.abs !== null) parts.push(example ? formatterFromExample(example, env.options.locale?.language)(values.abs) : values.absIsPct ? env.cellPctFmt(values.abs) : absFmt(values.abs));
-    else if (c === 'percent' && values.pct !== null) parts.push((env.options.rounding === 'sum-consistent' ? values.pctText : undefined) ??
-      (example ? formatterFromExample(example, env.options.locale?.language)(values.pct) : values.authoredPct ? env.authoredPctFmt(values.pct) : values.pctText ?? env.pctFmt(values.pct)));
-    else if (c === 'category' && catLabel) parts.push(catLabel);
-    else if (c === 'series' && serLabel) parts.push(serLabel);
+    if (c === 'absolute' && values.abs !== null) parts.push([c, example ? formatterFromExample(example, env.options.locale?.language)(values.abs) : values.absIsPct ? env.cellPctFmt(values.abs) : absFmt(values.abs)]);
+    else if (c === 'percent' && values.pct !== null) parts.push([c, (env.options.rounding === 'sum-consistent' ? values.pctText : undefined) ??
+      (example ? formatterFromExample(example, env.options.locale?.language)(values.pct) : values.authoredPct ? env.authoredPctFmt(values.pct) : values.pctText ?? env.pctFmt(values.pct))]);
+    else if (c === 'category' && catLabel) parts.push([c, catLabel]);
+    else if (c === 'series' && serLabel) parts.push([c, serLabel]);
   }
-  return parts.join(' ');
+  return parts;
+}
+
+function composeText(...args: Parameters<typeof composeParts>): string {
+  return composeParts(...args).map(([, text]) => text).join(' ');
+}
+
+/**
+ * The record values a segment label's parts print (ShownTexts): the absolute
+ * part is the value, the percent part the share. An authored text without a
+ * `${value}` prints neither. A percent cell of a percent mekko prints its
+ * amount in the absolute part, not its value: that part states nothing.
+ */
+function shownParts(parts: readonly LabelPart[], override: string | false | undefined, absIsValue: boolean): ShownTexts | undefined {
+  if (override === false || (typeof override === 'string' && !override.includes('${value}'))) return undefined;
+  const value = absIsValue ? parts.find(([kind]) => kind === 'absolute')?.[1] : undefined;
+  const share = parts.find(([kind]) => kind === 'percent')?.[1];
+  if (value === undefined && share === undefined) return undefined;
+  return { ...(value === undefined ? {} : { value }), ...(share === undefined ? {} : { 'share.percent': share }) };
+}
+
+/**
+ * A segment's value as its label would print it: in bar mode as the column's
+ * total prints the bar, else as a label's absolute part. Null where the label
+ * prints no such text for the value (no value; a percent cell of a percent
+ * mekko, whose absolute part is an amount).
+ */
+export function segmentValueText(env: MekkoEnv, domain: MekkoDomain, s: NormSer, ci: number): string | null {
+  if (domain.mode === 'bar') return s === domain.series[0] && domain.plottedAt(s, ci) !== null ? columnShownText(env, domain, ci) : null;
+  const val = s.vals[ci]!;
+  const abs = domain.absAt(s, ci);
+  if (abs === null || (domain.mode === 'percent' && val.isPct)) return null;
+  const parts = composeParts(env, ['absolute'], { abs, pct: null, absIsPct: val.isPct }, '', '', val.format ?? s.format);
+  return parts[0]?.[1] ?? null;
 }
 
 /**
@@ -118,9 +154,11 @@ function segmentLabels(ctx: LabelCtx, geometry: MekkoMarkGeometry): void {
     // only: withheld, unless an authored total100 states the whole.
     const shareWithheld = domain.incomplete.has(c.id) && (mode !== 'percent' || c.total100 === undefined);
     const pct = shareWithheld ? null : mode === 'percent' ? v : (domain.shares[c.id]![s.id] ?? null);
-    let text = composeText(env, content, {
+    const parts = composeParts(env, content, {
       abs: domain.absAt(s, ci), pct, authoredPct: mode === 'percent' && val.isPct, absIsPct: mode !== 'percent' && val.isPct, pctText: domain.shareTexts.get(`${c.id}\0${s.id}`),
     }, c.label ?? c.id, s.label, val.format ?? s.format);
+    let text = parts.map(([, part]) => part).join(' ');
+    const shows = shownParts(parts, val.labelOverride, !(mode === 'percent' && val.isPct));
     if (typeof val.labelOverride === 'string') {
       text = val.labelOverride.replace(/\$\{value\}/g, text);
     }
@@ -176,6 +214,7 @@ function segmentLabels(ctx: LabelCtx, geometry: MekkoMarkGeometry): void {
       // A label that carries its series name ("Acme 44%") is composed: its role follows the string.
       ...(content.includes('series') ? { role: composedTextRole(text) } : {}),
       text,
+      ...(shows ? { shows } : {}),
       lines: [text],
       font: area.labelFont,
       priority,
@@ -228,6 +267,16 @@ export function columnTotalText(env: MekkoEnv, domain: MekkoDomain, ci: number, 
     : (domain.mode === 'bar' || (domain.mode === 'unit' && domain.series.length === 1)) && series.vals[ci]!.isPct ? (domain.mode === 'bar' ? env.authoredPctFmt : env.cellPctFmt)(value) : env.totalFmt(value);
 }
 
+/**
+ * The number text a column's total states, for its label and the
+ * description alike: in bar mode the bar's own value as its label prints it
+ * (the record's shown text), else the column's absolute total.
+ */
+export function columnShownText(env: MekkoEnv, domain: MekkoDomain, ci: number): string {
+  const bar = domain.mode === 'bar' ? domain.plottedAt(domain.series[0]!, ci) : null;
+  return bar === null ? columnTotalText(env, domain, ci) : columnTotalText(env, domain, ci, bar);
+}
+
 /** The solver's 2 px of air to a rule, plus a hair so the seat is free, not touching. */
 const TOTAL_RULE_AIR = 2.05;
 
@@ -257,13 +306,15 @@ function totalLabel(ctx: LabelCtx, ci: number, visibleCol: boolean, edges: { top
   let text = '';
   if (totalContent) {
     if (mode === 'bar') {
-      if (barV !== null) text = columnTotalText(env, domain, ci, barV);
+      if (barV !== null) text = columnShownText(env, domain, ci);
     } else {
       text = composeText(env, totalContent, { abs: domain.columnTotals[c.id]!, pct: null, absIsPct: mode === 'unit' && domain.series.length === 1 && val0.isPct }, c.label ?? c.id, '', undefined, env.totalFmt);
     }
   }
   // The shared join: a currency sign where the locale writes it ("$10,000", "10.000 $").
   if (text && unit) text = withUnit(text, unit, false, env.options.locale?.language);
+  // A bar's total is its record's value: the label's text, the first one's unit joined, is its shown text.
+  const shows = mode === 'bar' && barV !== null && text ? { value: text } : undefined;
   // A unit column whose stack reaches past zero both ways prints the
   // sum of its parts; the word says so (North: 30 up, -6 down, net 24).
   const net = Boolean(text) && mode === 'unit' && domain.posTop[ci]! > 0 && domain.negBot[ci]! < 0;
@@ -309,6 +360,7 @@ function totalLabel(ctx: LabelCtx, ci: number, visibleCol: boolean, edges: { top
     ...(mode === 'bar' ? {} : namesOnly(totalContent?.filter((part) => part !== 'percent'), undefined)),
     ...(net ? { role: composedTextRole(text) } : {}),
     text,
+    ...(shows ? { shows } : {}),
     lines: [text],
     font: area.strongFont,
     priority: PRIORITY.total + (env.highlights.has(c.id) ? PRIORITY.highlightBonus : 0),

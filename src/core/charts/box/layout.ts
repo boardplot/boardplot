@@ -50,7 +50,7 @@ import { authoredNotes, frameTextOptions, solveFrame, plotHeightAfter, authoredF
 import { defaultMeasurer, type FontSpec } from '../../text';
 import { strokeToken, canvasMargin, focusColor, paintColor, resolveSemanticPaletteTheme, semanticPalettePaint } from '../../theme';
 import type { LabelKind } from '../../types/options';
-import type { Geometry, LintWarning, SceneNode } from '../../types/scene';
+import type { Geometry, LintWarning, SceneNode, ShownTexts } from '../../types/scene';
 import { pickInk } from '../../color';
 import {
   BEYOND_ARE_OUTLIERS,
@@ -238,6 +238,8 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
   const fmtMedian = authoredFmt || scaled
     ? fmt
     : seriesValueFormatter(rows.map((row) => row.median), options.locale?.language, options.unit, options.target);
+  /** The text a statistic of a row prints, on its label and in the description: one text per value. */
+  const statText = (row: BoxGroupDerived, stat: BoxStat): string => (stat === 'median' ? fmtMedian : fmt)(row[stat]!);
 
   // ---- lints ---------------------------------------------------------------
   if (whiskerRule === 'minmax' && options.showOutliers !== undefined) {
@@ -759,6 +761,20 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
     return stat === 'q1' ? x(value) + 3 + width < x(row.median) - 3 : x(value) - 3 - width > x(row.median) + 3;
   };
   const quartilesInside = rows.every((row) => row.state !== 'box' || (quartileFits(row, 'q1') && quartileFits(row, 'q3')));
+  /**
+   * The record fields of a group's observations at one value
+   * (a11y/statisticsRecords.ts), one per occurrence, keyed by value and
+   * occurrence, each with the text that prints the value. A statistic that
+   * is no observation fills none.
+   */
+  const observationShows = (index: number, value: number, text: string): ShownTexts => {
+    const shows: Record<string, string> = {};
+    let occurrence = 0;
+    for (const observation of data.groups[order[index]!]!.observations) {
+      if (observation === value) shows[`field:${JSON.stringify(['observation', value, occurrence++])}`] = text;
+    }
+    return shows;
+  };
   let unresolvedCollisions = 0;
 
   rows.forEach((row, index) => {
@@ -815,7 +831,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
           width: strokeToken(theme, 'rule'),
           owner,
           part: 'boxWhisker',
-          display: { ...display, value: fmt(row.whiskerLow!) },
+          display: { ...display, value: fmt(row.whiskerLow!), shows: observationShows(index, row.whiskerLow!, fmt(row.whiskerLow!)) },
         });
         occupied.claim({ x: xLow, y: rowCenter - 0.5, w: xQ1 - xLow, h: 1 }, 'mark', owner, 'boxWhisker');
         const capId = `box:capLow:${row.id}`;
@@ -853,7 +869,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
           width: strokeToken(theme, 'rule'),
           owner,
           part: 'boxWhisker',
-          display: { ...display, value: fmt(row.whiskerHigh!) },
+          display: { ...display, value: fmt(row.whiskerHigh!), shows: observationShows(index, row.whiskerHigh!, fmt(row.whiskerHigh!)) },
         });
         occupied.claim({ x: xQ3, y: rowCenter - 0.5, w: xHigh - xQ3, h: 1 }, 'mark', owner, 'boxWhisker');
         const capId = `box:capHigh:${row.id}`;
@@ -913,7 +929,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
         width: strokeToken(theme, 'mark'),
         owner,
         part: 'boxMedian',
-        display: { ...display, value: fmtMedian(row.median!) },
+        display: { ...display, value: fmtMedian(row.median!), shows: { value: statText(row, 'median') } },
       });
       occupied.claim(
         { x: medianX - 0.75, y: rowY, w: 1.5, h: boxH },
@@ -1009,7 +1025,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
               fill: pointFill,
               owner,
               part: 'boxObservation',
-              display: { ...display, value },
+              display: { ...display, value, shows: observationShows(index, point.value, fmt(point.value)) },
             }
           : {
               t: 'circle',
@@ -1039,6 +1055,8 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
         const at = (y: number) => ({ x: cx - size.width / 2, y, w: size.width, h: size.height });
         labelRequests.push({
           id: `obs:${row.id}:${k}`, kind: 'point', role: composedTextRole(value), owner, text: value, lines: [value],
+          // '4.0 (×2)' prints the value of both observations.
+          shows: observationShows(index, point.value, fmt(point.value)),
           font: labelFont, priority: PRIORITY.interior,
           candidates: [
             { slot: 'aboveDot', rect: at(cy - POINT_R - 2 - size.height), penalty: 0 },
@@ -1057,7 +1075,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
       const stats = [['q1', row.q1, -1], ['q3', row.q3, 1], ['whiskerLow', row.whiskerLow, -1], ['whiskerHigh', row.whiskerHigh, 1]] as const;
       for (const [stat, value, outward] of stats) {
         if (value === null || (stat.startsWith('whisker') && value === (stat === 'whiskerLow' ? row.q1 : row.q3))) continue;
-        const text = fmt(value);
+        const text = statText(row, stat);
         const size = measure(text, labelFont);
         const statX = x(value);
         const under = rowY + boxH + 4;
@@ -1083,8 +1101,11 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
           { slot: 'under', rect: { x: statX - size.width / 2, y: under, w: size.width, h: size.height }, penalty: 1 },
           { slot: 'underOutward', rect: { x: outward < 0 ? statX - size.width : statX, y: under, w: size.width, h: size.height }, penalty: 2 },
         ];
+        // A whisker end is an observation, and a quartile can be one (the record keeps it exact then).
+        const shows = observationShows(index, value, text);
         labelRequests.push({
           id: `stat:${row.id}:${stat}`, kind: 'point', role: composedTextRole(text), owner, text, lines: [text], font: labelFont,
+          ...(Object.keys(shows).length > 0 ? { shows } : {}),
           ...(stat === 'q1' || stat === 'q3' ? { claimIds: [`box:${stat}:${row.id}`] } : {}),
           priority: PRIORITY.interior, candidates,
         });
@@ -1190,7 +1211,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
     if (labelOn('point') && row.median !== null && row.state !== 'points') {
       // The first figure names the statistic, as a first tick names its unit:
       // a bare number above a box reads as anything from a mean to a total.
-      const text = `${index === firstMedianRow && !medianCol ? 'Median ' : ''}${fmtMedian(row.median)}`;
+      const text = `${index === firstMedianRow && !medianCol ? 'Median ' : ''}${statText(row, 'median')}`;
       const textSize = measure(text, labelFont);
       const medianX = x(row.median);
       // EVERY candidate clears this row's OWN dots.
@@ -1211,6 +1232,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
         kind: 'point', role: composedTextRole(text),
         owner,
         text,
+        shows: { value: statText(row, 'median') },
         lines: [text],
         font: labelFont,
         priority: PRIORITY.endpoint,
@@ -1354,7 +1376,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
         ...(withheldTotal > 0 ? [structureCount('observations', withheldTotal, chartString(options, 'boxWithheldCount', { v1: withheldTotal }))] : [])],
       desc:
         chartString(options, 'boxDescStart', { v1: METHOD_BY_RULE[whiskerRule] }) +
-        rows.map((row) => describeRow(row, fmt, fmtMedian, whiskerRule, options)).join(' ') +
+        rows.map((row) => describeRow(row, statText, whiskerRule, options)).join(' ') +
         chartString(options, 'boxRuleDesc', { v1: whiskerRule, v2: chartString(options, ({ tukey: 'boxBeyondMeaningtukey', minmax: 'boxBeyondMeaningminmax', p10p90: 'boxBeyondMeaningp10p90' } as const)[whiskerRule]) }) +
         (withheldTotal > 0
           ? chartString(options, 'boxWithheldDesc', { v1: withheldTotal })
@@ -1383,16 +1405,21 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
   });
 }
 
+type BoxStat = 'min' | 'q1' | 'median' | 'q3' | 'max' | 'whiskerLow' | 'whiskerHigh';
+
+/**
+ * One row of the description, each statistic in the text the chart prints for
+ * it (statText): its drawn label's text, else the text its label would print.
+ */
 function describeRow(
   row: BoxGroupDerived,
-  fmt: (value: number) => string,
-  fmtMedian: (value: number) => string,
+  text: (row: BoxGroupDerived, stat: BoxStat) => string,
   rule: WhiskerRule,
   options: BoxOptions,
 ): string {
   if (row.state === 'empty') return chartString(options, 'emptyBoxRow', { v1: row.label });
   if (row.state === 'points') {
-    return chartString(options, 'pointsBoxRow', { v1: row.label, v2: row.n, v3: fmt(row.min!), v4: fmt(row.max!), v5: fmtMedian(row.median!) });
+    return chartString(options, 'pointsBoxRow', { v1: row.label, v2: row.n, v3: text(row, 'min'), v4: text(row, 'max'), v5: text(row, 'median') });
   }
   // The noun follows the RULE. Under p10p90 these are the outer deciles, and
   // reading them out as "outliers" would tell a screen-reader user the sample
@@ -1400,8 +1427,8 @@ function describeRow(
   const beyond =
     row.beyondWhiskers.length === 0 ? '' : `, ${row.beyondWhiskers.length} ${chartString(options, ({ tukey: 'boxBeyondNountukey', minmax: 'boxBeyondNounminmax', p10p90: 'boxBeyondNounp10p90' } as const)[rule])}`;
   if (row.state === 'median-only') {
-    return chartString(options, 'medianBoxRow', { v1: row.label, v2: row.n, v3: fmtMedian(row.median!), v4: beyond });
+    return chartString(options, 'medianBoxRow', { v1: row.label, v2: row.n, v3: text(row, 'median'), v4: beyond });
   }
-  return chartString(options, 'fullBoxRow', { v1: row.label, v2: row.n, v3: fmt(row.q1!), v4: fmtMedian(row.median!), v5: fmt(row.q3!), v6: fmt(row.whiskerLow!), v7: fmt(row.whiskerHigh!), v8: beyond });
+  return chartString(options, 'fullBoxRow', { v1: row.label, v2: row.n, v3: text(row, 'q1'), v4: text(row, 'median'), v5: text(row, 'q3'), v6: text(row, 'whiskerLow'), v7: text(row, 'whiskerHigh'), v8: beyond });
 }
 

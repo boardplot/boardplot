@@ -33,7 +33,7 @@ import { spread1DResult } from '../../collide';
 import { defaultMeasurer, graphemes, type FontSpec, type TextMeasurer } from '../../text';
 import { canvasMargin, emphasisWeight, markRolePaint, panelTypeClass, resolveTheme, ribbonPaint, seriesPaint, themeForWidth } from '../../theme';
 import type { Id } from '../../types/cell';
-import type { Geometry, LintWarning, Paint, SceneNode } from '../../types/scene';
+import type { Geometry, LintWarning, Paint, SceneNode, ShownTexts } from '../../types/scene';
 import { composedTextRole } from '../../textRole';
 import { isOthersFill, othersSeparation } from '../../markVisibility';
 import { layer, orderColumns, placeNodes, ribbonPath, segmentBands, weightedCrossings, type NodeBox, type RibbonPiece } from './geometry';
@@ -153,6 +153,11 @@ function layoutSankeyPass(data: SankeyData, options: SankeyOptions): Geometry<Sa
   const valueText = (node: GraphNode): string => {
     const share = shareFmt(shareOf(node));
     return nodeValue === 'share' ? share : nodeValue === 'value-share' ? `${fmt(node.value)} (${share})` : fmt(node.value);
+  };
+  /** The record values a node's label prints (ShownTexts), as valueText sets them; with labels off, the value it would print. */
+  const shownOf = (node: GraphNode): ShownTexts => {
+    const share = shareFmt(shareOf(node));
+    return nodeValue === 'share' ? { 'share.percent': share } : nodeValue === 'value-share' ? { value: fmt(node.value), 'share.percent': share } : { value: fmt(node.value) };
   };
   // nodeValue false stops the printing only: the mark keeps valueText for hover and records.
   const printsValue = nodeValue !== false;
@@ -313,7 +318,7 @@ function layoutSankeyPass(data: SankeyData, options: SankeyOptions): Geometry<Sa
       // The Others fill is already a pale tint: translucent it would vanish.
       fill: isOthersFill(linkPaint(link)) ? linkPaint(link) : ribbonPaint(linkPaint(link)),
       owner: { segmentId: link.key }, part: 'sankeyLink',
-      display: { value: fmt(link.value) },
+      display: { value: fmt(link.value), shows: { value: fmt(link.value) } },
     });
     const mid = pieces[Math.floor((pieces.length - 1) / 2)]!;
     const midY = pieces.length % 2 === 1 ? (mid.sy + mid.ty) / 2 : mid.ty;
@@ -329,7 +334,7 @@ function layoutSankeyPass(data: SankeyData, options: SankeyOptions): Geometry<Sa
       scene.push({
         t: 'rect', id: nodeId, rect, fill, ...(sep ? { stroke: sep.stroke, strokeWidth: sep.strokeWidth } : {}),
         ...(isOthersFill(fill) ? { separation: { fill, backing: { token: 'background' } as const } } : {}),
-        owner: { categoryId: own.key }, part: 'sankeyNode', display: { value: valueText(own) },
+        owner: { categoryId: own.key }, part: 'sankeyNode', display: { value: valueText(own), shows: shownOf(own) },
       });
       occupied.claim(rect, 'mark', { categoryId: own.key }, 'sankeyNode');
       marks.nodes.push({ key: own.key, nodeId, rect });
@@ -367,7 +372,7 @@ function layoutSankeyPass(data: SankeyData, options: SankeyOptions): Geometry<Sa
       const priority = PRIORITY.interior + round2(shareOf(own));
       const note = printsValue ? `${nodeName(own)} ${valueText(own)}` : nodeName(own);
       if (!shown.has(k)) {
-        requests.push({ id, kind: 'item', owner, text: note, lines: [note], font: nameFont, priority, redundant: true, suppressedAs: 'density', candidates: [], noteText: note, owed: true });
+        requests.push({ id, kind: 'item', owner, text: note, lines: [note], ...(printsValue ? { shows: shownOf(own) } : {}), font: nameFont, priority, redundant: true, suppressedAs: 'density', candidates: [], noteText: note, owed: true });
         return;
       }
       const at = spread.positions[kept.findIndex((entry) => entry.k === k)]!;
@@ -382,7 +387,7 @@ function layoutSankeyPass(data: SankeyData, options: SankeyOptions): Geometry<Sa
       sides.set(id, where);
       if (at < b.y0 - 1 || at > b.y1 + 1) leaders.set(id, { x: where === 'left' ? columnX(c) : columnX(c) + barW, y: Math.min(Math.max(at, b.y0), b.y1) });
       requests.push({
-        id, kind: 'item', owner, text: text.lines.join(' '), lines: text.lines, font: nameFont, priority, noteText: note, owed: true,
+        id, kind: 'item', owner, text: text.lines.join(' '), lines: text.lines, ...(printsValue ? { shows: shownOf(own) } : {}), font: nameFont, priority, noteText: note, owed: true,
         candidates: [{ slot: outside ? 'outside' : 'inside', rect, penalty: 0, pad: 0, outsidePlot: outside, ...(outside ? {} : { needsBacking: true }) }],
       });
     });
@@ -402,7 +407,7 @@ function layoutSankeyPass(data: SankeyData, options: SankeyOptions): Geometry<Sa
       if (x < columnX(from) + barW + LABEL_GAP) return;
       const rect = { x, y: top + bands[s]!.ty + (link.value * scale - flowH) / 2, w, h: flowH };
       requests.push({
-        id: `flow:${link.key}`, kind: 'tick', owner: { segmentId: link.key }, text, lines: [text], font: headerFont,
+        id: `flow:${link.key}`, kind: 'tick', owner: { segmentId: link.key }, text, lines: [text], shows: { value: text }, font: headerFont,
         priority: PRIORITY.interior / 2 + link.value * scale / 100, align: 'end', quietWhenCrowded: true,
         candidates: [{ slot: 'inside', rect, penalty: 0, pad: 0, needsBacking: true }],
       });
@@ -446,8 +451,10 @@ function layoutSankeyPass(data: SankeyData, options: SankeyOptions): Geometry<Sa
     if (runs) return [{ ...node, ...halo, x, align, runs, role: composedTextRole(label.text) }];
     if (!printsValue) return [{ ...node, ...halo, x, align, role: 'category' }];
     const head = valueLines.get(id)!;
+    // The name lines print no value: the shown texts stay on the value line.
+    const { display: _shows, ...nameNode } = node;
     return [
-      { ...node, ...halo, x, align, y: label.rect.y, lines: label.lines.slice(0, head), role: 'category' },
+      { ...nameNode, ...halo, x, align, y: label.rect.y, lines: label.lines.slice(0, head), role: 'category' },
       { ...node, ...halo, id: `${node.id}:value`, x, align, y: label.rect.y + head * lineH, lines: [label.lines[head]!], font: valueFont, role: 'value' },
     ];
   });

@@ -38,7 +38,7 @@ import { cellMeta, cellValue, type Cell, type Id, type OwnerRef } from '../../ty
 import type { SparklineData } from '../../types/data';
 import type { CanvasSizeInput, RenderTarget, SparklineOptions } from '../../types/options';
 import { DEFAULT_TARGET, resolveTargetSize, TARGET_SIZE, type TargetSizeOptions } from '../../target';
-import type { Geometry, LintWarning, Paint, SceneNode } from '../../types/scene';
+import type { Geometry, LintWarning, Paint, SceneNode, ShownMark } from '../../types/scene';
 import type { Theme } from '../../types/theme';
 import { normalizeCell } from '../../normalize/shared';
 import { ringToneRefusal } from './refusals';
@@ -495,8 +495,10 @@ export function emitKpiSpark(
   // other chart families apply (bar/dot/heatmap).
   const lastFormat = endpointFormat ? formatterFromExample(endpointFormat, card.locale) : format;
   // A theme's `marks.sparkEndLabel: false` leaves the last value to the card's figure.
-  const endText = lastIndex === undefined || theme.marks?.sparkEndLabel === false
-    ? undefined : cellLabelText(endpointLabel, lastFormat(values[lastIndex]!));
+  const endNumber = lastIndex === undefined || theme.marks?.sparkEndLabel === false ? undefined : lastFormat(values[lastIndex]!);
+  const endText = endNumber === undefined ? undefined : cellLabelText(endpointLabel, endNumber);
+  // The number the end label prints, unless an authored text replaces it.
+  const endShows = endNumber !== undefined && (typeof endpointLabel !== 'string' || endpointLabel.includes('${value}')) ? { value: endNumber } : undefined;
   const lastText = endText === card.heroText ? undefined : endText;
   const font: FontSpec = { family: theme.type.family, ...theme.type.axis };
   const first = card.periods?.[0];
@@ -557,6 +559,8 @@ export function emitKpiSpark(
       typeRole: 'label',
       owner: { seriesId: 'spark', segmentId: 'sparkLast' },
       text: plot.label.text,
+      // A label cut short prints no whole number.
+      ...(endShows && plot.label.title === undefined ? { shows: endShows } : {}),
       lines: [plot.label.text],
       ...(plot.label.title !== undefined ? { title: plot.label.title } : {}),
       font,
@@ -655,6 +659,8 @@ export interface SparklineMarks {
   points: SparklinePoint[];
   /** The last observed point, where the ring sits. */
   last?: SparklinePoint;
+  /** Under an authored format, the text each value's label would print (ShownMark): a point has no node of its own. */
+  shown?: ShownMark[];
 }
 
 export interface SparklineDerived {
@@ -851,6 +857,8 @@ export function layoutSparkline(
       typeRole: 'label',
       owner: { categoryId: sparklinePointId(lastIndex) },
       text: plot.label.text,
+      // A label that would be cut is dropped above, so this one prints the whole value.
+      shows: { value: formatValue(values[lastIndex]!) },
       lines: [plot.label.text],
       font: valueFont,
       priority: PRIORITY.endpoint,
@@ -943,7 +951,7 @@ export function layoutSparkline(
     const baseline = below ? y + 10 + cap : y - 10;
     const left = id === 'low' ? Math.min(Math.max(frame.plot.x, x - m.width / 2), frame.plot.x + frame.plot.w - m.width) : Math.max(frame.plot.x, x - m.width / 2);
     requests.push({
-      id: `spark:${id}`, kind: 'point', pad: 0, typeRole: 'label', owner: owner(index), text, lines: [text], font: labelFont,
+      id: `spark:${id}`, kind: 'point', pad: 0, typeRole: 'label', owner: owner(index), text, shows: { value: text }, lines: [text], font: labelFont,
       priority: PRIORITY.endpoint - 1,
       candidates: [{ slot: below ? 'below' : 'above', rect: { x: left, y: baseline - m.height / 2 - cap / 2, w: m.width, h: m.height }, penalty: 0 }],
     });
@@ -995,10 +1003,13 @@ export function layoutSparkline(
       y: plot.yAt(value),
       ...(labels?.[index] ? { label: labels[index]! } : {}),
     }]);
+  // Under an authored format a value with no label takes the text its label would print.
+  const authored = options.format !== undefined || cells.some((cell) => cellMeta(cell)?.format !== undefined);
   const marks: SparklineMarks = {
     plot: plot.plot,
     points,
     ...(lastIndex === undefined ? {} : { last: points[points.length - 1]! }),
+    ...(authored ? { shown: points.map((point) => ({ owner: owner(point.index), shows: { value: formatValue(values[point.index]!) } })) } : {}),
   };
   const firstIndex = values.findIndex((value) => value !== null);
   const derived: SparklineDerived = {

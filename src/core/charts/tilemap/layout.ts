@@ -450,6 +450,8 @@ function layoutTilemapPass(
   }
   // Codes print bold where every code fits bold, so one map has one weight.
   const boldCodes = codesFitBold(pack.regions, tileSize, labelTheme, measure);
+  // Under an authored format a tile states the text its value line would print, for a value no tile prints.
+  const valueDisplay = (text: string) => (options.format !== undefined ? { value: text, shows: { value: text } } : { value: text });
   for (const region of pack.regions) {
     const value = valuesById.get(region.id) ?? null;
     const unlisted = !valuesById.has(region.id);
@@ -476,7 +478,7 @@ function layoutTilemapPass(
       ...(state ? { pattern: geoStatePattern(state) } : noData ? { pattern: 'hatch45' as const } : {}),
       owner,
       part: 'tile',
-      display: state ? { state: geoStateLabel(state, options) } : unlisted ? { state: chartString(options, 'notInData') } : noData ? { state: chartString(options, 'valueMissing') } : { value: fmt(value!) },
+      display: state ? { state: geoStateLabel(state, options) } : unlisted ? { state: chartString(options, 'notInData') } : noData ? { state: chartString(options, 'valueMissing') } : valueDisplay(fmt(value!)),
     });
     occupied.claim(rect, 'mark', owner, 'tile');
     marks.regions.push({
@@ -880,6 +882,8 @@ function tileLabelPlan(
         kind: 'category' as const, typeRole: 'label' as const,
         owner: { categoryId: region.id },
         text: lines.join(' '),
+        // The value line prints the tile's value.
+        ...(lines.length > 1 && value !== undefined ? { shows: { value } } : {}),
         lines,
         font,
         priority: PRIORITY.interior,
@@ -1083,6 +1087,8 @@ function centredTileLabels(nodes: SceneNode[], placed: SolveResult['placed'], th
     const regular = { ...node.font, weight: theme.type.label.weight ?? 400 };
     const head: SceneNode = { ...node, x, align: 'middle', lines: node.lines.slice(0, 1) };
     if (node.lines.length < 2) return [head];
+    // The code line prints no value: the value line states it.
+    delete head.display;
     const lineH = node.font.size * (node.font.lineHeight ?? 1.2);
     return [head, { ...node, id: `${node.id}:value`, x, y: node.y + lineH, align: 'middle', lines: node.lines.slice(1), font: regular }];
   });

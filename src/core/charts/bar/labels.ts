@@ -13,8 +13,8 @@ import { DEFAULT_TARGET } from '../../target';
 import { namesOnly } from '../../markVisibility';
 import { PRIORITY, type LabelRequest, type SlotCandidate } from '../../label/solver';
 import type { DataRange } from '../../rangeRules';
-import type { Id } from '../../types/cell';
-import type { LintWarning, Paint } from '../../types/scene';
+import type { Id, OwnerRef } from '../../types/cell';
+import type { LintWarning, Paint, ShownMark, ShownTexts } from '../../types/scene';
 import type { FontSpec, TextMeasurer } from '../../text';
 import { SWATCH_RESERVE } from '../../label/emit';
 import { compactValueTextSize, acrossValueLines, fitsInside, overValueLines, segmentLabelCandidates, segmentTooShort, steppedInsideSeat, warnSliverLabels } from '../band/labels';
@@ -22,7 +22,7 @@ import { totalLabelCandidates } from '../band/totals';
 import { rankValueLabels } from '../band/valueDensity';
 import { REFERENCE_MARKER_R } from '../band/ticks';
 import { restValueHiding, restValuesHidden } from '../../restLabels';
-import { textFor, toDateOnValues, type BarTextCell } from './domain';
+import { displayFor, shownFor, textFor, toDateOnValues, valueSlot, type BarTextCell } from './domain';
 import { toDateLabel } from '../../partialPeriod';
 import { chartString } from '../../strings';
 import { labelOn } from '../labelOn';
@@ -113,9 +113,11 @@ function stepsBelow(domain: BarDomain, font: FontSpec): FontSpec[] {
 /**
  * Phase 3: every label request the chart makes before the local annotations,
  * in solver order: row by row the value labels, the grand total and the
- * category name, then the net line's label.
+ * category name, then the net line's label. `stated` collects, by label id,
+ * the record texts a label prints for another owner: a one-part stack's
+ * total prints its part's value.
  */
-export function planBarLabels(domain: BarDomain, paints: BarPaints, area: BarArea, scene: BarMarkGeometry, warnings: LintWarning[]): LabelRequest[] {
+export function planBarLabels(domain: BarDomain, paints: BarPaints, area: BarArea, scene: BarMarkGeometry, warnings: LintWarning[], stated?: Map<Id, Omit<ShownMark, 'drawn'>>): LabelRequest[] {
   const { options, measure, highlights, cats, dataSeries, variant, totals, plotRange } = domain;
   const { labelFont, strongFont, tickFont, pointFont, compact, band } = area;
   const requests: LabelRequest[] = [];
@@ -138,6 +140,8 @@ export function planBarLabels(domain: BarDomain, paints: BarPaints, area: BarAre
   cats.forEach((cat, ci) => {
     let part: Id | undefined;
     let partText: string | undefined;
+    let partOwner: OwnerRef | undefined;
+    let partValue: ShownTexts | undefined;
     const rowCenter = band.position(ci) + band.bandwidth / 2;
     // The outermost segment on each side of a stack has free room past its end.
     const outer = variant === 'stacked' ? outerSegments(scene.bars[ci]!) : [];
@@ -156,6 +160,7 @@ export function planBarLabels(domain: BarDomain, paints: BarPaints, area: BarAre
         if (chosen && !chosen.get(s.id)?.has(ci) && typeof cell.meta?.label !== 'string') continue;
         const text = textFor(domain, v, cell, undefined, s);
         if (!text) continue;
+        const shows = shownFor(domain, v, cell, undefined, s);
         // A highlighted value draws in the emphasis weight (label emit), so its seat and to-date head are set at it.
         const valueFont = bonus(cat.id, s.id) > 0 ? { ...pointFont, weight: emphasisWeight(domain.theme) } : pointFont;
         const words = toDateIds.has(cat.id) ? toDateLabel(text, valueFont, toDate, domain.theme, measure) : undefined;
@@ -169,6 +174,7 @@ export function planBarLabels(domain: BarDomain, paints: BarPaints, area: BarAre
           markAnchored: true,
           owner,
           text,
+          ...(shows ? { shows } : {}),
           lines: words?.lines ?? [text],
           ...words?.request,
           typeRole: 'label', font: pointFont,
@@ -198,15 +204,18 @@ export function planBarLabels(domain: BarDomain, paints: BarPaints, area: BarAre
       // The value it would have carried is still lost on the canvas, so the note names it.
       if (variant === 'stacked100' && domain.incompleteRows.has(cat.id) && cat.total100 === undefined) {
         const value = textFor(domain, v, cell, undefined, s);
+        const valueShows = shownFor(domain, v, cell, undefined, s);
         // An n.m. or n/a row says so on the canvas already.
         if (value && !domain.nmRows[ci] && !domain.naRows[ci]) requests.push({
-          id: `segment:${s.id}:${cat.id}`, kind: 'segment', owner, text: value, lines: [value], typeRole: 'label', font: labelFont,
+          id: `segment:${s.id}:${cat.id}`, kind: 'segment', owner, text: value, ...(valueShows ? { shows: valueShows } : {}), lines: [value], typeRole: 'label', font: labelFont,
           priority: PRIORITY.interior, redundant: true, suppressedAs: 'density', owed: true, noteText: `${s.label} ${value} (${noteName(cat)})`, candidates: [],
         });
         continue;
       }
       const text = textFor(domain, v, cell, variant === 'stacked100' ? val : undefined, s, cat.id);
       if (!text) continue;
+      // A 100 % bar's segment prints its share; every other segment its value.
+      const shows = shownFor(domain, v, cell, variant === 'stacked100' ? val : undefined, s, cat.id);
       // The highlighted series' values print bold, as its fill stands out.
       let segmentFont = emphasizedSeries(domain, s) ? strongFont : labelFont;
       let tsize = measure(text, segmentFont);
@@ -233,6 +242,7 @@ export function planBarLabels(domain: BarDomain, paints: BarPaints, area: BarAre
           owner,
           ...namesOnly(undefined, cell.meta?.label),
           text,
+          ...(shows ? { shows } : {}),
           lines: [text],
           typeRole: 'label', font: segmentFont,
           ...(segmentFont !== labelFont ? { fontStep: segmentFont } : {}),
@@ -261,12 +271,14 @@ export function planBarLabels(domain: BarDomain, paints: BarPaints, area: BarAre
       }
       // On a 100 % bar a share too short for its segment prints
       // in a share row past the bar's end, keyed by a swatch of its colour.
-      if (sliver && variant === 'stacked100') requests.push({ ...shareRowRequest(area, s.id, cat.id, ci, text, paint, labelFont, measure), ...namesOnly(undefined, cell.meta?.label) });
+      if (sliver && variant === 'stacked100') requests.push({ ...shareRowRequest(area, s.id, cat.id, ci, text, paint, labelFont, measure, shows), ...namesOnly(undefined, cell.meta?.label) });
       // A value the total prints is not lost.
       else if (sliver && !((dataSeries.length === 1 || onePart) && domain.grandTotalsOn)) slivers.push(`${s.label} in ${cat.label}`);
       if (onePart) {
         part = `segment:${s.id}:${cat.id}`;
         partText = typeof cell.meta?.label === 'string' ? text : undefined;
+        partOwner = owner;
+        partValue = shows;
       }
       requests.push({
         id: `segment:${s.id}:${cat.id}`,
@@ -277,6 +289,7 @@ export function planBarLabels(domain: BarDomain, paints: BarPaints, area: BarAre
         ...(twin ? { printsFor: [owner, { seriesId: halves!.neg, categoryId: cat.id }] } : {}),
         ...namesOnly(undefined, cell.meta?.label),
         text,
+        ...(shows ? { shows } : {}),
         lines: [text],
         typeRole: 'label', font: segmentFont,
         ...(segmentFont !== labelFont ? { fontStep: segmentFont } : {}),
@@ -304,6 +317,9 @@ export function planBarLabels(domain: BarDomain, paints: BarPaints, area: BarAre
     // A stack with a missing part prints the sum of its drawn parts, as on column; a 100% bar has no known whole.
     if (variant !== 'grouped' && domain.grandTotalsOn && !domain.nmRows[ci] && !domain.naRows[ci] && !(variant === 'stacked100' && domain.incompleteRows.has(cat.id))) {
       const text = partText ?? domain.totalFmt(totals[ci]!);
+      // The total prints its one part's value: in the total's own text, or in the part's authored text.
+      const partShows = partText === undefined ? { [valueSlot(domain)]: text } : partValue;
+      if (partOwner && partShows) stated?.set(`grandTotal:${cat.id}`, { owner: partOwner, shows: partShows });
       // A running row says "to date" under its total; a stack that misses a part says "(partial)".
       const second = toDateIds.has(cat.id) ? toDate : domain.incompleteRows.has(cat.id) && disclosuresShown(domain.options) ? domain.options.strings!.incomplete! : undefined;
       const words = second ? toDateLabel(text, strongFont, second, domain.theme, measure) : undefined;
@@ -431,7 +447,7 @@ function stackEndSeat(rect: Rect, below: boolean, rowCenter: number, tsize: { wi
 /** Air between a stack's end and a sliver's value past it, as a 100 % bar's share row keeps. */
 const STACK_END_GAP = 6;
 
-function shareRowRequest(area: BarArea, seriesId: Id, catId: Id, ci: number, text: string, paint: Paint, font: FontSpec, measure: TextMeasurer): LabelRequest {
+function shareRowRequest(area: BarArea, seriesId: Id, catId: Id, ci: number, text: string, paint: Paint, font: FontSpec, measure: TextMeasurer, shows?: ShownTexts): LabelRequest {
   const { band, x, plot } = area;
   const size = measure(text, font);
   const w = size.width + SHARE_ROW_SWATCH;
@@ -445,7 +461,7 @@ function shareRowRequest(area: BarArea, seriesId: Id, catId: Id, ci: number, tex
     id: `share:${seriesId}:${catId}`,
     kind: 'segment',
     owner: { seriesId, categoryId: catId },
-    text, lines: [text], typeRole: 'label', font,
+    text, ...(shows ? { shows } : {}), lines: [text], typeRole: 'label', font,
     swatch: paint,
     priority: PRIORITY.interior,
     pad: 3,
@@ -475,6 +491,9 @@ function referenceLabels(domain: BarDomain, area: BarArea): LabelRequest[] {
     if (v === null) return;
     const text = referenceLabelText(domain, s, v, s.cells[ci]!);
     if (!text) return;
+    const label = s.cells[ci]!.meta?.label;
+    // The reference's value, ahead of its name; an authored text without `${value}` prints none.
+    const printsOwn = typeof label !== 'string' || printsValue(label);
     const size = measure(text, tickFont);
     const cy = band.position(ci) + band.bandwidth / 2 - size.height / 2;
     const rx = x(v);
@@ -491,6 +510,7 @@ function referenceLabels(domain: BarDomain, area: BarArea): LabelRequest[] {
       kind: 'tick',
       owner: { seriesId: s.id, categoryId: cat.id },
       text,
+      ...(printsOwn ? { shows: { value: displayFor(domain, v, s.cells[ci]!, undefined, s) } } : {}),
       lines: [text],
       typeRole: 'label', font: tickFont,
       // After every value of the bars: a reference value takes the seat the bars leave.

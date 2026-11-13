@@ -661,6 +661,8 @@ function layoutMapPass(
   if (tableDrawn && (options.columnVisibility?.value === false || drawnIds.length < tableIds.length)) warnings.push({ code: 'choropleth-lookup-partial', severity: 'warn', field: ['options', options.columnVisibility?.value === false ? 'columnVisibility' : 'rowVisibility'],
     message: options.columnVisibility?.value === false ? 'the lookup prints no values, so the map colours are the only print of them' : 'a hidden lookup row leaves its map code without a name or a printed value',
     suggest: 'Keep the column or the rows, or name the regions in the text around the map.' });
+  // Under an authored format a region states the text its value label would print, for a value no label draws.
+  const valueDisplay = (text: string) => (options.format !== undefined ? { value: text, shows: { value: text } } : { value: text });
   const valueTexts = new Map<string, string>(regionValues
     ? [...valuesById].flatMap(([id, value]) => (value === null ? [] : [[id, fmt(value)] as [string, string]]))
     : []);
@@ -767,7 +769,7 @@ function layoutMapPass(
       owner,
       part: 'region',
       ...(state ? { pattern: geoStatePattern(state) } : {}),
-      display: state ? { state: geoStateLabel(state, options) } : unlisted ? { state: chartString(options, 'notInData') } : noData ? { state: chartString(options, 'valueMissing') } : { value: fmt(value!) },
+      display: state ? { state: geoStateLabel(state, options) } : unlisted ? { state: chartString(options, 'notInData') } : noData ? { state: chartString(options, 'valueMissing') } : valueDisplay(fmt(value!)),
     });
     if (regionVisible) claimRegionMark(region, occupied);
 
@@ -2040,6 +2042,7 @@ function labelPlanForRegion(
   const tierFont = geoLabelFont(theme);
   const compactFont = emphasized ? { ...tierFont, weight: emphasisWeight(theme) } : tierFont;
   const compactText = regionLabelText(region, compactFont, measure, valueTexts);
+  const valueText = valueTexts.get(region.id);
   // Labels claim room in value order, so the highest values keep theirs.
   const priority = PRIORITY.interior + Math.max(0, 300 - rank);
   const inlineCandidates = inlineRegionCandidates(region, compactText, compactFont, effectiveFill(paintColor(theme, insidePaint), pattern, theme), measure, insidePaint, pattern, noDataHatch);
@@ -2048,12 +2051,13 @@ function labelPlanForRegion(
     compactText,
     compactFont,
     priority,
-    valueTexts.has(region.id)
+    valueText !== undefined
       // A value label is wide enough to reach a coastline from inside its region. A seat whose
       // box meets the region's outline puts a line through the figures, so the label takes a
       // callout or the list, which carries the value.
       ? candidatesOffOutline(inlineCandidates, region)
       : inlineCandidates,
+    valueText,
   );
   const markerNeedsLeader = region.marker !== undefined && region.polygons.length === 0;
   // Marker records stay visible as marks; their labels must not cover the marker.
@@ -2077,7 +2081,7 @@ function labelPlanForRegion(
          * beside the anchor would hide the neighbours' fill.
          */
         {
-          request: regionLabelRequest(region, compactText, compactFont, priority, []),
+          request: regionLabelRequest(region, compactText, compactFont, priority, [], valueText),
           font: compactFont,
           leader: false,
           callout: (occupied: OccupiedIndex, plot: Rect, labels: OccupiedIndex, canvas?: Rect) =>
@@ -2098,6 +2102,7 @@ function labelPlanForRegion(
           leaderFrom: { x: region.anchor.x, y: region.anchor.y },
         }].filter(candidate => outsideFits(region.id, candidate.rect,
           [region.anchor.x, region.anchor.y], leaderTarget([region.anchor.x, region.anchor.y], candidate.rect))),
+        valueText,
       ),
       font: compactFont,
       leader: true,
@@ -2300,12 +2305,15 @@ function regionLabelRequest(
   font: FontSpec,
   priority: number,
   candidates: LabelRequest['candidates'],
+  /** The region's value text the label prints after its code (regionValues). */
+  value?: string,
 ): LabelRequest {
   return {
     id: `category:${region.id}`,
     kind: 'category', typeRole: 'label',
     owner: { categoryId: region.id },
     text,
+    ...(value === undefined ? {} : { shows: { value } }),
     lines: [text],
     font,
     priority,

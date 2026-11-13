@@ -54,10 +54,10 @@ import {
   signedFillPaint,
   themeForWidth,
 } from '../../theme';
-import type { Cell, Id } from '../../types/cell';
+import type { Cell, Id, OwnerRef } from '../../types/cell';
 import type { ChartData } from '../../types/data';
 import type { BaseOptions, BaseOptionsFor, ColumnAlign, ColumnOverride, LegendOptions } from '../../types/options';
-import type { Geometry, LintWarning, Paint, PaintWarningRule, PlacedLabel } from '../../types/scene';
+import type { Geometry, LintWarning, Paint, PaintWarningRule, PlacedLabel, ShownMark, ShownTexts } from '../../types/scene';
 import { defaultMeasurer, type FontSpec, type TextMeasurer } from '../../text';
 import { labelsToNodes } from '../../label/emit';
 import { PRIORITY } from '../../label/solver';
@@ -205,7 +205,8 @@ export interface LikertDerived {
   order: Id[];
 }
 
-export type LikertMarks = BarMarks;
+/** `shown`: the texts of a split neutral's drawn share, for the half that carries no label. */
+export type LikertMarks = BarMarks & { shown?: ShownMark[] };
 
 const DEFAULT_SHARE_FORMAT = '0%';
 /** Rounding is for READING; every comparison below runs on raw shares. */
@@ -1026,6 +1027,42 @@ export function layoutLikert(
     label.printsFor = halves && label.owner.seriesId === halves.pos
       ? [label.owner, { seriesId: halves.neg, categoryId: label.owner.categoryId }] : [label.owner];
   }
+  // Each segment's record values as its share label prints them (ShownTexts): the response share, and
+  // under percent input the value, which is that share as authored. Bar formats the stack's signed
+  // number, so likert states them on its labels and segments.
+  const optionIndex = new Map<Id, number>([...optionOf].map(([seriesId, optionId]) => [seriesId, scale.findIndex((option) => option.id === optionId)]));
+  const itemById = new Map(ordered.map((item) => [item.id, item]));
+  /** The texts of a segment: its drawn share label, or (would) the text that label would print. */
+  const shownAt = (owner: OwnerRef, would: boolean): ShownTexts | undefined => {
+    const i = optionIndex.get(owner.seriesId ?? '');
+    const item = itemById.get(owner.categoryId ?? '');
+    if (i === undefined || i < 0 || item === undefined) return undefined;
+    const text = would ? shareFmt(shareOf(item, i)) : printed(i)(item);
+    return text === false ? undefined : { 'field:share': text, ...(percentInput ? { value: text } : {}) };
+  };
+  const labelShows = new Map<Id, ShownTexts>();
+  const shownHalves: ShownMark[] = [];
+  for (const label of geo.labels) {
+    if (label.kind !== 'segment') continue;
+    const shows = shownAt(label.owner, false);
+    if (shows) label.shows = shows; else delete label.shows;
+    if (!shows || label.hidden) continue;
+    if (label.nodeId) labelShows.set(label.nodeId, shows);
+    // The split neutral's share prints on its positive half: the negative half's record reads it there.
+    if (halves && label.owner.seriesId === halves.pos) shownHalves.push({ owner: { categoryId: label.owner.categoryId, seriesId: halves.neg }, shows, drawn: true });
+  }
+  geo.scene = geo.scene.map((node) => {
+    if (node.t === 'text') {
+      const shows = labelShows.get(node.id);
+      return shows ? { ...node, display: { ...node.display, shows } } : node;
+    }
+    if (node.t !== 'rect' || node.display === undefined || !optionIndex.has(node.owner.seriesId ?? '')) return node;
+    const shows = shownAt(node.owner, true);
+    const { shows: _barShows, ...display } = node.display;
+    return { ...node, display: shows ? { ...display, shows } : display };
+  });
+  const keptShown = ((geo.marks as LikertMarks).shown ?? []).filter((mark) => !optionIndex.has(mark.owner.seriesId ?? ''));
+  if (keptShown.length + shownHalves.length > 0) (geo.marks as LikertMarks).shown = [...keptShown, ...shownHalves];
   const reboundPaintWarningRules = restoreLikertPaints(geo, ramp, scale, seriesIdOf, paintWarningRules, theme);
   const statementTop = stacked ? stackStatements(geo, theme, statements, statementFont, statementLineH, margin.left, measure) : undefined;
   // Comparison brackets stand right of the bars, so the nets stay left of them.
