@@ -54,7 +54,7 @@ describe('ordinary number examples', () => {
       ['USD 5 b', 'USD 0 b'], ['1.2 k USD', '1.2 k USD']]) {
       expect(formatWithSpec(1200, parseFormatExample(example!, true))).toBe(expected);
     }
-    expect(formatterFromExample('$1.2 k', undefined)(1_300_000)).toBe('$1.3 M');
+    expect(formatterFromExample('$1.2 k', undefined)(1_300_000)).toBe('$1,300.0 k');
     for (const [example, positive, negative] of [['USDm 1.2', 'USDm 1.2', '−USDm 0.2'], ['1.2 €m', '1.2 €m', '−0.2 €m'],
       ['CHF m 1.2', 'CHF m 1.2', '−CHF m 0.2'], ['Mio. CHF 1.2', 'Mio. CHF 1.2', '−Mio. CHF 0.2']]) {
       const fmt = formatterFromExample(example!, undefined);
@@ -589,7 +589,8 @@ describe('an example is read as its author wrote it', () => {
       ['keyed value', column([{ id: 's', label: 'S', format: '1,234', values: [{ categoryId: 'a', value: 0.042 }, { categoryId: 'b', value: 12 }] }]), ['/data/series/0/format']],
       ['own value format under the chart format', column([{ id: 's', label: 'S', values: [{ number: 0.042, format: '12' }, 3] }], { format: '12' }), ['/data/series/0/values/0/format']],
       ['own value format that shows the value', column([{ id: 's', label: 'S', format: '1,234', values: [{ number: 0.042, format: '0.123' }, 12] }]), []],
-      ['scaled format that prints a nonzero figure', column([{ id: 's', label: 'S', format: '1.2k', values: [20, 1000] }]), []],
+      ['scaled format that prints a nonzero figure', column([{ id: 's', label: 'S', format: '1.23k', values: [20, 1000] }]), []],
+      ['scaled format that prints a nonzero value as zero', column([{ id: 's', label: 'S', format: '1.2k', values: [20, 1000] }]), ['/data/series/0/format']],
       ['percent format over fractions', column([{ id: 's', label: 'S', format: '12%', values: [0.2, 2] }], {}, { valueKind: 'fraction' }), []],
       ['bar table column', bartable('1,234', [0.042]), ['/data/columns/0/format']],
       ['bar table column at the decimal limit', bartable('0.00000000000000000000', [1e-21]), [null]],
@@ -718,10 +719,10 @@ describe('an example is read as its author wrote it', () => {
   });
 
   // "$1.2M" fixes one decimal, so $4.27M printed $4.3M and no example gave 42.7, 4.27 and 0.430 together: one @ per figure fixes the figures, not the decimals.
-  it('prints a fixed count of significant figures for an @ example, rolls up at 1000 and keeps ticks plain', () => {
+  it('prints a fixed count of significant figures for an @ example, holds its scale word and keeps ticks plain', () => {
     const print = formatterFromExample('$@@@M', undefined);
     expect([42_700_000, 4_270_000, 430_000, 999_600, 999_960_000, 0, -4_270_000].map(print))
-      .toEqual(['$42.7M', '$4.27M', '$0.430M', '$1.00M', '$1.00B', '$0.00M', '\u2212$4.27M']);
+      .toEqual(['$42.7M', '$4.27M', '$0.430M', '$1.00M', '$1,000M', '$0.00M', '\u2212$4.27M']);
     expect(formatterFromExample('@@@%', undefined)(9.996)).toBe('10.0%');
     expect(formatterFromExample('+@@k', 'de')(1234)).toBe('+1,2k');
     expect(formatterFromExample('$1.2M', undefined)(4_270_000)).toBe('$4.3M');
@@ -997,7 +998,7 @@ describe('a unit that names a scale takes no second one', () => {
     expect(scaled(texts)).toEqual([]);
   });
 
-  // A combo series with its own format formatted each label without the series' values and described single-column totals with the chart formatter, turning 78 into "$0.1k" and leaving "$0.4k"–"$7.8k" out of the description.
+  // A combo series with its own format formatted each label without the series' values and described single-column totals with the chart formatter, turning 78 into "$0.1k" and leaving the series format's texts out of the description.
   it('holds a combo series format to one scale across labels and single-column totals', () => {
     const categories = [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }, { id: 'c', label: 'C' }, { id: 'd', label: 'D' }];
     const options = { title: 'T', unit: 'USD' };
@@ -1005,20 +1006,18 @@ describe('a unit that names a scale takes no second one', () => {
       const request = resolveChartRequest({ type: 'combo', data, options } as never);
       return /<desc[^>]*>(.*?)<\/desc>/s.exec(renderSvg(requireGeometry(layoutResolvedRequest(request)), request.theme))?.[1] ?? '';
     };
-    const small = { categories, series: [{ id: 's', label: 'Sales', kind: 'column', format: '$1.2M', unit: 'USD', values: [4, 12, 43, 78] }] };
+    const small = { categories, series: [{ id: 's', label: 'Sales', kind: 'column', format: '$1.2k', unit: 'USD', values: [4, 12, 43, 78] }] };
     const smallTexts = drawnTexts('combo', small, options);
-    expect(smallTexts).toEqual(expect.arrayContaining(['$4.0', '$12.0', '$43.0', '$78.0']));
-    expect(smallTexts).not.toContain('$0.1k');
+    expect(smallTexts).toEqual(expect.arrayContaining(['$0.0k', '$0.0k', '$0.0k', '$0.1k']));
 
-    const thousands = { categories, series: [{ id: 's', label: 'Sales', kind: 'column', format: '$1.2M', unit: 'USD', values: [400, 1200, 4300, 7800] }] };
+    const thousands = { categories, series: [{ id: 's', label: 'Sales', kind: 'column', format: '$1.2k', unit: 'USD', values: [400, 1200, 4300, 7800] }] };
     expect(descOf(thousands)).toContain('A $0.4k, B $1.2k, C $4.3k, D $7.8k');
 
     const lineTexts = drawnTexts('combo', { categories, series: [
       { id: 's', label: 'Sales', kind: 'column', values: [400, 1200, 4300, 7800] },
-      { id: 'm', label: 'Cost', kind: 'line', format: '$1.2M', values: [4, 12, 43, 78] },
+      { id: 'm', label: 'Cost', kind: 'line', format: '$1.2k', values: [400, 1200, 4300, 7800] },
     ] }, options);
-    expect(lineTexts).toContain('$78.0');
-    expect(lineTexts).not.toContain('$0.1k');
+    expect(lineTexts).toContain('$7.8k');
   });
 });
 

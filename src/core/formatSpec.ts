@@ -34,6 +34,7 @@ import {
   underflowScientificText,
   withoutLeadingZero,
   zeroLifts,
+  withSmallValues,
   type SmallValues,
 } from './formatPrecision';
 import { maxOf, minOf } from './arrays';
@@ -114,12 +115,20 @@ export interface NumberFormatSpec {
    */
   magnitudeWord?: { magnitude: NumberFormatSpec['magnitude']; text: string };
   /**
-   * A chart value formatter (exampleSpec) never prints a nonzero value as 0:
-   * a free scale rolls down its word family ("$1.0 billion", not "$0.0
-   * trillion"), a held scale lifts its decimals ("0.004k", not "0k"). A
-   * table names its scale in a head and lifts in fitFormats instead.
+   * The stand-in of a unit-only format (exampleSpec) never prints a nonzero
+   * value as 0: a free scale rolls down its word family ("$1.0 billion", not
+   * "$0.0 trillion"), a held scale lifts its decimals ("0.004k", not "0k").
    */
   nonzero?: true;
+  /**
+   * An authored example (exampleSpec): every value prints as the example
+   * reads, with its scale word, decimals or figures and affixes. No printer
+   * adds a decimal, steps the scale or prints a bound; a value that rounds to
+   * zero prints the example's zero, and format-hides-values says so.
+   */
+  exact?: true;
+  /** An example written for this axis: its ticks print at least its decimals (tickFormatter). */
+  axisExample?: true;
 }
 
 /**
@@ -449,6 +458,37 @@ function unitOnlyExample(text: string): string | undefined {
   return symbol ? `${symbol}1.2${unit.slice(symbol.length)}` : /\p{Sc}$/u.test(unit) ? `1.2${unit}` : `1.2 ${unit}`;
 }
 
+/** The stand-ins that readFormatExamples wrote for a chart's unit-only formats, on its resolved options. */
+export const UNIT_STAND_INS = Symbol('unit-stand-ins');
+let unitStandIns: ReadonlySet<string> | undefined;
+
+/**
+ * Run one chart's layout or text under its unit-only stand-ins; a chart
+ * without any keeps the enclosing ones, so a grid panel follows its grid.
+ * Limit: module state for synchronous work, as withSmallValues.
+ */
+export function withUnitStandIns<T>(options: object | undefined, run: () => T): T {
+  const standIns = (options as { [UNIT_STAND_INS]?: ReadonlySet<string> } | undefined)?.[UNIT_STAND_INS];
+  if (!standIns?.size || standIns === unitStandIns) return run();
+  const before = unitStandIns;
+  unitStandIns = standIns;
+  try { return run(); } finally { unitStandIns = before; }
+}
+
+/** Run one chart's layout or text under its smallValues mode and its unit-only stand-ins. */
+export function withChartFormats<T>(options: { smallValues?: SmallValues } | undefined, run: () => T): T {
+  return withSmallValues(options?.smallValues, () => withUnitStandIns(options, run));
+}
+
+/**
+ * A format the author wrote as an example prints exactly. A unit alone
+ * ("$M", "%") states no precision: it and its stand-in keep the data-led
+ * precision of a unit.
+ */
+export function isExactExample(example: string): boolean {
+  return unitOnlyExample(String(example)) === undefined && !unitStandIns?.has(example);
+}
+
 /** The ordinary example every reader uses, including callers before request resolution. */
 export function formatExampleText(example: string): string {
   if (isSpreadsheetCode(example)) {
@@ -641,9 +681,10 @@ function treeNumbers(node: unknown, into: number[] = [], seen = new Set<unknown>
  * Each chart gets one reading, taken from all of its numbers. A number that is
  * not a data value counts too. Fields are not read one by one.
  */
-export function readFormatExamples<D, O>(data: D, options: O): { data: D; options: O; warnings: LintWarning[] } {
+export function readFormatExamples<D, O>(data: D, options: O): { data: D; options: O; warnings: LintWarning[]; standIns: Set<string> } {
   const warnings: LintWarning[] = [];
   const warned = new Set<string>();
+  const written = new Set<string>();
   let allNumbers: number[] | undefined;
   const numbersOf = (owner: Record<string, unknown>): number[] | undefined => {
     const own = normalizedSeriesNumbers(owner);
@@ -676,7 +717,7 @@ export function readFormatExamples<D, O>(data: D, options: O): { data: D; option
     const standIn = unitOnlyExample(example);
     if (!standIn) return example;
     const numbers = numbersOf(owner);
-    if (!numbers?.length) return standIn;
+    if (!numbers?.length) return wroteStandIn(standIn);
     const spec = parseFormatExample(standIn);
     // The smallest nonzero value below 1 keeps two significant digits, so no value of the field prints as 0.
     let smallest = Infinity;
@@ -688,7 +729,11 @@ export function readFormatExamples<D, O>(data: D, options: O): { data: D; option
     const decimals = Math.max(rasterDecimals(numbers, spec), figures);
     const body = numericBody(standIn)!;
     const whole = spec.thousandsSep ? '1,234' : decimals === 3 ? '0' : '1';
-    return standIn.slice(0, body.index) + whole + (decimals ? `.${'5'.repeat(decimals)}` : '') + standIn.slice(body.index + body.text.trimEnd().length);
+    return wroteStandIn(standIn.slice(0, body.index) + whole + (decimals ? `.${'5'.repeat(decimals)}` : '') + standIn.slice(body.index + body.text.trimEnd().length));
+  };
+  const wroteStandIn = (standIn: string): string => {
+    written.add(standIn);
+    return standIn;
   };
   const examples = new Set<string>();
   const collect = (example: string) => {
@@ -706,11 +751,14 @@ export function readFormatExamples<D, O>(data: D, options: O): { data: D; option
     mapExamples(data, collect);
     mapExamples(options, collect);
   }
-  if (examples.size === 0) return { data, options, warnings };
+  // A stand-in and its difference ("1.55%", "1.55pp") keep the unit's precision (isExactExample).
+  const standIns = (change: (example: string) => string) => new Set([...written].flatMap((example) => [change(example), differenceExample(change(example))]));
+  if (examples.size === 0) return { data, options, warnings, standIns: standIns((example) => example) };
   const numbers = treeNumbers(data);
   const readings = new Map([...examples].map((example) => [example, exampleReading(example, numbers)]));
   const change = (example: string) => readings.get(example)?.decimals ?? example;
   return {
+    standIns: standIns(change),
     data: mapExamples(data, change),
     options: mapExamples(options, change),
     warnings: [...warnings, ...[...readings].flatMap(([example, { lost }]) => lost === undefined ? [] : [{
@@ -1335,17 +1383,24 @@ export function localized(spec: NumberFormatSpec, locale: string | undefined): N
 }
 
 /**
- * An authored example as every value formatter prints it: the
- * authored magnitude word, the chart locale's separators, and the scale a
- * unit states held at the example's own decimals ("$0.4k" and "$1000.0k"
- * under "$k" for a "$1.2k" example, never "$1.0M"). `values` are the chart's
- * printed numbers, which share one scale and one decimal count (shareAuthoredScale).
+ * An authored example as every value formatter prints it: exactly as the
+ * example reads (`exact`), with the authored magnitude word held for every
+ * value ("$0.0M" for 4 under "$1.2M") and the chart locale's separators.
+ * The stand-in of a unit-only format ("$M", isExactExample) keeps a unit's
+ * data-led precision instead: the scale a unit states held at the example's
+ * own decimals, and `values`, the chart's printed numbers, sharing one scale
+ * and one decimal count (shareAuthoredScale).
  */
 export function exampleSpec(example: string, locale?: string, unit?: string, values?: Iterable<number | null | undefined>): NumberFormatSpec {
   const spec = localized(parseFormatExample(example, true), locale);
-  spec.nonzero = true;
-  if (spec.magnitude !== 'none' && unitMagnitude(unit) === spec.magnitude) spec.rollMagnitude = false;
-  if (values) shareAuthoredScale(spec, [...values]);
+  if (isExactExample(example)) {
+    spec.exact = true;
+    if (spec.magnitude !== 'none') spec.rollMagnitude = false;
+  } else {
+    spec.nonzero = true;
+    if (spec.magnitude !== 'none' && unitMagnitude(unit) === spec.magnitude) spec.rollMagnitude = false;
+    if (values) shareAuthoredScale(spec, [...values]);
+  }
   // An example under 1000 ("12%", "1.2") cannot show grouping, so a value from
   // 1000 up groups in the example's style ("40,000,000,000%"), as table cells
   // do. "1234" and "2024" state no grouping, nor does a literal-# rank ("#1").
@@ -1383,7 +1438,8 @@ export function formatterFromExample(example: string, locale: string | undefined
 export function formatNonzeroWithSpec(value: number, spec: NumberFormatSpec): string {
   // A scaled chart value spec already keeps a nonzero value off 0 by its scale ("$1.0 billion", not "$0.001 trillion").
   // An unscaled one ("$1.0") has no scale to roll down to and lifts here ("$0.004", not "$0.0").
-  if (spec.automatic || (spec.nonzero && spec.magnitude !== 'none')) return formatWithSpec(value, spec);
+  // An authored example prints exactly.
+  if (spec.automatic || spec.exact || (spec.nonzero && spec.magnitude !== 'none')) return formatWithSpec(value, spec);
   // Preserve existing callers that explicitly request this authored-format lift.
   const scaled = value / MAGNITUDE_DIVISOR[spec.autoMagnitude ? effectiveScale(value, spec).magnitude : spec.magnitude];
   const lifted = nonzeroDecimals(scaled, spec.decimals);
@@ -1423,8 +1479,11 @@ export function levelFormatterFromExample(example: string, locale: string | unde
  * the difference of two percent levels is in percentage points.
  */
 export function differenceExample(example: string): string {
-  example = formatExampleText(example);
-  return specUnitKind(parseFormatExample(example)) === 'percent' ? example.replace(/%/g, 'pp') : example;
+  const text = formatExampleText(example);
+  const percent = specUnitKind(parseFormatExample(text)) === 'percent';
+  // A unit-only format keeps a unit's precision in its differences too (isExactExample).
+  if (text !== example && unitOnlyExample(example) !== undefined) return percent ? 'pp' : example;
+  return percent ? text.replace(/%/g, 'pp') : text;
 }
 
 // ---------------------------------------------------------------------------
@@ -1539,7 +1598,8 @@ export function rasterDecimals(
  * bound to full precision ("23.4", not "23.35").
  */
 export function formatStatWithSpec(value: number, spec: NumberFormatSpec): string {
-  if (spec.exponent) return formatWithSpec(value, spec);
+  // An authored example prints a statistic in the measure's format, as its values.
+  if (spec.exponent || spec.exact) return formatWithSpec(value, spec);
   // The unit rule is for plotted values; a mean of 100.5 stays 100.5.
   const own = { ...spec, wholeFrom: undefined };
   // Decimals count at the scale the label prints in: 1.25M under "1M" needs one, not the none of 1,250,000.

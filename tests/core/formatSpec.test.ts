@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { NormalizeError } from '../../src/core/normalize/shared';
 import { MINUS } from '../../src/core/format';
-import { exampleSpec, formatNonzeroWithSpec, formatterFromExample, formatWithSpec, parseFormatExample, seriesRasterFormatter, setMagnitude, unitOfSpec } from '../../src/core/formatSpec';
+import { exampleSpec, formatNonzeroWithSpec, formatStatWithSpec, formatterFromExample, formatWithSpec, parseFormatExample, seriesRasterFormatter, setMagnitude, unitOfSpec } from '../../src/core/formatSpec';
 
 describe('parseFormatExample', () => {
   it('"+1,234" → forced sign, comma grouping', () => {
@@ -167,7 +167,8 @@ it('reads spelled-out magnitude words as their abbreviation', () => {
   for (const [example, locale, abbreviation] of [['1.0 million', 'en', '1.0 mn'], ['1.0 thousand', 'en', '1.0k'], ['1.0 billion', 'en', '1.0 bn'],
     ['1,0 Millionen', 'de', '1,0 Mio.'], ['1,0 Tausend', 'de', '1,0 Tsd.'], ['1,0 Milliarden', 'de', '1,0 Mrd.']] as const) {
     expect(parseFormatExample(example).magnitude).toBe(parseFormatExample(abbreviation).magnitude);
-    for (const value of [512, 2_500_000, 3e9]) expect(formatterFromExample(example, locale)(value)).not.toMatch(/^[\d.,\s]{5,}/);
+    const divisor = { k: 1e3, m: 1e6, bn: 1e9 }[parseFormatExample(abbreviation).magnitude as 'k' | 'm' | 'bn'];
+    expect(formatterFromExample(example, locale)(2.5 * divisor)).toMatch(/^2[.,]5 /);
   }
   expect(formatterFromExample('1.0 million', 'en')(2_500_000)).toBe('2.5 million');
   expect(formatterFromExample('1,0 Millionen', 'de')(2_500_000)).toBe('2,5 Millionen');
@@ -178,33 +179,33 @@ it('reads spelled-out magnitude words as their abbreviation', () => {
   expect(seriesRasterFormatter(undefined, [2.79e9], 'en', '€ million', 'report').fmt(2.79e9)).toBe('2,790,000,000');
 });
 
-// Prevents one axis from showing "$500.0 mn" beside "$1.0 billion": every scale keeps the authored spelling family.
-it('keeps the authored magnitude word family at every scale', () => {
-  expect(formatterFromExample('$1.0 mn', 'en')(1e9)).toBe('$1.0 bn');
-  expect(formatterFromExample('$1.0 Mn', 'en')(1e9)).toBe('$1.0 Bn');
-  expect(formatterFromExample('1.0 million', 'en')(1e9)).toBe('1.0 billion');
-  expect(formatterFromExample('1.0M', 'en')(1e9)).toBe('1.0B');
-  expect(formatterFromExample('1,0 Mio', 'de')(2e9)).toBe('2,0 Mrd');
-  expect(formatterFromExample('1,0 Mio.', 'en')(2e9)).toBe('2.0 Mrd.');
+// Prevents one axis from showing "$500.0 mn" beside "$1.0 billion": a unit-only format rolls within the spelling family of its unit.
+it('keeps the spelling family of a unit-only format at every scale', () => {
+  expect(formatterFromExample('$ mn', 'en')(1e9)).toBe('$1.0 bn');
+  expect(formatterFromExample('$ Mn', 'en')(1e9)).toBe('$1.0 Bn');
+  expect(formatterFromExample('$ million', 'en')(1e9)).toBe('$1.0 billion');
+  expect(formatterFromExample('$M', 'en')(1e9)).toBe('$1.0B');
+  expect(formatterFromExample('€ Mio', 'de')(2e9)).toBe('€2,0 Mrd');
+  expect(formatterFromExample('€ Mio.', 'en')(2e9)).toBe('€2.0 Mrd.');
 });
 
 // Prevents an English word with another meaning in the chart's language: "billion" is 10¹² in French and German.
 it('never rolls to an English false friend in another language', () => {
-  expect(formatterFromExample('1,0 Mio.', 'fr')(1e9)).toBe('1,0 Mrd.');
-  expect(formatterFromExample('1.0 million', 'fr')(1e9)).toBe('1,0 milliard');
-  expect(formatterFromExample('1,0 million', 'de')(2e9)).toBe('2,0 Milliarden');
+  expect(formatterFromExample('€ Mio.', 'fr')(1e9)).toBe('€1,0 Mrd.');
+  expect(formatterFromExample('$ million', 'fr')(1e9)).toBe('$1,0 milliard');
+  expect(formatterFromExample('€ million', 'de')(2e9)).toBe('€2,0 Milliarden');
 });
 
 // Prevents a 10¹² example from leaving the value unscaled: "$2,500,000,000,000.0 trillion" for 2.5 trillion.
-it('scales 10¹² magnitude words and rolls every family to its own 10¹² word', () => {
+it('scales 10¹² magnitude words and rolls every unit-only family to its own 10¹² word', () => {
   for (const [example, locale, text] of [
-    ['$1.0 trillion', 'en', '$2.5 trillion'], ['1.0 tn', 'en', '2.5 tn'], ['1.0T', 'en', '2.5T'], ['$1.0 bn', 'en', '$2.5 tn'],
-    ['1.0 billion', 'en', '2.5 trillion'], ['1.0B', 'en', '2.5T'], ['1,0 Bio.', 'de', '2,5 Bio.'], ['1,0 Mrd.', 'de', '2,5 Bio.'],
-    ['1,0 Billionen', 'de', '2,5 Billionen'], ['1,0 Billion', 'de', '2,5 Billionen'], ['1,0 billion', 'fr', '2,5 billions'], ['1,0 milliard', 'fr', '2,5 billions'],
+    ['$1.0 trillion', 'en', '$2.5 trillion'], ['1.0 tn', 'en', '2.5 tn'], ['1.0T', 'en', '2.5T'], ['1,0 Bio.', 'de', '2,5 Bio.'], ['1,0 Billionen', 'de', '2,5 Billionen'],
+    ['$ bn', 'en', '$2.5 tn'], ['$ billion', 'en', '$2.5 trillion'], ['$B', 'en', '$2.5T'], ['€ Mrd.', 'de', '€2,5 Bio.'],
+    ['€ Billionen', 'de', '€2,5 Billionen'], ['€ Billion', 'de', '€2,5 Billionen'], ['€ billion', 'fr', '€2,5 billions'], ['€ milliard', 'fr', '€2,5 billions'],
   ] as const) expect(formatterFromExample(example, locale)(2.5e12), example).toBe(text);
   // French "milliard" is 10⁹ and German "Billion" 10¹²: a value prints its scale's local word, never the English reading.
   expect(formatterFromExample('1,0 milliard', 'fr')(2.5e9)).toBe('2,5 milliards');
-  expect(formatterFromExample('1,0 billion', 'fr')(1.5e12)).toBe('1,5 billion');
+  expect(formatterFromExample('€ billion', 'fr')(1.5e12)).toBe('€1,5 billion');
   expect(formatterFromExample('1,0 Billion', 'de')(2.5e9)).toBe('2,5 Milliarden');
   // SI spaces a unit: "1.5 T" stays tesla.
   expect(formatterFromExample('1.5 T', 'en')(3)).toBe('3.0 T');
@@ -213,24 +214,38 @@ it('scales 10¹² magnitude words and rolls every family to its own 10¹² word'
 // Prevents a letter a German or French reader takes for another scale: "B" for Billion (10¹²), "T" for Tausend.
 it('prints the local short form for B and T on a German or French chart', () => {
   expect(formatterFromExample('1,0M', 'de')(2.5e6)).toBe('2,5M');
-  expect(formatterFromExample('1,0M', 'de')(2.5e9)).toBe('2,5 Mrd.');
-  expect(formatterFromExample('1,0B', 'de')(2.5e12)).toBe('2,5 Bio.');
-  expect(formatterFromExample('1,0M', 'fr')(2.5e9)).toBe('2,5 Md');
-  expect(formatterFromExample('$1.0 mn', 'de')(2.5e9)).toBe('$2,5 Mrd.');
-  expect(formatterFromExample('1,0 bn', 'fr')(2.5e12)).toBe('2,5 Bn');
+  expect(formatterFromExample('1,0B', 'de')(2.5e9)).toBe('2,5 Mrd.');
+  expect(formatterFromExample('1,0T', 'de')(2.5e12)).toBe('2,5 Bio.');
+  expect(formatterFromExample('1,0B', 'fr')(2.5e9)).toBe('2,5 Md');
+  expect(formatterFromExample('$1.0 bn', 'de')(2.5e9)).toBe('$2,5 Mrd.');
+  expect(formatterFromExample('1,0 tn', 'fr')(2.5e12)).toBe('2,5 Bn');
+  // A unit-only format rolls into the local short form.
+  expect(formatterFromExample('€M', 'de')(2.5e9)).toBe('€2,5 Mrd.');
+  expect(formatterFromExample('€B', 'de')(2.5e12)).toBe('€2,5 Bio.');
+  expect(formatterFromExample('€M', 'fr')(2.5e9)).toBe('€2,5 Md');
 });
 
-// Prevents a nonzero value from printing as zero under an authored scale: "$0.0 trillion" for one billion.
-it('rolls a value that would print as 0 down its word family', () => {
-  expect(formatterFromExample('$1.0 trillion', 'en')(1e9)).toBe('$1.0 billion');
-  expect(formatterFromExample('1.0 mn', 'en')(1000)).toBe('1.0 k');
-  expect(formatterFromExample('1,0 Mio.', 'de')(1000)).toBe('1,0 Tsd.');
-  expect(formatterFromExample('1.0 mn', 'en')(0.4)).toBe('0.4');
-  // A held scale (grouped digits) keeps its letter and lifts its decimals.
-  expect(formatterFromExample('1,234k', 'en')(4)).toBe('0.004k');
-  expect(formatterFromExample('$1.0 trillion', 'en')(0)).toBe('$0.0 trillion');
-  // An unscaled example has nothing to roll down to; a delta or accessible value lifts its decimals.
-  expect(formatNonzeroWithSpec(0.004, exampleSpec('$1.0', 'en'))).toBe('$0.004');
+// Prevents a nonzero value from printing as zero under a unit-only scale, which states no precision: "$0.0 trillion" for one billion.
+it('rolls a value that would print as 0 down the word family of a unit-only format', () => {
+  expect(formatterFromExample('$ trillion', 'en')(1e9)).toBe('$1.0 billion');
+  expect(formatterFromExample('€ mn', 'en')(1000)).toBe('€1.0 k');
+  expect(formatterFromExample('€ Mio.', 'de')(1000)).toBe('€1,0 Tsd.');
+  expect(formatterFromExample('€ mn', 'en')(0.4)).toBe('€0.4');
+  // A unit alone has nothing to roll down to; a delta or accessible value lifts its decimals.
+  expect(formatNonzeroWithSpec(0.004, exampleSpec('$', 'en'))).toBe('$0.004');
+});
+
+// Prevents an authored scale word from changing under the values: "$1.2M" printed "$4.0" for 4 and "$1.0B" for 1e9.
+it('holds an authored scale word, decimals and zero for every value', () => {
+  expect(formatterFromExample('$1.0 trillion', 'en')(1e9)).toBe('$0.0 trillion');
+  expect(formatterFromExample('$1.0 mn', 'en')(1e9)).toBe('$1,000.0 mn');
+  expect(formatterFromExample('1,234k', 'en')(4)).toBe('0k');
+  expect(formatterFromExample('$1.2M', 'en', undefined, [4, 12, 43, 78])(78)).toBe('$0.0M');
+  // A negative value that rounds to zero prints the example's zero without a sign.
+  expect(formatterFromExample('+1.0%', 'en')(-0.02)).toBe('0.0%');
+  // The lifting printers print an authored example as written.
+  expect(formatNonzeroWithSpec(0.004, exampleSpec('$1.0', 'en'))).toBe('$0.0');
+  expect(formatStatWithSpec(27.5, exampleSpec('1,234', 'en'))).toBe('28');
 });
 
 // A set already at one magnitude lost its decimal under the set's magnitude: "108M · 101M" for "107.8M · 101.2M".

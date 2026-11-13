@@ -13,13 +13,13 @@ import { withExhibitPercentFormat, withShownTexts, type RecordContext } from './
 import type { InteractionRecord } from './types';
 import { localizedRecordReason } from '../strings/reasons';
 import { withLocaleStrings } from '../strings';
-import { withSmallValues } from '../formatPrecision';
+import { withChartFormats } from '../formatSpec';
 import { pushAll } from '../arrays';
 
 /** Pure extraction from the request and its accepted geometry; never lays out. */
 export function interactionRecords(context: RecordContext): InteractionRecord[] {
-  // Record text is formatted after layout: it follows the chart's smallValues mode as the drawn labels do.
-  return withSmallValues(context.request.options.smallValues, () => recordsOf(context));
+  // Record text is formatted after layout: it follows the chart's smallValues mode and unit-only formats as the drawn labels do.
+  return withChartFormats(context.request.options, () => recordsOf(context));
 }
 
 function recordsOf(context: RecordContext): InteractionRecord[] {
