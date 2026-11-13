@@ -219,7 +219,7 @@ describe('bullet columns', () => {
 
   // A hidden column takes its hover value with it; hiding a printed label alone does not.
   it('drops the hover value of a hidden column', () => {
-    const displayed = (options: object, part: string) => (draw('bullet', 'column-overrides', { columnOverrides: undefined, ...options }) as Geometry).scene.filter((node) => (node as { part?: string }).part === part).some((node) => (node as { display?: unknown }).display !== undefined);
+    const displayed = (options: object, part: string) => (draw('bullet', 'column-overrides', { columnOverrides: undefined, ...options }) as Geometry).scene.filter((node) => (node as { part?: string }).part === part).some((node) => (node as { display?: { value?: unknown } }).display?.value !== undefined);
     expect(displayed({}, 'target')).toBe(true);
     expect(displayed({ columnVisibility: { target: false } }, 'target')).toBe(false);
     expect(displayed({ columnVisibility: { actual: false } }, 'bar')).toBe(false);
