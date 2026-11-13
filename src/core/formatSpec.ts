@@ -8,7 +8,7 @@
 import { NormalizeError } from './normalize/shared';
 import type { LocaleSpec, RenderTarget } from './types/options';
 import type { LintWarning, PlacedLabel, SceneNode } from './types/scene';
-import type { InteractionRecord } from './a11y/types';
+import type { InteractionRecord, InteractionValue } from './a11y/types';
 import { toJsonPointer, type JsonPatchOperation } from './diagnostics/jsonPatch';
 
 import { chartString } from './strings';
@@ -1805,7 +1805,7 @@ export function unscaledFormatLint(
 ): LintWarning[] {
   return withUnitStandIns(options, () => {
     const chart = typeof options?.format === 'string' ? options.format : undefined;
-    const places = formatPlaces(data, chart);
+    const places = formatPlaces(data, chart, options?.axisFormat as { x?: unknown; y?: unknown } | undefined);
     const exact = new Map<FormatPlace, ExactPlace>();
     for (const place of places) {
       const read = exactPlace(place);
@@ -1816,28 +1816,38 @@ export function unscaledFormatLint(
     const scene = geo?.scene ?? context.scene;
     let suspect = false;
     for (const [place, read] of exact) {
-      if (mayHide(read.spec, place.sets) || (place.computed && scene !== undefined && oneCellText(scene, place.computed.colId))) { suspect = true; break; }
+      if (mayHide(read.spec, place.sets) || mayHide(read.spec, [place.stated ?? [], place.loose ?? []], true)
+        || (place.computed && scene !== undefined && oneCellText(scene, place.computed.colId))) { suspect = true; break; }
     }
-    const judging = exact.size > 0 && (suspect || drawsZero());
+    // A cell's second line (a statement's change under its level) draws a zero too, which the unit-only check does not read.
+    const judging = exact.size > 0 && (suspect || drawsZero() || (scene !== undefined && drawsZeroLine(scene)));
     const held = places.length > 0 && (judging || drawsZero()) ? records?.() ?? undefined : undefined;
     const locale = withNumberMarks({ locale: options?.locale as LocaleSpec | undefined }).locale!.language;
     const unit = typeof options?.unit === 'string' ? options.unit : undefined;
     const stated = new Map<FormatPlace, Stated[]>();
     const zeros = new Map<FormatPlace, InteractionRecord[]>();
+    const state = (place: FormatPlace, entry: Stated | undefined) => { if (entry) stated.set(place, [...(stated.get(place) ?? []), entry]); };
+    const byField = places.filter((place) => place.fields !== undefined);
     if (held) {
       for (const record of held) {
+        const owner = record.target.owner;
         // The narrowest authored format that owns the value and is the one its record printed through.
-        const place = places.find((at) => printsThrough(at, exact.get(at), record));
-        if (place === undefined) continue;
-        if (exact.has(place)) {
-          const entry = judging ? statedEntry(place, record, locale) : undefined;
-          if (entry) stated.set(place, [...(stated.get(place) ?? []), entry]);
-        } else if (drawsZero() && printsZero(record)) zeros.set(place, [...(zeros.get(place) ?? []), record]);
+        const place = places.find((at) => at.fields === undefined && printsThrough(at, exact.get(at), owner, record.value));
+        if (place !== undefined) {
+          if (exact.has(place)) { if (judging) state(place, statedEntry(place, record.value, owner, locale)); }
+          else if (drawsZero() && printsZero(record)) zeros.set(place, [...(zeros.get(place) ?? []), record]);
+        }
+        if (!judging || byField.length === 0) continue;
+        for (const field of record.fields ?? []) {
+          const at = byField.find((candidate) => candidate.fields!.includes(field.key) && exact.has(candidate) && printsThrough(candidate, exact.get(candidate), owner, field.value));
+          if (at) state(at, statedEntry(at, field.value, owner, locale));
+        }
       }
     } else if (judging) {
       // No records (no adapter, or a caller without a drawing): the texts the format prints for the data.
       for (const [place, read] of exact) stated.set(place, dataEntries(place, read, locale));
     }
+    if (judging) for (const [place, read] of exact) for (const entry of statedOutside(place, read, locale)) state(place, entry);
     const warn = (place: FormatPlace) => {
       const read = exact.get(place);
       return read ? exactFormatWarning(place, read, stated.get(place) ?? [], locale, unit, context.verify) : placeZeroWarning(place, zeros.get(place) ?? []);
@@ -1857,6 +1867,12 @@ export function drawsZeroNumber(scene: readonly SceneNode[]): boolean {
     && (node.lines.join(' ').match(/\d[\d.,]*/g) ?? []).some((token) => !/[1-9]/.test(token)));
 }
 
+/** Whether a table cell's further line ("WoW +0.2" under a level) draws a value of zeros only. */
+function drawsZeroLine(scene: readonly SceneNode[]): boolean {
+  return scene.some((node) => node.t === 'text' && node.part === 'tableCellLine'
+    && (node.lines.join(' ').match(/\d[\d.,]*/g) ?? []).some((token) => !/[1-9]/.test(token)));
+}
+
 type Owner = InteractionRecord['target']['owner'];
 /**
  * A place where an author set a format. It names the format, the values it
@@ -1865,12 +1881,20 @@ type Owner = InteractionRecord['target']['owner'];
  */
 type FormatPlace = {
   authored: string;
-  kind: 'cell' | 'row' | 'series' | 'column' | 'chart';
+  kind: 'cell' | 'row' | 'series' | 'column' | 'axis' | 'chart';
   sets: number[][];
   path: (string | number)[];
   owns: (owner: Owner) => boolean;
   /** A computed table column: its values are calculated, and its records carry the calculation's format. */
   computed?: { colId: unknown };
+  /** Judged for zero only: its values form no series, row or column (a dimension switch measure, a scatter axis). */
+  zeroOnly?: true;
+  /** Values the chart states outside its records, printed through the place (a scatter axis's extent, a status cell's number). */
+  stated?: number[];
+  /** Further values the place may print; they only open the check (no record is built for a chart that cannot hide a value). */
+  loose?: number[];
+  /** The record fields the place prints, in place of the record's value (a scatter point's coordinates). */
+  fields?: readonly string[];
 };
 /** An authored example as the chart reads it (exampleReading), and its exact spec. */
 type ExactPlace = { format: string; spec: NumberFormatSpec };
@@ -1905,14 +1929,15 @@ const zeroText = (text: string) => /\d/.test(text) && !/[1-9]/.test(text);
  * the chart. Each owns the values it names; the chart owns the rest (series,
  * a row of values, waterfall items, map regions, table cells).
  */
-function formatPlaces(data: unknown, chart?: string): FormatPlace[] {
+function formatPlaces(data: unknown, chart?: string, axes?: { x?: unknown; y?: unknown }): FormatPlace[] {
   type TableRow = { id?: unknown; format?: unknown; cells?: Record<string, unknown>; children?: TableRow[]; value?: unknown; target?: unknown };
   type Column = { id?: unknown; kind?: unknown; format?: unknown; values?: unknown[] };
-  const own = data as { categories?: unknown[]; series?: { id?: unknown; format?: unknown; values?: unknown[] }[]; columns?: Column[]; rows?: TableRow[]; measures?: { format?: unknown }[];
-    values?: unknown[]; items?: { value?: unknown }[]; regions?: unknown; format?: unknown; value?: unknown; delta?: { vs?: unknown }; spark?: { values?: unknown[] } } | undefined;
+  const own = data as { categories?: unknown[]; series?: { id?: unknown; format?: unknown; values?: unknown[] }[]; columns?: Column[]; rows?: TableRow[]; measures?: { id?: unknown; format?: unknown }[];
+    values?: unknown[]; items?: { value?: unknown }[]; regions?: unknown; format?: unknown; value?: unknown; delta?: { vs?: unknown }; spark?: { values?: unknown[] };
+    points?: { x?: unknown; y?: unknown }[]; cells?: { row?: unknown; col?: unknown; value?: unknown }[] } | undefined;
   const places: FormatPlace[][] = [[], [], [], [], []];
-  const add = (rank: number, kind: FormatPlace['kind'], authored: unknown, sets: number[][], path: (string | number)[], owns: (owner: Owner) => boolean, computed?: FormatPlace['computed']) => {
-    if (typeof authored === 'string') places[rank]!.push({ authored, kind, sets, path, owns, ...(computed ? { computed } : {}) });
+  const add = (rank: number, kind: FormatPlace['kind'], authored: unknown, sets: number[][], path: (string | number)[], owns: (owner: Owner) => boolean, more: Partial<FormatPlace> = {}) => {
+    if (typeof authored === 'string') places[rank]!.push({ authored, kind, sets, path, owns, ...more });
   };
   // The values no narrower format owns, by set: what the chart format prints.
   const chartSets: number[][] = [];
@@ -1963,9 +1988,24 @@ function formatPlaces(data: unknown, chart?: string): FormatPlace[] {
   walk(own?.rows, ['data', 'rows']);
   chartSets.push(...chartByColumn.values());
   columns.forEach((column, i) => add(3, 'column', column?.format, [Array.isArray(column?.values) ? column.values.flatMap(numberIn) : byColumn.get(column?.id) ?? []],
-    ['data', 'columns', i, 'format'], (owner) => owner.colId === column?.id, column?.kind === 'computed' ? { colId: column.id } : undefined));
-  // A measure of a dimension switch: its values are calculated, so its records name it by its format.
-  (Array.isArray(own?.measures) ? own.measures : []).forEach((measure, i) => add(2, 'series', measure?.format, [], ['data', 'measures', i, 'format'], () => true));
+    ['data', 'columns', i, 'format'], (owner) => owner.colId === column?.id, column?.kind === 'computed' ? { computed: { colId: column.id } } : {}));
+  // A measure of a dimension switch: its values are calculated from the facts, and its rows name it (rowId [variant, member, measure]).
+  (Array.isArray(own?.measures) ? own.measures : []).forEach((measure, i) => add(2, 'series', measure?.format, [], ['data', 'measures', i, 'format'],
+    (owner) => measure?.id !== undefined && measureOfRow(owner.rowId) === measure.id, { zeroOnly: true }));
+  // A status cell prints its number in its label, not in its record: the data states it.
+  const statusChart: number[] = [];
+  (Array.isArray(own?.cells) ? own.cells : []).forEach((cell, i) => {
+    const { format, number } = cellParts(cell?.value);
+    if (format !== undefined) add(0, 'cell', format, [], ['data', 'cells', i, 'value', 'format'], () => false, { stated: number, zeroOnly: true });
+    else statusChart.push(...number);
+  });
+  // A scatter axis format prints its coordinates in the description, the point labels and the zone texts: its extent is stated.
+  const points = Array.isArray(own?.points) ? own.points : undefined;
+  const coordinates = (axis: 'x' | 'y') => (points ?? []).flatMap((point) => numberOfCell(point?.[axis]));
+  const extent = (values: number[]) => (values.length ? [values.reduce((a, b) => Math.min(a, b)), values.reduce((a, b) => Math.max(a, b))] : []);
+  if (points) for (const axis of ['x', 'y'] as const) {
+    add(2, 'axis', axes?.[axis], [], ['options', 'axisFormat', axis], () => false, { stated: extent(coordinates(axis)), zeroOnly: true });
+  }
   // A KPI: its value, reference and spark print through its own format.
   if (typeof own?.format === 'string' && !Array.isArray(own?.series)) {
     add(2, 'series', own.format, [[...numberOfCell(own.value), ...numberOfCell(own.delta?.vs), ...(Array.isArray(own.spark?.values) ? own.spark.values.flatMap(numberOfCell) : [])]], ['data', 'format'], () => true);
@@ -1975,8 +2015,29 @@ function formatPlaces(data: unknown, chart?: string): FormatPlace[] {
   if (Array.isArray(own?.items)) chartSets.push(own.items.flatMap((item) => numberIn(item?.value)));
   const regions = Array.isArray(own?.regions) ? own.regions : typeof own?.regions === 'object' && own.regions !== null ? Object.values(own.regions) : [];
   if (regions.length) chartSets.push(regions.flatMap((region) => numberIn(typeof region === 'object' && region !== null && 'value' in region ? (region as { value: unknown }).value : region)));
-  if (chart !== undefined) places[4]!.push({ authored: chart, kind: 'chart', sets: chartSets, path: ['options', 'format'], owns: () => true });
+  if (chart !== undefined) {
+    const place: FormatPlace = { authored: chart, kind: 'chart', sets: chartSets, path: ['options', 'format'], owns: () => true };
+    // A scatter point states its coordinates through the chart format in its hover card.
+    if (points) Object.assign(place, { fields: ['x', 'y'], zeroOnly: true, loose: [...coordinates('x'), ...coordinates('y')] });
+    else if (statusChart.length) Object.assign(place, { stated: statusChart, zeroOnly: true });
+    // Values in other shapes (links, groups, cohorts, observations, panels): the numbers of the data open the check.
+    else if (!chartSets.some((set) => set.length)) place.loose = numbersOf(data);
+    places[4]!.push(place);
+  }
   return places.flat();
+}
+
+/** The measure id of a dimension switch row (rowId [variant, member, measure], a change or effect row with a suffix). */
+function measureOfRow(rowId: unknown): unknown {
+  if (typeof rowId !== 'string' || !rowId.startsWith('[')) return undefined;
+  try { return (JSON.parse(rowId.slice(0, rowId.lastIndexOf(']') + 1)) as unknown[])[2]; } catch { return undefined; }
+}
+
+/** Every finite number in data, to six levels. */
+function numbersOf(node: unknown, depth = 0): number[] {
+  if (typeof node === 'number') return Number.isFinite(node) ? [node] : [];
+  if (node === null || typeof node !== 'object' || depth > 6) return [];
+  return Object.values(node).flatMap((value) => numbersOf(value, depth + 1));
 }
 
 /** The place's example as the chart reads it, where it prints exactly; none for a unit-only format or its stand-in (isExactExample), an ordinal or an exponent. A place holds what the author wrote. */
@@ -1990,12 +2051,29 @@ function exactPlace(place: FormatPlace): ExactPlace | undefined {
   } catch { return undefined; }
 }
 
-/** Whether `record` printed through `place`: the place owns it, and it carries the place's format (a computed column's records carry the calculation's). */
-function printsThrough(place: FormatPlace, read: ExactPlace | undefined, record: InteractionRecord): boolean {
-  if (!place.owns(record.target.owner)) return false;
-  const format = record.value.format;
+/**
+ * Whether a record's value printed through `place`: the place owns the record, and the value carries the place's format, or
+ * a change face of it (+1.2 or 1.2pp for 1.2 and 1.2%). A computed column's records carry the calculation's format.
+ */
+function printsThrough(place: FormatPlace, read: ExactPlace | undefined, owner: Owner, value: InteractionValue): boolean {
+  if (!place.owns(owner)) return false;
+  const format = value.format;
   if (format === place.authored) return true;
-  return read !== undefined && (place.computed ? record.value.derived !== undefined : format === read.format);
+  return read !== undefined && (place.computed ? value.derived !== undefined : format === read.format || (format !== undefined && changeFaces(read.format).has(format)));
+}
+
+const faces = new Map<string, ReadonlySet<string>>();
+/** The examples a change of `format` prints in: its difference example (differenceExample), with and without a plus sign. */
+function changeFaces(format: string): ReadonlySet<string> {
+  let found = faces.get(format);
+  if (found === undefined) {
+    let difference = format;
+    try { difference = differenceExample(format); } catch { /* the format itself */ }
+    const signed = (example: string) => (example.startsWith('+') ? example : `+${example}`);
+    found = new Set([difference, signed(difference), signed(format)].filter((face) => face !== format));
+    faces.set(format, found);
+  }
+  return found;
 }
 
 /**
@@ -2003,7 +2081,7 @@ function printsThrough(place: FormatPlace, read: ExactPlace | undefined, record:
  * half a printed step of zero, or different values within one step. A bound
  * on the data, so no value is printed to decide whether the records are built.
  */
-function mayHide(spec: NumberFormatSpec, sets: readonly (readonly number[])[]): boolean {
+function mayHide(spec: NumberFormatSpec, sets: readonly (readonly number[])[], zeroOnly = false): boolean {
   const figures = spec.significantDigits;
   const step = MAGNITUDE_DIVISOR[spec.magnitude] / 10 ** spec.decimals;
   for (const set of sets) {
@@ -2014,7 +2092,7 @@ function mayHide(spec: NumberFormatSpec, sets: readonly (readonly number[])[]): 
       if (value < low) low = value;
       if (value > high) high = value;
     }
-    if (high > low && (figures === undefined ? high - low < step * 1.0000001 : Number(low.toPrecision(figures)) === Number(high.toPrecision(figures)))) return true;
+    if (!zeroOnly && high > low && (figures === undefined ? high - low < step * 1.0000001 : Number(low.toPrecision(figures)) === Number(high.toPrecision(figures)))) return true;
   }
   return false;
 }
@@ -2034,16 +2112,15 @@ function oneCellText(scene: readonly SceneNode[], colId: unknown): boolean {
 }
 
 /** The text the chart states for a record's value: its label, else the text of the hover card (formattedValueText) under its format. */
-function statedEntry(place: FormatPlace, record: InteractionRecord, locale: string | undefined): Stated | undefined {
-  const { value } = record;
+function statedEntry(place: FormatPlace, value: InteractionValue, owner: Owner, locale: string | undefined): Stated | undefined {
   if (value.state !== 'value' || value.kind !== 'number' || typeof value.raw !== 'number' || !Number.isFinite(value.raw)) return undefined;
   const text = value.displayed ?? (value.format !== undefined ? formatWithSpec(value.raw, exampleSpec(value.format, locale, value.unit)) : undefined);
-  return text === undefined ? undefined : { raw: value.raw, text, sets: setsOf(place, record.target.owner) };
+  return text === undefined ? undefined : { raw: value.raw, text, sets: setsOf(place, owner) };
 }
 
 /** The sets a value of a place belongs to: its series, its table row and column under the chart format; none under a cell's own format. */
 function setsOf(place: FormatPlace, owner: Owner): string[] {
-  if (place.kind === 'cell') return [];
+  if (place.kind === 'cell' || place.zeroOnly) return [];
   if (place.kind !== 'chart') return [place.kind];
   if (owner.rowId !== undefined || owner.colId !== undefined) return [...(owner.rowId !== undefined ? [`row:${String(owner.rowId)}`] : []), ...(owner.colId !== undefined ? [`column:${String(owner.colId)}`] : [])];
   return [`series:${String(owner.seriesId ?? '')}`];
@@ -2052,7 +2129,14 @@ function setsOf(place: FormatPlace, owner: Owner): string[] {
 /** The texts a format prints for the data, where no records state them. */
 function dataEntries(place: FormatPlace, read: ExactPlace, locale: string | undefined): Stated[] {
   const spec = specOfExample(read.format, true, locale);
-  return place.sets.flatMap((set, i) => set.map((raw) => ({ raw, text: formatWithSpec(raw, spec), sets: place.kind === 'cell' ? [] : [`${place.kind === 'chart' ? 'series' : place.kind}:${i}`] })));
+  return place.sets.flatMap((set, i) => set.map((raw) => ({ raw, text: formatWithSpec(raw, spec), sets: place.kind === 'cell' || place.zeroOnly ? [] : [`${place.kind === 'chart' ? 'series' : place.kind}:${i}`] })));
+}
+
+/** The texts a place prints for the values the chart states outside its records (FormatPlace.stated); zero only. */
+function statedOutside(place: FormatPlace, read: ExactPlace, locale: string | undefined): Stated[] {
+  if (!place.stated?.length) return [];
+  const spec = specOfExample(read.format, true, locale);
+  return place.stated.map((raw) => ({ raw, text: formatWithSpec(raw, spec), sets: [] }));
 }
 
 const SET_NAMES: Record<string, string> = { series: 'a series', row: 'a table row', column: 'a table column' };
