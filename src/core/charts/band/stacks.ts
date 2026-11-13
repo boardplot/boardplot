@@ -103,9 +103,10 @@ export function netLineName(
 /**
  * The formatter for a stack's absolute total. A 100 % stack is shares, but its
  * total is the count behind them, so a percent format example ("0%") must not
- * put a '%' on it. Other variants keep the chart format. A computed total never
- * prints a nonzero sum as 0: under an authored "1,234" a total of 0.4 takes the
- * digit that shows it, as a mekko total does. Column and bar share it.
+ * put a '%' on it. Other variants keep the chart format. A total prints as an
+ * authored example reads: under "1,234" a total of 0.4 prints 0, and the
+ * format-hides-values warning says so. Under an automatic or unit-only format
+ * a nonzero total never prints as 0. Column and bar share it.
  */
 export function stackTotalFormatter(variant: StackVariant, spec: NumberFormatSpec, fmt: (v: number) => string): (v: number) => string {
   const percentShares = variant === 'stacked100' && specUnitKind(spec) === 'percent';
