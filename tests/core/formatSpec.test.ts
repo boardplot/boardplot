@@ -243,9 +243,9 @@ it('holds an authored scale word, decimals and zero for every value', () => {
   expect(formatterFromExample('$1.2M', 'en', undefined, [4, 12, 43, 78])(78)).toBe('$0.0M');
   // A negative value that rounds to zero prints the example's zero without a sign.
   expect(formatterFromExample('+1.0%', 'en')(-0.02)).toBe('0.0%');
-  // The lifting printers print an authored example as written.
+  // The nonzero printer prints an authored example as written. A statistic keeps its own rule: one decimal past the raster.
   expect(formatNonzeroWithSpec(0.004, exampleSpec('$1.0', 'en'))).toBe('$0.0');
-  expect(formatStatWithSpec(27.5, exampleSpec('1,234', 'en'))).toBe('28');
+  expect(formatStatWithSpec(27.5, exampleSpec('1,234', 'en'))).toBe('27.5');
 });
 
 // A set already at one magnitude lost its decimal under the set's magnitude: "108M · 101M" for "107.8M · 101.2M".

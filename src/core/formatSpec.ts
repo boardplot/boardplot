@@ -1805,7 +1805,7 @@ export function unscaledFormatLint(
     const scene = geo?.scene ?? context.scene;
     let suspect = false;
     for (const [place, read] of exact) {
-      if (mayHide(read.spec, place.sets) || mayHide(read.spec, [place.stated ?? [], place.loose ?? []], true)
+      if (mayHide(read.spec, place.sets) || mayHide(read.spec, [place.stated ?? [], place.loose ?? [], place.totals ?? []], true)
         || (place.computed && scene !== undefined && oneCellText(scene, place.computed.colId))) { suspect = true; break; }
     }
     // A cell's second line (a statement's change under its level) draws a zero too, which the unit-only check does not read.
@@ -1883,6 +1883,8 @@ type FormatPlace = {
   stated?: number[];
   /** Further values the place may print; they only open the check (no record is built for a chart that cannot hide a value). */
   loose?: number[];
+  /** Totals the chart calculates and prints through the format (waterfall totals): judged for zero only. Records carry them; without records they come from here. */
+  totals?: number[];
 };
 /** An authored example as the chart reads it (exampleReading), and its exact spec. */
 type ExactPlace = { format: string; spec: NumberFormatSpec };
@@ -2016,7 +2018,7 @@ function formatPlaces(data: unknown, chart?: string, axes?: { x?: unknown; y?: u
     else if (statusChart.length) Object.assign(place, { stated: statusChart, zeroOnly: true });
     // Values in other shapes (links, groups, cohorts, observations, panels): the numbers of the data open the check.
     else if (!chartSets.some((set) => set.length)) place.loose = numbersOf(data);
-    else if (totals.length) place.loose = totals;
+    if (totals.length) place.totals = totals;
     // A bullet row stands alone: its value forms no set with the other rows.
     if (bulletRows) place.zeroOnly = true;
     places[4]!.push(place);
@@ -2127,7 +2129,10 @@ function setsOf(place: FormatPlace, owner: Owner): string[] {
 /** The texts a format prints for the data, where no records state them. */
 function dataEntries(place: FormatPlace, read: ExactPlace, locale: string | undefined): Stated[] {
   const spec = specOfExample(read.format, true, locale);
-  return place.sets.flatMap((set, i) => set.map((raw) => ({ raw, text: formatWithSpec(raw, spec), sets: place.kind === 'cell' || place.zeroOnly ? [] : [`${place.kind === 'chart' ? 'series' : place.kind}:${i}`] })));
+  return [
+    ...place.sets.flatMap((set, i) => set.map((raw) => ({ raw, text: formatWithSpec(raw, spec), sets: place.kind === 'cell' || place.zeroOnly ? [] : [`${place.kind === 'chart' ? 'series' : place.kind}:${i}`] }))),
+    ...(place.totals ?? []).map((raw) => ({ raw, text: formatWithSpec(raw, spec), sets: [] })),
+  ];
 }
 
 /** The texts a place prints for the values the chart states outside its records (FormatPlace.stated); zero only. */
