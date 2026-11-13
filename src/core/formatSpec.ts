@@ -683,8 +683,36 @@ function treeNumbers(node: unknown, into: number[] = [], seen = new Set<unknown>
  * Each chart gets one reading, taken from all of its numbers. A number that is
  * not a data value counts too. Fields are not read one by one.
  */
-export function readFormatExamples<D, O>(data: D, options: O): { data: D; options: O; warnings: LintWarning[]; standIns: Set<string>; authored: Set<string> } {
+/** The unit-only formats of a chart's options, by path below options, with the stand-in that replaced each (readFormatExamples). */
+export const UNIT_FORMATS = Symbol('unit-formats');
+export type UnitFormat = { path: (string | number)[]; unit: string; example: string };
+
+/**
+ * The options as their author wrote them where a unit-only format stands:
+ * the export writes `$M`, not the stand-in the chart drew it with, so the
+ * document draws its chart's text again. A path that no longer holds the
+ * stand-in (reader state changed it) is kept.
+ */
+export function withAuthoredUnits<O extends object>(options: O): O {
+  const formats = (options as { [UNIT_FORMATS]?: readonly UnitFormat[] })[UNIT_FORMATS];
+  if (!formats?.length) return options;
+  const restore = (node: unknown, path: readonly (string | number)[], format: UnitFormat): unknown => {
+    if (path.length === 0) return node === format.example ? format.unit : node;
+    if (node === null || typeof node !== 'object') return node;
+    const [key, ...rest] = path;
+    const child = (node as Record<string | number, unknown>)[key!];
+    const next = restore(child, rest, format);
+    if (next === child) return node;
+    const copy = Array.isArray(node) ? [...node] : { ...node };
+    (copy as Record<string | number, unknown>)[key!] = next;
+    return copy;
+  };
+  return formats.reduce((current, format) => restore(current, format.path, format) as O, options);
+}
+
+export function readFormatExamples<D, O>(data: D, options: O): { data: D; options: O; warnings: LintWarning[]; standIns: Set<string>; authored: Set<string>; unitFormats: UnitFormat[] } {
   const warnings: LintWarning[] = [];
+  const unitFormats: UnitFormat[] = [];
   const warned = new Set<string>();
   const written = new Set<string>();
   // The examples the author wrote; a generated one (AUTOMATIC_FORMAT) is the engine's.
@@ -724,6 +752,10 @@ export function readFormatExamples<D, O>(data: D, options: O): { data: D; option
     }
     const standIn = unitOnlyExample(example);
     if (!standIn) return example;
+    const wroteStandIn = (written: string): string => {
+      if (field[0] === 'options') unitFormats.push({ path: field.slice(1), unit: example, example: written });
+      return wroteStandInText(written);
+    };
     const numbers = numbersOf(owner);
     if (!numbers?.length) return wroteStandIn(standIn);
     const spec = parseFormatExample(standIn);
@@ -739,7 +771,7 @@ export function readFormatExamples<D, O>(data: D, options: O): { data: D; option
     const whole = spec.thousandsSep ? '1,234' : decimals === 3 ? '0' : '1';
     return wroteStandIn(standIn.slice(0, body.index) + whole + (decimals ? `.${'5'.repeat(decimals)}` : '') + standIn.slice(body.index + body.text.trimEnd().length));
   };
-  const wroteStandIn = (standIn: string): string => {
+  const wroteStandInText = (standIn: string): string => {
     written.add(standIn);
     return standIn;
   };
@@ -768,13 +800,14 @@ export function readFormatExamples<D, O>(data: D, options: O): { data: D; option
     const read = change(example);
     try { return [read, differenceExample(read)]; } catch { return [read]; }
   }));
-  if (examples.size === 0) return { data, options, warnings, standIns: standIns((example) => example), authored: authored((example) => example) };
+  if (examples.size === 0) return { data, options, warnings, standIns: standIns((example) => example), authored: authored((example) => example), unitFormats };
   const numbers = treeNumbers(data);
   const readings = new Map([...examples].map((example) => [example, exampleReading(example, numbers)]));
   const change = (example: string) => readings.get(example)?.decimals ?? example;
   return {
     standIns: standIns(change),
     authored: authored(change),
+    unitFormats: unitFormats.map((format) => ({ ...format, example: change(format.example) })),
     data: mapExamples(data, change),
     options: mapExamples(options, change),
     warnings: [...warnings, ...[...readings].flatMap(([example, { lost }]) => lost === undefined ? [] : [{

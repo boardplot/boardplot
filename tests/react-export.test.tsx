@@ -536,3 +536,20 @@ it('validates raw export options with the shared rules and keeps custom measurem
   expect(exported.artifact.text).toBe(renderSvg(geometry, resolved.theme, { idScope }));
   expect(expectOk(await exportSvg({ request: { ...request, fontMetrics: custom }, context })).artifact.text).toBe(exported.artifact.text);
 });
+
+describe('an exported chart document draws its chart\'s text', () => {
+  // The export wrote the stand-in of a unit-only format as if the author had written it, so the document drew $0.40M where its chart drew $400.00k.
+  it('exports a unit-only format as written', async () => {
+    const { exportDocument, isPrepared, prepareExport } = await import('../src/react/export/frame');
+    const chart = { type: 'column', data: { categories: ['Q1', 'Q2', 'Q3', 'Q4'], series: [{ id: 's', label: 'Sales', values: [400_000, 800_000, 600_000, 700_000] }] },
+      options: { title: 'Invented columns', format: '$M', averageMarker: true } };
+    const labels = (spec: object) => requireGeometry(layoutResolvedRequest(resolveChartRequest(spec as never))).scene
+      .flatMap((node) => node.t === 'text' && node.id.startsWith('label:point:') ? [node.lines.join(' ')] : []);
+    const prepared = await prepareExport({ request: chart });
+    if (!isPrepared(prepared)) throw new Error('the export failed');
+    const exported = (exportDocument(prepared) as { charts: { type: string; data: unknown; options: { format?: string } }[] }).charts[0]!;
+    expect(exported.options.format).toBe('$M');
+    expect(labels(exported)).toEqual(labels(chart));
+    expect(labels(chart)).toContain('$400.00k');
+  });
+});
