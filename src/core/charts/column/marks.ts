@@ -28,7 +28,7 @@ import {
   type ColumnPaints,
   type FlagMarker,
 } from './model';
-import { contentOf, shareTextOf } from './domain';
+import { cellValueFmt, contentOf, shareTextOf } from './domain';
 import { rangeWhisker } from '../band/rangeWhisker';
 import { anomalyRuleLines, drawAnomalyRules, emitAnomalyFlag } from './anomaly';
 import { pushAll } from '../../arrays';
@@ -193,6 +193,7 @@ function columnBars(
           fill, pattern, outline: paints.outline(c),
           owner, part: 'bar',
           displayValue: valueSpec.forSeries(s, s.vals[ci]?.format)(absOf(s, ci)!),
+          shows: { value: cellValueFmt(domain, s, ci)(absOf(s, ci)!) },
           ...(anomaly?.flagByCategory.has(c.id) ? { displayState: 'flagged' } : {}),
         });
         marks.bars.push({ seriesId: s.id, categoryId: c.id, rect, nodeId });
@@ -226,6 +227,7 @@ function columnBars(
           variant === 'stacked100'
             ? shareTextOf(domain, c.id, s.id, v, val.isPct)
             : valueSpec.forSeries(s, s.vals[ci]?.format)(absOf(s, ci)!),
+        shows: { value: cellValueFmt(domain, s, ci)(absOf(s, ci)!) },
       });
       segs.push({ seriesId: s.id, rect, nodeId });
       bars.push({ s, si, c, ci, v, rect });
@@ -380,7 +382,7 @@ function referenceMarks(
           ...referenceMarkerPaint(theme, paints.ref(s)),
           owner,
           part: 'referenceMarker',
-          display: { value: valueSpec.forSeries(s, s.vals[ci]?.format)(v) },
+          display: { value: valueSpec.forSeries(s, s.vals[ci]?.format)(v), shows: { value: valueSpec.forSeries(s)(v) } },
         });
       } else {
         const line: SceneNode = {
@@ -394,7 +396,7 @@ function referenceMarks(
           ...(refStyle === 'line' ? { dash: dashToken(theme, 'dotted'), lineCap: 'round' as const } : {}),
           owner,
           part: refStyle === 'tick' ? 'referenceTick' : 'referenceLine',
-          display: { value: valueSpec.forSeries(s, s.vals[ci]?.format)(v) },
+          display: { value: valueSpec.forSeries(s, s.vals[ci]?.format)(v), shows: { value: valueSpec.forSeries(s)(v) } },
         };
         if (back) {
           behind.push(line);

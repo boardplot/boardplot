@@ -17,7 +17,7 @@ import { markOutlineOff, separationStroke } from '../../markVisibility';
 import { crossesLinearBreak, type LinearBreak, type LinearScale } from '../../scale';
 import { hatchGroundPaint } from '../../theme';
 import type { OwnerRef } from '../../types/cell';
-import type { Paint, SceneNode } from '../../types/scene';
+import type { Paint, SceneNode, ShownTexts } from '../../types/scene';
 import type { Theme } from '../../types/theme';
 
 export interface BarMarkInput {
@@ -35,6 +35,8 @@ export interface BarMarkInput {
   displayValue: string;
   /** Interactive-fold state, e.g. 'flagged' for an anomaly period. */
   displayState?: string;
+  /** The texts the mark's label would print where it draws none (ShownTexts). */
+  shows?: ShownTexts;
 }
 
 interface BarMarkContext {
@@ -57,7 +59,7 @@ export function emitBarMark(ctx: BarMarkContext, nodes: SceneNode[], claims: Occ
   // carry the key colour and two hatched series stay two colours.
   const hatchGround = input.pattern === 'hatch45' ? hatchGroundPaint(input.fill) : undefined;
   const claimOwner = input.claimOwner ?? input.owner;
-  const rectNode = (id: string, rect: Rect, part: string, display?: { value: string; state?: string }): SceneNode => ({
+  const rectNode = (id: string, rect: Rect, part: string, display?: { value: string; state?: string; shows?: ShownTexts }): SceneNode => ({
     t: 'rect', id, rect, fill: input.fill,
     pattern: input.pattern,
     ...(hatchGround ? { hatchGround } : {}),
@@ -71,6 +73,7 @@ export function emitBarMark(ctx: BarMarkContext, nodes: SceneNode[], claims: Occ
     nodes.push(rectNode(input.nodeId, input.rect, input.part, {
       value: input.displayValue,
       ...(input.displayState ? { state: input.displayState } : {}),
+      ...(input.shows ? { shows: input.shows } : {}),
     }));
     claims.claim(input.rect, 'mark', claimOwner, input.part);
     return;
@@ -79,7 +82,7 @@ export function emitBarMark(ctx: BarMarkContext, nodes: SceneNode[], claims: Occ
     // One rect with one page-colour cut across it. The rect keeps its whole
     // edge (a separation stroke, a hatch edge, a repaint's edge), so the cut
     // shows the same in every theme and no seam runs where two parts meet.
-    nodes.push(rectNode(input.nodeId, input.rect, 'bar', { value: input.displayValue }));
+    nodes.push(rectNode(input.nodeId, input.rect, 'bar', { value: input.displayValue, ...(input.shows ? { shows: input.shows } : {}) }));
     claims.claim(input.rect, 'mark', claimOwner, 'bar');
     const cut = barBreakCut(input.rect, axis, breakMeta.position, `${input.nodeId}:break`, input.owner);
     nodes.push(...cut.nodes);
@@ -99,7 +102,7 @@ export function emitBarMark(ctx: BarMarkContext, nodes: SceneNode[], claims: Occ
   const primaryRect = part(startPx, primaryEnd);
   const beyondRect = part(beyondStart, endPx);
   nodes.push(
-    rectNode(input.nodeId, primaryRect, 'bar', { value: input.displayValue }),
+    rectNode(input.nodeId, primaryRect, 'bar', { value: input.displayValue, ...(input.shows ? { shows: input.shows } : {}) }),
     rectNode(`${input.nodeId}:beyondBreak`, beyondRect, 'barBeyondBreak'),
   );
   claims.claim(primaryRect, 'mark', claimOwner, 'bar');

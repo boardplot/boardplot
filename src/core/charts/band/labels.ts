@@ -19,7 +19,7 @@ import type { Rect } from '../../geometry';
 import type { FontSpec, TextMeasurer } from '../../text';
 import { PRIORITY, type LabelRequest, type SlotCandidate, type SolveCtx } from '../../label/solver';
 import type { LabelContent, LabelDensity } from '../../types/options';
-import type { LintWarning, PlacedLabel } from '../../types/scene';
+import type { LintWarning, PlacedLabel, ShownTexts } from '../../types/scene';
 import type { OccupiedIndex } from '../../label/occupied';
 import { solidMutedPlan, strokeToken } from '../../theme';
 import type { Theme } from '../../types/theme';
@@ -63,6 +63,19 @@ export function valueShareLines(parts: readonly (readonly [LabelContent[number],
   if (value < 0 || share < 0) return [text(0)];
   const cut = Math.max(value, share);
   return [text(0, cut), text(cut)];
+}
+
+/**
+ * The record values a label's parts print, with their texts (ShownTexts): the
+ * value part and the share part. Undefined when the label prints neither, or
+ * when an authored text replaces the parts without a `${value}`.
+ */
+export function shownParts(parts: readonly (readonly [LabelContent[number], string])[], override?: string | false): ShownTexts | undefined {
+  if (override === false || (typeof override === 'string' && !override.includes('${value}'))) return undefined;
+  const value = parts.find(([kind]) => kind === 'absolute')?.[1];
+  const share = parts.find(([kind]) => kind === 'percent')?.[1];
+  if (value === undefined && share === undefined) return undefined;
+  return { ...(value === undefined ? {} : { value }), ...(share === undefined ? {} : { 'share.percent': share }) };
 }
 
 /** The box of a label's lines: the widest line by the lines' stacked height. */

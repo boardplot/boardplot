@@ -1317,6 +1317,12 @@ export function shareKey(categoryId: string, seriesId: string): string {
 }
 
 /** A segment's printed share: its sum-consistent text, else the author's percent or the chart's share format. */
+/** The formatter a cell's value label prints with: the cell or series format, or an authored percent cell's '%'. */
+export function cellValueFmt(domain: Pick<ColumnDomain, 'valueSpec'>, s: NormSer, ci: number): (v: number) => string {
+  const val = s.vals[ci]!;
+  return val.isPct && !val.format && !s.format ? domain.valueSpec.fmtPercent : domain.valueSpec.forSeries(s, val.format);
+}
+
 export function shareTextOf(domain: Pick<ColumnDomain, 'shareTexts' | 'pctFmt' | 'authoredPctFmt'>, categoryId: string, seriesId: string, pct: number, authored: boolean): string {
   return domain.shareTexts.get(shareKey(categoryId, seriesId)) ?? (authored ? domain.authoredPctFmt(pct) : domain.pctFmt(pct));
 }

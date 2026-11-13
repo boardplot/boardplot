@@ -17,8 +17,8 @@ import { PRIORITY, SERIES_VALUE_GAP, type LabelRequest, type SlotCandidate } fro
 import type { DataRange } from '../../rangeRules';
 import type { FontSpec } from '../../text';
 import type { LabelContent } from '../../types/options';
-import type { LintWarning } from '../../types/scene';
-import { compactValueLabelFont, fitsInside, groupedValueLabelPolicy, linesSize, digitSeat, acrossValueLines, digitSeatEdge, segmentLabelCandidates, segmentTooShort, STACK_ROOM, valueRowCrowded, valueShareLines, warnShareParts, warnSliverLabels } from '../band/labels';
+import type { LintWarning, ShownTexts } from '../../types/scene';
+import { compactValueLabelFont, fitsInside, groupedValueLabelPolicy, linesSize, digitSeat, acrossValueLines, digitSeatEdge, segmentLabelCandidates, segmentTooShort, shownParts, STACK_ROOM, valueRowCrowded, valueShareLines, warnShareParts, warnSliverLabels } from '../band/labels';
 import { stepDownFont } from '../../label/rowFit';
 import { lineBox } from '../../label/fitText';
 import { groupedOffsets } from '../band/groups';
@@ -29,7 +29,7 @@ import { restValueHiding, restValuesHidden } from '../../restLabels';
 import { emphasisWeight } from '../../theme';
 import { NET_TICK_REACH, netInsideStack, outsideTickReach } from './marks';
 import type { IntegratedVariancePoint } from './layout';
-import { contentOf, edgeNameFont, kindSetting, pyTickKeyed, tickKeyed, rightEdgeSeriesLabels, RIGHT_EDGE_GAP, shareTextOf, toDateOnValues } from './domain';
+import { contentOf, edgeNameFont, kindSetting, pyTickKeyed, tickKeyed, rightEdgeSeriesLabels, RIGHT_EDGE_GAP, cellValueFmt, shareTextOf, toDateOnValues } from './domain';
 import { toDateLabel } from '../../partialPeriod';
 import {
   ANOMALY_FLAG_GAP,
@@ -49,8 +49,8 @@ import { chartString } from '../../strings';
 import { disclosuresShown } from '../../notes';
 import { maxOf, minOf, pushAll } from '../../arrays';
 
-/** The label's parts as lines: the value and its share one over the other, the rest on one line. */
-function composeLines(
+/** The label's parts, each with its text: the value, its share, the category and series names. */
+function composeParts(
   domain: ColumnDomain,
   content: LabelContent,
   abs: number | null,
@@ -61,7 +61,7 @@ function composeLines(
   valueFmt: (v: number) => string,
   /** The segment's ids, for its sum-consistent share text. */
   ids?: { categoryId: string; seriesId: string },
-): string[] {
+): [LabelContent[number], string][] {
   const parts: [LabelContent[number], string][] = [];
   for (const c of content) {
     if (c === 'absolute' && abs !== null) parts.push([c, valueFmt(abs)]);
@@ -69,7 +69,12 @@ function composeLines(
     else if (c === 'category' && catLabel) parts.push([c, catLabel]);
     else if (c === 'series' && serLabel) parts.push([c, serLabel]);
   }
-  return valueShareLines(parts);
+  return parts;
+}
+
+/** The label's parts as lines: the value and its share one over the other, the rest on one line. */
+function composeLines(...args: Parameters<typeof composeParts>): string[] {
+  return valueShareLines(composeParts(...args));
 }
 
 function composeText(...args: Parameters<typeof composeLines>): string {
@@ -158,19 +163,21 @@ function seatsOrBox(seats: SlotCandidate[], rect: Rect, tsize: { width: number; 
   return [{ slot: 'insideCenter', rect: { x: rect.x + rect.w / 2 - tsize.width / 2, y: rect.y + rect.h / 2 - tsize.height / 2, w: tsize.width, h: tsize.height }, penalty: 0 }];
 }
 
-/** The composed label lines with the cell's `${value}` override applied; null when there is none to show. */
-function valueLines(domain: ColumnDomain, place: BarPlace, content: LabelContent, pct: number | null): { text: string; lines: string[] } | null {
+/** The composed label lines with the cell's `${value}` override applied, and the values they print; null when there is none to show. */
+function valueLines(domain: ColumnDomain, place: BarPlace, content: LabelContent, pct: number | null): { text: string; lines: string[]; shows?: ShownTexts } | null {
   const { s, c, ci } = place;
   const val = s.vals[ci]!;
   // An authored percent cell keeps its '%' on the value.
-  const valueFmt = val.isPct && !val.format && !s.format ? domain.valueSpec.fmtPercent : domain.valueSpec.forSeries(s, val.format);
-  let lines = composeLines(domain, content, domain.absOf(s, ci), pct, c.label ?? c.id, s.label, pct !== null && val.isPct, valueFmt, { categoryId: c.id, seriesId: s.id });
+  const valueFmt = cellValueFmt(domain, s, ci);
+  const parts = composeParts(domain, content, domain.absOf(s, ci), pct, c.label ?? c.id, s.label, pct !== null && val.isPct, valueFmt, { categoryId: c.id, seriesId: s.id });
+  let lines = valueShareLines(parts);
   let text = lines.join(' ');
   if (typeof val.labelOverride === 'string') {
     text = val.labelOverride.replace(/\$\{value\}/g, text);
     lines = [text];
   }
-  return !text && val.labelOverride !== false ? null : { text, lines };
+  const shows = shownParts(parts, val.labelOverride);
+  return !text && val.labelOverride !== false ? null : { text, lines, ...(shows ? { shows } : {}) };
 }
 
 /** A cell's value as its label prints it: the cell or series format, an authored percent cell's '%' and the `${value}` override. */
@@ -178,8 +185,7 @@ export function cellValueText(domain: ColumnDomain, s: ColumnDomain['dataSeries'
   const val = s.vals[ci]!;
   const abs = domain.absOf(s, ci);
   if (abs === null) return null;
-  const valueFmt = val.isPct && !val.format && !s.format ? domain.valueSpec.fmtPercent : domain.valueSpec.forSeries(s, val.format);
-  const text = valueFmt(abs);
+  const text = cellValueFmt(domain, s, ci)(abs);
   return typeof val.labelOverride === 'string' ? val.labelOverride.replace(/\$\{value\}/g, text) : text;
 }
 
@@ -203,7 +209,7 @@ function pointRequests(
       suggest: "use variant 'stacked' or 'stacked100' to print each column's share, or drop 'percent' from labels.point",
     });
   }
-  const pendingPoints: { place: BarPlace; text: string; priority: number; protect: boolean; hl: boolean }[] = [];
+  const pendingPoints: { place: BarPlace; text: string; shows?: ShownTexts; priority: number; protect: boolean; hl: boolean }[] = [];
   // valueLabels picks each series' values (band/valueSelection.ts). A value it
   // does not pick gets no request, so the note does not name it. An authored cell label and a
   // flagged period print in every mode, as on line.
@@ -213,7 +219,8 @@ function pointRequests(
   for (const place of content ? scene.bars : []) {
     const { s, c, ci, v } = place;
     if (chosen && !chosen.get(s.id)?.has(ci) && typeof s.vals[ci]?.labelOverride !== 'string' && anomaly?.flagByCategory.has(c.id) !== true) continue;
-    const text = valueLines(domain, place, content!, null)?.text ?? null;
+    const composed = valueLines(domain, place, content!, null);
+    const text = composed?.text ?? null;
     if (text === null) continue;
     const endpoint = ci === 0 || ci === cats.length - 1;
     const hl = highlights.has(c.id) || highlights.has(s.id);
@@ -226,7 +233,7 @@ function pointRequests(
         ? PRIORITY.extreme + PRIORITY.highlightBonus
         : (endpoint ? PRIORITY.endpoint : PRIORITY.interior + Math.min(99, Math.abs(v))) +
           (hl ? PRIORITY.highlightBonus : 0));
-    pendingPoints.push({ place, text, priority, protect: hl || flagged, hl });
+    pendingPoints.push({ place, text, ...(composed?.shows ? { shows: composed.shows } : {}), priority, protect: hl || flagged, hl });
   }
   // One font for every value label of a grouped chart; it steps
   // down one role when any label is wider than its sub-column.
@@ -281,6 +288,7 @@ function pointRequests(
       kind: 'annotation', role: 'value',
       owner: { seriesId: s.id, categoryId: c.id },
       text, lines: [text], typeRole: 'label', font: labelFont,
+      shows: { 'field:low': fmt(range.low), 'field:high': fmt(range.high) },
       priority: PRIORITY.valueLine,
       candidates: [
         { slot: 'rightOfCap', rect: { x: cx + 8, y: capY - size.height / 2, w: size.width, h: size.height }, penalty: 0 },
@@ -305,7 +313,7 @@ function pointRequests(
     return { ...point, words, tsize, outset, natural: natural && clampX(natural) };
   });
   const rows = valueSeatRows(seated.map(({ natural, place }) => natural && { rect: natural, negative: place.v < 0 }), scene.bars.map(({ rect }) => rect));
-  for (const [index, { place, text, priority, protect, hl, words, tsize, outset }] of seated.entries()) {
+  for (const [index, { place, text, shows, priority, protect, hl, words, tsize, outset }] of seated.entries()) {
     const { s, si, c, ci, v, rect } = place;
     // Too thin for every series: the first carries the values. A highlighted
     // value is still offered, and the solver drops it last.
@@ -318,6 +326,7 @@ function pointRequests(
       kind: 'point',
       owner: { seriesId: s.id, categoryId: c.id },
       text,
+      ...(shows ? { shows } : {}),
       lines: words?.lines ?? [text],
       ...words?.request,
       typeRole: 'label', font: pointFont,
@@ -397,7 +406,7 @@ export function planColumnValueLabels(
       if (shareAsked && share === null && !stacked100 && !domain.mixedSignCats.has(c.id) && val.v !== null) noShare.add(c.label ?? c.id);
       const composed = valueLines(domain, place, content, share);
       if (composed === null) continue;
-      const { text, lines } = composed;
+      const { text, lines, shows } = composed;
       // A total column prints its values bold (categories[].role 'total').
       const font = c.role === 'total' ? { ...labelFont, weight: emphasisWeight(domain.theme) } : (stepped ?? labelFont);
       const tsize = linesSize(lines, font, measure);
@@ -442,6 +451,7 @@ export function planColumnValueLabels(
         ...(onePart ? { printedIn: `grandTotal:${c.id}` } : {}),
         ...namesOnly(printed, val.labelOverride),
         text,
+        ...(shows ? { shows } : {}),
         lines,
         ...(lines.length > 1 ? { align: 'middle' as const } : {}),
         typeRole: 'label', font,
@@ -841,6 +851,7 @@ export function planColumnLabels(
         kind: 'tick',
         owner: { seriesId: s.id, categoryId: c.id },
         text,
+        ...(tickContent!.includes('absolute') ? { shows: { value: domain.valueSpec.forSeries(s)(v) } } : {}),
         lines: [text],
         typeRole: 'label', font: tickFont,
         // A plain reference value takes the seat the column values leave.

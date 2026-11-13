@@ -31,7 +31,7 @@ import { leaderPath } from '../svgPath';
 import type { FontSpec, TextMeasurer } from '../text';
 import type { Id, OwnerRef, SlotId } from '../types/cell';
 import type { FocusInput, LabelDensity, LabelKind } from '../types/options';
-import type { OccupiedRect, Paint, PlaceDecision, PlacedLabel, LintWarning, TextRole } from '../types/scene';
+import type { OccupiedRect, Paint, PlaceDecision, PlacedLabel, LintWarning, ShownTexts, TextRole } from '../types/scene';
 import { createOccupiedIndex, type OccupiedClaim, type OccupiedIndex } from './occupied';
 import { HOST_CLAIMS, requestClaims, type HostClaims } from '../claims/ids';
 import { besideOtherPoint, leaderReadsAsOwn, pointOwnership, readsAsOwnPoint, type PointOwnership, type PointOwnershipInput } from './ownership';
@@ -257,6 +257,8 @@ export interface LabelRequest {
   printedIn?: Id;
   /** The marks whose value this label prints (PlacedLabel.printsFor). */
   printsFor?: OwnerRef[];
+  /** The record values this label prints, with their texts (PlacedLabel.shows). */
+  shows?: ShownTexts;
   /** The claims whose number this label prints (src/core/claims/ids.ts). */
   claimIds?: readonly Id[];
   claimText?: string;
@@ -788,6 +790,7 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
       ...(claimIds?.length ? { claimIds, claimText: req.claimText } : {}),
       ...(req.noteText ? { noteText: req.noteText } : {}),
       ...(req.printsFor ? { printsFor: req.printsFor } : {}),
+      ...(req.shows ? { shows: req.shows } : {}),
       ...(req.owed ? { owed: true as const } : {}),
       ...(req.swatch ? { swatch: req.swatch } : {}),
       ...(req.title ? { title: req.title } : {}),

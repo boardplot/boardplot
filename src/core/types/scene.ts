@@ -350,9 +350,21 @@ export interface SeparationRule {
 }
 
 /** Already-formatted semantic truth carried by the layout for interactive folds. */
+/**
+ * The texts of the record values a node prints, by slot: `value` (its owner's
+ * value), `field:<key>`, `share.percent`, `cmp<i>.delta` and `cmp<i>.percent`.
+ * The layout sets them where it formats the text, so a value reads the same in
+ * the hover card, the reading and the description as on the chart. On a mark
+ * node they are the texts its label would print where no label is drawn.
+ * Never rendered.
+ */
+export type ShownTexts = Readonly<Record<string, string>>;
+
 export interface SceneDisplay {
   value?: string;
   state?: string;
+  /** The record values this node prints (ShownTexts). */
+  shows?: ShownTexts;
   /** Typed facts for an interaction layer; legacy formatted strings remain valid. */
   record?: InteractionRecord;
 }
@@ -614,6 +626,8 @@ export interface PlacedLabel extends TypographyMetadata {
   printsFor?: OwnerRef[];
   /** Calculations whose displayed text comes from this final label. */
   claimIds?: readonly Id[];
+  /** The record values this label prints (ShownTexts); kept on a hidden label. */
+  shows?: ShownTexts;
   /** Computed text before an authored label override. */
   claimText?: string;
   /** Full text behind cut lines; emitted as the text node's `<title>`. */
