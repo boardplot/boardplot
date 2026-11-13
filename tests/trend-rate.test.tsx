@@ -75,7 +75,8 @@ it('keeps the authored word family for each rate magnitude', () => {
     const output = draw(kind, [1234.5, 1_234_500, 1_234_500_000], german ? '1,0 Mio.' : '1.0 mn', 0, options);
     const faces = german ? ['1,2 Tsd.', '1,2 Mio.', '1,2 Mrd.'] : french ? ['1.2 k', '1.2 M', '1.2 Md'] : ['1.2 k', '1.2 mn', '1.2 bn'];
     for (const rendered of [output.svg, output.react]) for (const face of faces) expect(rendered).toContain(kind === 'scatter' ? `${german ? 'Steigung' : 'slope'} ${face}` : `+${face} ${german ? 'pro Periode' : 'per period'}`);
-    expect(formatterFromExample(german ? '1,0 Mio.' : '1.0 mn', language)(1e9)).toBe(`${new Intl.NumberFormat(language, { minimumFractionDigits: 1 }).format(1)}${german ? ' Mrd.' : french ? ' Md' : ' bn'}`);
+    // The authored example itself keeps its word: a billion prints in millions, in the language's spelling.
+    expect(formatterFromExample(german ? '1,0 Mio.' : '1.0 mn', language)(1e9)).toBe(`${new Intl.NumberFormat(language, { minimumFractionDigits: 1 }).format(1000)}${german ? ' Mio.' : french ? ' M' : ' mn'}`);
   }
   // A rate at a magnitude word's own scale prints the authored word, as the ticks do.
   check('line', 1_234_500, '1.2 mn', '1.0 mn', 0);

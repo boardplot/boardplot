@@ -233,8 +233,8 @@ it('measures variance value-line statistics on the drawn axis', () => {
       const geometry = layoutVariance(data, options);
       const expected = typeof value === 'number' ? value : variant === 'integrated' ? 21 : 16 / 3;
       expect(geometry.annotations.find(annotation => annotation.id === 'stat')?.derivation?.raw).toBeCloseTo(expected, 12);
-      // An authored format prints a mean one decimal past its raster (5.333), as a bar's mean does.
-      const printed = format ? expected === 16 / 3 ? '5.333' : expected.toFixed(2) : expected === 16 / 3 ? '5.3' : String(expected);
+      // An authored format prints a mean in its own decimals (5.33), as a bar's mean does.
+      const printed = format ? expected.toFixed(2) : expected === 16 / 3 ? '5.3' : String(expected);
       const unit = percent ? variant === 'absolute' ? 'pp' : '%' : '';
       expect(annOf(geometry, 'valueLine')?.valueText).toBe(`${printed}${unit}`);
       const line = geometry.scene.find(node => node.part === 'valueLine');
@@ -462,26 +462,27 @@ it('leaves partial categories out of the average marker and names the periods it
   }
 });
 
-// An average of 1.25M must not print as "1M" because its raw number is whole: its decimals count at the printed scale.
-it('keeps the decimals an average needs at the magnitude of the format', () => {
+// An average under an authored format printed a decimal its example does not show ("1.3M" under "1M").
+it('prints an average in the decimals of its authored format', () => {
   const data = { categories: [{ id: 'a' }, { id: 'b' }], series: [{ id: 's', label: 'Series', values: [1000000, 1500000] }] };
   const text = (layout: typeof layoutColumn, format: string, values = data) => layout(values, { averageMarker: true, format })
     .annotations.find(annotation => annotation.id.startsWith('averageMarker'))?.computedText;
-  expect(text(layoutColumn, '1M')).toBe('Average 1.3M');
-  expect(text(layoutBar as never, '1M')).toBe('Average 1.3M');
-  expect(text(layoutColumn, '$1k', { ...data, series: [{ id: 's', label: 'Series', values: [2000, 3000] }] })).toBe('Average $2.5k');
+  expect(text(layoutColumn, '1M')).toBe('Average 1M');
+  expect(text(layoutBar as never, '1M')).toBe('Average 1M');
+  expect(text(layoutColumn, '1.0M')).toBe('Average 1.3M');
+  expect(text(layoutColumn, '$1k', { ...data, series: [{ id: 's', label: 'Series', values: [2000, 3000] }] })).toBe('Average $3k');
 });
 
-// A line chart rejects averageMarker, so its mean valueLine is its only average; it must print the mean, as a bar does.
-it('keeps the decimals a mean valueLine needs on every chart that draws one', () => {
+// A line chart rejects averageMarker, so its mean valueLine is its only average; it must print the mean in its format, as a bar does.
+it('prints a mean valueLine in its authored format on every chart that draws one', () => {
   const data = { categories: [{ id: 'a' }, { id: 'b' }], series: [{ id: 's', label: 'Series', values: [1000000, 1500000] }] };
   const small = { ...data, series: [{ id: 's', label: 'Series', values: [2000, 3000] }] };
   const text = (layout: typeof layoutColumn, format: string, values = data) => layout(values, { format, annotations: [{ kind: 'valueLine', value: 'mean' }] } as never)
     .annotations.find(annotation => annotation.kind === 'valueLine')?.computedText;
   for (const layout of [layoutBar, layoutColumn, layoutLine, layoutDot] as never[]) {
-    expect(text(layout, '1M')).toBe('Average 1.3M');
-    expect(text(layout, '1.0M')).toBe('Average 1.25M');
-    expect(text(layout, '$1k', small)).toBe('Average $2.5k');
+    expect(text(layout, '1M')).toBe('Average 1M');
+    expect(text(layout, '1.0M')).toBe('Average 1.3M');
+    expect(text(layout, '$1k', small)).toBe('Average $3k');
   }
 });
 
@@ -974,8 +975,9 @@ describe('fixed line references remain visible at their authored value', () => {
 // Prevents one value from printing two scales: the bar, the React text, the description and the hover card read alike,
 // also where a value rolls down ("$1.0 billion" under "$1.0 trillion") and where the engine scale prints "Mrd." on a German chart.
 it('prints a magnitude the same on every surface', async () => {
-  for (const [format, language, text, value] of [['$1.0 trillion', 'en', '$2.5 trillion', 2.5e12], ['1,0 Bio.', 'de', '2,5 Bio.', 2.5e12], ['1,0M', 'de', '2,5 Bio.', 2.5e12],
-    ['$1.0 trillion', 'en', '$1.0 billion', 1e9], [undefined, 'de', '2,5 Mrd.', 2.5e9]] as const) {
+  // An authored format keeps its scale word: 2.5e12 under '1,0M' prints in millions, 1e9 under '$1.0 trillion' in trillions.
+  for (const [format, language, text, value] of [['$1.0 trillion', 'en', '$2.5 trillion', 2.5e12], ['1,0 Bio.', 'de', '2,5 Bio.', 2.5e12], ['1,0M', 'de', '2.500.000,0M', 2.5e12],
+    ['$1.0 trillion', 'en', '$0.0 trillion', 1e9], [undefined, 'de', '2,5 Mrd.', 2.5e9]] as const) {
     const data = { categories: [{ id: 'a', label: 'Alpha' }, { id: 'b', label: 'Beta' }], series: [{ id: 's', label: 'Sales', values: [value, value / 6] }] };
     const options = { format, locale: { language, decimal: language === 'de' ? ',' : '.', thousands: language === 'de' ? '.' : ',' }, valueLabels: 'all', size: { width: 640, height: 400 } };
     const request = resolveChartRequest({ type: 'column', data, options } as never);

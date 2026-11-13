@@ -613,7 +613,7 @@ describe('columnHeads: false', () => {
   it('sizes tracks from cells alone and keeps the unit in the cells when the head held the only unit', () => {
     const track = (options: TableOptions) => layoutTable(data, { size: { width: 900 }, frameFill: 'none', ...options }).marks!.columns.find((column) => column.id === 'a')!.w;
     expect(track({ columnHeads: false })).toBeLessThan(track({}));
-    expect(resolveTable(data, { columnHeads: false }).table.rows.map((row) => row.cells.a!.displayed)).toEqual(['$1.2M', '$2.4M']);
+    expect(resolveTable(data, { columnHeads: false }).table.rows.map((row) => row.cells.a!.displayed)).toEqual(['$1.2m', '$2.4m']);
     expect(resolveTable(data, {}).table.rows.map((row) => row.cells.a!.displayed)).toEqual(['1.2', '2.4']);
   });
 });
