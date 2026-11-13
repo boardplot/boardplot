@@ -19,7 +19,7 @@ import { emphasisWeight, strokeToken, dashToken } from './theme';
 
 import type { RenderTarget } from './types/options';
 import { cagr, formatAutomaticNumber, formatAutomaticPercent, PERCENTAGE_POINTS } from './format';
-import { differenceExample, exampleSpec, formatStatWithSpec, formatWithSpec, formatterFromExample, neededDecimals, parseFormatExample, roundedNumber, specUnitKind, withChartMarks } from './formatSpec';
+import { differenceExample, exampleSpec, formatStatWithSpec, formatWithSpec, formatterFromExample, neededDecimals, parseFormatExample, printsBound, roundedNumber, specUnitKind, withChartMarks } from './formatSpec';
 import { autoDecimals, roundHalfUp, roundsToZero, typicalDecimals } from './formatPrecision';
 import { yearSpan, yearSpanFromLabels } from './periodYears';
 
@@ -1023,9 +1023,15 @@ function placeNote(s: AnnotationScope, ann: Extract<Annotation, { kind: 'callout
  * under a format the author set on the series or the chart, the text its label
  * would print. A label the pass solves with the annotations is not seated yet,
  * so its text counts as the would-be text. Undefined where the chart states
- * none, and where the annotation sets its own format.
+ * none, where the annotation sets its own format, and where the text is a
+ * bound ("<0.001"), which does not state the number.
  */
 function shownValueText(s: AnnotationScope, ann: Extract<Annotation, { kind: 'callout' | 'note' }>, at: AnchorResolution): string | undefined {
+  const text = stated(s, ann, at);
+  return text === undefined || printsBound(text) ? undefined : text;
+}
+
+function stated(s: AnnotationScope, ann: Extract<Annotation, { kind: 'callout' | 'note' }>, at: AnchorResolution): string | undefined {
   if (ann.format !== undefined) return undefined;
   const drawn = at.printed?.shows?.value;
   if (drawn !== undefined) return drawn;

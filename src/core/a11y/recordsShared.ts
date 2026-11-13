@@ -7,6 +7,7 @@ import { cellMeta, cellValue, isDateCell, isPctCell, type Cell, type OwnerRef } 
 import type { Geometry, PlacedAnnotation, SceneNode, ShownMark, ShownTexts } from '../types/scene';
 import type { InteractionRecord, InteractionScope, InteractionTarget, InteractionValue } from './types';
 import { DERIVED_PERCENT_FORMAT, percentExample } from './valueText';
+import { printsBound } from '../formatSpec';
 import type { NamedColumnState } from '../schema/namedColumns';
 import { chartString } from '../strings/a11y-statisticsRecords';
 import type { BaseOptions } from '../types/options';
@@ -123,7 +124,8 @@ const authoredFormat = (value: InteractionValue): boolean => value.format !== un
  * text a drawn node prints for the value, else, under an authored format, the
  * text its label would print (a label the solver dropped, the value's own mark
  * where no label is drawn, or `geometry.marks.shown` where the value has no node). The layout names the value; nothing here
- * reads a number out of a text. A value without such a text keeps none.
+ * reads a number out of a text. A value without such a text keeps none. A
+ * bound ("<0.001") does not state the number, so it is no shown text.
  */
 export function withShownTexts(records: InteractionRecord[], geometry: Geometry): InteractionRecord[] {
   const drawn = new Map<string, Record<string, string>>();
@@ -131,7 +133,7 @@ export function withShownTexts(records: InteractionRecord[], geometry: Geometry)
   const add = (index: Map<string, Record<string, string>>, owner: OwnerRef, shows: ShownTexts) => {
     const key = ownerKey(owner);
     const into = index.get(key) ?? {};
-    for (const [slot, text] of Object.entries(shows)) into[slot] ??= text;
+    for (const [slot, text] of Object.entries(shows)) if (!printsBound(text)) into[slot] ??= text;
     index.set(key, into);
   };
   const marks = geometry.marks as { shown?: readonly ShownMark[]; wouldShow?: unknown } | undefined;
