@@ -678,11 +678,24 @@ function treeNumbers(node: unknown, into: number[] = [], seen = new Set<unknown>
 }
 
 /**
- * The chart's data and options with each format example read by that data
- * (`exampleReading`), and a warning where a group rounds a small number.
- * Each chart gets one reading, taken from all of its numbers. A number that is
- * not a data value counts too. Fields are not read one by one.
+ * The examples written in a chart's data and options as they stand, with
+ * their differences: the record of authored formats for a chart that no
+ * request read (a definition's layout called directly). A generated owner
+ * (AUTOMATIC_FORMAT) is the engine's.
  */
+export function writtenExamples(data: unknown, options: unknown): Set<string> {
+  const wrote = new Set<string>();
+  const collect = (example: string, owner: Record<string, unknown>) => {
+    if ((owner as AutomaticFormatSource)[AUTOMATIC_FORMAT] !== true) wrote.add(example);
+    return example;
+  };
+  mapExamples(data, collect);
+  mapExamples(options, collect);
+  return new Set([...wrote].flatMap((example) => {
+    try { return [example, differenceExample(example)]; } catch { return [example]; }
+  }));
+}
+
 /** The unit-only formats of a chart's options, by path below options, with the stand-in that replaced each (readFormatExamples). */
 export const UNIT_FORMATS = Symbol('unit-formats');
 export type UnitFormat = { path: (string | number)[]; unit: string; example: string };
@@ -710,6 +723,12 @@ export function withAuthoredUnits<O extends object>(options: O): O {
   return formats.reduce((current, format) => restore(current, format.path, format) as O, options);
 }
 
+/**
+ * The chart's data and options with each format example read by that data
+ * (`exampleReading`), and a warning where a group rounds a small number.
+ * Each chart gets one reading, taken from all of its numbers. A number that is
+ * not a data value counts too. Fields are not read one by one.
+ */
 export function readFormatExamples<D, O>(data: D, options: O): { data: D; options: O; warnings: LintWarning[]; standIns: Set<string>; authored: Set<string>; unitFormats: UnitFormat[] } {
   const warnings: LintWarning[] = [];
   const unitFormats: UnitFormat[] = [];
