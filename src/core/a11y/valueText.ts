@@ -1,7 +1,7 @@
 import { chartString, localizedRecordReason } from '../strings/a11y-valueText';
 import { changePercentText, currencyWholeNumbers, defaultNumberDecimals, wholeCurrencyValue, formatExactNumber, formatNumber, NOT_AVAILABLE, NOT_MEANINGFUL, isPercentagePointUnit } from '../format';
 import { withUnit } from '../unitJoin';
-import { differenceExample, exampleSpec, formatNonzeroWithSpec, formatWithSpec, isExactExample, parseFormatExample } from '../formatSpec';
+import { differenceExample, exampleSpec, formatNonzeroWithSpec, formatWithSpec, parseFormatExample } from '../formatSpec';
 import { datePatternFromExample, formatDate, parseISODate } from '../dateFormat';
 import { MAX_FORMAT_DECIMALS, nonzeroDecimals } from '../formatPrecision';
 import type { RenderTarget } from '../types/options';
@@ -181,11 +181,10 @@ function joinShownUnit(shown: string, value: InteractionValue): string {
  * below zero (a tail sharing the zero label; a whole-percent table column) is
  * the chart's reading at its precision. The card is where a nonzero value
  * reads as nonzero, so it prints the value at the decimals that keep it off
- * zero instead (`formattedValueText`). An example the author wrote states its
- * zero as the label prints it ("$0.0M" for 4), and format-hides-values says so.
+ * zero instead (`formattedValueText`).
  */
 function zeroRuleApplies(value: InteractionValue, shown: string): boolean {
-  return value.raw !== 0 && printsZero(shown) && !(value.format !== undefined && value.derived !== 'percent' && isExactExample(value.format));
+  return value.raw !== 0 && printsZero(shown);
 }
 
 /**
