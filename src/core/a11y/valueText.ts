@@ -202,31 +202,13 @@ export function shownValueText(value: InteractionValue): string | undefined {
 }
 
 /**
- * The value as the hover card prints it: its shown text (`shownValueText`).
- * Under the zero rule, the value through its format at the decimals that
- * keep it off zero (`formattedValueText`). A value without a shown text
- * prints as a value without a format does: the source number at its own
- * precision, the unit placed as the marks place it. The record keeps the
- * source number, so nothing but the wording changes.
+ * A value, a field, a share or a change as the hover card prints it: its
+ * shown text (`shownValueText`). A value without a shown text prints as on a
+ * chart without shown texts: through its format (`formattedValueText`). The
+ * zero rule prints there too, at the decimals that keep the value off zero.
+ * The record keeps the source number, so nothing but the wording changes.
  */
 export function displayedValueText(value: InteractionValue, locale?: string): string {
-  if (value.state !== 'value' || value.kind !== 'number' || typeof value.raw !== 'number') return interactionValueText(value, locale);
-  const shown = shownValueText(value);
-  if (shown !== undefined) return shown;
-  if (value.displayed?.trim()) return formattedValueText(value, locale);
-  const derived = derivedPercentText(value, locale);
-  if (derived !== undefined) return derived;
-  // Without a format, the record's unit; a format's own sign where the record names none ("$", "%").
-  return withUnit(sourceNumberText(value.raw, locale, value.derived === 'number', value.unit, value.renderTarget), valueUnit(value));
-}
-
-/**
- * A record's field as the hover card prints it: its shown text, else through
- * the field's format as `formattedValueText` prints it. No label is bound to
- * state a field (a host's detail fact, a plan, a bar's start), so the format
- * the author or the host declared for it (`DetailField.format`) still prints it.
- */
-export function fieldValueText(value: InteractionValue, locale?: string): string {
   return shownValueText(value) ?? formattedValueText(value, locale);
 }
 

@@ -13,7 +13,7 @@ import { eventHeading, eventReading } from '../../core/eventReading';
 import type { Geometry, OccupiedRect, Paint, PlaceDecision, SceneNode, TextRole } from '../../core/types/scene';
 import type { Theme } from '../../core/types/theme';
 import type { InteractionComparison, InteractionRecord, InteractionValue } from '../../core/a11y/types';
-import { decimalPrecision, deltaValueText, derivedValueText as derivedText, displayedValueText, fieldValueText, formattedValueText, signedPercentText } from '../../core/a11y/valueText';
+import { decimalPrecision, deltaValueText, derivedValueText as derivedText, displayedValueText, formattedValueText, signedPercentText } from '../../core/a11y/valueText';
 import { maxOf, pushAll } from '../../core/arrays';
 
 /**
@@ -199,7 +199,7 @@ function headingNamesDate(record: InteractionRecord, date: InteractionValue): bo
 
 function fieldRow(field: InteractionRecord['fields'][number], locale?: string): LabelCardRow {
   const label = `${field.label}:`;
-  const value = fieldValueText(field.value, locale);
+  const value = displayedValueText(field.value, locale);
   return { kind: 'field', label, value, text: `${label} ${value}`, values: [safeValue(field.value, locale)] };
 }
 

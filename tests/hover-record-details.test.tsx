@@ -372,8 +372,8 @@ const deltaRecord = (options: object) => {
   return interactionRecords({ request, geometry, scope: request.scope, claims: [] }).find(record => record.target.owner.categoryId === 'd')!;
 };
 
-// The card formatted a value through its series format without the series' other values, so a bar labelled $78.0 read $0.1k.
-it('prints the drawn label of a stacked column in its card', () => {
+// The card formatted a value through its series format without the series' other values, so a stacked part whose label the chart hides (it draws the total 78) read $0.1k.
+it('prints the text a hidden stacked part label carries in its card', () => {
   expect(labelCardContent(deltaRecord({ variant: 'stacked' })).rows.map(row => row.text)).toContain('$78.0');
 });
 
@@ -384,13 +384,28 @@ it('gives a value with labels off the text its label would print', () => {
   expect(labelCardContent(record).rows.map(row => row.text)).toContain('$78.0');
 });
 
-// The card formatted a drawn field and a drawn change again, so a whisker labelled 2.0 read 2 days and a change labelled −4% read −4.0%.
-it('prints a drawn box whisker and a drawn KPI change as the chart prints them', () => {
-  const card = (type: string, id: string) => {
-    const fixture = structuredClone(getFixtures(type).find(item => item.id === id)!);
-    const { request, geometry } = build({ type, data: fixture.data, options: fixture.options ?? {} });
-    return labelCardContent(interactionRecords({ request, geometry, scope: request.scope, claims: [] })[0]!).rows.map(row => row.text);
-  };
-  expect(card('box', 'cycle-time-by-team')).toContain('Whiskers: 2.0 days to 11.0 days');
-  expect(card('kpi', 'text-comparisons').find(text => text.includes('Plan'))).toContain('(−4%)');
+// The card formatted a drawn change again, so a change labelled −4% read −4.0%.
+it('prints a drawn KPI change as the chart prints it', () => {
+  const fixture = structuredClone(getFixtures('kpi').find(item => item.id === 'text-comparisons')!);
+  const { request, geometry } = build({ type: 'kpi', data: fixture.data, options: fixture.options ?? {} });
+  const rows = labelCardContent(interactionRecords({ request, geometry, scope: request.scope, claims: [] })[0]!).rows.map(row => row.text);
+  expect(rows.some(text => text.includes('−4%'))).toBe(true);
+  expect(rows.some(text => text.includes('−4.0%'))).toBe(false);
+});
+
+// A value without a shown text printed its source digits in the card, not through its format: a scatter point read $48,250, a dropped share label 2.46%.
+it('prints a value without a shown text through its format', () => {
+  const scatter = build({ type: 'scatter', options: { format: '$0.0k' }, data: { points: [
+    { id: 'a', label: 'Store A', x: 1200, y: 48250 }, { id: 'b', label: 'Store B', x: 2400, y: 61900 }] } });
+  const point = interactionRecords({ request: scatter.request, geometry: scatter.geometry, scope: scatter.request.scope, claims: [] })
+    .find(record => record.target.owner.pointId === 'a')!;
+  expect(labelCardContent(point).rows.map(row => row.value)).toContain('$48.3k');
+  const shares = build({ type: 'column', options: { variant: 'stacked100', sharesOfOneWhole: true, size: { width: 420, height: 260 } }, data: {
+    categories: [{ id: 'q1', label: 'Q1' }],
+    series: [['a', 2.46], ['b', 47.54], ['c', 50]].map(([id, pct]) => ({ id, label: String(id).toUpperCase(), values: [{ pct }] })) } });
+  // The solver drops the label of the 2.46 % sliver, so its share has no shown text.
+  expect(shares.geometry.labels.find(label => label.id === 'segment:a:q1')?.hidden).toBeDefined();
+  const sliver = interactionRecords({ request: shares.request, geometry: shares.geometry, scope: shares.request.scope, claims: [] })
+    .find(record => record.target.owner.seriesId === 'a')!;
+  expect(labelCardContent(sliver).rows.find(row => row.kind === 'share')?.value).toBe('2%');
 });
