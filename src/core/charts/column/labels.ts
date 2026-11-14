@@ -10,8 +10,6 @@ import { chosenValueIndices } from '../band/valueSelection';
 import { namesOnly } from '../../markVisibility';
 import type { Rect } from '../../geometry';
 import { notApplicableGlyph, numberRange } from '../../format';
-import { formatWithSpec, RULE_SET, unitMagnitude } from '../../formatSpec';
-import { fixedRuleSet, opensThousand } from '../../numberRule';
 import { categoryLineAlign, ROTATED_NAME_AIR, rotatedClaimRect, verticalNameRect, yearRowRequests } from '../../label/categoryRow';
 import { REFERENCE_MARKER_R } from '../band/ticks';
 import { PRIORITY, SERIES_VALUE_GAP, type LabelRequest, type SlotCandidate } from '../../label/solver';
@@ -686,30 +684,11 @@ export function planColumnLabels(
   const growthOn = kindSetting(domain.options, 'growth') !== false;
   const box = (x: number, yy: number, size: { width: number; height: number }): Rect => ({ x, y: yy, w: size.width, h: size.height });
   emptyCategoryMarkers(domain, area, requests);
-  const totalAt = (ci: number, format = totalFmt) => stackTotalText(domain, ci, format);
+  const totalAt = (ci: number) => stackTotalText(domain, ci, totalFmt);
   // Totals that would stand closer than the neighbour gap over their
   // stacks take one font step down, as a row.
+  // A total prints its full text at every size. One with no room goes to the note with that text.
   const fullTotals = cats.map((_, ci) => totalAt(ci));
-  const spec = domain.valueSpec.spec;
-  const maxTotal = maxOf(cats.map(c => Math.abs(stackTotals[c.id]!)));
-  // Compact cards try a shorter number before the density gate. Keep the
-  // complete number and category for any total that still needs the note.
-  // A unit that names a scale ("$m") takes no second one: "105.0M" under "in $m" stacks two.
-  // Under the rule the set says it: a set without scale words, no unit text, no percent and no stated scale (width rule).
-  const rule = spec[RULE_SET];
-  const compactable = rule ? !rule.words && !rule.set.unitText && rule.set.kind === 'number' && rule.set.scale === undefined
-    : spec.magnitude === 'none' && unitMagnitude(domain.options.unit) === undefined && !spec.suffix.includes('%');
-  const compactTotals = domain.options.mode === 'compact' && variant === 'stacked'
-    && compactable && maxTotal >= 1000
-    && fullTotals.some(total => total && measure(total.text, strongFont).width + 6 > band.step);
-  const compactScale = (value: number): 3 | 6 | 9 => (Math.abs(value) >= 1e9 ? 9 : Math.abs(value) >= 1e6 ? 6 : 3);
-  const compactSpecs = rule ? new Map(([3, 6, 9] as const).map((scale) => [scale, { ...spec, [RULE_SET]: fixedRuleSet(rule, { scale, decimals: 1 }) }])) : undefined;
-  // German has no short word for a thousand: its compact total below a million prints the value written out, as its
-  // level set prints it (8,745), not the value rounded to the compact scale.
-  const writtenThousand = rule !== undefined && !opensThousand(rule.set.language);
-  const compactFormat = (value: number) => Math.abs(value) < 1000 || (writtenThousand && Math.abs(value) < 1e6) ? totalFmt(value)
-    : compactSpecs ? formatWithSpec(value, compactSpecs.get(compactScale(value))!) : formatWithSpec(value, { ...spec,
-    magnitude: Math.abs(value) >= 1e9 ? 'bn' : Math.abs(value) >= 1e6 ? 'm' : 'k', decimals: 1, significantDigits: undefined });
   // A one-part stack's segment names its total (printedIn). A total that prints the value alone
   // names the segment back, so a pinned segment placed first takes the value whatever its format.
   const linked = new Map(requests.flatMap((req) => req.printedIn ? [[req.printedIn, req.id] as const] : []));
@@ -719,7 +698,7 @@ export function planColumnLabels(
     const series = id && domain.dataSeries.find((s) => id === `segment:${s.id}:${cats[ci]!.id}`);
     return series && printsValue(series.vals[ci]!.labelOverride) ? requests.find((req) => req.id === id)?.text : undefined;
   };
-  const totals = (compactTotals ? cats.map((_, ci) => totalAt(ci, compactFormat)) : fullTotals)
+  const totals = fullTotals
     .map((total, ci) => { const text = total && !total.net ? authoredPart(ci) : undefined; return text ? { ...total!, text } : total; });
   // A running category's total says so under the value, in the secondary step and the muted ink;
   // a stack that misses a part says "(partial)" there.
@@ -793,7 +772,7 @@ export function planColumnLabels(
       lines: words?.lines ?? [text],
       ...words?.request,
       // the note names a total by its one series, else as the stack's total ("Total 60 (Jan)"); a Net names itself.
-      ...(net ? {} : { noteText: `${domain.dataSeries.length === 1 ? noteName(domain.dataSeries[0]!) : chartString(domain.options, 'total')} ${compactTotals ? fullTotals[ci]!.text : text}${words ? ` ${words.lines[1]}` : ''} (${noteName(c)})` }),
+      ...(net ? {} : { noteText: `${domain.dataSeries.length === 1 ? noteName(domain.dataSeries[0]!) : chartString(domain.options, 'total')} ${text}${words ? ` ${words.lines[1]}` : ''} (${noteName(c)})` }),
       typeRole: 'label', font: net ? strongFont : totalFont,
       ...(rowFont && !net ? { fontStep: rowFont } : {}),
       priority: PRIORITY.grandTotal + (highlights.has(c.id) ? PRIORITY.highlightBonus : 0),

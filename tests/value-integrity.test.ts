@@ -11,6 +11,7 @@ import type { TableData } from '../src/core/types/table';
 import { renderGolden } from './golden/render';
 import { saysToDate } from '../src/core/partialPeriod';
 import { render } from '../src/cli/render';
+import { measure } from '../src/index';
 
 const texts = (type: string, data: unknown, options: Record<string, unknown>): string[] => {
   const svg = renderGolden(getChart(type)! as never, { id: 'probe', data, options } as Fixture, 'authored').output;
@@ -214,6 +215,24 @@ describe('value integrity on the chart', () => {
 
   // A whole-number format printed the column totals 0.4 and 0.2 as a false 0 over their columns.
   // A mekko column total under a whole-number format printed decimals its example does not show (0.4 under '1,234').
+  // A stacked column on a phone card printed its totals as 10.1k where the full width prints 10,080.
+  it('a stacked column total prints its full text at every width, and one with no room goes to the note with it', () => {
+    const data = { categories: Array.from({ length: 12 }, (_, i) => ({ id: `m${i}`, label: `M${i + 1}` })),
+      series: [{ id: 'a', label: 'New', values: Array.from({ length: 12 }, (_, i) => 1200 + i * 431) }, { id: 'b', label: 'Kept', values: Array.from({ length: 12 }, (_, i) => 800 + i * 377) }] };
+    const totals = (width: number) => measure({ type: 'column', data, options: { variant: 'stacked', size: { width } } } as never).geometry!.labels
+      .filter((label) => label.id.startsWith('grandTotal:'));
+    const wide = new Map(totals(960).map((label) => [label.id, label.text]));
+    expect(wide.get('grandTotal:m10')).toBe('10,080');
+    for (const width of [400, 320]) {
+      const narrow = totals(width);
+      expect(narrow.filter((label) => !label.hidden).length).toBeGreaterThan(0);
+      for (const label of narrow) {
+        expect(label.text).toBe(wide.get(label.id));
+        if (label.hidden) expect(label.noteText).toContain(wide.get(label.id));
+      }
+    }
+  });
+
   it('a mekko column total prints in the decimals of its authored format', () => {
     const data = { categories: [{ id: 'A' }, { id: 'B' }], series: [{ id: 'v', values: [0.28, 0.14] }, { id: 'w', values: [0.12, 0.06] }] };
     const printed = texts('mekko', data, { format: '1,234' });
