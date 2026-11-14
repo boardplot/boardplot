@@ -1,7 +1,9 @@
 import { hasLabelPosition, positionBarLabel } from '../band/labelPosition';
 import { chartString } from '../../strings/mekko';
 import { namesOnly } from '../../markVisibility';
-import { formatterFromExample } from '../../formatSpec';
+import { exampleSpec, formatterFromExample, roundedNumber } from '../../formatSpec';
+import { printedShare } from '../../format';
+import { authoredDecimals, shareDecimals } from '../../formatPrecision';
 /**
  * Mekko phase 3: mark geometry in, label requests out. Every drawn
  * segment's label first, then per column its total and its category name.
@@ -63,6 +65,17 @@ function composeParts(
     else if (c === 'series' && serLabel) parts.push([c, serLabel]);
   }
   return parts;
+}
+
+/**
+ * The number a computed share prints as in its segment label, by the same
+ * choice as composeParts: the cell's or the series' format, else the column's
+ * share precision (a percent options.format, or the column's share set).
+ */
+function printedSegmentShare(env: MekkoEnv, domain: MekkoDomain, s: NormSer, ci: number, share: number): number {
+  const example = s.vals[ci]!.format ?? s.format;
+  if (example) return roundedNumber(share, exampleSpec(example, env.options.locale?.language));
+  return printedShare(share, domain.shareDecimals.get(domain.cats[ci]!.id) ?? shareDecimals(share));
 }
 
 function composeText(...args: Parameters<typeof composeParts>): string {
@@ -504,10 +517,15 @@ export function planMekkoLabels(
   // Computed percent-mode shares only: an authored percent or total100 is the
   // author's number. rounding 'sum-consistent' closes the drift instead.
   if (sharesOn && domain.mode === 'percent' && env.options.rounding !== 'sum-consistent') {
-    warnShareRoundingDrift(warnings, domain.cats.flatMap((c, ci) =>
-      domain.invalidAt(ci) || domain.incomplete.has(c.id) || c.total100 !== undefined || domain.series.some((s) => s.vals[ci]!.isPct)
-        ? []
-        : [{ name: c.label ?? c.id, shares: domain.series.flatMap((s) => domain.plottedAt(s, ci) ?? []), decimals: domain.shareDecimals.get(c.id) }]));
+    warnShareRoundingDrift(warnings, domain.cats.flatMap((c, ci) => {
+      if (domain.invalidAt(ci) || domain.incomplete.has(c.id) || c.total100 !== undefined || domain.series.some((s) => s.vals[ci]!.isPct)) return [];
+      const shares = domain.series.flatMap((s) => {
+        const share = domain.plottedAt(s, ci);
+        return share === null ? [] : [printedSegmentShare(env, domain, s, ci, share)];
+      });
+      // The shares are rounded as printed already: rounding them again at the finest decimals they carry keeps them.
+      return [{ name: c.label ?? c.id, shares, decimals: Math.max(0, ...shares.map(authoredDecimals)) }];
+    }));
   }
   segmentLabels(ctx, geometry);
   if (area.widthTitle) {

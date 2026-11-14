@@ -277,7 +277,7 @@ describe('data gaps', () => {
   });
 
   // A 100% bar or area chart drew "8%" and "92%" for one whole and warned that its shares sum to 100.3%: the warning rounded
-  // each share at its own precision, not at the precision the labels print. A mekko under a percent format did the same.
+  // each share at its own precision, not at the precision the labels print. A mekko did the same where a chart or series format set the decimals.
   it('sums the shares of the drift warning at the precision the labels print them', () => {
     const categories = [{ id: 'n', label: 'North' }, { id: 's', label: 'South' }, { id: 'w', label: 'West' }];
     const series = [{ id: 'a', label: 'A', values: [500, 300, 83] }, { id: 'b', label: 'B', values: [500, 700, 917] }];
@@ -293,6 +293,13 @@ describe('data gaps', () => {
     const mekko = lay('mekko', { categories, series: thirds }, { format: '0.0%' });
     expect(texts(mekko).filter((t) => t.endsWith('33.3%'))).toHaveLength(9);
     expect(drift(mekko)).toContain("99.9% for 'West'");
+    // A mekko segment prints its share by the format of its series where one exists, not by the chart's.
+    const wholePercents = lay('mekko', { categories, series: thirds.map((s) => ({ ...s, format: '0%' })) }, { format: '0.0%' });
+    expect(texts(wholePercents).filter((t) => t.endsWith('33%'))).toHaveLength(9);
+    expect(drift(wholePercents)).toContain("99% for 'West'");
+    const seriesDecimal = lay('mekko', { categories, series: thirds.map((s) => ({ ...s, format: '0.0%' })) });
+    expect(texts(seriesDecimal).filter((t) => t.endsWith('33.3%'))).toHaveLength(9);
+    expect(drift(seriesDecimal)).toContain("99.9% for 'West'");
   });
 
   it("bends them on request: rounding 'sum-consistent' prints thirds as 33 + 33 + 34 and lists the moved one", () => {
