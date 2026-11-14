@@ -95,7 +95,7 @@ export function calcYieldsPoints(calc: Calc): boolean {
  * Whether a column prints in a format of its own, so a data row's format does
  * not reach it: an authored `format`, or a percent change or share, which is
  * points whatever its row prints in. Every reader that asks "does the column
- * have its own format?" (resolve, fitFormats, the accessible table) asks this.
+ * have its own format?" (resolve, the accessible table) asks this.
  */
 export function columnOwnsFormat(col: TableColumn): boolean {
   return ('format' in col && col.format !== undefined) || (col.kind === 'computed' && calcYieldsPoints(col.calc));

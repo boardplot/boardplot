@@ -91,7 +91,6 @@ const columnBase = {
     .describe("Header and cell emphasis. 'strong' sets the header and its cells to the emphasis weight (700 by default), 'muted' paints them in the muted ink. A strong column is measured in the bold weight; muted is paint only."),
   band: z.boolean().optional()
     .describe('Column band ground. Neighbouring banded columns read as one block and the first of the run takes the left hairline, so a block inside a column group needs no group of its own. Paint only.'),
-  fitFormat: z.literal(false).optional().describe('false: options.fitFormats leaves this column\'s format as authored.'),
   noteLine: z.boolean().optional()
     .describe("Notes below figures. They use the inline step in muted ink. Default false keeps the note inline after the figure, where a 90 px block track cuts it off; a steering block column says sum under its year-to-date figure. The note takes the first line slot whose change line holds no value in that cell, and where every line holds one, or the row prints none, the row grows by one inline line."),
 };
@@ -220,7 +219,6 @@ const rowSchema: z.ZodType = z.lazy(() =>
     inlineGroup: idSchema.optional()
       .describe('Which switch hides this line. Rows that share a group hide together; the default is the row id.'),
     scale: z.enum(['money','perUnit','count','percent']).optional().describe('Row precision. The max absolute value uses only cells without a cell or column format. Money: 1 decimal in k at max >= 1000, else whole units; it climbs k, M, B by its largest value unless options.magnitude is thousand or million, which a money row follows (whole thousands from 100,000 up). Per unit: fractional values keep authored precision. Without a format, start whole at max >= 10, else 1 decimal, then raise precision for rounding error above 1%, up to 20 decimals. Integer-only rows keep those defaults. It overrides table magnitude. Currency goes in unitAffix. Scaled money and automatic count rows add decimals for rounding error above 1%, up to 20; held whole thousands stay whole. Nonzero stays nonzero. Count/percent keep format.'),
-    fitFormat: z.literal(false).optional().describe('false: options.fitFormats leaves this row\'s format as authored.'),
     unitAffix: z.string().min(1).optional()
       .describe("Unit beside the row label. Muted ink on the same line: $M, # orders. It takes no second line, so the change lines under the label stay level with the ones under the values. A forced options.magnitude overrides it with the scale letter it hoists out of this row's cells."),
     missing: z.enum(['blank', 'dash']).optional()
@@ -474,8 +472,6 @@ export const tableOptionsObject = baseOptionsSchema.safeExtend(refusedBaseOption
   groupAlign: z.enum(['left', 'center', 'right']).optional()
     .meta({ default: 'center' })
     .describe("Heading position. 'center' (default) centres the heading over its columns; in the React grid a group wider than the visible scroll area starts its heading at the first column, and the heading stays in view while the group scrolls. 'left' always starts it at the first column, 'right' ends it at the last. A heading wider than its columns starts at the first column."),
-  fitFormats: z.boolean().optional()
-    .describe('Fit figures to authored widths. Remove decimals, then use the next unit up; a column without a format then prints scale words in its cells from 10,000.'),
   maxGrowth: z.union([z.number().min(1), z.literal(false)]).optional()
     .meta({ default: 2.5 })
     .describe('Value-track growth cap; default 2.5, false removes the cap. Applies to SVG and React frame fill; the label track takes the remaining width. Also caps React container fit growth.'),

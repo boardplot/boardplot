@@ -47,8 +47,6 @@ export interface NumberSet {
   language: string;
   /** The `smallValues` option while it lives: how a value that needs more than four decimals prints. */
   small?: RuleSmallValues;
-  /** A table's width step: each step removes one decimal, then lowers the cell threshold for scale words. */
-  fit?: number;
   /** A change set: every group prints two digits of its band's smallest value, and close values may meet. */
   change?: boolean;
 }
@@ -168,42 +166,6 @@ function placeValues(values: readonly number[], set: NumberSet, cellThreshold: b
   return { words: useWords, groups, byAbs, scaleOf };
 }
 
-/** The steps of a table's width ladder: one per decimal, then one that lowers the cell threshold for scale words where that adds them. */
-function fitLadder(values: readonly number[], set: NumberSet): { placed: ReturnType<typeof placeValues>; decimalSteps: number; lowers: boolean } {
-  const placed = placeValues(values, set, set.cell);
-  const decimalSteps = placed.groups.reduce((m, g) => Math.max(m, g.decimals), 0);
-  return { placed, decimalSteps, lowers: set.cell && set.words === undefined && !placed.words };
-}
-
-/** The last width step of a set (`fit` past it prints as it does): what a table steps through before it widens a column. */
-export function fitSteps(of: RuleSet): number {
-  const { decimalSteps, lowers } = fitLadder(of.values, { ...of.set, fit: undefined });
-  return decimalSteps + (lowers ? 1 : 0);
-}
-
-/**
- * The groups after a table's width step: step n removes n decimals from every group. The step after the last
- * decimal lowers the cell threshold for scale words to 10,000. A group that takes a scale word there prints the
- * rule's decimals at its scale; a group that takes none keeps its decimals removed.
- */
-function fitted(values: readonly number[], set: NumberSet): ReturnType<typeof placeValues> {
-  const fit = set.fit ?? 0;
-  if (fit <= 0) return placeValues(values, set, set.cell);
-  const { placed, decimalSteps, lowers } = fitLadder(values, set);
-  const lower = fit > decimalSteps && lowers;
-  const base = lower ? placeValues(values, set, false) : placed;
-  const swap = new Map<RuleGroup, RuleGroup>(base.groups.map((g) => [g, lower && g.scale > 0 ? g : { scale: g.scale, decimals: Math.max(0, g.decimals - fit) }]));
-  const byAbs = new Map<number, RuleGroup>();
-  // A value that its fitted group rounds to zero gets its own digits, as rule 7 gives them (no nonzero value prints 0).
-  const own = new Map<number, RuleGroup>();
-  for (const [a, g] of base.byAbs) {
-    const short = swap.get(g)!;
-    const zero = Number(round(clean(a / 10 ** short.scale), short.decimals)) === 0;
-    byAbs.set(a, zero ? own.get(a) ?? own.set(a, placeValues([a], { ...set, words: base.words, fit: undefined }, set.cell).groups[0]!).get(a)! : short);
-  }
-  return { ...base, groups: [...base.groups.map((g) => swap.get(g)!), ...own.values()], byAbs };
-}
-
 /**
  * The rule over one set. `values` are the set's numbers (non-finite values
  * are left out); the result prints any of them, and a late value in the group that shows its leading digits, else as a set of one value.
@@ -244,7 +206,7 @@ function sameValues(stored: readonly number[], values: readonly number[]): boole
 }
 
 export function numberRuleSet(values: readonly number[], set: NumberSet): RuleSet {
-  const key = `${set.kind}|${set.unitText ? 1 : 0}|${set.cell ? 1 : 0}|${set.words ?? ''}|${set.scale ?? ''}|${set.language}|${set.small ?? ''}|${set.fit ?? ''}|${set.change ? 1 : 0}|${valuesKey(values)}`;
+  const key = `${set.kind}|${set.unitText ? 1 : 0}|${set.cell ? 1 : 0}|${set.words ?? ''}|${set.scale ?? ''}|${set.language}|${set.small ?? ''}|${set.change ? 1 : 0}|${valuesKey(values)}`;
   // A hash names the content; the stored values confirm it, so equal content alone returns a built set.
   const known = builtSets.get(key);
   if (known && sameValues(known.values, values)) return known.built;
@@ -257,7 +219,7 @@ export function numberRuleSet(values: readonly number[], set: NumberSet): RuleSe
 
 function buildRuleSet(values: readonly number[], set: NumberSet): RuleSet {
   const finite = values.filter((v) => Number.isFinite(v));
-  const { words, groups, byAbs, scaleOf } = fitted(finite, set);
+  const { words, groups, byAbs, scaleOf } = placeValues(finite, set, set.cell);
   const lateGroups = new Map<number, RuleGroup>();
   const groupOf = (value: number): RuleGroup => {
     const a = Math.abs(value);
@@ -269,7 +231,7 @@ function buildRuleSet(values: readonly number[], set: NumberSet): RuleSet {
     const y = clean(a / 10 ** s);
     let found = groups.find((g) => g.scale === s && (digits2(y) <= g.decimals || carried(y) <= g.decimals));
     // Every other late value prints as a set of one value, with the set's scale-word decision.
-    if (!found) found = placeValues([value], { ...set, words, fit: undefined }, set.cell).groups[0]!;
+    if (!found) found = placeValues([value], { ...set, words }, set.cell).groups[0]!;
     lateGroups.set(a, found);
     return found;
   };
@@ -377,7 +339,7 @@ export function fixedRuleSet(of: RuleSet, group: RuleGroup): RuleSet {
   if (known) return known;
   const zero: RuleGroup = { scale: 0, decimals: 0 };
   const only: RuleGroup = { scale: group.scale, decimals: group.decimals };
-  const fixed = ruleSetFrom({ ...of.set, small: undefined, fit: undefined }, [], of.words, [only], (value) => (value === 0 ? zero : only));
+  const fixed = ruleSetFrom({ ...of.set, small: undefined }, [], of.words, [only], (value) => (value === 0 ? zero : only));
   byGroup.set(key, fixed);
   return fixed;
 }

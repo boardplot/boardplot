@@ -7,7 +7,6 @@
 - The share-change column of a cascade bar table is a signed change set of the received shares, two digits in every group: `−7.8 · +2.2 · +1.2 · −0.43 · +5.3 · −0.45`, where it printed `−8 · +3 · +2 · −1 · +5 · −1` from the rounded shares.
 - A computed percent change of a table without a format is a signed change set, one per column and one per row: `+28% · +33%`, where it printed `28.0% · 32.6%`. Set the column's or row's `format: "1.0%"` to bring back the earlier text.
 - The trend slopes of a chart form one set, and take scale words where the chart's values do: `+11.7k per period`, where it printed `+11,670 per period`, and a slope of 2,700 beside labels such as `59.1k` prints `+2.70k per period`. The r² values of a chart form one set: `r² 0.990`, where it printed `r² 0.99`.
-- A German chart writes out compact totals below one million: `8,745`, where it printed `8.7k`.
 - A table head names a scale word only when every nonzero cell of the column prints it. Otherwise the cells keep their letters (`2.5M · 1.2M · 840k`).
 - Shares no longer add up to 100 by default on bar, column, combo, line, bartable and table charts: each share rounds on its own.
 - On a 100% bar chart and a 100% area chart, the shares of one whole print at one precision, as `rounding: "sum-consistent"` prints them: whole percents, and one decimal more only while a nonzero share would print as `0`. An authored `rounding: "nearest"` on these two charts now prints a share below 10% as `2%`, where it printed `1.7%`. On a 100% bar chart, `format: "0.0%"` brings the decimal back (`8.3%` and `91.7%`). A 100% area chart has no option that brings it back: under `format: "0.0%"` it still draws `8%` and `92%`.
@@ -16,14 +15,13 @@
 - The hover card joins the chart's unit to a shown text with a scale word, as it does to a written-out number: with `unit: "$"`, the card of 41,200 reads `$41.2k`. This also holds under an authored format with a scale word: under `format: "1.2k"` the card read `41.2k` and now reads `$41.2k`.
 - Unformatted currency of 1,000 or more no longer prints as a whole number on a render target, and interaction records no longer carry `renderTarget`.
 - `options.smallValues` now applies only to a value that needs more than four decimals. Without it, no default prints a bound such as `<0.1` or a power of ten. A value that needs more than 100 decimals still prints as a power of ten, because JavaScript prints no more digits.
-- A narrow table or heatmap that removes decimals to fit never prints a nonzero value as `0`: such a value keeps its own digits. After its last decimal, a default table column prints scale words from 10,000 in its cells (`48.3k`), where it printed `48.3` under a `(k)` head.
 - A metric stack panel that sets `divisor` or `decimals` prints as before, its weighted-rate readout included. A panel with neither prints by the rule, and its weighted-rate readout prints the received rates: `4.75%` and `4.75 → 0.23`, where it printed `4.7%` and `4.7 → 0.2`.
 - Longer default texts can raise the smallest size at which a chart draws: a table with ten value columns now needs 336 px, where it drew at 320 px. A chart below its smallest size is refused with `size-below-floor`.
 
 To bring back an earlier text:
 
 - Whole numbers or a fixed decimal count: set `format: "1,234"` or `format: "1.2"`.
-- No scale words: set `format: "1,234"`. This also writes out trend slopes. One fixed scale: set `format: "1.2M"`, or `format: "1.0k"` for German totals in thousands.
+- No scale words: set `format: "1,234"`. This also writes out trend slopes. One fixed scale: set `format: "1.2M"`.
 - A unit-only `"$"` written out: set `format: "$1,234"`.
 - A fixed decimal count for a change: set the annotation's `format` (`"+1.0%"`) or `seriesLabels.cagr.format`. A KPI change, the percent beside a difference in `mode: "both"`, a combo growth statement, a PVM net change, a cascade growth column and an r² have no format of their own.
 - Shares that add up to 100 on a chart or a bar table: set `rounding: "sum-consistent"`. A table has no such option.

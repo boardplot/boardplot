@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import { closestKey } from '../src/core/schema/unknownKeyWords';
 import '../src/core/charts';
-import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
+import { layoutResolvedRequest, measure, resolveChartRequest } from '../src/core/request';
 import { requireGeometry } from '../src/core/sizing';
 import { repaintGeometry } from '../src/core/repaintGeometry';
 import { resolveTable } from '../src/core/charts/table/resolve';
@@ -36,6 +36,28 @@ type TextNode = Extract<SceneNode, { t: 'text' }>;
 
 const layout = (type: string, data: unknown, options: object = {}) =>
   requireGeometry(layoutResolvedRequest(resolveChartRequest({ type, data, options } as never)));
+
+// A saved spec with the retired format fitting must still draw, and its revenue printed $2.5M on a phone and $2.47M on a laptop.
+it('draws a spec with the retired format fitting, warns for each key and prints the same text at every width', () => {
+  const weeks = ['w1', 'w2', 'w3'];
+  const data = {
+    columns: [{ id: 'kpi', kind: 'rowLabel', label: 'KPI', width: 120 },
+      ...weeks.map((id, i) => ({ id, kind: 'value', label: `W${i + 1}`, width: 44, ...(i === 0 ? { fitFormat: false } : {}) }))],
+    rows: [
+      { id: 'revenue', label: 'Revenue', format: '$1.23M', cells: { w1: 2_470_000, w2: 2_630_000, w3: 2_520_000 } },
+      { id: 'orders', label: 'Orders', format: '1,234', fitFormat: false, cells: { w1: 18_400, w2: 19_150, w3: 18_900 } },
+    ],
+  };
+  for (const width of [400, 960]) {
+    const result = measure({ type: 'table', data, options: { fitFormats: true, size: { width } } } as never);
+    expect(result.geometry, `${width}`).toBeDefined();
+    const retired = result.warnings.filter((w) => w.code === 'option-deprecated');
+    expect(retired.map((w) => w.message)).toEqual(['options.fitFormats is retired and ignored.',
+      'data.columns.1.fitFormat is retired and ignored.', 'data.rows.1.fitFormat is retired and ignored.']);
+    const revenue = result.geometry!.scene.find((node): node is TextNode => node.t === 'text' && node.id === 'cell:revenue:w1')!;
+    expect(revenue.lines.join(''), `${width}`).toBe('$2.47M');
+  }
+});
 
 // A missing value with cell metadata must draw the same missing state as a scalar null.
 it('accepts null inside an annotated table cell', () => {
@@ -163,7 +185,7 @@ it('points to the base definition when removing an override would leave the reti
 });
 
 // An ignored change-weight key must not keep a bold width budget that shortens the change text.
-it('ignores the retired change weight when fitting change text', () => {
+it('ignores the retired change weight on change text', () => {
   const data: TableData = {
     columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'v', kind: 'value', width: 71 }],
     rows: [{ id: 'value', label: 'Orders', cells: { v: 120 } },
@@ -173,7 +195,7 @@ it('ignores the retired change weight when fitting change text', () => {
     ...defaultMeasurer(text, font),
     ...(text === '+54.12%' ? { width: (font.weight ?? 400) >= 600 ? 49 : 46.5 } : {}),
   });
-  const g = layout('table', data, { fitFormats: true, measure, size: { width: 320 },
+  const g = layout('table', data, { measure, size: { width: 320 },
     theme: { preset: 'standard', overrides: { type: { micro: { size: 10.9 } }, table: { weights: { change: 700 } } } } });
   const change = g.scene.find((n): n is TextNode => n.t === 'text' && n.id === 'cellline:value:v:change')!;
   expect(change.lines.join('')).toBe('+54.12%');
@@ -420,7 +442,7 @@ it('keeps the authored scale of a count row under a forced magnitude', () => {
 });
 
 // A '1,234k' column printed 1,080,000 as "1.1M" under its "(k)" head: the example's grouped digits hold the magnitude.
-// An authored '$0k' printed 2,496,000 as "$2.5M" beside "$640k", with fitFormats off and no warning.
+// An authored '$0k' printed 2,496,000 as "$2.5M" beside "$640k", with no warning.
 it('holds the magnitude of an authored example, grouped or not', () => {
   const { table } = resolveTable({
     columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'spend', kind: 'value', format: '1,234k' }, { id: 'short', kind: 'value', format: '$1.2k' }],
@@ -429,31 +451,6 @@ it('holds the magnitude of an authored example, grouped or not', () => {
   expect(table.rows.map((row) => row.cells.spend!.displayed)).toEqual(['950', '1,080']);
   expect(table.rows.map((row) => row.cells.short!.displayed)).toEqual(['950.0', '1,080.0']);
   expect(table.columns.find((column) => column.id === 'short')!.unitLabel).toBe('$k');
-});
-
-// fitFormats printed 80,000 and 100,000 both as "0.1" under (M): every figure keeps two significant digits.
-it('keeps two significant digits of every figure when it fits formats', () => {
-  const cells = (data: TableData) => layout('table', data, { fitFormats: true, size: { width: 320 } }).scene
-    .filter((node): node is TextNode => node.t === 'text' && /^cell:r\d:v$/.test(node.id)).map((node) => node.lines.join(''));
-  const column = (values: number[], format: string) => cells({ columns: [{ id: 'label', kind: 'rowLabel', label: 'Region', width: 120 }, { id: 'v', kind: 'value', label: 'Orders', width: 44, format }],
-    rows: values.map((v, i) => ({ id: `r${i}`, label: `Row ${i}`, cells: { v } })) });
-  expect(column([80_000, 100_000, 1_234_567], '1,234')).toEqual(['80', '100', '1,235']);
-  expect(column([2_470_000, 2_630_000], '$1.23M')).toEqual(['2.5', '2.6']);
-  // A figure the authored format prints in one digit keeps that digit: 80,000 read as "0.1" under (M), 25% off.
-  expect(column([80_000, 1_230_000], '$1.23M')).toEqual(['0.08', '1.23']);
-  // A small figure blocks a magnitude that would print it as zero: 12 never reads "0.00001" under M.
-  expect(column([12, 100_000, 1_234_567], '1,234').every((text) => !/^0[.,]0/.test(text))).toBe(true);
-  // So does a chart-level format, and a shorter decimal keeps one magnitude: 950 and 1,000 under (k), not 950 and 1.0M.
-  const chartFormat = layout('table', { columns: [{ id: 'label', kind: 'rowLabel', label: 'Region', width: 120 }, { id: 'v', kind: 'value', label: 'Orders', width: 44 }],
-    rows: [12, 100_000, 1_234_567].map((v, i) => ({ id: `r${i}`, label: `Row ${i}`, cells: { v } })) }, { format: '1,234', fitFormats: true, size: { width: 320 } }).scene
-    .filter((node): node is TextNode => node.t === 'text' && /^cell:r\d:v$/.test(node.id)).map((node) => node.lines.join(''));
-  expect(chartFormat.every((text) => !/^0[.,]0/.test(text))).toBe(true);
-  expect(column([950_000, 999_600], '1.2k').filter((text) => /M/.test(text))).toEqual([]);
-  // A unit word takes no magnitude: '1,234 m²' never fits to 1.2 under "(km²)".
-  const area = layout('table', { columns: [{ id: 'label', kind: 'rowLabel', label: 'Region', width: 120 }, { id: 'v', kind: 'value', label: 'Area', width: 44, format: '1,234 m²' }],
-    rows: [{ id: 'r0', label: 'Row 0', cells: { v: 1234 } }] }, { fitFormats: true, size: { width: 320 } }).scene
-    .filter((node): node is TextNode => node.t === 'text' && /^(header:v|cell:r0:v)$/.test(node.id)).map((node) => node.lines.join(' '));
-  expect(area.join(' ')).not.toMatch(/km²/);
 });
 
 // A bar table refused { state: 'nm' } cells, and a null in a one-series panel was called a blank sum with an incomplete-composition warning.
@@ -503,17 +500,14 @@ it('sizes the sparkline track from its end value and keeps an authored width', (
   expect(authoredTrackWidth({ ...trend, width: 120 }, resolved.rows, context as never)).toBe(120);
 });
 
-// only a nonzero figure that prints as 0 changes; fitting, row precision and the width stay unchanged.
-it('lifts only zero-looking figures, after fitting, without costing the table its width', () => {
+// only a nonzero figure that prints as 0 changes; row precision and the width stay unchanged.
+it('lifts only zero-looking figures without costing the table its width', () => {
   const texts = (geometry: { scene: SceneNode[] }, prefix: string) => geometry.scene.filter((node): node is TextNode => node.t === 'text' && node.id.startsWith(prefix)).map(node => node.lines.join(' '));
-  const fit = (values: number[], width: number) => texts(layout('table', { columns: [{ id: 'label', kind: 'rowLabel', label: 'Item', width: 140 }, { id: 'value', kind: 'value', label: 'Orders', width }],
-    rows: values.map((v, i) => ({ id: `r${i}`, label: `Row ${i}`, cells: { value: v } })) }, { target: 'report', size: { width: 960 }, fitFormats: true }), 'cell:r');
-  // Default number rule: before "30.7 · 10.3 · <0.1" under a "(k)" head. The fit step that lowers the threshold for scale
-  // words prints the rule's decimals at the new scale, and the ladder ends there.
-  expect(fit([30680, 10336, 4], 56).filter(text => /\d/.test(text) && !text.startsWith('Row'))).toEqual(['30.7k', '10.3k', '4']);
-  // Before: "3.1M · 1.0M · 1,200", which overflowed this width. The width step removes decimals from every group
-  // while the column overflows. "3.1M · 1.0M · 1k" fits from 56 px.
-  expect(fit([3068000, 1033600, 1200], 50).filter(text => /\d/.test(text) && !text.startsWith('Row'))).toEqual(['3M', '1M', '1k']);
+  const drawn = (values: number[], width: number) => texts(layout('table', { columns: [{ id: 'label', kind: 'rowLabel', label: 'Item', width: 140 }, { id: 'value', kind: 'value', label: 'Orders', width }],
+    rows: values.map((v, i) => ({ id: `r${i}`, label: `Row ${i}`, cells: { value: v } })) }, { target: 'report', size: { width: 960 } }), 'cell:r');
+  // An authored narrow track prints the text it prints at any width, and the track widens to hold it.
+  expect(drawn([30680, 10336, 4], 56).filter(text => /\d/.test(text) && !text.startsWith('Row'))).toEqual(['30,680', '10,336', '4']);
+  expect(drawn([3068000, 1033600, 1200], 50).filter(text => /\d/.test(text) && !text.startsWith('Row'))).toEqual(['3.07M', '1.03M', '1.2k']);
   const money = resolveTable({ columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'a', kind: 'value' }, { id: 'b', kind: 'value' }, { id: 'c', kind: 'value' }],
     rows: [{ id: 'm', label: 'Money', scale: 'money', cells: { a: 1500, b: 40, c: 2300 } }] }, { target: 'report' }).table.rows[0]!;
   expect(['a', 'b', 'c'].map(id => money.cells[id]!.displayed)).toEqual(['1,500', '40', '2,300']);
@@ -1351,20 +1345,6 @@ it('leaves the unit in the cells when a cell format names another one', () => {
   expect(byRow.rows[0]!.cells.w!.displayed).toMatch(/^€/);
 });
 
-// A narrow percent-change column under a money row format shortened the money and stayed clipped, though the percent fits at one digit less.
-it('fits an overflowing percent change by its own format, not the money row format', () => {
-  const data: TableData = {
-    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'ac', kind: 'value' }, { id: 'py', kind: 'value' },
-      { id: 'yoy', kind: 'computed', calc: { op: 'percentDelta', a: 'ac', b: 'py' }, width: 60 }],
-    rows: [{ id: 'rev', label: 'Revenue', format: '$1.2m', cells: { ac: 2500000, py: 2000000 } }],
-  };
-  const measure: typeof defaultMeasurer = (text, font) => ({ ...defaultMeasurer(text, font), width: text.length * 10 });
-  const g = layout('table', data, { fitFormats: true, measure, size: { width: 480 } });
-  const text = (col: string) => g.scene.find((n): n is TextNode => n.t === 'text' && n.id === `cell:rev:${col}`)!.lines.join('');
-  // Default number rule: the percent change is a signed change set, before "25%" without a sign.
-  expect([text('ac'), text('yoy')]).toEqual(['$2.5m', '+25%']);
-});
-
 // The accessible table read the percent change under a money row format as "$25" while the cell printed 25.0%.
 it('reads a percent change under a row format as a percent, as it reads one without the row format', () => {
   const data: TableData = {
@@ -1417,23 +1397,15 @@ it('measures each unknown cell key once, however many rows carry it', () => {
   expect(vi.mocked(closestKey)).toHaveBeenCalledTimes(2);
 });
 
-// A repair patch built from the fitted rows tested a cell format the author never wrote, so applying it to the authored spec failed.
-it('builds the cell-column-unknown repair from the authored cells when fitFormats shortens a cell format', () => {
+// A repair patch that tests a cell format the author never wrote fails on the authored spec.
+it('builds the cell-column-unknown repair from the authored cells', () => {
   const data: TableData = {
     columns: [{ id: 'label', kind: 'rowLabel', label: 'Region', width: 120 }, { id: 'amount', kind: 'value', label: 'Amount', width: 44 }, { id: 'orders', kind: 'value', label: 'Orders', width: 44 }],
     rows: [{ id: 'a', label: 'North', cells: { orders: { v: 1_234_567, format: '1,234,567' }, amunt: 5 } }],
   };
-  const { warnings } = layout('table', data, { fitFormats: true, size: { width: 320 } });
+  const { warnings } = layout('table', data, { size: { width: 320 } });
   const fix = warnings.find((w) => w.code === 'cell-column-unknown')!.fix!;
   expect(fix[0]).toEqual({ op: 'test', path: '/data/rows/0/cells', value: data.rows[0]!.cells });
-});
-
-// fitFormats wrote the example "$1.234M" for a lifted cell, which reads back as a thousands group, so 3,000 printed "$0M".
-it('keeps three lifted decimals as decimals when fitFormats writes the cell format', () => {
-  const g = layout('table', { columns: [{ id: 'l', kind: 'rowLabel' }, { id: 'v', kind: 'value', format: '$1.23M', width: 62 }],
-    rows: [{ id: 'a', cells: { v: 123_456_789 } }, { id: 'b', cells: { v: 3000 } }] }, { fitFormats: true });
-  const cell = g.scene.find((node): node is TextNode => node.t === 'text' && node.id === 'cell:b:v');
-  expect(cell!.lines.join('')).toBe('$0.003M');
 });
 
 // A margin on a credit-note row with negative revenue printed 11.8% for -2 over -17 with no word that it is arithmetic, while percentDelta prints n.m. off a negative base.

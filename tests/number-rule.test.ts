@@ -59,21 +59,6 @@ describe('the default number rule', () => {
     expect(texts(values, { small: 'p-value' })).toBe('.042 · .018 · .006 · <.001');
   });
 
-  // A narrow table column must shorten by whole decimal steps before its cells change scale.
-  it('removes decimals per width step, then lowers the cell threshold', () => {
-    expect(texts([84000, 31000], { cell: true })).toBe('84,000 · 31,000');
-    expect(texts([8.42, 3.1], { cell: true, fit: 1 })).toBe('8.4 · 3.1');
-    expect(texts([84000, 31000], { cell: true, fit: 1 })).toBe('84k · 31k');
-  });
-
-  // The step that lowers the cell threshold put back the decimals the steps before it had removed ("12.5 · 3.8" after "13 · 4").
-  it('keeps removed decimals through the step that lowers the cell threshold', () => {
-    expect(texts([12.5, 3.75], { cell: true, fit: 1 })).toBe('13 · 4');
-    expect(texts([12.5, 3.75], { cell: true, fit: 2 })).toBe('13 · 4');
-    // 3.75 opens a group of one decimal: step 1 removes it, step 2 lowers the threshold.
-    expect(texts([48250, 12840, 3.75], { cell: true, fit: 2 })).toBe('48.3k · 12.8k · 4');
-  });
-
   // A change in percent printed three digits like a level ("+9.09%"); a change set prints two in every group.
   it('prints two digits in every group of a change set', () => {
     const change = (values: number[]) => texts(values, { kind: 'percent', change: true }, { signed: true, suffix: '%' });

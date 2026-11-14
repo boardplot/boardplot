@@ -52,11 +52,10 @@ import { presetLanguage } from './presets';
 import {
   CHIP_PAD_X, HINT_GAP, MARK_SIZE, kindFont, strongColumnFont,
   HEADING_CUT_MIN as CUT_MIN, SECTION_CHIP_GAP as BADGE_GAP,
-  ENGINE_NOTES, INLINE_LABEL_INDENT, cellPadX as trackCellPadX, figureFont, inlineFont as ladderInlineFont, changeLineFont, changeLineFitFont,
-  rowFont as ladderRowFont, tableFonts,
+  ENGINE_NOTES, INLINE_LABEL_INDENT, cellPadX as trackCellPadX, figureFont, inlineFont as ladderInlineFont, changeLineFont,
+  rowFont as ladderRowFont,
 } from './tracks';
 import { groupHeadingFaces, groupHeadingLabel, groupHeadingNote, groupHeadingWidth, groupHeadingWrap } from './groupHeading';
-import { fitTableFormats, formatsFittedWarning } from './fitFormats';
 import { qualifierFont, tableInk, tableRuleInk } from './statement';
 import { chipHeight, chipPaints, hasPolarityBadge, isFigureCell, polarityBadgeInk, onTableGround, statusSquare, statusSquarePaint, tableGround, toneTextPaint } from './chips';
 import { lastObservedIndex, type SparklineDomain } from '../sparkline/layout';
@@ -118,7 +117,6 @@ const TABLE_PAD_MAX = 16;
 const STANDOFF_BELOW = 12;
 /** A body row that holds no rows of its own: the rows that take spare canvas height. */
 const isLeafRow = (row: ResolvedRow): boolean => row.role !== 'total' && row.role !== 'section' && !row.hasChildren;
-type FormatFits = Map<string, ReturnType<typeof fitTableFormats>>;
 
 /** The cell air each candidate layout drew, for the need it answers. */
 const cellPads = new WeakMap<Geometry<TableMarks, TableDerived>, number>();
@@ -166,7 +164,6 @@ export function prepareTableExecutor(authoredData: TableData, initialOptions: Ta
     const choice = liftOrFallback((mode) => {
       const variant = mode === 'full' ? options : { ...options, [ZERO_LIFT]: mode } as TableOptions & ZeroLiftOptions;
       const model = mode === 'full' ? resolved : resolvedForSize(authoredData, variant);
-      const formatFits: FormatFits = new Map();
       // Decode the frame-only inputs once for the whole ordered policy.
       const { size: _size, mode: _mode, belowMinimum: _below,
         [TARGET_SIZE]: _target, [PLAN_ONLY]: _plan, [WIDTH_PROBE]: _width,
@@ -186,7 +183,7 @@ export function prepareTableExecutor(authoredData: TableData, initialOptions: Ta
           if (!byKey) candidates.set(model, byKey = new Map());
           let prepared = byKey.get(key);
           if (!prepared) {
-            prepared = prepareTableCandidate(input.source, current, model, formatFits);
+            prepared = prepareTableCandidate(input.source, current, model);
             if (byKey.size >= 256) byKey.delete(byKey.keys().next().value!);
             byKey.set(key, prepared);
           }
@@ -278,7 +275,7 @@ function costsWidth(lifted: Geometry<TableMarks, TableDerived>, plain: Geometry<
   const misses = (geometry: Geometry<TableMarks, TableDerived>) => missesFrame(geometry, options);
   if (misses(plain)) return false;
   if (misses(lifted) || cutCount(lifted) > cutCount(plain)) return true;
-  const stepped = new Set(['table-compact-fallback', 'table-column-clipped', 'table-overflow', 'table-formats-fitted']);
+  const stepped = new Set(['table-compact-fallback', 'table-column-clipped', 'table-overflow']);
   const before = new Set(plain.warnings.map((warning) => warning.code));
   return lifted.warnings.some((warning) => stepped.has(warning.code) && !before.has(warning.code));
 }
@@ -494,14 +491,14 @@ function givesSectionAir(options: LayoutOptions): boolean {
 }
 
 function prepareTableCandidate(
-  authoredData: TableData, options: LayoutOptions, initialResolved: ReturnType<typeof resolveTable>, formatFits: FormatFits,
+  authoredData: TableData, options: LayoutOptions, initialResolved: ReturnType<typeof resolveTable>,
 ) {
   const tight = options[TIGHT_SPACING]?.columns === true;
   const tightRows = options[TIGHT_SPACING]?.rows === true;
   const sectionAirGiven = givesSectionAir(options);
   const measure = tableTextMeasure(options.measure ?? defaultMeasurer);
-  let data = authoredData;
-  let resolved = initialResolved;
+  const data = authoredData;
+  const resolved = initialResolved;
   let warnings: LintWarning[] = [...resolved.warnings];
   const theme = resolveSemanticPaletteTheme(
     chartTheme(options),
@@ -518,44 +515,6 @@ function prepareTableCandidate(
   const rowRuleWidth = theme.table?.ruleWidths?.row ?? strokeToken(theme, 'hair');
   const sectionRuleWidth = heavySectionRule ? 2 * strokeToken(theme, 'rule') : rowRuleWidth;
   const sectionRuleSpace = Math.ceil(sectionRuleWidth);
-  // Formats that fit their authored tracks: shortened before
-  // anything is measured, so every width, claim and hoisted unit below reads
-  // the strings the table prints.
-  if (options.fitFormats === true) {
-    const padX = options.cellPadX ?? trackCellPadX(visibleColumns(resolved.table).length);
-    // Within one ladder only density and cell air change the format-fitting inputs.
-    const fitKey = `${options.density ?? 'regular'}:${padX}`;
-    let fitted = formatFits.get(fitKey);
-    if (!formatFits.has(fitKey)) {
-      const fitLadder = levelLadder(theme, options.density ?? 'regular', options.target, textScaleOf(options));
-      const fitFonts = tableFonts(theme, fitLadder);
-      const rowById = new Map(resolved.table.rows.map((row) => [row.id, row]));
-      const fitChanges = new Set(resolved.table.rows.filter(row => visibleInlineRows(row, options.inlineVisibility).length > 0).map(row => row.id));
-      fitted = fitTableFormats(data, options, resolved, (table) => visibleColumns(table), {
-        measure,
-        padX,
-        cellFont: (cell) => {
-          const row = rowById.get(cell.rowId);
-          return kindFont(ladderRowFont(theme, fitLadder, fitFonts, cell.role, row?.step ?? cell.level, row?.hasChildren === true, fitChanges.size > 0 && fitChanges.has(cell.rowId)), row?.kind, cell.kind === 'rowLabel', theme);
-        },
-        figures: (col, text) => cellDrawsTabular(theme, col.kind, text),
-        lineFont: (parent, line, text, tabular) => changeLineFitFont(theme, fitLadder, parent.step, line.polarity !== undefined, text, measure, tabular),
-        ...(options.locale?.decimal === undefined ? {} : { decimal: options.locale.decimal }),
-      });
-      formatFits.set(fitKey, fitted);
-    }
-    if (fitted !== undefined) {
-      const warningsAfter = warnings.splice(resolved.warnings.length);
-      warnings.length = 0;
-      pushAll(warnings, fitted.resolved.warnings);
-      pushAll(warnings, warningsAfter);
-      const fittedNote = formatsFittedWarning(fitted.changes);
-      if (fittedNote !== undefined) warnings.push(fittedNote);
-      data = fitted.data;
-      resolved = fitted.resolved;
-    }
-  }
-
   const table = resolved.table;
   const { dataRows, rows, expandedIds, fullRows, widthRows, cols, spans, bandedColumnRuns, heatLanes, arrowShapes, notes: tableNotes, textColumns, statusColumns } = sharedTableView(data, options, table);
 

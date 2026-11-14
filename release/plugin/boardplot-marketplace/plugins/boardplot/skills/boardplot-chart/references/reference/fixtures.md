@@ -401,7 +401,7 @@ The CLI prints every match in one response through `boardplot fixtures --type <t
 | table-frame-open-end | table.steering | example | Rows that end on the card edge, with no end hairline and a light close |
 | steering-hover-history | table.steering | example | A year-to-date block whose hover card draws the fiscal years the table hides |
 | group-span-row-spacer | table.hierarchy | example | Block headings over their whole span and a gap before the new year |
-| fit-formats-narrow-tracks | table.steering | example | Weekly revenue drops a decimal to fit 44 px tracks, the other rows keep their units |
+| narrow-tracks-widen | table.steering | example | Weekly revenue keeps its written format, and its 44 px tracks widen to hold it |
 | outline-marks-off | table.hierarchy | example | A region tree without outline marks, its head air from the theme |
 | max-growth-capped | table.hierarchy | torture | A channel table whose columns grow at most 1.4 times when it fills a card |
 | house-rule-colour | table.hierarchy | example | Head, total and close rules in the theme rule colour while the axis ink stays grey |

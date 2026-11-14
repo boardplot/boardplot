@@ -54,7 +54,7 @@ it('preserves authored row fields and accounting through no-op and real top-N fo
     expect(errorCode(() => resolveTable(input, { topN: { n: 1, rest: false } }))).toBe('table-topn-rest-required');
   }
   const metadata: TableData = { ...data, rows: [...data.rows,
-    { id: 'double', label: 'Twice revenue', relation: 'displayOnly', calc: { op: 'mul', a: { ref: { row: 'revenue' } }, b: { lit: 2 } }, format: '1.12', polarity: 'higherIsBetter', fitFormat: false },
+    { id: 'double', label: 'Twice revenue', relation: 'displayOnly', calc: { op: 'mul', a: { ref: { row: 'revenue' } }, b: { lit: 2 } }, format: '1.12', polarity: 'higherIsBetter' },
     { id: 'change', parentId: 'revenue', label: 'Change', relation: 'displayOnly', inline: true, inlineGroup: 'changes', format: '+1.1%', polarity: 'higherIsBetter', cells: { v: 5 } },
   ] };
   expect(resolveTable(metadata, { topN: { n: 10 } }).table.rows).toEqual(resolveTable(metadata).table.rows);

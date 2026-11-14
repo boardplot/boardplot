@@ -14,8 +14,7 @@
 //   mismatch         the text says no source value of its owner at its printed precision
 //   collision        two different values of one row, column or series print the same text where
 //                    the authored format tells them apart (or, with no format, two significant digits do)
-//   precision-lost   the authored format prints more digits than the drawn text, and the author
-//                    did not opt out (fitFormats keeps at least two significant digits)
+//   precision-lost   the authored format prints more digits than the drawn text
 //   mixed-units      one column, row, axis or key prints two magnitudes of one unit, or a header
 //                    names a magnitude that a cell repeats or contradicts
 //   derived          a printed total or derived claim does not recompute from its inputs
@@ -329,7 +328,6 @@ export function censusCase(type, fixture, width, localeName, measured) {
   const textById = new Map(texts.map((entry) => [entry.id, entry.text]));
   const options = request.options;
   const data = request.data;
-  const fitFormats = options.fitFormats === true;
   // Data authored in a unit with a magnitude ("$bn", "k€", "EUR m") is in that unit; one chart unit for all.
   const authoredUnit = typeof options.unit === 'string' ? options.unit : typeof options.unit?.label === 'string' ? options.unit.label : undefined;
   const unitLetter = authoredUnit ? dataMagnitude(authoredUnit) : undefined;
@@ -548,9 +546,7 @@ export function censusCase(type, fixture, width, localeName, measured) {
     const drawnStep = token.half / f;
     const authoredStep = authored.half / (authored.pct === '%' && token.pct === '%' ? f : 1);
     if (drawnStep <= authoredStep * 1.0001) return;
-    const why = fitFormats ? 'fitFormats' : options.magnitude ? `options.magnitude ${options.magnitude}` : 'engine';
-    // fitFormats is the author's opt-in to shorter formats; it still keeps two significant digits.
-    if (fitFormats && (token.significant >= 2 || authored.significant < 2)) return;
+    const why = options.magnitude ? `options.magnitude ${options.magnitude}` : 'engine';
     flag('precision-lost', printed.surface, { id: printed.id, text: printed.text, raw, why: `${why}: authored ${example} prints ${authored.text}` });
   }
 
@@ -591,8 +587,6 @@ export function censusCase(type, fixture, width, localeName, measured) {
       for (let i = 0; i < distinct.length; i++) for (let j = i + 1; j < distinct.length; j++) {
         const a = distinct[i], b = distinct[j];
         if (Math.abs(a.raw - b.raw) <= Math.abs(a.raw) * 1e-12) continue;
-        // fitFormats is the author's opt-in to shorter formats: two significant digits are its promise, not distinctness.
-        if (fitFormats && a.token.significant >= 2) continue;
         const tell = tellsApart(a, b);
         if (!tell) continue;
         flag('collision', 'svg', { id: `${a.id} & ${b.id}`, text, raw: `${a.raw} & ${b.raw}`, why: tell, group: key });

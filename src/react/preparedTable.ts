@@ -100,18 +100,12 @@ export function prepareTableRender(request: ResolvedChartRequest<TableData, Tabl
   // column keeps one: without it `heatRanges` saw an empty lane and every
   // tint went, and under `figures: false` the ground IS the reading, so the
   // cell arrived blank.
-  // `fitFormats` asks whether a figure fits its authored track and caps a
-  // unit step by the largest figure, so a fixed numeric track keeps its raw
-  // values too; a snapshot without them fitted nothing.
-  const fitColumn = (column: ResolvedTable['columns'][number]): boolean => request.options.fitFormats === true
-    && column.width !== undefined && (column.kind === 'value' || column.kind === 'computed');
   // An arrow picks its glyph and its key entry from the raw change, and a
   // sparkline draws the raw values of its source columns.
   const rawColumns = new Set(table.columns.filter(column => column.kind === 'status'
     || column.cellEncoding?.type === 'inCellBar'
     || column.cellEncoding?.type === 'heat'
-    || column.cellEncoding?.type === 'arrow'
-    || fitColumn(column)).map(column => column.id));
+    || column.cellEncoding?.type === 'arrow').map(column => column.id));
   for (const column of table.columns) {
     if (column.encoding?.type === 'sparkline') column.encoding.sourceColumns.forEach(id => rawColumns.add(id));
   }

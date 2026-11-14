@@ -876,7 +876,6 @@ Every code a render, a measure or a React chart can return, read from the source
 | `table-column-clipped` | warn |  | table |
 | `table-column-widened` | warn |  | table |
 | `table-compact-fallback` | info |  | table |
-| `table-formats-fitted` | info |  | table |
 | `table-ground-text-unreadable` | warn |  | core/paintWarnings.ts |
 | `table-group-heading-overflow` | warn |  | table |
 | `table-legend-required` | warn |  | core/frame.ts |

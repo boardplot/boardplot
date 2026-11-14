@@ -229,16 +229,6 @@ export function changeLineFont(theme: Theme, ladder: LevelLadder, step: number):
   return { family: theme.type.family, size: Math.max(CHANGE_LINE_MIN_PX, ladder.size(step) - CHANGE_LINE_SIZE_STEP_PX), weight: 400, lineHeight: 1.2 };
 }
 
-/** Smaller change text must not undo an existing fitted number format. */
-export function changeLineFitFont(theme: Theme, ladder: LevelLadder, step: number, signed: boolean, text: string, measure: TextMeasurer, tabular?: boolean, slack?: (font: FontSpec, width: number) => number): FontSpec {
-  const current = changeLineFont(theme, ladder, step);
-  const previous = inlineFont(theme, ladder, step, signed);
-  if (current.size === previous.size && current.weight === previous.weight) return current;
-  const previousWidth = measure(text, figureFont(previous, tabular)).width;
-  const currentWidth = measure(text, figureFont(current, tabular)).width;
-  return previousWidth + (slack?.(previous, previousWidth) ?? 0) >= currentWidth + (slack?.(current, currentWidth) ?? 0) ? previous : current;
-}
-
 /**
  * What a browser draws beyond our metrics at weight 600. The
  * shipped width tables are measured from the font's own advance widths; a

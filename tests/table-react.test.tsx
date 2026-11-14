@@ -132,6 +132,22 @@ it('keeps bold automatic value tracks safe when browser measurement is unavailab
   }
 });
 
+// The React table fitted formats to its container on its own, so a figure printed $2.5M in a narrow container and $2.47M in a wide one.
+it('prints the same cell text at two container widths and never calls onFormatsFit', () => {
+  const data: TableData = {
+    columns: [{ id: 'kpi', kind: 'rowLabel', label: 'KPI', width: 120 }, { id: 'w1', kind: 'value', label: 'W1', width: 44 }, { id: 'w2', kind: 'value', label: 'W2', width: 44 }],
+    rows: [{ id: 'revenue', label: 'Revenue', format: '$1.23M', cells: { w1: 2_470_000, w2: 2_630_000 } }],
+  };
+  const onFormatsFit = vi.fn();
+  const texts = (width: number) => {
+    act(() => root.render(<TableChart data={data} size={{ width }} {...{ fitFormats: true } as object} onFormatsFit={onFormatsFit} />));
+    return ['w1', 'w2'].map(column => container.querySelector(`[data-bp-row="revenue"][data-bp-column="${column}"] .bp-value`)?.textContent);
+  };
+  expect(texts(360)).toEqual(['$2.47M', '$2.63M']);
+  expect(texts(960)).toEqual(['$2.47M', '$2.63M']);
+  expect(onFormatsFit).not.toHaveBeenCalled();
+});
+
 // A <wbr> breaks under white-space: nowrap, so a one-line label would still draw on several lines in the browser.
 it('emits no break opportunity in a label under rowLabelLines 1', () => {
   const fixture = getFixtures('table').find(item => item.id === 'row-label-three-lines')!;
