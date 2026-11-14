@@ -39,7 +39,7 @@ describe('the default number rule', () => {
     expect(texts([8400000, 950000, 900], { scale: 6 }, { prefix: '$' })).toBe('$8.4M · $0.95M · $0.0009M');
   });
 
-  // A late value (an annotation, a compact total) that joined a group of another scale would print "2,500k".
+  // A late value (an annotation, a reference line) that joined a group of another scale would print "2,500k".
   it('places a late value in a group of its own scale or as a set of one', () => {
     const rule = numberRuleSet([413000, 268000], SET);
     expect([150000, 2500000, 410].map((v) => rule.text(v, FACE))).toEqual(['150k', '2.5M', '410']);
@@ -160,9 +160,9 @@ describe('the default number rule on charts', () => {
     expect([...small.values()].filter((text) => text.includes('per period'))).toEqual(['Linear trend, North: +2.70k per period; r² 0.993', 'Linear trend, South: +1.84k per period; r² 0.999']);
   });
 
-  // German compact totals printed " Tsd." (German has no short word for thousand), and the wider texts dropped two totals.
-  // Written out, a total prints its value as its level set does (8,745), not the value rounded to the compact scale (8,700).
-  it('writes out German compact totals below one million', () => {
+  // German totals on a narrow stacked column printed " Tsd." (German has no short word for thousand), or the value
+  // rounded to a scale (8,700): a total prints its value as its level set does (8,745).
+  it('writes out German totals on a narrow stacked column', () => {
     const series = (base: number, step: number) => Array.from({ length: 14 }, (_, i) => base + i * step);
     const texts = drawn({ type: 'column', options: { variant: 'stacked', mode: 'compact', size: { width: 300, height: 220 }, locale: { language: 'de' } }, data: {
       categories: Array.from({ length: 14 }, (_, i) => ({ id: `c${i}`, label: `W${i + 1}` })),
