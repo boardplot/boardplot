@@ -319,6 +319,16 @@ export interface TableSort {
 /** Column kinds a reader may sort by; `sortable: true` names exactly these. */
 const SORTABLE_COLUMNS: ReadonlySet<ColumnKind> = new Set<ColumnKind>(['value', 'computed', 'date', 'text']);
 
+/**
+ * Whether a sort of this column kind reads the cell's raw value: a number or a
+ * date of the sortable kinds. Their printed text sorts in another order: 88k
+ * after 7.8M, −10 after −2, and a date printed in words by its day. A text cell
+ * prints its raw text unchanged.
+ */
+export function sortReadsRaw(kind: ColumnKind): boolean {
+  return SORTABLE_COLUMNS.has(kind) && kind !== 'text';
+}
+
 /** The drawn columns a sort control offers, from `true` or an authored list. */
 export function sortableColumnIds(
   table: ResolvedTable,
