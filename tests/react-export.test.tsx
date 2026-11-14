@@ -550,6 +550,6 @@ describe('an exported chart document draws its chart\'s text', () => {
     const exported = (exportDocument(prepared) as { charts: { type: string; data: unknown; options: { format?: string } }[] }).charts[0]!;
     expect(exported.options.format).toBe('$M');
     expect(labels(exported)).toEqual(labels(chart));
-    expect(labels(chart)).toContain('$400.00k');
+    expect(labels(chart)).toContain('$0.4M'); // Default number rule (a unit-only format takes its decimals from the rule): before "$400.00k".
   });
 });

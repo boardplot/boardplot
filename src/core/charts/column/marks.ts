@@ -172,7 +172,8 @@ function columnBars(
   // A bar's drawn value text and its shown text. They come from one formatter call unless an authored percent cell prints with '%'.
   const barTexts = (s: NormSer, ci: number): { drawn: string; shown: string } => {
     const val = s.vals[ci]!;
-    const shown = cellValueFmt(domain, s, ci)(absOf(s, ci)!);
+    // The record of an authored percent cell holds the percent, so its shown text prints the percent, not the count it stands for.
+    const shown = cellValueFmt(domain, s, ci)(val.isPct && val.v !== null ? val.v : absOf(s, ci)!);
     return { drawn: val.isPct && !val.format && !s.format ? valueSpec.forSeries(s, val.format)(absOf(s, ci)!) : shown, shown };
   };
   cats.forEach((c, ci) => {
@@ -275,11 +276,11 @@ function anomalyFurniture(
   nodes: SceneNode[],
   claims: OccupiedIndex,
 ): NonNullable<ColumnMarks['anomaly']> {
-  const { theme, measure, cats, corridorShown, statFmt } = domain;
+  const { theme, measure, cats, corridorShown, statFmt, corridorFmt } = domain;
   const anomaly = domain.anomaly!;
   const { plot, y } = area;
   drawAnomalyRules(theme, {
-    rules: anomalyRuleLines(theme, anomaly, corridorShown, statFmt, paints.corridor, domain.options.strings), statFmt, plot, y, labelX: plot.x + plot.w + 4,
+    rules: anomalyRuleLines(theme, anomaly, corridorShown, { statFmt, corridorFmt }, paints.corridor, domain.options.strings), plot, y, labelX: plot.x + plot.w + 4,
     font: { family: theme.type.family, ...theme.type.label }, measure, nodes, claims,
   });
   const anomalyMarks: NonNullable<ColumnMarks['anomaly']> = [];

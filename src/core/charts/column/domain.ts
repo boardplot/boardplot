@@ -8,8 +8,8 @@ import { restDetailsWarning, restLabel, restSum, topNCut } from '../topN';
 import { cellFields, normalizeCategorySeries } from '../categorySeries';
 import { chartPalette } from '../chartEnv';
 import { breakStyleRefusal } from '../band/breakOrder';
-import { cagr, formatAuthoredPercent, formatAutomaticPercent, formatShare, shareSetFormatter } from '../../format';
-import { formatStatWithSpec, formatterFromExample, formatWithSpec, parseFormatExample, roundedNumber, seriesRasterFormatter, shareFormatExample, withChartMarks } from '../../formatSpec';
+import { cagr, formatAuthoredPercent, formatShare, shareSetFormatter } from '../../format';
+import { formatStatWithSpec, formatterFromExample, formatWithSpec, parseFormatExample, percentChangeSpec, roundedNumber, ruleStatistics, seriesRasterFormatter, shareFormatExample, statisticFormatter, withChartMarks } from '../../formatSpec';
 import { yearSpan, yearSpanFromLabels } from '../../periodYears';
 import { cleanSum } from '../../geometry';
 import { PRIORITY } from '../../label/solver';
@@ -978,12 +978,14 @@ export function resolveColumnDomain(data: ChartData, options: AnomalyColumnOptio
   if (viewportOn) refuseUnorderedViewport(options, othersId);
   const ribbons = columnRibbons(options, variant, stackedLike, dataSeries, warnings);
   const computedTotal = variant === 'stacked100' ? weightedTotal(cats, dataSeries, warnings) : undefined;
+  // The Total column's weighted shares are statistics: a set of their own beside the shares they weigh.
+  const totalStatFmt = computedTotal ? statisticFormatter(Object.values(computedTotal.values), valueSpec.percentSpec) : undefined;
   const ranked = ribbons.ribbonsOn && ribbons.ribbonRank;
   const source = columnBasis(variant, cats, dataSeries, viewportOn ? [] : warnings, ranked);
   let anomaly: AnomalyModel | undefined;
   let anomalyValues: number[] = [];
   if (options.anomaly) {
-    ({ anomaly, values: anomalyValues } = columnAnomalyModel(options.anomaly, cats, dataSeries[0]!, source.absOf, fmt, statFmt, options.locale?.language, warnings, options.strings));
+    ({ anomaly, values: anomalyValues } = columnAnomalyModel(options.anomaly, cats, dataSeries[0]!, source.absOf, fmt, statFmt, options.locale?.language, warnings, options.strings, ruleStatistics(valueSpec.spec, fmt)));
   }
   // a stack of percents of different wholes has no total to print,
   // anchor on or average.
@@ -1022,7 +1024,7 @@ export function resolveColumnDomain(data: ChartData, options: AnomalyColumnOptio
   // A drawn value line is part of the stated range (valueLineDomain.ts).
   const lineExtent = valueLineExtent(options.annotations);
   const { rendered, ...extent } = columnValueDomain(va, variant, cats, dataSeries, refSeries, basis.plottedOf, basis.rangeOf, basis.stacks, lineExtent, warnings);
-  const corridor = anomalyCorridor(anomaly, anomalyValues, extent.dLo, extent.dHi, statFmt, warnings, options.strings);
+  const corridor = anomalyCorridor(anomaly, anomalyValues, extent.dLo, extent.dHi, statFmt, warnings, options.strings, ruleStatistics(valueSpec.spec, fmt));
   // No total on a 100 % stack unless authored, and none on grouped
   // columns, where the bars stand side by side and add to nothing.
   const grandTotalsRequested = grandTotalRequested(options.grandTotalLabels, variant, warnings, partsAdd);
@@ -1057,13 +1059,13 @@ export function resolveColumnDomain(data: ChartData, options: AnomalyColumnOptio
     // A negative or authored percent part leaves no complete set of computed shares.
     return variant === 'stacked' && parts.length !== dataSeries.length ? [] : [{ c, parts }];
   }) : [];
-  // rounding 'sum-consistent' (the default): each complete stack's shares print so they add up to 100%,
+  // rounding 'sum-consistent': each complete stack's shares print so they add up to 100%,
   // at the chart's one share precision (or the share format's: shareLabels.format, else a percent options.format).
   const shareTexts = new Map<string, string>();
   const roundingAdjustments: RoundingAdjustment[] = [];
   const shareExample = shareFormatExample(options, dataSeries);
   const spec = shareExample ? parseFormatExample(shareExample) : undefined;
-  if (options.rounding !== 'nearest') {
+  if (options.rounding === 'sum-consistent') {
     for (const { c, parts } of wholes) {
       const rounded = sumConsistentShares(parts.map((part) => part.share), options.locale?.language, spec && withChartMarks(spec, options.locale?.language), shareSet.decimals);
       if (rounded?.warning) warnings.push(roundingUnavailable(c.label ?? c.id, rounded.warning));
@@ -1105,7 +1107,7 @@ export function resolveColumnDomain(data: ChartData, options: AnomalyColumnOptio
     // The shares print at the chart's one precision ("9%" beside "50%"), unless a share format sets one.
     ...env, pctFmt: shareExample ? formatterFromExample(shareExample, options.locale?.language) : shareSet.format, shareTexts, roundingAdjustments, shareNotes, options, cats, seriesNorm, dataSeries, refSeries, othersId, valueSpec, fmt, totalFmt: stackTotalFormatter(variant, valueSpec.spec, fmt), statFmt, variant,
     refStyle: options.referenceStyle ?? 'tick', tickBehind: (options.referenceStyle ?? 'tick') === 'tick' && options.referenceTick?.position !== 'front', signColor, pyRef, pyGrowth,
-    uniformScenario, pctLevels, ...lines, ...ribbons, computedTotal, va, ...basis, anomaly, ...span, ...(stepTicks && stepAcross ? { stepTicks } : {}), meanValue, averageMark, meanSpan, ...corridor,
+    uniformScenario, pctLevels, ...lines, ...ribbons, computedTotal, ...(totalStatFmt ? { totalStatFmt } : {}), va, ...basis, anomaly, ...span, ...(stepTicks && stepAcross ? { stepTicks } : {}), meanValue, averageMark, meanSpan, ...corridor,
     activeBreak,
     gtContent,
     partsAdd,
@@ -1152,18 +1154,25 @@ function seriesCagrs(
   }
   const spec = typeof span === 'object' && span.format !== undefined ? withChartMarks({ ...parseFormatExample(span.format), signed: true }, options.locale?.language) : undefined;
   const only = options.seriesLabels?.only === undefined ? undefined : new Set(options.seriesLabels.only);
+  const rateOf = (s: NormSer): number | null => {
+    const a = absOf(s, fi);
+    const b = absOf(s, ti);
+    return a === null || b === null ? null : cagr(a, b, years);
+  };
+  // Without a format the rates are changes in percent: one signed set.
+  const rates = spec ? undefined : percentChangeSpec(dataSeries.flatMap((s) => (only && !only.has(s.id) ? [] : [rateOf(s)])), options.locale?.language, '%');
   for (const s of dataSeries) {
     if (only && !only.has(s.id)) continue;
     const a = absOf(s, fi);
     const b = absOf(s, ti);
-    const rate = a === null || b === null ? null : cagr(a, b, years);
+    const rate = rateOf(s);
     if (rate === null) {
       warn('series-cagr-undefined', `'${s.label}' has no CAGR from '${from.label ?? from.id}' to '${to.label ?? to.id}': a missing value, a start at or below zero or a negative end; its name prints alone`, 'label the growth of this series in the text, or leave it out of seriesLabels.only');
       continue;
     }
     // A span narrower than the chart names its period, as a CAGR annotation's label does.
     const period = fi !== 0 || ti !== cats.length - 1 ? ` ${from.label ?? from.id}–${to.label ?? to.id}:` : '';
-    const text = `${s.label}${period} ${spec ? formatWithSpec(rate, spec) : formatAutomaticPercent(rate, 1, true, options.locale?.language)} p.a.`;
+    const text = `${s.label}${period} ${formatWithSpec(rate, spec ?? rates!)} p.a.`;
     const ref = (end: string, category: Category) => `${end}:categoryId=${category.id}/seriesId=${s.id}`;
     out.set(s.id, {
       text,
@@ -1230,7 +1239,10 @@ function rasterFormatter(example: string | undefined, seriesValues: [string, (nu
   const key = JSON.stringify([example, locale, unit, target, currentSmallValues(), formatScopeKey(), seriesValues, shared]);
   const known = rasterFormatters.get(key);
   if (known) return known;
-  const made = seriesRasterFormatter(example, seriesValues.flatMap(([, values]) => values), locale, unit, target, undefined, shared);
+  // Without an example the range ends the author gave are levels: members of the set, after the values.
+  const levels = seriesValues.flatMap(([, values]) => values);
+  const rangeEnds = example ? [] : seriesValues.flatMap(([, , ranges]) => ranges.flatMap((range) => range ? (range as number[]).slice(0, 2) : []));
+  const made = seriesRasterFormatter(example, [...levels, ...rangeEnds], locale, unit);
   const bySeries = new Map<string, (value: number) => string>();
   const formatter: RasterFormatter = {
     ...made,
@@ -1324,8 +1336,9 @@ export function shareKey(categoryId: string, seriesId: string): string {
 
 /** A segment's printed share: its sum-consistent text, else the author's percent or the chart's share format. */
 /** The formatter a cell's value label prints with: the cell or series format, or an authored percent cell's '%'. */
-export function cellValueFmt(domain: Pick<ColumnDomain, 'valueSpec'>, s: NormSer, ci: number): (v: number) => string {
+export function cellValueFmt(domain: Pick<ColumnDomain, 'valueSpec' | 'totalStatFmt' | 'computedTotal' | 'cats'>, s: NormSer, ci: number): (v: number) => string {
   const val = s.vals[ci]!;
+  if (domain.totalStatFmt && !val.format && !s.format && domain.cats[ci]?.id === domain.computedTotal?.categoryId) return domain.totalStatFmt;
   return val.isPct && !val.format && !s.format ? domain.valueSpec.fmtPercent : domain.valueSpec.forSeries(s, val.format);
 }
 

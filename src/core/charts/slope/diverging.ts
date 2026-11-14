@@ -10,9 +10,9 @@ import { chartString } from '../../strings/slope';
 
 import { chartTheme } from '../chartEnv';
 import { fitText } from '../../label/fitText';
-import { formatAuthoredPercent, formatAutomaticNumber, lowBaseKeyLabel, numberRange, seriesValueFormatter } from '../../format';
-import { differenceExample, formatterFromExample, signedFormatterFromExample } from '../../formatSpec';
-import { autoDecimals } from '../../formatPrecision';
+import { formatAuthoredPercent, lowBaseKeyLabel, numberRange } from '../../format';
+import { differenceExample, formatterFromExample, formatWithSpec, percentChangeSpec, signedFormatterFromExample } from '../../formatSpec';
+import { ruleFormatter } from '../../numberSets';
 import { cleanDiff, cleanFloat, type Rect } from '../../geometry';
 import { createOccupiedIndex } from '../../label/occupied';
 import { labelsToNodes } from '../../label/emit';
@@ -102,7 +102,7 @@ export function layoutDivergingSlope(
   const fmtVal = (v: number, isPct: boolean, example = options.format): string =>
     example && example === options.format ? (chartFormat ??= formatterFromExample(example, language, undefined, panels.flatMap((p) => [...p.g.positive, ...p.g.negative])))(v)
     : example ? formatterFromExample(example, options.locale?.language)(v)
-      : isPct ? formatAuthoredPercent(v, language) : formatAutomaticNumber(v, { locale: language, decimals: autoDecimals(v) });
+      : isPct ? formatAuthoredPercent(v, language) : ruleFormatter([v], language, { unit: options.unit })(v);
 
   // ---- normalize ----
   if (!data || !Array.isArray(data.categories) || data.categories.length < 2) {
@@ -209,10 +209,12 @@ export function layoutDivergingSlope(
     order.sort((a, b) => key(b.x) - key(a.x) || a.i - b.i);
   }
   const panels = order.map((o) => o.x);
+  // The panels' bases are one set.
+  const baseFmt = ruleFormatter(panels.flatMap((p) => (p.g.n ? [p.g.n[1]] : [])), language);
   // Net and net change are differences of two shares, so a percent format prints them in percentage points.
   const signed = options.format
     ? signedFormatterFromExample(differenceExample(options.format), language, undefined, panels.flatMap((p) => [...p.g.positive, ...p.g.negative]))
-    : (v: number): string => formatAutomaticNumber(v, { locale: language, signed: true, decimals: autoDecimals(v) });
+    : rulePointsFormatter(panels.flatMap((p) => [p.g.net[1], p.g.netChange]), language);
 
   // ---- notes ----
   const posName = opt.labels?.positive ?? chartString(options, 'positiveName');
@@ -224,7 +226,7 @@ export function layoutDivergingSlope(
   if ((opt.neutralNote ?? true) && neitherAll.some((v) => v > 0.5)) {
     const lo = minOf(neitherAll);
     const hi = maxOf(neitherAll);
-    const restFmt = options.format ? (v: number) => fmtVal(v, false) : seriesValueFormatter([lo, hi], language);
+    const restFmt = options.format ? (v: number) => fmtVal(v, false) : ruleFormatter([lo, hi], language, { unit: options.unit });
     const span = lo === hi ? restFmt(lo) : numberRange(restFmt(lo), restFmt(hi));
     notes.push(disclosureNote(chartString(options, 'slopeResponseRest', { v1: posName, v2: negName, v3: span })));
   }
@@ -381,13 +383,13 @@ export function layoutDivergingSlope(
   const rows = Math.ceil(count / cols);
   cols = Math.ceil(count / rows);
   const pw = (plot0.w - (cols - 1) * PANEL_GAP) / cols;
-  // Each group's shares take one precision (seriesValueFormatter), not one per value.
+  // Each group's shares take one precision (ruleFormatter), not one per value.
   const groupFmts = new Map<Norm, (v: number) => string>();
   const valueText = (v: number, p: Norm, side: 'positive' | 'negative', e: number) => {
     const example = p.formats[side][e] ?? p.s.format ?? options.format;
     if (example || p.isPct) return fmtVal(v, p.isPct, example);
     let fmt = groupFmts.get(p);
-    if (!fmt) groupFmts.set(p, fmt = seriesValueFormatter([...p.g.positive, ...p.g.negative], language));
+    if (!fmt) groupFmts.set(p, fmt = ruleFormatter([...p.g.positive, ...p.g.negative], language, { unit: options.unit }));
     return fmt(v);
   };
   const valueW = maxOf(panels.flatMap((p) => (['positive', 'negative'] as const).flatMap((side) => p.g[side].map((v, e) => measure(valueText(v, p, side, e), labelFont).width))));
@@ -505,7 +507,7 @@ export function layoutDivergingSlope(
       fy += footerPitch;
     }
     if (p.g.n) {
-      const text = `n = ${formatAutomaticNumber(p.g.n[1], { locale: language, decimals: 0 })}`;
+      const text = `n = ${baseFmt(p.g.n[1])}`;
       const w = measure(text, labelFont).width;
       fixed(`total:${id}:base`, 'total', { seriesId: id }, [text], labelFont, [{ x: px + pw / 2 - w / 2, y: fy, w, h: textH }], PRIORITY.total, true, 'note');
     }
@@ -564,4 +566,10 @@ export function layoutDivergingSlope(
     sizing: resolveSizing(SLOPE_SIZING, size, { minHeight, naturalHeight }),
     debug: { occupied: occupied.snapshot(), decisions: solved.decisions },
   };
+}
+
+/** Nets and net changes are differences in percentage points: one signed set under the default rule. */
+function rulePointsFormatter(values: readonly (number | null | undefined)[], language: string | undefined): (value: number) => string {
+  const spec = percentChangeSpec(values, language);
+  return (value) => formatWithSpec(value, spec);
 }

@@ -876,7 +876,8 @@ describe('render and measure on the command line', () => {
     const dir = tdir();
     writeFileSync(join(dir, 'rows.csv'), 'Month;Segment;Revenue\nJan;"B2B, direct";10,5\nFeb;"B2B, direct";12,25\n');
     const result = runCli(['render', writeDoc(dir, 'spec.json', { type: 'column' }), '--rows', join(dir, 'rows.csv'), '--columns', 'category=Month,series=Segment,value=Revenue', '--return', 'svg']);
-    expect((envelope(result) as { svg?: string }).svg?.match(/>(10\.50|12\.25)</g)?.sort()).toEqual([">10.50<", ">12.25<"]);
+    // Default number rule: before "10.50 · 12.25".
+    expect((envelope(result) as { svg?: string }).svg?.match(/>(10\.5|12\.3)</g)?.sort()).toEqual([">10.5<", ">12.3<"]);
   });
 
   // Tab-separated rows were refused or read as one column, which prevented the chart from drawing the numbers.

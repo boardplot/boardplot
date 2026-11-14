@@ -558,8 +558,8 @@ export function censusCase(type, fixture, width, localeName, measured) {
   // A table whose rows name their own formats reads one unit per row; its columns mix units by design.
   // A dimswitch row is a measure with its own scale, so its columns mix units too.
   const rowFormatted = type === 'dimswitch' || (type === 'table' && flatRows(data.rows ?? []).some((row) => row.format !== undefined || row.scale !== undefined));
-  // setMagnitude gives a set one magnitude from 1e6 where a step prints its smallest value as 1 or more and its largest
-  // with at most four digits. Where no step does, each label keeps its own scale: mixed magnitudes are the decided fallback.
+  // The default number rule prints a set in groups, each with its own scale word (a much smaller value opens a group of
+  // its own), so mixed magnitudes across groups are the decided fallback.
   // The set is the chart's, each group with its hidden values of the same unit. Table cells take no set magnitude.
   // A butterfly's two sides are one set while they print one unit and neither has its own format (butterfly paneRaster),
   // else each side is its own; a pyramid mirrors one measure. Other charts: every value label of the panel (a funnel's

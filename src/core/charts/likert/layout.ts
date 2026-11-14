@@ -38,7 +38,7 @@ import { BRACKET_CLEAR, likertAnnotationPass, type BracketHolder } from './annot
 import { normalizeLegendOption } from '../../frame';
 import { refreshPaintWarnings, resolvePaintWarnings } from '../../paintWarnings';
 import { PALETTE_NORMAL_FLOOR } from '../../themeRules';
-import { formatAutomaticNumber } from '../../format';
+import { ruleFormatter } from '../../numberSets';
 import { formatExampleText, formatterFromExample, formatWithSpec, parseFormatExample, roundedNumber, withChartMarks } from '../../formatSpec';
 import { shareDrift } from '../../dataGaps';
 import { accessibleTitle, NormalizeError, resolveSize } from '../../normalize/shared';
@@ -248,7 +248,8 @@ export function layoutLikert(
   data: LikertData,
   options?: LikertOptions,
 ): Geometry<LikertMarks, LikertDerived> {
-  const trimNumber = (value: number) => formatAutomaticNumber(value, { decimals: Number.isInteger(value) ? 0 : 1, locale: options?.locale?.language });
+  // A number a warning states is a set of one value.
+  const trimNumber = (value: number) => ruleFormatter([value], options?.locale?.language)(value);
   const opts = options ?? ({} as LikertOptions);
   const warnings: LintWarning[] = [];
 
@@ -606,6 +607,8 @@ export function layoutLikert(
   }
 
   const knownBases = items.map((item) => item.base).filter((b): b is number => b !== undefined);
+  // The bases are counts the chart prints: one set under the default rule.
+  const baseFmt = ruleFormatter(knownBases, opts.locale?.language, {});
   if (knownBases.length > 1) {
     const hi = maxOf(knownBases);
     const lo = minOf(knownBases);
@@ -866,7 +869,7 @@ export function layoutLikert(
   const rowBases = ordered.flatMap((item) => (item.base === undefined ? [] : [item.base]));
   const baseWanted = (opts.base ?? 'column') === 'column' && rowBases.length > 0 && canvas.width >= COLUMN_MIN_WIDTH && !comparing;
   const sharedBase = baseWanted && rowBases.length === ordered.length && maxOf(rowBases) === minOf(rowBases) ? rowBases[0] : undefined;
-  const baseTexts = baseWanted && sharedBase === undefined ? ordered.flatMap((item) => (item.base === undefined ? [] : [{ id: item.id, text: trimNumber(item.base) }])) : [];
+  const baseTexts = baseWanted && sharedBase === undefined ? ordered.flatMap((item) => (item.base === undefined ? [] : [{ id: item.id, text: baseFmt(item.base) }])) : [];
   const { label: labelOverride, net: netOverride, base: baseOverride } = opts.columnOverrides ?? {};
   const baseHeadText = baseOverride?.label ?? chartString(opts, 'baseHead');
   const baseNaturalW = baseTexts.length === 0 ? 0 : columnWidth(measure, baseTexts.map((cell) => ({ text: cell.text, font: statementFont })), { text: baseHeadText, font: statementFont });
@@ -1067,9 +1070,9 @@ export function layoutLikert(
   const statementTop = stacked ? stackStatements(geo, theme, statements, statementFont, statementLineH, margin.left, measure) : undefined;
   // Comparison brackets stand right of the bars, so the nets stay left of them.
   if (summary === 'net') netColumn(geo, theme, measure, opts, comparing ? -Infinity : tracks?.rights.net ?? canvas.width - margin.right - baseReserve, statementTop,
-    sharedBase === undefined ? undefined : chartString(opts, 'baseShared', { v1: trimNumber(sharedBase) }), tracks?.widths.net);
+    sharedBase === undefined ? undefined : chartString(opts, 'baseShared', { v1: baseFmt(sharedBase) }), tracks?.widths.net);
   // One shared base without a net column still prints once, in a head at the content edge.
-  if (sharedBase !== undefined && summary !== 'net') baseColumn(geo, theme, measure, canvas.width - margin.right, statementTop, [], chartString(opts, 'baseShared', { v1: trimNumber(sharedBase) }));
+  if (sharedBase !== undefined && summary !== 'net') baseColumn(geo, theme, measure, canvas.width - margin.right, statementTop, [], chartString(opts, 'baseShared', { v1: baseFmt(sharedBase) }));
   if (baseReserve > 0) baseColumn(geo, theme, measure, tracks?.rights.base ?? canvas.width - margin.right, statementTop, baseTexts, baseHeadText, { width: baseW, ...(baseOverride?.align ? { align: baseOverride.align } : {}), ...(baseOverride?.headAlign ?? baseOverride?.align ? { headAlign: baseOverride?.headAlign ?? baseOverride?.align } : {}) });
   // Stacked rows are measured here: bar measured bars without names. A row
   // holds its statement, the gap, a bar that holds a share, and air.
@@ -1164,10 +1167,10 @@ export function layoutLikert(
       knownBases.length === 0
         ? methodNote(chartString(opts, 'authoredSharesFull'), chartString(opts, 'authoredSharesBrief'))
         : knownBases.length === items.length && maxOf(knownBases) === minOf(knownBases)
-          ? methodNote(chartString(opts, 'likertBaseFull', { v1: trimNumber(knownBases[0]!) }),
-            chartString(opts, 'likertBaseBrief', { v1: trimNumber(knownBases[0]!) }))
-          : methodNote(chartString(opts, 'likertBasesFull', { v1: trimNumber(minOf(knownBases)), v2: trimNumber(maxOf(knownBases)) }),
-            chartString(opts, 'likertBasesBrief', { v1: trimNumber(minOf(knownBases)), v2: trimNumber(maxOf(knownBases)) })),
+          ? methodNote(chartString(opts, 'likertBaseFull', { v1: baseFmt(knownBases[0]!) }),
+            chartString(opts, 'likertBaseBrief', { v1: baseFmt(knownBases[0]!) }))
+          : methodNote(chartString(opts, 'likertBasesFull', { v1: baseFmt(minOf(knownBases)), v2: baseFmt(maxOf(knownBases)) }),
+            chartString(opts, 'likertBasesBrief', { v1: baseFmt(minOf(knownBases)), v2: baseFmt(maxOf(knownBases)) })),
     );
     // The neutral treatment and the base change how the bars read and
     // print unless requiredNotes turns them off, and so does the net column: a signed figure
@@ -1195,7 +1198,7 @@ export function layoutLikert(
             : chartString(opts, 'likertSideDesc', { v1: labelOf(neutralIndex), v2: neutralMode === 'positive' ? sideWords.positiveSide : sideWords.negativeSide });
     const rows = ordered
       .map((item) => {
-        const baseText = item.base === undefined ? chartString(opts, 'baseNotStated') : `n ${trimNumber(item.base)}`;
+        const baseText = item.base === undefined ? chartString(opts, 'baseNotStated') : `n ${baseFmt(item.base)}`;
         return chartString(opts, 'likertResponseDesc', { v1: item.label, v2: shareFmt(pctNegative[item.id]!), v3: sideWords.negative, v4: shareFmt(pctNeutral[item.id]!), v5: shareFmt(pctPositive[item.id]!), v6: sideWords.positive, v7: signedText(net[item.id]!), v8: baseText });
       })
       .join('. ');

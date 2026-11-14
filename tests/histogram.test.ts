@@ -390,7 +390,9 @@ describe('histogram disclosures', () => {
     expect(readerText(geometry).match(/bins of/g)).toHaveLength(1);
     // The note prints its numbers in the chart locale, as the bin labels do.
     const german = layoutHistogram({ observations: [0.1, 0.4, 0.6, 0.9, 1.2, 1.4] }, { ...SLIDE, bins: { width: 0.5, anchor: 0 }, methodNote: true, locale: { language: 'de-DE' } } as HistogramOptions);
-    expect(notes(german)).toContain('Klassen mit Breite 0,5 ab 0');
+    // The decimal mark follows the chart's number marks, as the edge labels print it.
+    // Before: "Klassen mit Breite 0,5 ab 0" beside the edge labels "0–0.5".
+    expect(notes(german)).toContain('Klassen mit Breite 0.5 ab 0');
   });
 
   it('keeps the sample base by default and says nothing about the opt-in method note ', () => {
@@ -653,8 +655,11 @@ describe('observations near 1e-6 keep readable edges and an honest note', () => 
     const labels = geometry.derived.binLabels;
     expect(new Set(labels).size).toBe(labels.length);
     // Below the four-decimal floor the edges and the note print two significant digits and a power of ten.
-    expect(labels[0]).toBe('1.0\u00a0×\u00a010⁻⁶–1.5\u00a0×\u00a010⁻⁶');
-    expect(notes(geometry)).toContain('4 bins of 5.0\u00a0×\u00a010⁻⁷ from 1.0\u00a0×\u00a010⁻⁶ (');
+    // Default number rule (no scientific notation by default): before "1.0 × 10⁻⁶–1.5 × 10⁻⁶".
+    expect(labels[0]).toBe('0.0000010–0.0000015');
+    // The note prints the width and the first edge through the edge set, so the first edge reads as its label.
+    // Before: "4 bins of 5.0 × 10⁻⁷ from 1.0 × 10⁻⁶ (".
+    expect(notes(geometry)).toContain('4 bins of 0.0000005 from 0.0000010 (');
   });
 
   // Edges that need more than four decimals must not all print one scientific label ("1.0 × 10⁻⁶") for 1e-11 bins.
@@ -738,7 +743,8 @@ describe('histogram boundaries and frequency', () => {
     const germanNotes = notes(german);
     // The method note carries the binning, so the German base text prints without it (default: base only).
     const base = layoutHistogram(data, { ...SLIDE, locale: { language: 'de' }, bins: { width: 0.5, anchor: 0 }, ...SHOW_NOTES });
-    expect(base.scene.filter((node) => node.part === 'footnote').map(node2text).join(' ')).toContain('Klassen der Breite 0,5, untere Grenze eingeschlossen · n = 6.');
+    // Before: "Klassen der Breite 0,5" beside the edge labels "0–0.5" (the chart's marks).
+    expect(base.scene.filter((node) => node.part === 'footnote').map(node2text).join(' ')).toContain('Klassen der Breite 0.5, untere Grenze eingeschlossen · n = 6.');
     expect(germanNotes).toContain('angegebene Klassenbreite');
     expect(germanNotes).not.toContain('bins of');
     // The restored axis caption draws the public binning-text override.

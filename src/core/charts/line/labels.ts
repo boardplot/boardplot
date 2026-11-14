@@ -915,9 +915,9 @@ export interface PointWouldShows {
 }
 
 /**
- * The texts the value labels of the drawn points would print, for the points
- * whose value has an authored format (on its cell, its series or the chart):
- * the record of a value without a drawn label reads its would-be text here.
+ * The texts the value labels of the drawn points would print: the record of a
+ * value without a drawn label reads its would-be text here, under an authored
+ * format and under the default number rule alike.
  * The label's own composer and arguments, its value part only. Nothing is
  * formatted until a reader asks: a layout runs several passes and keeps one.
  */
@@ -928,8 +928,7 @@ export function pointWouldShows(input: Omit<PointLabelInput, 'series' | 'row' | 
   /** The chart's number format (options.format). */
   format: string | undefined;
 }): PointWouldShows {
-  const authored = (series: NormSer, ci: number) => (series.vals[ci]?.format ?? series.format ?? input.format) !== undefined;
-  const any = input.composeShows !== undefined && input.drawnSeries.some((series) => series.vals.some((_, ci) => authored(series, ci)));
+  const any = input.composeShows !== undefined && input.drawnSeries.some((series) => series.vals.length > 0);
   const lastOf = new Map<NormSer, number | undefined>();
   const last = (series: NormSer, row: (number | null)[]) => {
     if (!lastOf.has(series)) {
@@ -941,7 +940,7 @@ export function pointWouldShows(input: Omit<PointLabelInput, 'series' | 'row' | 
   };
   const textsAt = (series: NormSer, ci: number): ShownTexts | undefined => {
     const row = input.pv[input.rowOf.get(series)!]!;
-    if (row[ci] === null || row[ci] === undefined || !authored(series, ci)) return undefined;
+    if (row[ci] === null || row[ci] === undefined) return undefined;
     const content: LabelContent = ['absolute'];
     const args = pointValueArgs({ ...input, series, row, content }, ci, last(series, row));
     return args.composeShows?.(content, ...args.values);

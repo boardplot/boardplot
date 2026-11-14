@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { NormalizeError } from '../../src/core/normalize/shared';
 import { MINUS } from '../../src/core/format';
-import { exampleSpec, formatNonzeroWithSpec, formatStatWithSpec, formatterFromExample, formatWithSpec, parseFormatExample, seriesRasterFormatter, setMagnitude, unitOfSpec } from '../../src/core/formatSpec';
+import { exampleSpec, formatNonzeroWithSpec, formatStatWithSpec, formatterFromExample, formatWithSpec, parseFormatExample, seriesRasterFormatter, unitOfSpec } from '../../src/core/formatSpec';
 
 describe('parseFormatExample', () => {
   it('"+1,234" → forced sign, comma grouping', () => {
@@ -176,7 +176,7 @@ it('reads spelled-out magnitude words as their abbreviation', () => {
   // A compound ('million-dollar') is a unit, not a scale.
   expect(formatterFromExample('1 million-dollar deals', 'en')(500)).toBe('500 million-dollar deals');
   // A unit in words names its scale as its abbreviation does: no engine "B" on top of "€ million".
-  expect(seriesRasterFormatter(undefined, [2.79e9], 'en', '€ million', 'report').fmt(2.79e9)).toBe('2,790,000,000');
+  expect(seriesRasterFormatter(undefined, [2.79e9], 'en', '€ million').fmt(2.79e9)).toBe('2,790,000,000');
 });
 
 // Prevents one axis from showing "$500.0 mn" beside "$1.0 billion": a unit-only format rolls within the spelling family of its unit.
@@ -251,27 +251,30 @@ it('holds an authored scale word, decimals and zero for every value', () => {
 // A set already at one magnitude lost its decimal under the set's magnitude: "108M · 101M" for "107.8M · 101.2M".
 it('keeps the decimals of a set whose values share one magnitude', () => {
   const values = [107.8e6, 101.2e6];
-  const raster = seriesRasterFormatter(undefined, values, 'en', undefined, 'report', undefined, true, setMagnitude(values, undefined, undefined, 'report'));
+  const raster = seriesRasterFormatter(undefined, values, 'en', undefined);
   expect(values.map(raster.fmt)).toEqual(['107.8M', '101.2M']);
 });
 
 // A label of four digits at the set's magnitude printed padded decimals: "1,540.00M" beside "57.50M", "3,048.0k".
-it('prints a label of 1,000 or more at the set magnitude whole', () => {
+// Under the default rule the set takes the rule's scale words with no padded decimals: "1.54B" beside "57.5M", and "0.17M" beside "3.05M".
+// Before: "1,540M · 57.50M · 43.00M · 10.80M · 9.48M", "3,048k · 2,022k · 167.7k".
+it('prints labels of 1,000 or more at the scale words of the rule, without padded decimals', () => {
   const at = (values: number[]) => {
-    const raster = seriesRasterFormatter(undefined, values, 'en', undefined, 'report', undefined, true, setMagnitude(values, undefined, undefined, 'report'));
+    const raster = seriesRasterFormatter(undefined, values, 'en', undefined);
     return values.map(raster.fmt);
   };
-  expect(at([1540e6, 57.5e6, 43e6, 10.8e6, 9.48e6])).toEqual(['1,540M', '57.50M', '43.00M', '10.80M', '9.48M']);
-  expect(at([3048e3, 2022.3e3, 167.7e3])).toEqual(['3,048k', '2,022k', '167.7k']);
+  expect(at([1540e6, 57.5e6, 43e6, 10.8e6, 9.48e6])).toEqual(['1.54B', '57.5M', '43.0M', '10.8M', '9.5M']);
+  expect(at([3048e3, 2022.3e3, 167.7e3])).toEqual(['3.05M', '2.02M', '0.17M']);
 });
 
 // Prevents an engine or table letter a German or French reader takes for another scale: "B" for Billion (10¹²).
 it('prints no bare B or T on a German or French chart without an authored word', () => {
-  expect(seriesRasterFormatter(undefined, [2.5e9], 'de', undefined, 'report').fmt(2.5e9)).toBe('2,5 Mrd.');
-  expect(seriesRasterFormatter(undefined, [2.5e9], 'fr', undefined, 'report').fmt(2.5e9)).toBe('2,5 Md');
-  expect(seriesRasterFormatter(undefined, [2.5e9], 'en', undefined, 'report').fmt(2.5e9)).toBe('2.5B');
-  // One German axis reads "500 Mio." under "1,0 Mrd.", not "500M".
-  expect(seriesRasterFormatter(undefined, [2.5e9, 5e8], 'de', undefined, 'report').fmt(5e8)).toBe('500 Mio.');
+  // The default rule takes the marks from the chart, not from Intl. Before: "2,5 Mrd.", "2,5 Md".
+  expect(seriesRasterFormatter(undefined, [2.5e9], 'de', undefined).fmt(2.5e9)).toBe('2.5 Mrd.');
+  expect(seriesRasterFormatter(undefined, [2.5e9], 'fr', undefined).fmt(2.5e9)).toBe('2.5 Md');
+  expect(seriesRasterFormatter(undefined, [2.5e9], 'en', undefined).fmt(2.5e9)).toBe('2.5B');
+  // One German set reads "0.5 Mrd." beside "2.5 Mrd.", not "500M": the smaller value joins the group of the larger. Before: "500 Mio.".
+  expect(seriesRasterFormatter(undefined, [2.5e9, 5e8], 'de', undefined).fmt(5e8)).toBe('0.5 Mrd.');
   // A table header unit keeps the short form's space: "$ Mio.", not "$Mio.".
   expect(unitOfSpec({ ...parseFormatExample('$1.0M'), magnitudeWord: undefined, locale: 'de' })).toBe('$ Mio.');
   expect(formatWithSpec(2.5e9, { ...parseFormatExample('1,0 Mio.'), locale: 'de' })).toBe('2,5 Mrd.');
@@ -290,7 +293,8 @@ it('keeps digits inside a unit name as text', () => {
   expect(formatterFromExample('$1M in 2020 prices', 'en')(5e6)).toBe('$5M in 2020 prices');
 });
 
-// Prevents an engine scale chosen before rounding: 999,999.7 beside billions printed "1,000.00k".
-it('chooses an engine magnitude after rounding', () => {
-  expect(seriesRasterFormatter(undefined, [2e9, 999_999.7], 'en', undefined, 'report').fmt(999_999.7)).toBe('1.00M');
+// Prevents padded decimals on a value that rounds up to the next scale word: 999,999.7 beside billions printed "1,000.00k".
+// The default rule chooses the scale word from the value before rounding, so it prints "1,000k". Before: "1.00M".
+it('chooses the scale word of a value before rounding', () => {
+  expect(seriesRasterFormatter(undefined, [2e9, 999_999.7], 'en', undefined).fmt(999_999.7)).toBe('1,000k');
 });

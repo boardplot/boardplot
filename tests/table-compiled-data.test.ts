@@ -4,9 +4,8 @@ import { getFixtures } from '../src/fixtures';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { registerTheme, resolveTheme } from '../src/core/theme';
 import { prepareChart } from '../src/react/prepare';
-import { prepareTableData, resolvePreparedTable, resolveTable, ZERO_LIFT } from '../src/core/charts/table/resolve';
+import { prepareTableData, resolvePreparedTable, resolveTable } from '../src/core/charts/table/resolve';
 import { AUTOMATIC_FORMAT, LABEL_ONLY_ROW, MAGNITUDE_GROUP, MAGNITUDE_FIGURES } from '../src/core/formatSpec';
-import { zeroLifts } from '../src/core/formatPrecision';
 import { withPlanInputs } from '../src/core/layoutPlan';
 import type { TableData, TableOptions } from '../src/core/types/table';
 
@@ -35,7 +34,8 @@ it('projects expansion from one accounting model and keeps public results owned'
   expect(second.table.rows[0]!.defaultExpanded).toBe(true);
   expect(second.table.rows[0]!.cells).toBe(first.table.rows[0]!.cells);
   expect(second.computedCells).toBe(first.computedCells);
-  expect(second.table.rows[0]!.cells.v).toMatchObject({ raw: 5, displayed: '5.0' });
+  // Default number rule: before "5.0".
+  expect(second.table.rows[0]!.cells.v).toMatchObject({ raw: 5, displayed: '5' });
   expect(second.warnings.map(w => w.code)).toEqual([
     'column-visibility-ref-unknown', 'expansion-ref-unknown', 'status-value-number',
   ]);
@@ -70,26 +70,6 @@ it('selects visibility-dependent formatting while retaining the accounting model
   expect(narrow.table.rows[0]!.cells.period!.displayed).not.toBe(full.table.rows[0]!.cells.period!.displayed);
   expect(narrow).toEqual(resolveTable(structuredClone(data), hidden));
   expect(resolvePreparedTable(model, shown)).toBe(full);
-});
-
-// Reusing prepared text must retain the small-value disclosure and each call's lift signal.
-it('replays zero lifts and keeps unlifted formatting in a separate variant', () => {
-  const data: TableData = {
-    columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'v', kind: 'value' }],
-    rows: [{ id: 'a', label: 'Small', cells: { v: 0.0000001 } }, { id: 'b', label: 'Large', cells: { v: 100 } }],
-  };
-  const before = zeroLifts.count;
-  const first = resolveTable(data);
-  const lifts = zeroLifts.count - before;
-  expect(lifts).toBeGreaterThan(0);
-  expect(first.lifted).toBe(true);
-  const again = zeroLifts.count;
-  expect(resolveTable(data)).toEqual(first);
-  expect(zeroLifts.count - again).toBe(lifts);
-  const unlifted = { [ZERO_LIFT]: 'none' as const } as TableOptions;
-  const model = prepareTableData(data);
-  expect(resolvePreparedTable(model, unlifted)).toEqual(resolveTable(structuredClone(data), unlifted));
-  expect(resolvePreparedTable(model, unlifted).table.rows[0]!.cells.v!.displayed).not.toBe(first.table.rows[0]!.cells.v!.displayed);
 });
 
 // Request normalization can produce equal fresh data objects for each theme or width retry.

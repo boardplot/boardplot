@@ -66,7 +66,8 @@ it('fits each line in its axis units, skips nulls and keeps the fitted range', (
   expect((points[1]!.x - points[0]!.x) / (points[2]!.x - points[0]!.x)).toBeCloseTo(1 / 11, 4);
   const line = dated.scene.find(n => n.id === 'trend:up');
   expect(line).toMatchObject({ t: 'line', x1: points[0]!.x, y1: points[0]!.y, x2: points[2]!.x, y2: points[2]!.y });
-  expect(sceneText(dated)).toContain('+2.0 per day');
+  // Default number rule: before "+2.0 per day".
+  expect(sceneText(dated)).toContain('+2 per day');
   expect(claimsForChart('line', dated).filter(c => c.op === 'ols-slope@2').map(c => c.output.raw)).toEqual([2, -1]);
   const categorical = { categories: ['p1', 'p2', 'p3', 'p4'].map(id => ({ id })), series: [{ id: 'up', values: [10, 12, null, 16] }] };
   expect(layoutLine(categorical, options).derived.trends?.[0]).toMatchObject({ slope: 2, n: 3, unit: 'period' });
@@ -135,12 +136,15 @@ it('prints the trend rate in the reporting period', () => {
 it('prints trend rates with their value units and calendar periods', () => {
   const categories = ['2021', '2022', '2023F'].map((label, i) => ({ id: `p${i}`, label, date: `${2021 + i}-01-01` }));
   const cases = [
-    { options: { unit: '$m' }, series: {}, expected: '+$2.0m per year' },
-    { options: {}, series: { unit: 'kg' }, expected: '+2.0 kg per year' },
+    // Default number rule: before "+$2.0m per year".
+    { options: { unit: '$m' }, series: {}, expected: '+$2m per year' },
+    // Default number rule: before "+2.0 kg per year".
+    { options: {}, series: { unit: 'kg' }, expected: '+2 kg per year' },
     { options: { unit: '$m', format: '1.0' }, series: {}, expected: '+$2.0m per year' },
     { options: { unit: '$', format: '$1.0' }, series: {}, expected: '+$2.0 per year' },
     { options: { unit: '%', format: '1.0%' }, series: {}, expected: '+2.0pp per year' },
-    { options: { unit: '€m', locale: { language: 'de' } }, series: {}, expected: '+2,0m\u00a0€ pro Jahr' },
+    // Default number rule: before "+2,0m € pro Jahr".
+    { options: { unit: '€m', locale: { language: 'de' } }, series: {}, expected: '+2m\u00a0€ pro Jahr' },
   ];
   for (const variant of ['line', 'area'] as const) for (const c of cases) {
     const out = layoutLine({ categories, series: [{ id: 'a', label: 'Output', values: [10, 12, 14], ...c.series }] },
@@ -151,14 +155,16 @@ it('prints trend rates with their value units and calendar periods', () => {
   const skipped = layoutLine({ categories: [{ id: 'FY2020', date: '2020-01-01' }, { id: 'FY2022', date: '2022-01-01' }, { id: 'FY2025F', date: '2025-01-01' }], series: [{ id: 'a', values: [10, 14, 20] }] },
     lineOptionsSchema.parse({ trend: true, unit: '$m', size: { width: 960, height: 540 } }));
   expect(skipped.derived.trends![0]).toMatchObject({ slope: expect.closeTo(2, 12), unit: 'year' });
-  expect(sceneText(skipped)).toContain('+$2.0m per year');
+  // Default number rule: before "+$2.0m per year".
+  expect(sceneText(skipped)).toContain('+$2m per year');
   const numeric = layoutLine({ categories: ['1000', '2000', '3000', '4000'].map(id => ({ id })), series: [{ id: 'a', label: 'Fuel use', values: [10, 12, 14, 16] }] },
     lineOptionsSchema.parse({ trend: true, unit: 'l', size: { width: 960, height: 540 } }));
   expect(numeric.derived.trends![0]).toMatchObject({ slope: expect.closeTo(2, 12), unit: 'period' });
   expect(sceneText(numeric)).toContain('per period');
   const scatter = layoutScatter({ points: [{ id: 'a', x: 1, y: 10 }, { id: 'b', x: 2, y: 12 }, { id: 'c', x: 3, y: 14 }] },
     { trend: true, unit: 'kg', size: { width: 960, height: 540 } });
-  expect(sceneText(scatter)).toContain('2.0 kg');
+  // Default number rule: before "2.0 kg".
+  expect(sceneText(scatter)).toContain('slope 2 kg');
 });
 
 describe('likert', () => {

@@ -5,7 +5,7 @@ import { labelOn as chartLabelOn } from '../labelOn';
 import { separationStroke } from '../../markVisibility';
 import { structureCount } from '../../structureCounts';
 import { cellMeta, cellValue, isPctCell } from '../../types/cell';
-import { formatNonzeroWithSpec, formatterFromExample, seriesRasterFormatter } from '../../formatSpec';
+import { defaultSetSpec, formatterFromExample, formatWithSpec, seriesRasterFormatter, type NumberFormatSpec } from '../../formatSpec';
 /**
  * Categorical status matrix. Rows and columns preserve authored order; every
  * binding emits a cell mark, including sparse bindings and unknown states,
@@ -194,9 +194,12 @@ export function layoutStatus(
   let missingState = EMPTY_STATE;
   while (stateById.has(missingState)) missingState = `_${missingState}`;
   const cellByBinding = new Map(cells.map((cell) => [`${cell.row}\u0000${cell.col}`, cell]));
-  // One raster for every value without its own format, as on the heatmap: "12.0" beside "13.4", not "12".
-  const raster = seriesRasterFormatter(options.format, cells.flatMap((cell) =>
-    cell.value === undefined || cellMeta(cell.value)?.format ? [] : [cellValue(cell.value)]), options.locale?.language, options.unit, options.target);
+  // One raster for every value without its own format, as on the heatmap. Without a chart format
+  // the number cells are one rule set and the percent cells a percent set of their own.
+  const unformatted = cells.flatMap((cell) => cell.value === undefined || cellMeta(cell.value)?.format ? [] : [cell.value]);
+  const raster = seriesRasterFormatter(options.format, unformatted.flatMap((value) => options.format || !isPctCell(value) ? [cellValue(value)] : []), options.locale?.language, options.unit);
+  const percentCells: NumberFormatSpec | undefined = options.format ? undefined
+    : { ...defaultSetSpec(unformatted.flatMap((value) => isPctCell(value) ? [cellValue(value)] : []), options.locale?.language, undefined, { kind: 'percent' }), suffix: '%' };
   const usedStateIds = new Set(
     cells.filter((cell) => stateById.has(cell.state)).map((cell) => cell.state),
   );
@@ -448,7 +451,7 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
   const namedCellHeights = labelOn('point') && !keyNamesStates ? cells.flatMap(binding => {
     const state = stateById.get(binding.state);
     if (!state) return [];
-    const value = binding.value === undefined ? undefined : valueForStatus(binding.value, raster, options.format !== undefined);
+    const value = binding.value === undefined ? undefined : valueForStatus(binding.value, raster, percentCells);
     const sizes = [state.label, ...(value ? [value] : [])].map(line => measure(line, cellFont));
     return Math.max(...sizes.map(size => size.width)) + 8 <= bindingWidth(binding.col)
       ? [sizes.reduce((height, size) => height + size.height, 0) + 4] : [];
@@ -508,7 +511,7 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
   const namesFit = (font: FontSpec) => cells.every(binding => {
     const state = stateById.get(binding.state);
     if (!state) return true;
-    const value = binding.value === undefined ? undefined : valueForStatus(binding.value, raster, options.format !== undefined);
+    const value = binding.value === undefined ? undefined : valueForStatus(binding.value, raster, percentCells);
     const lines = [state.label, ...(value ? [value] : [])];
     return Math.max(...lines.map(line => measure(line, font).width)) + 8 <= bindingWidth(binding.col)
       && lines.reduce((height, line) => height + measure(line, font).height, 0) + 4 <= cellH;
@@ -549,7 +552,7 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
         ...(state ? hatchOf(state) : {}),
         owner,
         part: 'cell',
-        display: { state: state?.label ?? chartString(options, 'noStatus'), ...(binding?.value !== undefined ? { value: valueForStatus(binding.value, raster, options.format !== undefined) } : {}) },
+        display: { state: state?.label ?? chartString(options, 'noStatus'), ...(binding?.value !== undefined ? { value: valueForStatus(binding.value, raster, percentCells) } : {}) },
       });
       // The edge is a separate closed path inside the fill. Its stroke cannot cover the cell gutter.
       // Reserve both possible edge widths even when this theme needs none, so repaint keeps its path.
@@ -564,7 +567,7 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
           ...separationOf(state), owner, part: 'cellOutline' });
       }
       occupied.claim(rect, 'mark', owner, 'cell');
-      const valueText = binding?.value === undefined ? undefined : valueForStatus(binding.value, raster, options.format !== undefined);
+      const valueText = binding?.value === undefined ? undefined : valueForStatus(binding.value, raster, percentCells);
       // A cell that holds its state's name prints it, so the state does
       // not rest on colour alone; small cells keep the key. A cell too small
       // for name and value prints the value alone: colour and key
@@ -732,7 +735,7 @@ const legendOptions = resolveLegendOptions(options, usedStates.length);
     if (value === undefined) continue;
     const row = rows.find(row => row.id === label.owner.seriesId)!;
     const column = columns.find(column => column.id === label.owner.categoryId)!;
-    label.noteText = `${row.label} / ${column.label}: ${valueForStatus(value, raster, options.format !== undefined)}`;
+    label.noteText = `${row.label} / ${column.label}: ${valueForStatus(value, raster, percentCells)}`;
   }
   pushAll(warnings, solved.warnings);
   for (const label of solved.placed) if (label.kind === 'series' && label.hidden === 'collision') {
@@ -987,12 +990,12 @@ function statePaints(states: readonly StatusState[], options: StatusOptions, the
   return { plain: (state) => paints.get(state.id) ?? full(state), full };
 }
 
-function valueForStatus(value: import('../../types/cell').Cell, format: ReturnType<typeof seriesRasterFormatter>, authored: boolean): string {
+/** A cell's text: its own format, else the chart format, else the rule set of its kind (`percentCells` for a percent cell). */
+function valueForStatus(value: import('../../types/cell').Cell, format: ReturnType<typeof seriesRasterFormatter>, percentCells: NumberFormatSpec | undefined): string {
   const raw = cellValue(value);
   if (raw === null) return '–';
   const meta = cellMeta(value);
   if (meta?.format) return formatterFromExample(meta.format, format.spec.locale)(raw);
-  if (authored) return format.fmt(raw);
-  // The shared raster never prints a nonzero value as 0: 0.004 beside 12 keeps its digits.
-  return formatNonzeroWithSpec(raw, isPctCell(value) ? { ...format.spec, suffix: '%', wholeFrom: undefined } : format.spec);
+  if (!percentCells) return format.fmt(raw);
+  return formatWithSpec(raw, isPctCell(value) ? percentCells : format.spec);
 }

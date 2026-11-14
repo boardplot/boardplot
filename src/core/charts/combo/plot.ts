@@ -1,7 +1,7 @@
 import { chartString } from '../../strings/combo';
 import { planLineStyle } from '../../planLineStyle';
 import { BAND_PAD, namedLineText, VALUE_LINE_RESERVE } from '../../annotateParts';
-import { formatterFromExample, sameUnit } from '../../formatSpec';
+import { defaultSetSpec, formatterFromExample, formatWithSpec, percentChangeSpec, RULE_SET, sameUnit, statisticFormatter } from '../../formatSpec';
 import { resolveSubtitle } from '../../normalize/shared';
 /**
  * Combo phase 1, second half: the paints, the frame (the legend is a
@@ -54,9 +54,8 @@ import { categoryRanksLint, FORCE_CATEGORY_RANKS, withCategoryRanks } from './ca
 import { comboValueLabels, endpointGutters, FIRST_END_BELOW_TOTALS, INSIDE_ENDPOINT_IDS, insideEndpointGutters, prepareComboEndpointTexts, type EndpointGutters } from './endpoints';
 import type { ForecastBoundary } from '../line/forecast';
 import { MARKER_R, type ComboArea, type ComboDomain, type ComboEnv, type ComboPaints, type GrowthItem, type NormSer } from './model';
-import { formatAutomaticNumber, formatAutomaticPercent, formatShare } from '../../format';
+import { formatShare } from '../../format';
 import { comboBandFraction, primaryLineMean, secondaryPrimaryRange, totalColumn } from './domain';
-import { autoDecimals } from '../../formatPrecision';
 import { valueShareLines } from '../band/labels';
 import { categoryLabelsAndMarks, withCategoryNoteNames } from '../../footnoteMark';
 import { anomalyLegendItems, anomalyRuleLines, anomalyRuleReserve, columnCorridorPaint } from '../column/anomaly';
@@ -87,9 +86,9 @@ const GROWTH_ONE_LINE_SHARE = 0.2;
  */
 function growthItems(domain: ComboDomain, lang: string | undefined): GrowthItem[] {
   const { cats, columns, lines, stackTotals, anyByCat } = domain;
-  const items: GrowthItem[] = [];
+  const items: (GrowthItem & { rate: number })[] = [];
   const label = (ci: number): string => cats[ci]!.label ?? cats[ci]!.id;
-  const growth = (values: (number | null)[], name: string): Omit<GrowthItem, 'seriesId' | 'axis' | 'ink'> | undefined => {
+  const growth = (values: (number | null)[], name: string): Omit<GrowthItem, 'seriesId' | 'axis' | 'ink'> & { rate: number } | undefined => {
     const at = values.flatMap((v, ci) => (v !== null && cats[ci]!.partial !== true ? [ci] : []));
     if (at.length < 2) return undefined;
     const a = at[0]!;
@@ -99,7 +98,7 @@ function growthItems(domain: ComboDomain, lang: string | undefined): GrowthItem[
     if (!(first > 0)) return undefined;
     const span = a === 0 && b === cats.length - 1 ? '' : `${label(a)}–${label(b)}`;
     const head = name.split(',')[0]!.trim();
-    return { text: formatAutomaticPercent((last / first - 1) * 100, 0, true, lang), name: [name, span].filter(Boolean).join(', '), short: [head, span].filter(Boolean).join(', '), last };
+    return { text: '', rate: (last / first - 1) * 100, name: [name, span].filter(Boolean).join(', '), short: [head, span].filter(Boolean).join(', '), last };
   };
   const line = lines.find((s) => s.axis === 'secondary' && s.kind === 'line');
   const lineGrowth = line && growth(line.vals.map((val) => val.v), line.label);
@@ -108,7 +107,9 @@ function growthItems(domain: ComboDomain, lang: string | undefined): GrowthItem[
     ? growth(cats.map((c, ci) => (anyByCat[ci] ? stackTotals[c.id]! : null)), columns.length === 1 ? columns[0]!.label : '')
     : undefined;
   if (columnGrowth) items.push({ seriesId: columns[0]!.id, ...columnGrowth, axis: 'primary', ink: 'inkMuted' });
-  return items;
+  // The growth rates are changes in percent: one signed set.
+  const spec = percentChangeSpec(items.map((item) => item.rate), lang, '%');
+  return items.map(({ rate, ...item }) => ({ ...item, text: formatWithSpec(rate, spec) }));
 }
 
 /**
@@ -774,7 +775,7 @@ export function comboPlotArea(
   });
   // The anomaly rules carry their numbers right of everything else, as on column.
   const anomalyReserve = domain.anomaly
-    ? anomalyRuleReserve(anomalyRuleLines(theme, domain.anomaly.model, domain.anomaly.corridorShown, domain.anomaly.statFmt, { token: 'warn' }, options.strings), labelFont, measure)
+    ? anomalyRuleReserve(anomalyRuleLines(theme, domain.anomaly.model, domain.anomaly.corridorShown, domain.anomaly, { token: 'warn' }, options.strings), labelFont, measure)
     : 0;
   // A right valueLine label reads on its line inside the plot (annotate.ts,
   // rightLineSeats); a gutter comes only from a pass that had to hide it.
@@ -788,7 +789,11 @@ export function comboPlotArea(
       : undefined;
     if (value === undefined) return [];
     const example = annotation.format ?? domain.options.format;
-    const fmt = example ? formatterFromExample(example, domain.options.locale?.language) : (v: number) => formatAutomaticNumber(v, { locale: domain.options.locale?.language, decimals: autoDecimals(v), signed: false });
+    // Without a format the label prints what the annotation pass prints: a typed value as a late
+    // value of the levels, a mean as a statistic set of its own.
+    const level = domain.valueSpec[RULE_SET] ? { ...domain.valueSpec, prefix: '', suffix: '', signed: false } : defaultSetSpec([value], domain.options.locale?.language, domain.options.unit);
+    const fmt = example ? formatterFromExample(example, domain.options.locale?.language)
+      : typeof annotation.value === 'number' ? (v: number) => formatWithSpec(v, level) : statisticFormatter([value], level);
     const span = domain.meanSpan({ from: annotation.from, to: annotation.to });
     const text = typeof annotation.label === 'string' ? namedLineText(annotation.label, fmt(value), value, annotation.id ?? '') : `${options.strings!.average} ${fmt(value)}${span ? ` (${span})` : ''}`;
     return [{ id: defaultAnnotationId(annotation, index), text, width: measure(text, valueLineFont).width + 8,

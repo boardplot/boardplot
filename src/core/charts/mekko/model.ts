@@ -53,6 +53,11 @@ export interface MekkoEnv {
   size: { width: number; height: number };
   measure: TextMeasurer;
   fmt: (v: number) => string;
+  /** Under the default rule: the formatter of a series' levels (its own set where it has its own unit). */
+  fmtFor?: (seriesId: Id) => (v: number) => string;
+  /** Under the default rule: the level set and the percent-cell set, for the ticks. */
+  levelSpec?: NumberFormatSpec;
+  pctCellSpec?: NumberFormatSpec;
   /** A value-axis tick: the engine's number, so `options.format` keeps its earlier rule on it (engineNumberSpec). */
   tickFmt: (v: number) => string;
   /** A column total: `fmt`, with the digits a nonzero total needs to stay off 0. */

@@ -169,7 +169,7 @@ function safeValue(value: InteractionValue, locale?: string): InteractionValue {
 /**
  * Render one comparison as the card's comparison row: the change and its
  * percent as the chart draws them (their shown texts), else the change through
- * the value's format, the percent at the exhibit's precision. A comparison that
+ * the value's format, the percent as a change set of one value. A comparison that
  * cannot be made (another axis, no reference value) has no row; the
  * record keeps it with its reason.
  */

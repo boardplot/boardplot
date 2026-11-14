@@ -210,7 +210,9 @@ describe('pvm decomposition', () => {
     const geometry = laid(0);
     const derived = geometry.derived as PvmDerived;
     const net = geometry.labels.find((label) => label.id === 'net:current');
-    const percent = ((derived.delta / derived.priorRevenue) * 100).toFixed(1).replace('-', '\u2212');
+    // Default number rule: before one fixed decimal ("+15.3%"). The change in percent prints two digits ("+15%").
+    const pct = (derived.delta / derived.priorRevenue) * 100;
+    const percent = pct.toFixed(Math.max(0, 1 - Math.floor(Math.log10(Math.abs(pct))))).replace('-', '\u2212');
     expect(net?.text).toContain(`(${derived.delta > 0 ? '+' : ''}${percent}%)`);
     expect(laid(0, { netChange: false }).labels.some((label) => label.id === 'net:current')).toBe(false);
   });

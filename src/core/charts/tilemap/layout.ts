@@ -3,7 +3,6 @@ import { chartTheme } from '../chartEnv';
 import { chartString } from '../../strings/tilemap';
 import { structureCount } from '../../structureCounts';
 import { authoredNotes, DEFAULT_NOTE_LIMIT, valueNoteLine, frameTextOptions, settledAutoHeight, legendRequired, noteCap, noteLine, solveFrame, SIDE_KEY_PLOT_SHARE, type FrameResult, type LegendItemInput, type NoteCapOptions } from '../../frame';
-import { formatAutomaticNumber } from '../../format';
 import { formatterFromExample } from '../../formatSpec';
 import type { Rect } from '../../geometry';
 // By name, not through the '../../geo' barrel, for the reason choropleth/layout.ts gives.
@@ -41,7 +40,7 @@ import type {
   TilemapOptions,
 } from './types';
 import { buildGeoScale, decimalsOf, geoLabelFont, quietLandPaint, ingestGeoRegions, type ScaleModel, geoStatePattern, geoStateLabel, geoStateLegend, geoStateSummary, geoStateCounts, geoScaleHints, KEY_BESIDE_GAIN } from '../geoScale';
-import { autoDecimals } from '../../formatPrecision';
+import { ruleFormatter } from '../../numberSets';
 import { compareText } from '../../text';
 import { geoOverlayDiameter, geoOverlayLegend, renderGeoOverlays, reserveGeoOverlayGlyphs } from '../choropleth/overlays';
 import type { GeoOverlay } from '../choropleth/overlayTypes';
@@ -168,10 +167,10 @@ function layoutTilemapPass(
   );
   const size = resolveSize(options.size);
   const measure = options.measure ?? defaultMeasurer;
+  const numericValues = [...valuesById.values()].filter((value): value is number => value !== null);
   const fmt = options.format
     ? formatterFromExample(options.format, options.locale?.language)
-    : (value: number) => formatAutomaticNumber(value, { locale: options.locale?.language, decimals: autoDecimals(value) });
-  const numericValues = [...valuesById.values()].filter((value): value is number => value !== null);
+    : ruleFormatter(numericValues, options.locale?.language, { unit: options.unit });
   if (numericValues.length === 0) {
     warnings.push({
       code: 'tilemap-no-values',

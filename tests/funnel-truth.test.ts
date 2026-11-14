@@ -210,11 +210,14 @@ describe('funnel truth contract', () => {
     expect(changedGeometry.a11y).toEqual(geometry.a11y);
   });
 
-  // A set one magnitude fits on main changed: "2M · 1M" printed "2,000k · 1,000k", because 999,999 rounds up to 1M.
-  it('keeps a set whose labels print at one magnitude', () => {
+  // 999,999 beside 2,000,000 printed "2,000k · 1,000k", because it rounds up to 1M. Each value takes the scale word of
+  // its own size before rounding, so the set prints "2.0M · 1,000k".
+  it('prints a value just below a million at the thousand scale beside millions', () => {
     const geometry = layout({ categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], series: [{ id: 's', values: [2000000, 999999] }] }, { target: 'report' });
-    expect(geometry.a11y.desc).toContain('A 2M');
-    expect(geometry.a11y.desc).toContain('B 1M');
+    // Before: "A 2M" and "B 1M". The rule prints "2.0M · 1,000k" for this set: 999,999 does
+    // not join the M group at one decimal.
+    expect(geometry.a11y.desc).toContain('A 2.0M');
+    expect(geometry.a11y.desc).toContain('B 1,000k');
   });
 
   // A series format printed "1.18B" on the bar, but the description switched to the set's "1,180M".

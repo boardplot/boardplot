@@ -85,10 +85,11 @@ export function lineText(env: LineEnv, domain: LineDomain): LineText {
   };
   const composeParts = (extra: number) => (content: LabelContent, abs: number | null, pct: number | null, catLabel: string, serLabel: string, unitSuffix = '', authoredPct = false, source?: NormSer, categoryId?: Id): [LabelContent[number], string][] => {
     const parts: [LabelContent[number], string][] = [];
-    const valueExtra = exactAt(source) ? 0 : extra;
+    // A value without a format prints its set text: only a share or an authored format lifts.
+    const valueExtra = exactAt(source) || !(source?.format ?? options.format) ? 0 : extra;
     const shareText = !authoredPct && source && categoryId !== undefined ? domain.shareTexts.get(`${categoryId}\0${source.id}`) : undefined;
     const lifted = (value: number, percent: boolean): string => {
-      const spec = seriesRasterFormatter(source?.format ?? options.format, domain.seriesNorm.flatMap(s => s.vals.map(v => v.v)), options.locale?.language, source?.unit ?? options.unit, options.target).spec;
+      const spec = seriesRasterFormatter(source?.format ?? options.format, domain.seriesNorm.flatMap(s => s.vals.map(v => v.v)), options.locale?.language, source?.unit ?? options.unit).spec;
       return formatWithSpec(value, { ...spec, decimals: Math.min(MAX_FORMAT_DECIMALS, spec.decimals + valueExtra),
         wholeFrom: undefined, currencyWhole: undefined, ...(percent && !source?.format && !options.format ? { suffix: '%' } : {}) });
     };
@@ -130,7 +131,7 @@ export function lineText(env: LineEnv, domain: LineDomain): LineText {
     if (value === null) return [];
     const cell = series.vals[ci]!;
     const source = domain.rebased ? undefined : cell.format ? { ...series, format: cell.format } : series;
-    if (!share && exactAt(source)) return [];
+    if (!share && (exactAt(source) || !(source?.format ?? options.format))) return [];
     return [{ value, format: (extra: number) => compose(extra)(share ? ['percent'] : ['absolute'], value, value, '', '', '', cell.isPct, source) }];
   }));
   const composeEndText = endExtra ? compose(endExtra) : composeText;

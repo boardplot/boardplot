@@ -13,6 +13,7 @@ import {
   type SolveCtx,
 } from '../../label/solver';
 import { NormalizeError } from '../../normalize/shared';
+import { ruleFormatter } from '../../numberSets';
 import { strokeToken, markRoleToken } from '../../theme';
 import type { FontSpec, TextMeasurer } from '../../text';
 import type { Id } from '../../types/cell';
@@ -457,7 +458,9 @@ function describeOverlay(overlay: GeoOverlay, options?: Pick<import('../../types
     return chartString(options, 'overlayStatusDesc', { v1: overlay.label, v2: chartString(options, ({good: 'toneGood', bad: 'toneBad', warn: 'toneWarn', neutral: 'toneNeutral', info: 'overlayInfo'} as const)[overlay.glyph.status]), v3: where });
   }
   if (overlay.glyph.kind === 'pie') {
-    return chartString(options, 'overlayPieDesc', { v1: overlay.label, v2: overlay.glyph.shares.map((share) => `${share.label} ${share.value}`).join(', '), v3: where });
+    // The pie's own values are one set.
+    const shareText = ruleFormatter(overlay.glyph.shares.map((share) => share.value), options?.locale?.language);
+    return chartString(options, 'overlayPieDesc', { v1: overlay.label, v2: overlay.glyph.shares.map((share) => `${share.label} ${shareText(share.value)}`).join(', '), v3: where });
   }
   if (overlay.glyph.kind === 'icon') {
     return chartString(options, 'overlayIconDesc', { v1: overlay.label, v2: overlay.glyph.name, v3: where });

@@ -33,7 +33,7 @@ export const metricStackDataSchema = z.strictObject({
     readout: z.union([z.literal('change'), z.strictObject({ base: id.describe('Base measure for the remaining-per-100 chain.') })]).describe('change compares grid windows; base computes a volume-weighted mature rate and remaining-per-100 span.'),
     emphasis: z.boolean().optional().describe('Use the theme accent. At most one panel may be emphasised.'),
     divisor: z.number().positive().optional().describe('Display divisor for sum marks and their change span, for example 1000. The headline percent is unitless.'),
-    decimals: z.number().int().min(0).max(6).optional().describe('Decimal places of the marks and the change span. Default 0 for counts and 1 for rates.'),
+    decimals: z.number().int().min(0).max(6).optional().describe('Decimal places of the marks and the change span. A panel with divisor and without decimals prints 0 for counts and 1 for rates; a panel with neither prints by the default number rule.'),
   })).min(2).max(5).describe('Two to five panels in top-down reading order.'),
   states: z.strictObject({
     maturing: z.strictObject({

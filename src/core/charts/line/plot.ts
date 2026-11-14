@@ -129,6 +129,13 @@ export function lineReserves(env: LineEnv, domain: LineDomain, paints: LinePaint
       contentOf: text.contentOf, drawnSeries, pv, rowOf, cats, rebased, composeText, composeEndText: text.composeEndText, absOf, measure, labelFont, highlights,
       sharesWithheld: domain.sharesWithheld, ...valueUnit(options, isBump, rebased), isStacked: domain.isStacked, flagged: flaggedPoints(domain), pointHighlights: env.pointHighlights,
       ...(domain.x ? { endToDate: { ids: lineToDateIds(env, domain, text), words: options.strings?.toDate ?? chartString(options, 'toDate'), theme: env.theme, measure } } : {}) });
+    // The fan's edge values print beside its last point in their own set: the room counts their texts as it counts a last value.
+    const fanEdge = domain.fan && !fanEdgeInKey(domain) && labelModes.values !== 'none' && text.contentOf('point', ['absolute']) !== null
+      ? outerFanEdge(domain, domain.fan.bands.map((band) => ({ low: band.low.id, high: band.high.id }))) : undefined;
+    if (fanEdge && fanEdge.ci === cats.length - 1) {
+      const fanText = domain.fanFmt ?? domain.fmt;
+      room.right = Math.max(room.right, Math.max(measure(fanText(fanEdge.low), labelFont).width, measure(fanText(fanEdge.high), labelFont).width) / 2 + PLOT_END_AIR);
+    }
     // Area labels fit inside their bands; their width does not inset the data.
     if (isArea) room.left = room.right = 0;
     // Selected endpoint markers keep their painted extent inside the plot, even with values hidden.
@@ -439,7 +446,7 @@ export function solveLineFrame(
       (options as { [VALUE_LINE_RESERVE]?: number })[VALUE_LINE_RESERVE] ?? 0,
       // The anomaly rules carry their numbers right of the plot, as on column.
       domain.anomaly
-        ? anomalyRuleReserve(anomalyRuleLines(theme, domain.anomaly.model, domain.anomaly.corridorShown, domain.anomaly.statFmt, { token: 'warn' }, options.strings), text.labelFont, measure)
+        ? anomalyRuleReserve(anomalyRuleLines(theme, domain.anomaly.model, domain.anomaly.corridorShown, domain.anomaly, { token: 'warn' }, options.strings), text.labelFont, measure)
         : 0),
   };
   const legend = lineLegend(theme, domain, paints, text, reserves, warnings, size.width);

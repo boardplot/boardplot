@@ -1,5 +1,4 @@
 import type { ClaimRecordV1 } from '../../claims/browser';
-import { formatAutomaticNumber, formatAutomaticPercent } from '../../format';
 import type { Geometry } from '../../types/scene';
 import type { CreativeDerived } from './layout';
 
@@ -16,18 +15,18 @@ function deltaClaims(geometry: Geometry<object, object>): ClaimRecordV1[] {
 }
 
 export function creativeClaims(geometry: Geometry<object, object>): ClaimRecordV1[] {
-  const fatigue = (geometry.derived as CreativeDerived).fatigue;
+  const { fatigue, fatigueTexts } = geometry.derived as CreativeDerived;
   const claims: ClaimRecordV1[] = deltaClaims(geometry);
   if (!fatigue.rule) return claims;
   for (const key of ['baseline', 'current'] as const) {
     const window = fatigue[key];
     if (window.mean !== null) claims.push({ id: `creative:fatigue:${key}`, kind: 'aggregate', op: 'mean@1',
-      inputs: window.inputs, output: { raw: window.mean, state: 'value', displayed: formatAutomaticNumber(window.mean, { decimals: 2 }) } });
+      inputs: window.inputs, output: { raw: window.mean, state: 'value', displayed: fatigueTexts?.[key] ?? '' } });
   }
   if (fatigue.changePct !== null) {
     const inputs = [{ ref: 'current-daily-mean', value: fatigue.current.mean }, { ref: 'baseline-daily-mean', value: fatigue.baseline.mean }];
     claims.push({ id: 'creative:fatigue:change', kind: 'derived', op: 'percentDelta@1', inputs,
-      output: { raw: fatigue.changePct, state: 'value', displayed: formatAutomaticPercent(fatigue.changePct, 1, true) } });
+      output: { raw: fatigue.changePct, state: 'value', displayed: fatigueTexts?.change ?? '' } });
     const nodeId = 'label:creative:fatigue:0';
     const node = geometry.scene.find(node => node.id === nodeId);
     claims.push({ id: 'creative:fatigue:flag', kind: 'derived', op: 'creative-fatigue@1',

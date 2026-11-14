@@ -364,6 +364,7 @@ function annotateColumn(
     measure: domain.measure,
     format: domain.options.format,
     locale: domain.options.locale?.language,
+    levelSpec: percentLevels(dataSeries) ? { ...domain.valueSpec.percentSpec, suffix: '' } : domain.valueSpec.spec,
     strings: domain.options.strings,
     percentLevels: percentLevels(dataSeries),
     sharesFormat: domain.variant === 'stacked100',

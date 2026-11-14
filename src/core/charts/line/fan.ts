@@ -1,6 +1,6 @@
 import { chartString, localeStrings } from '../../strings/line';
 import { stringFields } from '../../strings';
-import { defaultFormatSpec, formatWithSpec, type NumberFormatSpec } from '../../formatSpec';
+import { defaultFormatSpec, formatWithSpec, RULE_SET, type NumberFormatSpec } from '../../formatSpec';
 import type { StringsSpec } from '../../types/options';
 import { strokeToken, dashToken } from '../../theme';
 import { fanPaintSteps } from '../../colorRecipes';
@@ -263,7 +263,8 @@ interface FanPoint {
 function fanBoundText(lo: number, hi: number, fmt: (value: number) => string, spec: NumberFormatSpec): [string, string] {
   const a = fmt(lo);
   const b = fmt(hi);
-  if (a !== b || !(hi > lo)) return [a, b];
+  // The default rule reads no printed text: its bounds print as their set.
+  if (a !== b || !(hi > lo) || spec[RULE_SET]) return [a, b];
   // The bounds at the precision that tells them apart, in the chart's marks and the format's grouping.
   const plain = { ...defaultFormatSpec(spec.locale), thousandsSep: spec.thousandsSep };
   for (let digits = 1; digits <= 15; digits++) {

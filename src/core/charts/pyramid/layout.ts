@@ -36,7 +36,8 @@ import { structureCount } from '../../structureCounts';
 
 import { formatAutomaticPercent } from '../../format';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
-import { formatterFromExample, seriesRasterFormatter } from '../../formatSpec';
+import { formatterFromExample } from '../../formatSpec';
+import { ruleFormatter } from '../../numberSets';
 import { accessibleTitle, NormalizeError } from '../../normalize/shared';
 import { isPctCell, type Cell, type Id } from '../../types/cell';
 import type { ChartData } from '../../types/data';
@@ -107,8 +108,6 @@ export function layoutPyramid(
   data: PyramidData,
   options: PyramidOptions = {},
 ): Geometry<PyramidMarks, PyramidDerived> {
-  // A stated count prints through the shared raster: engine scale from 1e6, a small value lifted off 0.
-  const fmtCount = (v: number) => seriesRasterFormatter(undefined, [v], options.locale?.language, options.unit, options.target).fmt(v);
   const warnings: LintWarning[] = [];
   // ---- options this type refuses, before anything is derived ----
   const loose = options as PyramidOptions & {
@@ -210,6 +209,10 @@ export function layoutPyramid(
     totals[groupIds[1]] = totals[groupIds[1]]! + b;
   });
   const grandTotal = totals[groupIds[0]]! + totals[groupIds[1]]!;
+  // The counts are one set, as the bars print them. The totals the description prints are
+  // late values of that set: joining them would move the bars' scale word.
+  const countText = ruleFormatter([...counts[0], ...counts[1]], options.locale?.language, { unit: options.unit });
+  const fmtCount = (v: number) => countText(v);
 
   let shares: PyramidDerived['shares'];
   if (isShare) {

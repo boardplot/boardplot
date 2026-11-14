@@ -147,7 +147,8 @@ it('a calc that reads a change off a base that prints as 0 takes the change on t
     ],
   } as TableData);
   const shown = (id: string) => r.table.rows.find((x) => x.id === id)!.cells.m!.displayed;
-  expect([shown('chg'), shown('dbl')]).toEqual(['100.0%', '+200.0%']);
+  // Default number rule: a percent change row is a signed change set, before "100.0%".
+  expect([shown('chg'), shown('dbl')]).toEqual(['+100%', '+200.0%']);
   expect(r.computedCells.find((c) => c.rowId === 'dbl')!.state).toBe('value');
 });
 
@@ -172,25 +173,24 @@ describe('parents re-derive ratio-of-sums (gross-margin-proof)', () => {
     // Σgp/Σrev = 4.2/11.98 = 35.06% → ratio-of-sums; mean of margins ≈ 34.1%
     expect(margin.raw).toBeCloseTo((4.2 / 11.98) * 100, 1);
   });
-  it('leaf shares reconcile to exactly 100.0 as displayed', () => {
+  // Before: the leaf shares were moved by a largest-remainder step until they added to exactly 100.0.
+  // No table forces its shares to add to 100 any more: each share prints its own rounding.
+  it('leaf shares round on their own', () => {
     const r = resolveTable(benchmark());
-    const shown = r.table.rows
-      .filter((x) => x.level > 0)
-      .map((x) => Number(x.cells.share!.displayed.replace('%', '')));
-    expect(shown.reduce((a, b) => a + b, 0)).toBeCloseTo(100.0, 9);
+    const leaves = r.table.rows.filter((x) => x.level > 0);
+    expect(leaves.map((x) => x.cells.share!.displayed)).toEqual(leaves.map((x) => `${(x.cells.share!.raw as number).toFixed(1)}%`));
   });
 });
 
 // A cell format on a share dropped the largest-remainder override, so three equal shares printed 33.3% and summed to 99.9% beside a record that claimed 33.4%.
-it('leaf shares with a cell format of the column precision still reconcile to 100.0, and a record names what the cell prints', () => {
+it('leaf shares with a cell format of the column precision round on their own, and another precision prints its own rounding', () => {
   const data = (format: string): TableData => ({
     columns: [{ id: 'l', kind: 'rowLabel' }, { id: 'v', kind: 'value' }, { id: 'share', kind: 'computed', calc: { op: 'share', of: 'v' } }],
     rows: ['a', 'b', 'c'].map((id) => ({ id, cells: { v: 10, share: { format } } })),
   });
   const same = resolveTable(data('1.2%'));
-  expect(same.table.rows.map((row) => row.cells.share!.displayed)).toEqual(['33.4%', '33.3%', '33.3%']);
-  const adjustment = same.computedCells.find((c) => c.kind === 'rounding-adjustment')!;
-  expect(adjustment.displayed).toBe(same.table.rows.find((row) => row.id === adjustment.rowId)!.cells.share!.displayed);
+  // Default number rule: no forced share sum any more, before "33.4%", "33.3%", "33.3%" with a rounding-adjustment record.
+  expect(same.table.rows.map((row) => row.cells.share!.displayed)).toEqual(['33.3%', '33.3%', '33.3%']);
   // Another precision reconciles at no unit: the cell prints its own rounding and leaves no adjustment record.
   const other = resolveTable(data('1.23%'));
   expect(other.table.rows.map((row) => row.cells.share!.displayed)).toEqual(['33.33%', '33.33%', '33.33%']);
@@ -567,8 +567,9 @@ it('prints the author\'s table notes as notes, without a number', () => {
 });
 
 // A cell printed as the bound "<0.001" resolved as zero and took the zero styling, though it shows a nonzero amount.
-it('does not resolve a cell printed as a bound as zero', () => {
+it('does not resolve a tiny nonzero cell as zero', () => {
   const r = resolveTable({ columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'v', kind: 'value' }], rows: [{ id: 'a', cells: { v: 0.042 } }, { id: 'b', cells: { v: 0.00031 } }, { id: 'c', cells: { v: 0 } }] });
   const cell = (row: string) => r.table.rows.find((x) => x.id === row)!.cells.v!;
-  expect([cell('b').displayed, cell('b').zero, cell('c').zero]).toEqual(['<0.001', undefined, true]);
+  // Default number rule: before "<0.001".
+  expect([cell('b').displayed, cell('b').zero, cell('c').zero]).toEqual(['0.00031', undefined, true]);
 });

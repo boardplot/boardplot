@@ -119,9 +119,9 @@ Table rows with number columns and stacked bars. One panel when the rows compare
 | variant | string | `'panels'`, `'cascade'` |  | 'panels' (default): one stacked-bar panel per measure. 'cascade': share cascade, each panel splits its total; a row starts where the row above ended, on a light track over the total. The Total row is a dark bar. combinedShare draws a bracket over its rows, which must follow one another. Needs one segment, no ends, no nulls. |
 | cascade | object |  |  | Settings of variant 'cascade'; refused with variant 'panels'. |
 | cascade.totalApart | boolean |  |  | Row groups only. true (default): the Total bar deepens away from the group colours and the rest grey where the theme total colour reads as one of them. false: the Total bar keeps the theme total colour (color.total) as it is. |
-| cascade.share | boolean |  |  | Computed share column beside each panel; default true. rounding defaults to 'sum-consistent' here, so each adds up to 100%. |
+| cascade.share | boolean |  |  | Computed share column beside each panel; default true. Each share rounds on its own; rounding 'sum-consistent' makes each column add up to 100%. |
 | cascade.growth | object |  |  | Growth column after the last panel. |
-| cascade.growth.measure | string | `'cagr'`, `'share-change'` |  | 'cagr': each row's CAGR, first panel to last, in %. 'share-change': last share minus first, in pp. |
+| cascade.growth.measure | string | `'cagr'`, `'share-change'` |  | 'cagr': each row's CAGR, first panel to last, in %. 'share-change': last share minus first, in pp, from the received shares; the column prints two digits in every group of its changes (−7.8 · −0.43). |
 | cascade.growth.years | number |  |  | Years from first to last panel for 'cagr'; default read from the panel labels (2019, FY24). 'share-change' reads no years and warns option-ignored. |
 | cascade.growth.label | string |  |  | Column head; default from the panel labels. |
 | sharedScale | boolean |  |  | false: each panel its own scale. true: one scale, panel width follows its longest bar; weights refused. Default false, true under cascade. |

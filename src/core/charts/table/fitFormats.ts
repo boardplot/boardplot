@@ -15,6 +15,7 @@
  * an authored width asks for a shorter format.
  */
 
+import { RULE_FIT, type RuleFitSource } from '../../numberSets';
 import { AUTOMATIC_FORMAT, effectiveScale, formatWithSpec, MAGNITUDE_GROUP, type MagnitudeGroupSource, MAGNITUDE_DIVISOR, MAGNITUDE_LABEL, parseFormatExample, specUnitKind, unitOfSpec, type AutomaticFormatSource, type NumberFormatSpec } from '../../formatSpec';
 import type { FontSpec, TextMeasurer } from '../../text';
 import type { Id } from '../../types/cell';
@@ -24,7 +25,7 @@ import { nonzeroDecimals, roundHalfUp, roundsToZero, zeroLifts } from '../../for
 import { tableCellNodeId } from './cellKey';
 import { figureFont } from './tracks';
 import { columnOwnsFormat } from '../../tableCalc';
-import { resolveTable, ZERO_LIFT, type ZeroLiftOptions } from './resolve';
+import { columnFitSteps, resolveTable, ZERO_LIFT, type ZeroLiftOptions } from './resolve';
 import { maxOf, minOf } from '../../arrays';
 
 interface FitFormatsContext {
@@ -243,6 +244,12 @@ export function fitTableFormats(
   const fittedColumns = new Set<Id>();
   /** Cells whose own format this pass shortened, keyed `row\0column`. */
   const fittedCells = new Set<string>();
+  /** Columns without an authored format that took a width step of their set, and the width of the widest figure each step began from. */
+  const ruleFitted = new Set<Id>();
+  const fitWidths = new Map<Id, number>();
+  const ruleColumn = (column: (TableColumn & { format?: string }) | undefined): boolean => column !== undefined
+    && (column.kind === 'value' || column.kind === 'computed') && column.format === undefined && options.format === undefined
+    && options.magnitude !== 'million' && options.magnitude !== 'thousand';
   // Each round shortens every overflowing format one step, so the rounds are
   // bounded by the steps a format has: three decimals and three units.
   for (let round = 0; round < 8; round++) {
@@ -262,6 +269,8 @@ export function fitTableFormats(
     const figure = (map: Map<Id, number[]>, id: Id, value: number) => {
       if (value !== 0) map.set(id, [...(map.get(id) ?? []), Math.abs(value)]);
     };
+    /** The widest figure a column prints through its own set, by its measured width. */
+    const columnWidest = new Map<Id, { text: string; width: number }>();
     for (const column of columns(table)) {
       if (column.width === undefined || (column.kind !== 'value' && column.kind !== 'computed')) continue;
       const room = column.width - 2 * ctx.padX;
@@ -287,6 +296,7 @@ export function fitTableFormats(
         }
         figure(rowFigures, row.id, cell.raw);
         figure(columnFigures, column.id, cell.raw);
+        if (measured > (columnWidest.get(column.id)?.width ?? -1)) columnWidest.set(column.id, { text: cell.displayed, width: measured });
         // The spec the cell printed through: the row's own where it authored
         // one and the column did not (a calc row always), else the column's.
         const authoredRow = rowsById.get(row.id);
@@ -370,8 +380,27 @@ export function fitTableFormats(
       rowFormats.set(rowId, { ...shortened, format: exampleOf({ ...spec, decimals }) });
     }
     const columnFormats = new Map<Id, string>();
+    const columnFits = new Map<Id, number>();
     for (const columnId of columnOverflow) {
       if (exhausted.has(`col:${columnId}`)) continue;
+      const ownColumn = authoredColumns.get(columnId) as (TableColumn & RuleFitSource & { format?: string }) | undefined;
+      // A column without an authored format prints one set under the default rule: it takes the set's width steps
+      // one by one. A step that changes no text does not end the ladder; the column is exhausted after the last step.
+      // No step makes its widest figure wider: such a step goes back to the one before.
+      if (ruleColumn(ownColumn) && !rowFormattedColumn(columnId)) {
+        const step = ownColumn?.[RULE_FIT] ?? 0;
+        const width = columnWidest.get(columnId)?.width;
+        const before = fitWidths.get(columnId);
+        if (width !== undefined && before !== undefined && width > before) {
+          exhausted.add(`col:${columnId}`);
+          columnFits.set(columnId, step - 1);
+          continue;
+        }
+        if (width === undefined || step >= columnFitSteps(result, columnId)) { exhausted.add(`col:${columnId}`); continue; }
+        fitWidths.set(columnId, width);
+        columnFits.set(columnId, step + 1);
+        continue;
+      }
       // A column format outranks every data row's own format (resolve's
       // `specFor`). Written into a column whose rows read in their own
       // units, $M beside a count beside a percent, it would print them all
@@ -393,7 +422,8 @@ export function fitTableFormats(
       if (next === undefined) { exhausted.add(key); continue; }
       cellFormats.set(rowId, (cellFormats.get(rowId) ?? new Map<Id, string>()).set(columnId, exampleOf(next)));
     }
-    if (rowFormats.size === 0 && columnFormats.size === 0 && cellFormats.size === 0) break;
+    if (rowFormats.size === 0 && columnFormats.size === 0 && columnFits.size === 0 && cellFormats.size === 0) break;
+    for (const [columnId, step] of columnFits) { if (step > 0) ruleFitted.add(columnId); else ruleFitted.delete(columnId); }
     for (const rowId of rowFormats.keys()) fittedRows.add(rowId);
     for (const columnId of columnFormats.keys()) fittedColumns.add(columnId);
     for (const [rowId, formats] of cellFormats) for (const columnId of formats.keys()) fittedCells.add(`${rowId}\0${columnId}`);
@@ -402,6 +432,7 @@ export function fitTableFormats(
       ...current,
       columns: current.columns.map((column) => (columnFormats.has(column.id)
         ? { ...column, format: columnFormats.get(column.id)! } as TableColumn
+        : columnFits.has(column.id) ? Object.assign({ ...column }, { [RULE_FIT]: columnFits.get(column.id)! }) as TableColumn
         : column)),
       rows: cellFormats.size === 0 ? rows : withCellFormats(rows, cellFormats),
     };
@@ -451,7 +482,13 @@ export function fitTableFormats(
   const lifts = zeroFigureFormats(current, fitted.table, fittedRows, fittedColumns, fittedCells, decimal, options, data);
   if (lifts.size > 0) current = { ...current, rows: withCellFormats(current.rows, lifts) };
   if (lifts.size > 0 || (options as ZeroLiftOptions)[ZERO_LIFT] !== 'none') fitted = resolveTable(current, options, data);
-  return { data: current, resolved: fitted, changes: formatChanges(data, current, decimal) };
+  // A column that took width steps reports the text of its widest figure after the last one.
+  const ruleChanges: FormatFitChange[] = [...ruleFitted].flatMap((columnId) => {
+    const texts = fitted!.table.rows.flatMap((row) => { const cell = row.cells[columnId]; return cell?.state === 'value' && typeof cell.raw === 'number' && cell.format === undefined ? [{ raw: Math.abs(cell.raw), text: cell.displayed }] : []; });
+    const widest = texts.reduce<{ raw: number; text: string } | undefined>((best, item) => best === undefined || item.raw > best.raw ? item : best, undefined);
+    return widest === undefined ? [] : [{ column: columnId, to: widest.text }];
+  });
+  return { data: current, resolved: fitted, changes: [...formatChanges(data, current, decimal), ...ruleChanges] };
 }
 
 /** The `table-formats-fitted` info warning for the changes of one fit, or undefined where nothing changed. */

@@ -191,9 +191,9 @@ export const bartableOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOpt
   ),
   cascade: z.strictObject({
       totalApart: z.boolean().optional().describe("Row groups only. true (default): the Total bar deepens away from the group colours and the rest grey where the theme total colour reads as one of them. false: the Total bar keeps the theme total colour (color.total) as it is."),
-      share: z.boolean().optional().describe('Computed share column beside each panel; default true. rounding defaults to \'sum-consistent\' here, so each adds up to 100%.'),
+      share: z.boolean().optional().describe('Computed share column beside each panel; default true. Each share rounds on its own; rounding \'sum-consistent\' makes each column add up to 100%.'),
       growth: z.strictObject({
-        measure: z.enum(['cagr', 'share-change']).describe("'cagr': each row's CAGR, first panel to last, in %. 'share-change': last share minus first, in pp."),
+        measure: z.enum(['cagr', 'share-change']).describe("'cagr': each row's CAGR, first panel to last, in %. 'share-change': last share minus first, in pp, from the received shares; the column prints two digits in every group of its changes (−7.8 · −0.43)."),
         years: z.number().positive().optional().describe("Years from first to last panel for 'cagr'; default read from the panel labels (2019, FY24). 'share-change' reads no years and warns option-ignored."),
         label: z.string().trim().min(1).optional().describe('Column head; default from the panel labels.'),
       }).optional().describe('Growth column after the last panel.'),

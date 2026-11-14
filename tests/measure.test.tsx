@@ -141,7 +141,7 @@ describe('shared request measurement', () => {
     const request = (width: number) => ({ type: 'cohort', data: fixture.data, options: { ...fixture.options, size: { width } } });
     const { minWidth } = measure(request(960));
     const mode = (width: number) => measure(request(width)).geometry?.mode;
-    expect(minWidth).toBe(588);
+    expect(minWidth).toBe(558); // Default number rule: before 588, the cells print whole ("57.5" becomes "58").
     expect([mode(minWidth - 1), mode(minWidth)]).toEqual(['compact', 'full']);
   });
   // Prevents a compact floor where the chart does not draw at all, or above where it already draws: a slide

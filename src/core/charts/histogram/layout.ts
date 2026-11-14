@@ -37,11 +37,13 @@
  */
 
 import { chartString } from '../../strings/histogram';
-import { defaultNumberDecimals, MINUS, formatAutomaticNumber, shareSetFormatter } from '../../format';
+import { MINUS, shareSetFormatter } from '../../format';
 import { MAX_FORMAT_DECIMALS, nonzeroDecimals } from '../../formatPrecision';
 import {
   MAGNITUDE_DIVISOR,
+  RULE_SET,
   exampleSpec,
+  defaultSetSpec,
   defaultFormatSpec,
   formatWithSpec,
   formatterFromExample,
@@ -67,6 +69,9 @@ import { labelOn } from '../labelOn';
 import { TILED_BANDS } from '../column/plot';
 import { HOST_CLAIMS, withUnprintedClaims, type HostClaims } from '../../claims/ids';
 import { axisTitleAllowed } from '../../axis';
+import { ruleFormatter } from '../../numberSets';
+import { fixedRuleSet } from '../../numberRule';
+import { chartNumberMarks } from '../../numberMarks';
 import { localeStrings, stringFields } from '../../strings';
 import { AUTO_LEGEND, isAutomaticLegend } from '../../legendPolicy';
 import { authoredNotes, frameTextOptions, withAuthoredFootnotes } from '../../frame';
@@ -139,6 +144,8 @@ export function layoutHistogram(
   const strings = { ...localeStrings(options.locale?.language), ...options.strings };
   const observations = validateObservations(data);
   const n = observations.length;
+  // The sample size is a set of one; a count of part of the sample is a late value of it.
+  const sampleFmt = ruleFormatter([n], options.locale?.language);
   const sorted = sortAscending(observations);
   const min = sorted[0]!;
   const max = sorted[n - 1]!;
@@ -286,18 +293,24 @@ export function layoutHistogram(
     for (let decimals = 0; decimals <= MAX_FORMAT_DECIMALS; decimals++) {
       if (labelValues.every((edge) => Math.abs(Number(edge.toFixed(decimals)) - edge) <= tolerance)) return decimals;
     }
+    // The fewest decimals that keep every edge apart, read from the values.
     for (let decimals = 0; decimals <= MAX_FORMAT_DECIMALS; decimals++) {
-      const rendered = labelValues.map((edge) => formatAutomaticNumber(edge, { locale: options.locale?.language, decimals, automatic: false }));
-      if (new Set(rendered).size === rendered.length) return decimals;
+      if (new Set(labelValues.map((edge) => Number(edge.toFixed(decimals)))).size === new Set(labelValues).size) return decimals;
     }
     return MAX_FORMAT_DECIMALS;
   })();
-  const edgeText = (value: number, automatic: boolean) => formatAutomaticNumber(value, { locale: options.locale?.language, decimals: defaultNumberDecimals(value, edgeDecimals, options.unit, options.target), automatic });
-  // Distinct edges win over the automatic AUTO_MAX_DECIMALS cap, as on an axis (tickFormatter): 1e-11 bins near 1e-6 would all read "1.0 × 10⁻⁶".
-  const automaticEdges = new Set(labelValues.map((edge) => edgeText(edge, true))).size === new Set(labelValues).size;
-  const fmt = options.format
-    ? formatterFromExample(options.format, options.locale?.language, options.unit)
-    : (value: number) => edgeText(value, automaticEdges);
+  // Without a format the bin edges are positions on an axis: they print written out at the edge decimals, without a
+  // scale word or a scientific form, with the marks, prefix and suffix of the observation set.
+  const edgeSet = options.format ? undefined : defaultSetSpec(sorted, options.locale?.language, options.unit);
+  const edgeRule = edgeSet?.[RULE_SET];
+  const edgeAt = (decimals: number): NumberFormatSpec => ({ ...edgeSet!, [RULE_SET]: fixedRuleSet(edgeRule!, { scale: 0, decimals }) });
+  const edgeSpec = edgeSet ? edgeAt(edgeDecimals) : undefined;
+  // A zero edge prints at the edge decimals as every other edge does ("0.0" beside "0.5"); a set prints its zero as "0".
+  // The decimal mark is the chart's, as the rule prints the other edges ("0,0" beside "0,5" in a chart with ',' marks).
+  const zeroEdge = edgeSpec && edgeDecimals > 0 ? `${edgeSpec.prefix}0${chartNumberMarks(options.locale).decimal}${'0'.repeat(edgeDecimals)}${edgeSpec.suffix}` : undefined;
+  const fmt = edgeSpec
+    ? (value: number) => (value === 0 && zeroEdge !== undefined ? zeroEdge : formatWithSpec(value, edgeSpec))
+    : formatterFromExample(options.format!, options.locale?.language, options.unit);
   const edgeLabels = labelValues.map((edge) => fmt(edge));
 
   /**
@@ -307,9 +320,9 @@ export function layoutHistogram(
    * locale a German chart printed "0,0–0,5" bins and a note of "0.5".
    */
   // The note and the edges hold the example's scale ("0.0000005 Mio. from 1 Mio."); the precision search below keeps them nonzero.
-  const measureSpec: NumberFormatSpec = options.format
-    ? { ...exampleSpec(options.format, options.locale?.language, options.unit), nonzero: undefined }
-    : { ...defaultFormatSpec(options.locale?.language), decimals: edgeDecimals };
+  const measureSpec: NumberFormatSpec = edgeSpec ?? { ...exampleSpec(options.format!, options.locale?.language, options.unit), nonzero: undefined };
+  /** The measure's face at `decimals`: the note's own precision. */
+  const measureAt = (decimals: number): NumberFormatSpec => (edgeRule ? edgeAt(decimals) : { ...measureSpec, decimals });
   /**
    * The method note is the exhibit's receipt for its own binning: a reader
    * reconstructs every edge as `anchor + i x width`. At the display precision
@@ -332,20 +345,19 @@ export function layoutHistogram(
   // reader sees, at the example's magnitude: a width of 0.5 under a "Mio."
   // example is 5e-7 on the page, and the raw 0.5 passed as nonzero while
   // the note printed "0.00M".
-  const noteDecimalsFor = (value: number): number => {
-    for (let decimals = 0; decimals <= NOTE_MAX_DECIMALS; decimals++) {
-      if (roundedNumber(value, { ...measureSpec, decimals }) === value) return decimals;
+  // A first edge that stands under the bars prints no fewer decimals in the note than in its bin range,
+  // so the two read alike ("0.0000010" in both), and more only where the receipt needs them.
+  const anchorFrom = edgeSpec !== undefined && !perValue && labelValues[0] === binning.anchor ? edgeDecimals : 0;
+  const noteDecimalsFor = (value: number, from = 0): number => {
+    for (let decimals = from; decimals <= Math.max(NOTE_MAX_DECIMALS, from); decimals++) {
+      if (roundedNumber(value, measureAt(decimals)) === value) return decimals;
     }
-    return nonzeroDecimals(value / MAGNITUDE_DIVISOR[measureSpec.magnitude], Math.min(NOTE_MAX_DECIMALS, edgeDecimals + 1));
+    return nonzeroDecimals(value / MAGNITUDE_DIVISOR[measureSpec.magnitude], Math.max(from, Math.min(NOTE_MAX_DECIMALS, edgeDecimals + 1)));
   };
-  const noteSpecFor = (value: number): NumberFormatSpec => ({
-    ...measureSpec,
-    decimals: noteDecimalsFor(value),
-  });
-  const fmtNote = (value: number): string => formatWithSpec(value, noteSpecFor(value));
-  const noteExact = [binning.width, binning.anchor].every(
-    (value) => roundedNumber(value, noteSpecFor(value)) === value,
-  );
+  const noteSpecFor = (value: number, edge = false): NumberFormatSpec => measureAt(noteDecimalsFor(value, edge ? anchorFrom : 0));
+  const fmtNote = (value: number, edge = false): string => formatWithSpec(value, noteSpecFor(value, edge));
+  const noteExact = roundedNumber(binning.width, noteSpecFor(binning.width)) === binning.width
+    && roundedNumber(binning.anchor, noteSpecFor(binning.anchor, true)) === binning.anchor;
   // A negative edge carries a minus of its own, so the range dash gets spaces
   // ("−100 – −80", not "−100–−80"), on every bin of the exhibit.
   const rangeDash = edgeLabels.some((text) => text.startsWith(MINUS)) ? ' – ' : '–';
@@ -372,7 +384,7 @@ export function layoutHistogram(
     if (past.length >= 4 && nearlyEmpty * 2 > past.length && cut >= 3 && cut < k && binning.edges[cut]! <= low + 0.75 * (high - low)
       && above > 0 && above <= n / 20) {
       const value = binning.edges[cut]!;
-      const count = (value: number) => formatAutomaticNumber(value, { locale: options.locale?.language, decimals: 0 });
+      const count = sampleFmt;
       warnings.push({
         code: 'histogram-long-tail',
         severity: 'warn',
@@ -387,7 +399,7 @@ export function layoutHistogram(
    * open bin for the far tail gives the rest its finer bins back.
    */
   if (binning.autoCap) {
-    const count = (value: number) => formatAutomaticNumber(value, { locale: options.locale?.language, decimals: 0 });
+    const count = sampleFmt;
     const openAbove = cappedOpenAbove(binningInput, q3, membership.autoCap!.width);
     const above = openAbove === undefined ? 0 : n - sorted.findIndex((value) => value >= openAbove);
     warnings.push({
@@ -561,14 +573,14 @@ export function layoutHistogram(
     const rounding = noteExact ? '' : strings.histogramRounded;
     return `${withBase ? `${sampleBase} · ${binsText}${openClause === undefined ? '' : ` · ${openClause}`}. ` : ''}${openValue !== undefined
       ? chartString(options, 'histogramOpenMethod', {
-        v1: closedCount, v2: fmtNote(binning.width), v3: fmtNote(binning.anchor), v4: rule, v5: rounding, v6: fmt(openValue), v7: smallSample,
+        v1: closedCount, v2: fmtNote(binning.width), v3: fmtNote(binning.anchor, true), v4: rule, v5: rounding, v6: fmt(openValue), v7: smallSample,
       })
       : stringFields(strings.histogramMethod, {
-        count: k, width: fmtNote(binning.width), from: fmtNote(binning.anchor), rule, rounding, smallSample,
+        count: k, width: fmtNote(binning.width), from: fmtNote(binning.anchor, true), rule, rounding, smallSample,
       })}`;
   }
 
-  const sampleBase = `n = ${formatAutomaticNumber(n, { locale: options.locale?.language, decimals: 0 })}`;
+  const sampleBase = `n = ${sampleFmt(n)}`;
   const binsExact = roundedNumber(binning.width, noteSpecFor(binning.width)) === binning.width;
   const binsAuthored = strings.histogramBins !== localeStrings(options.locale?.language).histogramBins;
   const binsText = perValue && !binsAuthored
@@ -620,11 +632,13 @@ export function layoutHistogram(
     return counts.flatMap((count, index) => (index !== openIndex && count > 0 && (bars.get(binId(index))?.rect.h ?? 1) < 1 ? [index] : []));
   };
   const tailBins = belowInk(column);
+  // A count prints in the set of the bin counts, as the column labels print it.
+  const countFmt = ruleFormatter(counts, options.locale?.language, {});
   let tail: Annotation[] = [];
   if (tailBins.length > 0 && options.labels !== false) {
     tail = tailBins.slice(0, 3).map((index): Annotation => ({
       kind: 'callout', id: `tail-${binId(index)}`, at: binId(index), preferSide: 'above',
-      text: `${formatAutomaticNumber(counts[index]!, { locale: options.locale?.language, decimals: 0 })} in ${binLabels[index]}`,
+      text: `${countFmt(counts[index]!)} in ${binLabels[index]}`,
     }));
     const withTail = frequencyAxisShown
       ? delegateOptions(true, tail)
@@ -868,7 +882,7 @@ export function layoutHistogram(
     if (label.kind !== 'point') continue;
     const index = counts.findIndex((_, i) => binId(i) === label.owner.categoryId);
     if (index >= 0) label.noteText = `${countFormat ? formatterFromExample(countFormat, options.locale?.language)(counts[index]!)
-      : formatAutomaticNumber(counts[index]!, { locale: options.locale?.language, decimals: 0 })} (${binLabels[index]})`;
+      : countFmt(counts[index]!)} (${binLabels[index]})`;
   }
 
   // A count label is owned by its column bar; the bin's record (a11y/statisticsRecords.ts, histogram) takes its text.

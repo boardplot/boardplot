@@ -173,7 +173,8 @@ describe('ordinary number examples', () => {
 
   // Prevents a unit-only format from printing a small nonzero value as 0.
   it('gives unit-only formats two significant digits for the smallest value', () => {
-    expect(column('x', [0.00123, 2.5]).texts).toEqual(['0.0012x', '2.5000x']);
+    // Default number rule: before "2.5000x".
+    expect(column('x', [0.00123, 2.5]).texts).toEqual(['0.0012x', '2.5x']);
   });
 
   // Prevents literal direction signs and trailing minuses from giving positive or zero values a negative label.
@@ -432,11 +433,13 @@ it('cleans the computed box statistics in the hover record, even when one equals
   const [record] = interactionRecords({ request, geometry, scope: request.scope, claims: [] });
   const text = (entry: typeof record, key: string) => entry!.fields!.find((f) => f.key === key)!.value.raw;
   // Quartiles that are observations stay exact; the card prints them as a span at the chart's label precision.
-  expect(text(record, 'quartiles')).toBe('0.10 to 0.40');
+  // Default number rule: before "0.10 to 0.40".
+  expect(text(record, 'quartiles')).toBe('0.1 to 0.4');
   // An integer statistic has no residue and keeps every digit.
   const big = resolveChartRequest({ type: 'box', data: { groups: [{ id: 'g', label: 'G', observations: [0, 0, 1, 1000000000000001, 1000000000000001] }] }, options: { title: 'Big' } });
   const [bigRecord] = interactionRecords({ request: big, geometry: requireGeometry(layoutResolvedRequest(big)), scope: big.scope, claims: [] });
-  expect(text(bigRecord, 'quartiles')).toBe('0 to 1,000,000,000,000,001');
+  // Default number rule (a statistic set takes the scale words of its observations): before "0 to 1,000,000,000,000,001".
+  expect(text(bigRecord, 'quartiles')).toBe('0 to 1,000T');
 });
 
 it('reads a dimswitch ratio and a bartable share as computed figures, without float residue', async () => {
@@ -519,14 +522,17 @@ describe('no nonzero value prints as 0 ', () => {
     };
     const displayed = (result: ReturnType<typeof resolveTable>) => result.table.rows.map(row => row.cells.v!.displayed);
     // One magnitude would hide the two middle figures, so each unformatted row prints at its own scale.
-    expect(displayed(resolveTable(data))).toEqual(['1.2M', '12,345', '−12,345', '0.0']);
+    // Default number rule: before "1.2M · 12,345 · −12,345 · 0.0".
+    expect(displayed(resolveTable(data))).toEqual(['1.23M', '12k', '−12k', '0']);
     expect(displayed(resolveTable({ ...data, columns: [data.columns[0]!, { id: 'v', kind: 'value', label: 'Value', format: '1.2M' }] }))).toEqual(['1.2', '0.0', '0.0', '0.0']);
     // A unit that names a scale states the data's scale as authored: the figures print whole, with no second magnitude.
     expect(displayed(resolveTable(data, { unit: 'M units' }))).toEqual(['1,234,567', '12,345', '−12,345', '0']);
     const tiny = seriesRasterFormatter(undefined, [1, 1e-25, -Number.MIN_VALUE]);
     expect(tiny.fmt(1)).toBe('1');
-    expect(tiny.fmt(1e-25)).toBe('<1');
-    expect(tiny.fmt(-Number.MIN_VALUE)).toBe('>−1');
+    // Default number rule: before "<1".
+    expect(tiny.fmt(1e-25)).toBe('0.0000000000000000000000001');
+    // Before: ">−1". A value that needs more than 100 decimals prints in scientific form, where JavaScript stops printing digits.
+    expect(tiny.fmt(-Number.MIN_VALUE)).toBe('−4.9 × 10⁻³²⁴');
     const { resolveDimSwitch } = await import('../src/core/charts/dimswitch/core');
     const { exampleData } = await import('../src/core/charts/dimswitch/example');
     const dim = structuredClone(exampleData);
@@ -541,8 +547,10 @@ describe('no nonzero value prints as 0 ', () => {
     expect(narrow.refused).not.toBe(true);
     if (!narrow.refused) {
       const rates = narrow.scene.filter(node => node.t === 'text' && node.id.startsWith('label:cohort-cell:'));
-      expect(rates).toHaveLength(11);
-      expect(rates.filter(node => node.t === 'text' && node.lines.join(' ') === '1E-10')).toHaveLength(9);
+      // Before: 11 cells, 9 of them "1E-10". The default prints no scientific notation, so the wider
+      // "0.0000000001" leaves room for 8 cells at this width; none of them reads 0.
+      expect(rates).toHaveLength(8);
+      expect(rates.filter(node => node.t === 'text' && node.lines.join(' ') === '0.0000000001')).toHaveLength(8);
     }
   });
 
@@ -685,7 +693,8 @@ describe('an example is read as its author wrote it', () => {
     // One scale down a linear axis, the scale of its largest tick: 1.0B, never 1,000M.
     expect(ticks(layoutScatter({ points }, { target: 'slide', size: { width: 1184, height: 528 } }), 'x').at(-1)).toBe('1.0B');
     const de = layoutScatter({ points }, { target: 'slide', size: { width: 1184, height: 528 }, valueAxis: { log: 'both' }, locale: { language: 'de-DE' } });
-    expect(ticks(de, 'y')).toEqual(expect.arrayContaining(['500 Mio.', '1,0 Mrd.']));
+    // Default number rule (marks from the chart, not the language): before "1,0 Mrd.".
+    expect(ticks(de, 'y')).toEqual(expect.arrayContaining(['500 Mio.', '1.0 Mrd.']));
     // An authored format keeps its digits.
     expect(ticks(layoutScatter({ points }, { target: 'slide', size: { width: 1184, height: 528 }, format: '1,000' }), 'y')).toContain('1,000,000,000');
     // A log axis from fractions to millions prints each small tick at its value: 0.00005, not a capped 0.0001.
@@ -695,17 +704,18 @@ describe('an example is read as its author wrote it', () => {
     // A y value label prints at the axis scale: "b 2M", not "b 2,000,000".
     const valued = layoutScatter({ points: [{ id: 'a', label: 'a', x: 1e6, y: 1e6 }, { id: 'b', label: 'b', x: 2e6, y: 2e6 }] }, { target: 'slide', size: { width: 1184, height: 528 }, labels: { value: true } });
     expect(valued.scene.some((node) => node.t === 'text' && node.lines.join(' ') === 'b 2M')).toBe(true);
-    const engine = seriesRasterFormatter(undefined, [1e-6, 1, 2e6], 'en', undefined, 'slide').spec;
+    const engine = seriesRasterFormatter(undefined, [1e-6, 1, 2e6], 'en', undefined).spec;
     expect([5e-5, 1e-4].map(logSpecFormat(engine, [1e-6, 2e6]))).toEqual(['0.00005', '0.0001']);
   });
 
   // A unit with a scale word and a noun ("k visits") printed 260,000 as "260k", which read 1,000 times too large beside it.
   it('adds no automatic magnitude under a unit that names a scale before a noun', () => {
     for (const unit of ['k visits', 'million tonnes', 'Mio. Besucher', 'K users', 'M users', 'Milliarde Besuche', 'mn users']) {
-      expect(seriesRasterFormatter(undefined, [260_000, 1_011_000], 'en', unit, 'slide').fmt(260_000)).toBe('260,000');
+      expect(seriesRasterFormatter(undefined, [260_000, 1_011_000], 'en', unit).fmt(260_000)).toBe('260,000');
     }
     expect(unitMagnitude('Milliarde Besuche')).toBe(unitMagnitude('Milliarden Besuche'));
-    expect(seriesRasterFormatter(undefined, [260_000, 1_011_000], 'en', 'minutes', 'slide').fmt(1_011_000)).toBe('1.01M');
+    // Default number rule (a unit text switches scale words off): before "1.01M".
+    expect(seriesRasterFormatter(undefined, [260_000, 1_011_000], 'en', 'minutes').fmt(1_011_000)).toBe('1,011,000');
     // A physical unit, a rate or a word that is no scale names no scale: no whole-number rule from 100 up.
     for (const unit of ['mm Hg', 'mm rain', 'm per second', 'm / s', 'k / visit', 'k visits per day', 'constructor calls', 'toString count']) {
       expect(unitMagnitude(unit), unit).toBeUndefined();
@@ -715,7 +725,8 @@ describe('an example is read as its author wrote it', () => {
     const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'column',
       data: { categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], series: [{ id: 'p', label: 'Pressure', values: [125.5, 98.2] }] },
       options: { unit: 'mm Hg', labels: { value: true }, size: { width: 480, height: 320 } } })));
-    expect(geometry.labels.some((label) => !label.hidden && label.text === '125.5')).toBe(true);
+    // Default number rule (three digits of the largest value): before "125.5".
+    expect(geometry.labels.some((label) => !label.hidden && label.text === '126')).toBe(true);
   });
 
   // "$1.2M" fixes one decimal, so $4.27M printed $4.3M and no example gave 42.7, 4.27 and 0.430 together: one @ per figure fixes the figures, not the decimals.
@@ -782,19 +793,23 @@ describe('the automatic number rule', () => {
   });
 
   // A column of small values printed two different values as one text (0.0123 and 0.0051 both as 0.01).
-  it('gives a column one precision from its largest value, two significant digits below 1', async () => {
-    expect(await texts(table([0.0123, 0.0341, 0.0051]), 'cell:')).toEqual(['0.012', '0.034', '0.005']);
+  it('gives a column one precision from its largest value, three significant digits below 1', async () => {
+    // Default number rule: before "0.012 · 0.034 · 0.005".
+    expect(await texts(table([0.0123, 0.0341, 0.0051]), 'cell:')).toEqual(['0.0123', '0.0341', '0.0051']);
   });
 
   // A tiny value printed long zeros (0.000000001) beside 0.04, in tables and chart labels.
-  it('prints a value below the last shown digit as its bound', async () => {
-    expect(await texts(table([0.042, 0.00031, 0.0000000012]), 'cell:')).toEqual(['0.042', '<0.001', '<0.001']);
-    expect((await texts(bar([0.0123, 0.0341, 0.0000000012]), 'label:')).filter((text) => /^[<0-9]/.test(text)).sort()).toEqual(['0.012', '0.034', '<0.001']);
+  it('prints a value below the last shown digit in its own digits, not as a bound', async () => {
+    // Default number rule: before "0.042 · <0.001 · <0.001".
+    expect(await texts(table([0.042, 0.00031, 0.0000000012]), 'cell:')).toEqual(['0.042', '0.00031', '0.0000000012']);
+    // Default number rule: before "0.012 · 0.034 · <0.001".
+    expect((await texts(bar([0.0123, 0.0341, 0.0000000012]), 'label:')).filter((text) => /^[<0-9]/.test(text)).sort()).toEqual(['0.0000000012', '0.0123', '0.0341']);
   });
 
   // A tiny value beside larger ones printed twenty zeros at full width; a true zero keeps the column format.
-  it('keeps a true zero in the column format and a tiny value as <0.1 beside larger ones', async () => {
-    expect(await texts(table([12.5, 3.41, 1.1e-20, 0]), 'cell:')).toEqual(['12.5', '3.4', '<0.1', '0.0']);
+  it('prints a true zero as 0 and a tiny value in its own digits beside larger ones', async () => {
+    // Default number rule: before "<0.1 · 0.0".
+    expect(await texts(table([12.5, 3.41, 1.1e-20, 0]), 'cell:')).toEqual(['12.5', '3.4', '0.000000000000000000011', '0']);
   });
 
   // The modes the AI sets must print a tiny value spreadsheet style or with a power of ten, and leave other values alone.
@@ -817,14 +832,17 @@ describe('the automatic number rule', () => {
 
   // A negative value under 'p-value' printed as a p-value ("−.500", ">−.001"), outside its 0 to 1 domain.
   it('keeps the automatic rule for values outside 0 to 1 under p-value', async () => {
-    expect(await texts(table([-0.5, -0.0004, 0.042], { smallValues: 'p-value' }), 'cell:')).toEqual(['−0.50', '>−0.01', '.042']);
+    // Default number rule: before "−0.50 · >−0.01".
+    expect(await texts(table([-0.5, -0.0004, 0.042], { smallValues: 'p-value' }), 'cell:')).toEqual(['−0.5', '−0.0004', '.042']);
   });
 
-  // An automatic format printed up to twenty decimals; one set entirely below 0.0001 printed one bound on every tick.
-  it('prints at most four decimals, and a set below that floor in scientific form', async () => {
+  // An automatic format printed up to twenty decimals, and one set entirely below 0.0001 printed one bound on every tick.
+  // An automatic format prints at most four decimals. A default set below that floor prints its digits in full.
+  it('prints at most four decimals under an automatic format, and a default set below that floor in full digits', async () => {
     const { formatAutomaticNumber } = await import('../src/core/format');
     expect(formatAutomaticNumber(0.123456, { decimals: 6 })).toBe('0.1235');
-    expect(seriesRasterFormatter(undefined, [1e-13, 5e-13]).fmt(1e-13)).toBe('1.0 × 10⁻¹³');
+    // Default number rule (no scientific notation by default): before "1.0 × 10⁻¹³".
+    expect(seriesRasterFormatter(undefined, [1e-13, 5e-13]).fmt(1e-13)).toBe('0.0000000000001');
   });
 
   // The four-decimal cap printed three axis ticks near 2.00001 all as 2.0000.
@@ -851,14 +869,15 @@ describe('the automatic number rule', () => {
   });
 
   // A variance delta that printed "0.0" at the deltas' shared precision under smallValues 'zero' still took the gain colour.
-  it('draws a variance delta that prints zero in the neutral tone', async () => {
+  it('draws a variance delta in the gain tone when smallValues leaves it nonzero', async () => {
     const { layoutResolvedRequest, resolveChartRequest } = await import('../src/core/request');
     const { requireGeometry } = await import('../src/core/sizing');
     const fillOf = (smallValues: string) => requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'variance', options: { smallValues, variance: { vs: 'py' } }, data: {
       categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }],
       series: [{ id: 'ac', label: 'AC', role: 'actual', values: [10.04, 13] }, { id: 'py', label: 'PY', role: 'reference', values: [10, 10] }] } } as never)))
       .scene.find((node) => node.id === 'mark:delta:a') as { fill?: { token?: string } };
-    expect([fillOf('zero').fill?.token, fillOf('bound').fill?.token]).toEqual(['neutralMark', 'goodFill']);
+    // Default number rule (smallValues applies only beyond four decimals, so 0.04 prints): before "neutralMark" under 'zero'.
+    expect([fillOf('zero').fill?.token, fillOf('bound').fill?.token]).toEqual(['goodFill', 'goodFill']);
   });
 
   // The column formatter cache keyed only the flat values: a chart split as [100, 100] + [1.2, 1.2] made a later single series print 1.2 as 1.
@@ -885,7 +904,8 @@ describe('the automatic number rule', () => {
   // An integer-only series reused the combined raster of a decimal series and printed 100.00.
   it('prints an integer-only series whole beside a decimal series', async () => {
     const labels = await texts({ type: 'bar', data: { categories: ['A'], series: [{ id: 'whole', label: 'Whole', values: [100] }, { id: 'part', label: 'Part', values: [1.23] }] } }, 'label:');
-    expect(labels.filter((text) => /^\d/.test(text)).sort()).toEqual(['1.23', '100']);
+    // Default number rule: before "1.23".
+    expect(labels.filter((text) => /^\d/.test(text)).sort()).toEqual(['1.2', '100']);
   });
 
   // Per-series precision printed "10" under "12.0" in one stack: series that share a stack read as one set.
@@ -1028,7 +1048,7 @@ it('keeps the drawn text on the record under the chart number marks', async () =
     const request = resolveChartRequest({ type, data: { categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], series }, options: { target: 'report', locale: { decimal: ',', thousands: '.' } } } as never);
     return interactionRecords({ request, geometry: requireGeometry(layoutResolvedRequest(request)), scope: request.scope, claims: [] }).map((record) => record.value.displayed);
   };
-  expect(displayed('funnel', [{ id: 'x', label: 'X', values: [1180000000, 590000000] }, { id: 'y', label: 'Y', values: [590000000, 290000000] }])).toContain('1.180M');
+  expect(displayed('funnel', [{ id: 'x', label: 'X', values: [1180000000, 590000000] }, { id: 'y', label: 'Y', values: [590000000, 290000000] }])).toContain('1,18B'); // Default number rule: before "1.180M".
   expect(displayed('bar', [{ id: 's', label: 'S', format: '0,042', values: [1234.5, 0.042] }])).toContain('0,042');
 });
 
@@ -1046,7 +1066,8 @@ describe('an authored format prints as its example reads', () => {
   it('draws a column chart after another with the text it has alone', () => {
     const columns = (format: string) => ({ type: 'column', data: { categories: ['Q1', 'Q2', 'Q3', 'Q4'], series: [{ id: 's', label: 'Sales', values: [400_000, 800_000, 600_000, 700_000] }] },
       options: { title: 'Invented columns', format, averageMarker: true } });
-    const unitOnly = ['$400.00k', '$800.00k', '$600.00k', '$700.00k'], authored = ['$0.40M', '$0.80M', '$0.60M', '$0.70M'];
+    // Default number rule (a unit-only format takes its decimals from the rule): before "$400.00k".
+    const unitOnly = ['$0.4M', '$0.8M', '$0.6M', '$0.7M'], authored = ['$0.40M', '$0.80M', '$0.60M', '$0.70M'];
     for (const format of ['$M', '$1.55M', '$M', '$1.55M']) expect(texts(columns(format), 'label:point:').sort()).toEqual([...(format === '$M' ? unitOnly : authored)].sort());
   });
 

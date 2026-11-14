@@ -405,6 +405,7 @@ function annotateBar(
     measure: domain.measure,
     format: domain.options.format,
     locale: domain.options.locale?.language,
+    levelSpec: domain.valueSpec.spec,
     strings: domain.options.strings,
     sharesFormat: domain.variant === 'stacked100',
     valueLinePercentLevels: domain.variant === 'stacked100' || domain.options.unit === '%' || percentLevels(domain.dataSeries.map(series => ({ vals: series.cells }))),
@@ -1026,7 +1027,7 @@ function layoutRowIntervals(
   // Exhibit-wide format raster: tornado and football-field are
   // bar variants and share the family rule: style from the example, one
   // precision from the plotted values, range bounds included.
-  const valueSpec = seriesRasterFormatter(options.format, rowIntervalValues(data, options), options.locale?.language, options.unit, options.target);
+  const valueSpec = seriesRasterFormatter(options.format, rowIntervalValues(data, options), options.locale?.language, options.unit);
   const fmt = valueSpec.fmt;
   const labelOn = (kind: LabelKind): boolean =>
     barLabelOn(options, kind, ['category', 'valueLine']);

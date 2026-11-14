@@ -116,16 +116,15 @@ function indexNodes(ctx: RecordContext): Map<string, string[]> {
   return index;
 }
 
-/** A format the author set (chart, series or cell); a derived percent's share format is the engine's. */
-const authoredFormat = (value: InteractionValue): boolean => value.format !== undefined && value.derived !== 'percent';
-
 /**
  * Each record value takes the text the layout states for it (ShownTexts): the
- * text a drawn node prints for the value, else, under an authored format, the
- * text its label would print (a label the solver dropped, the value's own mark
- * where no label is drawn, or `geometry.marks.shown` where the value has no node). The layout names the value; nothing here
- * reads a number out of a text. A value without such a text keeps none. A
- * bound ("<0.001") does not state the number, so it is no shown text.
+ * text a drawn node prints for the value, else the text its label would
+ * print (a label the solver dropped, the value's own mark where no label is
+ * drawn, or `geometry.marks.shown` where the value has no node). A default
+ * format prints every value of a set by one rule, so an undrawn value reads
+ * as its set prints it. The layout names the value; nothing here reads a
+ * number out of a text. A value without such a text keeps none. A bound
+ * ("<0.001") does not state the number, so it is no shown text.
  */
 export function withShownTexts(records: InteractionRecord[], geometry: Geometry): InteractionRecord[] {
   const drawn = new Map<string, Record<string, string>>();
@@ -160,7 +159,7 @@ export function withShownTexts(records: InteractionRecord[], geometry: Geometry)
     if (!own && !undrawn.has(key) && !deferred) continue;
     const shown = (slot: string, value: InteractionValue): InteractionValue => {
       if (value.kind !== 'number' || value.state !== 'value' || value.displayed !== undefined) return value;
-      const text = own?.[slot] ?? (authoredFormat(value) ? wouldFor(key)?.[slot] : undefined);
+      const text = own?.[slot] ?? wouldFor(key)?.[slot];
       return text === undefined ? value : { ...value, displayed: text };
     };
     record.value = shown('value', record.value);
@@ -238,20 +237,26 @@ function exhibitPercentDecimals(scene: readonly SceneNode[]): number {
 }
 
 /**
- * Every computed percentage (a comparison's too) and every share in the
- * records takes the exhibit's percent precision in place of the flat two
- * decimals.
+ * Every computed percentage and every share in the records takes the
+ * exhibit's percent precision in place of the flat two decimals. The percent
+ * change of a comparison takes no format: where the chart does not draw it,
+ * the card prints it as a change set of one value (+14%).
  */
 export function withExhibitPercentFormat(records: InteractionRecord[], scene: readonly SceneNode[]): InteractionRecord[] {
   const format = percentExample(exhibitPercentDecimals(scene));
   const derived = (value: InteractionValue): InteractionValue =>
     value.derived === 'percent' && value.format === DERIVED_PERCENT_FORMAT ? { ...value, format } : value;
+  const change = (value: InteractionValue): InteractionValue => {
+    if (value.derived !== 'percent' || value.format !== DERIVED_PERCENT_FORMAT) return value;
+    const { format: _flat, ...unformatted } = value;
+    return unformatted;
+  };
   const share = (value: InteractionValue): InteractionValue =>
     value.unit === '%' && value.derived === undefined && value.format === undefined && value.state === 'value' ? { ...value, format } : derived(value);
   for (const record of records) {
     record.value = derived(record.value);
     record.fields = record.fields.map(entry => ({ ...entry, value: derived(entry.value) }));
-    record.comparisons = record.comparisons.map(comparison => ({ ...comparison, percent: derived(comparison.percent) }));
+    record.comparisons = record.comparisons.map(comparison => ({ ...comparison, percent: change(comparison.percent) }));
     if (record.share) record.share = { ...record.share, percent: share(record.share.percent) };
   }
   return records;

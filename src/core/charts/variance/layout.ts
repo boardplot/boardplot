@@ -39,8 +39,8 @@ import type { PaintWarningRule } from '../../types/scene';
 import type { AnchorResolution } from '../../annotate';
 import { percentLevels, runAnnotatePass } from '../../annotatePass';
 import { hiddenValueLineReserve, VALUE_LINE_RESERVE } from '../../annotateParts';
-import { defaultNumberDecimals, formatAutomaticNumber, formatAutomaticPercent, PERCENTAGE_POINTS, seriesValueFormatter } from '../../format';
-import { defaultFormatSpec, engineFormatterFromExample, engineNumberSpec, exampleSpec, formatterFromExample, formatWithSpec, parseFormatExample, roundedNumber, signedFormatterFromExample, specUnitKind } from '../../formatSpec';
+import { formatAutomaticPercent, PERCENTAGE_POINTS } from '../../format';
+import { defaultSetSpec, engineFormatterFromExample, engineNumberSpec, exampleSpec, formatterFromExample, formatWithSpec, joinedChangeSpec, parseFormatExample, percentChangeSpec, roundedNumber, signedFormatterFromExample, specUnitKind, type NumberFormatSpec } from '../../formatSpec';
 import { boxGap, cleanDiff, cleanFloat, cleanSum, type Rect } from '../../geometry';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { DEFAULT_TARGET, resolveTargetSize, TARGET_SIZE, type TargetSizeOptions } from '../../target';
@@ -106,7 +106,6 @@ import type {
   SceneNode,
   ShownTexts,
 } from '../../types/scene';
-import { autoDecimals, currentSmallValues, roundHalfUp, roundsToZero, valueSetDecimals } from '../../formatPrecision';
 import { isSingleVarianceTier, isVarianceTier } from '../../grid/varianceTiers';
 import { relativePointCandidates } from './pointLabels';
 import { categoryLabelsAndMarks } from '../../footnoteMark';
@@ -200,8 +199,6 @@ export function layoutVariance(
   );
   const size = resolveSize(options.size);
   const measure = options.measure ?? defaultMeasurer;
-  // Business default: whole numbers get 0 decimals; small non-integers keep
-  // one, so a 0.4 sliver never prints as "0". (waterfall's autoDecimals)
   const highlights = new Set(resolveHighlight(options.highlight));
   // A warm red or orange accent on a signed variance reads as a loss.
   const paintWarningRules: PaintWarningRule[] = highlights.size > 0 ? [{ kind: 'highlight-reads-as-loss', chart: 'variance', before: warnings.length }] : [];
@@ -426,15 +423,13 @@ export function layoutVariance(
     }
     return { ...spec, signed: true, suffix: spec.suffix || '%' };
   });
-  // One decimal count for the series (shared helper), so "+3.0%" stands beside "+2.6%", not "+3%".
-  // To a tenth, half away from zero as the formatter rounds: Math.round takes -1.25 to -1.2.
-  const tenths = (p: number): number => Math.sign(p) * Number(roundHalfUp(Math.abs(p), 1));
-  const pctDecimals = valueSetDecimals(dPctArr.flatMap((p) => (p === null || !Number.isFinite(p) ? [] : [tenths(p)])));
-  const pctSigned = (p: number, ci = 0): string => {
-    const spec = percentSpecs[ci];
-    if (spec) return formatWithSpec(p, spec);
-    return formatAutomaticPercent(tenths(p), pctDecimals, true, options.locale?.language);
-  };
+  // Without a format the sets follow the default number rule (docs/manual.md, Small values): the actual and
+  // plan values are one level set, an absolute delta joins it, signed, and a percent delta
+  // forms its own signed set.
+  const levelSpec = defaultSetSpec([...acArr, ...refArr], options.locale?.language, options.unit, percentData ? { kind: 'percent' } : {});
+  const deltaSpec = joinedChangeSpec(levelSpec, dAbsArr)!;
+  const pctChangeSpec = percentChangeSpec(dPctArr, options.locale?.language, '%');
+  const pctSigned = (p: number, ci = 0): string => formatWithSpec(p, percentSpecs[ci] ?? pctChangeSpec);
   const absoluteFormat = (ci: number): string | undefined => {
     const example = formats[ci];
     return mode === 'relative' && example && specUnitKind(parseFormatExample(example)) === 'percent' ? undefined : example;
@@ -443,10 +438,9 @@ export function layoutVariance(
   const printed = [...acArr, ...dAbsArr];
   const fmt = options.format
     ? formatterFromExample(options.format, options.locale?.language, undefined, printed)
-    : (v: number) => formatAutomaticNumber(v, { locale: options.locale?.language, decimals: autoDecimals(v) });
-  // The AC values and the signed deltas are two series: each takes one precision (seriesValueFormatter).
-  const acFmt = seriesValueFormatter(acArr, options.locale?.language);
-  const deltaFmt = seriesValueFormatter(dAbsArr, options.locale?.language);
+    : (v: number) => formatWithSpec(v, levelSpec);
+  const acFmt = (v: number): string => formatWithSpec(v, levelSpec);
+  const deltaFmt = (v: number, signed = false): string => formatWithSpec(v, signed ? deltaSpec : { ...deltaSpec, signed: false });
   const chartPlain = options.format ? formatterFromExample(options.format, options.locale?.language, options.unit, printed) : undefined;
   const chartSigned = options.format ? signedFormatterFromExample(options.format, options.locale?.language, options.unit, printed) : undefined;
   const absolute = (v: number, ci: number, signed = false): string => {
@@ -468,12 +462,10 @@ export function layoutVariance(
   // "-0.02%" shown as "0%" is no loss. The precision is the label's own,
   // read from the number: a digit in a unit affix cannot hide it.
   const absoluteSpecs = formats.map((_, ci) => absoluteFormat(ci) ? parseFormatExample(absoluteFormat(ci)!) : undefined);
-  // An automatic delta prints zero only under smallValues 'zero' at the deltas' shared precision; the other modes print a bound or digits.
-  const deltaDecimals = valueSetDecimals(dAbsArr.filter((d): d is number => d !== null && Number.isFinite(d)));
-  const deltaPrintsZero = (d: number): boolean => currentSmallValues() === 'zero' && roundsToZero(d, defaultNumberDecimals(d, deltaDecimals));
+  // An automatic delta prints zero only under smallValues 'zero'; the other modes print a bound or digits.
   const shownZero = (d: number, ci: number): boolean =>
-    mode === 'relative' ? (percentSpecs[ci] ? roundedNumber(d, percentSpecs[ci]) === 0 : tenths(d) === 0)
-      : absoluteSpecs[ci] ? roundedNumber(d, absoluteSpecs[ci]) === 0 : deltaPrintsZero(d);
+    mode === 'relative' ? roundedNumber(d, percentSpecs[ci] ?? pctChangeSpec) === 0
+      : roundedNumber(d, absoluteSpecs[ci] ?? deltaSpec) === 0;
   const toneOf = (d: number, ci = 0): 'good' | 'bad' | 'neutral' =>
     d === 0 || shownZero(d, ci) ? 'neutral' : (d > 0) === (direction === 'higherIsBetter') ? 'good' : 'bad';
   // A bar or cap is a large fill and takes the signed fill role (`fill`),
@@ -722,17 +714,21 @@ export function layoutVariance(
   const stepped = applyTickStep([dLo, dHi], shownTickStep(va.tickStep, va.show === true, warnings), warnings);
   [dLo, dHi] = stepped.domain;
 
+  // Without a format the ticks follow the tick rule over the axis's set:
+  // the percent deltas in relative mode, else the levels with their deltas.
+  const ruleAxisSpec: NumberFormatSpec | undefined = options.format ? undefined : mode === 'relative' ? { ...pctChangeSpec, signed: false }
+    : { ...deltaSpec, signed: false, ...(percentDifferences || integratedPercent ? { prefix: '', suffix: percentDifferences ? PERCENTAGE_POINTS : '%' } : {}) };
   // A tick is the engine's number: an authored format keeps its earlier rule on it (engineNumberSpec).
   const tickFmt = options.format ? engineFormatterFromExample(options.format, options.locale?.language, undefined, printed) : fmt;
-  const axisFmt = mode === 'relative' ? (v: number) => formatAutomaticPercent(v, 0, false, options.locale?.language)
+  const axisFmt = ruleAxisSpec ? (v: number) => formatWithSpec(v, ruleAxisSpec) : mode === 'relative' ? (v: number) => formatAutomaticPercent(v, 0, false, options.locale?.language)
     : percentDifferences || integratedPercent ? (v: number) => options.format
       ? formatWithSpec(v, { ...engineNumberSpec(exampleSpec(options.format, options.locale?.language)), prefix: '', suffix: percentDifferences ? PERCENTAGE_POINTS : '%' })
-      : formatAutomaticNumber(v, { locale: options.locale?.language, decimals: autoDecimals(v), suffix: percentDifferences ? PERCENTAGE_POINTS : '%' }) : tickFmt;
-  const stepSpec = stepped.ticks ? {
-    ...(options.format ? exampleSpec(options.format, options.locale?.language) : defaultFormatSpec(options.locale?.language)),
+      : formatWithSpec(v, ruleAxisSpec!) : tickFmt;
+  const stepSpec = ruleAxisSpec ?? (stepped.ticks ? {
+    ...exampleSpec(options.format!, options.locale?.language),
     ...(mode === 'relative' || percentDifferences || integratedPercent
       ? { prefix: '', suffix: percentDifferences ? PERCENTAGE_POINTS : '%' } : {}),
-  } : undefined;
+  } : undefined);
   const axisReserve = va.show ? measureValueAxisWidth([dLo, dHi], axisFmt, theme, measure, 5, stepSpec, stepped.ticks) : 0;
   const plotX0 = frameResult.plot.x + axisReserve;
   const plotW0 = va.show ? Math.max(10, frameResult.plot.w - axisReserve) : frameResult.plot.w;
@@ -1506,6 +1502,7 @@ export function layoutVariance(
     measure,
     format: options.format,
     locale: options.locale?.language,
+    levelSpec: levelSpec,
     strings: options.strings,
     valueLinePercentLevels,
     valueLineUnit: percentDifferences ? PERCENTAGE_POINTS : integratedPercent ? '%' : undefined,

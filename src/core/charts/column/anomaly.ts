@@ -15,6 +15,7 @@ import { structureCount, type StructureCount } from '../../structureCounts';
 import { spread1DResult } from '../../collide';
 import type { LegendItemInput } from '../../frame';
 import { formatAutomaticNumber } from '../../format';
+import type { RuleStatistics } from '../../formatSpec';
 import { rectContains, round2, type Rect } from '../../geometry';
 import type { OccupiedIndex } from '../../label/occupied';
 import type { LabelRequest } from '../../label/solver';
@@ -163,6 +164,11 @@ function boundFormatter(statFmt: (v: number) => string): (v: number) => string {
   };
 }
 
+/** Both corridor bounds through one printer: under the default rule the two bounds are one statistic set. */
+function corridorTexts(fmt: (v: number) => string, low: number, high: number): { low: string; high: string } {
+  return { low: fmt(low), high: fmt(high) };
+}
+
 /** The flag test and its sentence: MAD modified z against k, or authored bounds. */
 function anomalyRule(
   anomalySpec: AnomalySpec,
@@ -172,6 +178,7 @@ function anomalyRule(
   warnings: LintWarning[],
   words: ReturnType<typeof localeStrings>,
   locale?: string,
+  ruleStats?: RuleStatistics,
 ): AnomalyDerived & { counts: StructureCount[] } {
   const values = present.map((p) => p.value);
   const n = values.length;
@@ -247,13 +254,15 @@ function anomalyRule(
         rule = stringFields(words.anomalyMadRule, {
           k: plainFmt(k), factor: plainFmt(MAD_SIGMA), mad: statFmt(mad),
           centre: stringFields(baseline === 'zero' ? words.anomalyCentreZero : words.anomalyCentreMedian, { median: statFmt(dataMedian) }),
-          low: boundFormatter(statFmt)(corridorLow), high: boundFormatter(statFmt)(corridorHigh), count: n,
+          ...corridorTexts(ruleStats ? ruleStats.set([corridorLow, corridorHigh]) : boundFormatter(statFmt), corridorLow, corridorHigh), count: n,
         });
       }
     }
   } else {
     const low = anomalySpec.low;
     const high = anomalySpec.high;
+    // Authored bounds are values in no set: under the default rule they print as late values of the level set.
+    const authoredBound = ruleStats?.level ?? statFmt;
     corridor = { low: low ?? null, high: high ?? null };
     for (const p of present) {
       if ((low !== undefined && p.value < low) || (high !== undefined && p.value > high)) {
@@ -262,8 +271,8 @@ function anomalyRule(
     }
     counts = [structureCount('observations', n, `n = ${n}`)];
     rule = stringFields(words.anomalyThresholdRule, {
-      bounds: low !== undefined && high !== undefined ? stringFields(words.outsideBounds, { low: statFmt(low), high: statFmt(high) })
-        : stringFields(low !== undefined ? words.belowBound : words.aboveBound, { value: statFmt(low ?? high!) }),
+      bounds: low !== undefined && high !== undefined ? stringFields(words.outsideBounds, { low: authoredBound(low), high: authoredBound(high) })
+        : stringFields(low !== undefined ? words.belowBound : words.aboveBound, { value: authoredBound(low ?? high!) }),
       count: n,
     });
   }
@@ -348,13 +357,14 @@ export function columnAnomalyModel(
   locale: string | undefined,
   warnings: LintWarning[],
   strings?: StringsSpec,
+  rule?: RuleStatistics,
 ): { anomaly: AnomalyModel; values: number[] } {
   const present: { categoryId: Id; value: number }[] = [];
   cats.forEach((c, ci) => {
     const v = absOf(series, ci);
     if (v !== null && Number.isFinite(v)) present.push({ categoryId: c.id, value: v });
   });
-  return anomalyModel(anomalySpec, present, fmt, statFmt, locale, warnings, strings);
+  return anomalyModel(anomalySpec, present, fmt, statFmt, locale, warnings, strings, rule);
 }
 
 /**
@@ -369,6 +379,7 @@ export function anomalyModel(
   locale: string | undefined,
   warnings: LintWarning[],
   strings?: StringsSpec,
+  rule?: RuleStatistics,
 ): { anomaly: AnomalyModel; values: number[] } {
   // k and the 1.4826 factor are DIMENSIONLESS: running them through `fmt`
   // would print "€3.5m" for a threshold on a currency-formatted chart.
@@ -389,7 +400,7 @@ export function anomalyModel(
     return formatAutomaticNumber(v, { locale, decimals });
   };
   const values = present.map((p) => p.value);
-  const ruled = anomalyRule(anomalySpec, present, statFmt, plainFmt, warnings, { ...localeStrings(locale), ...strings }, locale);
+  const ruled = anomalyRule(anomalySpec, present, statFmt, plainFmt, warnings, { ...localeStrings(locale), ...strings }, locale, rule);
   anomalyFlagWarnings(present, ruled.usable, ruled.flags, fmt, warnings);
   const anomaly: AnomalyModel = {
     ...ruled,
@@ -446,8 +457,14 @@ export function anomalyCorridor(
   statFmt: (v: number) => string,
   warnings: LintWarning[],
   strings?: StringsSpec,
-): { corridorShown: { low: boolean; high: boolean }; corridorNote: string } {
+  rule?: RuleStatistics,
+): { corridorShown: { low: boolean; high: boolean }; corridorNote: string; corridorFmt: (v: number) => string } {
   const corridorShown: { low: boolean; high: boolean } = { low: false, high: false };
+  // The bounds' printer, for the rule sentence, the drawn labels and their hover values alike:
+  // authored bounds in the level set, computed bounds as one statistic set.
+  const corridorFmt = rule && anomaly?.corridor
+    ? (anomaly.method === 'threshold' ? rule.level : rule.set([anomaly.corridor.low ?? Number.NaN, anomaly.corridor.high ?? Number.NaN].filter(Number.isFinite)))
+    : boundFormatter(statFmt);
   /**
    * The on-exhibit trace for a suppressed corridor rule.
    * a suppression leaves a mark where the reader would look, and the reader
@@ -464,13 +481,14 @@ export function anomalyCorridor(
     corridorShown.high = inDomain(anomaly.corridor.high);
     const offscale: number[] = [];
     const missing: string[] = [];
+    const boundFmt = corridorFmt;
     if (anomaly.corridor.low !== null && !corridorShown.low) {
       offscale.push(anomaly.corridor.low);
-      missing.push(stringFields(words.lowerBound, { value: boundFormatter(statFmt)(anomaly.corridor.low) }));
+      missing.push(stringFields(words.lowerBound, { value: boundFmt(anomaly.corridor.low) }));
     }
     if (anomaly.corridor.high !== null && !corridorShown.high) {
       offscale.push(anomaly.corridor.high);
-      missing.push(stringFields(words.upperBound, { value: boundFormatter(statFmt)(anomaly.corridor.high) }));
+      missing.push(stringFields(words.upperBound, { value: boundFmt(anomaly.corridor.high) }));
     }
     if (offscale.length > 0) {
       // A blanket claim such as "no period comes near it" can be false — a bound
@@ -504,7 +522,7 @@ export function anomalyCorridor(
       corridorNote = stringFields(words.undrawnBounds, { bounds: missing.join(` ${words.and} `) });
     }
   }
-  return { corridorShown, corridorNote };
+  return { corridorShown, corridorNote, corridorFmt };
 }
 
 /** The model without its lookup map: the record `derived.anomaly` carries. */
@@ -538,6 +556,8 @@ interface AnomalyRuleLine {
   width: number;
   paint: Paint;
   label: string;
+  /** The rule's number, for its hover value: the label's text without the label's words. */
+  text: string;
 }
 
 /** The corridor bounds the value axis reaches and, under baseline 'median', the median. Column, line and combo. */
@@ -545,23 +565,26 @@ export function anomalyRuleLines(
   theme: Theme,
   anomaly: AnomalyModel,
   corridorShown: { low: boolean; high: boolean },
-  statFmt: (v: number) => string,
+  fmts: { statFmt: (v: number) => string; corridorFmt: (v: number) => string },
   corridorPaint: Paint,
   strings?: StringsSpec,
 ): AnomalyRuleLine[] {
   const rules: AnomalyRuleLine[] = [];
+  const { statFmt, corridorFmt } = fmts;
   if (!anomaly.corridor) return rules;
   if (corridorShown.low && anomaly.corridor.low !== null) {
-    rules.push({ id: 'anomaly:corridor:low', value: anomaly.corridor.low, dash: dashToken(theme, 'reference'), width: strokeToken(theme, 'rule'), paint: corridorPaint, label: boundFormatter(statFmt)(anomaly.corridor.low) });
+    const text = corridorFmt(anomaly.corridor.low);
+    rules.push({ id: 'anomaly:corridor:low', value: anomaly.corridor.low, dash: dashToken(theme, 'reference'), width: strokeToken(theme, 'rule'), paint: corridorPaint, label: text, text });
   }
   if (corridorShown.high && anomaly.corridor.high !== null) {
-    rules.push({ id: 'anomaly:corridor:high', value: anomaly.corridor.high, dash: dashToken(theme, 'reference'), width: strokeToken(theme, 'rule'), paint: corridorPaint, label: boundFormatter(statFmt)(anomaly.corridor.high) });
+    const text = corridorFmt(anomaly.corridor.high);
+    rules.push({ id: 'anomaly:corridor:high', value: anomaly.corridor.high, dash: dashToken(theme, 'reference'), width: strokeToken(theme, 'rule'), paint: corridorPaint, label: text, text });
   }
   if (anomaly.baseline === 'median' && anomaly.centre !== null && anomaly.usable) {
     // NAMED, not just numbered: this rule sits parallel to the solid zero
     // baseline, often within ~25px of it, and two unlabelled dark rules
     // leave the reader guessing which is which.
-    rules.push({ id: 'anomaly:baseline', value: anomaly.centre, dash: dashToken(theme, 'dotted'), lineCap: 'round' as const, width: strokeToken(theme, 'rule'), paint: { token: 'axis' }, label: stringFields(strings?.median ?? localeStrings().median, { value: statFmt(anomaly.centre) }) });
+    rules.push({ id: 'anomaly:baseline', value: anomaly.centre, dash: dashToken(theme, 'dotted'), lineCap: 'round' as const, width: strokeToken(theme, 'rule'), paint: { token: 'axis' }, label: stringFields(strings?.median ?? localeStrings().median, { value: statFmt(anomaly.centre) }), text: statFmt(anomaly.centre) });
   }
   return rules;
 }
@@ -650,7 +673,6 @@ export function emitAnomalyFlag(
  */
 export function drawAnomalyRules(theme: Theme, input: {
   rules: AnomalyRuleLine[];
-  statFmt: (v: number) => string;
   plot: Rect;
   y: (v: number) => number;
   labelX: number;
@@ -659,14 +681,14 @@ export function drawAnomalyRules(theme: Theme, input: {
   nodes: SceneNode[];
   claims: OccupiedIndex;
 }): void {
-  const { plot, y, labelX, font, measure, nodes, claims, statFmt } = input;
+  const { plot, y, labelX, font, measure, nodes, claims } = input;
   const measured = input.rules.map(rule => measure(rule.label, font));
   const spread = spread1DResult(input.rules.map((rule, i) => ({ desired: y(rule.value), size: measured[i]!.height })), [plot.y, plot.y + plot.h], 4).positions;
-  for (const [i, { id, value, dash, width, paint, label, lineCap }] of input.rules.entries()) {
+  for (const [i, { id, value, dash, width, paint, label, lineCap, text }] of input.rules.entries()) {
     const ry = y(value);
     nodes.push({
       t: 'line', id, x1: plot.x, y1: ry, x2: plot.x + plot.w, y2: ry, stroke: paint, width, dash, lineCap,
-      owner: {}, part: 'anomalyCorridor', display: { value: statFmt(value), state: 'corridor' },
+      owner: {}, part: 'anomalyCorridor', display: { value: text, state: 'corridor' },
     });
     claims.claim({ x: plot.x, y: ry - 1, w: plot.w, h: 2 }, 'annotation', { annotationId: id }, 'referenceLine');
     const labelTop = spread[i]! - measured[i]!.height / 2;
@@ -678,7 +700,7 @@ export function drawAnomalyRules(theme: Theme, input: {
       t: 'text', id: `${id}:label`, x: labelX, y: labelTop,
       lines: [label], align: 'start', typeRole: 'label', font, ink: paint,
       owner: {}, part: 'anomalyCorridor', role: composedTextRole(label),
-      display: { value: statFmt(value), state: 'corridor' },
+      display: { value: text, state: 'corridor' },
     });
     claims.claim(
       { x: labelX, y: labelTop, w: measured[i]!.width, h: measured[i]!.height },
@@ -703,6 +725,7 @@ export function lineAnomalyFurniture(theme: Theme, input: {
   anomaly: AnomalyModel;
   corridorShown: { low: boolean; high: boolean };
   statFmt: (v: number) => string;
+  corridorFmt: (v: number) => string;
   fmt: (v: number) => string;
   corridorPaint: Paint;
   plot: Rect;
@@ -717,7 +740,7 @@ export function lineAnomalyFurniture(theme: Theme, input: {
   claims: OccupiedIndex;
 }): Map<Id, { cx: number; tip: number; up: boolean; py: number }> {
   const { anomaly, plot } = input;
-  drawAnomalyRules(theme, { ...input, rules: anomalyRuleLines(theme, anomaly, input.corridorShown, input.statFmt, input.corridorPaint, input.strings) });
+  drawAnomalyRules(theme, { ...input, rules: anomalyRuleLines(theme, anomaly, input.corridorShown, input, input.corridorPaint, input.strings) });
   const flags = new Map<Id, { cx: number; tip: number; up: boolean; py: number }>();
   const pointAt = new Map(input.points.map((point) => [point.categoryId, point] as const));
   // A point marker is about 3.5 px in radius; the flag keeps the column's gap beyond it.

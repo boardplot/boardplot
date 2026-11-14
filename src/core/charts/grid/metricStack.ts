@@ -2,6 +2,8 @@
 import { NormalizeError } from '../../normalize/shared';
 import { ownedDocumentCopy } from '../../doc/ownedDocumentCopy';
 import { formatAutomaticNumber, NOT_AVAILABLE } from '../../format';
+import { defaultSetSpec, formatWithSpec, percentChangeSpec, RULE_SET } from '../../formatSpec';
+import { statisticSet } from '../../numberSets';
 import { roundHalfUp } from '../../formatPrecision';
 import type { ClaimRecordV1 } from '../../claims/browser';
 
@@ -61,6 +63,8 @@ export interface ComputedStackPanel {
   parts: (number | null)[][];
   states: StackState[];
   readout: StackReadout;
+  /** A mark's text: a panel value or a part, before the divisor. */
+  format: (value: number) => string;
 }
 interface ComputedMetricStack {
   panels: ComputedStackPanel[];
@@ -93,11 +97,41 @@ export function metricStackGrain(data: MetricStackData): StackGrain {
   return patterns.find(([, pattern]) => data.categories.every(c => pattern.test(c.id)))?.[0] ?? 'category';
 }
 const stackRound = (value: number | null, decimals: number): number | null => value === null ? null : Math.sign(value) * Number(roundHalfUp(Math.abs(value), decimals));
-/** A panel's decimals for its marks and its change span: authored, else 0 for counts and 1 for rates. */
-export const panelDecimals = (panel: MetricStackPanel): number => panel.decimals ?? ('sum' in panel.measure ? 0 : 1);
-/** A panel value as its marks print it: divided by the panel divisor, at the panel decimals. */
-export function formatPanelValue(panel: MetricStackPanel, value: number, locale?: string, suffix = ''): string {
-  return formatAutomaticNumber(value / (panel.divisor ?? 1), { automatic: panel.decimals === undefined, decimals: panelDecimals(panel), suffix, magnitude: 'none', locale });
+/** One endpoint of a change span: the number it prints, its rounding step in decimals and its text. */
+type SpanEnd = { rounded: number; decimals: number; text: string };
+/** How a panel prints its marks and its change span. */
+interface PanelPrint {
+  mark: (value: number) => string;
+  /** The printer of the two span endpoints, after the divisor. */
+  span: (ends: readonly (number | null)[], suffix: string) => (value: number) => SpanEnd;
+}
+/**
+ * A panel that sets `divisor` or `decimals` prints its marks and span as it always did: at the authored
+ * decimals, else 0 for counts and 1 for rates. A panel with neither is a set of its own under the default
+ * number rule: a sum of counts a number set with its parts, a rate a percent set. The span endpoints are
+ * window statistics of that set.
+ */
+function panelPrint(panel: MetricStackPanel, values: readonly (number | null)[], parts: readonly (readonly (number | null)[])[], locale?: string): PanelPrint {
+  const divisor = panel.divisor ?? 1;
+  if (panel.decimals !== undefined || panel.divisor !== undefined) {
+    const decimals = panel.decimals ?? ('sum' in panel.measure ? 0 : 1);
+    const text = (value: number, suffix = '') => formatAutomaticNumber(value, { automatic: panel.decimals === undefined, decimals, suffix, magnitude: 'none', locale });
+    return {
+      mark: (value) => text(value / divisor),
+      span: (_, suffix) => (value) => { const rounded = stackRound(value, decimals)!; return { rounded, decimals, text: text(rounded, suffix) }; },
+    };
+  }
+  const rate = !('sum' in panel.measure);
+  const members = [...values, ...(rate ? [] : parts.flat())].filter((value) => value !== null);
+  const spec = defaultSetSpec(members, locale, rate ? undefined : panel.unit, rate ? { kind: 'percent' } : {});
+  return {
+    mark: (value) => formatWithSpec(value, spec),
+    span: (ends, suffix) => {
+      const set = statisticSet(ends, spec[RULE_SET]!);
+      const face = { ...spec, suffix, [RULE_SET]: set };
+      return (value) => { const { scale, decimals } = set.groupOf(value); return { rounded: set.rounded(value), decimals: decimals - scale, text: formatWithSpec(value, face) }; };
+    },
+  };
 }
 const add = (values: (number | null)[]): number | null => values.some(v => v === null) ? null : values.reduce<number>((a, b) => a + b!, 0);
 const rate = (num: number | null, den: number | null): number | null => num === null || den === null || den === 0 ? null : num / den * 100;
@@ -204,7 +238,20 @@ export function computeMetricStack(data: MetricStackData, locale?: string, na = 
   const maturing = data.states?.maturing ? stackRange(data, data.states.maturing) : [];
   const partial = data.categories.flatMap((c,i) => c.partial ? [i] : []);
   const mature = data.categories.map((_,i) => i).filter(i => !partial.includes(i) && !maturing.includes(i));
-  const format = (n: number | null, decimals: number, suffix = '', signed = false) => n === null ? na : formatAutomaticNumber(n, { decimals, suffix, signed, locale, magnitude: 'none' });
+  // The weighted rates of one stack are one percent set across its panels that set neither divisor nor decimals:
+  // each headline rate and both chain ends, as received. A chain end of exactly 100 is the base of the chain, no member.
+  const windowSum = (ids: string[]) => mature.length ? add(mature.flatMap(i => ids.map(id => measures.get(id)!.values[i]!))) : null;
+  const weightedMembers = data.panels.flatMap(panel => {
+    if (typeof panel.readout !== 'object' || panel.divisor !== undefined || panel.decimals !== undefined) return [];
+    const expr = panel.measure as { numerator: string[]; denominator: string };
+    const base = windowSum([panel.readout.base]), denominator = windowSum([expr.denominator]), numerator = windowSum(expr.numerator);
+    return [rate(numerator, denominator), rate(denominator, base), rate(numerator, base)].filter((v): v is number => v !== null && v !== 100);
+  });
+  const weightedSpec = defaultSetSpec(weightedMembers, locale, undefined, { kind: 'percent' });
+  const weightedSet = {
+    text: (n: number, suffix = '') => formatWithSpec(n, { ...weightedSpec, suffix }),
+    rule: weightedSpec[RULE_SET]!,
+  };
   const panels = data.panels.map(panel => {
     const expr = panel.measure;
     const fields = 'sum' in expr ? expr.sum : expr.numerator;
@@ -215,6 +262,7 @@ export function computeMetricStack(data: MetricStackData, locale?: string, na = 
     });
     const states: StackState[] = data.categories.map((c,i) => c.partial ? 'partial' : maturing.includes(i) && data.states!.maturing!.panels.includes(panel.id) ? 'maturing' : 'mature');
     if (data.states?.partial?.panels.includes(panel.id)) partial.forEach(i => { values[i] = null; });
+    const print = panelPrint(panel, values, parts, locale);
     const claims: ClaimRecordV1[] = [];
     const make = (key: string, op: string, inputs: ClaimRecordV1['inputs'], raw: number | null, displayed = '') => {
       const claim: ClaimRecordV1 = { id: `stack:${panel.id}:${key}`, kind: 'derived', op, inputs, output: { raw, state: raw === null ? 'missing' : 'value', displayed } };
@@ -236,22 +284,34 @@ export function computeMetricStack(data: MetricStackData, locale?: string, na = 
     if (panel.readout === 'change') {
       const baseIndexes = stackRange(data, data.windows!.base), compareIndexes = stackRange(data, data.windows!.compare);
       const base = aggregate('base', baseIndexes), compare = aggregate('compare', compareIndexes);
-      const a = base.output.raw, b = compare.output.raw;
       const isRate = 'denominator' in expr;
-      const change = make('change:raw', isRate ? 'difference@1' : 'percentDelta@1', [ref(compare), ref(base)], a === null || b === null || (!isRate && a === 0) ? null : isRate ? b-a : (b/a-1)*100);
-      const headline = stackRound(change.output.raw, isRate ? 1 : 0);
-      const headlineText = format(headline, isRate ? 1 : 0, isRate ? 'pp' : '%', true);
-      make('headline', 'round-decimals@1', [ref(change), { ref: 'decimals', value: isRate ? 1 : 0 }], headline, headlineText);
-      // The span prints in the marks' unit: divided by the panel divisor, at the panel decimals.
-      const decimals = panelDecimals(panel), divisor = panel.divisor ?? 1, suffix = isRate ? '%' : '';
-      const endpoint = (key: 'before' | 'after', operand: ClaimRecordV1) => {
-        const scaled = divisor === 1 ? operand : make(`${key}:scaled`, 'ratio@1', [ref(operand), { ref: 'divisor', value: divisor }], operand.output.raw === null ? null : operand.output.raw / divisor);
-        const rounded = stackRound(scaled.output.raw, decimals);
-        return make(key, 'round-decimals@1', [ref(scaled), { ref: 'decimals', value: decimals }], rounded, rounded === null ? na : formatPanelValue({ ...panel, divisor: 1 }, rounded, locale, suffix)).output;
-      };
-      // A rate span rounds once, from the unrounded window rate (the `:raw` share), not from the 1-decimal headline input.
+      // A rate's span and change read the received window rates (the `:raw` shares), not their one-decimal roundings.
       const unrounded = (key: string, rounded: ClaimRecordV1) => isRate ? claims.find(c => c.id === `stack:${panel.id}:${key}:raw`)! : rounded;
-      const start = endpoint('before', unrounded('base', base)), end = endpoint('after', unrounded('compare', compare));
+      const startOperand = unrounded('base', base), endOperand = unrounded('compare', compare);
+      // A panel that sets divisor or decimals keeps its earlier headline: the change of the window values a rate rounds to one decimal, at 1 decimal for a rate and 0 for a count.
+      const authored = panel.divisor !== undefined || panel.decimals !== undefined;
+      const changeFrom = authored ? base : startOperand, changeTo = authored ? compare : endOperand;
+      const a = changeFrom.output.raw, b = changeTo.output.raw;
+      const change = make('change:raw', isRate ? 'difference@1' : 'percentDelta@1', [ref(changeTo), ref(changeFrom)], a === null || b === null || (!isRate && a === 0) ? null : isRate ? b-a : (b/a-1)*100);
+      // Otherwise a change in percent or percentage points is a change set of its own: it prints two digits.
+      const changeRaw = change.output.raw;
+      const changeSpec = changeRaw === null || authored ? undefined : percentChangeSpec([changeRaw], locale, isRate ? 'pp' : '%');
+      const changeSet = changeSpec?.[RULE_SET];
+      const authoredDecimals = isRate ? 1 : 0;
+      const headline = changeRaw === null ? null : changeSet === undefined ? stackRound(changeRaw, authoredDecimals) : changeSet.rounded(changeRaw);
+      const headlineText = headline === null ? na : changeSpec === undefined
+        ? formatAutomaticNumber(headline, { decimals: authoredDecimals, suffix: isRate ? 'pp' : '%', signed: true, locale, magnitude: 'none' }) : formatWithSpec(changeRaw!, changeSpec);
+      make('headline', 'round-decimals@1', [ref(change), { ref: 'decimals', value: changeRaw === null ? 0 : changeSet === undefined ? authoredDecimals : changeSet.groupOf(changeRaw).decimals }], headline, headlineText);
+      // The span prints in the marks' unit: divided by the panel divisor.
+      const divisor = panel.divisor ?? 1, suffix = isRate ? '%' : '';
+      const scaledRaw = (operand: ClaimRecordV1) => operand.output.raw === null ? null : operand.output.raw / divisor;
+      const spanEnd = print.span([scaledRaw(startOperand), scaledRaw(endOperand)], suffix);
+      const endpoint = (key: 'before' | 'after', operand: ClaimRecordV1) => {
+        const scaled = divisor === 1 ? operand : make(`${key}:scaled`, 'ratio@1', [ref(operand), { ref: 'divisor', value: divisor }], scaledRaw(operand));
+        const printed = scaled.output.raw === null ? undefined : spanEnd(scaled.output.raw);
+        return make(key, 'round-decimals@1', [ref(scaled), { ref: 'decimals', value: printed?.decimals ?? panel.decimals ?? 0 }], printed?.rounded ?? null, printed?.text ?? na).output;
+      };
+      const start = endpoint('before', startOperand), end = endpoint('after', endOperand);
       const before = start.raw, after = end.raw, spanText = `${start.displayed} → ${end.displayed}`;
       readout = { panelId: panel.id, method: isRate ? 'rounded-rate-change' : 'average-change', grain, categoryIds: { base: baseIndexes.map(i=>data.categories[i]!.id), compare: compareIndexes.map(i=>data.categories[i]!.id) }, headline, before, after, headlineText, spanText, claims };
     } else {
@@ -260,17 +320,34 @@ export function computeMetricStack(data: MetricStackData, locale?: string, na = 
       const base = sum('chain:base', [panel.readout.base], mature);
       const beforeSum = sum('chain:before', [rateExpr.denominator], mature);
       const afterSum = sum('chain:after', fields, mature);
+      const chainRate = (operand: ClaimRecordV1) => rate(operand.output.raw, base.output.raw);
+      // A panel that sets divisor or decimals prints the readout as it always did: rates rounded to one decimal, 100 whole.
+      // A panel with neither prints the received rates through the stack's one weighted-rate set.
+      const authored = panel.divisor !== undefined || panel.decimals !== undefined;
+      const fixed = (n: number | null, decimals: number, suffix = '') => n === null ? na : formatAutomaticNumber(n, { decimals, suffix, locale, magnitude: 'none' });
       const endpoint = (key: string, operand: ClaimRecordV1) => {
-        const raw = make(`${key}:raw`, 'share@1', [ref(operand), ref(base)], rate(operand.output.raw, base.output.raw));
-        const rounded = stackRound(raw.output.raw, 1);
-        return make(key, 'round-decimals@1', [ref(raw), { ref: 'decimals', value: 1 }], rounded, format(rounded, rounded === 100 ? 0 : 1));
+        const raw = make(`${key}:raw`, 'share@1', [ref(operand), ref(base)], chainRate(operand));
+        const value = raw.output.raw;
+        // The base of the chain, exactly 100, prints whole.
+        const own = authored || value === null || value === 100;
+        const rounded = own ? (value === 100 ? 100 : stackRound(value, 1)) : weightedSet.rule.rounded(value);
+        const decimals = own ? (value === 100 && !authored ? 0 : 1) : Math.max(0, weightedSet.rule.groupOf(value).decimals);
+        const text = own ? fixed(rounded, rounded === 100 ? 0 : 1) : weightedSet.text(value);
+        return make(key, 'round-decimals@1', [ref(raw), { ref: 'decimals', value: decimals }], rounded, text).output;
       };
-      const before = endpoint('before', beforeSum).output.raw, after = endpoint('after', afterSum).output.raw;
-      const headline = avg.output.raw, headlineText = format(headline, 1, '%');
+      const start = endpoint('before', beforeSum), end = endpoint('after', afterSum);
+      const rateRaw = claims.find(c => c.id === `stack:${panel.id}:rate:raw`)!.output.raw;
+      const inSet = !authored && rateRaw !== null;
+      if (inSet) {
+        // The headline states the received rate in the stack's set: its rounding is the set's, not one decimal.
+        avg.output.raw = weightedSet.rule.rounded(rateRaw);
+        avg.inputs = [avg.inputs[0]!, { ref: 'decimals', value: Math.max(0, weightedSet.rule.groupOf(rateRaw).decimals) }];
+      }
+      const headline = avg.output.raw, headlineText = inSet ? weightedSet.text(rateRaw, '%') : fixed(headline, 1, '%');
       avg.output.displayed = headlineText;
-      readout = { panelId: panel.id, method: 'weighted-rate', grain, categoryIds: { mature: mature.map(i=>data.categories[i]!.id) }, headline, before, after, headlineText, spanText: `${format(before, before === 100 ? 0 : 1)} → ${format(after, after === 100 ? 0 : 1)}`, claims };
+      readout = { panelId: panel.id, method: 'weighted-rate', grain, categoryIds: { mature: mature.map(i=>data.categories[i]!.id) }, headline, before: start.raw, after: end.raw, headlineText, spanText: `${start.displayed} → ${end.displayed}`, claims };
     }
-    return { panel, values, parts, states, readout };
+    return { panel, values, parts, states, readout, format: print.mark };
   });
   return { panels, maturing, mature, partial };
 }

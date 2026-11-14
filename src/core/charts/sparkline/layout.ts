@@ -780,7 +780,7 @@ export function layoutSparkline(
   // The exhibit raster every other chart prints with: the example's style,
   // the plotted values' precision, grouped digits, so a computed value does not
   // print its whole float and 1.5e9 does not print as "1500000000".
-  const formatValue = seriesRasterFormatter(options.format, reference === undefined ? values : [...values, reference], options.locale?.language, options.unit, options.target).fmt;
+  const formatValue = seriesRasterFormatter(options.format, reference === undefined ? values : [...values, reference], options.locale?.language, options.unit).fmt;
   // The last value beside the ring, for an exhibit that names no figure elsewhere.
   const roles = pointRoles(values);
   const lastIndex = roles.last;

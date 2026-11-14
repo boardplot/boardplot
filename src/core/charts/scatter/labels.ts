@@ -9,7 +9,7 @@ import { emphasisWeight, strokeToken } from '../../theme';
 
 import type { Rect } from '../../geometry';
 import { rectContains, rectsOverlap } from '../../geometry';
-import { formatAutomaticNumber, seriesValueFormatter } from '../../format';
+import { ruleFormatter } from '../../numberSets';
 import { wrapText } from '../../text';
 import { labelCtx, PRIORITY, seatLeader, type LabelRequest, type SlotCandidate, type SolveCtx } from '../../label/solver';
 import { middleNearerOther, nameReadsAsOwn } from './nameReading';
@@ -357,6 +357,8 @@ function quadrantCaptionRequests(
   const captionFont = area.fonts.caption;
   const captions = env.options.quadrants?.labels ?? {};
   const centreFirst = (env.options.quadrants?.captionPlacement ?? 'corner') === 'centre';
+  // The four box counts are one set of the chart's point counts: "n = 19.0k" beside "n = 4.9k".
+  const countText = ruleFormatter(QUADRANT_BOXES.map((box) => quadrants.counts[box]), env.options.locale?.language);
   for (const box of QUADRANT_BOXES) {
     const authored = captions[box];
     if (authored === undefined || authored === '') continue;
@@ -374,7 +376,7 @@ function quadrantCaptionRequests(
     const name = wrapped.truncated ? [authored] : wrapped.lines;
     const lines = [
       ...name,
-      `n = ${formatAutomaticNumber(quadrants.counts[box], { locale: env.options.locale?.language, decimals: 0 })}`,
+      `n = ${countText(quadrants.counts[box])}`,
     ];
     const w = Math.max(...lines.map((l) => env.measure(l, captionFont).width));
     const lineH = captionFont.size * (captionFont.lineHeight ?? 1.2);
@@ -440,19 +442,20 @@ const groupFormats = new WeakMap<readonly NormPt[], Map<string, (value: number) 
 /**
  * A point's printed value, the text `labels.value` sets in or beside it: a
  * bubble's size, else y. Each group is one series and takes one precision
- * (seriesValueFormatter); an authored y format or a log y axis prints as the axis formatter does.
+ * (ruleFormatter); an authored y format or a log y axis prints as the axis formatter does.
  */
 export function pointValueText(env: ScatterEnv, domain: Pick<ScatterDomain, 'pts'>, p: NormPt, field: 'size' | 'y'): string | undefined {
   const value = p[field];
   if (value === null) return undefined;
   // A log y axis keeps each label at its own precision: 0.45 on a log scale reads apart from 0.5.
-  // An engine-scaled y axis prints its labels at the axis scale: "2.0M", not "2,000,000" beside 2.0M ticks.
-  if (field === 'y' && (env.options.format || env.options.axisFormat?.y || env.log.y || env.axisSpec.y.autoMagnitude)) return env.axisFmt.y(value);
+  // Without a format a value prints in its set: the y axis set, or the size set.
+  if (field === 'y' ? !(env.options.axisFormat?.y ?? env.options.format) : !env.options.format) return field === 'y' ? env.axisFmt.y(value) : env.fmt(value);
+  if (field === 'y' && (env.options.format || env.options.axisFormat?.y || env.log.y)) return env.axisFmt.y(value);
   let byGroup = groupFormats.get(domain.pts);
   if (!byGroup) groupFormats.set(domain.pts, byGroup = new Map());
   const key = `${field}\u0000${p.group ?? ''}`;
   let fmt = byGroup.get(key);
-  if (!fmt) byGroup.set(key, fmt = seriesValueFormatter(domain.pts.filter((q) => q.group === p.group).map((q) => q[field]), env.options.locale?.language));
+  if (!fmt) byGroup.set(key, fmt = ruleFormatter(domain.pts.filter((q) => q.group === p.group).map((q) => q[field]), env.options.locale?.language, { unit: env.options.unit }));
   return fmt(value);
 }
 

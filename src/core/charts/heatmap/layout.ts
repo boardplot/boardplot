@@ -17,8 +17,11 @@ import { structureCount } from '../../structureCounts';
 import type { AnchorResolution } from '../../annotate';
 import { runAnnotatePass } from '../../annotatePass';
 import { marginBracketLayout } from '../../annotateLinks';
-import { defaultNumberDecimals, formatAutomaticNumber, lowBaseKeyLabel, NOT_AVAILABLE, numberRange } from '../../format';
-import { AUTOMATIC_FORMAT, asEngineNumbers, type AutomaticFormatSource, defaultFormatSpec, exampleSpec, formatNonzeroWithSpec, formatterFromExample, rasterDecimals, seriesRasterFormatter, parseFormatExample, specUnitKind } from '../../formatSpec';
+import { lowBaseKeyLabel, NOT_AVAILABLE, numberRange } from '../../format';
+import { AUTOMATIC_FORMAT, asEngineNumbers, type AutomaticFormatSource, defaultSetSpec, exampleSpec, formatNonzeroWithSpec, formatterFromExample, formatWithSpec, RULE_SET, seriesRasterFormatter, parseFormatExample, specUnitKind, type NumberFormatSpec } from '../../formatSpec';
+import { tickFormatter } from '../../axis';
+import { numberRuleSet } from '../../numberRule';
+import { ruleFormatter } from '../../numberSets';
 import { cleanFloat, round2, type Margin, type Rect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex } from '../../label/occupied';
@@ -70,7 +73,6 @@ import { rowLabelBand } from '../../label/rowLabels';
 import { fittedLabel, gutterBudget, GUTTER_MAX_SHARE, stepDownFont } from '../../label/rowFit';
 import { capPitch, HARD_MINIMUM, heightOmitted, matrixWidths, NARROW_FORM, rowSizing, sideKeyOff } from '../../sizing';
 import { arrowHeadPath, arrowShaftEnd, harveyWedgePath } from '../../svgPath';
-import { nonzeroDecimals } from '../../formatPrecision';
 import { categoryLabelsAndMarks } from '../../footnoteMark';
 import { readerFloorPx, textScaleOf } from '../../typeFloors';
 import { DEFAULT_TARGET } from '../../target';
@@ -83,7 +85,7 @@ import { generatedIdWarnings } from '../../schema/generatedColumns';
 
 export interface HeatmapMarks {
   cells: { seriesId: Id; categoryId: Id; rect: Rect; nodeId: Id; value: number | null }[];
-  /** The would-be texts of the values whose label is not drawn, under an authored format. */
+  /** The would-be texts of the values whose label is not drawn. */
   wouldShow?: DeferredShownMarks;
 }
 
@@ -202,6 +204,8 @@ export type HeatmapLayoutOptions = HeatmapOptions & {
   heatKey?: { chartType: KeyRequiredType; items: { id: Id; label: string; paint: Paint; stroke?: Paint }[] };
   /** The end of a row's label that is never cut, by row id: the cohort size (rowLabelBand). */
   rowSuffix?: Record<Id, string>;
+  /** The cells print their set's decimals at every width (cohort): no decimal cut for narrow cells. */
+  holdDecimals?: true;
   [TURNED]?: true;
 };
 
@@ -357,20 +361,6 @@ export function layoutHeatmap(
   // ---- derive: min/max, row/column means ----
   const allValues: number[] = [];
   for (const r of rows) for (const c of r.cells) if (c.v !== null) allValues.push(c.v);
-  // One precision for every value, key stop and hover card: the
-  // decimals the most precise value needs, so "11" never stands beside
-  // "12.4"; no nonzero value rounds to 0.
-  const rasterSpec = defaultFormatSpec(options.locale?.language);
-  const decimals = rasterDecimals(allValues, rasterSpec);
-  // The value text shrinks in steps when a cell has no room for it (see fitValueCut):
-  // the step is read by shownFor, never by the hover text.
-  let cut = NO_CUT;
-  const dataValueSet = new Set(allValues);
-  const automaticFmt = (v: number, off = 0) => formatAutomaticNumber(v, { locale: options.locale?.language, decimals: defaultNumberDecimals(v, nonzeroDecimals(v, decimals - off), options.unit, options.target) });
-  const fmt = options.format
-    ? formatterFromExample(options.format, options.locale?.language, undefined, allValues)
-    : (v: number) => automaticFmt(v);
-  const formats = seriesRasterFormatter(options.format, allValues, options.locale?.language, options.unit, options.target);
   const vMax = allValues.length > 0 ? maxOf(allValues) : 0;
   const vMin = allValues.length > 0 ? minOf(allValues) : 0;
   const posMax = Math.max(0, vMax);
@@ -379,6 +369,25 @@ export function layoutHeatmap(
   // full at the larger magnitude, or at the authored cap (table heat's cap,
   // in points on a matrix of percent cells).
   const pctMatrix = allValues.length > 0 && rows.every((r) => r.cells.every((c) => c.v === null || c.pct));
+  // Without a format every value, key stop and hover card prints in one set of all cell
+  // values (a chart, not a table cell): a matrix of percent cells is a percent set.
+  const ruleBase = options.format ? undefined : defaultSetSpec(allValues, options.locale?.language, options.unit, pctMatrix ? { kind: 'percent' } : {});
+  const rule = ruleBase?.[RULE_SET];
+  const decimals = rule ? Math.max(0, ...rule.groups.map((g) => g.decimals)) : 0;
+  // The value text shrinks in steps when a cell has no room for it (see fitValueCut):
+  // the step is read by shownFor, never by the hover text. Step n is the set's fit step n,
+  // built here once for every step the range allows.
+  let cut = NO_CUT;
+  const cutSteps = Math.max(0, decimals - Math.min(decimals, readableDecimals(vMax - vMin)));
+  const ruleLadder: NumberFormatSpec[] = !ruleBase || !rule ? [] : [ruleBase, ...Array.from({ length: cutSteps }, (_, i) => ({ ...ruleBase, [RULE_SET]: numberRuleSet(rule.values, { ...rule.set, fit: i + 1 }) }))];
+  const automaticFmt = (v: number, off = 0) => formatWithSpec(v, ruleLadder[Math.min(off, ruleLadder.length - 1)]!);
+  // The round sizes of the bubble key are key ticks of the size set.
+  const sizeSpec = defaultSetSpec(rows.flatMap((r) => r.cells.flatMap((c) => c.size ?? [])), options.locale?.language);
+  const sizeKeyFormatter = (shown: number[]) => tickFormatter(sizeSpec, shown);
+  const fmt = options.format
+    ? formatterFromExample(options.format, options.locale?.language, undefined, allValues)
+    : (v: number) => automaticFmt(v);
+  const formats = seriesRasterFormatter(options.format, allValues, options.locale?.language, options.unit);
   // A % sign may be left off a cell only where the unit line names the percent.
   const percentNamedByUnit = options.unit?.includes('%') === true;
   const cap = scale === 'continuous' ? pctMatrix ? options.cap?.pct : options.cap?.abs : undefined;
@@ -522,7 +531,8 @@ export function layoutHeatmap(
   // A key tick is the engine's number: an authored format keeps its earlier rule on it (asEngineNumbers).
   const keyText = (v: number) => asEngineNumbers(() => {
     const saturated = cap !== undefined && ((v === keyHigh && vMax > cap) || (v === keyLow && vMin < -cap));
-    const value = saturated && Number.isInteger(v) && !pctMatrix && !options.format && !keySeries?.format ? formatAutomaticNumber(v, { locale: options.locale?.language, decimals: 0 }) : shownFor(v, pctMatrix, null, keySeries);
+    // A saturated whole cap is a key tick, with its own decimals.
+    const value = saturated && Number.isInteger(v) && !pctMatrix && ruleBase && !keySeries?.format ? tickFormatter(ruleBase, [v])(v) : shownFor(v, pctMatrix, null, keySeries);
     return `${cap !== undefined && v === keyHigh && vMax > cap ? '>=' : cap !== undefined && v === keyLow && vMin < -cap ? '<=' : ''}${value}`;
   });
 
@@ -606,7 +616,7 @@ export function layoutHeatmap(
       ? (missingLook === 'blank' ? chartString(options, 'blankCells', { v1: noDataNames }) : chartString(options, 'hatchedCells', { v1: noDataNames }))
       : missingLook === 'blank' ? chartString(options, 'blankNoData') : chartString(options, 'hatchedNoData'))] : []),
     ...(anyLowBase
-      ? [disclosureNote(chartString(options, 'heatmapBaseNote', { v1: bubble ? chartString(options, 'circles') : chartString(options, 'cellsLower'), v2: formatAutomaticNumber(options.minBase!, { locale: options.locale?.language }) }))] : []),
+      ? [disclosureNote(chartString(options, 'heatmapBaseNote', { v1: bubble ? chartString(options, 'circles') : chartString(options, 'cellsLower'), v2: ruleFormatter([options.minBase!], options.locale?.language)(options.minBase!) }))] : []),
   ];
   if (scaleItems && options.legend === 'none') legendOff(warnings, options.heatKey?.chartType ?? 'heatmap', scaleItems.map((item) => item.label));
   const scaleKey = options.legend === 'none' ? undefined : scaleItems;
@@ -1028,8 +1038,8 @@ export function layoutHeatmap(
     .every((value, ci) => value === null || value.fits || constantCol[ci]));
   if (cellLabelsOn && !bubble) {
     const hasPct = percentNamedByUnit && rows.some((r) => r.cells.some((c) => c.pct && c.v !== null));
-    const stepsOfDecimals = !options.format && rows.some((r) => !r.format && !r.unit && r.cells.some((c) => c.v !== null && !c.meta?.format))
-      ? Math.max(0, decimals - Math.min(decimals, readableDecimals(vMax - vMin))) : 0;
+    const stepsOfDecimals = !options.format && !options.holdDecimals && rows.some((r) => !r.format && !r.unit && r.cells.some((c) => c.v !== null && !c.meta?.format))
+      ? cutSteps : 0;
     const steps: ValueCut[] = [...(hasPct ? [{ decimals: 0, sign: true }] : [])];
     for (let off = 1; off <= stepsOfDecimals; off++) steps.push({ decimals: off, sign: hasPct });
     cut = NO_CUT;
@@ -1276,10 +1286,10 @@ export function layoutHeatmap(
         }
       }
 
-      // A value whose label is not drawn states its would-be text, under an authored format.
+      // A value whose label is not drawn states its would-be text.
       const wouldShow = () => {
         const v = cell.v;
-        if (v === null || !(options.format || r.format || cell.meta?.format)) return;
+        if (v === null) return;
         wouldShowCells.push(() => {
           const text = textFor(v, cell.pct, cell.meta, r);
           const shows = text === null ? undefined : cellShows(text, v, cell.pct, cell.meta, r);
@@ -1535,6 +1545,7 @@ export function layoutHeatmap(
     measure,
     format: options.format,
     locale: options.locale?.language,
+    levelSpec: ruleBase,
     strings: options.strings,
     solveCtx,
   });
@@ -1829,7 +1840,6 @@ export function layoutHeatmap(
     if (high > low) ticks.push(high);
     const textOf = short ? (v: number) => {
       const text = keyText(v).replace(/^>=/, '≥').replace(/^<=/, '≤');
-      if (v === 0 && !pctMatrix && !options.format && !keySeries?.format) return formatAutomaticNumber(0, { locale: options.locale?.language, decimals: 0 });
       // A format that signs its own values ("+0.0%") already printed the plus.
       return valence && v > 0 ? text.replace(/^(≥?)(?![+≥])/, '$1+') : text;
     } : keyText;
@@ -2027,8 +2037,9 @@ export function layoutHeatmap(
         const sizeMax = largest;
         const large = niceBelow(sizeMax)[0];
         const small = large === undefined ? undefined : niceBelow(large / 4)[0];
-        return [small, large].filter((v): v is number => v !== undefined && v > 0)
-          .map((v) => ({ label: formatAutomaticNumber(v, { locale: options.locale?.language }), level: v, r: Math.max(1.5, rEst * Math.sqrt(sizeMax > 0 ? v / sizeMax : 0)) }));
+        const shown = [small, large].filter((v): v is number => v !== undefined && v > 0);
+        const sizeText = sizeKeyFormatter(shown);
+        return shown.map((v) => ({ label: sizeText(v), level: v, r: Math.max(1.5, rEst * Math.sqrt(sizeMax > 0 ? v / sizeMax : 0)) }));
       })();
     const headH = keyTitled ? keyLineH + 4 : 0;
     const colourEntryW = colours.map((c) => 2 * KEY_DOT_R + KEY_TEXT_GAP + textW(c.label));
@@ -2095,7 +2106,9 @@ export function layoutHeatmap(
       : (() => {
         const large = niceBelow(sizeMax)[0];
         const small = large === undefined ? undefined : niceBelow(large / 4)[0];
-        return [small, large].filter((v): v is number => v !== undefined && v > 0).map((v) => ({ label: formatAutomaticNumber(v, { locale: options.locale?.language }), r: radiusOf(v) }));
+        const shown = [small, large].filter((v): v is number => v !== undefined && v > 0);
+        const sizeText = sizeKeyFormatter(shown);
+        return shown.map((v) => ({ label: sizeText(v), r: radiusOf(v) }));
       })();
     const rKey = Math.max(0, ...sizeEntries.map((e) => e.r));
     const baseline = headTop - KEY_GAP - 3 - keyLineH;
@@ -2175,16 +2188,13 @@ export function layoutHeatmap(
   }
 
   /**
-   * A value as the key prints it: the same cut as the cells. A key stop that is no cell value
-   * keeps the decimals it needs ("+2.5" stays, it never reads "+3"); a stop that is a cell value
-   * prints what its cell prints.
+   * A value as the key prints it: the same cut as the cells. A stop that is a cell value
+   * prints what its cell prints; any other stop prints as a late value of the set, with the
+   * decimals it needs ("+2.5" stays, it never reads "+3").
    */
   function shownFor(v: number, pct: boolean, meta: CellMeta | null, series?: NormRow): string {
-    if (cut.decimals === 0 || dataValueSet.has(v)) return displayFor(v, pct, meta, series, cut);
-    for (let off = cut.decimals; off > 0; off--) {
-      if (Math.abs(Number(v.toFixed(Math.max(0, decimals - off))) - v) < 1e-9 * Math.max(1, Math.abs(v))) return displayFor(v, pct, meta, series, { ...cut, decimals: off });
-    }
-    return displayFor(v, pct, meta, series, { decimals: 0, sign: cut.sign });
+    // Under the rule a stop that is no cell value is a late value of the cut set.
+    return displayFor(v, pct, meta, series, cut);
   }
 
   /** The full text of a value (hover card, reading): never cut. */

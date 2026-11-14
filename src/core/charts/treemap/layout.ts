@@ -227,7 +227,7 @@ function layoutTreemapAt(data: TreemapData, options: TreemapOptions, memo: Map<s
   const cellValue = options.cellValue ?? 'value';
   const percentExample = options.format && cellValue !== 'value' && parseFormatExample(options.format).suffix.includes('%') ? options.format : undefined;
   const valueExample = percentExample ? undefined : options.format;
-  const numberFormat = seriesRasterFormatter(valueExample, ordered.map(item => item.value), locale, options.unit, options.target);
+  const numberFormat = seriesRasterFormatter(valueExample, ordered.map(item => item.value), locale, options.unit);
   // A fractional tail keeps its digits without adding .0 to whole-valued cells.
   if (!valueExample && numberFormat.spec.magnitude === 'none' && ordered.every(item => item.value < 1 || Number.isInteger(item.value))) {
     numberFormat.spec.wholeFrom = 1;

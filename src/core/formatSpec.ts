@@ -6,7 +6,7 @@
  */
 
 import { NormalizeError } from './normalize/shared';
-import type { LocaleSpec, RenderTarget } from './types/options';
+import type { LocaleSpec } from './types/options';
 import type { LintWarning, PlacedLabel, SceneNode } from './types/scene';
 import type { InteractionRecord, InteractionValue } from './a11y/types';
 import { toJsonPointer, type JsonPatchOperation } from './diagnostics/jsonPatch';
@@ -14,7 +14,7 @@ import { toJsonPointer, type JsonPatchOperation } from './diagnostics/jsonPatch'
 import { chartString } from './strings';
 import { fractionFormat, numberFormat } from './numberFormatCache';
 import { splitNumberMarks, withNumberMarks, wordLanguage } from './numberMarks';
-import { currencyWholeNumbers, MAGNITUDE_SUFFIX, magnitudeSuffix, MINUS, formatPercent, nonFiniteGlyph, smallRateDecimals } from './format';
+import { MAGNITUDE_SUFFIX, magnitudeSuffix, MINUS, formatPercent, nonFiniteGlyph, smallRateDecimals } from './format';
 import {
   AUTO_MAX_DECIMALS,
   MAX_FORMAT_DECIMALS,
@@ -23,7 +23,6 @@ import {
   currentSmallValues,
   P_VALUE_DECIMALS,
   printsPValue,
-  distinctDecimalLift,
   groupInteger,
   nonzeroDecimals,
   roundHalfUp,
@@ -43,6 +42,8 @@ import {
 } from './formatPrecision';
 export { AUTHORED_EXAMPLES, UNIT_STAND_INS, formatScopeKey, withUnitStandIns } from './formatPrecision';
 import { maxOf, minOf } from './arrays';
+import { numberRuleSet, type PrintFace, type RuleScale, type RuleSet } from './numberRule';
+import { finiteValues, isPercentUnit, isUnitText, numberSetOf, printFace, statisticSet } from './numberSets';
 import { withUnit } from './unitJoin';
 
 /** A composing chart's generated example is still an automatic format. */
@@ -63,6 +64,13 @@ export const ENGINE_SCALE = Symbol('engine-scale');
 type EngineScale = Pick<NumberFormatSpec, 'magnitude' | 'decimals' | 'rollMagnitude'> & { from: Pick<NumberFormatSpec, 'magnitude' | 'decimals'> };
 /** A composing chart's row that prints a label and no value by design: its blank cells are no gap in the data, so it has no record. */
 export const LABEL_ONLY_ROW = Symbol('label-only-row');
+/**
+ * The default number rule of a spec no author wrote (numberRule.ts): every
+ * value prints at its group's scale and decimals, a late value in the group that
+ * shows its leading digits, else as a set of one value. A spread copies it, so a signed or suffixed copy prints by the same
+ * set; a printer reads it before any field of the spec.
+ */
+export const RULE_SET = Symbol('rule-set');
 export type LabelOnlyRowSource = { [LABEL_ONLY_ROW]?: true };
 
 export interface NumberFormatSpec {
@@ -96,8 +104,6 @@ export interface NumberFormatSpec {
   signed: boolean;
   /** Unit rule: values that round to at least this print without decimals. */
   wholeFrom?: number;
-  /** A whole count prints without decimals beside fractional values of its raster (funnel counts: '1' beside '0.6'). */
-  wholeCounts?: boolean;
   /** Unformatted currency on a new target: unscaled magnitudes of at least 1,000 print whole. */
   currencyWhole?: boolean;
   /**
@@ -110,16 +116,6 @@ export interface NumberFormatSpec {
   lockMagnitude?: boolean;
   /** A row chose its own scale and decimals; do not roll individual cells up. */
   rollMagnitude?: false;
-  /**
-   * The engine chose `magnitude` from the largest value (no authored scale).
-   * A value below that magnitude prints at its own (k, or none): "20", not
-   * "0.00000002B" beside billions.
-   */
-  autoMagnitude?: true;
-  /** The decimals every value under the engine scale shares at its own scale ("+0.50" beside "+0.04"). */
-  stepDecimals?: number;
-  /** A set's magnitude (setMagnitude): a value of 1,000 or more at it prints whole, "1,540M" beside "57.50M". */
-  setScale?: true;
   /**
    * The magnitude word as the example wrote it, with the space before it
    * (" Mio.", "bn"): a value at that magnitude prints it. A value
@@ -142,6 +138,102 @@ export interface NumberFormatSpec {
   exact?: true;
   /** On an exact spec: the scale its example gave before (ENGINE_SCALE). */
   [ENGINE_SCALE]?: EngineScale;
+  /** A default spec: the set the rule placed its values in (RULE_SET). */
+  [RULE_SET]?: RuleSet;
+}
+
+const SCALE_MAGNITUDE: Record<RuleScale, NumberFormatSpec['magnitude']> = { 0: 'none', 3: 'k', 6: 'm', 9: 'bn', 12: 't' };
+
+/** A default spec for a set under the rule: its fields name the first group, for a caller that reads the set's main scale. */
+export function ruleSpec(rule: RuleSet, locale?: string, prefix = '', suffix = ''): NumberFormatSpec {
+  const first = rule.groups[0] ?? { scale: 0 as const, decimals: 0 };
+  return { ...defaultFormatSpec(locale), prefix, suffix, magnitude: SCALE_MAGNITUDE[first.scale], decimals: first.decimals, rollMagnitude: false, [RULE_SET]: rule };
+}
+
+/** The default spec of the finite values of one set: the rule over them, under the chart's language tag. */
+export function defaultSetSpec(values: Iterable<number | null | undefined>, locale?: string, unit?: string, declared: Parameters<typeof numberSetOf>[1] = {}): NumberFormatSpec {
+  return ruleSpec(numberRuleSet(finiteValues(values), numberSetOf(locale, { unit, ...declared })), locale);
+}
+
+/**
+ * The spec of a statistic set (means, weighted shares, band bounds) computed
+ * from the values of `of`: under the default rule a set of its own with the
+ * scale-word decision of those values.
+ * Under an authored format it is the statistic rule of formatStatWithSpec.
+ */
+export function statisticFormatter(values: Iterable<number | null | undefined>, of: NumberFormatSpec): (value: number) => string {
+  const rule = of[RULE_SET];
+  if (!rule) return (value) => formatStatWithSpec(value, of);
+  const spec: NumberFormatSpec = { ...of, [RULE_SET]: statisticSet(values, rule) };
+  return (value) => formatWithSpec(value, spec);
+}
+
+/**
+ * The signed spec of absolute changes or differences under the default rule:
+ * they join the set of their levels,
+ * so the groups form over the levels and the changes together.
+ * Undefined for a spec without a rule set.
+ */
+export function joinedChangeSpec(levels: NumberFormatSpec, changes: Iterable<number | null | undefined>): NumberFormatSpec | undefined {
+  const rule = levels[RULE_SET];
+  if (!rule) return undefined;
+  return { ...levels, signed: true, [RULE_SET]: numberRuleSet([...rule.values, ...finiteValues(changes)], rule.set) };
+}
+
+/**
+ * Changes in percent, growth rates and differences in percentage points under
+ * the default rule: a signed change set of their own, whose every group prints
+ * two digits (`+9.1% · −4.0%`). `kind: 'number'` serves a change column whose
+ * head names the percent (a growth column of a bar table).
+ */
+export function percentChangeSpec(values: Iterable<number | null | undefined>, locale?: string, suffix = '', kind: 'percent' | 'number' = 'percent'): NumberFormatSpec {
+  return { ...ruleSpec(numberRuleSet(finiteValues(values), numberSetOf(locale, { kind, change: true })), locale, '', suffix), signed: true };
+}
+
+/**
+ * The statistics of a chart under the default rule: an authored value in no
+ * set prints in the level set as a late value (`level`). The statistics of one
+ * kind form one set (`set`). Undefined under an authored format.
+ */
+export interface RuleStatistics {
+  level: (value: number) => string;
+  set: (values: readonly (number | null | undefined)[]) => (value: number) => string;
+}
+export function ruleStatistics(spec: NumberFormatSpec, level: (value: number) => string): RuleStatistics | undefined {
+  if (!spec[RULE_SET]) return undefined;
+  return { level, set: (values) => statisticFormatter(values, spec) };
+}
+
+/** The spec without its rule set: for a printer of its own (the ticks) that keeps the style. */
+export function withoutRuleSet(spec: NumberFormatSpec): NumberFormatSpec {
+  if (!spec[RULE_SET]) return spec;
+  const { [RULE_SET]: _rule, ...plain } = spec;
+  return plain;
+}
+
+/** One print face per look, so a rule set's text cache keys on it. */
+const ruleFaces = new Map<string, PrintFace>();
+const facesBySpec = new WeakMap<NumberFormatSpec, PrintFace>();
+function ruleFace(spec: NumberFormatSpec): PrintFace {
+  // A spec is not changed once it prints, so its face is kept by the spec itself; a per-point print builds no key.
+  const own = facesBySpec.get(spec);
+  if (own) return own;
+  const key = `${spec.locale ?? ''}\u0000${spec.prefix}\u0000${spec.suffix}\u0000${spec.signed ? 1 : 0}${spec.thousandsSep === '' ? 0 : 1}${spec.magnitudeInAffix ? 1 : 0}`;
+  let face = ruleFaces.get(key);
+  if (!face) {
+    if (ruleFaces.size >= 1024) ruleFaces.clear();
+    ruleFaces.set(key, face = { ...printFace(spec.locale, spec.prefix, spec.suffix, spec.signed, spec.thousandsSep === '' ? '' : undefined), bare: spec.magnitudeInAffix === true });
+  }
+  facesBySpec.set(spec, face);
+  return face;
+}
+
+/** A value under a rule spec: the rule's text with the spec's affixes, sign and the chart's marks. */
+function ruleText(value: number, spec: NumberFormatSpec, rule: RuleSet, face = ruleFace(spec)): string {
+  if (value == null || !Number.isFinite(value)) return formatWithSpecUncached(value, withoutRuleSet(spec));
+  const plain = Object.is(value, -0) ? 0 : value;
+  if (spec.glyphs || spec.negative !== 'minus') return signedText(rule.core(plain, face), plain < 0, plain === 0, spec);
+  return rule.text(plain, face);
 }
 
 /**
@@ -1011,15 +1103,15 @@ const MAGNITUDE_NEXT: Record<NumberFormatSpec['magnitude'], NumberFormatSpec['ma
  * — a reader-facing 1.0M whose reconciliation number stayed 1,049,000 would
  * fabricate a phantom gap (see roundedNumber's contract below).
  */
-/** A label that prints 1,000 or more at its set's magnitude: its digits already carry the comparison. */
-function printsWholeInSet(value: number, spec: NumberFormatSpec, decimals: number): boolean {
-  return Boolean(spec.setScale) && Number(roundHalfUp(Math.abs(value) / MAGNITUDE_DIVISOR[spec.magnitude], decimals)) >= 1000;
-}
-
 export function effectiveScale(
   value: number,
   spec: NumberFormatSpec,
 ): { magnitude: NumberFormatSpec['magnitude']; decimals: number } {
+  const rule = spec[RULE_SET];
+  if (rule) {
+    const group = rule.groupOf(value);
+    return { magnitude: SCALE_MAGNITUDE[group.scale], decimals: group.decimals };
+  }
   let magnitude: NumberFormatSpec['magnitude'] = spec.magnitude;
   const currencyWhole = spec.currencyWhole && magnitude === 'none' && Math.abs(value) >= 1000;
   const checked = checkedDecimals(spec.decimals);
@@ -1027,7 +1119,6 @@ export function effectiveScale(
   let decimals = baseDecimals;
   if (magnitude === 'none') {
     // Unit rule: a value that rounds to at least wholeFrom prints whole.
-    if (spec.wholeCounts && Number.isInteger(value)) return { magnitude, decimals: 0 };
     return { magnitude, decimals: spec.wholeFrom && Number(roundHalfUp(Math.abs(value), decimals)) >= spec.wholeFrom ? 0 : decimals };
   }
   // A forced scale does not roll: "2,400k" is what a board asked for when it
@@ -1039,20 +1130,7 @@ export function effectiveScale(
   // "940.0". Thousands print whole, because a figure in thousands already
   // carries the digits a reader compares; millions keep the example's own
   // decimals, because "11.3" without them is "11".
-  if (spec.autoMagnitude) {
-    // shortcut: the stepped-down value keeps the raster's decimals as a cap; one scale per label, not per column.
-    while (magnitude !== 'none' && Math.abs(value) < MAGNITUDE_DIVISOR[magnitude]) magnitude = MAGNITUDE_PREVIOUS[magnitude];
-    // Up to two decimals at its own scale, so distinct small values stay distinct.
-    // The scale is chosen after rounding: 999,999.7 prints "1.00M", not "1,000.00k".
-    while (magnitude !== spec.magnitude) {
-      const scaled = value / MAGNITUDE_DIVISOR[magnitude];
-      const own = Math.max(spec.stepDecimals ?? 0, neededDecimals(scaled, Math.max(decimals, 2)));
-      if (Number(roundHalfUp(Math.abs(scaled), own)) < 1000) return { magnitude, decimals: own };
-      magnitude = magnitude === 'none' ? 'k' : MAGNITUDE_NEXT[magnitude]!;
-    }
-  }
   if (spec.rollMagnitude === false) {
-    if (printsWholeInSet(value, spec, decimals)) return { magnitude, decimals: 0 };
     return spec.nonzero && !spec.automatic ? { magnitude, decimals: nonzeroDecimals(value / MAGNITUDE_DIVISOR[magnitude], decimals) } : { magnitude, decimals };
   }
   if (spec.lockMagnitude) return { magnitude, decimals: magnitude === 'k' ? 0 : decimals };
@@ -1295,6 +1373,8 @@ export function asEngineNumbers<T>(print: () => T): T {
 }
 
 export function formatWithSpec(value: number, spec: NumberFormatSpec): string {
+  const rule = spec[RULE_SET];
+  if (rule) return ruleText(value, spec, rule);
   if (engineNumbers && spec.exact) spec = engineNumberSpec(spec);
   if (value == null || !Number.isFinite(value) || Object.is(value, -0)) return formatWithSpecUncached(value, spec);
   boundSpecTexts();
@@ -1303,6 +1383,11 @@ export function formatWithSpec(value: number, spec: NumberFormatSpec): string {
 
 /** The table owns and finalizes this spec before compiling it. Public mutable specs use formatWithSpec. */
 export function compileNumberFormat(spec: NumberFormatSpec): (value: number) => string {
+  const rule = spec[RULE_SET];
+  if (rule) {
+    const face = ruleFace(spec);
+    return (value) => ruleText(value, spec, rule, face);
+  }
   let plan: TextPlan | undefined;
   return (value) => {
     if (value == null || !Number.isFinite(value) || Object.is(value, -0)) return formatWithSpecUncached(value, spec);
@@ -1431,6 +1516,8 @@ export function printsBound(text: string): boolean {
  * disagree on one cell fabricate a phantom gap.
  */
 export function roundedNumber(value: number, spec: NumberFormatSpec): number {
+  const rule = spec[RULE_SET];
+  if (rule) return rule.rounded(value);
   if (spec.exponent && Number.isFinite(value)) return exampleScientific(value, spec).value;
   const { magnitude, decimals } = effectiveScale(value, spec);
   const divisor = MAGNITUDE_DIVISOR[magnitude];
@@ -1479,6 +1566,7 @@ export function exampleSpec(example: string, locale?: string, unit?: string, val
 /** exampleSpec of an example that prints exactly (`exact`: one the author wrote) or keeps the data-led precision of a unit. */
 function specOfExample(example: string, exact: boolean, locale?: string, unit?: string, values?: Iterable<number | null | undefined>): NumberFormatSpec {
   const spec = localized(parseFormatExample(example, true), locale);
+  if (!exact && values && (unitOnlyExample(String(example)) !== undefined || isUnitStandIn(example))) return unitOnlySpec(spec, unit, values);
   if (exact) {
     const before = { ...spec };
     if (before.magnitude !== 'none' && unitMagnitude(unit) === before.magnitude) before.rollMagnitude = false;
@@ -1498,6 +1586,29 @@ function specOfExample(example: string, exact: boolean, locale?: string, unit?: 
   const integer = spec.decimals > 0 ? body.slice(0, body.lastIndexOf(spec.decimalSep)) : body;
   if (spec.thousandsSep === '' && integer.replace(/\D/g, '').length < 4) spec.thousandsSep = spec.decimalSep === ',' ? '.' : ',';
   return spec;
+}
+
+const RULE_SCALE: Record<NumberFormatSpec['magnitude'], RuleScale> = { none: 0, k: 3, m: 6, bn: 9, t: 12 };
+
+/**
+ * A unit-only format ("$", "%", "$M") under the default rule:
+ * the format states the prefix, the suffix and a scale word,
+ * and the rule fills the decimals over `values`, and the scale words where
+ * the format names none. A unit text in the format or the chart's unit
+ * switches the scale words off.
+ */
+function unitOnlySpec(spec: NumberFormatSpec, unit: string | undefined, values: Iterable<number | null | undefined>): NumberFormatSpec {
+  const stated = spec.magnitude === 'none' ? undefined : RULE_SCALE[spec.magnitude];
+  const affix = (spec.prefix + spec.suffix).trim();
+  const declared = {
+    unit: isUnitText(unit) ? unit : affix,
+    kind: isPercentUnit(affix) || isPercentUnit(unit) ? 'percent' as const : 'number' as const,
+    ...(stated === undefined ? {} : { scale: stated }),
+  };
+  const rule = numberRuleSet(finiteValues(values), numberSetOf(spec.locale, declared));
+  // A stated scale holds for every value, so its word prints as written, as part of the suffix.
+  if (stated === undefined) return ruleSpec(rule, spec.locale, spec.prefix, spec.suffix);
+  return { ...ruleSpec(rule, spec.locale, spec.prefix, magnitudeText(spec, spec.magnitude) + spec.suffix), magnitudeInAffix: true };
 }
 
 /** Print every value as the example reads: its scale word held, no lift (`exact`). */
@@ -1569,7 +1680,7 @@ export function formatNonzeroWithSpec(value: number, spec: NumberFormatSpec): st
   if (engineNumbers && spec.exact) spec = engineNumberSpec(spec);
   if (spec.automatic || spec.exact || (spec.nonzero && spec.magnitude !== 'none')) return formatWithSpec(value, spec);
   // Preserve existing callers that explicitly request this authored-format lift.
-  const scaled = value / MAGNITUDE_DIVISOR[spec.autoMagnitude ? effectiveScale(value, spec).magnitude : spec.magnitude];
+  const scaled = value / MAGNITUDE_DIVISOR[spec.magnitude];
   const lifted = nonzeroDecimals(scaled, spec.decimals);
   return formatWithSpec(value, { ...spec, decimals: roundsToZero(scaled, lifted) ? spec.decimals : lifted });
 }
@@ -1698,8 +1809,6 @@ export function rasterDecimals(
     if (value === null || value === undefined || !Number.isFinite(value)) continue;
     const scaled = value / divisor;
     if (spec.magnitude !== 'none' && Math.abs(scaled) >= 1000) continue;
-    // A value under an engine-chosen scale prints at its own scale (effectiveScale).
-    if (spec.autoMagnitude && Math.abs(scaled) < 1) continue;
     shown.push(scaled);
   }
   if (shown.length === 0) return spec.decimals;
@@ -1709,11 +1818,7 @@ export function rasterDecimals(
   const scale = largest > 0 && largest < 1 ? largest : 1;
   return shown.reduce((max, scaled) => {
     const needed = neededDecimals(scaled, cap, scale, spec.decimals);
-    // Under an engine scale the preference is four significant digits:
-    // 107.8B, not 108B. seriesRasterFormatter lifts further while
-    // two different values print one text.
-    const owed = spec.autoMagnitude ? Math.max(spec.decimals, 1) : spec.decimals;
-    return Math.max(max, Math.abs(scaled) >= 100 ? Math.min(owed, needed) : needed);
+    return Math.max(max, Math.abs(scaled) >= 100 ? Math.min(spec.decimals, needed) : needed);
   }, 0);
 }
 
@@ -1726,6 +1831,9 @@ export function rasterDecimals(
  * bound to full precision ("23.4", not "23.35").
  */
 export function formatStatWithSpec(value: number, spec: NumberFormatSpec): string {
+  // A statistic of a default set is a set of its own with the scale-word decision of its values.
+  const rule = spec[RULE_SET];
+  if (rule) return ruleText(value, spec, statisticSet([value], rule));
   if (spec.exponent) return formatWithSpec(value, spec);
   // A statistic is the engine's number, not the author's: an authored example keeps the statistic's rule here, its scale and one more decimal.
   const base = engineNumberSpec(spec);
@@ -1736,9 +1844,18 @@ export function formatStatWithSpec(value: number, spec: NumberFormatSpec): strin
   return formatWithSpec(value, { ...own, decimals: Math.max(own.decimals, neededDecimals(scaled, own.decimals + 1)) });
 }
 
-/** Trend rates choose their own magnitude and precision; they never use the small-value bound policy. */
+/**
+ * Trend rates choose their own magnitude and precision; they never use the small-value bound policy.
+ * Without an example a rate is a statistic set of one value: a rate of a
+ * percent or points measure prints in points, another unit follows the number.
+ */
 export function trendRateFormatter(example: string | undefined, locale?: string, unit?: string, signed = false): (rate: number) => string {
-  const spec = example ? exampleSpec(example, locale) : defaultFormatSpec(locale);
+  if (!example) {
+    const points = isPercentUnit(unit);
+    return (rate) => withUnit(formatWithSpec(rate, { ...defaultSetSpec([rate], locale, points ? undefined : unit, points ? { kind: 'percent' } : {}), suffix: points ? 'pp' : '', signed }),
+      points ? undefined : unit, false, locale);
+  }
+  const spec = exampleSpec(example, locale);
   // Unsigned scatter rates keep their minus style under a parentheses example.
   // Points take the spacing the chart's % takes: "+0.40pp" beside "12.5%", "+0,40 pp" beside "12,5 %".
   const face = { ...spec, automatic: false, signed, negative: signed ? spec.negative : 'minus' as const,
@@ -2544,65 +2661,23 @@ export function unitMagnitude(unit: string | undefined): NumberFormatSpec['magni
 }
 
 /**
- * The exhibit-wide value formatter: an authored example sets style and
- * precision. Without an example, plotted values set the precision. `fmtSigned` forces '+' on positives — the
- * derived-delta face used by waterfall sums and diff/delta annotations.
- * `unit` applies the unit rule; an authored example overrides it.
- * `defaultExample` preserves a composing chart's existing default precision;
- * it is not authored and therefore still permits the currency default.
+ * The exhibit-wide value formatter. Without an example the plotted values
+ * form one set under the default rule (ruleRasterFormatter). An authored
+ * example prints every value exactly as it reads. `fmtSigned` forces '+' on
+ * positives: the derived-delta face of waterfall sums and diff annotations.
  *
- * `forSeries` is the formatter for one series' value labels (a series
- * format overrides). A series `format` example prints in its own style and
- * precision, as a cell `format` does. A series `unit` applies the unit rule
- * in place of the chart unit, on the exhibit raster. A series with neither
- * prints with `fmt`. `shared` keeps one precision for every series: series
- * that share a stack or a total read as one set.
+ * `forSeries` is the formatter for one series' value labels. A series
+ * `format` example prints in its own style and precision, as a cell `format`
+ * does. A series with its own `unit` is a set of its own. A series with
+ * neither prints with `fmt`. `cell` declares the values table cells (a bar table), whose
+ * scale words start at the cell threshold.
  */
-/**
- * One magnitude for a set of comparable values, such as the stages of a funnel with
- * their totals: the largest step at which the smallest nonzero value prints as 1 or
- * more (after rounding), while the largest keeps at most four digits ("1,180M · 590M · 140M").
- * Undefined keeps one scale per label (effectiveScale): an authored format, a unit
- * that names a scale, a set below 1e6 (no engine scale), or a set no step fits.
- * `whole`: the magnitude differs from the M or B the engine picks for the set's largest
- * value, so a label of 1,000 or more prints whole ("1,540M", not "1,540.00M"). A set at
- * the engine's own M or B prints as one scale per label does, "1,000.00M" for 999,999,900 included.
- */
-export interface SetMagnitude { magnitude: 'bn' | 'm' | 'k'; whole: boolean }
-
-export function setMagnitude(
-  values: Iterable<number | null | undefined>,
-  example: string | undefined,
-  unit: string | undefined,
-  target: RenderTarget | undefined,
-): SetMagnitude | undefined {
-  if (example || target === undefined || unitMagnitude(unit)) return undefined;
-  let min = Infinity, max = 0;
-  for (const value of values) {
-    if (value == null || !Number.isFinite(value) || value === 0) continue;
-    min = Math.min(min, Math.abs(value));
-    max = Math.max(max, Math.abs(value));
-  }
-  if (max < 1e6) return undefined;
-  // The smallest value reaches a step as one scale per label prints it: 999,999 rounds up to "1M" (effectiveScale).
-  const reaches = (magnitude: 'bn' | 'm' | 'k') => {
-    const below = min / MAGNITUDE_DIVISOR[MAGNITUDE_PREVIOUS[magnitude]];
-    return min >= MAGNITUDE_DIVISOR[magnitude] || Number(roundHalfUp(below, neededDecimals(below, 2))) >= 1000;
-  };
-  const step = (['bn', 'm', 'k'] as const).find(reaches);
-  return step && Math.round(max / MAGNITUDE_DIVISOR[step]) < 10000 ? { magnitude: step, whole: step !== (max >= 1e9 ? 'bn' : 'm') } : undefined;
-}
-
 export function seriesRasterFormatter(
   example: string | undefined,
   values: Iterable<number | null | undefined>,
   locale?: string,
   unit?: string,
-  target?: RenderTarget,
-  defaultExample?: string,
-  shared = false,
-  /** The set's magnitude (setMagnitude), shared by every raster of the set: no label steps down on its own. */
-  setScale?: SetMagnitude,
+  cell = false,
 ): {
   spec: NumberFormatSpec;
   fmt: (value: number) => string;
@@ -2618,123 +2693,88 @@ export function seriesRasterFormatter(
   /** True when the value prints as zero at its formatter's precision before the nonzero lift. */
   roundsToZeroAt: (value: number, series?: { format?: string; unit?: string }, cellFormat?: string) => boolean;
 } {
-  // Iterators must survive both magnitude selection and precision selection.
   const raster = [...values];
-  const unitScale = unitMagnitude(unit);
-  const spec = example ? exampleSpec(example, locale, unit, raster) : defaultExample ? localized(parseFormatExample(defaultExample, true), locale) : defaultFormatSpec(locale);
-  if (!example) spec.automatic = true;
-  const unscaledSpec = { ...spec };
-  let autoMagnitude = false;
-  // From 1e6 the engine picks M or B from the largest value. A unit that
-  // names a scale ("€M", "USD bn") gets no second one: "48B" under "in €M"
-  // reads as 48 billion millions. An authored example keeps its
-  // digits; unscaledFormatLint warns.
-  if (!example && target !== undefined && spec.magnitude === 'none' && !unitScale) {
-    const max = raster.reduce<number>((largest, value) => value != null && Number.isFinite(value) ? Math.max(largest, Math.abs(value)) : largest, 0);
-    if (setScale || max >= 1e6) {
-      // A set's magnitude (setMagnitude) holds every nonzero label, so none steps down; the decimals count as for M or B.
-      if (setScale?.whole) spec.setScale = true;
-      spec.magnitude = setScale?.magnitude ?? (max >= 1e9 ? 'bn' : 'm');
-      spec.rollMagnitude = false;
-      spec.autoMagnitude = true;
-      autoMagnitude = true;
-      // One decimal count for the values under the scale, each at its own scale.
-      let stepDecimals = 0;
-      for (const value of raster) {
-        if (value == null || !Number.isFinite(value) || Math.abs(value) >= MAGNITUDE_DIVISOR[spec.magnitude]) continue;
-        let own: NumberFormatSpec['magnitude'] = spec.magnitude;
-        while (own !== 'none' && Math.abs(value) < MAGNITUDE_DIVISOR[own]) own = MAGNITUDE_PREVIOUS[own];
-        const scaled = value / MAGNITUDE_DIVISOR[own];
-        // The lift that keeps 0.004 off 0 is part of the shared count: "+0.004" beside "+0.040", not "+0.04".
-        stepDecimals = Math.max(stepDecimals, nonzeroDecimals(scaled, neededDecimals(scaled, 2)));
-      }
-      if (stepDecimals > 0) spec.stepDecimals = stepDecimals;
-    }
-  }
-  if (!example && !defaultExample && unitScale) spec.wholeFrom = 100;
-  // A unit ("%", "% of units") is not repeated on the numbers: the subtitle,
-  // a panel or column head, or the axis title states it.
-  if (!example) {
-    // A default example's precision was set for unscaled values; after an automatic M/B the raster sets it (1.5M, not 2M).
-    if (!defaultExample || autoMagnitude) spec.decimals = rasterDecimals(raster, spec);
-    // Four significant digits is a preference, not a cap: different values that print one text under the engine scale get the decimals that part them.
-    if (autoMagnitude) {
-      // A label that prints whole in its set (printsWholeInSet) takes no lift.
-      const scaled = raster.filter((value): value is number => value != null && Number.isFinite(value) && Math.abs(value) >= MAGNITUDE_DIVISOR[spec.magnitude] && !printsWholeInSet(value, spec, spec.decimals));
-      spec.decimals += distinctDecimalLift(scaled.map((value) => ({ value, format: (extra: number) => formatWithSpec(value, { ...spec, decimals: spec.decimals + extra }) })));
-    }
-    if (currencyWholeNumbers(unit, target)) spec.currencyWhole = true;
-    // The unit rule already prints part of this raster whole, so a whole value under it
-    // prints whole too: "32" beside "410", not "32.00".
-    if (spec.wholeFrom && spec.decimals > 0 && raster.some((value) => value != null && Math.abs(value) >= spec.wholeFrom!)) spec.wholeCounts = true;
-  }
-  // The shared raster never prints a nonzero value as 0: a
-  // value the raster rounds to zero keeps the digits that show it, 0.004
-  // beside 12 prints "0.004". An authored example keeps the precision it
-  // names, as status and heatmap do.
-  const face = example ? formatWithSpec : formatNonzeroWithSpec;
-  const fmt = (value: number) => face(value, spec);
+  if (!example) return ruleRasterFormatter(raster, locale, unit, cell);
+  // An authored example prints every value exactly as it reads (exampleSpec).
+  const spec = exampleSpec(example, locale, unit, raster);
+  const fmt = (value: number) => formatWithSpec(value, spec);
   const signedSpec = { ...spec, signed: true };
-  const fmtSigned = (value: number) => face(value, signedSpec);
-  const percentSpec = { ...(spec.rollMagnitude === false ? { ...unscaledSpec, decimals: rasterDecimals(raster, unscaledSpec) } : spec), suffix: '%', wholeFrom: undefined, currencyWhole: undefined };
-  const fmtPercent = example ? fmt : (value: number) => face(value, percentSpec);
+  const fmtSigned = (value: number) => formatWithSpec(value, signedSpec);
   const byExample = memoFormatterFromExample(locale);
-  // Each series takes its own precision: 0.034 beside a series of 0.5, not 0.03; 100 beside a series of 1.23, not 100.00.
-  const seriesSpecs = new WeakMap<object, NumberFormatSpec>();
-  const ownPrecision = (series: object, base: NumberFormatSpec): NumberFormatSpec => {
-    if (example || defaultExample || autoMagnitude || shared) return base;
-    let made = seriesSpecs.get(series);
-    if (!made) {
-      const numbers = normalizedSeriesNumbers(series);
-      const decimals = numbers ? rasterDecimals(numbers, { ...base, decimals: unscaledSpec.decimals }) : base.decimals;
-      made = decimals === base.decimals ? base : { ...base, decimals };
-      seriesSpecs.set(series, made);
-    }
-    return made;
-  };
-  const plainSpec = (series: { unit?: string }): NumberFormatSpec => {
-    const wholeFrom = !defaultExample && unitMagnitude(series.unit) ? 100 : undefined;
-    const currencyWhole = currencyWholeNumbers(series.unit, target);
-    // A series unit that names a scale gets no engine scale on top.
-    const unscaled = autoMagnitude && unitMagnitude(series.unit) !== undefined;
-    const base = example || series.unit === undefined || (wholeFrom === spec.wholeFrom && currencyWhole === Boolean(spec.currencyWhole) && !unscaled) ? spec
-      : { ...(unscaled ? { ...spec, magnitude: 'none' as const, autoMagnitude: undefined, rollMagnitude: undefined } : spec), wholeFrom, currencyWhole };
-    return ownPrecision(series, base);
-  };
-  /** The spec forSeries prints a series with, for a value axis whose ticks must read at the precision of their spacing. */
   const specForSeries = (series: { format?: string; unit?: string; values?: readonly unknown[] }): NumberFormatSpec =>
-    series.format ? exampleSpec(series.format, locale, series.unit ?? unit, normalizedSeriesNumbers(series)) : plainSpec(series);
+    series.format ? exampleSpec(series.format, locale, series.unit ?? unit, normalizedSeriesNumbers(series)) : spec;
   const seriesFormatters = new WeakMap<object, (value: number) => string>();
   const forSeries = (series: { format?: string; unit?: string }, cellFormat?: string): ((value: number) => string) => {
     // The unit the value is in states the scale an example holds (exampleSpec).
     if (cellFormat) return byExample(cellFormat, series.unit ?? unit);
+    if (!series.format) return fmt;
     let formatter = seriesFormatters.get(series);
-    if (formatter) return formatter;
-    if (series.format) {
+    if (!formatter) {
       // A series format holds its own values to one scale and one decimal count (exampleSpec).
       formatter = formatterFromExample(series.format, locale, series.unit ?? unit, normalizedSeriesNumbers(series));
       seriesFormatters.set(series, formatter);
-      return formatter;
     }
-    const own = plainSpec(series);
-    formatter = own === spec ? fmt : (value: number) => face(value, own);
+    return formatter;
+  };
+  /** Whether `value` prints as the format's zero: an authored format answers by its own text. */
+  const roundsToZeroAt = (value: number, series: { format?: string; unit?: string } = {}, cellFormat?: string): boolean => {
+    const formatter = forSeries(series, cellFormat);
+    return formatter(value) === formatter(0);
+  };
+  return { spec, fmt, fmtSigned, fmtPercent: fmt, percentSpec: spec, forSeries, specForSeries, roundsToZeroAt };
+}
+
+/**
+ * The default raster: one set under the default number rule (numberRule.ts).
+ * A series with its own unit is a set of its own; a series format or a cell
+ * format is authored. An authored percent cell ({ pct }) prints from a
+ * percent set over the same values.
+ */
+function ruleRasterFormatter(raster: readonly (number | null | undefined)[], locale: string | undefined, unit: string | undefined, cell: boolean): ReturnType<typeof seriesRasterFormatter> {
+  const values = finiteValues(raster);
+  const asCell = cell ? { cell: true } : {};
+  const spec = ruleSpec(numberRuleSet(values, numberSetOf(locale, { unit, ...asCell })), locale);
+  const fmt = (value: number) => formatWithSpec(value, spec);
+  const signedSpec = { ...spec, signed: true };
+  const fmtSigned = (value: number) => formatWithSpec(value, signedSpec);
+  // The percent set is built when a percent cell asks for it.
+  let percent: NumberFormatSpec | undefined;
+  const percentOf = () => percent ??= ruleSpec(numberRuleSet(values, numberSetOf(locale, { kind: 'percent', ...asCell })), locale, '', '%');
+  const fmtPercent = (value: number) => formatWithSpec(value, percentOf());
+  const byExample = memoFormatterFromExample(locale);
+  const seriesSpecs = new WeakMap<object, NumberFormatSpec>();
+  const specForSeries = (series: { format?: string; unit?: string; values?: readonly unknown[] }): NumberFormatSpec => {
+    if (series.format) return exampleSpec(series.format, locale, series.unit ?? unit, normalizedSeriesNumbers(series));
+    if (series.unit === undefined || series.unit === unit) return spec;
+    let own = seriesSpecs.get(series);
+    if (!own) {
+      own = defaultSetSpec(normalizedSeriesNumbers(series) ?? values, locale, series.unit, asCell);
+      seriesSpecs.set(series, own);
+    }
+    return own;
+  };
+  const seriesFormatters = new WeakMap<object, (value: number) => string>();
+  const forSeries = (series: { format?: string; unit?: string }, cellFormat?: string): ((value: number) => string) => {
+    if (cellFormat) return byExample(cellFormat, series.unit ?? unit);
+    let formatter = seriesFormatters.get(series);
+    if (formatter) return formatter;
+    if (series.format) formatter = formatterFromExample(series.format, locale, series.unit ?? unit, normalizedSeriesNumbers(series));
+    else {
+      const own = specForSeries(series);
+      formatter = own === spec ? fmt : (value: number) => formatWithSpec(value, own);
+    }
     seriesFormatters.set(series, formatter);
     return formatter;
   };
-  /**
-   * Whether `value` is zero at the precision its formatter prints in, the
-   * raster's before the nonzero lift: the test a rule about a
-   * printed zero reads, since no nonzero value prints as one. An authored
-   * format answers by its own text.
-   */
+  /** The rule prints a nonzero value as zero only under smallValues 'zero'; an authored format answers by its own text. */
   const roundsToZeroAt = (value: number, series: { format?: string; unit?: string } = {}, cellFormat?: string): boolean => {
-    if (example || cellFormat || series.format) {
+    if (cellFormat || series.format) {
       const formatter = forSeries(series, cellFormat);
       return formatter(value) === formatter(0);
     }
-    return roundsToZero(value / MAGNITUDE_DIVISOR[spec.magnitude], ownPrecision(series, spec).decimals);
+    return roundedNumber(value, specForSeries(series)) === 0;
   };
-  return { spec, fmt, fmtSigned, fmtPercent, percentSpec: example ? spec : percentSpec, forSeries, specForSeries, roundsToZeroAt };
+  return { spec, fmt, fmtSigned, fmtPercent, get percentSpec() { return percentOf(); }, forSeries, specForSeries, roundsToZeroAt };
 }
 
 /**

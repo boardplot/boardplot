@@ -22,7 +22,7 @@ import type { Geometry, LintWarning, Paint, SceneNode, TypographyRole } from '..
 import type { OwnerRef } from '../../types/cell';
 import type { GridLayoutOptions } from './normalize';
 import type { GridMarks, GridDerived } from './layout';
-import { computeMetricStack, formatPanelValue, metricStackGrain, normalizeMetricStack, stackError, stackRange, type ComputedStackPanel, type MetricStackData, type StackReadout, type StackState } from './metricStack';
+import { computeMetricStack, metricStackGrain, normalizeMetricStack, stackError, stackRange, type ComputedStackPanel, type MetricStackData, type StackReadout, type StackState } from './metricStack';
 import { maxOf, pushAll } from '../../arrays';
 import { withUnprintedClaims } from '../../claims/ids';
 
@@ -255,7 +255,7 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   };
   if (automatic) size = { ...size, height: Math.max(size.height, 1600) };
   let { occupied, frame } = frameAt();
-  const valueWidth = maxOf(computed.panels.flatMap(p => p.values.map(v => v === null ? measure(na,valueFont).width : measure(formatPanelValue(p.panel, v, options.locale?.language), valueFont).width))) + 4;
+  const valueWidth = maxOf(computed.panels.flatMap(p => p.values.map(v => v === null ? measure(na,valueFont).width : measure(p.format(v), valueFont).width))) + 4;
   // A column also holds its category name with 3 px to spare.
   const categoryWidth = maxOf(data.categories.flatMap(c => c.label.split(/\s+/).map(word => measure(word, keyFont).width))) + 3;
   const valueRoom = Math.max(20, valueWidth, categoryWidth) * data.categories.length;
@@ -440,7 +440,7 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   const marks: GridMarks = {panels:[]};
   const yielding = new Set<string>();
   computed.panels.forEach((p,pi) => {
-    const formatValue = (value: number) => formatPanelValue(p.panel, value, options.locale?.language);
+    const formatValue = p.format;
     const plot=plots[pi]!, baseline=plot.y+plot.h;
     const owner={seriesId:p.panel.id};
     const color=p.panel.emphasis?accent:neutral;

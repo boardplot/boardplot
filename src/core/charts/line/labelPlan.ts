@@ -38,7 +38,7 @@ export interface LineLabelPlan {
   xPartialGroups: string[][];
   endpointFallback: boolean;
   endpointWiden: boolean;
-  /** The would-be value texts of the points under an authored format, made on demand (pointWouldShows). */
+  /** The would-be value texts of the points, made on demand (pointWouldShows). */
   wouldShow: PointWouldShows;
   /** The values a tie note or a tie's kept value prints for every member (joinTieValues). */
   tieShows: ReturnType<typeof joinTieValues>;
@@ -208,7 +208,8 @@ function addFanEdgeLabels(domain: LineDomain, area: LineArea, marks: LineMarkGeo
   const outer = marks.fan[edge.index]!;
   const { ci } = edge;
   for (const [id, value] of [[outer.high, edge.high], [outer.low, edge.low]] as const) {
-    const text = domain.fmt(value);
+    // A bound is a statistic: it prints in the bound set, as its hover card does.
+    const text = (domain.fanFmt ?? domain.fmt)(value);
     const w = measure(text, font).width;
     const px = area.xOf(ci);
     const py = area.y(value);

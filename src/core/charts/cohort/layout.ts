@@ -26,7 +26,6 @@ import { structureCount } from '../../structureCounts';
 
 import { chartTheme } from '../chartEnv';
 import { clamp } from '../../geometry';
-import { smallRateDecimals, formatAutomaticNumber, formatAutomaticPercent } from '../../format';
 import { accessibleTitle } from '../../normalize/shared';
 import { layoutHeatmap, type HeatmapLayoutOptions } from '../heatmap/layout';
 import { hostedLayout } from '../../normalize/innerRefusal';
@@ -47,8 +46,8 @@ import type {
   CohortMarks,
   CohortOptions,
 } from './types';
-import { autoDecimals } from '../../formatPrecision';
-import { AUTOMATIC_FORMAT } from '../../formatSpec';
+import { defaultSetSpec, formatWithSpec } from '../../formatSpec';
+import { ruleFormatter } from '../../numberSets';
 import { authoredNotes, withAuthoredFootnotes } from '../../frame';
 import { disclosureNote, keepShownNotes } from '../../notes';
 import { pushAll } from '../../arrays';
@@ -143,8 +142,10 @@ export function layoutCohort(
   // would either pollute the colour ramp or need a second scale, and without a
   // visible base every comparison down a column is unanchored.
   const baseSuffix = new Map<Id, string>();
+  // The bases are one count set of cells (the size column is its own set).
+  const baseText = ruleFormatter(derived.cohorts.map((row) => row.base), options.locale?.language, { cell: true });
   for (const row of derived.cohorts) {
-    baseSuffix.set(row.id, `(n\u00a0=\u00a0${formatAutomaticNumber(row.base, { locale: options.locale?.language, decimals: 0 })})`);
+    baseSuffix.set(row.id, `(n\u00a0=\u00a0${baseText(row.base)})`);
   }
   const cohortLabel = (index: number): string => {
     const authored = data.cohorts[index]!.label ?? data.cohorts[index]!.id;
@@ -188,7 +189,8 @@ export function layoutCohort(
     if (r === null) return null;
     const paint = t === 0 ? ANCHOR_PAINT : average ? averagePaint(r) : cohortPaint(r);
     cellPaint.set(`cell:${rowId}:t${t}`, paint);
-    return { pct: r * 100, fill: cssOf(paint), ...(!options.format ? { [AUTOMATIC_FORMAT]: true, format: formatAutomaticPercent(1, smallRateDecimals(r * 100), false, options.locale?.language) } : {}) };
+    // Without a format the heatmap prints the shown rates as one percent set.
+    return { pct: r * 100, fill: cssOf(paint) };
   };
 
   // 'reverse' is the one sort that survives: it is a reading choice (newest
@@ -257,12 +259,10 @@ export function layoutCohort(
     const inner = withAuthoredFootnotes<HeatmapLayoutOptions & { [HOST_CLAIMS]: HostClaims }>({
       ...stripAnswered(options),
       [HOST_CLAIMS]: hostClaims,
-      // One decimal width for every cell. The engine's own default drops the
-      // decimal on whole numbers, which puts "60%" next to "55.2%" in one column
-      // and costs the eye the alignment it scans by; integer percentages also
-      // fit a 24-column triangle where "55.2%" does not. The unrounded ratio
-      // stays in `derived`, so precision is never lost, only display width.
-      format: options.format ?? '12',
+      // Without a format the shown rates are one percent set of cells, printed at
+      // every width alike. The unrounded ratio stays in `derived`.
+      format: options.format,
+      holdDecimals: true,
       // Continuous ramp, in-cell values. Every cell carries an explicit fill
       // from the pinned ramp above, so the engine's own observed-maximum anchor
       // never reaches the ink.
@@ -675,9 +675,15 @@ function describe(derived: CohortDerived, periodNames: string[], unobserved: num
     const label = labels.find((item) => item.owner.seriesId === rowId && item.owner.categoryId === `t${t}` && item.shows?.value !== undefined);
     return label && (label.hidden === undefined || options.format !== undefined) ? label.shows!.value : undefined;
   };
+  // A rate no cell label states prints in the set of the shown rates, as the heatmap prints its cells.
+  const shownRates = [
+    ...visible.flatMap((t) => derived.averages?.[t]?.value ?? []),
+    ...derived.cohorts.flatMap((row) => visible.flatMap((t) => t < row.observedPeriods && row.retention[t] != null ? [row.retention[t]!] : [])),
+  ].map((r) => r * 100);
+  const rateSpec = defaultSetSpec(shownRates, options.locale?.language, undefined, { kind: 'percent', cell: true });
   const pct = (v: number, rowId?: Id, t?: number): string =>
     (rowId === undefined || t === undefined ? undefined : cellText(rowId, t))
-      ?? `${formatAutomaticNumber(v * 100, { decimals: autoDecimals(v * 100), locale: options.locale?.language })}%`;
+      ?? `${formatWithSpec(v * 100, rateSpec)}%`;
   const at = (index: number): string => {
     const row = derived.cohorts[index]!;
     // The latest period this cohort reached that the chart shows.

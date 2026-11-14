@@ -203,7 +203,8 @@ it('opens a value line card from its line and its label, and keeps it out of the
   expect(nodes.length).toBe(2);
   for (const nodeId of nodes) {
     expect(labelCardContent(hoverTargets(model, request, { nodeId })[0]!).rows.map(row => row.text))
-      .toEqual(['Average 1.7', 'Value: 1.7', 'Measure: Mean of Sales, Jan 2025 to Mar 2025']);
+      // Default number rule: before "Average 1.7", "Value: 1.7" (a mean is a statistic set of one: three digits).
+      .toEqual(['Average 1.67', 'Value: 1.67', 'Measure: Mean of Sales, Jan 2025 to Mar 2025']);
   }
   // The value reads in the line's own format and scale, never in the chart's unit ("$50" for a 50% line).
   const percent = build({ type: 'line', data: { categories: ['a', 'b'], series: [{ id: 'x', values: [1, 2] }, { id: 'y', values: [3, 2] }] },
@@ -390,8 +391,9 @@ it('prints a drawn KPI change as the chart prints it', () => {
   const fixture = structuredClone(getFixtures('kpi').find(item => item.id === 'text-comparisons')!);
   const { request, geometry } = build({ type: 'kpi', data: fixture.data, options: fixture.options ?? {} });
   const rows = labelCardContent(interactionRecords({ request, geometry, scope: request.scope, claims: [] })[0]!).rows.map(row => row.text);
-  expect(rows.some(text => text.includes('−4%'))).toBe(true);
-  expect(rows.some(text => text.includes('−4.0%'))).toBe(false);
+  // Default number rule: before "−4%". A change prints two digits, so the chart prints −4.0% beside +9.1%.
+  expect(rows.some(text => text.includes('−4.0%'))).toBe(true);
+  expect(rows.some(text => text.includes('−4.00%'))).toBe(false);
 });
 
 // A value without a shown text printed its source digits in the card, not through its format: a scatter point read $48,250, a dropped share label 2.46%.
@@ -443,5 +445,30 @@ it('keeps the digits of a value its label prints as zero in the value, change an
   expect(kpi.card).toEqual(expect.arrayContaining(['0.04%', '+0.02pp (+100%)']));
   const table = rows({ type: 'table', data: { columns: [{ id: 'label', kind: 'rowLabel', label: 'Item' }, { id: 'a', kind: 'value', label: 'Actual' }],
     rows: [{ id: 'r1', label: 'Row 1', cells: { a: { v: 4, format: '$1.2M' } } }, { id: 'r2', label: 'Row 2', cells: { a: 12 } }] } }, 4);
-  expect([table.label, table.card[1]]).toEqual(['$0.0M', '$4.0']);
+  // Default number rule: before "$4.0" (the card prints the value as a set of one).
+  expect([table.label, table.card[1]]).toEqual(['$0.0M', '$4']);
+});
+
+// The card dropped the unit where the shown text carries a scale word: "41.2k" beside "$0.0000031", "0.43M" for a count.
+it('keeps the unit of a value in its card beside a shown text with a scale word', () => {
+  const cards = (spec: object) => {
+    const { request, geometry } = build(spec);
+    return interactionRecords({ request, geometry, scope: request.scope, claims: [] })
+      .map(record => withChartFormats(request.options, () => labelCardContent(record).rows[1]?.value));
+  };
+  const line = cards({ type: 'line', options: { unit: '$', size: { width: 640, height: 360 } }, data: { categories: ['q1', 'q2', 'q3', 'q4'].map(id => ({ id, label: id.toUpperCase() })),
+    series: [{ id: 'revenue', label: 'Revenue', values: [41200, 33800, 9800, 0.0000031] }] } });
+  expect(line).toEqual(['$41.2k', '$33.8k', '$9.8k', '$0.0000031']);
+  const code = cards({ type: 'column', options: { unit: 'EUR', size: { width: 640, height: 360 } }, data: { categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }],
+    series: [{ id: 's', label: 'Revenue', values: [7800000, 410000] }] } });
+  expect(code).toEqual(['7.8M EUR', '410k EUR']);
+});
+
+// A unit that looks like a scale word was joined a second time: 57 in the unit "k" printed "57kk" in its card.
+it('does not join a unit to a shown text that already ends in it', () => {
+  const { request, geometry } = build({ type: 'line', options: { unit: 'k', size: { width: 640, height: 360 } }, data: { categories: ['a', 'b'].map(id => ({ id, label: id.toUpperCase() })),
+    series: [{ id: 'orders', label: 'Orders', values: [41, 57] }] } });
+  const cards = interactionRecords({ request, geometry, scope: request.scope, claims: [] })
+    .map(record => withChartFormats(request.options, () => labelCardContent(record).rows[1]?.value));
+  expect(cards).toEqual(['41k', '57k']);
 });

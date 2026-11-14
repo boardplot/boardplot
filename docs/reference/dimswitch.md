@@ -199,7 +199,7 @@ A KPI table: measures by one hierarchical dimension by period, switchable betwee
 | sortIndicator | string | `'all'`, `'sorted'` |  | Sortable headers with a chevron. 'all' (the default) draws one on every sortable header; 'sorted' draws it on the sorted one alone and keeps the others' reserve, so no track moves. |
 | levelOffset | integer |  |  | Shift body rows down the ladder. Default 0. A board whose top rows are groups rather than KPI lines reads one rung too heavy: 1 steps them down in size, weight, air, ground, indent and label ink, -1 steps them up. The rungs stay floored at the top and at the deepest step. |
 | cellPadX | number |  |  | Horizontal cell padding in px. Default 12; only when it cannot fit, use 5 for 20–24 columns or 3 for 25 or more. |
-| fitFormats | boolean |  |  | Fit figures to authored widths. Remove decimals, then use the next unit up. |
+| fitFormats | boolean |  |  | Fit figures to authored widths. Remove decimals, then use the next unit up; a column without a format then prints scale words in its cells from 10,000. |
 | maxGrowth | number \| false | `false` (or another value of its type) | `2.5` | Value-track growth cap; default 2.5, false removes the cap. Applies to SVG and React frame fill; the label track takes the remaining width. Also caps React container fit growth. |
 | labelIndent | object |  |  | Tree indent from row edge. Absent: cell air without marks; cell air plus 24 with outlineMarks: true or interactive fold buttons. Then 16 per rung. |
 | labelIndent.base | number |  |  | Level-0 start from row edge, padding included. |

@@ -68,6 +68,6 @@
 <text data-id="label:category:fy23" data-part="category" data-bp-role="category" x="383.44" y="392.56" text-anchor="start" font-size="13" font-weight="400" fill="#5B6B86"><tspan x="383.44" dy="0">FY23</tspan></text>
 <text data-id="label:category:fy24" data-part="category" data-bp-role="category" x="482.56" y="392.56" text-anchor="start" font-size="13" font-weight="400" fill="#5B6B86"><tspan x="482.56" dy="0">FY24</tspan></text>
 <text data-id="label:category:fy25" data-part="category" data-bp-role="category" x="577.69" y="392.56" text-anchor="start" font-size="13" font-weight="400" fill="#5B6B86"><tspan x="577.69" dy="0">FY25F</tspan></text>
-<text data-id="label:annotation:cagr-1" data-part="annotation" data-bp-role="note" x="277.38" y="95.38" text-anchor="start" font-size="13" font-weight="600" fill="#0B1B3A"><tspan x="277.38" dy="0">Cloud ARR +31.5% p.a.</tspan></text>
+<text data-id="label:annotation:cagr-1" data-part="annotation" data-bp-role="note" x="282.88" y="95.38" text-anchor="start" font-size="13" font-weight="600" fill="#0B1B3A"><tspan x="282.88" dy="0">Cloud ARR +32% p.a.</tspan></text>
 <text data-id="label:annotation:abs-2" data-part="annotation" data-bp-role="value" x="94.56" y="351.09" text-anchor="start" font-size="13" font-weight="600" fill="#1E4FD8" style="font-variant-numeric: tabular-nums"><tspan x="94.56" dy="0">48</tspan></text>
 </svg>

@@ -20,6 +20,7 @@ import { beginSpecParse } from '../src/react/specValidation';
 import type { Annotation } from '../src/core/types/annotations';
 import { prepareChart } from '../src/react/prepare';
 import type { LineOptions } from '../src/core/types/options';
+import { getFixtures } from '../src/fixtures';
 
 const BERLIN = zoneClock('Europe/Berlin');
 
@@ -387,6 +388,14 @@ describe('continuous axis layout', () => {
     expect(geometry.labels.filter(l => !l.hidden && (l.id.startsWith('fan-edge:') || l.id.startsWith('point:')))).toEqual([]);
   });
 
+  // The fan's edge values print as a set of their own ("−13.5" beside the centre's "−48"), but the plot's end room counted the centre value alone, so the upper edge lost its seat.
+  it('keeps room beside the last point for the fan edge values', () => {
+    const fixture = getFixtures('line').find(candidate => candidate.id === 'fan-torture')!;
+    const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'line', data: fixture.data, options: fixture.options ?? {} } as never))) as Geometry;
+    const edges = geometry.labels.filter(label => label.id.startsWith('fan-edge:')).map(label => [label.id, label.text, label.hidden]);
+    expect(edges).toEqual([['fan-edge:hi0', '−13.5', undefined], ['fan-edge:lo0', '−82.5', undefined]]);
+  });
+
   // The schema requires a band label; a layout call without one must refuse by name, not crash in the footer.
   it('refuses a fan band without a label', () => {
     const data = { x: [0, 1, 2, 3], series: [{ id: 'c', values: [10, 20, 40, 30] }, { id: 'lo', values: [8, 15, 30, 25] }, { id: 'hi', values: [12, 25, 50, 35] }] };
@@ -461,7 +470,8 @@ describe('cagr on a time axis', () => {
     };
     for (const values of [[-100, -110, -121, -133, -146, -161], [100, 80, 60, 40, 20, 0]]) expect(answer(values, false)).toEqual(answer(values, true));
     expect(answer([-100, -110, -121, -133, -146, -161], false)).toEqual({ label: undefined, warning: "cagr 'cagr-1': the start value is not positive, so no growth rate is defined" });
-    expect(answer([100, 80, 60, 40, 20, 0], true).label).toBe('−100.0% p.a.');
+    // Default number rule: before "−100.0% p.a.".
+    expect(answer([100, 80, 60, 40, 20, 0], true).label).toBe('−100% p.a.');
   });
 
   // A number axis has no years to annualise over.

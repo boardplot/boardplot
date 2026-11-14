@@ -21,7 +21,7 @@ import { asColumnHeads, fitHead, HEAD_PREFIX, headRequest } from '../bullet/colu
 import { alignedLeft, alignedRight, authoredTrackWidth, columnOverrideWarnings, trackPlotFloor } from '../columnOverrides';
 import { COLUMN_GAP, COLUMN_MIN_WIDTH, columnCellRequest, columnHeadText, columnWidth, differenceFormatter } from '../diffColumn';
 import { marginBracketLayout } from '../../annotateLinks';
-import { memoFormatterFromExample, seriesRasterFormatter, setMagnitude } from '../../formatSpec';
+import { memoFormatterFromExample, seriesRasterFormatter } from '../../formatSpec';
 import { clamp, deltaGap, type Rect } from '../../geometry';
 import { createOccupiedIndex } from '../../label/occupied';
 import { labelsToNodes } from '../../label/emit';
@@ -247,10 +247,11 @@ export function layoutButterfly(
   const sideUnit = (series: typeof sA) => (series.unit ?? opts.unit)?.replace(/\s+/g, '') || undefined;
   const ownFormat = (series: typeof sA, cells: typeof aCells) => Boolean(series.format) || cells.some((cell) => cellMeta(cell)?.format);
   const oneSet = sideUnit(sA) === sideUnit(sB) && !ownFormat(sA, aCells) && !ownFormat(sB, bCells);
-  const magnitudeOf = (cells: typeof aCells) => setMagnitude(cells.map(cellValue), opts.format, opts.unit, opts.target);
-  const bothScale = oneSet ? magnitudeOf([...aCells, ...bCells]) : undefined;
+  // Under the default rule both sides are one set, unless the panes keep their own scales (sharedScale: false)
+  // or their own units.
+  const bothSides = oneSet && sharedScale;
   const paneRaster = (cells: typeof aCells) =>
-    seriesRasterFormatter(opts.format, cells.map(cellValue), opts.locale?.language, opts.unit, opts.target, undefined, false, oneSet ? bothScale : magnitudeOf(cells));
+    seriesRasterFormatter(opts.format, (bothSides ? [...aCells, ...bCells] : cells).map(cellValue), opts.locale?.language, opts.unit);
   const rasterA = paneRaster(aCells);
   const rasterB = paneRaster(bCells);
   const fmtA = rasterA.forSeries(sA);
@@ -450,8 +451,9 @@ export function layoutButterfly(
   const diffText = new Map<Id, string>();
   if ((opts.diffColumn ?? sortBy === 'diff') && redesign && !conflict && size.width >= COLUMN_MIN_WIDTH) {
     // The panes' one magnitude (bothScale) sets the column's: "+1,030M" beside "1,070M" and "2,100M".
-    const raster = seriesRasterFormatter(opts.format, [...aCells, ...bCells].map(cellValue), opts.locale?.language, opts.unit, opts.target, undefined, false, bothScale);
-    const signed = differenceFormatter({ format: opts.format, locale: opts.locale?.language, decimals: raster.spec.decimals, values: [...aCells, ...bCells].flatMap((cell) => cellValue(cell) ?? []), scale: raster.specForSeries(sA) });
+    const raster = seriesRasterFormatter(opts.format, [...aCells, ...bCells].map(cellValue), opts.locale?.language, opts.unit);
+    const differences = rows.flatMap((r) => (r.a !== null && r.b !== null ? [r.b - r.a] : []));
+    const signed = differenceFormatter({ format: opts.format, locale: opts.locale?.language, decimals: raster.spec.decimals, values: [...aCells, ...bCells].flatMap((cell) => cellValue(cell) ?? []), scale: raster.specForSeries(sA), differences });
     for (const r of rows) if (r.a !== null && r.b !== null) diffText.set(r.id, signed(r.b, r.a));
   }
   const diffOverride = opts.columnOverrides?.diff;
@@ -1224,6 +1226,7 @@ export function layoutButterfly(
     measure,
     format: opts.format,
     locale: opts.locale?.language,
+    levelSpec: bothSides ? rasterA.spec : undefined,
     strings: opts.strings,
     differenceFormat: comparison?.differenceFormat,
     solveCtx,

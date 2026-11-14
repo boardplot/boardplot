@@ -1950,7 +1950,8 @@ it('draws polarity chips with the SVG paints on total grounds', () => {
   const data: TableData = { columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'v', kind: 'value' }],
     rows: [{ id: 'total', role: 'total', label: 'Total', cells: { v: { v: 12, tone: 'good' } } }] };
   act(() => root.render(<TableChart data={data} encodings={{ v: 'polarityBadge' }} measureWidths="tables" />));
-  expect(container.querySelector('[data-bp-row="total"][data-bp-column="v"] .bp-polarity-badge')?.textContent).toBe('12.0');
+  // Default number rule: before "12.0".
+  expect(container.querySelector('[data-bp-row="total"][data-bp-column="v"] .bp-polarity-badge')?.textContent).toBe('12');
 });
 
 // A status chip must not acquire the extra figure ground that the SVG leaves out.

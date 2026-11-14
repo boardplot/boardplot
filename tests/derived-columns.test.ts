@@ -30,12 +30,13 @@ it('slope change, dumbbell gap and butterfly difference print signed differences
     { variant: 'dumbbell', gapColumn: true, unit: '%', size: { width: 900, height: 300 } },
   );
   expect(shown(dot, 'gap:')).toEqual({ a: '+0.69', b: '−1.21' });
-  // The column foots with the two printed labels: 9.236 and 7.894 print 9.24 and 7.89, so the gap is -1.35, not -1.34.
+  // Before: "−1.35" and "+0.89", the gaps of the two printed labels (9.24 − 7.89). A default difference is computed from the
+  // received values and joins their set: 7.894 − 9.236 prints −1.34.
   const footing = layoutDot(
     { categories, series: [{ id: 'p', values: [9.236, 8.619] }, { id: 'q', values: [7.894, 9.514] }] },
     { variant: 'dumbbell', gapColumn: true, unit: '%', size: { width: 900, height: 300 } },
   );
-  expect(shown(footing, 'gap:')).toEqual({ a: '−1.35', b: '+0.89' });
+  expect(shown(footing, 'gap:')).toEqual({ a: '−1.34', b: '+0.90' });
 
   const data = { categories, series: [{ id: 'p', values: [42, 60] }, { id: 'q', values: [45, 39] }] };
   expect(shown(layoutButterfly(data, { a: 'p', b: 'q', sortBy: 'diff', size: { width: 900, height: 400 } }), 'diff:')).toEqual({ a: '+3', b: '−21' });
@@ -68,10 +69,13 @@ it('prints a difference column at the scale of the values it subtracts', () => {
   const categories = [{ id: 'n', label: 'North' }, { id: 's', label: 'South' }];
   const series = [{ id: 'p', label: '2024', values: [1_070_000_000, 640_000_000] }, { id: 'q', label: '2025', values: [2_100_000_000, 720_000_000] }];
   const draw = (type: string, options: object) => requireGeometry(layoutResolvedRequest(resolveChartRequest({ type, data: { categories, series }, options: { title: 'T', size: { width: 900, height: 400 }, ...options } } as never)));
-  expect(shown(draw('butterfly', { a: 'p', b: 'q', diffColumn: true }), 'diff:')).toEqual({ n: '+1,030M', s: '+80M' });
-  expect(shown(draw('dot', { variant: 'dumbbell', gapColumn: true }), 'gap:')).toEqual({ n: '+1.03B', s: '+80M' });
+  // Default number rule: before "+1,030M", "+80M" (a difference joins the set of its levels).
+  expect(shown(draw('butterfly', { a: 'p', b: 'q', diffColumn: true }), 'diff:')).toEqual({ n: '+1.03B', s: '+0.08B' });
+  // Default number rule: before "+1.03B", "+80M".
+  expect(shown(draw('dot', { variant: 'dumbbell', gapColumn: true }), 'gap:')).toEqual({ n: '+1.03B', s: '+0.08B' });
   const slope = { categories: [{ id: 'y1' }, { id: 'y2' }], series: [{ id: 'p', values: [1_070_000_000, 2_100_000_000] }, { id: 'q', values: [640_000_000, 720_000_000] }] };
-  expect(shown(requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'slope', data: slope, options: { title: 'T', change: 'absolute', size: { width: 900, height: 400 } } } as never))), 'change:')).toEqual({ p: '+1.03B', q: '+80M' });
+  // Default number rule: before "+1.03B", "+80M".
+  expect(shown(requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'slope', data: slope, options: { title: 'T', change: 'absolute', size: { width: 900, height: 400 } } } as never))), 'change:')).toEqual({ p: '+1.03B', q: '+0.08B' });
   // A series unit that names a scale ('$m') keeps the labels unscaled, so the column adds no second scale ("+1.03M").
   const inMillions = { categories, series: series.map((s) => ({ ...s, unit: '$m', values: s.values.map((v) => v / 1000) })) };
   const unscaled = (type: string, data: object, options: object, prefix: string) => Object.values(shown(requireGeometry(layoutResolvedRequest(resolveChartRequest({ type, data, options: { title: 'T', size: { width: 900, height: 400 }, ...options } } as never))), prefix));

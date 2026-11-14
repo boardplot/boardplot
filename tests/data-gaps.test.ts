@@ -12,7 +12,6 @@ import { getFixtures } from '../src/fixtures';
 import { renderSvg } from '../src/core/svg/renderSvg';
 import { resolveTheme } from '../src/core/theme';
 import { SceneRenderer } from '../src/react/SceneRenderer';
-import { BarChart } from '../src/react/charts/bar';
 import { interactionRecords } from '../src/core/a11y/records';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { render } from '../src/cli/render';
@@ -283,8 +282,9 @@ describe('data gaps', () => {
       .toEqual([['33', '33', '34'], [expect.objectContaining({ part: 'a', nearest: '33%', printed: '34%' })]]);
   });
 
-  // Stacked column shares must total 100 without changing segment values or adjusting categories without share labels.
-  it('rounds complete stacked column shares at the chart precision and reports only printed adjustments', () => {
+  // A stack does not force its printed shares to total 100: each share rounds on its own (12% · 30% · 24% · 10% · 12% · 13%),
+  // and only rounding: 'nearest' warns that the stack prints 101%.
+  it('prints each stacked column share rounded on its own, without a forced total of 100', () => {
     const data = {
       categories: [{ id: 'selected', label: 'Selected' }, { id: 'other', label: 'Other' }],
       series: [290, 740, 610, 260, 287.5, 312.5].map((value, i) => ({
@@ -296,7 +296,8 @@ describe('data gaps', () => {
       .filter((label) => label.kind === 'segment' && label.owner.categoryId === categoryId && !label.hidden)
       .map((label) => label.text);
     const values = ['290', '740', '610', '260', '288', '313'];
-    const rounded = ['290 12%', '740 30%', '610 24%', '260 10%', '288 12%', '313 12%'];
+    // Default number rule: before "313 12%" (no stack forces its shares to add to 100 by default).
+    const rounded = ['290 12%', '740 30%', '610 24%', '260 10%', '288 12%', '313 13%'];
     const all = lay('column', data, options);
     expect(segments(all, 'selected')).toEqual(rounded);
     expect(segments(all, 'other')).toEqual(rounded);
@@ -304,10 +305,7 @@ describe('data gaps', () => {
     const selected = lay('column', data, selectedOptions);
     expect(segments(selected, 'selected')).toEqual(rounded);
     expect(segments(selected, 'other')).toEqual(values);
-    const request = resolveChartRequest({ type: 'column', data, options: selectedOptions } as never);
-    const reading = chartReading({ name: 'Parts of one stack', type: 'column', request, geometry: selected, claims: claimsForChart('column', selected) });
-    expect(reading.rounding).toEqual([{ whole: 'Selected', part: 'Zeta', share: 12.5, nearest: '13%', printed: '12%' }]);
-    expect(noteTexts(selected, ['method']).join(' ')).toContain('moved by one step');
+    // Removed: reading.rounding named the share moved from 13% to 12%, and the method note said "moved by one step". No share moves by default.
     const nearest = lay('column', data, { ...selectedOptions, rounding: 'nearest' });
     expect(segments(nearest, 'selected')).toEqual([...rounded.slice(0, -1), '313 13%']);
     expect(noteTexts(nearest, ['method'])).toEqual([]);
@@ -341,10 +339,24 @@ describe('data gaps', () => {
     for (const type of ['bar', 'column']) expect(texts(lay(type, stack, { variant: 'stacked100', format: '0.0%' }))).toEqual(expect.arrayContaining(['60.4%', '39.6%']));
   });
 
-  // A 100% stack moves printed shares by default and rescales parts that miss 100, and only reading.rounding told the reader.
-  it('lists a hidden method note when a 100% stack moves or rescales shares', () => {
-    const thirds = lay('column', { categories: [{ id: 'q' }], series: ['a', 'b', 'c'].map((id) => ({ id, values: [10] })) }, { variant: 'stacked100' });
-    expect(noteTexts(thirds, ['method']).join(' ')).toContain('moved by one step');
+  // The default share rounding gave a sliver of a 100% bar or area its own decimal ("1.7%", "9.0%" beside "26%").
+  // The shares of one whole print at that whole's one precision, each rounded on its own; a share format brings the decimal back.
+  it('prints the shares of a 100% bar and a 100% area at the one precision of their whole', () => {
+    const segments = (g: Geometry) => g.labels.filter((label) => label.kind === 'segment' && !label.hidden).map((label) => `${label.owner.seriesId} ${label.text}`).sort();
+    const bar = { categories: [{ id: 'y', label: 'FY25' }], series: [47.4, 25, 1.7, 2.4, 1.2, 22.3].map((value, i) => ({ id: `s${i}`, values: [value] })) };
+    const whole = ['s0 47%', 's1 25%', 's2 2%', 's3 2%', 's4 1%', 's5 22%'];
+    expect(segments(lay('bar', bar, { variant: 'stacked100' }))).toEqual(whole);
+    expect(segments(lay('bar', bar, { variant: 'stacked100', rounding: 'nearest' }))).toEqual(whole);
+    expect(segments(lay('bar', bar, { variant: 'stacked100', shareLabels: { format: '0.0%' } }))).toEqual(['s0 47.4%', 's1 25.0%', 's2 1.7%', 's3 2.4%', 's4 1.2%', 's5 22.3%']);
+    const area = lay('line', { categories: ['a', 'b'].map((id) => ({ id, label: id.toUpperCase() })), series: [[65, 70], [26, 21], [9, 9]].map((values, i) => ({ id: `s${i}`, values })) },
+      { variant: 'stacked100-area', valueLabels: 'all' });
+    expect(texts(area)).toEqual(expect.arrayContaining(['9%']));
+    expect(texts(area)).not.toEqual(expect.arrayContaining(['9.0%']));
+  });
+
+  // A 100% stack rescales parts that miss 100, and only reading.rounding told the reader. A stack of exact parts gets no note.
+  it('lists a hidden method note when a 100% stack rescales shares', () => {
+    // Removed: a stack of three thirds noted "moved by one step". No share moves by default, so it gets no note.
     const shares = [59.6, 19.8, 10.7, 5.8, 4.3].map((value, i) => ({ id: `s${i}`, values: [value] }));
     const rescaled = lay('column', { categories: [{ id: 'q', label: 'Sep' }], series: shares }, { variant: 'stacked100', sharesOfOneWhole: true });
     expect(noteTexts(rescaled, ['method']).join(' ')).toContain('Sep: the authored parts do not add up to 100');
@@ -361,34 +373,6 @@ describe('data gaps', () => {
   it('adds no rescaling note for a column of direct percents', () => {
     const direct = lay('column', { categories: [{ id: 'q', label: 'Sep' }], series: [{ id: 'a', values: [{ pct: 55 }] }, { id: 'b', values: [{ pct: 30 }] }] }, { variant: 'stacked100', sharesOfOneWhole: true });
     expect(noteTexts(direct, ['method'])).toEqual([]);
-  });
-
-  // The area note named moved shares that sit at unlabelled categories or under labels: false, and the reader saw no moved share.
-  it('adds the area rounding note only when a moved share prints', () => {
-    const data = { categories: ['a', 'b', 'c'].map((id) => ({ id })), series: [[50, 1, 50], [25, 1, 25], [25, 1, 25]].map((values, i) => ({ id: `s${i}`, values })) };
-    expect(noteTexts(lay('line', data, { variant: 'stacked100-area' }), ['method'])).toEqual([]);
-    expect(noteTexts(lay('line', data, { variant: 'stacked100-area', valueLabels: 'all', labels: false }), ['method'])).toEqual([]);
-    expect(noteTexts(lay('line', data, { variant: 'stacked100-area', valueLabels: 'all' }), ['method']).join(' ')).toContain('moved by one step');
-  });
-
-  // The area note read the first and last of all categories, so it missed a moved share at the window's end and named one at an undrawn start.
-  it('follows the drawn window for the area rounding note', () => {
-    const area = (rows: number[][], window: object) => lay('line', { categories: ['A', 'B', 'C', 'D'].map((id) => ({ id })), series: rows.map((values, i) => ({ id: `s${i}`, values })) },
-      { variant: 'stacked100-area', window });
-    const movedAtC = [[50, 50, 10, 50], [25, 25, 10, 25], [25, 25, 10, 25]];
-    expect(noteTexts(area(movedAtC, { last: 2 }), ['method']).join(' ')).toContain('moved by one step');
-    const movedAtA = [[10, 50, 50, 50], [10, 25, 25, 25], [10, 25, 25, 25]];
-    expect(noteTexts(area(movedAtA, { last: 2 }), ['method'])).toEqual([]);
-  });
-
-  // The hidden note added the React button row, so a pinned card that drew before was refused and the dashboard image grew by a blank row.
-  it('keeps the size of a dashboard card when the share note is the only hidden note', () => {
-    const thirds = { categories: ['q1', 'q2', 'q3'].map((id) => ({ id })), series: ['a', 'b', 'c'].map((id) => ({ id, values: [10, 10, 10] })) };
-    const card = renderToStaticMarkup(createElement(BarChart as never, { data: thirds, variant: 'stacked100', title: 'Mix', source: 'Source: invented', target: 'dashboard', size: { width: 280, height: 196 } }));
-    expect(card).toContain('<svg');
-    const slivers = getFixtures('bar').find((f) => f.id === 'stacked100-slivers')!;
-    const image = render({ spec: { type: 'bar', data: slivers.data, options: { ...slivers.options, target: 'dashboard' } }, width: 360, return: ['svg'] }).body as { svg: string };
-    expect(image.svg).toContain('viewBox="0 0 360 269"');
   });
 
   // Printing method notes through notes.show also printed the hidden share note, and a bar or column that drew before was refused for the extra line.
@@ -432,8 +416,9 @@ describe('data gaps', () => {
     const columns = [{ id: 'label', kind: 'rowLabel' }, { id: 'v', kind: 'value' }];
     const parent = (bFormat: string) => ({ columns, rows: [{ id: 'p', label: 'P', children: [
       { id: 'a', label: 'A', format: '$1.2m', cells: { v: 2_500_000 } }, { id: 'b', label: 'B', format: bFormat, cells: { v: 1_250_000 } }] }] });
-    expect(texts(lay('table', parent('$1.23m')))).toContain('3.8M');
-    expect(texts(lay('table', parent('$500k')))).not.toContain('3.8M');
+    // Default number rule: before "3.8M" (the default parent cell is a set of one).
+    expect(texts(lay('table', parent('$1.23m')))).toContain('3.75M');
+    expect(texts(lay('table', parent('$500k')))).not.toContain('3.75M');
   });
 
   it('lets a wrap: true text column take the lines it needs instead of the width', () => {
@@ -765,7 +750,8 @@ it('reads the scatter trend slope and r² from the key', () => {
   const key = geometry.legend?.items.find((item) => item.id === 'trend:all');
   const node = geometry.scene.find((item) => item.t === 'text' && item.id === key?.labelId);
   if (node?.t !== 'text') throw new Error('no trend key');
-  expect(node.lines.join(' ')).toContain('slope 1.0, r² 0.98');
+  // Default number rule: before "slope 1.0, r² 0.98" (each statistic prints three digits).
+  expect(node.lines.join(' ')).toContain('slope 1.02, r² 0.979');
   for (const part of ['slope', 'r2']) expect(claims.find((claim) => claim.id === `scatter:trend:all:${part}`)?.output.displayed).toBe(node.lines.join(' '));
 });
 

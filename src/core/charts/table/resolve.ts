@@ -12,6 +12,7 @@ import { bandFor } from '../../bandSelect';
 import { datePatternFromExample, formatDate, parseISODate } from '../../dateFormat';
 import { readDateFormat } from '../../dateFormatRead';
 import { currencyWholeNumbers, MINUS } from '../../format';
+import { fitSteps } from '../../numberRule';
 import { MAX_FORMAT_DECIMALS, nonzeroDecimals, typicalDecimals, currentSmallValues, formatScopeKey, zeroLifts } from '../../formatPrecision';
 import { unitPrinted } from '../../frame';
 import {
@@ -21,6 +22,7 @@ import {
   MAGNITUDE_FIGURES,
   MAGNITUDE_GROUP,
   type MagnitudeGroupSource,
+  RULE_SET,
   compileNumberFormat,
   isExactExample,
   withChartFormats,
@@ -35,6 +37,7 @@ import {
   MAGNITUDE_LABEL,
   sameUnit as sameUnitText,
   type NumberFormatSpec,
+  defaultSetSpec,
 } from '../../formatSpec';
 import { NormalizeError, resolveHighlight, resolveSubtitle } from '../../normalize/shared';
 import { resolveTheme } from '../../theme';
@@ -81,9 +84,13 @@ import {
 } from './rank';
 import { BADGE_SECTION_ONLY, BADGE_TEXT_EMPTY, STATUS_VALUES, STATUS_WORDS } from './rules';
 import { heatRanges, statusDirectionNote } from './encodings/heat';
-import { chartNumberMarks } from '../../numberMarks';
+import { chartNumberMarks, withNumberMarks } from '../../numberMarks';
+import { RULE_FIT, type RuleFitSource } from '../../numberSets';
 import { minOf, pushAll } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
+
+/** A calculation whose result is a percent change: its default cells form a signed change set. */
+const percentChangeCalc = (calc: Calc): boolean => 'op' in calc && calc.op === 'percentDelta';
 
 export interface ResolveResult {
   table: ResolvedTable;
@@ -295,7 +302,7 @@ const sharedPreparedData = new Map<string, PreparedTableData>();
 const MAX_SHARED_KEY_CHARS = 128 * 1024;
 const MAX_SHARED_TOTAL_CHARS = 2 * 1024 * 1024;
 let sharedKeyChars = 0;
-const modelSymbols = new Map<symbol, number>([AUTOMATIC_FORMAT, MAGNITUDE_GROUP, MAGNITUDE_FIGURES, ZERO_LIFT, LABEL_ONLY_ROW].map((symbol, index) => [symbol, index]));
+const modelSymbols = new Map<symbol, number>([AUTOMATIC_FORMAT, MAGNITUDE_GROUP, MAGNITUDE_FIGURES, ZERO_LIFT, LABEL_ONLY_ROW, RULE_FIT].map((symbol, index) => [symbol, index]));
 
 /** Exact plain-data content, including private format metadata. Unsupported objects get no retained cache. */
 function modelContentKey(value: unknown): string | undefined {
@@ -1058,6 +1065,31 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   /** Columns that hold the table's forced magnitude; each keeps its own nonzero figures nonzero (below). */
   const forcedColumns = new Set<Id>();
   const localeDerivedColumns = new Set<Id>();
+  // The retired options.magnitude prints as today.
+  // The rule reads the marks and the smallValues mode from the language tag; a layout has put them there already.
+  const ruleLanguage = withNumberMarks(options).locale!.language;
+  const forcedMagnitudeOption = options.magnitude === 'million' || options.magnitude === 'thousand' ? options.magnitude : undefined;
+  /**
+   * A column without an authored format is one set of cells under the rule, its total row
+   * included. Its values are the figures that print through it: no row,
+   * scale or cell format of their own. A points-valued calculation is a percent set, and a percent change a signed
+   * change set (+28% · +33%).
+   */
+  const columnRuleSpec = (col: Extract<TableColumn, { kind: 'value' | 'computed' }>): NumberFormatSpec => {
+    const points = col.kind === 'computed' && calcYieldsPoints(col.calc);
+    const change = col.kind === 'computed' && percentChangeCalc(col.calc);
+    // A column that owns its format (a percent change) prints through it in a formatted row too.
+    const own = columnOwnsFormat(col);
+    const values = flat.flatMap((row) => {
+      if (row.calc !== undefined || row.inline === true || cellFormat(row.cells[col.id]) !== undefined || (!own && (row.format !== undefined || row.scale !== undefined
+        || (sourceRows.get(row.id) as MagnitudeGroupSource | undefined)?.[MAGNITUDE_GROUP] !== undefined))) return [];
+      const raw = rawState.get(row.id)?.get(col.id)?.raw;
+      return typeof raw === 'number' && Number.isFinite(raw) ? [raw] : [];
+    });
+    const fit = (col as RuleFitSource)[RULE_FIT];
+    const spec = defaultSetSpec(values, ruleLanguage, points ? undefined : options.unit, { cell: true, ...(points ? { kind: 'percent' as const } : {}), ...(change ? { change: true } : {}), ...(fit ? { fit } : {}) });
+    return points ? { ...spec, suffix: '%', ...(change ? { signed: true } : {}) } : spec;
+  };
   for (const col of [...valueCols, ...computedCols]) {
     // A document-level format-by-example describes the table's VALUE scale.
     // It may only reach a computed column whose algebra keeps that scale:
@@ -1087,7 +1119,9 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
       if (spec.lockMagnitude) forcedColumns.add(col.id);
     }
     if (sourceExample !== undefined) holdAuthoredScale(spec, locale.thousands);
-    specs.set(col.id, spec);
+    // A share column keeps today's share format.
+    const share = col.kind === 'computed' && 'op' in col.calc && col.calc.op === 'share';
+    specs.set(col.id, authoredExample === undefined && forcedMagnitudeOption === undefined && !share ? columnRuleSpec(col) : spec);
   }
   // A row's own format-by-example: a calc row prints its result through it
   // (percent by default), and a data row prints its authored cells through it
@@ -1117,8 +1151,16 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
     return cells;
   };
   const rowValues = (row: FlatRow): number[] => rowCells(row).map(([, value]) => value);
-  const rowCellsUncached = (row: FlatRow) => valueCols.filter(col => col.format === undefined && cellFormat(row.cells[col.id]) === undefined && !(data.columnToggles ?? []).some(toggle => toggle.columns.includes(col.id) && (options.columnVisibility?.[toggle.id] ?? toggle.defaultVisible ?? false) === false)).flatMap(col => { const raw = rawState.get(row.id)?.get(col.id)?.raw; return typeof raw === 'number' ? [[col.id, raw] as const] : []; });
+  /** A column a toggle hides prints no cell, so no row set counts it. */
+  const toggledOff = (colId: Id): boolean => (data.columnToggles ?? []).some(toggle => toggle.columns.includes(colId) && (options.columnVisibility?.[toggle.id] ?? toggle.defaultVisible ?? false) === false);
+  const rowCellsUncached = (row: FlatRow) => valueCols.filter(col => col.format === undefined && cellFormat(row.cells[col.id]) === undefined && !toggledOff(col.id)).flatMap(col => { const raw = rawState.get(row.id)?.get(col.id)?.raw; return typeof raw === 'number' ? [[col.id, raw] as const] : []; });
   const largest = (values: number[]) => values.reduce((n,v)=>Math.max(n,Math.abs(v)),0);
+  /** The figures a row prints through its own format: a calc or inline row in every column, a data row where the column names no format. */
+  const rowRuleValues = (row: FlatRow): number[] => [...valueCols, ...computedCols].flatMap((col) => {
+    if ((row.calc === undefined && row.inline !== true && columnOwnsFormat(col)) || cellFormat(row.cells[col.id]) !== undefined || toggledOff(col.id)) return [];
+    const raw = rawState.get(row.id)?.get(col.id)?.raw;
+    return typeof raw === 'number' && Number.isFinite(raw) ? [raw] : [];
+  });
   // Rows of one composed measure share the magnitude of their largest cell.
   const groupOf = (row: FlatRow) => (sourceRows.get(row.id) as MagnitudeGroupSource | undefined)?.[MAGNITUDE_GROUP];
   const groupMax = new Map<string, number>();
@@ -1138,6 +1180,22 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
       else column.push(value);
     }
   }
+  // A cell that names a group of its own (an absolute change of a dimension switch measure) is a member of that
+  // group's set: it joins the group's figures and prints through the group's rule, with a sign.
+  const joinedCells = new Map<Id, Map<Id, string>>();
+  for (const row of flat) for (const col of [...valueCols, ...computedCols]) {
+    const joined = (sourceRows.get(row.id)?.cells[col.id] as MagnitudeGroupSource | null | undefined)?.[MAGNITUDE_GROUP];
+    const raw = rawState.get(row.id)?.get(col.id)?.raw;
+    const columns = joined === undefined ? undefined : groupColumns.get(joined);
+    if (columns === undefined || typeof raw !== 'number' || !Number.isFinite(raw) || toggledOff(col.id)) continue;
+    const column = columns.get(col.id);
+    if (column === undefined) columns.set(col.id, [raw]);
+    else column.push(raw);
+    let inRow = joinedCells.get(row.id);
+    if (inRow === undefined) joinedCells.set(row.id, inRow = new Map());
+    inRow.set(col.id, joined!);
+  }
+  const groupRules = new Map<string, NumberFormatSpec>();
   // A column without a format takes its magnitude from its largest figure. Where that magnitude prints a
   // nonzero figure of the column as 0 (17,600 orders beside $3.8M revenue print "<0.1"), one magnitude
   // does not fit the column: each data row without a format of its own prints at its own scale, from its own figures.
@@ -1286,13 +1344,29 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
       // A measure group's row prints a small member as the shared bound, authored format or not.
       spec.automatic = automaticAs(group !== undefined || ((sourceRow?.format === undefined || sourceRow[AUTOMATIC_FORMAT] === true) && options.format === undefined && options.unit === undefined && forcedMagnitude === undefined));
       for (const cellSpec of groupCellSpecs.get(row.id)?.values() ?? []) cellSpec.automatic = spec.automatic;
-      rowSpecs.set(row.id, spec);
+      // A row without an authored format prints one rule set of cells: the rows of one measure
+      // together (a dimension switch measure), else the row alone.
+      const ruleRow = (authoredRow?.format === undefined || authoredRow[AUTOMATIC_FORMAT] === true) && row.format === authoredRow?.format
+        && forcedMagnitude === undefined && options.format === undefined && !spec.magnitudeInAffix;
+      if (ruleRow) {
+        groupCellSpecs.delete(row.id);
+        const percent = specUnitKind(spec) === 'percent';
+        // A percent change row is a signed change set, as a percent change column is.
+        const change = row.calc !== undefined && percentChangeCalc(row.calc);
+        const fit = (authoredRow as RuleFitSource | undefined)?.[RULE_FIT];
+        const rule = defaultSetSpec(group === undefined ? rowRuleValues(row) : [...groupColumns.get(group)!.values()].flat(), ruleLanguage,
+          percent ? undefined : options.unit, { cell: true, ...(percent ? { kind: 'percent' as const } : {}), ...(change ? { change: true } : {}), ...(fit ? { fit } : {}) });
+        rowSpecs.set(row.id, { ...rule, prefix: spec.prefix, suffix: spec.suffix, signed: spec.signed || change });
+        if (group !== undefined && !groupRules.has(group)) groupRules.set(group, { ...rule, prefix: spec.prefix, suffix: spec.suffix });
+      } else rowSpecs.set(row.id, spec);
     }
   }
   // A value or computed cell's own format beats its row's and its column's: the YoY
   // column prints percent, and a share KPI's change in it prints points.
   // Separate row and column keys avoid pair-string allocation and id collisions.
   const cellSpecs = new Map<Id, Map<Id, NumberFormatSpec>>();
+  // Cells whose own format the author wrote: they keep its decimals inside a column or row that prints a default set.
+  const authoredCells = new Map<Id, Set<Id>>();
   const cellFormatCols = [...valueCols, ...computedCols];
   for (const row of flat) {
     for (const col of cellFormatCols) {
@@ -1305,8 +1379,16 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
         let inRow = cellSpecs.get(row.id);
         if (!inRow) cellSpecs.set(row.id, inRow = new Map());
         const sourceCell = sourceRow?.cells[col.id] as AutomaticFormatSource | undefined;
+        const joined = joinedCells.get(row.id)?.get(col.id);
+        const groupRule = joined === undefined ? undefined : groupRules.get(joined);
+        if (groupRule !== undefined) { inRow.set(col.id, { ...groupRule, signed: true }); continue; }
         const spec = authoredSpec(example, sourceExample, cellFormat(sourceRow?.cells[col.id]) === example && sourceCell?.[AUTOMATIC_FORMAT] !== true);
-        if (cellFormat(sourceRow?.cells[col.id]) !== undefined && sourceCell?.[AUTOMATIC_FORMAT] !== true) holdAuthoredScale(spec, locale.thousands);
+        if (cellFormat(sourceRow?.cells[col.id]) !== undefined && sourceCell?.[AUTOMATIC_FORMAT] !== true) {
+          holdAuthoredScale(spec, locale.thousands);
+          let authored = authoredCells.get(row.id);
+          if (!authored) authoredCells.set(row.id, authored = new Set());
+          authored.add(col.id);
+        }
         if (sourceCell?.[AUTOMATIC_FORMAT] === true) spec.automatic = automaticAs(true);
         inRow.set(col.id, spec);
       }
@@ -1515,6 +1597,18 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
     return row?.calc !== undefined || row?.inline === true;
   };
 
+  /** A row's or column's face without its default set: a cell's own authored decimals print through it. */
+  const unruled = new Map<NumberFormatSpec, NumberFormatSpec>();
+  const withoutRule = (spec: NumberFormatSpec): NumberFormatSpec => {
+    if (spec[RULE_SET] === undefined) return spec;
+    let face = unruled.get(spec);
+    if (face === undefined) {
+      face = { ...spec };
+      delete face[RULE_SET];
+      unruled.set(spec, face);
+    }
+    return face;
+  };
   /** The spec a cell prints through: its own, else the row's where it applies, else the column's. */
   const specFor = (colId: Id, rowId?: Id): NumberFormatSpec => {
     const cellSpec = rowId ? cellSpecs.get(rowId)?.get(colId) : undefined;
@@ -1549,7 +1643,8 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
     // decimals prints as its row or column does, so a hoisted unit is not
     // printed twice: fitFormats lifts a figure its fitted precision would
     // print as 0 that way.
-    const base = rowPath ? rowSpec! : specs.get(colId)!;
+    const ruled = rowPath ? rowSpec! : specs.get(colId)!;
+    const base = rowId !== undefined && authoredCells.get(rowId)?.has(colId) ? withoutRule(ruled) : ruled;
     if (cellSpec && !sameUnit(cellSpec, base)) return displayFormat(cellSpec, cellSpec.decimals, cellSpec.automatic, false)(raw);
     const decimals = cellSpec?.decimals ?? (rowPath ? groupCellSpecs.get(rowId!)?.get(colId)?.decimals : undefined) ?? base.decimals;
     if (rowPath) {
@@ -1557,7 +1652,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
       if (raw === 0 && !cellSpec && groupOf(rowById.get(rowId!)!) !== undefined) return '0';
       const hoisted = rowId !== undefined && hoistedRowUnits.has(rowId);
       const automatic = cellSpec ? cellSpec.automatic : rowSpec!.automatic;
-      const printed = displayFormat(rowSpec!, decimals, automatic, hoisted)(raw);
+      const printed = displayFormat(base, decimals, automatic, hoisted)(raw);
       // A scale the row took from its own figures is derived like a column's, so it takes the locale's minus glyph too.
       return ownScaleExamples.has(rowId!) && !cellSpec && locale.minusGlyph === '-' && printed.startsWith(MINUS) ? `-${printed.slice(MINUS.length)}` : printed;
     }
@@ -1569,73 +1664,6 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
         : rendered;
     return localized;
   };
-
-  // ---- share columns: largest-remainder over leaves to exactly 100.0 ----
-  const displayOverride = new Map<string, string>(); // tableCellKey(rowId, colId) → displayed
-  const overrideAmount = new Map<string, number>(); // the reconciled amount a displayOverride prints
-  for (const col of computedCols) {
-    if (!('op' in col.calc) || col.calc.op !== 'share') continue;
-    const spec = specs.get(col.id)!;
-    reconcileShares(col.id, spec);
-  }
-  function reconcileShares(colId: Id, spec: NumberFormatSpec) {
-    // Rows topN.rest false omits take their units too, so the shown shares stay what they are with all rows shown.
-    const entries = [
-      ...leafRows.map((r) => ({ r, s: rawState.get(r.id)!.get(colId)!, shown: true })),
-      ...hiddenLeaves.map(([id, h]) => ({ r: { id }, s: h.states.get(colId)!, shown: false })),
-    ].filter((e) => e.s?.state === 'value' && typeof e.s.raw === 'number');
-    const LAST = Number.MAX_SAFE_INTEGER;
-    // The full table breaks equal remainders by its own row order, so shown and hidden rows keep that order.
-    entries.sort((a, b) => (folded.leafOrder.get(a.r.id) ?? LAST) - (folded.leafOrder.get(b.r.id) ?? LAST));
-    if (entries.length !== leafRows.length + hiddenLeaves.length || entries.length === 0) return;
-    const decimals = spec.decimals ?? 1;
-    const unit = Math.pow(10, -decimals);
-    const floors = entries.map((e) => Math.floor((e.s.raw as number) / unit) * unit);
-    const remainders = entries.map((e, i) => (e.s.raw as number) - floors[i]!);
-    let deficit = Math.round((100 - floors.reduce((a, b) => a + b, 0)) / unit);
-    // A cell whose own format has another precision prints its own rounding: it takes no unit of the column's total.
-    const ownPrecision = entries.map((e) => {
-      const cellSpec = cellSpecs.get(e.r.id)?.get(colId);
-      return cellSpec !== undefined && (cellSpec.decimals ?? 1) !== decimals;
-    });
-    const order = entries
-      .map((_, i) => i)
-      .filter((i) => !ownPrecision[i])
-      .sort((a, b) => remainders[b]! - remainders[a]! || a - b); // larger remainder first, then row order
-    const adjusted = new Set<number>();
-    for (const i of order) {
-      if (deficit <= 0) break;
-      adjusted.add(i);
-      deficit--;
-    }
-    entries.forEach((e, i) => {
-      if (ownPrecision[i] || !e.shown) return;
-      const shown = floors[i]! + (adjusted.has(i) ? unit : 0);
-      // A cell format of the column's precision prints the reconciled amount through itself.
-      const cellSpec = cellSpecs.get(e.r.id)?.get(colId);
-      // A nonzero share the reconciled unit floors to 0 reads "<0.1%", as formatShare prints it in a chart.
-      displayOverride.set(tableCellKey(e.r.id, colId), shown === 0 && (e.s.raw as number) > 0 && spec.automatic && !cellSpec ? `<${formatNumber(unit, colId)}` : formatNumber(shown, colId, e.r.id));
-      overrideAmount.set(tableCellKey(e.r.id, colId), shown);
-      if (adjusted.has(i) && Math.abs(shown - (e.s.raw as number)) > 1e-9) {
-        records.push({
-          rowId: e.r.id,
-          colId,
-          op: 'share-reconcile',
-          // The display UNIT is half the calculation: this record says "the
-          // exact share, rounded up by one unit". With only the exact share in
-          // the receipt, the adjustment could not be checked against anything.
-          inputs: [
-            { rowId: e.r.id, colId, value: e.s.raw as number },
-            { rowId: SHARE_UNIT_ROW_ID, colId, value: unit },
-          ],
-          raw: shown,
-          state: 'value',
-          displayed: formatNumber(shown, colId, e.r.id),
-          kind: 'rounding-adjustment',
-        });
-      }
-    });
-  }
 
   // ---- percent-scale lint (points, not fractions) ----
   // Computed columns are in scope: div(gp, revenue) yields a FRACTION, and
@@ -1973,7 +2001,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
             // A ratio of two cells prints the same on the negated figures, so only a calc that flips with its inputs flips.
             && (col.kind !== 'computed' || row.calc !== undefined || calcFlipsWithInputs(col.calc));
           negated = negate && s.raw !== 0;
-          displayed = (negate ? undefined : displayOverride.get(tableCellKey(row.id, col.id))) ?? formatNumber(negate && s.raw !== 0 ? -s.raw : s.raw, col.id, row.id);
+          displayed = formatNumber(negate && s.raw !== 0 ? -s.raw : s.raw, col.id, row.id);
           if (negate && locale.minusGlyph === '-') displayed = displayed.replace(MINUS, '-');
           // The head's † and its note say it where they print (disclosures shown, a head drawn, a column that skipped a child); else the cell says it.
           if (s.partial && !(headMarksPartial && partialColumnIds.has(col.id))) displayed = `${displayed} ${options.strings?.incomplete ?? localeStrings(options.locale?.language).incomplete}`;
@@ -2032,11 +2060,9 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
         // is assembled where visibility is known, by `tableFootnotes` in
         // ./view, from the cells a surface actually emits.
         // A figure that prints as zero carries no amount to read.
-        // A reconciled share prints its override, so its reconciled amount decides.
         tone = judgementTone(tone, obj?.strong);
-        const reconciled = overrideAmount.get(tableCellKey(row.id, col.id));
         const zero = tone === 'neutral' && !deEmphasized && s.state === 'value' && typeof s.raw === 'number'
-          && (reconciled !== undefined ? Math.abs(reconciled) < 1e-9 : roundedNumber(s.raw, specFor(col.id, row.id)) === 0);
+          && roundedNumber(s.raw, specFor(col.id, row.id)) === 0;
         // The direction travels with the cell: a heat ground or an in-cell bar
         // judges a fall under lowerIsBetter as good even where the tone stays
         // neutral (an ofWhich line, a muted cell).
@@ -2205,6 +2231,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
     warnings,
   };
   evaluatedStates.set(result, rawState);
+  columnFitStepsOf.set(rawState, (columnId) => { const rule = specs.get(columnId)?.[RULE_SET]; return rule === undefined ? 0 : fitSteps(rule); });
   return result;
   }
 }
@@ -2265,6 +2292,13 @@ function resolveCellEncoding(encoding: TableCellEncoding | undefined, percent: b
 
 /** The evaluated cell states of a resolve, kept for the top-N pass that resolves the full table first. */
 const evaluatedStates = new WeakMap<ResolveResult, Map<Id, Map<Id, CellEval>>>();
+/** The last width step of each default column's set, keyed by the evaluated states of their resolve. */
+const columnFitStepsOf = new WeakMap<Map<Id, Map<Id, CellEval>>, (columnId: Id) => number>();
+/** The width steps a default column can take before fitFormats widens it: none for a column with a format. */
+export function columnFitSteps(result: { table: ResolvedTable }, columnId: Id): number {
+  const states = evaluatedStates.get(result as ResolveResult);
+  return states === undefined ? 0 : columnFitStepsOf.get(states)?.(columnId) ?? 0;
+}
 /** The ids of the share partition (the leaves the column total sums), in row order, keyed by the evaluated states of their resolve. */
 const partitionLeafIds = new WeakMap<Map<Id, Map<Id, CellEval>>, Id[]>();
 
@@ -2836,8 +2870,6 @@ function validateCalcRefs(columns: TableColumn[], colById: Map<Id, TableColumn>)
  * over — so it gets a reserved, non-colliding id rather than borrowing one.
  */
 export const LEAF_TOTAL_ROW_ID = '__leafTotal';
-/** Likewise for the display unit a largest-remainder adjustment moves by. */
-export const SHARE_UNIT_ROW_ID = '__displayUnit';
 
 function pushCalcRecord(
   records: ComputedCellRecord[],

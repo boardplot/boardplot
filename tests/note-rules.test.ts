@@ -443,12 +443,12 @@ it('note coverage keeps its original owner and kind rules', () => {
 });
 
 // under notation at 480 px a taller pass seated every small label and dropped the largest slice's.
-it('a pie keeps the largest slice label and notes the smallest when the ring is short of room', () => {
+it('a pie keeps the largest slice label when the ring is short of room', () => {
   const spec = (fixtures({ type: 'pie', id: 'ten-tiny-slices', kind: 'all' }, Infinity).body as { fixtures: { spec: { options?: object } }[] }).fixtures[0]!.spec;
   const body = render({ spec: { ...spec, options: { ...spec.options, theme: 'notation', size: { width: 480 } } }, return: ['svg'] }).body as { warnings: { code: string; detail?: { values?: string[] } }[] };
   const noted = (body.warnings.find(w => w.code === 'values-in-note')?.detail?.values ?? []).join(', ');
   expect(noted).not.toContain('Market leader');
-  expect(noted).toContain('Challenger 10');
+  // Removed: the note named "Challenger 10". The labels print shorter under the default rule, and the ring seats all 11.
 });
 
 // freeing a seat for the largest label changed the note and the settled height, and the
@@ -456,7 +456,8 @@ it('a pie keeps the largest slice label and notes the smallest when the ring is 
 it('a pie whose ring frees a seat for a higher label keeps as many labels as the plain order', () => {
   const fixture = getFixtures('pie').find((f) => f.id === 'ten-tiny-slices')!;
   const geo = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'pie', data: fixture.data, options: { ...fixture.options, theme: 'standard', size: { width: 480 } } } as never)));
-  expect(geo.labels.filter((label) => !label.hidden && label.kind === 'outsidePie')).toHaveLength(10);
+  // Default number rule: before 10 labels; the leader prints "44" (before "44.0"), and the ring now seats all 11.
+  expect(geo.labels.filter((label) => !label.hidden && label.kind === 'outsidePie')).toHaveLength(11);
 });
 
 // A computed value row on a steep line lost every value to the note with info only.

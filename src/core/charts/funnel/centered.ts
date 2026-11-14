@@ -11,8 +11,7 @@ import type { AdjacentSeriesPaintSample, PaintWarningRule } from '../../types/sc
 import type { AnchorResolution } from '../../annotate';
 import { runAnnotatePass } from '../../annotatePass';
 import { adjacentSeriesWarnings, retainAdjacentWarningRule, type AdjacentWarningCapture, type SeriesColorSample } from '../../adjacentSeries';
-import { formatAutomaticNumber, formatAutomaticPercent, notApplicableGlyph, smallRateDecimals } from '../../format';
-import { formatterFromExample, seriesRasterFormatter } from '../../formatSpec';
+import { formatAutomaticPercent, notApplicableGlyph, smallRateDecimals } from '../../format';
 import { cellMeta, cellValue } from '../../types/cell';
 import type { Rect } from '../../geometry';
 import { clamp, rectContains } from '../../geometry';
@@ -57,7 +56,7 @@ import type {
   SceneNode,
 } from '../../types/scene';
 import type { FunnelDerived, FunnelMarks } from './layout';
-import { clampedNote, deriveFunnel, funnelSetMagnitude, funnelValueFormats, missingGlyph } from './derive';
+import { clampedNote, deriveFunnel, funnelValueFormats, missingGlyph } from './derive';
 import { composedTextRole } from '../../textRole';
 import { disclosureNote } from '../../notes';
 import { maxOf, pushAll } from '../../arrays';
@@ -195,11 +194,6 @@ export function layoutCenteredFunnel(
   const paletteRamp = chartPalette(theme, options.palette, warnings);
   const size = resolveSize(options.size);
   const measure = options.measure ?? defaultMeasurer;
-  const autoDecimals = (value: number) =>
-    Number.isInteger(value) || Math.abs(value) >= 100 ? 0 : 1;
-  const fmt = options.format
-    ? formatterFromExample(options.format, options.locale?.language)
-    : (value: number) => formatAutomaticNumber(value, { locale: options.locale?.language, ...{ decimals: autoDecimals(value) } });
   const fmtPct = (rate: number) => {
     const pct = rate * 100;
     return formatAutomaticPercent(pct, smallRateDecimals(pct), false, options.locale?.language);
@@ -223,8 +217,8 @@ export function layoutCenteredFunnel(
   if (plotted.length === 0) {
     throw new NormalizeError('empty-data', 'series', 'funnel requires at least one data-role series', undefined, undefined, ['data', 'series']);
   }
-  const numbers = deriveFunnel(plotted, stages, fmt, warnings, data.series);
-  const { stageTotals, conversions, worstDrop } = numbers;
+  const numbers = deriveFunnel(plotted, stages, options, warnings, data.series);
+  const { stageTotals, conversions, worstDrop, raster } = numbers;
   // Geometry draws a missing value as nothing (0 wide); its text and every
   // derived rate read the nullable numbers.
   const values = numbers.values.map((row) => row.map((value) => value ?? 0));
@@ -237,18 +231,7 @@ export function layoutCenteredFunnel(
       suggest: "Set variant: 'rows' to show the cell labels, or remove values[].label.",
     });
   }
-  // An authored format holds the whole chart to one scale and one decimal count (exampleSpec).
-  const authoredRaster = options.format ? [...numbers.values.flat(), ...Object.values(stageTotals)] : undefined;
-  // One raster per stage: the values of one stage share one decimal count, and a stage of whole counts prints none.
-  // A single series is one raster down its stages (one decimal count within a series).
-  // Values and totals are one set: one magnitude, so no label steps down to its own (1,180M · 590M, not 1.18B · 590M).
-  const scale = funnelSetMagnitude(plotted, cells, numbers.values, [stageTotals, numbers.shownTotals], options);
-  const formats = stages.map((_, ci) => seriesRasterFormatter(options.format, authoredRaster ?? (plotted.length === 1 ? numbers.values[0]! : plotted.map((_, si) => numbers.values[si]![ci])), options.locale?.language, options.unit, options.target, undefined, true, scale));
-  // Totals and series without format metadata print through the shared raster (one decimal count, engine scale).
-  const totalRaster = seriesRasterFormatter(options.format, authoredRaster ?? Object.values(stageTotals), options.locale?.language, options.unit, options.target, undefined, false, scale);
-  // A whole count prints whole beside fractional values of its stage ("140", "1" beside "0.6"); an amount like 100.4 keeps its decimals.
-  if (!options.format) for (const format of [...formats, totalRaster]) format.spec.wholeCounts = true;
-  const { valueText, totalFmt } = funnelValueFormats(plotted, cells, formats, totalRaster);
+  const { valueText, totalFmt } = funnelValueFormats(plotted, cells, raster);
 
 
   const firstTotal = stageTotals[stages[0]!.id] ?? null;
@@ -828,6 +811,7 @@ export function layoutCenteredFunnel(
     measure,
     format: options.format,
     locale: options.locale?.language,
+    levelSpec: raster.spec,
     strings: options.strings,
     solveCtx,
   });

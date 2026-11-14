@@ -16,6 +16,47 @@ import type { Id } from '../../types/cell';
 import type { LintWarning, Paint, SceneNode } from '../../types/scene';
 import { type NormPt, type ScatterEnv, type ScatterPaints, type ScatterPlotArea } from './model';
 import { maxOf, minOf } from '../../arrays';
+import { defaultSetSpec, formatWithSpec, trendRateFormatter } from '../../formatSpec';
+import { isPercentUnit } from '../../numberSets';
+import { withUnit } from '../../unitJoin';
+
+/** How one trend's slope prints: the authored example and the unit of its values (a percent unit prints points). */
+export interface TrendRateFace {
+  example?: string;
+  unit?: string;
+}
+
+/**
+ * The slope text of each trend fit of one chart, by fit id. A slope under an
+ * authored example prints as trendRateFormatter says. The slopes without one
+ * that share a unit form one statistic set under the default rule:
+ * 0.4 beside 0.04 prints 0.40. `levelWords` is the scale-word decision of the
+ * chart's level set, which the slope set takes. Built once in the domain step.
+ */
+export function trendRateTexts(fits: readonly { id: Id; slope: number }[], faceOf: (fit: { id: Id; slope: number }) => TrendRateFace, locale: string | undefined, signed: boolean, levelWords?: boolean): Map<Id, string> {
+  const texts = new Map<Id, string>();
+  const sets = new Map<string, { unit: string | undefined; fits: { id: Id; slope: number }[] }>();
+  for (const fit of fits) {
+    const face = faceOf(fit);
+    if (face.example !== undefined) {
+      texts.set(fit.id, trendRateFormatter(face.example, locale, face.unit, signed)(fit.slope));
+      continue;
+    }
+    const key = face.unit ?? '';
+    let set = sets.get(key);
+    if (!set) sets.set(key, set = { unit: face.unit, fits: [] });
+    set.fits.push(fit);
+  }
+  for (const { unit, fits: members } of sets.values()) {
+    // A rate of percent levels is in percentage points.
+    const points = isPercentUnit(unit);
+    const textUnit = points ? undefined : unit;
+    // The slopes take the scale-word decision of the chart's level set: "+2.70k per period" beside labels "59.1k".
+    const spec = { ...defaultSetSpec(members.map((fit) => fit.slope), locale, textUnit, points ? { kind: 'percent' } : levelWords === undefined ? {} : { words: levelWords }), suffix: points ? 'pp' : '', signed };
+    for (const fit of members) texts.set(fit.id, withUnit(formatWithSpec(fit.slope, spec), textUnit, false, locale));
+  }
+  return texts;
+}
 
 export interface TrendFit extends OlsMoments, OlsFit {
   /** 'all', or the id of the group the fit runs over. */

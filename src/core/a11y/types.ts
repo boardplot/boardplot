@@ -1,4 +1,3 @@
-import type { RenderTarget } from '../types/options';
 import type { Rect } from '../geometry';
 import type { OwnerRef, Scenario } from '../types/cell';
 
@@ -16,8 +15,6 @@ export interface InteractionValue {
   /** `unit` names the scale of `displayed` ("M" hoisted into a table head), not of `raw`: raw text drops its magnitude. */
   scaledUnit?: true;
   format?: string;
-  /** Target for the shared default currency precision; raw values stay exact. */
-  renderTarget?: RenderTarget;
   /** Explains a missing, withheld, incompatible or undefined value. */
   reason?: string;
   displayed?: string;

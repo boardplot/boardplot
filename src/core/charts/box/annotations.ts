@@ -9,7 +9,7 @@ import type { BoxData, BoxDerived, BoxMarks, BoxOptions } from './types';
 import { maxOf, pushAll } from '../../arrays';
 
 type BoxGeometry = Geometry<BoxMarks, BoxDerived>;
-type BoxAnnotationContext = Pick<AnnotatePassInput, 'occupied' | 'theme' | 'measure' | 'solveCtx'> & {
+type BoxAnnotationContext = Pick<AnnotatePassInput, 'occupied' | 'theme' | 'measure' | 'solveCtx' | 'levelSpec'> & {
   xScale(value: number): number;
   /** Where comparison brackets start, right of the plot. */
   bracketRight: number;
