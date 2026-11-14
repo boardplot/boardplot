@@ -288,7 +288,7 @@ export function TableHoverFrame({ table, rows, columns, request, theme, initialP
       locale={locale} measure={request.fontMetrics} direction={direction} anchor={activeCell.anchor} frame={activeCell.frame}
       pointer={{ x: (activeCell.pointer.x - 8) / activeCell.scale.x, y: (activeCell.pointer.y - 8) / activeCell.scale.y }}
       occupied={activeCell.occupied} forbidden={activeCell.rowBounds.get(owner!.rowId!)} tableBounds={activeCell.tableBounds}
-      styleNonce={styleNonce} variant={flags.card} table={table} columns={columns} inlineVisibility={inlineVisibility} smallValues={request.options.smallValues}
+      styleNonce={styleNonce} variant={flags.card} table={table} columns={columns} inlineVisibility={inlineVisibility} formats={request.options}
       container={target ?? frameRef.current ?? undefined} offset={activeCell.offset} /> : null}
   </div>;
 }

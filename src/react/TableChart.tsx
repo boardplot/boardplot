@@ -27,6 +27,7 @@ import { useIsomorphicLayoutEffect as useLayoutEffect } from './useIsomorphicLay
 import { resolveCanvasOptions, resolveSize } from '../core/normalize/shared';
 import { canvasMargin } from '../core/theme';
 import { measureResolvedRequest, resolveChartRequest, type ResolvedChartRequest } from '../core/request';
+import { AUTHORED_EXAMPLES, UNIT_STAND_INS } from '../core/formatPrecision';
 import { asFirstFrame, DeferredCoreError, type DeferredName } from '../core/deferred';
 import { useDeferredModule, useDeferredRevision } from './deferredCore';
 import { useResolvedChartRequest } from './useResolvedChartRequest';
@@ -615,7 +616,11 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
   const stableOptions = useStableValue(
     authoredTableOptions as unknown as Record<string, unknown>,
   ) as unknown as TableOptions;
-  const { request, layoutRequest: fullLayoutRequest, provider, deferred } = useResolvedChartRequest({ type: 'table', data, target, options: stableOptions, scope, fontMetrics }, {}, prepared, linked);
+  // A compiled table (DimSwitch) keeps its source's answer of which formats the author wrote, also where a prop spread drops symbols.
+  const source = compiledRequest?.options as { [UNIT_STAND_INS]?: ReadonlySet<string>; [AUTHORED_EXAMPLES]?: ReadonlySet<string> } | undefined;
+  const requestOptions = useMemo(() => source?.[AUTHORED_EXAMPLES] === undefined ? stableOptions
+    : { ...stableOptions, [UNIT_STAND_INS]: source[UNIT_STAND_INS], [AUTHORED_EXAMPLES]: source[AUTHORED_EXAMPLES] }, [stableOptions, source]);
+  const { request, layoutRequest: fullLayoutRequest, provider, deferred } = useResolvedChartRequest({ type: 'table', data, target, options: requestOptions, scope, fontMetrics }, {}, prepared, linked);
   // Inline visibility changes the drawn lines, not their values or widths.
   // Keep the full request for prepared-snapshot matching; reuse resolution and
   // format fitting while the reader switches the lines on or off.

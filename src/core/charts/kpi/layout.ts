@@ -15,7 +15,7 @@ import { fitText, lineBox } from '../../label/fitText';
 import { fittedLabel, stepDownFont } from '../../label/rowFit';
 import type { Rect } from '../../geometry';
 import { formatAutomaticPercent, MINUS, valueSetFormatter } from '../../format';
-import { differenceExample, formatNonzeroWithSpec, localized, parseFormatExample, sameScale, specUnitKind } from '../../formatSpec';
+import { differenceExample, exactExampleSpec, formatNonzeroWithSpec, localized, parseFormatExample, sameScale, specUnitKind } from '../../formatSpec';
 import { frameTextOptions, solveFrame, textCarriesUnit, unitPrinted } from '../../frame';
 import { withUnit } from '../../unitJoin';
 import { labelsToNodes } from '../../label/emit';
@@ -220,9 +220,10 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
   const valueBand = data.bands?.length ? bandFor(value, data.bands) : undefined;
   const deltaScenario = normalizeScenario(data.delta?.scenario, 'delta.scenario', 'compare[].label');
 
-  // The card's one figure never prints a nonzero value as 0: an
-  // authored example keeps its style and lifts its decimals for as long as
-  // the value would read 0; without one, the value and the reference it is
+  // An authored example prints the card's figures exactly as it reads, its
+  // zero included ("$0.0M" for 78 under "$1.2M"); format-hides-values says so.
+  // A unit-only format ("$M") keeps its style and lifts its decimals for as
+  // long as the value would read 0. Without one, the value and the reference it is
   // measured against share one precision (valueSetDecimals), lifted the same
   // way, so 0.042 against 0.04 reads "0.04 vs 0.04" and never "0.0 vs 0.0".
   // Only a printed number joins that set: a scenario names the reference
@@ -230,7 +231,8 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
   // the hero from "6" to "6.0". The changes take their precision from the
   // changes themselves (1.4 prints "+1.4" beside a hero of 100).
   const example = data.format ?? options.format;
-  const spec = example ? localized(parseFormatExample(example), options.locale?.language) : undefined;
+  const authoredSpec = (text: string) => exactExampleSpec(text, options.locale?.language) ?? localized(parseFormatExample(text), options.locale?.language);
+  const spec = example ? authoredSpec(example) : undefined;
   const referencePrinted = data.delta !== undefined && deltaScenario === undefined && typeof data.delta.vs === 'number';
   const printed = [value, ...(referencePrinted ? [data.delta!.vs as number] : [])];
   const changes = data.delta
@@ -241,7 +243,7 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
     : valueSetFormatter(printed, options.locale?.language, false, options.unit, options.target);
   const percentMeasure = spec !== undefined && specUnitKind(spec) === 'percent';
   // The absolute change of a percent measure is in percentage points.
-  const diffSpec = example ? localized(parseFormatExample(differenceExample(example)), options.locale?.language) : undefined;
+  const diffSpec = example ? authoredSpec(differenceExample(example)) : undefined;
   const fmtDiff = diffSpec
     ? (v: number) => formatNonzeroWithSpec(v, diffSpec)
     : valueSetFormatter(changes, options.locale?.language, false, options.unit, options.target);

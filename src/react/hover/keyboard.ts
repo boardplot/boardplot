@@ -6,7 +6,7 @@
 
 import type { InteractionRecord } from '../../core/a11y/types';
 import type { ResolvedChartRequest } from '../../core/request';
-import { withSmallValues } from '../../core/formatPrecision';
+import { withChartFormats } from '../../core/formatSpec';
 import { minOf } from '../../core/arrays';
 import type { RenderGeometry } from '../prepared';
 import { bandTypes, categorySiblings, hoverViewport, type HoverModel, type HoverSelection, type HoverView } from './engine';
@@ -206,7 +206,7 @@ export function keyboardReading(model: HoverModel, request: ResolvedChartRequest
   const options = { hundredPercent: hundredPercentComposition(panel?.type ?? request.type,
     panel ? panel.composition : request.options as CompositionOptions) };
   const locale = request.locale?.language;
-  return withSmallValues(request.options.smallValues, () => active.length > 1
+  return withChartFormats(request.options, () => active.length > 1
     ? sharedLabelCardContent(active, locale, options).accessibleText
     : labelCardContent({ ...record, cardFields: undefined }, locale, options).accessibleText);
 }

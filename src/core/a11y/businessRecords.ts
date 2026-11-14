@@ -453,7 +453,7 @@ function waffle(ctx: RecordContext): InteractionRecord[] {
     const series = data.series.find(item => item.id === segment.seriesId);
     return makeRecord(ctx, { categoryId: panel.categoryId, seriesId: segment.seriesId }, numericValue(segment.value, '%', series?.format ?? ctx.request.options.format), {
       label: many ? `${panel.label} / ${series?.label ?? segment.seriesId}` : panel.label, anchor: mark.rect, ...(node ? { nodeIds: [node] } : {}),
-      fields: square ? [] : [field('cells', chartString(ctx.request.options, 'cells'), textValue(segment.reading))],
+      fields: square ? [] : [field('cells', chartString(ctx.request.options, 'cells'), textValue(segment.cardReading ?? segment.reading))],
     });
   }));
 }

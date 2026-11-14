@@ -75,6 +75,8 @@ interface WaffleSegmentDerived {
   cells: number;
   /** What the reader is told: "30% = 30 of 100 cells". */
   reading: string;
+  /** The hover card's text where `reading` prints a share off zero as zero: "0.2% = 0 of 100 cells". */
+  cardReading?: string;
 }
 
 export interface WafflePanelDerived {

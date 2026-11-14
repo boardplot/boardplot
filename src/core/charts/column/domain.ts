@@ -47,7 +47,7 @@ import { anomalyCorridor, columnAnomalyModel, refuseColumnEncodings, type Anomal
 import type { ColumnDomain, ColumnEnv, ColumnVariant, ComputedTotal, IntegratedValue, NormSer } from './model';
 import { PANEL_KEYED } from './model';
 import type { AnomalyColumnOptions } from './types';
-import { currentSmallValues } from '../../formatPrecision';
+import { currentSmallValues, formatScopeKey } from '../../formatPrecision';
 import { disclosuresShown } from '../../notes';
 import { cappedItems, columnSegmentsPrintAbsolute } from '../../frame';
 import { maxOf } from '../../arrays';
@@ -1226,7 +1226,8 @@ function remembered(format: (value: number) => string): (value: number) => strin
  */
 function rasterFormatter(example: string | undefined, seriesValues: [string, (number | null)[], unknown[]][], locale: string | undefined, unit: string | undefined, target: RenderTarget | undefined, shared: boolean): RasterFormatter {
   // Keyed by each series' id, values and range ends, not the flat list: a series' own precision reads all of them.
-  const key = JSON.stringify([example, locale, unit, target, currentSmallValues(), seriesValues, shared]);
+  // The chart's format sets enter too: whether an example prints exactly depends on them.
+  const key = JSON.stringify([example, locale, unit, target, currentSmallValues(), formatScopeKey(), seriesValues, shared]);
   const known = rasterFormatters.get(key);
   if (known) return known;
   const made = seriesRasterFormatter(example, seriesValues.flatMap(([, values]) => values), locale, unit, target, undefined, shared);

@@ -13,6 +13,7 @@ import { targetId } from '../../src/core/a11y/recordsShared';
 import { listCharts, type Fixture } from '../../src/core/registry';
 import { layoutResolvedRequest, resolveChartRequest } from '../../src/core/request';
 import { renderSvg } from '../../src/core/svg/renderSvg';
+import { withChartFormats } from '../../src/core/formatSpec';
 import type { Rect } from '../../src/core/geometry';
 import { getFixtures } from '../../src/fixtures/index';
 
@@ -76,9 +77,10 @@ function preview(type: string, family: string, fixture: Fixture<any, any>): Hove
     panel ? panel.composition : request.options as CompositionOptions) };
   const input = { record, plot: panel?.plot ?? geometry.plot, canvas: frame,
     occupied: geometry.debug.occupied, target: bounds, theme, card: cardOptions };
-  const card = active.length > 1
+  // The card formats values under the chart's formats, as the hover engine does.
+  const card = withChartFormats(request.options, () => active.length > 1
     ? layoutLabelCardContent(input, sharedLabelCardContent(active, undefined, cardOptions))
-    : layoutLabelCard(input);
+    : layoutLabelCard(input));
   const previewGeometry = { ...geometry,
     a11y: { ...geometry.a11y, desc: describedWithCard(geometry.a11y.desc, card.accessibleText) },
     scene: [...highlightScene(geometry.scene, records, active, theme), ...card.scene] };

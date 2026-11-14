@@ -2211,3 +2211,69 @@ it('chooses the rung for the scroll box a vertical scrollbar leaves, and keeps i
   box(320);
   expect(drawnGrid(onWarnings)).toEqual(barred);
 });
+
+describe('TableChart and DimSwitchChart print the cells the SVG prints', () => {
+  // The React table resolved its cells outside the chart's own format sets, and the React dimension switch counted the formats its compile wrote as authored, so both printed other digits than the SVG.
+  it('prints a unit-only format, a computed gap and a measure with a unit and no format as the SVG does', () => {
+    const row = (id: string, label: string, format: string, cells: Record<string, number>) => ({ id, label, format, cells });
+    const unitOnly = { columns: [{ id: 'name', kind: 'rowLabel', label: 'Line' }, { id: 'jan', kind: 'value', label: 'Jan' }, { id: 'feb', kind: 'value', label: 'Feb' }],
+      rows: [row('rev', 'Revenue', '$m', { jan: 4_000_000, feb: 6_000_000 }), row('cost', 'Cost', '$m', { jan: 2_000_000, feb: 3_000_000 })] };
+    const gap = { columns: [{ id: 'name', kind: 'rowLabel', label: 'Line' }, { id: 'plan', kind: 'value', label: 'Plan' }, { id: 'actual', kind: 'value', label: 'Actual' },
+      { id: 'gap', kind: 'computed', label: 'Gap', calc: { op: 'delta', a: 'actual', b: 'plan' } }],
+    rows: [row('rev', 'Revenue', '$M', { plan: 4_000_000, actual: 4_000_300 }), row('cost', 'Cost', '$M', { plan: 2_000_000, actual: 2_500_000 })] };
+    const sums = (cost: number, units: number) => ({ cost, units });
+    const unitCost = {
+      dimension: { label: 'Group', total: { id: 'total', label: 'Total' }, members: [{ id: 'alpha', label: 'Alpha' }, { id: 'beta', label: 'Beta' }], headline: ['ucost'] },
+      measures: [{ id: 'ucost', label: 'Unit cost', unit: 'EUR', value: { op: 'div', a: { field: 'cost' }, b: { field: 'units' } }, change: 'absolute' }],
+      periods: [{ id: 'actual', label: 'Range', kind: 'range' }, { id: 'before', label: 'vs prior', kind: 'prior' }, { id: 'p1', label: 'Period 1' }],
+      facts: [['total', 90, 200, 2460], ['alpha', 40, 100, 1200], ['beta', 50, 100, 1260]].flatMap(([memberId, cost, units, before]) => [
+        { memberId, periodId: 'actual', sums: sums(cost as number, units as number) }, { memberId, periodId: 'before', sums: sums(before as number, units as number) },
+        { memberId, periodId: 'p1', sums: sums(before as number, units as number), ref: sums(cost as number, units as number) }]),
+    };
+    const cases = [
+      ['table', unitOnly, {}, ['$4M', '$6M', '$2M', '$3M']],
+      ['table', gap, {}, ['$4.00M', '$4.00M', '$0.0003M', '$2.00M', '$2.50M', '$0.50M']],
+      ['dimswitch', unitCost, { variant: 'by-measure', depth: 2 }, ['0.5', '−12', '12', '0.4', '−12', '12', '1', '−12', '13']],
+    ] as const;
+    for (const [type, data, own, expected] of cases) {
+      const options = { title: 'Invented', size: { width: 720 }, ...own };
+      act(() => root.render(type === 'table' ? <TableChart data={data as TableData} {...options as object} /> : <DimSwitchChart data={data as never} {...options as object} />));
+      const react = Array.from(container.querySelectorAll<HTMLElement>('[role="gridcell"][data-bp-row]'))
+        .map((cell) => [`cell:${cell.dataset.bpRow}:${cell.dataset.bpColumn}`, cell.querySelector('.bp-value')?.textContent ?? ''] as const);
+      const svg = new Map(requireGeometry(layoutResolvedRequest(resolveChartRequest({ type, data, options } as never))).scene
+        .flatMap((node) => node.t === 'text' && node.part === 'tableCell' ? [[node.id, node.lines.join(' ')] as const] : []));
+      expect(react.map(([, text]) => text)).toEqual(expected);
+      expect(react.map(([id]) => svg.get(id))).toEqual(expected);
+    }
+  });
+
+  // A dimension switch drawn again with the props of another chart kept the cells of the first one where the two differ only in a format the author wrote.
+  it('prints the cells of its new props when it is drawn again with the props of another chart', () => {
+    const sums = (cost: number, units: number) => ({ cost, units });
+    const unitCost = (format?: string) => ({
+      dimension: { label: 'Group', total: { id: 'total', label: 'Total' }, members: [{ id: 'alpha', label: 'Alpha' }, { id: 'beta', label: 'Beta' }], headline: ['ucost'] },
+      measures: [{ id: 'ucost', label: 'Unit cost', value: { op: 'div', a: { field: 'cost' }, b: { field: 'units' } }, change: 'absolute', ...(format ? { format } : {}) }],
+      periods: [{ id: 'actual', label: 'Range', kind: 'range' }, { id: 'before', label: 'vs prior', kind: 'prior' }, { id: 'p1', label: 'Period 1' }],
+      facts: [['total', 90, 200, 2460], ['alpha', 40, 100, 1200], ['beta', 50, 100, 1260]].flatMap(([memberId, cost, units, before]) => [
+        { memberId, periodId: 'actual', sums: sums(cost as number, units as number) }, { memberId, periodId: 'before', sums: sums(before as number, units as number) },
+        { memberId, periodId: 'p1', sums: sums(before as number, units as number), ref: sums(cost as number, units as number) }]),
+    });
+    const draw = (data: object) => act(() => root.render(<DimSwitchChart data={data as never} title="Invented" size={{ width: 720 }} variant="by-measure" depth={2} />));
+    const cells = () => Array.from(container.querySelectorAll<HTMLElement>('[role="gridcell"][data-bp-row]'))
+      .map((cell) => `${cell.dataset.bpRow}:${cell.dataset.bpColumn} ${cell.querySelector('.bp-value')?.textContent ?? ''}`);
+    const mount = (data: object) => {
+      act(() => root.unmount());
+      root = createRoot(container);
+      draw(data);
+      return cells();
+    };
+    const automatic = unitCost(), written = unitCost('1,234');
+    const fresh = new Map([[automatic, mount(automatic)], [written, mount(written)]]);
+    expect(fresh.get(automatic)).not.toEqual(fresh.get(written));
+    for (const [first, second] of [[automatic, written], [written, automatic]] as const) {
+      mount(first);
+      draw(second);
+      expect(cells()).toEqual(fresh.get(second));
+    }
+  });
+});

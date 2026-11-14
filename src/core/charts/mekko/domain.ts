@@ -10,7 +10,7 @@ import { cellFields, normalizeCategorySeries } from '../categorySeries';
 import { breakUnsupported, chartPalette, chartTheme } from '../chartEnv';
 import { defaultMeasurer } from '../../text';
 import { formatAuthoredPercent, formatAutomaticNumber, formatAutomaticPercent, formatShare, shareSetFormatter } from '../../format';
-import { exampleSpec, normalizedSeriesNumbers, formatNonzeroWithSpec, formatterFromExample, parseFormatExample, specUnitKind } from '../../formatSpec';
+import { engineFormatterFromExample, exampleSpec, normalizedSeriesNumbers, formatNonzeroWithSpec, formatterFromExample, parseFormatExample, specUnitKind } from '../../formatSpec';
 import { cleanFloat, cleanSum } from '../../geometry';
 import { isIncomplete } from '../../dataGaps';
 import { roundWholes } from '../../shareRounding';
@@ -55,6 +55,7 @@ export function resolveMekkoEnv(options: MekkoOptions, warnings: LintWarning[], 
     size: resolveSize(options.size),
     measure: options.measure ?? defaultMeasurer,
     fmt: options.format && !sharesOnly ? formatterFromExample(options.format, lang, undefined, [...printed, ...totals]) : plainFmt,
+    tickFmt: options.format && !sharesOnly ? engineFormatterFromExample(options.format, lang, undefined, [...printed, ...totals]) : plainFmt,
     totalFmt: totalSpec ? (v: number) => formatNonzeroWithSpec(v, totalSpec) : plainFmt,
     widthFmt: plainFmt,
     pctFmt: percentExample ? formatterFromExample(options.format!, lang) : (p: number) => formatShare(p, lang),

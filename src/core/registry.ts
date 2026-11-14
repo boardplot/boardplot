@@ -13,7 +13,8 @@ import { withNumberMarks } from './numberMarks';
 import type { Annotation, AnnotationKind } from './types/annotations';
 import type { Id, OwnerRef } from './types/cell';
 import type { BaseOptions, RenderTarget } from './types/options';
-import { withSmallValues } from './formatPrecision';
+import { AUTHORED_EXAMPLES, withChartFormats, withUnitStandIns, writtenExamples } from './formatSpec';
+import { hasFormatRecord } from './formatPrecision';
 import type { Geometry, LayoutResult, LintWarning, RefusedLayout } from './types/scene';
 import type { ChartSizing } from './types/sizing';
 import { CARD_MIN_WIDTH, chartSizing, declaredSizing, fitsSize, compactFallbackApplies, FORCE_COMPACT, LAYOUT_CALL, FULL_LAYOUT_PROBE, type LayoutCall, plotRepairHeight, WIDTH_PROBE, FIXED_SIZE_PROBE, ACCEPTANCE_PROBE, CARD_HEIGHT_MEMO, type CardHeightMemo, type FitLayout, isWidthProbe, compactReplacesRefusal, sizeRefusal, sizeSearchLimit, withoutForcedCompact, hiddenForSpace, narrowShareApplies, PLOT_SHARE, PLOT_FLOOR_SHARE, withLayoutMemo, SIZE_TOLERANCE, lostCategoryNames } from './sizing';
@@ -621,8 +622,8 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
     pushAll(geo.warnings, removedNames);
     return geo;
     });
-    // Every number this layout formats follows the chart's smallValues mode.
-    const layout = ((options?: O) => withSmallValues((prepared as BaseOptions).smallValues, () => layoutBody(options))) as FitLayout<O, M, DV>;
+    // Every number this layout formats follows the chart's smallValues mode and unit-only formats.
+    const layout = ((options?: O) => withChartFormats(prepared as BaseOptions, () => layoutBody(options))) as FitLayout<O, M, DV>;
     layout.finish = () => {
       legendLayout.finish();
       for (const run of noteRuns) run.finish();
@@ -772,6 +773,9 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
     try { return run(options); } finally { run.finish(); }
   };
   const layoutWithFooter: typeof def.layout = (data, authored) => {
+    // Options that no request read (this layout called directly) carry no record of which formats the author
+    // wrote: the examples in the chart's own data and options are the author's, as a request reads them.
+    if (!hasFormatRecord(authored)) return withUnitStandIns({ [AUTHORED_EXAMPLES]: writtenExamples(data, authored) }, () => layoutWithFooter(data, authored));
     const options = withDefaultTarget(authored);
     return withLayoutMemo(() => {
       const withCuts: typeof layout = (data, options) => withCutLabelNotes(data, options ?? {} as O, next => layout(data, next));

@@ -1,7 +1,7 @@
 /** Numeric table fitting keeps scene construction behind the selected plan. */
 import { copyFrame, footerPlans } from './footer';
 import { emptyIdRecord } from './idRecords';
-import { currentSmallValues } from './formatPrecision';
+import { currentSmallValues, formatScopeKey } from './formatPrecision';
 import { layoutStepKey } from './theme';
 import { isCachedTextMeasurer, type FontSpec, type TextMeasurer, type TextSize } from './text';
 import type { FrameGeometry, Geometry } from './types/scene';
@@ -110,7 +110,7 @@ export function optionKey(options: object): string {
   const symbols = Object.getOwnPropertySymbols(options).map(symbol =>
     '[' + (JSON.stringify(symbol.description) ?? 'null') + ',' + (valueKey((options as Record<symbol, unknown>)[symbol]) ?? 'null') + ']');
   return '[{' + fields.join(',') + '},' + (valueKey(theme && typeof theme === 'object' ? themeVersion(theme) : theme) ?? 'null')
-    + ',[' + symbols.join(',') + '],' + JSON.stringify(currentSmallValues()) + ']';
+    + ',[' + symbols.join(',') + '],' + JSON.stringify(currentSmallValues()) + ',' + JSON.stringify(formatScopeKey(options)) + ']';
 }
 
 /**

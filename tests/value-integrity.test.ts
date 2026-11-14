@@ -213,11 +213,12 @@ describe('value integrity on the chart', () => {
   });
 
   // A whole-number format printed the column totals 0.4 and 0.2 as a false 0 over their columns.
-  it('a mekko column total under a whole-number format stays off 0', () => {
+  // A mekko column total under a whole-number format printed decimals its example does not show (0.4 under '1,234').
+  it('a mekko column total prints in the decimals of its authored format', () => {
     const data = { categories: [{ id: 'A' }, { id: 'B' }], series: [{ id: 'v', values: [0.28, 0.14] }, { id: 'w', values: [0.12, 0.06] }] };
     const printed = texts('mekko', data, { format: '1,234' });
-    expect(printed).toEqual(expect.arrayContaining(['0.4', '0.2']));
-    expect(printed).not.toContain('0');
+    expect(printed).not.toEqual(expect.arrayContaining(['0.4']));
+    expect(printed).not.toEqual(expect.arrayContaining(['0.2']));
     // A total the format can show keeps the authored digits.
     expect(texts('mekko', { ...data, series: [{ id: 'v', values: [1200.4, 14] }] }, { format: '1,234' })).toContain('1,200');
   });

@@ -37,7 +37,7 @@ import { rowLabelBand } from '../../label/rowLabels';
 import { fittedLabel, gutterBudget, stepDownFont } from '../../label/rowFit';
 import { applyValueAxisTitleInk, layoutValueAxis, straightBreakGlyph, planValueAxisTitle, valueAxisTitleRequest } from '../../axis';
 import { formatAutomaticNumber, numberRange, seriesFormatterAt, seriesValueDecimals, seriesValueFormatter } from '../../format';
-import { formatterFromExample, seriesRasterFormatter } from '../../formatSpec';
+import { engineFormatterFromExample, formatterFromExample, seriesRasterFormatter } from '../../formatSpec';
 import { rowLabelX, type Rect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex } from '../../label/occupied';
@@ -154,7 +154,9 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
   );
   const size = resolveSize(options.size);
   const measure = options.measure ?? defaultMeasurer;
+  // An observation is the author's value and prints as the example reads; the statistics and the axis ticks are the engine's numbers and keep their earlier rule.
   const authoredFmt = options.format ? formatterFromExample(options.format, options.locale?.language) : undefined;
+  const engineFmt = options.format ? engineFormatterFromExample(options.format, options.locale?.language) : undefined;
   const labelsOff = options.labels === false;
   const labelOn = (kind: LabelKind): boolean => chartLabelOn(options, kind);
   const highlights = new Set(resolveHighlight(options.highlight));
@@ -218,15 +220,16 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
     ...(showOutliers ? row.beyondWhiskers : []),
     ...(row.state === 'points' && showObservations === 'small-n' ? data.groups[order[index]!]!.observations ?? [] : []),
   ]);
-  const engine = authoredFmt || options.target === undefined || !labelled.some((value) => value != null && Math.abs(value) >= 1e6)
+  const engine = engineFmt || options.target === undefined || !labelled.some((value) => value != null && Math.abs(value) >= 1e6)
     ? undefined : seriesRasterFormatter(undefined, labelled, options.locale?.language, options.unit, options.target);
   const scaled = engine?.spec.autoMagnitude ? engine : undefined;
-  const axisFmt = authoredFmt ?? scaled?.fmt ?? ((value: number) =>
+  const axisFmt = engineFmt ?? scaled?.fmt ?? ((value: number) =>
     formatAutomaticNumber(value, { locale: options.locale?.language, decimals: autoDecimals(value) }));
   // The statistic and point labels are one series: one precision for them all (seriesValueFormatter), not one per value.
   // The hover card prints its quartile and whisker ranges at the same precision (marks.labelDecimals).
   const labelDecimals = seriesValueDecimals(printed);
-  const fmt = authoredFmt ?? scaled?.fmt ?? seriesFormatterAt(labelDecimals, options.locale?.language);
+  const fmt = engineFmt ?? scaled?.fmt ?? seriesFormatterAt(labelDecimals, options.locale?.language);
+  const observationFmt = authoredFmt ?? fmt;
 
   // ---- the median COLUMN gets ONE decimal convention ------------------------
   // The default formatter decides decimals per value, which printed 107 / 97.6
@@ -235,7 +238,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
   // decide once, from the whole column, and give every median the same number
   // of decimals. An authored `format` already
   // fixes the decimals, so it is left alone.
-  const fmtMedian = authoredFmt || scaled
+  const fmtMedian = engineFmt || scaled
     ? fmt
     : seriesValueFormatter(rows.map((row) => row.median), options.locale?.language, options.unit, options.target);
   /** The text a statistic of a row prints, on its label and in the description: one text per value. */
@@ -970,7 +973,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
       const rect: Rect = { x: left, y: rowCenter - POINT_R, w: right - left, h: 2 * POINT_R };
       nodes.push({
         t: 'rect', id, rect, radius: 0, fill: { token: 'background' }, stroke: pointFill, strokeWidth: strokeToken(theme, 'mark'), owner, part: 'boxBeyondGroup',
-        display: { ...display, value: chartString(options, 'boxValuesSpan', { v1: count, v2: fmt(members[0]!.point.value), v3: fmt(members.at(-1)!.point.value) }) },
+        display: { ...display, value: chartString(options, 'boxValuesSpan', { v1: count, v2: observationFmt(members[0]!.point.value), v3: observationFmt(members.at(-1)!.point.value) }) },
       });
       occupied.claim(rect, 'mark', owner, 'boxBeyond');
       mark.beyondNodeIds.push(id);
@@ -1015,7 +1018,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
       painted.minY = Math.min(painted.minY, cy - POINT_R);
       painted.maxY = Math.max(painted.maxY, cy + POINT_R);
       const id = kind === 'obs' ? `box:obs:${row.id}:${k}` : `box:beyond:${row.id}:${k}`;
-      const pointText = fmt(point.value);
+      const pointText = observationFmt(point.value);
       const value = point.count > 1 ? `${pointText} (×${point.count})` : pointText;
       nodes.push(
         kind === 'obs'

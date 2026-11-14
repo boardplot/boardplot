@@ -53,6 +53,8 @@ export interface MekkoEnv {
   size: { width: number; height: number };
   measure: TextMeasurer;
   fmt: (v: number) => string;
+  /** A value-axis tick: the engine's number, so `options.format` keeps its earlier rule on it (engineNumberSpec). */
+  tickFmt: (v: number) => string;
   /** A column total: `fmt`, with the digits a nonzero total needs to stay off 0. */
   totalFmt: (v: number) => string;
   /** A column width from the width series: the plain number format, never `options.format`, which is the plotted measure's. */

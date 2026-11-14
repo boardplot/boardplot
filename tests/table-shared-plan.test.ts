@@ -405,3 +405,16 @@ describe('table need', () => {
     expect(need.geometry.scene.length).toBeGreaterThan(0);
   });
 });
+
+describe('a table prints the same text whichever table was drawn before it', () => {
+  // The table model cache was keyed by content without the chart's authored formats, so '$m' and '$1m' tables with the same cells took the text of the one drawn first.
+  it('draws a table after another table with the text it has alone', () => {
+    const table = (format: string) => ({ type: 'table', data: {
+      columns: [{ id: 'name', kind: 'rowLabel', label: 'Line' }, { id: 'jan', kind: 'value', label: 'Jan' }, { id: 'feb', kind: 'value', label: 'Feb' }],
+      rows: [{ id: 'rev', label: 'Revenue', format, cells: { jan: 4_000_000, feb: 6_000_000 } }, { id: 'cost', label: 'Cost', format, cells: { jan: 2_000_000, feb: 3_000_000 } }],
+    }, options: { title: 'Invented table' } });
+    const cells = (format: string) => (layoutResolvedRequest(resolveChartRequest(table(format) as Parameters<typeof resolveChartRequest>[0])) as Geometry).scene
+      .flatMap((node) => node.t === 'text' && node.id.startsWith('cell:') && !node.id.endsWith(':name') ? [node.lines.join(' ')] : []);
+    for (const format of ['$m', '$1m', '$m', '$1m']) expect(cells(format)).toEqual(format === '$m' ? ['$4M', '$6M', '$2M', '$3M'] : ['$4m', '$6m', '$2m', '$3m']);
+  });
+});

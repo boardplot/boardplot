@@ -12,7 +12,7 @@ import { forecastStroke } from './forecast';
 import { withUnit } from '../../unitJoin';
 import { distinctDecimalLift, MAX_FORMAT_DECIMALS, shareDecimals } from '../../formatPrecision';
 import { formatAutomaticPercent } from '../../format';
-import { formatWithSpec, seriesRasterFormatter } from '../../formatSpec';
+import { formatWithSpec, isExactExample, seriesRasterFormatter } from '../../formatSpec';
 import { NormalizeError } from '../../normalize/shared';
 import { DEFAULT_OTHERS_SHADE } from '../../othersShade';
 import { othersShadeUnavailableWarnings } from '../../paintWarnings';
@@ -78,17 +78,23 @@ export function lineText(env: LineEnv, domain: LineDomain): LineText {
   // The join is the hover card's: a sign or a magnitude letter
   // sits on the number ("54m", "$54m", "54%"), a word unit after a space
   // ("54 USD m"). Glued, a word unit read "54USD m".
+  // An authored format prints its value exactly: only an engine format takes the decimals that part two end labels.
+  const exactAt = (source?: NormSer): boolean => {
+    const example = source?.format ?? options.format;
+    return example !== undefined && isExactExample(example);
+  };
   const composeParts = (extra: number) => (content: LabelContent, abs: number | null, pct: number | null, catLabel: string, serLabel: string, unitSuffix = '', authoredPct = false, source?: NormSer, categoryId?: Id): [LabelContent[number], string][] => {
     const parts: [LabelContent[number], string][] = [];
+    const valueExtra = exactAt(source) ? 0 : extra;
     const shareText = !authoredPct && source && categoryId !== undefined ? domain.shareTexts.get(`${categoryId}\0${source.id}`) : undefined;
     const lifted = (value: number, percent: boolean): string => {
       const spec = seriesRasterFormatter(source?.format ?? options.format, domain.seriesNorm.flatMap(s => s.vals.map(v => v.v)), options.locale?.language, source?.unit ?? options.unit, options.target).spec;
-      return formatWithSpec(value, { ...spec, decimals: Math.min(MAX_FORMAT_DECIMALS, spec.decimals + extra),
+      return formatWithSpec(value, { ...spec, decimals: Math.min(MAX_FORMAT_DECIMALS, spec.decimals + valueExtra),
         wholeFrom: undefined, currencyWhole: undefined, ...(percent && !source?.format && !options.format ? { suffix: '%' } : {}) });
     };
     for (const c of content) {
       // An authored percent cell keeps its '%' on the value; a rebased index has no source.
-      if (c === 'absolute' && abs !== null) parts.push([c, withUnit(extra ? lifted(abs, authoredPct) : (authoredPct && source && !source.format ? valueSpec.fmtPercent : source ? valueSpec.forSeries(source) : fmt)(abs), unitSuffix, true)]);
+      if (c === 'absolute' && abs !== null) parts.push([c, withUnit(valueExtra ? lifted(abs, authoredPct) : (authoredPct && source && !source.format ? valueSpec.fmtPercent : source ? valueSpec.forSeries(source) : fmt)(abs), unitSuffix, true)]);
       // A share lifts its own percent precision; the chart's number format does not apply to it.
       else if (c === 'percent' && pct !== null) parts.push([c, shareText ?? (extra
         ? formatAutomaticPercent(pct, Math.min(MAX_FORMAT_DECIMALS, (authoredPct ? Math.abs(pct) < 1 && pct !== 0 ? 1 : 0 : shareDecimals(pct)) + extra), false, options.locale?.language)
@@ -124,6 +130,7 @@ export function lineText(env: LineEnv, domain: LineDomain): LineText {
     if (value === null) return [];
     const cell = series.vals[ci]!;
     const source = domain.rebased ? undefined : cell.format ? { ...series, format: cell.format } : series;
+    if (!share && exactAt(source)) return [];
     return [{ value, format: (extra: number) => compose(extra)(share ? ['percent'] : ['absolute'], value, value, '', '', '', cell.isPct, source) }];
   }));
   const composeEndText = endExtra ? compose(endExtra) : composeText;

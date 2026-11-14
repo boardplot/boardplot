@@ -8,7 +8,8 @@
 import { NormalizeError } from './normalize/shared';
 import type { LocaleSpec, RenderTarget } from './types/options';
 import type { LintWarning, PlacedLabel, SceneNode } from './types/scene';
-import type { InteractionRecord } from './a11y/types';
+import type { InteractionRecord, InteractionValue } from './a11y/types';
+import { toJsonPointer, type JsonPatchOperation } from './diagnostics/jsonPatch';
 
 import { chartString } from './strings';
 import { fractionFormat, numberFormat } from './numberFormatCache';
@@ -34,8 +35,13 @@ import {
   underflowScientificText,
   withoutLeadingZero,
   zeroLifts,
+  withSmallValues,
+  withUnitStandIns,
+  isUnitStandIn,
+  isAuthoredExample,
   type SmallValues,
 } from './formatPrecision';
+export { AUTHORED_EXAMPLES, UNIT_STAND_INS, formatScopeKey, withUnitStandIns } from './formatPrecision';
 import { maxOf, minOf } from './arrays';
 import { withUnit } from './unitJoin';
 
@@ -47,6 +53,14 @@ export const MAGNITUDE_GROUP = Symbol('magnitude-group');
 /** Figures of a group that print nowhere, by column: they still set the group's magnitude and precision. */
 export const MAGNITUDE_FIGURES = Symbol('magnitude-figures');
 export type MagnitudeGroupSource = { [MAGNITUDE_GROUP]?: string; [MAGNITUDE_FIGURES]?: readonly (readonly [string, number])[] };
+/**
+ * The scale and decimals an authored example gave the chart's values before
+ * it printed exactly: one scale shared by the values (shareAuthoredScale), a
+ * roll at 1000 and down where a value would print as 0. A number the engine
+ * works out on its own (a statistic, a tick) keeps them (engineNumberSpec).
+ */
+export const ENGINE_SCALE = Symbol('engine-scale');
+type EngineScale = Pick<NumberFormatSpec, 'magnitude' | 'decimals' | 'rollMagnitude'> & { from: Pick<NumberFormatSpec, 'magnitude' | 'decimals'> };
 /** A composing chart's row that prints a label and no value by design: its blank cells are no gap in the data, so it has no record. */
 export const LABEL_ONLY_ROW = Symbol('label-only-row');
 export type LabelOnlyRowSource = { [LABEL_ONLY_ROW]?: true };
@@ -114,12 +128,20 @@ export interface NumberFormatSpec {
    */
   magnitudeWord?: { magnitude: NumberFormatSpec['magnitude']; text: string };
   /**
-   * A chart value formatter (exampleSpec) never prints a nonzero value as 0:
-   * a free scale rolls down its word family ("$1.0 billion", not "$0.0
-   * trillion"), a held scale lifts its decimals ("0.004k", not "0k"). A
-   * table names its scale in a head and lifts in fitFormats instead.
+   * The stand-in of a unit-only format (exampleSpec) never prints a nonzero
+   * value as 0: a free scale rolls down its word family ("$1.0 billion", not
+   * "$0.0 trillion"), a held scale lifts its decimals ("0.004k", not "0k").
    */
   nonzero?: true;
+  /**
+   * An authored example (exampleSpec): every value prints as the example
+   * reads, with its scale word, decimals or figures and affixes. No printer
+   * adds a decimal, steps the scale or prints a bound; a value that rounds to
+   * zero prints the example's zero, and format-hides-values says so.
+   */
+  exact?: true;
+  /** On an exact spec: the scale its example gave before (ENGINE_SCALE). */
+  [ENGINE_SCALE]?: EngineScale;
 }
 
 /**
@@ -449,6 +471,26 @@ function unitOnlyExample(text: string): string | undefined {
   return symbol ? `${symbol}1.2${unit.slice(symbol.length)}` : /\p{Sc}$/u.test(unit) ? `1.2${unit}` : `1.2 ${unit}`;
 }
 
+/** Run one chart's layout or text under its smallValues mode, its unit-only stand-ins and its authored examples. */
+export function withChartFormats<T>(options: { smallValues?: SmallValues } | undefined, run: () => T): T {
+  return withSmallValues(options?.smallValues, () => withUnitStandIns(options, run));
+}
+
+/**
+ * A format the author wrote as an example prints exactly. A unit alone
+ * ("$M", "%") states no precision: it and its stand-in keep the data-led
+ * precision of a unit. Inside a chart, an example the engine wrote (a
+ * table's default column example, a composing chart's generated format)
+ * keeps its own precision too: only the chart's authored examples are exact.
+ * The sets hold texts, not owners, so two cases stay as they are: an engine
+ * example with the same text as an authored one in the same chart prints
+ * exactly too, and an authored example equal to a stand-in keeps the data-led
+ * precision, because the stand-in rule wins.
+ */
+export function isExactExample(example: string): boolean {
+  return unitOnlyExample(String(example)) === undefined && !isUnitStandIn(example) && isAuthoredExample(example);
+}
+
 /** The ordinary example every reader uses, including callers before request resolution. */
 export function formatExampleText(example: string): string {
   if (isSpreadsheetCode(example)) {
@@ -636,14 +678,68 @@ function treeNumbers(node: unknown, into: number[] = [], seen = new Set<unknown>
 }
 
 /**
+ * The examples written in a chart's data and options as they stand, with
+ * their differences: the record of authored formats for a chart that no
+ * request read (a definition's layout called directly). A generated owner
+ * (AUTOMATIC_FORMAT) is the engine's.
+ */
+export function writtenExamples(data: unknown, options: unknown): Set<string> {
+  const wrote = new Set<string>();
+  const collect = (example: string, owner: Record<string, unknown>) => {
+    if ((owner as AutomaticFormatSource)[AUTOMATIC_FORMAT] !== true) wrote.add(example);
+    return example;
+  };
+  mapExamples(data, collect);
+  mapExamples(options, collect);
+  return new Set([...wrote].flatMap((example) => {
+    try { return [example, differenceExample(example)]; } catch { return [example]; }
+  }));
+}
+
+/** The unit-only formats of a chart's options, by path below options, with the stand-in that replaced each (readFormatExamples). */
+export const UNIT_FORMATS = Symbol('unit-formats');
+export type UnitFormat = { path: (string | number)[]; unit: string; example: string };
+
+/**
+ * The options as their author wrote them where a unit-only format stands:
+ * the export writes `$M`, not the stand-in the chart drew it with, so the
+ * document draws its chart's text again. A path that no longer holds the
+ * stand-in (reader state changed it) is kept.
+ */
+export function withAuthoredUnits<O extends object>(options: O): O {
+  const formats = (options as { [UNIT_FORMATS]?: readonly UnitFormat[] })[UNIT_FORMATS];
+  if (!formats?.length) return options;
+  const restore = (node: unknown, path: readonly (string | number)[], format: UnitFormat): unknown => {
+    if (path.length === 0) return node === format.example ? format.unit : node;
+    if (node === null || typeof node !== 'object') return node;
+    const [key, ...rest] = path;
+    const child = (node as Record<string | number, unknown>)[key!];
+    const next = restore(child, rest, format);
+    if (next === child) return node;
+    const copy = Array.isArray(node) ? [...node] : { ...node };
+    (copy as Record<string | number, unknown>)[key!] = next;
+    return copy;
+  };
+  return formats.reduce((current, format) => restore(current, format.path, format) as O, options);
+}
+
+/**
  * The chart's data and options with each format example read by that data
  * (`exampleReading`), and a warning where a group rounds a small number.
  * Each chart gets one reading, taken from all of its numbers. A number that is
  * not a data value counts too. Fields are not read one by one.
  */
-export function readFormatExamples<D, O>(data: D, options: O): { data: D; options: O; warnings: LintWarning[] } {
+export function readFormatExamples<D, O>(data: D, options: O): { data: D; options: O; warnings: LintWarning[]; standIns: Set<string>; authored: Set<string>; unitFormats: UnitFormat[] } {
   const warnings: LintWarning[] = [];
+  const unitFormats: UnitFormat[] = [];
   const warned = new Set<string>();
+  const written = new Set<string>();
+  // The examples the author wrote; a generated one (AUTOMATIC_FORMAT) is the engine's.
+  const wrote = new Set<string>();
+  const byAuthor = (example: string, owner: Record<string, unknown>) => {
+    if ((owner as AutomaticFormatSource)[AUTOMATIC_FORMAT] !== true) wrote.add(example);
+    return example;
+  };
   let allNumbers: number[] | undefined;
   const numbersOf = (owner: Record<string, unknown>): number[] | undefined => {
     const own = normalizedSeriesNumbers(owner);
@@ -675,8 +771,12 @@ export function readFormatExamples<D, O>(data: D, options: O): { data: D; option
     }
     const standIn = unitOnlyExample(example);
     if (!standIn) return example;
+    const wroteStandIn = (written: string): string => {
+      if (field[0] === 'options') unitFormats.push({ path: field.slice(1), unit: example, example: written });
+      return wroteStandInText(written);
+    };
     const numbers = numbersOf(owner);
-    if (!numbers?.length) return standIn;
+    if (!numbers?.length) return wroteStandIn(standIn);
     const spec = parseFormatExample(standIn);
     // The smallest nonzero value below 1 keeps two significant digits, so no value of the field prints as 0.
     let smallest = Infinity;
@@ -688,7 +788,11 @@ export function readFormatExamples<D, O>(data: D, options: O): { data: D; option
     const decimals = Math.max(rasterDecimals(numbers, spec), figures);
     const body = numericBody(standIn)!;
     const whole = spec.thousandsSep ? '1,234' : decimals === 3 ? '0' : '1';
-    return standIn.slice(0, body.index) + whole + (decimals ? `.${'5'.repeat(decimals)}` : '') + standIn.slice(body.index + body.text.trimEnd().length);
+    return wroteStandIn(standIn.slice(0, body.index) + whole + (decimals ? `.${'5'.repeat(decimals)}` : '') + standIn.slice(body.index + body.text.trimEnd().length));
+  };
+  const wroteStandInText = (standIn: string): string => {
+    written.add(standIn);
+    return standIn;
   };
   const examples = new Set<string>();
   const collect = (example: string) => {
@@ -697,20 +801,32 @@ export function readFormatExamples<D, O>(data: D, options: O): { data: D; option
   };
   const originalData = data, originalOptions = options;
   const plain = { value: true };
-  const rewriteAndCollect = (example: string, owner: Record<string, unknown>, field: (string | number)[]) => collect(rewrite(example, owner, field));
+  const rewriteAndCollect = (example: string, owner: Record<string, unknown>, field: (string | number)[]) => collect(byAuthor(rewrite(example, owner, field), owner));
   data = mapExamples(data, rewriteAndCollect, undefined, 'format', ['data'], plain);
   options = mapExamples(options, rewriteAndCollect, undefined, 'format', ['options'], plain);
   // Rewrites can change aliases, and getters can change the second reading.
   if (!plain.value || data !== originalData || options !== originalOptions) {
     examples.clear();
-    mapExamples(data, collect);
-    mapExamples(options, collect);
+    wrote.clear();
+    const recollect = (example: string, owner: Record<string, unknown>) => collect(byAuthor(example, owner));
+    mapExamples(data, recollect);
+    mapExamples(options, recollect);
   }
-  if (examples.size === 0) return { data, options, warnings };
+  // A stand-in and its difference ("1.55%", "1.55pp") keep the unit's precision (isExactExample).
+  const standIns = (change: (example: string) => string) => new Set([...written].flatMap((example) => [change(example), differenceExample(change(example))]));
+  // An authored example and its difference print exactly (isExactExample); an example that is no number format has no difference.
+  const authored = (change: (example: string) => string) => new Set([...wrote].flatMap((example) => {
+    const read = change(example);
+    try { return [read, differenceExample(read)]; } catch { return [read]; }
+  }));
+  if (examples.size === 0) return { data, options, warnings, standIns: standIns((example) => example), authored: authored((example) => example), unitFormats };
   const numbers = treeNumbers(data);
   const readings = new Map([...examples].map((example) => [example, exampleReading(example, numbers)]));
   const change = (example: string) => readings.get(example)?.decimals ?? example;
   return {
+    standIns: standIns(change),
+    authored: authored(change),
+    unitFormats: unitFormats.map((format) => ({ ...format, example: change(format.example) })),
     data: mapExamples(data, change),
     options: mapExamples(options, change),
     warnings: [...warnings, ...[...readings].flatMap(([example, { lost }]) => lost === undefined ? [] : [{
@@ -1166,7 +1282,20 @@ function boundSpecTexts(): void {
   }
 }
 
+let engineNumbers = false;
+/**
+ * Print every exact spec inside `print` as engineNumberSpec reads it: for a
+ * text of numbers the engine works out on its own (a legend tick, a row
+ * mean) that reaches the shared value printers.
+ */
+export function asEngineNumbers<T>(print: () => T): T {
+  const outer = engineNumbers;
+  engineNumbers = true;
+  try { return print(); } finally { engineNumbers = outer; }
+}
+
 export function formatWithSpec(value: number, spec: NumberFormatSpec): string {
+  if (engineNumbers && spec.exact) spec = engineNumberSpec(spec);
   if (value == null || !Number.isFinite(value) || Object.is(value, -0)) return formatWithSpecUncached(value, spec);
   boundSpecTexts();
   return formatPlannedNumber(value, spec, textPlan(spec).texts);
@@ -1335,17 +1464,32 @@ export function localized(spec: NumberFormatSpec, locale: string | undefined): N
 }
 
 /**
- * An authored example as every value formatter prints it: the
- * authored magnitude word, the chart locale's separators, and the scale a
- * unit states held at the example's own decimals ("$0.4k" and "$1000.0k"
- * under "$k" for a "$1.2k" example, never "$1.0M"). `values` are the chart's
- * printed numbers, which share one scale and one decimal count (shareAuthoredScale).
+ * An authored example as every value formatter prints it: exactly as the
+ * example reads (`exact`), with the authored magnitude word held for every
+ * value ("$0.0M" for 4 under "$1.2M") and the chart locale's separators.
+ * The stand-in of a unit-only format ("$M", isExactExample) keeps a unit's
+ * data-led precision instead: the scale a unit states held at the example's
+ * own decimals, and `values`, the chart's printed numbers, sharing one scale
+ * and one decimal count (shareAuthoredScale).
  */
 export function exampleSpec(example: string, locale?: string, unit?: string, values?: Iterable<number | null | undefined>): NumberFormatSpec {
+  return specOfExample(example, isExactExample(example), locale, unit, values);
+}
+
+/** exampleSpec of an example that prints exactly (`exact`: one the author wrote) or keeps the data-led precision of a unit. */
+function specOfExample(example: string, exact: boolean, locale?: string, unit?: string, values?: Iterable<number | null | undefined>): NumberFormatSpec {
   const spec = localized(parseFormatExample(example, true), locale);
-  spec.nonzero = true;
-  if (spec.magnitude !== 'none' && unitMagnitude(unit) === spec.magnitude) spec.rollMagnitude = false;
-  if (values) shareAuthoredScale(spec, [...values]);
+  if (exact) {
+    const before = { ...spec };
+    if (before.magnitude !== 'none' && unitMagnitude(unit) === before.magnitude) before.rollMagnitude = false;
+    if (values) shareAuthoredScale(before, [...values]);
+    exactly(spec);
+    spec[ENGINE_SCALE] = { magnitude: before.magnitude, decimals: before.decimals, rollMagnitude: before.rollMagnitude, from: { magnitude: spec.magnitude, decimals: spec.decimals } };
+  } else {
+    spec.nonzero = true;
+    if (spec.magnitude !== 'none' && unitMagnitude(unit) === spec.magnitude) spec.rollMagnitude = false;
+    if (values) shareAuthoredScale(spec, [...values]);
+  }
   // An example under 1000 ("12%", "1.2") cannot show grouping, so a value from
   // 1000 up groups in the example's style ("40,000,000,000%"), as table cells
   // do. "1234" and "2024" state no grouping, nor does a literal-# rank ("#1").
@@ -1354,6 +1498,22 @@ export function exampleSpec(example: string, locale?: string, unit?: string, val
   const integer = spec.decimals > 0 ? body.slice(0, body.lastIndexOf(spec.decimalSep)) : body;
   if (spec.thousandsSep === '' && integer.replace(/\D/g, '').length < 4) spec.thousandsSep = spec.decimalSep === ',' ? '.' : ',';
   return spec;
+}
+
+/** Print every value as the example reads: its scale word held, no lift (`exact`). */
+function exactly(spec: NumberFormatSpec): NumberFormatSpec {
+  spec.exact = true;
+  if (spec.magnitude !== 'none') spec.rollMagnitude = false;
+  return spec;
+}
+
+/**
+ * An authored example exactly as it reads, with only its own grouping: the
+ * spec of a card that prints one figure (kpi). Undefined for a unit-only
+ * format (isExactExample), which keeps a unit's data-led precision.
+ */
+export function exactExampleSpec(example: string, locale?: string): NumberFormatSpec | undefined {
+  return isExactExample(example) ? exactly(localized(parseFormatExample(example, true), locale)) : undefined;
 }
 
 /**
@@ -1378,12 +1538,36 @@ export function formatterFromExample(example: string, locale: string | undefined
 }
 
 /**
+ * The spec a number the engine works out on its own prints with (a mean, a
+ * median, a band bound, a tick of a per-value axis): an authored example as
+ * it printed before it became exact, with the chart's shared scale, the roll
+ * at 1000 and the roll down from 0 (ENGINE_SCALE). Other specs pass through.
+ */
+export function engineNumberSpec(spec: NumberFormatSpec): NumberFormatSpec {
+  if (!spec.exact) return spec;
+  const before = spec[ENGINE_SCALE];
+  const own: NumberFormatSpec = { ...spec, exact: undefined, nonzero: true, rollMagnitude: before?.rollMagnitude };
+  // A caller that set its own scale or decimals on the spec keeps them.
+  if (before && spec.magnitude === before.from.magnitude) own.magnitude = before.magnitude;
+  if (before && spec.decimals === before.from.decimals) own.decimals = before.decimals;
+  return own;
+}
+
+/** formatterFromExample for numbers the engine works out on its own: the example as engineNumberSpec reads it. */
+export function engineFormatterFromExample(example: string, locale: string | undefined, unit?: string, values?: Iterable<number | null | undefined>): (value: number) => string {
+  const spec = engineNumberSpec(exampleSpec(example, locale, unit, values));
+  return (value: number) => formatWithSpec(value, spec);
+}
+
+/**
  * An automatic format keeps its normal rounding and lifts only a zeroed value.
  */
 export function formatNonzeroWithSpec(value: number, spec: NumberFormatSpec): string {
   // A scaled chart value spec already keeps a nonzero value off 0 by its scale ("$1.0 billion", not "$0.001 trillion").
   // An unscaled one ("$1.0") has no scale to roll down to and lifts here ("$0.004", not "$0.0").
-  if (spec.automatic || (spec.nonzero && spec.magnitude !== 'none')) return formatWithSpec(value, spec);
+  // An authored example prints exactly, except a number the engine works out (asEngineNumbers).
+  if (engineNumbers && spec.exact) spec = engineNumberSpec(spec);
+  if (spec.automatic || spec.exact || (spec.nonzero && spec.magnitude !== 'none')) return formatWithSpec(value, spec);
   // Preserve existing callers that explicitly request this authored-format lift.
   const scaled = value / MAGNITUDE_DIVISOR[spec.autoMagnitude ? effectiveScale(value, spec).magnitude : spec.magnitude];
   const lifted = nonzeroDecimals(scaled, spec.decimals);
@@ -1423,8 +1607,11 @@ export function levelFormatterFromExample(example: string, locale: string | unde
  * the difference of two percent levels is in percentage points.
  */
 export function differenceExample(example: string): string {
-  example = formatExampleText(example);
-  return specUnitKind(parseFormatExample(example)) === 'percent' ? example.replace(/%/g, 'pp') : example;
+  const text = formatExampleText(example);
+  const percent = specUnitKind(parseFormatExample(text)) === 'percent';
+  // A unit-only format keeps a unit's precision in its differences too (isExactExample).
+  if (text !== example && unitOnlyExample(example) !== undefined) return percent ? 'pp' : example;
+  return percent ? text.replace(/%/g, 'pp') : text;
 }
 
 // ---------------------------------------------------------------------------
@@ -1540,11 +1727,13 @@ export function rasterDecimals(
  */
 export function formatStatWithSpec(value: number, spec: NumberFormatSpec): string {
   if (spec.exponent) return formatWithSpec(value, spec);
+  // A statistic is the engine's number, not the author's: an authored example keeps the statistic's rule here, its scale and one more decimal.
+  const base = engineNumberSpec(spec);
   // The unit rule is for plotted values; a mean of 100.5 stays 100.5.
-  const own = { ...spec, wholeFrom: undefined };
+  const own = { ...base, wholeFrom: undefined };
   // Decimals count at the scale the label prints in: 1.25M under "1M" needs one, not the none of 1,250,000.
   const scaled = value / MAGNITUDE_DIVISOR[effectiveScale(value, own).magnitude];
-  return formatWithSpec(value, { ...own, decimals: Math.max(spec.decimals, neededDecimals(scaled, spec.decimals + 1)) });
+  return formatWithSpec(value, { ...own, decimals: Math.max(own.decimals, neededDecimals(scaled, own.decimals + 1)) });
 }
 
 /** Trend rates choose their own magnitude and precision; they never use the small-value bound policy. */
@@ -1655,32 +1844,97 @@ export function percentRasterFormatter(
 }
 
 /**
- * An authored format with no scale word prints a value of 1e6 or
- * more in all its digits ("1310000000.0" under "1.1"), and one that prints a
- * series' different values as one string hides them. The format stays the
- * author's; this warns and offers a compact or finer example of the same style.
- * A format that prints a nonzero value as its zero warns only where the chart's
- * own records (`records`, built only when an authored format exists) print that zero.
+ * Draws the chart with a format patch and says whether the format-hides-values
+ * warning at `field` is gone: the render proves a patch before it offers it.
+ */
+export type FormatPatchCheck = (fix: JsonPatchOperation[], field: readonly (string | number)[]) => boolean;
+
+/** What the format warnings read beside the spec. */
+export interface FormatLintContext {
+  /** Whether the drawing shows a number of zeros only (drawsZeroNumber); read from `geo` when absent. */
+  zeroDrawn?: () => boolean;
+  /** The drawn scene where `geo` is not the chart's own (a grid panel): its table cells. */
+  scene?: readonly SceneNode[];
+  /** Proves a patch. Without it, the patch is the first example that shows every value. */
+  verify?: FormatPatchCheck;
+}
+
+/**
+ * The warnings of the formats an author wrote. A format with no scale word
+ * prints a value of 1e6 or more in all its digits ("1310000000.0" under
+ * "1.1"). An authored example prints exactly (exampleSpec), so where it prints
+ * a value off zero as its zero, or the different values of a series, a table
+ * row or a table column as one text, format-hides-values names the format and
+ * offers an example of the same style that shows them. It judges the text the
+ * chart states for each value: its label, or where none is drawn the text of
+ * the hover card. The records that hold those texts are built only where a
+ * format may hide a value: the data say so (mayHide), or the drawing shows a
+ * zero (drawsZeroNumber). A unit-only format ("$M") keeps its own warnings.
  */
 export function unscaledFormatLint(
   options: Record<string, unknown> | undefined,
   data: unknown,
   geo?: { labels?: readonly PlacedLabel[]; scene: readonly SceneNode[] },
   records?: () => readonly InteractionRecord[] | null,
+  context: FormatLintContext = {},
 ): LintWarning[] {
-  const places = formatPlaces(data);
-  const chart = typeof options?.format === 'string' ? options.format : undefined;
-  const zeros = new Map<FormatPlace | undefined, InteractionRecord[]>();
-  if (places.length > 0 || chart !== undefined) {
-    for (const record of records?.() ?? []) {
-      if (!printsZero(record)) continue;
-      // The narrowest authored format that owns the value and is the one its record printed through.
-      const place = places.find((at) => at.authored === record.value.format && at.owns(record.target.owner));
-      if (place === undefined && record.value.format !== chart) continue;
-      zeros.set(place, [...(zeros.get(place) ?? []), record]);
+  return withUnitStandIns(options, () => {
+    const chart = typeof options?.format === 'string' ? options.format : undefined;
+    const places = formatPlaces(data, chart, options?.axisFormat as { x?: unknown; y?: unknown } | undefined);
+    const exact = new Map<FormatPlace, ExactPlace>();
+    for (const place of places) {
+      const read = exactPlace(place);
+      if (read) exact.set(place, read);
     }
-  }
-  return [...chartFormatLint(options, data, geo, zeros.get(undefined) ?? []), ...places.flatMap((place) => placeZeroWarning(place, zeros.get(place) ?? []))];
+    let zeroDrawn: boolean | undefined;
+    const drawsZero = () => (zeroDrawn ??= context.zeroDrawn?.() ?? (geo !== undefined && drawsZeroNumber(geo.scene)));
+    const scene = geo?.scene ?? context.scene;
+    let suspect = false;
+    for (const [place, read] of exact) {
+      if (mayHide(read.spec, place.sets) || mayHide(read.spec, [place.stated ?? [], place.loose ?? [], place.totals ?? []], true)
+        || (place.computed && scene !== undefined && oneCellText(scene, place.computed.colId))) { suspect = true; break; }
+    }
+    // A cell's second line (a statement's change under its level) draws a zero too, which the unit-only check does not read.
+    const judging = exact.size > 0 && (suspect || drawsZero() || (scene !== undefined && drawsZeroLine(scene)));
+    const held = places.length > 0 && (judging || drawsZero()) ? records?.() ?? undefined : undefined;
+    const locale = withNumberMarks({ locale: options?.locale as LocaleSpec | undefined }).locale!.language;
+    const unit = typeof options?.unit === 'string' ? options.unit : undefined;
+    const stated = new Map<FormatPlace, Stated[]>();
+    const zeros = new Map<FormatPlace, InteractionRecord[]>();
+    const state = (place: FormatPlace, entry: Stated | undefined) => { if (entry) stated.set(place, [...(stated.get(place) ?? []), entry]); };
+    if (held) {
+      for (const record of held) {
+        const owner = record.target.owner;
+        // The narrowest authored format that owns the value and is the one its record printed through.
+        const place = places.find((at) => printsThrough(at, exact.get(at), owner, record.value));
+        if (place !== undefined) {
+          if (exact.has(place)) { if (judging) state(place, statedEntry(place, record.value, owner, locale)); }
+          else if (drawsZero() && printsZero(record)) zeros.set(place, [...(zeros.get(place) ?? []), record]);
+        }
+        if (!judging) continue;
+        // A field the hover card prints through the format (a coordinate, an observation): judged for zero only.
+        for (const field of record.fields ?? []) {
+          if (field.value.kind !== 'number' || field.value.format === undefined) continue;
+          const at = places.find((candidate) => exact.has(candidate) && printsThrough(candidate, exact.get(candidate), owner, field.value));
+          if (at) state(at, statedEntry(at, field.value, owner, locale, true));
+        }
+      }
+    } else if (judging) {
+      // No records (no adapter, or a caller without a drawing): the texts the format prints for the data.
+      for (const [place, read] of exact) stated.set(place, dataEntries(place, read, locale));
+    }
+    if (judging) for (const [place, read] of exact) for (const entry of statedOutside(place, read, locale)) state(place, entry);
+    const warn = (place: FormatPlace) => {
+      const read = exact.get(place);
+      return read ? exactFormatWarning(place, read, stated.get(place) ?? [], locale, unit, context.verify) : placeZeroWarning(place, zeros.get(place) ?? []);
+    };
+    const chartPlace = places.find((place) => place.kind === 'chart');
+    const chartRead = chartPlace && exact.get(chartPlace);
+    return [
+      ...chartFormatLint(options, data, geo, chartPlace && !chartRead ? zeros.get(chartPlace) ?? [] : [], chartRead ? () => warn(chartPlace!) : undefined),
+      ...places.flatMap((place) => (place.kind === 'chart' ? [] : warn(place))),
+    ];
+  });
 }
 
 /** Whether the chart draws a value of zeros only ("0", "0.0k", "0%") in a value label or a table cell. Without one there is no printed zero to prove, and the records are not built. */
@@ -1689,36 +1943,81 @@ export function drawsZeroNumber(scene: readonly SceneNode[]): boolean {
     && (node.lines.join(' ').match(/\d[\d.,]*/g) ?? []).some((token) => !/[1-9]/.test(token)));
 }
 
+/** Whether a table cell's further line ("WoW +0.2" under a level) draws a value of zeros only. */
+function drawsZeroLine(scene: readonly SceneNode[]): boolean {
+  return scene.some((node) => node.t === 'text' && node.part === 'tableCellLine'
+    && (node.lines.join(' ').match(/\d[\d.,]*/g) ?? []).some((token) => !/[1-9]/.test(token)));
+}
+
 type Owner = InteractionRecord['target']['owner'];
-/** A place where an author set a format. It names the format and builds the patch; it never decides what prints. */
-type FormatPlace = { authored: string; numbers: number[]; path: (string | number)[]; owns: (owner: Owner) => boolean };
+/**
+ * A place where an author set a format. It names the format, the values it
+ * prints by set (a series, a table row or a table column; a cell's own format
+ * prints one value) and builds the patch; it never decides what prints.
+ */
+type FormatPlace = {
+  authored: string;
+  kind: 'cell' | 'row' | 'series' | 'column' | 'axis' | 'chart';
+  sets: number[][];
+  path: (string | number)[];
+  owns: (owner: Owner) => boolean;
+  /** A computed table column: its values are calculated, and its records carry the calculation's format. */
+  computed?: { colId: unknown };
+  /** Judged for zero only: its values form no series, row or column (a dimension switch measure, a scatter axis). */
+  zeroOnly?: true;
+  /** Values the chart states outside its records, printed through the place (a scatter axis's extent, a status cell's number). */
+  stated?: number[];
+  /** Further values the place may print; they only open the check (no record is built for a chart that cannot hide a value). */
+  loose?: number[];
+  /** Totals the chart calculates and prints through the format (waterfall totals): judged for zero only. Records carry them; without records they come from here. */
+  totals?: number[];
+};
+/** An authored example as the chart reads it (exampleReading), and its exact spec. */
+type ExactPlace = { format: string; spec: NumberFormatSpec };
+/** A value as the chart states it, with the sets it belongs to. */
+type Stated = { raw: number; text: string; sets: string[] };
+
 /** A value as authored: a keyed series value ({ categoryId, value }) holds its cell in `value`. */
 const cellOf = (entry: unknown): unknown => (typeof entry === 'object' && entry !== null && 'categoryId' in entry && 'value' in entry ? (entry as { value: unknown }).value : entry);
 /** A cell with its own format prints through that format, not through the series, column, row or chart format. */
 const ownFormat = (entry: unknown): unknown => { const cell = cellOf(entry); return typeof cell === 'object' && cell !== null ? (cell as { format?: unknown }).format : undefined; };
-/** The number a value prints through a wider format: a bare number, a number cell or a table cell; none where the value has its own format. */
-const numberIn = (entry: unknown): number[] => {
-  if (ownFormat(entry) !== undefined) return [];
-  const cell = cellOf(entry);
+/** The number of a value as authored (cellOf): a bare number, a number cell or a table cell. */
+const numberOfCell = (cell: unknown): number[] => {
   const value = typeof cell === 'number' ? cell : (cell as { number?: unknown } | null)?.number ?? (cell as { v?: unknown } | null)?.v;
   return typeof value === 'number' && Number.isFinite(value) ? [value] : [];
 };
+/** The number a value prints through a wider format; none where the value has its own format. */
+const numberIn = (entry: unknown): number[] => (ownFormat(entry) !== undefined ? [] : numberOfCell(cellOf(entry)));
+/** A value's own format and its number, read once. */
+const cellParts = (entry: unknown): { cell: unknown; format: unknown; number: number[] } => {
+  const cell = cellOf(entry);
+  return { cell, format: typeof cell === 'object' && cell !== null ? (cell as { format?: unknown }).format : undefined, number: numberOfCell(cell) };
+};
 /** The engine's own text proves a hidden value: a nonzero number whose record displays zeros only ("0", "0.0k", "0%"). */
 const printsZero = ({ value }: InteractionRecord) => value.state === 'value' && typeof value.raw === 'number' && Number.isFinite(value.raw) && value.raw !== 0
-  && value.displayed !== undefined && /\d/.test(value.displayed) && !/[1-9]/.test(value.displayed);
+  && value.displayed !== undefined && zeroText(value.displayed);
+/** A text whose digits are all zero ("0", "$0.0M", "−0%"). */
+/** A text whose every digit is 0 ("0.0%", "$0M"). */
+export const zeroText = (text: string) => /\d/.test(text) && !/[1-9]/.test(text);
 
 /**
- * The formats set below the chart, narrowest first: a series value's or table cell's own format, a table row,
- * a series, a bar table or table column. Each owns the values it names.
+ * The formats an author set, narrowest first: a series value's or table cell's
+ * own format, a table row, a series or a KPI, a bar table or table column, and
+ * the chart. Each owns the values it names; the chart owns the rest (series,
+ * a row of values, waterfall items, map regions, table cells).
  */
-function formatPlaces(data: unknown): FormatPlace[] {
-  type TableRow = { id?: unknown; format?: unknown; cells?: Record<string, unknown>; children?: TableRow[] };
-  const own = data as { categories?: unknown[]; series?: { id?: unknown; format?: unknown; values?: unknown[] }[];
-    columns?: { id?: unknown; format?: unknown; values?: unknown[] }[]; rows?: TableRow[] } | undefined;
-  const places: FormatPlace[][] = [[], [], [], []];
-  const add = (rank: number, authored: unknown, numbers: number[], path: (string | number)[], owns: (owner: Owner) => boolean) => {
-    if (typeof authored === 'string') places[rank]!.push({ authored, numbers, path, owns });
+function formatPlaces(data: unknown, chart?: string, axes?: { x?: unknown; y?: unknown }): FormatPlace[] {
+  type TableRow = { id?: unknown; format?: unknown; cells?: Record<string, unknown>; children?: TableRow[]; value?: unknown; target?: unknown };
+  type Column = { id?: unknown; kind?: unknown; format?: unknown; values?: unknown[] };
+  const own = data as { categories?: unknown[]; series?: { id?: unknown; format?: unknown; values?: unknown[] }[]; columns?: Column[]; rows?: TableRow[]; measures?: { id?: unknown; format?: unknown }[];
+    values?: unknown[]; items?: { value?: unknown }[]; regions?: unknown; format?: unknown; value?: unknown; delta?: { vs?: unknown }; spark?: { values?: unknown[] };
+    points?: { x?: unknown; y?: unknown }[]; cells?: { row?: unknown; col?: unknown; value?: unknown }[] } | undefined;
+  const places: FormatPlace[][] = [[], [], [], [], []];
+  const add = (rank: number, kind: FormatPlace['kind'], authored: unknown, sets: number[][], path: (string | number)[], owns: (owner: Owner) => boolean, more: Partial<FormatPlace> = {}) => {
+    if (typeof authored === 'string') places[rank]!.push({ authored, kind, sets, path, owns, ...more });
   };
+  // The values no narrower format owns, by set: what the chart format prints.
+  const chartSets: number[][] = [];
   const categories = Array.isArray(own?.categories) ? own.categories : [];
   const categoryAt = (entry: unknown, j: number) => {
     const category = categories[j] as { id?: unknown } | undefined;
@@ -1726,35 +2025,326 @@ function formatPlaces(data: unknown): FormatPlace[] {
   };
   (Array.isArray(own?.series) ? own.series : []).forEach((series, i) => {
     const values = Array.isArray(series?.values) ? series.values : [];
-    values.forEach((entry, j) => add(0, ownFormat(entry), [], ['data', 'series', i, 'values', j, ...(cellOf(entry) === entry ? [] : ['value']), 'format'],
-      (owner) => owner.seriesId === series.id && owner.categoryId === categoryAt(entry, j)));
-    add(2, series?.format, values.flatMap(numberIn), ['data', 'series', i, 'format'], (owner) => owner.seriesId === series?.id);
+    const numbers: number[] = [];
+    values.forEach((entry, j) => {
+      const { cell, format, number } = cellParts(entry);
+      if (format === undefined) numbers.push(...number);
+      else add(0, 'cell', format, [number], ['data', 'series', i, 'values', j, ...(cell === entry ? [] : ['value']), 'format'],
+        (owner) => (owner.seriesId === series.id || (owner.seriesId === undefined && own!.series!.length === 1)) && owner.categoryId === categoryAt(entry, j));
+    });
+    // A chart of one series (a pie) names only the category on its records.
+    add(2, 'series', series?.format, [numbers], ['data', 'series', i, 'format'], (owner) => owner.seriesId === series?.id || (owner.seriesId === undefined && own!.series!.length === 1));
+    if (typeof series?.format !== 'string') chartSets.push(numbers);
   });
+  // A table: a cell prints through its own format, else its row's, else its column's, else the chart's.
+  const columns = Array.isArray(own?.columns) ? own.columns : [];
+  const columnFormat = new Set(columns.filter((column) => !Array.isArray(column?.values) && typeof column?.format === 'string').map((column) => column.id));
+  const byColumn = new Map<unknown, number[]>();
+  const chartByColumn = new Map<unknown, number[]>();
+  // One list per column, filled in place: a copy per cell would cost the square of the row count.
+  const listOf = (lists: Map<unknown, number[]>, id: unknown): number[] => {
+    let list = lists.get(id);
+    if (list === undefined) lists.set(id, list = []);
+    return list;
+  };
+  let bulletRows = false;
   const walk = (list: unknown, path: (string | number)[]) => (Array.isArray(list) ? list : []).forEach((row: TableRow, i) => {
-    for (const [colId, cell] of Object.entries(row?.cells ?? {})) {
-      add(0, ownFormat(cell), [], [...path, i, 'cells', colId, 'format'], (owner) => owner.rowId === row.id && owner.colId === colId);
+    const rowNumbers: number[] = [];
+    const chartRow: number[] = [];
+    // A bullet row holds its value and target itself; its records name it as their category.
+    const bullet = row?.cells === undefined && row !== null && typeof row === 'object' && ('value' in row || 'target' in row);
+    if (bullet) bulletRows = true;
+    const ownsRow = (owner: Owner) => owner.rowId === row?.id || (bullet && owner.rowId === undefined && owner.categoryId === row?.id);
+    if (bullet) {
+      const { format, number } = cellParts(row.value);
+      if (format !== undefined) add(0, 'cell', format, [number], [...path, i, 'value', 'format'], ownsRow);
+      else (typeof row.format === 'string' ? rowNumbers : chartRow).push(...number);
     }
-    add(1, row?.format, Object.values(row?.cells ?? {}).flatMap(numberIn), [...path, i, 'format'], (owner) => owner.rowId === row?.id);
+    for (const [colId, entry] of Object.entries(row?.cells ?? {})) {
+      const { format, number } = cellParts(entry);
+      if (format !== undefined) { add(0, 'cell', format, [number], [...path, i, 'cells', colId, 'format'], (owner) => owner.rowId === row.id && owner.colId === colId); continue; }
+      if (typeof row?.format === 'string') rowNumbers.push(...number);
+      else if (columnFormat.has(colId)) listOf(byColumn, colId).push(...number);
+      else { chartRow.push(...number); listOf(chartByColumn, colId).push(...number); }
+    }
+    add(1, 'row', row?.format, [rowNumbers], [...path, i, 'format'], ownsRow);
+    if (chartRow.length) chartSets.push(chartRow);
     walk(row?.children, [...path, i, 'children']);
   });
   walk(own?.rows, ['data', 'rows']);
-  (Array.isArray(own?.columns) ? own.columns : []).forEach((column, i) => add(3, column?.format,
-    Array.isArray(column?.values) ? column.values.flatMap(numberIn) : [], ['data', 'columns', i, 'format'], (owner) => owner.colId === column?.id));
+  chartSets.push(...chartByColumn.values());
+  columns.forEach((column, i) => add(3, 'column', column?.format, [Array.isArray(column?.values) ? column.values.flatMap(numberIn) : byColumn.get(column?.id) ?? []],
+    ['data', 'columns', i, 'format'], (owner) => owner.colId === column?.id, column?.kind === 'computed' ? { computed: { colId: column.id } } : {}));
+  // A measure of a dimension switch: its values are calculated from the facts, and its rows name it (rowId [variant, member, measure]).
+  (Array.isArray(own?.measures) ? own.measures : []).forEach((measure, i) => add(2, 'series', measure?.format, [], ['data', 'measures', i, 'format'],
+    (owner) => measure?.id !== undefined && measureOfRow(owner.rowId) === measure.id, { zeroOnly: true }));
+  // A status cell prints its number in its label, not in its record: the data states it.
+  const statusChart: number[] = [];
+  (Array.isArray(own?.cells) ? own.cells : []).forEach((cell, i) => {
+    const { format, number } = cellParts(cell?.value);
+    if (format !== undefined) add(0, 'cell', format, [], ['data', 'cells', i, 'value', 'format'], () => false, { stated: number, zeroOnly: true });
+    else statusChart.push(...number);
+  });
+  // A scatter axis format prints its coordinates in the description, the point labels and the zone texts: its extent is stated.
+  const points = Array.isArray(own?.points) ? own.points : undefined;
+  const coordinates = (axis: 'x' | 'y') => (points ?? []).flatMap((point) => numberOfCell(point?.[axis]));
+  const extent = (values: number[]) => (values.length ? [values.reduce((a, b) => Math.min(a, b)), values.reduce((a, b) => Math.max(a, b))] : []);
+  if (points) for (const axis of ['x', 'y'] as const) {
+    add(2, 'axis', axes?.[axis], [], ['options', 'axisFormat', axis], () => false, { stated: extent(coordinates(axis)), zeroOnly: true });
+  }
+  // A KPI: its value, reference and spark print through its own format.
+  if (typeof own?.format === 'string' && !Array.isArray(own?.series)) {
+    add(2, 'series', own.format, [[...numberOfCell(own.value), ...numberOfCell(own.delta?.vs), ...(Array.isArray(own.spark?.values) ? own.spark.values.flatMap(numberOfCell) : [])]], ['data', 'format'], () => true);
+  }
+  // One row of values (sparkline), waterfall items, map regions.
+  if (Array.isArray(own?.values)) chartSets.push(own.values.flatMap(numberIn));
+  // A waterfall total is calculated: judged for zero, not as part of the steps' set.
+  const isTotal = (item: unknown) => typeof item === 'object' && item !== null && ['total', 'subtotal'].includes(String((item as { type?: unknown }).type));
+  const totals = Array.isArray(own?.items) ? own.items.filter(isTotal).flatMap((item) => numberIn(item?.value)) : [];
+  if (Array.isArray(own?.items)) chartSets.push(own.items.filter((item) => !isTotal(item)).flatMap((item) => numberIn(item?.value)));
+  const regions = Array.isArray(own?.regions) ? own.regions : typeof own?.regions === 'object' && own.regions !== null ? Object.values(own.regions) : [];
+  if (regions.length) chartSets.push(regions.flatMap((region) => numberIn(typeof region === 'object' && region !== null && 'value' in region ? (region as { value: unknown }).value : region)));
+  if (chart !== undefined) {
+    const place: FormatPlace = { authored: chart, kind: 'chart', sets: chartSets, path: ['options', 'format'], owns: () => true };
+    // A scatter point states its coordinates through the chart format in its hover card.
+    if (points) Object.assign(place, { zeroOnly: true, loose: [...coordinates('x'), ...coordinates('y')] });
+    else if (statusChart.length) Object.assign(place, { stated: statusChart, zeroOnly: true });
+    // Values in other shapes (links, groups, cohorts, observations, panels): the numbers of the data open the check.
+    else if (!chartSets.some((set) => set.length)) place.loose = numbersOf(data);
+    if (totals.length) place.totals = totals;
+    // A bullet row stands alone: its value forms no set with the other rows.
+    if (bulletRows) place.zeroOnly = true;
+    places[4]!.push(place);
+  }
   return places.flat();
 }
 
+/** The measure id of a dimension switch row (rowId [variant, member, measure], a change or effect row with a suffix). */
+function measureOfRow(rowId: unknown): unknown {
+  if (typeof rowId !== 'string' || !rowId.startsWith('[')) return undefined;
+  try { return (JSON.parse(rowId.slice(0, rowId.lastIndexOf(']') + 1)) as unknown[])[2]; } catch { return undefined; }
+}
+
+/** Every finite number in data, to six levels. */
+function numbersOf(node: unknown, depth = 0): number[] {
+  if (typeof node === 'number') return Number.isFinite(node) ? [node] : [];
+  if (node === null || typeof node !== 'object' || depth > 6) return [];
+  return Object.values(node).flatMap((value) => numbersOf(value, depth + 1));
+}
+
+/** The place's example as the chart reads it, where it prints exactly; none for a unit-only format or its stand-in (isExactExample), an ordinal or an exponent. A place holds what the author wrote. */
+function exactPlace(place: FormatPlace): ExactPlace | undefined {
+  if (unitOnlyExample(place.authored) !== undefined || isUnitStandIn(place.authored)) return undefined;
+  try {
+    const text = formatExampleText(place.authored);
+    const format = exampleReading(text, place.sets.flat()).decimals ?? text;
+    const spec = parseFormatExample(format, true);
+    return spec.ordinal || spec.exponent ? undefined : { format, spec };
+  } catch { return undefined; }
+}
+
+/**
+ * Whether a record's value printed through `place`: the place owns the record, and the value carries the place's format, or
+ * a change face of it (+1.2 or 1.2pp for 1.2 and 1.2%). A computed column's records carry the calculation's format.
+ */
+function printsThrough(place: FormatPlace, read: ExactPlace | undefined, owner: Owner, value: InteractionValue): boolean {
+  if (!place.owns(owner)) return false;
+  const format = value.format;
+  if (format === place.authored) return true;
+  return read !== undefined && (place.computed ? value.derived !== undefined : format === read.format || (format !== undefined && changeFaces(read.format).has(format)));
+}
+
+const faces = new Map<string, ReadonlySet<string>>();
+/** The examples a change of `format` prints in: its difference example (differenceExample), with and without a plus sign. */
+function changeFaces(format: string): ReadonlySet<string> {
+  let found = faces.get(format);
+  if (found === undefined) {
+    let difference = format;
+    try { difference = differenceExample(format); } catch { /* the format itself */ }
+    const signed = (example: string) => (example.startsWith('+') ? example : `+${example}`);
+    found = new Set([difference, signed(difference), signed(format)].filter((face) => face !== format));
+    faces.set(format, found);
+  }
+  return found;
+}
+
+/**
+ * Whether the exact print of a set may hide a value: a value off zero within
+ * half a printed step of zero, or different values within one step. A bound
+ * on the data, so no value is printed to decide whether the records are built.
+ */
+function mayHide(spec: NumberFormatSpec, sets: readonly (readonly number[])[], zeroOnly = false): boolean {
+  const figures = spec.significantDigits;
+  const step = MAGNITUDE_DIVISOR[spec.magnitude] / 10 ** spec.decimals;
+  for (const set of sets) {
+    let low = Infinity;
+    let high = -Infinity;
+    for (const value of set) {
+      if (figures === undefined && value !== 0 && Math.abs(value) < step * 0.5000001) return true;
+      if (value < low) low = value;
+      if (value > high) high = value;
+    }
+    if (!zeroOnly && high > low && (figures === undefined ? high - low < step * 1.0000001 : Number(low.toPrecision(figures)) === Number(high.toPrecision(figures)))) return true;
+  }
+  return false;
+}
+
+/** Whether a computed column draws one text in two or more cells: its values are calculated, so its drawn cells stand for its data. */
+function oneCellText(scene: readonly SceneNode[], colId: unknown): boolean {
+  let text: string | undefined;
+  let cells = 0;
+  for (const node of scene) {
+    if (node.t !== 'text' || node.part !== 'tableCell' || node.owner?.colId !== colId) continue;
+    const line = node.lines.join(' ');
+    if (text !== undefined && line !== text) return false;
+    text = line;
+    cells++;
+  }
+  return cells > 1;
+}
+
+/** The text the chart states for a record's value: its label, else the text of the hover card (formattedValueText) under its format. */
+function statedEntry(place: FormatPlace, value: InteractionValue, owner: Owner, locale: string | undefined, field = false): Stated | undefined {
+  if (value.state !== 'value' || value.kind !== 'number' || typeof value.raw !== 'number' || !Number.isFinite(value.raw)) return undefined;
+  const text = value.displayed ?? (value.format !== undefined ? formatWithSpec(value.raw, exampleSpec(value.format, locale, value.unit)) : undefined);
+  // A calculated value (a total, a mean, a change) is judged for zero only: the sets are the authored values'.
+  return text === undefined ? undefined : { raw: value.raw, text, sets: field || value.derived !== undefined ? [] : setsOf(place, owner) };
+}
+
+/** The sets a value of a place belongs to: its series, its table row and column under the chart format; none under a cell's own format. */
+function setsOf(place: FormatPlace, owner: Owner): string[] {
+  if (place.kind === 'cell' || place.zeroOnly) return [];
+  if (place.kind !== 'chart') return [place.kind];
+  if (owner.rowId !== undefined || owner.colId !== undefined) return [...(owner.rowId !== undefined ? [`row:${String(owner.rowId)}`] : []), ...(owner.colId !== undefined ? [`column:${String(owner.colId)}`] : [])];
+  return [`series:${String(owner.seriesId ?? '')}`];
+}
+
+/** The texts a format prints for the data, where no records state them. */
+function dataEntries(place: FormatPlace, read: ExactPlace, locale: string | undefined): Stated[] {
+  const spec = specOfExample(read.format, true, locale);
+  return [
+    ...place.sets.flatMap((set, i) => set.map((raw) => ({ raw, text: formatWithSpec(raw, spec), sets: place.kind === 'cell' || place.zeroOnly ? [] : [`${place.kind === 'chart' ? 'series' : place.kind}:${i}`] }))),
+    ...(place.totals ?? []).map((raw) => ({ raw, text: formatWithSpec(raw, spec), sets: [] })),
+  ];
+}
+
+/** The texts a place prints for the values the chart states outside its records (FormatPlace.stated); zero only. */
+function statedOutside(place: FormatPlace, read: ExactPlace, locale: string | undefined): Stated[] {
+  if (!place.stated?.length) return [];
+  const spec = specOfExample(read.format, true, locale);
+  return place.stated.map((raw) => ({ raw, text: formatWithSpec(raw, spec), sets: [] }));
+}
+
+const SET_NAMES: Record<string, string> = { series: 'a series', row: 'a table row', column: 'a table column' };
+/** Whether a set of two or more different values prints one text for all of them. Different at 12 significant digits, so float noise is no difference. */
+const hidesSet = (set: readonly Stated[]) => set.length > 1 && new Set(set.map((entry) => entry.text)).size === 1 && new Set(set.map((entry) => Number(entry.raw.toPrecision(12)))).size > 1;
+
+/**
+ * The warning of an authored example that hides a value on the chart: a value
+ * off zero that prints as the example's zero, or a set of different values
+ * printed as one text. Its patch is the first example of the same style that
+ * shows them (patchExamples), proven by drawing the chart with it (`verify`).
+ */
+function exactFormatWarning(place: FormatPlace, read: ExactPlace, stated: readonly Stated[], locale: string | undefined, unit: string | undefined, verify?: FormatPatchCheck): LintWarning[] {
+  const zeroed = stated.find((entry) => entry.raw !== 0 && zeroText(entry.text));
+  const bySet = new Map<string, Stated[]>();
+  for (const entry of stated) for (const key of entry.sets) bySet.set(key, [...(bySet.get(key) ?? []), entry]);
+  const hidden = zeroed ? undefined : [...bySet].find(([, set]) => hidesSet(set));
+  if (!zeroed && !hidden) return [];
+  const pointer = toJsonPointer(place.path);
+  const patch = examplePatch(read, stated, [...bySet.values()], locale, unit,
+    (example) => verify === undefined || verify([{ op: 'replace', path: pointer, value: example }], place.path));
+  const shown = zeroed
+    ? `prints the nonzero value ${Number(zeroed.raw.toPrecision(12))} as ${zeroed.text}`
+    : `prints the different values of ${SET_NAMES[hidden![0].split(':')[0]!]} as one text, ${hidden![1][0]!.text}`;
+  // A unit that names the format's own scale ("$B") says the values are in that scale already: the format divides them a second time.
+  const doubled = place.kind === 'chart' && read.spec.magnitude !== 'none' && unitMagnitude(unit) === read.spec.magnitude;
+  return [{
+    code: 'format-hides-values',
+    severity: 'warn',
+    message: doubled
+      ? `options.unit '${unit}' says the values are already in its scale, and format '${read.format}' divides them by that scale again: it ${shown}`
+      : `format '${read.format}' ${shown}`,
+    suggest: patch === undefined
+      ? 'remove the format to let the engine pick the precision: no example of the same style shows every value on this chart'
+      : doubled ? `drop the scale from the format, such as '${patch}', and keep options.unit` : `set a format such as '${patch}', or remove the format to let the engine pick the precision`,
+    field: place.path,
+    ...(patch === undefined ? {} : { fix: [{ op: 'replace' as const, path: pointer, value: patch }] }),
+  }];
+}
+
+/** The first example of patchExamples whose exact print shows every value off zero and every set apart, and that `proves` accepts. */
+function examplePatch(read: ExactPlace, stated: readonly Stated[], sets: readonly (readonly Stated[])[], locale: string | undefined, unit: string | undefined, proves: (example: string) => boolean): string | undefined {
+  const nonzero = stated.filter((entry) => entry.raw !== 0).map((entry) => entry.raw);
+  const apart = sets.filter((set) => new Set(set.map((entry) => Number(entry.raw.toPrecision(12)))).size > 1).map((set) => set.map((entry) => entry.raw));
+  const shows = (example: string) => {
+    // The patch, once written, is the author's example: it prints exactly.
+    let spec: NumberFormatSpec;
+    try { spec = specOfExample(example, true, locale, unit); } catch { return false; }
+    return nonzero.every((value) => !zeroText(formatWithSpec(value, spec))) && apart.every((set) => new Set(set.map((value) => formatWithSpec(value, spec))).size > 1);
+  };
+  const largest = nonzero.reduce((most, value) => Math.max(most, Math.abs(value)), 0);
+  for (const example of patchExamples(read.format, read.spec, largest)) if (shows(example) && proves(example)) return example;
+  return undefined;
+}
+
+const SCALES_DOWN: readonly NumberFormatSpec['magnitude'][] = ['t', 'bn', 'm', 'k', 'none'];
+const MAX_PATCH_FIGURES = 15;
+
+/**
+ * Examples of the author's style that print finer than `format`, closest
+ * first: the scale word of its family that fits the largest value, at the
+ * author's decimals ("$1.2M" on 4 to 78 gives "$1.2", on 2,000 "$1.2k"), then
+ * one decimal more at that scale, and so on to the decimal limit; then more
+ * decimals at the author's scale. A figure count ("@@") gets more figures.
+ * Affixes and the sign form stay as written.
+ */
+function* patchExamples(format: string, spec: NumberFormatSpec, largest: number): Generator<string> {
+  if (spec.significantDigits !== undefined) {
+    const figures = /@+/.exec(format);
+    if (!figures) return;
+    for (let count = spec.significantDigits + 1; count <= MAX_PATCH_FIGURES; count++) yield format.slice(0, figures.index) + '@'.repeat(count) + format.slice(figures.index + figures[0].length);
+    return;
+  }
+  const found = numericBody(format);
+  if (!found) return;
+  const body = found.text.trimEnd(); // as parseFormatExample: a space after the number belongs to the unit
+  const before = format.slice(0, found.index);
+  const after = format.slice(found.index + body.length);
+  const word = spec.magnitudeWord !== undefined && after.startsWith(spec.magnitudeWord.text) ? spec.magnitudeWord.text : undefined;
+  // A scale inside a currency affix ('USDm 1.2') can only leave the affix, or the example scales the values again.
+  const below = spec.magnitude === 'none' ? [] : spec.magnitudeInAffix ? ['none' as const] : word === undefined ? [] : SCALES_DOWN.slice(SCALES_DOWN.indexOf(spec.magnitude) + 1);
+  const fit = largest >= MAGNITUDE_DIVISOR[spec.magnitude] ? spec.magnitude : below.find((scale) => largest >= MAGNITUDE_DIVISOR[scale]) ?? below.at(-1) ?? spec.magnitude;
+  const plain = { ...spec, locale: undefined };
+  const at = (scale: NumberFormatSpec['magnitude'], digits: string) => scale === spec.magnitude ? before + digits + after
+    : spec.magnitudeInAffix ? affixWithoutScale(before) + digits + affixWithoutScale(after)
+    : before + digits + (scale === 'none' ? '' : magnitudeText(plain, scale, digits)) + after.slice(word!.length);
+  for (const scale of fit === spec.magnitude ? [fit] : [fit, spec.magnitude]) {
+    for (let decimals = spec.decimals; decimals <= MAX_FORMAT_DECIMALS; decimals++) {
+      if (decimals === spec.decimals && scale === spec.magnitude) continue;
+      yield at(scale, decimals === spec.decimals ? body : finerBody(spec, decimals));
+    }
+  }
+}
+
+/** The number of an example with `decimals` decimals in the spec's marks; an integer part of 0 keeps three decimals from reading as a group ("0.004", not "1.004"). */
+function finerBody(spec: NumberFormatSpec, decimals: number): string {
+  return formatWithSpec(((spec.thousandsSep ? 1234 : decimals === 3 ? 0 : 1) + 0.123456789),
+    { ...spec, decimals, signed: false, prefix: '', suffix: '', magnitude: 'none', magnitudeWord: undefined, locale: undefined, exact: undefined, significantDigits: undefined });
+}
+
 /** The warning of one place whose format the records show printing nonzero values as zero; its patch only when a finer example within the decimal limit shows them. */
-function placeZeroWarning({ authored, numbers, path }: FormatPlace, zeroed: readonly InteractionRecord[]): LintWarning[] {
+function placeZeroWarning({ authored, sets, path }: FormatPlace, zeroed: readonly InteractionRecord[]): LintWarning[] {
   if (zeroed.length === 0) return [];
   let format: string;
   let spec: NumberFormatSpec;
   try {
     format = formatExampleText(authored);
-    format = exampleReading(format, numbers).decimals ?? format;
+    format = exampleReading(format, sets.flat()).decimals ?? format;
     spec = parseFormatExample(format);
   } catch { return []; }
   const finer = finerShowing(format, spec, zeroed.map((record) => record.value.raw as number));
-  const pointer = `/${path.map((part) => String(part).replace(/~/g, '~0').replace(/\//g, '~1')).join('/')}`;
+  const pointer = toJsonPointer(path);
   return [{
     code: 'format-hides-values',
     severity: 'warn' as const,
@@ -1777,11 +2367,10 @@ function finerShowing(format: string, spec: NumberFormatSpec, values: readonly n
   return undefined;
 }
 
-/** The example of `format` with `decimals` decimals; an integer part of 0 keeps three decimals from reading as a group ("0.004", not "1.004"). */
+/** The example of `format` with `decimals` decimals (finerBody). */
 function finerExample(format: string, spec: NumberFormatSpec, found: { index: number; text: string }, decimals: number): string {
   const body = found.text.trimEnd(); // as parseFormatExample: a space after the number belongs to the unit
-  return format.slice(0, found.index) + formatWithSpec(((spec.thousandsSep ? 1234 : decimals === 3 ? 0 : 1) + 0.123456789),
-    { ...spec, decimals, signed: false, prefix: '', suffix: '', magnitude: 'none', magnitudeWord: undefined, locale: undefined }) + format.slice(found.index + body.length);
+  return format.slice(0, found.index) + finerBody(spec, decimals) + format.slice(found.index + body.length);
 }
 
 function chartFormatLint(
@@ -1789,6 +2378,7 @@ function chartFormatLint(
   data: unknown,
   geo: { labels?: readonly PlacedLabel[]; scene: readonly SceneNode[] } | undefined,
   zeroRecords: readonly InteractionRecord[],
+  exactWarning?: () => LintWarning[],
 ): LintWarning[] {
   const authored = typeof options?.format === 'string' ? options.format : undefined;
   // Series rows, one row of values (sparkline, kpi), or waterfall items.
@@ -1816,6 +2406,9 @@ function chartFormatLint(
     }];
   }
   if (!authored) return [];
+  // An authored example prints exactly: its own warning judges what the chart states.
+  const hides = exactWarning?.() ?? [];
+  if (hides.length > 0) return hides;
   let format: string;
   let spec: NumberFormatSpec;
   try {
@@ -1824,6 +2417,7 @@ function chartFormatLint(
     spec = parseFormatExample(format);
   } catch { return []; }
   if (spec.ordinal || spec.exponent) return [];
+  // A unit-only format ("$M") keeps these warnings; an authored example has its own (exactFormatWarning).
   // A series whose different values all print as one string hides them. The
   // format stays the author's; the fix adds one decimal. Bump ranks read
   // equal strings as ties on purpose. A % format is left out: a fraction
@@ -1839,14 +2433,14 @@ function chartFormatLint(
   // An authored scale holds the chart to one precision (shareAuthoredScale): the warning says what that draws.
   // Its figures print with the chart's marks (locale.decimal and locale.thousands), as the chart does.
   const locale = withNumberMarks({ locale: options?.locale as LocaleSpec | undefined }).locale!.language;
-  const shared = spec.magnitude !== 'none' && figures === undefined ? seriesRasterFormatter(format, numbers.flat(), locale, unit) : undefined;
+  const shared = exactWarning === undefined && spec.magnitude !== 'none' && figures === undefined ? seriesRasterFormatter(format, numbers.flat(), locale, unit) : undefined;
   const raised = checked && shared !== undefined && shared.spec.decimals > spec.decimals;
   const smallest = numbers.flat().reduce((small, v) => v !== 0 && (small === 0 || Math.abs(v) < Math.abs(small)) ? v : small, 0);
   // Distinct at 12 significant digits, so float noise never asks for 20 decimals.
   const distinct = (row: readonly number[]) => new Set(row.map((v) => Number(v.toPrecision(12)))).size;
   const hidden = (row: readonly number[]) => distinct(row) > 1 && new Set(row.map((v) => formatWithSpec(v, spec))).size === 1;
-  const hides = checked && numbers.some(hidden);
-  if ((hides || raised || zeroed.length > 0) && body) {
+  const hidesRow = checked && exactWarning === undefined && numbers.some(hidden);
+  if (exactWarning === undefined && (hidesRow || raised || zeroed.length > 0) && body) {
     // The finer body keeps the style.
     const finerAt = (decimals: number) => finerExample(format, spec, body, decimals);
     // The proposed example must show what this one hides: every value of a hidden row apart, every zeroed value off 0.

@@ -8,7 +8,8 @@
 import { type CSSProperties, useMemo, useRef, useState, type FocusEvent, type MouseEvent, type PointerEvent, type ReactElement, type ReactNode, type Dispatch, type SetStateAction } from 'react';
 import { createPortal } from 'react-dom';
 import { interactionRecords } from '../../core/a11y/records';
-import { withSmallValues, type SmallValues } from '../../core/formatPrecision';
+import type { SmallValues } from '../../core/formatPrecision';
+import { withChartFormats } from '../../core/formatSpec';
 import { ownerContains } from '../../core/a11y/recordsShared';
 export { tableRecords } from './dataTable';
 export { labelCardGeometry } from './labelCard';
@@ -312,8 +313,8 @@ export function hoverView(
     band: first.target.owner.annotationId !== undefined ? undefined : bandTypes[panel?.type ?? request.type],
     theme, measure: request.fontMetrics, locale,
     idPrefix: 'hover-card', card: cardOptions };
-  // The card formats values after layout: it follows the chart's smallValues mode.
-  const card = !flags.card ? undefined : withSmallValues(request.options.smallValues, () => active.length > 1
+  // The card formats values after layout: it follows the chart's smallValues mode and unit-only formats.
+  const card = !flags.card ? undefined : withChartFormats(request.options, () => active.length > 1
     ? layoutLabelCardContent(input, sharedLabelCardContent(active, locale, cardOptions, geometry.scene, model.cardRows)) : layoutLabelCard(input));
   const scene = flags.highlight ? highlightScene(geometry.scene, model.records, active, theme)
     : flags.keyboard ? outlineScene(geometry.scene, model.records, active, theme) : geometry.scene;
@@ -456,12 +457,12 @@ export interface TableCardAnchor { x: number; y: number; w: number; h: number }
  * table. A cell whose card only repeats its printed value gets none.
  * The slot follows the reading direction; the card stays ltr.
  */
-export function TableCard({ record, width, theme, palette, locale, measure, direction, anchor, pointer, frame, occupied = [], forbidden, tableBounds, variant = 'label', table, columns, inlineVisibility, container, offset, styleNonce, smallValues }: {
+export function TableCard({ record, width, theme, palette, locale, measure, direction, anchor, pointer, frame, occupied = [], forbidden, tableBounds, variant = 'label', table, columns, inlineVisibility, container, offset, styleNonce, formats }: {
   record: InteractionRecord; width: number; theme: Theme; locale?: string; measure?: TextMeasurer; direction: 'ltr' | 'rtl';
   /** The table's options.palette, for the tone text the card prints. */
   palette?: string;
-  /** The table's options.smallValues: the card formats after layout. */
-  smallValues?: SmallValues;
+  /** The table's options: the card formats after layout, in their smallValues mode and unit-only formats. */
+  formats?: { smallValues?: SmallValues };
   anchor?: TableCardAnchor; frame?: { w: number; h: number };
   pointer?: Point;
   occupied?: readonly OccupiedRect[];
@@ -484,7 +485,7 @@ export function TableCard({ record, width, theme, palette, locale, measure, dire
 }): ReactElement | null {
   const css = useMemo(() => ({ __html: surfaceStyle(theme).replace(/</g, '\\3c ') }), [theme]);
   const placed = anchor !== undefined && frame !== undefined && frame.w > 0 && frame.h > 0;
-  const laid = useMemo(() => withSmallValues(smallValues, () => {
+  const laid = useMemo(() => withChartFormats(formats, () => {
     const canvas = placed ? { x: 0, y: 0, w: frame.w, h: frame.h } : { x: 0, y: 0, w: width, h: 0 };
     // The sparkline card answers for the row, not for the cell, so it draws
     // where the label card would have nothing to add — and nothing at all
@@ -503,7 +504,7 @@ export function TableCard({ record, width, theme, palette, locale, measure, dire
       slots: 'table', direction, theme, locale, measure });
     if (!layout.scene.length) return undefined;
     return { geometry: labelCardGeometry(layout), rect: layout.rect };
-  }), [record, width, theme, locale, measure, placed, anchor, pointer, frame, occupied, forbidden, tableBounds, variant, table, columns, inlineVisibility, direction, smallValues]);
+  }), [record, width, theme, locale, measure, placed, anchor, pointer, frame, occupied, forbidden, tableBounds, variant, table, columns, inlineVisibility, direction, formats]);
   if (!laid) return null;
   const portalled = !topLayer() && placed && container !== undefined && offset !== undefined;
   // Outside the top layer, a card in the document body is fixed to the viewport. A card in a container the host named stays in that container.

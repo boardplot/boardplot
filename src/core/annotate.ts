@@ -1144,7 +1144,8 @@ function gapNumber(s: AnnotationScope, ann: Extract<Annotation, { kind: 'delta' 
     request.owner.seriesId === end.owner.seriesId && request.owner.categoryId === end.owner.categoryId)?.text);
   if (printed.some((text) => text === undefined)) return computed;
   try {
-    const [first, second] = printed.map((text) => parseFormatExample(differenceExample(text!)));
+    // The ends' own scale word stays: "+$0.3m" between "$6.1m" and "$6.4m".
+    const [first, second] = printed.map((text) => parseFormatExample(differenceExample(text!), true));
     return formatWithSpec(raw, withChartMarks({ ...(second!.decimals > first!.decimals ? second! : first!), signed: true }, s.input.locale));
   } catch {
     return computed;

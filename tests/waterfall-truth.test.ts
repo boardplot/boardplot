@@ -303,15 +303,19 @@ describe('an authored scale word', () => {
     return geometry.labels.filter((label) => /^(sum|total):/.test(label.id)).map((label) => label.text).sort();
   };
 
-  // Decided per label, +50 printed +0.1k and -20 left the thousands, so the labels did not add up to the total.
-  it.each(['1.2k', '1,234k', '1.23k'])('holds every value of %s to one scale and one decimal count', (format) => {
-    expect(valueTexts(format)).toEqual(['+0.05k', '1.00k', '1.03k', '−0.02k'].sort());
+  // Decided per label, -20 left the thousands, and then every label took two decimals: each label prints as the example reads, in its scale word.
+  it.each([
+    ['1.2k', ['+0.1k', '0.0k', '1.0k', '1.0k']],
+    ['1,234k', ['0k', '0k', '1k', '1k']],
+    ['1.23k', ['+0.05k', '1.00k', '1.03k', '−0.02k']],
+  ])('prints every value of %s in its scale word and decimals', (format, texts) => {
+    expect(valueTexts(format)).toEqual([...texts].sort());
   });
 
-  // The warning named a 0.0k the chart never drew.
-  it('says what the chart prints in place of the authored decimals', () => {
+  // The warning named a 0.0k the chart never drew: it names the zero the chart draws and an example that shows the value.
+  it('says what the chart prints in place of a hidden value', () => {
     const [warning] = unscaledFormatLint({ ...fixture.options, format: '1.2k' }, fixture.data);
-    expect([warning?.code, warning?.message]).toEqual(['format-hides-values', "format '1.2k' cannot show -20 near its size, so the chart prints every value with 2 decimals: -20 as −0.02k"]);
+    expect([warning?.code, warning?.message, (warning?.fix?.[0] as { value?: unknown } | undefined)?.value]).toEqual(['format-hides-values', "format '1.2k' prints the nonzero value -20 as 0.0k", '1.12k']);
   });
 });
 

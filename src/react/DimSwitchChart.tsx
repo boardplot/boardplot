@@ -73,6 +73,7 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
   const floorRequest=useStableValue({type:'dimswitch',data:stableData,options:{...stableOptions,variant,depth,splits,inlineVisibility}});
   // The grid reads values, not the computed-cell records the static audit trail carries.
   // The compile gives its notes their kinds (a disclosure, its short form); the table frame reads them as records.
+  // The compile reads the formats as the SVG path does; its options carry which formats the author wrote to the table it draws.
   const compiled=useMemo(()=>withEngineNotes(()=>{
     const result=compileDimSwitch(stableData,{...stableOptions,variant,depth:1,splits},{records:false});freezeValue(result.data);
     const notes=(result.options as {[ENGINE_NOTES]?:string[]})[ENGINE_NOTES] ?? [];

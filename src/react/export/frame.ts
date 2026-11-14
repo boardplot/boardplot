@@ -20,6 +20,7 @@ import { parseChartSpec, requestChartTypes } from '../parseChartSpec';
 import { loadChartTypes } from '../loadChartTypes';
 import { sha256Hex } from './hash';
 import { authoredLocale } from '../../core/numberMarks';
+import { withAuthoredUnits } from '../../core/formatSpec';
 import type { ArtifactBytesReceipt, ExportFailed, ExportInput, ExportUnsupported } from './types';
 import type { DrawnChart } from '../exportLink';
 
@@ -72,7 +73,10 @@ function sourceEnvelope(request: ChartRequest): { type: string; data: unknown; o
 
 /** Keep the serializable effective options used by this frame, including inherited context. */
 function effectiveRequest(request: ChartRequest, resolved: ResolvedChartRequest): ChartRequest {
-  const { measure: _measure, ...options } = resolved.options;
+  // A unit-only format goes out as written, not as the stand-in the chart drew it with.
+  const { measure: _measure, ...options } = withAuthoredUnits(resolved.options);
+  // The engine's own markers on the options (which examples the author wrote) are not part of the source.
+  for (const key of Object.getOwnPropertySymbols(options)) delete (options as Record<symbol, unknown>)[key];
   // The source keeps the locale as written: the marks tag is internal (numberMarks.ts).
   const locale = authoredLocale(options.locale);
   if (locale === undefined) delete options.locale;

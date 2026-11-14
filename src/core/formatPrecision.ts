@@ -114,6 +114,74 @@ export function withSmallValues<T>(mode: SmallValues | undefined, run: () => T):
   try { return run(); } finally { smallValuesMode = before; }
 }
 
+/** The stand-ins that readFormatExamples wrote for a chart's unit-only formats, on its resolved options. */
+export const UNIT_STAND_INS = Symbol('unit-stand-ins');
+/** The examples the author wrote for a chart, and their differences (readFormatExamples), on its resolved options. */
+export const AUTHORED_EXAMPLES = Symbol('authored-examples');
+type FormatSets = { [UNIT_STAND_INS]?: ReadonlySet<string>; [AUTHORED_EXAMPLES]?: ReadonlySet<string> };
+let unitStandIns: ReadonlySet<string> | undefined;
+let authoredExamples: ReadonlySet<string> | undefined;
+
+/** The stand-ins in force for these options: their own when they have any, else the enclosing ones. */
+function standInsOf(options: object | undefined): ReadonlySet<string> | undefined {
+  const own = (options as FormatSets | undefined)?.[UNIT_STAND_INS];
+  return own?.size ? own : unitStandIns;
+}
+
+/** The authored examples in force for these options: their own, else the enclosing ones. */
+function authoredOf(options: object | undefined): ReadonlySet<string> | undefined {
+  return (options as FormatSets | undefined)?.[AUTHORED_EXAMPLES] ?? authoredExamples;
+}
+
+/**
+ * Run one chart's layout or text under its unit-only stand-ins and the
+ * examples its author wrote; a chart without stand-ins keeps the enclosing
+ * ones, and one without its own examples the enclosing examples, so a grid
+ * panel follows its grid. Limit: module state for synchronous work, as
+ * withSmallValues.
+ */
+export function withUnitStandIns<T>(options: object | undefined, run: () => T): T {
+  const standIns = standInsOf(options);
+  const authored = authoredOf(options);
+  if (standIns === unitStandIns && authored === authoredExamples) return run();
+  const before = { standIns: unitStandIns, authored: authoredExamples };
+  unitStandIns = standIns;
+  authoredExamples = authored;
+  try { return run(); } finally { unitStandIns = before.standIns; authoredExamples = before.authored; }
+}
+
+/** Whether readFormatExamples wrote this example for a unit-only format of the chart in force. */
+export function isUnitStandIn(example: string): boolean {
+  return unitStandIns?.has(example) === true;
+}
+
+/** Whether the chart in force names this example as authored; outside any chart every example is. */
+export function isAuthoredExample(example: string): boolean {
+  return authoredExamples === undefined || authoredExamples.has(example);
+}
+
+/** Whether these options, or the chart in force, carry the record of which formats the author wrote. */
+export function hasFormatRecord(options?: object): boolean {
+  return authoredOf(options) !== undefined;
+}
+
+const setKeys = new WeakMap<ReadonlySet<string>, string>();
+function setKey(set: ReadonlySet<string> | undefined): string {
+  if (set === undefined) return '-';
+  let key = setKeys.get(set);
+  if (key === undefined) setKeys.set(set, key = JSON.stringify([...set].sort()));
+  return key;
+}
+
+/**
+ * The format sets in force for these options (or the enclosing chart's), as
+ * a part of every cache key that keeps formatted text: the same examples
+ * print otherwise under another chart's sets. Each set's part is built once.
+ */
+export function formatScopeKey(options?: object): string {
+  return setKey(standInsOf(options)) + '/' + setKey(authoredOf(options));
+}
+
 const SUPERSCRIPT: Record<string, string> = { '-': '\u207b', 0: '\u2070', 1: '\u00b9', 2: '\u00b2', 3: '\u00b3', 4: '\u2074', 5: '\u2075', 6: '\u2076', 7: '\u2077', 8: '\u2078', 9: '\u2079' };
 
 /**

@@ -70,10 +70,11 @@ describe('column and combo stack totals stay exact until printed', () => {
   });
 
   // Under a whole-number format a stack total of 0.4 printed "0" on column and bar, while a mekko total took the digit it needs.
-  it('a stack total keeps a nonzero sum off 0 under an authored whole-number format (column, bar)', () => {
+  // A stack total under an authored whole-number format printed 0.4, a decimal its example does not show.
+  it('a stack total prints as its authored whole-number format prints it (column, bar)', () => {
     const data = { categories: cats('c0'), series: [{ id: 'a', label: 'A', values: [0.2] }, { id: 'b', label: 'B', values: [0.2] }] };
-    expect(text(layoutColumn(data, { variant: 'stacked', format: '1,234' } as never), 'grandTotal:c0')).toBe('0.4');
-    expect(text(layoutResolvedRequest(resolveChartRequest({ type: 'bar', data, options: { variant: 'stacked', format: '1,234' } } as never) as never) as Laid, 'grandTotal:c0')).toBe('0.4');
+    expect(text(layoutColumn(data, { variant: 'stacked', format: '1,234' } as never), 'grandTotal:c0')).toBe('0');
+    expect(text(layoutResolvedRequest(resolveChartRequest({ type: 'bar', data, options: { variant: 'stacked', format: '1,234' } } as never) as never) as Laid, 'grandTotal:c0')).toBe('0');
   });
 
   it('the description and the label of a single-series column state one total', () => {
@@ -113,8 +114,9 @@ describe('the KPI card never prints a nonzero value as 0', () => {
     expect(text(card, 'point:delta')).toContain('+33.3% vs PY');
   });
 
-  it('lifts an authored example only as far as the value needs', () => {
-    expect(text(kpi({ value: 0.0042, format: '1.00%' }), 'total:value')).toBe('0.004%');
+  // A KPI under an authored example printed more decimals than the example shows (0.004% under '1.00%').
+  it('prints a KPI value in the decimals of its authored example', () => {
+    expect(text(kpi({ value: 0.0042, format: '1.00%' }), 'total:value')).toBe('0.00%');
     expect(text(kpi({ value: 12.345, format: '1.00%' }), 'total:value')).toBe('12.35%');
   });
 
