@@ -1,6 +1,6 @@
 ### Changed
 
-- A number prints the same text at every width, height, theme and render target. Charts that shortened a number to fit a small size now keep its full text:
+- A value label, a total and a table figure print the same text at every width, height and render target. Charts that shortened a number to fit a small size now keep its full text:
   - A value heatmap and a cohort heatmap no longer shorten their numbers to fit the cells. This takes back the change of 0.55.0, where a matrix with no room dropped the % sign that the unit line names, then decimals, before it hid a number. A narrow heatmap and a narrow cohort heatmap now print no value in their cells where a value does not fit, and the cells keep their colour. The key, the hover card and the description keep the values.
   - A narrow stacked column chart printed its totals short, such as `10.1k`. It now prints `10,089`, and a total with no room moves to the note with that text.
   - A cohort exhibit or a dimension switch that leaves out periods on a narrow card printed the remaining values with other decimals: `68.4` where the full table printed `68`, and `1.8k` where it printed `1.80k`. The card now prints each value as the full table does.
