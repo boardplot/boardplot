@@ -624,13 +624,16 @@ export function resolveBarDomain(data: ChartData, options: BarOptions, warnings:
       });
     }
   } else if (sharesOn) {
-    warnShareRoundingDrift(warnings, wholes.map(({ c, parts }) => ({ name: c.label, shares: parts.map((part) => part.share), decimals: shareSpec?.decimals })));
     // 'nearest': the shares of one bar print at the one precision sum-consistent gives that bar (whole percents, one
     // decimal more while a nonzero share would print 0), each rounded on its own: "2% · 2% · 1%", not "1.7% · 2.4% · 1.2%".
+    // The drift warning sums the shares at the decimals the labels print.
+    const labelDecimals = new Map<Id, number>();
     if (!shareExample) for (const { c, parts } of wholes) {
       const decimals = shareSetDecimals(parts.map((part) => part.share));
+      labelDecimals.set(c.id, decimals);
       for (const part of parts) shareTexts.set(`${c.id}\0${part.s.id}`, shareText(part.share, decimals, options.locale?.language));
     }
+    warnShareRoundingDrift(warnings, wholes.map(({ c, parts }) => ({ name: c.label, shares: parts.map((part) => part.share), decimals: shareSpec?.decimals ?? labelDecimals.get(c.id) })));
   }
   // sharesOfOneWhole: a bar whose authored parts miss 100 prints shares of its own total; direct percents print as authored.
   const rescaled = options.sharesOfOneWhole === true

@@ -304,8 +304,8 @@ export function shareText(percent: number, decimals: number, locale?: string): s
   return formatPercent(percent, decimals, false, locale);
 }
 
-/** The number a share prints as, for sums over printed shares: at `decimals`, or formatShare's own. */
-export function printedShare(percent: number, decimals = shareDecimals(percent)): number {
+/** The number a share prints as at `decimals`, for sums over printed shares. */
+export function printedShare(percent: number, decimals: number): number {
   return Number(roundHalfUp(percent, decimals));
 }
 

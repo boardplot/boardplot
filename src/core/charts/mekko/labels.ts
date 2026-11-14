@@ -15,7 +15,6 @@ import { categoryLineAlign } from '../../label/categoryRow';
 import type { LabelContent, LabelKind } from '../../types/options';
 import { segmentTooShort } from '../band/labels';
 import { warnIncompleteComposition, warnShareRoundingDrift } from '../../dataGaps';
-import { shareSetDecimals } from '../../formatPrecision';
 import type { LintWarning, ShownTexts } from '../../types/scene';
 import { colCx, colW, type MekkoArea, type MekkoDomain, type MekkoEnv, type MekkoMarkGeometry, type MekkoPaints, type NormSer } from './model';
 import { GUTTER_GAP, UPPER_TIER_GAP, kindSetting } from './plot';
@@ -508,7 +507,7 @@ export function planMekkoLabels(
     warnShareRoundingDrift(warnings, domain.cats.flatMap((c, ci) =>
       domain.invalidAt(ci) || domain.incomplete.has(c.id) || c.total100 !== undefined || domain.series.some((s) => s.vals[ci]!.isPct)
         ? []
-        : [((shares) => ({ name: c.label ?? c.id, shares, decimals: shareSetDecimals(shares) }))(domain.series.flatMap((s) => domain.plottedAt(s, ci) ?? []))]));
+        : [{ name: c.label ?? c.id, shares: domain.series.flatMap((s) => domain.plottedAt(s, ci) ?? []), decimals: domain.shareDecimals.get(c.id) }]));
   }
   segmentLabels(ctx, geometry);
   if (area.widthTitle) {

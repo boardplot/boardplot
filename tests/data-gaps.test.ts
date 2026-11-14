@@ -276,6 +276,25 @@ describe('data gaps', () => {
     expect(codes(g)).toContain('share-rounding-drift');
   });
 
+  // A 100% bar or area chart drew "8%" and "92%" for one whole and warned that its shares sum to 100.3%: the warning rounded
+  // each share at its own precision, not at the precision the labels print. A mekko under a percent format did the same.
+  it('sums the shares of the drift warning at the precision the labels print them', () => {
+    const categories = [{ id: 'n', label: 'North' }, { id: 's', label: 'South' }, { id: 'w', label: 'West' }];
+    const series = [{ id: 'a', label: 'A', values: [500, 300, 83] }, { id: 'b', label: 'B', values: [500, 700, 917] }];
+    for (const g of [lay('bar', { categories, series }, { variant: 'stacked100' }), lay('line', { categories, series }, { variant: 'stacked100-area', rounding: 'nearest' })]) {
+      expect(texts(g)).toEqual(expect.arrayContaining(['8%', '92%']));
+      expect(codes(g)).not.toContain('share-rounding-drift');
+    }
+    const thirds = ['a', 'b', 'c'].map((id) => ({ id, label: id.toUpperCase(), values: [1, 1, 1] }));
+    const drift = (g: Geometry) => g.warnings.find((w) => w.code === 'share-rounding-drift')?.message;
+    const bar = lay('bar', { categories, series: thirds }, { variant: 'stacked100' });
+    expect(texts(bar).filter((t) => t === '33%')).toHaveLength(9);
+    expect(drift(bar)).toContain("99% for 'West'");
+    const mekko = lay('mekko', { categories, series: thirds }, { format: '0.0%' });
+    expect(texts(mekko).filter((t) => t.endsWith('33.3%'))).toHaveLength(9);
+    expect(drift(mekko)).toContain("99.9% for 'West'");
+  });
+
   it("bends them on request: rounding 'sum-consistent' prints thirds as 33 + 33 + 34 and lists the moved one", () => {
     const g = lay('pie', { categories: [{ id: 'a' }, { id: 'b' }, { id: 'c' }], series: [{ id: 's', values: [1, 1, 1] }] }, { rounding: 'sum-consistent' });
     expect([texts(g).filter((t) => /(?:\(|· )(33|34)%/.test(t)).map((t) => /(?:\(|· )(\d+)%/.exec(t)![1]).sort(), (g.derived as { roundingAdjustments: unknown[] }).roundingAdjustments])

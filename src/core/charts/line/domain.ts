@@ -828,10 +828,13 @@ export function resolveLineDomain(data: LineChartData, input: LineOptions, env: 
   // 'nearest': the shares of one whole print at the one precision sum-consistent gives that whole (whole percents, one
   // decimal more while a nonzero share would print 0), each rounded on its own: "9%", not "9.0%" beside "26%".
   const nearestTexts = new Map<string, string>();
+  // The decimals each whole's labels print at, for the drift warning; a whole without them prints each share at its own.
+  const nearestDecimals = new Map<Id, number>();
   if (variant === 'stacked100-area' && !rounded) cats.forEach((category, ci) => {
     if (compositionInvalidAt(ci) || dataSeries.some(s => s.vals[ci]!.v === null || s.vals[ci]!.isPct)) return;
     const shares = dataSeries.map(s => pv[rowOf.get(s)!]![ci]!);
     const decimals = shareSetDecimals(shares);
+    nearestDecimals.set(category.id, decimals);
     dataSeries.forEach((s, k) => nearestTexts.set(`${category.id}\0${s.id}`, shareText(shares[k]!, decimals, options.locale?.language)));
   });
   // Bump: derive ranks (standard competition ranking, "1224") and PLOT THEM IN
@@ -938,7 +941,7 @@ export function resolveLineDomain(data: LineChartData, input: LineOptions, env: 
       const c = cats[ci]!;
       return compositionInvalidAt(ci) || sharesWithheld.has(c.id) || c.total100 !== undefined || dataSeries.some((s) => s.vals[ci]!.isPct)
         ? []
-        : [{ name: c.label ?? c.id, shares: dataSeries.flatMap((s) => pv[rowOf.get(s)!]![ci] ?? []) }];
+        : [{ name: c.label ?? c.id, shares: dataSeries.flatMap((s) => pv[rowOf.get(s)!]![ci] ?? []), decimals: nearestDecimals.get(c.id) }];
     }));
   }
   // The method note speaks only of moved shares that print: the categories whose labels show.
