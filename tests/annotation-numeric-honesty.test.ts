@@ -972,11 +972,12 @@ describe('fixed line references remain visible at their authored value', () => {
 });
 
 // Prevents one value from printing two scales: the bar, the React text, the description and the hover card read alike,
-// also where a value rolls down ("$1.0 billion" under "$1.0 trillion") and where the engine scale prints "Mrd." on a German chart.
+// also where the engine scale prints "Mrd." on a German chart. Only the card of a value that its label prints as zero
+// differs: it keeps the digits ("$1.0 billion" for 1e9 under "$1.0 trillion").
 it('prints a magnitude the same on every surface', async () => {
   // An authored format keeps its scale word: 2.5e12 under '1,0M' prints in millions, 1e9 under '$1.0 trillion' in trillions.
-  for (const [format, language, text, value] of [['$1.0 trillion', 'en', '$2.5 trillion', 2.5e12], ['1,0 Bio.', 'de', '2,5 Bio.', 2.5e12], ['1,0M', 'de', '2.500.000,0M', 2.5e12],
-    ['$1.0 trillion', 'en', '$0.0 trillion', 1e9], [undefined, 'de', '2,5 Mrd.', 2.5e9]] as const) {
+  for (const [format, language, text, value, card] of [['$1.0 trillion', 'en', '$2.5 trillion', 2.5e12], ['1,0 Bio.', 'de', '2,5 Bio.', 2.5e12], ['1,0M', 'de', '2.500.000,0M', 2.5e12],
+    ['$1.0 trillion', 'en', '$0.0 trillion', 1e9, '$1.0 billion'], [undefined, 'de', '2,5 Mrd.', 2.5e9]] as const) {
     const data = { categories: [{ id: 'a', label: 'Alpha' }, { id: 'b', label: 'Beta' }], series: [{ id: 's', label: 'Sales', values: [value, value / 6] }] };
     const options = { format, locale: { language, decimal: language === 'de' ? ',' : '.', thousands: language === 'de' ? '.' : ',' }, valueLabels: 'all', size: { width: 640, height: 400 } };
     const request = resolveChartRequest({ type: 'column', data, options } as never);
@@ -986,8 +987,8 @@ it('prints a magnitude the same on every surface', async () => {
     for (const output of [svg, react]) expect(output, `${format} ${language}`).toContain(`>${text}<`);
     expect(geometry.a11y.desc).toContain(text);
     const record = interactionRecords({ request, geometry, scope: request.scope, claims: [] }).find(entry => entry.target.owner.categoryId === 'a')!;
-    // The card prints the drawn label, also without a format.
-    expect(labelCardContent(record, request.locale?.language).rows.map(row => row.text)).toContain(text);
+    // The card prints the drawn label, also without a format. Where the label prints zero, the card keeps the digits.
+    expect(labelCardContent(record, request.locale?.language).rows.map(row => row.text)).toContain(card ?? text);
   }
 });
 

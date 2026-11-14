@@ -2041,6 +2041,12 @@ function formatPlaces(data: unknown, chart?: string, axes?: { x?: unknown; y?: u
   const columnFormat = new Set(columns.filter((column) => !Array.isArray(column?.values) && typeof column?.format === 'string').map((column) => column.id));
   const byColumn = new Map<unknown, number[]>();
   const chartByColumn = new Map<unknown, number[]>();
+  // One list per column, filled in place: a copy per cell would cost the square of the row count.
+  const listOf = (lists: Map<unknown, number[]>, id: unknown): number[] => {
+    let list = lists.get(id);
+    if (list === undefined) lists.set(id, list = []);
+    return list;
+  };
   let bulletRows = false;
   const walk = (list: unknown, path: (string | number)[]) => (Array.isArray(list) ? list : []).forEach((row: TableRow, i) => {
     const rowNumbers: number[] = [];
@@ -2058,8 +2064,8 @@ function formatPlaces(data: unknown, chart?: string, axes?: { x?: unknown; y?: u
       const { format, number } = cellParts(entry);
       if (format !== undefined) { add(0, 'cell', format, [number], [...path, i, 'cells', colId, 'format'], (owner) => owner.rowId === row.id && owner.colId === colId); continue; }
       if (typeof row?.format === 'string') rowNumbers.push(...number);
-      else if (columnFormat.has(colId)) byColumn.set(colId, [...(byColumn.get(colId) ?? []), ...number]);
-      else { chartRow.push(...number); chartByColumn.set(colId, [...(chartByColumn.get(colId) ?? []), ...number]); }
+      else if (columnFormat.has(colId)) listOf(byColumn, colId).push(...number);
+      else { chartRow.push(...number); listOf(chartByColumn, colId).push(...number); }
     }
     add(1, 'row', row?.format, [rowNumbers], [...path, i, 'format'], ownsRow);
     if (chartRow.length) chartSets.push(chartRow);
