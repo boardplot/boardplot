@@ -53,7 +53,14 @@ export type AutomaticFormatSource = { [AUTOMATIC_FORMAT]?: true };
 export const MAGNITUDE_GROUP = Symbol('magnitude-group');
 /** Figures of a group that print nowhere, by column: they still set the group's magnitude and precision. */
 export const MAGNITUDE_FIGURES = Symbol('magnitude-figures');
-export type MagnitudeGroupSource = { [MAGNITUDE_GROUP]?: string; [MAGNITUDE_FIGURES]?: readonly (readonly [string, number])[] };
+/**
+ * The figures of every period of a line that a card leaves periods out of: plain numbers, one list per line, the
+ * same list for every card of a request. They set the magnitude and precision of the row or its group, so a card
+ * prints as the full table does. A list repeats the figures of the periods the card draws, which changes no largest
+ * value and no precision.
+ */
+export const PERIOD_FIGURES = Symbol('period-figures');
+export type MagnitudeGroupSource = { [MAGNITUDE_GROUP]?: string; [MAGNITUDE_FIGURES]?: readonly (readonly [string, number])[]; [PERIOD_FIGURES]?: readonly (readonly number[])[] };
 /**
  * The scale and decimals an authored example gave the chart's values before
  * it printed exactly: one scale shared by the values (shareAuthoredScale), a

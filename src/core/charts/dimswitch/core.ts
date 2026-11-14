@@ -7,7 +7,7 @@ import { CARD_MIN_WIDTH, chartSizing, heightOmitted, isWidthProbe, VERIFY_ADVICE
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { classFloor, layoutKey, prepareTableExecutor, memoLayout, REGULAR_SPACING, type TableMarks } from '../table/layout';
 import { prepareTableData, resolvePreparedTable, resolveTable } from '../table/resolve';
-import { compileDimSwitch, currentDimSwitchOptions, dimSwitchTableWarnings, dimswitchRowId, hostPeriods, PARTIAL_NOTE_OFF, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning, type DimSwitchForm } from './compile';
+import { cardFigures, compileDimSwitch, currentDimSwitchOptions, dimSwitchTableWarnings, dimswitchRowId, hostPeriods, PARTIAL_NOTE_OFF, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning, type CardFigures, type DimSwitchForm } from './compile';
 import type { DimSwitchData, DimSwitchOptions, DimSwitchDerived } from './types';
 import { withUnprintedCells } from './claims';
 import { minOf } from '../../arrays';
@@ -27,6 +27,19 @@ type PreparedForm = { compiled: ReturnType<typeof compileDimSwitch>; resolved: R
 /** The options a probe sets for itself. The compiled form does not depend on them, so a probe at another size reuses it. */
 const PER_PROBE = [TARGET_SIZE, WIDTH_PROBE, REGULAR_SPACING, PLAN_ONLY] as const;
 const keptForms = new WeakMap<object, Map<string, PreparedForm>>();
+/**
+ * The period figures of the cards of one data object and options without the size and the probe settings: the
+ * cards of a request and a later layout of the same data at another width read the same lists. The key holds the
+ * content version of the data, so changed data reads its figures again. Limit: 16 option sets per data object.
+ */
+const keptFigures = new WeakMap<object, Map<string, CardFigures>>();
+function figuresOf(data: DimSwitchData, key: string): CardFigures {
+  let byKey=keptFigures.get(data);
+  if (!byKey || byKey.size >= 16) keptFigures.set(data,byKey=new Map());
+  let figures=byKey.get(key);
+  if (!figures) byKey.set(key,figures=cardFigures());
+  return figures;
+}
 
 /**
  * The compiled and resolved table of one form. One measure call lays the card out at many sizes, and each layout
@@ -47,8 +60,8 @@ function prepareForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSw
     return {...prepared,compiled:{...prepared.compiled,options:current}};
   };
   const without=<T extends object>(value:T):T=>{const copy={...value} as Record<PropertyKey,unknown>; for (const symbol of PER_PROBE) delete copy[symbol]; return copy as T;};
-  const compute=():PreparedForm=>{
-    const compiled=compileDimSwitch(data,options,form);
+  const compute=(figures:CardFigures):PreparedForm=>{
+    const compiled=compileDimSwitch(data,options,{...form,figures});
     // The table is compiled data: a table refusal names a dimswitch option it was handed, or nothing.
     const resolved=hostedLayout(options,compiled.options,()=>resolvePreparedTable(prepareTableData(compiled.data,compiled.options),compiled.options));
     const noteMetadata:PreparedForm['noteMetadata']=new Map();
@@ -60,13 +73,15 @@ function prepareForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSw
     ownPlanInput(compiled.data);
     return {compiled:{...compiled,options:without(compiled.options)},resolved,executor:hostedLayout(options,compiled.options,()=>prepareTableExecutor(compiled.data,compiled.options,resolved)),noteMetadata};
   };
-  if (typeof options.theme === 'string') return withProbe(compute());
   const {size:_size,inlineVisibility:_inlineVisibility,...rest}=without(options);
-  const key=`${layoutKey(data,rest)}:${form.card === true}:${form.hide ?? 0}`;
+  const base=layoutKey(data,rest);
+  // A theme named by string compiles again; its period figures do not depend on the theme.
+  if (typeof options.theme === 'string') return withProbe(compute(figuresOf(data,base)));
+  const key=`${base}:${form.card === true}:${form.hide ?? 0}`;
   let byKey=keptForms.get(data);
   if (!byKey || byKey.size >= 64) keptForms.set(data,byKey=new Map());
   let prepared=byKey.get(key);
-  if (!prepared) byKey.set(key,prepared=compute());
+  if (!prepared) byKey.set(key,prepared=compute(figuresOf(data,base)));
   return withProbe(prepared);
 }
 

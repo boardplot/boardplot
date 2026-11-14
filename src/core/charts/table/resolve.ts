@@ -13,12 +13,14 @@ import { datePatternFromExample, formatDate, parseISODate } from '../../dateForm
 import { readDateFormat } from '../../dateFormatRead';
 import { currencyWholeNumbers, MINUS } from '../../format';
 import { MAX_FORMAT_DECIMALS, nonzeroDecimals, typicalDecimals, currentSmallValues, formatScopeKey, zeroLifts } from '../../formatPrecision';
+import { fixedNumbersId, isFixedNumbers } from '../../fixedLists';
 import { unitPrinted } from '../../frame';
 import {
   AUTOMATIC_FORMAT,
   type AutomaticFormatSource,
   LABEL_ONLY_ROW,
   MAGNITUDE_FIGURES,
+  PERIOD_FIGURES,
   MAGNITUDE_GROUP,
   type MagnitudeGroupSource,
   RULE_SET,
@@ -296,11 +298,36 @@ export interface PreparedTableData {
 }
 
 const preparedData = new WeakMap<TableData, Map<string, PreparedTableData>>();
+/**
+ * What a row's spec reads off a fixed period list, by the spec and the smallValues mode that read it. Every card of a
+ * request shares the list, so each read runs once per list. A spec that carries a rule set is read each time.
+ */
+const listReads = new WeakMap<readonly number[], Map<string, number | boolean>>();
+function readList<T extends number | boolean>(list: readonly number[], what: string, spec: NumberFormatSpec, read: () => T): T {
+  if (spec[RULE_SET] !== undefined || !isFixedNumbers(list)) return read();
+  const key = `${what}\u0000${currentSmallValues()}\u0000${JSON.stringify(spec)}`;
+  let reads = listReads.get(list);
+  if (!reads) listReads.set(list, reads = new Map());
+  if (reads.has(key)) return reads.get(key) as T;
+  const value = read();
+  reads.set(key, value);
+  return value;
+}
+/** The largest absolute figure of a fixed period list, read once per list: every card of a request shares the list. */
+const listLargest = new WeakMap<readonly number[], number>();
+function largestOfList(list: readonly number[]): number {
+  let most = listLargest.get(list);
+  if (most === undefined) {
+    most = list.reduce((n, v) => Math.max(n, Math.abs(v)), 0);
+    if (isFixedNumbers(list)) listLargest.set(list, most);
+  }
+  return most;
+}
 const sharedPreparedData = new Map<string, PreparedTableData>();
 const MAX_SHARED_KEY_CHARS = 128 * 1024;
 const MAX_SHARED_TOTAL_CHARS = 2 * 1024 * 1024;
 let sharedKeyChars = 0;
-const modelSymbols = new Map<symbol, number>([AUTOMATIC_FORMAT, MAGNITUDE_GROUP, MAGNITUDE_FIGURES, ZERO_LIFT, LABEL_ONLY_ROW].map((symbol, index) => [symbol, index]));
+const modelSymbols = new Map<symbol, number>([AUTOMATIC_FORMAT, MAGNITUDE_GROUP, MAGNITUDE_FIGURES, ZERO_LIFT, LABEL_ONLY_ROW, PERIOD_FIGURES].map((symbol, index) => [symbol, index]));
 
 /** Exact plain-data content, including private format metadata. Unsupported objects get no retained cache. */
 function modelContentKey(value: unknown): string | undefined {
@@ -327,6 +354,8 @@ function modelContentKey(value: unknown): string | undefined {
       if (active.has(value)) { supported = false; return; }
       parts.push('ref', String(known), ';'); return;
     }
+    // A fixed number list writes as its id: equal numbers give one id, and an id never names other numbers.
+    if (array && isFixedNumbers(value)) { seen.set(value, seen.size); parts.push('fixed', String(fixedNumbersId(value as readonly number[])), ';'); return; }
     seen.set(value, seen.size);
     active.add(value);
     parts.push(array ? `array${value.length}{` : prototype === null ? 'record{' : 'object{');
@@ -1163,12 +1192,16 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   const groupMax = new Map<string, number>();
   // The figures of a group by column: each column takes its precision from its own largest figure.
   const groupColumns = new Map<string, Map<Id, number[]>>();
+  // The period figures of a group's lines, one list per line: read once per group, never column by column.
+  const groupPeriods = new Map<string, (readonly number[])[]>();
   for (const row of flat) {
     const group = groupOf(row);
     if (group === undefined) continue;
     const kept = (sourceRows.get(row.id) as MagnitudeGroupSource | undefined)?.[MAGNITUDE_FIGURES];
     const figures = kept === undefined ? rowCells(row) : [...rowCells(row), ...kept];
-    groupMax.set(group, Math.max(groupMax.get(group) ?? 0, kept === undefined ? largest(rowValues(row)) : largest(figures.map(([, value]) => value))));
+    const periods = (sourceRows.get(row.id) as MagnitudeGroupSource | undefined)?.[PERIOD_FIGURES] ?? [];
+    if (periods.length > 0) groupPeriods.set(group, [...groupPeriods.get(group) ?? [], ...periods]);
+    groupMax.set(group, Math.max(groupMax.get(group) ?? 0, kept === undefined ? largest(rowValues(row)) : largest(figures.map(([, value]) => value)), ...periods.map(largestOfList)));
     let columns = groupColumns.get(group);
     if (columns === undefined) groupColumns.set(group, columns = new Map());
     for (const [colId, value] of figures) {
@@ -1222,6 +1255,34 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   }))) ownScaleExamples.clear();
   // The spec a group row prints a column through: the row's, with the decimals that column needs.
   const groupCellSpecs = new Map<Id, Map<Id, NumberFormatSpec>>();
+  /** A row's drawn figures for its scale: its cells and the figures of hidden lines it carries. */
+  const drawnValuesOf = (row: FlatRow): number[] => {
+    const kept = (sourceRows.get(row.id) as MagnitudeGroupSource | undefined)?.[MAGNITUDE_FIGURES];
+    return kept === undefined ? rowValues(row) : [...rowValues(row), ...kept.map(([, value]) => value)];
+  };
+  /**
+   * The decimals a group's period figures ask for, each figure at most `bound` off: a figure only ever raises the
+   * decimals, so each list is read on its own and the most decimals win.
+   */
+  const periodDecimals = (group: string, spec: NumberFormatSpec, bound: number): number =>
+    Math.max(spec.decimals, ...(groupPeriods.get(group) ?? []).map((list) => readList(list, `decimals ${bound}`, spec, () => {
+      const probe = { ...spec };
+      for (const value of list) {
+        while (value !== 0 && probe.decimals < MAX_FORMAT_DECIMALS && Math.abs(roundedNumber(value, probe) - value) > bound) probe.decimals++;
+      }
+      return probe.decimals;
+    })));
+  // The figures of a group's number set, its period figures included: built once per group.
+  const groupRuleInput = new Map<string, number[]>();
+  const groupRuleValues = (group: string): number[] => {
+    let values = groupRuleInput.get(group);
+    if (values === undefined) {
+      values = [...groupColumns.get(group)!.values()].flat();
+      for (const list of groupPeriods.get(group) ?? []) values.push(...list);
+      groupRuleInput.set(group, values);
+    }
+    return values;
+  };
   for (const row of flat) {
     rowById.set(row.id, row);
     const example = row.format ?? ownScaleExamples.get(row.id) ?? (row.scale ? row.scale === 'percent' ? '1.2%' : '1,234' : undefined) ?? (row.calc && calcYieldsPoints(row.calc) ? `1${locale.decimal}2%` : undefined);
@@ -1241,10 +1302,13 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
       // Test the actual formatter: locked thousands ignore authored decimals.
       const rowScale = row.scale === 'money' || row.scale === 'perUnit';
       if (rowScale || specUnitKind(spec) === 'number') {
-        // A row also reads the figures of the periods a card leaves out, so it prints the precision of the full table.
-        const kept = (sourceRows.get(row.id) as MagnitudeGroupSource | undefined)?.[MAGNITUDE_FIGURES];
-        const values = kept === undefined ? rowValues(row) : [...rowValues(row), ...kept.map(([, value]) => value)];
-        const max = group === undefined ? largest(values) : groupMax.get(group)!;
+        // A row also reads the figures of every period of its line, so a card prints the precision of the full table.
+        // The period lists are read through readList; the joined figures are built only where a rarer step reads them all.
+        const drawn = drawnValuesOf(row);
+        const periods = (sourceRows.get(row.id) as MagnitudeGroupSource | undefined)?.[PERIOD_FIGURES] ?? [];
+        let joined: number[] | undefined;
+        const values = (): number[] => joined ??= periods.length === 0 ? drawn : [...drawn, ...periods.flat()];
+        const max = group === undefined ? Math.max(largest(drawn), ...periods.map(largestOfList)) : groupMax.get(group)!;
         // A money row climbs k, M, B by its largest figure, so 1.2e11 prints 120.0B, not 120,000,000.0k.
         const climb = (from: number): NumberFormatSpec['magnitude'] => max >= 1e9 ? 'bn' : max >= 1e6 ? 'm' : max >= from ? 'k' : 'none';
         // A count climbs only with no format of its own: an authored '1,234' keeps its digits. A money row's
@@ -1257,10 +1321,10 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
           spec.magnitude = heldMoney ? forcedMagnitude : row.scale === 'money' ? climb(1000) : 'none';
           if (row.scale === 'money') {
             spec.decimals = max >= 1000 && !(heldMoney && forcedMagnitude === 'k' && max >= 100000) ? 1 : 0;
-          } else if (!authoredFormat || values.every(Number.isInteger)) {
+          } else if (!authoredFormat || (drawn.every(Number.isInteger) && periods.every((list) => readList(list, 'integers', spec, () => list.every(Number.isInteger))))) {
             spec.decimals = max >= 10 ? 0 : 1;
             if (!authoredFormat) {
-              for (const value of values) {
+              for (const value of values()) {
                 while (value !== 0 && spec.decimals < MAX_FORMAT_DECIMALS
                   && Math.abs(roundedNumber(value, spec) - value) > Math.abs(value) * 0.01) spec.decimals++;
               }
@@ -1275,19 +1339,20 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
           spec.decimals = 1;
           spec.lockMagnitude = false; spec.rollMagnitude = false;
         }
-        const smallMoney = !spec.magnitudeInAffix && !spec.exponent && !spec.ordinal && !rowScale && !ownScale && forcedMagnitude && scales(example) && values.every(v => Math.abs(v) < 1000);
+        const smallMoney = !spec.magnitudeInAffix && !spec.exponent && !spec.ordinal && !rowScale && !ownScale && forcedMagnitude && scales(example) && values().every(v => Math.abs(v) < 1000);
         // A change line prints its authored format as authored: +0.01k under '+1.2k' rounds to +0.0k and never adds decimals.
         // A level row keeps "nonzero stays nonzero", so a small money or count figure never prints as 0.
         // A row of a measure group keeps the group's precision instead: its small member prints the bound (<0.01M).
         const changeLine = row.inline === true || spec.signed;
-        if (smallMoney || (!changeLine && group === undefined && values.some(v => v !== 0 && roundedNumber(v, spec) === 0))) {
+        const printsZero = (list: readonly number[]) => list.some(v => v !== 0 && roundedNumber(v, spec) === 0);
+        if (smallMoney || (!changeLine && group === undefined && (printsZero(drawn) || periods.some((list) => readList(list, 'zero', spec, () => printsZero(list)))))) {
           // A k row that would print a nonzero value as 0.0k reads in whole units, not in 0.04k.
           if (!spec.magnitudeInAffix && (smallMoney || (!rowScale && spec.lockMagnitude && spec.magnitude === 'k') || (row.scale === 'money' && spec.magnitude === 'k'))) {
             // In whole units the row prints the decimals its example names: '$1.23' keeps "12.93" under a forced thousand.
             const authored = parseFormatExample(example);
             spec.decimals = !rowScale && authored.magnitude === 'none' ? authored.decimals : 0;
             spec.magnitude = 'none';
-            spec.decimals = values.reduce((decimals, value) => nonzeroDecimals(value / MAGNITUDE_DIVISOR[spec.magnitude], decimals), spec.decimals);
+            spec.decimals = values().reduce((decimals, value) => nonzeroDecimals(value / MAGNITUDE_DIVISOR[spec.magnitude], decimals), spec.decimals);
           }
         }
         // A large Range total must not hide the level of a smaller period. The rows of a measure group
@@ -1296,7 +1361,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
         if (!changeLine && (spec.magnitude !== 'none' || (group !== undefined && row.scale === 'money')) && !(spec.lockMagnitude && spec.magnitude === 'k')
           && (row.scale === 'money' || (row.scale === 'count' && !authoredFormat))) {
           if (group === undefined) {
-            for (const value of values) {
+            for (const value of values()) {
               while (value !== 0 && spec.decimals < MAX_FORMAT_DECIMALS
                 && Math.abs(roundedNumber(value, spec) - value) > Math.abs(value) * 0.01) spec.decimals++;
             }
@@ -1310,6 +1375,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
                   && Math.abs(roundedNumber(value, spec) - value) > max * 0.01) spec.decimals++;
               }
             }
+            spec.decimals = periodDecimals(group, spec, max * 0.01);
             const inRow = new Map<Id, NumberFormatSpec>();
             for (const [colId, column] of columns) {
               const cellSpec = { ...spec };
@@ -1352,7 +1418,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
         const percent = specUnitKind(spec) === 'percent';
         // A percent change row is a signed change set, as a percent change column is.
         const change = row.calc !== undefined && percentChangeCalc(row.calc);
-        const rule = defaultSetSpec(group === undefined ? rowRuleValues(row) : [...groupColumns.get(group)!.values()].flat(), ruleLanguage,
+        const rule = defaultSetSpec(group === undefined ? rowRuleValues(row) : groupRuleValues(group), ruleLanguage,
           percent ? undefined : options.unit, { cell: true, ...(percent ? { kind: 'percent' as const } : {}), ...(change ? { change: true } : {}) });
         rowSpecs.set(row.id, { ...rule, prefix: spec.prefix, suffix: spec.suffix, signed: spec.signed || change });
         if (group !== undefined && !groupRules.has(group)) groupRules.set(group, { ...rule, prefix: spec.prefix, suffix: spec.suffix });
@@ -2554,6 +2620,7 @@ function flattenRows(rows: TableData['rows']): FlatRow[] {
       order: order++,
       ...((row as MagnitudeGroupSource)[MAGNITUDE_GROUP] === undefined ? {} : { [MAGNITUDE_GROUP]: (row as MagnitudeGroupSource)[MAGNITUDE_GROUP] }),
       ...((row as MagnitudeGroupSource)[MAGNITUDE_FIGURES] === undefined ? {} : { [MAGNITUDE_FIGURES]: (row as MagnitudeGroupSource)[MAGNITUDE_FIGURES] }),
+      ...((row as MagnitudeGroupSource)[PERIOD_FIGURES] === undefined ? {} : { [PERIOD_FIGURES]: (row as MagnitudeGroupSource)[PERIOD_FIGURES] }),
       ...((row as AutomaticFormatSource)[AUTOMATIC_FORMAT] === true ? { [AUTOMATIC_FORMAT]: true as const } : {}),
     });
     for (const child of row.children ?? []) walk(child, row.id, level + 1);

@@ -1,6 +1,7 @@
 /** Numeric table fitting keeps scene construction behind the selected plan. */
 import { copyFrame, footerPlans } from './footer';
 import { emptyIdRecord } from './idRecords';
+import { isFixedNumbers } from './fixedLists';
 import { currentSmallValues, formatScopeKey } from './formatPrecision';
 import { layoutStepKey } from './theme';
 import { isCachedTextMeasurer, type FontSpec, type TextMeasurer, type TextSize } from './text';
@@ -202,6 +203,8 @@ export function copyPlannedValue<T>(value: T, copies = new Map<object, unknown>(
   const known = copies.get(value);
   if (known !== undefined) return known as T;
   if (Array.isArray(value)) {
+    // A fixed number list cannot change, so the copy shares it.
+    if (isFixedNumbers(value)) return value;
     const copy: unknown[] = [];
     copies.set(value, copy);
     for (const entry of value) copy.push(entry !== null && typeof entry === 'object' ? copyPlannedValue(entry, copies) : entry);
