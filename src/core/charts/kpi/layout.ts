@@ -14,8 +14,8 @@ import { structureCount } from '../../structureCounts';
 import { fitText, lineBox } from '../../label/fitText';
 import { fittedLabel, stepDownFont } from '../../label/rowFit';
 import type { Rect } from '../../geometry';
-import { formatAutomaticPercent, MINUS, valueSetFormatter } from '../../format';
-import { differenceExample, exactExampleSpec, formatNonzeroWithSpec, localized, parseFormatExample, sameScale, specUnitKind } from '../../formatSpec';
+import { formatAutomaticPercent, MINUS } from '../../format';
+import { defaultSetSpec, differenceExample, exactExampleSpec, formatNonzeroWithSpec, formatWithSpec, joinedChangeSpec, localized, parseFormatExample, percentChangeSpec, RULE_SET, sameScale, specUnitKind } from '../../formatSpec';
 import { frameTextOptions, solveFrame, textCarriesUnit, unitPrinted } from '../../frame';
 import { withUnit } from '../../unitJoin';
 import { labelsToNodes } from '../../label/emit';
@@ -238,22 +238,31 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
   const changes = data.delta
     ? [value - Number(data.delta.vs)]
     : (data.compare ?? []).map((comparison) => value - Number(comparison.vs));
+  // Without a format the figure and its printed reference are one set of cells.
+  const levelSpec = spec ? undefined : defaultSetSpec(printed, options.locale?.language, options.unit, { cell: true });
   const fmt = spec
     ? (v: number) => formatNonzeroWithSpec(v, spec)
-    : valueSetFormatter(printed, options.locale?.language, false, options.unit, options.target);
+    : (v: number) => formatWithSpec(v, levelSpec!);
   const percentMeasure = spec !== undefined && specUnitKind(spec) === 'percent';
   // The absolute change of a percent measure is in percentage points.
   const diffSpec = example ? authoredSpec(differenceExample(example)) : undefined;
+  // An absolute change joins the set of its levels, signed; the relative changes are their own signed set. The absolute
+  // change of a percent measure is in percentage points: a signed change set of its own (−3.50 · +0.65), not a level.
+  const pointChanges = levelSpec?.[RULE_SET]?.set.kind === 'percent';
+  const changeSpec = levelSpec && (pointChanges
+    ? { ...percentChangeSpec(changes, options.locale?.language, levelSpec.suffix), prefix: levelSpec.prefix }
+    : joinedChangeSpec(levelSpec, changes));
   const fmtDiff = diffSpec
     ? (v: number) => formatNonzeroWithSpec(v, diffSpec)
-    : valueSetFormatter(changes, options.locale?.language, false, options.unit, options.target);
+    : (v: number) => formatWithSpec(v, { ...changeSpec!, signed: false });
   const fmtSigned = diffSpec
     ? (v: number) => formatNonzeroWithSpec(v, { ...diffSpec, signed: true })
-    : valueSetFormatter(changes, options.locale?.language, true, options.unit, options.target);
-  const fmtPct = (p: number, signed: boolean) => {
-    const r1 = Math.round(p * 10) / 10;
-    return formatAutomaticPercent(p, Number.isInteger(r1) ? 0 : 1, signed, options.locale?.language);
-  };
+    : (v: number) => formatWithSpec(v, changeSpec!);
+  const relative = (vs: unknown) => typeof vs === 'number' && vs > 0 && value >= 0 ? ((value - vs) / vs) * 100 : null;
+  const pctSpec = percentChangeSpec(data.delta ? [relative(data.delta.vs)] : (data.compare ?? []).map((comparison) => relative(comparison.vs)), options.locale?.language, '%');
+  const fmtPct = (p: number, signed: boolean) => formatWithSpec(p, signed ? pctSpec : { ...pctSpec, signed: false });
+  // Attainment is a share of the target: shares keep today's text.
+  const sharePct = (p: number) => formatAutomaticPercent(p, Number.isInteger(Math.round(p * 10) / 10) ? 0 : 1, false, options.locale?.language);
   // The card's value as the format prints it, made once: the hero, its label and its shown text all use it.
   const valueFmt = fmt(value);
 
@@ -432,7 +441,7 @@ export function layoutKpi(authored: KpiData, options: KpiOptions = {}): Geometry
         owner: { seriesId: 'attainment' },
       });
     }
-    attainmentFigure = suppressed ? 'n.m.' : pct! > 999 ? '>999%' : pct! < -999 ? `<${MINUS}999%` : fmtPct(pct!, false);
+    attainmentFigure = suppressed ? 'n.m.' : pct! > 999 ? '>999%' : pct! < -999 ? `<${MINUS}999%` : sharePct(pct!);
     derived.attainment = {
       value,
       vs: attainment.vs,

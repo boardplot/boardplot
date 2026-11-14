@@ -128,7 +128,7 @@ function comboAnomalyMarks(env: ComboEnv, domain: ComboDomain, anomaly: LineAnom
   const onSecondary = line?.axis === 'secondary';
   const series = domain.lines.find((s) => s.id === anomaly.seriesId)!;
   return lineAnomalyFurniture(env.theme, { strings: domain.options.strings,
-    anomaly: anomaly.model, corridorShown: anomaly.corridorShown, statFmt: anomaly.statFmt, fmt: domain.valueFmtOf(series),
+    anomaly: anomaly.model, corridorShown: anomaly.corridorShown, statFmt: anomaly.statFmt, corridorFmt: anomaly.corridorFmt, fmt: domain.valueFmtOf(series),
     corridorPaint: columnCorridorPaint(domain.options.colorblindSafe), plot: area.plot, y: onSecondary ? area.y2 : area.y,
     labelX: area.anomalyLabelX,
     seriesId: anomaly.seriesId, points: line?.points ?? [], font: area.labelFont, measure: env.measure,
@@ -211,6 +211,7 @@ function annotateCombo(
     measure: env.measure,
     format: domain.options.format,
     locale: domain.options.locale?.language,
+    levelSpec: domain.valueSpec,
     strings: domain.options.strings,
     valueLinePercentLevels: domain.options.unit === '%' || percentLevels([...columns, ...domain.lines.filter(series => series.axis === 'primary')]),
     secondaryPercentLevels: Boolean(domain.options.secondaryAxis?.ruler) || secondarySeries.length > 0 && secondarySeries.every(series => series.unit === '%' || percentLevels([series])),

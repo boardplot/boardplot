@@ -23,9 +23,7 @@ import type { AnchorResolution } from '../../annotate';
 import { percentCellsOnly, percentLevels, runAnnotatePass } from '../../annotatePass';
 import { applyValueAxisTitleInk, layoutValueAxis, planValueAxisTitle, valueAxisTitleRequest } from '../../axis';
 import { arrowHeadPath, arrowShaftEnd } from '../../svgPath';
-import { formatStatWithSpec, formatterFromExample, neededDecimals, seriesRasterFormatter } from '../../formatSpec';
-import { formatAutomaticNumber } from '../../format';
-import { autoDecimals } from '../../formatPrecision';
+import { formatStatWithSpec, formatterFromExample, formatWithSpec, seriesRasterFormatter } from '../../formatSpec';
 import { localeStrings } from '../../strings/dot';
 import { MARK_CONTRAST_FLOOR, palettePerceptualDistance } from '../../themeRules';
 import { hueSaturation } from '../../color';
@@ -276,14 +274,15 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
   // values, range bounds included.
   const valueSpec = seriesRasterFormatter(options.format, normSeries.flatMap((s) =>
       s.cells.flatMap((cell) => [cell.v, cell.range?.low, cell.range?.high, cell.range?.mid]),
-    ), options.locale?.language, options.unit, options.target);
+    ), options.locale?.language, options.unit);
   const fmt = valueSpec.fmt;
   const percent = options.unit === '%' || percentLevels(dataSeries.map(series => ({ vals: series.cells })));
   const percentAxis = percentCellsOnly(dataSeries.map((series) => ({ vals: series.cells.map((cell) => ({ ...cell, format: cell.meta?.format })), format: series.format })));
-  const referenceFmt = percent && !options.format
-    ? (v: number) => formatAutomaticNumber(v, { locale: options.locale?.language, decimals: Math.max(autoDecimals(v), neededDecimals(v)), suffix: '%' }) : fmt;
-  // A mean is a derived statistic: it lifts past the raster instead of rounding to another number (column twin).
-  const meanFmt = percent && !options.format ? referenceFmt : (v: number) => formatStatWithSpec(v, valueSpec.spec);
+  // Under the default rule a reference value is a value in no set: it prints as a late value of the level set.
+  const percentSpec = { ...valueSpec.percentSpec, suffix: '%' };
+  const referenceFmt = percent && !options.format ? (v: number) => formatWithSpec(v, percentSpec) : fmt;
+  // A mean is a statistic, a set of one. An authored format keeps its statistic rule.
+  const meanFmt = percent && !options.format ? (v: number) => formatStatWithSpec(v, percentSpec) : (v: number) => formatStatWithSpec(v, valueSpec.spec);
   if (variant === 'dumbbell' && dataSeries.length !== 2) {
     throw new NormalizeError(
       'dumbbell-two-series',
@@ -523,7 +522,12 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
   // ---- gap column: second minus first per row, right of the plot, off on a card ----
   const gapText = new Map<Id, string>();
   if (options.gapColumn === true && gaps !== undefined && size.width >= COLUMN_MIN_WIDTH) {
-    const signedGap = differenceFormatter({ format: options.format, locale: options.locale?.language, decimals: valueSpec.spec.decimals, values: dataSeries.flatMap((s) => s.cells.map((cell) => cell.v)).filter((v): v is number => v !== null), scale: valueSpec.specForSeries(seriesKey(dataSeries[0]!)) });
+    const differences = cats.flatMap((_, ci) => {
+      const a = dataSeries[0]!.cells[ci]!.v;
+      const b = dataSeries[1]!.cells[ci]!.v;
+      return a !== null && b !== null ? [b - a] : [];
+    });
+    const signedGap = differenceFormatter({ format: options.format, locale: options.locale?.language, decimals: valueSpec.spec.decimals, values: dataSeries.flatMap((s) => s.cells.map((cell) => cell.v)).filter((v): v is number => v !== null), scale: valueSpec.specForSeries(seriesKey(dataSeries[0]!)), differences });
     cats.forEach((c, ci) => {
       const a = dataSeries[0]!.cells[ci]!.v;
       const b = dataSeries[1]!.cells[ci]!.v;
@@ -1386,6 +1390,7 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
     measure,
     format: options.format,
     locale: options.locale?.language,
+    levelSpec: percent ? percentSpec : valueSpec.spec,
     strings: options.strings,
     solveCtx,
     meanValue,

@@ -111,7 +111,7 @@ Facets, variance tiers and metric stacks with shared categories and computed rea
 | panels[].readout.base ( branch 3) | string | yes | Base measure for the remaining-per-100 chain. |
 | panels[].emphasis ( branch 3) | boolean |  | Use the theme accent. At most one panel may be emphasised. |
 | panels[].divisor ( branch 3) | number |  | Display divisor for sum marks and their change span, for example 1000. The headline percent is unitless. |
-| panels[].decimals ( branch 3) | integer |  | Decimal places of the marks and the change span. Default 0 for counts and 1 for rates. |
+| panels[].decimals ( branch 3) | integer |  | Decimal places of the marks and the change span. A panel with divisor and without decimals prints 0 for counts and 1 for rates; a panel with neither prints by the default number rule. |
 | states ( branch 3) | object |  | Category states declared once, with explicit panel scopes. |
 | states.maturing ( branch 3) | object |  | Right-censored categories and their panel scope. One continuous band. |
 | states.maturing.from ( branch 3) | string | yes | First maturing category, inclusive. |

@@ -11,7 +11,7 @@ import { closestKey } from '../../schema/unknownKeyWords';
 import { cappedItems } from '../../frame';
 import { localeStrings, stringFields } from '../../strings';
 import { chartString as tableString } from '../../strings/table';
-import { AUTHORED_EXAMPLES, AUTOMATIC_FORMAT, LABEL_ONLY_ROW, MAGNITUDE_FIGURES, MAGNITUDE_GROUP, parseFormatExample, readFormatExamples, specUnitKind, UNIT_STAND_INS, unitMagnitude, withUnitStandIns, type MagnitudeGroupSource } from '../../formatSpec';
+import { AUTHORED_EXAMPLES, AUTOMATIC_FORMAT, LABEL_ONLY_ROW, MAGNITUDE_FIGURES, MAGNITUDE_GROUP, parseFormatExample, percentChangeSpec, RULE_SET, readFormatExamples, specUnitKind, UNIT_STAND_INS, unitMagnitude, withUnitStandIns, type MagnitudeGroupSource } from '../../formatSpec';
 import { hasFormatRecord } from '../../formatPrecision';
 import type { CellState, CellTone, ComputedCellRecord, TableCell, TableRow } from '../../types/table';
 import type { LintWarning } from '../../types/scene';
@@ -555,8 +555,15 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   const totalRows=new Set<TableRow>();
   // Size bars compare members of one measure; collected while the rows are built.
   const bars:{row:TableRow;measure:string;col:string;value:number}[]=[];
-  // Relative change cells, so each column settles one decimal count.
-  const relativeChanges:{cell:TableCell;col:string;rounded:number}[]=[];
+  // Relative change cells, so the relative changes of each measure print as one change set.
+  const relativeChanges:{cell:TableCell;measure:string}[]=[];
+  // Point differences of a measure without a format, per measure: one signed change set, so a tiny
+  // difference prints its digits, never a bound such as "<+0.1pp".
+  const pointChanges=new Map<string,{cell:TableCell;v:number}[]>();
+  const pointChange=(m:DimSwitchMeasure,cell:TableCell)=>{
+    if (m.change!=='pp' || m.format!==undefined || m.unit!==undefined || cell===null || typeof cell!=='object' || typeof cell.v!=='number') return;
+    const list=pointChanges.get(m.id) ?? []; list.push({cell,v:cell.v}); pointChanges.set(m.id,list);
+  };
   let nearZeroSeen=false;
   const totalId=data.dimension.total.id;
   const driverOps = new Map<string, string>();
@@ -608,23 +615,24 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
         const levelJudgement=m.bands ? judgeBand(m,current,[currentSums,...(usesTotal(exprOf(m)) ? [total] : [])],p.partial === true,options) : NEUTRAL;
         cells[col]=cell(current,levelJudgement); record(id,col,m,member,p.id,current);
       }
-      // A relative change prints whole from 5% and at 0, else to one decimal, after rounding to 0.1; the column settles one count below. An absolute one prints in the row's own format.
-      const rounded=Math.round(Math.abs(delta.raw ?? 0)*10)/10;
+      // A relative change and a point difference print in change sets, settled below. An absolute one prints in the row's own format,
+      // and without a format or unit it joins the set of its measure's levels (MAGNITUDE_GROUP on the cell).
       const relative=m.change!=='pp' && m.change!=='absolute';
-      const changeFormat=m.change==='pp' ? formatPercentagePoints(1.2,1,true) : m.change==='absolute' ? signedFormat(ownFormat) : formatAutomaticPercent(1.2,rounded>=5 || rounded===0 ? 0 : 1,true);
+      const changeFormat=m.change==='pp' ? formatPercentagePoints(1.2,1,true) : m.change==='absolute' ? signedFormat(ownFormat) : formatAutomaticPercent(1.2,1,true);
       const changeCell:TableCell=!p.kind && !withRef.has(p.id) ? {missing:'blank'} : delta.state==='missing' ? {missing:delta.blank ? 'blank' : 'dash'} : cell(delta,judgement,changeFormat);
       const effectCell:TableCell=effect === null ? null : {v:effect,format:effectFormat};
-      if (m.format === undefined && m.unit === undefined && changeCell && typeof changeCell === 'object') Object.assign(changeCell, { [AUTOMATIC_FORMAT]: true });
+      if (m.format === undefined && m.unit === undefined && changeCell && typeof changeCell === 'object') Object.assign(changeCell, { [AUTOMATIC_FORMAT]: true, ...(m.change === 'absolute' && changeCell.missing === undefined ? { [MAGNITUDE_GROUP]: m.id } : {}) });
       if ((owner ?? m).format === undefined && (owner ?? m).unit === undefined && effectCell) Object.assign(effectCell, { [AUTOMATIC_FORMAT]: true });
       if (p.kind) {
         if (!comparisonDrawn) continue;
         // An unjudged measure's change is context: it whispers.
         cells[comparison]=!m.judge && changeCell !== null && typeof changeCell==='object' && changeCell.missing === undefined ? {...changeCell,muted:true} : changeCell;
-        if (relative) relativeChanges.push({cell:cells[comparison],col:comparison,rounded});
+        if (relative) relativeChanges.push({cell:cells[comparison],measure:m.id});
+        pointChange(m,cells[comparison]);
         record(id,comparison,m,member,p.id,delta,ref,true,refTotal,reference?.id);
         effects[comparison]=effectCell;
       }
-      else {changes[p.id]=changeCell; effects[p.id]=effectCell; if (withRef.has(p.id)) {record(`${id}:change`,p.id,m,member,p.id,delta,ref,true,refTotal); if (relative) relativeChanges.push({cell:changeCell,col:p.id,rounded});}}
+      else {changes[p.id]=changeCell; effects[p.id]=effectCell; if (withRef.has(p.id)) {record(`${id}:change`,p.id,m,member,p.id,delta,ref,true,refTotal); if (relative) relativeChanges.push({cell:changeCell,measure:m.id}); pointChange(m,changeCell);}}
     }
     // An unjudged volume (a sum of money or counts) shows its size as a bar, not a colour; a statement line never does.
     const sized = !m.judge && (m.scale === 'money' || m.scale === 'count') && !inStatement(m);
@@ -636,8 +644,9 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     // A scaled measure with no format leaves the row's format open, so the table's count climb to M and B applies (an authored format keeps its digits).
     const row:TableRow={id,label,parentId,rung,kind,format:m.scale && m.scale!=='percent' && m.format===undefined ? undefined : ownFormat,scale:m.scale,unitAffix:kind==='detail' || kind==='split' ? undefined : affix(m),relation:kind==='split'?'ofWhich':'displayOnly',totalPolicy:'source',cells};
     if (m.format === undefined && m.unit === undefined) Object.assign(row, { [AUTOMATIC_FORMAT]: true });
-    // Every member's row of a scaled measure reads in one magnitude down a column: 1.17M over 0.25M, not over 254k.
-    if (m.scale === 'money' || m.scale === 'count') Object.assign(row, { [MAGNITUDE_GROUP]: m.id });
+    // Every member's row of a measure is one set: a scaled measure reads in one magnitude down a column
+    // (1.17M over 0.25M, not over 254k), and a measure without a format prints as one set of cells.
+    if (m.scale === 'money' || m.scale === 'count' || (m.format === undefined && m.unit === undefined)) Object.assign(row, { [MAGNITUDE_GROUP]: m.id });
     // A member's bar compares it with the other members in that column (the Total would always win).
     if (sized && member!==totalId) for (const col of [...(rangeDrawn ? ['range'] : []),...periods.map(p=>p.id)]) {const value=values.get(col)?.raw; if (typeof value==='number') bars.push({row,measure:m.id,col,value});}
     if (m.divider && (kind==='measure' || kind==='split')) row.divider=true;
@@ -814,8 +823,13 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   }
   for (const id of options.expansion?.expanded ?? []) collapsed.delete(id);
   for (const id of options.expansion?.collapsed ?? []) collapsed.add(id);
-  // One decimal count per column of relative changes; whole only where every change rounds to 0 or to 5 % or more.
-  // A folded table is a fixed frame: its columns settle on the rows it draws, not on rows the fold hides.
+  // Each point set prints the decimals the rule gives each difference (its group), as the cell's engine format.
+  for (const list of pointChanges.values()) {
+    const rule=percentChangeSpec(list.map(entry=>entry.v))[RULE_SET]!;
+    for (const {cell,v} of list) (cell as {format?:string}).format=formatPercentagePoints(1.2,rule.groupOf(v).decimals,true);
+  }
+  // One change set per measure of relative changes, across its columns, as its point differences.
+  // A folded table is a fixed frame: its sets settle on the rows it draws, not on rows the fold hides.
   const drawn=(options as {[FOLDED]?:boolean})[FOLDED] === true ? (() => {
     const byId=new Map(rows.map(row=>[row.id,row])), rowOf=new Map<object,TableRow>();
     for (const row of rows) for (const cell of Object.values(row.cells ?? {})) if (cell!==null && typeof cell==='object') rowOf.set(cell,row);
@@ -827,11 +841,18 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
       return true;
     };
   })() : () => true;
-  for (const [,inCol] of byCol(relativeChanges)) {
-    const entries=inCol.filter(entry=>entry.cell!==null && typeof entry.cell==='object' && typeof entry.cell.v==='number');
+  const relativeByMeasure=new Map<string,typeof relativeChanges>();
+  for (const entry of relativeChanges) relativeByMeasure.set(entry.measure,[...relativeByMeasure.get(entry.measure) ?? [],entry]);
+  for (const inMeasure of relativeByMeasure.values()) {
+    const entries=inMeasure.filter(entry=>entry.cell!==null && typeof entry.cell==='object' && typeof entry.cell.v==='number');
+    // A change is cleaned of float noise (12 significant digits) before it rounds, as the rule cleans every value:
+    // 1.4 against 1.6 is −12.5 %, not the float −12.499999999999996 that rounds to −12.
+    for (const entry of entries) { const change=entry.cell as {v:number}; change.v=Number(change.v.toPrecision(12)); }
     const shown=entries.filter(entry=>drawn(entry.cell as object));
-    const format=formatAutomaticPercent(1.2,(shown.length>0 ? shown : entries).some(entry=>entry.rounded>0 && entry.rounded<5) ? 1 : 0,true);
-    for (const entry of entries) (entry.cell as {format?:string}).format=format;
+    // The relative changes of a measure are one change set: every group prints two digits of its band's smallest value.
+    const valueOf=(entry:{cell:TableCell})=>(entry.cell as {v:number}).v;
+    const rule=percentChangeSpec((shown.length>0 ? shown : entries).map(valueOf))[RULE_SET]!;
+    for (const entry of entries) (entry.cell as {format?:string}).format=formatAutomaticPercent(1.2,rule.groupOf(valueOf(entry)).decimals,true);
   }
   // ---------- a hidden Total: everything above still read its rows, so the members keep the magnitude and decimals they print with it ----------
   const computedCells=totalHidden ? hideTotal() : records;

@@ -458,9 +458,9 @@ function lineMark(ctx: MarkCtx, plan: LinePlan, areaNodeId: Id | undefined, ring
       g.claims.claim({ x: p.x - claimR, y: p.y - claimR, w: claimR * 2, h: claimR * 2 }, 'mark', { seriesId: s.id, categoryId: c.id });
     }
     markPoints.push({ categoryId: c.id, x: p.x, y: p.y, markerNodeId });
-    // A point without a marker states its would-be value text in the marks, under an authored format.
+    // A point without a marker states its would-be value text in the marks.
     const cell = s.vals[p.ci]!;
-    if (!markerNodeId && (cell.format ?? s.format ?? domain.options.format) !== undefined) {
+    if (!markerNodeId) {
       // A line end's label already made this text (same formatter, same value): reuse it.
       const endShown = [ctx.area.first.get(s.id), ctx.area.last.get(s.id)].find((end) => end?.ci === p.ci)?.shows?.value;
       (g.marks.shown ??= []).push({ owner: { seriesId: s.id, categoryId: c.id }, shows: { value: endShown ?? domain.valueFmtOf(s, cell)(cell.v!) } });

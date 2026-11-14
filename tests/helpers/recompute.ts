@@ -67,11 +67,6 @@ const OPS: Record<string, (inputs: Operands) => number | null> = {
     if (i.length !== 4 || current == null || baseline == null || baseline <= 0 || threshold == null || (direction !== -1 && direction !== 1)) return null;
     return 100 * (current - baseline) / baseline * direction >= threshold ? 1 : 0;
   },
-  // Largest-remainder display reconciliation: the exact share, rounded UP to
-  // the next display unit. The unit is the second operand — without it the
-  // adjustment is unfalsifiable, which is how it shipped.
-  'share-reconcile@1': (i) =>
-    binary(i, (exact, unit) => (unit === 0 ? null : Math.floor(exact / unit) * unit + unit)),
   // share@1 is the ONE op shared across likert and pyramid, and it is the op
   // that carries both operands. Same rule in both:
   // numerator first, denominator second, result in percentage POINTS.

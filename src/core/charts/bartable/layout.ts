@@ -1,5 +1,4 @@
 import { chartString } from '../../strings/bartable';
-import { liftOrFallback } from '../tableFit';
 import { chartPalette } from '../chartEnv';
 import { withSegmentSeams } from '../../markVisibility';
 import { structureCount } from '../../structureCounts';
@@ -23,7 +22,8 @@ import { deriveCascade } from './cascade';
 import { fixedBarRow } from '../bar/model';
 import { warnIncompleteComposition } from '../../dataGaps';
 import { authoredNotes, frameTextOptions, legendRequired, moreListedText, normalizeLegendOption, solveFrame, type LegendItemInput } from '../../frame';
-import { nonAdditiveFormat, roundedNumber, seriesRasterFormatter } from '../../formatSpec';
+import { nonAdditiveFormat, roundedNumber, RULE_SET, seriesRasterFormatter } from '../../formatSpec';
+import { roundedAt } from '../../numberRule';
 import { cleanSum, type Rect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
 import { fitText, lineBox, type FittedText } from '../../label/fitText';
@@ -356,26 +356,9 @@ function columnKeyWarnings(data: BarTablePlainData, options: BarTableOptions, co
   return warnings;
 }
 
-/** How a cascade growth figure that rounds to 0 prints: full digits, its bound ("<0.1") or the rounded text. */
-const CASCADE_LIFT = Symbol('bartableCascadeLift');
-type CascadeLift = 'full' | 'none' | 'compact';
-
 export function layoutBarTable(
   authored: BarTableData,
   options: BarTableOptions = {},
-): Geometry<BarTableMarks, BarTableDerived> {
-  if (options.variant !== 'cascade' || (options as { [CASCADE_LIFT]?: CascadeLift })[CASCADE_LIFT] !== undefined) return layoutBarTableOnce(authored, options);
-  // A lifted growth figure ("0.0001") is wider than the rounded "0.0". Where that moves the table
-  // under its frame's minimum (the compact form), it prints its bound.
-  const fixedWidth = (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.width !== false;
-  const misses = (geometry: Geometry<BarTableMarks, BarTableDerived>) => fixedWidth && geometry.sizing !== undefined && geometry.size.width < geometry.sizing.minWidth;
-  return liftOrFallback((mode) => layoutBarTableOnce(authored, { ...options, [CASCADE_LIFT]: mode } as BarTableOptions),
-    (lifted, plain) => !misses(plain) && misses(lifted));
-}
-
-function layoutBarTableOnce(
-  authored: BarTableData,
-  options: BarTableOptions,
 ): Geometry<BarTableMarks, BarTableDerived> {
   const split = splitStates(pinResidual(authored));
   const { states } = split;
@@ -468,7 +451,8 @@ function layoutBarTableOnce(
       }),
       ...(total == null ? [] : typeof total === 'number' ? [total] : [total.low, total.high]),
     ];
-    const { fmt, spec } = seriesRasterFormatter(panel.format ?? options.format, raster, locale, panel.unit ?? options.unit, options.target);
+    // A bar table's figures are table cells: scale words start at the cell threshold.
+    const { fmt, spec } = seriesRasterFormatter(panel.format ?? options.format, raster, locale, panel.unit ?? options.unit, true);
     const endTexts = rowSums.map((sum, r) => {
       const end = ranges[r];
       return sum === null ? stateGlyph[blankState(panel, r) ?? 'none'] : end ? range(fmt(end.low), fmt(end.high)) : fmt(sum);
@@ -501,11 +485,12 @@ function layoutBarTableOnce(
     };
   });
   const numberColumns = columns.map((column) => {
-    const fmt = seriesRasterFormatter(column.format, column.values, locale, undefined, options.target).fmt;
     const summed = column.aggregate !== 'none';
     const missing = column.values.some((value) => value === null);
     if (summed && missing) column.values.forEach((value, r) => value === null && incomplete.add(r));
     const total = summed && !missing ? cleanSum(column.values as number[]) : null;
+    // The column's total is a sum beside its parts: a member of their set.
+    const fmt = seriesRasterFormatter(column.format, total === null ? column.values : [...column.values, total], locale, undefined, true).fmt;
     return {
       column,
       texts: column.values.map((value, r) => (value === null ? stateGlyph[states.get(column.values)?.[r] ?? 'none'] : fmt(value))),
@@ -552,10 +537,9 @@ function layoutBarTableOnce(
     ? deriveCascade(rows, data.panels.map((panel) => ({ id: panel.id, label: panel.label ?? panel.id, values: panel.values[series[0]!.id]!.map((value) => value!) })), {
       ...(bracketRows ? { combined: bracketRows } : {}),
       ...(cascadeOptions.growth ? { growth: cascadeOptions.growth } : {}),
-      // Under cascade the shares add up to 100% unless the author asks for nearest.
-      sumConsistent: (options.rounding ?? 'sum-consistent') === 'sum-consistent',
+      // Each share rounds on its own unless the author asks for sum-consistent.
+      sumConsistent: options.rounding === 'sum-consistent',
       ...(locale ? { locale } : {}),
-      lift: (options as { [CASCADE_LIFT]?: CascadeLift })[CASCADE_LIFT] ?? 'full',
     })
     : undefined;
   if (cascade) pushAll(warnings, cascade.warnings);
@@ -1265,8 +1249,10 @@ function layoutBarTableOnce(
         const owner: OwnerRef = { categoryId: row.id, seriesId, colId: track.panel.id };
         const drawn = segment.value * k;
         const rect: Rect = { x: track.origin + segment.start * k * track.scale, y: barY, w: drawn * track.scale, h: pBarH };
-        const text = track.fmt(drawn);
-        const value = range ? roundedNumber(drawn, track.spec) : drawn;
+        // A range part records its share of the low end at the digits the low end prints, and prints that number.
+        const rule = range ? track.spec[RULE_SET] : undefined;
+        const value = !range ? drawn : rule ? roundedAt(drawn, rule.groupOf(range.low)) : roundedNumber(drawn, track.spec);
+        const text = track.fmt(rule ? value : drawn);
         marks.segments.push({ rowId: row.id, panelId: track.panel.id, seriesId, value, text, rect });
         if (rect.w <= 0) return;
         scene.push({

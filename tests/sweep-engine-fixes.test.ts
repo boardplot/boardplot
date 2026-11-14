@@ -81,26 +81,6 @@ describe('chart layout edge cases', () => {
     expect(nets.filter((l: { hidden?: unknown }) => l.hidden)).toEqual([]);
   });
 
-  // A 100% stack printed 33% + 33% + 33% = 99%: each share was rounded on its own.
-  for (const [type, variant] of [['column', 'stacked100'], ['bar', 'stacked100'], ['combo', undefined]] as const) {
-    it(`${type} stack shares add up to 100% by default`, () => {
-      const series = ['a', 'b', 'c'].map((id) => ({ id, label: id.toUpperCase(), values: [1], ...(type === 'combo' ? { kind: 'column' } : {}) }));
-      const request = {
-        type,
-        data: { categories: [{ id: 'q1', label: 'Q1' }], series },
-        options: { ...(variant ? { variant } : { labels: { segment: ['percent'] } }), title: 'T', size: { width: 480, height: 300 } },
-      };
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const geometry = layoutResolvedRequest(resolveChartRequest(request as any) as any) as any;
-      const shares = geometry.labels.filter((l: { id: string; hidden?: unknown }) => String(l.id).startsWith('segment:') && !l.hidden)
-        .map((l: { text: string }) => Number.parseFloat(l.text));
-      expect(shares).toHaveLength(3);
-      expect(shares.reduce((sum: number, share: number) => sum + share, 0)).toBe(100);
-      // reading.rounding names the one share moved off its nearest rounding.
-      expect(geometry.derived.roundingAdjustments).toHaveLength(1);
-    });
-  }
-
   // methodNote: true printed no note: engine notes are hidden unless notes.show names them,
   // and a composing chart (cohort, pvm) dropped the option before its host's frame saw it.
   for (const [type, id, kind] of [['cohort', 'logo-retention-method-note', 'method'], ['pvm', 'revenue-bridge-method-note', 'disclosure']] as const) {

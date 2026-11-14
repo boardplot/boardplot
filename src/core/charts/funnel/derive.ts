@@ -17,30 +17,16 @@ import type { Theme } from '../../types/theme';
 import type { FunnelDerived } from './layout';
 import { disclosureNote } from '../../notes';
 import { emptyIdRecord } from '../../idRecords';
-import { setMagnitude } from '../../formatSpec';
-import type { RenderTarget } from '../../types/options';
+import { formatterFromExample, seriesRasterFormatter } from '../../formatSpec';
 
 type Raster = { fmt: (v: number) => string; fmtPercent: (v: number) => string; forSeries: (series: { format?: string; unit?: string }, cellFormat?: string) => (v: number) => string };
-
-/**
- * One magnitude for the values and the printed totals of a funnel (setMagnitude). An
- * authored format on the chart, a series or a cell keeps one scale per label, so the
- * description's totals print as before.
- */
-export function funnelSetMagnitude(
-  plotted: readonly Series[], cells: readonly (readonly Cell[])[], values: readonly (readonly (number | null)[])[],
-  totals: readonly Record<Id, number | null>[], options: { format?: string; unit?: string; target?: RenderTarget },
-): ReturnType<typeof setMagnitude> {
-  if (plotted.some((series) => series.format) || cells.some((row) => row.some((cell) => cellMeta(cell)?.format))) return undefined;
-  return setMagnitude([...values.flat(), ...totals.flatMap((total) => Object.values(total))], options.format, options.unit, options.target);
-}
 
 /**
  * The value and total texts of the rows and the centered layout. A percent
  * cell keeps its '%', as on column; an example on the cell or series
  * keeps winning. Stages of percent cells only total in percent too.
  */
-export function funnelValueFormats(plotted: readonly Series[], cells: readonly (readonly Cell[])[], formats: readonly Raster[], totalRaster: Raster): {
+export function funnelValueFormats(plotted: readonly Series[], cells: readonly (readonly Cell[])[], raster: Raster): {
   valueText: (si: number, ci: number, value: number) => string;
   totalFmt: (value: number) => string;
 } {
@@ -49,9 +35,9 @@ export function funnelValueFormats(plotted: readonly Series[], cells: readonly (
   return {
     valueText: (si, ci, value) => {
       const cell = cells[si]![ci]!;
-      return (isPctCell(cell) && !cell.format && !plotted[si]!.format ? formats[ci]!.fmtPercent : formats[ci]!.forSeries(plotted[si]!, cellMeta(cell)?.format))(value);
+      return (isPctCell(cell) && !cell.format && !plotted[si]!.format ? raster.fmtPercent : raster.forSeries(plotted[si]!, cellMeta(cell)?.format))(value);
     },
-    totalFmt: percentOnly ? totalRaster.fmtPercent : totalRaster.fmt,
+    totalFmt: percentOnly ? raster.fmtPercent : raster.fmt,
   };
 }
 
@@ -68,6 +54,12 @@ interface FunnelNumbers extends Pick<FunnelDerived, 'stageTotals' | 'conversions
   shownTotals: Record<Id, number | null>;
   /** Per stage, whether it holds a value below zero (drawn at 0): no rate is measured to or from it, cumulative ones included. */
   clampedStages: boolean[];
+  /**
+   * The printer of every value and total. Without a format the values and both kinds of
+   * totals form one set (a sum joins its parts); an authored format holds the whole chart to
+   * its example over the values and the stage totals.
+   */
+  raster: ReturnType<typeof seriesRasterFormatter>;
 }
 
 /** The footnote a clamped value needs, so a 0 never hides a negative input. */
@@ -78,7 +70,7 @@ export function clampedNote(clamped: number, options?: import('../../types/optio
 export function deriveFunnel(
   plotted: Series[],
   stages: Category[],
-  fmt: (v: number) => string,
+  options: { format?: string; unit?: string; locale?: { language?: string } },
   warnings: LintWarning[],
   authored: readonly Series[],
 ): FunnelNumbers {
@@ -118,6 +110,9 @@ export function deriveFunnel(
     shownTotals[c.id] = cells.includes(null) ? null : raw.reduce((a, row) => a + row[ci]!, 0);
     return sum;
   });
+  const locale = options.locale?.language;
+  const raster = seriesRasterFormatter(options.format, [...values.flat(), ...Object.values(stageTotals), ...(options.format ? [] : Object.values(shownTotals))], locale, options.unit);
+  const fmt = options.format ? formatterFromExample(options.format, locale) : raster.fmt;
   const conversions: FunnelDerived['conversions'] = [];
   const undefinedSteps: FunnelNumbers['undefinedSteps'] = [];
   for (let ci = 0; ci < stages.length - 1; ci++) {
@@ -150,7 +145,7 @@ export function deriveFunnel(
   for (const c of conversions) {
     if (c.rate <= 1 && (!worstDrop || c.rate < worstDrop.rate)) worstDrop = c;
   }
-  return { values, known, stageTotals, shownTotals, clampedStages: clampedStage, conversions, undefinedSteps, clamped, ...(worstDrop ? { worstDrop } : {}) };
+  return { values, known, stageTotals, shownTotals, clampedStages: clampedStage, conversions, undefinedSteps, clamped, raster, ...(worstDrop ? { worstDrop } : {}) };
 }
 
 /** What a stage with no known total prints: the theme's missing glyph, as the table and variance chart do. */

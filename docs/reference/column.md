@@ -118,7 +118,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | seriesLabels.cagr | true \| object | `true` (or another value of its type) |  | Series CAGR: each name carries its series' compound annual growth rate over the span, 'Product B +10.1% p.a.', with a claim record per series. A key that names the series in place of the edge carries the rate. The years come from the categories' ISO dates or year-bearing labels; a series with a missing value, a start at or below zero or a negative end prints its name alone and warns; an end of zero reads -100%. |
 | seriesLabels.cagr.from | string |  |  | First category of the span; default the first category. |
 | seriesLabels.cagr.to | string |  |  | Last category of the span; default the last category. |
-| seriesLabels.cagr.format | string |  |  | Percent format-by-example for the rates, such as +0.00% for two decimals; default one decimal. |
+| seriesLabels.cagr.format | string |  |  | Percent format-by-example for the rates, such as +0.00% for two decimals; default: the rates are one change set and print two digits. |
 | shareLabels | object |  |  | Where and how stacked segment labels print their share of the column: '30 (26.3%)' in the last year only. Adds the share to labels.segment in the columns named by only and drops it from the others. Stacked and stacked100 variants; a grouped chart has no shares and warns. |
 | shareLabels.only | array |  |  | Categories whose segment labels print value and share, such as the last year only; the other columns print the value alone. Default every column. |
 | shareLabels.format | string |  |  | Percent format-by-example for the shares, such as 26.3% for one decimal; default whole percent, one decimal under 1%. |

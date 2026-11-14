@@ -96,12 +96,18 @@ export interface LineDomain {
   fan: FanResolved | null;
   phases: LinePhaseResolved | null;
   rebased: boolean;
+  /** A rebased chart: the formatter of the source values its records hold (the plotted index prints by `fmt`). */
+  sourceFmt?: (value: number) => string;
+  /** A fan under the default rule: the formatter of its bounds, one statistic set. */
+  fanFmt?: (value: number) => string;
   population: LinePopulation;
   /** Proportional category positions when the categories are unevenly spaced times, or the value positions of a continuous axis. */
   timeline: { positions: number[]; span: number } | undefined;
   /** The continuous x axis (options.xAxis): the model and the visible range. */
   x?: { model: import('./continuous').LineXModel; lo: number; hi: number; /** The x of each drawn category. */ shown: number[]; range?: import('./range').LineRange };
   trends: LineTrend[];
+  /** The slope text of each trend by series id, one statistic set (lineTrendRates). */
+  trendRates: ReadonlyMap<string, string>;
   /** The line sampled itself above the point budget (lineWindow); its crowded date ticks draw only under labels. */
   autoSampled: boolean;
   /** Values in plotted units (percent for stacked100-area, rank for bump, index under rebase100). */
@@ -150,6 +156,7 @@ export interface LineAnomaly {
   statFmt: (v: number) => string;
   corridorShown: { low: boolean; high: boolean };
   corridorNote: string;
+  corridorFmt: (v: number) => string;
 }
 
 /** Every paint decision, shared by legend, marks and labels. */

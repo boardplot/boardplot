@@ -279,13 +279,21 @@ function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, p
     // A line just under the column top: its slice boxes over-claim the lowered seat, and how deep the marker
     // sits changes with the plot height. The seat steps down, at most one line, to the first depth the drawn
     // strokes clear, and there it needs no pad, so a total that seats at one height seats at a taller one.
-    const lowered = (): SlotCandidate | undefined => {
+    // Where the strokes block the inside end, the further depths that clear them follow, for a solver that refuses the first.
+    const lowered = (insideEnd: SlotCandidate | undefined): SlotCandidate[] => {
+      const seats: SlotCandidate[] = [];
+      const clears = (seat: SlotCandidate) => strokes.every(stroke => !stroke.hits(seat.rect, STROKE_CLEAR));
+      const further = insideEnd !== undefined && !clears(insideEnd);
       if (strokes.length > 0) for (let dy = 12; dy <= 12 + tsize.height; dy++) {
         const seat = inside(dy, 'insideEndLowered');
         if (!seat) break;
-        if (strokes.every(stroke => !stroke.hits(seat.rect, STROKE_CLEAR))) return { ...seat, pad: 0 };
+        if (!clears(seat)) continue;
+        seats.push({ ...seat, pad: 0 });
+        if (!further) break;
       }
-      return inside(12, 'insideEndLowered');
+      if (seats.length > 0) return seats;
+      const seat = inside(12, 'insideEndLowered');
+      return seat ? [seat] : [];
     };
     // Type steps: a line that rises from this column's top runs right of its centre;
     // the total then stands left of the line's start, level with its usual seat (pareto at 320: '120').
@@ -294,6 +302,7 @@ function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, p
     // (scaled to its total), the seat clears the marker and comes before the seat two rows up,
     // which would leave the total floating over the curve's first point.
     const curveStartsOnTop = ci === 0 && shares && lineYs(ci).some((ly) => Math.abs(ly - edgeY) < 0.5);
+    const insideEnd = inside(8, 'insideEnd');
     const leftX = cx - LEFT_SEAT_AIR - (curveStartsOnTop ? MARKER_R : 0) - tsize.width;
     const leftSeat = ci === 0 && tsize.width + 4 > band.bandwidth && strokes.length > 0 && above && leftX >= LEFT_SEAT_MIN_X
       ? [{ slot: 'aboveStackLeft', rect: { x: leftX, y: edgeY - tsize.height - 4, w: tsize.width, h: tsize.height }, penalty: 2 }] : [];
@@ -346,10 +355,10 @@ function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, p
         ...(curveStartsOnTop ? [...leftSeat, ...liftedSeat] : []),
         { ...shiftedClear(at(above ? 'aboveStackShifted' : 'belowStackShifted', above ? edgeY - 2 * tsize.height - 8 : edgeY + tsize.height + 8, 1), ci), ...(crossesRules ? { overRules: true } : {}) },
         ...(curveStartsOnTop ? [] : leftSeat),
-      ], edgeY, lineYs(ci), inside(8, 'insideEnd'),
+      ], edgeY, lineYs(ci), insideEnd,
       domain.columns.length > 1,
       // Last of all, one step further in: a line marker just inside the column top blocks the inside end by a fraction of a pixel.
-      lowered()),
+      lowered(insideEnd)),
     });
   });
 }
@@ -407,7 +416,7 @@ function referenceLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, re
  * nearer a line mark stay as the last resort, so a total is never lost. The
  * solver still keeps every outer seat inside the plot and one step from the first.
  */
-function nearestOwnMarkFirst(outer: SlotCandidate[], edgeY: number, lineYs: number[], inside: SlotCandidate | undefined, tieIsOwn: boolean, insideLast?: SlotCandidate): SlotCandidate[] {
+function nearestOwnMarkFirst(outer: SlotCandidate[], edgeY: number, lineYs: number[], inside: SlotCandidate | undefined, tieIsOwn: boolean, insideLast: readonly SlotCandidate[] = []): SlotCandidate[] {
   const own = (c: SlotCandidate) => {
     const cy = c.rect.y + c.rect.h / 2;
     // A line point on the column top (within half a pixel) is a tie: the column's own mark where
@@ -415,7 +424,7 @@ function nearestOwnMarkFirst(outer: SlotCandidate[], edgeY: number, lineYs: numb
     return lineYs.every((ly) => Math.abs(ly - edgeY) < 0.5 ? tieIsOwn : Math.abs(cy - ly) > Math.abs(cy - edgeY));
   };
   return [...outer.filter(own), ...(inside ? [inside] : []), ...outer.filter((c) => !own(c)).map(c => ({ ...c, lastResort: true as const })),
-    ...(insideLast ? [insideLast] : [])].map((c, penalty) => ({ ...c, penalty }));
+    ...insideLast].map((c, penalty) => ({ ...c, penalty }));
 }
 
 /**

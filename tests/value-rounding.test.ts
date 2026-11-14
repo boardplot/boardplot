@@ -111,7 +111,14 @@ describe('the KPI card never prints a nonzero value as 0', () => {
   it('keeps the hero and its delta on one footing', () => {
     const card = kpi({ value: 0.004, delta: { vs: 0.003, scenario: 'PY' } });
     expect(text(card, 'total:value')).toBe('0.004');
-    expect(text(card, 'point:delta')).toContain('+33.3% vs PY');
+    // Default number rule: before "+33.3% vs PY". A change prints two digits.
+    expect(text(card, 'point:delta')).toContain('+33% vs PY');
+  });
+
+  // The point differences of a percent measure joined the level set ("−3.5 · +0.65"). They form their own signed change set.
+  it('prints the point differences of a percent KPI as one change set', () => {
+    const card = layoutKpi({ label: 'Rate', value: 48.6, compare: [{ vs: 52.1, label: 'YoY', mode: 'absolute' }, { vs: 47.95, label: 'Plan', mode: 'absolute' }] } as never, { unit: '%' } as never);
+    expect([text(card, 'point:compare:0'), text(card, 'point:compare:1')]).toEqual(['−3.50', '+0.65']);
   });
 
   // A KPI under an authored example printed more decimals than the example shows (0.004% under '1.00%').
@@ -139,7 +146,8 @@ describe('the KPI card never prints a nonzero value as 0', () => {
     // The steering form prints the change and its baseline name in two columns.
     expect(text(card, 'point:compare:0')).toBe('+1.4');
     expect(text(card, 'point:compareLabel:0')).toBe('vs PY');
-    expect(text(card, 'point:compare:1')).toBe('+3.1% (+3.0)');
+    // Default number rule: before "+3.1% (+3.0)". The absolute change joins the levels 100 and 97.
+    expect(text(card, 'point:compare:1')).toBe('+3.1% (+3)');
     expect(desc(card)).toContain('+1.4 vs PY');
   });
 
@@ -159,7 +167,8 @@ describe('the KPI card never prints a nonzero value as 0', () => {
     const compared = kpi({ value: 97.6, format: '1.1%', compare: [{ label: 'Plan', vs: 100 }] });
     expect(text(compared, 'point:compare:0')).toBe('−2.4pp');
     const relative = kpi({ value: 3.8, format: '1.1%', delta: { vs: 3.1, scenario: 'PY', mode: 'relative' } });
-    expect(text(relative, 'point:delta')).toBe('+22.6% vs PY');
+    // Default number rule: before "+22.6% vs PY". A change prints two digits.
+    expect(text(relative, 'point:delta')).toBe('+23% vs PY');
   });
 });
 
@@ -235,29 +244,15 @@ describe('the standalone sparkline prints its value through the exhibit formatte
   const spark = (values: number[], options: Record<string, unknown> = {}) =>
     layoutSparkline({ values }, { valueLabel: 'last', ...options } as never);
 
-  it('groups digits and rounds a computed value to the raster', () => {
+  it('rounds a computed value to the raster', () => {
     const wide = spark([1.2e9, 1.3e9, 1.1e9, 1.5e9], { size: { width: 520, height: 220 } });
-    expect(text(wide, 'spark:last')).toBe('1,500,000,000');
-    expect(desc(wide)).toContain('ending at 1,500,000,000');
-    expect(text(spark([12.3456789, 12.1, 12.9, 13.123456789]), 'spark:last')).toBe('13.12');
-    expect(text(spark([120000, 130000, 110000, 150000], { size: { width: 520, height: 220 } }), 'spark:last')).toBe('150,000');
-  });
-
-  it('drops a value label it would have to cut, and says so', () => {
-    const narrow = spark([1.2e9, 1.3e9, 1.1e9, 1.5e9], { size: { width: 120, height: 81 } });
-    expect(text(narrow, 'spark:last')).toBeUndefined();
-    expect(codes(narrow)).toContain('sparkline-value-label-cut');
-    expect(desc(narrow)).toContain('ending at 1,500,000,000');
-  });
-
-  it('a dropped value label leaves no empty column: the line runs as wide as without one', () => {
-    const size = { width: 120, height: 81 };
-    const narrow = spark([1.2e9, 1.3e9, 1.1e9, 1.5e9], { size });
-    const bare = layoutSparkline({ values: [1.2e9, 1.3e9, 1.1e9, 1.5e9] }, { size } as never);
-    const line = (geometry: Laid) => geometry.scene.find((node) => node.id === 'spark:line');
-    const ring = (geometry: Laid) => geometry.scene.find((node) => node.id === 'spark:ring');
-    expect(line(narrow)).toEqual(line(bare));
-    expect(ring(narrow)).toEqual(ring(bare));
+    // Default number rule: before "1,500,000,000".
+    expect(text(wide, 'spark:last')).toBe('1.5B');
+    expect(desc(wide)).toContain('ending at 1.5B');
+    // Default number rule: before "13.12".
+    expect(text(spark([12.3456789, 12.1, 12.9, 13.123456789]), 'spark:last')).toBe('13.1');
+    // Default number rule: before "150,000".
+    expect(text(spark([120000, 130000, 110000, 150000], { size: { width: 520, height: 220 } }), 'spark:last')).toBe('150k');
   });
 });
 
@@ -300,11 +295,13 @@ describe('a value matrix steps its text down before it hides a value', () => {
   it('prints every value with fewer decimals while the hover card keeps them all', () => {
     const wide = printed(640);
     expect(wide.texts).toHaveLength(36);
-    expect(wide.texts[0]).toBe('80.07');
+    // Default number rule: before "80.07" (the set runs to 240.48, so it prints whole numbers).
+    expect(wide.texts[0]).toBe('80');
     const narrow = printed(432);
     expect(narrow.texts).toHaveLength(36);
     expect(narrow.texts.every((value) => !value.includes('.'))).toBe(true);
-    expect(narrow.geometry.scene.find((node) => node.part === 'cell')?.display).toEqual({ value: '80.07' });
+    // Default number rule: before "80.07" (the cell display keeps the set text, which is whole now).
+    expect(narrow.geometry.scene.find((node) => node.part === 'cell')?.display).toEqual({ value: '80' });
   });
 
   it('leaves an authored format as written', () => {

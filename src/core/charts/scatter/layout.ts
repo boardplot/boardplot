@@ -28,9 +28,8 @@ import type { AnchorResolution, AnnotatePassResult } from '../../annotate';
 import { runAnnotatePass } from '../../annotatePass';
 import { hiddenNoteWith, markNotedLabels, noteLine, type FrameResult, type LegendItemInput } from '../../frame';
 import { staticFrame, storyFrameFit } from '../../footer';
-import { formatAutomaticNumber } from '../../format';
+import { ruleFormatter } from '../../numberSets';
 import { withSmallValues } from '../../formatPrecision';
-import { trendRateFormatter } from '../../formatSpec';
 import { spaceTokens, emphasisWeight, strokeToken, dashToken } from '../../theme';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
@@ -187,6 +186,7 @@ function annotateScatter(
     measure: env.measure,
     format: env.options.axisFormat?.y ?? env.options.format,
     locale: env.options.locale?.language,
+    levelSpec: env.axisSpec.y,
     strings: env.options.strings,
     valueLinePercentLevels: env.options.unit === '%' || domain.pts.length > 0 && domain.pts.every(point => point.yIsPct),
     solveCtx,
@@ -510,12 +510,12 @@ function scatterKeyItems(env: ScatterEnv, domain: ScatterDomain, paints: ReturnT
   }
   const trend = env.options.trend;
   const named = typeof trend === 'object' && trend.label ? trend.label : chartString(env.options, 'linearTrend');
-  const rate = trendRateFormatter(env.options.axisFormat?.y ?? env.options.format,
-    env.options.locale?.language, domain.pts.some(p => p.yIsPct) ? '%' : env.options.unit);
+  // The r² values of one chart form one set.
+  const r2Text = ruleFormatter(domain.trends.flatMap((fit) => (fit.r2 === null ? [] : [fit.r2])), env.options.locale?.language);
   for (const fit of domain.trends) {
     const group = fit.group === undefined ? '' : `, ${domain.groups.get(fit.group)?.label ?? fit.group}`;
-    const slope = rate(fit.slope);
-    const r2 = fit.r2 === null ? 'undefined' : formatAutomaticNumber(fit.r2, { locale: env.options.locale?.language, decimals: 2 });
+    const slope = domain.trendRates.get(fit.id)!;
+    const r2 = fit.r2 === null ? 'undefined' : r2Text(fit.r2);
     items.push({
       id: `trend:${fit.id}`,
       // The fit's own numbers, printed where the line is keyed.

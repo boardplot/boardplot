@@ -95,7 +95,7 @@ export function segmentValueText(env: MekkoEnv, domain: MekkoDomain, s: NormSer,
   const val = s.vals[ci]!;
   const abs = domain.absAt(s, ci);
   if (abs === null || (domain.mode === 'percent' && val.isPct)) return null;
-  const parts = composeParts(env, ['absolute'], { abs, pct: null, absIsPct: val.isPct }, '', '', val.format ?? s.format);
+  const parts = composeParts(env, ['absolute'], { abs, pct: null, absIsPct: val.isPct }, '', '', val.format ?? s.format, env.fmtFor?.(s.id));
   return parts[0]?.[1] ?? null;
 }
 
@@ -156,7 +156,7 @@ function segmentLabels(ctx: LabelCtx, geometry: MekkoMarkGeometry): void {
     const pct = shareWithheld ? null : mode === 'percent' ? v : (domain.shares[c.id]![s.id] ?? null);
     const parts = composeParts(env, content, {
       abs: domain.absAt(s, ci), pct, authoredPct: mode === 'percent' && val.isPct, absIsPct: mode !== 'percent' && val.isPct, pctText: domain.shareTexts.get(`${c.id}\0${s.id}`),
-    }, c.label ?? c.id, s.label, val.format ?? s.format);
+    }, c.label ?? c.id, s.label, val.format ?? s.format, env.fmtFor?.(s.id));
     let text = parts.map(([, part]) => part).join(' ');
     const shows = shownParts(parts, val.labelOverride, !(mode === 'percent' && val.isPct));
     if (typeof val.labelOverride === 'string') {

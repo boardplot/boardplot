@@ -11,8 +11,7 @@ export const tableCellNodeId = (part: string, rowId: string, colId: string, line
     : `${part}:${scenePart(rowId)}:${scenePart(colId)}:${scenePart(lineId)}`;
 
 /**
- * Whether a computed cell record's number is the figure its cell prints: a calc or a total, a share after the
- * rounding adjustment (the cell prints the adjusted amount), or the sum of the children where the author's total
+ * Whether a computed cell record's number is the figure its cell prints: a calc or a total, or the sum of the children where the author's total
  * prints as that sum in the cell's own format. A rounding gap and an unaudited total print no number of their own.
  */
 export function printsInCell(record: { kind: string; op: string; printedInCell?: true }): boolean {
@@ -20,8 +19,6 @@ export function printsInCell(record: { kind: string; op: string; printedInCell?:
     case 'calc':
     case 'aggregate':
       return true;
-    case 'rounding-adjustment':
-      return record.op === 'share-reconcile';
     case 'reconciliation':
       return record.printedInCell === true;
     default:

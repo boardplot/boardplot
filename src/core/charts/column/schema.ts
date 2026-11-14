@@ -184,7 +184,7 @@ export const columnOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptio
           z.strictObject({
             from: idSchema.optional().describe('First category of the span; default the first category.'),
             to: idSchema.optional().describe('Last category of the span; default the last category.'),
-            format: contextFormatExample.optional().describe('Percent format-by-example for the rates, such as +0.00% for two decimals; default one decimal.'),
+            format: contextFormatExample.optional().describe('Percent format-by-example for the rates, such as +0.00% for two decimals; default: the rates are one change set and print two digits.'),
           }).superRefine((span, ctx) => {
             if (span.format !== undefined && notPercentExample(span.format)) {
               ctx.addIssue({ code: 'custom', path: ['format'], message: 'a CAGR prints a percent, so its format is a percent example such as +0.0% or +0.00%' });

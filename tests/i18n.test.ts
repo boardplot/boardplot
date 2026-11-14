@@ -214,8 +214,9 @@ describe('provider locale reaches chart layout', () => {
   it.each(['column', 'bar', 'line', 'dot'])('%s keeps the default marks under an inherited language and takes inherited marks', (type) => {
     const request = resolveChartRequest({ type, data, options: { size: { width: 1000, height: 550 } } }, { locale: 'de-DE' });
     const geo = requireGeometry(getChartDefinition(type)!.layout(request.data as never, request.options as never));
-    expect(texts(geo)).toContain('1,234.5');
-    expect(texts(geo)).not.toContain('1.234,5');
+    // Default number rule (three digits of the largest value): before "1,234.5" and not "1.234,5".
+    expect(texts(geo)).toContain('1,235');
+    expect(texts(geo)).not.toContain('1.235');
     const explicit = resolveChartRequest({ type, data, options: { format: '1,234.5', size: { width: 1000, height: 550 } } }, { locale: { language: 'de-DE', decimal: ',' } });
     expect(texts(requireGeometry(getChartDefinition(type)!.layout(explicit.data as never, explicit.options as never))))
       .toContain('1.234,5');

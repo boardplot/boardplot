@@ -145,7 +145,7 @@ it('draws a cohort size wider than the label band instead of refusing the width'
   const shown = layoutResolvedRequest(request) as unknown as Geometry<CohortMarks, CohortDerived>;
   expect(shown.refused).toBeFalsy();
   const label = shown.labels.find(label => label.id === `series:${shown.derived.cohorts[0]!.id}`)!;
-  expect(label.lines).toEqual(['Jan 2025 (n =', '120,000,000)']);
+  expect(label.lines).toEqual(['Jan 2025', '(n\u00a0=\u00a0120M)']); // Default number rule: before "Jan 2025 (n =", "120,000,000)".
 });
 
 // A cohort exhibit on a 280 px phone card refused (it needed 528 px); its compact form draws there and names each period it leaves out.
@@ -160,7 +160,8 @@ it('draws the exhibit forms on a phone card and names the periods left out', () 
     expect(shown.frame.noteList?.map(note => note.text).filter(text => /not shown/i.test(text)), id).toEqual(hidden);
   };
   at280('retention-stepped-content', [1, 2, 3], ['M0 not shown: 100% of every cohort by definition.']);
-  at280('crowded-average-bases', [1, 2], ['M0 not shown: 100% of every cohort by definition.', 'Not shown for space: M3–M7.']);
+  // Default number rule: the bases print "2.59M", not "2,592,600", so M3 fits; before [1, 2] and "Not shown for space: M3–M7.".
+  at280('crowded-average-bases', [1, 2, 3], ['M0 not shown: 100% of every cohort by definition.', 'Not shown for space: M4–M7.']);
 });
 
 describe('cohort — shapes that make a triangle misleading are refused', () => {
@@ -747,7 +748,7 @@ describe('cohort — small rate precision', () => {
       expect(text('a', 1)).toBe('0.001');
       expect(text('b', 1)).toBe('0.039');
       expect(text('cohort-total', 1)).toBe('0.020');
-      expect(text('a', 0)).toBe('100.0');
+      expect(text('a', 0)).toBe('100'); // Default number rule: before "100.0".
     }
   });
 });
@@ -767,7 +768,8 @@ it('measures the rate strings before reporting a pure exhibit natural width', as
   if (g.refused) throw new Error('refused');
   const rates = g.scene.filter(n => n.t === 'text' && n.id.startsWith('label:cohort-cell:'));
   expect(rates).toHaveLength(11);
-  expect(rates.filter(n => n.t === 'text' && n.lines.join(' ') === '1.0\u00a0×\u00a010⁻¹⁰')).toHaveLength(9);
+  // Default number rule: before "1.0 × 10⁻¹⁰".
+  expect(rates.filter(n => n.t === 'text' && n.lines.join(' ') === '0.0000000001')).toHaveLength(9);
   const report = layoutResolvedRequest(resolveChartRequest({ type: 'cohort', data, options: {
     ...options, theme: 'standard', title: 'Observed rates (%)', size: { width: 720 },
   } }));
@@ -1034,5 +1036,5 @@ it('keeps a cohort cell figure as the shown text of its rate', () => {
   const geometry = layoutResolvedRequest(request) as Geometry;
   const record = interactionRecords({ request, geometry, scope: request.scope, claims: [] })
     .find(item => item.target.owner.seriesId === 'jan-26' && item.target.owner.categoryId === 't2')!;
-  expect(record.value.displayed).toBe('57.5');
+  expect(record.value.displayed).toBe('58'); // Default number rule: before "57.5".
 });

@@ -55,7 +55,7 @@ Cohorts by periods-since-start: counts in, every retention rate derived, weighte
 
 | Path | Type | Values | Default | Meaning |
 |---|---|---|---|---|
-| format | string |  |  | Rate format in percentage units, such as '1.0%' or '1.00' for two decimals without a sign on exhibit tables. Default: a decimal below 10%, whole percent otherwise on the heatmap. Exhibit tables share the needed decimal precision. The M0 anchor is neutral and the colour scale stays fixed at 0–100%. |
+| format | string |  |  | Rate format in percentage units, such as '1.0%' or '1.00' for two decimals without a sign on exhibit tables. Without a format the rates of the chart are one percent set under the default rule, and the heatmap keeps the set's decimals. The M0 anchor is neutral and the colour scale stays fixed at 0–100%. |
 | basis | string | `'cohort'`, `'previous'` | `'cohort'` | 'cohort' = active / cohort base (comparable down a column); 'previous' = active / the previous period's active. |
 | averages | false \| string | `false`, `'weighted'` | `false` | Heatmap only. Weighted column average = total active / total base of the observed cohorts. |
 | methodNote | boolean |  |  | Default false. true adds the measure formula and explains the visible anchor column and blank cells. strings.cohortMeasure and strings.cohortFormula name another count-based measure, such as cumulative conversion. Required interpretation notes still print: the formula under basis 'previous', not-meaningful cells, weighted averages and rates too narrow to print. |

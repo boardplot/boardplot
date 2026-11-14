@@ -449,7 +449,8 @@ describe('box labels and method notes', () => {
     const deal = layFixture('deal-size-by-region');
     expect(
       deal.derived.groupOrder.map((id) => deal.labels.find((label) => label.id === `median:${id}`)!.text),
-    ).toEqual(['Median 97.6', '132.5', '106.5', '87.5', '97.5']);
+      // Default number rule (the medians are a statistic set): before "Median 97.6 · 132.5 · 106.5 · 87.5 · 97.5".
+    ).toEqual(['Median 98', '133', '107', '88', '98']);
   });
 
   it('the median tick stays legible on a highlighted (dark) box', () => {
@@ -598,7 +599,7 @@ describe('box readability', () => {
 
   it('a group too small for a box prints each observation', () => {
     const geometry = lay({ groups: [{ id: 'big', observations: ONE_TO_TEN }, { id: 'small', observations: [4, 9, 21] }] });
-    expect(geometry.labels.filter((label) => label.id.startsWith('obs:small:') && !label.hidden).map((label) => label.text).sort()).toEqual(['21.0', '4.0', '9.0']);
+    expect(geometry.labels.filter((label) => label.id.startsWith('obs:small:') && !label.hidden).map((label) => label.text).sort()).toEqual(['21', '4', '9']); // Default number rule: before "21.0 · 4.0 · 9.0".
   });
 
   it('the filled highlighted box is named in a note', () => {

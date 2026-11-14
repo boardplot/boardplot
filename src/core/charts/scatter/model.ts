@@ -16,7 +16,8 @@ import type { Annotation } from '../../types/annotations';
 import type { Id, Scenario } from '../../types/cell';
 import type { MarkerShape } from '../../types/data';
 import type { ScatterValueAxisOptions } from '../../types/options';
-import type { Paint } from '../../types/scene';
+import type { Paint, ShownMark } from '../../types/scene';
+import type { DeferredShownMarks } from '../../shownMarks';
 import type { Theme } from '../../types/theme';
 import type { ScatterClampPlan, ScatterClipRecord, ScatterDropRecord } from './clamp';
 import type { LogAxes } from './logAxis';
@@ -34,6 +35,8 @@ export interface ScatterMarks {
   points: { id: Id; cx: number; cy: number; r: number; nodeId?: Id; clipped?: true }[];
   /** Authored strategy regions/cells, behind the point marks. */
   zones?: StrategyZoneMark[];
+  /** Under the default rule: each point's x, y and size texts in their sets, read when a record needs one. */
+  wouldShow?: DeferredShownMarks;
 }
 
 export interface ScatterDerived {
@@ -124,6 +127,8 @@ export interface Disclosed {
 /** What the options resolve to once, before any phase runs. */
 export interface ScatterEnv {
   options: ScatterStrategyOptions;
+  /** Under the default rule: every point's texts in its sets (the records' stated texts). */
+  ruleShown?: () => ShownMark[];
   /**
    * Which bubble values a layout prints: 0 every value,
    * 1 only the values that fit inside their bubble, 2 none. A layout that
@@ -159,6 +164,8 @@ export interface ScatterEnv {
    * the decimals each needs ("$5", "$0.4"), cut points disclose in it.
    */
   axisSpec: { x: NumberFormatSpec; y: NumberFormatSpec };
+  /** The bubble sizes' rule set: the size key's rings print by the tick rule over it. */
+  sizeKeySpec: NumberFormatSpec;
   discloseCut: (raw: number, axis: 'x' | 'y') => Disclosed;
   discloseCount: (raw: number) => Disclosed;
   highlights: ReadonlySet<Id>;
@@ -210,6 +217,8 @@ export interface ScatterDomain {
   quadrants: QuadrantPlan;
   /** The trend fits options.trend asked for, over the drawn points. */
   trends: TrendFit[];
+  /** The slope text of each trend fit by id: one statistic set (trendRateTexts). */
+  trendRates: ReadonlyMap<Id, string>;
   /** The Pareto line options.frontier asked for, over the drawn points. */
   frontier?: FrontierPlan;
 }

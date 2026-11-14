@@ -233,7 +233,6 @@ fixtures.push({
     cascade: { growth: { measure: 'share-change' } },
     // The cascade default, written out.
     sharedScale: true,
-    // rounding defaults to 'sum-consistent' under cascade.
     combinedShare: { rows: ['app', 'foo'] },
     title: 'Beauty gains share every year while apparel gives it up',
     // Four panels name the unit once, in the subtitle, so each head stays one short line.

@@ -29,11 +29,11 @@ describe('bullet target and gap columns', () => {
       const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'bullet', data,
         options: { size: { width: 1200, height: 500 }, ...options } }));
       if (geometry.refused) throw new Error('refused');
-      expect(label(geometry, 'point:ratio')?.text).toBe('2.6');
+      expect(label(geometry, 'point:ratio')?.text).toBe('2.60'); // Default number rule: before "2.6".
       const target = options.sharedScale === 'percentOfTarget' ? 'target:' : 'target-value:';
-      expect(label(geometry, `${target}ratio`)?.text).toContain('2.3');
+      expect(label(geometry, `${target}ratio`)?.text).toContain('2.25'); // Default number rule: before "2.3".
       const suffix = options.targetColumns === false ? ' vs target' : '';
-      expect(label(geometry, 'delta:ratio')?.text).toBe(`+0.3${suffix}`);
+      expect(label(geometry, 'delta:ratio')?.text).toBe(`+0.35${suffix}`); // Default number rule: before "+0.3".
       expect(label(geometry, 'point:rate')?.text).toBe('6.0%');
       expect(label(geometry, `${target}rate`)?.text).toContain('7.9%');
       expect(label(geometry, 'delta:rate')?.text).toBe(`−1.9pp${suffix}`);
@@ -61,12 +61,12 @@ describe('bullet target and gap columns', () => {
   });
 
   // A value and target in scientific notation printed their nonzero gap as "0.0000" beside "above target".
-  it('prints a nonzero gap in scientific notation when the value and target do', () => {
+  it('prints a nonzero gap with its digits when the value and target are tiny', () => {
     const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'bullet',
       data: { rows: [{ id: 'rate', label: 'Rate', value: 0.00004, target: 0.00003 }] },
       options: { size: { width: 1200, height: 300 } } }));
     if (geometry.refused) throw new Error('refused');
-    expect(label(geometry, 'delta:rate')?.text).toBe('+1.0\u00a0×\u00a010⁻⁵');
+    expect(label(geometry, 'delta:rate')?.text).toBe('+0.00001'); // Default number rule: before "+1.0 × 10⁻⁵".
   });
 
   // A reader had to find each target above its tick and read "−7 vs target" at the row end.

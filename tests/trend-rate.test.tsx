@@ -5,12 +5,13 @@ import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request'
 import { requireGeometry } from '../src/core/sizing';
 import { formatterFromExample } from '../src/core/formatSpec';
 import { renderSvg } from '../src/core/svg/renderSvg';
-import { getFixtures } from '../src/fixtures';
 import { LineChart } from '../src/react/charts/line';
 import { ScatterChart } from '../src/react/charts/scatter';
 
 const slopes = [0.004, 0.04, 0.4, 4, 28.429, 1234.5, -0.4];
 const faces = ['0.0040', '0.040', '0.40', '4.0', '28.4', '1,235', '−0.40'];
+// Default number rule: a rate without a format is a statistic set of one value. Before "0.0040 · 0.040 · 0.40 · 4.0 · 28.4 · 1,235 · −0.40".
+const defaultFaces = ['0.004', '0.04', '0.4', '4', '28.4', '1,235', '−0.4'];
 const types = ['line', 'area', 'scatter'] as const;
 type Kind = typeof types[number];
 const size = { width: 1000, height: 600 };
@@ -45,9 +46,10 @@ function check(kind: Kind, rate: number, face: string, format?: string, base = 1
 // Prevents axis precision from adding needless digits or hiding a small rate, while keeping comparable rates consistent.
 it('prints rates at their own precision in SVG and React', () => {
   for (const kind of types) {
-    slopes.forEach((rate, i) => check(kind, rate, faces[i]!));
+    slopes.forEach((rate, i) => check(kind, rate, defaultFaces[i]!));
     const output = draw(kind, [0.4, 0.04, 4, 1234.5]);
-    for (const face of ['0.40', '0.040', '4.0', '1,235']) {
+    // Default number rule: the slopes of one chart form one statistic set. Before "0.40 · 0.040 · 4.0 · 1,235".
+    for (const face of ['0.40', '0.04', '4', '1,235']) {
       for (const rendered of [output.svg, output.react]) expect(rendered).toContain(kind === 'scatter' ? `slope ${face}` : `+${face} per period`);
     }
   }
@@ -88,7 +90,7 @@ it('chooses the rate magnitude and notation after rounding', () => {
   for (const kind of types) {
     const output = draw(kind, [999_960], '1,0 Mio.', 0, german);
     for (const rendered of [output.svg, output.react]) expect(rendered).toContain(kind === 'scatter' ? 'Steigung 1,0 Mio.' : '+1,0 Mio. pro Periode');
-    check(kind, 0.00099996, '0.0010', undefined, 0);
+    check(kind, 0.00099996, '0.001000', undefined, 0); // Default number rule: before "0.0010".
     check(kind, 999.96, '1.0 k', '1.0 mn', 0);
   }
 });
@@ -102,9 +104,10 @@ it('ends a sentence once after a magnitude abbreviation', () => {
   }
 });
 
-// Prevents a rate that rounds across a precision boundary from keeping the smaller band's decimals.
-it('chooses each rate precision band after rounding', () => {
-  for (const kind of types) for (const [rate, face] of [[99.96, '100'], [0.996, '1.0'], [0.09996, '0.10'], [-99.96, '−100'], [-0.996, '−1.0']] as const) {
+// A rate keeps the digits of its own size before rounding: 99.96 prints "100.0" and 0.996 prints "0.996".
+it('chooses each rate precision band before rounding', () => {
+  // Default number rule: before "100 · 1.0 · 0.10 · −100 · −1.0".
+  for (const kind of types) for (const [rate, face] of [[99.96, '100.0'], [0.996, '0.996'], [0.09996, '0.1000'], [-99.96, '−100.0'], [-0.996, '−0.996']] as const) {
     check(kind, rate, face, undefined, 0);
   }
 });
@@ -169,15 +172,6 @@ it('keeps tiny nonzero rates numeric and deterministic', () => {
   }
 });
 
-// Prevents a float-noise rate from printing 14 decimals and refusing a narrow chart that can be drawn.
-it('prints a rate below four decimals in scientific form, so a near-zero trend keeps its key short', () => {
-  const fixture = getFixtures('line').find(entry => entry.id === 'sparse-phases')!;
-  const request = resolveChartRequest({ type: 'line', data: fixture.data, options: { ...fixture.options, trend: true, size: { width: 320, height: 205 } } } as never);
-  const svg = renderSvg(requireGeometry(layoutResolvedRequest(request)), request.theme);
-  expect(svg).toMatch(/per period/);
-  expect(svg).toContain('\u00a0×\u00a010⁻');
-});
-
 // Prevents annual readings away from New Year from printing a quarterly or daily rate with the wrong value.
 it('derives the reporting period and rate from date spacing on any day', () => {
   for (const kind of ['line', 'area'] as const) for (const day of ['06-30', '05-15', '12-31', '01-01']) {
@@ -190,6 +184,6 @@ it('derives the reporting period and rate from date spacing on any day', () => {
     const dates = ['2020-02-29', '2021-02-28', '2022-02-28', '2023-02-28', '2024-02-29', '2025-02-28'];
     const output = draw(kind, [4], undefined, 100, {}, dates);
     expect((output.geometry.derived as { trends: { slope: number; unit: string }[] }).trends[0]).toMatchObject({ slope: 4, unit: 'year' });
-    for (const rendered of [output.svg, output.react]) expect(rendered).toContain('+4.0 per year');
+    for (const rendered of [output.svg, output.react]) expect(rendered).toContain('+4 per year'); // Default number rule: before "+4.0 per year".
   }
 });

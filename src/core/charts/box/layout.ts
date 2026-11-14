@@ -36,8 +36,9 @@ import { structureCount } from '../../structureCounts';
 import { rowLabelBand } from '../../label/rowLabels';
 import { fittedLabel, gutterBudget, stepDownFont } from '../../label/rowFit';
 import { applyValueAxisTitleInk, layoutValueAxis, straightBreakGlyph, planValueAxisTitle, valueAxisTitleRequest } from '../../axis';
-import { formatAutomaticNumber, numberRange, seriesFormatterAt, seriesValueDecimals, seriesValueFormatter } from '../../format';
-import { engineFormatterFromExample, formatterFromExample, seriesRasterFormatter } from '../../formatSpec';
+import { numberRange, seriesValueDecimals } from '../../format';
+import { ruleFormatter } from '../../numberSets';
+import { defaultSetSpec, engineFormatterFromExample, formatterFromExample, formatWithSpec, statisticFormatter } from '../../formatSpec';
 import { rowLabelX, type Rect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex } from '../../label/occupied';
@@ -67,7 +68,6 @@ import type {
   BoxRowMark,
   WhiskerRule,
 } from './types';
-import { autoDecimals } from '../../formatPrecision';
 import { annotateBox } from './annotations';
 import { withUnprintedClaims } from '../../claims/ids';
 import { composedTextRole } from '../../textRole';
@@ -206,43 +206,33 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
     });
   }
   const rows = order.map((index) => summaries[index]!);
+  // Without an authored format the default number rule prints the chart: the
+  // observations form one set, and the quartiles, the medians and the
+  // percentile whisker ends one statistic set computed from them.
+  // The ticks take the observation set. Whisker ends under
+  // 'tukey' and 'minmax', min and max are observations.
+  const observationSpec = engineFmt ? undefined : defaultSetSpec(data.groups.flatMap((group) => group.observations ?? []), options.locale?.language, options.unit);
+  const percentileWhiskers = whiskerRule === 'p10p90';
+  const ruleStat = observationSpec
+    ? statisticFormatter(rows.flatMap((row) => [row.q1, row.median, row.q3, ...(percentileWhiskers ? [row.whiskerLow, row.whiskerHigh] : [])]), observationSpec)
+    : undefined;
+  const ruleObservation = observationSpec ? (value: number) => formatWithSpec(value, observationSpec) : undefined;
   const printed = [
     ...data.groups.flatMap((group) => group.observations ?? []),
     ...rows.flatMap((row) => [row.min, row.q1, row.median, row.q3, row.max, row.whiskerLow, row.whiskerHigh]),
   ];
-  // From a million the chart takes the engine scale bar takes, chosen once
-  // from its largest value: labels and ticks print 2.78B, not 2,778,700,000.
-  // Its precision comes from the values that print (statistics, drawn
-  // outliers and small-n points), so 160 raw observations do not lift every
-  // label to "2.7787B". An authored format keeps its digits.
-  const labelled = rows.flatMap((row, index) => [
-    row.min, row.q1, row.median, row.q3, row.max, row.whiskerLow, row.whiskerHigh,
-    ...(showOutliers ? row.beyondWhiskers : []),
-    ...(row.state === 'points' && showObservations === 'small-n' ? data.groups[order[index]!]!.observations ?? [] : []),
-  ]);
-  const engine = engineFmt || options.target === undefined || !labelled.some((value) => value != null && Math.abs(value) >= 1e6)
-    ? undefined : seriesRasterFormatter(undefined, labelled, options.locale?.language, options.unit, options.target);
-  const scaled = engine?.spec.autoMagnitude ? engine : undefined;
-  const axisFmt = engineFmt ?? scaled?.fmt ?? ((value: number) =>
-    formatAutomaticNumber(value, { locale: options.locale?.language, decimals: autoDecimals(value) }));
-  // The statistic and point labels are one series: one precision for them all (seriesValueFormatter), not one per value.
-  // The hover card prints its quartile and whisker ranges at the same precision (marks.labelDecimals).
+  const axisFmt = engineFmt ?? ruleObservation!;
+  // The hover card prints its quartile and whisker ranges at the label precision (marks.labelDecimals).
   const labelDecimals = seriesValueDecimals(printed);
-  const fmt = engineFmt ?? scaled?.fmt ?? seriesFormatterAt(labelDecimals, options.locale?.language);
-  const observationFmt = authoredFmt ?? fmt;
-
-  // ---- the median COLUMN gets ONE decimal convention ------------------------
-  // The default formatter decides decimals per value, which printed 107 / 97.6
-  // / 87.5 / 133 / 97.5 down a single column — ragged precision that reads as
-  // sloppiness and invites "why is that one rounder?". Alignment is exact:
-  // decide once, from the whole column, and give every median the same number
-  // of decimals. An authored `format` already
-  // fixes the decimals, so it is left alone.
-  const fmtMedian = engineFmt || scaled
-    ? fmt
-    : seriesValueFormatter(rows.map((row) => row.median), options.locale?.language, options.unit, options.target);
+  /** The quartile and median labels. */
+  const fmt = engineFmt ?? ruleStat!;
+  /** A whisker end: a statistic under 'p10p90', an observation otherwise. */
+  const whiskerFmt = engineFmt ?? (percentileWhiskers ? ruleStat! : ruleObservation!);
+  const observationFmt = authoredFmt ?? ruleObservation!;
+  const fmtMedian = fmt;
   /** The text a statistic of a row prints, on its label and in the description: one text per value. */
-  const statText = (row: BoxGroupDerived, stat: BoxStat): string => (stat === 'median' ? fmtMedian : fmt)(row[stat]!);
+  const statText = (row: BoxGroupDerived, stat: BoxStat): string =>
+    (stat === 'min' || stat === 'max' ? (engineFmt ?? ruleObservation!) : stat === 'whiskerLow' || stat === 'whiskerHigh' ? whiskerFmt : fmt)(row[stat]!);
 
   // ---- lints ---------------------------------------------------------------
   if (whiskerRule === 'minmax' && options.showOutliers !== undefined) {
@@ -497,8 +487,10 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
   const availH = plotHeightAfter(frameResult, size.height, plot0.h - topPad - axisH);
   const lineH = tickFont.size * 1.2;
 
+  // The groups' sample sizes are one set.
+  const baseFmt = ruleFormatter(rows.map((row) => row.n), options.locale?.language);
   const nText = (row: BoxGroupDerived): string => {
-    const n = `n = ${formatAutomaticNumber(row.n, { locale: options.locale?.language, decimals: 0 })}`;
+    const n = `n = ${baseFmt(row.n)}`;
     // Suppression gets its trace at the exact spot the reader looks for the
     // sample size, not only in a footnote at the bottom of the canvas.
     const withheld = withheldBeyond[row.id];
@@ -581,7 +573,8 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
   }
   // The parked value takes the room of its label at the plot's right end.
   // It reads in the tick row, as a tick: the axis format.
-  const parkLabel = parked === undefined ? '' : axisFmt(parked);
+  // The parked figure is an observation's value: under the default rule it prints in the observation set.
+  const parkLabel = parked === undefined ? '' : (ruleObservation ?? axisFmt)(parked);
   const parkRoom = parked === undefined ? 0 : PARK_GAP + Math.max(POINT_R, measure(parkLabel, tickFont).width / 2);
 
   if (overrides?.n?.width !== undefined && !nUnder && !labelsOff) {
@@ -665,7 +658,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
         ...(scaleEnd - plot.x < 320 ? { tickCount: 3 } : {}),
         gridlines: options.valueAxis?.gridlines ?? false,
         format: axisFmt,
-        ...(scaled ? { formatSpec: scaled.spec } : {}),
+        ...(observationSpec ? { formatSpec: observationSpec } : {}),
         theme,
         measure,
         canvasWidth: size.width,
@@ -792,7 +785,21 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
       whiskerNodeIds: [],
       beyondNodeIds: [],
       observationNodeIds: [],
+      ...(observationSpec ? { texts: Object.fromEntries((['q1', 'q3', 'whiskerLow', 'whiskerHigh'] as const).flatMap((stat) => (row[stat] === null ? [] : [[stat, statText(row, stat)]]))) } : {}),
     };
+    if (ruleObservation) {
+      // Every observation states its text in the observation set; a drawn label states the same text.
+      const shows: Record<string, string> = {};
+      const seen = new Map<number, number>();
+      for (const observation of data.groups[order[index]!]!.observations ?? []) {
+        if (!Number.isFinite(observation)) continue;
+        const occurrence = seen.get(observation) ?? 0;
+        seen.set(observation, occurrence + 1);
+        // The key JSON.stringify(['observation', observation, occurrence]) gives, built without it: a finite number prints alike.
+        shows[`field:["observation",${observation},${occurrence}]`] = ruleObservation(observation);
+      }
+      (marks.shown ??= []).push({ owner, shows });
+    }
     const isHighlighted = highlights.has(row.id);
     const boxFill = semanticPalettePaint(
       theme,
@@ -822,7 +829,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
       const xQ3 = x(row.q3!);
 
       if (xLow < xQ1) {
-        const lowText = fmt(row.whiskerLow!);
+        const lowText = whiskerFmt(row.whiskerLow!);
         const id = `box:whiskerLow:${row.id}`;
         nodes.push({
           t: 'line',
@@ -835,7 +842,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
           width: strokeToken(theme, 'rule'),
           owner,
           part: 'boxWhisker',
-          display: { ...display, value: lowText, shows: observationShows(index, row.whiskerLow!, lowText) },
+          display: { ...display, value: lowText, shows: observationSpec && percentileWhiskers ? {} : observationShows(index, row.whiskerLow!, lowText) },
         });
         occupied.claim({ x: xLow, y: rowCenter - 0.5, w: xQ1 - xLow, h: 1 }, 'mark', owner, 'boxWhisker');
         const capId = `box:capLow:${row.id}`;
@@ -861,7 +868,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
         mark.whiskerNodeIds.push(id, capId);
       }
       if (xHigh > xQ3) {
-        const highText = fmt(row.whiskerHigh!);
+        const highText = whiskerFmt(row.whiskerHigh!);
         const id = `box:whiskerHigh:${row.id}`;
         nodes.push({
           t: 'line',
@@ -874,7 +881,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
           width: strokeToken(theme, 'rule'),
           owner,
           part: 'boxWhisker',
-          display: { ...display, value: highText, shows: observationShows(index, row.whiskerHigh!, highText) },
+          display: { ...display, value: highText, shows: observationSpec && percentileWhiskers ? {} : observationShows(index, row.whiskerHigh!, highText) },
         });
         occupied.claim({ x: xQ3, y: rowCenter - 0.5, w: xHigh - xQ3, h: 1 }, 'mark', owner, 'boxWhisker');
         const capId = `box:capHigh:${row.id}`;
@@ -1108,7 +1115,8 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
           { slot: 'underOutward', rect: { x: outward < 0 ? statX - size.width : statX, y: under, w: size.width, h: size.height }, penalty: 2 },
         ];
         // A whisker end is an observation, and a quartile can be one (the record keeps it exact then).
-        const shows = observationShows(index, value, text);
+        // Under the default rule a statistic prints in its own set, so it states no observation's text.
+        const shows = observationSpec && (stat === 'q1' || stat === 'q3' || percentileWhiskers) ? {} : observationShows(index, value, text);
         labelRequests.push({
           id: `stat:${row.id}:${stat}`, kind: 'point', role: composedTextRole(text), owner, text, lines: [text], font: labelFont,
           ...(Object.keys(shows).length > 0 ? { shows } : {}),
@@ -1394,7 +1402,7 @@ export function layoutBox(data: BoxData, options: BoxOptions = {}, bracketRoom =
       decisions: solved.decisions,
     },
   }, unprinted), data, options, {
-    occupied, theme, measure, solveCtx, xScale: x,
+    occupied, theme, measure, solveCtx, xScale: x, levelSpec: observationSpec,
     bracketRight: plot.x + plot.w + BRACKET_CLEAR,
     wrapLead,
     // The floor holds the brackets at their narrowest: wrapped where they can wrap.

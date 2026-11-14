@@ -1,7 +1,7 @@
 import { chartString } from '../../strings/scatter';
 import type { SlotCandidate } from '../../label/solver';
 import type { Theme } from '../../types/theme';
-import { formatAutomaticNumber } from '../../format';
+import { printFace } from '../../numberSets';
 import { emphasisWeight, secondaryFont, strokeToken, dashToken } from '../../theme';
 /**
  * Scatter phase 2: scales in, scene nodes out. Zone backgrounds, both
@@ -17,7 +17,8 @@ import type { Id } from '../../types/cell';
 import type { MarkerShape } from '../../types/data';
 import type { AxisGeometry, LintWarning, Paint, SceneDisplay, SceneNode } from '../../types/scene';
 import { clampStateOf } from './clamp';
-import { fitLogTicks, linearAxisSpec, logSpecFormat } from './logAxis';
+import { DeferredShownMarks } from '../../shownMarks';
+import { fitLogTicks, logSpecFormat } from './logAxis';
 import { fmtPathNumber as fmtN } from '../../curve';
 import {
   type NormPt,
@@ -186,7 +187,7 @@ function scatterAxes(env: ScatterEnv, domain: ScatterDomain, area: ScatterPlotAr
   const ticksOf = (scale: typeof x, orient: 'x' | 'y') => {
     const spec = env.axisSpec[orient];
     // A cut value breaks the even tick ladder, so the 2x2 ticks are kept as given and only thinned where labels meet.
-    if (!scale.log) return { format: axisFmt[orient], formatSpec: linearAxisSpec(spec, scale.domain),
+    if (!scale.log) return { format: axisFmt[orient], formatSpec: spec,
       ticks: orient === 'y' ? domain.stepTicks ?? domain.ticks?.y : domain.ticks?.x,
       ...(domain.ticks && domain.quadrants.derived ? { keepEndTicks: true } : {}),
     };
@@ -266,7 +267,7 @@ function tickGrid(domain: ScatterDomain): boolean {
  * the divider's tag; a computed cut keeps its tag, which names the statistic.
  */
 function cutTickLabels(env: ScatterEnv, domain: ScatterDomain, axes: AxisGeometry[], nodes: readonly SceneNode[]): { x?: Id; y?: Id } {
-  const decimal = formatAutomaticNumber(1.5, { locale: env.options.locale?.language, decimals: 1 }).replace(/\d/g, '');
+  const decimal = printFace(env.options.locale?.language).decimal;
   const q = domain.quadrants.derived;
   if (!q || !domain.ticks) return {};
   const found: { x?: Id; y?: Id } = {};
@@ -681,5 +682,6 @@ export function layoutScatterMarks(
     })),
     ...(zones.marks.length ? { zones: zones.marks } : {}),
   };
+  if (env.ruleShown) marks.wouldShow = new DeferredShownMarks(env.ruleShown);
   return { nodes, claims, axes, zones, placed, marks, split, trendLines, rules, cutTicks, ...(densePoints > 0 ? { densePoints } : {}) };
 }

@@ -5,8 +5,7 @@
  */
 
 import type { LegendItemInput } from '../../frame';
-import { formatAutomaticNumber } from '../../format';
-import { MAX_FORMAT_DECIMALS, roundHalfUp } from '../../formatPrecision';
+import { tickFormatter } from '../../axis';
 import type { Rect } from '../../geometry';
 import { rectsOverlap } from '../../geometry';
 import type { OccupiedIndex } from '../../label/occupied';
@@ -83,11 +82,10 @@ export function sizeKeyItems(
   const values = sizeKeyValues(env, sizeMin, sizeMax, (size) => radiusOf(size) <= maxRadius, warnings);
   // The size measure is named once, as a heading before the rings (scatter.matrix).
   const heading = title !== undefined;
+  // A reference value is a scale anchor: the rings print by the tick rule, so 0.25 never reads as 0.3.
+  const ringText = tickFormatter(env.sizeKeySpec, values);
   const rings = values.map((value, index): LegendItemInput => {
-    // A reference value is a scale anchor: 0.25 must not read as 0.3.
-    let decimals = 0;
-    while (decimals < MAX_FORMAT_DECIMALS && Math.abs(Number(roundHalfUp(value, decimals)) - value) > value * 1e-12) decimals++;
-    const text = formatAutomaticNumber(value, { locale: env.options.locale?.language, decimals });
+    const text = ringText(value);
     return {
       id: `size:${index}`,
       label: index === 0 && title && !heading ? `${title}: ${text}` : text,
@@ -111,11 +109,6 @@ export interface PlotSizeKey {
   rects: Rect[];
 }
 
-function keyText(env: ScatterEnv, value: number): string {
-  let decimals = 0;
-  while (decimals < MAX_FORMAT_DECIMALS && Math.abs(Number(roundHalfUp(value, decimals)) - value) > value * 1e-12) decimals++;
-  return formatAutomaticNumber(value, { locale: env.options.locale?.language, decimals });
-}
 
 /**
  * The size key as two nested rings at plot scale in a
@@ -139,7 +132,8 @@ export function plotSizeKey(
   const values = sizeKeyValues(env, sizeMin, sizeMax, () => true, warnings, true);
   const radii = values.map((size) => area.radiusOf({ size }));
   const R = Math.max(...radii);
-  const texts = values.map((value) => keyText(env, value));
+  const ringText = tickFormatter(env.sizeKeySpec, values);
+  const texts = values.map((value) => ringText(value));
   const font = fonts.tick;
   const textW = Math.max(...texts.map((text) => env.measure(text, font).width));
   const textH = env.measure('0', font).height;

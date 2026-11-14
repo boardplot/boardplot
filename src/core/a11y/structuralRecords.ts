@@ -3,10 +3,10 @@ import { chartString as ganttString } from '../strings/gantt';
 import type { DimSwitchDerived } from '../charts/dimswitch/types';
 import type { GridDerived } from '../charts/grid/layout';
 import type { MetricStackData } from '../charts/grid/metricStack';
-import { wholeCurrencyValue } from '../format';
 import { LABEL_ONLY_ROW, type LabelOnlyRowSource } from '../formatSpec';
 import { AUTHORED_EXAMPLES, UNIT_STAND_INS } from '../formatPrecision';
 import { calcPreservesScale, columnOwnsFormat } from '../tableCalc';
+import { isPercentUnit, isUnitText } from '../numberSets';
 import type { BarTableData, BarTableDerived, BarTableMarks, BarTableOptions } from '../charts/bartable/types';
 import type { GanttMarks } from '../charts/gantt/layout';
 import type { GridMarks } from '../charts/grid/layout';
@@ -20,7 +20,7 @@ import type { ResolvedCell, ResolvedColumn, TableData, TableDerived, TableRow, T
 import { resolveChartRequest, type RequestOptions } from '../request';
 import { derivedValue, makeRecord, numericValue, targetId, textValue, type RecordContext } from './recordsShared';
 import { DERIVED_PERCENT_FORMAT } from './valueText';
-import { parseFormatExample, specUnitKind, unitOfSpec } from '../formatSpec';
+import { parseFormatExample, specUnitKind } from '../formatSpec';
 import { unscaledUnit } from './valueText';
 import type { InteractionRecord, InteractionScope, InteractionValue } from './types';
 
@@ -100,6 +100,8 @@ function tableRecordCells(table: TableDerived['table'], data: TableData, options
   const withheld = suppressedTableCells(data);
   const rowSpecs = authoredRowSpecs(data);
   const authoredFormat = new Set(data.columns.filter(columnOwnsFormat).map((column) => column.id));
+  // A currency sign or code (no unit text, no percent) as the chart's unit, with no chart format.
+  const currency = options.unit !== undefined && options.format === undefined && !isUnitText(options.unit) && !isPercentUnit(options.unit);
   return table.rows.flatMap(row => rowSpecs.get(row.id)?.labelOnly ? [] : table.columns.flatMap(column => {
     const resolved = row.cells[column.id];
     // The resolved cell already prints the theme's glyph; a record
@@ -113,15 +115,10 @@ function tableRecordCells(table: TableDerived['table'], data: TableData, options
     const rollUp = row.hasChildren && spec?.cells?.[column.id] === undefined;
     const value = tableValue(options, cell, column, { ...spec, rollUp }, authoredFormat.has(column.id));
     const sourceColumn = data.columns.find(item => item.id === column.id);
-    if (!cell.format && !spec?.format && !authoredFormat.has(column.id) && !options.format
-      && typeof value.raw === 'number' && wholeCurrencyValue(value.raw, options.unit, options.target)
-      && (sourceColumn?.kind === 'value' || (sourceColumn?.kind === 'computed' && calcPreservesScale(sourceColumn.calc)))
-      && (!value.format || specUnitKind(parseFormatExample(value.format)) === 'number')) {
-      // Cells that print their own letter ("1.0B" in an 'M' column) take the bare currency.
-      const scaleUnit = value.format && !column.magnitudeInCells ? unitOfSpec(parseFormatExample(value.format)) : undefined;
-      value.unit = [options.unit, scaleUnit].filter(Boolean).join(' ');
-      // The column's generated example is a default, not an authored override.
-      value.renderTarget = options.target;
+    if (currency && !cell.format && !spec?.format && !authoredFormat.has(column.id) && typeof value.raw === 'number' && value.derived !== 'percent'
+      && (sourceColumn?.kind === 'value' || (sourceColumn?.kind === 'computed' && calcPreservesScale(sourceColumn.calc)))) {
+      // A default column prints the chart's currency in no cell; the record names it, with the scale the head hoists.
+      value.unit = [options.unit, value.scaledUnit ? value.unit : undefined].filter(Boolean).join(' ');
     }
     return [{ row, column, cell, value }];
   }));

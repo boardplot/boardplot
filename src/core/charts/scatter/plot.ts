@@ -16,11 +16,10 @@ import {
   type LegendItemInput,
   authoredNotes,
 } from '../../frame';
-import { formatAutomaticNumber } from '../../format';
-import { formatterFromExample } from '../../formatSpec';
+import { formatterFromExample, formatWithSpec, statisticFormatter } from '../../formatSpec';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { linearScale } from '../../scale';
-import { linearAxisSpec, logScale, logSpecFormat, logTickTiers } from './logAxis';
+import { logScale, logSpecFormat, logTickTiers } from './logAxis';
 import { wrapText, type FontSpec, type TextMeasurer } from '../../text';
 import { canvasMargin, colorRolePaints, mutedMarkPaint, paintColor, panelTypeClass, seriesPaint as themeSeriesPaint } from '../../theme';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
@@ -193,13 +192,16 @@ export function scatterPaints(
  */
 function valueLineLabelRight(env: ScatterEnv, domain: ScatterDomain): number {
   const format = env.options.axisFormat?.y ?? env.options.format;
-  const fmt = format ? formatterFromExample(format, env.options.locale?.language) : (v: number) => formatAutomaticNumber(v);
+  // Without a format the label prints what the annotation pass prints: a late value of the y set, a mean as a statistic set.
+  const level = { ...env.axisSpec.y, prefix: '', suffix: '' };
+  const fmt = format ? formatterFromExample(format, env.options.locale?.language) : (v: number) => formatWithSpec(v, level);
+  const meanFmt = format ? fmt : (v: number) => statisticFormatter([v], level)(v);
   const font = { family: env.theme.type.family, ...env.theme.type.label };
   let width = 0;
   for (const line of drawnValueLines(domain.annotations, domain.meanY)) {
     const ann = domain.annotations[line.index]!;
     if (ann.kind !== 'valueLine' || ann.label === false || (ann.side ?? 'right') !== 'right') continue;
-    const text = ann.label ?? (line.isMean ? `Ø ${fmt(line.value)}` : fmt(line.value));
+    const text = ann.label ?? (line.isMean ? `Ø ${meanFmt(line.value)}` : fmt(line.value));
     if (text) width = Math.max(width, env.measure(text, font).width + 8);
   }
   return width;
@@ -394,7 +396,7 @@ export function scatterPlotArea(
   const axisTitles = options.axisTitles ?? {};
   const qualitative = showAxes && options.qualitativeAxes === true;
   const yAxisW = qualitative ? qualitativeColumn(env, fonts, frame.plot.w).width + QUALITATIVE_GAP : showAxes && !banded.y
-    ? measureValueAxisWidth([dyLo, dyHi], yFmt, theme, measure, 5, env.log.y ? undefined : linearAxisSpec(env.axisSpec.y, [dyLo, dyHi]), env.log.y ? logTickTiers(dyLo, dyHi)[0] : domain.stepTicks ?? domain.ticks?.y) : 0;
+    ? measureValueAxisWidth([dyLo, dyHi], yFmt, theme, measure, 5, env.log.y ? undefined : env.axisSpec.y, env.log.y ? logTickTiers(dyLo, dyHi)[0] : domain.stepTicks ?? domain.ticks?.y) : 0;
   // A banded axis prints no numbers, so it reserves no tick row or column (scatter.matrix).
   const xAxisH = showAxes && !banded.x ? tickH + 6 : 0;
   // A qualitative x title shares the row of its ends; the y title sits in the axis column.

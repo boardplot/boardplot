@@ -21,8 +21,9 @@ import { structureCount } from '../../structureCounts';
  *     imply it.
  */
 
-import { currencyWholeNumbers, formatAutomaticNumber, formatAutomaticPercent } from '../../format';
-import { engineFormatterFromExample, formatterFromExample, seriesRasterFormatter } from '../../formatSpec';
+import { formatAutomaticPercent } from '../../format';
+import { engineFormatterFromExample, formatterFromExample } from '../../formatSpec';
+import { ruleFormatter } from '../../numberSets';
 import { authoredDecimals } from '../../formatPrecision';
 import { accessibleTitle, NormalizeError, resolveSize } from '../../normalize/shared';
 import { CARD_CLASS_WIDTH } from '../../sizing';
@@ -41,7 +42,6 @@ import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { SECONDARY_FULL_DOMAIN } from '../combo/domain';
 import { HIGHLIGHT_KEY, type HighlightKey } from '../combo/plot';
 import { FORCE_CATEGORY_RANKS } from '../combo/categoryRanks';
-import { autoDecimals } from '../../formatPrecision';
 import { authoredNotes, legendRequired, withAuthoredFootnotes, type InternalFootnoteOptions } from '../../frame';
 import { disclosureNote, keepShownNotes, rankKeyShown } from '../../notes';
 import { crowdedTailCut, TAIL_SHARE_PCT } from '../../paretoTail';
@@ -456,21 +456,10 @@ export function layoutPareto(
 
   // ---- constructed combo input: derived numbers only, no geometry ----
   const drawCumulative = options.cumulative !== false;
-  // ONE decimal count for every number in the exhibit. combo's per-value
-  // default prints 992 and 0.5 as "992" and "0.5" — two precisions in one row
-  // of labels for one measure. The example is derived from the AUTHORED values,
-  // so nothing is invented; above two decimals the derived example would start
-  // rounding real differences away, and combo's default is kept instead.
-  // Authored, not plotted: a rest bucket is a float SUM of authored values
-  // (10 x 1.4 = 14.000000000000002), and reading precision off that noise
-  // bailed the shared example out — the rest column then printed "14" beside
-  // "13.4" columns and a footnote saying "14.0", three precisions for one
-  // measure. A sum cannot be more precise than its addends.
-  const currencyDefault = !options.format && currencyWholeNumbers(options.unit, options.target);
-  const sharedFormat = options.format ?? sharedFormatExample(ranked.map((p) => p.value));
-  const fmt = currencyDefault
-    ? seriesRasterFormatter(undefined, ranked.map((p) => p.value), options.locale?.language, options.unit, options.target, sharedFormat).fmt
-    : fmtOf({ ...options, format: sharedFormat }, plotted.map((p) => p.value));
+  // Without a format the columns print by the default rule, as combo prints them; a total or a rest
+  // bucket is a sum and prints in the set of its parts.
+  const sharedFormat = options.format;
+  const fmt = options.format ? fmtOf({ ...options, format: options.format }, plotted.map((p) => p.value)) : ruleFormatter(plotted.map((p) => p.value), options.locale?.language, { unit: options.unit });
   // A zero prints as 0, not in the shared decimals ("0.0" reads as a rounded value).
   const hideRestColumn = topN?.rest === false && restColumnId !== undefined;
   const columnCells: Cell[] = plotted.map(p => hideRestColumn && p.id === restColumnId ? null : (p.fill || p.value === 0
@@ -598,7 +587,7 @@ export function layoutPareto(
     // Only on a pinned height: with the height left to the chart, the taller vertical row moves the
     // automatic height search and costs totals their seats (revenue-concentration at 320 and 400).
     ...((options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === true ? { [CATEGORY_ROW_VERTICAL]: true } : {}),
-    ...(sharedFormat ? currencyDefault ? { defaultFormat: sharedFormat } : { format: sharedFormat } : {}),
+    ...(sharedFormat ? { format: sharedFormat } : {}),
     // The curve reads at its start, its threshold crossing and its end, whatever combo's line default is.
     valueLabels: 'ends',
     // The first point repeats the first bar's share: it ranks below the bar totals.
@@ -961,28 +950,9 @@ function sameIds(a: PlottedItem[], b: PlottedItem[]): boolean {
   return a.length === b.length && a.every((x, i) => x.id === b[i]!.id);
 }
 
-/**
- * The example carries grouping AND the decimal count actually present in the
- * data (capped at two). `undefined` ⇒ leave combo's per-value default alone.
- */
-function sharedFormatExample(values: number[]): string | undefined {
-  let decimals = 0;
-  for (const v of values) {
-    const text = String(v);
-    const dot = text.indexOf('.');
-    if (dot === -1) continue;
-    if (text.includes('e') || text.includes('E')) return undefined;
-    decimals = Math.max(decimals, text.length - dot - 1);
-    if (decimals > 2) return undefined;
-  }
-  return decimals === 0 ? '1,234' : `1,234.${'5'.repeat(decimals)}`;
-}
-
-/** Business default matching combo's: whole numbers get no decimals. */
-function fmtOf(options: ParetoOptions, values: readonly number[]): (v: number) => string {
-  if (options.format) return formatterFromExample(options.format, options.locale?.language, undefined, values);
-  return (v: number) =>
-    formatAutomaticNumber(v, { locale: options.locale?.language, decimals: autoDecimals(v) });
+/** The authored format over the plotted values. */
+function fmtOf(options: ParetoOptions & { format: string }, values: readonly number[]): (v: number) => string {
+  return formatterFromExample(options.format, options.locale?.language, undefined, values);
 }
 
 /**

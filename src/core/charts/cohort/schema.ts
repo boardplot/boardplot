@@ -65,7 +65,7 @@ export const cohortDataSchema = z
 const trackOverrides = columnOverridesOption('cohort', ['width', 'align', 'headAlign', 'label']);
 
 export const cohortOptionsSchema = baseOptionsSchema.safeExtend(refusedBaseOptions('cohort')).safeExtend({
-  format: baseOptionsSchema.shape.format.describe("Rate format in percentage units, such as '1.0%' or '1.00' for two decimals without a sign on exhibit tables. Default: a decimal below 10%, whole percent otherwise on the heatmap. Exhibit tables share the needed decimal precision. The M0 anchor is neutral and the colour scale stays fixed at 0–100%."),
+  format: baseOptionsSchema.shape.format.describe("Rate format in percentage units, such as '1.0%' or '1.00' for two decimals without a sign on exhibit tables. Without a format the rates of the chart are one percent set under the default rule, and the heatmap keeps the set's decimals. The M0 anchor is neutral and the colour scale stays fixed at 0–100%."),
   basis: z
     .enum(['cohort', 'previous'])
     .optional()

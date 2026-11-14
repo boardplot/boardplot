@@ -232,7 +232,8 @@ describe('value integrity on the chart', () => {
       series: [{ id: 'w', role: 'reference', values: widths }, { id: 'm', values: margins.map((pct) => ({ pct })) }],
     };
     const printed = new Set(texts('mekko', data, { variant: 'bar', widthSeriesId: 'w', unit: '%', size: { width: 888, height: 396 } }));
-    expect(['13%', '15%', '14%', '9%', '3%'].filter((v) => printed.has(v)).length).toBeGreaterThanOrEqual(4);
+    // Default number rule: before "13%", "15%", "14%", "9%", "3%".
+    expect(['12.7%', '14.9%', '14.3%', '9.5%', '2.7%'].filter((v) => printed.has(v)).length).toBeGreaterThanOrEqual(4);
   });
 
   // A centered funnel and a bar Rest built from percent cells still printed bare numbers ("70", "30") after the main paths kept their '%'.

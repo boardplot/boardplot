@@ -60,14 +60,22 @@ it('prints every member row of a money measure in the magnitude of its largest c
  const small:DimSwitchData={...exampleData,facts:exampleData.facts.map(fact=>({...fact,sums:tiny(fact.sums)!,...(fact.ref ? {ref:tiny(fact.ref)} : {})}))};
  expect(['total','paid','search-a','search-b'].map(member=>row(member,'spend',small).cells.range!.displayed)).toEqual(['0.180','0.160','0.140','0.120']);
 });
-// Period cells of 1.46M printed one string (1.5M ... 1.4M) because the Range total of 18.2M set the precision of every column of the measure.
-it('gives each column of a money measure the precision its own figures need', () => {
+// The cells of one money measure are one rule set across its columns: beside the Range total of 18.2M, 1.46M prints 1.5M and 90,000 prints 90k.
+it('gives a money measure one rule set across its columns', () => {
  const sums=(amount:number)=>({amount});
  const data:DimSwitchData={dimension:{label:'Region',total:{id:'total',label:'Total'},members:[{id:'a',label:'A'},{id:'b',label:'B'}],headline:['amount'],sums:true},
   measures:[{id:'amount',scale:'money',label:'Amount',value:{field:'amount'}}],periods:[{id:'range',label:'Range',kind:'range'},{id:'prior',label:'Prior',kind:'prior'},{id:'p1',label:'P1'},{id:'p2',label:'P2'}],
   facts:[['total',18200000,1460000,1440000],['a',17100000,1370000,1350000],['b',1100000,90000,90000]].flatMap(([memberId,...v])=>(['range','p1','p2'] as const).map((periodId,i)=>({memberId:memberId as string,periodId,sums:sums(v[i] as number),...(i===0 ? {ref:sums(v[0] as number*0.9)} : {})})))};
- expect(['range','p1','p2'].map(col=>row('total','amount',data).cells[col]!.displayed)).toEqual(['18.2M','1.46M','1.44M']);
- expect(['range','p1','p2'].map(col=>row('b','amount',data).cells[col]!.displayed)).toEqual(['1.1M','0.09M','0.09M']);
+ // Default number rule: before "18.2M", "1.46M", "1.44M".
+ expect(['range','p1','p2'].map(col=>row('total','amount',data).cells[col]!.displayed)).toEqual(['18.2M','1.5M','1.4M']);
+ // Default number rule: before "1.1M", "0.09M", "0.09M".
+ expect(['range','p1','p2'].map(col=>row('b','amount',data).cells[col]!.displayed)).toEqual(['1.1M','90k','90k']);
+});
+// A relative change of 1.4 against 1.6 printed "−12%": the float −12.499999999999996 rounded without the cleaning of float noise the rule uses.
+it('cleans a relative change of float noise before it rounds', () => {
+ const lift=getFixtures('dimswitch').find(f=>f.id==='total-rate-lift')!;
+ const change=resolveDimSwitch(lift.data as DimSwitchData,lift.options as never).table.rows.find(r=>r.id===`${dimswitchRowId('by-measure','beta','lift')}:change`)!;
+ expect(change.cells.p1!.displayed).toBe('−13%');
 });
 // Scale 'money' climbs k, M, B itself, so a unit that names a magnitude prints 1,320 Mio. CHF as 1.32k.
 it('warns when a money measure has a unit that names a magnitude', () => {
@@ -87,7 +95,7 @@ it('prints values and generated comparisons with the explicit decimal mark', () 
  for (const text of [cac.cells.range!.displayed,cac.cells.pp!.displayed]) expect(text).toMatch(/\d,\d/);
 });
 // At 320 px the bound "<0.1%" cost width the rounded text did not, and the table drew 0.025 as "0.0%" and −0.015 as "0.0pp".
-it('prints the bound, not zero, for small rates in a narrow table', () => {
+it('prints the digits, not zero, for small rates in a narrow table', () => {
  const fact=(memberId:string,periodId:string,completed:number,ref?:number)=>({memberId,periodId,sums:{completed,orders:0.1},...(ref===undefined?{}:{ref:{completed:ref,orders:0.1}})});
  const facts=[['total',0.025,0.04,0.0375,0.05,0.025],['alpha',0.04,0.02,0.03,0.03,0.01],['beta',0.01,0.06,0.045,0.07,0.04]].flatMap(([id,range,prior,plan,p1,ref])=>[
   fact(id as string,'range',range as number),fact(id as string,'prior',prior as number),fact(id as string,'plan',plan as number),fact(id as string,'p1',p1 as number,ref as number)]);
@@ -99,7 +107,7 @@ it('prints the bound, not zero, for small rates in a narrow table', () => {
  const geometry=measure(spec).geometry!;
  const texts=[...renderSvg(geometry,resolveChartRequest(spec).theme).matchAll(/<text[^>]*>(.*?)<\/text>/gs)].map(match=>match[1]!.replace(/<[^>]+>/g,''));
  expect(texts.filter(text=>/^[+−-]?0\.0(%|pp)$/.test(text))).toEqual([]);
- expect(texts).toContain('&lt;0.1%');
+ expect(texts).toContain('0.025%'); // Default number rule: before "<0.1%".
 });
 
 describe('dimswitch compiler',()=>{
@@ -330,7 +338,7 @@ it('lifts a small rate of a percent measure without a format', () => {
   const data = structuredClone(fixture.data) as DimSwitchData;
   data.facts.find(fact => fact.memberId === 'beta' && fact.periodId === 'actual')!.sums.completed = 0.03;
   const svg = renderSvg(requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'dimswitch', data, options: fixture.options } as never))), resolveTheme());
-  expect(svg).toContain('&lt;0.1%');
+  expect(svg).toContain('>0.03%<'); // Default number rule: before "<0.1%".
   expect(svg).not.toContain('>0.0%<');
 });
 
@@ -422,8 +430,10 @@ it('gives a fold fix that draws the same table without the fold warning', () => 
 
 // A fold hides the rows below its depth, yet their small changes kept one decimal on every change figure of the column ("+130.0%" beside "+4.4%").
 it('settles the decimals of a folded table on the rows it draws', () => {
-  // The total's prior halves in orders, revenue and spend, so every change the fold draws is far above 5 %; the members stay small.
-  const halved = (sums: DimSwitchSums | undefined) => sums && { ...sums, orders: sums.orders! / 2, rev: sums.rev! / 2, spend: sums.spend! / 2 };
+  // The total's prior shrinks by a sixth in orders, revenue and spend, so the fold draws a change of 12.5 % alone and prints it
+  // whole. Unfolded, the members' changes of 7 % to 12 % join its band, and two digits of the smallest give it a decimal.
+  // Before the change sets, the prior halved and the column printed one decimal unless every change was 5 % or more.
+  const halved = (sums: DimSwitchSums | undefined) => sums && { ...sums, orders: sums.orders! / 1.2, rev: sums.rev! / 1.2, spend: sums.spend! / 1.2 };
   const data = { ...exampleData, facts: exampleData.facts.map(fact => fact.memberId === 'total' && fact.periodId === 'prior' ? { ...fact, sums: halved(fact.sums)! } : fact) };
   const formatOf = (folded: boolean) => (compileDimSwitch(data, { variant: 'by-measure', depth: 1, ...(folded ? { [FOLDED]: true } : {}) } as never).data.rows
     .find(r => r.id === dimswitchRowId('by-measure', 'total', 'orders'))!.cells!.pp as { format: string }).format;

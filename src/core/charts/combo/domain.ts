@@ -14,7 +14,7 @@ import { formatAutomaticPercent, formatShare } from '../../format';
 import { roundingUnavailable, shareRoundingNotes, sumConsistentShares, type RoundingAdjustment } from '../../shareRounding';
 import { comboValueLabels, FIRST_END_BELOW_TOTALS } from './endpoints';
 import { unitConflict, unitConflictRefusal } from '../../schema/units';
-import { engineFormatterFromExample, formatStatWithSpec, parseFormatExample, percentRasterFormatter, roundedNumber, seriesRasterFormatter, unitMagnitude } from '../../formatSpec';
+import { defaultSetSpec, engineFormatterFromExample, formatStatWithSpec, formatWithSpec, parseFormatExample, ruleStatistics, percentRasterFormatter, roundedNumber, seriesRasterFormatter } from '../../formatSpec';
 import { averageMarkerLine, averageMarkerMean, averageMarkerSpan, averageMarkerScope, averageOfUnaddedSums, warnIncompleteStacks } from '../band/stacks';
 import { anomalyCorridor, anomalyModel, refuseAnomalySpec } from '../column/anomaly';
 import type { LineAnomaly } from '../line/model';
@@ -756,13 +756,17 @@ function comboAnomalyModel(
   const raster = onSecondary ? secondary : primary;
   const isPct = series.vals.some((val) => val.isPct);
   const fmt = isPct ? pctFmt : raster.fmt;
-  // Rule statistics keep two decimals of a percent; the raster could round a MAD of 0.1% to nothing.
-  const statFmt = isPct ? (v: number) => formatAutomaticPercent(v, 2, false, locale) : (v: number) => formatStatWithSpec(v, raster.spec);
+  // Under the default rule a statistic is a set of its own, from the percent set where the line is in percent.
+  const statSpec = isPct ? raster.percentSpec : raster.spec;
+  const rule = ruleStatistics(statSpec, fmt);
+  // An authored format: rule statistics keep two decimals of a percent; the raster could round a MAD of 0.1% to nothing.
+  const statFmt = rule ? (v: number) => formatStatWithSpec(v, statSpec)
+    : isPct ? (v: number) => formatAutomaticPercent(v, 2, false, locale) : (v: number) => formatStatWithSpec(v, raster.spec);
   const present = cats.flatMap((c, ci) => {
     const value = series.vals[ci]?.v;
     return value === null || value === undefined || !Number.isFinite(value) ? [] : [{ categoryId: c.id, value }];
   });
-  return { ...anomalyModel(spec, present, fmt, statFmt, locale, warnings, strings), seriesId: series.id, statFmt, onSecondary };
+  return { ...anomalyModel(spec, present, fmt, statFmt, locale, warnings, strings, rule), seriesId: series.id, statFmt, rule, onSecondary };
 }
 
 /** Internal: the second run of a combo whose default-hidden value axis left a column total without a seat. */
@@ -833,12 +837,11 @@ export function resolveComboDomain(data: ChartData, options: ComboOptions, warni
     // An authored format holds both axes' labels to one scale and one decimal count (exampleSpec).
     const printed = axis === 'primary' && options.format ? seriesNorm.filter((s) => !s.format) : group;
     const shared = units.size === 1 ? [...units][0] : undefined;
-    // A secondary group that names no unit reads in the chart unit the subtitle prints; one that names a scale
-    // ("$m") gives it no second one ("12M" under "in $m").
-    const unnamed = units.size === 0 && unitMagnitude(options.unit) !== undefined ? options.unit : undefined;
+    // A secondary group that names no unit reads in the chart unit the subtitle prints: a unit text
+    // ("$m") gives it no scale word ("12M" under "in $m").
+    const unnamed = units.size === 0 ? options.unit : undefined;
     return seriesRasterFormatter(axis === 'primary' ? options.format : undefined, printed.flatMap((s) => s.vals.filter((val) => !val.isPct).map((val) => val.v)),
-      options.locale?.language, axis === 'primary' ? (options.unit ?? shared) : shared ?? unnamed, options.target,
-      axis === 'primary' ? (options as { defaultFormat?: string }).defaultFormat : undefined, columns.length > 1);
+      options.locale?.language, axis === 'primary' ? (options.unit ?? shared) : shared ?? unnamed);
   };
   const valueSpec = rasterFor('primary');
   const fmt = valueSpec.fmt;
@@ -846,7 +849,10 @@ export function resolveComboDomain(data: ChartData, options: ComboOptions, warni
   // Percent cells are their own scale group and raster over their own values:
   // an authored 36.2 prints "36.2%", never a flat "36%" beside a title that
   // states 36.2, as the numeric groups above work.
-  const pctFmt = percentRasterFormatter(seriesNorm.flatMap((s) => s.vals.filter((val) => val.isPct).map((val) => val.v)), options.locale?.language);
+  const pctValues = seriesNorm.flatMap((s) => s.vals.filter((val) => val.isPct).map((val) => val.v));
+  // Without a format the percent cells are one percent set under the default rule.
+  const pctSpec = options.format ? undefined : { ...defaultSetSpec(pctValues, options.locale?.language, undefined, { kind: 'percent' }), suffix: '%' };
+  const pctFmt = pctSpec ? (value: number) => formatWithSpec(value, pctSpec) : percentRasterFormatter(pctValues, options.locale?.language);
   const sourceMean = options.viewDomain || options.window
     ? columns.length > 0 && cats.length > 0
       ? columns.reduce((sum, series) => sum + series.vals.reduce((n, value) => n + (value.v ?? 0), 0), 0) / cats.length
@@ -880,11 +886,11 @@ export function resolveComboDomain(data: ChartData, options: ComboOptions, warni
   const incompleteCats = new Set(cats.filter((_, ci) => anyByCat[ci] && columns.some(s => s.vals[ci]!.v === null)).map(c => c.id));
   if (columnsAdd) warnIncompleteStacks('stacked', cats, incompleteCats,
     options.labels !== false && options.labels?.grandTotal !== false, false, 'columns', warnings, disclosuresShown(options));
-  // rounding 'sum-consistent' (the default): the segment shares of each whole stack (no negative
+  // rounding 'sum-consistent': the segment shares of each whole stack (no negative
   // or missing part, an authored percent nowhere) print so they add up to 100%.
   const shareTexts = new Map<string, string>();
   const roundingAdjustments: RoundingAdjustment[] = [];
-  if (options.rounding !== 'nearest' && columns.length > 1) cats.forEach((c, ci) => {
+  if (options.rounding === 'sum-consistent' && columns.length > 1) cats.forEach((c, ci) => {
     if (!anyByCat[ci] || negBot[ci]! < 0 || !(posTop[ci]! > 0) || incompleteCats.has(c.id) || columns.some((s) => s.vals[ci]!.isPct)) return;
     const shares = columns.map((s) => (s.vals[ci]!.v! / posTop[ci]!) * 100);
     const rounded = sumConsistentShares(shares, options.locale?.language);
@@ -1017,7 +1023,7 @@ export function resolveComboDomain(data: ChartData, options: ComboOptions, warni
     const extent: [number, number] | undefined = anomalyRun?.onSecondary ? rightDomain : [left.dLo, left.dHi];
     return anomalyRun && extent && {
       model: anomalyRun.anomaly, seriesId: anomalyRun.seriesId, statFmt: anomalyRun.statFmt,
-      ...anomalyCorridor(anomalyRun.anomaly, anomalyRun.values, extent[0], extent[1], anomalyRun.statFmt, out, options.strings),
+      ...anomalyCorridor(anomalyRun.anomaly, anomalyRun.values, extent[0], extent[1], anomalyRun.statFmt, out, options.strings, anomalyRun.rule),
     };
   };
   // The anatomy with every value labelled (each column value and each line

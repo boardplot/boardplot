@@ -197,7 +197,9 @@ export function mekkoPlotArea(env: MekkoEnv, domain: MekkoDomain, frame: FrameRe
   const showTotals = kindSetting(env, 'total') !== false && domain.cats.some((c) => !domain.wholeUnknown.has(c.id));
   // A stack of percent cells keeps its percent sign on the axis, as on its labels.
   const percentCells = mode === 'unit' && domain.series.every((s) => s.vals.every((cell) => cell.v === null || cell.isPct));
-  const axisSpec = percentCells && !(options.format && specUnitKind(parseFormatExample(options.format)) === 'percent') ? { ...defaultFormatSpec(options.locale?.language), suffix: '%' } : undefined;
+  // Under the default rule the ticks of a unit stack take the set of its values.
+  const ruleAxis = mode === 'unit' ? (percentCells ? env.pctCellSpec : env.levelSpec) : undefined;
+  const axisSpec = ruleAxis ?? (percentCells && !(options.format && specUnitKind(parseFormatExample(options.format)) === 'percent') ? { ...defaultFormatSpec(options.locale?.language), suffix: '%' } : undefined);
   const stepSpec = mode === 'percent' ? { ...defaultFormatSpec(options.locale?.language), suffix: '%' }
     : axisSpec ?? (options.format ? exampleSpec(options.format, options.locale?.language) : defaultFormatSpec(options.locale?.language));
   const axisFmt = domain.stepTicks ? tickFormatter(stepSpec, domain.stepTicks)

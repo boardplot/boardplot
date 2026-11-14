@@ -37,7 +37,8 @@ it('sorts absolute, integrated and relative variance by the signed drawn differe
   const absolute = layoutVariance(varianceData, { variance, variant: 'absolute', size, sort: { categories: 'desc' } });
   expect(absolute.marks.bars.map((bar) => bar.categoryId)).toEqual(['birch', 'cedar', 'amber']);
   expect(absolute.derived.deltaAbs).toEqual({ birch: 2, cedar: 2, amber: 0.2, elm: null });
-  expect(['birch', 'cedar', 'amber'].map((id) => pointText(absolute, id))).toEqual(['+2.0', '+2.0', '+0.2']);
+  // Default number rule: before "+2.0", "+2.0", "+0.2" (an absolute change joins its level set).
+  expect(['birch', 'cedar', 'amber'].map((id) => pointText(absolute, id))).toEqual(['+2', '+2', '+0.2']);
   const integrated = layoutVariance(varianceData, { variance, variant: 'integrated', size, sort: { categories: 'desc' } });
   expect(integrated.marks.bars.map((bar) => bar.categoryId)).toEqual(['birch', 'cedar', 'amber']);
   expect(integrated.derived.ac).toEqual({ birch: 12, cedar: 3, amber: 0.3, elm: null });

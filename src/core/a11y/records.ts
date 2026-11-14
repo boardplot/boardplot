@@ -1,4 +1,3 @@
-import { currencyWholeNumbers } from '../format';
 import { drawnRequest } from '../drawnRequest';
 import type { InteractionValue } from './types';
 import { creativeRecords } from './creativeRecords';
@@ -35,11 +34,8 @@ function recordsOf(context: RecordContext): InteractionRecord[] {
     pushAll(records, eventRecords(ctx));
     pushAll(records, valueLineRecords(ctx));
   }
-  const target = ctx.request.options.target;
-  const currency = (value: InteractionValue): InteractionValue => {
-    if (value.reason) value = { ...value, reason: localizedRecordReason(value.reason, ctx.request.locale?.language) };
-    return !value.format && currencyWholeNumbers(value.unit, target) ? { ...value, renderTarget: target } : value;
-  };
+  const currency = (value: InteractionValue): InteractionValue =>
+    value.reason ? { ...value, reason: localizedRecordReason(value.reason, ctx.request.locale?.language) } : value;
   for (const record of records) {
     record.value = currency(record.value);
     record.fields = record.fields.map(field => ({ ...field, value: currency(field.value) }));

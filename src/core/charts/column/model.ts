@@ -109,6 +109,8 @@ export interface ColumnDomain extends ColumnEnv {
   totalFmt: (v: number) => string;
   /** Derived statistics keep their own precision inside the raster's style. */
   statFmt: (v: number) => string;
+  /** The weighted shares of a computed Total column: a statistic set of their own. */
+  totalStatFmt?: (v: number) => string;
   /** The generated average marker's id and its number format, in its drawn label and its hover record alike. */
   averageMarker?: { id: Id; fmt: (v: number) => string };
   variant: ColumnVariant;
@@ -176,6 +178,8 @@ export interface ColumnDomain extends ColumnEnv {
   corridorShown: { low: boolean; high: boolean };
   /** The on-exhibit trace for a suppressed corridor rule. */
   corridorNote: string;
+  /** The corridor bounds' printer: the rule sentence, the drawn labels and their hover values. */
+  corridorFmt: (v: number) => string;
   activeBreak: LinearBreak | undefined;
   /** What a grand total prints, or null when the totals are off. */
   gtContent: LabelContent | null;

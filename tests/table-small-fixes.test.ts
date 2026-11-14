@@ -266,8 +266,9 @@ it('keeps a computed column in its own kind under a row format and honours a com
   };
   const rows = resolveTable(data, {}).table.rows;
   const shown = (row: string, col: string) => rows.find(r => r.id === row)!.cells[col]!.displayed;
-  expect(['yoy', 'share'].map(col => shown('a', col))).toEqual(['25.0%', '50.0%']);
-  expect(['yoy', 'share'].map(col => shown('p', col))).toEqual(['33.3%', '80.0%']);
+  // Default number rule: the percent change is a signed change set, before "25.0%" and "33.3%".
+  expect(['yoy', 'share'].map(col => shown('a', col))).toEqual(['+25%', '50.0%']);
+  expect(['yoy', 'share'].map(col => shown('p', col))).toEqual(['+33%', '80.0%']);
 
   const delta = resolveTable({
     columns: [{ id: 'l', kind: 'rowLabel' }, { id: 'ac', kind: 'value', format: '1,234' }, { id: 'py', kind: 'value', format: '1,234' },
@@ -298,7 +299,8 @@ it('keeps scaled weekly levels accurate beside a large range total', () => {
     ],
   });
   const printed = (index: number) => Object.keys(cells).map(id => table.rows[index]!.cells[id]!.displayed);
-  expect(printed(0)).toEqual(['5.705B', '0.189B', '0.196B', '0.000B']);
+  // Default number rule: before "5.705B", "0.189B", "0.196B", "0.000B".
+  expect(printed(0)).toEqual(['5.71B', '0.19B', '0.20B', '0']);
   expect(printed(1)).toEqual(['5.705B', '0.189B', '0.196B', '0.000B']);
   expect(table.rows[1]!.unitAffix).toBe('$');
   expect(printed(2)).toEqual(['5,705,293,076', '188,633,562', '195,633,562', '0']);
@@ -321,7 +323,8 @@ it('keeps fractional per-unit costs distinct with authored and default precision
   });
   expect([table.rows[0]!.cells.w1!.displayed, table.rows[0]!.cells.w2!.displayed]).toEqual(['29.1', '28.6']);
   expect(table.rows[0]!.unitAffix).toBe('$');
-  expect([table.rows[1]!.cells.w1!.displayed, table.rows[1]!.cells.w2!.displayed]).toEqual(['29.1', '28.6']);
+  // Default number rule: before "29.1", "28.6".
+  expect([table.rows[1]!.cells.w1!.displayed, table.rows[1]!.cells.w2!.displayed]).toEqual(['29.06', '28.64']);
   expect([table.rows[2]!.cells.w1!.displayed, table.rows[2]!.cells.w2!.displayed]).toEqual(['0.038', '0.042']);
 });
 
@@ -333,7 +336,8 @@ it('holds an authored magnitude on money rows and climbs for auto', () => {
   }, magnitude === undefined ? {} : { magnitude }).table.rows.map((row) => row.cells.v!.displayed);
   expect(printed([14_814_804, 2_222_220], 'thousand')).toEqual(['14,815k', '2,222k']);
   expect(printed([1_200_000_000], 'million')[0]).toMatch(/M$/);
-  expect(printed([14_814_804, 2_222_220], 'auto')).toEqual(['14.8M', '2.2M']);
+  // Default number rule: before "2.2M" (each money row is its own set).
+  expect(printed([14_814_804, 2_222_220], 'auto')).toEqual(['14.8M', '2.22M']);
   expect(printed([1_200_000_000])[0]).toMatch(/B$/);
 });
 
@@ -504,26 +508,32 @@ it('lifts only zero-looking figures, after fitting, without costing the table it
   const texts = (geometry: { scene: SceneNode[] }, prefix: string) => geometry.scene.filter((node): node is TextNode => node.t === 'text' && node.id.startsWith(prefix)).map(node => node.lines.join(' '));
   const fit = (values: number[], width: number) => texts(layout('table', { columns: [{ id: 'label', kind: 'rowLabel', label: 'Item', width: 140 }, { id: 'value', kind: 'value', label: 'Orders', width }],
     rows: values.map((v, i) => ({ id: `r${i}`, label: `Row ${i}`, cells: { value: v } })) }, { target: 'report', size: { width: 960 }, fitFormats: true }), 'cell:r');
-  expect(fit([30680, 10336, 4], 56).filter(text => /\d/.test(text) && !text.startsWith('Row'))).toEqual(['30.7', '10.3', '<0.1']);
-  expect(fit([3068000, 1033600, 1200], 50).filter(text => /\d/.test(text) && !text.startsWith('Row'))).toEqual(['3.1M', '1.0M', '1,200']);
+  // Default number rule: before "30.7 · 10.3 · <0.1" under a "(k)" head. The fit step that lowers the threshold for scale
+  // words prints the rule's decimals at the new scale, and the ladder ends there.
+  expect(fit([30680, 10336, 4], 56).filter(text => /\d/.test(text) && !text.startsWith('Row'))).toEqual(['30.7k', '10.3k', '4']);
+  // Before: "3.1M · 1.0M · 1,200", which overflowed this width. The width step removes decimals from every group
+  // while the column overflows. "3.1M · 1.0M · 1k" fits from 56 px.
+  expect(fit([3068000, 1033600, 1200], 50).filter(text => /\d/.test(text) && !text.startsWith('Row'))).toEqual(['3M', '1M', '1k']);
   const money = resolveTable({ columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'a', kind: 'value' }, { id: 'b', kind: 'value' }, { id: 'c', kind: 'value' }],
     rows: [{ id: 'm', label: 'Money', scale: 'money', cells: { a: 1500, b: 40, c: 2300 } }] }, { target: 'report' }).table.rows[0]!;
   expect(['a', 'b', 'c'].map(id => money.cells[id]!.displayed)).toEqual(['1,500', '40', '2,300']);
   const ids = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'];
   const wide = layout('table', { columns: [{ id: 'label', kind: 'rowLabel', label: 'Item' }, ...ids.map(id => ({ id, kind: 'value', label: id.toUpperCase() }))],
-    rows: ['x', 'y', 'z'].map((r, i) => ({ id: r, label: `Row ${r}`, cells: Object.fromEntries(ids.map((c, j) => [c, j === 3 && i === 1 ? 450 : 1234567 + j * 1000 + i])) })) }, { target: 'report', size: { width: 320 } });
-  expect(texts(wide, 'cell:y:d')).toEqual(['<0.1']);
+    rows: ['x', 'y', 'z'].map((r, i) => ({ id: r, label: `Row ${r}`, cells: Object.fromEntries(ids.map((c, j) => [c, j === 3 && i === 1 ? 450 : 1234567 + j * 1000 + i])) })) }, { target: 'report', size: { width: 336 } });
+  // Before: "<0.1" under an "(M)" head at 320 px. The default prints no bound, so 450 keeps its digits, the column
+  // keeps its scale words in the cells, and the table needs 336 px.
+  expect(texts(wide, 'cell:y:d')).toEqual(['450']);
   const share = resolveTable({ columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'v', kind: 'value' }, { id: 's', kind: 'computed', calc: { op: 'share', of: 'v' } }],
     rows: [{ id: 'a', label: 'A', cells: { v: 99990 } }, { id: 'b', label: 'B', cells: { v: 4 } }] }, { target: 'report' }).table.rows;
   expect(share.map(row => row.cells.s!.displayed)).toEqual(['100.0%', '<0.1%']);
 });
 
-// A tight table fell back to the plain rounded text and printed 0.001 as a bare "0.00"; it prints the bound.
-it('prints the bound, not a bare zero, where the bound costs a compact step', () => {
+// A tight table fell back to the plain rounded text and printed 0.001 as a bare "0.00". It prints the digits of 0.001.
+it('prints the digits of a small value, not a bare zero, in a tight table', () => {
   const ids = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
   const geometry = layout('table', { columns: [{ id: 'label', kind: 'rowLabel', label: 'Item' }, ...ids.map(id => ({ id, kind: 'value', label: id.toUpperCase() }))],
     rows: ['x', 'y'].map((r, i) => ({ id: r, label: `Row ${r}`, cells: Object.fromEntries(ids.map((c, j) => [c, j === 3 ? (i ? 0.001 : 0.42) : 0.5 + j / 10 + i / 100])) })) }, { target: 'report', size: { width: 454 } });
-  expect(geometry.scene.filter((node): node is TextNode => node.t === 'text' && node.id === 'cell:y:d').map(node => node.lines.join(''))).toEqual(['<0.01']);
+  expect(geometry.scene.filter((node): node is TextNode => node.t === 'text' && node.id === 'cell:y:d').map(node => node.lines.join(''))).toEqual(['0.001']); // Default number rule: before "<0.01".
 });
 
 // The React grid and its server snapshot resolve cells outside a chart layout and printed the default bound under smallValues 'zero'.
@@ -666,8 +676,10 @@ it('breaks equal share remainders in full-table row order when rows are hidden',
   });
   const share = (topN?: { n: number; rest: boolean }) =>
     resolveTable(data, { target: 'report', topN }).table.rows.find(row => row.id === 'c')!.cells.share!.displayed;
-  expect(share()).toBe('26.6%');
-  expect(share({ n: 2, rest: false })).toBe('26.6%');
+  // Before: "26.6%", the largest-remainder step that forced the shares to 100. No table forces its shares any
+  // more, so each share rounds on its own, and hidden rows still leave the shown share as it is.
+  expect(share()).toBe('26.7%');
+  expect(share({ n: 2, rest: false })).toBe('26.7%');
 });
 
 // Tone text printed in the raw tone read 2.96:1 on the standard total ground of this fixture.
@@ -943,7 +955,8 @@ it('warns when a previous-period calc has no column group to read', () => {
   expect(resolveTable(data).warnings.filter(warning => warning.code === 'calc-previous-ungrouped').map(warning => warning.owner)).toEqual([{ rowId: 'mom' }]);
   const grouped = resolveTable({ ...data, columnGroups: [{ id: 'm', label: 'Months', columns: ['jan', 'feb'] }] });
   expect(grouped.warnings.some(warning => warning.code === 'calc-previous-ungrouped')).toBe(false);
-  expect(grouped.table.rows.find(row => row.id === 'mom')!.cells.feb!.displayed).toBe('10.0%');
+  // Default number rule: a percent change row is a signed change set, before "10.0%".
+  expect(grouped.table.rows.find(row => row.id === 'mom')!.cells.feb!.displayed).toBe('+10%');
   // A group over the label column and one month gives no value column a predecessor, so it still warns.
   const unrelated = resolveTable({ ...data, columnGroups: [{ id: 'x', label: 'X', columns: ['l', 'jan'] }] });
   expect(unrelated.warnings.some(warning => warning.code === 'calc-previous-ungrouped')).toBe(true);
@@ -1348,7 +1361,8 @@ it('fits an overflowing percent change by its own format, not the money row form
   const measure: typeof defaultMeasurer = (text, font) => ({ ...defaultMeasurer(text, font), width: text.length * 10 });
   const g = layout('table', data, { fitFormats: true, measure, size: { width: 480 } });
   const text = (col: string) => g.scene.find((n): n is TextNode => n.t === 'text' && n.id === `cell:rev:${col}`)!.lines.join('');
-  expect([text('ac'), text('yoy')]).toEqual(['$2.5m', '25%']);
+  // Default number rule: the percent change is a signed change set, before "25%" without a sign.
+  expect([text('ac'), text('yoy')]).toEqual(['$2.5m', '+25%']);
 });
 
 // The accessible table read the percent change under a money row format as "$25" while the cell printed 25.0%.
@@ -1361,7 +1375,8 @@ it('reads a percent change under a row format as a percent, as it reads one with
   const table = resolveTable(data, {}).table;
   const records = preparedTableRecords(table, data, { chartId: 't' } as never, {});
   const value = records.find(record => record.target.owner.rowId === 'rev' && record.target.owner.colId === 'yoy')!.value;
-  expect(table.rows[0]!.cells.yoy!.displayed).toBe('25.0%');
+  // Default number rule: a signed change set, before "25.0%".
+  expect(table.rows[0]!.cells.yoy!.displayed).toBe('+25%');
   // The accessible table reads a derived percent at two decimals.
   expect(interactionValueText(value)).toBe('25.00%');
 });
@@ -1751,11 +1766,13 @@ it('cuts a long period name of a compact cascade so the bars keep their width', 
   const years = getFixtures('bartable').find((f) => f.id === 'cascade-four-years')!;
   const names = ['Fiscal year 2022 actual', 'FY23', 'Fiscal year 2024 forecast figures', '2025'];
   const data = { ...years.data, panels: years.data.panels.map((panel: { label: string }, i: number) => ({ ...panel, label: names[i] })) };
-  for (const width of [280, 320]) {
+  // The share change prints two digits in every group (−0.43, before −1), so its column is wider and the bars are about
+  // 13 px narrower: this cascade draws from 289 px (before 280 px), with bars of 56 px there (before 62 px at 280 px).
+  for (const width of [289, 320]) {
     const compact = layout('bartable', data, { ...years.options, mode: 'compact', size: { width } });
     const tracks = compact.scene.filter((node): node is Extract<SceneNode, { t: 'rect' }> => node.t === 'rect' && node.id.startsWith('track:'));
     expect(tracks.length).toBeGreaterThan(0);
-    expect(Math.min(...tracks.map((node) => node.rect.w)), `track width at ${width}`).toBeGreaterThan(60);
+    expect(Math.min(...tracks.map((node) => node.rect.w)), `track width at ${width}`).toBeGreaterThan(50);
     for (const id of ['y22', 'y23', 'y24', 'y25']) expect(compact.scene.some((node) => node.t === 'text' && node.id === `label:head:${id}`), `${id} at ${width}`).toBe(true);
   }
 });
@@ -1927,15 +1944,15 @@ it('prints each unformatted row at its own scale where one column magnitude does
     .flatMap((node) => node.t === 'text' ? [[node.id, node.lines.join(' ')] as const] : []));
   const columns = [{ id: 'label', kind: 'rowLabel' }, { id: 'jan', kind: 'value' }, { id: 'feb', kind: 'value' }];
   const mixed = texts({ columns, rows: [row('revenue', 3_800_000, 3_600_000), row('orders', 17_600, 17_000), row('rate', 2.2, 2.3)] });
-  expect([mixed.get('cell:revenue:feb'), mixed.get('cell:orders:feb'), mixed.get('cell:rate:feb')]).toEqual(['3.6M', '17,000', '2.3']);
+  expect([mixed.get('cell:revenue:feb'), mixed.get('cell:orders:feb'), mixed.get('cell:rate:feb')]).toEqual(['3.6M', '17k', '2.3']); // Default number rule: before "17,000".
   expect([...mixed.values()].filter((text) => text === 'n.m.')).toEqual([]);
   // One magnitude that fits every row keeps the column's scale.
   const fits = texts({ columns, rows: [row('revenue', 3_800_000, 3_600_000), row('spend', 750_000, 720_000)] });
-  expect([fits.get('cell:revenue:feb'), fits.get('cell:spend:feb')]).toEqual(['3.6', '0.7']);
+  expect([fits.get('cell:revenue:feb'), fits.get('cell:spend:feb')]).toEqual(['3.6M', '720k']); // Default number rule: before "3.6", "0.7" under a column head scale.
   // A ratio column keeps its own format: the row's millions turned a revenue ratio of 1.06 into "1.1 × 10⁻⁶M".
   const ratio = texts({ columns: [...columns, { id: 'r', kind: 'computed', calc: { op: 'div', a: { ref: 'jan' }, b: { ref: 'feb' } } }],
     rows: [row('revenue', 3_800_000, 3_600_000), row('orders', 17_600, 17_000)] });
-  expect([ratio.get('cell:revenue:r'), ratio.get('cell:orders:r')]).toEqual(['1.1', '1.0']);
+  expect([ratio.get('cell:revenue:r'), ratio.get('cell:orders:r')]).toEqual(['1.06', '1.04']); // Default number rule: before "1.1", "1.0".
   // A row scale the engine picks takes the locale's minus glyph, as a column's does.
   const minus = new Map(layout('table', { columns, rows: [{ id: 'revenue', label: 'Revenue', cells: { jan: 3_800_000, feb: -3_600_000 } }, { id: 'rate', label: 'Rate', cells: { jan: -2.3, feb: 1.1 } }] },
     { size: { width: 480, height: 200 }, locale: { minusGlyph: '-' } }).scene.flatMap((node) => node.t === 'text' ? [[node.id, node.lines.join(' ')] as const] : []));

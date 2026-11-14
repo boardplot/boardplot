@@ -7,19 +7,22 @@ import { chartString } from '../../strings/scatter';
 import { breakUnsupported, chartPalette, chartTheme } from '../chartEnv';
 import { defaultMeasurer } from '../../text';
 import { numericViewportRange } from '../../viewport';
-import { formatAutomaticNumber, numberRange } from '../../format';
+import { numberRange } from '../../format';
 import {
   MAGNITUDE_DIVISOR,
+  RULE_SET,
+  defaultSetSpec,
   exampleSpec,
   formatWithSpec,
   formatterFromExample,
-  neededDecimals,
   roundedNumber,
-  seriesRasterFormatter,
   type NumberFormatSpec,
 } from '../../formatSpec';
-import { autoDecimals } from '../../formatPrecision';
+import { tickScale } from '../../numberRule';
+import type { ShownMark } from '../../types/scene';
+import { ruleSetOf } from '../../numberSets';
 import {
+  MAGNITUDE_CEILING,
   NormalizeError,
   normalizeCell,
   normalizeScenario,
@@ -45,7 +48,7 @@ import type { Disclosed, NormGroup, NormPt, ScatterDomain, ScatterEnv } from './
 import { logAxesOf, logDomain, refuseNonPositiveOnLog, type LogAxes } from './logAxis';
 import { deriveQuadrants } from './quadrants';
 import { planFrontier } from './frontier';
-import { fitScatterTrends } from './trend';
+import { fitScatterTrends, trendRateTexts } from './trend';
 import type { ScatterStrategyOptions } from './types';
 import {
   drawnValueLines,
@@ -57,18 +60,9 @@ import {
 import { validateStrategyZones } from './zones';
 import { disclosureNote } from '../../notes';
 
-function scatterFormatter(options: ScatterStrategyOptions, format = options.format): (value: number) => string {
-  // Business default: whole numbers get 0 decimals; small non-integers keep
-  // one, so a 0.4 coordinate never prints as "0". (column/waterfall pattern)
-  // A log axis spreads the values under 1 over whole decades, where one
-  // decimal would print 0.45 as 0.5, left of the 0.5 tick: there a value
-  // under 1 keeps two significant digits.
-  const decimalsOf = options.valueAxis?.log
-    ? (v: number) => (v !== 0 && Math.abs(v) < 1 ? Math.max(1, neededDecimals(v, 1 - Math.floor(Math.log10(Math.abs(v))))) : autoDecimals(v))
-    : autoDecimals;
-  const formatValue = format
-    ? formatterFromExample(format, options.locale?.language)
-    : (v: number) => formatAutomaticNumber(v, { locale: options.locale?.language, decimals: decimalsOf(v) });
+/** The printer of an authored example; without one the rule sets print (scatterDomain). */
+function scatterFormatter(options: ScatterStrategyOptions, format: string): (value: number) => string {
+  const formatValue = formatterFromExample(format, options.locale?.language);
   // Repeated coordinates and sizes share their display text within this layout.
   // Keep the cache local so later requests, locales and formats stay independent.
   const formattedValues = new Map<number, string>();
@@ -119,7 +113,8 @@ function plainNumberSpec(locale: string | undefined): NumberFormatSpec {
  */
 function discloseNumber(raw: number, spec: NumberFormatSpec, authoredFormat: boolean): Disclosed {
   const scaled = Math.abs(raw / MAGNITUDE_DIVISOR[spec.magnitude]);
-  const base = authoredFormat ? spec.decimals : autoDecimals(raw);
+  // Where no decimal count prints it exactly, a default number falls back to the rule's decimals for it as a set of one, without scale words.
+  const base = authoredFormat ? spec.decimals : ruleSetOf([scaled], undefined, { words: false }).groupOf(scaled).decimals;
   let decimals = base;
   while (decimals < MAX_DISCLOSED_DECIMALS && Number(scaled.toFixed(decimals)) !== scaled) {
     decimals += 1;
@@ -130,22 +125,29 @@ function discloseNumber(raw: number, spec: NumberFormatSpec, authoredFormat: boo
   return { value, text: formatWithSpec(value, applied), exact };
 }
 
-/**
- * The engine scale of one axis without a format, as bar takes it
- * (seriesRasterFormatter): from a million on a render target, else none.
- */
-function engineAxisScale(options: ScatterStrategyOptions, format: string | undefined, data: ScatterData | undefined, axis: 'x' | 'y'): ReturnType<typeof seriesRasterFormatter> | undefined {
-  if (format || options.target === undefined || !Array.isArray(data?.points)) return undefined;
-  const values: number[] = [];
-  for (const point of data.points) {
-    const raw: unknown = point?.[axis];
-    const value = typeof raw === 'number' ? raw : raw !== null && typeof raw === 'object' && 'number' in raw ? Number((raw as { number: unknown }).number) : NaN;
-    if (Number.isFinite(value)) values.push(value);
+/** A point's number in one field, as its record reads it; null where it has none. */
+function pointNumber(raw: unknown): number | null {
+  // A plain number in range needs no cell parse: most points are plain numbers.
+  if (typeof raw === 'number' && Number.isFinite(raw) && Math.abs(raw) <= MAGNITUDE_CEILING) return raw;
+  try {
+    const value = cellValue(normalizeCell(raw, 'point'));
+    return typeof value === 'number' && Number.isFinite(value) ? value : null;
+  } catch {
+    return null;
   }
-  if (!values.some((value) => Math.abs(value) >= 1e6)) return undefined;
-  const engine = seriesRasterFormatter(undefined, values, options.locale?.language, options.unit, options.target);
-  return engine.spec.autoMagnitude ? engine : undefined;
 }
+
+/** The finite numbers of one field of the points: an axis set or the size set. */
+function pointValues(data: ScatterData | undefined, field: 'x' | 'y' | 'size'): number[] {
+  const values: number[] = [];
+  for (const point of Array.isArray(data?.points) ? data.points : []) {
+    const value = pointNumber(point?.[field]);
+    if (value !== null) values.push(value);
+  }
+  return values;
+}
+
+const RULE_MAGNITUDE = { 0: 'none', 3: 'k', 6: 'm', 9: 'bn', 12: 't' } as const;
 
 /** Resolve the options once: theme, palette, size, measurer and the number formats. */
 export function resolveScatterEnv(options: ScatterStrategyOptions, warnings: LintWarning[], data?: ScatterData): ScatterEnv {
@@ -161,16 +163,18 @@ export function resolveScatterEnv(options: ScatterStrategyOptions, warnings: Lin
   const paletteRamp = chartPalette(theme, options.palette, warnings);
   const size = resolveSize(options.size);
   const measure = options.measure ?? defaultMeasurer;
-  const fmt = scatterFormatter(options);
   // Each coordinate prints in its own axis format (axisFormat), else the chart's.
   const axisFormat = { x: options.axisFormat?.x ?? options.format, y: options.axisFormat?.y ?? options.format };
-  // An axis without a format takes the engine scale bar takes from a
-  // million, chosen once per axis from its largest value: ticks and
-  // coordinates print 2.0B and 500M, not 2,000,000,000.
-  const engine = { x: engineAxisScale(options, axisFormat.x, data, 'x'), y: engineAxisScale(options, axisFormat.y, data, 'y') };
+  // Without a format the default number rule prints the chart: the points of
+  // each axis form one set, the bubble sizes another, and the ticks of an
+  // axis take its set.
+  const setSpec = (field: 'x' | 'y' | 'size') => defaultSetSpec(pointValues(data, field), options.locale?.language, options.unit);
+  const ruleSpec = { x: axisFormat.x ? undefined : setSpec('x'), y: axisFormat.y ? undefined : setSpec('y'), size: options.format ? undefined : setSpec('size') };
+  const byRule = (spec: NumberFormatSpec) => (value: number) => formatWithSpec(value, spec);
+  const fmt = ruleSpec.size ? byRule(ruleSpec.size) : scatterFormatter(options, options.format!);
   const axisFmt = {
-    x: options.axisFormat?.x ? scatterFormatter(options, axisFormat.x) : engine.x?.fmt ?? fmt,
-    y: options.axisFormat?.y ? scatterFormatter(options, axisFormat.y) : engine.y?.fmt ?? fmt,
+    x: options.axisFormat?.x ? scatterFormatter(options, options.axisFormat.x) : ruleSpec.x ? byRule(ruleSpec.x) : fmt,
+    y: options.axisFormat?.y ? scatterFormatter(options, options.axisFormat.y) : ruleSpec.y ? byRule(ruleSpec.y) : fmt,
   };
   // A chart formatter is a DISPLAY convention; a cut point is a BOUNDARY. Run
   // a boundary through the display formatter and the exhibit states a
@@ -185,19 +189,33 @@ export function resolveScatterEnv(options: ScatterStrategyOptions, warnings: Lin
   // tick through autoDecimals on its own and printed "1.0", "1", "1.1" at
   // 0.95, 1 and 1.05.
   // An authored example prints as the marks print it: the chart locale's separators, the authored word.
-  const axisSpecOf = (format: string | undefined, scaled: NumberFormatSpec | undefined): NumberFormatSpec => (format ? exampleSpec(format, options.locale?.language) : scaled ?? countSpec);
-  const axisSpec = { x: axisSpecOf(axisFormat.x, engine.x?.spec), y: axisSpecOf(axisFormat.y, engine.y?.spec) };
-  // A cut point on a scaled axis prints at its own scale with every digit it needs ("452.345678M").
+  const axisSpecOf = (format: string | undefined, rule: NumberFormatSpec | undefined): NumberFormatSpec => (format ? exampleSpec(format, options.locale?.language) : rule ?? countSpec);
+  const axisSpec = { x: axisSpecOf(axisFormat.x, ruleSpec.x), y: axisSpecOf(axisFormat.y, ruleSpec.y) };
+  // A cut point on an axis with scale words prints at its own scale with every digit it needs ("452.345678M").
   const cutSpec = (raw: number, axis: 'x' | 'y'): NumberFormatSpec => {
-    if (!engine[axis]) return axisSpec[axis];
-    let magnitude: NumberFormatSpec['magnitude'] = 'none';
-    for (const step of ['k', 'm', 'bn', 't'] as const) if (Math.abs(raw) >= MAGNITUDE_DIVISOR[step]) magnitude = step;
-    return { ...countSpec, magnitude, rollMagnitude: false };
+    const rule = ruleSpec[axis]?.[RULE_SET];
+    if (!rule) return axisSpec[axis];
+    if (!rule.words) return countSpec;
+    return { ...countSpec, magnitude: RULE_MAGNITUDE[tickScale(rule, raw)], rollMagnitude: false };
   };
+  // Every point states its texts in its sets, drawn or not, also a point the plot leaves out.
+  const ruleShown = ruleSpec.x || ruleSpec.y || ruleSpec.size
+    ? () => (Array.isArray(data?.points) ? data.points : []).flatMap((point): ShownMark[] => {
+      if (point?.id === undefined) return [];
+      const x = pointNumber(point.x), y = pointNumber(point.y), size = pointNumber(point.size);
+      return [{ owner: { pointId: point.id }, shows: {
+        ...(ruleSpec.x && x !== null ? { 'field:x': axisFmt.x(x) } : {}),
+        ...(ruleSpec.y && y !== null ? { value: axisFmt.y(y), 'field:y': axisFmt.y(y) } : {}),
+        ...(ruleSpec.size && size !== null && size >= 0 ? { 'field:size': fmt(size) } : {}),
+      } }];
+    })
+    : undefined;
   return {
     options,
     theme,
     palette: paletteRamp ? options.palette : undefined,
+    ...(ruleShown ? { ruleShown } : {}),
+    sizeKeySpec: ruleSpec.size ?? setSpec('size'),
     size,
     measure,
     fmt,
@@ -718,6 +736,8 @@ export function resolveScatterDomain(data: ScatterData, env: ScatterEnv, warning
   } : axes.ticks;
   const drawn = pts.filter((p) => inView(options, axes.dx, axes.dy, p));
   const trends = fitScatterTrends(env, drawn, shownGroups.map((g) => g.id), warnings);
+  // The slopes of the chart's trends are one statistic set, built here once for the key.
+  const trendRates = trendRateTexts(trends, () => ({ example: options.axisFormat?.y ?? options.format, unit: pts.some((p) => p.yIsPct) ? '%' : options.unit }), options.locale?.language, false, env.axisSpec.y[RULE_SET]?.words);
   const frontier = planFrontier(env, drawn, warnings);
   return {
     pts,
@@ -743,6 +763,7 @@ export function resolveScatterDomain(data: ScatterData, env: ScatterEnv, warning
     omitted,
     quadrants,
     trends,
+    trendRates,
     ...(frontier ? { frontier } : {}),
   };
 }

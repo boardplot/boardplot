@@ -319,7 +319,9 @@ it('keeps one scale for a unitless repeat.facet grid', () => {
 // only an info line: the delta wraps before it
 // drops, and a pinned height too short for two lines still draws and warns.
 it('wraps a KPI delta wider than its grid card instead of hiding it', () => {
-  const data = { label: 'Net revenue', value: 18240000, format: '€1,234', delta: { vs: 16520000, scenario: 'PY', mode: 'both' } };
+  // A change in percent prints two digits, so the delta needs a longer absolute part to outgrow the card:
+  // "+143% (+€10,720,000) vs PY". Before, the prior was €16,520,000 and the delta read "+10.4% (+€1,720,000) vs PY".
+  const data = { label: 'Net revenue', value: 18240000, format: '€1,234', delta: { vs: 7520000, scenario: 'PY', mode: 'both' } };
   const layout = (size: { width: number; height?: number }) => getChart('grid')!.layout({
     panels: [0, 1, 2, 3].map((i) => ({ id: `p${i}`, type: 'kpi', data })),
   }, { columns: 4, size }) as Geometry;

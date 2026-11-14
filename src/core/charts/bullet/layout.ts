@@ -26,10 +26,9 @@ import type { AnchorResolution } from '../../annotate';
 import { BAND_PAD } from '../../annotateParts';
 import { runAnnotatePass } from '../../annotatePass';
 import { categoryTargetFields, spliceAnnotationNodes } from '../../annotateFields';
-import { applyValueAxisTitleInk, layoutValueAxis, planValueAxisTitle, valueAxisTitleRequest } from '../../axis';
+import { applyValueAxisTitleInk, layoutValueAxis, planValueAxisTitle, tickFormatter, valueAxisTitleRequest } from '../../axis';
 import { contrastRatio } from '../../color';
-import { formatAutomaticNumber } from '../../format';
-import { defaultFormatSpec, engineNumberSpec, exampleSpec, formatWithSpec, parseFormatExample, roundedNumber } from '../../formatSpec';
+import { defaultSetSpec, engineNumberSpec, exampleSpec, formatWithSpec, parseFormatExample, roundedNumber, type NumberFormatSpec } from '../../formatSpec';
 import { cleanDiff, rectContains, rectsOverlap, rowLabelX, type Rect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex } from '../../label/occupied';
@@ -96,7 +95,6 @@ import { layoutTargetScale, targetBandLegendItems, targetWord, type TargetScaleR
 import type { OccupiedIndex } from '../../label/occupied';
 import type { Margin } from '../../geometry';
 import type { TextMeasurer } from '../../text';
-import { AUTO_MAX_DECIMALS, autoDecimals } from '../../formatPrecision';
 import { composedTextRole } from '../../textRole';
 import { maxOf, minOf, pushAll } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
@@ -559,20 +557,14 @@ export function layoutBullet(
   const chartSpec = options.format
     ? exampleSpec(options.format, options.locale?.language, undefined, rows.flatMap((row) => row.isPct ? [] : [row.value, row.target]))
     : undefined;
-  const automaticSpec = (row: NormRow) => {
-    const spec = { ...defaultFormatSpec(options.locale?.language),
-      decimals: Math.max(autoDecimals(row.value ?? 0), autoDecimals(row.target ?? 0)), suffix: row.isPct ? '%' : '' };
-    if (row.value === null || row.target === null) return spec;
-    // The engine's precision shows the gap: a value and target that print alike, or that print a gap
-    // more than half a step off the exact one, take up to two more decimals.
-    const gap = cleanDiff(row.value, row.target);
-    for (let extra = 0; extra < 2 && spec.decimals < AUTO_MAX_DECIMALS; extra++) {
-      const shown = cleanDiff(roundedNumber(row.value, spec), roundedNumber(row.target, spec));
-      if ((shown !== 0 || gap === 0) && Math.abs(shown - gap) <= 0.5 * 10 ** -spec.decimals * (1 + 1e-9)) break;
-      spec.decimals++;
-    }
-    return spec;
-  };
+  // Without a format each row (its value and target) is one set under the default rule: the spread
+  // rule keeps a close value and target apart.
+  const automaticSpec = (row: NormRow): NumberFormatSpec => ({
+    ...defaultSetSpec([row.value, row.target], options.locale?.language, options.unit, row.isPct ? { kind: 'percent' } : {}),
+    suffix: row.isPct ? '%' : '',
+  });
+  // The shared value axis takes the set of every row's values.
+  const axisRuleSpec = chartSpec ? undefined : defaultSetSpec(rows.flatMap((row) => (row.isPct ? [] : [row.value, row.target])), options.locale?.language, options.unit);
   const rowSpecs = new Map(rows.map((row) => [row, row.meta?.format
     ? exampleSpec(row.meta.format, options.locale?.language, undefined, [row.value, row.target])
     : !row.isPct && chartSpec ? chartSpec
@@ -1141,13 +1133,12 @@ export function layoutBullet(
       {
         scale: axisScale,
         ticks: stepTicks,
-        ...(stepTicks ? { formatSpec: chartSpec ?? defaultFormatSpec(options.locale?.language) } : {}),
+        ...(axisRuleSpec ? { formatSpec: axisRuleSpec } : stepTicks && chartSpec ? { formatSpec: chartSpec } : {}),
         plot,
         orient: 'x',
         gridlines: options.valueAxis.gridlines ?? false,
         // A tick is the engine's number: it keeps the example's earlier rule.
-        format: (v) => chartSpec ? formatWithSpec(v, engineNumberSpec(chartSpec))
-          : formatAutomaticNumber(v, { locale: options.locale?.language, decimals: autoDecimals(v) }),
+        format: (v) => formatWithSpec(v, chartSpec ? engineNumberSpec(chartSpec) : axisRuleSpec!),
         theme,
         measure,
         canvasWidth: size.width,
@@ -1298,10 +1289,11 @@ export function layoutBullet(
     // Ticks and numbers at zero and each band edge under the row. Every edge keeps its tick; a number
     // that would crowd a neighbour gives way, and the last edge's number outranks the ones between.
     if (edgeTicks && row.bands.length > 0) {
-      const edges = [0, ...row.bands.map((bandSpec) => bandSpec.to)].map((value) => {
-        const text = !row.meta?.format && (row.isPct || !chartSpec)
-          ? formatAutomaticNumber(value, { locale: options.locale?.language, decimals: autoDecimals(value), suffix: row.isPct ? '%' : '' })
-          : rowFmt(row)(value);
+      const edgeValues = [0, ...row.bands.map((bandSpec) => bandSpec.to)];
+      // The band edges print by the tick rule with the row's set.
+      const edgeFmt = !row.meta?.format && (row.isPct || !chartSpec) ? tickFormatter(rowSpecs.get(row)!, edgeValues) : rowFmt(row);
+      const edges = edgeValues.map((value) => {
+        const text = edgeFmt(value);
         return { value, text, x: x(value), w: measure(text, noteFont).width };
       });
       const clear = (a: { x: number; w: number }, b: { x: number; w: number }) => b.x - b.w / 2 >= a.x + a.w / 2 + 4;
@@ -1637,6 +1629,7 @@ export function layoutBullet(
     measure,
     format: options.format,
     locale: options.locale?.language,
+    levelSpec: axisRuleSpec,
     strings: options.strings,
     valueLinePercentLevels: options.unit === '%' || rows.some(row => row.value !== null) && rows.every(row => row.value === null || row.isPct),
     solveCtx,

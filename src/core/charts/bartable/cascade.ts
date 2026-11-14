@@ -6,7 +6,8 @@ import { chartString } from '../../strings/bartable';
  * first panel with the last. Pure, so a test can hold the arithmetic.
  */
 
-import { cagr, formatAutomaticNumber, formatAutomaticPercent, printedShare, shareSetFormatter } from '../../format';
+import { cagr, formatAutomaticPercent, printedShare, shareSetFormatter } from '../../format';
+import { formatWithSpec, percentChangeSpec } from '../../formatSpec';
 import { NormalizeError } from '../../normalize/shared';
 import { yearSpanFromLabels } from '../../periodYears';
 import { roundingUnavailable, sumConsistentShares, type RoundingAdjustment } from '../../shareRounding';
@@ -40,7 +41,7 @@ interface CascadeResult {
 export function deriveCascade(
   rows: readonly { id: string; label: string }[],
   panels: readonly CascadePanelInput[],
-  opts: { combined?: readonly number[]; growth?: BarTableGrowth; sumConsistent?: boolean; locale?: string; lift?: 'full' | 'none' | 'compact' },
+  opts: { combined?: readonly number[]; growth?: BarTableGrowth; sumConsistent?: boolean; locale?: string },
 ): CascadeResult {
   const { locale } = opts;
   const base = panels.map((panel) => {
@@ -85,8 +86,6 @@ export function deriveCascade(
   };
 
   const growth = opts.growth;
-  // The layout picks how a growth figure that rounds to 0 prints (layoutBarTable).
-  const automatic = opts.lift === 'none' ? false : opts.lift === 'compact' ? 'compact' : true;
   if (growth && panels.length >= 2) {
     const first = panels[0]!;
     const last = panels[panels.length - 1]!;
@@ -99,19 +98,24 @@ export function deriveCascade(
           'label the panels with years ("2019", "FY24") or set cascade.growth.years');
       }
       const values = [...first.values.map((value, r) => cagr(value, last.values[r]!, years)), cagr(base[0]!.total, base[base.length - 1]!.total, years)];
+      // A growth rate: the column is one signed change set, two digits in every group.
+      const spec = percentChangeSpec(values, locale, '', 'number');
       result.growth = {
         head: growth.label ?? `${span} CAGR, %`,
         values,
-        texts: values.map((value) => (value === null ? '–' : formatAutomaticNumber(value, { decimals: 1, locale, automatic }))),
+        texts: values.map((value) => (value === null ? '–' : formatWithSpec(value, spec))),
       };
     } else {
-      const lastPrinted = printed[printed.length - 1]!;
+      const lastShares = base[base.length - 1]!.shares;
       // The Total row's share is 100% in every panel: it has no change to print.
-      const values: (number | null)[] = [...printed[0]!.map((entry, r) => Number((lastPrinted[r]!.value - entry.value).toFixed(decimals))), null];
+      const values: (number | null)[] = [...base[0]!.shares.map((share, r) => lastShares[r]! - share), null];
+      // A change of a share is a difference in percentage points, computed from the received shares: the
+      // column is one signed change set, two digits in every group, so a change of −0.43 never prints as 0.
+      const spec = percentChangeSpec(values, locale, '', 'number');
       result.growth = {
         head: growth.label ?? chartString({ locale: { language: locale } }, 'shareChangeSpan', { v1: span }),
         values,
-        texts: values.map((value) => (value === null ? '' : formatAutomaticNumber(value, { decimals, signed: true, locale, automatic }))),
+        texts: values.map((value) => (value === null ? '' : formatWithSpec(value, spec))),
       };
     }
   }

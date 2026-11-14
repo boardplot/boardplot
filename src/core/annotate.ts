@@ -18,13 +18,13 @@ import { emphasisWeight, strokeToken, dashToken } from './theme';
  */
 
 import type { RenderTarget } from './types/options';
-import { cagr, formatAutomaticNumber, formatAutomaticPercent, PERCENTAGE_POINTS } from './format';
-import { differenceExample, exampleSpec, formatStatWithSpec, formatWithSpec, formatterFromExample, neededDecimals, parseFormatExample, printsBound, roundedNumber, specUnitKind, withChartMarks } from './formatSpec';
-import { autoDecimals, roundHalfUp, roundsToZero, typicalDecimals } from './formatPrecision';
+import { cagr, PERCENTAGE_POINTS } from './format';
+import { defaultSetSpec, differenceExample, exampleSpec, formatStatWithSpec, formatWithSpec, formatterFromExample, parseFormatExample, percentChangeSpec, printsBound, roundedNumber, RULE_SET, specUnitKind, withChartMarks, type NumberFormatSpec } from './formatSpec';
+import { statisticSet } from './numberSets';
 import { yearSpan, yearSpanFromLabels } from './periodYears';
 
 export { yearSpan } from './periodYears';
-import { inflate, rectContains, rectsOverlap, unionRect, type Point, type Rect } from './geometry';
+import { cleanDiff, cleanFloat, inflate, rectContains, rectsOverlap, unionRect, type Point, type Rect } from './geometry';
 import { compileIcon, type IconName } from './icons';
 import type { OccupiedIndex } from './label/occupied';
 import { leaderFor, leaderHeightOf, leaderTerminus, PRIORITY, solveLabels, type LabelRequest, type SlotCandidate, type SolveCtx } from './label/solver';
@@ -264,6 +264,12 @@ export interface AnnotatePassInput {
   sharesFormat?: boolean;
   /** The value-line scale is percent; other annotations may use source amounts. */
   valueLinePercentLevels?: boolean;
+  /**
+   * The chart's default level set (a spec with its rule set), where the chart has one: without
+   * a format an annotated value prints as a member or a late value of it.
+   * Without it each number is a set of its own.
+   */
+  levelSpec?: NumberFormatSpec;
   /** The generated average marker and how its drawn label prints the number; the marker's record (the hover value) prints it alike. */
   averageMarker?: { id: Id; fmt: (v: number) => string };
   /** The value-line axis keeps its percent or percentage-point unit under an authored format. */
@@ -447,6 +453,8 @@ interface AnnotateRun {
   fmtSigned: (v: number) => string;
   /** True where a difference prints as zero under `fmtSigned`. */
   printsZero: (v: number) => boolean;
+  /** The signed percent set of each kind of percent change (percentChangeValues), built on first use: most passes print none. */
+  percentChanges: () => Record<PercentChangeKind, NumberFormatSpec>;
   calloutGlyphPlans: Map<Id, CalloutGlyphPlan>;
   /** Arrow shafts of the drawing annotations, by node id, each with its head. Set once a drawing runs. */
   drawings?: DrawingCuts;
@@ -458,6 +466,55 @@ interface AnnotateRun {
   eraBands: EraBandPlan[];
   seq: number;
   legDeficit: number;
+}
+
+type PercentChangeKind = 'cagr' | 'diff' | 'delta';
+
+/** The change from `base` to `tip` in percent of |base|, without the float residue of the subtraction. */
+function percentChange(tip: number, base: number): number {
+  return cleanFloat((cleanDiff(tip, base) / Math.abs(base)) * 100);
+}
+
+/**
+ * The percent changes and growth rates the annotations of one chart print
+ * without a format, by kind. The changes of one kind form one signed percent
+ * set, so the set is built once
+ * over all of them before any annotation is placed.
+ */
+function percentChangeValues(input: AnnotatePassInput): Record<PercentChangeKind, number[]> {
+  const values: Record<PercentChangeKind, number[]> = { cagr: [], diff: [], delta: [] };
+  const valued = (anchor: AnchorResolution | null | undefined): anchor is AnchorResolution => !!anchor && anchor.noValue === undefined;
+  input.annotations.forEach((ann, n) => {
+    if (ann.kind === 'cagr') {
+      if (ann.format) return;
+      const measured = measureCagr(input, ann, defaultAnnotationId(ann, n), () => {});
+      if (measured) values.cagr.push(measured.rate);
+    } else if (ann.kind === 'diff') {
+      const mode = ann.mode ?? 'relative';
+      if ((mode === 'relative' || mode === 'reversed') && ann.format) return;
+      if (mode !== 'relative' && mode !== 'reversed' && mode !== 'both') return;
+      const a = comparisonAnchor(input.resolve(ann.from));
+      const b = comparisonAnchor(input.resolve(ann.to));
+      if (!valued(a) || !valued(b)) return;
+      const [base, tip] = mode === 'reversed' ? [b, a] : [a, b];
+      if (base.value !== 0) values.diff.push(percentChange(tip.value, base.value));
+    } else if (ann.kind === 'delta') {
+      const mode = ann.mode ?? 'absolute';
+      if (mode === 'absolute' || (mode === 'relative' && ann.format)) return;
+      const at = input.resolve(ann.at);
+      const vsAnchor = typeof ann.vs === 'number' ? null : input.resolve(ann.vs);
+      const vsValue = typeof ann.vs === 'number' ? ann.vs : (vsAnchor ? (vsAnchor.comparisonValue ?? vsAnchor.value) : null);
+      if (!valued(at) || vsValue === null || vsValue === 0 || (vsAnchor && !valued(vsAnchor))) return;
+      const atValue = vsAnchor ? (at.comparisonValue ?? at.value) : at.value;
+      values.delta.push(percentChange(atValue, vsValue));
+    }
+  });
+  return values;
+}
+
+/** The text of a percent change or a growth rate without a format, in the signed percent set of its kind. */
+function percentChangeText(s: AnnotationScope, kind: PercentChangeKind, pct: number): string {
+  return formatWithSpec(pct, s.run.percentChanges()[kind]);
 }
 
 /**
@@ -506,12 +563,36 @@ export function runAnnotatePass(input: AnnotatePassInput): AnnotatePassResult {
   const placed: PlacedAnnotation[] = [];
   const labelRequests: LabelRequest[] = [];
   const warnings: LintWarning[] = [];
-  // Without a format a number prints the way variance and kpi print it: the
-  // business default precision (autoDecimals) in the chart's language.
+  // Without a format a number prints by the default number rule (docs/manual.md, Small values): a member
+  // or a late value of the chart's level set, else a set of its own. A percentage-point difference forms
+  // its own signed set; an absolute difference joins the levels, signed.
   const { locale } = input;
   const percent = input.format ? specUnitKind(parseFormatExample(input.format)) === 'percent' : input.percentLevels === true;
-  const plain = (suffix: string, signed: boolean) => (v: number) =>
-    formatAutomaticNumber(v, { locale, decimals: autoDecimals(v), suffix, signed });
+  const levelRule = input.levelSpec?.[RULE_SET];
+  const plainSpec = (suffix: string, signed: boolean) => {
+    const percentKind = suffix === '%' || suffix === PERCENTAGE_POINTS;
+    // A difference of percent levels is in percentage points, with or without the "pp": a signed change set (+4.4).
+    // A value or a statistic on a points axis (a value line, a mean) is no difference and keeps its own set.
+    const points = signed && (suffix === PERCENTAGE_POINTS || (suffix === '' && levelRule?.set.kind === 'percent'));
+    const shared = !points && levelRule && suffix !== PERCENTAGE_POINTS && (levelRule.set.kind === 'percent') === percentKind ? input.levelSpec : undefined;
+    return (v: number): NumberFormatSpec => ({ ...(shared ?? defaultSetSpec([v], locale, undefined, points ? { kind: 'percent', change: true } : percentKind ? { kind: 'percent' } : {})), prefix: '', suffix, signed });
+  };
+  const plain = (suffix: string, signed: boolean) => {
+    const specOf = plainSpec(suffix, signed);
+    return (v: number) => formatWithSpec(v, specOf(v));
+  };
+  const plainZero = (suffix: string) => {
+    const specOf = plainSpec(suffix, true);
+    return (v: number) => roundedNumber(v, specOf(v)) === 0;
+  };
+  // A mean is a statistic: a set of its own with the scale-word decision of the levels.
+  const plainStat = (suffix: string) => {
+    const specOf = plainSpec(suffix, false);
+    return (v: number) => {
+      const spec = specOf(v);
+      return formatWithSpec(v, { ...spec, [RULE_SET]: statisticSet([v], spec[RULE_SET]!) });
+    };
+  };
   const fmt = input.format ? formatterFromExample(input.format, locale) : plain(percent ? '%' : '', false);
   // Absolute differences keep the value unit unless the chart supplies a
   // derived unit; the difference of two percent levels is in points.
@@ -523,9 +604,21 @@ export function runAnnotatePass(input: AnnotatePassInput): AnnotatePassResult {
   const valueFmt = plain(input.percentLevels === true ? '%' : '', false);
   const run: AnnotateRun = {
     fmt,
-    statFmt: input.format ? (v: number) => formatStatWithSpec(v, exampleSpec(input.format!, locale)) : fmt,
+    statFmt: input.format ? (v: number) => formatStatWithSpec(v, exampleSpec(input.format!, locale)) : plainStat(percent ? '%' : ''),
     fmtSigned: differenceSpec ? (v: number) => formatWithSpec(v, differenceSpec) : plain(percent ? PERCENTAGE_POINTS : '', true),
-    printsZero: differenceSpec ? (v: number) => roundedNumber(v, differenceSpec) === 0 : (v: number) => roundsToZero(v, autoDecimals(v)),
+    printsZero: differenceSpec ? (v: number) => roundedNumber(v, differenceSpec) === 0 : plainZero(percent ? PERCENTAGE_POINTS : ''),
+    percentChanges: (() => {
+      let specs: Record<PercentChangeKind, NumberFormatSpec> | undefined;
+      return () => {
+        if (specs) return specs;
+        const changes = percentChangeValues(input);
+        return specs = {
+          cagr: percentChangeSpec(changes.cagr, locale, '%'),
+          diff: percentChangeSpec(changes.diff, locale, '%'),
+          delta: percentChangeSpec(changes.delta, locale, '%'),
+        };
+      };
+    })(),
     calloutGlyphPlans: new Map(),
     calloutHeads: new Map(),
     gapBrackets: [],
@@ -561,7 +654,7 @@ export function runAnnotatePass(input: AnnotatePassInput): AnnotatePassResult {
       : ann.kind === 'valueLine' && !referenceFormat && (secondaryLine || referencePercent !== percent)
       ? { ...run, fmt: plain(referencePercent ? '%' : '', false) }
       : valuesNotShares
-      ? { ...run, fmt: valueFmt, statFmt: valueFmt, fmtSigned: plain(input.percentLevels === true ? PERCENTAGE_POINTS : '', true), printsZero: (v: number) => roundsToZero(v, autoDecimals(v)) }
+      ? { ...run, fmt: valueFmt, statFmt: plainStat(input.percentLevels === true ? '%' : ''), fmtSigned: plain(input.percentLevels === true ? PERCENTAGE_POINTS : '', true), printsZero: plainZero(input.percentLevels === true ? PERCENTAGE_POINTS : '') }
       : run;
     const fmtRun: AnnotateRun = own
       ? {
@@ -570,17 +663,17 @@ export function runAnnotatePass(input: AnnotatePassInput): AnnotatePassResult {
           fmtSigned: (v: number) => formatWithSpec(v, signed!),
           printsZero: (v: number) => roundedNumber(v, signed!) === 0,
         }
-      // Change a typed reference's precision only when its current format rounds the value.
-      : ann.kind === 'valueLine' && typeof ann.value === 'number' && !id.startsWith('averageMarker') && !referenceFormat
-        ? { ...baseRun, fmt: (v: number) => Number(roundHalfUp(Math.abs(v), autoDecimals(v))) === Math.abs(v)
-          ? baseRun.fmt(v)
-          : formatAutomaticNumber(v, { locale, decimals: Math.max(autoDecimals(v), neededDecimals(v)), suffix: referenceUnit ?? (referencePercent ? '%' : '') }) }
-        : baseRun;
+      // Without a format a typed reference is a late value of the levels.
+      : baseRun;
     // An authored annotation format wins; otherwise the format the line's number prints in, one step finer.
     const statExample = ann.format ? undefined : example ?? referenceFormat;
+    // Without any format a mean is a statistic, with the suffix its line's number carries.
     const statFmt = statExample
       ? (v: number) => formatStatWithSpec(v, referenceUnit ? { ...exampleSpec(statExample, locale), prefix: '', suffix: referenceUnit } : exampleSpec(statExample, locale))
-      : fmtRun.fmt;
+      : ann.format ? fmtRun.fmt
+      : referenceUnit ? plainStat(referenceUnit)
+      : ann.kind === 'valueLine' && (secondaryLine || referencePercent !== percent) ? plainStat(referencePercent ? '%' : '')
+      : baseRun.statFmt;
     const scope: AnnotationScope = {
       input,
       nodes,
@@ -651,7 +744,11 @@ function placeAnnotation(s: AnnotationScope, ann: Annotation, run: AnnotateRun):
 
 /** The labels of the anchors that sit on a partial category, in anchor order. */
 function partialAnchors(s: AnnotationScope, ...anchors: (AnchorResolution | null)[]): string[] {
-  const partial = s.input.partialCategories;
+  return partialAnchorsOf(s.input, ...anchors);
+}
+
+function partialAnchorsOf(input: AnnotatePassInput, ...anchors: (AnchorResolution | null)[]): string[] {
+  const partial = input.partialCategories;
   return anchors.flatMap((anchor) => {
     const categoryId = anchor?.owner.categoryId;
     return categoryId !== undefined && partial?.has(categoryId) ? [`'${anchor!.label ?? categoryId}'`] : [];
@@ -731,20 +828,37 @@ function authored(
   return { text, computed };
 }
 
-function placeCagr(s: AnnotationScope, ann: Extract<Annotation, { kind: 'cagr' }>): void {
-  const { input, id } = s;
+interface CagrMeasure {
+  a: AnchorResolution;
+  b: AnchorResolution;
+  fromRef: AnchorRef;
+  toRef: AnchorRef;
+  years: number;
+  rate: number;
+}
+
+/**
+ * The annual rate of a cagr annotation, or undefined where it has none. Each
+ * finding goes to `report`: the placement records it, the pre-pass that
+ * builds the chart's rate set (runAnnotatePass) drops it.
+ */
+function measureCagr(input: AnnotatePassInput, ann: Extract<Annotation, { kind: 'cagr' }>, id: Id, report: (warning: LintWarning) => void): CagrMeasure | undefined {
+  const warnOf = (code: string, message: string, suggest?: string): undefined => {
+    report({ code, severity: 'warn', message, owner: { annotationId: id }, ...(suggest === undefined ? {} : { suggest }) });
+    return undefined;
+  };
   const fromRef = ann.from ?? input.defaultSpan?.from;
   const toRef = ann.to ?? input.defaultSpan?.to;
-  if (!fromRef || !toRef) return warn(s, 'cagr-no-span', 'cagr needs from/to or a default span');
+  if (!fromRef || !toRef) return warnOf('cagr-no-span', 'cagr needs from/to or a default span');
   const a = comparisonAnchor(input.resolve(fromRef));
   const b = comparisonAnchor(input.resolve(toRef));
-  if (!a || !b) return warn(s, 'bad-anchor', `cagr '${id}': unresolvable anchor`);
-  if (valueless(s, 'cagr', [a, b])) return;
+  if (!a || !b) return warnOf('bad-anchor', `cagr '${id}': unresolvable anchor`);
+  const reason = [a, b].find((anchor) => anchor.noValue !== undefined)?.noValue;
+  if (reason !== undefined) return warnOf('bad-anchor', `cagr '${id}': ${reason}, so it prints no value there`, valuelessFix(reason));
   // An annual rate over a running period annualises a part-year as a year.
-  const partial = partialAnchors(s, a, b);
+  const partial = partialAnchorsOf(input, a, b);
   if (partial.length > 0) {
-    return warn(
-      s,
+    return warnOf(
       'cagr-partial-period',
       `cagr '${id}': ${partial.join(' and ')} is a partial period, so an annual rate to it is not measured — CAGR omitted`,
       'anchor the CAGR on complete periods, or compare like-for-like periods with a diff',
@@ -754,7 +868,7 @@ function placeCagr(s: AnnotationScope, ann: Extract<Annotation, { kind: 'cagr' }
   // Compound growth starts from a positive value, on every axis: a sign-flipped rate from a loss reads
   // as growth to a reader who does not know that convention.
   if (!(a.value > 0)) {
-    return warn(s, 'cagr-undefined', chartString({ locale: input.locale, strings: input.strings }, 'cagrStartNotPositive', { v1: id }),
+    return warnOf('cagr-undefined', chartString({ locale: input.locale, strings: input.strings }, 'cagrStartNotPositive', { v1: id }),
       `use {kind:'diff', mode:'absolute'} to report the change across the span, or a labelled note for a loss-reduction figure`);
   }
   const elapsed = input.elapsedYears?.(a, b);
@@ -765,7 +879,7 @@ function placeCagr(s: AnnotationScope, ann: Extract<Annotation, { kind: 'cagr' }
     const inferred = yearSpanFromLabels(a.label, b.label);
     if (inferred !== null) {
       years = inferred;
-      s.warnings.push({
+      report({
         code: 'cagr-span-from-labels',
         severity: 'info',
         message: `cagr '${id}': period of ${formatYears(inferred)} read from the labels '${a.label}' and '${b.label}'`,
@@ -773,28 +887,36 @@ function placeCagr(s: AnnotationScope, ann: Extract<Annotation, { kind: 'cagr' }
     }
   }
   if (years === null) {
-    return warn(
-      s,
+    return warnOf(
       'cagr-no-dates',
       `cagr '${id}': anchors carry no usable ISO date (YYYY-MM-DD) and their labels name no year — no per-annum rate can be computed`,
       `give the anchored categories/items a "date" of the form YYYY-MM-DD or a label with a year such as "FY24", or use {kind:'diff', mode:'relative'} to report total growth across the span`,
     );
   }
   if (years <= 0) {
-    return warn(s, 'cagr-zero-span', `cagr '${id}': anchor dates span zero or negative time`);
+    return warnOf('cagr-zero-span', `cagr '${id}': anchor dates span zero or negative time`);
   }
   if (years < 1) {
-    warn(
-      s,
+    warnOf(
       'cagr-short-span',
       `cagr '${id}': the anchors span ${formatYears(years)}, under one year, so the per-annum rate extrapolates a shorter period`,
       `use {kind:'diff', mode:'relative'} to report the growth across the span itself`,
     );
   }
-  const rate = cagr(a.value, b.value, years);
-  if (rate === null || !Number.isFinite(rate)) return warn(s, 'cagr-undefined', `cagr '${id}': ${rate === null ? 'the end value is below zero' : 'the span is too short for a finite annual rate'}`);
+  const growth = cagr(a.value, b.value, years);
+  // The rate prints without the float residue of `ratio^(1/years) − 1`, cleaned at the size of that subtraction.
+  const rate = growth === null ? null : cleanFloat(growth, Math.abs(growth) + 100);
+  if (rate === null || !Number.isFinite(rate)) return warnOf('cagr-undefined', `cagr '${id}': ${rate === null ? 'the end value is below zero' : 'the span is too short for a finite annual rate'}`);
+  return { a, b, fromRef, toRef, years, rate };
+}
+
+function placeCagr(s: AnnotationScope, ann: Extract<Annotation, { kind: 'cagr' }>): void {
+  const { input, id } = s;
+  const measured = measureCagr(input, ann, id, (warning) => s.warnings.push(warning));
+  if (!measured) return;
+  const { a, b, fromRef, toRef, years, rate } = measured;
   const suffix = ann.suffix ?? 'p.a.';
-  const rateText = `${ann.format ? s.run.fmtSigned(rate) : formatAutomaticPercent(rate, Math.max(1, typicalDecimals([rate])), true, input.locale)} ${suffix}`.trim();
+  const rateText = `${ann.format ? s.run.fmtSigned(rate) : percentChangeText(s, 'cagr', rate)} ${suffix}`.trim();
   // A rate read off one series of several says whose it is. Its
   // period leads when asked for, and by default when the chart carries
   // several CAGRs, so nested brackets are told apart by their text.
@@ -920,9 +1042,9 @@ function placeDiff(s: AnnotationScope, ann: Extract<Annotation, { kind: 'diff' }
     // paints neutral. The magnitude is unchanged for a positive base;
     // for a negative one the sign tracks the direction the value
     // actually moved, which is what the arrow already draws.
-    const pct = ((tip.value - base.value) / Math.abs(base.value)) * 100;
-    // One number takes its own precision below 1 (typicalDecimals): +0.0004%, not <+1%.
-    computed = ann.format ? s.run.fmtSigned(pct) : formatAutomaticPercent(pct, typicalDecimals([pct]), true, input.locale);
+    const pct = percentChange(tip.value, base.value);
+    // A percent change is a signed set of its own: +0.0004%, not <+1%.
+    computed = ann.format ? s.run.fmtSigned(pct) : percentChangeText(s, 'diff', pct);
     // base FIRST, tip second — the order is the receipt. Recorded in the
     // resolved order, not the authored one, so a `reversed` diff is
     // checkable without knowing which mode produced it.
@@ -946,9 +1068,9 @@ function placeDiff(s: AnnotationScope, ann: Extract<Annotation, { kind: 'diff' }
   } else {
     // 'both' adds the percent change from `from`, in the percent format, beside the value difference.
     if (mode === 'both' && a.value === 0) return warn(s, 'ref-zero', `diff '${id}': mode 'both' needs a nonzero 'from'`);
-    const pct = mode === 'both' ? ((b.value - a.value) / Math.abs(a.value)) * 100 : 0;
-    pctText = mode === 'both' ? formatAutomaticPercent(pct, typicalDecimals([pct]), true, input.locale) : '';
-    computed = s.run.fmtSigned(b.value - a.value) + (mode === 'both' ? ` (${pctText})` : '');
+    const pct = mode === 'both' ? percentChange(b.value, a.value) : 0;
+    pctText = mode === 'both' ? percentChangeText(s, 'diff', pct) : '';
+    computed = s.run.fmtSigned(cleanDiff(b.value, a.value)) + (mode === 'both' ? ` (${pctText})` : '');
     derivation = {
       basis: 'derived',
       op: 'annotation-diff-absolute@1',
@@ -960,7 +1082,7 @@ function placeDiff(s: AnnotationScope, ann: Extract<Annotation, { kind: 'diff' }
     };
   }
   if (gapPlacement(s, ann, a, b)) {
-    const value = mode === 'relative' || mode === 'reversed' ? computed : gapNumber(s, ann, a, b, b.value - a.value, s.run.fmtSigned(b.value - a.value));
+    const value = mode === 'relative' || mode === 'reversed' ? computed : gapNumber(s, ann, a, b, cleanDiff(b.value, a.value), s.run.fmtSigned(cleanDiff(b.value, a.value)));
     const text = mode === 'both' ? `${value} (${pctText})` : value;
     // The spine runs base to tip, the way the value reads: a reversed diff swaps the ends.
     const [tail, head] = mode === 'reversed' ? [b, a] : [a, b];
@@ -1065,13 +1187,14 @@ function placeDelta(s: AnnotationScope, ann: Extract<Annotation, { kind: 'delta'
   if (valueless(s, 'delta', [at, vsAnchor])) return;
   warnPartialComparison(s, 'delta', partialAnchors(s, at, vsAnchor));
   const atValue = vsAnchor ? (at.comparisonValue ?? at.value) : at.value;
-  const d = atValue - vsValue;
+  // The difference prints without the float residue of the subtraction (1.000004 − 1 is 0.000004).
+  const d = cleanDiff(atValue, vsValue);
   const mode = ann.mode ?? 'absolute';
   if (mode !== 'absolute' && vsValue === 0) return warn(s, 'ref-zero', `delta '${id}': mode '${mode}' needs a nonzero vs`);
   // The percent change reads from vs, over its magnitude, as diff's relative mode does.
-  const pct = (d / Math.abs(vsValue)) * 100;
+  const pct = percentChange(atValue, vsValue);
   // An authored format shapes the one number printed; beside a value ('both') the percent keeps the percent format.
-  const pctText = ann.format && mode === 'relative' ? s.run.fmtSigned(pct) : formatAutomaticPercent(pct, typicalDecimals([pct]), true, input.locale);
+  const pctText = ann.format && mode === 'relative' ? s.run.fmtSigned(pct) : percentChangeText(s, 'delta', pct);
   const computed = mode === 'relative' ? pctText : mode === 'both' ? `${s.run.fmtSigned(d)} (${pctText})` : s.run.fmtSigned(d);
   // A difference that prints as zero has no direction to judge.
   const tone = s.run.printsZero(d) ? undefined : d > 0 ? 'good' : 'bad';
@@ -1134,12 +1257,14 @@ function gapPlacement(s: AnnotationScope, ann: Extract<Annotation, { kind: 'delt
 }
 
 /**
- * Beside printed end values the bracket number prints at their decimals and
- * unit (a percent level gives points), so "25.6" and "19.2" read "+6.4". An
- * authored format wins; without end values the run's rounding stays.
+ * Under a chart format, beside printed end values the bracket number prints at
+ * their decimals and unit (a percent level gives points), so "25.6" and "19.2"
+ * read "+6.4". An annotation format wins; without end values the run's rounding
+ * stays. Without a chart format the difference joins the level set with a sign,
+ * so no default decision reads a printed text.
  */
 function gapNumber(s: AnnotationScope, ann: Extract<Annotation, { kind: 'delta' | 'diff' }>, tail: AnchorResolution, head: AnchorResolution, raw: number, computed: string): string {
-  if (ann.format) return computed;
+  if (ann.format || (s.input.format === undefined && s.input.differenceFormat === undefined)) return computed;
   const printed = [tail, head].map((end) => s.input.labelRequests?.find((request) => request.kind === 'point' && !request.redundant &&
     request.owner.seriesId === end.owner.seriesId && request.owner.categoryId === end.owner.categoryId)?.text);
   if (printed.some((text) => text === undefined)) return computed;

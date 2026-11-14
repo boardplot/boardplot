@@ -560,13 +560,13 @@ export interface BaseOptions {
    */
   detailFields?: DetailField[];
   /**
-   * How an automatic number format prints a nonzero value below its last
-   * shown digit. 'bound' (default): "<0.01" at two decimals, ">−0.01" below
-   * zero, "<1" for whole numbers, "<+0.01" on a signed change label; below 0.0001, scientific form. 'zero': spreadsheet style, the format's
-   * own "0.00". 'scientific': two significant digits and a power of ten,
-   * "1.2 × 10⁻⁹". 'p-value': every value from 0 to 1 prints as APA 7
-   * writes a p-value, ".042", and "<.001" below. An authored format prints
-   * as authored.
+   * How the default rule prints a nonzero value that needs more than four
+   * decimals. Without the option the rule prints its own digits. 'bound':
+   * "<0.001" at the decimals of the set's first group, ">−0.001" below zero.
+   * 'zero': the set's zero, "0.000". 'scientific': two significant digits
+   * and a power of ten, "1.2 × 10⁻⁶". 'p-value': every value from 0 to 1
+   * prints as APA 7 writes a p-value, ".042", and "<.001" below. An authored
+   * format prints as authored.
    */
   smallValues?: 'bound' | 'zero' | 'scientific' | 'p-value';
 
@@ -1082,7 +1082,7 @@ export interface LineOptions extends Omit<BaseOptionsFor<'line'>, 'annotations'>
   annotations?: Annotation<string | number>[];
   /** Least-squares fit per shown series (line/area) over every source value in the shown range. Regular months, quarters and years fit on the period index; other dates use weeks or elapsed UTC days; otherwise category positions. The key prints slope per period unit and r². At least 3 non-null points; window/zoom sets the fitted range. */
   trend?: boolean | { label?: string };
-  /** stacked100-area defaults to sum-consistent rounding of complete computed wholes; nearest preserves separate rounding. */
+  /** `sum-consistent` makes the computed shares of each complete stacked100-area whole total 100%; by default each share is rounded on its own. */
   rounding?: 'nearest' | 'sum-consistent';
   /** The event lane and key: placement, lane rows, event groups. */
   events?: EventOptions;

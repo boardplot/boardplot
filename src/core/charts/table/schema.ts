@@ -475,7 +475,7 @@ export const tableOptionsObject = baseOptionsSchema.safeExtend(refusedBaseOption
     .meta({ default: 'center' })
     .describe("Heading position. 'center' (default) centres the heading over its columns; in the React grid a group wider than the visible scroll area starts its heading at the first column, and the heading stays in view while the group scrolls. 'left' always starts it at the first column, 'right' ends it at the last. A heading wider than its columns starts at the first column."),
   fitFormats: z.boolean().optional()
-    .describe('Fit figures to authored widths. Remove decimals, then use the next unit up.'),
+    .describe('Fit figures to authored widths. Remove decimals, then use the next unit up; a column without a format then prints scale words in its cells from 10,000.'),
   maxGrowth: z.union([z.number().min(1), z.literal(false)]).optional()
     .meta({ default: 2.5 })
     .describe('Value-track growth cap; default 2.5, false removes the cap. Applies to SVG and React frame fill; the label track takes the remaining width. Also caps React container fit growth.'),

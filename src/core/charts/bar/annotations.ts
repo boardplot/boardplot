@@ -8,9 +8,7 @@ import { strokeToken, dashToken } from '../../theme';
  */
 
 import { namedLineText } from '../../annotateParts';
-import { formatterFromExample, neededDecimals, roundedNumber } from '../../formatSpec';
-import { formatAutomaticNumber } from '../../format';
-import { autoDecimals } from '../../formatPrecision';
+import { formatterFromExample } from '../../formatSpec';
 import type { Rect } from '../../geometry';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { PRIORITY, type LabelRequest } from '../../label/solver';
@@ -77,12 +75,8 @@ export function layoutBarLocalAnnotations(domain: BarDomain, area: BarArea, warn
       // it lifts past the exhibit raster (statFmt) instead of rounding to a
       // different number than it is.
       const meanFmt = ann.format ? annFmt : statFmt;
-      // A typed reference keeps its source digits when the automatic plot
-      // raster rounds them, up to two decimals and never fewer than the
-      // automatic format of the value itself. An authored format wins.
-      const valueText = !isMean && !id.startsWith('averageMarker') && !ann.format && !domain.options.format && roundedNumber(v, domain.valueSpec.spec) !== v
-        ? formatAutomaticNumber(v, { locale: domain.options.locale?.language, decimals: Math.max(autoDecimals(v), neededDecimals(v)), suffix: percent ? '%' : '' })
-        : isMean || id === domain.averageMarkerId ? meanFmt(v) : percent && !ann.format && !domain.options.format ? domain.valueSpec.fmtPercent(v) : annFmt(v);
+      // Without a format a typed reference is a late value of the plot's set.
+      const valueText = isMean || id === domain.averageMarkerId ? meanFmt(v) : percent && !ann.format && !domain.options.format ? domain.valueSpec.fmtPercent(v) : annFmt(v);
       const labelText = ann.label === false || !valueLineLabelsOn(domain.options) ? '' : ann.label !== undefined ? namedLineText(ann.label, valueText, v, id) : isMean ? `${domain.options.strings!.average} ${valueText}` : valueText;
       if (labelText) {
         const lines = labelText.split('\n');

@@ -3,9 +3,7 @@
  * runAnnotatePass only dispatches. Value mapping reuses the chart scale already
  * supplied for valueLine. Missing anchors stay missing.
  */
-import { formatAutomaticNumber, formatAutomaticPercent } from './format';
-import { autoDecimals } from './formatPrecision';
-import { formatterFromExample } from './formatSpec';
+import { defaultSetSpec, formatterFromExample, formatWithSpec, RULE_SET, type NumberFormatSpec } from './formatSpec';
 import { rectsOverlap, type Rect } from './geometry';
 import { PRIORITY, type LabelRequest, type SlotCandidate } from './label/solver';
 import type { OccupiedIndex } from './label/occupied';
@@ -63,6 +61,8 @@ export interface TargetScaleInput {
   locale?: string;
   /** The chart's number format, for the bounds a band prints. */
   format?: string;
+  /** The chart's default level set, for the bounds a band prints without a format. */
+  levelSpec?: NumberFormatSpec;
   /** Caller wording, so a band's range words match its hover card. */
   strings?: StringsSpec;
 }
@@ -291,11 +291,11 @@ function corridorLabel(
   ctx.placed.push({ id: ctx.id, kind: 'band', computedText: text, nodeIds, labelId });
 }
 
-/** A bound as the chart prints its numbers. */
+/** A bound as the chart prints its numbers: without a format a late value of the chart's levels, else a set of its own. */
 function boundText(ctx: TargetPassCtx, v: number): string {
   return ctx.input.format
     ? formatterFromExample(ctx.input.format, ctx.input.locale)(v)
-    : formatAutomaticNumber(v, { locale: ctx.input.locale, decimals: autoDecimals(v) });
+    : formatWithSpec(v, { ...(ctx.input.levelSpec?.[RULE_SET]?.set.kind === 'number' ? ctx.input.levelSpec : defaultSetSpec([v], ctx.input.locale)), prefix: '', suffix: '' });
 }
 
 /**
@@ -563,7 +563,8 @@ function placeAttainmentBand(
     return;
   }
   const ratio = lastActual !== null && plan !== 0 ? lastActual / plan : null;
-  const text = ann.label ?? (ratio === null ? '' : formatAutomaticPercent(ratio * 100, 0, false, ctx.input.locale));
+  // The attainment is a rate: a percent set of its own.
+  const text = ann.label ?? (ratio === null ? '' : formatWithSpec(ratio * 100, { ...defaultSetSpec([ratio * 100], ctx.input.locale, undefined, { kind: 'percent' }), suffix: '%' }));
   const labelId = text ? `annotation:${ctx.id}` : undefined;
   if (text && labelId) {
     const font = { family: ctx.input.theme.type.family, ...ctx.input.theme.type.label };

@@ -83,7 +83,7 @@ function stackColumn(
       part: mode === 'bar' ? 'bar' : 'segment',
       display: {
         value: (mode === 'percent' && env.options.rounding === 'sum-consistent' ? domain.shareTexts.get(`${c.id}\0${s.id}`) : undefined) ??
-          ((val.format ?? s.format) ? formatterFromExample((val.format ?? s.format)!, env.options.locale?.language)(mode === 'percent' || val.isPct ? v : domain.absAt(s, ci)!) : val.isPct ? (mode === 'unit' ? env.cellPctFmt : env.authoredPctFmt)(v) : mode === 'percent' ? domain.shareTexts.get(`${c.id}\0${s.id}`) ?? env.pctFmt(v) : env.fmt(domain.absAt(s, ci)!)),
+          ((val.format ?? s.format) ? formatterFromExample((val.format ?? s.format)!, env.options.locale?.language)(mode === 'percent' || val.isPct ? v : domain.absAt(s, ci)!) : val.isPct ? (mode === 'unit' ? env.cellPctFmt : env.authoredPctFmt)(v) : mode === 'percent' ? domain.shareTexts.get(`${c.id}\0${s.id}`) ?? env.pctFmt(v) : (env.fmtFor?.(s.id) ?? env.fmt)(domain.absAt(s, ci)!)),
       },
     };
     out.nodes.push(node);

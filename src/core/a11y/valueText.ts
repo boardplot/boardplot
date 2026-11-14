@@ -1,10 +1,10 @@
 import { chartString, localizedRecordReason } from '../strings/a11y-valueText';
-import { changePercentText, currencyWholeNumbers, defaultNumberDecimals, wholeCurrencyValue, formatExactNumber, formatNumber, NOT_AVAILABLE, NOT_MEANINGFUL, isPercentagePointUnit } from '../format';
+import { changePercentText, formatExactNumber, formatNumber, NOT_AVAILABLE, NOT_MEANINGFUL, isPercentagePointUnit } from '../format';
 import { withUnit } from '../unitJoin';
-import { differenceExample, engineNumberSpec, exampleSpec, formatNonzeroWithSpec, formatWithSpec, parseFormatExample, specUnitKind, type NumberFormatSpec } from '../formatSpec';
+import { defaultSetSpec, differenceExample, exampleSpec, formatNonzeroWithSpec, formatWithSpec, parseFormatExample, percentChangeSpec, RULE_SET, specUnitKind, type NumberFormatSpec } from '../formatSpec';
+import { isPercentUnit, isUnitText } from '../numberSets';
 import { datePatternFromExample, formatDate, parseISODate } from '../dateFormat';
 import { MAX_FORMAT_DECIMALS, nonzeroDecimals } from '../formatPrecision';
-import type { RenderTarget } from '../types/options';
 import type { InteractionValue } from './types';
 
 /**
@@ -78,7 +78,7 @@ export function derivedValueText(value: InteractionValue, decimals: number, sign
   if (value.state !== 'value' || typeof value.raw !== 'number') return interactionValueText(value, locale);
   const text = decimals > MAX_FORMAT_DECIMALS && !percent
     ? `${signed && value.raw > 0 ? '+' : ''}${formatExactNumber(value.raw, locale)}`
-    : formatNumber(value.raw, { decimals: defaultNumberDecimals(value.raw, Math.min(MAX_FORMAT_DECIMALS, decimals), value.format ? undefined : value.unit, value.renderTarget), signed, magnitude: 'none', locale, automatic: value.format === undefined });
+    : formatNumber(value.raw, { decimals: Math.min(MAX_FORMAT_DECIMALS, decimals), signed, magnitude: 'none', locale, automatic: value.format === undefined });
   if (percent) return `${text}${isPercentagePointUnit(value.unit) ? 'pp' : '%'}`;
   // The unit sits as the marks place it: "+€11m", not "+11 €m".
   return withUnit(text, valueUnit(value));
@@ -99,17 +99,17 @@ export function deltaValueText(delta: InteractionValue, decimals: number, locale
   // A change its label prints in percentage points ("0.0pp") keeps that face in the card.
   const points = isPercentagePointUnit(delta.unit) || (delta.displayed !== undefined && specUnitKind(parseFormatExample(delta.displayed)) === 'pp');
   // As the marks print it (exampleSpec): the authored word, the chart locale's separators, the unit's scale held.
-  const spec = { ...exampleSpec(points ? differenceExample(delta.format) : delta.format, locale, delta.unit), signed: true,
-    currencyWhole: currencyWholeNumbers(delta.unit, delta.renderTarget) };
+  const spec = { ...exampleSpec(points ? differenceExample(delta.format) : delta.format, locale, delta.unit), signed: true };
   const text = offZeroText(delta.raw, spec);
   return spec.prefix || spec.suffix || spec.magnitude !== 'none' ? text : withUnit(text, delta.unit);
 }
 
-/** A signed change in percent: its shown text where the chart draws it, else at its format's decimals (the exhibit's), else two. */
+/** A signed change in percent: its shown text where the chart draws it, else at its format's decimals, else as a change set of one (two digits). */
 export function signedPercentText(percent: InteractionValue, locale?: string): string {
   const shown = shownValueText(percent);
   if (shown !== undefined) return shown;
-  const decimals = typeof percent.raw === 'number' ? percentDecimals(percent, percent.raw) : 2;
+  const decimals = typeof percent.raw !== 'number' ? 2 : percent.format ? percentDecimals(percent, percent.raw)
+    : percentChangeSpec([percent.raw], locale, '%')[RULE_SET]!.groupOf(percent.raw).decimals;
   // The one change face: ">999%" from 1000 % up (changePercentText).
   if (percent.state === 'value' && typeof percent.raw === 'number' && !isPercentagePointUnit(percent.unit)) return changePercentText(percent.raw, Math.min(MAX_FORMAT_DECIMALS, decimals), locale);
   return derivedValueText(percent, decimals, true, locale, true);
@@ -154,7 +154,7 @@ function withoutFloatResidue(raw: number): number {
 }
 
 /** The source number at its own precision (a computed one at most two decimals), in the reader's locale, without a unit. */
-function sourceNumberText(raw: number, locale?: string, derived = false, unit?: string, target?: RenderTarget): string {
+function sourceNumberText(raw: number, locale?: string, derived = false): string {
   // A derived number drops the residue of binary arithmetic first: 6.9, not 6.90.
   // A source number drops it where it is a short decimal: 7.3, not 7.300000000000001.
   raw = derived && !Number.isInteger(raw) ? Number(raw.toPrecision(15)) : withoutFloatResidue(raw);
@@ -162,7 +162,7 @@ function sourceNumberText(raw: number, locale?: string, derived = false, unit?: 
   const decimals = derived ? nonzeroDecimals(raw, Math.min(decimalPrecision(raw), DERIVED_NUMBER_DECIMALS)) : decimalPrecision(raw);
   // Preserve the source number even below the shared formatter's decimal limit.
   // A source number prints exact; only a derived one is an automatic format.
-  return decimals > MAX_FORMAT_DECIMALS ? formatExactNumber(raw, locale) : formatNumber(raw, { decimals: defaultNumberDecimals(raw, decimals, unit, target), magnitude: 'none', locale, automatic: derived });
+  return decimals > MAX_FORMAT_DECIMALS ? formatExactNumber(raw, locale) : formatNumber(raw, { decimals, magnitude: 'none', locale, automatic: derived });
 }
 
 /**
@@ -175,8 +175,18 @@ function sourceNumberText(raw: number, locale?: string, derived = false, unit?: 
  * are the label's.
  */
 function joinShownUnit(shown: string, value: InteractionValue): string {
-  return BARE_NUMBER.test(shown) ? withUnit(shown, value.unit === 'fraction' ? '%' : value.unit) : shown;
+  const unit = value.unit === 'fraction' ? '%' : value.unit;
+  if (BARE_NUMBER.test(shown)) return withUnit(shown, unit);
+  // A word that is the unit itself is no scale word: "57k" for 57 in the unit "k" is complete.
+  const word = SCALE_WORD_AFTER_DIGIT.exec(shown);
+  return word && word[2] !== unit?.trim() && BARE_NUMBER.test(shown.replace(SCALE_WORD_AFTER_DIGIT, '$1$3')) ? withUnit(shown, unit) : shown;
 }
+
+/**
+ * A scale word the engine prints after the digits, in any chart language ("41.2k", "0.43M", "7,8 Mio.", "2,5 Md").
+ * A shown text that is a bare number with such a word takes the unit as a bare number does: "$41.2k", "0.43M count".
+ */
+const SCALE_WORD_AFTER_DIGIT = /(\p{Nd})[\s\u00a0\u202f]?(k|M|B|T|Tsd\.|Mio\.|Mrd\.|Bio\.|Md|Bn)(\)?)$/u;
 
 /**
  * The card's zero rule: a shown text that prints zero for a value above or
@@ -191,7 +201,7 @@ function zeroRuleApplies(value: InteractionValue, shown: string): boolean {
 
 /**
  * The shown text of a number value (`displayed`: the text its label draws, or
- * under an authored format the text its label would draw), with the unit
+ * the text its label would draw), with the unit
  * joined to a bare number. Undefined where the value has none, or where the
  * zero rule takes the source digits instead. The hover card and the reading
  * print a value's shown text through this one helper.
@@ -228,28 +238,32 @@ export function formattedValueText(value: InteractionValue, locale?: string): st
   if (derived !== undefined) return derived;
   if (value.format) {
     // As the marks print it (exampleSpec): the authored word, the chart locale's separators, the unit's scale held.
-    const spec = { ...exampleSpec(value.format, locale, value.unit), currencyWhole: currencyWholeNumbers(value.unit, value.renderTarget) };
+    const spec = exampleSpec(value.format, locale, value.unit);
     const styled = spec.prefix || spec.suffix || spec.magnitude !== 'none';
     // A plain number the drawn label rounded to zero prints its source digits, as a value without a format does: 0.0000000012, not 0.000000001.
-    if (styled || spec.currencyWhole || !drawn) {
-      // The example's style at the decimals that keep a nonzero value off 0.
-      const text = spec.currencyWhole ? formatWithSpec(value.raw, spec) : offZeroText(value.raw, spec);
+    if (styled || !drawn) {
+      // The example's text, or the default rule where it prints a value off zero as zero.
+      const text = offZeroText(value.raw, spec);
       return styled ? text : withUnit(text, rawUnit(value));
     }
   }
-  return withUnit(sourceNumberText(value.raw, locale, value.derived === 'number', value.format ? undefined : value.unit, value.renderTarget), rawUnit(value));
+  return withUnit(sourceNumberText(value.raw, locale, value.derived === 'number'), rawUnit(value));
 }
 
 /**
  * The card's zero rule through a format: the example's text, unless it prints
- * a value off zero as zero. Then the value prints as before authored formats
- * printed exactly (engineNumberSpec): in the example's style, at the decimals
- * or the scale word that keep it off zero ("0.04%" under "0.0%"). The label,
- * the description and the reading keep the example's zero.
+ * a value off zero as zero. Then the value prints by the default rule as a
+ * set of one value, with the prefix, suffix and kind of the format:
+ * 78 under "$1.2M" reads "$78", 0.04 under "0.0%" reads "0.04%".
+ * A suffix that is a unit text switches the scale words off. The label, the
+ * description and the reading keep the example's zero.
  */
 function offZeroText(raw: number, spec: NumberFormatSpec): string {
   const text = formatNonzeroWithSpec(raw, spec);
-  return raw !== 0 && spec.exact === true && printsZero(text) ? formatNonzeroWithSpec(raw, engineNumberSpec(spec)) : text;
+  if (raw === 0 || spec.exact !== true || !printsZero(text)) return text;
+  const affix = (spec.prefix + spec.suffix).trim();
+  const own = defaultSetSpec([raw], spec.locale, isUnitText(affix) ? affix : undefined, isPercentUnit(affix) ? { kind: 'percent' } : {});
+  return formatWithSpec(raw, { ...own, prefix: spec.prefix, suffix: spec.suffix, signed: spec.signed, glyphs: spec.glyphs, negative: spec.negative });
 }
 
 /** One interaction value as text (a suppressed value stays withheld). */
@@ -267,11 +281,9 @@ export function interactionValueText(value: InteractionValue, locale?: string): 
     return formatDate(parsed, datePatternFromExample(value.format, locale), locale);
   }
   if (typeof value.raw !== 'number') return String(value.raw);
-  // A whole currency amount under a format prints as the chart prints it: its shown text, else through the format.
-  if (value.format && wholeCurrencyValue(value.raw, value.unit, value.renderTarget)) return shownValueText(value) ?? formattedValueText(value, locale);
   const derived = derivedPercentText(value, locale);
   if (derived !== undefined) return derived;
-  const text = sourceNumberText(value.raw, locale, value.derived === 'number', value.format ? undefined : value.unit, value.renderTarget);
+  const text = sourceNumberText(value.raw, locale, value.derived === 'number');
   if (isPercentagePointUnit(value.unit)) return `${text}pp`;
   // The unit sits as the marks place it: "$2,470,000", not "2,470,000 $".
   return withUnit(text, valueUnit(value));

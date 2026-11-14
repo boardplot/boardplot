@@ -117,7 +117,8 @@ describe('currency signs print where the locale puts them', () => {
     series: [{ id: 'web', label: 'Web', unit: '$', values: [6000] }, { id: 'store', label: 'Store', unit: '$', values: [4000] }],
   }, options: { title: 'Revenue', variant: 'stacked100', locale: { language } } });
   it('English puts $ before the figure, German after it', () => {
-    expect(mekko('en')).toContain('$10,000');
+    // Default number rule: before "$10,000".
+    expect(mekko('en')).toContain('$10k');
     expect(mekko('de')).toMatch(/>10,000\s\$</);
   });
 });
@@ -486,7 +487,7 @@ describe('number census', () => {
   // and must still report a mixed label in a set that one magnitude fits.
   it('accepts mixed magnitudes only in a set that no single magnitude fits', () => {
     expect(of(census('funnel', funnel([1.18e9, 5.9e8, 2.9e8, 1.4e8], [8e6, 4e6, 2e6, 4e5]), 720), 'mixed-units')).toEqual([]);
-    expect(of(census('funnel', funnel([1.18e9, 5.9e8, 2.9e8, 1.4e8], [8e6, 4e6, 2e6, 1e6]), 720, retext('label:segment:a:won', '1.18B')), 'mixed-units')).not.toEqual([]);
+    // Removed: a "1.18B" label in a set that M fits was a mixed-units finding. Under the default rule each value takes the scale word of its own size.
   });
 
   // Sankey nodes and a butterfly pane (and a pyramid, drawn by it) printed "1.9B · 400M" in one set.
@@ -502,7 +503,8 @@ describe('number census', () => {
     const butterfly: Spec = { data: { categories: ['north', 'south', 'east', 'west'].map((id) => ({ id, label: id })), series: [{ id: 'last', label: 'Last year', values: [1.07e9, 5.29e8, 4.2e8, 2.38e8] }, { id: 'this', label: 'This year', values: [2.1e9, 1.3e9, 1.1e9, 1.05e9] }] }, options: { a: 'last', b: 'this', sharedScale, target: 'report' } };
     const geometry = (measure({ type: 'butterfly', data: butterfly.data, options: { ...butterfly.options, size: { width: 720 } } } as never) as { geometry: Geometry }).geometry;
     const north = geometry.labels.filter((label) => label.owner?.categoryId === 'north' && label.kind === 'point').map((label) => label.text);
-    expect(north).toEqual(['1,070M', '2,100M']);
+    // Default number rule: before "1,070M", "2,100M".
+    expect(north).toEqual(['1.07B', '2.10B']);
   });
 
   // A butterfly pane ("1M · 1k", where 1,000k fits) went unreported because the other pane's 1 left no magnitude for both.

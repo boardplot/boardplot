@@ -426,7 +426,9 @@ describe('published option behaviour census', () => {
     'cohort.figures': { options: { variant: 'stepped' }, reason: 'Only stepped fills can stop their numbers.' },
     'dimswitch.figures': { options: { encodings: { range: 'heat' } }, reason: 'Figures can be hidden only on a heat lane.' },
     'table.figures': { options: { encodings: { actual: 'heat' } }, reason: 'Figures can be hidden only on a heat lane.' },
-    'dimswitch.fitFormats': { fixture: 'sheet', value: false, options: { size: { width: 1400 } } },
+    // A change prints two digits, so the sheet's 66 px week tracks no longer need a fit (the fit took "+23.6%" to "+24%");
+    // in 52 px tracks the fit takes CAC from "30.0" to "30".
+    'dimswitch.fitFormats': { fixture: 'sheet', value: false, options: { size: { width: 1400 }, widths: { label: 240, range: 92, change: 92, period: 52 } } },
     'table.fitFormats': { fixture: 'fit-formats-narrow-tracks', value: false },
     'bar.focus': { fixture: 'valuation-football-field', value: { owner: { categoryId: 'dcf', seriesId: 'equity-value' } } },
     'bartable.focus': { value: { owner: { categoryId: 'co', colId: 'n' } } },
@@ -741,6 +743,10 @@ describe('published option behaviour census', () => {
     ["sparkline", "unitShown", "The unit feeds the format only (sparkline/layout.ts:774); no unit line is drawn."],
     ["cohort", "hatchStrength", "Not sure: the not-reached hatch (cohort/layout.ts:446) draws the same at 0 and 100."],
     ["creative", "notes", "The card draws its own method lines (creative/layout.ts:603) and refuses footnotes."],
+    // Default number rule: before, the zero tick of these probes printed ".000" under p-value; smallValues now acts only on a value that needs more than four decimals.
+    ["bar box bullet column combo grid heatmap histogram line pareto pie pvm sankey slope sparkline status dimswitch table variance", "smallValues", "The probe has no value that needs more than four decimals under the default number rule, and zero prints 0."],
+    // Default number rule: before, 'nearest' turned off the forced share sum; it is the default now.
+    ["bar column combo", "rounding", "'nearest' is the default: no stack forces its shares to add to 100 unless rounding is 'sum-consistent'."],
   ];
   const gaps = new Map<string, string>([...HOST_ONLY, ...ACCEPTED_WITHOUT_EFFECT, ...NOTHING_TO_ACT_ON].flatMap(([types, key, reason]) =>
     types.split(' ').map(type => [`${type}.${key}`, reason] as const)));

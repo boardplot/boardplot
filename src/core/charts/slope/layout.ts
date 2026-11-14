@@ -26,8 +26,8 @@ import { stepDownFont } from '../../label/rowFit';
 import type { AnchorResolution } from '../../annotate';
 import { percentLevels, runAnnotatePass } from '../../annotatePass';
 import { spread1DResult, sweepHide, warnSpreadOverflow } from '../../collide';
-import { formatAuthoredPercent, formatAutomaticNumber, formatAutomaticPercent } from '../../format';
-import { formatterFromExample, seriesRasterFormatter } from '../../formatSpec';
+import { formatAuthoredPercent, formatAutomaticNumber } from '../../format';
+import { formatterFromExample, formatWithSpec, percentChangeSpec, seriesRasterFormatter } from '../../formatSpec';
 import { clamp, cleanDiff, cleanFloat, type Rect } from '../../geometry';
 import { createOccupiedIndex } from '../../label/occupied';
 import { labelsToNodes } from '../../label/emit';
@@ -80,7 +80,7 @@ import type {
   ShownTexts,
 } from '../../types/scene';
 import { valueLineExtent } from '../../valueLineDomain';
-import { autoDecimals, valueSetDecimals } from '../../formatPrecision';
+import { autoDecimals } from '../../formatPrecision';
 import {
   foldShareRefusal,
   planSlopeFold,
@@ -253,7 +253,7 @@ export function layoutSlope(
   // End values share one raster: one decimal count, the engine scale
   // from 1e6 ("196B", not "196,000,000,000"), and a small value lifted off 0.
   const formats = seriesRasterFormatter(options.format, seriesNorm.flatMap((s) => [s.a, s.b].flatMap((end) => (end.isPct ? [] : [end.v]))),
-    options.locale?.language, options.unit, options.target);
+    options.locale?.language, options.unit);
   if (seriesNorm.length === 0) {
     throw new NormalizeError('empty-data', 'series', 'slope requires at least one data-role series', undefined, undefined, ['data', 'series']);
   }
@@ -310,6 +310,9 @@ export function layoutSlope(
       pct: s.a.v! !== 0 ? cleanFloat((abs / Math.abs(s.a.v!)) * 100) : null,
     };
   }
+  // Changes in percent form their own signed set.
+  const pctChangeSpec = percentChangeSpec(Object.values(changes).map((c) => c.pct), options.locale?.language);
+  const pctChangeText = (pct: number, suffix: string): string => formatWithSpec(pct, suffix ? { ...pctChangeSpec, suffix } : pctChangeSpec);
   const byChange = (dir: 1 | -1): Id | undefined => {
     let best: Id | undefined;
     let bestAbs = 0;
@@ -365,7 +368,7 @@ export function layoutSlope(
           ? end.labelOverride.replace(/\$\{value\}/g, value) : value, isName: false });
       }
       else if (c === 'percent' && changes[s.id]?.pct != null)
-        parts.push({ text: formatAutomaticPercent(changes[s.id]!.pct!, 1, true, options.locale?.language), isName: false });
+        parts.push({ text: pctChangeText(changes[s.id]!.pct!, '%'), isName: false });
       else if (c === 'category') parts.push({ text: cat.label ?? cat.id, isName: false });
       else if (c === 'series') parts.push({ text: s.label, isName: true });
     }
@@ -391,16 +394,16 @@ export function layoutSlope(
   // Off below COLUMN_MIN_WIDTH: a column over a narrow plot costs the lines more than it tells.
   const changeMode = options.change ?? 'none';
   const changeTexts = new Map<Id, string>();
+  const lang = options.locale?.language;
+  // Each line's change prints at the scale of its own labels: a unit that names a scale ("$m") gets no engine scale on top.
+  // Under the default rule an absolute change joins the level set with a sign.
+  const differences = plottedSeries.map((p) => changes[p.id]!.abs);
+  const absText = (s: NormSer) => differenceFormatter({ format: options.format, locale: lang, decimals: formats.spec.decimals, values: plottedSeries.flatMap((p) => [p.a.v!, p.b.v!]), scale: formats.specForSeries(seriesKey(s)), differences });
   if (changeMode !== 'none' && size.width >= COLUMN_MIN_WIDTH) {
-    const lang = options.locale?.language;
-    const pcts = plottedSeries.flatMap((s) => (changes[s.id]!.pct === null ? [] : [changes[s.id]!.pct!]));
-    // Each line's change prints at the scale of its own labels: a unit that names a scale ("$m") gets no engine scale on top.
-    const absText = (s: NormSer) => differenceFormatter({ format: options.format, locale: lang, decimals: formats.spec.decimals, values: plottedSeries.flatMap((p) => [p.a.v!, p.b.v!]), scale: formats.specForSeries(seriesKey(s)) });
-    const pctDecimals = Math.min(1, valueSetDecimals(pcts));
     for (const s of plottedSeries) {
       const ch = changes[s.id]!;
       if (changeMode === 'absolute') changeTexts.set(s.id, absText(s)(s.b.v!, s.a.v!));
-      else if (ch.pct !== null) changeTexts.set(s.id, formatAutomaticNumber(ch.pct, { locale: lang, signed: true, decimals: pctDecimals }));
+      else if (ch.pct !== null) changeTexts.set(s.id, pctChangeText(ch.pct, ''));
     }
   }
   // A difference of two percent levels is in percentage points; a relative change is in percent.
@@ -1015,6 +1018,7 @@ export function layoutSlope(
     measure,
     format: options.format,
     locale: options.locale?.language,
+    levelSpec: formats.spec,
     strings: options.strings,
     valueLinePercentLevels: options.unit === '%' || percentLevels(plottedSeries.map(series => ({ vals: [series.a, series.b] }))),
     solveCtx,
@@ -1062,8 +1066,9 @@ export function layoutSlope(
   const changeText = (sid: Id): string => {
     const s = plottedById.get(sid)!;
     const ch = changes[sid]!;
-    const pctPart = ch.pct !== null ? ` (${formatAutomaticPercent(ch.pct, 1, true, options.locale?.language)})` : '';
-    return `${s.label} ${formatAutomaticNumber(ch.abs, { locale: options.locale?.language, signed: true, decimals: autoDecimals(ch.abs) })}${pctPart}`;
+    const pctPart = ch.pct !== null ? ` (${pctChangeText(ch.pct, '%')})` : '';
+    const absPart = options.format ? formatAutomaticNumber(ch.abs, { locale: options.locale?.language, signed: true, decimals: autoDecimals(ch.abs) }) : absText(s)(s.b.v!, s.a.v!);
+    return `${s.label} ${absPart}${pctPart}`;
   };
   const steepParts: string[] = [];
   if (steepestUp) steepParts.push(chartString(options, 'steepestRiser', { v1: changeText(steepestUp) }));

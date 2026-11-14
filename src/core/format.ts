@@ -133,6 +133,11 @@ const currencySigns = new Map<string, string | undefined>();
  * before a $ name another dollar ('CA$'), but 'US$' is $; before another sign
  * they are a magnitude ('M€' is €, 'CN¥' is ¥).
  */
+/** Letters before a currency sign that name a magnitude ('M€', 'K$'), not a country. */
+export function isMagnitudeLetter(letters: string): boolean {
+  return /^(?:K|M|B|BN|MN|MM|T)$/.test(letters);
+}
+
 export function currencySign(text: string): string | undefined {
   if (currencySigns.has(text)) return currencySigns.get(text);
   const sign = uncachedCurrencySign(text);
@@ -148,22 +153,13 @@ function uncachedCurrencySign(text: string): string | undefined {
   if (!sign) return code;
   // Keep a country qualifier (CA$, CN¥, HK$): JPY's ¥ is not CNY's CN¥. A
   // magnitude letter (M€, K$) is no qualifier, and US$ is $.
-  const qualifier = /^(?:K|M|B|BN|MN|MM|T)$/.test(letters) ? '' : letters;
+  const qualifier = isMagnitudeLetter(letters) ? '' : letters;
   return sign === '$' && qualifier === 'US' ? '$' : `${qualifier}${sign}`;
 }
 
-/** The default currency rule uses raw magnitude, before rounding. */
+/** A table under the retired `magnitude` option prints unformatted currency of 1,000 or more whole on a render target, as before. */
 export function currencyWholeNumbers(unit?: string, target?: RenderTarget): boolean {
   return target !== undefined && currencySign(unit ?? '') !== undefined;
-}
-
-export function wholeCurrencyValue(value: number, unit?: string, target?: RenderTarget): boolean {
-  return Math.abs(value) >= 1000 && currencyWholeNumbers(unit, target);
-}
-
-/** Keep the caller's existing precision except for large, unformatted currency. */
-export function defaultNumberDecimals(value: number, decimals: number, unit?: string, target?: RenderTarget): number {
-  return wholeCurrencyValue(value, unit, target) ? 0 : decimals;
 }
 
 // Creating an Intl formatter for every point dominates large scatter layouts.
@@ -272,36 +268,9 @@ export function formatAutomaticPercent(value: number, decimals = 0, signed = fal
   return formatPercent(value, decimals, signed, locale, true);
 }
 
-/**
- * The plain formatter for numbers that print side by side without an
- * authored example: one precision for the set (valueSetDecimals, so 6 prints
- * "6.0" beside "7.9"), lifted per value so no nonzero value prints as 0
- * (0.004 at one decimal prints "0.004").
- */
-export function valueSetFormatter(values: Iterable<number>, locale?: string, signed = false, unit?: string, target?: RenderTarget): (value: number) => string {
-  const decimals = valueSetDecimals(values);
-  // A headline value that rounds to 0 at the set precision takes its own (typicalDecimals): "0.04 EUR" beside "28.0 EUR", not "<0.1 EUR".
-  const own = (value: number) => value !== 0 && Number(roundHalfUp(Math.abs(value), decimals)) === 0 ? Math.max(decimals, typicalDecimals([value])) : decimals;
-  return (value: number) => formatNumber(value, { locale, signed, decimals: defaultNumberDecimals(value, own(value), unit, target), automatic: true });
-}
-
-/**
- * The automatic number rule for one series' labels: one precision for the
- * series (valueSetDecimals), so 0.0341 prints "0.034" beside another
- * series' "0.5"; a nonzero value below the last digit prints its bound ("<0.01").
- */
-export function seriesValueFormatter(values: Iterable<number | null | undefined>, locale?: string, unit?: string, target?: RenderTarget): (value: number, signed?: boolean) => string {
-  return seriesFormatterAt(seriesValueDecimals(values), locale, unit, target);
-}
-
-/** The one precision `seriesValueFormatter` gives a set of values. */
+/** The one precision of a set of values for a printer that takes a decimal count (a box's hover ranges). */
 export function seriesValueDecimals(values: Iterable<number | null | undefined>): number {
   return valueSetDecimals([...values].filter((value): value is number => typeof value === 'number' && Number.isFinite(value)));
-}
-
-/** `seriesValueFormatter` at a precision already chosen. */
-export function seriesFormatterAt(decimals: number, locale?: string, unit?: string, target?: RenderTarget): (value: number, signed?: boolean) => string {
-  return (value, signed = false) => formatAutomaticNumber(value, { locale, signed, decimals: defaultNumberDecimals(value, decimals, unit, target) });
 }
 
 /**

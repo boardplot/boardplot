@@ -11,7 +11,8 @@ import { restDetailsWarning, restLabel, restSum, topNCut } from '../topN';
 import { normalizeCategorySeries } from '../categorySeries';
 import { chartPalette } from '../chartEnv';
 import { valueLineHasTargetExtras } from '../../annotateFields';
-import { formatAutomaticPercent, formatShare } from '../../format';
+import { formatAutomaticPercent, formatShare, shareText } from '../../format';
+import { shareSetDecimals } from '../../formatPrecision';
 import { formatStatWithSpec, formatterFromExample, parseFormatExample, seriesRasterFormatter, shareFormatExample, withChartMarks } from '../../formatSpec';
 import { PRIORITY } from '../../label/solver';
 import {
@@ -511,12 +512,13 @@ export function resolveBarDomain(data: ChartData, options: BarOptions, warnings:
       ? []
       : normSeries.flatMap((s) =>
           s.cells.flatMap((cell) => [cell.v, cell.range?.low, cell.range?.high, cell.range?.mid]),
-        ), options.locale?.language, options.unit, options.target, undefined, variant !== 'grouped');
+        ), options.locale?.language, options.unit);
   // Derived statistics (the Ø average marker/line) keep their own precision
   // inside the exhibit's style — an integer-rastered bar still prints its
   // mean as "Ø 14.9", never "Ø 15" (see formatStatWithSpec; column twin).
+  // Under the default rule a percent mean is a statistic of the percent set.
   const statSpec = !options.format && (variant === 'stacked100' || options.unit === '%' || percentLevels(dataSeries.map(series => ({ vals: series.cells }))))
-    ? { ...valueSpec.spec, suffix: '%' } : valueSpec.spec;
+    ? { ...valueSpec.percentSpec, suffix: '%' } : valueSpec.spec;
   const statFmt = (v: number) => formatStatWithSpec(v, statSpec);
   if (variant === 'stacked100' && dataSeries.length === 1) {
     warnings.push({
@@ -605,13 +607,13 @@ export function resolveBarDomain(data: ChartData, options: BarOptions, warnings:
     basis.nmRows[ci] || basis.naRows[ci] || basis.incompleteRows.has(c.id) || c.total100 !== undefined
       ? []
       : [{ c, parts: dataSeries.flatMap((s, si) => (s.cells[ci]!.v === null ? [] : [{ s, share: basis.shares[ci]![si]! }])) }]) : [];
-  // rounding 'sum-consistent' (the default): each complete bar's shares print so they add up to 100%.
+  // rounding 'sum-consistent': each complete bar's shares print so they add up to 100%.
   const shareTexts = new Map<string, string>();
   const roundingAdjustments: RoundingAdjustment[] = [];
   const shareExample = shareFormatExample(options, dataSeries);
   const shareSpec = shareExample ? withChartMarks(parseFormatExample(shareExample), options.locale?.language) : undefined;
   const pctFmt = shareExample ? formatterFromExample(shareExample, options.locale?.language) : (percent: number) => formatShare(percent, options.locale?.language);
-  if (options.rounding !== 'nearest') {
+  if (options.rounding === 'sum-consistent') {
     for (const { c, parts } of wholes) {
       const rounded = sumConsistentShares(parts.map((part) => part.share), options.locale?.language, shareSpec);
       if (rounded?.warning) warnings.push(roundingUnavailable(c.label, rounded.warning));
@@ -623,6 +625,12 @@ export function resolveBarDomain(data: ChartData, options: BarOptions, warnings:
     }
   } else if (sharesOn) {
     warnShareRoundingDrift(warnings, wholes.map(({ c, parts }) => ({ name: c.label, shares: parts.map((part) => part.share), decimals: shareSpec?.decimals })));
+    // 'nearest': the shares of one bar print at the one precision sum-consistent gives that bar (whole percents, one
+    // decimal more while a nonzero share would print 0), each rounded on its own: "2% · 2% · 1%", not "1.7% · 2.4% · 1.2%".
+    if (!shareExample) for (const { c, parts } of wholes) {
+      const decimals = shareSetDecimals(parts.map((part) => part.share));
+      for (const part of parts) shareTexts.set(`${c.id}\0${part.s.id}`, shareText(part.share, decimals, options.locale?.language));
+    }
   }
   // sharesOfOneWhole: a bar whose authored parts miss 100 prints shares of its own total; direct percents print as authored.
   const rescaled = options.sharesOfOneWhole === true

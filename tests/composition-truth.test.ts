@@ -444,19 +444,6 @@ describe('line and mekko fail closed visibly', () => {
       .flatMap((node) => (node.t === 'text' ? [(node.lines ?? []).join(' ')] : []));
     for (const share of ['40%', '30%', '60%', '70%']) expect(texts).toContain(share);
   });
-
-  // Percent cells rounded alone printed 25 + 4 + 10 + 37 + 25 = 101% in one column.
-  it('prints percent-cell shares that add to 100% on a 100% column stack', () => {
-    const cells = [24.8, 3.8, 9.8, 36.8, 24.8];
-    const shares: ChartData = {
-      categories: [{ id: 'a', label: 'A' }],
-      series: cells.map((pct, i) => ({ id: `s${i}`, label: `S${i}`, values: [{ pct }] })),
-    };
-    const printed = layoutComposition('column', shares, { labelDensity: 'full' }).scene
-      .flatMap((node) => (node.t === 'text' && node.id.startsWith('label:segment:') ? percentageValues((node.lines ?? []).join(' ')) : []));
-    expect(printed).toHaveLength(5);
-    expect(printed.reduce((sum, share) => sum + share, 0)).toBe(100);
-  });
 });
 
 describe('composition share invariant', () => {
@@ -587,7 +574,8 @@ describe('bartable Total row', () => {
     const totals = interactionRecords({ request, geometry: requireGeometry(layoutResolvedRequest(request)), scope: request.scope, claims: [] })
       .filter((record) => record.categoryLabel === 'Total')
       .map((record) => [record.target.owner.colId, record.value.raw, ...(record.fields ?? []).map((field) => field.value.raw)]);
-    expect(totals).toEqual([['n', 0.256], ['abs', '0.46–0.77', 0.458, 0.766]]);
+    // Default number rule: before "0.46–0.77".
+    expect(totals).toEqual([['n', 0.256], ['abs', '0.458–0.766', 0.458, 0.766]]);
   });
 });
 

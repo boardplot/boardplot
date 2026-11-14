@@ -1,10 +1,9 @@
 import { chartString } from '../../strings/creative';
 import { canvasMargin, emphasisWeight, panelTypeClass, typeWidthClass, withTypeClassCap, type TypeWidthClass } from '../../theme';
 import type { Rect } from '../../geometry';
-import { formatAutomaticPercent, valueSetFormatter } from '../../format';
+import { defaultSetSpec, formatWithSpec, percentChangeSpec, statisticFormatter } from '../../formatSpec';
 import { formatDate } from '../../dateFormat';
 import { parseISODate } from '../../isoDate';
-import { nonzeroDecimals } from '../../formatPrecision';
 import { frameTextOptions, solveFrame } from '../../frame';
 import { footerType } from '../../footer';
 import { assertEmbeddedImage } from '../../image';
@@ -24,7 +23,7 @@ import {
   resolveSemanticPaletteTheme,
   semanticPalettePaint,
 } from '../../theme';
-import type { BaseOptions, RenderTarget } from '../../types/options';
+import type { BaseOptions } from '../../types/options';
 import type { Id, OwnerRef } from '../../types/cell';
 import { withUnprintedClaims } from '../../claims/ids';
 import type { Geometry, SceneNode, LintWarning, PaintToken, ShownMark, ShownTexts, TextRole, TypographyRole } from '../../types/scene';
@@ -53,30 +52,79 @@ export const creativeMetrics = [
 /** Which way is better per metric: 1 higher, -1 lower, 0 neither (frequency is context, not a goal). */
 const BETTER = { ctr: 1, cpa: -1, roas: 1, hookRate: 1, holdRate: 1, frequency: 0 } as const;
 /** `deltas`: the printed "vs median" change per metric, for the claims. */
-export interface CreativeDerived { fatigue: CreativeFatigue; deltas?: { key: string; value: number | null; accountMedian: number | null; pct: number | null; text: string }[] }
+export interface CreativeDerived {
+  fatigue: CreativeFatigue;
+  deltas?: { key: string; value: number | null; accountMedian: number | null; pct: number | null; text: string }[];
+  /** The fatigue numbers as the card states them, for the claims. */
+  fatigueTexts?: { change?: string; baseline?: string; current?: string };
+}
 export interface CreativeMarks { media: Rect; metrics: Record<string, Rect>; shown?: ShownMark[] }
 
 
-/**
- * A metric value with its unit. `peers` are the values it prints beside (the
- * creative's and the account median of one metric): one precision for the
- * pair, lifted so no nonzero value reads 0. A missing value reads n/a.
- */
-function creativeValue(value: number | null, unit: string, peers: (number | null)[] = [value], target?: RenderTarget, options: CreativeOptions = {}): string {
-  if (value === null) return chartString(options, 'notApplicable');
-  if (unit === '%') return formatAutomaticPercent(value, nonzeroDecimals(value, 1), false, options.locale?.language);
-  const number = valueSetFormatter(peers.filter((peer): peer is number => peer !== null), options.locale?.language, false, unit, target)(value);
-  return withUnit(number, unit, false, options.locale?.language);
+type CreativeDelta = { pct: number | null; text: string; tone: 'good' | 'bad' | 'neutral' };
+/** The numbers of one card: each metric one set, the "vs median" changes one signed set. */
+interface CreativeNumbers {
+  /** A metric's value, account median or daily value with its unit; a missing value reads n/a. */
+  value: (key: string, value: number | null, unit: string) => string;
+  delta: (key: keyof typeof BETTER) => CreativeDelta;
+  /** A daily value under a trend, without its unit. */
+  daily: (key: string, value: number) => string;
+  /** The fatigue threshold and the observed change: one percent set. */
+  fatigue: (value: number, signed: boolean) => string;
+  /** The two window means of the fatigue rule: a statistic set of the rule's metric. */
+  fatigueMean: (value: number) => string;
 }
-
-/** The creative's change against its account median, in whole percent, and whether that is better. */
-function creativeDelta(key: keyof typeof BETTER, metric: { value: number | null; accountMedian: number | null }, options: CreativeOptions = {}) {
-  const { value, accountMedian: median } = metric;
-  if (value === null || median === null || !(median > 0)) return { pct: null, text: chartString(options, 'notApplicable'), tone: 'neutral' as const };
-  const pct = 100 * (value - median) / median;
-  const text = formatAutomaticPercent(pct, nonzeroDecimals(pct, 0), true, options.locale?.language);
-  const tone = BETTER[key] === 0 || pct === 0 ? 'neutral' as const : Math.sign(pct) === BETTER[key] ? 'good' as const : 'bad' as const;
-  return { pct, text, tone };
+const pctOf = (metric: { value: number | null; accountMedian: number | null }): number | null =>
+  metric.value === null || metric.accountMedian === null || !(metric.accountMedian > 0) ? null : 100 * (metric.value - metric.accountMedian) / metric.accountMedian;
+const creativeNumberCache = new WeakMap<CreativeData, Map<string, CreativeNumbers>>();
+/**
+ * Each metric of a card is its own set: its value, its account median and its daily values. The spend to
+ * date joins the daily spend it sums. The changes against the median of the rows the card draws form one
+ * signed change set. The cache key holds every option the printers read: the language (with its number
+ * marks), the rows the card draws (rowOrder, rowVisibility) and the text for a missing value.
+ */
+function creativeNumbers(data: CreativeData, options: CreativeOptions): CreativeNumbers {
+  const language = options.locale?.language;
+  const drawnRows = tablePlan(options).rows.map(([key]) => key);
+  const notApplicable = chartString(options, 'notApplicable');
+  const cacheKey = `${language ?? ''}|${notApplicable}|${drawnRows.join(',')}`;
+  let byOptions = creativeNumberCache.get(data);
+  if (!byOptions) creativeNumberCache.set(data, byOptions = new Map());
+  const known = byOptions.get(cacheKey);
+  if (known) return known;
+  const keys = [...new Set([...Object.keys(data.metrics), ...TREND_KEYS])];
+  const specs = new Map(keys.map((key) => {
+    const metric = (data.metrics as Record<string, { value: number | null; accountMedian: number | null } | undefined>)[key];
+    const daily = data.observations.map((row) => (row as unknown as Record<string, number | null | undefined>)[key]);
+    const members = key === 'spend' ? [data.facts.spendToDate, ...daily] : [metric?.value, metric?.accountMedian, ...daily];
+    const suffix = key === 'spend' ? 'currency' : creativeMetrics.find(([id]) => id === key)?.[2];
+    const unit = suffix === 'currency' ? data.facts.currency : suffix;
+    return [key, defaultSetSpec(members, language, unit, unit === '%' ? { kind: 'percent' as const } : {})];
+  }));
+  // The changes of the rows the card draws.
+  const deltaSpec = percentChangeSpec(drawnRows.map((key) => pctOf(data.metrics[key as keyof typeof data.metrics])), language, '%');
+  const fatigue = deriveCreativeFatigue(data);
+  const fatigueSpec = percentChangeSpec([fatigue.rule?.thresholdPct, fatigue.changePct], language, '%');
+  const numbers: CreativeNumbers = {
+    value: (key, value, unit) => {
+      if (value === null) return notApplicable;
+      const spec = specs.get(key)!;
+      if (unit === '%') return formatWithSpec(value, { ...spec, suffix: '%' });
+      // withUnit joins the unit as before: the set reads it only for its scale words.
+      return withUnit(formatWithSpec(value, spec), unit, false, language);
+    },
+    delta: (key) => {
+      const pct = pctOf(data.metrics[key]);
+      if (pct === null) return { pct: null, text: notApplicable, tone: 'neutral' };
+      const tone = BETTER[key] === 0 || pct === 0 ? 'neutral' as const : Math.sign(pct) === BETTER[key] ? 'good' as const : 'bad' as const;
+      return { pct, text: formatWithSpec(pct, deltaSpec), tone };
+    },
+    daily: (key, value) => formatWithSpec(value, specs.get(key)!),
+    fatigue: (value, signed) => formatWithSpec(value, signed ? fatigueSpec : { ...fatigueSpec, signed: false }),
+    fatigueMean: fatigue.rule ? statisticFormatter([fatigue.baseline.mean, fatigue.current.mean], specs.get(fatigue.rule.metric)!) : String,
+  };
+  byOptions.set(cacheKey, numbers);
+  return numbers;
 }
 
 function isoDate(iso: string): Date {
@@ -258,19 +306,19 @@ function authoredTracks(box: { x: number; w: number }, stacked: boolean, columns
   return { labelW, tracks, capped, floored };
 }
 
-function metricRows(theme: Theme, data: CreativeData, box: { x: number; y: number; w: number }, add: AddText, nodes: SceneNode[], fonts: CardFonts, stacked: boolean, options: CreativeOptions, target: RenderTarget | undefined, tight: boolean, plan: TablePlan, measure: TextMeasurer, warnings: LintWarning[]): { end: number; marks: Record<string, Rect> } {
+function metricRows(theme: Theme, data: CreativeData, box: { x: number; y: number; w: number }, add: AddText, nodes: SceneNode[], fonts: CardFonts, stacked: boolean, options: CreativeOptions, tight: boolean, plan: TablePlan, measure: TextMeasurer, warnings: LintWarning[]): { end: number; marks: Record<string, Rect> } {
   const marks: Record<string, Rect> = {};
   const overrides = options.columnOverrides;
+  const numbers = creativeNumbers(data, options);
   const cells = plan.rows.map(([key, label, suffix]) => {
     const unit = suffix === 'currency' ? data.facts.currency : suffix;
     const metric = data.metrics[key];
-    const pair = [metric.value, metric.accountMedian];
     const fixedName = key === 'frequency' ? chartString(options, 'creativeFrequency') : key === 'hookRate' ? chartString(options, 'creativeHookRate') : key === 'holdRate' ? chartString(options, 'creativeHoldRate') : label;
     return { key, metric,
       name: options.rowOverrides?.[key]?.label || fixedName,
-      value: creativeValue(metric.value, unit, pair, target, options),
-      median: creativeValue(metric.accountMedian, unit, pair, target, options),
-      delta: creativeDelta(key, metric, options) };
+      value: numbers.value(key, metric.value, unit),
+      median: numbers.value(key, metric.accountMedian, unit),
+      delta: numbers.delta(key) };
   });
   const heads = { label: overrides?.label?.label ?? chartString(options, 'metric'), value: overrides?.value?.label ?? chartString(options, 'creativeColumn'),
     median: overrides?.median?.label ?? chartString(options, 'accountMedianColumn'), delta: overrides?.delta?.label ?? chartString(options, 'vsMedianColumn') };
@@ -370,8 +418,9 @@ function comparisonText(data: CreativeData, options: CreativeOptions, plan: Tabl
     : [...(valueDrawn ? [`${overrides?.value?.label ?? chartString(options, 'creativeColumn')}: ${own}.`] : []),
       ...(medianDrawn ? [`${overrides?.median?.label ?? chartString(options, 'accountMedianColumn')}: ${medians}.`] : [])].join(' ');
   const drawnKeys = plan.rows.map(([key]) => key);
-  const tones = deltaDrawn ? drawnKeys.map((key) => creativeDelta(key, data.metrics[key], options).tone) : [];
-  const cpaJudged = drawnKeys.includes('cpa') && creativeDelta('cpa', data.metrics.cpa, options).tone !== 'neutral';
+  const numbers = creativeNumbers(data, options);
+  const tones = deltaDrawn ? drawnKeys.map((key) => numbers.delta(key).tone) : [];
+  const cpaJudged = drawnKeys.includes('cpa') && numbers.delta('cpa').tone !== 'neutral';
   let key = '';
   // The key says which deltas are coloured, never which colour: the
   // theme names no colour and a repaint may change it.
@@ -385,14 +434,14 @@ function comparisonText(data: CreativeData, options: CreativeOptions, plan: Tabl
 }
 
 /** The fatigue lines a reader needs. Without a rule that is one line; the author's instruction goes to the warnings. */
-function fatigueText(fatigue: CreativeFatigue, options: CreativeOptions): string[] {
+function fatigueText(fatigue: CreativeFatigue, numbers: CreativeNumbers, options: CreativeOptions): string[] {
   const rule = fatigue.rule;
   if (!rule) return [chartString(options, 'fatigueNotAssessed')];
   const status = fatigue.status === 'flagged' ? chartString(options, 'fatigueRuleMet') : fatigue.status === 'clear' ? chartString(options, 'fatigueRuleNotMet') : chartString(options, 'fatigueUnavailable', { v1: chartString(options, ({ 'no-rule': 'fatigueNoRule', 'missing-data': 'fatigueMissingData', 'insufficient-data': 'fatigueInsufficientData', 'zero-baseline': 'fatigueZeroBaseline' } as const)[fatigue.reason!]) });
   return [status,
     chartString(options, 'fatigueWindows', { v1: rule.metric.toUpperCase(), v2: rule.baseline.startDate, v3: rule.baseline.endDate, v4: rule.current.startDate, v5: rule.current.endDate }),
     chartString(options, 'fatigueSample', { v1: fatigue.baseline.inputs.length, v2: fatigue.current.inputs.length, v3: rule.minObservations, v4: chartString(options, rule.missingData === 'unavailable' ? 'missingUnavailable' : 'missingExclude') }),
-    chartString(options, 'fatigueThreshold', { v1: rule.direction === 'higherIsBetter' ? chartString(options, 'fallCapital') : chartString(options, 'riseCapital'), v2: formatAutomaticPercent(rule.thresholdPct, 1, false, options.locale?.language), v3: fatigue.changePct === null ? chartString(options, 'changeUnavailable') : chartString(options, 'observedChange', { v1: formatAutomaticPercent(fatigue.changePct, 1, true, options.locale?.language) }) })];
+    chartString(options, 'fatigueThreshold', { v1: rule.direction === 'higherIsBetter' ? chartString(options, 'fallCapital') : chartString(options, 'riseCapital'), v2: numbers.fatigue(rule.thresholdPct, false), v3: fatigue.changePct === null ? chartString(options, 'changeUnavailable') : chartString(options, 'observedChange', { v1: numbers.fatigue(fatigue.changePct, true) }) })];
 }
 
 /** The authored definitions, one sentence per line. */
@@ -491,7 +540,7 @@ function trends(data: CreativeData, box: { x: number; y: number; w: number }, th
     // The first and the last daily value under their points, so a reader sees the size of the change, not only its shape.
     const observed = values.flatMap((value, i) => (value === null ? [] : [{ value, i }]));
     if (observed.length) {
-      const format = valueSetFormatter(observed.map(o => o.value), options.locale?.language, false, key === 'ctr' ? '%' : data.facts.currency, options.target);
+      const format = (value: number) => creativeNumbers(data, options).daily(key, value);
       const first = points[0]!, last = plot.last!;
       const lastText = format(last.value), lastW = measure(lastText, fonts.noteStrong).width + 1;
       const lastSpec = { font: fonts.noteStrong, owner: { seriesId: 'daily' }, align: 'end' as const, role: 'value' as const, typeRole: 'footnote' as const,
@@ -526,7 +575,7 @@ function trendColumn(input: { data: CreativeData; rows: ReturnType<typeof trendR
     const observed = values.flatMap((value) => (value === null ? [] : [value]));
     const observedAt = values.flatMap((value, i) => (value === null ? [] : [i]));
     if (observed.length) {
-      const format = valueSetFormatter(observed, options.locale?.language, false, key === 'ctr' ? '%' : data.facts.currency, options.target);
+      const format = (value: number) => creativeNumbers(data, input.options).daily(key, value);
       const lastText = format(observed[observed.length - 1]!), lastW = measure(lastText, fonts.noteStrong).width + 1;
       const firstText = format(observed[0]!), firstW = observed.length > 1 ? measure(firstText, fonts.note).width + 1 : 0;
       const left = firstW ? firstW + 6 : 0;
@@ -617,7 +666,8 @@ function layoutForm(data: CreativeData, options: CreativeOptions & Pick<BaseOpti
   const theme = themeForWidth(resolveSemanticPaletteTheme(resolveTheme(options.theme), options.palette, warnings), size.width);
   const occupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
   const fatigue = deriveCreativeFatigue(data);
-  const fatigueLines = fatigueText(fatigue, options);
+  const numbers = creativeNumbers(data, options);
+  const fatigueLines = fatigueText(fatigue, numbers, options);
   if (!fatigue.rule) warnings.push({ code: 'creative-fatigue-no-rule', severity: 'info', field: ['data', 'fatigueRule'],
     message: 'No fatigue rule: the card prints "Fatigue: not assessed".',
     suggest: 'Supply data.fatigueRule with a metric, two windows, a threshold, minimum observations and a missing-data rule.' });
@@ -673,7 +723,7 @@ function layoutForm(data: CreativeData, options: CreativeOptions & Pick<BaseOpti
     ? chartString(options, 'factsLive', { v1: data.facts.format, v2: readerDate(data.facts.launchDate, options) })
     : chartString(options, 'factsEnded', { v1: data.facts.format, v2: readerSpan(data.facts.launchDate, data.facts.endDate, options) });
   y += add('creative:facts', facts, { ...info, y }, muted(fonts.facts)).h + 2;
-  const spend = chartString(options, 'factsSpend', { v1: creativeValue(data.facts.spendToDate, data.facts.currency, undefined, options.target, options), v2: readerDate(data.facts.asOf, options) });
+  const spend = chartString(options, 'factsSpend', { v1: numbers.value('spend', data.facts.spendToDate, data.facts.currency), v2: readerDate(data.facts.asOf, options) });
   // A spend line too long for the column breaks at its dot, not inside the date.
   const spendParts = measure(spend, fonts.facts).width > info.w ? spend.split(' · ') : [spend];
   spendParts.forEach((part, i) => {
@@ -682,7 +732,7 @@ function layoutForm(data: CreativeData, options: CreativeOptions & Pick<BaseOpti
   if (stacked && caption) { y += 2; y += add('creative:media-caption', caption, { ...info, y }, muted(fonts.note)).h; }
 
   const table = stacked ? { x: plot.x, y: Math.max(y, media.y + media.h) + 16, w: plot.w } : { x: info.x, y: y + 14, w: info.w };
-  const metrics = metricRows(theme, data, table, add, nodes, fonts, stacked, options, options.target, form.tight === true, plan, measure, warnings);
+  const metrics = metricRows(theme, data, table, add, nodes, fonts, stacked, options, form.tight === true, plan, measure, warnings);
 
   const noteLines: [string, string][] = notesOff ? [] : [...(comparison ? [['creative:comparison', comparison] as [string, string]] : []), ...definitions.map((text, i): [string, string] => [i === 0 ? 'creative:definitions' : `creative:definitions:${i}`, text])];
   const fatigueOwner = { seriesId: 'fatigue', categoryId: data.id };
@@ -764,7 +814,10 @@ function layoutForm(data: CreativeData, options: CreativeOptions & Pick<BaseOpti
   const shown = solved.placed.flatMap((label) => { const mark = elsewhere.get(label.id); return mark && label.hidden === undefined ? [mark] : []; });
   return withUnprintedClaims({ type: 'creative', size, sizing: resolveSizing(creativeSizing, size, { minHeight: requiredHeight, naturalHeight: requiredHeight }),
     plot, scene: nodes, labels: solved.placed, axes: [], annotations: [], frame: frame.frame,
-    marks: { media, metrics: metrics.marks, ...(shown.length > 0 ? { shown } : {}) }, derived: { fatigue, deltas: (plan.columns.includes('delta') ? plan.rows : []).map(([key]) => ({ key, ...data.metrics[key], ...creativeDelta(key, data.metrics[key], options) })) },
+    marks: { media, metrics: metrics.marks, ...(shown.length > 0 ? { shown } : {}) }, derived: { fatigue, deltas: (plan.columns.includes('delta') ? plan.rows : []).map(([key]) => ({ key, ...data.metrics[key], ...numbers.delta(key) })),
+      fatigueTexts: { ...(fatigue.changePct === null ? {} : { change: numbers.fatigue(fatigue.changePct, true) }),
+        ...(fatigue.baseline.mean === null ? {} : { baseline: numbers.fatigueMean(fatigue.baseline.mean) }),
+        ...(fatigue.current.mean === null ? {} : { current: numbers.fatigueMean(fatigue.current.mean) }) } },
     a11y: { title: accessibleTitle(options.title, data.facts.name), desc: chartString(options, 'creativeDesc', { v1: data.media.alt, v2: fatigueLines.join(' ') }) },
     warnings: [...warnings, ...(frame.frame.warnings ?? []), ...solved.warnings], debug: { occupied: occupied.snapshot(), decisions: solved.decisions } }, unprinted);
 }

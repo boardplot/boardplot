@@ -6,7 +6,7 @@ import type { NormPt } from './model';
 import type { ScatterStrategyOptions } from './types';
 import { drawnValueLines } from './valueLines';
 import type { LogAxes } from '../logAxis';
-export { fitLogTicks, linearAxisSpec, logAxesOf, logDomain, logScale, logSpecFormat, logTickTiers } from '../logAxis';
+export { fitLogTicks, logAxesOf, logDomain, logScale, logSpecFormat, logTickTiers } from '../logAxis';
 export type { LogAxes } from '../logAxis';
 
 /** The patch that takes every axis in `bad` off the log scale and keeps the others on it. */

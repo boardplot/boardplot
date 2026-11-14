@@ -68,8 +68,7 @@ import { lineText, linePaints } from './paints';
 import { linePlotArea, lineReserves, sigRound, solveLineFrame } from './plot';
 import { layoutLineMarks, bandHatch } from './scene';
 import { referenceBandsA11y } from './referenceBands';
-import { formatAutomaticPercent } from '../../format';
-import { autoDecimals } from '../../formatPrecision';
+import { defaultSetSpec } from '../../formatSpec';
 import type { LineOptions } from './types';
 import { PLOT_W_FLOOR_DEMOTED } from '../../lint/space';
 import type { LineTrend } from './trend';
@@ -92,7 +91,7 @@ export interface LineMarks {
   }[];
   /** The value texts of points without a node of their own (ShownMark): texts another series' label draws. */
   shown?: ShownMark[];
-  /** The would-be texts of the points under an authored format, made when a record asks. */
+  /** The would-be texts of the points, made when a record asks. */
   wouldShow?: DeferredShownMarks;
   gapFills?: {
     nodeId: Id;
@@ -471,6 +470,7 @@ function annotateLine(
     measure: env.measure,
     format: options.format,
     locale: options.locale?.language,
+    levelSpec: !rebased && percentLevels(dataSeries) ? { ...domain.valueSpec.percentSpec, suffix: '' } : rebased ? undefined : domain.valueSpec.spec,
     strings: options.strings,
     percentLevels: !rebased && percentLevels(dataSeries),
     sharesFormat: domain.variant === 'stacked100-area',
@@ -514,10 +514,11 @@ function lineStandings(env: LineEnv, domain: LineDomain, text: LineText, shownTe
         .filter((s) => endpoints[s.id])
         .map((s) => {
           const cell = s.vals[lastIdxOf.get(s.id)!]!;
-          // The value as the chart shows it: its drawn label, or under an authored format the label it would print.
+          // The value as the chart shows it: its drawn label, or the label it would print. A rebased
+          // chart plots an index, and its would-be texts hold the source values of the records.
           const shown = variant === 'stacked100-area'
             ? shownText(s.id, endpoints[s.id]!.categoryId, 'share.percent', false)
-            : shownText(s.id, endpoints[s.id]!.categoryId, 'value', (cell.format ?? s.format ?? domain.options.format) !== undefined);
+            : shownText(s.id, endpoints[s.id]!.categoryId, 'value', !rebased);
           if (shown !== undefined) return `${s.label} ${shown}`;
           const shareText = domain.shareTexts.get(`${endpoints[s.id]!.categoryId}\0${s.id}`);
           if (shareText !== undefined) return `${s.label} ${shareText}`;
@@ -545,20 +546,25 @@ function lineStandings(env: LineEnv, domain: LineDomain, text: LineText, shownTe
   return { endpointDesc, bumpExitedDesc };
 }
 
-/** The text a point's value shows (ShownTexts slot): drawn, else under an authored format the would-be text. */
-type ShownTextOf = (seriesId: Id, categoryId: Id, slot: string, authored: boolean) => string | undefined;
+/** The text a point's value shows (ShownTexts slot): drawn, else the would-be text. */
+/** A point's shown text; `would` also takes the text its label would print (a computed share takes none). */
+type ShownTextOf = (seriesId: Id, categoryId: Id, slot: string, would: boolean) => string | undefined;
 
 /**
  * The value texts the records read where no label of their own states them:
- * the would-be texts of the points under an authored format, and the value
+ * the would-be texts of the points, and the value
  * one series' label draws for others (the first member of a near-zero group,
  * a tie's note or its kept value). With the lookup the description reads:
- * the drawn text of a value, else under an authored format its would-be
+ * the drawn text of a value, else its would-be
  * text, the same order the records take them in.
  */
 function lineShownTexts(domain: LineDomain, reserves: LineReserves, plan: LineLabelPlan, labels: readonly PlacedLabel[], legend: LegendGeometry | undefined): { shown: ShownMark[]; wouldShow: DeferredShownMarks | undefined; shownText: ShownTextOf } {
   const visible = new Map(labels.filter((label) => label.hidden === undefined).map((label) => [String(label.id), label] as const));
   const shown: ShownMark[] = [];
+  // A rebased chart plots an index; the record of a point holds its source value, which prints as its own set.
+  if (domain.sourceFmt) for (const s of domain.drawnSeries) s.vals.forEach((val, ci) => {
+    if (val.v !== null && domain.cats[ci]) shown.push({ owner: { seriesId: s.id, categoryId: domain.cats[ci]!.id }, shows: { value: domain.sourceFmt!(val.v) } });
+  });
   const drawnFor = (labelId: Id, owners: readonly OwnerRef[], shows: ShownTexts | undefined) => {
     if (shows && visible.has(String(labelId))) for (const owner of owners) shown.push({ owner, shows, drawn: true });
   };
@@ -589,8 +595,8 @@ function lineShownTexts(domain: LineDomain, reserves: LineReserves, plan: LineLa
   return {
     shown,
     wouldShow: plan.wouldShow.any ? new DeferredShownMarks(plan.wouldShow.all) : undefined,
-    shownText: (seriesId, categoryId, slot, authored) => drawn.get(key(seriesId, categoryId))?.[slot]
-      ?? (authored ? would.get(key(seriesId, categoryId))?.[slot] ?? plan.wouldShow.at(seriesId, categoryId)?.[slot] : undefined),
+    shownText: (seriesId, categoryId, slot, wouldToo) => drawn.get(key(seriesId, categoryId))?.[slot]
+      ?? (wouldToo ? would.get(key(seriesId, categoryId))?.[slot] ?? plan.wouldShow.at(seriesId, categoryId)?.[slot] : undefined),
   };
 }
 
@@ -654,7 +660,7 @@ function lineAnomalyMarks(theme: Theme, domain: LineDomain, anomaly: LineAnomaly
   const series = domain.drawnSeries.find((s) => s.id === anomaly.seriesId)!;
   const row = domain.pv[domain.rowOf.get(series)!]!;
   return lineAnomalyFurniture(theme, { strings: domain.options.strings,
-    anomaly: anomaly.model, corridorShown: anomaly.corridorShown, statFmt: anomaly.statFmt, fmt: domain.fmt,
+    anomaly: anomaly.model, corridorShown: anomaly.corridorShown, statFmt: anomaly.statFmt, corridorFmt: anomaly.corridorFmt, fmt: domain.fmt,
     corridorPaint: columnCorridorPaint(domain.options.colorblindSafe), plot: area.forecastPlot, y: area.y, seriesId: series.id,
     // The rule numbers read in the right margin, which solveLineFrame reserves (anomalyRuleReserve).
     labelX: area.plot.x + area.plot.w + 4,
@@ -905,7 +911,7 @@ function assembleLineGeometry(input: LineAssembly): Geometry<LineMarks, LineDeri
   // decimals its level needs, which the whole-percent ticks would round.
   const bandLevels = (input.reserves.referenceBands?.entries ?? []).flatMap((entry) => [entry.low, entry.high]);
   const bandFmt = variant === 'stacked100-area'
-    ? (v: number) => formatAutomaticPercent(v, autoDecimals(v), false, domain.options.locale?.language)
+    ? tickFormatter({ ...defaultSetSpec(bandLevels, domain.options.locale?.language, undefined, { kind: 'percent' }), suffix: '%' }, bandLevels)
     : area.axisTickSpec ? tickFormatter(area.axisTickSpec, bandLevels) : area.axisFmt;
   const lineShown = lineShownTexts(domain, input.reserves, plan, allLabels, area.frame.legend);
   if (lineShown.shown.length > 0) marks.shown = lineShown.shown;

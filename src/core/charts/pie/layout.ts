@@ -23,7 +23,8 @@ import { runAnnotatePass } from '../../annotatePass';
 import { pieComparisonLayout, pieComparisonRoom } from './comparisons';
 import { warnSpreadOverflow } from '../../collide';
 import { resolvePaintWarnings } from '../../paintWarnings';
-import { seriesValueFormatter, shareSetFormatter } from '../../format';
+import { shareSetFormatter } from '../../format';
+import { ruleFormatter } from '../../numberSets';
 import { warnIncompleteComposition, warnShareRoundingDrift } from '../../dataGaps';
 import { roundWholes, type RoundingAdjustment } from '../../shareRounding';
 import { seriesRasterFormatter, formatterFromExample, parseFormatExample, shareFormatExample } from '../../formatSpec';
@@ -371,11 +372,11 @@ function layoutPiePass(
       field: ['options', 'format'],
     });
   }
-  const formats = seriesRasterFormatter(valueExample, cells.map(cellValue), options.locale?.language, options.unit, options.target);
-  // The slices are one series: one precision for them all (seriesValueFormatter), not one per value.
+  const formats = seriesRasterFormatter(valueExample, cells.map(cellValue), options.locale?.language, options.unit);
+  // The slices are one series: one set for them all (ruleFormatter), not one per value.
   const fmt = ser.format || ser.unit ? formats.forSeries(ser) : valueExample
     ? formatterFromExample(valueExample, options.locale?.language)
-    : seriesValueFormatter(cells.map(cellValue), options.locale?.language);
+    : ruleFormatter(cells.map(cellValue), options.locale?.language, { unit: options.unit });
   const sharesFormatter = (percents: Iterable<number>): { decimals: number; format: (percent: number) => string } =>
     shareExample ? { decimals: parseFormatExample(shareExample).decimals, format: formatterFromExample(shareExample, options.locale?.language) }
       : shareSetFormatter(percents, options.locale?.language);
@@ -1278,6 +1279,7 @@ function layoutPiePass(
     measure,
     format: valueExample,
     locale: options.locale?.language,
+    levelSpec: formats.spec,
     strings: options.strings,
     solveCtx,
   });

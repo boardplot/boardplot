@@ -6,7 +6,8 @@ import { gridDash, secondaryFont, strokeToken } from './theme';
  * into the OccupiedIndex so marks/labels never collide with them.
  */
 
-import { MAGNITUDE_DIVISOR, decimalCap, formatWithSpec, neededDecimals, type NumberFormatSpec } from './formatSpec';
+import { MAGNITUDE_DIVISOR, RULE_SET, decimalCap, formatWithSpec, neededDecimals, type NumberFormatSpec } from './formatSpec';
+import { fixedRuleSet, tickScale, type RuleSet } from './numberRule';
 import { AUTO_MAX_DECIMALS, MAX_FORMAT_DECIMALS } from './formatPrecision';
 import { sweepHide } from './collide';
 import { tickLabelX } from './label/tickRow';
@@ -65,14 +66,8 @@ export function tickFormatter(
   spec: NumberFormatSpec,
   ticks: readonly number[],
 ): (value: number) => string {
-  // An engine-chosen scale follows the largest tick: ticks near 40 under a B
-  // scale would print "0.00000004B".
-  if (spec.autoMagnitude) {
-    const largest = Math.max(0, maxOf(ticks.filter(Number.isFinite).map(Math.abs)));
-    let magnitude = spec.magnitude;
-    while (magnitude !== 'none' && largest < MAGNITUDE_DIVISOR[magnitude]) magnitude = magnitude === 't' ? 'bn' : magnitude === 'bn' ? 'm' : magnitude === 'm' ? 'k' : 'none';
-    if (magnitude !== spec.magnitude) spec = { ...spec, magnitude, ...(magnitude === 'none' ? { autoMagnitude: undefined, rollMagnitude: undefined } : {}) };
-  }
+  const rule = spec[RULE_SET];
+  if (rule) return ruleTickFormatter(spec, rule, ticks);
   const divisor = MAGNITUDE_DIVISOR[spec.magnitude];
   const scaled = ticks
     .map((tick) => tick / divisor)
@@ -83,10 +78,8 @@ export function tickFormatter(
   const largest = Math.max(0, maxOf(scaled.map((tick) => Math.abs(tick))));
   const noise = largest > 0 && largest < 1 ? largest : 1;
   // Ticks share one precision; the value-label unit rule (wholeFrom) stays off the axis.
-  // One scale down the axis: an engine-chosen M or B does not step down per tick
-  // as value labels do ("0.5M", not "500k" under "1.0M"); zero prints bare.
   // Ticks are not data: a significant-figure example gives them its style, and their spacing sets the digits ("$10M", "$12.5M").
-  const tickSpec: NumberFormatSpec = { ...spec, ...(spec.significantDigits === undefined ? {} : { significantDigits: undefined }), autoMagnitude: undefined, wholeFrom: undefined, decimals: Math.max(0, maxOf(scaled.map((tick) => neededDecimals(tick, cap, noise, spec.decimals)))) };
+  const tickSpec: NumberFormatSpec = { ...spec, ...(spec.significantDigits === undefined ? {} : { significantDigits: undefined }), wholeFrom: undefined, decimals: Math.max(0, maxOf(scaled.map((tick) => neededDecimals(tick, cap, noise, spec.decimals)))) };
   const finite = ticks.filter((tick) => Number.isFinite(tick));
   const distinct = () => new Set(finite.map((tick) => formatWithSpec(tick, tickSpec))).size === new Set(finite).size;
   while (tickSpec.decimals < MAX_FORMAT_DECIMALS && !distinct()) {
@@ -96,7 +89,32 @@ export function tickFormatter(
   }
   // Beside ticks in scientific notation ("4.0 × 10⁻¹³") zero prints "0", not "0.0000000000000".
   const scientific = finite.some((tick) => tick !== 0 && formatWithSpec(tick, tickSpec).includes('×'));
-  return (value: number) => formatWithSpec(value, (spec.autoMagnitude || scientific) && value === 0 ? { ...tickSpec, magnitude: 'none', decimals: 0 } : tickSpec);
+  return (value: number) => formatWithSpec(value, scientific && value === 0 ? { ...tickSpec, magnitude: 'none', decimals: 0 } : tickSpec);
+}
+
+/**
+ * Ticks under the default rule: the axis set gives the
+ * scale-word decision, the words of the chart language, prefix, suffix and
+ * marks; the ticks give one scale (the word that fits the largest tick) and
+ * one decimal count, the fewest that print each tick exactly and keep every
+ * tick apart. Zero prints `0`. The decisions read values, never texts.
+ */
+function ruleTickFormatter(spec: NumberFormatSpec, rule: RuleSet, ticks: readonly number[]): (value: number) => string {
+  const finite = ticks.filter((tick) => Number.isFinite(tick));
+  const scale = tickScale(rule, maxOf(finite.map(Math.abs)));
+  const scaled = finite.map((tick) => tick / 10 ** scale);
+  const cap = decimalCap(scaled);
+  const largest = Math.max(0, maxOf(scaled.map(Math.abs)));
+  const noise = largest > 0 && largest < 1 ? largest : 1;
+  let decimals = Math.max(0, maxOf(scaled.map((tick) => neededDecimals(tick, cap, noise))));
+  const setAt = (d: number) => fixedRuleSet(rule, { scale, decimals: d });
+  const apart = (d: number) => {
+    const at = setAt(d);
+    return new Set(finite.map((tick) => at.rounded(tick))).size === new Set(finite).size;
+  };
+  while (decimals < MAX_FORMAT_DECIMALS && !apart(decimals)) decimals++;
+  const tickSpec: NumberFormatSpec = { ...spec, [RULE_SET]: setAt(decimals) };
+  return (value: number) => formatWithSpec(value, tickSpec);
 }
 
 function thinAxisTicks(

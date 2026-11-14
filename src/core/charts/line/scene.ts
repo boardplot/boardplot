@@ -215,7 +215,7 @@ export function layoutLineMarks(
     language: options.locale?.language,
     range: domain.x?.range, xOfValue: area.xOfValue,
     fan: domain.fan, fanPaints: paints.fanPaints, fanLadder: paints.fanLadder, interpolationFor, pv, rowOf, cats, compositionInvalidAt, xOf, y,
-    pathFor, reversePathTail, fmt: domain.fmt, numberSpec: domain.valueSpec.spec, occupied: claims, warnings, nodes, marks, analyticalSceneStart,
+    pathFor, reversePathTail, fmt: domain.fanFmt ?? domain.fmt, numberSpec: domain.valueSpec.spec, occupied: claims, warnings, nodes, marks, analyticalSceneStart,
   });
   const phaseRequests: LabelRequest[] = [];
   const phaseDerived = renderPhaseFills(theme, {

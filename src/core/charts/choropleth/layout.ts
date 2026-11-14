@@ -3,8 +3,9 @@ import { disclosureNote } from '../../notes';
 import { chartTheme } from '../chartEnv';
 import { structureCount } from '../../structureCounts';
 import { authoredNotes, frameTextOptions, legendRequired, noteLine, solveFrame, SIDE_KEY_PLOT_SHARE, unitPrinted } from '../../frame';
-import { formatAutomaticNumber } from '../../format';
-import { formatterFromExample, unitMagnitude } from '../../formatSpec';
+import { defaultSetSpec, formatterFromExample } from '../../formatSpec';
+import { tickFormatter } from '../../axis';
+import { ruleFormatter } from '../../numberSets';
 import { boxGap, rectContains, rectHitsConvexPolygon, rectsOverlap, round2, type Rect, type Size } from '../../geometry';
 // The geo modules by name, not the '../../geo' barrel: the barrel re-exports
 // './packs', whose import registers every pack, and a choropleth must not
@@ -43,7 +44,6 @@ import type {
   ChoroplethOptions,
 } from './types';
 import { buildGeoScale, geoLabelFont, quietLandPaint, ingestGeoRegions, geoStatePattern, geoStateLabel, geoStateLegend, geoStateSummary, geoStateCounts, geoPolarityCaption, geoScaleHints, KEY_BESIDE_GAIN } from '../geoScale';
-import { autoDecimals } from '../../formatPrecision';
 import { compareText } from '../../text';
 import { geoOverlayDiameter, geoOverlayInFrame, geoOverlayLegend, renderGeoOverlays, reserveGeoOverlayGlyphs } from './overlays';
 import { generatedIdWarnings } from '../../schema/generatedColumns';
@@ -323,7 +323,7 @@ function layoutMapPass(
   const numericValues = [...valuesById.values()].filter((value): value is number => value !== null);
   const fmt = options.format
     ? formatterFromExample(options.format, options.locale?.language, undefined, numericValues)
-    : (value: number) => formatAutomaticNumber(value, { locale: options.locale?.language, decimals: autoDecimals(value) });
+    : ruleFormatter(numericValues, options.locale?.language, { unit: options.unit });
   if (numericValues.length === 0) {
     warnings.push({
       code: 'choropleth-no-values',
@@ -342,17 +342,10 @@ function layoutMapPass(
     (region) => valuesById.has(region.id) && valuesById.get(region.id) === null && !statesById.has(region.id),
   );
   const scale = buildGeoScale(numericValues, options, fmt, hasNoDataRegion, theme, { token: 'background' });
-  // Keep this key formatting local to choropleth; tilemap keeps its scale
-  // formatter. A round break prints round on the boundary ticks ('20', not '20.0').
-  // A unit that names a scale gets no second one: "20M" under "in $m" reads as 20 million millions.
-  const keyScale = unitMagnitude(options.unit) === undefined;
-  scale.edgeFmt = options.format !== undefined ? scale.edgeFmt : (value: number) => {
-    const magnitude = !keyScale ? 1 : Math.abs(value) >= 1e9 ? 1e9 : Math.abs(value) >= 1e6 ? 1e6 : Math.abs(value) >= 1e3 ? 1e3 : 1;
-    const scaled = value / magnitude;
-    let decimals = 0;
-    while (decimals < 6 && !(Math.abs(Math.round(scaled * 10 ** decimals) - scaled * 10 ** decimals) < 1e-6)) decimals++;
-    return formatAutomaticNumber(value, { locale: options.locale?.language, magnitude: keyScale ? 'auto' : 'none', decimals });
-  };
+  // Keep this key formatting local to choropleth; tilemap keeps its scale formatter.
+  // Without a format the class breaks are the key's ticks: one scale
+  // word and one decimal count from the breaks, in the region set (a unit text takes no word).
+  if (options.format === undefined) scale.edgeFmt = tickFormatter(defaultSetSpec(numericValues, options.locale?.language, options.unit), scale.edges?.slice(1, -1) ?? []);
   // The key and the summary name only states a reader can see: as a polygon, a marker or a label.
   const visibleStates = pack.regions.filter(region => region.polygons.length > 0 || visibleMarkerIds.has(region.id)).flatMap(region => statesById.has(region.id) ? [statesById.get(region.id)!] : []);
   pushAll(scale.legend, geoStateLegend(visibleStates, options));

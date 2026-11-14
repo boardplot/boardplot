@@ -6,6 +6,7 @@
  */
 
 import type { Id } from '../../types/cell';
+import type { ShownMark } from '../../types/scene';
 import type { BaseOptionsFor, ColumnOverride } from '../../types/options';
 
 interface BoxGroupInput {
@@ -109,10 +110,14 @@ export interface BoxRowMark {
   /** Marks for values outside the whisker rule — see `beyondWhiskers`. */
   beyondNodeIds: Id[];
   observationNodeIds: Id[];
+  /** Under the default rule: the texts the row's quartiles and whisker ends print, for the hover card's ranges. */
+  texts?: Partial<Record<'q1' | 'q3' | 'whiskerLow' | 'whiskerHigh', string>>;
 }
 
 export interface BoxMarks {
   rows: BoxRowMark[];
+  /** Under the default rule: every observation's text in the observation set, drawn or not. */
+  shown?: ShownMark[];
   /** The decimals the automatic statistic and point labels print at; the hover card's ranges use them too. */
   labelDecimals: number;
 }

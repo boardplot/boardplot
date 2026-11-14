@@ -270,7 +270,7 @@ export function solveColumnFrame(
   // The width is reserved HERE, before the frame is solved, so the label fits
   // by construction instead of being drawn wherever it lands.
   const anomalyRuleLabelWidth = anomaly?.usable
-    ? anomalyRuleReserve(anomalyRuleLines(theme, anomaly, corridorShown, statFmt, { token: 'warn' }, options.strings), { family: theme.type.family, ...theme.type.label }, measure)
+    ? anomalyRuleReserve(anomalyRuleLines(theme, anomaly, corridorShown, { statFmt, corridorFmt: domain.corridorFmt }, { token: 'warn' }, options.strings), { family: theme.type.family, ...theme.type.label }, measure)
     : 0;
   const decorationRight = Math.max(
     netLineOn ? measure(netLineName(domain.dataSeries, netLineSeries, domain.stacks, options.strings), decorationFont).width + 12 : 0,

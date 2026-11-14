@@ -9,15 +9,15 @@ import { compositionBasis, mixedSignsWarning, overfullShareSum, overfullWarning 
 import { cellFields, normalizeCategorySeries } from '../categorySeries';
 import { breakUnsupported, chartPalette, chartTheme } from '../chartEnv';
 import { defaultMeasurer } from '../../text';
-import { formatAuthoredPercent, formatShare } from '../../format';
-import { formatStatWithSpec, seriesRasterFormatter } from '../../formatSpec';
+import { formatAuthoredPercent, formatShare, shareText } from '../../format';
+import { formatStatWithSpec, ruleStatistics, seriesRasterFormatter, statisticFormatter, type RuleStatistics } from '../../formatSpec';
 import { anomalyCorridor, anomalyModel, refuseAnomalySpec } from '../column/anomaly';
 import { isIncomplete, warnIncompleteComposition, warnShareRoundingDrift } from '../../dataGaps';
 import { cleanFloat } from '../../geometry';
 import { drawnVariant } from '../../stackAdds';
 import { roundWholes, shareRoundingNotes } from '../../shareRounding';
 import { parseISODate } from '../../isoDate';
-import { fitLineTrends, trendTimeline } from './trend';
+import { fitLineTrends, lineTrendRates, trendTimeline } from './trend';
 import { lineXModel, resolveLineXOptions, unmatchedPartial, type LineXModel } from './continuous';
 import {
   NormalizeError,
@@ -46,7 +46,7 @@ import { maxOf, minOf, pushAll } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
 import { checkPointBudget } from '../../itemBudget';
 import { logDomain } from '../logAxis';
-import { authoredDecimals } from '../../formatPrecision';
+import { authoredDecimals, shareSetDecimals } from '../../formatPrecision';
 import { validateLineLog, validateLogTolerances } from './log';
 
 /**
@@ -772,7 +772,9 @@ export function resolveLineDomain(data: LineChartData, input: LineOptions, env: 
   // 53.2 under a "1,234" example instead of "53". A rebased chart prints an
   // index, not the data unit, so the unit rule stays off it.
   const indexed = options.rebase100 && variant !== 'stacked100-area' && cats.some((c) => c.id === rebaseAtId(options.rebase100, cats));
-  let valueSpec = seriesRasterFormatter(options.format, seriesNorm.flatMap((s) => s.vals.map((val) => val.v)), options.locale?.language, indexed ? undefined : options.unit, options.target, undefined, isStacked);
+  // Under the default rule the bounds of a fan are a statistic set of their own, outside the line's set.
+  const fanBoundIds = options.format ? undefined : new Set(options.fan?.bands?.flatMap((band) => [band.low, band.high]) ?? []);
+  let valueSpec = seriesRasterFormatter(options.format, seriesNorm.filter((s) => !fanBoundIds?.has(s.id)).flatMap((s) => s.vals.map((val) => val.v)), options.locale?.language, indexed ? undefined : options.unit);
   const bumpPrepared = prepareBump({
     isBump, options, valueAxis: options.valueAxis ?? {}, targetsLength: targets.length,
     dataSeries, refSeries, seriesNorm, cats, warnings,
@@ -815,7 +817,7 @@ export function resolveLineDomain(data: LineChartData, input: LineOptions, env: 
     return b > 0 ? (val.v / b) * 100 : 0;
   }));
   const rowOf = new Map<NormSer, number>(seriesNorm.map((s, k) => [s, k] as const));
-  const rounded = variant === 'stacked100-area' && options.rounding !== 'nearest'
+  const rounded = variant === 'stacked100-area' && options.rounding === 'sum-consistent'
     ? roundWholes(cats.flatMap((category, ci) => {
       if (compositionInvalidAt(ci) || dataSeries.some(s => s.vals[ci]!.v === null || s.vals[ci]!.isPct)) return [];
       return [{ id: category.id, name: category.label ?? category.id,
@@ -823,6 +825,15 @@ export function resolveLineDomain(data: LineChartData, input: LineOptions, env: 
     }), options.locale?.language, undefined, true)
     : undefined;
   if (rounded) pushAll(warnings, rounded.warnings);
+  // 'nearest': the shares of one whole print at the one precision sum-consistent gives that whole (whole percents, one
+  // decimal more while a nonzero share would print 0), each rounded on its own: "9%", not "9.0%" beside "26%".
+  const nearestTexts = new Map<string, string>();
+  if (variant === 'stacked100-area' && !rounded) cats.forEach((category, ci) => {
+    if (compositionInvalidAt(ci) || dataSeries.some(s => s.vals[ci]!.v === null || s.vals[ci]!.isPct)) return;
+    const shares = dataSeries.map(s => pv[rowOf.get(s)!]![ci]!);
+    const decimals = shareSetDecimals(shares);
+    dataSeries.forEach((s, k) => nearestTexts.set(`${category.id}\0${s.id}`, shareText(shares[k]!, decimals, options.locale?.language)));
+  });
   // Bump: derive ranks (standard competition ranking, "1224") and PLOT THEM IN
   // PLACE OF THE VALUES. The rank is written back into `pv`, so everything
   // below operates on rank without knowing it; `s.vals` keeps the metric, and
@@ -872,6 +883,8 @@ export function resolveLineDomain(data: LineChartData, input: LineOptions, env: 
     ? cats.filter((_, ci) => dataSeries.some(s => s.vals[ci]!.v === null)).map(c => c.id) : []);
   const rebaseSuppressed: LineDomain['rebaseSuppressed'] = [];
   const rebased = applyRebase(options, variant, cats, seriesNorm, pv, rowOf, warnings, rebaseSuppressed);
+  // The records keep the source values: they print as the set the author gave.
+  const sourceFmt = rebased ? valueSpec.fmt : undefined;
   if (rebased) {
     // The format raster: a rebased chart prints an index, so the raster runs over
     // the rebased values, judged to one decimal (the precision an index is read
@@ -881,13 +894,17 @@ export function resolveLineDomain(data: LineChartData, input: LineOptions, env: 
       options.format,
       seriesNorm.flatMap((s) => pv[rowOf.get(s)!]!.map((v) => (v === null ? null : Math.round(v * 10) / 10))),
       options.locale?.language,
-      undefined,
-      options.target,
-      undefined,
-      isStacked,
     );
   }
-  if (fan) {
+  let fanFmt: ((value: number) => string) | undefined;
+  if (fan && fanBoundIds) {
+    // The bounds print as one statistic set; the line keeps the set of its own values.
+    const made = valueSpec;
+    const bounds = new Set<object>(fan.bands.flatMap((band) => [band.low, band.high]));
+    const boundFmt = statisticFormatter([...bounds].flatMap((s) => (s as NormSer).vals.map((val) => val.v)), made.spec);
+    fanFmt = boundFmt;
+    valueSpec = { ...made, forSeries: (series, cellFormat) => (!cellFormat && !series.format && bounds.has(series) ? boundFmt : made.forSeries(series, cellFormat)) };
+  } else if (fan) {
     // A fan's bounds belong to the line they surround: the line takes one precision with its bounds ("−48.00" beside "−13.50").
     const made = valueSpec;
     const withBounds = { format: fan.of.format, unit: fan.of.unit, values: [fan.of, ...fan.bands.flatMap((band) => [band.low, band.high])].flatMap((s) => s.vals.map((val) => val.v)) };
@@ -896,7 +913,7 @@ export function resolveLineDomain(data: LineChartData, input: LineOptions, env: 
   // The anomaly rule reads every source period, before a window or zoom.
   const statFmt = (v: number) => formatStatWithSpec(v, valueSpec.spec);
   const anomalyRun = options.anomaly
-    ? lineAnomalyModel(options.anomaly, { variant, isBump, drawnSeries, cats, pv, rowOf, fmt: valueSpec.fmt, statFmt, locale: options.locale?.language, strings: options.strings, warnings })
+    ? lineAnomalyModel(options.anomaly, { variant, isBump, drawnSeries, cats, pv, rowOf, fmt: valueSpec.fmt, statFmt, locale: options.locale?.language, strings: options.strings, warnings, rule: ruleStatistics(valueSpec.spec, valueSpec.fmt) })
     : undefined;
   const sourceAnnotations = options.annotations;
   const live = lineWindow(options, cats, variant, isBump, Boolean(fan), env.size.width, warnings, xModel !== undefined);
@@ -961,17 +978,18 @@ export function resolveLineDomain(data: LineChartData, input: LineOptions, env: 
   const values = valueDomain({ ...core, cumTop, cumBot }, isBump, warnings, edgeValues);
   const anomaly: LineAnomaly | undefined = anomalyRun && {
     model: anomalyRun.anomaly, seriesId: anomalyRun.seriesId, statFmt,
-    ...anomalyCorridor(anomalyRun.anomaly, anomalyRun.values, values.dLo, values.dHi, statFmt, warnings, options.strings),
+    ...anomalyCorridor(anomalyRun.anomaly, anomalyRun.values, values.dLo, values.dHi, statFmt, warnings, options.strings, ruleStatistics(valueSpec.spec, valueSpec.fmt)),
   };
   const resolved = {
     ...core,
-    refSeries, drawnSeries, bumpOmitted, valueSpec, fmt: valueSpec.fmt, interpolationFor, labelModes, labelOnly: labelModes.only, gapFillSeries, fan, phases, rebased,
+    refSeries, drawnSeries, bumpOmitted, valueSpec, fmt: valueSpec.fmt, interpolationFor, labelModes, labelOnly: labelModes.only, gapFillSeries, fan, phases, rebased, ...(sourceFmt ? { sourceFmt } : {}), ...(fanFmt ? { fanFmt } : {}),
     population, timeline, ...(xModel ? { x: { model: xModel, lo: xRange!.lo, hi: xRange!.hi, shown: population ? population.indexes.map((i) => xModel.xs[i]!) : xModel.xs, ...(range ? { range } : {}) } } : {}), autoSampled: live.auto === true, absOf, compositionInvalidAt, nmCats100, overfullCats100, naCats100, sharesWithheld, incompleteStack, rebaseSuppressed, cumTop, cumBot, endpoints, lastIdxOf,
-    labelPv, shareTexts: rounded?.texts ?? new Map(), ...(rounded ? { roundingAdjustments: rounded.adjustments } : {}), shareNotes,
+    labelPv, shareTexts: rounded?.texts ?? nearestTexts, ...(rounded ? { roundingAdjustments: rounded.adjustments } : {}), shareNotes,
     ...values,
     anomaly,
   };
-  return { ...resolved, trends: fitLineTrends(resolved, warnings) };
+  const trends = fitLineTrends(resolved, warnings);
+  return { ...resolved, trends, trendRates: lineTrendRates(resolved, trends) };
 }
 
 /**
@@ -983,6 +1001,7 @@ function lineAnomalyModel(
   d: {
     variant: LineVariant; isBump: boolean; drawnSeries: NormSer[]; cats: Category[]; pv: (number | null)[][]; rowOf: Map<NormSer, number>;
     fmt: (v: number) => string; statFmt: (v: number) => string; locale: string | undefined; strings?: import('../../types/options').StringsSpec; warnings: LintWarning[];
+    rule?: RuleStatistics;
   },
 ) {
   if (d.isBump || d.variant !== 'line') {
@@ -1008,7 +1027,7 @@ function lineAnomalyModel(
     const value = row[ci];
     return value === null || value === undefined || !Number.isFinite(value) ? [] : [{ categoryId: c.id, value }];
   });
-  return { ...anomalyModel(spec, present, d.fmt, d.statFmt, d.locale, d.warnings, d.strings), seriesId: series.id };
+  return { ...anomalyModel(spec, present, d.fmt, d.statFmt, d.locale, d.warnings, d.strings, d.rule), seriesId: series.id };
 }
 
 /** A reader follows at most this many rank lines. */

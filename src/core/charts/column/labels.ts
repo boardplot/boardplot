@@ -10,7 +10,8 @@ import { chosenValueIndices } from '../band/valueSelection';
 import { namesOnly } from '../../markVisibility';
 import type { Rect } from '../../geometry';
 import { notApplicableGlyph, numberRange } from '../../format';
-import { formatWithSpec, unitMagnitude } from '../../formatSpec';
+import { formatWithSpec, RULE_SET, unitMagnitude } from '../../formatSpec';
+import { fixedRuleSet, opensThousand } from '../../numberRule';
 import { categoryLineAlign, ROTATED_NAME_AIR, rotatedClaimRect, verticalNameRect, yearRowRequests } from '../../label/categoryRow';
 import { REFERENCE_MARKER_R } from '../band/ticks';
 import { PRIORITY, SERIES_VALUE_GAP, type LabelRequest, type SlotCandidate } from '../../label/solver';
@@ -694,10 +695,20 @@ export function planColumnLabels(
   // Compact cards try a shorter number before the density gate. Keep the
   // complete number and category for any total that still needs the note.
   // A unit that names a scale ("$m") takes no second one: "105.0M" under "in $m" stacks two.
+  // Under the rule the set says it: a set without scale words, no unit text, no percent and no stated scale (width rule).
+  const rule = spec[RULE_SET];
+  const compactable = rule ? !rule.words && !rule.set.unitText && rule.set.kind === 'number' && rule.set.scale === undefined
+    : spec.magnitude === 'none' && unitMagnitude(domain.options.unit) === undefined && !spec.suffix.includes('%');
   const compactTotals = domain.options.mode === 'compact' && variant === 'stacked'
-    && spec.magnitude === 'none' && unitMagnitude(domain.options.unit) === undefined && !spec.suffix.includes('%') && maxTotal >= 1000
+    && compactable && maxTotal >= 1000
     && fullTotals.some(total => total && measure(total.text, strongFont).width + 6 > band.step);
-  const compactFormat = (value: number) => Math.abs(value) < 1000 ? totalFmt(value) : formatWithSpec(value, { ...spec,
+  const compactScale = (value: number): 3 | 6 | 9 => (Math.abs(value) >= 1e9 ? 9 : Math.abs(value) >= 1e6 ? 6 : 3);
+  const compactSpecs = rule ? new Map(([3, 6, 9] as const).map((scale) => [scale, { ...spec, [RULE_SET]: fixedRuleSet(rule, { scale, decimals: 1 }) }])) : undefined;
+  // German has no short word for a thousand: its compact total below a million prints the value written out, as its
+  // level set prints it (8,745), not the value rounded to the compact scale.
+  const writtenThousand = rule !== undefined && !opensThousand(rule.set.language);
+  const compactFormat = (value: number) => Math.abs(value) < 1000 || (writtenThousand && Math.abs(value) < 1e6) ? totalFmt(value)
+    : compactSpecs ? formatWithSpec(value, compactSpecs.get(compactScale(value))!) : formatWithSpec(value, { ...spec,
     magnitude: Math.abs(value) >= 1e9 ? 'bn' : Math.abs(value) >= 1e6 ? 'm' : 'k', decimals: 1, significantDigits: undefined });
   // A one-part stack's segment names its total (printedIn). A total that prints the value alone
   // names the segment back, so a pinned segment placed first takes the value whatever its format.

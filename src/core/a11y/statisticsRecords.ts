@@ -80,11 +80,13 @@ function computedValue(value: number | null, observed: ReadonlySet<number>): num
  * as a mark joins it, so the low end never reads as a bare number in
  * another precision. Every digit of an integer stays.
  */
-function spanValue(low: number | null, high: number | null, decimals: number, unit?: string, format?: string, locale?: string): InteractionValue {
+function spanValue(low: number | null, high: number | null, decimals: number, unit?: string, format?: string, locale?: string, texts?: readonly [string | undefined, string | undefined]): InteractionValue {
   if (low === null || high === null) return numericValue(null);
-  const end = (raw: number) => format ? formattedValueText(numericValue(raw, unit, format), locale)
+  // Under the default rule the layout states each end's text (BoxRowMark.texts); the unit joins it as on the marks.
+  const end = (raw: number, text?: string) => text !== undefined ? (unit ? joinUnit(text, unit, false, locale) : text)
+    : format ? formattedValueText(numericValue(raw, unit, format), locale)
     : derivedValueText(numericValue(raw, unit), decimals, false, locale);
-  return textValue(chartString({ locale: { language: locale } }, 'spanText', { v1: end(low), v2: end(high) }));
+  return textValue(chartString({ locale: { language: locale } }, 'spanText', { v1: end(low, texts?.[0]), v2: end(high, texts?.[1]) }));
 }
 
 /**
@@ -107,11 +109,11 @@ function boxRecords(ctx: RecordContext): InteractionRecord[] {
     // whiskers are observations.
     const observed = new Set(input?.observations ?? []);
     const stat = (key: 'median' | 'q1' | 'q3' | 'whiskerLow' | 'whiskerHigh') => computedValue(group[key], observed);
-    const span = (low: number | null, high: number | null) => spanValue(low, high, decimals, unit, format, locale);
+    const span = (low: number | null, high: number | null, texts?: readonly [string | undefined, string | undefined]) => spanValue(low, high, decimals, unit, format, locale, texts);
     return makeRecord(ctx, { categoryId: group.id }, numericValue(stat('median'), unit, format), {
       label: group.label, valueLabel: chartString(ctx.request.options, 'medianName'), ...(mark ? { anchor: mark.rect } : {}),
-      fields: [field('quartiles', chartString(ctx.request.options, 'quartiles'), span(stat('q1'), stat('q3'))),
-        field('whiskers', chartString(ctx.request.options, 'whiskers'), span(stat('whiskerLow'), stat('whiskerHigh'))),
+      fields: [field('quartiles', chartString(ctx.request.options, 'quartiles'), span(stat('q1'), stat('q3'), mark?.texts && [mark.texts.q1, mark.texts.q3])),
+        field('whiskers', chartString(ctx.request.options, 'whiskers'), span(stat('whiskerLow'), stat('whiskerHigh'), mark?.texts && [mark.texts.whiskerLow, mark.texts.whiskerHigh])),
         field('n', 'n', numericValue(group.n)),
         ...members.map(item => numberField(item.owner.pointId!, item.value, unit, format))],
       members: members.map(item => item.owner),
@@ -201,7 +203,9 @@ function cohortCell(ctx: RecordContext, mark: CohortCellMark, derived: CohortDer
   const value = retentionValue(mark.retention, observed && !missing, ctx.request.options);
   // Retention is stored as a fraction. Read its displayed percentage from
   // the cell, rather than formatting the fraction through a second raster.
-  if (displayed?.includes('%')) value.displayed = displayed;
+  // A default rate the cell states without its sign (no percent sign, figures off) is its shown text too:
+  // the card joins the '%' of a fraction (joinShownUnit).
+  if (displayed?.includes('%') || (displayed && /\d/.test(displayed) && ctx.request.options.format === undefined)) value.displayed = displayed;
   const owner = { seriesId: mark.rowId, categoryId: mark.periodId };
   return makeRecord(ctx, owner, value, {
     label: `${mark.rowLabel} / ${mark.periodLabel}`,

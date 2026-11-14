@@ -63,8 +63,9 @@ describe('creative columns and rows', () => {
   // The hover must print the number the card prints.
   it('reads the hover change as the card prints it', () => {
     const field = metric(records({ columnVisibility: { median: false } }), 'cpa')!.fields.find((entry) => entry.key === 'delta')!;
-    expect(field.value.displayed).toBe('\u221214%');
-    expect(metric(records({ columnVisibility: { value: false, median: false } }), 'cpa')!.value.displayed).toBe('\u221214%');
+    // Default number rule: before "−14%" (the card prints −14.3% too).
+    expect(field.value.displayed).toBe('\u221214.3%');
+    expect(metric(records({ columnVisibility: { value: false, median: false } }), 'cpa')!.value.displayed).toBe('\u221214.3%');
   });
   // A rename must read the same in the card and in the hover and data table.
   it('carries renames into the record', () => {

@@ -184,9 +184,10 @@ it('prints node names without values and keeps the marks hover values', () => {
 
 // One small link left no shared step, and the nodes printed "1.5004B" beside "400.4M".
 it('keeps one magnitude for the nodes when a small link fits no shared step', () => {
+  // Default number rule: before "a 1,500M", "u 400.4M".
   const data: SankeyData = { links: [{ source: 'a', target: 't', value: 1_500_000_000 }, { source: 'a', target: 'u', value: 400_000 }, { source: 'b', target: 'u', value: 400_000_000 }] };
   const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'sankey', data, options: { title: 'Flows', size: { width: 720, height: 400 } } })));
   const text = (id: string) => geometry.scene.find((item) => item.id === id && item.t === 'text');
-  expect(['label:node:a', 'label:node:u'].map((id) => { const node = text(id); return node?.t === 'text' && node.lines?.join(' '); })).toEqual(['a 1,500M', 'u 400.4M']);
+  expect(['label:node:a', 'label:node:u'].map((id) => { const node = text(id); return node?.t === 'text' && node.lines?.join(' '); })).toEqual(['a 1.50B', 'u 0.40B']);
   expect(geometry.scene.find((item) => item.id === 'mark:link:a>u')?.display?.value).toBe('400k');
 });

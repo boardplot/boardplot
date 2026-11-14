@@ -18,7 +18,7 @@ import type { AnchorResolution } from '../../annotate';
 import { runAnnotatePass } from '../../annotatePass';
 import { categoryBandFromCenters } from '../../annotateFields';
 import { BRACKET_GAP, BRACKET_TICK } from '../../annotateParts';
-import { formatWithSpec, levelFormatSpec, levelFormatterFromExample, seriesRasterFormatter, signedFormatterFromExample } from '../../formatSpec';
+import { formatWithSpec, levelFormatSpec, levelFormatterFromExample, percentChangeSpec, RULE_SET, seriesRasterFormatter, signedFormatterFromExample } from '../../formatSpec';
 import { boxGap, cleanFloat, rectsOverlap, type Rect } from '../../geometry';
 import { createOccupiedIndex } from '../../label/occupied';
 import { labelsToNodes } from '../../label/emit';
@@ -982,7 +982,7 @@ function layoutWaterfallWithPad(
   // An authored example controls precision. Otherwise the bridge shares
   // one precision across its values and segments.
   const authoredValues = allItems.flatMap((it) => [it.checkValue, ...it.segments.map((seg) => seg.value)]);
-  const raster = seriesRasterFormatter(options.format, authoredValues, options.locale?.language, options.unit, options.target);
+  const raster = seriesRasterFormatter(options.format, authoredValues, options.locale?.language, options.unit);
   const { fmtSigned } = raster;
   // A signed example marks the steps; a total is a level and prints without a plus or direction glyph.
   const fmt = raster.spec.signed ? (value: number) => formatWithSpec(value, levelFormatSpec(raster.spec)) : raster.fmt;
@@ -1112,7 +1112,9 @@ function layoutWaterfallWithPad(
     const { delta, base } = closingChange;
     if (!Number.isFinite(delta) || delta === 0) return undefined;
     const change = fmtSigned(delta);
-    const percent = base > 0 ? `(${changePercentText((delta / base) * 100, 1, options.locale?.language)})` : '';
+    // The change in percent is a change set of one: two digits.
+    const pct = (delta / base) * 100;
+    const percent = base > 0 ? `(${changePercentText(pct, percentChangeSpec([pct], options.locale?.language, '%')[RULE_SET]!.groupOf(pct).decimals, options.locale?.language)})` : '';
     return { text: percent ? `${change} ${percent}` : change, lines: percent ? [change, percent] : [change], tone: stepTone(delta) };
   })();
   const totalBasis: WaterfallDerived['totalBasis'] = bridges.reduce<WaterfallDerived['totalBasis']>((all, bridge, k) =>
@@ -2379,6 +2381,7 @@ function layoutWaterfallWithPad(
     measure,
     format: options.format,
     locale: options.locale?.language,
+    levelSpec: raster.spec,
     strings: options.strings,
     valueLinePercentLevels: options.unit === '%' || sourceValues.length > 0 && sourceValues.every(isPctCell),
     solveCtx,

@@ -1,5 +1,6 @@
-import { formatAutomaticNumber } from '../../format';
-import { trendRateFormatter } from '../../formatSpec';
+import { ruleFormatter } from '../../numberSets';
+import { trendRateTexts } from '../scatter/trend';
+import { RULE_SET } from '../../formatSpec';
 import { parseISODate } from '../../isoDate';
 import { dayUnit } from '../../calendarLabels';
 import { trendTimeUnit } from '../../timeAxis';
@@ -82,7 +83,7 @@ export function trendTimeline(cats: Category[], source: Category[] = cats): { po
  * Fit every non-null source value in the shown range (after a window or zoom,
  * before any min-max sampling), so the slope does not depend on the chart width.
  */
-export function fitLineTrends(domain: Omit<LineDomain, 'trends'>, warnings: LintWarning[]): LineTrend[] {
+export function fitLineTrends(domain: Omit<LineDomain, 'trends' | 'trendRates'>, warnings: LintWarning[]): LineTrend[] {
   if (!domain.options.trend) return [];
   if (domain.isStacked || domain.bumpDerived) {
     throw new NormalizeError('trend-unsupported', 'options.trend', "trend needs variant 'line' or 'area'; a stack or rank is not a series value", undefined, undefined, ['options', 'trend']);
@@ -130,16 +131,26 @@ function drawnXs(domain: LineDomain, unit: TrendUnit): number[] {
 
 const TREND_UNIT_KEY = { day: 'trendPerDay', week: 'trendPerWeek', month: 'trendPerMonth', quarter: 'trendPerQuarter', year: 'trendPerYear', period: 'trendPerPeriod', second: 'trendPerSecond', minute: 'trendPerMinute', hour: 'trendPerHour' } as const;
 
-/** The rate uses the chart's value units; a percent-level change is in percentage points. */
+/**
+ * The slope text of each trend, by series id: the slopes form one statistic set (trendRateTexts).
+ * The rate uses the chart's value units; a percent-level change is in percentage points.
+ */
+export function lineTrendRates(domain: Omit<LineDomain, 'trends' | 'trendRates'>, trends: readonly LineTrend[]): Map<string, string> {
+  const { options } = domain;
+  return trendRateTexts(trends, (fit) => {
+    if (domain.rebased) return {};
+    const series = domain.drawnSeries.find(s => s.id === fit.id)!;
+    return { example: series.format ?? options.format, unit: series.vals.some(v => v.isPct) ? '%' : series.unit ?? options.unit };
+  }, options.locale?.language, true, domain.valueSpec.spec[RULE_SET]?.words);
+}
+
 export function lineTrendLabel(domain: LineDomain, fit: LineTrend): string {
   const { options } = domain;
   const label = typeof options.trend === 'object' ? options.trend.label : undefined;
   const series = domain.drawnSeries.find(s => s.id === fit.id)!;
-  const example = domain.rebased ? undefined : series.format ?? options.format;
-  const unit = domain.rebased ? undefined : series.unit ?? options.unit;
-  const percent = !domain.rebased && series.vals.some(v => v.isPct);
-  const slope = trendRateFormatter(example, options.locale?.language, percent ? '%' : unit, true)(fit.slope);
-  const r2 = fit.r2 === null ? chartString(options, 'trendUndefined') : formatAutomaticNumber(fit.r2, { decimals: 2, locale: options.locale?.language });
+  const slope = domain.trendRates.get(fit.id)!;
+  // The r² values of one chart form one set.
+  const r2 = fit.r2 === null ? chartString(options, 'trendUndefined') : ruleFormatter(domain.trends.flatMap((t) => (t.r2 === null ? [] : [t.r2])), options.locale?.language)(fit.r2);
   return chartString(options, 'lineTrendKey', {
     v1: label ?? chartString(options, 'linearTrend'), v2: series.label, v3: slope,
     v4: fit.unit === 'x' ? (options.xAxis?.unit ? chartString(options, 'trendPerXUnit', { v1: options.xAxis.unit }) : chartString(options, 'trendPerUnitOfX')) : chartString(options, TREND_UNIT_KEY[fit.unit]), v5: r2,

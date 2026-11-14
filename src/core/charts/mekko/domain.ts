@@ -9,8 +9,8 @@ import { mekkoAmount, mekkoStackingMode, poolMekkoCell, restDetailsWarning, rest
 import { cellFields, normalizeCategorySeries } from '../categorySeries';
 import { breakUnsupported, chartPalette, chartTheme } from '../chartEnv';
 import { defaultMeasurer } from '../../text';
-import { formatAuthoredPercent, formatAutomaticNumber, formatAutomaticPercent, formatShare, shareSetFormatter } from '../../format';
-import { engineFormatterFromExample, exampleSpec, normalizedSeriesNumbers, formatNonzeroWithSpec, formatterFromExample, parseFormatExample, specUnitKind } from '../../formatSpec';
+import { formatShare, shareSetFormatter } from '../../format';
+import { defaultSetSpec, engineFormatterFromExample, exampleSpec, normalizedSeriesNumbers, formatNonzeroWithSpec, formatterFromExample, formatWithSpec, parseFormatExample, specUnitKind, type NumberFormatSpec } from '../../formatSpec';
 import { cleanFloat, cleanSum } from '../../geometry';
 import { isIncomplete } from '../../dataGaps';
 import { roundWholes } from '../../shareRounding';
@@ -36,11 +36,7 @@ export function resolveMekkoEnv(options: MekkoOptions, warnings: LintWarning[], 
   breakUnsupported('mekko', options, warnings);
   const theme = chartTheme(options);
   const paletteRamp = chartPalette(theme, options.palette, warnings);
-  // Business default: whole numbers get 0 decimals; small non-integers keep
-  // one, so a 0.4 sliver never prints as "0". (waterfall's autoDecimals)
-  const autoDecimals = (v: number) => (Number.isInteger(v) || Math.abs(v) >= 100 ? 0 : 1);
   const lang = options.locale?.language;
-  const plainFmt = (v: number) => formatAutomaticNumber(v, { locale: lang, decimals: autoDecimals(v) });
   const percentExample = options.format && specUnitKind(parseFormatExample(options.format)) === 'percent';
   const sharesOnly = percentExample && ((options.variant ?? 'stacked100') === 'stacked100' || options.valueAxis?.percent);
   // An authored format holds every column's values and totals to one scale and one decimal count.
@@ -48,23 +44,66 @@ export function resolveMekkoEnv(options: MekkoOptions, warnings: LintWarning[], 
   const columns = printed.length > 0 ? data!.series.map((series) => normalizedSeriesNumbers(series) ?? []) : [];
   const totals = (data?.categories ?? []).map((_, c) => columns.reduce((sum, values) => sum + (values[c] ?? 0), 0));
   const totalSpec = options.format && !sharesOnly ? exampleSpec(options.format, lang, undefined, [...printed, ...totals]) : undefined;
+  // The sets of the default rule; the width measure and the percent cells take them under an authored format too.
+  const sets = mekkoRuleSets(options, data);
+  const rule = options.format && !sharesOnly ? undefined : sets;
+  const byRule = (spec: NumberFormatSpec) => (v: number) => formatWithSpec(v, spec);
   return {
     options,
     theme,
     palette: paletteRamp ? options.palette : undefined,
     size: resolveSize(options.size),
     measure: options.measure ?? defaultMeasurer,
-    fmt: options.format && !sharesOnly ? formatterFromExample(options.format, lang, undefined, [...printed, ...totals]) : plainFmt,
-    tickFmt: options.format && !sharesOnly ? engineFormatterFromExample(options.format, lang, undefined, [...printed, ...totals]) : plainFmt,
-    totalFmt: totalSpec ? (v: number) => formatNonzeroWithSpec(v, totalSpec) : plainFmt,
-    widthFmt: plainFmt,
+    fmt: options.format && !sharesOnly ? formatterFromExample(options.format, lang, undefined, [...printed, ...totals]) : byRule(rule!.levels),
+    ...(rule ? { fmtFor: (seriesId: Id) => { const own = rule.series.get(seriesId); return own ? byRule(own) : byRule(rule.levels); }, levelSpec: rule.levels, pctCellSpec: rule.percent } : {}),
+    tickFmt: options.format && !sharesOnly ? engineFormatterFromExample(options.format, lang, undefined, [...printed, ...totals]) : byRule(rule!.levels),
+    totalFmt: totalSpec ? (v: number) => formatNonzeroWithSpec(v, totalSpec) : byRule(rule!.totals),
+    widthFmt: byRule(sets.width),
     pctFmt: percentExample ? formatterFromExample(options.format!, lang) : (p: number) => formatShare(p, lang),
-    cellPctFmt: percentExample ? formatterFromExample(options.format!, lang) : (p: number) => formatAutomaticPercent(p, autoDecimals(p), false, lang),
-    authoredPctFmt: percentExample ? formatterFromExample(options.format!, lang) : (p: number) => formatAuthoredPercent(p, lang),
+    cellPctFmt: percentExample ? formatterFromExample(options.format!, lang) : byRule(sets.percent),
+    authoredPctFmt: percentExample ? formatterFromExample(options.format!, lang) : byRule(sets.percent),
     highlights: new Set(resolveHighlight(options.highlight)),
     density: options.labelDensity ?? 'smart',
     va: options.valueAxis ?? {},
   };
+}
+
+/** The percent values of a series' `{ pct }` cells. */
+function seriesPercents(series: { values?: unknown }): number[] {
+  const out: number[] = [];
+  for (const item of Array.isArray(series.values) ? series.values : []) {
+    const cell = item !== null && typeof item === 'object' && 'categoryId' in item && 'value' in item ? (item as { value: unknown }).value : item;
+    const pct = cell !== null && typeof cell === 'object' ? (cell as { pct?: unknown }).pct : undefined;
+    if (typeof pct === 'number' && Number.isFinite(pct)) out.push(pct);
+  }
+  return out;
+}
+
+/**
+ * The sets of a mekko under the default rule: the levels of the series that
+ * print in the chart's unit with their column totals (a sum belongs to its
+ * parts), a set per series with its own unit, the width measure, and the
+ * percent cells. Where the parts of a column sit in series sets of their own,
+ * the totals form one set.
+ */
+function mekkoRuleSets(options: MekkoOptions, data?: ChartData): { levels: NumberFormatSpec; series: Map<Id, NumberFormatSpec>; totals: NumberFormatSpec; width: NumberFormatSpec; percent: NumberFormatSpec } {
+  const lang = options.locale?.language;
+  const all = data?.series ?? [];
+  const widthSeries = all.find((s) => s.id === options.widthSeriesId);
+  const plotted = all.filter((s) => s !== widthSeries);
+  const ownUnit = (s: (typeof all)[number]) => typeof s.unit === 'string' && s.unit !== options.unit;
+  const numbersOf = (s: (typeof all)[number]) => normalizedSeriesNumbers(s) ?? [];
+  const chartSeries = plotted.filter((s) => !ownUnit(s));
+  const columns = plotted.map((s) => numbersOf(s));
+  const totals = (data?.categories ?? []).map((_, c) => columns.reduce((sum, values) => sum + (values[c] ?? 0), 0));
+  const totalsJoin = chartSeries.length === plotted.length;
+  const levels = defaultSetSpec([...chartSeries.flatMap(numbersOf), ...(totalsJoin ? totals : [])], lang, options.unit);
+  const series = new Map(plotted.filter(ownUnit).map((s) => [s.id, defaultSetSpec(numbersOf(s), lang, s.unit)] as const));
+  const common = new Set(plotted.map((s) => (ownUnit(s) ? s.unit : options.unit)));
+  const totalsSpec = totalsJoin ? levels : defaultSetSpec(totals, lang, common.size === 1 ? [...common][0] : undefined);
+  const width = defaultSetSpec(widthSeries ? numbersOf(widthSeries) : [], lang, widthSeries?.unit ?? options.unit);
+  const percent = { ...defaultSetSpec(plotted.flatMap(seriesPercents), lang, undefined, { kind: 'percent' }), suffix: '%' };
+  return { levels, series, totals: totalsSpec, width, percent };
 }
 
 function normalizeMekkoData(data: ChartData): { cats: Category[]; seriesNorm: NormSer[] } {

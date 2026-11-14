@@ -17,7 +17,7 @@ import { chartPalette } from '../chartEnv';
 import { structureCount } from '../../structureCounts';
 import { COMPACT_SOURCE_LINES, authoredNotes, frameTextOptions, legendRequired, normalizeLegendOption, solveFrame, type CompactSourceOptions, type FrameInput, type LegendItemInput } from '../../frame';
 import { formatAutomaticPercent, shareText } from '../../format';
-import { engineNumberSpec, exampleSpec, formatWithSpec, roundedNumber, zeroText } from '../../formatSpec';
+import { defaultSetSpec, engineNumberSpec, exampleSpec, formatWithSpec, roundedNumber, zeroText, type NumberFormatSpec } from '../../formatSpec';
 import { authoredDecimals, autoDecimals } from '../../formatPrecision';
 import { round2, type Rect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
@@ -206,17 +206,17 @@ function layoutPass(data: ChartData, options: WaffleOptions, lean = false, oneRo
     }
     if (group.colorRole && series.length > 1) refuse('waffle-group-color-one-series', 'panelGroups', `group '${group.id}' sets colorRole on a chart with ${series.length} series`, 'Send one series, or colour the series instead.');
   });
-  const defaultFormat = (value: number): string => {
-    const text = shareText(value, autoDecimals(value), options.locale?.language);
-    return /^[<>]/.test(text) ? text : shareText(value, Math.max(autoDecimals(value), authoredDecimals(value)), options.locale?.language);
-  };
   // An authored chart format prints every share as it reads (exampleSpec).
   const cellNumbers = series.flatMap((row) => row.cells.map(cellValue));
+  // Without a format the cells are the author's percent values: one percent set under the default rule.
+  // A headline is a sum of its panel's cells and prints in their set.
+  const ruleSpec: NumberFormatSpec = { ...defaultSetSpec(cellNumbers, options.locale?.language, undefined, { kind: 'percent' }), suffix: '%' };
+  const defaultFormat = (value: number): string => formatWithSpec(value, ruleSpec);
   // A cell's own format wins, then its series' format, then options.format (the pie rule).
   // `offZero`: the hover card's cells row, which prints a share off zero as before authored formats printed exactly.
   const formatFor = (seriesIndex: number, panelIndex: number, exact = true, offZero = false): ((value: number) => string) => {
     const example = cellMeta(series[seriesIndex]!.cells[panelIndex]!)?.format ?? series[seriesIndex]!.ser.format ?? options.format;
-    if (!example) return exact ? defaultFormat : (value) => shareText(value, autoDecimals(value), options.locale?.language);
+    if (!example) return defaultFormat;
     const authored = exampleSpec(example, options.locale?.language, undefined, example === options.format ? cellNumbers : undefined);
     // An authored example prints a share exactly, its zero included; a unit-only "%" keeps the bound and the decimals of the cells.
     if (authored.exact && !offZero) return (value) => formatWithSpec(value, authored);

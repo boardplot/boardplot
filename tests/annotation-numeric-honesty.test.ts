@@ -148,7 +148,8 @@ it('reads step amounts and explicit stack totals while keeping level comparisons
       const geometry = layout({ kind: 'abs', at });
       expect.soft(geometry.annotations[0]?.computedText, `${variant} ${JSON.stringify(at)}`).toBe(expected);
     }
-    expect.soft(annOf(layout({ kind: 'cagr' }), 'cagr')?.computedText, variant).toBe('+50.0% p.a.');
+    // Default number rule: before "+50.0% p.a.".
+    expect.soft(annOf(layout({ kind: 'cagr' }), 'cagr')?.computedText, variant).toBe('+50% p.a.');
   }
 });
 
@@ -178,7 +179,8 @@ it('prints no growth or difference from a column, bar or combo stack total with 
       if (last === null) {
         expect.soft([texts, growth.length, geometry.warnings.filter((w) => w.code === 'bad-anchor').length], type).toEqual([[], 0, 2]);
       } else {
-        expect.soft(texts, `${type} with 0`).toEqual(['−50.0% p.a.', '−50%']);
+        // Default number rule: before "−50.0% p.a.".
+        expect.soft(texts, `${type} with 0`).toEqual(['−50% p.a.', '−50%']);
       }
     }
   }
@@ -234,7 +236,8 @@ it('measures variance value-line statistics on the drawn axis', () => {
       const expected = typeof value === 'number' ? value : variant === 'integrated' ? 21 : 16 / 3;
       expect(geometry.annotations.find(annotation => annotation.id === 'stat')?.derivation?.raw).toBeCloseTo(expected, 12);
       // An authored format prints a mean one decimal past its raster (5.333), as a bar's mean does.
-      const printed = format ? expected === 16 / 3 ? '5.333' : expected.toFixed(2) : expected === 16 / 3 ? '5.3' : String(expected);
+      // Default number rule: before "5.3" for the unformatted mean.
+      const printed = format ? expected === 16 / 3 ? '5.333' : expected.toFixed(2) : expected === 16 / 3 ? '5.33' : String(expected);
       const unit = percent ? variant === 'absolute' ? 'pp' : '%' : '';
       expect(annOf(geometry, 'valueLine')?.valueText).toBe(`${printed}${unit}`);
       const line = geometry.scene.find(node => node.part === 'valueLine');
@@ -316,13 +319,14 @@ it('prints absolute percent variance in percentage points and integrated referen
     { id: 'ref', role: 'reference' as const, values: [{ pct: 10 }, { pct: 12 }] },
   ] };
   for (const variant of ['absolute', 'integrated'] as const) {
-    for (const [value, printed] of [[2.5, '2.5%'], [0.0341, '0.034%'], [0.00493, '0.0049%']] as const) {
+    // Default number rule: before "0.034%" and "0.0049%", and a decimal comma under language 'de' without marks.
+    for (const [value, printed] of [[2.5, '2.5%'], [0.0341, '0.0341%'], [0.00493, '0.00493%']] as const) {
       for (const language of ['en', 'de']) {
         const options = { variant, variance: { vs: 'ref' }, locale: { language },
           annotations: [{ kind: 'valueLine' as const, value, label: 'Plan' }] };
         const geometry = layoutVariance(data, options);
         const unit = variant === 'integrated' ? printed : printed.replace('%', 'pp');
-        const text = language === 'de' ? unit.replace('.', ',') : unit;
+        const text = unit;
         expect(annOf(geometry, 'valueLine')?.computedText).toBe(`Plan ${text}`);
         expect(annOf(geometry, 'valueLine')?.valueText).toBe(text);
         expect(renderSvg(geometry as never, resolveTheme())).toBe(renderSvg(layoutVariance(data, options) as never, resolveTheme()));
@@ -365,7 +369,8 @@ it('prints absolute percent variance in percentage points and integrated referen
 it('keeps the percent unit and precision of a reference', () => {
   const data = { categories: [{ id: 'a' }, { id: 'b' }], series: [{ id: 's', values: [{ pct: 1 }, { pct: 4 }] }] };
   for (const layout of [layoutBar, layoutColumn, layoutLine]) {
-    for (const [value, printed] of [[2.5, '2.5%'], [0.0341, '0.034%'], [0.00493, '0.0049%']] as const) {
+    // Default number rule: before "0.034%" and "0.0049%".
+    for (const [value, printed] of [[2.5, '2.5%'], [0.0341, '0.0341%'], [0.00493, '0.00493%']] as const) {
       const geometry = layout(data, { annotations: [{ kind: 'valueLine', value, label: 'Plan' }] });
       expect(annOf(geometry, 'valueLine')?.computedText).toBe(`Plan ${printed}`);
       expect(annOf(geometry, 'valueLine')?.valueText).toBe(printed);
@@ -500,12 +505,14 @@ it('keeps a value line precise unless its author chooses a format', () => {
   expect(annOf(layoutBar(data, { format: '1', annotations: [{ kind: 'valueLine', value: 2.5, label: 'Plan' }] }), 'valueLine')?.computedText).toBe('Plan 3');
   expect(annOf(layoutLine(data, { annotations: [{ kind: 'valueLine', value: 2.543, label: 'Plan' }] }), 'valueLine')?.computedText).toBe('Plan 2.54');
   expect(annOf(layoutLine(data, { annotations: [{ kind: 'valueLine', value: 0.034, label: 'Plan' }] }), 'valueLine')?.computedText).toBe('Plan 0.034');
-  // The fallback must not drop below the value's own automatic precision: print 0.0049, not <0.01.
-  expect(annOf(layoutLine(data, { annotations: [{ kind: 'valueLine', value: 0.00493, label: 'Plan' }] }), 'valueLine')?.computedText).toBe('Plan 0.0049');
-  expect(annOf(layoutLine(data, { annotations: [{ kind: 'valueLine', value: 0.0341, label: 'Plan' }] }), 'valueLine')?.computedText).toBe('Plan 0.034');
-  expect(annOf(draw(0.0341), 'valueLine')?.computedText).toBe('Plan 0.034');
+  // The fallback must not drop below the value's own automatic precision: print 0.00493, not <0.01.
+  // Default number rule: before "Plan 0.0049" and "Plan 0.034" (a value in no set prints as a set of one).
+  expect(annOf(layoutLine(data, { annotations: [{ kind: 'valueLine', value: 0.00493, label: 'Plan' }] }), 'valueLine')?.computedText).toBe('Plan 0.00493');
+  expect(annOf(layoutLine(data, { annotations: [{ kind: 'valueLine', value: 0.0341, label: 'Plan' }] }), 'valueLine')?.computedText).toBe('Plan 0.0341');
+  expect(annOf(draw(0.0341), 'valueLine')?.computedText).toBe('Plan 0.0341');
   const mean = layoutColumn({ categories: [{ id: 'a' }, { id: 'b' }, { id: 'c' }], series: [{ id: 's', label: 'Series', values: [1, 2, 2] }] }, { averageMarker: true });
-  expect(mean.annotations.find(annotation => annotation.id.startsWith('averageMarker'))?.valueText).toBe('1.7');
+  // Default number rule: before "1.7" (a mean is a statistic, a set of one).
+  expect(mean.annotations.find(annotation => annotation.id.startsWith('averageMarker'))?.valueText).toBe('1.67');
   expect(renderSvg(draw(2.543) as never, resolveTheme())).toBe(renderSvg(draw(2.543) as never, resolveTheme()));
 });
 
@@ -523,23 +530,25 @@ describe('yearSpan — the date math nothing covered', () => {
 });
 
 // A label that names a month, a quarter or a half read as a bare last-word year, so the rate ran over the wrong span and no warning said so.
+// Default number rule: a growth rate prints two digits. Before: "+36.8%", "+45.6%", "+12.5%" and "+26.5% p.a.".
 it.each([
-  [['Jan 2023', 'Jul 2024'], '+36.8% p.a.'],
-  [['January 2023', 'July 2024'], '+36.8% p.a.'],
-  [["Jan '23", "Jul '24"], '+36.8% p.a.'],
-  [['Mär 2023', 'Sep 2024'], '+36.8% p.a.'],
-  [['Q1 FY23', 'Q3 FY24'], '+36.8% p.a.'],
-  [['1H 2023', '2H 2024'], '+36.8% p.a.'],
-  [['Revenue Q4 2023', 'Revenue Q1 2025'], '+45.6% p.a.'],
-  [['FY98', 'FY02'], '+12.5% p.a.'],
-  [['2023-01-01', '2024-07-01'], '+36.8% p.a.'],
-  [['Plan 2024', 'Actual 2026'], '+26.5% p.a.'],
-  [['Plan 2024', 'Actual 2026F'], '+26.5% p.a.'],
+  [['Jan 2023', 'Jul 2024'], '+37% p.a.'],
+  [['January 2023', 'July 2024'], '+37% p.a.'],
+  [["Jan '23", "Jul '24"], '+37% p.a.'],
+  [['Mär 2023', 'Sep 2024'], '+37% p.a.'],
+  [['Q1 FY23', 'Q3 FY24'], '+37% p.a.'],
+  [['1H 2023', '2H 2024'], '+37% p.a.'],
+  [['Revenue Q4 2023', 'Revenue Q1 2025'], '+46% p.a.'],
+  [['FY98', 'FY02'], '+12% p.a.'],
+  [['2023-01-01', '2024-07-01'], '+37% p.a.'],
+  [['Plan 2024', 'Actual 2026'], '+26% p.a.'],
+  [['Plan 2024', 'Actual 2026F'], '+26% p.a.'],
   // A scenario name before a quarter must not block the rate when both periods are the same quarter.
-  [['Actual Q4 2023', 'Plan Q4 2025'], '+26.5% p.a.'],
+  [['Actual Q4 2023', 'Plan Q4 2025'], '+26% p.a.'],
   [['Actual Q4 2023', 'Plan Q1 2025'], undefined],
-  [['FY 2023', 'FY2024'], '+60.0% p.a.'],
-  [['FY 2023', 'FY 24'], '+60.0% p.a.'],
+  // Default number rule: before "+60.0% p.a." (twice).
+  [['FY 2023', 'FY2024'], '+60% p.a.'],
+  [['FY 2023', 'FY 24'], '+60% p.a.'],
   [['Mid 2023', 'End 2024'], undefined],
   [['Spring 2023', 'Autumn 2024'], undefined],
   [['Sprint 3 2023', 'Sprint 7 2024'], undefined],
@@ -565,8 +574,9 @@ it('prints the rate alone on each of several cagr arrows unless period asks for 
   };
   const texts = (extra: object) => layoutColumn(data, { annotations: [{ kind: 'cagr', shape: 'arrow', to: 'y2', ...extra }, { kind: 'cagr', shape: 'arrow' }] } as never)
     .annotations.filter((ann) => ann.kind === 'cagr').map((ann) => ann.computedText);
-  expect(texts({})).toEqual(['+20.0% p.a.', '+17.0% p.a.']);
-  expect(texts({ period: true })[0]).toBe('2021–2022: +20.0% p.a.');
+  // Default number rule: before "+20.0% p.a." and "+17.0% p.a.".
+  expect(texts({})).toEqual(['+20% p.a.', '+17% p.a.']);
+  expect(texts({ period: true })[0]).toBe('2021–2022: +20% p.a.');
 });
 
 // An oval wider than the span would hide the whole arrow, head included, so the bracket must show the span.
@@ -585,7 +595,8 @@ it('keeps the rate of a cagr arrow when a value line crosses its oval', () => {
   };
   const geometry = layoutBar(data, { annotations: [{ kind: 'valueLine', value: 170, label: 'Plan' }, { kind: 'cagr', shape: 'arrow' }] } as never);
   expect(codes(geometry)).not.toContain('cagr-arrow-no-room');
-  expect(renderSvg(geometry as never, resolveTheme())).toContain('+17.0% p.a.');
+  // Default number rule: before "+17.0% p.a.".
+  expect(renderSvg(geometry as never, resolveTheme())).toContain('+17% p.a.');
 });
 
 // An arrow from over an inner layer would read as the growth of the whole stack, so the bracket keeps the rate on that layer.
@@ -662,18 +673,20 @@ describe('dot declares cagr, so its anchors must carry dates', () => {
     series: [{ id: 's', label: 'S', values: [100, 200] }],
   };
 
-  it('annualises over the category dates (100 -> 200 across 3y = +26.0% p.a.)', () => {
+  // Default number rule: before "+26.0% p.a.".
+  it('annualises over the category dates (100 -> 200 across 3y = +26% p.a.)', () => {
     const geometry = layoutDot(dotData as never, { annotations: [{ kind: 'cagr' }] } as never);
     // The bug printed "+100.0% p.a." — the total doubling, because the dot
     // anchors carried no date at all and yearSpan fell back to 1.
-    expect(annOf(geometry, 'cagr')?.computedText).toBe('+26.0% p.a.');
+    expect(annOf(geometry, 'cagr')?.computedText).toBe('+26% p.a.');
   });
 
   it('refuses rather than fabricates when the dot categories have no dates', () => {
     // Year-bearing labels carry the period, as on every other chart. Dot anchors carry
     // their row label; labels without a year refuse.
     const fromLabels = { ...dotData, categories: dotData.categories.map((c) => ({ id: c.id, label: c.label })) };
-    expect(annOf(layoutDot(fromLabels as never, { annotations: [{ kind: 'cagr' }] } as never), 'cagr')?.computedText).toBe('+26.0% p.a.');
+    // Default number rule: before "+26.0% p.a.".
+    expect(annOf(layoutDot(fromLabels as never, { annotations: [{ kind: 'cagr' }] } as never), 'cagr')?.computedText).toBe('+26% p.a.');
     const undated = { ...dotData, categories: dotData.categories.map((c, i) => ({ id: c.id, label: ['North', 'South'][i] })) };
     const geometry = layoutDot(undated as never, { annotations: [{ kind: 'cagr' }] } as never);
     expect(annOf(geometry, 'cagr')).toBeUndefined();
@@ -750,10 +763,10 @@ describe('a stacked100 SEGMENT annotation reports the value, not the share', () 
   it.each(surfaces)(
     '%s annualises the VALUE, not the share drift',
     (_name, layout) => {
-      // a runs 10 -> 20 over exactly 3 years = +26.0% p.a. Its SHARE runs
+      // a runs 10 -> 20 over exactly 3 years = +26% p.a. (before the default number rule "+26.0% p.a."). Its SHARE runs
       // 66.7% -> 50%; annualising the share printed "+6.3% p.a." on
       // line/stacked100-area before this repair. The rate names the series it reads.
-      expect(annOf(layout(segmentCagr) as never, 'cagr')?.computedText).toBe('A +26.0% p.a.');
+      expect(annOf(layout(segmentCagr) as never, 'cagr')?.computedText).toBe('A +26% p.a.');
     },
   );
 
@@ -861,9 +874,10 @@ describe('cagr from a start at or below zero omits the rate', () => {
       } as never,
     );
 
+  // Default number rule: before "+26.0% p.a." and "−20.6% p.a.".
   it.each([
-    [100, 200, '+26.0% p.a.'],
-    [100, 50, '−20.6% p.a.'],
+    [100, 200, '+26% p.a.'],
+    [100, 50, '−21% p.a.'],
   ])('%d -> %d over 3 years = %s', (v0, v1, text) => {
     expect(annOf(cagr(v0 as number, v1 as number), 'cagr')?.computedText).toBe(text);
   });
@@ -896,7 +910,8 @@ it('keeps nonzero automatic annotation values off zero', () => {
     { id: 'abs-authored', kind: 'diff', mode: 'absolute', from: 'a', to: 'b', format: '$1,234' },
   ] });
   const text = (id: string) => geometry.annotations.find(annotation => annotation.id === id)?.computedText;
-  expect(text('abs-auto')).toBe('+4.0\u00a0×\u00a010⁻⁶');
+  // Before: +4.0 × 10⁻⁶ (scientific default).
+  expect(text('abs-auto')).toBe('+0.000004');
   expect(text('pct-auto')).toBe('+0.0004%');
   expect(text('cagr-auto')).toBe('+0.0004% p.a.');
   expect(text('abs-authored')).toBe('$0');
@@ -917,8 +932,10 @@ describe('derived annotation numbers use the chart precision, language and unit'
         annotations: [{ kind: 'diff', from: 'a', to: 'b', mode: 'absolute' }, { kind: 'delta', at: 'c', vs: 'b' }],
       } as never,
     );
-    expect(annOf(geometry, 'diff')?.computedText).toBe('+0,40');
-    expect(annOf(geometry, 'delta')?.computedText).toBe('+0,020');
+    // Default number rule: before "+0,40" (marks come from the chart's marks, default '.').
+    expect(annOf(geometry, 'diff')?.computedText).toBe('+0.40');
+    // Default number rule: before "+0,020" (a change joins its level set; marks default to '.').
+    expect(annOf(geometry, 'delta')?.computedText).toBe('+0.02');
     // The delta prints +0,020, a visible difference, so it has a direction; only a true zero is neutral.
     expect(annOf(geometry, 'delta')?.tone).toBe('good');
   });
@@ -962,7 +979,8 @@ describe('fixed line references remain visible at their authored value', () => {
     );
     const annotation = geometry.annotations?.find((item) => item.id === 'ceiling');
     const node = geometry.scene.find((item) => annotation?.nodeIds.includes(item.id));
-    expect(annotation?.computedText).toBe('5');
+    // Default number rule: before "5" (a value in no set joins the group whose format covers its decimals).
+    expect(annotation?.computedText).toBe('5.00');
     expect(node?.t).toBe('line');
     if (node?.t === 'line') {
       expect(node.y1).toBeGreaterThanOrEqual(geometry.plot.y);
@@ -977,7 +995,8 @@ describe('fixed line references remain visible at their authored value', () => {
 it('prints a magnitude the same on every surface', async () => {
   // An authored format keeps its scale word: 2.5e12 under '1,0M' prints in millions, 1e9 under '$1.0 trillion' in trillions.
   for (const [format, language, text, value, card] of [['$1.0 trillion', 'en', '$2.5 trillion', 2.5e12], ['1,0 Bio.', 'de', '2,5 Bio.', 2.5e12], ['1,0M', 'de', '2.500.000,0M', 2.5e12],
-    ['$1.0 trillion', 'en', '$0.0 trillion', 1e9, '$1.0 billion'], [undefined, 'de', '2,5 Mrd.', 2.5e9]] as const) {
+    // Default number rule: before card "$1.0 billion" (the card prints a zeroed value by the rule as a set of one).
+    ['$1.0 trillion', 'en', '$0.0 trillion', 1e9, '$1B'], [undefined, 'de', '2,5 Mrd.', 2.5e9]] as const) {
     const data = { categories: [{ id: 'a', label: 'Alpha' }, { id: 'b', label: 'Beta' }], series: [{ id: 's', label: 'Sales', values: [value, value / 6] }] };
     const options = { format, locale: { language, decimal: language === 'de' ? ',' : '.', thousands: language === 'de' ? '.' : ',' }, valueLabels: 'all', size: { width: 640, height: 400 } };
     const request = resolveChartRequest({ type: 'column', data, options } as never);
@@ -1033,7 +1052,8 @@ it('an average marker hover value prints as its drawn label does (column, bar)',
   for (const type of ['column', 'bar']) {
     const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type, data, options: { title: 'T', averageMarker: true } } as never) as never));
     const marker = geometry.annotations.find((annotation) => annotation.id === 'averageMarker');
-    expect([marker?.computedText, marker?.valueText], type).toEqual(['Average 5.009%', '5.009%']);
+    // Default number rule: before "Average 5.009%" and "5.009%".
+    expect([marker?.computedText, marker?.valueText], type).toEqual(['Average 5.01%', '5.01%']);
   }
 });
 
@@ -1069,10 +1089,18 @@ it("prints ${value} in a callout as the anchored mark's drawn label prints it (c
   const layout = (type: string, at: object | string) => requireGeometry(layoutResolvedRequest(resolveChartRequest({ type, data,
     options: { title: 'T', size: { width: 480 }, annotations: [{ kind: 'callout', at, text: 'Held flat: ${value}' }] } } as never) as never));
   const column = layout('column', { categoryId: 'services', seriesId: 'd' });
-  expect(column.labels.find((label) => label.id === 'point:d:services')?.text).toBe('−600k');
-  expect(column.annotations[0]?.computedText).toBe('Held flat: −600k');
+  // Default number rule: before "−600k" on the label and in the callout.
+  expect(column.labels.find((label) => label.id === 'point:d:services')?.text).toBe('−0.6M');
+  expect(column.annotations[0]?.computedText).toBe('Held flat: −0.6M');
   // A dot's label stands beside the dot, so the callout leaves the repeated number out and says so.
   const dot = layout('dot', 'services');
   expect(dot.annotations[0]?.computedText).toBe('Held flat');
-  expect(dot.warnings.find((warning) => warning.code === 'annotation-value-on-mark')?.message).toContain('−600k');
+  expect(dot.warnings.find((warning) => warning.code === 'annotation-value-on-mark')?.message).toContain('−0.6M'); // Default number rule: before "−600k".
+});
+
+// A difference of two percent levels printed as a number of its own ("+4.35" for 22.4 to 26.75). It is in percentage points: a change set, two digits.
+it('prints a difference of percent levels as a change set', () => {
+  const geometry = layoutLine({ categories: ['q1', 'q2', 'q3', 'q4'].map((id) => ({ id, label: id.toUpperCase() })), series: [{ id: 's', label: 'Margin', values: [22.4, 23.1, 21.8, 26.75] }] },
+    { unit: '%', annotations: [{ kind: 'delta', at: { categoryId: 'q4', seriesId: 's' }, vs: { categoryId: 'q1', seriesId: 's' }, mode: 'absolute' }] } as never);
+  expect(geometry.labels.find((label) => label.id === 'label:annotation:delta-1' || label.id === 'annotation:delta-1')?.text).toBe('+4.4');
 });

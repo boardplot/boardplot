@@ -218,7 +218,7 @@ it('keeps the member figures and the folds of a hidden Total in the grid',()=>{
   facts:['total','a','b'].flatMap((memberId,i)=>['range','prior','w1','w2'].map(periodId=>({memberId,periodId,sums:{rev:[1200000,210000,990000][i]!},ref:{rev:[1100000,200000,900000][i]!}})))};
  const host=document.createElement('div');document.body.append(host);const root=createRoot(host);
  act(()=>root.render(<DimSwitchChart data={data} depth={2} rowVisibility={{total:false}} size={{width:900}}/>));
- expect(host.textContent).toContain('0.2M');
+ expect(host.textContent).toContain('0.21M'); // Default number rule: before "0.2M".
  expect(host.textContent).not.toContain('210.0k');
  const line=()=>Array.from(host.querySelectorAll<HTMLElement>('[data-row-id]')).find(r=>r.dataset.rowId===dimswitchRowId('by-measure','total','rev'))!;
  expect(line().querySelector('button')!.getAttribute('aria-expanded')).toBe('true');
