@@ -16,6 +16,8 @@ import { resolveTheme } from '../src/core/theme';
 import type { TableData, TableOptions } from '../src/core/types/table';
 import { withNumberMarks } from '../src/core/numberMarks';
 import { generatedIdWarnings } from '../src/core/schema/generatedColumns';
+import { resolveChartRequest } from '../src/core/request';
+import { prepareTableRender } from '../src/react/preparedTable';
 
 function managementFixture(id = 'management-report') {
   return getFixtures('table').find((fixture) => fixture.id === id)!;
@@ -589,6 +591,37 @@ it('sorts text with the digits in it as numbers', () => {
   const order = (direction: 'asc' | 'desc') => sortRows(table, { column: 'version', direction }, 'en').map((row) => row.cells.version!.displayed);
   expect(order('asc')).toEqual(['0.9.1', '0.10.0', '0.20.3', '1.0.0']);
   expect(order('desc')).toEqual(['1.0.0', '0.20.3', '0.10.0', '0.9.1']);
+});
+
+// A table prepared on the server sorted numbers and dates by their printed text: 88k after 7.8M, −10 after −2, a date by its day.
+it('sorts a prepared table in the order of the same table resolved in the browser', () => {
+  const data: TableData = {
+    columns: [
+      { id: 'label', kind: 'rowLabel', label: 'Region' },
+      { id: 'sales', kind: 'value', label: 'Sales' },
+      { id: 'change', kind: 'value', label: 'Change' },
+      { id: 'opened', kind: 'date', label: 'Opened' },
+    ],
+    rows: [
+      { id: 'a', label: 'North', cells: { sales: 7_800_000, change: -2, opened: '2026-05-12' } },
+      { id: 'b', label: 'South', cells: { sales: 410_000, change: -10, opened: '2026-06-01' } },
+      { id: 'c', label: 'East', cells: { sales: 1_251, change: 3, opened: '2025-12-24' } },
+      { id: 'd', label: 'West', cells: { sales: 88_000, change: -0.5, opened: '2026-01-09' } },
+    ],
+  };
+  const options: TableOptions = { title: 'Regions' };
+  const live = resolveTable(data, options).table;
+  const prepared = { ...prepareTableRender(resolveChartRequest({ type: 'table', data, options })).table, provenance: {} };
+  const order = (table: typeof live, column: string, direction: 'asc' | 'desc') =>
+    sortRows(table, { column, direction }, 'en').map((row) => row.id);
+  expect(order(live, 'sales', 'asc')).toEqual(['c', 'd', 'b', 'a']);
+  expect(order(live, 'change', 'asc')).toEqual(['b', 'a', 'd', 'c']);
+  expect(order(live, 'opened', 'asc')).toEqual(['c', 'd', 'a', 'b']);
+  for (const column of ['sales', 'change', 'opened']) {
+    for (const direction of ['asc', 'desc'] as const) {
+      expect(order(prepared, column, direction), `${column} ${direction}`).toEqual(order(live, column, direction));
+    }
+  }
 });
 
 describe('generated-column warnings', () => {

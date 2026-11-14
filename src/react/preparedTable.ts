@@ -1,4 +1,5 @@
 import { resolveTable } from '../core/charts/table/resolve';
+import { sortReadsRaw } from '../core/charts/table/view';
 import { ENGINE_REV } from '../core/engine';
 import { preparedTableRecords } from '../core/a11y/structuralRecords';
 import type { LintWarning } from '../core/types/scene';
@@ -102,7 +103,10 @@ export function prepareTableRender(request: ResolvedChartRequest<TableData, Tabl
   // cell arrived blank.
   // An arrow picks its glyph and its key entry from the raw change, and a
   // sparkline draws the raw values of its source columns.
+  // A sort orders a number or a date column by its raw value. By the printed
+  // text, 88k sorted after 7.8M and −10 after −2.
   const rawColumns = new Set(table.columns.filter(column => column.kind === 'status'
+    || sortReadsRaw(column.kind)
     || column.cellEncoding?.type === 'inCellBar'
     || column.cellEncoding?.type === 'heat'
     || column.cellEncoding?.type === 'arrow').map(column => column.id));
