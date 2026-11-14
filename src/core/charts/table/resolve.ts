@@ -1244,7 +1244,9 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
       // Test the actual formatter: locked thousands ignore authored decimals.
       const rowScale = row.scale === 'money' || row.scale === 'perUnit';
       if (rowScale || specUnitKind(spec) === 'number') {
-        const values = rowValues(row);
+        // A row also reads the figures of the periods a card leaves out, so it prints the precision of the full table.
+        const kept = (sourceRows.get(row.id) as MagnitudeGroupSource | undefined)?.[MAGNITUDE_FIGURES];
+        const values = kept === undefined ? rowValues(row) : [...rowValues(row), ...kept.map(([, value]) => value)];
         const max = group === undefined ? largest(values) : groupMax.get(group)!;
         // A money row climbs k, M, B by its largest figure, so 1.2e11 prints 120.0B, not 120,000,000.0k.
         const climb = (from: number): NumberFormatSpec['magnitude'] => max >= 1e9 ? 'bn' : max >= 1e6 ? 'm' : max >= from ? 'k' : 'none';

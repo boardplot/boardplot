@@ -602,7 +602,9 @@ function buildExhibit(
     return align === undefined ? alignOf(id, fallback) : TEXT_ALIGN[align];
   };
   const totalId = rowData.find(row => row.kind === 'total')?.id;
-  const formatValue = retentionFormatter(options, rowData, visible);
+  // A card that leaves out periods prints its rates in the set of every period the request shows,
+  // so a rate reads as it does in the full table.
+  const formatValue = retentionFormatter(options, rowData, [...visible, ...(options[HIDDEN_PERIODS] ?? [])]);
   const measureName = cohortMeasure(options);
   const unit = options.unit?.trim() || '%';
   const carriesUnit = (text: string) => textCarriesCohortUnit(text, unit);

@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { describe, expect, it } from 'vitest';
 import '../src/core/charts';
 import { render } from '../src/cli/render';
+import { measure } from '../src/index';
 import { getFixtures } from '../src/fixtures';
 import { cohortOptionsSchema } from '../src/core/charts/cohort';
 import { layoutCohort } from '../src/core/charts/cohort/layout';
@@ -243,6 +244,28 @@ describe('give-way edge cases', () => {
     const asked = layout({ ...options, columnOverrides: { size: { label: 'Customers at the beginning of the month' } } }, chart);
     expect(asked.sizing!.minHeight).toBeLessThanOrEqual(Math.max(plain, 151));
   });
+});
+
+// A phone card that left out the first period formed its rate set over the periods it drew, so 73 on a laptop read 73.0 on a phone.
+it('a phone card prints each rate with the text of the full table', () => {
+  const trials: CohortData = { periodLabel: 'Week', cohorts: [
+    { id: 'w1', label: 'First week trials', active: [1000, 640, 571, 529, 488] },
+    { id: 'w2', label: 'Second week trials', active: [880, 590, 520, 480] },
+    { id: 'w3', label: 'Third week trials', active: [960, 680, 590] },
+    { id: 'w4', label: 'Fourth week trials', active: [700, 511] },
+    { id: 'w5', label: 'Fifth week trials', active: [650] },
+  ] };
+  const rates = (width: number) => {
+    const geometry = measure({ type: 'cohort', data: trials, options: { variant: 'pure', unit: '% of trial base', size: { width } } }).geometry!;
+    const texts = geometry.scene.flatMap((node) => node.t === 'text' && 'id' in node && String(node.id).startsWith('label:cohort-cell:') ? [[String(node.id), (node.lines ?? []).join(' ')] as const] : []);
+    return new Map(texts);
+  };
+  const wide = rates(960), phone = rates(320);
+  const firstPeriod = (texts: Map<string, string>) => [...texts.keys()].filter((id) => id.endsWith(':t0'));
+  expect(firstPeriod(wide)).not.toEqual([]);
+  expect(firstPeriod(phone)).toEqual([]);
+  expect(phone.size).toBeGreaterThan(0);
+  for (const [id, text] of phone) expect(text, id).toBe(wide.get(id));
 });
 
 // Centring each rate on its own width staggers the digits and decimal points of a period column when rates have different digit counts.

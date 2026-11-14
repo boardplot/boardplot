@@ -22,9 +22,6 @@ import { emptyIdRecord } from '../../idRecords';
 
 const key = (...parts: string[]) => JSON.stringify(parts);
 
-/** Set by the fold to fit a fixed height: the table is drawn at this depth only, so its columns settle on the rows it draws. */
-export const FOLDED = Symbol('dimswitchFolded');
-
 /** The caller edits dimswitch widths, not the columns made by this compiler. */
 export function dimSwitchTableWarnings(warnings: readonly LintWarning[], overrides?: DimSwitchOptions['columnOverrides']): LintWarning[] {
   return warnings.map(warning => {
@@ -634,6 +631,21 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
       }
       else {changes[p.id]=changeCell; effects[p.id]=effectCell; if (withRef.has(p.id)) {record(`${id}:change`,p.id,m,member,p.id,delta,ref,true,refTotal); if (relative) relativeChanges.push({cell:changeCell,measure:m.id}); pointChange(m,changeCell);}}
     }
+    // A card that leaves out periods still reads them: their levels and changes join the sets of the measure, so every
+    // figure the card prints reads as it does in the full table. Nothing of them is drawn.
+    const leftOut:(readonly [string,number])[]=[];
+    for (const p of hidden) {
+      const currentSums=sums(member,p.id), ref=factOf(member,p.id)?.ref, total=sums(data.dimension.total.id,p.id), refTotal=factOf(data.dimension.total.id,p.id)?.ref;
+      const current=evaluate(exprOf(m),currentSums,total);
+      if (current.raw!==null) leftOut.push([p.id,current.raw]);
+      if (!withRef.has(p.id)) continue;
+      const delta=change(current,evaluate(exprOf(m),ref,refTotal),m.change,m.format,decimalsOf);
+      if (delta.raw===null) continue;
+      const leftOutChange:TableCell={v:delta.raw};
+      if (m.change==='absolute') {if (m.format===undefined && m.unit===undefined) leftOut.push([p.id,delta.raw]);}
+      else if (m.change==='pp') pointChange(m,leftOutChange);
+      else relativeChanges.push({cell:leftOutChange,measure:m.id});
+    }
     // An unjudged volume (a sum of money or counts) shows its size as a bar, not a colour; a statement line never does.
     const sized = !m.judge && (m.scale === 'money' || m.scale === 'count') && !inStatement(m);
     if (isSubtotal(m) && m.value !== undefined) for (const p of [range,...(plan ? [plan] : []),...periods]) {
@@ -647,6 +659,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     // Every member's row of a measure is one set: a scaled measure reads in one magnitude down a column
     // (1.17M over 0.25M, not over 254k), and a measure without a format prints as one set of cells.
     if (m.scale === 'money' || m.scale === 'count' || (m.format === undefined && m.unit === undefined)) Object.assign(row, { [MAGNITUDE_GROUP]: m.id });
+    if (leftOut.length > 0) Object.assign(row, { [MAGNITUDE_FIGURES]: leftOut });
     // A member's bar compares it with the other members in that column (the Total would always win).
     if (sized && member!==totalId) for (const col of [...(rangeDrawn ? ['range'] : []),...periods.map(p=>p.id)]) {const value=values.get(col)?.raw; if (typeof value==='number') bars.push({row,measure:m.id,col,value});}
     if (m.divider && (kind==='measure' || kind==='split')) row.divider=true;
@@ -833,18 +846,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     }
   }
   // One change set per measure of relative changes, across its columns, as its point differences.
-  // A folded table is a fixed frame: its sets settle on the rows it draws, not on rows the fold hides.
-  const drawn=(options as {[FOLDED]?:boolean})[FOLDED] === true ? (() => {
-    const byId=new Map(rows.map(row=>[row.id,row])), rowOf=new Map<object,TableRow>();
-    for (const row of rows) for (const cell of Object.values(row.cells ?? {})) if (cell!==null && typeof cell==='object') rowOf.set(cell,row);
-    return (cell:object) => {
-      let row=rowOf.get(cell);
-      // A change line prints with its measure row, whether or not that row has hidden children.
-      if (row?.inline && row.parentId!==undefined) row=byId.get(row.parentId);
-      for (let id=row?.parentId; id!==undefined; id=byId.get(id)?.parentId) if (collapsed.has(id)) return false;
-      return true;
-    };
-  })() : () => true;
+  // A table folded to fit a fixed height forms its sets over every row, as the open table does, so a change prints the same text at every size.
   const relativeByMeasure=new Map<string,typeof relativeChanges>();
   for (const entry of relativeChanges) relativeByMeasure.set(entry.measure,[...relativeByMeasure.get(entry.measure) ?? [],entry]);
   for (const inMeasure of relativeByMeasure.values()) {
@@ -852,10 +854,9 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     // A change is cleaned of float noise (12 significant digits) before it rounds, as the rule cleans every value:
     // 1.4 against 1.6 is −12.5 %, not the float −12.499999999999996 that rounds to −12.
     for (const entry of entries) { const change=entry.cell as {v:number}; change.v=Number(change.v.toPrecision(12)); }
-    const shown=entries.filter(entry=>drawn(entry.cell as object));
     // The relative changes of a measure are one change set: every group prints two digits of its band's smallest value.
     const valueOf=(entry:{cell:TableCell})=>(entry.cell as {v:number}).v;
-    const rule=percentChangeSpec((shown.length>0 ? shown : entries).map(valueOf))[RULE_SET]!;
+    const rule=percentChangeSpec(entries.map(valueOf))[RULE_SET]!;
     // An example with three decimals takes an integer part of 0, because "+1.200%" reads as a thousands group.
     for (const entry of entries) {
       const decimals=rule.groupOf(valueOf(entry)).decimals;
@@ -880,6 +881,9 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
       let list=figures.get(group);
       if (!list) figures.set(group,list=[]);
       for (const col of ['range',...periods.map(p=>p.id)]) {const value=row.cells?.[col]; if (value!==null && typeof value==='object' && typeof value.v==='number') list.push([col,value.v]);}
+      // The figures of the periods a card leaves out go with the line's own.
+      const own=(row as MagnitudeGroupSource)[MAGNITUDE_FIGURES];
+      if (own) {list.push(...own); delete (row as MagnitudeGroupSource)[MAGNITUDE_FIGURES];}
     }
     const kept=rows.filter(row=>!dropped.has(row));
     rows.length=0; rows.push(...kept);
@@ -887,7 +891,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     for (const row of lines) if (!dropped.has(row)) {row.cells=emptyIdRecord(); row.missing='blank'; labelOnly(row);}
     for (const row of rows) {
       const group=(row as MagnitudeGroupSource)[MAGNITUDE_GROUP], list=group===undefined ? undefined : figures.get(group);
-      if (list) {Object.assign(row,{[MAGNITUDE_FIGURES]:list}); figures.delete(group!);}
+      if (list) {Object.assign(row,{[MAGNITUDE_FIGURES]:[...(row as MagnitudeGroupSource)[MAGNITUDE_FIGURES] ?? [],...list]}); figures.delete(group!);}
     }
     for (const row of dropped) {delete levels[row.id]; collapsed.delete(row.id);}
     for (let i=defaults.length-1; i>=0; i--) if (!(defaults[i]! in levels)) defaults.splice(i,1);

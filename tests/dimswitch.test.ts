@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { withNumberMarks } from '../src/core/numberMarks';
 import '../src/core/charts';
-import { compileDimSwitch, dimswitchRowId, FOLDED } from '../src/core/charts/dimswitch/compile';
+import { compileDimSwitch, dimswitchRowId } from '../src/core/charts/dimswitch/compile';
 import { resolveDimSwitch, dimswitchCore } from '../src/core/charts/dimswitch/core';
 import { exampleData } from '../src/core/charts/dimswitch/example';
 import { statementData } from '../src/core/charts/dimswitch/statementExample';
@@ -437,17 +437,37 @@ it('gives a fold fix that draws the same table without the fold warning', () => 
   }
 });
 
-// A fold hides the rows below its depth, yet their small changes kept one decimal on every change figure of the column ("+130.0%" beside "+4.4%").
-it('settles the decimals of a folded table on the rows it draws', () => {
-  // The total's prior shrinks by a sixth in orders, revenue and spend, so the fold draws a change of 12.5 % alone and prints it
-  // whole. Unfolded, the members' changes of 7 % to 12 % join its band, and two digits of the smallest give it a decimal.
-  // Before the change sets, the prior halved and the column printed one decimal unless every change was 5 % or more.
+// A table folded to fit a fixed height formed its change sets over the rows it draws, so a slide printed a change with
+// other decimals than the same table at an open height.
+it('prints the changes of a folded table as the open table does', () => {
+  // The total's prior shrinks by a sixth in orders, revenue and spend, so the total's change is 12.5 % and the members'
+  // changes of 7 % to 12 % share its band: every change of the measure prints one decimal, folded or open.
   const halved = (sums: DimSwitchSums | undefined) => sums && { ...sums, orders: sums.orders! / 1.2, rev: sums.rev! / 1.2, spend: sums.spend! / 1.2 };
   const data = { ...exampleData, facts: exampleData.facts.map(fact => fact.memberId === 'total' && fact.periodId === 'prior' ? { ...fact, sums: halved(fact.sums)! } : fact) };
-  const formatOf = (folded: boolean) => (compileDimSwitch(data, { variant: 'by-measure', depth: 1, ...(folded ? { [FOLDED]: true } : {}) } as never).data.rows
-    .find(r => r.id === dimswitchRowId('by-measure', 'total', 'orders'))!.cells!.pp as { format: string }).format;
-  expect(formatOf(false)).toBe('+1.2%');
-  expect(formatOf(true)).not.toContain('.');
+  const draw = (height: number) => requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'dimswitch', data, options: { variant: 'by-measure', depth: 3, size: { width: 1400, height } } } as never)));
+  const change = (geometry: ReturnType<typeof draw>) => ((geometry.derived as unknown as DimSwitchDerived).table.rows
+    .find(r => r.id === dimswitchRowId('by-measure', 'total', 'orders'))!.cells.pp as { displayed?: string }).displayed;
+  const open = draw(1200), folded = draw(400);
+  expect(open.warnings.map(w => w.code)).not.toContain('dimswitch-depth-folded');
+  expect(folded.warnings.map(w => w.code)).toContain('dimswitch-depth-folded');
+  expect(change(open)).toMatch(/\d\.\d%$/);
+  expect(change(folded)).toBe(change(open));
+});
+
+// A phone card that left out a period formed its sets over the periods it drew, so 1.80k on a laptop read 1.8k on a phone.
+it('prints each figure of a phone card with the text of the full table', () => {
+  const options = { variant: 'by-measure', depth: 2, columnOverrides: { label: { label: 'Metric', width: 200 }, range: { label: 'Selected', width: 130 },
+    pp: { label: 'Change', width: 80 }, w2: { label: 'Latest', width: 120 } } } as const;
+  const figures = (width: number) => {
+    const geometry = measure({ type: 'dimswitch', data: exampleData, options: { ...options, size: { width } } } as never).geometry!;
+    const texts = (geometry.scene as { t: string; id?: string; lines?: string[] }[]).flatMap(node => node.t === 'text' && node.id?.startsWith('cell:') ? [[node.id, (node.lines ?? []).join(' ')] as const] : []);
+    return { periods: (geometry.marks as { columns: { id: string }[] }).columns.map(column => column.id), texts: new Map(texts) };
+  };
+  const wide = figures(960), phone = figures(320);
+  expect(wide.periods).toContain('w1');
+  expect(phone.periods).not.toContain('w1');
+  expect(phone.texts.size).toBeGreaterThan(0);
+  for (const [id, text] of phone.texts) expect(text, id).toBe(wide.texts.get(id));
 });
 
 describe('dimswitch columnVisibility', () => {
