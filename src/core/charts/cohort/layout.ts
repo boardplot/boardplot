@@ -262,7 +262,6 @@ export function layoutCohort(
       // Without a format the shown rates are one percent set of cells, printed at
       // every width alike. The unrounded ratio stays in `derived`.
       format: options.format,
-      holdDecimals: true,
       // Continuous ramp, in-cell values. Every cell carries an explicit fill
       // from the pinned ramp above, so the engine's own observed-maximum anchor
       // never reaches the ink.

@@ -989,17 +989,19 @@ it('titles cohort records with the printed row and period names', async () => {
   }
 });
 
-// A rate such as "72%" missed a half-slide cell and every rate vanished; the unit line already names the percent.
-it('a narrow cohort heatmap prints its rates without the % sign instead of hiding them', () => {
+// A narrow cohort heatmap printed "72" where the full width prints "72%", so one rate had two texts.
+it('a narrow cohort heatmap keeps the % sign of its rates and hides them where they have no room', () => {
   const cohorts = Array.from({ length: 6 }, (_, i) => ({ id: `k${i}`, label: `K${i}`, active: Array.from({ length: 12 - i }, (_, t) => Math.round(1000 * 0.95 ** (t * 1.7))) }));
   const printed = (width: number, unit?: string) => layout({ periodLabel: 'Month', cohorts } as CohortData, { unit, size: { width, height: 300 } } as CohortOptions)
     .labels.filter((label) => label.kind === 'point' && !label.hidden).map((label) => label.text).filter((text) => text !== '–');
-  expect(printed(640, '% of cohort base').every((text) => text.endsWith('%'))).toBe(true);
+  const wide = printed(640, '% of cohort base');
+  expect(wide.length).toBeGreaterThan(0);
+  expect(wide.every((text) => text.endsWith('%'))).toBe(true);
+  // At 432 px only the first period, 100% in every cohort, stays blank.
   const narrow = printed(432, '% of cohort base');
-  expect(narrow).toHaveLength(57);
-  expect(narrow.some((text) => text.includes('%'))).toBe(false);
-  // Without a unit line naming the percent, the sign stays.
-  expect(printed(432).every((text) => text.endsWith('%'))).toBe(true);
+  expect(narrow).toHaveLength(51);
+  expect(narrow.every((text) => text.endsWith('%'))).toBe(true);
+  expect(printed(400, '% of cohort base')).toEqual([]);
 });
 
 describe('cohort exhibit Total row claims', () => {

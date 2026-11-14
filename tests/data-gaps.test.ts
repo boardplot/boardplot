@@ -943,7 +943,7 @@ it('states the claims of a label-only dimswitch row as unprinted and binds a dra
   expect(drawn.output.displayed).not.toBe('');
 });
 
-// The reading quoted each cohort rate with its percent sign ("62%") where the narrow matrix prints "62", and quoted rates the matrix had no room to print.
+// The reading quoted cohort rates that the matrix had no room to print. Each rate must read as its cell prints it: with its percent sign, or not at all.
 it('reads each cohort rate from the value the matrix prints, or nothing where it prints none', () => {
   const cohorts = Array.from({ length: 12 }, (_, i) => ({ id: `w${i + 1}`, label: `Week ${i + 1}`, active: Array.from({ length: 12 - i }, (_, t) => Math.round(800 * 0.88 ** t)) }));
   const texts = new Set<string>();
@@ -956,7 +956,7 @@ it('reads each cohort rate from the value the matrix prints, or nothing where it
       texts.add(claim.output.displayed.includes('%') ? '%' : claim.output.displayed === '' ? 'none' : 'bare');
     }
   }
-  expect([...texts].sort()).toEqual(['%', 'bare', 'none']);
+  expect([...texts].sort()).toEqual(['%', 'none']);
 });
 
 // A child sum within float noise of the author's total took the total cell's text, so the reading printed 1,000,000,000.0 for a sum of 1,000,000,000.5.
