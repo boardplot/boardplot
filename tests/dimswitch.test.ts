@@ -77,6 +77,15 @@ it('cleans a relative change of float noise before it rounds', () => {
  const change=resolveDimSwitch(lift.data as DimSwitchData,lift.options as never).table.rows.find(r=>r.id===`${dimswitchRowId('by-measure','beta','lift')}:change`)!;
  expect(change.cells.p1!.displayed).toBe('−13%');
 });
+// A change that needs three decimals printed "<+1pp" and "<+1%": its engine example "+1.200pp" read as a thousands group with no decimals.
+it('prints a point change and a relative change that need three decimals', () => {
+ const periods=[{id:'range',label:'Range',kind:'range' as const},{id:'prior',label:'vs prior',kind:'prior' as const},{id:'p1',label:'P1'}];
+ const facts=([['range',30.094,100094],['prior',30,100000],['p1',30.094,100094]] as const).map(([periodId,rate,orders])=>({memberId:'total',periodId,sums:{rate,orders}}));
+ const data:DimSwitchData={dimension:{label:'Segment',total:{id:'total',label:'Total'},members:[],headline:['rate']},
+  measures:[{id:'rate',label:'Rate',scale:'percent',value:{field:'rate'},change:'pp'},{id:'orders',label:'Orders',scale:'count',value:{field:'orders'},change:'relative'}],periods,facts};
+ const change=(measure:string)=>resolveDimSwitch(data).table.rows.find(r=>r.id===dimswitchRowId('by-measure','total',measure))!.cells.pp!.displayed;
+ expect([change('rate'),change('orders')]).toEqual(['+0.094pp','+0.094%']);
+});
 // Scale 'money' climbs k, M, B itself, so a unit that names a magnitude prints 1,320 Mio. CHF as 1.32k.
 it('warns when a money measure has a unit that names a magnitude', () => {
  const data:DimSwitchData={...exampleData,measures:exampleData.measures.map(m=>m.scale==='money' ? {...m,unit:'Mio. CHF'} : m)};

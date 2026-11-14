@@ -824,9 +824,13 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   for (const id of options.expansion?.expanded ?? []) collapsed.delete(id);
   for (const id of options.expansion?.collapsed ?? []) collapsed.add(id);
   // Each point set prints the decimals the rule gives each difference (its group), as the cell's engine format.
+  // An example with three decimals takes an integer part of 0, because "+1.200pp" reads as a thousands group.
   for (const list of pointChanges.values()) {
     const rule=percentChangeSpec(list.map(entry=>entry.v))[RULE_SET]!;
-    for (const {cell,v} of list) (cell as {format?:string}).format=formatPercentagePoints(1.2,rule.groupOf(v).decimals,true);
+    for (const {cell,v} of list) {
+      const decimals=rule.groupOf(v).decimals;
+      (cell as {format?:string}).format=formatPercentagePoints(decimals===3 ? 0.2 : 1.2,decimals,true);
+    }
   }
   // One change set per measure of relative changes, across its columns, as its point differences.
   // A folded table is a fixed frame: its sets settle on the rows it draws, not on rows the fold hides.
@@ -852,7 +856,11 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     // The relative changes of a measure are one change set: every group prints two digits of its band's smallest value.
     const valueOf=(entry:{cell:TableCell})=>(entry.cell as {v:number}).v;
     const rule=percentChangeSpec((shown.length>0 ? shown : entries).map(valueOf))[RULE_SET]!;
-    for (const entry of entries) (entry.cell as {format?:string}).format=formatAutomaticPercent(1.2,rule.groupOf(valueOf(entry)).decimals,true);
+    // An example with three decimals takes an integer part of 0, because "+1.200%" reads as a thousands group.
+    for (const entry of entries) {
+      const decimals=rule.groupOf(valueOf(entry)).decimals;
+      (entry.cell as {format?:string}).format=formatAutomaticPercent(decimals===3 ? 0.2 : 1.2,decimals,true);
+    }
   }
   // ---------- a hidden Total: everything above still read its rows, so the members keep the magnitude and decimals they print with it ----------
   const computedCells=totalHidden ? hideTotal() : records;
