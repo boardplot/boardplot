@@ -472,3 +472,13 @@ it('does not join a unit to a shown text that already ends in it', () => {
     .map(record => withChartFormats(request.options, () => labelCardContent(record).rows[1]?.value));
   expect(cards).toEqual(['41k', '57k']);
 });
+
+// A card share that the chart does not draw printed "40%" beside drawn shares such as "12.346%": its example "12.344%" read as a thousands group with no decimals.
+it('prints a card share at the three decimals the chart draws', () => {
+  const { request, geometry } = build({ type: 'column', data: { categories: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }],
+    series: [{ id: 's1', label: 'S1', values: [123456, 401234] }, { id: 's2', label: 'S2', values: [876544, 598766] }] },
+    options: { variant: 'stacked', shareLabels: { format: '0.000%', only: ['a'] }, size: { width: 720, height: 360 } } });
+  const record = interactionRecords({ request, geometry, scope: request.scope, claims: [] })
+    .find(entry => entry.target.owner.seriesId === 's1' && entry.target.owner.categoryId === 'b')!;
+  expect(labelCardContent(record).rows.map(row => row.text)).toContain('Share: 40.123% of 1,000,000');
+});

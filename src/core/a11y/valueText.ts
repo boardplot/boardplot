@@ -48,9 +48,9 @@ function derivedPercentText(value: InteractionValue, locale?: string): string | 
   return derivedValueText({ ...value, raw: percent, unit: '%' }, percentDecimals(value, percent), false, locale, true);
 }
 
-/** A percent example with `decimals` places: 0 → '12%', 1 → '12.3%'. */
+/** A percent example with `decimals` places: 0 → '12%', 1 → '12.3%', 3 → '0.344%' ("12.344%" reads as a thousands group). */
 export function percentExample(decimals: number): string {
-  return decimals > 0 ? `12.${'3'.padEnd(decimals, '4')}%` : '12%';
+  return decimals > 0 ? `${decimals === 3 ? 0 : 12}.${'3'.padEnd(decimals, '4')}%` : '12%';
 }
 
 /**
