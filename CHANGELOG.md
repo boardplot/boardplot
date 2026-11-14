@@ -2,6 +2,67 @@
 
 Boardplot is in 0.x: options and output can change between minor versions. Each release lists its changes here.
 
+## 0.59.0
+
+### Changed
+
+- An authored number format now prints every value as its example reads: the sign form, prefix, suffix, scale word, and decimals or significant figures stay as written. Under `"$1.2M"`, 4 prints `$0.0M`, not `$4.0`, and under `"$@@@M"`, 999,960,000 prints `$1,000M`, not `$1.00B`. To get the earlier text, write the example that the warning `format-hides-values` proposes, such as `"$1.2"`.
+- This holds for the chart, series, row, column, cell and axis formats, and for totals, subtotals and calculated table rows and columns: a total no longer takes more decimals or another scale word than its example. A German or French chart still prints the scale in its own words, and `scale`, `options.magnitude`, `options.signs` and the unit in a table head keep their effect.
+- A negative value that rounds to zero prints the example's zero without a sign: −0.02 under `"+1.0%"` prints `0.0%`, and the chart warns `format-hides-values`.
+- The hover card keeps the digits of a value that its label prints as zero: 0.04 under `"0.0%"` reads `0.04%` in the card.
+- Statistics print as before: a mean, median, spread, band bound or rate takes up to one decimal more than the example where it needs one. Axis ticks keep the scale word of the format and take their digits from their spacing, so they print as before where the format fits the data. Under a scale word far above the data they read `$0.00002M` where they read `$20`, and the patch of `format-hides-values` brings back `$20`.
+- A KPI on a German chart keeps the `M` of its format as written, as a column or bullet chart does: `"$1.1M"` prints `$10.6M`, where it printed `$10.6 Mio.`. Write `"$1.1 Mio."` to get the German word.
+- A chart prints the same text wherever and whenever it is drawn: alone or after other charts, as SVG or PNG, in the React components (including the table and the dimension switch), and when its exported document is drawn again. An exported document keeps a unit-only format such as `"$M"` as written.
+- `format-hides-values` now covers every chart type and every place that takes a format. It fires where a nonzero value prints as the example's zero, or where different values of one series, table row or table column print one text, and it names the format's path. Its patch keeps the example's style, tries the scale word that fits and then more decimals, and is checked by drawing the chart with it. Where no patch works, the warning says so.
+- A value label, a total and a table figure print the same text at every width, height and render target. Charts that shortened a number to fit a small size now keep its full text:
+  - A value heatmap and a cohort heatmap no longer shorten their numbers to fit the cells. This takes back the change of 0.55.0, where a matrix with no room dropped the % sign that the unit line names, then decimals, before it hid a number. A narrow heatmap and a narrow cohort heatmap now print no value in their cells where a value does not fit, and the cells keep their colour. The key, the hover card and the description keep the values.
+  - A narrow stacked column chart printed its totals short, such as `10.1k`. It now prints `10,089`, and a total with no room moves to the note with that text.
+  - A cohort exhibit or a dimension switch that leaves out periods on a narrow card printed the remaining values with other decimals: `68.4` where the full table printed `68`, and `1.8k` where it printed `1.80k`. The card now prints each value as the full table does.
+  - A dimension switch folded to fit a fixed height, such as a slide, set the decimals of its changes from the rows it draws. It now sets them from every row, as the open table does.
+- To keep numbers on a narrow chart, set a format with fewer digits. It holds at every size: `format: "0"` prints whole numbers in every cell of a heatmap, and `format: "1.2k"` prints totals such as `10.1k` above the columns of a stacked column chart.
+- A number without an authored format now prints by one rule, with the same text in the chart, the table, the hover card, the reading, the description and the data table. Numbers that a reader compares form a set: the values of a chart, a table column, a measure, a KPI figure. Scale words start at 10,000 (in table cells and KPI figures at 100,000) on every render target. The largest value prints three digits, and no value prints more decimals than the data carry. A much smaller value opens a group of its own with two digits. Examples: 41,230 prints `41.2k`, and a set of 8,400,000, 950,000 and 900 under `$` prints `$8.4M · $950k · $900`.
+- A sum joins its parts, and an absolute change joins its levels with a sign. Averages, quartiles and band bounds form a set of their own with the scale words of their values: an average of 674.4 prints `674`.
+- Changes print two digits. A change in percent, a growth rate and a difference in percentage points form a signed change set, and each group of the set prints two digits of its smallest value: `+9.1%`, `+6.9% p.a.`, `+36%`, and a column `+28% · +33% · +44%`.
+- Every default change is in such a set: annotations, KPI changes, growth rates per series, the growth statement of a combo chart, the change columns of a DimSwitch table (one set per measure) and of a cascade bar table, the change headline of a metric stack panel, the net change of a PVM chart, and a change in percent that a hover card prints where the chart prints none (a set of one value: `+10 (+10%)` in the card of a variance chart, where it printed `+10.0 (+10.0%)`). Where a default printed other decimals, its text changes: `+26.0% p.a.` prints `+26% p.a.`, `+0.5% p.a.` prints `+0.54% p.a.`, `−4% vs Plan` prints `−4.0% vs Plan`, `+28.0%` in a DimSwitch table prints `+28%`, `+6 (+3%)` prints `+6 (+3.3%)`, a PVM net change `+8,780 (+15.3%)` prints `+8,780 (+15%)`, and a cascade CAGR column prints `+6.5 · +0.92` where it printed `6.5 · 0.9`.
+- The share-change column of a cascade bar table is a signed change set of the received shares, two digits in every group: `−7.8 · +2.2 · +1.2 · −0.43 · +5.3 · −0.45`, where it printed `−8 · +3 · +2 · −1 · +5 · −1` from the rounded shares.
+- A computed percent change of a table without a format is a signed change set, one per column and one per row: `+28% · +33%`, where it printed `28.0% · 32.6%`. Set the column's or row's `format: "1.0%"` to bring back the earlier text.
+- The trend slopes of a chart form one set, and take scale words where the chart's values do: `+11.7k per period`, where it printed `+11,670 per period`, and a slope of 2,700 beside labels such as `59.1k` prints `+2.70k per period`. The r² values of a chart form one set: `r² 0.990`, where it printed `r² 0.99`.
+- A table head names a scale word only when every nonzero cell of the column prints it. Otherwise the cells keep their letters (`2.5M · 1.2M · 840k`).
+- Shares no longer add up to 100 by default on bar, column, combo, line, bartable and table charts: each share rounds on its own.
+- On a 100% bar chart and a 100% area chart, the shares of one whole print at one precision, as `rounding: "sum-consistent"` prints them: whole percents, and one decimal more only while a nonzero share would print as `0`. An authored `rounding: "nearest"` on these two charts now prints a share below 10% as `2%`, where it printed `1.7%`. On a 100% bar chart, `format: "0.0%"` brings the decimal back (`8.3%` and `91.7%`). A 100% area chart has no option that brings it back: under `format: "0.0%"` it still draws `8%` and `92%`.
+- A unit-only format (`"$"`, `"%"`, `"$M"`) takes its decimals from the rule, and its scale words where it names none. Under `"$"`, 12,840 prints `$12.8k`, where it printed `$12,840`. Under `"$M"`, 8,400,000, 950,000 and 900 print `$8.4M · $0.95M · $0.0009M`, where they printed `$8.40000M · $0.95000M · $0.00090M`.
+- The hover card of a value that its authored format prints as zero prints the value by the rule: 78 under `"$1.2M"` reads `$78` in the card, where it read `$0.1k`.
+- The hover card joins the chart's unit to a shown text with a scale word, as it does to a written-out number: with `unit: "$"`, the card of 41,200 reads `$41.2k`. This also holds under an authored format with a scale word: under `format: "1.2k"` the card read `41.2k` and now reads `$41.2k`.
+- Unformatted currency of 1,000 or more no longer prints as a whole number on a render target, and interaction records no longer carry `renderTarget`.
+- `options.smallValues` now applies only to a value that needs more than four decimals. Without it, no default prints a bound such as `<0.1` or a power of ten. A value that needs more than 100 decimals still prints as a power of ten, because JavaScript prints no more digits.
+- A metric stack panel that sets `divisor` or `decimals` prints as before, its weighted-rate readout included. A panel with neither prints by the rule, and its weighted-rate readout prints the received rates: `4.75%` and `4.75 → 0.23`, where it printed `4.7%` and `4.7 → 0.2`.
+- Longer default texts can raise the smallest size at which a chart draws: a table with ten value columns now needs 336 px, where it drew at 320 px. A chart below its smallest size is refused with `size-below-floor`.
+
+To bring back an earlier text:
+
+- Whole numbers or a fixed decimal count: set `format: "1,234"` or `format: "1.2"`.
+- No scale words: set `format: "1,234"`. This also writes out trend slopes. One fixed scale: set `format: "1.2M"`.
+- A unit-only `"$"` written out: set `format: "$1,234"`.
+- A fixed decimal count for a change: set the annotation's `format` (`"+1.0%"`) or `seriesLabels.cagr.format`. A KPI change, the percent beside a difference in `mode: "both"`, a combo growth statement, a PVM net change, a cascade growth column and an r² have no format of their own.
+- Shares that add up to 100 on a chart or a bar table: set `rounding: "sum-consistent"`. A table has no such option.
+- Table numbers in millions: set `magnitude: "million"`.
+
+### Removed
+
+- `options.fitFormats` on a table or dimension switch, and `fitFormat` on table columns and rows. They shortened a format until the widest figure fit an authored track, so a table printed `$2.5M` on a phone and `$2.47M` on a laptop, and a dimension switch printed `−54%` on a slide where a report printed `−54.1%`. A table now prints the format it was given at every width, and a value track widens to hold its widest figure. Below the table's smallest width, the CLI and the MCP tool refuse the size and name the width it needs, and React scrolls. An old spec still draws and warns `option-deprecated` with a remove patch. To print fewer digits, set a shorter format example, such as `$1.2M` for `$1.23M`.
+- The React prop `onFormatsFit` is deprecated and never called. The info warning `table-formats-fitted` is gone.
+- The fixture `table/fit-formats-narrow-tracks` is now `table/narrow-tracks-widen`, without the option.
+
+### Fixed
+
+- The hover card, the reading and the chart description now print a value as its label prints it, also when the label is not drawn (labels off, or dropped for room) and the value has an authored format. A card printed `$0.1k` where the label would read `$78.0`, and a callout's `${value}` printed `−600,000` beside a dot labelled `−600k`.
+- A table percent change and an integrated column growth figure no longer print `n.m.` when the base is above zero but prints as `0`. A base of zero or below, and a table change above the cap of ±999 %, still print `n.m.`
+- The reading and the data table no longer print binary float digits such as `7.300000000000001%`.
+- The manual and the grid reference now say how a metric stack readout prints. A panel that sets neither `divisor` nor `decimals` prints a change with two digits (`−2.7%`, `+1.4pp`), and the step rates and chain ends of all such panels form one percent set (`4.75%`, `100 → 4.75`). One decimal holds only for a panel that sets one of them.
+- On a chart that draws shares with three decimals, the hover card printed a share that the chart does not draw as a whole percent: `40%` beside drawn shares such as `12.346%`. The card now prints it with three decimals: `40.123%`.
+- On a mekko chart, the warning `share-rounding-drift` named a sum at another precision than the labels where a format sets their decimals, on the chart (`format: "0.0%"`), on a series or on a cell: `99%` where the chart draws `33.3%` three times in a column. It now sums each share as its label prints it: `99.9%`.
+- A table drawn from a result that `prepareChart` made on the server sorted a number or date column by its printed text. A column of 7,800,000, 410,000, 1,251 and 88,000 sorted ascending as `1.3k · 7.8M · 88k · 410k`, and −2, −10, 3 and −0.5 as `−0.5 · −2 · −10 · 3`. It now sorts by the values, as the same table without a prepared result does: `1.3k · 88k · 410k · 7.8M` and `−10 · −2 · −0.5 · 3`. A date column sorts by date, not by the day it prints first.
+
 ## 0.58.2
 
 ### Fixed
