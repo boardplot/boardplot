@@ -113,6 +113,8 @@ export interface MekkoDomain {
   invalidAt(ci: number): boolean;
   /** rounding 'sum-consistent': the printed share per `categoryId\0seriesId`. */
   shareTexts: ReadonlyMap<string, string>;
+  /** The decimals each column's share labels print at, for sums over printed shares. */
+  shareDecimals: ReadonlyMap<Id, number>;
   /** rounding 'sum-consistent': the shares moved off their nearest rounding. */
   roundingAdjustments?: RoundingAdjustment[];
 }

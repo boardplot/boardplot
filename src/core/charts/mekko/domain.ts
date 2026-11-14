@@ -514,10 +514,27 @@ export function resolveMekkoDomain(data: ChartData, env: MekkoEnv, warnings: Lin
     plottedAt: fns.plottedAt,
     absAt: fns.absAt,
     invalidAt: fns.invalidAt,
-    shareTexts: rounded?.texts ?? (options.format && specUnitKind(parseFormatExample(options.format)) === 'percent'
-      ? new Map() : oneColumnPrecision(st, fns, incomplete, options.locale?.language)),
+    ...shareLabels(rounded?.texts, options, st, fns, incomplete),
     ...(rounded ? { roundingAdjustments: rounded.adjustments } : {}),
   };
+}
+
+/**
+ * The share texts of the columns and the decimals each column's share labels print at: the
+ * sum-consistent texts (no drift to disclose), a percent options.format (its decimals), or one precision per column.
+ */
+function shareLabels(
+  rounded: Map<string, string> | undefined,
+  options: MekkoOptions,
+  st: { mode: string; cats: { id: Id }[]; series: NormSer[] },
+  fns: { invalidAt: (ci: number) => boolean; absAt: (s: NormSer, ci: number) => number | null; plottedAt: (s: NormSer, ci: number) => number | null },
+  incomplete: ReadonlySet<Id>,
+): { shareTexts: Map<string, string>; shareDecimals: Map<Id, number> } {
+  if (rounded) return { shareTexts: rounded, shareDecimals: new Map() };
+  const authored = options.format ? parseFormatExample(options.format) : undefined;
+  if (authored && specUnitKind(authored) === 'percent') return { shareTexts: new Map(), shareDecimals: new Map(st.cats.map((c) => [c.id, authored.decimals])) };
+  const columns = oneColumnPrecision(st, fns, incomplete, options.locale?.language);
+  return { shareTexts: columns.texts, shareDecimals: columns.decimals };
 }
 
 /**
@@ -530,9 +547,10 @@ function oneColumnPrecision(
   fns: { invalidAt: (ci: number) => boolean; absAt: (s: NormSer, ci: number) => number | null; plottedAt: (s: NormSer, ci: number) => number | null },
   incomplete: ReadonlySet<Id>,
   locale: string | undefined,
-): Map<string, string> {
+): { texts: Map<string, string>; decimals: Map<Id, number> } {
   const texts = new Map<string, string>();
-  if (st.mode === 'bar') return texts;
+  const decimals = new Map<Id, number>();
+  if (st.mode === 'bar') return { texts, decimals };
   st.cats.forEach((c, ci) => {
     if (fns.invalidAt(ci) || incomplete.has(c.id)) return;
     const total = st.series.reduce((sum, s) => sum + (fns.absAt(s, ci) ?? 0), 0);
@@ -542,7 +560,8 @@ function oneColumnPrecision(
       return share === null ? [] : [{ id: s.id, share }];
     });
     const set = shareSetFormatter(shares.map((entry) => entry.share), locale);
+    decimals.set(c.id, set.decimals);
     for (const { id, share } of shares) texts.set(`${c.id}\0${id}`, set.format(share));
   });
-  return texts;
+  return { texts, decimals };
 }

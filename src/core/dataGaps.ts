@@ -10,6 +10,7 @@ import { strokeToken } from './theme';
  */
 
 import { printedShare } from './format';
+import { shareDecimals } from './formatPrecision';
 import type { OwnerRef } from './types/cell';
 import type { LintWarning, Paint, SceneNode } from './types/scene';
 
@@ -52,13 +53,14 @@ export function shareDrift(printed: readonly number[]): number | null {
 }
 
 /**
- * One info warning per chart naming each whole whose shares, as formatShare
- * prints them, do not add to 100. `shares` are the unrounded percents.
+ * One info warning per chart naming each whole whose shares, as the labels
+ * print them, do not add to 100. `shares` are the unrounded percents.
+ * `decimals` are the decimals the labels print the whole's shares at, or
+ * undefined where each share prints at its own precision (formatShare).
  */
-export function warnShareRoundingDrift(warnings: LintWarning[], wholes: readonly { name: string; shares: readonly number[]; decimals?: number }[]): void {
+export function warnShareRoundingDrift(warnings: LintWarning[], wholes: readonly { name: string; shares: readonly number[]; decimals: number | undefined }[]): void {
   const drifts = wholes.flatMap((whole) => {
-    // At the precision the labels print, where the chart sets one.
-    const sum = shareDrift(whole.shares.map((share) => printedShare(share, whole.decimals)));
+    const sum = shareDrift(whole.shares.map((share) => printedShare(share, whole.decimals ?? shareDecimals(share))));
     return sum === null ? [] : [`${sum}% for '${whole.name}'`];
   });
   if (drifts.length === 0) return;
