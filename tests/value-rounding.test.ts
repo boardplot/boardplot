@@ -283,8 +283,7 @@ describe('a KPI card in a fixed slot keeps every text it draws at natural size',
   });
 });
 
-describe('a value matrix steps its text down before it hides a value', () => {
-  // A cell too narrow for "117.80" used to lose every number and keep only its colour.
+describe('a value matrix prints one text for a value at every size', () => {
   const cells = Array.from({ length: 12 }, (_, i) => ({ id: `c${i}`, label: `C${i}` }));
   const series = ['a', 'b', 'c'].map((id, r) => ({ id, label: id.toUpperCase(), values: cells.map((_, i) => 80 + r * 40 + i * 7.31 + 0.07) }));
   const printed = (width: number, options: object = {}) => {
@@ -292,16 +291,25 @@ describe('a value matrix steps its text down before it hides a value', () => {
     return { geometry, texts: geometry.labels.filter((label) => label.kind === 'point' && !label.hidden).map((label) => label.text) };
   };
 
-  it('prints every value with fewer decimals while the hover card keeps them all', () => {
-    const wide = printed(640);
-    expect(wide.texts).toHaveLength(36);
-    // Default number rule: before "80.07" (the set runs to 240.48, so it prints whole numbers).
-    expect(wide.texts[0]).toBe('80');
-    const narrow = printed(432);
-    expect(narrow.texts).toHaveLength(36);
-    expect(narrow.texts.every((value) => !value.includes('.'))).toBe(true);
-    // Default number rule: before "80.07" (the cell display keeps the set text, which is whole now).
-    expect(narrow.geometry.scene.find((node) => node.part === 'cell')?.display).toEqual({ value: '80' });
+  // A narrow matrix printed its cells and its key with fewer decimals, so one value read 40 on a phone and 40.0 on a laptop.
+  it('hides every cell value where one has no room, and the key and the hover card keep the full text', () => {
+    const columns = Array.from({ length: 20 }, (_, i) => ({ id: `c${i}`, label: `C${i}` }));
+    const rows = ['a', 'b', 'c'].map((id, r) => ({ id, label: id.toUpperCase(), values: columns.map((_, i) => 40 + (r * 20 + i) * 0.29) }));
+    const at = (width: number) => {
+      const geometry = layoutHeatmap({ categories: columns, series: rows } as never, { variant: 'value', size: { width, height: 300 } } as never);
+      return {
+        geometry,
+        texts: geometry.labels.filter((label) => label.kind === 'point' && !label.hidden).map((label) => label.text),
+        key: geometry.scene.flatMap((node) => node.t === 'text' && String(node.id).startsWith('label:scale:tick') ? [node.lines.join(' ')] : []),
+      };
+    };
+    const wide = at(960), narrow = at(480);
+    expect(wide.texts).toHaveLength(60);
+    expect(wide.texts[0]).toBe('40.0');
+    expect(narrow.texts).toHaveLength(0);
+    expect(wide.key.length).toBeGreaterThan(0);
+    expect(narrow.key).toEqual(wide.key);
+    expect(narrow.geometry.scene.find((node) => node.part === 'cell')?.display).toEqual({ value: '40.0' });
   });
 
   it('leaves an authored format as written', () => {

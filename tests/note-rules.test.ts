@@ -407,7 +407,7 @@ describe('note rules', () => {
 
   it.each([
     // Three sources of the warning: noted labels (combo), a heatmap value note, a pie value note
-    // (at 480 px every pie label now finds a seat, so its case runs at 320 px; the heatmap prints its values at 480 px with fewer decimals, so its case runs at 400 px).
+    // (at 480 px every pie label now finds a seat, so its case runs at 320 px; the heatmap case runs at 400 px).
     ['combo', 'dense-12-months', 480], ['heatmap', 'dense-20x12', 400], ['pie', 'ten-tiny-slices', 320],
   ] as const)('%s %s at %i px names its noted values in one values-in-note warning', (type, id, width) => {
     const fixture = getFixtures(type).find((entry) => entry.id === id)!;
