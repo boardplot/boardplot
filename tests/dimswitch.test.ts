@@ -308,8 +308,8 @@ describe('dimswitch partition totals with null and missing members',()=>{
  });
 });
 
-// a change line whose fitted format would print a nonzero change as 0pp keeps its digit where the width holds.
-it('keeps a fitted change line nonzero', async () => {
+// A change line of a small nonzero change must keep its digit and never print 0pp.
+it('keeps a small change line nonzero', async () => {
  const {fixtures}=await import('../src/core/charts/dimswitch/fixtures');
  const statement=fixtures.find(f=>f.id==='statement')!;
  const geometry=requireGeometry(layoutResolvedRequest(resolveChartRequest({type:'dimswitch',data:statement.data,options:{...statement.options,target:'report',textScale:1.25}} as never)));

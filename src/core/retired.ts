@@ -85,6 +85,10 @@ const RETIRED_SETTINGS: readonly RetiredSetting[] = [
   ...removed(['pareto'], ['options.highlight'], 'The highlight encodes the derived vital few.'),
   ...removed(['pareto'], ['options.topN.showRestCount'], 'A Pareto always prints the count, because the concentration verdict rests on it.'),
   ...removed(['pareto'], ['options.topN.threshold'], 'The rank cut is topN.n.'),
+  ...removed(['table', 'dimswitch'], ['options.fitFormats'], 'A figure prints the same text at every width, and its track widens to hold it. To print fewer digits, set a shorter format example.'),
+  // A table row nests through children: the key is retired on the rows of the first eight levels.
+  ...removed(['table'], ['data.columns.[].fitFormat', ...Array.from({ length: 8 }, (_, depth) => `data.rows.[].${'children.[].'.repeat(depth)}fitFormat`)],
+    'No format is fitted to a width any more.'),
   { at: 'data.pack', types: ['choropleth'], values: { 'de-laender': 'de-states' } },
   { at: 'options.density', types: ['dimswitch'], values: { cohort: null, 'cohort-small': null },
     use: "A cohort density is a one-line row and a dimswitch cell holds two lines; set 'compact' for tight rows." },

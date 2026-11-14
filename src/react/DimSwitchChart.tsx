@@ -144,7 +144,7 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
    inlineVisibility={inlineVisibility} defaultInlineVisibility={defaultInlineVisibility} onInlineVisibilityChange={onInlineVisibilityChange}
    size={size} fit={fit} fallbackSize={fallbackSize} measureWidths={measureWidths} hover={hover} onWarnings={wantsWarnings ? readTable : undefined} onRefused={onRefused} renderRefused={renderRefused}
    scope={scope} fontMetrics={fontMetrics} styleNonce={styleNonce} idPrefix={idPrefix} handleRef={handleRef} onContentWidth={onContentWidth} onScrollChange={onScrollChange} fillHeight={fillHeight}
-   rowLabelLead={rowLabelLead} interactions={interactions} onEmpty={onEmpty} onFormatsFit={onFormatsFit} portalContainer={portalContainer} onRowSelect={onRowSelect} isRowSelectable={isRowSelectable} toolbar={toolbar}/></TableFloorRequestContext.Provider>;
+   rowLabelLead={rowLabelLead} interactions={interactions} onEmpty={onEmpty} portalContainer={portalContainer} onRowSelect={onRowSelect} isRowSelectable={isRowSelectable} toolbar={toolbar}/></TableFloorRequestContext.Provider>;
  }
  DimSwitchChart.chartType='dimswitch';
  DimSwitchChart.displayName='DimSwitchChart';

@@ -39,7 +39,6 @@ export interface SetDeclaration {
   words?: boolean;
   /** A scale a unit-only format states. */
   scale?: RuleScale;
-  fit?: number;
   /** Changes in percent, growth rates or differences in percentage points. */
   change?: boolean;
 }
@@ -53,7 +52,6 @@ export function numberSetOf(locale: string | undefined, declared: SetDeclaration
     cell: declared.cell ?? false,
     ...(declared.words !== undefined ? { words: declared.words } : {}),
     ...(declared.scale !== undefined ? { scale: declared.scale } : {}),
-    ...(declared.fit ? { fit: declared.fit } : {}),
     ...(declared.change ? { change: true } : {}),
     language,
     ...(small ? { small } : {}),
@@ -93,13 +91,6 @@ export function ruleFormatter(values: Iterable<number | null | undefined>, local
  * computed from.
  */
 export function statisticSet(values: Iterable<number | null | undefined>, of: RuleSet): RuleSet {
-  return numberRuleSet(finiteValues(values), { ...of.set, words: of.words, fit: undefined });
+  return numberRuleSet(finiteValues(values), { ...of.set, words: of.words });
 }
 
-/**
- * The width step `fitFormats` passes into a table column without an authored format:
- * step n removes n decimals from every group, the next lowers the cell threshold
- * for scale words. An internal mark on the column, not an option.
- */
-export const RULE_FIT = Symbol('tableRuleFit');
-export type RuleFitSource = { [RULE_FIT]?: number };

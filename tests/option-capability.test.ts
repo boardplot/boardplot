@@ -428,8 +428,6 @@ describe('published option behaviour census', () => {
     'table.figures': { options: { encodings: { actual: 'heat' } }, reason: 'Figures can be hidden only on a heat lane.' },
     // A change prints two digits, so the sheet's 66 px week tracks no longer need a fit (the fit took "+23.6%" to "+24%");
     // in 52 px tracks the fit takes CAC from "30.0" to "30".
-    'dimswitch.fitFormats': { fixture: 'sheet', value: false, options: { size: { width: 1400 }, widths: { label: 240, range: 92, change: 92, period: 52 } } },
-    'table.fitFormats': { fixture: 'fit-formats-narrow-tracks', value: false },
     'bar.focus': { fixture: 'valuation-football-field', value: { owner: { categoryId: 'dcf', seriesId: 'equity-value' } } },
     'bartable.focus': { value: { owner: { categoryId: 'co', colId: 'n' } } },
     'cohort.focus': { fixture: 'saas-logo-retention', value: { owner: { categoryId: 't3' } } },

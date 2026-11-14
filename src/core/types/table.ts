@@ -125,8 +125,6 @@ interface TableColumnBase {
    * where the row prints no line at all, the row grows by one inline line.
    */
   noteLine?: boolean;
-  /** false: `options.fitFormats` leaves this column's format as authored, even where a figure is cut at its width. */
-  fitFormat?: false;
   /** Typographic weight of the whole column: 'strong' sets the emphasis weight (700 by default), 'muted' paints it in inkMuted. */
   emphasis?: ColumnEmphasis;
   /**
@@ -237,8 +235,6 @@ export interface TableRow {
   calc?: Calc;
   /** Format-by-example; overrides the column format for calc rows and inline rows. */
   format?: string;
-  /** false: `options.fitFormats` leaves this row's format as authored, even where a figure is cut at its width. */
-  fitFormat?: false;
   polarity?: Direction;
   /**
    * Print this row as a line under its parent's value, inside the same cell,
@@ -615,15 +611,6 @@ export interface TableOptions extends BaseOptionsFor<'table'> {
    * scroll area starts at the first column. A heading wider than its columns starts at the first.
    */
   groupAlign?: 'left' | 'center' | 'right';
-  /**
-   * Shorten a number format until the widest figure fits its fixed track
-   * (a column with an authored `width`): one decimal less at a time, then
-   * the next unit up ($k to $M) at one decimal. A row format changes for the
-   * whole row, a column format for the whole column, so one row or one
-   * column reads in one format. Where the unit steps, a row's `unitAffix`
-   * that named the old unit names the new one. Default false.
-   */
-  fitFormats?: boolean;
   /**
    * Value-track growth cap in SVG and React frame fill. Default 2.5.
    * false removes the cap. The label track takes the remaining width.

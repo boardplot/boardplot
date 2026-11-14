@@ -66,7 +66,7 @@ function tableOptionsOf(options: DimSwitchOptions) {
 }
 
 const tableDefaults = (form: DimSwitchForm, pinned: CompiledDimSwitch['options']['stickyLabels']) => ({
-  variant:'steering' as const,stickyLabels:pinned,mountCollapsed:false,fitFormats:true,
+  variant:'steering' as const,stickyLabels:pinned,mountCollapsed:false,
   labelIndent:form.card ? {base:12,step:12} : {base:25,step:17},...(form.card ? {cellPadX:3} : {}),
 });
 

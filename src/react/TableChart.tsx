@@ -47,7 +47,6 @@ import { tableCellNodeId } from '../core/charts/table/cellKey';
 import { groupHeadingLabel } from '../core/charts/table/groupHeading';
 import { resolveTable } from '../core/charts/table/resolve';
 import {
-  cellDrawsTabular,
   collapsedByDefault,
   expansionForFolds,
   expansionRootsHidden,
@@ -68,16 +67,10 @@ import {
   visibleRows,
   type TableSort,
 } from '../core/charts/table/view';
-import { levelLadder } from '../core/charts/table/ladder';
 import { presetLanguage } from '../core/charts/table/presets';
 import {
   browserSlack,
-  cellPadX as trackCellPadX,
-  kindFont,
   pinnedColumns,
-  changeLineFitFont,
-  rowFont as ladderRowFont,
-  tableFonts,
   trackTemplate,
   trackTotal,
   ENGINE_NOTES,
@@ -87,7 +80,6 @@ import {
   type TableFonts,
 } from '../core/charts/table/tracks';
 import { DEFAULT_EMPTY_MESSAGE } from '../core/emptyData';
-import { fitTableFormats, formatsFittedWarning, type FormatFitChange } from '../core/charts/table/fitFormats';
 import { emitSparkline, sparklineDomains, sparklineSourceValues } from '../core/charts/table/encodings/sparkline';
 import { arrowGlyph, arrowKey, printedNumber, type ArrowKeyEntry } from '../core/charts/table/encodings/arrow';
 import { badSide, heatKey, heatPaint, heatRanges, type HeatKeyEntry, type HeatRange } from '../core/charts/table/encodings/heat';
@@ -186,6 +178,15 @@ export interface TableRowLabelLead {
   width: number;
   /** The glyph for one row; null or undefined draws none. */
   render: (row: ResolvedRow) => ReactNode;
+}
+
+/** One format a table once shortened to fit a width: the type of the deprecated `onFormatsFit` callback. */
+export interface FormatFitChange {
+  row?: Id;
+  column?: Id;
+  /** The example the figure printed through before; absent where it was derived and had no authored one. */
+  from?: string;
+  to: string;
 }
 
 export type TableChartProps = OptionsInput<Omit<TableOptions, 'columnVisibility' | 'inlineVisibility' | 'size' | 'sort'>> & PerTypeSizeOptions & RefusalProps & RowsProps & {
@@ -318,12 +319,7 @@ export type TableChartProps = OptionsInput<Omit<TableOptions, 'columnVisibility'
    * their fold state and draw their fold marks as marks; hover stays.
    */
   interactions?: boolean;
-  /**
-   * Called with the formats `options.fitFormats` shortened to fit authored widths: each change names a row, a column or a
-   * cell, the example it printed through before (`from`, absent where it was derived) and the example now (`to`). Called
-   * when the list changes, and an empty list when a table that was fitted no longer is. The layout reports the same list
-   * as the `table-formats-fitted` info warning.
-   */
+  /** @deprecated Never called: a table no longer fits formats to a width. */
   onFormatsFit?: (changes: FormatFitChange[]) => void;
   /**
    * Called once when the table has no data row after filtering (no row but section headings and totals, or no row at all).
@@ -453,7 +449,7 @@ function useWidthMeasure(base: TextMeasurer, enabled: boolean): { measure: TextM
     if (fonts?.ready === undefined) return undefined;
     let active = true;
     // A face that loaded after the widths were taken changes them; where a sample of them measures the same, the
-    // tracks stand and the table is not fitted and measured a second time.
+    // tracks stand and the table is not measured a second time.
     const remeasure = () => {
       if (!active || !canvasWidthsMoved()) return;
       measuredWidths.clear();
@@ -622,8 +618,8 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     : { ...stableOptions, [UNIT_STAND_INS]: source[UNIT_STAND_INS], [AUTHORED_EXAMPLES]: source[AUTHORED_EXAMPLES] }, [stableOptions, source]);
   const { request, layoutRequest: fullLayoutRequest, provider, deferred } = useResolvedChartRequest({ type: 'table', data, target, options: requestOptions, scope, fontMetrics }, {}, prepared, linked);
   // Inline visibility changes the drawn lines, not their values or widths.
-  // Keep the full request for prepared-snapshot matching; reuse resolution and
-  // format fitting while the reader switches the lines on or off.
+  // Keep the full request for prepared-snapshot matching; reuse resolution
+  // while the reader switches the lines on or off.
   const { inlineVisibility: _inlineVisibility, ...valueOptions } = (fullLayoutRequest?.options as TableOptions | undefined) ?? {};
   const valueContext = useStableValue(fullLayoutRequest === undefined ? undefined
     : { ...fullLayoutRequest, data: undefined, options: valueOptions });
@@ -795,59 +791,12 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
       ),
     [currentColumnVisibility, resolved?.table.columnToggles],
   );
-  /**
-   * Formats that fit their authored tracks: measured in the faces
-   * the grid draws and with the measurer its width pass uses, so the figure
-   * that fits here is the figure the cell draws. Structure never changes:
-   * the same rows, columns and toggles, only shorter formats and their
-   * strings, so the reader state keyed on the unfitted table stays valid.
-   */
-  const fitResult = useMemo(() => {
-    if (resolved === undefined || layoutRequest === undefined || theme === undefined || tableOptions?.fitFormats !== true) return undefined;
-    const ladder = levelLadder(theme, tableOptions.density ?? 'regular', request?.target, textScaleOf(request?.options));
-    const fonts = tableFonts(theme, ladder);
-    const rowById = new Map(resolved.table.rows.map((row) => [row.id, row]));
-    const fitChanges = new Set(resolved.table.rows.filter(row => visibleInlineRows(row, inlineVisibility).length > 0).map(row => row.id));
-    const drawnColumns = (candidate: ResolvedTable) => visibleColumns(candidate, columnVisibility);
-    const result = fitTableFormats(layoutRequest.data as TableData, tableOptions, resolved, drawnColumns, {
-      measure: width.measure,
-      padX: tableOptions.cellPadX ?? trackCellPadX(drawnColumns(resolved.table).length),
-      cellFont: (cell) => {
-        const row = rowById.get(cell.rowId);
-        return kindFont(ladderRowFont(theme, ladder, fonts, cell.role, row?.step ?? cell.level, row?.hasChildren === true, fitChanges.has(cell.rowId)), row?.kind, cell.kind === 'rowLabel', theme);
-      },
-      ...(width.browser ? {} : { slack: browserSlack }),
-      figures: (column, text) => cellDrawsTabular(theme, column.kind, text),
-      lineFont: (parent, line, text, tabular) => changeLineFitFont(theme, ladder, parent.step, line.polarity !== undefined, text, width.measure, tabular, width.browser ? undefined : browserSlack),
-      ...(tableOptions.locale?.decimal === undefined ? {} : { decimal: tableOptions.locale.decimal }),
-    });
-    return result;
-    // Formats fit fixed tracks and do not change with the frame size: `resolveKey` is the size-free options.
-  }, [resolved, layoutRequest?.data, theme, resolveKey, columnVisibility, inlineVisibility, width]);
-  const fitted = useMemo(
-    () => (fitResult === undefined || resolved === undefined ? resolved : { table: { ...fitResult.resolved.table, provenance: resolved.table.provenance } }),
-    [fitResult, resolved],
-  );
-  // `fitFormats` reports what it shortened, to the host (`onFormatsFit`) and as the `table-formats-fitted` info warning.
-  const formatChanges = fitResult?.changes;
-  const formatsListener = useRef(onFormatsFit);
-  formatsListener.current = onFormatsFit;
-  const formatsKey = useRef<string | undefined>(undefined);
-  useEffect(() => {
-    const key = JSON.stringify(formatChanges ?? []);
-    if (formatsKey.current === key) return;
-    const first = formatsKey.current === undefined;
-    formatsKey.current = key;
-    if (first && (formatChanges?.length ?? 0) === 0) return;
-    formatsListener.current?.(formatChanges ?? []);
-  }, [formatChanges]);
-  const fittedNote = useMemo(() => formatsFittedWarning(formatChanges ?? []), [formatChanges]);
   const sort = isSortControlled ? (isColumnSort(controlledSort) ? controlledSort : null) : uncontrolledSort;
   const sortedTable = useMemo(() => {
-    if (fitted === undefined) return undefined;
-    const sorted = sortRows(fitted.table, sort, request?.locale?.language);
-    return sorted === fitted.table.rows ? fitted.table : { ...fitted.table, rows: sorted };
-  }, [fitted?.table, sort, request?.locale?.language]);
+    if (resolved === undefined) return undefined;
+    const sorted = sortRows(resolved.table, sort, request?.locale?.language);
+    return sorted === resolved.table.rows ? resolved.table : { ...resolved.table, rows: sorted };
+  }, [resolved?.table, sort, request?.locale?.language]);
   // A table with no data row after filtering tells the host once (`onEmpty`) and draws one row under its head that
   // says so, the row the SVG draws; `strings.emptyMessage` words it. Folds and `rootsHidden` do not make a table empty.
   const isEmpty = sortedTable !== undefined && hasNoDataRows(sortedTable);
@@ -1105,11 +1054,11 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
       request === undefined || theme === undefined ? undefined : { width: footWidth, measure: width.measure, theme }),
   [table, tableOptions, engineNotes, engineKinds, rows, columns, request, theme, footWidth, width.measure]);
   const diagnostics = useMemo(() => layoutRequest && resolved ? {
-    warnings: [...resolved.warnings, ...(layoutRequest.inputWarnings ?? []), ...(fittedNote === undefined ? [] : [fittedNote]), ...(need?.warnings ?? []), ...(sized?.warnings ?? []), ...(frameMemo?.warnings ?? []),
+    warnings: [...resolved.warnings, ...(layoutRequest.inputWarnings ?? []), ...(need?.warnings ?? []), ...(sized?.warnings ?? []), ...(frameMemo?.warnings ?? []),
       ...(tableOptions?.columnHeads === false && sortable !== false && (sortable === true || sortable.length > 0) ? [SORT_WITHOUT_HEADS] : [])],
     presentation: initialPrepared?.presentation ?? tablePresentation(layoutRequest, resolved.table),
     refused: sized?.refused,
-  } : undefined, [layoutRequest, resolved, initialPrepared, sized, fittedNote, need?.warnings, frameMemo?.warnings, tableOptions?.columnHeads, sortable]);
+  } : undefined, [layoutRequest, resolved, initialPrepared, sized, need?.warnings, frameMemo?.warnings, tableOptions?.columnHeads, sortable]);
   // A container table is laid out again at each width it is shown at, as a container chart is.
   const displayRef = useDisplayWarnings(settling ? undefined : diagnostics, onWarnings, null,
     size === 'container' && !container.printing ? layoutRequest?.size.width : undefined);

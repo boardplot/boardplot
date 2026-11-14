@@ -2636,18 +2636,18 @@ fixtures.push({
 });
 
 /**
- * `fitFormats`: a steering block at the week grain, its six week
- * tracks authored at 44 px. The revenue row is written for the month grain,
- * two decimals in $M, and "$2.47M" does not fit the week track, so the row
- * drops a decimal and every week reads "$2.5M". The orders and conversion
- * rows keep their own formats: a column format would print them in $M.
+ * A steering block at the week grain, its six week tracks authored at 44 px.
+ * The revenue row is written for the month grain, two decimals in $M, and
+ * "$2.47M" does not fit the week track, so the track widens to hold it. The
+ * orders and conversion rows keep their own formats: a column format would
+ * print them in $M.
  */
 const FIT_WEEKS = ['w1', 'w2', 'w3', 'w4', 'w5', 'w6'] as const;
 const fitCells = (values: number[]): Record<string, number> =>
   Object.fromEntries(FIT_WEEKS.map((id, index) => [id, values[index]!]));
 fixtures.push({
-  id: 'fit-formats-narrow-tracks',
-  title: 'Weekly revenue drops a decimal to fit 44 px tracks, the other rows keep their units',
+  id: 'narrow-tracks-widen',
+  title: 'Weekly revenue keeps its written format, and its 44 px tracks widen to hold it',
   kind: 'example',
   data: {
     columns: [
@@ -2662,12 +2662,11 @@ fixtures.push({
   },
   options: {
     variant: 'steering',
-    fitFormats: true,
     cellPadX: 6,
     size: { width: 640, height: 260 },
     title: 'Revenue passed $2.7M in week 40',
     subtitle: { measure: 'Weekly steering', period: 'W36 to W41' },
-    source: 'Illustrative weeks; the revenue row is written as $1.23M and fitted to its 44 px tracks',
+    source: 'Illustrative weeks; the revenue row is written as $1.23M, and its 44 px tracks widen to hold it',
   },
 });
 
@@ -3275,11 +3274,11 @@ fixtures.push(
 const groupsData = (fit = false): TableData => ({
   columns: [
     { id: 'line', kind: 'rowLabel', label: '$k' },
-    { id: 'fy25', kind: 'value', label: 'FY2025', format: '1,234', ...(fit ? { width: 84, fitFormat: false as const } : {}) },
+    { id: 'fy25', kind: 'value', label: 'FY2025', format: '1,234', ...(fit ? { width: 84 } : {}) },
     { id: 'fy26', kind: 'value', label: 'FY2026', format: '1,234', ...(fit ? { width: 84 } : {}) },
   ],
   rows: [
-    { id: 'revenue', label: 'Revenue', ...(fit ? { fitFormat: false as const } : {}), cells: { fy25: 9500, fy26: 10600 }, children: [
+    { id: 'revenue', label: 'Revenue', cells: { fy25: 9500, fy26: 10600 }, children: [
       { id: 'product', label: 'Product sales', cells: { fy25: 8200, fy26: 9100 } },
       { id: 'services', label: 'Services', cells: { fy25: 1300, fy26: 1500 } },
     ] },
@@ -3294,7 +3293,7 @@ fixtures.push(
   { id: 'group-ground-always', title: 'The group ground stays on a folded group row, as before 0.28', kind: 'example', tags: [], data: groupsData(), options: { title: 'Revenue is folded and costs are open', groupGround: 'always', foldOn: 'row', expansion: { collapsed: ['revenue'] } } },
   { id: 'group-ground-none', title: 'No group ground at all', kind: 'example', tags: [], data: groupsData(), options: { title: 'Revenue is folded and costs are open', groupGround: 'none', expansion: { collapsed: ['revenue'] } } },
   { id: 'frame-fill-values', title: 'Under rowExtent frame the value tracks grow until every layer ends at the frame edge', kind: 'example', tags: [], data: groupsData(), options: { title: 'Rows and columns end together', rowExtent: 'frame', frameFill: 'values', size: { width: 720 } } },
-  { id: 'frame-fill-none', title: 'The old frame: columns keep their widths and an empty stretch carries the rows to the edge', kind: 'example', tags: [], data: groupsData(true), options: { title: 'The rows run on past the columns', rowExtent: 'frame', frameFill: 'none', fitFormats: true, size: { width: 720 } } },
+  { id: 'frame-fill-none', title: 'The old frame: columns keep their widths and an empty stretch carries the rows to the edge', kind: 'example', tags: [], data: groupsData(true), options: { title: 'The rows run on past the columns', rowExtent: 'frame', frameFill: 'none', size: { width: 720 } } },
   { id: 'height-fill-none', title: 'A pinned height keeps the rows at their natural height and leaves the rest empty', kind: 'example', tags: [], data: groupsData(), options: { title: 'Rows keep their natural height', heightFill: 'none', size: { width: 720, height: 405 } } },
   { id: 'table-look-keys', title: 'A theme sets the quiet row rule, its width and the secondary ink; each open block opens on the rule ink', kind: 'example', tags: [], data: groupsData(), options: { title: 'Costs rose less than revenue', theme: { preset: 'boardroom', overrides: { table: { ruleInk: '#B9C7D6', ruleWidths: { row: 1 }, inks: { secondary: '#3A5F86' }, blockRule: 'rule' } } } } },
 );

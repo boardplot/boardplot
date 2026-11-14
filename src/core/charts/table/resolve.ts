@@ -12,7 +12,6 @@ import { bandFor } from '../../bandSelect';
 import { datePatternFromExample, formatDate, parseISODate } from '../../dateFormat';
 import { readDateFormat } from '../../dateFormatRead';
 import { currencyWholeNumbers, MINUS } from '../../format';
-import { fitSteps } from '../../numberRule';
 import { MAX_FORMAT_DECIMALS, nonzeroDecimals, typicalDecimals, currentSmallValues, formatScopeKey, zeroLifts } from '../../formatPrecision';
 import { unitPrinted } from '../../frame';
 import {
@@ -85,7 +84,6 @@ import {
 import { BADGE_SECTION_ONLY, BADGE_TEXT_EMPTY, STATUS_VALUES, STATUS_WORDS } from './rules';
 import { heatRanges, statusDirectionNote } from './encodings/heat';
 import { chartNumberMarks, withNumberMarks } from '../../numberMarks';
-import { RULE_FIT, type RuleFitSource } from '../../numberSets';
 import { minOf, pushAll } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
 
@@ -302,7 +300,7 @@ const sharedPreparedData = new Map<string, PreparedTableData>();
 const MAX_SHARED_KEY_CHARS = 128 * 1024;
 const MAX_SHARED_TOTAL_CHARS = 2 * 1024 * 1024;
 let sharedKeyChars = 0;
-const modelSymbols = new Map<symbol, number>([AUTOMATIC_FORMAT, MAGNITUDE_GROUP, MAGNITUDE_FIGURES, ZERO_LIFT, LABEL_ONLY_ROW, RULE_FIT].map((symbol, index) => [symbol, index]));
+const modelSymbols = new Map<symbol, number>([AUTOMATIC_FORMAT, MAGNITUDE_GROUP, MAGNITUDE_FIGURES, ZERO_LIFT, LABEL_ONLY_ROW].map((symbol, index) => [symbol, index]));
 
 /** Exact plain-data content, including private format metadata. Unsupported objects get no retained cache. */
 function modelContentKey(value: unknown): string | undefined {
@@ -1086,8 +1084,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
       const raw = rawState.get(row.id)?.get(col.id)?.raw;
       return typeof raw === 'number' && Number.isFinite(raw) ? [raw] : [];
     });
-    const fit = (col as RuleFitSource)[RULE_FIT];
-    const spec = defaultSetSpec(values, ruleLanguage, points ? undefined : options.unit, { cell: true, ...(points ? { kind: 'percent' as const } : {}), ...(change ? { change: true } : {}), ...(fit ? { fit } : {}) });
+    const spec = defaultSetSpec(values, ruleLanguage, points ? undefined : options.unit, { cell: true, ...(points ? { kind: 'percent' as const } : {}), ...(change ? { change: true } : {}) });
     return points ? { ...spec, suffix: '%', ...(change ? { signed: true } : {}) } : spec;
   };
   for (const col of [...valueCols, ...computedCols]) {
@@ -1355,9 +1352,8 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
         const percent = specUnitKind(spec) === 'percent';
         // A percent change row is a signed change set, as a percent change column is.
         const change = row.calc !== undefined && percentChangeCalc(row.calc);
-        const fit = (authoredRow as RuleFitSource | undefined)?.[RULE_FIT];
         const rule = defaultSetSpec(group === undefined ? rowRuleValues(row) : [...groupColumns.get(group)!.values()].flat(), ruleLanguage,
-          percent ? undefined : options.unit, { cell: true, ...(percent ? { kind: 'percent' as const } : {}), ...(change ? { change: true } : {}), ...(fit ? { fit } : {}) });
+          percent ? undefined : options.unit, { cell: true, ...(percent ? { kind: 'percent' as const } : {}), ...(change ? { change: true } : {}) });
         rowSpecs.set(row.id, { ...rule, prefix: spec.prefix, suffix: spec.suffix, signed: spec.signed || change });
         if (group !== undefined && !groupRules.has(group)) groupRules.set(group, { ...rule, prefix: spec.prefix, suffix: spec.suffix });
       } else rowSpecs.set(row.id, spec);
@@ -1643,8 +1639,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
     // A cell's own format prints whole: its unit is not the one the column
     // or the row hoists. One that names the same unit and changes only the
     // decimals prints as its row or column does, so a hoisted unit is not
-    // printed twice: fitFormats lifts a figure its fitted precision would
-    // print as 0 that way.
+    // printed twice.
     const ruled = rowPath ? rowSpec! : specs.get(colId)!;
     const base = rowId !== undefined && authoredCells.get(rowId)?.has(colId) ? withoutRule(ruled) : ruled;
     if (cellSpec && !sameUnit(cellSpec, base)) return displayFormat(cellSpec, cellSpec.decimals, cellSpec.automatic, false)(raw);
@@ -2233,7 +2228,6 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
     warnings,
   };
   evaluatedStates.set(result, rawState);
-  columnFitStepsOf.set(rawState, (columnId) => { const rule = specs.get(columnId)?.[RULE_SET]; return rule === undefined ? 0 : fitSteps(rule); });
   return result;
   }
 }
@@ -2294,13 +2288,6 @@ function resolveCellEncoding(encoding: TableCellEncoding | undefined, percent: b
 
 /** The evaluated cell states of a resolve, kept for the top-N pass that resolves the full table first. */
 const evaluatedStates = new WeakMap<ResolveResult, Map<Id, Map<Id, CellEval>>>();
-/** The last width step of each default column's set, keyed by the evaluated states of their resolve. */
-const columnFitStepsOf = new WeakMap<Map<Id, Map<Id, CellEval>>, (columnId: Id) => number>();
-/** The width steps a default column can take before fitFormats widens it: none for a column with a format. */
-export function columnFitSteps(result: { table: ResolvedTable }, columnId: Id): number {
-  const states = evaluatedStates.get(result as ResolveResult);
-  return states === undefined ? 0 : columnFitStepsOf.get(states)?.(columnId) ?? 0;
-}
 /** The ids of the share partition (the leaves the column total sums), in row order, keyed by the evaluated states of their resolve. */
 const partitionLeafIds = new WeakMap<Map<Id, Map<Id, CellEval>>, Id[]>();
 
