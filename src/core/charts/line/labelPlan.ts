@@ -15,7 +15,7 @@ import type { Annotation } from '../../types/annotations';
 import type { Id } from '../../types/cell';
 import type { LintWarning } from '../../types/scene';
 import { joinTieValues, placeBumpStartLabels, placeBumpTieLabels } from './bump';
-import { defaultValueContent, fanEdgeInKey, flaggedPoints, lineFocusFont, lineToDateIds, placeCategoryLabels, placeEndpointLabels, placeInlineSeriesLabels, placePointValueLabels, pointWouldShows, pointValueWidths, usesEndLabelKey, usesInlineFallback, usesWideEndLabels, valueUnit, pointLabelsFollowShape, type PointWouldShows } from './labels';
+import { bumpNamesMuted, defaultValueContent, fanEdgeInKey, flaggedPoints, lineFocusFont, lineToDateIds, placeCategoryLabels, placeEndpointLabels, placeInlineSeriesLabels, placePointValueLabels, pointWouldShows, pointValueWidths, usesEndLabelKey, usesInlineFallback, usesWideEndLabels, valueUnit, pointLabelsFollowShape, type PointWouldShows } from './labels';
 import { placeXTickLabels } from './xTicks';
 import { outerFanEdge } from './fan';
 import { restValuesHidden } from '../../restLabels';
@@ -103,12 +103,14 @@ export function planLineLabels(
   // endpoint labels: spread vertically in the reserved right margin
   const { endLabels, endSwatchReserve, endpointSwatches, columnGap } = reserves.endpoint;
   const merged = new Set<Id>();
+  const namesMuted = bumpNamesMuted(env, domain.options);
   const bounded = !isBump && !isArea && !domain.fan ? { lineHeight: labelH, fallback: false, wide: usesWideEndLabels(domain.options), widen: false } : undefined;
   const endpointLeaderAnchors = placeEndpointLabels({
     endLabels, endSwatchReserve, endpointSwatches,
     // The names start just past the line ends, or past the plot edge (reserves.namesAtPlotEdge).
     columnX: (reserves.namesAtPlotEdge || cats.length === 0 ? plot.x + plot.w : xOf(cats.length - 1)) + columnGap, marks, paintedAreaCats, cats, plot, size, isStacked, isArea, y, cumTop, cumBot,
     outsideRankBand, warnings, labelRequests, labelFont: text.nameFont, highlights, keyPaint: paints.keyPaint, seriesPaint: paints.series,
+    inOwnPaint: (label) => label.kind === 'series' && !label.shared && !(namesMuted && !highlights.has(label.s.id)),
     // A line that ends early is named at its own end unless the author asks for the gutter.
     atLineEnd: (domain.options.endLabelPlacement ?? env.theme.labels?.endLabelPlacement ?? 'lineEnd') === 'lineEnd',
     ...(!isBump && domain.labelModes.values !== 'none' && text.contentOf('point', ['absolute']) !== null ? { valuesAtEnd: { merged, measure } } : {}),

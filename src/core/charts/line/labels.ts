@@ -61,6 +61,8 @@ export const usesInlineFallback = (options: LineOptions): boolean => (options as
 export const usesEndLabelKey = (options: LineOptions): boolean => (options as LineOptions & { [END_LABEL_KEY]?: true | 'inline' | 'range' })[END_LABEL_KEY] !== undefined;
 /** A fan cut at its right edge runs on past its last reading: the key carries its last values. */
 export const fanEdgeInKey = (domain: Pick<LineDomain, 'fan' | 'x' | 'options'>): boolean => domain.fan !== null && domain.x?.range?.cut.hi === true && usesEndLabelKey(domain.options);
+/** Under a highlight a bump prints the names of its other lines in the muted ink, not in their line's paint. */
+export const bumpNamesMuted = (env: LineEnv, options: LineOptions): boolean => env.isBump && env.anyHighlight && options.highlightMode !== 'fade';
 export const usesWideEndLabels = (options: LineOptions): boolean => (options as LineOptions & { [END_LABEL_WIDE]?: boolean })[END_LABEL_WIDE] === true;
 
 /**
@@ -566,14 +568,24 @@ function endpointAnchor(label: EndLabel, marks: LineMarks, cats: Category[], isS
   return isStacked ? { x: point.x, y: (y(cumTop[label.dataIdx]![label.ci]!) + y(cumBot[label.dataIdx]![label.ci]!)) / 2 } : point;
 }
 
-function endpointCandidate(input: { slot: string; rect: Rect; penalty: number; size: { width: number; height: number }; outsideRankBand: (rect: Rect) => boolean; leaderFrom?: Point; leaderClearsAreaFill: boolean; isArea: boolean; isStacked: boolean; keepLeader?: boolean; desiredY: number }): SlotCandidate | null {
-  const { rect, size, leaderFrom } = input;
+/**
+ * A name in its line's paint: the colour and the order of the names match it to
+ * its end, so it needs no leader within one line height of that end, while no
+ * other line ends as near.
+ */
+interface OwnPaintName { lineHeight: number; otherEnds: number[] }
+
+function endpointCandidate(input: { slot: string; rect: Rect; penalty: number; size: { width: number; height: number }; outsideRankBand: (rect: Rect) => boolean; leaderFrom?: Point; leaderClearsAreaFill: boolean; isArea: boolean; isStacked: boolean; keepLeader?: boolean; desiredY: number; ownPaint?: OwnPaintName }): SlotCandidate | null {
+  const { rect, size, leaderFrom, ownPaint } = input;
   if (rect.x < 0 || rect.y < 0 || rect.x + rect.w > size.width || rect.y + rect.h > size.height || input.outsideRankBand(rect)) return null;
+  const centre = rect.y + rect.h / 2;
+  const dy = Math.abs(centre - input.desiredY);
+  const matched = dy <= ENDPOINT_LEADER_MIN_DY || ownPaint !== undefined && dy <= ownPaint.lineHeight && ownPaint.otherEnds.every((end) => Math.abs(centre - end) > dy);
   return {
     slot: input.slot,
     rect,
     penalty: input.penalty,
-    ...(leaderFrom && input.leaderClearsAreaFill && (input.isArea || input.isStacked || input.keepLeader || Math.abs(rect.y + rect.h / 2 - input.desiredY) > ENDPOINT_LEADER_MIN_DY) ? { leaderFrom } : {}),
+    ...(leaderFrom && input.leaderClearsAreaFill && (input.isArea || input.isStacked || input.keepLeader || !matched) ? { leaderFrom } : {}),
   };
 }
 
@@ -621,6 +633,8 @@ export function placeEndpointLabels(input: {
   highlights: Set<Id>;
   keyPaint: (series: NormSer, dataIdx: number) => Paint;
   seriesPaint: (series: NormSer, dataIdx: number) => Paint;
+  /** Whether the name prints in its own series' paint (assembleLineGeometry sets the ink). */
+  inOwnPaint: (label: EndLabel) => boolean;
   /**
    * `endLabelPlacement: 'lineEnd'`: a series whose last
    * drawn point lies before the last category is labelled beside that point.
@@ -738,7 +752,9 @@ export function placeEndpointLabels(input: {
     const rect = { x: input.columnX, y: positions[index]! - label.h / 2, w: label.w + (swatched.has(label.id) ? SWATCH_RESERVE : input.endSwatchReserve), h: label.h };
     const leaderFrom = anchor ? { x: Math.min(anchor.x + ENDPOINT_LEADER_CLEARANCE, rect.x - 2), y: anchor.y } : undefined;
     if (leaderFrom) leaders.set(label.id, leaderFrom);
-    const common = { size: input.size, outsideRankBand: input.outsideRankBand, leaderFrom, leaderClearsAreaFill: !input.isArea || !input.paintedAreaCats.has(label.s.id) || label.ci === input.cats.length - 1 && input.paintedAreaCats.get(label.s.id)?.has(label.ci) === true, isArea: input.isArea, isStacked: input.isStacked, keepLeader: endsEarly[index]!, desiredY };
+    const common = { size: input.size, outsideRankBand: input.outsideRankBand, leaderFrom, leaderClearsAreaFill: !input.isArea || !input.paintedAreaCats.has(label.s.id) || label.ci === input.cats.length - 1 && input.paintedAreaCats.get(label.s.id)?.has(label.ci) === true, isArea: input.isArea, isStacked: input.isStacked, keepLeader: endsEarly[index]!, desiredY,
+      ...(input.inOwnPaint(label) ? { ownPaint: { lineHeight: label.h / Math.max(1, label.lines.length),
+        otherEnds: anchors.flatMap((other, k) => (other && input.endLabels[k]!.s.id !== label.s.id ? [other.y] : [])) } } : {}) };
     // Beside the series' own last point: right of it, then above and below
     // it to the right. The ring of a latest point is 4.5px, so the text
     // starts 8px past the point. Last, one row higher: the value takes the

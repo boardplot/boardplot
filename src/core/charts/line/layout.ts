@@ -55,7 +55,7 @@ import { fillShadingKinds, fillShadings, forecastBoundaryX, regroundOnShadings, 
 import { planLineLabels, type LineLabelPlan } from './labelPlan';
 import { BUMP_FOLDED } from './bump';
 import { X_PARTIAL_ROW } from './xTicks';
-import { END_LABEL_KEY, END_LABEL_WIDE, INLINE_FALLBACK, POINT_LABEL_CENTERED_ROOM, endUnitSuffix, lineToDateIds, pointLabelsFollowShape, usesEndLabelKey, usesInlineFallback, type EndpointLabelStrategy } from './labels';
+import { END_LABEL_KEY, END_LABEL_WIDE, INLINE_FALLBACK, POINT_LABEL_CENTERED_ROOM, bumpNamesMuted, endUnitSuffix, lineToDateIds, pointLabelsFollowShape, usesEndLabelKey, usesInlineFallback, type EndpointLabelStrategy } from './labels';
 import { lineValueStats } from './means';
 import { laneScale } from './continuous';
 import type { LineAnomaly, LineArea, LineDomain, LineEnv, LineMarkGeometry, LinePaints, LineReserves, LineText } from './model';
@@ -773,7 +773,7 @@ function assembleLineGeometry(input: LineAssembly): Geometry<LineMarks, LineDeri
     return lineFocus && id !== undefined && env.highlights.has(id) && drawnSeries.some(s => s.id === id);
   };
   const shared = new Set(input.reserves.endpoint.endLabels.filter(l => l.shared).map(l => l.id));
-  const bumpStoryNames = isBump && env.anyHighlight && options.highlightMode !== 'fade';
+  const bumpStoryNames = bumpNamesMuted(env, options);
   for (const label of allLabels) {
     if (label.kind !== 'series' || shared.has(label.id)) continue;
     const index = drawnSeries.findIndex(s => s.id === label.owner.seriesId);
