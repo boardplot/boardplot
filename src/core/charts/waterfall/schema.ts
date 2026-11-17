@@ -10,7 +10,7 @@ import {
   refusedBaseOptions,
   primaryAxisTitleSchema,
 } from '../../schema/shared';
-import type { WaterfallData } from '../../types/data';
+import type { WaterfallData, WaterfallItem } from '../../types/data';
 import type { WaterfallOptions } from '../../types/options';
 import { columnOverridesOption } from '../../schema/generatedColumnOptions';
 
@@ -31,6 +31,7 @@ const itemSchema = z.object({
   date: z.string().optional().describe("ISO 8601 date associated with this bridge item."),
   scenario: scenarioField('Scenario for this bridge item and its default segment styling.'),
   direction: z.enum(['higherIsBetter', 'lowerIsBetter']).optional().describe("Under 'lowerIsBetter' a rise paints bad and a fall good (options.signColor)."),
+  colorRole: colorRoleField("A step without segments: the theme colour role its bar paints in, in place of the step or sign colour, as a segment takes one; neutralLight gives a grey step. Its value keeps labelPosition. A total, a step with segments and a bridge with cases take no colorRole."),
   toBaseline: z.boolean().optional().describe("Start this delta at zero and reset the accumulated contribution list. A subtotal draws the sum of the deltas since the last total or baseline subtotal, from zero; the running level carries on."),
   values: z.array(cellSchema).optional().describe("With data.cases: one value per case, in case order, in place of value — the signed delta of each case, or a total's opening or check value."),
 }).passthrough();
@@ -44,7 +45,7 @@ const itemSchema = z.object({
 const DATA_KEYS = new Set(['items', 'connectors', 'cases']);
 
 const ITEM_KEYS = new Set([
-  'id', 'label', 'type', 'value', 'segments', 'date', 'scenario', 'direction', 'toBaseline', 'values',
+  'id', 'label', 'type', 'value', 'segments', 'date', 'scenario', 'direction', 'toBaseline', 'values', 'colorRole',
 ]);
 
 const SEGMENT_KEYS = new Set(['id', 'label', 'value', 'colorRole', 'scenario']);
@@ -69,6 +70,17 @@ function refuseUnknownKeys(
         : `unknown key '${key}' ${where} — known keys: ${[...known].join(', ')}`,
     });
   }
+}
+
+/** An item colorRole paints one plain step; a total, a step's segments and a case bar each have their own colour. */
+function refuseItemColorRole(ctx: z.RefinementCtx, item: WaterfallItem, index: number, cases: boolean): void {
+  if (item.colorRole === undefined) return;
+  const reason = (item.type ?? 'delta') !== 'delta'
+    ? `a ${item.type} paints the total colour; colour it with value.fill`
+    : item.segments !== undefined
+      ? 'a step with segments paints each segment; set colorRole on its segments'
+      : cases ? 'a bridge with cases paints each bar in its case colour' : undefined;
+  if (reason) ctx.addIssue({ code: 'custom', path: ['items', index, 'colorRole'], message: `item '${item.id}': ${reason}` });
 }
 
 /** A bridge with cases takes one value per case on every item, and nothing that belongs to one bridge. */
@@ -128,6 +140,7 @@ export const waterfallDataSchema = z
     refuseCaseMismatch(ctx, data as unknown as WaterfallData);
     data.items.forEach((item, index) => {
       refuseUnknownKeys(ctx, item, ITEM_KEYS, ['items', index], `on waterfall item '${item.id}'`);
+      refuseItemColorRole(ctx, item as WaterfallItem, index, data.cases !== undefined);
       (item.segments ?? []).forEach((segment, segmentIndex) => {
         refuseUnknownKeys(
           ctx,

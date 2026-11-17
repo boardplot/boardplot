@@ -159,6 +159,8 @@ export interface WaterfallItem {
   scenario?: Scenario;
   direction?: Direction;
   toBaseline?: boolean;
+  /** A step without segments: its bar's theme colour role, as a segment takes one. */
+  colorRole?: ColorRole;
   /** With `data.cases`: one value per case, in case order, in place of `value`. */
   values?: Cell[];
 }

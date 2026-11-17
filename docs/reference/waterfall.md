@@ -90,6 +90,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | items[].date | string |  | ISO 8601 date associated with this bridge item. |
 | items[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST, LY for last year). Codes and aliases accept any case. Scenario for this bridge item and its default segment styling. |
 | items[].direction | string |  | Under 'lowerIsBetter' a rise paints bad and a fall good (options.signColor). One of `'higherIsBetter'`, `'lowerIsBetter'`. |
+| items[].colorRole | string |  | A step without segments: the theme colour role its bar paints in, in place of the step or sign colour, as a segment takes one; neutralLight gives a grey step. Its value keeps labelPosition. A total, a step with segments and a bridge with cases take no colorRole. One of good, bad, warn, neutral, neutralLight, highlight, total, others; series-N for step N of the theme ramp, 1-based (series-2 is color.series[1]); or status-<key> for a theme status colour. A hex colour goes in fill. |
 | items[].toBaseline | boolean |  | Start this delta at zero and reset the accumulated contribution list. A subtotal draws the sum of the deltas since the last total or baseline subtotal, from zero; the running level carries on. |
 | items[].values | cell[] |  | With data.cases: one value per case, in case order, in place of value — the signed delta of each case, or a total's opening or check value. |
 | connectors | array |  | Authored connections between item levels; omission uses the default sequence. |
@@ -180,3 +181,4 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | centered-values | example | Centered bridge values with a thin falling step |
 | horizontal-centered-values | example | Centered horizontal bridge values |
 | sign-inside-values | example | Inside values on signed bridge fills |
+| grey-steps | example | Grey steps with their values inside |

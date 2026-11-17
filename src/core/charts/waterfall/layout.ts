@@ -60,6 +60,7 @@ import {
   colorblindPaint,
   effectiveFill,
   colorRolePaints,
+  markRolePaint,
   paintColor,
   panelTypeClass,
   seriesPaint as themeSeriesPaint,
@@ -1407,7 +1408,7 @@ function layoutWaterfallWithPad(
   // A key that names segment colours also names the plain step colour where
   // steps draw in it. Totals and highlighted steps get no entry: the category
   // row names a total and emphasis is never a key entry.
-  const plain = (it: NormItem) => !derivedTotalSegments.has(it.id) && !it.authoredSegments && !it.segments.some((seg) => seg.fill || segmentCatalog.has(seg.id));
+  const plain = (it: NormItem) => !derivedTotalSegments.has(it.id) && !it.authoredSegments && !it.segments.some((seg) => seg.fill || seg.colorRole || segmentCatalog.has(seg.id));
   const keyed = legendItems.length > 0;
   // a lower-is-better step paints a rise bad, which its signed label
   // does not say, so the bridge names its tones as a sign-coloured column
@@ -2090,8 +2091,9 @@ function layoutWaterfallWithPad(
         }] : []),
       ],
     };
-    // A segmented bar's value keeps today's seats: it would otherwise read as the value of one part.
-    if (!segmentedMark) valueRequest = positionBarLabel(valueRequest, options, {
+    // A bar of several segments keeps today's seats for its value, which would otherwise read as the value of one part.
+    // A bar of one segment prints that segment's value, so labelPosition places it as on a plain bar.
+    if (!segmentedMark || drawSegments.length === 1) valueRequest = positionBarLabel(valueRequest, options, {
       rect: barRect, size: tsize, orientation: 'vertical',
       endPositive: Math.abs(Math.max(lvl.start, lvl.end)) >= Math.abs(Math.min(lvl.start, lvl.end)),
       zero: itemValue === 0, edgeGap: 2, fallback: isTotal ? undefined : 'bridge',
@@ -2542,6 +2544,7 @@ function layoutWaterfallWithPad(
         {
           id: '__value',
           value: checkValue,
+          ...(raw.colorRole ? { colorRole: raw.colorRole } : {}),
           scenario: normalizeScenario(raw.scenario ?? meta?.scenario, `${path}.scenario`),
           fill: meta?.fill,
           ...cellText(meta),
@@ -2577,6 +2580,8 @@ function layoutWaterfallWithPad(
     if (seg.fill) return { css: seg.fill };
     const identity = segmentCatalog.get(seg.id);
     if (identity) return identityPaint(identity);
+    // A plain step's own colour role, such as a grey step: neutralLight.
+    if (seg.colorRole) return markRolePaint(seg.colorRole, true);
     if (signBridge && it.type === 'delta') return tonePaint(stepTone(seg.value, it.direction), options.colorblindSafe === true);
     if (highlights.has(it.id)) return { token: 'focus' };
     // Totals keep color.total under 'sign' too: a dark theme caps its large
