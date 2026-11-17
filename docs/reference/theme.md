@@ -157,6 +157,7 @@ Defaults are the `bridge` preset.
 | space.tierGap | number | yes |  | `5` | Vertical gap in px between stacked tiers. |
 | space.facetGap | number | yes |  | `28` | Gap in px between facets of a small-multiple layout. |
 | space.labelPad | number | yes |  | `5` | Padding in px between a mark and its label. |
+| space.tierHeadingGap | number |  |  |  | Vertical gap in px between a stacked tier and the title or caption of the tier under it. Absent means tierGap plus three times labelPad (20 px in most presets), so the heading stands at least twice as far from the tier above as from its own panel. A short canvas gives up this extra room first and keeps tierGap. |
 | space.canvas | object |  |  |  | Canvas margin tokens by width class: `base` covers the small and middle widths, `wide` covers 1080 px and up. Each class and side is optional. Missing values keep the preset or built-in margin. A class takes a side object, not a bare number. |
 | space.canvas.base | object |  |  |  | Canvas margins for the small and middle width classes, in px. Each side is optional and stays within 0 to 96. |
 | space.canvas.base.top | number |  |  |  | One canvas margin side in px (top, right, bottom, left). |

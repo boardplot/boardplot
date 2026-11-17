@@ -130,7 +130,7 @@ export const THEME_SHAPE: ShapeNode = object({
   }),
   // Bands catch nonsense (a 300px margin), not taste.
   space: object({
-    tierGap: num(4, 64), facetGap: num(4, 64), labelPad: num(1, 16),
+    tierGap: num(4, 64), facetGap: num(4, 64), labelPad: num(1, 16), tierHeadingGap: optNum(4, 64),
     canvas: opt(object(each(['base', 'wide'] as const, () =>
       opt(object(each(['top', 'right', 'bottom', 'left'] as const, () => optNum(0, 96, 'space.canvas.<class>.<side>'))))))),
     gap: opt(object(each(['titleSubtitle', 'subtitlePlot', 'subtitlePlotWide', 'axisFootnote', 'axisFootnoteWide', 'footnoteSource', 'legend'] as const, () => optNum(0, 32)))),

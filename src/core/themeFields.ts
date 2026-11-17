@@ -146,6 +146,7 @@ const THEME_FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = Object.freeze
   // ── space ──────────────────────────────────────────────────────────────────
   space: 'Spacing tokens shared by every layout.',
   'space.tierGap': 'Vertical gap in px between stacked tiers.',
+  'space.tierHeadingGap': 'Vertical gap in px between a stacked tier and the title or caption of the tier under it. Absent means tierGap plus three times labelPad (20 px in most presets), so the heading stands at least twice as far from the tier above as from its own panel. A short canvas gives up this extra room first and keeps tierGap.',
   'space.facetGap': 'Gap in px between facets of a small-multiple layout.',
   'space.labelPad': 'Padding in px between a mark and its label.',
   'space.canvas': 'Canvas margin tokens by width class: `base` covers the small and middle widths, `wide` covers 1080 px and up. Each class and side is optional. Missing values keep the preset or built-in margin. A class takes a side object, not a bare number.',
