@@ -410,6 +410,21 @@ it('maps a shared value scale to each panel data rectangle', () => {
   expect((grid.derived as { sharedYDomains: object }).sharedYDomains).toHaveProperty('shared');
 });
 
+// The margin that equalised a shared scale counted as panel chrome: a pinned 1280 x 780 was refused, while 755 drew.
+it('keeps the floor of a shared value scale below a frame that draws', () => {
+  const panel = (id: string, type: 'column' | 'line', values: number[][]) => ({ id, type, title: `${type} panel`, caption: 'A caption line',
+    data: { categories, series: values.map((v, i) => ({ id: `s${i}`, label: `Series ${i + 1}`, values: v })) },
+    options: { scaleGroup: { y: 'cost' }, valueAxis: { show: true }, ...(type === 'column' ? { labels: { segment: false, point: false, category: false } } : {}) } });
+  const columnValues = [[80, 95, 110, 125]];
+  const lineValues = [[92, 105, 118, 132], [74, 83, 91, 104]];
+  const spec = (size: object) => ({ type: 'grid', data: { panels: [panel('a', 'column', columnValues), panel('b', 'line', lineValues),
+    panel('c', 'column', columnValues), panel('d', 'line', lineValues)] }, options: { size, sharedAxis: 'category', unit: '$k', title: 'Spend and cost on one scale' } });
+  const draws = (height: number) => !layoutResolvedRequest(resolveChartRequest({ ...spec({ width: 1280, height }) } as never)).refused;
+  const floor = measure(spec({ width: 1280 }) as never).minHeightAtWidth;
+  expect(draws(floor)).toBe(true);
+  expect(draws(780)).toBe(true);
+});
+
 // Equal value steps must keep requested baseline anchors, and a panel that left the group must not size the others.
 it('keeps baseline anchors and resolved group membership when it equalizes shared value scales', () => {
   const categories3 = [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }, { id: 'c', label: 'C' }];
