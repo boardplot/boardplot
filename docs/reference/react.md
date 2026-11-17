@@ -424,7 +424,9 @@ A chart that does not use `size="container"` does not grow past its natural widt
 
 ## Refusals
 
-A chart below its size floor renders a status placeholder instead of marks. Its text is `strings.refusalMessage` of the provider, by default "This chart needs at least {width} × {height} px.", where `{width}` and `{height}` become the minimum the refusal names; wording without these tokens prints as written. The placeholder title carries the engine message. `onRefused` receives the refusal result, and `renderRefused` returns the content to show in its place. `onGeometry` runs only for an accepted layout.
+A chart below its size floor draws no marks. It shows a status card in its frame instead, with the title and source of the chart and the provider strings `refusalMessage` (default "This chart needs more room.") and `refusalHint` (default "Widen the panel or turn your device."). A `refusalMessage` with `{width}` and `{height}` prints the minimum only in full diagnostics. The card never shows part of the chart. `onRefused` receives the refusal result, with the size the chart needs in `sizing.minWidth` and `sizing.minHeight`. A host that passes `onRefused` takes the refusal over, and the card logs nothing to the console. `renderRefused` returns the content the card shows in place of the hint, at most three lines. `onGeometry` runs only for an accepted layout.
+
+A host that gives the chart more room after a refusal decides what the reader sees. A frame grown to `sizing.minWidth` inside a slot that is narrower draws the whole chart, and the slot cuts it off unless the frame scrolls sideways and shows that it scrolls. To keep the chart whole, keep the card, or hide the chart with `canDraw(request)`, or make the slot as wide as the minimum.
 
 ## Content security policy
 
