@@ -75,6 +75,30 @@ export interface BaselineKeep<C extends GridPanelLayout> {
   above: (child: C) => number;
 }
 
+/** The height floors a panel reports: the grid sums them into its own floor. */
+type PanelFloors = { minHeight?: number; measuredMinHeight?: number; frameMinHeight?: number; plotMinHeight?: number };
+
+const floorsOf = (geometry: Geometry): PanelFloors => ({
+  minHeight: geometry.sizing?.minHeight, measuredMinHeight: geometry.sizing?.measuredMinHeight,
+  frameMinHeight: geometry.frame.minHeight, plotMinHeight: geometry.frame.plotMinHeight,
+});
+
+/**
+ * The margin that equalises a plot is slack the panel gives up, not chrome it needs: a shorter frame gives a
+ * shorter cut. A panel keeps the floors it reported before the cut, so the grid's floor does not grow with the
+ * frame. Taking the smaller value keeps this right when a cached layout returns the same geometry again.
+ */
+function keepFloors(geometry: Geometry, floors: PanelFloors): void {
+  const lower = (current: number | undefined, before: number | undefined) =>
+    current === undefined || before === undefined ? current : Math.min(current, before);
+  if (geometry.sizing) {
+    geometry.sizing.minHeight = lower(geometry.sizing.minHeight, floors.minHeight)!;
+    geometry.sizing.measuredMinHeight = lower(geometry.sizing.measuredMinHeight, floors.measuredMinHeight)!;
+  }
+  geometry.frame.minHeight = lower(geometry.frame.minHeight, floors.frameMinHeight);
+  geometry.frame.plotMinHeight = lower(geometry.frame.plotMinHeight, floors.plotMinHeight);
+}
+
 /**
  * Map one shared domain through equally tall data rectangles, keeping each panel's frame. Under a baseline
  * anchor a plot shrinks around its baseline, so the anchored baselines stay where they are.
@@ -82,6 +106,7 @@ export interface BaselineKeep<C extends GridPanelLayout> {
 export function alignValuePanels<C extends GridPanelLayout>(children: C[], theme: ReturnType<typeof resolveTheme>, keep?: BaselineKeep<C>): void {
   const members = children.filter(child => child.relayout !== undefined);
   if (members.length < 2) return;
+  const before = new Map<C, PanelFloors>();
   const heightOf = (child: GridPanelLayout) =>
     ((child.geometry as Geometry & { [PLOT_FLOOR_RECT]?: Rect })[PLOT_FLOOR_RECT] ?? child.geometry.plot).h;
   for (let pass = 0; pass < 3; pass++) {
@@ -93,7 +118,9 @@ export function alignValuePanels<C extends GridPanelLayout>(children: C[], theme
       const above = keep ? keep.above(child) : 0;
       const bottom = child.margin.bottom ?? canvasMargin(theme, child.slot.w).bottom;
       child.margin = { ...child.margin, bottom: bottom + cut * (1 - above), ...(keep ? { top: keep.top(child) + cut * above } : {}) };
+      if (!before.has(child)) before.set(child, floorsOf(child.geometry));
       child.geometry = child.relayout!(child.margin);
     }
   }
+  for (const [child, floors] of before) keepFloors(child.geometry, floors);
 }

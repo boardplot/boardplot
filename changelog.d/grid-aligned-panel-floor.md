@@ -1,0 +1,3 @@
+### Fixed
+
+- A grid whose panels share a value scale (`scaleGroup.y`) could be refused at a pinned height that draws. A grid of four column and line panels on one scale at 1280 px wide drew at 1280 × 755 and was refused from 760 to 795 px, and `measure` named a minimum height of 793 px. The margin that gives the panels equal plot heights counted as space each panel needs, so the floor grew with the frame. The floor now leaves that margin out: every height from 675 px draws, and `measure` names 694 px. Automatic heights that a grid took from that floor get shorter: the `mixed-column-line-shared-y` example on a 320 px card is now 401 px tall instead of 449 px, with every label kept.
