@@ -741,6 +741,21 @@ it('uses the farther-from-zero bridge edge and the upper edge on a tie', () => {
   }
 });
 
+// A grey step could not carry its value inside: a plain step took no colorRole, and labelPosition did not reach the value of a one-segment step.
+it('paints a plain step in its colorRole and places the value of a one-segment step by labelPosition', () => {
+  const run = (step: object) => {
+    const drawn = layoutResolvedRequest(resolveChartRequest({ type: 'waterfall', data: { items: [
+      { id: 'open', type: 'total', value: 100 }, { id: 'cut', ...step }, { id: 'close', type: 'total' },
+    ] }, options: { labelPosition: 'center', size: { width: 640, height: 360 } } } as never));
+    if (drawn.refused) throw new Error('waterfall refused');
+    const bar = drawn.scene.find((node) => node.t === 'rect' && node.part === 'segment' && node.owner?.categoryId === 'cut');
+    const value = drawn.labels.find((label) => label.id === 'sum:cut');
+    return [bar?.t === 'rect' && bar.fill, value?.slot, value?.hidden];
+  };
+  expect(run({ value: -20, colorRole: 'neutralLight' })).toEqual([{ token: 'neutralLight' }, 'insideBarCenter', undefined]);
+  expect(run({ segments: [{ id: 'x', value: -20, colorRole: 'neutralLight' }] })).toEqual([{ token: 'neutralLight' }, 'insideBarCenter', undefined]);
+});
+
 // A fill on a total or subtotal value was accepted and dropped: the bar kept color.total and no warning said so.
 it('paints a total and a subtotal in their authored value fill, as it paints a step', () => {
   const drawn = layoutResolvedRequest(resolveChartRequest({ type: 'waterfall', data: { items: [

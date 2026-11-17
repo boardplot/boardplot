@@ -796,6 +796,18 @@ fixtures.push(
     options: { title: 'Inside values keep contrast on signed fills', variant: 'vertical', labelPosition: 'center',
       theme: { preset: 'standard', overrides: { marks: { bridge: 'sign' } } } },
   },
+  {
+    id: 'grey-steps', title: 'Grey steps with their values inside', kind: 'example',
+    data: { items: [
+      { id: 'plan', label: 'Planned scope', type: 'total', value: 100 },
+      { id: 'budget', label: 'Out of budget', value: -10, colorRole: 'neutralLight' },
+      { id: 'priority', label: 'Low priority', value: -8, colorRole: 'neutralLight' },
+      { id: 'added', label: 'New requests', value: 6 },
+      { id: 'limits', label: 'Tool limits', value: -12, colorRole: 'neutralLight' },
+      { id: 'agreed', label: 'Agreed scope', type: 'total' },
+    ] },
+    options: { title: 'Three exclusions cut the planned scope to 76', unit: 'FTE', variant: 'vertical', labelPosition: 'center' },
+  },
 );
 
 registerFixtures('waterfall', fixtures);

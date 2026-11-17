@@ -485,6 +485,7 @@ The CLI prints every match in one response through `boardplot fixtures --type <t
 | centered-values | waterfall.vertical | example | Centered bridge values with a thin falling step |
 | horizontal-centered-values | waterfall.horizontal | example | Centered horizontal bridge values |
 | sign-inside-values | waterfall.vertical | example | Inside values on signed bridge fills |
+| grey-steps | waterfall.vertical | example | Grey steps with their values inside |
 
 ## kpi
 
