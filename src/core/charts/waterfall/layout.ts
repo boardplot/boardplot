@@ -1025,8 +1025,10 @@ function layoutWaterfallWithPad(
   // is reused by every item and by the legend.
   const segmentCatalog = new Map<
     string,
-    { id: Id; label?: string; colorRole?: string; scenario?: string; slot: number }
+    { id: Id; label?: string; colorRole?: string; fill?: string; scenario?: string; slot: number }
   >();
+  // A segment id keeps one fill: the first authored one paints its bars, its key swatch and a derived total's part.
+  const fillConflicts = new Set<Id>();
   for (const it of items) {
     if (!it.authoredSegments) continue;
     for (const seg of it.segments) {
@@ -1036,6 +1038,7 @@ function layoutWaterfallWithPad(
           id: seg.id,
           label: seg.label,
           colorRole: seg.colorRole,
+          fill: seg.fill,
           scenario: seg.scenario,
           slot: segmentCatalog.size,
         });
@@ -1046,7 +1049,11 @@ function layoutWaterfallWithPad(
         known.colorRole && seg.colorRole && known.colorRole !== seg.colorRole
           ? `colorRole '${seg.colorRole}'`
           : null,
+        known.fill && seg.fill && known.fill !== seg.fill && !fillConflicts.has(seg.id)
+          ? `fill '${seg.fill}'`
+          : null,
       ].filter((v): v is string => v !== null);
+      if (known.fill && seg.fill && known.fill !== seg.fill) fillConflicts.add(seg.id);
       if (conflicts.length > 0) {
         warnings.push({
           code: 'segment-identity-mismatch',
@@ -1057,6 +1064,7 @@ function layoutWaterfallWithPad(
       }
       if (!known.label && seg.label) known.label = seg.label;
       if (!known.colorRole && seg.colorRole) known.colorRole = seg.colorRole;
+      if (!known.fill && seg.fill) known.fill = seg.fill;
       if (!known.scenario && seg.scenario) known.scenario = seg.scenario;
     }
   }
@@ -1064,7 +1072,7 @@ function layoutWaterfallWithPad(
   // Segment identities that share a colour role take distinct steps of it. Identities with
   // one label and one role are one segment to the reader: they share a step and one key.
   const roleKey = (identity: { id: Id; label?: string; colorRole?: string }) => `${identity.label ?? identity.id}\u0000${identity.colorRole}`;
-  const roleSteps = colorRolePaints([...new Map([...segmentCatalog.values()].map((identity) => [roleKey(identity), { id: roleKey(identity), colorRole: identity.colorRole }])).values()]);
+  const roleSteps = colorRolePaints([...new Map([...segmentCatalog.values()].map((identity) => [roleKey(identity), { id: roleKey(identity), colorRole: identity.colorRole, fill: identity.fill }])).values()]);
   const segmentRoles = new Map([...segmentCatalog.values()].flatMap((identity) => roleSteps.has(roleKey(identity)) ? [[identity.id, roleSteps.get(roleKey(identity))!]] : []));
   const fixedKeys: LegendItemInput[] = [];
   if (items.some(it => it.type !== 'delta' && !it.authoredSegments)) fixedKeys.push({ id: '__keyTotal', label: chartString(options, 'total'), paint: { token: 'total' } });
@@ -1073,14 +1081,14 @@ function layoutWaterfallWithPad(
     ...[...segmentCatalog.values()].map(identity => ({
       id: identity.id, label: identity.label ?? identity.id, paint: rawIdentityPaint(identity), pattern: scenarioPattern(identity.scenario),
     })),
-  ], new Set([...fixedKeys.map(key => key.id), ...[...segmentCatalog.values()].filter(identity => identity.colorRole).map(identity => identity.id)]),
+  ], new Set([...fixedKeys.map(key => key.id), ...[...segmentCatalog.values()].filter(identity => identity.colorRole || identity.fill).map(identity => identity.id)]),
   Array.from({ length: theme.color.series.length }, (_, i) => themeSeriesPaint(i, paletteRamp ? options.palette : undefined)), theme)
     .map(identity => [identity.id, identity.paint]));
   // A segment colour within 2:1 of the total's reads as a small total. On a vertical bridge it
   // takes a light tint of the first segment colour that stands apart from the total instead (B2B #5E99C5, B2C its 60% tint).
   // The choice reads the theme, so each plain segment keeps it as a segment-apart recipe that a repaint resolves again.
   if (categoryRow) {
-    const plainIds = [...segmentCatalog.values()].filter((identity) => !identity.colorRole && segmentPaints.has(identity.id)).map((identity) => identity.id);
+    const plainIds = [...segmentCatalog.values()].filter((identity) => !identity.colorRole && !identity.fill && segmentPaints.has(identity.id)).map((identity) => identity.id);
     const plain = plainIds.map((id) => segmentPaints.get(id)!);
     const others = [...segmentPaints].filter(([id]) => !plainIds.includes(id)).map(([, paint]) => paint);
     plainIds.forEach((id, index) => {
@@ -2574,7 +2582,8 @@ function layoutWaterfallWithPad(
   }
 
   function segmentPaint(it: NormItem, seg: NormItem['segments'][number]): Paint {
-    if (seg.fill) return { css: seg.fill };
+    // A catalogued segment takes its id's one paint below, so differing fills of one id do not split it.
+    if (seg.fill && !segmentCatalog.has(seg.id)) return { css: seg.fill };
     const identity = segmentCatalog.get(seg.id);
     if (identity) return identityPaint(identity);
     if (signBridge && it.type === 'delta') return tonePaint(stepTone(seg.value, it.direction), options.colorblindSafe === true);
@@ -2587,11 +2596,12 @@ function layoutWaterfallWithPad(
     return paletteRamp ? themeSeriesPaint(0, options.palette) : { token: 'neutralMark' };
   }
 
-  function identityPaint(identity: { id: Id; colorRole?: string; slot: number }): Paint {
+  function identityPaint(identity: { id: Id; colorRole?: string; fill?: string; slot: number }): Paint {
     return segmentPaints.get(identity.id) ?? rawIdentityPaint(identity);
   }
 
-  function rawIdentityPaint(identity: { id: Id; colorRole?: string; slot: number }): Paint {
+  function rawIdentityPaint(identity: { id: Id; colorRole?: string; fill?: string; slot: number }): Paint {
+    if (identity.fill) return { css: identity.fill };
     return identity.colorRole
       ? segmentRoles.get(identity.id)!
       : themeSeriesPaint(identity.slot, paletteRamp ? options.palette : undefined);

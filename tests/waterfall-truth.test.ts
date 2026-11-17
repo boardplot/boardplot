@@ -764,3 +764,15 @@ it('labels every step of a bridge whose last step ends on the baseline', () => {
     expect(geometry.labels.filter((l) => l.id.startsWith('sum:') && l.hidden).map((l) => l.id)).toEqual([]);
   }
 });
+
+// A segment's authored fill painted only its own bar: the key swatch and the total's derived part took theme colours, so they disagreed.
+it('paints a segment id in its first authored fill on every bar, in the key and on a derived total, and warns once when fills differ', () => {
+  const step = (id: string, north: string) => ({ id, segments: [{ id: 'n', label: 'North', value: { number: 6, fill: north } }, { id: 's', label: 'South', value: 4 }] });
+  const drawn = layoutResolvedRequest(resolveChartRequest({ type: 'waterfall', data: { items: [
+    step('q1', '#1F6F8B'), step('q2', '#AA3300'), step('q3', '#33AA00'), { id: 'year', type: 'total' },
+  ] }, options: { size: { width: 640, height: 360 } } } as never));
+  if (drawn.refused) throw new Error('waterfall refused');
+  const north = drawn.scene.flatMap((node) => node.t === 'rect' && (node.owner?.segmentId === 'n' || node.owner?.seriesId === 'n') ? [[node.owner.categoryId ?? node.part, node.fill]] : []);
+  expect(north).toEqual(['swatch', 'q1', 'q2', 'q3', 'year'].map((owner) => [owner, { css: '#1F6F8B' }]));
+  expect(drawn.warnings.filter((warning) => warning.code === 'segment-identity-mismatch')).toHaveLength(1);
+});
