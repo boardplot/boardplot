@@ -274,3 +274,21 @@ it('labels every column total under a plan line that runs just below the column 
   }
   expect(hidden).toEqual([]);
 });
+
+// A mixed-sign stack's bare net above its positive top reads as the column's height; it must be named and marked as on column.
+it('names and marks the net of a mixed-sign combo stack, and keeps a one-sign total', () => {
+  const geometry = requireGeometry(layoutCombo({
+    categories: ['a', 'b'].map((id) => ({ id })),
+    series: [
+      { id: 'up', label: 'Up', kind: 'column', values: [10, 6] },
+      { id: 'more', label: 'More', kind: 'column', values: [2, 3] },
+      { id: 'down', label: 'Down', kind: 'column', values: [-3, 0] },
+      { id: 'rate', label: 'Rate', kind: 'line', values: [5, 7] },
+    ],
+  }, { size: { width: 720, height: 405 }, title: 'Net stack' }));
+  const total = (id: string) => geometry.labels.find((label) => label.id === `grandTotal:${id}` && !label.hidden)?.text;
+  expect(total('a')).toBe('Net 9');
+  expect(total('b')).toBe('9');
+  expect(geometry.scene.some((node) => node.id === 'netTotal:a')).toBe(true);
+  expect(geometry.scene.some((node) => node.id === 'netTotal:b')).toBe(false);
+});
