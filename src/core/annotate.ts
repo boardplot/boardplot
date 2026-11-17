@@ -339,9 +339,9 @@ export interface AnnotatePassInput {
   calloutLeaderWidths?: number;
   /**
    * Bar rows: the row pitch, in px. A callout or note whose one-line seats
-   * are blocked first wraps beside its bar (up to three lines). No seat may
-   * lie more than one pitch from the anchor, so the text stays on its own
-   * row or the next one. With no such seat it goes to the notes list.
+   * are blocked first wraps beside its bar (up to three lines). A seat's
+   * middle stays within half a pitch of the anchor, so the text never reads
+   * as the next row's. With no such seat it goes to the notes list.
    */
   calloutRowPitch?: number;
   /**
@@ -2124,10 +2124,9 @@ function calloutLabel(
     }
     all.push(...wrappedSeats.sort((a, b) => a.penalty - b.penalty));
   }
-  // On a row chart a seat farther than one row from the anchor reads as the text of another row.
+  // On a row chart a seat whose middle lies nearer another row than its own reads as the text of that row.
   if (reach !== undefined) {
-    const limit = Math.max(reach, gap * 3);
-    all = all.filter(({ rect }) => Math.max(rect.y - at.y, at.y - rect.y - rect.h, 0) <= limit);
+    all = all.filter(({ rect }) => Math.abs(rect.y + rect.h / 2 - at.y) <= reach / 2);
   }
   // A note on a mark inside the plot (a scatter bubble) stays between the
   // plot's top and bottom, off the axis rows.
