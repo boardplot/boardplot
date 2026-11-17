@@ -2587,7 +2587,8 @@ function calloutGlyphNodes(
 /**
  * Deterministic nearest-free-rect scan: spiral over a coarse grid from the
  * anchor outward, return the first spot where a w×h rect fits fully inside
- * the plot without hitting any claim. Null when the plot is truly packed.
+ * the plot without hitting any claim, with a line label's air to every
+ * label where the plot has such a spot. Null when the plot is truly packed.
  */
 function findFreeSpot(
   occupied: OccupiedIndex,
@@ -2606,10 +2607,16 @@ function findFreeSpot(
     }
   }
   candidates.sort((a, b) => a.d2 - b.d2 || a.x - b.x || a.y - b.y);
+  // Closer to another label than a line label keeps, the two read as one ("Record month 190"):
+  // a spot with that air comes first, and a crowded plot still takes the nearest free one.
+  let nearest: { x: number; y: number } | null = null;
   for (const c of candidates.slice(0, 400)) {
-    if (!occupied.hits({ x: c.x, y: c.y, w, h }, 3)) return { x: c.x, y: c.y };
+    const rect = { x: c.x, y: c.y, w, h };
+    if (occupied.hits(rect, 3)) continue;
+    if (!occupied.hitsWhich(rect, LINE_LABEL_AIR).some((claim) => claim.kind === 'label')) return { x: c.x, y: c.y };
+    nearest ??= { x: c.x, y: c.y };
   }
-  return null;
+  return nearest;
 }
 
 function formatYears(years: number): string {
