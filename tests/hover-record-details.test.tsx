@@ -272,6 +272,20 @@ it('uses a German tolerance string override on the waterfall band and card', () 
   expect(renderSvg(geometry, request.theme)).toBe(renderSvg(requireGeometry(layoutResolvedRequest(request)), request.theme));
 });
 
+// The card of a waterfall total read "Total · 22 · Start: 0 · End: 22": a bar from zero to its value repeated the value twice.
+it('prints no Start and End on a waterfall total, and keeps them on a step', () => {
+  const rows = (data: object) => {
+    const { request, geometry } = build({ type: 'waterfall', data, options: { size: { width: 640, height: 360 } } });
+    return interactionRecords({ request, geometry, scope: request.scope, claims: [] }).map(record => labelCardContent(record).rows.map(row => row.text));
+  };
+  const items = [{ id: 'open', label: 'Open', type: 'total', value: 18 }, { id: 'gain', label: 'Gain', value: 4 }, { id: 'close', label: 'Close', type: 'total' }];
+  expect(rows({ items })).toEqual([['Open', '18'], ['Gain', '+4', 'Start: 18', 'End: 22'], ['Close', '22']]);
+  const cased = rows({ cases: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }],
+    items: [{ id: 'open', label: 'Open', type: 'total', values: [18, 20] }, { id: 'gain', label: 'Gain', values: [4, 5] }, { id: 'close', label: 'Close', type: 'total' }] });
+  expect(cased.filter(card => card[0]!.startsWith('Open') || card[0]!.startsWith('Close')).every(card => card.length === 2)).toBe(true);
+  expect(cased.filter(card => card[0]!.startsWith('Gain')).every(card => card.some(text => text.startsWith('Start:')))).toBe(true);
+});
+
 // Above 5,000 points the dots draw as one path per colour, and hovering a dot left the other group at full ink.
 it('dims the dense paths of the other groups when a dot of a dense scatter is hovered', () => {
   const points = Array.from({ length: 5002 }, (_, i) => ({ id: `p${i}`, x: i % 97, y: (i * 7) % 89, group: i % 2 ? 'Trial' : 'Paid' }));
