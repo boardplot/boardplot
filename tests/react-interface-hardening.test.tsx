@@ -301,6 +301,8 @@ describe('React adapter boundary', () => {
     const bad: Record<string, ReactElement> = {
       'unknown-theme': <TableChart data={table} theme={'nope' as never} />,
       'invalid-size': <TableChart data={table} size={{ width: '800' } as never} />,
+      // A BigInt reached the table's layout key, which threw a TypeError and unmounted the host's root.
+      'bigint-option': <TableChart data={table} rowLabelLines={2n as never} />,
       'invalid-theme-override': <BoardplotChart spec={{ type: 'table', data: table, options: { theme: { preset: 'standard', overrides: { color: { ink: 'zzz' } } } } } as never} />,
       'unknown-theme-spec': <BoardplotChart spec={{ type: 'table', data: table, options: { theme: 'nope' } } as never} />,
       'unknown-theme-dimswitch': <DimSwitchChart data={dimSwitchData} variant="by-measure" depth={1} theme={'nope' as never} />,
