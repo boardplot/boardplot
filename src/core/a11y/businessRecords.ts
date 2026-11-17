@@ -101,6 +101,11 @@ function segmentOrder(data: WaterfallData): string[] {
   return [...new Set(data.items.flatMap(item => item.segments?.map(segment => segment.id) ?? []))];
 }
 
+/** A total or subtotal: a bar drawn from zero to its level, not a step between two levels. */
+function isLevel(type: string | undefined): boolean {
+  return type === 'total' || type === 'subtotal';
+}
+
 function waterfall(ctx: RecordContext): InteractionRecord[] {
   const data = ctx.request.data as WaterfallData;
   const geo = geometry<WaterfallMarks, WaterfallDerived>(ctx);
@@ -125,10 +130,12 @@ function waterfall(ctx: RecordContext): InteractionRecord[] {
         label: source?.label ?? item.label ?? item.id, anchor: segment.rect,
         scenario: source?.scenario ?? item.scenario,
         ...(basis && !basis.authored ? { members: segmentedTotal ? operands : members } : {}),
-        fields: segmentSpan(ctx, geo.derived.levels[bar.id]?.start, source ? item.segments!.map(part => ({ id: part.id, value: cellValue(normalizeCell(part.value, 'value')) ?? 0 }))
-          : segmentedTotal ? order.filter(id => bar.segments.some(part => part.id === id))
-            .map(id => ({ id, value: members.filter(member => member.segmentId === id).reduce((sum, member) => sum + segmentValue(member), 0) })) : undefined,
-        segment.id, geo.derived.levels[bar.id]?.end),
+        // A whole total or subtotal bar rises from zero to its value: a Start and End would repeat the value.
+        fields: isLevel(item.type) && !source && !segmentedTotal ? []
+          : segmentSpan(ctx, geo.derived.levels[bar.id]?.start, source ? item.segments!.map(part => ({ id: part.id, value: cellValue(normalizeCell(part.value, 'value')) ?? 0 }))
+            : segmentedTotal ? order.filter(id => bar.segments.some(part => part.id === id))
+              .map(id => ({ id, value: members.filter(member => member.segmentId === id).reduce((sum, member) => sum + segmentValue(member), 0) })) : undefined,
+          segment.id, geo.derived.levels[bar.id]?.end),
       });
     });
   });
@@ -165,7 +172,7 @@ function waterfallCases(ctx: RecordContext, data: WaterfallData, geo: Geometry<W
     const scenario = (typeof cell === 'object' && cell !== null && 'scenario' in cell ? cell.scenario : undefined) ?? item.scenario;
     return [makeRecord(ctx, { categoryId: item.id, seriesId: c.id }, value, {
       label: `${item.label ?? item.id}, ${c.label ?? c.id}`, anchor: bar.rect, scenario,
-      fields: [field('start', chartString(ctx.request.options, 'start'), derived(ctx, geo.derived.levels[key]?.start)),
+      fields: isLevel(item.type) ? [] : [field('start', chartString(ctx.request.options, 'start'), derived(ctx, geo.derived.levels[key]?.start)),
         field('end', chartString(ctx.request.options, 'end'), derived(ctx, geo.derived.levels[key]?.end))],
     })];
   }));
