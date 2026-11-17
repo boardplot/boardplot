@@ -7,7 +7,7 @@ import { NormalizeError } from '../core/normalize/shared';
  * layout computed — no measuring, no repositioning, no chart knowledge.
  */
 
-import { useContext, type CSSProperties, type KeyboardEvent, type ReactElement } from 'react';
+import { Fragment, useContext, type CSSProperties, type KeyboardEvent, type ReactElement } from 'react';
 import { hatchPatternId, hatchTile, isHatchPattern, POINTER_TRANSPARENT_PARTS } from '../core/svgPath';
 import type { ScenePaint } from './scenePaint';
 import { resolvePaint } from '../core/svg/paint';
@@ -417,11 +417,15 @@ function Node({
             </tspan>
           ))
         : node.lines.map((line, i) => (
-            <tspan key={i} x={x} dy={i === 0 ? 0 : lineH}>
-              {node.lineRuns ? node.lineRuns[i]!.map((run, j) => (
-                <tspan key={j} fontWeight={run.weight !== undefined && run.weight !== node.font.weight ? run.weight : undefined}>{run.text}</tspan>
-              )) : line}
-            </tspan>
+            <Fragment key={i}>
+              {/* A separate space keeps the words of two lines apart in the text a reader copies or reads out, as in the SVG serializer. */}
+              {i === 0 || /\S-$/.test(node.lines[i - 1]!) ? null : <tspan x={x} dy={0}>{' '}</tspan>}
+              <tspan x={x} dy={i === 0 ? 0 : lineH}>
+                {node.lineRuns ? node.lineRuns[i]!.map((run, j) => (
+                  <tspan key={j} fontWeight={run.weight !== undefined && run.weight !== node.font.weight ? run.weight : undefined}>{run.text}</tspan>
+                )) : line}
+              </tspan>
+            </Fragment>
           ));
       // The halo is a stroked copy under the label, as in the SVG serializer
       //: paint-order on one element is lost in Office and LibreOffice.
