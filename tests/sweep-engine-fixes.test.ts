@@ -379,6 +379,23 @@ describe('chart layout edge cases', () => {
     expect(callout.hidden === undefined && onName).toBe(false);
   });
 
+  // A callout on the last column took a free spot 4 px from a line's end value, and the two read as one label.
+  it('a callout in a free spot keeps apart from a line end label', () => {
+    const categories = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'].map((label) => ({ id: label, label }));
+    const request = { type: 'combo', data: { categories, series: [
+      { id: 'orders', label: 'Orders', values: [120, 132, 128, 141, 150, 162] },
+      { id: 'plan', label: 'Plan', kind: 'line', values: [125, 130, 135, 140, 145, 190] },
+      { id: 'prior', label: 'Prior year', kind: 'line', values: [100, 105, 110, 118, 124, 180] }] },
+      options: { unit: 'k', legend: 'auto', size: { width: 720 } },
+      annotations: [{ kind: 'callout', at: 'Jun', text: 'Record month' }] };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const labels = (layoutResolvedRequest(resolveChartRequest(request as any) as any) as any).labels as { id: string; hidden?: string; rect: { x: number; y: number; w: number; h: number } }[];
+    const callout = labels.find((l) => l.id === 'annotation:callout-1')!;
+    expect(callout.hidden).toBeUndefined();
+    const air = (a: typeof callout.rect, b: typeof callout.rect) => Math.max(a.x - b.x - b.w, b.x - a.x - a.w, a.y - b.y - b.h, b.y - a.y - a.h);
+    for (const end of labels.filter((l) => l.id.startsWith('point:') && l.id.endsWith(':Jun') && !l.hidden)) expect(air(callout.rect, end.rect)).toBeGreaterThanOrEqual(8);
+  });
+
   // A callout on the first row of a narrow stacked bar was seated three rows down, with a long leader; it now sits within a row of its bar or goes to the notes.
   it('a bar callout seats within one row of its bar or goes to the notes', () => {
     const names = ['Alpha', 'Bravo', 'Charlie', 'Delta', 'Echo', 'Foxtrot', 'Golf', 'Hotel', 'India'];
