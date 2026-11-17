@@ -188,6 +188,27 @@ export interface ResolvedChartRequest<D = unknown, O extends RequestOptions = Re
   fixed: { width: boolean; height: boolean };
 }
 
+/**
+ * A caller that skipped validation (a per-type React entry) can pass a BigInt, which no setting takes and which the
+ * layout keys cannot serialise. Refuse it here, at its path, as validation does.
+ */
+function refuseBigIntSettings(input: { options?: unknown; size?: unknown; annotations?: unknown }): void {
+  const open: [unknown, (string | number)[]][] = [[input.options, ['options']], [input.size, ['size']], [input.annotations, ['annotations']]];
+  const seen = new Set<object>();
+  while (open.length) {
+    const [value, at] = open.pop()!;
+    if (typeof value === 'bigint') {
+      const path = at.map((part, index) => typeof part === 'number' ? `[${part}]` : index ? `.${part}` : part).join('');
+      throw new NormalizeError('invalid-argument', path, `${path} is a BigInt; settings take numbers`, `pass Number(${value}n)`, undefined, at);
+    }
+    if (value === null || typeof value !== 'object' || seen.has(value)) continue;
+    seen.add(value);
+    const prototype = Object.getPrototypeOf(value);
+    if (!Array.isArray(value) && prototype !== Object.prototype && prototype !== null) continue;
+    for (const [key, item] of Object.entries(value)) open.push([item, [...at, Array.isArray(value) ? Number(key) : key]]);
+  }
+}
+
 /** Defaults, inherited context, chart options, then explicit request fields. */
 export function resolveChartRequest<D, O extends object>(
   input: ChartRequest<D, O & RequestInputOptions>,
@@ -200,6 +221,7 @@ export function resolveChartRequest<D, O extends object>(
   const source = input.options as { [UNIT_STAND_INS]?: ReadonlySet<string>; [AUTHORED_EXAMPLES]?: ReadonlySet<string> } | undefined;
   const sourceStandIns = source?.[UNIT_STAND_INS], sourceAuthored = source?.[AUTHORED_EXAMPLES];
   // A caller that skipped validation (a per-type React entry) still draws a retired setting as validation does.
+  refuseBigIntSettings(input);
   const shaped = normalizeOptionShapes(def.type, input, name => getChart(name)?.type);
   input = shaped.chart;
   const retired = retireChartSettings(def.type, input, (name) => getChart(name)?.type);
