@@ -357,6 +357,19 @@ describe('React adapter boundary', () => {
     expect(html).not.toContain('dominant-baseline');
   });
 
+  // A wrapped label or hover card title read "word oneword two" in the React SVG, where the serialized SVG keeps the space.
+  it('keeps a space between the lines of a wrapped text, as the SVG serializer does', () => {
+    const wrapped = { ...GEOMETRY, scene: [{ t: 'text', id: 'wrapped', x: 10, y: 10, lines: ['word one', 'word two'], align: 'start',
+      font: { size: 12, weight: 400 }, ink: { token: 'ink' }, owner: {}, part: 'category' }] } as Geometry;
+    const text = (markup: string) => {
+      const host = document.createElement('div');
+      host.innerHTML = markup;
+      return host.querySelector('[data-id="wrapped"]')?.textContent ?? host.querySelector('text')?.textContent;
+    };
+    expect(text(renderToStaticMarkup(<SceneRenderer geometry={wrapped} theme={resolveTheme()} responsive={false} />))).toBe('word one word two');
+    expect(text(renderSvg(wrapped, resolveTheme()))).toBe('word one word two');
+  });
+
   it('rejects non-finite geometry before rendering markup', () => {
     const invalid = {
       ...GEOMETRY,
