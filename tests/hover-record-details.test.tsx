@@ -482,3 +482,18 @@ it('prints a card share at the three decimals the chart draws', () => {
     .find(entry => entry.target.owner.seriesId === 's1' && entry.target.owner.categoryId === 'b')!;
   expect(labelCardContent(record).rows.map(row => row.text)).toContain('Share: 40.123% of 1,000,000');
 });
+
+// A percent unit on a 100% stack of counts put the share's unit on the count ("191 % of group") and dropped the share the segment prints.
+// Parts already given as shares must keep printing once, with their unit.
+it('prints the segment share on a 100% stack of counts whose unit is a percent, and shares once as given', () => {
+  const card = (yes: number[], no: number[], unit: string) => {
+    const { request, geometry } = build({ type: 'column', data: { categories: [{ id: 'n', label: 'North' }, { id: 's', label: 'South' }],
+      series: [{ id: 'yes', label: 'Yes', values: yes }, { id: 'no', label: 'No', values: no }] },
+    options: { variant: 'stacked100', unit, size: { width: 640, height: 360 } } });
+    const record = hoverModel(request, geometry).records.find(entry => entry.target.owner.categoryId === 'n' && entry.target.owner.seriesId === 'yes')!;
+    expect(geometry.labels.some(label => !label.hidden && label.text === '44%')).toBe(true);
+    return labelCardContent(record, undefined, { hundredPercent: true }).rows.map(row => row.text);
+  };
+  expect(card([191, 120], [243, 80], '% of group')).toEqual(['North / Yes', '191', 'Share: 44%']);
+  expect(card([44, 60], [56, 40], '%')).toEqual(['North / Yes', '44%']);
+});

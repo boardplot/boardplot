@@ -3,7 +3,7 @@ import type { BarDerived } from '../charts/bar/layout';
 import type { ColumnDerived } from '../charts/column/layout';
 import type { LineDerived } from '../charts/line/layout';
 import type { SlopeDerived } from '../charts/slope/layout';
-import { drawnVariant, stackAdds } from '../stackAdds';
+import { addsTo100, drawnVariant, stackAdds, statedInPercent } from '../stackAdds';
 import { calendarNames } from '../calendarLabels';
 import { rectCenter } from '../geometry';
 import { normalizeCategory, normalizeScenario, normalizeSeriesValues } from '../normalize/shared';
@@ -28,14 +28,49 @@ interface Matrix {
   restValues: Map<string, number>;
 }
 
+/** The parts of a stack: every series but a reference, and on a combo chart its columns. */
+function stackParts(ctx: RecordContext, matrix: Matrix): Matrix['series'] {
+  return matrix.series.filter(series => series.role !== 'reference' && (ctx.request.type !== 'combo' || !series.kind || series.kind === 'column'));
+}
+
+/**
+ * Whether the chart draws this category as a 100 % stack of parts that are
+ * not yet its shares, such as counts: the stack prints each part as its share
+ * of the category sum. Parts that add to 100 are already the shares
+ * (`addsTo100`, the rule the non-additive-stack check reads), and print as given.
+ */
+function hundredStackOfCounts(ctx: RecordContext, matrix: Matrix, categoryId: string): boolean {
+  const variant = drawnVariant(ctx.request.type, ctx.request.options as { variant?: string; valueAxis?: { percent?: boolean } });
+  if (variant !== 'stacked100' && variant !== 'stacked100-area') return false;
+  const index = matrix.categoryIndex.get(categoryId);
+  if (index === undefined) return true;
+  const parts = stackParts(ctx, matrix);
+  const sum = parts.reduce<number | null>((total, series) => {
+    const value = cellValue(series.cells[index]!);
+    return total === null || value === null ? null : total + value;
+  }, 0);
+  return !addsTo100([sum], parts.length);
+}
+
+/**
+ * The unit of a series' values. A 100 % stack of counts prints each part as
+ * its share of the category, so a percent chart unit there names that share
+ * and not the part: the part keeps no unit, and its share carries the percent.
+ */
+function seriesUnit(ctx: RecordContext, matrix: Matrix, series: Matrix['series'][number], categoryId: string): string | undefined {
+  const unit = series.unit ?? ctx.request.options.unit;
+  return series.unit === undefined && unit !== undefined && statedInPercent('', unit) && hundredStackOfCounts(ctx, matrix, categoryId) ? undefined : unit;
+}
+
 function valueFor(ctx: RecordContext, matrix: Matrix, series: Matrix['series'][number], categoryId: string): InteractionValue {
   const index = matrix.categoryIndex.get(categoryId) ?? -1;
-  if (index >= 0) return cellRecordValue(series.cells[index]!, series.unit ?? ctx.request.options.unit, series.format ?? ctx.request.options.format);
+  const unit = seriesUnit(ctx, matrix, series, categoryId);
+  if (index >= 0) return cellRecordValue(series.cells[index]!, unit, series.format ?? ctx.request.options.format);
   const aggregate = categoryId === '__others' || categoryId === '__rest'
     || (ctx.request.type === 'column' && Boolean(ctx.request.options.topN) && /^_*others$/.test(categoryId));
   if (!aggregate) return unavailableValue('No source category for this mark');
   const sum = matrix.restValues.get(series.id) ?? 0;
-  return derivedValue(sum, series.unit ?? ctx.request.options.unit, series.format ?? ctx.request.options.format);
+  return derivedValue(sum, unit, series.format ?? ctx.request.options.format);
 }
 
 function comparisons(ctx: RecordContext, matrix: Matrix, source: Matrix['series'][number], sourceScenario: Scenario | undefined, categoryId: string, value: InteractionValue): InteractionRecord['comparisons'] {
@@ -87,9 +122,10 @@ function shareFor(ctx: RecordContext, matrix: Matrix, mark: CellMark, value: Int
   const source = matrix.seriesIndex.get(mark.seriesId)!;
   if (source.role === 'reference' || (ctx.request.type === 'combo' && source.kind !== undefined && source.kind !== 'column')) return undefined;
   const ci = matrix.categoryIndex.get(mark.categoryId) ?? -1;
-  const parts = matrix.series.filter(series => series.role !== 'reference' && (ctx.request.type !== 'combo' || !series.kind || series.kind === 'column'));
-  // Percents of different wholes have no total, so no share of one.
-  if (['column', 'bar', 'combo'].includes(ctx.request.type) && !stackAdds(
+  const parts = stackParts(ctx, matrix);
+  // Percents of different wholes have no total, so no share of one. A 100 % stack of counts still draws and prints
+  // each part's share of the category sum (and warns), so its record keeps the share the label prints.
+  if (['column', 'bar', 'combo'].includes(ctx.request.type) && !hundredStackOfCounts(ctx, matrix, mark.categoryId) && !stackAdds(
     parts.map(series => ({ label: series.label ?? series.id, unit: series.unit, pctCells: series.cells.some(cell => cell !== null && isPctCell(cell)) })),
     ctx.request.options.unit, (ctx.request.options as { sharesOfOneWhole?: boolean }).sharesOfOneWhole)) return undefined;
   const category = matrix.categories[ci];

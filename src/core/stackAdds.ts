@@ -44,6 +44,14 @@ export function stackAdds(parts: readonly StackPart[], chartUnit: string | undef
     || !parts.some((part) => statedInPercent(part.label, part.unit ?? chartUnit ?? '', part.pctCells));
 }
 
+/**
+ * Whether parts add to one whole of 100 in every sum: each sum within half a
+ * point of rounding per part. A blank part (a null sum) leaves the sum unknown.
+ */
+export function addsTo100(sums: readonly (number | null)[], parts: number): boolean {
+  return sums.length > 0 && sums.every((sum) => sum !== null && Math.abs(sum - 100) <= 0.5 * parts);
+}
+
 /** What an anchor on a stack whose parts do not add says instead of a total. */
 export const NO_STACK_TOTAL = 'the stack has no total: its parts are percents of different wholes';
 
