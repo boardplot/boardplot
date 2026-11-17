@@ -1,4 +1,4 @@
-import { statedInPercent } from '../stackAdds';
+import { addsTo100, statedInPercent } from '../stackAdds';
 import { formatExampleProblem, parseFormatExample } from '../formatSpec';
 import type { DocLintWarning } from './index';
 import {
@@ -120,9 +120,8 @@ export function runHonestyLints(charts: readonly ScopedLintChart[]): DocLintWarn
       const cell = cellAt(series, category.id, index);
       return sum === null || cell === null ? null : sum + cell * scale(series);
     }, 0));
-    const addsTo100 = (sums: (number | null)[]) => sums.length > 0 && sums.every((sum) => sum !== null && Math.abs(sum - 100) <= 0.5 * stacked.length);
     const weights = options.variant === 'stacked100' && !stacked.some((series) => pctCells(series) || fraction(series));
-    if (addsTo100(sumsIn((series) => (fraction(series) ? 100 : 1))) || (weights && addsTo100(sumsIn(() => 100)))) continue;
+    if (addsTo100(sumsIn((series) => (fraction(series) ? 100 : 1)), stacked.length) || (weights && addsTo100(sumsIn(() => 100), stacked.length))) continue;
     warnings.push(
       warning(
         chart,
