@@ -214,10 +214,14 @@ function stripMapsAndDeclarations(directory) {
  * The runtime ships no declarations (`stripMapsAndDeclarations`), so its
  * package.json must name none: a `types` condition that points at a missing
  * file breaks a TypeScript host that imports the runtime's React entries.
+ * It also names no dev dependencies: an install in the runtime folder, or a
+ * host that links it, would fetch the build tools and a second React, and
+ * every React component would fail on the host's hooks.
  */
-function dropMissingTypes(directory) {
+function runtimeManifest(directory) {
   const path = join(directory, 'package.json');
   const manifest = readJson(path);
+  delete manifest.devDependencies;
   const prune = (node) => {
     if (!node || typeof node !== 'object') return;
     for (const [key, value] of Object.entries(node)) {
@@ -636,7 +640,7 @@ try {
   resetDirectory(RUNTIME_ROOT);
   cpSync(extractedPackage, RUNTIME_ROOT, { recursive: true });
   stripMapsAndDeclarations(RUNTIME_ROOT);
-  dropMissingTypes(RUNTIME_ROOT);
+  runtimeManifest(RUNTIME_ROOT);
   writeRuntimeReadme(packageJson);
   const vendoredDependencies = vendorDependencyClosure(packageJson);
   writeThirdPartyNotices(vendoredDependencies);

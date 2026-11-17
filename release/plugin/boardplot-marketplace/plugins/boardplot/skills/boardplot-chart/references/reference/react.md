@@ -476,6 +476,8 @@ Call the theme checks and the annotation publisher by value. `boardplot`, `board
 
 The package is ES modules. Every entry names a `default` condition beside `import`, so CommonJS loads it with `require()` on Node 22.12 or later, the version `engines` asks for.
 
+Every chart component fails with `Cannot read properties of null (reading 'useContext')` when the page loads two copies of React: the host's copy and one beside Boardplot. `react` and `react-dom` are peer dependencies, so Boardplot uses the host's copy. Check that `npm ls react` lists one version. A linked or local copy of Boardplot with its own `node_modules/react` brings the second one: remove that folder, or make the bundler resolve `react` and `react-dom` to the host's copy (`resolve.dedupe` in Vite, `resolve.alias` in webpack, `alias` in esbuild).
+
 ## Maps
 
 `ChoroplethChart` ships the layout without the map geometry. Import the pack you draw once in your entry graph; `import 'boardplot/geo';` registers every pack, which costs more bundle than one pack.

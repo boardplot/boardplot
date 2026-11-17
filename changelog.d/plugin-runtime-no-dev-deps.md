@@ -1,0 +1,3 @@
+### Fixed
+
+- The runtime folder inside the Boardplot plugin listed the project's build and test tools as dev dependencies, React among them. `npm install` in that folder, or a host that installs it as a local package with bun, fetched them. A host that linked the folder after such an install loaded a second copy of React, and every React component failed with `Cannot read properties of null (reading 'useContext')`. The runtime's `package.json` now lists only `zod`, its one dependency, and React stays a peer that the host supplies. The React reference's Bundlers section names the symptom and how to keep one copy of React.
