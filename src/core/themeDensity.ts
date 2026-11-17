@@ -54,6 +54,7 @@ export function themeForDensity(theme: Theme, density: 'comfortable' | 'compact'
       tierGap: scaleSpacePx(theme.space.tierGap, TIER_FACET.min, TIER_FACET.max),
       facetGap: scaleSpacePx(theme.space.facetGap, TIER_FACET.min, TIER_FACET.max),
       labelPad: scaleSpacePx(theme.space.labelPad, LABEL_PAD.min, LABEL_PAD.max),
+      ...(theme.space.tierHeadingGap !== undefined ? { tierHeadingGap: scaleSpacePx(theme.space.tierHeadingGap, TIER_FACET.min, TIER_FACET.max) } : {}),
       canvas: { base: scaleMargin(base.margin), wide: scaleMargin(wide.margin) },
       gap: scaleGap(base, wide),
       legendRowH: scaleSpacePx(base.legendRowH, LEGEND_ROW.min, LEGEND_ROW.max),

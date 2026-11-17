@@ -594,6 +594,25 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
   children = balanceVarianceTierPlots(slots, children, varianceWeights, layoutChildren);
   let tierContents = measureTierContents(children);
   let effectiveTierGap = theme.space.tierGap;
+  // Heading air (theme.space.tierHeadingGap): a tier with a heading stands at least twice as far from the
+  // tier above it as the heading stands from its own panel, so the heading reads with the panel below it.
+  // The heading sits labelPad over its panel's first box, and a legend row centres its text up to one more
+  // labelPad lower. The air is the first room a short canvas takes back: a fixed height without room for it
+  // keeps the plain tier gap.
+  const headingAir = Math.max(0, (theme.space.tierHeadingGap ?? theme.space.tierGap + 3 * theme.space.labelPad) - theme.space.tierGap);
+  const topTier = bottomUpOrder[bottomUpOrder.length - 1];
+  const headed = (i: number) => packedTiers && i !== topTier && Boolean(children[i]!.tierCaption || children[i]!.tierDetail);
+  const headedCount = () => data.panels.filter((_, i) => headed(i)).length;
+  const airTotal = () => headingAir * headedCount();
+  let tierAir = headingAir;
+  const gapAbove = (i: number) => effectiveTierGap + (headed(i) ? tierAir : 0);
+  /** The gaps absorb a deficit (a negative slack): the heading air first, then the plain gaps down to their floor. */
+  const absorb = (slack: number) => {
+    const deficit = Math.max(0, -slack);
+    const air = airTotal();
+    tierAir = air > 0 && deficit <= air ? headingAir - deficit / headedCount() : 0;
+    effectiveTierGap = theme.space.tierGap - (n > 1 ? Math.max(0, deficit - air) / (n - 1) : 0);
+  };
   const requirements = () => gridSizing(size, area, sizingChildren(),
     packedTiers ? [...bottomUpOrder].reverse().map(index => children[index]!.geo.sizing!.minHeight) : rowWeights,
     Array(columns).fill(1), rowGaps, Array(columns - 1).fill(gap), true);
@@ -636,16 +655,19 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
       ({ children, tierContents, sharedX, sharedW } = before);
       return false;
     };
-    const slackNow = () => area.h - packReserve - theme.space.tierGap * (n - 1) - contentTotal();
-    plainFits = () => slackNow() >= -gapCapacity - 1;
+    const slackNow = () => area.h - packReserve - theme.space.tierGap * (n - 1) - airTotal() - contentTotal();
+    plainFits = () => slackNow() >= -gapCapacity - airTotal() - 1;
     for (let pass = 0; pass < TIER_SLACK_PASSES; pass++) {
       const slack = slackNow();
-      if (slack < 0 && slack >= -gapCapacity) {
-        effectiveTierGap = theme.space.tierGap + slack / (n - 1);
+      if (slack < 0 && slack >= -gapCapacity - airTotal()) {
+        absorb(slack);
         break;
       }
-      if (slack < -gapCapacity) {
-        if (!repair || !squeeze(-slack - gapCapacity)) break;
+      if (slack < -gapCapacity - airTotal()) {
+        if (!repair || !squeeze(-slack - gapCapacity - airTotal())) {
+          tierAir = 0;
+          break;
+        }
         continue;
       }
       if (slack <= theme.space.tierGap) break;
@@ -670,10 +692,11 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
           area.h -
           packReserve -
           theme.space.tierGap * (n - 1) -
+          airTotal() -
           tierContents.localContent.reduce((sum, bounds) => sum + bounds.h, 0);
+        // Growth never takes the heading air: a taller plot is not worth a heading that loses its panel.
         if (remaining >= -gapCapacity) {
-          effectiveTierGap =
-            remaining < 0 ? theme.space.tierGap + remaining / (n - 1) : theme.space.tierGap;
+          absorb(remaining);
           accepted = true;
           break;
         }
@@ -689,20 +712,21 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
         break;
       }
     }
-    if (repair && slackNow() < -gapCapacity - 1) {
+    if (repair && slackNow() < -gapCapacity - airTotal() - 1) {
       warnings.push({ code: 'grid-panel-too-short', severity: 'warn',
-        message: `the tiers need ${Math.ceil(-slackNow() - gapCapacity)} px more height than the canvas gives, so the top tier runs into the frame above it`,
+        message: `the tiers need ${Math.ceil(-slackNow() - gapCapacity - airTotal())} px more height than the canvas gives, so the top tier runs into the frame above it`,
         suggest: 'increase the grid height' });
     }
   };
   // A short probe already needs a larger canvas. Packing slack there cannot
   // make it renderable and can repeatedly cross label-wrapping thresholds.
   if (packedTiers && requirements().minHeight <= size.height) {
-    const state = () => ({ slots: slots.map((slot) => ({ ...slot })), children, tierContents, sharedX, sharedW, gap: effectiveTierGap, warnings: warnings.slice() });
+    const state = () => ({ slots: slots.map((slot) => ({ ...slot })), children, tierContents, sharedX, sharedW, gap: effectiveTierGap, air: tierAir, warnings: warnings.slice() });
     const restore = (saved: ReturnType<typeof state>) => {
       saved.slots.forEach((slot, i) => { slots[i] = slot; });
       ({ children, tierContents, sharedX, sharedW } = saved);
       effectiveTierGap = saved.gap;
+      tierAir = saved.air;
       warnings.length = 0;
       warnings.push(...saved.warnings);
     };
@@ -721,8 +745,11 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
       const fits = plainFits();
       if (!raised && !(fits && droppedValues() < repairedDrops)) restore(repaired);
     }
-  }
-  const sizing = requirements();
+  } else tierAir = 0;
+  const required = requirements();
+  // The heading air is asked for, not required: an open height makes room for it, a short canvas does without.
+  const sizing = required.naturalHeight < required.minHeight + airTotal()
+    ? { ...required, naturalHeight: required.minHeight + airTotal() } : required;
   const { tierLabels, localContent } = tierContents;
   const panelY = slots.map((slot) => slot.y);
   if (packedTiers) {
@@ -730,7 +757,7 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
     for (const i of bottomUpOrder) {
       const bounds = localContent[i]!;
       panelY[i] = cursor - (bounds.y + bounds.h);
-      cursor = bounds.y + panelY[i]! - effectiveTierGap;
+      cursor = bounds.y + panelY[i]! - gapAbove(i);
     }
   }
 
