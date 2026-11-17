@@ -452,3 +452,16 @@ it('keeps a value line legible where it crosses a stacked area of its own colour
   expect(pieces.length).toBeGreaterThan(0);
   for (const piece of pieces) expect(contrastRatio(paintColor(theme, piece.stroke), paintColor(theme, area.fill))).toBeGreaterThan(3);
 });
+
+// Two names in their lines' colours, pushed apart by less than a line height, drew connector lines the reader does not need.
+it('draws no leader for two end names in their own colours a few pixels off their line ends', () => {
+  const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'line', data: {
+    categories: ['q1', 'q2', 'q3', 'q4'].map(id => ({ id, label: id.toUpperCase() })),
+    series: [{ id: 'listed', label: 'Listed', values: [92, 105, 118, 132] }, { id: 'net', label: 'Net', values: [74, 83, 91, 127] }],
+  }, options: { title: 'Listed and net price', unit: '$k', seriesLabels: 'end', size: { width: 480, height: 220 } } } as never)));
+  for (const id of ['series:listed', 'series:net']) {
+    const name = geometry.labels.find(label => label.id === id)!;
+    expect(name.hidden, id).toBeUndefined();
+    expect(name.leader, id).toBeUndefined();
+  }
+});
