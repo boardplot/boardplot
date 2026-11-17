@@ -406,6 +406,21 @@ describe('chart layout edge cases', () => {
     expect(wrapped.hidden).toBeUndefined();
   });
 
+  // A callout on the longest bar of a narrow chart sat beside the shorter bar of the next row and read as that row's note.
+  it('a bar callout never sits nearer a neighbour row than its own', () => {
+    const categories = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon'].map((label) => ({ id: label, label }));
+    const request = { type: 'bar', data: { categories, series: [{ id: 'sales', label: 'Sales', values: [12, 35, 28, 49, 11] }] },
+      options: { size: { width: 480 } },
+      annotations: [{ kind: 'callout', at: { categoryId: 'Delta', seriesId: 'sales' }, text: 'Delta up 12% on a strong quarter', preferSide: 'right' }] };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const labels = (layoutResolvedRequest(resolveChartRequest(request as any) as any) as any).labels as { id: string; hidden?: string; rect: { y: number; h: number } }[];
+    const middle = (id: string) => { const { rect } = labels.find((l) => l.id === id)!; return rect.y + rect.h / 2; };
+    const callout = labels.find((l) => l.id === 'annotation:callout-1')!;
+    expect(callout.hidden).toBeUndefined();
+    const own = Math.abs(middle('annotation:callout-1') - middle('category:Delta'));
+    expect(own).toBeLessThanOrEqual(Math.min(...['Gamma', 'Epsilon'].map((id) => Math.abs(middle('annotation:callout-1') - middle(`category:${id}`)))));
+  });
+
   // A tall canvas widened the rotated names until the row had no pitch left for a 45° line, so all but one name were dropped.
   it('a tall variance chart keeps its rotated category names at 400 px wide', () => {
     const names = ['Nordrhein-Westfalen (Rheinland)', 'Net revenue retention, enterprise', 'Sonstige betriebliche Aufwendungen', 'Zinsen und ähnliche Aufwendungen', 'Aufwendungen für bezogene Waren', 'Schleswig-Holstein und Hamburg', 'Pensionsrückstellungen, Inland', 'Research and development expenses', 'Sonstige betriebliche Erträge', 'Fremdleistungen Logistik Ausland', 'Instandhaltung und Reparaturen', 'Mecklenburg-Vorpommern'];
