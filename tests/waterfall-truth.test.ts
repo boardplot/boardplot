@@ -24,6 +24,7 @@ import { getFixtures } from '../src/fixtures';
 import { resolvePaint } from '../src/core/svg/paint';
 import { resolveTheme } from '../src/core/theme';
 import type { Geometry } from '../src/core/types/scene';
+import { interactionRecords } from '../src/core/a11y/records';
 
 // colorblindSafe was refused on KPI, waterfall and pvm although all three paint a good/bad pair, and on every chart that paints none.
 it('accepts colorblindSafe on every chart and swaps the good/bad paints of KPI, waterfall and pvm', () => {
@@ -249,6 +250,28 @@ describe('an opening total without a value', () => {
     expect(run(115).derived.totals.start).toBe(100);
     expect(run(undefined).warnings).toContainEqual(expect.objectContaining({ code: 'waterfall-opening-missing', severity: 'error' }));
   });
+});
+
+// A total's segments were dropped without a word: the bar drew solid, and an opening total with segments and no value was refused.
+it('stacks the authored segments of a total, opens at their sum and draws a total whose segments miss its level as one bar', () => {
+  const run = (south: number) => {
+    const request = resolveChartRequest({ type: 'waterfall', data: { items: [
+      { id: 'open', type: 'total', segments: [{ id: 'n', label: 'North', value: 30 }, { id: 's', label: 'South', value: 20 }] },
+      { id: 'step', value: 2 },
+      { id: 'close', type: 'total', segments: [{ id: 'n', label: 'North', value: 33 }, { id: 's', label: 'South', value: south }] },
+    ] }, options: { size: { width: 640, height: 360 } } } as never);
+    const geometry = requireGeometry(layoutResolvedRequest(request)) as Geometry<{ bars: { id: string; segments: { id: string }[] }[] }, { totals: Record<string, number> }>;
+    const cards = interactionRecords({ request, geometry, scope: request.scope, claims: [] } as never).map((record) => record.value.raw);
+    return { geometry, cards };
+  };
+  const { geometry, cards } = run(19);
+  expect(geometry.derived.totals.open).toBe(50);
+  expect(geometry.marks.bars.map((bar) => bar.segments.map((segment) => segment.id))).toEqual([['n', 's'], ['__value'], ['n', 's']]);
+  expect(geometry.labels.filter((label) => label.id.startsWith('segment:close:') && !label.hidden).map((label) => label.text)).toEqual(['33', '19']);
+  expect(cards).toEqual([30, 20, 2, 33, 19]);
+  const off = run(18).geometry;
+  expect(off.marks.bars.at(-1)!.segments.map((segment) => segment.id)).toEqual(['__total']);
+  expect(off.warnings.filter((warning) => warning.code === 'derived-mismatch').map((warning) => warning.owner?.categoryId)).toEqual(['close']);
 });
 
 describe('a subtotal with toBaseline', () => {
