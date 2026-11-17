@@ -981,7 +981,7 @@ export function layoutLikert(
     for (const id of blocks.slice(0, plotAt) as ('net' | 'base')[]) { rights[id] = leftAt + widths[id]; leftAt += widths[id] + COLUMN_GAP; }
     let rightAt = end;
     for (const id of (blocks.slice(plotAt + 1) as ('net' | 'base')[]).reverse()) { rights[id] = rightAt; rightAt -= widths[id] + COLUMN_GAP; }
-    tracks = { rights, leftRoom: leftAt - start, rightRoom: (rightRoom ?? 0) + end - rightAt, widths };
+    tracks = { rights, leftRoom: leftAt - start, rightRoom: end - rightAt, widths };
     geo = layoutWith(rows);
   }
   if (stacked) {
