@@ -1182,7 +1182,10 @@ try {
 
   // The plugin runtime's package.json names only files the runtime ships, its `types` conditions included.
   const pluginRuntime = join(marketplace, 'plugins', 'boardplot', 'runtime');
-  assertPackageTargets(pluginRuntime, JSON.parse(readFileSync(join(pluginRuntime, 'package.json'), 'utf8')));
+  const pluginRuntimeManifest = JSON.parse(readFileSync(join(pluginRuntime, 'package.json'), 'utf8'));
+  assertPackageTargets(pluginRuntime, pluginRuntimeManifest);
+  // A local install of the runtime folder fetched its dev dependencies, a second React among them, and every component failed.
+  if (pluginRuntimeManifest.devDependencies) fail('plugin runtime package.json must name no devDependencies');
 
   for (const required of [
     join(marketplace, '.agents', 'plugins', 'marketplace.json'),
