@@ -15,7 +15,7 @@ import type { WaterfallOptions } from '../../types/options';
 import { columnOverridesOption } from '../../schema/generatedColumnOptions';
 
 const segmentSchema = z.object({
-  id: idSchema.refine((id) => id !== '__total' && id !== '__value', "'__total' and '__value' name the engine's own bar segments; give this segment another id").describe("Segment identity within its waterfall item; also names connector anchors."),
+  id: idSchema.refine((id) => id !== '__total' && id !== '__value', "'__total' and '__value' name the engine's own bar segments; give this segment another id").describe("Segment identity within its waterfall item; also names connector anchors. One id is one segment across the bridge: its first authored label, colorRole and value fill paint all its bars, its key entry and its part of a derived total, and a later item that sets another one warns segment-identity-mismatch."),
   label: z.string().optional().describe("Displayed segment name; defaults to its id."),
   value: cellSchema.describe("Signed contribution of this segment to its item."),
   colorRole: colorRoleField("Theme color role for this segment."),
