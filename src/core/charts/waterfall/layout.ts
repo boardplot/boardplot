@@ -60,6 +60,7 @@ import {
   colorblindPaint,
   effectiveFill,
   colorRolePaints,
+  markRolePaint,
   paintColor,
   panelTypeClass,
   seriesPaint as themeSeriesPaint,
@@ -147,6 +148,8 @@ interface NormItem {
   checkValue: number | null;
   segments: ({ id: Id; label?: string; value: number; colorRole?: string; scenario?: string; fill?: string } & ValueCellText)[];
   authoredSegments: boolean;
+  /** A total's or subtotal's authored segments: its breakdown, drawn stacked when it adds up to the level. */
+  totalSegments?: NormItem['segments'];
   scenario?: string;
   direction?: Direction;
   /** The item value cell's own format, label and priority, for the value printed over the step or on the total. */
@@ -981,7 +984,7 @@ function layoutWaterfallWithPad(
   }
   // An authored example controls precision. Otherwise the bridge shares
   // one precision across its values and segments.
-  const authoredValues = allItems.flatMap((it) => [it.checkValue, ...it.segments.map((seg) => seg.value)]);
+  const authoredValues = allItems.flatMap((it) => [it.checkValue, ...[...it.segments, ...it.totalSegments ?? []].map((seg) => seg.value)]);
   const raster = seriesRasterFormatter(options.format, authoredValues, options.locale?.language, options.unit);
   const { fmtSigned } = raster;
   // A signed example marks the steps; a total is a level and prints without a plus or direction glyph.
@@ -1030,8 +1033,7 @@ function layoutWaterfallWithPad(
   // A segment id keeps one fill: the first authored one paints its bars, its key swatch and a derived total's part.
   const fillConflicts = new Set<Id>();
   for (const it of items) {
-    if (!it.authoredSegments) continue;
-    for (const seg of it.segments) {
+    for (const seg of it.authoredSegments ? it.segments : it.totalSegments ?? []) {
       const known = segmentCatalog.get(seg.id);
       if (!known) {
         segmentCatalog.set(seg.id, {
@@ -1137,6 +1139,7 @@ function layoutWaterfallWithPad(
     const levels: WaterfallDerived['levels'] = emptyIdRecord();
     const totals: WaterfallDerived['totals'] = emptyIdRecord();
     const totalBasis: WaterfallDerived['totalBasis'] = emptyIdRecord();
+    /** The segments each stacked total draws: its authored ones when they add up to its level, else the ones a closing total derives from segmented steps. */
     const derivedTotalSegments = new Map<Id, NormItem['segments']>();
 
     /** Exit level of an item through an anchor ('sum' | segmentId). */
@@ -1242,7 +1245,9 @@ function layoutWaterfallWithPad(
         // plain deltas lie between them; otherwise the chart is refused, since
         // an opening of zero would draw every level after it wrong.
         const wasStarted = started;
-        const opening = wasStarted ? null : it.checkValue ?? backwardOpening(it);
+        // An opening total with segments opens at their sum; its own value is then a check value, as on a step.
+        const parts = it.totalSegments?.map((seg) => seg.value);
+        const opening = wasStarted ? null : parts ? compensatedSum(parts) : it.checkValue ?? backwardOpening(it);
         if (!wasStarted && opening === null) {
           const index = items.indexOf(it);
           warnings.push({
@@ -1260,7 +1265,7 @@ function layoutWaterfallWithPad(
         if (!started) {
           running = value;
           // A backward opening is the next total's authored value less plain deltas.
-          summed = [it.checkValue ?? backwardOpenings.get(it.id)?.inputs[0]!.value ?? 0];
+          summed = parts ?? [it.checkValue ?? backwardOpenings.get(it.id)?.inputs[0]!.value ?? 0];
         }
         levels[it.id] = blockSum ? { start: 0, end: value, balance: running } : { start: 0, end: value };
         totals[it.id] = value;
@@ -1274,27 +1279,44 @@ function layoutWaterfallWithPad(
           ? { authored: false, inputs: contributions.map((c) => ({ ...c })) }
           : derivedOpening
             ? { authored: false, inputs: derivedOpening.inputs }
-            : { authored: true, ref: `${it.id}.value` };
+            : it.totalSegments
+              ? { authored: false, inputs: it.totalSegments.map((seg) => ({ ref: `${it.id}:${seg.id}`, value: seg.value })) }
+              : { authored: true, ref: `${it.id}.value` };
         // Collapse the span: the next total's receipt reads "this total, plus the
         // deltas since" rather than replaying the whole chart.
         if (!blockSum) {
           contributions = [{ ref: it.id, value }];
           operands = [value];
         }
-        const totalCheck = started && it.checkValue !== null ? checkAgainstSum(it.checkValue, value, blockSum ? block.flatMap((c) => c.segments) : summed) : undefined;
-        if (totalCheck?.withinRounding) discloseRoundedCheck(it, k, totalCheck.printed, 'checkTotalNote');
+        const levelSummed = blockSum ? block.flatMap((c) => c.segments) : summed;
+        const totalCheck = it.checkValue === null ? undefined
+          : started ? checkAgainstSum(it.checkValue, value, levelSummed) : parts ? checkAgainstSum(it.checkValue, value, parts) : undefined;
+        if (totalCheck?.withinRounding) discloseRoundedCheck(it, k, totalCheck.printed, started ? 'checkTotalNote' : 'checkSegmentsNote');
         const totalMismatch = totalCheck && !totalCheck.withinRounding ? totalCheck.printed : undefined;
         if (totalMismatch) {
           warnings.push({
             code: 'derived-mismatch',
             severity: 'warn',
-            message: `${it.type} '${it.id}': supplied ${totalMismatch[0]} ≠ computed ${totalMismatch[1]} — computed wins`,
+            message: `${it.type} '${it.id}': supplied ${totalMismatch[0]} ≠ ${started ? 'computed' : 'segment sum'} ${totalMismatch[1]} — computed wins`,
+            owner: { categoryId: it.id },
+          });
+        }
+        // Authored segments stack only when they add up to the level the bar draws; otherwise the level draws as one bar.
+        const partsOff = parts && started ? checkAgainstSum(compensatedSum(parts), value, [...levelSummed, ...parts]) : undefined;
+        if (partsOff) {
+          warnings.push({
+            code: 'derived-mismatch',
+            severity: 'warn',
+            message: `${it.type} '${it.id}': its segments add up to ${partsOff.printed[0]} ≠ computed ${partsOff.printed[1]} — computed wins and draws as one bar`,
+            suggest: `make the segments of '${it.id}' add up to ${partsOff.printed[1]}`,
             owner: { categoryId: it.id },
           });
         }
         if (it.type === 'total' || blockSum) block = [];
         if (!wasStarted && Math.abs(value) > 1e-9) compositionEligible = false;
-        if (it.type === 'total' && wasStarted && compositionEligible && hasSegmentedDelta) {
+        if (it.totalSegments && !partsOff) {
+          derivedTotalSegments.set(it.id, it.totalSegments);
+        } else if (it.type === 'total' && wasStarted && compositionEligible && hasSegmentedDelta) {
           const seriesTotals = [...segmentCatalog.values()].map((identity) => ({
             id: identity.id,
             label: identity.label,
@@ -1415,7 +1437,7 @@ function layoutWaterfallWithPad(
   // A key that names segment colours also names the plain step colour where
   // steps draw in it. Totals and highlighted steps get no entry: the category
   // row names a total and emphasis is never a key entry.
-  const plain = (it: NormItem) => !derivedTotalSegments.has(it.id) && !it.authoredSegments && !it.segments.some((seg) => seg.fill || segmentCatalog.has(seg.id));
+  const plain = (it: NormItem) => !derivedTotalSegments.has(it.id) && !it.authoredSegments && !it.segments.some((seg) => seg.fill || seg.colorRole || segmentCatalog.has(seg.id));
   const keyed = legendItems.length > 0;
   // a lower-is-better step paints a rise bad, which its signed label
   // does not say, so the bridge names its tones as a sign-coloured column
@@ -1501,8 +1523,8 @@ function layoutWaterfallWithPad(
   // its widest segment value (with 2 px each side) widens, up to 74% of its column, so the value
   // reads inside its segment instead of in the note. Only an unset bandFraction moves.
   const segmentValueWidth = categoryRow && options.bandFraction === undefined && options.labels !== false && cases.length === 0
-    ? Math.max(0, maxOf(items.filter((it) => it.authoredSegments && !(it.segments.some((seg) => seg.value > 0) && it.segments.some((seg) => seg.value < 0)))
-      .flatMap((it) => it.segments.map((seg) => measure(it.type === 'delta' ? fmtSigned(seg.value) : fmt(seg.value), { family: theme.type.family, ...theme.type.label }).width + 4))))
+    ? Math.max(0, maxOf(items.filter((it) => it.totalSegments ? derivedTotalSegments.has(it.id) : it.authoredSegments && !(it.segments.some((seg) => seg.value > 0) && it.segments.some((seg) => seg.value < 0)))
+      .flatMap((it) => segmentsFor(it).map((seg) => measure(it.type === 'delta' ? fmtSigned(seg.value) : fmt(seg.value), { family: theme.type.family, ...theme.type.label }).width + 4))))
     : 0;
   const fractionFor = (w: number) => {
     const base = options.bandFraction ?? 0.62;
@@ -2098,8 +2120,9 @@ function layoutWaterfallWithPad(
         }] : []),
       ],
     };
-    // A segmented bar's value keeps today's seats: it would otherwise read as the value of one part.
-    if (!segmentedMark) valueRequest = positionBarLabel(valueRequest, options, {
+    // A bar of several segments keeps today's seats for its value, which would otherwise read as the value of one part.
+    // A bar of one segment prints that segment's value, so labelPosition places it as on a plain bar.
+    if (!segmentedMark || drawSegments.length === 1) valueRequest = positionBarLabel(valueRequest, options, {
       rect: barRect, size: tsize, orientation: 'vertical',
       endPositive: Math.abs(Math.max(lvl.start, lvl.end)) >= Math.abs(Math.min(lvl.start, lvl.end)),
       zero: itemValue === 0, edgeGap: 2, fallback: isTotal ? undefined : 'bridge',
@@ -2516,17 +2539,8 @@ function layoutWaterfallWithPad(
     const checkCell = raw.value !== undefined ? normalizeCell(raw.value, `${path}.value`) : null;
     const checkValue = checkCell === null ? null : cellValue(checkCell);
     let segments: NormItem['segments'];
-    if (type !== 'delta') {
-      if (raw.segments?.some(segment => cellMeta(segment.value)?.format)) warnings.push({
-        code: 'format-ignored', severity: 'warn', owner: { categoryId: raw.id },
-        message: `item '${raw.id}': a total derives its segments; an authored segment format cannot apply`,
-        suggest: 'set the total format on value.format, or format its contributing delta segments',
-      });
-      // The rect is computed from the level. An authored value fill paints it, as on a step.
-      const fill = checkCell === null ? undefined : cellMeta(checkCell)?.fill;
-      segments = [{ id: '__total', value: 0, ...(fill ? { fill } : {}) }];
-    } else if (raw.segments && raw.segments.length > 0) {
-      segments = raw.segments.map((s, k) => {
+    const authored = raw.segments && raw.segments.length > 0
+      ? raw.segments.map((s, k) => {
         const cell = normalizeCell(s.value, `${path}.segments[${k}].value`);
         const v = cellValue(cell);
         if (v === null) throw new NormalizeError('missing-value', `${path}.segments[${k}]`, 'segment needs a numeric value', undefined, undefined, ['data', 'items', i, 'segments', k]);
@@ -2540,7 +2554,14 @@ function layoutWaterfallWithPad(
           fill: meta?.fill,
           ...cellText(meta),
         };
-      });
+      })
+      : undefined;
+    if (type !== 'delta') {
+      // The rect is computed from the level. An authored value fill paints it, as on a step.
+      const fill = checkCell === null ? undefined : cellMeta(checkCell)?.fill;
+      segments = [{ id: '__total', value: 0, ...(fill ? { fill } : {}) }];
+    } else if (authored) {
+      segments = authored;
     } else {
       if (checkValue === null) {
         throw new NormalizeError('missing-value', path, `delta item needs a value or segments`);
@@ -2550,6 +2571,7 @@ function layoutWaterfallWithPad(
         {
           id: '__value',
           value: checkValue,
+          ...(raw.colorRole ? { colorRole: raw.colorRole } : {}),
           scenario: normalizeScenario(raw.scenario ?? meta?.scenario, `${path}.scenario`),
           fill: meta?.fill,
           ...cellText(meta),
@@ -2565,7 +2587,8 @@ function layoutWaterfallWithPad(
       checkValue,
       ...(checkCell === null ? {} : { valueMeta: cellText(cellMeta(checkCell)) }),
       segments,
-      authoredSegments: type === 'delta' && Boolean(raw.segments?.length),
+      authoredSegments: type === 'delta' && authored !== undefined,
+      ...(type !== 'delta' && authored ? { totalSegments: authored } : {}),
       scenario: normalizeScenario(raw.scenario, `${path}.scenario`),
       direction: raw.direction,
     };
@@ -2586,6 +2609,8 @@ function layoutWaterfallWithPad(
     if (seg.fill && !segmentCatalog.has(seg.id)) return { css: seg.fill };
     const identity = segmentCatalog.get(seg.id);
     if (identity) return identityPaint(identity);
+    // A plain step's own colour role, such as a grey step: neutralLight.
+    if (seg.colorRole) return markRolePaint(seg.colorRole, true);
     if (signBridge && it.type === 'delta') return tonePaint(stepTone(seg.value, it.direction), options.colorblindSafe === true);
     if (highlights.has(it.id)) return { token: 'focus' };
     // Totals keep color.total under 'sign' too: a dark theme caps its large

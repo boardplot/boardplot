@@ -82,8 +82,8 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | items[].id | string | yes | Unique bridge-item identity used by connectors and annotations. |
 | items[].label | string |  | Displayed bridge-item name; defaults to its id. |
 | items[].type | string |  | Delta contribution by default; subtotal and total show accumulated levels. One of `'delta'`, `'subtotal'`, `'total'`. |
-| items[].value | cell |  | Signed delta contribution, or an optional check value for a subtotal or total. A check value off the running sum by more than its inputs' rounding warns derived-mismatch, and the sum is drawn. A check value off by less is disclosed: the sum is drawn, the info check-value-rounded names both numbers, and a disclosure note names them where notes.show lists 'disclosure'. An opening total without a value is derived backward from the next total that has one across plain deltas, and refused otherwise. |
-| items[].segments | array |  | Named signed contributions composing this item instead of a single value. |
+| items[].value | cell |  | Signed delta contribution, or an optional check value for a subtotal or total. A check value off the running sum by more than its inputs' rounding warns derived-mismatch, and the sum is drawn. A check value off by less is disclosed: the sum is drawn, the info check-value-rounded names both numbers, and a disclosure note names them where notes.show lists 'disclosure'. An opening total with segments opens at their sum, and its value is a check value against that sum. An opening total without a value or segments is derived backward from the next total that has one across plain deltas, and refused otherwise. |
+| items[].segments | array |  | Named signed contributions composing this item instead of a single value. On a total or subtotal they stack as its breakdown, with their values and in the key: a later total draws them when they add up to its level, and otherwise draws its level as one bar and warns derived-mismatch. Authored segments win over the ones a closing total derives from segmented steps. |
 | items[].segments[].id | string | yes | Segment identity within its waterfall item; also names connector anchors. One id is one segment across the bridge: its first authored label, colorRole and value fill paint all its bars, its key entry and its part of a derived total, and a later item that sets another one warns segment-identity-mismatch. |
 | items[].segments[].label | string |  | Displayed segment name; defaults to its id. |
 | items[].segments[].value | cell | yes | Signed contribution of this segment to its item. |
@@ -92,6 +92,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | items[].date | string |  | ISO 8601 date associated with this bridge item. |
 | items[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST, LY for last year). Codes and aliases accept any case. Scenario for this bridge item and its default segment styling. |
 | items[].direction | string |  | Under 'lowerIsBetter' a rise paints bad and a fall good (options.signColor). One of `'higherIsBetter'`, `'lowerIsBetter'`. |
+| items[].colorRole | string |  | A step without segments: the theme colour role its bar paints in, in place of the step or sign colour, as a segment takes one; neutralLight gives a grey step. Its value keeps labelPosition. A total, a step with segments and a bridge with cases take no colorRole. One of good, bad, warn, neutral, neutralLight, highlight, total, others; series-N for step N of the theme ramp, 1-based (series-2 is color.series[1]); or status-<key> for a theme status colour. A hex colour goes in fill. |
 | items[].toBaseline | boolean |  | Start this delta at zero and reset the accumulated contribution list. A subtotal draws the sum of the deltas since the last total or baseline subtotal, from zero; the running level carries on. |
 | items[].values | cell[] |  | With data.cases: one value per case, in case order, in place of value — the signed delta of each case, or a total's opening or check value. |
 | connectors | array |  | Authored connections between item levels; omission uses the default sequence. |
@@ -182,3 +183,4 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | centered-values | example | Centered bridge values with a thin falling step |
 | horizontal-centered-values | example | Centered horizontal bridge values |
 | sign-inside-values | example | Inside values on signed bridge fills |
+| grey-steps | example | Grey steps with their values inside |

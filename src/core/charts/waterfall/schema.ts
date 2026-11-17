@@ -10,7 +10,7 @@ import {
   refusedBaseOptions,
   primaryAxisTitleSchema,
 } from '../../schema/shared';
-import type { WaterfallData } from '../../types/data';
+import type { WaterfallData, WaterfallItem } from '../../types/data';
 import type { WaterfallOptions } from '../../types/options';
 import { columnOverridesOption } from '../../schema/generatedColumnOptions';
 
@@ -26,11 +26,12 @@ const itemSchema = z.object({
   id: idSchema.describe("Unique bridge-item identity used by connectors and annotations."),
   label: z.string().optional().describe("Displayed bridge-item name; defaults to its id."),
   type: z.enum(['delta', 'subtotal', 'total']).optional().describe("Delta contribution by default; subtotal and total show accumulated levels."),
-  value: cellSchema.optional().describe("Signed delta contribution, or an optional check value for a subtotal or total. A check value off the running sum by more than its inputs' rounding warns derived-mismatch, and the sum is drawn. A check value off by less is disclosed: the sum is drawn, the info check-value-rounded names both numbers, and a disclosure note names them where notes.show lists 'disclosure'. An opening total without a value is derived backward from the next total that has one across plain deltas, and refused otherwise."),
-  segments: z.array(segmentSchema).min(1).optional().describe("Named signed contributions composing this item instead of a single value."),
+  value: cellSchema.optional().describe("Signed delta contribution, or an optional check value for a subtotal or total. A check value off the running sum by more than its inputs' rounding warns derived-mismatch, and the sum is drawn. A check value off by less is disclosed: the sum is drawn, the info check-value-rounded names both numbers, and a disclosure note names them where notes.show lists 'disclosure'. An opening total with segments opens at their sum, and its value is a check value against that sum. An opening total without a value or segments is derived backward from the next total that has one across plain deltas, and refused otherwise."),
+  segments: z.array(segmentSchema).min(1).optional().describe("Named signed contributions composing this item instead of a single value. On a total or subtotal they stack as its breakdown, with their values and in the key: a later total draws them when they add up to its level, and otherwise draws its level as one bar and warns derived-mismatch. Authored segments win over the ones a closing total derives from segmented steps."),
   date: z.string().optional().describe("ISO 8601 date associated with this bridge item."),
   scenario: scenarioField('Scenario for this bridge item and its default segment styling.'),
   direction: z.enum(['higherIsBetter', 'lowerIsBetter']).optional().describe("Under 'lowerIsBetter' a rise paints bad and a fall good (options.signColor)."),
+  colorRole: colorRoleField("A step without segments: the theme colour role its bar paints in, in place of the step or sign colour, as a segment takes one; neutralLight gives a grey step. Its value keeps labelPosition. A total, a step with segments and a bridge with cases take no colorRole."),
   toBaseline: z.boolean().optional().describe("Start this delta at zero and reset the accumulated contribution list. A subtotal draws the sum of the deltas since the last total or baseline subtotal, from zero; the running level carries on."),
   values: z.array(cellSchema).optional().describe("With data.cases: one value per case, in case order, in place of value — the signed delta of each case, or a total's opening or check value."),
 }).passthrough();
@@ -44,7 +45,7 @@ const itemSchema = z.object({
 const DATA_KEYS = new Set(['items', 'connectors', 'cases']);
 
 const ITEM_KEYS = new Set([
-  'id', 'label', 'type', 'value', 'segments', 'date', 'scenario', 'direction', 'toBaseline', 'values',
+  'id', 'label', 'type', 'value', 'segments', 'date', 'scenario', 'direction', 'toBaseline', 'values', 'colorRole',
 ]);
 
 const SEGMENT_KEYS = new Set(['id', 'label', 'value', 'colorRole', 'scenario']);
@@ -69,6 +70,17 @@ function refuseUnknownKeys(
         : `unknown key '${key}' ${where} — known keys: ${[...known].join(', ')}`,
     });
   }
+}
+
+/** An item colorRole paints one plain step; a total, a step's segments and a case bar each have their own colour. */
+function refuseItemColorRole(ctx: z.RefinementCtx, item: WaterfallItem, index: number, cases: boolean): void {
+  if (item.colorRole === undefined) return;
+  const reason = (item.type ?? 'delta') !== 'delta'
+    ? `a ${item.type} paints the total colour; colour it with value.fill`
+    : item.segments !== undefined
+      ? 'a step with segments paints each segment; set colorRole on its segments'
+      : cases ? 'a bridge with cases paints each bar in its case colour' : undefined;
+  if (reason) ctx.addIssue({ code: 'custom', path: ['items', index, 'colorRole'], message: `item '${item.id}': ${reason}` });
 }
 
 /** A bridge with cases takes one value per case on every item, and nothing that belongs to one bridge. */
@@ -128,6 +140,7 @@ export const waterfallDataSchema = z
     refuseCaseMismatch(ctx, data as unknown as WaterfallData);
     data.items.forEach((item, index) => {
       refuseUnknownKeys(ctx, item, ITEM_KEYS, ['items', index], `on waterfall item '${item.id}'`);
+      refuseItemColorRole(ctx, item as WaterfallItem, index, data.cases !== undefined);
       (item.segments ?? []).forEach((segment, segmentIndex) => {
         refuseUnknownKeys(
           ctx,

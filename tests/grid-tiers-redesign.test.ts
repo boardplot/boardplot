@@ -143,7 +143,8 @@ describe('tier grids at automatic height print the segment values the column alo
 });
 
 // With segments too small for the reserve, three tiers grew a 320 px card from about
-// 340 to 530 px and still hid every small value. Growth that prints nothing keeps the initial height.
+// 340 to 530 px and still hid every small value. Growth that prints nothing keeps the initial height
+// (385 px with the room above the two lower tier headings).
 it('keeps the compact height of three tiers whose small values no growth can print', () => {
   const cats = [{ id: 'fy24', label: 'FY24' }, { id: 'fy25', label: 'FY25' }];
   const small = { categories: cats, series: [
@@ -156,7 +157,7 @@ it('keeps the compact height of three tiers whose small values no growth can pri
     { id: 'dpct', type: 'variance', data: small, options: { variant: 'relative', variance: { vs: 'py' } } },
     { id: 'dpct2', type: 'variance', data: small, options: { variant: 'relative', variance: { vs: 'py' } } },
   ] }, options: { sharedAxis: 'category', legend: 'top', title: 'Revenue', size: { width: 320 } } }).geometry as unknown as Geometry;
-  expect(card.size.height).toBeLessThan(380);
+  expect(card.size.height).toBeLessThan(410);
 });
 
 // A value the author withholds (label: false) counted as a value growth could print,
@@ -637,4 +638,21 @@ it('keeps the column panel the category owner when a variance tier is listed fir
   const y = (id: string) => varianceFirst.marks.panels.find((panel) => panel.id === id)!.plot.y;
   expect(y('dpl')).toBeLessThan(y('orders'));
   expect(varianceFirst.labels.some((label) => label.id.startsWith('orders/category'))).toBe(true);
+});
+
+// A panel heading packed as close to the tier above as to its own panel reads as a footnote of the chart above.
+it('puts a panel heading at least twice as far from the tier above as from its own panel', () => {
+  const { data, options } = getFixtures('grid').find((f) => f.id === 'mixed-column-line-shared-y')! as { data: unknown; options: Record<string, unknown> };
+  const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'grid', data, options: { ...options, size: { width: 480 } } } as never)) as unknown as
+    Geometry & { marks: { panels: { id: string; plot: { y: number }; content: { y: number; h: number } }[] } };
+  const [upper, lower] = geometry.marks.panels;
+  const shown = (prefix: string) => geometry.labels.filter((label) => label.id.startsWith(prefix) && !label.hidden).map((label) => label.rect);
+  const heading = shown(`${lower!.id}/tier:`);
+  const own = shown(`${lower!.id}/`).filter((rect) => !heading.includes(rect));
+  const headingTop = Math.min(...heading.map((rect) => rect.y));
+  const headingBottom = Math.max(...heading.map((rect) => rect.y + rect.h));
+  const above = headingTop - (upper!.content.y + upper!.content.h);
+  const below = Math.min(lower!.plot.y, ...own.map((rect) => rect.y)) - headingBottom;
+  expect(below).toBeGreaterThan(0);
+  expect(above).toBeGreaterThanOrEqual(2 * below);
 });

@@ -906,7 +906,7 @@ On a column with a reference series (`role: "reference"`, drawn as a tick), the 
 | Stacked and stacked100 column and bar; stacked and stacked100 Mekko; Likert | All except `'outsideEnd'` |
 | Combo with two or more column series; integrated variance | All except `'outsideEnd'` |
 
-A total above two or more stack parts stays above the stack. A stacked column or bar with one drawn part moves its total with the option, except in stacked100. A combo column with one drawn part moves its total too. Waterfall segment values and the sums or totals of segmented bridge bars keep their existing seats. PVM's net change takes the space directly past the closing bar when its total moves inside.
+A total above two or more stack parts stays above the stack. A stacked column or bar with one drawn part moves its total with the option, except in stacked100. A combo column with one drawn part moves its total too. Waterfall segment values and the sums or totals of bridge bars with two or more segments keep their existing seats. A bridge bar with one segment moves its value with the option, as a plain step does. A plain step's `colorRole` (such as `neutralLight` for a grey step) keeps that seat on its own fill. PVM's net change takes the space directly past the closing bar when its total moves inside.
 
 `labelPlacements` pins take precedence and keep their existing slot meanings. `labelDensity`, `valueLabels`, `labels` and authored cell labels still decide which values print. `labelPosition` takes precedence over the theme's `marks.barLabels` setting. The chart keeps the plot room reserved by its normal placement. A grid panel accepts the option through that panel's own options.
 

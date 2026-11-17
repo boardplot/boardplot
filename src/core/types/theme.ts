@@ -262,6 +262,8 @@ export interface Theme {
     tierGap: number;
     facetGap: number;
     labelPad: number;
+    /** Vertical gap in px above the heading of a stacked tier. Absent: tierGap plus three labelPads. */
+    tierHeadingGap?: number;
     /**
      * Canvas margin tokens, keyed by width
      * class: `base` covers W-S/W-M, `wide` covers W-L (≥ 1080 px). Optional

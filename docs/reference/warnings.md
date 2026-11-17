@@ -346,7 +346,7 @@ Every code a render, a measure or a React chart can return, read from the source
 | `footnote-unreferenced` | info |  | core/frameText.ts |
 | `footnotes-off` | info |  | core/eventLane.ts, core/frameText.ts, core/request.ts |
 | `format-hides-values` | warn | yes | core/formatSpec.ts |
-| `format-ignored` | warn |  | band, variance, waterfall |
+| `format-ignored` | warn |  | band, variance |
 | `format-reads-as-group` | warn |  | core/formatSpec.ts |
 | `format-spreadsheet-code` | warn |  | core/formatSpec.ts |
 | `format-unscaled` | warn | yes | core/formatSpec.ts |

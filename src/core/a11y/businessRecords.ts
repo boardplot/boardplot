@@ -61,7 +61,9 @@ function waterfallMembership(data: WaterfallData, derived: WaterfallDerived): Ma
         totals.set(item.id, block);
         block = [];
       } else {
-        running = basis.authored ? [{ categoryId: item.id }] : running;
+        // An opening total with segments opens at their sum, so its parts are its members.
+        running = basis.authored ? [{ categoryId: item.id }]
+          : running.length === 0 && item.segments?.length ? item.segments.map(segment => ({ categoryId: item.id, segmentId: segment.id })) : running;
         totals.set(item.id, running);
         if (item.type === 'total') block = [];
       }
@@ -120,16 +122,17 @@ function waterfall(ctx: RecordContext): InteractionRecord[] {
       const source = item.segments?.find(source => source.id === segment.id);
       const total = geo.derived.totals[bar.id];
       const members = membership.get(bar.id) ?? [];
-      const segmentedTotal = total !== undefined && segment.id !== '__value' && segment.id !== '__total';
+      // A total's authored segment is a source cell; a segment the engine derives for a total sums its steps' segments.
+      const segmentedTotal = total !== undefined && !source && segment.id !== '__value' && segment.id !== '__total';
       const operands = members.filter(member => member.segmentId === segment.id);
       const segmentTotal = operands.reduce((sum, member) => sum + segmentValue(member), 0);
-      const value = segmentedTotal ? (operands.length ? derived(ctx, segmentTotal) : unavailable('Segment operands not retained')) : total === undefined
+      const value = segmentedTotal ? (operands.length ? derived(ctx, segmentTotal) : unavailable('Segment operands not retained')) : total === undefined || source
         ? cellRecordValue(normalizeCell(source?.value ?? item.value, 'value'), ctx.request.options.unit, ctx.request.options.format)
         : derived(ctx, total);
       return makeRecord(ctx, { categoryId: bar.id, ...(source || segmentedTotal ? { segmentId: segment.id } : {}) }, value, {
         label: source?.label ?? item.label ?? item.id, anchor: segment.rect,
         scenario: source?.scenario ?? item.scenario,
-        ...(basis && !basis.authored ? { members: segmentedTotal ? operands : members } : {}),
+        ...(basis && !basis.authored && !source ? { members: segmentedTotal ? operands : members } : {}),
         // A whole total or subtotal bar rises from zero to its value: a Start and End would repeat the value.
         fields: isLevel(item.type) && !source && !segmentedTotal ? []
           : segmentSpan(ctx, geo.derived.levels[bar.id]?.start, source ? item.segments!.map(part => ({ id: part.id, value: cellValue(normalizeCell(part.value, 'value')) ?? 0 }))
