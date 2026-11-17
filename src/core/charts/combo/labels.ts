@@ -14,7 +14,7 @@ import { categoryLineAlign, ROTATED_NAME_AIR, rotatedClaimRect, verticalNameRect
 import { seatValuesOnGround } from '../../label/areaGround';
 import { shadesFills } from '../line/marks';
 import { PRIORITY, type LabelRequest, type SlotCandidate } from '../../label/solver';
-import type { LintWarning, Paint, PlacedLabel } from '../../types/scene';
+import type { LintWarning, Paint, PlacedLabel, ShownTexts } from '../../types/scene';
 import { isIncomplete } from '../../dataGaps';
 import { linesSize, valueRowCrowded, valueShareLines, warnShareParts } from '../band/labels';
 import { stepDownFont } from '../../label/rowFit';
@@ -23,7 +23,8 @@ import { stackSegmentCandidates } from '../../label/slots';
 import { anchorComboAxisTitles } from './axisTitles';
 import { clearLift, clearOfStrokes, comboEndpointRequest, comboValueLabels, FIRST_END_BELOW_TOTALS, nearerOwnLine, withinOneFill } from './endpoints';
 import { MARKER_R, type ComboArea, type ComboDomain, type ComboEnv, type ComboMarkGeometry, type ComboPaints } from './model';
-import { composeParts, composeWithShows, contentOf, growthLine, toDateOnTotals } from './plot';
+import { composeParts, composeWithShows, contentOf, growthLine, netInsideStack, toDateOnTotals } from './plot';
+import { NET_TICK_REACH } from '../column/marks';
 import { toDateLabel } from '../../partialPeriod';
 import { namesOnly } from '../../markVisibility';
 import { composedTextRole } from '../../textRole';
@@ -180,6 +181,7 @@ function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, p
     return composeWithShows(cell?.labelOverride, domain, gtContent, { abs: domain.stackTotals[c.id]!, isPct: cell?.isPct ?? false }, c.label ?? c.id, '', domain.totalFmtOf(ci));
   });
   const totalShows = totals.map((total) => total?.shows);
+  const nets = new Set(domain.cats.flatMap((_, ci) => netInsideStack(domain, ci) ? [ci] : []));
   const texts = domain.cats.map((c, ci) => {
     if (!domain.anyByCat[ci]) return null;
     const single = totalColumn(domain, ci);
@@ -191,7 +193,9 @@ function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, p
     if (typeof override === 'string') authored.add(c.id);
     if (namesOnly(cell?.isPct ? gtContent : gtContent.filter((part) => part !== 'percent'), override).printsFor) bare.add(c.id);
     const text = typeof override === 'string' ? override.replace(/\$\{value\}/g, composed) : composed;
-    return text || null;
+    if (!text) return null;
+    // A net inside its stack is named, and stands by the tick that marks it (marks.ts), as on column.
+    return nets.has(ci) ? `${chartString(domain.options, 'net')} ${text}` : text;
   });
   // The anatomy's column value sits inside the column top at the label size,
   // bold in the on-fill ink. It has no other seat: a value the
@@ -216,7 +220,7 @@ function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, p
     return words ? toDateLabel(text, font, words, env.theme, env.measure) : undefined;
   };
   const outerSeat = (font: typeof strongFont) => (text: string | null, ci: number): Rect | null => {
-    if (text === null) return null;
+    if (text === null || nets.has(ci)) return null;
     const size = wordsAt(ci, text, font)?.size ?? env.measure(text, font);
     const above = posTop[ci]! > 0 || negBot[ci]! === 0;
     const edgeY = above ? y(posTop[ci]!) : y(negBot[ci]!);
@@ -232,7 +236,7 @@ function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, p
   // Under a floated line the columns keep a short band and the value row is
   // their only scale reading: where neighbour totals crowd, the tallest and the
   // lowest stack keep their value before the others.
-  const drawnTotals = domain.cats.flatMap((c, ci) => (texts[ci] === null || texts[ci] === undefined ? [] : [{ ci, v: domain.stackTotals[c.id] ?? 0 }]));
+  const drawnTotals = domain.cats.flatMap((c, ci) => (texts[ci] === null || texts[ci] === undefined || nets.has(ci) ? [] : [{ ci, v: domain.stackTotals[c.id] ?? 0 }]));
   const extremeTotals = new Set(!crowded || !domain.lineFloat || drawnTotals.length < 3 ? [] : [
     drawnTotals.reduce((a, b) => (b.v > a.v ? b : a)).ci, drawnTotals.reduce((a, b) => (b.v < a.v ? b : a)).ci]);
   // The line claims its segments as boxes, which over-claim the corners of a steep
@@ -260,6 +264,10 @@ function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, p
   domain.cats.forEach((c, ci) => {
     const text = texts[ci];
     if (text === null || text === undefined) return;
+    if (nets.has(ci)) {
+      netTotalRequest(env, domain, area, requests, ci, text, totalShows[ci]);
+      return;
+    }
     const words = wordsAt(ci, text, outerFont);
     const tsize = words?.size ?? env.measure(text, insideFont ?? outerFont);
     const above = posTop[ci]! > 0 || negBot[ci]! === 0;
@@ -360,6 +368,36 @@ function grandTotalLabels(env: ComboEnv, domain: ComboDomain, area: ComboArea, p
       // Last of all, one step further in: a line marker just inside the column top blocks the inside end by a fraction of a pixel.
       lowered(insideEnd)),
     });
+  });
+}
+
+/** A net total beside its tick, with the column family's seats: right of the tick, then above or below it, then over the stack. */
+function netTotalRequest(env: ComboEnv, domain: ComboDomain, area: ComboArea, requests: LabelRequest[], ci: number, text: string, shows: ShownTexts | undefined): void {
+  const { y, band, strongFont } = area;
+  const c = domain.cats[ci]!;
+  const { width: w, height: h } = env.measure(text, strongFont);
+  const netY = y(domain.stackTotals[c.id]!);
+  const netX = band.position(ci) + band.bandwidth + NET_TICK_REACH + 3;
+  const seat = (slot: string, x: number, top: number, penalty: number): SlotCandidate => ({ slot, rect: { x, y: top, w, h }, penalty });
+  requests.push({
+    id: `grandTotal:${c.id}`,
+    kind: 'grandTotal',
+    // The total prints the stack's sum, so its request names that claim (claims/browser.ts stackTotalClaims).
+    claimIds: [`stack:total:${c.id}`],
+    role: 'category',
+    owner: { categoryId: c.id },
+    text,
+    ...(shows ? { shows } : {}),
+    lines: [text],
+    typeRole: 'label', font: strongFont,
+    priority: PRIORITY.grandTotal + (env.highlights.has(c.id) ? PRIORITY.highlightBonus : 0),
+    candidates: [
+      seat('rightOfNet', netX, netY - h / 2, 0),
+      seat('rightOfNetAbove', netX, netY - h - 2, 1),
+      seat('rightOfNetBelow', netX, netY + 2, 2),
+      // Dense columns leave no room beside the tick: the net then stands over its column, as a total does.
+      seat('aboveNet', band.center(ci) - w / 2, y(domain.posTop[ci]!) - h - 4, 3),
+    ],
   });
 }
 

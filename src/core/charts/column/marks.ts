@@ -15,6 +15,7 @@ import { bandedIntervalTicks } from '../../intervalTicks';
 import { strokeToken, dashToken, contrastInkPaint, effectiveFill, hatchGroundPaint, resolveSurface } from '../../theme';
 import { ribbonPath } from '../../svgPath';
 import type { Id } from '../../types/cell';
+import type { Theme } from '../../types/theme';
 import type { AxisGeometry, Paint, SceneNode } from '../../types/scene';
 import { groupedOffsets } from '../band/groups';
 import { breakAxisScale, REFERENCE_MARKER_R, referenceCasing, referenceMarkerPaint, referenceTickGeometry } from '../band/ticks';
@@ -516,15 +517,20 @@ function netTotalTicks(domain: ColumnDomain, area: ColumnArea, nodes: SceneNode[
   cats.forEach((c, ci) => {
     if (!netInsideStack(domain, ci)) return;
     const yy = y(stackTotals[c.id]!);
-    const x1 = band.position(ci) - 2;
-    const x2 = band.position(ci) + band.bandwidth + NET_TICK_REACH;
-    // Its own owner: no segment value of the column may sit across it.
-    const owner = { categoryId: c.id, seriesId: '__netTotal' };
-    nodes.push({ t: 'line', id: `netTotal:${c.id}`, x1, y1: yy, x2, y2: yy, stroke: { token: 'markInk' }, width: strokeToken(domain.theme, 'rule'), owner, part: 'netTotal' });
-    claims.claim({ x: x1, y: yy - 0.7, w: x2 - x1, h: 1.4 }, 'mark', owner, 'netTotal');
+    netTotalTick(domain.theme, c.id, band.position(ci), band.bandwidth, yy, nodes, claims);
     // A segment value centres in the stretch the tick leaves, as beside a PY tick.
     tickYs.set(c.id, [...(tickYs.get(c.id) ?? []), yy]);
   });
+}
+
+/** The tick at a mixed-sign stack's net, across its column and reaching past it on the right (combo draws it too). */
+export function netTotalTick(theme: Theme, categoryId: Id, x: number, w: number, yy: number, nodes: SceneNode[], claims: OccupiedIndex): void {
+  const x1 = x - 2;
+  const x2 = x + w + NET_TICK_REACH;
+  // Its own owner: no segment value of the column may sit across it.
+  const owner = { categoryId, seriesId: '__netTotal' };
+  nodes.push({ t: 'line', id: `netTotal:${categoryId}`, x1, y1: yy, x2, y2: yy, stroke: { token: 'markInk' }, width: strokeToken(theme, 'rule'), owner, part: 'netTotal' });
+  claims.claim({ x: x1, y: yy - 0.7, w: x2 - x1, h: 1.4 }, 'mark', owner, 'netTotal');
 }
 
 /** How far a net total's tick reaches past its column, where its label starts. */

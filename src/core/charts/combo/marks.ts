@@ -1,4 +1,5 @@
-import { comboLineMarkers, inkLeadLine } from './plot';
+import { comboLineMarkers, inkLeadLine, netInsideStack } from './plot';
+import { netTotalTick } from '../column/marks';
 import { sk } from '../band/stacks';
 import type { Theme } from '../../types/theme';
 import { strokeToken, dashToken, secondaryFont } from '../../theme';
@@ -185,6 +186,8 @@ function columnMarks(ctx: MarkCtx): void {
       const stackTop = y(pos);
       const stackBot = y(neg);
       g.marks.columns.push({ categoryId: c.id, rect: { x: bx, y: stackTop, w: bw, h: Math.max(stackBot - stackTop, 0.5) }, segments: segs });
+      // A mixed-sign stack's total is its net, marked where it falls, as on column.
+      if (netInsideStack(domain, ci)) netTotalTick(env.theme, c.id, bx, bw, y(domain.stackTotals[c.id]!), nodes, claims);
     });
     // the baseline again ABOVE the column fills, as column and bar draw it.
     const { plot, y0 } = area;

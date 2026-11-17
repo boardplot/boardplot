@@ -557,6 +557,12 @@ export function contentOf(domain: ComboDomain, kind: LabelKind, dflt: LabelConte
   return Array.isArray(s) ? s : dflt;
 }
 
+/** Whether a category's total is a net that falls inside its own stack: a complete stack of positive and negative parts, as on column. */
+export function netInsideStack(domain: ComboDomain, ci: number): boolean {
+  return domain.columnsAdd && domain.posTop[ci]! > 0 && domain.negBot[ci]! < 0 && !domain.incompleteCats.has(domain.cats[ci]!.id)
+    && contentOf(domain, 'grandTotal', ['absolute']) !== null;
+}
+
 /**
  * The partial categories whose column total prints the to-date words under it
  * ("316" over "to date"), so the value itself says the period runs. A stack
