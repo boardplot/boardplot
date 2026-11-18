@@ -1,5 +1,6 @@
 import { applyAxisBounds } from '../../scale';
 import { cleanSum } from '../../geometry';
+import { pushAll } from '../../arrays';
 import { percentCellsOnly, percentLevels } from '../../annotatePass';
 /**
  * Standard bar phase 1, domain: the options resolved once, the series
@@ -11,7 +12,7 @@ import { restDetailsWarning, restLabel, restSum, topNCut } from '../topN';
 import { normalizeCategorySeries } from '../categorySeries';
 import { chartPalette } from '../chartEnv';
 import { valueLineNeedsSharedPass } from '../../annotateFields';
-import { valueLineExtent } from '../../valueLineDomain';
+import { valueLineExtent, valueLineValues } from '../../valueLineDomain';
 import { formatAutomaticPercent, formatShare, shareText } from '../../format';
 import { shareSetDecimals } from '../../formatPrecision';
 import { formatStatWithSpec, formatterFromExample, parseFormatExample, seriesRasterFormatter, shareFormatExample, withChartMarks } from '../../formatSpec';
@@ -456,10 +457,11 @@ function barValueExtent(
       hi = Math.max(hi, 100);
     }
   }
-  // A line the shared pass draws widens the axis as on column (valueLineDomain.ts).
+  // A line the shared pass draws widens the axis as on column (valueLineDomain.ts), and an axis
+  // break checks each of them, as column does.
   const passLines = valueLineExtent(domain.passAnns);
   if (passLines) {
-    rendered.push(passLines.lo, passLines.hi);
+    pushAll(rendered, valueLineValues(domain.passAnns));
     lo = Math.min(lo, passLines.lo);
     hi = Math.max(hi, passLines.hi);
   }

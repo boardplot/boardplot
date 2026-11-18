@@ -19,6 +19,7 @@
  */
 
 import { valueLineHasTargetExtras } from './annotateFields';
+import { toleranceBounds } from './annotateTargets';
 import type { Annotation } from './types/annotations';
 import { maxOf, minOf } from './arrays';
 
@@ -36,8 +37,31 @@ export interface ValueLineExtent {
  * tolerance or attainment band is left out, so it cannot squeeze the marks.
  */
 export function valueLineExtent(annotations: readonly Annotation[] | undefined, axis: 'primary' | 'secondary' = 'primary'): ValueLineExtent | null {
+  const values = valueLineValues(annotations, axis);
+  return values.length ? { lo: minOf(values), hi: maxOf(values) } : null;
+}
+
+/** The numeric value lines drawn on `axis`, by the rule of valueLineExtent. */
+function drawnValueLines(annotations: readonly Annotation[] | undefined, axis: 'primary' | 'secondary'): (Annotation & { kind: 'valueLine' })[] {
   // Number.isFinite is false for anything that is not a finite number, so a
   // measured mean (no numeric value) falls out here too.
-  const values = (annotations ?? []).flatMap((a) => (a.kind === 'valueLine' && Number.isFinite(a.value) && (a.axis ?? 'primary') === axis && a.seriesId === undefined && ((a.from === undefined && a.to === undefined) || valueLineHasTargetExtras(a)) ? [a.value as number] : []));
-  return values.length ? { lo: minOf(values), hi: maxOf(values) } : null;
+  return (annotations ?? []).filter((a): a is Annotation & { kind: 'valueLine' } => a.kind === 'valueLine' && Number.isFinite(a.value) && (a.axis ?? 'primary') === axis && a.seriesId === undefined && ((a.from === undefined && a.to === undefined) || valueLineHasTargetExtras(a)));
+}
+
+/** Each value of a drawn value line, so an axis break can check every one, not only the extremes. */
+export function valueLineValues(annotations: readonly Annotation[] | undefined, axis: 'primary' | 'secondary' = 'primary'): number[] {
+  return drawnValueLines(annotations, axis).map((a) => a.value as number);
+}
+
+/**
+ * The extent of the tolerance bands of the drawn value lines, or null if there are none. A chart whose
+ * domain ends at its data (dot) takes it, so a band is never cut at the axis end.
+ */
+export function toleranceExtent(annotations: readonly Annotation[] | undefined): ValueLineExtent | null {
+  const bounds = drawnValueLines(annotations, 'primary').flatMap((a) => {
+    if (a.tolerance === undefined) return [];
+    const band = toleranceBounds(a.value as number, a.tolerance);
+    return typeof band === 'string' ? [] : [band.low, band.high];
+  });
+  return bounds.length ? { lo: minOf(bounds), hi: maxOf(bounds) } : null;
 }

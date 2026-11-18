@@ -51,13 +51,19 @@ export function categoryTargetFields(
   };
 }
 
-export function spliceAnnotationNodes(nodes: SceneNode[], annotationNodes: SceneNode[]): void {
-  const behind = (part: string) => part === 'band' || part === 'attainment';
-  const front = annotationNodes.filter((node) => behind(node.part));
+/**
+ * Puts the band and attainment fills of the annotation pass behind the chart's marks, gridlines
+ * and lines, and the other annotation nodes on top. `owners`, when given, limits the fills that
+ * move behind to those annotations; the rest stay on top, as a chart that drew them there had them.
+ */
+export function spliceAnnotationNodes(nodes: SceneNode[], annotationNodes: SceneNode[], owners?: ReadonlySet<Id>): void {
+  const behind = (node: SceneNode) => (node.part === 'band' || node.part === 'attainment')
+    && (owners === undefined || owners.has(node.owner?.annotationId ?? ''));
+  const front = annotationNodes.filter(behind);
   const rest = nodes.splice(0);
   pushAll(nodes, front);
   pushAll(nodes, rest);
-  pushAll(nodes, annotationNodes.filter((node) => !behind(node.part)));
+  pushAll(nodes, annotationNodes.filter((node) => !behind(node)));
 }
 
 export function isCategoryAlongY(band: CategoryBand): band is { y: number; h: number } {

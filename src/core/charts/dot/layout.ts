@@ -21,8 +21,8 @@ import { fittedLabel, gutterBudget, pinnedRowFont, stepDownFont } from '../../la
 import { namedLineText } from '../../annotateParts';
 import type { AnchorResolution } from '../../annotate';
 import { percentCellsOnly, percentLevels, runAnnotatePass } from '../../annotatePass';
-import { categoryTargetFields, valueLineHasTargetExtras, valueLineNeedsSharedPass } from '../../annotateFields';
-import { valueLineExtent } from '../../valueLineDomain';
+import { categoryTargetFields, spliceAnnotationNodes, valueLineHasTargetExtras, valueLineNeedsSharedPass } from '../../annotateFields';
+import { toleranceExtent, valueLineExtent } from '../../valueLineDomain';
 import { applyValueAxisTitleInk, layoutValueAxis, planValueAxisTitle, valueAxisTitleRequest } from '../../axis';
 import { arrowHeadPath, arrowShaftEnd } from '../../svgPath';
 import { formatStatWithSpec, formatterFromExample, formatWithSpec, seriesRasterFormatter } from '../../formatSpec';
@@ -399,9 +399,11 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
   }
   // A target line with a span, a series, a tolerance or an attainment is drawn by the shared pass, as on column.
   const localAnns = annotationsAll.filter((a): a is Annotation & { kind: 'valueLine' } => a.kind === 'valueLine' && !valueLineNeedsSharedPass(a));
-  const passAnns = annotationsAll.filter((a) => !(localAnns as Annotation[]).includes(a));
-  // The lines the shared pass draws widen the axis as on column (valueLineDomain.ts).
-  const passLines = valueLineExtent(passAnns);
+  const passAnns = annotationsAll.filter((a) => !(localAnns as Annotation[]).includes(a)).map((a) => attainmentSeries(a, dataSeries, highlights, variant));
+  // The lines the shared pass draws widen the axis as on column (valueLineDomain.ts). A dot domain
+  // ends at its data, so it also takes their tolerance bands whole.
+  const passLines = [valueLineExtent(passAnns), toleranceExtent(passAnns)].reduce<{ lo: number; hi: number } | null>(
+    (all, e) => (e ? (all ? { lo: Math.min(all.lo, e.lo), hi: Math.max(all.hi, e.hi) } : e) : all), null);
   const allDotValues: number[] = [];
   for (const s of dataSeries) for (const c of s.cells) if (c.v !== null) allDotValues.push(c.v);
   const allRangeValues = dataSeries.flatMap((series) =>
@@ -1392,7 +1394,10 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
     valueAxis: 'horizontal',
     // For the drawing annotations' value points and the target lines this pass draws.
     xScale: x,
-    ...categoryTargetFields(cats.map((c) => c.id), plot, (i) => band.position(i) + band.bandwidth / 2, 'y'),
+    // Only a target's tolerance and attainment read the rows; the other annotations keep their anchors.
+    valueLineCategories: categoryTargetFields(cats.map((c) => c.id), plot, (i) => band.position(i) + band.bandwidth / 2, 'y'),
+    // A target prints in the unit of the dots, as the local lines do (referenceFmt).
+    valueLinePercentLevels: percent,
     defaultSpan:
       cats.length >= 2 ? { from: cats[0]!.id, to: cats[cats.length - 1]!.id } : undefined,
     occupied,
@@ -1410,7 +1415,8 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
 
   // ---- emit ----
   const allLabels: PlacedLabel[] = [...solved.placed, ...annResult.labels];
-  pushAll(nodes, annResult.nodes);
+  // A target's tolerance and attainment fills go behind the dots, the lines and the gridlines, as on bar and column.
+  spliceAnnotationNodes(nodes, annResult.nodes, new Set(passAnns.flatMap((a) => (a.kind === 'valueLine' ? [a.id!] : []))));
   pushAll(
     nodes,
     labelsToNodes(theme, allLabels, (l) =>
@@ -1725,4 +1731,17 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
     }
     return { options: legendOptions, items };
   }
+}
+
+/**
+ * A target's attainment without its own series reads one series of the chart, as on column and
+ * grouped bar: the highlighted one, else the first. A dumbbell keeps its own row anchor, the
+ * current (second) dot, as its other annotations read it.
+ */
+function attainmentSeries(ann: Annotation, dataSeries: readonly { id: Id }[], highlights: ReadonlySet<Id>, variant: string): Annotation {
+  if (ann.kind !== 'valueLine' || !ann.attainment || variant === 'dumbbell' || dataSeries.length < 2) return ann;
+  const spec = ann.attainment === true ? {} : ann.attainment;
+  if (spec.seriesId !== undefined) return ann;
+  const seriesId = (dataSeries.find((s) => highlights.has(s.id)) ?? dataSeries[0]!).id;
+  return { ...ann, attainment: { ...spec, seriesId } };
 }

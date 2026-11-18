@@ -49,6 +49,7 @@ import {
   valueMapper,
   categorySpanRect,
   type EraBandPlan,
+  type TargetScaleInput,
 } from './annotateTargets';
 import { valueLineHasTargetExtras, type CategoryBand } from './annotateFields';
 import type {
@@ -323,6 +324,12 @@ export interface AnnotatePassInput {
   resolveCategoryBand?: (categoryId: Id) => CategoryBand | null;
   /** Category bands that only drawings read: a box given by category wraps the band (charts with no resolveCategoryBand). */
   drawingCategoryBand?: (categoryId: Id) => CategoryBand | null;
+  /**
+   * Category fields that only a value line's tolerance and attainment read, on a chart with no
+   * resolveCategoryBand (dot): its target band covers the named rows, and its other annotations
+   * keep the anchors they had.
+   */
+  valueLineCategories?: Pick<TargetScaleInput, 'categoryIds' | 'resolveCategoryBand' | 'bandPlot'>;
   /** On a continuous axis: the slot of one drawn period, for a band from and to the same x. */
   resolvePeriodSlot?: (categoryId: Id) => CategoryBand | null;
   /** Visible plot area when `plot` includes annotation headroom. */
@@ -1686,7 +1693,8 @@ function placeValueLine(s: AnnotationScope, ann: Extract<Annotation, { kind: 'va
       raw: v,
     },
   });
-  placeValueLineTargets(s, ann, v);
+  const targets = input.valueLineCategories && !input.resolveCategoryBand ? { ...s, input: { ...input, ...input.valueLineCategories } } : s;
+  placeValueLineTargets(targets, ann, v);
 }
 
 function placeIndicator100(s: AnnotationScope, ann: Extract<Annotation, { kind: 'indicator100' }>): void {

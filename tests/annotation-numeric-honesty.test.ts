@@ -1105,16 +1105,44 @@ it('prints a difference of percent levels as a change set', () => {
   expect(geometry.labels.find((label) => label.id === 'label:annotation:delta-1' || label.id === 'annotation:delta-1')?.text).toBe('+4.4');
 });
 
-// A target line on bar or dot must honour its category span as on column: a band only over the named rows, and a warning instead of a full-length line for a span without a band.
-it('clips a bar or dot target band to its rows and refuses an unbanded span, as column does', () => {
-  const data = { categories: ['north', 'east', 'south'].map((id) => ({ id, label: id })), series: [{ id: 's', label: 'Sales', values: [120, 104, 90] }] };
+// A target line on bar or dot must honour its category span as column does: a band only over the named row and behind the marks, line and gridlines, and the warnings column gives for the same target.
+it('draws a bar or dot target band on its row behind the marks, with the warnings of column', () => {
+  const data = { categories: ['north', 'east', 'south'].map((id) => ({ id, label: id })), series: [{ id: 's', label: 'Sales', values: [120, 99, 90] }] };
+  // The label seats of a vertical band differ by chart, so where a label lands (label-hidden, values-in-note) is left out.
+  const seating = new Set(['label-hidden', 'values-in-note']);
+  const targetCodes = (geometry: { warnings?: { code?: string; owner?: { annotationId?: string } }[] }) =>
+    (geometry.warnings ?? []).filter((w) => w.owner?.annotationId === 'goal' && !seating.has(w.code ?? '')).map((w) => w.code).sort();
+  const drawn = (geometry: { scene: { part?: string }[] }) => geometry.scene.some((node) => node.part === 'valueLine');
+  for (const scope of [
+    { tolerance: 5, from: 'north', to: 'north' },
+    { from: 'north', to: 'east' },
+    { from: 'absent', to: 'east' },
+    { tolerance: 5, from: 'absent', to: 'east' },
+    { from: 'north' },
+    { tolerance: 5, to: 'east' },
+  ]) {
+    const options = { annotations: [{ kind: 'valueLine', id: 'goal', value: 99, ...scope }] } as never;
+    const column = layoutColumn(data as never, options);
+    for (const layout of [layoutBar, layoutDot]) {
+      const geometry = layout(data as never, options);
+      expect(targetCodes(geometry)).toEqual(targetCodes(column));
+      expect(drawn(geometry)).toBe(drawn(column));
+    }
+  }
   for (const layout of [layoutBar, layoutDot]) {
-    const banded = layout(data as never, { annotations: [{ kind: 'valueLine', id: 'goal', value: 99, tolerance: 5, from: 'north', to: 'north' }] } as never);
-    const band = banded.scene.find((node) => node.t === 'rect' && node.part === 'band' && node.owner?.annotationId === 'goal') as { rect: { h: number } } | undefined;
-    expect(band?.rect.h).toBeGreaterThan(0);
-    expect(band!.rect.h).toBeLessThan(banded.plot.h / 2);
-    const unbanded = layout(data as never, { annotations: [{ kind: 'valueLine', id: 'goal', value: 99, from: 'absent' }] } as never);
-    expect(codes(unbanded)).toContain('valueline-scope-authored-value');
-    expect(unbanded.scene.some((node) => node.part === 'valueLine')).toBe(false);
+    const geometry = layout(data as never, { annotations: [{ kind: 'valueLine', id: 'goal', value: 99, tolerance: 5, from: 'north', to: 'north' }] } as never);
+    const at = geometry.scene.findIndex((node) => node.part === 'band' && node.owner?.annotationId === 'goal');
+    const { rect } = geometry.scene[at] as { rect: { y: number; h: number } };
+    const row = (id: string) => {
+      const label = geometry.labels.find((l) => l.kind === 'category' && l.owner.categoryId === id)!.rect;
+      return label.y + label.h / 2;
+    };
+    expect(row('north')).toBeGreaterThan(rect.y);
+    expect(row('north')).toBeLessThan(rect.y + rect.h);
+    expect(row('east')).toBeGreaterThan(rect.y + rect.h);
+    const above = geometry.scene.slice(at + 1);
+    expect(above.some((node) => node.part === 'valueLine' && node.owner?.annotationId === 'goal')).toBe(true);
+    expect(above.some((node) => node.owner?.seriesId === 's' && node.owner.categoryId === 'east')).toBe(true);
+    expect(geometry.scene.slice(0, at).some((node) => node.part === 'gridline' || node.owner?.seriesId === 's')).toBe(false);
   }
 });

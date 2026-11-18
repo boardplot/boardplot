@@ -679,7 +679,7 @@ export function placeTargetBand(
   return true;
 }
 
-function toleranceBounds(
+export function toleranceBounds(
   value: number,
   tolerance: NonNullable<Extract<Annotation, { kind: 'valueLine' }>['tolerance']>,
 ): { low: number; high: number } | string {
