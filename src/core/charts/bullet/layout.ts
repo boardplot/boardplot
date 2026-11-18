@@ -136,6 +136,8 @@ interface NormRow {
 }
 
 interface NormBand {
+  /** Present only where it starts the band above the previous band's `to` (or 0). */
+  from?: number;
   to: number;
   label?: string;
   tone?: 'good' | 'warn' | 'bad' | 'neutral';
@@ -162,6 +164,22 @@ const BAR_FRACTION = 1 / 3;
 const NAME_WEIGHT = 600;
 const BANDS_UNEXPLAINED =
   'qualitative bands carry meaning the reader cannot decode — label the bands or explain them in a footnote';
+
+/** Where a band starts: its `from`, else the previous band's `to`, or 0. */
+function bandStart(row: NormRow, index: number): number {
+  return row.bands[index]!.from ?? (index === 0 ? 0 : row.bands[index - 1]!.to);
+}
+
+/** The band edges above zero, in order: each band's `from` where it opens a gap, and its `to`. */
+function bandEdges(row: NormRow): number[] {
+  return row.bands.flatMap((band) => (band.from === undefined ? [band.to] : [band.from, band.to]));
+}
+
+/** The band a value lies in: the first it does not pass, the last above every band, and none below a band's `from`. */
+function bandAt(value: number, bands: readonly NormBand[]): NormBand | undefined {
+  const band = bandFor(value, bands);
+  return band.from !== undefined && value < band.from ? undefined : band;
+}
 
 // Poor approaches neutral without matching the measure bar; good uses neutralLight.
 function bandAmount(row: NormRow, index: number, count: number): number {
@@ -435,7 +453,7 @@ export function layoutBullet(
       .map((band) =>
         typeof band === 'number'
           ? { to: band }
-          : { to: band.to, ...(band.tone ? { tone: band.tone } : {}), ...(band.label?.trim() ? { label: band.label.trim() } : {}) },
+          : { to: band.to, ...(band.from !== undefined ? { from: band.from } : {}), ...(band.tone ? { tone: band.tone } : {}), ...(band.label?.trim() ? { label: band.label.trim() } : {}) },
       )
       .filter((band) => Number.isFinite(band.to));
     // The schema refuses these on every validate path, and grid composition
@@ -461,13 +479,34 @@ export function layoutBullet(
         owner: { categoryId: r.id },
       });
     }
-    const bands = [...positive].sort((a, b) => a.to - b.to);
-    if (bands.map((band) => band.to).join(',') !== positive.map((band) => band.to).join(',')) {
+    const sorted = [...positive].sort((a, b) => a.to - b.to);
+    if (sorted.map((band) => band.to).join(',') !== positive.map((band) => band.to).join(',')) {
       warnings.push({
         code: 'bands-unsorted',
         severity: 'info',
         message: `row '${r.id}': bands re-sorted ascending`,
         owner: { categoryId: r.id },
+      });
+    }
+    // A from opens the space below a band; one the scale cannot use is dropped and the band starts where it would without it.
+    let unusableFrom = false;
+    const bands = sorted.map((band, bi): NormBand => {
+      if (band.from === undefined) return band;
+      const { from, ...rest } = band;
+      const start = bi === 0 ? 0 : sorted[bi - 1]!.to;
+      if (!Number.isFinite(from) || from < 0 || from >= band.to || from < start) {
+        unusableFrom = true;
+        return rest;
+      }
+      return from > start ? band : rest;
+    });
+    if (unusableFrom) {
+      warnings.push({
+        code: 'band-from-ignored',
+        severity: 'warn',
+        message: `row '${r.id}': band from ignored where it lies below 0, not below the band's own to, or below the previous band's to; such a band starts at the previous band's to`,
+        owner: { categoryId: r.id },
+        suggest: "Give from a value from the previous band's to (or 0) up to below the band's own to, or remove it.",
       });
     }
     if (cellValue(r.value) === null) warnMissingValue(warnings, `row '${r.id}'`, { categoryId: r.id }, 'no bar; the bands and target still draw');
@@ -498,7 +537,7 @@ export function layoutBullet(
   const targetScale = options.sharedScale === 'percentOfTarget';
   const allBanded = rows.every((row) => row.bands.length > 0);
   const unitOf = (row: NormRow): string => `${row.isPct}|${row.meta?.format ?? ''}`;
-  const bandsOf = (row: NormRow): string => row.bands.map((band) => band.to).join('|');
+  const bandsOf = (row: NormRow): string => bandEdges(row).join('|');
   const alike = rows.every((row) => unitOf(row) === unitOf(rows[0]!) && bandsOf(row) === bandsOf(rows[0]!));
   const sharedScale = targetScale || (typeof options.sharedScale === 'boolean' ? options.sharedScale : !allBanded || alike);
   const categorySort = options.sort?.categories ?? 'sheet';
@@ -600,7 +639,7 @@ export function layoutBullet(
     ? chartString(options, 'gapOn', { v1: targetWord(options) }) : `vs ${targetWord(options)}`}`;
   const deltaTone = (row: NormRow, d: number): 'good' | 'bad' | 'warn' | 'neutral' => {
     if (row.direction === 'neutral') return 'neutral';
-    if (row.bands.some(band => band.tone)) return (row.value === null ? row.bands.at(-1)! : bandFor(row.value, row.bands)).tone ?? 'neutral';
+    if (row.bands.some(band => band.tone)) return (row.value === null ? row.bands.at(-1)! : bandAt(row.value, row.bands))?.tone ?? 'neutral';
     d = shownDelta(row, d);
     return d === 0 ? 'good' : (d > 0) === (row.direction === 'higherIsBetter') ? 'good' : 'bad';
   };
@@ -1141,7 +1180,7 @@ export function layoutBullet(
   const uniformZeroX = zeroX.every((value) => value === zeroX[0]);
   // Each name fits its own band with 2 px to spare on each side, or the key names the bands.
   if (rowMode && !rows.every((row, ri) => row.bands.every((bandSpec, bi) =>
-    measure(bandSpec.label!, noteFont).width + 4 <= scaleAt(ri)(bandSpec.to) - scaleAt(ri)(bi === 0 ? 0 : row.bands[bi - 1]!.to)))) {
+    measure(bandSpec.label!, noteFont).width + 4 <= scaleAt(ri)(bandSpec.to) - scaleAt(ri)(bandStart(row, bi))))) {
     return layoutBullet(data, { ...options, [ROW_KEY_OFF]: true } as BulletOptions);
   }
 
@@ -1279,10 +1318,9 @@ export function layoutBullet(
     const rowRect: Rect = { x: plot.x, y: rowY, w: plot.w, h: bw };
     const bandNodeIds: Id[] = [];
 
-    // qualitative band rects (0 → each ascending threshold)
-    let prev = 0;
+    // qualitative band rects (0 or a band's from → each ascending threshold)
     row.bands.forEach((bandSpec, bi) => {
-      const bx0 = x(prev);
+      const bx0 = x(bandStart(row, bi));
       const bx1 = x(bandSpec.to);
       const rect: Rect = { x: bx0, y: rowY, w: Math.max(bx1 - bx0, 0.5), h: bw };
       const nodeId = `band:${row.id}:${bi}`;
@@ -1308,13 +1346,12 @@ export function layoutBullet(
           candidates: [{ slot: 'bandName', rect: { x: (bx0 + bx1) / 2 - nsize.width / 2, y: rowY - nsize.height - 2, w: nsize.width, h: nsize.height }, penalty: 0 }],
         });
       }
-      prev = bandSpec.to;
     });
 
-    // Ticks and numbers at zero and each band edge under the row. Every edge keeps its tick; a number
+    // Ticks and numbers at zero and each band edge (a from included) under the row. Every edge keeps its tick; a number
     // that would crowd a neighbour gives way, and the last edge's number outranks the ones between.
     if (edgeTicks && row.bands.length > 0) {
-      const edgeValues = [0, ...row.bands.map((bandSpec) => bandSpec.to)];
+      const edgeValues = [0, ...bandEdges(row)];
       // The band edges print by the tick rule with the row's set.
       const edgeFmt = !row.meta?.format && (row.isPct || !chartSpec) ? tickFormatter(rowSpecs.get(row)!, edgeValues) : rowFmt(row);
       const edges = edgeValues.map((value) => {
@@ -1358,8 +1395,8 @@ export function layoutBullet(
         id: barNodeId,
         rect,
         ...measureStyle(theme, barPaint(row), row.bands.flatMap((bandSpec, bandIndex) => {
-          const from = bandIndex === 0 ? 0 : row.bands[bandIndex - 1]!.to;
-          const under = from < Math.max(0, row.value!) && bandSpec.to > Math.min(0, row.value!) || (row.value === 0 && bandIndex === 0);
+          const from = bandStart(row, bandIndex);
+          const under = from < Math.max(0, row.value!) && bandSpec.to > Math.min(0, row.value!) || (row.value === 0 && from === 0);
           return under ? [bandPaint(row, bandIndex)] : [];
         })),
         owner,

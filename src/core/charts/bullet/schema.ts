@@ -31,12 +31,13 @@ const rowSchema = z.strictObject({
         boundedNumber,
         z.strictObject({
           tone: z.enum(['good', 'warn', 'bad', 'neutral']).optional().describe("Semantic band tone. Toned bands define a two-sided corridor and set the delta tone for values inside them. A toned band paints its tone's fill washed toward the page (theme marks.bulletBandFill)."),
+          from: boundedNumber.optional().describe("Value where this band starts, in the row value units. Without it the band starts at the previous band's to, or at 0. Space that no band covers is not shaded and lies in no band, so a value there takes no band tone. A from below 0, not below the band's own to, or below the previous band's to is ignored with the warning band-from-ignored."),
           to: boundedNumber.describe("Upper endpoint of this qualitative band in the row value units."),
           label: z.string().trim().min(1).optional().describe("Visible name of this qualitative band."),
         }),
       ]),
     )
-    .optional().describe("Ordered qualitative band thresholds, as numbers or labeled threshold objects."),
+    .optional().describe("Ordered qualitative band thresholds, as numbers or labeled threshold objects. A band object's from starts it above the previous band, so a tolerance range such as {from: 94, to: 104} needs no band below it."),
   direction: comparisonDirectionSchema.optional().describe("Whether a higher measure is favorable when interpreting the target difference. Neutral uses plain ink without a judgment, including when bands have tones."),
 });
 

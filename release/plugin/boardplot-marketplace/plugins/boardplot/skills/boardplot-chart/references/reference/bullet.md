@@ -44,8 +44,9 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | rows[].date | string |  | ISO period date for CAGR between same-measure rows on a shared scale. |
 | rows[].value | cell | yes | Actual measure drawn as the row bar. |
 | rows[].target | cell |  | Reference measure drawn as the target tick and used for target deltas. It uses the row value's format or options.format; a different target.format warns because it is ignored. options.strings.target renames the comparison mark in labels (e.g. 'peer median'). |
-| rows[].bands | array |  | Ordered qualitative band thresholds, as numbers or labeled threshold objects. |
+| rows[].bands | array |  | Ordered qualitative band thresholds, as numbers or labeled threshold objects. A band object's from starts it above the previous band, so a tolerance range such as {from: 94, to: 104} needs no band below it. |
 | rows[].bands[].tone | string |  | Semantic band tone. Toned bands define a two-sided corridor and set the delta tone for values inside them. A toned band paints its tone's fill washed toward the page (theme marks.bulletBandFill). One of `'good'`, `'warn'`, `'bad'`, `'neutral'`. |
+| rows[].bands[].from | number |  | Value where this band starts, in the row value units. Without it the band starts at the previous band's to, or at 0. Space that no band covers is not shaded and lies in no band, so a value there takes no band tone. A from below 0, not below the band's own to, or below the previous band's to is ignored with the warning band-from-ignored. |
 | rows[].bands[].to | number | yes | Upper endpoint of this qualitative band in the row value units. |
 | rows[].bands[].label | string |  | Visible name of this qualitative band. |
 | rows[].direction | string |  | Whether a higher measure is favorable when interpreting the target difference. Neutral uses plain ink without a judgment, including when bands have tones. One of `'higherIsBetter'`, `'lowerIsBetter'`, `'neutral'`. |
@@ -135,3 +136,4 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | columns-hidden | example | columnVisibility leaves the share column out of the percent-of-target rows |
 | plot-first | example | columnOrder puts the marks first and reverses the columns behind them |
 | no-direction-line | example | labels.direction and labels.position drop the second lines beside the target columns |
+| tolerance-range | example | from shades only the tolerance range around each target and leaves the space below it blank |

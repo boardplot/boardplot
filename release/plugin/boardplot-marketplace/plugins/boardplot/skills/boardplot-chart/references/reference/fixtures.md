@@ -634,6 +634,7 @@ The CLI prints every match in one response through `boardplot fixtures --type <t
 | columns-hidden | bullet | example | columnVisibility leaves the share column out of the percent-of-target rows |
 | plot-first | bullet | example | columnOrder puts the marks first and reverses the columns behind them |
 | no-direction-line | bullet | example | labels.direction and labels.position drop the second lines beside the target columns |
+| tolerance-range | bullet | example | from shades only the tolerance range around each target and leaves the space below it blank |
 
 ## bartable
 
