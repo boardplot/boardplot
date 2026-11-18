@@ -188,6 +188,23 @@ it('keeps every staggered column name centred over its tick', () => {
   }
 });
 
+// A side callout seat was sized from a bold wrap of its text while the callout wraps in the regular weight, so the drawn text
+// could be wider than its seat: the callout fell under the grid, and a 405 px card that drew at 540 px was refused at 560 px.
+it('keeps a matrix callout beside the grid at a wider width with the same height', () => {
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const rows = [[6, 5.8, 7.1, 6.4, 6.9, 7.3, 5.1, 4.8, 6.6, 7, 7.4, 8.1], [3.1, 2.8, 3.4, 3, 3.6, 3.9, 2.2, 2, 3.3, 3.5, 3.8, 4.2],
+    [2.4, 2.1, 2.6, 2.3, 2.7, 2.5, 1.8, 1.6, 2.2, 2.4, 2.6, 2.9], [1.9, 1.4, 2.2, 1.7, 2, 1.5, 0.4, 0.2, 1.1, 1.3, 1.6, 1.8],
+    [2.8, 2.5, 3.1, 2.9, 3.2, 3, 2.4, 2.1, 2.7, 2.9, 3.1, 3.4], [0.8, 0.5, 0.9, 0.3, -0.2, -0.8, -1.4, -1.9, -1.1, -0.6, -0.3, 0.1],
+    [0.4, 0.1, 0.6, -0.3, -0.9, -1.6, -2.4, -3.1, -2.2, -1.5, -0.8, -2.8], [1.2, 1, 1.4, 1.1, 1.3, 1.5, 0.9, 0.7, 1.2, 1.4, 1.5, 1.7]];
+  const spec = (width: number) => ({ type: 'heatmap',
+    data: { categories: months.map((m) => ({ id: m, label: `${m} planning period regional operating review` })),
+      series: ['North', 'East', 'West', 'Coast', 'Islands', 'South', 'Peninsula', 'Central'].map((label, ri) => ({ id: `r${ri}`, label, values: rows[ri]! })) },
+    options: { title: 'Southern regions drive the second half margin slippage',
+      subtitle: { measure: 'Margin variance vs plan', period: 'FY25' }, unit: '$m', source: 'Invented sample data', highlight: 'r6', cap: { abs: 5 }, target: 'report', size: { width, height: 405 } },
+    annotations: [{ kind: 'callout', at: { categoryId: 'Dec', seriesId: 'r6' }, text: 'Strike in Dec:\n${value}', preferSide: 'right' }] });
+  for (const width of [540, 560, 580]) expect(layoutResolvedRequest(resolveChartRequest(spec(width) as never)).refused, `${width} px`).toBeUndefined();
+});
+
 // measure() probes a narrow grid at its floor width, where a rotated first name took more room than the panel's plot had and the band scale threw.
 // At 320 px the panels then drew 2 px columns and no names: the plot gave room to a rotated name the narrower row did not draw.
 it('keeps the columns of a narrow grid when its long names cannot rotate', () => {

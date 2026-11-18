@@ -691,7 +691,14 @@ export function layoutHeatmap(
     const source = `${'headline' in a && a.headline !== undefined ? `${a.headline}\n` : ''}${body}`.replace(/\$\{value\}/g, displayFor(value, pctMatrix, null, row));
     const wrapped = wrapText(source, { ...labelFont, weight: emphasisWeight(theme) }, Math.max(1, width - glyphRoom), maxLines ?? Math.max(1, source.length), measure);
     const lines = wrapped.lines;
-    const w = Math.max(0, ...lines.map(line => measure(line, { ...labelFont, weight: emphasisWeight(theme) }).width));
+    // The callout prints its body in the label weight and wraps it there (annotate.ts), so a line can break at
+    // another word than in the bold measure and come out wider. The seat takes the wider of the two wraps.
+    const headLines = 'headline' in a && a.headline !== undefined ? a.headline.split('\n').length : 0;
+    const drawnW = source.split('\n').map((line, i) => {
+      const face = i < headLines ? { ...labelFont, weight: emphasisWeight(theme) } : labelFont;
+      return maxOf(wrapText(line, face, Math.max(1, width - glyphRoom), Math.max(1, line.length), measure).lines.map(part => measure(part, face).width));
+    });
+    const w = Math.max(0, ...drawnW, ...lines.map(line => measure(line, { ...labelFont, weight: emphasisWeight(theme) }).width));
     return { w, h: Math.max(glyphRoom ? 22 : 0, measure('0', labelFont).height * lines.length), sideW: w + (glyphRoom ? 38 : CALLOUT_SEAT), truncated: wrapped.truncated };
   };
   const noteSizes = new Map(notes.map(a => [a.id!, noteSize(a)]));
