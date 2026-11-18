@@ -1026,12 +1026,47 @@ function familyFollows(base: Theme, overrides: DeepPartial<Theme>): DeepPartial<
   return { ...overrides, type: { ...type, ...roles } } as DeepPartial<Theme>;
 }
 
+/**
+ * The optional text roles (micro, secondary) are absent from a theme that
+ * draws them from a fallback: secondary text from the axis role, micro text
+ * from the footnote. A patch that sets only some fields of such a role
+ * completes it from that fallback, so every field it leaves out keeps the
+ * value the theme draws today. Without an authored size, the secondary role
+ * also takes the axis role's S and L steps; an authored size holds as before.
+ */
+function absentRolesFilled(base: Theme, overrides: DeepPartial<Theme>): Theme {
+  const type = overrides.type as Record<string, unknown> | undefined;
+  if (typeof type !== 'object' || type === null) return base;
+  const filled: Partial<Record<'micro' | 'secondary', FontSpec>> = {};
+  if (base.type.secondary === undefined && isPlainPatch(type.secondary)) filled.secondary = base.type.axis;
+  if (base.type.micro === undefined && isPlainPatch(type.micro)) filled.micro = microType(base);
+  if (Object.keys(filled).length === 0) return base;
+  const scale = base.type.scale;
+  const sizeAuthored = typeof (type.secondary as { size?: unknown } | undefined)?.size === 'number';
+  const step = (column: Partial<Record<TypeRoleName, number>> | undefined) => {
+    if (!column || !filled.secondary || sizeAuthored || column.secondary !== undefined || column.axis === undefined) return column;
+    return { ...column, secondary: column.axis };
+  };
+  return {
+    ...base,
+    type: {
+      ...base.type, ...filled,
+      ...(scale ? { scale: { ...(scale.S ? { S: step(scale.S) } : {}), ...(scale.L ? { L: step(scale.L) } : {}) } } : {}),
+    },
+  };
+}
+
+function isPlainPatch(value: unknown): boolean {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 function checkedOverride(base: Theme, overrides: DeepPartial<Theme>, presetName: string): Theme {
   // Our own output coming back in: nothing external to judge, and the merge
   // is the same merge. This is what keeps the checks — and the chunk that
   // carries them — off the render path of every chart.
   if (ownThemes.has(overrides as object)) return own(mergeDeep(base, overrides));
   if (libraryPatches.has(overrides as object)) return own(mergeDeep(base, overrides));
+  base = absentRolesFilled(base, overrides);
   const series = overrides.color?.series;
   // One or two authored colours are a prefix of the preset ramp. Keep older,
   // complete ramp overrides unchanged, including their overflow policy.

@@ -65,6 +65,16 @@ describe('theme shape', () => {
     }
   });
 
+  // One field of a text role the preset leaves out (bold secondary labels) must draw, not refuse the chart.
+  it('completes a partial secondary override from the role the preset draws today', () => {
+    const base = resolveTheme('bridge');
+    const theme = resolveTheme({ preset: 'bridge', overrides: { type: { secondary: { weight: 700 } } } } as never);
+    expect(theme.type.secondary).toMatchObject({ ...base.type.axis, weight: 700 });
+    expect(theme.type.scale?.L?.secondary).toBe(base.type.scale?.L?.axis);
+    expect(() => resolveTheme({ preset: 'bridge', overrides: { type: { secondary: { weight: 'bold' } } } } as never))
+      .toThrow(/type\.secondary\.weight/);
+  });
+
   // Supported no-fill table settings must draw without permitting invisible text or lines.
   it('accepts transparent table fills without allowing transparent inks or lines', () => {
     const base = themes.boardroom!;
