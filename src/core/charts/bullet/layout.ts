@@ -409,8 +409,8 @@ export function layoutBullet(
   // small non-integers keep one, so a 0.4 sliver never prints as "0".
   const highlights = new Set(resolveHighlight(options.highlight));
   const labelOn = (kind: LabelKind): boolean => !compact && chartLabelOn(options, kind);
-  // The note lines stay until the author names them, so a labels preset such as 'none' keeps them as it always did.
-  const lineOn = (kind: 'position' | 'direction'): boolean => !(typeof options.labels === 'object' && options.labels[kind] === false);
+  // The lines under a gap or a name print only where the author asks for them.
+  const lineAsked = (kind: 'position' | 'direction'): boolean => typeof options.labels === 'object' && options.labels[kind] === true;
 
   // ---- normalize ----
   if (!data || !Array.isArray(data.rows) || data.rows.length === 0) {
@@ -850,6 +850,7 @@ export function layoutBullet(
   // target prints by its tick and the delta at the row end, as before.
   // Second lines (gap position, direction) and the band names and edge numbers of rows that name their bands.
   const noteFont: FontSpec = { family: theme.type.family, ...theme.type.axis, size: Math.min(secondaryType(theme).size, Math.max(theme.type.footnote.size, readerFloorPx(target, 'secondary', textScaleOf(options)))) };
+  const naGlyph = chartString(options, 'notApplicable');
   const colsEligible = options.targetColumns !== false && !compact && !stacked && cardNames === undefined && labelOn('annotation')
     && annotations.every((ann) => ann.kind !== 'cagr') && rows.some((row) => row.target !== null)
     && catLines.every((label) => label.title === undefined);
@@ -857,19 +858,28 @@ export function layoutBullet(
     const headerFont = columnHeadFont(theme, target, textScaleOf(options));
     const colTargets = rows.map((row) => (row.target === null || !shown('target') ? null : rowFmt(row)(row.target)));
     const colGaps = rows.map((row) => (deltaVsTarget[row.id] === undefined || !shown('gap') ? null : deltaBody(row, deltaVsTarget[row.id]!)));
+    // A row without a target prints the not-applicable glyph in its target and gap cells, as a bar chart does.
+    // An empty strings.notApplicable leaves the cells empty.
+    const colTargetNa = rows.map((row) => naGlyph !== '' && row.target === null && shown('target'));
+    const colGapNa = rows.map((row) => naGlyph !== '' && row.target === null && shown('gap'));
+    // The sign of the gap says its side of the target, so the line under it prints only where the author asks.
     const colPositions = rows.map((row) => {
-      if (!lineOn('position') || !shown('gap')) return null;
+      if (!lineAsked('position') || !shown('gap')) return null;
       const raw = deltaVsTarget[row.id];
       const d = raw === undefined ? undefined : shownDelta(row, raw);
       return d === undefined ? null : chartString(options, d < 0 ? 'gapBelow' : d > 0 ? 'gapAbove' : 'gapOn', { v1: targetWord(options) });
     });
-    // Toned bands judge a row by its band, not its direction, so such a row names no direction.
-    const colDirections = rows.map((row) => (!labelOn('category') || !lineOn('direction') || row.direction === 'neutral' || row.bands.some((band) => band.tone) ? null
-      : chartString(options, row.direction === 'lowerIsBetter' ? 'lowerBetter' : 'higherBetter')));
+    // Where the author asks, the line under a name says which way is better on a row with a target to be
+    // judged by. Toned bands judge a row by its band, not its direction, so such a row names no direction.
+    const colDirections = rows.map((row) => {
+      if (!labelOn('category') || !lineAsked('direction') || row.target === null || row.direction === 'neutral' || row.bands.some((band) => band.tone)) return null;
+      return chartString(options, row.direction === 'lowerIsBetter' ? 'lowerBetter' : 'higherBetter') || null;
+    });
     const widest = (texts: readonly (string | null)[], font: FontSpec) => Math.max(0, maxOf(texts.map((text) => (text ? measure(text, font).width : 0))));
     const headEnv = { target, textScale: textScaleOf(options) };
-    const targetBodyW = widest(colTargets, labelFont);
-    const gapBodyW = Math.max(widest(colGaps, valueBaseFont), widest(colPositions, noteFont));
+    const naW = measure(naGlyph, labelFont).width;
+    const targetBodyW = Math.max(widest(colTargets, labelFont), colTargetNa.some(Boolean) ? naW : 0);
+    const gapBodyW = Math.max(widest(colGaps, valueBaseFont), widest(colPositions, noteFont), colGapNa.some(Boolean) ? naW : 0);
     const colHeads = [
       fitHead(overrides?.target?.label ?? targetHead, headerFont, targetBodyW, measure, headEnv),
       fitHead(overrides?.gap?.label ?? chartString(options, 'gapColumn', { v1: targetWord(options) }), headerFont, gapBodyW, measure, headEnv),
@@ -911,10 +921,20 @@ export function layoutBullet(
     for (const id of [...after].reverse()) { rights[id] = afterAt; afterAt -= widths[id] + COLUMN_GAP; }
     const headerH = measure('0', headerFont).height;
     const noteH = measure('0', noteFont).height;
-    const colNameH = (ri: number) => (labelOn('category') ? catLines[ri]!.h : 0) + (colDirections[ri] ? LINE_GAP + noteH : 0);
-    const colGapH = (ri: number) => colGaps[ri] ? measure('0', valueBaseFont).height + (colPositions[ri] ? LINE_GAP + noteH : 0)
-      : colTargets[ri] ? measure('0', labelFont).height : 0;
-    const colBlockH = (ri: number) => Math.max(colNameH(ri), colGapH(ri));
+    // The name and every number of a row are centred on its bar, and a line under one hangs below it,
+    // so a row's cells reach half their tallest text above the centre and the most of text and line below it.
+    const nameH = (ri: number) => (labelOn('category') ? catLines[ri]!.h : 0);
+    const gapH = (ri: number) => colGaps[ri] ? measure('0', valueBaseFont).height : colGapNa[ri] ? measure('0', labelFont).height : 0;
+    const targetH = (ri: number) => colTargets[ri] || colTargetNa[ri] ? measure('0', labelFont).height : 0;
+    const colReach = (ri: number) => Math.max(
+      nameH(ri) / 2 + (colDirections[ri] ? LINE_GAP + noteH : 0),
+      gapH(ri) / 2 + (colGaps[ri] && colPositions[ri] ? LINE_GAP + noteH : 0),
+      targetH(ri) / 2,
+    );
+    /** The height a row's cells take, centred on its bar, with the lines that hang below. */
+    const colBlockH = (ri: number) => 2 * colReach(ri);
+    /** The height of the texts centred on the bar alone: the band holds these, and a hanging line takes air. */
+    const colCoreH = (ri: number) => Math.max(nameH(ri), gapH(ri), targetH(ri));
     // Heads share the key line when they fit right of its entries, else they take a line of their own.
     const legendLabels = frameResult.nodes.filter((node) => node.t === 'text' && node.part === 'legendLabel');
     const legendLast = legendLabels.at(-1);
@@ -926,7 +946,9 @@ export function layoutBullet(
     const colTopAir = headsOnKey || (trackIds.length === 0 && actualFit === undefined) ? 0 : headerH + 4;
     const colAvailH = plotHeightAfter(frameResult, size.height, plot0.h - axisH - 2 * inset - colTopAir);
     const colPitch = Math.max(44, minimumRowH, Math.ceil(maxOf(rows.map((_, ri) => colBlockH(ri))) + 12));
-    return { planWarnings, hasTarget, hasGap, actualOwnTrack, actualW: widths.actual, rights, beforeW, headerFont, noteFont, colTargets, colGaps, colPositions, colDirections, colHeads, targetColW, gapColW, colsW, colLeftW, colPlotW, headerH, noteH, colBlockH, legendLast, legendRight, headsOnKey, colTopAir, colAvailH, colPitch };
+    /** The pitch without the hanging lines, which sizes the band. */
+    const colBasePitch = Math.max(44, minimumRowH, Math.ceil(maxOf(rows.map((_, ri) => colCoreH(ri))) + 12));
+    return { planWarnings, hasTarget, hasGap, actualOwnTrack, actualW: widths.actual, rights, beforeW, headerFont, noteFont, colTargets, colGaps, colTargetNa, colGapNa, colPositions, colDirections, colHeads, targetColW, gapColW, colsW, colLeftW, colPlotW, headerH, noteH, colBlockH, colCoreH, legendLast, legendRight, headsOnKey, colTopAir, colAvailH, colPitch, colBasePitch };
   };
   const colPlan = colsEligible ? planColumns() : undefined;
   const colBlockMax = colPlan ? maxOf(rows.map((_, ri) => colPlan.colBlockH(ri))) : 0;
@@ -954,9 +976,10 @@ export function layoutBullet(
   const noteH = measure('0', noteFont).height;
   const nameAir = rowMode ? Math.max(noteH, cols ? cp.headerH : 0) + 3 : 0;
   const edgeTicks = rowMode && !sharedScale;
-  const tickAir = edgeTicks ? EDGE_TICK + 1 + noteH : 0;
-  // The band holds the row's column block, so the cells stay inside its height.
-  const bandBase = Math.max(ROW_BAND, cols ? Math.ceil(colBlockMax) : 0);
+  // The band holds the texts centred on the bar; a line hanging under a name or gap reaches below it,
+  // past the edge ticks where it reaches further than they do.
+  const bandBase = Math.max(ROW_BAND, cols ? Math.ceil(maxOf(rows.map((_, ri) => cp.colCoreH(ri)))) : 0);
+  const tickAir = Math.max(edgeTicks ? EDGE_TICK + 1 + noteH : 0, rowMode && cols ? Math.ceil(colBlockMax / 2 - bandBase / 2) : 0);
   let rowBandH = bandBase;
   let rowAir = ROW_AIR;
   if (rowWanted && !rowMode) return layoutBullet(data, { ...options, [ROW_KEY_OFF]: true } as BulletOptions);
@@ -990,8 +1013,10 @@ export function layoutBullet(
 
   // ---- rows band scale (needed before the value font / label headroom) ----
   // Rows pressed below their natural pitch keep the target values' air and
-  // give up band height, down to half the pitch.
-  const gapShare = Math.max(1 - bandFraction, Math.min(0.5, targetAir / (plot.h / rows.length)));
+  // give up band height, down to half the pitch. Beside the target columns a line hanging under a name
+  // or gap takes air, not band: the band keeps the height of a row without one.
+  const bandShare = cols && !rowMode ? Math.min(bandFraction, bandFraction * cp.colBasePitch / (plot.h / rows.length)) : bandFraction;
+  const gapShare = Math.max(1 - bandShare, Math.min(0.5, targetAir / (plot.h / rows.length)));
   // A row that names its bands: half the air, the names line, the band, the edge ticks, half the air.
   const band: BandScale = rowMode
     ? {
@@ -1408,7 +1433,7 @@ export function layoutBullet(
         columnInks.set(id, { token: 'ink' });
         labelRequests.push({
           id, kind: 'annotation', owner, text, shows: columnShows('target', text), lines: [text], font: labelFont, role: 'value', priority: PRIORITY.interior, pad: 0,
-          candidates: [{ slot: 'targetColumn', rect: { x: alignedLeft(cp.rights.target! - cp.targetColW, cp.targetColW, tsize.width, overrides?.target?.align ?? 'right'), y: rowCenter - cp.colBlockH(ri) / 2, w: tsize.width, h: tsize.height }, penalty: 0 }],
+          candidates: [{ slot: 'targetColumn', rect: { x: alignedLeft(cp.rights.target! - cp.targetColW, cp.targetColW, tsize.width, overrides?.target?.align ?? 'right'), y: rowCenter - tsize.height / 2, w: tsize.width, h: tsize.height }, penalty: 0 }],
         });
       } else if (targetPrints(row)) {
         const text = `${stacked ? `${targetWord(options)} ` : ''}${rowFmt(row)(row.target)}`;
@@ -1437,12 +1462,27 @@ export function layoutBullet(
       }
     }
 
+    // A row without a target: the not-applicable glyph in its target and gap cells, muted as on a bar chart.
+    if (cols && row.target === null) {
+      const nsize = measure(naGlyph, labelFont);
+      ([['target', cp.colTargetNa[ri], cp.rights.target, cp.targetColW], ['gap', cp.colGapNa[ri], cp.rights.gap, cp.gapColW]] as const).forEach(([key, on, right, trackW]) => {
+        if (!on || right === undefined) return;
+        const id = `${key}-na:${row.id}`;
+        columnFonts.set(id, labelFont);
+        columnInks.set(id, { token: 'inkMuted' });
+        labelRequests.push({
+          id, kind: 'annotation', owner, text: naGlyph, lines: [naGlyph], font: labelFont, role: 'value', priority: PRIORITY.interior, pad: 0,
+          candidates: [{ slot: `${key}Column`, rect: { x: alignedLeft(right - trackW, trackW, nsize.width, overrides?.[key]?.align ?? 'right'), y: rowCenter - nsize.height / 2, w: nsize.width, h: nsize.height }, penalty: 0 }],
+        });
+      });
+    }
+
     // delta capsule (right column): '+7 vs target', tone by direction; in the
     // gap column the signed gap alone, bold, over its position to the target.
     const capsuleText = cols ? cp.colGaps[ri] ?? undefined : capsuleTexts.get(row.id);
     if (capsuleText !== undefined && cols) {
       const tsize = measure(capsuleText, valueBaseFont);
-      const top = rowCenter - cp.colBlockH(ri) / 2;
+      const top = rowCenter - tsize.height / 2;
       const gapRight = cp.rights.gap!;
       const gapAlign = overrides?.gap?.align ?? 'right';
       columnFonts.set(`delta:${row.id}`, valueBaseFont);
@@ -1531,7 +1571,7 @@ export function layoutBullet(
             slot: 'left',
             rect: {
               x: stacked ? plot.x : rowLabelX(plot0.x, cols ? cp.colLeftW : catBandW, cl.w, overrides?.label?.align ?? options.rowLabels?.align ?? 'left'),
-              y: stacked ? cardTop : cols ? rowCenter - cp.colBlockH(ri) / 2 : rowCenter - cl.h / 2,
+              y: stacked ? cardTop : rowCenter - cl.h / 2,
               w: cl.w,
               h: cl.h,
             },
@@ -1547,7 +1587,7 @@ export function layoutBullet(
         columnInks.set(id, { token: 'inkMuted' });
         labelRequests.push({
           id, kind: 'annotation', role: 'note', owner, text: direction, lines: [direction], font: cp.noteFont, priority: PRIORITY.interior, pad: 0,
-          candidates: [{ slot: 'left', rect: { x: rowLabelX(plot0.x, cp.colLeftW, dsize.width, overrides?.label?.align ?? options.rowLabels?.align ?? 'left'), y: rowCenter - cp.colBlockH(ri) / 2 + cl.h + LINE_GAP, w: dsize.width, h: dsize.height }, penalty: 0 }],
+          candidates: [{ slot: 'left', rect: { x: rowLabelX(plot0.x, cp.colLeftW, dsize.width, overrides?.label?.align ?? options.rowLabels?.align ?? 'left'), y: rowCenter + cl.h / 2 + LINE_GAP, w: dsize.width, h: dsize.height }, penalty: 0 }],
         });
       }
     }

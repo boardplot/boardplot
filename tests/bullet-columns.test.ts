@@ -25,7 +25,7 @@ describe('bullet target and gap columns', () => {
       { id: 'below', label: 'Below', value: { number: 9.96, format: '1.1' }, target: 10 },
       { id: 'rate', label: 'Rate', value: { pct: 6 }, target: { pct: 7.9 } },
     ] };
-    for (const options of [{}, { targetColumns: false }, { sharedScale: 'percentOfTarget' }] as BulletOptions[]) {
+    for (const options of [{ labels: { position: true } }, { targetColumns: false }, { sharedScale: 'percentOfTarget' }] as BulletOptions[]) {
       const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'bullet', data,
         options: { size: { width: 1200, height: 500 }, ...options } }));
       if (geometry.refused) throw new Error('refused');
@@ -80,18 +80,60 @@ describe('bullet target and gap columns', () => {
 
   // The gap must say which side of the target the value lies on, not only good or bad.
   it('prints the gap in its tone over a muted position line, with the row units', () => {
-    const wide = draw({ size: { width: 1200, height: 620 } });
+    const wide = draw({ size: { width: 1200, height: 620 }, labels: { position: true } });
     expect(label(wide, 'delta:coverage')).toMatchObject({ lines: ['−7pp'], ink: { token: 'bad' } });
     expect(label(wide, 'gap-position:coverage')).toMatchObject({ lines: ['below target'], ink: { token: 'inkMuted' } });
     expect(label(wide, 'gap-position:cost')).toMatchObject({ lines: ['above target'] });
   });
 
-  // Mixed-direction rows read their tones only when each row says which way is better.
-  it('names each row direction in a muted line under the name', () => {
-    const wide = draw({ size: { width: 1200, height: 620 } });
-    expect(label(wide, 'direction:coverage')).toMatchObject({ lines: ['higher is better'], ink: { token: 'inkMuted' } });
-    expect(label(wide, 'direction:cost')?.lines).toEqual(['lower is better']);
-    expect(label(wide, 'category:coverage')?.lines).toEqual(['Coverage']);
+  // A direction line under every name made each row taller; the author who needs it asks for it.
+  it('names each row direction in a muted line under the name only on request', () => {
+    const plain = draw({ size: { width: 1200, height: 620 } });
+    expect(plain.labels.filter((placed) => placed.id.startsWith('direction:'))).toEqual([]);
+    expect(label(plain, 'category:coverage')?.lines).toEqual(['Coverage']);
+    const named = draw({ size: { width: 1200, height: 620 }, labels: { direction: true } });
+    expect(label(named, 'direction:coverage')).toMatchObject({ lines: ['higher is better'], ink: { token: 'inkMuted' } });
+    expect(label(named, 'direction:cost')?.lines).toEqual(['lower is better']);
+  });
+
+  // Target and gap stood on the top line of a two-line text block, higher than the actual value on the same bar.
+  it('centres the name and every number of a row on its bar, and hangs a line under one below it', () => {
+    const data = { rows: [
+      { id: 'north', label: 'North', value: 120, target: 99 },
+      { id: 'south', label: 'South region with a long name that wraps', value: 90, target: 95, direction: 'lowerIsBetter' as const },
+    ] };
+    for (const labels of [undefined, { position: true, direction: true }]) {
+      const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'bullet', data, options: { size: { width: 720 }, ...(labels ? { labels } : {}) } }));
+      if (geometry.refused) throw new Error('refused');
+      for (const row of data.rows) {
+        const bar = geometry.scene.find((node) => node.id === `bar:${row.id}`);
+        if (bar?.t !== 'rect') throw new Error(row.id);
+        const centre = bar.rect.y + bar.rect.h / 2;
+        const middle = (id: string) => { const placed = label(geometry, id)!; return placed.rect.y + placed.rect.h / 2; };
+        for (const id of ['category', 'point', 'target-value', 'delta']) expect(Math.abs(middle(`${id}:${row.id}`) - centre)).toBeLessThanOrEqual(0.5);
+        const under = (line: string, over: string) => label(geometry, `${line}:${row.id}`)!.rect.y >= label(geometry, `${over}:${row.id}`)!.rect.y + label(geometry, `${over}:${row.id}`)!.rect.h;
+        if (labels) expect(under('gap-position', 'delta')).toBe(true);
+        if (labels) expect(under('direction', 'category')).toBe(true);
+        else expect(label(geometry, `direction:${row.id}`)).toBeUndefined();
+      }
+      expect(label(geometry, 'category:south')!.lines).toHaveLength(2);
+    }
+  });
+
+  // A row without a target printed "higher is better" and empty cells, so the reader saw advice with nothing to judge.
+  it('prints the not-applicable glyph and no direction or position line on a row without a target', () => {
+    const geometry = layoutResolvedRequest(resolveChartRequest({ type: 'bullet', data: { rows: [
+      { id: 'north', label: 'North', value: 120, target: 99, bands: [94, { to: 104, label: 'Tolerance 94 to 104', tone: 'neutral' }] },
+      { id: 'south', label: 'South', value: 90 },
+    ] }, options: { unit: 'units', sharedScale: true, size: { width: 720 } } }));
+    if (geometry.refused) throw new Error('refused');
+    expect(['target-na:south', 'gap-na:south'].map((id) => label(geometry, id)?.lines)).toEqual([['n/a'], ['n/a']]);
+    expect(geometry.labels.filter((placed) => /^(direction|gap-position):/.test(placed.id))).toEqual([]);
+    const asked = layoutResolvedRequest(resolveChartRequest({ type: 'bullet', data: { rows: [{ id: 'a', label: 'A', value: 5, target: 6 }, { id: 'b', label: 'B', value: 4 }] },
+      options: { size: { width: 720 }, labels: { direction: true } } }));
+    if (asked.refused) throw new Error('refused');
+    expect(label(asked, 'direction:a')?.lines).toEqual(['higher is better']);
+    expect(label(asked, 'direction:b')).toBeUndefined();
   });
 
   // The columns must give way where they would squeeze the plot, never refuse a size main draws.
@@ -126,7 +168,7 @@ describe('bullet target and gap columns', () => {
   // An author could not change or translate the column words: the schema refused the keys.
   it('takes the column and gap words from strings, and prints German words in a German chart', () => {
     const words = { targetColumn: 'Plan', gapColumn: 'Distance', gapBelow: 'short of {v1}', gapAbove: 'beyond {v1}' };
-    const wide = draw({ size: { width: 1200, height: 620 }, strings: words });
+    const wide = draw({ size: { width: 1200, height: 620 }, strings: words, labels: { position: true } });
     expect(heads(wide).map((node) => node.lines[0])).toEqual(['Actual', 'Plan', 'Distance']);
     expect(label(wide, 'gap-position:coverage')?.lines).toEqual(['short of target']);
     expect(label(wide, 'gap-position:cost')?.lines).toEqual(['beyond target']);
@@ -136,7 +178,7 @@ describe('bullet target and gap columns', () => {
     // An authored head equal to the built-in word still beats the authored comparison word.
     expect(heads(draw({ size: { width: 1200, height: 620 }, strings: { target: 'plan', targetColumn: 'Target' } }))[1]?.lines[0]).toBe('Target');
     // Every column word has a German form, so no English word is left in a German chart.
-    const german = [draw({ size: { width: 1200, height: 620 }, locale: { language: 'de' } }), percent({ locale: { language: 'de' } })];
+    const german = [draw({ size: { width: 1200, height: 620 }, locale: { language: 'de' }, labels: { position: true, direction: true } }), percent({ locale: { language: 'de' } })];
     const printed = german.flatMap((geometry) => geometry.labels.filter((placed) => /^(header|gap-position|direction):/.test(placed.id)).flatMap((placed) => placed.lines)).join(' ');
     expect(printed).not.toMatch(/\b(Target|Gap|Actual|below|above|better)\b/);
   });
