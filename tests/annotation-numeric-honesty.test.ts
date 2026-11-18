@@ -1104,3 +1104,17 @@ it('prints a difference of percent levels as a change set', () => {
     { unit: '%', annotations: [{ kind: 'delta', at: { categoryId: 'q4', seriesId: 's' }, vs: { categoryId: 'q1', seriesId: 's' }, mode: 'absolute' }] } as never);
   expect(geometry.labels.find((label) => label.id === 'label:annotation:delta-1' || label.id === 'annotation:delta-1')?.text).toBe('+4.4');
 });
+
+// A target line on bar or dot must honour its category span as on column: a band only over the named rows, and a warning instead of a full-length line for a span without a band.
+it('clips a bar or dot target band to its rows and refuses an unbanded span, as column does', () => {
+  const data = { categories: ['north', 'east', 'south'].map((id) => ({ id, label: id })), series: [{ id: 's', label: 'Sales', values: [120, 104, 90] }] };
+  for (const layout of [layoutBar, layoutDot]) {
+    const banded = layout(data as never, { annotations: [{ kind: 'valueLine', id: 'goal', value: 99, tolerance: 5, from: 'north', to: 'north' }] } as never);
+    const band = banded.scene.find((node) => node.t === 'rect' && node.part === 'band' && node.owner?.annotationId === 'goal') as { rect: { h: number } } | undefined;
+    expect(band?.rect.h).toBeGreaterThan(0);
+    expect(band!.rect.h).toBeLessThan(banded.plot.h / 2);
+    const unbanded = layout(data as never, { annotations: [{ kind: 'valueLine', id: 'goal', value: 99, from: 'absent' }] } as never);
+    expect(codes(unbanded)).toContain('valueline-scope-authored-value');
+    expect(unbanded.scene.some((node) => node.part === 'valueLine')).toBe(false);
+  }
+});

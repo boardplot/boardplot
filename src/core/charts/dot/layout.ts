@@ -21,6 +21,8 @@ import { fittedLabel, gutterBudget, pinnedRowFont, stepDownFont } from '../../la
 import { namedLineText } from '../../annotateParts';
 import type { AnchorResolution } from '../../annotate';
 import { percentCellsOnly, percentLevels, runAnnotatePass } from '../../annotatePass';
+import { categoryTargetFields, valueLineHasTargetExtras, valueLineNeedsSharedPass } from '../../annotateFields';
+import { valueLineExtent } from '../../valueLineDomain';
 import { applyValueAxisTitleInk, layoutValueAxis, planValueAxisTitle, valueAxisTitleRequest } from '../../axis';
 import { arrowHeadPath, arrowShaftEnd } from '../../svgPath';
 import { formatStatWithSpec, formatterFromExample, formatWithSpec, seriesRasterFormatter } from '../../formatSpec';
@@ -395,8 +397,11 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
       annotationsAll.push(marker);
     }
   }
-  const localAnns = annotationsAll.filter((a) => a.kind === 'valueLine');
-  const passAnns = annotationsAll.filter((a) => a.kind !== 'valueLine');
+  // A target line with a span, a series, a tolerance or an attainment is drawn by the shared pass, as on column.
+  const localAnns = annotationsAll.filter((a): a is Annotation & { kind: 'valueLine' } => a.kind === 'valueLine' && !valueLineNeedsSharedPass(a));
+  const passAnns = annotationsAll.filter((a) => !(localAnns as Annotation[]).includes(a));
+  // The lines the shared pass draws widen the axis as on column (valueLineDomain.ts).
+  const passLines = valueLineExtent(passAnns);
   const allDotValues: number[] = [];
   for (const s of dataSeries) for (const c of s.cells) if (c.v !== null) allDotValues.push(c.v);
   const allRangeValues = dataSeries.flatMap((series) =>
@@ -434,6 +439,10 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
     if (v === undefined) continue;
     lo = Math.min(lo, v);
     hi = Math.max(hi, v);
+  }
+  if (passLines) {
+    lo = Math.min(lo, passLines.lo);
+    hi = Math.max(hi, passLines.hi);
   }
   // user min/max may never clip data
   [lo, hi] = applyAxisBounds([lo, hi], [lo, hi], options.valueAxis, warnings);
@@ -575,7 +584,7 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
   const axisTitle = axisShown && labelOn('axisTitle')
     ? planValueAxisTitle(options.axisTitles?.primary, theme, measure, plot0.w)
     : undefined;
-  const annPad = localAnns.length > 0 ? 26 : 8;
+  const annPad = localAnns.length > 0 || passAnns.some(valueLineHasTargetExtras) ? 26 : 8;
   const axisH = axisShown ? measure('0', tickFont).height + 8 + (axisTitle ? axisTitle.height + 2 : 0) : 0;
   fixedPlotChrome(frameResult, annPad + axisH);
   const availH = plotHeightAfter(frameResult, size.height, plot0.h - annPad - axisH);
@@ -680,6 +689,7 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
       const v = valueLineValue(ann);
       return v === undefined ? [] : [v];
     }),
+    ...(passLines ? [passLines.lo, passLines.hi] : []),
     ...(options.valueAxis?.min !== undefined ? [options.valueAxis.min] : []),
     ...(options.valueAxis?.max !== undefined ? [options.valueAxis.max] : []),
   ];
@@ -1380,8 +1390,9 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
     resolve: (ref) => withPrinted(resolve(ref)),
     deltaAcrossRows: true,
     valueAxis: 'horizontal',
-    // For the drawing annotations' value points; value lines are taken out of this pass above.
+    // For the drawing annotations' value points and the target lines this pass draws.
     xScale: x,
+    ...categoryTargetFields(cats.map((c) => c.id), plot, (i) => band.position(i) + band.bandwidth / 2, 'y'),
     defaultSpan:
       cats.length >= 2 ? { from: cats[0]!.id, to: cats[cats.length - 1]!.id } : undefined,
     occupied,

@@ -68,3 +68,15 @@ export function valueLineHasTargetExtras(ann: Annotation): boolean {
   if (ann.kind !== 'valueLine') return false;
   return ann.tolerance !== undefined || ann.attainment !== undefined;
 }
+
+/**
+ * A valueLine that bar and dot leave to the shared annotate pass, as column
+ * draws it: one with a category span, a series scope, a tolerance or an
+ * attainment. The pass clips the band to the span, warns on a span it cannot
+ * resolve and omits a scoped line it cannot honour. Their own vertical
+ * drawing knows none of this, so it takes only the plain line.
+ */
+export function valueLineNeedsSharedPass(ann: Annotation): boolean {
+  if (ann.kind !== 'valueLine') return false;
+  return valueLineHasTargetExtras(ann) || ann.from !== undefined || ann.to !== undefined || ann.seriesId !== undefined;
+}

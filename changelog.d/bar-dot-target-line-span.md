@@ -1,0 +1,3 @@
+### Fixed
+
+- A `valueLine` on a bar or dot chart now follows its `from` and `to` as on a column chart. A tolerance band covers only the named rows, and dot charts now draw the band at all. A span without a `tolerance` or `attainment` warns `valueline-scope-authored-value` and draws no line, where bar and dot drew a full-length line without a warning. A `from` or `to` that names no category warns `bad-anchor`, and only one of them warns `valueline-scope-invalid`. The value axis now widens to a tolerance line above or below the data, and bar now seats the line's label above the plot instead of moving it to the notes.

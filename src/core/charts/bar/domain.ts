@@ -10,7 +10,8 @@ import { percentCellsOnly, percentLevels } from '../../annotatePass';
 import { restDetailsWarning, restLabel, restSum, topNCut } from '../topN';
 import { normalizeCategorySeries } from '../categorySeries';
 import { chartPalette } from '../chartEnv';
-import { valueLineHasTargetExtras } from '../../annotateFields';
+import { valueLineNeedsSharedPass } from '../../annotateFields';
+import { valueLineExtent } from '../../valueLineDomain';
 import { formatAutomaticPercent, formatShare, shareText } from '../../format';
 import { shareSetDecimals } from '../../formatPrecision';
 import { formatStatWithSpec, formatterFromExample, parseFormatExample, seriesRasterFormatter, shareFormatExample, withChartMarks } from '../../formatSpec';
@@ -382,7 +383,7 @@ function barAnnotations(
   const annotationInput: Annotation[] = [...(options.annotations ?? [])];
   if (averageMarkerValue !== undefined) annotationInput.push(averageMarkerLine(annotationInput, averageMarkerValue, statFmt, averageSpan, options.strings?.average));
   const annotationsAll: Annotation[] = annotationInput.map((a, n) => ({ ...a, id: a.id ?? `${a.kind}-${n + 1}` }));
-  const localAnns = annotationsAll.filter((a) => a.kind === 'indicator100' || (a.kind === 'valueLine' && !valueLineHasTargetExtras(a)));
+  const localAnns = annotationsAll.filter((a) => a.kind === 'indicator100' || (a.kind === 'valueLine' && !valueLineNeedsSharedPass(a)));
   const passAnns = annotationsAll.filter((a) => !localAnns.includes(a));
   // Endpoint-band priority: engine furniture informs (never warns) when
   // squeezed out, and yields to authored labels — see line's auto-add.
@@ -399,7 +400,7 @@ function barAnnotations(
  * (mirrors column; warned once).
  */
 function barValueExtent(
-  domain: Pick<BarDomain, 'options' | 'variant' | 'cats' | 'dataSeries' | 'refSeries' | 'plotVal' | 'plotRange' | 'stacks' | 'rowEnds' | 'localAnns' | 'meanValue'>,
+  domain: Pick<BarDomain, 'options' | 'variant' | 'cats' | 'dataSeries' | 'refSeries' | 'plotVal' | 'plotRange' | 'stacks' | 'rowEnds' | 'localAnns' | 'passAnns' | 'meanValue'>,
   warnings: LintWarning[],
 ): Pick<BarDomain, 'lo' | 'hi' | 'rendered'> {
   const { options, variant, cats, dataSeries, refSeries, plotVal, plotRange, stacks, meanValue } = domain;
@@ -454,6 +455,13 @@ function barValueExtent(
       rendered.push(100);
       hi = Math.max(hi, 100);
     }
+  }
+  // A line the shared pass draws widens the axis as on column (valueLineDomain.ts).
+  const passLines = valueLineExtent(domain.passAnns);
+  if (passLines) {
+    rendered.push(passLines.lo, passLines.hi);
+    lo = Math.min(lo, passLines.lo);
+    hi = Math.max(hi, passLines.hi);
   }
   [lo, hi] = applyAxisBounds([lo, hi], [lo, hi], options.valueAxis, warnings);
   return { lo, hi, rendered };

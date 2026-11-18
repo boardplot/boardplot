@@ -6,6 +6,7 @@ import { stringFields } from '../../strings';
  */
 
 import { BAND_PAD } from '../../annotateParts';
+import { valueLineHasTargetExtras } from '../../annotateFields';
 import { axisTitleAllowed, planValueAxisTitle, tickRowTitleEnd, valueAxisTitleText, valueAxisUnit } from '../../axis';
 import { authoredNotes, cappedItems, frameTextOptions, normalizeLegendOption, plotHeightAfter, shareUnitOptions, solveFrame, type FrameInput, type FrameResult, type LegendItemInput, authoredFootnoteCount } from '../../frame';
 import type { Rect } from '../../geometry';
@@ -302,7 +303,8 @@ function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWa
   const labelFont = compactRows ? compactValueLabelFont(normalLabelFont, theme.type.footnote, options.target, textScaleOf(options)) : normalLabelFont;
   const strongFont: FontSpec = { family: theme.type.family, ...theme.type.label, weight: emphasisWeight(theme) };
   const { maxPosW, maxNegW } = outsideLabelWidths(domain, labelFont, strongFont);
-  const annPad = domain.localAnns.length > 0 ? 26 : 8;
+  // A target line from the shared pass seats its label above the plot as a local line does.
+  const annPad = domain.localAnns.length > 0 || domain.passAnns.some(valueLineHasTargetExtras) ? 26 : 8;
   // The title of a drawn value axis sits in its tick row, or under it (barPlotArea).
   const axisTitle = options.valueAxis?.show && axisTitleAllowed(options.labels)
     ? planValueAxisTitle(valueAxisTitleText(theme, options.axisTitles?.primary, options,
