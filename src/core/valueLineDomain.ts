@@ -21,6 +21,7 @@
 import { valueLineHasTargetExtras } from './annotateFields';
 import { toleranceBounds } from './annotateTargets';
 import type { Annotation } from './types/annotations';
+import type { Id } from './types/cell';
 import { maxOf, minOf } from './arrays';
 
 /** The range the value lines ask the value axis to contain. */
@@ -37,31 +38,29 @@ export interface ValueLineExtent {
  * tolerance or attainment band is left out, so it cannot squeeze the marks.
  */
 export function valueLineExtent(annotations: readonly Annotation[] | undefined, axis: 'primary' | 'secondary' = 'primary'): ValueLineExtent | null {
-  const values = valueLineValues(annotations, axis);
+  // Number.isFinite is false for anything that is not a finite number, so a
+  // measured mean (no numeric value) falls out here too.
+  const values = (annotations ?? []).flatMap((a) => (a.kind === 'valueLine' && Number.isFinite(a.value) && (a.axis ?? 'primary') === axis && a.seriesId === undefined && ((a.from === undefined && a.to === undefined) || valueLineHasTargetExtras(a)) ? [a.value as number] : []));
   return values.length ? { lo: minOf(values), hi: maxOf(values) } : null;
 }
 
-/** The numeric value lines drawn on `axis`, by the rule of valueLineExtent. */
-function drawnValueLines(annotations: readonly Annotation[] | undefined, axis: 'primary' | 'secondary'): (Annotation & { kind: 'valueLine' })[] {
-  // Number.isFinite is false for anything that is not a finite number, so a
-  // measured mean (no numeric value) falls out here too.
-  return (annotations ?? []).filter((a): a is Annotation & { kind: 'valueLine' } => a.kind === 'valueLine' && Number.isFinite(a.value) && (a.axis ?? 'primary') === axis && a.seriesId === undefined && ((a.from === undefined && a.to === undefined) || valueLineHasTargetExtras(a)));
-}
-
-/** Each value of a drawn value line, so an axis break can check every one, not only the extremes. */
-export function valueLineValues(annotations: readonly Annotation[] | undefined, axis: 'primary' | 'secondary' = 'primary'): number[] {
-  return drawnValueLines(annotations, axis).map((a) => a.value as number);
-}
-
 /**
- * The extent of the tolerance bands of the drawn value lines, or null if there are none. A chart whose
- * domain ends at its data (dot) takes it, so a band is never cut at the axis end.
+ * The tolerance bands the annotation pass draws on a chart that measures no scoped mean (bar, dot),
+ * so the chart can keep each of them whole inside its value axis. A band counts when its line is
+ * drawn (a number by the rule of valueLineExtent, or the plotted mean of a line without a span),
+ * its bounds are valid and its span, if it has one, names two categories of the chart. A band
+ * the pass omits says nothing about the domain.
  */
-export function toleranceExtent(annotations: readonly Annotation[] | undefined): ValueLineExtent | null {
-  const bounds = drawnValueLines(annotations, 'primary').flatMap((a) => {
-    if (a.tolerance === undefined) return [];
-    const band = toleranceBounds(a.value as number, a.tolerance);
-    return typeof band === 'string' ? [] : [band.low, band.high];
+export function drawnToleranceBands(
+  annotations: readonly Annotation[] | undefined, meanValue: number | undefined, categoryIds: readonly Id[],
+): ValueLineExtent[] {
+  return (annotations ?? []).flatMap((a) => {
+    if (a.kind !== 'valueLine' || a.tolerance === undefined || (a.axis ?? 'primary') !== 'primary' || a.seriesId !== undefined) return [];
+    const spanned = a.from !== undefined || a.to !== undefined;
+    const value = typeof a.value === 'number' ? a.value : spanned ? undefined : meanValue;
+    if (value === undefined || !Number.isFinite(value)) return [];
+    if (spanned && !(a.from !== undefined && a.to !== undefined && categoryIds.includes(a.from) && categoryIds.includes(a.to))) return [];
+    const band = toleranceBounds(value, a.tolerance);
+    return typeof band === 'string' ? [] : [{ lo: Math.min(band.low, band.high), hi: Math.max(band.low, band.high) }];
   });
-  return bounds.length ? { lo: minOf(bounds), hi: maxOf(bounds) } : null;
 }

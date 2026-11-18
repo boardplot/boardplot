@@ -22,7 +22,7 @@ import { namedLineText } from '../../annotateParts';
 import type { AnchorResolution } from '../../annotate';
 import { percentCellsOnly, percentLevels, runAnnotatePass } from '../../annotatePass';
 import { categoryTargetFields, spliceAnnotationNodes, valueLineHasTargetExtras, valueLineNeedsSharedPass } from '../../annotateFields';
-import { toleranceExtent, valueLineExtent } from '../../valueLineDomain';
+import { drawnToleranceBands, valueLineExtent } from '../../valueLineDomain';
 import { applyValueAxisTitleInk, layoutValueAxis, planValueAxisTitle, valueAxisTitleRequest } from '../../axis';
 import { arrowHeadPath, arrowShaftEnd } from '../../svgPath';
 import { formatStatWithSpec, formatterFromExample, formatWithSpec, seriesRasterFormatter } from '../../formatSpec';
@@ -400,10 +400,6 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
   // A target line with a span, a series, a tolerance or an attainment is drawn by the shared pass, as on column.
   const localAnns = annotationsAll.filter((a): a is Annotation & { kind: 'valueLine' } => a.kind === 'valueLine' && !valueLineNeedsSharedPass(a));
   const passAnns = annotationsAll.filter((a) => !(localAnns as Annotation[]).includes(a)).map((a) => attainmentSeries(a, dataSeries, highlights, variant));
-  // The lines the shared pass draws widen the axis as on column (valueLineDomain.ts). A dot domain
-  // ends at its data, so it also takes their tolerance bands whole.
-  const passLines = [valueLineExtent(passAnns), toleranceExtent(passAnns)].reduce<{ lo: number; hi: number } | null>(
-    (all, e) => (e ? (all ? { lo: Math.min(all.lo, e.lo), hi: Math.max(all.hi, e.hi) } : e) : all), null);
   const allDotValues: number[] = [];
   for (const s of dataSeries) for (const c of s.cells) if (c.v !== null) allDotValues.push(c.v);
   const allRangeValues = dataSeries.flatMap((series) =>
@@ -419,6 +415,10 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
       : undefined;
   const valueLineValue = (a: Annotation & { kind: 'valueLine' }): number | undefined =>
     a.value === undefined || a.value === 'mean' ? meanValue : a.value;
+  // The lines the shared pass draws widen the axis as on column (valueLineDomain.ts). A dot domain
+  // ends at its data, so it also takes each tolerance band the pass draws whole, the band of the mean too.
+  const passLines = [valueLineExtent(passAnns), ...drawnToleranceBands(passAnns, meanValue, cats.map((c) => c.id))]
+    .reduce<{ lo: number; hi: number } | null>((all, e) => (e ? (all ? { lo: Math.min(all.lo, e.lo), hi: Math.max(all.hi, e.hi) } : e) : all), null);
 
   // ---- raw value extent ----
   let lo = Number.POSITIVE_INFINITY;

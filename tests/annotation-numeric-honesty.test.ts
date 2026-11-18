@@ -1146,3 +1146,32 @@ it('draws a bar or dot target band on its row behind the marks, with the warning
     expect(geometry.scene.slice(0, at).some((node) => node.part === 'gridline' || node.owner?.seriesId === 's')).toBe(false);
   }
 });
+
+// A bar or dot tolerance band must end where its label says: the axis holds a drawn band whole (a numeric target above the data, a measured mean), an omitted band must not stretch the axis, and a break across an omitted target is still refused.
+it('keeps a drawn bar or dot tolerance band whole inside the value axis', () => {
+  const data = { categories: ['north', 'south'].map((id) => ({ id, label: id })), series: [{ id: 's', label: 'Sales', values: [45, 55] }] };
+  for (const layout of [layoutBar, layoutDot]) {
+    // Pixels per unit, from the two marks at 45 and 55.
+    const unit = (geometry: { scene: object[] }) => {
+      const at = (id: string) => {
+        const mark = (geometry.scene as { t: string; owner?: { seriesId?: string; categoryId?: string }; rect?: { w: number }; cx?: number }[])
+          .find((node) => (node.t === 'rect' || node.t === 'circle') && node.owner?.seriesId === 's' && node.owner.categoryId === id)!;
+        return mark.rect ? mark.rect.w : mark.cx!;
+      };
+      return (at('south') - at('north')) / 10;
+    };
+    const bandWidth = (geometry: { scene: object[] }) =>
+      (geometry.scene as { part?: string; rect?: { w: number } }[]).find((node) => node.part === 'band')?.rect?.w;
+    const above = layout(data as never, { annotations: [{ kind: 'valueLine', value: 75, tolerance: 9, from: 'north', to: 'north' }] } as never);
+    expect(bandWidth(above)! / unit(above)).toBeCloseTo(18, 6);
+    const mean = layout(data as never, { annotations: [{ kind: 'valueLine', tolerance: 20 }] } as never);
+    expect(bandWidth(mean)! / unit(mean)).toBeCloseTo(40, 6);
+    const plain = layout(data as never, { annotations: [{ kind: 'valueLine', value: 50 }] } as never);
+    const omitted = layout(data as never, { annotations: [{ kind: 'valueLine', value: 50, tolerance: 1000, from: 'north' }] } as never);
+    expect(bandWidth(omitted)).toBeUndefined();
+    expect(unit(omitted)).toBeCloseTo(unit(plain), 6);
+  }
+  const broken = layoutBar({ ...data, series: [{ id: 's', label: 'Sales', values: [80, 900] }] } as never,
+    { valueAxis: { break: { from: 150, to: 750 } }, annotations: [{ kind: 'valueLine', value: 400, from: 'north', to: 'south' }] } as never);
+  expect(codes(broken)).toContain('axis-break-invalid');
+});
