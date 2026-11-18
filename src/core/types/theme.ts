@@ -789,4 +789,13 @@ export interface ThemeTablePad {
  * Preset names plus any theme registered at runtime via `registerTheme`
  * (the design-interface path: brand themes load as validated JSON).
  */
-export type ThemeRef = string | { preset: string; overrides?: DeepPartial<Theme> } | { preset?: never; overrides: DeepPartial<Theme> };
+export type ThemeRef = string | { preset: string; overrides?: ThemeOverrides } | { preset?: never; overrides: ThemeOverrides };
+
+/**
+ * Theme overrides: every token is optional. A text role that a theme may
+ * leave out (secondary, micro) takes any subset of its fields; the fields an
+ * override leaves out keep the values the theme draws for that text.
+ */
+export type ThemeOverrides = Omit<DeepPartial<Theme>, 'type'> & {
+  type?: Omit<DeepPartial<Theme['type']>, 'secondary' | 'micro'> & { secondary?: Partial<FontSpec>; micro?: Partial<FontSpec> };
+};

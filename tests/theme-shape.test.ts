@@ -1,6 +1,7 @@
 /** The one theme shape (`THEME_SHAPE`): presets pass, unsafe families and unknown keys are refused with a way out. */
 import { describe, expect, it } from 'vitest';
-import { roadshowFamilyThemes, themes, resolveTheme } from '../src/core/theme';
+import { registerTheme, roadshowFamilyThemes, secondaryType, themeForWidth, themes, resolveTheme } from '../src/core/theme';
+import type { Theme, ThemeOverrides } from '../src/core/types/theme';
 import { parseThemeJson, validateTheme } from '../src/core/themeValidate';
 import '../src/core/themeShapeRules';
 import { parseJsonPointer } from '../src/core/diagnostics/jsonPatch';
@@ -8,7 +9,8 @@ import { checkThemeShape, unknownThemeKeyRepair } from '../src/core/themeShape';
 import { getChartDefinition, measure } from '../src/index';
 import { getFixtures } from '../src/fixtures';
 import { requireGeometry } from '../src/core/sizing';
-import { resolveChartRequest } from '../src/core/request';
+import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
+import { renderSvg } from '../src/core/svg/renderSvg';
 
 const clone = (value: unknown): Record<string, unknown> => JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
 const drop = (theme: Record<string, unknown>, path: string[]): void => {
@@ -65,14 +67,31 @@ describe('theme shape', () => {
     }
   });
 
-  // One field of a text role the preset leaves out (bold secondary labels) must draw, not refuse the chart.
-  it('completes a partial secondary override from the role the preset draws today', () => {
-    const base = resolveTheme('bridge');
-    const theme = resolveTheme({ preset: 'bridge', overrides: { type: { secondary: { weight: 700 } } } } as never);
-    expect(theme.type.secondary).toMatchObject({ ...base.type.axis, weight: 700 });
-    expect(theme.type.scale?.L?.secondary).toBe(base.type.scale?.L?.axis);
+  // Bold period labels on a line chart come only from a one-field secondary override; the chart must draw them, not be refused.
+  it('draws bold period labels from a partial secondary override and refuses a wrong value at its path', () => {
+    const options = { size: { width: 740 }, theme: { preset: 'bridge', overrides: { type: { secondary: { weight: 700 } } } } };
+    const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'line', options, data: {
+      categories: ['Q1', 'Q2', 'Q3', 'Q4'].map(id => ({ id, label: id })),
+      series: [{ id: 'a', label: 'Alpha', values: [12, 15, 14, 18] }, { id: 'b', label: 'Beta', values: [9, 10, 13, 12] }],
+    } })));
+    const svg = renderSvg(geometry, resolveTheme(options.theme));
+    expect(svg).toMatch(/<text data-id="label:category:Q1"[^>]* font-weight="700"/);
     expect(() => resolveTheme({ preset: 'bridge', overrides: { type: { secondary: { weight: 'bold' } } } } as never))
       .toThrow(/type\.secondary\.weight/);
+  });
+
+  // A partial role must not undo the rest of the patch, change an override that was complete before, or pick up a step the plain chart ignores.
+  it('completes a partial secondary role from the text the theme draws with the rest of the patch', () => {
+    const theme = clone(themes.bridge) as unknown as Theme;
+    theme.name = 'partial-secondary-test';
+    theme.type.axis = { ...theme.type.axis, family: 'Georgia, serif', lineHeight: 1.7 };
+    theme.type.scale = { ...theme.type.scale, L: { ...theme.type.scale?.L, secondary: 8 } };
+    registerTheme(theme);
+    const tick = (overrides: ThemeOverrides, width: number) => secondaryType(themeForWidth(resolveTheme({ preset: theme.name, overrides }), width));
+    expect(tick({ type: { axis: { size: 19 }, secondary: { weight: 700 } } }, 800).size).toBe(19);
+    const complete = resolveTheme({ preset: theme.name, overrides: { type: { secondary: { size: 12, weight: 700 } } } }).type.secondary!;
+    expect(Object.entries(complete)).toEqual([['size', 12], ['weight', 700]]);
+    expect(tick({ type: { secondary: { weight: 700 } } }, 1200).size).toBe(secondaryType(themeForWidth(resolveTheme(theme.name), 1200)).size);
   });
 
   // Supported no-fill table settings must draw without permitting invisible text or lines.

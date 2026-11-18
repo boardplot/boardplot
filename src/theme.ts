@@ -25,6 +25,6 @@ linkThemeShapeRules();
 export { registerTheme, resolveTheme, typeForTarget } from './core/theme';
 /** @internal A host sizes a table with it, with no scene and no hidden render. */
 export { themeGeometryTokens } from './core/themeGeometry';
-export type { Theme, ThemeRef } from './core/types/theme';
+export type { Theme, ThemeOverrides, ThemeRef } from './core/types/theme';
 
 export type { RenderTarget } from './core/types/options';

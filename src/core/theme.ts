@@ -27,7 +27,7 @@ import studioFamilyJson from './themeFamilies/studio.json';
 import glassFamilyJson from './themeFamilies/glass.json';
 import type { DeepPartial, Scenario } from './types/cell';
 import type { HatchCue, HatchLook, LintWarning, Paint, PaintToken, SceneNode, ThemePaintSource } from './types/scene';
-import type { DashRole, StrokeRole, Theme, ThemeRef, ThemeTable, TypeRoleName } from './types/theme';
+import type { DashRole, StrokeRole, Theme, ThemeOverrides, ThemeRef, ThemeTable, TypeRoleName } from './types/theme';
 import { adoptedTheme } from './themeStore';
 import { RETIRED_PALETTES, RETIRED_PRESETS, RETIRED_THEME_KEYS, retiredThemeKeyWarning, withoutRetiredThemeKeys } from './retired';
 import { themeColors } from './themeColors';
@@ -983,8 +983,9 @@ function memoizedMerge(base: Theme, overrides: object, resolve: () => Theme): Th
  * layout or a silently unreadable chart with `warnings: []`. Derived values
  * are computed, never trusted — so is a theme.
  */
-function validatedOverride(base: Theme, overrides: DeepPartial<Theme>, presetName: string): Theme {
-  return memoizedMerge(base, overrides as object, () => checkedOverride(base, overrides, presetName));
+function validatedOverride(base: Theme, overrides: ThemeOverrides, presetName: string): Theme {
+  // The checked merge reads every field as untrusted input; a partial optional role is completed there.
+  return memoizedMerge(base, overrides as object, () => checkedOverride(base, overrides as DeepPartial<Theme>, presetName));
 }
 
 /**
@@ -1026,38 +1027,57 @@ function familyFollows(base: Theme, overrides: DeepPartial<Theme>): DeepPartial<
   return { ...overrides, type: { ...type, ...roles } } as DeepPartial<Theme>;
 }
 
+/** The text roles a theme may leave out; each one draws from another role while it is absent. */
+const OPTIONAL_TYPE_ROLES = ['secondary', 'micro'] as const;
+
 /**
- * The optional text roles (micro, secondary) are absent from a theme that
- * draws them from a fallback: secondary text from the axis role, micro text
- * from the footnote. A patch that sets only some fields of such a role
- * completes it from that fallback, so every field it leaves out keeps the
- * value the theme draws today. Without an authored size, the secondary role
- * also takes the axis role's S and L steps; an authored size holds as before.
+ * An override that sets only some fields of a text role the theme leaves out
+ * (secondary, micro) gets the other fields from the text the theme draws
+ * after the rest of the same override applies: secondary text from the axis
+ * role, micro text from the footnote. An override that sets no size keeps the
+ * sizes of that text at every width; a step it sets itself wins. An override
+ * with both size and weight was complete before and draws as authored.
  */
-function absentRolesFilled(base: Theme, overrides: DeepPartial<Theme>): Theme {
+function completedRoles(base: Theme, overrides: DeepPartial<Theme>, merged: Theme): Theme {
   const type = overrides.type as Record<string, unknown> | undefined;
-  if (typeof type !== 'object' || type === null) return base;
-  const filled: Partial<Record<'micro' | 'secondary', FontSpec>> = {};
-  if (base.type.secondary === undefined && isPlainPatch(type.secondary)) filled.secondary = base.type.axis;
-  if (base.type.micro === undefined && isPlainPatch(type.micro)) filled.micro = microType(base);
-  if (Object.keys(filled).length === 0) return base;
-  const scale = base.type.scale;
-  const sizeAuthored = typeof (type.secondary as { size?: unknown } | undefined)?.size === 'number';
-  const step = (column: Partial<Record<TypeRoleName, number>> | undefined) => {
-    if (!column || !filled.secondary || sizeAuthored || column.secondary !== undefined || column.axis === undefined) return column;
-    return { ...column, secondary: column.axis };
-  };
-  return {
-    ...base,
-    type: {
-      ...base.type, ...filled,
-      ...(scale ? { scale: { ...(scale.S ? { S: step(scale.S) } : {}), ...(scale.L ? { L: step(scale.L) } : {}) } } : {}),
-    },
-  };
+  if (typeof type !== 'object' || type === null) return merged;
+  let out = merged;
+  for (const role of OPTIONAL_TYPE_ROLES) {
+    const current = out.type[role] as Partial<FontSpec> | undefined;
+    if (base.type[role] !== undefined || !isPlainObject(type[role]) || !current) continue;
+    if (current.size !== undefined && current.weight !== undefined) continue;
+    const rest: Theme['type'] = { ...out.type };
+    delete rest[role];
+    const drawn = role === 'secondary' ? rest.axis : microType({ ...out, type: rest });
+    const { [AUTHORED_TYPE_SIZE]: _authored, ...fields } = drawn as FontSpec & { [AUTHORED_TYPE_SIZE]?: true };
+    const authored = Object.fromEntries(Object.entries(current).filter(([, value]) => value !== undefined));
+    const completed = { ...fields, ...authored, ...(AUTHORED_TYPE_SIZE in current ? { [AUTHORED_TYPE_SIZE]: true } : {}) } as FontSpec;
+    out = { ...out, type: { ...out.type, [role]: completed, scale: unsizedSteps(out.type.scale, role, current.size, type.scale) } };
+  }
+  return out;
 }
 
-function isPlainPatch(value: unknown): boolean {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+/**
+ * The S and L steps of a completed secondary role without an authored size:
+ * the axis steps, which the secondary text draws while the role is absent.
+ * A secondary step the override sets itself wins.
+ */
+function unsizedSteps(scale: Theme['type']['scale'], role: 'secondary' | 'micro', size: unknown, patchScale: unknown): Theme['type']['scale'] {
+  if (!scale || role !== 'secondary' || size !== undefined) return scale;
+  const authoredStep = (column: 'S' | 'L') => (patchScale as Record<string, Record<string, unknown> | undefined> | undefined)?.[column]?.secondary !== undefined;
+  const step = (column: 'S' | 'L') => {
+    const steps = scale[column];
+    if (!steps || authoredStep(column)) return steps;
+    const { secondary: _own, ...others } = steps;
+    return others.axis === undefined ? others : { ...others, secondary: others.axis };
+  };
+  return { ...scale, ...(scale.S ? { S: step('S') } : {}), ...(scale.L ? { L: step('L') } : {}) };
+}
+
+function isPlainObject(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null) return false;
+  const proto = Object.getPrototypeOf(value) as unknown;
+  return proto === Object.prototype || proto === null;
 }
 
 function checkedOverride(base: Theme, overrides: DeepPartial<Theme>, presetName: string): Theme {
@@ -1066,7 +1086,6 @@ function checkedOverride(base: Theme, overrides: DeepPartial<Theme>, presetName:
   // carries them — off the render path of every chart.
   if (ownThemes.has(overrides as object)) return own(mergeDeep(base, overrides));
   if (libraryPatches.has(overrides as object)) return own(mergeDeep(base, overrides));
-  base = absentRolesFilled(base, overrides);
   const series = overrides.color?.series;
   // One or two authored colours are a prefix of the preset ramp. Keep older,
   // complete ramp overrides unchanged, including their overflow policy.
@@ -1084,7 +1103,7 @@ function checkedOverride(base: Theme, overrides: DeepPartial<Theme>, presetName:
     overrides = { ...overrides, color: { ...overrides.color, series: ramp } };
   }
   // A retired key, authored or in a registered base, is ignored; removedNameWarnings reports it.
-  const merged = withoutRetiredThemeKeys(mergeDeep(base, familyFollows(base, authoredSizesHold(base, overrides)))).theme;
+  const merged = completedRoles(base, overrides, withoutRetiredThemeKeys(mergeDeep(base, familyFollows(base, authoredSizesHold(base, overrides)))).theme);
   const rules = requireDeferred('theme-rules');
   const issues = rules.checkThemeShape(merged);
   if (issues.length > 0) {
