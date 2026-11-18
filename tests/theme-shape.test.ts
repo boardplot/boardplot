@@ -1,6 +1,6 @@
 /** The one theme shape (`THEME_SHAPE`): presets pass, unsafe families and unknown keys are refused with a way out. */
 import { describe, expect, it } from 'vitest';
-import { registerTheme, roadshowFamilyThemes, secondaryType, themeForWidth, themes, resolveTheme } from '../src/core/theme';
+import { registerTheme, roadshowFamilyThemes, themes, resolveTheme } from '../src/core/theme';
 import type { Theme, ThemeOverrides } from '../src/core/types/theme';
 import { parseThemeJson, validateTheme } from '../src/core/themeValidate';
 import '../src/core/themeShapeRules';
@@ -18,6 +18,17 @@ const drop = (theme: Record<string, unknown>, path: string[]): void => {
   for (const key of path.slice(0, -1)) cursor = cursor[key] as Record<string, unknown>;
   delete cursor[path[path.length - 1]!];
 };
+
+/** A line chart over four quarters with a legend, as SVG, with its first tick label and first legend label tags. */
+function drawnQuarters(preset: string, type: ThemeOverrides['type'], width: number): { svg: string; tick: string; legend: string } {
+  const options = { size: { width }, legend: 'bottom' as const, theme: { preset, overrides: { type } } };
+  const svg = renderSvg(requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'line', options, data: {
+    categories: ['Q1', 'Q2', 'Q3', 'Q4'].map(id => ({ id, label: id })),
+    series: [{ id: 'a', label: 'Alpha', values: [12, 15, 14, 18] }, { id: 'b', label: 'Beta', values: [9, 10, 13, 12] }],
+  } }))), resolveTheme(options.theme));
+  const tag = (part: string) => svg.match(new RegExp(`<text[^>]*data-part="${part}"[^>]*>`))![0];
+  return { svg, tick: tag('tick'), legend: tag('legendLabel') };
+}
 
 describe('theme shape', () => {
   // A spec that names no theme must draw as Bridge, and the old look must stay one named preset away.
@@ -69,29 +80,31 @@ describe('theme shape', () => {
 
   // Bold period labels on a line chart come only from a one-field secondary override; the chart must draw them, not be refused.
   it('draws bold period labels from a partial secondary override and refuses a wrong value at its path', () => {
-    const options = { size: { width: 740 }, theme: { preset: 'bridge', overrides: { type: { secondary: { weight: 700 } } } } };
-    const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'line', options, data: {
-      categories: ['Q1', 'Q2', 'Q3', 'Q4'].map(id => ({ id, label: id })),
-      series: [{ id: 'a', label: 'Alpha', values: [12, 15, 14, 18] }, { id: 'b', label: 'Beta', values: [9, 10, 13, 12] }],
-    } })));
-    const svg = renderSvg(geometry, resolveTheme(options.theme));
-    expect(svg).toMatch(/<text data-id="label:category:Q1"[^>]* font-weight="700"/);
+    const period = drawnQuarters('bridge', { secondary: { weight: 700 } }, 740).svg.match(/<text data-id="label:category:Q1"[^>]*>/)![0];
+    expect(period).toContain('font-weight="700"');
     expect(() => resolveTheme({ preset: 'bridge', overrides: { type: { secondary: { weight: 'bold' } } } } as never))
       .toThrow(/type\.secondary\.weight/);
   });
 
-  // A partial role must not undo the rest of the patch, change an override that was complete before, or pick up a step the plain chart ignores.
-  it('completes a partial secondary role from the text the theme draws with the rest of the patch', () => {
+  // A partial role must not shrink ticks or the legend, undo the rest of the patch, or change an override that was complete before.
+  it('keeps the drawn tick and legend sizes when a theme without a secondary role gets a partial one', () => {
     const theme = clone(themes.bridge) as unknown as Theme;
     theme.name = 'partial-secondary-test';
-    theme.type.axis = { ...theme.type.axis, family: 'Georgia, serif', lineHeight: 1.7 };
-    theme.type.scale = { ...theme.type.scale, L: { ...theme.type.scale?.L, secondary: 8 } };
+    theme.type.axis = { ...theme.type.axis, size: 12, family: 'Georgia, serif', lineHeight: 1.7 };
+    const { axis: _step, ...large } = theme.type.scale!.L!;
+    theme.type.scale = { ...theme.type.scale, L: { ...large, secondary: 8 } };
     registerTheme(theme);
-    const tick = (overrides: ThemeOverrides, width: number) => secondaryType(themeForWidth(resolveTheme({ preset: theme.name, overrides }), width));
-    expect(tick({ type: { axis: { size: 19 }, secondary: { weight: 700 } } }, 800).size).toBe(19);
-    const complete = resolveTheme({ preset: theme.name, overrides: { type: { secondary: { size: 12, weight: 700 } } } }).type.secondary!;
-    expect(Object.entries(complete)).toEqual([['size', 12], ['weight', 700]]);
-    expect(tick({ type: { secondary: { weight: 700 } } }, 1200).size).toBe(secondaryType(themeForWidth(resolveTheme(theme.name), 1200)).size);
+    const size = (tag: string) => Number(tag.match(/font-size="([^"]+)"/)![1]);
+    // A width step of the theme for the absent role does not apply, with or without the override.
+    expect(size(drawnQuarters(theme.name, { secondary: { weight: 700 } }, 1200).tick)).toBe(size(drawnQuarters(theme.name, {}, 1200).tick));
+    // An authored axis size reaches the ticks and the legend as it does without the override.
+    const sized = drawnQuarters(theme.name, { axis: { size: 19 } }, 800);
+    const bold = drawnQuarters(theme.name, { axis: { size: 19 }, secondary: { weight: 700 } }, 800);
+    expect([size(bold.tick), size(bold.legend)]).toEqual([19, size(sized.legend)]);
+    // A complete override draws as authored and takes nothing from the axis role.
+    const complete = drawnQuarters(theme.name, { secondary: { size: 12, weight: 700 } }, 800).tick;
+    expect(complete).toContain('font-size="12" font-weight="700"');
+    expect(complete).not.toContain('font-family');
   });
 
   // Supported no-fill table settings must draw without permitting invisible text or lines.

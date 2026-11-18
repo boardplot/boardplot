@@ -1029,18 +1029,23 @@ function familyFollows(base: Theme, overrides: DeepPartial<Theme>): DeepPartial<
 
 /** The text roles a theme may leave out; each one draws from another role while it is absent. */
 const OPTIONAL_TYPE_ROLES = ['secondary', 'micro'] as const;
+/** The fields of a text role in a theme. An override of an absent role may leave any of them out. */
+const TYPE_ROLE_FIELDS = ['family', 'size', 'weight', 'lineHeight'] as const;
 
 /**
  * An override that sets only some fields of a text role the theme leaves out
  * (secondary, micro) gets the other fields from the text the theme draws
  * after the rest of the same override applies: secondary text from the axis
- * role, micro text from the footnote. An override that sets no size keeps the
- * sizes of that text at every width; a step it sets itself wins. An override
- * with both size and weight was complete before and draws as authored.
+ * role, micro text from the footnote. The mark of an authored size comes
+ * along, so the legend keeps the size it draws without the override. An
+ * override that sets no size keeps the sizes of that text at every width; a
+ * step it sets itself wins. An override with both size and weight was
+ * complete before and draws as authored. A key outside the role fields stays
+ * as it came in, so the shape check names it.
  */
 function completedRoles(base: Theme, overrides: DeepPartial<Theme>, merged: Theme): Theme {
   const type = overrides.type as Record<string, unknown> | undefined;
-  if (typeof type !== 'object' || type === null) return merged;
+  if (!isPlainObject(type)) return merged;
   let out = merged;
   for (const role of OPTIONAL_TYPE_ROLES) {
     const current = out.type[role] as Partial<FontSpec> | undefined;
@@ -1048,36 +1053,45 @@ function completedRoles(base: Theme, overrides: DeepPartial<Theme>, merged: Them
     if (current.size !== undefined && current.weight !== undefined) continue;
     const rest: Theme['type'] = { ...out.type };
     delete rest[role];
-    const drawn = role === 'secondary' ? rest.axis : microType({ ...out, type: rest });
-    const { [AUTHORED_TYPE_SIZE]: _authored, ...fields } = drawn as FontSpec & { [AUTHORED_TYPE_SIZE]?: true };
-    const authored = Object.fromEntries(Object.entries(current).filter(([, value]) => value !== undefined));
-    const completed = { ...fields, ...authored, ...(AUTHORED_TYPE_SIZE in current ? { [AUTHORED_TYPE_SIZE]: true } : {}) } as FontSpec;
-    out = { ...out, type: { ...out.type, [role]: completed, scale: unsizedSteps(out.type.scale, role, current.size, type.scale) } };
+    const drawn: Partial<FontSpec> = role === 'secondary' ? rest.axis : microType({ ...out, type: rest });
+    const completed: Partial<FontSpec> = { ...drawn, ...current };
+    for (const field of TYPE_ROLE_FIELDS) {
+      if (current[field] !== undefined) continue;
+      if (drawn?.[field] === undefined) delete completed[field];
+      else (completed as Record<string, unknown>)[field] = drawn[field];
+    }
+    const scale = role === 'secondary' && current.size === undefined ? unsizedSteps(out.type.scale, drawn, type.scale) : out.type.scale;
+    out = { ...out, type: { ...out.type, [role]: completed as FontSpec, scale } };
   }
   return out;
 }
 
 /**
  * The S and L steps of a completed secondary role without an authored size:
- * the axis steps, which the secondary text draws while the role is absent.
- * A secondary step the override sets itself wins.
+ * the size the axis role draws in that class, which is the size of secondary
+ * text while the role is absent. The step is written out, since a later merge
+ * over the theme brings a step of the theme back. A secondary step the
+ * override sets itself wins. A malformed scale stays as it is for the shape check.
  */
-function unsizedSteps(scale: Theme['type']['scale'], role: 'secondary' | 'micro', size: unknown, patchScale: unknown): Theme['type']['scale'] {
-  if (!scale || role !== 'secondary' || size !== undefined) return scale;
-  const authoredStep = (column: 'S' | 'L') => (patchScale as Record<string, Record<string, unknown> | undefined> | undefined)?.[column]?.secondary !== undefined;
-  const step = (column: 'S' | 'L') => {
-    const steps = scale[column];
-    if (!steps || authoredStep(column)) return steps;
-    const { secondary: _own, ...others } = steps;
-    return others.axis === undefined ? others : { ...others, secondary: others.axis };
-  };
-  return { ...scale, ...(scale.S ? { S: step('S') } : {}), ...(scale.L ? { L: step('L') } : {}) };
+function unsizedSteps(scale: Theme['type']['scale'], axis: Partial<FontSpec> | undefined, patchScale: unknown): Theme['type']['scale'] {
+  if (!isPlainObject(scale)) return scale;
+  let out = scale;
+  for (const column of ['S', 'L'] as const) {
+    const steps: unknown = scale[column];
+    if (!isPlainObject(steps)) continue;
+    const patchSteps = isPlainObject(patchScale) ? patchScale[column] : undefined;
+    if (isPlainObject(patchSteps) && patchSteps.secondary != null) continue;
+    const size = steps.axis === undefined ? axis?.size : steps.axis;
+    if (typeof size === 'number') out = { ...out, [column]: { ...steps, secondary: size } };
+  }
+  return out;
 }
 
-function isPlainObject(value: unknown): boolean {
+/** An ordinary object, from this JavaScript context or another one; not an array, a Date, a Map or a class instance. */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (typeof value !== 'object' || value === null) return false;
-  const proto = Object.getPrototypeOf(value) as unknown;
-  return proto === Object.prototype || proto === null;
+  const proto = Object.getPrototypeOf(value) as object | null;
+  return proto === null || Object.getPrototypeOf(proto) === null;
 }
 
 function checkedOverride(base: Theme, overrides: DeepPartial<Theme>, presetName: string): Theme {
