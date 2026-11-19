@@ -422,8 +422,9 @@ const drawnStep = (result: LayoutResult): DrawnBy | undefined => (result as { [D
 /**
  * The type steps up at 720 and at 1080 px. A chart refused in the class its width selects draws in the
  * first smaller class that draws, as the width just under the step does; under the cap every width step
- * reads that width (`classStepWidth`). A size refusal that asks only for more height, an authored
- * belowMinimum 'refuse' and a grid panel keep the refusal with its own advice.
+ * reads that width (`classStepWidth`). A size refusal that asks only for more height steps down too: the
+ * smaller type needs less height, so a set height that held the chart under the step holds it above.
+ * An authored belowMinimum 'refuse' and a grid panel keep the refusal with its own advice.
  */
 function smallerClass(
   request: ResolvedChartRequest, result: LayoutResult, layout: (asked: ResolvedChartRequest) => LayoutResult = layoutPlain,
@@ -439,12 +440,12 @@ function smallerClass(
 const classSteps = new WeakMap<LayoutResult, { request: ResolvedChartRequest; drawn: LayoutResult | undefined }>();
 
 function classStep(request: ResolvedChartRequest, result: LayoutResult, layout: (asked: ResolvedChartRequest) => LayoutResult): LayoutResult | undefined {
-  if (!stepsDown(result) || panelTypeClass(request.options) !== undefined || (request.options as RequestOptions).belowMinimum === 'refuse') return undefined;
+  if (!isRefused(result) || panelTypeClass(request.options) !== undefined || (request.options as RequestOptions).belowMinimum === 'refuse') return undefined;
   const smaller = firstSmallerClass(result, () => layout(request));
   return smaller && drawnBy(smaller, 'smallerClass');
 }
 
-/** A refusal the class step answers: any refusal but a size refusal that asks only for more height, which its size advice answers. */
+/** A refusal the margin step answers: any refusal but a size refusal that asks only for more height, which its size advice answers. */
 function stepsDown(result: LayoutResult): boolean {
   if (!isRefused(result)) return false;
   if (!result.refused || result.warnings[0]?.code !== 'size-below-floor') return true;
@@ -983,7 +984,7 @@ function preparedLayout(request: ResolvedChartRequest, verifyAdvice = false): La
   // a smaller class lays out in a fresh call, as render's class step does.
   const at = ((frame: RequestOptions) => {
     const first = draw(frame);
-    return classStepping && stepsDown(first) ? firstSmallerClass(first, () => draw(frame, true)) ?? first : first;
+    return classStepping && isRefused(first) ? firstSmallerClass(first, () => draw(frame, true)) ?? first : first;
   }) as LayoutCall<any, any, any>;
   at.probe = options => at({ ...options, [FULL_LAYOUT_PROBE]: true } as RequestOptions);
   at.finish = () => run?.finish();

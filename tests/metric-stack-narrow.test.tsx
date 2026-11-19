@@ -198,7 +198,8 @@ it('keeps the stripes of a hatched stack a grey step apart in notation and notat
 });
 
 // A fixed 16:9 slide used to refuse a three-panel stack ("needs 1263 x 867") because default plot heights only grew.
-it('draws a three-panel stack on a fixed 1184 x 528 canvas and refuses below its stated floor', () => {
+// A height that only the larger type cannot hold draws in the smaller type; a height that no type holds is refused.
+it('draws a three-panel stack on a fixed 1184 x 528 canvas, in the smaller type at 380 px, and refuses below its stated floor', () => {
   const months = Array.from({ length: 12 }, (_, i) => ({ id: `m${i}`, label: `M${i + 1}` }));
   const slide = {
     categories: months,
@@ -216,7 +217,8 @@ it('draws a three-panel stack on a fixed 1184 x 528 canvas and refuses below its
   };
   const at = (height: number) => render({ spec: { type: 'grid', data: slide, options: { stack: {}, title: 'Slide stack', size: { width: 1184, height } } } }).body as { ok: boolean; errors?: { code: string; expected?: { minimum: { height: number } } }[] };
   expect(at(528).ok).toBe(true);
-  const refused = at(380).errors![0]!;
+  expect(at(380).ok).toBe(true);
+  const refused = at(300).errors![0]!;
   expect(refused.code).toBe('size-below-floor');
   const floor = refused.expected!.minimum.height;
   expect(floor).toBeLessThan(528);

@@ -1702,4 +1702,15 @@ describe('the type class step at 720 px', () => {
     });
     for (const width of [719, 720, 740]) expect(layoutResolvedRequest(resolveChartRequest(table(width) as never)).refused).toBeUndefined();
   });
+  // A card with a set height that drew just under 720 or 1080 px was refused just over it: the larger type needed more
+  // height than the card had, and the class step answered only a refusal for width.
+  it('draws in the smaller type where a set height does not hold the larger type', () => {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
+    const matrix = (width: number, height: number) => ({ type: 'heatmap',
+      data: { categories: months.map((id) => ({ id, label: `${id} planning period regional operating review` })),
+        series: ['North', 'East', 'West', 'South'].map((label, ri) => ({ id: `r${ri}`, label, values: months.map((_, ci) => ((ci * 7 + ri * 3) % 9) - 3) })) },
+      options: { title: 'Southern regions drive the second half margin slippage', unit: '$m', source: 'Invented sample data', size: { width, height } } });
+    for (const width of [719, 720, 1079, 1080]) expect(layoutResolvedRequest(resolveChartRequest(matrix(width, 240) as never)).refused, `${width} px`).toBeUndefined();
+    expect(measure(matrix(720, 240) as never).refused).toBeUndefined();
+  });
 });
