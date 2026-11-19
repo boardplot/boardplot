@@ -72,7 +72,7 @@ describe('keyboard access to chart records', () => {
     expect(stop.getAttribute('role')).toBe('listbox');
     expect(host.querySelector('svg')!.getAttribute('role')).toBe('img');
     act(() => stop.focus());
-    expect(card()).toContain('Q1 AC / Revenue');
+    expect(card()).toContain('Q1 AC | Revenue:');
     expect(option()).toContain('Q1');
     expect(stop.getAttribute('aria-activedescendant')).toBe(host.querySelector('[role="option"]')!.id);
     expect(host.querySelector('[data-part="interaction-outline"]')).not.toBeNull();
@@ -325,15 +325,15 @@ describe('keyboard access to chart records', () => {
     act(() => keyStop().focus());
     press(keyStop(), 'ArrowRight');
     press(keyStop(), 'ArrowRight');
-    expect(card()).toContain('Q3F /');
+    expect(card()).toContain('Q3F | Revenue:');
     const data = column.data as { categories: unknown[]; series: { values: unknown[] }[] };
     const bumped = { ...data, series: data.series.map(series => ({ ...series, values: series.values.map(value => typeof value === 'number' ? value + 1 : value) })) };
     await render(<ColumnChart {...{ ...columnProps, data: bumped } as typeof columnProps} hover />);
     expect(document.activeElement).toBe(keyStop());
-    expect(card()).toContain('Q3F /');
+    expect(card()).toContain('Q3F | Revenue:');
     const fewer = { ...data, categories: data.categories.slice(0, 2), series: data.series.map(series => ({ ...series, values: series.values.slice(0, 2) })) };
     await render(<ColumnChart {...{ ...columnProps, data: fewer } as typeof columnProps} hover />);
-    expect(card()).toContain('Q2 AC /');
+    expect(card()).toContain('Q2 AC | Revenue:');
   });
 
   // The pointer and the keyboard fought over one card: the last input must win.
@@ -407,7 +407,7 @@ describe('keyboard access to table records', () => {
     act(() => stop.focus());
     const custom = document.querySelector<HTMLElement>('[data-bp-custom-card]')!;
     expect(custom.getAttribute('role')).toBe('dialog');
-    expect(custom.querySelector('[data-part="interaction-label"]')?.textContent).toContain('Q1 AC / Revenue');
+    expect(custom.querySelector('[data-part="interaction-label"]')?.textContent).toContain('Q1 AC');
     const link = custom.querySelector('a')!;
     expect(link.textContent).toBe('Open Q1 AC');
     const described = host.querySelector('[role="option"]')!.getAttribute('aria-describedby')!;

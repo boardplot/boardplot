@@ -43,6 +43,8 @@ export const fixtures: Fixture<SparklineData, SparklineOptions>[] = [
     data: {
       values: [96, 98, 101, null, 104, 103, 107, 110],
       labels: ['W1', 'W2', 'W3', 'W4', 'W5', 'W6', 'W7', 'W8'],
+      // Nothing prints the name; the hover card reads "W5" over "Orders: 104".
+      label: 'Orders',
     },
     options: { ring: 'none', endLabels: 'none', valueLabel: 'none', title: false },
   },

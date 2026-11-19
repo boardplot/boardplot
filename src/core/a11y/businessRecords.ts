@@ -238,6 +238,9 @@ function sparkline(ctx: RecordContext): InteractionRecord[] {
     return makeRecord(ctx, { categoryId: point.id }, value, {
       label: point.label ?? point.id,
       ...(point.label === undefined ? {} : { categoryLabel: point.label }),
+      // The metric's name names each value on the hover card ("Orders: 18"). An
+      // unlabelled point keeps its id as its row name in the data table.
+      ...(data.label === undefined ? {} : { seriesLabel: data.label, categoryLabel: point.label ?? point.id }),
       anchor: { x: point.x - SPARKLINE_RING_RADIUS, y: point.y - SPARKLINE_RING_RADIUS, w: 2 * SPARKLINE_RING_RADIUS, h: 2 * SPARKLINE_RING_RADIUS },
       fields: point.label === undefined ? [field('position', chartString(ctx.request.options, 'position'), numericValue(point.index + 1))] : [],
     });

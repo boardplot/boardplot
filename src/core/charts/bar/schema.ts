@@ -45,7 +45,7 @@ const categorySchema = categorySchemaOf({
 const seriesSchema = z.strictObject({
   valueKind: valueKindSchema,
   id: idSchema.describe("Series identity used by keyed options, annotations and legend entries."),
-  label: z.string().optional().describe("Displayed series name; defaults to the series id."),
+  label: z.string().optional().describe("Displayed series name; defaults to the series id. The hover card names each value with it (\"North: 65.8\")."),
   values: z.array(
     z.union([rangeCellSchema, z.strictObject({ categoryId: idSchema.describe("Category id identifying this value independently of array position."), value: rangeCellSchema.describe("Cell assigned to the named category in this series.") })]),
   ).describe("Values in category order, or keyed entries pairing a categoryId with its value. In a football field, null cells and cells without a range are left out with a warning and a note, provided at least one method has a range."),

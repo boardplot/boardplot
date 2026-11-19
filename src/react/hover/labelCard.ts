@@ -1,6 +1,6 @@
 import { chartString } from '../../core/strings/hover';
 import { joinSentences } from '../../core/strings';
-import { parseFormatExample, roundedNumber } from '../../core/formatSpec';
+import { parseFormatExample, roundedNumber, unitMagnitude } from '../../core/formatSpec';
 import { boxGap, rectCenter, rectContains, type Point, type Rect } from '../../core/geometry';
 import { ownerContains } from '../../core/a11y/recordsShared';
 import type { SlotCandidate } from '../../core/label/solver';
@@ -213,6 +213,57 @@ function fieldRow(field: InteractionRecord['fields'][number], locale?: string): 
   return { kind: 'field', label, value, text: `${label} ${value}`, values: [safeValue(field.value, locale)] };
 }
 
+/** A word in a unit: four or more letters, lower case after the first ("orders", "Fälle"). "kg", "ms", "USD" and "kWh" hold none. */
+const UNIT_WORD = /(?<!\p{L})\p{L}\p{Ll}{3,}(?!\p{L})/u;
+
+/**
+ * A unit that is a phrase in words ("cases per month", "% of started cases",
+ * "orders") names the number on the hover card. A sign, a code or a scale
+ * stays with the number: "$", "%", "pp", "kg", "ms", "USD", "EUR k", "$bn",
+ * "k orders" and "thousand per month" (the scale belongs to the number),
+ * "$ per share" (the sign goes in front of the number).
+ */
+export function unitPhrase(unit: string | undefined): boolean {
+  const text = unit?.trim();
+  return Boolean(text) && !/^\p{Sc}/u.test(text!) && unitMagnitude(text) === undefined && !SCALE_FIRST.test(text!) && UNIT_WORD.test(text!);
+}
+
+/** A unit that opens with a scale ("thousand per month", "M users"): the number is in that scale, so the unit stays on it. */
+const SCALE_FIRST = /^(?:M|(?:k|mn|bn?|tn|tsd|mio|mrd|bio|thousands?|tausend|millions?|millionen|billions?|billionen|trillions?|milliard(?:en?|s)?)\.?)(?:\s|$)/iu;
+
+/** The value row's name and number, and the heading above it. */
+interface ValueName { heading: string; name?: string; value: string }
+
+/**
+ * Name the number: the record's statistic ("Median"), else a unit phrase,
+ * printed once in front ("Cases per month: 800"), else the metric's own name
+ * (the series, a panel's title, a sparkline's label) with the category alone
+ * as the heading ("Jan 26", "North: 65.8"). A spec that names nothing prints
+ * the bare number. The number keeps its format; only a phrase that moves in
+ * front leaves its end.
+ */
+function valueName(record: InteractionRecord, locale?: string): ValueName {
+  const value = displayedValueText(record.value, locale);
+  if (record.valueLabel) return { heading: record.label, name: record.valueLabel, value };
+  const unit = record.value.unit?.trim();
+  if (unit && unitPhrase(unit) && value.endsWith(unit)) {
+    const number = value.slice(0, -unit.length).replace(/[\s\u00a0\u202f]+$/u, '');
+    if (number) return { heading: record.label, name: unit.replace(/^\p{L}/u, letter => letter.toUpperCase()), value: number };
+  }
+  if (record.seriesLabel) return { heading: record.categoryLabel ?? record.label, name: record.seriesLabel, value };
+  return { heading: record.label, value };
+}
+
+/**
+ * A row's text without the name the card puts in front: the statistic's name
+ * and the number with its unit, as a row of a card with several series prints
+ * it after the series name. A field row or an event's row keeps its own text.
+ */
+function unnamedText(row: LabelCardRow, record: InteractionRecord, locale?: string): string {
+  if (row.kind !== 'value' || record.event || record.cardFields) return row.text;
+  return `${record.valueLabel ? `${record.valueLabel}: ` : ''}${displayedValueText(record.value, locale)}`;
+}
+
 function cardContent(rows: LabelCardRow[]): LabelCardContent {
   return { rows, accessibleText: joinSentences(rows.map(row => row.text)) };
 }
@@ -230,10 +281,11 @@ export function labelCardContent(record: InteractionRecord, locale?: string, opt
   if (record.cardFields) {
     return cardContent(record.fields.filter(field => record.cardFields!.includes(field.key)).map(field => fieldRow(field, locale)));
   }
+  const named = valueName(record, locale);
   const rows: LabelCardRow[] = [
-    { kind: 'title', text: record.label },
-    { kind: 'value', text: `${record.valueLabel ? `${record.valueLabel}: ` : ''}${displayedValueText(record.value, locale)}`,
-      label: record.valueLabel ? `${record.valueLabel}:` : '', value: displayedValueText(record.value, locale), pointed: true,
+    { kind: 'title', text: named.heading },
+    { kind: 'value', text: `${named.name ? `${named.name}: ` : ''}${named.value}`,
+      label: named.name ? `${named.name}:` : '', value: named.value, pointed: true,
       values: [safeValue(record.value, locale)] },
   ];
   if (record.value.state !== 'suppressed') {
@@ -338,8 +390,8 @@ export function sharedLabelCardContent(records: readonly InteractionRecord[], lo
       const name = record.seriesLabel ?? record.target.owner.seriesId ?? record.label;
       const content = labelCardContent({ ...record, fields: record.fields.filter(field => field.key !== 'date' || headingNamesDate(record, field.value)) },
         locale, options).rows.slice(1);
-      const value = content[0];
-      member = value ? [{ ...value, label: name, value: value.text, text: `${name}. ${value.text}`,
+      const value = content[0] && unnamedText(content[0], record, locale);
+      member = value ? [{ ...content[0]!, label: `${name}:`, value, text: `${name}: ${value}`,
         series: true, swatch: seriesSwatch(record, scene) }, ...content.slice(1)] : [];
       cache?.set(record, member);
     }
@@ -370,7 +422,8 @@ export function shouldShowTableLabelCard(record: InteractionRecord, displayed: s
   if (rows.length > 2 || displayed === undefined) return true;
   if (value.state === 'value' && typeof value.raw === 'number' && Number.isFinite(value.raw) &&
       value.format && roundedNumber(value.raw, parseFormatExample(value.format)) === value.raw) return false;
-  return normalize(rows[1]?.text ?? '') !== normalize(displayed);
+  // The cell prints the number with its unit, so the card compares that text and not its named row.
+  return normalize(rows[1] ? unnamedText(rows[1], record, locale) : '') !== normalize(displayed);
 }
 
 function rowFont(row: LabelCardRow, theme: Theme): FontSpec {

@@ -1007,7 +1007,7 @@ it('prints a magnitude the same on every surface', async () => {
     expect(geometry.a11y.desc).toContain(text);
     const record = interactionRecords({ request, geometry, scope: request.scope, claims: [] }).find(entry => entry.target.owner.categoryId === 'a')!;
     // The card prints the drawn label, also without a format. Where the label prints zero, the card keeps the digits.
-    expect(labelCardContent(record, request.locale?.language).rows.map(row => row.text)).toContain(card ?? text);
+    expect(labelCardContent(record, request.locale?.language).rows.map(row => row.text)).toContain(`Sales: ${card ?? text}`);
   }
 });
 

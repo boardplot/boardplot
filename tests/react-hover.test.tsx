@@ -89,7 +89,7 @@ describe('hover card and highlight on a column fixture', () => {
     expect(card()).toBeUndefined();
     pointer(target, 'pointermove');
     expect(drawn('interaction-card')).toBe(true);
-    expect(card()).toContain('Q3F / Revenue');
+    expect(card()).toContain('Q3F | Revenue:');
     expect(card()).toContain('$96m');
     expect(card()).toContain('low: | $89m');
     expect(drawn('interaction-outline')).toBe(true);
@@ -255,7 +255,7 @@ describe('hover card and highlight on a column fixture', () => {
     await act(async () => { root = hydrateRoot(host, chart, { onRecoverableError: errors }); await loadHoverEngine(); });
     expect(host.querySelector('svg') === svg).toBe(true);
     pointer(target, 'pointermove');
-    expect(card()).toContain('Q3F / Revenue');
+    expect(card()).toContain('Q3F | Revenue:');
     expect(layout).not.toHaveBeenCalled();
     expect(errors).not.toHaveBeenCalled();
   });
@@ -263,7 +263,7 @@ describe('hover card and highlight on a column fixture', () => {
   it('BoardplotChart takes the bare spec and the same prop', async () => {
     await render(<BoardplotChart spec={{ type: 'column', data: column.data, options: { ...column.options as object, size } }} hover />);
     pointer(await nodeOf('column', column.data, column.options as object, column.hover!.owner), 'pointermove');
-    expect(card()).toContain('Q3F / Revenue');
+    expect(card()).toContain('Q3F | Revenue:');
   });
 });
 
@@ -300,7 +300,7 @@ describe('near-zero value key', () => {
       pointer(label, 'pointermove');
       expect(card()).toContain(member);
       // The member's caption is first, so a key never silently opens the first series' card.
-      expect(document.querySelector('[data-bp-chart-card] [data-bp-role="caption"]')?.textContent).toBe(member);
+      expect(document.querySelector('[data-bp-chart-card] [data-bp-role="caption"]')?.textContent).toBe(`${member}:`);
       const markers = Array.from(host.querySelectorAll(`[data-id^="marker:${id}:"]`));
       expect(markers.length).toBeGreaterThan(0);
       expect(markers.every(node => node.getAttribute('opacity') === '0.25')).toBe(false);
@@ -308,7 +308,7 @@ describe('near-zero value key', () => {
       expect(label.getAttribute('tabindex')).toBe('0');
       pointer(host.querySelector('[data-bp-hover]')!, 'pointerout');
       act(() => label.dispatchEvent(new FocusEvent('focusin', { bubbles: true })));
-      expect(document.querySelector('[data-bp-chart-card] [data-bp-role="caption"]')?.textContent).toBe(member);
+      expect(document.querySelector('[data-bp-chart-card] [data-bp-role="caption"]')?.textContent).toBe(`${member}:`);
       act(() => label.dispatchEvent(new MouseEvent('click', { bubbles: true })));
       act(() => label.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })));
       expect(onSeriesClick.mock.calls.slice(-2)).toEqual([[id], [id]]);
