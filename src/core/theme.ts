@@ -1497,9 +1497,12 @@ function solveGroundedHatch(
   // page, so the page-based deepening of hatchStripeColor does not apply.
   const start = fixed ?? fill;
   const markInk = paintTokenColor(theme, 'markInk');
+  // Each stripe depth tests the same fill-to-page ground colors.
+  const grounds: string[] = [];
+  const groundAt = (step: number): string => grounds[step] ??= mixColors(fill, page, step / 50);
   const lightestGround = (stripe: string): string => {
     for (let step = HATCH_GROUND_SHARE * 50; step > 0; step--) {
-      const ground = mixColors(fill, page, step / 50);
+      const ground = groundAt(step);
       if (contrastRatio(stripe, ground) >= stripeTarget) return ground;
     }
     return page;
@@ -1510,7 +1513,7 @@ function solveGroundedHatch(
     if (deepen > 0 && !allowed(stripe)) return { stripe: last, ground: lightestGround(last) };
     last = stripe;
     for (let step = HATCH_GROUND_SHARE * 50; step >= 0; step--) {
-      const ground = mixColors(fill, page, step / 50);
+      const ground = groundAt(step);
       if (contrastRatio(stripe, ground) < stripeTarget) continue;
       if (contrastRatio(mixColors(stripe, ground, coverage), page) >= cellTarget) return { stripe, ground };
       break;
