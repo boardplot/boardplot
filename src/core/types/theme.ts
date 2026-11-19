@@ -705,6 +705,8 @@ export interface ThemeTable {
   section?: ThemeTableFace & { ink?: 'ink' | 'inkMuted' | 'inkMeta'; case?: 'upper' | 'asis'; spaceBefore?: number; rule?: 'heavy' | 'hair' };
   /** True: density changes row height and cell padding only, never a type size. */
   fixedType?: boolean;
+  /** Px of air the compact density takes off each side of a body or total row. Absent: half of the row's regular air, rounded down. */
+  compactStep?: number;
   /** What a change against a previous column prints where the group has none. */
   noPrevious?: 'na' | 'missing';
   /** Which group rows carry the group ground when the table option `groupGround` is absent: 'expanded' (default), 'always' or 'none'. */
