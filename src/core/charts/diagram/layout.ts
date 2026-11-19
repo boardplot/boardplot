@@ -11,6 +11,7 @@ import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { labelCtx, PRIORITY, seatLeader, solveLabels, type LabelRequest, type SolveCtx } from '../../label/solver';
 import { accessibleTitle, NormalizeError, resolveSize } from '../../normalize/shared';
 import { defaultMeasurer, wrapNameText, wrapText, type FontSpec } from '../../text';
+import { hasCompleteTableWidths } from '../../fontMetrics/injected';
 import { classStepWidth, emphasisWeight, headingWeight, resolveSurface, strokeToken, canvasMargin, paintColor, panelTypeClass } from '../../theme';
 import type {
   DiagramData,
@@ -260,7 +261,12 @@ function layoutDiagramPass(
   // that full path; all other search probes have an explicit, fixed size.
   const probe = fitOnly && !narrowCard;
   let preset = org?.preset ?? layoutPreset(theme, presetContext);
-  if (org?.warnings) pushAll(warnings, org.warnings);
+  if (org?.warnings) {
+    pushAll(warnings, org.warnings);
+    // The size search reads only whether the candidate failed. An architecture fit error already settles it.
+    if (probe && options.variant === 'architecture' && (measure === defaultMeasurer || hasCompleteTableWidths(measure))
+      && org.warnings.some(w => w.severity === 'error')) return { warnings };
+  }
   // constrained columns wrap primary labels even without secondary text.
   // Measure those lines before the preset assigns row heights and badge clearance.
   if (!externalLabels && !org) {
