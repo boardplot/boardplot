@@ -236,7 +236,8 @@ function formattedNumber(value: number, opts: NumberFormatOptions, automatic: bo
   }
   const underflow = automatic && v === 0 && value !== 0
     ? underflowScientificText(value, MAGNITUDES.find(entry => entry.key === magSuffix)!.value) : undefined;
-  const body = underflow ?? scientific ?? numberFormatter(locale, usedDecimals).format(Number(roundedAbs));
+  const body = underflow ?? scientific ?? markedDecimal(roundedAbs, usedDecimals, true, locale)
+    ?? numberFormatter(locale, usedDecimals).format(Number(roundedAbs));
   const isZero = !underflow && !scientific && Number(roundedAbs) === 0;
   const sign = value < 0 && !isZero ? MINUS : signed && value > 0 && !isZero ? '+' : '';
   const text = `${sign}${prefix}${body}${magSuffix ? magnitudeSuffix(magSuffix, opts.locale) : ''}${suffix}`;
