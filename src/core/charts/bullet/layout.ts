@@ -144,8 +144,9 @@ interface NormBand {
 }
 
 const LABEL_GAP = 5;
-/** Air between the rightmost mark and the value column. */
+/** Air between the rightmost mark and the value column: in the row-end form, and beside the Target and Gap columns. */
 const VALUE_COL_GAP = 6;
+const ACTUAL_COL_GAP = 12;
 const CAT_BAND_GAP = 10;
 const CAPSULE_GAP = 8;
 /** Target and gap columns: plot to the first column, between the columns, and between two lines of one cell. */
@@ -1169,7 +1170,11 @@ export function layoutBullet(
   // The value column ends one value width past the rightmost band, bar or target of all rows, inside the
   // plot. No value starts over the marks: one wider than the headroom runs past the column, where the
   // columns beside it or the solver take it, as on any outside seat.
-  const valueColLeft = actualOwnTrack ? cp.rights.actual! - valueColW : maxOf(extents.map((extent, ri) => scaleAt(ri)(extent.hi))) + VALUE_COL_GAP;
+  // Beside the Target and Gap columns the Actual column stands further off, as far as the end room holds
+  // it, and never closer than at the row end. The end room keeps 13 px beside the value, short of the 35% cap.
+  const marksRight = maxOf(extents.map((extent, ri) => scaleAt(ri)(extent.hi)));
+  const valueGap = cols ? Math.max(VALUE_COL_GAP, Math.min(ACTUAL_COL_GAP, plot.x + plot.w - valueColW - marksRight)) : VALUE_COL_GAP;
+  const valueColLeft = actualOwnTrack ? cp.rights.actual! - valueColW : marksRight + valueGap;
   const valueColRight = actualOwnTrack ? cp.rights.actual! : Math.min(plot.x + plot.w, valueColLeft + valueColW);
   const valueAlign = overrides?.actual?.align;
   const valueX = (width: number) => valueAlign === undefined ? Math.max(valueColLeft, valueColRight - width) : alignedLeft(valueColLeft, valueColRight - valueColLeft, width, valueAlign);
