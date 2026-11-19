@@ -1058,6 +1058,7 @@ describe('size advice', () => {
   // Prevents a size patch that loops or turns a drawn chart into a refusal: a size warning on a chart that
   // draws carries no height patch, and every patch from render and measure leads to a drawn chart at a new size,
   // also when the size came from a width or height argument that a spec patch would not change.
+  // The nine requests take about 12 s on a two-core CI runner, so the test sets its own limit above the 15 s default.
   it('names a size patch only at a drawn size, and following the patches never repeats a size', () => {
     const names = ['Field service', 'Net revenue', 'Order intake', 'Rhein-Main', 'Warehouse costs', 'Personnel costs', 'Turnover', 'Black Forest', 'Churn rate', 'Cost of sales', 'Saxony-Anhalt', 'Retail stores'];
     const column = (size: object) => ({ type: 'column', data: { categories: names.map((label, i) => ({ id: `c${i}`, label })), series: [
@@ -1118,7 +1119,7 @@ describe('size advice', () => {
       }
       expect(seen.size, `${name}: measure advice still going after 6 patches`).toBeLessThan(6);
     }
-  });
+  }, 60_000);
 
   // Prevents the layout of a card (what React reports) from naming an estimated plot-floor height that refuses:
   // a heatmap at 414 px drew with an estimate of 518 px, and 518 px needs 566 px.
