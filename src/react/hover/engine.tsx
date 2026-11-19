@@ -336,6 +336,7 @@ export function hoverView(
     previousSide: position.panel === first.target.panel ? position.previousSide : undefined,
     band: first.target.owner.annotationId !== undefined ? undefined : bandTypes[panel?.type ?? request.type],
     path: first.target.owner.annotationId !== undefined ? undefined : pointsPath(model, panel?.type ?? request.type, first)?.map(cssPoint),
+    mark: marks[0] && cssRect(marks[0]),
     theme, measure: request.fontMetrics, locale,
     idPrefix: 'hover-card', card: cardOptions };
   // The card formats values after layout: it follows the chart's smallValues mode and unit-only formats.
@@ -355,10 +356,11 @@ export function ChartCard({ layout, theme, origin, cardRef }: { layout: LabelCar
   if (!layout.scene.length) return null;
   const size: CSSProperties = { width: layout.rect.w, height: layout.rect.h, maxWidth: 'none',
     overflow: 'visible', boxSizing: 'content-box' };
-  // The pointer may move onto the card (WCAG 1.4.13): the hover handlers keep the open record while it is on it.
+  // A card clear of the points' path takes the pointer (WCAG 1.4.13): the hover handlers keep the open record while it is on it.
+  // A card over the path of a line, area, combo or sparkline lets the pointer through, so the reader reaches every point.
   const card = <div popover={topLayer() ? 'manual' : undefined} ref={node => { cardRef?.(node); showCard(node); }} data-bp-chart-card="" data-bp-card-overlay="" className="bp-interaction-card"
     role="tooltip" dir="ltr" aria-label={layout.accessibleText}
-    style={{ ...cardStyle(layout.rect, theme, origin, 'bp-chart-card-in', true), pointerEvents: 'auto', ...size }}>
+    style={{ ...cardStyle(layout.rect, theme, origin, 'bp-chart-card-in', true), pointerEvents: layout.overPath ? 'none' : 'auto', ...size }}>
     <SceneRenderer geometry={labelCardGeometry(layout)} theme={theme} responsive={false} style={size} />
   </div>;
   // Keep the portal fallback where showPopover is missing.
@@ -406,7 +408,7 @@ export function CustomCard({ input, theme, origin, label, contentId, locale, car
     observer?.observe(node);
     return () => observer?.disconnect();
   }, [children, input.canvas]);
-  const seat = useMemo(() => measured && placeLabelCard(input, measured.size.width, measured.size.height).rect, [input, measured]);
+  const seat = useMemo(() => measured && placeLabelCard(input, measured.size.width, measured.size.height, true).rect, [input, measured]);
   const offset = topLayer() ? origin : measured?.inline;
   const surface = cardSurface(theme);
   const style: CSSProperties = { ...(seat && offset ? cardStyle(seat, theme, offset, 'bp-chart-card-in')

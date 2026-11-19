@@ -186,7 +186,8 @@ export function useHover(input: { request: ResolvedChartRequest; geometry: Rende
    * A pointer that rests there for 250 ms is hit-tested again.
    */
   const towardCard = (event: PointerEvent<HTMLElement>): boolean => {
-    const shown = engine && selection.ids.length ? card.current?.getBoundingClientRect() : undefined;
+    // A label card over the points' path lets the pointer through: the pointer picks the point under it.
+    const shown = engine && selection.ids.length && (custom || !view.card?.overPath) ? card.current?.getBoundingClientRect() : undefined;
     const box = shown && shown.width > 0 && shown.height > 0 ? shown : undefined;
     const at = { x: event.clientX, y: event.clientY };
     const distance = box ? Math.hypot(Math.max(box.left - at.x, 0, at.x - box.right), Math.max(box.top - at.y, 0, at.y - box.bottom)) : Infinity;

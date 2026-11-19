@@ -130,6 +130,8 @@ export interface LabelCardInput {
    * from one point to another. A seat keeps `PATH_PAD` clear of it.
    */
   path?: readonly Point[];
+  /** The pointed record's own mark, where `target` spans its whole category: a seat off `path` stays within `CLEAR_REACH` of it. */
+  mark?: Rect;
   /** Prefer clear table space; reading order breaks equal costs. */
   slots?: 'table';
   direction?: 'ltr' | 'rtl';
@@ -148,6 +150,8 @@ export interface LabelCardLayout extends LabelCardContent {
   scene: SceneNode[];
   decisions: PlaceDecision[];
   side?: CardSide;
+  /** The seat meets the points' path (`LabelCardInput.path`): the card lets the pointer through to the points under it. */
+  overPath?: boolean;
 }
 
 export type LabelCardGeometry = Pick<Geometry, 'type' | 'size' | 'scene' | 'legend' | 'a11y' | 'sizing' | 'mode'>;
@@ -905,11 +909,30 @@ interface SeatSearch { readable: readonly Rect[] }
  * Both searches stay near the mark. A card far from its mark reads as no card of
  * that mark, which is worse than a hidden label, so a clear seat beyond
  * `CLEAR_REACH` is taken only when no nearer seat is safe.
+ *
+ * With a points path, a seat off the path wins when it stands within
+ * `CLEAR_REACH` of the mark and hides no text; else the card takes the seat it
+ * would take without the path, and `overPath` says whether that seat meets the
+ * path. A host's own card (`strict`) always keeps off the path, as it takes
+ * the pointer.
  */
-export function placeLabelCard(input: LabelCardInput, width: number, height: number): Pick<LabelCardLayout, 'placement' | 'rect' | 'side' | 'decisions'> {
+export function placeLabelCard(input: LabelCardInput, width: number, height: number, strict = false): Pick<LabelCardLayout, 'placement' | 'rect' | 'side' | 'decisions' | 'overPath'> {
   // Text the card would hide: labels, notes, axis and frame text. A rule of an axis is no text.
   const texts = input.slots === 'table' ? [] : input.occupied.filter(item => item.kind !== 'mark' && item.kind !== 'reserved' && Math.min(item.rect.w, item.rect.h) > 2);
   const hidden = (rect: Rect) => texts.filter(item => overlapArea(rect, item.rect) > 0);
+  const path = input.slots === 'table' ? undefined : input.path;
+  const seat = searchSeat(input, width, height, texts, hidden);
+  if (!path) return seat;
+  const anchor = input.mark ?? input.target ?? input.record.anchor;
+  if (strict || !meetsPath(path, seat.rect) && hidden(seat.rect).length === 0 && (!anchor || boxGap(seat.rect, { w: 0, h: 0, ...anchor }) <= CLEAR_REACH)) {
+    return { ...seat, overPath: meetsPath(path, seat.rect) };
+  }
+  const beside = searchSeat({ ...input, path: undefined }, width, height, texts, hidden);
+  return { ...beside, overPath: meetsPath(path, beside.rect) };
+}
+
+function searchSeat(input: LabelCardInput, width: number, height: number, texts: readonly (OccupiedRect & { filled?: boolean })[],
+  hidden: (rect: Rect) => (OccupiedRect & { filled?: boolean })[]): Pick<LabelCardLayout, 'placement' | 'rect' | 'side' | 'decisions'> {
   let seat = seatCard(input, width, height, texts);
   // A second search never trades a seat clear of the pointer's path for one in its way.
   const inWay = (rect: Rect) => input.path !== undefined && meetsPath(input.path, rect);
