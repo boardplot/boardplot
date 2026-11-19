@@ -32,7 +32,7 @@ import { parseTimeText } from './isoTime';
 import type { OccupiedClaim, OccupiedIndex } from './label/occupied';
 import { PRIORITY, solveLabels, type LabelRequest, type SolveCtx } from './label/solver';
 import { NormalizeError } from './normalize/shared';
-import { wrapText, type FontSpec, type TextMeasurer } from './text';
+import { isCachedTextMeasurer, wrapText, type FontSpec, type TextMeasurer } from './text';
 import { colorblindPaint, microType, typeWidthClass, emphasisWeight, strokeToken, dashToken } from './theme';
 import { annotationRef, defaultAnnotationId, type Annotation, type EventGlyph, type EventOptions, type EventTone } from './types/annotations';
 import type { Id, OwnerRef } from './types/cell';
@@ -712,7 +712,8 @@ export function settleEventLane<F extends { frame: FrameResult }, A>(input: Lane
   let detail = !s.compact;
   let group = !s.compact;
   let dates = true;
-  let plan: LanePlan;
+  const stableMetrics = isCachedTextMeasurer(s.measure);
+  let plan: LanePlan | undefined;
   let framed = first;
   let frameWarnings: LintWarning[];
   const dropped: string[] = [];
@@ -720,7 +721,8 @@ export function settleEventLane<F extends { frame: FrameResult }, A>(input: Lane
   // The plot band the full key leaves, measured before the key drops a part.
   let fullBand: number | undefined;
   for (;;) {
-    plan = planLane(s.events, axis, s.count, rows, bounds, f, s.measure, s.footnotesOff === true);
+    // Shortening the key leaves the events in the same rows on the same axis.
+    if (!plan || !stableMetrics) plan = planLane(s.events, axis, s.count, rows, bounds, f, s.measure, s.footnotesOff === true);
     const key = keyInput(plan, { detail, group, dates, dense: lean }, s.options?.keyTitle);
     frameWarnings = key ? [] : firstWarnings;
     // The key row explains the event colours and brackets whether or not the key keeps its detail lines.
@@ -728,6 +730,7 @@ export function settleEventLane<F extends { frame: FrameResult }, A>(input: Lane
     const bandH = framed.frame.plot.h;
     if (plan.rows > 0 && bandH - plan.height < LANE_PLOT_FLOOR * s.size.height) {
       rows = plan.rows - 1;
+      plan = undefined;
       continue;
     }
     if (key && bandH < KEY_BAND_FLOOR * s.size.height) {
@@ -743,11 +746,13 @@ export function settleEventLane<F extends { frame: FrameResult }, A>(input: Lane
     }
     // The compact form may not leave the plot under its floor: its key then shortens to "n title". Full mode keeps its own ladder
     // (rows, detail, kind labels): its size floor is measured with the full lane, and a pinned canvas that lacks room draws compact.
-    const shiftedOf = (): F => (plan.height > 0
-      ? { ...framed, frame: { ...framed.frame, plot: { ...framed.frame.plot, y: framed.frame.plot.y + plan.height, h: framed.frame.plot.h - plan.height } } }
-      : framed);
-    if (s.axis(s.area(shiftedOf(), [])).plot.h < COMPACT_PLOT_FLOOR) {
-      if (key && dates && key.entries.some((entry) => entry.date)) {
+    const canDropDates = key && dates && key.entries.some((entry) => entry.date);
+    // A custom measurer can change on each call. Keep its original plot trial.
+    if (canDropDates || !stableMetrics) {
+      const shifted = plan.height > 0
+        ? { ...framed, frame: { ...framed.frame, plot: { ...framed.frame.plot, y: framed.frame.plot.y + plan.height, h: framed.frame.plot.h - plan.height } } }
+        : framed;
+      if (s.axis(s.area(shifted, [])).plot.h < COMPACT_PLOT_FLOOR && canDropDates) {
         dates = false;
         compacted.push('dates');
         continue;
