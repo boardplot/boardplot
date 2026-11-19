@@ -129,7 +129,13 @@ export function levelLadder(theme: Theme, density: TableDensity = 'regular', tar
   const headFace = table?.head?.size ?? theme.type.axis.size;
   const ownHead = textScale < 1 && headFace >= (table?.head?.size !== undefined ? tableHeadFloorPx(target) : targetFloorsPx(target).axis) ? Infinity : headFace;
   const axisFloor = Math.min(ownHead, tableHeadFloorPx(target, textScale));
-  const padStep = density === 'compact' ? -1 : density === 'relaxed' ? 2 : 0;
+  // The air a row keeps at this density, from its regular air. Compact keeps half of it, rounded
+  // down, so it holds visibly more rows in one height and the total, group and leaf rows keep
+  // their ladder; `table.compactStep` takes a fixed px off each side instead. Relaxed adds 2 px.
+  const compactStep = table?.compactStep;
+  const air = (regular: number): number => density === 'relaxed' ? regular + 2
+    : density !== 'compact' ? regular
+    : compactStep === undefined ? Math.floor(regular / 2) : regular - compactStep;
   const label = Math.max(labelFloor, theme.type.label.size + sizeStep);
   const total = grid && table?.fixedType === true ? theme.type.label.size : label;
   // The heads of a cohort grid stay on the axis step whatever the cells do,
@@ -189,7 +195,7 @@ export function levelLadder(theme: Theme, density: TableDensity = 'regular', tar
     sectionBox,
     micro,
     group: Math.max(axisFloor, axis - d(0.5), micro),
-    totalPad: Math.max(1, 8 + padStep),
+    totalPad: Math.max(1, air(8)),
     lineBox,
     inlineSize: () => Math.max(labelFloor, micro, label - d(2)),
     inlineBox: (size) => Math.ceil(size * INLINE_LINE_RATIO),
@@ -197,6 +203,6 @@ export function levelLadder(theme: Theme, density: TableDensity = 'regular', tar
     size,
     weight: (_level, hasChildren) => hasChildren ? tableEmphasis(theme) : theme.type.label.weight,
     pad: (level, hasChildren) =>
-      Math.max(rows?.pad === undefined ? 1 : 0, (rows?.pad ?? (level <= 0 || (level === 1 && hasChildren) ? 7 : level <= 2 ? 4 : 3)) + padStep),
+      Math.max(rows?.pad === undefined ? 1 : 0, air(rows?.pad ?? (level <= 0 || (level === 1 && hasChildren) ? 7 : level <= 2 ? 4 : 3))),
   };
 }

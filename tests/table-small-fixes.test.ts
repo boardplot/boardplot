@@ -328,6 +328,29 @@ it('keeps scaled weekly levels accurate beside a large range total', () => {
   expect(printed(2)).toEqual(['5,705,293,076', '188,633,562', '195,633,562', '0']);
 });
 
+// Compact took 1 px of air off each side of a row, so a switch from regular to compact moved a table by about 3 % and a reader saw no change.
+it('makes compact rows visibly shorter on both surfaces and keeps the total, group and sub row apart', () => {
+  const data: TableData = {
+    columns: [{ id: 'label', kind: 'rowLabel', label: 'Channel' }, { id: 'v', kind: 'value', label: 'Orders' }],
+    rows: [
+      { id: 'total', label: 'All', role: 'total', cells: { v: 30 } },
+      { id: 'paid', label: 'Paid', cells: { v: 20 }, children: [{ id: 'search', label: 'Search', cells: { v: 12 } }, { id: 'social', label: 'Social', cells: { v: 8 } }] },
+      { id: 'direct', label: 'Direct', cells: { v: 10 } },
+    ],
+  };
+  const rows = (density: 'regular' | 'compact') => new Map((requireGeometry(layoutResolvedRequest(resolveChartRequest({
+    type: 'table', data, options: { density, size: { width: 480 } } }))).marks as unknown as TableMarks).rows.map((row) => [row.id, row.h] as const));
+  const regular = rows('regular');
+  const compact = rows('compact');
+  const body = (heights: Map<string, number>) => [...heights.values()].reduce((sum, h) => sum + h, 0);
+  expect(body(compact)).toBeLessThanOrEqual(0.85 * body(regular));
+  expect(compact.get('total')!).toBeGreaterThan(compact.get('paid')!);
+  expect(compact.get('paid')!).toBeGreaterThan(compact.get('search')!);
+  // The grid pads a compact row with the same air as the SVG.
+  const ladder = levelLadder(resolveTheme('standard'), 'compact');
+  expect(tableStylesheet(resolveTheme('standard'))).toContain(`--bp-pad-anchor:${ladder.pad(0, true)}px;--bp-pad-leaf:${ladder.pad(1, false)}px`);
+});
+
 // A column toggle took its height from its text and padding alone: 21.6 px at phone width, under the 24 px target size.
 it('holds a table column toggle to the 24 px target height', () => {
   expect(tableStylesheet(resolveTheme('standard'))).toMatch(/\.bp-table \.bp-col-toggle\{[^}]*min-height:24px/);

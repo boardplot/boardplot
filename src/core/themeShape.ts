@@ -176,6 +176,7 @@ export const THEME_SHAPE: ShapeNode = object({
     head: opt(object({ ...tableFace, case: optOneOf('upper', 'asis') })),
     section: opt(object({ ...tableFace, ink: optOneOf('ink', 'inkMuted', 'inkMeta'), case: optOneOf('upper', 'asis'), spaceBefore: optNum(0, 48), rule: optOneOf('heavy', 'hair') })),
     fixedType: flag,
+    compactStep: optNum(0, 8),
     noPrevious: optOneOf('na', 'missing'),
     ofWhich: optOneOf('muted', 'ink'),
     groupGround: optOneOf('expanded', 'always', 'none'),

@@ -339,6 +339,9 @@ function renderTableStyle(
     ['pad-deep', ladder.pad(3, false)],
     ['pad-total', ladder.totalPad],
   ] as const;
+  // Compact keeps a share of each rung's air, not a fixed step: the grid takes the ladder's own compact numbers.
+  const compact = levelLadder(theme, 'compact', target, textScale);
+  const compactPads = `--bp-pad-step:0px;--bp-pad-anchor:${compact.pad(0, true)}px;--bp-pad-leaf:${compact.pad(1, false)}px;--bp-pad-deep:${compact.pad(3, false)}px;--bp-pad-total:${compact.totalPad}px`;
   const motion = interactionTokens(theme);
   const surface = resolveSurface(theme);
   // The head face the SVG draws, and the ratio both surfaces take
@@ -408,7 +411,7 @@ figure.bp-table[data-bp-fill-height]{box-sizing:border-box;display:flex;flex-dir
 .bp-table-grid{width:var(--bp-table-width,max-content);border-bottom:var(--bp-stroke-rule) solid var(--bp-rule);--bp-pad-step:0px;--bp-size-step:0px;--bp-cell-pad-x:12px;--bp-inline-size:max(var(--bp-micro-size),calc(var(--bp-label-size) + var(--bp-size-step) - 2px));--bp-inline-box:calc(var(--bp-inline-size)*var(--bp-inline-ratio))}
 .bp-table-grid{--bp-inline-box:round(up,calc(var(--bp-inline-size)*var(--bp-inline-ratio)),1px)}
 .bp-table-grid:has([data-bp-rowgroup="body"]>.bp-rowwrap:last-child>.bp-total){border-bottom:0}
-.bp-table-grid[data-bp-density="compact"]{--bp-pad-step:-1px;--bp-size-step:-.5px}.bp-table-grid[data-bp-density="relaxed"]{--bp-pad-step:2px}
+.bp-table-grid[data-bp-density="compact"]{${compactPads};--bp-size-step:-.5px}.bp-table-grid[data-bp-density="relaxed"]{--bp-pad-step:2px}
 .bp-table-grid[data-bp-density="cohort"]{--bp-size-step:-.5px;--bp-row-h:26px}.bp-table-grid[data-bp-density="cohort-small"]{--bp-size-step:-1px;--bp-row-h:20px}
 .bp-table-grid[data-bp-density="cohort"] [role="row"]>*,.bp-table-grid[data-bp-density="cohort-small"] [role="row"]>*{box-sizing:border-box;height:var(--bp-row-h);padding-top:0;padding-bottom:0}
 .bp-table-grid[data-bp-density="cohort"] [role="row"].bp-total>*,.bp-table-grid[data-bp-density="cohort-small"] [role="row"].bp-total>*{box-sizing:border-box;height:calc(var(--bp-row-h) + 8px)}
