@@ -84,6 +84,11 @@ export function columnHeadText(column: ResolvedColumn, theme: Pick<Theme, 'table
   return fieldHeadText(column.label, theme) + columnHeaderAffix(column);
 }
 
+function columnHeadings(col: ResolvedColumn, theme: Theme) {
+  const plain = columnHeadText(col, theme);
+  return { plain, glued: plain.replace(/ (\S{1,2})$/u, '\u00a0$1') };
+}
+
 /** One content width rule. Dense padding is a fallback only when normal padding cannot fit. */
 export function tableWidths(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions, view: TableWidthView, probe: TableWidthProbe | undefined): TableWidthPlan | TableWidthMiss;
 export function tableWidths(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options?: WidthOptions, view?: TableWidthView): TableWidthPlan;
@@ -147,7 +152,7 @@ function measureTableTracks(table: ResolvedTable, theme: Theme, measure: TextMea
     } };
   const headingFaces = (faces: TableFonts) => groupHeadingFaces(view.trailingTracking
     ? { ...faces.group, letterSpacing: Math.round((faces.group.letterSpacing ?? 0) * 1000) / 1000 } : faces.group);
-  const { ladder, regularFonts, cellStep, indentStep, childCount, cellFont, inlineFont, hasChanges, bodyWidths } =
+  const { ladder, regularFonts, cellStep, indentStep, childCount, cellFont, inlineFont, hasChanges, bodyWidths, headings } =
     measuredTypography(table, theme, measure, options, view, cols, rows, widthRows);
   const isTree = fullRows.some(row => row.hasChildren);
   const indents = labelIndents(cellPadX, options.labelIndent, view.withMarks ?? options.outlineMarks === true);
@@ -168,8 +173,8 @@ function measureTableTracks(table: ResolvedTable, theme: Theme, measure: TextMea
   // A short last word stays on the line before it: a narrow card broke "WEEK 1" into "WEEK" over "1".
   // The tight rung lets it break again: "PERIOD" over "1" beats a card that leaves the period out.
   const columnHeaderText = (col: (typeof cols)[number]) => {
-    const text = columnHeadText(col, theme);
-    return view.headGlue === false ? text : text.replace(/ (\S{1,2})$/u, '\u00a0$1');
+    const heading = headings.get(col) ?? columnHeadings(col, theme);
+    return view.headGlue === false ? heading.plain : heading.glued;
   };
   /** The tracks every column takes at one set of head faces, and the cuts they report. */
   function trackWidths(faces: TableFonts) {
@@ -194,14 +199,15 @@ function measureTableTracks(table: ResolvedTable, theme: Theme, measure: TextMea
     };
     for (let index = 0; index < cols.length; index++) {
       const col = cols[index]!;
-      const heatOnlyWidth = Math.max(HEAT_ONLY_CELL_W, Math.ceil((view.scroll ? headerContentWidth(col, context)
+      const showsContent = figures || !heatColumn(col);
+      const heatOnlyWidth = showsContent ? 0 : Math.max(HEAT_ONLY_CELL_W, Math.ceil((view.scroll ? headerContentWidth(col, context)
         : measure(columnHeaderText(col), faces.header).width) + 2 * cellPadX));
-      const intrinsicWidth = figures || !heatColumn(col)
+      const intrinsicWidth = showsContent
         ? intrinsicColumnWidth(col, widthRows, context)
         : heatOnlyWidth;
       // The grid draws a group's divider as a 1 px border inside the cells of its first and last column, so
       // the track pays for it; unpaid, the start border cut the widest figure of the column to an ellipsis.
-      const ruled = col.width === undefined && (figures || !heatColumn(col));
+      const ruled = col.width === undefined && showsContent;
       const endRule = (ruled && view.groupEnd?.has(col.id) ? 1 : 0) + (ruled && view.groupStart?.has(col.id) ? 1 : 0);
       if (col.kind === 'encoding') {
         // An authored width is the track, as for any column that is not a value; without one the track fits its end value.
@@ -210,11 +216,10 @@ function measureTableTracks(table: ResolvedTable, theme: Theme, measure: TextMea
         minimumWidths[index] = track;
         continue;
       }
-      const headerW = view.scroll ? headerContentWidth(col, context)
-        : measure(columnHeaderText(col), faces.header).width + (context.headerReserve?.(col) ?? 0);
       // The collapsed hint is paid for at the natural width only: the floor a frame may squeeze the
       // label track to stays the label's, and a squeezed hint is cut instead.
-      const minimumWidth = col.wrap ? wrapFloorWidth(col, widthRows, headerW, context)
+      const minimumWidth = col.wrap ? wrapFloorWidth(col, widthRows, view.scroll ? headerContentWidth(col, context)
+        : measure(columnHeaderText(col), faces.header).width + (context.headerReserve?.(col) ?? 0), context)
         : col.kind === 'rowLabel' ? intrinsicColumnWidth(col, widthRows, { ...context, hint: undefined }) : intrinsicWidth;
       minimumWidths[index] = minimumWidth;
       // A heat lane with its figures off takes the 22 px cell over an
@@ -228,7 +233,7 @@ function measureTableTracks(table: ResolvedTable, theme: Theme, measure: TextMea
       const authoredContext = col.kind === 'rowLabel' ? { ...context, labelLines: options.rowLabelLines ?? 2 } : context;
       const authored = col.kind === 'rowLabel' && col.width !== undefined && intrinsicWidth <= col.width ? col.width
         : authoredTrackWidth(col, widthRows, authoredContext);
-      widths[index] = figures || !heatColumn(col) ? authored ?? (wrapped ? minimumWidth : intrinsicWidth) : heatOnlyWidth;
+      widths[index] = showsContent ? authored ?? (wrapped ? minimumWidth : intrinsicWidth) : heatOnlyWidth;
       if (wrapped) wrappedOneLines.push({ index, width: intrinsicWidth });
       const extra = (col.kind === 'rowLabel' ? labelLead : 0) + endRule;
       if (extra > 0) for (const target of [widths, minimumWidths]) target[index] = target[index]! + extra;
@@ -421,7 +426,8 @@ function prepareWidthTypography(table: ResolvedTable, theme: Theme, options: Wid
     columnIndex: new Map(cols.map((col, index) => [col.id, index])),
     columns: cols.map(() => []),
   };
-  return { ladder, regularFonts, cellStep, indentStep, childCount, cellFont, inlineFont, hasChanges, bodyWidths };
+  const headings = new Map(cols.map(col => [col, columnHeadings(col, theme)]));
+  return { ladder, regularFonts, cellStep, indentStep, childCount, cellFont, inlineFont, hasChanges, bodyWidths, headings };
 }
 
 const measuredBodies = new WeakMap<ResolvedTable, Map<string, ReturnType<typeof prepareWidthTypography>>>();

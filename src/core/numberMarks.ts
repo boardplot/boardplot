@@ -14,6 +14,7 @@
  * per options object, so two charts with different marks never meet.
  */
 
+import { groupInteger } from './formatPrecision';
 import type { LocaleSpec } from './types/options';
 
 type SmallValues = 'bound' | 'zero' | 'scientific' | 'p-value';
@@ -37,6 +38,18 @@ export function chartNumberMarks(locale: Pick<LocaleSpec, 'decimal' | 'thousands
   const decimal = locale?.decimal ?? '.';
   const thousands = requested !== undefined && requested !== decimal ? requested : decimal === ',' ? '.' : ',';
   return { decimal, thousands };
+}
+
+/** A marked chart uses English digits. A short decimal already rounded to its printed precision needs only its two separators. */
+export function markedDecimal(text: string, decimals: number, grouped: boolean, locale: string): string | undefined {
+  // Longer decimals can change when the Intl path converts the printed digits back to a Number.
+  if (text.length > 15 || !/^-?\d+(?:\.\d+)?$/.test(text)) return undefined;
+  const [integer, fraction = ''] = text.split('.');
+  if (fraction.length !== decimals) return undefined;
+  const { marks } = splitNumberMarks(locale);
+  if (!marks) return undefined;
+  const leading = grouped ? groupInteger(integer!, marks.thousands === ' ' ? '\u00a0' : marks.thousands) : integer!;
+  return fraction ? leading + marks.decimal + fraction : leading;
 }
 
 /** The language tag without a marks subtag, and the marks it carries. */

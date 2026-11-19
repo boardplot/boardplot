@@ -817,7 +817,13 @@ export function prepareFitLayout<D, O extends ChartOptions, M extends object, DV
     const size = runOptions?.size;
     const targetSize = (runOptions as TargetSizeOptions | undefined)?.[TARGET_SIZE];
     const fixed = targetSize?.fixed;
-    const key = `${typeof size === 'object' ? `${size?.width}x${size?.height}:${size?.unit}` : String(size)}:${compact}:${forcedCompact(runOptions)}:${String(runOptions?.mode)}:${runOptions?.belowMinimum}:${fixed?.width}:${fixed?.height}:${targetSize?.sizePx.width}:${targetSize?.sizePx.height}:${isWidthProbe(definition.type, runOptions)}:${(runOptions as { [ACCEPTANCE_PROBE]?: boolean } | undefined)?.[ACCEPTANCE_PROBE]}`;
+    // An open-height table reads the target dimensions only to recognize its original width
+    // and first height pass. A repair at another width has the same tracks and rows regardless
+    // of which narrower width asked for it.
+    const targetFrame = definition.type === 'table' && fixed?.width && !fixed.height && typeof size === 'object'
+      && size.unit === undefined && size.width !== targetSize!.sizePx.width
+      ? 'width-repair' : `${targetSize?.sizePx.width}:${targetSize?.sizePx.height}`;
+    const key = `${typeof size === 'object' ? `${size?.width}x${size?.height}:${size?.unit}` : String(size)}:${compact}:${forcedCompact(runOptions)}:${String(runOptions?.mode)}:${runOptions?.belowMinimum}:${fixed?.width}:${fixed?.height}:${targetFrame}:${isWidthProbe(definition.type, runOptions)}:${(runOptions as { [ACCEPTANCE_PROBE]?: boolean } | undefined)?.[ACCEPTANCE_PROBE]}`;
     let result = probes.get(key);
     if (result === undefined) {
       // Percent Mekko has no hanging totals: its frame minimum is constant at this width.

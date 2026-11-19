@@ -752,9 +752,7 @@ function widthProbers(request: ResolvedChartRequest, layoutAt: LayoutCall<any, a
     // prepared cell measurements at several widths without sharing a class's answers.
     const plainStep = (next: ResolvedChartRequest): LayoutResult => {
       if (!tableRuns || next !== asked) return stepLayout(next);
-      const key = layoutStepKey();
-      let run = tableRuns.get(key);
-      if (!run) tableRuns.set(key, run = preparedLayout(next));
+      const run = tableClassRun(next, tableRuns);
       // A rejected smaller class is discarded. Its proposed repair cannot change acceptance here.
       const options = { ...probeOptions(next.options), [WIDTH_PROBE]: TABLE_WIDTH_TEST };
       return run(options);
@@ -880,7 +878,7 @@ function drawnAdvice(request: ResolvedChartRequest, result: LayoutResult, layout
   const tableRuns = request.type === 'table' ? new Map<string, LayoutCall<any, any, any>>() : undefined;
   let found: ReturnType<typeof advisedWidth>;
   try {
-    found = advisedWidth(request, result, () => widthProbers(request, layoutAt, refusalProbes(request, result), false, tableRuns));
+    found = advisedWidth(request, result, () => widthProbers(request, layoutAt, refusalProbes(request, result), false, tableRuns), tableRuns);
   } finally {
     for (const run of tableRuns?.values() ?? []) run.finish();
   }
@@ -1001,6 +999,15 @@ function jsonShowsAll(data: object): boolean {
   return true;
 }
 
+/** A smaller text class owns one prepared registry for all widths of the request. */
+function tableClassRun(asked: ResolvedChartRequest, tableRuns?: Map<string, LayoutCall<any, any, any>>) {
+  if (!tableRuns) return preparedLayout(asked);
+  const key = layoutStepKey();
+  let run = tableRuns.get(key);
+  if (!run) tableRuns.set(key, run = preparedLayout(asked));
+  return run;
+}
+
 /** A size refusal that names the width `advisedWidth` found, and the height drawn there. */
 function advisedRefusal(result: LayoutResult, found: { width: number; probe: LayoutResult } | undefined): LayoutResult {
   if (!found || !result.refused) return result;
@@ -1017,18 +1024,18 @@ function advisedRefusal(result: LayoutResult, found: { width: number; probe: Lay
 }
 
 /** The width an open-height size refusal names: where the request draws from, searched up from the width the layout named. */
-function advisedWidth(request: ResolvedChartRequest, result: LayoutResult, probers: () => ReturnType<typeof widthProbers>): { width: number; probe: LayoutResult } | undefined {
+function advisedWidth(request: ResolvedChartRequest, result: LayoutResult, probers: () => ReturnType<typeof widthProbers>, tableRuns?: Map<string, LayoutCall<any, any, any>>): { width: number; probe: LayoutResult } | undefined {
   const finding = result.refused ? result.warnings[0] : undefined;
   const need = finding?.code === 'size-below-floor' ? finding.expected?.minimum as Size | undefined : undefined;
   if (!result.refused || !need || request.fixed.height || need.width <= result.size.width) return undefined;
   // Drawn in the next smaller type class at the asked width: there is nothing to advise.
   const table = request.type === 'table';
   const tryClass = (asked: ResolvedChartRequest) => {
-    const run = preparedLayout(asked);
+    const run = tableClassRun(asked, tableRuns);
     try {
       const probe = run({ ...asked.options, [WIDTH_PROBE]: TABLE_WIDTH_TEST, [PLAN_ONLY]: true } as RequestOptions);
       return isRefused(probe) ? probe : run(asked.options);
-    } finally { run.finish(); }
+    } finally { if (!tableRuns) run.finish(); }
   };
   const step = table ? withTableWidthHint(() => smallerClass(request, result, tryClass)) : { value: smallerClass(request, result) };
   if (step.value) return undefined;

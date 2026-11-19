@@ -364,6 +364,10 @@ export function memoLayout<G>(data: object, options: object, layout: () => G, li
   if (typeof (options as { theme?: unknown }).theme === 'string') return finish(layout());
   const { [PLAN_ONLY]: _plan, ...answerOptions } = options as LayoutOptions;
   const key = layoutKey(data, answerOptions);
+  // Temporary width tests must not evict a complete plan at the width a host will retry.
+  if ((options as { [WIDTH_PROBE]?: string })[WIDTH_PROBE] === TABLE_WIDTH_TEST) {
+    return finish(requestMemo(data, 'table-width-trial:' + key, layout));
+  }
   let byKey = layouts.get(data);
   if (!byKey) layouts.set(data, byKey = new Map());
   if (byKey.size >= limit && !byKey.has(key)) byKey.delete(byKey.keys().next().value!);
@@ -607,6 +611,22 @@ function prepareTableCandidate(
   };
   const preparedWidth = options.columnHeads !== false
     ? prepareTableWidthFit(table, theme, measure, options, widthViewBase) : undefined;
+  // Height settlement and width verification revisit the same horizontal tracks. Only a
+  // fixed height can appear in the width warning's suggested repair.
+  const recentWidths: { available: number; canvasWidth: number; warningHeight?: number; probe: boolean; plan: TableWidthRungPlan | TableWidthMiss }[] = [];
+  function widthsAt(available: number, frame: LayoutOptions, size: Size, probe?: TableWidthProbe) {
+    if (!preparedWidth) return sharedWidthPlan(table, theme, measure, frame, { ...widthViewBase, available }, probe);
+    const heightOpen = (frame as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === false || heightOmitted(frame.size);
+    const warningHeight = heightOpen ? undefined : size.height;
+    const partial = probe !== undefined;
+    const previous = recentWidths.find(entry => entry.available === available && entry.canvasWidth === size.width
+      && entry.warningHeight === warningHeight && entry.probe === partial);
+    if (previous) return previous.plan;
+    const plan = preparedWidth(available, frame, probe);
+    if (recentWidths.length === 2) recentWidths.shift();
+    recentWidths.push({ available, canvasWidth: size.width, warningHeight, probe: partial, plan });
+    return plan;
+  }
   function prepareRows(options: LayoutOptions, widthPlan: TableWidthPlan | TableWidthRungPlan, size: Size, plot: Rect) {
     const gridX = Math.round(plot.x);
     const cellPadX = widthPlan.cellPadX;
@@ -1067,12 +1087,9 @@ function prepareTableCandidate(
   let plot = frame.plot;
   // Text drawn on an authored ground, by paint: whether it reads there is decided in the theme it is painted in.
   const groundTexts = new Map<string, Paint>();
-  const widthView = { ...widthViewBase, available: plot.w };
   const widthProbe = widthOnlyOnMiss === 'regular-rung' && (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.width !== false
     ? { canvasWidth: size.width, footerInset: cellPadX } : undefined;
-  let widthPlan: TableWidthPlan | TableWidthRungPlan | TableWidthMiss = preparedWidth
-    ? preparedWidth(plot.w, options, widthProbe)
-    : sharedWidthPlan(table, theme, measure, options, widthView, widthProbe);
+  let widthPlan = widthsAt(plot.w, options, size, widthProbe);
   if ('widthMiss' in widthPlan) {
     const sizing = tableSizing(size, plot, plot.y, widthPlan.totalW, widthPlan.minimumW);
     if (size.width < sizing.minWidth) {
@@ -1083,7 +1100,7 @@ function prepareTableCandidate(
       }, widthPlan.cellPadX);
     }
     // Sizing can round a floor a few ULPs down. A rung the ladder can select needs its complete plan.
-    widthPlan = preparedWidth ? preparedWidth(plot.w, options) as TableWidthRungPlan : sharedWidthPlan(table, theme, measure, options, widthView);
+    widthPlan = widthsAt(plot.w, options, size) as TableWidthPlan | TableWidthRungPlan;
   }
   cellPadX = widthPlan.cellPadX;
   if (initialCellPadX !== cellPadX) {
