@@ -33,6 +33,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | valueKind | string |  | Multiply numbers by 100 into pct cells; explicit pct cells stay in percent units. One of `'fraction'`. |
 | values | cell[] | yes | The series in order, at least two points. A null is bridged by a dotted segment with a ring on the missing point. |
 | labels | array |  | One name per value, in the same order. The end labels and the hover records read them; without them a point is named by its position. |
+| label | string |  | Name of the metric the line shows, such as "Orders", as `label` names a KPI. The hover card names each value with it ("Orders: 18"); nothing on the chart prints it. |
 
 ## Options
 

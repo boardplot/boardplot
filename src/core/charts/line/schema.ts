@@ -78,7 +78,7 @@ const seriesSchema = z.strictObject({
   axis: seriesAxisField,
   valueKind: valueKindSchema,
   id: idSchema.describe("Series identity used by keyed options, annotations and legend entries."),
-  label: z.string().optional().describe("Displayed series name; defaults to the series id."),
+  label: z.string().optional().describe("Displayed series name; defaults to the series id. The hover card names each value with it (\"North: 65.8\")."),
   shortLabel: z.string().min(1).optional().describe("Short end-label name. End labels get 18% of the effective width: Boardplot tries the full label on one line, then on two, then shortLabel with a full-name legend key, then a legend with value-only end labels. legend 'none' removes the shortLabel and legend steps, a labelPlacements pin the legend step. Boardplot adds no abbreviation or ellipsis."),
   values: z.array(z.union([detailCellSchema, z.strictObject({ categoryId: idSchema.describe("Category id identifying this value independently of array position."), value: detailCellSchema.describe("Cell assigned to the named category in this series.") })])).describe("Values in category order, or keyed entries pairing a categoryId with its value."),
   scenario: scenarioField('Controls scenario labels and paint conventions.'),

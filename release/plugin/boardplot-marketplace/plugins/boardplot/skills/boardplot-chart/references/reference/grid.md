@@ -103,8 +103,8 @@ Facets, variance tiers and metric stacks with shared categories and computed rea
 | panels ( branch 3) | array | yes | Two to five panels in top-down reading order. |
 | panels[].id ( branch 3) | string | yes | Unique panel id; state scopes use this id. |
 | panels[].type ( branch 3) | string | yes | Columns, stacked columns for a multi-measure sum, or a line with points. One of `'column'`, `'line'`. |
-| panels[].title ( branch 3) | string | yes | Measure name in the shared readout gutter. |
-| panels[].unit ( branch 3) | string | yes | Measure unit in the readout gutter. |
+| panels[].title ( branch 3) | string | yes | Measure name in the shared readout gutter. The hover card names each value with it when the unit is a sign or code. |
+| panels[].unit ( branch 3) | string | yes | Measure unit in the readout gutter. A unit in words names each value on the hover card ('Cases per month: 800'); a sign or code such as '$' or 'EUR k' stays on the number. |
 | panels[].measure ( branch 3) | object | yes | Engine-computed panel measure. |
 | panels[].measure.sum ( branch 3; panels[].measure branch 1) | array | yes | Measures added for each category. Columns stack the inputs in order. |
 | panels[].measure.numerator ( branch 3; panels[].measure branch 2) | array | yes | Measures summed for the rate numerator. |

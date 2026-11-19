@@ -280,6 +280,8 @@ export interface SparklineData {
   values: Cell[];
   /** One name per value, used for the end labels and the hover records. */
   labels?: string[];
+  /** The name of the metric the line shows. The hover card names each value with it ("Orders: 18"); nothing on the chart prints it. */
+  label?: string;
 }
 
 // ---- grid: facets AND variance tiers ----

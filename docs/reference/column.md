@@ -54,7 +54,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | series[].axis | string |  | Accepted for combo-shaped data. Ignored here. A kind that differs from the chart type is refused. One of `'primary'`, `'secondary'`. |
 | series[].valueKind | string |  | Multiply numbers by 100 into pct cells; explicit pct cells stay in percent units. One of `'fraction'`. |
 | series[].id | string | yes | Series identity used by keyed options, annotations and legend entries. |
-| series[].label | string |  | Displayed series name; defaults to the series id. |
+| series[].label | string |  | Displayed series name; defaults to the series id. The hover card names each value with it ("North: 65.8"). |
 | series[].values | (cell \| { categoryId, value: cell })[] | yes | Values in category order, or keyed entries pairing a categoryId with its value. |
 | series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST, LY for last year). Codes and aliases accept any case. Controls scenario labels and paint conventions. |
 | series[].direction | string |  | Whether increases are favorable; defaults to higherIsBetter for directional comparisons. One of `'higherIsBetter'`, `'lowerIsBetter'`. |

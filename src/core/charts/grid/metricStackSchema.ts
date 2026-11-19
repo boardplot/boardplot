@@ -24,8 +24,8 @@ export const metricStackDataSchema = z.strictObject({
   panels: z.array(z.strictObject({
     id: id.describe('Unique panel id; state scopes use this id.'),
     type: z.enum(['column', 'line']).describe('Columns, stacked columns for a multi-measure sum, or a line with points.'),
-    title: id.describe('Measure name in the shared readout gutter.'),
-    unit: id.describe('Measure unit in the readout gutter.'),
+    title: id.describe('Measure name in the shared readout gutter. The hover card names each value with it when the unit is a sign or code.'),
+    unit: id.describe("Measure unit in the readout gutter. A unit in words names each value on the hover card ('Cases per month: 800'); a sign or code such as '$' or 'EUR k' stays on the number."),
     measure: z.union([
       z.strictObject({ sum: fields.describe('Measures added for each category. Columns stack the inputs in order.') }),
       z.strictObject({ numerator: fields.describe('Measures summed for the rate numerator.'), denominator: id.describe('Source measure for the rate denominator; the result is a percentage. The stack is a conversion chain, so a rate is always a share of a count; draw a cost per unit or another currency ratio as kpi cards or grid column or line panels.') }),

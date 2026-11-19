@@ -1,0 +1,4 @@
+### Changed
+
+- Every number in a hover card now reads "Name: Number". The name is the unit when the unit is a phrase in words, else the series, the panel or the sparkline that the number belongs to. A metric stack card reads "Started / Jan" over "Cases per month: 800", and "Completion / Jan" over "% of started cases: 20.0". A line chart card reads "Jan 26" over "North: 65.8", and each series row of a card with several series reads "North: 65.8" with the colon. A unit that is a sign, a code or a scale stays with the number, as before: "$196", "20.0%", "186.825 EUR k", "12 kg". A spec that names nothing still prints the bare number. No setting brings the old card text back.
+- A `sparkline` takes `data.label`, the name of the metric the line shows. Its hover card then reads "Feb 2026" over "LTV at M6: $196". Nothing on the chart prints the name.

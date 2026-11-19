@@ -46,7 +46,7 @@ A `cell` is a number, null or a value object; see [Value cell](options.md#value-
 | series | array | yes | Values and optional ranges to compare across each category row. |
 | series[].valueKind | string |  | Multiply numbers by 100 into pct cells; explicit pct cells stay in percent units. One of `'fraction'`. |
 | series[].id | string | yes | Series identity used by keyed options, annotations and legend entries. |
-| series[].label | string |  | Displayed series name; defaults to the series id. |
+| series[].label | string |  | Displayed series name; defaults to the series id. The hover card names each value with it ("North: 65.8"). |
 | series[].values | (cell \| { categoryId, value: cell })[] | yes | Values in category order, or keyed entries pairing a categoryId with its value. |
 | series[].scenario | string |  | AC, PY, PL, FC (or ACT, BUD, FCST, LY for last year). Codes and aliases accept any case. |
 | series[].direction | string |  | Declared preference for higher or lower values in directional comparisons. One of `'higherIsBetter'`, `'lowerIsBetter'`. |

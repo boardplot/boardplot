@@ -66,9 +66,9 @@ describe('hover card date', () => {
       const hit = hoverTargets(model, request, { point: gap.anchor as { x: number; y: number } });
       return hit.length > 1 ? sharedLabelCardContent(hit).rows.map(row => row.text) : labelCardContent(hit[0]!).rows.map(row => row.text);
     };
-    expect(gapCard('line', [[1, null, 3]])).toEqual(['B / S0', 'No observation']);
+    expect(gapCard('line', [[1, null, 3]])).toEqual(['B', 'S0: No observation']);
     const stacked = gapCard('stacked-area', [[1, null, 3], [2, 2, 2]]);
-    expect(stacked).toContain('S0. No observation; drawn as 0 in the stack');
+    expect(stacked).toContain('S0: No observation; drawn as 0 in the stack');
     expect(stacked.filter(text => text.includes('unavailable'))).toEqual([]);
   });
   const week1 = (labelled: boolean) => {
@@ -306,7 +306,7 @@ it('opens a No observation card on an empty column slot', () => {
   const model = hoverModel(request, geometry);
   const tick = geometry.axes.find(axis => axis.axis === 'x')!.ticks.find(entry => entry.at === 'b')!;
   const hit = hoverTargets(model, request, { point: { x: tick.pos, y: 300 } });
-  expect(labelCardContent(hit[0]!).rows.map(row => row.text)).toEqual(['B / S', 'No observation']);
+  expect(labelCardContent(hit[0]!).rows.map(row => row.text)).toEqual(['B', 'S: No observation']);
 });
 
 // A host's extra facts must reach the card in their declared label, format and order, with no key dropped.
@@ -390,14 +390,14 @@ const deltaRecord = (options: object) => {
 
 // The card formatted a value through its series format without the series' other values, so a stacked part whose label the chart hides (it draws the total 78) read another text than its label.
 it('prints the text a hidden stacked part label carries in its card', () => {
-  expect(labelCardContent(deltaRecord({ variant: 'stacked' })).rows.map(row => row.text)).toContain('$78.0');
+  expect(labelCardContent(deltaRecord({ variant: 'stacked' })).rows.map(row => row.text)).toContain('Revenue: $78.0');
 });
 
 // With labels off a value had no shown text, so its card formatted it again and printed another number than its label would.
 it('gives a value with labels off the text its label would print', () => {
   const record = deltaRecord({ labels: false });
   expect(record.value.displayed).toBe('$78.0');
-  expect(labelCardContent(record).rows.map(row => row.text)).toContain('$78.0');
+  expect(labelCardContent(record).rows.map(row => row.text)).toContain('Revenue: $78.0');
 });
 
 // The card formatted a drawn change again, so a change labelled −4% read −4.0%.
@@ -508,8 +508,8 @@ it('prints the segment share on a 100% stack of counts whose unit is a percent, 
     expect(geometry.labels.some(label => !label.hidden && label.text === '44%')).toBe(true);
     return labelCardContent(record, undefined, { hundredPercent: true }).rows.map(row => row.text);
   };
-  expect(card([191, 120], [243, 80], '% of group')).toEqual(['North / Yes', '191', 'Share: 44%']);
-  expect(card([44, 60], [56, 40], '%')).toEqual(['North / Yes', '44%']);
+  expect(card([191, 120], [243, 80], '% of group')).toEqual(['North', 'Yes: 191', 'Share: 44%']);
+  expect(card([44, 60], [56, 40], '%')).toEqual(['North', 'Yes: 44%']);
 });
 
 // A sparkline card printed "Position: 4" under the label of the point, a row a reader could not place.
@@ -539,4 +539,31 @@ it('prints no state row on a metric stack category in the default state, and kee
   expect(cards.slice(0, 2).map(card => card.rows.filter(row => row.kind === 'field'))).toEqual([[], []]);
   expect(cards.slice(0, 2).map(card => card.accessibleText).join(' ')).not.toContain('state');
   expect(cards[2]!.rows.filter(row => row.kind === 'field').map(row => row.text)).toEqual(['Category state: partial']);
+});
+
+// A card printed a bare "800 cases per month" or "18" with no name, so the reader could not tell which metric the number was.
+it('names the number on every card: a unit phrase in front, else the series, panel or sparkline name, a symbol unit kept on the number', () => {
+  const cards = (spec: object) => {
+    const { request, geometry } = build(spec);
+    return interactionRecords({ request, geometry, scope: request.scope, claims: [] });
+  };
+  const texts = (record: Parameters<typeof labelCardContent>[0]) => labelCardContent(record).rows.slice(0, 2).map(row => row.text);
+  const stack = cards({ type: 'grid', data: {
+    categories: ['Jan', 'Feb', 'Mar', 'Apr'].map(label => ({ id: label.toLowerCase(), label })),
+    measures: [{ id: 'started', label: 'Started', values: [800, 1000, 1100, 900] }, { id: 'finished', label: 'Finished', values: [160, 170, 121, 150] }],
+    panels: [{ id: 'volume', type: 'column', title: 'Started', unit: 'cases per month', measure: { sum: ['started'] }, readout: 'change' },
+      { id: 'rate', type: 'line', title: 'Completion', unit: '% of started cases', measure: { numerator: ['finished'], denominator: 'started' }, readout: 'change' }],
+    windows: { base: { from: 'jan', to: 'feb', label: 'Jan–Feb' }, compare: { from: 'mar', to: 'apr', label: 'Mar–Apr' } },
+  }, options: { stack: {}, size: { width: 640 } } });
+  expect(texts(stack.find(record => record.label === 'Started / Jan')!)).toEqual(['Started / Jan', 'Cases per month: 800']);
+  expect(texts(stack.find(record => record.label === 'Completion / Jan')!)).toEqual(['Completion / Jan', '% of started cases: 20.0']);
+  const spark = cards({ type: 'sparkline', data: { label: 'LTV at M6', values: [182, 196, 189], labels: ['Jan 2026', 'Feb 2026', 'Mar 2026'] }, options: { format: '$1,234' } });
+  expect(texts(spark[1]!)).toEqual(['Feb 2026', 'LTV at M6: $196']);
+  const line = cards({ type: 'line', data: { categories: ['Jan 26', 'Feb 26'], series: [
+    { id: 'north', label: 'North', values: [65.8, 67.2] }, { id: 'south', label: 'South', values: [52.4, 51.9] }] }, options: { format: '1.1' } })
+    .filter(record => record.categoryLabel === 'Jan 26');
+  expect(texts(line[0]!)).toEqual(['Jan 26', 'North: 65.8']);
+  expect(sharedLabelCardContent(line).rows.map(row => [row.label, row.value ?? row.text])).toEqual([[undefined, 'Jan 26'], ['North:', '65.8'], ['South:', '52.4']]);
+  const margin = cards({ type: 'column', data: { categories: ['Q1'], series: [{ id: 'margin', label: 'Margin', values: [12.5] }] }, options: { unit: '%' } });
+  expect(texts(margin[0]!)).toEqual(['Q1', 'Margin: 12.5%']);
 });
