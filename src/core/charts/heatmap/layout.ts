@@ -1,5 +1,6 @@
 import { chartString } from '../../strings/heatmap';
 import { chartTheme } from '../chartEnv';
+import { hasCompleteTableWidths } from '../../fontMetrics/injected';
 import { NAMED_COLUMN_STATES, NAMED_STATE_PATTERN, type NamedColumnState } from '../../schema/namedColumns';
 import { labelOn as chartLabelOn } from '../labelOn';
 import { structureCount } from '../../structureCounts';
@@ -1136,8 +1137,20 @@ export function layoutHeatmap(
   const hiddenCells: { r: NormRow; c: NormCol; v: number }[] = [];
   // One value font for the matrix. It steps down a pixel at a time, to
   // the target's label floor, until every row fits.
-  const rowValues = (font: FontSpec) => rows.map((r) => cellLabelsOn && !bubble ? measureRowLabels(r.cells, (v, pct, meta) => textFor(v, pct, meta, r), font, measure, colWidth, cellH, 4) : []);
   const valueFloor = readerFloorPx(options.target ?? DEFAULT_TARGET, 'label', textScaleOf(options));
+  const knownMeasure = measure === defaultMeasurer || hasCompleteTableWidths(measure);
+  const rowValues = (font: FontSpec) => {
+    // A failed trial font is discarded. The floor and the winning font keep the full grid for drawing.
+    const stopAtMiss = knownMeasure && font.size > valueFloor;
+    const fitted = [];
+    for (const r of rows) {
+      const values = cellLabelsOn && !bubble
+        ? measureRowLabels(r.cells, (v, pct, meta) => textFor(v, pct, meta, r), font, measure, colWidth, cellH, 4, stopAtMiss) : [];
+      fitted.push(values);
+      if (stopAtMiss && values.at(-1)?.fits === false) break;
+    }
+    return fitted;
+  };
   const bubbleValuesFit = () => !bubbleStyle || !cellLabelsOn || rows.every((r) => r.cells.every((cell) => {
     if (cell.v === null || (topOnly && cell.size !== levels!.length)) return true;
     const radius = radiusOf(cell.size);
@@ -2181,15 +2194,17 @@ export function layoutHeatmap(
   }
 }
 
-/** Measure every eligible cell before deciding whether a row can show its values. */
+/** Measure the row in order. A trial font may stop at the first value that does not fit. */
 function measureRowLabels(
   cells: NormRow['cells'], textFor: (v: number, pct: boolean, meta: CellMeta | null) => string | null,
-  font: FontSpec, measure: TextMeasurer, widthOf: (ci: number) => number, height: number, air = 2,
+  font: FontSpec, measure: TextMeasurer, widthOf: (ci: number) => number, height: number, air = 2, stopAtMiss = false,
 ) {
-  return cells.map((cell, ci) => {
+  const values = [];
+  for (let ci = 0; ci < cells.length; ci++) {
+    const cell = cells[ci]!;
     const width = widthOf(ci);
     const text = cell.meta?.label === false ? null : cell.v === null ? '–' : textFor(cell.v, cell.pct, cell.meta);
-    if (!text) return null;
+    if (!text) { values.push(null); continue; }
     const size = measure(text, font);
     // A pixel of air each side, across as up and down; the 2 px gap between
     // cells keeps neighbouring values apart. At 2 px a side a minus sign would
@@ -2197,8 +2212,11 @@ function measureRowLabels(
     // 26.9 px cell at the 10 px label floor).
     // A target fits each cell on its own, so neighbours in a row keep the
     // 6 px a reader needs between values: 2 px of air each side plus the gap.
-    return { text, size, fits: size.width + air <= width && size.height + 2 <= height };
-  });
+    const fits = size.width + air <= width && size.height + 2 <= height;
+    values.push({ text, size, fits });
+    if (stopAtMiss && !fits) break;
+  }
+  return values;
 }
 
 /**
