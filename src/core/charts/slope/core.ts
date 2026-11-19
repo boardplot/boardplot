@@ -6,7 +6,7 @@ import { SLOPE_SIZING } from './slopeSizing';
 import type { ChartCore } from '../../registry';
 import type { ChartData } from '../../types/data';
 import type { SlopeOptions } from '../../types/options';
-import { layoutSlope, type SlopeDerived, type SlopeMarks } from './layout';
+import { layoutSlope, slopeReferencePlotHeight, type SlopeDerived, type SlopeMarks } from './layout';
 
 export const slopeCore: ChartCore<ChartData, SlopeOptions, SlopeMarks, SlopeDerived> = {
   type: 'slope',
@@ -14,6 +14,7 @@ export const slopeCore: ChartCore<ChartData, SlopeOptions, SlopeMarks, SlopeDeri
   title: 'Slope',
   summary: 'Two-point slope lines with collision-spread end labels and highlight emphasis. Each end label names its series and prints its value, so the line chart\'s seriesLabels and valueLabels are refused; labels.series sets the parts',
   layout: (data, options) => layoutSlope(prepareFractionData(data), options),
+  referencePlotHeight: (data, options) => slopeReferencePlotHeight(prepareFractionData(data), options),
   categoryLabels: calendarCategories,
   prepare: prepareFractionData,
   defaults: {},

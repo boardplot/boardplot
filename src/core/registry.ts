@@ -108,6 +108,8 @@ export interface ChartCore<
   layout: LayoutFn<D, O, M, DV>;
   /** Prepares private chart data once for all size and note trials in this request. */
   prepareLayout?(data: D, options?: O): LayoutFn<D, O, M, DV>;
+  /** Returns the slope reference plot height when the chart can measure it without drawing. */
+  referencePlotHeight?(data: D, options?: O): number | undefined;
   /** Wraps the finished layout, for a check that must see the chart the registry accepts. */
   finishLayout?: (layout: LayoutFn<D, O, M, DV>) => LayoutFn<D, O, M, DV>;
   defaults: Partial<O>;

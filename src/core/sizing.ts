@@ -1988,9 +1988,17 @@ function fitSize<D, O extends ChartOptions, M extends object, DV extends object>
       geometry = layout({ ...layoutOptions, size: { width: geometry.size.width, height: naturalHeight } } as O);
     }
   } else if (definition.type === 'slope' && !geometry.refused) {
-    const reference = geometry.size.width === 720 && geometry.size.height === 405 ? geometry
-      : layout({ ...layoutOptions, size: { width: 720, height: 405 } } as O);
-    const naturalHeight = slopeContentHeight(geometry, reference.refused ? geometry.plot.h : reference.plot.h);
+    let referenceHeight = geometry.plot.h;
+    if (geometry.size.width !== 720 || geometry.size.height !== 405) {
+      const referenceOptions = { ...layoutOptions, size: { width: 720, height: 405 } } as O;
+      const measured = definition.referencePlotHeight?.(data, withoutCallState(referenceOptions));
+      if (measured !== undefined) referenceHeight = measured;
+      else {
+        const reference = layout(referenceOptions);
+        if (!reference.refused) referenceHeight = reference.plot.h;
+      }
+    }
+    const naturalHeight = slopeContentHeight(geometry, referenceHeight);
     // An unpinned slope is drawn at its content height; a pinned one reports it.
     if (options?.size === undefined && !nested && Math.abs(naturalHeight - geometry.size.height) > 2) {
       geometry = layout({ ...layoutOptions, size: { width: geometry.size.width, height: naturalHeight } } as O);
