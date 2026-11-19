@@ -18,8 +18,7 @@
  * mean of the plotted values already lies inside the data extent.
  */
 
-import { valueLineHasTargetExtras } from './annotateFields';
-import { toleranceBounds } from './annotateTargets';
+import { toleranceBounds, valueLineHasTargetExtras } from './annotateFields';
 import type { Annotation } from './types/annotations';
 import type { Id } from './types/cell';
 import { maxOf, minOf } from './arrays';

@@ -86,3 +86,29 @@ export function valueLineNeedsSharedPass(ann: Annotation): boolean {
   if (ann.kind !== 'valueLine') return false;
   return valueLineHasTargetExtras(ann) || ann.from !== undefined || ann.to !== undefined || ann.seriesId !== undefined;
 }
+
+export function finitePair(low: unknown, high: unknown): { low: number; high: number } | null {
+  if (typeof low !== 'number' || typeof high !== 'number') return null;
+  if (!Number.isFinite(low) || !Number.isFinite(high) || low === high) return null;
+  return { low, high };
+}
+
+/**
+ * The bounds of a valueLine's tolerance band, or the reason it has none. A
+ * layout reads them to size its value axis before the annotation pass loads,
+ * so they stand here and not beside the pass that draws the band.
+ */
+export function toleranceBounds(
+  value: number,
+  tolerance: NonNullable<Extract<Annotation, { kind: 'valueLine' }>['tolerance']>,
+): { low: number; high: number } | string {
+  if (typeof tolerance === 'number') {
+    if (!Number.isFinite(tolerance) || tolerance <= 0) {
+      return 'tolerance must be a positive finite number';
+    }
+    return { low: value - tolerance, high: value + tolerance };
+  }
+  const pair = finitePair(tolerance.low, tolerance.high);
+  if (!pair) return "tolerance bounds need finite, unequal 'low' and 'high'";
+  return pair;
+}
