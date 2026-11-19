@@ -1145,6 +1145,12 @@ it('draws a bar or dot target band on its row behind the marks, with the warning
     expect(above.some((node) => node.owner?.seriesId === 's' && node.owner.categoryId === 'east')).toBe(true);
     expect(geometry.scene.slice(0, at).some((node) => node.part === 'gridline' || node.owner?.seriesId === 's')).toBe(false);
   }
+  // A dumbbell reads its current (last) dot: a row without one gets no fill from its previous dot.
+  const filled = (now: (number | null)[]) => layoutDot({ ...data, series: [{ id: 'old', label: 'Old', values: [120, 104, 96] }, { id: 'now', label: 'Now', values: now }] } as never,
+    { variant: 'dumbbell', annotations: [{ kind: 'valueLine', id: 'goal', value: 99, from: 'south', to: 'south', attainment: true }] } as never)
+    .scene.some((node) => node.part === 'attainment');
+  expect(filled([80, 70, 72])).toBe(true);
+  expect(filled([80, 70, null])).toBe(false);
 });
 
 // A bar or dot tolerance band must end where its label says: the axis holds a drawn band whole (a numeric target above the data, a measured mean), an omitted band must not stretch the axis, and a break across an omitted target is still refused.
@@ -1170,8 +1176,21 @@ it('keeps a drawn bar or dot tolerance band whole inside the value axis', () => 
     const omitted = layout(data as never, { annotations: [{ kind: 'valueLine', value: 50, tolerance: 1000, from: 'north' }] } as never);
     expect(bandWidth(omitted)).toBeUndefined();
     expect(unit(omitted)).toBeCloseTo(unit(plain), 6);
+    // A growth arrow beside grouped bars without a value axis must not end the axis inside a drawn band.
+    if (layout === layoutBar) {
+      const dated = { categories: [{ id: 'north', label: 'north', date: '2020-01-01' }, { id: 'south', label: 'south', date: '2022-01-01' }], series: [...data.series, { id: 'o', label: 'Other', values: [30, 50] }] };
+      const arrow = layout(dated as never, { valueAxis: { show: false }, labels: { point: false }, annotations: [
+        { kind: 'valueLine', value: 75, tolerance: { low: 60, high: 77 }, from: 'north', to: 'north' },
+        { kind: 'cagr', from: { categoryId: 'north', seriesId: 's' }, to: { categoryId: 'south', seriesId: 's' } },
+      ] } as never);
+      expect(bandWidth(arrow)! / unit(arrow)).toBeCloseTo(17, 6);
+    }
   }
   const broken = layoutBar({ ...data, series: [{ id: 's', label: 'Sales', values: [80, 900] }] } as never,
     { valueAxis: { break: { from: 150, to: 750 } }, annotations: [{ kind: 'valueLine', value: 400, from: 'north', to: 'south' }] } as never);
   expect(codes(broken)).toContain('axis-break-invalid');
+  // A band that widens the axis does not make a break past the bars and the target valid.
+  const outer = layoutBar(data as never,
+    { valueAxis: { show: true, break: { from: 90, to: 110 } }, annotations: [{ kind: 'valueLine', value: 75, tolerance: 50, from: 'north', to: 'north' }] } as never);
+  expect(codes(outer)).toContain('axis-break-invalid');
 });

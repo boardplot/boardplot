@@ -1352,7 +1352,8 @@ function valueLineMean(
     warn(
       s,
       'valueline-scope-authored-value',
-      `valueLine '${id}': from/to scope a MEASURED mean, but an authored value ${String(ann.value)} was also given — drop the value, drop the span, or keep from/to only as a tolerance/attainment clip`,
+      `valueLine '${id}': from/to cannot limit a line at an authored value (${String(ann.value)}) to some categories, so the line is not drawn`,
+      `remove from/to to draw the line for every category, or mark a target for single categories with a reference series (role 'reference', where the chart type takes one)${input.meanValueFor ? '; remove the value to draw the mean of the span' : ''}; from/to stay valid as the clip of a tolerance or attainment`,
     );
     return undefined;
   }

@@ -437,6 +437,7 @@ function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWa
     return { nice, stepped, said };
   };
   let axis = axisOf(lo, hi);
+  const dataAxis = axis;
   // A tolerance band the axis shows in part is shown whole, as on dot: the axis grows to the band's
   // far bound. A band wholly off the axis stays off, and the pass says so (band-bounds-offscale).
   // A 100% axis ends at 100.
@@ -462,7 +463,10 @@ function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWa
   const { nice, stepped } = axis;
   let [dLo, dHi] = stepped.domain;
   let stepTicks = stepped.ticks;
-  let activeBreak = barAxisBreak(domain, dLo, dHi, warnings);
+  // A band that widened the axis does not make a break valid: the break must fit the axis of the bars and the targets.
+  let activeBreak = axis !== dataAxis && !barAxisBreak(domain, dataAxis.stepped.domain[0], dataAxis.stepped.domain[1], warnings)
+    ? undefined
+    : barAxisBreak(domain, dLo, dHi, warnings);
   if (!stepFitsAxisBreak(stepTicks, activeBreak, options.valueAxis?.tickStep, warnings)) {
     [dLo, dHi] = nice;
     stepTicks = undefined;
@@ -511,7 +515,7 @@ function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWa
   // bar ends, so the domain stops at the longest value and the bars fill the
   // width up to the arm.
   let scale = x;
-  if (inset && !options.valueAxis?.show && !activeBreak && lo >= 0 && hi > 0 && domain.refSeries.length === 0) {
+  if (inset && !options.valueAxis?.show && !activeBreak && lo >= 0 && hi > 0 && domain.refSeries.length === 0 && bands.every((b) => b.hi <= hi)) {
     const exact = linearScale([0, hi], [plot.x, plot.x + plot.w]);
     const thick = groupSlots[0]?.size ?? band.bandwidth;
     const valueFont: FontSpec = { ...(compact ? compactLabelFont : labelFont), weight: emphasisWeight(theme) };

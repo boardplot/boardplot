@@ -1735,13 +1735,13 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
 
 /**
  * A target's attainment without its own series reads one series of the chart, as on column and
- * grouped bar: the highlighted one, else the first. A dumbbell keeps its own row anchor, the
- * current (second) dot, as its other annotations read it.
+ * grouped bar: the highlighted one, else the first. A dumbbell reads its current (last) series.
  */
 function attainmentSeries(ann: Annotation, dataSeries: readonly { id: Id }[], highlights: ReadonlySet<Id>, variant: string): Annotation {
-  if (ann.kind !== 'valueLine' || !ann.attainment || variant === 'dumbbell' || dataSeries.length < 2) return ann;
+  if (ann.kind !== 'valueLine' || !ann.attainment || dataSeries.length < 2) return ann;
   const spec = ann.attainment === true ? {} : ann.attainment;
   if (spec.seriesId !== undefined) return ann;
-  const seriesId = (dataSeries.find((s) => highlights.has(s.id)) ?? dataSeries[0]!).id;
+  // Named, so a row without a current dot gets no fill from its previous dot.
+  const seriesId = variant === 'dumbbell' ? dataSeries[dataSeries.length - 1]!.id : (dataSeries.find((s) => highlights.has(s.id)) ?? dataSeries[0]!).id;
   return { ...ann, attainment: { ...spec, seriesId } };
 }
