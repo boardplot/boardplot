@@ -50,7 +50,7 @@ import type {
 } from './types/scene';
 import type { Theme, ThemeRef } from './types/theme';
 import { VALUE_SELECTION } from './types/sizing';
-import { createOccupiedIndex, type OccupiedIndex } from './label/occupied';
+import type { OccupiedClaim } from './label/occupied';
 import { COMPACT_OMITTED_NOTES, LIVE_NOTE_SHOW, footerPlans, footerType, liveFooterExtra, recordFreedChrome, staticFrame, wrapFootnote } from './footer';
 import { chartString as wordingString } from './strings';
 import { TEXT_ASCENT } from './svg/renderSvg';
@@ -1991,10 +1991,18 @@ function keyRowStarts(widths: readonly number[], headings: readonly boolean[], r
 /** Gap between the event key and the footnotes under it. */
 const KEY_NOTE_GAP = 8;
 
-export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameResult {
+type FrameClaims = { claim(rect: Rect, kind: OccupiedClaim['kind'], owner: OccupiedClaim['owner']): void };
+
+/** A frame emits claims in order. The table and the auto-height pass only read that list. */
+export function collectFrameClaims(claims: OccupiedClaim[]): FrameClaims {
+  return { claim(rect, kind, owner) { claims.push({ rect: { ...rect }, kind, owner }); } };
+}
+
+export function solveFrame(input: FrameInput, occupied: FrameClaims): FrameResult {
   if (input[CUT_LABEL_NOTES]?.length) input = { ...input, footnotes: [...(input.footnotes ?? []), ...input[CUT_LABEL_NOTES]!] };
   const destination = occupied;
-  if (input.autoHeight) occupied = createOccupiedIndex({ x: 0, y: 0, w: input.size.width, h: input.size.height });
+  const pendingClaims = input.autoHeight ? [] as OccupiedClaim[] : undefined;
+  if (pendingClaims) occupied = collectFrameClaims(pendingClaims);
   input[COLLECT_IDENTITIES]?.([...(input.legend?.items ?? []), ...(input.eventKey?.legend ?? [])]);
   const { size, margin, theme, measure } = input;
   const tokens = input.cardGaps
@@ -2534,10 +2542,10 @@ export function solveFrame(input: FrameInput, occupied: OccupiedIndex): FrameRes
     }
     plot.h = Math.max(MIN_PLOT_H, bottomY - topY);
   }
-  if (input.autoHeight) for (const claim of occupied.snapshot()) {
+  if (pendingClaims) for (const claim of pendingClaims) {
     if (dy !== 0 && claim.kind === 'frame' && moved.has(claim.rect.y)) claim.rect.y = moved.get(claim.rect.y)!;
     if (dy !== 0 && claim.kind === 'legend' && legendInput?.options.position === 'bottom' && claim.rect.y === legendY) claim.rect.y = legendGeom!.rect.y;
-    destination.claim(claim.rect, claim.kind, claim.owner, claim.part, claim.polygon);
+    destination.claim(claim.rect, claim.kind, claim.owner);
   }
   // The frame's own record of its plot BLOCK (see FrameGeometry).
   frame.plotRect = { ...plot };

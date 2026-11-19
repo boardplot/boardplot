@@ -121,6 +121,26 @@ it('keeps the management table frame at the verified scroll width', () => {
   expect(tableViewportFrame(at(878, 400))).toBeUndefined();
 });
 
+// A heat toggle can share a width refusal, but each caller owns its warning and the advised pixel still draws.
+it('preserves the exact repair after a caller edits a management table refusal', () => {
+  const report = getFixtures('table').find(entry => entry.id === 'management-report')!;
+  const data = report.data as TableData;
+  const column = data.columns.find(entry => entry.kind === 'value')!.id;
+  const at = (width: number, encodings: TableOptions['encodings']) => layoutResolvedRequest(resolveChartRequest({
+    type: 'table', data, options: { ...report.options, encodings, size: { width } },
+  }));
+  const first = at(878, {});
+  const fix = first.warnings[0]?.fix?.[0];
+  if (!first.refused || fix?.op !== 'replace') throw Error('Expected a width repair');
+  const width = (fix.value as { width: number }).width;
+  const expected = structuredClone(first);
+  first.warnings.length = 0;
+  const heat = { [column]: 'heat' as const };
+  expect(at(878, heat)).toEqual(expected);
+  expect(at(width - 1, heat).refused).toBe(true);
+  expect(at(width, heat).refused).not.toBe(true);
+});
+
 // Input versions must notice data edits and theme override replacements between synchronous requests.
 it('invalidates plans after in-place data changes and theme override replacements', () => {
   const data: TableData = { columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'v', kind: 'value' }], rows: [{ id: 'a', label: 'A', cells: { v: 1 } }] };

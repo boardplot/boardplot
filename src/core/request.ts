@@ -2,11 +2,11 @@ import { fractionLineWarnings, prepareFractionAnnotations, percentScaleWarnings 
 import { AUTHORED_EXAMPLES, readFormatExamples, UNIT_FORMATS, UNIT_STAND_INS } from './formatSpec';
 import { colorVariableWarnings } from './colorVariables';
 import { drawnRequest } from './drawnRequest';
-import { PLAN_ONLY, withPlanInputs, contentKey, copyPlannedValue, repeatedResult } from './layoutPlan';
+import { PLAN_ONLY, RETAIN_TABLE_RESULT, withPlanInputs, requestMemo, contentKey, copyPlannedValue, repeatedResult } from './layoutPlan';
 import { loadedDeferred } from './deferred';
 import { shownNoteKinds } from './notes';
 import { canonicalChartType, getChart } from './registry';
-import { ACCEPTANCE_PROBE, chartSizing, compactFallbackApplies, declaredSizing, fitsSize, FIXED_SIZE_PROBE, FULL_LAYOUT_PROBE, NARROW_FORM, NARROW_FORM_TYPES, SIZE_TOLERANCE, LAYOUT_CALL, type LayoutCall, plotFloorHeight, plotRepairHeight, resolveSizing, sizeGate, sizeRefusal, VERIFY_ADVICE, verifiedSizeRepair, WIDTH_PROBE } from './sizing';
+import { ACCEPTANCE_PROBE, chartSizing, compactFallbackApplies, declaredSizing, fitsSize, FIXED_SIZE_PROBE, FULL_LAYOUT_PROBE, NARROW_FORM, NARROW_FORM_TYPES, SIZE_TOLERANCE, LAYOUT_CALL, type LayoutCall, plotFloorHeight, plotRepairHeight, resolveSizing, sizeGate, sizeRefusal, VERIFY_ADVICE, verifiedSizeRepair, TABLE_WIDTH_TEST, WIDTH_PROBE } from './sizing';
 import { EMPTY_DATA, hasNoDataRows } from './emptyData';
 import { NormalizeError, canonicalLanguage, substitute } from './normalize/shared';
 import { withNumberMarks } from './numberMarks';
@@ -14,6 +14,7 @@ import { chartRefusals, isRefused } from './schema/refusals';
 import { movedGridWarnings, movedWidthWarnings, TRACK_WIDTH_TYPES, widthsThatDraw, type WidthGroup, type WidthStep } from './charts/columnOverrides';
 import { isRecord } from './lint/shared';
 import type { ColumnOverride } from './types/options';
+import type { TableOptions } from './types/table';
 import { DEFAULT_PRESET, inMarginStepBand, layoutStepKey, panelTypeClass, REMOVED_NAMES, removedNameWarnings, resolveTargetTheme, resolveTheme, typeWidthClass, WIDE_CANVAS_MIN_WIDTH, withMarginStepBelow, withTypeClassCap, type TypeWidthClass } from './theme';
 import { DEFAULT_TARGET, floorTextScale, resolveTargetSize } from './target';
 import { textScaleOf, textSizeOf } from './typeFloors';
@@ -32,7 +33,7 @@ import { addWhereAbsent } from './diagnostics/jsonPatch';
 import { timeAnnotationAnchors } from './timeAxis';
 import { retireChartSettings } from './retired';
 import { checkedTightAdvice, tightAdvice, withTableWidthHint, withTightAdvice } from './charts/tableFit';
-import { themeGeometryTokens } from './themeGeometry';
+import { tableFitThemeTokens, themeGeometryTokens } from './themeGeometry';
 import type { OptionsInput } from './types/optionInput';
 import { normalizeOptionShapes } from './normalize/optionShapes';
 
@@ -333,7 +334,8 @@ function prepared(def: { prepare?: (data: any, options?: any) => any }, data: un
 export function layoutResolvedRequest(request: ResolvedChartRequest): LayoutResult {
   if ((request.type !== 'table' && request.type !== 'dimswitch') || request.data === null || typeof request.data !== 'object') return layoutRequest(request);
   const { type, theme, target, size, fixed, inputWarnings } = request;
-  return repeatedResult(request.data, request.options, { type, theme, target, size, fixed, inputWarnings }, () => layoutRequest(request));
+  return repeatedResult(request.data, request.options, { type, theme, target, size, fixed, inputWarnings }, () =>
+    type === 'table' ? fullTableRequest(Object.assign({ ...request }, { [RETAIN_TABLE_RESULT]: true })) : layoutRequest(request));
 }
 
 /** @internal Host sizing path. Tables keep their fit diagnostics without drawing a scene. */
@@ -683,7 +685,7 @@ interface WidthProbe {
  * own mode. A drawn width names its form's floor, a refused one the width its refusal names. Probes
  * skip the repair search of a refusal, which only refines that width.
  */
-function widthProbers(request: ResolvedChartRequest, layoutAt: LayoutCall<any, any, any>, known?: Map<number, WidthProbe>, verify = false, tableRuns?: Map<string, LayoutCall<any, any, any>>): { full: (width: number) => WidthProbe; any: (width: number) => WidthProbe } {
+function widthProbers(request: ResolvedChartRequest, layoutAt: LayoutCall<any, any, any>, known?: Map<number, WidthProbe>, verify = false, tableRuns?: Map<string, LayoutCall<any, any, any>>): { full: (width: number) => WidthProbe; any: (width: number) => WidthProbe; accepts: (width: number) => boolean } {
   const own = request.options as RequestOptions;
   const def = getChart(request.type);
   const table = request.type === 'table' || request.type === 'dimswitch';
@@ -735,13 +737,16 @@ function widthProbers(request: ResolvedChartRequest, layoutAt: LayoutCall<any, a
       return { draws: false, result: undefined as unknown as LayoutResult };
     }
   };
-  const any = cached(refusedAt((width) => {
+  const atWidth = (width: number, acceptance = false): WidthProbe => {
     const gate = gated(width);
     if (gate) return gate;
     // The asked width is the layout render made.
     const asked = width === request.size.width ? request
       : { ...request, size: { ...request.size, width }, options: { ...request.options, size: { width } } as RequestOptions };
-    const first = asked === request ? layoutAt(request.options as RequestOptions) : known && !tableRuns ? alone(asked) : layoutAt(probeOptions(asked.options) as RequestOptions);
+    const base = probeOptions(asked.options);
+    const options = acceptance ? { ...base, [WIDTH_PROBE]: TABLE_WIDTH_TEST } : base;
+    const first = asked === request ? layoutAt(request.options as RequestOptions) : known && !tableRuns ? alone(asked)
+      : layoutAt(options);
     if (!isRefused(first)) return read(first, true);
     // Each smaller text class has its own registry memo. A plain table can use its
     // prepared cell measurements at several widths without sharing a class's answers.
@@ -750,13 +755,19 @@ function widthProbers(request: ResolvedChartRequest, layoutAt: LayoutCall<any, a
       const key = layoutStepKey();
       let run = tableRuns.get(key);
       if (!run) tableRuns.set(key, run = preparedLayout(next));
-      return run(probeOptions(next.options) as RequestOptions);
+      // A rejected smaller class is discarded. Its proposed repair cannot change acceptance here.
+      const options = { ...probeOptions(next.options), [WIDTH_PROBE]: TABLE_WIDTH_TEST };
+      return run(options);
     };
     const drawn = afterFirstLayout(asked, first, stepLayout, stepLayout, plainStep);
     if (isRefused(drawn)) return read(first, false);
     const need = sizeNeed(first);
     return { ...read(drawn, true), ...(need !== undefined && need > width ? { upper: need } : {}) };
-  }), known);
+  };
+  const any = cached(refusedAt(atWidth), known);
+  const test = cached(refusedAt(width => atWidth(width, true)));
+  const accepts = (width: number) => !tableRuns || steps || inMarginStepBand(width) || panelTypeClass(own) !== undefined
+    ? any(width).draws : known?.get(width)?.draws ?? test(width).draws;
   // Drawn compact: the full chart's need is the width a refusing full layout names.
   const full = cached(refusedAt((width) => {
     const drawn = any(width);
@@ -764,7 +775,7 @@ function widthProbers(request: ResolvedChartRequest, layoutAt: LayoutCall<any, a
     const probe = layoutAt({ ...request.options, belowMinimum: 'refuse', size: { width }, [WIDTH_PROBE]: request.type } as RequestOptions);
     return { draws: false, floor: sizeNeed(probe), result: drawn.result };
   }));
-  return { full, any };
+  return { full, any, accepts };
 }
 
 /**
@@ -778,7 +789,7 @@ function widthProbers(request: ResolvedChartRequest, layoutAt: LayoutCall<any, a
  * above. Widths at or under `bottom` are never tried. A form that refuses only between a floor and the
  * width above it is not seen.
  */
-function drawsFrom(at: (width: number) => WidthProbe, top: number, bottom: number, verifiedFrom = Infinity, topNamed = false, tableFloor?: number): { width: number; probe: LayoutResult } | undefined {
+function drawsFrom(at: (width: number) => WidthProbe, top: number, bottom: number, verifiedFrom = Infinity, topNamed = false, tableFloor?: number, accepts = (width: number) => at(width).draws): { width: number; probe: LayoutResult } | undefined {
   let hi = Math.max(Math.ceil(top), bottom + 1);
   let low = bottom;
   let probe = at(hi);
@@ -812,7 +823,7 @@ function drawsFrom(at: (width: number) => WidthProbe, top: number, bottom: numbe
   // descending search would, including the text-class steps it would cross.
   if (tableFloor !== undefined && tableFloor > low && tableFloor <= hi) {
     const edge = at(tableFloor);
-    if (edge.draws && (tableFloor - 1 === low || !at(tableFloor - 1).draws)) {
+    if (edge.draws && (tableFloor - 1 === low || !accepts(tableFloor - 1))) {
       const between = TYPE_CLASS_STEPS.filter(width => tableFloor < width && width < hi).map(width => at(width));
       if (between.every(step => step.draws) && [edge, ...between].every(step => step.upper === undefined || at(step.upper).draws)) {
         return { width: tableFloor, probe: edge.result };
@@ -869,7 +880,7 @@ function drawnAdvice(request: ResolvedChartRequest, result: LayoutResult, layout
   const tableRuns = request.type === 'table' ? new Map<string, LayoutCall<any, any, any>>() : undefined;
   let found: ReturnType<typeof advisedWidth>;
   try {
-    found = advisedWidth(request, result, () => widthProbers(request, layoutAt, refusalProbes(request, result), false, tableRuns).any);
+    found = advisedWidth(request, result, () => widthProbers(request, layoutAt, refusalProbes(request, result), false, tableRuns));
   } finally {
     for (const run of tableRuns?.values() ?? []) run.finish();
   }
@@ -891,7 +902,41 @@ function refusalProbes(request: ResolvedChartRequest, result: LayoutResult, veri
 }
 
 function openWidthProbes(request: ResolvedChartRequest, verify: boolean): Map<number, WidthProbe> | undefined {
-  return !request.fixed.height && !(request.options as { story?: unknown }).story ? storedProbes(request, verify) : undefined;
+  return !request.fixed.height && !(request.options as { story?: unknown }).story
+    ? requestMemo(request, 'open-widths:' + verify, () => storedProbes(request, verify)) : undefined;
+}
+
+// The public result cache copies this private refusal before handing it to a caller.
+const tableRefusals = new WeakMap<Map<number, WidthProbe>, Map<number, LayoutResult>>();
+
+function fullTableRequest(request: ResolvedChartRequest): LayoutResult {
+  const size = request.options.size;
+  if (!size || typeof size !== 'object' || size.width !== request.size.width || Reflect.ownKeys(size).length !== 1
+    || request.annotations.length || panelTypeClass(request.options) !== undefined) return layoutRequest(request);
+  const store = openWidthProbes(request, false);
+  if (!store) return layoutRequest(request);
+  let refused = tableRefusals.get(store);
+  const known = refused?.get(size.width);
+  if (known) return known;
+  const result = layoutRequest(request);
+  if (result.refused && result.warnings.length === 1 && result.warnings[0]!.code === 'size-below-floor') {
+    if (!refused) tableRefusals.set(store, refused = new Map());
+    if (refused.size >= STORED_WIDTHS) refused.delete(refused.keys().next().value!);
+    refused.set(size.width, result);
+  }
+  return result;
+}
+
+/** A single continuous wash behind visible figures changes neither tracks nor the frame's key and notes. */
+function tableFitOptions(options: Omit<TableOptions, 'theme'>) {
+  if (options.figures === false || !options.encodings) return options;
+  const entries = Object.values(options.encodings);
+  if (entries.length > 1) return options;
+  const lane = entries[0];
+  if (lane !== undefined && lane !== 'heat' && !(typeof lane === 'object' && lane.type === 'heat'
+    && (lane.scale ?? 'column') === 'column' && !lane.columns && lane.steps === undefined && lane.bins === undefined)) return options;
+  const { encodings: _wash, ...sizing } = options;
+  return sizing;
 }
 
 const storedSearches = new Map<string, Map<number, WidthProbe>>();
@@ -923,8 +968,10 @@ function storedProbes(request: ResolvedChartRequest, verify: boolean): Map<numbe
       const palette = options.palette === undefined ? undefined : theme.color.palettes?.[options.palette]?.length;
       const authoredSizes = Object.entries(theme.type).flatMap(([role, font]) =>
         font !== null && typeof font === 'object' && AUTHORED_TYPE_SIZE in font ? [role] : []);
-      key = withPlanInputs(() => contentKey(request.data as object, tableOptions, {
-        type, theme: themeGeometryTokens(theme, target), authoredSizes, target, palette, fixed, inputWarnings, footer, verify,
+      const unannotated = !request.annotations.length && !options.annotations?.length;
+      const fitOptions = unannotated ? tableFitOptions(tableOptions as TableOptions) : tableOptions;
+      key = withPlanInputs(() => contentKey(request.data as object, fitOptions, {
+        type, theme: unannotated ? tableFitThemeTokens(theme, target) : themeGeometryTokens(theme, target), authoredSizes, target, palette, fixed, inputWarnings, footer, verify,
       }));
     } else {
       key = withPlanInputs(() => contentKey(request.data as object, options, { type, theme, target, fixed, inputWarnings, footer, verify }));
@@ -970,15 +1017,23 @@ function advisedRefusal(result: LayoutResult, found: { width: number; probe: Lay
 }
 
 /** The width an open-height size refusal names: where the request draws from, searched up from the width the layout named. */
-function advisedWidth(request: ResolvedChartRequest, result: LayoutResult, any: () => (width: number) => WidthProbe): { width: number; probe: LayoutResult } | undefined {
+function advisedWidth(request: ResolvedChartRequest, result: LayoutResult, probers: () => ReturnType<typeof widthProbers>): { width: number; probe: LayoutResult } | undefined {
   const finding = result.refused ? result.warnings[0] : undefined;
   const need = finding?.code === 'size-below-floor' ? finding.expected?.minimum as Size | undefined : undefined;
   if (!result.refused || !need || request.fixed.height || need.width <= result.size.width) return undefined;
   // Drawn in the next smaller type class at the asked width: there is nothing to advise.
   const table = request.type === 'table';
-  const step = table ? withTableWidthHint(() => smallerClass(request, result)) : { value: smallerClass(request, result) };
+  const tryClass = (asked: ResolvedChartRequest) => {
+    const run = preparedLayout(asked);
+    try {
+      const probe = run({ ...asked.options, [WIDTH_PROBE]: TABLE_WIDTH_TEST, [PLAN_ONLY]: true } as RequestOptions);
+      return isRefused(probe) ? probe : run(asked.options);
+    } finally { run.finish(); }
+  };
+  const step = table ? withTableWidthHint(() => smallerClass(request, result, tryClass)) : { value: smallerClass(request, result) };
   if (step.value) return undefined;
-  return drawsFrom(any(), need.width, Math.floor(result.size.width), Infinity, true, step.width);
+  const { any, accepts } = probers();
+  return drawsFrom(any, need.width, Math.floor(result.size.width), Infinity, true, step.width, accepts);
 }
 
 /** Grid children use the registered layout directly, so request diagnostics walk their authored input here. */
@@ -1038,6 +1093,7 @@ function preparedLayout(request: ResolvedChartRequest, verifyAdvice = false): La
     ...request.options,
     theme: { preset: typeof ref === 'string' ? ref : ref?.preset ?? DEFAULT_PRESET, overrides: request.theme },
     [REMOVED_NAMES]: removedNameWarnings(request.options),
+    ...((request as { [RETAIN_TABLE_RESULT]?: boolean })[RETAIN_TABLE_RESULT] ? { [RETAIN_TABLE_RESULT]: true } : {}),
     ...(verifyAdvice ? { [VERIFY_ADVICE]: true } : {}),
   };
   const warnings = request.inputWarnings ?? [];
@@ -1318,7 +1374,7 @@ function measureWithLayout(request: ResolvedChartRequest, result: LayoutResult,
   // Keep the width-specific height lazy. A caller that does not read it needs no extra layouts.
   const atWidth = Math.max(request.size.width, sizing.minWidth);
   // The one width a size refusal at an open height names, as render names it.
-  const advised = openWidth ? advisedWidth(request, result, () => probers.any) : undefined;
+  const advised = openWidth ? advisedWidth(request, result, () => probers) : undefined;
   let atHeight: number | undefined;
   // The compact floor is reported only where this spec draws: the least height that draws at the
   // compact width, which the compact refusal there names. A spec that draws nowhere at that width

@@ -21,9 +21,9 @@ import { chartString } from '../../strings/table';
 
 import { cutWithTitle, distinctCut, fitText } from '../../label/fitText';
 import { disclosureNote } from '../../notes';
-import { authoredNotes, frameTextOptions, legendOff, legendRequired, solveFrame } from '../../frame';
-import type { Rect, Size } from '../../geometry';
-import { createOccupiedIndex, type OccupiedClaim } from '../../label/occupied';
+import { authoredNotes, collectFrameClaims, frameTextOptions, legendOff, legendRequired, solveFrame } from '../../frame';
+import type { Margin, Rect, Size } from '../../geometry';
+import type { OccupiedClaim } from '../../label/occupied';
 import { parseFormatExample } from '../../formatSpec';
 import { accessibleTitle, resolveSize } from '../../normalize/shared';
 import { defaultMeasurer, ellipsize, WIDTH_SAFETY, type FontSpec, type TextMeasurer } from '../../text';
@@ -31,6 +31,7 @@ import { composedTextRole } from '../../textRole';
 import { groundTextWarnings } from '../../paintWarnings';
 import {
   canvasMargin,
+  layoutStepKey,
   colorblindRoles,
   markRolePaint,
   panelTypeClass,
@@ -64,7 +65,7 @@ import type { ResolvedTable } from '../../types/table';
 import { DEFAULT_EMPTY_MESSAGE } from '../../emptyData';
 import { cellDrawsTabular, cellHoldsNumber, emptyMessageRow, expansionRootsHidden, finalClosers, hasNoDataRows, groupSpans, heatColumn, isTotalRow, labelOnlyRow, noteLineIndex, printsFigures, rowGrounds, tableFootnotes, visibleColumns, visibleInlineRows, visibleRows } from './view';
 import { fixedHeightCanvas, rowDrivenHeight, spareShare } from '../../rowCanvas';
-import { heightOmitted, rowSizing, VERIFY_ADVICE, WIDTH_PROBE, FIXED_SIZE_PROBE, FORCE_COMPACT, ACCEPTANCE_PROBE } from '../../sizing';
+import { heightOmitted, rowSizing, VERIFY_ADVICE, WIDTH_PROBE, TABLE_WIDTH_TEST, SIZE_TOLERANCE, FIXED_SIZE_PROBE, FORCE_COMPACT, ACCEPTANCE_PROBE } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { textScaleOf } from '../../typeFloors';
 import { maxOf, minOf, pushAll } from '../../arrays';
@@ -199,6 +200,7 @@ export function prepareTableExecutor(authoredData: TableData, initialOptions: Ta
     const input = prepareTableData(authoredData, options);
     // Width-search markers belong to the registry. A complete raw table answer is identical at the same frame.
     const { [WIDTH_PROBE]: _width, ...keyOptions } = options as LayoutOptions & { [WIDTH_PROBE]?: unknown };
+    if (_width === TABLE_WIDTH_TEST) (keyOptions as { [WIDTH_PROBE]?: string })[WIDTH_PROBE] = TABLE_WIDTH_TEST;
     if (typeof options.theme !== 'string') keyOptions.theme = { preset: options.theme?.preset, overrides: resolveTheme(options.theme) };
     return memoLayout(input, keyOptions, () => {
       const planned = { ...snapshotTableOptions(options), [PLAN_ONLY]: true };
@@ -351,9 +353,14 @@ const layouts = new WeakMap<object, Map<string, unknown>>();
  */
 export function memoLayout<G>(data: object, options: object, layout: () => G, limit = 32): G {
   return withPlanInputs(() => {
-  const finish = (value: G): G => isPlanned(value as object)
-    ? ((options as LayoutOptions)[PLAN_ONLY] ? { ...value, warnings: [...(value as Geometry).warnings] } : materializeLayout(value as Geometry)) as G
-    : copyPlannedValue(value);
+  const finish = (value: G): G => {
+    const geometry = value as Geometry;
+    if (isPlanned(geometry)) return ((options as LayoutOptions)[PLAN_ONLY]
+      ? { ...value, warnings: [...geometry.warnings] } : materializeLayout(geometry)) as G;
+    // A width trial reads the compiled data. Its mutable geometry and diagnostics still belong to the trial.
+    const widthTrial = (options as LayoutOptions)[PLAN_ONLY] && (options as { [WIDTH_PROBE]?: string })[WIDTH_PROBE] === TABLE_WIDTH_TEST;
+    return copyPlannedValue(value, widthTrial ? new Map([[geometry.derived, geometry.derived]]) : undefined);
+  };
   if (typeof (options as { theme?: unknown }).theme === 'string') return finish(layout());
   const { [PLAN_ONLY]: _plan, ...answerOptions } = options as LayoutOptions;
   const key = layoutKey(data, answerOptions);
@@ -467,20 +474,26 @@ function sharedTableView(data: TableData, options: TableOptions, table: Resolved
 type TableFrame = { frame: ReturnType<typeof solveFrame>; claims: OccupiedClaim[] };
 const tableFrames = new WeakMap<ResolvedTable, Map<string, TableFrame>>();
 
-/** Frame text is independent of the table's spacing and header rungs. */
-function sharedTableFrame(table: ResolvedTable, input: Parameters<typeof solveFrame>[0]): TableFrame {
-  // The solver reads these two flags outside its input, and a shared table outlives one request.
-  const key = `${staticFrame.pinned}:${staticFrame.live}:${optionKey(input)}`;
+type TableFrameContent = Omit<Parameters<typeof solveFrame>[0], 'size' | 'margin' | 'footerInset'> & { footnotes: string[] };
+
+/** Text, legend and theme are constant over a candidate's frame trials. */
+function prepareTableFrames(table: ResolvedTable, content: TableFrameContent) {
+  const furniture = optionKey(content);
   let frames = tableFrames.get(table);
   if (!frames) tableFrames.set(table, frames = new Map());
-  let value = frames.get(key);
-  if (!value) {
-    const occupied = createOccupiedIndex({ x: 0, y: 0, w: input.size.width, h: input.size.height });
-    value = { frame: solveFrame(input, occupied), claims: occupied.snapshot() };
-    if (frames.size >= 64) frames.delete(frames.keys().next().value!);
-    frames.set(key, value);
-  }
-  return value;
+  return (size: Size, margin: Margin, inset: number, notes: string[]): TableFrame => {
+    const key = `${layoutStepKey()}:${staticFrame.pinned}:${staticFrame.live}:${size.width}:${size.height}:${margin.top}:${margin.right}:${margin.bottom}:${margin.left}:${inset}:${notes.length ? JSON.stringify(notes) : ''}:${furniture}`;
+    let plan = frames.get(key);
+    if (!plan) {
+      const claims: OccupiedClaim[] = [];
+      const frame = solveFrame({ ...content, size, margin, footerInset: inset,
+        footnotes: notes.length ? [...content.footnotes, ...notes] : content.footnotes }, collectFrameClaims(claims));
+      plan = { frame, claims };
+      if (frames.size >= 64) frames.delete(frames.keys().next().value!);
+      frames.set(key, plan);
+    }
+    return plan;
+  };
 }
 
 /**
@@ -1001,6 +1014,34 @@ function prepareTableCandidate(
       widths: cols.map(col => widthAt(widthPlan, col.id)), value };
     return value;
   }
+  const frameLegend = keyEntries.length + arrowEntries.length > 0 ? {
+    legend: {
+      options: legendRequired(options.legend, warnings, 'table', theme, keyEntries.length > 0 ? 'its heat bands cut at edges no cell prints' : 'its arrow shapes stand for shares no cell prints'),
+      items: [
+        ...keyEntries.map((entry) => ({ id: entry.id, label: entry.label, paint: entry.fill, key: 'box' as const, stroke: { token: 'grid' as const } })),
+        ...arrowEntries.map((entry) => ({ id: entry.id, label: entry.label, paint: { token: 'ink' as const }, key: 'glyph' as const, glyph: entry.glyph })),
+      ],
+    },
+    legendFont: 'footnote' as const,
+  } : {};
+  const framesByMode = new Map<LayoutOptions['mode'], ReturnType<typeof prepareTableFrames>>();
+  function framesFor(options: LayoutOptions) {
+    let frameAt = framesByMode.get(options.mode);
+    if (!frameAt) {
+      frameAt = prepareTableFrames(table, {
+        ...frameTextOptions(options),
+        unit: tableFrameUnit(table, options),
+        // Hidden rows and columns have no mark that can point to a footnote.
+        footnotes: [...tableNotes, ...authored],
+        numberedFootnotes: authored,
+        unreferencedNotes: authored.map((_, i) => i + 1),
+        footnoteInk: 'inkMeta',
+        ...frameLegend, theme, measure,
+      });
+      framesByMode.set(options.mode, frameAt);
+    }
+    return frameAt;
+  }
   const preparedWarnings = warnings;
   const liftedByFormatting = resolved !== initialResolved && resolved.lifted;
   return function executeCandidate(options: LayoutOptions, sizingOnly: boolean,
@@ -1014,46 +1055,14 @@ function prepareTableCandidate(
   for (const note of tableNotes) disclosureNote(note);
   let size = resolveSize(options.size);
   let engineNotes = options[ENGINE_NOTES] ?? [];
+  const frameAt = framesFor(options);
   for (;;) {
   // Each settlement starts with the same semantic warnings. Frame and width
   // warnings belong only to the final numeric frame.
   let warnings = [...preparedWarnings];
   let cellPadX = initialCellPadX;
-  const frameInput: Parameters<typeof solveFrame>[0] = {
-      size,
-      margin: { ...canvasMargin(theme, size.width), ...options.margin },
-      ...frameTextOptions(options),
-      // uniform money unit hoisted out of every cell → the frame slot
-      // (solveFrame prepends 'in' itself)
-      unit: tableFrameUnit(table, options),
-      // rows/cols, not table.rows/table.columns: this surface is static, so a
-      // marker inside a collapsed row or a hidden column is unreachable here
-      // and its footnote would point at nothing
-      footnotes: [...tableNotes, ...authored, ...engineNotes],
-      // Nothing in a table points at a note: no head or cell carries a
-      // mark, so a "1)" before the note is a number the reader cannot follow
-      // (the same rule as for the engine's own notes). The author's
-      // notes stay notes and print without a number.
-      numberedFootnotes: authored,
-      unreferencedNotes: authored.map((_, i) => i + 1),
-      // A table's notes read in the tertiary ink where the theme names one.
-      footnoteInk: 'inkMeta',
-      // The notes and the source keep the cell air in from both edges, as on React, also at canvas margin 0.
-      footerInset: cellPadX,
-      ...(keyEntries.length + arrowEntries.length > 0 ? {
-        legend: {
-          options: legendRequired(options.legend, warnings, 'table', theme, keyEntries.length > 0 ? 'its heat bands cut at edges no cell prints' : 'its arrow shapes stand for shares no cell prints'),
-          items: [
-            ...keyEntries.map((entry) => ({ id: entry.id, label: entry.label, paint: entry.fill, key: 'box' as const, stroke: { token: 'grid' as const } })),
-            ...arrowEntries.map((entry) => ({ id: entry.id, label: entry.label, paint: { token: 'ink' as const }, key: 'glyph' as const, glyph: entry.glyph })),
-          ],
-        },
-        legendFont: 'footnote' as const,
-      } : {}),
-      theme,
-      measure,
-  };
-  let framePlan = sharedTableFrame(table, frameInput);
+  const margin = { ...canvasMargin(theme, size.width), ...options.margin };
+  let framePlan = frameAt(size, margin, cellPadX, engineNotes);
   let frame = framePlan.frame;
   let plot = frame.plot;
   // Text drawn on an authored ground, by paint: whether it reads there is decided in the theme it is painted in.
@@ -1077,9 +1086,8 @@ function prepareTableCandidate(
     widthPlan = preparedWidth ? preparedWidth(plot.w, options) as TableWidthRungPlan : sharedWidthPlan(table, theme, measure, options, widthView);
   }
   cellPadX = widthPlan.cellPadX;
-  if (frameInput.footerInset !== cellPadX) {
-    frameInput.footerInset = cellPadX;
-    framePlan = sharedTableFrame(table, frameInput);
+  if (initialCellPadX !== cellPadX) {
+    framePlan = frameAt(size, margin, cellPadX, engineNotes);
     frame = framePlan.frame;
     plot = frame.plot;
   }
@@ -1100,9 +1108,12 @@ function prepareTableCandidate(
     cellPads.set(probe, pad);
     return probe;
   }
+  const tableMiss = (options as { [WIDTH_PROBE]?: string })[WIDTH_PROBE] === TABLE_WIDTH_TEST
+    && size.width + SIZE_TOLERANCE < size.width - plot.w + minimumW;
   // An open-height floor reads only minWidth; neither the ladder nor withFloor consumes its row geometry.
   if ((sizingOnly && (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === false && !heightOmitted(options.size))
-    || (widthOnlyOnMiss && (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.width !== false && size.width < size.width - plot.w + minimumW)) {
+    || ((widthOnlyOnMiss || tableMiss)
+      && (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.width !== false && size.width < size.width - plot.w + minimumW)) {
     return sizingProbe(tableSizing(size, plot, plot.y, totalW, minimumW), {
       table: { x: gridX, y: gridY, w: totalW, h: 0 },
       columns: cols.map(col => ({ id: col.id, x: gridX, w: widthAt(widthPlan, col.id) })), rows: [],
@@ -1151,7 +1162,7 @@ function prepareTableCandidate(
     const height = tableSizing(size, plot, y, totalW, 0).naturalHeight;
     if (height !== size.height) {
       const nextSize = { width: size.width, height };
-      const nextFramePlan = sharedTableFrame(table, { ...frameInput, size: nextSize });
+      const nextFramePlan = frameAt(nextSize, margin, cellPadX, engineNotes);
       const nextFrame = nextFramePlan.frame;
       if (nextFrame.plot.x === plot.x && nextFrame.plot.y === plot.y && nextFrame.plot.w === plot.w
         && tableSizing(nextSize, nextFrame.plot, y, totalW, 0).naturalHeight === height) {

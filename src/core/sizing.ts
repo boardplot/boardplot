@@ -1,4 +1,4 @@
-import { PLAN_ONLY, isPlanned, materializeLayout, withPlanInputs } from './layoutPlan';
+import { PLAN_ONLY, RETAIN_TABLE_RESULT, isPlanned, materializeLayout, withPlanInputs } from './layoutPlan';
 import { boundsOf, type Rect, type Size } from './geometry';
 import { NormalizeError, resolveSize, resolveSubtitle } from './normalize/shared';
 import { classStepWidth, layoutStepKey, panelTypeClass, WIDE_CANVAS_MIN_WIDTH } from './theme';
@@ -860,11 +860,12 @@ export function prepareFitLayout<D, O extends ChartOptions, M extends object, DV
       // Give them their own result, while the fixed evaluator keeps its frame.
       const fitted = fitOrRepair(definition, data, options, at);
       const owned = !fitted.refused && !(options as { [PLAN_ONLY]?: boolean } | undefined)?.[PLAN_ONLY] && isPlanned(fitted);
+      const retained = (options as { [RETAIN_TABLE_RESULT]?: boolean })[RETAIN_TABLE_RESULT] === true;
       const selected = !fitted.refused && !(options as { [PLAN_ONLY]?: boolean } | undefined)?.[PLAN_ONLY]
-        ? materializeLayout(fitted) : fitted;
-      // Materialization already copied every scene field for this caller.
-      const copy = owned ? selected : copyLayout(selected);
-      if (owned && !copy.refused) copy.a11y.desc = singleStops(copy.a11y.desc);
+        ? materializeLayout(fitted, retained) : fitted;
+      // A retained plan needs only the writable registry fields here. The public request makes the complete copy.
+      const copy = owned && !retained ? selected : copyLayout(selected);
+      if (owned && !retained && !copy.refused) copy.a11y.desc = singleStops(copy.a11y.desc);
       origins.set(copy, origins.get(fitted) ?? fitted);
       if (!copy.refused && !(options as { [PLAN_ONLY]?: boolean } | undefined)?.[PLAN_ONLY]) sourceFollowsContent(copy, options);
       return withPlotFloorWarning(copy, options, definition.title);
@@ -1286,13 +1287,16 @@ export function sideKeyGivesWay<O extends { mode?: unknown }, G extends Geometry
 
 /** The owning chart's width-only search; its rejected probes do not need repair advice. */
 export const WIDTH_PROBE = Symbol('boardplot.widthProbe');
+/** A table trial which consumes acceptance and drawn height only. */
+export const TABLE_WIDTH_TEST = 'table-width-test';
 export const FIXED_SIZE_PROBE = Symbol('boardplot.fixedSizeProbe');
 /** Set by a probe that reads only whether the chart draws (`isRefused`): it skips work that only words a warning. */
 export const ACCEPTANCE_PROBE = Symbol('boardplot.acceptanceProbe');
 
 export function isWidthProbe(type: string, options: ChartOptions | undefined): boolean {
-  return (options as { [WIDTH_PROBE]?: string } | undefined)?.[WIDTH_PROBE] === type
-    && options?.belowMinimum === 'refuse' && panelTypeClass(options) === undefined;
+  const probe = (options as { [WIDTH_PROBE]?: string } | undefined)?.[WIDTH_PROBE];
+  return (probe === type && options?.belowMinimum === 'refuse' || type === 'table' && probe === TABLE_WIDTH_TEST)
+    && panelTypeClass(options) === undefined;
 }
 
 function forcedCompact(options: unknown): boolean {
@@ -1495,6 +1499,8 @@ function fitOnce<D, O extends ChartOptions, M extends object, DV extends object>
       let refusedProbe = false;
       for (let pass = 0; pass < (definition.type === 'grid' ? 6 : 4); pass++) {
         const probe = at(width, height);
+        if (definition.type === 'table' && (options as { [WIDTH_PROBE]?: string })[WIDTH_PROBE] === TABLE_WIDTH_TEST
+          && probe.refused && probe.size.width + SIZE_TOLERANCE < probe.sizing.minWidth) return probe;
         const natural = probe.sizing?.naturalHeight;
         // Tables can resize their frame around measured rows without replaying the ladder.
         if (natural === height || ((definition.type === 'table' || definition.type === 'dimswitch')
@@ -1665,9 +1671,9 @@ function fitOnce<D, O extends ChartOptions, M extends object, DV extends object>
 /** Call state must not appear in a chart's returned derived options. */
 function withoutCallState<O extends ChartOptions>(options: O | undefined): O | undefined {
   if (!options || !(CARD_HEIGHT_MEMO in options || LAYOUT_CALL in options || FULL_LAYOUT_PROBE in options || FIXED_SIZE_PROBE in options
-    || ACCEPTANCE_PROBE in options)) return options;
+    || ACCEPTANCE_PROBE in options || RETAIN_TABLE_RESULT in options)) return options;
   const { [CARD_HEIGHT_MEMO]: _card, [LAYOUT_CALL]: _call, [FULL_LAYOUT_PROBE]: _probe, [FIXED_SIZE_PROBE]: _fixed,
-    [ACCEPTANCE_PROBE]: _accept, ...raw } = options as O & Record<symbol, unknown>;
+    [ACCEPTANCE_PROBE]: _accept, [RETAIN_TABLE_RESULT]: _retain, ...raw } = options as O & Record<symbol, unknown>;
   return raw as O;
 }
 
