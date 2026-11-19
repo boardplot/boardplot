@@ -104,6 +104,14 @@ const NUMBER_ALONE = new RegExp(`^${ONE_NUMBER}$`, 'u');
  */
 const NUMBER_PLACEHOLDER = /^(?:n\/a|n\.m\.|[-–—])$/;
 
+// Decimal figures make up most table cells. Other number forms share the full grammar.
+const SIMPLE_FIGURE = /^[+−–-]?[0-9][0-9.,]*%?$/;
+const NUMBER_START = new RegExp(`^[\\sA-Z${CURRENCY_SIGN}+\\-–−؜‎‏\\p{Nd}]`, 'u');
+
+function numberPart(text: string): boolean {
+  return SIMPLE_FIGURE.test(text) || (NUMBER_START.test(text) && NUMBER_ALONE.test(text));
+}
+
 /**
  * Whether a drawn string IS one number: an optional sign, a currency symbol
  * or ISO code, digits with separators, one magnitude suffix, a percent or
@@ -116,11 +124,11 @@ export function isNumberAlone(text: string): boolean {
   if (trimmed === '') return true;
   if (NUMBER_PLACEHOLDER.test(trimmed)) return true;
   const open = trimmed.indexOf('(');
-  if (open < 0) return NUMBER_ALONE.test(trimmed);
+  if (open < 0) return numberPart(trimmed);
   if (!trimmed.endsWith(')')) return false;
   // ONE_NUMBER contains no brackets. Any nested or extra pair fails the same anchored matcher.
-  return NUMBER_ALONE.test(trimmed.slice(open + 1, -1))
-    && (open === 0 || NUMBER_ALONE.test(trimmed.slice(0, open).trimEnd()));
+  return numberPart(trimmed.slice(open + 1, -1))
+    && (open === 0 || numberPart(trimmed.slice(0, open).trimEnd()));
 }
 
 /**

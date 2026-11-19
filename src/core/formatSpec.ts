@@ -13,7 +13,7 @@ import { toJsonPointer, type JsonPatchOperation } from './diagnostics/jsonPatch'
 
 import { chartString } from './strings';
 import { fractionFormat, numberFormat } from './numberFormatCache';
-import { splitNumberMarks, withNumberMarks, wordLanguage } from './numberMarks';
+import { markedDecimal, splitNumberMarks, withNumberMarks, wordLanguage } from './numberMarks';
 import { MAGNITUDE_SUFFIX, magnitudeSuffix, MINUS, formatPercent, nonFiniteGlyph, smallRateDecimals } from './format';
 import {
   AUTO_MAX_DECIMALS,
@@ -397,7 +397,7 @@ function parseExample(example: string, keepWord: boolean): NumberFormatSpec {
   // Trailing part: magnitude suffix then unit suffix.
   let tail = after.trimEnd();
   const tailTrimmed = tail.trimStart();
-  for (const m of MAGNITUDE_SUFFIXES) {
+  for (const m of tailTrimmed === '' || tailTrimmed === '%' ? [] : MAGNITUDE_SUFFIXES) {
     const word = magnitudeAfterNumber(m, lead, tail, tailTrimmed);
     if (word) {
       spec.magnitude = m.key;
@@ -1486,13 +1486,18 @@ function formatWithSpecUncached(value: number, spec: NumberFormatSpec): string {
   const isZero = !underflow && !scientific && Number(rounded.text) === 0;
   const negative = value < 0 && !isZero;
 
-  const [intPart, fracPart] = rounded.text.split('.');
-  // A space groups with a no-break space, so no figure breaks across two
-  // lines.
-  let num = groupInteger(intPart!, spec.thousandsSep === ' ' ? '\u00a0' : spec.thousandsSep);
-  if (rounded.decimals > 0) num += spec.decimalSep + (fracPart ?? '');
+  let num: string;
   if (scientific) num = scientific;
-  else if (spec.locale) num = fractionFormat(spec.locale, rounded.decimals, spec.thousandsSep !== '').format(Number(rounded.text));
+  else if (spec.locale) {
+    const grouped = spec.thousandsSep !== '';
+    num = markedDecimal(rounded.text, rounded.decimals, grouped, spec.locale)
+      ?? fractionFormat(spec.locale, rounded.decimals, grouped).format(Number(rounded.text));
+  } else {
+    const [intPart, fracPart] = rounded.text.split('.');
+    // A no-break space keeps grouped digits on the same line.
+    num = groupInteger(intPart!, spec.thousandsSep === ' ' ? '\u00a0' : spec.thousandsSep);
+    if (rounded.decimals > 0) num += spec.decimalSep + (fracPart ?? '');
+  }
   if (underflow) num = underflow;
   if (pValue) num = withoutLeadingZero(num);
   num += magnitudeText(spec, magnitude, num, Number(rounded.text));

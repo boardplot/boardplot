@@ -8,6 +8,10 @@ import { TABLE_HEAD_PARTS, tableHeadFloorPx } from './typeFloors';
 
 /** Paint values are excluded; anything that can change layout remains. */
 export function themeGeometryTokens(theme: Theme, target?: RenderTarget): unknown {
+  return geometryTokens(theme, target);
+}
+
+function geometryTokens(theme: Theme, target?: RenderTarget) {
   return {
     ...(target === undefined ? {} : { target }),
     scenario: theme.scenario,
@@ -29,6 +33,22 @@ export function themeGeometryTokens(theme: Theme, target?: RenderTarget): unknow
     seriesOverflow: theme.color.seriesOverflow ?? 'repeatLast',
     seriesCount: theme.color.series.length,
   };
+}
+
+/** Numeric table widths and heights have no paint, panel grid, or series legend. */
+export function tableFitThemeTokens(theme: Theme, target: RenderTarget) {
+  const tokens = geometryTokens(theme, target);
+  const type = { ...theme.type };
+  for (const role of ['title', 'subtitle', 'label', 'axis', 'footnote', 'micro', 'secondary'] as const) {
+    const font = type[role];
+    // themeForWidth gives a role with no family the theme's own family.
+    if (font?.family === type.family) {
+      const { family: _inherited, ...metrics } = font;
+      type[role] = metrics;
+    }
+  }
+  return { ...tokens, type, surface: undefined, seriesCount: undefined,
+    space: { ...tokens.space, facetGap: undefined, labelPad: undefined } };
 }
 
 /** Output metadata from the final layout. Text roles are supplied by the text lanes. */

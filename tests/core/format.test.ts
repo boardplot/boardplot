@@ -4,6 +4,7 @@ import {
   NOT_AVAILABLE,
   NOT_MEANINGFUL,
   cagr,
+  formatExactNumber,
   formatNumber,
   formatPercent,
   nonFiniteGlyph,
@@ -23,6 +24,17 @@ describe('formatNumber', () => {
         );
       }
     }
+  });
+
+  it('keeps chart number marks and printed precision when grouping already-rounded digits', () => {
+    const locale = 'de-x-marks-cs';
+    const print = formatterFromExample('1,234.00', locale);
+    expect(print(1234.5)).toBe('1\u00a0234,50');
+    expect(print(1.005)).toBe('1,01');
+    expect(formatExactNumber(-1234567, locale)).toBe('−1\u00a0234\u00a0567');
+    expect(formatExactNumber(-0, locale)).toBe('−0');
+    expect(formatExactNumber(1234.567, locale)).toBe('1\u00a0234,567');
+    expect(formatExactNumber(9999999999999999, locale)).toBe('10\u00a0000\u00a0000\u00a0000\u00a0000\u00a0000');
   });
 
   it('uses a true minus sign', () => {
