@@ -321,7 +321,8 @@ function gridRecords(ctx: RecordContext, childRecords?: (ctx: RecordContext) => 
         id: targetId(target), target, label: `${source.title} / ${category.label}`, seriesLabel: source.title, categoryLabel: category.label,
         // Every stack figure is an expression over the measures: computed, so it reads without float residue.
         value: { ...(hidden ? numericValue(null, source.unit) : derivedValue(raw, source.unit)), displayed: panel.displayed[i], ...(hidden ? { state: 'unavailable' as const, reason: chartString(ctx.request.options, 'maturingHidden') } : {}) },
-        fields: [{ key: 'state', label: chartString(ctx.request.options, 'categoryState'), value: { kind: 'text' as const, state: 'value' as const, raw: panel.states[i]! } }],
+        // A category in the default state prints no state row: only a maturing or running period has something to say.
+        fields: panel.states[i] === 'mature' ? [] : [{ key: 'state', label: chartString(ctx.request.options, 'categoryState'), value: { kind: 'text' as const, state: 'value' as const, raw: panel.states[i]! } }],
         comparisons: [], annotations: [], claimIds: [], nodeIds: panel.nodeIds[i]!,
       };
     }));
