@@ -511,3 +511,16 @@ it('prints the segment share on a 100% stack of counts whose unit is a percent, 
   expect(card([191, 120], [243, 80], '% of group')).toEqual(['North / Yes', '191', 'Share: 44%']);
   expect(card([44, 60], [56, 40], '%')).toEqual(['North / Yes', '44%']);
 });
+
+// A sparkline card printed "Position: 4" under the label of the point, a row a reader could not place.
+it('prints no position row on a labelled sparkline point, keeps it without labels, and keeps one record per repeated label', () => {
+  const cards = (data: object) => {
+    const { request, geometry } = build({ type: 'sparkline', data, options: { format: '1,234' } });
+    return interactionRecords({ request, geometry, scope: request.scope, claims: [] }).map(record => ({ id: record.id, ...labelCardContent(record) }));
+  };
+  const labelled = cards({ values: [12, 15, 18], labels: ['1 Jan', '1 Jan', '3 Jan'] });
+  expect(labelled.map(card => card.rows.map(row => row.text))).toEqual([['1 Jan', '12'], ['1 Jan', '15'], ['3 Jan', '18']]);
+  expect(labelled.map(card => card.accessibleText).join(' ')).not.toContain('Position');
+  expect(new Set(labelled.map(card => card.id)).size).toBe(3);
+  expect(cards({ values: [12, 15, 18] })[1]!.rows.map(row => row.text)).toEqual(['p2', '15', 'Position: 2']);
+});
