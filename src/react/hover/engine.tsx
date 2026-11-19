@@ -27,7 +27,7 @@ import { SceneRenderer } from '../SceneRenderer';
 import { KEY_PARTS, highlightScene, outlineScene, recordBounds } from './highlight';
 import { hitTestRecords } from './hitTest';
 import { cardSurface, describedWithCard, hundredPercentComposition, labelCardGeometry, layoutLabelCard,
-  layoutLabelCardContent, placeLabelCard, sharedLabelCardContent, shouldShowTableLabelCard, type CardSide, type CompositionOptions, type LabelCardInput, type LabelCardLayout, type LabelCardRow } from './labelCard';
+  layoutLabelCardContent, nearPath, placeLabelCard, pointsHull, sharedLabelCardContent, shouldShowTableLabelCard, type CardSide, type CompositionOptions, type LabelCardInput, type LabelCardLayout, type LabelCardRow } from './labelCard';
 import { activeLabelBounds, overlayInputs, panelAtPoint, panelOverlayTheme, type HoverViewport, type OverlayInputs } from './placement';
 import { tableSparklineCard } from './sparklineCard';
 import { interactionTokens } from '../../core/a11y/theme';
@@ -210,6 +210,30 @@ export const surfaceStyle = a11ySurfaceStyle;
 /** Chart types whose pointer position selects a category band before the nearest mark. */
 export const bandTypes: Record<string, 'x' | 'y'> = { line: 'x', combo: 'x', column: 'x', bar: 'y' };
 
+const paths = new WeakMap<HoverModel, Map<string | undefined, Point[]>>();
+
+/**
+ * The convex hull of the points a reader moves the pointer between, in
+ * layout units: the points of a line, an area or a combo's lines, and of a
+ * sparkline. These charts pick a point by the pointer's position along the
+ * axis, so a card in this area would stand in the pointer's way.
+ */
+function pointsPath(model: HoverModel, type: string, record: InteractionRecord): Point[] | undefined {
+  const sparkline = type === 'sparkline';
+  if (!sparkline && bandTypes[type] === undefined) return undefined;
+  let byPanel = paths.get(model);
+  if (!byPanel) paths.set(model, byPanel = new Map());
+  const key = record.target.panel;
+  let hull = byPanel.get(key);
+  if (!hull) {
+    hull = pointsHull(model.records.flatMap(other => other.target.chart === record.target.chart && other.target.panel === key
+      && other.target.owner.annotationId === undefined && other.anchor && (sparkline || !('w' in other.anchor))
+      ? [{ x: other.anchor.x + ('w' in other.anchor ? other.anchor.w / 2 : 0), y: other.anchor.y + ('h' in other.anchor ? other.anchor.h / 2 : 0) }] : []));
+    byPanel.set(key, hull);
+  }
+  return hull.length ? hull : undefined;
+}
+
 /**
  * The records the pointer addresses. A node owned by records of several series
  * (the shared end label of series ending on one printed value) addresses all
@@ -311,6 +335,8 @@ export function hoverView(
     forbidden: bounds.map(cssRect),
     previousSide: position.panel === first.target.panel ? position.previousSide : undefined,
     band: first.target.owner.annotationId !== undefined ? undefined : bandTypes[panel?.type ?? request.type],
+    path: first.target.owner.annotationId !== undefined ? undefined : pointsPath(model, panel?.type ?? request.type, first)?.map(cssPoint),
+    mark: marks[0] && cssRect(marks[0]),
     theme, measure: request.fontMetrics, locale,
     idPrefix: 'hover-card', card: cardOptions };
   // The card formats values after layout: it follows the chart's smallValues mode and unit-only formats.
@@ -330,10 +356,11 @@ export function ChartCard({ layout, theme, origin, cardRef }: { layout: LabelCar
   if (!layout.scene.length) return null;
   const size: CSSProperties = { width: layout.rect.w, height: layout.rect.h, maxWidth: 'none',
     overflow: 'visible', boxSizing: 'content-box' };
-  // The pointer may move onto the card (WCAG 1.4.13): the hover handlers keep the open record while it is on it.
+  // A card clear of the points' path takes the pointer (WCAG 1.4.13): the hover handlers keep the open record while it is on it.
+  // A card over the path of a line, area, combo or sparkline lets the pointer through, so the reader reaches every point.
   const card = <div popover={topLayer() ? 'manual' : undefined} ref={node => { cardRef?.(node); showCard(node); }} data-bp-chart-card="" data-bp-card-overlay="" className="bp-interaction-card"
     role="tooltip" dir="ltr" aria-label={layout.accessibleText}
-    style={{ ...cardStyle(layout.rect, theme, origin, 'bp-chart-card-in', true), pointerEvents: 'auto', ...size }}>
+    style={{ ...cardStyle(layout.rect, theme, origin, 'bp-chart-card-in', true), pointerEvents: layout.overPath ? 'none' : 'auto', ...size }}>
     <SceneRenderer geometry={labelCardGeometry(layout)} theme={theme} responsive={false} style={size} />
   </div>;
   // Keep the portal fallback where showPopover is missing.
@@ -381,7 +408,7 @@ export function CustomCard({ input, theme, origin, label, contentId, locale, car
     observer?.observe(node);
     return () => observer?.disconnect();
   }, [children, input.canvas]);
-  const seat = useMemo(() => measured && placeLabelCard(input, measured.size.width, measured.size.height).rect, [input, measured]);
+  const seat = useMemo(() => measured && placeLabelCard(input, measured.size.width, measured.size.height, true).rect, [input, measured]);
   const offset = topLayer() ? origin : measured?.inline;
   const surface = cardSurface(theme);
   const style: CSSProperties = { ...(seat && offset ? cardStyle(seat, theme, offset, 'bp-chart-card-in')
@@ -418,9 +445,14 @@ function inlineOrigin(node: HTMLElement, canvas: Rect): Point | undefined {
  * when the open record was picked, to the card `card`: the convex hull of the
  * point and the box. A pointer on its way to the card crosses other marks;
  * inside the corridor the open card stays. Client pixels.
+ *
+ * A pointer on the points' path (`path`, CSS pixels from the chart's
+ * `origin`) is on its way to another point, not to the card: there the
+ * pointer picks again, so the card never holds a point the pointer has left.
  */
-export function inCardCorridor(from: Point, card: Rect, point: Point): boolean {
+export function inCardCorridor(from: Point, card: Rect, point: Point, path?: readonly Point[], origin: Point = { x: 0, y: 0 }): boolean {
   if (rectContains(card, { ...point, w: 0, h: 0 }, 0)) return true;
+  if (path && nearPath(path, { x: point.x - origin.x, y: point.y - origin.y })) return false;
   const corners: Point[] = [{ x: card.x, y: card.y }, { x: card.x + card.w, y: card.y },
     { x: card.x + card.w, y: card.y + card.h }, { x: card.x, y: card.y + card.h }];
   const side = (a: Point, b: Point, p: Point) => (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
