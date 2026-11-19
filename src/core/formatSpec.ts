@@ -397,15 +397,11 @@ function parseExample(example: string, keepWord: boolean): NumberFormatSpec {
   // Trailing part: magnitude suffix then unit suffix.
   let tail = after.trimEnd();
   const tailTrimmed = tail.trimStart();
-  for (const m of tailTrimmed === '' || tailTrimmed === '%' ? [] : MAGNITUDE_SUFFIXES) {
-    const word = magnitudeAfterNumber(m, lead, tail, tailTrimmed);
-    if (word) {
-      spec.magnitude = m.key;
-      // "€1.2bn" prints "bn", "1,2 Mio. €" prints " Mio."; the letter is the engine's spelling.
-      if (keepWord) spec.magnitudeWord = { magnitude: m.key, text: tail.slice(0, tail.length - tailTrimmed.length) + word[0] };
-      tail = tailTrimmed.replace(m.re, '');
-      break;
-    }
+  const magnitude = magnitudeAfterNumber(lead, tail, tailTrimmed);
+  if (magnitude) {
+    spec.magnitude = magnitude.key;
+    if (keepWord) spec.magnitudeWord = { magnitude: magnitude.key, text: tail.slice(0, tail.length - tailTrimmed.length) + magnitude.word };
+    tail = tailTrimmed.slice(magnitude.word.length);
   }
   spec.suffix = tail; // keep remaining unit text (e.g. '%', 'pp', ' €')
   affixMagnitude(spec);
@@ -630,10 +626,24 @@ function exampleSigns(spec: NumberFormatSpec, before: string, after: string, exa
   return [before, after];
 }
 
-function magnitudeAfterNumber(entry: typeof MAGNITUDE_SUFFIXES[number], lead: string, tail: string, trimmed: string): RegExpExecArray | null {
-  const word = entry.re.exec(trimmed);
-  if (!word || !entry.glued || tail === trimmed) return word;
-  return !trimmed.slice(word[0].length).startsWith('/') && (isCurrency(lead) || isCurrency(trimmed.slice(word[0].length))) ? word : null;
+const SINGLE_MAGNITUDES = new Map<string, Scale>([
+  ['k', 'k'], ['K', 'k'], ['m', 'm'], ['M', 'm'], ['b', 'bn'], ['B', 'bn'], ['T', 't'],
+]);
+
+function magnitudeAfterNumber(lead: string, tail: string, trimmed: string): { key: Scale; word: string } | undefined {
+  if (trimmed === '' || trimmed === '%' || trimmed === 'pp') return undefined;
+  const single = SINGLE_MAGNITUDES.get(trimmed);
+  if (single) return tail === trimmed || isCurrency(lead) ? { key: single, word: trimmed } : undefined;
+  for (const entry of MAGNITUDE_SUFFIXES) {
+    const word = entry.re.exec(trimmed)?.[0];
+    if (!word) continue;
+    if (entry.glued && tail !== trimmed) {
+      const rest = trimmed.slice(word.length);
+      if (rest.startsWith('/') || !(isCurrency(lead) || isCurrency(rest))) continue;
+    }
+    return { key: entry.key, word };
+  }
+  return undefined;
 }
 
 /** A currency affix without its scale word: 'USDm ' gives 'USD ', ' Mio. €' gives ' €'. */
