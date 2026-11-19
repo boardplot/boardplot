@@ -1174,6 +1174,14 @@ export function layoutHeatmap(
   const matrixPaints: Paint[] = [];
   // All or none: one cell without room takes the numbers off every cell (a blank constant column apart).
   const printValues = fitted.every((values) => values.every((value, ci) => value === null || value.fits || constantCol[ci]));
+  // The value matrix suppresses every cell number when one misses. Its disclosure restarts layout,
+  // so the discarded frame needs only those values in row order, before it builds any cells.
+  if (knownMeasure && valueStyle && cellLabelsOn && !printValues && valueNote === undefined) {
+    for (const r of rows) {
+      r.cells.forEach((cell, ci) => { if (cell.v !== null) hiddenCells.push({ r, c: cols[ci]!, v: cell.v }); });
+    }
+    if (hiddenCells.length) return withHiddenValueNote();
+  }
   const withheld: ClaimedRequest[] = [];
   rows.forEach((r, ri) => {
     const values = fitted[ri]!;
@@ -1374,11 +1382,7 @@ export function layoutHeatmap(
   // Cohort owns its more specific rate disclosure.
   // The note names the hidden values (up to the shared note limit), and the value
   // matrix prints the story value, its highlighted row's extreme, as a callout under the grid.
-  if (options.heatKey === undefined && omittedValues > 0 && valueNote === undefined) {
-    const lead = valueStyle ? leadCallout() : undefined;
-    const next = lead ? { ...options, annotations: [...(options.annotations ?? []), lead] } : options;
-    return layoutHeatmap(data, next, bracketGutter, hiddenValuesNote(lead), forceRows, compactKey);
-  }
+  if (options.heatKey === undefined && omittedValues > 0 && valueNote === undefined) return withHiddenValueNote();
 
   // ---- row labels (left band, right-aligned toward the grid) ----
   // The value matrix sets a highlighted row's name bold.
@@ -1780,6 +1784,12 @@ export function layoutHeatmap(
       kind: 'callout', id: `lead:${row.id}:${col.id}`, at: { seriesId: row.id, categoryId: col.id },
       headline: '${value}', text: chartString(options, low ? 'heatmapLeadLow' : 'heatmapLeadHigh', { v1: col.label }), preferSide: 'below',
     } as Annotation;
+  }
+
+  function withHiddenValueNote(): Geometry<HeatmapMarks, HeatmapDerived> {
+    const lead = valueStyle ? leadCallout() : undefined;
+    const next = lead ? { ...options, annotations: [...(options.annotations ?? []), lead] } : options;
+    return layoutHeatmap(data, next, bracketGutter, hiddenValuesNote(lead), forceRows, compactKey);
   }
 
   /** One hidden value as the note and the reading name it: "Iberia Aug −3.1". */
