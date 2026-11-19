@@ -113,6 +113,8 @@ These options are shared across chart types. Each type page names its exceptions
 | strings.belowSeries | string |  |  | Negative line gap key. |
 | strings.average | string |  |  | Name before a computed mean; English Average, German Ø. |
 | strings.valueLineRange | string |  |  | Tolerance-band bounds; {v1} and {v2} are the formatted bounds. |
+| strings.valueLineRangeKey | string |  |  | Key of a tolerance band on a column, bar or dot chart; {name} is the line's name and {range} the bounds. |
+| strings.valueLineRangeKeyPlain | string |  |  | Key of a tolerance band whose line has no name; {range} is the bounds. |
 | strings.toDate | string |  |  | Text after a running category name in its key or note. |
 | strings.forecast | string |  |  | Key for the forecast pattern. |
 | strings.plan | string |  |  | Key for the plan outline. |

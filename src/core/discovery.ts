@@ -74,7 +74,7 @@ const ANNOTATION_OPTIONAL: Partial<Record<AnnotationKind, Record<string, Optiona
     },
     axis: { meaning: 'primary | secondary, default primary. Scale of value; secondary needs an acknowledged secondary axis.', types: ['combo'] },
     tolerance: {
-      meaning: 'number | { low, high }. A number shades that distance on both sides of the line; low and high shade an authored corridor.',
+      meaning: 'number | { low, high }. A number shades that distance on both sides of the line; low and high shade an authored corridor. On column, bar and dot the key names the band with its bounds, "Target range: 95 to 105"; without a key the band prints its bounds itself.',
       types: ['bar', 'bullet', 'column', 'combo', 'dot', 'line', 'mekko', 'pvm', 'scatter', 'slope', 'variance', 'waterfall'],
     },
     attainment: { meaning: 'boolean | { seriesId, direction }. Shades each category between its actual and the line.', types: ['bar', 'bullet', 'column', 'dot', 'line'] },

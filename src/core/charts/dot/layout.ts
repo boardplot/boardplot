@@ -22,7 +22,7 @@ import { namedLineText } from '../../annotateParts';
 import type { AnchorResolution } from '../../annotate';
 import { percentCellsOnly, percentLevels, runAnnotatePass } from '../../annotatePass';
 import { categoryTargetFields, spliceAnnotationNodes, valueLineHasTargetExtras, valueLineNeedsSharedPass } from '../../annotateFields';
-import { drawnToleranceBands, valueLineExtent } from '../../valueLineDomain';
+import { drawnToleranceBands, valueLineExtent, toleranceKeyed, toleranceLegendKeys } from '../../valueLineDomain';
 import { applyValueAxisTitleInk, layoutValueAxis, planValueAxisTitle, valueAxisTitleRequest } from '../../axis';
 import { arrowHeadPath, arrowShaftEnd } from '../../svgPath';
 import { formatStatWithSpec, formatterFromExample, formatWithSpec, seriesRasterFormatter } from '../../formatSpec';
@@ -282,6 +282,8 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
   const percentAxis = percentCellsOnly(dataSeries.map((series) => ({ vals: series.cells.map((cell) => ({ ...cell, format: cell.meta?.format })), format: series.format })));
   // Under the default rule a reference value is a value in no set: it prints as a late value of the level set.
   const percentSpec = { ...valueSpec.percentSpec, suffix: '%' };
+  // The number format and the words of the annotation pass. A tolerance band's key prints its bounds in them.
+  const passText = { format: options.format, locale: options.locale?.language, levelSpec: percent ? percentSpec : valueSpec.spec, strings: options.strings };
   const referenceFmt = percent && !options.format ? (v: number) => formatWithSpec(v, percentSpec) : fmt;
   // A mean is a statistic, a set of one. An authored format keeps its statistic rule.
   const meanFmt = percent && !options.format ? (v: number) => formatStatWithSpec(v, percentSpec) : (v: number) => formatStatWithSpec(v, valueSpec.spec);
@@ -1404,10 +1406,8 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
     plot,
     theme,
     measure,
-    format: options.format,
-    locale: options.locale?.language,
-    levelSpec: percent ? percentSpec : valueSpec.spec,
-    strings: options.strings,
+    ...passText,
+    toleranceKeyed: toleranceKeyed(passAnns, frameResult.legend?.items),
     solveCtx,
     meanValue,
   });
@@ -1707,6 +1707,8 @@ export function layoutDot(data: ChartData, options: DotOptions = {}): Geometry<D
         id: `__${d}`, label: d === 'rose' ? chartString(options, 'rose') : chartString(options, 'fell'), key: 'line' as const,
         paint: { token: (d === 'rose') === (dataSeries[1]?.direction === 'higherIsBetter') ? 'good' : 'bad' } as Paint,
       })),
+      // A tolerance band says nothing about itself: the key names it and prints its bounds.
+      ...toleranceLegendKeys(passAnns, meanValue, cats.map((c) => c.id), passText),
     ];
     if (l === 'none' || l === 'auto' || (!l && extras.length === 0)) return undefined;
     const legendOptions: LegendOptions = normalizeLegendOption(l ?? 'top');

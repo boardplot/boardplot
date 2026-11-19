@@ -10,6 +10,8 @@ const EN = {
   "valueLineSpan": "{v1}, {v2} to {v3}",
   "valueLineTolerance": "Tolerance",
   "valueLineRange": "{v1} to {v2}",
+  "valueLineRangeKey": "{name} range: {range}",
+  "valueLineRangeKeyPlain": "Range: {range}",
 } as const;
 const DE: { [K in keyof typeof EN]: string } = {
   // reader-facing wording linked only by its consumers.
@@ -21,6 +23,8 @@ const DE: { [K in keyof typeof EN]: string } = {
   "valueLineSpan": "{v1}, {v2} bis {v3}",
   "valueLineTolerance": "Toleranz",
   "valueLineRange": "{v1} bis {v2}",
+  "valueLineRangeKey": "{name}-Bereich: {range}",
+  "valueLineRangeKeyPlain": "Bereich: {range}",
 };
 
 export const { chartString } = chartStrings(EN, DE);

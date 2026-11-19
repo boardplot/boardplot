@@ -15,6 +15,7 @@ import type { Id } from './types/cell';
 import type { SceneNode } from './types/scene';
 import type { TargetScaleInput } from './annotateTargets';
 import { pushAll } from './arrays';
+import { defaultSetSpec, formatterFromExample, formatWithSpec, RULE_SET } from './formatSpec';
 
 export type CategoryBand = { x: number; w: number } | { y: number; h: number };
 
@@ -112,3 +113,13 @@ export function toleranceBounds(
   if (!pair) return "tolerance bounds need finite, unequal 'low' and 'high'";
   return pair;
 }
+
+/** A bound as the chart prints its numbers: without a format a late value of the chart's levels, else a set of its own. The band's key prints the same text. */
+export function bandBoundText(input: Pick<TargetScaleInput, 'format' | 'locale' | 'levelSpec'>, v: number): string {
+  return input.format
+    ? formatterFromExample(input.format, input.locale)(v)
+    : formatWithSpec(v, { ...(input.levelSpec?.[RULE_SET]?.set.kind === 'number' ? input.levelSpec : defaultSetSpec([v], input.locale)), prefix: '', suffix: '' });
+}
+
+/** The fill of a value line's tolerance band, and of its key. */
+export const TOLERANCE_FILL = { token: 'others', tint: 0.45 } as const;

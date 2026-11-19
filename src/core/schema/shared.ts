@@ -1390,6 +1390,8 @@ export const baseOptionsSchema = z.object({
       belowSeries: z.string().optional().describe("Negative line gap key."),
       average: z.string().min(1).optional().describe("Name before a computed mean; English Average, German Ø."),
       valueLineRange: z.string().min(1, 'valueLineRange must not be empty; use {v1} and {v2} for the formatted bounds').optional().describe("Tolerance-band bounds; {v1} and {v2} are the formatted bounds."),
+      valueLineRangeKey: z.string().min(1).optional().describe("Key of a tolerance band on a column, bar or dot chart; {name} is the line's name and {range} the bounds."),
+      valueLineRangeKeyPlain: z.string().min(1).optional().describe("Key of a tolerance band whose line has no name; {range} is the bounds."),
       toDate: z.string().min(1).optional().describe("Text after a running category name in its key or note."),
       forecast: z.string().min(1).optional().describe("Key for the forecast pattern."),
       plan: z.string().min(1).optional().describe("Key for the plan outline."),

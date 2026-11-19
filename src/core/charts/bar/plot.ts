@@ -7,7 +7,7 @@ import { stringFields } from '../../strings';
 
 import { BAND_PAD } from '../../annotateParts';
 import { valueLineHasTargetExtras } from '../../annotateFields';
-import { drawnToleranceBands } from '../../valueLineDomain';
+import { drawnToleranceBands, toleranceLegendKeys } from '../../valueLineDomain';
 import { axisTitleAllowed, planValueAxisTitle, tickRowTitleEnd, valueAxisTitleText, valueAxisUnit } from '../../axis';
 import { authoredNotes, cappedItems, frameTextOptions, normalizeLegendOption, plotHeightAfter, shareUnitOptions, solveFrame, type FrameInput, type FrameResult, type LegendItemInput, authoredFootnoteCount } from '../../frame';
 import type { Rect } from '../../geometry';
@@ -62,7 +62,9 @@ function buildLegend(domain: BarDomain, paints: BarLegendPaints, warnings: LintW
   }
   // The net line's ticks stand one per row with no line to label at an end: the key names them.
   const netLineKeyed = domain.netLineOn && panelTypeClass(options) === undefined;
-  const l = options.legend ?? (signColor || referenceDrawn || netLineKeyed ? 'top' : undefined);
+  // A tolerance band says nothing about itself: the key names it and prints its bounds. A grid panel keeps the bounds in the band.
+  const toleranceKeys = panelTypeClass(options) === undefined ? toleranceLegendKeys(domain.passAnns, domain.meanValue, cats.map((c) => c.id), barPassText(domain)) : [];
+  const l = options.legend ?? (signColor || referenceDrawn || netLineKeyed || toleranceKeys.length > 0 ? 'top' : undefined);
   if (!l || l === 'none' || l === 'auto') return undefined;
   const legendOptions: LegendOptions = normalizeLegendOption(l);
   // A sign-coloured series gets the two keys it paints, each naming its polarity in words.
@@ -112,8 +114,10 @@ function buildLegend(domain: BarDomain, paints: BarLegendPaints, warnings: LintW
       return partialPattern(cats[ci], pattern, outline) !== pattern;
     }),
   );
+  // A key row that only the band brought does not repeat the name of the one series.
+  const seriesKeyed = options.legend !== undefined || signColor || referenceDrawn || netLineKeyed || dataSeries.length > 1;
   let items: LegendItemInput[] = [
-    ...seriesItems,
+    ...(seriesKeyed ? seriesItems : []),
     // In the subtitle's order, AC PY PL FC: the plan row before the forecast hatch.
     ...(domain.variant !== 'stacked100'
       ? refSeries.map((s) => ({
@@ -141,6 +145,7 @@ function buildLegend(domain: BarDomain, paints: BarLegendPaints, warnings: LintW
       paint: { token: 'neutralMark' }, strings: domain.options.strings,
     }),
     ...partialLegendKeys(partialHatchPainted && !partialNamedOnValues(domain), options.strings, cats),
+    ...toleranceKeys,
   ];
   /**
    * Two keys a reader cannot tell apart are one key that wasted the width of
@@ -160,6 +165,11 @@ function buildLegend(domain: BarDomain, paints: BarLegendPaints, warnings: LintW
     );
   }
   return { options: legendOptions, items };
+}
+
+/** The number format and the words of the annotation pass. A tolerance band's key prints its bounds in them. */
+export function barPassText(domain: Pick<BarDomain, 'options' | 'valueSpec'>) {
+  return { format: domain.options.format, locale: domain.options.locale?.language, levelSpec: domain.valueSpec.spec, strings: domain.options.strings };
 }
 
 /** The frame (title, subtitle, legend, source measured FIRST); claims into its own index. */

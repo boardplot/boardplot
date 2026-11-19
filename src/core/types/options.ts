@@ -198,6 +198,10 @@ export interface StringsSpec {
   average?: string;
   /** Tolerance-band bounds. Fields: {v1}, {v2}. */
   valueLineRange?: string;
+  /** Key of a tolerance band on a column, bar or dot chart. Fields: {name}, {range}. */
+  valueLineRangeKey?: string;
+  /** Key of a tolerance band whose line has no name. Fields: {range}. */
+  valueLineRangeKeyPlain?: string;
   /** Text after a running category name in its key or note. */
   toDate?: string;
   /** Key for the forecast pattern. */

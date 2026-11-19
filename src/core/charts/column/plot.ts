@@ -37,6 +37,8 @@ import { bandScale, brokenLinearScale, linearScale, seatRoom } from '../../scale
 import type { FontSpec } from '../../text';
 import { canvasMargin, panelTypeClass, emphasisWeight, strokeToken, dashToken, secondaryFont } from '../../theme';
 import type { Annotation } from '../../types/annotations';
+import { percentLevels } from '../../annotatePass';
+import { toleranceLegendKeys } from '../../valueLineDomain';
 import type { Id } from '../../types/cell';
 import type { LegendOptions } from '../../types/options';
 import type { LintWarning } from '../../types/scene';
@@ -194,6 +196,21 @@ function rangeDrawn(domain: ColumnDomain): boolean {
     domain.dataSeries.some((s) => domain.cats.some((_, ci) => domain.rangeOf(s, ci) !== undefined));
 }
 
+/** The annotations the annotation pass gets. Events belong to the event lane. */
+export function columnPassAnnotations(domain: Pick<ColumnDomain, 'annList'>): Annotation[] {
+  return domain.annList.filter((annotation) => annotation.kind !== 'event');
+}
+
+/** The number format and the words of the annotation pass. A tolerance band's key prints its bounds in them. */
+export function columnPassText(domain: Pick<ColumnDomain, 'options' | 'valueSpec' | 'dataSeries'>) {
+  return {
+    format: domain.options.format,
+    locale: domain.options.locale?.language,
+    levelSpec: percentLevels(domain.dataSeries) ? { ...domain.valueSpec.percentSpec, suffix: '' } : domain.valueSpec.spec,
+    strings: domain.options.strings,
+  };
+}
+
 /**
  * The legend input (the legend is a layout participant).
  *
@@ -216,6 +233,9 @@ function columnLegend(
   // A grid panel leaves its key to the grid legend, which collects it.
   const referenceDrawn = domain.variant !== 'stacked100' && panelTypeClass(options) === undefined &&
     domain.refSeries.some((s) => s.vals.some((val) => val.v !== null));
+  // A tolerance band says nothing about itself: the key names it and prints its bounds. A grid panel keeps the bounds in the band.
+  const toleranceKeys = panelTypeClass(options) === undefined
+    ? toleranceLegendKeys(columnPassAnnotations(domain), domain.meanValue, domain.cats.map((c) => c.id), columnPassText(domain)) : [];
   const legendForcedByEncoding = signColor || anomaly !== undefined || referenceDrawn || rangeDrawn(domain);
   if (legendForcedByEncoding && options.legend === 'none') {
     warnings.push({
@@ -228,10 +248,12 @@ function columnLegend(
     });
   }
   const effectiveLegend =
-    options.legend === undefined && legendForcedByEncoding ? 'top' : options.legend;
+    options.legend === undefined && (legendForcedByEncoding || toleranceKeys.length > 0) ? 'top' : options.legend;
   if (!effectiveLegend || effectiveLegend === 'none' || effectiveLegend === 'auto') return undefined;
   const legendOpts: LegendOptions = normalizeLegendOption(effectiveLegend);
-  let items = columnLegendItems(domain, paints);
+  // A key row that only the band brought does not repeat the name of the one series.
+  const single = options.legend === undefined && !legendForcedByEncoding && domain.dataSeries.length === 1 ? domain.dataSeries[0]!.id : undefined;
+  let items = [...columnLegendItems(domain, paints).filter((item) => item.id !== single), ...toleranceKeys];
   // Edge names that explain every series leave no key to draw.
   if (items.length === 0 && edgeNamesReplaceKey(domain)) return undefined;
   if (legendOpts.order) {

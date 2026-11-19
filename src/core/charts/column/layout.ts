@@ -62,7 +62,8 @@ import { cellValueText, planColumnLabels, planColumnValueLabels, planTickEnds, p
 import { layoutColumnMarks } from './marks';
 import { PY_TICK_LEAD, TICK_LABEL_RESERVE, type ColumnArea, type ColumnDomain, type ColumnMarkGeometry, type ComputedTotal } from './model';
 import { columnPaints } from './paints';
-import { bracketsOverColumns, CAGR_PAD, CATEGORY_NOTES, columnPlotArea, SEGMENT_NOTE, solveColumnFrame } from './plot';
+import { bracketsOverColumns, CAGR_PAD, CATEGORY_NOTES, columnPassAnnotations, columnPassText, columnPlotArea, SEGMENT_NOTE, solveColumnFrame } from './plot';
+import { toleranceKeyed } from '../../valueLineDomain';
 import { categoryNotesDiffer, FORCE_CATEGORY_RANKS, rankNotes } from '../combo/categoryRanks';
 import type { AnomalyColumnOptions, AnomalyDerived } from './types';
 import type { EmittedLane } from '../../eventLane';
@@ -350,8 +351,8 @@ function annotateColumn(
     target: domain.options.target,
     // The growth bracket seats its label on its run.
     cagrLabelOnArm: true,
-    // Events belong to the event lane.
-    annotations: domain.annList.filter((annotation) => annotation.kind !== 'event'),
+    annotations: columnPassAnnotations(domain),
+    toleranceKeyed: toleranceKeyed(columnPassAnnotations(domain), area.frame.legend?.items),
     resolve: resolveAnchor,
     printedLabels,
     defaultSpan:
@@ -362,10 +363,7 @@ function annotateColumn(
     ceilingRects,
     theme: domain.theme,
     measure: domain.measure,
-    format: domain.options.format,
-    locale: domain.options.locale?.language,
-    levelSpec: percentLevels(dataSeries) ? { ...domain.valueSpec.percentSpec, suffix: '' } : domain.valueSpec.spec,
-    strings: domain.options.strings,
+    ...columnPassText(domain),
     percentLevels: percentLevels(dataSeries),
     sharesFormat: domain.variant === 'stacked100',
     valueLinePercentLevels: domain.variant === 'stacked100' || domain.options.unit === '%' || domain.pctLevels,
