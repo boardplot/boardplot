@@ -11,40 +11,36 @@ export function outsideLabelGuard(regions: readonly FittedGeoRegion[]) {
   }
   let boundsScale = 1;
   const shapes = regions.map(region => {
-    let pointCount = 0, minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    const polygons: Point[][][] = [], rings: Point[][] = [], samples: Point[] = [];
-    for (const polygon of region.polygons) {
-      const fitted: Point[][] = [];
-      for (const ring of polygon) {
-        const points: Point[] = [];
-        for (const [x, y] of ring) {
-          const point = { x, y };
-          if (pointCount === 0) samples.push(point, point, point, point);
-          if (x < minX) samples[0] = point;
-          if (x > maxX) samples[1] = point;
-          if (y < minY) samples[2] = point;
-          if (y > maxY) samples[3] = point;
-          pointCount++;
-          minX = Math.min(minX, x); minY = Math.min(minY, y);
-          maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
-          points.push(point);
-        }
-        fitted.push(points);
-        rings.push(points);
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    const polygons = region.polygons;
+    const rings = polygons.flat();
+    const samples: GeoPoint[] = [];
+    for (const ring of rings) {
+      for (const point of ring) {
+        const [x, y] = point;
+        if (!samples.length) samples.push(point, point, point, point);
+        if (x < minX) samples[0] = point;
+        if (x > maxX) samples[1] = point;
+        if (y < minY) samples[2] = point;
+        if (y > maxY) samples[3] = point;
+        minX = Math.min(minX, x); minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
       }
-      polygons.push(fitted);
     }
     let outlineDistance: ReturnType<typeof prepareOutlineDistance> | undefined;
     const marker = region.marker ?? { x: region.anchor.x, y: region.anchor.y, radius: 2.5 };
-    const x = pointCount ? minX : marker.x - marker.radius;
-    const y = pointCount ? minY : marker.y - marker.radius;
+    const x = samples.length ? minX : marker.x - marker.radius;
+    const y = samples.length ? minY : marker.y - marker.radius;
     const bounds = { x, y,
-      w: pointCount ? maxX - x : 2 * marker.radius,
-      h: pointCount ? maxY - y : 2 * marker.radius };
+      w: samples.length ? maxX - x : 2 * marker.radius,
+      h: samples.length ? maxY - y : 2 * marker.radius };
     const right = x + bounds.w, bottom = y + bounds.h;
     boundsScale = Math.max(boundsScale, Math.abs(x), Math.abs(y), Math.abs(right), Math.abs(bottom), Math.abs(bounds.w), Math.abs(bounds.h));
     return { id: region.id, polygons, rings, samples,
-      get outlineDistance() { return outlineDistance ??= prepareOutlineDistance(rings); },
+      get outlineDistance() {
+        // Most regions are eliminated by their bounds before an exact distance is needed.
+        return outlineDistance ??= prepareOutlineDistance(rings.map(ring => ring.map(([x, y]) => ({ x, y }))));
+      },
       marker, bounds, right, bottom, maxY, queries: new Map<number, Query>() };
   });
   type Shape = (typeof shapes)[number];
@@ -70,9 +66,9 @@ export function outsideLabelGuard(regions: readonly FittedGeoRegion[]) {
   const upperDistance = (shape: Shape, rect: Rect) => {
     if (!shape.polygons.length) return distance(shape, rect);
     let best = Infinity, gapX = Infinity, gapY = Infinity;
-    for (const point of shape.samples) {
-      const dx = Math.max(rect.x - point.x, 0, point.x - rect.x - rect.w);
-      const dy = Math.max(rect.y - point.y, 0, point.y - rect.y - rect.h);
+    for (const [x, y] of shape.samples) {
+      const dx = Math.max(rect.x - x, 0, x - rect.x - rect.w);
+      const dy = Math.max(rect.y - y, 0, y - rect.y - rect.h);
       const squared = dx * dx + dy * dy;
       if (squared < best) { best = squared; gapX = dx; gapY = dy; }
     }
@@ -84,11 +80,11 @@ export function outsideLabelGuard(regions: readonly FittedGeoRegion[]) {
     const cuts = [0, 1];
     for (const ring of shape.rings) for (let i = 1; i < ring.length; i++) {
       const a = ring[i - 1]!, b = ring[i]!;
-      const ex = b.x - a.x, ey = b.y - a.y;
+      const ex = b[0] - a[0], ey = b[1] - a[1];
       const cross = dx * ey - dy * ex;
       if (cross === 0) continue;
-      const t = ((a.x - from.x) * ey - (a.y - from.y) * ex) / cross;
-      const u = ((a.x - from.x) * dy - (a.y - from.y) * dx) / cross;
+      const t = ((a[0] - from.x) * ey - (a[1] - from.y) * ex) / cross;
+      const u = ((a[0] - from.x) * dy - (a[1] - from.y) * dx) / cross;
       if (t > 0 && t < 1 && u >= 0 && u <= 1) cuts.push(t);
     }
     cuts.sort((a, b) => a - b);
@@ -159,11 +155,11 @@ export function outsideLabelGuard(regions: readonly FittedGeoRegion[]) {
 }
 
 
-function inRing(point: Point, ring: readonly Point[]): boolean {
+function inRing(point: Point, ring: readonly GeoPoint[]): boolean {
   let inside = false;
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
     const a = ring[i]!, b = ring[j]!;
-    if ((a.y > point.y) !== (b.y > point.y) && point.x < a.x + (point.y - a.y) * (b.x - a.x) / (b.y - a.y)) inside = !inside;
+    if ((a[1] > point.y) !== (b[1] > point.y) && point.x < a[0] + (point.y - a[1]) * (b[0] - a[0]) / (b[1] - a[1])) inside = !inside;
   }
   return inside;
 }
