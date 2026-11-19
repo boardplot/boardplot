@@ -524,3 +524,19 @@ it('prints no position row on a labelled sparkline point, keeps it without label
   expect(new Set(labelled.map(card => card.id)).size).toBe(3);
   expect(cards({ values: [12, 15, 18] })[1]!.rows.map(row => row.text)).toEqual(['p2', '15', 'Position: 2']);
 });
+
+// A metric stack card printed "Category state: mature" on every ordinary category, a term a business reader does not know.
+it('prints no state row on a metric stack category in the default state, and keeps it on a running period', () => {
+  const { request, geometry } = build({ type: 'grid', data: {
+    categories: [{ id: 'jan', label: 'Jan' }, { id: 'feb', label: 'Feb' }, { id: 'mar', label: 'Mar', partial: true }],
+    measures: [{ id: 'orders', label: 'Orders', values: [40, 44, 12] }, { id: 'returns', label: 'Returns', values: [4, 5, 1] }],
+    panels: [{ id: 'volume', type: 'column', title: 'Orders', unit: 'orders', measure: { sum: ['orders'] }, readout: 'change' },
+      { id: 'back', type: 'column', title: 'Returns', unit: 'returns', measure: { sum: ['returns'] }, readout: 'change' }],
+    windows: { base: { from: 'jan', to: 'jan', label: 'Jan' }, compare: { from: 'feb', to: 'feb', label: 'Feb' } },
+  }, options: { stack: {}, size: { width: 640 } } });
+  const records = interactionRecords({ request, geometry, scope: request.scope, claims: [] }).filter(record => record.seriesLabel === 'Orders');
+  const cards = records.map(record => labelCardContent(record));
+  expect(cards.slice(0, 2).map(card => card.rows.filter(row => row.kind === 'field'))).toEqual([[], []]);
+  expect(cards.slice(0, 2).map(card => card.accessibleText).join(' ')).not.toContain('state');
+  expect(cards[2]!.rows.filter(row => row.kind === 'field').map(row => row.text)).toEqual(['Category state: partial']);
+});
