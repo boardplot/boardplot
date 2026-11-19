@@ -6,7 +6,7 @@
  */
 
 import { disclosuresShown } from '../../notes';
-import { copyPlannedValue, memoExactInputKey, ownPlanInput } from '../../layoutPlan';
+import { copyPlannedValue, memoExactInputKey, ownPlanInput, requestMemo } from '../../layoutPlan';
 import { caseInsensitiveValue, inputConversion } from '../../inputConversion';
 import { bandFor } from '../../bandSelect';
 import { datePatternFromExample, formatDate, parseISODate } from '../../dateFormat';
@@ -400,7 +400,8 @@ export function prepareTableData(data: TableData, options: TableOptions = {}, ma
     const magnitudeContent = magnitudeSource === data ? 'same;' : memoExactInputKey(magnitudeSource, modelContentKey);
     const semanticContent = modelContentKey([semantic, currentSmallValues(), formatScopeKey()]);
     const content = dataContent === undefined || magnitudeContent === undefined || semanticContent === undefined ? undefined
-      : dataContent.length + ':' + dataContent + magnitudeContent.length + ':' + magnitudeContent + semanticContent;
+      : requestMemo(data, 'table-model:' + magnitudeContent.length + ':' + magnitudeContent + semanticContent,
+        () => dataContent.length + ':' + dataContent + magnitudeContent.length + ':' + magnitudeContent + semanticContent);
     const key = content;
     let models = key === undefined ? undefined : preparedData.get(data);
     if (!models && key !== undefined) preparedData.set(data, models = new Map());

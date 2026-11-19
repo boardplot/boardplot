@@ -115,17 +115,9 @@ function tableWidthsWithHeads(table: ResolvedTable, theme: Theme, measure: TextM
     // The width the labels and their folded-row hints need, not the room a wide frame handed the label: only that keeps rows from wrapping.
     if (track !== undefined && base.labelNeed !== undefined) own.labelKeep = Math.min(track, Math.max(base.labelNeed, base.labelBeforeFill ?? 0));
   }
-  const regular = tableWidthsOnce(table, theme, measure, options, own, probe);
-  if ('widthMiss' in regular) return regular;
-  const count = (view.columns ?? visibleColumns(table)).length;
-  const densePad = count >= 25 ? 3 : count >= DENSE_COLUMNS ? 5 : regular.cellPadX;
-  if (options.cellPadX !== undefined || densePad >= regular.cellPadX || Math.max(regular.minimumW, regular.totalW) <= (view.available ?? Infinity)) return regular;
-  const dense = tableWidthsOnce(table, theme, measure, { ...options, cellPadX: densePad }, own);
-  if ('widthMiss' in dense) return dense;
-  const regularOverflow = regular.warnings.find(warning => warning.code === 'table-overflow');
-  // The wider-size repair must also fit after normal padding returns.
-  if (regularOverflow) dense.warnings = dense.warnings.map(warning => warning.code === 'table-overflow' ? regularOverflow : warning);
-  return dense;
+  const solve = prepareTableWidthFit(table, theme, measure, options, own);
+  const result = solve(view.available ?? Infinity, options, probe);
+  return result.widthMiss === true ? result : materializeTableWidthPlan(result);
 }
 
 /** Measurements do not depend on available space. Rungs solve copies of these numeric tracks. */
@@ -795,9 +787,24 @@ export function materializeTableWidthPlan(plan: TableWidthRungPlan) {
   return { ...rest, widths: map(plan.widths), minimumWidths: map(plan.minimumWidths), sizingMinimums: map(plan.sizingMinimums) };
 }
 
-function tableWidthsOnce(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions = {}, view: TableWidthView = {}, probe?: TableWidthProbe) {
-  const result = solveTableWidthRung(prepareTableWidthRung(table, theme, measure, options, view), view.available ?? Infinity, options, probe);
-  return result.widthMiss === true ? result : materializeTableWidthPlan(result);
+/** Rungs share measured tracks across widths. Only the chosen tracks need the public column maps. */
+export function prepareTableWidthFit(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions, view: TableWidthView) {
+  const normal = prepareTableWidthRung(table, theme, measure, options, view);
+  const count = normal.measured.cols.length;
+  const densePad = count >= 25 ? 3 : count >= DENSE_COLUMNS ? 5 : normal.measured.cellPadX;
+  let compact: TableWidthRung | undefined;
+  return (available: number, frame: WidthOptions, probe?: TableWidthProbe) => {
+    const regular = solveTableWidthRung(normal, available, frame, probe);
+    if (regular.widthMiss === true || options.cellPadX !== undefined || densePad >= regular.cellPadX
+      || Math.max(regular.minimumW, regular.totalW) <= available) return regular;
+    const denseOptions = { ...frame, cellPadX: densePad };
+    compact ??= prepareTableWidthRung(table, theme, measure, denseOptions, view);
+    const dense = solveTableWidthRung(compact, available, denseOptions) as TableWidthRungPlan;
+    // A wider-size repair must also fit once normal padding returns.
+    const overflow = regular.warnings.find(warning => warning.code === 'table-overflow');
+    if (overflow) dense.warnings = dense.warnings.map(warning => warning.code === 'table-overflow' ? overflow : warning);
+    return dense;
+  };
 }
 
 /**

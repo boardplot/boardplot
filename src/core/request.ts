@@ -6,7 +6,7 @@ import { PLAN_ONLY, withPlanInputs, contentKey, copyPlannedValue, repeatedResult
 import { loadedDeferred } from './deferred';
 import { shownNoteKinds } from './notes';
 import { canonicalChartType, getChart } from './registry';
-import { chartSizing, compactFallbackApplies, declaredSizing, fitsSize, FIXED_SIZE_PROBE, FULL_LAYOUT_PROBE, NARROW_FORM, NARROW_FORM_TYPES, SIZE_TOLERANCE, LAYOUT_CALL, type LayoutCall, plotFloorHeight, plotRepairHeight, resolveSizing, sizeGate, sizeRefusal, VERIFY_ADVICE, verifiedSizeRepair, WIDTH_PROBE } from './sizing';
+import { ACCEPTANCE_PROBE, chartSizing, compactFallbackApplies, declaredSizing, fitsSize, FIXED_SIZE_PROBE, FULL_LAYOUT_PROBE, NARROW_FORM, NARROW_FORM_TYPES, SIZE_TOLERANCE, LAYOUT_CALL, type LayoutCall, plotFloorHeight, plotRepairHeight, resolveSizing, sizeGate, sizeRefusal, VERIFY_ADVICE, verifiedSizeRepair, WIDTH_PROBE } from './sizing';
 import { EMPTY_DATA, hasNoDataRows } from './emptyData';
 import { NormalizeError, canonicalLanguage, substitute } from './normalize/shared';
 import { withNumberMarks } from './numberMarks';
@@ -14,10 +14,10 @@ import { chartRefusals, isRefused } from './schema/refusals';
 import { movedGridWarnings, movedWidthWarnings, TRACK_WIDTH_TYPES, widthsThatDraw, type WidthGroup, type WidthStep } from './charts/columnOverrides';
 import { isRecord } from './lint/shared';
 import type { ColumnOverride } from './types/options';
-import { DEFAULT_PRESET, inMarginStepBand, panelTypeClass, REMOVED_NAMES, removedNameWarnings, resolveTargetTheme, resolveTheme, typeWidthClass, WIDE_CANVAS_MIN_WIDTH, withMarginStepBelow, withTypeClassCap, type TypeWidthClass } from './theme';
+import { DEFAULT_PRESET, inMarginStepBand, layoutStepKey, panelTypeClass, REMOVED_NAMES, removedNameWarnings, resolveTargetTheme, resolveTheme, typeWidthClass, WIDE_CANVAS_MIN_WIDTH, withMarginStepBelow, withTypeClassCap, type TypeWidthClass } from './theme';
 import { DEFAULT_TARGET, floorTextScale, resolveTargetSize } from './target';
 import { textScaleOf, textSizeOf } from './typeFloors';
-import { defaultMeasurer, type TextMeasurer } from './text';
+import { AUTHORED_TYPE_SIZE, defaultMeasurer, type TextMeasurer } from './text';
 import { drawnHeight } from './drawnHeight';
 import { clippedTextWarnings } from './textClip';
 import type { Size } from './geometry';
@@ -31,7 +31,8 @@ import type { InteractionScope } from './a11y/types';
 import { addWhereAbsent } from './diagnostics/jsonPatch';
 import { timeAnnotationAnchors } from './timeAxis';
 import { retireChartSettings } from './retired';
-import { checkedTightAdvice, tightAdvice, withTightAdvice } from './charts/tableFit';
+import { checkedTightAdvice, tightAdvice, withTableWidthHint, withTightAdvice } from './charts/tableFit';
+import { themeGeometryTokens } from './themeGeometry';
 import type { OptionsInput } from './types/optionInput';
 import { normalizeOptionShapes } from './normalize/optionShapes';
 
@@ -345,6 +346,28 @@ export function planResolvedRequest(request: ResolvedChartRequest): Pick<LayoutR
     ...(result.refused ? { refused: true as const } : { plot: result.plot }), scene: [] });
 }
 
+/** @internal Dimensions for a horizontally scrolling table. A host that needs diagnostics uses the public layout. */
+export function tableViewportFrame(request: ResolvedChartRequest): { width: number; height: number; gridTop: number; scrollWidth?: number } | undefined {
+  if (request.type !== 'table' || !request.fixed.width || request.fixed.height || panelTypeClass(request.options) !== undefined
+    || floorTextScale(request.target) !== undefined || hasAuthoredWidth((request.options as WidthEntry['options'])?.columnOverrides)) return undefined;
+  return withPlanInputs(() => {
+    const first = layoutWidthProbe(request);
+    const frame = (geometry: LayoutResult) => geometry.refused || geometry.warnings.some(w => w.severity === 'error') ? undefined
+      : { width: geometry.size.width, height: Math.max(geometry.size.height, geometry.sizing?.naturalHeight ?? 0), gridTop: geometry.plot.y };
+    if (!first.refused) return frame(first);
+    if (first.warnings.length !== 1 || first.warnings[0]?.code !== 'size-below-floor' || first.sizing.fit !== 'content') return undefined;
+    const need = first.warnings[0].expected?.minimum as Size | undefined;
+    const width = Math.ceil(first.sizing.minWidth);
+    // Above the last type step an ordinary draw at the named floor bounds the entire minimum-width search.
+    if (!need || !Number.isFinite(width) || need.width !== width || width < WIDE_CANVAS_MIN_WIDTH || width <= request.size.width) return undefined;
+    const fallback = afterFirstLayout(request, first, layoutWidthProbe, layoutWidthProbe, layoutWidthProbe);
+    if (fallback !== first) return frame(fallback);
+    const wider = { ...request, size: { ...request.size, width }, options: { ...request.options, size: { width } } };
+    const dimensions = frame(layoutWidthProbe(wider));
+    return dimensions && { ...dimensions, scrollWidth: width };
+  });
+}
+
 function layoutRequest(request: ResolvedChartRequest): LayoutResult {
   const finish = (result: LayoutResult): LayoutResult => (request.options as { [PLAN_ONLY]?: boolean })[PLAN_ONLY]
     ? result : withClipWarnings(result, request.fontMetrics);
@@ -354,7 +377,7 @@ function layoutRequest(request: ResolvedChartRequest): LayoutResult {
   // the cohort's render advice is an estimate that errs wide, and its check would cost two layouts.
   if (request.type !== 'table' || isRefused(result)) return finish(result);
   return finish(checkedTightAdvice(result, (size) => {
-    const next = layoutPlain({ ...request, options: { ...request.options, size } as RequestOptions });
+    const next = layoutWidthProbe({ ...request, options: { ...request.options, size } as RequestOptions });
     return isRefused(next) ? undefined : next;
   }));
 }
@@ -660,14 +683,15 @@ interface WidthProbe {
  * own mode. A drawn width names its form's floor, a refused one the width its refusal names. Probes
  * skip the repair search of a refusal, which only refines that width.
  */
-function widthProbers(request: ResolvedChartRequest, layoutAt: LayoutCall<any, any, any>, known?: Map<number, WidthProbe>, verify = false): { full: (width: number) => WidthProbe; any: (width: number) => WidthProbe } {
+function widthProbers(request: ResolvedChartRequest, layoutAt: LayoutCall<any, any, any>, known?: Map<number, WidthProbe>, verify = false, tableRuns?: Map<string, LayoutCall<any, any, any>>): { full: (width: number) => WidthProbe; any: (width: number) => WidthProbe } {
   const own = request.options as RequestOptions;
   const def = getChart(request.type);
   const table = request.type === 'table' || request.type === 'dimswitch';
   const sizeNeed = (probe: LayoutResult) => (probe.refused && probe.warnings[0]?.code === 'size-below-floor'
     ? (probe.warnings[0].expected?.minimum as Size | undefined)?.width ?? probe.sizing?.minWidth : undefined);
   const read = (probe: LayoutResult, draws: boolean): WidthProbe => ({ draws, floor: draws ? probe.sizing?.minWidth : sizeNeed(probe), result: probe });
-  const probeOptions = (options: RequestOptions) => (table ? { ...options, [PLAN_ONLY]: true } : options);
+  const probeOptions = (options: RequestOptions) => request.type === 'table'
+    ? { ...options, [PLAN_ONLY]: true, [ACCEPTANCE_PROBE]: true } : table ? { ...options, [PLAN_ONLY]: true } : options;
   // Render's own steps lay out other requests (wider authored columns, stepped type, a smaller class): fresh calls.
   const stepLayout = (asked: ResolvedChartRequest): LayoutResult => {
     const run = preparedLayout(asked);
@@ -717,9 +741,18 @@ function widthProbers(request: ResolvedChartRequest, layoutAt: LayoutCall<any, a
     // The asked width is the layout render made.
     const asked = width === request.size.width ? request
       : { ...request, size: { ...request.size, width }, options: { ...request.options, size: { width } } as RequestOptions };
-    const first = asked === request ? layoutAt(request.options as RequestOptions) : known ? alone(asked) : layoutAt(probeOptions(asked.options) as RequestOptions);
+    const first = asked === request ? layoutAt(request.options as RequestOptions) : known && !tableRuns ? alone(asked) : layoutAt(probeOptions(asked.options) as RequestOptions);
     if (!isRefused(first)) return read(first, true);
-    const drawn = afterFirstLayout(asked, first, stepLayout, stepLayout, stepLayout);
+    // Each smaller text class has its own registry memo. A plain table can use its
+    // prepared cell measurements at several widths without sharing a class's answers.
+    const plainStep = (next: ResolvedChartRequest): LayoutResult => {
+      if (!tableRuns || next !== asked) return stepLayout(next);
+      const key = layoutStepKey();
+      let run = tableRuns.get(key);
+      if (!run) tableRuns.set(key, run = preparedLayout(next));
+      return run(probeOptions(next.options) as RequestOptions);
+    };
+    const drawn = afterFirstLayout(asked, first, stepLayout, stepLayout, plainStep);
     if (isRefused(drawn)) return read(first, false);
     const need = sizeNeed(first);
     return { ...read(drawn, true), ...(need !== undefined && need > width ? { upper: need } : {}) };
@@ -745,7 +778,7 @@ function widthProbers(request: ResolvedChartRequest, layoutAt: LayoutCall<any, a
  * above. Widths at or under `bottom` are never tried. A form that refuses only between a floor and the
  * width above it is not seen.
  */
-function drawsFrom(at: (width: number) => WidthProbe, top: number, bottom: number, verifiedFrom = Infinity, topNamed = false): { width: number; probe: LayoutResult } | undefined {
+function drawsFrom(at: (width: number) => WidthProbe, top: number, bottom: number, verifiedFrom = Infinity, topNamed = false, tableFloor?: number): { width: number; probe: LayoutResult } | undefined {
   let hi = Math.max(Math.ceil(top), bottom + 1);
   let low = bottom;
   let probe = at(hi);
@@ -775,6 +808,17 @@ function drawsFrom(at: (width: number) => WidthProbe, top: number, bottom: numbe
     [low, hi, probe, named] = [upper - 1, upper, at(upper), true];
   }
   if (!probe.draws) return undefined;
+  // The tight table form often measured the edge already. Verify it just as the
+  // descending search would, including the text-class steps it would cross.
+  if (tableFloor !== undefined && tableFloor > low && tableFloor <= hi) {
+    const edge = at(tableFloor);
+    if (edge.draws && (tableFloor - 1 === low || !at(tableFloor - 1).draws)) {
+      const between = TYPE_CLASS_STEPS.filter(width => tableFloor < width && width < hi).map(width => at(width));
+      if (between.every(step => step.draws) && [edge, ...between].every(step => step.upper === undefined || at(step.upper).draws)) {
+        return { width: tableFloor, probe: edge.result };
+      }
+    }
+  }
   const bisect = (from: number) => {
     let lo = from;
     while (hi - lo > 1) {
@@ -822,7 +866,14 @@ const TYPE_CLASS_STEPS = [720, WIDE_CANVAS_MIN_WIDTH] as const;
  */
 function drawnAdvice(request: ResolvedChartRequest, result: LayoutResult, layoutAt: LayoutCall<any, any, any>): LayoutResult {
   if (!result.refused) return result;
-  const advised = advisedRefusal(result, advisedWidth(request, result, () => widthProbers(request, layoutAt, refusalProbes(request, result)).any));
+  const tableRuns = request.type === 'table' ? new Map<string, LayoutCall<any, any, any>>() : undefined;
+  let found: ReturnType<typeof advisedWidth>;
+  try {
+    found = advisedWidth(request, result, () => widthProbers(request, layoutAt, refusalProbes(request, result), false, tableRuns).any);
+  } finally {
+    for (const run of tableRuns?.values() ?? []) run.finish();
+  }
+  const advised = advisedRefusal(result, found);
   // The advice keeps the asked size and names a wider width, so the smaller-class attempt advice made holds for it too.
   const step = classSteps.get(result);
   if (step && advised !== result) classSteps.set(advised, step);
@@ -865,7 +916,19 @@ function storedProbes(request: ResolvedChartRequest, verify: boolean): Map<numbe
   const footer = loadedDeferred('footer') !== undefined;
   let key: string;
   try {
-    key = withPlanInputs(() => contentKey(request.data as object, options, { type, theme, target, fixed, inputWarnings, footer, verify }));
+    if (type === 'table') {
+      // Only numbers and acceptance survive. Explicit font sizes affect geometry even
+      // when their numeric tokens match, and the JSON key would omit their symbols.
+      const { theme: _theme, ...tableOptions } = options;
+      const palette = options.palette === undefined ? undefined : theme.color.palettes?.[options.palette]?.length;
+      const authoredSizes = Object.entries(theme.type).flatMap(([role, font]) =>
+        font !== null && typeof font === 'object' && AUTHORED_TYPE_SIZE in font ? [role] : []);
+      key = withPlanInputs(() => contentKey(request.data as object, tableOptions, {
+        type, theme: themeGeometryTokens(theme, target), authoredSizes, target, palette, fixed, inputWarnings, footer, verify,
+      }));
+    } else {
+      key = withPlanInputs(() => contentKey(request.data as object, options, { type, theme, target, fixed, inputWarnings, footer, verify }));
+    }
   } catch { return undefined; } // A BigInt in the options or a cycle: no store.
   if (key.length > STORED_KEY_LENGTH) return undefined;
   let probes = storedSearches.get(key);
@@ -912,8 +975,10 @@ function advisedWidth(request: ResolvedChartRequest, result: LayoutResult, any: 
   const need = finding?.code === 'size-below-floor' ? finding.expected?.minimum as Size | undefined : undefined;
   if (!result.refused || !need || request.fixed.height || need.width <= result.size.width) return undefined;
   // Drawn in the next smaller type class at the asked width: there is nothing to advise.
-  if (smallerClass(request, result)) return undefined;
-  return drawsFrom(any(), need.width, Math.floor(result.size.width), Infinity, true);
+  const table = request.type === 'table';
+  const step = table ? withTableWidthHint(() => smallerClass(request, result)) : { value: smallerClass(request, result) };
+  if (step.value) return undefined;
+  return drawsFrom(any(), need.width, Math.floor(result.size.width), Infinity, true, step.width);
 }
 
 /** Grid children use the registered layout directly, so request diagnostics walk their authored input here. */
@@ -988,7 +1053,7 @@ function preparedLayout(request: ResolvedChartRequest, verifyAdvice = false): La
       return (options as { [MARGIN_BELOW]?: true })[MARGIN_BELOW] ? withMarginStepBelow(plain) : plain();
     }
     const current: Record<PropertyKey, unknown> = fresh ? { ...options } : { ...options, [LAYOUT_CALL]: run };
-    for (const key of ['size', 'mode', 'belowMinimum', FULL_LAYOUT_PROBE, WIDTH_PROBE, FIXED_SIZE_PROBE, PLAN_ONLY] as const) {
+    for (const key of ['size', 'mode', 'belowMinimum', FULL_LAYOUT_PROBE, WIDTH_PROBE, FIXED_SIZE_PROBE, PLAN_ONLY, ACCEPTANCE_PROBE] as const) {
       if (Object.hasOwn(frame, key)) current[key] = (frame as RequestOptions & Record<PropertyKey, unknown>)[key];
       else delete current[key];
     }

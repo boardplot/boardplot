@@ -6,6 +6,17 @@ import { TARGET_SIZE, type TargetSizeOptions } from '../target';
 import type { BaseOptions } from '../types/options';
 import type { LintWarning } from '../types/scene';
 
+export let reportWidthFloor: ((width: number) => void) | undefined;
+
+/** The actual tight-track floor can seed a width search. The request still verifies its answer. */
+export function withTableWidthHint<T>(run: () => T): { value: T; width?: number } {
+  const previous = reportWidthFloor;
+  let width: number | undefined;
+  reportWidthFloor = floor => { width = Math.min(width ?? Infinity, Math.ceil(floor)); };
+  try { return { value: run(), width }; }
+  finally { reportWidthFloor = previous; }
+}
+
 /**
  * Lay out with a lifted figure ("0.0005" for "0.0"), and where the lift costs
  * width that the rounded text ('none') does not, with its bound ('compact', "<0.1").

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import '../src/core/charts';
 import { getFixtures } from '../src/fixtures';
-import { layoutResolvedRequest, planResolvedRequest, resolveChartRequest } from '../src/core/request';
+import { layoutResolvedRequest, planResolvedRequest, resolveChartRequest, tableViewportFrame } from '../src/core/request';
 import { renderSvg } from '../src/core/svg/renderSvg';
 import { withEngineNotes } from '../src/core/notes';
 import { layoutTable, layoutTableCard, prepareTableExecutor } from '../src/core/charts/table/layout';
@@ -97,6 +97,28 @@ it.each([878, 200])('keeps sizing and refusal advice without drawing at %i px', 
   planned.size.width = -1;
   planned.warnings.length = 0;
   expect(JSON.stringify(planResolvedRequest(request))).toBe(expected);
+});
+
+// A scrolling host keeps its original retry width even when the public warning offers a narrower repair.
+it('keeps the management table frame at the verified scroll width', () => {
+  const report = getFixtures('table').find(entry => entry.id === 'management-report')!;
+  const at = (width: number, height?: number) => resolveChartRequest({
+    type: 'table', data: report.data, options: { ...report.options, size: { width, height } },
+  });
+  const refused = layoutResolvedRequest(at(878));
+  expect(refused.refused).toBe(true);
+  if (!refused.refused) throw Error('Expected the management table to overflow the frame');
+  const patch = refused.warnings[0]!.fix![0]!;
+  if (patch.op !== 'replace') throw Error('Expected a width repair');
+  const repair = patch.value as { width: number };
+  const width = Math.ceil(refused.sizing.minWidth);
+  expect(repair.width).toBeLessThan(width);
+  const drawn = layoutResolvedRequest(at(width));
+  if (drawn.refused) throw Error('Expected the wider table to draw');
+  const dimensions = { width: drawn.size.width, height: Math.max(drawn.size.height, drawn.sizing!.naturalHeight), gridTop: drawn.plot.y };
+  expect(tableViewportFrame(at(878))).toEqual({ ...dimensions, scrollWidth: width });
+  expect(tableViewportFrame(at(width))).toEqual(dimensions);
+  expect(tableViewportFrame(at(878, 400))).toBeUndefined();
 });
 
 // Input versions must notice data edits and theme override replacements between synchronous requests.

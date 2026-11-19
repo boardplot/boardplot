@@ -4,7 +4,8 @@ import { resolveSize } from '../../normalize/shared';
 import { heightOmitted, VERIFY_ADVICE } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { maxOf } from '../../arrays';
-import { missesSize, tightSpacingWarning } from '../tableFit';
+import { typeClassCap } from '../../theme';
+import { missesSize, reportWidthFloor, tightSpacingWarning } from '../tableFit';
 import { isCohortDensity } from './ladder';
 import { ENGINE_NOTES, INDENT_BASE, LABEL_WRAP_FLOOR, SOFT_LABEL_CAP, cellPadX as trackCellPadX } from './tracks';
 import type { Geometry, LintWarning } from '../../types/scene';
@@ -46,6 +47,7 @@ export interface FitLayout {
   marks: { columns: readonly unknown[] };
   warnings: LintWarning[];
 }
+
 /** Overrides for one ordered numeric candidate, never a full authored options object. */
 export type TableCandidate = Pick<LayoutOptions, 'density' | 'margin' | 'cellPadX' | 'labelIndent' | 'size'> &
   Pick<LayoutOptions, typeof COMPACT_RETRY | typeof HEAD_LINES | typeof TIGHT_SPACING | typeof HEAD_AIR_MIN | typeof SUB_LINES | typeof HEAD_LOOSE>;
@@ -173,9 +175,12 @@ function compactTable<G extends FitLayout>(
   const misses = missesSize(compact, options);
   const { width: missesWidth, height: missesHeight } = misses;
   let lastOptions = compactOptions;
-  if (tightens(compact) && compact.sizing) {
-    const tightWarning = tightSpacingWarning(misses, { width: 'cell air, column gaps and side margins', height: 'row air and top and bottom margins' }, 'the table', 'compact', { ...compact, sizing: compact.sizing }, options);
-    compact = run(lastOptions = {
+  const tighten = tightens(compact);
+  const hint = reportWidthFloor && missesWidth && !missesHeight && typeClassCap() === 'S'
+    && (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === false
+    && !(options as LayoutOptions)[REGULAR_SPACING] ? reportWidthFloor : undefined;
+  if ((tighten || hint) && compact.sizing) {
+    const tightOptions: TableCandidate = {
       ...compactOptions, [TIGHT_SPACING]: { columns: missesWidth, rows: missesHeight },
       ...(missesWidth ? {
         cellPadX: Math.min(cellPadX, TIGHT_PAD),
@@ -185,13 +190,22 @@ function compactTable<G extends FitLayout>(
         ...(missesHeight ? { top: TIGHT_PAD * 2, bottom: TIGHT_PAD * 2 } : {}), ...margin,
         ...(missesWidth ? { left: Math.min(margin.left ?? CARD_GUTTER, TIGHT_PAD * 2), right: Math.min(margin.right ?? CARD_GUTTER, TIGHT_PAD * 2) } : {}),
       },
-    }, sizingOnly);
-    // A head kept whole ("WEEK 1") gives way before the table misses its width.
-    if (missesSize(compact, options).width && resolved.columns.some((col) => / \S{1,2}$/u.test(col.label ?? ''))) {
-      const loose = run({ ...lastOptions, [HEAD_LOOSE]: true }, sizingOnly);
-      if (!missesSize(loose, options).width) { compact = loose; lastOptions = { ...lastOptions, [HEAD_LOOSE]: true }; }
+    };
+    if (hint && !tighten) {
+      // The tight rung cannot draw in this frame. Its numeric track floor can draw in a wider one.
+      const tight = run(tightOptions, true, undefined, 'regular-rung');
+      if (tight.sizing) hint(tight.sizing.minWidth);
+    } else {
+      const tightWarning = tightSpacingWarning(misses, { width: 'cell air, column gaps and side margins', height: 'row air and top and bottom margins' }, 'the table', 'compact', { ...compact, sizing: compact.sizing }, options);
+      compact = run(lastOptions = tightOptions, sizingOnly);
+      // A head kept whole ("WEEK 1") gives way before the table misses its width.
+      if (missesSize(compact, options).width && resolved.columns.some((col) => / \S{1,2}$/u.test(col.label ?? ''))) {
+        const loose = run({ ...lastOptions, [HEAD_LOOSE]: true }, sizingOnly);
+        if (!missesSize(loose, options).width) { compact = loose; lastOptions = { ...lastOptions, [HEAD_LOOSE]: true }; }
+      }
+      if (hint && compact.sizing) hint(compact.sizing.minWidth);
+      compact.warnings.push(tightWarning);
     }
-    compact.warnings.push(tightWarning);
   }
   // A pinned height that still misses takes the sub-labels back to one line before it refuses:
   // a wrapped sub-label must not refuse a table that draws with it on one line. Each keeps its

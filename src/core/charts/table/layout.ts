@@ -1,8 +1,8 @@
 import { staticFrame } from '../../footer';
 import { COMPACT_RETRY, SIZING_ONLY, HEAD_LINES, TIGHT_SPACING, HEAD_AIR_MIN, HEAD_LOOSE, TIGHT_PAD, SUB_LINES, REGULAR_SPACING, type LayoutOptions } from './fitPolicy';
 export { REGULAR_SPACING } from './fitPolicy';
-import { tableWidths, prepareTableWidthRung, solveTableWidthRung, type TableWidthPlan, type TableWidthRungPlan, type TableWidthProbe, type TableWidthMiss } from './widths';
-import { PLAN_ONLY, copyPlannedValue, deferLayout, isPlanned, materializeLayout, plannedCutCount, layoutKey, optionKey, tableTextMeasure, withPlanInputs } from '../../layoutPlan';
+import { tableWidths, prepareTableWidthFit, type TableWidthPlan, type TableWidthRungPlan, type TableWidthProbe, type TableWidthMiss } from './widths';
+import { PLAN_ONLY, copyPlannedValue, deferLayout, isPlanned, materializeLayout, plannedCutCount, layoutKey, optionKey, requestMemo, tableTextMeasure, withPlanInputs } from '../../layoutPlan';
 import { liftOrFallback } from '../tableFit';
 import { tableNeed, tableRung, type TableNeed, type TableRungChoice } from './need';
 import { chartTheme } from '../chartEnv';
@@ -183,7 +183,8 @@ export function prepareTableExecutor(authoredData: TableData, initialOptions: Ta
           if (!byKey) candidates.set(model, byKey = new Map());
           let prepared = byKey.get(key);
           if (!prepared) {
-            prepared = prepareTableCandidate(input.source, current, model);
+            // Independent width probes open new executors inside the same synchronous request.
+            prepared = requestMemo(model, key, () => prepareTableCandidate(input.source, current, model));
             if (byKey.size >= 256) byKey.delete(byKey.keys().next().value!);
             byKey.set(key, prepared);
           }
@@ -591,10 +592,8 @@ function prepareTableCandidate(
     columns: cols, rows, widthRows, fullRows, spacerTotal,
     headLines: options[HEAD_LINES], subLines: options[SUB_LINES], headGlue: options[HEAD_LOOSE] !== true,
   };
-  // Explicit-padding SVG rungs have no public host policy to apply. Keep their
-  // measurements and solve numeric arrays directly as frame width changes.
-  const preparedWidth = options.cellPadX !== undefined && options.columnHeads !== false
-    ? prepareTableWidthRung(table, theme, measure, options, widthViewBase) : undefined;
+  const preparedWidth = options.columnHeads !== false
+    ? prepareTableWidthFit(table, theme, measure, options, widthViewBase) : undefined;
   function prepareRows(options: LayoutOptions, widthPlan: TableWidthPlan | TableWidthRungPlan, size: Size, plot: Rect) {
     const gridX = Math.round(plot.x);
     const cellPadX = widthPlan.cellPadX;
@@ -1063,7 +1062,7 @@ function prepareTableCandidate(
   const widthProbe = widthOnlyOnMiss === 'regular-rung' && (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.width !== false
     ? { canvasWidth: size.width, footerInset: cellPadX } : undefined;
   let widthPlan: TableWidthPlan | TableWidthRungPlan | TableWidthMiss = preparedWidth
-    ? solveTableWidthRung(preparedWidth, plot.w, options, widthProbe)
+    ? preparedWidth(plot.w, options, widthProbe)
     : sharedWidthPlan(table, theme, measure, options, widthView, widthProbe);
   if ('widthMiss' in widthPlan) {
     const sizing = tableSizing(size, plot, plot.y, widthPlan.totalW, widthPlan.minimumW);
@@ -1075,7 +1074,7 @@ function prepareTableCandidate(
       }, widthPlan.cellPadX);
     }
     // Sizing can round a floor a few ULPs down. A rung the ladder can select needs its complete plan.
-    widthPlan = preparedWidth ? solveTableWidthRung(preparedWidth, plot.w, options) as TableWidthRungPlan : sharedWidthPlan(table, theme, measure, options, widthView);
+    widthPlan = preparedWidth ? preparedWidth(plot.w, options) as TableWidthRungPlan : sharedWidthPlan(table, theme, measure, options, widthView);
   }
   cellPadX = widthPlan.cellPadX;
   if (frameInput.footerInset !== cellPadX) {
