@@ -1,3 +1,0 @@
-### Changed
-
-- A line's end name that prints in its line's colour draws no connector line when it sits at most one line height from its line end and no other line ends as near. Before, every end name more than 3 px from its line end took one. Two lines that end close together, such as `Listed $132k` and `Net $127k`, now print their names beside their ends without connector lines, because the colour and the order of the names already match each name to its line. A name in another ink, a name of a line that ends before the last category, an area or a stacked area, and a name nearer another line's end than its own keep the connector line as before. No setting brings back the old look.

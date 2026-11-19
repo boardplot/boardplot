@@ -1,3 +1,0 @@
-### Fixed
-
-- A waterfall total or subtotal with `segments` drew one solid bar and said nothing, and an opening total with segments but no `value` was refused with `waterfall-opening-missing`. A total now stacks its segments with their values, as a step does, and they share the key and colours of the step segments. An opening total takes its value from the sum of its segments: `{ "id": "open", "type": "total", "segments": [{ "id": "north", "value": 30 }, { "id": "south", "value": 20 }] }` opens the bridge at 50. A later total keeps the running sum as its level. When its segments add up to another number, it warns `derived-mismatch` and draws its level as one bar.
