@@ -210,6 +210,8 @@ export interface ScatterData {
 // ---- bullet ----
 export interface BulletBand {
   tone?: 'good' | 'warn' | 'bad' | 'neutral';
+  /** Where the band starts; without it, the previous band's `to`, or 0. Space no band covers is not shaded. */
+  from?: number;
   to: number;
   label?: string;
 }

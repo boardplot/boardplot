@@ -1,0 +1,3 @@
+### Added
+
+- A bullet band object takes `from`, the value where the band starts, in the row's value units. A tolerance range no longer needs a band below it: `"bands": [{ "from": 94, "to": 104, "label": "Tolerance", "tone": "neutral" }]` shades only 94 to 104, and the space from 0 to 94 stays blank. A value in that space lies in no band, so a band's tone does not colour its gap. Band names, band-edge numbers and the scale treat the space the same way. A `from` below 0, not below the band's own `to`, or below the previous band's `to` is ignored with the warning `band-from-ignored`. A band without `from` starts where it did. The new fixture `tolerance-range` shows three rows with their ranges.

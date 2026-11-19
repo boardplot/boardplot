@@ -51,6 +51,7 @@ Every code a render, a measure or a React chart can return, read from the source
 | `band-bounds-offscale` | warn |  | core/annotateTargets.ts |
 | `band-combination-unsupported` | warn |  | core/annotateTargets.ts |
 | `band-fraction-row-ignored` | warn |  | bullet |
+| `band-from-ignored` | warn |  | bullet |
 | `band-key-ramp-unavailable` | warn |  | bullet |
 | `band-key-row-unavailable` | warn |  | bullet |
 | `band-lightness-insufficient` | warn |  | core/colorRecipes.ts |

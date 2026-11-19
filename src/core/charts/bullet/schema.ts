@@ -31,12 +31,13 @@ const rowSchema = z.strictObject({
         boundedNumber,
         z.strictObject({
           tone: z.enum(['good', 'warn', 'bad', 'neutral']).optional().describe("Semantic band tone. Toned bands define a two-sided corridor and set the delta tone for values inside them. A toned band paints its tone's fill washed toward the page (theme marks.bulletBandFill)."),
+          from: boundedNumber.optional().describe("Value where this band starts, in the row value units. Without it the band starts at the previous band's to, or at 0. Space that no band covers is not shaded and lies in no band, so a value there takes no band tone. A from below 0, not below the band's own to, or below the previous band's to is ignored with the warning band-from-ignored."),
           to: boundedNumber.describe("Upper endpoint of this qualitative band in the row value units."),
           label: z.string().trim().min(1).optional().describe("Visible name of this qualitative band."),
         }),
       ]),
     )
-    .optional().describe("Ordered qualitative band thresholds, as numbers or labeled threshold objects."),
+    .optional().describe("Ordered qualitative band thresholds, as numbers or labeled threshold objects. A band object's from starts it above the previous band, so a tolerance range such as {from: 94, to: 104} needs no band below it."),
   direction: comparisonDirectionSchema.optional().describe("Whether a higher measure is favorable when interpreting the target difference. Neutral uses plain ink without a judgment, including when bands have tones."),
 });
 
@@ -55,7 +56,7 @@ export const bulletOptionsSchema = baseOptionsSchema
   .safeExtend(refusedBaseOptions('bullet'))
   .safeExtend({
     sort: baseOptionsSchema.shape.sort.describe("Category ranking value: value divided by target when every row has a positive target, otherwise raw value. desc puts the highest ranking value first even on lower-is-better rows. Ties keep authored order and null values sort last. sheet keeps authored order and reverse reverses it. Dated rows keep authored order when a growth or difference annotation spans periods."),
-    labels: baseOptionsSchema.shape.labels.describe("False hides value, target-value and delta labels. Row names, band names and band-edge numbers remain. category: false hides row names. position: false drops the line under each gap (below, above or on target) and direction: false the line under each name (higher or lower is better); annotation: false still drops all of them. strings.lowerBetter '' equals direction: false on lower-is-better rows. density: compact draws no labels."),
+    labels: baseOptionsSchema.shape.labels.describe("False hides value, target-value and delta labels. Row names, band names and band-edge numbers remain. category: false hides row names. Beside the target columns, position: true adds the line under each gap (below, above or on target), and direction: true the line under each name (higher or lower is better) on rows with a target. Both are off by default. A row without a target or with toned bands prints no direction line. annotation: false still drops all of them. strings.lowerBetter '' drops the direction line on lower-is-better rows. density: compact draws no labels."),
     columnOverrides: columnOverridesOption('bullet', ['width', 'align', 'headAlign', 'label']),
     columnVisibility: columnVisibilityOption('bullet'),
     columnOrder: columnOrderOption('bullet'),
@@ -69,7 +70,7 @@ export const bulletOptionsSchema = baseOptionsSchema
     bandKey: z.enum(['auto', 'labels', 'ramp', 'row']).optional()
       .describe("How the bands are named. 'labels': one key entry for each band label and shade. 'ramp': one worse-to-better key with one entry for each band (Worse ... Better); it needs the same 2 to 5 bands on every banded row, no band tone and no neutral row, and otherwise keeps labels with a warning. 'row': each band's name prints above its band on every row, as authored; on per-row scales the band edges are ticked and numbered under each row; a key at the bottom names the bar (Actual), the target tick and, when strings.bandKey is set, the ramp in those words. It needs a name on every band, rows side by side with the target column, and room for each name above its band; otherwise the key names the bands with a warning. 'auto': 'row' for at most 4 rows that name every band wherever it can show; else the ramp when rows run both directions, a label sits on more than one shade and the ramp can apply; otherwise labels. Default 'auto'. The percentOfTarget scale has its own key.").meta({ default: 'auto' }),
     targetColumns: z.boolean().optional()
-      .describe("true: where the rows sit side by side and the plot keeps 45% of the width, a Target column and a Gap-to-target column print beside the rows, each under a head, with the gap's position (below, above or on target) under it and the row's direction (higher or lower is better) under its name. Where they do not fit, the target prints above its tick and the delta at the row end. false: always the second form. Default true. The percentOfTarget scale has its own columns.").meta({ default: true }),
+      .describe("true: where the rows sit side by side and the plot keeps 45% of the width, a Target column and a Gap-to-target column print beside the rows, each under a head. The name and every number of a row are centred on its bar, and a line under one (labels.position, labels.direction) hangs below it. A row without a target prints the not-applicable glyph (strings.notApplicable, default n/a) in both cells. Where they do not fit, the target prints above its tick and the delta at the row end. false: always the second form. Default true. The percentOfTarget scale has its own columns.").meta({ default: true }),
     density: z.enum(['compact', 'regular']).optional()
       .describe("'compact' is the 120 x 28 text-free mark: bar, bands and target tick, no labels, axis or key. The percentOfTarget scale needs a key and a value column, so compact refuses it. 'regular' uses labelled stacked rows when side columns take too much plot width. Height depends on row count and text. Default 'regular'.").meta({ default: 'regular' }),
   })

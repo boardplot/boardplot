@@ -722,4 +722,16 @@ fixtures.push({
   options: { title: 'South is the only region above plan', unit: '$k', source: 'Illustrative data', size: { width: 720 }, labels: { direction: false, position: false } },
 });
 
+// A band's from starts it above zero: each row shades only its tolerance range around the target.
+const tolerance = (from: number, to: number) => [{ from, to, label: 'Tolerance', tone: 'neutral' as const }];
+fixtures.push({
+  id: 'tolerance-range', title: 'from shades only the tolerance range around each target and leaves the space below it blank', kind: 'example',
+  data: { rows: [
+    { id: 'north', label: 'North', value: 120, target: 99, bands: tolerance(94, 104) },
+    { id: 'south', label: 'South', value: 101, target: 100, bands: tolerance(95, 105) },
+    { id: 'east', label: 'East', value: 84, target: 90, bands: tolerance(85.5, 94.5) },
+  ] },
+  options: { title: 'Only South lands inside its tolerance range', unit: 'units', subtitle: { measure: '**Orders**' }, source: 'Illustrative data', sharedScale: true, size: { width: 720 } },
+});
+
 registerFixtures('bullet', fixtures);

@@ -108,6 +108,38 @@ describe("bullet band names on the rows (bandKey 'row')", () => {
     expect(last.y + last.h - first.y).toBeGreaterThan(0.45 * 620);
   });
 
+  // A tolerance range needed a spacer band below it, shaded almost like the range, and the spacer judged values outside the range.
+  it('starts a band at its from: the space below is unshaded and in no band, and an unusable from is ignored', () => {
+    const north = (bands: unknown[], value = 120) => ({ rows: [{ id: 'north', label: 'North', value, target: 99, bands }, { id: 'south', label: 'South', value: 90 }] }) as BulletData;
+    const tolerance = { to: 104, label: 'Tolerance 94 to 104', tone: 'neutral' };
+    const at = (data: BulletData) => draw({ size: { width: 720 }, sharedScale: true, bandKey: 'labels' }, data);
+    const spacer = at(north([94, tolerance]));
+    const ranged = at(north([{ ...tolerance, from: 94 }]));
+    expect(ranged.scene.filter((node) => node.t === 'rect' && node.part === 'band').map((node) => node.t === 'rect' && node.rect))
+      .toEqual([bandRect(spacer, 'band:north:1').rect]);
+    for (const id of ['target:north', 'label:delta:north', 'label:target-value:north']) expect(ranged.scene.find((node) => node.id === id)).toEqual(spacer.scene.find((node) => node.id === id));
+    expect(bandRect(ranged, 'bar:north').rect).toEqual(bandRect(spacer, 'bar:north').rect);
+    expect(ranged.warnings).toEqual(spacer.warnings);
+    // A value below the range lies in no band, so the range's tone does not judge it.
+    const tone = (geometry: Geometry) => geometry.annotations.find((annotation) => annotation.id === 'delta-target:north')?.tone;
+    expect(tone(at(north([{ ...tolerance, from: 94, tone: 'good' }], 50)))).toBe('neutral');
+    expect(tone(at(north([{ ...tolerance, from: 94, tone: 'good' }], 100)))).toBe('good');
+    // On rows that name their bands, the range's name stands over the range and its from is a numbered edge.
+    const named = draw({ size: { width: 1200, height: 620 }, sharedScale: false }, { rows: [{ id: 'a', label: 'Fill rate', value: 97, target: 98, bands: [{ from: 90, to: 100, label: 'Tolerance' }] }] });
+    expect(shown(named, 'edge:a:').map((label) => label.lines[0])).toEqual(['0', '90', '100']);
+    const range = bandRect(named, 'band:a:0').rect;
+    const name = shown(named, 'band-name:a:')[0]!.rect;
+    expect(name.x + name.w / 2).toBeCloseTo(range.x + range.w / 2, 5);
+    // A from below 0, not below its own to, or below the previous band's to draws the band as without it.
+    for (const bands of [[{ to: 40, from: -5 }], [{ to: 40, from: 40 }], [{ to: 20 }, { to: 40, from: 10 }]]) {
+      const plain = at(north(bands.map(({ from: _from, ...band }) => band)));
+      const ignored = at(north(bands));
+      expect(ignored.scene).toEqual(plain.scene);
+      expect(ignored.warnings.map((warning) => warning.code)).toContain('band-from-ignored');
+      expect(ignored.warnings.filter((warning) => warning.code !== 'band-from-ignored')).toEqual(plain.warnings);
+    }
+  });
+
   // A size that draws today must still draw: the names give way to the key, with a warning.
   it('keeps the key on a phone, also when the author asks for the names', () => {
     const phone = draw({ size: { width: 360 }, bandKey: 'row' });
