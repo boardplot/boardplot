@@ -1,0 +1,3 @@
+### Fixed
+
+- The React hover card of a line, area, combo line or sparkline no longer stops the pointer on its way along the line. On a 176 × 42 px sparkline, the card of point 22 of 24 opened over the line to its left. A pointer moving left along the line kept that card, landed on it and could not reach most of the earlier points. The card now takes a seat off the area between the chart's points, above or below the line, and outside the chart frame when the chart is smaller than the card. While the pointer stays on that area, every move picks the point under it, also when it moves toward the card. Away from the line, the pointer can still move onto the card.

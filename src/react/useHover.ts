@@ -192,7 +192,7 @@ export function useHover(input: { request: ResolvedChartRequest; geometry: Rende
     const distance = box ? Math.hypot(Math.max(box.left - at.x, 0, at.x - box.right), Math.max(box.top - at.y, 0, at.y - box.bottom)) : Infinity;
     const { from } = corridor.current;
     if (box && from && distance < corridor.current.distance
-      && engine!.inCardCorridor(from, { x: box.left, y: box.top, w: box.width, h: box.height }, at)) {
+      && engine!.inCardCorridor(from, { x: box.left, y: box.top, w: box.width, h: box.height }, at, view.cardInput?.path, position?.viewport?.origin)) {
       corridor.current.distance = distance;
       clearTimer('rest');
       const rest = { currentTarget: event.currentTarget, target: event.target, clientX: event.clientX, clientY: event.clientY } as unknown as PointerEvent<HTMLElement>;

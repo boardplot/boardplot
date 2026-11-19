@@ -86,6 +86,52 @@ describe('hover card and highlight on a column fixture', () => {
     expect(document.querySelector<HTMLElement>('[data-bp-chart-card]')!.style.pointerEvents).toBe('auto');
   });
 
+  // A card seated on a small sparkline's line caught the pointer moving along the line, so the earlier points could not be reached.
+  it('lets the pointer move along a tile sparkline to every point while the card is open', async () => {
+    const labels = Array.from({ length: 24 }, (_, index) => `M${index + 1}`);
+    const values = [40, 44.3, 47.9, 50.4, 51.5, 51.1, 49.5, 47.1, 44.6, 42.5, 41.5, 41.9, 43.8, 47, 51, 55.4, 59.4, 62.5, 64.2, 64.4, 63.3, 61.2, 58.7, 56.3];
+    const spec = { type: 'sparkline', data: { values, labels }, options: { ring: 'last', endLabels: 'ends', valueLabel: 'none', title: false, size: { width: 176, height: 42 } } };
+    // A dashboard tile: the chart sits at (300, 300) with free page space on every side.
+    const at = { x: 300, y: 300 };
+    vi.spyOn(SVGSVGElement.prototype, 'getBoundingClientRect').mockImplementation(() =>
+      ({ x: at.x, y: at.y, left: at.x, top: at.y, right: at.x + 176, bottom: at.y + 42, width: 176, height: 42, toJSON() {} }));
+    // jsdom lays nothing out: the card's box is its fixed seat, so a pointer over it lands on it as in a browser.
+    const cardBox = (node: HTMLElement) => {
+      const [left = 0, top = 0] = node.style.translate.split(' ').map(parseFloat);
+      const width = parseFloat(node.style.width), height = parseFloat(node.style.height);
+      return { x: left, y: top, left, top, right: left + width, bottom: top + height, width, height, toJSON() {} } as DOMRect;
+    };
+    const plain = HTMLElement.prototype.getBoundingClientRect;
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      return this.hasAttribute('data-bp-chart-card') ? cardBox(this) : plain.call(this);
+    });
+    await render(<BoardplotChart spec={spec as never} hover />);
+    const prepared = await prepareChart(spec as never);
+    const points = prepared.records!.map(record => {
+      const box = record.anchor as { x: number; y: number; w: number; h: number };
+      return { label: record.label, x: at.x + box.x + box.w / 2, y: at.y + box.y + box.h / 2 };
+    });
+    const svg = host.querySelector('svg')!;
+    const move = (x: number, y: number) => {
+      const shown = document.querySelector<HTMLElement>('[data-bp-chart-card]');
+      const box = shown && cardBox(shown);
+      const onCard = box && x >= box.left && x <= box.right && y >= box.top && y <= box.bottom;
+      const event = new Event('pointermove', { bubbles: true });
+      Object.assign(event, { pointerType: 'mouse', clientX: x, clientY: y });
+      act(() => (onCard ? shown.querySelector('svg')! : svg).dispatchEvent(event));
+    };
+    // Open the card on point 22, then follow the line to the left in 2 px steps.
+    const reached = new Set<string>();
+    for (let x = points[21]!.x; x >= points[0]!.x; x -= 2) {
+      const next = points.findIndex(point => point.x >= x);
+      const [a, b] = [points[Math.max(next - 1, 0)]!, points[next]!];
+      move(x, b.x === a.x ? a.y : a.y + (b.y - a.y) * (x - a.x) / (b.x - a.x));
+      const shown = card() ?? '';
+      reached.add(points.find(point => shown.startsWith(`${point.label} `))?.label ?? '');
+    }
+    expect([...reached].filter(Boolean).sort()).toEqual(labels.slice(0, 22).sort());
+  });
+
   // A tap leaves no pointer to move away: without this, a card opened by a tap stayed open after a tap elsewhere on the page.
   it('closes a card opened by a tap when the reader taps outside the chart', async () => {
     await render(<ColumnChart {...props} hover />);

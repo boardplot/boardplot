@@ -124,6 +124,12 @@ export interface LabelCardInput {
   pointer?: Point;
   previousSide?: CardSide;
   band?: 'x' | 'y';
+  /**
+   * On a chart that picks its record by the pointer's position along an axis,
+   * the convex hull of its points: the area the pointer crosses on its way
+   * from one point to another. A seat keeps `PATH_PAD` clear of it.
+   */
+  path?: readonly Point[];
   /** Prefer clear table space; reading order breaks equal costs. */
   slots?: 'table';
   direction?: 'ltr' | 'rtl';
@@ -380,6 +386,97 @@ const TEXT_GAP = 4;
 const FRAME_INSET = 8;
 /** The farthest a clear seat sits from the hovered mark, unless no seat nearer is safe. */
 const CLEAR_REACH = 48;
+/** Space a card keeps from the points' path, and the pointer's reach beside it that still reads as on the path. */
+export const PATH_PAD = 8;
+
+/** The convex hull of `points`, in order around it; one or two points stay as they are. */
+export function pointsHull(points: readonly Point[]): Point[] {
+  const sorted = [...points].sort((a, b) => a.x - b.x || a.y - b.y)
+    .filter((point, index, all) => index === 0 || point.x !== all[index - 1]!.x || point.y !== all[index - 1]!.y);
+  if (sorted.length < 3) return sorted;
+  const cross = (o: Point, a: Point, b: Point) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const half = (list: Point[]) => list.reduce<Point[]>((hull, point) => {
+    while (hull.length >= 2 && cross(hull[hull.length - 2]!, hull[hull.length - 1]!, point) <= 0) hull.pop();
+    hull.push(point);
+    return hull;
+  }, []);
+  const lower = half(sorted);
+  const upper = half([...sorted].reverse());
+  return [...lower.slice(0, -1), ...upper.slice(0, -1)];
+}
+
+/** Whether `point` lies within `pad` of the hull `path`. */
+export function nearPath(path: readonly Point[], point: Point, pad = PATH_PAD): boolean {
+  if (!path.length) return false;
+  if (path.length >= 3 && insideHull(path, point)) return true;
+  return path.some((a, index) => segmentDistance(a, path[(index + 1) % path.length]!, point) <= pad);
+}
+
+/** Whether `rect`, grown by `pad`, meets the hull `path`. */
+function meetsPath(path: readonly Point[], rect: Rect, pad = PATH_PAD): boolean {
+  if (!path.length) return false;
+  const box = { x: rect.x - pad, y: rect.y - pad, w: rect.w + 2 * pad, h: rect.h + 2 * pad };
+  if (path.some(point => rectContains(box, { ...point, w: 0, h: 0 }, 0))) return true;
+  const corners = [{ x: box.x, y: box.y }, { x: box.x + box.w, y: box.y }, { x: box.x + box.w, y: box.y + box.h }, { x: box.x, y: box.y + box.h }];
+  if (path.length >= 3 && corners.some(corner => insideHull(path, corner))) return true;
+  return path.some((a, index) => {
+    const b = path[(index + 1) % path.length]!;
+    return corners.some((c, side) => segmentsCross(a, b, c, corners[(side + 1) % 4]!));
+  });
+}
+
+function insideHull(hull: readonly Point[], point: Point): boolean {
+  const sides = hull.map((a, index) => {
+    const b = hull[(index + 1) % hull.length]!;
+    return (b.x - a.x) * (point.y - a.y) - (b.y - a.y) * (point.x - a.x);
+  });
+  return sides.every(side => side >= 0) || sides.every(side => side <= 0);
+}
+
+function segmentDistance(a: Point, b: Point, point: Point): number {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const t = dx || dy ? Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / (dx * dx + dy * dy))) : 0;
+  return Math.hypot(point.x - (a.x + t * dx), point.y - (a.y + t * dy));
+}
+
+function segmentsCross(a: Point, b: Point, c: Point, d: Point): boolean {
+  const side = (p: Point, q: Point, r: Point) => Math.sign((q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x));
+  return side(a, b, c) !== side(a, b, d) && side(c, d, a) !== side(c, d, b);
+}
+
+/**
+ * The seats on both sides of the path, across the band axis from the target:
+ * above and below it on a chart banded along x, left and right of it on one
+ * banded along y. Each keeps `PATH_PAD` from the path over its own extent.
+ */
+function pathSlots(path: readonly Point[], target: Rect, width: number, height: number, frame: Rect, band: 'x' | 'y'): CardSlot[] {
+  const across = band === 'x' ? 'y' : 'x';
+  const along = band;
+  const length = along === 'x' ? width : height;
+  const depth = across === 'y' ? height : width;
+  const start = Math.min(Math.max(rectCenter(target)[along] - length / 2, frame[along]), frame[along] + (along === 'x' ? frame.w : frame.h) - length);
+  // The path's extent across the band within the seat's span along it, the pad included.
+  const low = start - PATH_PAD, high = start + length + PATH_PAD;
+  let min = Infinity, max = -Infinity;
+  path.forEach((a, index) => {
+    const b = path.length > 1 ? path[(index + 1) % path.length]! : a;
+    const from = Math.max(Math.min(a[along], b[along]), low), to = Math.min(Math.max(a[along], b[along]), high);
+    if (from > to) return;
+    for (const at of [from, to]) {
+      const t = b[along] === a[along] ? 0 : (at - a[along]) / (b[along] - a[along]);
+      for (const value of b[along] === a[along] ? [a[across], b[across]] : [a[across] + t * (b[across] - a[across])]) {
+        min = Math.min(min, value); max = Math.max(max, value);
+      }
+    }
+  });
+  if (!Number.isFinite(min)) return [];
+  const sides: [CardSide, number][] = band === 'x' ? [['above', min - PATH_PAD - depth], ['below', max + PATH_PAD]]
+    : [['left', min - PATH_PAD - depth], ['right', max + PATH_PAD]];
+  return sides.map(([side, value], index) => {
+    const rect = clampInto(frame, along === 'x' ? { x: start, y: value, w: width, h: height } : { x: value, y: start, w: width, h: height });
+    return { slot: `card:path:${side}`, side, rect, penalty: index, phase: 2 };
+  });
+}
 
 interface CardSlot extends SlotCandidate { side?: CardSide; fits?: boolean; phase?: number }
 interface CardSlots extends Array<CardSlot> {
@@ -454,9 +551,10 @@ export function tableCardSlots(target: Rect, boundary: Rect, width: number, heig
  * A safe seat that covers fewer texts (`hidden`) wins over one that covers
  * more, whatever its phase: a covered number is lost to the reader. Only a
  * clear seat beyond its reach loses to any safe seat, whatever that seat hides.
+ * A seat `inWay` of the pointer's path is never safe, in any phase.
  */
 export function selectCardSlot(candidates: CardSlots, forbidden: readonly Rect[], cost: (slot: CardSlot) => number,
-  pointer?: Point, clear?: (slot: CardSlot) => boolean, hidden?: (slot: CardSlot) => number): CardSlot {
+  pointer?: Point, clear?: (slot: CardSlot) => boolean, hidden?: (slot: CardSlot) => number, inWay?: (slot: CardSlot) => boolean): CardSlot {
   type Score = { slot: CardSlot; overlap: number; cost: number; safe: boolean; hidden: number };
   const scores = new Map<string, Score>();
   const score = (slot: CardSlot): Score => {
@@ -466,7 +564,7 @@ export function selectCardSlot(candidates: CardSlots, forbidden: readonly Rect[]
     if (cached) return { ...cached, slot };
     const overlap = activeCoverCost(slot.rect, forbidden);
     const result = { slot, overlap, cost: cost(slot), safe: slot.fits !== false && overlap === 0
-      && !(pointer && rectContains(slot.rect, { ...pointer, w: 0, h: 0 }, 0)) && !(slot.phase! < 2 && clear?.(slot) === false),
+      && !(pointer && rectContains(slot.rect, { ...pointer, w: 0, h: 0 }, 0)) && !(slot.phase! < 2 && clear?.(slot) === false) && inWay?.(slot) !== true,
       hidden: hidden?.(slot) ?? 0 };
     scores.set(key, result);
     return result;
@@ -813,15 +911,18 @@ export function placeLabelCard(input: LabelCardInput, width: number, height: num
   const texts = input.slots === 'table' ? [] : input.occupied.filter(item => item.kind !== 'mark' && item.kind !== 'reserved' && Math.min(item.rect.w, item.rect.h) > 2);
   const hidden = (rect: Rect) => texts.filter(item => overlapArea(rect, item.rect) > 0);
   let seat = seatCard(input, width, height, texts);
+  // A second search never trades a seat clear of the pointer's path for one in its way.
+  const inWay = (rect: Rect) => input.path !== undefined && meetsPath(input.path, rect);
+  const keepsPath = (next: CardSeat) => inWay(seat.slot.rect) || !inWay(next.slot.rect);
   if (texts.length) {
     const before = new Set(hidden(seat.slot.rect));
     // A seat that frees the chart's words may hide labels of other records instead.
     const freed = [...before].some(chartWord) ? seatCard(input, width, height, texts, { readable: [] }) : undefined;
     if (freed && !hidden(freed.slot.rect).some(item => chartWord(item) || ownerContains(item.owner, input.record.target.owner))
-      && !(input.pointer && rectContains(freed.slot.rect, { ...input.pointer, w: 0, h: 0 }, 0))) seat = freed;
+      && !(input.pointer && rectContains(freed.slot.rect, { ...input.pointer, w: 0, h: 0 }, 0)) && keepsPath(freed)) seat = freed;
     else {
       const improved = seatCard(input, width, height, texts, { readable: texts.filter(item => !before.has(item)).map(item => item.rect) });
-      if (hidden(improved.slot.rect).every(item => before.has(item))) seat = improved;
+      if (hidden(improved.slot.rect).every(item => before.has(item)) && keepsPath(improved)) seat = improved;
     }
   }
   // Cost and side memory own the card seat. A second box solver would undo
@@ -871,6 +972,14 @@ function seatCard(input: LabelCardInput, width: number, height: number, texts: r
   const cost = (slot: CardSlot) => Math.round((covered(slot.rect) + outsideChart(slot.rect) + activeCoverCost(slot.rect, table ? input.forbidden : active)
     + (coversPointer(slot.rect) ? slot.rect.w * slot.rect.h * 1000 : 0) + boxGap(slot.rect, pointer)
     + (slot.side === input.previousSide ? 0 : 8)) * 1000) / 1000;
+  // On a chart that picks along an axis, the card stays off the path between its points, where the pointer
+  // travels from one point to the next; the seats across the band from the path are always clear of it.
+  const path = table || !target ? undefined : input.path;
+  if (path) {
+    const expand = (candidates as CardSlots).expand;
+    const across = pathSlots(path, target!, width, height, frame, input.band ?? 'x');
+    (candidates as CardSlots).expand = () => [...(expand?.() ?? []), ...across];
+  }
   if (target && !table) {
     // Inside the boundary and at most one card size beyond the chart: the seats clear of text that the seats beside the mark could not find.
     const area = intersect({ x: chart.x - width, y: chart.y - height, w: chart.w + 2 * width, h: chart.h + 2 * height }, frame);
@@ -880,7 +989,7 @@ function seatCard(input: LabelCardInput, width: number, height: number, texts: r
     (candidates as CardSlots).floor = slot => slot.penalty + outsideChart(slot.rect);
   }
   const selected = selectCardSlot(candidates, forbidden, cost, input.pointer, table ? undefined : slot => !coversFilledMark(slot.rect) && !coversText(slot.rect),
-    table ? undefined : slot => hiddenTexts(slot.rect));
+    table ? undefined : slot => hiddenTexts(slot.rect), path && (slot => meetsPath(path, slot.rect)));
   const rect = selected.rect;
   const placement = covered(rect) > 0 || activeCoverCost(rect, forbidden) > 0 || activeCoverCost(rect, input.forbidden) > 0 ? 'overlay' : target ? 'beside' : 'frame';
   return { slot: selected, placement, tried: candidates.map(slot => slot.slot) };
