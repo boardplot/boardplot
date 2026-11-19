@@ -22,7 +22,7 @@ import { GridChildRefusal, gridRowHeights, gridSizing, hasKpiFigure, inheritedSc
 import { KPI_HOST_TEXT, KPI_VALUE_SIZE } from '../typeFloors';
 import { stringsIn } from '../frame';
 import { authoredStrings } from '../strings';
-import { defaultMeasurer, wrapText, type FontSpec, type TextMeasurer } from '../text';
+import { defaultMeasurer, isCachedTextMeasurer, wrapText, type FontSpec, type TextMeasurer } from '../text';
 import { lineBoxes } from '../textClip';
 import { canvasMargin, panelTypeClass, resolveTheme, themeForWidth, typeWidthClass, type TypeWidthClass } from '../theme';
 import type { GridData, GridPanel } from '../types/data';
@@ -471,12 +471,15 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
     }
     return children;
   };
+  // A custom measurer can return a new width on a second call.
+  const reusePanels = isCachedTextMeasurer(measure);
   const layoutChildren = (): GridChild[] => {
     if (share === 'category' && n > 1) {
       let pass1 = data.panels.map((p, i) => layoutPanel(p, i, slots[i]!, baseMargins[i]));
       if (!uniformLineEndpointLegend && !keepEndNames && landsOnEndpointLegend(pass1)) {
         uniformLineEndpointLegend = true;
-        pass1 = data.panels.map((p, i) => layoutPanel(p, i, slots[i]!, baseMargins[i]));
+        pass1 = pass1.map((child, i) => reusePanels && child.def?.type !== 'line'
+          ? child : layoutPanel(data.panels[i]!, i, slots[i]!, baseMargins[i]));
       }
       sharedX = maxOf(pass1.map((c) => c.geo.plot.x));
       const sharedR = minOf(pass1.map((c) => c.geo.plot.x + c.geo.plot.w));
@@ -495,10 +498,10 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
           typeof (c1.geo.derived as { leftInset?: unknown }).leftInset === 'number'
             ? (c1.geo.derived as { leftInset: number }).leftInset
             : baseMargins[i]!.left;
-        return layoutPanel(p, i, slots[i]!, {
-          left: effLeft + (sharedX! - c1.geo.plot.x),
-          right: effRight + (c1.geo.plot.x + c1.geo.plot.w - sharedR),
-        });
+        const left = effLeft + (sharedX! - c1.geo.plot.x);
+        const right = effRight + (c1.geo.plot.x + c1.geo.plot.w - sharedR);
+        if (reusePanels && left === baseMargins[i]!.left && right === baseMargins[i]!.right) return c1;
+        return layoutPanel(p, i, slots[i]!, { left, right });
       });
       alignCategoryPanels(alignedPanels(aligned), theme);
       return alignSharedValues(aligned);
@@ -506,7 +509,8 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
     let children = data.panels.map((p, i) => layoutPanel(p, i, slots[i]!));
     if (!uniformLineEndpointLegend && !keepEndNames && landsOnEndpointLegend(children)) {
       uniformLineEndpointLegend = true;
-      children = data.panels.map((p, i) => layoutPanel(p, i, slots[i]!));
+      children = children.map((child, i) => reusePanels && child.def?.type !== 'line'
+        ? child : layoutPanel(data.panels[i]!, i, slots[i]!));
     }
     return alignSharedValues(children);
   };
