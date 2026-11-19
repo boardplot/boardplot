@@ -19,9 +19,13 @@
  */
 
 import { valueLineHasTargetExtras } from './annotateFields';
-import { toleranceBounds } from './annotateTargets';
-import type { Annotation } from './types/annotations';
+import { bandBoundText, toleranceBounds, TOLERANCE_FILL, type TargetScaleInput } from './annotateTargets';
+import { defaultAnnotationId, type Annotation } from './types/annotations';
 import type { Id } from './types/cell';
+import type { StringsSpec } from './types/options';
+import type { SeriesIdentity } from './seriesIdentity';
+import { localeStrings } from './strings';
+import { chartString } from './strings/a11y-valueLineRecords';
 import { maxOf, minOf } from './arrays';
 
 /** The range the value lines ask the value axis to contain. */
@@ -54,13 +58,56 @@ export function valueLineExtent(annotations: readonly Annotation[] | undefined, 
 export function drawnToleranceBands(
   annotations: readonly Annotation[] | undefined, meanValue: number | undefined, categoryIds: readonly Id[],
 ): ValueLineExtent[] {
-  return (annotations ?? []).flatMap((a) => {
+  return toleranceBands(annotations, meanValue, categoryIds).map(({ lo, hi }) => ({ lo, hi }));
+}
+
+function toleranceBands(
+  annotations: readonly Annotation[] | undefined, meanValue: number | undefined, categoryIds: readonly Id[],
+): (ValueLineExtent & { line: Extract<Annotation, { kind: 'valueLine' }>; index: number })[] {
+  return (annotations ?? []).flatMap((a, index) => {
     if (a.kind !== 'valueLine' || a.tolerance === undefined || (a.axis ?? 'primary') !== 'primary' || a.seriesId !== undefined) return [];
     const spanned = a.from !== undefined || a.to !== undefined;
     const value = typeof a.value === 'number' ? a.value : spanned ? undefined : meanValue;
     if (value === undefined || !Number.isFinite(value)) return [];
     if (spanned && !(a.from !== undefined && a.to !== undefined && categoryIds.includes(a.from) && categoryIds.includes(a.to))) return [];
     const band = toleranceBounds(value, a.tolerance);
-    return typeof band === 'string' ? [] : [{ lo: Math.min(band.low, band.high), hi: Math.max(band.low, band.high) }];
+    return typeof band === 'string' ? [] : [{ lo: Math.min(band.low, band.high), hi: Math.max(band.low, band.high), line: a, index }];
   });
+}
+
+/** The key id of a value line's tolerance band. */
+export const toleranceKeyId = (annotationId: Id): Id => `__tolerance:${annotationId}`;
+
+/**
+ * The keys of the tolerance bands of `annotations`, the list the annotation pass gets. A band says
+ * nothing about itself, so the key names it after its line and prints its bounds: "Target range:
+ * 95 to 105". A line without a name gives "Range: 95 to 105". The box has the band's fill and a
+ * thin edge, because the fill alone is too light to see at key size.
+ */
+export function toleranceLegendKeys(
+  annotations: readonly Annotation[] | undefined, meanValue: number | undefined, categoryIds: readonly Id[],
+  text: Pick<TargetScaleInput, 'format' | 'locale' | 'levelSpec'> & { strings?: StringsSpec },
+): SeriesIdentity[] {
+  const words = { locale: text.locale, strings: text.strings };
+  return toleranceBands(annotations, meanValue, categoryIds).map(({ lo, hi, line, index }) => {
+    const mean = line.value === undefined || line.value === 'mean';
+    // The line's name is its label up to the value: "Target" of "Target: ${value} units".
+    const name = typeof line.label === 'string'
+      ? line.label.split('${value}').map((part) => part.replace(/\s+/g, ' ').replace(/^[\s:=()–-]+|[\s:=()–-]+$/g, '')).find(Boolean) ?? ''
+      : line.label === undefined && mean ? text.strings?.average ?? localeStrings(text.locale).average : '';
+    const range = chartString(words, 'valueLineRange', { v1: bandBoundText(text, lo), v2: bandBoundText(text, hi) });
+    return {
+      id: toleranceKeyId(defaultAnnotationId(line, index)),
+      label: name ? chartString(words, 'valueLineRangeKey', { name, range }) : chartString(words, 'valueLineRangeKeyPlain', { range }),
+      paint: TOLERANCE_FILL,
+      stroke: { token: 'axis' },
+      width: 0.75,
+    };
+  });
+}
+
+/** The value lines of `annotations` whose tolerance band the drawn key `drawn` names. */
+export function toleranceKeyed(annotations: readonly Annotation[] | undefined, drawn: readonly { id: Id }[] | undefined): ReadonlySet<Id> {
+  const ids = new Set((drawn ?? []).map((item) => item.id));
+  return new Set((annotations ?? []).flatMap((a, index) => (ids.has(toleranceKeyId(defaultAnnotationId(a, index))) ? [defaultAnnotationId(a, index)] : [])));
 }

@@ -89,7 +89,8 @@ import { layoutBarMarks } from './marks';
 import { authoredTrackWidth, columnOverrideWarnings, trackPlotFloor } from '../columnOverrides';
 import { barHalves, cagrInset, CAGR_INSET_ROOM, CAGR_ROOM, CAGR_TRIES, CAT_BAND_GAP, CAT_MAX_LINES, BarTooTall, CUT_NOTES, DEFER_ADJACENT, fixedBarRow, LABEL_GAP, NAME_TRACK, NO_NAME_COLUMN, RIGHT_ROOM, STOP_IF_TOO_TALL, type BarArea, type BarDomain, type BarMarkGeometry } from './model';
 import { barPaints } from './paints';
-import { barPlotArea, solveBarFrame } from './plot';
+import { barPlotArea, solveBarFrame, barPassText } from './plot';
+import { toleranceKeyed } from '../../valueLineDomain';
 import { composedTextRole } from '../../textRole';
 import { withBandValueNotes } from '../band/valueNotes';
 import { textScaleOf } from '../../typeFloors';
@@ -403,10 +404,8 @@ function annotateBar(
     bandCeiling: area.frame.plot.y,
     theme: domain.theme,
     measure: domain.measure,
-    format: domain.options.format,
-    locale: domain.options.locale?.language,
-    levelSpec: domain.valueSpec.spec,
-    strings: domain.options.strings,
+    ...barPassText(domain),
+    toleranceKeyed: toleranceKeyed(domain.passAnns, area.frame.legend?.items),
     sharesFormat: domain.variant === 'stacked100',
     valueLinePercentLevels: domain.variant === 'stacked100' || domain.options.unit === '%' || percentLevels(domain.dataSeries.map(series => ({ vals: series.cells }))),
     valueLineLabels: valueLineLabelsOn(domain.options),

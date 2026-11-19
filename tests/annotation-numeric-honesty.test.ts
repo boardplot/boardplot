@@ -1194,3 +1194,18 @@ it('keeps a drawn bar or dot tolerance band whole inside the value axis', () => 
     { valueAxis: { show: true, break: { from: 90, to: 110 } }, annotations: [{ kind: 'valueLine', value: 75, tolerance: 50, from: 'north', to: 'north' }] } as never);
   expect(codes(outer)).toContain('axis-break-invalid');
 });
+
+// A tolerance band says nothing about itself: the key of a column, bar or dot chart names it after its line and prints its bounds. The band then prints no bounds, and a key that only the band brought does not repeat the name of the one series.
+it('names a tolerance band and its bounds in the key of a column, bar or dot chart', () => {
+  const data = { categories: ['north', 'south', 'west'].map((id) => ({ id, label: id })), series: [{ id: 's', label: 'Sales', values: [45, 55, 60] }] };
+  const texts = (geometry: { scene: object[] }) =>
+    (geometry.scene as { t: string; lines?: string[] }[]).flatMap((node) => (node.t === 'text' ? [node.lines!.join(' ')] : []));
+  for (const layout of [layoutColumn, layoutBar, layoutDot]) {
+    const chart = (options: object) => texts(layout(data as never,
+      { annotations: [{ kind: 'valueLine', label: 'Target: ${value}', value: 50, tolerance: 5 }], ...options } as never));
+    expect(chart({}).filter((text) => text.includes('45 to 55'))).toEqual(['Target range: 45 to 55']);
+    expect(chart({})).not.toContain('Sales');
+    expect(chart({ legend: 'top' })).toEqual(expect.arrayContaining(['Sales', 'Target range: 45 to 55']));
+    expect(chart({ legend: 'none' }).join()).not.toContain('range:');
+  }
+});

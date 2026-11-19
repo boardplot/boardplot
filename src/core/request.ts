@@ -109,6 +109,8 @@ const LAYOUT_STRING_KEYS = Object.keys({
   belowSeries: true,
   average: true,
   valueLineRange: true,
+  valueLineRangeKey: true,
+  valueLineRangeKeyPlain: true,
   toDate: true,
   forecast: true,
   plan: true,

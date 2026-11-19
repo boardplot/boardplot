@@ -65,6 +65,8 @@ export interface TargetScaleInput {
   levelSpec?: NumberFormatSpec;
   /** Caller wording, so a band's range words match its hover card. */
   strings?: StringsSpec;
+  /** Value lines whose tolerance band the chart's key names with its bounds: such a band prints no bounds of its own. */
+  toleranceKeyed?: ReadonlySet<Id>;
 }
 
 export function isCeilingClaim(o: OccupiedRect, ceilingRects?: readonly Rect[]): boolean {
@@ -291,12 +293,19 @@ function corridorLabel(
   ctx.placed.push({ id: ctx.id, kind: 'band', computedText: text, nodeIds, labelId });
 }
 
-/** A bound as the chart prints its numbers: without a format a late value of the chart's levels, else a set of its own. */
-function boundText(ctx: TargetPassCtx, v: number): string {
-  return ctx.input.format
-    ? formatterFromExample(ctx.input.format, ctx.input.locale)(v)
-    : formatWithSpec(v, { ...(ctx.input.levelSpec?.[RULE_SET]?.set.kind === 'number' ? ctx.input.levelSpec : defaultSetSpec([v], ctx.input.locale)), prefix: '', suffix: '' });
+/** A bound as the chart prints its numbers: without a format a late value of the chart's levels, else a set of its own. The band's key prints the same text. */
+export function bandBoundText(input: Pick<TargetScaleInput, 'format' | 'locale' | 'levelSpec'>, v: number): string {
+  return input.format
+    ? formatterFromExample(input.format, input.locale)(v)
+    : formatWithSpec(v, { ...(input.levelSpec?.[RULE_SET]?.set.kind === 'number' ? input.levelSpec : defaultSetSpec([v], input.locale)), prefix: '', suffix: '' });
 }
+
+function boundText(ctx: TargetPassCtx, v: number): string {
+  return bandBoundText(ctx.input, v);
+}
+
+/** The fill of a value line's tolerance band, and of its key. */
+export const TOLERANCE_FILL = { token: 'others', tint: 0.45 } as const;
 
 /**
  * A corridor or tolerance band prints both bounds at its
@@ -715,7 +724,7 @@ export function placeValueLineTargets(
           t: 'rect',
           id: bandId,
           rect,
-          fill: { token: 'others', tint: 0.45 },
+          fill: TOLERANCE_FILL,
           owner: { annotationId: ctx.id },
           part: 'band',
         });
@@ -726,6 +735,8 @@ export function placeValueLineTargets(
           placed.nodeIds = [bandId, ...placed.nodeIds];
           placed.toleranceText = { low, high };
         }
+        // The chart's key names this band and prints its bounds.
+        if (ctx.input.toleranceKeyed?.has(ctx.id)) return placeValueLineAttainment(ctx, ann, value);
         // The band prints its bounds in the card's words: "85 to 95", "85 bis 95".
         const text = chartString({ locale: ctx.input.locale, strings: ctx.input.strings }, 'valueLineRange', { v1: low, v2: high });
         const font = { family: ctx.input.theme.type.family, ...ctx.input.theme.type.axis };
@@ -756,6 +767,10 @@ export function placeValueLineTargets(
       }
     }
   }
+  placeValueLineAttainment(ctx, ann, value);
+}
+
+function placeValueLineAttainment(ctx: TargetPassCtx, ann: Extract<Annotation, { kind: 'valueLine' }>, value: number): void {
   if (ann.attainment === undefined || ann.attainment === false) return;
   const spec = ann.attainment === true ? {} : ann.attainment;
   const fakeBand: Extract<Annotation, { kind: 'band' }> = {

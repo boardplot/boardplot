@@ -251,6 +251,8 @@ export interface AnnotatePassInput {
   /** The chart's language (options.locale.language) for numbers printed without a format. */
   locale?: string;
   strings?: StringsSpec;
+  /** Value lines whose tolerance band the chart's key names with its bounds: such a band prints no bounds of its own. */
+  toleranceKeyed?: ReadonlySet<Id>;
   /**
    * The anchored values are percent levels (authored { pct } cells, no
    * format): values print with '%' and their differences in percentage points.
