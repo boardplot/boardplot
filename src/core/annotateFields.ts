@@ -51,13 +51,19 @@ export function categoryTargetFields(
   };
 }
 
-export function spliceAnnotationNodes(nodes: SceneNode[], annotationNodes: SceneNode[]): void {
-  const behind = (part: string) => part === 'band' || part === 'attainment';
-  const front = annotationNodes.filter((node) => behind(node.part));
+/**
+ * Puts the band and attainment fills of the annotation pass behind the chart's marks, gridlines
+ * and lines, and the other annotation nodes on top. `owners`, when given, limits the fills that
+ * move behind to those annotations; the rest stay on top, as a chart that drew them there had them.
+ */
+export function spliceAnnotationNodes(nodes: SceneNode[], annotationNodes: SceneNode[], owners?: ReadonlySet<Id>): void {
+  const behind = (node: SceneNode) => (node.part === 'band' || node.part === 'attainment')
+    && (owners === undefined || owners.has(node.owner?.annotationId ?? ''));
+  const front = annotationNodes.filter(behind);
   const rest = nodes.splice(0);
   pushAll(nodes, front);
   pushAll(nodes, rest);
-  pushAll(nodes, annotationNodes.filter((node) => !behind(node.part)));
+  pushAll(nodes, annotationNodes.filter((node) => !behind(node)));
 }
 
 export function isCategoryAlongY(band: CategoryBand): band is { y: number; h: number } {
@@ -67,4 +73,42 @@ export function isCategoryAlongY(band: CategoryBand): band is { y: number; h: nu
 export function valueLineHasTargetExtras(ann: Annotation): boolean {
   if (ann.kind !== 'valueLine') return false;
   return ann.tolerance !== undefined || ann.attainment !== undefined;
+}
+
+/**
+ * A valueLine that bar and dot leave to the shared annotate pass, as column
+ * draws it: one with a category span, a series scope, a tolerance or an
+ * attainment. The pass clips the band to the span, warns on a span it cannot
+ * resolve and omits a scoped line it cannot honour. Their own vertical
+ * drawing knows none of this, so it takes only the plain line.
+ */
+export function valueLineNeedsSharedPass(ann: Annotation): boolean {
+  if (ann.kind !== 'valueLine') return false;
+  return valueLineHasTargetExtras(ann) || ann.from !== undefined || ann.to !== undefined || ann.seriesId !== undefined;
+}
+
+export function finitePair(low: unknown, high: unknown): { low: number; high: number } | null {
+  if (typeof low !== 'number' || typeof high !== 'number') return null;
+  if (!Number.isFinite(low) || !Number.isFinite(high) || low === high) return null;
+  return { low, high };
+}
+
+/**
+ * The bounds of a valueLine's tolerance band, or the reason it has none. A
+ * layout reads them to size its value axis before the annotation pass loads,
+ * so they stand here and not beside the pass that draws the band.
+ */
+export function toleranceBounds(
+  value: number,
+  tolerance: NonNullable<Extract<Annotation, { kind: 'valueLine' }>['tolerance']>,
+): { low: number; high: number } | string {
+  if (typeof tolerance === 'number') {
+    if (!Number.isFinite(tolerance) || tolerance <= 0) {
+      return 'tolerance must be a positive finite number';
+    }
+    return { low: value - tolerance, high: value + tolerance };
+  }
+  const pair = finitePair(tolerance.low, tolerance.high);
+  if (!pair) return "tolerance bounds need finite, unequal 'low' and 'high'";
+  return pair;
 }

@@ -1104,3 +1104,93 @@ it('prints a difference of percent levels as a change set', () => {
     { unit: '%', annotations: [{ kind: 'delta', at: { categoryId: 'q4', seriesId: 's' }, vs: { categoryId: 'q1', seriesId: 's' }, mode: 'absolute' }] } as never);
   expect(geometry.labels.find((label) => label.id === 'label:annotation:delta-1' || label.id === 'annotation:delta-1')?.text).toBe('+4.4');
 });
+
+// A target line on bar or dot must honour its category span as column does: a band only over the named row and behind the marks, line and gridlines, and the warnings column gives for the same target.
+it('draws a bar or dot target band on its row behind the marks, with the warnings of column', () => {
+  const data = { categories: ['north', 'east', 'south'].map((id) => ({ id, label: id })), series: [{ id: 's', label: 'Sales', values: [120, 99, 90] }] };
+  // The label seats of a vertical band differ by chart, so where a label lands (label-hidden, values-in-note) is left out.
+  const seating = new Set(['label-hidden', 'values-in-note']);
+  const targetCodes = (geometry: { warnings?: { code?: string; owner?: { annotationId?: string } }[] }) =>
+    (geometry.warnings ?? []).filter((w) => w.owner?.annotationId === 'goal' && !seating.has(w.code ?? '')).map((w) => w.code).sort();
+  const drawn = (geometry: { scene: { part?: string }[] }) => geometry.scene.some((node) => node.part === 'valueLine');
+  for (const scope of [
+    { tolerance: 5, from: 'north', to: 'north' },
+    { from: 'north', to: 'east' },
+    { from: 'absent', to: 'east' },
+    { tolerance: 5, from: 'absent', to: 'east' },
+    { from: 'north' },
+    { tolerance: 5, to: 'east' },
+  ]) {
+    const options = { annotations: [{ kind: 'valueLine', id: 'goal', value: 99, ...scope }] } as never;
+    const column = layoutColumn(data as never, options);
+    for (const layout of [layoutBar, layoutDot]) {
+      const geometry = layout(data as never, options);
+      expect(targetCodes(geometry)).toEqual(targetCodes(column));
+      expect(drawn(geometry)).toBe(drawn(column));
+    }
+  }
+  for (const layout of [layoutBar, layoutDot]) {
+    const geometry = layout(data as never, { annotations: [{ kind: 'valueLine', id: 'goal', value: 99, tolerance: 5, from: 'north', to: 'north' }] } as never);
+    const at = geometry.scene.findIndex((node) => node.part === 'band' && node.owner?.annotationId === 'goal');
+    const { rect } = geometry.scene[at] as { rect: { y: number; h: number } };
+    const row = (id: string) => {
+      const label = geometry.labels.find((l) => l.kind === 'category' && l.owner.categoryId === id)!.rect;
+      return label.y + label.h / 2;
+    };
+    expect(row('north')).toBeGreaterThan(rect.y);
+    expect(row('north')).toBeLessThan(rect.y + rect.h);
+    expect(row('east')).toBeGreaterThan(rect.y + rect.h);
+    const above = geometry.scene.slice(at + 1);
+    expect(above.some((node) => node.part === 'valueLine' && node.owner?.annotationId === 'goal')).toBe(true);
+    expect(above.some((node) => node.owner?.seriesId === 's' && node.owner.categoryId === 'east')).toBe(true);
+    expect(geometry.scene.slice(0, at).some((node) => node.part === 'gridline' || node.owner?.seriesId === 's')).toBe(false);
+  }
+  // A dumbbell reads its current (last) dot: a row without one gets no fill from its previous dot.
+  const filled = (now: (number | null)[]) => layoutDot({ ...data, series: [{ id: 'old', label: 'Old', values: [120, 104, 96] }, { id: 'now', label: 'Now', values: now }] } as never,
+    { variant: 'dumbbell', annotations: [{ kind: 'valueLine', id: 'goal', value: 99, from: 'south', to: 'south', attainment: true }] } as never)
+    .scene.some((node) => node.part === 'attainment');
+  expect(filled([80, 70, 72])).toBe(true);
+  expect(filled([80, 70, null])).toBe(false);
+});
+
+// A bar or dot tolerance band must end where its label says: the axis holds a drawn band whole (a numeric target above the data, a measured mean), an omitted band must not stretch the axis, and a break across an omitted target is still refused.
+it('keeps a drawn bar or dot tolerance band whole inside the value axis', () => {
+  const data = { categories: ['north', 'south'].map((id) => ({ id, label: id })), series: [{ id: 's', label: 'Sales', values: [45, 55] }] };
+  for (const layout of [layoutBar, layoutDot]) {
+    // Pixels per unit, from the two marks at 45 and 55.
+    const unit = (geometry: { scene: object[] }) => {
+      const at = (id: string) => {
+        const mark = (geometry.scene as { t: string; owner?: { seriesId?: string; categoryId?: string }; rect?: { w: number }; cx?: number }[])
+          .find((node) => (node.t === 'rect' || node.t === 'circle') && node.owner?.seriesId === 's' && node.owner.categoryId === id)!;
+        return mark.rect ? mark.rect.w : mark.cx!;
+      };
+      return (at('south') - at('north')) / 10;
+    };
+    const bandWidth = (geometry: { scene: object[] }) =>
+      (geometry.scene as { part?: string; rect?: { w: number } }[]).find((node) => node.part === 'band')?.rect?.w;
+    const above = layout(data as never, { annotations: [{ kind: 'valueLine', value: 75, tolerance: 9, from: 'north', to: 'north' }] } as never);
+    expect(bandWidth(above)! / unit(above)).toBeCloseTo(18, 6);
+    const mean = layout(data as never, { annotations: [{ kind: 'valueLine', tolerance: 20 }] } as never);
+    expect(bandWidth(mean)! / unit(mean)).toBeCloseTo(40, 6);
+    const plain = layout(data as never, { annotations: [{ kind: 'valueLine', value: 50 }] } as never);
+    const omitted = layout(data as never, { annotations: [{ kind: 'valueLine', value: 50, tolerance: 1000, from: 'north' }] } as never);
+    expect(bandWidth(omitted)).toBeUndefined();
+    expect(unit(omitted)).toBeCloseTo(unit(plain), 6);
+    // A growth arrow beside grouped bars without a value axis must not end the axis inside a drawn band.
+    if (layout === layoutBar) {
+      const dated = { categories: [{ id: 'north', label: 'north', date: '2020-01-01' }, { id: 'south', label: 'south', date: '2022-01-01' }], series: [...data.series, { id: 'o', label: 'Other', values: [30, 50] }] };
+      const arrow = layout(dated as never, { valueAxis: { show: false }, labels: { point: false }, annotations: [
+        { kind: 'valueLine', value: 75, tolerance: { low: 60, high: 77 }, from: 'north', to: 'north' },
+        { kind: 'cagr', from: { categoryId: 'north', seriesId: 's' }, to: { categoryId: 'south', seriesId: 's' } },
+      ] } as never);
+      expect(bandWidth(arrow)! / unit(arrow)).toBeCloseTo(17, 6);
+    }
+  }
+  const broken = layoutBar({ ...data, series: [{ id: 's', label: 'Sales', values: [80, 900] }] } as never,
+    { valueAxis: { break: { from: 150, to: 750 } }, annotations: [{ kind: 'valueLine', value: 400, from: 'north', to: 'south' }] } as never);
+  expect(codes(broken)).toContain('axis-break-invalid');
+  // A band that widens the axis does not make a break past the bars and the target valid.
+  const outer = layoutBar(data as never,
+    { valueAxis: { show: true, break: { from: 90, to: 110 } }, annotations: [{ kind: 'valueLine', value: 75, tolerance: 50, from: 'north', to: 'north' }] } as never);
+  expect(codes(outer)).toContain('axis-break-invalid');
+});

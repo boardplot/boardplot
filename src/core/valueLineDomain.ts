@@ -18,8 +18,9 @@
  * mean of the plotted values already lies inside the data extent.
  */
 
-import { valueLineHasTargetExtras } from './annotateFields';
+import { toleranceBounds, valueLineHasTargetExtras } from './annotateFields';
 import type { Annotation } from './types/annotations';
+import type { Id } from './types/cell';
 import { maxOf, minOf } from './arrays';
 
 /** The range the value lines ask the value axis to contain. */
@@ -40,4 +41,25 @@ export function valueLineExtent(annotations: readonly Annotation[] | undefined, 
   // measured mean (no numeric value) falls out here too.
   const values = (annotations ?? []).flatMap((a) => (a.kind === 'valueLine' && Number.isFinite(a.value) && (a.axis ?? 'primary') === axis && a.seriesId === undefined && ((a.from === undefined && a.to === undefined) || valueLineHasTargetExtras(a)) ? [a.value as number] : []));
   return values.length ? { lo: minOf(values), hi: maxOf(values) } : null;
+}
+
+/**
+ * The tolerance bands the annotation pass draws on a chart that measures no scoped mean (bar, dot),
+ * so the chart can keep each of them whole inside its value axis. A band counts when its line is
+ * drawn (a number by the rule of valueLineExtent, or the plotted mean of a line without a span),
+ * its bounds are valid and its span, if it has one, names two categories of the chart. A band
+ * the pass omits says nothing about the domain.
+ */
+export function drawnToleranceBands(
+  annotations: readonly Annotation[] | undefined, meanValue: number | undefined, categoryIds: readonly Id[],
+): ValueLineExtent[] {
+  return (annotations ?? []).flatMap((a) => {
+    if (a.kind !== 'valueLine' || a.tolerance === undefined || (a.axis ?? 'primary') !== 'primary' || a.seriesId !== undefined) return [];
+    const spanned = a.from !== undefined || a.to !== undefined;
+    const value = typeof a.value === 'number' ? a.value : spanned ? undefined : meanValue;
+    if (value === undefined || !Number.isFinite(value)) return [];
+    if (spanned && !(a.from !== undefined && a.to !== undefined && categoryIds.includes(a.from) && categoryIds.includes(a.to))) return [];
+    const band = toleranceBounds(value, a.tolerance);
+    return typeof band === 'string' ? [] : [{ lo: Math.min(band.low, band.high), hi: Math.max(band.low, band.high) }];
+  });
 }

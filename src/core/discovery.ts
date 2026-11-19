@@ -75,9 +75,9 @@ const ANNOTATION_OPTIONAL: Partial<Record<AnnotationKind, Record<string, Optiona
     axis: { meaning: 'primary | secondary, default primary. Scale of value; secondary needs an acknowledged secondary axis.', types: ['combo'] },
     tolerance: {
       meaning: 'number | { low, high }. A number shades that distance on both sides of the line; low and high shade an authored corridor.',
-      types: ['bar', 'bullet', 'column', 'combo', 'line', 'mekko', 'pvm', 'scatter', 'slope', 'variance', 'waterfall'],
+      types: ['bar', 'bullet', 'column', 'combo', 'dot', 'line', 'mekko', 'pvm', 'scatter', 'slope', 'variance', 'waterfall'],
     },
-    attainment: { meaning: 'boolean | { seriesId, direction }. Shades each category between its actual and the line.', types: ['bar', 'bullet', 'column', 'line'] },
+    attainment: { meaning: 'boolean | { seriesId, direction }. Shades each category between its actual and the line.', types: ['bar', 'bullet', 'column', 'dot', 'line'] },
   },
   line: { dashed: 'boolean, default false. Draws the line in the dash of a reference line.' },
   arrow: { dashed: 'boolean, default false. Draws the shaft in the dash of a reference line.' },

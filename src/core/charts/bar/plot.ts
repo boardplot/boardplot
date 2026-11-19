@@ -6,6 +6,8 @@ import { stringFields } from '../../strings';
  */
 
 import { BAND_PAD } from '../../annotateParts';
+import { valueLineHasTargetExtras } from '../../annotateFields';
+import { drawnToleranceBands } from '../../valueLineDomain';
 import { axisTitleAllowed, planValueAxisTitle, tickRowTitleEnd, valueAxisTitleText, valueAxisUnit } from '../../axis';
 import { authoredNotes, cappedItems, frameTextOptions, normalizeLegendOption, plotHeightAfter, shareUnitOptions, solveFrame, type FrameInput, type FrameResult, type LegendItemInput, authoredFootnoteCount } from '../../frame';
 import type { Rect } from '../../geometry';
@@ -18,7 +20,7 @@ import { partialAxisWords, partialFootnotes, partialLegendKeys, partialPattern, 
 import { axisBreakInvalid } from '../../axisBreakInvalid';
 import { axisBreakHeightOrderWarning } from '../../axisBreakOrder';
 import { breakStyleRefusal, stackBreakReversesOrder } from '../band/breakOrder';
-import { applyTickStep, shownTickStep, bandScale, brokenLinearScale, invalidLinearBreakReason, linearScale, niceDomain, type LinearBreak } from '../../scale';
+import { applyAxisBounds, applyTickStep, shownTickStep, bandScale, brokenLinearScale, invalidLinearBreakReason, linearScale, niceDomain, type LinearBreak } from '../../scale';
 import { resolveSize } from '../../normalize/shared';
 import { COLLECT_IDENTITIES } from '../../seriesIdentity';
 import { defaultMeasurer, type FontSpec } from '../../text';
@@ -294,7 +296,9 @@ export function barPlotArea(domain: BarDomain, frame: FrameResult, warnings: Lin
 }
 
 function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWarning[], titleRow: boolean): BarArea | undefined {
-  const { options, theme, size, measure, variant, cats, dataSeries, lo, hi } = domain;
+  const { options, theme, size, measure, variant, cats, dataSeries } = domain;
+  // The value extent. A tolerance band the axis would cut widens it below (axisOf).
+  let { lo, hi } = domain;
   const plot0 = frame.plot;
   const tickFont: FontSpec = { family: theme.type.family, ...theme.type.axis };
   const normalLabelFont: FontSpec = { family: theme.type.family, ...theme.type.label };
@@ -302,7 +306,8 @@ function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWa
   const labelFont = compactRows ? compactValueLabelFont(normalLabelFont, theme.type.footnote, options.target, textScaleOf(options)) : normalLabelFont;
   const strongFont: FontSpec = { family: theme.type.family, ...theme.type.label, weight: emphasisWeight(theme) };
   const { maxPosW, maxNegW } = outsideLabelWidths(domain, labelFont, strongFont);
-  const annPad = domain.localAnns.length > 0 ? 26 : 8;
+  // A target line from the shared pass seats its label above the plot as a local line does.
+  const annPad = domain.localAnns.length > 0 || domain.passAnns.some(valueLineHasTargetExtras) ? 26 : 8;
   // The title of a drawn value axis sits in its tick row, or under it (barPlotArea).
   const axisTitle = options.valueAxis?.show && axisTitleAllowed(options.labels)
     ? planValueAxisTitle(valueAxisTitleText(theme, options.axisTitles?.primary, options,
@@ -413,23 +418,55 @@ function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWa
   const callerExact = (options as { [EXACT_DOMAIN]?: boolean })[EXACT_DOMAIN] === true && !options.valueAxis?.show;
   const exactDomain = (outsideOnly && !options.valueAxis?.show) || callerExact;
   const fP = Math.min(0.35, (Math.max(maxPosW, negativeLabelsAcross ? maxNegW : 0) + LABEL_GAP + 8) / plot.w);
-  // An exact domain keeps no room left of the bars for labels that are not there.
-  const fN = lo < 0 && !negativeLabelsAcross && !(callerExact && maxNegW === 0) ? Math.min(0.35, (maxNegW + LABEL_GAP + 8) / plot.w) : 0;
-  const span = hi - lo || 1;
-  const denom = Math.max(0.3, 1 - fP - fN);
-  const hiExt = hi + (span * fP) / denom;
-  const loExt = lo < 0 ? lo - (span * fN) / denom : 0;
-  // The fP/fN reserves are occupied by outside-end labels, so the waste bound
-  // measures snap overshoot beyond that intent, not beyond the raw data
-  // (the domain-economy invariant).
-  const nice: [number, number] = fullBars ? [0, hi || 100] : exactDomain ? [loExt, hiExt || 1] : niceDomain(loExt, hiExt || 1, 5, {
-    dataExtent: [loExt, hiExt || 1],
-    maxWasteFraction: 0.15,
-  });
-  const stepped = applyTickStep(nice, shownTickStep(options.valueAxis?.tickStep, options.valueAxis?.show === true, warnings), warnings);
+  const axisOf = (lo: number, hi: number) => {
+    // An exact domain keeps no room left of the bars for labels that are not there.
+    const fN = lo < 0 && !negativeLabelsAcross && !(callerExact && maxNegW === 0) ? Math.min(0.35, (maxNegW + LABEL_GAP + 8) / plot.w) : 0;
+    const span = hi - lo || 1;
+    const denom = Math.max(0.3, 1 - fP - fN);
+    const hiExt = hi + (span * fP) / denom;
+    const loExt = lo < 0 ? lo - (span * fN) / denom : 0;
+    // The fP/fN reserves are occupied by outside-end labels, so the waste bound
+    // measures snap overshoot beyond that intent, not beyond the raw data
+    // (the domain-economy invariant).
+    const nice: [number, number] = fullBars ? [0, hi || 100] : exactDomain ? [loExt, hiExt || 1] : niceDomain(loExt, hiExt || 1, 5, {
+      dataExtent: [loExt, hiExt || 1],
+      maxWasteFraction: 0.15,
+    });
+    const said: LintWarning[] = [];
+    const stepped = applyTickStep(nice, shownTickStep(options.valueAxis?.tickStep, options.valueAxis?.show === true, said), said);
+    return { nice, stepped, said };
+  };
+  let axis = axisOf(lo, hi);
+  const dataAxis = axis;
+  // A tolerance band the axis shows in part is shown whole, as on dot: the axis grows to the band's
+  // far bound. A band wholly off the axis stays off, and the pass says so (band-bounds-offscale).
+  // A 100% axis ends at 100.
+  const bands = variant === 'stacked100' ? [] : drawnToleranceBands(domain.passAnns, domain.meanValue, cats.map((c) => c.id));
+  for (let round = 0; round < bands.length; round++) {
+    const inside = (d: [number, number], band: { lo: number; hi: number }) => band.lo >= d[0] && band.hi <= d[1];
+    const shown = axis.stepped.domain;
+    const cut = bands.filter((band) => band.hi > shown[0] && band.lo < shown[1] && !(inside(axis.nice, band) && inside(shown, band)));
+    if (cut.length === 0) break;
+    lo = Math.min(lo, ...cut.map((band) => band.lo));
+    hi = Math.max(hi, ...cut.map((band) => band.hi));
+    axis = axisOf(lo, hi);
+  }
+  // An authored bound that held the data and cannot hold the band is reported, as for data.
+  if (lo < domain.lo || hi > domain.hi) {
+    const va = options.valueAxis;
+    applyAxisBounds([lo, hi], [lo, hi], {
+      ...(lo < domain.lo && va?.min === domain.lo ? { min: va.min } : {}),
+      ...(hi > domain.hi && va?.max === domain.hi ? { max: va.max } : {}),
+    }, warnings);
+  }
+  warnings.push(...axis.said);
+  const { nice, stepped } = axis;
   let [dLo, dHi] = stepped.domain;
   let stepTicks = stepped.ticks;
-  let activeBreak = barAxisBreak(domain, dLo, dHi, warnings);
+  // A band that widened the axis does not make a break valid: the break must fit the axis of the bars and the targets.
+  let activeBreak = axis !== dataAxis && !barAxisBreak(domain, dataAxis.stepped.domain[0], dataAxis.stepped.domain[1], warnings)
+    ? undefined
+    : barAxisBreak(domain, dLo, dHi, warnings);
   if (!stepFitsAxisBreak(stepTicks, activeBreak, options.valueAxis?.tickStep, warnings)) {
     [dLo, dHi] = nice;
     stepTicks = undefined;
@@ -478,7 +515,7 @@ function barPlotAreaWith(domain: BarDomain, frame: FrameResult, warnings: LintWa
   // bar ends, so the domain stops at the longest value and the bars fill the
   // width up to the arm.
   let scale = x;
-  if (inset && !options.valueAxis?.show && !activeBreak && lo >= 0 && hi > 0 && domain.refSeries.length === 0) {
+  if (inset && !options.valueAxis?.show && !activeBreak && lo >= 0 && hi > 0 && domain.refSeries.length === 0 && bands.every((b) => b.hi <= hi)) {
     const exact = linearScale([0, hi], [plot.x, plot.x + plot.w]);
     const thick = groupSlots[0]?.size ?? band.bandwidth;
     const valueFont: FontSpec = { ...(compact ? compactLabelFont : labelFont), weight: emphasisWeight(theme) };
