@@ -58,7 +58,7 @@ import type { Cell, Id, OwnerRef } from '../../types/cell';
 import type { ChartData } from '../../types/data';
 import type { BaseOptions, BaseOptionsFor, ColumnAlign, ColumnOverride, LegendOptions } from '../../types/options';
 import type { Geometry, LintWarning, Paint, PaintWarningRule, PlacedLabel, ShownMark, ShownTexts } from '../../types/scene';
-import { defaultMeasurer, type FontSpec, type TextMeasurer } from '../../text';
+import { defaultMeasurer, isCachedTextMeasurer, type FontSpec, type TextMeasurer } from '../../text';
 import { labelsToNodes } from '../../label/emit';
 import { PRIORITY } from '../../label/solver';
 import { COLUMN_GAP, COLUMN_MIN_WIDTH, columnWidth } from '../diffColumn';
@@ -854,6 +854,8 @@ export function layoutLikert(
   const fixedRows = theme.space.barRow !== undefined;
   // Authored bar fractions keep the name column: their row gap may be too small for statements above.
   const stacked = canvas.width <= STACKED_MAX_WIDTH && !fixedRows && opts.bandFraction === undefined && panelTypeClass(opts) === undefined;
+  // Stacked statements set their own row heights. Annotations can read the last bar probe's bracket reach.
+  const checkBarNaturalHeight = !stacked || !!opts.annotations?.length || !isCachedTextMeasurer(measure);
   // Bars take about half the row (40 px on a 75 px pitch); the rest
   // is air between the statements. An authored bandFraction wins.
   const defaultFraction = fixedRows ? undefined : BAND_FRACTION;
@@ -940,7 +942,7 @@ export function layoutLikert(
       ...(netDrawn ? { [TOTAL_COLUMN]: tracks?.rights.net ?? canvas.width - margin.right - baseReserve } : {}),
       ...(rows.bandPad ? { [BAND_PAD]: rows.bandPad } : {}),
     } as never,
-      likertAnnotationPass(data, shares, net, opts.format, brackets))) as Geometry<BarMarks, BarDerived>;
+      likertAnnotationPass(data, shares, net, opts.format, brackets), checkBarNaturalHeight)) as Geometry<BarMarks, BarDerived>;
     // The bar layout owes a hidden sliver's share to its generic note. Here a
     // share too narrow to print stays unlabelled: its length and colour show
     // it, and every side total and net is in the description (no prose list).

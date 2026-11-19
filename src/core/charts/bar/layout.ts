@@ -210,6 +210,7 @@ export function layoutBar(
   data: ChartData,
   options: BarOptions = {},
   annotationPass?: BarAnnotationPass,
+  checkNaturalHeight = true,
 ): Geometry<BarMarks, BarDerived> {
   const variant = options.variant ?? 'grouped';
   if (variant !== 'grouped') refuseLabelPosition(options, `bar ${variant}`,
@@ -219,7 +220,7 @@ export function layoutBar(
   const layout = (next: BarOptions) => layoutBarSized(data, next, annotationPass);
   const geo = withBandValueNotes(data, options, layout);
   const natural = geo.sizing?.naturalHeight;
-  if (natural !== undefined && natural < geo.size.height) {
+  if (checkNaturalHeight && natural !== undefined && natural < geo.size.height) {
     // a shorter row layout may need a disclosure that the tall layout did not.
     const probe = withBandValueNotes(data, { ...options, size: { width: geo.size.width, height: natural } }, layout);
     if (probe.sizing && probe.sizing.minHeight > natural) geo.sizing = { ...geo.sizing!, naturalHeight: probe.sizing.minHeight };
