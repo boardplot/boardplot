@@ -693,9 +693,9 @@ it('shares capped container growth across all visible tracks after the anchor is
 it('uses the original table and dimswitch floors for open-height fill containers', async () => {
   for (const { type, id, Chart, minimum } of [
     // The first full-width floor needs more height at the narrower frame.
-    { type: 'table', id: 'steering-monthly', Chart: TableChart, minimum: { width: 529, height: 311 } },
+    { type: 'table', id: 'steering-monthly', Chart: TableChart, minimum: { width: 529, height: 295 } },
     // An open height names the width it draws from and the height drawn there.
-    { type: 'dimswitch', id: 'by-measure', Chart: DimSwitchChart, minimum: { width: 280, height: 551 } },
+    { type: 'dimswitch', id: 'by-measure', Chart: DimSwitchChart, minimum: { width: 280, height: 499 } },
   ]) for (const fillHeight of [false, true]) {
     const fixture = getFixtures(type).find(candidate => candidate.id === id)!;
     const expected = measureRequest({ type, data: fixture.data, options: { ...fixture.options, size: { width: 99 } } }).refused!;

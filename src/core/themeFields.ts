@@ -316,7 +316,7 @@ const THEME_FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = Object.freeze
   'table.fixedType':
     "True makes a density change row height and cell padding only: compact heads, body and total keep their size, and the label of a cohort grid's closing row keeps the total face while the matrix cells keep their own step. Absent or false steps compact type 0.5 px down as before.",
   'table.compactStep':
-    "Px of air the compact density takes off each side of a body row and of the total row (0 to 8). Absent means compact keeps half of each row's regular air, rounded down: 3 px above and below a top-level or group row instead of 7, 2 px for a sub row instead of 4, and 4 px for the total instead of 8. 1 brings back the compact rows of 0.59 and earlier.",
+    "Px of air the compact density takes off each side of a body row and of the total row (0 to 8). Absent means compact keeps half of each row's regular air, rounded down: 3 px above and below a top-level or group row instead of 7, 2 px for a sub row instead of 4, and 4 px for the total instead of 8. 1 brings back the compact rows of 0.60 and earlier.",
   'table.noPrevious':
     "What a change against the previous column prints where its group has no previous column, such as the first month's month-on-month: 'na' (default) prints n/a, 'missing' prints the missing glyph under the row's missing and the table's nulls policy.",
   'table.groupGround': "Which group rows carry the group ground when options.groupGround is absent. 'expanded': only the header row of an open group. 'always': folded or open, as before 0.28. 'none': none. Every preset sets 'none'; absent in a custom theme, 'expanded'. The Total keeps its own ground (table.grounds.total).",
