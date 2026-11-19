@@ -233,12 +233,13 @@ function sparkline(ctx: RecordContext): InteractionRecord[] {
     const value = cellRecordValue(cells[point.index]!, ctx.request.options.unit, ctx.request.options.format);
     // The identity is the position and the label rides beside it:
     // a series that repeats a label has one record per point, and the card
-    // still prints the month the reader is pointing at.
+    // still prints the month the reader is pointing at. A labelled point
+    // prints no position row: the label already names the point.
     return makeRecord(ctx, { categoryId: point.id }, value, {
       label: point.label ?? point.id,
       ...(point.label === undefined ? {} : { categoryLabel: point.label }),
       anchor: { x: point.x - SPARKLINE_RING_RADIUS, y: point.y - SPARKLINE_RING_RADIUS, w: 2 * SPARKLINE_RING_RADIUS, h: 2 * SPARKLINE_RING_RADIUS },
-      fields: [field('position', chartString(ctx.request.options, 'position'), numericValue(point.index + 1))],
+      fields: point.label === undefined ? [field('position', chartString(ctx.request.options, 'position'), numericValue(point.index + 1))] : [],
     });
   });
 }
