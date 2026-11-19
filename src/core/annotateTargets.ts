@@ -23,7 +23,7 @@ import type {
 } from './types/scene';
 import type { StringsSpec } from './types/options';
 import type { Theme } from './types/theme';
-import { isCategoryAlongY, type CategoryBand } from './annotateFields';
+import { finitePair, isCategoryAlongY, toleranceBounds, type CategoryBand } from './annotateFields';
 import { valuelessFix } from './stackAdds';
 import { minOf, pushAll } from './arrays';
 
@@ -126,12 +126,6 @@ export function valueLineStroke(
     return { x1: valuePx, y1: plot.y, x2: valuePx, y2: plot.y + plot.h };
   }
   return { x1: plot.x, y1: valuePx, x2: plot.x + plot.w, y2: valuePx };
-}
-
-function finitePair(low: unknown, high: unknown): { low: number; high: number } | null {
-  if (typeof low !== 'number' || typeof high !== 'number') return null;
-  if (!Number.isFinite(low) || !Number.isFinite(high) || low === high) return null;
-  return { low, high };
 }
 
 function pushWarn(
@@ -686,21 +680,6 @@ export function placeTargetBand(
   if (style === 'attainment') placeAttainmentBand(ctx, ann);
   else placeCorridorOrTolerance(ctx, ann, style);
   return true;
-}
-
-export function toleranceBounds(
-  value: number,
-  tolerance: NonNullable<Extract<Annotation, { kind: 'valueLine' }>['tolerance']>,
-): { low: number; high: number } | string {
-  if (typeof tolerance === 'number') {
-    if (!Number.isFinite(tolerance) || tolerance <= 0) {
-      return 'tolerance must be a positive finite number';
-    }
-    return { low: value - tolerance, high: value + tolerance };
-  }
-  const pair = finitePair(tolerance.low, tolerance.high);
-  if (!pair) return "tolerance bounds need finite, unequal 'low' and 'high'";
-  return pair;
 }
 
 export function placeValueLineTargets(
