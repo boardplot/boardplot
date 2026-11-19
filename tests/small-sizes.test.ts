@@ -1713,4 +1713,19 @@ describe('the type class step at 720 px', () => {
     for (const width of [719, 720, 1079, 1080]) expect(layoutResolvedRequest(resolveChartRequest(matrix(width, 240) as never)).refused, `${width} px`).toBeUndefined();
     expect(measure(matrix(720, 240) as never).refused).toBeUndefined();
   });
+  // A set height under the type's own floor is refused in every type class, yet render laid the chart out once more in
+  // the smaller class, which doubled the time of a large chart that ends refused.
+  it('lays out no smaller type for a set height under the type floor', () => {
+    const line = getChart('line')!;
+    const layout = line.layout;
+    const classes: (string | undefined)[] = [];
+    const spy = vi.spyOn(line, 'layout').mockImplementation((data, options) => { classes.push(typeClassCap()); return layout(data, options); });
+    try {
+      const result = layoutResolvedRequest(resolveChartRequest({ type: 'line',
+        data: { categories: ['Q1', 'Q2', 'Q3', 'Q4'].map((id) => ({ id })), series: [{ id: 'sales', label: 'Sales', values: [4, 6, 5, 7] }] },
+        options: { title: 'Sales by quarter', size: { width: 960, height: 140 } } } as never));
+      expect(result.refused).toBeDefined();
+      expect(classes).toEqual([undefined]);
+    } finally { spy.mockRestore(); }
+  });
 });

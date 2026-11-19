@@ -440,9 +440,22 @@ function smallerClass(
 const classSteps = new WeakMap<LayoutResult, { request: ResolvedChartRequest; drawn: LayoutResult | undefined }>();
 
 function classStep(request: ResolvedChartRequest, result: LayoutResult, layout: (asked: ResolvedChartRequest) => LayoutResult): LayoutResult | undefined {
-  if (!isRefused(result) || panelTypeClass(request.options) !== undefined || (request.options as RequestOptions).belowMinimum === 'refuse') return undefined;
+  if (!isRefused(result) || panelTypeClass(request.options) !== undefined || (request.options as RequestOptions).belowMinimum === 'refuse'
+    || underClassFreeFloor(request, request.options)) return undefined;
   const smaller = firstSmallerClass(result, () => layout(request));
   return smaller && drawnBy(smaller, 'smallerClass');
+}
+
+/**
+ * A pinned frame lower than the height `fitSize` checks before any layout (`sizeGate`, read as leniently as
+ * a compact fallback reads it) is refused in every type class: that floor reads no type size. A smaller
+ * class would only spend its repair layout on the same refusal.
+ */
+function underClassFreeFloor(request: ResolvedChartRequest, options: RequestOptions): boolean {
+  const def = getChart(request.type);
+  if (!def || def.type === 'grid' || panelTypeClass(options) !== undefined) return false;
+  const { sizePx, fixed } = resolveTargetSize(options.target ?? request.target, options.size);
+  return fixed.width && fixed.height && sizePx.height + SIZE_TOLERANCE < sizeGate(def, request.data, options, true).gatePolicy.minHeight;
 }
 
 /** A refusal the margin step answers: any refusal but a size refusal that asks only for more height, which its size advice answers. */
@@ -984,7 +997,7 @@ function preparedLayout(request: ResolvedChartRequest, verifyAdvice = false): La
   // a smaller class lays out in a fresh call, as render's class step does.
   const at = ((frame: RequestOptions) => {
     const first = draw(frame);
-    return classStepping && isRefused(first) ? firstSmallerClass(first, () => draw(frame, true)) ?? first : first;
+    return classStepping && isRefused(first) && !underClassFreeFloor(request, { ...request.options, size: frame.size }) ? firstSmallerClass(first, () => draw(frame, true)) ?? first : first;
   }) as LayoutCall<any, any, any>;
   at.probe = options => at({ ...options, [FULL_LAYOUT_PROBE]: true } as RequestOptions);
   at.finish = () => run?.finish();
