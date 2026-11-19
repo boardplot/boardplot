@@ -334,8 +334,11 @@ function prepared(def: { prepare?: (data: any, options?: any) => any }, data: un
 export function layoutResolvedRequest(request: ResolvedChartRequest): LayoutResult {
   if ((request.type !== 'table' && request.type !== 'dimswitch') || request.data === null || typeof request.data !== 'object') return layoutRequest(request);
   const { type, theme, target, size, fixed, inputWarnings } = request;
-  return repeatedResult(request.data, request.options, { type, theme, target, size, fixed, inputWarnings }, () =>
-    type === 'table' ? fullTableRequest(Object.assign({ ...request }, { [RETAIN_TABLE_RESULT]: true })) : layoutRequest(request));
+  return repeatedResult(request.data, request.options, { type, theme, target, size, fixed, inputWarnings }, () => {
+    // The public result owns its copy. Materializing the selected table or dimswitch form can retain the private scene.
+    const retained = { ...request, [RETAIN_TABLE_RESULT]: true };
+    return type === 'table' ? fullTableRequest(retained) : layoutRequest(retained);
+  });
 }
 
 /** @internal Host sizing path. Tables keep their fit diagnostics without drawing a scene. */
