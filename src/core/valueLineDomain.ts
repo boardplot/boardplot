@@ -18,8 +18,8 @@
  * mean of the plotted values already lies inside the data extent.
  */
 
-import { toleranceBounds, valueLineHasTargetExtras } from './annotateFields';
-import { bandBoundText, TOLERANCE_FILL, type TargetScaleInput } from './annotateTargets';
+import { bandBoundText, toleranceBounds, TOLERANCE_FILL, valueLineHasTargetExtras } from './annotateFields';
+import type { TargetScaleInput } from './annotateTargets';
 import { defaultAnnotationId, type Annotation } from './types/annotations';
 import type { Id } from './types/cell';
 import type { StringsSpec } from './types/options';

@@ -3,7 +3,7 @@
  * runAnnotatePass only dispatches. Value mapping reuses the chart scale already
  * supplied for valueLine. Missing anchors stay missing.
  */
-import { defaultSetSpec, formatterFromExample, formatWithSpec, RULE_SET, type NumberFormatSpec } from './formatSpec';
+import { defaultSetSpec, formatWithSpec, type NumberFormatSpec } from './formatSpec';
 import { rectsOverlap, type Rect } from './geometry';
 import { PRIORITY, type LabelRequest, type SlotCandidate } from './label/solver';
 import type { OccupiedIndex } from './label/occupied';
@@ -23,7 +23,7 @@ import type {
 } from './types/scene';
 import type { StringsSpec } from './types/options';
 import type { Theme } from './types/theme';
-import { finitePair, isCategoryAlongY, toleranceBounds, type CategoryBand } from './annotateFields';
+import { bandBoundText, finitePair, isCategoryAlongY, toleranceBounds, TOLERANCE_FILL, type CategoryBand } from './annotateFields';
 import { valuelessFix } from './stackAdds';
 import { minOf, pushAll } from './arrays';
 
@@ -287,19 +287,9 @@ function corridorLabel(
   ctx.placed.push({ id: ctx.id, kind: 'band', computedText: text, nodeIds, labelId });
 }
 
-/** A bound as the chart prints its numbers: without a format a late value of the chart's levels, else a set of its own. The band's key prints the same text. */
-export function bandBoundText(input: Pick<TargetScaleInput, 'format' | 'locale' | 'levelSpec'>, v: number): string {
-  return input.format
-    ? formatterFromExample(input.format, input.locale)(v)
-    : formatWithSpec(v, { ...(input.levelSpec?.[RULE_SET]?.set.kind === 'number' ? input.levelSpec : defaultSetSpec([v], input.locale)), prefix: '', suffix: '' });
-}
-
 function boundText(ctx: TargetPassCtx, v: number): string {
   return bandBoundText(ctx.input, v);
 }
-
-/** The fill of a value line's tolerance band, and of its key. */
-export const TOLERANCE_FILL = { token: 'others', tint: 0.45 } as const;
 
 /**
  * A corridor or tolerance band prints both bounds at its
