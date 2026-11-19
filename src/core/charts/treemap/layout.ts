@@ -784,7 +784,7 @@ function layoutTreemapAt(data: TreemapData, options: TreemapOptions, memo: Map<s
     plot, scene: nodes, labels: solved.placed, axes: [], annotations: [], legend: frame.legend, frame: frame.frame, marks,
     derived: {
       variant: shape, total: round6(total), groups: groupsDerived, items: itemsDerived, maxAreaError: round6(maxAreaError),
-      ...(unitIterations ? { iterations: unitIterations } : {}),
+      ...(unitIterations ? { iterations: { ...unitIterations } } : {}),
     },
     a11y: {
       title: accessibleTitle(options.title, chartString(options, 'treemapTitle', { v1: ordered.length, v2: fmt(total) })),
@@ -876,13 +876,19 @@ function brokeWord(label: string, lines: readonly string[]): boolean {
   return lines.some((line, i) => line.endsWith('-') && !label.includes(`${line}${(lines[i + 1] ?? '').split(' ')[0]}`));
 }
 
+type CircleUnit = { cells: Polygon[]; groups: Polygon[]; iterations: { groups: number; items: number } };
+let lastCircleUnit: { key: string; unit: CircleUnit } | undefined;
+
 /**
  * The Voronoi layout in the unit circle: group regions clockwise from 12
  * o'clock, then the items inside each region. Sorted, the largest item of a
  * group faces the circle centre and the next ones alternate to either side,
  * so the smallest items sit at the rim, next to their outside names.
  */
-function circleUnitCells(groups: Group[], total: number, byValue: boolean): { cells: Polygon[]; groups: Polygon[]; iterations: { groups: number; items: number } } {
+function circleUnitCells(groups: Group[], total: number, byValue: boolean): CircleUnit {
+  // New requests can redraw the same weights. Only the ordered values, group boundaries and seed order set these polygons.
+  const key = JSON.stringify([byValue, groups.map(group => group.items.map(item => item.value))]);
+  if (lastCircleUnit?.key === key) return lastCircleUnit.unit;
   const circle = circlePolygon(0, 0, 1);
   const shares = groups.map((g) => g.total / total);
   const top = voronoiTreemap(circle, shares, seedSites(circle, shares));
@@ -904,7 +910,9 @@ function circleUnitCells(groups: Group[], total: number, byValue: boolean): { ce
     itemIterations = Math.max(itemIterations, level.iterations);
     return level.cells;
   });
-  return { cells, groups: top.cells, iterations: { groups: top.iterations, items: itemIterations } };
+  const unit = { cells, groups: top.cells, iterations: { groups: top.iterations, items: itemIterations } };
+  lastCircleUnit = { key, unit };
+  return unit;
 }
 
 function rectPoly(r: Rect): Polygon {
