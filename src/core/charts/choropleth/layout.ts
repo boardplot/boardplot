@@ -26,6 +26,7 @@ import {
 } from '../../label/solver';
 import { accessibleTitle, NormalizeError, resolveSize, resolveSubtitle } from '../../normalize/shared';
 import { defaultMeasurer, type FontSpec } from '../../text';
+import { hasCompleteTableWidths } from '../../fontMetrics/injected';
 import { emphasisWeight, strokeToken, dashToken, canvasMargin, effectiveFill, paintColor, resolveSemanticPaletteTheme } from '../../theme';
 import type { OwnerRef } from '../../types/cell';
 import type {
@@ -1829,9 +1830,11 @@ function subtractRect(rect: Rect, cut: Rect): Rect[] {
  */
 function certainlyUnderKey(pack: GeoPack, rect: Rect, padding: number | undefined, keyArea: Rect,
   measure: typeof defaultMeasurer, theme: Theme): boolean {
-  // The built-in measurer gives a finite width for a finite font, so the gutter is never NaN.
+  // Complete tables contain unsigned 16-bit advances. The font bound keeps even the longest string's width finite.
   const font = geoLabelFont(theme);
-  if (measure !== defaultMeasurer || !Number.isFinite(font.size) || !(font.letterSpacing === undefined || Number.isFinite(font.letterSpacing))) return false;
+  if (!Number.isFinite(font.size) || !(font.letterSpacing === undefined || Number.isFinite(font.letterSpacing))) return false;
+  if (measure !== defaultMeasurer && (!hasCompleteTableWidths(measure) || Math.abs(font.size) > Number.MAX_SAFE_INTEGER
+    || Math.abs(font.letterSpacing ?? 0) > Number.MAX_SAFE_INTEGER)) return false;
   const [minX, minY, maxX, maxY] = pack.bounds;
   const bw = maxX - minX;
   const bh = maxY - minY;
