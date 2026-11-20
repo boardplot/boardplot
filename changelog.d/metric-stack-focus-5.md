@@ -1,0 +1,3 @@
+### Added
+
+- A stacked panel of a metric stack takes `segmentShares: true`. Under `options.stack.variant: 'focus'`, each segment of the base and the focus columns prints its share of the column inside the segment, in whole percent that add up to 100, in the ink that reads on its fill. The focus column prints the same shares as the key, and in React they follow hover and keyboard focus. A share without room in its segment is left out. Without the focus look, or on a panel that stacks no measures, the option does nothing and warns `option-ignored`. The example fixture is `metric-stack-focus-shares`.

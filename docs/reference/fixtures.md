@@ -949,6 +949,7 @@ The CLI prints every match in one response through `boardplot fixtures --type <t
 | stack-gutter-right | grid.metric-stack | example | Metric stack: readout gutter right of the plots, with a set width and alignment |
 | metric-stack-per-unit | grid.metric-stack | example | Metric stack: cost per order computed from spend and orders |
 | metric-stack-focus | grid.metric-stack | example | Metric stack: the focus look, with the latest week against the first |
+| metric-stack-focus-shares | grid.metric-stack | example | Metric stack: the focus look by month, with segment shares |
 
 ## slope
 

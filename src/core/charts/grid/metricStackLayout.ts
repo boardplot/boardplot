@@ -120,6 +120,19 @@ function stackColumnWarnings(stack: NonNullable<GridLayoutOptions['stack']>, nar
   return warnings;
 }
 
+/** `segmentShares` prints only on a stacked panel of the focus look; anywhere else it warns that it does nothing. */
+function segmentShareWarnings(data: MetricStackData, look: boolean): LintWarning[] {
+  return data.panels.flatMap((panel, i): LintWarning[] => {
+    if (!panel.segmentShares) return [];
+    const stacks = panel.type === 'column' && 'sum' in panel.measure && panel.measure.sum.length > 1;
+    if (look && stacks) return [];
+    return [{ code: 'option-ignored', severity: 'warn', field: ['data', 'panels', i, 'segmentShares'],
+      message: look ? 'this panel stacks no measures, so segmentShares does nothing here'
+        : "segment shares print only in the focus look (options.stack.variant 'focus'), so segmentShares does nothing here",
+      suggest: look ? 'Remove segmentShares from this panel.' : "Set options.stack.variant: 'focus', or remove segmentShares." }];
+  });
+}
+
 export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptions): Geometry<GridMarks, GridDerived> {
   const data = normalizeMetricStack(raw);
   if (!options.stack) stackError('options.stack', 'Shared measures require options.stack: {}');
@@ -782,6 +795,14 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
             if(provisional)emit({t:'rect',id:`${p.panel.id}:segment-tag:${category.id}`,rect:{x:x-tw/2-2,y:rect.y+4,w:tw+4,h:heightOf(valueFont)},fill:{token:'background'},radius:2,owner:partOwner,part:'labelTag'},ci);
             centerText(`${p.panel.id}:segment:${category.id}`,text,valueFont,x,rect.y+4,partOwner,ink);
           }
+          // segmentShares: a base or focus segment prints its share of the column where the text has room inside it.
+          const share = look ? p.segmentShares?.[ci]?.[si] : undefined;
+          if (share && rect.h >= heightOf(keyFont) + 4 && measure(share.text, keyFont).width + 6 <= width) {
+            const ink: Paint = provisional ? { token: 'ink' } : { token: 'ink', theme: { kind: 'contrast-ink', fill } };
+            const sy = rect.y + (rect.h - heightOf(keyFont)) / 2, sw = measure(share.text, keyFont).width;
+            if (provisional) emit({ t: 'rect', id: `${p.panel.id}:share-tag:${category.id}:${si}`, rect: { x: x - sw / 2 - 2, y: sy, w: sw + 4, h: heightOf(keyFont) }, fill: { token: 'background' }, radius: 2, owner: partOwner, part: 'labelTag' }, ci);
+            centerText(`${p.panel.id}:share:${category.id}:${si}`, share.text, keyFont, x, sy, partOwner, ink, 'label', 'point', share.claimId);
+          }
         });
         if(provisional)emit({t:'path',id:`${p.panel.id}:outline:${category.id}`,d:`M${n(x-width/2)} ${n(baseline)}V${n(top)}H${n(x+width/2)}V${n(baseline)}`,stroke:muted,width:strokeToken(theme, 'mark'),dash:dashToken(theme, 'reference'),owner:cellOwner,part:'provisionalOutline'},ci);
       } else if (look && !provisional) {
@@ -849,9 +870,13 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   const counts=[structureCount('panels',data.panels.length, undefined, options),structureCount('categories',data.categories.length, undefined, options),structureCount('series',data.measures.length,chartString(options, 'sourceMeasures', { v1: data.measures.length }))];
   // A readout operand (a sum, a raw share) and a figure without a seat print no number of their own.
   const requested=new Set(requests.flatMap(request=>request.claimIds ?? []));
+  // A segment share keeps its text only where its label was asked for: one without room in its segment prints nowhere,
+  // so its claim displays nothing, as every other figure without a label does.
+  const segmentShares=new Set(computed.panels.flatMap(p=>(p.segmentShares??[]).flatMap(column=>column?.map(share=>share.claimId)??[])));
+  if(segmentShares.size) derived.readouts=derived.readouts.map(readout=>({...readout,claims:readout.claims.map(claim=>segmentShares.has(claim.id)&&!requested.has(claim.id)?{...claim,output:{...claim.output,displayed:''}}:claim)}));
   const unprinted=derived.readouts.flatMap(readout=>readout.claims.filter(claim=>!requested.has(claim.id)).map(claim=>claim.id));
   return withUnprintedClaims<Geometry<GridMarks, GridDerived>>({type:'grid',size,plot:frame.plot,scene,labels:solved.placed,axes:[{axis:'x',baselineNodeId:`${data.panels.at(-1)!.id}:baseline`,ticks:data.categories.map((c,i)=>({at:c.id,pos:plotX+(i+0.5)*step,...(periodAxis?{}:{labelId:`stack:category:${c.id}`})}))}],annotations:[],frame:frame.frame,legend:frame.legend,marks,derived:{metricStack:derived,sharedPlotX:plotX,sharedPlotW:plotW,tierGap:gap},
     sizing:{aspect:'content',fit:'content',minWidth:size.width,minHeight,measuredMinWidth:size.width,measuredMinHeight:minHeight,naturalWidth:size.width,naturalHeight,comfortableWidth:size.width,comfortableHeight:naturalHeight},
     a11y:{title:accessibleTitle(options.title,chartString(options, 'metricStackTitle', { v1: data.panels.length })),counts,desc:chartString(options, 'metricStackDesc', { v1: counts.map(c=>c.text).join(', '), v2: data.panels.map(p=>p.title).join('; '), v3: look ? computed.panels.map((p,i)=>`${p.panel.title}: ${[texts[i]!.value,...(texts[i]!.change?[texts[i]!.change]:[]),...(texts[i]!.from?[texts[i]!.from]:[])].join(' ')}.`).join(' ')
-      : !hasMethod ? '' : computed.panels.map(p=>`${p.panel.title}: ${[...(showHeadline?[p.readout.headlineText]:[]),...(showSpan?[p.readout.spanText]:[])].join('; ')}.`).join(' ') })},warnings:[...solved.warnings,...stackColumnWarnings(stack,narrow,gutterFloored,gutterCapped,stack.variant==='focus'&&!look)],debug:{occupied:occupied.snapshot(),decisions:solved.decisions}},unprinted);
+      : !hasMethod ? '' : computed.panels.map(p=>`${p.panel.title}: ${[...(showHeadline?[p.readout.headlineText]:[]),...(showSpan?[p.readout.spanText]:[])].join('; ')}.`).join(' ') })},warnings:[...solved.warnings,...stackColumnWarnings(stack,narrow,gutterFloored,gutterCapped,stack.variant==='focus'&&!look),...segmentShareWarnings(data,look)],debug:{occupied:occupied.snapshot(),decisions:solved.decisions}},unprinted);
 }
