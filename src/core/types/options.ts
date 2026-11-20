@@ -318,6 +318,12 @@ export interface StringsSpec {
   rebaseMissing?: string;
   /** Required note for incomplete 100% stacks without total100; {categories} is replaced. */
   knownPartsShares?: string;
+  /** Metric stack focus look: the base value after the change; {v1} is the base value. */
+  stackFrom?: string;
+  /** Metric stack focus look: the word between the focus and the base window in the header line. */
+  stackAgainst?: string;
+  /** Metric stack focus look: the header sentence when a window holds more than one category; {v1} is the grain. */
+  stackAverages?: string;
 }
 
 /** One step of a story: its panel text and the data ids it brings forward. No highlight is an intro step. */

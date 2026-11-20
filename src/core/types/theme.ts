@@ -244,6 +244,20 @@ export interface Theme {
      */
     figure?: { family?: string; weight?: number };
     /**
+     * The large value of the emphasised panel in the metric stack focus look
+     * (`options.stack.variant: 'focus'`): its size in px and its line height
+     * as a ratio of the size. It prints in the family and weight of `figure`.
+     * `type.scale` does not step it; `textScale` does. Absent means 72 px on
+     * a 1.06 line.
+     */
+    displayLarge?: { size?: number; lineHeight?: number };
+    /**
+     * The value of every other panel in the metric stack focus look, and of
+     * every panel where the readout sits above the plot or the canvas is too
+     * short: one step under `displayLarge`. Absent means 36 px on a 1.11 line.
+     */
+    displaySmall?: { size?: number; lineHeight?: number };
+    /**
      * The eyebrow of a KPI card, the label over the figure when the
      * card has no title: size and line height, weight, tracking in em of the
      * size, and its ink. Each absent key keeps

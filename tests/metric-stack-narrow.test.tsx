@@ -321,3 +321,22 @@ it('gives each stacked panel two different segment paints, also a later one and 
     }
   }
 });
+
+// Shares rounded one by one print 33% three times for three equal parts; the key of a stacked panel must add up to 100.
+it('keys the shares of a stacked panel in whole percent that add up to 100', () => {
+  const stack = {
+    categories: [{ id: 'w1', label: 'Week 1' }, { id: 'w2', label: 'Week 2' }],
+    measures: [
+      { id: 'a', label: 'A', values: [10, 20] }, { id: 'b', label: 'B', values: [10, 20] }, { id: 'c', label: 'C', values: [10, 20] },
+    ],
+    panels: [
+      { id: 'all', type: 'column', title: 'All', unit: 'per week', measure: { sum: ['a', 'b', 'c'] }, readout: 'change' },
+      { id: 'a', type: 'column', title: 'A', unit: 'per week', measure: { sum: ['a'] }, readout: 'change' },
+    ],
+    windows: { base: { from: 'w1', to: 'w1', label: 'Week 1' }, compare: { from: 'w2', to: 'w2', label: 'Week 2' } },
+  };
+  const panel = computeMetricStack(stack as never, undefined, undefined, true).panels[0]!;
+  expect(panel.shares!.map(share => share.text)).toEqual(['34%', '33%', '33%']);
+  const claims = panel.shares!.map(share => panel.readout.claims.find(claim => claim.id === share.claimId)!);
+  expect(claims.reduce((sum, claim) => sum + claim.output.raw!, 0)).toBe(100);
+});

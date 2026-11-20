@@ -142,6 +142,7 @@ const LAYOUT_STRING_KEYS = Object.keys({
   histogramRuleCount: true, histogramRuleWidth: true, histogramSnapped: true,
   histogramRounded: true, histogramSmallSample: true,
   missingStack: true, incompleteStacks: true, knownPartsShares: true, rebaseZero: true, rebaseMissing: true,
+  stackFrom: true, stackAgainst: true, stackAverages: true,
 } satisfies Record<keyof StringsSpec, true>) as (keyof StringsSpec)[];
 
 function layoutStrings(...sources: (StringsSpec | undefined)[]): StringsSpec | undefined {

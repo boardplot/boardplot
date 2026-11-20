@@ -122,6 +122,8 @@ export const THEME_SHAPE: ShapeNode = object({
       opt(object(each(TYPE_ROLES, () => optNum(6, 64, 'type.scale.<column>.<role>'))), 'type.scale.<column>')))),
     numeric: optOneOf('tabular', 'proportional'),
     figure: opt(object({ family: opt(fontFamily), weight: optWeight })),
+    displayLarge: opt(object({ size: optNum(12, 160), lineHeight: optNum(0.9, 2) })),
+    displaySmall: opt(object({ size: optNum(8, 96), lineHeight: optNum(0.9, 2) })),
     eyebrow: opt(object({
       size: optNum(6, 24), weight: optWeight, lineHeight: optNum(1, 2), tracking: optNum(0, 0.3),
       ink: optOneOf('inkMuted', 'inkMeta'),

@@ -16,6 +16,16 @@ const periods = [
 const intake=[1800,2100,2000,2450,3100,2950,2800,2750,2600,3000,3200,3050,620];
 const retained=[168,174,153,190,205,181,118,122,107,111,132,72,null];
 const ended=[68,77,60,84,75,80,66,58,64,30,25,12,null];
+// Thirty weeks from 2 March 2026, Monday to Sunday, with the months as periods.
+const weekStarts = Array.from({length:30}, (_,i) => new Date(Date.UTC(2026,2,2+7*i)));
+const monthName = (d: Date) => ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getUTCMonth()]!;
+const weeks = weekStarts.map((d,i) => ({ id:`2026-W${String(10+i).padStart(2,'0')}`, label:`Week of ${d.getUTCDate()} ${monthName(d)} 2026` }));
+const months = weekStarts.reduce<{from:string;to:string;label:string}[]>((list,d,i) => {
+  const label = list.length ? monthName(d) : `${monthName(d)} 2026`;
+  if (list.length && monthName(weekStarts[i-1]!) === monthName(d)) list.at(-1)!.to = weeks[i]!.id;
+  else list.push({ from:weeks[i]!.id, to:weeks[i]!.id, label });
+  return list;
+}, []);
 export const metricStackFixtures: Fixture<MetricStackData,GridLayoutOptions>[] = [
   {
     id:'metric-stack-volume',kind:'example',title:'Metric stack: volume, completed outcomes and weighted conversion by cohort',
@@ -81,5 +91,22 @@ export const metricStackFixtures: Fixture<MetricStackData,GridLayoutOptions>[] =
       {id:'orders',type:'column',title:'Orders',unit:'per month',measure:{sum:['orders']},readout:'change'},
     ],windows:{grain:'month',base:periods[1]!,compare:periods[2]!},periods:periods.slice(1,3)},
     options:{stack:{},size:{width:960},title:'Cost per order rises 19% as spend grows faster than orders',subtitle:{measure:'Cost per order, spend and orders',period:'January–June 2026'},footnotes:['A quarter’s cost per order is its spend divided by its orders.'],source:'Invented example'},
+  },
+  {
+    // The value-first look: the last week is the focus, the first week the base.
+    id:'metric-stack-focus',kind:'example',title:'Metric stack: the focus look, with the latest week against the first',
+    data:{categories:weeks,measures:[
+      {id:'spend',label:'Spend',values:[42570,46630,44080,37860,36740,40850,45840,44660,44220,45240,50180,50870,44980,41740,42910,49600,52270,49190,49170,49830,53240,53550,47830,47040,51620,57800,57180,53440,51590,56050]},
+      {id:'monthly',label:'Monthly plan',values:[486,487,475,449,433,437,495,509,539,504,468,465,477,534,560,563,538,518,517,540,568,612,618,612,573,562,599,628,664,671]},
+      {id:'quarterly',label:'Quarterly plan',values:[90,95,97,96,97,102,121,129,143,139,133,137,146,169,184,191,188,187,192,207,224,249,259,263,254,255,280,301,327,339]},
+      {id:'one-time',label:'One-time',values:[151,150,145,136,130,130,147,149,157,146,134,132,134,149,155,154,146,139,137,142,148,158,157,154,143,138,146,151,158,157]},
+      {id:'other',label:'Other',values:[26,27,26,25,24,24,28,29,30,29,27,27,27,31,33,33,32,31,31,32,34,37,38,37,35,35,37,39,42,42]},
+      {id:'customers',label:'Customers',values:[753,759,743,706,684,693,791,816,869,818,762,761,784,883,932,941,904,875,877,921,974,1056,1072,1066,1005,990,1062,1119,1191,1209]},
+    ],panels:[
+      {id:'cost-per-customer',type:'line',title:'Cost per customer',unit:'$ per customer',measure:{ratio:['spend'],per:'customers'},readout:'change',emphasis:true},
+      {id:'spend',type:'column',title:'Spend',unit:'$ per week',measure:{sum:['spend']},readout:'change'},
+      {id:'customers',type:'column',title:'Customers',unit:'per week',measure:{sum:['monthly','quarterly','one-time','other']},readout:'change',keyTitle:'By first order'},
+    ],windows:{base:{from:'2026-W10',to:'2026-W10',label:'week of 2 Mar'},compare:{from:'2026-W39',to:'2026-W39',label:'Week of 21 Sep 2026'}},periods:months},
+    options:{stack:{variant:'focus',heights:[232,120,188]},size:{width:1180},title:'Cost per customer falls 18% as customers grow faster than spend',subtitle:{measure:'Cost per customer, spend and customers per week',period:'March–September 2026'},source:'Invented example'},
   },
 ];

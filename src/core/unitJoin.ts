@@ -57,3 +57,15 @@ export function withUnit(text: string, unit: string | undefined, deduplicatePerc
   const sign = text.startsWith(MINUS) || text.startsWith('-') || text.startsWith('+') ? text[0]! : '';
   return `${sign}${prefix}${text.slice(sign.length)}${suffix}`;
 }
+
+/**
+ * The part of a unit that `withUnit` joins to the number without a space: the whole unit where it is a sign,
+ * a magnitude letter or a percent sign ("$", "€k", "%"), the currency sign of a sign before a word ("$" of
+ * "$ per order"), else nothing ("orders per week", "% of enquiries").
+ */
+export function unitOnNumber(unit: string | undefined): string | undefined {
+  const trimmed = unit?.trim() ?? '';
+  if (!trimmed || isPercentagePointUnit(trimmed)) return undefined;
+  if (SYMBOL_UNIT.test(trimmed)) return trimmed;
+  return SIGN_WORD.exec(trimmed)?.[1];
+}

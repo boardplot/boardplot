@@ -126,6 +126,14 @@
     "footnote": 10.5,
     "micro": 9.5
    }
+  },
+  "displayLarge": {
+   "size": 72,
+   "lineHeight": 1.06
+  },
+  "displaySmall": {
+   "size": 36,
+   "lineHeight": 1.11
   }
  },
  "space": {

@@ -35,6 +35,7 @@ export const metricStackDataSchema = z.strictObject({
     emphasis: z.boolean().optional().describe('Use the theme accent. At most one panel may be emphasised.'),
     divisor: z.number().positive().optional().describe('Display divisor for sum or per-unit marks and their change span, for example 1000. The headline percent is unitless.'),
     decimals: z.number().int().min(0).max(6).optional().describe('Decimal places of the marks and the change span. A panel with divisor and without decimals prints 0 for sums and amounts per unit and 1 for rates; a panel with neither prints by the default number rule.'),
+    keyTitle: id.optional().describe("Caption over the key of a stacked panel, such as 'By plan', in muted small text. A panel without a key prints none."),
   })).min(2).max(5).describe('Two to five panels in top-down reading order.'),
   states: z.strictObject({
     maturing: z.strictObject({
@@ -61,6 +62,7 @@ export const metricStackDataSchema = z.strictObject({
 }).describe('Metric stack: shared categories and source measures, top-down panels with computed readouts. Use options.stack.');
 
 export const metricStackOptionsSchema = z.strictObject({
+  variant: z.enum(['focus']).optional().describe("'focus': the value-first look. The compare window is the focus: each panel prints its focus value large, then the change and the base value ('+86% from $272'), and a stacked panel keys each measure with its share of the focus value. The focus categories take the accent, the base window a dark neutral and the other categories a light neutral; a dashed line marks the base level in each panel. In React, hover and keyboard focus move the focus to one category. Needs data.windows and readout 'change' in every panel; a stack with readout { base } panels ignores it and warns option-ignored. Absent: today's look."),
   heights: z.array(z.number().positive()).min(2).max(5).optional().describe('Plot heights in layout pixels, one per panel in top-down order. Use rows for proportional heights instead.'),
   columnVisibility: columnVisibilityOption('grid').describe('False leaves a seat of the one gutter track out, with its height: unit, headline or span. The panel name stays. Hiding headline and span also drops the method line. The values stay in the marks.'),
   columnOverrides: columnOverridesOption('grid', ['width', 'align']),

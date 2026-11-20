@@ -374,6 +374,8 @@ Mark a running category `partial: true`. Declare unavailable outcome panels in `
 
 The engine owns label space, one panel gap and one shared readout gutter. Use `stack.heights` for plot heights in layout pixels, or `rows` for proportional heights. Too-small authored gaps, gutters or heights are refused. A width-only size grows to the content height. On a fixed height shorter than that, default plot heights shrink to their readout floor. Below the floor, the readout puts the unit beside the name and the headline and span on one line, and the panels sit closer together. Slide text can need more height than report text. The example fixtures are `metric-stack-volume`, `metric-stack-steps` and `metric-stack-per-unit`. Existing grids keep their current layout.
 
+`options.stack.variant: 'focus'` draws the value-first look, with the compare window as the focus. Each panel prints the value of the focus large, then the change and the base value (`+86% from $272`); the panel with `emphasis: true` prints its value in `type.displayLarge`, the others in `type.displaySmall`. A stacked panel keys each measure with its share of the focus value, in whole percent that add up to 100, under an optional `keyTitle` such as `By plan`. The header line names the focus against the base window. The look needs `data.windows` and `readout: "change"` in every panel; on a stack of `{ base }` readouts it does nothing and warns `option-ignored`. The example fixture is `metric-stack-focus`.
+
 ## Getting a chart with the CLI
 
 The CLI `boardplot` has the same verbs and prints the same JSON, one object per command on stdout. `-` reads the spec from stdin.
