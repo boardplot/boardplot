@@ -5,7 +5,7 @@ import { chartSizing } from '../../sizing';
 /** Zod-free column chart registration. */
 
 import { prepareRangeData } from '../../rangeRules';
-import type { ChartCore } from '../../registry';
+import { captionSizedPanelLayouts, type ChartCore } from '../../registry';
 import type { ChartData } from '../../types/data';
 import type { ColumnOptions } from '../../types/options';
 import { stepToBar, withoutPatchesThatStep } from './stepToBar';
@@ -32,3 +32,5 @@ export const columnCore: ChartCore<
   annotationKinds: ['cagr', 'diff', 'delta', 'note', 'callout', 'valueLine', 'indicator100', 'abs', 'event', 'band', 'text', 'line', 'arrow', 'box'],
   prepare: prepareRangeData
 };
+
+captionSizedPanelLayouts.add(columnCore.layout);

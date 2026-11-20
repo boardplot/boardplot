@@ -205,6 +205,9 @@ export interface ChartSchemas<D = unknown, O extends ChartOptions = BaseOptions>
 /** Options schemas installed by the built-in catalogue. Custom registries keep their own schema declarations. */
 export const catalogueOptionsSchemas = new WeakSet<z.ZodType>();
 
+/** Built-in panel layouts that can start below an authored tier caption without a refusal probe. */
+export const captionSizedPanelLayouts = new WeakSet<object>();
+
 const registry = new Map<string, RegisteredChart<any, any, any, any>>();
 const aliasIndex = new Map<string, string>();
 const registryWaiting = new Set<() => void>();
@@ -818,7 +821,11 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
       return geo;
     });
   };
-  registry.set(def.type, { ...def, sizing, layout: def.finishLayout?.(layoutWithFooter) ?? layoutWithFooter, [LAYOUT_CALL]: createLayout } as RegisteredChart<any, any, any, any>);
+  const registered = def.finishLayout?.(layoutWithFooter) ?? layoutWithFooter;
+  if (captionSizedPanelLayouts.has(def.layout) && !def.finishLayout && !def.prepareLayout && !def.namesMustPrint) {
+    captionSizedPanelLayouts.add(registered);
+  }
+  registry.set(def.type, { ...def, sizing, layout: registered, [LAYOUT_CALL]: createLayout } as RegisteredChart<any, any, any, any>);
   for (const alias of aliases) {
     aliasIndex.set(alias, def.type);
   }
