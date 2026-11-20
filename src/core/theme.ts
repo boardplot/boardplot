@@ -663,6 +663,7 @@ export const themes: Record<string, Theme> = Object.assign(Object.create(null) a
 });
 
 const PRESET_NAMES = /* @__PURE__ */ new Set(/* @__PURE__ */ Object.keys(themes));
+const presetThemes = /* @__PURE__ */ new WeakSet(/* @__PURE__ */ Object.values(themes));
 
 /**
  * Design-interface entry point: register a validated external theme so every
@@ -974,6 +975,9 @@ function memoizedMerge(base: Theme, overrides: object, resolve: () => Theme): Th
   if (known) return known;
   const resolved = resolve();
   byOverrides.set(overrides, resolved);
+  // A complete, frozen theme merged onto this built-in preset already contains
+  // every token that applying that same preset under it could supply again.
+  if (ownThemes.has(overrides) && presetThemes.has(base)) byOverrides.set(resolved, resolved);
   return resolved;
 }
 
