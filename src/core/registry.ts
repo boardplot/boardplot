@@ -202,6 +202,9 @@ export interface ChartSchemas<D = unknown, O extends ChartOptions = BaseOptions>
   optionsSchema: z.ZodType<O>;
 }
 
+/** Options schemas installed by the built-in catalogue. Custom registries keep their own schema declarations. */
+export const catalogueOptionsSchemas = new WeakSet<z.ZodType>();
+
 const registry = new Map<string, RegisteredChart<any, any, any, any>>();
 const aliasIndex = new Map<string, string>();
 const registryWaiting = new Set<() => void>();
