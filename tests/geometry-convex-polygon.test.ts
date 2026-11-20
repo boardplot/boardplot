@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest';
 import { prepareConvexPolygon, rectHitsConvexPolygon, rectLineDistance, segmentHitsRect, type Point } from '../src/core/geometry';
 import { preparePolyline } from '../src/core/polyline';
+import { createOccupiedIndex, sharePolygonProjection } from '../src/core/label/occupied';
 
 // Prevents the cached overlap test from seating a label over a map region or scatter
 // hull where the direct test would refuse it, on windings and coordinates no golden draws.
@@ -23,6 +24,19 @@ test('prepared polygon tests keep direct overlap results, including touching and
       expect(overlaps(rect, pad)).toBe(rectHitsConvexPolygon(rect, polygon, pad));
     }
   }
+});
+
+test('copied bubble claims keep edits local when they share a prepared polygon', () => {
+  const bounds = { x: 0, y: 0, w: 10, h: 10 };
+  const probe = { x: 1, y: 1, w: 1, h: 1 };
+  const source = createOccupiedIndex(bounds);
+  source.claim(bounds, 'mark', {}, undefined, sharePolygonProjection([{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 0, y: 10 }]));
+  expect(source.hits(probe)).toBe(true);
+  const copy = createOccupiedIndex(bounds);
+  copy.claim(bounds, 'mark', {}, undefined, source.snapshot()[0]!.polygon);
+  copy.snapshot()[0]!.polygon![0]!.x = 10;
+  expect(copy.hits(probe)).toBe(false);
+  expect(source.hits(probe)).toBe(true);
 });
 
 // Prevents a pruned stroke from moving a value onto a stroke or nearer a rival at a bound or unusual coordinate.

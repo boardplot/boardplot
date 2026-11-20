@@ -49,6 +49,29 @@ export interface OccupiedIndex {
  */
 export type OccupiedView = Pick<OccupiedIndex, 'hits' | 'hitsWhich' | 'snapshot'>;
 
+interface PolygonSource {
+  points: readonly Point[];
+  test?: ReturnType<typeof prepareConvexPolygon>;
+}
+
+const polygonSources = new WeakMap<readonly Point[], PolygonSource>();
+
+/** A layout-owned outline, before claim() makes the independently editable copies for each index. */
+export function sharePolygonProjection(points: readonly Point[]): readonly Point[] {
+  polygonSources.set(points, { points: points.map(p => ({ ...p })) });
+  return points;
+}
+
+function polygonTest(points: readonly Point[]): ReturnType<typeof prepareConvexPolygon> {
+  const source = polygonSources.get(points);
+  // A snapshot exposes its index's polygon. A copy edited before its first query needs its own projection.
+  if (source && source.points.length === points.length
+    && points.every((p, i) => p.x === source.points[i]!.x && p.y === source.points[i]!.y)) {
+    return source.test ??= prepareConvexPolygon(source.points);
+  }
+  return prepareConvexPolygon(points);
+}
+
 const CELL = 16;
 
 /**
@@ -97,7 +120,7 @@ export function createOccupiedIndex(_plot: Rect): OccupiedIndex {
   const hit = (index: number, rect: Rect, pad: number): boolean => {
     const claim = rects[index]!;
     return rectsOverlap(claim.rect, rect, pad) && (claim.polygon === undefined
-      || (polygonTests[index] ??= prepareConvexPolygon(claim.polygon))(rect, pad));
+      || (polygonTests[index] ??= polygonTest(claim.polygon))(rect, pad));
   };
   // A claim spans several cells; `seen` stamps it once per query.
   const seen: number[] = [];
@@ -141,7 +164,11 @@ export function createOccupiedIndex(_plot: Rect): OccupiedIndex {
   return {
     claim(rect, kind, owner, part, polygon) {
       const claimed: OccupiedClaim = part === undefined ? { rect: { ...rect }, kind, owner } : { rect: { ...rect }, kind, owner, part };
-      if (polygon !== undefined) claimed.polygon = polygon.map((point) => ({ ...point }));
+      if (polygon !== undefined) {
+        claimed.polygon = polygon.map((point) => ({ ...point }));
+        const source = polygonSources.get(polygon);
+        if (source) polygonSources.set(claimed.polygon, source);
+      }
       rects.push(claimed);
       if (visiting) indexPendingClaims();
     },
