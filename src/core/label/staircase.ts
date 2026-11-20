@@ -21,7 +21,7 @@ import type { Rect } from '../geometry';
 import { twoLineWidth, wrapText, type FontSpec, type TextMeasurer } from '../text';
 import type { Id } from '../types/cell';
 import type { LintWarning, PlacedLabel, SceneNode } from '../types/scene';
-import type { OccupiedIndex, OccupiedView } from './occupied';
+import type { OccupiedClaim, OccupiedIndex, OccupiedView } from './occupied';
 import { PRIORITY, type LabelRequest } from './solver';
 import { maxOf, minOf, pushAll } from '../arrays';
 
@@ -111,12 +111,39 @@ interface StaircaseName {
  * above it is an obstacle there.
  */
 function bandObstacles(claims: OccupiedView, centers: readonly number[], half: number, floor: number, above: number): StaircaseObstacle[] {
-  return centers.map((cx) => {
-    const span = { x: cx - half, y: -1e5, w: 2 * half, h: floor + 1e5 };
-    const tops = claims.hitsWhich(span, 0, (claim) => claim.kind === 'frame' || claim.kind === 'legend' || claim.kind === 'reserved')
-      .map((claim) => claim.rect.y);
-    return { x0: cx - half, x1: cx + half, top: Math.min(floor, minOf(tops)) - above };
-  });
+  const ignored = (claim: OccupiedClaim) => claim.kind === 'frame' || claim.kind === 'legend' || claim.kind === 'reserved';
+  const y = -1e5;
+  const h = floor - y;
+  const w = 2 * half;
+  const bands = centers.map(cx => ({ x0: cx - half, x1: cx + half, top: floor }));
+  const ordered = bands.length > 1 && w > 0 && Number.isFinite(w) && centers.every((cx, i) => Number.isFinite(cx) && (i === 0 || cx >= centers[i - 1]!));
+  // Each upright rectangle touches one consecutive run of ordered bands. Filter the
+  // vertical interval once and find the first band its left edge can enter.
+  const rectangles = ordered ? claims.snapshot(c => !ignored(c) && !(c.rect.y + c.rect.h <= y || y + h <= c.rect.y)) : undefined;
+  if (rectangles && !rectangles.some(c => c.polygon !== undefined)) {
+    for (const { rect } of rectangles) {
+      const right = rect.x + rect.w;
+      let lo = 0;
+      let hi = bands.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >>> 1;
+        // hitsWhich compares the span's x + w, which can round differently from cx + half.
+        if (bands[mid]!.x0 + w <= rect.x) lo = mid + 1;
+        else hi = mid;
+      }
+      for (let i = lo; i < bands.length && !(right <= bands[i]!.x0); i++) {
+        bands[i]!.top = Math.min(bands[i]!.top, rect.y);
+      }
+    }
+  } else {
+    // The occupied index also checks the outlines of sloped marks.
+    for (const band of bands) {
+      const hits = claims.hitsWhich({ x: band.x0, y, w, h }, 0, ignored);
+      for (const claim of hits) band.top = Math.min(band.top, claim.rect.y);
+    }
+  }
+  for (const band of bands) band.top -= above;
+  return bands;
 }
 
 type StaircasePlan = { names: StaircaseName[]; deficit: number } | { failed: string };
