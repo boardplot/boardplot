@@ -1160,7 +1160,7 @@ function layoutLinePass(
   let reserves = lineReserves(env, domain, paints, text, warnings);
   if (reserves.endpoint.endpointLegendFallback && inlineFallbackApplies(options, domain, env)) return endNameFallback(data, options, domain, env);
   const { size, theme, measure } = env;
-  let occupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
+  let occupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height }, 'short-label-pass');
   // The event lane sizes itself and the key with the frame and plot passes.
   const settle = (held: LineReserves, sink: LintWarning[]) => settleEventLane({
     annotations: held.annList, categories: domain.cats, events: options.events, language: options.locale?.language,

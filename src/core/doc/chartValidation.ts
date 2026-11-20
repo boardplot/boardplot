@@ -1,11 +1,11 @@
 import * as z from 'zod';
 import { EMPTY_DATA, isEmptyDataIssue } from '../emptyData';
 import { isRecord } from '../lint/shared';
-import { canonicalChartType, chartInputName, getChartSchemas, unsupported } from '../registry';
+import { canonicalChartType, catalogueOptionsSchemas, chartInputName, getChartSchemas, unsupported } from '../registry';
 import { caseInsensitiveValue, inputConversion, replaceInputValue } from '../inputConversion';
 import { parseWithInputConversions } from '../schema/inputConversions';
 import { schemaNodeAtPath, type JsonSchemaNode } from '../schema/nodes';
-import { annotationKindTakes, annotationSchema, diagnosedSafeParse } from '../schema/shared';
+import { annotationKindTakes, annotationSchema, baseOptionsSchema, diagnosedSafeParse } from '../schema/shared';
 import { flattenIssues } from '../schema/flattenIssues';
 import { allowedValues, expectedTypes } from '../diagnostics/describe';
 import { refusalSuggest } from '../schema/capabilityReasons';
@@ -214,7 +214,11 @@ function parseChartInput(doc: BoardplotDoc, chart: DocChart, envelope: DocumentE
       }
       return null;
     }
-    if (optionsTake(def.type, 'annotations')) {
+    // A built-in object with the shared annotation field accepts this key. Its own refinements still run below.
+    const schema = def.optionsSchema;
+    const sharedAnnotations = catalogueOptionsSchemas.has(schema) && schema instanceof z.ZodObject
+      && schema.shape.annotations === baseOptionsSchema.shape.annotations && schema.meta() === undefined;
+    if (sharedAnnotations || optionsTake(def.type, 'annotations')) {
       const mergedOptions = ownedDocumentCopy({ ...def.aliasDefaults?.[chart.type], ...chart.options, annotations: ownedDocumentCopy(annResult.data) });
       const typeAnnResult = diagnosedSafeParse(def.optionsSchema as z.ZodType, mergedOptions);
       if (!typeAnnResult.success) {

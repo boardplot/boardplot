@@ -175,7 +175,7 @@ export function barPassText(domain: Pick<BarDomain, 'options' | 'valueSpec'>) {
 /** The frame (title, subtitle, legend, source measured FIRST); claims into its own index. */
 export function solveBarFrame(domain: BarDomain, paints: BarLegendPaints, warnings: LintWarning[]): { frame: FrameResult; claims: OccupiedIndex } {
   const { options, theme, size, measure, cats } = domain;
-  const claims = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
+  const claims = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height }, 'short-label-pass');
   const legend = buildLegend(domain, paints, warnings);
   const frame = solveFrame(
     {

@@ -49,6 +49,29 @@ export interface OccupiedIndex {
  */
 export type OccupiedView = Pick<OccupiedIndex, 'hits' | 'hitsWhich' | 'snapshot'>;
 
+interface PolygonSource {
+  points: readonly Point[];
+  test?: ReturnType<typeof prepareConvexPolygon>;
+}
+
+const polygonSources = new WeakMap<readonly Point[], PolygonSource>();
+
+/** A layout-owned outline, before claim() makes the independently editable copies for each index. */
+export function sharePolygonProjection(points: readonly Point[]): readonly Point[] {
+  polygonSources.set(points, { points: points.map(p => ({ ...p })) });
+  return points;
+}
+
+function polygonTest(points: readonly Point[]): ReturnType<typeof prepareConvexPolygon> {
+  const source = polygonSources.get(points);
+  // A snapshot exposes its index's polygon. A copy edited before its first query needs its own projection.
+  if (source && source.points.length === points.length
+    && points.every((p, i) => p.x === source.points[i]!.x && p.y === source.points[i]!.y)) {
+    return source.test ??= prepareConvexPolygon(source.points);
+  }
+  return prepareConvexPolygon(points);
+}
+
 const CELL = 16;
 
 /**
@@ -66,7 +89,7 @@ function cellRange(rect: Rect, pad: number, range: [number, number, number, numb
   return range;
 }
 
-export function createOccupiedIndex(_plot: Rect): OccupiedIndex {
+export function createOccupiedIndex(_plot: Rect, mode?: 'short-label-pass'): OccupiedIndex {
   const rects: OccupiedClaim[] = [];
   const scratchRange: [number, number, number, number] = [0, 0, 0, 0];
   const released = new Set<number>();
@@ -97,7 +120,7 @@ export function createOccupiedIndex(_plot: Rect): OccupiedIndex {
   const hit = (index: number, rect: Rect, pad: number): boolean => {
     const claim = rects[index]!;
     return rectsOverlap(claim.rect, rect, pad) && (claim.polygon === undefined
-      || (polygonTests[index] ??= prepareConvexPolygon(claim.polygon))(rect, pad));
+      || (polygonTests[index] ??= polygonTest(claim.polygon))(rect, pad));
   };
   // A claim spans several cells; `seen` stamps it once per query.
   const seen: number[] = [];
@@ -111,10 +134,9 @@ export function createOccupiedIndex(_plot: Rect): OccupiedIndex {
     // A query inside a query's callback would restamp `seen` and skip claims of the outer one.
     if (visiting) throw new Error('occupied index: a query ran inside another query\'s callback');
     visiting = true;
-    try { return visitClaims(rect, pad, visit); } finally { visiting = false; }
+    try { return query(rect, pad, visit); } finally { visiting = false; }
   };
   const visitClaims = (rect: Rect, pad: number, visit: (i: number) => boolean): boolean => {
-    if (indexed < rects.length) indexPendingClaims();
     const range = cellRange(rect, pad, scratchRange);
     if (range === undefined) {
       for (let i = 0; i < rects.length; i++) if (visit(i)) return true;
@@ -122,6 +144,7 @@ export function createOccupiedIndex(_plot: Rect): OccupiedIndex {
     }
     // Read the scratch range before a callback can add a claim to the same index.
     const [x0, x1, y0, y1] = range;
+    if (indexed < rects.length) indexPendingClaims();
     stamp++;
     for (let w = 0; w < wide.length; w++) if (visit(wide[w]!)) return true;
     for (let x = x0; x <= x1; x++) {
@@ -138,10 +161,25 @@ export function createOccupiedIndex(_plot: Rect): OccupiedIndex {
     }
     return false;
   };
+  // A short label pass can finish before building a grid repays its cost.
+  // Longer searches switch back to the usual grid for the rest of the pass.
+  let scans = 0;
+  const query: typeof visitClaims = mode === 'short-label-pass' ? (rect, pad, visit) => {
+    if (rects.length <= 64 && scans < 32 && indexed === 0) {
+      scans++;
+      for (let i = 0; i < rects.length; i++) if (visit(i)) return true;
+      return false;
+    }
+    return visitClaims(rect, pad, visit);
+  } : visitClaims;
   return {
     claim(rect, kind, owner, part, polygon) {
       const claimed: OccupiedClaim = part === undefined ? { rect: { ...rect }, kind, owner } : { rect: { ...rect }, kind, owner, part };
-      if (polygon !== undefined) claimed.polygon = polygon.map((point) => ({ ...point }));
+      if (polygon !== undefined) {
+        claimed.polygon = polygon.map((point) => ({ ...point }));
+        const source = polygonSources.get(polygon);
+        if (source) polygonSources.set(claimed.polygon, source);
+      }
       rects.push(claimed);
       if (visiting) indexPendingClaims();
     },

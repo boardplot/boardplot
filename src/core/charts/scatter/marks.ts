@@ -12,7 +12,8 @@ import { emphasisWeight, secondaryFont, strokeToken, dashToken } from '../../the
 
 import type { Rect } from '../../geometry';
 import { layoutValueAxis } from '../../axis';
-import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
+import { createOccupiedIndex, sharePolygonProjection, type OccupiedIndex } from '../../label/occupied';
+import { requestMemo } from '../../layoutPlan';
 import type { Id } from '../../types/cell';
 import type { MarkerShape } from '../../types/data';
 import type { AxisGeometry, LintWarning, Paint, SceneDisplay, SceneNode } from '../../types/scene';
@@ -523,6 +524,17 @@ function hundredths(v: number): string {
   return frac === 0 ? `${sign}${whole}` : `${sign}${whole}.${frac < 10 ? `0${frac}` : String(frac).replace(/0$/, '')}`;
 }
 
+function bubbleOutline(cx: number, cy: number, reach: number) {
+  return requestMemo(bubbleOutline, `${cx}|${cy}|${reach}`, () => {
+    const radius = reach / Math.cos(Math.PI / 32);
+    const points = Array.from({ length: 32 }, (_, k) => ({
+      x: cx + radius * Math.cos(k * Math.PI / 16),
+      y: cy + radius * Math.sin(k * Math.PI / 16),
+    }));
+    return sharePolygonProjection(points);
+  });
+}
+
 /** The point marks: larger bubbles first, smaller LAST (auto-front); claims in draw order. */
 function pointMarks(
   env: ScatterEnv,
@@ -588,7 +600,7 @@ function pointMarks(
     // A bubble claims its circle (a 32-gon around it), not its box: a value inside a small neighbour
     // stood 0.5 px into a large bubble's box corner and went to the note.
     const outline = domain.bubbleMode && !odd && reach >= BUBBLE_OUTLINE_MIN_R
-      ? Array.from({ length: 32 }, (_, k) => ({ x: cx + reach / Math.cos(Math.PI / 32) * Math.cos(k * Math.PI / 16), y: cy + reach / Math.cos(Math.PI / 32) * Math.sin(k * Math.PI / 16) }))
+      ? bubbleOutline(cx, cy, reach)
       : undefined;
     claims.claim({ x: cx - reach, y: cy - reach, w: 2 * reach, h: 2 * reach }, 'mark', owner, undefined, outline);
   }

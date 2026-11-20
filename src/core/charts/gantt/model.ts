@@ -87,7 +87,7 @@ export interface GanttEnv {
   theme: Theme;
   surface: { rowTint: number; elapsedTint: number };
   size: Size;
-  lang: string | undefined;
+  formatDate: (date: Date | number, format: string) => string;
   measure: TextMeasurer;
   highlights: ReadonlySet<Id>;
   labelOn: (kind: LabelKind) => boolean;

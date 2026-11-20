@@ -7,7 +7,6 @@ import { chartString } from '../../strings/gantt';
  */
 
 import { contrastRatio } from '../../color';
-import { formatDate } from '../../dateFormat';
 import type { Rect } from '../../geometry';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { separationStroke } from '../../markVisibility';
@@ -49,13 +48,13 @@ interface MarkCtx {
 
 type RowMarks = GanttMarks['rows'][number];
 
-function itemDates(item: NormItem): { start: string; end: string } {
-  return { start: formatDate(dateFromDay(item.startDay), 'yyyy-MM-dd'),
-    end: formatDate(dateFromDay(item.endDay - 1), 'yyyy-MM-dd') };
+function itemDates(env: GanttEnv, item: NormItem): { start: string; end: string } {
+  return { start: env.formatDate(item.startDay, 'yyyy-MM-dd'),
+    end: env.formatDate(item.endDay - 1, 'yyyy-MM-dd') };
 }
 
 export function fmtDay(env: GanttEnv, day: number): string {
-  return formatDate(dateFromDay(day), 'd MMM yyyy', env.lang);
+  return env.formatDate(day, 'd MMM yyyy');
 }
 
 function displayForItem(env: GanttEnv, item: NormItem): string {
@@ -238,7 +237,7 @@ function headerRow(
   const { d0Day, d1Day } = domain;
   const { x } = ctx.body;
   const { headerRowH } = ctx.band;
-  const lang = ctx.env.lang;
+  const { formatDate } = ctx.env;
   const cells = starts.map((s, i): Rect => {
     const a = Math.max(dayNum(s), ctx.body.dayFrom);
     const b = Math.min(i + 1 < starts.length ? dayNum(starts[i + 1]!) : ctx.body.dayTo, ctx.body.dayTo);
@@ -272,7 +271,7 @@ function headerRow(
   const voters = starts.map((_, i) => i).filter(isFull);
   const electorate = voters.length > 0 ? voters : starts.map((_, i) => i);
   const rowFmtIndex = fmts.findIndex((f) =>
-    electorate.every((i) => fits(formatDate(starts[i]!, f, lang), i)),
+    electorate.every((i) => fits(formatDate(starts[i]!, f), i)),
   );
   // A cell the row format misses — a clipped edge cell, or any cell when
   // even the narrowest format failed the vote — degrades DOWN the remaining
@@ -291,7 +290,7 @@ function headerRow(
   // A name may take `span` cells: its neighbours stay blank.
   const nameOf = (i: number, span: number): string | undefined => {
     const named = startDay ? dateFromDay(Math.max(dayNum(starts[i]!), d0Day)) : starts[i]!;
-    return cellFmts.map((f) => formatDate(named, f, lang)).find((candidate) => sized(candidate).width + 6 <= span * cells[i]!.w);
+    return cellFmts.map((f) => formatDate(named, f)).find((candidate) => sized(candidate).width + 6 <= span * cells[i]!.w);
   };
   // A minor tier whose cells hold no name prints every k-th cell, k the least that holds one.
   let stride = 1;
@@ -441,7 +440,7 @@ function rowMarks(ctx: MarkCtx, r: NormRow, i: number, shades: Map<Id, { nodeId:
       const fill: Paint = !cadence.colorRole && env.highlights.has(event.id) ? { token: 'focus', tint: 0.4 } : cadenceRowPaint(env, r);
       nodes.push({ t: 'path', id: nodeId, d, fill, owner, part: `cadence-${cadence.marker}`, display: { value: fmtDay(env, event.day) } });
       claims.claim(rect, 'mark', owner, 'cadence');
-      cadenceNodes.push({ date: formatDate(dateFromDay(event.day), 'yyyy-MM-dd'), marker: cadence.marker, nodeId, rect });
+      cadenceNodes.push({ date: env.formatDate(event.day, 'yyyy-MM-dd'), marker: cadence.marker, nodeId, rect });
     }
   }
   // Bars that meet or overlap in one lane would paint one block: a 1px
@@ -460,7 +459,7 @@ function rowMarks(ctx: MarkCtx, r: NormRow, i: number, shades: Map<Id, { nodeId:
     const display = { value: displayForItem(env, it) };
     if (it.kind === 'shade') {
       place.rect = shades.get(it.id)!.rect;
-      itemNodes.push({ ...itemDates(it), id: it.id, kind: it.kind, nodeId: shades.get(it.id)!.nodeId, rect: place.rect });
+      itemNodes.push({ ...itemDates(env, it), id: it.id, kind: it.kind, nodeId: shades.get(it.id)!.nodeId, rect: place.rect });
       continue;
     }
     if (it.kind === 'rule') {
@@ -497,7 +496,7 @@ function rowMarks(ctx: MarkCtx, r: NormRow, i: number, shades: Map<Id, { nodeId:
       nodes.push({ t: 'path', id: nodeId, d, stroke: { token: 'markInk' }, width: strokeToken(env.theme, 'rule'), owner, part: 'bracket', display });
     }
     claims.claim(place.rect, 'mark', owner);
-    itemNodes.push({ ...itemDates(it), id: it.id, kind: it.kind, nodeId, rect: place.rect });
+    itemNodes.push({ ...itemDates(env, it), id: it.id, kind: it.kind, nodeId, rect: place.rect });
   }
   marks.rows.push({ id: r.id, y: ctx.band.rowY[i]!, h: ctx.band.stacked ? ctx.band.rowY[i + 1]! - ctx.band.rowY[i]! : ctx.band.rowHs[i]!, itemNodes, cadenceNodes });
   return { row: r, index: i, cy, items };

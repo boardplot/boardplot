@@ -4,7 +4,7 @@ import { calendarCategories } from '../../calendarLabels';
 import { chartSizing } from '../../sizing';
 /** Zod-free line chart registration. */
 
-import type { ChartCore } from '../../registry';
+import { captionSizedPanelLayouts, type ChartCore } from '../../registry';
 import type { LineChartData } from '../../types/data';
 import { layoutLine, type LineDerived, type LineMarks } from './layout';
 import { lowerLineX } from './continuous';
@@ -31,3 +31,5 @@ export const lineCore: ChartCore<LineChartData, LineOptions, LineMarks, LineDeri
   defaults: { variant: 'line' },
   annotationKinds: ['cagr', 'diff', 'delta', 'note', 'callout', 'valueLine', 'indicator100', 'abs', 'event', 'band', 'text', 'line', 'arrow', 'box']
 };
+
+captionSizedPanelLayouts.add(lineCore.layout);

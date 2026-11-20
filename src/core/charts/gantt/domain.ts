@@ -5,7 +5,7 @@
  */
 
 import { chartTheme } from '../chartEnv';
-import { formatDate, parseISODate } from '../../dateFormat';
+import { parseISODate } from '../../dateFormat';
 import { NormalizeError, resolveHighlight, resolveSize } from '../../normalize/shared';
 import { compareText, defaultMeasurer } from '../../text';
 import { resolveSemanticPaletteTheme, resolveSurface, emphasisWeight } from '../../theme';
@@ -15,7 +15,7 @@ import type { GanttCell, GanttData, GanttItem } from '../../types/data';
 import type { LabelKind } from '../../types/options';
 import type { LintWarning } from '../../types/scene';
 import { MAX_COLS, resolveGanttColumns } from './columns';
-import { TIERS, boundariesOf, ceilTo, dateFromDay, dayNum, floorTo, isISODay } from './calendar';
+import { TIERS, boundariesOf, ceilTo, dateFromDay, dayNum, floorTo, ganttDateFormatter, isISODay } from './calendar';
 import type { GanttGranularity, GanttOptions } from './layout';
 import type {
   GanttDomain,
@@ -46,7 +46,7 @@ export function resolveGanttEnv(options: GanttOptions, warnings: LintWarning[]):
     theme,
     surface: resolveSurface(theme),
     size: resolveSize(options.size),
-    lang: options.locale?.language,
+    formatDate: ganttDateFormatter(options.locale?.language),
     measure: options.measure ?? defaultMeasurer,
     highlights: new Set(resolveHighlight(options.highlight)),
     labelOn: (kind: LabelKind): boolean => {
@@ -343,7 +343,7 @@ export const ganttItemPrintsName = (item: NormItem, env: GanttEnv): boolean =>
 export function ganttItemLabel(item: NormItem, env: GanttEnv): { text: string; missing: string[] } {
   const parts = itemLabelParts(item, env);
   const selected = Array.isArray(env.options.labels === false ? undefined : env.options.labels?.item);
-  const date = (day: number) => formatDate(dateFromDay(day), 'd MMM', env.lang);
+  const date = (day: number) => env.formatDate(day, 'd MMM');
   const missing: string[] = [];
   const texts = parts.map(part => {
     const text = part === 'category' ? item.label

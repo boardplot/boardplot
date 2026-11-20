@@ -51,7 +51,7 @@ import { pyramidDefinition } from './pyramid';
 import { waffleDefinition } from './waffle';
 import { treemapDefinition } from './treemap';
 import { sankeyDefinition } from './sankey';
-import { getChart, registerChart, type ChartDefinition } from '../registry';
+import { catalogueOptionsSchemas, getChart, registerChart, type ChartDefinition } from '../registry';
 
 /**
  * Consumers that need the whole catalogue import these values so tree shaking
@@ -114,6 +114,7 @@ export function registerCatalogue(): void {
   // The registry stores definitions with erased generics; the list is a union
   // of all concrete ones, so this is the widest honest type here.
   for (const definition of chartDefinitions as readonly ChartDefinition<any, any, any, any>[]) {
+    catalogueOptionsSchemas.add(definition.optionsSchema);
     if (!getChart(definition.type)?.dataSchema) registerChart(definition);
   }
 }

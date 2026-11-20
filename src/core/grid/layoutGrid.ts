@@ -16,7 +16,7 @@ import { boundsOf, type Rect } from '../geometry';
 import { createOccupiedIndex } from '../label/occupied';
 import { PRIORITY, solveLabels, type LabelRequest } from '../label/solver';
 import { accessibleTitle, NormalizeError, resolveCanvasOptions, resolveSize } from '../normalize/shared';
-import { getChart } from '../registry';
+import { captionSizedPanelLayouts, getChart } from '../registry';
 import { panelNoteData } from '../panelNoteData';
 import { GridChildRefusal, gridRowHeights, gridSizing, hasKpiFigure, inheritedScaleUnit, layoutChildChart, panelAnnotations, recordedPanelOptions, smallestKpiValueSize } from './childLayout';
 import { KPI_HOST_TEXT, KPI_VALUE_SIZE } from '../typeFloors';
@@ -387,9 +387,16 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
       measure,
       typeClass: panelTypeClass(options) ?? typeWidthClass(resolveSize(options.size).width),
     };
-    const probe = layoutChildChart(panel.data, opts, def.layout as (data: unknown, options: unknown) => LayoutResult, panel.id);
-    if (probe.refused) throw new GridChildRefusal(panel.id, probe);
-    const autoTierName = (probe.derived as { tierName?: unknown }).tierName;
+    const draw = (next: object) => {
+      const child = layoutChildChart(panel.data, next, def.layout as (data: unknown, options: unknown) => LayoutResult, panel.id);
+      if (child.refused) throw new GridChildRefusal(panel.id, child);
+      return child;
+    };
+    // Plain column and line panels return geometry at either margin. Their authored caption already fixes the reserve.
+    const knownCaption = compactTiers && authoredTitle !== undefined && reusePanels && !opts.annotations?.length
+      && captionSizedPanelLayouts.has(def.layout);
+    const probe = knownCaption ? undefined : draw(opts);
+    const autoTierName = (probe?.derived as { tierName?: unknown } | undefined)?.tierName;
     const tierCaption = compactTiers && panelOpts.title !== false
       ? authoredTitle ?? (typeof autoTierName === 'string' ? autoTierName : undefined)
       : undefined;
@@ -403,11 +410,14 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
     const childMargin: Record<string, unknown> = isRecord(opts.margin) ? opts.margin : {};
     const marginTop = typeof childMargin.top === 'number' ? childMargin.top : 20;
     let finalOptions = tierReserve > 0 ? { ...opts, margin: { ...childMargin, top: Math.max(marginTop, tierReserve) } } : opts;
-    let geo =
-      tierReserve > marginTop
-        ? layoutChildChart(panel.data, finalOptions, def.layout as (data: unknown, options: unknown) => LayoutResult, panel.id)
-        : probe;
-    if (geo.refused) throw new GridChildRefusal(panel.id, geo);
+    let geo;
+    try {
+      geo = tierReserve > marginTop ? draw(finalOptions) : probe ?? draw(opts);
+    } catch (error) {
+      // Attribute an invalid original input to the original panel options before its caption margin was applied.
+      if (!probe && tierReserve > marginTop) draw(opts);
+      throw error;
+    }
     // upper endpoint labels can extend above the plot's top margin.
     // Reserve the caption above the child's first ink, not just above its plot.
     if (options.target && tierReserve > 0) {
@@ -416,8 +426,7 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
         if (missing <= 0) break;
         const margin = finalOptions.margin as Record<string, number> | undefined;
         finalOptions = { ...finalOptions, margin: { ...margin, top: (margin?.top ?? marginTop) + missing } };
-        geo = layoutChildChart(panel.data, finalOptions, def.layout as (data: unknown, options: unknown) => LayoutResult, panel.id);
-        if (geo.refused) throw new GridChildRefusal(panel.id, geo);
+        geo = draw(finalOptions);
       }
     }
     return {

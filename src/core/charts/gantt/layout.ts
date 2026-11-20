@@ -1,5 +1,5 @@
 import { chartString } from '../../strings/gantt';
-import { isCachedTextMeasurer } from '../../text';
+import { defaultMeasurer, isCachedTextMeasurer } from '../../text';
 import { structureCount } from '../../structureCounts';
 import { withUnprintedClaims } from '../../claims/ids';
 /**
@@ -40,7 +40,7 @@ import { leaderPieces, solveLabels, type SolveResult } from '../../label/solver'
 import { authoredFootnoteCount, type FrameResult, type InternalFootnoteOptions } from '../../frame';
 import { disclosureNote, disclosuresShown } from '../../notes';
 import { rectContains, rectsOverlap, segmentHitsRect, type Rect } from '../../geometry';
-import { accessibleTitle } from '../../normalize/shared';
+import { accessibleTitle, resolveSize } from '../../normalize/shared';
 import { rowDrivenHeight } from '../../rowCanvas';
 import { ACCEPTANCE_PROBE, CARD_HEIGHT_MEMO, cardReferenceHeight, FORCE_COMPACT, heightOmitted, rowSizing, sideKeyGivesWay } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
@@ -51,14 +51,13 @@ import type { Id } from '../../types/cell';
 import type { GanttData, GanttItem } from '../../types/data';
 import type { BaseOptionsFor, LabelKind, LabelContent } from '../../types/options';
 import type { Geometry, LintWarning, PlacedLabel, SceneNode } from '../../types/scene';
-import { dateFromDay, dayNum } from './calendar';
+import { dayNum } from './calendar';
 import { resolveGanttDomain, resolveGanttEnv } from './domain';
 import { badgeFill, badgeLevels, layoutGanttAnnotations, ruleNodes, type GanttAnnotationLayer } from './events';
 import { flagRowPitch, ganttSpanBlockers, planGanttLabels, planRowFlags } from './labels';
 import { fmtDay, ganttPaints, layoutGanttMarks, type GanttMarkGeometry } from './marks';
 import { COLUMN_PLAN, columnPlan, ganttColumnWarnings, resolveGanttColumns, type GanttColumnOverride, type GanttColumnPlan } from './columns';
 import { BADGE_LEVELS, LABEL_PAD, MIN_ROW_H, NO_LANE, rowTextFloor, RULE_LABEL_GAP, type GanttBand, type GanttBody, type GanttDomain, type GanttEnv } from './model';
-import { formatDate } from '../../dateFormat';
 import { ganttBody, ganttFrame, MINIMUM_TIMELINE, STACKED_LANE_FLOOR } from './plot';
 import { maxOf, minOf, pushAll } from '../../arrays';
 
@@ -263,7 +262,7 @@ function assembleGanttGeometry(input: {
       {
         axis: 'x',
         ticks: domain.minorStarts.map((s) => ({
-          at: formatDate(dateFromDay(Math.max(dayNum(s), d0Day)), 'yyyy-MM-dd'),
+          at: env.formatDate(Math.max(dayNum(s), d0Day), 'yyyy-MM-dd'),
           pos: body.x(Math.max(dayNum(s), d0Day)),
         })),
       },
@@ -274,8 +273,8 @@ function assembleGanttGeometry(input: {
     marks: input.geometry.marks,
     derived: {
       span: {
-        start: formatDate(dateFromDay(d0Day), 'yyyy-MM-dd'),
-        end: formatDate(dateFromDay(d1Day - 1), 'yyyy-MM-dd'),
+        start: env.formatDate(d0Day, 'yyyy-MM-dd'),
+        end: env.formatDate(d1Day - 1, 'yyyy-MM-dd'),
       },
       granularity,
     },
@@ -333,14 +332,29 @@ const fullCardOptions = new WeakMap<GanttData, GanttOptions>();
 /** Rows that retry with stacked milestone flags; in open height, the lane height each needs, and whether unused flag height is already trimmed. */
 interface FlagPass { rows: ReadonlySet<string>; pitch?: ReadonlyMap<string, number>; trimmed?: boolean }
 
-function layoutGanttPass(data: GanttData, options: GanttOptions = {}, keyed: ReadonlySet<string> = new Set(), autoHeight = heightOmitted(options.size), flags: FlagPass = { rows: new Set() }): Geometry<GanttMarks, GanttDerived> {
+interface GanttPreparation {
+  env: GanttEnv;
+  domain: GanttDomain;
+  warnings: LintWarning[];
+}
+
+function prepareGantt(data: GanttData, options: GanttOptions): GanttPreparation {
+  const warnings: LintWarning[] = [];
+  const env = resolveGanttEnv(options, warnings);
+  return { env, domain: resolveGanttDomain(data, env, warnings), warnings };
+}
+
+function layoutGanttPass(data: GanttData, options: GanttOptions, prepared: GanttPreparation | undefined, keyed: ReadonlySet<string> = new Set(), autoHeight = heightOmitted(options.size), flags: FlagPass = { rows: new Set() }): Geometry<GanttMarks, GanttDerived> {
   if (data && typeof data === 'object' && options.mode !== 'compact' && !(options as { [FORCE_COMPACT]?: boolean })[FORCE_COMPACT]) {
     const { [CARD_HEIGHT_MEMO]: _call, ...full } = options as GanttOptions & { [CARD_HEIGHT_MEMO]?: unknown };
     fullCardOptions.set(data, full);
   }
-  const warnings: LintWarning[] = [];
-  const env = resolveGanttEnv(options, warnings);
-  const domain = resolveGanttDomain(data, env, warnings);
+  // These retries change height, flags, badges or the label lane. The rows, calendar,
+  // fonts and width-dependent milestone plan stay the same within one labelled layout.
+  const pass = prepared ?? prepareGantt(data, options);
+  const env = prepared ? { ...pass.env, options, size: resolveSize(options.size) } : pass.env;
+  const domain = prepared ? { ...pass.domain, milestones: { ...pass.domain.milestones, flagPitch: new Map<string, number>() } } : pass.domain;
+  const warnings = prepared ? [...pass.warnings] : pass.warnings;
   const heightOpen = autoHeight || (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === false;
   if (heightOpen && flags.pitch) for (const [id, pitch] of flags.pitch) domain.milestones.flagPitch.set(id, pitch);
   const keyEntries = [...domain.milestones.byId.values()].filter(entry => keyed.has(entry.item.id));
@@ -377,12 +391,12 @@ function layoutGanttPass(data: GanttData, options: GanttOptions = {}, keyed: Rea
     // needs. Brackets and cluster leaders sit inside it.
     rowsH: band.naturalRowsH,
   });
-  if (grow !== undefined) return layoutGanttPass(data, { ...options, size: { width: size.width, height: grow } }, keyed, autoHeight, flags);
+  if (grow !== undefined) return layoutGanttPass(data, { ...options, size: { width: size.width, height: grow } }, prepared, keyed, autoHeight, flags);
   const body = ganttBody(env, domain, frame, band, warnings);
   // Badges that crowd on the drawn timeline stack up: lay the chart out again with the strip they need.
   const badgeLevelCount = 1 + Math.max(0, ...badgeLevels(env, domain, body.x).values());
   if (badgeLevelCount > ((options as { [BADGE_LEVELS]?: number })[BADGE_LEVELS] ?? 1)) {
-    return layoutGanttPass(data, { ...options, [BADGE_LEVELS]: badgeLevelCount } as GanttOptions, keyed, autoHeight, flags);
+    return layoutGanttPass(data, { ...options, [BADGE_LEVELS]: badgeLevelCount } as GanttOptions, prepared, keyed, autoHeight, flags);
   }
   const geometry = layoutGanttMarks(env, domain, band, body, paints, warnings);
   commitClaims(occupied, geometry.claims);
@@ -390,7 +404,7 @@ function layoutGanttPass(data: GanttData, options: GanttOptions = {}, keyed: Rea
   if (heightOpen && flags.rows.size && !flags.pitch) {
     const pitch = new Map(geometry.rows.filter(place => flags.rows.has(place.row.id))
       .map(place => [place.row.id, flagRowPitch(planRowFlags(domain, body, place))] as const).filter(([, pitch]) => pitch > 0));
-    return layoutGanttPass(data, options, keyed, autoHeight, { rows: flags.rows, pitch });
+    return layoutGanttPass(data, options, prepared, keyed, autoHeight, { rows: flags.rows, pitch });
   }
   const requests = planGanttLabels(env, domain, band, body, geometry, paints, keyNumbers, flags.rows)
     .filter(request => !(notesOff && request.kind === 'item' && keyed.has(request.owner.segmentId ?? '')));
@@ -423,7 +437,7 @@ function layoutGanttPass(data: GanttData, options: GanttOptions = {}, keyed: Rea
         && segmentHitsRect(a, b, mark.rect))));
     if (crossed) nextKey.add(id);
   }
-  if (nextKey.size > keyed.size) return layoutGanttPass(data, options, nextKey, autoHeight, flags);
+  if (nextKey.size > keyed.size) return layoutGanttPass(data, options, prepared, nextKey, autoHeight, flags);
   // A flag the solver could not seat gives its height back. A squeezed probe
   // canvas seats fewer flags than the natural height, so it trims nothing.
   if (heightOpen && flags.pitch && !flags.trimmed && domain.rows.every((row, i) => band.rowHs[i]! >= (flags.pitch!.get(row.id) ?? 0) - 0.5)) {
@@ -434,7 +448,7 @@ function layoutGanttPass(data: GanttData, options: GanttOptions = {}, keyed: Rea
       const pitch = flagRowPitch(planRowFlags(domain, body, place), seated.map(label => label.owner.segmentId!));
       if (pitch > 0) used.set(place.row.id, pitch);
     }
-    if ([...flags.pitch].some(([id, pitch]) => (used.get(id) ?? 0) < pitch - 0.5)) return layoutGanttPass(data, options, keyed, autoHeight, { ...flags, pitch: used, trimmed: true });
+    if ([...flags.pitch].some(([id, pitch]) => (used.get(id) ?? 0) < pitch - 0.5)) return layoutGanttPass(data, options, prepared, keyed, autoHeight, { ...flags, pitch: used, trimmed: true });
   }
   // The report targets give the milestone lane back to the timeline when
   // the lane does not pay: the chart is laid out again without it, and that
@@ -445,7 +459,7 @@ function layoutGanttPass(data: GanttData, options: GanttOptions = {}, keyed: Rea
     // A bar name that runs past the plot is no use of the lane: the wider timeline holds it.
     const laneUsed = solved.placed.some((label) => label.kind === 'item' && !label.hidden && domain.milestones.laneIds.has(label.owner.segmentId ?? '') && label.rect.x + label.rect.w > body.bodyX + body.bodyW + 0.5);
     // Without the lane the timeline is wider: the flags are planned again.
-    const wide = layoutGanttPass(data, { ...options, [NO_LANE]: true } as GanttOptions, keyed, autoHeight, { rows: flags.rows });
+    const wide = layoutGanttPass(data, { ...options, [NO_LANE]: true } as GanttOptions, prepared, keyed, autoHeight, { rows: flags.rows });
     const wideHidden = wide.refused ? Infinity : wide.labels.filter((label) => label.hidden).length;
     const flagsFit = flags.rows.size > 0 && [...domain.milestones.byId].every(([id, entry]) =>
       wide.labels.some(label => !label.hidden && label.owner.segmentId === id && label.text === entry.text));
@@ -545,7 +559,9 @@ export function layoutGantt(data: GanttData, options: GanttOptions = {}): Geomet
 
 /** Keep clear layouts unchanged; retry only rows whose final layout loses a milestone's identity. */
 function layoutGanttLabelled(data: GanttData, options: GanttOptions = {}): Geometry<GanttMarks, GanttDerived> {
-  const first = layoutGanttPass(data, options);
+  // A custom measurer can change between calls. Keep its full callback sequence.
+  const prepared = isCachedTextMeasurer(options.measure ?? defaultMeasurer) ? prepareGantt(data, options) : undefined;
+  const first = layoutGanttPass(data, options, prepared);
   if (options.labels === false || options.labels?.item === false) return first;
   // This open-height probe reads only width acceptance, not the repaired labels or height.
   if ((options as { [ACCEPTANCE_PROBE]?: boolean })[ACCEPTANCE_PROBE]
@@ -561,8 +577,7 @@ function layoutGanttLabelled(data: GanttData, options: GanttOptions = {}): Geome
       || first.warnings.some(warning => warning.code === 'milestone-numbered-key');
   }).map(mark => ({ row, mark })));
   if (!suspects.length) return first;
-  const env = resolveGanttEnv(options, []);
-  const domain = resolveGanttDomain(data, env, []);
+  const { env, domain } = prepared ?? prepareGantt(data, options);
   const flagRows = new Set(suspects.filter(({ mark }) => {
     const entry = domain.milestones.byId.get(mark.id);
     if (!entry) return false;
@@ -583,7 +598,7 @@ function layoutGanttLabelled(data: GanttData, options: GanttOptions = {}): Geome
   // they settle at, so every probe and the final size take the same choice.
   const settle = (geo: Geometry<GanttMarks, GanttDerived>, flags: FlagPass): Geometry<GanttMarks, GanttDerived> => {
     for (let round = 0; round < 3 && !geo.refused && geo.sizing && geo.sizing.naturalHeight > geo.size.height + 0.5; round++) {
-      geo = layoutGanttPass(data, { ...options, size: { width: geo.size.width, height: geo.sizing.naturalHeight } }, new Set(), true, flags);
+      geo = layoutGanttPass(data, { ...options, size: { width: geo.size.width, height: geo.sizing.naturalHeight } }, prepared, new Set(), true, flags);
     }
     return geo;
   };
@@ -599,7 +614,7 @@ function layoutGanttLabelled(data: GanttData, options: GanttOptions = {}): Geome
     before = settle(first, { rows: new Set() });
     if (full(before) === domain.milestones.byId.size) return first;
   }
-  const retry = layoutGanttPass(data, options, new Set(), autoHeight, { rows: flagRows });
+  const retry = layoutGanttPass(data, options, prepared, new Set(), autoHeight, { rows: flagRows });
   if (!openHeight) return keeps(first, retry) ? retry : first;
   before ??= settle(first, { rows: new Set() });
   const after = settle(retry, { rows: flagRows });

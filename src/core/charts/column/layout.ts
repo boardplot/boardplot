@@ -748,11 +748,13 @@ function layoutColumnSettled(
   let first = true;
   const run = (next: AnomalyColumnOptions): AnomalyColumnOptions => {
     // Only the staircase padding or fallback flag changes between these draws.
-    const staircase = next.categoryLabels === 'staircase' ? {} : undefined;
+    const staircase: ColumnStaircaseMemo | undefined = next.categoryLabels === 'staircase' ? {} : undefined;
     const draw = (o: AnomalyColumnOptions) => {
       const trial = layoutColumnPass(data, o, keepEachValue, first ? probe : undefined, first && stopAfterFirst !== undefined, staircase);
       first = false;
       if ('retry' in trial) return trial.retry;
+      // A completed draw owns its scene nodes, including the title and footer.
+      if (staircase) staircase.frame = undefined;
       pass = trial;
       return pass.staircase;
     };
@@ -927,10 +929,7 @@ function layoutColumnPass(
     area = columnPlotArea(domain, framed.frame, warnings);
     warnings.push(axisBreakHeightOrderWarning());
   }
-  const scene = layoutColumnMarks(domain, paints, area, planTickEnds(domain, area));
-  // Phase 2 claimed into its own index; replay it, in claim order, into the run's.
-  for (const c of scene.claims.snapshot()) occupied.claim(c.rect, c.kind, c.owner, c.part);
-  if (scene.claims.tickColumns) occupied.tickColumns = scene.claims.tickColumns;
+  const scene = layoutColumnMarks(domain, paints, area, occupied, planTickEnds(domain, area));
   // the value-axis title is a label in the head band, solved first.
   const requests: LabelRequest[] = area.axisTitle && domain.va.show
     ? [valueAxisTitleRequest(area.axisTitle, { x: area.frame.plot.x, y: area.frame.plot.y + area.ruleH + 4 }, 'start', 'axis:y:title')]

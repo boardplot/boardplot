@@ -491,7 +491,7 @@ export function solveLabels(requests: LabelRequest[], occupied: OccupiedIndex, c
   // Each row can move only from all to alternate to none. Every retry starts
   // before any label claim, so dropped neighbours cannot block or move a kept label.
   for (;;) {
-    const attempt = createOccupiedIndex(ctx.plot);
+    const attempt = createOccupiedIndex(ctx.plot, 'short-label-pass');
     attempt.tickColumns = occupied.tickColumns;
     for (const claim of initial) attempt.claim(claim.rect, claim.kind, claim.owner, claim.part, claim.polygon);
     const result = solveLabelPass(requests.map(req => dropped.has(req.id)

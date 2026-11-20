@@ -24,8 +24,9 @@ import { resolveCellRange, type DataRange } from '../../rangeRules';
 import { axisBreakInvalid } from '../../axisBreakInvalid';
 import { applyAxisBounds, applyTickStep, invalidLinearBreakReason, niceDomain, type LinearBreak } from '../../scale';
 import { stepFitsAxisBreak } from '../band/ticks';
-import { defaultMeasurer } from '../../text';
-import { canvasMargin, headingWeight, labelsOffKeepsNames, panelTypeClass, resolveTheme, themeForWidth } from '../../theme';
+import { defaultMeasurer, isCachedTextMeasurer } from '../../text';
+import { columnHeightSearch, sameContent } from '../../sizing';
+import { canvasMargin, headingWeight, labelsOffKeepsNames, layoutStepKey, panelTypeClass, resolveTheme, themeForWidth } from '../../theme';
 import { measureValueAxisWidth } from '../../axis';
 import { percentLevels } from '../../annotatePass';
 import type { Annotation } from '../../types/annotations';
@@ -933,8 +934,39 @@ function columnAnnotationList(
   return annList;
 }
 
-/** Phase 1: data and options in, the plotted values and the value domain out. */
+interface PreparedHeightDomain {
+  data: ChartData;
+  options: Omit<AnomalyColumnOptions, 'size'>;
+  format: string;
+  domain: ColumnDomain;
+}
+
+const heightDomains = new WeakMap<object, PreparedHeightDomain[]>();
+
+/** A fixed width uses the same series, format and value domain at every trial height.
+ * A trial owns its size, options and mutable axis-break decision. */
 export function resolveColumnDomain(data: ChartData, options: AnomalyColumnOptions, warnings: LintWarning[]): ColumnDomain {
+  const size = options.size;
+  const search = typeof size === 'object' && columnHeightSearch.get(size);
+  if (!search || options.variant !== 'stacked' || options.window || options.viewDomain || options.mode === 'compact'
+    || !isCachedTextMeasurer(options.measure ?? defaultMeasurer)) return buildColumnDomain(data, options, warnings);
+  const { size: _size, ...content } = options;
+  const format = JSON.stringify([layoutStepKey(), currentSmallValues(), formatScopeKey(options)]);
+  const entries = heightDomains.get(search);
+  const match = entries?.find(entry => entry.data === data && entry.format === format && sameContent(entry.options, content));
+  if (match) return { ...match.domain, size: resolveSize(size), options };
+  const before = warnings.length;
+  const domain = buildColumnDomain(data, options, warnings);
+  if (domain.options === options && warnings.length === before && domain.shareNotes.length === 0) {
+    // The returned domain can drop its break on a short plot. Keep the original value in the model.
+    const entry = { data, options: content, format, domain: { ...domain } };
+    if (entries) entries.push(entry); else heightDomains.set(search, [entry]);
+  }
+  return domain;
+}
+
+/** Phase 1: data and options in, the plotted values and the value domain out. */
+function buildColumnDomain(data: ChartData, options: AnomalyColumnOptions, warnings: LintWarning[]): ColumnDomain {
   const env = resolveColumnEnv(options, warnings);
   const normalized = normalizeColumnData(data, warnings);
   const { seriesNorm } = normalized;

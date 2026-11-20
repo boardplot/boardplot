@@ -1,5 +1,6 @@
 /** Pure calendar helpers for the gantt layout. Day numbers are UTC-based, DST-proof. */
 
+import { formatDate } from '../../dateFormat';
 import { utcDate } from '../../isoDate';
 import type { GanttGranularity } from './layout';
 
@@ -12,6 +13,22 @@ export function dayNum(d: Date): number {
 export function dateFromDay(n: number): Date {
   return new Date(n * DAY_MS);
 }
+/** Calendar labels, mark dates and accessibility text share date strings across sizing passes. */
+export function ganttDateFormatter(language?: string): (date: Date | number, format: string) => string {
+  const formats = new Map<string, Map<number, string>>();
+  return (date, format) => {
+    const time = typeof date === 'number' ? date * DAY_MS : date.getTime();
+    let dates = formats.get(format);
+    if (!dates) formats.set(format, dates = new Map());
+    let text = dates.get(time);
+    if (text === undefined) {
+      text = formatDate(typeof date === 'number' ? new Date(time) : date, format, language);
+      dates.set(time, text);
+    }
+    return text;
+  };
+}
+
 export const MIN_ISO_DAY = dayNum(utcDate(0, 0, 1));
 export const MAX_ISO_DAY = dayNum(utcDate(9999, 11, 31));
 /** Whether a UTC day number names a date an authored ISO date (0000-01-01 to 9999-12-31) can name. */
