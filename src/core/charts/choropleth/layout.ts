@@ -105,6 +105,7 @@ interface PreparedMapFit {
   fitted: ReturnType<typeof fitGeoPack>;
   outsideFits: ReturnType<typeof outsideLabelGuard>;
   contentRight?: number;
+  drawnLabels?: { solved: RegionLabelSolveResult; occupied: OccupiedIndex };
 }
 
 type RegionLabelSolveResult = ReturnType<typeof solveLabels> & {
@@ -372,7 +373,7 @@ function layoutMapPass(
   const overlayLegend = geoOverlayLegend(overlays, options.overlayTones, options.overlayMeasure, data.overlays ?? [], options);
   pushAll(warnings, overlayLegend.warnings);
   const legendOptions = legendRequired(options.legend, warnings, 'choropleth', theme);
-  const occupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
+  let occupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
   const userSource = options.source ? chartString(options, 'userSourceClause', { v1: options.source }) : '';
   // The label selection and the pack's endorsement disclaimer are
   // method notes (the disclaimer also stands in the attribution on the source
@@ -693,8 +694,8 @@ function layoutMapPass(
   // the row as far as no region or dot of it lies under the key.
   const keyArea: Rect = { x: small.blocks.x - MAP_GAP, y: small.blocks.y - MAP_GAP, w: small.blocks.w + 2 * MAP_GAP, h: small.blocks.h + 2 * MAP_GAP };
   const padding = mapLabels.eligibleIds.size ? undefined : compactPadding;
-  const prepare = (rect: Rect) => prepareMapLayout(pack, rect, laneSpan, occupied, valuesById, mapLabels,
-    visibleMarkerIds, theme, measure, mapCtx, valueTexts, padding, withTable);
+  const prepare = (rect: Rect, fills?: ReadonlyMap<string, Paint>) => prepareMapLayout(pack, rect, laneSpan, occupied, valuesById, mapLabels,
+    visibleMarkerIds, theme, measure, mapCtx, valueTexts, padding, withTable, fills);
   const reserved = mapArea.y - plot.y;
   let prepared: ReturnType<ReturnType<typeof prepare>['draw']> | undefined;
   if (small.position === 'top' && reserved > 0) {
@@ -730,7 +731,14 @@ function layoutMapPass(
       break;
     }
   }
-  const { labelLayout, mapFrame, fitted, leaderLanes, outsideFits } = prepared ?? prepare(mapArea).draw();
+  // On ordinary numeric polygons the gutter search and drawing see the same obstacles.
+  // The selected map can solve its real labels once and keep the resulting occupied index.
+  const fills = !prepared && !overlays.length && !statesById.size && mapLabels.eligibleIds.size
+    && (measure === defaultMeasurer || hasCompleteTableWidths(measure))
+    && pack.regions.every(region => region.polygons.length && valuesById.get(region.id) != null)
+    ? new Map(pack.regions.map(region => [region.id, scale.paint(valuesById.get(region.id)!)])) : undefined;
+  const { labelLayout, mapFrame, fitted, leaderLanes, outsideFits, drawnLabels } = prepared ?? prepare(mapArea, fills).draw();
+  if (drawnLabels) occupied = drawnLabels.occupied;
   // A map its host did not size takes its natural height.
   const grow = rowDrivenHeight({ options, width: size.width, height: size.height, chromeH: 0, rowsH: naturalHeight });
   if (grow !== undefined) return layoutMapPass(data, { ...options, size: { width: size.width, height: grow } }, listed, pass, passes, omittedOverlays);
@@ -782,7 +790,7 @@ function layoutMapPass(
     }
     // Listed and sizing passes can discard this scene. Format its coordinates only when read.
     let d: string | undefined;
-    const fill: Paint = state ? { token: 'inkMuted' } : noData ? { token: 'background' } : unlisted ? landPaint : scale.paint(value);
+    const fill: Paint = state ? { token: 'inkMuted' } : noData ? { token: 'background' } : unlisted ? landPaint : fills?.get(region.id) ?? scale.paint(value);
     (unlisted ? landNodes : nodes).push({
       t: 'path',
       id: pathNodeId,
@@ -807,7 +815,7 @@ function layoutMapPass(
       ...(state ? { pattern: geoStatePattern(state) } : {}),
       display: state ? { state: geoStateLabel(state, options) } : unlisted ? { state: chartString(options, 'notInData') } : noData ? { state: chartString(options, 'valueMissing') } : valueDisplay(fmt(value!)),
     });
-    if (regionVisible) claimRegionMark(region, occupied);
+    if (!drawnLabels && regionVisible) claimRegionMark(region, occupied);
 
     let hatchNodeId: string | undefined;
     if (noData) {
@@ -843,7 +851,7 @@ function layoutMapPass(
       fill,
     });
 
-    if (mapLabels.eligibleIds.has(region.id)) {
+    if (!drawnLabels && mapLabels.eligibleIds.has(region.id)) {
       labelPlans.push(labelPlanForRegion(
         region,
         leaderLanes.get(region.id),
@@ -875,7 +883,7 @@ function layoutMapPass(
       owner: {},
       part: 'disputedBoundary',
     });
-    claimBoundaryMark(boundary, occupied);
+    if (!drawnLabels) claimBoundaryMark(boundary, occupied);
     marks.boundaries.push({
       id: boundary.id,
       pathNodeId,
@@ -884,12 +892,12 @@ function layoutMapPass(
       dash: dashToken(theme, 'reference'),
     });
   }
-  claimLeaderAnchors(fitted.regions, labelLayout.leaderIds, occupied);
+  if (!drawnLabels) claimLeaderAnchors(fitted.regions, labelLayout.leaderIds, occupied);
 
   reserveGeoOverlayGlyphs(overlays,
     (overlay, index) => resolveChoroplethOverlayAnchor(overlay, index, fitted, idIndex, pack), occupied);
 
-  const solved = solveRegionLabels(labelPlans, occupied, mapCtx, outsideFits);
+  const solved = drawnLabels?.solved ?? solveRegionLabels(labelPlans, occupied, mapCtx, outsideFits);
   // The complete value table is already the second home for an unplaced map label.
   if (tableDrawn) for (const label of solved.placed) {
     const id = label.owner.categoryId;
@@ -1061,7 +1069,7 @@ function layoutMapPass(
 
 function prepareMapLayout(pack: GeoPack, plot: Rect, laneSpan: { y: number; h: number }, occupied: OccupiedIndex, valuesById: Map<string, number | null>, labelPolicy: RegionLabelPolicy, visibleMarkerIds: Set<string>, theme: Theme,
   measure: typeof defaultMeasurer, solveCtx: SolveCtx, valueTexts: ReadonlyMap<string, string>, padding?: number,
-  withTable?: TableLabels) {
+  withTable?: TableLabels, fills?: ReadonlyMap<string, Paint>) {
   // The probes and final marks share one guard for each fitted frame.
   // These fits and query caches end with this map preparation.
   const fits = new Map<string, PreparedMapFit>();
@@ -1095,6 +1103,7 @@ function prepareMapLayout(pack: GeoPack, plot: Rect, laneSpan: { y: number; h: n
         valueTexts,
         fitMap,
         withTable,
+        fills,
       )
     : { gutter: 0, leaderIds: new Set<string>() };
   // A rejected key position needs the chosen gutter, but never draws its map or lanes.
@@ -1111,7 +1120,7 @@ function prepareMapLayout(pack: GeoPack, plot: Rect, laneSpan: { y: number; h: n
       valueTexts,
     );
 
-    return { labelLayout, mapFrame, fitted, leaderLanes, outsideFits };
+    return { labelLayout, mapFrame, fitted, leaderLanes, outsideFits, drawnLabels: mapFit.drawnLabels };
   }
   return { gutter: labelLayout.gutter, draw };
 }
@@ -1735,6 +1744,7 @@ function resolveRegionLabelLayout(
   valueTexts: ReadonlyMap<string, string>,
   fitMap: (frame: Rect) => PreparedMapFit,
   withTable: TableLabels,
+  fills?: ReadonlyMap<string, Paint>,
 ): { gutter: number; leaderIds: Set<string> } {
   let gutter = 0;
   let leaderIds = new Set(
@@ -1797,6 +1807,10 @@ function resolveRegionLabelLayout(
     }
     for (const boundary of fitted.boundaries) claimBoundaryMark(boundary, probeOccupied);
     claimLeaderAnchors(fitted.regions, leaderIds, probeOccupied);
+    // Without lanes, every eligible label is probed against exactly the drawing's claims.
+    // Other gutter probes retain only the decisions they need.
+    const drawHere = fills && cache && !leaderIds.size && labelIds.size === leaderEligibleIds.size
+      && [...labelIds].every(id => leaderEligibleIds.has(id)) && !frameClaims.some(claim => 'polygon' in claim);
     const plans = fitted.regions
       .filter((region) => labelIds.has(region.id))
       .map((region) =>
@@ -1805,7 +1819,7 @@ function resolveRegionLabelLayout(
           lanes.get(region.id),
           theme,
           measure,
-          { token: 'background' },
+          drawHere ? fills.get(region.id)! : { token: 'background' },
           inlineMarkerIds.has(region.id),
           valueTexts,
           ranks.get(region.id) ?? ranks.size,
@@ -1817,7 +1831,7 @@ function resolveRegionLabelLayout(
         )
       );
     // Only a region not yet on a leader can add one.
-    const solved = solveRegionLabels(plans, probeOccupied, solveCtx, outsideFits, (id) => leaderEligibleIds.has(id) && !leaderIds.has(id));
+    const solved = solveRegionLabels(plans, probeOccupied, solveCtx, outsideFits, drawHere ? undefined : (id) => leaderEligibleIds.has(id) && !leaderIds.has(id));
     const regionsById = new Map(fitted.regions.map((region) => [region.id, region]));
     const hiddenIds = solved.placed.flatMap((label) => {
       const id = label.owner.categoryId;
@@ -1839,7 +1853,10 @@ function resolveRegionLabelLayout(
       return outsideFits(id, rect, from, leaderTarget(from, rect));
     });
     const nextLeaderIds = new Set([...leaderIds, ...safeIds]);
-    if (nextLeaderIds.size === leaderIds.size) return finish();
+    if (nextLeaderIds.size === leaderIds.size) {
+      if (drawHere) mapFit.drawnLabels = { solved, occupied: probeOccupied };
+      return finish();
+    }
     leaderIds = nextLeaderIds;
     gutter = measuredLeaderGutter(fitted.regions, leaderIds, plot, theme, measure, valueTexts);
   }
