@@ -89,7 +89,7 @@ function cellRange(rect: Rect, pad: number, range: [number, number, number, numb
   return range;
 }
 
-export function createOccupiedIndex(_plot: Rect): OccupiedIndex {
+export function createOccupiedIndex(_plot: Rect, mode?: 'short-label-pass'): OccupiedIndex {
   const rects: OccupiedClaim[] = [];
   const scratchRange: [number, number, number, number] = [0, 0, 0, 0];
   const released = new Set<number>();
@@ -134,7 +134,7 @@ export function createOccupiedIndex(_plot: Rect): OccupiedIndex {
     // A query inside a query's callback would restamp `seen` and skip claims of the outer one.
     if (visiting) throw new Error('occupied index: a query ran inside another query\'s callback');
     visiting = true;
-    try { return visitClaims(rect, pad, visit); } finally { visiting = false; }
+    try { return query(rect, pad, visit); } finally { visiting = false; }
   };
   const visitClaims = (rect: Rect, pad: number, visit: (i: number) => boolean): boolean => {
     const range = cellRange(rect, pad, scratchRange);
@@ -161,6 +161,17 @@ export function createOccupiedIndex(_plot: Rect): OccupiedIndex {
     }
     return false;
   };
+  // A short label pass can finish before building a grid repays its cost.
+  // Longer searches switch back to the usual grid for the rest of the pass.
+  let scans = 0;
+  const query: typeof visitClaims = mode === 'short-label-pass' ? (rect, pad, visit) => {
+    if (rects.length <= 64 && scans < 32 && indexed === 0) {
+      scans++;
+      for (let i = 0; i < rects.length; i++) if (visit(i)) return true;
+      return false;
+    }
+    return visitClaims(rect, pad, visit);
+  } : visitClaims;
   return {
     claim(rect, kind, owner, part, polygon) {
       const claimed: OccupiedClaim = part === undefined ? { rect: { ...rect }, kind, owner } : { rect: { ...rect }, kind, owner, part };
