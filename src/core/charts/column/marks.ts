@@ -143,6 +143,7 @@ function flagMarkerAt(
 
 type BarGeometry = Pick<ColumnMarkGeometry, 'rangeMarks' | 'bars' | 'subCenters' | 'segEdges' | 'flagMarkers'> & {
   rangeNodes: SceneNode[];
+  paintSegments?: () => SceneNode[];
 };
 
 /** The columns (grouped) or the stack segments, with their range whiskers and flag markers. */
@@ -153,6 +154,7 @@ function columnBars(
   marks: ColumnMarks,
   nodes: SceneNode[],
   claims: OccupiedIndex,
+  deferSegments: boolean,
 ): BarGeometry {
   const { cats, dataSeries, variant, plottedOf, rangeOf, absOf, valueSpec, anomaly, stacks } = domain;
   const { band, y, y0 } = area;
@@ -162,7 +164,8 @@ function columnBars(
   const subCenters: BarGeometry['subCenters'] = new Map();
   const segEdges: BarGeometry['segEdges'] = new Map();
   const flagMarkers: BarGeometry['flagMarkers'] = new Map();
-  const emit = (input: BarMarkInput) => emitBarMark({ axis: 'y', theme: domain.theme, scale: y, activeBreak: domain.activeBreak, css: paints.css }, nodes, claims, input);
+  const markContext = { axis: 'y' as const, theme: domain.theme, scale: y, activeBreak: domain.activeBreak, css: paints.css };
+  const emit = (input: BarMarkInput) => emitBarMark(markContext, nodes, claims, input);
   const queueRangeWhisker = (seriesId: Id, categoryId: Id, cx: number, markWidth: number, range: NonNullable<ReturnType<typeof rangeOf>>, offset = 0): void => {
     const whisker = rangeWhisker(domain.theme, { seriesId, categoryId, axis: 'y', center: cx, markSize: markWidth, range, offset, scale: y, activeBreak: domain.activeBreak, fmt: domain.fmt });
     rangeNodes.push(...whisker.nodes);
@@ -176,6 +179,19 @@ function columnBars(
     // The record of an authored percent cell holds the percent, so its shown text prints the percent, not the count it stands for.
     const shown = cellValueFmt(domain, s, ci)(val.isPct && val.v !== null ? val.v : absOf(s, ci)!);
     return { drawn: val.isPct && !val.format && !s.format ? valueSpec.forSeries(s, val.format)(absOf(s, ci)!) : shown, shown };
+  };
+  const paintSegment = (bar: BarGeometry['bars'][number], target: SceneNode[], index?: OccupiedIndex) => {
+    const { s, si, c, ci, rect, v } = bar;
+    const { start, end } = stacks[ci]!.segments[si]!;
+    const val = s.vals[ci]!;
+    const texts = barTexts(s, ci);
+    emitBarMark(markContext, target, index, {
+      nodeId: `mark:${s.id}:${c.id}`, rect, start, end,
+      fill: paints.cell(s, val, c, si), pattern: paints.pattern(s, val, c), outline: paints.outline(c),
+      owner: { seriesId: s.id, categoryId: c.id }, part: 'segment',
+      displayValue: variant === 'stacked100' ? shareTextOf(domain, c.id, s.id, v, val.isPct) : texts.drawn,
+      shows: { value: texts.shown },
+    });
   };
   cats.forEach((c, ci) => {
     const bx = band.position(ci);
@@ -229,16 +245,11 @@ function columnBars(
         return;
       }
       const rect: Rect = { x: bx, y: y(Math.max(v0, v1)), w: bw, h: Math.max(Math.abs(y(v0) - y(v1)), 0.5) };
-      const texts = barTexts(s, ci);
-      emit({
-        nodeId, rect, start: v0, end: v1,
-        fill: paints.cell(s, val, c, si), pattern: paints.pattern(s, val, c), outline: paints.outline(c),
-        owner, part: 'segment',
-        displayValue: variant === 'stacked100' ? shareTextOf(domain, c.id, s.id, v, val.isPct) : texts.drawn,
-        shows: { value: texts.shown },
-      });
+      const bar = { s, si, c, ci, v, rect };
+      if (deferSegments) claims.claim(rect, 'mark', owner, 'segment');
+      else paintSegment(bar, nodes, claims);
       segs.push({ seriesId: s.id, rect, nodeId });
-      bars.push({ s, si, c, ci, v, rect });
+      bars.push(bar);
     });
     if (variant === 'grouped') return;
     const stackTop = y(stack.positive);
@@ -249,7 +260,12 @@ function columnBars(
       segments: segs,
     });
   });
-  return { rangeMarks, rangeNodes, bars, subCenters, segEdges, flagMarkers };
+  const paintSegments = deferSegments ? () => {
+    const segments: SceneNode[] = [];
+    for (const bar of bars) if (bar.v !== 0) paintSegment(bar, segments);
+    return segments;
+  } : undefined;
+  return { rangeMarks, rangeNodes, bars, subCenters, segEdges, flagMarkers, paintSegments };
 }
 
 /**
@@ -614,7 +630,9 @@ export function layoutColumnMarks(
   if (domain.connectorsOn && domain.variant !== 'grouped') stackConnectors({ ...domain, axis: 'y', scale: area.y, band: area.band }, nodes, claims);
   const marks: ColumnMarks = { bars: [], referenceTicks: [], ...(ribbons.length > 0 ? { ribbons } : {}) };
   const barsAt = nodes.length;
-  const { rangeNodes, ...bars } = columnBars(domain, paints, area, marks, nodes, claims);
+  // A staircase retry needs the rectangles of ordinary segments before it needs their ink or value strings.
+  const deferSegments = area.stairTop !== undefined && domain.variant !== 'grouped' && !domain.activeBreak;
+  const { rangeNodes, paintSegments, ...bars } = columnBars(domain, paints, area, marks, nodes, claims, deferSegments);
   if (rangeNodes.length > 0) {
     pushAll(nodes, rangeNodes);
     marks.ranges = bars.rangeMarks;
@@ -665,7 +683,10 @@ export function layoutColumnMarks(
     // A part the rule crosses seats its value in the stretch the rule leaves, as it does for a tick.
     for (const c of domain.cats) refTickYs.set(c.id, [...(refTickYs.get(c.id) ?? []), y(v)]);
   });
-  return { nodes, claims, axes, marks, ...bars, refTickYs, behindTickYs, planEnds, netLineEnd };
+  const scene = { nodes, claims, axes, marks, ...bars, refTickYs, behindTickYs, planEnds, netLineEnd };
+  if (!paintSegments) return scene;
+  const at = barsAt + behindTicks.length;
+  return { ...scene, paintStack: () => nodes.slice(0, at).concat(paintSegments(), nodes.slice(at)) };
 }
 
 

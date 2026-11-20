@@ -48,7 +48,7 @@ interface BarMarkContext {
   css: (paint: Paint) => string;
 }
 
-export function emitBarMark(ctx: BarMarkContext, nodes: SceneNode[], claims: OccupiedIndex, input: BarMarkInput): void {
+export function emitBarMark(ctx: BarMarkContext, nodes: SceneNode[], claims: OccupiedIndex | undefined, input: BarMarkInput): void {
   const { axis, theme, scale, activeBreak } = ctx;
   const visibility = input.outline
     ? { stroke: { token: 'ink' } as const, strokeWidth: theme.pattern.outlineStrokeWidth }
@@ -75,7 +75,7 @@ export function emitBarMark(ctx: BarMarkContext, nodes: SceneNode[], claims: Occ
       ...(input.displayState ? { state: input.displayState } : {}),
       ...(input.shows ? { shows: input.shows } : {}),
     }));
-    claims.claim(input.rect, 'mark', claimOwner, input.part);
+    claims?.claim(input.rect, 'mark', claimOwner, input.part);
     return;
   }
   if (input.pattern !== 'outline') {
@@ -83,10 +83,10 @@ export function emitBarMark(ctx: BarMarkContext, nodes: SceneNode[], claims: Occ
     // edge (a separation stroke, a hatch edge, a repaint's edge), so the cut
     // shows the same in every theme and no seam runs where two parts meet.
     nodes.push(rectNode(input.nodeId, input.rect, 'bar', { value: input.displayValue, ...(input.shows ? { shows: input.shows } : {}) }));
-    claims.claim(input.rect, 'mark', claimOwner, 'bar');
+    claims?.claim(input.rect, 'mark', claimOwner, 'bar');
     const cut = barBreakCut(input.rect, axis, breakMeta.position, `${input.nodeId}:break`, input.owner);
     nodes.push(...cut.nodes);
-    claims.claim(cut.rect, 'axis', input.owner, 'barBreak');
+    claims?.claim(cut.rect, 'axis', input.owner, 'barBreak');
     return;
   }
   // An outlined mark is hollow, so a page-colour cut would not show in it: it
@@ -105,8 +105,8 @@ export function emitBarMark(ctx: BarMarkContext, nodes: SceneNode[], claims: Occ
     rectNode(input.nodeId, primaryRect, 'bar', { value: input.displayValue, ...(input.shows ? { shows: input.shows } : {}) }),
     rectNode(`${input.nodeId}:beyondBreak`, beyondRect, 'barBeyondBreak'),
   );
-  claims.claim(primaryRect, 'mark', claimOwner, 'bar');
-  claims.claim(beyondRect, 'mark', claimOwner, 'barBeyondBreak');
+  claims?.claim(primaryRect, 'mark', claimOwner, 'bar');
+  claims?.claim(beyondRect, 'mark', claimOwner, 'barBeyondBreak');
   const glyph = straightBreakGlyph(
     theme,
     axis === 'x' ? { x: breakMeta.position, y: input.rect.y + input.rect.h / 2 } : { x: input.rect.x + input.rect.w / 2, y: breakMeta.position },
@@ -116,5 +116,5 @@ export function emitBarMark(ctx: BarMarkContext, nodes: SceneNode[], claims: Occ
     'barBreak',
   );
   nodes.push(...glyph.nodes);
-  claims.claim(glyph.rect, 'axis', input.owner, 'barBreak');
+  claims?.claim(glyph.rect, 'axis', input.owner, 'barBreak');
 }

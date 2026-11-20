@@ -30,7 +30,7 @@ import { DEFAULT_TARGET, targetFloorsPx } from '../target';
 import { DATE_NAME_LANGUAGES, dateNames } from '../dateNames';
 import type { RenderTarget } from '../types/options';
 import { calendarMonths, type CalendarInfo } from '../calendarLabels';
-import { defaultMeasurer, measureText, type FontSpec, type TextMeasurer, type TextSize } from '../text';
+import { defaultMeasurer, measureText, twoLineWidth, type FontSpec, type TextMeasurer, type TextSize } from '../text';
 import { hasCompleteTableWidths } from '../fontMetrics/injected';
 import { cutWithTitle, fitText, type FittedText } from './fitText';
 import { footnoteMark } from '../footnoteMark';
@@ -661,6 +661,28 @@ function spreadUpright(input: CategoryRowInput, plan: CategoryRowPlan): Category
   // An end name may use its own width, but never past the plot's edge.
   const endRoom = (i: number) => Math.max(step, Math.min(input.measure(input.labels[i]!, font).width,
     2 * (i === 0 ? centers[0]! - x0 : x1 - centers[n - 1]!)));
+  // A spread row keeps at least as many names as the rotated row. If the
+  // narrowest two-line form of every name together already exceeds the row,
+  // neither of the upright attempts below can keep them all.
+  if (plan.rotation === 45 && plan.typeRole === 'axis' && plan.keep.every(Boolean)
+    && !input.edgeAnchored && !input.ordered && !input.strideFromEnd && !input.dateStride && !input.calendar
+    && !calendarMonths(input.dates ?? []) && !numberedSequence(input.labels) && !shortMonthNames(input.labels)
+    && (input.gap ?? 4) >= 0 && input.labels.every(label => /^\S+(?: \S+)*$/u.test(label))
+    && (input.measure === defaultMeasurer || input.measure === measureText || hasCompleteTableWidths(input.measure))) {
+    const room = centers[n - 1]! + endRoom(n - 1) / 2 - (centers[0]! - endRoom(0) / 2);
+    const couldFit = (f: FontSpec) => {
+      if (f.size <= 0 || (f.letterSpacing ?? 0) < 0) return true;
+      let required = 0;
+      for (const label of input.labels) {
+        required += twoLineWidth(label, f, input.measure, true);
+        if (required > room + 1e-6) return false;
+      }
+      return true;
+    };
+    const floor = targetFloorsPx(input.target ?? DEFAULT_TARGET, input.textScale).axis;
+    if (!input.fonts.some((f, i) => (i === 0 || f.size >= floor) && couldFit(f))
+      && (!input.stepToFloor || !couldFit({ ...font, size: floor }))) return undefined;
+  }
   const upright = planCategoryRowCascade({ ...input, widths: input.labels.map((_, i) => (i === 0 || i === n - 1 ? endRoom(i) : 2 * step - 8)) });
   const drawn = (p: CategoryRowPlan) => p.keep.filter(Boolean).length;
   const whole = (p: CategoryRowPlan, lines: number) => p.rotation === 0 && drawn(p) >= drawn(plan)

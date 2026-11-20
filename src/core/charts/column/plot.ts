@@ -41,7 +41,7 @@ import { percentLevels } from '../../annotatePass';
 import { toleranceLegendKeys } from '../../valueLineDomain';
 import type { Id } from '../../types/cell';
 import type { LegendOptions } from '../../types/options';
-import type { LintWarning } from '../../types/scene';
+import type { LintWarning, Paint } from '../../types/scene';
 import { contentOf, edgeNameFont, edgeNamesReplaceKey, KEY_EDGE_SERIES, kindSetting, partialNamedOnValues, pyTickKeyed, rightEdgeSeriesLabels, RIGHT_EDGE_GAP, shareTextOf } from './domain';
 import { ANOMALY_FLAG_GAP, ANOMALY_FLAG_H, TICK_LABEL_RESERVE, PY_TICK_LEAD, type ColumnArea, type ColumnDomain, type NormSer } from './model';
 import { seriesPattern, signWord, type ColumnLegendPaints } from './paints';
@@ -81,13 +81,17 @@ export const CAGR_PAD = Symbol('cagrPad');
 
 /** The paint and pattern every drawn column of a series shares, or nothing when they differ. */
 function uniformCellLook(domain: ColumnDomain, paints: ColumnLegendPaints, s: NormSer, i: number): Pick<LegendItemInput, 'paint' | 'pattern'> | object {
-  const looks = domain.cats.flatMap((c, ci) => {
+  let first: { paint: Paint; pattern: ReturnType<typeof paints.pattern> } | undefined;
+  for (const [ci, c] of domain.cats.entries()) {
     const v = domain.plottedOf(s, ci);
-    if (v === null || (domain.variant !== 'grouped' && v === 0)) return [];
-    return [{ paint: paints.cell(s, s.vals[ci]!, c, i), pattern: paints.pattern(s, s.vals[ci]!, c) }];
-  });
-  const first = looks[0];
-  if (!first || looks.some((look) => look.pattern !== first.pattern || paints.css(look.paint) !== paints.css(first.paint))) return {};
+    if (v === null || (domain.variant !== 'grouped' && v === 0)) continue;
+    const val = s.vals[ci]!;
+    const paint = paints.cell(s, val, c, i);
+    const pattern = paints.pattern(s, val, c);
+    if (!first) first = { paint, pattern };
+    else if (pattern !== first.pattern || (paint !== first.paint && paints.css(paint) !== paints.css(first.paint))) return {};
+  }
+  if (!first) return {};
   const hatchGround = segmentHatchGround(domain.variant === 'grouped' ? 'bar' : 'segment', first.pattern, first.paint);
   return { paint: first.paint, pattern: first.pattern, ...(hatchGround ? { hatchGround } : {}) };
 }
@@ -278,15 +282,9 @@ function bandKeyRow(domain: ColumnDomain, paints: ColumnLegendPaints, eventKey: 
   return { options: { position: 'top' }, items };
 }
 
-/** The frame, with the legend, the event key and the right-margin decoration reserve; claims into its own index. */
-export function solveColumnFrame(
-  domain: ColumnDomain,
-  paints: ColumnLegendPaints,
-  warnings: LintWarning[],
-  eventKey?: FrameBand,
-): { frame: FrameResult; claims: OccupiedIndex } {
+/** The margins and legend use the chart data, axis and typography at this width. */
+function columnFrameFurniture(domain: ColumnDomain, paints: ColumnLegendPaints, warnings: LintWarning[], eventKey?: FrameBand) {
   const { options, theme, size, measure, anomaly, corridorShown, statFmt, netLineOn, netLineSeries, variant } = domain;
-  const claims = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
   const decorationFont = { family: theme.type.family, ...theme.type.label, weight: emphasisWeight(theme) };
   // Every anomaly rule the engine draws carries its value in the right margin.
   // The width is reserved HERE, before the frame is solved, so the label fits
@@ -324,6 +322,25 @@ export function solveColumnFrame(
   margin.right = Math.max(margin.right, (options as { [VALUE_LINE_RESERVE]?: number })[VALUE_LINE_RESERVE] ?? 0,
     (options as { [TICK_LABEL_RESERVE]?: number })[TICK_LABEL_RESERVE] ?? 0);
   const legend = columnLegend(domain, paints, warnings) ?? bandKeyRow(domain, paints, eventKey);
+  return { margin, legend };
+}
+
+/** The frame, with the legend, the event key and the right-margin decoration reserve; claims into its own index. */
+export function solveColumnFrame(
+  domain: ColumnDomain,
+  paints: ColumnLegendPaints,
+  warnings: LintWarning[],
+  eventKey?: FrameBand,
+  memo?: ColumnStaircaseMemo,
+): { frame: FrameResult; claims: OccupiedIndex } {
+  const { options, theme, size, measure } = domain;
+  const claims = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
+  // The event lane has its own changing key. A plain staircase retries only its vertical pad.
+  const cached = !eventKey && memo?.furniture;
+  const before = warnings.length;
+  const { margin, legend } = cached ? cached : columnFrameFurniture(domain, paints, warnings, eventKey);
+  if (cached) pushAll(warnings, cached.warnings);
+  else if (!eventKey && memo) memo.furniture = { margin, legend, warnings: warnings.slice(before) };
   const frame = solveFrame(
     {
       size,
@@ -383,20 +400,8 @@ function widestSegmentValue(domain: ColumnDomain, font: FontSpec = { family: dom
   return widest;
 }
 
-/**
- * Band and tick measurement BEFORE the plot: the reserve must equal what the
- * measured labels need, and the wrap needs the band step, which
- * depends only on the final x-extent (frame minus axis reserve).
- */
-function columnBand(
-  domain: ColumnDomain,
-  frame: FrameResult,
-  valueAxisReserve: number,
-  tickFont: FontSpec,
-  warnings: LintWarning[],
-  stair: boolean,
-  beforeCategoryRow?: (bandwidth: number) => void,
-): Pick<ColumnArea, 'band' | 'catPlan' | 'intervalTicks'> {
+/** The horizontal band depends on the frame's sides and key. Its category row also depends on height. */
+function columnBandWidth(domain: ColumnDomain, frame: FrameResult, valueAxisReserve: number, tickFont: FontSpec, stair: boolean) {
   const { options, theme, measure, cats, va } = domain;
   let plotX0 = frame.plot.x + (va.show ? valueAxisReserve : 0);
   let plotW0 = va.show
@@ -418,18 +423,19 @@ function columnBand(
   const grouped = domain.variant === 'grouped' && domain.dataSeries.length > 1;
   const panelGroup = options.bandFraction === undefined && !narrow && grouped && panelTypeClass(options) !== undefined;
   let bandFraction = panelGroup ? PANEL_GROUP_FRACTION : options.bandFraction ?? (narrow ? Math.min(0.7, Math.max(ribbonColumn, ribbonFraction)) : domain.pyRef ? (pyTickKeyed(domain, frame.legend) ? 0.5 : 0.42) : grouped ? COLUMN_FRACTION_MAX : columnBandFraction(plotW0, cats.length));
+  const gapAfter = cats.map((c, ci) => {
+    const authored = c.gapAfter === true ? 0.5 : typeof c.gapAfter === 'number' ? Math.max(0, c.gapAfter) : 0;
+    // A total column stands apart: at least half a step before it, for its divider.
+    const gap = cats[ci + 1]?.role === 'total' ? Math.max(authored, 0.5) : authored;
+    // A category break needs a gap wide enough to carry its glyph.
+    return c.breakAfter ? Math.max(gap, 0.5) : gap;
+  });
   const bandFor = (x0: number, w: number) =>
     bandScale(cats.length, [x0, x0 + w], {
       paddingInner: 1 - bandFraction,
       // Histogram bins tile the number line: the plot ends at the outer bin edges.
       paddingOuter: narrow ? bandFraction / 2 : (options as { [TILED_BANDS]?: boolean })[TILED_BANDS] === true ? (1 - bandFraction) / 2 : (1 - bandFraction) / 2 + 0.05,
-      gapAfter: cats.map((c, ci) => {
-        const authored = c.gapAfter === true ? 0.5 : typeof c.gapAfter === 'number' ? Math.max(0, c.gapAfter) : 0;
-        // A total column stands apart: at least half a step before it, for its divider.
-        const gap = cats[ci + 1]?.role === 'total' ? Math.max(authored, 0.5) : authored;
-        // A category break needs a gap wide enough to carry its glyph.
-        return c.breakAfter ? Math.max(gap, 0.5) : gap;
-      }),
+      gapAfter,
     });
   // Names at the right edge of the last column, or the left edge
   // of the first, need room outside the band, so the band gives it back
@@ -563,7 +569,39 @@ function columnBand(
     if (plotW0 === before) break;
     fitColumnWidth();
   }
-  let band = bandFor(plotX0, plotW0);
+  return { band: bandFor(plotX0, plotW0), plotX0, plotW0, bandFor };
+}
+
+/** The data, typography and axis are fixed during one column's staircase padding retries. */
+export interface ColumnStaircaseMemo {
+  furniture?: ReturnType<typeof columnFrameFurniture> & { warnings: LintWarning[] };
+  width?: { x: number; w: number; axis: number; keyed: boolean; plan: ReturnType<typeof columnBandWidth> };
+}
+
+/**
+ * Band and tick measurement BEFORE the plot: the reserve must equal what the
+ * measured labels need, and the wrap needs the band step, which
+ * depends only on the final x-extent (frame minus axis reserve).
+ */
+function columnBand(
+  domain: ColumnDomain,
+  frame: FrameResult,
+  valueAxisReserve: number,
+  tickFont: FontSpec,
+  warnings: LintWarning[],
+  stair: boolean,
+  beforeCategoryRow?: (bandwidth: number) => void,
+  memo?: ColumnStaircaseMemo,
+): Pick<ColumnArea, 'band' | 'catPlan' | 'intervalTicks'> {
+  const { options, theme, measure, cats } = domain;
+  const cached = stair && memo ? memo.width : undefined;
+  const keyed = !!(stair && memo && domain.pyRef) && pyTickKeyed(domain, frame.legend);
+  const same = cached && cached.x === frame.plot.x && cached.w === frame.plot.w
+    && cached.axis === valueAxisReserve && cached.keyed === keyed;
+  const width = same ? cached.plan : columnBandWidth(domain, frame, valueAxisReserve, tickFont, stair);
+  if (stair && memo && !same) memo.width = { x: frame.plot.x, w: frame.plot.w, axis: valueAxisReserve, keyed, plan: width };
+  const { plotX0, plotW0, bandFor } = width;
+  let band = width.band;
   beforeCategoryRow?.(band.bandwidth);
   // categoryAxis.dateTicks sets the interval; without it a long day row names its months.
   const authored = authoredDateTicks(cats, options, warnings);
@@ -609,12 +647,20 @@ function columnBand(
     }
     return plan;
   };
-  // categoryAxis.dateTicks sets the interval; without it a long day row names its months.
-  let catPlan = planRow(band, authored);
-  const ticked = authored ?? longDayMonths(cats, catPlan.stride, options.locale?.language);
-  if (ticked && ticked !== authored) catPlan = planRow(band, ticked);
-  // A rotated first name hangs left of its column; the band yields that much.
-  if (!stair) ({ plan: catPlan, band } = yieldToRotatedName(catPlan, band, cats.length, plotX0, plotW0, bandFor, (b, rotate) => planRow(b, ticked, rotate)));
+  // A staircase draws its names beside the columns. Only plan the bottom row
+  // when a consumer needs it, for example a ratio tier or a total category's font.
+  let planned: ReturnType<typeof planRow> | undefined;
+  const catPlan = () => {
+    if (planned) return planned;
+    planned = planRow(band, authored);
+    const ticked = authored ?? longDayMonths(cats, planned.stride, options.locale?.language);
+    if (ticked && ticked !== authored) planned = planRow(band, ticked);
+    // A rotated first name hangs left of its column; the band yields that much.
+    if (!stair) ({ plan: planned, band } = yieldToRotatedName(planned, band, cats.length, plotX0, plotW0, bandFor, (b, rotate) => planRow(b, ticked, rotate)));
+    return planned;
+  };
+  // The band must be final before return. Authored footnote warnings retain their order.
+  if (!stair || cats.some(c => c.footnote !== undefined)) catPlan();
   return { band, catPlan, ...(authored?.ticks ? { intervalTicks: authored.ticks } : {}) };
 }
 
@@ -652,6 +698,7 @@ export function columnPlotArea(
   frame: FrameResult,
   warnings: LintWarning[],
   beforeCategoryRow?: (bandwidth: number) => void,
+  widthMemo?: ColumnStaircaseMemo,
 ): ColumnArea {
   const { options, theme, size, measure, variant, va, fmt, valueSpec, cats, dLo, dHi } = domain;
   // Percent cells print '%' on the ticks as on the value labels (fmtPercent).
@@ -700,18 +747,18 @@ export function columnPlotArea(
     : undefined;
   // Staircase names replace the category row (options.categoryLabels).
   const stair = staircaseOn(options.categoryLabels, options) && kindSetting(options, 'category') !== false && cats.length > 1;
-  const { band, catPlan, intervalTicks } = columnBand(domain, frame, valueAxisReserve, tickFont, warnings, stair, beforeCategoryRow);
+  const { band, catPlan, intervalTicks } = columnBand(domain, frame, valueAxisReserve, tickFont, warnings, stair, beforeCategoryRow, widthMemo);
   const showCatRow = kindSetting(options, 'category') !== false && cats.length > 0 && !stair;
-  if (showCatRow) pushAll(warnings, catPlan.warnings);
-  if (showCatRow && catPlan.step === 'ranks') warnings.push(categoryRanksLint(cats.map((c) => c.label ?? c.id), band.step));
-  const tickReserve = showCatRow ? catPlan.rowHeight + 8 : 0;
+  if (showCatRow) pushAll(warnings, catPlan().warnings);
+  if (showCatRow && catPlan().step === 'ranks') warnings.push(categoryRanksLint(cats.map((c) => c.label ?? c.id), band.step));
+  const tickReserve = showCatRow ? catPlan().rowHeight + 8 : 0;
   // With a ratio tier the band additionally carries the tier's 19px caption
   // rhythm minus the tierGap the tier adds back below the band — the
   // same arithmetic as line's tier branch. The caption gap is a between-blocks
   // band owned by the tier, so the tick-band record reports only
   // `tickReserve`, the tick-row component.
   const catBandH = tier
-    ? 6 + catPlan.rowHeight + ratioTierMetrics.categoryCaptionGap - theme.space.tierGap
+    ? 6 + catPlan().rowHeight + ratioTierMetrics.categoryCaptionGap - theme.space.tierGap
     : tickReserve;
   const ratioTierHeight = tier?.reserveHeight ?? 0;
   // The category row reads under the lowest column and the value
@@ -766,7 +813,7 @@ export function columnPlotArea(
   const topPad = baseTopPad + bandPad;
   const plotH0 = frame.plot.h - catBandH - ratioTierHeight - topPad;
   const hangingReserve = hangingLabelReserve(plotH0, [dLo, dHi], hangingEnd, hangingRoom);
-  if (!stair && options.categoryLabels !== 'staircase' && ['fit', 'wrap', 'font-down', 'stride'].includes(catPlan.step)
+  if (!stair && options.categoryLabels !== 'staircase' && ['fit', 'wrap', 'font-down', 'stride'].includes(catPlan().step)
     && !options.annotations?.some(annotation => annotation.kind === 'cagr' || annotation.kind === 'event' || bracketsOverColumns(annotation, domain))
     && ![CAGR_PAD, VALUE_LINE_RESERVE, TICK_LABEL_RESERVE, BAND_PAD].some(marker => marker in options)) {
     fixedPlotChrome(frame);
@@ -817,7 +864,7 @@ export function columnPlotArea(
     ...(stair ? { stairTop: frame.plot.y + ruleH + (axisTitle ? axisTitle.height + 8 : 0) } : {}),
     // A date row stays at the plot's bottom band; prose reads under the
     // lowest column and the value hanging under it.
-    catRowY: catPlan.dateNumeric ? plot.y + plot.h + hangingReserve : categoryRowTop(y, lowest, hangingEnd, hangingRoom),
+    get catRowY() { return catPlan().dateNumeric ? plot.y + plot.h + hangingReserve : categoryRowTop(y, lowest, hangingEnd, hangingRoom); },
     plot, y, y0: y(0),
   };
 }
