@@ -2,6 +2,13 @@
 
 Boardplot is in 0.x: options and output can change between minor versions. Each release lists its changes here.
 
+## 0.63.0
+
+### Changed
+
+- Stacked columns with staircase category labels, grids of column and line panels with a shared value axis, and journey diagrams show the largest gains in layout speed. Price-volume-mix bridges, Pareto charts, waterfalls with a total-change bracket, Gantt charts with status and scatter charts with story steps also lay out faster. Drawings, warnings and returned sizes are unchanged.
+- On a quiet Mac, a source benchmark against version 0.62.0 used one 878 px example of each of the 37 chart types, with a fresh process for each example and one layout in each of ten theme presets. Across all examples, the mean per layout fell from 26.99 ms to 25.33 ms (6.2% less) with host font tables and from 26.87 ms to 25.25 ms (6.0% less) with bundled font metrics. With host font tables, the average first layout across all examples went from 70.96 ms to 69.17 ms. The mean per layout with host font tables went from 67.9 ms to 51.0 ms for stacked columns with staircase category labels, from 61.5 ms to 48.5 ms for a grid of column and line panels with a shared value axis, and from 53.5 ms to 43.8 ms for a journey diagram.
+
 ## 0.62.0
 
 ### Added
