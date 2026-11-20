@@ -120,6 +120,12 @@ export type ThemePaintSource =
   | { kind: 'quiet-land'; apartFrom: Paint[] }
   /** The Total bar beside a key that names colours: the Total colour, deepened away from the page until it stands a swatch step from every `apartFrom` paint (totalApartColor). */
   | { kind: 'total-apart'; apartFrom: Paint[] }
+  /**
+   * A column of the metric stack focus look in its state: the focus, the base window or another category.
+   * Step `index` of `count` stacked measures on the state's ramp (focusRampColors): the focus from the accent,
+   * the base from the strong neutral, the others from the light neutral, each toward the page.
+   */
+  | { kind: 'focus-ramp'; state: 'focus' | 'base' | 'rest'; index: number; count: number }
   /** A plain waterfall segment colour, tinted in the active theme where it reads too close to the total (segmentApartPaints). */
   | { kind: 'segment-apart'; plain: Paint[]; others: Paint[]; index: number }
   /**

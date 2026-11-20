@@ -39,7 +39,7 @@ export interface MetricStackDerived {
 const neutral: Paint = { token: 'markInk' };
 const muted: Paint = { token: 'inkMuted' };
 /** The dashed base line of the focus look and its key in the header line. */
-const baseStroke: Paint = { token: 'inkMuted' };
+const baseStroke: Paint = { token: 'leader' };
 const accent: Paint = { token: 'focus' };
 const wash = (base: Paint, weight: number, pageFloor?: number): Paint =>
   ({ token: 'markInk', theme: { kind: 'mix', from: base, to: { token: 'background' }, weight, ...(pageFloor === undefined ? {} : { pageFloor }) } });
@@ -83,7 +83,7 @@ function printedReadout(readout: StackReadout, showHeadline: boolean, showSpan: 
   if (showHeadline) { keep(`${panel}:headline`); keep(`${panel}:rate`); }
   if (showSpan) { keep(`${panel}:before`); keep(`${panel}:after`); }
   // The focus look prints the value and the shares always.
-  if (look) { keep(`${panel}:after`); readout.claims.forEach(claim => { if (/:share:[^:]+$/.test(claim.id.slice(panel.length))) keep(claim.id); }); }
+  if (look) { keep(`${panel}:after`); keep(`${panel}:base`); readout.claims.forEach(claim => { if (/:share:[^:]+$/.test(claim.id.slice(panel.length))) keep(claim.id); }); }
   return { ...readout, claims: readout.claims.filter(claim => kept.has(claim.id)),
     ...(showHeadline ? {} : { headline: null, headlineText: '' }),
     ...(showSpan ? {} : { before: null, ...(look ? {} : { after: null }), spanText: '' }) };
@@ -198,7 +198,13 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   // The focus look keeps the name and the unit on one line where a gutter of at most 320 px holds them.
   const nameUnitWidth = look ? Math.ceil(maxOf(computed.panels.map(p => measure(p.panel.title, nameFont).width + (showUnit ? 2 * spanSpace + measure(p.panel.unit, keyFont).width : 0)))) + 4 : 0;
   const defaultGutter = Math.max(170, minGutter, Math.min(320, Math.max(nameWidth, nameUnitWidth)), compactFloor);
-  const gutterGap = Math.max(28, heightOf(axisFont));
+  // The focus look prints each panel's base level at the left end of its dashed base line, 8 px left of the plot,
+  // as a bare number like the marks. The air between the readout and the plot holds the widest of them.
+  const baseFont = font('label');
+  const baseLevel = (p: ComputedStackPanel): number | null => p.readout.claims.find(c => c.id === `stack:${p.panel.id}:base${'denominator' in p.panel.measure ? ':raw' : ''}`)?.output.raw ?? null;
+  const baseTexts = computed.panels.map(p => { const v = look ? baseLevel(p) : null; return v === null ? undefined : p.format(v); });
+  const baseRoom = look ? Math.ceil(maxOf(baseTexts.map(t => t === undefined ? 0 : measure(t, baseFont).width)) + 8) : 0;
+  const gutterGap = Math.max(28, heightOf(axisFont), look ? baseRoom + 4 : 0);
   const partial = partialIds(data.categories);
   const notes = [...(options.footnotes || [])];
   // A state note the engine words prints, with its marker, only where
@@ -250,6 +256,13 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
       mature: i === 0 ? base : wash(base, Math.max(0.16, 0.45 - i * 0.12), 1.4),
     }];
   }));
+  // The focus look paints a category by its state: the focus in the accent, the base window in the strong neutral,
+  // every other category in the light neutral. A stacked column takes the state's ramp, decided in the theme painted in.
+  const focusIndexes = new Set(look ? stackRange(data, focusWindow!) : []), baseIndexes = new Set(look ? stackRange(data, data.windows!.base) : []);
+  const stateOf = (ci: number) => focusIndexes.has(ci) ? 'focus' as const : baseIndexes.has(ci) ? 'base' as const : 'rest' as const;
+  const stateToken = { focus: 'focus', base: 'neutralMark', rest: 'rest' } as const;
+  const statePaint = (state: 'focus' | 'base' | 'rest', index: number, count: number): Paint =>
+    count < 2 ? { token: stateToken[state] } : { token: stateToken[state], theme: { kind: 'focus-ramp', state, index, count } };
   // A stacked panel keys its measures inside its own readout. Its band label,
   // hatch and dashed outline carry the provisional state, so it needs no key.
   const stacked = (p: ComputedStackPanel) => p.panel.type === 'column' && 'sum' in p.panel.measure && p.parts.length > 1;
@@ -257,7 +270,8 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   const panelKeys = computed.panels.map(() => [] as { id: string; label: string; paint: Paint }[]);
   const seen = new Set<string>();
   computed.panels.forEach((p, pi) => { if (stacked(p) && 'sum' in p.panel.measure) {
-    p.panel.measure.sum.forEach((id,i) => { if (p.parts[i]!.some((value, ci) => value !== null && value > 0 && visibleValue(p, ci))) { seen.add(id); panelKeys[pi]!.push({ id, label: data.measures.find(m=>m.id===id)!.label, paint: measurePaints.get(id)!.mature }); } });
+    const count = p.panel.measure.sum.length;
+    p.panel.measure.sum.forEach((id,i) => { if (p.parts[i]!.some((value, ci) => value !== null && value > 0 && visibleValue(p, ci))) { seen.add(id); panelKeys[pi]!.push({ id, label: data.measures.find(m=>m.id===id)!.label, paint: look ? statePaint('focus', i, count) : measurePaints.get(id)!.mature }); } });
   } });
   if (options.legend === 'none') panelKeys.forEach(items => items.splice(0));
   const totalsCue = chartString(options, 'labelsShowTotals');
@@ -309,7 +323,9 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   const captionBox = (pi: number, width: number) => data.panels[pi]!.keyTitle && panelKeys[pi]!.length ? textBox(data.panels[pi]!.keyTitle!, keyFont, width) : NO_BOX;
   const captionRoom = (pi: number, width: number) => { const box = captionBox(pi, width); return box.h ? box.h + 2 : 0; };
   const legend: LegendItemInput[] = [];
-  if (!seen.size) {
+  // The focus look keys only its provisional marks above the chart.
+  if (look) { if (hasProvisional) legend.push({ id: 'stack:provisional', label: chartString(options, 'provisional'), paint: muted, key: 'line', dash: dashToken(theme, 'reference') }); }
+  else if (!seen.size) {
     if (hasProvisional && computed.panels.some(p => !p.panel.emphasis && hasMatureLine(p))) {
       legend.push({ id: 'stack:mature', label: chartString(options, 'matureCohort'), paint: neutral, key: 'line' });
     }
@@ -382,11 +398,13 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   const gutterCapped = authoredGutter !== undefined && gutter < authoredGutter;
   // Where even the full width is too little, values and category names thin
   // to every second category, counted back from the latest one.
-  const thin = narrow && frame.plot.w < valueRoom;
+  const onRight = gutterAfter && !narrow;
+  // A plot at the left edge of the frame moves right by the room of the base labels.
+  const inset = narrow || onRight ? baseRoom : 0;
+  const thin = narrow && frame.plot.w - inset < valueRoom;
   const lastIndex = data.categories.length - 1;
   const named = (ci: number) => !thin || ci % 2 === lastIndex % 2;
-  const onRight = gutterAfter && !narrow;
-  const plotX = narrow || onRight ? frame.plot.x : frame.plot.x + gutter + gutterGap, plotW = narrow ? frame.plot.w : frame.plot.w - gutter - gutterGap;
+  const plotX = narrow || onRight ? frame.plot.x + inset : frame.plot.x + gutter + gutterGap, plotW = narrow ? frame.plot.w - inset : frame.plot.w - gutter - gutterGap - inset;
   // Where the readout text sits: the gutter track, or the full width above a panel, which reads no gutter setting.
   const trackX = onRight ? frame.plot.x + plotW + gutterGap : frame.plot.x;
   const trackW = narrow ? frame.plot.w : gutter;
@@ -570,7 +588,8 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
     const formatValue = p.format;
     const plot=plots[pi]!, baseline=plot.y+plot.h;
     const owner={seriesId:p.panel.id};
-    const color=p.panel.emphasis?accent:neutral;
+    // The focus look keeps one paint along a line: the accent in the panel with emphasis, the strong neutral else.
+    const color: Paint = p.panel.emphasis ? accent : look ? { token: 'neutralMark' } : neutral;
     const labelGap=p.panel.type==='line'?9:5;
     const clearance=heightOf(valueFont)+labelGap+(p.panel.type==='line'?4.5:0)+4;
     const bandClear=pi===bandFirstIndex?Math.max(0,bandLabelHeight+8-firstOverhang-(heads?.[pi]!.h??0)):0;
@@ -670,6 +689,17 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
         put(`${p.panel.id}:key:${item.id}:share`, share.text, keyFont, { x: kx + item.shareRight - sw, y: ky + (keyRow - heightOf(keyFont)) / 2, w: sw, h: heightOf(keyFont) }, { seriesId: item.id }, { token: 'ink' }, 'secondary', 'point', [share.text], share.claimId);
       }
     }
+    // The focus look's base line: dashed at the base window's level, over the columns and under a line, with the
+    // base level at its left end. None where the base value is not available.
+    const level = look ? baseLevel(p) : null, baseText = baseTexts[pi];
+    const baseLine = () => {
+      if (level === null || baseText === undefined) return;
+      const by = py(level), bw = measure(baseText, baseFont).width;
+      emit({ t: 'line', id: `${p.panel.id}:base-line`, x1: plotX, x2: plotX + plotW, y1: by, y2: by, stroke: baseStroke, width: strokeToken(theme, 'rule'), dash: dashToken(theme, 'reference'), owner, part: 'baseLine' });
+      put(`${p.panel.id}:base-value`, baseText, baseFont, { x: plotX - 8 - bw, y: by - heightOf(baseFont) / 2, w: bw, h: heightOf(baseFont) }, owner, muted, 'label', 'point', [baseText],
+        `stack:${p.panel.id}:base${'denominator' in p.panel.measure ? ':raw' : ''}`);
+    };
+    if (p.panel.type === 'line') baseLine();
     if(p.panel.type==='line') {
       for(let i=1;i<data.categories.length;i++) if(visible(i-1)&&visible(i)&&p.states[i-1]!=='partial'&&p.states[i]!=='partial') {
         const provisional=p.states[i-1]==='maturing'||p.states[i]==='maturing';
@@ -701,13 +731,14 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
         const values='sum'in p.panel.measure?p.parts.map(part=>part[ci]!):[v];
         values.forEach((part,si)=>{
           const h=part!/domainMax*plot.h;sum+=part!;
-          const paints = values.length > 1 && 'sum' in p.panel.measure ? measurePaints.get(p.panel.measure.sum[si]!)! : undefined;
+          const paints = values.length > 1 && 'sum' in p.panel.measure && !look ? measurePaints.get(p.panel.measure.sum[si]!)! : undefined;
           // A provisional bar keeps its measure's paint as a hatch; the dashed outline marks it too.
           // A stacked one keeps its segments a grey step apart in a grey theme (hatchStripeColor).
-          const fill = paints ? paints.mature : p.panel.emphasis ? emphasizedFill : columnFill;
+          const lookFill = look ? statePaint(stateOf(ci), si, values.length) : undefined;
+          const fill = lookFill ?? (paints ? paints.mature : p.panel.emphasis ? emphasizedFill : columnFill);
           const rect={x:x-width/2,y:py(sum),w:width,h};
           const partOwner={...cellOwner,segmentId:String(si)};
-          emit({t:'rect',id:`${p.panel.id}:bar:${category.id}:${si}`,rect,fill,...(provisional?{pattern:'hatch45' as const,hatchEdge:false as const,...(paints?{hatch:{strength:options.hatchStrength??HATCH_STRENGTH_DEFAULT.sole,cue:'sole' as const,stacked:true as const}}:{})}:{}),owner:partOwner,part:'segment'},ci);
+          emit({t:'rect',id:`${p.panel.id}:bar:${category.id}:${si}`,rect,fill,...(provisional?{pattern:'hatch45' as const,hatchEdge:false as const,...(paints||look&&values.length>1?{hatch:{strength:options.hatchStrength??HATCH_STRENGTH_DEFAULT.sole,cue:'sole' as const,stacked:true as const}}:{})}:{}),owner:partOwner,part:'segment'},ci);
           occupied.claim(rect,'mark',partOwner,'segment');
           if(segmentLabels&&si===0&&part) {
             const text=formatValue(part);
@@ -720,6 +751,12 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
           }
         });
         if(provisional)emit({t:'path',id:`${p.panel.id}:outline:${category.id}`,d:`M${n(x-width/2)} ${n(baseline)}V${n(top)}H${n(x+width/2)}V${n(baseline)}`,stroke:muted,width:strokeToken(theme, 'mark'),dash:dashToken(theme, 'reference'),owner:cellOwner,part:'provisionalOutline'},ci);
+      } else if (look && !provisional) {
+        // The focus look draws no point per category: an open ring on the base window, a dot with a halo on the focus.
+        const state = stateOf(ci);
+        if (state === 'base') emit({ t: 'circle', id: `${p.panel.id}:point:${category.id}`, cx: x, cy: top, r: 3.75, fill: { token: 'background' }, stroke: { token: 'neutralMark' }, strokeWidth: 1.5, owner: cellOwner, part: 'basePoint' }, ci);
+        if (state === 'focus') emit({ t: 'circle', id: `${p.panel.id}:point:${category.id}`, cx: x, cy: top, r: 6, fill: accent, stroke: { token: 'background' }, strokeWidth: 2, owner: cellOwner, part: 'focusPoint' }, ci);
+        if (state !== 'rest') occupied.claim({ x: x - 6, y: top - 6, w: 12, h: 12 }, 'mark', cellOwner, 'point');
       } else {
         emit({t:'circle',id:`${p.panel.id}:point:${category.id}`,cx:x,cy:top,r:4.5,fill:provisional?{token:'background'}:color,...(provisional?{stroke:muted,strokeWidth:strokeToken(theme, 'mark')}:{}),owner:cellOwner,part:provisional?'provisionalPoint':'point'},ci);
         occupied.claim({x:x-4.5,y:top-4.5,w:9,h:9},'mark',cellOwner,'point');
@@ -729,6 +766,7 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
       const valueRequest=requests.at(-1);
       if(p.panel.type==='line'&&valueRequest?.id===`${p.panel.id}:value:${category.id}`)valueRequest.priority=ci===latest?PRIORITY.endpoint:PRIORITY.interior;
     });
+    if (p.panel.type === 'column') baseLine();
     // The focus look runs the baseline under the readout too, so each panel's column and plot sit on one rule.
     const ruleFrom = look && !narrow && !onRight ? frame.plot.x : plotX, ruleTo = look && onRight ? trackX + trackW : plotX + plotW;
     emit({t:'line',id:`${p.panel.id}:baseline`,x1:ruleFrom,x2:ruleTo,y1:baseline,y2:baseline,stroke:{token:'axis'},width:strokeToken(theme, 'rule'),owner,part:'baseline'});

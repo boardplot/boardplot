@@ -518,11 +518,46 @@ function statusToneSearch(theme: Theme, source: Extract<ThemePaintSource, { kind
   return base;
 }
 
-export function adaptivePaintColor(theme: Theme, source: Extract<ThemePaintSource, {kind: 'line-band' | 'line-context' | 'line-apart' | 'line-forecast' | 'fan-step' | 'bullet-band' | 'segment-apart' | 'total-apart' | 'bump-story' | 'status-tone'}>): string {
+/** How far (OKLab × 100) neighbouring segments of one focus-look column stay apart: the focus and base ramps a ramp step, the quiet ramp of the other categories less. */
+const FOCUS_RAMP_STEP = { focus: 10, base: 10, rest: 3 } as const;
+
+/**
+ * The fills of a stacked column in the metric stack focus look, from the first measure up. The focus runs from
+ * the accent, deepened toward the ink, through the accent washed toward the page to the light neutral. The base
+ * window runs from the strong neutral to the light neutral. The other categories run from the light neutral,
+ * a step toward the strong neutral, to the light neutral washed toward the page. Where two neighbours sit closer
+ * than a ramp step, the ramp spreads toward its strong end until they do not. A single measure takes the state's
+ * own colour: the accent, the strong neutral or the light neutral. Decided in the theme painted in.
+ */
+function focusRampColors(theme: Theme, state: 'focus' | 'base' | 'rest', count: number): string[] {
+  const page = theme.color.background, ink = theme.color.ink;
+  const accent = paintColor(theme, { token: 'focus' }), strong = paintColor(theme, { token: 'neutralMark' }), light = paintColor(theme, { token: 'rest' });
+  if (count < 2) return [state === 'focus' ? accent : state === 'base' ? strong : light];
+  const at = (from: string, to: string) => Array.from({ length: count }, (_, i) => mixColors(to, from, i / (count - 1)));
+  const apart = (colors: string[], step: number) => colors.every((color, i) => i === 0 || palettePerceptualDistance(colors[i - 1]!, color, 'normal') >= step);
+  const spreads = Array.from({ length: 11 }, (_, i) => i * 0.05);
+  const first = (make: (spread: number) => string[], ok: (colors: string[]) => boolean) => spreads.map(make).find(ok) ?? make(0);
+  const base = first(spread => at(mixColors(strong, ink, 1 - 1.6 * spread), light), colors => apart(colors, FOCUS_RAMP_STEP.base));
+  if (state === 'base') return base;
+  if (state === 'rest') return first(spread => at(mixColors(strong, light, 0.1 + spread), mixColors(light, page, 0.35 + spread)), colors => apart(colors, FOCUS_RAMP_STEP.rest));
+  // The focus deepens its accent toward the ink, less where that brings it near the base column (a dark page).
+  const focus = (deep: number) => (spread: number) => Array.from({ length: count }, (_, i) => i === 0 ? mixColors(accent, ink, deep)
+    : i === count - 1 ? light : mixColors(accent, page, 1 - (0.55 + spread) * i / (count - 2 || 1)));
+  for (const deep of [0.75, 0.85, 1]) {
+    const colors = first(focus(deep), colors => apart(colors, FOCUS_RAMP_STEP.focus));
+    if (palettePerceptualDistance(colors[0]!, base[0]!, 'normal') >= FOCUS_RAMP_STEP.focus) return colors;
+  }
+  return first(focus(1), colors => apart(colors, FOCUS_RAMP_STEP.focus));
+}
+
+export { focusRampColors };
+
+export function adaptivePaintColor(theme: Theme, source: Extract<ThemePaintSource, {kind: 'line-band' | 'line-context' | 'line-apart' | 'line-forecast' | 'fan-step' | 'bullet-band' | 'segment-apart' | 'total-apart' | 'bump-story' | 'status-tone' | 'focus-ramp'}>): string {
   switch (source.kind) {
     case 'status-tone': return statusToneColor(theme, source);
     case 'bump-story': return paintColor(theme, bumpStoryPaints(theme, source.count)[source.index]!);
     case 'segment-apart': return paintColor(theme, segmentApartPaints(theme, source.plain, source.others)[source.index]!);
+    case 'focus-ramp': return focusRampColors(theme, source.state, source.count)[source.index]!;
     case 'total-apart': return totalApartColor(theme, source.apartFrom);
     case 'line-apart': return paintColor(theme, lineApartPaint(theme, source.share, source.top, source.apartFrom, source.darker));
     case 'line-band': return paintColor(theme, lineBandPaint(theme, source.base, source.seriesId));
