@@ -3,6 +3,8 @@
  * `options.stack`. The React chart sets it while the pointer or the keyboard
  * rests on a category; the layout then draws that category as the compare
  * window. A registered symbol: the request keeps it and JSON never carries it.
+ * It sits outside the chart folders, so shared React code links it without
+ * linking a chart's core before the chart draws.
  */
 export const STACK_FOCUS = Symbol.for('boardplot.metricStackFocus');
 

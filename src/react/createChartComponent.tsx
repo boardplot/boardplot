@@ -46,7 +46,7 @@ import { markScrollRegion, scrollStateOf, type TableScrollState } from './scroll
 import { useChartExport, type ExportLink } from './exportLink';
 import { useRowsInput, type RowsProps } from './rowsInput';
 import { asSize, frameSize, RefusalBoundary, type PerTypeSizeOptions } from './RefusalBoundary';
-import { withStackFocus } from '../core/charts/grid/stackFocus';
+import { withStackFocus } from '../core/stackFocus';
 
 export type { HoverContentContext, HoverOption, RenderHoverContent } from './useHover';
 

@@ -27,7 +27,7 @@ import { maxOf, pushAll } from '../../arrays';
 import { withUnprintedClaims } from '../../claims/ids';
 import { displayFont } from '../cardRoles';
 import { unitOnNumber, withUnit } from '../../unitJoin';
-import { STACK_FOCUS } from './stackFocus';
+import { STACK_FOCUS } from '../../stackFocus';
 
 export interface MetricStackDerived {
   gap: number;
