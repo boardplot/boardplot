@@ -1,9 +1,29 @@
 import { boxGap, rectLineDistance, type Point, type Rect } from '../../geometry';
 import { prepareOutlineDistance } from '../../polyline';
+import { geoPolygonExtrema } from '../../geo/decode';
 import type { FittedGeoRegion, GeoPoint } from '../../geo/types';
 
+type Guard = (id: string, rect: Rect, from?: GeoPoint, to?: GeoPoint) => boolean;
+const fittedGuards = new WeakMap<FittedGeoRegion['polygons'], { regions: readonly FittedGeoRegion[]; guard: Guard }>();
+
+/** Only the fixed outlines and visible marker positions affect these geometric answers. */
+export function outsideLabelGuard(regions: readonly FittedGeoRegion[]): Guard {
+  const key = regions[0]?.polygons;
+  const previous = key && fittedGuards.get(key);
+  if (previous && previous.regions.length === regions.length && regions.every((region, i) => {
+    const old = previous.regions[i]!;
+    return old.id === region.id && old.polygons === region.polygons
+      && Object.is(old.marker?.radius, region.marker?.radius)
+      && Object.is(old.marker?.x ?? old.anchor.x, region.marker?.x ?? region.anchor.x)
+      && Object.is(old.marker?.y ?? old.anchor.y, region.marker?.y ?? region.anchor.y);
+  })) return previous.guard;
+  const guard = makeGuard(regions);
+  if (key) fittedGuards.set(key, { regions, guard });
+  return guard;
+}
+
 /** Test against the drawn outlines, not the map's 4 px occupancy strips. */
-export function outsideLabelGuard(regions: readonly FittedGeoRegion[]) {
+function makeGuard(regions: readonly FittedGeoRegion[]): Guard {
   interface Query {
     x: number; y: number; w: number; h: number;
     fromX?: number; fromY?: number; toX?: number; toY?: number;
@@ -11,22 +31,9 @@ export function outsideLabelGuard(regions: readonly FittedGeoRegion[]) {
   }
   let boundsScale = 1;
   const shapes = regions.map(region => {
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     const polygons = region.polygons;
-    const rings = polygons.flat();
-    const samples: GeoPoint[] = [];
-    for (const ring of rings) {
-      for (const point of ring) {
-        const [x, y] = point;
-        if (!samples.length) samples.push(point, point, point, point);
-        if (x < minX) samples[0] = point;
-        if (x > maxX) samples[1] = point;
-        if (y < minY) samples[2] = point;
-        if (y > maxY) samples[3] = point;
-        minX = Math.min(minX, x); minY = Math.min(minY, y);
-        maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
-      }
-    }
+    const { bounds: [minX, minY, maxX, maxY], samples } = geoPolygonExtrema(polygons);
+    let rings: GeoPoint[][] | undefined;
     let outlineDistance: ReturnType<typeof prepareOutlineDistance> | undefined;
     const marker = region.marker ?? { x: region.anchor.x, y: region.anchor.y, radius: 2.5 };
     const x = samples.length ? minX : marker.x - marker.radius;
@@ -36,10 +43,11 @@ export function outsideLabelGuard(regions: readonly FittedGeoRegion[]) {
       h: samples.length ? maxY - y : 2 * marker.radius };
     const right = x + bounds.w, bottom = y + bounds.h;
     boundsScale = Math.max(boundsScale, Math.abs(x), Math.abs(y), Math.abs(right), Math.abs(bottom), Math.abs(bounds.w), Math.abs(bounds.h));
-    return { id: region.id, polygons, rings, samples,
+    return { id: region.id, polygons, samples,
+      get rings() { return rings ??= polygons.flat(); },
       get outlineDistance() {
         // Most regions are eliminated by their bounds before an exact distance is needed.
-        return outlineDistance ??= prepareOutlineDistance(rings.map(ring => ring.map(([x, y]) => ({ x, y }))));
+        return outlineDistance ??= prepareOutlineDistance(this.rings.map(ring => ring.map(([x, y]) => ({ x, y }))));
       },
       marker, bounds, right, bottom, maxY, queries: new Map<number, Query>() };
   });
@@ -149,6 +157,7 @@ export function outsideLabelGuard(regions: readonly FittedGeoRegion[]) {
         if (!apart && crossed(shape, start!, end!)) { fits = false; break; }
       }
     }
+    if (own.queries.size >= 256 && !own.queries.has(key)) own.queries.clear();
     own.queries.set(key, { x: rect.x, y: rect.y, w: rect.w, h: rect.h, fromX, fromY, toX, toY, fits });
     return fits;
   };

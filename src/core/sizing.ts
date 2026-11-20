@@ -1295,6 +1295,9 @@ export function sideKeyGivesWay<O extends { mode?: unknown }, G extends Geometry
 export const WIDTH_PROBE = Symbol('boardplot.widthProbe');
 /** A table trial which consumes acceptance and drawn height only. */
 export const TABLE_WIDTH_TEST = 'table-width-test';
+/** The small-type sizing probe only asks whether the existing width must rise. */
+export const MAP_WIDTH_BOUND = Symbol('boardplot.mapWidthBound');
+export type MapWidthProbe = { [MAP_WIDTH_BOUND]?: { width: number } };
 export const FIXED_SIZE_PROBE = Symbol('boardplot.fixedSizeProbe');
 /** Set by a probe that reads only whether the chart draws (`isRefused`): it skips work that only words a warning. */
 export const ACCEPTANCE_PROBE = Symbol('boardplot.acceptanceProbe');

@@ -129,24 +129,124 @@ export function decodeGeoPack(pack: GeoPack): DecodedGeoPack {
   return decoded;
 }
 
-/**
- * `reuse` offers an earlier fit of the same decoded pack: its point arrays are taken when its
- * transform is this one. Anchors and markers are read again, since a pack's anchor and marker
- * objects stay live (decodeGeoPack).
- */
-function fitDecodedGeoPack(decoded: DecodedGeoPack, frame: Rect, reuse?: FittedGeoPack): FittedGeoPack {
+type Bounds = [number, number, number, number];
+interface PolygonExtrema {
+  bounds: Bounds;
+  samples: GeoPoint[];
+}
+const extrema = new WeakMap<GeoPoint[][][], PolygonExtrema>();
+
+/** Bounds and four actual outline vertices, at the left, right, top and bottom. */
+export function geoPolygonExtrema(polygons: GeoPoint[][][]): PolygonExtrema {
+  const cached = extrema.get(polygons);
+  if (cached) return cached;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  const samples: GeoPoint[] = [];
+  for (const polygon of polygons) for (const ring of polygon) for (const point of ring) {
+    const [x, y] = point;
+    if (!samples.length) samples.push(point, point, point, point);
+    if (x < minX) samples[0] = point;
+    if (x > maxX) samples[1] = point;
+    if (y < minY) samples[2] = point;
+    if (y > maxY) samples[3] = point;
+    minX = Math.min(minX, x); minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
+  }
+  const result: PolygonExtrema = { bounds: [minX, minY, maxX, maxY], samples };
+  extrema.set(polygons, result);
+  return result;
+}
+
+interface ProjectedOutlines {
+  scale: number;
+  offsetX: number;
+  offsetY: number;
+  regions: GeoPoint[][][][];
+  boundaries: GeoPoint[][][];
+}
+interface OutlineCache {
+  frames: ProjectedOutlines[];
+  keys: Map<string, object[]>;
+  capacity: number;
+}
+const fittedOutlines = new WeakMap<DecodedGeoPack, OutlineCache>();
+
+// Paths and fill strips can outlive the much larger arrays of projected vertices.
+const projectedKeys = new WeakMap<GeoPoint[][][], object>();
+export function projectedRegionKey(polygons: GeoPoint[][][]): object {
+  return projectedKeys.get(polygons) ?? polygons;
+}
+
+/** Label probes revisit earlier frames. Limit retained points as well as the number of frames. */
+function outlineCache(decoded: DecodedGeoPack): OutlineCache {
+  let cache = fittedOutlines.get(decoded);
+  if (!cache) {
+    let points = 0;
+    for (const region of decoded.regions) {
+      for (const polygon of region.polygons) for (const ring of polygon) points += ring.length;
+    }
+    for (const boundary of decoded.boundaries) for (const line of boundary.lines) points += line.length;
+    cache = { frames: [], keys: new Map(), capacity: Math.max(1, Math.min(12, Math.floor(300_000 / Math.max(1, points)))) };
+    fittedOutlines.set(decoded, cache);
+  }
+  return cache;
+}
+
+function projectOutlines(decoded: DecodedGeoPack, scale: number, offsetX: number, offsetY: number): ProjectedOutlines {
+  const cache = outlineCache(decoded);
+  const frames = cache.frames;
+  for (let i = 0; i < frames.length; i++) {
+    const fit = frames[i]!;
+    if (fit.scale === scale && fit.offsetX === offsetX && fit.offsetY === offsetY) {
+      if (i) { frames.splice(i, 1); frames.unshift(fit); }
+      return fit;
+    }
+  }
+  const fitPoint = (point: GeoPoint): GeoPoint => [
+    point[0] * scale + offsetX,
+    point[1] * scale + offsetY,
+  ];
+  const transform = [scale, offsetX, offsetY].map(n => Object.is(n, -0) ? '-0' : String(n)).join(',');
+  let keys = cache.keys.get(transform);
+  if (!keys) {
+    keys = decoded.regions.map(() => ({}));
+    if (cache.keys.size >= 4 * cache.capacity) cache.keys.delete(cache.keys.keys().next().value!);
+    cache.keys.set(transform, keys);
+  }
+  const regions = decoded.regions.map((region, index) => {
+    const projected = region.polygons.map(polygon => polygon.map(ring => ring.map(fitPoint)));
+    projectedKeys.set(projected, keys[index]!);
+    if (scale > 0 && Number.isFinite(scale) && Number.isFinite(offsetX) && Number.isFinite(offsetY)) {
+      // A positive affine fit preserves the order of coordinates. Use the same multiply and add
+      // as fitPoint so the bounds match a scan of the screen coordinates, including rounding.
+      const source = geoPolygonExtrema(region.polygons);
+      if (source.samples.length) {
+        const [minX, minY, maxX, maxY] = source.bounds;
+        extrema.set(projected, { bounds: [minX * scale + offsetX, minY * scale + offsetY,
+          maxX * scale + offsetX, maxY * scale + offsetY], samples: source.samples.map(fitPoint) });
+      } else {
+        extrema.set(projected, source);
+      }
+    }
+    return projected;
+  });
+  const boundaries = decoded.boundaries.map(boundary => boundary.lines.map(line => line.map(fitPoint)));
+  const fit = { scale, offsetX, offsetY, regions, boundaries };
+  if (frames.length === cache.capacity) frames.pop();
+  frames.unshift(fit);
+  return fit;
+}
+
+/** Point arrays are read-only. Read live region anchors, marker sizes and pack bounds on every fit. */
+export function fitGeoPack(pack: GeoPack, frame: Rect): FittedGeoPack {
+  const decoded = decodeGeoPack(pack);
   const [minX, minY, maxX, maxY] = decoded.pack.bounds;
   const sx = frame.w / (maxX - minX);
   const sy = frame.h / (maxY - minY);
   const scale = sx < sy ? sx : sy;
   const offsetX = frame.x + (frame.w - (maxX - minX) * scale) / 2 - minX * scale;
   const offsetY = frame.y + (frame.h - (maxY - minY) * scale) / 2 - minY * scale;
-  const points = reuse !== undefined && reuse.pack === decoded.pack && reuse.scale === scale
-    && reuse.offsetX === offsetX && reuse.offsetY === offsetY ? reuse : undefined;
-  const fitPoint = (point: GeoPoint): GeoPoint => [
-    point[0] * scale + offsetX,
-    point[1] * scale + offsetY,
-  ];
+  const points = projectOutlines(decoded, scale, offsetX, offsetY);
   return {
     pack: decoded.pack,
     frame,
@@ -156,7 +256,7 @@ function fitDecodedGeoPack(decoded: DecodedGeoPack, frame: Rect, reuse?: FittedG
     regions: decoded.regions.map((region, index) => ({
       id: region.id,
       aliases: region.aliases,
-      polygons: points?.regions[index]!.polygons ?? region.polygons.map((polygon) => polygon.map((ring) => ring.map(fitPoint))),
+      polygons: points.regions[index]!,
       anchor: {
         ...region.anchor,
         x: region.anchor.x * scale + offsetX,
@@ -178,18 +278,7 @@ function fitDecodedGeoPack(decoded: DecodedGeoPack, frame: Rect, reuse?: FittedG
     boundaries: decoded.boundaries.map((boundary, index) => ({
       id: boundary.id,
       geometryClass: boundary.geometryClass,
-      lines: points?.boundaries[index]!.lines ?? boundary.lines.map((line) => line.map(fitPoint)),
+      lines: points.boundaries[index]!,
     })),
   };
-}
-
-// The label probe fits the same frame on each pass, and a map layout fits it once more for the
-// marks. The point arrays of a fit depend only on the decoded pack and the transform, so the
-// last fit lends them to the next fit with the same transform. More fits kept would hit little
-// more often (3% more calls at eight) and a fitted pack holds up to 2 MB.
-let lastFit: FittedGeoPack | undefined;
-
-/** The point arrays (polygons, boundary lines) are shared between fits of one transform: read-only. */
-export function fitGeoPack(pack: GeoPack, frame: Rect): FittedGeoPack {
-  return lastFit = fitDecodedGeoPack(decodeGeoPack(pack), frame, lastFit);
 }

@@ -17,7 +17,7 @@ import { AUTHORED_EXAMPLES, withChartFormats, withUnitStandIns, writtenExamples 
 import { hasFormatRecord } from './formatPrecision';
 import type { Geometry, LayoutResult, LintWarning, RefusedLayout } from './types/scene';
 import type { ChartSizing } from './types/sizing';
-import { CARD_MIN_WIDTH, chartSizing, declaredSizing, fitsSize, compactFallbackApplies, FORCE_COMPACT, LAYOUT_CALL, FULL_LAYOUT_PROBE, type LayoutCall, plotRepairHeight, WIDTH_PROBE, FIXED_SIZE_PROBE, ACCEPTANCE_PROBE, CARD_HEIGHT_MEMO, type CardHeightMemo, type FitLayout, isWidthProbe, compactReplacesRefusal, sizeRefusal, sizeSearchLimit, withoutForcedCompact, hiddenForSpace, narrowShareApplies, PLOT_SHARE, PLOT_FLOOR_SHARE, withLayoutMemo, SIZE_TOLERANCE, lostCategoryNames } from './sizing';
+import { CARD_MIN_WIDTH, chartSizing, declaredSizing, fitsSize, compactFallbackApplies, FORCE_COMPACT, LAYOUT_CALL, FULL_LAYOUT_PROBE, type LayoutCall, plotRepairHeight, WIDTH_PROBE, MAP_WIDTH_BOUND, FIXED_SIZE_PROBE, ACCEPTANCE_PROBE, CARD_HEIGHT_MEMO, type CardHeightMemo, type FitLayout, isWidthProbe, compactReplacesRefusal, sizeRefusal, sizeSearchLimit, withoutForcedCompact, hiddenForSpace, narrowShareApplies, PLOT_SHARE, PLOT_FLOOR_SHARE, withLayoutMemo, SIZE_TOLERANCE, lostCategoryNames } from './sizing';
 import { NormalizeError, resolveCanvasOptions, resolveSize } from './normalize/shared';
 import { checkItemBudget } from './itemBudget';
 import { DENSITY_VALUES, UNVERIFIED_DENSITY_REFUSALS, authoredNotes, dataOrder, densityNoteInList, hiddenNoteLine, withDensityNotes, withCutLabelNotes, finishCutLabelNotes, footnoteSwitch, markNotedLabels, owedHiddenLabels, withHiddenLabelNote, withNoteInA11y } from './frame';
@@ -455,15 +455,17 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
       // of 160 px that refuses costs several times a layout at 280 px. A probe that draws there still reports the width
       // its own content needs (a map lists its small regions beside it).
       const at = Math.max(Math.ceil(minimum.minWidth), CARD_MIN_WIDTH);
+      const mapBound = def.type === 'choropleth' && !resolved.fixed.height && at === minimum.minWidth
+        ? { width: at } : undefined;
       let probe: ReturnType<typeof named>['geo'];
       // A chart whose text cannot wrap at the probe width throws (creative-text-overflow in German).
       // The probe only refines the reported minimum, so the chart that drew keeps it.
       // Only a width refusal counts here. The hidden-label note rounds add note lines, which take
       // height and never width, so the probe skips them; the notes the spec asks for stay in it.
-      try { probe = legendLayout(withoutForcedCompact({ ...layoutOptions, [FIXED_SIZE_PROBE]: true, ...((def.type === 'table' || def.type === 'dimswitch') ? { [PLAN_ONLY]: true } : {}),
+      try { probe = legendLayout(withoutForcedCompact({ ...layoutOptions, [FIXED_SIZE_PROBE]: true, ...(mapBound ? { [MAP_WIDTH_BOUND]: mapBound } : {}), ...((def.type === 'table' || def.type === 'dimswitch') ? { [PLAN_ONLY]: true } : {}),
         ...(def.type === 'gantt' && !resolved.fixed.height ? { [ACCEPTANCE_PROBE]: true } : {}),
         size: resolved.fixed.height ? { width: at, height: Math.max(size.height, minimum.minHeight) } : { width: at } } as O)); }
-      catch (error) { if (error instanceof NormalizeError) return minimum; throw error; }
+      catch (error) { if ((mapBound && error === mapBound) || error instanceof NormalizeError) return minimum; throw error; }
       return (probe.refused ? probe.warnings[0]?.code === 'size-below-floor' : at > minimum.minWidth) && probe.sizing && probe.sizing.minWidth > minimum.minWidth
         ? { ...minimum, minWidth: Math.min(720, probe.sizing.minWidth) } : minimum;
     };
