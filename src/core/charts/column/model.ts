@@ -1,10 +1,8 @@
 /**
  * The structs the column layout phases hand to each other. Each phase
  * is a function from the structs before it to one new struct, plus the run's
- * warnings log, which a phase only appends to. The frame claims into a fresh
- * index, which then becomes the run's index; the marks claim into a fresh
- * index of their own, which `layoutColumn` replays in claim order. Label
- * planning reads the phase 2 struct and no index.
+ * warnings log. The frame and marks append to the run's occupied index in
+ * draw order. Label planning reads the phase 2 struct and no index.
  */
 
 import type { ValueAxisTitle } from '../../axis';
@@ -12,7 +10,6 @@ import type { NumberFormatSpec } from '../../formatSpec';
 import type { FrameResult } from '../../frame';
 import type { Rect } from '../../geometry';
 import type { CategoryRowPlan } from '../../label/categoryRow';
-import type { OccupiedIndex } from '../../label/occupied';
 import type { DataRange, RangeMark } from '../../rangeRules';
 import type { PreparedRatioTier } from '../../ratioTier';
 import type { BandScale, LinearBreak, LinearScale } from '../../scale';
@@ -272,8 +269,6 @@ export interface ColumnMarkGeometry {
   paintStack?: () => SceneNode[];
   /** In paint order, from the frame's own nodes on. */
   nodes: SceneNode[];
-  /** The phase's own index: every rect it claimed, in claim order. */
-  claims: OccupiedIndex;
   axes: AxisGeometry[];
   marks: ColumnMarks;
   rangeMarks: RangeMark[];

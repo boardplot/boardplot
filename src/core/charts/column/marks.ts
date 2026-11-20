@@ -10,7 +10,7 @@ import { stackConnectors } from '../band/connectors';
 import { sk } from '../band/stacks';
 import { categoryBreakGlyph, layoutValueAxis } from '../../axis';
 import { type Rect } from '../../geometry';
-import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
+import type { OccupiedIndex } from '../../label/occupied';
 import { bandedIntervalTicks } from '../../intervalTicks';
 import { strokeToken, dashToken, contrastInkPaint, effectiveFill, hatchGroundPaint, resolveSurface } from '../../theme';
 import { ribbonPath } from '../../svgPath';
@@ -576,12 +576,12 @@ export function layoutColumnMarks(
   domain: ColumnDomain,
   paints: ColumnPaints,
   area: ColumnArea,
+  claims: OccupiedIndex,
   /** How far a plan tick behind its column reaches past each side (planTickEnds); undefined draws it in front. */
   planEnds?: number,
 ): ColumnMarkGeometry {
   const { theme, size, va, anomaly } = domain;
   const { frame, plot, y, y0 } = area;
-  const claims = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
   const nodes: SceneNode[] = [...frame.nodes, ...highlightBands(domain, area)];
   const axes: AxisGeometry[] = [];
   // Reserving space in topPad is not the same as HOLDING it: a promoted value
@@ -683,7 +683,7 @@ export function layoutColumnMarks(
     // A part the rule crosses seats its value in the stretch the rule leaves, as it does for a tick.
     for (const c of domain.cats) refTickYs.set(c.id, [...(refTickYs.get(c.id) ?? []), y(v)]);
   });
-  const scene = { nodes, claims, axes, marks, ...bars, refTickYs, behindTickYs, planEnds, netLineEnd };
+  const scene = { nodes, axes, marks, ...bars, refTickYs, behindTickYs, planEnds, netLineEnd };
   if (!paintSegments) return scene;
   const at = barsAt + behindTicks.length;
   return { ...scene, paintStack: () => nodes.slice(0, at).concat(paintSegments(), nodes.slice(at)) };
