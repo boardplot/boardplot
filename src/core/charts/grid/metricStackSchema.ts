@@ -19,8 +19,8 @@ export const metricStackDataSchema = z.strictObject({
   measures: z.array(z.strictObject({
     id: id.describe('Unique source measure id.'),
     label: id.describe('Source measure label; also the stacked-column legend label.'),
-    values: z.array(z.number().nonnegative().finite().nullable()).min(1).describe('Source counts, one per category. Null means unavailable.'),
-  })).min(1).describe('Raw source counts stored once. Rates and readouts are computed from these counts.'),
+    values: z.array(z.number().nonnegative().finite().nullable()).min(1).describe('Source values, one per category: counts, or amounts such as spend. Null means unavailable.'),
+  })).min(1).describe('Raw source values stored once. Rates, amounts per unit and readouts are computed from these values.'),
   panels: z.array(z.strictObject({
     id: id.describe('Unique panel id; state scopes use this id.'),
     type: z.enum(['column', 'line']).describe('Columns, stacked columns for a multi-measure sum, or a line with points.'),
@@ -28,12 +28,13 @@ export const metricStackDataSchema = z.strictObject({
     unit: id.describe("Measure unit in the readout gutter. A unit in words names each value on the hover card ('Cases per month: 800'); a sign or code such as '$' or 'EUR k' stays on the number."),
     measure: z.union([
       z.strictObject({ sum: fields.describe('Measures added for each category. Columns stack the inputs in order.') }),
-      z.strictObject({ numerator: fields.describe('Measures summed for the rate numerator.'), denominator: id.describe('Source measure for the rate denominator; the result is a percentage. The stack is a conversion chain, so a rate is always a share of a count; draw a cost per unit or another currency ratio as kpi cards or grid column or line panels.') }),
-    ]).describe('Engine-computed panel measure.'),
-    readout: z.union([z.literal('change'), z.strictObject({ base: id.describe('Base measure for the remaining-per-100 chain.') })]).describe('change compares grid windows; base computes a volume-weighted mature rate and remaining-per-100 span.'),
+      z.strictObject({ numerator: fields.describe('Measures summed for the rate numerator.'), denominator: id.describe('Source measure for the rate denominator; the result is a percentage, a share of a count. For an amount per unit, such as cost per order, use ratio and per.') }),
+      z.strictObject({ ratio: fields.describe('Measures added for the amount, such as spend.'), per: id.describe("Source measure of the units, such as orders. Each category's value is the sum of ratio divided by per, with no factor 100; it is n/a when an input is null or per is 0. A window divides the sum of ratio over its categories by the sum of per, never the mean of the category values: spend 100 and 300 on 10 and 20 orders is 13.33 per order. The change readout is the percent change of the two window values. One mark per category.") }),
+    ]).describe('Engine-computed panel measure: a sum, a rate in percent, or an amount per unit.'),
+    readout: z.union([z.literal('change'), z.strictObject({ base: id.describe('Base measure for the remaining-per-100 chain.') })]).describe('change compares grid windows; base computes a volume-weighted mature rate and remaining-per-100 span, for rate panels only.'),
     emphasis: z.boolean().optional().describe('Use the theme accent. At most one panel may be emphasised.'),
-    divisor: z.number().positive().optional().describe('Display divisor for sum marks and their change span, for example 1000. The headline percent is unitless.'),
-    decimals: z.number().int().min(0).max(6).optional().describe('Decimal places of the marks and the change span. A panel with divisor and without decimals prints 0 for counts and 1 for rates; a panel with neither prints by the default number rule.'),
+    divisor: z.number().positive().optional().describe('Display divisor for sum or per-unit marks and their change span, for example 1000. The headline percent is unitless.'),
+    decimals: z.number().int().min(0).max(6).optional().describe('Decimal places of the marks and the change span. A panel with divisor and without decimals prints 0 for sums and amounts per unit and 1 for rates; a panel with neither prints by the default number rule.'),
   })).min(2).max(5).describe('Two to five panels in top-down reading order.'),
   states: z.strictObject({
     maturing: z.strictObject({

@@ -949,6 +949,7 @@ The CLI prints every match in one response through `boardplot fixtures --type <t
 | metric-stack-steps | grid.metric-stack | example | Metric stack: volume-weighted funnel steps and remaining-per-100 chain |
 | stack-readout-parts | grid.metric-stack | example | Metric stack: readout gutter without the unit and the span |
 | stack-gutter-right | grid.metric-stack | example | Metric stack: readout gutter right of the plots, with a set width and alignment |
+| metric-stack-per-unit | grid.metric-stack | example | Metric stack: cost per order computed from spend and orders |
 
 ## slope
 

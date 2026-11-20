@@ -6,6 +6,7 @@ import { labelCardContent } from '../src/react/hover/labelCard';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { requireGeometry } from '../src/core/sizing';
 import type { Geometry } from '../src/core/types/scene';
+import type { GridDerived } from '../src/core/charts/grid/layout';
 import { getFixtures } from '../src/fixtures';
 
 const SET: NumberSet = { kind: 'number', unitText: false, cell: false, language: 'en' };
@@ -182,6 +183,21 @@ describe('the default number rule on charts', () => {
     const texts = drawn(gridStack([31250, 30400, 41875, 30120, 29980, 40660], { unit: 'thousand per month', divisor: 1000 }));
     expect(textsOf(texts, MONTHS.map((month) => `label:intake:value:${month.id}`))).toEqual(['31', '30', '42', '30', '30', '41']);
     expect(textsOf(texts, ['label:intake:before', 'label:intake:after', 'label:intake:headline'])).toEqual(['35', '34', '−3%']);
+  });
+
+  // A cost per order stored per month and drawn as a sum panel averaged the monthly ratios over a window: 12.5 for spend
+  // 100 and 300 on 10 and 20 orders. A per-unit panel divides the window sums, and a month without orders has no value.
+  it('computes the window value of a per-unit grid panel from the window sums', () => {
+    const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({ type: 'grid', options: { stack: {}, size: { width: 960 } }, data: {
+      categories: MONTHS.slice(0, 3),
+      measures: [{ id: 'spend', label: 'Spend', values: [100, 300, 50] }, { id: 'orders', label: 'Orders', values: [10, 20, 0] }],
+      panels: [{ id: 'cpo', type: 'line', title: 'Cost per order', unit: '$ per order', measure: { ratio: ['spend'], per: 'orders' }, readout: 'change' },
+        { id: 'orders', type: 'column', title: 'Orders', unit: 'per month', measure: { sum: ['orders'] }, readout: 'change' }],
+      windows: { grain: 'month', base: { from: '2026-01', to: '2026-02', label: 'Jan–Feb' }, compare: { from: '2026-03', to: '2026-03', label: 'Mar' } } } } as never))) as Geometry;
+    const stack = (geometry.derived as GridDerived).metricStack!;
+    expect(stack.panels[0]!.values).toEqual([10, 15, null]);
+    expect(stack.readouts[0]!.claims.find((claim) => claim.id === 'stack:cpo:base')!.output.raw).toBeCloseTo(400 / 30, 10);
+    expect(stack.readouts[0]).toMatchObject({ method: 'ratio-change', after: null, headline: null });
   });
 
   // The weighted-rate readout rounded each rate to one decimal before it printed ("4.7%", "4.7 → 0.2"), and a panel with

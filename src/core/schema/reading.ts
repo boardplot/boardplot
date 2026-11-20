@@ -21,7 +21,7 @@ export const readingMetricStackSchema = {
   type: 'object',
   description: 'Metric stacks only: readouts with method, grain, category windows, rounded headline and span values, and claims carrying source and intermediate operands.',
   properties: { readouts: { type: 'array', items: { type: 'object', required: ['panelId', 'method', 'grain'], properties: {
-    panelId: { type: 'string' }, method: { type: 'string', enum: ['average-change', 'rounded-rate-change', 'weighted-rate'] },
+    panelId: { type: 'string' }, method: { type: 'string', enum: ['average-change', 'ratio-change', 'rounded-rate-change', 'weighted-rate'] },
     grain: { type: 'string', enum: ['day', 'week', 'month', 'quarter', 'year', 'category'], description: 'Category grain from windows.grain or explicit category ids; category when neither identifies a time grain.' },
     categoryIds: { type: 'object' }, headline: { type: ['number', 'null'] }, before: { type: ['number', 'null'] }, after: { type: ['number', 'null'] },
     headlineText: { type: 'string' }, spanText: { type: 'string' }, claims: { type: 'array', items: { type: 'object' }, description: 'Each claim has op, inputs (ref, value), and output (raw, state, displayed).' },
