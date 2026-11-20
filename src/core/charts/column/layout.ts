@@ -748,11 +748,13 @@ function layoutColumnSettled(
   let first = true;
   const run = (next: AnomalyColumnOptions): AnomalyColumnOptions => {
     // Only the staircase padding or fallback flag changes between these draws.
-    const staircase = next.categoryLabels === 'staircase' ? {} : undefined;
+    const staircase: ColumnStaircaseMemo | undefined = next.categoryLabels === 'staircase' ? {} : undefined;
     const draw = (o: AnomalyColumnOptions) => {
       const trial = layoutColumnPass(data, o, keepEachValue, first ? probe : undefined, first && stopAfterFirst !== undefined, staircase);
       first = false;
       if ('retry' in trial) return trial.retry;
+      // A completed draw owns its scene nodes, including the title and footer.
+      if (staircase) staircase.frame = undefined;
       pass = trial;
       return pass.staircase;
     };

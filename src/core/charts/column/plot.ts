@@ -26,10 +26,11 @@ import {
   type FrameResult,
   type LegendItemInput,
   authoredFootnoteCount, authoredNotes, noteLine, shareUnitOptions, type NoteCapOptions } from '../../frame';
+import { copyFrame } from '../../footer';
 import type { Rect } from '../../geometry';
 import { categoryRowTop, hangingLabelReserve, planCategoryRow, yieldToRotatedName } from '../../label/categoryRow';
 import { fitText } from '../../label/fitText';
-import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
+import { createOccupiedIndex, type OccupiedClaim, type OccupiedIndex } from '../../label/occupied';
 import { scenarioLegendKeys } from '../../label/legendFidelity';
 import { partialAxisWords, partialFootnotes, partialLegendKeys, toDateFont } from '../../partialPeriod';
 import { prepareRatioTier, ratioTierCanRender, ratioTierMetrics } from '../../ratioTier';
@@ -335,12 +336,20 @@ export function solveColumnFrame(
 ): { frame: FrameResult; claims: OccupiedIndex } {
   const { options, theme, size, measure } = domain;
   const claims = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
-  // The event lane has its own changing key. A plain staircase retries only its vertical pad.
-  const cached = !eventKey && memo?.furniture;
+  // The title, key and footer do not move when the staircase changes its vertical pad.
+  // Each attempt gets new occupied rectangles and a frame on which to record its height.
+  const reuse = memo && !eventKey && !domain.annList.length && !domain.cats.some(c => c.partial);
+  const saved = reuse && memo.frame;
+  if (saved) {
+    pushAll(warnings, saved.warnings);
+    for (const claim of saved.claims) claims.claim(claim.rect, claim.kind, claim.owner);
+    return { frame: { ...saved.frame, frame: copyFrame(saved.frame.frame) }, claims };
+  }
   const before = warnings.length;
-  const { margin, legend } = cached ? cached : columnFrameFurniture(domain, paints, warnings, eventKey);
-  if (cached) pushAll(warnings, cached.warnings);
-  else if (!eventKey && memo) memo.furniture = { margin, legend, warnings: warnings.slice(before) };
+  const furniture = !eventKey && memo?.furniture;
+  const { margin, legend } = furniture || columnFrameFurniture(domain, paints, warnings, eventKey);
+  if (furniture) pushAll(warnings, furniture.warnings);
+  else if (!eventKey && memo && !reuse) memo.furniture = { margin, legend, warnings: warnings.slice(before) };
   const frame = solveFrame(
     {
       size,
@@ -362,6 +371,10 @@ export function solveColumnFrame(
     },
     claims,
   );
+  if (reuse) {
+    memo.frame = { frame, claims: claims.snapshot(), warnings: warnings.slice(before) };
+    return { frame: { ...frame, frame: copyFrame(frame.frame) }, claims };
+  }
   return { frame, claims };
 }
 
@@ -575,6 +588,7 @@ function columnBandWidth(domain: ColumnDomain, frame: FrameResult, valueAxisRese
 /** The data, typography and axis are fixed during one column's staircase padding retries. */
 export interface ColumnStaircaseMemo {
   furniture?: ReturnType<typeof columnFrameFurniture> & { warnings: LintWarning[] };
+  frame?: { frame: FrameResult; claims: OccupiedClaim[]; warnings: LintWarning[] };
   width?: { x: number; w: number; axis: number; keyed: boolean; plan: ReturnType<typeof columnBandWidth> };
 }
 
