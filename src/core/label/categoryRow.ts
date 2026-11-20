@@ -661,6 +661,7 @@ function spreadUpright(input: CategoryRowInput, plan: CategoryRowPlan): Category
   // An end name may use its own width, but never past the plot's edge.
   const endRoom = (i: number) => Math.max(step, Math.min(input.measure(input.labels[i]!, font).width,
     2 * (i === 0 ? centers[0]! - x0 : x1 - centers[n - 1]!)));
+  let trySingleLine = true;
   // A spread row keeps at least as many names as the rotated row. If the
   // narrowest two-line form of every name together already exceeds the row,
   // neither of the upright attempts below can keep them all.
@@ -669,9 +670,19 @@ function spreadUpright(input: CategoryRowInput, plan: CategoryRowPlan): Category
     && !calendarMonths(input.dates ?? []) && !numberedSequence(input.labels) && !shortMonthNames(input.labels)
     && (input.gap ?? 4) >= 0 && input.labels.every(label => /^\S+(?: \S+)*$/u.test(label))
     && (input.measure === defaultMeasurer || input.measure === measureText || hasCompleteTableWidths(input.measure))) {
-    const room = centers[n - 1]! + endRoom(n - 1) / 2 - (centers[0]! - endRoom(0) / 2);
+    const first = endRoom(0), last = endRoom(n - 1);
+    const room = centers[n - 1]! + last / 2 - (centers[0]! - first / 2);
+    // The wider slots below are for interior names. Upright prose must still
+    // fit each end name inside its own slot, even after stepping down the font.
+    const fixedEnds = (input.padding ?? 6) >= 0 && !input.periods && !calendarLike(input.labels);
+    const atEnds = (f: FontSpec, lines: 1 | 2): boolean => {
+      if (!fixedEnds || f.size <= 0 || (f.letterSpacing ?? 0) < 0) return true;
+      const width = (name: string) => lines === 1 ? input.measure(name, f).width : twoLineWidth(name, f, input.measure, true);
+      return width(input.labels[0]!) <= Math.max(1, first) + 1e-6 && width(input.labels[n - 1]!) <= Math.max(1, last) + 1e-6;
+    };
     const couldFit = (f: FontSpec) => {
       if (f.size <= 0 || (f.letterSpacing ?? 0) < 0) return true;
+      if (!atEnds(f, 2)) return false;
       let required = 0;
       for (const label of input.labels) {
         required += twoLineWidth(label, f, input.measure, true);
@@ -680,14 +691,18 @@ function spreadUpright(input: CategoryRowInput, plan: CategoryRowPlan): Category
       return true;
     };
     const floor = targetFloorsPx(input.target ?? DEFAULT_TARGET, input.textScale).axis;
-    if (!input.fonts.some((f, i) => (i === 0 || f.size >= floor) && couldFit(f))
-      && (!input.stepToFloor || !couldFit({ ...font, size: floor }))) return undefined;
+    const someFont = (fits: (f: FontSpec) => boolean) => input.fonts.some((f, i) => (i === 0 || f.size >= floor) && fits(f))
+      || (input.stepToFloor === true && fits({ ...font, size: floor }));
+    if (!someFont(couldFit)) return undefined;
+    trySingleLine = someFont(f => atEnds(f, 1));
   }
-  const upright = planCategoryRowCascade({ ...input, widths: input.labels.map((_, i) => (i === 0 || i === n - 1 ? endRoom(i) : 2 * step - 8)) });
   const drawn = (p: CategoryRowPlan) => p.keep.filter(Boolean).length;
   const whole = (p: CategoryRowPlan, lines: number) => p.rotation === 0 && drawn(p) >= drawn(plan)
     && p.infos.every((info, i) => !p.keep[i] || (!info.truncated && info.lines.length <= lines));
-  if (whole(upright, 1)) return upright;
+  if (trySingleLine) {
+    const upright = planCategoryRowCascade({ ...input, widths: input.labels.map((_, i) => (i === 0 || i === n - 1 ? endRoom(i) : 2 * step - 8)) });
+    if (whole(upright, 1)) return upright;
+  }
   // A name of several words wraps at its spaces onto two lines ("New / items")
   // before the row turns 45° (pvm at 320 px). Each slot
   // is the pitch, or the name's widest word where that is wider, so the wrap
