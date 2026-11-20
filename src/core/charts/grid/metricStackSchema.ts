@@ -36,6 +36,7 @@ export const metricStackDataSchema = z.strictObject({
     divisor: z.number().positive().optional().describe('Display divisor for sum or per-unit marks and their change span, for example 1000. The headline percent is unitless.'),
     decimals: z.number().int().min(0).max(6).optional().describe('Decimal places of the marks and the change span. A panel with divisor and without decimals prints 0 for sums and amounts per unit and 1 for rates; a panel with neither prints by the default number rule.'),
     keyTitle: id.optional().describe("Caption over the key of a stacked panel, such as 'By plan', in muted small text. A panel without a key prints none."),
+    segmentShares: z.boolean().optional().describe("true prints each segment's share of its column, in whole percent that add up to 100, inside the segment of the base and the focus columns of a stacked panel. It applies under options.stack.variant 'focus'; the focus column prints the shares of the key. A share that has no room in its segment is left out; the key still carries it. Without the focus look, or on a panel that stacks no measures, it does nothing and warns option-ignored. Absent: no segment labels."),
   })).min(2).max(5).describe('Two to five panels in top-down reading order.'),
   states: z.strictObject({
     maturing: z.strictObject({

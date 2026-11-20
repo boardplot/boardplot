@@ -11,6 +11,7 @@ import { metricStackFixtures } from '../src/core/charts/grid/metricStackFixtures
 import type { Geometry } from '../src/core/types/scene';
 import type { MetricStackDerived } from '../src/core/charts/grid/metricStackLayout';
 import { loadHoverEngine } from '../src/react/useHover';
+import { withStackFocus } from '../src/core/stackFocus';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -344,6 +345,20 @@ it('keys the shares of a stacked panel in whole percent that add up to 100', () 
   expect(claims.reduce((sum, claim) => sum + claim.output.raw!, 0)).toBe(100);
 });
 
+// A segment share without room prints nowhere, so a reading that calls it visible states a number the chart never shows.
+it('reports a segment share as visible only where the drawing prints it, at rest and under a moved focus', () => {
+  const fixture = metricStackFixtures.find(f => f.id === 'metric-stack-focus-shares')!;
+  const measures = (fixture.data.panels[1]!.measure as { sum: string[] }).sum;
+  for (const options of [fixture.options, withStackFocus(fixture.options!, '2026-03')]) {
+    const { svg, reading } = render({ spec: { type: 'grid', data: fixture.data, options }, return: ['svg', 'reading'] }).body as
+      { svg: string; reading: { derived: { claimId: string; op: string; visible: boolean }[] } };
+    const visible = reading.derived.filter(d => d.op === 'round-sum-consistent@1' && d.claimId.includes(':segment:') && d.visible).map(d => d.claimId).sort();
+    const drawn = [...svg.matchAll(/data-id="label:orders:share:([^:"]+):(\d+)"/g)].map(([, at, si]) => `stack:orders:segment:${at}:${measures[Number(si)]}`).sort();
+    expect(drawn.length).toBeGreaterThan(0);
+    expect(visible).toEqual(drawn);
+  }
+});
+
 // Hover redraws the focus look for the hovered week; a plot that moved under the pointer would shift the very column it points at.
 it('moves the focus look to the hovered category in React and keeps every plot in place', async () => {
   const fixture = metricStackFixtures.find(f => f.id === 'metric-stack-focus')!;
@@ -360,11 +375,11 @@ it('moves the focus look to the hovered category in React and keeps every plot i
   const header = () => host.querySelector('[data-id="label:stack:focus"]')?.textContent;
   await act(async () => { root.render(createElement(GridChart as never, { data: fixture.data, ...fixture.options, hover: true, onGeometry: (g: Geometry) => drawn.push(g) })); await loadHoverEngine(); });
   await act(async () => { await new Promise(done => setTimeout(done, 50)); });
-  const rest = stackOf().metricStack, band = rest.focusBand!, plots = rest.panels.map(p => p.plot);
+  const rest = stackOf().metricStack, plots = rest.panels.map(p => p.plot);
   expect(header()).toBe(fixture.data.windows!.compare.label);
   const move = (category: number, y: number) => {
-    const event = new Event('pointermove', { bubbles: true });
-    Object.assign(event, { pointerType: 'mouse', clientX: band.x + (category + 0.5) * band.w / fixture.data.categories.length, clientY: y });
+    const event = new Event('pointermove', { bubbles: true }), now = stackOf().metricStack.focusBand!;
+    Object.assign(event, { pointerType: 'mouse', clientX: now.x + (category + 0.5) * now.w / fixture.data.categories.length, clientY: y });
     act(() => host.querySelector('svg')!.dispatchEvent(event));
   };
   // In the gap between the first two panels, over week 11.
@@ -377,6 +392,20 @@ it('moves the focus look to the hovered category in React and keeps every plot i
   act(() => host.querySelector('[data-bp-hover]')!.dispatchEvent(Object.assign(new Event('pointerout', { bubbles: true }), { pointerType: 'mouse' })));
   await act(async () => { await new Promise(done => setTimeout(done, 200)); });
   expect(header()).toBe(fixture.data.windows!.compare.label);
+  // With margin 0 on all four sides, as a dashboard host sets it, a focus value at the last week once passed the
+  // canvas edge: the value labels were dropped and every plot moved left, so the plots jumped as the focus moved.
+  await act(async () => { root.render(createElement(GridChart as never, { data: fixture.data, ...fixture.options, margin: { top: 0, right: 0, bottom: 0, left: 0 }, hover: true, onGeometry: (g: Geometry) => drawn.push(g) })); });
+  await act(async () => { await new Promise(done => setTimeout(done, 50)); });
+  const flush = stackOf().metricStack.panels.map(p => p.plot), last = fixture.data.categories.length - 1;
+  const labelled = (category: number) => fixture.data.panels.every(p => host.querySelector(`[data-id="label:${p.id}:value:${fixture.data.categories[category]!.id}"]`) !== null);
+  expect(labelled(last)).toBe(true);
+  for (const category of [0, 15, last]) {
+    move(category, flush[0]!.y + 10);
+    await act(async () => { await new Promise(done => setTimeout(done, 50)); });
+    expect(header()).toBe(fixture.data.categories[category]!.label);
+    expect(stackOf().metricStack.panels.map(p => p.plot)).toEqual(flush);
+    expect(labelled(category)).toBe(true);
+  }
   await act(async () => { root.unmount(); });
   host.remove();
   vi.restoreAllMocks();

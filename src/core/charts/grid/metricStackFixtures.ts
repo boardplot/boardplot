@@ -109,4 +109,20 @@ export const metricStackFixtures: Fixture<MetricStackData,GridLayoutOptions>[] =
     ],windows:{base:{from:'2026-W10',to:'2026-W10',label:'week of 2 Mar'},compare:{from:'2026-W39',to:'2026-W39',label:'Week of 21 Sep 2026'}},periods:months},
     options:{stack:{variant:'focus',heights:[160,120,188]},size:{width:1180},title:'Cost per customer falls 18% as customers grow faster than spend',subtitle:{measure:'Cost per customer, spend and customers per week',period:'March–September 2026'},source:'Invented example'},
   },
+  {
+    // The focus look by month: the base and the focus column print the share of each channel inside its segment.
+    id:'metric-stack-focus-shares',kind:'example',title:'Metric stack: the focus look by month, with segment shares',
+    data:{categories:['2025-10','2025-11','2025-12','2026-01','2026-02','2026-03','2026-04','2026-05','2026-06','2026-07','2026-08','2026-09'].map((id,i) => ({ id, label:['Oct 2025','Nov','Dec','Jan 2026','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep'][i]! })),measures:[
+      {id:'spend',label:'Spend',values:[41000,41800,42500,43800,42900,44600,45900,47100,48300,49200,50400,51800]},
+      {id:'direct',label:'Direct',values:[410,420,432,445,430,452,470,488,500,512,530,548]},
+      {id:'search',label:'Search',values:[320,318,325,330,322,335,340,352,360,366,372,380]},
+      {id:'social',label:'Social',values:[150,160,172,180,176,190,205,214,226,238,250,262]},
+      {id:'referral',label:'Referral',values:[80,82,79,85,83,86,88,90,92,91,94,96]},
+      {id:'orders',label:'Orders',values:[960,980,1008,1040,1011,1063,1103,1144,1178,1207,1246,1286]},
+    ],panels:[
+      {id:'cost-per-order',type:'line',title:'Cost per order',unit:'$ per order',measure:{ratio:['spend'],per:'orders'},readout:'change',emphasis:true},
+      {id:'orders',type:'column',title:'Orders',unit:'per month',measure:{sum:['direct','search','social','referral']},readout:'change',keyTitle:'By channel',segmentShares:true},
+    ],windows:{base:{from:'2025-10',to:'2025-10',label:'Oct 2025'},compare:{from:'2026-09',to:'2026-09',label:'Sep 2026'}}},
+    options:{stack:{variant:'focus',heights:[140,220]},size:{width:1180},title:'Cost per order falls 6% as orders grow faster than spend',subtitle:{measure:'Cost per order and orders by channel per month',period:'October 2025–September 2026'},source:'Invented example'},
+  },
 ];

@@ -28,6 +28,8 @@ export interface MetricStackPanel {
   decimals?: number;
   /** Caption over the key of a stacked panel. */
   keyTitle?: string;
+  /** The focus look: each segment of the base and the focus columns prints its share of the column. */
+  segmentShares?: boolean;
 }
 export interface MetricStackData {
   categories: { id: string; label: string; partial?: boolean }[];
@@ -79,6 +81,11 @@ export interface ComputedStackPanel {
    * up to 100, with the id of its claim. Absent without the focus look or on a panel that stacks no measures.
    */
   shares?: { id: string; text: string; claimId: string }[];
+  /**
+   * The focus look of a stacked panel with `segmentShares`: per category of the base and the compare window,
+   * each segment's share of its column in whole percent that add up to 100, with the id of its claim.
+   */
+  segmentShares?: ({ id: string; text: string; claimId: string }[] | undefined)[];
 }
 interface ComputedMetricStack {
   panels: ComputedStackPanel[];
@@ -312,6 +319,7 @@ export function computeMetricStack(data: MetricStackData, locale?: string, na = 
     };
     let readout: StackReadout;
     let shareTexts: ComputedStackPanel['shares'];
+    let segmentTexts: ComputedStackPanel['segmentShares'];
     if (panel.readout === 'change') {
       const baseIndexes = stackRange(data, data.windows!.base), compareIndexes = stackRange(data, data.windows!.compare);
       const base = aggregate('base', baseIndexes), compare = aggregate('compare', compareIndexes);
@@ -358,6 +366,25 @@ export function computeMetricStack(data: MetricStackData, locale?: string, na = 
           const claim = make(`share:${id}`, 'round-sum-consistent@1', [...raws.map(ref), { ref: 'decimals', value: 0 }], rounded?.values[k] ?? null, text);
           return { id, text, claimId: claim.id };
         });
+        // A segment share divides one category's part by its column, with the rounding of the key.
+        if (panel.segmentShares) {
+          segmentTexts = data.categories.map(() => undefined);
+          for (const i of new Set([...baseIndexes, ...compareIndexes])) {
+            if (expr.sum.some(id => measures.get(id)!.values[i] === null)) continue;
+            const at = data.categories[i]!.id;
+            const column = sum(`segment:${at}:sum`, expr.sum, [i]);
+            const raws = expr.sum.map(id => make(`segment:${at}:${id}:raw`, 'share@1', [ref(sum(`segment:${at}:${id}:sum`, [id], [i])), ref(column)],
+              rate(measures.get(id)!.values[i]!, column.output.raw)));
+            const values = raws.map(raw => raw.output.raw);
+            if (values.some(value => value === null)) continue;
+            const rounded = sumConsistentShares(values as number[], locale, undefined, 0);
+            if (!rounded) continue;
+            segmentTexts[i] = expr.sum.map((id, k) => {
+              const claim = make(`segment:${at}:${id}`, 'round-sum-consistent@1', [...raws.map(ref), { ref: 'decimals', value: 0 }], rounded.values[k]!, rounded.texts[k]!);
+              return { id, text: claim.output.displayed, claimId: claim.id };
+            });
+          }
+        }
       }
       readout = { panelId: panel.id, method: isRate ? 'rounded-rate-change' : 'per' in expr ? 'ratio-change' : 'average-change', grain, categoryIds: { base: baseIndexes.map(i=>data.categories[i]!.id), compare: compareIndexes.map(i=>data.categories[i]!.id) }, headline, before, after, headlineText, spanText, claims };
     } else {
@@ -393,7 +420,7 @@ export function computeMetricStack(data: MetricStackData, locale?: string, na = 
       avg.output.displayed = headlineText;
       readout = { panelId: panel.id, method: 'weighted-rate', grain, categoryIds: { mature: mature.map(i=>data.categories[i]!.id) }, headline, before: start.raw, after: end.raw, headlineText, spanText: `${start.displayed} → ${end.displayed}`, claims };
     }
-    return { panel, values, parts, states, readout, format: print.mark, ...(shareTexts ? { shares: shareTexts } : {}) };
+    return { panel, values, parts, states, readout, format: print.mark, ...(shareTexts ? { shares: shareTexts } : {}), ...(segmentTexts ? { segmentShares: segmentTexts } : {}) };
   });
   return { panels, maturing, mature, partial };
 }
