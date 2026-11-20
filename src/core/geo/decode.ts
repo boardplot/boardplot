@@ -1,4 +1,5 @@
 import type { Rect } from '../geometry';
+import { requestMemo } from '../layoutPlan';
 import type {
   DecodedGeoPack,
   DecodedGeoRegion,
@@ -169,28 +170,27 @@ interface OutlineCache {
   keys: Map<string, object[]>;
   capacity: number;
 }
-const fittedOutlines = new WeakMap<DecodedGeoPack, OutlineCache>();
 
-// Paths and fill strips can outlive the much larger arrays of projected vertices.
+// Within a layout, paths and fill strips can outlive evicted arrays of projected vertices.
 const projectedKeys = new WeakMap<GeoPoint[][][], object>();
 export function projectedRegionKey(polygons: GeoPoint[][][]): object {
   return projectedKeys.get(polygons) ?? polygons;
 }
 
-/** Label probes revisit earlier frames. Limit retained points as well as the number of frames. */
+/** Label probes revisit earlier frames. Keep a bounded set of points and keys for this layout only. */
 function outlineCache(decoded: DecodedGeoPack): OutlineCache {
-  let cache = fittedOutlines.get(decoded);
-  if (!cache) {
+  return requestMemo(decoded, 'geo:outlines', () => {
     let points = 0;
     for (const region of decoded.regions) {
       for (const polygon of region.polygons) for (const ring of polygon) points += ring.length;
     }
     for (const boundary of decoded.boundaries) for (const line of boundary.lines) points += line.length;
-    cache = { frames: [], keys: new Map(), capacity: Math.max(1, Math.min(12, Math.floor(300_000 / Math.max(1, points)))) };
-    fittedOutlines.set(decoded, cache);
-  }
-  return cache;
+    return { frames: [], keys: new Map(), capacity: Math.max(1, Math.min(12, Math.floor(300_000 / Math.max(1, points)))) };
+  });
 }
+
+/** The number of projected frames held for this pack. */
+export const cachedFittedOutlineFrames = (pack: GeoPack): number => outlineCache(decodeGeoPack(pack)).frames.length;
 
 function projectOutlines(decoded: DecodedGeoPack, scale: number, offsetX: number, offsetY: number): ProjectedOutlines {
   const cache = outlineCache(decoded);

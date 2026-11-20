@@ -3,7 +3,7 @@ import { disclosureNote } from '../../notes';
 import { chartTheme } from '../chartEnv';
 import { structureCount } from '../../structureCounts';
 import { authoredNotes, frameTextOptions, legendRequired, noteLine, solveFrame, SIDE_KEY_PLOT_SHARE, unitPrinted } from '../../frame';
-import { requestMemo } from '../../layoutPlan';
+import { requestMemo, withPlanInputs } from '../../layoutPlan';
 import { defaultSetSpec, formatterFromExample } from '../../formatSpec';
 import { tickFormatter } from '../../axis';
 import { ruleFormatter } from '../../numberSets';
@@ -216,13 +216,15 @@ function packWithRowNames(pack: GeoPack, overrides: ChoroplethOptions['rowOverri
 }
 
 export function layoutChoropleth(data: ChoroplethData, options: ChoroplethOptions = {}): Geometry<ChoroplethMarks, ChoroplethDerived> {
-  // Only the selected map needs label nodes and a clipped debug snapshot.
-  const geometry = selectMapWidth(data, options);
-  if (geometry.debug) {
-    finishSelectedMap.get(geometry.debug)?.();
-    finishSelectedMap.delete(geometry.debug);
-  }
-  return geometry;
+  return withPlanInputs(() => {
+    // Only the selected map needs label nodes and a clipped debug snapshot.
+    const geometry = selectMapWidth(data, options);
+    if (geometry.debug) {
+      finishSelectedMap.get(geometry.debug)?.();
+      finishSelectedMap.delete(geometry.debug);
+    }
+    return geometry;
+  });
 }
 
 const finishSelectedMap = new WeakMap<object, () => void>();
@@ -1070,8 +1072,7 @@ function layoutMapPass(
 function prepareMapLayout(pack: GeoPack, plot: Rect, laneSpan: { y: number; h: number }, occupied: OccupiedIndex, valuesById: Map<string, number | null>, labelPolicy: RegionLabelPolicy, visibleMarkerIds: Set<string>, theme: Theme,
   measure: typeof defaultMeasurer, solveCtx: SolveCtx, valueTexts: ReadonlyMap<string, string>, padding?: number,
   withTable?: TableLabels, fills?: ReadonlyMap<string, Paint>) {
-  // The probes and final marks share one guard for each fitted frame.
-  // These fits and query caches end with this map preparation.
+  // The probes and final marks share a fit. The projected outlines own the guard cache.
   const fits = new Map<string, PreparedMapFit>();
   const fitMap = (frame: Rect): PreparedMapFit => {
     const key = `${frame.x},${frame.y},${frame.w},${frame.h}`;
