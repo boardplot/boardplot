@@ -287,7 +287,7 @@ interface FontPlan extends Pick<FontSpec, 'family' | 'size' | 'weight' | 'style'
   ascent: number;
 }
 
-function samePlan(plan: FontPlan, font: FontSpec): boolean {
+function samePlan(plan: FontSpec, font: FontSpec): boolean {
   return plan.family === font.family && plan.size === font.size && plan.weight === font.weight && plan.style === font.style
     && plan.letterSpacing === font.letterSpacing && plan.tabular === font.tabular && plan.lineHeight === font.lineHeight;
 }
@@ -411,6 +411,18 @@ function joinPieces(words: readonly string[], glued: readonly boolean[] | undefi
   return text;
 }
 
+interface WrappedLines { lines: string[]; truncated: boolean }
+interface RecentWrap { font: FontSpec; width: number; maxLines: number; breakAfter: boolean; result: WrappedLines }
+
+let wrappedTexts: WeakMap<TextMeasurer, Map<string, RecentWrap[]>> | undefined;
+
+/** Measurements in one layout revisit the same labels at the current and previous width. */
+export function withWrappedTexts<T>(run: () => T): T {
+  if (wrappedTexts) return run();
+  wrappedTexts = new WeakMap();
+  try { return run(); } finally { wrappedTexts = undefined; }
+}
+
 export function wrapText(
   text: string,
   font: FontSpec,
@@ -420,6 +432,25 @@ export function wrapText(
   /** Names: a line may also break after `_`, `-`, `/` or `.` (NAME_BREAK). */
   breakAfter = false,
 ): { lines: string[]; truncated: boolean } {
+  if (!wrappedTexts || !(measure === measureText || isCachedTextMeasurer(measure))) {
+    return wrapLines(text, font, maxWidth, maxLines, measure, breakAfter);
+  }
+  let labels = wrappedTexts.get(measure);
+  if (!labels) wrappedTexts.set(measure, labels = new Map());
+  let entries = labels.get(text);
+  const previous = entries?.find(e => e.width === maxWidth && e.maxLines === maxLines && e.breakAfter === breakAfter && samePlan(e.font, font));
+  let result = previous?.result;
+  if (!result) {
+    result = wrapLines(text, font, maxWidth, maxLines, measure, breakAfter);
+    if (!entries) labels.set(text, entries = []);
+    // Labels alternate between their slot width and the wider fallback.
+    if (entries.length === 2) entries.pop();
+    entries.unshift({ font: { ...font }, width: maxWidth, maxLines, breakAfter, result });
+  }
+  return { lines: [...result.lines], truncated: result.truncated };
+}
+
+function wrapLines(text: string, font: FontSpec, maxWidth: number, maxLines: number, measure: TextMeasurer, breakAfter: boolean): WrappedLines {
   const lineLimit = Math.max(0, Math.floor(maxLines));
   if (lineLimit === 0) {
     return { lines: [], truncated: String(text).length > 0 };

@@ -17,6 +17,7 @@ import { AUTO_LEGEND } from './legendPolicy';
 import { copyFrame, liveFooterExtra, partNeedOf, staticFrame } from './footer';
 import { rankKeyShown, withEngineNotes } from './notes';
 import { withCategoryRowPlans } from './label/categoryRow';
+import { withWrappedTexts } from './text';
 import { maxOf } from './arrays';
 import { sourceFollowsContent } from './sourceFollows';
 
@@ -1703,7 +1704,7 @@ let memoNextId = 0;
 export function withLayoutMemo<T>(run: () => T): T {
   if (layoutMemo) return run();
   layoutMemo = new Map();
-  try { return withPlanInputs(() => withEngineNotes(() => withCategoryRowPlans(run))); } finally { layoutMemo = undefined; memoSymbolIds = new Map(); }
+  try { return withPlanInputs(() => withEngineNotes(() => withWrappedTexts(() => withCategoryRowPlans(run)))); } finally { layoutMemo = undefined; memoSymbolIds = new Map(); }
 }
 
 function memoId(value: object | symbol): number {
