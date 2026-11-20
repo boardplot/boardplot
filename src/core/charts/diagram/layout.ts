@@ -2,6 +2,7 @@ import { chartString } from '../../strings/diagram';
 import { chartPalette, chartTheme } from '../chartEnv';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { fitsRoom, widthsThatFit } from '../../generatedWidths';
+import { optionKey, requestMemo } from '../../layoutPlan';
 import { structureCount, type StructureCount } from '../../structureCounts';
 import { rectContains, rectsOverlap, type Point, type Rect } from '../../geometry';
 import { fitText } from '../../label/fitText';
@@ -10,9 +11,9 @@ import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { labelCtx, PRIORITY, seatLeader, solveLabels, type LabelRequest, type SolveCtx } from '../../label/solver';
 import { accessibleTitle, NormalizeError, resolveSize } from '../../normalize/shared';
-import { defaultMeasurer, wrapNameText, wrapText, type FontSpec } from '../../text';
+import { defaultMeasurer, isCachedTextMeasurer, wrapNameText, wrapText, type FontSpec } from '../../text';
 import { hasCompleteTableWidths } from '../../fontMetrics/injected';
-import { classStepWidth, emphasisWeight, headingWeight, resolveSurface, strokeToken, canvasMargin, paintColor, panelTypeClass } from '../../theme';
+import { classStepWidth, layoutStepKey, emphasisWeight, headingWeight, resolveSurface, strokeToken, canvasMargin, paintColor, panelTypeClass } from '../../theme';
 import type {
   DiagramData,
   DiagramDerived,
@@ -96,8 +97,18 @@ export function layoutDiagram(
 }
 
 function layoutPlanned(rawData: DiagramData, rawOptions: DiagramOptions | undefined, measureMinimum: boolean): Geometry<DiagramMarks, DiagramDerived> {
-  const planned = rawOptions?.variant === 'architecture' && !(ARCHITECTURE_PLANS in rawOptions);
-  return layoutDiagramPass(rawData, planned ? { ...rawOptions!, [ARCHITECTURE_PLANS]: new Map() } as DiagramOptions : rawOptions, measureMinimum);
+  if (rawOptions?.variant !== 'architecture' || ARCHITECTURE_PLANS in rawOptions) return layoutDiagramPass(rawData, rawOptions, measureMinimum);
+  // The outer size search calls this layout again at the same width. Routes and
+  // label seats ignore height. The frame and the height check still run each time.
+  const measure = rawOptions.measure ?? defaultMeasurer;
+  const fresh = (): ArchitecturePlans => new Map();
+  const plans = isCachedTextMeasurer(measure)
+    ? requestMemo(rawData, 'diagram-routes:' + optionKey({
+      width: resolveSize(rawOptions.size).width, panel: panelTypeClass(rawOptions), step: layoutStepKey(),
+      flow: rawOptions.flow, highlight: rawOptions.highlight, theme: rawOptions.theme, target: rawOptions.target, measure,
+    }), fresh)
+    : fresh();
+  return layoutDiagramPass(rawData, { ...rawOptions, [ARCHITECTURE_PLANS]: plans } as DiagramOptions, measureMinimum);
 }
 
 type DiagramFit = Pick<Geometry<DiagramMarks, DiagramDerived>, 'warnings'>;
