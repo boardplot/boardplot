@@ -1385,7 +1385,7 @@ export interface CardHeightMemo {
  * Equal option values: the same value, or arrays and plain objects (frozen themes too) whose own
  * entries are equal. Functions, class instances, Maps and Sets count by identity.
  */
-function sameContent(a: unknown, b: unknown, depth = 0): boolean {
+export function sameContent(a: unknown, b: unknown, depth = 0): boolean {
   if (a === b) return true;
   if (depth > 24 || typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
   const proto = Object.getPrototypeOf(a);
@@ -1461,6 +1461,9 @@ function cardClassHeight<D, O extends ChartOptions, M extends object, DV extends
   return height;
 }
 
+/** Private size objects identify the fixed-height trials of one automatic column search. */
+export const columnHeightSearch = new WeakMap<object, object>();
+
 function fitOnce<D, O extends ChartOptions, M extends object, DV extends object>(
   definition: ChartCore<D, O, M, DV>, data: D, options: O | undefined, compactFallback: boolean, atSize?: SizeLayout<O, M, DV>,
 ): LayoutResult<M, DV> {
@@ -1469,9 +1472,16 @@ function fitOnce<D, O extends ChartOptions, M extends object, DV extends object>
   // chart its aspect height, a content-fit chart the height its content needs
   // there, measured on a first pass at the aspect height.
   if (widthOnly(options?.size)) {
+    const columnSearch = definition.type === 'column' && (options as { categoryLabels?: string }).categoryLabels === 'staircase' ? {} : undefined;
     const at = (width: number, height: number) => {
-      const fixed = { ...options, size: { width, height } } as O;
-      return atSize ? atSize(fixed, compactFallback) : fitSizeMemo(definition, data, fixed, compactFallback);
+      const size = { width, height };
+      const fixed = { ...options, size } as O;
+      if (columnSearch) columnHeightSearch.set(size, columnSearch);
+      try {
+        return atSize ? atSize(fixed, compactFallback) : fitSizeMemo(definition, data, fixed, compactFallback);
+      } finally {
+        if (columnSearch) columnHeightSearch.delete(size);
+      }
     };
     const width = resolveSize(options.size, options.target).width;
     const target: RenderTarget = options.target ?? DEFAULT_TARGET;
