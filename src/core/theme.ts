@@ -103,6 +103,7 @@ function canonicalType(family: string): Theme['type'] {
       S: { title: 15, subtitle: 10.5, label: 10, axis: 9.5, footnote: 8.5, micro: 9 },
       L: { title: 22, subtitle: 14, label: 13, axis: 12, footnote: 10.5, micro: 9.5 },
     },
+    display: { size: 36, lineHeight: 1.11 },
   };
 }
 
@@ -839,6 +840,7 @@ function scaledTextTheme(theme: Theme, textScale: number, target: RenderTarget):
       ...roles,
       ...(type.scale ? { scale: { ...(type.scale.S ? { S: step(type.scale.S) } : {}), ...(type.scale.L ? { L: step(type.scale.L) } : {}) } } : {}),
       ...(type.eyebrow ? { eyebrow: face(type.eyebrow, floors.micro) } : {}),
+      ...(type.display ? { display: face(type.display, floors.label) } : {}),
     },
     ...(table ? { table: {
       ...table,

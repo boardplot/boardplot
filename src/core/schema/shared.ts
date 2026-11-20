@@ -1454,6 +1454,9 @@ export const baseOptionsSchema = z.object({
       knownPartsShares: z.string().min(1).optional().describe('Incomplete 100% stack note without total100; {categories} is replaced.'),
       rebaseZero: z.string().min(1).optional().describe('Line or stacked-area series left out by rebase100 for a zero or negative base; {series} and {period} are replaced.'),
       rebaseMissing: z.string().min(1).optional().describe('Line or stacked-area series left out by rebase100 for a missing base; {series} and {period} are replaced.'),
+      stackFrom: z.string().min(1).optional().describe("Metric stack focus look: the base value after the change; {v1} is the base value. English from {v1}."),
+      stackAgainst: z.string().min(1).optional().describe('Metric stack focus look: the word between the focus and the base window in the header line. English against.'),
+      stackAverages: z.string().min(1).optional().describe('Metric stack focus look: the header sentence when a window holds more than one category; {v1} is the grain.'),
     })
     .strict()
     .optional()

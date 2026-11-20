@@ -46,6 +46,7 @@ import { markScrollRegion, scrollStateOf, type TableScrollState } from './scroll
 import { useChartExport, type ExportLink } from './exportLink';
 import { useRowsInput, type RowsProps } from './rowsInput';
 import { asSize, frameSize, RefusalBoundary, type PerTypeSizeOptions } from './RefusalBoundary';
+import { withStackFocus } from '../core/stackFocus';
 
 export type { HoverContentContext, HoverOption, RenderHoverContent } from './useHover';
 
@@ -244,7 +245,10 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
     if (zoomed.derived && prepared) detached.current = prepared;
     const attached = zoomed.derived || detached.current === prepared ? undefined : prepared;
     const defer = deferLayout && attached === undefined && !measured.printing;
-    const first = useDeferrableChartLayout({ type, data: zoomed.data as D, target, options: { ...zoomed.options as typeof noteOptions, size: asked }, annotations: zoomed.annotations as Annotation[] | undefined }, {},
+    // A metric stack's focus look draws the category the pointer or the keyboard rests on as its focus (HoverSurface).
+    const [stackFocus, setStackFocus] = useState<string>();
+    const focused = useMemo(() => withStackFocus(zoomed.options, stackFocus), [zoomed.options, stackFocus]);
+    const first = useDeferrableChartLayout({ type, data: zoomed.data as D, target, options: { ...focused as typeof noteOptions, size: asked }, annotations: zoomed.annotations as Annotation[] | undefined }, {},
       { prepared: attached, fit: measured.printFill ? 'fill' : resolvedFit, fallback: container ? measured.fallback : undefined, skipLayout: refusedOptions.length > 0 || measured.waiting || noData, idle: noData, errorAsRefusal: true, linked, defer });
     // A cohort refused for width alone draws at the width it needs in a horizontal
     // scroll box, as TableChart scrolls a wide table. A pinned height stays pinned. A prepared
@@ -409,7 +413,7 @@ export function createChartComponent<D, O extends ChartOptionsLike>(type: string
     const draw = (shown: RenderGeometry) => {
       const view = !footer ? shown : shown === footer ? footless! : withoutSvgFooter(shown, asDrawn);
       return surface
-        ? <DrawnSurface geometry={view} request={drawnRequest(request, view)} prepared={attached} hover={hover} table={table} responsive={!fixedSize && (!scrolls || fitted)} background={background} styleNonce={styleNonce} extraCss={footer ? FOOTER_PRINT_CSS : ''} onSeriesClick={onSeriesClick} onRecordClick={onRecordClick} renderHoverContent={renderHoverContent} />
+        ? <DrawnSurface geometry={view} request={drawnRequest(request, view)} prepared={attached} hover={hover} table={table} responsive={!fixedSize && (!scrolls || fitted)} background={background} styleNonce={styleNonce} extraCss={footer ? FOOTER_PRINT_CSS : ''} onSeriesClick={onSeriesClick} onRecordClick={onRecordClick} renderHoverContent={renderHoverContent} onStackFocus={setStackFocus} />
         : <DrawnScene geometry={view} theme={theme} responsive={!fixedSize && (!scrolls || fitted)} background={background} onSeriesClick={onSeriesClick} />;
     };
     const drawn = geometry;

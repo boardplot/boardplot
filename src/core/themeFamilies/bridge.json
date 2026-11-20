@@ -138,6 +138,10 @@
         "micro": 9.5
       }
     },
+    "display": {
+      "size": 36,
+      "lineHeight": 1.11
+    },
     "numeric": "tabular",
     "emphasis": {
       "weight": 600

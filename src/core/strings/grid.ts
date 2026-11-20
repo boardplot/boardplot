@@ -31,6 +31,9 @@ const EN = {
   "stackAboveRemaining": "Above each panel: remaining per 100",
   "notYetMature": "Not yet mature",
   "labelsShowTotals": "Labels show totals",
+  "stackFrom": "from {v1}",
+  "stackAgainst": "against",
+  "stackAverages": "Averages per {v1}; rates and amounts per unit use volume weighting",
 } as const;
 const DE: { [K in keyof typeof EN]: string } = {
   // reader-facing wording linked only by its consumers.
@@ -63,6 +66,9 @@ const DE: { [K in keyof typeof EN]: string } = {
   "stackAboveRemaining": "Über jedem Feld: Rest je 100",
   "notYetMature": "Noch nicht ausgereift",
   "labelsShowTotals": "Beschriftungen zeigen Summen",
+  "stackFrom": "von {v1}",
+  "stackAgainst": "gegenüber",
+  "stackAverages": "Mittelwerte je {v1}; Raten und Beträge je Einheit sind nach Volumen gewichtet",
 };
 
 export const { chartString } = chartStrings(EN, DE);

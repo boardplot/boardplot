@@ -29,3 +29,12 @@ export function eyebrowFont(theme: Theme, textScale = 1): FontSpec {
 export function figureRole(theme: Theme): { family: string; weight: number } {
   return { family: theme.type.figure?.family ?? theme.type.family, weight: theme.type.figure?.weight ?? emphasisWeight(theme) };
 }
+
+/**
+ * The value of every panel in the metric stack focus look: `type.display` for its size and line height,
+ * in the family and weight of the KPI figure (`figureRole`).
+ */
+export function displayFont(theme: Theme): FontSpec {
+  const role = theme.type.display;
+  return { ...figureRole(theme), size: role?.size ?? 36, lineHeight: role?.lineHeight ?? 1.11 };
+}

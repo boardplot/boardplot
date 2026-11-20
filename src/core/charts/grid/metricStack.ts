@@ -5,9 +5,10 @@ import { formatAutomaticNumber, NOT_AVAILABLE } from '../../format';
 import { defaultSetSpec, formatWithSpec, percentChangeSpec, RULE_SET } from '../../formatSpec';
 import { statisticSet } from '../../numberSets';
 import { roundHalfUp } from '../../formatPrecision';
+import { sumConsistentShares } from '../../shareRounding';
 import type { ClaimRecordV1 } from '../../claims/browser';
 
-interface StackRange { from: string; to: string; label: string }
+export interface StackRange { from: string; to: string; label: string }
 /** A sum of measures, a percentage (numerator ÷ denominator × 100), or an amount per unit (the sum of `ratio` ÷ `per`). */
 type StackMeasure = { sum: string[] } | { numerator: string[]; denominator: string } | { ratio: string[]; per: string };
 /** The measures a panel adds up: its sum, its numerator, or the amounts of its per-unit ratio. */
@@ -25,6 +26,8 @@ export interface MetricStackPanel {
   emphasis?: boolean;
   divisor?: number;
   decimals?: number;
+  /** Caption over the key of a stacked panel. */
+  keyTitle?: string;
 }
 export interface MetricStackData {
   categories: { id: string; label: string; partial?: boolean }[];
@@ -38,6 +41,8 @@ export interface MetricStackData {
   periods?: StackRange[];
 }
 export interface MetricStackOptions {
+  /** 'focus': the value-first look, with the compare window as the focus. Absent: today's look. */
+  variant?: 'focus';
   heights?: number[];
   /** False leaves a seat of the gutter out: `unit`, `headline` or `span`. */
   columnVisibility?: Record<string, boolean>;
@@ -69,6 +74,11 @@ export interface ComputedStackPanel {
   readout: StackReadout;
   /** A mark's text: a panel value or a part, before the divisor. */
   format: (value: number) => string;
+  /**
+   * The focus look of a stacked panel: each measure's share of the compare window, in whole percent that add
+   * up to 100, with the id of its claim. Absent without the focus look or on a panel that stacks no measures.
+   */
+  shares?: { id: string; text: string; claimId: string }[];
 }
 interface ComputedMetricStack {
   panels: ComputedStackPanel[];
@@ -240,7 +250,13 @@ export function normalizeMetricStack(raw: MetricStackData): MetricStackData {
   return data;
 }
 
-export function computeMetricStack(data: MetricStackData, locale?: string, na = NOT_AVAILABLE): ComputedMetricStack {
+/** The stack with `window` as its compare window: the focus look's drawing of one focus. */
+export function withCompareWindow(data: MetricStackData, window: StackRange): MetricStackData {
+  return { ...data, windows: { ...data.windows!, compare: window } };
+}
+
+/** `shares`: the focus look, which keys each measure of a stacked panel with its share of the compare window. */
+export function computeMetricStack(data: MetricStackData, locale?: string, na = NOT_AVAILABLE, shares = false): ComputedMetricStack {
   const grain = metricStackGrain(data);
   const measures = new Map(data.measures.map(m => [m.id, m]));
   const maturing = data.states?.maturing ? stackRange(data, data.states.maturing) : [];
@@ -295,6 +311,7 @@ export function computeMetricStack(data: MetricStackData, locale?: string, na = 
       return make(key, 'round-decimals@1', [ref(raw), { ref: 'decimals', value: 1 }], stackRound(raw.output.raw, 1));
     };
     let readout: StackReadout;
+    let shareTexts: ComputedStackPanel['shares'];
     if (panel.readout === 'change') {
       const baseIndexes = stackRange(data, data.windows!.base), compareIndexes = stackRange(data, data.windows!.compare);
       const base = aggregate('base', baseIndexes), compare = aggregate('compare', compareIndexes);
@@ -327,6 +344,21 @@ export function computeMetricStack(data: MetricStackData, locale?: string, na = 
       };
       const start = endpoint('before', startOperand), end = endpoint('after', endOperand);
       const before = start.raw, after = end.raw, spanText = `${start.displayed} → ${end.displayed}`;
+      // A share divides the window sums: each measure's sum over the compare window by the sum of all of them.
+      if (shares && 'sum' in expr && parts.length > 1) {
+        const total = claims.find(c => c.id === `stack:${panel.id}:compare:sum`)!;
+        const raws = expr.sum.map(id => {
+          const part = sum(`share:${id}:sum`, [id], compareIndexes);
+          return make(`share:${id}:raw`, 'share@1', [ref(part), ref(total)], rate(part.output.raw, total.output.raw));
+        });
+        const values = raws.map(raw => raw.output.raw);
+        const rounded = values.every(value => value !== null) ? sumConsistentShares(values as number[], locale, undefined, 0) : null;
+        shareTexts = expr.sum.map((id, k) => {
+          const text = rounded?.texts[k] ?? na;
+          const claim = make(`share:${id}`, 'round-sum-consistent@1', [...raws.map(ref), { ref: 'decimals', value: 0 }], rounded?.values[k] ?? null, text);
+          return { id, text, claimId: claim.id };
+        });
+      }
       readout = { panelId: panel.id, method: isRate ? 'rounded-rate-change' : 'per' in expr ? 'ratio-change' : 'average-change', grain, categoryIds: { base: baseIndexes.map(i=>data.categories[i]!.id), compare: compareIndexes.map(i=>data.categories[i]!.id) }, headline, before, after, headlineText, spanText, claims };
     } else {
       const rateExpr = expr as { numerator: string[]; denominator: string };
@@ -361,7 +393,7 @@ export function computeMetricStack(data: MetricStackData, locale?: string, na = 
       avg.output.displayed = headlineText;
       readout = { panelId: panel.id, method: 'weighted-rate', grain, categoryIds: { mature: mature.map(i=>data.categories[i]!.id) }, headline, before: start.raw, after: end.raw, headlineText, spanText: `${start.displayed} → ${end.displayed}`, claims };
     }
-    return { panel, values, parts, states, readout, format: print.mark };
+    return { panel, values, parts, states, readout, format: print.mark, ...(shareTexts ? { shares: shareTexts } : {}) };
   });
   return { panels, maturing, mature, partial };
 }

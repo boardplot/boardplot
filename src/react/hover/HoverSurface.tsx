@@ -1,4 +1,4 @@
-import { createContext, useContext, useId, useMemo, type CSSProperties, type ReactElement } from 'react';
+import { createContext, useContext, useEffect, useId, useMemo, type CSSProperties, type ReactElement } from 'react';
 import type { InteractionRecord } from '../../core/a11y/types';
 import type { A11yTablePlacement } from '../../core/a11y/accessibility';
 import type { Id } from '../../core/types/cell';
@@ -21,7 +21,7 @@ const loadDataTable = () => import('./dataTable');
  * the two is on, so a static chart's markup is unchanged. The table loads
  * independently of the hover engine.
  */
-export function HoverSurface({ geometry, request, prepared, hover, table, responsive, background, styleNonce, extraCss = '', onSeriesClick, onRecordClick, renderHoverContent }: {
+export function HoverSurface({ geometry, request, prepared, hover, table, responsive, background, styleNonce, extraCss = '', onSeriesClick, onRecordClick, renderHoverContent, onStackFocus }: {
   geometry: RenderGeometry;
   request: ResolvedChartRequest;
   prepared?: PreparedChart;
@@ -36,9 +36,12 @@ export function HoverSurface({ geometry, request, prepared, hover, table, respon
   onSeriesClick?: (seriesId: Id) => void;
   onRecordClick?: (record: InteractionRecord, event: RecordClickEvent) => void;
   renderHoverContent?: RenderHoverContent;
+  /** A metric stack's focus look: the category the pointer or the keyboard rests on, undefined at rest. The chart lays the stack out with it. */
+  onStackFocus?: (category: string | undefined) => void;
 }): ReactElement {
-  const { engine, view, origin, handlers, focusStops, keys, cursor, cardRef } = useHover({ request, geometry, prepared, hover, onRecordClick,
+  const { engine, view, origin, handlers, focusStops, keys, cursor, cardRef, focusCategory } = useHover({ request, geometry, prepared, hover, onRecordClick,
     custom: renderHoverContent !== undefined });
+  useEffect(() => { onStackFocus?.(focusCategory); }, [onStackFocus, focusCategory]);
   const contentId = `${useId()}-card`;
   const active = view.active?.[0];
   const content = renderHoverContent && engine && view.card && view.cardInput && active ? renderHoverContent(active, {

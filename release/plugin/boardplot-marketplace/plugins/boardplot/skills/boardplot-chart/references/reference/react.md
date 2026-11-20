@@ -517,6 +517,8 @@ A card a tap opened closes on a tap outside the chart, as on a table, or on a ta
 
 On a grid, the pointed series keeps its full ink in every other panel, so small multiples still compare it; it has an outline and a card only in the panel under the pointer.
 
+A metric stack with `stack.variant: 'focus'` moves its focus instead. With `hover` on, the pointer anywhere in a category's column, from the top of the first plot to the last baseline, makes that category the focus: the stack draws as it draws with that one category as its compare window and the base window unchanged, so the readout values, the changes, the shares, the header label, the accent colours, the focus dot, the value labels and the hairline move to it, and the plots stay where they are. A category without a value in a panel prints `n/a` there and no change line. Keyboard focus on a record moves the focus to its category in the same way. When the pointer leaves the plots, or the chart loses the keyboard focus, the authored compare window returns. Under the look no series dims and no card shows, unless the host sets `hover.card` or `renderHoverContent`; `onRecordClick` names the record of the panel nearest the pointer. The SVG, the PNG and the server render draw the authored compare window.
+
 ### Your own card content
 
 `renderHoverContent` puts your own content into the card: a link to a detail page, a figure from your own data, a layout of your own. It is React code you write, so it never travels in a spec; a spec carries extra facts as cell `details` instead (see above).

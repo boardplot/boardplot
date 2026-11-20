@@ -244,6 +244,14 @@ export interface Theme {
      */
     figure?: { family?: string; weight?: number };
     /**
+     * The value of every panel in the metric stack focus look
+     * (`options.stack.variant: 'focus'`), in every readout layout: its size
+     * in px and its line height as a ratio of the size. It prints in the
+     * family and weight of `figure`. `type.scale` does not step it;
+     * `textScale` does. Absent means 36 px on a 1.11 line.
+     */
+    display?: { size?: number; lineHeight?: number };
+    /**
      * The eyebrow of a KPI card, the label over the figure when the
      * card has no title: size and line height, weight, tracking in em of the
      * size, and its ink. Each absent key keeps

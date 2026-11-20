@@ -38,6 +38,11 @@ export interface OverlayInputs {
   plot: Rect;
   occupied: OccupiedRect[];
   panels?: PanelOverlayInput[];
+  /**
+   * A metric stack's focus look: the band of the plots, one equal column per category, and each panel's plot.
+   * A pointer in a category's column addresses that category in every panel.
+   */
+  focusBand?: { rect: Rect; panels: { panel: string; plot: Rect }[] };
 }
 
 /** Match drawn labels by identity and panel, then use their layout-owned rectangles. */
@@ -81,10 +86,13 @@ export function overlayInputs(request: ResolvedChartRequest, geometry: Geometry)
     }
   };
   visit(geometry, request.scope.panel, { x: 0, y: 0 });
+  const stack = (geometry.derived as { metricStack?: { focusBand?: Rect; panels: { id: string; plot: Rect }[] } } | undefined)?.metricStack;
   return {
     plot: { ...geometry.plot },
     occupied: geometry.debug.occupied.map(item => ({ ...item, rect: { ...item.rect }, owner: { ...item.owner } })),
     ...(panels.length ? { panels } : {}),
+    ...(stack?.focusBand ? { focusBand: { rect: { ...stack.focusBand },
+      panels: stack.panels.map(panel => ({ panel: panel.id, plot: { ...panel.plot } })) } } : {}),
   };
 }
 
