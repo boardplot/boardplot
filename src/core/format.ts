@@ -5,7 +5,7 @@
 
 import { chartString } from './strings/format';
 import { fractionFormat, numberFormat } from './numberFormatCache';
-import { wordLanguage } from './numberMarks';
+import { markedDecimal, wordLanguage } from './numberMarks';
 import type { BaseOptions, RenderTarget } from './types/options';
 import {
   AUTO_MAX_DECIMALS,
@@ -236,7 +236,8 @@ function formattedNumber(value: number, opts: NumberFormatOptions, automatic: bo
   }
   const underflow = automatic && v === 0 && value !== 0
     ? underflowScientificText(value, MAGNITUDES.find(entry => entry.key === magSuffix)!.value) : undefined;
-  const body = underflow ?? scientific ?? numberFormatter(locale, usedDecimals).format(Number(roundedAbs));
+  const body = underflow ?? scientific ?? markedDecimal(roundedAbs, usedDecimals, true, locale)
+    ?? numberFormatter(locale, usedDecimals).format(Number(roundedAbs));
   const isZero = !underflow && !scientific && Number(roundedAbs) === 0;
   const sign = value < 0 && !isZero ? MINUS : signed && value > 0 && !isZero ? '+' : '';
   const text = `${sign}${prefix}${body}${magSuffix ? magnitudeSuffix(magSuffix, opts.locale) : ''}${suffix}`;
@@ -257,7 +258,10 @@ export function lowBaseKeyLabel(minBase: number, locale?: string): string {
 export function formatExactNumber(value: number, locale?: string): string {
   if (!Number.isFinite(value)) return formatNumber(value, { locale });
   // A chart's marked tag prints every source digit by English rules in its marks (numberMarks.ts).
-  return locale ? numberFormatter(locale, 'exact').format(value).replace(/^-/, MINUS) : String(value);
+  const text = String(value);
+  if (!locale) return text;
+  const marked = Number.isSafeInteger(value) && !Object.is(value, -0) ? markedDecimal(text, 0, true, locale) : undefined;
+  return (marked ?? numberFormatter(locale, 'exact').format(value)).replace(/^-/, MINUS);
 }
 
 export function formatPercent(value: number, decimals = 0, signed = false, locale?: string, automatic = false): string {

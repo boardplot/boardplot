@@ -226,7 +226,7 @@ export interface ColumnArea {
   /** Headroom above the plot: grand totals, PY growth, cagr arms, the rule band. */
   topPad: number;
   band: BandScale;
-  catPlan: CategoryRowPlan;
+  catPlan: () => CategoryRowPlan;
   /** categoryAxis.dateTicks: true at the first category of each calendar interval. */
   intervalTicks?: readonly boolean[];
   showCatRow: boolean;
@@ -268,6 +268,8 @@ export interface BarPlace {
 
 /** Phase 2 output. */
 export interface ColumnMarkGeometry {
+  /** Inserts the already positioned stack segments in their original paint order. */
+  paintStack?: () => SceneNode[];
   /** In paint order, from the frame's own nodes on. */
   nodes: SceneNode[];
   /** The phase's own index: every rect it claimed, in claim order. */

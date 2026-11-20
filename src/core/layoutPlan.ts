@@ -161,6 +161,8 @@ export function tableTextMeasure(raw: TextMeasurer): TextMeasurer {
 }
 
 export const PLAN_ONLY = Symbol('tablePlanOnly');
+/** The public request cache owns the completed layout and copies it before returning it. */
+export const RETAIN_TABLE_RESULT = Symbol('retainTableResult');
 const PLAN = Symbol('tableLayoutPlan');
 type Plan = { draw: () => AnyGeometry; warnings: number; cuts: number | (() => number); rendered?: AnyGeometry };
 type Planned = { [PLAN]?: Plan };
@@ -183,7 +185,7 @@ export function transferLayout<G extends object>(source: object, target: G): G {
 }
 
 /** Scene fields are owned by the caller; fitting metadata may have changed after the plan was selected. */
-export function materializeLayout<G extends AnyGeometry>(geometry: G): G {
+export function materializeLayout<G extends AnyGeometry>(geometry: G, retained = false): G {
   const plan = (geometry as G & Planned)[PLAN];
   if (!plan) return geometry;
   const drawn = plan.rendered ??= plan.draw();
@@ -194,7 +196,7 @@ export function materializeLayout<G extends AnyGeometry>(geometry: G): G {
     ...(drawn.paintWarningRules === undefined ? {} : { paintWarningRules: drawn.paintWarningRules }),
   } as G & Planned;
   delete result[PLAN];
-  return copyPlannedValue(result);
+  return retained ? result : copyPlannedValue(result);
 }
 
 /** Copy shared fonts and cells once per result. A copy of every array, Map, Set and plain object; a function and any other value is shared (the compiled options hold the measurer). */
@@ -231,13 +233,20 @@ export function copyPlannedValue<T>(value: T, copies = new Map<object, unknown>(
   const copy: Record<PropertyKey, unknown> = footerPlans.has(value as FrameGeometry)
     ? copyFrame(value as FrameGeometry) as Record<PropertyKey, unknown> : prototype === null ? emptyIdRecord() : {};
   copies.set(value, copy);
-  for (const key of Reflect.ownKeys(value)) {
-    const source = (value as Record<PropertyKey, unknown>)[key];
+  const fields = Object.getOwnPropertyNames(value);
+  const symbols = Object.getOwnPropertySymbols(value);
+  for (const key of fields) {
+    const source = (value as Record<string, unknown>)[key];
     const entry = source !== null && typeof source === 'object' ? copyPlannedValue(source, copies) : source;
-    // Note metadata stays outside a note's public fields, also on the copy a caller receives.
-    if (typeof key === 'symbol' && !Object.prototype.propertyIsEnumerable.call(value, key)) Object.defineProperty(copy, key, { value: entry, configurable: true });
-    else if (key === '__proto__') Object.defineProperty(copy, key, { value: entry, enumerable: true, writable: true, configurable: true });
+    if (key === '__proto__') Object.defineProperty(copy, key, { value: entry, enumerable: true, writable: true, configurable: true });
     else copy[key] = entry;
+  }
+  // The few symbol keys include hidden note metadata. Keep it hidden on the public copy.
+  for (const key of symbols) {
+    const source = (value as Record<symbol, unknown>)[key];
+    const entry = source !== null && typeof source === 'object' ? copyPlannedValue(source, copies) : source;
+    if (Object.prototype.propertyIsEnumerable.call(value, key)) copy[key] = entry;
+    else Object.defineProperty(copy, key, { value: entry, configurable: true });
   }
   return copy as T;
 }

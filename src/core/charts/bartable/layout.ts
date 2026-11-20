@@ -19,6 +19,9 @@ import { structureCount } from '../../structureCounts';
 import { accumulateStack } from '../band/stacks';
 import { digitSeat, digitSeatEdge } from '../band/labels';
 import { deriveCascade } from './cascade';
+import { requestMemo } from '../../layoutPlan';
+import { currentSmallValues, formatScopeKey } from '../../formatPrecision';
+import { hasCompleteTableWidths } from '../../fontMetrics/injected';
 import { fixedBarRow } from '../bar/model';
 import { warnIncompleteComposition } from '../../dataGaps';
 import { authoredNotes, frameTextOptions, legendRequired, moreListedText, normalizeLegendOption, solveFrame, type LegendItemInput } from '../../frame';
@@ -533,16 +536,19 @@ export function layoutBarTable(
   const comboRowLabel = bracketRows && options.combinedShare!.label === undefined && bracketRows[0] === 0
     ? chartString(options, 'combinedRowLabel', { v1: bracketRows.length })
     : bracketLabel;
-  const cascade = cascadeOptions
-    ? deriveCascade(rows, data.panels.map((panel) => ({ id: panel.id, label: panel.label ?? panel.id, values: panel.values[series[0]!.id]!.map((value) => value!) })), {
-      ...(bracketRows ? { combined: bracketRows } : {}),
-      ...(cascadeOptions.growth ? { growth: cascadeOptions.growth } : {}),
-      // Each share rounds on its own unless the author asks for sum-consistent.
-      sumConsistent: options.rounding === 'sum-consistent',
-      ...(locale ? { locale } : {}),
-    })
-    : undefined;
-  if (cascade) pushAll(warnings, cascade.warnings);
+  let cascade: ReturnType<typeof deriveCascade> | undefined;
+  if (cascadeOptions) {
+    const growth = cascadeOptions.growth;
+    const sumConsistent = options.rounding === 'sum-consistent';
+    const calculate = () => deriveCascade(rows, data.panels.map(panel => ({
+      id: panel.id, label: panel.label ?? panel.id, values: panel.values[series[0]!.id]!.map(value => value!),
+    })), { combined: bracketRows, growth, sumConsistent, locale });
+    // Width changes the tracks. The same ordered source data and number settings give the same cascade.
+    cascade = measure === defaultMeasurer || hasCompleteTableWidths(measure)
+      ? requestMemo(authored, JSON.stringify(['bartable-cascade', bracketRows, growth, sumConsistent, locale, currentSmallValues(), formatScopeKey(options)]), calculate)
+      : calculate();
+    for (const warning of cascade.warnings) warnings.push({ ...warning });
+  }
   const showShare = cascadeOptions !== undefined && cascadeOptions.share !== false;
   const margin = { ...canvasMargin(theme, size.width), ...options.margin };
   // Measured in the size the footer draws (footerType), so a wrapped note breaks where it prints.
@@ -1497,9 +1503,9 @@ export function layoutBarTable(
       rowOrder: rows.map((row) => row.id),
       ...(cascade ? {
         ...(bracketLabel ? { combinedLabel: bracketLabel } : {}),
-        cascade: cascade.panels.map((c, p) => ({ id: panels[p]!.panel.id, starts: c.starts, shares: c.shares, ...(c.combined ? { combined: c.combined.value } : {}) })),
-        ...(cascade.growth ? { growth: cascade.growth.values } : {}),
-        ...(cascade.adjustments.length > 0 ? { roundingAdjustments: cascade.adjustments } : {}),
+        cascade: cascade.panels.map((c, p) => ({ id: panels[p]!.panel.id, starts: [...c.starts], shares: [...c.shares], ...(c.combined ? { combined: c.combined.value } : {}) })),
+        ...(cascade.growth ? { growth: [...cascade.growth.values] } : {}),
+        ...(cascade.adjustments.length > 0 ? { roundingAdjustments: cascade.adjustments.map(adjustment => ({ ...adjustment })) } : {}),
       } : {}),
     },
     a11y: {

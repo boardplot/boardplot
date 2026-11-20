@@ -27,7 +27,7 @@ import {
 } from '../../label/solver';
 import { EMPTY_DATA } from '../../emptyData';
 import { accessibleTitle, NormalizeError, resolveSize } from '../../normalize/shared';
-import { defaultMeasurer, type FontSpec } from '../../text';
+import { defaultMeasurer, isCachedTextMeasurer, type FontSpec } from '../../text';
 import { strokeToken, canvasMargin, emphasisWeight, paintColor, panelTypeClass, resolveSemanticPaletteTheme, spaceTokens } from '../../theme';
 import type { RenderTarget } from '../../types/options';
 import type { LayoutResult, LintWarning, Paint, SceneNode } from '../../types/scene';
@@ -108,8 +108,9 @@ export function layoutTilemap(
     || (constraints === undefined && options.size !== undefined);
   if (fixedHeight && constraints) constraints.fixed.height = true;
   let pass: TilemapPass = { options, listed, run, omitted, fixedHeight };
+  const sideKey = isCachedTextMeasurer(options.measure ?? defaultMeasurer) ? {} : undefined;
   for (let attempt = 0; ; attempt++) {
-    const result = layoutTilemapPass(data, pass, attempt === MAX_LAYOUT_PASSES);
+    const result = layoutTilemapPass(data, pass, attempt === MAX_LAYOUT_PASSES, sideKey);
     if ('type' in result) return result;
     pass = result;
   }
@@ -140,7 +141,7 @@ function unknownRegionSuggest(id: string, pack: TilePack, idIndex: GeoRegionIdIn
 function layoutTilemapPass(
   data: TilemapData,
   { options, listed, run = 0, omitted = new Set(), heights = new Map(), fixedHeight = false, stopped = false, valuesNoted = false, steppedTile, keepStepped }: TilemapPass,
-  exhausted: boolean,
+  exhausted: boolean, sideKey: { tooNarrowAt?: { width: number; height: number } } | undefined,
 ): LayoutResult<TilemapMarks, TilemapDerived> | TilemapPass {
   // What the schema refuses, refused here for the React entry.
   const warnings: LintWarning[] = geoOptionRefusals(options, 'tilemap');
@@ -321,8 +322,11 @@ function layoutTilemapPass(
     key = undefined;
     rightKey = true;
     keyChosen = true;
-    const beside = layoutFrame();
-    if (beside.tileSize > frame.tileSize * KEY_BESIDE_GAIN && beside.frameResult.plot.w / size.width >= PLOT_W_FLOOR_DEMOTED) {
+    // Notes and omitted tile labels can change row heights. The fixed side key has the same entries and width.
+    const missed = sideKey?.tooNarrowAt;
+    const beside = missed?.width === size.width && missed.height === size.height ? undefined : layoutFrame();
+    if (sideKey && beside && beside.frameResult.plot.w / size.width < PLOT_W_FLOOR_DEMOTED) sideKey.tooNarrowAt = size;
+    if (beside && beside.tileSize > frame.tileSize * KEY_BESIDE_GAIN && beside.frameResult.plot.w / size.width >= PLOT_W_FLOOR_DEMOTED) {
       frame = beside;
     } else {
       legendOptions = { position: 'top' };

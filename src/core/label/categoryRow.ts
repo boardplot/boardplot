@@ -30,7 +30,8 @@ import { DEFAULT_TARGET, targetFloorsPx } from '../target';
 import { DATE_NAME_LANGUAGES, dateNames } from '../dateNames';
 import type { RenderTarget } from '../types/options';
 import { calendarMonths, type CalendarInfo } from '../calendarLabels';
-import { defaultMeasurer, measureText, type FontSpec, type TextMeasurer, type TextSize } from '../text';
+import { defaultMeasurer, measureText, twoLineWidth, type FontSpec, type TextMeasurer, type TextSize } from '../text';
+import { hasCompleteTableWidths } from '../fontMetrics/injected';
 import { cutWithTitle, fitText, type FittedText } from './fitText';
 import { footnoteMark } from '../footnoteMark';
 import type { LintWarning } from '../types/scene';
@@ -660,6 +661,28 @@ function spreadUpright(input: CategoryRowInput, plan: CategoryRowPlan): Category
   // An end name may use its own width, but never past the plot's edge.
   const endRoom = (i: number) => Math.max(step, Math.min(input.measure(input.labels[i]!, font).width,
     2 * (i === 0 ? centers[0]! - x0 : x1 - centers[n - 1]!)));
+  // A spread row keeps at least as many names as the rotated row. If the
+  // narrowest two-line form of every name together already exceeds the row,
+  // neither of the upright attempts below can keep them all.
+  if (plan.rotation === 45 && plan.typeRole === 'axis' && plan.keep.every(Boolean)
+    && !input.edgeAnchored && !input.ordered && !input.strideFromEnd && !input.dateStride && !input.calendar
+    && !calendarMonths(input.dates ?? []) && !numberedSequence(input.labels) && !shortMonthNames(input.labels)
+    && (input.gap ?? 4) >= 0 && input.labels.every(label => /^\S+(?: \S+)*$/u.test(label))
+    && (input.measure === defaultMeasurer || input.measure === measureText || hasCompleteTableWidths(input.measure))) {
+    const room = centers[n - 1]! + endRoom(n - 1) / 2 - (centers[0]! - endRoom(0) / 2);
+    const couldFit = (f: FontSpec) => {
+      if (f.size <= 0 || (f.letterSpacing ?? 0) < 0) return true;
+      let required = 0;
+      for (const label of input.labels) {
+        required += twoLineWidth(label, f, input.measure, true);
+        if (required > room + 1e-6) return false;
+      }
+      return true;
+    };
+    const floor = targetFloorsPx(input.target ?? DEFAULT_TARGET, input.textScale).axis;
+    if (!input.fonts.some((f, i) => (i === 0 || f.size >= floor) && couldFit(f))
+      && (!input.stepToFloor || !couldFit({ ...font, size: floor }))) return undefined;
+  }
   const upright = planCategoryRowCascade({ ...input, widths: input.labels.map((_, i) => (i === 0 || i === n - 1 ? endRoom(i) : 2 * step - 8)) });
   const drawn = (p: CategoryRowPlan) => p.keep.filter(Boolean).length;
   const whole = (p: CategoryRowPlan, lines: number) => p.rotation === 0 && drawn(p) >= drawn(plan)
@@ -690,12 +713,11 @@ function planCategoryRowCascade(input: CategoryRowInput): CategoryRowPlan {
     return size;
   };
   input = withCalendarRule({ ...input, measure });
-  const bundled = sourceMeasure === defaultMeasurer || sourceMeasure === measureText;
-  let plan = planRow(input, bundled);
+  let plan = planRow(input, sourceMeasure);
   // Longer weekday labels cannot fit where the shorter date labels already need thinning.
   const weekdays = plan.step === 'fit' && input.calendar?.length === input.labels.length
     && input.calendar.every((info, i) => info?.weekday?.endsWith(` ${input.labels[i]}`)) ? input.calendar.map(info => info!.weekday!) : undefined;
-  const withWeekdays = weekdays && planRow({ ...input, labels: weekdays }, bundled);
+  const withWeekdays = weekdays && planRow({ ...input, labels: weekdays }, sourceMeasure);
   if (withWeekdays?.step === 'fit') return withWeekdays;
   if (input.strideFromEnd && input.calendar && !plan.yearRow) {
     const drawnYears = new Set(input.calendar.flatMap((info, i) => info && plan.keep[i] ? [info.year] : []));
@@ -706,12 +728,12 @@ function planCategoryRowCascade(input: CategoryRowInput): CategoryRowPlan {
         labels: input.labels.map((label, i) => input.calendar![i]?.yearShown ? label.replace(new RegExp(` ${input.calendar![i]!.year}$`), '') : label),
         calendar: input.calendar.map(info => info ? { ...info, yearShown: false, yearRow: true } : info),
       };
-      plan = planRow(input, bundled);
+      plan = planRow(input, sourceMeasure);
     }
   }
   const short = plan.step === 'fit' ? undefined : shortMonthNames(input.labels);
   if (!short) return plan;
-  const shortPlan = planRow({ ...input, labels: short }, bundled);
+  const shortPlan = planRow({ ...input, labels: short }, sourceMeasure);
   return { ...shortPlan, infos: shortPlan.infos.map((info, i) => ({ ...info, title: info.title ?? input.labels[i]! })) };
 }
 
@@ -763,7 +785,7 @@ function shortMonthNames(labels: readonly string[]): string[] | undefined {
 /** Lines an upright name may take at the floor size. */
 const PROSE_FLOOR_LINES = 3;
 
-function planRow(input: CategoryRowInput, bundled: boolean): CategoryRowPlan {
+function planRow(input: CategoryRowInput, sourceMeasure: TextMeasurer): CategoryRowPlan {
   const { labels, centers, step, measure } = input;
   const n = labels.length;
   const dateNumeric = (input.calendar?.length === n && input.calendar.every(Boolean)) || isDateNumericTickSequence(labels);
@@ -796,8 +818,12 @@ function planRow(input: CategoryRowInput, bundled: boolean): CategoryRowPlan {
   const allowRotate = input.rotate ?? true;
   const orderedProse = (input.ordered || input.strideFromEnd || numberedSequence(labels)) && !dateNumeric;
   const baseFont = fonts[0]!;
-  // Custom metrics and negative tracking need the exact wrap path.
-  const growingWidths = (font: FontSpec) => bundled && font.size > 0 && (font.letterSpacing ?? 0) >= 0;
+  const bundled = sourceMeasure === defaultMeasurer || sourceMeasure === measureText;
+  // A space-separated name with nonnegative advances cannot fit whole if a word exceeds its slot.
+  // Keep the complete wrap for injected metrics when a label can join clusters or split inside a word.
+  const tableWords = hasCompleteTableWidths(sourceMeasure) && labels.every(label => !/[^\p{L}\p{N} ,:;!?%&'’()+]/u.test(label));
+  const growingWidths = (font: FontSpec) => (bundled || (tableWords && font.size <= Number.MAX_SAFE_INTEGER
+    && (font.letterSpacing ?? 0) <= Number.MAX_SAFE_INTEGER)) && font.size > 0 && (font.letterSpacing ?? 0) >= 0;
 
   const maxRotatedWidth = input.maxRotatedWidth ?? rotatedWidthCap(input.plotHeight, n * step, baseFont);
   const widthAt = (i: number): number => input.widths?.[i] ?? step;
@@ -1015,7 +1041,7 @@ function planRow(input: CategoryRowInput, bundled: boolean): CategoryRowPlan {
     const reference = planRow({
       ...input, reference: undefined, step: pitch, edgeAnchored: false,
       centers: labels.map((_, i) => input.reference!.x + pitch * (i + 0.5)),
-    }, bundled);
+    }, sourceMeasure);
     return reference.step === 'stride' ? reference.stride * (input.dateStride?.perStep ?? 1) : 0;
   };
 

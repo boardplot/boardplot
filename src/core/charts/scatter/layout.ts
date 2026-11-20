@@ -35,7 +35,7 @@ import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { leaderPieces, solveLabels, type LabelRequest, type SolveCtx, type SolveResult } from '../../label/solver';
 import { accessibleTitle } from '../../normalize/shared';
-import { defaultMeasurer } from '../../text';
+import { defaultMeasurer, isCachedTextMeasurer } from '../../text';
 import { defaultAnnotationId, type AnchorRef, type Annotation } from '../../types/annotations';
 import { rectsOverlap, type Rect } from '../../geometry';
 import type { Id } from '../../types/cell';
@@ -384,16 +384,12 @@ function probeSolveOn(requests: LabelRequest[], occupied: OccupiedIndex, ctx: So
   return { result: solveLabels(requests, index, ctx), index };
 }
 
-/**
- * Returns the first probe solve when no name moved: it is then the final
- * solve of these requests on these claims (one solve less per run).
- */
-function keepNamesApart(requests: LabelRequest[], occupied: OccupiedIndex, ctx: SolveCtx, size: { width: number; height: number }, first?: ProbeSolve): ProbeSolve | undefined {
+/** The accepted probe also holds the exact claims of its solved labels. */
+function keepNamesApart(requests: LabelRequest[], occupied: OccupiedIndex, ctx: SolveCtx, size: { width: number; height: number }, start: ProbeSolve): ProbeSolve {
   const names = new Map(requests.filter((r) => String(r.id).startsWith('point:')).map((r) => [r.id, r] as const));
-  const start = first ?? probeSolveOn(requests, occupied, ctx, size);
   if (names.size < 2) return start;
   const original = new Map<string, LabelRequest['candidates']>();
-  const probeSolve = () => probeSolveOn(requests, occupied, ctx, size).result.placed.filter((l) => names.has(l.id));
+  let trial = start;
   let all = start.result.placed.filter((l) => names.has(l.id));
   const hiddenAtStart = all.filter((l) => l.hidden).length;
   for (let round = 0; round < NAME_APART_ROUNDS; round++) {
@@ -414,7 +410,8 @@ function keepNamesApart(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
       }
     }
     if (losers.size === 0) break;
-    all = probeSolve();
+    trial = probeSolveOn(requests, occupied, ctx, size);
+    all = trial.result.placed.filter((l) => names.has(l.id));
   }
   if (original.size === 0) return start;
   // A name that reads apart but is gone is worse than a tight pair: when the
@@ -423,7 +420,7 @@ function keepNamesApart(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
     for (const [id, candidates] of original) names.get(id)!.candidates = candidates;
     return start;
   }
-  return undefined;
+  return isCachedTextMeasurer(ctx.measure) ? trial : probeSolveOn(requests, occupied, ctx, size);
 }
 
 /**
@@ -657,6 +654,8 @@ function layoutScatterRun(
   valueInsideOnly?: ReadonlySet<Id>,
   /** The plot key stays in the plot: the key row lost more (see the crowding check). */
   keepKeyInPlot = false,
+  /** Only a recursive note update can reuse a prior pass of this fixed-size plot. */
+  previous?: { plot: Rect; inner: Rect; seats: ScatterMarkGeometry['seatMemo']; occupied: OccupiedIndex; first?: ProbeSolve },
 ): Geometry<ScatterMarks, ScatterDerived> {
   const warnings: LintWarning[] = [];
   // The names the plot could not place share ONE note with the registry's ("Not labelled on the chart").
@@ -701,6 +700,12 @@ function layoutScatterRun(
   }
   commitClaims(occupied, claims);
   const geometry = layoutScatterMarks(env, domain, area!, paints, warnings);
+  const plot = area.plot;
+  const samePlot = previous && previous.plot.x === plot.x && previous.plot.y === plot.y
+    && previous.plot.w === plot.w && previous.plot.h === plot.h
+    && previous.inner.x === area.inner.x && previous.inner.y === area.inner.y
+    && previous.inner.w === area.inner.w && previous.inner.h === area.inner.h;
+  if (samePlot) geometry.seatMemo = previous.seats;
   if (geometry.densePoints) {
     warnings.push({
       code: 'scatter-dense-paths',
@@ -870,19 +875,19 @@ function layoutScatterRun(
       request.suppressedAs = 'density';
     }
   }
-  // The tier probe of this run's tier and value set solved these same requests on these claims.
-  const unmoved = keepNamesApart(requests, occupied, solveCtx, env.size, hideListed ? undefined : probes.get(probeKey(env.valueTier ?? 0, env.valueInsideOnly)));
-  // The claims from before the final solve.
+  // Updating a note can leave the plot and every obstacle in exactly the same place.
   const before = occupied;
-  let solved: SolveResult;
-  if (unmoved) {
-    // No name moved: the probe is the final solve.
-    solved = unmoved.result;
-    occupied = unmoved.index;
-  } else {
-    occupied = copyOccupied(before, env.size);
-    solved = solveLabels(requests, occupied, solveCtx);
+  let first = !hideListed ? probes.get(probeKey(env.valueTier ?? 0, env.valueInsideOnly)) : undefined;
+  if (!first && !hideListed && samePlot && previous.first
+    && JSON.stringify(before.snapshot()) === JSON.stringify(previous.occupied.snapshot())
+    && JSON.stringify(before.tickColumns) === JSON.stringify(previous.occupied.tickColumns)) {
+    first = { result: structuredClone(previous.first.result), index: copyOccupied(previous.first.index, env.size) };
   }
+  first ??= probeSolveOn(requests, before, solveCtx, env.size);
+  const apart = keepNamesApart(requests, before, solveCtx, env.size, first);
+  let solved = apart.result;
+  occupied = apart.index;
+
   // Only where a name is lost, free its seat (seatLostNames): the probe that
   // seated it, on the claims from before the first solve, is the final solve.
   // Dots too: a name ranked first can take the seat a later name needed (log-both-stores-revenue: Company H over Company I).
@@ -946,7 +951,9 @@ function layoutScatterRun(
   if (!exact && run < 4 && (lostTexts.length > 0 || listed.size > 0)) {
     const next = complete ? lostTexts : run === 3 ? [...new Set([...listed, ...lostTexts])] : lostTexts;
     if (next.length !== listed.size || next.some((text) => !listed.has(text))) {
-      const attempt = layoutScatter(data, options, next, run + 1, hideListed, env.valueTier, sizeKeyInRow, calloutMode, env.valueInsideOnly, keepKey);
+      const prior = isCachedTextMeasurer(env.measure)
+        ? { plot, inner: area.inner, seats: geometry.seatMemo, occupied: before, first: hideListed ? undefined : first } : undefined;
+      const attempt = layoutScatter(data, options, next, run + 1, hideListed, env.valueTier, sizeKeyInRow, calloutMode, env.valueInsideOnly, keepKey, prior);
       // A trimmed list that loses a name the longer one covered is not taken.
       if (!complete || !notListed(attempt)) return pick(attempt);
     }

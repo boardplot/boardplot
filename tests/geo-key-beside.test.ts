@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import '../src/core/charts';
 import '../src/core/geo/packs';
 import { getFixtures } from '../src/fixtures';
+import { cachedFittedOutlineFrames } from '../src/core/geo/decode';
+import { getGeoPack } from '../src/core/geo/packs';
+import { withPlanInputs } from '../src/core/layoutPlan';
 import { layoutResolvedRequest, resolveChartRequest } from '../src/core/request';
 import { requireGeometry } from '../src/core/sizing';
 import { choroplethOptionsSchema } from '../src/core/charts/choropleth/schema';
@@ -23,6 +26,21 @@ describe('map key beside the map on a wide slot', () => {
       expect(row.x).toBeLessThan(0.5);
     });
   }
+});
+
+// Resizing a map can leave finished layouts' projected outlines and label guards in memory.
+it('releases fitted map frames when the layout returns', () => {
+  const pack = getGeoPack('de-states');
+  const request = resolveChartRequest({
+    type: 'choropleth',
+    data: { pack: pack.id, regions: [{ id: 'DE-BY', value: 80 }] },
+    options: { size: { width: 878 } },
+  });
+  withPlanInputs(() => {
+    requireGeometry(layoutResolvedRequest(request));
+    expect(cachedFittedOutlineFrames(pack)).toBeGreaterThan(0);
+  });
+  expect(cachedFittedOutlineFrames(pack)).toBe(0);
 });
 
 // A key column the layout chose beside the tiles must not refuse a canvas that draws with the key row:

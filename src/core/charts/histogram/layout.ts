@@ -52,7 +52,7 @@ import {
   withChartMarks,
   type NumberFormatSpec,
 } from '../../formatSpec';
-import { defaultMeasurer, type FontSpec } from '../../text';
+import { defaultMeasurer, isCachedTextMeasurer, type FontSpec } from '../../text';
 import { resolveTheme, themeForWidth, panelTypeClass, strokeToken } from '../../theme';
 import { createOccupiedIndex } from '../../label/occupied';
 import { labelCtx, solveLabels, PRIORITY, SERIES_VALUE_GAP, type LabelRequest } from '../../label/solver';
@@ -634,6 +634,7 @@ export function layoutHistogram(
   const tailBins = belowInk(column);
   // A count prints in the set of the bin counts, as the column labels print it.
   const countFmt = ruleFormatter(counts, options.locale?.language, {});
+  const beforeTail = column;
   let tail: Annotation[] = [];
   if (tailBins.length > 0 && options.labels !== false) {
     tail = tailBins.slice(0, 3).map((index): Annotation => ({
@@ -657,7 +658,10 @@ export function layoutHistogram(
       tail = kept;
       const { annotations: _dropped, ...rest } = columnOptions;
       columnOptions = kept.length > 0 ? { ...rest, annotations: kept } : rest;
-      column = layoutBins(delegateData, columnOptions);
+      // With every tail callout removed, the earlier column already has these
+      // options. An explicitly hidden axis takes a different caption path.
+      column = kept.length === 0 && options.valueAxis?.show !== false && isCachedTextMeasurer(options.measure ?? defaultMeasurer)
+        ? beforeTail : layoutBins(delegateData, columnOptions);
     }
   }
   // Try exact compact counts before the note; the frequency axis keeps whole counts.

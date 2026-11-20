@@ -573,11 +573,11 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
     const slots = req.candidates.map((c) => c.slot);
     const first = req.candidates[0];
     const markValue = isMarkValue(req);
-    const naturals = naturalSeats(req);
+    const naturals = markValue ? naturalSeats(req) : undefined;
     const withinMarkBand = (cand: SlotCandidate): boolean => {
       if (!markValue || cand.outsidePlot || (req.kind === 'point' && req.anchor && /^(right|left)(Step[+-]?\d+)?$/.test(cand.slot))) return true;
       const side = sideOf(cand.slot);
-      const natural = side ? naturals.get(side) : undefined;
+      const natural = side ? naturals?.get(side) : undefined;
       // Only a shifted seat has to stay near the plot. A natural seat touches
       // its mark: a mark that reaches the plot edge, or a bar with a value
       // reserve beside the plot, keeps it just past that edge. A shifted seat

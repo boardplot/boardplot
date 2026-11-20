@@ -1,4 +1,5 @@
 import { chartString } from '../../strings/gantt';
+import { isCachedTextMeasurer } from '../../text';
 import { structureCount } from '../../structureCounts';
 import { withUnprintedClaims } from '../../claims/ids';
 /**
@@ -571,14 +572,12 @@ function layoutGanttLabelled(data: GanttData, options: GanttOptions = {}): Geome
   }).map(({ row }) => row.id));
   if (!flagRows.size) return first;
   const autoHeight = heightOmitted(options.size);
-  const retry = layoutGanttPass(data, options, new Set(), autoHeight, { rows: flagRows });
   // A constrained canvas must not lose a bar name or another full label to make room for flags.
   const keeps = (before: Geometry<GanttMarks, GanttDerived>, after: Geometry<GanttMarks, GanttDerived>): boolean => {
     const kept = new Map(after.labels.filter(label => !label.hidden).map(label => [label.id, label.text]));
     return before.labels.every(label => label.hidden || kept.get(label.id) === label.text
       || (domain.milestones.byId.has(label.owner.segmentId ?? '') && label.text !== domain.milestones.byId.get(label.owner.segmentId!)!.text));
   };
-  if (!autoHeight && (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height !== false) return keeps(first, retry) ? retry : first;
   // Open height: the sizing code lays a chart out at a first card height and
   // then at the natural height it reports. Judge both layouts at the height
   // they settle at, so every probe and the final size take the same choice.
@@ -588,12 +587,22 @@ function layoutGanttLabelled(data: GanttData, options: GanttOptions = {}): Geome
     }
     return geo;
   };
-  const before = settle(first, { rows: new Set() });
-  const after = settle(retry, { rows: flagRows });
   // Full milestone labels: the whole text, drawn, with no leader across another label.
   const full = (geo: Geometry<GanttMarks, GanttDerived>): number => geo.refused ? -1 : geo.labels.filter(label => !label.hidden && label.kind === 'item'
     && label.text === domain.milestones.byId.get(label.owner.segmentId ?? '')?.text
     && !geo.warnings.some(warning => warning.code === 'label-leader-crossing' && warning.owner?.segmentId === label.owner.segmentId)).length;
+  const openHeight = autoHeight || (options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === false;
+  let before: Geometry<GanttMarks, GanttDerived> | undefined;
+  // Flags must increase the number of full milestone titles. Each milestone has one item label.
+  // A custom measurer can change between calls, so keep its original draw order.
+  if (openHeight && isCachedTextMeasurer(env.measure)) {
+    before = settle(first, { rows: new Set() });
+    if (full(before) === domain.milestones.byId.size) return first;
+  }
+  const retry = layoutGanttPass(data, options, new Set(), autoHeight, { rows: flagRows });
+  if (!openHeight) return keeps(first, retry) ? retry : first;
+  before ??= settle(first, { rows: new Set() });
+  const after = settle(retry, { rows: flagRows });
   // In open height the flags must show more full milestone labels: a retry
   // that only moves labels could still report a taller natural height.
   return full(after) > full(before) && keeps(before, after) ? retry : first;

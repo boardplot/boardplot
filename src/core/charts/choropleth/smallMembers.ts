@@ -18,11 +18,16 @@ import { stepDownFont } from '../../label/rowFit';
 import { NormalizeError } from '../../normalize/shared';
 import { maxOf, pushAll } from '../../arrays';
 
+const ringAreas = new WeakMap<readonly GeoPoint[], number>();
 function ringArea(ring: readonly GeoPoint[]): number {
-  return Math.abs(ring.reduce((sum, point, index) => {
+  const known = ringAreas.get(ring);
+  if (known !== undefined) return known;
+  const area = Math.abs(ring.reduce((sum, point, index) => {
     const next = ring[(index + 1) % ring.length]!;
     return sum + point[0] * next[1] - next[0] * point[1];
   }, 0)) / 2;
+  ringAreas.set(ring, area);
+  return area;
 }
 
 /** Area ratios use the pack's projected map bounds, before fitting or label reserves. */
@@ -74,7 +79,7 @@ interface MapKeysInput {
   /** The key's width, when the layout sets it (the full row, or the block beside the map). */
   keyWidth?: number;
   /** Measure only: return the blocks' size before anything is drawn or claimed. */
-  dryRun?: boolean;
+  dryRun?: boolean | 'memberColumn';
   midpointLabel: string | undefined;
   /** A line under the ramp saying which end is better, on a diverging scale. */
   caption: string | undefined;
@@ -125,6 +130,11 @@ export function layoutMapKeys(input: MapKeysInput) {
 /** The key blocks' size at this input, with nothing drawn or claimed. */
 export function mapKeysSize(input: MapKeysInput): { w: number; h: number } {
   return (mapKeys({ ...input, dryRun: true }) as { dry: { w: number; h: number } }).dry;
+}
+
+/** The widest one-column list of these regions, including its heading. */
+export function mapMemberColumnWidth(input: MapKeysInput): number {
+  return (mapKeysOnce({ ...input, dryRun: 'memberColumn' }) as { dry: { w: number } }).dry.w;
 }
 
 /** Boundary ticks first; a key whose tick labels fit nowhere names its class ranges instead. */
@@ -219,6 +229,8 @@ function mapKeysOnce(input: MapKeysInput) {
   };
   const columnRows = (keyH: number) => Math.floor((plot.h - keyH - BLOCK_GAP - headerH) / rowH);
   const oneColumnW = members.length ? Math.max(width(smallTitle, heading), columnW - columnGap) : 0;
+
+  if (input.dryRun === 'memberColumn') return { dry: { w: oneColumnW, h: 0 } } as const;
 
   // Boundary ticks reach under the ramp, so their labels sit under the ticks.
   const labelDrop = classes && !ranges ? TICK_BELOW + 3 : 3;

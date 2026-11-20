@@ -11,6 +11,11 @@ import {
   type Face,
 } from './index';
 import type { FontMetricTables } from './tableDocument';
+import { maxOf } from '../arrays';
+
+// A caller can pass unchecked tables directly. Only complete tables have a defined read for every indexed glyph.
+const completeTableMeasurers = new WeakSet<TextMeasurer>();
+export const hasCompleteTableWidths = (measure: TextMeasurer): boolean => completeTableMeasurers.has(measure);
 
 /**
  * A `TextMeasurer` over one table file, for the per-layout injection point:
@@ -30,8 +35,10 @@ import type { FontMetricTables } from './tableDocument';
  * Twice the same file gives the same measurer.
  */
 export function createMetricTablesMeasurer(tables: FontMetricTables, options: MetricTablesMeasurerOptions = {}): TextMeasurer {
-  const own = measurerOverTables(tables);
-  return options.bundledFallback === true ? withBundledFallback(own, measurableFamilies(tables)) : own;
+  const { own, complete } = measurerOverTables(tables);
+  const measure = options.bundledFallback === true ? withBundledFallback(own, measurableFamilies(tables)) : own;
+  if (complete) completeTableMeasurers.add(measure);
+  return measure;
 }
 
 interface MetricTablesMeasurerOptions {
@@ -69,13 +76,17 @@ function withBundledFallback(own: TextMeasurer, families: readonly string[]): Te
   return markCachedTextMeasurer(measure);
 }
 
-function measurerOverTables(tables: FontMetricTables): TextMeasurer {
+function measurerOverTables(tables: FontMetricTables) {
   const index = buildCodePointIndex(tables.codePointRanges, tables.extraCodePoints);
+  const lastIndex = maxOf(index.values());
+  let complete = true;
   const byFamily = new Map<string, Face[]>();
   for (const face of tables.faces) {
     if (face.style !== 'normal') continue;
     const key = tableFamilyKey(face.family);
-    byFamily.set(key, [...(byFamily.get(key) ?? []), decodeFace(face, index)]);
+    const decoded = decodeFace(face, index);
+    if (decoded.widthCount <= lastIndex) complete = false;
+    byFamily.set(key, [...(byFamily.get(key) ?? []), decoded]);
   }
   const resolved = new Map<string, Face | undefined>();
   const resolve = (stack: string | undefined, weight: number): Face | undefined => {
@@ -94,7 +105,7 @@ function measurerOverTables(tables: FontMetricTables): TextMeasurer {
   };
   const measure = cachedMeasurer((text, font) => estimateTextWidthForFace(text, font, resolve(font.family, font.weight)));
   measure.capHeight = (font) => capHeightOfFace(font, resolve(font.family, font.weight));
-  return measure;
+  return { own: measure, complete };
 }
 
 /** Families the file carries, for diagnostics: a host can check its stack. */

@@ -65,8 +65,9 @@ export function columnPaints(domain: ColumnDomain, warnings: LintWarning[]): Col
   const authored = domain.seriesNorm.filter((s) => dataSeries.includes(s));
   // A scenario series takes the colour of its actual (scenarioPairs). A series whose cells all
   // carry one scenario counts as that scenario.
-  const roleOf = (s: NormSer): Scenario | undefined =>
-    seriesScenarioRole(s.scenario, s.vals.filter((val) => val.v !== null).map((val) => val.scenario));
+  const seriesRoles = new Map(dataSeries.map(s => [s, seriesScenarioRole(s.scenario,
+    s.vals.filter(val => val.v !== null).map(val => val.scenario))]));
+  const roleOf = (s: NormSer): Scenario | undefined => seriesRoles.get(s);
   // A stack keeps its stack colours: there only a plan pairs, as it always did, and keeps its step.
   const stackLike = variant === 'stacked' || variant === 'stacked100';
   const ownPaint = (x: NormSer): boolean => !!x.fill || !!x.colorRole || highlights.has(x.id);
@@ -131,11 +132,12 @@ export function columnPaints(domain: ColumnDomain, warnings: LintWarning[]): Col
    */
   const restRecedes =
     dataSeries.length === 1 && cats.some((c, ci) => highlights.has(c.id) && (plottedOf(dataSeries[0]!, ci) ?? 0) !== 0);
-  const seriesBasePaint = (s: NormSer, dataIdx: number): Paint => {
+  const basePaints = dataSeries.map((s, dataIdx): Paint => {
     // The rest role, which falls back to neutralLight.
     if (restRecedes && !s.fill && !s.colorRole && !s.scenario) return { token: 'rest' };
     return seriesIdentityPaint(s, dataIdx);
-  };
+  });
+  const seriesBasePaint = (_s: NormSer, dataIdx: number): Paint => basePaints[dataIdx]!;
   const cellPaint = (s: NormSer, val: NormVal, cat: Category, dataIdx: number): Paint => {
     if (val.fill) return { css: val.fill };
     if (othersId !== null && cat.id === othersId) return { token: 'othersMark' };

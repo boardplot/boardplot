@@ -52,8 +52,9 @@ import { axisBreakHeightOrderWarning, breakReversesOrder, type BreakBar } from '
 import { valueLineExtent } from '../../valueLineDomain';
 import { changePercentText, formatAutomaticNumber as plainNumber } from '../../format';
 import { authoredDecimals } from '../../formatPrecision';
-import { authoredNotes, frameTextOptions, legendRequired, normalizeLegendOption, solveFrame, fixedPlotChrome, type LegendItemInput, plotHeightAfter } from '../../frame';
-import { defaultMeasurer, type FontSpec } from '../../text';
+import { copyFrame } from '../../footer';
+import { authoredNotes, collectFrameClaims, type FrameResult, frameTextOptions, legendRequired, normalizeLegendOption, solveFrame, fixedPlotChrome, type LegendItemInput, plotHeightAfter } from '../../frame';
+import { defaultMeasurer, isCachedTextMeasurer, type FontSpec } from '../../text';
 import { CROWDED_NAMES, categoryLineAlign, categoryRowTop, hangingLabelReserve, planCategoryRow, rotatedClaimRect, yieldToRotatedName } from '../../label/categoryRow';
 import {
   canvasMargin,
@@ -99,6 +100,7 @@ import { bandSizing, NARROW_FORM, NATURAL_BAND_STEP, SIZE_TOLERANCE } from '../.
 import { floorValueLabel, printedValueLabel, valueLabelPlotFloor } from './bandFloor';
 import { maxOf, minOf, pushAll } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
+import type { OccupiedClaim } from '../../label/occupied';
 import { requestClaims, withUnprintedClaims, type ClaimedRequest } from '../../claims/ids';
 
 export interface WaterfallMarks {
@@ -372,7 +374,7 @@ function layoutVerticalWaterfall(
   // a stub on closing-heavy bridges). One deterministic
   // re-run with the annotation band widened by exactly that deficit; charts
   // without a deficit return their first pass byte-identically.
-  // withBridgeGap sits HERE and not inside layoutWaterfallWithPad on purpose:
+  // withBridgeGap sits HERE and not inside prepareWaterfall on purpose:
   // the horizontal path calls that helper too, and applying the gap there would
   // bake it in before the transpose — the exact defect this pass exists to fix,
   // and it would then be applied twice.
@@ -390,15 +392,19 @@ function layoutVerticalWaterfall(
   // deficit.
   let pad = 0;
   let cut = 0;
-  const lay = (band: number, enforceBreakOrder: boolean) => layoutWaterfallWithPad(data, options, band, true, undefined, enforceBreakOrder, cut);
+  const prepare = () => prepareWaterfall(data, options);
+  // The bars and their running levels do not depend on the annotation band.
+  // A custom measurer can change its inputs between calls.
+  const prepared = isCachedTextMeasurer(options.measure ?? defaultMeasurer) ? prepare() : undefined;
+  const lay = (band: number, enforceBreakOrder: boolean) => (prepared ?? prepare())(band, enforceBreakOrder, cut);
   let pass = lay(pad, !options.annotations?.length);
-  const hiddenCount = (geometry: Geometry<WaterfallMarks, WaterfallDerived>) => geometry.labels.filter((label) => label.hidden !== undefined && label.hidden !== 'redundant').length;
+  const hiddenCount = (geometry: Pick<BridgePass, 'labels'>) => geometry.labels.filter((label) => label.hidden !== undefined && label.hidden !== 'redundant').length;
   // Two wide bracket labels can meet on the shared row, and the top row seats only one of them. Where
   // the brackets' own seats hide fewer labels, the bridge keeps those seats, as under bracketRow 'span'.
   if (options.bracketRow !== 'span' && options.annotations?.some((a) => a.kind === 'bracket')
-    && pass.geometry.labels.some((label) => label.id.startsWith('annotation:') && label.hidden !== undefined && label.hidden !== 'redundant')) {
-    const own = layoutWaterfallWithPad(data, { ...options, bracketRow: 'span' }, pad, true, undefined, !options.annotations.length);
-    if (hiddenCount(own.geometry) < hiddenCount(pass.geometry)) return layoutVerticalWaterfall(data, { ...options, bracketRow: 'span' });
+    && pass.labels.some((label) => label.id.startsWith('annotation:') && label.hidden !== undefined && label.hidden !== 'redundant')) {
+    const own = prepareWaterfall(data, { ...options, bracketRow: 'span' })(pad, !options.annotations.length);
+    if (hiddenCount(own) < hiddenCount(pass)) return layoutVerticalWaterfall(data, { ...options, bracketRow: 'span' });
   }
   // The brackets' row can stand lower than the top row the bracket room holds. The empty part goes
   // back to the plot in one round: the taller plot lifts the bars, so a cut of the whole gap is
@@ -407,18 +413,18 @@ function layoutVerticalWaterfall(
   if ((pass.bracketSlack ?? 0) >= 1) {
     cut = Math.floor(pass.bracketSlack!);
     const next = lay(pad, !options.annotations?.length);
-    if ((next.bracketSlack ?? -1) < 0 || hiddenCount(next.geometry) > hiddenCount(pass.geometry) || (next.geometry.warnings?.length ?? 0) > (pass.geometry.warnings?.length ?? 0)) cut = 0;
+    if ((next.bracketSlack ?? -1) < 0 || hiddenCount(next) > hiddenCount(pass) || (next.warnings?.length ?? 0) > (pass.warnings?.length ?? 0)) cut = 0;
     else pass = next;
   }
   const cagr = growthArms(options, data);
-  const unseated = (geometry: Geometry<WaterfallMarks, WaterfallDerived>) =>
+  const unseated = (geometry: Pick<BridgePass, 'labels'>) =>
     geometry.labels.some((label) => label.id.startsWith('annotation:') && label.hidden === 'collision');
-  while (cagr && pad < 48 && (unseated(pass.geometry) || (pad < 18 && pass.annotationLegDeficit > 0))) {
+  while (cagr && pad < 48 && (unseated(pass) || (pad < 18 && pass.annotationLegDeficit > 0))) {
     pad += 6;
     pass = lay(pad, false);
   }
   if (pad > 0) {
-    pad = unseated(pass.geometry) ? 18 : pad + 4;
+    pad = unseated(pass) ? 18 : pad + 4;
     pass = lay(pad, false);
   }
   // A leg short by half a pixel or less reads as full length (as on column); another round
@@ -431,17 +437,17 @@ function layoutVerticalWaterfall(
   // draws no leader when it lands over its step. On a broken axis the bars stand 12 px
   // under the key, too close for the far seats that lead back to the step. The band
   // grows in 6 px steps until they open; a chart that gains no seat keeps its first pass.
-  const freeSeated = (geometry: Geometry<WaterfallMarks, WaterfallDerived>) =>
+  const freeSeated = (geometry: Pick<BridgePass, 'labels'>) =>
     geometry.labels.some((label) => label.id.startsWith('annotation:') && label.slot === 'freeSpot');
   // A grown pass is kept only if every note stays drawn and it raises no new warning: the
   // shorter plot can hide a note that the first pass drew.
-  const noteHidden = (geometry: Geometry<WaterfallMarks, WaterfallDerived>) =>
+  const noteHidden = (geometry: Pick<BridgePass, 'labels'>) =>
     geometry.labels.some((label) => label.id.startsWith('annotation:') && label.hidden);
-  if (!cagr && freeSeated(pass.geometry)) {
-    const warned = pass.geometry.warnings?.length ?? 0;
+  if (!cagr && freeSeated(pass)) {
+    const warned = pass.warnings?.length ?? 0;
     for (let grown = 6; grown <= 48; grown += 6) {
       const next = lay(grown, false);
-      if (!freeSeated(next.geometry) && !noteHidden(next.geometry) && (next.geometry.warnings?.length ?? 0) <= warned) { pass = next; break; }
+      if (!freeSeated(next) && !noteHidden(next) && (next.warnings?.length ?? 0) <= warned) { pass = next; break; }
     }
   }
   // First settle the annotation band with the original break. A moved break
@@ -451,26 +457,26 @@ function layoutVerticalWaterfall(
     // The repaired break can lift the bars into the band the growth label had, which would
     // send the label to the note at 320 px. The band grows again for
     // the repaired bridge, by the same 6 px steps, before the label gives up its seat.
-    if (cagr && unseated(pass.geometry)) {
+    if (cagr && unseated(pass)) {
       let repairPad = pad;
       let repaired = pass;
-      while (repairPad < 48 && unseated(repaired.geometry)) {
+      while (repairPad < 48 && unseated(repaired)) {
         repairPad += 6;
         repaired = lay(repairPad, true);
       }
-      if (!unseated(repaired.geometry)) {
+      if (!unseated(repaired)) {
         const settled = lay(repairPad + 4, true);
-        pass = unseated(settled.geometry) ? repaired : settled;
+        pass = unseated(settled) ? repaired : settled;
       }
     }
   }
   // The growth bracket takes the band over the bridge. Where that hides a label, and the arrow at
   // the bars hides fewer, the total change keeps its arrow (placement 'label').
-  if (hiddenCount(pass.geometry) > 0 && options.annotations?.some((a) => totalChangeBracket(a, data))) {
+  if (hiddenCount(pass) > 0 && options.annotations?.some((a) => totalChangeBracket(a, data))) {
     const arrow = layoutVerticalWaterfall(data, { ...options, annotations: options.annotations.map((a) => (a.kind === 'diff' || a.kind === 'delta') && totalChangeBracket(a, data) ? { ...a, placement: 'label' as const } : a) });
-    if (hiddenCount(arrow) < hiddenCount(pass.geometry)) return arrow;
+    if (hiddenCount(arrow) < hiddenCount(pass)) return arrow;
   }
-  return withBridgeGap(pass.geometry);
+  return withBridgeGap(pass.finish());
 }
 
 function layoutHorizontalWaterfall(
@@ -487,7 +493,7 @@ function layoutHorizontalWaterfall(
     annotations: [],
   };
   // No annotations in this pass, so no leg deficit and no second pass.
-  const source = layoutWaterfallWithPad(data, verticalOptions, 0, false).geometry;
+  const source = prepareWaterfall(data, verticalOptions, false)(0).finish();
   const plot = source.plot;
   const theme = chartTheme(options);
   const measure = options.measure ?? defaultMeasurer;
@@ -918,20 +924,22 @@ function automaticBreak(
   return invalidLinearBreakReason([0, runHi], axisBreak, drawn) ? undefined : axisBreak;
 }
 
-function layoutWaterfallWithPad(
+interface BridgePass {
+  labels: PlacedLabel[];
+  warnings: LintWarning[];
+  finish(): Geometry<WaterfallMarks, WaterfallDerived>;
+  annotationLegDeficit: number;
+  unsafeBreak?: boolean;
+  bracketSlack?: number;
+  repairBreak?: () => BridgePass;
+}
+
+function prepareWaterfall(
   data: WaterfallData,
   options: WaterfallOptions,
-  extraAnnPad: number,
-  /** False when the horizontal layout transposes this one: its names read in a left column, not in a row under the plot. */
+  /** A horizontal bridge reads its names in a left column. */
   categoryRow = true,
-  automaticOverride?: LinearBreak,
-  enforceBreakOrder = true,
-  /** Px of the bracket room given back to the plot (layoutVerticalWaterfall). */
-  bracketCut = 0,
-): { geometry: Geometry<WaterfallMarks, WaterfallDerived>; annotationLegDeficit: number; unsafeBreak?: boolean;
-  /** The empty px between the bracket top row and the brackets' shared row, when every bracket stands on that row. */
-  bracketSlack?: number;
-  repairBreak?: () => { geometry: Geometry<WaterfallMarks, WaterfallDerived>; annotationLegDeficit: number; unsafeBreak?: boolean } } {
+): (extraAnnPad: number, enforceBreakOrder?: boolean, bracketCut?: number) => BridgePass {
   const fmtPlain = (value: number, settings: Parameters<typeof plainNumber>[1] = {}) => plainNumber(value, { locale: options.locale?.language, ...settings });
   const warnings: LintWarning[] = [];
   const theme = chartTheme(options);
@@ -1418,10 +1426,16 @@ function layoutWaterfallWithPad(
   const preparedWarnings = warnings.slice();
   // Preserve the author's request when a safety repair rebuilds without a break.
   const recommendBreak = options.valueAxis?.break === undefined || options.valueAxis.break === false;
-  return drawBridge(options, automaticOverride, enforceBreakOrder);
+  const growthBand = growthArms(options, data);
+  // The chart size and options stay fixed across band trials. Only a different
+  // axis break can change the frame, through its disclosure. The chart's
+  // height floor is recorded separately on each copy of the frame.
+  const frames = growthBand && isCachedTextMeasurer(measure)
+    ? new Map<string | undefined, { result: FrameResult; claims: OccupiedClaim[] }>() : undefined;
+  return (pad, enforceBreakOrder = true, cut = 0) => drawBridge(options, pad, cut, undefined, enforceBreakOrder);
 
   // Break repairs reuse the normalized items, running levels, segments and paints.
-  function drawBridge(options: WaterfallOptions, automaticOverride?: LinearBreak, enforceBreakOrder = true): ReturnType<typeof layoutWaterfallWithPad> {
+  function drawBridge(options: WaterfallOptions, extraAnnPad: number, bracketCut: number, automaticOverride?: LinearBreak, enforceBreakOrder = true): BridgePass {
   const warnings = preparedWarnings.slice();
   // ---- scales & frame ----
   let occupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
@@ -1499,7 +1513,7 @@ function layoutWaterfallWithPad(
   const breakNote = axisBreak
     ? disclosureNote(chartString(options, 'axisBreakNote', { v1: fmtPlain(axisBreak.from), v2: fmtPlain(axisBreak.to) }))
     : undefined;
-  const frameResult = solveFrame(
+  const frameForBand = (claims: Parameters<typeof solveFrame>[1]) => solveFrame(
     {
       size,
       margin,
@@ -1511,8 +1525,21 @@ function layoutWaterfallWithPad(
       theme,
       measure,
     },
-    occupied,
+    claims,
   );
+  let frameResult: FrameResult;
+  if (frames) {
+    let saved = frames.get(breakNote);
+    if (!saved) {
+      const claims: OccupiedClaim[] = [];
+      saved = { result: frameForBand(collectFrameClaims(claims)), claims };
+      frames.set(breakNote, saved);
+    }
+    for (const claim of saved.claims) occupied.claim(claim.rect, claim.kind, claim.owner);
+    frameResult = { ...saved.result, frame: copyFrame(saved.result.frame) };
+  } else {
+    frameResult = frameForBand(occupied);
+  }
 
   const tickFont: FontSpec = { family: theme.type.family, ...theme.type.axis };
   // The band only depends on the frame's x-extent, so it can be built before
@@ -1584,7 +1611,7 @@ function layoutWaterfallWithPad(
   // value label needs over the tallest bar. `bracketCut` gives back what the shared row leaves empty.
   const bracketLabelH = measure('X', { family: theme.type.family, ...theme.type.label }).height;
   const bracketRoom = (options.annotations ?? []).some((a) => a.kind === 'bracket') ? Math.max(0, Math.ceil(2 * bracketLabelH + 8) - bracketCut) : 0;
-  const annPad = (growthArms(options, data) ? 12 + extraAnnPad : extraAnnPad) + bracketRoom;
+  const annPad = (growthBand ? 12 + extraAnnPad : extraAnnPad) + bracketRoom;
   const axisTitle = categoryRow && axisTitleAllowed(options.labels) ? planValueAxisTitle(options.axisTitles?.primary, theme, measure, plotWidth) : undefined;
   const axisTitleBand = valueAxisTitleBand(axisTitle, theme, measure, annPad);
   const plot: Rect = {
@@ -1677,7 +1704,7 @@ function layoutWaterfallWithPad(
   const hangingRoom = options.labels === false || !categoryRow ? 0 : measure('0', strongFont).height + 4;
   const hangingReserve = hangingLabelReserve(plot.h, [dLo, dHi], hangingEnd, hangingRoom);
   // These category steps finish before the height-dependent rotation step.
-  if (categoryRow && !growthArms(options, data)
+  if (categoryRow && !growthBand
     && ['fit', 'wrap', 'font-down'].includes(catPlan.step)) {
     fixedPlotChrome(frameResult, catBandH + 8 + axisTitleBand);
   }
@@ -1718,12 +1745,12 @@ function layoutWaterfallWithPad(
         const drawn = [...allItems.flatMap(it => [traversalExtrema[it.id]!.min, traversalExtrema[it.id]!.max]),
           ...(() => { const line = valueLineExtent(options.annotations); return line ? [line.lo, line.hi] : []; })()];
         if (!invalidLinearBreakReason([dLo, dHi], moved, drawn)) {
-          return drawBridge(options, moved);
+          return drawBridge(options, extraAnnPad, bracketCut, moved);
         }
       }
       // Rebuild the whole frame so the rejected break leaves no disclosure.
-      const result = drawBridge({ ...options, valueAxis: { ...options.valueAxis, break: false } });
-      if (requestedBreak) result.geometry.warnings.push(axisBreakHeightOrderWarning());
+      const result = drawBridge({ ...options, valueAxis: { ...options.valueAxis, break: false } }, extraAnnPad, bracketCut);
+      if (requestedBreak) result.warnings.push(axisBreakHeightOrderWarning());
       return result;
     }
   }
@@ -2444,90 +2471,94 @@ function layoutWaterfallWithPad(
 
   // ---- emit ----
   const allLabels: PlacedLabel[] = [...solved.placed, ...annResult.labels];
-  // On a mixed-sign segment stack the up and down segments share a top edge
-  // and the later one paints over the earlier: the `−33` label's ink was
-  // decided against sky (8.45:1) and lands on navy (2.40:1 standard, below AA
-  // in 6/6 presets). Halo it against the page instead — the same device its
-  // sibling label already gets for carrying a leader — and re-decide the ink
-  // against the page, because `inkInverse === background` in all six presets
-  // and a halo alone is a no-op on the two dark ones (see markVisibility.ts).
-  haloOverpaintedInsideLabels(nodes, allLabels, theme);
-  pushAll(nodes, annResult.nodes);
-  pushAll(
-    nodes,
-    labelsToNodes(theme, allLabels, (l) =>
-      // A category label is drawn at the font its row was measured at.
-      l.kind === 'total' || boldValueIds.has(l.id) ? strongFont : l.kind === 'segment' ? segmentFont : l.kind === 'category' ? catFont : l.kind === 'annotation' || l.kind === 'valueLine' ? { ...labelFont, weight: emphasisWeight(theme) } : labelFont, nodes,
-    ),
-  );
+  // Band selection reads label visibility, seats and warnings. Only the chosen
+  // pass needs its scene, accessibility text and occupied rectangles.
+  const finish = (): Geometry<WaterfallMarks, WaterfallDerived> => {
+    // On a mixed-sign segment stack the up and down segments share a top edge
+    // and the later one paints over the earlier: the `−33` label's ink was
+    // decided against sky (8.45:1) and lands on navy (2.40:1 standard, below AA
+    // in 6/6 presets). Halo it against the page instead — the same device its
+    // sibling label already gets for carrying a leader — and re-decide the ink
+    // against the page, because `inkInverse === background` in all six presets
+    // and a halo alone is a no-op on the two dark ones (see markVisibility.ts).
+    haloOverpaintedInsideLabels(nodes, allLabels, theme);
+    pushAll(nodes, annResult.nodes);
+    pushAll(
+      nodes,
+      labelsToNodes(theme, allLabels, (l) =>
+        // A category label is drawn at the font its row was measured at.
+        l.kind === 'total' || boldValueIds.has(l.id) ? strongFont : l.kind === 'segment' ? segmentFont : l.kind === 'category' ? catFont : l.kind === 'annotation' || l.kind === 'valueLine' ? { ...labelFont, weight: emphasisWeight(theme) } : labelFont, nodes,
+      ),
+    );
 
-  const first = items[0]!;
-  const last = items[items.length - 1]!;
-  const stepsDesc = (bridge: NormItem[]) => bridge
-    .map((it) =>
-      it.type === 'delta'
-        ? `${it.label} ${labelRequests.find(label => label.id === `sum:${it.id}`)?.text ?? wouldBeTexts.get(`sum:${it.id}`) ?? fmtSigned(levels[it.id]!.end - levels[it.id]!.start)}`
-        : `${it.label} ${labelRequests.find(label => label.id === `total:${it.id}`)?.text ?? wouldBeTexts.get(`total:${it.id}`) ?? fmt(totals[it.id]!)}`,
-    )
-    .join(', ');
-  const a11yDesc = cases.length > 0
-    ? chartString(options, 'waterfallCasesDesc', { v1: cases.length, v2: cases.map((c, k) => `${c.label ?? c.id}: ${stepsDesc(caseItems[k]!)}`).join('. ') })
-    : stepsDesc(items);
+    const first = items[0]!;
+    const last = items[items.length - 1]!;
+    const stepsDesc = (bridge: NormItem[]) => bridge
+      .map((it) =>
+        it.type === 'delta'
+          ? `${it.label} ${labelRequests.find(label => label.id === `sum:${it.id}`)?.text ?? wouldBeTexts.get(`sum:${it.id}`) ?? fmtSigned(levels[it.id]!.end - levels[it.id]!.start)}`
+          : `${it.label} ${labelRequests.find(label => label.id === `total:${it.id}`)?.text ?? wouldBeTexts.get(`total:${it.id}`) ?? fmt(totals[it.id]!)}`,
+      )
+      .join(', ');
+    const a11yDesc = cases.length > 0
+      ? chartString(options, 'waterfallCasesDesc', { v1: cases.length, v2: cases.map((c, k) => `${c.label ?? c.id}: ${stepsDesc(caseItems[k]!)}`).join('. ') })
+      : stepsDesc(items);
 
-  const geometry: Geometry<WaterfallMarks, WaterfallDerived> = withUnprintedClaims({
-    type: 'waterfall',
-    size,
-    sizing: {
-      ...bandSizing('waterfall', size, plot.w + catOverhang, band.step, minPlotW),
-      ...(nodes.some(node => node.part === 'barBreak') ? { [HEIGHT_STRUCTURE]: true } : {}),
-    },
-    plot,
-    scene: withSegmentSeams(nodes, theme),
-    labels: allLabels,
-    axes: [
-      {
-        axis: 'x',
-        baselineNodeId: baselineId,
-        ticks: items.map((it, i) => ({
-          at: it.id,
-          pos: band.center(i),
-          labelId: `category:${it.id}`,
-        })),
+    return withUnprintedClaims({
+      type: 'waterfall',
+      size,
+      sizing: {
+        ...bandSizing('waterfall', size, plot.w + catOverhang, band.step, minPlotW),
+        ...(nodes.some(node => node.part === 'barBreak') ? { [HEIGHT_STRUCTURE]: true } : {}),
       },
-    ],
-    annotations: annResult.placed,
-    legend: frameResult.legend,
-    frame: frameResult.frame,
-    marks,
-    derived: {
-      levels,
-      totals,
-      totalBasis,
-      tickBand: {
-        reserved: catBandH,
-        measuredLines: catTickMaxLines,
-        lineHeight: catFont.size * 1.2,
-        extra: catStaggerExtra,
-        dateNumeric: dateNumericTicks,
-        position: 'below' as const,
+      plot,
+      scene: withSegmentSeams(nodes, theme),
+      labels: allLabels,
+      axes: [
+        {
+          axis: 'x',
+          baselineNodeId: baselineId,
+          ticks: items.map((it, i) => ({
+            at: it.id,
+            pos: band.center(i),
+            labelId: `category:${it.id}`,
+          })),
+        },
+      ],
+      annotations: annResult.placed,
+      legend: frameResult.legend,
+      frame: frameResult.frame,
+      marks,
+      derived: {
+        levels,
+        totals,
+        totalBasis,
+        tickBand: {
+          reserved: catBandH,
+          measuredLines: catTickMaxLines,
+          lineHeight: catFont.size * 1.2,
+          extra: catStaggerExtra,
+          dateNumeric: dateNumericTicks,
+          position: 'below' as const,
+        },
       },
-    },
-    a11y: {
-      title: accessibleTitle(options.title, chartString(options, 'waterfallTitle', { v1: first.label, v2: last.label })),
-      counts: [...(cases.length ? [structureCount('cases', cases.length, undefined, options)] : [])],
-      desc: chartString(options, 'waterfallDesc', { v1: build === 'down' ? chartString(options, 'buildDownClause') : '', v2: a11yDesc }),
-    },
-    ...(paintWarningRules.length ? { paintWarningRules } : {}),
-    warnings,
-    debug: { occupied: occupied.snapshot(), decisions: [...solved.decisions, ...annResult.decisions] },
-  }, withheld.flatMap((request) => requestClaims(request, options) ?? []));
+      a11y: {
+        title: accessibleTitle(options.title, chartString(options, 'waterfallTitle', { v1: first.label, v2: last.label })),
+        counts: [...(cases.length ? [structureCount('cases', cases.length, undefined, options)] : [])],
+        desc: chartString(options, 'waterfallDesc', { v1: build === 'down' ? chartString(options, 'buildDownClause') : '', v2: a11yDesc }),
+      },
+      ...(paintWarningRules.length ? { paintWarningRules } : {}),
+      warnings,
+      debug: { occupied: occupied.snapshot(), decisions: [...solved.decisions, ...annResult.decisions] },
+    }, withheld.flatMap((request) => requestClaims(request, options) ?? []));
+  };
   // Each drawn bracket label stands on the shared row (labelOffsets come later), so the room over it is empty.
   const bracketLabels = new Set(annResult.placed.filter((placed) => placed.kind === 'bracket').map((placed) => `annotation:${placed.id}`));
   const onRow = bracketRowFree !== undefined && options.bracketRow !== 'span' && annResult.labels
     .filter((label) => bracketLabels.has(label.id) && label.hidden === undefined)
     .every((label) => label.rect.y + label.rect.h + 3 >= bracketRow! - 0.5);
-  return { geometry, annotationLegDeficit: annResult.legDeficit, unsafeBreak, ...(onRow ? { bracketSlack: Math.min(bracketRowFree! - bracketTopRow, bracketRoom) } : {}),
-    ...(unsafeBreak && !enforceBreakOrder ? { repairBreak: () => drawBridge(options) } : {}) };
+  return { labels: allLabels, warnings, finish, annotationLegDeficit: annResult.legDeficit, unsafeBreak, ...(onRow ? { bracketSlack: Math.min(bracketRowFree! - bracketTopRow, bracketRoom) } : {}),
+    ...(unsafeBreak && !enforceBreakOrder ? { repairBreak: () => drawBridge(options, extraAnnPad, bracketCut) } : {}) };
   }
 
   // ---- helpers ----

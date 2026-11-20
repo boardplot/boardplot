@@ -92,6 +92,7 @@ export interface BodyWidthMeasurement {
   maxTextWidth: number | undefined;
   labelLines: number | undefined;
   figuresOnly: boolean;
+  hasCellNotes: boolean;
   hinted: boolean;
   inlineIndent: number | undefined;
   levels: readonly number[];
@@ -401,9 +402,10 @@ function intrinsicBodyWidths(column: ResolvedColumn, rows: readonly ResolvedRow[
   const authored = column.width !== undefined;
   const hinted = ctx.hint !== undefined;
   const known = variants?.find(value => value.authored === authored && value.maxTextWidth === column.maxTextWidth
-    && value.labelLines === ctx.labelLines && value.figuresOnly === figuresOnly && value.hinted === hinted && value.inlineIndent === ctx.inlineIndent);
+    && value.labelLines === ctx.labelLines && (!value.hasCellNotes || value.figuresOnly === figuresOnly) && value.hinted === hinted && value.inlineIndent === ctx.inlineIndent);
   if (known) return known;
   const isRowLabel = column.kind === 'rowLabel';
+  let hasCellNotes = false;
   const levels: number[] = [];
   const widths: number[] = [];
   for (const row of rows) {
@@ -424,6 +426,7 @@ function intrinsicBodyWidths(column: ResolvedColumn, rows: readonly ResolvedRow[
         : ctx.measure(` ${row.unitAffix}`, ctx.inlineFont(row.step, false)).width;
     }
     if (isRowLabel) width += ctx.hint?.(row) ?? 0;
+    if (cell.note) hasCellNotes = true;
     if (cell.note && !figuresOnly) {
       // A note that takes a line of its own needs the wider of the two, the
       // way a row-label note does; one that stays inline adds to the figure.
@@ -460,7 +463,7 @@ function intrinsicBodyWidths(column: ResolvedColumn, rows: readonly ResolvedRow[
     }
     widths[index] = cellMax;
   }
-  const result = { authored, maxTextWidth: column.maxTextWidth, labelLines: ctx.labelLines, figuresOnly, hinted, inlineIndent: ctx.inlineIndent, levels, widths };
+  const result = { authored, maxTextWidth: column.maxTextWidth, labelLines: ctx.labelLines, figuresOnly, hasCellNotes, hinted, inlineIndent: ctx.inlineIndent, levels, widths };
   if (variants && variants.length >= 64) variants.shift();
   variants?.push(result);
   return result;

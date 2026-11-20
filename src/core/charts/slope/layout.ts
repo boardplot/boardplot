@@ -50,7 +50,7 @@ import { applyAxisBounds, linearScale, niceDomain } from '../../scale';
 import { authoredNotes, frameTextOptions, normalizeLegendOption, noteLine, solveFrame, type FrameInput, type LegendItemInput, plotHeightAfter, authoredFootnoteCount } from '../../frame';
 import { disclosureNote } from '../../notes';
 import { DEFAULT_TARGET, TARGET_SIZE, type TargetSizeOptions } from '../../target';
-import { defaultMeasurer, type FontSpec, type TextMeasurer } from '../../text';
+import { defaultMeasurer, isCachedTextMeasurer, type FontSpec, type TextMeasurer } from '../../text';
 import {
   labelsOffKeepsNames,
   seriesPaint,
@@ -167,6 +167,18 @@ export function layoutSlope(
     if (options.columnOverrides !== undefined) throw new NormalizeError('slope-diverging-column-overrides', 'options.columnOverrides', DIVERGING_COLUMN_OVERRIDES_REFUSAL, "drop columnOverrides, or set variant to 'lines' with change");
     return layoutDivergingSlope(data, options);
   }
+  return layoutSlopeLines(data, options);
+}
+
+/** The size search needs only the rail height of its 720 × 405 reference chart. */
+export function slopeReferencePlotHeight(data: ChartData, options: SlopeOptions = {}): number | undefined {
+  if (!isCachedTextMeasurer(options.measure ?? defaultMeasurer)) return undefined;
+  return layoutSlopeLines(data, options, true);
+}
+
+function layoutSlopeLines(data: ChartData, options: SlopeOptions, heightOnly: true): number;
+function layoutSlopeLines(data: ChartData, options: SlopeOptions): Geometry<SlopeMarks, SlopeDerived>;
+function layoutSlopeLines(data: ChartData, options: SlopeOptions, heightOnly = false): Geometry<SlopeMarks, SlopeDerived> | number {
   const warnings: LintWarning[] = [];
   if (options.diverging !== undefined || data?.series?.some((s) => ['negative', 'n', 'footnote'].some((k) => k in s))) {
     warnings.push({ code: 'slope-diverging-fields-ignored', severity: 'warn', message: "diverging, series negative, n and footnote are read by variant 'diverging' only; the plain slope ignores them", suggest: "set options.variant to 'diverging', or remove them" });
@@ -487,6 +499,19 @@ export function layoutSlope(
     occupied,
   );
 
+  const plotVerticals = () => {
+    const catH = measure('0', catFont).height;
+    const hasCagr = (options.annotations ?? []).some((a) => a.kind === 'cagr');
+    const cagrEnvelope = hasCagr
+      ? measure('0', { ...labelFont, weight: emphasisWeight(theme) }).height + CAGR_ENVELOPE_CLEARANCE
+      : 0;
+    const topPad = cagrEnvelope + catH + 10;
+    const plotY = frameResult.plot.y + topPad;
+    const plotH = plotHeightAfter(frameResult, size.height, frameResult.plot.h - topPad);
+    return { catH, plotY, plotH };
+  };
+  if (heightOnly) return plotVerticals().plotH;
+
   // ---- reserve side margins from the longest composed end label ----
   // An authored column keeps its width; the rails give way first, down to the plot floor.
   const colW = changeHead === undefined ? 0 : changeOverride?.width === undefined ? colNaturalW
@@ -598,14 +623,7 @@ export function layoutSlope(
   const compactRightReqs = gapCompact || cutCompact ? plottedSeries.map((s) => mkEndReq(s, s.b, c1, 'right', true, rightCap)) : [];
 
   // ---- plot rect: annotation/category headroom on top, label margins at sides ----
-  const catH = measure('0', catFont).height;
-  const hasCagr = (options.annotations ?? []).some((a) => a.kind === 'cagr');
-  const cagrEnvelope = hasCagr
-    ? measure('0', { ...labelFont, weight: emphasisWeight(theme) }).height + CAGR_ENVELOPE_CLEARANCE
-    : 0;
-  const topPad = cagrEnvelope + catH + 10;
-  const plotY = frameResult.plot.y + topPad;
-  const plotH = plotHeightAfter(frameResult, size.height, frameResult.plot.h - topPad);
+  const { catH, plotY, plotH } = plotVerticals();
   // An unpinned wide slope stands its rails about 350 px tall at 960 and
   // 280 px at 720, so the rails can stand MAX_GAP_RATIO times that apart. The canvas grows to it as to a
   // plot floor; a pinned height and a card keep the plot their canvas gives.

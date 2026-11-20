@@ -28,13 +28,14 @@ import { accessibleTitle, normalizeCategory, normalizeSeriesValues, NormalizeErr
 import { type RoundingAdjustment } from '../../shareRounding';
 import { heightOmitted, NARROW_FORM, resolveSizing, SIZE_TOLERANCE } from '../../sizing';
 import { rowDrivenHeight } from '../../rowCanvas';
-import { defaultMeasurer, wrapText, type FontSpec } from '../../text';
+import { defaultMeasurer, isCachedTextMeasurer, wrapText, type FontSpec } from '../../text';
 import { textRole } from '../../textRole';
 import { arrowHeadPath, arrowShaftEnd } from '../../svgPath';
 import { classStepWidth, strokeToken, dashToken, canvasMargin, contrastInkPaint, colorRolePaints, markRolePaint, mixedPaint, surfaceFloorPaint, panelTypeClass, resolveTheme, seriesPaint, spaceTokens, themeForWidth } from '../../theme';
 import { DEFAULT_TARGET, kpiHeroSizesPx, panelHeroSizesPx, TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { KPI_VALUE_SIZE, textScaleOf } from '../../typeFloors';
 import { cellMeta, cellValue, type Id } from '../../types/cell';
+import type { ResolvedSizing } from '../../types/sizing';
 import type { Category, ChartData } from '../../types/data';
 import type { Geometry, LintWarning, Paint, PlacedLabel, SceneNode, ShownMark } from '../../types/scene';
 import { allocateCells, cellAt } from './cells';
@@ -121,7 +122,10 @@ export function layoutWaffle(data: ChartData, options: WaffleOptions = {}): Geom
  */
 function leanFloor(data: ChartData, options: WaffleOptions, geometry: Geometry<WaffleMarks, WaffleDerived>): Geometry<WaffleMarks, WaffleDerived> {
   if (!geometry.derived.reference || !geometry.legend?.items.some((item) => /^_*__reference$/.test(item.id))) return geometry;
-  const lean = layoutPass(data, { ...options, size: geometry.size }, true).geometry.sizing;
+  const atSize = { ...options, size: geometry.size };
+  const lean = isCachedTextMeasurer(options.measure ?? defaultMeasurer)
+    ? layoutPass(data, atSize, 'heightFloor')
+    : layoutPass(data, atSize, true).geometry.sizing;
   if (!lean || !geometry.sizing || lean.minHeight >= geometry.sizing.minHeight) return geometry;
   return { ...geometry, sizing: { ...geometry.sizing, minHeight: lean.minHeight, measuredMinHeight: lean.measuredMinHeight, comfortableHeight: Math.ceil(lean.minHeight * 1.25) } };
 }
@@ -133,7 +137,10 @@ function leanFloor(data: ChartData, options: WaffleOptions, geometry: Geometry<W
  * too small for the readouts, so the key holds only the series names, the
  * panel label stays above its grid and no side key is used.
  */
-function layoutPass(data: ChartData, options: WaffleOptions, lean = false, oneRow = false): Pass {
+function layoutPass(data: ChartData, options: WaffleOptions, mode: 'heightFloor'): ResolvedSizing;
+function layoutPass(data: ChartData, options: WaffleOptions, lean?: boolean, oneRow?: boolean): Pass;
+function layoutPass(data: ChartData, options: WaffleOptions, mode: boolean | 'heightFloor' = false, oneRow = false): Pass | ResolvedSizing {
+  const lean = mode !== false;
   const warnings: LintWarning[] = [];
   const size = resolveSize(options.size, options.target);
   const theme = themeForWidth(resolveTheme(options.theme), panelTypeClass(options) ?? size.width);
@@ -631,6 +638,12 @@ function layoutPass(data: ChartData, options: WaffleOptions, lean = false, oneRo
   // The readout under the grid lets the grid take the full width; beside it, the grid grows to SIDE_NATURAL_PITCH.
   const naturalPitch = keyColumns > 0 ? panelW / grid.columns : Math.min(panelW / grid.columns, readoutSide || valueSide ? SIDE_NATURAL_PITCH : NATURAL_PITCH);
   const keyH = readoutSide ? Math.max(entries.length * entryStep, subLineH + 4 + lineH(keyFont)) : valueSide ? sideValueH + sideLabelH : 0;
+  // The side key is not part of the floor: below the width that holds it the key stands under the grid.
+  // A square is never taller than its panel is wide, so its floor stops there too.
+  const floorGridH = square ? Math.min(grid.rows * MIN_PITCH, panelW) : grid.rows * MIN_PITCH;
+  const minHeight = frameH + Math.max(blocksH(rowRequiredBottomH) + panelRows.length * floorGridH + (panelRows.length - 1) * gutter, topBlockH + keyH);
+  // The reference-key height check uses only the lean height floor. Marks and labels cannot change it.
+  if (mode === 'heightFloor') return resolveSizing(WAFFLE_SIZING, size, { minHeight });
   const naturalHeight = Math.ceil(frameH + Math.max(blocksH(rowBottomH) + panelRows.length * naturalPitch * grid.rows + (panelRows.length - 1) * gutter, topBlockH + keyH) - 1e-6);
   const rowY = panelRows.map((_, ri) => plot.y + rowTopH.slice(0, ri).reduce((sum, top, rj) => sum + top + gridH + rowBottomH[rj]! + gutter, 0));
   const rowGridTop = (ri: number): number => rowY[ri]! + rowTopH[ri]!;
@@ -968,10 +981,6 @@ function layoutPass(data: ChartData, options: WaffleOptions, lean = false, oneRo
   // The readout under the grid needs one key entry and the subtotal line in the width.
   const minWidth = size.width - plot.w + Math.max(floorColumns * minPanelW + (floorColumns - 1) * floorGutter,
     readout ? Math.ceil(Math.max(entryW, subtotal ? subValueW + 6 + subLabelW : 0)) : 0);
-  // The side key is not part of the floor: below the width that holds it the key stands under the grid.
-  // A square is never taller than its panel is wide, so its floor stops there too.
-  const floorGridH = square ? Math.min(grid.rows * MIN_PITCH, panelW) : grid.rows * MIN_PITCH;
-  const minHeight = frameH + Math.max(blocksH(rowRequiredBottomH) + panelRows.length * floorGridH + (panelRows.length - 1) * gutter, topBlockH + keyH);
 
   const reading = panels.map((panel, pi) => describePanel(panel, series.map((s) => s.label), headlineFormat(pi), cellCount, options));
   // The chart prints each segment's value, never its count of cells.

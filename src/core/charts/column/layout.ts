@@ -47,7 +47,7 @@ import type { TickBandDerived } from '../../label/tickRow';
 import { accessibleTitle } from '../../normalize/shared';
 import type { RangeMark } from '../../rangeRules';
 import { addRatioTierRequests, finalizeRatioTier, ratioTierA11y, ratioTierSpacingWarnings, type FinalizedRatioTier, type RatioTierGeometry, type RatioTierRequestState } from '../../ratioTier';
-import type { FontSpec } from '../../text';
+import { isCachedTextMeasurer, type FontSpec } from '../../text';
 import { colorblindPaint, joinHatchPeers, panelTypeClass, emphasisWeight, strokeToken } from '../../theme';
 import type { AnchorRef } from '../../types/annotations';
 import { cellMeta, type Id } from '../../types/cell';
@@ -62,7 +62,7 @@ import { cellValueText, planColumnLabels, planColumnValueLabels, planTickEnds, p
 import { layoutColumnMarks } from './marks';
 import { PY_TICK_LEAD, TICK_LABEL_RESERVE, type ColumnArea, type ColumnDomain, type ColumnMarkGeometry, type ComputedTotal } from './model';
 import { columnPaints } from './paints';
-import { bracketsOverColumns, CAGR_PAD, CATEGORY_NOTES, columnPassAnnotations, columnPassText, columnPlotArea, SEGMENT_NOTE, solveColumnFrame } from './plot';
+import { bracketsOverColumns, CAGR_PAD, CATEGORY_NOTES, columnPassAnnotations, columnPassText, columnPlotArea, SEGMENT_NOTE, solveColumnFrame, type ColumnStaircaseMemo } from './plot';
 import { toleranceKeyed } from '../../valueLineDomain';
 import { categoryNotesDiffer, FORCE_CATEGORY_RANKS, rankNotes } from '../combo/categoryRanks';
 import type { AnomalyColumnOptions, AnomalyDerived } from './types';
@@ -524,7 +524,7 @@ function assembleColumnGeometry(
       tierState?.fontByLabelId.get(l.id) ??
       // A total column (categories[].role 'total') prints its head and values bold.
       (totalIds.has(l.owner.categoryId ?? '') && (l.kind === 'segment' || l.kind === 'category')
-        ? { ...(l.kind === 'category' ? catPlan.font : strongFont), weight: emphasisWeight(domain.theme) } : undefined) ??
+        ? { ...(l.kind === 'category' ? catPlan().font : strongFont), weight: emphasisWeight(domain.theme) } : undefined) ??
       (bandLabelIds.has(l.id)
         ? tickFont
         : l.kind === 'grandTotal' || l.kind === 'total'
@@ -533,7 +533,7 @@ function assembleColumnGeometry(
           // measured and claimed at, which is the tick font unless the row
           // stepped down a size.
           : l.kind === 'category'
-          ? area.stairTop !== undefined ? tickFont : catPlan.font
+          ? area.stairTop !== undefined ? tickFont : catPlan().font
           : l.kind === 'tick'
           ? tickFont
           : l.kind === 'annotation' || l.kind === 'valueLine'
@@ -589,11 +589,11 @@ function assembleColumnGeometry(
         ? {
             tickBand: {
               reserved: area.tickReserve,
-              measuredLines: catPlan.maxLines,
-              lineHeight: catPlan.font.size * 1.2,
+              measuredLines: catPlan().maxLines,
+              lineHeight: catPlan().font.size * 1.2,
               // Rotated rows reserve more than lines × line height; the receipt names it.
-              extra: catPlan.rowHeight - catPlan.maxLines * catPlan.font.size * 1.2,
-              dateNumeric: catPlan.dateNumeric,
+              extra: catPlan().rowHeight - catPlan().maxLines * catPlan().font.size * 1.2,
+              dateNumeric: catPlan().dateNumeric,
               position: 'below' as const,
             },
           }
@@ -743,13 +743,20 @@ function layoutColumnSettled(
   let named = new Map<string, string>();
   // options.categoryLabels 'staircase': the names take the height they need, or the chart falls back to the row.
   // Every re-layout settles them again, as each later pass (CAGR pad, value-line reserve, notes) moves the plot.
-  let pass!: ReturnType<typeof layoutColumnPass>;
+  let pass!: Exclude<ReturnType<typeof layoutColumnPass>, { retry: StaircaseOutcome }>;
   let minimumChrome = Infinity;
   let first = true;
   const run = (next: AnomalyColumnOptions): AnomalyColumnOptions => {
-    pass = layoutColumnPass(data, next, keepEachValue, first ? probe : undefined, first && stopAfterFirst !== undefined);
-    first = false;
-    const settled = settleStaircase(next, (o) => (pass = layoutColumnPass(data, o, keepEachValue)).staircase, pass.staircase);
+    // Only the staircase padding or fallback flag changes between these draws.
+    const staircase = next.categoryLabels === 'staircase' ? {} : undefined;
+    const draw = (o: AnomalyColumnOptions) => {
+      const trial = layoutColumnPass(data, o, keepEachValue, first ? probe : undefined, first && stopAfterFirst !== undefined, staircase);
+      first = false;
+      if ('retry' in trial) return trial.retry;
+      pass = trial;
+      return pass.staircase;
+    };
+    const settled = settleStaircase(next, draw, draw(next));
     minimumChrome = Math.min(minimumChrome, plotChromeFloor.get(pass.geometry.frame) ?? NaN);
     return settled;
   };
@@ -851,15 +858,23 @@ function layoutColumnPass(
   keepEachValue: boolean,
   axisProbe?: AxisProbe,
   probeAxis = false,
-): { geometry: Geometry<ColumnMarks, ColumnDerived>; unprinted: Map<string, string>; categoryNotes: string[]; planNotes: string[]; rankKey: () => string[]; legDeficit: number; bandNeed: number; valueLineReserve: number; tickReserve: number; unseated: number; seatNeed: number; staircase?: StaircaseOutcome } {
-  const prepared = axisProbe?.prepared;
+  staircaseInputs?: Pick<AxisProbe, 'prepared'> & ColumnStaircaseMemo,
+): { geometry: Geometry<ColumnMarks, ColumnDerived>; unprinted: Map<string, string>; categoryNotes: string[]; planNotes: string[]; rankKey: () => string[]; legDeficit: number; bandNeed: number; valueLineReserve: number; tickReserve: number; unseated: number; seatNeed: number; staircase?: StaircaseOutcome } | { retry: StaircaseOutcome } {
+  const retry = staircaseInputs?.prepared;
+  const prepared = retry ?? axisProbe?.prepared;
   if (axisProbe) axisProbe.prepared = undefined;
   const warnings: LintWarning[] = prepared ? [...prepared.warnings] : [];
   // Turning on a grouped axis changes no data, paints or domain. Only its
   // options and frame change; keep preparation from the discarded pass.
-  const domain = prepared ? { ...prepared.domain, options: { ...prepared.domain.options, valueAxis: options.valueAxis }, va: options.valueAxis! }
+  const domain = retry ? { ...retry.domain, options }
+    : prepared ? { ...prepared.domain, options: { ...prepared.domain.options, valueAxis: options.valueAxis }, va: options.valueAxis! }
     : resolveColumnDomain(data, options, warnings);
   const paints = prepared?.paints ?? columnPaints(domain, warnings);
+  // A live window or share plan can rewrite the options. Rebuild those cases
+  // so their private options are retained. A break can be dropped on one draw.
+  if (staircaseInputs && !retry && domain.options === options) {
+    staircaseInputs.prepared = { domain: { ...domain }, paints, warnings: [...warnings] };
+  }
   const preparedWarnings = warnings.length;
   const fallback = () => {
     axisProbe!.prepared = { domain, paints, warnings: warnings.slice(0, preparedWarnings) };
@@ -886,15 +901,16 @@ function layoutColumnPass(
   } : undefined;
   // The frame is the first claimer, so its index becomes the run's index.
   // The event lane sizes itself and the key with the frame and plot passes.
+  const staircaseMemo = staircaseInputs?.prepared && isCachedTextMeasurer(domain.measure) ? staircaseInputs : undefined;
   let areaWarningsAt = 0;
   const settled = settleEventLane({
     annotations: domain.annList, categories: domain.cats, events: options.events, language: options.locale?.language,
     colorblindSafe: options.colorblindSafe, inline: false, footnotesOff: (options as InternalFootnoteOptions).footnotesOff,
     theme, measure: domain.measure, size, compact: options.mode === 'compact',
-    solve: (key, w) => solveColumnFrame(domain, paints, w, key),
+    solve: (key, w) => solveColumnFrame(domain, paints, w, key, staircaseMemo),
     area: (framed, w) => {
       areaWarningsAt = w.length;
-      return columnPlotArea(domain, framed.frame, w, beforeCategoryRow);
+      return columnPlotArea(domain, framed.frame, w, beforeCategoryRow, staircaseMemo);
     },
     axis: (area) => ({ x: (ci) => area.band.center(ci), step: area.band.step, plot: area.plot }),
     warnings,
@@ -933,6 +949,14 @@ function layoutColumnPass(
     floor: area.y0, above: options.labels !== false ? area.gtH + 4 : 0, font: area.tickFont, measure: domain.measure,
     tops: domain.posTopP, options, cap: STAIRCASE_MAX_PAD * area.frame.plot.h, occupied, requests,
   });
+  // With no running-period key to change the frame, a failed or short staircase already
+  // determines the next pass. Its other labels, marks and warnings will be discarded.
+  if (stair && domain.annList.length === 0 && !domain.cats.some(c => c.partial)
+    && isCachedTextMeasurer(domain.measure)) {
+    if ('failed' in stair) return { retry: { deficit: 0, failed: stair.failed } };
+    if (stair.deficit > 0.5) return { retry: { deficit: stair.deficit } };
+  }
+  if (scene.paintStack) scene.nodes = scene.paintStack();
   const noted = { items: new Map<string, string>(), slivers: new Set<string>() };
   const digits: DigitSeats = { requests: [], slivers: [], warningAt: 0 };
   const pointFont = planColumnValueLabels(domain, paints, area, scene, requests, warnings, noted, digits);
@@ -1010,7 +1034,7 @@ function layoutColumnPass(
   const geometry = assembleColumnGeometry(domain, area, scene, solved, annotated, tierState, pointFont, growthPoints, ratioTierResult, occupied, warnings, paintWarningRules, lane);
   geometry.scene = raiseOverRules(geometry.scene, crossed);
   const planNotes = !area.showCatRow ? []
-    : area.catPlan.step === 'ranks' ? rankNotes(domain.cats.map((c) => c.label ?? c.id), domain.options) : area.catPlan.cutNotes;
+    : area.catPlan().step === 'ranks' ? rankNotes(domain.cats.map((c) => c.label ?? c.id), domain.options) : area.catPlan().cutNotes;
   const categoryNotes = (options as { [CATEGORY_NOTES]?: string[] })[CATEGORY_NOTES] ? [] : planNotes;
   // measured in the bold label font the valueLine text is drawn in.
   const valueLineReserve = hiddenValueLineReserve(geometry.labels, (text) => domain.measure(text, { ...area.labelFont, weight: emphasisWeight(domain.theme) }).width, size.width);

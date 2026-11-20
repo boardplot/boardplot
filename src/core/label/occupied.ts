@@ -28,7 +28,7 @@ export interface OccupiedIndex {
    * `test` must not query this index again (a nested query restarts the visit stamps).
    */
   some?(rect: Rect, pad: number, test: (claim: OccupiedClaim) => boolean): boolean;
-  snapshot(): OccupiedClaim[];
+  snapshot(keep?: (claim: OccupiedClaim) => boolean): OccupiedClaim[];
   /**
    * Takes back a claim that `hitsWhich` returned, for a layout that seats a
    * label and then moves it: no query meets it and `snapshot` leaves it out.
@@ -76,6 +76,24 @@ export function createOccupiedIndex(_plot: Rect): OccupiedIndex {
   const cells = new Map<number, number[]>();
   const wide: number[] = [];
   const polygonTests: ReturnType<typeof prepareConvexPolygon>[] = [];
+  let indexed = 0;
+  // A layout can return its claims for debugging without ever searching their grid cells.
+  const indexPendingClaims = () => {
+    while (indexed < rects.length) {
+      const index = indexed++;
+      const range = cellRange(rects[index]!.rect, 0, scratchRange);
+      if (range === undefined) wide.push(index);
+      else {
+        const [x0, x1, y0, y1] = range;
+        for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) {
+          const key = x * 65536 + y;
+          const cell = cells.get(key);
+          if (cell === undefined) cells.set(key, [index]);
+          else cell.push(index);
+        }
+      }
+    }
+  };
   const hit = (index: number, rect: Rect, pad: number): boolean => {
     const claim = rects[index]!;
     return rectsOverlap(claim.rect, rect, pad) && (claim.polygon === undefined
@@ -96,6 +114,7 @@ export function createOccupiedIndex(_plot: Rect): OccupiedIndex {
     try { return visitClaims(rect, pad, visit); } finally { visiting = false; }
   };
   const visitClaims = (rect: Rect, pad: number, visit: (i: number) => boolean): boolean => {
+    if (indexed < rects.length) indexPendingClaims();
     const range = cellRange(rect, pad, scratchRange);
     if (range === undefined) {
       for (let i = 0; i < rects.length; i++) if (visit(i)) return true;
@@ -123,18 +142,8 @@ export function createOccupiedIndex(_plot: Rect): OccupiedIndex {
     claim(rect, kind, owner, part, polygon) {
       const claimed: OccupiedClaim = part === undefined ? { rect: { ...rect }, kind, owner } : { rect: { ...rect }, kind, owner, part };
       if (polygon !== undefined) claimed.polygon = polygon.map((point) => ({ ...point }));
-      const index = rects.push(claimed) - 1;
-      const range = cellRange(rect, 0, scratchRange);
-      if (range === undefined) wide.push(index);
-      else {
-        const [x0, x1, y0, y1] = range;
-        for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) {
-          const key = x * 65536 + y;
-          const cell = cells.get(key);
-          if (cell === undefined) cells.set(key, [index]);
-          else cell.push(index);
-        }
-      }
+      rects.push(claimed);
+      if (visiting) indexPendingClaims();
     },
     hits(rect, pad = 0, skip) {
       return visitNear(rect, pad, (i) => !skip?.(rects[i]!) && hit(i, rect, pad));
@@ -148,12 +157,12 @@ export function createOccupiedIndex(_plot: Rect): OccupiedIndex {
       visitNear(rect, pad, (i) => { if (!skip?.(rects[i]!) && hit(i, rect, pad)) found.push(i); return false; });
       return found.sort((a, b) => a - b).map((i) => rects[i]!);
     },
-    snapshot() {
+    snapshot(keep) {
       const copy = (entry: OccupiedClaim): OccupiedClaim => ({ ...entry, rect: { ...entry.rect } });
       // Most layouts release nothing: copy in one pass, as before release existed.
-      if (released.size === 0) return rects.map(copy);
+      if (!keep && released.size === 0) return rects.map(copy);
       const kept: OccupiedClaim[] = [];
-      rects.forEach((entry, index) => { if (!released.has(index)) kept.push(copy(entry)); });
+      rects.forEach((entry, index) => { if (!released.has(index) && (!keep || keep(entry))) kept.push(copy(entry)); });
       return kept;
     },
     release(claim) {

@@ -589,7 +589,8 @@ function anomalyRuleRequest(domain: ColumnDomain, area: ColumnArea, requests: La
  */
 function categoryRequests(domain: ColumnDomain, area: ColumnArea, requests: LabelRequest[]): void {
   const { cats, anomaly } = domain;
-  const { catPlan, band } = area;
+  const { band } = area;
+  const catPlan = area.catPlan();
   // Date/numeric ticks are one line on one row; prose wraps to two.
   const dateTicks = catPlan.dateNumeric;
   // Anomaly corridor rules share the lane under the plot with shallow
@@ -909,9 +910,9 @@ export function planColumnLabels(
  */
 function extremeNameRequest(domain: ColumnDomain, area: ColumnArea, scene: ColumnMarkGeometry, requests: LabelRequest[]): void {
   // A date row thins its ticks by rhythm, and the period reads off it.
-  if (domain.options.labels === false || !area.showCatRow || area.catPlan.dateNumeric || area.catPlan.keep.every(Boolean)) return;
+  if (domain.options.labels === false || !area.showCatRow || area.catPlan().dateNumeric || area.catPlan().keep.every(Boolean)) return;
   const extreme = scene.bars.reduce<BarPlace | undefined>((best, place) => (!best || Math.abs(place.v) > Math.abs(best.v) ? place : best), undefined);
-  if (!extreme || area.catPlan.keep[extreme.ci]) return;
+  if (!extreme || area.catPlan().keep[extreme.ci]) return;
   const { c, s, v, rect } = extreme;
   // Where the column prints its value already, the name alone is added.
   const valueShown = domain.variant === 'grouped' && contentOf(domain.options, 'point', ['absolute']) !== null;

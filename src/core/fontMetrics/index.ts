@@ -46,11 +46,12 @@ export function buildCodePointIndex(
 const CODE_POINT_INDEX: Map<number, number> = buildCodePointIndex(CODE_POINT_RANGES, EXTRA_CODE_POINTS);
 
 /** Decode the base64 little-endian widths of an imported font table. */
-export function decodeFace(table: FaceTable, index: Map<number, number> = CODE_POINT_INDEX): Face {
+export function decodeFace(table: FaceTable, index: Map<number, number> = CODE_POINT_INDEX): Face & { widthCount: number } {
   const { widths: encoded, borrowed: _borrowed, ...metrics } = table;
   const widths = new DataView(Uint8Array.from(atob(encoded), character => character.charCodeAt(0)).buffer);
   return {
     ...metrics,
+    widthCount: Math.floor(widths.byteLength / 2),
     advance(codePoint) {
       const i = index.get(codePoint);
       if (i === undefined) return undefined;
