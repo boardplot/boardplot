@@ -114,7 +114,6 @@ export function createOccupiedIndex(_plot: Rect): OccupiedIndex {
     try { return visitClaims(rect, pad, visit); } finally { visiting = false; }
   };
   const visitClaims = (rect: Rect, pad: number, visit: (i: number) => boolean): boolean => {
-    if (indexed < rects.length) indexPendingClaims();
     const range = cellRange(rect, pad, scratchRange);
     if (range === undefined) {
       for (let i = 0; i < rects.length; i++) if (visit(i)) return true;
@@ -122,6 +121,7 @@ export function createOccupiedIndex(_plot: Rect): OccupiedIndex {
     }
     // Read the scratch range before a callback can add a claim to the same index.
     const [x0, x1, y0, y1] = range;
+    if (indexed < rects.length) indexPendingClaims();
     stamp++;
     for (let w = 0; w < wide.length; w++) if (visit(wide[w]!)) return true;
     for (let x = x0; x <= x1; x++) {
