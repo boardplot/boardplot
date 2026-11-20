@@ -327,16 +327,15 @@ export function computeMetricStack(data: MetricStackData, locale?: string, na = 
       // A rate's span and change read the received window rates (the `:raw` shares), not their one-decimal roundings.
       const unrounded = (key: string, rounded: ClaimRecordV1) => isRate ? claims.find(c => c.id === `stack:${panel.id}:${key}:raw`)! : rounded;
       const startOperand = unrounded('base', base), endOperand = unrounded('compare', compare);
-      // A panel that sets divisor or decimals keeps its earlier headline: the change of the window values a rate rounds to one decimal, at 1 decimal for a rate and 0 for a count.
+      // A panel that sets divisor or decimals rounds its headline once, to the digits of its span: the authored decimals, else 1 for a rate, and 0 for a count.
       const authored = panel.divisor !== undefined || panel.decimals !== undefined;
-      const changeFrom = authored ? base : startOperand, changeTo = authored ? compare : endOperand;
-      const a = changeFrom.output.raw, b = changeTo.output.raw;
-      const change = make('change:raw', isRate ? 'difference@1' : 'percentDelta@1', [ref(changeTo), ref(changeFrom)], a === null || b === null || (!isRate && a === 0) ? null : isRate ? b-a : (b/a-1)*100);
+      const a = startOperand.output.raw, b = endOperand.output.raw;
+      const change = make('change:raw', isRate ? 'difference@1' : 'percentDelta@1', [ref(endOperand), ref(startOperand)], a === null || b === null || (!isRate && a === 0) ? null : isRate ? b-a : (b/a-1)*100);
       // Otherwise a change in percent or percentage points is a change set of its own: it prints two digits.
       const changeRaw = change.output.raw;
       const changeSpec = changeRaw === null || authored ? undefined : percentChangeSpec([changeRaw], locale, isRate ? 'pp' : '%');
       const changeSet = changeSpec?.[RULE_SET];
-      const authoredDecimals = isRate ? 1 : 0;
+      const authoredDecimals = isRate ? panel.decimals ?? 1 : 0;
       const headline = changeRaw === null ? null : changeSet === undefined ? stackRound(changeRaw, authoredDecimals) : changeSet.rounded(changeRaw);
       const headlineText = headline === null ? na : changeSpec === undefined
         ? formatAutomaticNumber(headline, { decimals: authoredDecimals, suffix: isRate ? 'pp' : '%', signed: true, locale, magnitude: 'none' }) : formatWithSpec(changeRaw!, changeSpec);

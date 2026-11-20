@@ -153,6 +153,24 @@ it('rounds a rate span once, from the unrounded window rate, at the panel decima
   expect(two.claims.find(c => c.id === 'stack:rate:after')).toMatchObject({ op: 'round-decimals@1', inputs: [{ ref: 'stack:rate:compare:raw' }, { value: 2 }] });
 });
 
+// A rate panel with decimals printed the difference of rates already rounded to one decimal: 0.85% to 0.74% read −0.2pp.
+it('computes a rate change headline from the unrounded window rates, at the decimals of its span', () => {
+  const change = (finished: number[], started: number, decimals: number) => computeMetricStack({
+    categories: data.categories,
+    measures: [
+      { id: 'started', label: 'Started', values: Array(6).fill(started) },
+      { id: 'finished', label: 'Finished', values: finished },
+    ],
+    panels: [data.panels[0]!, { ...data.panels[1]!, decimals }],
+    windows: data.windows,
+  } as never).panels[1]!.readout;
+  const one = change([85, 85, 80, 80, 74, 74], 10_000, 1);
+  expect([one.headline, one.headlineText, one.spanText]).toEqual([-0.1, '−0.1pp', '0.9% → 0.7%']);
+  const two = change([276, 276, 270, 270, 272.5, 272.5], 50_000, 2);
+  expect([two.headline, two.headlineText, two.spanText]).toEqual([-0.01, '−0.01pp', '0.55% → 0.55%']);
+  expect(two.claims.find(c => c.id === 'stack:rate:headline')).toMatchObject({ inputs: [{ ref: 'stack:rate:change:raw' }, { value: 2 }] });
+});
+
 // Guards a refusal at every width: a panel key whose measure labels are wider than the 320 px gutter cap used to be unbreakable.
 it('wraps long panel-key labels to the key width instead of refusing', () => {
   const long = {
