@@ -69,4 +69,17 @@ export const metricStackFixtures: Fixture<MetricStackData,GridLayoutOptions>[] =
     ],periods:periods.slice(2)},
     options:{stack:{columnOrder:['plot','gutter'],columnOverrides:{gutter:{width:200,align:'right'}}},size:{width:960},title:'The booking step loses the most intake',subtitle:{measure:'Step conversion by creation cohort',period:'April–October 2026'},source:'Invented example'},
   },
+  {
+    // A quarter's cost per order divides its spend by its orders: Q1 is 26.91, the mean of its months 27.82.
+    id:'metric-stack-per-unit',kind:'example',title:'Metric stack: cost per order computed from spend and orders',
+    data:{categories:categories.slice(3,9),measures:[
+      {id:'spend',label:'Spend',values:[42000,45000,61000,70000,74000,96000]},
+      {id:'orders',label:'Orders',values:[1400,1500,2600,2000,2100,3400]},
+    ],panels:[
+      {id:'cost-per-order',type:'line',title:'Cost per order',unit:'$ per order',measure:{ratio:['spend'],per:'orders'},readout:'change',emphasis:true},
+      {id:'spend',type:'column',title:'Spend',unit:'$ per month',measure:{sum:['spend']},readout:'change'},
+      {id:'orders',type:'column',title:'Orders',unit:'per month',measure:{sum:['orders']},readout:'change'},
+    ],windows:{grain:'month',base:periods[1]!,compare:periods[2]!},periods:periods.slice(1,3)},
+    options:{stack:{},size:{width:960},title:'Cost per order rises 19% as spend grows faster than orders',subtitle:{measure:'Cost per order, spend and orders',period:'January–June 2026'},footnotes:['A quarter’s cost per order is its spend divided by its orders.'],source:'Invented example'},
+  },
 ];

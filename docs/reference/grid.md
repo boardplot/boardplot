@@ -94,24 +94,26 @@ Facets, variance tiers and metric stacks with shared categories and computed rea
 | categories[].id ( branch 3) | string | yes | Unique category id in display order. |
 | categories[].label ( branch 3) | string | yes | Category label drawn once below the last panel. |
 | categories[].partial ( branch 3) | boolean |  | Period still running. Draw count so far provisionally; scoped outcomes are n/a. |
-| measures ( branch 3) | array | yes | Raw source counts stored once. Rates and readouts are computed from these counts. |
+| measures ( branch 3) | array | yes | Raw source values stored once. Rates, amounts per unit and readouts are computed from these values. |
 | measures[].id ( branch 3) | string | yes | Unique source measure id. |
 | measures[].label ( branch 3) | string | yes | Source measure label; also the stacked-column legend label. |
-| measures[].values ( branch 3) | array | yes | Source counts, one per category. Null means unavailable. |
+| measures[].values ( branch 3) | array | yes | Source values, one per category: counts, or amounts such as spend. Null means unavailable. |
 | panels ( branch 3) | array | yes | Two to five panels in top-down reading order. |
 | panels[].id ( branch 3) | string | yes | Unique panel id; state scopes use this id. |
 | panels[].type ( branch 3) | string | yes | Columns, stacked columns for a multi-measure sum, or a line with points. One of `'column'`, `'line'`. |
 | panels[].title ( branch 3) | string | yes | Measure name in the shared readout gutter. The hover card names each value with it when the unit is a sign or code. |
 | panels[].unit ( branch 3) | string | yes | Measure unit in the readout gutter. A unit in words names each value on the hover card ('Cases per month: 800'); a sign or code such as '$' or 'EUR k' stays on the number. |
-| panels[].measure ( branch 3) | object | yes | Engine-computed panel measure. |
+| panels[].measure ( branch 3) | object | yes | Engine-computed panel measure: a sum, a rate in percent, or an amount per unit. |
 | panels[].measure.sum ( branch 3; panels[].measure branch 1) | array | yes | Measures added for each category. Columns stack the inputs in order. |
 | panels[].measure.numerator ( branch 3; panels[].measure branch 2) | array | yes | Measures summed for the rate numerator. |
-| panels[].measure.denominator ( branch 3; panels[].measure branch 2) | string | yes | Source measure for the rate denominator; the result is a percentage. The stack is a conversion chain, so a rate is always a share of a count; draw a cost per unit or another currency ratio as kpi cards or grid column or line panels. |
-| panels[].readout ( branch 3) | string \| object | yes | change compares grid windows; base computes a volume-weighted mature rate and remaining-per-100 span. One of `'change'` (or another value of its type). |
+| panels[].measure.denominator ( branch 3; panels[].measure branch 2) | string | yes | Source measure for the rate denominator; the result is a percentage, a share of a count. For an amount per unit, such as cost per order, use ratio and per. |
+| panels[].measure.ratio ( branch 3; panels[].measure branch 3) | array | yes | Measures added for the amount, such as spend. |
+| panels[].measure.per ( branch 3; panels[].measure branch 3) | string | yes | Source measure of the units, such as orders. Each category's value is the sum of ratio divided by per, with no factor 100; it is n/a when an input is null or per is 0. A window divides the sum of ratio over its categories by the sum of per, never the mean of the category values: spend 100 and 300 on 10 and 20 orders is 13.33 per order. The change readout is the percent change of the two window values. One mark per category. |
+| panels[].readout ( branch 3) | string \| object | yes | change compares grid windows; base computes a volume-weighted mature rate and remaining-per-100 span, for rate panels only. One of `'change'` (or another value of its type). |
 | panels[].readout.base ( branch 3) | string | yes | Base measure for the remaining-per-100 chain. |
 | panels[].emphasis ( branch 3) | boolean |  | Use the theme accent. At most one panel may be emphasised. |
-| panels[].divisor ( branch 3) | number |  | Display divisor for sum marks and their change span, for example 1000. The headline percent is unitless. |
-| panels[].decimals ( branch 3) | integer |  | Decimal places of the marks and the change span. A panel with divisor and without decimals prints 0 for counts and 1 for rates; a panel with neither prints by the default number rule. |
+| panels[].divisor ( branch 3) | number |  | Display divisor for sum or per-unit marks and their change span, for example 1000. The headline percent is unitless. |
+| panels[].decimals ( branch 3) | integer |  | Decimal places of the marks and the change span. A panel with divisor and without decimals prints 0 for sums and amounts per unit and 1 for rates; a panel with neither prints by the default number rule. |
 | states ( branch 3) | object |  | Category states declared once, with explicit panel scopes. |
 | states.maturing ( branch 3) | object |  | Right-censored categories and their panel scope. One continuous band. |
 | states.maturing.from ( branch 3) | string | yes | First maturing category, inclusive. |
@@ -190,11 +192,12 @@ Common combinations are recipes, not chart types. Stacked revenue over a ΔPY% v
 
 Set `stack: {}` to draw two to five panels in top-down order. Shared source counts produce both the marks and the left readouts. The optional period row, partial states, maturing scope and comparison windows belong to the grid. Each panel starts at zero on an independent scale.
 
-A sum uses one or more source measures; a multi-measure column is stacked. A rate divides the summed numerator by its denominator and multiplies by 100. `readout: "change"` gives the percent change of averages per category, or the percentage-point difference of two weighted rates. `readout: { base: "source-id" }` gives a weighted mature step rate and a remaining-per-100 chain. The first table gives the formulas. The second table gives how a panel prints them: a panel that sets neither `divisor` nor `decimals` prints by the default number rule, and a panel that sets one of them prints as the table says.
+A sum uses one or more source measures; a multi-measure column is stacked. A rate divides the summed numerator by its denominator and multiplies by 100. An amount per unit, `{ ratio: ["spend"], per: "orders" }`, divides the summed `ratio` measures by the `per` measure, with no factor 100, and draws one mark per category. `readout: "change"` gives the percent change of averages per category, the percent change of the two window values of an amount per unit, or the percentage-point difference of two weighted rates. A window value of an amount per unit divides the window sums: `sum(ratio) / sum(per)`, never the mean of the category values. `readout: { base: "source-id" }` gives a weighted mature step rate and a remaining-per-100 chain. The first table gives the formulas. The second table gives how a panel prints them: a panel that sets neither `divisor` nor `decimals` prints by the default number rule, and a panel that sets one of them prints as the table says.
 
 | Readout | Headline | Span |
 |---|---|---|
 | `change`, sum measure | `(compare mean per category / base mean per category - 1) × 100` | Base mean → compare mean, divided by the panel `divisor` |
+| `change`, amount per unit | `(compare window value / base window value - 1) × 100`, each window value `sum(ratio) / sum(per)` | Base window value → compare window value, divided by the panel `divisor` |
 | `change`, rate measure | Compare rate minus base rate, in percentage points | Base rate → compare rate |
 | `{ "base": "measure-id" }`, rate measure | `100 × sum(numerator) / sum(denominator)` over mature categories | `100 × sum(denominator) / sum(base)` → `100 × sum(numerator) / sum(base)` over the same categories |
 
@@ -214,7 +217,7 @@ Use one readout method in each stack: every panel uses `change`, or every panel 
 
 Default plot heights are 200 px for a single-measure column, 150 px for a stacked column, and 130 px for a line. These are minimum defaults: the engine increases them when names, units or readouts need more room. An authored fixed canvas with spare height expands the plots proportionally. `stack.heights` sets explicit plot heights; `rows` sets proportional weights based on the space the labels need.
 
-Use `stack.heights` for plot heights or `rows` for proportional heights. The engine reserves label space and shares one readout gutter and one panel gap. Side margins stay at most 24 px; an authored `margin` still wins. Where the gutter leaves too little room for the values, each readout moves above its panel and the plot takes the full width. Where even the full width is too little, values and category names thin to every second category, counted back from the latest, and the latest value always shows; a hidden name keeps its tick. A stacked panel keys its measures inside its readout; when its segment values do not all fit, none show and the key says that the labels show totals. Provisional columns are hatched in their own paint inside a dashed outline. It refuses dimensions that cause collisions. The maturing band covers all gaps between its scoped panels and ends at their last baseline. `reading.metricStack.readouts[]` exposes the inputs, `method` and `grain`. Count changes use `average-change`; rate changes use `rounded-rate-change`; step rates use `weighted-rate`. Every readout uses the explicit or inferred grain described above, with category as the fallback. Fixtures `metric-stack-volume` and `metric-stack-steps` show both full exhibits.
+Use `stack.heights` for plot heights or `rows` for proportional heights. The engine reserves label space and shares one readout gutter and one panel gap. Side margins stay at most 24 px; an authored `margin` still wins. Where the gutter leaves too little room for the values, each readout moves above its panel and the plot takes the full width. Where even the full width is too little, values and category names thin to every second category, counted back from the latest, and the latest value always shows; a hidden name keeps its tick. A stacked panel keys its measures inside its readout; when its segment values do not all fit, none show and the key says that the labels show totals. Provisional columns are hatched in their own paint inside a dashed outline. It refuses dimensions that cause collisions. The maturing band covers all gaps between its scoped panels and ends at their last baseline. `reading.metricStack.readouts[]` exposes the inputs, `method` and `grain`. Count changes use `average-change`; changes of an amount per unit use `ratio-change`; rate changes use `rounded-rate-change`; step rates use `weighted-rate`. Every readout uses the explicit or inferred grain described above, with category as the fallback. Fixtures `metric-stack-volume` and `metric-stack-steps` show both full exhibits.
 
 ```json
 {
@@ -316,3 +319,4 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | metric-stack-steps | example | Metric stack: volume-weighted funnel steps and remaining-per-100 chain |
 | stack-readout-parts | example | Metric stack: readout gutter without the unit and the span |
 | stack-gutter-right | example | Metric stack: readout gutter right of the plots, with a set width and alignment |
+| metric-stack-per-unit | example | Metric stack: cost per order computed from spend and orders |

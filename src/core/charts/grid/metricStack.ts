@@ -8,7 +8,10 @@ import { roundHalfUp } from '../../formatPrecision';
 import type { ClaimRecordV1 } from '../../claims/browser';
 
 interface StackRange { from: string; to: string; label: string }
-type StackMeasure = { sum: string[] } | { numerator: string[]; denominator: string };
+/** A sum of measures, a percentage (numerator ÷ denominator × 100), or an amount per unit (the sum of `ratio` ÷ `per`). */
+type StackMeasure = { sum: string[] } | { numerator: string[]; denominator: string } | { ratio: string[]; per: string };
+/** The measures a panel adds up: its sum, its numerator, or the amounts of its per-unit ratio. */
+const addedMeasures = (measure: StackMeasure): string[] => 'sum' in measure ? measure.sum : 'ratio' in measure ? measure.ratio : measure.numerator;
 export interface MetricStackPanel {
   /** Stack panels have source references instead of child documents and options. */
   data?: never;
@@ -47,7 +50,7 @@ export type StackState = 'mature' | 'maturing' | 'partial';
 type StackGrain = 'day' | 'week' | 'month' | 'quarter' | 'year' | 'category';
 export interface StackReadout {
   panelId: string;
-  method: 'average-change' | 'rounded-rate-change' | 'weighted-rate';
+  method: 'average-change' | 'ratio-change' | 'rounded-rate-change' | 'weighted-rate';
   grain: StackGrain;
   categoryIds: { base: string[]; compare: string[] } | { mature: string[] };
   headline: number | null;
@@ -60,6 +63,7 @@ export interface StackReadout {
 export interface ComputedStackPanel {
   panel: MetricStackPanel;
   values: (number | null)[];
+  /** The source values a panel adds, one row per measure: the segments of a stacked sum. A per-unit panel draws one mark and has none. */
   parts: (number | null)[][];
   states: StackState[];
   readout: StackReadout;
@@ -107,22 +111,23 @@ interface PanelPrint {
 }
 /**
  * A panel that sets `divisor` or `decimals` prints its marks and span as it always did: at the authored
- * decimals, else 0 for counts and 1 for rates. A panel with neither is a set of its own under the default
- * number rule: a sum of counts a number set with its parts, a rate a percent set. The span endpoints are
- * window statistics of that set.
+ * decimals, else 0 for sums and amounts per unit and 1 for rates. A panel with neither is a set of its own under
+ * the default number rule: a sum a number set with its parts, an amount per unit a number set of its values, a
+ * rate a percent set. The span endpoints are window statistics of that set.
  */
 function panelPrint(panel: MetricStackPanel, values: readonly (number | null)[], parts: readonly (readonly (number | null)[])[], locale?: string): PanelPrint {
   const divisor = panel.divisor ?? 1;
   if (panel.decimals !== undefined || panel.divisor !== undefined) {
-    const decimals = panel.decimals ?? ('sum' in panel.measure ? 0 : 1);
+    const decimals = panel.decimals ?? ('denominator' in panel.measure ? 1 : 0);
     const text = (value: number, suffix = '') => formatAutomaticNumber(value, { automatic: panel.decimals === undefined, decimals, suffix, magnitude: 'none', locale });
     return {
       mark: (value) => text(value / divisor),
       span: (_, suffix) => (value) => { const rounded = stackRound(value, decimals)!; return { rounded, decimals, text: text(rounded, suffix) }; },
     };
   }
-  const rate = !('sum' in panel.measure);
-  const members = [...values, ...(rate ? [] : parts.flat())].filter((value) => value !== null);
+  const rate = 'denominator' in panel.measure;
+  // An amount per unit is a set of its values only: its source measures are on another scale.
+  const members = [...values, ...('sum' in panel.measure ? parts.flat() : [])].filter((value) => value !== null);
   const spec = defaultSetSpec(members, locale, rate ? undefined : panel.unit, rate ? { kind: 'percent' } : {});
   return {
     mark: (value) => formatWithSpec(value, spec),
@@ -135,6 +140,7 @@ function panelPrint(panel: MetricStackPanel, values: readonly (number | null)[],
 }
 const add = (values: (number | null)[]): number | null => values.some(v => v === null) ? null : values.reduce<number>((a, b) => a + b!, 0);
 const rate = (num: number | null, den: number | null): number | null => num === null || den === null || den === 0 ? null : num / den * 100;
+const perUnit = (amount: number | null, units: number | null): number | null => amount === null || units === null || units === 0 ? null : amount / units;
 
 /** Shared semantic validation also protects schema-free React callers. */
 export function normalizeMetricStack(raw: MetricStackData): MetricStackData {
@@ -151,19 +157,21 @@ export function normalizeMetricStack(raw: MetricStackData): MetricStackData {
   const field = (id: string) => { if (!ids.has(id)) stackError('data.panels', `Unknown measure '${id}'`); };
   for (const measure of data.measures) {
     if (measure.values.length !== data.categories.length || measure.values.some(v => v !== null && (!Number.isFinite(v) || v < 0))) {
-      stackError('data.measures', `Measure '${measure.id}' needs one non-negative finite count or null per category`);
+      stackError('data.measures', `Measure '${measure.id}' needs one non-negative finite value or null per category`);
     }
   }
   const emphasis = data.panels.flatMap((p,i) => p.emphasis ? [i] : []);
   if (emphasis.length > 1) stackError(`data.panels.${emphasis[1]}.emphasis`, `Only one panel may carry emphasis; panels ${emphasis.map(i => `'${data.panels[i]!.id}'`).join(', ')} are emphasised`);
   for (const panel of data.panels) {
     if (panel.type !== 'column' && panel.type !== 'line') stackError('data.panels', 'Stack panels use column or line');
-    const fields = 'sum' in panel.measure ? panel.measure.sum : panel.measure.numerator;
+    const fields = addedMeasures(panel.measure);
     if (fields.length === 0) stackError('data.panels', 'A measure expression needs at least one source measure');
     unique(fields, 'data.panels'); fields.forEach(field);
     if ('denominator' in panel.measure) field(panel.measure.denominator);
+    if ('per' in panel.measure) field(panel.measure.per);
     if (typeof panel.readout === 'object') {
       field(panel.readout.base);
+      if ('per' in panel.measure) stackError('data.panels', `Panel '${panel.id}' computes an amount per unit, which reads its change only; use readout: 'change'`);
       if (!('denominator' in panel.measure)) stackError('data.panels', 'A weighted readout needs a rate measure');
     } else if (panel.readout !== 'change' || !data.windows) stackError('data.windows', 'A change readout needs base and compare windows');
     if (panel.divisor !== undefined && (!Number.isFinite(panel.divisor) || panel.divisor <= 0)) stackError('data.panels', 'divisor must be positive');
@@ -254,12 +262,13 @@ export function computeMetricStack(data: MetricStackData, locale?: string, na = 
   };
   const panels = data.panels.map(panel => {
     const expr = panel.measure;
-    const fields = 'sum' in expr ? expr.sum : expr.numerator;
-    const parts = fields.map(id => measures.get(id)!.values);
+    const fields = addedMeasures(expr);
+    const sources = fields.map(id => measures.get(id)!.values);
     const values = data.categories.map((_,i) => {
-      const num = add(parts.map(v => v[i]!));
-      return 'sum' in expr ? num : rate(num, measures.get(expr.denominator)!.values[i]!);
+      const num = add(sources.map(v => v[i]!));
+      return 'sum' in expr ? num : 'per' in expr ? perUnit(num, measures.get(expr.per)!.values[i]!) : rate(num, measures.get(expr.denominator)!.values[i]!);
     });
+    const parts = 'per' in expr ? [] : sources;
     const states: StackState[] = data.categories.map((c,i) => c.partial ? 'partial' : maturing.includes(i) && data.states!.maturing!.panels.includes(panel.id) ? 'maturing' : 'mature');
     if (data.states?.partial?.panels.includes(panel.id)) partial.forEach(i => { values[i] = null; });
     const print = panelPrint(panel, values, parts, locale);
@@ -276,6 +285,11 @@ export function computeMetricStack(data: MetricStackData, locale?: string, na = 
     const aggregate = (key: string, indexes: number[]) => {
       const num = sum(`${key}:sum`, fields, indexes);
       if ('sum' in expr) return make(key, 'ratio@1', [ref(num), { ref: `${key}:category-count`, value: indexes.length }], indexes.length ? num.output.raw === null ? null : num.output.raw / indexes.length : null);
+      // An amount per unit over a window divides the window sums, never the mean of the category values.
+      if ('per' in expr) {
+        const units = sum(`${key}:per`, [expr.per], indexes);
+        return make(key, 'ratio@1', [ref(num), ref(units)], perUnit(num.output.raw, units.output.raw));
+      }
       const den = sum(`${key}:denominator`, [expr.denominator], indexes);
       const raw = make(`${key}:raw`, 'share@1', [ref(num), ref(den)], rate(num.output.raw, den.output.raw));
       return make(key, 'round-decimals@1', [ref(raw), { ref: 'decimals', value: 1 }], stackRound(raw.output.raw, 1));
@@ -313,7 +327,7 @@ export function computeMetricStack(data: MetricStackData, locale?: string, na = 
       };
       const start = endpoint('before', startOperand), end = endpoint('after', endOperand);
       const before = start.raw, after = end.raw, spanText = `${start.displayed} → ${end.displayed}`;
-      readout = { panelId: panel.id, method: isRate ? 'rounded-rate-change' : 'average-change', grain, categoryIds: { base: baseIndexes.map(i=>data.categories[i]!.id), compare: compareIndexes.map(i=>data.categories[i]!.id) }, headline, before, after, headlineText, spanText, claims };
+      readout = { panelId: panel.id, method: isRate ? 'rounded-rate-change' : 'per' in expr ? 'ratio-change' : 'average-change', grain, categoryIds: { base: baseIndexes.map(i=>data.categories[i]!.id), compare: compareIndexes.map(i=>data.categories[i]!.id) }, headline, before, after, headlineText, spanText, claims };
     } else {
       const rateExpr = expr as { numerator: string[]; denominator: string };
       const avg = aggregate('rate', mature);
