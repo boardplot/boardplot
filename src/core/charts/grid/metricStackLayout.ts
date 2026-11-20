@@ -138,7 +138,7 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   const gutterAfter = (() => { const order = stack.columnOrder ?? [], plotAt = order.indexOf('plot'), gutterAt = order.indexOf('gutter'); return plotAt >= 0 && (gutterAt < 0 || plotAt < gutterAt); })();
   if (stack.heights && options.rows) stackError('options', 'Use stack.heights or rows, not both');
   if (stack.heights && stack.heights.length !== data.panels.length || options.rows && options.rows.length !== data.panels.length) stackError('options', 'Supply one height or row weight per panel');
-  // The display sizes of the focus look are not stepped by width class.
+  // The display size of the focus look is not stepped by width class.
   const fullTheme = resolveTheme(options.theme);
   const theme = themeForWidth(fullTheme, resolveSize(options.size).width);
   const measure = options.measure ?? defaultMeasurer;
@@ -150,7 +150,7 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   const keyFont = secondaryFont(theme);
   const heightOf = (f: FontSpec) => f.size * (f.lineHeight ?? 1.2);
   // The focus look: the value in a display size, the change in the name's bold and "from" the base value in the label role.
-  const largeFont = displayFont(fullTheme, true), smallFont = displayFont(fullTheme, false), changeFont = nameFont, fromFont = font('label');
+  const displayValueFont = displayFont(fullTheme), changeFont = nameFont, fromFont = font('label');
   const textBox = (text: string, f: FontSpec, width: number) => {
     const lines = wrapText(text, f, width, Number.MAX_SAFE_INTEGER, measure).lines;
     return { lines, w: Math.max(...lines.map(line => measure(line,f).width), 0), h: heightOf(f) * lines.length };
@@ -182,16 +182,15 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   const texts = look ? computed.panels.map(focusText) : [];
   // The layout holds still while the focus moves: the gutter and every panel take the widest text of any focus.
   const variants = look ? everyFocus(data, raw, options.locale?.language, na).map(c => c.panels.map(focusText)) : [];
-  const valueFontOf = (i: number, small: boolean) => small || !computed.panels[i]!.panel.emphasis ? smallFont : largeFont;
   const lineWidth = (t: (typeof texts)[number]) => (t.change ? measure(t.change, changeFont).width : 0) + (t.change && t.from ? measure(' ', fromFont).width : 0) + (t.from ? measure(t.from, fromFont).width : 0);
   const hasLine = showHeadline || showSpan;
   const lookWidths = computed.panels.map((_, i) => ({
-    value: (small: boolean) => maxOf(variants.map(v => measure(v[i]!.value, valueFontOf(i, small)).width)),
+    value: maxOf(variants.map(v => measure(v[i]!.value, displayValueFont).width)),
     line: maxOf(variants.map(v => lineWidth(v[i]!))),
     share: maxOf(variants.flatMap(v => v[i]!.shares.map(share => measure(share.text, keyFont).width))),
   }));
   const minGutter = look
-    ? Math.ceil(Math.max(120, maxOf(computed.panels.map((p,i) => Math.max(lookWidths[i]!.value(false), lookWidths[i]!.line,
+    ? Math.ceil(Math.max(120, maxOf(computed.panels.map((p,i) => Math.max(lookWidths[i]!.value, lookWidths[i]!.line,
       ...(showUnit ? `${p.panel.title} ${p.panel.unit}` : p.panel.title).split(/\s+/).map(word => measure(word, nameFont).width))))) + 4)
     : Math.ceil(Math.max(120, maxOf(computed.panels.map((p,i) => Math.max(showSpan ? spanWidths[i]! : 0, showHeadline ? measure(p.readout.headlineText, heroFont).width : 0,
     ...(showUnit ? `${p.panel.title} ${p.panel.unit}` : p.panel.title).split(/\s+/).map(word => measure(word, nameFont).width))))) + 4);
@@ -201,7 +200,7 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   const heroBlock = !showHeadline ? (showSpan ? heightOf(unitFont) : 0) : !showSpan ? heroFont.size : Math.max(heroFont.size, heightOf(heroFont) / 2 + heightOf(unitFont) / 2 + 0.36 * (heroFont.size - unitFont.size));
   const oneLine = (p: ComputedStackPanel, i: number) => !showHeadline ? (showSpan ? spanWidths[i]! : 0) : !showSpan ? measure(p.readout.headlineText, heroFont).width : measure(p.readout.headlineText, heroFont).width + 3 * spanSpace + spanWidths[i]!;
   // A compact focus look holds the value and its change line on one line.
-  const lookLine = (i: number) => lookWidths[i]!.value(true) + (hasLine ? 3 * spanSpace + lookWidths[i]!.line : 0);
+  const lookLine = (i: number) => lookWidths[i]!.value + (hasLine ? 3 * spanSpace + lookWidths[i]!.line : 0);
   const compactFloor = !compactReadout ? 0 : Math.ceil(maxOf(computed.panels.map((p, i) => look ? lookLine(i) : oneLine(p, i))) + 4);
   // The focus look keeps the name and the unit on one line where a gutter of at most 320 px holds them.
   const nameUnitWidth = look ? Math.ceil(maxOf(computed.panels.map(p => measure(p.panel.title, nameFont).width + (showUnit ? 2 * spanSpace + measure(p.panel.unit, keyFont).width : 0)))) + 4 : 0;
@@ -381,8 +380,8 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
       // The focus look: the value, then the change line (beside the value in a compact readout), then the key.
       if (look) {
         const lineH = hasLine ? heightOf(changeFont) : 0, keyed = keys[i]!.h ? 6 + captioned + keys[i]!.h : 0;
-        if (compactReadout) return box.top + 4 + Math.max(heightOf(smallFont), lineH) + keyed;
-        return box.top + 4 + heightOf(valueFontOf(i, false)) + (lineH ? 4 + lineH : 0) + keyed;
+        if (compactReadout) return box.top + 4 + Math.max(heightOf(displayValueFont), lineH) + keyed;
+        return box.top + 4 + heightOf(displayValueFont) + (lineH ? 4 + lineH : 0) + keyed;
       }
       if (compactReadout) return box.top + 4 + heroBlock + captioned + keys[i]!.h - (heroBlock ? 0 : 4);
       const keyed = keys[i]!.h ? captioned + keys[i]!.h + 6 : 0;
@@ -439,7 +438,7 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
       // The focus look above a panel: the value, the change and the base value on one line where they fit.
       const spanBeside = hasLine && lookLine(i) <= frame.plot.w;
       const top = unitBeside ? Math.max(name.h, unit.h) : showUnit ? name.h + 2 + unit.h : name.h;
-      const body = top + 8 + heightOf(smallFont) + (!hasLine || spanBeside ? 0 : 6 + heightOf(changeFont)) + 6;
+      const body = top + 8 + heightOf(displayValueFont) + (!hasLine || spanBeside ? 0 : 6 + heightOf(changeFont)) + 6;
       const key = keyLayout(i, frame.plot.w, false);
       return { name, unit, unitBeside, spanBeside, top, key, body, h: body + (key.h ? captioned + key.h + 4 : 0) };
     }
@@ -649,7 +648,7 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
     // The focus look: the value of the focus, then the change and "from" the base value.
     let lookKeyTop: number | undefined;
     if (look) {
-      const t = texts[pi]!, vf = valueFontOf(pi, narrow || compactReadout), vw = measure(t.value, vf).width, lw = lineWidth(t);
+      const t = texts[pi]!, vf = displayValueFont, vw = measure(t.value, vf).width, lw = lineWidth(t);
       const claimOf = (key: string) => p.readout.claims.find(c => c.id === `stack:${p.panel.id}:${key}`)!.id;
       const beside = hasLine && (head ? head.spanBeside : compactReadout);
       const vx = seat(beside ? vw + 3 * spanSpace + lw : vw);

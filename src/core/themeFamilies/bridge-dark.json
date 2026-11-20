@@ -139,11 +139,7 @@
         "micro": 9.5
       }
     },
-    "displayLarge": {
-      "size": 72,
-      "lineHeight": 1.06
-    },
-    "displaySmall": {
+    "display": {
       "size": 36,
       "lineHeight": 1.11
     },

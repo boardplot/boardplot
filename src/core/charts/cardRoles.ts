@@ -31,10 +31,10 @@ export function figureRole(theme: Theme): { family: string; weight: number } {
 }
 
 /**
- * A large value of the metric stack focus look: `type.displayLarge` or `type.displaySmall` for its size and
- * line height, in the family and weight of the KPI figure (`figureRole`).
+ * The value of every panel in the metric stack focus look: `type.display` for its size and line height,
+ * in the family and weight of the KPI figure (`figureRole`).
  */
-export function displayFont(theme: Theme, large: boolean): FontSpec {
-  const role = large ? theme.type.displayLarge : theme.type.displaySmall;
-  return { ...figureRole(theme), size: role?.size ?? (large ? 72 : 36), lineHeight: role?.lineHeight ?? (large ? 1.06 : 1.11) };
+export function displayFont(theme: Theme): FontSpec {
+  const role = theme.type.display;
+  return { ...figureRole(theme), size: role?.size ?? 36, lineHeight: role?.lineHeight ?? 1.11 };
 }

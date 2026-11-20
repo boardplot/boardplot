@@ -133,14 +133,10 @@ const THEME_FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = Object.freeze
   'type.figure.family':
     'CSS font stack for the KPI value alone, in the type.family grammar. Absent falls back to type.family. Measured from the width tables when one of its names is tabled, else by the character-class model.',
   'type.figure.weight': 'Font weight (100 to 1000) of the KPI value. Absent means the emphasis weight (700 by default).',
-  'type.displayLarge':
-    "The large value of the emphasised panel in the metric stack focus look (options.stack.variant 'focus'). It prints in the family and weight of type.figure. type.scale does not step it; textScale does. Absent means 72 px on a 1.06 line.",
-  'type.displayLarge.size': 'Font size in px of the large stack value (12 to 160). Absent means 72.',
-  'type.displayLarge.lineHeight': 'Line height of the large stack value as a ratio of its size (0.9 to 2). Absent means 1.06.',
-  'type.displaySmall':
-    'The value of every other panel in the metric stack focus look, and of every panel where the readout sits above the plot or the canvas is too short. Absent means 36 px on a 1.11 line.',
-  'type.displaySmall.size': 'Font size in px of the smaller stack value (8 to 96). Absent means 36.',
-  'type.displaySmall.lineHeight': 'Line height of the smaller stack value as a ratio of its size (0.9 to 2). Absent means 1.11.',
+  'type.display':
+    "The value of every panel in the metric stack focus look (options.stack.variant 'focus'), in every readout layout. It prints in the family and weight of type.figure. type.scale does not step it; textScale does. Absent means 36 px on a 1.11 line.",
+  'type.display.size': 'Font size in px of the stack values (8 to 160). Absent means 36.',
+  'type.display.lineHeight': 'Line height of the stack values as a ratio of their size (0.9 to 2). Absent means 1.11.',
   'type.eyebrow':
     "The eyebrow of a KPI card, the label over the figure when the card has no title. Each absent key keeps today's eyebrow: the label role at 13 px or more, as authored, in color.inkMuted. type.scale does not step it.",
   'type.eyebrow.size': 'Font size in px of the KPI eyebrow (6 to 24). Absent keeps the label role at 13 px or more.',
