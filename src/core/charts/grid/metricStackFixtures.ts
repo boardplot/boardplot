@@ -107,6 +107,6 @@ export const metricStackFixtures: Fixture<MetricStackData,GridLayoutOptions>[] =
       {id:'spend',type:'column',title:'Spend',unit:'$ per week',measure:{sum:['spend']},readout:'change'},
       {id:'customers',type:'column',title:'Customers',unit:'per week',measure:{sum:['monthly','quarterly','one-time','other']},readout:'change',keyTitle:'By first order'},
     ],windows:{base:{from:'2026-W10',to:'2026-W10',label:'week of 2 Mar'},compare:{from:'2026-W39',to:'2026-W39',label:'Week of 21 Sep 2026'}},periods:months},
-    options:{stack:{variant:'focus',heights:[232,120,188]},size:{width:1180},title:'Cost per customer falls 18% as customers grow faster than spend',subtitle:{measure:'Cost per customer, spend and customers per week',period:'March–September 2026'},source:'Invented example'},
+    options:{stack:{variant:'focus',heights:[160,120,188]},size:{width:1180},title:'Cost per customer falls 18% as customers grow faster than spend',subtitle:{measure:'Cost per customer, spend and customers per week',period:'March–September 2026'},source:'Invented example'},
   },
 ];
