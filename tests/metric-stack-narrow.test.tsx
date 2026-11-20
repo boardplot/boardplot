@@ -1,13 +1,16 @@
 // @vitest-environment jsdom
 import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import '../src/core/charts';
 import { render } from '../src/cli/render';
 import { measure } from '../src/cli/measure';
 import { GridChart } from '../src/react/charts/grid';
 import { computeMetricStack } from '../src/core/charts/grid/metricStack';
 import { metricStackFixtures } from '../src/core/charts/grid/metricStackFixtures';
+import type { Geometry } from '../src/core/types/scene';
+import type { MetricStackDerived } from '../src/core/charts/grid/metricStackLayout';
+import { loadHoverEngine } from '../src/react/useHover';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -339,4 +342,42 @@ it('keys the shares of a stacked panel in whole percent that add up to 100', () 
   expect(panel.shares!.map(share => share.text)).toEqual(['34%', '33%', '33%']);
   const claims = panel.shares!.map(share => panel.readout.claims.find(claim => claim.id === share.claimId)!);
   expect(claims.reduce((sum, claim) => sum + claim.output.raw!, 0)).toBe(100);
+});
+
+// Hover redraws the focus look for the hovered week; a plot that moved under the pointer would shift the very column it points at.
+it('moves the focus look to the hovered category in React and keeps every plot in place', async () => {
+  const fixture = metricStackFixtures.find(f => f.id === 'metric-stack-focus')!;
+  // jsdom lays out no SVG: the chart sits at the page origin at its own size.
+  vi.spyOn(SVGSVGElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: SVGSVGElement) {
+    const [, , width = 0, height = 0] = (this.getAttribute('viewBox') ?? '').split(' ').map(Number);
+    return { x: 0, y: 0, left: 0, top: 0, right: width, bottom: height, width, height, toJSON() {} };
+  });
+  const host = document.createElement('div');
+  document.body.append(host);
+  const root = createRoot(host);
+  const drawn: Geometry[] = [];
+  const stackOf = () => drawn.at(-1)!.derived as { metricStack: MetricStackDerived };
+  const header = () => host.querySelector('[data-id="label:stack:focus"]')?.textContent;
+  await act(async () => { root.render(createElement(GridChart as never, { data: fixture.data, ...fixture.options, hover: true, onGeometry: (g: Geometry) => drawn.push(g) })); await loadHoverEngine(); });
+  await act(async () => { await new Promise(done => setTimeout(done, 50)); });
+  const rest = stackOf().metricStack, band = rest.focusBand!, plots = rest.panels.map(p => p.plot);
+  expect(header()).toBe(fixture.data.windows!.compare.label);
+  const move = (category: number, y: number) => {
+    const event = new Event('pointermove', { bubbles: true });
+    Object.assign(event, { pointerType: 'mouse', clientX: band.x + (category + 0.5) * band.w / fixture.data.categories.length, clientY: y });
+    act(() => host.querySelector('svg')!.dispatchEvent(event));
+  };
+  // In the gap between the first two panels, over week 11.
+  move(10, plots[1]!.y - 4);
+  await act(async () => { await new Promise(done => setTimeout(done, 50)); });
+  expect(header()).toBe(fixture.data.categories[10]!.label);
+  expect(stackOf().metricStack.panels.map(p => p.plot)).toEqual(plots);
+  expect(host.querySelector('[data-id="stack:focus-rule"]')).not.toBeNull();
+  expect(document.querySelector('[data-part="interaction-card"]')).toBeNull();
+  act(() => host.querySelector('[data-bp-hover]')!.dispatchEvent(Object.assign(new Event('pointerout', { bubbles: true }), { pointerType: 'mouse' })));
+  await act(async () => { await new Promise(done => setTimeout(done, 200)); });
+  expect(header()).toBe(fixture.data.windows!.compare.label);
+  await act(async () => { root.unmount(); });
+  host.remove();
+  vi.restoreAllMocks();
 });

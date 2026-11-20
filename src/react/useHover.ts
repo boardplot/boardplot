@@ -113,10 +113,16 @@ export function useHover(input: { request: ResolvedChartRequest; geometry: Rende
   custom?: boolean; }) {
   const { request, geometry, prepared, onRecordClick, custom = false } = input;
   // Asking for card content asks for the card: an absent `hover` turns on, an explicit one wins.
-  const hover = hoverFlags(input.hover ?? (custom ? true : undefined));
+  const asked = hoverFlags(input.hover ?? (custom ? true : undefined));
   // A drill-down needs the keyboard too: a chart with `onRecordClick` gets the tab stop without hover.
-  const keys = hover !== undefined || onRecordClick !== undefined;
+  const keys = asked !== undefined || onRecordClick !== undefined;
   const engine = useHoverEngine(keys);
+  const model = useMemo(() => engine?.hoverModel(request, geometry, prepared), [engine, request, geometry, prepared]);
+  // A metric stack's focus look: the hovered category becomes the focus. No series dims, and a card shows only
+  // where the host asks for one (`hover.card` or its own card content).
+  const look = model?.placement?.focusBand !== undefined;
+  const hover = asked && look
+    ? { card: custom || (typeof input.hover === 'object' && input.hover.card !== undefined) ? asked.card : false as const, highlight: false } : asked;
   const [selection, setSelection] = useState<HoverSelection>({ ids: [] });
   const [cursor, setCursor] = useState<KeyCursor>();
   const host = useRef<HTMLElement | null>(null);
@@ -141,7 +147,6 @@ export function useHover(input: { request: ResolvedChartRequest; geometry: Rende
   useEffect(() => engine?.watchHover(selection, setSelection, geometry.size), [engine, selection.measurement, geometry.size]);
   // A card closed by Escape or a tap outside cancels the pointer's pending re-pick, which would open it again.
   useEffect(() => { if (!ids.length) clearTimer('rest'); }, [ids.length]);
-  const model = useMemo(() => engine?.hoverModel(request, geometry, prepared), [engine, request, geometry, prepared]);
   // Keyed by value: a literal `hover={{ card: 'label' }}` is a new object every render.
   const view: HoverView = useMemo(() => engine && model && flags
     ? engine.hoverView(model, request, geometry, ids, { card: cardOn, highlight, keyboard: keyed }, position) : geometry,
@@ -292,5 +297,7 @@ export function useHover(input: { request: ResolvedChartRequest; geometry: Rende
     },
   } };
   const cardRef = (node: HTMLElement | null) => { card.current = node; };
-  return { engine, view, origin: position?.viewport?.origin, handlers, focusStops: hover !== undefined, keys: keys && engine !== undefined, cursor, cardRef };
+  // The focus look's focus: the category of the hovered or focused record.
+  const focusCategory = look ? model!.records.find(record => record.id === ids[0])?.target.owner.categoryId : undefined;
+  return { engine, view, origin: position?.viewport?.origin, handlers, focusStops: hover !== undefined, keys: keys && engine !== undefined, cursor, cardRef, focusCategory };
 }

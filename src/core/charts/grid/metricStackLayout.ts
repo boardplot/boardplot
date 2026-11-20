@@ -27,12 +27,18 @@ import { maxOf, pushAll } from '../../arrays';
 import { withUnprintedClaims } from '../../claims/ids';
 import { displayFont } from '../cardRoles';
 import { unitOnNumber, withUnit } from '../../unitJoin';
+import { STACK_FOCUS } from './stackFocus';
 
 export interface MetricStackDerived {
   gap: number;
   gutterWidth: number;
   axisOwner: string;
   band?: { rect: Rect; panels: string[]; categoryIds: string[]; nodeId: string };
+  /**
+   * The focus look's pointer band: from the top of the first plot to the last baseline, one equal column per
+   * category in data order. A pointer in a category's column moves the focus there (React hover).
+   */
+  focusBand?: Rect;
   readouts: StackReadout[];
   panels: { id: string; domain: [number, number]; plot: Rect; values: (number | null)[]; states: StackState[]; displayed: string[]; nodeIds: string[][] }[];
 }
@@ -57,11 +63,6 @@ const GUTTER_PROBE = Symbol('boardplot.metricStackGutterProbe');
 const COMPACT_READOUT = Symbol('boardplot.metricStackCompactReadout');
 /** The widest authored gutter that still places every label, once a wider one lost a label. */
 const GUTTER_LIMIT = Symbol('boardplot.metricStackGutterLimit');
-/**
- * The focus look in React: the id of the category the pointer or the keyboard rests on, set on `options.stack`.
- * The stack then draws as it draws with that one category as its compare window.
- */
-export const STACK_FOCUS = Symbol.for('boardplot.metricStackFocus');
 
 /** Every focus a stack can draw: its compare window, then each category alone. The layout sizes for the widest. */
 const focusStacks = new WeakMap<object, Map<string, ReturnType<typeof computeMetricStack>[]>>();
@@ -597,6 +598,17 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
     bandLabelHeight=box.h;
     put('stack:maturing:label',text,noteFont,{x:rect.x+(rect.w-box.w)/2,y:rect.y+4,w:box.w,h:box.h},{annotationId:'stack:maturing'},muted,'footnote','annotation',box.lines);
   }
+  // The focus look: one hairline through every panel at the centre of a focus of one category, behind the marks.
+  // Readouts above their panels sit between the plots: there the hairline breaks at each readout.
+  if (look) {
+    const lastBottom = plots.at(-1)!.y + plots.at(-1)!.h;
+    derived.focusBand = { x: plotX, y: plots[0]!.y, w: plotW, h: lastBottom - plots[0]!.y };
+    if (focusIndexes.size === 1) {
+      const fx = plotX + ([...focusIndexes][0]! + 0.5) * step;
+      const runs = narrow ? plots.map(p => [p.y, p.y + p.h] as const) : [[plots[0]!.y, lastBottom] as const];
+      runs.forEach(([y1, y2], i) => scene.push({ t: 'line', id: narrow ? `stack:focus-rule:${i}` : 'stack:focus-rule', x1: fx, x2: fx, y1, y2, stroke: { token: 'grid' }, width: strokeToken(theme, 'rule'), owner: {}, part: 'focusRule' }));
+    }
+  }
   const marks: GridMarks = {panels:[]};
   const yielding = new Set<string>();
   // The focus look's values stand on a plate in the page colour.
@@ -734,13 +746,15 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
       }
     }
     const latest=data.categories.reduce((last,_,ci)=>visible(ci)?ci:last,-1);
-    // The focus look prints the value of each focus category only.
+    // The focus look prints the value of each focus category only, kept inside the plot with its plate:
+    // at the first and the last category it moves inward instead of leaving the plot.
     const valued=(ci:number)=>look ? stateOf(ci)==='focus' : named(ci)||ci===latest;
+    const seatX=(x:number,text:string)=>{ if(!look) return x; const w=measure(text,valueFont).width; return Math.min(Math.max(x-w/2,plotX+3),plotX+plotW-3-w)+w/2; };
     // A latest value off the thinned rhythm sits one column from its neighbour's; that neighbour yields where they collide.
     if(!look&&!named(latest)) yielding.add(`${p.panel.id}:value:${data.categories[latest-1]?.id}`);
     data.categories.forEach((category,ci)=>{
       const x=plotX+(ci+0.5)*step,cellOwner={seriesId:p.panel.id,categoryId:category.id};
-      if(!visible(ci)) {if(valued(ci))centerText(`${p.panel.id}:value:${category.id}`,na,valueFont,x,baseline-heightOf(valueFont)-5,cellOwner,muted);if(look&&valued(ci))plated.add(`${p.panel.id}:value:${category.id}`);return;}
+      if(!visible(ci)) {if(valued(ci))centerText(`${p.panel.id}:value:${category.id}`,na,valueFont,seatX(x,na),baseline-heightOf(valueFont)-5,cellOwner,muted);if(look&&valued(ci))plated.add(`${p.panel.id}:value:${category.id}`);return;}
       const v=p.values[ci]!,top=py(v),provisional=p.states[ci]!=='mature';
       const val=formatValue(v);
       displayed[ci]=val;
@@ -781,7 +795,7 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
         emit({t:'circle',id:`${p.panel.id}:point:${category.id}`,cx:x,cy:top,r:4.5,fill:provisional?{token:'background'}:color,...(provisional?{stroke:muted,strokeWidth:strokeToken(theme, 'mark')}:{}),owner:cellOwner,part:provisional?'provisionalPoint':'point'},ci);
         occupied.claim({x:x-4.5,y:top-4.5,w:9,h:9},'mark',cellOwner,'point');
       }
-      if(valued(ci))centerText(`${p.panel.id}:value:${category.id}`,labelText,valueFont,x,top-labelGap-heightOf(valueFont),cellOwner,provisional?muted:{token:'ink'},'label','point',undefined,!look&&p.panel.type==='line'&&top+labelGap+heightOf(valueFont)<baseline-2?top+labelGap:undefined);
+      if(valued(ci))centerText(`${p.panel.id}:value:${category.id}`,labelText,valueFont,seatX(x,labelText),top-labelGap-heightOf(valueFont),cellOwner,provisional?muted:{token:'ink'},'label','point',undefined,!look&&p.panel.type==='line'&&top+labelGap+heightOf(valueFont)<baseline-2?top+labelGap:undefined);
       if(look&&valued(ci))plated.add(`${p.panel.id}:value:${category.id}`);
       // A line point value ranks as on the line chart: the latest is its endpoint, the others interior, so 'minimal' keeps the latest.
       const valueRequest=requests.at(-1);

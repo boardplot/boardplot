@@ -247,6 +247,8 @@ export function hoverTargets(model: HoverModel, request: ResolvedChartRequest, p
   const { placement } = model;
   // A record with no card fields (a diagram node that prints all it carries) is never hovered, but a click still names it.
   const records = activation ? model.records : model.records.filter(record => record.cardFields?.length !== 0);
+  // A metric stack's focus look: the pointer's column of the plots names its category, wherever the pointer is in it.
+  if (placement?.focusBand) return pick.point ? focusBandTargets(records, placement.focusBand, pick.point) : [];
   const owners = pick.nodeId === undefined ? [] : records.filter(record => record.nodeIds.includes(pick.nodeId!));
   if (new Set(owners.map(record => record.target.owner.seriesId)).size > 1) return owners;
   const nodeRecord = owners[0];
@@ -262,6 +264,26 @@ export function hoverTargets(model: HoverModel, request: ResolvedChartRequest, p
   });
   if (!hit) return [];
   return [hit, ...categorySiblings(records, hit, bandTypes[type] !== undefined, type === 'line')];
+}
+
+/**
+ * The records of the category whose column of the focus band holds the
+ * point, one per panel: the panel nearest the point first, then the others
+ * in record order. Outside the band, none: the stack returns to rest.
+ */
+function focusBandTargets(records: readonly InteractionRecord[], band: NonNullable<OverlayInputs['focusBand']>, point: Point): InteractionRecord[] {
+  if (!rectContains(band.rect, { ...point, w: 0, h: 0 })) return [];
+  const categories = [...new Set(records.flatMap(record => record.target.owner.categoryId !== undefined && record.target.owner.annotationId === undefined
+    ? [record.target.owner.categoryId] : []))];
+  if (!categories.length) return [];
+  const index = Math.min(categories.length - 1, Math.max(0, Math.floor((point.x - band.rect.x) / (band.rect.w / categories.length))));
+  const hits = records.filter(record => record.target.owner.categoryId === categories[index] && record.target.owner.annotationId === undefined);
+  const gap = (record: InteractionRecord) => {
+    const plot = band.panels.find(entry => entry.panel === record.target.panel)?.plot;
+    return plot ? Math.max(plot.y - point.y, 0, point.y - plot.y - plot.h) : Infinity;
+  };
+  const nearest = hits.reduce<InteractionRecord | undefined>((best, record) => !best || gap(record) < gap(best) ? record : best, undefined);
+  return nearest ? [nearest, ...hits.filter(record => record !== nearest)] : [];
 }
 
 /**

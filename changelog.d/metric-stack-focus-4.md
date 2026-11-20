@@ -1,0 +1,3 @@
+### Added
+
+- In React, a metric stack with `stack.variant: 'focus'` and `hover` on moves its focus to the category under the pointer, anywhere in that category's column from the first plot to the last baseline, and to the category of the record that has keyboard focus. The stack draws that category as its compare window: readout, shares, header, colours, value labels and a hairline through every panel move, and the plots stay in place. The authored compare window returns when the pointer leaves or the focus is lost. No series dims, and no card shows unless the host sets `hover.card` or `renderHoverContent`. The SVG, the PNG and the server render draw the authored compare window.
