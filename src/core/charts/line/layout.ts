@@ -2,7 +2,7 @@ import { withUnprintedClaims } from '../../claims/ids';
 import { chartString } from '../../strings/line';
 import { withLocaleStrings } from '../../strings';
 import type { Theme } from '../../types/theme';
-import type { FontSpec } from '../../text';
+import { isCachedTextMeasurer, type FontSpec } from '../../text';
 import { structureCount } from '../../structureCounts';
 import { seriesTextPaint, emphasisWeight, dashToken, secondaryFont, strokeToken } from '../../theme';
 /**
@@ -30,7 +30,7 @@ import { applyValueAxisTitleInk, tickFormatter } from '../../axis';
 import { PARTIAL_KEY, partialIds, toDateFits } from '../../partialPeriod';
 import type { AnchorResolution, AnnotatePassResult } from '../../annotate';
 import { zoneYearSpan } from '../../timeAxis';
-import { corridorEdgeRects, emitEventLane, percentLevels, runAnnotatePass, settleEventLane } from '../../annotatePass';
+import { corridorEdgeRects, emitEventLane, emptyAnnotatePass, percentLevels, runAnnotatePass, settleEventLane } from '../../annotatePass';
 import { categoryBandFromCenters, categoryTargetFields, spliceAnnotationNodes, type CategoryBand } from '../../annotateFields';
 import { rectsOverlap, type Rect } from '../../geometry';
 import { heightOmitted, PLOT_FLOOR_RECT } from '../../sizing';
@@ -354,6 +354,8 @@ function annotateLine(
   labelRequests?: LabelRequest[],
   printedLabels?: readonly PlacedLabel[],
 ): AnnotatePassResult {
+  const annotations = withoutEvents(reserves.annList);
+  if (!annotations.length && !labelRequests?.length && isCachedTextMeasurer(env.measure)) return emptyAnnotatePass();
   const { options, cats, dataSeries, drawnSeries, refSeries, pv, rowOf, isStacked, cumTop, rebased, absOf, compositionInvalidAt } = domain;
   const { plot, y, xOf, categoryOrder: catIndex } = area;
   const anchorSeries = [...drawnSeries, ...refSeries.filter((s) => scene.nodes.some((node) => node.part === 'referenceLine' && node.owner.seriesId === s.id))];
@@ -451,7 +453,7 @@ function annotateLine(
   return runAnnotatePass({
     target: domain.options.target,
     // Events belong to the event lane.
-    annotations: withoutEvents(reserves.annList),
+    annotations,
     resolve: resolveAnchor,
     anchorError,
     labelRequests,

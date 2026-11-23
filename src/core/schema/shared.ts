@@ -265,9 +265,10 @@ export function addGeoIdIssues(
 export function diagnosedSafeParse<T>(
   schema: z.ZodType<T>,
   value: unknown,
+  context?: Parameters<z.ZodType<T>['safeParse']>[1],
 ): ReturnType<z.ZodType<T>['safeParse']> {
   try {
-    return schema.safeParse(value);
+    return schema.safeParse(value, context);
   } catch (error) {
     if (error instanceof TypeError) {
       throw new Error(

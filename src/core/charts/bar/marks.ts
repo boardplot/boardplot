@@ -88,7 +88,7 @@ function barRow(
       for (const claim of whisker.claims) claims.claim(claim.rect, claim.kind, claim.owner, claim.part);
       out.rangeMarks.push(whisker.mark);
     }
-    out.anchorBySeg.set(`${cat.id}:${s.id}`, barAnchor(cat, xB, by + bh / 2, v, owner));
+    out.anchorBySeg?.set(`${cat.id}:${s.id}`, barAnchor(cat, xB, by + bh / 2, v, owner));
     places.push({ s, si, v, val, rect });
   });
   // reference series → vertical tick per row (referenceStyle tick|line|marker)
@@ -135,12 +135,12 @@ function barRow(
       ...(referenceStyle === 'line' ? ['referenceLine'] : []),
     );
     marks.referenceTicks.push({ seriesId: rs.id, categoryId: cat.id, nodeId });
-    out.anchorBySeg.set(`${cat.id}:${rs.id}`, barAnchor(cat, rx, rowCenter, v, owner));
+    out.anchorBySeg?.set(`${cat.id}:${rs.id}`, barAnchor(cat, rx, rowCenter, v, owner));
   });
   // row extent for marks + category anchor
   const ends = rowEnds[ci]!;
   marks.rows.push({ id: cat.id, rect: { x: x(ends.neg), y: rowY, w: Math.max(x(ends.pos) - x(ends.neg), 0.5), h: bw }, bars: rowBars });
-  out.anchorByCat.set(cat.id, barAnchor(cat, x(ends.pos > 0 ? ends.pos : ends.neg), rowCenter, domain.totals[ci]!, { categoryId: cat.id }));
+  out.anchorByCat?.set(cat.id, barAnchor(cat, x(ends.pos > 0 ? ends.pos : ends.neg), rowCenter, domain.totals[ci]!, { categoryId: cat.id }));
   return places;
 }
 
@@ -200,7 +200,7 @@ function netLineMarks(domain: BarDomain, area: BarArea, nodes: SceneNode[], clai
 const HALVES_RULE_INSET = 2;
 
 /** Phase 2: the scale and the band in, the scene nodes and their claims out. */
-export function layoutBarMarks(domain: BarDomain, paints: BarPaints, area: BarArea): BarMarkGeometry {
+export function layoutBarMarks(domain: BarDomain, paints: BarPaints, area: BarArea, needsAnchors: boolean): BarMarkGeometry {
   const { options, theme, size, measure, highlights, restRecedes, cats, dataSeries } = domain;
   const { frame, plot, x, x0, band } = area;
   const claims = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
@@ -259,8 +259,8 @@ export function layoutBarMarks(domain: BarDomain, paints: BarPaints, area: BarAr
     rangeMarks: [],
     rangeNodes: [],
     refTarget: dataSeries.some((series) => series.cells.some((cell) => cell.range)) ? referenceNodes : nodes,
-    anchorByCat: new Map(),
-    anchorBySeg: new Map(),
+    anchorByCat: needsAnchors ? new Map() : undefined,
+    anchorBySeg: needsAnchors ? new Map() : undefined,
   };
   const bars = cats.map((_, ci) => barRow(domain, paints, area, ci, marks, nodes, claims, out));
   // With halves the baseline shows only between the bars, and is claimed

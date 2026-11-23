@@ -21,6 +21,21 @@ export function linePath(points: readonly Point[]): string {
     .join('');
 }
 
+let leaderNumber = fmt;
+
+/** Scatter tries many seats at the same point coordinates. Keep their SVG decimals
+ * through one synchronous layout, including its note and key retries. */
+export function withLeaderPathNumbers<T>(draw: () => T): T {
+  if (leaderNumber !== fmt) return draw();
+  const numbers = new Map<number, string>();
+  leaderNumber = value => {
+    let text = numbers.get(value);
+    if (text === undefined) numbers.set(value, text = fmt(value));
+    return text;
+  };
+  try { return draw(); } finally { leaderNumber = fmt; }
+}
+
 /**
  * Leader line from a displaced label to its owning element. Straight when
  * nearly aligned; a gentle S-bezier when displaced further (consulting-chart look).
@@ -29,10 +44,10 @@ export function leaderPath(from: Point, to: Point, straightThreshold = 8): strin
   const dx = to.x - from.x;
   const dy = to.y - from.y;
   if (Math.abs(dx) <= straightThreshold || Math.abs(dy) <= straightThreshold) {
-    return `M${fmt(from.x)} ${fmt(from.y)}L${fmt(to.x)} ${fmt(to.y)}`;
+    return `M${leaderNumber(from.x)} ${leaderNumber(from.y)}L${leaderNumber(to.x)} ${leaderNumber(to.y)}`;
   }
-  const mx = from.x + dx / 2;
-  return `M${fmt(from.x)} ${fmt(from.y)}C${fmt(mx)} ${fmt(from.y)} ${fmt(mx)} ${fmt(to.y)} ${fmt(to.x)} ${fmt(to.y)}`;
+  const mx = leaderNumber(from.x + dx / 2), fromY = leaderNumber(from.y), toY = leaderNumber(to.y);
+  return `M${leaderNumber(from.x)} ${fromY}C${mx} ${fromY} ${mx} ${toY} ${leaderNumber(to.x)} ${toY}`;
 }
 
 /**

@@ -12,6 +12,7 @@ import {
   plotHeightAfter,
   solveFrame,
   type FrameInput,
+  type FrameWidthMeasurements,
   type FrameResult,
   type LegendItemInput,
   authoredNotes,
@@ -30,7 +31,7 @@ import type { Theme } from '../../types/theme';
 import type { NormGroup, NormPt, ScatterDomain, ScatterEnv, ScatterFonts, ScatterPaints, ScatterPlotArea } from './model';
 import { drawnValueLines } from './valueLines';
 import { bandedAxes, ZONE_BAND_GAP } from './zones';
-import { atHardMinimum, HARD_COMPACT_PLOT, plotFloorRows } from '../../sizing';
+import { atHardMinimum, HARD_COMPACT_PLOT, plotFloorRows, sameContent } from '../../sizing';
 import { maxOf } from '../../arrays';
 
 /**
@@ -263,6 +264,10 @@ const UNPINNED_PLOT_BASE = 175;
 const UNPINNED_PLOT_SHARE = 0.225;
 const UNPINNED_PLOT_CAP = 280;
 
+export interface ScatterFrameMeasurements extends FrameWidthMeasurements {
+  keys: { items: readonly LegendItemInput[]; row: NonNullable<FrameWidthMeasurements['topKey']> }[];
+}
+
 export function solveScatterFrame(
   env: ScatterEnv,
   domain: ScatterDomain,
@@ -273,6 +278,7 @@ export function solveScatterFrame(
   lateNotes: readonly string[] = [],
   /** The one "Not labelled on the chart" note, with the registry's items and the names; the footnotes it leaves are the authored ones. */
   hiddenNote?: { footnotes: string[]; line: string[] },
+  measurements?: ScatterFrameMeasurements,
 ): { frame: FrameResult; claims: OccupiedIndex } {
   const { options, theme, size } = env;
   const tokenMargin = canvasMargin(theme, size.width);
@@ -305,6 +311,10 @@ export function solveScatterFrame(
     legendInput = { options: legendOpts, items: [...items, ...keyItems] };
   }
   const claims = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
+  // Only the extra key items can change in these fixed-size retries (notably the ring sizes).
+  // solveFrame also checks the measured row's position and node sequence before reusing it.
+  const previous = measurements?.keys.find(entry => sameContent(entry.items, keyItems));
+  if (measurements) measurements.topKey = previous?.row;
   const frame = solveFrame(
     {
       size,
@@ -322,7 +332,12 @@ export function solveScatterFrame(
       measure: env.measure,
     },
     claims,
+    measurements,
   );
+  if (measurements?.topKey && frame.legend === measurements.topKey.legend && measurements.topKey !== previous?.row) {
+    if (previous) previous.row = measurements.topKey;
+    else measurements.keys.push({ items: keyItems, row: measurements.topKey });
+  }
   return { frame, claims };
 }
 

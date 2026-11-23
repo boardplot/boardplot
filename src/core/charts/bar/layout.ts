@@ -1,3 +1,4 @@
+import { staticFrame } from '../../footer';
 import { refuseLabelPosition } from '../band/labelPosition';
 import { pickedValues, withValueLabelDefaults } from '../band/valueSelection';
 import { chartPalette, chartTheme } from '../chartEnv';
@@ -20,7 +21,7 @@ import { PARTIAL_KEY, partialIds, toDateRoom } from '../../partialPeriod';
 import { noTotal } from '../../stackAdds';
 import type { AnchorResolution, AnnotatePassInput, AnnotatePassResult } from '../../annotate';
 import { BAND_PAD, pruneOrphanAnnotationArms } from '../../annotateParts';
-import { percentLevels, runAnnotatePass } from '../../annotatePass';
+import { emptyAnnotatePass, percentLevels, runAnnotatePass } from '../../annotatePass';
 import { categoryTargetFields, spliceAnnotationNodes } from '../../annotateFields';
 import { rectSeriesAdjacentWarnings } from '../../adjacentSeries';
 import { applyValueAxisTitleInk, layoutValueAxis, planValueAxisTitle, tickRowTitleEnd, valueAxisTitleRequest, valueAxisTitleText, valueAxisUnit } from '../../axis';
@@ -50,12 +51,15 @@ import { accessibleTitle,
 import { rangeMidUndrawn, resolveCellRange, type RangeMark } from '../../rangeRules';
 import { applyAxisBounds, applyTickStep, shownTickStep, bandScale, linearScale, niceDomain, type BandScale } from '../../scale';
 import { authoredNotes, frameTextOptions, normalizeLegendOption, noteLine, solveFrame, type LegendItemInput, plotHeightAfter, authoredFootnoteCount } from '../../frame';
-import { HARD_MINIMUM, rowSizing, SIZE_TOLERANCE } from '../../sizing';
+import { HARD_MINIMUM, rowSizing, sameContent, SIZE_TOLERANCE } from '../../sizing';
+import { requestMemo } from '../../layoutPlan';
+import { currentSmallValues, formatScopeKey } from '../../formatPrecision';
 import { rowDrivenHeight } from '../../rowCanvas';
-import { defaultMeasurer, wrapText, type FontSpec, type TextMeasurer } from '../../text';
+import { defaultMeasurer, isCachedTextMeasurer, wrapText, type FontSpec, type TextMeasurer } from '../../text';
 import {
   canvasMargin,
   joinHatchPeers,
+  layoutStepKey,
   markRolePaint,
   paintColor,
   panelTypeClass,
@@ -82,13 +86,12 @@ import type {
 import type { Theme } from '../../types/theme';
 import type { FootballFieldBarOptions, TornadoBarOptions } from './types';
 import { layoutBarLocalAnnotations } from './annotations';
-import { displayFor, resolveBarDomain, textFor, toDateOnValues } from './domain';
+import { displayFor, prepareBar, textFor, toDateOnValues } from './domain';
 import { labelOn as barLabelOn, valueLineLabelsOn } from '../labelOn';
 import { planBarLabels } from './labels';
 import { layoutBarMarks } from './marks';
 import { authoredTrackWidth, columnOverrideWarnings, trackPlotFloor } from '../columnOverrides';
 import { barHalves, cagrInset, CAGR_INSET_ROOM, CAGR_ROOM, CAGR_TRIES, CAT_BAND_GAP, CAT_MAX_LINES, BarTooTall, CUT_NOTES, DEFER_ADJACENT, fixedBarRow, LABEL_GAP, NAME_TRACK, NO_NAME_COLUMN, RIGHT_ROOM, STOP_IF_TOO_TALL, type BarArea, type BarDomain, type BarMarkGeometry } from './model';
-import { barPaints } from './paints';
 import { barPlotArea, solveBarFrame, barPassText } from './plot';
 import { toleranceKeyed } from '../../valueLineDomain';
 import { composedTextRole } from '../../textRole';
@@ -200,7 +203,11 @@ function warnRangeBarIgnoredRanking(
   }
 }
 /** Internal adapter for charts whose displayed segments encode derived values. */
-export type BarAnnotationPass = (input: AnnotatePassInput, marks: BarMarks) => AnnotatePassInput;
+export type BarAnnotationPass = ((input: AnnotatePassInput, marks: BarMarks) => AnnotatePassInput) & {
+  /** The adapter reads only annotations supplied by the bar. */
+  skipWhenEmpty?: boolean;
+};
+export type BarNaturalMinimum = (width: number, height: number, drawMinimum: () => number | undefined) => number | undefined;
 
 const LABEL_PAD = 2;
 /** The current-value claim is x±0.5 because the rule has width 1. */
@@ -210,23 +217,60 @@ export function layoutBar(
   data: ChartData,
   options: BarOptions = {},
   annotationPass?: BarAnnotationPass,
-  checkNaturalHeight = true,
+  checkNaturalHeight: boolean | BarNaturalMinimum = true,
 ): Geometry<BarMarks, BarDerived> {
-  const variant = options.variant ?? 'grouped';
-  if (variant !== 'grouped') refuseLabelPosition(options, `bar ${variant}`,
-    variant === 'stacked' || variant === 'stacked100' ? ['center', 'insideEnd', 'insideBase'] : []);
   const dropped: LintWarning[] = [];
-  options = withoutShareAnnotations(withValueLabelDefaults(withLocaleStrings(options), 'bar', options.variant, dropped), options.variant === 'stacked100', dropped);
+  options = barOptionsForLayout(options, dropped);
   const layout = (next: BarOptions) => layoutBarSized(data, next, annotationPass);
-  const geo = withBandValueNotes(data, options, layout);
+  // A content-fit host often asks for exactly the shorter chart we drew to check its
+  // minimum. Keep that private drawing for one retry, including its fitted notes.
+  // Once returned, the chart belongs to its caller and cannot be handed out again.
+  const retry = options.variant === 'stacked' && annotationPass === undefined && checkNaturalHeight === true
+    && isCachedTextMeasurer(options.measure ?? defaultMeasurer)
+    ? requestMemo(data, JSON.stringify(['bar-natural-retry', layoutStepKey(), staticFrame.pinned, staticFrame.live, currentSmallValues(), formatScopeKey(options)]),
+      (): { next?: { options: BarOptions; geometry: Geometry<BarMarks, BarDerived> } } => ({}))
+    : undefined;
+  const next = retry?.next;
+  if (retry) delete retry.next;
+  const geo = next && sameContent(next.options, options) ? next.geometry : withBandValueNotes(data, options, layout);
   const natural = geo.sizing?.naturalHeight;
   if (checkNaturalHeight && natural !== undefined && natural < geo.size.height) {
     // a shorter row layout may need a disclosure that the tall layout did not.
-    const probe = withBandValueNotes(data, { ...options, size: { width: geo.size.width, height: natural } }, layout);
-    if (probe.sizing && probe.sizing.minHeight > natural) geo.sizing = { ...geo.sizing!, naturalHeight: probe.sizing.minHeight };
+    const drawMinimum = () => {
+      const shorter = { ...options, size: { width: geo.size.width, height: natural } };
+      const geometry = withBandValueNotes(data, shorter, layout);
+      if (retry) retry.next = { options: shorter, geometry };
+      return geometry.sizing?.minHeight;
+    };
+    const minimum = typeof checkNaturalHeight === 'function' ? checkNaturalHeight(geo.size.width, natural, drawMinimum) : drawMinimum();
+    if (minimum !== undefined && minimum > natural) geo.sizing = { ...geo.sizing!, naturalHeight: minimum };
   }
   geo.warnings.push(...dropped);
   return geo;
+}
+
+function barOptionsForLayout(options: BarOptions, dropped: LintWarning[]): BarOptions {
+  const variant = options.variant ?? 'grouped';
+  if (variant !== 'grouped') refuseLabelPosition(options, `bar ${variant}`,
+    variant === 'stacked' || variant === 'stacked100' ? ['center', 'insideEnd', 'insideBase'] : []);
+  return withoutShareAnnotations(withValueLabelDefaults(withLocaleStrings(options), 'bar', options.variant, dropped), options.variant === 'stacked100', dropped);
+}
+
+/** The stacked Likert row probe needs the plot after hidden values have taken their footer space. */
+export function stackedBarPlotHeight(data: ChartData, options: BarOptions, annotationPass: BarAnnotationPass): number {
+  options = barOptionsForLayout(options, []);
+  refuseSignColor(data, options);
+  return withBandValueNotes(data, options, next => layoutStandardBar(data, next, annotationPass, barPlotWithNotes)).plot.h;
+}
+
+function barPlotWithNotes(_domain: BarDomain, area: BarArea, _scene: BarMarkGeometry, solved: SolveResult, annotated: AnnotatePassResult) {
+  return {
+    plot: area.plot,
+    labels: [...solved.placed, ...annotated.labels],
+    frame: area.frame.frame,
+    scene: area.frame.nodes,
+    a11y: {},
+  };
 }
 
 function layoutBarSized(
@@ -277,7 +321,7 @@ function layoutBarVariant(
     if (options.baseValue !== undefined) fieldGeometry.warnings.push(baseValueIgnored());
     return fieldGeometry;
   }
-  const geometry = layoutStandardBar(data, options as BarOptions, annotationPass);
+  const geometry = layoutStandardBar(data, options as BarOptions, annotationPass, assembleBarGeometry);
   if (options.currentValue !== undefined) {
     geometry.warnings.push({
       code: 'current-value-ignored',
@@ -373,7 +417,7 @@ function annotateBar(
     const norm = typeof ref === 'string' ? { categoryId: ref, edge: 'total' as const } : ref;
     if (!('categoryId' in norm)) return null;
     if (norm.seriesId) {
-      const found = scene.anchorBySeg.get(`${norm.categoryId}:${norm.seriesId}`);
+      const found = scene.anchorBySeg?.get(`${norm.categoryId}:${norm.seriesId}`);
       if (!found) return null;
       const named = [...domain.dataSeries, ...domain.refSeries].find((s) => s.id === norm.seriesId);
       const cell = named?.cells[cats.findIndex((c) => c.id === norm.categoryId)];
@@ -387,7 +431,7 @@ function annotateBar(
       const anchorSeries = domain.dataSeries.find((x) => domain.highlights.has(x.id)) ?? domain.dataSeries[0]!;
       return resolve({ categoryId: norm.categoryId, seriesId: anchorSeries.id });
     }
-    const found = scene.anchorByCat.get(norm.categoryId);
+    const found = scene.anchorByCat?.get(norm.categoryId);
     if (!found) return null;
     const cat = { ...found, format: domain.dataSeries.length === 1 ? domain.dataSeries[0]!.format : undefined };
     if (norm.edge === 'start') return { ...cat, x: x0, value: 0 };
@@ -600,25 +644,27 @@ function assembleBarGeometry(
  */
 const BAND_TRIES = Symbol('bandTries');
 
-function layoutStandardBar(
+function layoutStandardBar<R extends { labels: PlacedLabel[]; refused?: false }>(
   data: ChartData,
-  options: BarOptions = {},
-  annotationPass?: BarAnnotationPass,
-): Geometry<BarMarks, BarDerived> {
+  options: BarOptions,
+  annotationPass: BarAnnotationPass | undefined,
+  finish: (...parts: Parameters<typeof assembleBarGeometry>) => R,
+): R {
   const warnings: LintWarning[] = [];
-  const domain = resolveBarDomain(data, options, warnings);
-  const paints = barPaints(domain, warnings);
+  const { domain, paints } = prepareBar(data, options, warnings, annotationPass === undefined);
   const framed = solveBarFrame(domain, paints, warnings);
   const occupied = framed.claims;
   const area = barPlotArea(domain, framed.frame, warnings);
   // The cut row names go to the notes once; the note moves the plot, so the chart refits.
   if (area.cutNotes.length > 0 && (options as { [CUT_NOTES]?: string[] })[CUT_NOTES] === undefined) {
-    return layoutStandardBar(data, { ...options, [CUT_NOTES]: area.cutNotes } as BarOptions, annotationPass);
+    return layoutStandardBar(data, { ...options, [CUT_NOTES]: area.cutNotes } as BarOptions, annotationPass, finish);
   }
   // A caller that keeps the bar only when its rows fit (STOP_IF_TOO_TALL) learns it now, before the marks and labels cost anything.
   if ((options as { [STOP_IF_TOO_TALL]?: boolean })[STOP_IF_TOO_TALL] === true
     && standardBarSizing(domain, area, area.catLines).minHeight > domain.size.height + SIZE_TOLERANCE) throw new BarTooTall();
-  const scene = layoutBarMarks(domain, paints, area);
+  const needsAnnotationPass = domain.passAnns.length > 0 || !isCachedTextMeasurer(domain.measure)
+    || (annotationPass !== undefined && !annotationPass.skipWhenEmpty);
+  const scene = layoutBarMarks(domain, paints, area, needsAnnotationPass);
   const local = layoutBarLocalAnnotations(domain, area, warnings);
   pushAll(scene.nodes, local.nodes);
   for (const c of [...scene.claims.snapshot(), ...local.claims.snapshot()]) occupied.claim(c.rect, c.kind, c.owner, c.part);
@@ -642,7 +688,7 @@ function layoutStandardBar(
   const toDateRoomH = toDateRoom(area.band.bandwidth);
   if (toDate.size > 0 && solved.placed.some((l) => (l.kind === 'grandTotal' || l.kind === 'point') && toDate.has(l.owner.categoryId ?? '')
     && (l.hidden !== undefined || l.rect.h > toDateRoomH))) {
-    return layoutStandardBar(data, { ...options, [PARTIAL_KEY]: true } as BarOptions, annotationPass);
+    return layoutStandardBar(data, { ...options, [PARTIAL_KEY]: true } as BarOptions, annotationPass, finish);
   }
   applyValueAxisTitleInk(solved.placed);
   // A reference value reads muted, apart from the bar's own value.
@@ -650,7 +696,9 @@ function layoutStandardBar(
   pushAll(warnings, solved.warnings);
   // Prune the local indicator when its label hides.
   pruneOrphanAnnotationArms(scene.nodes, local.placed, solved.placed);
-  const annotated = annotateBar(domain, area, scene, occupied, solveCtx, annotationPass);
+  const annotated = needsAnnotationPass
+    ? annotateBar(domain, area, scene, occupied, solveCtx, annotationPass)
+    : emptyAnnotatePass();
   // A CAGR arm too near its bars to give its arrow end the minimum shaft
   // (MIN_LEG) gets the room it lacked, over at most three more layouts.
   const room = (options as { [RIGHT_ROOM]?: number; [CAGR_TRIES]?: number; [BAND_PAD]?: number; [BAND_TRIES]?: number });
@@ -660,7 +708,7 @@ function layoutStandardBar(
       ...options,
       [RIGHT_ROOM]: (room[RIGHT_ROOM] ?? (cagrInset(domain) ? CAGR_INSET_ROOM : CAGR_ROOM)) + Math.ceil(annotated.legDeficit) + 2,
       [CAGR_TRIES]: (room[CAGR_TRIES] ?? 0) + 1,
-    } as BarOptions, annotationPass);
+    } as BarOptions, annotationPass, finish);
   }
   // Room reserved right of the plot for a CAGR arm that is not drawn
   // (its label found no seat) goes back to the plot, in one more layout.
@@ -668,21 +716,21 @@ function layoutStandardBar(
   const cagrHidden = cagrs.length > 0 && cagrs.every((placed) => annotated.labels.some((label) => label.id === placed.labelId && label.hidden));
   // Type steps: a hidden CAGR label first gets one more layout with wider room, then the room goes back.
   if (!annotationPass && cagrHidden && room[RIGHT_ROOM] !== 0 && (room[CAGR_TRIES] ?? 0) < 3 && cagrInset(domain)) {
-    const wider = layoutStandardBar(data, { ...options, [RIGHT_ROOM]: (room[RIGHT_ROOM] ?? CAGR_INSET_ROOM) + 24, [CAGR_TRIES]: 3 } as BarOptions, annotationPass);
+    const wider = layoutStandardBar(data, { ...options, [RIGHT_ROOM]: (room[RIGHT_ROOM] ?? CAGR_INSET_ROOM) + 24, [CAGR_TRIES]: 3 } as BarOptions, annotationPass, finish);
     if (!wider.refused && wider.labels.some((label) => cagrs.some((placed) => placed.labelId === label.id) && !label.hidden)) return wider;
   }
   if (!annotationPass && room[RIGHT_ROOM] !== 0 && cagrHidden) {
-    return layoutStandardBar(data, { ...options, [RIGHT_ROOM]: 0, [CAGR_TRIES]: 3 } as BarOptions, annotationPass);
+    return layoutStandardBar(data, { ...options, [RIGHT_ROOM]: 0, [CAGR_TRIES]: 3 } as BarOptions, annotationPass, finish);
   }
   if (annotated.bandNeed > 0 && (room[BAND_TRIES] ?? 0) < 2) {
     return layoutStandardBar(data, {
       ...options,
       [BAND_PAD]: (room[BAND_PAD] ?? 0) + Math.ceil(annotated.bandNeed),
       [BAND_TRIES]: (room[BAND_TRIES] ?? 0) + 1,
-    } as BarOptions, annotationPass);
+    } as BarOptions, annotationPass, finish);
   }
   pushAll(warnings, annotated.warnings);
-  return assembleBarGeometry(domain, area, scene, solved, annotated, local.placed, occupied, warnings, stated);
+  return finish(domain, area, scene, solved, annotated, local.placed, occupied, warnings, stated);
 }
 
 /* ------------------------------------------------------------------------ *

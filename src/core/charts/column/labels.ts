@@ -673,7 +673,7 @@ export function partialWords(domain: ColumnDomain, ci: number): string | undefin
 export function planColumnLabels(
   domain: ColumnDomain,
   area: ColumnArea,
-  scene: ColumnMarkGeometry,
+  scene: Pick<ColumnMarkGeometry, 'bars' | 'planEnds' | 'netLineEnd'>,
   requests: LabelRequest[],
   warnings: LintWarning[],
 ): IntegratedVariancePoint[] {
@@ -908,7 +908,7 @@ export function planColumnLabels(
  * still says which period it is and what it holds, beside its end ("P36
  * -241"), so the outlier the reader's eye goes to is named.
  */
-function extremeNameRequest(domain: ColumnDomain, area: ColumnArea, scene: ColumnMarkGeometry, requests: LabelRequest[]): void {
+function extremeNameRequest(domain: ColumnDomain, area: ColumnArea, scene: Pick<ColumnMarkGeometry, 'bars'>, requests: LabelRequest[]): void {
   // A date row thins its ticks by rhythm, and the period reads off it.
   if (domain.options.labels === false || !area.showCatRow || area.catPlan().dateNumeric || area.catPlan().keep.every(Boolean)) return;
   const extreme = scene.bars.reduce<BarPlace | undefined>((best, place) => (!best || Math.abs(place.v) > Math.abs(best.v) ? place : best), undefined);

@@ -382,13 +382,22 @@ export function unitWordsAsSigns(text: string): string {
 /** Does the measure name the unit, as written or as one of the engine's words for it ("percent" for "%")? */
 export function measureNamesUnit(unit: string, measure: string): boolean {
   measure = unitWordsAsSigns(plainText(measure));
-  const escaped = unitWordsAsSigns(unit.trim()).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+  const name = unitWordsAsSigns(unit.trim());
+  // For an ASCII word and ASCII text, the Unicode boundary matcher can only
+  // succeed if the word occurs. Preserve its full matching rules everywhere else.
+  if (/^[a-z0-9_]+$/i.test(name) && !/[^\x00-\x7f]/.test(measure)
+    && !measure.toLowerCase().includes(name.toLowerCase())) return false;
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
   return escaped.length > 0 && new RegExp(`(?<![\\p{L}\\p{N}_])${escaped}(?![\\p{L}\\p{N}_])`, 'iu').test(measure);
 }
 
-export function subtitleUnitClause(unit: string, measure: string): string {
+function isRatioUnit(unit: string): boolean {
   const normalized = unit.trim().toLowerCase();
-  if (normalized === 'x' || normalized === '×' || normalized === 'ratio') {
+  return normalized === 'x' || normalized === '×' || normalized === 'ratio';
+}
+
+export function subtitleUnitClause(unit: string, measure: string): string {
+  if (isRatioUnit(unit)) {
     if (/\bper\b/i.test(measure)) return '';
     return /\bratio\b/i.test(measure) ? ' (×)' : ' ratio (×)';
   }
@@ -403,11 +412,10 @@ export function subtitleUnitClause(unit: string, measure: string): string {
 export function frameRendersUnit(
   input: { subtitle?: Subtitle; unit?: string },
 ): boolean {
-  return Boolean(
-    input.subtitle &&
-      input.unit &&
-      (measureNamesUnit(input.unit, input.subtitle.measure) || subtitleUnitClause(input.unit, input.subtitle.measure).length > 0),
-  );
+  const { subtitle, unit } = input;
+  if (!subtitle || !unit) return false;
+  // Ordinary units appear in the measure or in the added unit clause.
+  return !isRatioUnit(unit) || !/\bper\b/i.test(subtitle.measure) || measureNamesUnit(unit, subtitle.measure);
 }
 
 /**

@@ -40,6 +40,18 @@ const roleData = (order: readonly number[]): RangeChartData => ({
 const net = (i: number): number => ROLES[i]![2] + ROLES[i]![3] + ROLES[i]![4];
 const sorted = ROLES.map((_, i) => i).sort((a, b) => net(b) - net(a) || a - b);
 
+const stackedOptions = (size: NonNullable<ColumnOptions['size']>): ColumnOptions => ({
+  size,
+  variant: 'stacked',
+  categoryLabels: 'staircase',
+  labels: { segment: false },
+  legend: 'top',
+  title: 'Order picking needs the most new staff over the next five years',
+  subtitle: { measure: 'Staff needed by role, regional logistics network', period: '2026–30' },
+  unit: 'thousands',
+  source: 'Illustrative workforce plan',
+});
+
 export const staircaseColumnFixtures: Fixture<RangeChartData, ColumnOptions>[] = [
   {
     id: 'staircase-labels-stacked',
@@ -47,17 +59,15 @@ export const staircaseColumnFixtures: Fixture<RangeChartData, ColumnOptions>[] =
     kind: 'example',
     tags: ['feature:options'],
     data: roleData(sorted),
-    options: {
-      size: { width: 960, height: 720 },
-      variant: 'stacked',
-      categoryLabels: 'staircase',
-      labels: { segment: false },
-      legend: 'top',
-      title: 'Order picking needs the most new staff over the next five years',
-      subtitle: { measure: 'Staff needed by role, regional logistics network', period: '2026–30' },
-      unit: 'thousands',
-      source: 'Illustrative workforce plan',
-    },
+    options: stackedOptions({ width: 960, height: 720 }),
+  },
+  {
+    id: 'staircase-labels-stacked-auto-height',
+    title: 'Stacked columns with staircase labels at automatic height',
+    kind: 'example',
+    tags: ['feature:options'],
+    data: roleData(sorted),
+    options: stackedOptions({ width: 878 }),
   },
   {
     id: 'staircase-labels-unsorted-fallback',

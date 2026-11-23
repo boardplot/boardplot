@@ -319,8 +319,8 @@ export interface BarMarkGeometry {
   rangeMarks: RangeMark[];
   /** Per category, its drawn bars or segments in series order. */
   bars: BarPlace[][];
-  anchorByCat: Map<Id, AnchorResolution>;
-  anchorBySeg: Map<string, AnchorResolution>;
+  anchorByCat: Map<Id, AnchorResolution> | undefined;
+  anchorBySeg: Map<string, AnchorResolution> | undefined;
   /** The net line's last edge and its row, where its label hangs. */
   netLineEnd: { x: number; ci: number } | undefined;
 }

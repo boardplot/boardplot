@@ -1,3 +1,4 @@
+import { requestMemo } from '../../layoutPlan';
 import { chartString } from '../../strings/scatter';
 import { emphasisWeight, strokeToken } from '../../theme';
 /**
@@ -11,7 +12,7 @@ import type { Rect } from '../../geometry';
 import { rectContains, rectsOverlap } from '../../geometry';
 import { ruleFormatter } from '../../numberSets';
 import { wrapText } from '../../text';
-import { labelCtx, PRIORITY, seatLeader, type LabelRequest, type SlotCandidate, type SolveCtx } from '../../label/solver';
+import { labelCtx, leaderPieces, PRIORITY, seatLeader, type LabelRequest, type SlotCandidate, type SolveCtx } from '../../label/solver';
 import { middleNearerOther, nameReadsAsOwn } from './nameReading';
 import type { Id } from '../../types/cell';
 import type { LintWarning, Paint, ShownTexts } from '../../types/scene';
@@ -878,10 +879,23 @@ function trendLabelRequest(env: ScatterEnv, area: ScatterPlotArea, geometry: Sca
   });
 }
 
+/** Coverage is tested against current obstacles. Only the exact segments of a drawn path repeat. */
+function scatterLeaderPieces(): typeof leaderPieces {
+  const bySteps = new Map<number, Map<string, ReturnType<typeof leaderPieces>>>();
+  return (path, steps = 8) => {
+    let paths = bySteps.get(steps);
+    if (!paths) bySteps.set(steps, paths = new Map());
+    let pieces = paths.get(path);
+    if (!pieces) paths.set(path, pieces = leaderPieces(path, steps));
+    return pieces;
+  };
+}
+
 /** The solver context the point labels and the annotation pass share. */
 export function scatterSolveCtx(env: ScatterEnv, area: ScatterPlotArea): SolveCtx {
   const { options, size, theme } = env;
   return labelCtx(theme, size, options, {
+    splitLeader: requestMemo(scatterSolveCtx, 'leader segments', scatterLeaderPieces),
     measure: env.measure,
     plot: area.plot,
     labelPad: 2,

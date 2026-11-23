@@ -266,7 +266,7 @@ export interface BarPlace {
 /** Phase 2 output. */
 export interface ColumnMarkGeometry {
   /** Inserts the already positioned stack segments in their original paint order. */
-  paintStack?: () => SceneNode[];
+  paintStack?: (draw?: boolean) => SceneNode[];
   /** In paint order, from the frame's own nodes on. */
   nodes: SceneNode[];
   axes: AxisGeometry[];

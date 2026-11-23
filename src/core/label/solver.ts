@@ -335,6 +335,8 @@ export interface LabelRequest {
 export type LabelOffset = { x?: number; y?: number };
 
 export interface SolveCtx {
+  /** Split a drawn leader into segments shared by private trials of this chart. */
+  splitLeader?: typeof leaderPieces;
   /** Internal: a host chart names the claims of the labels (claims/ids.ts). */
   [HOST_CLAIMS]?: HostClaims;
   density: LabelDensity;
@@ -435,7 +437,12 @@ function dropsFromRow(row: { mode: 'all' | 'alternate' | 'none'; eligible: Id[];
   return row.mode === 'none' ? !(row.keepEnds && (index === 0 || index === last)) : (last - index) % 2 !== 0;
 }
 
-export function solveLabels(requests: LabelRequest[], occupied: OccupiedIndex, ctx: SolveCtx): SolveResult {
+export function solveLabels(requests: LabelRequest[], occupied: OccupiedIndex, ctx: SolveCtx,
+  /** A discarded chart trial can stop on a definitive hidden label. Row retries and natural-seat probes do not report misses. */
+  onSinglePassHidden?: (label: PlacedLabel) => void,
+  /** The caller owns its index and can replace it if a computed row needs a retry. */
+  takeRowIndex?: (index: OccupiedIndex) => void,
+): SolveResult {
   // An authored move must not take a later label's seat: solve once without offsets on a copy, and keep those seats.
   if (ctx.labelOffsets && !ctx.naturalSeats && Object.keys(ctx.labelOffsets).length > 0) {
     const probe = createOccupiedIndex(ctx.plot);
@@ -444,7 +451,7 @@ export function solveLabels(requests: LabelRequest[], occupied: OccupiedIndex, c
     const natural = solveLabels(requests, probe, { ...ctx, labelOffsets: undefined });
     ctx = { ...ctx, naturalSeats: new Map(natural.placed.flatMap((label) => label.hidden ? [] : [[label.id, label.rect] as const])) };
   }
-  if (!ctx.valueRows?.length) return solveLabelPass(requests, occupied, ctx);
+  if (!ctx.valueRows?.length) return solveLabelPass(requests, occupied, ctx, onSinglePassHidden);
   const initial = occupied.snapshot();
   const pinned = new Set(requests.filter(req => req.pinnedSlot ?? ctx.pins[req.id]).map(req => req.id));
   // A row that gives up its full set keeps a pinned label, and under minimal density a label that density keeps (a highlighted value).
@@ -490,10 +497,14 @@ export function solveLabels(requests: LabelRequest[], occupied: OccupiedIndex, c
   }
   // Each row can move only from all to alternate to none. Every retry starts
   // before any label claim, so dropped neighbours cannot block or move a kept label.
+  let first = takeRowIndex ? occupied : undefined;
   for (;;) {
-    const attempt = createOccupiedIndex(ctx.plot, 'short-label-pass');
-    attempt.tickColumns = occupied.tickColumns;
-    for (const claim of initial) attempt.claim(claim.rect, claim.kind, claim.owner, claim.part, claim.polygon);
+    const attempt = first ?? createOccupiedIndex(ctx.plot, 'short-label-pass');
+    if (!first) {
+      attempt.tickColumns = occupied.tickColumns;
+      for (const claim of initial) attempt.claim(claim.rect, claim.kind, claim.owner, claim.part, claim.polygon);
+    }
+    first = undefined;
     const result = solveLabelPass(requests.map(req => dropped.has(req.id)
       ? { ...req, redundant: true, suppressedAs: 'density' as const } : req), attempt, ctx);
     const byId = new Map(result.placed.map(label => [label.id, label]));
@@ -524,7 +535,8 @@ export function solveLabels(requests: LabelRequest[], occupied: OccupiedIndex, c
       const decision = decisionById.get(id);
       if (decision) decision.reason = row.reason;
     }
-    for (const claim of attempt.snapshot().slice(initial.length)) occupied.claim(claim.rect, claim.kind, claim.owner, claim.part, claim.polygon);
+    if (takeRowIndex) takeRowIndex(attempt);
+    else for (const claim of attempt.snapshot().slice(initial.length)) occupied.claim(claim.rect, claim.kind, claim.owner, claim.part, claim.polygon);
     return result;
   }
 }
@@ -534,7 +546,7 @@ function anyHit(occupied: OccupiedIndex, rect: Rect, pad: number, test: (claim: 
   return occupied.some ? occupied.some(rect, pad, test) : occupied.hitsWhich(rect, pad).some(test);
 }
 
-function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: SolveCtx): SolveResult {
+function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: SolveCtx, onHidden?: (label: PlacedLabel) => void): SolveResult {
   const placed: PlacedLabel[] = [];
   const decisions: PlaceDecision[] = [];
   const warnings: LintWarning[] = [];
@@ -556,13 +568,14 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
   const order = [...owned].sort(labelOrder(pinOf, ctx.focus));
 
   // Placed leaders of leaderAvoidsLabels requests: no later label sits on one.
+  const splitLeader = ctx.splitLeader ?? leaderPieces;
   const leaderRuns: [Point, Point][] = [];
   // An authored move must not push another label away. Its leader claims nothing until every label of the pass has a seat.
   const moved: PlacedLabel['id'][] = [];
   // The gutter boxes a moved label claims at its leader's end: its own leader may cross them.
   const ownRooms = new Map<PlacedLabel['id'], Rect>();
   const keepOffLeader = (label: PlacedLabel, req: LabelRequest): void => {
-    if (req.leaderAvoidsLabels && label.leader && !moved.includes(label.id)) leaderRuns.push(...leaderPieces(label.leader.d, 64));
+    if (req.leaderAvoidsLabels && label.leader && !moved.includes(label.id)) leaderRuns.push(...splitLeader(label.leader.d, 64));
   };
   const onLeader = (rect: Rect, padding: number): boolean => leaderRuns.some(([a, b]) => segmentHitsRect(a, b, rect, padding));
   for (const queued of order) {
@@ -815,6 +828,7 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
         hidden: reason,
         ...(markValue && reason === 'collision' ? { owed: true as const } : {}),
       });
+      onHidden?.(placed[placed.length - 1]!);
       decisions.push({
         labelId: req.id,
         strategy: 'candidatesOccupied',
@@ -900,12 +914,12 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
           suggest: slots.join(', '),
         });
       } else if (blockAt(index, 0) === 'free' && (req.leaderClear !== 'includingPins' || !leaderFor(req.candidates[index]!) ||
-        !leaderPieces(leaderFor(req.candidates[index]!)!.d).some(([a, b]) => occupied.hitsWhich(pieceBox(a, b), 0).some(o => o.kind === 'label' && segmentHitsRect(a, b, o.rect))))) {
+        !splitLeader(leaderFor(req.candidates[index]!)!.d).some(([a, b]) => occupied.hitsWhich(pieceBox(a, b), 0).some(o => o.kind === 'label' && segmentHitsRect(a, b, o.rect))))) {
         const cand = settled(req.candidates[index]!, 0);
         const label = finalize(base, req, cand, true, darkInk, lightInk);
         placed.push(label);
         occupied.claim(cand.rect, 'label', req.owner, TOTAL_KINDS.has(req.kind) ? TOTAL_PART : undefined);
-        if (req.leaderClear === 'includingPins' && label.leader && !moved.includes(req.id)) for (const [a, b] of leaderPieces(label.leader.d)) occupied.claim(pieceBox(a, b), 'label', req.owner);
+        if (req.leaderClear === 'includingPins' && label.leader && !moved.includes(req.id)) for (const [a, b] of splitLeader(label.leader.d)) occupied.claim(pieceBox(a, b), 'label', req.owner);
         keepOffLeader(label, req);
         decisions.push({
           labelId: req.id,
@@ -950,10 +964,28 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
       refusedPin === undefined ? reason : `pin '${refusedPin}' blocked; ${reason}`;
     const tried: SlotId[] = [];
     let done = false;
-    const crossesLabel = (leader: PlacedLabel['leader']): boolean => Boolean(req.leaderClear || req.leaderAvoidsLabels) && leader !== undefined &&
-      leaderPieces(leader.d, req.leaderAvoidsLabels ? 64 : 8).some(([a, b]) => occupied.hitsWhich(pieceBox(a, b), 0).some((o) => (o.kind === 'label' || req.leaderClearsAxis && o.kind === 'axis') && segmentHitsRect(a, b, o.rect)));
+    const crossesLabel = (leader: PlacedLabel['leader']): boolean => {
+      if ((!req.leaderClear && !req.leaderAvoidsLabels) || !leader) return false;
+      const pieces = splitLeader(leader.d, req.leaderAvoidsLabels ? 64 : 8);
+      const obstacle = (claim: OccupiedClaim) => claim.kind === 'label' || (req.leaderClearsAxis === true && claim.kind === 'axis');
+      if (req.owner.pointId !== undefined && pieces.length > 1) {
+        // A bubble leader often crosses empty space. Query its whole run once, then
+        // check the same drawn pieces against the few label rectangles it can reach.
+        let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
+        for (const [a, b] of pieces) {
+          left = Math.min(left, a.x, b.x); right = Math.max(right, a.x, b.x);
+          top = Math.min(top, a.y, b.y); bottom = Math.max(bottom, a.y, b.y);
+        }
+        const near = occupied.hitsWhich({ x: left - 1, y: top - 1, w: right - left + 2, h: bottom - top + 2 }, 0, claim => !obstacle(claim));
+        if (!near.length) return false;
+        if (!near.some(claim => claim.polygon)) {
+          return pieces.some(([a, b]) => near.some(claim => segmentHitsRect(a, b, claim.rect)));
+        }
+      }
+      return pieces.some(([a, b]) => anyHit(occupied, pieceBox(a, b), 0, claim => obstacle(claim) && segmentHitsRect(a, b, claim.rect)));
+    };
     const claimLeader = (label: PlacedLabel): void => {
-      if (req.leaderClear && label.leader && !moved.includes(req.id)) for (const [a, b] of leaderPieces(label.leader.d)) occupied.claim(pieceBox(a, b), 'label', req.owner);
+      if (req.leaderClear && label.leader && !moved.includes(req.id)) for (const [a, b] of splitLeader(label.leader.d)) occupied.claim(pieceBox(a, b), 'label', req.owner);
       keepOffLeader(label, req);
     };
     const crowds = (cand: SlotCandidate) => req.labelGap !== undefined &&
@@ -1073,7 +1105,7 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
   for (const id of moved) {
     const label = placed.find((entry) => entry.id === id);
     if (!label?.leader) continue;
-    const pieces = leaderPieces(label.leader.d);
+    const pieces = splitLeader(label.leader.d);
     if (pieces.some(([a, b]) => occupied.hitsWhich(pieceBox(a, b), 0).some((o) => o.kind === 'label' && !sameRect(o.rect, label.rect) && !(ownRooms.has(id) && sameRect(o.rect, ownRooms.get(id)!)) && segmentHitsRect(a, b, o.rect)))) {
       delete label.leader;
       warnings.push({

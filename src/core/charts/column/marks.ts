@@ -10,6 +10,7 @@ import { stackConnectors } from '../band/connectors';
 import { sk } from '../band/stacks';
 import { categoryBreakGlyph, layoutValueAxis } from '../../axis';
 import { type Rect } from '../../geometry';
+import { isCachedTextMeasurer } from '../../text';
 import type { OccupiedIndex } from '../../label/occupied';
 import { bandedIntervalTicks } from '../../intervalTicks';
 import { strokeToken, dashToken, contrastInkPaint, effectiveFill, hatchGroundPaint, resolveSurface } from '../../theme';
@@ -31,6 +32,7 @@ import {
   type NormSer,
 } from './model';
 import { cellValueFmt, contentOf, shareTextOf } from './domain';
+import type { ColumnStaircaseMemo } from './plot';
 import { rangeWhisker } from '../band/rangeWhisker';
 import { anomalyRuleLines, drawAnomalyRules, emitAnomalyFlag } from './anomaly';
 import { pushAll } from '../../arrays';
@@ -143,8 +145,63 @@ function flagMarkerAt(
 
 type BarGeometry = Pick<ColumnMarkGeometry, 'rangeMarks' | 'bars' | 'subCenters' | 'segEdges' | 'flagMarkers'> & {
   rangeNodes: SceneNode[];
-  paintSegments?: () => SceneNode[];
+  paintSegments?: (draw: boolean) => SceneNode[];
 };
+
+export function stackSegmentRect(x: number, w: number, y: ColumnArea['y'], start: number, end: number): Rect {
+  return { x, y: y(Math.max(start, end)), w, h: Math.max(Math.abs(y(start) - y(end)), 0.5) };
+}
+
+/** The top of each staircase band when only the vertical scale changes. */
+export function stackPaddingProbe(domain: ColumnDomain, area: ColumnArea, memo?: ColumnStaircaseMemo) {
+  const atPad = memo?.plotAtPad;
+  if (!atPad || atPad.plot !== area.frame.plot || !memo?.frame || domain.variant !== 'stacked'
+    || domain.activeBreak || domain.anomaly || domain.annList.length || domain.refSeries.length
+    || domain.netLineOn || domain.connectorsOn || area.ruleH || (area.intervalTicks && area.showCatRow)
+    || domain.cats.some(c => c.partial || c.breakAfter || c.role === 'total')
+    || domain.dataSeries.some(s => s.vals.some(val => val.range))
+    || memo.frame.claims.some(c => c.kind !== 'frame' && c.kind !== 'legend' && c.kind !== 'reserved')) return;
+  const { band } = area;
+  const centers = domain.cats.map((_, i) => band.center(i));
+  // Y tick labels end eight pixels left of the plot, including when the scale thins ticks.
+  if (centers.length < 2 || !(band.step > 0 && Number.isFinite(band.step))
+    || centers.some((cx, i) => !Number.isFinite(cx) || (i > 0 && cx < centers[i - 1]!)
+      || (domain.va.show && cx - band.step / 2 < area.plot.x))) return;
+  // A linear stack's highest segment is the topmost obstacle in its x-span. A net tick
+  // reaches into its neighbour, so resolve its separate span before comparing heights.
+  const half = band.step / 2;
+  const span = (x: number, w: number, i: number) => {
+    const left = centers[i]! - half;
+    return left + 2 * half > x && x + w > left;
+  };
+  if (!(domain.dLo <= 0 && domain.dHi > domain.dLo) || domain.posTopP.some(v => v > domain.dHi)
+    || !centers.every((_, i) => span(area.plot.x, area.plot.w, i))) return;
+  const positive = centers.map(() => -Infinity);
+  const net = centers.map(() => -Infinity);
+  for (const [j, stack] of domain.stacks.entries()) {
+    const x = band.position(j);
+    const top = stack.positive;
+    const tick = netInsideStack(domain, j) ? netTotalBounds(x, band.bandwidth, 0) : undefined;
+    for (let i = 0; i < centers.length; i++) {
+      if (top > 0 && span(x, band.bandwidth, i)) positive[i] = Math.max(positive[i]!, top);
+      if (tick && span(tick.x, tick.w, i)) net[i] = Math.max(net[i]!, domain.stackTotals[domain.cats[j]!.id]!);
+    }
+  }
+  // atPad writes the minimum on its trial frame, never the public frame.
+  const scratch = { ...area.frame, frame: { ...area.frame.frame } };
+  return (pad?: number, scaled?: Pick<ColumnArea, 'y' | 'y0' | 'plot'>) => {
+    const { y, y0, plot } = scaled ?? (pad === undefined ? area : atPad.at(scratch, pad));
+    // The ordinary query starts at -1e5. All relevant marks must lie above that cut
+    // numerically, with rounding smaller than the baseline's half-pixel thickness.
+    if (!(plot.y >= 0 && plot.y + plot.h < 1e7)) return;
+    return positive.map((top, i) => Math.min(y0 - 0.5, top > 0 ? y(top) : Infinity,
+      net[i] === -Infinity ? Infinity : y(net[i]!) - 0.7));
+  };
+}
+
+export function baselineBounds(plot: Rect, y0: number): Rect {
+  return { x: plot.x, y: y0 - 0.5, w: plot.w, h: 1 };
+}
 
 /** The columns (grouped) or the stack segments, with their range whiskers and flag markers. */
 function columnBars(
@@ -193,7 +250,8 @@ function columnBars(
       shows: { value: texts.shown },
     });
   };
-  cats.forEach((c, ci) => {
+  let rectIndex = 0;
+  const buildBars = (claimed?: Rect[]) => cats.forEach((c, ci) => {
     const bx = band.position(ci);
     const bw = band.bandwidth;
     const stack = stacks[ci]!;
@@ -244,10 +302,10 @@ function columnBars(
         if (typeof val.labelOverride === 'string') bars.push({ s, si, c, ci, v, rect: { x: bx, y: y(v0), w: bw, h: 0 } });
         return;
       }
-      const rect: Rect = { x: bx, y: y(Math.max(v0, v1)), w: bw, h: Math.max(Math.abs(y(v0) - y(v1)), 0.5) };
+      const rect = claimed ? claimed[rectIndex++]! : stackSegmentRect(bx, bw, y, v0, v1);
       const bar = { s, si, c, ci, v, rect };
-      if (deferSegments) claims.claim(rect, 'mark', owner, 'segment');
-      else paintSegment(bar, nodes, claims);
+      if (!deferSegments) paintSegment(bar, nodes, claims);
+      else if (!claimed) claims.claim(rect, 'mark', owner, 'segment');
       segs.push({ seriesId: s.id, rect, nodeId });
       bars.push(bar);
     });
@@ -260,9 +318,28 @@ function columnBars(
       segments: segs,
     });
   });
-  const paintSegments = deferSegments ? () => {
+  // Staircase padding consumes only the obstacles. Keep bar records and label lookups
+  // for the selected pass. Whiskers and anomaly furniture need the ordinary preparation.
+  let claimed: Rect[] | undefined;
+  if (deferSegments && !anomaly && domain.annList.length === 0 && !cats.some(c => c.partial)
+    && isCachedTextMeasurer(domain.measure) && dataSeries.every(s => s.vals.every(val => !val.range))) {
+    claimed = [];
+    for (let ci = 0; ci < stacks.length; ci++) {
+      const x = band.position(ci);
+      const segments = stacks[ci]!.segments;
+      for (let si = 0; si < segments.length; si++) {
+        const seg = segments[si];
+        if (!seg || seg.value === 0) continue;
+        const rect = stackSegmentRect(x, band.bandwidth, y, seg.start, seg.end);
+        claimed.push(rect);
+        claims.claim(rect, 'mark', { seriesId: dataSeries[si]!.id, categoryId: cats[ci]!.id }, 'segment');
+      }
+    }
+  } else buildBars();
+  const paintSegments = deferSegments ? (draw: boolean) => {
+    if (claimed) buildBars(claimed);
     const segments: SceneNode[] = [];
-    for (const bar of bars) if (bar.v !== 0) paintSegment(bar, segments);
+    if (draw) for (const bar of bars) if (bar.v !== 0) paintSegment(bar, segments);
     return segments;
   } : undefined;
   return { rangeMarks, rangeNodes, bars, subCenters, segEdges, flagMarkers, paintSegments };
@@ -539,6 +616,11 @@ function netTotalTicks(domain: ColumnDomain, area: ColumnArea, nodes: SceneNode[
   });
 }
 
+export function netTotalBounds(x: number, w: number, yy: number): Rect {
+  const x1 = x - 2;
+  return { x: x1, y: yy - 0.7, w: x + w + NET_TICK_REACH - x1, h: 1.4 };
+}
+
 /** The tick at a mixed-sign stack's net, across its column and reaching past it on the right (combo draws it too). */
 export function netTotalTick(theme: Theme, categoryId: Id, x: number, w: number, yy: number, nodes: SceneNode[], claims: OccupiedIndex): void {
   const x1 = x - 2;
@@ -546,7 +628,7 @@ export function netTotalTick(theme: Theme, categoryId: Id, x: number, w: number,
   // Its own owner: no segment value of the column may sit across it.
   const owner = { categoryId, seriesId: '__netTotal' };
   nodes.push({ t: 'line', id: `netTotal:${categoryId}`, x1, y1: yy, x2, y2: yy, stroke: { token: 'markInk' }, width: strokeToken(theme, 'rule'), owner, part: 'netTotal' });
-  claims.claim({ x: x1, y: yy - 0.7, w: x2 - x1, h: 1.4 }, 'mark', owner, 'netTotal');
+  claims.claim(netTotalBounds(x, w, yy), 'mark', owner, 'netTotal');
 }
 
 /** How far a net total's tick reaches past its column, where its label starts. */
@@ -579,6 +661,8 @@ export function layoutColumnMarks(
   claims: OccupiedIndex,
   /** How far a plan tick behind its column reaches past each side (planTickEnds); undefined draws it in front. */
   planEnds?: number,
+  measureSegments = false,
+  paintStaircase = false,
 ): ColumnMarkGeometry {
   const { theme, size, va, anomaly } = domain;
   const { frame, plot, y, y0 } = area;
@@ -623,7 +707,7 @@ export function layoutColumnMarks(
   nodes.push(baseline('axis:baseline', Math.max(0.6, plot.x), Math.min(size.width - 0.6, plot.x + plot.w)));
   // The line is 1px of ink centred on y0; claiming more than the ink pushes
   // bottom-segment labels out by a fraction (see insideCenterY).
-  claims.claim({ x: plot.x, y: y0 - 0.5, w: plot.w, h: 1 }, 'axis', {});
+  claims.claim(baselineBounds(plot, y0), 'axis', {});
   // categoryAxis.dateTicks: a short tick over the name row at every calendar interval.
   if (area.intervalTicks && area.showCatRow) bandedIntervalTicks(theme, domain.cats, area.intervalTicks, (ci) => area.band.center(ci), area.catRowY, nodes, claims);
   const ribbons = domain.ribbonsOn ? columnRibbons(domain, paints, area, nodes) : [];
@@ -631,7 +715,7 @@ export function layoutColumnMarks(
   const marks: ColumnMarks = { bars: [], referenceTicks: [], ...(ribbons.length > 0 ? { ribbons } : {}) };
   const barsAt = nodes.length;
   // A staircase retry needs the rectangles of ordinary segments before it needs their ink or value strings.
-  const deferSegments = area.stairTop !== undefined && domain.variant !== 'grouped' && !domain.activeBreak;
+  const deferSegments = (measureSegments || area.stairTop !== undefined && !paintStaircase) && domain.variant !== 'grouped' && !domain.activeBreak;
   const { rangeNodes, paintSegments, ...bars } = columnBars(domain, paints, area, marks, nodes, claims, deferSegments);
   if (rangeNodes.length > 0) {
     pushAll(nodes, rangeNodes);
@@ -686,7 +770,7 @@ export function layoutColumnMarks(
   const scene = { nodes, axes, marks, ...bars, refTickYs, behindTickYs, planEnds, netLineEnd };
   if (!paintSegments) return scene;
   const at = barsAt + behindTicks.length;
-  return { ...scene, paintStack: () => nodes.slice(0, at).concat(paintSegments(), nodes.slice(at)) };
+  return { ...scene, paintStack: (draw = true) => nodes.slice(0, at).concat(paintSegments(draw), nodes.slice(at)) };
 }
 
 
