@@ -693,7 +693,7 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
     }
 
     // Without a pin, an empty seat list reaches the collision receipt directly.
-    if (!pin && first === undefined) {
+    if (pin === undefined && first === undefined) {
       hide('collision', collisionReason(req, ownershipLimited));
       continue;
     }
