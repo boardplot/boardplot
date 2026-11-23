@@ -762,7 +762,7 @@ function layoutComboFramePass(
         area, geometry: marks,
         // This pass returns directly into the retry. Its placed labels and claims have one owner.
         seats: env.measure === defaultMeasurer && !(HOST_CLAIMS in options) && !domain.secondaryActive
-          && !domain.anomaly && !options.annotations?.length && options.categoryLabels !== 'staircase'
+          && !domain.anomaly && !domain.options.annotations?.length && options.categoryLabels !== 'staircase'
           && !area.forecast.length && !domain.cats.some(category => category.partial)
           ? { frameClaims: settled.framed.claims, authoredCount: authoredFootnoteCount(domain.options),
             occupied, solved, warnings: warnings.slice(labelWarningStart) } : undefined,

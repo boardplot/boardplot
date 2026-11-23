@@ -22,7 +22,8 @@ export const comboCore: ChartCore<ChartData, BaseOptions, ComboMarks, ComboDeriv
   layout: (data, options) => withEventsDescribed(layoutCombo(prepareFractionData(data), options as ComboOptions | undefined), options),
   notesBoundByWidth(data, options, geometry, noted) {
     if (options.measure && options.measure !== defaultMeasurer || (options as InternalFootnoteOptions).footnotesOff
-      || options.annotations?.length || options.labels !== undefined || options.labelPlacements || options.labelOffsets
+      || options.annotations?.length || (options as ComboOptions).averageMarker
+      || options.labels !== undefined || options.labelPlacements || options.labelOffsets
       || noted.some(label => label.kind !== 'segment' || !label.noted || !label.noteText || label.slots.length > 0)
       || data.series.some(s => s.role === 'reference' || s.kind === 'area' || s.values.some(v => typeof v !== 'number'))) return false;
     // A total may speak for the only nonzero part of a stack.
