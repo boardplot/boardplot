@@ -1342,9 +1342,19 @@ function layoutColumnPass(
   const inPanel = panelTypeClass(options) !== undefined;
   seatDigits(digits, solved, occupied, solveCtx, warnings, paintWarningRules, (id) => !inPanel && !pointedAt.has(id),
     [...scene.nodes, ...annotated.nodes, ...(lane?.nodes ?? [])]);
-  const unprinted = new Map([...noted.items].filter(([id]) => !pointedAt.has(id) &&
-    // The note names what is not drawn: a sliver a pin placed is drawn, and so is one whose total prints its value.
-    solved.placed.some((label) => label.id === id && (label.hidden === 'collision' || (label.hidden !== undefined && label.printedIn === undefined && noted.slivers.has(id))))));
+  const unprinted = new Map<string, string>();
+  if (noted.items.size) {
+    const hiddenIds = new Set<string>();
+    for (const label of solved.placed) {
+      if (label.hidden === 'collision' || (label.hidden !== undefined && label.printedIn === undefined && noted.slivers.has(label.id))) {
+        hiddenIds.add(label.id);
+      }
+    }
+    // Keep the note in data order, including only values that no callout names.
+    for (const [id, text] of noted.items) {
+      if (hiddenIds.has(id) && !pointedAt.has(id)) unprinted.set(id, text);
+    }
+  }
   const geometry = assembleColumnGeometry(domain, area, scene, solved, annotated, tierState, pointFont, growthPoints, ratioTierResult, occupied, warnings, paintWarningRules, lane, measuring);
   if (crossed) geometry.scene = raiseOverRules(geometry.scene, crossed);
   if (measuring) measuredColumnHeights.add(geometry);
