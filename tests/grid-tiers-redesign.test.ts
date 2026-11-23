@@ -285,8 +285,8 @@ describe('grid anchors.categories across panel types', () => {
 
   // On a phone, a line panel's end label pulled its last point in, and aligning the column and variance
   // panels to it took up to 33 px off their plots on the right; each panel label also started at its own
-  // tick-label width, 15 px apart.
-  it('keeps one plot, one panel-label x and the line points on the column centres at 375 px', () => {
+  // tick-label width, 15 px apart. With plotEdges alone, the line points sat up to 30 px beside their columns.
+  it.each([{ plotEdges: 'all', categories: 'all' }, { plotEdges: 'all' }])('keeps one plot, one panel-label x and the line points on the column centres at 375 px (%o)', (anchors) => {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug'].map((label) => ({ id: label.toLowerCase(), label }));
     const revenue = [52000, 61000, 58000, 66000, 71000, 69000, 76000, 80000];
     const grid = layoutResolvedRequest(resolveChartRequest({
@@ -304,7 +304,7 @@ describe('grid anchors.categories across panel types', () => {
           { id: 'basket', label: 'Basket', values: [3120, 3180, 3050, 3290, 3340, 3210, 3420, 3480] },
         ] }, options: { unit: '$', valueAxis: { show: true } } },
       ] },
-      options: { sharedAxis: 'category', sharedScale: false, anchors: { plotEdges: 'all', categories: 'all' }, size: { width: 375, height: 640 } },
+      options: { sharedAxis: 'category', sharedScale: false, anchors, size: { width: 375, height: 640 } },
     })) as Geometry;
     expect(grid.refused).toBeUndefined();
     const edges = plotEdges(grid);

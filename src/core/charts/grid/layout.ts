@@ -1433,13 +1433,15 @@ function layoutAuthoredGrid(
     if (scope === 'row') continue;
     children = alignPlotEdges(children, scope, sharedAnchors, warnings, theme);
   }
-  if (options.anchors?.categories && options.anchors.categories !== 'row') {
-    const moved = Math.max(0, maxOf(scopeGroups(children, options.anchors.categories).map(group => alignCategoryPanels(group, theme))));
+  // A shared category axis aligns its centres down each column, as the plain stacked grid does.
+  const categoryScope = options.anchors?.categories ?? (options.sharedAxis === 'category' ? 'column' : undefined);
+  if (categoryScope && categoryScope !== 'row') {
+    const moved = Math.max(0, maxOf(scopeGroups(children, categoryScope).map(group => alignCategoryPanels(group, theme))));
     // Column, line, combo and variance panels move their categories inside the plot, so the
     // edges hold. Another type moves its plot: the centres win, and the edge anchors it moved
     // are no longer exact, so they leave sharedAnchors.
     if (moved > 0.01) for (const key of Object.keys(sharedAnchors)) if (key.startsWith('plotEdges:')) delete sharedAnchors[key];
-    if (moved > 0.01 && options.anchors.plotEdges) {
+    if (moved > 0.01 && options.anchors?.plotEdges) {
       warnings.push({
         code: 'grid-anchor-incompatible',
         severity: 'warn',
