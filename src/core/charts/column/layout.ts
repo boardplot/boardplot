@@ -47,7 +47,7 @@ import type { TickBandDerived } from '../../label/tickRow';
 import { accessibleTitle } from '../../normalize/shared';
 import type { RangeMark } from '../../rangeRules';
 import { addRatioTierRequests, finalizeRatioTier, ratioTierA11y, ratioTierSpacingWarnings, type FinalizedRatioTier, type RatioTierGeometry, type RatioTierRequestState } from '../../ratioTier';
-import { isCachedTextMeasurer, type FontSpec } from '../../text';
+import { defaultMeasurer, isCachedTextMeasurer, type FontSpec } from '../../text';
 import { colorblindPaint, joinHatchPeers, panelTypeClass, emphasisWeight, strokeToken } from '../../theme';
 import type { AnchorRef } from '../../types/annotations';
 import { cellMeta, type Id } from '../../types/cell';
@@ -74,6 +74,7 @@ import { nextStaircase, STAIRCASE, probeStaircasePadding, runStaircase, seatStai
 import type { Theme } from '../../types/theme';
 import { pushAll } from '../../arrays';
 import { freedChromeOf, partNeedOf, staticFrame } from '../../footer';
+import { HOST_CLAIMS } from '../../claims/ids';
 
 /** Route straight leaders around printed boxes, or cut their blocked runs, with the shared gap. */
 function clearStraightLeaders(labels: PlacedLabel[], theme: Theme): void {
@@ -1255,7 +1256,15 @@ function layoutColumnPass(
   const digits: DigitSeats = { requests: [], slivers: [], warningAt: 0 };
   const pointFont = planColumnValueLabels(domain, paints, area, scene, requests, warnings, noted, digits);
   const labelWarnings: LintWarning[] = [];
-  const growthPoints = planColumnLabels(domain, area, scene, requests, labelWarnings);
+  // When every segment is suppressed, an omitted total leaves that column with no number.
+  // Digit seats, replacement values and annotations can still give a suppressed segment a number.
+  const probeStack = probeAxis && options.valueAxis?.show === undefined && panelTypeClass(options) === undefined
+    && domain.variant === 'stacked' && domain.measure === defaultMeasurer && !(HOST_CLAIMS in options)
+    && !area.tier && !domain.annList.length && !domain.refSeries.length && !domain.anomaly
+    && options.categoryLabels !== 'staircase' && !domain.cats.some(c => c.partial)
+    && !digits.requests.length && !options.labelPlacements && !options.labelOffsets
+    && requests.every(req => req.kind !== 'segment' || (req.redundant && !req.printedIn && req.pinnedSlot === undefined));
+  const growthPoints = planColumnLabels(domain, area, scene, requests, labelWarnings, probeStack ? () => { throw AXIS_FALLBACK; } : undefined);
   const solveCtx: SolveCtx = labelCtx(theme, size, options, {
     density: domain.density,
     measure: domain.measure,

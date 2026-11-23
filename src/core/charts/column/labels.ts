@@ -676,6 +676,7 @@ export function planColumnLabels(
   scene: Pick<ColumnMarkGeometry, 'bars' | 'planEnds' | 'netLineEnd'>,
   requests: LabelRequest[],
   warnings: LintWarning[],
+  onOmittedTotal?: () => void,
 ): IntegratedVariancePoint[] {
   const { measure, highlights, cats, gtContent, stackTotals, variant, posTopP, negBotP, pyRef, pyGrowth, totalFmt } = domain;
   const { strongFont, tickFont, band, y } = area;
@@ -759,6 +760,7 @@ export function planColumnLabels(
           return clear < candidate.rect.y - 0.5 ? [candidate, { ...candidate, slot: 'aboveNeighbours', rect: { ...candidate.rect, y: clear }, penalty: candidate.penalty + 1, reach: 4 * lineBox(totalFont) + 2 * 4 }] : [candidate];
         });
     const skipped = thinned && !net && ci % 2 !== (cats.length - 1) % 2 && !highlights.has(c.id);
+    if (skipped && onOmittedTotal && !linked.has(`grandTotal:${c.id}`) && scene.bars.some(bar => bar.c.id === c.id)) onOmittedTotal();
     requests.push({
       id: `grandTotal:${c.id}`,
       kind: 'grandTotal',
