@@ -8,6 +8,8 @@ import { hasLabelPosition, positionBarLabel } from '../band/labelPosition';
  */
 
 import { drawnStroke } from '../../curve';
+import { defaultMeasurer } from '../../text';
+import { HOST_CLAIMS } from '../../claims/ids';
 import { sideAwayFrom, type Rect } from '../../geometry';
 import { preparePolyline, type PolylineQueries } from '../../polyline';
 import { categoryLineAlign, ROTATED_NAME_AIR, rotatedClaimRect, verticalNameRect, yearRowRequests } from '../../label/categoryRow';
@@ -657,7 +659,7 @@ export function planComboLabels(
   geometry: ComboMarkGeometry,
   paints: ComboPaints,
   warnings: LintWarning[],
-): LabelRequest[] {
+): LabelRequest[] | undefined {
   const { frame, labelFont, band } = area;
   const rightAxisActive = domain.rightTicks.length > 0;
   // Each authored title sits over its own tick column.
@@ -686,6 +688,14 @@ export function planComboLabels(
     return lineYsByCat[ci]!;
   };
   grandTotalLabels(env, domain, area, paints, requests, lineYsAt, strokes);
+  // A total omitted by the row cannot state the scale. Select the visible axis
+  // before planning line labels, unless an earlier staircase or period retry can win.
+  if (!domain.showPrimaryAxis && domain.options.valueAxis?.show === undefined
+    && domain.options.categoryLabels !== 'staircase' && !domain.cats.some(category => category.partial)
+    && !domain.options.annotations?.length && !(HOST_CLAIMS in domain.options) && env.measure === defaultMeasurer
+    && requests.some(request => request.kind === 'grandTotal' && request.redundant
+      && request.suppressedAs === 'density' && request.owed && !request.printedIn)) return undefined;
+
   if (hasLabelPosition(domain.options)) for (let i = 0; i < requests.length; i++) {
     const request = requests[i]!;
     const first = request.candidates[0];

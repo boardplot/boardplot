@@ -566,6 +566,7 @@ function layoutComboFramePass(
   const anomalyMarks = domain.anomaly ? comboAnomalyMarks(env, domain, domain.anomaly, area, geometry) : undefined;
   commitClaims(occupied, geometry.claims);
   const requests = planComboLabels(env, domain, area, geometry, paints, warnings);
+  if (!requests) return layoutComboPass(data, { ...options, [TOTALS_AXIS]: true } as ComboOptions, gutterOverride);
   const stair = area.stairTop === undefined ? undefined : seatStaircase({
     categories: domain.cats, band: area.band, top: area.stairTop, left: area.plot.x, right: area.plot.x + area.plot.w,
     floor: area.y0, above: domain.options.labels !== false ? area.gtH + 4 : 0, font: area.tickFont, measure: env.measure,
