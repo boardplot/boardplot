@@ -258,6 +258,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | events-dashboard | example | Event markers on a dashboard tile: numbers on the chart, titles in the key |
 | cohort-layers | example | The active base by acquisition cohort, oldest at the bottom |
 | staircase-labels-stacked | example | Staircase category labels: 16 sorted stacked columns with long names and two negative segments |
+| staircase-labels-stacked-auto-height | example | Stacked columns with staircase labels at automatic height |
 | staircase-labels-unsorted-fallback | torture | Torture: staircase labels over unsorted columns fall back to the category row with a warning |
 | integrated-variance-no-growth | torture | Integrated PY ticks without growth arrows (labels.growth false) |
 | series-names-left-edge | example | Stacked series named left of the first column instead of in a legend |
