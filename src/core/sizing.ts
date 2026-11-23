@@ -1124,6 +1124,12 @@ function grownForNotes<D, O extends ChartOptions, M extends object, DV extends o
     ?? resolveTargetSize(options?.target ?? DEFAULT_TARGET, options?.size);
   const owes = (layout: LayoutResult<M, DV>) => !layout.refused && layout.labels.some(notedForSize);
   if (constraints.fixed.height || panelTypeClass(options) !== undefined || !owes(first)) return first;
+  // Every taller full frame must still name these values. Neither an empty
+  // note nor a lower count is reachable on the growth ladder.
+  if (!first.refused && options && definition.notesBoundByWidth && !compact && options.mode !== 'compact'
+    && !atHardMinimum(options) && (!staticFrame.pinned || staticFrame.countable)
+    && fitsSize(first.size, declaredSizing(definition, options))
+    && definition.notesBoundByWidth(data, options, first, first.labels.filter(notedForSize))) return first;
   const width = first.size.width;
   // The grown height is the chart's natural height, as grownForFurniture records it: `measure` then names the height that draws.
   const at = (height: number) => {
