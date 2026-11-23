@@ -330,6 +330,23 @@ describe('grid anchors.categories across panel types', () => {
     expect(grid.warnings.map((warning) => warning.code)).not.toContain('grid-anchor-incompatible');
   });
 
+  // An area keeps room outside its plot for its edge labels, and that room follows the category inset:
+  // under the shared axis alone, an area over a column lost 37 px of its plot to the inset.
+  it('leaves an area panel over a column panel on the shared plot edges', () => {
+    const regions = ['North America', 'Eastern Europe', 'Southern Europe', 'Western Europe', 'Northern Europe', 'Latin America and Caribbean']
+      .map((label, index) => ({ id: `r${index}`, label }));
+    const panel = (id: string, type: string, options: Record<string, unknown>) =>
+      ({ id, type, data: { categories: regions, series: [{ id, label: id, values: [20, 24, 28, 32, 36, 40] }] }, options: { valueAxis: { show: true }, ...options } });
+    const grid = layoutResolvedRequest(resolveChartRequest({
+      type: 'grid',
+      data: { panels: [panel('c', 'column', {}), panel('l', 'line', { variant: 'area' })] },
+      options: { sharedAxis: 'category', sharedScale: false, anchors: { plotEdges: 'column' }, size: { width: 480, height: 640 } },
+    })) as Geometry;
+    const [column, area] = plotEdges(grid);
+    expect(Math.abs(area![1]! - column![1]!)).toBeLessThan(2);
+    expect(grid.warnings.map((warning) => warning.code)).not.toContain('grid-anchor-incompatible');
+  });
+
   // Stacked dot panels share a category axis down the plot: aligning their numeric value ticks as
   // categories halved the first plot and warned.
   it('leaves the value axis of stacked dot panels alone', () => {

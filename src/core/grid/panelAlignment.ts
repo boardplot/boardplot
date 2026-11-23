@@ -47,17 +47,20 @@ export function moveChildPlot(child: GridPanelLayout, dl: number, dr: number, th
  * group places its first and last shared category on the innermost pair; the
  * tick share of the category range is read anew on each pass. A panel that reads
  * a category inset keeps its plot and moves its categories inside it, so stacked
- * axes stay on one line. Only a panel without one moves its plot.
+ * axes stay on one line. Only a panel without one moves its plot. `insetOnly` leaves a panel
+ * without an inset out, so a grid that did not ask for category anchors moves no plot.
  */
 export function alignCategoryPanels(
   children: GridPanelLayout[],
   theme: ReturnType<typeof resolveTheme>,
+  insetOnly = false,
 ): number {
   const before = new Map(children.map((child) => [child, [child.slot.x + child.geometry.plot.x, child.geometry.plot.w]] as const));
   // Category ticks carry the category id. Numeric ticks (a dot or scatter value axis) are no categories.
   const ticksOf = (child: GridPanelLayout) =>
     (child.geometry.axes.find((axis) => axis.axis === 'x')?.ticks ?? []).filter((tick) => typeof tick.at === 'string');
-  const candidates = children.filter((child) => child.relayout !== undefined && ticksOf(child).length >= 2);
+  const candidates = children.filter((child) => child.relayout !== undefined && ticksOf(child).length >= 2 &&
+    (!insetOnly || child.anchored?.categoryInset !== undefined));
   if (candidates.length < 2) return 0;
   const shared = ticksOf(candidates[0]!).map((tick) => tick.at)
     .filter((at) => candidates.every((child) => ticksOf(child).some((tick) => tick.at === at)));
@@ -87,10 +90,6 @@ export function alignCategoryPanels(
         // A new object on each pass: the layout memo keeps the JSON of an option object by identity.
         child.anchored!.categoryInset = { left: Math.max(0, x2 - x), right: Math.max(0, x + w - (x2 + w2)) };
         child.geometry = child.relayout!(child.margin);
-        // Room the panel kept for its edge labels can change with the inset: its margin takes the change.
-        const nx = child.slot.x + child.geometry.plot.x;
-        const nr = nx + child.geometry.plot.w;
-        if (Math.abs(nx - x) > 0.01 || Math.abs(nr - x - w) > 0.01) moveChildPlot(child, x - nx, nr - x - w, theme);
       } else moveChildPlot(child, x2 - x, x + w - (x2 + w2), theme);
     }
   }

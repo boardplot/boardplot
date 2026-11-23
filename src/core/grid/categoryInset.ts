@@ -18,6 +18,15 @@ export const categoryInsetOf = (options: object | undefined): CategoryInset =>
 /** Chart types whose layout reads CATEGORY_INSET (definition types, not aliases). */
 export const INSETS_CATEGORIES: ReadonlySet<string> = new Set(['column', 'line', 'combo', 'variance']);
 
+const AREA_VARIANTS: ReadonlySet<unknown> = new Set(['area', 'stacked-area', 'stacked100-area']);
+
+/**
+ * Whether a panel takes a category inset. An area keeps room outside its plot for its edge
+ * labels, and that room changes with the inset, so an area panel moves its plot as before.
+ */
+export const takesCategoryInset = (type: string, options: unknown): boolean =>
+  INSETS_CATEGORIES.has(type) && !(type === 'line' && AREA_VARIANTS.has((options as { variant?: unknown } | undefined)?.variant));
+
 /** The category range inside a plot span: the inset comes off both ends, with the 10 px floor every span keeps. */
 export function insetRange(x: number, w: number, inset: CategoryInset): { x: number; w: number } {
   if (inset.left === 0 && inset.right === 0) return { x, w };

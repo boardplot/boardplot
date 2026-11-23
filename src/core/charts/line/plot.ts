@@ -670,9 +670,8 @@ function categoryNameRow(env: LineEnv, domain: LineDomain, text: LineText, room:
     // Reserve space outside the plot for half of each edge label. The
     // data still end on the plot edges, and centred labels stay on canvas.
     for (let pass = 0; pass < 3 && n > 0; pass++) {
-      // A grid's category inset already moved the edge points in by its width.
-      const left = Math.max(0, catPlan.infos[0]!.w / 2 + 2 - categoryPlotX - inset.left);
-      const right = Math.max(0, catPlan.infos[n - 1]!.w / 2 + 2 - (env.size.width - categoryPlotX - categoryPlotWidth) - inset.right);
+      const left = Math.max(0, catPlan.infos[0]!.w / 2 + 2 - categoryPlotX);
+      const right = Math.max(0, catPlan.infos[n - 1]!.w / 2 + 2 - (env.size.width - categoryPlotX - categoryPlotWidth));
       if (left + right < 0.01) break;
       categoryOverhang += left;
       categoryRightOverhang += right;

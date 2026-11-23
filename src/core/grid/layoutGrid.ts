@@ -1,5 +1,5 @@
 import { alignCategoryPanels, alignValuePanels, type PanelAnchoring } from './panelAlignment';
-import { CATEGORY_INSET, INSETS_CATEGORIES, type CategoryInset } from './categoryInset';
+import { CATEGORY_INSET, takesCategoryInset, type CategoryInset } from './categoryInset';
 import { chartString } from '../strings/layoutGrid';
 /**
  * Grid — facets AND variance tiers, one primitive.
@@ -466,7 +466,7 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
           .endpointLabelEconomy?.strategy === 'legend',
     );
   const alignedPanels = (children: GridChild[]) => children.map((child, i) => {
-    const anchored = child.anchored ??= child.def && INSETS_CATEGORIES.has(child.def.type) ? { categoryInset: { left: 0, right: 0 } } : {};
+    const anchored = child.anchored ??= child.def && takesCategoryInset(child.def.type, data.panels[i]!.options) ? { categoryInset: { left: 0, right: 0 } } : {};
     return {
       geometry: child.geo, slot: slots[i]!,
       margin: (child.recordOptions as { margin?: { left?: number; right?: number; bottom?: number } }).margin ?? {},
