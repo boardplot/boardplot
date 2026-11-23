@@ -3,16 +3,27 @@ import { canvasMargin, resolveTheme } from '../theme';
 import type { Rect } from '../geometry';
 import type { Geometry } from '../types/scene';
 import { maxOf, minOf } from '../arrays';
+import type { CategoryInset } from './categoryInset';
+
+/**
+ * Values the grid settles for a panel and its relayout reads: the category inset (only for a type that
+ * reads it) and the left edge of its panel label. A panel without this holder moves its plot instead.
+ */
+export interface PanelAnchoring {
+  categoryInset?: CategoryInset;
+  captionLeft?: number;
+}
 
 interface GridPanelLayout {
   geometry: Geometry;
   slot: Rect;
   margin: { top?: number; right?: number; bottom?: number; left?: number };
   relayout?: (margin: GridPanelLayout['margin']) => Geometry;
+  anchored?: PanelAnchoring;
 }
 
-/** Relayout a child with its plot's left edge moved by `dl` and its right edge in by `dr`. */
-export function moveChildPlot(child: GridPanelLayout, dl: number, dr: number, theme: ReturnType<typeof resolveTheme>): void {
+/** The margin that moves a child's plot left edge by `dl` and its right edge in by `dr`. */
+export function movedMargin(child: GridPanelLayout, dl: number, dr: number, theme: ReturnType<typeof resolveTheme>): GridPanelLayout['margin'] {
   const effectiveLeft =
     typeof (child.geometry.derived as { leftInset?: unknown }).leftInset === 'number'
       ? (child.geometry.derived as { leftInset: number }).leftInset
@@ -21,15 +32,22 @@ export function moveChildPlot(child: GridPanelLayout, dl: number, dr: number, th
     typeof (child.geometry.derived as { rightInset?: unknown }).rightInset === 'number'
       ? (child.geometry.derived as { rightInset: number }).rightInset
       : child.margin.right ?? canvasMargin(theme, child.slot.w).right;
-  child.margin = { ...child.margin, left: effectiveLeft + dl, right: effectiveRight + dr };
+  return { ...child.margin, left: effectiveLeft + dl, right: effectiveRight + dr };
+}
+
+/** Relayout a child with its plot's left edge moved by `dl` and its right edge in by `dr`. */
+export function moveChildPlot(child: GridPanelLayout, dl: number, dr: number, theme: ReturnType<typeof resolveTheme>): void {
+  child.margin = movedMargin(child, dl, dr, theme);
   child.geometry = child.relayout!(child.margin);
 }
 
 /**
  * Equal plot edges are not equal category centres: a type can inset its bands
  * inside the plot (combo over line sat 3.3 px apart). Each panel of an anchored
- * group moves its plot so its first and last shared category land on the
- * innermost pair; the tick share of the plot is read anew on each pass.
+ * group places its first and last shared category on the innermost pair; the
+ * tick share of the category range is read anew on each pass. A panel that reads
+ * a category inset keeps its plot and moves its categories inside it, so stacked
+ * axes stay on one line. Only a panel without one moves its plot.
  */
 export function alignCategoryPanels(
   children: GridPanelLayout[],
@@ -53,12 +71,21 @@ export function alignCategoryPanels(
     for (const child of off) {
       const x = child.slot.x + child.geometry.plot.x;
       const w = child.geometry.plot.w;
-      const f = (posOf(child, firstId) - x) / w;
-      const l = (posOf(child, lastId) - x) / w;
+      const inset = child.anchored?.categoryInset;
+      // The current category range: the plot less the inset already taken.
+      const x0 = x + (inset?.left ?? 0);
+      const w0 = w - (inset?.left ?? 0) - (inset?.right ?? 0);
+      if (!(w0 > 0)) continue;
+      const f = (posOf(child, firstId) - x0) / w0;
+      const l = (posOf(child, lastId) - x0) / w0;
       if (!(l > f)) continue;
       const w2 = (last - first) / (l - f);
       const x2 = first - f * w2;
-      moveChildPlot(child, x2 - x, x + w - (x2 + w2), theme);
+      if (inset) {
+        // A new object on each pass: the layout memo keeps the JSON of an option object by identity.
+        child.anchored!.categoryInset = { left: Math.max(0, x2 - x), right: Math.max(0, x + w - (x2 + w2)) };
+        child.geometry = child.relayout!(child.margin);
+      } else moveChildPlot(child, x2 - x, x + w - (x2 + w2), theme);
     }
   }
   // The largest edge move, so the caller can say what the centres cost.

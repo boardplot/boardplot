@@ -250,8 +250,12 @@ describe('a grid variance tier hatches its forecast categories', () => {
 });
 
 // A combo panel over a line panel with anchors.categories 'all' put the category centres 3.3 px apart:
-// the plot edges matched, but combo insets its bands inside the plot.
+// the plot edges matched, but combo insets its bands inside the plot. Aligning the centres then moved
+// a panel's plot edge, so the axis lines of the stacked panels no longer lined up.
 describe('grid anchors.categories across panel types', () => {
+  const plotEdges = (geometry: Geometry) => ((geometry.marks as { panels?: { type: string; plot: { x: number; w: number } }[] }).panels ?? [])
+    .filter((panel) => panel.type !== 'text' && panel.type !== 'legend')
+    .map((panel) => [panel.plot.x, panel.plot.x + panel.plot.w]);
   it('puts a combo and a line panel on the same category centres', () => {
     const quarters = ['q1', 'q2', 'q3', 'q4', 'q5', 'q6'].map((id) => ({ id, label: id.toUpperCase() }));
     const layout = (anchors: object) => getChart('grid')!.layout({
@@ -265,14 +269,62 @@ describe('grid anchors.categories across panel types', () => {
         ] }, options: { title: false } },
       ],
     }, { columns: [1], rows: [1, 1], anchors }) as Geometry;
-    const grid = layout({ plotEdges: 'all', categories: 'all' });
     const edgeKeys = (geometry: Geometry) => Object.keys((geometry.derived as { sharedAnchors?: object }).sharedAnchors ?? {}).filter((key) => key.startsWith('plotEdges:'));
-    const [top, bottom] = grid.axes.filter((axis) => axis.axis === 'x').map((axis) => axis.ticks.map((tick) => tick.pos));
-    expect(bottom!.map((pos, index) => Math.abs(pos - top![index]!))).toEqual(bottom!.map(() => expect.closeTo(0, 2)));
-    // The plot edges then differ, so the grid says so and reports no stale edge anchor.
-    expect(grid.warnings.map((warning) => warning.code)).toContain('grid-anchor-incompatible');
-    expect(edgeKeys(grid)).toEqual([]);
-    expect(edgeKeys(layout({ categories: 'all' }))).toEqual([]);
+    for (const anchors of [{ plotEdges: 'all', categories: 'all' }, { categories: 'all' }]) {
+      const grid = layout(anchors);
+      const [top, bottom] = grid.axes.filter((axis) => axis.axis === 'x').map((axis) => axis.ticks.map((tick) => tick.pos));
+      expect(bottom!.map((pos, index) => Math.abs(pos - top![index]!))).toEqual(bottom!.map(() => expect.closeTo(0, 2)));
+      // The panels place their categories inside one plot: the edges hold, so the grid keeps them and does not warn.
+      const [a, b] = plotEdges(grid);
+      expect(b![0]).toBeCloseTo(a![0]!, 2);
+      expect(b![1]).toBeCloseTo(a![1]!, 2);
+      expect(grid.warnings.map((warning) => warning.code)).not.toContain('grid-anchor-incompatible');
+      expect(edgeKeys(grid).length).toBeGreaterThan(0);
+    }
+  });
+
+  // On a phone, a line panel's end label pulled its last point in, and aligning the column and variance
+  // panels to it took up to 33 px off their plots on the right; each panel label also started at its own
+  // tick-label width, 15 px apart.
+  it('keeps one plot, one panel-label x and the line points on the column centres at 375 px', () => {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug'].map((label) => ({ id: label.toLowerCase(), label }));
+    const revenue = [52000, 61000, 58000, 66000, 71000, 69000, 76000, 80000];
+    const grid = layoutResolvedRequest(resolveChartRequest({
+      type: 'grid',
+      data: { panels: [
+        { id: 'rev', type: 'column', title: 'Revenue', data: { categories: months, series: [
+          { id: 'ac', label: 'AC', scenario: 'AC', values: revenue },
+          { id: 'py', label: 'PY', scenario: 'PY', role: 'reference', values: revenue.map((value) => value - 4000) },
+        ] }, options: { unit: '$', valueAxis: { show: true }, valueLabels: 'none' } },
+        { id: 'dpy', type: 'variance', title: 'ΔPY', data: { categories: months, series: [
+          { id: 'ac', label: 'AC', scenario: 'AC', values: revenue },
+          { id: 'py', label: 'PY', scenario: 'PY', role: 'reference', values: revenue.map((value) => value - 4000) },
+        ] }, options: { variant: 'absolute', variance: { vs: 'py' } } },
+        { id: 'basket', type: 'line', title: 'Average basket', data: { categories: months, series: [
+          { id: 'basket', label: 'Basket', values: [3120, 3180, 3050, 3290, 3340, 3210, 3420, 3480] },
+        ] }, options: { unit: '$', valueAxis: { show: true } } },
+      ] },
+      options: { sharedAxis: 'category', sharedScale: false, anchors: { plotEdges: 'all', categories: 'all' }, size: { width: 375, height: 640 } },
+    })) as Geometry;
+    expect(grid.refused).toBeUndefined();
+    const edges = plotEdges(grid);
+    expect(edges).toHaveLength(3);
+    for (const [left, right] of edges) {
+      expect(left).toBeCloseTo(edges[0]![0]!, 2);
+      expect(right).toBeCloseTo(edges[0]![1]!, 2);
+    }
+    const panels = (grid.marks as { panels: { id: string; chart?: { offset: { x: number }; geometry: Geometry } }[] }).panels;
+    const centres = (id: string) => {
+      const panel = panels.find((candidate) => candidate.id === id)!;
+      return panel.chart!.geometry.axes.find((axis) => axis.axis === 'x')!.ticks.map((tick) => tick.pos + panel.chart!.offset.x);
+    };
+    for (const id of ['dpy', 'basket']) expect(centres(id).map((pos, index) => pos - centres('rev')[index]!)).toEqual(months.map(() => expect.closeTo(0, 2)));
+    const labelX = ['rev', 'dpy', 'basket'].map((id) => {
+      const node = grid.scene.find((candidate) => candidate.t === 'text' && candidate.id.endsWith(`panel:${id}:title`)) as { x: number; tx?: number };
+      return node.x + (node.tx ?? 0);
+    });
+    expect(labelX).toEqual(labelX.map(() => expect.closeTo(labelX[0]!, 2)));
+    expect(grid.warnings.map((warning) => warning.code)).not.toContain('grid-anchor-incompatible');
   });
 });
 

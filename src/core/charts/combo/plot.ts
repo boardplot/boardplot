@@ -63,6 +63,7 @@ import { textScaleOf } from '../../typeFloors';
 import { scaleTextPx } from '../../target';
 import { disclosureNote, disclosuresShown, knownPartsLead, rankKeyShown } from '../../notes';
 import { maxOf, minOf, pushAll } from '../../arrays';
+import { categoryInsetOf, insetRange } from '../../grid/categoryInset';
 
 /** Clear air between the plot's right edge and the right-hand tick column. */
 const RIGHT_TICK_GAP = 8;
@@ -820,6 +821,8 @@ export function comboPlotArea(
   const rightReserve = rightAxisReserve + Math.max(gutters.last + growthReserve + anomalyReserve, lineLabelReserve);
   let plotX0 = frame.plot.x + (showPrimaryAxis ? leftAxisReserve : 0) + gutters.first;
   let plotW0 = Math.max(10, axisW - rightReserve - gutters.first);
+  // A grid panel can place its categories inside the plot; the plot keeps its edges.
+  ({ x: plotX0, w: plotW0 } = insetRange(plotX0, plotW0, categoryInsetOf(options)));
   const endpointWidth = plotW0;
   const insideIds = (options as { [INSIDE_ENDPOINT_IDS]?: Set<Id> })[INSIDE_ENDPOINT_IDS];
   const inside = insideEndpointGutters({ ids: insideIds, first: texts.first, last: texts.last,

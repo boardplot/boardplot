@@ -114,6 +114,7 @@ import { textScaleOf } from '../../typeFloors';
 import { disclosureNote } from '../../notes';
 import { maxOf, pushAll } from '../../arrays';
 import { emptyIdRecord } from '../../idRecords';
+import { categoryInsetOf, insetRange } from '../../grid/categoryInset';
 
 export interface VarianceMarks {
   /** absolute: plain Δ bars; integrated: AC bars with `cap` carrying REF↔AC. */
@@ -730,8 +731,9 @@ export function layoutVariance(
       ? { prefix: '', suffix: percentDifferences ? PERCENTAGE_POINTS : '%' } : {}),
   } : undefined);
   const axisReserve = va.show ? measureValueAxisWidth([dLo, dHi], axisFmt, theme, measure, 5, stepSpec, stepped.ticks) : 0;
-  const plotX0 = frameResult.plot.x + axisReserve;
-  const plotW0 = va.show ? Math.max(10, frameResult.plot.w - axisReserve) : frameResult.plot.w;
+  // A grid panel can place its categories inside the plot; the plot keeps its edges.
+  const { x: plotX0, w: plotW0 } = insetRange(frameResult.plot.x + axisReserve,
+    va.show ? Math.max(10, frameResult.plot.w - axisReserve) : frameResult.plot.w, categoryInsetOf(options));
   // integrated columns take 60 % of the band, so the cap
   // and the foot label read as one column with air on both sides.
   const bandFraction = options.bandFraction ?? (mode === 'relative' ? 0.55 : mode === 'integrated' ? 0.6 : 0.7);

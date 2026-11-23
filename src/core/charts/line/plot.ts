@@ -61,6 +61,7 @@ import { DEFAULT_TARGET, targetFloorsPx } from '../../target';
 import { disclosureNote, disclosuresShown } from '../../notes';
 import { omittedKey } from '../../seriesIdentity';
 import { maxOf, minOf, pushAll } from '../../arrays';
+import { categoryInsetOf, insetRange, NO_CATEGORY_INSET } from '../../grid/categoryInset';
 
 /**
  * RELATIVE quantization for receipt numbers whose scale is the author's, not
@@ -609,11 +610,13 @@ function categoryNameRow(env: LineEnv, domain: LineDomain, text: LineText, room:
   let categoryPlotX = frame.plot.x + valueAxisReserve;
   let categoryPlotWidth = Math.max(10, frame.plot.w - valueAxisReserve);
   const grid = population ?? domain.timeline;
-  const spanOf = (x0: number, width: number) => categorySpan({ x: x0, w: width }, grid?.span ?? n, crossesBetween, room);
+  // A grid panel can place its categories inside the plot; the plot keeps its edges.
+  const inset = categoryInsetOf(options);
+  const spanOf = (x0: number, width: number, own = inset) => categorySpan(insetRange(x0, width, own), grid?.span ?? n, crossesBetween, room);
   // On a proportional time axis the shortest gap is the step labels must fit.
   const categoryStepFor = (x0: number, width: number) => categoryStep(spanOf(x0, width).w, population ? n : grid?.span ?? n, crossesBetween);
-  const categoryCentersFor = (x0: number, width: number) =>
-    cats.map((_, ci) => liveCategoryX(ci, n, crossesBetween, spanOf(x0, width), grid));
+  const categoryCentersFor = (x0: number, width: number, own = inset) =>
+    cats.map((_, ci) => liveCategoryX(ci, n, crossesBetween, spanOf(x0, width, own), grid));
   const dateTicks = options.categoryAxis?.dateTicks as DateTickInterval | undefined;
   const ticked = authoredDateTicks(cats, options, warnings);
   // Line keys no running period, so its name says so where the note does not print.
@@ -655,7 +658,8 @@ function categoryNameRow(env: LineEnv, domain: LineDomain, text: LineText, room:
     const months = { ...options, categoryAxis: { ...options.categoryAxis, dateTicks: 'months' as const } };
     return categoryNameRow(env, { ...domain, cats: dated, options: months }, text, room, frame, valueAxisReserve, warnings);
   }
-  let categoryOverhang = rotatedLeftOverhang(catPlan, categoryCentersFor(categoryPlotX, categoryPlotWidth), 4, categoryPlotWidth);
+  // The overhang reads the centres without the inset, so the plot edge does not follow the inset.
+  let categoryOverhang = rotatedLeftOverhang(catPlan, categoryCentersFor(categoryPlotX, categoryPlotWidth, NO_CATEGORY_INSET), 4, categoryPlotWidth);
   let categoryRightOverhang = 0;
   if (categoryOverhang > 0) {
     categoryPlotX += categoryOverhang;
@@ -894,7 +898,7 @@ export function linePlotArea(
   const plotW = Math.max(10, frame.plot.w - (axis.axisShown || axis.disclosedTicks ? axis.valueAxisReserve : 0) - categoryOverhang - categoryRightOverhang);
   const n = cats.length;
   const grid = domain.population ?? domain.timeline;
-  const span = categorySpan({ x: plotX, w: plotW }, grid?.span ?? n, crossesBetween, endRoom);
+  const span = categorySpan(insetRange(plotX, plotW, categoryInsetOf(options)), grid?.span ?? n, crossesBetween, endRoom);
   const xOf = (ci: number): number => (domain.timeline && !domain.population) || domain.x
     ? round2(liveCategoryX(ci, n, crossesBetween, span, grid))
     : liveCategoryX(ci, n, crossesBetween, span, grid);

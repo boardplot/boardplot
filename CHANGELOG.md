@@ -2,6 +2,13 @@
 
 Boardplot is in 0.x: options and output can change between minor versions. Each release lists its changes here.
 
+## Unreleased
+
+### Fixed
+
+- A stacked grid with `anchors.categories` of scope `column` or `all` keeps one plot rectangle for its panels. Before, the grid moved a panel's plot edges to put its categories on the shared centres. A line panel over a column panel then drew its axis line, gridlines and y labels 7.8 px off at 1,440 px, the column panel's right edge came in by 32.7 px at 375 px, and the grid warned `grid-anchor-incompatible`. Column, line, combo and variance panels now place their categories inside the shared plot: the line points sit on the column centres, the warning no longer fires for these types, and `derived.sharedAnchors` keeps its `plotEdges` entries. Other panel types still move their plot and warn.
+- The panel labels of a grid column whose plot edges are aligned start at one x, the left edge of the column's widest y tick labels. Before, each label started at its own panel's widest tick label, up to 11 px apart at 1,440 px and 15 px at 375 px.
+
 ## 0.63.0
 
 ### Changed

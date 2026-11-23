@@ -711,6 +711,47 @@ export const fixtures: Fixture<GridInput, GridLayoutOptions>[] = [
     },
   },
   {
+    // A line panel over a column panel: the line's points sit on the column centres
+    // inside one shared plot, and both panel labels start at one x, although the
+    // tick labels ("$3,500" and "80k") differ in width.
+    id: 'stacked-line-over-column',
+    title: 'Torture: a line panel over a column panel keeps one plot and one label edge',
+    kind: 'torture',
+    tags: ['regression', 'authored-anchors'],
+    data: {
+      panels: [
+        {
+          id: 'revenue',
+          type: 'column',
+          title: 'Revenue',
+          data: {
+            categories: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug'].map((label) => ({ id: label.toLowerCase(), label })),
+            series: [{ id: 'revenue', label: 'Revenue', values: [52000, 61000, 58000, 66000, 71000, 69000, 76000, 80000] }],
+          },
+          options: { valueAxis: { show: true }, valueLabels: 'none' },
+        },
+        {
+          id: 'basket',
+          type: 'line',
+          title: 'Average basket',
+          data: {
+            categories: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug'].map((label) => ({ id: label.toLowerCase(), label })),
+            series: [{ id: 'basket', label: 'Basket', values: [3120, 3180, 3050, 3290, 3340, 3210, 3420, 3480] }],
+          },
+          options: { unit: '$', valueAxis: { show: true } },
+        },
+      ],
+    },
+    options: {
+      size: { width: 960, height: 520 },
+      sharedAxis: 'category',
+      sharedScale: false,
+      anchors: { plotEdges: 'all', categories: 'all' },
+      title: 'Average basket rose with revenue',
+      source: 'Invented data',
+    },
+  },
+  {
     id: 'automatic-inline-legend',
     title: 'Grid automatically places its series key on its own row under the subtitle',
     kind: 'example',

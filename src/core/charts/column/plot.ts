@@ -61,6 +61,7 @@ import { groupedOffsets } from '../band/groups';
 import { PLOT_FLOOR_PX, plotFloorRows, plotFloorShare } from '../../sizing';
 import { partialWords, stackTotalText } from './labels';
 import { maxOf, minOf, pushAll } from '../../arrays';
+import { categoryInsetOf, insetRange } from '../../grid/categoryInset';
 
 /** Internal layout marker (histogram): the bands tile the plot with no outer padding. Authored JSON cannot set it. */
 export const TILED_BANDS = Symbol('tiledBands');
@@ -420,6 +421,8 @@ function columnBandWidth(domain: ColumnDomain, frame: FrameResult, valueAxisRese
   let plotW0 = va.show
     ? Math.max(10, frame.plot.w - valueAxisReserve)
     : frame.plot.w;
+  // A grid panel can place its categories inside the plot; the plot keeps its edges.
+  ({ x: plotX0, w: plotW0 } = insetRange(plotX0, plotW0, categoryInsetOf(options)));
   // Integrated comparator labels live in the inter-category lane. A quieter,
   // narrower default column leaves one consistent external label slot without
   // pretending the PY value is a segment inside the stack.
