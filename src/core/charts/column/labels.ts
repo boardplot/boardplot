@@ -14,7 +14,7 @@ import { categoryLineAlign, ROTATED_NAME_AIR, rotatedClaimRect, verticalNameRect
 import { REFERENCE_MARKER_R } from '../band/ticks';
 import { PRIORITY, SERIES_VALUE_GAP, type LabelRequest, type SlotCandidate } from '../../label/solver';
 import type { DataRange } from '../../rangeRules';
-import type { FontSpec } from '../../text';
+import { defaultMeasurer, type FontSpec } from '../../text';
 import type { LabelContent } from '../../types/options';
 import type { LintWarning, ShownTexts } from '../../types/scene';
 import { compactValueLabelFont, fitsInside, groupedValueLabelPolicy, linesSize, digitSeat, acrossValueLines, digitSeatEdge, segmentLabelCandidates, segmentTooShort, shownParts, STACK_ROOM, valueRowCrowded, valueShareLines, warnShareParts, warnSliverLabels } from '../band/labels';
@@ -392,6 +392,8 @@ export function planColumnValueLabels(
     const sliverIds = new Set<string>();
     const out: LabelRequest[] = [];
     let anyShare = false;
+    const canStep = measure === defaultMeasurer && segment
+      && stepDownFont(domain.theme, stepped ?? labelFont, 'label', options.target, textScaleOf(options)) !== undefined;
     for (const place of segment ? scene.bars : []) {
 
       const { s, si, c, ci, v, rect } = place;
@@ -442,7 +444,11 @@ export function planColumnValueLabels(
       const leader = domain.density === 'full' || (v === 0 && typeof val.labelOverride === 'string');
       // A column whose content the author set alone (shareLabels.only) is not held to the others' fit.
       if (!leader && !inTotal && !only?.has(c.id) && typeof val.labelOverride !== 'string' && val.labelOverride !== false && !restHidden && !(sliver && !hl)
-        && !fitsInside({ ...rect, h: Infinity }, tsize, 0)) { tooWide.push(c.label ?? c.id); }
+        && !fitsInside({ ...rect, h: Infinity }, tsize, 0)) {
+        tooWide.push(c.label ?? c.id);
+        // A wider value makes the whole row try the next font. Only the last font supplies labels or warnings.
+        if (canStep) break;
+      }
       pending.push({ id: `segment:${s.id}:${c.id}`, owed: owedHere && domain.density !== 'minimal', authored: typeof val.labelOverride === 'string' });
       const request: LabelRequest = {
         id: `segment:${s.id}:${c.id}`,
