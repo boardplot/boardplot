@@ -925,6 +925,7 @@ The CLI prints every match in one response through `boardplot fixtures --type <t
 | metric-ladder | grid.panels | example | Authored metric ladder: one category-aligned chart over three readout panels |
 | assessment-map | grid.panels | example | Assessment table and point map share the same A–G decision identities |
 | authored-anchor-torture | grid.panels | torture | Torture: 2×2 authored charts exercise row baselines and column plot edges |
+| stacked-line-over-column | grid.panels | torture | Torture: a line panel over a column panel keeps one plot and one label edge |
 | automatic-inline-legend | grid.panels | example | Grid automatically places its series key on its own row under the subtitle |
 | stacked-plus-dpy-forecast | grid.tiers | example | Actual and forecast revenue with a hatched key and a separate growth tier |
 | facet-by-series | grid.panels | example | Small multiples: one panel per series, shared scale, shared legend, message panel |

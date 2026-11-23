@@ -304,6 +304,7 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | metric-ladder | example | Authored metric ladder: one category-aligned chart over three readout panels |
 | assessment-map | example | Assessment table and point map share the same A–G decision identities |
 | authored-anchor-torture | torture | Torture: 2×2 authored charts exercise row baselines and column plot edges |
+| stacked-line-over-column | torture | Torture: a line panel over a column panel keeps one plot and one label edge |
 | automatic-inline-legend | example | Grid automatically places its series key on its own row under the subtitle |
 | stacked-plus-dpy-forecast | example | Actual and forecast revenue with a hatched key and a separate growth tier |
 | facet-by-series | example | Small multiples: one panel per series, shared scale, shared legend, message panel |
