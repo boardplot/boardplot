@@ -645,7 +645,8 @@ function layoutComboFramePass(
     && (options as { [INSIDE_ENDPOINT_IDS]?: Set<Id> })[INSIDE_ENDPOINT_IDS] === undefined;
   // A dense chart can decide its endpoint gutter before preparing interior line seats.
   // Author moves, the staircase, forecasts and partial periods can change an earlier seat or retry.
-  const probeEnds = !seats && tryInside && (area.first.size > 0 || area.last.size > 0) && domain.cats.length > DENSE_CATEGORY_COUNT && domain.showPrimaryAxis
+  // A floated line already has its own band, so place its ends in the ordinary pass.
+  const probeEnds = !seats && tryInside && !domain.lineFloat && (area.first.size > 0 || area.last.size > 0) && domain.cats.length > DENSE_CATEGORY_COUNT && domain.showPrimaryAxis
     && options.categoryLabels !== 'staircase' && !domain.cats.some(c => c.partial) && env.measure === defaultMeasurer
     && !domain.options.annotations?.length && !domain.anomaly && !area.forecast.length && !geometry.areaGrounds.length
     && domain.options.mode !== 'compact' && !options.focus && !(HOST_CLAIMS in options)
