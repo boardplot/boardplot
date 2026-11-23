@@ -30,7 +30,7 @@ import { allQuiet, chartNotes, copyNote, engineNote, engineNoteMeta, footerParts
 import { harveyWedgePath } from './svgPath';
 import {
   cappedItems, countedValuesText, frameText, HIDDEN_LABEL_LEAD, listedNoteText, listText, moreListedText, noteCap, type NoteCapOptions,
-  measureNamesUnit, subtitleUnitClause, unitWordsAsSigns, type SubtitleText,
+  measureNamesUnit, subtitleUnitClause, unitWordsAsSigns, type SubtitleText, type FrameText,
 } from './frameText';
 import { parseFormatExample, unitOfSpec } from './formatSpec';
 import { hasAuthoredTypeSize, type FontSpec } from './text';
@@ -1998,14 +1998,25 @@ export function collectFrameClaims(claims: OccupiedClaim[]): FrameClaims {
   return { claim(rect, kind, owner) { claims.push({ rect: { ...rect }, kind, owner }); } };
 }
 
-export function solveFrame(input: FrameInput, occupied: FrameClaims): FrameResult {
+/** Rows at a fixed width in a private height search. The footer and plot still use each trial height. */
+export interface FrameWidthMeasurements {
+  /** The plot block across canvas heights, when every frame row depends only on width. */
+  plotHeightAt?: (height: number) => number;
+  tokens?: ReturnType<typeof spaceTokens>;
+  footFont?: FontSpec;
+  source?: { pinned: boolean; live: boolean; text: FrameText; lines?: ReturnType<FrameText['sourceLines']> };
+  header?: { nodes: SceneNode[]; claims: OccupiedClaim[]; frame: FrameGeometry; warnings: LintWarning[]; top: number; seq: number };
+  topKey?: { nodes: SceneNode[]; legend: LegendGeometry; warnings: LintWarning[]; band: number; seq: number };
+}
+
+export function solveFrame(input: FrameInput, occupied: FrameClaims, measurements?: FrameWidthMeasurements): FrameResult {
   if (input[CUT_LABEL_NOTES]?.length) input = { ...input, footnotes: [...(input.footnotes ?? []), ...input[CUT_LABEL_NOTES]!] };
   const destination = occupied;
   const pendingClaims = input.autoHeight ? [] as OccupiedClaim[] : undefined;
   if (pendingClaims) occupied = collectFrameClaims(pendingClaims);
   input[COLLECT_IDENTITIES]?.([...(input.legend?.items ?? []), ...(input.eventKey?.legend ?? [])]);
   const { size, margin, theme, measure } = input;
-  const tokens = input.cardGaps
+  const tokens = measurements?.tokens ?? (input.cardGaps
     ? // The compact card frame's own gaps (see FrameInput.cardGaps).
       {
         ...spaceTokens(theme, size.width),
@@ -2015,7 +2026,8 @@ export function solveFrame(input: FrameInput, occupied: FrameClaims): FrameResul
         gapFootnoteSource: 0,
         gapLegend: 8,
       }
-    : spaceTokens(theme, size.width);
+    : spaceTokens(theme, size.width));
+  if (measurements) measurements.tokens = tokens;
   const nodes: SceneNode[] = [];
   const frame: FrameGeometry = {};
   const warnings: LintWarning[] = [];
@@ -2040,10 +2052,15 @@ export function solveFrame(input: FrameInput, occupied: FrameClaims): FrameResul
   const footGap = bottomKey ? tokens.gapKeyFootnote : tokens.gapAxisFootnote;
 
   // The frame's texts: title, subtitle with its unit clause, notes and source.
-  const footFont = withFamily(footerType(theme.type.footnote, input.target, input.textScale));
+  const footFont = measurements?.footFont ?? withFamily(footerType(theme.type.footnote, input.target, input.textScale));
+  if (measurements) measurements.footFont = footFont;
   const footInset = Math.max(0, Math.min(input.footerInset ?? 0, (contentW - 1) / 2));
   const footW = contentW - 2 * footInset;
-  const text = frameText({
+  // Engine notes carry live metadata. A source-only footer has a fixed text and wrap budget at this width.
+  const sourceOnly = measurements !== undefined && !input.footnotes?.length && !input.credit;
+  let source = sourceOnly ? measurements.source : undefined;
+  if (source && (source.pinned !== staticFrame.pinned || source.live !== staticFrame.live)) source = undefined;
+  const text = source?.text ?? frameText({
     target: input.target, title: input.title || undefined, subtitle: input.subtitle, unit: input.unit, source: input.source, credit: input.credit, notes: input.notes, notesShowAuthored: input.notesShowAuthored, strings: input.strings,
     footnotes: (input.footnotes ?? []).map((note) => ({ text: note, meta: engineNoteMeta(note) })),
     footnotesOff: input.footnotesOff, numberedFootnotes: input.numberedFootnotes, unreferencedNotes: input.unreferencedNotes,
@@ -2052,8 +2069,25 @@ export function solveFrame(input: FrameInput, occupied: FrameClaims): FrameResul
     policy: { pinned: staticFrame.pinned, live: staticFrame.live },
   });
 
+  if (sourceOnly && !source) {
+    source = { pinned: staticFrame.pinned, live: staticFrame.live, text,
+      lines: text.sourceBlock ? text.sourceLines(text.sourceBlock) : undefined };
+    measurements.source = source;
+  }
+
   // ---- title (action title, dominant, up to 2 lines) ----
-  if (input.title) {
+  const header = measurements?.header;
+  const headerClaims = measurements && !header ? [] as OccupiedClaim[] : undefined;
+  const headerOccupied = headerClaims ? collectFrameClaims(headerClaims) : occupied;
+  if (header) {
+    pushAll(nodes, header.nodes);
+    pushAll(warnings, header.warnings);
+    Object.assign(frame, header.frame);
+    for (const claim of header.claims) occupied.claim(claim.rect, claim.kind, claim.owner);
+    seq = header.seq;
+    topY = header.top;
+  }
+  if (!header && input.title) {
     // Compact keeps the title role at its smallest step, never label size.
     const titleFont = theme.type.title;
     const compactSize = input.mode === 'compact' ? input.compactTitleSize ?? titleFont.size : titleFont.size;
@@ -2101,24 +2135,28 @@ export function solveFrame(input: FrameInput, occupied: FrameClaims): FrameResul
       typeRole: 'title',
     });
     const h = lines.length * lineH;
-    occupied.claim({ x: contentX, y: topY, w: headerW, h }, 'frame', {});
+    headerOccupied.claim({ x: contentX, y: topY, w: headerW, h }, 'frame', {});
     frame.titleNodeId = id;
     frame.titleLines = lines.length;
     topY += h + tokens.gapTitleSubtitle;
   }
 
   // ---- subtitle (notation composed line; measure bold) ----
-  if (input.subtitle) {
+  if (!header && input.subtitle) {
     const subtitle = measureSubtitle(input, text.subtitle!, contentX, topY, nid('subtitle'), () => nid('subtitle'), headerW);
     nodes.push(...subtitle.nodes);
-    occupied.claim(subtitle.rect, 'frame', {});
+    headerOccupied.claim(subtitle.rect, 'frame', {});
     frame.subtitleNodeId = subtitle.nodes[0]!.id;
     topY += subtitle.rect.h + tokens.gapSubtitlePlot;
-  } else if (input.title) {
+  } else if (!header && input.title) {
     // Title-only: the header→plot boundary is the same subtitle-plot token —
     // it is the gap between the last header block and the plot, whichever
     // block that is. (The compact card frame keeps its own 4+8 gaps.)
     topY += input.cardGaps ? 8 : tokens.gapSubtitlePlot - tokens.gapTitleSubtitle;
+  }
+  if (headerClaims && measurements) {
+    measurements.header = { nodes: nodes.slice(), claims: headerClaims, frame: { ...frame }, warnings: warnings.slice(), top: topY, seq };
+    for (const claim of headerClaims) occupied.claim(claim.rect, claim.kind, claim.owner);
   }
   // Header room below the wide width class (12 -> 8 px) is freed; sizing gives it to the plot.
   if (!input.cardGaps && (input.subtitle || input.title) && theme.space.gap?.subtitlePlot === undefined
@@ -2179,7 +2217,7 @@ export function solveFrame(input: FrameInput, occupied: FrameClaims): FrameResul
       const p = footParts[i]!;
       // A footnote is the sentence that makes an exhibit auditable. It wraps to
       // the content width and keeps every word on the canvas.
-      const fitted = p.kind === 'source' ? text.sourceLines(p.text) : undefined;
+      const fitted = p.kind === 'source' ? source?.lines ?? text.sourceLines(p.text) : undefined;
       const lines = p.lines ?? fitted?.lines ?? wrapFootnote(p.kind === 'credit' ? p.text : markBold(p.text), footFont, footW, footMeasure);
       bottomY -= footLineH * lines.length;
       footLines += lines.length;
@@ -2253,7 +2291,17 @@ export function solveFrame(input: FrameInput, occupied: FrameClaims): FrameResul
   const legendInput = bandKeys.length > 0
     ? { options: input.legend?.options ?? { position: 'top' as const }, items: [...(input.legend?.items ?? []), ...bandKeys] }
     : input.legend;
-  if (legendInput && legendInput.items.length > 0) {
+  // The top key uses its available width. Side keys and height-budgeted keys still fit at each height.
+  const topKey = measurements?.topKey;
+  if (topKey && topKey.seq === seq && topKey.legend.rect.y === topY) {
+    pushAll(nodes, topKey.nodes);
+    pushAll(warnings, topKey.warnings);
+    occupied.claim(topKey.legend.rect, 'legend', {});
+    legendGeom = topKey.legend;
+    legendBand = topKey.band;
+    topY += legendBand;
+  } else if (legendInput && legendInput.items.length > 0) {
+    const nodeStart = nodes.length, warningStart = warnings.length, keySeq = seq;
     let { options } = legendInput;
     const { items } = dedupeLegendKeys(legendInput.items, item => identityAppearance(item, theme));
     pushAll(warnings, identityCollisionWarnings(items, theme));
@@ -2502,11 +2550,33 @@ export function solveFrame(input: FrameInput, occupied: FrameClaims): FrameResul
       occupied.claim(rect, 'legend', {});
       legendGeom = { rect, items: legendItems };
       legendBand = blockH + tokens.gapLegend;
+      if (measurements && !sideWanted && options.position === 'top' && !input[LEGEND_HEIGHT]) {
+        measurements.topKey = { nodes: nodes.slice(nodeStart), warnings: warnings.slice(warningStart), legend: legendGeom, band: legendBand, seq: keySeq };
+      }
       if (options.position === 'top') topY += legendBand;
       else bottomY -= legendBand;
     }
   }
 
+  if (measurements) {
+    measurements.plotHeightAt = undefined;
+    const fixedKey = !legendInput?.items.length || legendGeom === measurements.topKey?.legend;
+    if (sourceOnly && placement === 'frame' && !liveFooterH && !input.eventKey && !input.autoHeight
+      && !input[LEGEND_HEIGHT] && fixedKey && footParts.every(part => part.kind === 'source')) {
+      // Keep the footer subtractions in drawing order. Combining them changes the last bit at some heights.
+      const bottomMargin = margin.bottom;
+      const sourceHeight = footLines * footLineH;
+      const footer = footParts.length > 0;
+      measurements.plotHeightAt = height => {
+        let bottom = height - bottomMargin;
+        if (footer) {
+          bottom -= sourceHeight;
+          bottom -= footGap;
+        }
+        return Math.max(MIN_PLOT_H, bottom - topY);
+      };
+    }
+  }
   const plotInsetLeft = Math.max(0, input.plotInset?.left ?? 0);
   const plot: Rect = {
     x: plotLeft + plotInsetLeft,

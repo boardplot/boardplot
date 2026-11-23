@@ -1104,7 +1104,7 @@ function checkedOverride(base: Theme, overrides: DeepPartial<Theme>, presetName:
   // Our own output coming back in: nothing external to judge, and the merge
   // is the same merge. This is what keeps the checks — and the chunk that
   // carries them — off the render path of every chart.
-  if (ownThemes.has(overrides as object)) return own(mergeDeep(base, overrides));
+  if (ownThemes.has(overrides as object)) return own(mergeDeep(base, overrides, presetThemes.has(base)));
   if (libraryPatches.has(overrides as object)) return own(mergeDeep(base, overrides));
   const series = overrides.color?.series;
   // One or two authored colours are a prefix of the preset ramp. Keep older,
@@ -1182,9 +1182,11 @@ function checkedOverride(base: Theme, overrides: DeepPartial<Theme>, presetName:
 /** Keys that mutate a prototype rather than a token; never merged. */
 const UNSAFE_MERGE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
-function mergeDeep<T>(base: T, patch: DeepPartial<T> | undefined): T {
+function mergeDeep<T>(base: T, patch: DeepPartial<T> | undefined, sharePreset = false): T {
   if (patch === undefined || patch === null) return base;
   if (Array.isArray(patch) || typeof patch !== 'object') return patch as T;
+  // The same immutable preset branch already contains every token of the patch.
+  if (sharePreset && patch === base && deepFrozen.has(patch)) return base;
   const out: Record<string | symbol, unknown> = { ...(base as Record<string, unknown>) };
   if (AUTHORED_TYPE_SIZE in patch) out[AUTHORED_TYPE_SIZE] = true;
   for (const [k, v] of Object.entries(patch as Record<string, unknown>)) {
@@ -1194,7 +1196,7 @@ function mergeDeep<T>(base: T, patch: DeepPartial<T> | undefined): T {
     // base may lack the key entirely (e.g. overriding optional `palettes`
     // on a preset that has none) — treat the missing branch as undefined
     const bv = base == null ? undefined : (base as Record<string, unknown>)[k];
-    out[k] = mergeDeep(bv, v as never);
+    out[k] = mergeDeep(bv, v as never, sharePreset);
   }
   return out as T;
 }

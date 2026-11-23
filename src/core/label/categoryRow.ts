@@ -36,7 +36,7 @@ import { cutWithTitle, fitText, type FittedText } from './fitText';
 import { footnoteMark } from '../footnoteMark';
 import type { LintWarning } from '../types/scene';
 import { PRIORITY, type LabelRequest } from './solver';
-import { isDateNumericTickSequence, MONTH_START, PROSE_TICK_MAX_LINES, tickLabelX } from './tickRow';
+import { isDateNumericTickSequence, startsWithMonth, PROSE_TICK_MAX_LINES, tickLabelX } from './tickRow';
 import { disclosureNote } from '../notes';
 import { spread1DResult } from '../collide';
 import { maxOf, minOf } from '../arrays';
@@ -333,7 +333,7 @@ const YEAR_LABEL = /^(?:FY\s?)?\d{4}$|^(?:FY\s?)?'?\d{2}$/;
 export function calendarLike(labels: readonly string[]): boolean {
   return labels.length > 1 && labels.every((l) => {
     const t = l.trim();
-    return MONTH_START.test(t) || /^\d{4}-(0[1-9]|1[0-2])$/.test(t) || /^W\d{1,2}\b/i.test(t) || /\bQ[1-4]\b/.test(t) || YEAR_LABEL.test(t);
+    return startsWithMonth(t) || /^\d{4}-(0[1-9]|1[0-2])$/.test(t) || /^W\d{1,2}\b/i.test(t) || /\bQ[1-4]\b/.test(t) || YEAR_LABEL.test(t);
   });
 }
 
@@ -355,7 +355,7 @@ function strideCandidates(labels: readonly string[]): number[] {
   const generic = [2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 24, 25, 30, 40, 50, 60, 100];
   let preferred: number[] = [];
   // Months and quarters thin by round periods only; a 5-month step reads as noise.
-  if (labels.every((l) => MONTH_START.test(l.trim()) || /^\d{4}-(0[1-9]|1[0-2])$/.test(l.trim()))) return [3, 6, 12, 24, 36].filter((k) => k < n);
+  if (labels.every((l) => startsWithMonth(l.trim()) || /^\d{4}-(0[1-9]|1[0-2])$/.test(l.trim()))) return [3, 6, 12, 24, 36].filter((k) => k < n);
   if (labels.every((l) => /\bQ[1-4]\b/.test(l.trim()))) return [2, 4, 8, 12].filter((k) => k < n);
   if (labels.every((l) => YEAR_LABEL.test(l.trim()))) preferred = [2, 5, 10];
   const ordered = [...preferred, ...generic.filter((k) => !preferred.includes(k))];
@@ -621,14 +621,159 @@ export function categoryRowTop(y: (value: number) => number, lowestEnd: number, 
 // The plans live for one render only: withLayoutMemo (sizing.ts) opens them at the outermost render and drops
 // them at its end. Outside a render nothing is kept.
 let rowPlans: Map<TextMeasurer, Map<string, CategoryRowPlan>> | undefined;
+// A wide row can still be too narrow for an upright name at every font. Its
+// rotated text then depends on the length cap, while the anchors use this pass's centres.
+interface FitRotation {
+  plan(cap: number): CategoryRowPlan;
+  dimensions(cap: number, centers: readonly number[], plotWidth: number): { height: number; inset: number } | undefined;
+}
+interface RotatedRowMeasures {
+  fit?: FitRotation;
+  minSlot: number;
+  minEndSlot: number;
+  maxLineHeight: number;
+  fonts: readonly FontSpec[];
+  plans: Map<number, CategoryRowPlan>;
+}
+let rotatedRows: Map<TextMeasurer, Map<string, RotatedRowMeasures | null>> | undefined;
+
+function prepareRotatedRow(input: CategoryRowInput): RotatedRowMeasures | null {
+  const { labels, fonts, measure } = input;
+  if (!input.stepToFloor
+    || input.rotate === false || input.rotate90 || input.ordered || input.strideFromEnd || input.edgeAnchored || input.range
+    || input.calendar || input.dateStride || input.periods || calendarMonths(input.dates ?? []) || calendarLike(labels) || numberedSequence(labels) || shortMonthNames(labels)
+    || input.keep || input.under || input.widths || input.suffixes?.some(Boolean) || labels.length < 3
+    || (input.padding ?? 6) < 0 || (input.gap ?? 4) < 0
+    || !labels.every(label => /^[\p{L}\p{N},:;!?%&'’()+]+(?: [\p{L}\p{N},:;!?%&'’()+]+)*$/u.test(label))) return null;
+  const axisFloor = targetFloorsPx(input.target ?? DEFAULT_TARGET, input.textScale).axis;
+  const ladder = fonts.filter((font, i) => !i || font.size >= axisFloor);
+  const floor = { ...ladder[0]!, size: axisFloor };
+  const possible = [...ladder, floor];
+  if (possible.some(f => !(f.size > 0 && f.size <= Number.MAX_SAFE_INTEGER
+    && (f.letterSpacing ?? 0) >= 0 && (f.letterSpacing ?? 0) <= Number.MAX_SAFE_INTEGER))) return null;
+  // The ordinary wrap requires each word to fit. The later spread attempt
+  // still needs its first and last names to fit their own slots in two lines.
+  const words = labels.map(s => s.split(' '));
+  const slot = Math.max(input.step, 1);
+  const minSlot = Math.min(...possible.map(font => {
+    let bound = 0;
+    for (const [i, label] of labels.entries()) {
+      const fullWidth = measure(label, font).width;
+      if (fullWidth <= bound) continue;
+      for (const word of words[i]!) {
+        bound = Math.max(bound, Math.min(fullWidth, measure(word, font).width));
+        // One word wider than the slot rules out upright wrapping at this font.
+        // A future wider slot must still satisfy the measured bound below.
+        if (bound > slot) return bound;
+      }
+    }
+    return bound;
+  }));
+  const minEndSlot = Math.min(...possible.map(f => Math.max(twoLineWidth(labels[0]!, f, measure, true),
+    twoLineWidth(labels.at(-1)!, f, measure, true))));
+  return { minSlot, minEndSlot, fonts: ladder, maxLineHeight: maxOf(ladder.map(f => f.size * (f.lineHeight ?? 1.2))), plans: new Map() };
+}
+
+function rotationCap(input: CategoryRowInput, row: RotatedRowMeasures): number | undefined {
+  const { centers, step, fonts } = input;
+  const n = centers.length;
+  if (step * SIN45 < row.maxLineHeight + 2 || !(Math.max(step, 1) < row.minSlot)) return;
+  const left = centers[0]!, right = centers[n - 1]!;
+  const endSlot = Math.max(step, 2 * (left - (left - step / 2)), 2 * ((right + step / 2) - right));
+  if (!(endSlot + 1e-6 < row.minEndSlot)) return;
+  const cap = input.maxRotatedWidth ?? rotatedWidthCap(input.plotHeight, n * step, fonts[0]!);
+  if (input.maxRotatedWidth === undefined) {
+    // A short left gutter can cap individual names. Share only when every name
+    // has the full cap at every possible font and keep the per-name rule elsewhere.
+    const spare = n * step - (n * (row.maxLineHeight + 2)) / SIN45 - n;
+    if (Math.floor((spare + minOf(centers) - 4) / SIN45 - row.maxLineHeight) < cap) return;
+  }
+  return cap;
+}
+
+function positionRotatedRow(input: CategoryRowInput, row: CategoryRowPlan): CategoryRowPlan {
+  const { centers, step } = input;
+  const x0 = centers[0]! - step / 2, x1 = centers.at(-1)! + step / 2;
+  const anchor = (i: number, width: number) => centeredNameX(centers[i]!, width, x0, x1);
+  return { ...row, anchor, x: i => anchor(i, row.infos[i]!.w), warnings: [rotationWarning(centers.length, step), ...row.warnings.slice(1)] };
+}
+
+function centeredNameX(center: number, width: number, left: number, right: number): number {
+  return Math.max(left, Math.min(center - width / 2, right - width));
+}
+
+function rotationWarning(n: number, step: number): LintWarning {
+  return {
+    code: 'category-labels-rotated',
+    severity: 'info',
+    message: `category labels rotated 45°: ${n} names do not fit horizontally on up to 3 lines at ${Math.round(step)}px per category`,
+    suggest: 'a horizontal chart (bar, or variant: "horizontal" on waterfall) keeps names upright',
+  };
+}
+
 /** Run one top-level render with an empty row-plan cache; nested renders share it. */
 export function withCategoryRowPlans<T>(run: () => T): T {
   if (rowPlans) return run();
   rowPlans = new Map();
-  try { return run(); } finally { rowPlans = undefined; }
+  rotatedRows = new Map();
+  try { return run(); } finally { rowPlans = undefined; rotatedRows = undefined; }
 }
 /** The number of cached row plans (0 outside a render). */
 export const cachedCategoryRowPlans = (): number => [...rowPlans?.values() ?? []].reduce((sum, plans) => sum + plans.size, 0);
+function rotatedShapeKey(input: CategoryRowInput): string {
+  return JSON.stringify({ ...input, measure: undefined, centers: undefined, step: undefined, plotHeight: undefined });
+}
+
+/** Re-evaluate a measured uniform 45-degree row at new centres and height, without drawing it. */
+export function measuredRotatedNames(input: CategoryRowInput) {
+  const key = rotatedShapeKey(input);
+  const row = rotatedRows?.get(input.measure)?.get(key);
+  if (!row?.fit || input.cutMarkFrom !== undefined) return;
+  const fit = row.fit;
+  return (centers: readonly number[], step: number, plotHeight: number, plotWidth: number) => {
+    const cap = rotationCap({ ...input, centers, step, plotHeight }, row);
+    if (cap !== undefined) return fit.dimensions(cap, centers, plotWidth);
+  };
+}
+
+/** Numeric height and left inset of a plain fallback row, before any names are laid out. */
+export function openingRotatedNames(input: CategoryRowInput): ReturnType<typeof measuredRotatedNames> {
+  if (!input.everyName || input.cutMarkFrom !== undefined || input.pinned || input.priority || !input.fonts.length
+    || input.measure !== defaultMeasurer && input.measure !== measureText && !hasCompleteTableWidths(input.measure)
+    || isDateNumericTickSequence(input.labels)) return;
+  const row = prepareRotatedRow(input);
+  if (!row) return;
+  // The first font at which every full name fits the cap wins. A single wider name
+  // disqualifies that font, so keep only the widths that the search actually reads.
+  const widths = row.fonts.map((): number[] => []);
+  const widthAt = (f: number, i: number) => widths[f]![i] ??= Math.max(input.measure(input.labels[i]!, row.fonts[f]!).width, 1);
+  return (centers, step, plotHeight, plotWidth) => {
+    if (centers.length !== input.labels.length) return;
+    const cap = rotationCap({ ...input, centers, step, plotHeight }, row);
+    if (cap === undefined) return;
+    const fits = row.fonts.findIndex((_, f) => input.labels.every((__, i) => widthAt(f, i) <= cap));
+    const f = fits < 0 ? 0 : fits;
+    const font = row.fonts[f]!;
+    return rotatedDimensions(cap, centers, plotWidth, font, i => widthAt(f, i));
+  };
+}
+
+/** Uniformly capped names own their full cap even when their last printed glyph is narrower. */
+function rotatedDimensions(cap: number, centers: readonly number[], plotWidth: number, font: FontSpec, widthAt: (i: number) => number) {
+  const lineH = font.size * (font.lineHeight ?? 1.2);
+  const left = minOf(centers);
+  let widest = 1;
+  let overhang = 0;
+  for (let i = 0; i < centers.length; i++) {
+    const width = Math.min(widthAt(i), cap);
+    widest = Math.max(widest, width);
+    overhang = Math.max(overhang, 4 - (centers[i]! - (width + lineH) * SIN45));
+    // Nothing can reach farther left or fill more height than a capped name at the leftmost seat.
+    if (width === cap && centers[i] === left) break;
+  }
+  return { height: widest * SIN45 + lineH * SIN45, inset: Math.min(Math.ceil(overhang), Math.max(0, Math.floor(plotWidth - MIN_PLOT_WIDTH))) };
+}
+
 export function planCategoryRow(input: CategoryRowInput): CategoryRowPlan {
   if (!rowPlans) { const cascade = planCategoryRowCascade(input); return spreadUpright(input, cascade) ?? cascade; }
   let plans = rowPlans.get(input.measure);
@@ -636,8 +781,38 @@ export function planCategoryRow(input: CategoryRowInput): CategoryRowPlan {
   const key = JSON.stringify({ ...input, measure: undefined });
   let plan = plans.get(key);
   if (!plan) {
-    const cascade = planCategoryRowCascade(input);
-    plans.set(key, plan = spreadUpright(input, cascade) ?? cascade);
+    let shapes: Map<string, RotatedRowMeasures | null> | undefined;
+    let shapeKey: string | undefined;
+    let row: RotatedRowMeasures | null | undefined;
+    if (input.everyName && rotatedRows && (input.measure === defaultMeasurer || input.measure === measureText || hasCompleteTableWidths(input.measure))) {
+      shapes = rotatedRows.get(input.measure);
+      if (!shapes) rotatedRows.set(input.measure, shapes = new Map());
+      shapeKey = rotatedShapeKey(input);
+      row = shapes.get(shapeKey);
+    }
+    const cap = row ? rotationCap(input, row) : undefined;
+    if (row?.fit && cap !== undefined) {
+      let names = row.plans.get(cap);
+      if (!names) row.plans.set(cap, names = row.fit.plan(cap));
+      plan = positionRotatedRow(input, names);
+    } else {
+      let fit: FitRotation | undefined;
+      const remember = shapes && row !== null && !row?.fit ? (f: FitRotation) => { fit = f; } : undefined;
+      const cascade = planCategoryRowCascade(input, remember);
+      plan = spreadUpright(input, cascade) ?? cascade;
+      if (shapes && shapeKey && row === undefined && plan.rotation === 45) {
+        row = plan.typeRole === 'axis' && plan.keep.every(Boolean) ? prepareRotatedRow(input) : null;
+        shapes.set(shapeKey, row);
+      }
+      if (row && fit && plan.rotation === 45) {
+        const measuredCap = cap ?? rotationCap(input, row);
+        if (measuredCap !== undefined) {
+          row.fit = fit;
+          row.plans.set(measuredCap, plan);
+        }
+      }
+    }
+    plans.set(key, plan);
   }
   // Callers append to the lint list; each gets its own.
   return { ...plan, warnings: [...plan.warnings], cutNotes: [...plan.cutNotes] };
@@ -713,7 +888,7 @@ function spreadUpright(input: CategoryRowInput, plan: CategoryRowPlan): Category
   return whole(wrapped, PROSE_TICK_MAX_LINES) ? wrapped : undefined;
 }
 
-function planCategoryRowCascade(input: CategoryRowInput): CategoryRowPlan {
+function planCategoryRowCascade(input: CategoryRowInput, remember?: (fit: FitRotation) => void): CategoryRowPlan {
   // All row attempts share exact text measurements, including words and cut prefixes.
   const measured = new Map<FontSpec, Map<string, TextSize>>();
   const sourceMeasure = input.measure;
@@ -728,7 +903,7 @@ function planCategoryRowCascade(input: CategoryRowInput): CategoryRowPlan {
     return size;
   };
   input = withCalendarRule({ ...input, measure });
-  let plan = planRow(input, sourceMeasure);
+  let plan = planRow(input, sourceMeasure, remember);
   // Longer weekday labels cannot fit where the shorter date labels already need thinning.
   const weekdays = plan.step === 'fit' && input.calendar?.length === input.labels.length
     && input.calendar.every((info, i) => info?.weekday?.endsWith(` ${input.labels[i]}`)) ? input.calendar.map(info => info!.weekday!) : undefined;
@@ -800,7 +975,7 @@ function shortMonthNames(labels: readonly string[]): string[] | undefined {
 /** Lines an upright name may take at the floor size. */
 const PROSE_FLOOR_LINES = 3;
 
-function planRow(input: CategoryRowInput, sourceMeasure: TextMeasurer): CategoryRowPlan {
+function planRow(input: CategoryRowInput, sourceMeasure: TextMeasurer, remember?: (fit: FitRotation) => void): CategoryRowPlan {
   const { labels, centers, step, measure } = input;
   const n = labels.length;
   const dateNumeric = (input.calendar?.length === n && input.calendar.every(Boolean)) || isDateNumericTickSequence(labels);
@@ -912,7 +1087,7 @@ function planRow(input: CategoryRowInput, sourceMeasure: TextMeasurer): Category
   const anchor = (i: number, w: number): number => spreadX?.[i] !== undefined ? spreadX[i]!
     : input.edgeAnchored === true || stridingOrdered
     ? tickLabelX(centers[i]!, w, i, n, true)
-    : Math.max(rowStart, Math.min(centers[i]! - w / 2, rowEnd - w));
+    : centeredNameX(centers[i]!, w, rowStart, rowEnd);
   const xOf = (infos: CategoryLabelInfo[]) => (i: number): number => anchor(i, infos[i]!.w);
   /** A name stays between the centres of the names `step` places away, its drawn neighbours on a thinned row. */
   const ownsItsRoom = (i: number, w: number, step = 1): boolean => {
@@ -1268,47 +1443,54 @@ function planRow(input: CategoryRowInput, sourceMeasure: TextMeasurer): Category
     // neighbours is the pitch × sin 45°, which must hold one line of text.
     // A smaller step that holds every name whole beats a cut at the base size.
     const rotatable = rotateFonts.filter((font) => step * SIN45 >= font.size * (font.lineHeight ?? 1.2) + 2);
-    const whole = rotatable.find((font) => measureAll(font, 1).every((info) => info.w <= maxRotatedWidth));
-    const font = whole ?? rotatable[0];
-    if (font) {
-      // The first names reach left of the row by their slant (rotatedLeftOverhang). A name is no wider than
-      // the length that leaves every column the pitch of a 45° line at its own seat, or the row stops rotating
-      // once the caller takes the overhang. The limit is per name: a short name at the left never shortens a long one elsewhere.
-      const lineH = font.size * (font.lineHeight ?? 1.2);
-      const spare = n * step - (n * (lineH + 2)) / SIN45 - n;
-      const reach = (i: number) => (spare + centers[i]! - 4) / SIN45 - lineH;
-      const capAt = (i: number, w: number) => input.maxRotatedWidth !== undefined || w <= reach(i) ? maxRotatedWidth : Math.max(ROTATED_MIN_WIDTH, Math.min(maxRotatedWidth, Math.floor(reach(i))));
-      // A rotated name longer than the cap is cut, or the plot would shrink
-      // to a strip under a fan of sixty-character labels. A cut name
-      // carries a note mark, and the note gives it back whole.
-      const cutNotes: string[] = [];
-      const cutNames: string[] = [];
-      const infos = measureAll(font, 1).map((info, i) => {
-        const cap = capAt(i, info.w);
-        if (info.w <= cap) return info;
-        // A name that already carries the author's reference keeps that one mark.
-        const mark = input.cutMarkFrom === undefined || suffixAt(i) ? '' : ` ${footnoteMark(input.cutMarkFrom + cutNotes.length)}`;
-        const suffix = suffixAt(i) + mark;
-        const reserve = suffix ? measure(suffix, font).width : 0;
-        const bare = suffixAt(i) && info.lines[0]!.endsWith(suffixAt(i)) ? info.lines[0]!.slice(0, -suffixAt(i).length) : info.lines[0]!;
-        const cut = cutWithTitle(bare, font, Math.max(cap - reserve, 1), measure);
-        cutNames.push(labels[i]!);
-        if (mark) cutNotes.push(disclosureNote(`${mark.trim()} ${labels[i]!}.`));
-        return { ...info, lines: [`${cut.text}${suffix}`], w: cap, truncated: true, ...(cut.title !== undefined ? { title: cut.title } : {}) };
+    if (rotatable.length) {
+      const fontAt = (capWidth: number) => rotatable.find(f => measureAll(f, 1).every(info => info.w <= capWidth)) ?? rotatable[0]!;
+      const fit = (capWidth: number, uniform: boolean) => {
+        const font = fontAt(capWidth);
+        // The first names reach left of the row by their slant (rotatedLeftOverhang). A name is no wider than
+        // the length that leaves every column the pitch of a 45° line at its own seat, or the row stops rotating
+        // once the caller takes the overhang. The limit is per name: a short name at the left never shortens a long one elsewhere.
+        const lineH = font.size * (font.lineHeight ?? 1.2);
+        const spare = n * step - (n * (lineH + 2)) / SIN45 - n;
+        const reach = (i: number) => (spare + centers[i]! - 4) / SIN45 - lineH;
+        const capAt = (i: number, w: number) => uniform || input.maxRotatedWidth !== undefined || w <= reach(i) ? capWidth : Math.max(ROTATED_MIN_WIDTH, Math.min(capWidth, Math.floor(reach(i))));
+        // A rotated name longer than the cap is cut, or the plot would shrink
+        // to a strip under a fan of sixty-character labels. A cut name
+        // carries a note mark, and the note gives it back whole.
+        const cutNotes: string[] = [];
+        const cutNames: string[] = [];
+        const infos = measureAll(font, 1).map((info, i) => {
+          const cap = capAt(i, info.w);
+          if (info.w <= cap) return info;
+          // A name that already carries the author's reference keeps that one mark.
+          const mark = input.cutMarkFrom === undefined || suffixAt(i) ? '' : ` ${footnoteMark(input.cutMarkFrom + cutNotes.length)}`;
+          const suffix = suffixAt(i) + mark;
+          const reserve = suffix ? measure(suffix, font).width : 0;
+          const bare = suffixAt(i) && info.lines[0]!.endsWith(suffixAt(i)) ? info.lines[0]!.slice(0, -suffixAt(i).length) : info.lines[0]!;
+          const cut = cutWithTitle(bare, font, Math.max(cap - reserve, 1), measure);
+          cutNames.push(labels[i]!);
+          if (mark) cutNotes.push(disclosureNote(`${mark.trim()} ${labels[i]!}.`));
+          return { ...info, lines: [`${cut.text}${suffix}`], w: cap, truncated: true, ...(cut.title !== undefined ? { title: cut.title } : {}) };
+        });
+        return plan(font, infos, all, 'rotate', {
+          rotation: 45,
+          cutNotes,
+          warnings: [
+            rotationWarning(n, step),
+            ...(cutNames.length > 0 ? [categoryCutLint(cutNames, cutNotes.length === cutNames.length)] : []),
+          ],
+        });
+      };
+      remember?.({
+        plan: cap => fit(cap, true),
+        dimensions(cap, centers, plotWidth) {
+          if (yearSpans.length) return;
+          const font = fontAt(cap);
+          const infos = measureAll(font, 1);
+          return rotatedDimensions(cap, centers, plotWidth, font, i => infos[i]!.w);
+        },
       });
-      return plan(font, infos, all, 'rotate', {
-        rotation: 45,
-        cutNotes,
-        warnings: [
-          {
-            code: 'category-labels-rotated',
-            severity: 'info',
-            message: `category labels rotated 45°: ${n} names do not fit horizontally on up to 3 lines at ${Math.round(step)}px per category`,
-            suggest: 'a horizontal chart (bar, or variant: "horizontal" on waterfall) keeps names upright',
-          },
-          ...(cutNames.length > 0 ? [categoryCutLint(cutNames, cutNotes.length === cutNames.length)] : []),
-        ],
-      });
+      return fit(maxRotatedWidth, false);
     }
   }
   // The row stays horizontal: it may not rotate, or its pitch is too

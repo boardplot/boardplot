@@ -53,6 +53,11 @@ export function runAnnotatePass(input: AnnotatePassInput): AnnotatePassResult {
   const engine = loadedDeferred('annotate');
   if (engine) return engine.runAnnotatePass(input);
   if (input.annotations.length > 0) throw new DeferredCoreError('annotate');
+  return emptyAnnotatePass();
+}
+
+/** An annotation-free chart owns fresh arrays for its public result. */
+export function emptyAnnotatePass(): AnnotatePassResult {
   return { nodes: [], placed: [], labels: [], decisions: [], warnings: [], legDeficit: 0, gapBracketNeed: 0, gapBracketHidden: [], bandNeed: 0 };
 }
 

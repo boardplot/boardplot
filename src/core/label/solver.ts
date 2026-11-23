@@ -435,7 +435,10 @@ function dropsFromRow(row: { mode: 'all' | 'alternate' | 'none'; eligible: Id[];
   return row.mode === 'none' ? !(row.keepEnds && (index === 0 || index === last)) : (last - index) % 2 !== 0;
 }
 
-export function solveLabels(requests: LabelRequest[], occupied: OccupiedIndex, ctx: SolveCtx): SolveResult {
+export function solveLabels(requests: LabelRequest[], occupied: OccupiedIndex, ctx: SolveCtx,
+  /** A discarded chart trial can stop on a definitive hidden label. Row retries and natural-seat probes do not report misses. */
+  onSinglePassHidden?: (label: PlacedLabel) => void,
+): SolveResult {
   // An authored move must not take a later label's seat: solve once without offsets on a copy, and keep those seats.
   if (ctx.labelOffsets && !ctx.naturalSeats && Object.keys(ctx.labelOffsets).length > 0) {
     const probe = createOccupiedIndex(ctx.plot);
@@ -444,7 +447,7 @@ export function solveLabels(requests: LabelRequest[], occupied: OccupiedIndex, c
     const natural = solveLabels(requests, probe, { ...ctx, labelOffsets: undefined });
     ctx = { ...ctx, naturalSeats: new Map(natural.placed.flatMap((label) => label.hidden ? [] : [[label.id, label.rect] as const])) };
   }
-  if (!ctx.valueRows?.length) return solveLabelPass(requests, occupied, ctx);
+  if (!ctx.valueRows?.length) return solveLabelPass(requests, occupied, ctx, onSinglePassHidden);
   const initial = occupied.snapshot();
   const pinned = new Set(requests.filter(req => req.pinnedSlot ?? ctx.pins[req.id]).map(req => req.id));
   // A row that gives up its full set keeps a pinned label, and under minimal density a label that density keeps (a highlighted value).
@@ -534,7 +537,7 @@ function anyHit(occupied: OccupiedIndex, rect: Rect, pad: number, test: (claim: 
   return occupied.some ? occupied.some(rect, pad, test) : occupied.hitsWhich(rect, pad).some(test);
 }
 
-function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: SolveCtx): SolveResult {
+function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: SolveCtx, onHidden?: (label: PlacedLabel) => void): SolveResult {
   const placed: PlacedLabel[] = [];
   const decisions: PlaceDecision[] = [];
   const warnings: LintWarning[] = [];
@@ -815,6 +818,7 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
         hidden: reason,
         ...(markValue && reason === 'collision' ? { owed: true as const } : {}),
       });
+      onHidden?.(placed[placed.length - 1]!);
       decisions.push({
         labelId: req.id,
         strategy: 'candidatesOccupied',

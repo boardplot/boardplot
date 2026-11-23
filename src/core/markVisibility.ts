@@ -460,7 +460,7 @@ export function fillEdges(geometry: Pick<Geometry, 'scene' | 'labels'> & { frame
   // Only a note the frame drew is visible text; a note kept in frame.notes or a compact list is not.
   const footnoteIds = new Set(geometry.frame?.footnoteNodeIds ?? []);
   const squeeze = (text: string) => text.replace(/\s+/g, '');
-  const footnotes = squeeze(geometry.scene.flatMap((node) => (node.t === 'text' && footnoteIds.has(node.id) ? [node.lines.join(' ')] : [])).join(' '));
+  const footnotes = footnoteIds.size === 0 ? '' : squeeze(geometry.scene.flatMap((node) => (node.t === 'text' && footnoteIds.has(node.id) ? [node.lines.join(' ')] : [])).join(' '));
   const inFootnote = (text: string | undefined) => text !== undefined && text !== '' && footnotes.includes(squeeze(plainText(text)));
   const noteNames = (label: PlacedLabel) => label.noted === true && label.noteCounted !== true
     && ([...footnoteIds].some((id) => label.noteLocation?.includes(`(${id})`) === true) || inFootnote(label.noteText));
@@ -487,7 +487,11 @@ export function fillEdges(geometry: Pick<Geometry, 'scene' | 'labels'> & { frame
     if (!isPrinted && !bounds) return node;
     return { ...node, separation: { ...node.separation, ...(isPrinted ? { printed: true as const } : {}), ...(bounds ? { bounds } : {}) } };
   });
-  geometry.scene = decideFillEdges(geometry.scene, () => theme, false);
+  // A theme with contrast edges disabled cannot add a strict edge. Repaint any
+  // existing strict marks through the usual path to remove their previous stroke.
+  if (!fillEdgesOff(theme) || geometry.scene.some(node => separated(node) && node.separation.strict)) {
+    geometry.scene = decideFillEdges(geometry.scene, () => theme, false);
+  }
   // A segment no thicker than its two seams lies under them (withSegmentSeams). One that no
   // text carries is drawn above the seams, so its fill and any edge show. The order does not
   // depend on the theme, so a repaint draws the same scene.
@@ -532,15 +536,26 @@ export function marksOnBands(scene: readonly SceneNode[]): MarkOnBand[] {
  * seams has no visible boundary of its own and gets none.
  */
 function stackBounds(node: Extract<SceneNode, { t: 'rect' }>, segments: readonly Extract<SceneNode, { t: 'rect' }>[], seam: number): Paint[] | undefined {
-  const near = (a: number, b: number) => Math.abs(a - b) < 0.01;
   const { x, y, w, h } = node.rect;
-  const covers = (from: number, to: number, oFrom: number, oTo: number) => oFrom <= from + 0.01 && oTo >= to - 0.01;
-  const find = (test: (o: { x: number; y: number; w: number; h: number }) => boolean) => segments.find((o) => o !== node && test(o.rect));
-  const vertical = [find((o) => near(o.y + o.h, y) && covers(x, x + w, o.x, o.x + o.w)), find((o) => near(o.y, y + h) && covers(x, x + w, o.x, o.x + o.w))];
-  if (vertical[0] && vertical[1] && h > 2 * seam) return vertical.map((o) => o!.fill);
-  const horizontal = [find((o) => near(o.x + o.w, x) && covers(y, y + h, o.y, o.y + o.h)), find((o) => near(o.x, x + w) && covers(y, y + h, o.y, o.y + o.h))];
-  if (horizontal[0] && horizontal[1] && w > 2 * seam) return horizontal.map((o) => o!.fill);
-  return undefined;
+  const right = x + w, bottom = y + h;
+  const vertical = h > 2 * seam;
+  const horizontal = w > 2 * seam;
+  if (!vertical && !horizontal) return;
+  let above: Paint | undefined, below: Paint | undefined, left: Paint | undefined, after: Paint | undefined;
+  for (const other of segments) {
+    if (other === node) continue;
+    const r = other.rect;
+    if (vertical && r.x <= x + 0.01 && r.x + r.w >= right - 0.01) {
+      if (!above && Math.abs(r.y + r.h - y) < 0.01) above = other.fill;
+      if (!below && Math.abs(r.y - bottom) < 0.01) below = other.fill;
+      if (above && below) return [above, below];
+    }
+    if (horizontal && r.y <= y + 0.01 && r.y + r.h >= bottom - 0.01) {
+      if (!left && Math.abs(r.x + r.w - x) < 0.01) left = other.fill;
+      if (!after && Math.abs(r.x - right) < 0.01) after = other.fill;
+    }
+  }
+  return left && after ? [left, after] : undefined;
 }
 
 /**
@@ -821,22 +836,38 @@ function glyphBoxes(scene: readonly SceneNode[], near: (y0: number, y1: number) 
 
 /** The part [t0, t1] of segment a→b that runs inside the box grown by `grow`, or undefined (Liang–Barsky). */
 function segmentInBox(a: [number, number], b: [number, number], box: GlyphBox, grow: number): [number, number] | undefined {
-  const into = ([x, y]: [number, number]): [number, number] => box.sin === 0 ? [x, y]
-    : [box.ax + (x - box.ax) * box.cos - (y - box.ay) * box.sin, box.ay + (x - box.ax) * box.sin + (y - box.ay) * box.cos];
-  const [x0, y0] = into(a);
-  const [x1, y1] = into(b);
+  let [x0, y0] = a;
+  let [x1, y1] = b;
+  if (box.sin !== 0) {
+    x0 = box.ax + (a[0] - box.ax) * box.cos - (a[1] - box.ay) * box.sin;
+    y0 = box.ay + (a[0] - box.ax) * box.sin + (a[1] - box.ay) * box.cos;
+    x1 = box.ax + (b[0] - box.ax) * box.cos - (b[1] - box.ay) * box.sin;
+    y1 = box.ay + (b[0] - box.ax) * box.sin + (b[1] - box.ay) * box.cos;
+  }
   const dx = x1 - x0;
   const dy = y1 - y0;
+  const left = box.x0 - grow;
+  const right = box.x1 + grow;
+  const top = box.y0 - grow;
+  const bottom = box.y1 + grow;
   let t0 = 0;
   let t1 = 1;
-  for (const [p, q] of [[-dx, x0 - (box.x0 - grow)], [dx, box.x1 + grow - x0], [-dy, y0 - (box.y0 - grow)], [dy, box.y1 + grow - y0]] as const) {
-    if (Math.abs(p) < 1e-9) {
-      if (q < 0) return undefined;
-      continue;
-    }
-    const r = q / p;
-    if (p < 0) { if (r > t1) return undefined; t0 = Math.max(t0, r); }
-    else { if (r < t0) return undefined; t1 = Math.min(t1, r); }
+  if (Math.abs(dx) < 1e-9) {
+    if (x0 < left || x0 > right) return undefined;
+  } else {
+    const enter = dx > 0 ? left : right;
+    const leave = dx > 0 ? right : left;
+    t0 = Math.max(t0, (enter - x0) / dx);
+    t1 = Math.min(t1, (leave - x0) / dx);
+    if (t1 <= t0) return undefined;
+  }
+  if (Math.abs(dy) < 1e-9) {
+    if (y0 < top || y0 > bottom) return undefined;
+  } else {
+    const enter = dy > 0 ? top : bottom;
+    const leave = dy > 0 ? bottom : top;
+    t0 = Math.max(t0, (enter - y0) / dy);
+    t1 = Math.min(t1, (leave - y0) / dy);
   }
   return t1 - t0 > 1e-6 ? [t0, t1] : undefined;
 }
@@ -1075,10 +1106,13 @@ const KEEP_INK_OVER_FILLS = new Set(['grid', 'gridline', 'barBreak', 'bandEdge',
 
 function linesOverFills(scene: SceneNode[], own: (node: SceneNode) => boolean): SceneNode[] {
   if (!scene.some(crossableFill)) return scene;
+  // Only earlier mark fills can cover this line. Keep their original scene indices for paint order.
+  const fills: { node: Extract<SceneNode, { t: 'rect' | 'path' }>; index: number }[] = [];
   const out: SceneNode[] = [];
   scene.forEach((node, index) => {
+    if (crossableFill(node)) fills.push({ node, index });
     out.push(node);
-    if (!own(node) || !behindText(node) || KEEP_INK_OVER_FILLS.has(node.part) || node.stroke === undefined || ('token' in node.stroke && node.stroke.theme?.kind === 'line-on-fill')) return;
+    if (fills.length === 0 || !own(node) || !behindText(node) || KEEP_INK_OVER_FILLS.has(node.part) || node.stroke === undefined || ('token' in node.stroke && node.stroke.theme?.kind === 'line-on-fill')) return;
     const segments = straightSegments(node);
     if (!segments || segments.length === 0) return;
     const [ox, oy, ex, ey] = segments[0]!;
@@ -1096,8 +1130,14 @@ function linesOverFills(scene: SceneNode[], own: (node: SceneNode) => boolean): 
     const far = runs.reduce((m, [, b]) => Math.max(m, b), 0);
     // The signed distance of a point from the line, across it.
     const side = (x: number, y: number) => (x - ox) * dy - (y - oy) * dx;
-    scene.slice(0, index).forEach((fill, fillIndex) => {
-      if (!crossableFill(fill) || fill.tx !== node.tx || fill.ty !== node.ty) return;
+    const endX = ox + dx * far;
+    const endY = oy + dy * far;
+    const minX = Math.min(ox, endX);
+    const maxX = Math.max(ox, endX);
+    const minY = Math.min(oy, endY);
+    const maxY = Math.max(oy, endY);
+    fills.forEach(({ node: fill, index: fillIndex }) => {
+      if (fill.tx !== node.tx || fill.ty !== node.ty) return;
       if (fill.t === 'path') {
         const rings = polygonRings(fill.d);
         if (rings.length === 0) return;
@@ -1113,10 +1153,11 @@ function linesOverFills(scene: SceneNode[], own: (node: SceneNode) => boolean): 
       // of a light line: the line keeps its ink over it, so it never turns
       // the page colour where nothing dark is left to read it against.
       if (fill.rect.w * Math.abs(dy) + fill.rect.h * Math.abs(dx) <= 3 * lineWidth) return;
-      const box: GlyphBox = { x0: fill.rect.x, y0: fill.rect.y, x1: fill.rect.x + fill.rect.w, y1: fill.rect.y + fill.rect.h, ax: 0, ay: 0, cos: 1, sin: 0 };
-      // A line along a fill's edge is not over it.
-      const inner: GlyphBox = { ...box, x0: box.x0 + 0.01, y0: box.y0 + 0.01, x1: box.x1 - 0.01, y1: box.y1 - 0.01 };
-      const hit = segmentInBox([ox, oy], [ox + dx * far, oy + dy * far], inner, 0);
+      // Test the line's extent before clipping it against the interior of the fill.
+      const { x, y, w, h } = fill.rect;
+      if (x > maxX || x + w < minX || y > maxY || y + h < minY) return;
+      const inner: GlyphBox = { x0: x + 0.01, y0: y + 0.01, x1: x + w - 0.01, y1: y + h - 0.01, ax: 0, ay: 0, cos: 1, sin: 0 };
+      const hit = segmentInBox([ox, oy], [endX, endY], inner, 0);
       if (hit && (hit[1] - hit[0]) * far >= 0.5) covers.push({ lo: hit[0] * far, hi: hit[1] * far, index: fillIndex });
     });
     if (covers.length === 0) return;
