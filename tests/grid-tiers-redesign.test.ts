@@ -324,6 +324,25 @@ describe('grid anchors.categories across panel types', () => {
       return node.x + (node.tx ?? 0);
     });
     expect(labelX).toEqual(labelX.map(() => expect.closeTo(labelX[0]!, 2)));
+    // The variance zero line runs under the moved categories to the plot edge, as the gridlines do.
+    const zero = grid.scene.find((node) => node.t === 'line' && node.part === 'baseline' && node.id.startsWith('dpy/')) as { x2: number; tx?: number };
+    expect(zero.x2 + (zero.tx ?? 0)).toBeGreaterThan(edges[0]![1]! - 3);
+    expect(grid.warnings.map((warning) => warning.code)).not.toContain('grid-anchor-incompatible');
+  });
+
+  // Stacked dot panels share a category axis down the plot: aligning their numeric value ticks as
+  // categories halved the first plot and warned.
+  it('leaves the value axis of stacked dot panels alone', () => {
+    const quarters = ['Q1', 'Q2', 'Q3', 'Q4'].map((label) => ({ id: label.toLowerCase(), label }));
+    const panel = (id: string, values: number[]) =>
+      ({ id, type: 'dot', data: { categories: quarters, series: [{ id, label: id, values }] }, options: { valueAxis: { show: true } } });
+    const grid = layoutResolvedRequest(resolveChartRequest({
+      type: 'grid',
+      data: { panels: [panel('a', [0, 30, 70, 100]), panel('b', [0, 60, 150, 200])] },
+      options: { sharedAxis: 'category', sharedScale: false, anchors: { plotEdges: 'all' }, size: { width: 960, height: 600 } },
+    })) as Geometry;
+    const [first, second] = plotEdges(grid);
+    expect(first![1]! - first![0]!).toBeCloseTo(second![1]! - second![0]!, 2);
     expect(grid.warnings.map((warning) => warning.code)).not.toContain('grid-anchor-incompatible');
   });
 });

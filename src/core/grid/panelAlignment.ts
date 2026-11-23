@@ -54,7 +54,9 @@ export function alignCategoryPanels(
   theme: ReturnType<typeof resolveTheme>,
 ): number {
   const before = new Map(children.map((child) => [child, [child.slot.x + child.geometry.plot.x, child.geometry.plot.w]] as const));
-  const ticksOf = (child: GridPanelLayout) => child.geometry.axes.find((axis) => axis.axis === 'x')?.ticks ?? [];
+  // Category ticks carry the category id. Numeric ticks (a dot or scatter value axis) are no categories.
+  const ticksOf = (child: GridPanelLayout) =>
+    (child.geometry.axes.find((axis) => axis.axis === 'x')?.ticks ?? []).filter((tick) => typeof tick.at === 'string');
   const candidates = children.filter((child) => child.relayout !== undefined && ticksOf(child).length >= 2);
   if (candidates.length < 2) return 0;
   const shared = ticksOf(candidates[0]!).map((tick) => tick.at)
@@ -85,6 +87,10 @@ export function alignCategoryPanels(
         // A new object on each pass: the layout memo keeps the JSON of an option object by identity.
         child.anchored!.categoryInset = { left: Math.max(0, x2 - x), right: Math.max(0, x + w - (x2 + w2)) };
         child.geometry = child.relayout!(child.margin);
+        // Room the panel kept for its edge labels can change with the inset: its margin takes the change.
+        const nx = child.slot.x + child.geometry.plot.x;
+        const nr = nx + child.geometry.plot.w;
+        if (Math.abs(nx - x) > 0.01 || Math.abs(nr - x - w) > 0.01) moveChildPlot(child, x - nx, nr - x - w, theme);
       } else moveChildPlot(child, x2 - x, x + w - (x2 + w2), theme);
     }
   }

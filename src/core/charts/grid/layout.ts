@@ -1434,8 +1434,9 @@ function layoutAuthoredGrid(
     children = alignPlotEdges(children, scope, sharedAnchors, warnings, theme);
   }
   // A shared category axis aligns its centres down each column, as the plain stacked grid does.
-  const categoryScope = options.anchors?.categories ?? (options.sharedAxis === 'category' ? 'column' : undefined);
-  if (categoryScope && categoryScope !== 'row') {
+  const authoredScope = options.anchors?.categories === 'row' ? undefined : options.anchors?.categories;
+  const categoryScope = authoredScope ?? (options.sharedAxis === 'category' ? 'column' : undefined);
+  if (categoryScope) {
     const moved = Math.max(0, maxOf(scopeGroups(children, categoryScope).map(group => alignCategoryPanels(group, theme))));
     // Column, line, combo and variance panels move their categories inside the plot, so the
     // edges hold. Another type moves its plot: the centres win, and the edge anchors it moved
@@ -2397,29 +2398,33 @@ function alignPlotEdges(
   for (const [groupIndex, group] of scopeGroups(children, scope, { anchor: 'plot-edge', warnings, eligible }).entries()) {
     const candidates = group.filter(eligible);
     if (candidates.length < 2) continue;
-    const left = maxOf(candidates.map((child) => child.slot.x + child.geometry.plot.x));
-    const right = minOf(candidates.map((child) => child.slot.x + child.geometry.plot.x + child.geometry.plot.w));
-    if (!(right > left)) {
-      warnings.push({
-        code: 'grid-anchor-incompatible',
-        severity: 'warn',
-        message: `${scope} plot-edge alignment group ${groupIndex + 1} has no shared horizontal span — plot edges were left unchanged`,
+    const leftOf = (child: AuthoredChild) => child.slot.x + child.geometry.plot.x;
+    const rightOf = (child: AuthoredChild) => leftOf(child) + child.geometry.plot.w;
+    // A panel can keep more room than the margin it gets (rotated category names), so a second pass
+    // moves the others to it.
+    for (let pass = 0; pass < 3; pass++) {
+      const left = maxOf(candidates.map(leftOf));
+      const right = minOf(candidates.map(rightOf));
+      if (!(right > left)) {
+        if (pass === 0) warnings.push({
+          code: 'grid-anchor-incompatible',
+          severity: 'warn',
+          message: `${scope} plot-edge alignment group ${groupIndex + 1} has no shared horizontal span — plot edges were left unchanged`,
+        });
+        break;
+      }
+      derived[`plotEdges:${scope}:${groupIndex}:left`] = left;
+      derived[`plotEdges:${scope}:${groupIndex}:right`] = right;
+      if (pass > 0 && candidates.every((child) => Math.abs(leftOf(child) - left) <= 0.01 && Math.abs(rightOf(child) - right) <= 0.01)) break;
+      const margins = candidates.map((child) => movedMargin(child, left - leftOf(child), rightOf(child) - right, theme));
+      // The panel labels of the group start at one x: the left edge of its widest y-label column.
+      const labelX = minOf(candidates.map((child, index) => child.slot.x + (margins[index]!.left ?? 0)));
+      candidates.forEach((child, index) => {
+        if (child.anchored) child.anchored.captionLeft = labelX - child.slot.x;
+        child.margin = margins[index]!;
+        child.geometry = child.relayout!(child.margin);
       });
-      continue;
     }
-    derived[`plotEdges:${scope}:${groupIndex}:left`] = left;
-    derived[`plotEdges:${scope}:${groupIndex}:right`] = right;
-    const margins = candidates.map((child) => {
-      const currentLeft = child.slot.x + child.geometry.plot.x;
-      return movedMargin(child, left - currentLeft, currentLeft + child.geometry.plot.w - right, theme);
-    });
-    // The panel labels of the group start at one x: the left edge of its widest y-label column.
-    const labelX = minOf(candidates.map((child, index) => child.slot.x + (margins[index]!.left ?? 0)));
-    candidates.forEach((child, index) => {
-      if (child.anchored) child.anchored.captionLeft = labelX - child.slot.x;
-      child.margin = margins[index]!;
-      child.geometry = child.relayout!(child.margin);
-    });
   }
   return children;
 }
