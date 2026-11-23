@@ -1,3 +1,4 @@
+import { staticFrame } from '../../footer';
 import { alignedRight, authoredTrackWidth, columnOverrideWarnings, orderedBlocks, trackPlotFloor } from '../columnOverrides';
 import { generatedIdWarnings } from '../../schema/generatedColumns';
 import { chartString } from '../../strings/likert';
@@ -906,7 +907,7 @@ export function layoutLikert(
   // The natural-height draw reads the target's fixed flags and uses its own size.
   const naturalMinimum: BarNaturalMinimum = (width, height, drawMinimum) => {
     const { size: _trialSize, [TARGET_SIZE]: target, ...settings } = opts as LikertOptions & TargetSizeOptions;
-    const key = JSON.stringify(['likert-natural', canvas.width, width, height, target?.fixed, layoutStepKey(),
+    const key = JSON.stringify(['likert-natural', canvas.width, staticFrame.pinned, staticFrame.live, width, height, target?.fixed, layoutStepKey(),
       currentSmallValues(), formatScopeKey(opts)]);
     const entries = requestMemo(data, key, (): { settings: typeof settings; minimum: number | undefined }[] => []);
     const match = entries.find(entry => sameContent(entry.settings, settings));

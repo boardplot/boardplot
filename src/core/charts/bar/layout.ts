@@ -1,3 +1,4 @@
+import { staticFrame } from '../../footer';
 import { refuseLabelPosition } from '../band/labelPosition';
 import { pickedValues, withValueLabelDefaults } from '../band/valueSelection';
 import { chartPalette, chartTheme } from '../chartEnv';
@@ -226,7 +227,7 @@ export function layoutBar(
   // Once returned, the chart belongs to its caller and cannot be handed out again.
   const retry = options.variant === 'stacked' && annotationPass === undefined && checkNaturalHeight === true
     && isCachedTextMeasurer(options.measure ?? defaultMeasurer)
-    ? requestMemo(data, JSON.stringify(['bar-natural-retry', layoutStepKey(), currentSmallValues(), formatScopeKey(options)]),
+    ? requestMemo(data, JSON.stringify(['bar-natural-retry', layoutStepKey(), staticFrame.pinned, staticFrame.live, currentSmallValues(), formatScopeKey(options)]),
       (): { next?: { options: BarOptions; geometry: Geometry<BarMarks, BarDerived> } } => ({}))
     : undefined;
   const next = retry?.next;

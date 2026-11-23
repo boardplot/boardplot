@@ -939,7 +939,7 @@ function rejectShortColumnMidpoint(domain: ColumnDomain, area: ColumnArea, memo?
     || domain.refSeries.length || domain.netLineOn || domain.ribbonsOn || domain.connectorsOn || area.tier
     || domain.cats.some(c => c.partial || c.footnote !== undefined) || domain.dataSeries.some(s => s.vals.some(v => v.range))
     || options.seriesLabels !== undefined || kindSetting(options, 'segment') !== false
-    || options.notes !== undefined || options.footnotes !== undefined || staticFrame.pinned
+    || options.notes !== undefined || options.footnotes !== undefined || staticFrame.pinned || staticFrame.live
     || area.frame.frame.notePlacement !== 'frame' || area.frame.frame.noteList?.some(n => n.kind !== 'source')
     || area.catPlan().step !== 'rotate' || area.catPlan().cutNotes.length) return;
   if (memo.heightAxes && memo.plotHeightAt && memo.rotatedHeightAt && memo.stairFailsAt && typeof options.size === 'object') {
