@@ -14,7 +14,7 @@ import { distinguishSeries } from '../../seriesIdentity';
 
 import { highlightPaintWarnings } from '../../paintWarnings';
 import type { PaintWarningRule } from '../../types/scene';
-import type { AnchorResolution } from '../../annotate';
+import type { AnchorResolution, BracketSpanError } from '../../annotate';
 import { runAnnotatePass } from '../../annotatePass';
 import { categoryBandFromCenters } from '../../annotateFields';
 import { BRACKET_GAP, BRACKET_TICK } from '../../annotateParts';
@@ -927,7 +927,7 @@ function automaticBreak(
 }
 
 type BracketSteps = { i: number; j: number; sum: number; steps: { id: Id; value: number }[] };
-type BracketSpan = BracketSteps | { code: string; error: string };
+type BracketSpan = BracketSteps | BracketSpanError;
 
 function waterfallBracketSteps(items: NormItem[], hasCases: boolean, fromId: Id, toId: Id): BracketSpan {
   if (hasCases) return { code: 'bracket-cases', error: 'a bridge with cases has no one sum to print' };
