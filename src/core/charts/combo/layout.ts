@@ -1,5 +1,6 @@
 import { hasLabelPosition, refuseLabelPosition } from '../band/labelPosition';
 import { copyFrame } from '../../footer';
+import { defaultMeasurer } from '../../text';
 import { sk, stackParts } from '../band/stacks';
 import { chartString } from '../../strings/combo';
 import { withSegmentSeams } from '../../markVisibility';
@@ -72,7 +73,7 @@ import { MARKER_R, type ComboArea, type ComboDomain, type ComboEnv, type ComboMa
 import { comboPaints, contentOf, comboPlotArea, refitComboFrame, solveComboFrame, toDateOnTotals } from './plot';
 import { PARTIAL_KEY, toDateFits, toDateRoom } from '../../partialPeriod';
 import type { ComboOptions } from '../../types/options';
-import { DEFER_DENSITY_NOTES, DENSITY_VALUES, DENSITY_LAYOUT_OPTIONS, authoredNotes, noteCap, noteLine, POINTED_NOTES, withAuthoredFootnotes, type InternalFootnoteOptions } from '../../frame';
+import { DEFER_DENSITY_NOTES, DENSITY_VALUES, DENSITY_LAYOUT_OPTIONS, authoredFootnoteCount, authoredNotes, noteCap, noteLine, POINTED_NOTES, withAuthoredFootnotes, type InternalFootnoteOptions } from '../../frame';
 import { categoryNotesDiffer, FORCE_CATEGORY_RANKS, rankNotes } from './categoryRanks';
 import type { EmittedLane } from '../../eventLane';
 import { ANOMALY_FLAG_GAP, ANOMALY_FLAG_H, anomalyA11y, anomalyReceipt, columnCorridorPaint, lineAnomalyFurniture, seatFlaggedValues } from '../column/anomaly';
@@ -421,11 +422,34 @@ interface ComboFrameSeed {
 interface ComboNoteMarks {
   area: ComboArea;
   geometry: ComboMarkGeometry;
+  seats?: {
+    frameClaims: OccupiedIndex;
+    authoredCount: number;
+    occupied: OccupiedIndex;
+    solved: SolveResult;
+    warnings: LintWarning[];
+  };
+}
+
+function sameBox(a: Rect, b: Rect): boolean {
+  return a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
+}
+
+/** Only empty-owner header, footer and legend boxes can take part in the note-only transfer. */
+function sameFrameClaims(before: OccupiedIndex, after: OccupiedIndex): boolean {
+  const a = before.snapshot();
+  const b = after.snapshot();
+  return !before.tickColumns && !after.tickColumns && a.length === b.length && a.every((claim, i) => {
+    const other = b[i]!;
+    return (claim.kind === 'frame' || claim.kind === 'legend') && claim.kind === other.kind
+      && !claim.part && !other.part && !claim.polygon && !other.polygon
+      && !Object.keys(claim.owner).length && !Object.keys(other.owner).length && sameBox(claim.rect, other.rect);
+  });
 }
 
 /** A note can change its text without changing the plot or any mark. */
 function sameMarkArea(a: ComboArea, b: ComboArea): boolean {
-  return (['x', 'y', 'w', 'h'] as const).every(key => a.plot[key] === b.plot[key])
+  return sameBox(a.plot, b.plot)
     && a.rightTickX === b.rightTickX
     && a.band.range.every((value, i) => value === b.band.range[i])
     && a.band.bandwidth === b.band.bandwidth && a.band.step === b.band.step
@@ -526,7 +550,7 @@ function layoutComboFramePass(
       }
     }
   }
-  const occupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
+  let occupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
   commitClaims(occupied, settled.framed.claims);
   // A rank names nothing without its mapping, which is the label row moved
   // to the notes; a cut name comes back whole in its marked note.
@@ -550,7 +574,8 @@ function layoutComboFramePass(
     const authored = (options as InternalFootnoteOptions).authoredFootnotes ?? current;
     return layoutComboPass(data, { ...withAuthoredFootnotes(options, [...current, ...keyed], authored), [POINTED_NOTES]: keyed, [FORCE_CATEGORY_RANKS]: true } as ComboOptions, gutterOverride);
   }
-  const marks = noteMarks && sameMarkArea(noteMarks.area, area)
+  const keptMarks = noteMarks && sameMarkArea(noteMarks.area, area);
+  const marks = keptMarks
     ? { ...noteMarks.geometry,
       // The note retry normalizes fresh series. Paint decisions can use
       // series identity, so retained positions must refer to those series.
@@ -565,7 +590,14 @@ function layoutComboFramePass(
   }
   const anomalyMarks = domain.anomaly ? comboAnomalyMarks(env, domain, domain.anomaly, area, geometry) : undefined;
   commitClaims(occupied, geometry.claims);
-  const requests = planComboLabels(env, domain, area, geometry, paints, warnings);
+  // The note retry has rebuilt its frame. An unchanged plot, category numbering and
+  // frame claims give the original marks and labels exactly the same seats.
+  const seats = keptMarks && noteMarks.seats && sameBox(noteMarks.area.frame.plot, area.frame.plot)
+    && noteMarks.seats.authoredCount === authoredFootnoteCount(domain.options)
+    && sameFrameClaims(noteMarks.seats.frameClaims, settled.framed.claims) ? noteMarks.seats : undefined;
+  const labelWarningStart = warnings.length;
+  const requests = seats ? [] : planComboLabels(env, domain, area, geometry, paints, warnings);
+  if (seats) pushAll(warnings, seats.warnings);
   if (!requests) return layoutComboPass(data, { ...options, [TOTALS_AXIS]: true } as ComboOptions, gutterOverride);
   const stair = area.stairTop === undefined ? undefined : seatStaircase({
     categories: domain.cats, band: area.band, top: area.stairTop, left: area.plot.x, right: area.plot.x + area.plot.w,
@@ -611,7 +643,8 @@ function layoutComboFramePass(
   const chartIds = new Set(requests.map(request => request.id));
   const solved: SolveResult = annotatedFirst
     ? { placed: annotatedFirst.labels.filter(label => chartIds.has(label.id)), decisions: annotatedFirst.decisions.filter(decision => chartIds.has(decision.labelId)), warnings: [] }
-    : solveLabels(requests, occupied, solveCtx);
+    : seats?.solved ?? solveLabels(requests, occupied, solveCtx);
+  if (seats) occupied = seats.occupied;
   if (annotatedFirst) {
     annotatedFirst.labels = annotatedFirst.labels.filter(label => !chartIds.has(label.id));
     annotatedFirst.decisions = annotatedFirst.decisions.filter(decision => !chartIds.has(decision.labelId));
@@ -677,7 +710,15 @@ function layoutComboFramePass(
       const valueCount = solved.placed.filter((l) => l.id.startsWith('tick:') || l.id.startsWith('segment:')).length;
       const note = noteLine(options.strings!.valuesNotBesideMarks!, [...named.values()].sort((a, b) => a[0] - b[0]).map(([, item]) => item), options, valueCount);
       const authored = (options as InternalFootnoteOptions).authoredFootnotes ?? current;
-      return layoutComboPass(data, { ...withAuthoredFootnotes(options, [...current, ...note], authored), [UNPRINTED]: { named, runs: prior.runs + 1 } } as ComboOptions, gutterOverride, { area, geometry: marks });
+      return layoutComboPass(data, { ...withAuthoredFootnotes(options, [...current, ...note], authored), [UNPRINTED]: { named, runs: prior.runs + 1 } } as ComboOptions, gutterOverride, {
+        area, geometry: marks,
+        // This pass returns directly into the retry. Its placed labels and claims have one owner.
+        seats: env.measure === defaultMeasurer && !(HOST_CLAIMS in options) && !domain.secondaryActive
+          && !domain.anomaly && !options.annotations?.length && options.categoryLabels !== 'staircase'
+          && !area.forecast.length && !domain.cats.some(category => category.partial)
+          ? { frameClaims: settled.framed.claims, authoredCount: authoredFootnoteCount(domain.options),
+            occupied, solved, warnings: warnings.slice(labelWarningStart) } : undefined,
+      });
     }
     // A value the note prints is not lost; one it misses still reports.
     const inNote = new Set(unprinted.filter((l) => prior.named.has(l.id)).map((l) => l.id));
