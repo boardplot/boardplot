@@ -40,9 +40,9 @@ import { segmentHitsRect, type Point, type Rect } from '../../geometry';
 import { leaderPath, linePath } from '../../svgPath';
 import { fmtPathNumber as fmt } from '../../curve';
 import { labelsToNodes } from '../../label/emit';
-import type { OccupiedIndex } from '../../label/occupied';
+import type { OccupiedClaim, OccupiedIndex } from '../../label/occupied';
 import { labelCtx, leaderTerminus, solveLabels, type LabelRequest, type SolveCtx, type SolveResult } from '../../label/solver';
-import { ColumnHeightTrial, COLUMN_MIDPOINT_SHORT, columnHeightSearch, columnMidpointFloor, plotFloorRows, DIGIT_SEAT, measuredColumnHeights, measureColumnHeight, type DigitSeated } from '../../sizing';
+import { ColumnHeightTrial, COLUMN_MIDPOINT_SHORT, columnHeightSearch, columnMidpointFloor, plotFloorRows, sameContent, DIGIT_SEAT, measuredColumnHeights, measureColumnHeight, type DigitSeated } from '../../sizing';
 import type { TickBandDerived } from '../../label/tickRow';
 import { accessibleTitle } from '../../normalize/shared';
 import type { RangeMark } from '../../rangeRules';
@@ -802,7 +802,7 @@ function layoutColumnSettled(
   let pass!: Exclude<ReturnType<typeof layoutColumnPass>, { retry: StaircaseOutcome }>;
   let minimumChrome = Infinity;
   let first = true;
-  const run = (next: AnomalyColumnOptions, probeAxis = false): AnomalyColumnOptions => {
+  const run = (next: AnomalyColumnOptions, probeAxis = false, noteParent?: ColumnPass): AnomalyColumnOptions => {
     // Only the staircase padding or fallback flag changes between these draws.
     const staircase: (ColumnStaircaseMemo & Pick<AxisProbe, 'prepared'>) | undefined = next.categoryLabels === 'staircase' ? {} : undefined;
     const shared = first && PROBE_COLUMN_AXIS in next ? probe.otherAxis : undefined;
@@ -818,7 +818,7 @@ function layoutColumnSettled(
       if (search && search.growthHeight === next.size.height) staircase.growthTrial = true;
     }
     const draw = (o: AnomalyColumnOptions) => {
-      const trial = layoutColumnPass(data, o, keepEachValue, first ? probe : undefined, probeAxis, staircase);
+      const trial = layoutColumnPass(data, o, keepEachValue, first ? probe : undefined, probeAxis, staircase, noteParent);
       first = false;
       if ('retry' in trial) return trial.retry;
       // A completed draw owns its scene nodes, including the title and footer.
@@ -889,7 +889,8 @@ function layoutColumnSettled(
     for (let round = 0; round <= owed && unnamed(); round++) {
       const byData = dataOrder(data, pass.geometry.labels);
       named = new Map([...named, ...pass.unprinted].sort(([a], [b]) => byData(a, b)));
-      next = run({ ...next, [SEGMENT_NOTE]: [...named.values()] } as AnomalyColumnOptions);
+      const parent = pass.noteFrame?.options === next ? pass : undefined;
+      next = run({ ...next, [SEGMENT_NOTE]: [...named.values()] } as AnomalyColumnOptions, false, parent);
     }
     return next;
   };
@@ -1120,6 +1121,22 @@ function measureStackedOpening(data: ChartData, options: AnomalyColumnOptions, s
   return trial;
 }
 
+interface ColumnPass {
+  geometry: Geometry<ColumnMarks, ColumnDerived>;
+  unprinted: Map<string, string>;
+  categoryNotes: string[];
+  planNotes: string[];
+  rankKey: () => string[];
+  legDeficit: number;
+  bandNeed: number;
+  valueLineReserve: number;
+  tickReserve: number;
+  unseated: number;
+  seatNeed: number;
+  staircase?: StaircaseOutcome;
+  noteFrame?: { options: AnomalyColumnOptions; area: ColumnArea; claims: OccupiedClaim[]; warnings: LintWarning[] };
+}
+
 function layoutColumnPass(
   data: ChartData,
   options: AnomalyColumnOptions,
@@ -1127,7 +1144,8 @@ function layoutColumnPass(
   axisProbe?: AxisProbe,
   probeAxis = false,
   staircaseInputs?: Pick<AxisProbe, 'prepared'> & ColumnStaircaseMemo,
-): { geometry: Geometry<ColumnMarks, ColumnDerived>; unprinted: Map<string, string>; categoryNotes: string[]; planNotes: string[]; rankKey: () => string[]; legDeficit: number; bandNeed: number; valueLineReserve: number; tickReserve: number; unseated: number; seatNeed: number; staircase?: StaircaseOutcome } | { retry: StaircaseOutcome } {
+  noteParent?: ColumnPass,
+): ColumnPass | { retry: StaircaseOutcome } {
   const retry = staircaseInputs?.prepared;
   const prepared = retry ?? axisProbe?.prepared;
   if (axisProbe) axisProbe.prepared = undefined;
@@ -1209,6 +1227,23 @@ function layoutColumnPass(
       } : {}) };
   }
   rejectShortColumnMidpoint(domain, area, staircaseMemo);
+  // A segment note can live outside the drawing. Make its actual frame first.
+  // Only this direct retry owns the previous body, and only if its drawing space is unchanged.
+  const noteFrame = domain.variant === 'stacked' && domain.cats.length > 12 && domain.measure === defaultMeasurer
+    && !(HOST_CLAIMS in options) && !domain.activeBreak && !domain.annList.length && !domain.averageMarker
+    && !domain.anomaly && !domain.refSeries.length && !domain.netLineOn && !domain.ribbonsOn && !domain.connectorsOn
+    && !options.seriesLabels && !options.shareLabels && !area.tier && options.categoryLabels !== 'staircase'
+    && !domain.cats.some(c => c.partial || c.footnote !== undefined) && !domain.incompleteCats.size
+    && !domain.uniformScenario.size && !(typeof options.size === 'object' && measureColumnHeight.has(options.size))
+    ? { options, area, claims: occupied.snapshot(), warnings: warnings.slice() } : undefined;
+  const before = noteParent?.noteFrame;
+  if (before && noteFrame && sameContent(before.area.frame.plot, area.frame.plot) && sameContent(before.area.plot, area.plot)
+    && sameContent(before.area.frame.nodes, area.frame.nodes) && sameContent(before.area.frame.legend, area.frame.legend)
+    && sameContent(before.claims, noteFrame.claims) && sameContent(before.warnings, warnings)
+    && area.band.step === before.area.band.step && area.band.bandwidth === before.area.band.bandwidth
+    && sameContent(before.area.y.domain, area.y.domain) && sameContent(before.area.y.range, area.y.range)) {
+    return { ...noteParent, geometry: { ...noteParent.geometry, frame: area.frame.frame, legend: area.frame.legend }, noteFrame };
+  }
   const testingAxis = PROBE_COLUMN_AXIS in options;
   if (testingAxis && area.stairTop === undefined) throw AXIS_PROBE_INCONCLUSIVE;
   const measuring = typeof options.size === 'object' && measureColumnHeight.has(options.size)
@@ -1378,5 +1413,5 @@ function layoutColumnPass(
       ? geometry.labels.filter((label) => label.id === entry.labelId && label.hidden !== undefined) : [])
     : [];
   const seatNeed = Math.ceil(maxOf(unseatedLabels.map((label) => label.rect.h))) + CALLOUT_SEAT_AIR;
-  return { geometry, unprinted, categoryNotes, planNotes, rankKey, legDeficit: annotated.legDeficit, bandNeed: annotated.bandNeed, valueLineReserve, tickReserve: tickReserve <= size.width / 3 ? tickReserve : 0, unseated: unseatedLabels.length, seatNeed: unseatedLabels.length > 0 ? seatNeed : 0, ...(staircase ? { staircase } : {}) };
+  return { geometry, unprinted, categoryNotes, planNotes, rankKey, noteFrame, legDeficit: annotated.legDeficit, bandNeed: annotated.bandNeed, valueLineReserve, tickReserve: tickReserve <= size.width / 3 ? tickReserve : 0, unseated: unseatedLabels.length, seatNeed: unseatedLabels.length > 0 ? seatNeed : 0, ...(staircase ? { staircase } : {}) };
 }
