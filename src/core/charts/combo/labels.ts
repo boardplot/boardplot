@@ -659,6 +659,7 @@ export function planComboLabels(
   geometry: ComboMarkGeometry,
   paints: ComboPaints,
   warnings: LintWarning[],
+  probeEndpoints?: (requests: LabelRequest[]) => boolean,
 ): LabelRequest[] | undefined {
   const { frame, labelFont, band } = area;
   const rightAxisActive = domain.rightTicks.length > 0;
@@ -737,7 +738,8 @@ export function planComboLabels(
         bounds: s.kind === 'line' && (domain.options as { [FIRST_END_BELOW_TOTALS]?: boolean })[FIRST_END_BELOW_TOTALS] !== true ? { x0: area.plot.x, x1: area.plot.x + area.plot.w, y0: area.plot.y, y1: area.plot.y + area.plot.h } : { x0: frame.plot.x, x1: frame.plot.x + frame.plot.w }, strokes, fills, segmentSeats, totalSeats, anatomy: domain.anatomy }));
     }
   }
-  linePointLabels(env, domain, area, geometry, requests, strokes, fills);
+  const interiorAt = requests.length;
+  if (!probeEndpoints) linePointLabels(env, domain, area, geometry, requests, strokes, fills);
   // A value may sit on an area where it clears that fill's edges by the solver's pad; another series' value keeps off a shaded one.
   seatValuesOnGround(requests, geometry.areaGrounds, 2, (ground) => paints.css(ground.paint), !shadesFills(domain.options.annotations ?? []), ['point', 'grandTotal']);
   referenceLabels(env, domain, area, requests);
@@ -746,5 +748,12 @@ export function planComboLabels(
   rankValueLabels(requests, request => request.kind === 'grandTotal' && request.owner.categoryId !== undefined
     ? domain.stackTotals[request.owner.categoryId] : undefined, env.density, domain.options.labelPlacements,
     { categories: domain.cats.length, last: domain.options.mode === 'compact' ? domain.cats.at(-1)?.id : undefined, pitch: band.step, orientation: 'vertical', measure: env.measure });
+  // The endpoint probe runs in full mode without area grounds. Its interior points have
+  // no density rank or fill treatment, so they can rejoin at their original position.
+  if (probeEndpoints && !probeEndpoints(requests)) {
+    const interior: LabelRequest[] = [];
+    linePointLabels(env, domain, area, geometry, interior, strokes, fills);
+    return [...requests.slice(0, interiorAt), ...interior, ...requests.slice(interiorAt)];
+  }
   return requests;
 }
