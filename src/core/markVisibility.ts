@@ -610,6 +610,7 @@ export function withSegmentSeams(
   type RectNode = Extract<SceneNode, { t: 'rect' }>;
   const segments = nodes.filter((node): node is RectNode =>
     node.t === 'rect' && node.part === 'segment' && node.rect.w > 0 && node.rect.h > 0);
+  if (segments.length < 2) return nodes;
   const seams: SceneNode[] = [];
   const near = (a: number, b: number) => Math.abs(a - b) < 0.01;
   const seam = (a: RectNode, x1: number, y1: number, x2: number, y2: number) => seams.push({
@@ -617,7 +618,7 @@ export function withSegmentSeams(
     stroke: { token: 'background' }, width: strokeToken(theme, 'seam'), owner: a.owner, part: 'segmentSeam',
     ...(a.tx ? { tx: a.tx } : {}), ...(a.ty ? { ty: a.ty } : {}),
   });
-  const order = new Map(nodes.map((node, index) => [node, index]));
+  const order = oneBlock ? new Map(nodes.map((node, index) => [node, index])) : undefined;
   const underlaps = new Map<RectNode, RectNode>();
   // Without a oneBlock rule a pair seams only when a's top meets b's bottom or a's right edge
   // meets b's left edge (within `near`). Buckets of those edges give each a the few b that can
@@ -627,7 +628,9 @@ export function withSegmentSeams(
   const bucket = (v: number) => Math.floor(v / 0.01);
   const bottoms = new Map<number, number[]>(), lefts = new Map<number, number[]>();
   const unbucketed: number[] = [];
-  if (!oneBlock) segments.forEach((b, i) => {
+  // A short stack has fewer pairs than bucket lookups. Keep its original segment order.
+  const useBuckets = !oneBlock && segments.length > 8;
+  if (useBuckets) segments.forEach((b, i) => {
     for (const [map, v] of [[bottoms, b.rect.y + b.rect.h], [lefts, b.rect.x]] as const) {
       const key = bucket(v);
       if (!Number.isSafeInteger(key)) { unbucketed.push(i); continue; }
@@ -636,7 +639,7 @@ export function withSegmentSeams(
     }
   });
   const partners = (a: RectNode): Iterable<RectNode> => {
-    if (oneBlock) return segments;
+    if (!useBuckets) return segments;
     const found = new Set<number>(unbucketed);
     // |p - q| < 0.01 puts the buckets at most one apart; two covers rounding in the division.
     for (const [map, v] of [[bottoms, a.rect.y], [lefts, a.rect.x + a.rect.w]] as const) {
@@ -651,7 +654,7 @@ export function withSegmentSeams(
     if (oneBlock?.(a.owner, b.owner)) {
       // The block reads as one: no light line runs
       // through the number centred across the edge.
-      const [first, second] = order.get(a)! < order.get(b)! ? [a, b] : [b, a];
+      const [first, second] = order!.get(a)! < order!.get(b)! ? [a, b] : [b, a];
       if (near(first.rect.x + first.rect.w, second.rect.x)) underlaps.set(first, { ...first, rect: { ...first.rect, w: first.rect.w + Math.min(1, second.rect.w) } });
       else if (near(second.rect.x + second.rect.w, first.rect.x)) underlaps.set(first, { ...first, rect: { ...first.rect, x: first.rect.x - Math.min(1, second.rect.w), w: first.rect.w + Math.min(1, second.rect.w) } });
       continue;

@@ -93,6 +93,8 @@ interface CategoryRowInput {
   /** Every category carries an ISO date: the row names periods whatever its words ("FY25F"), and takes `secondary`. */
   periods?: boolean;
   measure: TextMeasurer;
+  /** A height search can keep the first single-line fit. Its returned infos identify that choice. */
+  onSingleLineFit?: (infos: CategoryRowPlan['infos']) => void;
   /** Minimum clear gap between neighbouring labels (px). */
   gap?: number;
   /** Width the wrap budget keeps free inside the pitch (px). */
@@ -1308,7 +1310,12 @@ function planRow(input: CategoryRowInput, sourceMeasure: TextMeasurer, remember?
   // short token ("Wave 1") stays whole. Thinning keeps the 4 px floor.
   const wordy = labels.some((label) => /\S\s+\S/.test(label)) && labels.every((label) => label.trim().split(/\s+/).every((word) => word.length >= 3));
   const plainGap = wordy ? Math.max(gap, baseFont.size / 2) : gap;
-  if (plain.every((info, i) => info.w + gap <= widthAt(i)) && fits(plain, all, plainGap)) return plan(baseFont, plain, all, 'fit');
+  if (plain.every((info, i) => info.w + gap <= widthAt(i)) && fits(plain, all, plainGap)) {
+    const row = plan(baseFont, plain, all, 'fit');
+    // A spread retry supplies its own widths after trying rotated names at this height.
+    if (input.onSingleLineFit && !input.widths) input.onSingleLineFit(row.infos);
+    return row;
+  }
 
   // Prose: wrap to two lines, then three, then step the font down, then rotate.
   const two = wholeRows(baseFont, PROSE_TICK_MAX_LINES);

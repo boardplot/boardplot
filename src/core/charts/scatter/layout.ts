@@ -1,3 +1,4 @@
+import { withLeaderPathNumbers } from '../../svgPath';
 import { chartString } from '../../strings/scatter';
 import type { Theme } from '../../types/theme';
 import { structureCount } from '../../structureCounts';
@@ -25,11 +26,12 @@ import { structureCount } from '../../structureCounts';
  */
 
 import type { AnchorResolution, AnnotatePassResult } from '../../annotate';
-import { runAnnotatePass } from '../../annotatePass';
+import { emptyAnnotatePass, runAnnotatePass } from '../../annotatePass';
 import { hiddenNoteWith, markNotedLabels, noteLine, type FrameResult, type LegendItemInput } from '../../frame';
 import { staticFrame, storyFrameFit } from '../../footer';
 import { ruleFormatter } from '../../numberSets';
 import { withSmallValues } from '../../formatPrecision';
+import { sameContent } from '../../sizing';
 import { spaceTokens, emphasisWeight, strokeToken, dashToken } from '../../theme';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
@@ -59,7 +61,7 @@ import {
   type ScatterMarks,
   type ScatterPlotArea,
 } from './model';
-import { scatterDotRadius, scatterPaints, scatterPlotArea, solveScatterFrame } from './plot';
+import { type ScatterFrameMeasurements, scatterDotRadius, scatterPaints, scatterPlotArea, solveScatterFrame } from './plot';
 import { type FrontierPlan } from './frontier';
 import { gridZones, zoneKeyItems } from './zones';
 import type { TrendFit } from './trend';
@@ -441,6 +443,9 @@ function seatLostNames(requests: LabelRequest[], occupied: OccupiedIndex, ctx: S
   lost: for (const lost of lostNames(all)) {
     const request = names.get(lost.id)!;
     const hiddenBefore = lostNames(all).length;
+    // A different seat can leave the same alternatives for the same blockers.
+    // The other requests and initial claims stay fixed until this name wins a repair.
+    const failed: [LabelRequest, LabelRequest['candidates']][][] | undefined = isCachedTextMeasurer(ctx.measure) ? [] : undefined;
     for (const seat of request.candidates) {
       // Only seats that nothing but names blocks: marks, axes and frame stay.
       const hard = occupied.hitsWhich(seat.rect, seat.pad ?? pad).some((o) => !(seat.overRules && o.part === 'referenceLine')
@@ -460,12 +465,20 @@ function seatLostNames(requests: LabelRequest[], occupied: OccupiedIndex, ctx: S
           break lost;
         }
         seatProbe.left--;
-        const probe = probeSolveOn(requests, occupied, ctx, size);
-        const next = probe.result.placed;
-        if (lostNames(next).length < hiddenBefore && !next.find((l) => l.id === lost.id)?.hidden) {
-          all = next;
-          seated = probe;
-          break;
+        const repeated = failed?.some(attempt => attempt.length === saved.length && attempt.every(([previous, seats], i) => {
+          const [other] = saved[i]!;
+          return previous === other && seats.length === other.candidates.length
+            && seats.every((candidate, j) => candidate === other.candidates[j]);
+        }));
+        if (!repeated) {
+          const probe = probeSolveOn(requests, occupied, ctx, size);
+          const next = probe.result.placed;
+          if (lostNames(next).length < hiddenBefore && !next.find((l) => l.id === lost.id)?.hidden) {
+            all = next;
+            seated = probe;
+            break;
+          }
+          failed?.push(saved.map(([other]) => [other, other.candidates]));
         }
       }
       for (const [other, candidates] of saved) other.candidates = candidates;
@@ -480,7 +493,7 @@ function commitClaims(occupied: OccupiedIndex, phase: OccupiedIndex): void {
 
 /** A fresh index with the claims and tick columns of `occupied`: a solve on it leaves `occupied` as it was. */
 function copyOccupied(occupied: OccupiedIndex, size: { width: number; height: number }): OccupiedIndex {
-  const copy = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
+  const copy = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height }, 'scatter-label-pass');
   commitClaims(copy, occupied);
   if (occupied.tickColumns) copy.tickColumns = [...occupied.tickColumns];
   return copy;
@@ -596,7 +609,7 @@ const seatProbe = { left: SEAT_PROBE_BUDGET, dotLeft: DOT_SEAT_PROBES, depth: 0 
 /** The size key settles against the frame before any mark or label is placed. */
 function scatterFrame(
   env: ScatterEnv, domain: ScatterDomain, paints: ScatterPaints, warnings: LintWarning[],
-  hiddenNote: ReturnType<typeof hiddenNoteWith>, sizeKeyInRow: boolean,
+  hiddenNote: ReturnType<typeof hiddenNoteWith>, sizeKeyInRow: boolean, measurements?: ScatterFrameMeasurements,
 ) {
   let area: ScatterPlotArea | undefined;
   let solvedFrame: ReturnType<typeof solveScatterFrame> | undefined;
@@ -607,9 +620,14 @@ function scatterFrame(
     const keyed = scatterKeyItems(env, domain, paints, area, passWarnings, !keyInPlot);
     ringRow = Math.max(pass >= 2 ? ringRow : 0, maxOf(keyed.map((item) => (item.key === 'sizes' ? Math.ceil(2 * Math.max(0.5, ...(item.radii ?? []))) : 0))));
     const items = keyed.map((item) => (item.key === 'sizes' ? { ...item, ringRow } : item));
-    solvedFrame = solveScatterFrame(env, domain, paints, items, area ? scatterLateNotes(env, domain, area) : [], hiddenNote);
+    solvedFrame = solveScatterFrame(env, domain, paints, items, area ? scatterLateNotes(env, domain, area) : [], hiddenNote, measurements);
     const next = scatterPlotArea(env, domain, solvedFrame.frame, passWarnings);
-    const stable = area !== undefined && next.plot.w === area.plot.w && next.plot.h === area.plot.h;
+    // The first pass has no late notes or size entries. If neither would be
+    // added for this plot, the second pass would repeat the same frame.
+    const fixedFrame = pass === 0 && isCachedTextMeasurer(env.measure)
+      && (keyInPlot || !domain.bubbleMode || !domain.sizeMax || env.options.sizeLegend === false)
+      && scatterLateNotes(env, domain, next).length === 0;
+    const stable = fixedFrame || area !== undefined && next.plot.w === area.plot.w && next.plot.h === area.plot.h;
     area = next;
     if (stable || pass === 5) {
       pushAll(warnings, passWarnings);
@@ -619,6 +637,24 @@ function scatterFrame(
   return { ...solvedFrame!, area: area!, keyInPlot };
 }
 
+/** The data, available paints and numeric formats stay fixed during a note or key retry. */
+function scatterInputs(data: ScatterData, options: ScatterStrategyOptions) {
+  const warnings: LintWarning[] = [];
+  const env = resolveScatterEnv(options, warnings, data);
+  const domain = resolveScatterDomain(data, env, warnings);
+  if (env.options.legend === 'none' && domain.bubbleMode && domain.sizeMax && env.options.sizeLegend !== false) {
+    const sizeKey = typeof env.options.sizeLegend === 'object' && env.options.sizeLegend.label ? env.options.sizeLegend.label : 'bubble size';
+    warnings.push({
+      code: 'legend-off',
+      severity: 'info',
+      message: `legend: 'none' left the size key off: ${sizeKey}. Set legend to a value that shows it, or set sizeLegend: false to drop it on purpose.`,
+    });
+  }
+  const paints = scatterPaints(env, domain.groups, domain.pts, domain.bubbleMode ? undefined : scatterDotRadius(env, domain));
+  const frameWidths: ScatterFrameMeasurements | undefined = isCachedTextMeasurer(env.measure) ? { keys: [] } : undefined;
+  return { env, domain, paints, warnings, frameWidths };
+}
+
 export function layoutScatter(...args: Parameters<typeof layoutScatterRun>): ReturnType<typeof layoutScatterRun> {
   if (seatProbe.depth === 0) {
     seatProbe.left = SEAT_PROBE_BUDGET;
@@ -626,11 +662,15 @@ export function layoutScatter(...args: Parameters<typeof layoutScatterRun>): Ret
   }
   seatProbe.depth++;
   try {
-    return layoutScatterRun(...args);
+    return withLeaderPathNumbers(() => layoutScatterRun(...args));
   } finally {
     seatProbe.depth--;
   }
 }
+
+type FinishScatterNote = (
+  frame: FrameResult, hiddenNames: readonly string[], note: ReturnType<typeof hiddenNoteWith>, warnings: LintWarning[],
+) => Geometry<ScatterMarks, ScatterDerived>;
 
 function layoutScatterRun(
   data: ScatterData,
@@ -655,22 +695,19 @@ function layoutScatterRun(
   /** The plot key stays in the plot: the key row lost more (see the crowding check). */
   keepKeyInPlot = false,
   /** Only a recursive note update can reuse a prior pass of this fixed-size plot. */
-  previous?: { plot: Rect; inner: Rect; seats: ScatterMarkGeometry['seatMemo']; occupied: OccupiedIndex; first?: ProbeSolve },
+  previous?: {
+    plot: Rect; inner: Rect; seats: ScatterMarkGeometry['seatMemo']; occupied: OccupiedIndex; first?: ProbeSolve;
+    finishNote?: { claims: OccupiedIndex; draw: FinishScatterNote };
+  },
+  prepared?: ReturnType<typeof scatterInputs>,
 ): Geometry<ScatterMarks, ScatterDerived> {
-  const warnings: LintWarning[] = [];
   // The names the plot could not place share ONE note with the registry's ("Not labelled on the chart").
   const hiddenNote = hiddenNoteWith(options, (hiddenNames ?? []).map((text, i) => ({ id: `scatter:${i}`, text })));
-  const env: ScatterEnv = { ...resolveScatterEnv(options, warnings, data), valueTier, valueInsideOnly };
-  const domain = resolveScatterDomain(data, env, warnings);
-  if (env.options.legend === 'none' && domain.bubbleMode && domain.sizeMax && env.options.sizeLegend !== false) {
-    const sizeKey = typeof env.options.sizeLegend === 'object' && env.options.sizeLegend.label ? env.options.sizeLegend.label : 'bubble size';
-    warnings.push({
-      code: 'legend-off',
-      severity: 'info',
-      message: `legend: 'none' left the size key off: ${sizeKey}. Set legend to a value that shows it, or set sizeLegend: false to drop it on purpose.`,
-    });
-  }
-  const paints = scatterPaints(env, domain.groups, domain.pts, domain.bubbleMode ? undefined : scatterDotRadius(env, domain));
+  const inputs = prepared ?? scatterInputs(data, options);
+  const { domain, paints } = inputs;
+  const env: ScatterEnv = { ...inputs.env, valueTier, valueInsideOnly };
+  const warnings = inputs.warnings.slice();
+  const retryInputs = isCachedTextMeasurer(env.measure) ? inputs : undefined;
   let occupied = createOccupiedIndex({ x: 0, y: 0, w: env.size.width, h: env.size.height });
   // The size rings take the radius the plot draws, and the plot is what the
   // frame and its key row leave: solve again until the plot stops moving.
@@ -678,7 +715,7 @@ function layoutScatterRun(
   // the third pass on the key row never shrinks (ringRow), the plot then only
   // shrinks, the rings with it, and the loop settles with the rings at the
   // final plot's scale.
-  const { frame, claims, area, keyInPlot } = scatterFrame(env, domain, paints, warnings, hiddenNote, sizeKeyInRow);
+  const { frame, claims, area, keyInPlot } = scatterFrame(env, domain, paints, warnings, hiddenNote, sizeKeyInRow, inputs.frameWidths);
   // Soft labels only change hidden-label notes here. With those notes off
   // the canvas, either size-key position has the frame's measured floor.
   const legendPosition = typeof options.legend === 'object' ? options.legend.position : options.legend;
@@ -698,6 +735,12 @@ function layoutScatterRun(
       } finally { staticFrame.countable = counted; }
     });
   }
+  const finishNote = previous?.finishNote;
+  if (finishNote && sameContent(area.plot, previous.plot) && sameContent(area.inner, previous.inner)
+    && sameContent(claims.snapshot(), finishNote.claims.snapshot()) && sameContent(claims.tickColumns, finishNote.claims.tickColumns)) {
+    return finishNote.draw(frame, hiddenNames!, hiddenNote, warnings);
+  }
+  const afterFrame = warnings.length;
   commitClaims(occupied, claims);
   const geometry = layoutScatterMarks(env, domain, area!, paints, warnings);
   const plot = area.plot;
@@ -722,7 +765,7 @@ function layoutScatterRun(
       ? (['tr', 'br', 'tl', 'bl'] as const).filter((box) => !domain.quadrants.voidBoxes.has(box)).map((box) => quadrantBoxRect(box, area!.plot, geometry.split))
       : [];
     plotKey = plotSizeKey(env, area!, sizeMin, domain.sizeMax!, geometry.claims, warnings, boxes);
-    if (!plotKey) return layoutScatter(data, options, hiddenNames, run, hideListed, valueTier, true, calloutMode, valueInsideOnly);
+    if (!plotKey) return layoutScatter(data, options, hiddenNames, run, hideListed, valueTier, true, calloutMode, valueInsideOnly, false, undefined, retryInputs);
     // A 2x2 box is small: a key that costs a point its name goes to the key row instead.
     if (run === 0 && !hideListed && domain.quadrants.derived) {
       const lostWith = (rects: Rect[]): number => {
@@ -734,7 +777,7 @@ function layoutScatterRun(
         const tried = solveLabels(planScatterLabels(env, domain, area!, geometry, paints, []), probe, scatterSolveCtx(env, area!));
         return tried.placed.filter((label) => label.hidden && String(label.id).startsWith('point:')).length;
       };
-      if (lostWith(plotKey.rects) > lostWith([])) return layoutScatter(data, options, hiddenNames, run, hideListed, valueTier, true, calloutMode, valueInsideOnly);
+      if (lostWith(plotKey.rects) > lostWith([])) return layoutScatter(data, options, hiddenNames, run, hideListed, valueTier, true, calloutMode, valueInsideOnly, false, undefined, retryInputs);
     }
     geometry.nodes.push(...plotKey.nodes);
     for (const rect of plotKey.rects) geometry.claims.claim(rect, 'legend', {}, 'sizeKey');
@@ -744,24 +787,29 @@ function layoutScatterRun(
   const merged = calloutMode !== 'off' ? nameCallouts(env, domain, geometry) : { callouts: new Map<Id, string>(), annotations: domain.annotations };
   env.callouts = merged.callouts;
   env.calloutWrap = calloutMode === 'wrap';
-  // Authored annotations (callouts, value lines) are solved first, so they
-  // keep their seats and the point labels take the room they leave.
-  // An annotation's text may stand across a zero line, in front
-  // of it with a halo, as point names may.
-  const isZero = (c: { kind: string; part?: string }) => c.kind === 'axis' && c.part === 'referenceLine';
-  const annIndex = createOccupiedIndex({ x: 0, y: 0, w: env.size.width, h: env.size.height });
-  for (const c of occupied.snapshot()) if (!isZero(c)) annIndex.claim(c.rect, c.kind, c.owner, c.part, c.polygon);
-  if (occupied.tickColumns) annIndex.tickColumns = [...occupied.tickColumns];
-  const claimedBefore = annIndex.snapshot().length;
-  const annotated = annotateScatter(env, { ...domain, annotations: merged.annotations }, area!, geometry, annIndex, solveCtx);
-  for (const c of annIndex.snapshot().slice(claimedBefore)) occupied.claim(c.rect, c.kind, c.owner, c.part, c.polygon);
-  const zeros = occupied.snapshot().filter(isZero);
-  for (const label of annotated.labels) if (!label.hidden && zeros.some((z) => rectsOverlap(z.rect, label.rect))) label.halo = true;
-  // Their leaders are claimed too, so no point name is set across one.
-  for (const label of annotated.labels) {
-    if (label.hidden || !label.leader) continue;
-    for (const [a, b] of leaderPieces(label.leader.d, 16)) {
-      occupied.claim({ x: Math.min(a.x, b.x) - 1, y: Math.min(a.y, b.y) - 1, w: Math.abs(b.x - a.x) + 2, h: Math.abs(b.y - a.y) + 2 }, 'annotation', label.owner, 'leader');
+  let annotated: AnnotatePassResult;
+  if (!merged.annotations.length && isCachedTextMeasurer(env.measure)) {
+    annotated = emptyAnnotatePass();
+  } else {
+    // Authored annotations (callouts, value lines) are solved first, so they
+    // keep their seats and the point labels take the room they leave.
+    // An annotation's text may stand across a zero line, in front
+    // of it with a halo, as point names may.
+    const isZero = (c: { kind: string; part?: string }) => c.kind === 'axis' && c.part === 'referenceLine';
+    const annIndex = createOccupiedIndex({ x: 0, y: 0, w: env.size.width, h: env.size.height });
+    for (const c of occupied.snapshot()) if (!isZero(c)) annIndex.claim(c.rect, c.kind, c.owner, c.part, c.polygon);
+    if (occupied.tickColumns) annIndex.tickColumns = [...occupied.tickColumns];
+    const claimedBefore = annIndex.snapshot().length;
+    annotated = annotateScatter(env, { ...domain, annotations: merged.annotations }, area!, geometry, annIndex, solveCtx);
+    for (const c of annIndex.snapshot().slice(claimedBefore)) occupied.claim(c.rect, c.kind, c.owner, c.part, c.polygon);
+    const zeros = occupied.snapshot().filter(isZero);
+    for (const label of annotated.labels) if (!label.hidden && zeros.some((z) => rectsOverlap(z.rect, label.rect))) label.halo = true;
+    // Their leaders are claimed too, so no point name is set across one.
+    for (const label of annotated.labels) {
+      if (label.hidden || !label.leader) continue;
+      for (const [a, b] of leaderPieces(label.leader.d, 16)) {
+        occupied.claim({ x: Math.min(a.x, b.x) - 1, y: Math.min(a.y, b.y) - 1, w: Math.abs(b.x - a.x) + 2, h: Math.abs(b.y - a.y) + 2 }, 'annotation', label.owner, 'leader');
+      }
     }
   }
   // A value goes in the note only for a point that needs it to.
@@ -918,7 +966,7 @@ function layoutScatterRun(
     // (VoltStream and CupriCo left the plot at 320 px).
     // A bubble chart (no 2x2) keeps the key in the plot when the row costs
     // a name; a value it costs counts too, below any name (it goes to the note).
-    const inRow = layoutScatter(data, options, hiddenNames, run, hideListed, valueTier, true, calloutMode, valueInsideOnly);
+    const inRow = layoutScatter(data, options, hiddenNames, run, hideListed, valueTier, true, calloutMode, valueInsideOnly, false, undefined, retryInputs);
     if (!domain.bubbleMode || domain.quadrants.derived || lostIn(inRow.labels) < 1000) return inRow;
     // Else this layout goes on with the key in the plot, and its result is
     // taken when it loses less (one layout less, the same choice).
@@ -930,7 +978,7 @@ function layoutScatterRun(
   };
   // A name that carries a callout and finds no seat gives the callout back to the annotation pass.
   if (merged.callouts.size > 0 && solved.placed.some((label) => label.hidden && String(label.id).startsWith('point:') && merged.callouts.has(label.owner.pointId!))) {
-    return pick(layoutScatter(data, options, hiddenNames, run, hideListed, valueTier, sizeKeyInRow, calloutMode === 'line' ? 'wrap' : 'off', valueInsideOnly, keepKey));
+    return pick(layoutScatter(data, options, hiddenNames, run, hideListed, valueTier, sizeKeyInRow, calloutMode === 'line' ? 'wrap' : 'off', valueInsideOnly, keepKey, undefined, retryInputs));
   }
   const lostNames = new Set(solved.placed.filter((label) => label.hidden && String(label.id).startsWith('point:')).map((label) => label.owner.pointId));
   // One item per point: a lost name's item carries the value too.
@@ -951,9 +999,18 @@ function layoutScatterRun(
   if (!exact && run < 4 && (lostTexts.length > 0 || listed.size > 0)) {
     const next = complete ? lostTexts : run === 3 ? [...new Set([...listed, ...lostTexts])] : lostTexts;
     if (next.length !== listed.size || next.some((text) => !listed.has(text))) {
+      // The next note names exactly these lost labels. With a spent repair budget, an
+      // unchanged frame reproduces the same placements, including every leader.
+      const finishNote = run > 0 && !hideListed && !complete && next.length === lostTexts.length && leftBefore === 0 ? {
+          claims,
+          draw: (newFrame: FrameResult, names: readonly string[], note: ReturnType<typeof hiddenNoteWith>, log: LintWarning[]) => {
+            pushAll(log, warnings.slice(afterFrame));
+            return finish(newFrame, names, note, log);
+          },
+        } : undefined;
       const prior = isCachedTextMeasurer(env.measure)
-        ? { plot, inner: area.inner, seats: geometry.seatMemo, occupied: before, first: hideListed ? undefined : first } : undefined;
-      const attempt = layoutScatter(data, options, next, run + 1, hideListed, env.valueTier, sizeKeyInRow, calloutMode, env.valueInsideOnly, keepKey, prior);
+        ? { plot, inner: area.inner, seats: geometry.seatMemo, occupied: before, first: hideListed ? undefined : first, finishNote } : undefined;
+      const attempt = layoutScatter(data, options, next, run + 1, hideListed, env.valueTier, sizeKeyInRow, calloutMode, env.valueInsideOnly, keepKey, prior, retryInputs);
       // A trimmed list that loses a name the longer one covered is not taken.
       if (!complete || !notListed(attempt)) return pick(attempt);
     }
@@ -962,23 +1019,27 @@ function layoutScatterRun(
   // room places a name the note lists, and the shorter note loses it again.
   // The note then names labels the plot draws. Hide every listed label once
   // more in this layout, so the note lists exactly the points left unlabelled.
-  if (complete && !exact && !hideListed) return pick(layoutScatter(data, options, hiddenNames, run, true, env.valueTier, sizeKeyInRow, calloutMode, env.valueInsideOnly, keepKey));
-  // the labels the note lists are named there by identity.
-  const own = solved.placed.filter((label) => label.hidden && listed.has(entryFor(label)?.text ?? ''));
-  // a disclosed zone caption is an information note, like a disclosed point name.
-  const notedIds = new Set([...solved.placed.filter(label => label.noted), ...own].map(label => label.id));
-  pushAll(warnings, solved.warnings.map(warning => warning.code === 'label-hidden'
-    && notedIds.has(String(warning.detail?.labelId)) ? { ...warning, severity: 'info' as const } : warning));
-  pushAll(warnings, annotated.warnings);
-  const drawn = withUnprintedClaims(assembleScatterGeometry({ env, domain, frame, area: area!, geometry, solved, annotated, occupied, warnings }), unprintedScatterClaims(env, domain, named, new Set(frame.legend?.items.map((item) => item.id))));
-  // The note names these by identity (or counts them): the registry's items and this chart's own names.
-  const names = [...(hiddenNames ?? [])];
-  const counted = new Set<Id>([...hiddenNote.counted].filter((id) => !id.startsWith('scatter:')));
-  for (const label of own) {
-    const at = names.indexOf(entryFor(label)?.text ?? '');
-    if (hiddenNote.counted.has(`scatter:${at}`)) counted.add(label.id);
+  if (complete && !exact && !hideListed) return pick(layoutScatter(data, options, hiddenNames, run, true, env.valueTier, sizeKeyInRow, calloutMode, env.valueInsideOnly, keepKey, undefined, retryInputs));
+  return pick(finish(frame, hiddenNames ?? [], hiddenNote, warnings));
+
+  function finish(frame: FrameResult, names: readonly string[], hiddenNote: ReturnType<typeof hiddenNoteWith>, warnings: LintWarning[]) {
+    const listed = new Set(names);
+    // the labels the note lists are named there by identity.
+    const own = solved.placed.filter((label) => label.hidden && listed.has(entryFor(label)?.text ?? ''));
+    // a disclosed zone caption is an information note, like a disclosed point name.
+    const notedIds = new Set([...solved.placed.filter(label => label.noted), ...own].map(label => label.id));
+    pushAll(warnings, solved.warnings.map(warning => warning.code === 'label-hidden'
+      && notedIds.has(String(warning.detail?.labelId)) ? { ...warning, severity: 'info' as const } : warning));
+    pushAll(warnings, annotated.warnings);
+    const drawn = withUnprintedClaims(assembleScatterGeometry({ env, domain, frame, area: area!, geometry, solved, annotated, occupied, warnings }), unprintedScatterClaims(env, domain, named, new Set(frame.legend?.items.map((item) => item.id))));
+    // The note names these by identity (or counts them): the registry's items and this chart's own names.
+    const counted = new Set<Id>([...hiddenNote.counted].filter((id) => !id.startsWith('scatter:')));
+    for (const label of own) {
+      const at = names.indexOf(entryFor(label)?.text ?? '');
+      if (hiddenNote.counted.has(`scatter:${at}`)) counted.add(label.id);
+    }
+    markNotedLabels(drawn, new Set([...hiddenNote.ids].filter((id) => !id.startsWith('scatter:')).concat(own.map((label) => label.id))), counted);
+    for (const label of own) label.noted = true;
+    return drawn;
   }
-  markNotedLabels(drawn, new Set([...hiddenNote.ids].filter((id) => !id.startsWith('scatter:')).concat(own.map((label) => label.id))), counted);
-  for (const label of own) label.noted = true;
-  return pick(drawn);
 }

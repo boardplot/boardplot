@@ -2,7 +2,6 @@ import { dataOrder, markNotedLabels, NOTED_LABELS, withHiddenLabelNote } from '.
 import { panelTypeClass } from '../../theme';
 import type { ChartData } from '../../types/data';
 import type { BaseOptions } from '../../types/options';
-import type { Geometry } from '../../types/scene';
 import { noteName } from '../../calendarData';
 
 /**
@@ -16,11 +15,11 @@ const KEEP_TOTAL_SEATS = Symbol('keepTotalSeats');
 const NOTED_KINDS = ['segment', 'grandTotal', 'total', 'category'];
 
 /** a hidden stack value or category needs a printed home at the target font size. */
-export function withBandValueNotes<O extends Pick<BaseOptions, 'target' | 'theme'>, M extends object, D extends object>(
+export function withBandValueNotes<O extends Pick<BaseOptions, 'target' | 'theme'>, G extends Parameters<typeof markNotedLabels>[0]>(
   data: ChartData,
   options: O,
-  layout: (options: O) => Geometry<M, D>,
-): Geometry<M, D> {
+  layout: (options: O) => G,
+): G {
   let geo = layout(options);
   if (panelTypeClass(options) !== undefined) return geo;
   // Re-check before a note: a hidden total that a lifted line end displaced draws when that end leaves its seat.

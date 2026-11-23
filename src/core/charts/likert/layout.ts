@@ -46,6 +46,7 @@ import {
   canvasMargin,
   colorblindPaint,
   libraryPatch,
+  layoutStepKey,
   paintColor,
   panelTypeClass,
   resolveSemanticPaletteTheme,
@@ -56,20 +57,22 @@ import {
 } from '../../theme';
 import type { Cell, Id, OwnerRef } from '../../types/cell';
 import type { ChartData } from '../../types/data';
-import type { BaseOptions, BaseOptionsFor, ColumnAlign, ColumnOverride, LegendOptions } from '../../types/options';
+import type { BarOptions, BaseOptions, BaseOptionsFor, ColumnAlign, ColumnOverride, LegendOptions } from '../../types/options';
 import type { Geometry, LintWarning, Paint, PaintWarningRule, PlacedLabel, ShownMark, ShownTexts } from '../../types/scene';
 import { defaultMeasurer, isCachedTextMeasurer, type FontSpec, type TextMeasurer } from '../../text';
 import { labelsToNodes } from '../../label/emit';
 import { PRIORITY } from '../../label/solver';
 import { COLUMN_GAP, COLUMN_MIN_WIDTH, columnWidth } from '../diffColumn';
 import type { Theme, ThemeRef } from '../../types/theme';
-import { layoutBar, type BarDerived, type BarMarks } from '../bar/layout';
+import { layoutBar, stackedBarPlotHeight, type BarDerived, type BarMarks, type BarNaturalMinimum } from '../bar/layout';
 import { hostedLayout } from '../../normalize/innerRefusal';
 import { DEFER_ADJACENT, EXACT_DOMAIN, LEFT_ROOM, NAME_TRACK, NO_NAME_COLUMN, RIGHT_ROOM, TOTAL_COLUMN, TOTAL_TRACK } from '../bar/model';
 import { labelOn as chartLabelOn } from '../labelOn';
 import { authoredNotes, withAuthoredFootnotes } from '../../frame';
 import { repaintSeparation } from '../../markVisibility';
-import { heightOmitted, rowSizing } from '../../sizing';
+import { heightOmitted, rowSizing, sameContent } from '../../sizing';
+import { requestMemo } from '../../layoutPlan';
+import { currentSmallValues, formatScopeKey } from '../../formatPrecision';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { BAND_PAD } from '../../annotateParts';
 import { wrapText } from '../../text';
@@ -899,7 +902,21 @@ export function layoutLikert(
   // One short line says that shares on narrow segments are not printed,
   // rather than a list of them or nothing.
   let narrowNote = false;
-  const layoutWith = (rows: Rows) => {
+  // A wide survey can ask about the same shorter bar at several trial heights.
+  // The natural-height draw reads the target's fixed flags and uses its own size.
+  const naturalMinimum: BarNaturalMinimum = (width, height, drawMinimum) => {
+    const { size: _trialSize, [TARGET_SIZE]: target, ...settings } = opts as LikertOptions & TargetSizeOptions;
+    const key = JSON.stringify(['likert-natural', canvas.width, width, height, target?.fixed, layoutStepKey(),
+      currentSmallValues(), formatScopeKey(opts)]);
+    const entries = requestMemo(data, key, (): { settings: typeof settings; minimum: number | undefined }[] => []);
+    const match = entries.find(entry => sameContent(entry.settings, settings));
+    if (match) return match.minimum;
+    const minimum = drawMinimum();
+    entries.push({ settings, minimum });
+    return minimum;
+  };
+  const reuseNaturalMinimum = !stacked && !ownTracks && !fixedRows && !opts.annotations?.length && isCachedTextMeasurer(measure);
+  const withBarOptions = <T>(rows: Rows, run: (options: BarOptions) => T): T => {
     const footnotes = [...authoredNotes(opts), ...methodNotes(),
       ...(narrowNote ? [disclosureNote(chartString(opts, 'narrowSharesNotPrinted'))] : [])];
 
@@ -926,7 +943,7 @@ export function layoutLikert(
     }, footnotes, opts.footnotes);
 
     // The bars are derived shares: a bar refusal names a likert option it was handed, or nothing.
-    const drawn = hostedLayout(opts, barOptions, () => layoutBar(barData, {
+    const inner = {
       ...barOptions,
       [HOST_CLAIMS]: likertClaims,
       // Stacked statements are drawn by likert, so bar keeps no name column.
@@ -941,8 +958,15 @@ export function layoutLikert(
       // The nets stand in their column (netColumn), not at the bars' ends.
       ...(netDrawn ? { [TOTAL_COLUMN]: tracks?.rights.net ?? canvas.width - margin.right - baseReserve } : {}),
       ...(rows.bandPad ? { [BAND_PAD]: rows.bandPad } : {}),
-    } as never,
-      likertAnnotationPass(data, shares, net, opts.format, brackets), checkBarNaturalHeight)) as Geometry<BarMarks, BarDerived>;
+    };
+    return hostedLayout(opts, barOptions, () => run(inner as BarOptions));
+  };
+  const annotationPass = likertAnnotationPass(data, shares, net, opts.format, brackets);
+  annotationPass.skipWhenEmpty = !opts.annotations?.length;
+  const layoutWith = (rows: Rows) => {
+    const check = reuseNaturalMinimum && !narrowNote && rows.bandFraction === defaultFraction && !rows.bandPad
+      ? naturalMinimum : checkBarNaturalHeight;
+    const drawn = withBarOptions(rows, options => layoutBar(barData, options, annotationPass, check));
     // The bar layout owes a hidden sliver's share to its generic note. Here a
     // share too narrow to print stays unlabelled: its length and colour show
     // it, and every side total and net is in the description (no prose list).
@@ -967,6 +991,9 @@ export function layoutLikert(
     return { bandFraction: Math.min(0.9, thickness / step), bandPad: pad };
   };
   let rows: Rows = { bandFraction: defaultFraction };
+  const plotHeightWith = (initial: Rows) => withBarOptions(initial, options => stackedBarPlotHeight(barData, options, annotationPass));
+  const probeRows = stacked && !ownTracks && !checkBarNaturalHeight;
+  if (probeRows) rows = stackedRows(plotHeightWith(rows));
   let geo = layoutWith(rows);
   if (ownTracks) {
     // The first pass measured the names and the nets, so the tracks can be set beside them.
@@ -987,8 +1014,10 @@ export function layoutLikert(
     geo = layoutWith(rows);
   }
   if (stacked) {
-    rows = stackedRows(geo.plot.h);
-    geo = layoutWith(rows);
+    if (!probeRows) {
+      rows = stackedRows(geo.plot.h);
+      geo = layoutWith(rows);
+    }
   } else if (defaultFraction !== undefined && opts.bandFraction === undefined) {
     // Many statements make the rows thin: a bar at the default share of its
     // row is then lower than a share label, and the shares are hidden. Such a
@@ -1017,7 +1046,10 @@ export function layoutLikert(
       ? g.size.height - g.plot.h - (r.bandPad ?? 0) + ordered.length * (statementH + STATEMENT_GAP + Math.ceil(statementLineH + 4) + ROW_GAP_MIN) + headH
       : g.sizing?.minHeight ?? 0;
     narrowNote = true;
-    if (stacked) rows = stackedRows(layoutWith({ bandFraction: defaultFraction }).plot.h);
+    if (stacked) {
+      const initial = { bandFraction: defaultFraction };
+      rows = stackedRows(checkBarNaturalHeight ? layoutWith(initial).plot.h : plotHeightWith(initial));
+    }
     geo = layoutWith(rows);
     const pinnedH = !heightOmitted(opts.size) && (opts as TargetSizeOptions)[TARGET_SIZE]?.fixed.height !== false;
     if (pinnedH && minimumH(geo, rows) > canvas.height + 0.5 && minimumH(before.geo, before.rows) <= canvas.height + 0.5) {

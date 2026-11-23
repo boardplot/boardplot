@@ -72,24 +72,24 @@ function polygonTest(points: readonly Point[]): ReturnType<typeof prepareConvexP
   return prepareConvexPolygon(points);
 }
 
-const CELL = 16;
-
 /**
  * The grid cells a rect grown by `pad` meets, as the range [x0, x1] x [y0, y1],
  * or undefined for a rect off the grid, inverted, or over 256 cells: those scan
  * every claim. Any point two overlapping rects share lies in a cell of both.
  * A cell's key is x * 65536 + y.
  */
-function cellRange(rect: Rect, pad: number, range: [number, number, number, number]): [number, number, number, number] | undefined {
-  const x0 = Math.floor((rect.x - pad) / CELL), x1 = Math.floor((rect.x + rect.w + pad) / CELL);
-  const y0 = Math.floor((rect.y - pad) / CELL), y1 = Math.floor((rect.y + rect.h + pad) / CELL);
+function cellRange(rect: Rect, pad: number, cellSize: number, range: [number, number, number, number]): [number, number, number, number] | undefined {
+  const x0 = Math.floor((rect.x - pad) / cellSize), x1 = Math.floor((rect.x + rect.w + pad) / cellSize);
+  const y0 = Math.floor((rect.y - pad) / cellSize), y1 = Math.floor((rect.y + rect.h + pad) / cellSize);
   // NaN fails every comparison, so it scans every claim too.
   if (!(x0 <= x1 && y0 <= y1 && (x1 - x0 + 1) * (y1 - y0 + 1) <= 256 && Math.max(-x0, x1, -y0, y1) < 1 << 15)) return undefined;
   range[0] = x0; range[1] = x1; range[2] = y0; range[3] = y1;
   return range;
 }
 
-export function createOccupiedIndex(_plot: Rect, mode?: 'short-label-pass'): OccupiedIndex {
+export function createOccupiedIndex(_plot: Rect, mode?: 'short-label-pass' | 'scatter-label-pass'): OccupiedIndex {
+  // Scatter names and their leaders often span several cells of the ordinary chart index.
+  const cellSize = mode === 'scatter-label-pass' ? 32 : 16;
   const rects: OccupiedClaim[] = [];
   const scratchRange: [number, number, number, number] = [0, 0, 0, 0];
   const released = new Set<number>();
@@ -104,7 +104,7 @@ export function createOccupiedIndex(_plot: Rect, mode?: 'short-label-pass'): Occ
   const indexPendingClaims = () => {
     while (indexed < rects.length) {
       const index = indexed++;
-      const range = cellRange(rects[index]!.rect, 0, scratchRange);
+      const range = cellRange(rects[index]!.rect, 0, cellSize, scratchRange);
       if (range === undefined) wide.push(index);
       else {
         const [x0, x1, y0, y1] = range;
@@ -137,7 +137,7 @@ export function createOccupiedIndex(_plot: Rect, mode?: 'short-label-pass'): Occ
     try { return query(rect, pad, visit); } finally { visiting = false; }
   };
   const visitClaims = (rect: Rect, pad: number, visit: (i: number) => boolean): boolean => {
-    const range = cellRange(rect, pad, scratchRange);
+    const range = cellRange(rect, pad, cellSize, scratchRange);
     if (range === undefined) {
       for (let i = 0; i < rects.length; i++) if (visit(i)) return true;
       return false;
