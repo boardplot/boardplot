@@ -13,6 +13,7 @@ import { localeStrings, stringFields } from '../../strings';
 import { chartString as tableString } from '../../strings/table';
 import { AUTHORED_EXAMPLES, AUTOMATIC_FORMAT, LABEL_ONLY_ROW, MAGNITUDE_FIGURES, MAGNITUDE_GROUP, parseFormatExample, percentChangeSpec, PERIOD_FIGURES, RULE_SET, readFormatExamples, specUnitKind, UNIT_STAND_INS, unitMagnitude, withUnitStandIns, type MagnitudeGroupSource } from '../../formatSpec';
 import type { RuleSet } from '../../numberRule';
+import { requestMemo } from '../../layoutPlan';
 import { fixedNumbers } from '../../fixedLists';
 import { hasFormatRecord } from '../../formatPrecision';
 import type { CellState, CellTone, ComputedCellRecord, TableCell, TableRow } from '../../types/table';
@@ -423,7 +424,12 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   const exprOf = (m: DimSwitchMeasure) => valueOf(m.id);
   for (const m of data.measures) exprOf(m);
 
-  const facts = new Map(data.facts.map(f=>[key(f.memberId,f.periodId),{...f,sums:Object.setPrototypeOf({...f.sums},null) as DimSwitchSums,...(f.ref ? {ref:Object.setPrototypeOf({...f.ref},null) as DimSwitchSums} : {})}]));
+  const sourceFacts = requestMemo(data, 'dimswitch:source-facts', () => new Map(data.facts.map(f => [key(f.memberId, f.periodId), {
+    ...f, sums: Object.setPrototypeOf({ ...f.sums }, null) as DimSwitchSums,
+    ...(f.ref ? { ref: Object.setPrototypeOf({ ...f.ref }, null) as DimSwitchSums } : {}),
+  }])));
+  // Each partition replaces its derived parent entries. The original facts stay available to other forms.
+  const facts = data.dimension.sums ? new Map(sourceFacts) : sourceFacts;
   const statementFields = new Set(data.measures.filter(inStatement).flatMap(m => fields(exprOf(m))));
   const roots = data.measures.filter(m=>!m.parentId && placeOf(m) === undefined && !(options.splits && m.splitOf));
   const records: ComputedCellRecord[] = [];
@@ -481,11 +487,15 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     derive(data.dimension.total.id,data.dimension.members.filter(m=>!m.parentId));
     for(const gap of gaps.values()) warnings.push({code:'dimswitch-fact-missing',severity:'warn',field:['data','facts'],message:`Member '${gap.member}' has no ${gap.window==='ref' ? 'ref sums' : 'sums'} for ${[...gap.fields].map(f=>`'${f}'`).join(', ')} in period ${[...gap.periods].map(p=>`'${p}'`).join(', ')}, although it reports them in other periods. The sums of its parents and the Total print missing there. Send null for unknown or 0 for none.`});
   }
-  const available=new Map<string,Set<string>>();
-  for(const f of facts.values()) {const set=available.get(f.memberId) ?? new Set<string>();for(const field of Object.keys(f.sums)) if(typeof f.sums[field]==='number') set.add(field);available.set(f.memberId,set);}
-  for(const [member,fieldsOf] of reaches) {const set=available.get(member) ?? new Set<string>();for(const field of fieldsOf) set.add(field);available.set(member,set);}
-  // Declared fields apply even when the drawn windows hold only null for them.
-  for (const member of [data.dimension.total, ...data.dimension.members]) for (const field of member.fields ?? []) {const set=available.get(member.id) ?? new Set<string>();set.add(field);available.set(member.id,set);}
+  const availableFields = () => {
+    const available=new Map<string,Set<string>>();
+    for(const f of facts.values()) {const set=available.get(f.memberId) ?? new Set<string>();for(const field of Object.keys(f.sums)) if(typeof f.sums[field]==='number') set.add(field);available.set(f.memberId,set);}
+    for(const [member,fieldsOf] of reaches) {const set=available.get(member) ?? new Set<string>();for(const field of fieldsOf) set.add(field);available.set(member,set);}
+    // Declared fields apply even when the drawn windows hold only null for them.
+    for (const member of [data.dimension.total, ...data.dimension.members]) for (const field of member.fields ?? []) {const set=available.get(member.id) ?? new Set<string>();set.add(field);available.set(member.id,set);}
+    return available;
+  };
+  const available = data.dimension.sums ? availableFields() : requestMemo(data, 'dimswitch:available-fields', availableFields);
   // Looked up per cell: a key string per lookup grew with members x measures x periods.
   type Fact = typeof facts extends Map<string, infer F> ? F : never;
   const factCache = new Map<string, Map<string, Fact | undefined>>();
@@ -603,7 +613,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     assign(m.drivers);
   }
   // A displayed period whose facts carry no ref has no change to print: its change cell stays blank, never n/a.
-  const withRef = new Set(data.facts.filter(f => f.ref).map(f => f.periodId));
+  const withRef = requestMemo(data, 'dimswitch:reference-periods', () => new Set(data.facts.filter(f => f.ref).map(f => f.periodId)));
   // A card that left out every period keeps its lines. A host that hid every period has none to print.
   const noChangeLine = hostHidEveryPeriod || (periods.length > 0 && periods.every(p => !withRef.has(p.id)));
   // The lines of each measure whose card leaves out periods: their changes join the measure's change sets.
