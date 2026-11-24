@@ -373,19 +373,20 @@ it('keeps fractional per-unit costs distinct with authored and default precision
   expect([table.rows[2]!.cells.w1!.displayed, table.rows[2]!.cells.w2!.displayed]).toEqual(['0.038', '0.042']);
 });
 
-// A forced table magnitude printed per-unit figures as zero and rescaled counts with their own formats.
-it('keeps per-unit, count and percent formats independent of the table magnitude', () => {
+// A forced table magnitude erased authored precision, and bypassing it for an entire row changed automatic figures.
+it('keeps authored formats and existing automatic figures under a forced table magnitude', () => {
   const examples = [
-    { scale: 'perUnit', format: '$1,234', value: 323.7 },
-    { scale: 'count', format: '1.23M', value: 5_505_000 },
-    { scale: 'percent', format: '1.2%', value: 68.23 },
+    { scale: 'perUnit', format: '$1,234', value: 323.7, automatic: [104.12, 98.5], expectedAutomatic: ['104', '99'] },
+    { scale: 'count', format: '1.23M', value: 5_505_000, automatic: [5_505_000, 4_980_000], expectedAutomatic: ['5.5M', '5.0M'] },
+    { scale: 'percent', format: '1.2%', value: 68.23, automatic: [3.21, 2.98], expectedAutomatic: ['3.2%', '3.0%'] },
   ] as const;
-  for (const { scale, format, value } of examples) {
+  for (const { scale, format, value, automatic, expectedAutomatic } of examples) {
     const data: TableData = {
       columns: [{ id: 'label', kind: 'rowLabel' }, { id: 'row', kind: 'value' }, { id: 'cell', kind: 'value' }, { id: 'column', kind: 'value', format }],
       rows: [
         { id: 'scaled', label: 'KPI', scale, format, cells: { row: value, cell: { v: value, format }, column: value } },
-        { id: 'automatic', label: 'Automatic KPI', scale, cells: { row: scale === 'perUnit' ? 29.0625 : value } },
+        { id: 'automatic', label: 'Automatic KPI', scale, cells: { row: automatic[0], cell: automatic[1] } },
+        ...(scale === 'count' ? [{ id: 'matching', label: 'Matched column format', scale, cells: { column: { v: value, format } } }] : []),
         { id: 'money', label: 'Revenue', scale: 'money', format: '$1,234', cells: { row: 2_430_000, cell: { v: 2_430_000, format: '$1,234' } } },
         { id: 'unscaled', label: 'Sales', format: '$1,234', cells: { row: 2_610_000, cell: { v: 2_610_000, format: '$1,234' }, ...(scale === 'perUnit' ? { column: 2_610_000 } : {}) } },
       ],
@@ -398,18 +399,19 @@ it('keeps per-unit, count and percent formats independent of the table magnitude
       };
       return {
         scaled: ['row', 'cell', 'column'].map((column) => text('scaled', column)),
-        automatic: text('automatic', 'row'),
+        automatic: ['row', 'cell'].map((column) => text('automatic', column)),
+        matching: text('matching', 'column'),
         money: text('money', 'cell'),
         unscaled: text('unscaled', 'cell'),
       };
     };
     const expected = figures();
     expect(expected.scaled.every(Boolean)).toBe(true);
-    expect(expected.automatic).not.toBe('');
     for (const magnitude of ['thousand', 'million'] as const) {
       const actual = figures(magnitude);
       expect.soft(actual.scaled, `${scale}, ${magnitude}, row/cell/column format`).toEqual(expected.scaled);
-      expect.soft(actual.automatic, `${scale}, ${magnitude}, automatic format`).toBe(expected.automatic);
+      expect.soft(actual.automatic, `${scale}, ${magnitude}, automatic format`).toEqual(expectedAutomatic);
+      if (scale === 'count' && magnitude === 'million') expect.soft(actual.matching).toBe(expected.matching);
       expect.soft([actual.money, actual.unscaled], `${scale}, ${magnitude}, money and unscaled rows`).toEqual(
         magnitude === 'thousand' ? ['$2,430k', '2,610'] : ['$2.4M', '2.6'],
       );

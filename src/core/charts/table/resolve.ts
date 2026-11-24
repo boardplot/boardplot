@@ -215,12 +215,16 @@ function holdAuthoredScale(spec: NumberFormatSpec, thousands: NumberFormatSpec['
   if (spec.thousandsSep === '') spec.thousandsSep = spec.decimals > 0 && thousands === spec.decimalSep ? (spec.decimalSep === ',' ? '.' : ',') : thousands;
 }
 
+function canForceMagnitude(spec: NumberFormatSpec): boolean {
+  return !spec.magnitudeInAffix && !spec.exponent && !spec.ordinal;
+}
+
 function forceScale(
   spec: NumberFormatSpec,
   magnitude: 'k' | 'm',
   thousands: NumberFormatSpec['thousandsSep'],
 ): void {
-  if (spec.magnitudeInAffix || spec.exponent || spec.ordinal) return;
+  if (!canForceMagnitude(spec)) return;
   if (spec.magnitude === 'none' && magnitude === 'm') spec.decimals = Math.max(spec.decimals, 1);
   spec.magnitude = magnitude;
   spec.lockMagnitude = true;
@@ -239,6 +243,12 @@ function sameUnit(a: NumberFormatSpec, b: NumberFormatSpec): boolean {
     && a.trailingMinus === b.trailingMinus && a.ordinal === b.ordinal && a.magnitudeInAffix === b.magnitudeInAffix
     && JSON.stringify(a.glyphs) === JSON.stringify(b.glyphs) && JSON.stringify(a.exponent) === JSON.stringify(b.exponent)
     && JSON.stringify(a.magnitudeWord) === JSON.stringify(b.magnitudeWord);
+}
+
+// The same example can already hold the table's scale and precision.
+function sameHeldMagnitude(a: NumberFormatSpec, b: NumberFormatSpec): boolean {
+  return a.magnitude === b.magnitude && a.thousandsSep === b.thousandsSep
+    && effectiveScale(0, a).decimals === effectiveScale(0, b).decimals;
 }
 
 /** At least one unscaled unit stays nonzero at every decimal precision. */
@@ -1237,9 +1247,19 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
     return view;
   } };
 
-  function numberFormats(options: TableOptions, rawState: typeof rawCells, warnings: LintWarning[]) {
+  function formatTable(options: TableOptions): ResolveResult {
+  const liftsBefore = zeroLifts.count;
   const liftMode = (options as ZeroLiftOptions)[ZERO_LIFT];
   const automaticAs = (on: boolean): NumberFormatSpec['automatic'] => on && liftMode !== 'none' ? liftMode ?? true : false;
+  const warnings = rawWarnings.slice();
+  const records = rawRecords.map(record => ({ ...record }));
+  const autoFootnotes = new Set(rawFootnotes);
+  const lowerJudged = new Set<string>();
+  const higherJudged = new Set<string>();
+  const rawState = new Map([...rawCells].map(([id, cells]) => [id, new Map(cells)]));
+  partitionLeafIds.set(rawState, partitionLeafIds.get(rawCells)!);
+  // Ordering is a view of the accounting tree, so a formatted variant cannot reorder the retained model.
+  const childrenOf = new Map([...childGroups].map(([id, rows]) => [id, rows.slice()]));
 
   // ---- display specs: from data + options ONLY (before any width solving) ----
   const locale = localeDefaults(options.locale);
@@ -1252,11 +1272,16 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   const formatExamples = new Map<Id, string>();
   /** Columns that hold the table's forced magnitude; each keeps its own nonzero figures nonzero (below). */
   const forcedColumns = new Set<Id>();
+  const authoredColumnSpecs = new Map<Id, NumberFormatSpec>();
   const localeDerivedColumns = new Set<Id>();
   // The retired options.magnitude prints as today.
   // The rule reads the marks and the smallValues mode from the language tag; a layout has put them there already.
   const ruleLanguage = withNumberMarks(options).locale!.language;
   const forcedMagnitudeOption = options.magnitude === 'million' || options.magnitude === 'thousand' ? options.magnitude : undefined;
+  const forcedMagnitude = forcedMagnitudeOption === 'million' ? 'm' : forcedMagnitudeOption === 'thousand' ? 'k' : undefined;
+  const keepAuthoredFormat = forcedMagnitude !== undefined && !(DIMSWITCH_TABLE in data)
+    ? new Set(flat.filter(row => row.scale === 'perUnit' || row.scale === 'count' || row.scale === 'percent').map(row => row.id))
+    : undefined;
   /**
    * A column without an authored format is one set of cells under the rule, its total row
    * included. Its values are the figures that print through it: no row,
@@ -1300,9 +1325,13 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
     // 1000: a column printing "€2.4M" in a board
     // of thousands is the defect the option exists to prevent. A percent or
     // a count has no magnitude to force.
-    if (scales((sourceColumns.get(col.id) as { format?: string } | undefined)?.format ?? inherited ?? defaultExample(col))
-      && (options.magnitude === 'million' || options.magnitude === 'thousand')) {
-      forceScale(spec, options.magnitude === 'million' ? 'm' : 'k', locale.thousands);
+    if (scales(sourceExample ?? defaultExample(col)) && forcedMagnitude !== undefined) {
+      if (keepAuthoredFormat?.size && col.format !== undefined && written && canForceMagnitude(spec)) {
+        const original = { ...spec };
+        holdAuthoredScale(original, locale.thousands);
+        authoredColumnSpecs.set(col.id, original);
+      }
+      forceScale(spec, forcedMagnitude, locale.thousands);
       if (spec.lockMagnitude) forcedColumns.add(col.id);
     }
     if (sourceExample !== undefined) holdAuthoredScale(spec, locale.thousands);
@@ -1321,8 +1350,6 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   // scale, and a row format is the other place a scale is authored: a board
   // in thousands whose revenue row says '$1.2m' still prints thousands.
   // A percent or a count has no magnitude to force.
-  const forcedMagnitude: NumberFormatSpec['magnitude'] | undefined =
-    options.magnitude === 'million' ? 'm' : options.magnitude === 'thousand' ? 'k' : undefined;
   const authoredSpec = (example: string, sourceExample = example, written = false): NumberFormatSpec => {
     const spec = parseFormatExample(example, written && isExactExample(example));
     if (forcedMagnitude !== undefined && scales(sourceExample)) {
@@ -1453,7 +1480,10 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
       const authoredRow = sourceRows.get(row.id) as (TableRow & AutomaticFormatSource) | undefined;
       // The author's own row example, not one that fitting or the engine wrote.
       const written = authoredRow?.format !== undefined && authoredRow[AUTOMATIC_FORMAT] !== true && authoredRow.format === row.format;
-      const spec = ownScale ? parseFormatExample(example, written && isExactExample(example)) : authoredSpec(example, sourceRows.get(row.id)?.format ?? example, written);
+      const keepRowFormat = row.scale === 'perUnit' && written && keepAuthoredFormat?.has(row.id);
+      const spec = ownScale || keepRowFormat
+        ? parseFormatExample(example, written && isExactExample(example))
+        : authoredSpec(example, authoredRow?.format ?? example, written);
       // An authored row format prints exactly; a scale, a forced magnitude or a unit-only format sets its own precision.
       const exactRow = authoredRow?.format !== undefined && authoredRow[AUTOMATIC_FORMAT] !== true && row.scale !== 'money' && row.scale !== 'perUnit'
         && forcedMagnitude === undefined && isExactExample(example);
@@ -1595,6 +1625,8 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   // An unchanged example has one format in this table. Authored and automatic examples follow different precision rules.
   const authoredCellFormats = new Map<string, NumberFormatSpec>();
   const automaticCellFormats = new Map<string, NumberFormatSpec>();
+  const keptCellSpecs = new Map<Id, Map<Id, { spec: NumberFormatSpec }>>();
+  const keptCellFormats = new Map<NumberFormatSpec, { spec: NumberFormatSpec } | null>();
   const cellFormatCols = [...valueCols, ...computedCols];
   for (const row of flat) {
     for (const col of cellFormatCols) {
@@ -1625,6 +1657,20 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
           let authored = authoredCells.get(row.id);
           if (!authored) authoredCells.set(row.id, authored = new Set());
           authored.add(col.id);
+          if (keepAuthoredFormat?.has(row.id) && scales(sourceExample) && canForceMagnitude(spec)) {
+            let kept = keptCellFormats.get(spec);
+            if (kept === undefined) {
+              const original = parseFormatExample(example, ownExample === example && isExactExample(example));
+              holdAuthoredScale(original, locale.thousands);
+              kept = sameHeldMagnitude(original, spec) ? null : { spec: original };
+              keptCellFormats.set(spec, kept);
+            }
+            if (kept !== null) {
+              let keptRow = keptCellSpecs.get(row.id);
+              if (keptRow === undefined) keptCellSpecs.set(row.id, keptRow = new Map());
+              keptRow.set(col.id, kept);
+            }
+          }
         }
         inRow.set(col.id, spec);
       }
@@ -1828,6 +1874,34 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
     });
   }
 
+  type KeptFormat = { spec: NumberFormatSpec; columnFormat?: NonNullable<ResolvedCell['columnFormat']> };
+  const keptColumns = new Map<Id, KeptFormat & { rows: Set<Id>; header?: string }>();
+  const unitsByRow = new Map<Id, Set<string>>();
+  // Keep the existing column context for money and unscaled rows that share an authored column.
+  for (const [colId, spec] of authoredColumnSpecs) {
+    if (sameHeldMagnitude(spec, specs.get(colId)!)) continue;
+    const numericRows = flat.filter(row => typeof rawState.get(row.id)?.get(colId)?.raw === 'number');
+    const rows = new Set(numericRows.filter(row => keepAuthoredFormat?.has(row.id) && printsThroughColumn(row, colId)).map(row => row.id));
+    if (rows.size === 0) continue;
+    const unit = unitByCol.get(colId) == null ? undefined : namedUnit(spec) ?? undefined;
+    const columnFormat = { format: formatExamples.get(colId), unitLabel: unit, ...(unit !== undefined && spec.magnitude !== 'none' ? { unitScaled: true as const } : {}) };
+    const changesUnit = unit !== undefined && unit !== headerUnitFor(colId);
+    const header = changesUnit && options.columnHeads !== false && rows.size === numericRows.length ? unit : undefined;
+    keptColumns.set(colId, { spec, columnFormat, rows, header });
+    if (changesUnit && header === undefined) for (const rowId of rows) {
+      let units = unitsByRow.get(rowId);
+      if (units === undefined) unitsByRow.set(rowId, units = new Set());
+      units.add(unit);
+    }
+  }
+  const keptFormatFor = (colId: Id, rowId?: Id): KeptFormat | undefined => {
+    if (rowId === undefined || !keepAuthoredFormat?.has(rowId)) return undefined;
+    const cell = keptCellSpecs.get(rowId)?.get(colId);
+    if (cell !== undefined) return cell;
+    const column = keptColumns.get(colId);
+    return column?.rows.has(rowId) ? column : undefined;
+  };
+
   const rowOverridesColumn = (rowId: Id): boolean => {
     const row = rowById.get(rowId);
     return row?.calc !== undefined || row?.inline === true;
@@ -1847,6 +1921,8 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   };
   /** The spec a cell prints through: its own, else the row's where it applies, else the column's. */
   const specFor = (colId: Id, rowId?: Id): NumberFormatSpec => {
+    const kept = keptFormatFor(colId, rowId);
+    if (kept !== undefined) return kept.spec;
     const cellSpec = rowId ? cellSpecs.get(rowId)?.get(colId) : undefined;
     if (cellSpec) return cellSpec;
     const rowSpec = rowId ? rowSpecs.get(rowId) : undefined;
@@ -1867,6 +1943,11 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
     return format;
   };
   const formatNumber = (raw: number, colId: Id, rowId?: Id): string => {
+    const kept = keptFormatFor(colId, rowId);
+    if (kept !== undefined) {
+      const { spec, columnFormat } = kept;
+      return displayFormat(spec, spec.decimals, spec.automatic, columnFormat?.unitLabel !== undefined)(raw);
+    }
     const cellSpec = rowId ? cellSpecs.get(rowId)?.get(colId) : undefined;
     const rowSpec = rowId ? rowSpecs.get(rowId) : undefined;
     // A calc or inline row uses its own spec; other data rows only where
@@ -1916,74 +1997,6 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
     };
   }
 
-  const columnFormat = (colId: Id, tableUnit = uniformUnit) => {
-    const unitLabel = uniformUnit === null || (uniformUnit !== tableUnit && options.columnHeads !== false)
-      ? headerUnitFor(colId) ?? undefined : undefined;
-    return { format: formatExamples.get(colId), unitLabel, ...(unitLabel !== undefined && headerScaledFor(colId) ? { unitScaled: true as const } : {}) };
-  };
-  const hoistedColumnUnit = (row: FlatRow, colId: Id): string | null => {
-    const unit = unitByCol.get(colId);
-    if (unit == null || printsThroughRow(row, colId)) return null;
-    const own = cellSpecs.get(row.id)?.get(colId);
-    return own === undefined || sameUnit(own, specs.get(colId)!) ? unit : null;
-  };
-  return { locale, rowSpecs, specs, ownFormatColumns, hoistedRowUnits, headUnit, uniformUnit, columnUnits,
-    headerUnitFor, lettersInCells, specFor, formatNumber, commonRowFormat, columnFormat, hoistedColumnUnit };
-  }
-
-  function formatTable(options: TableOptions): ResolveResult {
-  const liftsBefore = zeroLifts.count;
-  const warnings = rawWarnings.slice();
-  const records = rawRecords.map(record => ({ ...record }));
-  const autoFootnotes = new Set(rawFootnotes);
-  const lowerJudged = new Set<string>();
-  const higherJudged = new Set<string>();
-  const rawState = new Map([...rawCells].map(([id, cells]) => [id, new Map(cells)]));
-  partitionLeafIds.set(rawState, partitionLeafIds.get(rawCells)!);
-  // Ordering is a view of the accounting tree, so a formatted variant cannot reorder the retained model.
-  const childrenOf = new Map([...childGroups].map(([id, rows]) => [id, rows.slice()]));
-
-  const ownMagnitudeRows = (options.magnitude === 'thousand' || options.magnitude === 'million') && !(DIMSWITCH_TABLE in data)
-    ? new Set(flat.filter(row => row.scale === 'perUnit' || row.scale === 'count' || row.scale === 'percent').map(row => row.id))
-    : undefined;
-  // Resolve the format in its original context so a forced scale cannot change its precision or units.
-  const ownOptions = ownMagnitudeRows?.size ? { ...options, magnitude: undefined } : undefined;
-  const onlyOwnRows = ownOptions !== undefined && flat.every(row =>
-    ownMagnitudeRows!.has(row.id) || ![...rawState.get(row.id)!.values()].some(({ raw }) => typeof raw === 'number'));
-  const formats = numberFormats(onlyOwnRows ? ownOptions : options, rawState, warnings);
-  const unforced = ownOptions !== undefined && !onlyOwnRows ? numberFormats(ownOptions, rawState, []) : undefined;
-  const { locale, specs, ownFormatColumns, hoistedRowUnits, headUnit, uniformUnit, columnUnits } = formats;
-  const formatsFor = (rowId?: Id) => unforced !== undefined && rowId !== undefined && ownMagnitudeRows!.has(rowId) ? unforced : formats;
-  const specFor = unforced === undefined ? formats.specFor : (colId: Id, rowId?: Id) => formatsFor(rowId).specFor(colId, rowId);
-  const formatNumber = unforced === undefined ? formats.formatNumber
-    : (raw: number, colId: Id, rowId?: Id) => formatsFor(rowId).formatNumber(raw, colId, rowId);
-  const unforcedColumnFormats = unforced && new Map<Id, ReturnType<typeof formats.columnFormat>>();
-  const unforcedHeaders = unforced && new Map<Id, ReturnType<typeof formats.columnFormat>>();
-  const unitsByRow = unforced && new Map<Id, Set<string>>();
-  if (unforced && unforcedColumnFormats && unforcedHeaders && unitsByRow) for (const col of [...valueCols, ...computedCols]) {
-    const original = unforced.columnFormat(col.id);
-    const forced = formats.columnFormat(col.id);
-    const formatChanged = original.format !== forced.format || original.unitLabel !== forced.unitLabel || original.unitScaled !== forced.unitScaled;
-    if (formatChanged) unforcedColumnFormats.set(col.id, original);
-    const forcedUnit = formats.headerUnitFor(col.id);
-    if (!formatChanged && forcedUnit === unforced.headerUnitFor(col.id)) continue;
-    const numericRows = flat.filter(row => typeof rawState.get(row.id)?.get(col.id)?.raw === 'number');
-    if (numericRows.length > 0 && numericRows.every(row => ownMagnitudeRows!.has(row.id))) {
-      const header = unforced.columnFormat(col.id, uniformUnit);
-      unforcedHeaders.set(col.id, header);
-      if (header.unitLabel !== undefined || unforced.uniformUnit === uniformUnit) continue;
-    }
-    // A shared column can name the forced unit in its header, so name a different unit on the row that uses it.
-    for (const row of numericRows) {
-      if (!ownMagnitudeRows!.has(row.id)) continue;
-      const unit = unforced.hoistedColumnUnit(row, col.id);
-      if (unit === null || unit === forcedUnit || unit === uniformUnit) continue;
-      let units = unitsByRow.get(row.id);
-      if (!units) unitsByRow.set(row.id, units = new Set());
-      units.add(unit);
-    }
-  }
-
   // ---- percent-scale lint (points, not fractions) ----
   // Computed columns are in scope: div(gp, revenue) yields a FRACTION, and
   // formatting 0.42 as '12.3%' prints "0.4%" — wrong by 100x, silently.
@@ -2014,7 +2027,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   // The same lint for a data row that names a percent format of its own: its
   // authored cells on the columns that print through it.
   for (const row of flat) {
-    const rowSpec = formatsFor(row.id).rowSpecs.get(row.id);
+    const rowSpec = rowSpecs.get(row.id);
     if (!rowSpec || row.calc || !(rowSpec.suffix ?? '').includes('%')) continue;
     const vals = valueCols
       .filter((col) => !ownFormatColumns.has(col.id) && col.percentScale !== 'points')
@@ -2129,49 +2142,50 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
     }
   }
 
-  const resolvedColumns: ResolvedColumn[] = columns.map((c) => {
-    const original = unforcedHeaders?.get(c.id);
-    const column = c.kind === 'value' || c.kind === 'computed' ? original ?? formats.columnFormat(c.id) : undefined;
-    return {
-      id: c.id,
-      kind: c.kind,
-      label: c.label ?? (c.kind === 'rowLabel' ? '' : c.id),
-      ...(c.subLabel === undefined ? {} : { subLabel: c.subLabel }),
-      format:
-        c.kind === 'value' || c.kind === 'computed'
-          ? column?.format
-          : c.kind === 'date'
-            ? c.format
-            : undefined,
-      scenario: c.kind === 'value' ? c.scenario : undefined,
-      polarity: c.kind === 'value' || c.kind === 'computed' ? c.polarity : undefined,
-      aggregate: c.kind === 'value' ? (c.aggregate ?? (nonAdditiveFormat(c.format) ? 'none' : 'sum')) : 'none',
-      groupId: data.columnGroups?.find((g) => g.columns.includes(c.id))?.id,
-      toggleGroup: toggleResolution.membership.get(c.id),
-      width: c.width, maxWidth: c.kind === 'rowLabel' ? c.maxWidth : undefined, maxTextWidth: c.kind === 'rowLabel' ? c.maxTextWidth : undefined, wrap: c.kind === 'text' ? c.wrap : undefined, statusMark: c.kind === 'status' && c.mark === 'square' ? 'square' : undefined,
-      unitLabel: column?.unitLabel,
-      ...(column?.unitScaled ? { unitScaled: true as const } : {}),
-      ...((original === undefined ? formats : unforced!).lettersInCells.has(c.id) ? { magnitudeInCells: true as const } : {}),
-      encoding: c.kind === 'encoding' ? c.encoding : undefined,
-      cellEncoding: resolveCellEncoding(encodingFor(options.encodings, c.id), specs.get(c.id)?.suffix.includes('%') === true),
-      // The preset's own two column decisions: a benchmark's first
-      // column is the subject and carries the header's weight, a receipts
-      // table's dates sit under each other on the right.
-      emphasis: c.emphasis ?? (c.kind === 'rowLabel' ? language.labelEmphasis : undefined),
-      ...(c.band === undefined ? {} : { band: c.band }),
-      ...(c.noteLine === undefined ? {} : { noteLine: c.noteLine }),
-      ...(c.headAlign === undefined ? {} : { headAlign: c.headAlign }),
-      // A cohort grid centres its figures: every cell in a period column is
-      // the same two or three digits, and a right edge would draw a ragged
-      // column of gaps. A column that names its own alignment, the
-      // cohort size beside the label, keeps it.
-      align: c.align ?? (c.kind === 'value' || c.kind === 'computed'
-        ? (isCohortDensity(options.density ?? 'regular') ? 'center' : 'right')
-        : c.kind === 'status' ? 'center'
-        : c.kind === 'date' && language.datesRight ? 'right'
-        : 'left'),
-    };
-  });
+  const resolvedColumns: ResolvedColumn[] = columns.map((c) => ({
+    id: c.id,
+    kind: c.kind,
+    label: c.label ?? (c.kind === 'rowLabel' ? '' : c.id),
+    ...(c.subLabel === undefined ? {} : { subLabel: c.subLabel }),
+    format:
+      c.kind === 'value' || c.kind === 'computed'
+        ? formatExamples.get(c.id)
+        : c.kind === 'date'
+          ? c.format
+          : undefined,
+    scenario: c.kind === 'value' ? c.scenario : undefined,
+    polarity: c.kind === 'value' || c.kind === 'computed' ? c.polarity : undefined,
+    aggregate: c.kind === 'value' ? (c.aggregate ?? (nonAdditiveFormat(c.format) ? 'none' : 'sum')) : 'none',
+    groupId: data.columnGroups?.find((g) => g.columns.includes(c.id))?.id,
+    toggleGroup: toggleResolution.membership.get(c.id),
+    width: c.width, maxWidth: c.kind === 'rowLabel' ? c.maxWidth : undefined, maxTextWidth: c.kind === 'rowLabel' ? c.maxTextWidth : undefined, wrap: c.kind === 'text' ? c.wrap : undefined, statusMark: c.kind === 'status' && c.mark === 'square' ? 'square' : undefined,
+    unitLabel:
+      keptColumns.get(c.id)?.header ?? (uniformUnit === null && (c.kind === 'value' || c.kind === 'computed')
+        ? (headerUnitFor(c.id) ?? undefined)
+        : undefined),
+    ...((keptColumns.get(c.id)?.header !== undefined
+      ? keptColumns.get(c.id)?.columnFormat?.unitScaled
+      : uniformUnit === null && (c.kind === 'value' || c.kind === 'computed') && headerUnitFor(c.id) !== null && headerScaledFor(c.id)) ? { unitScaled: true as const } : {}),
+    ...(lettersInCells.has(c.id) ? { magnitudeInCells: true as const } : {}),
+    encoding: c.kind === 'encoding' ? c.encoding : undefined,
+    cellEncoding: resolveCellEncoding(encodingFor(options.encodings, c.id), specs.get(c.id)?.suffix.includes('%') === true),
+    // The preset's own two column decisions: a benchmark's first
+    // column is the subject and carries the header's weight, a receipts
+    // table's dates sit under each other on the right.
+    emphasis: c.emphasis ?? (c.kind === 'rowLabel' ? language.labelEmphasis : undefined),
+    ...(c.band === undefined ? {} : { band: c.band }),
+    ...(c.noteLine === undefined ? {} : { noteLine: c.noteLine }),
+    ...(c.headAlign === undefined ? {} : { headAlign: c.headAlign }),
+    // A cohort grid centres its figures: every cell in a period column is
+    // the same two or three digits, and a right edge would draw a ragged
+    // column of gaps. A column that names its own alignment, the
+    // cohort size beside the label, keeps it.
+    align: c.align ?? (c.kind === 'value' || c.kind === 'computed'
+      ? (isCohortDensity(options.density ?? 'regular') ? 'center' : 'right')
+      : c.kind === 'status' ? 'center'
+      : c.kind === 'date' && language.datesRight ? 'right'
+      : 'left'),
+  }));
 
   // One decision for both surfaces (`options.driverTones`): 'grouped' tones a driver under a parent that is not a section heading.
   const driverToneMode = options.driverTones ?? 'grouped';
@@ -2192,7 +2206,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   }
   const resolvedRows: ResolvedRow[] = flat.map((row) => {
     const cells: Record<Id, ResolvedCell> = emptyIdRecord();
-    const rowFormat = formatsFor(row.id).commonRowFormat(row);
+    const rowFormat = commonRowFormat(row);
     const negativeRow = (options.signs ?? 'signed') === 'signed' && row.kind !== 'driver' && row.kind !== 'result'
       && signTo(row, null) === -1;
     for (const col of columns) {
@@ -2200,7 +2214,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
     }
     const hasChildren = (treeChildrenOf.get(row.id) ?? []).length > 0;
     const indentStep = memoIndentStep(row);
-    const units = unitsByRow?.get(row.id);
+    const units = unitsByRow.get(row.id);
     const unitAffix = row.unitAffix ?? (units === undefined ? undefined : [...units].join(', '));
     return {
       id: row.id,
@@ -2295,7 +2309,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
       relation: row.relation,
       level: row.level,
     };
-    const columnFormat = ownMagnitudeRows?.has(row.id) ? unforcedColumnFormats?.get(col.id) : undefined;
+    const columnFormat = keptFormatFor(col.id, row.id)?.columnFormat;
     if (columnFormat !== undefined) base.columnFormat = columnFormat;
     if (row.role === 'section' && col.kind !== 'rowLabel') {
       return { ...base, state: 'na', displayed: '' };
