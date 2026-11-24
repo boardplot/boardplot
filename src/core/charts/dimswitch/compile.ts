@@ -955,7 +955,11 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   // One change set per measure of relative changes, across its columns, as its point differences.
   // A table folded to fit a fixed height forms its sets over every row, as the open table does, so a change prints the same text at every size.
   const relativeByMeasure=new Map<string,typeof relativeChanges>();
-  for (const entry of relativeChanges) relativeByMeasure.set(entry.measure,[...relativeByMeasure.get(entry.measure) ?? [],entry]);
+  for (const entry of relativeChanges) {
+    const entries=relativeByMeasure.get(entry.measure);
+    if (entries) entries.push(entry);
+    else relativeByMeasure.set(entry.measure,[entry]);
+  }
   for (const [measure,inMeasure] of relativeByMeasure) {
     const entries=inMeasure.filter(entry=>entry.cell!==null && typeof entry.cell==='object' && typeof entry.cell.v==='number');
     // A change is cleaned of float noise (12 significant digits) before it rounds, as the rule cleans every value:
