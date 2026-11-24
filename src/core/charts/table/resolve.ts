@@ -2133,8 +2133,10 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   const resolvedRows: ResolvedRow[] = flat.map((row) => {
     const cells: Record<Id, ResolvedCell> = emptyIdRecord();
     const rowFormat = commonRowFormat(row);
+    const negativeRow = (options.signs ?? 'signed') === 'signed' && row.kind !== 'driver' && row.kind !== 'result'
+      && signTo(row, null) === -1;
     for (const col of columns) {
-      cells[col.id] = resolveCell(row, col, rowFormat);
+      cells[col.id] = resolveCell(row, col, rowFormat, negativeRow);
     }
     const hasChildren = (treeChildrenOf.get(row.id) ?? []).length > 0;
     const indentStep = memoIndentStep(row);
@@ -2203,7 +2205,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
       return ((isCellObject(cell) ? cell.missing : undefined) ?? input?.missing) === 'blank';
     });
   }
-  function resolveCell(row: FlatRow, col: TableColumn, rowFormat: ((raw: number) => string) | undefined): ResolvedCell {
+  function resolveCell(row: FlatRow, col: TableColumn, rowFormat: ((raw: number) => string) | undefined, negativeRow: boolean): ResolvedCell {
     // A row may say what its own gaps print: a change line with
     // nothing to say in a block column stays empty, and the table's real
     // gaps keep the table's glyph.
@@ -2255,10 +2257,9 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
             && !blankInputs(row, col);
           displayed = dataGap ? glyphs.na : state === 'missing' || noPreviousValue ? missingGlyph : glyphs[state];
         } else {
-          const relativeChange = (row.inline === true || row.calc !== undefined || col.kind === 'computed')
+          const relativeChange = negativeRow && (row.inline === true || row.calc !== undefined || col.kind === 'computed')
             && (specUnitKind(specFor(col.id, row.id)) !== 'number' || (row.calc !== undefined && calcYieldsPoints(row.calc)) || (col.kind === 'computed' && calcYieldsPoints(col.calc)));
-          const negate = (options.signs ?? 'signed') === 'signed' && row.kind !== 'driver' && row.kind !== 'result'
-            && !relativeChange && signTo(row, null) === -1
+          const negate = negativeRow && !relativeChange
             // A ratio of two cells prints the same on the negated figures, so only a calc that flips with its inputs flips.
             && (col.kind !== 'computed' || row.calc !== undefined || calcFlipsWithInputs(col.calc));
           negated = negate && s.raw !== 0;
