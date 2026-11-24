@@ -199,11 +199,14 @@ export function prepareTableExecutor(authoredData: TableData, initialOptions: Ta
     const geometry = choice.undrawn;
     return (options as LayoutOptions)[PLAN_ONLY] || (options as LayoutOptions)[SIZING_ONLY] ? geometry : materializeLayout(geometry);
   };
+  /** The compiled dimension table already owns its raw data and complete resolved model. */
+  const runCompiled = (options: TableOptions, model: ReturnType<typeof resolveTable>) =>
+    withPlanInputs(() => runResolved(snapshotTableOptions(options), true, model, authoredData));
   /** Run the same fit ladder on a projected dimension card. Only its width is returned to the period search. */
-  const probeWidth = (options: TableOptions, projection: ReturnType<typeof resolveTable>) => withPlanInputs(() => {
-    const geometry = runResolved(snapshotTableOptions(options), true, projection, authoredData);
+  const probeWidth = (options: TableOptions, projection: ReturnType<typeof resolveTable>) => {
+    const geometry = runCompiled(options, projection);
     return { size: { width: geometry.size.width }, sizing: geometry.sizing && { minWidth: geometry.sizing.minWidth } };
-  });
+  };
   const runCard = (options: TableOptions = initialOptions): Geometry<TableMarks, TableDerived> => withPlanInputs(() => {
     const input = prepareTableData(authoredData, options);
     // Width-search markers belong to the registry. A complete raw table answer is identical at the same frame.
@@ -224,7 +227,7 @@ export function prepareTableExecutor(authoredData: TableData, initialOptions: Ta
     const geometry = run(options, false, undefined, undefined, (found) => { choice = found; });
     return tableNeed(choice!, isPlanned(geometry) ? materializeLayout(geometry) : geometry);
   };
-  return { run, runCard, need, probeWidth };
+  return { run, runCompiled, runCard, need, probeWidth };
 }
 
 /** The registry keeps this executor for every size and repair probe of one table. */

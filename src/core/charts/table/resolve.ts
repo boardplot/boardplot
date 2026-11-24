@@ -240,6 +240,12 @@ function sameUnit(a: NumberFormatSpec, b: NumberFormatSpec): boolean {
     && JSON.stringify(a.magnitudeWord) === JSON.stringify(b.magnitudeWord);
 }
 
+/** At least one unscaled unit stays nonzero at every decimal precision. */
+function cellRoundsToZero(value: number, spec: NumberFormatSpec): boolean {
+  if (spec.magnitude === 'none' && spec[RULE_SET] === undefined && Math.abs(value) >= 1) return false;
+  return roundedNumber(value, spec) === 0;
+}
+
 /** Float noise from magnitude math (bn-scale): a gap this small between two figures is no disagreement. */
 const floatNoise = (a: number, b: number): number => 1e-9 * Math.max(1, Math.abs(a), Math.abs(b));
 
@@ -486,19 +492,14 @@ export function resolvePreparedTable(model: PreparedTableData, options: TableOpt
   return withChartFormats(options, () => model.resolve(options));
 }
 
-/**
- * A compiled dimension card with the same rows and raw cells as a wider partial card, for a width probe
- * only. Authored number and percent examples keep their precision when columns disappear. Inline cells
- * carry their own examples and the column that supplies their base format keeps the same rows.
- */
-export function projectDimSwitchWidthTable(wideData: TableData, wide: ResolveResult, narrowColumns: TableData['columns'], options: TableOptions): ResolveResult | undefined {
+function stablePeriodCells(wideData: TableData, wide: ResolveResult, options: TableOptions): boolean {
   if (wide.lifted || wide.computedCells.length || wide.table.footnotes.length || wide.table.partialColumnIds
     || wide.table.unit || wide.table.columnUnits || wide.table.columns.some(col => col.unitLabel || col.cellEncoding)
     || options.encodings || options.highlight || options.sort || options.topN || options.format || options.unit
-    || (options.measure !== undefined && options.measure !== defaultMeasurer)) return undefined;
+    || (options.measure !== undefined && options.measure !== defaultMeasurer)) return false;
   const forced = options.magnitude === 'million' || options.magnitude === 'thousand';
   // With a forced scale, each figure in a period-only card also belongs to its unchanged full period list.
-  if (forced && (options.columnHeads === false || wideData.columns.some(col => col.id === 'range' || col.id === 'pp' || col.id === 'pl'))) return undefined;
+  if (forced && (options.columnHeads === false || wideData.columns.some(col => col.id === 'range' || col.id === 'pp' || col.id === 'pl'))) return false;
 
   const stable = withChartFormats(options, () => wideData.rows.every(row => {
     if (row.calc || row.children || (row as MagnitudeGroupSource)[MAGNITUDE_FIGURES]) return false;
@@ -517,8 +518,16 @@ export function projectDimSwitchWidthTable(wideData: TableData, wide: ResolveRes
     return spec.magnitude === 'none' && unitOfSpec(spec) === null
       && numeric.every(cell => (cell as MagnitudeGroupSource)[MAGNITUDE_GROUP] === undefined);
   }));
-  if (!stable) return undefined;
+  return stable;
+}
 
+/**
+ * A compiled dimension card with the same rows and raw cells as a wider partial card, for a width probe
+ * only. Authored number and percent examples keep their precision when columns disappear. Inline cells
+ * carry their own examples and the column that supplies their base format keeps the same rows.
+ */
+export function projectDimSwitchWidthTable(wideData: TableData, wide: ResolveResult, narrowColumns: TableData['columns'], options: TableOptions): ResolveResult | undefined {
+  if (!stablePeriodCells(wideData, wide, options)) return undefined;
   const keep = new Set(narrowColumns.map(col => col.id));
   const columns = wide.table.columns.filter(col => keep.has(col.id));
   const rows = wide.table.rows.map(row => {
@@ -529,6 +538,75 @@ export function projectDimSwitchWidthTable(wideData: TableData, wide: ResolveRes
   const byId = new Map(rows.map(row => [row.id, row]));
   for (const row of rows) if (row.inlineRows) row.inlineRows = row.inlineRows.map(line => byId.get(line.id)!);
   return { table: { ...wide.table, columns, rows }, computedCells: [], warnings: [] };
+}
+
+/** The new period columns of a dimension card retain the full-period row formats. */
+export function extendPeriodTable(data: TableData, source: TableData, previous: ResolveResult, options: TableOptions): ResolveResult | undefined {
+  if (previous.warnings.length || !stablePeriodCells(source, previous, options)) return undefined;
+  const priorIds = new Set(source.columns.filter(col => col.kind !== 'rowLabel').map(col => col.id));
+  const columns = data.columns.filter(col => !priorIds.has(col.id));
+  const rows = data.rows.map(row => {
+    if (!row.cells) return row;
+    const cells = emptyIdRecord<TableCell>();
+    for (const col of columns) if (Object.hasOwn(row.cells, col.id)) cells[col.id] = row.cells[col.id]!;
+    return { ...row, cells };
+  });
+  const addedData = { ...data, columns, rows };
+  const before = zeroLifts.count;
+  try {
+    const added = withChartFormats(options, () => {
+      const owned = copyDimensionTable(addedData);
+      return compileTableData(owned, options, owned).resolve(options);
+    });
+    if (added.warnings.length || !stablePeriodCells(addedData, added, options)) return undefined;
+    // The same numeric rows in both parts keep the same decision about moving a row unit to the header.
+    const numeric = (row: ResolvedRow) => Object.values(row.cells).some(cell => typeof cell.raw === 'number');
+    if (added.table.rows.length !== previous.table.rows.length || added.table.rows.some((row, index) => {
+      const old = previous.table.rows[index]!;
+      return row.id !== old.id || row.unitAffix !== old.unitAffix || numeric(row) !== numeric(old);
+    })) return undefined;
+    const extra = added.table.columns;
+    const old = previous.table.columns.filter(col => priorIds.has(col.id));
+    const combined = added.table.rows.map((r,i) => {
+      const cells = emptyIdRecord<ResolvedCell>();
+      for (const col of extra) cells[col.id] = r.cells[col.id]!;
+      for (const col of old) cells[col.id] = previous.table.rows[i]!.cells[col.id]!;
+      return { ...r, cells };
+    });
+    const byId = new Map(combined.map(row => [row.id, row]));
+    for (const row of combined) if (row.inlineRows) row.inlineRows = row.inlineRows.map(line => byId.get(line.id)!);
+    return { ...added, table: { ...added.table, columns: [...extra, ...old], rows: combined } };
+  } catch (error) {
+    if (!(error instanceof NormalizeError)) throw error;
+    return undefined;
+  } finally { zeroLifts.count = before; }
+}
+
+/** A width projection can also supply the complete model for a large period-only card.
+ * Keeping numeric rows and their percent-warning thresholds preserves row units and diagnostics. */
+export function completeDimSwitchProjection(data: TableData, wide: ResolveResult, projected: ResolveResult): boolean {
+  if (!largeCompiledTables.has(data) || wide.warnings.length ||
+    wide.table.columns.some(col => col.kind !== 'rowLabel' && (col.kind !== 'value' || col.aggregate !== 'source'
+      || col.id === 'range' || col.id === 'pp' || col.id === 'pl'))) return false;
+  const numericRange = (row: ResolvedRow, columns: readonly ResolvedColumn[]): number => {
+    let hasNumber = 0;
+    for (const column of columns) {
+      const raw = row.cells[column.id]?.raw;
+      if (typeof raw !== 'number') continue;
+      if (Math.abs(raw) > 1.5) return 2;
+      hasNumber = 1;
+    }
+    return hasNumber;
+  };
+  const byId = new Map(data.rows.map(row => [row.id, row]));
+  return projected.table.rows.every((row, index) => {
+    const range = numericRange(row, projected.table.columns);
+    if (range === 2) return true;
+    // An inline line without a row format prints its cell formats and has no row-level percent warning.
+    const raw = byId.get(row.id);
+    if (range === 1 && raw?.inline && raw.format === undefined && raw.scale === undefined && raw.calc === undefined) return true;
+    return range === numericRange(wide.table.rows[index]!, wide.table.columns);
+  });
 }
 
 export function resolveTable(data: TableData, options: TableOptions = {}, magnitudeSource: TableData = data): ResolveResult {
@@ -1831,6 +1909,22 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
     return localized;
   };
 
+  /** A row that supplies every value's final format can select its formatter once. */
+  function commonRowFormat(row: FlatRow): ((value: number) => string) | undefined {
+    const spec = rowSpecs.get(row.id);
+    if (!row.id || !spec || cellSpecs.has(row.id) || groupCellSpecs.has(row.id)
+      || (!rowOverridesColumn(row.id) && (ownFormatColumns.size || (ownScaleExamples.has(row.id) && scaleChangingColumns.size)))) return undefined;
+    const print = displayFormat(spec, spec.decimals, spec.automatic, hoistedRowUnits.has(row.id));
+    const grouped = groupOf(row) !== undefined;
+    const localMinus = ownScaleExamples.has(row.id) && locale.minusGlyph === '-';
+    if (!grouped && !localMinus) return print;
+    return raw => {
+      if (grouped && raw === 0) return '0';
+      const text = print(raw);
+      return localMinus && text.startsWith(MINUS) ? `-${text.slice(MINUS.length)}` : text;
+    };
+  }
+
   // ---- percent-scale lint (points, not fractions) ----
   // Computed columns are in scope: div(gp, revenue) yields a FRACTION, and
   // formatting 0.42 as '12.3%' prints "0.4%" — wrong by 100x, silently.
@@ -2038,8 +2132,9 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   }
   const resolvedRows: ResolvedRow[] = flat.map((row) => {
     const cells: Record<Id, ResolvedCell> = emptyIdRecord();
+    const rowFormat = commonRowFormat(row);
     for (const col of columns) {
-      cells[col.id] = resolveCell(row, col);
+      cells[col.id] = resolveCell(row, col, rowFormat);
     }
     const hasChildren = (treeChildrenOf.get(row.id) ?? []).length > 0;
     const indentStep = memoIndentStep(row);
@@ -2108,7 +2203,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
       return ((isCellObject(cell) ? cell.missing : undefined) ?? input?.missing) === 'blank';
     });
   }
-  function resolveCell(row: FlatRow, col: TableColumn): ResolvedCell {
+  function resolveCell(row: FlatRow, col: TableColumn, rowFormat: ((raw: number) => string) | undefined): ResolvedCell {
     // A row may say what its own gaps print: a change line with
     // nothing to say in a block column stays empty, and the table's real
     // gaps keep the table's glyph.
@@ -2167,7 +2262,8 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
             // A ratio of two cells prints the same on the negated figures, so only a calc that flips with its inputs flips.
             && (col.kind !== 'computed' || row.calc !== undefined || calcFlipsWithInputs(col.calc));
           negated = negate && s.raw !== 0;
-          displayed = formatNumber(negate && s.raw !== 0 ? -s.raw : s.raw, col.id, row.id);
+          const signed = negate && s.raw !== 0 ? -s.raw : s.raw;
+          displayed = rowFormat ? rowFormat(signed) : formatNumber(signed, col.id, row.id);
           if (negate && locale.minusGlyph === '-') displayed = displayed.replace(MINUS, '-');
           // The head's † and its note say it where they print (disclosures shown, a head drawn, a column that skipped a child); else the cell says it.
           if (s.partial && !(headMarksPartial && partialColumnIds.has(col.id))) displayed = `${displayed} ${options.strings?.incomplete ?? localeStrings(options.locale?.language).incomplete}`;
@@ -2195,7 +2291,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
         if (s.state === 'value' && typeof s.raw === 'number' && judgmentRow) {
           // A value that prints as zero at its own precision has no sign to
           // judge: "-0.02%" shown as "0.0%" is not a loss.
-          if (polarity && !obj?.tone && band === undefined && roundedNumber(s.raw, specFor(col.id, row.id)) !== 0) {
+          if (polarity && !obj?.tone && band === undefined && !cellRoundsToZero(s.raw, specFor(col.id, row.id))) {
             const goodSign = polarity === 'higherIsBetter' ? 1 : -1;
             tone = Math.sign(s.raw) === goodSign ? 'good' : 'bad';
             // The measure the direction belongs to: the column's where the
@@ -2228,7 +2324,7 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
         // A figure that prints as zero carries no amount to read.
         tone = judgementTone(tone, obj?.strong);
         const zero = tone === 'neutral' && !deEmphasized && s.state === 'value' && typeof s.raw === 'number'
-          && roundedNumber(s.raw, specFor(col.id, row.id)) === 0;
+          && cellRoundsToZero(s.raw, specFor(col.id, row.id));
         // The direction travels with the cell: a heat ground or an in-cell bar
         // judges a fall under lowerIsBetter as good even where the tone stays
         // neutral (an ofWhich line, a muted cell).
