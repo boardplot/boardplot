@@ -1310,7 +1310,8 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     const update = () => {
       frame = 0;
       // Under dir="rtl" scrollLeft runs from 0 to negative; the tracks count from the logical start either way.
-      const left = getComputedStyle(scroller).direction === 'rtl' ? Math.abs(scroller.scrollLeft) : scroller.scrollLeft;
+      const offset = scroller.scrollLeft;
+      const left = offset < 0 && getComputedStyle(scroller).direction === 'rtl' ? -offset : offset;
       const next = viewRange(left, scroller.clientWidth);
       setViewKey((before) => (before === next ? before : next));
     };
@@ -1384,9 +1385,10 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
   const headsShown = tableOptions?.columnHeads !== false;
   const tableReady = table !== undefined;
   useEffect(() => {
+    if (!stickySections) return undefined;
     const element = grid.tableRef.current;
     const head = element?.querySelector<HTMLElement>('[data-bp-rowgroup="head"]');
-    if (!stickySections || !element || !head) return undefined;
+    if (!element || !head) return undefined;
     const apply = () => element.style.setProperty('--bp-head-h', `${stickyHeadMode === false || !headsShown ? 0 : head.offsetHeight}px`);
     apply();
     const watch = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(apply);
@@ -2116,9 +2118,10 @@ const TableHead = memo(function TableHead({
   useLayoutEffect(() => {
     const was = lastHidden.current;
     lastHidden.current = hiddenColumns;
+    if (was === hiddenColumns) return;
     const head = headRef.current;
     const row = head?.querySelector('[role="row"]');
-    if (!head || !row || was === hiddenColumns) return;
+    if (!head || !row) return;
     const ms = parseFloat(getComputedStyle(row).transitionDuration) * 1000;
     if (!(ms > 0)) return;
     const opened = (ids: readonly Id[]) => ids.every((id) => was.has(id)) && ids.some((id) => !hiddenColumns.has(id));
