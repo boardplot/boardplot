@@ -534,15 +534,12 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   }
   const headRoom = heads?.reduce((sum, head) => sum + head.h, 0) ?? 0;
   const partialOnValues = computed.panels.some(p => p.panel.type === 'column' && computed.partial.some(i => partialNoteIds.has(data.categories[i]!.id) && p.values[i] !== null));
-  // A running period with no marker to point at its note says "to date" on its axis name.
+  // A named running period with no marker to point at its note says "to date" on the axis.
   const partialMark = marker(stateNotes.partial);
   const categoryName = (c: (typeof data.categories)[number]) => {
     const label = c.label ?? c.id;
     if (!c.partial) return label;
-    if (label === '') {
-      if (!running.has(c.id)) return '';
-      return partialFootnote !== undefined && partialMark ? partialMark : runningWording;
-    }
+    if (label === '') return partialFootnote !== undefined && running.has(c.id) ? partialMark : '';
     if (partialMark && partialNoteIds.has(c.id)) return partialOnValues ? label : label + partialMark;
     return running.has(c.id) && runningWording && !saysToDate(label, runningWording) ? `${label} ${toDate}` : label;
   };
@@ -555,7 +552,7 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
       const category = data.categories[i];
       return category !== undefined && category.label !== '';
     };
-    // Adjacent names thin on the usual rhythm. Isolated names and running-period cues keep their ticks.
+    // Adjacent names thin on the usual rhythm. Isolated names and footnote markers keep their ticks.
     const printing = categoryNames.flatMap((name, i) => {
       if (name === '') return [];
       if (!onValueRhythm(i) && hasName(i) && (hasName(i - 1) || hasName(i + 1))) return [];

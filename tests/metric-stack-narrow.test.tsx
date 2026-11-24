@@ -61,8 +61,8 @@ it('draws a dated category with a blank axis label', () => {
   });
 });
 
-// Prevents blank category labels from hiding named ticks or the status of a running period.
-it('keeps sparse stack axis names and labels an unnamed running period', () => {
+// Prevents blank category labels from hiding named ticks or authored footnote markers.
+it('keeps sparse stack axis names and authored footnote markers', () => {
   const draw = (names: string[], running = false, footnote?: string, width = 320) => {
     const stackData = {
       ...data,
@@ -83,13 +83,13 @@ it('keeps sparse stack axis names and labels an unnamed running period', () => {
   const weeks = ['Jan', '', '', '', 'Feb', '', '', '', 'Mar', '', '', ''];
   expect.soft(axis(draw(weeks)), 'three names on a narrow axis').toEqual(['Jan', 'Feb', 'Mar']);
   const running = ['Mar', 'Apr', ''];
-  expect.soft(axis(draw(running, true)), 'running period without a footnote').toEqual(['Mar', 'Apr', 'to date']);
+  expect.soft(axis(draw(running, true)), 'running period without a footnote').toEqual(['Mar', 'Apr']);
   const chart = draw(running, true, 'Last week still running.');
   const markers = Array.from(chart.querySelectorAll('text'), label => label.textContent).join('').match(/¹/g)?.length ?? 0;
   expect.soft({ axis: axis(chart), markers }, 'running period with a footnote').toEqual({ axis: ['Mar', 'Apr', '¹'], markers: 1 });
   const namedWeeks = Array.from({ length: 12 }, (_, i) => `W${String(i + 1).padStart(2, '0')}`);
   expect.soft(axis(draw([...namedWeeks, ''], true, undefined, 420)).sort(), 'named weeks before an unnamed running period')
-    .toEqual([...namedWeeks, 'to date']);
+    .toEqual(namedWeeks);
 });
 
 // A running period in a stack without a maturing cohort must keep its mark and wording without gaining a cohort key.
