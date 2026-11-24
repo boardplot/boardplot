@@ -8,7 +8,7 @@ import { PLAN_ONLY } from './layoutPlan';
 import { prepareFractionAnnotations } from './normalize/fraction';
 import { caseInsensitiveValue } from './inputConversion';
 import type { z } from 'zod';
-import { withChartDefaultStrings, withLocaleStrings } from './strings';
+import { localeStrings, withChartDefaultStrings, withLocaleStrings } from './strings';
 import { withNumberMarks } from './numberMarks';
 import type { Annotation, AnnotationKind } from './types/annotations';
 import type { Id, OwnerRef } from './types/cell';
@@ -38,11 +38,27 @@ import { isOwnMark } from './label/solver';
 import { reportLabelOmissions } from './label/omissions';
 import { withCalendarLabels } from './calendarData';
 import { staticFrame } from './footer';
+import { footnoteMark } from './footnoteMark';
 import { addWhereAbsent } from './diagnostics/jsonPatch';
 import { pushAll } from './arrays';
 
 /** Chart types may refine shared mode names and label content. */
 export type ChartOptions = Omit<BaseOptions, 'mode' | 'labels'> & { mode?: unknown; labels?: false | Partial<Record<import('./types/options').LabelKind, boolean | string[]>> };
+
+const PARTIAL_PERIOD_NOTE_CHARTS = new Set(['bar', 'column', 'combo', 'dimswitch', 'grid', 'line', 'variance']);
+
+function describeRemainingPeriodNotes(geo: Pick<Geometry, 'a11y' | 'frame'>, data: unknown, options: ChartOptions): void {
+  const periods = data as { categories?: Category[]; periods?: Pick<Category, 'partial'>[]; partial?: unknown[] } | undefined;
+  const hasPartial = periods?.categories?.some(category => category.partial === true)
+    || periods?.periods?.some(period => period.partial === true) || periods?.partial?.length;
+  if (!hasPartial) return;
+  const notes = geo.frame.noteList?.filter(note => note.inFrame);
+  if (!notes?.length) return;
+  const heading = options.strings?.notesAndSources ?? localeStrings(options.locale?.language).notesAndSources;
+  const texts = notes.map(note => `${note.ref === undefined ? '' : `${footnoteMark(note.ref)} `}${note.short ?? note.text}`);
+  geo.a11y.desc = [geo.a11y.desc.trimEnd(), heading, ...texts].filter(Boolean)
+    .map(text => /[.!?]$/.test(text) ? text : `${text}.`).join(' ');
+}
 
 /**
  * A layout that draws reports an estimated height and no patch: the estimate was never drawn, and a patch that
@@ -819,6 +835,8 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
       if (description !== undefined && !geo.refused) {
         geo.a11y.desc = description;
         if (geo.story) geo.story.desc = description;
+      } else if (!geo.refused && options?.strings?.toDate === '' && PARTIAL_PERIOD_NOTE_CHARTS.has(def.type)) {
+        describeRemainingPeriodNotes(geo, data, options);
       }
       return geo;
     });

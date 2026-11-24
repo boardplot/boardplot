@@ -242,8 +242,16 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
     if (authored === undefined) engineNumbers.push(notes.length + 1);
     notes.push(text);
   };
-  if (computed.maturing.length) stateNote('maturing', data.states?.maturing?.footnote, () => chartString(options, 'maturingCohortNote'));
-  if (partial.size) stateNote('partial', data.states?.partial?.footnote, () => partialFootnotes(data.categories, options.strings)[0]);
+  const maturingFootnote = data.states?.maturing?.footnote;
+  const partialFootnote = data.states?.partial?.footnote;
+  const addPartialNote = () => {
+    if (partial.size) stateNote('partial', partialFootnote, () => partialFootnotes(data.categories, options.strings)[0]);
+  };
+  // The footer prints authored notes before generated disclosures.
+  const partialFirst = options.strings?.toDate === '' && partialFootnote !== undefined && maturingFootnote === undefined;
+  if (partialFirst) addPartialNote();
+  if (computed.maturing.length) stateNote('maturing', maturingFootnote, () => chartString(options, 'maturingCohortNote'));
+  if (!partialFirst) addPartialNote();
   const marker = (value: number | undefined) => value === undefined || notesOff ? '' : String(value).split('').map(c => '⁰¹²³⁴⁵⁶⁷⁸⁹'[Number(c)]).join('');
   const visibleValue = (p: ComputedStackPanel, i: number) => p.values[i] !== null;
   const hasMaturingValues = computed.panels.some(p => p.states.some((state, i) => state === 'maturing' && visibleValue(p, i)));
