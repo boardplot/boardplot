@@ -36,6 +36,8 @@ export interface TableWidthView {
   rows?: readonly ResolvedRow[];
   widthRows?: readonly ResolvedRow[];
   fullRows?: readonly ResolvedRow[];
+  /** Visible rows are drawn directly from the immutable rows that set the body widths. */
+  keepBodyFontsOnFold?: boolean;
   available?: number;
   /** A scrolling host keeps authored tracks; a fixed frame uses the existing shrink order. */
   scroll?: boolean;
@@ -154,7 +156,7 @@ function measureTableTracks(table: ResolvedTable, theme: Theme, measure: TextMea
   const headingFaces = (faces: TableFonts) => groupHeadingFaces(view.trailingTracking
     ? { ...faces.group, letterSpacing: Math.round((faces.group.letterSpacing ?? 0) * 1000) / 1000 } : faces.group);
   const { ladder, regularFonts, cellStep, indentStep, childCount, cellFont, inlineFont, hasChanges, bodyWidths, headings } =
-    measuredTypography(table, theme, measure, options, view, cols, rows, widthRows);
+    measuredTypography(table, theme, measure, options, view, cols, view.keepBodyFontsOnFold ? widthRows : rows, widthRows);
   const isTree = fullRows.some(row => row.hasChildren);
   const indents = labelIndents(cellPadX, options.labelIndent, view.withMarks ?? options.outlineMarks === true);
   const operatorSlot = operatorWidth(rows, theme);

@@ -1030,7 +1030,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
       scroll: true, theme, measure: width.measure,
       options: { ...tableOptions, density, target: request?.target, inlineVisibility, [SOFT_LABEL_CAP]: softLabelCap, [LABEL_WRAP_FLOOR]: labelWrapFloor },
       view: {
-        columns, allColumns, defaultColumns, rows, available, frameStart,
+        columns, allColumns, defaultColumns, rows, available, frameStart, keepBodyFontsOnFold: reuseGrid,
         scrollBox: frameWidth === undefined ? undefined : scrollBox(frameWidth),
         withMarks: !readOnlyTree || tableOptions?.outlineMarks === true,
         sortable: sortableIds, leadWidth: rowLabelLead?.width,
@@ -1045,7 +1045,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
         return { theme: frameTheme, available: frameWidth - (frameSides.left ?? 0) - (frameSides.right ?? 0), scrollBox: scrollBox(frameWidth) };
       },
     } });
-  }, [table, theme, layoutRequest, width, tableOptions, density, request, inlineVisibility, softLabelCap, labelWrapFloor,
+  }, [table, theme, layoutRequest, width, tableOptions, density, request, inlineVisibility, softLabelCap, labelWrapFloor, reuseGrid,
     columns, allColumns, defaultColumns, rows, available, frameStart, readOnlyTree, sortableIds, rowLabelLead?.width, groupMarks, size, fit, margin, marginLeft, marginRight, container.size?.width, scrollGutter]);
   const measured = need?.plan;
   // The density of the rung the grid draws: the compact and tight rungs take the compact density.
