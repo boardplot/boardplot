@@ -32,8 +32,9 @@ export function partialFootnotes(
   strings: StringsSpec | undefined,
   keyed = false,
 ): string[] {
+  if (keyed || strings?.toDate === '') return [];
   const names = partialNames(categories, strings);
-  return names == null || keyed ? [] : [disclosureNote(names)];
+  return names == null ? [] : [disclosureNote(names)];
 }
 
 /**

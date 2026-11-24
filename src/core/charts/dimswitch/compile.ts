@@ -45,9 +45,8 @@ const noteName = (p: DimSwitchPeriod, options: DimSwitchOptions) =>
   (options.columnOverrides?.[p.kind ? 'range' : p.id]?.label ?? p.label).trim() || p.label;
 
 function partialPeriodText(periods: DimSwitchPeriod[], options: DimSwitchOptions, toDate: string): string {
-  if (periods.length === 0) return '';
-  const names = periods.map(period => noteName(period, options));
-  return toDate === '' ? names.map(name => name.trim()).filter(Boolean).join(', ') : `${names.join(', ')} ${toDate}`;
+  if (periods.length === 0 || toDate === '') return '';
+  return `${periods.map(period => noteName(period, options)).join(', ')} ${toDate}`;
 }
 
 function periodNotes(options: DimSwitchOptions, strings: ReturnType<typeof localeStrings>, hidden: DimSwitchPeriod[],
@@ -269,7 +268,8 @@ export function periodCardTail(data: DimSwitchData, options: DimSwitchOptions, s
   if (!notes) return undefined;
   const deferred = periodRecordPlans.get(source.computedCells);
   const deferredRows = deferred && new Map(deferred.rows.map(row => [row.id, row]));
-  return { periods, rows, records, deferredRows, nearZero: notes.length > 1 + Number(periods.some(p => p.partial)) };
+  const hasPartialNote = options.strings?.toDate !== '' && periods.some(p => p.partial);
+  return { periods, rows, records, deferredRows, nearZero: notes.length > 1 + Number(hasPartialNote) };
 }
 
 interface PeriodValues {
@@ -1283,9 +1283,8 @@ export function projectDimSwitchCard(data: DimSwitchData, options: DimSwitchOpti
   const strings = { ...localeStrings(options.locale?.language), ...options.strings };
   const previousNotes = (wider.options as { [ENGINE_NOTES]?: string[] })[ENGINE_NOTES]!;
   // A partial card always has an omitted-period note, optionally preceded by the partial and near-zero disclosures.
-  // A note that loses its last visible name also loses its stars. Recompile the remaining heads in that case.
-  if (strings.toDate === '' && previousPartial.some(period => !noteName(period, options).trim())) return undefined;
-  const nearZero = previousNotes.length > 1 + Number(previousPartial.length > 0);
+  const hadPartialNote = strings.toDate !== '' && previousPartial.length > 0;
+  const nearZero = previousNotes.length > 1 + Number(hadPartialNote);
   if (nearZero) {
     // A period's own change can keep the disclosure. Where only a block comparison or a removed period might
     // have caused it, compile the card and let its comparison windows settle the note.
@@ -1298,8 +1297,8 @@ export function projectDimSwitchCard(data: DimSwitchData, options: DimSwitchOpti
     }
     if (!stillSeen) return undefined;
   }
-  const star = disclosuresShown(options) && options.columnHeads !== false ? '*' : '';
   const partialText = partialPeriodText(partial, options, strings.toDate);
+  const star = partialText && disclosuresShown(options) && options.columnHeads !== false ? '*' : '';
   const notes = periodNotes(options, strings, periods.slice(0, hide), star, partialText, false, nearZero);
   const dropped = new Set(periods.slice(fromHide, hide).map(p => p.id));
   const columns = wider.data.columns.filter(col => !dropped.has(col.id));

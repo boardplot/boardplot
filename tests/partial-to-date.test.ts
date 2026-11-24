@@ -5,8 +5,10 @@
  */
 import { describe, expect, it } from 'vitest';
 import { getFixtures } from '../src/fixtures';
-import { measure } from '../src/index';
+import { measure, type ChartReading } from '../src/index';
 import { render } from '../src/cli/render';
+import { exampleData } from '../src/core/charts/dimswitch/example';
+import { metricStackFixtures } from '../src/core/charts/grid/metricStackFixtures';
 
 const geometry = (width: number, labels?: unknown, last: unknown = 50): any => (measure({
   type: 'combo',
@@ -298,4 +300,27 @@ describe('running period whose label says "to date"', () => {
     expect(note(['Q3 MTD', 'Q4'])).toEqual(['Q3 MTD, Q4 to date']);
     expect(note(['W37', 'W38 to date', 'W39'])).toEqual(['W37 to date, W38 to date, W39 to date']);
   });
+});
+
+// An empty to-date word must remove the bare-name note and its marker without dropping an authored note.
+it('omits only generated partial-period note references when the to-date word is empty', () => {
+  const draw = (spec: unknown) => render({ spec, return: ['svg', 'reading'] }).body as { svg: string; reading: ChartReading };
+  const options = { strings: { toDate: '' }, notes: { show: ['note', 'disclosure'] } };
+  const table = draw({ type: 'dimswitch', data: exampleData, options: { ...options, size: { width: 375 } } });
+  expect.soft(table.svg.includes('>WEEK 2<')).toBe(true);
+  expect.soft(table.reading.notes.map(note => note.text)).toEqual([]);
+
+  const fixture = metricStackFixtures.find(entry => entry.id === 'metric-stack-steps')!;
+  const stack = (footnote?: string) => draw({
+    type: 'grid',
+    data: { ...fixture.data, states: { ...fixture.data.states, partial: { ...fixture.data.states!.partial!, footnote } } },
+    options: { ...fixture.options, ...options },
+  });
+  const plain = stack();
+  expect.soft(plain.svg.includes('>Oct<')).toBe(true);
+  expect.soft(plain.reading.notes.map(({ n, ref }) => [n, ref])).toEqual([[1, 1], [2, 2], [3, undefined]]);
+  const authored = stack('Counts stop on 12 October.');
+  expect.soft(authored.svg.includes('>Oct²<')).toBe(true);
+  expect.soft(authored.reading.notes[1]).toMatchObject({ n: 2, ref: 2, text: 'Counts stop on 12 October.', inFrame: true });
+  expect(authored.reading.notes[2]).toMatchObject({ n: 3, ref: 3, kind: 'disclosure', inFrame: true });
 });
