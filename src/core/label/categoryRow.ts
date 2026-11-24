@@ -1131,7 +1131,7 @@ function planRow(input: CategoryRowInput, sourceMeasure: TextMeasurer, remember?
   // A calendar row always names its latest period; the aligned tick before it yields if the two collide.
   const underAt = (i: number): string => input.under?.[i] ?? '';
   const pinned = labels.map((_, i) => calendarRule ? i === n - 1 || suffixAt(i) !== '' || underAt(i) !== '' || input.pinned?.[i] === true
-    : input.strideFromEnd ? i === n - 1 || underAt(i) !== '' : suffixAt(i) !== '' || underAt(i) !== '' || yearPins[i]! || input.pinned?.[i] === true);
+    : input.strideFromEnd ? i === n - 1 || underAt(i) !== '' || input.pinned?.[i] === true : suffixAt(i) !== '' || underAt(i) !== '' || yearPins[i]! || input.pinned?.[i] === true);
   const all = labels.map((_, i) => pinned[i]! || (requested?.[i] ?? true));
   /**
    * The months under a row of day numbers: each starts where its first day's

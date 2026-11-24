@@ -126,15 +126,25 @@ export function categoryLabelsAndMarks(
   refs?: FootnoteRefs,
   toDate?: string,
   running?: ReadonlySet<Id>,
-): { labels: string[]; suffixes: string[]; dates: (string | undefined)[]; calendar?: (CalendarInfo | undefined)[]; under?: (string | undefined)[] } {
-  const under = toDate === undefined || !running?.size ? undefined : categories.map((category) =>
-    running.has(category.id) && !saysToDate(category.label ?? category.id, toDate) ? toDate : undefined);
+): { labels: string[]; suffixes: string[]; dates: (string | undefined)[]; calendar?: (CalendarInfo | undefined)[]; under?: (string | undefined)[]; pinned?: boolean[] } {
+  const under: (string | undefined)[] = [];
+  const pinned: boolean[] = [];
+  if (toDate !== undefined && running) {
+    for (const category of categories) {
+      const needsWords = category.partial === true && !saysToDate(category.label ?? category.id, toDate);
+      const isRunning = running.has(category.id);
+      under.push(needsWords && isRunning ? toDate : undefined);
+      // Keep the tick that the former second line would have pinned.
+      pinned.push(needsWords && !isRunning);
+    }
+  }
   return {
     labels: categories.map((category) => category.label ?? category.id),
     // The ISO date of each category, else its id: the row's tick rule reads the calendar from it.
     dates: categories.map((category) => category.date ?? String(category.id)),
     suffixes: categories.map((category) => footnoteSuffix(category.footnote, category.id, refs)),
-    ...(under?.some(Boolean) ? { under } : {}),
+    ...(under.some(Boolean) ? { under } : {}),
+    ...(pinned.some(Boolean) ? { pinned } : {}),
     ...(categories.some((category) => category.calendar) ? { calendar: categories.map((category) => category.calendar) } : {}),
   };
 }
