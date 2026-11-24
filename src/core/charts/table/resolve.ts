@@ -323,8 +323,37 @@ function largestOfList(list: readonly number[]): number {
   }
   return most;
 }
-const sharedPreparedData = new Map<string, PreparedTableData>();
+const largeCompiledTables = new WeakSet<TableData>();
 const MAX_SHARED_KEY_CHARS = 128 * 1024;
+
+/** A private dimension form can skip the shared cache when its cell fields alone exceed the key limit. */
+export function ownCompiledTable(data: TableData): void {
+  ownPlanInput(data);
+  const seen = new Set<object>();
+  let length = 0;
+  for (const row of data.rows) {
+    if (!row.cells || seen.has(row.cells)) continue;
+    seen.add(row.cells);
+    for (const [id, cell] of Object.entries(row.cells)) {
+      // modelContentKey writes key"<id>": (six characters around the id) and at least three for the value.
+      length += id.length + 9;
+      if (typeof cell === 'string') length += cell.length;
+      if (cell !== null && typeof cell === 'object' && !Array.isArray(cell) && !seen.has(cell)) {
+        seen.add(cell);
+        for (const [field, value] of Object.entries(cell)) {
+          length += field.length + 9;
+          if (typeof value === 'string') length += value.length;
+        }
+      }
+      if (length > MAX_SHARED_KEY_CHARS) {
+        largeCompiledTables.add(data);
+        return;
+      }
+    }
+  }
+}
+
+const sharedPreparedData = new Map<string, PreparedTableData>();
 const MAX_SHARED_TOTAL_CHARS = 2 * 1024 * 1024;
 let sharedKeyChars = 0;
 const modelSymbols = new Map<symbol, number>([AUTOMATIC_FORMAT, MAGNITUDE_GROUP, MAGNITUDE_FIGURES, ZERO_LIFT, LABEL_ONLY_ROW, PERIOD_FIGURES].map((symbol, index) => [symbol, index]));
@@ -396,13 +425,15 @@ export function prepareTableData(data: TableData, options: TableOptions = {}, ma
       ...(options.topN ? { columnVisibility: options.columnVisibility, [ZERO_LIFT]: (options as ZeroLiftOptions)[ZERO_LIFT] } : {}),
     };
     // These inputs become separate owned snapshots. Keep each graph exact, and read data once per public request.
-    const dataContent = memoExactInputKey(data, modelContentKey);
+    const privateForm = magnitudeSource === data && largeCompiledTables.has(data);
+    const dataContent = privateForm ? undefined : memoExactInputKey(data, modelContentKey);
     const magnitudeContent = magnitudeSource === data ? 'same;' : memoExactInputKey(magnitudeSource, modelContentKey);
     const semanticContent = modelContentKey([semantic, currentSmallValues(), formatScopeKey()]);
     const content = dataContent === undefined || magnitudeContent === undefined || semanticContent === undefined ? undefined
       : requestMemo(data, 'table-model:' + magnitudeContent.length + ':' + magnitudeContent + semanticContent,
         () => dataContent.length + ':' + dataContent + magnitudeContent.length + ':' + magnitudeContent + semanticContent);
-    const key = content;
+    // The form already owns the complete data. Its options and format scope still select the model.
+    const key = privateForm ? semanticContent : content;
     let models = key === undefined ? undefined : preparedData.get(data);
     if (!models && key !== undefined) preparedData.set(data, models = new Map());
     let model = key === undefined ? undefined : models!.get(key) ?? (content === undefined ? undefined : sharedPreparedData.get(content));
@@ -1432,6 +1463,9 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   const cellSpecs = new Map<Id, Map<Id, NumberFormatSpec>>();
   // Cells whose own format the author wrote: they keep its decimals inside a column or row that prints a default set.
   const authoredCells = new Map<Id, Set<Id>>();
+  // An unchanged example has one format in this table. Authored and automatic examples follow different precision rules.
+  const authoredCellFormats = new Map<string, NumberFormatSpec>();
+  const automaticCellFormats = new Map<string, NumberFormatSpec>();
   const cellFormatCols = [...valueCols, ...computedCols];
   for (const row of flat) {
     for (const col of cellFormatCols) {
@@ -1439,7 +1473,8 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
       if (example !== undefined) {
         const sourceRow = sourceRows.get(row.id);
         const sourceColumn = sourceColumns.get(col.id) as { format?: string } | undefined;
-        const sourceExample = cellFormat(sourceRow?.cells[col.id])
+        const ownExample = cellFormat(sourceRow?.cells[col.id]);
+        const sourceExample = ownExample
           ?? sourceColumn?.format ?? sourceRow?.format ?? options.format ?? defaultExample(col);
         let inRow = cellSpecs.get(row.id);
         if (!inRow) cellSpecs.set(row.id, inRow = new Map());
@@ -1447,14 +1482,21 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
         const joined = joinedCells.get(row.id)?.get(col.id);
         const groupRule = joined === undefined ? undefined : groupRules.get(joined);
         if (groupRule !== undefined) { inRow.set(col.id, { ...groupRule, signed: true }); continue; }
-        const spec = authoredSpec(example, sourceExample, cellFormat(sourceRow?.cells[col.id]) === example && sourceCell?.[AUTOMATIC_FORMAT] !== true);
-        if (cellFormat(sourceRow?.cells[col.id]) !== undefined && sourceCell?.[AUTOMATIC_FORMAT] !== true) {
-          holdAuthoredScale(spec, locale.thousands);
+        const automatic = sourceCell?.[AUTOMATIC_FORMAT] === true;
+        const authoredHere = ownExample !== undefined && !automatic;
+        const formats = ownExample === example ? (automatic ? automaticCellFormats : authoredCellFormats) : undefined;
+        let spec = formats?.get(example);
+        if (spec === undefined) {
+          spec = authoredSpec(example, sourceExample, ownExample === example && !automatic);
+          if (authoredHere) holdAuthoredScale(spec, locale.thousands);
+          if (automatic) spec.automatic = automaticAs(true);
+          formats?.set(example, spec);
+        }
+        if (authoredHere) {
           let authored = authoredCells.get(row.id);
           if (!authored) authoredCells.set(row.id, authored = new Set());
           authored.add(col.id);
         }
-        if (sourceCell?.[AUTOMATIC_FORMAT] === true) spec.automatic = automaticAs(true);
         inRow.set(col.id, spec);
       }
     }
@@ -2130,9 +2172,16 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
         // The direction travels with the cell: a heat ground or an in-cell bar
         // judges a fall under lowerIsBetter as good even where the tone stays
         // neutral (an ofWhich line, a muted cell).
-        return { ...base, raw: s.raw, state: s.state, displayed, tone, deEmphasized, polarity, ...(zero ? { zero: true as const } : {}),
-          ...(negated ? { negated: true as const } : {}),
-          ...(band === undefined ? {} : { band: { to: band.to, ...(bandIndex > 0 ? { from: obj!.bands![bandIndex - 1]!.to } : {}), ...(band.label === undefined ? {} : { label: band.label }) } }) };
+        base.raw = s.raw;
+        base.state = s.state;
+        base.displayed = displayed;
+        base.tone = tone;
+        base.deEmphasized = deEmphasized;
+        base.polarity = polarity;
+        if (zero) base.zero = true;
+        if (negated) base.negated = true;
+        if (band !== undefined) base.band = { to: band.to, ...(bandIndex > 0 ? { from: obj!.bands![bandIndex - 1]!.to } : {}), ...(band.label === undefined ? {} : { label: band.label }) };
+        return base;
       }
       case 'status': {
         // Every authored row with this cell's row id, nested rows included, as pointer segments.
@@ -2406,6 +2455,7 @@ function stampRecordDisplay(
   resolvedRows: ResolvedRow[],
   formatNumber: (raw: number, colId: Id, rowId?: Id) => string,
 ): void {
+  if (records.length === 0) return;
   const cellIndex = new Map<string, ResolvedCell>();
   for (const r of resolvedRows) for (const c of Object.values(r.cells)) cellIndex.set(tableCellKey(c.rowId, c.colId), c);
   for (const rec of records) {
