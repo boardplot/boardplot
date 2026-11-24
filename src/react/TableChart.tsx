@@ -494,7 +494,7 @@ function columnVisibilityDefaults(table: ResolvedTable, authored?: Record<Id, bo
  * outside it as the CLI does. The table's own props are taken off
  * before the check.
  */
-export function createTableChart(checkKeys?: OptionKeyCheck, linked?: readonly DeferredName[]) {
+export function createTableChart(checkKeys?: OptionKeyCheck, linked: readonly DeferredName[] = []) {
   type NormalizedTableProps = Omit<TableChartProps, 'size' | 'fallbackSize'> & ContainerSizeOptions;
   function GatedTable(props: NormalizedTableProps): ReactElement {
     // Rows answer before the table resolves: a table has no data while the rows chunk loads or after it refuses them.
