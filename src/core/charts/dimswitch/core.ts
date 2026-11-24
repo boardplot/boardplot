@@ -105,14 +105,21 @@ function layoutForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwi
   if ((options as TargetSizeOptions)[TARGET_SIZE]?.fixed.height === false
     && typeof compiled.options.size === 'object' && compiled.options.size.height !== undefined
     && compiled.options.size.height !== geometry.size.height) compiled.options={...compiled.options,size:geometry.size};
-  const originalRows=new Map(resolved.table.rows.map(row=>[row.id,row]));
-  const drawnRows=new Map(geometry.derived.table.rows.map(row=>[row.id,row]));
   // Only measure() sets VERIFY_ADVICE; the geometry it returns must equal the one React draws.
   const {[VERIFY_ADVICE]:_verify,...kept}=compiled.options as typeof compiled.options & {[VERIFY_ADVICE]?:boolean};
-  const records=compiled.computedCells.map(record=>({...record,displayed:record.kind==='calc' ? originalRows.get(record.rowId)?.cells[record.colId]?.displayed ?? '' : record.displayed}));
   // The note of a partial window with no head may lose its place in a fixed frame's line budget. An open height prints every note.
   const partialNote=compiled.partialNote, offFrame=partialNote!==undefined && (options as TargetSizeOptions)[TARGET_SIZE]?.fixed?.height===true && !heightOmitted(options.size) && !compiled.warnings.some(warning=>warning.code===PARTIAL_NOTE_OFF_FRAME) && geometry.frame?.noteList?.some(note=>note.text===partialNote && !note.inFrame)===true;
-  return {...geometry,type:'dimswitch',warnings:[...dimSwitchTableWarnings(geometry.warnings,options.columnOverrides),...compiled.warnings,...(offFrame ? [partialNoteWarning(partialNote)] : []),...(options.format ? [{code:'format-unused',severity:'warn' as const,field:['options','format'],message:'DimSwitch measures supply their own formats. Set measures[].format.'}] : [])],derived:{...geometry.derived,compiled:{data:compiled.data,options:kept},omissions:compiled.omissions,computedCells:[...resolved.computedCells,...records].map(record=>({...record,displayed:record.kind==='calc' ? drawnRows.get(record.rowId)?.cells[record.colId]?.displayed ?? record.displayed : record.displayed}))}};
+  return {...geometry,type:'dimswitch',warnings:[...dimSwitchTableWarnings(geometry.warnings,options.columnOverrides),...compiled.warnings,...(offFrame ? [partialNoteWarning(partialNote)] : []),...(options.format ? [{code:'format-unused',severity:'warn' as const,field:['options','format'],message:'DimSwitch measures supply their own formats. Set measures[].format.'}] : [])],derived:{
+    ...geometry.derived,compiled:{data:compiled.data,options:kept},omissions:compiled.omissions,
+    get computedCells() {
+      const originalRows = new Map(resolved.table.rows.map(row => [row.id, row]));
+      const drawnRows = new Map(geometry.derived.table.rows.map(row => [row.id, row]));
+      const records = compiled.computedCells.map(record => ({ ...record, displayed: record.kind === 'calc'
+        ? originalRows.get(record.rowId)?.cells[record.colId]?.displayed ?? '' : record.displayed }));
+      return [...resolved.computedCells, ...records].map(record => ({ ...record, displayed: record.kind === 'calc'
+        ? drawnRows.get(record.rowId)?.cells[record.colId]?.displayed ?? record.displayed : record.displayed }));
+    },
+  }};
 }
 
 /**
@@ -291,7 +298,10 @@ function layoutDimSwitchCard(data: DimSwitchData, options: DimSwitchOptions = {}
       if (misses) return noteOff;
       return !noteOff.refused && !missesFixedHeight(step,noteOff) && foldedRows(noteOff)<foldedRows(drawn) ? noteOff : drawn;
     };
-    return classFloor(layout,data,options,layout(data,options));
+    const selected = classFloor(layout,data,options,layout(data,options));
+    // Only the selected form needs its cell records. Store ordinary data in the completed layout.
+    selected.derived = { ...selected.derived };
+    return selected;
   });
 }
 
