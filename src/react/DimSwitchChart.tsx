@@ -5,6 +5,7 @@ import type { LintWarning } from '../core/types/scene';
 import { compileDimSwitch, dimSwitchTableWarnings, foreignRowId, hiddenTotalFoldWarnings, LABELS_ONLY, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning } from '../core/charts/dimswitch/compile';
 import { engineNoteMeta, withEngineNotes } from '../core/notes';
 import { ENGINE_NOTES } from '../core/charts/table/tracks';
+import { ownCompiledTable } from '../core/charts/table/resolve';
 import { ENGINE_NOTE_KINDS } from './tablePresentation';
 import type { DimSwitchData, DimSwitchOptions, DimSwitchVariant } from '../core/charts/dimswitch/types';
 import type { OptionKeyCheck } from '../core/schema/unknownKeys';
@@ -76,6 +77,7 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
   // The compile reads the formats as the SVG path does; its options carry which formats the author wrote to the table it draws.
   const compiled=useMemo(()=>withEngineNotes(()=>{
     const result=compileDimSwitch(stableData,{...stableOptions,variant,depth:1,splits},{records:false});freezeValue(result.data);
+    ownCompiledTable(result.data);
     const notes=(result.options as {[ENGINE_NOTES]?:string[]})[ENGINE_NOTES] ?? [];
     const kinds=new Map(notes.flatMap(note=>{const meta=engineNoteMeta(note); return meta ? [[note,meta] as const] : [];}));
     return kinds.size ? {...result,options:{...result.options,[ENGINE_NOTE_KINDS]:kinds}} : result;
