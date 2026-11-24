@@ -224,6 +224,7 @@ interface CardTail {
   periods: DimSwitchPeriod[];
   rows: Map<string, TableRow>;
   records: Map<string, ComputedCellRecord[]>;
+  deferredRows?: Map<string, PeriodRecordRow>;
   nearZero: boolean;
 }
 export function periodCardTail(data: DimSwitchData, options: DimSwitchOptions, source: CompiledDimSwitch, fromHide: number,
@@ -260,7 +261,9 @@ export function periodCardTail(data: DimSwitchData, options: DimSwitchOptions, s
   }
   const notes = (source.options as { [ENGINE_NOTES]?: string[] })[ENGINE_NOTES];
   if (!notes) return undefined;
-  return { periods, rows, records, nearZero: notes.length > 1 + Number(periods.some(p => p.partial)) };
+  const deferred = periodRecordPlans.get(source.computedCells);
+  const deferredRows = deferred && new Map(deferred.rows.map(row => [row.id, row]));
+  return { periods, rows, records, deferredRows, nearZero: notes.length > 1 + Number(periods.some(p => p.partial)) };
 }
 
 interface PeriodValues {
@@ -272,6 +275,54 @@ interface PeriodValues {
 }
 /** One fold of one layout request owns these raw results by measure, member and authored period index. */
 export type DimSwitchPeriodValues = Map<DimSwitchMeasure, Map<string, PeriodValues[]>>;
+
+interface ReceiptTemplate { op: string; refs: { field: string; total: boolean; reference: boolean }[] }
+interface PeriodRecordRow {
+  id: string; member: string; values: PeriodValues[];
+  level: ReceiptTemplate; change: ReceiptTemplate;
+}
+interface PeriodRecordPlan {
+  total: string;
+  periods: { id: string; index: number; withRef: boolean }[];
+  rows: PeriodRecordRow[];
+}
+// Only a selected card needs calculation operands. Its private record list owns the row plan.
+const periodRecordPlans = new WeakMap<ComputedCellRecord[], PeriodRecordPlan>();
+
+export function selectedPeriodRecords(source: ComputedCellRecord[]): ComputedCellRecord[] | undefined {
+  const plan = periodRecordPlans.get(source);
+  if (!plan) return undefined;
+  type Operand = { field: string; total: boolean; reference: boolean; colId: string };
+  const columns = new Map<ReceiptTemplate, Operand[][]>();
+  const operands = (template: ReceiptTemplate) => {
+    let result = columns.get(template);
+    if (!result) {
+      result = plan.periods.map(p => template.refs.map(ref => ({
+        ...ref, colId: key(p.id, ref.reference ? 'ref' : 'sums', ref.field),
+      })));
+      columns.set(template, result);
+    }
+    return result;
+  };
+  const records: ComputedCellRecord[] = [];
+  for (const row of plan.rows) {
+    const level = operands(row.level), change = operands(row.change), changeId = row.id + ':change';
+    const append = (rowId: string, colId: string, template: ReceiptTemplate, fields: Operand[], values: PeriodValues, value: Value) => {
+      const inputs = fields.map(field => ({
+        rowId: field.total ? plan.total : row.member,
+        colId: field.colId,
+        value: (field.reference ? field.total ? values.refTotal : values.ref : field.total ? values.total : values.currentSums)?.[field.field] ?? null,
+      }));
+      records.push({ rowId, colId, op: template.op, inputs, raw: value.raw, state: value.state, displayed: '', kind: 'calc' });
+    };
+    for (const [i, p] of plan.periods.entries()) {
+      const values = row.values[p.index]!;
+      append(row.id, p.id, row.level, level[i]!, values, values.current);
+      if (p.withRef) append(changeId, p.id, row.change, change[i]!, values, values.delta);
+    }
+  }
+  return records;
+}
 
 /** The figures of every period of one measure line, as plain numbers, by authored period where a change may be absent. */
 interface LineFigures { levels: readonly number[]; relative: readonly (number | null)[]; point: readonly (number | null)[] }
@@ -611,7 +662,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     }
     return members;
   };
-  const receiptTemplates = new Map<string, {op:string; refs:{field:string; total:boolean; reference:boolean}[]}>();
+  const receiptTemplates = new Map<string, ReceiptTemplate>();
   const receiptOf = (m:DimSwitchMeasure, isChange:boolean) => {
     const id=`${m.id}:${isChange}`;
     let template=receiptTemplates.get(id);
@@ -670,7 +721,15 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   // Size bars compare members of one measure; collected while the rows are built.
   const bars:{row:TableRow;measure:string;col:string;value:number}[]=[];
   // Relative change cells, so the relative changes of each measure print as one change set.
-  const relativeChanges:{cell:TableCell;measure:string}[]=[];
+  const relativeChanges = new Map<string, { v: number; format?: string }[]>();
+  const relativeChange = (measure: string, cell: TableCell) => {
+    let entries = relativeChanges.get(measure);
+    if (!entries) relativeChanges.set(measure, entries = []);
+    if (!cell || typeof cell !== 'object' || typeof cell.v !== 'number') return;
+    // Remove float noise before choosing precision for the group.
+    cell.v = Number(cell.v.toPrecision(12));
+    entries.push(cell as { v: number; format?: string });
+  };
   // Point differences of a measure without a format, per measure: one signed change set, so a tiny
   // difference prints its digits, never a bound such as "<+0.1pp".
   const pointChanges=new Map<string,{cell:TableCell;v:number}[]>();
@@ -691,6 +750,13 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   }
   // A displayed period whose facts carry no ref has no change to print: its change cell stays blank, never n/a.
   const withRef = requestMemo(data, 'dimswitch:reference-periods', () => new Set(data.facts.filter(f => f.ref).map(f => f.periodId)));
+  const memberIds = [totalId, ...data.dimension.members.map(member => member.id)];
+  const deferred: PeriodRecordPlan | undefined = reuseReceiptInputs && shared && form.periodValues && !totalHidden
+    && form.records !== false && !blockColumns.length && !data.dimension.sums && !driverOwner.size && !effectMeasures.length
+    && new Set(memberIds).size === memberIds.length && (!form.tail || form.tail.deferredRows)
+    ? { total: totalId, rows: [], periods: periods.map((p, i) => ({ id: p.id, index: hidden.length + i, withRef: withRef.has(p.id) })) }
+    : undefined;
+  if (deferred) periodRecordPlans.set(records, deferred);
   // A card that left out every period keeps its lines. A host that hid every period has none to print.
   const noChangeLine = hostHidEveryPeriod || (periods.length > 0 && periods.every(p => !withRef.has(p.id)));
   // The lines of each measure whose card leaves out periods: their changes join the measure's change sets.
@@ -726,7 +792,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     return values;
   };
   /** The figures of every authored period of a line, read once for all cards of the request. Nothing of them is drawn. */
-  const lineFigures = (id: string, m: DimSwitchMeasure, member: string, cachedPeriods: PeriodValues[] | undefined): LineFigures => {
+  const lineFigures = (id: string, m: DimSwitchMeasure, member: string, cachedPeriods: PeriodValues[] | undefined, changes: Record<string, TableCell>): LineFigures => {
     let line = shared!.lines.get(id);
     if (line) return line;
     const levels: number[] = [], relative: (number | null)[] = [], point: (number | null)[] = [];
@@ -743,7 +809,12 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
       }
       // An absolute change without a format joins the levels' set. A relative change is cleaned of float noise, as a drawn one is below.
       if (delta !== null && m.change === 'absolute' && ownFormat) levels.push(delta);
-      relative.push(delta !== null && m.change !== 'pp' && m.change !== 'absolute' ? Number(delta.toPrecision(12)) : null);
+      let cleaned = null;
+      if (delta !== null && m.change !== 'pp' && m.change !== 'absolute') {
+        const drawn = i >= hidden.length ? changes[authoredPeriods[i]!.id] : undefined;
+        cleaned = drawn && typeof drawn === 'object' && typeof drawn.v === 'number' ? drawn.v : Number(delta.toPrecision(12));
+      }
+      relative.push(cleaned);
       point.push(delta !== null && m.change === 'pp' && ownFormat ? delta : null);
     }
     line = { levels: fixedNumbers(levels), relative, point };
@@ -787,7 +858,8 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
       // Bands judge the level. A change judgement colours the change it judged, never the level.
       if (comparisonKind!=='plan' && (!p.kind || rangeDrawn)) {
         const levelJudgement=m.bands ? judgeBand(m,current,[currentSums,...(usesTotal(exprOf(m)) ? [total] : [])],p.partial === true,options) : NEUTRAL;
-        cells[col]=cell(current,levelJudgement); record(id,col,m,member,p.id,current,receiptPeriod);
+        cells[col]=cell(current,levelJudgement);
+        if (!deferred) record(id,col,m,member,p.id,current,receiptPeriod);
       }
       // A relative change and a point difference print in change sets, settled below. An absolute one prints in the row's own format,
       // and without a format or unit it joins the set of its measure's levels (MAGNITUDE_GROUP on the cell).
@@ -799,12 +871,12 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
         if (!comparisonDrawn) continue;
         // An unjudged measure's change is context: it whispers.
         cells[comparison]=!m.judge && changeCell !== null && typeof changeCell==='object' && changeCell.missing === undefined ? {...changeCell,muted:true} : changeCell;
-        if (relative) relativeChanges.push({cell:cells[comparison],measure:m.id});
+        if (relative) relativeChange(m.id,cells[comparison]);
         pointChange(m,cells[comparison]);
         record(id,comparison,m,member,p.id,delta,undefined,ref,true,refTotal,reference?.id);
         effects[comparison]=effectCell;
       }
-      else {changes[p.id]=changeCell; effects[p.id]=effectCell; if (withRef.has(p.id)) {record(`${id}:change`,p.id,m,member,p.id,delta,receiptPeriod,ref,true,refTotal); if (relative) relativeChanges.push({cell:changeCell,measure:m.id}); pointChange(m,changeCell);}}
+      else {changes[p.id]=changeCell; effects[p.id]=effectCell; if (withRef.has(p.id)) {if (!deferred) record(`${id}:change`,p.id,m,member,p.id,delta,receiptPeriod,ref,true,refTotal); if (relative) relativeChange(m.id,changeCell); pointChange(m,changeCell);}}
     }
     if (form.tail) {
       const tail = form.tail, rowId = headlineId ?? id;
@@ -813,12 +885,17 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
         cells[p.id] = prior.cells![p.id]!;
         changes[p.id] = changeRow.cells![p.id]!;
       }
+      const previousValues = tail.deferredRows?.get(rowId)?.values;
+      if (deferred && previousValues && previousValues !== cachedPeriods) {
+        for (let i = hidden.length + newPeriods.length; i < authoredPeriods.length; i++) cachedPeriods![i] ??= previousValues[i]!;
+      }
       const previous = tail.records.get(rowId);
       if (previous) for (const record of previous) records.push(record);
     }
+    if (deferred) deferred.rows.push({ id: headlineId ?? id, member, values: cachedPeriods!, level: receiptOf(m, false), change: receiptOf(m, true) });
     // A card that leaves out periods still reads them: their levels and changes join the sets of the measure, so every
     // figure the card prints reads as it does in the full table.
-    const line=shared ? lineFigures(id,m,member,cachedPeriods) : undefined;
+    const line=shared ? lineFigures(id,m,member,cachedPeriods,changes) : undefined;
     if (line) {let lines=measureLines.get(m.id); if (!lines) measureLines.set(m.id,lines=[]); lines.push(line);}
     // An unjudged volume (a sum of money or counts) shows its size as a bar, not a colour; a statement line never does.
     const sized = !m.judge && (m.scale === 'money' || m.scale === 'count') && !inStatement(m);
@@ -1035,25 +1112,9 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   }
   // One change set per measure of relative changes, across its columns, as its point differences.
   // A table folded to fit a fixed height forms its sets over every row, as the open table does, so a change prints the same text at every size.
-  const relativeByMeasure=new Map<string,typeof relativeChanges>();
-  for (const entry of relativeChanges) {
-    const entries=relativeByMeasure.get(entry.measure);
-    if (entries) entries.push(entry);
-    else relativeByMeasure.set(entry.measure,[entry]);
-  }
-  for (const [measure,inMeasure] of relativeByMeasure) {
-    const entries=inMeasure.filter(entry=>entry.cell!==null && typeof entry.cell==='object' && typeof entry.cell.v==='number');
-    // A change is cleaned of float noise (12 significant digits) before it rounds, as the rule cleans every value:
-    // 1.4 against 1.6 is −12.5 %, not the float −12.499999999999996 that rounds to −12.
-    for (const entry of entries) { const change=entry.cell as {v:number}; change.v=Number(change.v.toPrecision(12)); }
-    // The relative changes of a measure are one change set: every group prints two digits of its band's smallest value.
-    const valueOf=(entry:{cell:TableCell})=>(entry.cell as {v:number}).v;
-    const rule=changeSet(measure,entries.map(valueOf),'relative');
-    // An example with three decimals takes an integer part of 0, because "+1.200%" reads as a thousands group.
-    for (const entry of entries) {
-      const decimals=rule.groupOf(valueOf(entry)).decimals;
-      (entry.cell as {format?:string}).format=changeExample(false,decimals);
-    }
+  for (const [measure, entries] of relativeChanges) {
+    const rule = shared?.relative.get(measure) ?? changeSet(measure, entries.map(cell => cell.v), 'relative');
+    for (const cell of entries) cell.format = changeExample(false, rule.groupOf(cell.v).decimals);
   }
   // ---------- a hidden Total: everything above still read its rows, so the members keep the magnitude and decimals they print with it ----------
   const computedCells=totalHidden ? hideTotal() : records;
@@ -1243,8 +1304,10 @@ export function projectDimSwitchCard(data: DimSwitchData, options: DimSwitchOpti
       // The compiler's row symbols carry the full period figures. The kept cells retain their format symbols.
       return { ...row, cells };
     });
-    return { ...wider, data: { ...wider.data, columns, rows }, options: cardOptions,
-      computedCells: wider.computedCells.filter(record => !dropped.has(record.colId)) };
+    const computedCells = wider.computedCells.filter(record => !dropped.has(record.colId));
+    const deferred = periodRecordPlans.get(wider.computedCells);
+    if (deferred) periodRecordPlans.set(computedCells, { ...deferred, periods: deferred.periods.filter(p => !dropped.has(p.id)) });
+    return { ...wider, data: { ...wider.data, columns, rows }, options: cardOptions, computedCells };
   } };
 }
 

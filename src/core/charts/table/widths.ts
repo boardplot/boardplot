@@ -22,7 +22,7 @@ import {
   DENSE_COLUMNS, LABEL_WRAP_FLOOR, SOFT_LABEL_CAP, INLINE_LABEL_INDENT, cellPadX as trackCellPadX,
   tableFonts, rowFont as ladderRowFont, kindFont, strongColumnFont, labelIndents, inlineFont as ladderInlineFont,
   changeLineFont, encodingReserve, intrinsicColumnWidth, authoredTrackWidth, authoredWidthWarnings,
-  wrapFloorWidth, sectionChipFloor, collapsedHintWidth, headsFit, frameFillAmounts,
+  wrapFloorWidth, sectionChipFloor, collapsedHintWidth, headsFit, frameFillAmounts, primeValueBodyWidths,
   SORT_CHEVRON_RESERVE, DEFAULT_TRACK_GROWTH, headerContentWidth, columnTracks, type TableFonts, type WidthContext, type BodyWidthMeasurements,
 } from './tracks';
 import { maxOf } from '../../arrays';
@@ -198,6 +198,9 @@ function measureTableTracks(table: ResolvedTable, theme: Theme, measure: TextMea
       hint: (row: ResolvedRow) => collapsedHintWidth(row, table.levelNouns, childCount.get(row.id) ?? 0, measure, faces.hint),
       ...(view.headLines === undefined ? {} : { headLines: view.headLines }),
     };
+    if (measure === defaultMeasurer && widthRows.length >= 64 && view.slack === undefined && theme.type.numeric !== 'proportional') {
+      primeValueBodyWidths(cols, widthRows, context);
+    }
     for (let index = 0; index < cols.length; index++) {
       const col = cols[index]!;
       const showsContent = figures || !heatColumn(col);
@@ -441,15 +444,27 @@ function prepareWidthTypography(table: ResolvedTable, theme: Theme, measure: Tex
 
 type MeasuredBody = ReturnType<typeof prepareWidthTypography> & { rowKey: string };
 const measuredBodies = new WeakMap<ResolvedTable, Map<string, MeasuredBody>>();
+type WidthSource = { measured: Map<string, MeasuredBody>; retained?: Set<string> };
 const projectedWidths = {};
 
 /** Only a dimension card with the same formatted rows may borrow body widths for retained columns. */
-export function reusePeriodBodyWidths(source: ResolvedTable, target: ResolvedTable): void {
+export function reusePeriodBodyWidths(source: ResolvedTable, target: ResolvedTable, addedPeriods = false): void {
   const measured = measuredBodies.get(source);
-  if (measured) {
-    const sources = requestMemo(projectedWidths, 'tables', () => new WeakMap<ResolvedTable, Map<string, MeasuredBody>>());
-    sources.set(target, measured);
+  if (!measured) return;
+  let retained: Set<string> | undefined;
+  if (addedPeriods) {
+    // The wider model takes its old value columns and cells by identity. Its new rows must give them the same fonts.
+    if (source.rows.length !== target.rows.length || !target.rows.every((row, index) => {
+      const old = source.rows[index]!;
+      return row.id === old.id && row.role === old.role && row.kind === old.kind && row.step === old.step
+        && row.hasChildren === old.hasChildren && row.inline === old.inline && row.inlineGroup === old.inlineGroup
+        && row.inlineRows?.length === old.inlineRows?.length
+        && (row.inlineRows?.every((line, i) => line.id === old.inlineRows?.[i]?.id) ?? true);
+    })) return;
+    retained = new Set(target.columns.filter(col => col.kind === 'value' && source.columns.includes(col)).map(col => col.id));
   }
+  const sources = requestMemo(projectedWidths, 'tables', () => new WeakMap<ResolvedTable, WidthSource>());
+  sources.set(target, { measured, retained });
 }
 
 /** Padding, head wrapping and frame width share the same immutable row/font measurements. */
@@ -466,10 +481,11 @@ function measuredTypography(table: ResolvedTable, theme: Theme, measure: TextMea
   if (!measured) {
     if (variants.size >= 64) variants.delete(variants.keys().next().value!);
     measured = { ...prepareWidthTypography(table, theme, measure, options, cols, rows, widthRows), rowKey };
-    const sources = requestMemo(projectedWidths, 'tables', () => new WeakMap<ResolvedTable, Map<string, MeasuredBody>>()).get(table);
-    for (const source of sources?.values() ?? []) {
+    const sources = requestMemo(projectedWidths, 'tables', () => new WeakMap<ResolvedTable, WidthSource>()).get(table);
+    for (const source of sources?.measured.values() ?? []) {
       if (source.rowKey !== rowKey) continue;
       for (const [id, index] of measured.bodyWidths.columnIndex) {
+        if (sources?.retained && !sources.retained.has(id)) continue;
         const previous = source.bodyWidths.columnIndex.get(id);
         if (previous !== undefined) measured.bodyWidths.columns[index] = source.bodyWidths.columns[previous]!.slice();
       }

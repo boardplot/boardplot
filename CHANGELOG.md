@@ -6,6 +6,8 @@ Boardplot is in 0.x: options and output can change between minor versions. Each 
 
 ### Changed
 
+- Large dimension-switch tables build calculation records for the selected periods, reuse measurements of matching numeric text and retain measured widths as periods are added. Returning to a previous control state also copies its calculation records faster.
+
 - Large dimension-switch tables reuse formatted periods and measured column widths while choosing a card. The selected card can draw from its measured table and copy its calculation records in one pass.
 
 - Dimension-switch tables choose how many periods fit faster. When the remaining rows keep the same figures and formatting, the search can measure their columns without building a complete card for each period count.

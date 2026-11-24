@@ -8,7 +8,7 @@ import { CARD_MIN_WIDTH, chartSizing, heightOmitted, isWidthProbe, VERIFY_ADVICE
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { classFloor, layoutKey, prepareTableExecutor, memoLayout, REGULAR_SPACING, type TableMarks } from '../table/layout';
 import { completeDimSwitchProjection, extendPeriodTable, ownCompiledTable, prepareTableData, projectDimSwitchWidthTable, resolvePreparedTable, resolveTable } from '../table/resolve';
-import { cardFigures, compileDimSwitch, periodCardTail, projectDimSwitchCard, wholeDimSwitchCard, currentDimSwitchOptions, dimSwitchTableWarnings, dimswitchRowId, hostPeriods, PARTIAL_NOTE_OFF, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning, type CardFigures, type DimSwitchPeriodValues, type DimSwitchForm } from './compile';
+import { cardFigures, compileDimSwitch, selectedPeriodRecords, periodCardTail, projectDimSwitchCard, wholeDimSwitchCard, currentDimSwitchOptions, dimSwitchTableWarnings, dimswitchRowId, hostPeriods, PARTIAL_NOTE_OFF, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning, type CardFigures, type DimSwitchPeriodValues, type DimSwitchForm } from './compile';
 import type { DimSwitchData, DimSwitchOptions, DimSwitchDerived } from './types';
 import { withUnprintedCells } from './claims';
 import { minOf } from '../../arrays';
@@ -90,6 +90,7 @@ function prepareForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSw
     ownCompiledTable(compiled.data);
     const extended = tail && wider && hostedLayout(options, compiled.options, () =>
       extendPeriodTable(compiled.data, wider.prepared.compiled.data, wider.prepared.resolved, compiled.options));
+    if (extended && wider) reusePeriodBodyWidths(wider.prepared.resolved.table, extended.table, true);
     const pending = form.card && form.hide !== undefined ? forms.projections?.get(form.hide) : undefined;
     const completed = pending && pending.plan === projected && completeDimSwitchProjection(compiled.data, pending.source, pending.model)
       ? pending.model : undefined;
@@ -153,7 +154,14 @@ function layoutForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwi
     get computedCells() {
       const originalRows = new Map(resolved.table.rows.map(row => [row.id, row]));
       const drawnRows = new Map(geometry.derived.table.rows.map(row => [row.id, row]));
-      const records = compiled.computedCells.map(record => ({ ...record,
+      const periodRecords = selectedPeriodRecords(compiled.computedCells);
+      if (periodRecords && !resolved.computedCells.length) {
+        for (const record of periodRecords) record.displayed = drawnRows.get(record.rowId)?.cells[record.colId]?.displayed
+          ?? originalRows.get(record.rowId)?.cells[record.colId]?.displayed ?? '';
+        ownCardRecords(periodRecords);
+        return periodRecords;
+      }
+      const records = (periodRecords ?? compiled.computedCells).map(record => ({ ...record,
         // A headline and its measure can read the same period. Each selected calculation owns its operands.
         ...((form.hide ?? 0) > 0 && record.kind === 'calc' ? { inputs: record.inputs.map(input => ({ ...input })) } : {}),
         displayed: record.kind === 'calc' ? originalRows.get(record.rowId)?.cells[record.colId]?.displayed ?? '' : record.displayed }));
