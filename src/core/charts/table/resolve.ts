@@ -1463,6 +1463,9 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
   const cellSpecs = new Map<Id, Map<Id, NumberFormatSpec>>();
   // Cells whose own format the author wrote: they keep its decimals inside a column or row that prints a default set.
   const authoredCells = new Map<Id, Set<Id>>();
+  // An unchanged example has one format in this table. Authored and automatic examples follow different precision rules.
+  const authoredCellFormats = new Map<string, NumberFormatSpec>();
+  const automaticCellFormats = new Map<string, NumberFormatSpec>();
   const cellFormatCols = [...valueCols, ...computedCols];
   for (const row of flat) {
     for (const col of cellFormatCols) {
@@ -1470,7 +1473,8 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
       if (example !== undefined) {
         const sourceRow = sourceRows.get(row.id);
         const sourceColumn = sourceColumns.get(col.id) as { format?: string } | undefined;
-        const sourceExample = cellFormat(sourceRow?.cells[col.id])
+        const ownExample = cellFormat(sourceRow?.cells[col.id]);
+        const sourceExample = ownExample
           ?? sourceColumn?.format ?? sourceRow?.format ?? options.format ?? defaultExample(col);
         let inRow = cellSpecs.get(row.id);
         if (!inRow) cellSpecs.set(row.id, inRow = new Map());
@@ -1478,14 +1482,21 @@ function compileTableData(data: TableData, options: TableOptions, magnitudeSourc
         const joined = joinedCells.get(row.id)?.get(col.id);
         const groupRule = joined === undefined ? undefined : groupRules.get(joined);
         if (groupRule !== undefined) { inRow.set(col.id, { ...groupRule, signed: true }); continue; }
-        const spec = authoredSpec(example, sourceExample, cellFormat(sourceRow?.cells[col.id]) === example && sourceCell?.[AUTOMATIC_FORMAT] !== true);
-        if (cellFormat(sourceRow?.cells[col.id]) !== undefined && sourceCell?.[AUTOMATIC_FORMAT] !== true) {
-          holdAuthoredScale(spec, locale.thousands);
+        const automatic = sourceCell?.[AUTOMATIC_FORMAT] === true;
+        const authoredHere = ownExample !== undefined && !automatic;
+        const formats = ownExample === example ? (automatic ? automaticCellFormats : authoredCellFormats) : undefined;
+        let spec = formats?.get(example);
+        if (spec === undefined) {
+          spec = authoredSpec(example, sourceExample, ownExample === example && !automatic);
+          if (authoredHere) holdAuthoredScale(spec, locale.thousands);
+          if (automatic) spec.automatic = automaticAs(true);
+          formats?.set(example, spec);
+        }
+        if (authoredHere) {
           let authored = authoredCells.get(row.id);
           if (!authored) authoredCells.set(row.id, authored = new Set());
           authored.add(col.id);
         }
-        if (sourceCell?.[AUTOMATIC_FORMAT] === true) spec.automatic = automaticAs(true);
         inRow.set(col.id, spec);
       }
     }
