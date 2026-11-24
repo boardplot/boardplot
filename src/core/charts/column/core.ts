@@ -3,6 +3,7 @@ import { prepareFractionData } from '../../normalize/fraction';
 import { calendarCategories } from '../../calendarLabels';
 import { chartSizing } from '../../sizing';
 import { HOST_CLAIMS } from '../../claims/ids';
+import { hasCompleteTextWidths } from '../../fontMetrics/injected';
 import { defaultMeasurer, type FontSpec } from '../../text';
 import { canvasMargin } from '../../theme';
 import { stepDownFont } from '../../label/rowFit';
@@ -42,7 +43,8 @@ export const columnCore: ChartCore<
     return withEventsDescribed(stepToBar(prepared, options ?? {}, column) ?? withoutPatchesThatStep(prepared, options ?? {}, column), options);
   },
   notesBoundByWidth(data, options, geometry, noted) {
-    if (options.variant !== 'stacked' || options.measure && options.measure !== defaultMeasurer || HOST_CLAIMS in options
+    const measure = options.measure ?? defaultMeasurer;
+    if (options.variant !== 'stacked' || !hasCompleteTextWidths(measure) || HOST_CLAIMS in options
       || noted.some(label => label.kind !== 'segment' || !label.noted || label.slots.length !== 0)
       || options.annotations?.length || Object.keys(options).some(key => key !== 'annotations' && !widthBoundOptions.has(key))) return false;
     // Dated categories cannot step to horizontal bars. A total cannot replace
@@ -63,7 +65,7 @@ export const columnCore: ChartCore<
     // smallest possible label font against the tight inside and digit seats.
     const widest = { x: 0, y: 0, w: maxBand, h: Infinity };
     return noted.every(label => {
-      const ink = defaultMeasurer(label.text, font);
+      const ink = measure(label.text, font);
       return !fitsInside(widest, ink, 0) && ink.width + 4 > maxBand;
     });
   },

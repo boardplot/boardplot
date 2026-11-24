@@ -47,7 +47,8 @@ import type { TickBandDerived } from '../../label/tickRow';
 import { accessibleTitle } from '../../normalize/shared';
 import type { RangeMark } from '../../rangeRules';
 import { addRatioTierRequests, finalizeRatioTier, ratioTierA11y, ratioTierSpacingWarnings, type FinalizedRatioTier, type RatioTierGeometry, type RatioTierRequestState } from '../../ratioTier';
-import { defaultMeasurer, isCachedTextMeasurer, type FontSpec } from '../../text';
+import { hasCompleteTextWidths } from '../../fontMetrics/injected';
+import { isCachedTextMeasurer, type FontSpec } from '../../text';
 import { colorblindPaint, joinHatchPeers, panelTypeClass, emphasisWeight, strokeToken } from '../../theme';
 import type { AnchorRef } from '../../types/annotations';
 import { cellMeta, type Id } from '../../types/cell';
@@ -1229,7 +1230,7 @@ function layoutColumnPass(
   rejectShortColumnMidpoint(domain, area, staircaseMemo);
   // A segment note can live outside the drawing. Make its actual frame first.
   // Only this direct retry owns the previous body, and only if its drawing space is unchanged.
-  const noteFrame = domain.variant === 'stacked' && domain.cats.length > 12 && domain.measure === defaultMeasurer
+  const noteFrame = domain.variant === 'stacked' && domain.cats.length > 12 && hasCompleteTextWidths(domain.measure)
     && !(HOST_CLAIMS in options) && !domain.activeBreak && !domain.annList.length && !domain.averageMarker
     && !domain.anomaly && !domain.refSeries.length && !domain.netLineOn && !domain.ribbonsOn && !domain.connectorsOn
     && !options.seriesLabels && !options.shareLabels && !area.tier && options.categoryLabels !== 'staircase'
@@ -1294,7 +1295,7 @@ function layoutColumnPass(
   // When every segment is suppressed, an omitted total leaves that column with no number.
   // Digit seats, replacement values and annotations can still give a suppressed segment a number.
   const probeStack = probeAxis && options.valueAxis?.show === undefined && panelTypeClass(options) === undefined
-    && domain.variant === 'stacked' && domain.measure === defaultMeasurer && !(HOST_CLAIMS in options)
+    && domain.variant === 'stacked' && hasCompleteTextWidths(domain.measure) && !(HOST_CLAIMS in options)
     && !area.tier && !domain.annList.length && !domain.refSeries.length && !domain.anomaly
     && options.categoryLabels !== 'staircase' && !domain.cats.some(c => c.partial)
     && !digits.requests.length && !options.labelPlacements && !options.labelOffsets

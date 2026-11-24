@@ -6,6 +6,8 @@ Boardplot is in 0.x: options and output can change between minor versions. Each 
 
 ### Changed
 
+- Dense daily combo and stacked column charts place labels and choose their height faster with complete font width tables.
+
 - Large dimension-switch tables build calculation records for the selected periods, reuse measurements of matching numeric text and retain measured widths as periods are added. Returning to a previous control state also copies its calculation records faster.
 
 - Large dimension-switch tables reuse formatted periods and measured column widths while choosing a card. The selected card can draw from its measured table and copy its calculation records in one pass.
