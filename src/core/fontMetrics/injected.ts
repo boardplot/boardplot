@@ -16,6 +16,8 @@ import { maxOf } from '../arrays';
 // A caller can pass unchecked tables directly. Only complete tables have a defined read for every indexed glyph.
 const completeTableMeasurers = new WeakSet<TextMeasurer>();
 export const hasCompleteTableWidths = (measure: TextMeasurer): boolean => completeTableMeasurers.has(measure);
+/** Built-in and complete injected metrics can measure any text without consulting a host callback. */
+export const hasCompleteTextWidths = (measure: TextMeasurer): boolean => measure === defaultMeasurer || hasCompleteTableWidths(measure);
 
 /**
  * A `TextMeasurer` over one table file, for the per-layout injection point:

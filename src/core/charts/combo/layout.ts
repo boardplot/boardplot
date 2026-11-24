@@ -1,6 +1,6 @@
 import { hasLabelPosition, refuseLabelPosition } from '../band/labelPosition';
 import { copyFrame } from '../../footer';
-import { defaultMeasurer } from '../../text';
+import { hasCompleteTextWidths } from '../../fontMetrics/injected';
 import { sk, stackParts } from '../band/stacks';
 import { chartString } from '../../strings/combo';
 import { withSegmentSeams } from '../../markVisibility';
@@ -647,7 +647,7 @@ function layoutComboFramePass(
   // Author moves, the staircase, forecasts and partial periods can change an earlier seat or retry.
   // A floated line already has its own band, so place its ends in the ordinary pass.
   const probeEnds = !seats && tryInside && !domain.lineFloat && (area.first.size > 0 || area.last.size > 0) && domain.cats.length > DENSE_CATEGORY_COUNT && domain.showPrimaryAxis
-    && options.categoryLabels !== 'staircase' && !domain.cats.some(c => c.partial) && env.measure === defaultMeasurer
+    && options.categoryLabels !== 'staircase' && !domain.cats.some(c => c.partial) && hasCompleteTextWidths(env.measure)
     && !domain.options.annotations?.length && !domain.anomaly && !area.forecast.length && !geometry.areaGrounds.length
     && domain.options.mode !== 'compact' && !options.focus && !(HOST_CLAIMS in options)
     && !Object.keys(options.labelPlacements ?? {}).length && !Object.keys(options.labelOffsets ?? {}).length
@@ -761,7 +761,7 @@ function layoutComboFramePass(
       return layoutComboPass(data, { ...withAuthoredFootnotes(options, [...current, ...note], authored), [UNPRINTED]: { named, runs: prior.runs + 1 } } as ComboOptions, gutterOverride, {
         area, geometry: marks,
         // This pass returns directly into the retry. Its placed labels and claims have one owner.
-        seats: env.measure === defaultMeasurer && !(HOST_CLAIMS in options) && !domain.secondaryActive
+        seats: hasCompleteTextWidths(env.measure) && !(HOST_CLAIMS in options) && !domain.secondaryActive
           && !domain.anomaly && !domain.options.annotations?.length && options.categoryLabels !== 'staircase'
           && !area.forecast.length && !domain.cats.some(category => category.partial)
           ? { frameClaims: settled.framed.claims, authoredCount: authoredFootnoteCount(domain.options),

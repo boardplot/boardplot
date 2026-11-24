@@ -8,7 +8,7 @@ import { hasLabelPosition, positionBarLabel } from '../band/labelPosition';
  */
 
 import { drawnStroke } from '../../curve';
-import { defaultMeasurer } from '../../text';
+import { hasCompleteTextWidths } from '../../fontMetrics/injected';
 import { HOST_CLAIMS } from '../../claims/ids';
 import { sideAwayFrom, type Rect } from '../../geometry';
 import { preparePolyline, type PolylineQueries } from '../../polyline';
@@ -693,7 +693,7 @@ export function planComboLabels(
   // before planning line labels, unless an earlier staircase or period retry can win.
   if (!domain.showPrimaryAxis && domain.options.valueAxis?.show === undefined
     && domain.options.categoryLabels !== 'staircase' && !domain.cats.some(category => category.partial)
-    && !domain.options.annotations?.length && !(HOST_CLAIMS in domain.options) && env.measure === defaultMeasurer
+    && !domain.options.annotations?.length && !(HOST_CLAIMS in domain.options) && hasCompleteTextWidths(env.measure)
     && requests.some(request => request.kind === 'grandTotal' && request.redundant
       && request.suppressedAs === 'density' && request.owed && !request.printedIn)) return undefined;
 

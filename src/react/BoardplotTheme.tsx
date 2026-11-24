@@ -4,12 +4,14 @@ import { resolveThemeRequest } from './themeRequest';
 import { scenePaint } from './scenePaint';
 import { repaintGeometry, repaintScene } from '../core/repaintGeometry';
 import { useContext, type ReactNode } from 'react';
-import { BoardplotThemeContext, type BoardplotThemeOptions } from './themeContext';
+import { BoardplotThemeContext, standardThemeMethods, type BoardplotThemeOptions } from './themeContext';
 import { useStableValue } from './useStableValue';
 
 export interface BoardplotThemeProps extends BoardplotThemeOptions {
   children?: ReactNode;
 }
+
+const requestMethods = standardThemeMethods(resolveThemeRequest, layoutKey);
 
 /** Nested providers inherit omitted settings. Each chart owns its CSS variables. */
 export function BoardplotTheme({ children, ...options }: BoardplotThemeProps) {
@@ -17,7 +19,7 @@ export function BoardplotTheme({ children, ...options }: BoardplotThemeProps) {
   const supplied = Object.fromEntries(Object.entries(options).filter(([, value]) => value !== undefined));
   const suppliedStrings = Object.fromEntries(Object.entries(options.strings ?? {}).filter(([, value]) => value !== undefined));
   const strings = useStableValue({ ...parent?.strings, ...suppliedStrings });
-  const value = useStableValue({ ...parent, ...supplied, strings, resolve: resolveThemeRequest, repaint: repaintGeometry, repaintScene, layoutKey, scenePaint });
+  const value = useStableValue({ ...parent, ...supplied, strings, ...requestMethods, repaint: repaintGeometry, repaintScene, scenePaint });
   return <BoardplotThemeContext.Provider value={value}>{children}</BoardplotThemeContext.Provider>;
 }
 
