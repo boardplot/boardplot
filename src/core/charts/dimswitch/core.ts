@@ -1,4 +1,4 @@
-import { PLAN_ONLY } from '../../layoutPlan';
+import { ownCardRecords, PLAN_ONLY } from '../../layoutPlan';
 import { engineNote, engineNoteMeta } from '../../notes';
 import { ENGINE_NOTES } from '../table/tracks';
 import { reusePeriodBodyWidths } from '../table/widths';
@@ -157,8 +157,10 @@ function layoutForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwi
         // A headline and its measure can read the same period. Each selected calculation owns its operands.
         ...((form.hide ?? 0) > 0 && record.kind === 'calc' ? { inputs: record.inputs.map(input => ({ ...input })) } : {}),
         displayed: record.kind === 'calc' ? originalRows.get(record.rowId)?.cells[record.colId]?.displayed ?? '' : record.displayed }));
-      return [...resolved.computedCells, ...records].map(record => ({ ...record, displayed: record.kind === 'calc'
+      const selected = [...resolved.computedCells, ...records].map(record => ({ ...record, displayed: record.kind === 'calc'
         ? drawnRows.get(record.rowId)?.cells[record.colId]?.displayed ?? record.displayed : record.displayed }));
+      if ((form.hide ?? 0) > 0 && !resolved.computedCells.length && records.every(record => record.kind === 'calc')) ownCardRecords(selected);
+      return selected;
     },
   }};
 }
