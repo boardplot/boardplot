@@ -1801,7 +1801,7 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
 
   const figure = (
     <figure ref={displayRef} className="bp-table" data-bp-chart="table" data-bp-table-theme={themeScope} data-bp-motion={provider?.motion} data-bp-mount={tableOptions.mountCollapsed === false ? 'open' : undefined} data-bp-density={drawnDensity} data-bp-mode={frame.mode === 'compact' ? 'compact' : undefined} data-bp-fill-height={fillHeight ? '' : undefined} style={figureStyle}>
-      <TableThemeStyle stylesheet={stylesheet} scope={themeScope} nonce={styleNonce} />
+      <TableThemeStyle stylesheet={stylesheet} scope={themeScope} nonce={styleNonce} freshMount={freshMount} />
       {/* `legend: 'none'` drops the key row, as on the SVG. */}
       <TableCaption frame={frame} theme={theme}
         keyEntries={tableOptions.legend === 'none' ? [] : heatKey(columns, heatLanes, theme, tableOptions.strings, tableOptions.locale?.language)}
@@ -3358,7 +3358,7 @@ function safeHref(href: string | undefined): string | undefined {
   return SAFE_HREF.test(trimmed) ? trimmed : undefined;
 }
 
-function TableThemeStyle({ stylesheet, scope, nonce }: { stylesheet: string; scope: string; nonce?: string }): ReactElement | null {
+function TableThemeStyle({ stylesheet, scope, nonce, freshMount }: { stylesheet: string; scope: string; nonce?: string; freshMount: boolean }): ReactElement | null {
   const [attached, setAttached] = useState(false);
   const inline = useRef<HTMLStyleElement>(null);
   const root = useRef<Node>(undefined);
@@ -3410,13 +3410,13 @@ function TableThemeStyle({ stylesheet, scope, nonce }: { stylesheet: string; sco
       }
     };
   }, [key, css, scope, nonce]);
-  // The first server/client frame includes CSS. Remove its inline copy only
-  // after the shared stylesheet has mounted, without resolving the table.
+  // Release the inline node after the shared stylesheet is installed.
   useEffect(() => setAttached(true), []);
-  // Raw text on both sides: React 18's server escapes the quotes of a style
+  // A fresh mount needs only the node to locate its document or shadow root. The layout effect installs the CSS before paint.
+  // Raw text on both sides of hydration: React 18's server escapes the quotes of a style
   // element's text child and the client then re-rendered the whole root
   //. `stylesheetBody` refuses any `<style` or `</style` in it.
-  return attached ? null : <style ref={inline} data-bp-table-theme={scope} nonce={nonce} dangerouslySetInnerHTML={{ __html: css }} />;
+  return attached ? null : <style ref={inline} data-bp-table-theme={scope} nonce={nonce} dangerouslySetInnerHTML={freshMount ? undefined : { __html: css }} />;
 }
 
 function stylesheetBody(stylesheet: string): string {
