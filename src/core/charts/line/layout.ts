@@ -27,7 +27,7 @@ import { gapBracketEngine } from '../../annotateGapBracket';
 import { canvasMargin } from '../../theme';
 import { NOTED_LABELS, type InternalFootnoteOptions } from '../../frame';
 import { applyValueAxisTitleInk, tickFormatter } from '../../axis';
-import { PARTIAL_KEY, partialIds, toDateFits } from '../../partialPeriod';
+import { PARTIAL_KEY, partialIds, saysToDate, toDateFits } from '../../partialPeriod';
 import type { AnchorResolution, AnnotatePassResult } from '../../annotate';
 import { zoneYearSpan } from '../../timeAxis';
 import { corridorEdgeRects, emitEventLane, emptyAnnotatePass, percentLevels, runAnnotatePass, settleEventLane } from '../../annotatePass';
@@ -1294,10 +1294,18 @@ function layoutLinePass(
   // the first/last fallback, which can drop it), or they are wider than the drawn category step (a line
   // has no column to bound them), the axis name carries them.
   const toDate = lineToDateIds(env, domain, text);
-  if (toDate.size > 0 && options.strings?.toDate !== '' && ((!domain.x && !toDateFits(options.strings?.toDate ?? chartString(options, 'toDate'), env.theme, env.measure, area.step))
-    || domain.cats.some((c, ci) => toDate.has(c.id) && domain.drawnSeries.some((s) => (s.vals[ci]?.v ?? null) !== null
-    && !solved.placed.some((l) => l.id === `point:${s.id}:${c.id}` && l.hidden === undefined && l.lines.length > 1))))) {
-    return layoutLinePass(data, { ...options, [PARTIAL_KEY]: true } as LineOptions);
+  if (toDate.size > 0 && options.strings?.toDate !== '') {
+    const words = options.strings?.toDate ?? chartString(options, 'toDate');
+    const missesValue = domain.cats.some((c, ci) => {
+      const needsWords = toDate.has(c.id);
+      // Keep the axis fallback when an earlier partial mark has no value label.
+      if (!needsWords && (c.partial !== true || domain.running.has(c.id) || saysToDate(c.label ?? c.id, words))) return false;
+      return domain.drawnSeries.some(s => (s.vals[ci]?.v ?? null) !== null && !solved.placed.some(l =>
+        l.id === `point:${s.id}:${c.id}` && l.hidden === undefined && (!needsWords || l.lines.length > 1)));
+    });
+    if ((!domain.x && !toDateFits(words, env.theme, env.measure, area.step)) || missesValue) {
+      return layoutLinePass(data, { ...options, [PARTIAL_KEY]: true } as LineOptions);
+    }
   }
   // Words under a running reading that the tick and day rows push out get a row of their own.
   const droppedWords = solved.placed.filter((l) => l.id.startsWith('xpartial:') && l.hidden !== undefined);

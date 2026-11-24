@@ -93,6 +93,7 @@ export interface ColumnDomain extends ColumnEnv {
   /** The hidden method note on moved or rescaled shares. */
   shareNotes: string[];
   cats: Category[];
+  running: ReadonlySet<Id>;
   seriesNorm: NormSer[];
   dataSeries: NormSer[];
   refSeries: NormSer[];

@@ -10,6 +10,7 @@ import { stringFields } from '../../strings';
 import { authoredNotes, moreListedText, noteCap } from '../../frame';
 import type { FontSpec, TextMeasurer } from '../../text';
 import { partialFootnotes } from '../../partialPeriod';
+import type { Id } from '../../types/cell';
 import type { Category } from '../../types/data';
 import { bumpMethodNote } from './bump';
 import { fanGapNote, type FanResolved } from './fan';
@@ -26,6 +27,7 @@ export function rebaseNotes(suppressed: readonly { series: string; period: strin
 export function lineFrameFootnotes(input: {
   fan: FanResolved | null;
   cats: Category[];
+  running: ReadonlySet<Id>;
   /** Every running value prints the to-date words: no note names the period. */
   partialNamed?: boolean;
   bumpDerived: BumpDerived | undefined;
@@ -45,7 +47,7 @@ export function lineFrameFootnotes(input: {
   const mixed = input.mixedSign ?? [];
   const rebase = rebaseNotes(input.rebaseSuppressed ?? [], options);
   return [
-    ...partialFootnotes(cats, options.strings, input.partialNamed),
+    ...partialFootnotes(cats, options.strings, input.running, input.partialNamed),
     ...missingStackNote(cats, input.incompleteStack ?? [], options, input.footer),
     ...missingStackNote(cats, input.knownParts ?? [], options, input.footer, options.strings!.knownPartsShares!),
     ...(options.mode === 'compact' && rebase.length ? [rebase.join(' ')] : rebase).map(disclosureNote),

@@ -80,6 +80,7 @@ export interface ComboDomain {
   /** The options with the view window applied to the annotations. */
   options: ComboOptions;
   cats: Category[];
+  running: ReadonlySet<Id>;
   data: NormSer[];
   columns: NormSer[];
   lines: NormSer[];

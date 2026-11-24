@@ -191,10 +191,10 @@ export function planLineLabels(
  */
 function xPartialWords(env: LineEnv, domain: LineDomain, area: LineArea, reserves: LineReserves, onValues: ReadonlySet<Id>): { partial?: { at: number[]; names: string[]; text: string; w: number; groups?: string[][] } } {
   const { cats, options } = domain;
-  if (!domain.x || !area.xTicks || disclosuresShown(options)) return {};
+  if (!domain.x || !area.xTicks || domain.running.size === 0 || disclosuresShown(options)) return {};
   const text = options.strings?.toDate ?? chartString(options, 'toDate');
   if (text === '') return {};
-  const shown = cats.flatMap((c, ci) => c.partial === true && !onValues.has(c.id) && !saysToDate(c.label ?? c.id, text)
+  const shown = cats.flatMap((c, ci) => domain.running.has(c.id) && !onValues.has(c.id) && !saysToDate(c.label ?? c.id, text)
     && domain.drawnSeries.some((s) => (s.vals[ci]?.v ?? null) !== null && !(reserves.keyValues.has(s.id) && domain.lastIdxOf.get(s.id) === ci))
     ? [{ at: domain.x!.model.xs[ci]!, name: c.label ?? c.id }] : []);
   return shown.length ? { partial: { at: shown.map((item) => item.at), names: shown.map((item) => item.name), text, w: env.measure(text, area.xTicks.font).width } } : {};

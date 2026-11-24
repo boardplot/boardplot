@@ -10,6 +10,7 @@
 import type { FrameInput, LegendItemInput } from '../frame';
 import { keysNeedNames, legendIsCovered, normalizedName } from '../legendPolicy';
 import { NormalizeError, resolveSize } from '../normalize/shared';
+import { EARLIER_PARTIAL_LEGEND_ID } from '../partialPeriod';
 import { getChart } from '../registry';
 import { collectSeriesIdentities, identityAppearance, needsSeriesKey } from '../seriesIdentity';
 import { prepareFitLayout, type FitLayout } from '../sizing';
@@ -22,6 +23,8 @@ import type { Geometry, LayoutResult, LintWarning } from '../types/scene';
 
 /** Internal grid option: the series ids the grid's key row lists. Authored JSON cannot set it. */
 const GRID_KEY_ONLY = Symbol('gridKeyOnly');
+/** A grid with its legend off only restores keys needed to identify series. */
+const GRID_PARTIAL_KEY_OFF = Symbol('gridPartialKeyOff');
 
 /** Whether a grid keeps each line panel's own end names: under legend 'none', or a key row that keys only some series. */
 export function gridPanelsKeepEndNames(options: { legend?: unknown }): boolean {
@@ -51,12 +54,13 @@ export function collectGridLegendItems(panels: LegendPanel[], options: LegendGri
   const appearances = new Set<string>();
   const theme = resolveTheme(options.theme);
   const typeClass = panelTypeClass(options) ?? typeWidthClass(resolveSize(options.size).width);
+  const partialKeyOff = (options as { [GRID_PARTIAL_KEY_OFF]?: true })[GRID_PARTIAL_KEY_OFF];
   for (const panel of panels) {
     if (panel.type === 'text' || panel.type === 'legend') continue;
     const definition = getChart(panel.type);
     if (!definition) continue;
     const panelOptions = (panel.options ?? {}) as Record<string, unknown>;
-    const identities = collectSeriesIdentities(definition.layout, panel.data, {
+    const panelIdentities = collectSeriesIdentities(definition.layout, panel.data, {
       ...definition.defaults, ...panelOptions,
       ...(panel.annotations ? { annotations: panel.annotations } : {}),
       ...(options.palette !== undefined && panelOptions.palette === undefined ? { palette: options.palette } : {}),
@@ -65,6 +69,7 @@ export function collectGridLegendItems(panels: LegendPanel[], options: LegendGri
       ...(options.strings ? { strings: { ...authoredStrings(options), ...(panelOptions.strings as object) } } : {}),
       size: options.size, measure, typeClass,
     });
+    const identities = partialKeyOff ? panelIdentities.filter(item => item.id !== EARLIER_PARTIAL_LEGEND_ID) : panelIdentities;
     const title = options.sharedAxis === 'category' && panels.length > 1 && panelOptions.title === false
       ? undefined : panel.title ?? panelOptions.title;
     if (identities.length > 0) {
@@ -145,7 +150,7 @@ export function gridRequiredKey<D, O extends ChartOptions, M extends object, DV 
   // With no legend set, the title of a single-series panel names it, also in other words.
   const hidden = options.legend === 'none';
   if (hasLegendPanel(data) || (!hidden && !panelNeedsKey(this.prepare?.(data) ?? data))) return baseline;
-  const candidateOptions = { ...options, legend: resolveTheme(options.theme).legend?.required ?? 'top' } as O;
+  const candidateOptions = { ...options, ...(hidden ? { [GRID_PARTIAL_KEY_OFF]: true } : {}), legend: resolveTheme(options.theme).legend?.required ?? 'top' } as O;
   // A grid whose panels do not fit beside the key throws; it then keeps
   // the layout it has, without the key.
   let tried: LayoutResult<M, DV>;

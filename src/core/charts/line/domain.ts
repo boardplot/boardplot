@@ -6,7 +6,7 @@
  */
 
 import { compositionBasis, mixedSignsWarning, overfullShareSum, overfullWarning } from '../band/stacks';
-import { cellFields, normalizeCategorySeries } from '../categorySeries';
+import { cellFields, hasActualCategoryValue, normalizeCategorySeries } from '../categorySeries';
 import { breakUnsupported, chartPalette, chartTheme } from '../chartEnv';
 import { defaultMeasurer } from '../../text';
 import { formatAuthoredPercent, formatShare, shareText } from '../../format';
@@ -17,6 +17,7 @@ import { cleanFloat } from '../../geometry';
 import { drawnVariant } from '../../stackAdds';
 import { roundWholes, shareRoundingNotes } from '../../shareRounding';
 import { parseISODate } from '../../isoDate';
+import { runningPeriodIds } from '../../partialPeriod';
 import { fitLineTrends, lineTrendRates, trendTimeline } from './trend';
 import { lineXModel, resolveLineXOptions, unmatchedPartial, type LineXModel } from './continuous';
 import {
@@ -761,6 +762,7 @@ export function resolveLineDomain(data: LineChartData, input: LineOptions, env: 
   // (all-null entities, value-scale reference lines) BEFORE pv is built.
   let dataSeries = seriesNorm.filter((s) => s.role !== 'reference');
   let refSeries = seriesNorm.filter((s) => s.role === 'reference');
+  const running = runningPeriodIds(cats, ci => hasActualCategoryValue(dataSeries, ci));
   if (dataSeries.length === 0) {
     throw new NormalizeError('empty-data', 'series', 'line requires at least one data-role series', undefined, undefined, ['data', 'series']);
   }
@@ -985,6 +987,7 @@ export function resolveLineDomain(data: LineChartData, input: LineOptions, env: 
   };
   const resolved = {
     ...core,
+    running,
     refSeries, drawnSeries, bumpOmitted, valueSpec, fmt: valueSpec.fmt, interpolationFor, labelModes, labelOnly: labelModes.only, gapFillSeries, fan, phases, rebased, ...(sourceFmt ? { sourceFmt } : {}), ...(fanFmt ? { fanFmt } : {}),
     population, timeline, ...(xModel ? { x: { model: xModel, lo: xRange!.lo, hi: xRange!.hi, shown: population ? population.indexes.map((i) => xModel.xs[i]!) : xModel.xs, ...(range ? { range } : {}) } } : {}), autoSampled: live.auto === true, absOf, compositionInvalidAt, nmCats100, overfullCats100, naCats100, sharesWithheld, incompleteStack, rebaseSuppressed, cumTop, cumBot, endpoints, lastIdxOf,
     labelPv, shareTexts: rounded?.texts ?? nearestTexts, ...(rounded ? { roundingAdjustments: rounded.adjustments } : {}), shareNotes,

@@ -1065,16 +1065,16 @@ export interface ToDateWords { ids: ReadonlySet<Id>; words: string; theme: Theme
  */
 export function lineToDateIds(env: LineEnv, domain: LineDomain, text: Pick<LineText, 'contentOf'>): Set<Id> {
   const ids = new Set<Id>();
-  const { options, cats } = domain;
+  const { options, cats, running } = domain;
   // Only a single line has one running value per period; among several lines (a prior year among
   // them) the axis words name the period for all, as combo marks its one running total only.
-  if (partialKeyForced(options) || !cats.some((c) => c.partial === true) || domain.drawnSeries.length !== 1 || env.isBump || domain.isStacked || domain.fan
+  if (partialKeyForced(options) || running.size === 0 || domain.drawnSeries.length !== 1 || env.isBump || domain.isStacked || domain.fan
     || domain.labelModes.values === 'none' || text.contentOf('point', ['absolute']) === null) return ids;
   const words = options.strings?.toDate ?? chartString(options, 'toDate');
   // A time axis has no category step to bound the words; its end value keeps room for them (pointLabelEndRoom).
   if (!domain.x && !toDateFits(words, env.theme, env.measure, env.size.width / Math.max(1, cats.length))) return ids;
   cats.forEach((c, ci) => {
-    if (c.partial === true && !saysToDate(c.label ?? c.id, words) && domain.drawnSeries.some((s) => (s.vals[ci]?.v ?? null) !== null)) ids.add(c.id);
+    if (running.has(c.id) && !saysToDate(c.label ?? c.id, words) && domain.drawnSeries.some((s) => (s.vals[ci]?.v ?? null) !== null)) ids.add(c.id);
   });
   return ids;
 }

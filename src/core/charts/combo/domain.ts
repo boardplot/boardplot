@@ -5,7 +5,7 @@ import type { StringsSpec } from '../../types/options';
  * Nothing here knows a pixel.
  */
 
-import { cellFields, normalizeCategorySeries } from '../categorySeries';
+import { cellFields, hasActualCategoryValue, normalizeCategorySeries } from '../categorySeries';
 import { breakUnsupported, chartPalette, chartTheme } from '../chartEnv';
 import { defaultMeasurer } from '../../text';
 import { tickFormatter } from '../../axis';
@@ -28,6 +28,7 @@ import { applyAxisBounds, applyTickStep, linearScale, niceDomain } from '../../s
 import type { Annotation } from '../../types/annotations';
 import { type Id } from '../../types/cell';
 import { stackAdds } from '../../stackAdds';
+import { runningPeriodIds } from '../../partialPeriod';
 import type { Category, ChartData } from '../../types/data';
 import type { AxisRuler, ComboOptions, LineInterpolation } from '../../types/options';
 import type { LintWarning } from '../../types/scene';
@@ -808,6 +809,7 @@ export function comboBandFraction(options: ComboOptions, count: number): number 
 export function resolveComboDomain(data: ChartData, options: ComboOptions, warnings: LintWarning[], theme?: Theme): ComboDomain {
   const { cats, seriesNorm } = normalizeComboData(data);
   const dataSeries = seriesNorm.filter((s) => s.role !== 'reference');
+  const running = runningPeriodIds(cats, ci => hasActualCategoryValue(dataSeries, ci));
   const refs = seriesNorm.filter((s) => s.role === 'reference');
   if (dataSeries.length === 0) {
     throw new NormalizeError('empty-data', 'series', 'combo requires at least one data-role series', undefined, undefined, ['data', 'series']);
@@ -1040,6 +1042,7 @@ export function resolveComboDomain(data: ChartData, options: ComboOptions, warni
     anomaly: anomalyFor(primary, right.secondaryDomain, warnings),
     options: effective,
     cats,
+    running,
     data: dataSeries,
     columns,
     lines,

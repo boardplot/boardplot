@@ -3,6 +3,7 @@
 import { NormalizeError, normalizeCategory, normalizeScenario, normalizeSeriesValues } from '../normalize/shared';
 import { cellMeta, cellValue, isPctCell, type Cell, type Scenario } from '../types/cell';
 import type { Category, Series } from '../types/data';
+import { scenarioFillPattern } from '../scenarioPairs';
 
 /** The per-cell fields every category chart reads. */
 interface CellFields {
@@ -13,6 +14,16 @@ interface CellFields {
   format?: string;
   labelOverride?: string | false;
   priority?: number;
+}
+
+/** Whether the non-reference series carry an actual value at a category. */
+export function hasActualCategoryValue(
+  series: readonly { vals: readonly Pick<CellFields, 'v' | 'scenario'>[]; scenario?: Scenario }[], index: number,
+): boolean {
+  return series.some(s => {
+    const cell = s.vals[index]!;
+    return cell.v !== null && scenarioFillPattern(cell.scenario ?? s.scenario) === undefined;
+  });
 }
 
 /** One cell's value and its authored meta. `path` names the cell for a scenario refusal. */

@@ -173,6 +173,7 @@ export interface BarDomain {
   /** Why a stack has no mean; set where the parts do not add. */
   meanMissing?: string;
   cats: NormCat[];
+  running: ReadonlySet<Id>;
   dataSeries: NormSeries[];
   refSeries: NormSeries[];
   /** The exhibit-wide format raster; `fmt` is its formatter. */

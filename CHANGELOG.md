@@ -2,6 +2,12 @@
 
 Boardplot is in 0.x: options and output can change between minor versions. Each release lists its changes here.
 
+## 0.65.0
+
+### Fixed
+
+- Earlier partial periods keep their incomplete marks, and only running periods say “to date”.
+
 ## 0.64.0
 
 ### Changed

@@ -111,7 +111,7 @@ interface CategoryRowInput {
    * undrawn. Absent means every label is eligible.
    */
   keep?: readonly boolean[];
-  /** Categories that thinning must keep, such as the last actual period. */
+  /** Eligible categories that thinning must keep, such as the last actual period. */
   pinned?: readonly boolean[];
   /**
    * With `keep` from a date interval: each category's interval ordinal (the
@@ -1130,8 +1130,12 @@ function planRow(input: CategoryRowInput, sourceMeasure: TextMeasurer, remember?
   });
   // A calendar row always names its latest period; the aligned tick before it yields if the two collide.
   const underAt = (i: number): string => input.under?.[i] ?? '';
-  const pinned = labels.map((_, i) => calendarRule ? i === n - 1 || suffixAt(i) !== '' || underAt(i) !== '' || input.pinned?.[i] === true
-    : input.strideFromEnd ? i === n - 1 || underAt(i) !== '' : suffixAt(i) !== '' || underAt(i) !== '' || yearPins[i]! || input.pinned?.[i] === true);
+  const pinned = labels.map((_, i) => {
+    if (underAt(i) !== '' || (input.pinned?.[i] === true && requested?.[i] !== false)) return true;
+    if (calendarRule) return i === n - 1 || suffixAt(i) !== '';
+    if (input.strideFromEnd) return i === n - 1;
+    return suffixAt(i) !== '' || yearPins[i]!;
+  });
   const all = labels.map((_, i) => pinned[i]! || (requested?.[i] ?? true));
   /**
    * The months under a row of day numbers: each starts where its first day's

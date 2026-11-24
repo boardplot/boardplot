@@ -32,7 +32,8 @@ import { topNCut, topNOmitted, topNRestUnsupported } from '../topN';
  * theme.color.colorblind.
  */
 
-import { PARTIAL_KEY, partialAxisWords, partialFootnotes, partialIds, partialKeyForced, partialLegendKeys, partialPattern, saysToDate, toDateFits, toDateFont, toDateLabel, toDateRoom } from '../../partialPeriod';
+import { PARTIAL_KEY, partialAxisWords, partialFootnotes, partialIds, partialKeyForced, partialLegendKeys, partialPattern, runningPeriodIds, RUNNING_PERIOD_LEGEND_ID, saysToDate, toDateFits, toDateFont, toDateLabel, toDateRoom } from '../../partialPeriod';
+import { hasActualCategoryValue } from '../categorySeries';
 import { highlightPaintWarnings } from '../../paintWarnings';
 import { warnMissingValue } from '../../dataGaps';
 import type { PaintWarningRule } from '../../types/scene';
@@ -256,6 +257,7 @@ export function layoutVariance(
     };
   });
   const dataSeries = seriesNorm.filter((s) => s.role !== 'reference');
+  const running = runningPeriodIds(cats, ci => hasActualCategoryValue(dataSeries, ci));
   if (dataSeries.length === 0) {
     throw new NormalizeError('empty-data', 'series', 'variance requires at least one data-role series', undefined, undefined, ['data', 'series']);
   }
@@ -525,13 +527,13 @@ export function layoutVariance(
   const toDate = options.strings?.toDate ?? chartString(options, 'toDate');
   const toDateIds = new Set<Id>(partialKeyForced(options) || !kindShown('point') || !toDateFits(toDate, theme, measure, size.width / Math.max(1, cats.length)) ? []
     : partialCats.filter((c) => {
+      if (!running.has(c.id) || saysToDate(c.label ?? c.id, toDate)) return false;
       const ci = cats.indexOf(c);
       const override = measuredVal(ci).labelOverride;
-      if (saysToDate(c.label ?? c.id, toDate)) return false;
       if (mode === 'integrated') return refArr[ci] !== null && dAbsArr[ci] !== null && dAbsArr[ci] !== 0 && acArr[ci]! >= 0;
       return override !== false && !(typeof override === 'string' && override.trim() === '') && (mode === 'relative' ? dPctArr[ci] ?? -1 : dAbsArr[ci] ?? -1) >= 0;
     }).map((c) => c.id));
-  const partialNamed = toDateIds.size > 0 && partialCats.every((c) => toDateIds.has(c.id));
+  const partialNamed = toDateIds.size > 0 && partialCats.every(c => !running.has(c.id) || toDateIds.has(c.id));
 
   // ---- key (integrated only) ----
   // The integrated form paints what no mark names: the AC column and a
@@ -574,7 +576,7 @@ export function layoutVariance(
     if (cats.some((_, ci) => { const d = dAbsArr[ci]!; return acArr[ci] !== null && refArr[ci] !== null && d !== null && d !== 0 && toneOf(d, ci) === 'neutral'; })) {
       items.push({ id: 'cap:neutral', label: chartString(options, 'withinRounding', { v1: refWord }), paint: mutedMarkPaint(), ...(capsOf(true, 'neutral').concat(capsOf(false, 'neutral')).every(capIsShortfall) ? { hollow: true } : {}) });
     }
-    items.push(...partialLegendKeys(partialCats.length > 0 && !partialNamed, options.strings));
+    items.push(...partialLegendKeys(partialCats, options.strings, running, partialNamed));
     // A grid panel leaves its key to the grid legend, which collects it, and
     // `legend: 'none'` drops it for a host that draws its own.
     const legendOptions = panelTypeClass(options) === undefined && options.legend !== 'none'
@@ -595,7 +597,7 @@ export function layoutVariance(
       paint: tonePaint(tone, undefined, mode === 'absolute'),
       ...(mode === 'relative' ? { key: 'marker' as const } : {}),
     }));
-    if (mode === 'absolute') items.push(...partialLegendKeys(partialCats.length > 0 && !partialNamed, options.strings));
+    if (mode === 'absolute') items.push(...partialLegendKeys(partialCats, options.strings, running, partialNamed));
     const legendOptions = items.length === 0 ? undefined : panelTypeClass(options) === undefined && options.legend !== 'none'
       ? legendRequired(options.legend, warnings, 'variance', theme, 'the colours say better or worse than the reference')
       : normalizeLegendOption(options.legend);
@@ -612,7 +614,7 @@ export function layoutVariance(
   // else. One note says what n.m. means and names that unit once.
   const nmShown = mode === 'relative' && nmCats.size > 0 && options.footnotes !== false;
   const nmNote = disclosureNote(chartString(options, 'varianceNmNote', { v1: refWord, v2: options.unit ? chartString(options, 'inUnitClause2', { v1: options.unit }) : '' }));
-  const partialNotes = partialFootnotes(partialCats, options.strings, partialNamed);
+  const partialNotes = partialFootnotes(partialCats, options.strings, running, partialNamed);
   const topNNotes = warnings.filter((warning) => warning.code === 'topn-omitted').map((warning) => disclosureNote(warning.message));
   const frameOptions = partialNotes.length || nmShown || topNNotes.length
     ? withAuthoredFootnotes(options, [...partialNotes, ...authoredNotes(options), ...topNNotes, ...(nmShown ? [nmNote] : [])], options.footnotes)
@@ -755,7 +757,7 @@ export function layoutVariance(
   const dateNumericTicks = isDateNumericTickSequence(cats.map((c) => c.label ?? c.id));
   const planRow = (b: typeof band, rotate?: false) =>
     planCategoryRow({
-      ...categoryLabelsAndMarks(cats, { count: authoredFootnoteCount(options), warnings }, partialAxisWords(options.strings, options, legendInput?.items.some((item) => item.id === '__partial') || partialNamed)),
+      ...categoryLabelsAndMarks(cats, { count: authoredFootnoteCount(options), warnings }, partialAxisWords(options.strings, options, legendInput?.items.some(item => item.id === RUNNING_PERIOD_LEGEND_ID) || partialNamed), running),
       centers: cats.map((_, ci) => b.center(ci)),
       step: b.step,
       fonts: [tickFont, { family: theme.type.family, ...theme.type.footnote }],

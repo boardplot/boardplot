@@ -7,6 +7,7 @@ import { furnitureBudget } from './aspect';
 import { resolveSubtitle } from './normalize/shared';
 import { getChart, type ChartCore, type ChartOptions } from './registry';
 import { contentSized, prepareFitLayout, type FitLayout } from './sizing';
+import { EARLIER_PARTIAL_LEGEND_ID } from './partialPeriod';
 import { panelTypeClass, resolveTheme } from './theme';
 import type { LabelKind } from './types/options';
 import type { Geometry, LayoutResult, SceneNode } from './types/scene';
@@ -104,13 +105,17 @@ function subtitleCoversSeries(geometry: Geometry<object, object>, data: unknown,
 
 /** Rendered names replace optional keys; numeric or hidden labels cannot. */
 export function legendIsCovered(baseline: Geometry<object, object>, candidate: Geometry<object, object>, data: unknown, options?: ChartOptions): boolean {
-  if (baseline.legend?.items.length && baseline.type !== 'scatter') return false;
+  const baselineItems = baseline.legend?.items ?? [];
+  const onlyPartialKey = baselineItems.length === 1 && baselineItems[0]!.id === EARLIER_PARTIAL_LEGEND_ID;
+  if (baselineItems.length && !onlyPartialKey && baseline.type !== 'scatter') return false;
   const body = baseline.scene.filter((node) => node.part !== 'legendLabel' && node.part !== 'swatch');
   if (body.some((node) => REFERENCE_PARTS.has(node.part))) return false;
   const marks = body.filter((node) => node.t !== 'text' && node.part !== 'labelSwatch');
   const contexts = labelContexts(baseline.type, data, options).sort((a, b) => b.prefix.length - a.prefix.length);
   const scatterGroups = baseline.type === 'scatter' ? scatterGroupIdentities(data, baseline) : [];
-  return (candidate.legend?.items ?? []).every((item) => {
+  const candidateItems = candidate.legend?.items ?? [];
+  const seriesKeyCount = onlyPartialKey ? candidateItems.filter(item => item.id !== EARLIER_PARTIAL_LEGEND_ID).length : candidateItems.length;
+  return candidateItems.every((item) => {
     // Existing size or trend keys remain; only the added group keys need direct names.
     if (baseline.legend?.items.some(existing => existing.id === item.id)) return true;
     const keyLabel = candidate.scene.find((node) => node.id === item.labelId);
@@ -124,7 +129,7 @@ export function legendIsCovered(baseline: Geometry<object, object>, candidate: G
     const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const fullName = new RegExp(`(?<![\\p{L}\\p{N}_])${escaped}(?![\\p{L}\\p{N}_])`, 'u');
     if (field === 'seriesId' && panelTitlesCoverSeries(body, contexts, item.id, fullName)) return true;
-    if (candidate.legend?.items.length === 1 && field === 'seriesId' &&
+    if (seriesKeyCount === 1 && field === 'seriesId' &&
       subtitleCoversSeries(baseline, data, options, item.id, new RegExp(fullName.source, 'iu'))) return true;
     return body.some((node) => node.t === 'text' && node.owner[field] === item.id &&
       fullName.test(normalizedName(node.lines.join(' '))) &&

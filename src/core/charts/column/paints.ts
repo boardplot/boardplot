@@ -15,7 +15,7 @@ import type { Scenario } from '../../types/cell';
 import type { LintWarning, Paint } from '../../types/scene';
 import type { ColumnDomain, ColumnPaints, NormSer, NormVal } from './model';
 import { columnCorridorPaint } from './anomaly';
-import { scenarioPartners, scenarioSlotPaint, seriesScenarioRole } from '../../scenarioPairs';
+import { scenarioFillPattern, scenarioPartners, scenarioSlotPaint, seriesScenarioRole } from '../../scenarioPairs';
 
 /**
  * The legend's view of the paints: the series swatches, and the scenario
@@ -26,8 +26,8 @@ export interface ColumnLegendPaints extends ColumnPaints {
   base(s: NormSer, dataIdx: number): Paint;
   /** Every scenario pattern the cells paint (partial-period hatch excluded). */
   cellPatterns: ('hatch45' | 'outline' | undefined)[];
-  /** Whether any cell paints the partial-period hatch. */
-  partialHatch: boolean;
+  /** Categories whose cells paint the partial-period hatch. */
+  partialHatch: Category[];
 }
 
 /**
@@ -42,7 +42,7 @@ export function signWord(s: NormSer, positive: boolean, strings?: StringsSpec): 
 }
 
 export function seriesPattern(s: NormSer): 'hatch45' | 'outline' | undefined {
-  return s.scenario === 'FC' ? 'hatch45' : s.scenario === 'PL' ? 'outline' : undefined;
+  return scenarioFillPattern(s.scenario);
 }
 
 /** Phase 1, paints: the paint closures, and the sign-colour override disclosures. */
@@ -163,9 +163,8 @@ export function columnPaints(domain: ColumnDomain, warnings: LintWarning[]): Col
     val: NormVal,
     cat: Category,
   ): 'hatch45' | 'outline' | undefined => {
-    const sc = val.scenario ?? s.scenario;
     if (uniformScenario.get(cat.id) === 'PL') return undefined;
-    return sc === 'FC' ? 'hatch45' : sc === 'PL' ? 'outline' : undefined;
+    return scenarioFillPattern(val.scenario ?? s.scenario);
   };
   const cellOutline = (cat: Category): boolean =>
     uniformScenario.get(cat.id) === 'PL';
@@ -214,7 +213,7 @@ export function columnPaints(domain: ColumnDomain, warnings: LintWarning[]): Col
     identity: seriesIdentityPaint,
     base: seriesBasePaint,
     cellPatterns: paintedCells.map(({ s, val, c }) => scenarioPattern(s, val, c)),
-    partialHatch: paintedCells.some(({ s, val, c }) => cellPattern(s, val, c) !== scenarioPattern(s, val, c)),
+    partialHatch: paintedCells.flatMap(({ s, val, c }) => c.partial && cellPattern(s, val, c) !== scenarioPattern(s, val, c) ? [c] : []),
   };
 }
 
