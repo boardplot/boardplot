@@ -1,6 +1,7 @@
 import { PLAN_ONLY } from '../../layoutPlan';
 import { engineNote, engineNoteMeta } from '../../notes';
 import { ENGINE_NOTES } from '../table/tracks';
+import { reusePeriodBodyWidths } from '../table/widths';
 import type { ChartCore } from '../../registry';
 import type { Geometry } from '../../types/scene';
 import { CARD_MIN_WIDTH, chartSizing, heightOmitted, isWidthProbe, VERIFY_ADVICE, WIDTH_PROBE } from '../../sizing';
@@ -114,6 +115,7 @@ function layoutForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwi
   if (!prepared) {
     const pending = form.card && form.hide !== undefined ? forms.projections?.get(form.hide) : undefined;
     prepared=prepareForm(data,pending?.options ?? options,{...form,periodValues:forms.periodValues},forms,pending?.plan ?? projected);
+    if (pending) reusePeriodBodyWidths(pending.model.table, prepared.resolved.table);
     if (form.card && form.hide !== undefined && form.hide > 0 && (!forms.wider || form.hide < forms.wider.hide)) {
       forms.wider = { hide: form.hide, prepared };
     }
@@ -166,6 +168,7 @@ function tryCard(data: DimSwitchData, options: DimSwitchOptions, hide: number, f
       const wideData = wider.prepared.compiled.data;
       const model = projectDimSwitchWidthTable(wideData, wider.prepared.resolved, plan.columns, runOptions);
       if (model) {
+        reusePeriodBodyWidths(wider.prepared.resolved.table, model.table);
         // The width pass takes its rows and columns from the resolved model. The raw table supplies the unchanged column groups.
         projection = { plan, runOptions, model, options, executor: prepareTableExecutor(wideData, runOptions) };
         (forms.projections ??= new Map()).set(hide, projection);

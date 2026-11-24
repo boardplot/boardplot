@@ -26,6 +26,7 @@ import {
   SORT_CHEVRON_RESERVE, DEFAULT_TRACK_GROWTH, headerContentWidth, columnTracks, type TableFonts, type WidthContext, type BodyWidthMeasurements,
 } from './tracks';
 import { maxOf } from '../../arrays';
+import { requestMemo } from '../../layoutPlan';
 
 const FLEX_MIN = 80;
 const HEAT_ONLY_CELL_W = 22;
@@ -438,21 +439,42 @@ function prepareWidthTypography(table: ResolvedTable, theme: Theme, measure: Tex
   return { ladder, regularFonts, cellStep, indentStep, childCount, cellFont, inlineFont, hasChanges, bodyWidths, headings };
 }
 
-const measuredBodies = new WeakMap<ResolvedTable, Map<string, ReturnType<typeof prepareWidthTypography>>>();
+type MeasuredBody = ReturnType<typeof prepareWidthTypography> & { rowKey: string };
+const measuredBodies = new WeakMap<ResolvedTable, Map<string, MeasuredBody>>();
+const projectedWidths = {};
+
+/** Only a dimension card with the same formatted rows may borrow body widths for retained columns. */
+export function reusePeriodBodyWidths(source: ResolvedTable, target: ResolvedTable): void {
+  const measured = measuredBodies.get(source);
+  if (measured) {
+    const sources = requestMemo(projectedWidths, 'tables', () => new WeakMap<ResolvedTable, Map<string, MeasuredBody>>());
+    sources.set(target, measured);
+  }
+}
 
 /** Padding, head wrapping and frame width share the same immutable row/font measurements. */
 function measuredTypography(table: ResolvedTable, theme: Theme, measure: TextMeasurer, options: WidthOptions, view: TableWidthView,
   cols: readonly ResolvedColumn[], rows: readonly ResolvedRow[], widthRows: readonly ResolvedRow[]) {
-  const key = JSON.stringify([measurementTheme(theme), measureId(measure), measureId(view.slack),
+  const rowKey = JSON.stringify([measurementTheme(theme), measureId(measure), measureId(view.slack),
     // Ordinary densities change row air only. Cohort densities also change the measured type.
     isCohortDensity(options.density ?? 'regular') ? options.density : undefined,
-    options.target, textScaleOf(options), options.inlineVisibility, cols.map(col => col.id), rows.map(row => row.id), widthRows.map(row => row.id)]);
+    options.target, textScaleOf(options), options.inlineVisibility, rows.map(row => row.id), widthRows.map(row => row.id)]);
+  const key = rowKey + JSON.stringify(cols.map(col => col.id));
   let variants = measuredBodies.get(table);
   if (!variants) measuredBodies.set(table, variants = new Map());
   let measured = variants.get(key);
   if (!measured) {
     if (variants.size >= 64) variants.delete(variants.keys().next().value!);
-    variants.set(key, measured = prepareWidthTypography(table, theme, measure, options, cols, rows, widthRows));
+    measured = { ...prepareWidthTypography(table, theme, measure, options, cols, rows, widthRows), rowKey };
+    const sources = requestMemo(projectedWidths, 'tables', () => new WeakMap<ResolvedTable, Map<string, MeasuredBody>>()).get(table);
+    for (const source of sources?.values() ?? []) {
+      if (source.rowKey !== rowKey) continue;
+      for (const [id, index] of measured.bodyWidths.columnIndex) {
+        const previous = source.bodyWidths.columnIndex.get(id);
+        if (previous !== undefined) measured.bodyWidths.columns[index] = source.bodyWidths.columns[previous]!.slice();
+      }
+    }
+    variants.set(key, measured);
   }
   return measured;
 }
