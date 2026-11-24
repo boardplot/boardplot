@@ -2,7 +2,7 @@
 import { resolveCanvasOptions, resolveSize } from '../../normalize/shared';
 import { canvasMargin } from '../../theme';
 import { chartSizing, fitsSize, resolveSizing } from '../../sizing';
-import { defaultMeasurer, lineBlockWidth, type FontSpec, type TextMeasurer } from '../../text';
+import { defaultMeasurer, isCachedTextMeasurer, lineBlockWidth, type FontSpec, type TextMeasurer } from '../../text';
 import type { Id } from '../../types/cell';
 import type { LintWarning } from '../../types/scene';
 import type { Theme } from '../../types/theme';
@@ -416,10 +416,11 @@ function prepareWidthTypography(table: ResolvedTable, theme: Theme, measure: Tex
     const font = kindFont(ladderRowFont(theme, ladder, regularFonts, cell.role, cellStep(cell), row?.hasChildren === true, hasChanges.has(cell.rowId)), kind, cell.kind === 'rowLabel', theme);
     return cell.state === 'value' ? strongColumnFont(font, colById.get(cell.colId), cell, kind, theme) : font;
   }
-  // The built-in measurer reads font fields. On one row they vary only by label and strong-column treatment.
+  // Table measurers read font fields. On one row they vary only by label and strong-column treatment.
+  const shareRowFonts = isCachedTextMeasurer(measure);
   const rowFonts = new Map<ResolvedRow, FontSpec[]>();
   const cellFonts = new Map<ResolvedCell, FontSpec>();
-  if (measure !== defaultMeasurer) {
+  if (!shareRowFonts) {
     // Preserve the individual font objects a supplied measurer receives.
     for (const row of rowById.values()) for (const col of cols) {
       const cell = row.cells[col.id];
@@ -427,7 +428,7 @@ function prepareWidthTypography(table: ResolvedTable, theme: Theme, measure: Tex
     }
   }
   function cellFont(cell: ResolvedCell): FontSpec {
-    if (measure !== defaultMeasurer) return cellFonts.get(cell) ?? makeCellFont(cell);
+    if (!shareRowFonts) return cellFonts.get(cell) ?? makeCellFont(cell);
     const row = rowById.get(cell.rowId);
     if (row === undefined || cell.role !== row.role) return makeCellFont(cell);
     const strong = cell.state === 'value' && !cell.deEmphasized && colById.get(cell.colId)?.emphasis === 'strong';
