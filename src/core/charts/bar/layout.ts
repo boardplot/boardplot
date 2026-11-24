@@ -684,7 +684,8 @@ function layoutStandardBar<R extends { labels: PlacedLabel[]; refused?: false }>
   rowsForFrame?: BarRowsForFrame<R>,
 ): R {
   const warnings: LintWarning[] = [];
-  const { domain, paints } = prepareBar(data, options, warnings, annotationPass === undefined);
+  const reuseData = annotationPass === undefined || (annotationPass.skipWhenEmpty === true && !options.annotations?.length && !options.averageMarker);
+  const { domain, paints } = prepareBar(data, options, warnings, reuseData);
   const framed = solveBarFrame(domain, paints, warnings);
   const occupied = framed.claims;
   const area = barPlotArea(domain, framed.frame, warnings);

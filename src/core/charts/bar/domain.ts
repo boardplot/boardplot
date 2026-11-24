@@ -483,14 +483,14 @@ function barValueExtent(
 
 type PreparedBar = { domain: BarDomain; paints: ReturnType<typeof barPaints> };
 
-export function prepareBar(data: ChartData, options: BarInput, warnings: LintWarning[], native: boolean): PreparedBar {
+export function prepareBar(data: ChartData, options: BarInput, warnings: LintWarning[], reuseData: boolean): PreparedBar {
   const size = resolveSize(options.size);
   const widthClass = panelTypeClass(options) ?? typeWidthClass(size.width);
   const build = (out: LintWarning[]) => {
     const domain = resolveBarDomain(data, options, size, widthClass, out);
     return { domain, paints: barPaints(domain, out) };
   };
-  if (!native || options.variant !== 'stacked' || !isCachedTextMeasurer(options.measure ?? defaultMeasurer)) return build(warnings);
+  if (!reuseData || options.variant !== 'stacked' || !isCachedTextMeasurer(options.measure ?? defaultMeasurer)) return build(warnings);
 
   // Each sizing trial gets its current size and options. The immutable stacks, extents,
   // formatters and paints can serve other trials with the same inputs in this request.

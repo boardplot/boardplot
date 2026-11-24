@@ -917,30 +917,34 @@ export function layoutLikert(
     return minimum;
   };
   const reuseNaturalMinimum = !stacked && !ownTracks && !fixedRows && !opts.annotations?.length && isCachedTextMeasurer(measure);
+  const barSettings = () => ({
+    ...likertBarOptions(opts, theme.type.label.size),
+    variant: 'stacked' as const,
+    // Every response share is a share of the same respondents.
+    sharesOfOneWhole: true,
+    grandTotalLabels: summary === 'net',
+    format: netLabelExample,
+    // The stack values are DERIVED float shares; their decimals are noise,
+    // not authored precision. The example above declares the display
+    // precision (whole points), so bar's exhibit raster must not read one
+    // from the values — "+75", never "+75.06".
+    rasterFromValues: false,
+    valueAxis: { ...(opts.valueAxis ?? {}), show: false },
+    ...(legend ? { legend } : { legend: 'none' as const }),
+    ...(halves ? { halves } : {}),
+    // Stacked statements are drawn here, above the bars; bar keeps no name column.
+    ...(stacked ? { labels: { ...(typeof opts.labels === 'object' ? opts.labels : {}), category: false } } : {}),
+    ...(labelOverride?.align !== undefined ? { rowLabels: { ...opts.rowLabels, align: labelOverride.align } } : {}),
+  });
+  const sharedSettings = isCachedTextMeasurer(measure) ? barSettings() : undefined;
   const withBarOptions = <T>(rows: Rows, run: (options: BarOptions) => T): T => {
     const footnotes = [...authoredNotes(opts), ...methodNotes(),
       ...(narrowNote ? [disclosureNote(chartString(opts, 'narrowSharesNotPrinted'))] : [])];
 
     // Only the author's own notes keep a number; the rest are derived.
     const barOptions = withAuthoredFootnotes({
-      ...likertBarOptions(opts, theme.type.label.size),
-      variant: 'stacked' as const,
-      // Every response share is a share of the same respondents.
-      sharesOfOneWhole: true,
-      grandTotalLabels: summary === 'net',
-      format: netLabelExample,
-      // The stack values are DERIVED float shares; their decimals are noise,
-      // not authored precision. The example above declares the display
-      // precision (whole points), so bar's exhibit raster must not read one
-      // from the values — "+75", never "+75.06".
-      rasterFromValues: false,
-      valueAxis: { ...(opts.valueAxis ?? {}), show: false },
-      ...(legend ? { legend } : { legend: 'none' as const }),
-      ...(halves ? { halves } : {}),
+      ...(sharedSettings ?? barSettings()),
       ...(opts.bandFraction === undefined && rows.bandFraction !== undefined ? { bandFraction: rows.bandFraction } : {}),
-      // Stacked statements are drawn here, above the bars; bar keeps no name column.
-      ...(stacked ? { labels: { ...(typeof opts.labels === 'object' ? opts.labels : {}), category: false } } : {}),
-      ...(labelOverride?.align !== undefined ? { rowLabels: { ...opts.rowLabels, align: labelOverride.align } } : {}),
     }, footnotes, opts.footnotes);
 
     // The bars are derived shares: a bar refusal names a likert option it was handed, or nothing.
