@@ -48,11 +48,20 @@ const noteName = (p: DimSwitchPeriod, options: DimSwitchOptions) =>
   (options.columnOverrides?.[p.kind ? 'range' : p.id]?.label ?? p.label).trim() || p.label;
 
 function runningColumns(data: DimSwitchData): ReadonlySet<string> {
-  const running = runningPeriodIds(data.periods.filter(p => !p.kind));
-  // The Range summarises the window and has its own coverage.
-  const range = data.periods.find(p => p.kind === 'range');
-  if (range?.partial) running.add(range.id);
-  return running;
+  return requestMemo(data, 'dimswitch:running-periods', () => {
+    const periods = data.periods.filter(p => !p.kind);
+    const actual = new Set<string>();
+    if (periods.some(p => p.partial)) {
+      for (const { periodId, sums } of data.facts) {
+        if (Object.values(sums).some(value => value !== null)) actual.add(periodId);
+      }
+    }
+    const running = runningPeriodIds(periods, ci => actual.has(periods[ci]!.id));
+    // The Range summarises the window and has its own coverage.
+    const range = data.periods.find(p => p.kind === 'range');
+    if (range?.partial) running.add(range.id);
+    return running;
+  });
 }
 
 function partialPeriodText(periods: DimSwitchPeriod[], options: DimSwitchOptions, toDate: string): string {

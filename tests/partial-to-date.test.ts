@@ -200,6 +200,27 @@ it('names only running periods in calendar order', () => {
   ])).toEqual(['Week 3 to date']);
 });
 
+// Future cells and summary columns must not end a running period, and a grid must explain earlier hatches once.
+it('keeps running words before future cells and totals and keys earlier hatches once in a grid', () => {
+  const text = (type: string, data: unknown, options: object = {}) => nodes(measure({
+    type, data, options: { size: { width: 640 }, ...options },
+  } as never).geometry).filter(node => node.t === 'text');
+  const jan = { id: '2026-01', label: 'Jan' };
+  const feb = { id: '2026-02', label: 'Feb', partial: true };
+  const mar = { id: '2026-03', label: 'Mar' };
+  expect.soft(text('column', { categories: [jan, feb, mar],
+    series: [{ id: 'orders', values: [20, 10, { number: 30, scenario: 'FC' }] }],
+  }).flatMap(node => node.lines)).toContain('to date');
+  expect.soft(text('column', { categories: [jan, feb, { id: 'total', label: 'Total', role: 'total' }],
+    series: [{ id: 'web', values: [20, 10, 30] }, { id: 'store', values: [15, 5, 20] }],
+  }, { variant: 'stacked100', legend: 'top' }).flatMap(node => node.lines)).toContain('Feb to date');
+  const panels = ['north', 'south'].map(id => ({ id, type: 'column', title: id, data: {
+    categories: [{ ...jan, partial: true }, mar], series: [{ id: 'orders', label: 'Orders', values: [10, 30] }],
+  } }));
+  expect(text('grid', { panels }, { size: { width: 900 }, columns: 2, legend: 'top' })
+    .filter(node => node.part === 'legendLabel' && node.lines.includes('Partial')).map(node => node.id.includes('/'))).toEqual([false]);
+});
+
 describe('variance partial period', () => {
   // Long to-date words under the last month must not hide that month and refuse a 320 px integrated variance chart.
   it.each(['projected', 'forecasted'])('seats %s below the month row at 320 px with the legend off', (toDate) => {

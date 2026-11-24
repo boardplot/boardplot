@@ -70,10 +70,9 @@ function buildLegend(domain: BarDomain, paints: BarLegendPaints, warnings: LintW
     const { pattern, outline } = paints.scenario(s, cat.id, cell.meta);
     return partialPattern(cat, pattern, outline) !== pattern;
   }));
-  const l = options.legend ?? (signColor || referenceDrawn || netLineKeyed || toleranceKeys.length > 0 ? 'top' : undefined);
-  if ((!l || l === 'auto') && hasEarlierPartialHatch(partialHatch, domain.running)) {
-    return { options: { position: 'top' }, items: partialLegendKeys(partialHatch, options.strings, domain.running, false, cats) };
-  }
+  const earlierHatch = panelTypeClass(options) === undefined && hasEarlierPartialHatch(partialHatch, domain.running);
+  const position = options.legend ?? (signColor || referenceDrawn || netLineKeyed || toleranceKeys.length > 0 ? 'top' : undefined);
+  const l = earlierHatch && (position === undefined || position === 'auto') ? 'top' : position;
   if (!l || l === 'none' || l === 'auto') return undefined;
   const legendOptions: LegendOptions = normalizeLegendOption(l);
   // A sign-coloured series gets the two keys it paints, each naming its polarity in words.
@@ -117,7 +116,7 @@ function buildLegend(domain: BarDomain, paints: BarLegendPaints, warnings: LintW
   const planOutlined = dataSeries.some((s) => s.cells.some((cell, ci) =>
     cell.v !== null && paints.scenario(s, cats[ci]?.id ?? '', cell.meta).outline === true));
   // A key row that only the band brought does not repeat the name of the one series.
-  const seriesKeyed = options.legend !== undefined || signColor || referenceDrawn || netLineKeyed || dataSeries.length > 1;
+  const seriesKeyed = (options.legend !== undefined && options.legend !== 'auto') || signColor || referenceDrawn || netLineKeyed || dataSeries.length > 1;
   let items: LegendItemInput[] = [
     ...(seriesKeyed ? seriesItems : []),
     // In the subtitle's order, AC PY PL FC: the plan row before the forecast hatch.

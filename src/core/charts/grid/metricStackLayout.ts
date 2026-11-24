@@ -158,7 +158,7 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   const focusIndex = pointed === undefined ? -1 : data.categories.findIndex(c => c.id === pointed);
   const focusCategory = data.categories[focusIndex];
   const focusPartial = focusCategory?.partial === true;
-  const running = runningPeriodIds(data.categories);
+  const running = runningPeriodIds(data.categories, ci => data.measures.some(measure => measure.values[ci] !== null));
   const focusWindow: StackRange | undefined = focusCategory ? { from: focusCategory.id, to: focusCategory.id, label: focusCategory.label || focusCategory.id } : data.windows?.compare;
   const showUnit = stack.columnVisibility?.unit !== false, showHeadline = stack.columnVisibility?.headline !== false, showSpan = stack.columnVisibility?.span !== false;
   const hasLine = showHeadline || showSpan;

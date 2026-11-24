@@ -25,6 +25,7 @@ import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
 import { isDateNumericTickSequence, MONTH_START } from '../../label/tickRow';
 import { hasEarlierPartialHatch, partialAxisWords, partialFootnotes, partialKeyForced, partialLegendKeys, partialPattern, RUNNING_PERIOD_LEGEND_ID, saysToDate, toDateFits } from '../../partialPeriod';
 import { bandScale, linearScale } from '../../scale';
+import { scenarioFillPattern } from '../../scenarioPairs';
 import { wrapText, type FontSpec } from '../../text';
 import { defaultAnnotationId } from '../../types/annotations';
 import {
@@ -53,7 +54,7 @@ import { planComboAxisTitles } from './axisTitles';
 import { categoryRanksLint, FORCE_CATEGORY_RANKS, withCategoryRanks } from './categoryRanks';
 import { comboValueLabels, endpointGutters, FIRST_END_BELOW_TOTALS, INSIDE_ENDPOINT_IDS, insideEndpointGutters, prepareComboEndpointTexts, type EndpointGutters } from './endpoints';
 import type { ForecastBoundary } from '../line/forecast';
-import { MARKER_R, type ComboArea, type ComboDomain, type ComboEnv, type ComboPaints, type GrowthItem, type NormSer } from './model';
+import { MARKER_R, type ComboArea, type ComboDomain, type ComboEnv, type ComboPaints, type GrowthItem, type NormSer, type NormVal } from './model';
 import { formatShare } from '../../format';
 import { comboBandFraction, primaryLineMean, secondaryPrimaryRange, totalColumn } from './domain';
 import { valueShareLines } from '../band/labels';
@@ -295,9 +296,8 @@ export function comboPaints(env: ComboEnv, domain: ComboDomain): ComboPaints {
   return { edge, css, column, cell, pattern, inside, top, line, lineHollow, lineWidth, dash, ref };
 }
 
-function scenarioPattern(s: NormSer, val: { scenario?: string }): 'hatch45' | 'outline' | undefined {
-  const sc = val.scenario ?? s.scenario;
-  return sc === 'FC' ? 'hatch45' : sc === 'PL' ? 'outline' : undefined;
+function scenarioPattern(s: NormSer, val: Pick<NormVal, 'scenario'>): 'hatch45' | 'outline' | undefined {
+  return scenarioFillPattern(val.scenario ?? s.scenario);
 }
 
 /**
@@ -359,12 +359,12 @@ function comboLegend(env: ComboEnv, domain: ComboDomain, paints: ComboPaints): F
     const val = s.vals[ci]!;
     return val.v !== null && val.v !== 0 && paints.pattern(s, val, cat) !== scenarioPattern(s, val);
   }));
-  if ((!position || position === 'auto') && hasEarlierPartialHatch(partialHatch, domain.running)) {
-    return { options: { position: 'top' }, items: partialLegendKeys(partialHatch, options.strings, domain.running, false, cats) };
-  }
-  if (!position || position === 'none' || position === 'auto') return undefined;
-  const legendOpts: LegendOptions = normalizeLegendOption(position);
-  const columnItems: LegendItemInput[] = columns.map((s, i) => ({
+  const earlierHatch = panelTypeClass(options) === undefined && hasEarlierPartialHatch(partialHatch, domain.running);
+  const onlyEncodings = earlierHatch && (position === undefined || position === 'auto');
+  const l = onlyEncodings ? 'top' : position;
+  if (!l || l === 'none' || l === 'auto') return undefined;
+  const legendOpts: LegendOptions = normalizeLegendOption(l);
+  const columnItems: LegendItemInput[] = onlyEncodings ? [] : columns.map((s, i) => ({
     id: s.id,
     label: s.label,
     paint: paints.column(s, i),
@@ -377,7 +377,7 @@ function comboLegend(env: ComboEnv, domain: ComboDomain, paints: ComboPaints): F
   const undrawn = new Set([...columns, ...lines, ...refs].filter(s => s.vals.every(val => val.v === null)).map(s => s.id));
   let items: LegendItemInput[] = [
     ...columnItems,
-    ...lines.map((s, i) => ({
+    ...(onlyEncodings ? [] : lines.map((s, i) => ({
       id: s.id,
       label: s.label,
       paint: paints.line(s, i),
@@ -386,7 +386,7 @@ function comboLegend(env: ComboEnv, domain: ComboDomain, paints: ComboPaints): F
       ...keyMarker(s),
       ...(paints.lineHollow(s) ? { hollow: true, width: paints.lineWidth(s, i) } : {}),
       ...(s.kind === 'line' && paints.dash(s) ? { dash: paints.dash(s), lineCap: paints.dash(s)?.join(',') === dashToken(theme, 'dotted').join(',') ? 'round' as const : 'butt' as const } : {}),
-    })),
+    }))),
     ...refs.map((s) => ({
       id: s.id,
       label: s.label,

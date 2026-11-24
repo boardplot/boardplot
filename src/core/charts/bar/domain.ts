@@ -42,7 +42,7 @@ import { accumulateStack, averageMarkerId, averageMarkerLine, averageMarkerMean,
 import { isIncomplete, warnShareRoundingDrift } from '../../dataGaps';
 import { roundingUnavailable, shareRoundingNotes, sumConsistentShares, type RoundingAdjustment } from '../../shareRounding';
 import { NO_STACK_MEAN, stackAdds } from '../../stackAdds';
-import { scenarioPartners, seriesScenarioRole } from '../../scenarioPairs';
+import { scenarioFillPattern, scenarioPartners, seriesScenarioRole } from '../../scenarioPairs';
 import { OTHERS_ID, SHOWN_SLOT, type BarDomain, type NormCat, type NormSeries } from './model';
 import { disclosuresShown } from '../../notes';
 import { isRecord } from '../../lint/shared';
@@ -576,6 +576,10 @@ function resolveBarDomain(data: ChartData, options: DomainOptions, size: BarDoma
         "a 100% composition of a single series is always 100% — use variant:'stacked' or 'grouped' to show the level",
     });
   }
+  const running = runningPeriodIds(rawCats, ci => dataSeries.some(s => {
+    const cell = s.cells[ci]!;
+    return cell.v !== null && scenarioFillPattern(normalizeScenario(cell.meta?.scenario, `series[${s.id}].values[${ci}].scenario`) ?? s.scenario) === undefined;
+  }));
   const cats = orderBarCategories(options, rawCats, normSeries, dataSeries, warnings);
   const lostDetails = cats.some((c) => c.id === OTHERS_ID) ? restDetailsWarning(data, new Set(cats.map((c) => c.id))) : undefined;
   if (lostDetails) warnings.push(lostDetails);
@@ -705,7 +709,7 @@ function resolveBarDomain(data: ChartData, options: DomainOptions, size: BarDoma
     axisFmt: variant === 'stacked100' ? { format: (v: number) => formatAutomaticPercent(v, 0, false, options.locale?.language) }
       : percentCellsOnly(dataSeries.map((series) => ({ vals: series.cells.map((cell) => ({ ...cell, format: cell.meta?.format })), format: series.format })))
         ? { format: valueSpec.fmtPercent, formatSpec: valueSpec.percentSpec } : { format: valueSpec.fmt, formatSpec: valueSpec.spec },
-    cats, running: runningPeriodIds(rawCats), dataSeries, refSeries, valueSpec, fmt: valueSpec.fmt, totalFmt: stackTotalFormatter(variant, valueSpec.spec, valueSpec.fmt), statFmt, uniformScenario, scenarioPartner,
+    cats, running, dataSeries, refSeries, valueSpec, fmt: valueSpec.fmt, totalFmt: stackTotalFormatter(variant, valueSpec.spec, valueSpec.fmt), statFmt, uniformScenario, scenarioPartner,
     /**
      * A category highlight on one series makes the named bars the
      * subject. They take `highlight` and every other bar steps back to

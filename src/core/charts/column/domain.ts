@@ -5,7 +5,7 @@
  */
 
 import { restDetailsWarning, restLabel, restSum, topNCut } from '../topN';
-import { cellFields, normalizeCategorySeries } from '../categorySeries';
+import { cellFields, hasActualCategoryValue, normalizeCategorySeries } from '../categorySeries';
 import { chartPalette } from '../chartEnv';
 import { breakStyleRefusal } from '../band/breakOrder';
 import { cagr, formatAuthoredPercent, formatShare, shareSetFormatter } from '../../format';
@@ -997,6 +997,7 @@ function buildColumnDomain(data: ChartData, options: AnomalyColumnOptions, warni
   refuseColumnEncodings(variant, signColor, options.anomaly, plotted);
   // Read before topN: the Others cell is a sum, never a typed percent cell.
   const pctLevels = percentLevels(plotted);
+  const running = runningPeriodIds(normalized.cats, ci => hasActualCategoryValue(plotted, ci));
   const { cats, dataSeries, othersId } = orderColumnCategories(options, normalized.cats, seriesNorm, plotted, warnings);
   const lostDetails = othersId === null ? undefined : restDetailsWarning(data, new Set(cats.map((c) => c.id)));
   if (lostDetails) warnings.push(lostDetails);
@@ -1137,7 +1138,7 @@ function buildColumnDomain(data: ChartData, options: AnomalyColumnOptions, warni
     ? (v: number) => formatStatWithSpec(v, { ...valueSpec.spec, suffix: '%' }) : statFmt;
   return {
     // The shares print at the chart's one precision ("9%" beside "50%"), unless a share format sets one.
-    ...env, pctFmt: shareExample ? formatterFromExample(shareExample, options.locale?.language) : shareSet.format, shareTexts, roundingAdjustments, shareNotes, options, cats, running: runningPeriodIds(normalized.cats), seriesNorm, dataSeries, refSeries, othersId, valueSpec, fmt, totalFmt: stackTotalFormatter(variant, valueSpec.spec, fmt), statFmt, variant,
+    ...env, pctFmt: shareExample ? formatterFromExample(shareExample, options.locale?.language) : shareSet.format, shareTexts, roundingAdjustments, shareNotes, options, cats, running, seriesNorm, dataSeries, refSeries, othersId, valueSpec, fmt, totalFmt: stackTotalFormatter(variant, valueSpec.spec, fmt), statFmt, variant,
     refStyle: options.referenceStyle ?? 'tick', tickBehind: (options.referenceStyle ?? 'tick') === 'tick' && options.referenceTick?.position !== 'front', signColor, pyRef, pyGrowth,
     uniformScenario, pctLevels, ...lines, ...ribbons, computedTotal, ...(totalStatFmt ? { totalStatFmt } : {}), va, ...basis, anomaly, ...span, ...(stepTicks && stepAcross ? { stepTicks } : {}), meanValue, averageMark, meanSpan, ...corridor,
     activeBreak,

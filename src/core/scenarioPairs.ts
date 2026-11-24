@@ -9,6 +9,11 @@ import { seriesPaint } from './theme';
 import type { Scenario } from './types/cell';
 import type { Paint } from './types/scene';
 
+/** The mark pattern for a forecast or plan scenario. */
+export function scenarioFillPattern(scenario: Scenario | undefined): 'hatch45' | 'outline' | undefined {
+  return scenario === 'FC' ? 'hatch45' : scenario === 'PL' ? 'outline' : undefined;
+}
+
 /** A series' scenario: its own, or the one scenario that all its plotted cells carry. */
 export function seriesScenarioRole(own: Scenario | undefined, plotted: readonly (Scenario | undefined)[]): Scenario | undefined {
   if (own) return own;

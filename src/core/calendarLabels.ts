@@ -38,7 +38,7 @@ export interface CalendarInfo {
 
 type Raw = string | (Category & { calendar?: CalendarInfo });
 
-interface Point { unit: 'day' | 'week' | 'month' | 'quarter'; date: Date; week?: number; weekYear?: number }
+interface Point { unit: CalendarUnit; date: Date; week?: number; weekYear?: number }
 
 const MONTH = /^(\d{4})-(0[1-9]|1[0-2])$/;
 const WEEK = /^(\d{4})-W(0[1-9]|[1-4]\d|5[0-3])$/;
@@ -51,7 +51,8 @@ function isoWeek(date: Date): { week: number; weekYear: number } {
   return { week: 1 + Math.floor((thursday.getTime() - utcDate(weekYear, 0, 1).getTime()) / 604800000), weekYear };
 }
 
-export function calendarPoint(text: string): Point | undefined {
+export function calendarPoint(text: string, includeYear = false): Point | undefined {
+  if (includeYear && /^\d{4}$/.test(text)) return { unit: 'year', date: utcDate(+text, 0) };
   const day = parseISODate(text);
   if (day) return { unit: 'day', date: day };
   const month = MONTH.exec(text);

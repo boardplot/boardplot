@@ -257,9 +257,6 @@ function columnLegend(
   }
   const effectiveLegend =
     options.legend === undefined && (legendForcedByEncoding || toleranceKeys.length > 0) ? 'top' : options.legend;
-  if ((!effectiveLegend || effectiveLegend === 'auto') && hasEarlierPartialHatch(paints.partialHatch, domain.running)) {
-    return { options: { position: 'top' }, items: partialLegendKeys(paints.partialHatch, options.strings, domain.running, false, domain.cats) };
-  }
   if (!effectiveLegend || effectiveLegend === 'none' || effectiveLegend === 'auto') return undefined;
   const legendOpts: LegendOptions = normalizeLegendOption(effectiveLegend);
   // A key row that only the band brought does not repeat the name of the one series.
@@ -278,12 +275,14 @@ function columnLegend(
 }
 
 /**
- * When the event key puts a row above the plot and the chart has no
- * key of its own, the row also names what the columns paint beyond their one
- * series (a partial period's hatch), so the row keys every pattern on the page.
+ * An event band or an earlier partial hatch can bring a key row of its own.
+ * It names the patterns in the plot without repeating a single series name.
  */
 function bandKeyRow(domain: ColumnDomain, paints: ColumnLegendPaints, eventKey: FrameBand | undefined): FrameInput['legend'] {
-  if (!eventKey?.legend?.length) return undefined;
+  const { options } = domain;
+  const earlierHatch = options.legend !== 'none' && panelTypeClass(options) === undefined
+    && hasEarlierPartialHatch(paints.partialHatch, domain.running);
+  if (!eventKey?.legend?.length && !earlierHatch) return undefined;
   const single = domain.dataSeries.length === 1 ? domain.dataSeries[0]!.id : undefined;
   const items = columnLegendItems(domain, paints).filter((item) => item.id !== single);
   return { options: { position: 'top' }, items };

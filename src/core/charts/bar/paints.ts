@@ -6,7 +6,7 @@
 import { partialPattern } from '../../partialPeriod';
 import { colorRolePaints, effectiveFill, neutralRampPaint, paintColor, recedingSeriesId, seriesPaint as themeSeriesPaint, stackApartPaint, stackRampPaint } from '../../theme';
 import { signColorOverrides, signPaint } from '../band/sign';
-import { scenarioSlotPaint, seriesScenarioRole } from '../../scenarioPairs';
+import { scenarioFillPattern, scenarioSlotPaint, seriesScenarioRole } from '../../scenarioPairs';
 import type { CellMeta, Id } from '../../types/cell';
 import type { LintWarning, Paint } from '../../types/scene';
 import { OTHERS_ID, type BarDomain, type BarPaints, type NormCat, type NormSeries } from './model';
@@ -69,13 +69,9 @@ export function barPaints(domain: BarDomain, warnings: LintWarning[]): BarLegend
   const barPaint = (s: NormSeries, catId: Id, meta: CellMeta | null, v: number | null = null): BarFill => {
     const scen = meta?.scenario ?? s.scenario;
     const preservesSeriesIdentity = uniformScenario.has(catId);
-    const pattern =
-      scen === 'FC'
-        ? ('hatch45' as const)
-        : scen === 'PL' && !preservesSeriesIdentity
-          ? ('outline' as const)
-          : undefined;
-    const outline = preservesSeriesIdentity && scen === 'PL' ? true : undefined;
+    const scenarioPattern = scenarioFillPattern(scen);
+    const outline = preservesSeriesIdentity && scenarioPattern === 'outline' ? true : undefined;
+    const pattern = outline ? undefined : scenarioPattern;
     if (meta?.fill) return { paint: { css: meta.fill }, pattern, outline };
     // Sign colour outranks series paint, scenario and the receding rest, and
     // loses to a cell fill, the Others bucket and a highlight, as on column.

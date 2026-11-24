@@ -33,6 +33,7 @@ import { topNCut, topNOmitted, topNRestUnsupported } from '../topN';
  */
 
 import { PARTIAL_KEY, partialAxisWords, partialFootnotes, partialIds, partialKeyForced, partialLegendKeys, partialPattern, runningPeriodIds, RUNNING_PERIOD_LEGEND_ID, saysToDate, toDateFits, toDateFont, toDateLabel, toDateRoom } from '../../partialPeriod';
+import { hasActualCategoryValue } from '../categorySeries';
 import { highlightPaintWarnings } from '../../paintWarnings';
 import { warnMissingValue } from '../../dataGaps';
 import type { PaintWarningRule } from '../../types/scene';
@@ -224,7 +225,6 @@ export function layoutVariance(
   }
   const mode = options.variant ?? 'absolute';
   const cats: Category[] = data.categories.map((c, i) => normalizeCategory(c as never, i));
-  const running = runningPeriodIds(cats);
   const seriesNorm: NormSer[] = data.series.map((s, si) => {
     if (!s?.id) throw new NormalizeError('missing-id', `series[${si}]`, 'series requires an id', undefined, undefined, ['data', 'series', si]);
     const cells = normalizeSeriesValues(s, cats, si);
@@ -257,6 +257,7 @@ export function layoutVariance(
     };
   });
   const dataSeries = seriesNorm.filter((s) => s.role !== 'reference');
+  const running = runningPeriodIds(cats, ci => hasActualCategoryValue(dataSeries, ci));
   if (dataSeries.length === 0) {
     throw new NormalizeError('empty-data', 'series', 'variance requires at least one data-role series', undefined, undefined, ['data', 'series']);
   }

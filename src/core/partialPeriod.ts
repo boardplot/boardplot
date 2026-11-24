@@ -13,19 +13,23 @@ import type { Theme } from './types/theme';
 import { disclosureNote, disclosuresShown } from './notes';
 import { calendarPoint } from './calendarLabels';
 
-/** The partial categories with no later complete category, in calendar or authored order. */
-export function runningPeriodIds(categories: readonly Pick<Category, 'id' | 'date' | 'partial'>[]): Set<string> {
+type PeriodCategory = Pick<Category, 'id' | 'date' | 'partial' | 'role'>;
+
+/** Partial periods with no later complete period that holds an actual value. */
+export function runningPeriodIds(categories: readonly PeriodCategory[], hasActual: (index: number) => boolean): Set<string> {
   const running = partialIds(categories);
   if (running.size === 0 || running.size === categories.length) return running;
-  const dates = categories.map(c => calendarPoint(c.date ?? c.id)?.date.getTime());
-  const dated = dates.every(date => date !== undefined);
-  const orderAt = (i: number) => dated ? dates[i]! : i;
-  let lastComplete = -Infinity;
-  categories.forEach((c, i) => {
-    if (c.partial !== true) lastComplete = Math.max(lastComplete, orderAt(i));
+  const periods = categories.flatMap((category, index) => category.role === 'total' ? [] : [{ category, index }]);
+  const dates = periods.map(({ category }) => calendarPoint(category.date ?? category.id, true));
+  const unit = dates[0]?.unit;
+  const dated = unit !== undefined && dates.every(point => point?.unit === unit);
+  const orderAt = (i: number) => dated ? dates[i]!.date.getTime() : i;
+  let lastActual = -Infinity;
+  periods.forEach(({ category, index }, i) => {
+    if (category.partial !== true && hasActual(index)) lastActual = Math.max(lastActual, orderAt(i));
   });
-  categories.forEach((c, i) => {
-    if (orderAt(i) < lastComplete) running.delete(c.id);
+  periods.forEach(({ category }, i) => {
+    if (orderAt(i) < lastActual) running.delete(category.id);
   });
   return running;
 }
@@ -98,6 +102,7 @@ export function partialIds(categories: readonly Pick<Category, 'id' | 'partial'>
 }
 
 export const RUNNING_PERIOD_LEGEND_ID = '__partial';
+export const EARLIER_PARTIAL_LEGEND_ID = '__earlierPartial';
 
 export function hasEarlierPartialHatch(hatched: readonly Pick<Category, 'id'>[], running: ReadonlySet<string>): boolean {
   return hatched.some(c => !running.has(c.id));
@@ -121,7 +126,7 @@ export function partialLegendKeys(
   const names = earlier ? undefined : partialNames(categories, strings, running);
   const label = names === undefined ? strings?.partial ?? localeStrings().partial : names;
   return label !== null
-    ? [{ id: earlier ? '__earlierPartial' : RUNNING_PERIOD_LEGEND_ID, label, paint: { token: 'markInk' }, pattern: 'hatch45' }]
+    ? [{ id: earlier ? EARLIER_PARTIAL_LEGEND_ID : RUNNING_PERIOD_LEGEND_ID, label, paint: { token: 'markInk' }, pattern: 'hatch45' }]
     : [];
 }
 
