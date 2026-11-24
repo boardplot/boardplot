@@ -12,8 +12,6 @@ import type { CategoryInset } from './categoryInset';
 export interface PanelAnchoring {
   categoryInset?: CategoryInset;
   captionLeft?: number;
-  /** The panel draws categories without taking the inset (a sparkline, bar or dot panel): its grid column draws as before. */
-  holdsCategories?: boolean;
 }
 
 interface GridPanelLayout {
@@ -67,13 +65,12 @@ const keepsTexts = (before: Map<string, number>, after: Map<string, number>) =>
  * group places its first and last shared category on the innermost pair; the
  * tick share of the category range is read anew on each pass.
  *
- * A group whose panels all read a category inset keeps one plot rectangle: each
- * panel moves its categories inside its plot, and a panel wider than the group's
- * shared plot follows it. The group falls back to the older drawing when a panel
- * takes no inset (a rank line, an area, a waterfall), when the inner categories
- * of the panels are spaced differently, when the edges do not settle, or when a
- * panel prints fewer texts than before. Then every panel moves its plot, as
- * before; with `insetOnly` (the grid did not ask for category anchors) nothing moves.
+ * The older drawing is the default: every panel moves its plot, and with `insetOnly` (the grid did not ask
+ * for category anchors) nothing moves. A group keeps one plot rectangle only when it qualifies: every chart
+ * panel is a column (grouped or stacked), a plain line, a combo or a variance panel, all hold the same
+ * categories in the same order (two or more), every category centre sits at one x after the inset, the
+ * edges settle, and no panel prints fewer texts of a role and wording than in its start drawing. A panel
+ * wider than the group's shared plot (rotated names) sets the group's edges.
  */
 export function alignCategoryPanels(
   children: GridPanelLayout[],
@@ -99,28 +96,29 @@ function keepsOnePlot(children: GridPanelLayout[], theme: ReturnType<typeof reso
   // Category ticks carry the category id. Numeric ticks (a dot or scatter value axis) are no categories.
   const ticksOf = (child: GridPanelLayout) =>
     (child.geometry.axes.find((axis) => axis.axis === 'x')?.ticks ?? []).filter((tick) => typeof tick.at === 'string');
-  const candidates = children.filter((child) => child.relayout !== undefined && ticksOf(child).length >= 2);
-  if (candidates.length < 2) return false;
-  if (children.some((child) => child.relayout !== undefined && child.anchored?.holdsCategories)) return false;
-  if (!candidates.every((child) => child.anchored?.categoryInset !== undefined)) return false;
-  const shared = ticksOf(candidates[0]!).map((tick) => tick.at)
-    .filter((at) => candidates.every((child) => ticksOf(child).some((tick) => tick.at === at)));
-  if (shared.length < 2) return false;
-  const [firstId, lastId] = [shared[0], shared.at(-1)];
+  // The group qualifies only when every chart panel may take the inset and all hold the same categories, in order.
+  const candidates = children.filter((child) => child.relayout !== undefined);
+  if (candidates.length < 2 || !candidates.every((child) => child.anchored?.categoryInset !== undefined)) return false;
+  const ids = ticksOf(candidates[0]!).map((tick) => tick.at);
+  if (ids.length < 2) return false;
+  if (!candidates.every((child) => {
+    const own = ticksOf(child);
+    return own.length === ids.length && own.every((tick, index) => tick.at === ids[index]);
+  })) return false;
+  const [firstId, lastId] = [ids[0], ids.at(-1)];
   const tickOf = (child: GridPanelLayout, at: unknown) => ticksOf(child).find((tick) => tick.at === at);
   const posOf = (child: GridPanelLayout, at: unknown) => child.slot.x + tickOf(child, at)!.pos;
   const leftOf = (child: GridPanelLayout) => child.slot.x + child.geometry.plot.x;
   const rightOf = (child: GridPanelLayout) => leftOf(child) + child.geometry.plot.w;
 
-  // Every category that two or more panels draw sits at the same share of the span on each of them.
+  // Every category sits at the same share of the span on each panel: a cheap test before any relayout.
   const span = minOf(candidates.map((child) => posOf(child, lastId) - posOf(child, firstId)));
   if (!(span > 0)) return false;
   const shareOf = (child: GridPanelLayout, at: unknown) =>
     (posOf(child, at) - posOf(child, firstId)) / (posOf(child, lastId) - posOf(child, firstId));
-  const drawn = new Set(candidates.flatMap((child) => ticksOf(child).map((tick) => tick.at)));
-  for (const at of drawn) {
-    const shares = candidates.filter((child) => tickOf(child, at)).map((child) => shareOf(child, at));
-    if (shares.length >= 2 && (maxOf(shares) - minOf(shares)) * span > 1) return false;
+  for (const at of ids) {
+    const shares = candidates.map((child) => shareOf(child, at));
+    if ((maxOf(shares) - minOf(shares)) * span > 1) return false;
   }
 
   const alignCentres = () => {
@@ -174,15 +172,11 @@ function keepsOnePlot(children: GridPanelLayout[], theme: ReturnType<typeof reso
     }
     alignCentres();
   }
-  // Every category that two or more panels draw, a panel with a single category included, sits at one x.
-  const sharedCentres = () => {
-    const xs = new Map<unknown, number[]>();
-    for (const child of children) {
-      if (!child.relayout) continue;
-      for (const tick of ticksOf(child)) xs.set(tick.at, [...(xs.get(tick.at) ?? []), child.slot.x + tick.pos]);
-    }
-    return [...xs.values()].every((list) => list.length < 2 || maxOf(list) - minOf(list) <= 1);
-  };
+  // After the inset, every category centre sits at one x on all panels.
+  const sharedCentres = () => ids.every((at) => {
+    const xs = candidates.map((child) => (tickOf(child, at) ? posOf(child, at) : Number.NaN));
+    return xs.every(Number.isFinite) && maxOf(xs) - minOf(xs) <= 1;
+  });
   if (centred() && sameEdges() && sharedCentres() && start.every(({ child, texts }) => keepsTexts(texts, printedTexts(child.geometry)))) return true;
   for (const { child, margin } of start) {
     child.margin = margin;

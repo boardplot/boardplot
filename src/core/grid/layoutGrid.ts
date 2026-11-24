@@ -477,7 +477,7 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
           .endpointLabelEconomy?.strategy === 'legend',
     );
   const alignedPanels = (children: GridChild[]) => children.map((child, i) => {
-    const anchored = child.anchored ??= child.def ? panelAnchoring(child.def.type, data.panels[i]!.options, data.panels[i]!.data) : {};
+    const anchored = child.anchored ??= child.def ? panelAnchoring(child.def.type, data.panels[i]!.options) : {};
     return {
       geometry: child.geo, slot: slots[i]!,
       margin: (child.recordOptions as { margin?: { left?: number; right?: number; bottom?: number } }).margin ?? {},

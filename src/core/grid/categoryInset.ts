@@ -18,29 +18,22 @@ export const categoryInsetOf = (options: object | undefined): CategoryInset =>
 /** Chart types whose layout reads CATEGORY_INSET (definition types, not aliases). */
 export const INSETS_CATEGORIES: ReadonlySet<string> = new Set(['column', 'line', 'combo', 'variance']);
 
-const AREA_VARIANTS: ReadonlySet<unknown> = new Set(['area', 'stacked-area', 'stacked100-area']);
-
 /**
- * Whether a panel takes a category inset. An area keeps room outside its plot for its edge labels, and a
- * rank line keeps room for its start and end names; that room changes with the inset, so both move their
- * plot as before. `valueAxis.percent` draws a line as a 100% area whatever its variant says.
+ * Whether a grid panel may take a category inset: a column (grouped or stacked), a plain line, a combo or a
+ * variance panel. Every other type and variant (an area, also through `valueAxis.percent`, a rank line, a
+ * 100% column, a sparkline, a waterfall) draws as before, and so does every panel of its grid column.
  */
 export const takesCategoryInset = (type: string, options: unknown): boolean => {
-  if (!INSETS_CATEGORIES.has(type)) return false;
-  if (type !== 'line') return true;
-  const line = (options ?? {}) as { variant?: string; valueAxis?: { percent?: boolean } };
-  return line.variant !== 'bump' && !AREA_VARIANTS.has(line.valueAxis?.percent ? 'stacked100-area' : line.variant);
+  if (type === 'combo' || type === 'variance') return true;
+  const record = (options ?? {}) as { variant?: string; valueAxis?: { percent?: boolean } };
+  if (type === 'column') return record.variant === undefined || record.variant === 'grouped' || record.variant === 'stacked';
+  if (type === 'line') return (record.variant === undefined || record.variant === 'line') && record.valueAxis?.percent !== true;
+  return false;
 };
-/**
- * How a grid panel takes part in category alignment: the inset holder for a type that reads it, a mark for
- * a panel that draws a category row or a value sequence without one (a sparkline, bar, dot or waterfall panel), nothing else.
- */
-export function panelAnchoring(type: string, options: unknown, data: unknown): { categoryInset?: CategoryInset; holdsCategories?: boolean } {
-  if (takesCategoryInset(type, options)) return { categoryInset: { left: 0, right: 0 } };
-  const record = (data ?? {}) as { categories?: unknown; labels?: unknown; items?: unknown; values?: unknown };
-  const rows = [record.categories, record.labels, record.items, record.values].some((list) => Array.isArray(list) && list.length >= 2);
-  return rows ? { holdsCategories: true } : {};
-}
+
+/** The holder a grid panel's relayout reads its category inset from: present only where the panel may take one. */
+export const panelAnchoring = (type: string, options: unknown): { categoryInset?: CategoryInset } =>
+  takesCategoryInset(type, options) ? { categoryInset: { left: 0, right: 0 } } : {};
 
 /** The category range inside a plot span: the inset comes off both ends, with the 10 px floor every span keeps. */
 export function insetRange(x: number, w: number, inset: CategoryInset): { x: number; w: number } {

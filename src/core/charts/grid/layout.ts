@@ -1815,7 +1815,7 @@ function layoutAuthoredChild(
     ? { ...authoredOptions, labels: withoutCategoryLabels(authoredOptions.labels) } : authoredOptions;
   const authoredMargin = isRecord(panelOptions.margin) ? panelOptions.margin : {};
   // `definition.type`: an alias such as `profile` lays out as its chart type.
-  const anchored: PanelAnchoring = panelAnchoring(definition.type, panelOptions, panel.data);
+  const anchored: PanelAnchoring = panelAnchoring(definition.type, panelOptions);
   let recordOptions: object;
   const relayout = (margin: AuthoredChild['margin'], kpiValueSize?: number): Geometry => {
     const captionPanel = compactTiers ? { ...panel, title: panelOptions.title === false ? undefined : authoredTitle } : panel;
