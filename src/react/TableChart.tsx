@@ -1000,6 +1000,10 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     return new Set(allColumns.filter((column) => !drawn.has(column.id)).map((column) => column.id));
   }, [allColumns, columns]);
   const reuseGrid = resolved !== undefined && !exposed && (metricMeasure === defaultMeasurer || isCachedTextMeasurer(metricMeasure));
+  // A warning listener can retain the records it received, even after it detaches.
+  const reportedWarnings = useRef(false);
+  if (onWarnings !== undefined) reportedWarnings.current = true;
+  const checkDisplayWarnings = reportedWarnings.current || !reuseGrid || !keepRequest || linked !== undefined;
   const resolvedMargin = useMemo(() => !reuseGrid || !tableOptions ? undefined : resolveCanvasOptions(tableOptions).margin, [reuseGrid, tableOptions]);
   const margin = reuseGrid || tableOptions === undefined ? resolvedMargin : resolveCanvasOptions(tableOptions).margin;
   const marginLeft = margin?.left ?? 0;
@@ -1047,14 +1051,14 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
         fit: size === 'container' ? fit : undefined,
       },
       margins: { left: sides.left ?? 0, right: sides.right ?? 0 },
-      at: request === undefined ? undefined : (frameWidth) => {
+      at: !checkDisplayWarnings || request === undefined ? undefined : (frameWidth) => {
         const frameTheme = tableRenderTheme({ ...request, size: { ...request.size, width: frameWidth } });
         const frameSides = sidesAt(frameTheme, frameWidth);
         return { theme: frameTheme, available: frameWidth - (frameSides.left ?? 0) - (frameSides.right ?? 0), scrollBox: scrollBox(frameWidth) };
       },
     } });
   }, [table, theme, layoutRequest, width, tableOptions, density, request, inlineVisibility, softLabelCap, labelWrapFloor, reuseGrid,
-    columns, allColumns, defaultColumns, rows, available, frameStart, readOnlyTree, sortableIds, rowLabelLead?.width, groupMarks, size, fit, margin, marginLeft, marginRight, container.size?.width, scrollGutter]);
+    columns, allColumns, defaultColumns, rows, available, frameStart, readOnlyTree, sortableIds, rowLabelLead?.width, groupMarks, size, fit, margin, marginLeft, marginRight, container.size?.width, scrollGutter, checkDisplayWarnings]);
   const measured = need?.plan;
   // The density of the rung the grid draws: the compact and tight rungs take the compact density.
   const drawnDensity = need?.density ?? density;
@@ -1075,12 +1079,12 @@ function DrawnTable({ table: props, checkKeys, linked }: { table: Omit<TableChar
     : tableFrame(table, engineNotes ? { ...tableOptions, [ENGINE_NOTES]: engineNotes, [ENGINE_NOTE_KINDS]: engineKinds } as TableOptions : tableOptions, rows, columns,
       request === undefined || theme === undefined ? undefined : { width: footWidth, measure: width.measure, theme }),
   [table, tableOptions, engineNotes, engineKinds, rows, columns, request, theme, footWidth, width.measure]);
-  const diagnostics = useMemo(() => layoutRequest && resolved ? {
+  const diagnostics = useMemo(() => checkDisplayWarnings && layoutRequest && resolved ? {
     warnings: [...resolved.warnings, ...(layoutRequest.inputWarnings ?? []), ...(need?.warnings ?? []), ...(sized?.warnings ?? []), ...(frameMemo?.warnings ?? []),
       ...(tableOptions?.columnHeads === false && sortable !== false && (sortable === true || sortable.length > 0) ? [SORT_WITHOUT_HEADS] : [])],
     presentation: initialPrepared?.presentation ?? tablePresentation(layoutRequest, resolved.table),
     refused: sized?.refused,
-  } : undefined, [layoutRequest, resolved, initialPrepared, sized, need?.warnings, frameMemo?.warnings, tableOptions?.columnHeads, sortable]);
+  } : undefined, [checkDisplayWarnings, layoutRequest, resolved, initialPrepared, sized, need?.warnings, frameMemo?.warnings, tableOptions?.columnHeads, sortable]);
   // A container table is laid out again at each width it is shown at, as a container chart is.
   const displayRef = useDisplayWarnings(settling ? undefined : diagnostics, onWarnings, null,
     size === 'container' && !container.printing ? layoutRequest?.size.width : undefined);
