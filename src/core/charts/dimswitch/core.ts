@@ -7,7 +7,7 @@ import type { Geometry } from '../../types/scene';
 import { CARD_MIN_WIDTH, chartSizing, heightOmitted, isWidthProbe, VERIFY_ADVICE, WIDTH_PROBE } from '../../sizing';
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { classFloor, layoutKey, prepareTableExecutor, memoLayout, REGULAR_SPACING, type TableMarks } from '../table/layout';
-import { extendPeriodTable, ownCompiledTable, prepareTableData, projectDimSwitchWidthTable, resolvePreparedTable, resolveTable } from '../table/resolve';
+import { completeDimSwitchProjection, extendPeriodTable, ownCompiledTable, prepareTableData, projectDimSwitchWidthTable, resolvePreparedTable, resolveTable } from '../table/resolve';
 import { cardFigures, compileDimSwitch, periodCardTail, projectDimSwitchCard, wholeDimSwitchCard, currentDimSwitchOptions, dimSwitchTableWarnings, dimswitchRowId, hostPeriods, PARTIAL_NOTE_OFF, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning, type CardFigures, type DimSwitchPeriodValues, type DimSwitchForm } from './compile';
 import type { DimSwitchData, DimSwitchOptions, DimSwitchDerived } from './types';
 import { withUnprintedCells } from './claims';
@@ -23,7 +23,7 @@ export function resolveDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   return {...compiled,...resolved,compileWarnings:compiled.warnings,computedCells:[...resolved.computedCells,...records]};
 }
 
-type PreparedForm = { extended?: boolean; compiled: ReturnType<typeof compileDimSwitch>; resolved: ReturnType<typeof resolveTable>; executor: ReturnType<typeof prepareTableExecutor>; noteMetadata: Map<string, NonNullable<ReturnType<typeof engineNoteMeta>>> };
+type PreparedForm = { resolvedFrom?: 'added-periods' | 'width-probe'; compiled: ReturnType<typeof compileDimSwitch>; resolved: ReturnType<typeof resolveTable>; executor: ReturnType<typeof prepareTableExecutor>; noteMetadata: Map<string, NonNullable<ReturnType<typeof engineNoteMeta>>> };
 
 /** The options a probe sets for itself. The compiled form does not depend on them, so a probe at another size reuses it. */
 const PER_PROBE = [TARGET_SIZE, WIDTH_PROBE, REGULAR_SPACING, PLAN_ONLY] as const;
@@ -90,13 +90,16 @@ function prepareForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSw
     ownCompiledTable(compiled.data);
     const extended = tail && wider && hostedLayout(options, compiled.options, () =>
       extendPeriodTable(compiled.data, wider.prepared.compiled.data, wider.prepared.resolved, compiled.options));
-    const resolved=wholeCard?.resolved ?? extended ?? hostedLayout(options,compiled.options,()=>resolvePreparedTable(prepareTableData(compiled.data,compiled.options),compiled.options));
+    const pending = form.card && form.hide !== undefined ? forms.projections?.get(form.hide) : undefined;
+    const completed = pending && pending.plan === projected && completeDimSwitchProjection(compiled.data, pending.source, pending.model)
+      ? pending.model : undefined;
+    const resolved=wholeCard?.resolved ?? extended ?? completed ?? hostedLayout(options,compiled.options,()=>resolvePreparedTable(prepareTableData(compiled.data,compiled.options),compiled.options));
     const noteMetadata:PreparedForm['noteMetadata']=new Map();
     for (const text of (compiled.options as {[ENGINE_NOTES]?: string[]})[ENGINE_NOTES] ?? []) {
       const meta=engineNoteMeta(text);
       if (meta) noteMetadata.set(text,{...meta});
     }
-    return {compiled:{...compiled,options:withoutProbe(compiled.options)},resolved,extended:extended!==undefined,executor:hostedLayout(options,compiled.options,()=>prepareTableExecutor(compiled.data,compiled.options,resolved)),noteMetadata};
+    return {compiled:{...compiled,options:withoutProbe(compiled.options)},resolved,resolvedFrom:completed ? 'width-probe' : extended ? 'added-periods' : undefined,executor:hostedLayout(options,compiled.options,()=>prepareTableExecutor(compiled.data,compiled.options,resolved)),noteMetadata};
   };
   const {size:_size,inlineVisibility:_inlineVisibility,...rest}=withoutProbe(options);
   const base=layoutKey(data,rest);
@@ -106,11 +109,14 @@ function prepareForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSw
   let byKey=keptForms.get(data);
   if (!byKey || byKey.size >= 64) keptForms.set(data,byKey=new Map());
   let prepared=byKey.get(key);
-  if (!prepared) byKey.set(key,prepared=compute(figuresOf(data,base)));
+  if (!prepared) {
+    prepared=compute(figuresOf(data,base));
+    if (prepared.resolvedFrom !== 'width-probe') byKey.set(key,prepared);
+  }
   return withProbe(prepared);
 }
 
-type ProjectedCard = { plan: CardProjection; runOptions: PreparedForm['compiled']['options']; options: DimSwitchOptions; executor: ReturnType<typeof prepareTableExecutor>; model: PreparedForm['resolved'] };
+type ProjectedCard = { source: PreparedForm['resolved']; plan: CardProjection; runOptions: PreparedForm['compiled']['options']; options: DimSwitchOptions; executor: ReturnType<typeof prepareTableExecutor>; model: PreparedForm['resolved'] };
 type FoldForms = { prepared: Map<string, PreparedForm>; periodValues: DimSwitchPeriodValues; wider?: WiderCard; projections?: Map<number, ProjectedCard> };
 
 function layoutForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwitchForm, forms: FoldForms, projected?: CardProjection): Geometry<TableMarks, DimSwitchDerived> {
@@ -119,7 +125,7 @@ function layoutForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwi
   if (!prepared) {
     const pending = form.card && form.hide !== undefined ? forms.projections?.get(form.hide) : undefined;
     prepared=prepareForm(data,pending?.options ?? options,{...form,periodValues:forms.periodValues},forms,pending?.plan ?? projected);
-    if (pending) reusePeriodBodyWidths(pending.model.table, prepared.resolved.table);
+    if (pending && pending.model !== prepared.resolved) reusePeriodBodyWidths(pending.model.table, prepared.resolved.table);
     if (form.card && form.hide !== undefined && form.hide > 0 && (!forms.wider || form.hide < forms.wider.hide)) {
       forms.wider = { hide: form.hide, prepared };
     }
@@ -131,7 +137,7 @@ function layoutForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwi
   // The compile is shared across spacing passes and carries the first pass's options: the spacing is this request's.
   // Period selection reads compact-floor slack, so it retains that floor even during ordinary rendering.
   const runOptions={...options,...compiled.options,[PLAN_ONLY]:true,[REGULAR_SPACING]:(options as {[REGULAR_SPACING]?: boolean})[REGULAR_SPACING]} as typeof compiled.options;
-  const geometry=hostedLayout(options,runOptions,()=>prepared.extended
+  const geometry=hostedLayout(options,runOptions,()=>prepared.resolvedFrom
     ? prepared.executor.runCompiled(runOptions, resolved)
     : prepared.executor.run(runOptions,true,resolved));
   // The frame can reach its automatic height without a second compile.
@@ -176,7 +182,7 @@ function tryCard(data: DimSwitchData, options: DimSwitchOptions, hide: number, f
       if (model) {
         reusePeriodBodyWidths(wider.prepared.resolved.table, model.table);
         // The width pass takes its rows and columns from the resolved model. The raw table supplies the unchanged column groups.
-        projection = { plan, runOptions, model, options, executor: prepareTableExecutor(wideData, runOptions) };
+        projection = { source: wider.prepared.resolved, plan, runOptions, model, options, executor: prepareTableExecutor(wideData, runOptions) };
         (forms.projections ??= new Map()).set(hide, projection);
       }
     }

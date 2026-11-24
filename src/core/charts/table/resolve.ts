@@ -582,6 +582,33 @@ export function extendPeriodTable(data: TableData, source: TableData, previous: 
   } finally { zeroLifts.count = before; }
 }
 
+/** A width projection can also supply the complete model for a large period-only card.
+ * Keeping numeric rows and their percent-warning thresholds preserves row units and diagnostics. */
+export function completeDimSwitchProjection(data: TableData, wide: ResolveResult, projected: ResolveResult): boolean {
+  if (!largeCompiledTables.has(data) || wide.warnings.length ||
+    wide.table.columns.some(col => col.kind !== 'rowLabel' && (col.kind !== 'value' || col.aggregate !== 'source'
+      || col.id === 'range' || col.id === 'pp' || col.id === 'pl'))) return false;
+  const numericRange = (row: ResolvedRow, columns: readonly ResolvedColumn[]): number => {
+    let hasNumber = 0;
+    for (const column of columns) {
+      const raw = row.cells[column.id]?.raw;
+      if (typeof raw !== 'number') continue;
+      if (Math.abs(raw) > 1.5) return 2;
+      hasNumber = 1;
+    }
+    return hasNumber;
+  };
+  const byId = new Map(data.rows.map(row => [row.id, row]));
+  return projected.table.rows.every((row, index) => {
+    const range = numericRange(row, projected.table.columns);
+    if (range === 2) return true;
+    // An inline line without a row format prints its cell formats and has no row-level percent warning.
+    const raw = byId.get(row.id);
+    if (range === 1 && raw?.inline && raw.format === undefined && raw.scale === undefined && raw.calc === undefined) return true;
+    return range === numericRange(wide.table.rows[index]!, wide.table.columns);
+  });
+}
+
 export function resolveTable(data: TableData, options: TableOptions = {}, magnitudeSource: TableData = data): ResolveResult {
   const borrowed = resolvePreparedTable(prepareTableData(data, options, magnitudeSource), options);
   const owned = copyPlannedValue(borrowed);
