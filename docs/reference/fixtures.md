@@ -321,6 +321,7 @@ The CLI prints every match in one response through `boardplot fixtures --type <t
 | x-time-uneven-sensors | line.line | example | Uneven readings keep their spacing; a missing reading breaks the line (continuous time axis) |
 | x-number-trail | line.line | example | Elevation by distance on a plain-number x (continuous number axis) |
 | x-time-partial-week | line.line | example | Weekly orders with the running week marked by data.partial (continuous time axis) |
+| x-time-empty-to-date | line.line | example | Weekly orders with the running value in the key and no partial-period wording |
 | x-time-range-edges | line.line | example | A daily line continues to both range edges between readings |
 | log-axis-users | line.line | example | Users grow across orders of magnitude |
 
@@ -952,6 +953,7 @@ The CLI prints every match in one response through `boardplot fixtures --type <t
 | metric-stack-per-unit | grid.metric-stack | example | Metric stack: cost per order computed from spend and orders |
 | metric-stack-focus | grid.metric-stack | example | Metric stack: the focus look, with the latest week against the first |
 | metric-stack-focus-shares | grid.metric-stack | example | Metric stack: the focus look by month, with segment shares |
+| metric-stack-empty-averages | grid.metric-stack | example | A focus stack compares two quarters without an averages sentence |
 
 ## slope
 

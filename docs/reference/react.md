@@ -369,7 +369,8 @@ export function Dashboard() {
 | strings.aboveSeries | string |  |  | Positive line gap key. |
 | strings.belowSeries | string |  |  | Negative line gap key. |
 | strings.average | string |  |  | Name before a computed mean; English Average, German Ø. |
-| strings.toDate | string |  |  | Text after a running category name in its key or note. |
+| strings.toDate | string |  |  | Text after a partial period name or value. Set to an empty string to omit the words and their space. |
+| strings.stackAverages | string |  |  | Averaging method in the focus header when a window spans several categories. {v1} is the grain. Set to an empty string to omit the sentence and its space. |
 | strings.forecast | string |  |  | Key for the forecast pattern. |
 | strings.plan | string |  |  | Key for the plan outline. |
 | strings.forecastHeader | string |  |  | Header at the actual-to-forecast boundary. Keeps the scenario code by default. |
