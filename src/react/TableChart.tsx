@@ -2721,18 +2721,27 @@ const LiteRun = memo(function LiteRun({ row, columns, columnIndices, from, to, t
 }): ReactElement {
   const first = columns[from]!, last = columns[to]!;
   const startLine = trackColumn?.get(first.id), endLine = trackColumn?.get(last.id);
-  const spans: ReactElement[] = [];
+  // A row callback can edit any value. Read the current text and geometry before keeping a span.
+  const previousSpans = useRef<ReactElement<{ children: string; 'aria-colindex'?: number; style: CSSProperties }>[]>([]);
+  const spans: typeof previousSpans.current = [];
   for (let index = from; index <= to; index++) {
     const column = columns[index]!, slot = slots.get(column.id), next = index < to ? slots.get(columns[index + 1]!.id) : undefined;
     if (!columnIndices.has(column.id)) continue;
     const width = slot === undefined ? 0 : next === undefined ? slot.width : next.start - slot.start;
-    spans.push(<span key={column.id} role="gridcell" aria-colindex={columnIndices.get(column.id)} style={{ flex: `0 0 ${width}px`, overflow: 'hidden' }}>{liteText(row, column, inlineVisibility)}</span>);
+    const flex = `0 0 ${width}px`;
+    const colIndex = columnIndices.get(column.id);
+    const text = liteText(row, column, inlineVisibility);
+    const before = previousSpans.current[spans.length];
+    spans.push(before?.key === column.id && before.props.children === text && before.props['aria-colindex'] === colIndex && before.props.style.flex === flex
+      ? before : <span key={column.id} role="gridcell" aria-colindex={colIndex} style={{ flex, overflow: 'hidden' }}>{text}</span>);
   }
-  return (
+  if (previousSpans.current.length !== spans.length || spans.some((span, i) => span !== previousSpans.current[i])) previousSpans.current = spans;
+  const cells = previousSpans.current;
+  return useMemo(() => (
     <div data-bp-lite="" style={{ ...(startLine === undefined || endLine === undefined ? {} : { gridColumn: `${startLine} / ${endLine + 1}` }), display: 'flex', flexDirection: 'row', overflow: 'hidden', whiteSpace: 'nowrap', minWidth: 0, contentVisibility: 'auto', containIntrinsicSize: 'auto 1px auto 1em' } as CSSProperties}>
-      {spans}
+      {cells}
     </div>
-  );
+  ), [startLine, endLine, cells]);
 });
 /** A cell's value and the inline lines shown under it, as one line of text. */
 function liteText(row: ResolvedRow, column: ResolvedColumn, inlineVisibility: Record<Id, boolean>): string {
