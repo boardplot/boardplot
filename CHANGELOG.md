@@ -30,6 +30,7 @@ Boardplot is in 0.x: options and output can change between minor versions. Each 
 - The panel labels of a grid column whose plot edges are aligned start at one x, the left edge of the column's widest y tick labels. A grid column that draws as before under the entry above keeps its labels as before too. Before, each label started at its own panel's widest tick label, up to 11 px apart at 1,440 px and 15 px at 375 px.
 - An empty `strings.toDate` hides the partial-period suffix and an empty `strings.stackAverages` hides the averaging sentence across the CLI, MCP tools and React, including the space each would use.
 - Metric stacks reserve the cohort key for drawn maturing values and keep existing running-period marks and wording.
+- Under a forced table magnitude, columns without an authored format keep authored cell formats on per-unit, count and percent rows and the precision of authored per-unit row formats.
 
 ## 0.63.0
 

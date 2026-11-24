@@ -13,6 +13,9 @@ import type { BaseOptionsFor } from './options';
 import type { Theme } from './theme';
 import type { Paint } from './scene';
 
+/** Marks compiled dimension switches that keep their current table formatting. */
+export const DIMSWITCH_TABLE = Symbol('dimSwitchTable');
+
 // ---------- authored data ----------
 
 /** `stickyLabels`: the 0.27 forms (`true`, a column count) and the object form that also pins the head to the page and the active section label. */
