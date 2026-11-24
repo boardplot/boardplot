@@ -6,6 +6,8 @@ Boardplot is in 0.x: options and output can change between minor versions. Each 
 
 ### Changed
 
+- Large dimension-switch tables mount faster in React. Row folds and depth changes reuse measurements from unchanged cells. Changing the expansion, variant, splits or visible columns also takes less time.
+
 - Large dimension-switch tables build calculation records for the selected periods, reuse measurements of matching numeric text and retain measured widths as periods are added. Returning to a previous control state also copies its calculation records faster.
 
 - Large dimension-switch tables reuse formatted periods and measured column widths while choosing a card. The selected card can draw from its measured table and copy its calculation records in one pass.
