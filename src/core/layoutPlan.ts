@@ -20,7 +20,7 @@ const keyFunction = (_key: string, value: unknown): unknown => {
 type TextPlan = { font: FontSpec; texts: Map<string, TextSize> };
 type FontPlans = { families: Map<FontSpec['family'], Map<number, TextPlan[]>>; last?: TextPlan };
 type InputKeyReader = (value: object) => string | undefined;
-type Inputs = { privateRecords?: WeakSet<ComputedCellRecord[]>; json: WeakMap<object, string>; themes: WeakMap<object, number>; texts: WeakMap<TextMeasurer, FontPlans>; exactKeys?: Map<InputKeyReader, WeakMap<object, string | undefined>>; results?: WeakMap<object, Map<string, unknown>> };
+type Inputs = { json: WeakMap<object, string>; themes: WeakMap<object, number>; texts: WeakMap<TextMeasurer, FontPlans>; exactKeys?: Map<InputKeyReader, WeakMap<object, string | undefined>>; results?: WeakMap<object, Map<string, unknown>> };
 let inputs: Inputs | undefined;
 
 /** Synchronous probes share snapshots; the next public call reads mutable inputs again. */
@@ -252,9 +252,11 @@ export function copyPlannedValue<T>(value: T, copies = new Map<object, unknown>(
   return copy as T;
 }
 
+const privateCardRecords = new WeakSet<ComputedCellRecord[]>();
+
 /** Each record and its operand list were created for this partial card alone. */
 export function ownCardRecords(records: ComputedCellRecord[]): void {
-  if (inputs) (inputs.privateRecords ??= new WeakSet()).add(records);
+  if (inputs) privateCardRecords.add(records);
 }
 
 /** Private record objects have no other references in the geometry. Their fields can still reference the input. */
@@ -306,9 +308,9 @@ export function repeatedResult<T extends LayoutResult>(data: object, options: ob
     if (byKey.size >= 32 && !byKey.has(key)) byKey.delete(byKey.keys().next().value!);
     if (!byKey.has(key)) byKey.set(key, layout());
     const result = byKey.get(key) as T;
-    if (!result.refused && inputs?.privateRecords) {
+    if (!result.refused && result.type === 'dimswitch') {
       const records = (result.derived as unknown as TableDerived).computedCells;
-      if (inputs.privateRecords.has(records)) {
+      if (privateCardRecords.has(records)) {
         const copies = new Map<object, unknown>();
         copyCardRecords(records, copies);
         return copyPlannedValue(result, copies);
