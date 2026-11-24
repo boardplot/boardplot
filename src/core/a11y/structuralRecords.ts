@@ -328,7 +328,7 @@ function gridRecords(ctx: RecordContext, childRecords?: (ctx: RecordContext) => 
         return {
           id: targetId(target), target, label: `${source.title} / ${name}`, seriesLabel: source.title, categoryLabel: name,
           // Every stack figure is an expression over the measures: computed, so it reads without float residue.
-          value: { ...value, displayed: partial?.valueText ?? panel.displayed[i],
+          value: { ...value, displayed: panel.displayed[i],
             ...(hidden ? { state: 'unavailable' as const, reason: chartString(ctx.request.options, 'maturingHidden') } : {}),
             ...(partial && raw === null ? { reason: partial.valueText } : {}) },
           fields: state ? [{ key: 'state', label: chartString(ctx.request.options, 'categoryState'), value: { kind: 'text' as const, state: 'value' as const, raw: state } }] : [],
