@@ -7,7 +7,6 @@ import { statisticSet } from '../../numberSets';
 import { roundHalfUp } from '../../formatPrecision';
 import { sumConsistentShares } from '../../shareRounding';
 import type { ClaimRecordV1 } from '../../claims/browser';
-import { parseISODate } from '../../isoDate';
 import type { Category } from '../../types/data';
 
 export interface StackRange { from: string; to: string; label: string }
@@ -161,23 +160,6 @@ const add = (values: (number | null)[]): number | null => values.some(v => v ===
 const rate = (num: number | null, den: number | null): number | null => num === null || den === null || den === 0 ? null : num / den * 100;
 const perUnit = (amount: number | null, units: number | null): number | null => amount === null || units === null || units === 0 ? null : amount / units;
 
-const categoryKeys = ['id', 'label', 'date', 'partial'];
-
-function metricStackCategoryId(category: MetricStackData['categories'][number], index: number): string {
-  const refuse = (message: string, key?: string): never => {
-    const path = ['data', 'categories', index, ...(key === undefined ? [] : [key])];
-    throw new NormalizeError('invalid-data', path.join('.'), message, undefined, undefined, path);
-  };
-  if (!category || typeof category !== 'object' || Array.isArray(category)) refuse('expected a category object');
-  const unknownKey = Object.keys(category).find(key => !categoryKeys.includes(key));
-  if (unknownKey !== undefined) refuse(`unknown key '${unknownKey}'; known keys: ${categoryKeys.join(', ')}`, unknownKey);
-  if (typeof category.id !== 'string' || category.id === '') refuse('expected a non-empty category id', 'id');
-  if (category.label !== undefined && typeof category.label !== 'string') refuse('expected a category label string', 'label');
-  if (category.date !== undefined && parseISODate(category.date) === null) refuse('expected an ISO category date in yyyy-mm-dd format', 'date');
-  if (category.partial !== undefined && typeof category.partial !== 'boolean') refuse('expected a boolean', 'partial');
-  return category.id;
-}
-
 /** Shared semantic validation also protects schema-free React callers. */
 export function normalizeMetricStack(raw: MetricStackData): MetricStackData {
   const data = ownedDocumentCopy(raw);
@@ -186,7 +168,7 @@ export function normalizeMetricStack(raw: MetricStackData): MetricStackData {
   };
   if (!Array.isArray(data.categories) || data.categories.length === 0 || !Array.isArray(data.measures) || data.measures.length === 0
     || !Array.isArray(data.panels) || data.panels.length < 2 || data.panels.length > 5) stackError('data', 'A metric stack needs categories, measures and two to five panels');
-  unique(data.categories.map(metricStackCategoryId), 'data.categories');
+  unique(data.categories.map(c => c.id), 'data.categories');
   unique(data.measures.map(m => m.id), 'data.measures');
   unique(data.panels.map(p => p.id), 'data.panels');
   const ids = new Set(data.measures.map(m => m.id));
