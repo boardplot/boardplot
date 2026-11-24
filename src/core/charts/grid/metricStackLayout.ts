@@ -246,7 +246,7 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   if (partial.size) stateNote('partial', data.states?.partial?.footnote, () => partialFootnotes(data.categories, options.strings)[0]);
   const marker = (value: number | undefined) => value === undefined || notesOff ? '' : String(value).split('').map(c => '⁰¹²³⁴⁵⁶⁷⁸⁹'[Number(c)]).join('');
   const visibleValue = (p: ComputedStackPanel, i: number) => p.values[i] !== null;
-  const hasProvisional = computed.panels.some(p => p.states.some((state, i) => state !== 'mature' && visibleValue(p, i)));
+  const hasMaturingValues = computed.panels.some(p => p.states.some((state, i) => state === 'maturing' && visibleValue(p, i)));
   const hasMatureLine = (p: ComputedStackPanel) => p.panel.type === 'line' && p.states.some((state, i) =>
     i > 0 && state === 'mature' && p.states[i - 1] === 'mature' && visibleValue(p, i) && visibleValue(p, i - 1));
   // A keyed measure keeps one paint across panel order and emphasis. The ramp restarts per panel,
@@ -346,14 +346,14 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   const captionRoom = (pi: number, width: number) => { const box = captionBox(pi, width); return box.h ? box.h + 2 : 0; };
   const legend: LegendItemInput[] = [];
   // The focus look keys only its provisional marks above the chart.
-  if (look) { if (hasProvisional) legend.push({ id: 'stack:provisional', label: chartString(options, 'provisional'), paint: muted, key: 'line', dash: dashToken(theme, 'reference') }); }
+  if (look) { if (hasMaturingValues) legend.push({ id: 'stack:provisional', label: chartString(options, 'provisional'), paint: muted, key: 'line', dash: dashToken(theme, 'reference') }); }
   else if (!seen.size) {
-    if (hasProvisional && computed.panels.some(p => !p.panel.emphasis && hasMatureLine(p))) {
+    if (hasMaturingValues && computed.panels.some(p => !p.panel.emphasis && hasMatureLine(p))) {
       legend.push({ id: 'stack:mature', label: chartString(options, 'matureCohort'), paint: neutral, key: 'line' });
     }
     const emphasis = computed.panels.find(p => p.panel.emphasis && hasMatureLine(p));
     if (emphasis) legend.push({ id: 'stack:emphasis', label: emphasis.panel.title, paint: accent, key: 'line', width: strokeToken(theme, 'focus') });
-    if (hasProvisional) legend.push({ id: 'stack:provisional', label: chartString(options, 'provisional'), paint: muted, key: 'line', dash: dashToken(theme, 'reference') });
+    if (hasMaturingValues) legend.push({ id: 'stack:provisional', label: chartString(options, 'provisional'), paint: muted, key: 'line', dash: dashToken(theme, 'reference') });
   }
   let size = resolveSize(options.size);
   const automatic = heightOmitted(options.size);

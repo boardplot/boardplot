@@ -37,6 +37,34 @@ it('draws a metric stack on a 320 px card with each readout above its panel', ()
   expect(svg.svg).toContain('cases per month');
 });
 
+// A running period in a stack without a maturing cohort must keep its mark and wording without gaining a cohort key.
+it('draws a running period without a cohort key in the CLI and React', async () => {
+  const partialData = {
+    ...data,
+    categories: categories.map(category => category.id === 'jun' ? { ...category, partial: true } : category),
+    windows: { ...data.windows, compare: { from: 'may', to: 'may', label: 'May' } },
+  };
+  const host = document.createElement('div');
+  const root = createRoot(host);
+  try {
+    for (const variant of ['default', 'focus'] as const) {
+      const options = { stack: variant === 'focus' ? { variant } : {}, size: { width: 720 } };
+      const result = render({ spec: { type: 'grid', data: partialData, options }, return: ['svg'] });
+      expect(result.body, JSON.stringify(result.body.errors)).toMatchObject({ ok: true });
+      const cli = new DOMParser().parseFromString(result.body.svg as string, 'image/svg+xml');
+      await act(async () => root.render(createElement(GridChart as never, { data: partialData, ...options })));
+      for (const [entry, chart] of [['CLI', cli], ['React', host]] as const) {
+        const keys = Array.from(chart.querySelectorAll('[data-part="legendLabel"]'), label => label.textContent);
+        expect.soft(keys, `${entry}, ${variant}`).toEqual([]);
+        expect(chart.querySelector('[data-id="volume:outline:jun"]')).not.toBeNull();
+        expect(chart.querySelector('[data-id="label:stack:category:jun"]')?.textContent).toBe('Jun to date');
+      }
+    }
+  } finally {
+    await act(async () => root.unmount());
+  }
+});
+
 it('refuses a plot height under its floor with a coded fix, in React as in the CLI', async () => {
   const options = { stack: { heights: [40, 40] }, size: { width: 900 } };
   expect(body(options).errors?.[0]).toMatchObject({ code: 'metric-stack-spacing', fix: [{ op: 'replace', path: '/options/stack/heights/0' }, { op: 'replace', path: '/options/stack/heights/1' }] });
