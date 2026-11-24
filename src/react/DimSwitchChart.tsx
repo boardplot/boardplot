@@ -2,7 +2,7 @@
 import type { OptionsInput } from '../core/types/optionInput';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import type { LintWarning } from '../core/types/scene';
-import { compileDimSwitch, dimSwitchTableWarnings, foreignRowId, hiddenTotalFoldWarnings, LABELS_ONLY, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning } from '../core/charts/dimswitch/compile';
+import { compileDimSwitch, dimswitchRowId, dimSwitchTableWarnings, foreignRowId, hiddenTotalFoldWarnings, LABELS_ONLY, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning } from '../core/charts/dimswitch/compile';
 import { engineNoteMeta, withEngineNotes } from '../core/notes';
 import { ENGINE_NOTES } from '../core/charts/table/tracks';
 import { ownCompiledTable } from '../core/charts/table/resolve';
@@ -72,16 +72,34 @@ export function createDimSwitchChart(checkKeys?: OptionKeyCheck, linked?: readon
   const retired=useMemo(()=>{const shaped=normalizeOptionShapes('dimswitch',{options:authoredOptions});const retired=retireChartSettings('dimswitch',{options:shaped.chart.options as DimSwitchOptions});return {...retired,warnings:[...shaped.warnings,...retired.warnings]};},[authoredOptions]);
   const stableOptions=retired.chart.options;
   const floorRequest=useStableValue({type:'dimswitch',data:stableData,options:{...stableOptions,variant,depth,splits,inlineVisibility}});
+  // Ordinary folds select rows. Folding the by-member Total can also replace its headline.
+  const {expansion, ...valueOptions}=stableOptions;
+  const totalId=stableData?.dimension?.total?.id;
+  const ordinaryFolds=totalId!==undefined && stableOptions.rowVisibility?.[totalId]!==false
+    && (expansion?.collapsed===undefined || Array.isArray(expansion.collapsed) && foreignRowId(expansion.collapsed)===undefined)
+    && (expansion?.expanded===undefined || Array.isArray(expansion.expanded) && foreignRowId(expansion.expanded)===undefined)
+    && !(variant==='by-member' && expansion?.collapsed?.includes(dimswitchRowId(variant,totalId)))
+    && !exporter && !rowLabelLead && !isRowSelectable && !onRowSelect && !handleRef
+    && typeof fontMetrics!=='function' && typeof stableOptions.measure!=='function';
+  const foldOptions=useStableValue(ordinaryFolds ? valueOptions : undefined);
+  const compileOptions=foldOptions ?? stableOptions;
   // The grid reads values, not the computed-cell records the static audit trail carries.
   // The compile gives its notes their kinds (a disclosure, its short form); the table frame reads them as records.
   // The compile reads the formats as the SVG path does; its options carry which formats the author wrote to the table it draws.
-  const compiled=useMemo(()=>withEngineNotes(()=>{
-    const result=compileDimSwitch(stableData,{...stableOptions,variant,depth:1,splits},{records:false});freezeValue(result.data);
+  const values=useMemo(()=>withEngineNotes(()=>{
+    const result=compileDimSwitch(stableData,{...compileOptions,variant,depth:1,splits},{records:false});freezeValue(result.data);
     ownCompiledTable(result.data);
     const notes=(result.options as {[ENGINE_NOTES]?:string[]})[ENGINE_NOTES] ?? [];
     const kinds=new Map(notes.flatMap(note=>{const meta=engineNoteMeta(note); return meta ? [[note,meta] as const] : [];}));
     return kinds.size ? {...result,options:{...result.options,[ENGINE_NOTE_KINDS]:kinds}} : result;
-  },true),[stableData,stableOptions,variant,splits]);
+  },true),[stableData,compileOptions,variant,splits]);
+  const compiled=useMemo(()=>{
+    if (!ordinaryFolds || !expansion) return values;
+    const folded=new Set(values.depthCollapsed);
+    for (const id of expansion.expanded ?? []) folded.delete(id);
+    for (const id of expansion.collapsed ?? []) folded.add(id);
+    return {...values,options:{...values.options,expansion:{collapsed:[...folded]}}};
+  },[values,ordinaryFolds,expansion]);
 
   const maxDepth=compiled.maxDepth;
   if(!Number.isInteger(depth) || depth<1 || depth>maxDepth) throw new Error(`dimswitch depth must be between 1 and ${maxDepth}`);
