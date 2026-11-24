@@ -2676,11 +2676,7 @@ const TableRowCells = memo(function TableRowCells({
                 }}
                 after={<CollapsedHint row={row} collapsed={collapsed} count={childCount} levelNouns={levelNouns} />}
               />
-              <InlineLines
-                row={row}
-                column={column}
-                visibility={inlineVisibility}
-              />
+              {inlineLines({ row, column, visibility: inlineVisibility })}
             </div>
           );
         })
@@ -2772,9 +2768,12 @@ const GridValueCell = memo(function GridValueCell({ palette, row, column, colInd
         heatStyle(cell, column, heatLane, theme, measure, figures),
         { ...(pin === undefined ? {} : { pin }), ...(gridColumn === undefined ? {} : { gridColumn }) })}
     >
-      <CellContent cell={cell} column={column} row={row} barMaximum={barMaximum} spark={{ domain: sparkDomain, width: sparkWidth, theme, measure, palette }} />
+      {column.kind !== 'encoding' && column.cellEncoding === undefined && cell.kind !== 'status'
+        && cell.note === undefined && cell.href === undefined
+        ? <span className="bp-value">{cell.displayed}</span>
+        : <CellContent cell={cell} column={column} row={row} barMaximum={barMaximum} spark={{ domain: sparkDomain, width: sparkWidth, theme, measure, palette }} />}
       {labelNote ? <span className="bp-note-spacer" aria-hidden="true" /> : null}
-      <InlineLines row={row} column={column} visibility={inlineVisibility} noteLine={column.noteLine === true ? cell.note : undefined} />
+      {inlineLines({ row, column, visibility: inlineVisibility, noteLine: column.noteLine === true ? cell.note : undefined })}
     </div>
   );
 });
@@ -2786,7 +2785,7 @@ const GridValueCell = memo(function GridValueCell({ palette, row, column, colInd
  * both ways. A signed change carries its judgment tone; a share or a
  * year-on-year reference whispers.
  */
-function InlineLines({ row, column, visibility, noteLine }: {
+function inlineLines({ row, column, visibility, noteLine }: {
   row: ResolvedRow;
   column: ResolvedColumn;
   visibility: Record<Id, boolean>;
@@ -3310,7 +3309,7 @@ function CellContent({
   // A row-label note prints UNDER its label, at the ladder's inline step in
   // the muted ink, the way the SVG prints it. In a value or a text
   // column the note stays inline after the figure, unless the column asked
-  // for it on a line of its own, where `InlineLines` prints it.
+  // for it on a line of its own, where `inlineLines` prints it.
   const underLabel = column.kind === 'rowLabel' && cell.note !== undefined;
   const onItsOwnLine = underLabel || column.noteLine === true;
   // A hoisted unit is not a note and never takes a line of its own: it sits
