@@ -452,6 +452,41 @@ describe('grid anchors.categories across panel types', () => {
     expect(Math.abs(centreOf(grid, 't', 'Mar') - centreOf(grid, 'l', 'Mar'))).toBeLessThan(1);
   });
 
+  const eightMonths = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug'].map((label) => ({ id: label, label }));
+  const comboPanel = (id: string, valueLabels: string) => ({ id, type: 'combo', data: { categories: eightMonths, series: [
+    { id: 'col', label: 'Actual', values: [21000, 22000, 28000, 34000, 35000, 41000, 42000, 48000] },
+    { id: 'ln', label: 'Plan', kind: 'line', values: [22000, 23000, 29000, 30000, 36000, 42000, 43000, 49000] },
+  ] }, options: { valueAxis: { show: true, gridlines: true }, valueLabels } });
+
+  // Narrower category room printed the month names a step smaller (category-font-stepped) on a 320 px grid.
+  it('leaves a grid column as before when the inset would print names smaller', () => {
+    const grid = gridOf([
+      { ...comboPanel('a', 'all'), data: { categories: eightMonths, series: [
+        { id: 'col', label: 'Actual', values: [18, 24, 30, 31, 37, 38, 44, 50] },
+        { id: 'ln', label: 'Plan', kind: 'line', values: [19, 25, 26, 32, 38, 39, 45, 46] },
+      ] } },
+      comboPanel('b', 'last'),
+    ], { sharedScale: true, anchors: { categories: 'row' }, size: { width: 320, height: 520 } });
+    expect(grid.warnings.map((warning) => warning.code)).not.toContain('category-font-stepped');
+  });
+
+  // Narrower category room pushed the variance panel's month names up to 1.7 px off their columns.
+  it('leaves a grid column as before when the inset would move a name off its category', () => {
+    const grid = gridOf([
+      { id: 'v', type: 'variance', data: { categories: eightMonths, series: [
+        { id: 'ac', label: 'Actual', values: [18, 24, 30, 31, 37, 38, 44, 50] },
+        { id: 'py', label: 'Prior year', role: 'reference', scenario: 'PY', values: [20, 26, 27, 33, 34, 40, 46, 47] },
+      ] }, options: { valueAxis: { show: true, gridlines: true }, variant: 'absolute', variance: { of: 'ac', vs: 'py' } } },
+      comboPanel('c', 'all'),
+    ], { sharedScale: true, anchors: { plotEdges: 'all' }, size: { width: 320, height: 520 } });
+    const panel = (grid.marks as { panels: { id: string; chart?: { geometry: Geometry } }[] }).panels.find((candidate) => candidate.id === 'v')!.chart!.geometry;
+    const ticks = panel.axes.find((axis) => axis.axis === 'x')!.ticks;
+    for (const label of panel.labels.filter((candidate) => candidate.kind === 'category')) {
+      const tick = ticks.find((candidate) => candidate.at === label.owner?.categoryId)!;
+      expect(Math.abs(label.rect!.x + label.rect!.w / 2 - tick.pos)).toBeLessThan(0.6);
+    }
+  });
+
   // Stacked dot panels share a category axis down the plot: aligning their numeric value ticks as
   // categories halved the first plot and warned.
   it('leaves the value axis of stacked dot panels alone', () => {

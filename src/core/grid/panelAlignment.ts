@@ -52,6 +52,18 @@ function printedTexts(geometry: Geometry): Map<string, number> {
   return counts;
 }
 
+/** How far each category name sits from its category centre, by category id. */
+function nameOffsets(geometry: Geometry): Map<unknown, number> {
+  const ticks = geometry.axes.find((axis) => axis.axis === 'x')?.ticks ?? [];
+  const offsets = new Map<unknown, number>();
+  for (const label of geometry.labels) {
+    if (label.kind !== 'category' || !label.rect) continue;
+    const tick = ticks.find((candidate) => candidate.at === label.owner?.categoryId);
+    if (tick) offsets.set(tick.at, Math.abs(label.rect.x + label.rect.w / 2 - tick.pos));
+  }
+  return offsets;
+}
+
 /**
  * Every text printed before is still printed in the same role: a value that moves from its mark to the
  * legend is lost at the mark, and a value hidden for density is lost even when others appear.
@@ -69,7 +81,9 @@ const keepsTexts = (before: Map<string, number>, after: Map<string, number>) =>
  * for category anchors) nothing moves. A group keeps one plot rectangle only when it qualifies: every chart
  * panel is a column (grouped or stacked), a plain line, a combo or a variance panel, all hold the same
  * categories in the same order (two or more), every category centre sits at one x after the inset, the
- * edges settle, and no panel prints fewer texts of a role and wording than in its start drawing. A panel
+ * edges settle, and no panel prints fewer texts of a role and wording than in its start drawing, carries a
+ * warning its start drawing does not (smaller or rotated names or values), or moves a name more than 0.5 px
+ * further from its category. A panel
  * wider than the group's shared plot (rotated names) sets the group's edges.
  */
 export function alignCategoryPanels(
@@ -159,7 +173,15 @@ function keepsOnePlot(children: GridPanelLayout[], theme: ReturnType<typeof reso
     return candidates.every((child) => Math.abs(leftOf(child) - left) <= 0.01 && Math.abs(rightOf(child) - right) <= 0.01);
   };
 
-  const start = candidates.map((child) => ({ child, margin: child.margin, texts: printedTexts(child.geometry) }));
+  const start = candidates.map((child) => ({
+    child, margin: child.margin, texts: printedTexts(child.geometry),
+    warnings: new Set(child.geometry.warnings.map((warning) => warning.code)), names: nameOffsets(child.geometry),
+  }));
+  // The inset drawing prints every text of the start drawing, at the same size and turn, and each name stays on its category.
+  const keepsLabels = () => start.every(({ child, texts, warnings, names }) =>
+    keepsTexts(texts, printedTexts(child.geometry))
+    && child.geometry.warnings.every((warning) => warnings.has(warning.code))
+    && [...nameOffsets(child.geometry)].every(([at, offset]) => offset <= (names.get(at) ?? 0) + 0.5));
   alignCentres();
   // A panel that keeps more room than its margin gives it (rotated names) sets the group's plot:
   // the others follow its edges, and their categories move again inside the new plot.
@@ -177,7 +199,7 @@ function keepsOnePlot(children: GridPanelLayout[], theme: ReturnType<typeof reso
     const xs = candidates.map((child) => (tickOf(child, at) ? posOf(child, at) : Number.NaN));
     return xs.every(Number.isFinite) && maxOf(xs) - minOf(xs) <= 1;
   });
-  if (centred() && sameEdges() && sharedCentres() && start.every(({ child, texts }) => keepsTexts(texts, printedTexts(child.geometry)))) return true;
+  if (centred() && sameEdges() && sharedCentres() && keepsLabels()) return true;
   for (const { child, margin } of start) {
     child.margin = margin;
     child.anchored!.categoryInset = { left: 0, right: 0 };
