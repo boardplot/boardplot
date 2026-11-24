@@ -122,6 +122,19 @@ const partialWeekFixture: LineFixture = {
   },
 };
 
+const emptyToDateFixture: LineFixture = {
+  ...partialWeekFixture,
+  id: 'x-time-empty-to-date',
+  title: 'Weekly orders with the running value in the key and no partial-period wording',
+  options: {
+    ...partialWeekFixture.options,
+    title: 'Orders in the last week cover three days',
+    pointLabelSide: 'auto',
+    size: { width: 720 },
+    strings: { toDate: '' },
+  },
+};
+
 const rangeEdgesFixture: LineFixture = {
   id: 'x-time-range-edges',
   title: 'A daily line continues to both range edges between readings',
@@ -140,4 +153,4 @@ const rangeEdgesFixture: LineFixture = {
   },
 };
 
-export const continuousLineFixtures: LineFixture[] = [dailyFixture, berlinDstFixture, sensorFixture, trailFixture, partialWeekFixture, rangeEdgesFixture];
+export const continuousLineFixtures: LineFixture[] = [dailyFixture, berlinDstFixture, sensorFixture, trailFixture, partialWeekFixture, emptyToDateFixture, rangeEdgesFixture];

@@ -1393,7 +1393,7 @@ export const baseOptionsSchema = z.object({
       valueLineRange: z.string().min(1, 'valueLineRange must not be empty; use {v1} and {v2} for the formatted bounds').optional().describe("Tolerance-band bounds; {v1} and {v2} are the formatted bounds."),
       valueLineRangeKey: z.string().min(1).optional().describe("Key of a tolerance band on a column, bar or dot chart; {name} is the line's name and {range} the bounds."),
       valueLineRangeKeyPlain: z.string().min(1).optional().describe("Key of a tolerance band whose line has no name; {range} is the bounds."),
-      toDate: z.string().min(1).optional().describe("Text after a running category name in its key or note."),
+      toDate: z.string().optional().describe("Text after a partial period name or value. Set to an empty string to omit the words and their space."),
       forecast: z.string().min(1).optional().describe("Key for the forecast pattern."),
       plan: z.string().min(1).optional().describe("Key for the plan outline."),
       forecastHeader: z.string().min(1).optional().describe("Header at the actual-to-forecast boundary. Keeps the scenario code by default."),
@@ -1457,7 +1457,7 @@ export const baseOptionsSchema = z.object({
       rebaseMissing: z.string().min(1).optional().describe('Line or stacked-area series left out by rebase100 for a missing base; {series} and {period} are replaced.'),
       stackFrom: z.string().min(1).optional().describe("Metric stack focus look: the base value after the change; {v1} is the base value. English from {v1}."),
       stackAgainst: z.string().min(1).optional().describe('Metric stack focus look: the word between the focus and the base window in the header line. English against.'),
-      stackAverages: z.string().min(1).optional().describe('Metric stack focus look: the header sentence when a window holds more than one category; {v1} is the grain.'),
+      stackAverages: z.string().optional().describe('Averaging method in the focus header when a window spans several categories. {v1} is the grain. Set to an empty string to omit the sentence and its space.'),
     })
     .strict()
     .optional()

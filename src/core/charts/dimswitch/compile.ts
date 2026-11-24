@@ -44,14 +44,20 @@ export const hostPeriods = (data: DimSwitchData, options: DimSwitchOptions): Dim
 const noteName = (p: DimSwitchPeriod, options: DimSwitchOptions) =>
   (options.columnOverrides?.[p.kind ? 'range' : p.id]?.label ?? p.label).trim() || p.label;
 
+function partialPeriodText(periods: DimSwitchPeriod[], options: DimSwitchOptions, toDate: string): string {
+  if (periods.length === 0) return '';
+  const names = periods.map(period => noteName(period, options));
+  return toDate === '' ? names.map(name => name.trim()).filter(Boolean).join(', ') : `${names.join(', ')} ${toDate}`;
+}
+
 function periodNotes(options: DimSwitchOptions, strings: ReturnType<typeof localeStrings>, hidden: DimSwitchPeriod[],
-  partial: DimSwitchPeriod[], star: string, partialText: string, noteFits: boolean, nearZero: boolean): string[] {
+  star: string, partialText: string, noteFits: boolean, nearZero: boolean): string[] {
   const omitted = hidden.map(p => p.label);
   const full = stringFields(strings.hiddenPeriods, { periods: omitted.join(', ') });
   const listed = cappedItems(omitted, { notes: options.notes, strings });
   const short = stringFields(strings.hiddenPeriods, { periods: listed.join(', ') });
   return [
-    ...(partial.length && !noteFits ? [disclosureNote(`${star ? `${star} ` : ''}${partialText}`)] : []),
+    ...(partialText && !noteFits ? [disclosureNote(`${star ? `${star} ` : ''}${partialText}`)] : []),
     ...(nearZero ? [disclosureNote(strings.nearZeroChange)] : []),
     ...(hidden.length ? [engineNote(full, 'disclosure', short === full ? undefined : short)] : []),
   ];
@@ -1172,17 +1178,17 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   // The Range is a period too: a partial Range carries the star and enters the note.
   const partial=[...(rangeDrawn ? [range] : []),...periods].filter(p=>p.partial);
   // The star points at its note, so it prints only where the note does (notes.show lists 'disclosure'), and it needs a head to sit on.
-  const star=disclosuresShown(options) && options.columnHeads!==false ? '*' : '';
+  const partialText=partialPeriodText(partial,options,strings.toDate);
+  const star=partialText && disclosuresShown(options) && options.columnHeads!==false ? '*' : '';
   // Where the star's note does not print, a partial head says "to date" itself, unless its words already do.
-  const headSub=(p:DimSwitchPeriod)=>star || !p.partial || saysToDate(`${noteName(p,options)} ${p.subLabel ?? ''}`, strings.toDate) ? p.subLabel : p.subLabel ? `${p.subLabel} ${strings.toDate}` : strings.toDate;
-  const partialText=`${partial.map(p=>noteName(p,options)).join(', ')} ${strings.toDate}`;
+  const headSub=(p:DimSwitchPeriod)=>star || !p.partial || !strings.toDate || saysToDate(`${noteName(p,options)} ${p.subLabel ?? ''}`, strings.toDate) ? p.subLabel : p.subLabel ? `${p.subLabel} ${strings.toDate}` : strings.toDate;
   // With no head, nothing in the drawing says a window is partial, so the note prints as a note where the author does not print disclosures.
-  const partialNote=partial.length && options.columnHeads===false && !disclosuresShown(options) ? partialText : undefined;
+  const partialNote=partialText && options.columnHeads===false && !disclosuresShown(options) ? partialText : undefined;
   const shownKinds=shownNoteKinds(options);
   const noteFits=partialNote!==undefined && !(options as {[PARTIAL_NOTE_OFF]?:boolean})[PARTIAL_NOTE_OFF] && options.footnotes!==false && (shownKinds===undefined || shownKinds.includes('note')) && (options.notes?.placement ?? defaultNotePlacement(options.target))!=='list';
   if (partialNote!==undefined && !noteFits) warnings.push(partialNoteWarning(partialNote));
   if (noteFits) tableOptions.footnotes=[...(tableOptions.footnotes || []),partialNote];
-  const notes=periodNotes(options,strings,hidden,partial,star,partialText,noteFits,nearZeroSeen);
+  const notes=periodNotes(options,strings,hidden,star,partialText,noteFits,nearZeroSeen);
   // The table seats a unit affix beside left-aligned text. Under another alignment the unit stays with its label as plain text.
   if ((overrides?.label?.align ?? 'left')!=='left') for (const row of rows) if (row.unitAffix!==undefined) { row.label=`${row.label} ${row.unitAffix}`; delete row.unitAffix; }
   const blockTracks=[
@@ -1277,6 +1283,8 @@ export function projectDimSwitchCard(data: DimSwitchData, options: DimSwitchOpti
   const strings = { ...localeStrings(options.locale?.language), ...options.strings };
   const previousNotes = (wider.options as { [ENGINE_NOTES]?: string[] })[ENGINE_NOTES]!;
   // A partial card always has an omitted-period note, optionally preceded by the partial and near-zero disclosures.
+  // A note that loses its last visible name also loses its stars. Recompile the remaining heads in that case.
+  if (strings.toDate === '' && previousPartial.some(period => !noteName(period, options).trim())) return undefined;
   const nearZero = previousNotes.length > 1 + Number(previousPartial.length > 0);
   if (nearZero) {
     // A period's own change can keep the disclosure. Where only a block comparison or a removed period might
@@ -1291,8 +1299,8 @@ export function projectDimSwitchCard(data: DimSwitchData, options: DimSwitchOpti
     if (!stillSeen) return undefined;
   }
   const star = disclosuresShown(options) && options.columnHeads !== false ? '*' : '';
-  const partialText = `${partial.map(p => noteName(p, options)).join(', ')} ${strings.toDate}`;
-  const notes = periodNotes(options, strings, periods.slice(0, hide), partial, star, partialText, false, nearZero);
+  const partialText = partialPeriodText(partial, options, strings.toDate);
+  const notes = periodNotes(options, strings, periods.slice(0, hide), star, partialText, false, nearZero);
   const dropped = new Set(periods.slice(fromHide, hide).map(p => p.id));
   const columns = wider.data.columns.filter(col => !dropped.has(col.id));
   const cardOptions = { ...wider.options, [ENGINE_NOTES]: notes };

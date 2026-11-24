@@ -305,6 +305,24 @@ it('never refuses for an authored gutter width, at the cap or past it', () => {
   }
 });
 
+// An empty averages sentence must release its header row while the two comparison windows stay visible.
+it('removes the averages row when the stack averages word is empty', () => {
+  const fixture = metricStackFixtures.find(entry => entry.id === 'metric-stack-empty-averages')!;
+  const header = (strings: { stackAverages?: string }) => {
+    const result = render({ spec: { type: 'grid', data: fixture.data, options: { ...fixture.options, strings } }, return: ['svg'] });
+    expect(result.body, JSON.stringify(result.body.errors)).toMatchObject({ ok: true });
+    return new DOMParser().parseFromString(result.body.svg as string, 'image/svg+xml');
+  };
+  const empty = header({ stackAverages: '' });
+  const normal = header({});
+  const ruleY = (svg: Document) => Number(svg.querySelector('[data-id="stack:header-rule"]')!.getAttribute('y1'));
+  expect(normal.querySelector('[data-id="label:stack:averages"]')).not.toBeNull();
+  expect(empty.querySelector('[data-id="label:stack:averages"]')).toBeNull();
+  expect(empty.querySelector('[data-id="label:stack:focus"]')?.textContent).toBe('Q2 2026');
+  expect(empty.querySelector('[data-id="label:stack:base-window"]')?.textContent).toBe('Q1 2026');
+  expect(ruleY(empty)).toBeLessThan(ruleY(normal));
+});
+
 // The method line named the remaining-per-100 chain after the span that prints it was hidden.
 it('names only the figures that print in the method line', () => {
   const fixture = metricStackFixtures.find(f => f.id === 'metric-stack-steps')!;

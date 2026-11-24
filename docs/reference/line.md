@@ -446,5 +446,6 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | x-time-uneven-sensors | example | Uneven readings keep their spacing; a missing reading breaks the line (continuous time axis) |
 | x-number-trail | example | Elevation by distance on a plain-number x (continuous number axis) |
 | x-time-partial-week | example | Weekly orders with the running week marked by data.partial (continuous time axis) |
+| x-time-empty-to-date | example | Weekly orders with the running value in the key and no partial-period wording |
 | x-time-range-edges | example | A daily line continues to both range edges between readings |
 | log-axis-users | example | Users grow across orders of magnitude |

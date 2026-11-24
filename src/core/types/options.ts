@@ -202,7 +202,7 @@ export interface StringsSpec {
   valueLineRangeKey?: string;
   /** Key of a tolerance band whose line has no name. Fields: {range}. */
   valueLineRangeKeyPlain?: string;
-  /** Text after a running category name in its key or note. */
+  /** Text after a partial period name or value. Set to an empty string to omit the words and their space. */
   toDate?: string;
   /** Key for the forecast pattern. */
   forecast?: string;
@@ -322,7 +322,7 @@ export interface StringsSpec {
   stackFrom?: string;
   /** Metric stack focus look: the word between the focus and the base window in the header line. */
   stackAgainst?: string;
-  /** Metric stack focus look: the header sentence when a window holds more than one category; {v1} is the grain. */
+  /** Averaging method in the focus header when a window spans several categories. {v1} is the grain. Set to an empty string to omit the sentence and its space. */
   stackAverages?: string;
 }
 

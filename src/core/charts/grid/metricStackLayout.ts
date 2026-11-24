@@ -233,15 +233,17 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   const stateNotes: { maturing?: number; partial?: number } = {};
   const engineNumbers: number[] = [];
   const notesOff = frameTextOptions(options).footnotesOff;
-  const stateNote = (state: 'maturing' | 'partial', authored: string | undefined, engine: () => string) => {
+  const stateNote = (state: 'maturing' | 'partial', authored: string | undefined, engine: () => string | undefined) => {
+    const text = authored ?? engine();
+    if (text === undefined) return;
     // With footnotes off no value carries a marker, so an engine note prints unnumbered or not at all.
-    if (authored === undefined && (!disclosuresShown(options) || notesOff)) { listed.push(disclosureNote(engine())); return; }
+    if (authored === undefined && (!disclosuresShown(options) || notesOff)) { listed.push(disclosureNote(text)); return; }
     stateNotes[state] = notes.length + 1;
     if (authored === undefined) engineNumbers.push(notes.length + 1);
-    notes.push(authored ?? engine());
+    notes.push(text);
   };
   if (computed.maturing.length) stateNote('maturing', data.states?.maturing?.footnote, () => chartString(options, 'maturingCohortNote'));
-  if (partial.size) stateNote('partial', data.states?.partial?.footnote, () => partialFootnotes(data.categories, options.strings)[0]!);
+  if (partial.size) stateNote('partial', data.states?.partial?.footnote, () => partialFootnotes(data.categories, options.strings)[0]);
   const marker = (value: number | undefined) => value === undefined || notesOff ? '' : String(value).split('').map(c => '⁰¹²³⁴⁵⁶⁷⁸⁹'[Number(c)]).join('');
   const visibleValue = (p: ComputedStackPanel, i: number) => p.values[i] !== null;
   const hasProvisional = computed.panels.some(p => p.states.some((state, i) => state !== 'mature' && visibleValue(p, i)));
@@ -479,8 +481,8 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   const partialOnValues = computed.panels.some(p => p.panel.type === 'column' && computed.partial.some(i => p.values[i] !== null));
   // A running period with no marker to point at its note says "to date" on its axis name.
   const partialMark = marker(stateNotes.partial);
-  const toDate = ` ${options.strings?.toDate ?? localeStrings(options.locale?.language).toDate}`;
-  const categoryName = (c: (typeof data.categories)[number]) => c.label + (!c.partial ? '' : !partialMark ? (saysToDate(c.label, toDate.trim()) ? '' : toDate) : partialOnValues ? '' : partialMark);
+  const toDate = options.strings?.toDate ?? localeStrings(options.locale?.language).toDate;
+  const categoryName = (c: (typeof data.categories)[number]) => c.label + (!c.partial ? '' : !partialMark ? (toDate.trim() && !saysToDate(c.label, toDate.trim()) ? ` ${toDate}` : '') : partialOnValues ? '' : partialMark);
   const categoryBoxes = data.categories.map(c => periodAxis ? NO_BOX : textBox(categoryName(c), keyFont, (thin ? 2 : 1) * step - 3));
   const categoryHeight = maxOf(categoryBoxes.map(b=>b.h));
   const periodBoxes = data.periods?.map(period => {

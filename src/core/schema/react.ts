@@ -59,7 +59,7 @@ export const boardplotThemeOptionsSchema = z.object({
       mapCredit: true, gapBetween: true, aboveSeries: true, belowSeries: true,
     }).shape,
     average: z.string().optional().describe("Name before a computed mean; English Average, German Ø."),
-    toDate: z.string().optional().describe("Text after a running category name in its key or note."),
+    ...sharedStrings.pick({ toDate: true, stackAverages: true }).shape,
     forecast: z.string().optional().describe("Key for the forecast pattern."),
     plan: z.string().optional().describe("Key for the plan outline."),
     forecastHeader: z.string().optional().describe("Header at the actual-to-forecast boundary. Keeps the scenario code by default."),

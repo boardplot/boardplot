@@ -193,6 +193,7 @@ function xPartialWords(env: LineEnv, domain: LineDomain, area: LineArea, reserve
   const { cats, options } = domain;
   if (!domain.x || !area.xTicks || disclosuresShown(options)) return {};
   const text = options.strings?.toDate ?? chartString(options, 'toDate');
+  if (text === '') return {};
   const shown = cats.flatMap((c, ci) => c.partial === true && !onValues.has(c.id) && !saysToDate(c.label ?? c.id, text)
     && domain.drawnSeries.some((s) => (s.vals[ci]?.v ?? null) !== null && !(reserves.keyValues.has(s.id) && domain.lastIdxOf.get(s.id) === ci))
     ? [{ at: domain.x!.model.xs[ci]!, name: c.label ?? c.id }] : []);

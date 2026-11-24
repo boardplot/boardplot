@@ -332,3 +332,4 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | metric-stack-per-unit | example | Metric stack: cost per order computed from spend and orders |
 | metric-stack-focus | example | Metric stack: the focus look, with the latest week against the first |
 | metric-stack-focus-shares | example | Metric stack: the focus look by month, with segment shares |
+| metric-stack-empty-averages | example | A focus stack compares two quarters without an averages sentence |
