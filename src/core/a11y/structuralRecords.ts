@@ -41,9 +41,8 @@ function tableValue(options: RecordContext['request']['options'], cell: Resolved
     cell.kind === 'value' || cell.kind === 'computed' ? 'number' : 'text';
   const rowFormat = row.calc !== undefined || !columnFormatAuthored ? row.format : undefined;
   const own = cell.format ?? rowFormat;
-  const columnFormat = cell.columnFormat ?? column;
-  const format = own ?? columnFormat.format;
-  const unit = columnFormat.unitLabel && own === undefined ? columnFormat.unitLabel : undefined;
+  const format = own ?? column.format;
+  const unit = column.unitLabel && own === undefined ? column.unitLabel : undefined;
   const computed = cell.kind === 'computed' || (kind === 'number' && (row.calc !== undefined || row.rollUp === true));
   // A computed percentage (a share, a change in %) is a derived percentage:
   // the accessible table reads it as the hover card reads a share ("6.12%").
@@ -60,7 +59,7 @@ function tableValue(options: RecordContext['request']['options'], cell: Resolved
       ...(unit ? { unit } : {}),
       // The head's "M" or "$k" scales the printed figure; the raw value is in units. Resolve says whether
       // it does: a literal suffix ('1,234 EURk') prints the raw figure, so its unit stays whole.
-      ...(unit && columnFormat.unitScaled && unscaledUnit(unit) !== unit ? { scaledUnit: true as const } : {}),
+      ...(unit && column.unitScaled && unscaledUnit(unit) !== unit ? { scaledUnit: true as const } : {}),
       ...(computed ? { derived: 'number' as const } : {}),
     }),
     ...(cell.state !== 'value' ? { reason: cell.state === 'suppressed' ? chartString(options, 'valueWithheld') : cell.state === 'open' ? chartString(options, 'openPeriod') : cell.state } : {}),
