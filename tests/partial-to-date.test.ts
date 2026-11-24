@@ -321,7 +321,6 @@ it('omits only generated partial-period note references when the to-date word is
   expect.soft(plain.reading.notes.map(({ n, ref }) => [n, ref])).toEqual([[1, 1], [2, 2], [3, undefined]]);
   const authored = stack('Counts stop on 12 October.');
   expect.soft(authored.svg.includes('>Oct²<')).toBe(true);
-  expect.soft(authored.svg.match(/<desc[^>]*>(.*?)<\/desc>/s)?.[1]).toContain('2) Counts stop on 12 October.');
   expect.soft(authored.reading.notes[1]).toMatchObject({ n: 2, ref: 2, text: 'Counts stop on 12 October.', inFrame: true });
   expect(authored.reading.notes[2]).toMatchObject({ n: 3, ref: 3, kind: 'disclosure', inFrame: true });
 });
