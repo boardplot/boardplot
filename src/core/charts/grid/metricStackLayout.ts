@@ -78,8 +78,9 @@ function everyFocus(data: MetricStackData, raw: object, locale: string | undefin
 }
 
 /** A readout as far as it prints: a hidden seat leaves no claim, and an operand goes with the last figure that used it. */
-function printedReadout(readout: StackReadout, showHeadline: boolean, showSpan: boolean, look: boolean): StackReadout {
-  if (showHeadline && showSpan) return readout;
+function printedReadout(readout: StackReadout, showHeadline: boolean, showSpan: boolean, look: boolean,
+  partial?: { categoryId: string; valueText: string; wording: string; available: boolean; shares: readonly { claimId: string }[] }): StackReadout {
+  if (!partial && showHeadline && showSpan) return readout;
   const byId = new Map(readout.claims.map(claim => [claim.id, claim]));
   const kept = new Set<string>();
   const keep = (id: string) => {
@@ -89,6 +90,14 @@ function printedReadout(readout: StackReadout, showHeadline: boolean, showSpan: 
     claim.inputs.forEach(input => keep(input.ref));
   };
   const panel = `stack:${readout.panelId}`;
+  if (partial) {
+    if (partial.available) keep(`${panel}:after`);
+    partial.shares.forEach(share => keep(share.claimId));
+    readout.claims.forEach(claim => { if (claim.id.startsWith(`${panel}:segment:`)) keep(claim.id); });
+    return { ...readout, method: 'to-date', categoryIds: { partial: [partial.categoryId] },
+      headline: null, before: null, after: partial.available ? readout.after : null, headlineText: '', spanText: '',
+      partial: { valueText: partial.valueText, wording: partial.wording }, claims: readout.claims.filter(claim => kept.has(claim.id)) };
+  }
   if (showHeadline) { keep(`${panel}:headline`); keep(`${panel}:rate`); }
   if (showSpan) { keep(`${panel}:before`); keep(`${panel}:after`); }
   // The focus look prints the value and the shares always.
@@ -146,9 +155,12 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   const look = stack.variant === 'focus' && data.panels.every(p => p.readout === 'change');
   // In React a pointer or the keyboard moves the focus to one category, which then draws as the compare window.
   const pointed = look ? (stack as { [STACK_FOCUS]?: string })[STACK_FOCUS] : undefined;
-  const focusCategory = pointed === undefined ? undefined : data.categories.find(c => c.id === pointed);
+  const focusIndex = pointed === undefined ? -1 : data.categories.findIndex(c => c.id === pointed);
+  const focusCategory = data.categories[focusIndex];
+  const focusPartial = focusCategory?.partial === true;
   const focusWindow: StackRange | undefined = focusCategory ? { from: focusCategory.id, to: focusCategory.id, label: focusCategory.label || focusCategory.id } : data.windows?.compare;
   const showUnit = stack.columnVisibility?.unit !== false, showHeadline = stack.columnVisibility?.headline !== false, showSpan = stack.columnVisibility?.span !== false;
+  const hasLine = showHeadline || showSpan;
   const gutterAfter = (() => { const order = stack.columnOrder ?? [], plotAt = order.indexOf('plot'), gutterAt = order.indexOf('gutter'); return plotAt >= 0 && (gutterAt < 0 || plotAt < gutterAt); })();
   if (stack.heights && options.rows) stackError('options', 'Use stack.heights or rows, not both');
   if (stack.heights && stack.heights.length !== data.panels.length || options.rows && options.rows.length !== data.panels.length) stackError('options', 'Supply one height or row weight per panel');
@@ -157,6 +169,8 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   const theme = themeForWidth(fullTheme, resolveSize(options.size).width);
   const measure = options.measure ?? defaultMeasurer;
   const na = notApplicableGlyph(options.strings);
+  const toDate = options.strings?.toDate ?? localeStrings(options.locale?.language).toDate;
+  const runningWording = toDate.trim();
   const computed = computeMetricStack(focusCategory ? withCompareWindow(data, focusWindow!) : data, options.locale?.language, na, look);
   const font = (role: 'label' | 'axis' | 'title' | 'footnote', weight?: number): FontSpec => ({ family: theme.type.family, ...theme.type[role], ...(weight ? { weight } : {}) });
   const valueFont = font('label', 700), nameFont = font('label', 700), unitFont = font('axis'), heroFont = font('title', 700), axisFont = font('axis'), noteFont = font('footnote');
@@ -186,39 +200,59 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   // "from {v1}": the words around the base value, which prints as a label of its own with its claim.
   const fromTemplate = chartString(options, 'stackFrom', { v1: '\u0000' }), fromAt = fromTemplate.indexOf('\u0000');
   const fromWords = fromAt < 0 ? [`${fromTemplate} `, ''] : [fromTemplate.slice(0, fromAt), fromTemplate.slice(fromAt + 1)];
-  const focusText = (p: ComputedStackPanel) => {
+  const focusText = (p: ComputedStackPanel, partial = false) => {
     const end = (key: string) => p.readout.claims.find(c => c.id === `stack:${p.panel.id}:${key}`)!.output;
-    const after = end('after'), before = end('before'), line = after.raw !== null;
+    const after = end('after');
+    if (partial) {
+      const available = p.values[focusIndex] !== null && after.raw !== null;
+      return { value: available ? sign(p, after.displayed) : na, change: '', from: '', base: '', toDate: hasLine ? runningWording : '', shares: available ? p.shares ?? [] : [] };
+    }
+    const before = end('before'), line = after.raw !== null;
     const base = before.raw === null ? na : sign(p, before.displayed);
     return { value: line ? sign(p, after.displayed) : na, change: line && showHeadline ? p.readout.headlineText : '',
-      from: line && showSpan ? `${fromWords[0]}${base}${fromWords[1]}` : '', base: line && showSpan ? base : '', shares: p.shares ?? [] };
+      from: line && showSpan ? `${fromWords[0]}${base}${fromWords[1]}` : '', base: line && showSpan ? base : '', toDate: '', shares: p.shares ?? [] };
   };
-  const texts = look ? computed.panels.map(focusText) : [];
+  const texts = look ? computed.panels.map(p => focusText(p, focusPartial)) : [];
   // The layout holds still while the focus moves: the gutter and every panel take the widest text of any focus.
-  const variants = look ? everyFocus(data, raw, options.locale?.language, na).map(c => c.panels.map(focusText)) : [];
-  const lineWidth = (t: (typeof texts)[number]) => (t.change ? measure(t.change, changeFont).width : 0) + (t.change && t.from ? measure(' ', fromFont).width : 0) + (t.from ? measure(t.from, fromFont).width : 0);
-  const hasLine = showHeadline || showSpan;
-  const lookWidths = computed.panels.map((_, i) => ({
-    value: maxOf(variants.map(v => measure(v[i]!.value, displayValueFont).width)),
-    line: maxOf(variants.map(v => lineWidth(v[i]!))),
-    share: maxOf(variants.flatMap(v => v[i]!.shares.map(share => measure(share.text, keyFont).width))),
-  }));
-  const minGutter = look
+  const variants = look ? everyFocus(data, raw, options.locale?.language, na).map(c => c.panels.map(p => focusText(p))) : [];
+  const lineWidth = (t: (typeof texts)[number]) => t.toDate ? measure(t.toDate, fromFont).width
+    : (t.change ? measure(t.change, changeFont).width : 0) + (t.change && t.from ? measure(' ', fromFont).width : 0) + (t.from ? measure(t.from, fromFont).width : 0);
+  // Reserve the running period's wording and unavailable value even at rest.
+  const runningLineWidth = look && hasLine && computed.partial.length && runningWording ? measure(runningWording, fromFont).width : 0;
+  const unavailableWidth = look && computed.partial.length ? measure(na, displayValueFont).width : 0;
+  const lookWidths = look ? computed.panels.map((p, i) => {
+    const values = variants.map(v => measure(v[i]!.value, displayValueFont).width);
+    return {
+      value: maxOf(values),
+      line: maxOf(variants.map(v => lineWidth(v[i]!))),
+      share: maxOf(variants.flatMap(v => v[i]!.shares.map(share => measure(share.text, keyFont).width))),
+      runningValue: maxOf(computed.partial.map(ci => p.values[ci] === null ? unavailableWidth : values[ci + 1]!)),
+    };
+  }) : [];
+  const baseMinGutter = look
     ? Math.ceil(Math.max(120, maxOf(computed.panels.map((p,i) => Math.max(lookWidths[i]!.value, lookWidths[i]!.line,
       ...(showUnit ? `${p.panel.title} ${p.panel.unit}` : p.panel.title).split(/\s+/).map(word => measure(word, nameFont).width))))) + 4)
     : Math.ceil(Math.max(120, maxOf(computed.panels.map((p,i) => Math.max(showSpan ? spanWidths[i]! : 0, showHeadline ? measure(p.readout.headlineText, heroFont).width : 0,
     ...(showUnit ? `${p.panel.title} ${p.panel.unit}` : p.panel.title).split(/\s+/).map(word => measure(word, nameFont).width))))) + 4);
+  const minGutter = Math.max(baseMinGutter, Math.ceil(Math.max(runningLineWidth, maxOf(lookWidths.map(widths => widths.runningValue))) + 4));
   const nameWidth = Math.ceil(maxOf(computed.panels.flatMap(p => p.panel.title.split('\n').map(line => measure(line, nameFont).width)))) + 4;
   // Keep normal names on one line; cap name-driven growth so prose still wraps.
   // A compact readout holds the headline and the span on one line; the span sits on the headline's baseline and ends below the headline's own height.
   const heroBlock = !showHeadline ? (showSpan ? heightOf(unitFont) : 0) : !showSpan ? heroFont.size : Math.max(heroFont.size, heightOf(heroFont) / 2 + heightOf(unitFont) / 2 + 0.36 * (heroFont.size - unitFont.size));
   const oneLine = (p: ComputedStackPanel, i: number) => !showHeadline ? (showSpan ? spanWidths[i]! : 0) : !showSpan ? measure(p.readout.headlineText, heroFont).width : measure(p.readout.headlineText, heroFont).width + 3 * spanSpace + spanWidths[i]!;
   // A compact focus look holds the value and its change line on one line.
-  const lookLine = (i: number) => lookWidths[i]!.value + (hasLine ? 3 * spanSpace + lookWidths[i]!.line : 0);
-  const compactFloor = !compactReadout ? 0 : Math.ceil(maxOf(computed.panels.map((p, i) => look ? lookLine(i) : oneLine(p, i))) + 4);
+  const lookLine = (i: number, reserveRunning = true) => {
+    const { value, line, runningValue } = lookWidths[i]!;
+    const comparisonWidth = value + (hasLine ? 3 * spanSpace + line : 0);
+    const runningWidth = runningValue + (runningLineWidth ? 3 * spanSpace + runningLineWidth : 0);
+    return reserveRunning ? Math.max(comparisonWidth, runningWidth) : comparisonWidth;
+  };
+  const baseCompactFloor = !compactReadout ? 0 : Math.ceil(maxOf(computed.panels.map((p, i) => look ? lookLine(i, false) : oneLine(p, i))) + 4);
+  const compactFloor = compactReadout && look ? Math.ceil(maxOf(lookWidths.map((_, i) => lookLine(i))) + 4) : baseCompactFloor;
   // The focus look keeps the name and the unit on one line where a gutter of at most 320 px holds them.
   const nameUnitWidth = look ? Math.ceil(maxOf(computed.panels.map(p => measure(p.panel.title, nameFont).width + (showUnit ? 2 * spanSpace + measure(p.panel.unit, keyFont).width : 0)))) + 4 : 0;
-  const defaultGutter = Math.max(170, minGutter, Math.min(320, Math.max(nameWidth, nameUnitWidth)), compactFloor);
+  const baseGutter = Math.max(170, baseMinGutter, Math.min(320, Math.max(nameWidth, nameUnitWidth)), baseCompactFloor);
+  const preferredGutter = Math.max(baseGutter, minGutter, compactFloor);
   // The focus look prints each panel's base level at the left end of its dashed base line, 8 px left of the plot,
   // as a bare number like the marks. The air between the readout and the plot holds the widest of them.
   const baseFont = font('label');
@@ -417,12 +451,15 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
     });
     return { boxes, keys, heights };
   };
+  const widest = frame.plot.w - gutterGap - valueRoom;
+  // A running readout can use the empty gap beside the plot when the base labels are hidden.
+  const defaultGutter = baseGutter <= widest && preferredGutter > widest && preferredGutter <= widest + gutterGap
+    ? Math.floor(widest) : preferredGutter;
   const atDefault = gutterAt(defaultGutter);
   // A readout also moves above its panel where its gutter block is taller than an authored plot height.
   // The authored gutter does not change this choice.
   const narrow = frame.plot.w - defaultGutter - gutterGap < valueRoom || atDefault.heights.some((h, i) => stack.heights !== undefined && Math.ceil(h) > stack.heights[i]!);
   const authoredGutter = narrow ? undefined : stack.columnOverrides?.gutter?.width;
-  const widest = frame.plot.w - gutterGap - valueRoom;
   // A narrower gutter that makes a readout taller gives way on a canvas or plot that cannot grow.
   const heldHeight = !automatic || stack.heights !== undefined || options.rows !== undefined;
   const fitGutter = (width: number) => {
@@ -449,6 +486,10 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   const trackW = narrow ? frame.plot.w : gutter;
   const trackAlign = narrow ? undefined : stack.columnOverrides?.gutter?.align;
   const seat = (w: number) => (trackAlign === 'right' ? trackX + trackW - w : trackAlign === 'center' ? trackX + (trackW - w) / 2 : trackX);
+  const focusSeat = (w: number) => {
+    if (!focusPartial || narrow || w <= trackW) return seat(w);
+    return onRight ? frame.plot.x + frame.plot.w - w : trackX;
+  };
   const step = plotW / data.categories.length;
   const minimumWidth = Math.ceil(size.width - plotW + (thin ? thinnedRoom : valueRoom));
   // Let the shared sizing pass verify the wider frame and return its size fix.
@@ -493,7 +534,6 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   const partialOnValues = computed.panels.some(p => p.panel.type === 'column' && computed.partial.some(i => p.values[i] !== null));
   // A running period with no marker to point at its note says "to date" on its axis name.
   const partialMark = marker(stateNotes.partial);
-  const toDate = options.strings?.toDate ?? localeStrings(options.locale?.language).toDate;
   const categoryName = (c: (typeof data.categories)[number]) => {
     const label = c.label ?? c.id;
     if (!c.partial) return label;
@@ -592,18 +632,20 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
     const focus = at(focusWindow!.label, focusLabelFont);
     // The label role keeps the full ink, as a panel name does; a secondary annotation would print muted.
     put('stack:focus', focusWindow!.label, focusLabelFont, { x: hx, y: lineY, ...focus }, {}, { token: 'ink' }, 'label', 'annotation');
-    hx += focus.w + header.sp;
-    const against = at(header.against, keyFont);
-    put('stack:against', header.against, keyFont, { x: hx, y: lineY, ...against }, {}, muted, 'secondary', 'annotation');
-    hx += against.w + header.sp;
-    scene.push({ t: 'line', id: 'stack:base-key', x1: hx, x2: hx + header.dashW, y1: lineY + heightOf(keyFont) / 2, y2: lineY + heightOf(keyFont) / 2, stroke: baseStroke, width: strokeToken(theme, 'rule'), dash: dashToken(theme, 'reference'), owner: {}, part: 'baseKey' });
-    hx += header.dashW + header.sp;
-    const base = at(header.base, keyFont);
-    put('stack:base-window', header.base, keyFont, { x: hx, y: lineY, ...base }, {}, muted, 'secondary', 'annotation');
-    hx += base.w;
-    if (header.averages) {
-      const box = header.sentence;
-      put('stack:averages', header.averages, keyFont, header.beside ? { x: hx + 2 * header.sp, y: lineY, w: box.w, h: box.h } : { x: frame.plot.x, y: lineY + heightOf(keyFont), w: box.w, h: box.h }, {}, muted, 'secondary', 'annotation', box.lines);
+    if (!focusPartial) {
+      hx += focus.w + header.sp;
+      const against = at(header.against, keyFont);
+      put('stack:against', header.against, keyFont, { x: hx, y: lineY, ...against }, {}, muted, 'secondary', 'annotation');
+      hx += against.w + header.sp;
+      scene.push({ t: 'line', id: 'stack:base-key', x1: hx, x2: hx + header.dashW, y1: lineY + heightOf(keyFont) / 2, y2: lineY + heightOf(keyFont) / 2, stroke: baseStroke, width: strokeToken(theme, 'rule'), dash: dashToken(theme, 'reference'), owner: {}, part: 'baseKey' });
+      hx += header.dashW + header.sp;
+      const base = at(header.base, keyFont);
+      put('stack:base-window', header.base, keyFont, { x: hx, y: lineY, ...base }, {}, muted, 'secondary', 'annotation');
+      hx += base.w;
+      if (header.averages) {
+        const box = header.sentence;
+        put('stack:averages', header.averages, keyFont, header.beside ? { x: hx + 2 * header.sp, y: lineY, w: box.w, h: box.h } : { x: frame.plot.x, y: lineY + heightOf(keyFont), w: box.w, h: box.h }, {}, muted, 'secondary', 'annotation', box.lines);
+      }
     }
   } else put('stack:read-logic', readLogic, keyFont, {x:frame.plot.x,y:frame.plot.y,w:readLogicBox.w,h:readLogicBox.h}, {}, muted, 'secondary', 'annotation', readLogicBox.lines);
   if (hasMethod) scene.push({t:'line',id:'stack:header-rule',x1:frame.plot.x,x2:frame.plot.x+frame.plot.w,y1:frame.plot.y+readLogicBox.h+10,y2:frame.plot.y+readLogicBox.h+10,stroke:{token:'grid'},width:strokeToken(theme, 'hair'),owner:{},part:'headerRule'});
@@ -612,7 +654,11 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   const tops: number[] = [];
   let y = frame.plot.y + topRoom;
   heights.forEach((h,i) => { tops.push(y); y += heads?.[i]!.h ?? 0; plots.push({ x:plotX,y,w:plotW,h }); y+=h+gap; });
-  const derived: MetricStackDerived = { gap,gutterWidth:narrow?0:gutter,axisOwner:data.panels.at(-1)!.id,readouts:computed.panels.map(p=>printedReadout(p.readout,showHeadline,showSpan,look)),panels:[] };
+  const readouts = computed.panels.map((p, i) => printedReadout(p.readout, showHeadline, showSpan, look, focusPartial ? {
+    categoryId: focusCategory.id, valueText: texts[i]!.value, wording: runningWording,
+    available: p.values[focusIndex] !== null, shares: texts[i]!.shares,
+  } : undefined));
+  const derived: MetricStackDerived = { gap,gutterWidth:narrow?0:gutter,axisOwner:data.panels.at(-1)!.id,readouts,panels:[] };
   let bandLabelHeight = 0;
   if (computed.maturing.length) {
     const scope = data.states!.maturing!;
@@ -683,11 +729,13 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
       const t = texts[pi]!, vf = displayValueFont, vw = measure(t.value, vf).width, lw = lineWidth(t);
       const claimOf = (key: string) => p.readout.claims.find(c => c.id === `stack:${p.panel.id}:${key}`)!.id;
       const beside = hasLine && (head ? head.spanBeside : compactReadout);
-      const vx = seat(beside ? vw + 3 * spanSpace + lw : vw);
-      put(`${p.panel.id}:after`, t.value, vf, { x: vx, y: gy, w: vw, h: heightOf(vf) }, owner, { token: 'ink' }, 'title', 'point', [t.value], claimOf('after'));
+      const vx = focusSeat(beside && (!focusPartial || t.toDate) ? vw + 3 * spanSpace + lw : vw);
+      const valueClaim = !focusPartial || p.values[focusIndex] !== null ? claimOf('after') : undefined;
+      put(`${p.panel.id}:after`, t.value, vf, { x: vx, y: gy, w: vw, h: heightOf(vf) }, owner, { token: 'ink' }, 'title', 'point', [t.value], valueClaim);
       // Beside the value the line shares its baseline: half a cap height (about 0.36 em) per size step.
-      let lx = beside ? vx + vw + 3 * spanSpace : seat(lw);
+      let lx = beside ? vx + vw + 3 * spanSpace : focusSeat(lw);
       const ly = beside ? gy + heightOf(vf) / 2 - heightOf(changeFont) / 2 + 0.36 * (vf.size - changeFont.size) : gy + heightOf(vf) + (head ? 6 : 4);
+      if (t.toDate) put(`${p.panel.id}:to-date`, t.toDate, fromFont, { x: lx, y: ly, w: lw, h: heightOf(fromFont) }, owner, muted, 'label', 'point', [t.toDate]);
       if (t.change) {
         const w = measure(t.change, changeFont).width;
         put(`${p.panel.id}:headline`, t.change, changeFont, { x: lx, y: ly, w, h: heightOf(changeFont) }, owner, { token: 'ink' }, 'label', 'point', [t.change], claimOf('headline'));
@@ -753,7 +801,7 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
     // base level at its left end. None where the base value is not available.
     const level = look ? baseLevel(p) : null, baseText = baseTexts[pi];
     const baseLine = () => {
-      if (level === null || baseText === undefined) return;
+      if (focusPartial || level === null || baseText === undefined) return;
       const by = py(level), bw = measure(baseText, baseFont).width;
       emit({ t: 'line', id: `${p.panel.id}:base-line`, x1: plotX, x2: plotX + plotW, y1: by, y2: by, stroke: baseStroke, width: strokeToken(theme, 'rule'), dash: dashToken(theme, 'reference'), owner, part: 'baseLine' });
       put(`${p.panel.id}:base-value`, baseText, baseFont, { x: plotX - 8 - bw, y: by - heightOf(baseFont) / 2, w: bw, h: heightOf(baseFont) }, owner, muted, 'label', 'point', [baseText],
@@ -894,8 +942,11 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   const segmentShares=new Set(computed.panels.flatMap(p=>(p.segmentShares??[]).flatMap(column=>column?.map(share=>share.claimId)??[])));
   if(segmentShares.size) derived.readouts=derived.readouts.map(readout=>({...readout,claims:readout.claims.map(claim=>segmentShares.has(claim.id)&&!requested.has(claim.id)?{...claim,output:{...claim.output,displayed:''}}:claim)}));
   const unprinted=derived.readouts.flatMap(readout=>readout.claims.filter(claim=>!requested.has(claim.id)).map(claim=>claim.id));
+  const readoutDescription = look ? computed.panels.map((p, i) => {
+    const { value, change, from } = texts[i]!;
+    return `${p.panel.title}: ${[value, ...[change, from, readouts[i]!.partial?.wording].filter(Boolean)].join(' ')}.`;
+  }).join(' ') : !hasMethod ? '' : computed.panels.map(p=>`${p.panel.title}: ${[...(showHeadline?[p.readout.headlineText]:[]),...(showSpan?[p.readout.spanText]:[])].join('; ')}.`).join(' ');
   return withUnprintedClaims<Geometry<GridMarks, GridDerived>>({type:'grid',size,plot:frame.plot,scene,labels:solved.placed,axes:[{axis:'x',baselineNodeId:`${data.panels.at(-1)!.id}:baseline`,ticks:data.categories.map((c,i)=>({at:c.id,pos:plotX+(i+0.5)*step,...(periodAxis || c.label === '' ? {} : {labelId:`stack:category:${c.id}`})}))}],annotations:[],frame:frame.frame,legend:frame.legend,marks,derived:{metricStack:derived,sharedPlotX:plotX,sharedPlotW:plotW,tierGap:gap},
     sizing:{aspect:'content',fit:'content',minWidth:size.width,minHeight,measuredMinWidth:size.width,measuredMinHeight:minHeight,naturalWidth:size.width,naturalHeight,comfortableWidth:size.width,comfortableHeight:naturalHeight},
-    a11y:{title:accessibleTitle(options.title,chartString(options, 'metricStackTitle', { v1: data.panels.length })),counts,desc:chartString(options, 'metricStackDesc', { v1: counts.map(c=>c.text).join(', '), v2: data.panels.map(p=>p.title).join('; '), v3: look ? computed.panels.map((p,i)=>`${p.panel.title}: ${[texts[i]!.value,...(texts[i]!.change?[texts[i]!.change]:[]),...(texts[i]!.from?[texts[i]!.from]:[])].join(' ')}.`).join(' ')
-      : !hasMethod ? '' : computed.panels.map(p=>`${p.panel.title}: ${[...(showHeadline?[p.readout.headlineText]:[]),...(showSpan?[p.readout.spanText]:[])].join('; ')}.`).join(' ') })},warnings:[...solved.warnings,...stackColumnWarnings(stack,narrow,gutterFloored,gutterCapped,stack.variant==='focus'&&!look),...segmentShareWarnings(data,look)],debug:{occupied:occupied.snapshot(),decisions:solved.decisions}},unprinted);
+    a11y:{title:accessibleTitle(options.title,chartString(options, 'metricStackTitle', { v1: data.panels.length })),counts,desc:chartString(options, 'metricStackDesc', { v1: counts.map(c=>c.text).join(', '), v2: data.panels.map(p=>p.title).join('; '), v3: readoutDescription })},warnings:[...solved.warnings,...stackColumnWarnings(stack,narrow,gutterFloored,gutterCapped,stack.variant==='focus'&&!look),...segmentShareWarnings(data,look)],debug:{occupied:occupied.snapshot(),decisions:solved.decisions}},unprinted);
 }

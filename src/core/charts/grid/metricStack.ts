@@ -58,14 +58,15 @@ export type StackState = 'mature' | 'maturing' | 'partial';
 type StackGrain = 'day' | 'week' | 'month' | 'quarter' | 'year' | 'category';
 export interface StackReadout {
   panelId: string;
-  method: 'average-change' | 'ratio-change' | 'rounded-rate-change' | 'weighted-rate';
+  method: 'average-change' | 'ratio-change' | 'rounded-rate-change' | 'weighted-rate' | 'to-date';
   grain: StackGrain;
-  categoryIds: { base: string[]; compare: string[] } | { mature: string[] };
+  categoryIds: { base: string[]; compare: string[] } | { mature: string[] } | { partial: string[] };
   headline: number | null;
   before: number | null;
   after: number | null;
   headlineText: string;
   spanText: string;
+  partial?: { valueText: string; wording: string };
   claims: ClaimRecordV1[];
 }
 export interface ComputedStackPanel {

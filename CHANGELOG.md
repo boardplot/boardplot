@@ -34,6 +34,7 @@ Boardplot is in 0.x: options and output can change between minor versions. Each 
 - Grid categories accept ISO dates and empty axis labels, with a fallback name in hover cards, screen reader text, readings and notes.
 - React dimension-switch tables show a refusal card and report the CLI diagnostic when an invalid ID prevents the table from drawing.
 - A selected column value that would be hidden by the period name prints with the name at the column end and prints alone if the pair is too wide.
+- Focus-look metric stacks show to-date values and leave out the full-period comparison when a running period gets focus.
 
 ## 0.63.0
 
