@@ -58,14 +58,15 @@ export type StackState = 'mature' | 'maturing' | 'partial';
 type StackGrain = 'day' | 'week' | 'month' | 'quarter' | 'year' | 'category';
 export interface StackReadout {
   panelId: string;
-  method: 'average-change' | 'ratio-change' | 'rounded-rate-change' | 'weighted-rate';
+  method: 'average-change' | 'ratio-change' | 'rounded-rate-change' | 'weighted-rate' | 'to-date';
   grain: StackGrain;
-  categoryIds: { base: string[]; compare: string[] } | { mature: string[] };
+  categoryIds: { base: string[]; compare: string[] } | { mature: string[] } | { partial: string[] };
   headline: number | null;
   before: number | null;
   after: number | null;
   headlineText: string;
   spanText: string;
+  partial?: { valueText: string; wording: string };
   claims: ClaimRecordV1[];
 }
 export interface ComputedStackPanel {
@@ -264,7 +265,7 @@ export function withCompareWindow(data: MetricStackData, window: StackRange): Me
 }
 
 /** `shares`: the focus look, which keys each measure of a stacked panel with its share of the compare window. */
-export function computeMetricStack(data: MetricStackData, locale?: string, na = NOT_AVAILABLE, shares = false): ComputedMetricStack {
+export function computeMetricStack(data: MetricStackData, locale?: string, na = NOT_AVAILABLE, shares = false, partialFocus = false): ComputedMetricStack {
   const grain = metricStackGrain(data);
   const measures = new Map(data.measures.map(m => [m.id, m]));
   const maturing = data.states?.maturing ? stackRange(data, data.states.maturing) : [];
@@ -344,7 +345,7 @@ export function computeMetricStack(data: MetricStackData, locale?: string, na = 
       // The span prints in the marks' unit: divided by the panel divisor.
       const divisor = panel.divisor ?? 1, suffix = isRate ? '%' : '';
       const scaledRaw = (operand: ClaimRecordV1) => operand.output.raw === null ? null : operand.output.raw / divisor;
-      const spanEnd = print.span([scaledRaw(startOperand), scaledRaw(endOperand)], suffix);
+      const spanEnd = print.span(partialFocus ? [scaledRaw(endOperand)] : [scaledRaw(startOperand), scaledRaw(endOperand)], suffix);
       const endpoint = (key: 'before' | 'after', operand: ClaimRecordV1) => {
         const scaled = divisor === 1 ? operand : make(`${key}:scaled`, 'ratio@1', [ref(operand), { ref: 'divisor', value: divisor }], scaledRaw(operand));
         const printed = scaled.output.raw === null ? undefined : spanEnd(scaled.output.raw);

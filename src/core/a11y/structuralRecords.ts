@@ -313,21 +313,29 @@ function gridRecords(ctx: RecordContext, childRecords?: (ctx: RecordContext) => 
   const stack = (ctx.geometry.derived as GridDerived).metricStack;
   if (stack) {
     const data = ctx.request.data as MetricStackData;
-    return stack.panels.flatMap(panel => panel.values.map((raw, i) => {
+    return stack.panels.flatMap((panel, pi) => {
       const source = data.panels.find(p => p.id === panel.id)!;
-      const category = data.categories[i]!;
-      const name = category.label || category.id;
-      const target = { ...ctx.scope, panel: panel.id, owner: { seriesId: panel.id, categoryId: category.id } };
-      const hidden = panel.displayed[i] === 'Not shown';
-      return {
-        id: targetId(target), target, label: `${source.title} / ${name}`, seriesLabel: source.title, categoryLabel: name,
-        // Every stack figure is an expression over the measures: computed, so it reads without float residue.
-        value: { ...(hidden ? numericValue(null, source.unit) : derivedValue(raw, source.unit)), displayed: panel.displayed[i], ...(hidden ? { state: 'unavailable' as const, reason: chartString(ctx.request.options, 'maturingHidden') } : {}) },
-        // A category in the default state prints no state row: only a maturing or running period has something to say.
-        fields: panel.states[i] === 'mature' ? [] : [{ key: 'state', label: chartString(ctx.request.options, 'categoryState'), value: { kind: 'text' as const, state: 'value' as const, raw: panel.states[i]! } }],
-        comparisons: [], annotations: [], claimIds: [], nodeIds: panel.nodeIds[i]!,
-      };
-    }));
+      const readout = stack.readouts[pi]!;
+      const running = 'partial' in readout.categoryIds ? readout.categoryIds.partial[0] : undefined;
+      return panel.values.map((raw, i) => {
+        const category = data.categories[i]!;
+        const name = category.label || category.id;
+        const target = { ...ctx.scope, panel: panel.id, owner: { seriesId: panel.id, categoryId: category.id } };
+        const partial = category.id === running ? readout.partial : undefined;
+        const hidden = !partial && panel.displayed[i] === 'Not shown';
+        const state = partial?.wording ?? (panel.states[i] === 'mature' ? '' : panel.states[i]!);
+        const value = hidden ? numericValue(null, source.unit) : derivedValue(raw, source.unit);
+        return {
+          id: targetId(target), target, label: `${source.title} / ${name}`, seriesLabel: source.title, categoryLabel: name,
+          // Every stack figure is an expression over the measures: computed, so it reads without float residue.
+          value: { ...value, displayed: partial?.valueText ?? panel.displayed[i],
+            ...(hidden ? { state: 'unavailable' as const, reason: chartString(ctx.request.options, 'maturingHidden') } : {}),
+            ...(partial && raw === null ? { reason: partial.valueText } : {}) },
+          fields: state ? [{ key: 'state', label: chartString(ctx.request.options, 'categoryState'), value: { kind: 'text' as const, state: 'value' as const, raw: state } }] : [],
+          comparisons: [], annotations: [], claimIds: [], nodeIds: panel.nodeIds[i]!,
+        };
+      });
+    });
   }
   const marks = ctx.geometry.marks as unknown as GridMarks;
   const inputs = normalizeGridData(ctx.request.data).panels;
