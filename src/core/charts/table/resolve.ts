@@ -407,6 +407,20 @@ function modelContentKey(value: unknown): string | undefined {
   return supported ? parts.join('') : undefined;
 }
 
+/** Dimension cells are private, and table resolution reads them into separate display cells.
+ * A repair for an unknown column can return its source cell map. Copy such a form in full.
+ */
+function copyDimensionTable(data: TableData): TableData {
+  const columns = new Set(data.columns.map(col => col.id));
+  const borrowed = new Map<object, unknown>();
+  for (const { cells } of data.rows) {
+    if (!cells) continue;
+    if (Object.keys(cells).some(id => !columns.has(id))) return copyPlannedValue(data);
+    borrowed.set(cells, cells);
+  }
+  return copyPlannedValue(data, borrowed);
+}
+
 /** Prepare structure and raw calculations once, independently of expansion and display precision. */
 export function prepareTableData(data: TableData, options: TableOptions = {}, magnitudeSource: TableData = data): PreparedTableData {
   // The table's own formats, as a table's layout sets them: the same options give the same texts whoever calls.
@@ -442,7 +456,7 @@ export function prepareTableData(data: TableData, options: TableOptions = {}, ma
       const before = zeroLifts.count;
       try {
         // Retained closures read only snapshots. A theme reference keeps its identity, and the model never reads a measurer.
-        const owned = copyPlannedValue(data);
+        const owned = privateForm && !options.topN ? copyDimensionTable(data) : copyPlannedValue(data);
         ownPlanInput(owned);
         const { theme: authoredTheme, measure: _measure, ...kept } = options;
         model = compileTableData(owned, { ...copyPlannedValue(kept), theme: authoredTheme }, magnitudeSource === data ? owned : copyPlannedValue(magnitudeSource));
