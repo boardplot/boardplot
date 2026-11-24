@@ -200,7 +200,15 @@ const signedFormat = (format: string) => format.startsWith('+') ? format : `+${f
  * their content measures and narrows the label track; `hide` leaves out that
  * many periods, the first authored first, and says so in a note.
  */
-export interface DimSwitchForm { card?: boolean; hide?: number; /** False skips the computed-cell records the React grid never reads. */ records?: false; /** The period figures shared by the cards of one request. */ figures?: CardFigures }
+export interface DimSwitchForm { card?: boolean; hide?: number; /** False skips the computed-cell records the React grid never reads. */ records?: false; /** The period figures shared by the cards of one request. */ figures?: CardFigures; periodValues?: DimSwitchPeriodValues }
+
+interface PeriodValues {
+  currentSums: DimSwitchSums | undefined; ref: DimSwitchSums | undefined;
+  total: DimSwitchSums | undefined; refTotal: DimSwitchSums | undefined;
+  current: Value; before: Value; delta: Value;
+}
+/** One fold of one layout request owns these raw results by measure, member and authored period index. */
+export type DimSwitchPeriodValues = Map<DimSwitchMeasure, Map<string, PeriodValues[]>>;
 
 /** The figures of every period of one measure line, as plain numbers, by authored period where a change may be absent. */
 interface LineFigures { levels: readonly number[]; relative: readonly (number | null)[]; point: readonly (number | null)[] }
@@ -590,25 +598,51 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
   const noChangeLine = hostHidEveryPeriod || (periods.length > 0 && periods.every(p => !withRef.has(p.id)));
   // The lines of each measure whose card leaves out periods: their changes join the measure's change sets.
   const measureLines = new Map<string, LineFigures[]>();
-  // The facts of each member in authored period order, looked up once for the period figures of all its lines.
   const periodFacts = new Map<string, ReturnType<typeof factOf>[]>();
   const factsInOrder = (member: string) => {
     let list = periodFacts.get(member);
     if (!list) periodFacts.set(member, list = authoredPeriods.map(p => factOf(member, p.id)));
     return list;
   };
+  const valuesFor = (m: DimSwitchMeasure, member: string, p: DimSwitchPeriod, reference?: DimSwitchPeriod): PeriodValues => {
+    const own = factOf(member, p.id), totalFact = factOf(totalId, p.id);
+    const currentSums = own?.sums, total = totalFact?.sums;
+    const ref = reference ? sums(member, reference.id) : own?.ref;
+    const refTotal = reference ? sums(totalId, reference.id) : totalFact?.ref;
+    const expr = exprOf(m);
+    const current = evaluate(expr, currentSums, total), before = evaluate(expr, ref, refTotal);
+    return { currentSums, ref, total, refTotal, current, before, delta: change(current, before, m.change, m.format, decimalsOf) };
+  };
+  const comparisons = [
+    { p: range, reference: prior, comparisonKind: 'prior' as const, periodIndex: -1 },
+    ...(plan ? [{ p: range, reference: plan, comparisonKind: 'plan' as const, periodIndex: -1 }] : []),
+    ...periods.map((p, index) => ({ p, reference: undefined, comparisonKind: 'period' as const, periodIndex: hidden.length + index })),
+  ];
+  const periodValuesFor = (m: DimSwitchMeasure, member: string): PeriodValues[] | undefined => {
+    const store = form.periodValues;
+    if (!shared || !store) return undefined;
+    let members = store.get(m);
+    if (!members) store.set(m, members = new Map());
+    let values = members.get(member);
+    if (!values) members.set(member, values = []);
+    return values;
+  };
   /** The figures of every authored period of a line, read once for all cards of the request. Nothing of them is drawn. */
-  const lineFigures = (id: string, m: DimSwitchMeasure, member: string): LineFigures => {
+  const lineFigures = (id: string, m: DimSwitchMeasure, member: string, cachedPeriods: PeriodValues[] | undefined): LineFigures => {
     let line = shared!.lines.get(id);
     if (line) return line;
     const levels: number[] = [], relative: (number | null)[] = [], point: (number | null)[] = [];
     const ownFormat = m.format === undefined && m.unit === undefined, expr = exprOf(m);
     const own = factsInOrder(member), totals = factsInOrder(totalId);
     for (let i = 0; i < authoredPeriods.length; i++) {
+      const values = cachedPeriods?.[i];
       const fact = own[i], total = totals[i];
-      const current = evaluate(expr, fact?.sums, total?.sums);
+      const current = values?.current ?? evaluate(expr, fact?.sums, total?.sums);
       if (current.raw !== null) levels.push(current.raw);
-      const delta = withRef.has(authoredPeriods[i]!.id) ? change(current, evaluate(expr, fact?.ref, total?.ref), m.change, m.format, decimalsOf).raw : null;
+      let delta: number | null = null;
+      if (withRef.has(authoredPeriods[i]!.id)) {
+        delta = values ? values.delta.raw : change(current, evaluate(expr, fact?.ref, total?.ref), m.change, m.format, decimalsOf).raw;
+      }
       // An absolute change without a format joins the levels' set. A relative change is cleaned of float noise, as a drawn one is below.
       if (delta !== null && m.change === 'absolute' && ownFormat) levels.push(delta);
       relative.push(delta !== null && m.change !== 'pp' && m.change !== 'absolute' ? Number(delta.toPrecision(12)) : null);
@@ -625,15 +659,15 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     const values=new Map<string,Value>();
     const owner = isDriver(m) ? measures.get(driverOwner.get(m.id)!)! : undefined;
     const ownFormat = formatOf(m), effectFormat = signedFormat(formatOf(owner ?? m));
-    for (const {p,reference,comparisonKind} of [
-      {p:range,reference:prior,comparisonKind:'prior' as const},
-      ...(plan ? [{p:range,reference:plan,comparisonKind:'plan' as const}] : []),
-      ...periods.map(p=>({p,reference:undefined,comparisonKind:'period' as const})),
-    ]) {
-      const currentSums=sums(member,p.id), ref=reference ? sums(member,reference.id) : factOf(member,p.id)?.ref;
-      const total=sums(data.dimension.total.id,p.id), refTotal=reference ? sums(data.dimension.total.id,reference.id) : factOf(data.dimension.total.id,p.id)?.ref;
-      const windows=[currentSums,ref,...(usesTotal(exprOf(m)) ? [total,refTotal] : [])];
-      const current=evaluate(exprOf(m),currentSums,total), before=evaluate(exprOf(m),ref,refTotal), delta=change(current,before,m.change,m.format,decimalsOf);
+    const cachedPeriods = periodValuesFor(m, member);
+    const readPeriod = (index: number): PeriodValues => cachedPeriods
+      ? cachedPeriods[index] ??= valuesFor(m, member, authoredPeriods[index]!)
+      : valuesFor(m, member, authoredPeriods[index]!);
+    const needsTotal = usesTotal(exprOf(m));
+    for (const { p, reference, comparisonKind, periodIndex } of comparisons) {
+      const {currentSums, ref, total, refTotal, current, before, delta} = reference
+        ? valuesFor(m, member, p, reference) : readPeriod(periodIndex);
+      const windows = needsTotal ? [currentSums, ref, total, refTotal] : [currentSums, ref];
       const col=p.kind ? 'range' : p.id, comparison=comparisonKind==='plan' ? 'pl' : comparisonKind==='prior' ? 'pp' : p.id;
       const comparisonDrawn=!p.kind || drawnBlock.has(comparison);
       if (delta.nearZero && comparisonDrawn && !(totalHidden && member === totalId)) nearZeroSeen = true;
@@ -675,7 +709,7 @@ export function compileDimSwitch(data: DimSwitchData, options: DimSwitchOptions 
     }
     // A card that leaves out periods still reads them: their levels and changes join the sets of the measure, so every
     // figure the card prints reads as it does in the full table.
-    const line=shared ? lineFigures(id,m,member) : undefined;
+    const line=shared ? lineFigures(id,m,member,cachedPeriods) : undefined;
     if (line) {let lines=measureLines.get(m.id); if (!lines) measureLines.set(m.id,lines=[]); lines.push(line);}
     // An unjudged volume (a sum of money or counts) shows its size as a bar, not a colour; a statement line never does.
     const sized = !m.judge && (m.scale === 'money' || m.scale === 'count') && !inStatement(m);

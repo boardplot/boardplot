@@ -7,7 +7,7 @@ import { CARD_MIN_WIDTH, chartSizing, heightOmitted, isWidthProbe, VERIFY_ADVICE
 import { TARGET_SIZE, type TargetSizeOptions } from '../../target';
 import { classFloor, layoutKey, prepareTableExecutor, memoLayout, REGULAR_SPACING, type TableMarks } from '../table/layout';
 import { prepareTableData, resolvePreparedTable, resolveTable } from '../table/resolve';
-import { cardFigures, compileDimSwitch, currentDimSwitchOptions, dimSwitchTableWarnings, dimswitchRowId, hostPeriods, PARTIAL_NOTE_OFF, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning, type CardFigures, type DimSwitchForm } from './compile';
+import { cardFigures, compileDimSwitch, currentDimSwitchOptions, dimSwitchTableWarnings, dimswitchRowId, hostPeriods, PARTIAL_NOTE_OFF, PARTIAL_NOTE_OFF_FRAME, partialNoteWarning, type CardFigures, type DimSwitchPeriodValues, type DimSwitchForm } from './compile';
 import type { DimSwitchData, DimSwitchOptions, DimSwitchDerived } from './types';
 import { withUnprintedCells } from './claims';
 import { minOf } from '../../arrays';
@@ -85,12 +85,14 @@ function prepareForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSw
   return withProbe(prepared);
 }
 
-function layoutForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwitchForm, forms: Map<string, PreparedForm>): Geometry<TableMarks, DimSwitchDerived> {
+type FoldForms = { prepared: Map<string, PreparedForm>; periodValues: DimSwitchPeriodValues };
+
+function layoutForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwitchForm, forms: FoldForms): Geometry<TableMarks, DimSwitchDerived> {
   const key=`${form.card === true}:${form.hide ?? 0}`;
-  let prepared=forms.get(key);
+  let prepared=forms.prepared.get(key);
   if (!prepared) {
-    prepared=prepareForm(data,options,form);
-    forms.set(key,prepared);
+    prepared=prepareForm(data,options,{...form,periodValues:forms.periodValues});
+    forms.prepared.set(key,prepared);
   }
   // Only size and the internal floor flag change between this request's probes.
   const compiled={...prepared.compiled,options:{...prepared.compiled.options,size:options.size}};
@@ -121,7 +123,7 @@ function layoutForm(data: DimSwitchData, options: DimSwitchOptions, form: DimSwi
  * All of this runs with regular spacing. Only where it leaves periods out does the tight table spacing (refuse-less) try
  * to show more of them, one at a time from the regular answer.
  */
-function layoutDimSwitch(data: DimSwitchData, options: DimSwitchOptions, forms: Map<string, PreparedForm>): Geometry<TableMarks, DimSwitchDerived> {
+function layoutDimSwitch(data: DimSwitchData, options: DimSwitchOptions, forms: FoldForms): Geometry<TableMarks, DimSwitchDerived> {
   const openWidth=(options as TargetSizeOptions)[TARGET_SIZE]?.fixed?.width === false;
   const fits=(geometry: Geometry<TableMarks, DimSwitchDerived>) => openWidth || geometry.size.width >= (geometry.sizing?.minWidth ?? 0);
   const periods=hostPeriods(data,options).length;
@@ -241,7 +243,7 @@ const missesFixedHeight=(options: DimSwitchOptions, geometry: Form) => (options 
  * fits, the most folded table answers, so the refusal names the least height the table can draw at. An open height
  * grows to its rows and never folds.
  */
-function foldToFit(data: DimSwitchData, options: DimSwitchOptions, formsOf: (fold: string) => Map<string, PreparedForm>): Geometry<TableMarks, DimSwitchDerived> {
+function foldToFit(data: DimSwitchData, options: DimSwitchOptions, formsOf: (fold: string) => FoldForms): Geometry<TableMarks, DimSwitchDerived> {
   const first=layoutDimSwitch(data,options,formsOf(''));
   const missesHeight=(geometry: Form) => missesFixedHeight(options,geometry);
   // A table that misses the width refuses on width, and its floor names the authored depth.
@@ -277,8 +279,8 @@ const foldedRows=(geometry: Form) => geometry.derived.compiled.options.expansion
 /** The registered layout: select a form and use its content height at the requested width. */
 function layoutDimSwitchCard(data: DimSwitchData, options: DimSwitchOptions = {}): Geometry<TableMarks, DimSwitchDerived> {
   return memoLayout(data, options, () => {
-    const folded=new Map<string,Map<string,PreparedForm>>();
-    const formsOf=(fold:string)=>{let forms=folded.get(fold); if (!forms) folded.set(fold,forms=new Map()); return forms;};
+    const folded=new Map<string,FoldForms>();
+    const formsOf=(fold:string)=>{let forms=folded.get(fold); if (!forms) folded.set(fold,forms={prepared:new Map(),periodValues:new Map()}); return forms;};
     const layout=(input:DimSwitchData,step:DimSwitchOptions)=>{
       const drawn=foldToFit(input,step,formsOf);
       if (step.columnHeads!==false) return drawn;
