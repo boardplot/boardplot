@@ -347,6 +347,73 @@ describe('grid anchors.categories across panel types', () => {
     expect(grid.warnings.map((warning) => warning.code)).not.toContain('grid-anchor-incompatible');
   });
 
+  const quarters = ['Q1', 'Q2', 'Q3', 'Q4'].map((label) => ({ id: label.toLowerCase(), label }));
+  const gridOf = (panels: unknown[], options: Record<string, unknown>) => layoutResolvedRequest(resolveChartRequest({
+    type: 'grid', data: { panels }, options: { sharedAxis: 'category', sharedScale: false, ...options },
+  })) as Geometry;
+  const printed = (grid: Geometry, panel: string, part: string) =>
+    grid.scene.filter((node) => node.t === 'text' && node.opacity !== 0 && node.id.startsWith(`${panel}/`) && node.part === part).length;
+  const firstCentre = (grid: Geometry, id: string) => {
+    const panel = (grid.marks as { panels: { id: string; chart?: { offset: { x: number }; geometry: Geometry } }[] }).panels.find((candidate) => candidate.id === id)!;
+    return panel.chart!.geometry.axes.find((axis) => axis.axis === 'x')!.ticks[0]!.pos + panel.chart!.offset.x;
+  };
+
+  // A waterfall printed the quarter names, and a column aligned without it put its Q1 column 9.7 px from Q2.
+  it('leaves a grid column as before when a panel there cannot take the inset', () => {
+    const grid = gridOf([
+      { id: 'w', type: 'waterfall', data: { items: [{ id: 'q1', label: 'Q1', value: 50, type: 'total' }, { id: 'q2', label: 'Q2', value: 5 }, { id: 'q3', label: 'Q3', value: -2 }, { id: 'q4', label: 'Q4', value: 5 }] }, options: { valueAxis: { show: true } } },
+      { id: 'r', type: 'line', data: { categories: quarters, series: [{ id: 'n', label: 'North', values: [25, 32, 15, 22] }, { id: 's', label: 'South', values: [12, 23, 34, 15] }] },
+        options: { valueAxis: { show: true }, variant: 'bump', valueLabels: 'last', seriesLabels: 'end', legend: 'none', labels: { category: false } } },
+      { id: 'c', type: 'column', data: { categories: quarters, series: [{ id: 'n', label: 'North', values: [14, 21, 28, 35] }] }, options: { valueAxis: { show: true }, valueLabels: 'none', labels: { category: false } } },
+    ], { anchors: { plotEdges: 'column' }, size: { width: 720, height: 640 } });
+    expect(Math.abs(firstCentre(grid, 'c') - firstCentre(grid, 'w'))).toBeLessThan(1);
+  });
+
+  // valueAxis.percent draws a line as a 100% area; it took the inset like a line and lost both end values.
+  it('keeps the end values of a 100% area chosen through valueAxis.percent', () => {
+    const regions = ['North America', 'Eastern Europe', 'Southern Europe', 'Western Europe', 'Northern Europe', 'Latin America and Caribbean']
+      .map((label, index) => ({ id: `r${index}`, label }));
+    const grid = gridOf([
+      { id: 'c', type: 'column', data: { categories: regions, series: [{ id: 'c', label: 'Total', values: [20, 24, 28, 32, 36, 40] }] }, options: { valueAxis: { show: true }, valueLabels: 'none' } },
+      { id: 'l', type: 'line', data: { categories: regions, series: [
+        { id: 'n', label: 'New', values: [20, 24, 28, 32, 36, 40] }, { id: 'r', label: 'Returning', values: [30, 28, 26, 24, 22, 20] },
+      ] }, options: { valueAxis: { show: true, percent: true }, valueLabels: 'last' } },
+    ], { anchors: { plotEdges: 'column' }, size: { width: 320, height: 640 } });
+    expect(printed(grid, 'l', 'point')).toBe(2);
+  });
+
+  // Twelve rotated month names keep the column 8 px inside its margin; the line drew past it, with no warning.
+  it('gives stacked panels the plot edges of a column that keeps room for rotated names', () => {
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+      .map((label) => ({ id: label.slice(0, 3).toLowerCase(), label }));
+    const values = months.map((_, index) => 20 + 4 * index);
+    const grid = gridOf([
+      { id: 'c', type: 'column', data: { categories: months, series: [{ id: 's', label: 'S', values }] }, options: { valueAxis: { show: true }, valueLabels: 'none' } },
+      { id: 'l', type: 'line', data: { categories: months, series: [{ id: 's', label: 'S', values }] }, options: { valueAxis: { show: true }, valueLabels: 'last' } },
+    ], { anchors: { plotEdges: 'column', categories: 'column' }, size: { width: 720, height: 640 } });
+    const [column, line] = plotEdges(grid);
+    expect(line![0]).toBeCloseTo(column![0]!, 2);
+    expect(line![1]).toBeCloseTo(column![1]!, 2);
+    expect((grid.derived as { sharedAnchors: Record<string, number> }).sharedAnchors['plotEdges:column:0:left']).toBeCloseTo(column![0]!, 2);
+    expect(grid.warnings.map((warning) => warning.code)).not.toContain('grid-anchor-incompatible');
+  });
+
+  // The inset narrows the columns: a column panel over a combo at 375 px dropped 3 of its 12 values.
+  it('leaves a grid column as before when the inset would cost a printed value', () => {
+    const twelve = Array.from({ length: 12 }, (_, index) => ({ id: `q${index}`, label: `Q${index + 1}` }));
+    const grid = gridOf([
+      { id: 'c', type: 'column', data: { categories: twelve, series: [
+        { id: 'n', label: 'Northern region', values: [12, 19, 26, 33, 16, 23, 30, 13, 20, 27, 34, 17] },
+        { id: 's', label: 'Southern district', values: [-17, -6, 5, -14, -3, 8, -11, 0, 11, -8, 3, -16] },
+      ] }, options: { valueAxis: { show: true }, labels: { category: false }, valueLabels: 'all' } },
+      { id: 'm', type: 'combo', data: { categories: twelve, series: [
+        { id: 'n', label: 'Northern region', kind: 'column', values: [137500, 176000, 82500, 121000, 159500, 66000, 104500, 143000, 181500, 88000, 126500, 165000] },
+        { id: 's', label: 'Southern district', kind: 'line', values: [-77000, -16500, 44000, -60500, 0, 60500, -44000, 16500, -88000, -27500, 33000, -71500] },
+      ] }, options: { valueAxis: { show: true } } },
+    ], { sharedScale: true, rows: [1, 1], anchors: { plotEdges: 'column' }, size: { width: 375, height: 640 } });
+    expect(printed(grid, 'c', 'point')).toBeGreaterThanOrEqual(12);
+  });
+
   // Stacked dot panels share a category axis down the plot: aligning their numeric value ticks as
   // categories halved the first plot and warned.
   it('leaves the value axis of stacked dot panels alone', () => {

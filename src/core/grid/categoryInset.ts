@@ -21,12 +21,16 @@ export const INSETS_CATEGORIES: ReadonlySet<string> = new Set(['column', 'line',
 const AREA_VARIANTS: ReadonlySet<unknown> = new Set(['area', 'stacked-area', 'stacked100-area']);
 
 /**
- * Whether a panel takes a category inset. An area keeps room outside its plot for its edge
- * labels, and that room changes with the inset, so an area panel moves its plot as before.
+ * Whether a panel takes a category inset. An area keeps room outside its plot for its edge labels, and a
+ * rank line keeps room for its start and end names; that room changes with the inset, so both move their
+ * plot as before. `valueAxis.percent` draws a line as a 100% area whatever its variant says.
  */
-export const takesCategoryInset = (type: string, options: unknown): boolean =>
-  INSETS_CATEGORIES.has(type) && !(type === 'line' && AREA_VARIANTS.has((options as { variant?: unknown } | undefined)?.variant));
-
+export const takesCategoryInset = (type: string, options: unknown): boolean => {
+  if (!INSETS_CATEGORIES.has(type)) return false;
+  if (type !== 'line') return true;
+  const line = (options ?? {}) as { variant?: string; valueAxis?: { percent?: boolean } };
+  return line.variant !== 'bump' && !AREA_VARIANTS.has(line.valueAxis?.percent ? 'stacked100-area' : line.variant);
+};
 /** The category range inside a plot span: the inset comes off both ends, with the 10 px floor every span keeps. */
 export function insetRange(x: number, w: number, inset: CategoryInset): { x: number; w: number } {
   if (inset.left === 0 && inset.right === 0) return { x, w };

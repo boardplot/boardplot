@@ -1438,9 +1438,27 @@ function layoutAuthoredGrid(
   const categoryScope = authoredScope ?? (options.sharedAxis === 'category' ? 'column' : undefined);
   if (categoryScope) {
     const moved = Math.max(0, maxOf(scopeGroups(children, categoryScope).map(group => alignCategoryPanels(group, theme, authoredScope === undefined))));
-    // Column, line (not area), combo and variance panels move their categories inside the plot, so
-    // the edges hold. Another type moves its plot only under anchors.categories: the centres win,
-    // and the edge anchors it moved are no longer exact, so they leave sharedAnchors.
+    // A group whose panels all take a category inset keeps one plot, which can sit inside the edges the
+    // edge pass recorded (rotated names): sharedAnchors names the edges every panel draws.
+    for (const scope of edgeScopes) {
+      if (scope === 'row') continue;
+      for (const [index, group] of scopeGroups(children, scope).entries()) {
+        const key = `plotEdges:${scope}:${index}`;
+        const members = group.filter(child => child.relayout !== undefined);
+        const inset = members.some(child => (child.anchored?.categoryInset?.left ?? 0) > 0 || (child.anchored?.categoryInset?.right ?? 0) > 0);
+        if (!(`${key}:left` in sharedAnchors) || members.length < 2 || !inset) continue;
+        const left = members[0]!.slot.x + members[0]!.geometry.plot.x;
+        const right = left + members[0]!.geometry.plot.w;
+        if (members.every(child => Math.abs(child.slot.x + child.geometry.plot.x - left) <= 0.01
+          && Math.abs(child.slot.x + child.geometry.plot.x + child.geometry.plot.w - right) <= 0.01)) {
+          sharedAnchors[`${key}:left`] = left;
+          sharedAnchors[`${key}:right`] = right;
+        }
+      }
+    }
+    // A group that cannot keep one plot (a rank line, an area, a waterfall, unevenly spaced categories)
+    // moves its plots under anchors.categories: the centres win, and the edge anchors they moved are no
+    // longer exact, so they leave sharedAnchors.
     if (moved > 0.01) for (const key of Object.keys(sharedAnchors)) if (key.startsWith('plotEdges:')) delete sharedAnchors[key];
     if (moved > 0.01 && options.anchors?.plotEdges) {
       warnings.push({
