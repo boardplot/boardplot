@@ -1,4 +1,5 @@
-import { alignCategoryPanels, alignValuePanels, moveChildPlot } from '../../grid/panelAlignment';
+import { alignCategoryPanels, alignValuePanels, movedMargin, type PanelAnchoring } from '../../grid/panelAlignment';
+import { CATEGORY_INSET, panelAnchoring } from '../../grid/categoryInset';
 import { chartString } from '../../strings/grid';
 import { authoredStrings } from '../../strings';
 import { isRecord } from '../../lint/shared';
@@ -680,12 +681,14 @@ function gridTypeClass(options: GridLayoutOptions): TypeWidthClass {
 }
 
 function panelCaptionBand(panel: GridPanelSpec, theme: ReturnType<typeof resolveTheme>, measure: TextMeasurer,
-  slot: Rect, highlighted: Set<string>, compact = false, shift = 0): { nodes: SceneNode[]; claims: Geometry['debug']['occupied'] } {
+  slot: Rect, highlighted: Set<string>, compact = false, shift = 0, left?: number): { nodes: SceneNode[]; claims: Geometry['debug']['occupied'] } {
   const margin = isRecord(panel.options?.margin) ? panel.options.margin : {};
   // An unset side follows the shared margin at the panel width (16/24/28), not a literal 28.
   const sides = canvasMargin(theme, slot.w);
-  const x = slot.x + numeric(margin.left, sides.left);
-  let y = slot.y + numeric(margin.top, 20) - measureCaptionBand(panel, theme, measure, slot.w, compact) + shift;
+  // `left`: the x the labels of a plot-edge group share, inside the panel.
+  const inner = left ?? numeric(margin.left, sides.left);
+  const x = slot.x + inner;
+  let y = slot.y + numeric(margin.top, 20) - measureCaptionBand(panel, theme, measure, slot.w, compact, left) + shift;
   const nodes: SceneNode[] = [];
   const claims: Geometry['debug']['occupied'] = [];
   for (const [part, value, font, ink] of [
@@ -693,7 +696,7 @@ function panelCaptionBand(panel: GridPanelSpec, theme: ReturnType<typeof resolve
     ['panelCaption', panel.caption, { family: theme.type.family, ...theme.type.axis }, { token: 'inkMuted' }],
   ] as const) {
     if (!value) continue;
-    const width = Math.max(1, slot.w - numeric(margin.left, sides.left) - numeric(margin.right, sides.right));
+    const width = Math.max(1, slot.w - inner - numeric(margin.right, sides.right));
     const text = measuredCaption(value, font, width, measure);
     const { lines, title } = text;
     const id = `panel:${panel.id}:${part === 'panelCaption' ? 'caption' : 'title'}`;
@@ -1158,6 +1161,8 @@ interface AuthoredChild {
   recordOptions?: () => object;
   margin: { top?: number; right?: number; bottom?: number; left?: number };
   relayout?: (margin: AuthoredChild['margin'], kpiValueSize?: number) => Geometry;
+  /** What the grid's alignment settled for this panel; the relayout closure reads the same object. */
+  anchored?: PanelAnchoring;
 }
 
 function usesAuthoredLayout(panels: GridPanelSpec[], options: GridLayoutOptions): boolean {
@@ -1428,12 +1433,45 @@ function layoutAuthoredGrid(
     if (scope === 'row') continue;
     children = alignPlotEdges(children, scope, sharedAnchors, warnings, theme);
   }
-  if (options.anchors?.categories && options.anchors.categories !== 'row') {
-    const moved = Math.max(0, maxOf(scopeGroups(children, options.anchors.categories).map(group => alignCategoryPanels(group, theme))));
-    // Both anchors cannot hold while a type insets its bands: the centres win, and the
-    // edge anchors they moved are no longer exact, so they leave sharedAnchors.
+  // A shared category axis aligns its centres down each column, as the plain stacked grid does.
+  const authoredScope = options.anchors?.categories === 'row' ? undefined : options.anchors?.categories;
+  const categoryScope = authoredScope ?? (options.sharedAxis === 'category' ? 'column' : undefined);
+  if (categoryScope) {
+    const moved = Math.max(0, maxOf(scopeGroups(children, categoryScope).map(group => alignCategoryPanels(group, theme, authoredScope === undefined))));
+    // A group whose panels all take a category inset keeps one plot, which can sit inside the edges the
+    // edge pass recorded (rotated names): sharedAnchors names the edges every panel draws.
+    for (const scope of edgeScopes) {
+      if (scope === 'row') continue;
+      for (const [index, group] of scopeGroups(children, scope).entries()) {
+        const key = `plotEdges:${scope}:${index}`;
+        const members = group.filter(child => child.relayout !== undefined);
+        const inset = members.some(child => (child.anchored?.categoryInset?.left ?? 0) > 0 || (child.anchored?.categoryInset?.right ?? 0) > 0);
+        if (!(`${key}:left` in sharedAnchors) || members.length < 2 || !inset) continue;
+        const left = members[0]!.slot.x + members[0]!.geometry.plot.x;
+        const right = left + members[0]!.geometry.plot.w;
+        const spread = maxOf(members.map(child => Math.max(Math.abs(child.slot.x + child.geometry.plot.x - left),
+          Math.abs(child.slot.x + child.geometry.plot.x + child.geometry.plot.w - right))));
+        if (spread <= 0.01) {
+          sharedAnchors[`${key}:left`] = left;
+          sharedAnchors[`${key}:right`] = right;
+          continue;
+        }
+        delete sharedAnchors[`${key}:left`];
+        delete sharedAnchors[`${key}:right`];
+        if (options.anchors?.plotEdges && !warnings.some(warning => warning.code === 'grid-anchor-incompatible')) {
+          warnings.push({
+            code: 'grid-anchor-incompatible',
+            severity: 'warn',
+            message: `category centres are aligned across panels whose types inset their categories differently, so their plot edges differ by up to ${Math.round(spread * 10) / 10}px`,
+          });
+        }
+      }
+    }
+    // A group that cannot keep one plot (a rank line, an area, a waterfall, unevenly spaced categories)
+    // moves its plots under anchors.categories: the centres win, and the edge anchors they moved are no
+    // longer exact, so they leave sharedAnchors.
     if (moved > 0.01) for (const key of Object.keys(sharedAnchors)) if (key.startsWith('plotEdges:')) delete sharedAnchors[key];
-    if (moved > 0.01 && options.anchors.plotEdges) {
+    if (moved > 0.01 && options.anchors?.plotEdges) {
       warnings.push({
         code: 'grid-anchor-incompatible',
         severity: 'warn',
@@ -1776,10 +1814,14 @@ function layoutAuthoredChild(
   const panelOptions = parentOptions.sharedAxis === 'category' && panels.indexOf(panel) !== sharedCategoryLabelOwner(panels)
     ? { ...authoredOptions, labels: withoutCategoryLabels(authoredOptions.labels) } : authoredOptions;
   const authoredMargin = isRecord(panelOptions.margin) ? panelOptions.margin : {};
+  // `definition.type`: an alias such as `profile` lays out as its chart type.
+  const anchored: PanelAnchoring = panelAnchoring(definition.type, panelOptions);
   let recordOptions: object;
   const relayout = (margin: AuthoredChild['margin'], kpiValueSize?: number): Geometry => {
     const captionPanel = compactTiers ? { ...panel, title: panelOptions.title === false ? undefined : authoredTitle } : panel;
-    const captionHeight = () => measureCaptionBand(captionPanel, theme, measure, slot.w, compactTiers);
+    const captionLeft = anchored.captionLeft;
+    const captionHeight = () => measureCaptionBand(captionPanel, theme, measure, slot.w, compactTiers, captionLeft);
+    const inset = anchored.categoryInset;
     const marginTop = numeric(margin.top ?? authoredMargin.top, 20);
     const resolvedOptions = {
       ...definition.defaults,
@@ -1790,6 +1832,7 @@ function layoutAuthoredChild(
       ...(hasKpiFigure(panel.type) && kpiValueSize !== undefined ? { [KPI_VALUE_SIZE]: kpiValueSize } : {}),
       ...(panel.type === 'kpi' ? { [KPI_HOST_TEXT]: stringsIn([panel.title, panel.caption, parentOptions.title, parentOptions.subtitle, parentOptions.footnotes, parentOptions.source]) } : {}),
       ...(panel.type === 'variance' && isAuthoredVarianceStack(panels, parentOptions) ? { [VARIANCE_TIER]: panels.length } : {}),
+      ...(inset && (inset.left > 0 || inset.right > 0) ? { [CATEGORY_INSET]: { left: inset.left, right: inset.right } } : {}),
       ...panelAnnotations(panel),
       ...(parentOptions.palette !== undefined && panelOptions.palette === undefined
         ? { palette: parentOptions.palette }
@@ -1804,7 +1847,7 @@ function layoutAuthoredChild(
       target: parentOptions.target,
       size: { width: slot.w, height: slot.h },
       margin: { ...authoredMargin, ...margin, top: compactTiers ? Math.max(marginTop, captionHeight())
-        : marginTop + measureCaptionBand({ ...panel, options: { ...panelOptions, margin: { ...authoredMargin, ...margin } } }, theme, measure, slot.w) },
+        : marginTop + measureCaptionBand({ ...panel, options: { ...panelOptions, margin: { ...authoredMargin, ...margin } } }, theme, measure, slot.w, false, captionLeft) },
       measure,
       typeClass: gridTypeClass(parentOptions),
     };
@@ -1822,13 +1865,13 @@ function layoutAuthoredChild(
     recordOptions = recordedPanelOptions(resolvedOptions);
     const captionY = compactTiers && isAuthoredVarianceStack(panels, parentOptions)
       ? authoredOccupiedBounds(geometry).y - resolvedOptions.margin.top - theme.space.labelPad : 0;
-    const band = panelCaptionBand({ ...captionPanel, options: resolvedOptions }, theme, measure, { x: 0, y: captionY, w: slot.w, h: slot.h }, new Set(resolveHighlight(parentOptions.highlight)), compactTiers);
+    const band = panelCaptionBand({ ...captionPanel, options: resolvedOptions }, theme, measure, { x: 0, y: captionY, w: slot.w, h: slot.h }, new Set(resolveHighlight(parentOptions.highlight)), compactTiers, 0, captionLeft);
     pushAll(geometry.scene, band.nodes);
     pushAll(geometry.debug.occupied, band.claims);
     return geometry;
   };
   const margin = { ...authoredMargin } as AuthoredChild['margin'];
-  return { panel, placement, slot, geometry: relayout(margin), margin, relayout, recordOptions: () => recordOptions };
+  return { panel, placement, slot, geometry: relayout(margin), margin, relayout, anchored, recordOptions: () => recordOptions };
 }
 
 /**
@@ -2396,11 +2439,17 @@ function alignPlotEdges(
     }
     derived[`plotEdges:${scope}:${groupIndex}:left`] = left;
     derived[`plotEdges:${scope}:${groupIndex}:right`] = right;
-    for (const child of candidates) {
+    const margins = candidates.map((child) => {
       const currentLeft = child.slot.x + child.geometry.plot.x;
-      const currentRight = currentLeft + child.geometry.plot.w;
-      moveChildPlot(child, left - currentLeft, currentRight - right, theme);
-    }
+      return movedMargin(child, left - currentLeft, currentLeft + child.geometry.plot.w - right, theme);
+    });
+    // The panel labels of the group start at one x: the left edge of its widest y-label column.
+    const labelX = minOf(candidates.map((child, index) => child.slot.x + (margins[index]!.left ?? 0)));
+    candidates.forEach((child, index) => {
+      if (child.anchored) child.anchored.captionLeft = labelX - child.slot.x;
+      child.margin = margins[index]!;
+      child.geometry = child.relayout!(child.margin);
+    });
   }
   return children;
 }
@@ -3116,11 +3165,12 @@ function measureCaptionBand(
   measure: typeof defaultMeasurer,
   slotWidth: number,
   compact = false,
+  left?: number,
 ): number {
   const margin = isRecord(panel.options?.margin) ? panel.options.margin : {};
   // An unset side follows the shared margin at the panel width, not a literal 28.
   const sides = canvasMargin(theme, slotWidth);
-  const width = Math.max(1, slotWidth - numeric(margin.left, sides.left) - numeric(margin.right, sides.right));
+  const width = Math.max(1, slotWidth - (left ?? numeric(margin.left, sides.left)) - numeric(margin.right, sides.right));
   const heightOf = (text: string, font: FontSpec) => measuredCaption(text, font, width, measure).height;
   let height = 0;
   if (panel.title) height += heightOf(panel.title, compact ? { family: theme.type.family, ...theme.type.axis } : { family: theme.type.family, ...theme.type.label, weight: emphasisWeight(theme) });

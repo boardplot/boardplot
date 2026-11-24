@@ -250,8 +250,12 @@ describe('a grid variance tier hatches its forecast categories', () => {
 });
 
 // A combo panel over a line panel with anchors.categories 'all' put the category centres 3.3 px apart:
-// the plot edges matched, but combo insets its bands inside the plot.
+// the plot edges matched, but combo insets its bands inside the plot. Aligning the centres then moved
+// a panel's plot edge, so the axis lines of the stacked panels no longer lined up.
 describe('grid anchors.categories across panel types', () => {
+  const plotEdges = (geometry: Geometry) => ((geometry.marks as { panels?: { type: string; plot: { x: number; w: number } }[] }).panels ?? [])
+    .filter((panel) => panel.type !== 'text' && panel.type !== 'legend')
+    .map((panel) => [panel.plot.x, panel.plot.x + panel.plot.w]);
   it('puts a combo and a line panel on the same category centres', () => {
     const quarters = ['q1', 'q2', 'q3', 'q4', 'q5', 'q6'].map((id) => ({ id, label: id.toUpperCase() }));
     const layout = (anchors: object) => getChart('grid')!.layout({
@@ -265,14 +269,288 @@ describe('grid anchors.categories across panel types', () => {
         ] }, options: { title: false } },
       ],
     }, { columns: [1], rows: [1, 1], anchors }) as Geometry;
-    const grid = layout({ plotEdges: 'all', categories: 'all' });
     const edgeKeys = (geometry: Geometry) => Object.keys((geometry.derived as { sharedAnchors?: object }).sharedAnchors ?? {}).filter((key) => key.startsWith('plotEdges:'));
-    const [top, bottom] = grid.axes.filter((axis) => axis.axis === 'x').map((axis) => axis.ticks.map((tick) => tick.pos));
-    expect(bottom!.map((pos, index) => Math.abs(pos - top![index]!))).toEqual(bottom!.map(() => expect.closeTo(0, 2)));
-    // The plot edges then differ, so the grid says so and reports no stale edge anchor.
+    for (const anchors of [{ plotEdges: 'all', categories: 'all' }, { categories: 'all' }]) {
+      const grid = layout(anchors);
+      const [top, bottom] = grid.axes.filter((axis) => axis.axis === 'x').map((axis) => axis.ticks.map((tick) => tick.pos));
+      expect(bottom!.map((pos, index) => Math.abs(pos - top![index]!))).toEqual(bottom!.map(() => expect.closeTo(0, 2)));
+      // The panels place their categories inside one plot: the edges hold, so the grid keeps them and does not warn.
+      const [a, b] = plotEdges(grid);
+      expect(b![0]).toBeCloseTo(a![0]!, 2);
+      expect(b![1]).toBeCloseTo(a![1]!, 2);
+      expect(grid.warnings.map((warning) => warning.code)).not.toContain('grid-anchor-incompatible');
+      expect(edgeKeys(grid).length).toBeGreaterThan(0);
+    }
+  });
+
+  // On a phone, a line panel's end label pulled its last point in, and aligning the column and variance
+  // panels to it took up to 33 px off their plots on the right; each panel label also started at its own
+  // tick-label width, 15 px apart. With plotEdges alone, the line points sat up to 30 px beside their columns.
+  it.each([{ plotEdges: 'all', categories: 'all' }, { plotEdges: 'all' }])('keeps one plot, one panel-label x and the line points on the column centres at 375 px (%o)', (anchors) => {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug'].map((label) => ({ id: label.toLowerCase(), label }));
+    const revenue = [52000, 61000, 58000, 66000, 71000, 69000, 76000, 80000];
+    const grid = layoutResolvedRequest(resolveChartRequest({
+      type: 'grid',
+      data: { panels: [
+        { id: 'rev', type: 'column', title: 'Revenue', data: { categories: months, series: [
+          { id: 'ac', label: 'AC', scenario: 'AC', values: revenue },
+          { id: 'py', label: 'PY', scenario: 'PY', role: 'reference', values: revenue.map((value) => value - 4000) },
+        ] }, options: { unit: '$', valueAxis: { show: true }, valueLabels: 'none' } },
+        { id: 'dpy', type: 'variance', title: 'ΔPY', data: { categories: months, series: [
+          { id: 'ac', label: 'AC', scenario: 'AC', values: revenue },
+          { id: 'py', label: 'PY', scenario: 'PY', role: 'reference', values: revenue.map((value) => value - 4000) },
+        ] }, options: { variant: 'absolute', variance: { vs: 'py' } } },
+        { id: 'basket', type: 'line', title: 'Average basket', data: { categories: months, series: [
+          { id: 'basket', label: 'Basket', values: [3120, 3180, 3050, 3290, 3340, 3210, 3420, 3480] },
+        ] }, options: { unit: '$', valueAxis: { show: true } } },
+      ] },
+      options: { sharedAxis: 'category', sharedScale: false, anchors, size: { width: 375, height: 640 } },
+    })) as Geometry;
+    expect(grid.refused).toBeUndefined();
+    const edges = plotEdges(grid);
+    expect(edges).toHaveLength(3);
+    for (const [left, right] of edges) {
+      expect(left).toBeCloseTo(edges[0]![0]!, 2);
+      expect(right).toBeCloseTo(edges[0]![1]!, 2);
+    }
+    const panels = (grid.marks as { panels: { id: string; chart?: { offset: { x: number }; geometry: Geometry } }[] }).panels;
+    const centres = (id: string) => {
+      const panel = panels.find((candidate) => candidate.id === id)!;
+      return panel.chart!.geometry.axes.find((axis) => axis.axis === 'x')!.ticks.map((tick) => tick.pos + panel.chart!.offset.x);
+    };
+    for (const id of ['dpy', 'basket']) expect(centres(id).map((pos, index) => pos - centres('rev')[index]!)).toEqual(months.map(() => expect.closeTo(0, 2)));
+    const labelX = ['rev', 'dpy', 'basket'].map((id) => {
+      const node = grid.scene.find((candidate) => candidate.t === 'text' && candidate.id.endsWith(`panel:${id}:title`)) as { x: number; tx?: number };
+      return node.x + (node.tx ?? 0);
+    });
+    expect(labelX).toEqual(labelX.map(() => expect.closeTo(labelX[0]!, 2)));
+    // The variance zero line runs under the moved categories to the plot edge, as the gridlines do.
+    const zero = grid.scene.find((node) => node.t === 'line' && node.part === 'baseline' && node.id.startsWith('dpy/')) as { x2: number; tx?: number };
+    expect(zero.x2 + (zero.tx ?? 0)).toBeGreaterThan(edges[0]![1]! - 3);
+    expect(grid.warnings.map((warning) => warning.code)).not.toContain('grid-anchor-incompatible');
+  });
+
+  // An area keeps room outside its plot for its edge labels, and that room follows the category inset:
+  // under the shared axis alone, an area over a column lost 37 px of its plot to the inset.
+  it('leaves an area panel over a column panel on the shared plot edges', () => {
+    const regions = ['North America', 'Eastern Europe', 'Southern Europe', 'Western Europe', 'Northern Europe', 'Latin America and Caribbean']
+      .map((label, index) => ({ id: `r${index}`, label }));
+    const panel = (id: string, type: string, options: Record<string, unknown>) =>
+      ({ id, type, data: { categories: regions, series: [{ id, label: id, values: [20, 24, 28, 32, 36, 40] }] }, options: { valueAxis: { show: true }, ...options } });
+    const grid = layoutResolvedRequest(resolveChartRequest({
+      type: 'grid',
+      data: { panels: [panel('c', 'column', {}), panel('l', 'line', { variant: 'area' })] },
+      options: { sharedAxis: 'category', sharedScale: false, anchors: { plotEdges: 'column' }, size: { width: 480, height: 640 } },
+    })) as Geometry;
+    const [column, area] = plotEdges(grid);
+    expect(Math.abs(area![1]! - column![1]!)).toBeLessThan(2);
+    expect(grid.warnings.map((warning) => warning.code)).not.toContain('grid-anchor-incompatible');
+  });
+
+  const quarters = ['Q1', 'Q2', 'Q3', 'Q4'].map((label) => ({ id: label.toLowerCase(), label }));
+  const gridOf = (panels: unknown[], options: Record<string, unknown>) => layoutResolvedRequest(resolveChartRequest({
+    type: 'grid', data: { panels }, options: { sharedAxis: 'category', sharedScale: false, ...options },
+  })) as Geometry;
+  const printed = (grid: Geometry, panel: string, part: string) =>
+    grid.scene.filter((node) => node.t === 'text' && node.opacity !== 0 && node.id.startsWith(`${panel}/`) && node.part === part).length;
+  const firstCentre = (grid: Geometry, id: string) => {
+    const panel = (grid.marks as { panels: { id: string; chart?: { offset: { x: number }; geometry: Geometry } }[] }).panels.find((candidate) => candidate.id === id)!;
+    return panel.chart!.geometry.axes.find((axis) => axis.axis === 'x')!.ticks[0]!.pos + panel.chart!.offset.x;
+  };
+
+  // A waterfall printed the quarter names, and a column aligned without it put its Q1 column 9.7 px from Q2.
+  it('leaves a grid column as before when a panel there cannot take the inset', () => {
+    const grid = gridOf([
+      { id: 'w', type: 'waterfall', data: { items: [{ id: 'q1', label: 'Q1', value: 50, type: 'total' }, { id: 'q2', label: 'Q2', value: 5 }, { id: 'q3', label: 'Q3', value: -2 }, { id: 'q4', label: 'Q4', value: 5 }] }, options: { valueAxis: { show: true } } },
+      { id: 'r', type: 'line', data: { categories: quarters, series: [{ id: 'n', label: 'North', values: [25, 32, 15, 22] }, { id: 's', label: 'South', values: [12, 23, 34, 15] }] },
+        options: { valueAxis: { show: true }, variant: 'bump', valueLabels: 'last', seriesLabels: 'end', legend: 'none', labels: { category: false } } },
+      { id: 'c', type: 'column', data: { categories: quarters, series: [{ id: 'n', label: 'North', values: [14, 21, 28, 35] }] }, options: { valueAxis: { show: true }, valueLabels: 'none', labels: { category: false } } },
+    ], { anchors: { plotEdges: 'column' }, size: { width: 720, height: 640 } });
+    expect(Math.abs(firstCentre(grid, 'c') - firstCentre(grid, 'w'))).toBeLessThan(1);
+  });
+
+  // valueAxis.percent draws a line as a 100% area; it took the inset like a line and lost both end values.
+  it('keeps the end values of a 100% area chosen through valueAxis.percent', () => {
+    const regions = ['North America', 'Eastern Europe', 'Southern Europe', 'Western Europe', 'Northern Europe', 'Latin America and Caribbean']
+      .map((label, index) => ({ id: `r${index}`, label }));
+    const grid = gridOf([
+      { id: 'c', type: 'column', data: { categories: regions, series: [{ id: 'c', label: 'Total', values: [20, 24, 28, 32, 36, 40] }] }, options: { valueAxis: { show: true }, valueLabels: 'none' } },
+      { id: 'l', type: 'line', data: { categories: regions, series: [
+        { id: 'n', label: 'New', values: [20, 24, 28, 32, 36, 40] }, { id: 'r', label: 'Returning', values: [30, 28, 26, 24, 22, 20] },
+      ] }, options: { valueAxis: { show: true, percent: true }, valueLabels: 'last' } },
+    ], { anchors: { plotEdges: 'column' }, size: { width: 320, height: 640 } });
+    expect(printed(grid, 'l', 'point')).toBe(2);
+  });
+
+  // Twelve rotated month names keep the column 8 px inside its margin; the line drew past it, with no warning.
+  it('gives stacked panels the plot edges of a column that keeps room for rotated names', () => {
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+      .map((label) => ({ id: label.slice(0, 3).toLowerCase(), label }));
+    const values = months.map((_, index) => 20 + 4 * index);
+    const grid = gridOf([
+      { id: 'c', type: 'column', data: { categories: months, series: [{ id: 's', label: 'S', values }] }, options: { valueAxis: { show: true }, valueLabels: 'none' } },
+      { id: 'l', type: 'line', data: { categories: months, series: [{ id: 's', label: 'S', values }] }, options: { valueAxis: { show: true }, valueLabels: 'last' } },
+    ], { anchors: { plotEdges: 'column', categories: 'column' }, size: { width: 720, height: 640 } });
+    const [column, line] = plotEdges(grid);
+    expect(line![0]).toBeCloseTo(column![0]!, 2);
+    expect(line![1]).toBeCloseTo(column![1]!, 2);
+    expect((grid.derived as { sharedAnchors: Record<string, number> }).sharedAnchors['plotEdges:column:0:left']).toBeCloseTo(column![0]!, 2);
+    expect(grid.warnings.map((warning) => warning.code)).not.toContain('grid-anchor-incompatible');
+  });
+
+  // The inset narrows the columns: a column panel over a combo at 375 px dropped 3 of its 12 values.
+  it('leaves a grid column as before when the inset would cost a printed value', () => {
+    const twelve = Array.from({ length: 12 }, (_, index) => ({ id: `q${index}`, label: `Q${index + 1}` }));
+    const grid = gridOf([
+      { id: 'c', type: 'column', data: { categories: twelve, series: [
+        { id: 'n', label: 'Northern region', values: [12, 19, 26, 33, 16, 23, 30, 13, 20, 27, 34, 17] },
+        { id: 's', label: 'Southern district', values: [-17, -6, 5, -14, -3, 8, -11, 0, 11, -8, 3, -16] },
+      ] }, options: { valueAxis: { show: true }, labels: { category: false }, valueLabels: 'all' } },
+      { id: 'm', type: 'combo', data: { categories: twelve, series: [
+        { id: 'n', label: 'Northern region', kind: 'column', values: [137500, 176000, 82500, 121000, 159500, 66000, 104500, 143000, 181500, 88000, 126500, 165000] },
+        { id: 's', label: 'Southern district', kind: 'line', values: [-77000, -16500, 44000, -60500, 0, 60500, -44000, 16500, -88000, -27500, 33000, -71500] },
+      ] }, options: { valueAxis: { show: true } } },
+    ], { sharedScale: true, rows: [1, 1], anchors: { plotEdges: 'column' }, size: { width: 375, height: 640 } });
+    expect(printed(grid, 'c', 'point')).toBeGreaterThanOrEqual(12);
+  });
+
+  const monthsShort = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((label) => ({ id: label, label }));
+  const centreOf = (grid: Geometry, id: string, at: string) => {
+    const panel = (grid.marks as { panels: { id: string; chart?: { offset: { x: number }; geometry: Geometry } }[] }).panels.find((candidate) => candidate.id === id)!;
+    return panel.chart!.geometry.axes.find((axis) => axis.axis === 'x')!.ticks.find((tick) => tick.at === at)!.pos + panel.chart!.offset.x;
+  };
+
+  // A gap after January in the column panel, checked only on the months all three panels drew, put the line's March point nearer February's column.
+  it('leaves a grid column as before when one panel spaces its months unevenly', () => {
+    const grid = gridOf([
+      { id: 'v', type: 'column', data: { categories: monthsShort.map((month, index) => index === 0 ? { ...month, gapAfter: 0.75 } : month), series: [{ id: 'q', label: 'Volume', values: [25, 30, 29, 34, 40, 36, 39, 41, 34, 36, 39, 38] }] }, options: { valueAxis: { show: true }, valueLabels: 'none' } },
+      { id: 'r', type: 'line', data: { categories: monthsShort, series: [{ id: 'u', label: 'Rate', values: [25, 30, 29, 34, 40, 36, 39, 41, 34, 36, 39, 38] }] },
+        options: { valueAxis: { show: true }, valueLabels: 'all', legend: 'none', categoryAxis: { crossesBetween: false } } },
+      { id: 'i', type: 'line', data: { categories: [monthsShort[0]!, monthsShort[11]!], series: [{ id: 's', label: 'Stock', values: [128, 138] }] }, options: { valueAxis: { show: true }, valueLabels: 'none', categoryAxis: { crossesBetween: false } } },
+    ], { anchors: { plotEdges: 'column' }, rows: [1, 1, 1], size: { width: 480, height: 720 } });
+    const march = centreOf(grid, 'r', 'Mar');
+    expect(Math.abs(march - centreOf(grid, 'v', 'Mar'))).toBeLessThan(Math.abs(march - centreOf(grid, 'v', 'Feb')));
+  });
+
+  // A sparkline draws the months without the inset; the column and line settled on their own edges and the warning went.
+  it('keeps the warning when a sparkline shares the grid column', () => {
+    const grid = gridOf([
+      { id: 'c', type: 'column', data: { categories: monthsShort, series: [{ id: 's', label: 'S', values: [20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64] }] }, options: { valueAxis: { show: true }, valueLabels: 'none' } },
+      { id: 'l', type: 'line', data: { categories: monthsShort, series: [{ id: 's', label: 'S', values: [20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64] }] }, options: { valueAxis: { show: true }, valueLabels: 'last' } },
+      { id: 'o', type: 'sparkline', data: { values: [20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64], labels: monthsShort.map((month) => month.label) } },
+    ], { anchors: { plotEdges: 'column', categories: 'column' }, rows: [1, 1, 1], size: { width: 720, height: 800 } });
     expect(grid.warnings.map((warning) => warning.code)).toContain('grid-anchor-incompatible');
-    expect(edgeKeys(grid)).toEqual([]);
-    expect(edgeKeys(layout({ categories: 'all' }))).toEqual([]);
+  });
+
+  // A panel with one month (the latest column) kept its centre while the other panels moved March 174 px away from it.
+  it('leaves a grid column as before when a one-month panel shares it', () => {
+    const grid = gridOf([
+      { id: 't', type: 'line', data: { categories: monthsShort.slice(0, 5), series: [{ id: 's', label: 'Trend', values: [3, 4, 5, 4, 6] }] }, options: { valueLabels: 'none', categoryAxis: { crossesBetween: false } } },
+      { id: 'a', type: 'column', data: { categories: monthsShort, series: [{ id: 's', label: 'Annual', values: [3, 4, 5, 4, 6, 5, 7, 6, 8, 7, 9, 8] }] }, options: { valueLabels: 'none', labels: { category: false } } },
+      { id: 'l', type: 'column', data: { categories: [monthsShort[2]!], series: [{ id: 's', label: 'Latest', values: [5] }] }, options: { valueLabels: 'all', labels: { category: false } } },
+    ], { anchors: { plotEdges: 'column' }, rows: [1, 1, 1], size: { width: 720, height: 720 } });
+    expect(Math.abs(centreOf(grid, 't', 'Mar') - centreOf(grid, 'l', 'Mar'))).toBeLessThan(1);
+  });
+
+  const eightMonths = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug'].map((label) => ({ id: label, label }));
+  const comboPanel = (id: string, valueLabels: string) => ({ id, type: 'combo', data: { categories: eightMonths, series: [
+    { id: 'col', label: 'Actual', values: [21000, 22000, 28000, 34000, 35000, 41000, 42000, 48000] },
+    { id: 'ln', label: 'Plan', kind: 'line', values: [22000, 23000, 29000, 30000, 36000, 42000, 43000, 49000] },
+  ] }, options: { valueAxis: { show: true, gridlines: true }, valueLabels } });
+
+  // Narrower category room printed the month names a step smaller (category-font-stepped) on a 320 px grid.
+  it('leaves a grid column as before when the inset would print names smaller', () => {
+    const grid = gridOf([
+      { ...comboPanel('a', 'all'), data: { categories: eightMonths, series: [
+        { id: 'col', label: 'Actual', values: [18, 24, 30, 31, 37, 38, 44, 50] },
+        { id: 'ln', label: 'Plan', kind: 'line', values: [19, 25, 26, 32, 38, 39, 45, 46] },
+      ] } },
+      comboPanel('b', 'last'),
+    ], { sharedScale: true, anchors: { categories: 'row' }, size: { width: 320, height: 520 } });
+    expect(grid.warnings.map((warning) => warning.code)).not.toContain('category-font-stepped');
+  });
+
+  // Narrower category room pushed the variance panel's month names up to 1.7 px off their columns.
+  it('leaves a grid column as before when the inset would move a name off its category', () => {
+    const grid = gridOf([
+      { id: 'v', type: 'variance', data: { categories: eightMonths, series: [
+        { id: 'ac', label: 'Actual', values: [18, 24, 30, 31, 37, 38, 44, 50] },
+        { id: 'py', label: 'Prior year', role: 'reference', scenario: 'PY', values: [20, 26, 27, 33, 34, 40, 46, 47] },
+      ] }, options: { valueAxis: { show: true, gridlines: true }, variant: 'absolute', variance: { of: 'ac', vs: 'py' } } },
+      comboPanel('c', 'all'),
+    ], { sharedScale: true, anchors: { plotEdges: 'all' }, size: { width: 320, height: 520 } });
+    const panel = (grid.marks as { panels: { id: string; chart?: { geometry: Geometry } }[] }).panels.find((candidate) => candidate.id === 'v')!.chart!.geometry;
+    const ticks = panel.axes.find((axis) => axis.axis === 'x')!.ticks;
+    for (const label of panel.labels.filter((candidate) => candidate.kind === 'category')) {
+      const tick = ticks.find((candidate) => candidate.at === label.owner?.categoryId)!;
+      expect(Math.abs(label.rect!.x + label.rect!.w / 2 - tick.pos)).toBeLessThan(0.6);
+    }
+  });
+
+  const lowerMonths = (count: number) => ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].slice(0, count).map((label) => ({ id: label.toLowerCase(), label }));
+  const ticksAt = (grid: Geometry, id: string) => {
+    const panel = (grid.marks as { panels: { id: string; chart?: { offset: { x: number }; geometry: Geometry } }[] }).panels.find((candidate) => candidate.id === id)!;
+    return panel.chart!.geometry.axes.find((axis) => axis.axis === 'x')!.ticks.map((tick) => tick.pos + panel.chart!.offset.x);
+  };
+
+  // valueAxis.percent drew a 100% column that took the inset, and April's marks moved 35 px under the March text panel.
+  it('draws a 100% column asked for through valueAxis.percent as one through variant', () => {
+    const regions = [{ id: 'n', label: 'North', values: [22, 31, 26, 41] }, { id: 's', label: 'South', values: [15, 18, 16, 23] }];
+    const withShare = (share: Record<string, unknown>) => gridOf([
+      { id: 'b', type: 'combo', row: 0, column: 0, data: { categories: lowerMonths(4), series: regions.map((series, index) => ({ ...series, kind: index ? 'line' : 'column' })) }, options: { valueLabels: 'last', valueAxis: { show: true } } },
+      { id: 'a', type: 'column', row: 1, column: 0, data: { categories: lowerMonths(4), series: regions }, options: { valueLabels: 'all', ...share } },
+    ], { sharedAxis: 'none', anchors: { categories: 'column', plotEdges: 'column' }, rows: [1, 1], size: { width: 480, height: 640 } });
+    const viaPercent = withShare({ valueAxis: { show: true, percent: true } });
+    const viaVariant = withShare({ valueAxis: { show: true }, variant: 'stacked100' });
+    expect(ticksAt(viaPercent, 'a')).toEqual(ticksAt(viaVariant, 'a'));
+    expect(ticksAt(viaPercent, 'b')).toEqual(ticksAt(viaVariant, 'b'));
+  });
+
+  // A forecast divider kept the end names at the plot edge while the inset moved the end points 47 px away from them.
+  it('keeps series end names beside their last points', () => {
+    const orders = { id: 'orders', label: 'Orders', values: [21, 28, 24, 31] };
+    const grid = gridOf([
+      { id: 'c', type: 'column', data: { categories: lowerMonths(4), series: [orders] }, options: { valueLabels: 'none', valueAxis: { show: true } } },
+      { id: 'l', type: 'line', data: { categories: lowerMonths(4), series: [orders, { id: 'plan', label: 'Plan', values: [27, 24, 28, 29] }] },
+        options: { valueLabels: 'none', seriesLabels: 'end', legend: 'none', categoryAxis: { crossesBetween: false } },
+        annotations: [{ kind: 'band', id: 'spring', from: 'mar', to: 'apr', label: 'Forecast', style: 'bracket', divider: 'end' }] },
+    ], { anchors: { plotEdges: 'all' }, rows: [1, 1], size: { width: 480, height: 520 } });
+    const line = (grid.marks as { panels: { id: string; chart?: { geometry: Geometry } }[] }).panels.find((candidate) => candidate.id === 'l')!.chart!.geometry;
+    const april = line.axes.find((axis) => axis.axis === 'x')!.ticks.find((tick) => tick.at === 'apr')!.pos;
+    for (const label of line.labels.filter((candidate) => candidate.kind === 'series')) expect(label.rect!.x - april).toBeLessThan(17);
+  });
+
+  // Two totals worded 16 counted as kept while November's moved to January and November printed none.
+  it('keeps each printed value at its own category', () => {
+    const grid = gridOf([
+      { id: 'l', type: 'line', data: { categories: lowerMonths(12), series: [
+        { id: 'orders', label: 'Orders', values: [750, 750, 700, 1100, 950, 900, 1200, 950, 600, 700, 1150, 750] },
+        { id: 'target', label: 'Plan', values: [1150, 1200, 1050, 750, 550, 600, 550, 900, 900, 1200, 1050, 700] },
+      ] }, options: { valueLabels: 'all', valueAxis: { show: true }, categoryAxis: { crossesBetween: false }, seriesLabels: 'end', legend: 'none' } },
+      { id: 'c', type: 'combo', data: { categories: lowerMonths(12), series: [
+        { id: 'orders', label: 'Orders', values: [16, 21, 16, 16, 19, 20, 16, 12, 24, 23, 16, 14] },
+        { id: 'target', label: 'Plan', kind: 'line', values: [16, 21, 14, 18, 12, 15, 11, 11, 12, 23, 13, 14] },
+      ] }, options: { valueLabels: 'last', valueAxis: { show: true } } },
+    ], { sharedScale: true, anchors: { plotEdges: 'all' }, rows: [1, 1], size: { width: 360, height: 320 } });
+    const november = grid.scene.filter((node) => node.t === 'text' && node.opacity !== 0 && node.id.startsWith('c/')
+      && (node as { owner?: { categoryId?: string } }).owner?.categoryId === 'nov' && node.lines.join('') === '16');
+    expect(november.length).toBeGreaterThan(0);
+  });
+
+  // Stacked dot panels share a category axis down the plot: aligning their numeric value ticks as
+  // categories halved the first plot and warned.
+  it('leaves the value axis of stacked dot panels alone', () => {
+    const quarters = ['Q1', 'Q2', 'Q3', 'Q4'].map((label) => ({ id: label.toLowerCase(), label }));
+    const panel = (id: string, values: number[]) =>
+      ({ id, type: 'dot', data: { categories: quarters, series: [{ id, label: id, values }] }, options: { valueAxis: { show: true } } });
+    const grid = layoutResolvedRequest(resolveChartRequest({
+      type: 'grid',
+      data: { panels: [panel('a', [0, 30, 70, 100]), panel('b', [0, 60, 150, 200])] },
+      options: { sharedAxis: 'category', sharedScale: false, anchors: { plotEdges: 'all' }, size: { width: 960, height: 600 } },
+    })) as Geometry;
+    const [first, second] = plotEdges(grid);
+    expect(first![1]! - first![0]!).toBeCloseTo(second![1]! - second![0]!, 2);
+    expect(grid.warnings.map((warning) => warning.code)).not.toContain('grid-anchor-incompatible');
   });
 });
 

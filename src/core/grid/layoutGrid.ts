@@ -1,4 +1,5 @@
-import { alignCategoryPanels, alignValuePanels } from './panelAlignment';
+import { alignCategoryPanels, alignValuePanels, type PanelAnchoring } from './panelAlignment';
+import { CATEGORY_INSET, panelAnchoring, type CategoryInset } from './categoryInset';
 import { chartString } from '../strings/layoutGrid';
 /**
  * Grid — facets AND variance tiers, one primitive.
@@ -354,6 +355,7 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
     panelIndex: number,
     slot: Rect,
     marginLR?: { left?: number; right?: number; bottom?: number },
+    inset?: CategoryInset,
   ) => {
     const def = getChart(panel.type);
     if (!def) {
@@ -378,6 +380,8 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
       ...(def.type === 'kpi' ? { [KPI_HOST_TEXT]: stringsIn([panelCaption, (panel as { title?: unknown }).title, options.title, options.subtitle, options.footnotes, options.source]) } : {}),
       // The value is the panel count, so a tier knows whether it is the only one (isSingleVarianceTier).
       ...(varianceTiers && def.type === 'variance' ? { [VARIANCE_TIER]: data.panels.length } : {}),
+      // The categories move inside the plot, so stacked panels keep one plot rectangle.
+      ...(inset && (inset.left > 0 || inset.right > 0) ? { [CATEGORY_INSET]: { left: inset.left, right: inset.right } } : {}),
       ...(compactTiers
         ? { ...(suppressTitle ? { title: '' } : {}), ...(labels !== undefined ? { labels } : {}) }
         : {}),
@@ -460,6 +464,8 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
     recordOptions: object;
     tierCaption?: string;
     tierDetail?: string;
+    /** The category inset the alignment settled; both relayouts below read the same holder. */
+    anchored?: PanelAnchoring;
   };
   let sharedX: number | undefined;
   let sharedW: number | undefined;
@@ -470,14 +476,18 @@ function layoutGridPass(data: GridData, options: GridOptions = {}): LayoutResult
         (child.geo.derived as { endpointLabelEconomy?: { strategy?: unknown } })
           .endpointLabelEconomy?.strategy === 'legend',
     );
-  const alignedPanels = (children: GridChild[]) => children.map((child, i) => ({
-    geometry: child.geo, slot: slots[i]!,
-    margin: (child.recordOptions as { margin?: { left?: number; right?: number; bottom?: number } }).margin ?? {},
-    relayout: (margin: { left?: number; right?: number; bottom?: number }) => {
-      Object.assign(child, layoutPanel(data.panels[i]!, i, slots[i]!, margin));
-      return child.geo;
-    },
-  }));
+  const alignedPanels = (children: GridChild[]) => children.map((child, i) => {
+    const anchored = child.anchored ??= child.def ? panelAnchoring(child.def.type, data.panels[i]!.options) : {};
+    return {
+      geometry: child.geo, slot: slots[i]!,
+      margin: (child.recordOptions as { margin?: { left?: number; right?: number; bottom?: number } }).margin ?? {},
+      anchored,
+      relayout: (margin: { left?: number; right?: number; bottom?: number }) => {
+        Object.assign(child, layoutPanel(data.panels[i]!, i, slots[i]!, margin, anchored.categoryInset));
+        return child.geo;
+      },
+    };
+  });
   const alignSharedValues = (children: GridChild[]) => {
     const panels = alignedPanels(children);
     const resolved = (options as { [SCALE_GROUP_MEMBERS]?: Record<string, string[]> })[SCALE_GROUP_MEMBERS];

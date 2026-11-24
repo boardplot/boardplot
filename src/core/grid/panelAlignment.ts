@@ -3,16 +3,27 @@ import { canvasMargin, resolveTheme } from '../theme';
 import type { Rect } from '../geometry';
 import type { Geometry } from '../types/scene';
 import { maxOf, minOf } from '../arrays';
+import type { CategoryInset } from './categoryInset';
+
+/**
+ * Values the grid settles for a panel and its relayout reads: the category inset (only for a type that
+ * reads it) and the left edge of its panel label. A panel without this holder moves its plot instead.
+ */
+export interface PanelAnchoring {
+  categoryInset?: CategoryInset;
+  captionLeft?: number;
+}
 
 interface GridPanelLayout {
   geometry: Geometry;
   slot: Rect;
   margin: { top?: number; right?: number; bottom?: number; left?: number };
   relayout?: (margin: GridPanelLayout['margin']) => Geometry;
+  anchored?: PanelAnchoring;
 }
 
-/** Relayout a child with its plot's left edge moved by `dl` and its right edge in by `dr`. */
-export function moveChildPlot(child: GridPanelLayout, dl: number, dr: number, theme: ReturnType<typeof resolveTheme>): void {
+/** The margin that moves a child's plot left edge by `dl` and its right edge in by `dr`. */
+export function movedMargin(child: GridPanelLayout, dl: number, dr: number, theme: ReturnType<typeof resolveTheme>): GridPanelLayout['margin'] {
   const effectiveLeft =
     typeof (child.geometry.derived as { leftInset?: unknown }).leftInset === 'number'
       ? (child.geometry.derived as { leftInset: number }).leftInset
@@ -21,20 +32,191 @@ export function moveChildPlot(child: GridPanelLayout, dl: number, dr: number, th
     typeof (child.geometry.derived as { rightInset?: unknown }).rightInset === 'number'
       ? (child.geometry.derived as { rightInset: number }).rightInset
       : child.margin.right ?? canvasMargin(theme, child.slot.w).right;
-  child.margin = { ...child.margin, left: effectiveLeft + dl, right: effectiveRight + dr };
+  return { ...child.margin, left: effectiveLeft + dl, right: effectiveRight + dr };
+}
+
+/** Relayout a child with its plot's left edge moved by `dl` and its right edge in by `dr`. */
+export function moveChildPlot(child: GridPanelLayout, dl: number, dr: number, theme: ReturnType<typeof resolveTheme>): void {
+  child.margin = movedMargin(child, dl, dr, theme);
   child.geometry = child.relayout!(child.margin);
 }
+
+/** The texts a panel prints, per role (value label, end label, category name, tick, legend entry) and wording. */
+function printedTexts(geometry: Geometry): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const node of geometry.scene) {
+    if (node.t !== 'text' || node.opacity === 0) continue;
+    // The owner keeps a value apart from the same wording at another category.
+    const key = `${node.part ?? ''}|${node.lines.join('\n')}|${JSON.stringify(node.owner ?? null)}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/**
+ * How far each name sits from what it names: a category name's centre from its category centre, and a
+ * series end name's box from the category of its last point. Keyed by kind, series and category.
+ */
+function nameOffsets(geometry: Geometry): Map<string, number> {
+  const ticks = geometry.axes.find((axis) => axis.axis === 'x')?.ticks ?? [];
+  const offsets = new Map<string, number>();
+  for (const label of geometry.labels) {
+    if ((label.kind !== 'category' && label.kind !== 'series') || !label.rect) continue;
+    const tick = ticks.find((candidate) => candidate.at === label.owner?.categoryId);
+    if (!tick) continue;
+    const { x, w } = label.rect;
+    const offset = label.kind === 'category' ? Math.abs(x + w / 2 - tick.pos) : Math.max(x - tick.pos, tick.pos - (x + w), 0);
+    offsets.set(`${label.kind}|${label.owner?.seriesId ?? ''}|${String(tick.at)}`, offset);
+  }
+  return offsets;
+}
+
+/**
+ * Every text printed before is still printed in the same role: a value that moves from its mark to the
+ * legend is lost at the mark, and a value hidden for density is lost even when others appear.
+ */
+const keepsTexts = (before: Map<string, number>, after: Map<string, number>) =>
+  [...before].every(([role, count]) => (after.get(role) ?? 0) >= count);
 
 /**
  * Equal plot edges are not equal category centres: a type can inset its bands
  * inside the plot (combo over line sat 3.3 px apart). Each panel of an anchored
- * group moves its plot so its first and last shared category land on the
- * innermost pair; the tick share of the plot is read anew on each pass.
+ * group places its first and last shared category on the innermost pair; the
+ * tick share of the category range is read anew on each pass.
+ *
+ * The older drawing is the default: every panel moves its plot, and with `insetOnly` (the grid did not ask
+ * for category anchors) nothing moves. A group keeps one plot rectangle only when it qualifies: every chart
+ * panel is a column (grouped or stacked), a plain line, a combo or a variance panel, all hold the same
+ * categories in the same order (two or more), every category centre sits at one x after the inset, the
+ * edges settle, and no panel prints fewer texts of a role and wording than in its start drawing, carries a
+ * warning its start drawing does not (smaller or rotated names or values), or moves a category name or a
+ * series end name more than 0.5 px further from what it names. A panel
+ * wider than the group's shared plot (rotated names) sets the group's edges.
  */
 export function alignCategoryPanels(
   children: GridPanelLayout[],
   theme: ReturnType<typeof resolveTheme>,
+  insetOnly = false,
 ): number {
+  if (keepsOnePlot(children, theme)) return 0;
+  // The group draws as before the inset existed, panel labels included.
+  for (const child of children) {
+    if (!child.relayout || !child.anchored) continue;
+    const reset = child.anchored.captionLeft !== undefined;
+    child.anchored.captionLeft = undefined;
+    if (reset) child.geometry = child.relayout(child.margin);
+  }
+  return insetOnly ? 0 : movePlotsToCentres(children, theme);
+}
+
+/**
+ * Line up the category centres inside one plot rectangle. True when the group holds it; false, with
+ * every panel back at its zero inset and its starting margin, when it cannot.
+ */
+function keepsOnePlot(children: GridPanelLayout[], theme: ReturnType<typeof resolveTheme>): boolean {
+  // Category ticks carry the category id. Numeric ticks (a dot or scatter value axis) are no categories.
+  const ticksOf = (child: GridPanelLayout) =>
+    (child.geometry.axes.find((axis) => axis.axis === 'x')?.ticks ?? []).filter((tick) => typeof tick.at === 'string');
+  // The group qualifies only when every chart panel may take the inset and all hold the same categories, in order.
+  const candidates = children.filter((child) => child.relayout !== undefined);
+  if (candidates.length < 2 || !candidates.every((child) => child.anchored?.categoryInset !== undefined)) return false;
+  const ids = ticksOf(candidates[0]!).map((tick) => tick.at);
+  if (ids.length < 2) return false;
+  if (!candidates.every((child) => {
+    const own = ticksOf(child);
+    return own.length === ids.length && own.every((tick, index) => tick.at === ids[index]);
+  })) return false;
+  const [firstId, lastId] = [ids[0], ids.at(-1)];
+  const tickOf = (child: GridPanelLayout, at: unknown) => ticksOf(child).find((tick) => tick.at === at);
+  const posOf = (child: GridPanelLayout, at: unknown) => child.slot.x + tickOf(child, at)!.pos;
+  const leftOf = (child: GridPanelLayout) => child.slot.x + child.geometry.plot.x;
+  const rightOf = (child: GridPanelLayout) => leftOf(child) + child.geometry.plot.w;
+
+  // Every category sits at the same share of the span on each panel: a cheap test before any relayout.
+  const span = minOf(candidates.map((child) => posOf(child, lastId) - posOf(child, firstId)));
+  if (!(span > 0)) return false;
+  const shareOf = (child: GridPanelLayout, at: unknown) =>
+    (posOf(child, at) - posOf(child, firstId)) / (posOf(child, lastId) - posOf(child, firstId));
+  for (const at of ids) {
+    const shares = candidates.map((child) => shareOf(child, at));
+    if ((maxOf(shares) - minOf(shares)) * span > 1) return false;
+  }
+
+  const alignCentres = () => {
+    for (let pass = 0; pass < 3; pass++) {
+      const first = maxOf(candidates.map((child) => posOf(child, firstId)));
+      const last = minOf(candidates.map((child) => posOf(child, lastId)));
+      if (!(last > first)) break;
+      const off = candidates.filter((child) => Math.abs(posOf(child, firstId) - first) > 0.01 || Math.abs(posOf(child, lastId) - last) > 0.01);
+      if (off.length === 0) break;
+      for (const child of off) {
+        const x = leftOf(child);
+        const w = child.geometry.plot.w;
+        const inset = child.anchored!.categoryInset!;
+        // The current category range: the plot less the inset already taken.
+        const x0 = x + inset.left;
+        const w0 = w - inset.left - inset.right;
+        if (!(w0 > 0)) continue;
+        const f = (posOf(child, firstId) - x0) / w0;
+        const l = (posOf(child, lastId) - x0) / w0;
+        if (!(l > f)) continue;
+        const w2 = (last - first) / (l - f);
+        const x2 = first - f * w2;
+        // A new object on each pass: the layout memo keeps the JSON of an option object by identity.
+        child.anchored!.categoryInset = { left: Math.max(0, x2 - x), right: Math.max(0, x + w - (x2 + w2)) };
+        child.geometry = child.relayout!(child.margin);
+      }
+    }
+  };
+  // Two lines with end labels settle their shared centres within a few hundredths of a pixel.
+  const centred = () => {
+    const first = posOf(candidates[0]!, firstId);
+    const last = posOf(candidates[0]!, lastId);
+    return candidates.every((child) => Math.abs(posOf(child, firstId) - first) <= 0.5 && Math.abs(posOf(child, lastId) - last) <= 0.5);
+  };
+  const sameEdges = () => {
+    const left = leftOf(candidates[0]!);
+    const right = rightOf(candidates[0]!);
+    return candidates.every((child) => Math.abs(leftOf(child) - left) <= 0.01 && Math.abs(rightOf(child) - right) <= 0.01);
+  };
+
+  const start = candidates.map((child) => ({
+    child, margin: child.margin, texts: printedTexts(child.geometry),
+    warnings: new Set(child.geometry.warnings.map((warning) => warning.code)), names: nameOffsets(child.geometry),
+  }));
+  // The inset drawing prints every text of the start drawing, at the same size and turn, and each name stays on its category.
+  const keepsLabels = () => start.every(({ child, texts, warnings, names }) =>
+    keepsTexts(texts, printedTexts(child.geometry))
+    && child.geometry.warnings.every((warning) => warnings.has(warning.code))
+    && [...nameOffsets(child.geometry)].every(([at, offset]) => offset <= (names.get(at) ?? 0) + 0.5));
+  alignCentres();
+  // A panel that keeps more room than its margin gives it (rotated names) sets the group's plot:
+  // the others follow its edges, and their categories move again inside the new plot.
+  for (let pass = 0; pass < 3 && centred() && !sameEdges(); pass++) {
+    const left = maxOf(candidates.map(leftOf));
+    const right = minOf(candidates.map(rightOf));
+    if (!(right > left)) break;
+    for (const child of candidates) {
+      if (Math.abs(leftOf(child) - left) > 0.01 || Math.abs(rightOf(child) - right) > 0.01) moveChildPlot(child, left - leftOf(child), rightOf(child) - right, theme);
+    }
+    alignCentres();
+  }
+  // After the inset, every category centre sits at one x on all panels.
+  const sharedCentres = () => ids.every((at) => {
+    const xs = candidates.map((child) => (tickOf(child, at) ? posOf(child, at) : Number.NaN));
+    return xs.every(Number.isFinite) && maxOf(xs) - minOf(xs) <= 1;
+  });
+  if (centred() && sameEdges() && sharedCentres() && keepsLabels()) return true;
+  for (const { child, margin } of start) {
+    child.margin = margin;
+    child.anchored!.categoryInset = { left: 0, right: 0 };
+    child.geometry = child.relayout!(child.margin);
+  }
+  return false;
+}
+
+/** The older alignment: each panel moves its plot until its end categories sit on the shared centres. */
+function movePlotsToCentres(children: GridPanelLayout[], theme: ReturnType<typeof resolveTheme>): number {
   const before = new Map(children.map((child) => [child, [child.slot.x + child.geometry.plot.x, child.geometry.plot.w]] as const));
   const ticksOf = (child: GridPanelLayout) => child.geometry.axes.find((axis) => axis.axis === 'x')?.ticks ?? [];
   const candidates = children.filter((child) => child.relayout !== undefined && ticksOf(child).length >= 2);
