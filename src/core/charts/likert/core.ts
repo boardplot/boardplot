@@ -1,7 +1,7 @@
 import { chartSizing } from '../../sizing';
 /** Zod-free likert chart registration. */
 
-import type { ChartCore } from '../../registry';
+import { surveyRepairLayouts, type ChartCore } from '../../registry';
 import {
   layoutLikert,
   type LikertData,
@@ -26,3 +26,5 @@ export const likertCore: ChartCore<
   defaults: { neutral: 'split', summary: 'net', sortBy: 'sheet' },
   annotationKinds: ['cagr', 'diff', 'delta', 'note', 'callout', 'text', 'line', 'arrow', 'box']
 };
+
+surveyRepairLayouts.add(layoutLikert);

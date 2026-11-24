@@ -1,4 +1,5 @@
 import { PLAN_ONLY } from './layoutPlan';
+import { defaultMeasurer } from './text';
 /**
  * Chart registry. Charts are values; the registry is the single
  * source for the CLI, JSON Schemas, docs, React component generation, and
@@ -211,6 +212,12 @@ export const catalogueOptionsSchemas = new WeakSet<z.ZodType>();
 
 /** Built-in panel layouts that can start below an authored tier caption without a refusal probe. */
 export const captionSizedPanelLayouts = new WeakSet<object>();
+
+/** The built-in survey layout validates its response data before the first bar draw. */
+export const surveyRepairLayouts = new WeakSet<object>();
+
+const FALLBACK_REPAIR = Symbol('fallbackRepair');
+type FallbackRepair = { deferred: boolean };
 
 const registry = new Map<string, RegisteredChart<any, any, any, any>>();
 const aliasIndex = new Map<string, string>();
@@ -523,6 +530,15 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
           const probe = probeAt(width, Math.max(geo.size.height, floor.minHeight));
           if (!isRefused(probe) && floor.minHeight <= geo.size.height) return sizeRefusal(def.type, def.title, geo.size, sClassMinimum(floor, geo.size));
           if (!isRefused(probe)) {
+            // This larger size drew. The remaining search only refines the size refusal.
+            // The counted or compact form can replace it before anyone reads its advice.
+            const repair = (frame as { [FALLBACK_REPAIR]?: FallbackRepair } | undefined)?.[FALLBACK_REPAIR];
+            if (repair && staticFrame.countable && resolved.fixed.height && !layoutOptions?.annotations?.length
+              && (layoutOptions?.measure === undefined || layoutOptions.measure === defaultMeasurer)
+              && compactFallbackApplies(def, options, data) && fitsSize(resolved.sizePx, declaredSizing(def, options))) {
+              repair.deferred = true;
+              return geo;
+            }
             // The floor was measured with the frame lines of the refused size: a hidden-label note or a
             // disclosure that a taller frame does not print. Search down to the lowest height that
             // draws through the same note pass, so the refusal never names more than the chart needs.
@@ -671,7 +687,12 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
   // Full mode that lacks room on a pinned canvas falls back to compact, here at the outermost
   // call: the probes above ask the full chart what it needs and must keep their refusals.
   const layoutFitted = (data: D, options: O | undefined, layoutOnce: (options?: O) => LayoutResult<M, DV>): LayoutResult<M, DV> => {
-    const full = layoutOnce(options);
+    const repair = staticFrame.pinned && surveyRepairLayouts.has(def.layout)
+      && (options?.measure === undefined || options.measure === defaultMeasurer)
+      ? { deferred: false } : undefined;
+    const full = layoutOnce(repair ? { ...options, [FALLBACK_REPAIR]: repair } as unknown as O : options);
+    // Only the retained full refusal needs the original midpoint and smaller-font searches.
+    const fullAdvice = () => repair?.deferred ? layoutOnce(options) : full;
     // A band chart's full mode prints every category name (namesMustPrint). When the
     // finished chart hides one, compact replaces it only if compact prints them all; else it refuses.
     if (def.namesMustPrint === true && !full.refused && full.mode !== 'compact' && lostCategoryNames(full).length > 0) {
@@ -700,16 +721,16 @@ export function registerChart<D, O extends ChartOptions, M extends object, DV ex
         if (!fitted.refused || fitted.warnings[0]?.code === 'size-below-floor') return fitted;
       } finally { run.finish(); }
     }
-    if (!compactFallbackApplies(def, options, data)) return full;
+    if (!compactFallbackApplies(def, options, data)) return fullAdvice();
     // A fixed canvas below the full floor already ran compact in fitSize,
     // including its source and subtitle fallbacks. Forcing compact again
     // repeats the same refusal and its repair search.
     const requested = resolveTargetSize(options?.target ?? DEFAULT_TARGET, options?.size);
-    if (requested.fixed.height && !fitsSize(requested.sizePx, declaredSizing(def, options))) return full;
+    if (requested.fixed.height && !fitsSize(requested.sizePx, declaredSizing(def, options))) return fullAdvice();
     const compact = layoutOnce({ ...options, [FORCE_COMPACT]: true } as unknown as typeof options);
     // Compact replaces the full refusal only if it draws, or if it is a size refusal with the
     // size compact needs. Any other compact failure would hide the usable size advice of full mode.
-    return !isRefused(compact) || compact.warnings[0]?.code === 'size-below-floor' ? compact : full;
+    return !isRefused(compact) || compact.warnings[0]?.code === 'size-below-floor' ? compact : fullAdvice();
   };
   // A refusal keeps the retirement warnings that a drawn chart gets in layoutOnce (accept, ignore, warn).
   const layoutBaseline = (data: D, options: O | undefined, layoutOnce: (options?: O) => LayoutResult<M, DV>, probe = false) => {
