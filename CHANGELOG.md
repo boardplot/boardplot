@@ -7,7 +7,7 @@ Boardplot is in 0.x: options and output can change between minor versions. Each 
 ### Fixed
 
 - Earlier partial periods keep their incomplete marks, and only running periods say “to date”.
-- Hover cards use the reference series label in comparison rows when the series has one.
+- Hover cards use the reference series label when the series has one. KPI hover cards print the comparison wording once.
 
 ## 0.64.0
 

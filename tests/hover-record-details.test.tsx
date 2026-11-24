@@ -400,13 +400,13 @@ it('gives a value with labels off the text its label would print', () => {
   expect(labelCardContent(record).rows.map(row => row.text)).toContain('Revenue: $78.0');
 });
 
-// A scenario code in place of the series name made the hover comparison hard to match to the chart.
-it('uses a reference series label when present and keeps the existing comparison wording otherwise', () => {
+// Scenario codes hid reference series names, and KPI hover rows added a second comparison prefix.
+it('uses a reference series label and prints each KPI comparison label once', () => {
   const cardRows = (spec: object) => {
     const { request, geometry } = build(spec);
     const record = interactionRecords({ request, geometry, scope: request.scope, claims: [] })
       .find(record => record.comparisons.length > 0)!;
-    return withChartFormats(request.options, () => labelCardContent(record).rows.map(row => row.text));
+    return withChartFormats(request.options, () => labelCardContent(record, request.locale?.language).rows.map(row => row.text));
   };
   const dumbbell = (reference: { label?: string }) => ({ type: 'dot', data: {
     categories: [{ id: 'north', label: 'North' }],
@@ -414,10 +414,23 @@ it('uses a reference series label when present and keeps the existing comparison
       { id: 'pl', scenario: 'PL', values: [25], ...reference }],
   }, options: { variant: 'dumbbell', unit: '%' } });
 
-  expect(cardRows(dumbbell({ label: 'Plan' }))).toEqual(['North', 'Actual: 27.9%', 'vs Plan: +2.9pp (+12%)']);
+  expect.soft(cardRows(dumbbell({ label: 'Plan' }))).toEqual(['North', 'Actual: 27.9%', 'vs Plan: +2.9pp (+12%)']);
   expect(cardRows(dumbbell({}))).toEqual(['North', 'Actual: 27.9%', 'vs PL: +2.9pp (+12%)']);
-  expect(cardRows({ type: 'kpi', data: { label: 'Orders', value: 120, delta: { vs: 100, scenario: 'PY', mode: 'both' } } }))
+
+  const orders = { label: 'Orders', value: 120 };
+  const compare = [{ vs: 100, label: 'YoY' }, { vs: 110, label: 'vs Plan' }];
+  const german = { locale: { language: 'de' } };
+  expect.soft(cardRows({ type: 'kpi', data: { ...orders, compare } }))
+    .toEqual(['Orders', '120', 'YoY: +20 (+20.0%)', 'vs Plan: +10 (+9.1%)']);
+  expect.soft(cardRows({ type: 'kpi', data: { ...orders, delta: { vs: 100 } } }))
+    .toEqual(['Orders', '120', 'vs 100: +20 (+20%)']);
+  expect.soft(cardRows({ type: 'kpi', data: { ...orders, compare: [{ vs: 100, label: 'ggü. Vorjahr' }] }, options: german }))
+    .toEqual(['Orders', '120', 'ggü. Vorjahr: +20 (+20%)']);
+
+  const scenarioDelta = { type: 'kpi', data: { ...orders, delta: { vs: 100, scenario: 'PY', mode: 'both' } } };
+  expect.soft(cardRows(scenarioDelta))
     .toEqual(['Orders', '120', 'vs PY: +20 (+20%)']);
+  expect(cardRows({ ...scenarioDelta, options: german })).toEqual(['Orders', '120', 'ggü. PY: +20 (+20%)']);
 });
 
 // The card formatted a drawn change again, so a change labelled −4% read −4.0%.

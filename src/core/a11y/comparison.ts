@@ -30,5 +30,5 @@ export function compareValues(
     : derivedPercent((delta.raw as number) / (reference.raw as number) * 100);
   const { id, label, labelFromId } = referenceSeries;
   return { label: label ?? id, ...(scenario ? { scenario } : {}),
-    ...(label !== undefined && !labelFromId ? { referenceLabel: label } : {}), current, reference, delta, percent };
+    ...(label !== undefined && !labelFromId ? { labelKind: 'reference' } : {}), current, reference, delta, percent };
 }

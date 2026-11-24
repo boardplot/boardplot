@@ -190,6 +190,7 @@ function kpi(ctx: RecordContext): InteractionRecord[] {
   const comparisons = (geo.derived.comparisons ?? []).map(comparison => ({
     label: comparison.label,
     ...(comparison.source === 'delta' ? { scenario: data.delta?.scenario } : {}),
+    ...(comparison.source === 'compare' || data.delta?.scenario === undefined ? { labelKind: 'complete' as const } : {}),
     current: value, reference: numericValue(comparison.vs, value.unit, value.format),
     delta: numericValue(comparison.deltaAbs, value.unit, value.format),
     percent: comparison.deltaPct === null ? unavailable('Reference is nonpositive') : derivedPercent(comparison.deltaPct),

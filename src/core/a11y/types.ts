@@ -43,8 +43,8 @@ export interface InteractionEvent {
 export interface InteractionComparison {
   label: string;
   scenario?: Scenario;
-  /** The reference series name when the input supplies a label for it. */
-  referenceLabel?: string;
+  /** An authored reference name takes priority over its scenario. Complete wording needs only a colon. */
+  labelKind?: 'reference' | 'complete';
   current: InteractionValue;
   reference: InteractionValue;
   delta: InteractionValue;
