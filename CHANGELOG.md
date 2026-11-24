@@ -6,6 +6,8 @@ Boardplot is in 0.x: options and output can change between minor versions. Each 
 
 ### Changed
 
+- Dense combo charts with stacked columns and lines choose the value axis and endpoint gutters earlier. A value note can keep its label positions when the frame still fits. Automatic height skips taller layouts when every noted segment value is too wide for its column at any height.
+
 - Stacked columns with staircase category labels reuse text and frame measurements while choosing their height. Horizontal bars and Likert surveys reuse shorter layouts only when the footer mode matches. Scatterplots reuse label placements, mixed column and line grids reuse panel heading measurements, and waterfalls reuse bracket sums across height trials.
 - At 878 px wide with automatic height, a stacked column chart with staircase category labels averaged 13.95 ms per layout in React, down from 27.29 ms in 0.63.0. The first layout averaged 48.14 ms, down from 70.20 ms. The comparison used ten runs per version and ten mounts per run. Each chart selected the same 573 px height.
 

@@ -292,3 +292,24 @@ it('names and marks the net of a mixed-sign combo stack, and keeps a one-sign to
   expect(geometry.scene.some((node) => node.id === 'netTotal:a')).toBe(true);
   expect(geometry.scene.some((node) => node.id === 'netTotal:b')).toBe(false);
 });
+
+// A value-note retry could discard the column totals and line labels when the chart computed an average rule.
+it('keeps the chart labels and value note alongside a computed average rule', () => {
+  const categories = Array.from({ length: 11 }, (_, i) => {
+    const date = `2025-01-${String(i + 1).padStart(2, '0')}`;
+    return { id: date, date };
+  });
+  const geometry = requireGeometry(layoutResolvedRequest(resolveChartRequest({
+    type: 'combo',
+    data: { categories, series: [
+      { id: 'sales', label: 'Sales', values: categories.map((_, i) => 108000 + i * 1300) },
+      { id: 'orders', label: 'Orders', values: categories.map((_, i) => 106000 + i * 700) },
+      { id: 'trend', label: 'Trend', kind: 'line', values: categories.map((_, i) => 98000 + i * 300) },
+    ] },
+    options: { averageMarker: true, size: { width: 375 } },
+  })));
+  const visible = geometry.labels.filter(label => !label.hidden);
+  expect(visible.some(label => label.kind === 'grandTotal')).toBe(true);
+  expect(visible.some(label => label.kind === 'point')).toBe(true);
+  expect(geometry.warnings.some(warning => warning.code === 'values-in-note')).toBe(true);
+});

@@ -1,5 +1,6 @@
 import { hasLabelPosition, refuseLabelPosition } from '../band/labelPosition';
 import { copyFrame } from '../../footer';
+import { defaultMeasurer } from '../../text';
 import { sk, stackParts } from '../band/stacks';
 import { chartString } from '../../strings/combo';
 import { withSegmentSeams } from '../../markVisibility';
@@ -54,7 +55,8 @@ import { rectSeriesAdjacentWarnings } from '../../adjacentSeries';
 import { rectsOverlap, type Rect } from '../../geometry';
 import { labelsToNodes } from '../../label/emit';
 import { createOccupiedIndex, type OccupiedIndex } from '../../label/occupied';
-import { solveLabels, type LabelRequest, type SolveCtx, type SolveResult } from '../../label/solver';
+import { DENSE_CATEGORY_COUNT } from '../../denseCharts';
+import { PRIORITY, solveLabels, type LabelRequest, type SolveCtx, type SolveResult } from '../../label/solver';
 import { HOST_CLAIMS, type HostClaims } from '../../claims/ids';
 import type { TickBandDerived } from '../../label/tickRow';
 import { accessibleTitle } from '../../normalize/shared';
@@ -72,7 +74,7 @@ import { MARKER_R, type ComboArea, type ComboDomain, type ComboEnv, type ComboMa
 import { comboPaints, contentOf, comboPlotArea, refitComboFrame, solveComboFrame, toDateOnTotals } from './plot';
 import { PARTIAL_KEY, toDateFits, toDateRoom } from '../../partialPeriod';
 import type { ComboOptions } from '../../types/options';
-import { DEFER_DENSITY_NOTES, DENSITY_VALUES, DENSITY_LAYOUT_OPTIONS, authoredNotes, noteCap, noteLine, POINTED_NOTES, withAuthoredFootnotes, type InternalFootnoteOptions } from '../../frame';
+import { DEFER_DENSITY_NOTES, DENSITY_VALUES, DENSITY_LAYOUT_OPTIONS, authoredFootnoteCount, authoredNotes, noteCap, noteLine, POINTED_NOTES, withAuthoredFootnotes, type InternalFootnoteOptions } from '../../frame';
 import { categoryNotesDiffer, FORCE_CATEGORY_RANKS, rankNotes } from './categoryRanks';
 import type { EmittedLane } from '../../eventLane';
 import { ANOMALY_FLAG_GAP, ANOMALY_FLAG_H, anomalyA11y, anomalyReceipt, columnCorridorPaint, lineAnomalyFurniture, seatFlaggedValues } from '../column/anomaly';
@@ -421,11 +423,34 @@ interface ComboFrameSeed {
 interface ComboNoteMarks {
   area: ComboArea;
   geometry: ComboMarkGeometry;
+  seats?: {
+    frameClaims: OccupiedIndex;
+    authoredCount: number;
+    occupied: OccupiedIndex;
+    solved: SolveResult;
+    warnings: LintWarning[];
+  };
+}
+
+function sameBox(a: Rect, b: Rect): boolean {
+  return a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
+}
+
+/** Only empty-owner header, footer and legend boxes can take part in the note-only transfer. */
+function sameFrameClaims(before: OccupiedIndex, after: OccupiedIndex): boolean {
+  const a = before.snapshot();
+  const b = after.snapshot();
+  return !before.tickColumns && !after.tickColumns && a.length === b.length && a.every((claim, i) => {
+    const other = b[i]!;
+    return (claim.kind === 'frame' || claim.kind === 'legend') && claim.kind === other.kind
+      && !claim.part && !other.part && !claim.polygon && !other.polygon
+      && !Object.keys(claim.owner).length && !Object.keys(other.owner).length && sameBox(claim.rect, other.rect);
+  });
 }
 
 /** A note can change its text without changing the plot or any mark. */
 function sameMarkArea(a: ComboArea, b: ComboArea): boolean {
-  return (['x', 'y', 'w', 'h'] as const).every(key => a.plot[key] === b.plot[key])
+  return sameBox(a.plot, b.plot)
     && a.rightTickX === b.rightTickX
     && a.band.range.every((value, i) => value === b.band.range[i])
     && a.band.bandwidth === b.band.bandwidth && a.band.step === b.band.step
@@ -447,6 +472,49 @@ function layoutComboPass(
   const domain = resolveComboDomain(data, options, warnings, env.theme);
   const paints = comboPaints(env, domain);
   return layoutComboFramePass(data, options, gutterOverride, env, domain, paints, warnings, undefined, noteMarks);
+}
+
+function comboLabelContext(options: ComboOptions, env: ComboEnv, domain: ComboDomain, area: ComboArea, geometry: ComboMarkGeometry): SolveCtx {
+  return {
+    // A host chart names the claims of combo's labels (claims/ids.ts).
+    ...(HOST_CLAIMS in options ? { [HOST_CLAIMS]: (options as { [HOST_CLAIMS]?: HostClaims })[HOST_CLAIMS] } : {}),
+    focus: options.focus,
+    density: env.density,
+    pins: options.labelPlacements ?? {},
+    labelOffsets: options.labelOffsets,
+    measure: env.measure,
+    plot: area.plot,
+    canvas: { x: 0, y: 0, w: env.size.width, h: env.size.height },
+    darkInk: env.theme.color.ink,
+    lightInk: env.theme.color.inkInverse,
+    labelPad: 2,
+    // A line or area value reads as its own point's (label/ownership.ts).
+    pointOwnership: {
+      points: geometry.plans.flatMap((plan) => plan.pts.map((p) => ({ seriesId: plan.s.id, categoryId: domain.cats[p.ci]!.id, x: p.x, y: p.y }))),
+      categoryX: new Map(domain.cats.map((c, ci) => [c.id, area.band.center(ci)])),
+    },
+  };
+}
+
+function comboEndpointIds(area: ComboArea, domain: ComboDomain): Set<Id> {
+  const ids = new Set<Id>();
+  for (const ends of [area.first, area.last]) for (const [series, end] of ends) ids.add(`point:${series}:${domain.cats[end.ci]!.id}`);
+  return ids;
+}
+
+function failedEndpointGutters(labels: PlacedLabel[], ends: Set<Id>, area: ComboArea, domain: ComboDomain, env: ComboEnv) {
+  const ids = new Set<Id>();
+  for (const label of labels) {
+    if (!ends.has(label.id)) continue;
+    // A last-resort seat past the plot edge counts as a missing endpoint too.
+    const past = label.hidden === undefined && String(label.slot).includes('PastColumn')
+      && (label.rect.x < area.plot.x - 0.5 || label.rect.x + label.rect.w > area.plot.x + area.plot.w + 0.5);
+    if (label.hidden === 'collision' || past) ids.add(label.id);
+  }
+  if (ids.size === 0) return undefined;
+  const room = insideEndpointGutters({ ids, first: area.first, last: area.last, cats: domain.cats,
+    width: area.endpointWidth, font: area.labelFont, measure: env.measure, markerR: MARKER_R });
+  return { ids, resize: room.first > 0 || room.last > 0 };
 }
 
 /** An inside-end reserve changes the plot and marks, but keeps the prepared data and scales. */
@@ -526,7 +594,7 @@ function layoutComboFramePass(
       }
     }
   }
-  const occupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
+  let occupied = createOccupiedIndex({ x: 0, y: 0, w: size.width, h: size.height });
   commitClaims(occupied, settled.framed.claims);
   // A rank names nothing without its mapping, which is the label row moved
   // to the notes; a cut name comes back whole in its marked note.
@@ -550,7 +618,8 @@ function layoutComboFramePass(
     const authored = (options as InternalFootnoteOptions).authoredFootnotes ?? current;
     return layoutComboPass(data, { ...withAuthoredFootnotes(options, [...current, ...keyed], authored), [POINTED_NOTES]: keyed, [FORCE_CATEGORY_RANKS]: true } as ComboOptions, gutterOverride);
   }
-  const marks = noteMarks && sameMarkArea(noteMarks.area, area)
+  const keptMarks = noteMarks && sameMarkArea(noteMarks.area, area);
+  const marks = keptMarks
     ? { ...noteMarks.geometry,
       // The note retry normalizes fresh series. Paint decisions can use
       // series identity, so retained positions must refer to those series.
@@ -565,7 +634,51 @@ function layoutComboFramePass(
   }
   const anomalyMarks = domain.anomaly ? comboAnomalyMarks(env, domain, domain.anomaly, area, geometry) : undefined;
   commitClaims(occupied, geometry.claims);
-  const requests = planComboLabels(env, domain, area, geometry, paints, warnings);
+  // The note retry has rebuilt its frame. An unchanged plot, category numbering and
+  // frame claims give the original marks and labels exactly the same seats.
+  const seats = keptMarks && noteMarks.seats && sameBox(noteMarks.area.frame.plot, area.frame.plot)
+    && noteMarks.seats.authoredCount === authoredFootnoteCount(domain.options)
+    && sameFrameClaims(noteMarks.seats.frameClaims, settled.framed.claims) ? noteMarks.seats : undefined;
+  const labelWarningStart = warnings.length;
+  const densityValues = (options as ComboOptions & { [DENSITY_VALUES]?: ReadonlySet<Id> })[DENSITY_VALUES];
+  const tryInside = !(options as { [FIRST_END_BELOW_TOTALS]?: boolean })[FIRST_END_BELOW_TOTALS]
+    && (options as { [INSIDE_ENDPOINT_IDS]?: Set<Id> })[INSIDE_ENDPOINT_IDS] === undefined;
+  // A dense chart can decide its endpoint gutter before preparing interior line seats.
+  // Author moves, the staircase, forecasts and partial periods can change an earlier seat or retry.
+  // A floated line already has its own band, so place its ends in the ordinary pass.
+  const probeEnds = !seats && tryInside && !domain.lineFloat && (area.first.size > 0 || area.last.size > 0) && domain.cats.length > DENSE_CATEGORY_COUNT && domain.showPrimaryAxis
+    && options.categoryLabels !== 'staircase' && !domain.cats.some(c => c.partial) && env.measure === defaultMeasurer
+    && !domain.options.annotations?.length && !domain.anomaly && !area.forecast.length && !geometry.areaGrounds.length
+    && domain.options.mode !== 'compact' && !options.focus && !(HOST_CLAIMS in options)
+    && !Object.keys(options.labelPlacements ?? {}).length && !Object.keys(options.labelOffsets ?? {}).length
+    && domain.lines.every(series => series.vals.every(cell => cell.priority === undefined));
+  let ends: Set<Id> | undefined;
+  let trialContext: SolveCtx | undefined;
+  let earlyRetry: Set<Id> | undefined;
+  const requests = seats ? [] : planComboLabels(env, domain, area, geometry, paints, warnings, probeEnds ? planned => {
+    ends = comboEndpointIds(area, domain);
+    let lastPriority = Infinity;
+    for (const request of planned) if (ends.has(request.id)) lastPriority = Math.min(lastPriority, request.priority);
+    // A later interior request has at most the highlighted extreme's priority.
+    if (!Number.isFinite(lastPriority) || lastPriority <= PRIORITY.extreme + PRIORITY.highlightBonus) return false;
+    const prefix = planned.filter(request => request.pinnedSlot || request.priority >= lastPriority).map(request =>
+      densityValues?.has(request.id) && (request.kind === 'point' || request.kind === 'grandTotal')
+        ? { ...request, redundant: true, suppressedAs: 'density' as const } : request);
+    const probe = createOccupiedIndex(area.plot);
+    probe.tickColumns = occupied.tickColumns;
+    commitClaims(probe, occupied);
+    trialContext = comboLabelContext(options, env, domain, area, geometry);
+    const retry = failedEndpointGutters(solveLabels(prefix, probe, trialContext).placed, ends, area, domain, env);
+    if (!retry?.resize) return false;
+    earlyRetry = retry.ids;
+    return true;
+  } : undefined);
+  if (earlyRetry) {
+    domain.options = { ...domain.options, [INSIDE_ENDPOINT_IDS]: earlyRetry } as ComboOptions;
+    return layoutComboFramePass(data, { ...options, [INSIDE_ENDPOINT_IDS]: earlyRetry } as ComboOptions, gutterOverride, env, domain, paints, domainWarnings, frameSeed);
+  }
+  if (seats) pushAll(warnings, seats.warnings);
+  if (!requests) return layoutComboPass(data, { ...options, [TOTALS_AXIS]: true } as ComboOptions, gutterOverride);
   const stair = area.stairTop === undefined ? undefined : seatStaircase({
     categories: domain.cats, band: area.band, top: area.stairTop, left: area.plot.x, right: area.plot.x + area.plot.w,
     floor: area.y0, above: domain.options.labels !== false ? area.gtH + 4 : 0, font: area.tickFont, measure: env.measure,
@@ -580,37 +693,19 @@ function layoutComboFramePass(
   placeForecastHeaders(area.forecast, centre, divided, area.forecastHeaderY, secondaryFont(env.theme), env.measure, requests, occupied, options.strings!.forecastHeader!, 'band');
   emitForecastDividers(env.theme, area.forecast, centre, divided, geometry.nodes, 'band');
   if (anomalyMarks) seatFlaggedValues(requests, domain.anomaly!.seriesId, anomalyMarks, geometry.segments.map((segment) => segment.rect));
-  const densityValues = (options as ComboOptions & { [DENSITY_VALUES]?: ReadonlySet<Id> })[DENSITY_VALUES];
   for (const request of requests) if (densityValues?.has(request.id) && ['point', 'grandTotal'].includes(request.kind)) {
     request.redundant = true;
     request.suppressedAs = 'density';
   }
-  const solveCtx: SolveCtx = {
-    // A host chart names the claims of combo's labels (claims/ids.ts).
-    ...(HOST_CLAIMS in options ? { [HOST_CLAIMS]: (options as { [HOST_CLAIMS]?: HostClaims })[HOST_CLAIMS] } : {}),
-    focus: options.focus,
-    density: env.density,
-    pins: options.labelPlacements ?? {},
-    labelOffsets: options.labelOffsets,
-    measure: env.measure,
-    plot: area.plot,
-    canvas: { x: 0, y: 0, w: size.width, h: size.height },
-    darkInk: env.theme.color.ink,
-    lightInk: env.theme.color.inkInverse,
-    labelPad: 2,
-    // A line or area value reads as its own point's (label/ownership.ts).
-    pointOwnership: {
-      points: geometry.plans.flatMap((plan) => plan.pts.map((p) => ({ seriesId: plan.s.id, categoryId: domain.cats[p.ci]!.id, x: p.x, y: p.y }))),
-      categoryX: new Map(domain.cats.map((c, ci) => [c.id, area.band.center(ci)])),
-    },
-  };
+  const solveCtx = trialContext ?? comboLabelContext(options, env, domain, area, geometry);
   // Reference lines and endpoints take their seats before column values.
   const joint = (domain.options.annotations ?? []).some(annotation => annotation.kind === 'valueLine');
   const annotatedFirst = joint ? annotateCombo(env, domain, area, geometry, occupied, solveCtx, requests) : undefined;
   const chartIds = new Set(requests.map(request => request.id));
   const solved: SolveResult = annotatedFirst
     ? { placed: annotatedFirst.labels.filter(label => chartIds.has(label.id)), decisions: annotatedFirst.decisions.filter(decision => chartIds.has(decision.labelId)), warnings: [] }
-    : solveLabels(requests, occupied, solveCtx);
+    : seats?.solved ?? solveLabels(requests, occupied, solveCtx);
+  if (seats) occupied = seats.occupied;
   if (annotatedFirst) {
     annotatedFirst.labels = annotatedFirst.labels.filter(label => !chartIds.has(label.id));
     annotatedFirst.decisions = annotatedFirst.decisions.filter(decision => !chartIds.has(decision.labelId));
@@ -631,25 +726,12 @@ function layoutComboFramePass(
       && l.hidden !== undefined && l.hidden !== 'redundant')) {
     return layoutComboPass(data, { ...options, [TOTALS_AXIS]: true } as ComboOptions, gutterOverride);
   }
-  // Pareto ends can sit outside the plot; only combo needs an inside retry.
-  if (!(options as { [FIRST_END_BELOW_TOTALS]?: boolean })[FIRST_END_BELOW_TOTALS]
-    && (options as { [INSIDE_ENDPOINT_IDS]?: Set<Id> })[INSIDE_ENDPOINT_IDS] === undefined) {
-    const ends = new Set([...area.first, ...area.last].map(([id, end]) => `point:${id}:${domain.cats[end.ci]!.id}`));
-    // An end on a last-resort seat past the plot edge counts as missing too: the
-    // retry's room beside the point comes first, the seat past the edge after it.
-    const pastPlot = (label: PlacedLabel): boolean => label.hidden === undefined && String(label.slot).includes('PastColumn')
-      && (label.rect.x < area.plot.x - 0.5 || label.rect.x + label.rect.w > area.plot.x + area.plot.w + 0.5);
-    const missing = solved.placed.filter(label => ends.has(label.id) && (label.hidden === 'collision' || pastPlot(label))).map(label => label.id);
-    if (missing.length) {
-      const ids = new Set(missing);
-      const room = insideEndpointGutters({ ids, first: area.first, last: area.last, cats: domain.cats,
-        width: area.endpointWidth, font: area.labelFont, measure: env.measure, markerR: MARKER_R });
-      // A zero reserve repeats the same geometry and label solve. Mark the
-      // retry as settled so later frame changes keep the same failed-end set.
-      options = { ...options, [INSIDE_ENDPOINT_IDS]: ids } as ComboOptions;
-      domain.options = { ...domain.options, [INSIDE_ENDPOINT_IDS]: ids } as ComboOptions;
-      if (room.first > 0 || room.last > 0) return layoutComboFramePass(data, options, gutterOverride, env, domain, paints, domainWarnings, frameSeed);
-    }
+  const retry = tryInside ? failedEndpointGutters(solved.placed, ends ?? comboEndpointIds(area, domain), area, domain, env) : undefined;
+  if (retry) {
+    // A zero reserve keeps the same plot. Retain which ends failed for later frame changes.
+    options = { ...options, [INSIDE_ENDPOINT_IDS]: retry.ids } as ComboOptions;
+    domain.options = { ...domain.options, [INSIDE_ENDPOINT_IDS]: retry.ids } as ComboOptions;
+    if (retry.resize) return layoutComboFramePass(data, options, gutterOverride, env, domain, paints, domainWarnings, frameSeed);
   }
   // A second run drops an end-label gutter the solver left empty.
   const gutters = gutterOverride ? undefined : unusedEndpointGutters(area.gutters, solved, area.plot);
@@ -676,7 +758,15 @@ function layoutComboFramePass(
       const valueCount = solved.placed.filter((l) => l.id.startsWith('tick:') || l.id.startsWith('segment:')).length;
       const note = noteLine(options.strings!.valuesNotBesideMarks!, [...named.values()].sort((a, b) => a[0] - b[0]).map(([, item]) => item), options, valueCount);
       const authored = (options as InternalFootnoteOptions).authoredFootnotes ?? current;
-      return layoutComboPass(data, { ...withAuthoredFootnotes(options, [...current, ...note], authored), [UNPRINTED]: { named, runs: prior.runs + 1 } } as ComboOptions, gutterOverride, { area, geometry: marks });
+      return layoutComboPass(data, { ...withAuthoredFootnotes(options, [...current, ...note], authored), [UNPRINTED]: { named, runs: prior.runs + 1 } } as ComboOptions, gutterOverride, {
+        area, geometry: marks,
+        // This pass returns directly into the retry. Its placed labels and claims have one owner.
+        seats: env.measure === defaultMeasurer && !(HOST_CLAIMS in options) && !domain.secondaryActive
+          && !domain.anomaly && !domain.options.annotations?.length && options.categoryLabels !== 'staircase'
+          && !area.forecast.length && !domain.cats.some(category => category.partial)
+          ? { frameClaims: settled.framed.claims, authoredCount: authoredFootnoteCount(domain.options),
+            occupied, solved, warnings: warnings.slice(labelWarningStart) } : undefined,
+      });
     }
     // A value the note prints is not lost; one it misses still reports.
     const inNote = new Set(unprinted.filter((l) => prior.named.has(l.id)).map((l) => l.id));

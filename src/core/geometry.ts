@@ -59,7 +59,7 @@ export function polylineYAt(line: readonly Point[], x: number): number {
 }
 
 /** Distance from a point to a box; 0 inside it. */
-function pointRectDistance(p: Point, rect: Rect): number {
+export function pointRectDistance(p: Point, rect: Rect): number {
   return Math.hypot(Math.max(rect.x - p.x, 0, p.x - rect.x - rect.w), Math.max(rect.y - p.y, 0, p.y - rect.y - rect.h));
 }
 

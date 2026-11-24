@@ -1,4 +1,4 @@
-import { rectLineDistance, segmentHitsRect, type Point, type Rect } from './geometry';
+import { pointRectDistance, rectLineDistance, segmentHitsRect, type Point, type Rect } from './geometry';
 
 const MAX_COORDINATE = 2 ** 40;
 const MIN_DELTA = 2 ** -256;
@@ -29,7 +29,7 @@ function prepareRun(ring: readonly Point[], step: number) {
   return { ring, chunks };
 }
 
-function preparedDistance(outlines: ReturnType<typeof prepareRun>[]) {
+function preparedDistance(outlines: ReturnType<typeof prepareRun>[], nearbyVertex?: (rect: Rect) => Point) {
   const safeOutlines = outlines.every(outline => outline.chunks !== null);
   return (rect: Rect, ownDistance?: number): number => {
     const right = rect.x + rect.w, bottom = rect.y + rect.h;
@@ -38,7 +38,8 @@ function preparedDistance(outlines: ReturnType<typeof prepareRun>[]) {
     // A rival region needs only the existing tolerance comparison. Unsafe runs need every ring.
     const thresholdOnly = ownDistance !== undefined && safeOutlines && safeRect;
     const limit = thresholdOnly ? Math.max(0.02, ownDistance + 0.02) : Infinity;
-    let best = Infinity;
+    // Any vertex bounds the true minimum, even when the stroke doubles back.
+    let best = nearbyVertex && safeOutlines && safeRect ? pointRectDistance(nearbyVertex(rect), rect) : Infinity;
     for (const { ring, chunks } of outlines) {
       if (!chunks || !safeRect) {
         // A later intersection returns 0 within a ring; Math.min retains NaN across rings.
@@ -102,8 +103,21 @@ export function preparePolyline(line: readonly Point[]) {
   });
   const directHits = (rect: Rect, pad: number) => line.some((point, i) => i > 0 && segmentHitsRect(line[i - 1]!, point, rect, pad));
   const distance = preparedDistance([run]);
+  const distanceNear = byX.length < 2 ? distance : preparedDistance([run], rect => {
+    const x = rect.x + rect.w / 2;
+    let lo = 0, hi = byX.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (rightEdges[mid]! < x) lo = mid + 1;
+      else hi = mid;
+    }
+    const points = byX[lo]!.points;
+    return points[points.length >> 1]!;
+  });
   return {
     distance,
+    /** Start near the label to bound the exact distance to its own stroke. */
+    distanceNear,
     /** Whether `distance(rect) < limit`; cheaper when only the comparison matters. */
     closerThan: preparedCloser(run, distance),
     hits(rect: Rect, pad: number): boolean {

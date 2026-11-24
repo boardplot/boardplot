@@ -586,6 +586,118 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
     const slots = req.candidates.map((c) => c.slot);
     const first = req.candidates[0];
     const markValue = isMarkValue(req);
+    const claimIds = requestClaims(req, ctx);
+    const base: Omit<PlacedLabel, 'rect' | 'slot' | 'ink'> = {
+      id: req.id,
+      kind: req.kind,
+      typeRole: labelTypeRole(req),
+      owner: req.owner,
+      text: req.text,
+      lines: req.lines,
+      slots,
+      pinned: false,
+      priority: req.priority,
+      ...(claimIds?.length ? { claimIds, claimText: req.claimText } : {}),
+      ...(req.noteText ? { noteText: req.noteText } : {}),
+      ...(req.printsFor ? { printsFor: req.printsFor } : {}),
+      ...(req.shows ? { shows: req.shows } : {}),
+      ...(req.owed ? { owed: true as const } : {}),
+      ...(req.swatch ? { swatch: req.swatch } : {}),
+      ...(req.title ? { title: req.title } : {}),
+      ...(req.fontStep ? { font: req.fontStep } : {}),
+      ...capHeightOf(req, ctx.measure),
+      ...(req.role ? { role: req.role } : {}),
+      ...(req.align ? { align: req.align } : {}),
+      ...(req.runs ? { runs: req.runs } : {}),
+      ...(req.emphasis ? { emphasis: true as const } : {}),
+      ...(req.headLines ? { headLines: req.headLines, headWeight: req.headWeight, ...(req.headInk ? { headInk: req.headInk } : {}), ...(req.bodyInk ? { bodyInk: req.bodyInk } : {}), ...(req.bodyFont ? { bodyFont: req.bodyFont } : {}) } : {}),
+    };
+
+    const hide = (hidden: NonNullable<PlacedLabel['hidden']>, why: string) => {
+      const quiet = hidden === 'collision' && req.quietWhenCrowded === true;
+      const reason = quiet ? 'density' : hidden;
+      const decisionReason = quiet ? 'density=smart: no free seat' : why;
+      placed.push({
+        ...base,
+        rect: first ? first.rect : { x: 0, y: 0, w: 0, h: 0 },
+        slot: first ? first.slot : 'none',
+        ink: { token: 'ink' },
+        hidden: reason,
+        ...(markValue && reason === 'collision' ? { owed: true as const } : {}),
+      });
+      onHidden?.(placed[placed.length - 1]!);
+      decisions.push({
+        labelId: req.id,
+        strategy: 'candidatesOccupied',
+        tried: [],
+        chose: 'hidden',
+        reason: decisionReason,
+      });
+      if (reason === 'collision') {
+        // Never advertise a slot a pin could not take. The old advice was
+        // built from the very candidates that had just collided, so following
+        // it produced a silent overlap. Offer only slots that pass the same
+        // pad=0 test the pin will face; when there are none, say plainly that
+        // pinning cannot help.
+        const pinnable = slots.length > 0 ? pinnableSlots() : [];
+        warnings.push({
+          code: 'label-hidden',
+          severity: req.priority >= REQUIRED_VALUE_PRIORITY ? 'warn' : 'info',
+          message: `label '${req.id}' with text '${req.text}' (priority ${req.priority}, owner ${formatOwner(req.owner)}) was hidden: ${decisionReason}`,
+          owner: req.owner,
+          detail: { labelId: req.id },
+          suggest:
+            slots.length === 0
+              ? 'increase chart size or provide a placement candidate'
+              : pinnable.length > 0
+                ? `increase chart size, or pin '${req.id}' to a slot a pin can actually take (${pinnable.join(', ')})` +
+                  (pinnable.length < slots.length
+                    ? ' — the other candidates are blocked by marks, annotations or the canvas edge, which pinning cannot move'
+                    : '')
+                : `increase chart size or lower label density — every candidate slot (${slots.join(', ')}) is blocked by marks, annotations or the canvas edge, which pinning cannot move`,
+        });
+        hiddenWarningByLabel.set(req.id, warnings[warnings.length - 1]!);
+      }
+    };
+
+    // Pins or cell priorities can put the segment first. Keep whichever
+    // equivalent label actually placed first, and name it on the other. The value matches by
+    // construction ("42.0" in a per-series format against the total "42"). A total that prints
+    // the value alone links back to its segment; a named total ("Net −27") has no link and keeps its word.
+    const replacement = printedIn.size > 0 && req.printedIn !== undefined && placed.find(label => !label.hidden && label.id === req.printedIn);
+    if (replacement) {
+      base.printedIn = replacement.id;
+      hide('redundant', `printed in label '${replacement.id}'`);
+      continue;
+    }
+
+    const pin = pinOf(req);
+    // A value the chart dropped for room still takes a pin that is free:
+    // the author named the seat. A true redundancy or an authored 'no' stays.
+    // An owed value was hidden by a setting or a sliver and is named in the note (labels.restSeries: false): a pin does not override it.
+    const pinOverDensity = req.redundant === true && req.suppressedAs === 'density' && !req.owed && pin !== undefined;
+
+    // Redundancy gate (chart decided).
+    if (req.redundant && !pinOverDensity) {
+      const why = req.suppressedAs ?? 'redundant';
+      hide(why, why === 'density' ? 'density gate' : 'redundancy gate');
+      continue;
+    }
+
+    // Density gate — pins, the highlighted value and authored text (an
+    // authored annotation, an authored cell label) are immune: optional
+    // engine labels drop first.
+    if (!pin && !req.protect && !req.keepWhenDense && ctx.density === 'minimal' && req.priority < DENSITY_MIN_PRIORITY) {
+      hide('density', `density=minimal drops priority ${req.priority}`);
+      continue;
+    }
+
+    // Without a pin, an empty seat list reaches the collision receipt directly.
+    if (pin === undefined && first === undefined) {
+      hide('collision', collisionReason(req, ownershipLimited));
+      continue;
+    }
+
     const naturals = markValue ? naturalSeats(req) : undefined;
     const withinMarkBand = (cand: SlotCandidate): boolean => {
       if (!markValue || cand.outsidePlot || (req.kind === 'point' && req.anchor && /^(right|left)(Step[+-]?\d+)?$/.test(cand.slot))) return true;
@@ -788,112 +900,6 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
      */
     const pinnableSlots = (): SlotId[] =>
       req.candidates.flatMap((c, i) => (blockAt(i, 0) === 'hard' ? [] : [c.slot]));
-
-    const claimIds = requestClaims(req, ctx);
-    const base: Omit<PlacedLabel, 'rect' | 'slot' | 'ink'> = {
-      id: req.id,
-      kind: req.kind,
-      typeRole: labelTypeRole(req),
-      owner: req.owner,
-      text: req.text,
-      lines: req.lines,
-      slots,
-      pinned: false,
-      priority: req.priority,
-      ...(claimIds?.length ? { claimIds, claimText: req.claimText } : {}),
-      ...(req.noteText ? { noteText: req.noteText } : {}),
-      ...(req.printsFor ? { printsFor: req.printsFor } : {}),
-      ...(req.shows ? { shows: req.shows } : {}),
-      ...(req.owed ? { owed: true as const } : {}),
-      ...(req.swatch ? { swatch: req.swatch } : {}),
-      ...(req.title ? { title: req.title } : {}),
-      ...(req.fontStep ? { font: req.fontStep } : {}),
-      ...capHeightOf(req, ctx.measure),
-      ...(req.role ? { role: req.role } : {}),
-      ...(req.align ? { align: req.align } : {}),
-      ...(req.runs ? { runs: req.runs } : {}),
-      ...(req.emphasis ? { emphasis: true as const } : {}),
-      ...(req.headLines ? { headLines: req.headLines, headWeight: req.headWeight, ...(req.headInk ? { headInk: req.headInk } : {}), ...(req.bodyInk ? { bodyInk: req.bodyInk } : {}), ...(req.bodyFont ? { bodyFont: req.bodyFont } : {}) } : {}),
-    };
-
-    const hide = (hidden: NonNullable<PlacedLabel['hidden']>, why: string) => {
-      const quiet = hidden === 'collision' && req.quietWhenCrowded === true;
-      const reason = quiet ? 'density' : hidden;
-      const decisionReason = quiet ? 'density=smart: no free seat' : why;
-      placed.push({
-        ...base,
-        rect: first ? first.rect : { x: 0, y: 0, w: 0, h: 0 },
-        slot: first ? first.slot : 'none',
-        ink: { token: 'ink' },
-        hidden: reason,
-        ...(markValue && reason === 'collision' ? { owed: true as const } : {}),
-      });
-      onHidden?.(placed[placed.length - 1]!);
-      decisions.push({
-        labelId: req.id,
-        strategy: 'candidatesOccupied',
-        tried: [],
-        chose: 'hidden',
-        reason: decisionReason,
-      });
-      if (reason === 'collision') {
-        // Never advertise a slot a pin could not take. The old advice was
-        // built from the very candidates that had just collided, so following
-        // it produced a silent overlap. Offer only slots that pass the same
-        // pad=0 test the pin will face; when there are none, say plainly that
-        // pinning cannot help.
-        const pinnable = slots.length > 0 ? pinnableSlots() : [];
-        warnings.push({
-          code: 'label-hidden',
-          severity: req.priority >= REQUIRED_VALUE_PRIORITY ? 'warn' : 'info',
-          message: `label '${req.id}' with text '${req.text}' (priority ${req.priority}, owner ${formatOwner(req.owner)}) was hidden: ${decisionReason}`,
-          owner: req.owner,
-          detail: { labelId: req.id },
-          suggest:
-            slots.length === 0
-              ? 'increase chart size or provide a placement candidate'
-              : pinnable.length > 0
-                ? `increase chart size, or pin '${req.id}' to a slot a pin can actually take (${pinnable.join(', ')})` +
-                  (pinnable.length < slots.length
-                    ? ' — the other candidates are blocked by marks, annotations or the canvas edge, which pinning cannot move'
-                    : '')
-                : `increase chart size or lower label density — every candidate slot (${slots.join(', ')}) is blocked by marks, annotations or the canvas edge, which pinning cannot move`,
-        });
-        hiddenWarningByLabel.set(req.id, warnings[warnings.length - 1]!);
-      }
-    };
-
-    // Pins or cell priorities can put the segment first. Keep whichever
-    // equivalent label actually placed first, and name it on the other. The value matches by
-    // construction ("42.0" in a per-series format against the total "42"). A total that prints
-    // the value alone links back to its segment; a named total ("Net −27") has no link and keeps its word.
-    const replacement = printedIn.size > 0 && req.printedIn !== undefined && placed.find(label => !label.hidden && label.id === req.printedIn);
-    if (replacement) {
-      base.printedIn = replacement.id;
-      hide('redundant', `printed in label '${replacement.id}'`);
-      continue;
-    }
-
-    const pin = pinOf(req);
-    // A value the chart dropped for room still takes a pin that is free:
-    // the author named the seat. A true redundancy or an authored 'no' stays.
-    // An owed value was hidden by a setting or a sliver and is named in the note (labels.restSeries: false): a pin does not override it.
-    const pinOverDensity = req.redundant === true && req.suppressedAs === 'density' && !req.owed && pin !== undefined;
-
-    // Redundancy gate (chart decided).
-    if (req.redundant && !pinOverDensity) {
-      const why = req.suppressedAs ?? 'redundant';
-      hide(why, why === 'density' ? 'density gate' : 'redundancy gate');
-      continue;
-    }
-
-    // Density gate — pins, the highlighted value and authored text (an
-    // authored annotation, an authored cell label) are immune: optional
-    // engine labels drop first.
-    if (!pin && !req.protect && !req.keepWhenDense && ctx.density === 'minimal' && req.priority < DENSITY_MIN_PRIORITY) {
-      hide('density', `density=minimal drops priority ${req.priority}`);
-      continue;
-    }
 
     // Pinned placement: a first-class placement REQUEST, not a licence to
     // overlap. It is solved first (so it wins contested space against free
@@ -1098,7 +1104,7 @@ function solveLabelPass(requests: LabelRequest[], occupied: OccupiedIndex, ctx: 
 
     // Nothing fits. The invariant always wins — hide, even at density=full
     // and even when the author pinned this label.
-    hide('collision', note(ownershipLimited.has(req.id) && req.candidates.length === 0 ? "no seat reads as its own point's value" : `all ${req.candidates.length} candidates collide${req.maxLeaderLength === undefined ? '' : ' or exceed the leader limit'}`));
+    hide('collision', note(collisionReason(req, ownershipLimited)));
   }
 
   // Every label has its seat now: a moved label's leader that would cross text goes, and the others claim their run.
@@ -1242,6 +1248,12 @@ function nearerOtherMark(req: LabelRequest, cand: SlotCandidate, occupied: Occup
     // The fill a value sits on is its ground, not a rival value.
     !(o.part === AREA_FILL_PART && o.owner.seriesId === cand.onFill?.seriesId) &&
     isOtherOwners(o.owner, req.owner, req.kind, o.part) && boxGap(o.rect, anchor) > 1.5 && boxGap(cand.rect, o.rect) + 1 < own);
+}
+
+function collisionReason(req: LabelRequest, ownershipLimited: ReadonlySet<Id>): string {
+  return req.candidates.length === 0 && ownershipLimited.has(req.id)
+    ? "no seat reads as its own point's value"
+    : `all ${req.candidates.length} candidates collide${req.maxLeaderLength === undefined ? '' : ' or exceed the leader limit'}`;
 }
 
 /**
