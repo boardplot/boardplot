@@ -1,3 +1,5 @@
+import { drawnVariant } from '../stackAdds';
+
 /**
  * The room a grid takes off each end of a panel's category range, in px. The
  * plot keeps its edges: only the categories move in, so stacked panels keep
@@ -25,9 +27,10 @@ export const INSETS_CATEGORIES: ReadonlySet<string> = new Set(['column', 'line',
  */
 export const takesCategoryInset = (type: string, options: unknown): boolean => {
   if (type === 'combo' || type === 'variance') return true;
-  const record = (options ?? {}) as { variant?: string; valueAxis?: { percent?: boolean } };
-  if (type === 'column') return record.variant === undefined || record.variant === 'grouped' || record.variant === 'stacked';
-  if (type === 'line') return (record.variant === undefined || record.variant === 'line') && record.valueAxis?.percent !== true;
+  // The variant the panel draws: `valueAxis.percent` draws a 100% column or a 100% area whatever `variant` says.
+  const variant = drawnVariant(type, (options ?? {}) as { variant?: string; valueAxis?: { percent?: boolean } });
+  if (type === 'column') return variant === undefined || variant === 'grouped' || variant === 'stacked';
+  if (type === 'line') return variant === undefined || variant === 'line';
   return false;
 };
 

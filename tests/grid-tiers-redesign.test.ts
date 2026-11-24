@@ -487,6 +487,56 @@ describe('grid anchors.categories across panel types', () => {
     }
   });
 
+  const lowerMonths = (count: number) => ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].slice(0, count).map((label) => ({ id: label.toLowerCase(), label }));
+  const ticksAt = (grid: Geometry, id: string) => {
+    const panel = (grid.marks as { panels: { id: string; chart?: { offset: { x: number }; geometry: Geometry } }[] }).panels.find((candidate) => candidate.id === id)!;
+    return panel.chart!.geometry.axes.find((axis) => axis.axis === 'x')!.ticks.map((tick) => tick.pos + panel.chart!.offset.x);
+  };
+
+  // valueAxis.percent drew a 100% column that took the inset, and April's marks moved 35 px under the March text panel.
+  it('draws a 100% column asked for through valueAxis.percent as one through variant', () => {
+    const regions = [{ id: 'n', label: 'North', values: [22, 31, 26, 41] }, { id: 's', label: 'South', values: [15, 18, 16, 23] }];
+    const withShare = (share: Record<string, unknown>) => gridOf([
+      { id: 'b', type: 'combo', row: 0, column: 0, data: { categories: lowerMonths(4), series: regions.map((series, index) => ({ ...series, kind: index ? 'line' : 'column' })) }, options: { valueLabels: 'last', valueAxis: { show: true } } },
+      { id: 'a', type: 'column', row: 1, column: 0, data: { categories: lowerMonths(4), series: regions }, options: { valueLabels: 'all', ...share } },
+    ], { sharedAxis: 'none', anchors: { categories: 'column', plotEdges: 'column' }, rows: [1, 1], size: { width: 480, height: 640 } });
+    const viaPercent = withShare({ valueAxis: { show: true, percent: true } });
+    const viaVariant = withShare({ valueAxis: { show: true }, variant: 'stacked100' });
+    expect(ticksAt(viaPercent, 'a')).toEqual(ticksAt(viaVariant, 'a'));
+    expect(ticksAt(viaPercent, 'b')).toEqual(ticksAt(viaVariant, 'b'));
+  });
+
+  // A forecast divider kept the end names at the plot edge while the inset moved the end points 47 px away from them.
+  it('keeps series end names beside their last points', () => {
+    const orders = { id: 'orders', label: 'Orders', values: [21, 28, 24, 31] };
+    const grid = gridOf([
+      { id: 'c', type: 'column', data: { categories: lowerMonths(4), series: [orders] }, options: { valueLabels: 'none', valueAxis: { show: true } } },
+      { id: 'l', type: 'line', data: { categories: lowerMonths(4), series: [orders, { id: 'plan', label: 'Plan', values: [27, 24, 28, 29] }] },
+        options: { valueLabels: 'none', seriesLabels: 'end', legend: 'none', categoryAxis: { crossesBetween: false } },
+        annotations: [{ kind: 'band', id: 'spring', from: 'mar', to: 'apr', label: 'Forecast', style: 'bracket', divider: 'end' }] },
+    ], { anchors: { plotEdges: 'all' }, rows: [1, 1], size: { width: 480, height: 520 } });
+    const line = (grid.marks as { panels: { id: string; chart?: { geometry: Geometry } }[] }).panels.find((candidate) => candidate.id === 'l')!.chart!.geometry;
+    const april = line.axes.find((axis) => axis.axis === 'x')!.ticks.find((tick) => tick.at === 'apr')!.pos;
+    for (const label of line.labels.filter((candidate) => candidate.kind === 'series')) expect(label.rect!.x - april).toBeLessThan(17);
+  });
+
+  // Two totals worded 16 counted as kept while November's moved to January and November printed none.
+  it('keeps each printed value at its own category', () => {
+    const grid = gridOf([
+      { id: 'l', type: 'line', data: { categories: lowerMonths(12), series: [
+        { id: 'orders', label: 'Orders', values: [750, 750, 700, 1100, 950, 900, 1200, 950, 600, 700, 1150, 750] },
+        { id: 'target', label: 'Plan', values: [1150, 1200, 1050, 750, 550, 600, 550, 900, 900, 1200, 1050, 700] },
+      ] }, options: { valueLabels: 'all', valueAxis: { show: true }, categoryAxis: { crossesBetween: false }, seriesLabels: 'end', legend: 'none' } },
+      { id: 'c', type: 'combo', data: { categories: lowerMonths(12), series: [
+        { id: 'orders', label: 'Orders', values: [16, 21, 16, 16, 19, 20, 16, 12, 24, 23, 16, 14] },
+        { id: 'target', label: 'Plan', kind: 'line', values: [16, 21, 14, 18, 12, 15, 11, 11, 12, 23, 13, 14] },
+      ] }, options: { valueLabels: 'last', valueAxis: { show: true } } },
+    ], { sharedScale: true, anchors: { plotEdges: 'all' }, rows: [1, 1], size: { width: 360, height: 320 } });
+    const november = grid.scene.filter((node) => node.t === 'text' && node.opacity !== 0 && node.id.startsWith('c/')
+      && (node as { owner?: { categoryId?: string } }).owner?.categoryId === 'nov' && node.lines.join('') === '16');
+    expect(november.length).toBeGreaterThan(0);
+  });
+
   // Stacked dot panels share a category axis down the plot: aligning their numeric value ticks as
   // categories halved the first plot and warned.
   it('leaves the value axis of stacked dot panels alone', () => {

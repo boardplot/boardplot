@@ -46,20 +46,27 @@ function printedTexts(geometry: Geometry): Map<string, number> {
   const counts = new Map<string, number>();
   for (const node of geometry.scene) {
     if (node.t !== 'text' || node.opacity === 0) continue;
-    const key = `${node.part ?? ''}|${node.lines.join('\n')}`;
+    // The owner keeps a value apart from the same wording at another category.
+    const key = `${node.part ?? ''}|${node.lines.join('\n')}|${JSON.stringify(node.owner ?? null)}`;
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
   return counts;
 }
 
-/** How far each category name sits from its category centre, by category id. */
-function nameOffsets(geometry: Geometry): Map<unknown, number> {
+/**
+ * How far each name sits from what it names: a category name's centre from its category centre, and a
+ * series end name's box from the category of its last point. Keyed by kind, series and category.
+ */
+function nameOffsets(geometry: Geometry): Map<string, number> {
   const ticks = geometry.axes.find((axis) => axis.axis === 'x')?.ticks ?? [];
-  const offsets = new Map<unknown, number>();
+  const offsets = new Map<string, number>();
   for (const label of geometry.labels) {
-    if (label.kind !== 'category' || !label.rect) continue;
+    if ((label.kind !== 'category' && label.kind !== 'series') || !label.rect) continue;
     const tick = ticks.find((candidate) => candidate.at === label.owner?.categoryId);
-    if (tick) offsets.set(tick.at, Math.abs(label.rect.x + label.rect.w / 2 - tick.pos));
+    if (!tick) continue;
+    const { x, w } = label.rect;
+    const offset = label.kind === 'category' ? Math.abs(x + w / 2 - tick.pos) : Math.max(x - tick.pos, tick.pos - (x + w), 0);
+    offsets.set(`${label.kind}|${label.owner?.seriesId ?? ''}|${String(tick.at)}`, offset);
   }
   return offsets;
 }
@@ -82,8 +89,8 @@ const keepsTexts = (before: Map<string, number>, after: Map<string, number>) =>
  * panel is a column (grouped or stacked), a plain line, a combo or a variance panel, all hold the same
  * categories in the same order (two or more), every category centre sits at one x after the inset, the
  * edges settle, and no panel prints fewer texts of a role and wording than in its start drawing, carries a
- * warning its start drawing does not (smaller or rotated names or values), or moves a name more than 0.5 px
- * further from its category. A panel
+ * warning its start drawing does not (smaller or rotated names or values), or moves a category name or a
+ * series end name more than 0.5 px further from what it names. A panel
  * wider than the group's shared plot (rotated names) sets the group's edges.
  */
 export function alignCategoryPanels(
