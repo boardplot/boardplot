@@ -33,17 +33,19 @@ export function partialFootnotes(
   keyed = false,
 ): string[] {
   const names = partialNames(categories, strings);
-  return names === undefined || keyed ? [] : [disclosureNote(names)];
+  return names == null || keyed ? [] : [disclosureNote(names)];
 }
 
 /**
  * The running categories in authored order, with the to-date words once per run:
  * "W38, W39 to date". A label that already says them ("1 Nov to date") gets no second copy.
+ * Undefined leaves the generic hatch key available. Null suppresses a named key whose text is empty.
  */
-function partialNames(categories: readonly Pick<Category, 'id' | 'label' | 'partial'>[], strings: StringsSpec | undefined): string | undefined {
+function partialNames(categories: readonly Pick<Category, 'id' | 'label' | 'partial'>[], strings: StringsSpec | undefined): string | null | undefined {
   const toDate = strings?.toDate ?? localeStrings().toDate;
   const labels = categories.filter((c) => c.partial === true).map((c) => (c.label ?? c.id).replace(/\s*\n\s*/g, ' '));
   if (labels.length === 0) return undefined;
+  if (toDate === '') return labels.map(label => label.trim()).filter(Boolean).join(', ') || null;
   // Authored order: each run of plain names ends with the words once, a name that says them stays as it is.
   const parts: string[] = [];
   let run: string[] = [];
@@ -60,7 +62,7 @@ function partialNames(categories: readonly Pick<Category, 'id' | 'label' | 'part
  * drawn key names the period and the note naming it does not print.
  */
 export function partialAxisWords(strings: StringsSpec | undefined, options: { notes?: { show?: readonly string[] } }, keyed = false): string | undefined {
-  return keyed || disclosuresShown(options) ? undefined : strings?.toDate ?? localeStrings().toDate;
+  return keyed || disclosuresShown(options) || strings?.toDate === '' ? undefined : strings?.toDate ?? localeStrings().toDate;
 }
 
 /** The English words for a running period ("to date", "MTD"), which a label may carry under any locale. */
@@ -68,7 +70,7 @@ const TO_DATE_EN = /\bto[\s-]date\b|\b[WMQY]TD\b/i;
 
 /** Whether a running period's own words already say "to date" (any case, the locale's or the English words), so no mark repeats it. */
 export function saysToDate(words: string, toDate: string): boolean {
-  return words.toLowerCase().includes(toDate.toLowerCase()) || TO_DATE_EN.test(words);
+  return (toDate !== '' && words.toLowerCase().includes(toDate.toLowerCase())) || TO_DATE_EN.test(words);
 }
 
 /** The ids of the categories marked partial, for the annotation pass. */
@@ -85,8 +87,9 @@ export function partialIds(categories: readonly Pick<Category, 'id' | 'partial'>
  * partial category with nothing drawn adds no key.
  */
 export function partialLegendKeys(painted: boolean, strings: StringsSpec | undefined, categories: readonly Pick<Category, 'id' | 'label' | 'partial'>[] = []): LegendItemInput[] {
-  const label = partialNames(categories, strings) ?? strings?.partial ?? localeStrings().partial;
-  return painted
+  const names = partialNames(categories, strings);
+  const label = names === undefined ? strings?.partial ?? localeStrings().partial : names;
+  return painted && label !== null
     ? [{ id: '__partial', label, paint: { token: 'markInk' }, pattern: 'hatch45' }]
     : [];
 }
@@ -132,6 +135,7 @@ export function toDateRoom(mark: number): number {
  * cue (no hatch key), so the density gates pass them.
  */
 export function toDateLabel(text: string, font: FontSpec, words: string, theme: Theme, measure: TextMeasurer) {
+  if (words === '') return undefined;
   const wordsFont = toDateFont(theme);
   const head = measure(text, font);
   const body = measure(words, wordsFont);

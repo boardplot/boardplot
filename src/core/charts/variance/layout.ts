@@ -648,7 +648,7 @@ export function layoutVariance(
   // waterfall reserves it.
   const bracketPad = legendInput && (options.annotations ?? []).some((annotation) => annotation.kind === 'cagr') ? 30 : 0;
   // A running value's to-date words stand under it: the headroom holds the second line too.
-  const wordsH = toDateIds.size > 0 ? measure(toDate, toDateFont(theme)).height : 0;
+  const wordsH = toDateIds.size > 0 && toDate ? measure(toDate, toDateFont(theme)).height : 0;
   // A larger variance that found no seat over its neighbours gets one more value row (second pass).
   const liftRow = (options as { [LIFT_ROW]?: { above: number; below: number } })[LIFT_ROW];
   const topPad = 8 + valueAxisTitleBand(axisTitle, theme, measure) + labelH + wordsH + 4 + bracketPad + (liftRow?.above ?? 0);

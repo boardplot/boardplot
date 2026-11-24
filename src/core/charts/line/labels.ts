@@ -1486,7 +1486,7 @@ export function pointLabelEndRoom(input: Parameters<typeof pointLabelSelection>[
       const sideGap = 7 + Math.max(0, (input.markerExtent?.(pick.series, pick.dataIdx, seed.ci)?.reach ?? 3) - 3);
       if (seed.ci === 0) room.left = Math.max(room.left, (shape ? seed.w + sideGap : seed.w / 2) + PLOT_END_AIR);
       const words = seed.ci === last && input.endToDate?.ids.has(input.cats[last]!.id)
-        ? toDateLabel(seed.text, input.labelFont, input.endToDate.words, input.endToDate.theme, input.endToDate.measure).size.width : seed.w;
+        ? toDateLabel(seed.text, input.labelFont, input.endToDate.words, input.endToDate.theme, input.endToDate.measure)?.size.width ?? seed.w : seed.w;
       if (seed.ci === last) room.right = Math.max(room.right, (shape && input.shapeEnd ? words + sideGap : words / 2) + PLOT_END_AIR);
     }
   }

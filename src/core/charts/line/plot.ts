@@ -120,7 +120,7 @@ export function lineReserves(env: LineEnv, domain: LineDomain, paints: LinePaint
       }
       // A time axis has no category name to carry a running end period's words, so the key value does.
       const words = options.strings?.toDate ?? chartString(options, 'toDate');
-      if (printed) keyValues.set(s.id, domain.x && cats[ci]!.partial === true && !saysToDate(cats[ci]!.label ?? cats[ci]!.id, words) ? `${printed} ${words}` : printed);
+      if (printed) keyValues.set(s.id, words && domain.x && cats[ci]!.partial === true && !saysToDate(cats[ci]!.label ?? cats[ci]!.id, words) ? `${printed} ${words}` : printed);
     }
   }
   // Before the names: the name column starts clear of the last values. A

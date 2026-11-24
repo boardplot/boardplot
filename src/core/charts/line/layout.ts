@@ -1294,7 +1294,7 @@ function layoutLinePass(
   // the first/last fallback, which can drop it), or they are wider than the drawn category step (a line
   // has no column to bound them), the axis name carries them.
   const toDate = lineToDateIds(env, domain, text);
-  if (toDate.size > 0 && ((!domain.x && !toDateFits(options.strings?.toDate ?? chartString(options, 'toDate'), env.theme, env.measure, area.step))
+  if (toDate.size > 0 && options.strings?.toDate !== '' && ((!domain.x && !toDateFits(options.strings?.toDate ?? chartString(options, 'toDate'), env.theme, env.measure, area.step))
     || domain.cats.some((c, ci) => toDate.has(c.id) && domain.drawnSeries.some((s) => (s.vals[ci]?.v ?? null) !== null
     && !solved.placed.some((l) => l.id === `point:${s.id}:${c.id}` && l.hidden === undefined && l.lines.length > 1))))) {
     return layoutLinePass(data, { ...options, [PARTIAL_KEY]: true } as LineOptions);
