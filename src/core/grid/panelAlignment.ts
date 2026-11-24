@@ -43,18 +43,21 @@ export function moveChildPlot(child: GridPanelLayout, dl: number, dr: number, th
   child.geometry = child.relayout!(child.margin);
 }
 
-/** The texts a panel prints, per role (value label, end label, category name, tick, legend entry). */
+/** The texts a panel prints, per role (value label, end label, category name, tick, legend entry) and wording. */
 function printedTexts(geometry: Geometry): Map<string, number> {
   const counts = new Map<string, number>();
   for (const node of geometry.scene) {
     if (node.t !== 'text' || node.opacity === 0) continue;
-    const role = node.part ?? '';
-    counts.set(role, (counts.get(role) ?? 0) + 1);
+    const key = `${node.part ?? ''}|${node.lines.join('\n')}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
   }
   return counts;
 }
 
-/** No role prints fewer texts than before: a value that moves from its mark to the legend is lost at the mark. */
+/**
+ * Every text printed before is still printed in the same role: a value that moves from its mark to the
+ * legend is lost at the mark, and a value hidden for density is lost even when others appear.
+ */
 const keepsTexts = (before: Map<string, number>, after: Map<string, number>) =>
   [...before].every(([role, count]) => (after.get(role) ?? 0) >= count);
 
@@ -171,7 +174,16 @@ function keepsOnePlot(children: GridPanelLayout[], theme: ReturnType<typeof reso
     }
     alignCentres();
   }
-  if (centred() && sameEdges() && start.every(({ child, texts }) => keepsTexts(texts, printedTexts(child.geometry)))) return true;
+  // Every category that two or more panels draw, a panel with a single category included, sits at one x.
+  const sharedCentres = () => {
+    const xs = new Map<unknown, number[]>();
+    for (const child of children) {
+      if (!child.relayout) continue;
+      for (const tick of ticksOf(child)) xs.set(tick.at, [...(xs.get(tick.at) ?? []), child.slot.x + tick.pos]);
+    }
+    return [...xs.values()].every((list) => list.length < 2 || maxOf(list) - minOf(list) <= 1);
+  };
+  if (centred() && sameEdges() && sharedCentres() && start.every(({ child, texts }) => keepsTexts(texts, printedTexts(child.geometry)))) return true;
   for (const { child, margin } of start) {
     child.margin = margin;
     child.anchored!.categoryInset = { left: 0, right: 0 };

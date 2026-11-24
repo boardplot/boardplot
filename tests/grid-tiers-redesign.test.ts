@@ -442,6 +442,16 @@ describe('grid anchors.categories across panel types', () => {
     expect(grid.warnings.map((warning) => warning.code)).toContain('grid-anchor-incompatible');
   });
 
+  // A panel with one month (the latest column) kept its centre while the other panels moved March 174 px away from it.
+  it('leaves a grid column as before when a one-month panel shares it', () => {
+    const grid = gridOf([
+      { id: 't', type: 'line', data: { categories: monthsShort.slice(0, 5), series: [{ id: 's', label: 'Trend', values: [3, 4, 5, 4, 6] }] }, options: { valueLabels: 'none', categoryAxis: { crossesBetween: false } } },
+      { id: 'a', type: 'column', data: { categories: monthsShort, series: [{ id: 's', label: 'Annual', values: [3, 4, 5, 4, 6, 5, 7, 6, 8, 7, 9, 8] }] }, options: { valueLabels: 'none', labels: { category: false } } },
+      { id: 'l', type: 'column', data: { categories: [monthsShort[2]!], series: [{ id: 's', label: 'Latest', values: [5] }] }, options: { valueLabels: 'all', labels: { category: false } } },
+    ], { anchors: { plotEdges: 'column' }, rows: [1, 1, 1], size: { width: 720, height: 720 } });
+    expect(Math.abs(centreOf(grid, 't', 'Mar') - centreOf(grid, 'l', 'Mar'))).toBeLessThan(1);
+  });
+
   // Stacked dot panels share a category axis down the plot: aligning their numeric value ticks as
   // categories halved the first plot and warned.
   it('leaves the value axis of stacked dot panels alone', () => {

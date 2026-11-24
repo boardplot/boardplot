@@ -33,12 +33,12 @@ export const takesCategoryInset = (type: string, options: unknown): boolean => {
 };
 /**
  * How a grid panel takes part in category alignment: the inset holder for a type that reads it, a mark for
- * a panel that draws a category row without one (a sparkline, bar, dot or waterfall panel), nothing else.
+ * a panel that draws a category row or a value sequence without one (a sparkline, bar, dot or waterfall panel), nothing else.
  */
 export function panelAnchoring(type: string, options: unknown, data: unknown): { categoryInset?: CategoryInset; holdsCategories?: boolean } {
   if (takesCategoryInset(type, options)) return { categoryInset: { left: 0, right: 0 } };
-  const record = (data ?? {}) as { categories?: unknown; labels?: unknown; items?: unknown };
-  const rows = [record.categories, record.labels, record.items].some((list) => Array.isArray(list) && list.length >= 2);
+  const record = (data ?? {}) as { categories?: unknown; labels?: unknown; items?: unknown; values?: unknown };
+  const rows = [record.categories, record.labels, record.items, record.values].some((list) => Array.isArray(list) && list.length >= 2);
   return rows ? { holdsCategories: true } : {};
 }
 
