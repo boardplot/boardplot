@@ -65,7 +65,7 @@ import { labelsToNodes } from '../../label/emit';
 import { PRIORITY } from '../../label/solver';
 import { COLUMN_GAP, COLUMN_MIN_WIDTH, columnWidth } from '../diffColumn';
 import type { Theme, ThemeRef } from '../../types/theme';
-import { layoutBar, stackedBarPlotHeight, type BarDerived, type BarMarks, type BarNaturalMinimum } from '../bar/layout';
+import { layoutBar, stackedBarPlotHeight, surveyFootnoteRows, type BarDerived, type BarMarks, type BarNaturalMinimum } from '../bar/layout';
 import { hostedLayout } from '../../normalize/innerRefusal';
 import { DEFER_ADJACENT, EXACT_DOMAIN, LEFT_ROOM, NAME_TRACK, NO_NAME_COLUMN, RIGHT_ROOM, TOTAL_COLUMN, TOTAL_TRACK } from '../bar/model';
 import { labelOn as chartLabelOn } from '../labelOn';
@@ -964,6 +964,9 @@ export function layoutLikert(
   };
   const annotationPass = likertAnnotationPass(data, shares, net, opts.format, brackets);
   annotationPass.skipWhenEmpty = !opts.annotations?.length;
+  if (!ownTracks && !comparing && !fixedRows && annotationPass.skipWhenEmpty && isCachedTextMeasurer(measure)) {
+    annotationPass.footnoteRows = surveyFootnoteRows();
+  }
   const layoutWith = (rows: Rows) => {
     const check = reuseNaturalMinimum && !narrowNote && rows.bandFraction === defaultFraction && !rows.bandPad
       ? naturalMinimum : checkBarNaturalHeight;
