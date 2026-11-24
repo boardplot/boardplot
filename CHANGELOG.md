@@ -6,6 +6,8 @@ Boardplot is in 0.x: options and output can change between minor versions. Each 
 
 ### Changed
 
+- React tables install their stylesheet once on a fresh mount and reuse plain value cells when the container width changes.
+
 - Large dimension-switch tables mount faster in React. Row folds and depth changes reuse measurements from unchanged cells. Changing the expansion, variant, splits or visible columns also takes less time. Tables mounted with a theme provider, font width tables, a scroll handle or row selection also reuse work when their inputs stay the same.
 
 - Large dimension-switch tables build calculation records for the selected periods, reuse measurements of matching numeric text and retain measured widths as periods are added. Returning to a previous control state also copies its calculation records faster.
