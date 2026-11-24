@@ -1,5 +1,5 @@
 import { alignCategoryPanels, alignValuePanels, movedMargin, type PanelAnchoring } from '../../grid/panelAlignment';
-import { CATEGORY_INSET, takesCategoryInset } from '../../grid/categoryInset';
+import { CATEGORY_INSET, panelAnchoring } from '../../grid/categoryInset';
 import { chartString } from '../../strings/grid';
 import { authoredStrings } from '../../strings';
 import { isRecord } from '../../lint/shared';
@@ -1449,10 +1449,21 @@ function layoutAuthoredGrid(
         if (!(`${key}:left` in sharedAnchors) || members.length < 2 || !inset) continue;
         const left = members[0]!.slot.x + members[0]!.geometry.plot.x;
         const right = left + members[0]!.geometry.plot.w;
-        if (members.every(child => Math.abs(child.slot.x + child.geometry.plot.x - left) <= 0.01
-          && Math.abs(child.slot.x + child.geometry.plot.x + child.geometry.plot.w - right) <= 0.01)) {
+        const spread = maxOf(members.map(child => Math.max(Math.abs(child.slot.x + child.geometry.plot.x - left),
+          Math.abs(child.slot.x + child.geometry.plot.x + child.geometry.plot.w - right))));
+        if (spread <= 0.01) {
           sharedAnchors[`${key}:left`] = left;
           sharedAnchors[`${key}:right`] = right;
+          continue;
+        }
+        delete sharedAnchors[`${key}:left`];
+        delete sharedAnchors[`${key}:right`];
+        if (options.anchors?.plotEdges && !warnings.some(warning => warning.code === 'grid-anchor-incompatible')) {
+          warnings.push({
+            code: 'grid-anchor-incompatible',
+            severity: 'warn',
+            message: `category centres are aligned across panels whose types inset their categories differently, so their plot edges differ by up to ${Math.round(spread * 10) / 10}px`,
+          });
         }
       }
     }
@@ -1804,7 +1815,7 @@ function layoutAuthoredChild(
     ? { ...authoredOptions, labels: withoutCategoryLabels(authoredOptions.labels) } : authoredOptions;
   const authoredMargin = isRecord(panelOptions.margin) ? panelOptions.margin : {};
   // `definition.type`: an alias such as `profile` lays out as its chart type.
-  const anchored: PanelAnchoring = takesCategoryInset(definition.type, panelOptions) ? { categoryInset: { left: 0, right: 0 } } : {};
+  const anchored: PanelAnchoring = panelAnchoring(definition.type, panelOptions, panel.data);
   let recordOptions: object;
   const relayout = (margin: AuthoredChild['margin'], kpiValueSize?: number): Geometry => {
     const captionPanel = compactTiers ? { ...panel, title: panelOptions.title === false ? undefined : authoredTitle } : panel;

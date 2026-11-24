@@ -31,6 +31,17 @@ export const takesCategoryInset = (type: string, options: unknown): boolean => {
   const line = (options ?? {}) as { variant?: string; valueAxis?: { percent?: boolean } };
   return line.variant !== 'bump' && !AREA_VARIANTS.has(line.valueAxis?.percent ? 'stacked100-area' : line.variant);
 };
+/**
+ * How a grid panel takes part in category alignment: the inset holder for a type that reads it, a mark for
+ * a panel that draws a category row without one (a sparkline, bar, dot or waterfall panel), nothing else.
+ */
+export function panelAnchoring(type: string, options: unknown, data: unknown): { categoryInset?: CategoryInset; holdsCategories?: boolean } {
+  if (takesCategoryInset(type, options)) return { categoryInset: { left: 0, right: 0 } };
+  const record = (data ?? {}) as { categories?: unknown; labels?: unknown; items?: unknown };
+  const rows = [record.categories, record.labels, record.items].some((list) => Array.isArray(list) && list.length >= 2);
+  return rows ? { holdsCategories: true } : {};
+}
+
 /** The category range inside a plot span: the inset comes off both ends, with the 10 px floor every span keeps. */
 export function insetRange(x: number, w: number, inset: CategoryInset): { x: number; w: number } {
   if (inset.left === 0 && inset.right === 0) return { x, w };

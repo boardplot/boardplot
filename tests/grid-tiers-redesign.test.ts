@@ -414,6 +414,34 @@ describe('grid anchors.categories across panel types', () => {
     expect(printed(grid, 'c', 'point')).toBeGreaterThanOrEqual(12);
   });
 
+  const monthsShort = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((label) => ({ id: label, label }));
+  const centreOf = (grid: Geometry, id: string, at: string) => {
+    const panel = (grid.marks as { panels: { id: string; chart?: { offset: { x: number }; geometry: Geometry } }[] }).panels.find((candidate) => candidate.id === id)!;
+    return panel.chart!.geometry.axes.find((axis) => axis.axis === 'x')!.ticks.find((tick) => tick.at === at)!.pos + panel.chart!.offset.x;
+  };
+
+  // A gap after January in the column panel, checked only on the months all three panels drew, put the line's March point nearer February's column.
+  it('leaves a grid column as before when one panel spaces its months unevenly', () => {
+    const grid = gridOf([
+      { id: 'v', type: 'column', data: { categories: monthsShort.map((month, index) => index === 0 ? { ...month, gapAfter: 0.75 } : month), series: [{ id: 'q', label: 'Volume', values: [25, 30, 29, 34, 40, 36, 39, 41, 34, 36, 39, 38] }] }, options: { valueAxis: { show: true }, valueLabels: 'none' } },
+      { id: 'r', type: 'line', data: { categories: monthsShort, series: [{ id: 'u', label: 'Rate', values: [25, 30, 29, 34, 40, 36, 39, 41, 34, 36, 39, 38] }] },
+        options: { valueAxis: { show: true }, valueLabels: 'all', legend: 'none', categoryAxis: { crossesBetween: false } } },
+      { id: 'i', type: 'line', data: { categories: [monthsShort[0]!, monthsShort[11]!], series: [{ id: 's', label: 'Stock', values: [128, 138] }] }, options: { valueAxis: { show: true }, valueLabels: 'none', categoryAxis: { crossesBetween: false } } },
+    ], { anchors: { plotEdges: 'column' }, rows: [1, 1, 1], size: { width: 480, height: 720 } });
+    const march = centreOf(grid, 'r', 'Mar');
+    expect(Math.abs(march - centreOf(grid, 'v', 'Mar'))).toBeLessThan(Math.abs(march - centreOf(grid, 'v', 'Feb')));
+  });
+
+  // A sparkline draws the months without the inset; the column and line settled on their own edges and the warning went.
+  it('keeps the warning when a sparkline shares the grid column', () => {
+    const grid = gridOf([
+      { id: 'c', type: 'column', data: { categories: monthsShort, series: [{ id: 's', label: 'S', values: [20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64] }] }, options: { valueAxis: { show: true }, valueLabels: 'none' } },
+      { id: 'l', type: 'line', data: { categories: monthsShort, series: [{ id: 's', label: 'S', values: [20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64] }] }, options: { valueAxis: { show: true }, valueLabels: 'last' } },
+      { id: 'o', type: 'sparkline', data: { values: [20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64], labels: monthsShort.map((month) => month.label) } },
+    ], { anchors: { plotEdges: 'column', categories: 'column' }, rows: [1, 1, 1], size: { width: 720, height: 800 } });
+    expect(grid.warnings.map((warning) => warning.code)).toContain('grid-anchor-incompatible');
+  });
+
   // Stacked dot panels share a category axis down the plot: aligning their numeric value ticks as
   // categories halved the first plot and warned.
   it('leaves the value axis of stacked dot panels alone', () => {
