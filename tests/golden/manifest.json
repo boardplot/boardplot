@@ -1047,6 +1047,8 @@
   "grid/kpi-row-status.notation": "7b45864e3fa53755b4d24dfe0d4be85f3d59aa30edb557e6d2c5e1fb5187c140",
   "grid/metric-ladder.authored": "2c3a09354209a94eb0156590bd562e6ef085bdb5239c36cdbed18f8df2d39f50",
   "grid/metric-ladder.notation": "4ce831e9e3e3da67d9472ad7afe820051ae0474e2d1055c5d1f8f5d68e2c51ba",
+  "grid/metric-stack-category-labels.authored": "e09f97f79e84552acdff7b4e33fa7e147e7c01c199cb50823b94e2e8ebad862a",
+  "grid/metric-stack-category-labels.notation": "673593b21506031fe9a73fd28824482bab1efc019199d0e4d01a6693d39f578f",
   "grid/metric-stack-empty-averages.authored": "89f1fe008f6375a5a83fa537222f19c7a352b681fa11d57650891a70634382d0",
   "grid/metric-stack-empty-averages.notation": "8df614583d7d8cf54563c6d6eed39862f1abdd419ce0a69d29d3e16cff20caee",
   "grid/metric-stack-focus-shares.authored": "437ae9af9ffc977a833a5c85dd8600e001f27a8215a09e868febc09fe76e8c3c",

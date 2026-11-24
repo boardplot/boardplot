@@ -1949,7 +1949,7 @@ function stackNarrowReadouts(
   const rows = options.rows?.flatMap((weight, index) => index === row ? inRow.map(() => weight) : [weight]);
   const label = (index: number) => {
     const category = categories[index];
-    return isRecord(category) ? String(category.label ?? category.id ?? '') : '';
+    return isRecord(category) ? String(category.label || category.id || '') : '';
   };
   // Stacked readouts read as one list (39 px from one readout
   // to the next at 320): 6 px between them. The rows the author placed keep

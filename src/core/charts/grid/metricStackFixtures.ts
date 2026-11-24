@@ -143,4 +143,30 @@ export const metricStackFixtures: Fixture<MetricStackData,GridLayoutOptions>[] =
     },
     options: { title: 'Starts and completions rise', stack: { variant: 'focus' }, size: { width: 360 }, strings: { stackAverages: '' } },
   },
+  {
+    id: 'metric-stack-category-labels',
+    title: 'Metric stack: dated weeks with names on selected ticks',
+    kind: 'example',
+    data: {
+      categories: [
+        { id: '2026-W13', label: 'Mar', date: '2026-03-23' },
+        { id: '2026-W14', label: '', date: '2026-03-30' },
+        { id: '2026-W15', label: 'Apr', date: '2026-04-06' },
+        { id: '2026-W16', label: '', date: '2026-04-13' },
+      ],
+      measures: [
+        { id: 'starts', label: 'Starts', values: [80, 92, 84, 96] },
+        { id: 'completions', label: 'Completions', values: [32, 42, 38, 48] },
+      ],
+      panels: [
+        { id: 'starts', type: 'column', title: 'Starts', unit: 'cases per week', measure: { sum: ['starts'] }, readout: 'change' },
+        { id: 'completion-rate', type: 'line', title: 'Completion rate', unit: '%', measure: { numerator: ['completions'], denominator: 'starts' }, readout: 'change' },
+      ],
+      windows: {
+        base: { from: '2026-W13', to: '2026-W14', label: 'March' },
+        compare: { from: '2026-W15', to: '2026-W16', label: 'April' },
+      },
+    },
+    options: { title: 'Starts and completion rate by week', stack: {}, size: { width: 720 } },
+  },
 ];

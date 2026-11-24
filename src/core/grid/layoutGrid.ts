@@ -19,6 +19,7 @@ import { PRIORITY, solveLabels, type LabelRequest } from '../label/solver';
 import { accessibleTitle, NormalizeError, resolveCanvasOptions, resolveSize } from '../normalize/shared';
 import { captionSizedPanelLayouts, getChart } from '../registry';
 import { panelNoteData } from '../panelNoteData';
+import { withBlankCategoryLabelsOmitted } from '../calendarData';
 import { GridChildRefusal, gridRowHeights, gridSizing, hasKpiFigure, inheritedScaleUnit, layoutChildChart, panelAnnotations, recordedPanelOptions, smallestKpiValueSize } from './childLayout';
 import { KPI_HOST_TEXT, KPI_VALUE_SIZE } from '../typeFloors';
 import { stringsIn } from '../frame';
@@ -216,7 +217,10 @@ function unprintedPanelValues(data: GridData, geometry: { labels: readonly Place
     // Likert owns its complete named-share disclosure, including in a panel.
     if (panel.type === 'likert') return { title: panel.title ?? panel.id, items: [] };
     const prefix = `${panel.id}/`;
-    const panelData = panel.data as { categories?: ({ id: string; label?: string } | string)[]; series?: { id: string; label?: string }[] } | undefined;
+    const panelData = withBlankCategoryLabelsOmitted(panel.data as {
+      categories?: ({ id: string; label?: string } | string)[];
+      series?: { id: string; label?: string }[];
+    } | undefined);
     const nameOf = (list: ({ id: string; label?: string } | string)[] | undefined, id: string | undefined): string => {
       const found = list?.find((entry) => (typeof entry === 'string' ? entry : entry.id) === id);
       return found === undefined ? String(id) : typeof found === 'string' ? found : found.label ?? found.id;

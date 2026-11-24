@@ -25,6 +25,7 @@ import type { GridMarks, GridDerived } from './layout';
 import { computeMetricStack, metricStackGrain, normalizeMetricStack, stackError, stackRange, withCompareWindow, type ComputedStackPanel, type MetricStackData, type StackRange, type StackReadout, type StackState } from './metricStack';
 import { maxOf, pushAll } from '../../arrays';
 import { withUnprintedClaims } from '../../claims/ids';
+import { withBlankCategoryLabelsOmitted } from '../../calendarData';
 import { displayFont } from '../cardRoles';
 import { unitOnNumber, withUnit } from '../../unitJoin';
 import { STACK_FOCUS } from '../../stackFocus';
@@ -71,7 +72,7 @@ function everyFocus(data: MetricStackData, raw: object, locale: string | undefin
   focusStacks.set(raw, byLocale);
   const key = `${locale ?? ''}\0${na}`;
   let stacks = byLocale.get(key);
-  if (!stacks) byLocale.set(key, stacks = [data.windows!.compare, ...data.categories.map(c => ({ from: c.id, to: c.id, label: c.label }))]
+  if (!stacks) byLocale.set(key, stacks = [data.windows!.compare, ...data.categories.map(c => ({ from: c.id, to: c.id, label: c.label || c.id }))]
     .map(window => computeMetricStack(withCompareWindow(data, window), locale, na, true)));
   return stacks;
 }
@@ -146,7 +147,7 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   // In React a pointer or the keyboard moves the focus to one category, which then draws as the compare window.
   const pointed = look ? (stack as { [STACK_FOCUS]?: string })[STACK_FOCUS] : undefined;
   const focusCategory = pointed === undefined ? undefined : data.categories.find(c => c.id === pointed);
-  const focusWindow: StackRange | undefined = focusCategory ? { from: focusCategory.id, to: focusCategory.id, label: focusCategory.label } : data.windows?.compare;
+  const focusWindow: StackRange | undefined = focusCategory ? { from: focusCategory.id, to: focusCategory.id, label: focusCategory.label || focusCategory.id } : data.windows?.compare;
   const showUnit = stack.columnVisibility?.unit !== false, showHeadline = stack.columnVisibility?.headline !== false, showSpan = stack.columnVisibility?.span !== false;
   const gutterAfter = (() => { const order = stack.columnOrder ?? [], plotAt = order.indexOf('plot'), gutterAt = order.indexOf('gutter'); return plotAt >= 0 && (gutterAt < 0 || plotAt < gutterAt); })();
   if (stack.heights && options.rows) stackError('options', 'Use stack.heights or rows, not both');
@@ -245,7 +246,7 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   const maturingFootnote = data.states?.maturing?.footnote;
   const partialFootnote = data.states?.partial?.footnote;
   const addPartialNote = () => {
-    if (partial.size) stateNote('partial', partialFootnote, () => partialFootnotes(data.categories, options.strings)[0]);
+    if (partial.size) stateNote('partial', partialFootnote, () => partialFootnotes(withBlankCategoryLabelsOmitted(data).categories, options.strings)[0]);
   };
   // The footer prints authored notes before generated disclosures.
   const partialFirst = options.strings?.toDate === '' && partialFootnote !== undefined && maturingFootnote === undefined;
@@ -380,7 +381,10 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   let { occupied, frame } = frameAt();
   const valueWidth = maxOf(computed.panels.flatMap(p => p.values.map(v => v === null ? measure(na,valueFont).width : measure(p.format(v), valueFont).width))) + 4;
   // A column also holds its category name with 3 px to spare.
-  const categoryWidth = maxOf(data.categories.flatMap(c => c.label.split(/\s+/).map(word => measure(word, keyFont).width))) + 3;
+  const categoryWidth = maxOf(data.categories.flatMap(c => {
+    const name = c.label ?? c.id;
+    return name === '' ? [0] : name.split(/\s+/).map(word => measure(word, keyFont).width + 3);
+  }));
   // The focus look with periods makes the period row the axis: no category prints its name. A category of the
   // focus look needs room for its mark, and for its name where names print.
   const periodAxis = look && data.periods !== undefined;
@@ -490,8 +494,13 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   // A running period with no marker to point at its note says "to date" on its axis name.
   const partialMark = marker(stateNotes.partial);
   const toDate = options.strings?.toDate ?? localeStrings(options.locale?.language).toDate;
-  const categoryName = (c: (typeof data.categories)[number]) => c.label + (!c.partial ? '' : !partialMark ? (toDate.trim() && !saysToDate(c.label, toDate.trim()) ? ` ${toDate}` : '') : partialOnValues ? '' : partialMark);
-  const categoryBoxes = data.categories.map(c => periodAxis ? NO_BOX : textBox(categoryName(c), keyFont, (thin ? 2 : 1) * step - 3));
+  const categoryName = (c: (typeof data.categories)[number]) => {
+    const label = c.label ?? c.id;
+    if (!c.partial) return label;
+    if (partialMark) return partialOnValues ? label : label + partialMark;
+    return toDate.trim() && !saysToDate(label, toDate.trim()) ? `${label} ${toDate}` : label;
+  };
+  const categoryBoxes = data.categories.map(c => periodAxis || c.label === '' ? NO_BOX : textBox(categoryName(c), keyFont, (thin ? 2 : 1) * step - 3));
   const categoryHeight = maxOf(categoryBoxes.map(b=>b.h));
   const periodBoxes = data.periods?.map(period => {
     const indexes = stackRange(data, period);
@@ -515,7 +524,7 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   const header = !look ? undefined : (() => {
     const sp = measure(' ', keyFont).width, dashW = 18;
     const against = chartString(options, 'stackAgainst'), base = data.windows!.base.label;
-    const widest = maxOf([data.windows!.compare.label, ...data.categories.map(c => c.label)].map(label => measure(label, focusLabelFont).width));
+    const widest = maxOf([data.windows!.compare.label, ...data.categories.map(c => c.label || c.id)].map(label => measure(label, focusLabelFont).width));
     const tail = sp + measure(against, keyFont).width + sp + dashW + sp + measure(base, keyFont).width;
     const several = (range: StackRange) => stackRange(data, range).length > 1;
     // Room for the sentence wherever a focus prints it: the authored windows hold it; a single category may not.
@@ -839,9 +848,9 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   });
   const axisY=plots.at(-1)!.y+plots.at(-1)!.h+8;
   if(!periodAxis) data.categories.forEach((category,i)=>{
-    const box=categoryBoxes[i]!,text=categoryName(category);
-    if(!named(i)) { scene.push({t:'line',id:`stack:category:tick:${category.id}`,x1:plotX+(i+0.5)*step,x2:plotX+(i+0.5)*step,y1:axisY+2,y2:axisY+7,stroke:muted,width:strokeToken(theme, 'rule'),owner:{categoryId:category.id},part:'categoryTick'}); return; }
-    put(`stack:category:${category.id}`,text,keyFont,{x:plotX+(i+0.5)*step-box.w/2,y:axisY,w:box.w,h:box.h},{categoryId:category.id},{token:'ink'},'secondary','category',box.lines);
+    if(!named(i) || category.label === '') { scene.push({t:'line',id:`stack:category:tick:${category.id}`,x1:plotX+(i+0.5)*step,x2:plotX+(i+0.5)*step,y1:axisY+2,y2:axisY+7,stroke:muted,width:strokeToken(theme, 'rule'),owner:{categoryId:category.id},part:'categoryTick'}); return; }
+    const box=categoryBoxes[i]!;
+    put(`stack:category:${category.id}`,categoryName(category),keyFont,{x:plotX+(i+0.5)*step-box.w/2,y:axisY,w:box.w,h:box.h},{categoryId:category.id},{token:'ink'},'secondary','category',box.lines);
   });
   // The period axis: each period's label at its first category, after a short tick from the last baseline, with no rule.
   const lastBaseline=plots.at(-1)!.y+plots.at(-1)!.h;
@@ -885,7 +894,7 @@ export function layoutMetricStack(raw: MetricStackData, options: GridLayoutOptio
   const segmentShares=new Set(computed.panels.flatMap(p=>(p.segmentShares??[]).flatMap(column=>column?.map(share=>share.claimId)??[])));
   if(segmentShares.size) derived.readouts=derived.readouts.map(readout=>({...readout,claims:readout.claims.map(claim=>segmentShares.has(claim.id)&&!requested.has(claim.id)?{...claim,output:{...claim.output,displayed:''}}:claim)}));
   const unprinted=derived.readouts.flatMap(readout=>readout.claims.filter(claim=>!requested.has(claim.id)).map(claim=>claim.id));
-  return withUnprintedClaims<Geometry<GridMarks, GridDerived>>({type:'grid',size,plot:frame.plot,scene,labels:solved.placed,axes:[{axis:'x',baselineNodeId:`${data.panels.at(-1)!.id}:baseline`,ticks:data.categories.map((c,i)=>({at:c.id,pos:plotX+(i+0.5)*step,...(periodAxis?{}:{labelId:`stack:category:${c.id}`})}))}],annotations:[],frame:frame.frame,legend:frame.legend,marks,derived:{metricStack:derived,sharedPlotX:plotX,sharedPlotW:plotW,tierGap:gap},
+  return withUnprintedClaims<Geometry<GridMarks, GridDerived>>({type:'grid',size,plot:frame.plot,scene,labels:solved.placed,axes:[{axis:'x',baselineNodeId:`${data.panels.at(-1)!.id}:baseline`,ticks:data.categories.map((c,i)=>({at:c.id,pos:plotX+(i+0.5)*step,...(periodAxis || c.label === '' ? {} : {labelId:`stack:category:${c.id}`})}))}],annotations:[],frame:frame.frame,legend:frame.legend,marks,derived:{metricStack:derived,sharedPlotX:plotX,sharedPlotW:plotW,tierGap:gap},
     sizing:{aspect:'content',fit:'content',minWidth:size.width,minHeight,measuredMinWidth:size.width,measuredMinHeight:minHeight,naturalWidth:size.width,naturalHeight,comfortableWidth:size.width,comfortableHeight:naturalHeight},
     a11y:{title:accessibleTitle(options.title,chartString(options, 'metricStackTitle', { v1: data.panels.length })),counts,desc:chartString(options, 'metricStackDesc', { v1: counts.map(c=>c.text).join(', '), v2: data.panels.map(p=>p.title).join('; '), v3: look ? computed.panels.map((p,i)=>`${p.panel.title}: ${[texts[i]!.value,...(texts[i]!.change?[texts[i]!.change]:[]),...(texts[i]!.from?[texts[i]!.from]:[])].join(' ')}.`).join(' ')
       : !hasMethod ? '' : computed.panels.map(p=>`${p.panel.title}: ${[...(showHeadline?[p.readout.headlineText]:[]),...(showSpan?[p.readout.spanText]:[])].join('; ')}.`).join(' ') })},warnings:[...solved.warnings,...stackColumnWarnings(stack,narrow,gutterFloored,gutterCapped,stack.variant==='focus'&&!look),...segmentShareWarnings(data,look)],debug:{occupied:occupied.snapshot(),decisions:solved.decisions}},unprinted);

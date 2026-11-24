@@ -1,4 +1,4 @@
-import { withCalendarLabels } from './calendarData';
+import { withBlankCategoryLabelsOmitted, withCalendarLabels } from './calendarData';
 import { getChart } from './registry';
 
 /**
@@ -7,5 +7,6 @@ import { getChart } from './registry';
  */
 export function panelNoteData(type: string, data: unknown, language?: string): unknown {
   const def = getChart(type);
-  return def?.categoryLabels ? withCalendarLabels(data, language, def.categoryLabels) : data;
+  const named = withBlankCategoryLabelsOmitted(data);
+  return def?.categoryLabels ? withCalendarLabels(named, language, def.categoryLabels) : named;
 }

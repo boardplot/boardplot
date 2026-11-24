@@ -7,6 +7,7 @@ import { statisticSet } from '../../numberSets';
 import { roundHalfUp } from '../../formatPrecision';
 import { sumConsistentShares } from '../../shareRounding';
 import type { ClaimRecordV1 } from '../../claims/browser';
+import type { Category } from '../../types/data';
 
 export interface StackRange { from: string; to: string; label: string }
 /** A sum of measures, a percentage (numerator ÷ denominator × 100), or an amount per unit (the sum of `ratio` ÷ `per`). */
@@ -32,7 +33,7 @@ export interface MetricStackPanel {
   segmentShares?: boolean;
 }
 export interface MetricStackData {
-  categories: { id: string; label: string; partial?: boolean }[];
+  categories: Pick<Category, 'id' | 'label' | 'date' | 'partial'>[];
   measures: { id: string; label: string; values: (number | null)[] }[];
   panels: MetricStackPanel[];
   states?: {

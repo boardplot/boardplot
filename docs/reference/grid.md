@@ -92,7 +92,8 @@ Facets, variance tiers and metric stacks with shared categories and computed rea
 | message.tone ( branch 2) | string |  | message paints the title with theme ink and body with inkMuted; muted uses inkMuted for every line. One of `'message'`, `'muted'`. |
 | categories ( branch 3) | array | yes | One category axis shared by every metric-stack panel. |
 | categories[].id ( branch 3) | string | yes | Unique category id in display order. |
-| categories[].label ( branch 3) | string | yes | Category label drawn once below the last panel. |
+| categories[].label ( branch 3) | string |  | Category name below the last panel. Omit it to show the id. An empty string hides the axis name and uses the id in the hover card, reading and notes. |
+| categories[].date ( branch 3) | string |  | ISO 8601 category date, yyyy-mm-dd, kept as metadata on the metric stack. |
 | categories[].partial ( branch 3) | boolean |  | Period still running. Draw count so far provisionally; scoped outcomes are n/a. |
 | measures ( branch 3) | array | yes | Raw source values stored once. Rates, amounts per unit and readouts are computed from these values. |
 | measures[].id ( branch 3) | string | yes | Unique source measure id. |
@@ -191,9 +192,13 @@ The grid key merges entries of different panels only when they have the same lab
 
 Common combinations are recipes, not chart types. Stacked revenue over a ΔPY% variance tier is `grid.tiers` (fixture `stacked-plus-dpy-tiered`). Small multiples by region are `grid.facets` (fixture `facet-regions`, or `repeat-regions` from one template). Volume over completed outcomes and a weighted conversion rate is `grid.metric-stack` (fixture `metric-stack-volume`). A KPI tile beside a waffle is `grid.panels` (fixture `kpi-and-waffle`).
 
+A grid passes ISO category dates (`yyyy-mm-dd`) to child charts that use them and keeps them as metadata on metric stacks, where category order sets tick positions and `data.periods` sets period labels.
+
 ## Metric stack
 
 Set `stack: {}` to draw two to five panels in top-down order. Shared source counts produce both the marks and the left readouts. The optional period row, partial states, maturing scope and comparison windows belong to the grid. Each panel starts at zero on an independent scale.
+
+Set a category `label` to `""` to draw its tick without an axis name. The category id names it in cards, screen reader text, readings and generated notes. Omitting `label` also uses the id on the axis.
 
 A sum uses one or more source measures; a multi-measure column is stacked. A rate divides the summed numerator by its denominator and multiplies by 100. An amount per unit, `{ ratio: ["spend"], per: "orders" }`, divides the summed `ratio` measures by the `per` measure, with no factor 100, and draws one mark per category. `readout: "change"` gives the percent change of averages per category, the percent change of the two window values of an amount per unit, or the percentage-point difference of two weighted rates. A window value of an amount per unit divides the window sums: `sum(ratio) / sum(per)`, never the mean of the category values. `readout: { base: "source-id" }` gives a weighted mature step rate and a remaining-per-100 chain. The first table gives the formulas. The second table gives how a panel prints them: a panel that sets neither `divisor` nor `decimals` prints by the default number rule, and a panel that sets one of them prints as the table says.
 
@@ -331,3 +336,4 @@ Below the floor a render is refused with `size-below-floor` and the pixels it ne
 | metric-stack-focus | example | Metric stack: the focus look, with the latest week against the first |
 | metric-stack-focus-shares | example | Metric stack: the focus look by month, with segment shares |
 | metric-stack-empty-averages | example | A focus stack compares two quarters without an averages sentence |
+| metric-stack-category-labels | example | Metric stack: dated weeks with names on selected ticks |

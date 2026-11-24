@@ -954,6 +954,7 @@ The CLI prints every match in one response through `boardplot fixtures --type <t
 | metric-stack-focus | grid.metric-stack | example | Metric stack: the focus look, with the latest week against the first |
 | metric-stack-focus-shares | grid.metric-stack | example | Metric stack: the focus look by month, with segment shares |
 | metric-stack-empty-averages | grid.metric-stack | example | A focus stack compares two quarters without an averages sentence |
+| metric-stack-category-labels | grid.metric-stack | example | Metric stack: dated weeks with names on selected ticks |
 
 ## slope
 

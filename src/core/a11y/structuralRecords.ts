@@ -11,6 +11,7 @@ import type { BarTableData, BarTableDerived, BarTableMarks, BarTableOptions } fr
 import type { GanttMarks } from '../charts/gantt/layout';
 import type { GridMarks } from '../charts/grid/layout';
 import { normalizeGridData } from '../charts/grid/normalize';
+import { withBlankCategoryLabelsOmitted } from '../calendarData';
 import type { StatusData, StatusMarks, StatusOptions } from '../charts/status/layout';
 import type { Rect } from '../geometry';
 import type { OwnerRef } from '../types/cell';
@@ -315,10 +316,11 @@ function gridRecords(ctx: RecordContext, childRecords?: (ctx: RecordContext) => 
     return stack.panels.flatMap(panel => panel.values.map((raw, i) => {
       const source = data.panels.find(p => p.id === panel.id)!;
       const category = data.categories[i]!;
+      const name = category.label || category.id;
       const target = { ...ctx.scope, panel: panel.id, owner: { seriesId: panel.id, categoryId: category.id } };
       const hidden = panel.displayed[i] === 'Not shown';
       return {
-        id: targetId(target), target, label: `${source.title} / ${category.label}`, seriesLabel: source.title, categoryLabel: category.label,
+        id: targetId(target), target, label: `${source.title} / ${name}`, seriesLabel: source.title, categoryLabel: name,
         // Every stack figure is an expression over the measures: computed, so it reads without float residue.
         value: { ...(hidden ? numericValue(null, source.unit) : derivedValue(raw, source.unit)), displayed: panel.displayed[i], ...(hidden ? { state: 'unavailable' as const, reason: chartString(ctx.request.options, 'maturingHidden') } : {}) },
         // A category in the default state prints no state row: only a maturing or running period has something to say.
@@ -338,7 +340,8 @@ function gridRecords(ctx: RecordContext, childRecords?: (ctx: RecordContext) => 
     // The panel reads its formats as the grid's layout did: under the grid's answer of which formats the author wrote.
     const formats = ctx.request.options as { [UNIT_STAND_INS]?: ReadonlySet<string>; [AUTHORED_EXAMPLES]?: ReadonlySet<string> };
     const options = { ...prepared.options as RequestOptions, [UNIT_STAND_INS]: formats[UNIT_STAND_INS], [AUTHORED_EXAMPLES]: formats[AUTHORED_EXAMPLES] };
-    const records = childRecords({ request: resolveChartRequest({ type: panel.type, data: input.data, options, fontMetrics: ctx.request.fontMetrics }), geometry: prepared.geometry, scope, claims: [] });
+    const request = resolveChartRequest({ type: panel.type, data: input.data, options, fontMetrics: ctx.request.fontMetrics });
+    const records = childRecords({ request: { ...request, data: withBlankCategoryLabelsOmitted(request.data) }, geometry: prepared.geometry, scope, claims: [] });
     return records.map(record => {
       const nodeIds = record.nodeIds.map(id => prefix + id);
       return { ...record, nodeIds,
